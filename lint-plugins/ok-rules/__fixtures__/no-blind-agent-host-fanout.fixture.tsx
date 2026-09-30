@@ -1,4 +1,4 @@
-// FIXTURE — drives `no-blind-agent-host-fanout.test.ts` via shell-out to `pnpm exec oxlint`. Not part
+// FIXTURE — drives `no-blind-agent-host-fanout.uncached.test.mjs` via shell-out to oxlint. Not part
 // of the main lint: `__fixtures__/` is in `oxlint.config.ts#ignorePatterns`,
 // and `__fixtures__/oxlint.fixtures.json` re-enables the rules for the test.
 //
@@ -7,7 +7,7 @@
 // rule MUST fire) with negative cases (an unrelated `'skills'` word, a
 // similarly-spelled flag, a comment mention, a template literal, and a
 // concatenation — rule must NOT fire). The fixture-file test asserts the
-// diagnostic count with exact equality (`toBe(5)`) so both a weakened pattern
+// diagnostic count with exact equality (the 5-position list) so both a weakened pattern
 // (drops below 5) and a widened pattern that catches a negative (rises above 5)
 // fail the gate.
 //

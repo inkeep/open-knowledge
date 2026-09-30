@@ -8,7 +8,7 @@ One plugin holding every rule is deliberate: oxlint walks the AST once and dispa
 
 ## Convention
 
-**All custom lint enforcement uses oxlint JS-plugin rules** — [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42). Add a module under `rules/` + a fixture-file test. The fixture-file test is non-negotiable: it preserves the mutation-self-test property by asserting an exact diagnostic count on a fixture pairing positive cases with negative cases.
+**All custom lint enforcement uses oxlint JS-plugin rules** — [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42). Add a module under `rules/` + a fixture-file test. The fixture-file test is non-negotiable: it preserves the mutation-self-test property by asserting the exact position of every diagnostic, filtered by the rule's own code, on a fixture pairing positive cases with negative cases.
 
 **Rule modules carry no prose comments.** These are `.mjs` files, so the [no-comments policy](../no-comments/README.md) applies to them — unlike the `.grit` files they replaced, which sat outside it and carried long rationale headers. That rationale lives here instead, in the rule's section below. When you write a rule, budget for writing its README section in the same change; there is nowhere else for the reasoning to go.
 
@@ -34,13 +34,13 @@ The rule does NOT catch:
 - `…` in CLI strings (`process.stderr.write('Cloning…')`) — uncaught gap; review discipline covers the small CLI surface.
 - `…` in JSX expression-child string literals (`<span>{'Loading…'}</span>`) — uncaught gap; zero occurrences in the codebase today (developers write `<span>Loading…</span>` directly). If a realistic case emerges, add a `jsx_expression` pattern matching `string` literal children rather than retrofit ad-hoc.
 
-Rule: [`lint-plugins/ok-rules/rules/microcopy-ellipsis.mjs`](rules/microcopy-ellipsis.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/microcopy-ellipsis.fixture.tsx`](__fixtures__/microcopy-ellipsis.fixture.tsx). Test: [`packages/app/tests/integration/microcopy-ellipsis.test.ts`](../../packages/app/tests/integration/microcopy-ellipsis.test.ts).
+Rule: [`lint-plugins/ok-rules/rules/microcopy-ellipsis.mjs`](rules/microcopy-ellipsis.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/microcopy-ellipsis.fixture.tsx`](__fixtures__/microcopy-ellipsis.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/microcopy-ellipsis.uncached.test.mjs`](tests/microcopy-ellipsis.uncached.test.mjs).
 
 ### `no-loosely-typed-webcontents-ipc`
 
 IPC discipline enforcement. Forbids direct electron IPC primitives (`webContents.send`, `ipcMain.handle/on`, `ipcRenderer.invoke/on/once`) outside the typed-wrapper files. Consumers must route through `createInvoker` / `createHandler` / `sendToRenderer` from `packages/desktop/src/shared/ipc-*.ts`. See [PRECEDENTS.md #14](../../PRECEDENTS.md) for the IPC discipline rationale.
 
-Rule: [`lint-plugins/ok-rules/rules/no-loosely-typed-webcontents-ipc.mjs`](rules/no-loosely-typed-webcontents-ipc.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-loosely-typed-webcontents-ipc.fixture.tsx`](__fixtures__/no-loosely-typed-webcontents-ipc.fixture.tsx). Test: [`packages/desktop/tests/integration/no-loosely-typed-webcontents-ipc.test.ts`](../../packages/desktop/tests/integration/no-loosely-typed-webcontents-ipc.test.ts).
+Rule: [`lint-plugins/ok-rules/rules/no-loosely-typed-webcontents-ipc.mjs`](rules/no-loosely-typed-webcontents-ipc.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-loosely-typed-webcontents-ipc.fixture.tsx`](__fixtures__/no-loosely-typed-webcontents-ipc.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-loosely-typed-webcontents-ipc.uncached.test.mjs`](tests/no-loosely-typed-webcontents-ipc.uncached.test.mjs).
 
 ### `no-raw-html-interactive-element`
 
@@ -64,7 +64,7 @@ The rule does NOT catch:
 
 Included: `packages/app/src/**/*.tsx`, `packages/desktop/src/**/*.tsx`, `packages/plugin/src/**/*.tsx`, `lint-plugins/ok-rules/__fixtures__/no-raw-html-interactive-element.fixture.tsx`. Excluded: `packages/app/src/editor/**`, `packages/app/src/components/ui/**`, `**/*.test.tsx`, `**/*.dom.test.tsx`, `**/*.test-helper.tsx`.
 
-Rule: [`lint-plugins/ok-rules/rules/no-raw-html-interactive-element.mjs`](rules/no-raw-html-interactive-element.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-raw-html-interactive-element.fixture.tsx`](__fixtures__/no-raw-html-interactive-element.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-raw-html-interactive-element.test.ts`](../../packages/app/tests/lint-plugins/no-raw-html-interactive-element.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/no-raw-html-interactive-element.mjs`](rules/no-raw-html-interactive-element.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-raw-html-interactive-element.fixture.tsx`](__fixtures__/no-raw-html-interactive-element.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-raw-html-interactive-element.uncached.test.mjs`](tests/no-raw-html-interactive-element.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `no-themeless-pierre-diff`
 
@@ -87,7 +87,7 @@ Runtime complement: `packages/app/src/components/ActivityPanelDiffView.dom.test.
 
 Included: `packages/app/src/**/*.tsx`, `lint-plugins/ok-rules/__fixtures__/no-themeless-pierre-diff.fixture.tsx`. Excluded: `**/*.test.tsx`, `**/*.dom.test.tsx`, `**/*.test-helper.tsx`.
 
-Rule: [`lint-plugins/ok-rules/rules/no-themeless-pierre-diff.mjs`](rules/no-themeless-pierre-diff.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-themeless-pierre-diff.fixture.tsx`](__fixtures__/no-themeless-pierre-diff.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-themeless-pierre-diff.test.ts`](../../packages/app/tests/lint-plugins/no-themeless-pierre-diff.test.ts).
+Rule: [`lint-plugins/ok-rules/rules/no-themeless-pierre-diff.mjs`](rules/no-themeless-pierre-diff.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-themeless-pierre-diff.fixture.tsx`](__fixtures__/no-themeless-pierre-diff.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-themeless-pierre-diff.uncached.test.mjs`](tests/no-themeless-pierre-diff.uncached.test.mjs).
 
 ### `no-resolved-value-theme-source`
 
@@ -98,7 +98,7 @@ Detection patterns (call expressions only — type-declarations are naturally ex
 - `setThemeSource($arg)` where `$arg` contains both `'light'` and `'dark'` string literals (likely a ternary, either order)
 - Matches both bare-call and member-call shapes (`obj.setThemeSource(...)`)
 
-Rule: [`lint-plugins/ok-rules/rules/no-resolved-value-theme-source.mjs`](rules/no-resolved-value-theme-source.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-resolved-value-theme-source.fixture.tsx`](__fixtures__/no-resolved-value-theme-source.fixture.tsx). Test: [`packages/desktop/tests/integration/no-resolved-value-theme-source.test.ts`](../../packages/desktop/tests/integration/no-resolved-value-theme-source.test.ts).
+Rule: [`lint-plugins/ok-rules/rules/no-resolved-value-theme-source.mjs`](rules/no-resolved-value-theme-source.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-resolved-value-theme-source.fixture.tsx`](__fixtures__/no-resolved-value-theme-source.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-resolved-value-theme-source.uncached.test.mjs`](tests/no-resolved-value-theme-source.uncached.test.mjs).
 
 ### `no-split-suggestion-dispatch`
 
@@ -117,7 +117,7 @@ The rule does NOT catch:
 
 Runtime complement: `packages/app/src/editor/extensions/suggestion-atomicity.dom.test.tsx` + `slash-command-atomicity.dom.test.tsx` drive every registered suggestion surface through a real Enter and assert exactly one doc-changing transaction — they catch the delegated-dispatch shapes the lint can't.
 
-Rule: [`lint-plugins/ok-rules/rules/no-split-suggestion-dispatch.mjs`](rules/no-split-suggestion-dispatch.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-split-suggestion-dispatch.fixture.tsx`](__fixtures__/no-split-suggestion-dispatch.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-split-suggestion-dispatch.test.ts`](../../packages/app/tests/lint-plugins/no-split-suggestion-dispatch.test.ts).
+Rule: [`lint-plugins/ok-rules/rules/no-split-suggestion-dispatch.mjs`](rules/no-split-suggestion-dispatch.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-split-suggestion-dispatch.fixture.tsx`](__fixtures__/no-split-suggestion-dispatch.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-split-suggestion-dispatch.uncached.test.mjs`](tests/no-split-suggestion-dispatch.uncached.test.mjs).
 
 ### `no-unportaled-editor-content`
 
@@ -134,7 +134,7 @@ createPortal(
 );
 ```
 
-Rule: [`lint-plugins/ok-rules/rules/no-unportaled-editor-content.mjs`](rules/no-unportaled-editor-content.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-unportaled-editor-content.fixture.tsx`](__fixtures__/no-unportaled-editor-content.fixture.tsx). Test: [`packages/app/tests/integration/no-unportaled-editor-content.test.ts`](../../packages/app/tests/integration/no-unportaled-editor-content.test.ts). See [PRECEDENTS.md #44](../../PRECEDENTS.md) for the H6 cross-doc DOM bleed contract and [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/no-unportaled-editor-content.mjs`](rules/no-unportaled-editor-content.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-unportaled-editor-content.fixture.tsx`](__fixtures__/no-unportaled-editor-content.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-unportaled-editor-content.uncached.test.mjs`](tests/no-unportaled-editor-content.uncached.test.mjs). See [PRECEDENTS.md #44](../../PRECEDENTS.md) for the H6 cross-doc DOM bleed contract and [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `no-uninstall-forbidden-import`
 
@@ -150,7 +150,7 @@ This rule is **shallow, first-hop feedback only**. The authoritative gate is the
 
 Included: `packages/app/src/uninstall/**/*.ts`, `packages/app/src/uninstall/**/*.tsx`, `lint-plugins/ok-rules/__fixtures__/no-uninstall-forbidden-import.fixture.tsx`. Excluded: `packages/app/src/uninstall/**/*.test.ts`, `packages/app/src/uninstall/**/*.test.tsx`, `packages/app/src/uninstall/**/*.dom.test.tsx`.
 
-Rule: [`lint-plugins/ok-rules/rules/no-uninstall-forbidden-import.mjs`](rules/no-uninstall-forbidden-import.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-uninstall-forbidden-import.fixture.tsx`](__fixtures__/no-uninstall-forbidden-import.fixture.tsx). Test: [`packages/desktop/tests/integration/no-uninstall-forbidden-import.test.ts`](../../packages/desktop/tests/integration/no-uninstall-forbidden-import.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/no-uninstall-forbidden-import.mjs`](rules/no-uninstall-forbidden-import.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-uninstall-forbidden-import.fixture.tsx`](__fixtures__/no-uninstall-forbidden-import.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-uninstall-forbidden-import.uncached.test.mjs`](tests/no-uninstall-forbidden-import.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `path-conditional-map-driven-origin`
 
@@ -188,7 +188,7 @@ The rule does NOT catch:
 
 Included: `packages/md-conformance/src/substrates/*/handlers/**/*.ts`, `lint-plugins/ok-rules/__fixtures__/cst-pm-handler-todo-stub.fixture.tsx`.
 
-Rule: [`lint-plugins/ok-rules/rules/cst-pm-handler-todo-stub.mjs`](rules/cst-pm-handler-todo-stub.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/cst-pm-handler-todo-stub.fixture.tsx`](__fixtures__/cst-pm-handler-todo-stub.fixture.tsx). Test: [`packages/md-conformance/src/lint-plugins/cst-pm-handler-todo-stub.test.ts`](../../packages/md-conformance/src/lint-plugins/cst-pm-handler-todo-stub.test.ts).
+Rule: [`lint-plugins/ok-rules/rules/cst-pm-handler-todo-stub.mjs`](rules/cst-pm-handler-todo-stub.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/cst-pm-handler-todo-stub.fixture.tsx`](__fixtures__/cst-pm-handler-todo-stub.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/cst-pm-handler-todo-stub.uncached.test.mjs`](tests/cst-pm-handler-todo-stub.uncached.test.mjs).
 
 ### `class-proof-registration-discipline`
 
@@ -206,11 +206,11 @@ The rule does NOT catch:
 - Functions with similar names (`myDefineClassProofVariant`) — pattern matches the exact function name
 - Type references to `defineClassProof` — pattern scopes to call expressions
 
-**Scope** (`RULE_SCOPES['class-proof-registration-discipline']` in [`scope.mjs`](scope.mjs)). Class-proof DSL registration discipline: registrations MUST live in the canonical proofs/ dir (one manifest as the single source of truth) and EVERY registration MUST pass `predicate` + `proof` options. The scope entry EXCLUDES the canonical dir — inside it, the TypeScript signature is the missing-args backstop; outside it, any `defineClassProof(...)` call fires (= wrong location), and missing args fire an additional diagnostic.
+**Scope** (`RULE_SCOPES['class-proof-registration-discipline']` in [`scope.mjs`](scope.mjs)). Class-proof DSL registration discipline: registrations MUST live in the canonical proofs/ dir (one manifest as the single source of truth) and EVERY registration MUST pass `predicate` + `proof` options. The scope entry EXCLUDES the canonical dir — inside it, the TypeScript signature is the missing-args backstop; outside it, every `defineClassProof(...)` call fires exactly once: with the missing-options diagnostic when `predicate` or `proof` is absent, otherwise with the wrong-location diagnostic.
 
 Included: `**/*.ts`, `**/*.tsx`, `**/*.mts`, `lint-plugins/ok-rules/__fixtures__/class-proof-registration-discipline.fixture.tsx`. Excluded: `**/node_modules/**`, `**/dist/**`, `**/*.test.ts`, `**/*.test.tsx`, `**/*.test.mts`, `packages/md-conformance/src/class-proofs/proofs/**`.
 
-Rule: [`lint-plugins/ok-rules/rules/class-proof-registration-discipline.mjs`](rules/class-proof-registration-discipline.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/class-proof-registration-discipline.fixture.tsx`](__fixtures__/class-proof-registration-discipline.fixture.tsx). Test: [`packages/md-conformance/src/lint-plugins/class-proof-registration-discipline.test.ts`](../../packages/md-conformance/src/lint-plugins/class-proof-registration-discipline.test.ts).
+Rule: [`lint-plugins/ok-rules/rules/class-proof-registration-discipline.mjs`](rules/class-proof-registration-discipline.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/class-proof-registration-discipline.fixture.tsx`](__fixtures__/class-proof-registration-discipline.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/class-proof-registration-discipline.uncached.test.mjs`](tests/class-proof-registration-discipline.uncached.test.mjs).
 
 ### `playwright-prefer-to-have-count`
 
@@ -227,7 +227,7 @@ The rule does NOT catch:
 
 Included: `packages/app/tests/stress/**/*.e2e.ts`, `packages/app/tests/visual/**/*.e2e.ts`, `packages/app/tests/a11y/**/*.e2e.ts`, `lint-plugins/ok-rules/__fixtures__/playwright-prefer-to-have-count.fixture.tsx`.
 
-Rule: [`lint-plugins/ok-rules/rules/playwright-prefer-to-have-count.mjs`](rules/playwright-prefer-to-have-count.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/playwright-prefer-to-have-count.fixture.tsx`](__fixtures__/playwright-prefer-to-have-count.fixture.tsx). Test: [`packages/app/tests/lint-plugins/playwright-prefer-to-have-count.test.ts`](../../packages/app/tests/lint-plugins/playwright-prefer-to-have-count.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/playwright-prefer-to-have-count.mjs`](rules/playwright-prefer-to-have-count.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/playwright-prefer-to-have-count.fixture.tsx`](__fixtures__/playwright-prefer-to-have-count.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/playwright-prefer-to-have-count.uncached.test.mjs`](tests/playwright-prefer-to-have-count.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `no-roundtrip-identity-oracle`
 
@@ -250,7 +250,7 @@ The rule does NOT catch:
 
 Included: `packages/**/*.test.ts`, `packages/**/*.test.tsx`, `packages/**/*.e2e.ts`, `lint-plugins/ok-rules/__fixtures__/no-roundtrip-identity-oracle.fixture.tsx`. Excluded: `packages/md-conformance/**`, `packages/app/tests/fidelity/**`, `packages/core/src/markdown/**/*.test.ts`, `packages/core/src/bridge/**/*.test.ts`, `**/*.private.*`.
 
-Rule: [`lint-plugins/ok-rules/rules/no-roundtrip-identity-oracle.mjs`](rules/no-roundtrip-identity-oracle.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-roundtrip-identity-oracle.fixture.tsx`](__fixtures__/no-roundtrip-identity-oracle.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-roundtrip-identity-oracle.test.ts`](../../packages/app/tests/lint-plugins/no-roundtrip-identity-oracle.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention and [PRECEDENTS.md #38](../../PRECEDENTS.md) for the Bridge-invariant contract.
+Rule: [`lint-plugins/ok-rules/rules/no-roundtrip-identity-oracle.mjs`](rules/no-roundtrip-identity-oracle.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-roundtrip-identity-oracle.fixture.tsx`](__fixtures__/no-roundtrip-identity-oracle.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-roundtrip-identity-oracle.uncached.test.mjs`](tests/no-roundtrip-identity-oracle.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention and [PRECEDENTS.md #38](../../PRECEDENTS.md) for the Bridge-invariant contract.
 
 ### `no-hand-rolled-branch-validation`
 
@@ -364,7 +364,7 @@ Suppress with a reason:
 
 Included: `packages/server/src/**/*.ts`, `lint-plugins/ok-rules/__fixtures__/no-hand-rolled-branch-validation.fixture.tsx`. Excluded: `**/*.test.ts`, `**/*.test-helper.ts`.
 
-Rule: [`lint-plugins/ok-rules/rules/no-hand-rolled-branch-validation.mjs`](rules/no-hand-rolled-branch-validation.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-hand-rolled-branch-validation.fixture.tsx`](__fixtures__/no-hand-rolled-branch-validation.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-hand-rolled-branch-validation.test.ts`](../../packages/app/tests/lint-plugins/no-hand-rolled-branch-validation.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/no-hand-rolled-branch-validation.mjs`](rules/no-hand-rolled-branch-validation.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-hand-rolled-branch-validation.fixture.tsx`](__fixtures__/no-hand-rolled-branch-validation.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-hand-rolled-branch-validation.uncached.test.mjs`](tests/no-hand-rolled-branch-validation.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `no-hand-rolled-spinner`
 
@@ -378,7 +378,7 @@ Unscoped, like the other rules in `UNSCOPED_RULES` — it applies wherever a cla
 
 The `\b` delimiter is asymmetric in a way that is easy to misread: `animate-spinner` does NOT fire (the trailing boundary fails against a word character) but `animate-spin-slow` DOES (`-` is a boundary). That is the retired pattern's behaviour, kept deliberately — a slowed hand-rolled spin is still hand-rolled — and both halves are pinned in the fixture.
 
-Rule: [`lint-plugins/ok-rules/rules/no-hand-rolled-spinner.mjs`](rules/no-hand-rolled-spinner.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-hand-rolled-spinner.fixture.tsx`](__fixtures__/no-hand-rolled-spinner.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-hand-rolled-spinner.test.ts`](../../packages/app/tests/lint-plugins/no-hand-rolled-spinner.test.ts).
+Rule: [`lint-plugins/ok-rules/rules/no-hand-rolled-spinner.mjs`](rules/no-hand-rolled-spinner.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-hand-rolled-spinner.fixture.tsx`](__fixtures__/no-hand-rolled-spinner.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-hand-rolled-spinner.uncached.test.mjs`](tests/no-hand-rolled-spinner.uncached.test.mjs).
 
 ### `no-inline-tolerance-class`
 
@@ -402,7 +402,7 @@ The rule does NOT catch:
 
 Included: `packages/**/*.test.ts`, `packages/**/*.test.tsx`, `packages/**/*.e2e.ts`, `lint-plugins/ok-rules/__fixtures__/no-inline-tolerance-class.fixture.tsx`. Excluded: `packages/md-conformance/**`, `packages/app/tests/fidelity/**`, `packages/core/src/markdown/**/*.test.ts`, `packages/core/src/bridge/**/*.test.ts`, `**/*.private.*`.
 
-Rule: [`lint-plugins/ok-rules/rules/no-inline-tolerance-class.mjs`](rules/no-inline-tolerance-class.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-inline-tolerance-class.fixture.tsx`](__fixtures__/no-inline-tolerance-class.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-inline-tolerance-class.test.ts`](../../packages/app/tests/lint-plugins/no-inline-tolerance-class.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/no-inline-tolerance-class.mjs`](rules/no-inline-tolerance-class.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-inline-tolerance-class.fixture.tsx`](__fixtures__/no-inline-tolerance-class.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-inline-tolerance-class.uncached.test.mjs`](tests/no-inline-tolerance-class.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `require-windowshide-on-spawn`
 
@@ -478,7 +478,7 @@ Adding a host that needs a different install mechanism? Add it to `HOSTS_WITH_US
 
 Included: `packages/server/src/**/*.ts`, `packages/cli/src/**/*.ts`, `lint-plugins/ok-rules/__fixtures__/no-blind-agent-host-fanout.fixture.tsx`.
 
-Rule: [`lint-plugins/ok-rules/rules/no-blind-agent-host-fanout.mjs`](rules/no-blind-agent-host-fanout.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-blind-agent-host-fanout.fixture.tsx`](__fixtures__/no-blind-agent-host-fanout.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-blind-agent-host-fanout.test.ts`](../../packages/app/tests/lint-plugins/no-blind-agent-host-fanout.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/no-blind-agent-host-fanout.mjs`](rules/no-blind-agent-host-fanout.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-blind-agent-host-fanout.fixture.tsx`](__fixtures__/no-blind-agent-host-fanout.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-blind-agent-host-fanout.uncached.test.mjs`](tests/no-blind-agent-host-fanout.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `no-unwrapped-user-facing-string`
 
@@ -519,7 +519,7 @@ The rule does NOT catch:
 
 Included: `packages/app/src/**/*.ts`, `packages/app/src/**/*.tsx`, `packages/desktop/src/**/*.ts`, `packages/desktop/src/**/*.tsx`, `packages/plugin/src/**/*.ts`, `packages/plugin/src/**/*.tsx`, `lint-plugins/ok-rules/__fixtures__/no-unwrapped-user-facing-string.fixture.tsx`. Excluded: `packages/app/src/editor/**`, `packages/app/src/components/ui/**`, `packages/desktop/src/main/**`, `**/*.test.ts`, `**/*.test.tsx`, `**/*.dom.test.tsx`.
 
-Rule: [`lint-plugins/ok-rules/rules/no-unwrapped-user-facing-string.mjs`](rules/no-unwrapped-user-facing-string.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-unwrapped-user-facing-string.fixture.tsx`](__fixtures__/no-unwrapped-user-facing-string.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-unwrapped-user-facing-string.test.ts`](../../packages/app/tests/lint-plugins/no-unwrapped-user-facing-string.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/no-unwrapped-user-facing-string.mjs`](rules/no-unwrapped-user-facing-string.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-unwrapped-user-facing-string.fixture.tsx`](__fixtures__/no-unwrapped-user-facing-string.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-unwrapped-user-facing-string.uncached.test.mjs`](tests/no-unwrapped-user-facing-string.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `no-physical-direction-utility`
 
@@ -547,7 +547,7 @@ The rule does NOT catch:
 
 Included: `packages/app/src/**/*.tsx`, `packages/desktop/src/**/*.tsx`, `packages/plugin/src/**/*.tsx`, `lint-plugins/ok-rules/__fixtures__/no-physical-direction-utility.fixture.tsx`. Excluded: `packages/app/src/editor/**`, `packages/app/src/components/ui/**`, `**/*.test.tsx`, `**/*.dom.test.tsx`.
 
-Rule: [`lint-plugins/ok-rules/rules/no-physical-direction-utility.mjs`](rules/no-physical-direction-utility.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-physical-direction-utility.fixture.tsx`](__fixtures__/no-physical-direction-utility.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-physical-direction-utility.test.ts`](../../packages/app/tests/lint-plugins/no-physical-direction-utility.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/no-physical-direction-utility.mjs`](rules/no-physical-direction-utility.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-physical-direction-utility.fixture.tsx`](__fixtures__/no-physical-direction-utility.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-physical-direction-utility.uncached.test.mjs`](tests/no-physical-direction-utility.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `no-raw-route-hash-construction`
 
@@ -565,7 +565,7 @@ The rule matches a node's own source text, so a comment, JSX text or a regex lit
 
 Included: `packages/app/src/**/*.ts`, `packages/app/src/**/*.tsx`, `lint-plugins/ok-rules/__fixtures__/no-raw-route-hash-construction.fixture.tsx`. Excluded: `packages/app/src/lib/doc-hash.ts`, `**/*.test.ts`, `**/*.test.tsx`.
 
-Rule: [`lint-plugins/ok-rules/rules/no-raw-route-hash-construction.mjs`](rules/no-raw-route-hash-construction.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-raw-route-hash-construction.fixture.tsx`](__fixtures__/no-raw-route-hash-construction.fixture.tsx). Test: [`packages/app/src/lint-plugins/no-raw-route-hash-construction.test.ts`](../../packages/app/src/lint-plugins/no-raw-route-hash-construction.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/no-raw-route-hash-construction.mjs`](rules/no-raw-route-hash-construction.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-raw-route-hash-construction.fixture.tsx`](__fixtures__/no-raw-route-hash-construction.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-raw-route-hash-construction.uncached.test.mjs`](tests/no-raw-route-hash-construction.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `no-demoted-dialog-confirm`
 
@@ -607,7 +607,7 @@ Suppress a footer that genuinely wants a muted tertiary control alongside a prop
 
 Included: `packages/app/src/**/*.tsx`, `packages/desktop/src/**/*.tsx`, `packages/plugin/src/**/*.tsx`, `lint-plugins/ok-rules/__fixtures__/no-demoted-dialog-confirm.fixture.tsx`. Excluded: `packages/app/src/components/ui/**`, `**/*.test.tsx`, `**/*.dom.test.tsx`.
 
-Rule: [`lint-plugins/ok-rules/rules/no-demoted-dialog-confirm.mjs`](rules/no-demoted-dialog-confirm.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-demoted-dialog-confirm.fixture.tsx`](__fixtures__/no-demoted-dialog-confirm.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-demoted-dialog-confirm.test.ts`](../../packages/app/tests/lint-plugins/no-demoted-dialog-confirm.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/no-demoted-dialog-confirm.mjs`](rules/no-demoted-dialog-confirm.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-demoted-dialog-confirm.fixture.tsx`](__fixtures__/no-demoted-dialog-confirm.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-demoted-dialog-confirm.uncached.test.mjs`](tests/no-demoted-dialog-confirm.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `no-unconverted-git-pathspec`
 
@@ -635,7 +635,7 @@ It also over-catches, in the same direction. The array branch fires on any array
 
 The behavioural backstop is [`packages/server/src/git-pathspec-name-invariance.test.ts`](../../packages/server/src/git-pathspec-name-invariance.test.ts) and its CLI sibling, which drive real git over hostile filenames end to end.
 
-Rule: [`lint-plugins/ok-rules/rules/no-unconverted-git-pathspec.mjs`](rules/no-unconverted-git-pathspec.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-unconverted-git-pathspec.fixture.tsx`](__fixtures__/no-unconverted-git-pathspec.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-unconverted-git-pathspec.test.ts`](../../packages/app/tests/lint-plugins/no-unconverted-git-pathspec.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/no-unconverted-git-pathspec.mjs`](rules/no-unconverted-git-pathspec.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-unconverted-git-pathspec.fixture.tsx`](__fixtures__/no-unconverted-git-pathspec.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-unconverted-git-pathspec.uncached.test.mjs`](tests/no-unconverted-git-pathspec.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `no-sentinel-signal-target`
 
@@ -749,7 +749,7 @@ export const ruleName = {
 
 ### 2. Register the rule
 
-Import it in [`index.mjs`](index.mjs), add it to the `declared` map, then switch it on in [`oxlint.config.ts`](../../oxlint.config.ts) as `'ok/<rule-name>': 'error'`.
+Import it in [`index.mjs`](index.mjs), add it to the `declared` map, then switch it on in [`oxlint.config.ts`](../../oxlint.config.ts) as `'ok/<rule-name>': 'error'`, and add the same entry to [`__fixtures__/oxlint.fixtures.json`](__fixtures__/oxlint.fixtures.json), the config the fixture tests lint with.
 
 A small number of rules are registered from a second plugin instead of this one. If the rule you are adding documents a calibrated measurement, an internal file list, or anything else that should not reach a public clone, do not follow this step as written. That path is documented in a maintainers-only checklist that is not part of this clone; if you cannot reach it, open an issue describing what the rule would enforce and leave the registration to a maintainer rather than guessing at the shape.
 
@@ -763,39 +763,46 @@ Scope lives here rather than in `oxlint.config.ts#overrides` because **oxlint's 
 
 ### 4. Author the fixture file
 
-Drop `<rule-name>.fixture.tsx` in `__fixtures__/`, pairing positive cases (must fire) with negative cases (must NOT fire), each labelled. Include a boundary negative: the nearest shape the rule must NOT match. The directory is in `oxlint.config.ts#ignorePatterns` so the deliberately-bad content does not break the main lint; `__fixtures__/oxlint.fixtures.json` re-enables every rule for the tests.
+Drop `<rule-name>.fixture.tsx` in `__fixtures__/`, pairing positive cases (must fire) with negative cases (must NOT fire), each labelled. Include a boundary negative: the nearest shape the rule must NOT match. The directory is in `oxlint.config.ts#ignorePatterns` so the deliberately-bad content does not break the main lint; `__fixtures__/oxlint.fixtures.json` enables the rules the fixture tests lint with, one entry per rule, and `ok-rules-scope-partition.uncached.test.mjs` fails, naming that file, when a registered rule has no `error` entry there.
 
 ### 5. Author the fixture-file test
 
-Put it at `lint-plugins/ok-rules/tests/<rule-name>.uncached.test.mjs`, not in a package. The `.uncached.test` suffix runs it in the uncached cross-package tier (`vitest.uncached.config.ts`): every agent round, CI's `lint` job, and beside every `turbo run test` that runs `server#test`. A package's cached test tier would replay a stale pass when only the rule or `oxlint.config.ts` changed, unless that package's Turbo key hashed both. Write it as plain JavaScript. Shell out to oxlint against the fixture config and assert an exact count:
+Put it at `lint-plugins/ok-rules/tests/<rule-name>.uncached.test.mjs`, not in a package. The `.uncached.test` suffix runs it in the uncached cross-package tier (`vitest.uncached.config.ts`): every agent round, CI's `lint` job, and beside every `turbo run test` that runs `server#test`. A package's cached test tier would replay a stale pass when only the rule or `oxlint.config.ts` changed, unless that package's Turbo key hashed both. The tests in that directory check that every rule the `ok` plugin registers has one. Write it as plain JavaScript.
+
+The tier's global setup, `test-support/ok-rules-fixture-lint.ts`, runs oxlint once over every fixture with the fixture config and hands the report to the tests; a watch-mode rerun lints again. Every rule test fails when that run could not start, exited other than 1, gave no JSON report, linted a different number of files than the directory's `*.fixture.tsx` files, or reported a diagnostic on no fixture. `lintOkRulesFixture` in `test-support/read-ok-rules-config.test-helper.ts` returns one fixture's diagnostics from the report, each with its rule code, `line:column` position and message, in a fixed order. A diagnostic that names no rule (a rule that threw while linting that fixture, or a fixture oxlint could not parse) fails that fixture's test with oxlint's message, as it does the scope meta-test, which reads every fixture. oxlint also drops every other JS-plugin diagnostic on a file where a rule threw, so a rule whose scope reaches other fixtures fails their tests too. Run outside the tier, it fails and prints the command that runs the test. Assert the exact list of your rule's fire positions, filtered by its own code:
 
 ```js
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import {
+  lintOkRulesFixture,
+  readEnabledRuleIds,
+  readRegisteredRuleNames,
+} from '../../../test-support/read-ok-rules-config.test-helper.ts';
 
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
-const FIXTURE = 'lint-plugins/ok-rules/__fixtures__/<rule-name>.fixture.tsx';
-const CONFIG = 'lint-plugins/ok-rules/__fixtures__/oxlint.fixtures.json';
+const RULE = '<rule-name>';
+const FIXTURE = `lint-plugins/ok-rules/__fixtures__/${RULE}.fixture.tsx`;
 
-describe('<rule-name> oxlint rule', () => {
-  test('fires on exactly N positive cases (and on no negative case)', () => {
-    const result = spawnSync('pnpm', ['exec', 'oxlint', '-c', CONFIG, FIXTURE], {
-      cwd: REPO_ROOT,
-      encoding: 'utf-8',
-    });
-    expect(result.error).toBeUndefined();
-    expect(result.status).not.toBe(0);
-    const output = `${result.stdout}\n${result.stderr}`;
-    expect((output.match(/ok\(<rule-name>\)/g) ?? []).length).toBe(N);
-    expect(output).toContain('<fix-noun>');
-    expect(output).toMatch(/https?:\/\/[^\s]+/);
-    expect(output).toContain('lint-plugins/ok-rules/README.md#<rule-name>');
+describe(`${RULE} oxlint rule`, () => {
+  test('fires at exactly its positive cases, by its own code, and on no negative case', () => {
+    const fires = lintOkRulesFixture(FIXTURE).filter((d) => d.code === `ok(${RULE})`);
+    expect(fires.map((fire) => fire.position)).toEqual(['12:5', '18:5']);
+    for (const fire of fires) {
+      expect(fire.message).toContain('<fix-noun>');
+      expect(fire.message).toMatch(/https?:\/\/[^\s]+/);
+      expect(fire.message).toContain(`lint-plugins/ok-rules/README.md#${RULE}`);
+    }
+  });
+
+  test('rule is registered and enabled', async () => {
+    expect(await readRegisteredRuleNames(REPO_ROOT)).toContain(RULE);
+    expect(await readEnabledRuleIds(REPO_ROOT)).toContain(`ok/${RULE}`);
   });
 });
 ```
 
-Exact equality is the point: it catches false-negative regressions (count drops below N) and false-positive widenings (count rises above N) alike.
+The positions list is the point. Its length is the exact count, so it catches a weakened rule (a positive stops firing) and a widened one (a negative starts firing). It also catches what a count cannot: a rule that stops firing on one positive and starts firing on a negative keeps the same total but changes the list. Filtering by the rule's own code catches a rule registered under the wrong name. A rule with more than one message asserts each fire's branch beside its position, as `no-sentinel-signal-target.uncached.test.mjs` does. After editing the fixture, take the new positions from the failure diff and check each lands on a positive case.
 
 ### 6. Verify
 
@@ -811,8 +818,8 @@ pnpm exec vitest run --config vitest.uncached.config.ts <rule-name>
 #    restore it; re-run; confirm it passes.
 
 # 4. False-positive widening check (manual, one-time):
-#    Add a positive case to the fixture WITHOUT bumping N in the test.
-#    Re-run; confirm it FAILS. This verifies toBe(N) is load-bearing.
+#    Add a positive case to the fixture WITHOUT adding its position to the test.
+#    Re-run; confirm it FAILS. This verifies the positions list is load-bearing.
 ```
 
 ### 7. Document the rule in this README

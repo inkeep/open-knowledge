@@ -1,10 +1,10 @@
-// FIXTURE — drives `no-hand-rolled-spinner.test.ts` via shell-out to
-// `pnpm exec oxlint`. Not part of the main lint: `__fixtures__/` is in
+// FIXTURE — drives `no-hand-rolled-spinner.uncached.test.mjs` via shell-out to
+// oxlint. Not part of the main lint: `__fixtures__/` is in
 // `oxlint.config.ts#ignorePatterns`, and `__fixtures__/oxlint.fixtures.json`
 // re-enables the rules for the test.
 //
 // 5 positive cases (hand-rolled spins — rule MUST fire) paired with 5 negative
-// cases (rule must NOT fire). The test asserts exact equality (`toBe(5)`) so a
+// cases (rule must NOT fire). The test asserts exact equality (the 5-position list) so a
 // weakened predicate drops below 5 and a widened one rises above it.
 //
 // The boundary cases are the point. `animate-spinner` does NOT fire because the
@@ -49,7 +49,7 @@ export function PositiveSuffixedVariant() {
 //     wrapping `cn()`), the token sits entirely on one physical line, and the
 //     predicate reads `sourceCode.getText` of the whole value node, so no
 //     mutation of the rule separates the two. It is here as a realism sample
-//     -- the shape a reader will actually meet -- and it costs `toBe(5)`
+//     -- the shape a reader will actually meet -- and it costs the 5-position list
 //     nothing.
 export function PositiveMultiline() {
   return (

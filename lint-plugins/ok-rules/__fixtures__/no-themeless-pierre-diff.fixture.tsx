@@ -1,5 +1,5 @@
-// FIXTURE — drives `no-themeless-pierre-diff.test.ts` via shell-out to
-// `pnpm exec oxlint`. Not part of the main lint: `__fixtures__/` is in
+// FIXTURE — drives `no-themeless-pierre-diff.uncached.test.mjs` via shell-out to
+// oxlint. Not part of the main lint: `__fixtures__/` is in
 // `oxlint.config.ts#ignorePatterns`, and `__fixtures__/oxlint.fixtures.json`
 // re-enables the rules for the test.
 //

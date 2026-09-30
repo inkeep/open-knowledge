@@ -1,11 +1,11 @@
-// FIXTURE — drives `no-raw-html-interactive-element.test.ts` via shell-out
-// to `pnpm exec oxlint`. Not part of the main lint: `__fixtures__/` is in
+// FIXTURE — drives `no-raw-html-interactive-element.uncached.test.mjs` via shell-out
+// to oxlint. Not part of the main lint: `__fixtures__/` is in
 // `oxlint.config.ts#ignorePatterns`, and `__fixtures__/oxlint.fixtures.json`
 // re-enables the rules for the test.
 //
 // Eight positive cases (deliberate violations — rule must fire) + five
 // negative cases (clean usage that must NOT fire). Exact-equality
-// (`toBe(8)`) in the test catches both false-negative regressions (drop
+// (the 8-position list) in the test catches both false-negative regressions (drop
 // below 8) and false-positive widenings (above 8).
 
 declare const Button: any;

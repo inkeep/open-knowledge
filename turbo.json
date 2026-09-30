@@ -92,12 +92,7 @@
     "test": {
       "dependsOn": ["^build"],
       "cache": true,
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/test-support/**",
-        "../../oxlint.config.ts",
-        "../../lint-plugins/**"
-      ]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/test-support/**"]
     },
     "@inkeep/open-knowledge-docs#test": {
       "dependsOn": ["^build", "build"],
@@ -133,8 +128,7 @@
         "$TURBO_DEFAULT$",
         "!CHANGELOG.md",
         "!README.md",
-        "../../oxlint.config.ts",
-        "../../lint-plugins/**",
+        "$TURBO_ROOT$/lint-plugins/no-comments/**",
         "$TURBO_ROOT$/test-support/**",
         "../../scripts/verify-native-config-in-packaged-dmg.mjs",
         "../../scripts/verify-keyring-in-packaged-dmg.mjs",
@@ -151,13 +145,7 @@
     "@inkeep/md-conformance#test": {
       "dependsOn": ["^build"],
       "cache": true,
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/test-support/**",
-        "../server/src/**/*.ts",
-        "../../oxlint.config.ts",
-        "../../lint-plugins/**"
-      ]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/test-support/**", "../server/src/**/*.ts"]
     },
     "@inkeep/open-knowledge-core#test": {
       "dependsOn": ["^build"],
@@ -185,11 +173,7 @@
         "$TURBO_ROOT$/test-support/**",
         "../server/src/**/*.ts",
         "../core/src/**/*.ts",
-        "../desktop/tests/**/*.{ts,tsx}",
-        "../md-conformance/src/**/*.{ts,tsx,mjs,json,md}",
-        "../../biome.jsonc",
-        "../../lint-plugins/**",
-        "../../oxlint.config.ts",
+        "$TURBO_ROOT$/lint-plugins/no-comments/**",
         "$TURBO_ROOT$/packages/cli/src/**",
         "$TURBO_ROOT$/packages/cli/package.json"
       ]
@@ -202,11 +186,7 @@
         "$TURBO_ROOT$/test-support/**",
         "../server/src/**/*.ts",
         "../core/src/**/*.ts",
-        "../desktop/tests/**/*.{ts,tsx}",
-        "../md-conformance/src/**/*.{ts,tsx,mjs,json,md}",
-        "../../biome.jsonc",
-        "../../lint-plugins/**",
-        "../../oxlint.config.ts",
+        "$TURBO_ROOT$/lint-plugins/no-comments/**",
         "$TURBO_ROOT$/packages/cli/src/**",
         "$TURBO_ROOT$/packages/cli/package.json"
       ]
@@ -219,11 +199,7 @@
         "$TURBO_ROOT$/test-support/**",
         "../server/src/**/*.ts",
         "../core/src/**/*.ts",
-        "../desktop/tests/**/*.{ts,tsx}",
-        "../md-conformance/src/**/*.{ts,tsx,mjs,json,md}",
-        "../../biome.jsonc",
-        "../../lint-plugins/**",
-        "../../oxlint.config.ts",
+        "$TURBO_ROOT$/lint-plugins/no-comments/**",
         "$TURBO_ROOT$/packages/cli/src/**",
         "$TURBO_ROOT$/packages/cli/package.json"
       ]
@@ -236,11 +212,7 @@
         "$TURBO_ROOT$/test-support/**",
         "../server/src/**/*.ts",
         "../core/src/**/*.ts",
-        "../desktop/tests/**/*.{ts,tsx}",
-        "../md-conformance/src/**/*.{ts,tsx,mjs,json,md}",
-        "../../biome.jsonc",
-        "../../lint-plugins/**",
-        "../../oxlint.config.ts",
+        "$TURBO_ROOT$/lint-plugins/no-comments/**",
         "$TURBO_ROOT$/packages/cli/src/**",
         "$TURBO_ROOT$/packages/cli/package.json"
       ]

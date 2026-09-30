@@ -1,12 +1,12 @@
-// FIXTURE — drives `no-physical-direction-utility.test.ts` via shell-out to
-// `pnpm exec oxlint`. Not part of the main lint: `__fixtures__/` is in
+// FIXTURE — drives `no-physical-direction-utility.uncached.test.mjs` via shell-out to
+// oxlint. Not part of the main lint: `__fixtures__/` is in
 // `oxlint.config.ts#ignorePatterns`, and `__fixtures__/oxlint.fixtures.json`
 // re-enables the rules for the test.
 //
 // Positive cases (deliberate violations — rule must fire) paired with
 // negative cases: the logical forms the rule asks for, plus the physical-looking
-// shapes that are direction-correct already and must stay silent. Exact-equality
-// `toBe(N)` in the test catches both a weakened pattern (count drops) and a
+// shapes that are direction-correct already and must stay silent. The exact
+// positions list in the test catches both a weakened pattern (count drops) and a
 // widened one (a negative starts firing, count rises).
 
 declare const cn: (...parts: unknown[]) => string;

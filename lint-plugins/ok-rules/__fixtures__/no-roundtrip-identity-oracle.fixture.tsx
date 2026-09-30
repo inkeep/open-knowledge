@@ -1,4 +1,4 @@
-// FIXTURE — drives `no-roundtrip-identity-oracle.test.ts` via shell-out to `pnpm exec oxlint`. Not part
+// FIXTURE — drives `no-roundtrip-identity-oracle.uncached.test.mjs` via shell-out to oxlint. Not part
 // of the main lint: `__fixtures__/` is in `oxlint.config.ts#ignorePatterns`,
 // and `__fixtures__/oxlint.fixtures.json` re-enables the rules for the test.
 //
@@ -7,7 +7,7 @@
 // Bridge-invariant comparator, the `!==` normalizing-construct detector, the
 // helper-wrapped and two-statement round-trip forms — rule must NOT fire).
 // The fixture-file test asserts the diagnostic count with exact equality
-// (`toBe(10)`) so both a weakened pattern (drops below 10) and a widened
+// (the 10-position list) so both a weakened pattern (drops below 10) and a widened
 // pattern that catches a negative (rises above 10) fail the gate.
 //
 // Deliberately NOT linted by the main `pnpm run lint` pass (`__fixtures__/` is in

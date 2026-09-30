@@ -9,13 +9,22 @@ import { UNCACHED_TEST_GLOBS, UNCACHED_TIER_CONFIG } from './test-support/uncach
 import { uncachedTierFloor } from './test-support/uncached-tier-floor';
 import scriptsConfig from './vitest.scripts.config';
 
+const okRulesFixtureLint = fileURLToPath(
+  new URL('./test-support/ok-rules-fixture-lint.ts', import.meta.url),
+);
+
 const SOURCES = [
   { name: 'packages/app/vitest.config.ts', dir: 'packages/app', config: appConfig },
   { name: 'packages/cli/vitest.config.ts', dir: 'packages/cli', config: cliConfig },
   { name: 'packages/core/vitest.config.ts', dir: 'packages/core', config: coreConfig },
   { name: 'packages/desktop/vitest.config.ts', dir: 'packages/desktop', config: desktopConfig },
   { name: 'packages/server/vitest.config.ts', dir: 'packages/server', config: serverConfig },
-  { name: 'vitest.scripts.config.ts', dir: '.', config: scriptsConfig },
+  {
+    name: 'vitest.scripts.config.ts',
+    dir: '.',
+    config: scriptsConfig,
+    tierSetup: [okRulesFixtureLint],
+  },
 ];
 
 const reconcile = fileURLToPath(
@@ -24,7 +33,7 @@ const reconcile = fileURLToPath(
 
 export default defineConfig({
   test: {
-    projects: SOURCES.map(({ name, dir, config }) => {
+    projects: SOURCES.map(({ name, dir, config, tierSetup = [] }) => {
       const include = config.test?.include ?? [];
       const exclude = config.test?.exclude ?? [];
       const missing = UNCACHED_TEST_GLOBS.filter((glob) => !exclude.includes(glob));
@@ -50,7 +59,11 @@ export default defineConfig({
           name,
           include: suffixed,
           exclude: exclude.filter((glob) => !UNCACHED_TEST_GLOBS.includes(glob)),
-          globalSetup: [reconcile, ...(Array.isArray(globalSetup) ? globalSetup : [globalSetup])],
+          globalSetup: [
+            reconcile,
+            ...tierSetup,
+            ...(Array.isArray(globalSetup) ? globalSetup : [globalSetup]),
+          ],
         },
       };
     }),

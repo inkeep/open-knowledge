@@ -1,4 +1,4 @@
-// FIXTURE — drives `no-unconverted-git-pathspec.test.ts` via shell-out to `pnpm exec oxlint`. Not
+// FIXTURE — drives `no-unconverted-git-pathspec.uncached.test.mjs` via shell-out to oxlint. Not
 // part of the main lint: `__fixtures__/` is in `oxlint.config.ts#ignorePatterns`, and
 // `__fixtures__/oxlint.fixtures.json` re-enables the rules for the test.
 //
@@ -14,7 +14,7 @@
 // comparisons against the `--` token, which are not argv construction at all and are the shape most
 // likely to draw a widened pattern.
 //
-// The fixture test asserts the diagnostic count with exact equality (`toBe(7)`) so both a weakened
+// The fixture test asserts the diagnostic count with exact equality (the 7-position list) so both a weakened
 // pattern (drops below 7) and a widened pattern that catches a negative (rises above 7) fail the
 // gate.
 //

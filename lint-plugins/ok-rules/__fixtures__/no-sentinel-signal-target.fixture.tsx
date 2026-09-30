@@ -1,5 +1,5 @@
 // FIXTURE — drives `no-sentinel-signal-target.uncached.test.mjs` via shell-out to
-// `pnpm exec oxlint`. Not part of the main lint: `__fixtures__/` is in
+// oxlint. Not part of the main lint: `__fixtures__/` is in
 // `oxlint.config.ts#ignorePatterns`; `__fixtures__/oxlint.fixtures.json`
 // re-enables the rules for the test.
 //
@@ -25,7 +25,7 @@
 // (`-(child.pid as number)` and bare `-spawnedPid`) pass because the rule does not
 // check that the child is unreaped, a lifecycle blind spot; and a range-checked
 // parsed pid held in a variable passes as data flow the rule cannot see.
-// Exact-equality (`toBe(20)` plus the per-branch counts) catches false-negative
+// Exact-equality (the 20-position list plus the per-branch counts) catches false-negative
 // regressions and false-positive widenings alike.
 
 type Signal = 'SIGKILL' | 'SIGTERM';

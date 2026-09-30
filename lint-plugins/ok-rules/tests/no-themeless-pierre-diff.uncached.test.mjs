@@ -6,26 +6,40 @@ import {
   readRegisteredRuleNames,
   readRuleScope,
 } from '../../../test-support/read-ok-rules-config.test-helper.ts';
-import { isInScope } from '../scope.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
-const RULE = 'require-utf8-multipart-parser';
+const RULE = 'no-themeless-pierre-diff';
 const CODE = `ok(${RULE})`;
 const FIXTURE = `lint-plugins/ok-rules/__fixtures__/${RULE}.fixture.tsx`;
 const DOCS = `lint-plugins/ok-rules/README.md#${RULE}`;
+const BRANCHES = [
+  ['theme', 'this renderer passes no theme', 'add `theme: okPierreTheme()`'],
+  ['style', "does not set diffStyle: 'unified'", 'add it to its options'],
+];
+
+function branchOf(message) {
+  return BRANCHES.find(([, marker]) => message.includes(marker))?.[0] ?? 'unknown';
+}
 
 function fires() {
   return lintOkRulesFixture(FIXTURE).filter((d) => d.code === CODE);
 }
 
 describe(`${RULE} oxlint rule`, () => {
-  test('fires at exactly its 3 direct busboy constructions, by its own code, and on no negative case', () => {
+  test('fires at exactly its 7 positive cases, each on its branch, by its own code', () => {
     const found = fires();
-    expect(found.map((fire) => fire.position)).toEqual(['41:19', '47:19', '50:19']);
+    expect(found.map((fire) => `${fire.position} ${branchOf(fire.message)}`)).toEqual([
+      '22:10 theme',
+      '27:10 style',
+      '33:5 style',
+      '44:5 theme',
+      '56:5 theme',
+      '64:10 theme',
+      '98:10 theme',
+    ]);
     for (const fire of found) {
-      expect(fire.message).toContain('busboy constructed directly');
-      expect(fire.message).toContain('createMultipartParser');
-      expect(fire.message).toContain('packages/server/src/multipart.ts');
+      const [, , fix] = BRANCHES.find(([name]) => name === branchOf(fire.message));
+      expect(fire.message).toContain(fix);
       expect(fire.message).toMatch(/https?:\/\/[^\s]+/);
       expect(fire.message).toContain(DOCS);
     }
@@ -39,23 +53,12 @@ describe(`${RULE} oxlint rule`, () => {
   test('its scope table still carries every include and exclude the rule depends on', () => {
     expect(readRuleScope(REPO_ROOT, RULE).sort()).toEqual(
       [
-        '**/*.ts',
-        '**/*.tsx',
-        '**/*.mts',
-        '!**/node_modules/**',
-        '!**/dist/**',
-        '!**/*.test.ts',
+        'packages/app/src/**/*.tsx',
         '!**/*.test.tsx',
-        '!**/*.test.mts',
-        '!**/*.test-helper.ts',
-        '!packages/server/src/multipart.ts',
+        '!**/*.dom.test.tsx',
+        '!**/*.test-helper.tsx',
         FIXTURE,
       ].sort(),
     );
-  });
-
-  test('the scope table excludes the factory module and includes a sibling server module', () => {
-    expect(isInScope(RULE, 'packages/server/src/multipart.ts')).toBe(false);
-    expect(isInScope(RULE, 'packages/server/src/api-extension.ts')).toBe(true);
   });
 });

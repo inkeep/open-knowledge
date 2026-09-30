@@ -6,26 +6,44 @@ import {
   readRegisteredRuleNames,
   readRuleScope,
 } from '../../../test-support/read-ok-rules-config.test-helper.ts';
-import { isInScope } from '../scope.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
-const RULE = 'require-utf8-multipart-parser';
+const RULE = 'class-proof-registration-discipline';
 const CODE = `ok(${RULE})`;
 const FIXTURE = `lint-plugins/ok-rules/__fixtures__/${RULE}.fixture.tsx`;
 const DOCS = `lint-plugins/ok-rules/README.md#${RULE}`;
+const BRANCHES = [
+  [
+    'missing',
+    'Class-proof registration missing `predicate` or `proof` option',
+    'Provide all three of `{ enumerate, predicate, proof }`',
+  ],
+  [
+    'location',
+    'Class-proof registered outside the canonical dir',
+    'packages/md-conformance/src/class-proofs/proofs/<name>.ts',
+  ],
+];
+
+function branchOf(message) {
+  return BRANCHES.find(([, marker]) => message.includes(marker))?.[0] ?? 'unknown';
+}
 
 function fires() {
   return lintOkRulesFixture(FIXTURE).filter((d) => d.code === CODE);
 }
 
 describe(`${RULE} oxlint rule`, () => {
-  test('fires at exactly its 3 direct busboy constructions, by its own code, and on no negative case', () => {
+  test('fires at exactly its 3 positive cases: 2 missing-args and 1 outside-canonical, each on its branch, by its own code', () => {
     const found = fires();
-    expect(found.map((fire) => fire.position)).toEqual(['41:19', '47:19', '50:19']);
+    expect(found.map((fire) => `${fire.position} ${branchOf(fire.message)}`)).toEqual([
+      '32:41 missing',
+      '38:37 missing',
+      '46:43 location',
+    ]);
     for (const fire of found) {
-      expect(fire.message).toContain('busboy constructed directly');
-      expect(fire.message).toContain('createMultipartParser');
-      expect(fire.message).toContain('packages/server/src/multipart.ts');
+      const [, , fix] = BRANCHES.find(([name]) => name === branchOf(fire.message));
+      expect(fire.message).toContain(fix);
       expect(fire.message).toMatch(/https?:\/\/[^\s]+/);
       expect(fire.message).toContain(DOCS);
     }
@@ -47,15 +65,9 @@ describe(`${RULE} oxlint rule`, () => {
         '!**/*.test.ts',
         '!**/*.test.tsx',
         '!**/*.test.mts',
-        '!**/*.test-helper.ts',
-        '!packages/server/src/multipart.ts',
+        '!packages/md-conformance/src/class-proofs/proofs/**',
         FIXTURE,
       ].sort(),
     );
-  });
-
-  test('the scope table excludes the factory module and includes a sibling server module', () => {
-    expect(isInScope(RULE, 'packages/server/src/multipart.ts')).toBe(false);
-    expect(isInScope(RULE, 'packages/server/src/api-extension.ts')).toBe(true);
   });
 });

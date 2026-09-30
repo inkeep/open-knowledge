@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
+  lintOkRulesFixture,
   readEnabledRuleIds,
   readRegisteredRuleNames,
   readRuleScope,
@@ -34,22 +35,32 @@ function lint(args) {
 
 describe('shared test-file predicate enforcement', () => {
   test('fires on all 15 positives and none of the adjacent negatives', () => {
+    const fires = lintOkRulesFixture(FIXTURE).filter((fire) => fire.code === `ok(${RULE})`);
+    expect(fires.map((fire) => fire.position)).toEqual([
+      '6:20',
+      '7:21',
+      '8:20',
+      '9:20',
+      '11:20',
+      '12:20',
+      '13:20',
+      '14:20',
+      '15:20',
+      '16:20',
+      '17:20',
+      '18:20',
+      '19:20',
+      '20:20',
+      '21:20',
+    ]);
     const source = readFileSync(join(ROOT, FIXTURE), 'utf8').split('\n');
-    const expectedLines = source.flatMap((line, index) =>
+    const positiveLines = source.flatMap((line, index) =>
       /^export const p\d+ =/.test(line) ? [index + 1] : [],
     );
-    expect(expectedLines).toHaveLength(15);
-    const { status, diagnostics } = lint([
-      '-c',
-      'lint-plugins/ok-rules/__fixtures__/oxlint.fixtures.json',
-      FIXTURE,
-    ]);
-    expect(status).toBe(1);
-    expect(diagnostics).toHaveLength(15);
-    expect(diagnostics.map((diagnostic) => diagnostic.labels[0].span.line)).toEqual(expectedLines);
-    for (const diagnostic of diagnostics) {
-      expect(diagnostic.message).toContain('Use isTestOnlySourceFile');
-      expect(diagnostic.message).toContain(`${README}#${RULE}`);
+    expect(fires.map((fire) => Number(fire.position.split(':')[0]))).toEqual(positiveLines);
+    for (const fire of fires) {
+      expect(fire.message).toContain('Use isTestOnlySourceFile');
+      expect(fire.message).toContain(`${README}#${RULE}`);
     }
   });
 

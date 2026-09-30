@@ -1,5 +1,5 @@
 // FIXTURE — drives `require-windowshide-on-spawn.uncached.test.mjs` via shell-out to
-// `pnpm exec oxlint`. Not part of the main lint: `__fixtures__/` is in
+// oxlint. Not part of the main lint: `__fixtures__/` is in
 // `oxlint.config.ts#ignorePatterns`; the fixture is named in the rule's scope
 // entry, and `__fixtures__/oxlint.fixtures.json` re-enables the rules for the test.
 //
@@ -13,7 +13,7 @@
 // Negatives (0 fires): inline `windowsHide: true`, the `withHiddenWindowsConsole`
 // helper (both the options-wrapping and the no-options `({})` forms), a member
 // call (`deps.spawn` — different AST), a differently-named helper, and bare
-// `exec` (intentionally outside the matcher). Exact-equality (`toBe(7)`)
+// `exec` (intentionally outside the matcher). Exact-equality (the 7-position list)
 // catches false-negative regressions (< 7) and false-positive widenings (> 7).
 
 type Opts = Record<string, unknown>;

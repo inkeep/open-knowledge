@@ -1,4 +1,4 @@
-// FIXTURE — drives `no-inline-tolerance-class.test.ts` via shell-out to `pnpm exec oxlint`. Not part
+// FIXTURE — drives `no-inline-tolerance-class.uncached.test.mjs` via shell-out to oxlint. Not part
 // of the main lint: `__fixtures__/` is in `oxlint.config.ts#ignorePatterns`,
 // and `__fixtures__/oxlint.fixtures.json` re-enables the rules for the test.
 //
@@ -8,7 +8,7 @@
 // a class name appearing only as a SUBSTRING of test-title / docName prose, a
 // comment mention, a concatenation, and a non-catalog literal — rule must NOT
 // fire). The fixture-file test asserts the diagnostic count with exact equality
-// (`toBe(8)`) so both a weakened pattern (drops below 8) and a widened pattern
+// (the 8-position list) so both a weakened pattern (drops below 8) and a widened pattern
 // that catches a negative (rises above 8) fail the gate.
 //
 // The universal-encoding negatives (`crlf`, `bom`, `trailing-whitespace`,

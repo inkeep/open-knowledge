@@ -1,11 +1,11 @@
-// FIXTURE — drives `no-hand-rolled-branch-validation.test.ts` via shell-out to
-// `pnpm exec oxlint`. Not part of the main lint: `__fixtures__/` is in
+// FIXTURE — drives `no-hand-rolled-branch-validation.uncached.test.mjs` via shell-out to
+// oxlint. Not part of the main lint: `__fixtures__/` is in
 // `oxlint.config.ts#ignorePatterns`, and `__fixtures__/oxlint.fixtures.json`
 // re-enables the rules for the test.
 //
 // 4 positive cases (deliberate violations — rule must fire) + 4 negative cases
 // (sanctioned or unrelated shapes that must NOT fire). Exact-equality
-// (`toBe(4)`) in the test catches both false-negative regressions (drop below
+// (the 4-position list) in the test catches both false-negative regressions (drop below
 // 4) and false-positive widenings (above 4).
 //
 // Positive1 is the load-bearing one: it is the exact pre-fix source line

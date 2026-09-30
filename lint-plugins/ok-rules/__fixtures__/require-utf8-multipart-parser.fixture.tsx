@@ -1,5 +1,5 @@
 // FIXTURE — drives `require-utf8-multipart-parser.uncached.test.mjs` via shell-out to
-// `pnpm exec oxlint`. The rule's scope entry self-includes this fixture, so the
+// oxlint. The rule's scope entry self-includes this fixture, so the
 // rule DOES apply here; what keeps the 3 fires below out of a normal
 // `pnpm run lint` is that `__fixtures__/` is in `oxlint.config.ts#ignorePatterns`,
 // which `__fixtures__/oxlint.fixtures.json` re-enables for the test.
@@ -14,7 +14,7 @@
 // Negatives (0 fires): the sanctioned `createMultipartParser(...)` call, a
 // `ReturnType<typeof busboy>` type annotation (the form a call site uses to
 // name a parser's type without constructing one), a member call, and an
-// unrelated identifier. Exact-equality (`toBe(3)`) catches false-negative regressions
+// unrelated identifier. Exact-equality (the 3-position list) catches false-negative regressions
 // (< 3) and false-positive widenings (> 3) - the type-annotation negative in
 // particular guards against a pattern change that starts matching type positions.
 //

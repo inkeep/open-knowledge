@@ -1,11 +1,11 @@
-// FIXTURE — drives `no-loosely-typed-webcontents-ipc.test.ts` via shell-out
-// to `pnpm exec oxlint`. Not part of the main lint: `__fixtures__/` is in
+// FIXTURE — drives `no-loosely-typed-webcontents-ipc.uncached.test.mjs` via shell-out
+// to oxlint. Not part of the main lint: `__fixtures__/` is in
 // `oxlint.config.ts#ignorePatterns`, and `__fixtures__/oxlint.fixtures.json`
 // re-enables the rules for the test.
 //
 // Six positive cases (deliberate violations — rule must fire) + four
 // negative cases (clean usage on the same objects — rule must NOT fire).
-// Exact-equality (`toBe(6)`) in the test catches both false-negative
+// Exact-equality (the 6-position list) in the test catches both false-negative
 // regressions (drop below 6) and false-positive widenings (above 6).
 
 import type { IpcMain, IpcRenderer, WebContents } from 'electron';
@@ -25,7 +25,7 @@ ipcRenderer.once('ok:test-channel', () => {});
 
 // === Negative cases — adjacent method calls on the same objects ===
 // These exercise the precision of the rule. If a future widening
-// matches any of these, the diagnostic count rises above 6 and `toBe(6)`
+// matches any of these, the diagnostic count rises above 6 and the 6-position list
 // catches the regression.
 
 // (1) Different method on webContents (e.g., devtools open).
