@@ -48,16 +48,3 @@ describe('injectAppVersionEnv', () => {
     expect(process.env[APP_VERSION_ENV_VAR]).toBe(appPkgVersion);
   });
 });
-
-describe('build-path wiring (R-3)', () => {
-  const repoConfigs = [
-    resolve(here, '..', '..', 'vite.config.ts'),
-    resolve(here, '..', '..', '..', 'desktop', 'electron.vite.config.ts'),
-  ];
-  for (const configPath of repoConfigs) {
-    test(`${configPath.split('/packages/')[1]} calls injectAppVersionEnv()`, () => {
-      const src = readFileSync(configPath, 'utf-8');
-      expect(src).toContain('injectAppVersionEnv()');
-    });
-  }
-});

@@ -1,11 +1,19 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
+import appConfig from './packages/app/vitest.config';
+import cliConfig from './packages/cli/vitest.config';
+import coreConfig from './packages/core/vitest.config';
+import desktopConfig from './packages/desktop/vitest.config';
 import serverConfig from './packages/server/vitest.config';
 import { UNCACHED_TEST_GLOBS, UNCACHED_TIER_CONFIG } from './test-support/uncached-tier';
 import { uncachedTierFloor } from './test-support/uncached-tier-floor';
 import scriptsConfig from './vitest.scripts.config';
 
 const SOURCES = [
+  { name: 'packages/app/vitest.config.ts', dir: 'packages/app', config: appConfig },
+  { name: 'packages/cli/vitest.config.ts', dir: 'packages/cli', config: cliConfig },
+  { name: 'packages/core/vitest.config.ts', dir: 'packages/core', config: coreConfig },
+  { name: 'packages/desktop/vitest.config.ts', dir: 'packages/desktop', config: desktopConfig },
   { name: 'packages/server/vitest.config.ts', dir: 'packages/server', config: serverConfig },
   { name: 'vitest.scripts.config.ts', dir: '.', config: scriptsConfig },
 ];

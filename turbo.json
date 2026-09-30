@@ -95,10 +95,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/test-support/**",
         "../../oxlint.config.ts",
-        "../../lint-plugins/**",
-        "$TURBO_ROOT$/packages/desktop/src/main/menu.ts",
-        "$TURBO_ROOT$/packages/desktop/src/main/dialog-helpers.ts",
-        "$TURBO_ROOT$/packages/desktop/src/main/menu-translator.ts"
+        "../../lint-plugins/**"
       ]
     },
     "@inkeep/open-knowledge-docs#test": {
@@ -138,7 +135,6 @@
         "../../oxlint.config.ts",
         "../../lint-plugins/**",
         "$TURBO_ROOT$/test-support/**",
-        "../../.github/scripts/smoke-packaged-dmg.mjs",
         "../../scripts/verify-native-config-in-packaged-dmg.mjs",
         "../../scripts/verify-keyring-in-packaged-dmg.mjs",
         "../../scripts/lume-bake/**",
@@ -148,8 +144,7 @@
         "../app/postcss.config.ts",
         "../app/*.html",
         "../app/src/**",
-        "!../app/src/**/*.md",
-        "$TURBO_ROOT$/.github/scripts/dmg-mount.mjs"
+        "!../app/src/**/*.md"
       ]
     },
     "@inkeep/md-conformance#test": {

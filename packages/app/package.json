@@ -25,7 +25,7 @@
     "format": "biome check --write .",
     "test": "vitest run --config vitest.config.ts src/",
     "test:dom": "vitest run --config vitest.dom.config.ts",
-    "check": "tsc --noEmit && biome check . && pnpm run test && pnpm run test:dom && pnpm run test:integration && pnpm run test:conversion",
+    "check": "tsc --noEmit && biome check . && pnpm run test && pnpm run test:dom && pnpm run test:integration && pnpm run test:conversion && pnpm -w run test:uncached",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:integration:shard1": "vitest run --config vitest.integration.config.ts --shard=1/3",
     "test:integration:shard2": "vitest run --config vitest.integration.config.ts --shard=2/3",

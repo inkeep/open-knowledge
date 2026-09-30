@@ -7,7 +7,7 @@
  *
  * After running, diff the output — landing it should only flip values when a
  * listed token in `globals.css` actually moved. The drift test in
- * `packages/core/src/constants/preview-theme-tokens.test.ts` enforces parity
+ * `packages/core/src/constants/preview-theme-tokens.uncached.test.ts` enforces parity
  * at CI time (no separate `--check` mode needed — the unit test is the gate).
  */
 import { writeFileSync } from 'node:fs';
