@@ -19,7 +19,9 @@ import {
   DEFAULT_MAX_ATTEMPTS,
   FailureEvidence,
   parseArgs,
+  RETRY_ON_STOP_OUTCOMES,
   runWithRetry,
+  STOP_OUTCOMES,
 } from './retry-transient.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -676,6 +678,227 @@ describe('retry state machine', () => {
     );
     expect(signals.listenerCount('SIGINT')).toBe(0);
     expect(signals.listenerCount('SIGTERM')).toBe(0);
+  });
+});
+
+describe('opt-in fail-closed eligibility', () => {
+  const undiciPausedParser = [
+    'undici-paused-parser',
+    /assert\(!this\.paused\)[\s\S]{0,512}?\bParser\.finish\b/,
+  ];
+  const pausedParserCrash = [
+    '[prepare-platform-natives]   @napi-rs/keyring-win32-arm64-msvc@1.3.0 missing — fetching',
+    'node:internal/assert/utils:77',
+    '    throw err;',
+    '    ^',
+    '',
+    'AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:',
+    '',
+    '  assert(!this.paused)',
+    '',
+    '    at Parser.finish (node:internal/deps/undici/undici:7380:9)',
+    '    at TLSSocket.onHttpSocketEnd (node:internal/deps/undici/undici:7819:34)',
+  ].join('\n');
+  const failClosed = { retryOn: { http5xx: true, connection: true, rules: [] } };
+  const withPausedParserRule = {
+    retryOn: { http5xx: true, connection: true, rules: ['undici-paused-parser'] },
+    transientRules: [undiciPausedParser],
+  };
+  const failOnceThen = (name, text) => {
+    const count = join(scratch, name);
+    writeFileSync(count, '0');
+    return nodeCmd(
+      `const fs=require('fs');const p=${JSON.stringify(count)};const n=+fs.readFileSync(p,'utf8')+1;fs.writeFileSync(p,String(n));if(n===1){console.error(${JSON.stringify(text)});process.exit(1)}`,
+    );
+  };
+  const failAlways = (text, exitCode = 1) =>
+    nodeCmd(`console.error(${JSON.stringify(text)});process.exit(${exitCode})`);
+
+  test('the default policy is unchanged when no opt-in flag is given', async () => {
+    const unknown = await run({
+      command: failOnceThen('default-unknown', 'unrecognized packager failure'),
+    });
+    expect(unknown).toMatchObject({ ok: true, attempts: 2, recoveredFrom: 'unknown' });
+    expect(unknown.log).toContain(
+      'UNKNOWN_CLASSIFICATION_RETRY allowance=invocation-wide-single-use',
+    );
+    const rateLimited = await run({
+      command: failOnceThen('default-429', 'HTTPError: Response code 429 (Too Many Requests)'),
+    });
+    expect(rateLimited).toMatchObject({ ok: true, attempts: 2, recoveredFrom: 'transient' });
+    const crash = await run({ command: failOnceThen('default-crash', pausedParserCrash) });
+    expect(crash).toMatchObject({ ok: true, attempts: 2, recoveredFrom: 'unknown' });
+    expect(unknown.log).not.toContain('ineligible');
+  });
+
+  test('the ineligible outcome is registered apart from the default outcomes', () => {
+    expect(RETRY_ON_STOP_OUTCOMES).toEqual(['ineligible']);
+    expect(STOP_OUTCOMES).not.toContain('ineligible');
+  });
+
+  test.each([
+    ['http-500', 'HTTPError: Response code 500 (Internal Server Error)', 'http:500'],
+    ['http-501', 'fetch https://registry.example/x.tgz → HTTP 501 Not Implemented', 'http:501'],
+    [
+      'connection',
+      'TypeError: fetch failed\nFETCH 1: connection to host errored - read ECONNRESET',
+      'code:ECONNRESET',
+    ],
+    ['socket', 'Error: socket hang up', 'rule:socket-hangup'],
+  ])('retries %s evidence and recovers', async (name, text, reason) => {
+    const result = await run({ command: failOnceThen(`fail-closed-${name}`, text), ...failClosed });
+    expect(result).toMatchObject({ ok: true, attempts: 2, recoveredFrom: 'transient' });
+    expect(result.log).toContain(
+      `decision=retry reason=${reason} classification=transient attempt=1/3`,
+    );
+  });
+
+  test('a persistent eligible failure stops as transient-exhausted', async () => {
+    const result = await run({
+      command: failAlways('HTTPError: Response code 503 (Service Unavailable)'),
+      ...failClosed,
+    });
+    expect(result).toMatchObject({ ok: false, reason: 'transient-exhausted', attempts: 3 });
+  });
+
+  test.each([
+    [
+      'an unknown failure',
+      'unrecognized packager failure',
+      'reason=diagnostic:unknown outcome=ineligible classification=unknown',
+    ],
+    [
+      'a 429 outside the policy',
+      'HTTPError: Response code 429 (Too Many Requests)',
+      'reason=http:429 outcome=ineligible classification=transient',
+    ],
+    [
+      'a checksum mismatch',
+      'Error: Generated checksum for "electron-v43.4.0-win32-x64.zip" did not match expected checksum.',
+      'reason=diagnostic:unknown outcome=ineligible classification=unknown',
+    ],
+    [
+      'an unrelated crash',
+      'Error: planted unrelated crash\n    at Object.<anonymous> ([eval]:1:7)',
+      'reason=diagnostic:unknown outcome=ineligible classification=unknown',
+    ],
+    [
+      'the libuv abort line alone',
+      'Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\\win\\async.c, line 94',
+      'reason=diagnostic:unknown outcome=ineligible classification=unknown',
+    ],
+  ])('stops %s at once, without a retry', async (_name, text, decision) => {
+    const result = await run({ command: failAlways(text, 127), ...withPausedParserRule });
+    expect(result).toMatchObject({ ok: false, reason: 'ineligible', attempts: 1 });
+    expect(result.log).toContain(`decision=stop ${decision}`);
+  });
+
+  test.each([
+    ['an HTTP 404', 'HTTPError: Response code 404 (Not Found)', 'reason=http:404'],
+    [
+      'an integrity mismatch',
+      '[prepare-platform-natives]   @napi-rs/keyring-win32-arm64-msvc@1.3.0: sha512 hash mismatch, expected sha512-AAA, got sha512-BBB',
+      'reason=rule:download-integrity',
+    ],
+  ])('keeps %s terminal', async (_name, text, decision) => {
+    const result = await run({ command: failAlways(text), ...withPausedParserRule });
+    expect(result).toMatchObject({ ok: false, reason: 'terminal', attempts: 1 });
+    expect(result.log).toContain(`decision=stop ${decision} outcome=terminal`);
+  });
+
+  test('retries the paused-parser crash only through a listed caller rule', async () => {
+    const listed = await run({
+      command: failOnceThen('rule-listed', pausedParserCrash),
+      ...withPausedParserRule,
+    });
+    expect(listed).toMatchObject({ ok: true, attempts: 2, recoveredFrom: 'transient' });
+    expect(listed.log).toContain(
+      'decision=retry reason=rule:undici-paused-parser classification=transient',
+    );
+    const defined = await run({
+      command: failAlways(pausedParserCrash),
+      retryOn: { http5xx: true, connection: true, rules: [] },
+      transientRules: [undiciPausedParser],
+    });
+    expect(defined).toMatchObject({ ok: false, reason: 'ineligible', attempts: 1 });
+    const undefinedRule = await run({ command: failAlways(pausedParserCrash), ...failClosed });
+    expect(undefinedRule).toMatchObject({ ok: false, reason: 'ineligible', attempts: 1 });
+  });
+
+  test('a process abort without the diagnostic is never retried', async () => {
+    const result = await run({ command: nodeCmd('process.abort()'), ...withPausedParserRule });
+    expect(result.ok).toBe(false);
+    expect(result.attempts).toBe(1);
+    expect(['child-signal', 'ineligible']).toContain(result.reason);
+    expect(result.log).not.toContain('decision=retry');
+  });
+});
+
+describe('the result file', () => {
+  const cli = (resultFile, ...rest) =>
+    spawnSync(
+      process.execPath,
+      [
+        SCRIPT,
+        '--label',
+        'result-file probe',
+        '--deadline-epoch-ms',
+        String(Date.now() + 60_000),
+        '--attempt-timeout',
+        '30s',
+        '--retry-on',
+        'http-5xx,connection',
+        '--result-file',
+        resultFile,
+        '--',
+        ...rest,
+      ],
+      { encoding: 'utf8' },
+    );
+
+  test('records a success and an ineligible stop for the caller', () => {
+    const ok = join(scratch, 'result-ok.json');
+    expect(cli(ok, process.execPath, '-e', 'process.exit(0)').status).toBe(0);
+    expect(JSON.parse(readFileSync(ok, 'utf8'))).toEqual({ ok: true, attempts: 1 });
+    const stopped = join(scratch, 'result-stopped.json');
+    const failed = cli(
+      stopped,
+      process.execPath,
+      '-e',
+      'console.error("unrecognized failure");process.exit(2)',
+    );
+    expect(failed.status).toBe(1);
+    expect(JSON.parse(readFileSync(stopped, 'utf8'))).toEqual({
+      ok: false,
+      reason: 'ineligible',
+      attempts: 1,
+      code: 2,
+    });
+    expect(failed.stdout).toContain(
+      '::error::result-file probe decision=stop reason=diagnostic:unknown outcome=ineligible',
+    );
+  });
+
+  test('writes nothing unless asked', () => {
+    const empty = mkdtempSync(join(scratch, 'no-result-'));
+    const result = spawnSync(
+      process.execPath,
+      [
+        SCRIPT,
+        '--deadline-epoch-ms',
+        String(Date.now() + 60_000),
+        '--attempt-timeout',
+        '30s',
+        '--',
+        process.execPath,
+        '-e',
+        'process.exit(0)',
+      ],
+      { encoding: 'utf8', cwd: empty },
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('command succeeded on attempt 1.');
+    expect(readdirSync(empty)).toEqual([]);
   });
 });
 
@@ -1492,6 +1715,69 @@ describe('parseArgs', () => {
         ),
       ),
     ).toThrow(/--label requires a value/);
+  });
+
+  test('parses the opt-in policy flags only when given', () => {
+    const parsed = parseArgs(
+      argv(
+        '--deadline-epoch-ms',
+        '2000000000000',
+        '--attempt-timeout',
+        '1m',
+        '--transient-rule',
+        'undici-paused-parser=assert\\(!this\\.paused\\)',
+        '--transient-rule',
+        'undici-terminated=\\bTypeError: terminated\\b',
+        '--retry-on',
+        'http-5xx,connection,rule:undici-paused-parser',
+        '--result-file',
+        '/tmp/result.json',
+        '--',
+        'true',
+      ),
+    );
+    expect(parsed.retryOn).toEqual({
+      http5xx: true,
+      connection: true,
+      rules: ['undici-paused-parser'],
+    });
+    expect(parsed.transientRules.map(([id]) => id)).toEqual([
+      'undici-paused-parser',
+      'undici-terminated',
+    ]);
+    expect(parsed.transientRules[0][1].test('assert(!this.paused)')).toBe(true);
+    expect(parsed.resultFile).toBe('/tmp/result.json');
+    const plain = parseArgs(
+      argv('--deadline-epoch-ms', '2000000000000', '--attempt-timeout', '1m', '--', 'true'),
+    );
+    expect(Object.keys(plain)).not.toEqual(expect.arrayContaining(['retryOn']));
+    expect('transientRules' in plain || 'resultFile' in plain || 'retryOn' in plain).toBe(false);
+  });
+
+  test.each([
+    [['--retry-on', 'http-5xx,retry-everything'], /unknown token: retry-everything/],
+    [['--retry-on', 'rule:undici-paused-parser'], /names no --transient-rule/],
+    [['--transient-rule', 'Bad_Id=x'], /lowercase id/],
+    [['--transient-rule', 'no-pattern='], /empty pattern/],
+    [['--transient-rule', 'bad-regex=('], /not a valid pattern/],
+    [['--transient-rule', 'socket-hangup=x'], /shadows a built-in rule/],
+    [['--transient-rule', 'twice=a', '--transient-rule', 'twice=b'], /must be unique/],
+    [['--transient-rule', 'lonely=x'], /--transient-rule requires --retry-on/],
+    [['--result-file'], /--result-file requires a value/],
+  ])('rejects the malformed opt-in %j', (flags, message) => {
+    expect(() =>
+      parseArgs(
+        argv(
+          '--deadline-epoch-ms',
+          '2000000000000',
+          '--attempt-timeout',
+          '1m',
+          ...flags,
+          '--',
+          'true',
+        ),
+      ),
+    ).toThrow(message);
   });
 
   test('accepts an explicit empty retry warning', () => {
