@@ -2,18 +2,27 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import cliConfig from '../../cli/tsdown.config';
+import serverConfig from '../tsdown.config';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 describe('worker entry ships in every bundle shape', () => {
   test('server tsdown config emits the parse-worker entry', () => {
-    const config = readFileSync(resolve(__dirname, '../tsdown.config.ts'), 'utf8');
-    expect(config).toMatch(/'parse-worker':\s*'src\/parse-worker\.ts'/);
+    expect(serverConfig.entry).toMatchObject({ 'parse-worker': 'src/parse-worker.ts' });
   });
 
   test('cli tsdown config emits the parse-worker entry next to dist/cli.mjs', () => {
-    const config = readFileSync(resolve(__dirname, '../../cli/tsdown.config.ts'), 'utf8');
-    expect(config).toMatch(/'parse-worker':\s*'src\/parse-worker\.ts'/);
+    const standalone = cliConfig.find(
+      (config) =>
+        typeof config.entry === 'object' &&
+        config.entry !== null &&
+        Object.hasOwn(config.entry, 'cli'),
+    );
+    expect(standalone?.entry).toMatchObject({
+      cli: 'src/cli.ts',
+      'parse-worker': 'src/parse-worker.ts',
+    });
   });
 
   test('server package.json exports the parse-worker subpath for both conditions', () => {

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ConfigSchema } from '@inkeep/open-knowledge-core';
 import { beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import {
   COLOR_THEMES,
@@ -240,5 +241,55 @@ describe('pre-paint FOUC script', () => {
     localStorage.setItem(COLOR_THEME_PAIR_STORAGE_KEY, '{not json');
     expect(() => runPrePaint(false)).not.toThrow();
     expect(state()).toEqual({ attr: null, dark: false });
+  });
+});
+
+const THEME_ID_CORPUS = [
+  'a',
+  '0',
+  '-',
+  'a0-z9',
+  'a'.repeat(31),
+  'a'.repeat(32),
+  '',
+  'a'.repeat(33),
+  'A',
+  'has_underscore',
+  'two words',
+  'é',
+  'a.b',
+  'a/b',
+  'a\n',
+  '\na',
+  'a\r',
+  'a\t',
+  'a"',
+  "a'",
+  'a]',
+  'a[',
+];
+
+describe('pre-paint and ConfigSchema theme-id grammar', () => {
+  beforeEach(reset);
+
+  test.each(THEME_ID_CORPUS)('agrees on %j in both slots and the legacy cache', (id) => {
+    const admissions = ['colorTheme', 'colorThemeLight', 'colorThemeDark'].map(
+      (field) => ConfigSchema.safeParse({ appearance: { [field]: id } }).success,
+    );
+    expect(new Set(admissions).size).toBe(1);
+    const expected = admissions[0] ? id : null;
+    for (const mode of ['light', 'dark'] as const) {
+      reset();
+      seed({ light: 'catppuccin-latte', dark: 'dracula' }, mode, mode);
+      const cache = JSON.parse(localStorage.getItem(COLOR_THEME_PAIR_STORAGE_KEY) ?? '{}');
+      cache[mode].id = id;
+      localStorage.setItem(COLOR_THEME_PAIR_STORAGE_KEY, JSON.stringify(cache));
+      runPrePaint(mode === 'dark');
+      expect(document.documentElement.getAttribute('data-color-theme'), mode).toBe(expected);
+    }
+    reset();
+    localStorage.setItem(COLOR_THEME_STORAGE_KEY, id);
+    runPrePaint(false);
+    expect(document.documentElement.getAttribute('data-color-theme'), 'legacy').toBe(expected);
   });
 });

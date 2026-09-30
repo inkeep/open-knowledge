@@ -1,12 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  BASE16_SLOTS,
-  ConfigSchema,
-  resolveLeafSchema,
-  THEME_ID_PATTERN,
-} from '@inkeep/open-knowledge-core';
+import { BASE16_SLOTS, ConfigSchema, resolveLeafSchema } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
   base16ToTokens,
@@ -208,11 +203,6 @@ describe('registry stays in sync with its consumers', () => {
   test('custom is registered as a tile and accepted by the palette fields', () => {
     expect(COLOR_THEMES.some((t) => t.id === 'custom')).toBe(true);
     expect(ConfigSchema.safeParse({ appearance: { colorTheme: 'custom' } }).success).toBe(true);
-  });
-
-  test('the pre-paint FOUC script validates ids with the config fields grammar', () => {
-    const html = readFileSync(resolve(here, '../../index.html'), 'utf8');
-    expect(html).toContain(THEME_ID_PATTERN.source);
   });
 
   test('every base16 slot is settable under appearance.customTheme', () => {

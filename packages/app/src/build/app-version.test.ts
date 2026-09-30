@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CLIENT_RUNTIME_VERSION_FALLBACK } from '@inkeep/open-knowledge-core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { loadConfigFromFile } from 'vite';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   APP_VERSION_ENV_VAR,
   APP_VERSION_UNKNOWN,
@@ -45,6 +46,23 @@ describe('injectAppVersionEnv', () => {
   test('sets VITE_APP_VERSION on process.env and returns it', () => {
     const returned = injectAppVersionEnv();
     expect(returned).toBe(appPkgVersion);
+    expect(process.env[APP_VERSION_ENV_VAR]).toBe(appPkgVersion);
+  });
+});
+
+describe('build-path version injection', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  test('vite.config.ts injects the app package version while loading', async () => {
+    const configPath = resolve(here, '../..', 'vite.config.ts');
+    vi.stubEnv(APP_VERSION_ENV_VAR, undefined);
+    vi.stubEnv('LINGUI_CONFIG', undefined);
+    const result = await loadConfigFromFile(
+      { command: 'build', mode: 'production' },
+      configPath,
+      dirname(configPath),
+    );
+    expect(result).not.toBeNull();
     expect(process.env[APP_VERSION_ENV_VAR]).toBe(appPkgVersion);
   });
 });
