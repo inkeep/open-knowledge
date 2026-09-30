@@ -9,6 +9,10 @@ export const CONSECUTIVE_NON_PASS_THRESHOLD = 3;
 export const STALE_FAST_TIER_WINDOW_DAYS = 14;
 
 const SMOKE_JOB_NAME = "Smoke the fast-tier candidate's DMG";
+const EVALUATE_JOB_NAME = 'Evaluate 24h soak + business-hours gate';
+const REMEMBERED_FAILURE_STEP_NAME =
+  'Skip the fast-tier candidate whose DMG already failed the smoke';
+const SMOKE_OR_DISPATCH_STAGE = 'Smoke or dispatch';
 const DISPATCH_STEP_NAME = 'Dispatch promote-stable for the smoke-proven candidate';
 const DISPATCH_RECEIPT_STEP_NAME = 'Record a successful fast-tier dispatch';
 
@@ -49,10 +53,19 @@ export function evaluateAlarm({
   return { alarm: reasons.length > 0, reasons };
 }
 
+const REMEMBERED_SKIP = Symbol('remembered-skip');
+
 export function buildHistory({ runs, jobsForRun }) {
-  return runs.map((run) => {
+  const history = runs.map((run) => {
     const jobs = jobsForRun(run.databaseId ?? run.id) ?? [];
     const smoke = jobs.find((j) => j.name === SMOKE_JOB_NAME);
+    const evaluate = jobs.find((j) => j.name === EVALUATE_JOB_NAME);
+    const rememberedFailure = (evaluate?.steps ?? []).find(
+      (s) => s.name === REMEMBERED_FAILURE_STEP_NAME,
+    );
+    if (rememberedFailure?.conclusion === 'success') {
+      return REMEMBERED_SKIP;
+    }
     if (
       !smoke ||
       (smoke.status && smoke.status !== 'completed') ||
@@ -75,9 +88,34 @@ export function buildHistory({ runs, jobsForRun }) {
       failureStage: promoted
         ? null
         : ((smoke.steps ?? []).find((s) => s.conclusion === 'failure')?.name ??
-          'Smoke or dispatch'),
+          SMOKE_OR_DISPATCH_STAGE),
     };
   });
+  return resolveRememberedSkips(history, runs);
+}
+
+function resolveRememberedSkips(history, runs) {
+  const resolved = [...history];
+  let lastSmokedVerdict = null;
+  for (let i = resolved.length - 1; i >= 0; i -= 1) {
+    const entry = resolved[i];
+    if (entry !== REMEMBERED_SKIP) {
+      if (entry.qualified) lastSmokedVerdict = entry.verdict;
+      continue;
+    }
+    const at = runs[i].createdAt;
+    resolved[i] =
+      lastSmokedVerdict === 'pass'
+        ? { at, qualified: false, verdict: null, promoted: false }
+        : {
+            at,
+            qualified: true,
+            verdict: 'non-pass',
+            promoted: false,
+            failureStage: SMOKE_OR_DISPATCH_STAGE,
+          };
+  }
+  return resolved;
 }
 
 export function alarmObservation({ history, nowMs, armed }) {
@@ -100,6 +138,27 @@ export function classifyHistoryFailure(message) {
 
 const GH_CALL_TIMEOUT_MS = 30_000;
 
+export const RUN_LIST_ARGS = [
+  'run',
+  'list',
+  '--workflow=select-beta-to-promote.yml',
+  '--limit',
+  '60',
+  '--json',
+  'databaseId,createdAt,status',
+];
+
+export function completedRunsNewestFirst(runs) {
+  return runs
+    .filter((r) => r.status === 'completed')
+    .toSorted((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+}
+
+export function listingIncludesRun(runs, runId) {
+  if (!runId) return true;
+  return runs.some((r) => String(r.databaseId ?? r.id) === String(runId));
+}
+
 function ghJson(args) {
   return JSON.parse(execFileSync('gh', args, { encoding: 'utf8', timeout: GH_CALL_TIMEOUT_MS }));
 }
@@ -108,19 +167,15 @@ function main() {
   const repo = process.env.GITHUB_REPOSITORY || 'inkeep/open-knowledge';
   let history = [];
   try {
-    const runs = ghJson([
-      'run',
-      'list',
-      '--workflow=select-beta-to-promote.yml',
-      '--limit',
-      '60',
-      '--status',
-      'completed',
-      '--json',
-      'databaseId,createdAt',
-    ]);
+    const listed = ghJson(RUN_LIST_ARGS);
+    if (!listingIncludesRun(listed, process.env.GITHUB_RUN_ID)) {
+      console.log(
+        `::warning::The run listing does not include this run (${process.env.GITHUB_RUN_ID}), so it is not the current history; skipping the aggregate alarm this tick.`,
+      );
+      return;
+    }
     history = buildHistory({
-      runs,
+      runs: completedRunsNewestFirst(listed),
       jobsForRun: (id) => ghJson(['api', `repos/${repo}/actions/runs/${id}/jobs`]).jobs,
     });
   } catch (err) {

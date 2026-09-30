@@ -84,12 +84,12 @@ name: Select beta to promote
 # (3) the script stops at the first already-shipped beta (commit contained in the
 # latest stable) and never selects one whose changes are already released.
 #
-# FAST TIER (FR5a), BUILT BUT UNARMED: a second job smokes an under-soaked
-# beta's DMG and, only on a clean smoke, dispatches promote-stable early. It is
-# gated on `fast_tier_candidate`, which the selection script writes empty today,
-# so it never runs and adds zero per-tick cost. A fail or an error verdict only
-# ever declines the early promotion — the 24h path is untouched and the gate can
-# never block a release. Arming steps are documented in RELEASES.md.
+# FAST TIER (FR5a), ARMED: a second job smokes an under-soaked beta's DMG and,
+# only on a clean smoke, dispatches promote-stable early. It is gated on
+# `fast_tier_candidate`, which is empty on ticks where nothing qualifies, and on
+# ticks whose candidate's DMG already failed the smoke. A fail or an error
+# verdict only ever declines the early promotion — the 24h path is untouched and
+# the gate can never block a release. The operator record is RELEASES.md.
 
 on:
   schedule:
@@ -168,7 +168,7 @@ jobs:
       # the macOS smoke leg keys off it. Empty on ticks where nothing qualifies,
       # which skips the smoke leg at zero cost — and empty on every tick when
       # FAST_TIER_ARMED is "false".
-      fast_tier_candidate: ${{ steps.select.outputs.fast_tier_candidate }}
+      fast_tier_candidate: ${{ steps.nominate.outputs.fast_tier_candidate }}
       tier: ${{ steps.select.outputs.tier }}
     steps:
       - name: Business-hours gate (America/New_York)
@@ -240,6 +240,34 @@ jobs:
         # exception: it degrades to the slower tier rather than failing the tick.
         # Logic + tests: .github/scripts/select-beta-to-promote.{mjs,test.mjs}.
         run: node .github/scripts/select-beta-to-promote.mjs
+
+      - name: Look up an earlier smoke failure for the fast-tier candidate
+        id: prior-failure
+        if: steps.select.outputs.fast_tier_candidate != '' && github.event_name != 'workflow_dispatch'
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: fast-tier-smoke-failed
+          key: fast-tier-smoke-failed-v1-${{ steps.select.outputs.fast_tier_candidate }}
+          lookup-only: true
+
+      - name: Skip the fast-tier candidate whose DMG already failed the smoke
+        if: steps.prior-failure.outputs.cache-hit == 'true'
+        env:
+          CANDIDATE: ${{ steps.select.outputs.fast_tier_candidate }}
+        run: echo "::notice::${CANDIDATE}'s DMG already failed the fast-tier smoke, so it is not smoked again; it promotes on the 24h tier. A workflow_dispatch run re-smokes it."
+
+      - name: Nominate the fast-tier candidate for smoking
+        id: nominate
+        env:
+          CANDIDATE: ${{ steps.select.outputs.fast_tier_candidate }}
+          ALREADY_FAILED: ${{ steps.prior-failure.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          if [[ "$ALREADY_FAILED" == "true" ]]; then
+            echo "fast_tier_candidate=" >> "$GITHUB_OUTPUT"
+          else
+            echo "fast_tier_candidate=${CANDIDATE}" >> "$GITHUB_OUTPUT"
+          fi
 
       # Hours-gated, standard tier only. `target` is always the 24h selection —
       # a fast-tier cut never reaches this step; it is nominated as
@@ -323,6 +351,8 @@ jobs:
     # Apple Silicon: the DMG is a Universal build, but launching it needs macOS.
     runs-on: macos-26
     timeout-minutes: 30
+    outputs:
+      verdict: ${{ steps.smoke.outputs.verdict }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -399,18 +429,33 @@ jobs:
           echo "::notice::Fast tier refused for ${CANDIDATE} (verdict=${VERDICT:-unknown}). The 24h tier is unaffected; this beta promotes normally once it has soaked."
           echo "Fast tier refused for ${CANDIDATE}; verdict=${VERDICT:-unknown}. The aggregate incident reporter owns Slack notifications." >> "$GITHUB_STEP_SUMMARY"
 
+  remember-smoke-failure:
+    name: Remember the candidate's failed smoke
+    needs: [evaluate, smoke-fast-tier-candidate]
+    if: always() && needs.smoke-fast-tier-candidate.outputs.verdict == 'fail'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Write the failure marker
+        env:
+          CANDIDATE: ${{ needs.evaluate.outputs.fast_tier_candidate }}
+        run: |
+          set -euo pipefail
+          mkdir -p fast-tier-smoke-failed
+          echo "$CANDIDATE" > fast-tier-smoke-failed/candidate
+
+      - name: Save the failure marker
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: fast-tier-smoke-failed
+          key: fast-tier-smoke-failed-v1-${{ needs.evaluate.outputs.fast_tier_candidate }}
+
   # Aggregate silent-failure alarm.
   #
   # The per-cut alert in desktop-release.yml covers a gate that BITES. This
   # covers the failure mode nobody notices: a gate that is quietly
   # always-refusing, or a fast tier that has gone inert. Both look exactly like
   # a calm week.
-  #
-  # Silent by default and by design. With the fast tier unarmed the smoke job
-  # never runs, the derived history is empty, and the evaluator reports no
-  # alarm — an intentionally disarmed tier is not a broken one, and an alarm
-  # that fired continuously while the tier was off would train responders to
-  # ignore it.
   #
   aggregate-smoke-alarm:
     name: Aggregate DMG-smoke alarm

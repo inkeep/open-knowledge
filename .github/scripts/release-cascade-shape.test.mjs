@@ -940,6 +940,70 @@ describe('every release-pipeline post prefers the releases webhook', () => {
     );
   });
 
+  test('a beta whose DMG failed the smoke is remembered by tag and not re-smoked on later ticks', () => {
+    const { jobs } = parse(selectBeta);
+    const step = (job, name) => {
+      const found = jobs[job].steps.find((s) => s.name === name);
+      if (!found)
+        throw new Error(`select-beta-to-promote.yml job ${job} has no step named ${name}`);
+      return found;
+    };
+    expect(jobs.evaluate['runs-on']).toBe('ubuntu-latest');
+    expect(jobs.evaluate.outputs.fast_tier_candidate).toBe(
+      '${{ steps.nominate.outputs.fast_tier_candidate }}',
+    );
+    const lookup = step('evaluate', 'Look up an earlier smoke failure for the fast-tier candidate');
+    expect(lookup.id).toBe('prior-failure');
+    expect(lookup.if).toContain("github.event_name != 'workflow_dispatch'");
+    expect(lookup.with).toEqual({
+      path: 'fast-tier-smoke-failed',
+      key: 'fast-tier-smoke-failed-v1-${{ steps.select.outputs.fast_tier_candidate }}',
+      'lookup-only': true,
+    });
+    expect(
+      step('evaluate', 'Skip the fast-tier candidate whose DMG already failed the smoke').if,
+    ).toBe("steps.prior-failure.outputs.cache-hit == 'true'");
+
+    const nominate = step('evaluate', 'Nominate the fast-tier candidate for smoking');
+    expect(nominate.env.ALREADY_FAILED).toBe('${{ steps.prior-failure.outputs.cache-hit }}');
+    const nominated = (candidate, alreadyFailed) => {
+      const dir = mkdtempSync(join(tmpdir(), 'ok-nominate-'));
+      try {
+        const out = join(dir, 'out');
+        writeFileSync(out, '');
+        execFileSync('bash', ['-c', nominate.run], {
+          env: {
+            ...process.env,
+            CANDIDATE: candidate,
+            ALREADY_FAILED: alreadyFailed,
+            GITHUB_OUTPUT: out,
+          },
+        });
+        return readFileSync(out, 'utf8');
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    expect(nominated('v1.2.3-beta.0', '')).toBe('fast_tier_candidate=v1.2.3-beta.0\n');
+    expect(nominated('v1.2.3-beta.0', 'false')).toBe('fast_tier_candidate=v1.2.3-beta.0\n');
+    expect(nominated('v1.2.3-beta.0', 'true')).toBe('fast_tier_candidate=\n');
+    expect(nominated('', '')).toBe('fast_tier_candidate=\n');
+
+    expect(jobs['smoke-fast-tier-candidate'].outputs.verdict).toBe(
+      '${{ steps.smoke.outputs.verdict }}',
+    );
+    const remember = jobs['remember-smoke-failure'];
+    expect(remember['runs-on']).toBe('ubuntu-latest');
+    expect(remember.needs).toEqual(['evaluate', 'smoke-fast-tier-candidate']);
+    expect(remember.if).toBe(
+      "always() && needs.smoke-fast-tier-candidate.outputs.verdict == 'fail'",
+    );
+    expect(step('remember-smoke-failure', 'Save the failure marker').with).toEqual({
+      path: 'fast-tier-smoke-failed',
+      key: 'fast-tier-smoke-failed-v1-${{ needs.evaluate.outputs.fast_tier_candidate }}',
+    });
+  });
+
   test('bug verification provisions the native runtime before testing the stable tree', () => {
     const setup = bugLaneVerify.indexOf('- name: Setup uv for ACP package acquisition tests');
     expect(setup).toBeGreaterThan(-1);
