@@ -106,6 +106,18 @@ describe('resolveSelfSpawn', () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
+  it('packaged-darwin Beta execPath → command is the Beta-named helper-bundle binary', () => {
+    const betaApp = '/Applications/OpenKnowledge Beta.app';
+    const betaHelper = `${betaApp}/Contents/Frameworks/OpenKnowledge Beta Server.app/Contents/MacOS/OpenKnowledge Beta Helper`;
+    const result = resolveSelfSpawn({
+      execPath: `${betaApp}/Contents/MacOS/OpenKnowledge Beta`,
+      platform: 'darwin',
+      argv: ['runtime', PACKAGED_ENTRY],
+      exists: (p) => p === betaHelper,
+    });
+    expect(result.command).toBe(betaHelper);
+  });
+
   it('packaged-darwin Electron execPath + helper ABSENT → command stays process.execPath', () => {
     const result = resolveSelfSpawn({
       execPath: PACKAGED_EXEC,

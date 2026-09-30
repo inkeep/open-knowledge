@@ -5,8 +5,15 @@ import { DESKTOP_PRODUCTS, desktopWindowsExecutableName } from '@inkeep/open-kno
 import {
   HELPER_BUNDLE_NAME,
   HELPER_EXECUTABLE_NAME,
+  resolveHelperBundleBinary,
 } from '@inkeep/open-knowledge-core/helper-bundle';
 import { describe, expect, test } from 'vitest';
+import {
+  createVariantBuilderConfig,
+  createVariantHelperInfo,
+  parseBuilderConfig,
+} from '../../scripts/desktop-variant-config.ts';
+import { DESKTOP_VARIANTS, type DesktopVariantName } from '../../src/shared/desktop-variant.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(__dirname, '../..');
@@ -51,6 +58,41 @@ describe('helper-bundle name agreement across spawn site / Info.plist / afterPac
     expect(afterPack).toMatch(/`\$\{appName\}\s+Helper`/);
     expect(afterPack).toMatch(/`\$\{appName\} Server\.app`/);
   });
+
+  test.each(Object.keys(DESKTOP_VARIANTS) as DesktopVariantName[])(
+    'the spawn-site resolver finds the helper the %s packaging writes',
+    (variantName) => {
+      const config = createVariantBuilderConfig(
+        parseBuilderConfig(readFileSync(electronBuilderYmlPath, 'utf8')),
+        variantName,
+        {
+          includePath: 'installer.nsh',
+          postInstallPath: 'deb-postinst.sh',
+          postRemovePath: 'deb-postrm.sh',
+          localEntitlementsPath: 'entitlements.mac.local.plist',
+          helperInfoPath: 'helper-Info.plist',
+          profileAvailable: false,
+        },
+        '0.0.0-beta.0',
+      );
+      const helperInfoTarget = config.mac.extraFiles.find(
+        (entry) => entry.from === 'helper-Info.plist',
+      )?.to;
+      const bundleDir = helperInfoTarget?.match(
+        /^(Frameworks\/[^/]+\.app)\/Contents\/Info\.plist$/,
+      )?.[1];
+      const executable = extractPlistString(
+        createVariantHelperInfo(readFileSync(helperPlistPath, 'utf8'), variantName),
+        'CFBundleExecutable',
+      );
+      expect(bundleDir).toBeDefined();
+      expect(executable).not.toBeNull();
+      const app = `/Applications/${config.productName}.app`;
+      expect(resolveHelperBundleBinary(`${app}/Contents/MacOS/${config.productName}`)).toBe(
+        `${app}/Contents/${bundleDir}/Contents/MacOS/${executable}`,
+      );
+    },
+  );
 
   test('electron-builder.yml extraFiles `to:` value references HELPER_BUNDLE_NAME (not just a YAML comment)', () => {
     const yml = readFileSync(electronBuilderYmlPath, 'utf8');
