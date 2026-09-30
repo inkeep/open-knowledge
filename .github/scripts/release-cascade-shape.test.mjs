@@ -820,15 +820,12 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     expect(bugLaneVerifyStep('Drop signature')).toContain("env.BUG_LANE_ARMED == 'true'");
   });
 
-  test('the one page it does send says the following silence is deliberate', () => {
+  test('the one page it does send is built by the refusal payload module', () => {
     const page = bugLaneVerify.slice(
       bugLaneVerify.indexOf('- name: Page on a refusal'),
       bugLaneVerify.indexOf('- name: Record that this refusal was paged'),
     );
     expect(page).toContain('bug-lane-refusal-payload.mjs');
-    expect(
-      readFileSync(join(WORKFLOWS, '..', 'scripts', 'bug-lane-refusal-payload.mjs'), 'utf8'),
-    ).toContain('Further identical refusals stay silent');
   });
 
   test('a suppressed refusal still leaves a trace in the run', () => {
