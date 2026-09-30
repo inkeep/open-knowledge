@@ -21,11 +21,13 @@ import {
   INVITE_EXPIRE_AFTER_MS,
   type InstallInFlight,
   MAX_DECLINED_DEATHS,
+  type MainExitRecord,
+  parseMainExitRecord,
   SENTINEL_HEARTBEAT_INTERVAL_MS,
   STALE_CRASH_AFTER_MS,
   startLocalCrashReporter,
 } from './crash-detection.ts';
-import type { WatchdogRead } from './main-thread-watchdog.ts';
+import type { StallRead, StallSnapshot, WatchdogRead } from './main-thread-watchdog.ts';
 import { buildMinidump } from './minidump.test-helper.ts';
 import { type AppState, emptyState } from './state-store.ts';
 
@@ -63,6 +65,7 @@ interface Rig {
   setInstallInFlight(inFlight: InstallInFlight | null): void;
   setAppVersion(version: string): void;
   setWatchdogRead(read: WatchdogRead): void;
+  setStallRead(read: StallRead): void;
   watchdogStarts: string[];
   watchdogStops(): number;
   tick(): Date;
@@ -81,6 +84,7 @@ function makeRig(): Rig {
   let bootSessionUuid: string | null = 'boot-epoch-a';
   let installInFlight: InstallInFlight | null = null;
   let watchdogRead: WatchdogRead = { kind: 'absent' };
+  let stallRead: StallRead = { kind: 'absent' };
   const watchdogStarts: string[] = [];
   let watchdogStops = 0;
   let clockMs = Date.parse('2026-07-10T00:00:00.000Z');
@@ -133,6 +137,9 @@ function makeRig(): Rig {
     setWatchdogRead(read: WatchdogRead) {
       watchdogRead = read;
     },
+    setStallRead(read: StallRead) {
+      stallRead = read;
+    },
     watchdogStarts,
     watchdogStops: () => watchdogStops,
     tick() {
@@ -147,6 +154,7 @@ function makeRig(): Rig {
     },
     deps: {
       sentinelPath: join(dir, 'user-data', 'bug-report-dirty-shutdown.json'),
+      mainExitPath: join(dir, 'user-data', 'bug-report-main-exit.json'),
       ackStorePath: join(dir, 'user-data', 'bug-report-crash-acks.json'),
       crashDumpsDir: join(dir, 'crash-dumps'),
       appBundleRoot,
@@ -165,9 +173,11 @@ function makeRig(): Rig {
       installInFlight: () => installInFlight,
       mainThreadWatchdog: {
         readPrevious: () => watchdogRead,
+        readPreviousStall: () => stallRead,
         start: (bootId: string) => {
           watchdogStarts.push(bootId);
           watchdogRead = { kind: 'absent' };
+          stallRead = { kind: 'absent' };
           return {
             stop: () => {
               watchdogStops += 1;
@@ -3092,6 +3102,37 @@ describe('whether the previous session died or hung', () => {
     return line as Record<string, unknown>;
   }
 
+  function stallFor(
+    rig: Rig,
+    outcome: 'pending' | 'captured',
+    stalledBeforeWitnessMs: number,
+    bootId = readSentinel(rig).bootId ?? '',
+  ): StallSnapshot {
+    const stallStartedAtMs = rig.nowMs() - stalledBeforeWitnessMs;
+    const request = {
+      schemaVersion: 1 as const,
+      bootId,
+      stallStartedAt: new Date(stallStartedAtMs).toISOString(),
+      requestedAt: new Date(stallStartedAtMs + 15_000).toISOString(),
+      blockedForMsAtRequest: 15_000,
+    };
+    const snapshot: StallSnapshot =
+      outcome === 'pending'
+        ? { ...request, outcome }
+        : {
+            ...request,
+            outcome,
+            capturedAt: new Date(stallStartedAtMs + 15_025).toISOString(),
+            pauseLatencyMs: 25,
+            frames: [
+              { functionName: 'rebuildIndex', url: 'file:///app/index.js', line: 3, column: 9 },
+            ],
+            framesTruncated: false,
+          };
+    rig.setStallRead({ kind: 'record', value: snapshot });
+    return snapshot;
+  }
+
   test('the previous witness is read before this session starts its own', () => {
     const rig = makeRig();
     createCrashDetection(rig.deps).detectBootCrash();
@@ -3185,6 +3226,7 @@ describe('whether the previous session died or hung', () => {
     sessionA.detectBootCrash();
     sessionA.noteOsShutdown();
     witnessFor(rig, 90_000);
+    stallFor(rig, 'captured', 90_000);
     const lines = captureLines(rig);
 
     expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
@@ -3193,6 +3235,94 @@ describe('whether the previous session died or hung', () => {
     expect(breadcrumb?.livenessVerdict).toBe('blocked');
     expect(breadcrumb?.mainThreadBlockedForMs).toBe(90_000);
     expect(breadcrumb?.livenessEvidence).toBe('matched');
+    expect(breadcrumb?.mainThreadStall).toMatchObject({ outcome: 'captured', episode: 'final' });
+    expect(breadcrumb?.mainExitEvidence).toBe('absent');
+  });
+
+  test('a stall snapshot of the freeze the witness saw last rides the boot line as the final episode', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    witnessFor(rig, 36_000);
+    const snapshot = stallFor(rig, 'captured', 36_000);
+    const lines = captureLines(rig);
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = bootBreadcrumb(lines);
+    expect(breadcrumb.mainThreadStallEvidence).toBe('matched');
+    expect(breadcrumb.mainThreadStall).toStrictEqual({
+      outcome: 'captured',
+      episode: 'final',
+      stallStartedAt: snapshot.stallStartedAt,
+      requestedAt: snapshot.requestedAt,
+      blockedForMsAtRequest: 15_000,
+      capturedAt: snapshot.outcome === 'captured' ? snapshot.capturedAt : null,
+      pauseLatencyMs: 25,
+      frames: [{ functionName: 'rebuildIndex', url: 'file:///app/index.js', line: 3, column: 9 }],
+      framesTruncated: false,
+      error: null,
+    });
+  });
+
+  test('a stall the session recovered from before dying is an earlier episode', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    witnessFor(rig, 4_000);
+    stallFor(rig, 'captured', 600_000);
+    const lines = captureLines(rig);
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = bootBreadcrumb(lines);
+    expect(breadcrumb.livenessVerdict).toBe('died');
+    expect(breadcrumb.mainThreadStall).toMatchObject({ outcome: 'captured', episode: 'earlier' });
+  });
+
+  test('a freeze whose pause never landed boots as a pending stall', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    witnessFor(rig, 36_000);
+    stallFor(rig, 'pending', 36_000);
+    const lines = captureLines(rig);
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    expect(bootBreadcrumb(lines).mainThreadStall).toMatchObject({
+      outcome: 'pending',
+      episode: 'final',
+      pauseLatencyMs: null,
+      frames: null,
+    });
+  });
+
+  test('no stall snapshot spells the stall out as null with its evidence', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    const lines = captureLines(rig);
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = bootBreadcrumb(lines);
+    expect(breadcrumb).toHaveProperty('mainThreadStall');
+    expect(breadcrumb.mainThreadStall).toBeNull();
+    expect(breadcrumb.mainThreadStallEvidence).toBe('absent');
+  });
+
+  test('a stall snapshot from another session or a torn one is not evidence', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    stallFor(rig, 'captured', 36_000, 'a-much-older-boot');
+    const mismatched = captureLines(rig);
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    rig.setStallRead({ kind: 'unreadable' });
+    const torn = captureLines(rig);
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    expect(bootBreadcrumb(mismatched).mainThreadStall).toBeNull();
+    expect(bootBreadcrumb(mismatched).mainThreadStallEvidence).toBe('boot-mismatch');
+    expect(bootBreadcrumb(torn).mainThreadStall).toBeNull();
+    expect(bootBreadcrumb(torn).mainThreadStallEvidence).toBe('unreadable');
   });
 
   test('the witness for this session starts under the bootId this boot armed', () => {
@@ -3221,5 +3351,167 @@ describe('whether the previous session died or hung', () => {
 
     expect(rig.watchdogStarts).toHaveLength(2);
     expect(rig.watchdogStops()).toBe(1);
+  });
+});
+
+describe('how the previous main process exited', () => {
+  function bootLine(rig: Rig): Record<string, unknown> | undefined {
+    return rig.infos.filter((line) => line.event === 'crash-detection.boot').at(-1);
+  }
+
+  function exitRecord(overrides: Partial<Record<keyof MainExitRecord, unknown>> = {}): string {
+    return JSON.stringify({
+      schemaVersion: 1,
+      bootId: 'boot-1',
+      exitedAt: '2026-07-10T00:00:00.000Z',
+      exitCode: 7,
+      ...overrides,
+    });
+  }
+
+  test('an exit the quit path never marked clean is recorded for the next boot', () => {
+    const rig = makeRig();
+    const dying = createCrashDetection(rig.deps);
+    dying.detectBootCrash();
+    const bootId = readSentinel(rig).bootId;
+
+    dying.noteProcessExit(7);
+
+    const written = parseMainExitRecord(readFileSync(rig.deps.mainExitPath, 'utf8'));
+    expect(written).toMatchObject({ schemaVersion: 1, bootId, exitCode: 7 });
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    expect(bootLine(rig)?.mainExit).toStrictEqual({
+      exitCode: 7,
+      exitedAt: written?.exitedAt,
+    });
+    expect(bootLine(rig)?.mainExitEvidence).toBe('matched');
+  });
+
+  test('an exit record cannot be attributed when the previous session left no readable sentinel', () => {
+    const rig = makeRig();
+    const dying = createCrashDetection(rig.deps);
+    dying.detectBootCrash();
+    dying.noteProcessExit(7);
+    writeFileSync(rig.deps.sentinelPath, 'torn-write-not-json');
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    expect(bootLine(rig)?.mainExit).toBeNull();
+    expect(bootLine(rig)?.mainExitEvidence).toBe('no-previous-boot');
+  });
+
+  test('a clean quit leaves no exit record', () => {
+    const rig = makeRig();
+    const quitting = createCrashDetection(rig.deps);
+    quitting.detectBootCrash();
+
+    quitting.markCleanQuit();
+    quitting.noteProcessExit(0);
+
+    expect(existsSync(rig.deps.mainExitPath)).toBe(false);
+  });
+
+  test('an exit before this session armed its sentinel records nothing', () => {
+    const rig = makeRig();
+
+    createCrashDetection(rig.deps).noteProcessExit(1);
+
+    expect(existsSync(rig.deps.mainExitPath)).toBe(false);
+  });
+
+  test('a session killed without running its exit handler boots with the exit absent', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    expect(bootLine(rig)).toHaveProperty('mainExit');
+    expect(bootLine(rig)?.mainExit).toBeNull();
+    expect(bootLine(rig)?.mainExitEvidence).toBe('absent');
+  });
+
+  test('an exit record left by an older session is not evidence about this death', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.noteProcessExit(9);
+    createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootLine(rig)?.mainExitEvidence).toBe('matched');
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    expect(bootLine(rig)?.mainExit).toBeNull();
+    expect(bootLine(rig)?.mainExitEvidence).toBe('boot-mismatch');
+  });
+
+  test('a torn exit record reads as unreadable and warns', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    writeFileSync(rig.deps.mainExitPath, '{"schemaVersion":1,"bootId":');
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    expect(bootLine(rig)?.mainExit).toBeNull();
+    expect(bootLine(rig)?.mainExitEvidence).toBe('unreadable');
+    expect(rig.warnings.map((w) => w.event)).toContain('crash-detection.main-exit-read-failed');
+  });
+
+  test('an exit record that cannot be written warns and does not throw', () => {
+    const rig = makeRig();
+    const blocker = join(rig.dir, 'not-a-directory');
+    writeFileSync(blocker, '');
+    rig.deps.mainExitPath = join(blocker, 'bug-report-main-exit.json');
+    const detection = createCrashDetection(rig.deps);
+    detection.detectBootCrash();
+
+    expect(() => detection.noteProcessExit(3)).not.toThrow();
+    expect(
+      rig.warnings.filter((w) => w.event === 'crash-detection.main-exit-write-failed'),
+    ).toEqual([expect.objectContaining({ exitCode: 3 })]);
+  });
+
+  test('a logger torn down before exit cannot make the exit handler throw', () => {
+    const rig = makeRig();
+    const blocker = join(rig.dir, 'not-a-directory');
+    writeFileSync(blocker, '');
+    rig.deps.mainExitPath = join(blocker, 'bug-report-main-exit.json');
+    const detection = createCrashDetection(rig.deps);
+    detection.detectBootCrash();
+    rig.deps.logger.warn = () => {
+      throw new Error('logger stream already closed');
+    };
+
+    expect(() => detection.noteProcessExit(3)).not.toThrow();
+  });
+
+  test('parseMainExitRecord round-trips a written record', () => {
+    expect(parseMainExitRecord(`${exitRecord()}\n`)).toStrictEqual({
+      schemaVersion: 1,
+      bootId: 'boot-1',
+      exitedAt: '2026-07-10T00:00:00.000Z',
+      exitCode: 7,
+    });
+    expect(parseMainExitRecord(exitRecord({ exitCode: -1 }))?.exitCode).toBe(-1);
+  });
+
+  test('parseMainExitRecord rejects every malformed field', () => {
+    for (const bad of [
+      { schemaVersion: 2 },
+      { schemaVersion: undefined },
+      { bootId: '' },
+      { bootId: 5 },
+      { exitedAt: 'yesterday' },
+      { exitedAt: undefined },
+      { exitCode: 1.5 },
+      { exitCode: '0' },
+      { exitCode: null },
+    ]) {
+      expect(parseMainExitRecord(exitRecord(bad)), JSON.stringify(bad)).toBeNull();
+    }
+    expect(parseMainExitRecord('null')).toBeNull();
+    expect(parseMainExitRecord('[]')).toBeNull();
+    expect(parseMainExitRecord('{"schemaVersion":1')).toBeNull();
   });
 });

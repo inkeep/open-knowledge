@@ -6024,6 +6024,7 @@ function bootPrimaryInstance(): void {
   });
   crashDetection = createCrashDetection({
     sentinelPath: join(app.getPath('userData'), 'bug-report-dirty-shutdown.json'),
+    mainExitPath: join(app.getPath('userData'), 'bug-report-main-exit.json'),
     ackStorePath: join(app.getPath('userData'), 'bug-report-crash-acks.json'),
     crashDumpsDir: app.getPath('crashDumps'),
     appBundleRoot: appBundleRootFromExecutable(app.getPath('exe')),
@@ -6051,9 +6052,13 @@ function bootPrimaryInstance(): void {
       ),
     mainThreadWatchdog: createMainThreadWatchdog({
       path: join(app.getPath('userData'), 'bug-report-main-thread-liveness.json'),
+      stallPath: join(app.getPath('userData'), 'bug-report-main-thread-stall.json'),
       logger: getLogger('main-thread-watchdog'),
     }),
     logger: getLogger('crash-detection'),
+  });
+  process.on('exit', (code) => {
+    crashDetection?.noteProcessExit(code);
   });
   crashDetection.detectBootCrash();
   rendererRecovery = createRendererRecovery({

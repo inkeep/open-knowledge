@@ -16,10 +16,14 @@ import { asReportableAppVersion } from './crashed-app-version.ts';
 import type { DesktopCrashProcessSnapshot } from './desktop-process-observability.ts';
 import {
   classifyPreviousLiveness,
+  classifyPreviousStall,
   isFileMissingError,
   livenessLogFields,
   type MainThreadWatchdog,
   type MainThreadWatchdogHandle,
+  type PreviousFileRead,
+  readPreviousFile,
+  stallLogFields,
 } from './main-thread-watchdog.ts';
 import {
   classifyMinidumpCrashKind,
@@ -107,8 +111,53 @@ interface SentinelState {
   appVersion?: string;
 }
 
+export interface MainExitRecord {
+  readonly schemaVersion: 1;
+  readonly bootId: string;
+  readonly exitedAt: string;
+  readonly exitCode: number;
+}
+
+type MainExitEvidence = 'matched' | 'absent' | 'unreadable' | 'no-previous-boot' | 'boot-mismatch';
+
+interface MainExitLogFields {
+  mainExit: { exitCode: number; exitedAt: string } | null;
+  mainExitEvidence: MainExitEvidence;
+}
+
+export function parseMainExitRecord(raw: string): MainExitRecord | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+  const p = parsed as Record<string, unknown>;
+  if (p.schemaVersion !== 1) return null;
+  if (typeof p.bootId !== 'string' || p.bootId === '') return null;
+  if (typeof p.exitedAt !== 'string' || !Number.isFinite(Date.parse(p.exitedAt))) return null;
+  if (typeof p.exitCode !== 'number' || !Number.isInteger(p.exitCode)) return null;
+  return { schemaVersion: 1, bootId: p.bootId, exitedAt: p.exitedAt, exitCode: p.exitCode };
+}
+
+function mainExitLogFields(
+  read: PreviousFileRead<MainExitRecord>,
+  prevBootId: string | null,
+): MainExitLogFields {
+  if (read.kind !== 'record') return { mainExit: null, mainExitEvidence: read.kind };
+  if (prevBootId === null) return { mainExit: null, mainExitEvidence: 'no-previous-boot' };
+  if (read.value.bootId !== prevBootId)
+    return { mainExit: null, mainExitEvidence: 'boot-mismatch' };
+  return {
+    mainExit: { exitCode: read.value.exitCode, exitedAt: read.value.exitedAt },
+    mainExitEvidence: 'matched',
+  };
+}
+
 export interface CrashDetectionDeps {
   sentinelPath: string;
+  mainExitPath: string;
   ackStorePath: string;
   crashDumpsDir: string;
   appBundleRoot: string;
@@ -118,7 +167,7 @@ export interface CrashDetectionDeps {
   now(): Date;
   currentBootSessionUuid(): string | null;
   installInFlight?(span: { deathFromMs: number; deathToMs: number }): InstallInFlight | null;
-  mainThreadWatchdog: Pick<MainThreadWatchdog, 'readPrevious' | 'start'>;
+  mainThreadWatchdog: Pick<MainThreadWatchdog, 'readPrevious' | 'readPreviousStall' | 'start'>;
   logger: CrashLogger;
 }
 
@@ -131,6 +180,7 @@ export interface InstallInFlight {
 export interface CrashDetection {
   detectBootCrash(): OkBugReportCrashDetectedEvent | null;
   markCleanQuit(): void;
+  noteProcessExit(code: number): void;
   noteAlive(): void;
   noteOsShutdown(reasons?: readonly string[]): void;
   noteSuspend(): void;
@@ -512,13 +562,27 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         ? installInFlight.handoffAt
         : null;
 
-      const livenessFields = livenessLogFields(
-        classifyPreviousLiveness(
-          deps.mainThreadWatchdog.readPrevious(),
-          prevBootId,
-          epochMsOrNull(prevLastAliveAt),
-        ),
+      const liveness = classifyPreviousLiveness(
+        deps.mainThreadWatchdog.readPrevious(),
+        prevBootId,
+        epochMsOrNull(prevLastAliveAt),
       );
+      const previousSessionFields = {
+        ...livenessLogFields(liveness),
+        ...stallLogFields(
+          classifyPreviousStall(deps.mainThreadWatchdog.readPreviousStall(), prevBootId, liveness),
+        ),
+        ...mainExitLogFields(
+          readPreviousFile(
+            deps.mainExitPath,
+            parseMainExitRecord,
+            deps.logger,
+            'crash-detection.main-exit-read-failed',
+            'exit record',
+          ),
+          prevBootId,
+        ),
+      };
 
       const freshDumps: ClassifiedDump[] = freshMinidumpEntries().map((entry) => {
         const ownership = classifyDump(entry.path);
@@ -676,7 +740,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           suspendedAt: prevSuspendedAt,
           pendingOsShutdownAt: prevPendingOsShutdownAt,
           osShutdownReasons: prevOsShutdownReasons,
-          ...livenessFields,
+          ...previousSessionFields,
         };
         if (reason === 'os-shutdown') {
           deps.logger.warn(
@@ -740,7 +804,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
                     }
                   : {}),
                 detectingAppVersion: deps.appVersion,
-                ...livenessFields,
+                ...previousSessionFields,
               },
               'previous session ended uncleanly — arming report invitation',
             );
@@ -781,6 +845,27 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           },
           'could not clear the dirty-shutdown sentinel — next boot may prompt spuriously',
         );
+      }
+    },
+
+    noteProcessExit(code: number): void {
+      if (sentinel === null || cleanQuitMarked) return;
+      const record: MainExitRecord = {
+        schemaVersion: 1,
+        bootId: sentinel.bootId,
+        exitedAt: deps.now().toISOString(),
+        exitCode: code,
+      };
+      try {
+        mkdirSync(dirname(deps.mainExitPath), { recursive: true });
+        writeFileSync(deps.mainExitPath, `${JSON.stringify(record)}\n`);
+      } catch (err) {
+        try {
+          deps.logger.warn(
+            { event: 'crash-detection.main-exit-write-failed', err, exitCode: code },
+            'could not record how the main process exited',
+          );
+        } catch {}
       }
     },
 

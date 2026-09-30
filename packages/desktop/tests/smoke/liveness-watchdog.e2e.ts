@@ -98,18 +98,13 @@ function killProcessTree(app: ElectronApplication): Promise<void> {
   return exited;
 }
 
-function freezeMainThread(app: ElectronApplication, ms: number): { settled: () => boolean } {
-  let settled = false;
-  const markSettled = (): void => {
-    settled = true;
-  };
-  void app
-    .evaluate((_electron, freezeMs) => {
+async function freezeMainThreadInATimerTask(app: ElectronApplication, ms: number): Promise<void> {
+  await app.evaluate((_electron, freezeMs) => {
+    setTimeout(function freezeMainThreadForStallCapture() {
       const end = Date.now() + freezeMs;
       while (Date.now() < end) {}
-    }, ms)
-    .then(markSettled, markSettled);
-  return { settled: () => settled };
+    }, 0);
+  }, ms);
 }
 
 async function relaunchAndReadBreadcrumb(
@@ -142,11 +137,10 @@ test.describe('liveness watchdog separates a frozen main thread from a dead one 
     captureStderrFor(app, { cleanupDirs: [tmpHome] });
     await waitForWitnessPings(tmpHome, 1);
 
-    const freeze = freezeMainThread(app, FREEZE_MS);
+    await freezeMainThreadInATimerTask(app, FREEZE_MS);
     await expect
       .poll(() => readWitness(tmpHome)?.blockedForMs ?? 0, { timeout: 60_000 })
       .toBeGreaterThanOrEqual(STALL_THRESHOLD_MS + 5_000);
-    expect(freeze.settled()).toBe(false);
     await killProcessTree(app);
 
     const breadcrumb = await relaunchAndReadBreadcrumb(tmpHome, captureStderrFor);
@@ -154,6 +148,17 @@ test.describe('liveness watchdog separates a frozen main thread from a dead one 
     expect(breadcrumb.dirtyShutdown).toBe(true);
     expect(breadcrumb.livenessVerdict).toBe('blocked');
     expect(breadcrumb.mainThreadBlockedForMs).toBeGreaterThanOrEqual(STALL_THRESHOLD_MS);
+    const stall = breadcrumb.mainThreadStall as {
+      outcome: string;
+      episode: string;
+      frames: Array<{ functionName: string }> | null;
+    } | null;
+    expect(breadcrumb.mainThreadStallEvidence).toBe('matched');
+    expect(stall?.outcome).toBe('captured');
+    expect(stall?.episode).toBe('final');
+    expect(stall?.frames?.[0]?.functionName).toBe('freezeMainThreadForStallCapture');
+    expect(breadcrumb.mainExit).toBeNull();
+    expect(breadcrumb.mainExitEvidence).toBe('absent');
   });
 
   test('a main thread killed while responsive boots as died', async ({ captureStderrFor }) => {
@@ -169,6 +174,8 @@ test.describe('liveness watchdog separates a frozen main thread from a dead one 
     console.log('[liveness-watchdog] died breadcrumb', JSON.stringify(breadcrumb));
     expect(breadcrumb.dirtyShutdown).toBe(true);
     expect(breadcrumb.livenessVerdict).toBe('died');
+    expect(breadcrumb.mainThreadStall).toBeNull();
+    expect(breadcrumb.mainExitEvidence).toBe('absent');
   });
 
   test('Utility and renderer crashes remain recoverable before an external process-tree kill (PRD-8779)', async ({
