@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/server';
 import { parse as yamlParse, stringify as yamlStringify } from 'yaml';
 
 interface TokenEntry {
@@ -126,7 +127,7 @@ export class FileBackend implements TokenStore {
   private write(data: Record<string, TokenEntry>): void {
     const dir = dirname(this.authFile);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
-    writeFileSync(this.authFile, yamlStringify(data), { mode: 0o600 });
+    atomicWriteFileSync(this.authFile, yamlStringify(data), { mode: 0o600 });
   }
 
   async get(host: string): Promise<TokenEntry | null> {

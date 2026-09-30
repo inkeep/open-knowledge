@@ -1410,9 +1410,11 @@ export function respondPersistenceFailure(
   );
 }
 
-export function createApiExtension(
-  options: ApiExtensionOptions,
-): Extension & { nativeApi: NativeApiHandle; localApi: LocalApiDispatch } {
+export function createApiExtension(options: ApiExtensionOptions): Extension & {
+  nativeApi: NativeApiHandle;
+  localApi: LocalApiDispatch;
+  shutdownLocalOps(): Promise<void>;
+} {
   const { durabilityState } = options;
   const ingressPolicy = options.ingressPolicy ?? buildIngressPolicy({});
   const checkLocalOpSecurity = (
@@ -5293,5 +5295,6 @@ export function createApiExtension(
     },
     nativeApi,
     localApi,
+    shutdownLocalOps: localOpRoutes.shutdown,
   };
 }

@@ -3,16 +3,24 @@ import { existsSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { getLogger } from '../logger.ts';
 import { runSubprocess } from './subprocess.ts';
+import type { LocalOpSubprocessLifetime } from './subprocess-lifetime.ts';
 import type { AuthEvent } from './types.ts';
 
 const execFileAsync = promisify(execFile);
 
-async function execForStdout(cmd: string, args: string[], timeoutMs: number): Promise<string> {
-  const { stdout } = await execFileAsync(cmd, args, {
-    encoding: 'utf-8',
-    timeout: timeoutMs,
-    windowsHide: true,
-  });
+async function execForStdout(
+  cmd: string,
+  args: string[],
+  timeoutMs: number,
+  lifetime?: LocalOpSubprocessLifetime,
+): Promise<string> {
+  const launch = () =>
+    execFileAsync(cmd, args, {
+      encoding: 'utf-8',
+      timeout: timeoutMs,
+      windowsHide: true,
+    });
+  const { stdout } = await (lifetime ? lifetime.execFile(launch) : launch());
   return stdout;
 }
 
@@ -27,15 +35,21 @@ const KNOWN_GH_PATHS: readonly string[] = [
 interface ResolveGhDeps {
   _exec?: (cmd: string, args: string[], timeoutMs: number) => Promise<string>;
   _fileExists?: (path: string) => boolean;
+  _lifetime?: LocalOpSubprocessLifetime;
 }
 
 export async function resolveGhBinaryPath(deps: ResolveGhDeps = {}): Promise<string | null> {
-  const exec = deps._exec ?? execForStdout;
+  const exec =
+    deps._exec ??
+    ((cmd: string, args: string[], timeoutMs: number) =>
+      execForStdout(cmd, args, timeoutMs, deps._lifetime));
   const fileExists = deps._fileExists ?? existsSync;
   const candidates = ['gh', ...KNOWN_GH_PATHS.filter(fileExists)];
   for (const cmd of candidates) {
+    if (deps._lifetime?.stopped) return null;
     try {
       await exec(cmd, ['--version'], 5000);
+      if (deps._lifetime?.stopped) return null;
       return cmd;
     } catch {}
   }
@@ -46,30 +60,38 @@ async function resolveGhLogin(
   ghPath: string,
   host: string,
   exec: (cmd: string, args: string[], timeoutMs: number) => Promise<string> = execForStdout,
+  lifetime?: LocalOpSubprocessLifetime,
 ): Promise<string> {
+  if (lifetime?.stopped) return '';
   try {
     const out = await exec(ghPath, ['api', '--hostname', host, 'user', '--jq', '.login'], 10000);
     return out.trim();
   } catch (err) {
+    if (lifetime?.stopped) return '';
     getLogger('gh-login').warn({ err }, 'post-login username lookup failed');
     return '';
   }
 }
 
 let ghPathCache: string | null | undefined;
-let ghProbeInFlight: Promise<string | null> | undefined;
-
-export async function cachedGhBinaryPath(): Promise<string | null> {
-  if (ghPathCache) return ghPathCache;
-  ghProbeInFlight ??= resolveGhBinaryPath().then((path) => {
-    ghProbeInFlight = undefined;
-    if (path !== null) ghPathCache = path;
-    return path;
-  });
-  return ghProbeInFlight;
+export function createGhBinaryPathResolver(
+  lifetime: LocalOpSubprocessLifetime,
+): () => Promise<string | null> {
+  let pending: Promise<string | null> | undefined;
+  return () => {
+    if (lifetime.stopped) return Promise.resolve(null);
+    if (ghPathCache) return Promise.resolve(ghPathCache);
+    pending ??= resolveGhBinaryPath({ _lifetime: lifetime }).then((path) => {
+      pending = undefined;
+      if (!lifetime.stopped && path !== null) ghPathCache = path;
+      return lifetime.stopped ? null : path;
+    });
+    return pending;
+  };
 }
 
 export interface RunGhDeviceLoginOptions {
+  lifetime?: LocalOpSubprocessLifetime;
   host: string;
   ghPath: string;
   cwd?: string;
@@ -97,6 +119,7 @@ export function runGhDeviceLoginSubprocess(
   let stderrBuf = '';
 
   const proc = runSubprocess({
+    lifetime: opts.lifetime,
     cliArgs: [opts.ghPath],
     cwd: opts.cwd,
     trailingArgs: [
@@ -112,6 +135,7 @@ export function runGhDeviceLoginSubprocess(
     timeoutMs,
     onLine: () => {},
     onStderr: (chunk) => {
+      if (opts.lifetime?.stopped) return;
       stderrBuf += chunk.toString('utf-8');
       if (emittedVerification) return;
       const code = stderrBuf.match(CODE_RE)?.[1];
@@ -129,7 +153,7 @@ export function runGhDeviceLoginSubprocess(
   });
 
   const verificationDeadline = setTimeout(() => {
-    if (emittedVerification) return;
+    if (emittedVerification || opts.lifetime?.stopped) return;
     deadlineExpired = true;
     opts.onEvent({
       type: 'error',
@@ -143,6 +167,7 @@ export function runGhDeviceLoginSubprocess(
 
   const done = proc.done.then(async (result) => {
     clearTimeout(verificationDeadline);
+    if (opts.lifetime?.stopped) return;
     if (deadlineExpired) return;
     if (result.timedOut) {
       opts.onEvent({ type: 'error', message: 'gh sign-in timed out — please try again' });
@@ -150,7 +175,13 @@ export function runGhDeviceLoginSubprocess(
     }
     if (result.cancelled) return;
     if (result.code === 0) {
-      const login = await resolveGhLogin(opts.ghPath, opts.host);
+      const login = await resolveGhLogin(
+        opts.ghPath,
+        opts.host,
+        (cmd, args, timeoutMs) => execForStdout(cmd, args, timeoutMs, opts.lifetime),
+        opts.lifetime,
+      );
+      if (opts.lifetime?.stopped) return;
       opts.onEvent({ type: 'complete', host: opts.host, login });
       return;
     }

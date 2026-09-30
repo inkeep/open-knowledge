@@ -49,13 +49,14 @@ import {
 } from '../local-op-security.ts';
 import {
   type AuthEvent,
-  cachedGhBinaryPath,
   classifyCloneError,
+  createGhBinaryPathResolver,
   runCloneSubprocess,
   runDeviceFlowSubprocess,
   runGhDeviceLoginSubprocess,
   runPatSubprocess,
 } from '../local-ops/index.ts';
+import { LocalOpSubprocessLifetime } from '../local-ops/subprocess-lifetime.ts';
 import type { PinoLogger } from '../logger.ts';
 import { readDeclaredGitHubHosts, resolveGitHubAuthHost } from '../share/git-context.ts';
 import { redactShareSubprocessStderr } from '../share/publish.ts';
@@ -101,7 +102,9 @@ export interface LocalOpRouteDeps {
   semanticSearch: SemanticSearchService | undefined;
 }
 
-export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
+export function createLocalOpRoutes(
+  deps: LocalOpRouteDeps,
+): ApiRouteGroup & { shutdown(): Promise<void> } {
   const {
     projectDir,
     contentDir,
@@ -115,6 +118,8 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
     readSemanticProviderConfig,
     semanticSearch,
   } = deps;
+  const subprocessLifetime = new LocalOpSubprocessLifetime();
+  const resolveGhBinaryPath = createGhBinaryPathResolver(subprocessLifetime);
 
   const LOCAL_OP_CLONE_KEY = '/api/local-op/clone';
   const LOCAL_OP_OK_INIT_KEY = '/api/local-op/ok-init';
@@ -528,6 +533,19 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
   const authLoginInFlight: { current: InFlightAuthStream | null } = { current: null };
   const authGhLoginInFlight: { current: InFlightAuthStream | null } = { current: null };
 
+  function shutdown(): Promise<void> {
+    return subprocessLifetime.shutdown();
+  }
+
+  function rejectShuttingDown(res: ServerResponse, handler: string, err?: unknown): boolean {
+    if (!subprocessLifetime.stopped) return false;
+    if (err !== undefined) log.debug({ err, handler }, '[local-op] error after server shutdown');
+    errorResponse(res, 503, 'urn:ok:error:auth-failed', 'The server is shutting down.', {
+      handler,
+    });
+    return true;
+  }
+
   const DISPLACED_STREAM_MESSAGE = 'Sign-in was replaced by a newer sign-in attempt.';
 
   function streamAuthFlow(cfg: {
@@ -541,6 +559,8 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
   }): void {
     const { res, handler, guardKey, inFlight, concurrentMessage, streamErrorMessage, makeFlow } =
       cfg;
+
+    if (rejectShuttingDown(res, handler)) return;
 
     if (!localOpGuard.tryAcquire(guardKey)) {
       const stale = inFlight.current;
@@ -598,6 +618,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
     };
 
     const flow = makeFlow((event: AuthEvent) => {
+      if (subprocessLifetime.stopped) return;
       if (event.type === 'error') {
         writeStreamError(500, 'urn:ok:error:auth-failed', streamErrorMessage, {
           cause: event.message ? new Error(event.message) : undefined,
@@ -633,7 +654,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
     };
     res.on('close', onClientClose);
 
-    void flow.done.finally(() => {
+    const finish = () => {
       stopHeartbeat();
       res.off('close', onClientClose);
       if (!res.writableEnded && !res.destroyed) {
@@ -645,7 +666,8 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
         inFlight.current = null;
         localOpGuard.release(guardKey);
       }
-    });
+    };
+    subprocessLifetime.track(flow.done.then(finish, finish));
   }
 
   const HANDLE_LOCAL_OP_AUTH_LOGIN = 'local-op-auth-login';
@@ -664,6 +686,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
     res: ServerResponse,
     body: LocalOpAuthHostRequest,
   ): Promise<void> {
+    if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_LOGIN)) return;
     const host = resolveAuthHost(res, HANDLE_LOCAL_OP_AUTH_LOGIN, body.host);
     if (host === null) return;
     streamAuthFlow({
@@ -675,6 +698,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
       streamErrorMessage: 'Auth subprocess reported an error.',
       makeFlow: (onEvent) =>
         runDeviceFlowSubprocess({
+          lifetime: subprocessLifetime,
           cliArgs: localOpCliArgs,
           cwd: authProjectDir,
           host,
@@ -688,36 +712,44 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
   const handleLocalOpAuthGhLogin = withValidation(
     LocalOpAuthHostRequestSchema,
     async (_req, res, body) => {
+      if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_GH_LOGIN)) return;
       const host = resolveAuthHost(res, HANDLE_LOCAL_OP_AUTH_GH_LOGIN, body.host);
       if (host === null) return;
-      const ghPath = await cachedGhBinaryPath();
-      if (ghPath === null) {
-        errorResponse(
-          res,
-          400,
-          'urn:ok:error:auth-failed',
-          'The GitHub CLI (gh) is not installed.',
-          { handler: HANDLE_LOCAL_OP_AUTH_GH_LOGIN },
-        );
-        return;
-      }
+      const finish = subprocessLifetime.begin();
+      try {
+        const ghPath = await resolveGhBinaryPath();
+        if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_GH_LOGIN)) return;
+        if (ghPath === null) {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:auth-failed',
+            'The GitHub CLI (gh) is not installed.',
+            { handler: HANDLE_LOCAL_OP_AUTH_GH_LOGIN },
+          );
+          return;
+        }
 
-      streamAuthFlow({
-        res,
-        handler: HANDLE_LOCAL_OP_AUTH_GH_LOGIN,
-        guardKey: LOCAL_OP_AUTH_GH_LOGIN_KEY,
-        inFlight: authGhLoginInFlight,
-        concurrentMessage: 'A gh sign-in is already in progress.',
-        streamErrorMessage: 'gh sign-in reported an error.',
-        makeFlow: (onEvent) =>
-          runGhDeviceLoginSubprocess({
-            host,
-            ghPath,
-            cwd: authProjectDir,
-            timeoutMs: AUTH_DEVICE_FLOW_TIMEOUT_MS,
-            onEvent,
-          }),
-      });
+        streamAuthFlow({
+          res,
+          handler: HANDLE_LOCAL_OP_AUTH_GH_LOGIN,
+          guardKey: LOCAL_OP_AUTH_GH_LOGIN_KEY,
+          inFlight: authGhLoginInFlight,
+          concurrentMessage: 'A gh sign-in is already in progress.',
+          streamErrorMessage: 'gh sign-in reported an error.',
+          makeFlow: (onEvent) =>
+            runGhDeviceLoginSubprocess({
+              lifetime: subprocessLifetime,
+              host,
+              ghPath,
+              cwd: authProjectDir,
+              timeoutMs: AUTH_DEVICE_FLOW_TIMEOUT_MS,
+              onEvent,
+            }),
+        });
+      } finally {
+        finish();
+      }
     },
     {
       handler: HANDLE_LOCAL_OP_AUTH_GH_LOGIN,
@@ -764,6 +796,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
   const handleLocalOpAuthStatus = withValidation(
     LocalOpAuthHostRequestSchema,
     async (_req, res, body) => {
+      if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_STATUS)) return;
       const host = resolveAuthHost(res, HANDLE_LOCAL_OP_AUTH_STATUS, body.host);
       if (host === null) return;
 
@@ -778,19 +811,22 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
         return;
       }
 
+      const finish = subprocessLifetime.begin();
       try {
         const [cmd, ...baseArgs] = localOpCliArgs;
         const spawnArgs = [...baseArgs, 'auth', 'status', '--json', '--host', host];
 
         const output = await new Promise<string>((resolve, reject) => {
-          const child = spawn(
-            cmd,
-            spawnArgs,
-            withHiddenWindowsConsole({
-              ...LOCAL_OP_PIPE_STDIO_OPTIONS,
-              env: { ...process.env },
-              cwd: authProjectDir,
-            }),
+          const child = subprocessLifetime.spawn(() =>
+            spawn(
+              cmd,
+              spawnArgs,
+              withHiddenWindowsConsole({
+                ...LOCAL_OP_PIPE_STDIO_OPTIONS,
+                env: { ...process.env },
+                cwd: authProjectDir,
+              }),
+            ),
           );
           let settled = false;
           const killTimer = setTimeout(() => {
@@ -835,7 +871,9 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
             break;
           } catch {}
         }
-        const ghAvailable = (await cachedGhBinaryPath()) !== null;
+        if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_STATUS)) return;
+        const ghAvailable = (await resolveGhBinaryPath()) !== null;
+        if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_STATUS)) return;
         if (parsed !== null) {
           successResponse(
             res,
@@ -854,12 +892,14 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
           );
         }
       } catch (err) {
+        if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_STATUS, err)) return;
         errorResponse(res, 500, 'urn:ok:error:auth-failed', 'Auth status check failed.', {
           handler: HANDLE_LOCAL_OP_AUTH_STATUS,
           cause: err,
         });
       } finally {
         localOpGuard.release(LOCAL_OP_AUTH_STATUS_KEY);
+        finish();
       }
     },
     {
@@ -874,6 +914,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
   const handleLocalOpAuthPat = withValidation(
     LocalOpAuthPatRequestSchema,
     async (_req, res, body) => {
+      if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_PAT)) return;
       const host = resolveAuthHost(res, HANDLE_LOCAL_OP_AUTH_PAT, body.host);
       if (host === null) return;
 
@@ -888,13 +929,16 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
         return;
       }
 
+      const finish = subprocessLifetime.begin();
       try {
         const result = await runPatSubprocess({
+          lifetime: subprocessLifetime,
           cliArgs: localOpCliArgs,
           cwd: authProjectDir,
           host,
           token: body.token,
         });
+        if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_PAT)) return;
         if (result.ok) {
           onAuthCredentialLanded(getSyncEngine);
           successResponse(
@@ -910,12 +954,14 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
           });
         }
       } catch (err) {
+        if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_PAT, err)) return;
         errorResponse(res, 500, 'urn:ok:error:auth-failed', 'Storing the token failed.', {
           handler: HANDLE_LOCAL_OP_AUTH_PAT,
           cause: err,
         });
       } finally {
         localOpGuard.release(LOCAL_OP_AUTH_PAT_KEY);
+        finish();
       }
     },
     {
@@ -942,6 +988,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
     res: ServerResponse,
     body: LocalOpAuthHostRequest,
   ): Promise<void> {
+    if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_REPOS)) return;
     const host = resolveAuthHost(res, HANDLE_LOCAL_OP_AUTH_REPOS, body.host);
     if (host === null) return;
 
@@ -970,15 +1017,26 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
 
     let settled = false;
     let stdoutBuffer = '';
-    const child = spawn(
-      cmd,
-      spawnArgs,
-      withHiddenWindowsConsole({
-        ...LOCAL_OP_PIPE_STDIO_OPTIONS,
-        env: { ...process.env },
-        cwd: authProjectDir,
-      }),
-    );
+    const finish = subprocessLifetime.begin();
+    const child = (() => {
+      try {
+        return subprocessLifetime.spawn(() =>
+          spawn(
+            cmd,
+            spawnArgs,
+            withHiddenWindowsConsole({
+              ...LOCAL_OP_PIPE_STDIO_OPTIONS,
+              env: { ...process.env },
+              cwd: authProjectDir,
+            }),
+          ),
+        );
+      } catch (err) {
+        finish();
+        localOpGuard.release(LOCAL_OP_AUTH_REPOS_KEY);
+        throw err;
+      }
+    })();
 
     const killTimer = setTimeout(() => {
       if (settled) return;
@@ -1001,6 +1059,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
     killTimer.unref?.();
 
     child.stdout.on('data', (chunk: Buffer) => {
+      if (subprocessLifetime.stopped) return;
       stdoutBuffer += chunk.toString('utf-8');
       const lines = stdoutBuffer.split('\n');
       stdoutBuffer = lines.pop() ?? '';
@@ -1033,6 +1092,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
     });
 
     child.on('close', (code) => {
+      finish();
       clearTimeout(killTimer);
       if (!settled) {
         settled = true;
@@ -1069,7 +1129,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
       if (!settled) {
         settled = true;
         clearTimeout(killTimer);
-        child.kill('SIGTERM');
+        if (!subprocessLifetime.stopped) child.kill('SIGTERM');
         localOpGuard.release(LOCAL_OP_AUTH_REPOS_KEY);
       }
     });
@@ -1079,6 +1139,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
   const handleLocalOpAuthSignout = withValidation(
     LocalOpAuthHostRequestSchema,
     async (_req, res, body) => {
+      if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_SIGNOUT)) return;
       const host = body.host ?? resolveAuthHost(res, HANDLE_LOCAL_OP_AUTH_SIGNOUT, undefined);
       if (host === null) return;
 
@@ -1093,19 +1154,22 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
         return;
       }
 
+      const finish = subprocessLifetime.begin();
       try {
         const [cmd, ...baseArgs] = localOpCliArgs;
         const spawnArgs = [...baseArgs, 'auth', 'signout', '--host', host];
 
         await new Promise<void>((resolve, reject) => {
-          const child = spawn(
-            cmd,
-            spawnArgs,
-            withHiddenWindowsConsole({
-              ...LOCAL_OP_IGNORED_STDIO_OPTIONS,
-              env: { ...process.env },
-              cwd: authProjectDir,
-            }),
+          const child = subprocessLifetime.spawn(() =>
+            spawn(
+              cmd,
+              spawnArgs,
+              withHiddenWindowsConsole({
+                ...LOCAL_OP_IGNORED_STDIO_OPTIONS,
+                env: { ...process.env },
+                cwd: authProjectDir,
+              }),
+            ),
           );
           let settled = false;
           const killTimer = setTimeout(() => {
@@ -1135,6 +1199,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
           });
         });
 
+        if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_SIGNOUT)) return;
         successResponse(
           res,
           200,
@@ -1145,12 +1210,14 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
           },
         );
       } catch (err) {
+        if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_SIGNOUT, err)) return;
         errorResponse(res, 500, 'urn:ok:error:auth-failed', 'Auth signout failed.', {
           handler: HANDLE_LOCAL_OP_AUTH_SIGNOUT,
           cause: err,
         });
       } finally {
         localOpGuard.release(LOCAL_OP_AUTH_SIGNOUT_KEY);
+        finish();
       }
     },
     {
@@ -1398,12 +1465,15 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
     '/api/local-op/embeddings/test': handleLocalOpEmbeddingsTest,
   } satisfies ApiRouteRecord;
 
-  return createApiRouteGroup(routes, {
-    mutatingPrefixes: ['/api/local-op/'],
-    dynamic: {
-      prefix: '/api/local-op/',
-      template: '/api/local-op/:op',
-      dispatch: () => undefined,
-    },
-  });
+  return {
+    ...createApiRouteGroup(routes, {
+      mutatingPrefixes: ['/api/local-op/'],
+      dynamic: {
+        prefix: '/api/local-op/',
+        template: '/api/local-op/:op',
+        dispatch: () => undefined,
+      },
+    }),
+    shutdown,
+  };
 }

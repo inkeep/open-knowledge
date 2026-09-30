@@ -265,7 +265,8 @@ describe('auth-login stream displacement (a second start orphans the first clien
 
   test('gh-login rejects an explicit undeclared host before looking up gh and accepts a declaration', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-gh-login-host-'));
-    const probe = vi.spyOn(ghLogin, 'cachedGhBinaryPath').mockResolvedValue(null);
+    const probe = vi.fn(async () => null);
+    vi.spyOn(ghLogin, 'createGhBinaryPathResolver').mockReturnValue(probe);
     try {
       const baseUrl = await serveLocalOpGroup({ projectDir });
       const rejected = await postJson(baseUrl, '/api/local-op/auth/gh-login', {
@@ -367,7 +368,7 @@ describe('auth-login stream displacement (a second start orphans the first clien
 
   test('auth subprocesses run in the project directory instead of the server cwd', async () => {
     const projectDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-auth-cwd-')));
-    vi.spyOn(ghLogin, 'cachedGhBinaryPath').mockResolvedValue(null);
+    vi.spyOn(ghLogin, 'createGhBinaryPathResolver').mockReturnValue(async () => null);
     try {
       const localOpCliArgs = [
         process.execPath,
