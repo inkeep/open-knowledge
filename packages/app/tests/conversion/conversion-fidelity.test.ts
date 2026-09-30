@@ -344,7 +344,7 @@ describe('disk round-trip: projection write → persistence → disk → onLoadD
         } else {
           await expect
             .poll(() => mdManager.parse(readTestDoc(server.contentDir)), { timeout: 5000 })
-            .toEqual(json);
+            .toEqual(mdManager.parse(input));
         }
 
         const diskContent = readTestDoc(server.contentDir);
