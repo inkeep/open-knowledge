@@ -1955,6 +1955,7 @@
     ],
     "IA6JW2": ["Detectando"],
     "ICoNYz": ["También puedes gestionar esto en Ajustes."],
+    "IDXn2n": ["No volver a preguntar al abrir esta aplicación sin configurarla en este proyecto"],
     "IFALcX": ["Descripción de ", ["field"]],
     "IFezUv": ["No se pudo completar la auditoría. Inténtalo de nuevo."],
     "IIgshV": ["bloqueado"],
@@ -2056,6 +2057,7 @@
     "JgaVnN": ["Permitir acceso externo"],
     "Jhj_lh": ["Modifica el destino del enlace, el ancla y el texto mostrado."],
     "JhqycE": ["No hay archivos recientes"],
+    "Ji6oie": ["Una transferencia más reciente reemplazó este reintento."],
     "JkCD2u": ["Sincronización en pausa: no tienes permiso para hacer push a este repositorio"],
     "JlFcis": ["Enviar"],
     "JmfgFc": ["(un worktree de ", ["0"], ")"],
@@ -2260,6 +2262,7 @@
       ["1"],
       ")."
     ],
+    "LhVIxY": ["Mostrar avisos de nuevo"],
     "LhWYpm": ["Hay otras rutas OK seguidas en el remoto:"],
     "Li4U-T": ["Más información sobre ", ["title"]],
     "Lj_5Uv": ["Fallan comprobaciones obligatorias"],
@@ -2689,6 +2692,9 @@
     "PrVaZo": ["¿Desinstalar OpenKnowledge?"],
     "PrWQiT": ["Mover Terminal a la derecha"],
     "PrhzDE": ["Desplazar hacia arriba"],
+    "Pur9o0": [
+      "Para guardar esta configuración, activa el servidor MCP del proyecto o el servidor MCP global."
+    ],
     "Pw5PTU": ["Origen externo"],
     "PxZCNM": ["Fuera de lo que confirma Open Knowledge."],
     "Q-DKvr": ["Instalar desde ", ["source"]],
@@ -2884,8 +2890,8 @@
       ["scopeLabel"],
       " es un duplicado redundante: se verificó que el original no cambió. Elimina esa copia y vuelve a intentar el movimiento."
     ],
-    "Rah7yq": ["¿Qué debería hacer la IA? (opcional)"],
     "Rb1zMa": ["Sin extracto"],
+    "RcPztQ": ["Abrir ", ["handoffLabel"]],
     "RcrskJ": ["El formato se veía mal"],
     "RduDYw": [
       "<0>",
@@ -3631,7 +3637,6 @@
     "Z8nach": ["Falló la subida: ", ["0"]],
     "ZBF9fn": ["Gestionar las carpetas de habilidades"],
     "ZBZEkP": ["Capturada antes de este diálogo, con el puntero marcado."],
-    "ZBt4rI": ["Instrucción para la IA"],
     "ZBxvV3": ["Terminal nueva"],
     "ZDOq9A": ["Lo que compartes se envía al equipo de OpenKnowledge."],
     "ZGVsOD": ["Envía esta rama a GitHub antes de compartir."],
@@ -4918,6 +4923,7 @@
     "jBVUXo": ["No se pudo abrir la terminal; inténtalo de nuevo."],
     "jC8Bv4": ["Echando un vistazo…"],
     "jC8LSZ": ["Restablecer los filtros de vista"],
+    "jDejAI": ["Comprobando la conexión con ", ["checkingLabel"], "…"],
     "jDhTLC": ["Elegir icono"],
     "jEVipR": [
       "Actualmente se leen desde otra carpeta. Después de vincularlas, se leerán desde ",
@@ -4926,6 +4932,7 @@
     ],
     "jEZ6Lf": ["provisional"],
     "jEdF24": ["Página inexistente: ", ["linkTitle"], ". Haz clic para crearla."],
+    "jIWP0P": ["Mostrar avisos de nuevo para ", ["displayName"], " en este proyecto"],
     "jJdwCB": ["Revertir"],
     "jKd3AP": ["No se pudo activar la terminal: ", ["0"]],
     "jKeGuZ": ["Elimina un documento, carpeta, plantilla, habilidad o recurso"],
@@ -5921,6 +5928,11 @@
     "sqUrlK": ["Cavilando…"],
     "sqgz2k": [
       "OpenKnowledge no pudo terminar de configurar este proyecto. El worktree se creó, pero no se abrió."
+    ],
+    "srbby-": [
+      "Los cambios se guardaron, pero OpenKnowledge no pudo confirmar la conexión con ",
+      ["handoffLabel"],
+      ". Revisa la configuración del servidor MCP de esta aplicación y selecciona Guardar cambios para comprobarlo de nuevo."
     ],
     "srdlOs": [
       "La sincronización automática está en pausa: no tienes permiso para hacer push en este repositorio. Cambia a Automático (solo Pull) para seguir recibiendo actualizaciones."

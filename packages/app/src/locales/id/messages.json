@@ -1702,6 +1702,7 @@
     ],
     "IA6JW2": ["Mendeteksi"],
     "ICoNYz": ["Anda juga bisa mengelola ini di Pengaturan."],
+    "IDXn2n": ["Jangan tanya lagi saat membuka aplikasi ini tanpa penyiapan di proyek ini"],
     "IFALcX": ["Deskripsi untuk ", ["field"]],
     "IFezUv": ["Audit tidak dapat diselesaikan. Coba lagi."],
     "IIgshV": ["terkunci"],
@@ -1791,6 +1792,7 @@
     "JgaVnN": ["Izinkan akses eksternal"],
     "Jhj_lh": ["Ubah tujuan tautan, jangkar, dan label tampilannya."],
     "JhqycE": ["Tidak ada berkas terbaru"],
+    "Ji6oie": ["Handoff yang lebih baru menggantikan percobaan ulang ini."],
     "JkCD2u": ["Sinkronisasi dijeda — Anda tidak punya izin push ke repo ini"],
     "JlFcis": ["Kirim"],
     "JmfgFc": ["(sebuah worktree dari ", ["0"], ")"],
@@ -1971,6 +1973,7 @@
       ["1"],
       ")."
     ],
+    "LhVIxY": ["Tampilkan petunjuk lagi"],
     "LhWYpm": ["Ada jalur OK lain yang dilacak di remote:"],
     "Li4U-T": ["Pelajari lebih lanjut tentang ", ["title"]],
     "Lj_5Uv": ["Pemeriksaan wajib gagal"],
@@ -2344,6 +2347,7 @@
     "PrVaZo": ["Copot OpenKnowledge?"],
     "PrWQiT": ["Pindahkan Terminal ke kanan"],
     "PrhzDE": ["Geser ke atas"],
+    "Pur9o0": ["Untuk menyimpan penyiapan ini, aktifkan server MCP proyek atau server MCP global."],
     "Pw5PTU": ["Origin eksternal"],
     "PxZCNM": ["Di luar cakupan commit Open Knowledge."],
     "Q-DKvr": ["Pasang dari ", ["source"]],
@@ -2513,8 +2517,8 @@
       ["scopeLabel"],
       " adalah duplikat yang tidak diperlukan: aslinya sudah diverifikasi tidak berubah. Hapus salinan itu, lalu coba pemindahan lagi."
     ],
-    "Rah7yq": ["Apa yang harus dilakukan AI? (opsional)"],
     "Rb1zMa": ["Tanpa cuplikan"],
+    "RcPztQ": ["Buka ", ["handoffLabel"]],
     "RcrskJ": ["Format terlihat salah"],
     "RduDYw": [
       "<0>",
@@ -3151,7 +3155,6 @@
     "Z8nach": ["Unggahan gagal: ", ["0"]],
     "ZBF9fn": ["Kelola folder keterampilan"],
     "ZBZEkP": ["Diambil sebelum dialog ini, dengan penunjuk ditandai."],
-    "ZBt4rI": ["Instruksi untuk AI"],
     "ZBxvV3": ["Terminal Baru"],
     "ZDOq9A": ["Apa yang Anda bagikan dikirim ke tim OpenKnowledge."],
     "ZGVsOD": ["Push cabang ini ke GitHub sebelum berbagi."],
@@ -4252,6 +4255,7 @@
     "jBVUXo": ["Terminal tidak bisa dibuka — silakan coba lagi."],
     "jC8Bv4": ["Melihat-lihat sekitar…"],
     "jC8LSZ": ["Setel ulang filter tampilan"],
+    "jDejAI": ["Memeriksa koneksi ke ", ["checkingLabel"], "…"],
     "jDhTLC": ["Pilih ikon"],
     "jEVipR": [
       "Saat ini keterampilan ini dibaca dari folder lain. Setelah ditautkan, keterampilan ini dibaca dari ",
@@ -4260,6 +4264,7 @@
     ],
     "jEZ6Lf": ["sementara"],
     "jEdF24": ["Halaman belum ada: ", ["linkTitle"], ". Klik untuk membuat."],
+    "jIWP0P": ["Tampilkan petunjuk lagi untuk ", ["displayName"], " di proyek ini"],
     "jJdwCB": ["Kembalikan"],
     "jKd3AP": ["Terminal tidak dapat diaktifkan: ", ["0"]],
     "jKeGuZ": ["Menghapus dokumen, folder, templat, keterampilan, atau aset"],
@@ -5148,6 +5153,11 @@
     "sqUrlK": ["Melamun…"],
     "sqgz2k": [
       "OpenKnowledge tidak dapat menyelesaikan penyiapan proyek ini. Worktree dibuat, tetapi tidak dibuka."
+    ],
+    "srbby-": [
+      "Perubahan telah disimpan, tetapi OpenKnowledge tidak dapat memastikan koneksi ke ",
+      ["handoffLabel"],
+      ". Periksa pengaturan server MCP aplikasi ini, lalu pilih Simpan perubahan untuk memeriksa lagi."
     ],
     "srdlOs": [
       "Sinkronisasi otomatis dijeda: Anda tidak punya izin push ke repositori ini. Beralihlah ke Otomatis (hanya Pull) agar tetap menerima pembaruan."

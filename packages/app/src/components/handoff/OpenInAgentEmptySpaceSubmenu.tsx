@@ -37,6 +37,7 @@ import { useTerminalLaunch } from './TerminalLaunchContext';
 import { cliIconTargetId } from './terminal-cli-display';
 import {
   type HandoffDispatchInput,
+  type HandoffDispatchOptions,
   openInstallUrl,
   startAgentThreadForInput,
 } from './useHandoffDispatch';
@@ -52,6 +53,7 @@ interface OpenInAgentEmptySpaceSubmenuProps {
   readonly dispatch: (
     target: HandoffTarget,
     input: HandoffDispatchInput,
+    options: HandoffDispatchOptions,
   ) => Promise<HandoffOutcome>;
 }
 
@@ -185,7 +187,9 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
                         void openInstallUrl(target);
                         return;
                       }
-                      void dispatch(target.id, input);
+                      void dispatch(target.id, input, {
+                        installState: installStates[target.id],
+                      });
                     }}
                     data-testid={`empty-space-open-in-${target.id}`}
                     aria-label={accessibleLabel}

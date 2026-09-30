@@ -842,7 +842,6 @@ msgstr "{displayName} ({bin}) belum terpasang atau tidak ada di PATH Anda."
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} CLI"
 msgstr "CLI {displayName}"
@@ -1439,6 +1438,10 @@ msgstr "panel baru di sebelah kiri {0}"
 #: src/components/EditorWorkspace.tsx
 msgid "a new pane to the right of {0}"
 msgstr "panel baru di sebelah kanan {0}"
+
+#: src/components/handoff/useHandoffDispatch.ts
+msgid "A newer handoff replaced this retry."
+msgstr "Handoff yang lebih baru menggantikan percobaan ulang ini."
 
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
@@ -2225,7 +2228,6 @@ msgstr "Tanya CLI {0}"
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Ask {agentName}"
 msgstr "Tanya {agentName}"
 
@@ -2847,6 +2849,10 @@ msgstr "Perubahan disimpan otomatis."
 msgid "Changes saved automatically."
 msgstr "Perubahan disimpan otomatis."
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Changes were saved, but OpenKnowledge could not confirm a connection to {handoffLabel}. Check the MCP server settings for this app, then select Save changes to check again."
+msgstr "Perubahan telah disimpan, tetapi OpenKnowledge tidak dapat memastikan koneksi ke {handoffLabel}. Periksa pengaturan server MCP aplikasi ini, lalu pilih Simpan perubahan untuk memeriksa lagi."
+
 #: src/components/settings/SearchSection.tsx
 msgid "Character budget per indexing request"
 msgstr "Anggaran karakter per permintaan pengindeksan"
@@ -2903,6 +2909,10 @@ msgstr "Diperiksa oleh: {0}"
 #: src/components/SkillEditorActions.tsx
 msgid "Checking"
 msgstr "Memeriksa"
+
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Checking connection to {checkingLabel}…"
+msgstr "Memeriksa koneksi ke {checkingLabel}…"
 
 #: src/components/BottomComposer.tsx
 msgid "Checking for agents"
@@ -3538,7 +3548,6 @@ msgstr "Peringatan konfigurasi"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/SessionsHost.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -5307,6 +5316,10 @@ msgstr "Respons dokumen tidak sesuai bentuk yang diharapkan."
 msgid "Documents tagged <0>#{tagName}</0>"
 msgstr "Dokumen bertag <0>#{tagName}</0>"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Don't ask again when opening this app without setup in this project"
+msgstr "Jangan tanya lagi saat membuka aplikasi ini tanpa penyiapan di proyek ini"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
 msgstr "Tidak melihat <0>Keterampilan</0>? Aktifkan dulu <1>Pengaturan <2/> Kemampuan <3/> Eksekusi kode dan pembuatan berkas</1>."
@@ -6062,7 +6075,6 @@ msgstr "eksternal"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "External apps"
 msgstr "Aplikasi eksternal"
@@ -7513,7 +7525,6 @@ msgstr "Dalam dokumen indeks: entri berada di bawah judul bagian dan masing-masi
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
@@ -7897,10 +7908,6 @@ msgstr "Dipasang di"
 #: src/components/SkillDirectoryResult.tsx
 msgid "installs:"
 msgstr "pemasangan:"
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Instruction for the AI"
-msgstr "Instruksi untuk AI"
 
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -9983,6 +9990,10 @@ msgstr "Buka {displayName} Desktop"
 msgid "Open {docName}"
 msgstr "Buka {docName}"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Open {handoffLabel}"
+msgstr "Buka {handoffLabel}"
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr "Buka {keyName} di peramban"
@@ -10295,14 +10306,12 @@ msgstr "Membuka pencarian penyunting visual dengan kendali penggantian terbentan
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI"
 msgstr "Buka dengan AI"
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI {displayName} Desktop"
 msgstr "Buka dengan AI {displayName} Desktop"
 
@@ -13347,6 +13356,14 @@ msgstr "Tampilkan panel"
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "Tampilkan panel ({panelShortcutLabel})"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again"
+msgstr "Tampilkan petunjuk lagi"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again for {displayName} in this project"
+msgstr "Tampilkan petunjuk lagi untuk {displayName} di proyek ini"
+
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Show replace"
 msgstr "Tampilkan penggantian"
@@ -14312,7 +14329,6 @@ msgstr "Templat tersedia"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -15514,6 +15530,10 @@ msgstr "Akan dikerjakan"
 msgid "To do."
 msgstr "Akan dikerjakan."
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "To save this setup, turn on Project MCP server or Global MCP server."
+msgstr "Untuk menyimpan penyiapan ini, aktifkan server MCP proyek atau server MCP global."
+
 #: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Today"
 msgstr "Hari ini"
@@ -16429,10 +16449,6 @@ msgstr "Apa bedanya salinan dan symlink?"
 #: src/components/PublishToGitHubDialog.tsx
 msgid "What is this knowledge base for?"
 msgstr "Untuk apa basis pengetahuan ini?"
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "What should the AI do? (optional)"
-msgstr "Apa yang harus dilakukan AI? (opsional)"
 
 #: src/components/acp/ThreadView.tsx
 msgid "What should we work on?"

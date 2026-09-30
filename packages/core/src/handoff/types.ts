@@ -28,6 +28,8 @@ export type HandoffFailureReason =
   | 'web-endpoint-error'
   | 'invalid-payload'
   | 'dispatch-error'
+  | 'setup-canceled'
+  | 'superseded'
   | 'web-host-cursor-unsupported';
 
 export type HandoffScope = 'selection';

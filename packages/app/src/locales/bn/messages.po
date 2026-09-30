@@ -842,7 +842,6 @@ msgstr "{displayName} ({bin}) ইনস্টল করা নেই বা আ�
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} CLI"
 msgstr "{displayName} CLI"
@@ -1439,6 +1438,10 @@ msgstr "{0}-এর বাঁ পাশে একটি নতুন প্যা
 #: src/components/EditorWorkspace.tsx
 msgid "a new pane to the right of {0}"
 msgstr "{0}-এর ডান পাশে একটি নতুন প্যান"
+
+#: src/components/handoff/useHandoffDispatch.ts
+msgid "A newer handoff replaced this retry."
+msgstr "একটি নতুন হ্যান্ডঅফ এই পুনরায় চেষ্টার জায়গা নিয়েছে।"
 
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
@@ -2225,7 +2228,6 @@ msgstr "{0} CLI-কে জিজ্ঞেস করুন"
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Ask {agentName}"
 msgstr "{agentName}-কে জিজ্ঞেস করুন"
 
@@ -2847,6 +2849,10 @@ msgstr "পরিবর্তনগুলি স্বয়ংক্রিয�
 msgid "Changes saved automatically."
 msgstr "পরিবর্তনগুলি স্বয়ংক্রিয়ভাবে সংরক্ষিত হয়েছে।"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Changes were saved, but OpenKnowledge could not confirm a connection to {handoffLabel}. Check the MCP server settings for this app, then select Save changes to check again."
+msgstr "পরিবর্তনগুলি সংরক্ষিত হয়েছে, কিন্তু OpenKnowledge {handoffLabel}-এর সঙ্গে সংযোগ নিশ্চিত করতে পারেনি। এই অ্যাপের MCP সার্ভারের সেটিংস পরীক্ষা করুন, তারপর আবার পরীক্ষা করতে পরিবর্তনগুলি সংরক্ষণ করুন নির্বাচন করুন।"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Character budget per indexing request"
 msgstr "প্রতি ইনডেক্সিং অনুরোধে অক্ষর বাজেট"
@@ -2903,6 +2909,10 @@ msgstr "পরীক্ষা করেছেন: {0}"
 #: src/components/SkillEditorActions.tsx
 msgid "Checking"
 msgstr "পরীক্ষা করা হচ্ছে"
+
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Checking connection to {checkingLabel}…"
+msgstr "{checkingLabel}-এর সঙ্গে সংযোগ পরীক্ষা করা হচ্ছে…"
 
 #: src/components/BottomComposer.tsx
 msgid "Checking for agents"
@@ -3538,7 +3548,6 @@ msgstr "কনফিগারেশন সতর্কতা"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/SessionsHost.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -5307,6 +5316,10 @@ msgstr "নথিগুলোর সাড়া প্রত্যাশিত 
 msgid "Documents tagged <0>#{tagName}</0>"
 msgstr "<0>#{tagName}</0> ট্যাগযুক্ত নথি"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Don't ask again when opening this app without setup in this project"
+msgstr "এই প্রকল্পে সেটআপ ছাড়া এই অ্যাপ খুললে আবার জিজ্ঞাসা করবেন না"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
 msgstr "<0>Skills</0> দেখতে পাচ্ছেন না? আগে <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> চালু করুন।"
@@ -6062,7 +6075,6 @@ msgstr "বাহ্যিক"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "External apps"
 msgstr "বাহ্যিক অ্যাপ"
@@ -7513,7 +7525,6 @@ msgstr "একটি সূচক নথিতে: এন্ট্রিগু�
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
@@ -7897,10 +7908,6 @@ msgstr "যেখানে ইনস্টল হবে"
 #: src/components/SkillDirectoryResult.tsx
 msgid "installs:"
 msgstr "ইনস্টল:"
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Instruction for the AI"
-msgstr "AI-এর জন্য নির্দেশ"
 
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -9983,6 +9990,10 @@ msgstr "{displayName} Desktop খুলুন"
 msgid "Open {docName}"
 msgstr "{docName} খুলুন"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Open {handoffLabel}"
+msgstr "{handoffLabel} খুলুন"
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr "{keyName} ব্রাউজারে খুলুন"
@@ -10295,14 +10306,12 @@ msgstr "দৃশ্য-সম্পাদকের খোঁজা বদলা
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI"
 msgstr "AI দিয়ে খুলুন"
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI {displayName} Desktop"
 msgstr "AI {displayName} Desktop দিয়ে খুলুন"
 
@@ -13347,6 +13356,14 @@ msgstr "প্যানেল দেখান"
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "প্যানেল দেখান ({panelShortcutLabel})"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again"
+msgstr "আবার নির্দেশনা দেখান"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again for {displayName} in this project"
+msgstr "আবার নির্দেশনা দেখান: এই প্রকল্পে {displayName}-এর জন্য"
+
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Show replace"
 msgstr "বদলানো দেখান"
@@ -14312,7 +14329,6 @@ msgstr "উপলব্ধ টেমপ্লেট"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -15514,6 +15530,10 @@ msgstr "করণীয়"
 msgid "To do."
 msgstr "করণীয়।"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "To save this setup, turn on Project MCP server or Global MCP server."
+msgstr "এই সেটআপ সংরক্ষণ করতে, প্রকল্প MCP সার্ভার বা গ্লোবাল MCP সার্ভার চালু করুন।"
+
 #: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Today"
 msgstr "আজ"
@@ -16429,10 +16449,6 @@ msgstr "অনুলিপি ও সিমলিংকের মধ্যে �
 #: src/components/PublishToGitHubDialog.tsx
 msgid "What is this knowledge base for?"
 msgstr "এই জ্ঞানভাণ্ডারটি কিসের জন্য?"
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "What should the AI do? (optional)"
-msgstr "AI-এর কী করা উচিত? (ঐচ্ছিক)"
 
 #: src/components/acp/ThreadView.tsx
 msgid "What should we work on?"

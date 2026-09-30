@@ -517,6 +517,7 @@ describe('pathspec name invariance — pull-only overlay restore (site 6)', () =
     const project = simpleGit(cloneDir);
     await project.raw('config', 'user.name', 'Project');
     await project.raw('config', 'user.email', 'project@test.com');
+    await project.raw('config', 'merge.conflictStyle', 'merge');
 
     writeFileSync(join(sisterDir, docName), 'v2 remote\n', 'utf-8');
     await sister.add('-A');

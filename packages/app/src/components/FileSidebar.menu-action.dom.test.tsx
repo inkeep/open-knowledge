@@ -469,6 +469,7 @@ describe('FileSidebar menu-action runtime routing', () => {
     expect(handoffDispatchMock).toHaveBeenCalledWith(
       'codex',
       expect.objectContaining({ docPath: 'notes/source.md' }),
+      expect.objectContaining({ installState: expect.objectContaining({ installed: true }) }),
     );
     expect(threadLaunchMock).not.toHaveBeenCalled();
   });
@@ -511,6 +512,7 @@ describe('FileSidebar menu-action runtime routing', () => {
     expect(handoffDispatchMock).toHaveBeenCalledWith(
       'codex',
       expect.objectContaining({ docPath: 'notes/source.md' }),
+      expect.objectContaining({ installState: expect.objectContaining({ installed: true }) }),
     );
 
     menuActionCallback?.('copy-full-path' as MenuAction);

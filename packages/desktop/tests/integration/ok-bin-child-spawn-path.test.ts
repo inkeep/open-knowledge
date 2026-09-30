@@ -51,6 +51,7 @@ import {
   createScratchHomeWithOkBin,
   firstShellOnDisk,
   MINIMAL_PARENT_PATH,
+  RC_FILES,
   RC_WITHOUT_MANAGED_BLOCK,
 } from '../support/ok-bin-scratch-home.test-helper.ts';
 
@@ -118,6 +119,12 @@ describe.skipIf(process.platform === 'win32')(
         exitCode: SENTINEL_EXIT_CODE,
         recordPath: childPathRecord,
       });
+      for (const rcFile of RC_FILES) {
+        writeFileSync(
+          join(scratchHome, rcFile),
+          `${RC_WITHOUT_MANAGED_BLOCK}export PATH='${MINIMAL_PARENT_PATH}'\n`,
+        );
+      }
       previousHome = process.env.HOME;
       previousPath = process.env.PATH;
       previousZdotdir = process.env.ZDOTDIR;

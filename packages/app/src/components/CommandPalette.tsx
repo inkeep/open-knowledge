@@ -1303,7 +1303,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                     onSelect={() => {
                       if (!enabled || !handoffInput) return;
                       onOpenChange(false);
-                      void dispatchHandoff(target.id, handoffInput);
+                      void dispatchHandoff(target.id, handoffInput, { installState });
                     }}
                     data-testid={`command-palette-open-in-${target.id}`}
                     aria-label={accessibleLabel}

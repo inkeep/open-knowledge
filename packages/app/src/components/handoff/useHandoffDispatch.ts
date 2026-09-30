@@ -17,6 +17,7 @@ import {
   type HandoffPayload,
   type HandoffScope,
   type HandoffTarget,
+  type InstallState,
   OK_TERMINAL_SURFACE_PREAMBLE,
   OK_THREAD_SURFACE_PREAMBLE,
   type PromptTransport,
@@ -44,6 +45,7 @@ import {
   type HandoffStatsLine,
 } from '@/lib/handoff/telemetry';
 import { docNameToRelativePath, joinWorkspacePath, type Workspace } from '@/lib/workspace-paths';
+import { useExternalHandoffGate } from './ExternalHandoffGate';
 import { requestAgentThreadLaunch } from './thread-launch-events';
 import '@/lib/desktop-bridge-types';
 
@@ -488,6 +490,7 @@ export async function runHandoffDispatch(
   input: HandoffDispatchInput,
   deps: HandoffDispatchDeps,
   attempt = 1,
+  retryDispatch?: (nextAttempt: number) => Promise<HandoffOutcome>,
 ): Promise<HandoffOutcome> {
   if (target === 'claude-cowork' && attempt === 1) {
     let installOutcome: EnsureCoworkSkillOutcome;
@@ -539,7 +542,13 @@ export async function runHandoffDispatch(
         action: {
           label,
           onClick: () => {
-            void runHandoffDispatch(target, input, deps, attempt + 1);
+            void (
+              retryDispatch?.(attempt + 1) ?? runHandoffDispatch(target, input, deps, attempt + 1)
+            ).then((retryOutcome) => {
+              if (!retryOutcome.ok && retryOutcome.reason === 'superseded') {
+                deps.toast.error(t`A newer handoff replaced this retry.`);
+              }
+            });
           },
         },
       });
@@ -585,16 +594,43 @@ export function defaultHandoffDispatchDeps(): HandoffDispatchDeps {
 }
 
 interface UseHandoffDispatchResult {
-  dispatch: (target: HandoffTarget, input: HandoffDispatchInput) => Promise<HandoffOutcome>;
+  dispatch: (
+    target: HandoffTarget,
+    input: HandoffDispatchInput,
+    options: HandoffDispatchOptions,
+  ) => Promise<HandoffOutcome>;
   reinstallCoworkSkill: () => Promise<EnsureCoworkSkillOutcome>;
+}
+
+export interface HandoffDispatchOptions {
+  readonly installState: InstallState;
+  readonly restoreFocus?: () => void;
 }
 
 export function useHandoffDispatch(): UseHandoffDispatchResult {
   const { merged } = useConfigContext();
+  const gate = useExternalHandoffGate();
   const autoOpen = merged?.appearance?.preview?.autoOpen ?? true;
+  const dispatchAttempt = (
+    target: HandoffTarget,
+    input: HandoffDispatchInput,
+    attempt: number,
+    options: HandoffDispatchOptions,
+  ): Promise<HandoffOutcome> =>
+    gate.dispatch(
+      target,
+      () =>
+        runHandoffDispatch(
+          target,
+          input,
+          { ...defaultHandoffDispatchDeps(), autoOpen },
+          attempt,
+          (nextAttempt) => dispatchAttempt(target, input, nextAttempt, options),
+        ),
+      { ...options, projectDir: input.projectDir },
+    );
   return {
-    dispatch: (target, input) =>
-      runHandoffDispatch(target, input, { ...defaultHandoffDispatchDeps(), autoOpen }),
+    dispatch: (target, input, options) => dispatchAttempt(target, input, 1, options),
     reinstallCoworkSkill,
   };
 }

@@ -98,6 +98,23 @@ describe('applyAgentConnectionIntents', () => {
     expect(result.snapshot).toEqual(SNAPSHOT);
   });
 
+  test('forwards the caller web AbortSignal to the local-web fetch', async () => {
+    vi.stubGlobal('window', {});
+    const controller = new AbortController();
+    const fetch = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(
+          JSON.stringify({ actions: [], conflicts: [], withheld: [], snapshot: SNAPSHOT }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const result = await applyAgentConnectionIntents([], { webSignal: controller.signal });
+
+    expect(result.ok).toBe(true);
+    expect(fetch.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+  });
+
   test('keeps the post-apply snapshot when the host reports a planning conflict', async () => {
     vi.stubGlobal('window', {});
     vi.stubGlobal(
@@ -192,6 +209,19 @@ describe('applyAgentConnectionIntents', () => {
 });
 
 describe('what a refused desktop apply carries back', () => {
+  test('an older desktop bridge without agent integrations fails closed', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('window', { okDesktop: { shell: {} } });
+    vi.stubGlobal('fetch', fetch);
+
+    const result = await applyAgentConnectionIntents([]);
+
+    expect(result.ok).toBe(false);
+    expect(result.snapshot).toBeNull();
+    expect(result.error).toBeTruthy();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   test('keeps the host error text and the unavailable flag', async () => {
     const apply = vi.fn(async () => ({
       ok: false as const,

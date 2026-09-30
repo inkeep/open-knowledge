@@ -488,7 +488,9 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
             toast.info(t`${target.displayName} isn't installed yet — opening its download page.`);
             return;
           }
-          void dispatchHandoff(target.id, input);
+          void dispatchHandoff(target.id, input, {
+            installState: handoffInstallStates[target.id],
+          });
           return;
         }
         case 'copy-full-path': {

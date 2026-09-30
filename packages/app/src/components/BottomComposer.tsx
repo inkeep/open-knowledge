@@ -533,12 +533,25 @@ export function BottomComposer({
       return false;
     }
     setPending(true);
-    const outcome = await dispatch(resolvedTarget.id, input).finally(() => {
+    const settle = (clear: boolean) => {
       setPending(false);
-      clearIfOwned();
-    });
-    if (outcome.ok) recordOnboardingAskedAi();
-    return outcome.ok;
+      if (clear) clearIfOwned();
+    };
+    return dispatch(resolvedTarget.id, input, {
+      installState: states[resolvedTarget.id],
+    }).then(
+      (outcome) => {
+        settle(
+          outcome.ok || (outcome.reason !== 'setup-canceled' && outcome.reason !== 'superseded'),
+        );
+        if (outcome.ok) recordOnboardingAskedAi();
+        return outcome.ok;
+      },
+      (error: unknown) => {
+        settle(true);
+        throw error;
+      },
+    );
   };
 
   const composeCurrentInput = () => {

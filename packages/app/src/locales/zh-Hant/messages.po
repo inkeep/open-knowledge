@@ -842,7 +842,6 @@ msgstr "{displayName}（{bin}）未安裝，也不在你的 PATH 中。"
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} CLI"
 msgstr "{displayName} CLI"
@@ -1443,6 +1442,10 @@ msgstr "{0} 左側的新窗格"
 #: src/components/EditorWorkspace.tsx
 msgid "a new pane to the right of {0}"
 msgstr "{0} 右側的新窗格"
+
+#: src/components/handoff/useHandoffDispatch.ts
+msgid "A newer handoff replaced this retry."
+msgstr "新的移交操作取代了這次重試。"
 
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
@@ -2229,7 +2232,6 @@ msgstr "詢問 {0} CLI"
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Ask {agentName}"
 msgstr "詢問 {agentName}"
 
@@ -2851,6 +2853,10 @@ msgstr "變更會自動儲存。"
 msgid "Changes saved automatically."
 msgstr "變更已自動儲存。"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Changes were saved, but OpenKnowledge could not confirm a connection to {handoffLabel}. Check the MCP server settings for this app, then select Save changes to check again."
+msgstr "變更已儲存，但 OpenKnowledge 無法確認與 {handoffLabel} 的連線。請檢查此應用程式的 MCP 伺服器設定，然後選擇「儲存變更」再次檢查。"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Character budget per indexing request"
 msgstr "每次索引請求的字元預算"
@@ -2907,6 +2913,10 @@ msgstr "檢查者：{0}"
 #: src/components/SkillEditorActions.tsx
 msgid "Checking"
 msgstr "正在檢查"
+
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Checking connection to {checkingLabel}…"
+msgstr "正在檢查與 {checkingLabel} 的連線…"
 
 #: src/components/BottomComposer.tsx
 msgid "Checking for agents"
@@ -3542,7 +3552,6 @@ msgstr "設定警告"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/SessionsHost.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -5311,6 +5320,10 @@ msgstr "文件回應的結構與預期不符。"
 msgid "Documents tagged <0>#{tagName}</0>"
 msgstr "標了 <0>#{tagName}</0> 的文件"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Don't ask again when opening this app without setup in this project"
+msgstr "在此專案中未經設定開啟此應用程式時不再詢問"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
 msgstr "沒看到<0>技能</0>嗎？請先啟用<1>設定 <2/> 功能 <3/> 程式碼執行與檔案建立</1>。"
@@ -6066,7 +6079,6 @@ msgstr "外部"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "External apps"
 msgstr "外部應用程式"
@@ -7517,7 +7529,6 @@ msgstr "在索引文件中：條目位於節標題下，每個條目都帶有連
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
@@ -7901,10 +7912,6 @@ msgstr "安裝到"
 #: src/components/SkillDirectoryResult.tsx
 msgid "installs:"
 msgstr "安裝次數："
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Instruction for the AI"
-msgstr "給 AI 的指示"
 
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -9987,6 +9994,10 @@ msgstr "開啟 {displayName} Desktop"
 msgid "Open {docName}"
 msgstr "開啟 {docName}"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Open {handoffLabel}"
+msgstr "開啟 {handoffLabel}"
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr "在瀏覽器中開啟 {keyName}"
@@ -10299,14 +10310,12 @@ msgstr "開啟視覺化編輯器的尋找，並展開取代控制項。"
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI"
 msgstr "用 AI 開啟"
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI {displayName} Desktop"
 msgstr "用 AI {displayName} Desktop 開啟"
 
@@ -13351,6 +13360,14 @@ msgstr "顯示面板"
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "顯示面板（{panelShortcutLabel}）"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again"
+msgstr "重新顯示提示"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again for {displayName} in this project"
+msgstr "重新顯示提示：此專案中的 {displayName}"
+
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Show replace"
 msgstr "顯示取代"
@@ -14316,7 +14333,6 @@ msgstr "可用的範本"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -15518,6 +15534,10 @@ msgstr "待辦"
 msgid "To do."
 msgstr "待辦。"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "To save this setup, turn on Project MCP server or Global MCP server."
+msgstr "若要儲存此設定，請開啟專案 MCP 伺服器或全域 MCP 伺服器。"
+
 #: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Today"
 msgstr "今天"
@@ -16433,10 +16453,6 @@ msgstr "副本和符號連結有什麼差別？"
 #: src/components/PublishToGitHubDialog.tsx
 msgid "What is this knowledge base for?"
 msgstr "這個知識庫是要做什麼用的？"
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "What should the AI do? (optional)"
-msgstr "希望 AI 做什麼？（選填）"
 
 #: src/components/acp/ThreadView.tsx
 msgid "What should we work on?"

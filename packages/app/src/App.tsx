@@ -10,6 +10,7 @@ import { EditorPane } from '@/components/EditorPane';
 import { FeedbackMenuTrigger } from '@/components/FeedbackMenuTrigger';
 import { FileSidebar } from '@/components/FileSidebar';
 import { defaultInitialDir } from '@/components/file-tree-utils';
+import { ExternalHandoffGateProvider } from '@/components/handoff/ExternalHandoffGate';
 import {
   type TerminalLaunchContextValue,
   TerminalLaunchProvider,
@@ -524,7 +525,7 @@ function ConfigProviderHost({ children }: { children: ReactNode }) {
     <ConfigProvider collabUrl={collabUrl} collabTerminal={collabTerminal}>
       <EditorLifecycleFlush />
       <BackgroundThrottleReporter />
-      {children}
+      <ExternalHandoffGateProvider>{children}</ExternalHandoffGateProvider>
     </ConfigProvider>
   );
 }

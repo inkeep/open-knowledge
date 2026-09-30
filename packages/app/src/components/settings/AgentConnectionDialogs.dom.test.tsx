@@ -177,6 +177,25 @@ async function renderRemoveDialog(
 
 afterEach(cleanup);
 
+test('Escape dismisses a connection tip without discarding an unsaved settings choice', async () => {
+  const user = userEvent.setup();
+  await renderConfigureDialog(async () => result(snapshotWith()), 'claude');
+  const checkbox = screen.getByRole('checkbox', { name: /project mcp server/i });
+  await user.click(checkbox);
+  const unsavedChoice = checkbox.getAttribute('aria-checked');
+  const informationTrigger = screen.getAllByRole('button', { name: 'More information' })[0];
+  informationTrigger.focus();
+  await screen.findByRole('tooltip');
+
+  await user.keyboard('{Escape}');
+
+  await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
+  expect(screen.getByRole('dialog')).toBeTruthy();
+  expect(checkbox.getAttribute('aria-checked')).toBe(unsavedChoice);
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+});
+
 describe('a rejected write never seals the dialog', () => {
   test('a save that rejects surfaces the failure and leaves the dialog closable', async () => {
     const user = userEvent.setup();

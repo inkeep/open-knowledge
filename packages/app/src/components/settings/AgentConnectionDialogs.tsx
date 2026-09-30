@@ -21,7 +21,7 @@ import {
 import { plural } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Folder, Info, Monitor, Sparkles, TriangleAlert, X } from 'lucide-react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { AgentBrandIcon } from '@/components/AgentIconCluster';
 import {
   AlertDialog,
@@ -134,7 +134,12 @@ export interface AgentConnection {
 
 export type ApplyConnections = (
   intents: readonly ApplyIntent[],
+  options?: { readonly webSignal?: AbortSignal },
 ) => Promise<ApplyAgentConnectionsResult>;
+
+type ConnectionSaveResult =
+  | ApplyAgentConnectionsResult
+  | { readonly kind: 'saved-not-ready'; readonly message: string };
 
 function partForCell(cell: ConnectionCell): ConnectionPart | null {
   if (cell.scope === 'project' && cell.piece === 'mcp') return 'projectMcp';
@@ -740,6 +745,8 @@ export function ConfigureConnectionDialog({
   onSave,
   paired = false,
   onCloseAutoFocus,
+  validateSave,
+  alternateAction,
 }: {
   connection: AgentConnection | null;
   open: boolean;
@@ -747,16 +754,29 @@ export function ConfigureConnectionDialog({
   onSave: (
     parts: ConnectionParts,
     alsoRemove?: readonly SatisfierId[],
-  ) => Promise<ApplyAgentConnectionsResult>;
+  ) => Promise<ConnectionSaveResult>;
   paired?: boolean;
   onCloseAutoFocus?: (event: Event) => void;
+  validateSave?: (parts: ConnectionParts) => string | null;
+  alternateAction?: {
+    label: ReactNode;
+    onClick: () => void;
+    preference?: {
+      checked: boolean;
+      label: ReactNode;
+      onCheckedChange: (checked: boolean) => void;
+    };
+  };
 }) {
   const { i18n, t } = useLingui();
+  const alternatePreferenceId = useId();
   const [draft, setDraft] = useState<ConnectionParts>(() =>
     connection === null ? EMPTY_PARTS : defaultPartsForConnection(connection),
   );
   const [saving, setSaving] = useState(false);
   const [saveFailure, setSaveFailure] = useState<ApplyAgentConnectionsResult | null>(null);
+  const [savedNotReady, setSavedNotReady] = useState<string | null>(null);
+  const [validationFailure, setValidationFailure] = useState<string | null>(null);
   const [sharedChoice, setSharedChoice] = useState<SharedRemovalChoice | null>(null);
   const overwriting =
     connection !== null &&
@@ -767,6 +787,8 @@ export function ConfigureConnectionDialog({
 
   function setPart(part: ConnectionPart, checked: boolean) {
     setDraft((current) => ({ ...current, [part]: checked }));
+    setValidationFailure(null);
+    setSavedNotReady(null);
     setSharedChoice(null);
   }
 
@@ -878,6 +900,14 @@ export function ConfigureConnectionDialog({
           ) : null}
           {sharedChoice !== null ? (
             <SharedRemovalNote choice={sharedChoice} />
+          ) : validationFailure !== null ? (
+            <p role="alert" className="text-sm text-destructive">
+              {validationFailure}
+            </p>
+          ) : savedNotReady !== null ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              {savedNotReady}
+            </p>
           ) : saveFailure !== null && connection !== null ? (
             <ApplyFailureAlert result={saveFailure} connection={connection} />
           ) : null}
@@ -899,6 +929,33 @@ export function ConfigureConnectionDialog({
           >
             <Trans>Cancel</Trans>
           </Button>
+          {alternateAction === undefined ? null : (
+            <div className="flex flex-col items-start gap-2 sm:items-end">
+              {alternateAction.preference === undefined ? null : (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id={alternatePreferenceId}
+                    checked={alternateAction.preference.checked}
+                    disabled={saving}
+                    onCheckedChange={(checked) =>
+                      alternateAction.preference?.onCheckedChange(checked === true)
+                    }
+                  />
+                  <Label htmlFor={alternatePreferenceId} className="cursor-pointer text-sm">
+                    {alternateAction.preference.label}
+                  </Label>
+                </div>
+              )}
+              <Button
+                variant="ghost"
+                className="font-mono uppercase"
+                disabled={saving}
+                onClick={alternateAction.onClick}
+              >
+                {alternateAction.label}
+              </Button>
+            </div>
+          )}
           <Button
             variant={overwriting || removingCount > 0 ? 'destructive' : 'default'}
             className="font-mono uppercase"
@@ -906,12 +963,23 @@ export function ConfigureConnectionDialog({
               saving || (sharedChoice === null ? addingCount + removingCount === 0 : !widenable)
             }
             onClick={() => {
+              const validationMessage = validateSave?.(draft) ?? null;
+              if (validationMessage !== null) {
+                setValidationFailure(validationMessage);
+                return;
+              }
               setSaving(true);
+              setValidationFailure(null);
               setSaveFailure(null);
+              setSavedNotReady(null);
               const widen = sharedChoice?.peerSatisfierIds;
               setSharedChoice(null);
               void onSave(draft, widen)
                 .then((result) => {
+                  if ('kind' in result) {
+                    setSavedNotReady(result.message);
+                    return;
+                  }
                   if (result.ok) {
                     onOpenChange(false);
                     return;

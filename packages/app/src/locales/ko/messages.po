@@ -842,7 +842,6 @@ msgstr "{displayName} ({bin}) 미설치 또는 PATH 미등록"
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} CLI"
 msgstr "{displayName} CLI"
@@ -1443,6 +1442,10 @@ msgstr "{0} 왼쪽의 새 패널"
 #: src/components/EditorWorkspace.tsx
 msgid "a new pane to the right of {0}"
 msgstr "{0} 오른쪽의 새 패널"
+
+#: src/components/handoff/useHandoffDispatch.ts
+msgid "A newer handoff replaced this retry."
+msgstr "새로운 핸드오프가 이 재시도를 대체했습니다."
 
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
@@ -2229,7 +2232,6 @@ msgstr "{0} CLI 질문"
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Ask {agentName}"
 msgstr "{agentName}에게 질문"
 
@@ -2851,6 +2853,10 @@ msgstr "변경사항이 자동으로 저장됩니다."
 msgid "Changes saved automatically."
 msgstr "변경사항이 자동으로 저장되었습니다."
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Changes were saved, but OpenKnowledge could not confirm a connection to {handoffLabel}. Check the MCP server settings for this app, then select Save changes to check again."
+msgstr "변경 사항을 저장했지만 OpenKnowledge에서 {handoffLabel} 연결을 확인하지 못했습니다. 이 앱의 MCP 서버 설정을 확인한 다음 변경 사항 저장을 선택하여 다시 확인하세요."
+
 #: src/components/settings/SearchSection.tsx
 msgid "Character budget per indexing request"
 msgstr "인덱싱 요청당 문자 예산"
@@ -2907,6 +2913,10 @@ msgstr "확인한 사람: {0}"
 #: src/components/SkillEditorActions.tsx
 msgid "Checking"
 msgstr "확인 중"
+
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Checking connection to {checkingLabel}…"
+msgstr "{checkingLabel} 연결 확인 중…"
 
 #: src/components/BottomComposer.tsx
 msgid "Checking for agents"
@@ -3542,7 +3552,6 @@ msgstr "구성 경고"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/SessionsHost.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -5311,6 +5320,10 @@ msgstr "문서 응답이 예상한 형식과 일치하지 않습니다."
 msgid "Documents tagged <0>#{tagName}</0>"
 msgstr "<0>#{tagName}</0> 태그가 지정된 문서"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Don't ask again when opening this app without setup in this project"
+msgstr "이 프로젝트에서 설정 없이 이 앱을 열 때 다시 묻지 않기"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
 msgstr "<0>Skills</0> 미표시? 먼저 <1>설정 <2/> 기능 <3/> 코드 실행 및 파일 생성</1> 활성화."
@@ -6066,7 +6079,6 @@ msgstr "외부"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "External apps"
 msgstr "외부 앱"
@@ -7517,7 +7529,6 @@ msgstr "인덱스 문서에서는 항목이 섹션 제목 아래에 있고 각 �
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
@@ -7901,10 +7912,6 @@ msgstr "설치 위치"
 #: src/components/SkillDirectoryResult.tsx
 msgid "installs:"
 msgstr "설치 항목:"
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Instruction for the AI"
-msgstr "AI용 지침"
 
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -9987,6 +9994,10 @@ msgstr "{displayName} Desktop 열기"
 msgid "Open {docName}"
 msgstr "{docName} 열기"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Open {handoffLabel}"
+msgstr "{handoffLabel} 열기"
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr "브라우저에서 {keyName} 열기"
@@ -10299,14 +10310,12 @@ msgstr "교체 컨트롤을 확장한 상태로 비주얼 편집기 찾기를 �
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI"
 msgstr "AI로 열기"
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI {displayName} Desktop"
 msgstr "AI {displayName} Desktop으로 열기"
 
@@ -13351,6 +13360,14 @@ msgstr "패널 보기"
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "패널 보기 ({panelShortcutLabel})"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again"
+msgstr "안내 다시 표시"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again for {displayName} in this project"
+msgstr "안내 다시 표시: 이 프로젝트의 {displayName}"
+
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Show replace"
 msgstr "바꾸기 표시"
@@ -14316,7 +14333,6 @@ msgstr "사용 가능한 템플릿"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -15518,6 +15534,10 @@ msgstr "할 일"
 msgid "To do."
 msgstr "할 일"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "To save this setup, turn on Project MCP server or Global MCP server."
+msgstr "이 설정을 저장하려면 프로젝트 MCP 서버 또는 전역 MCP 서버를 켜세요."
+
 #: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Today"
 msgstr "오늘"
@@ -16433,10 +16453,6 @@ msgstr "복사본과 심볼릭 링크의 차이는 무엇인가요?"
 #: src/components/PublishToGitHubDialog.tsx
 msgid "What is this knowledge base for?"
 msgstr "이 지식 베이스는 무엇에 쓰나요?"
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "What should the AI do? (optional)"
-msgstr "AI 작업 내용? (선택 사항)"
 
 #: src/components/acp/ThreadView.tsx
 msgid "What should we work on?"

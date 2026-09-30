@@ -842,7 +842,6 @@ msgstr ""
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} CLI"
 msgstr ""
@@ -1438,6 +1437,10 @@ msgstr ""
 #. placeholder {0}: paneLabel(data.paneId)
 #: src/components/EditorWorkspace.tsx
 msgid "a new pane to the right of {0}"
+msgstr ""
+
+#: src/components/handoff/useHandoffDispatch.ts
+msgid "A newer handoff replaced this retry."
 msgstr ""
 
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
@@ -2225,7 +2228,6 @@ msgstr ""
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Ask {agentName}"
 msgstr ""
 
@@ -2847,6 +2849,10 @@ msgstr ""
 msgid "Changes saved automatically."
 msgstr ""
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Changes were saved, but OpenKnowledge could not confirm a connection to {handoffLabel}. Check the MCP server settings for this app, then select Save changes to check again."
+msgstr ""
+
 #: src/components/settings/SearchSection.tsx
 msgid "Character budget per indexing request"
 msgstr ""
@@ -2902,6 +2908,10 @@ msgstr ""
 
 #: src/components/SkillEditorActions.tsx
 msgid "Checking"
+msgstr ""
+
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Checking connection to {checkingLabel}…"
 msgstr ""
 
 #: src/components/BottomComposer.tsx
@@ -3538,7 +3548,6 @@ msgstr ""
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/SessionsHost.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -5307,6 +5316,10 @@ msgstr ""
 msgid "Documents tagged <0>#{tagName}</0>"
 msgstr ""
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Don't ask again when opening this app without setup in this project"
+msgstr ""
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
 msgstr ""
@@ -6062,7 +6075,6 @@ msgstr ""
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "External apps"
 msgstr ""
@@ -7513,7 +7525,6 @@ msgstr ""
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
@@ -7896,10 +7907,6 @@ msgstr ""
 
 #: src/components/SkillDirectoryResult.tsx
 msgid "installs:"
-msgstr ""
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Instruction for the AI"
 msgstr ""
 
 #: src/components/settings/IntegrationsSection.tsx
@@ -9983,6 +9990,10 @@ msgstr ""
 msgid "Open {docName}"
 msgstr ""
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Open {handoffLabel}"
+msgstr ""
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr ""
@@ -10295,14 +10306,12 @@ msgstr ""
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI {displayName} Desktop"
 msgstr ""
 
@@ -13347,6 +13356,14 @@ msgstr ""
 msgid "Show panel ({panelShortcutLabel})"
 msgstr ""
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again"
+msgstr ""
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again for {displayName} in this project"
+msgstr ""
+
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Show replace"
 msgstr ""
@@ -14312,7 +14329,6 @@ msgstr ""
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -15514,6 +15530,10 @@ msgstr ""
 msgid "To do."
 msgstr ""
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "To save this setup, turn on Project MCP server or Global MCP server."
+msgstr ""
+
 #: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Today"
 msgstr ""
@@ -16428,10 +16448,6 @@ msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "What is this knowledge base for?"
-msgstr ""
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "What should the AI do? (optional)"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx

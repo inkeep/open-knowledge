@@ -230,6 +230,7 @@ import {
   buildFolderHandoffInput,
   buildHandoffInput,
   type HandoffDispatchInput,
+  type HandoffDispatchOptions,
   useHandoffDispatch,
 } from './handoff/useHandoffDispatch';
 import { useInstalledAgents } from './handoff/useInstalledAgents';
@@ -474,6 +475,7 @@ interface FileTreeMenuProps {
     readonly dispatch: (
       target: HandoffTarget,
       input: HandoffDispatchInput,
+      options: HandoffDispatchOptions,
     ) => Promise<HandoffOutcome>;
   };
   model: PierreFileTreeModel;
@@ -684,6 +686,7 @@ function FileTreeMenu({
                 isElectronHost={handoff.isElectronHost}
                 dispatch={handoff.dispatch}
                 onBeforeLaunch={close}
+                restoreFocus={context.restoreFocus}
               />
             )
           }

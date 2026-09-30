@@ -37,6 +37,7 @@ import { useTerminalLaunch } from './TerminalLaunchContext';
 import { cliIconTargetId } from './terminal-cli-display';
 import {
   type HandoffDispatchInput,
+  type HandoffDispatchOptions,
   openInstallUrl,
   startAgentThreadForInput,
 } from './useHandoffDispatch';
@@ -53,8 +54,10 @@ interface OpenInAgentContextSubmenuProps {
   readonly dispatch: (
     target: HandoffTarget,
     input: HandoffDispatchInput,
+    options: HandoffDispatchOptions,
   ) => Promise<HandoffOutcome>;
   readonly onBeforeLaunch?: () => void;
+  readonly restoreFocus?: () => void;
 }
 
 export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps): ReactNode {
@@ -64,7 +67,7 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
   const registeredAgents = useRegisteredAgents();
   const overrides = useEnabledOverrides();
   if (isEmbedded) return null;
-  const { input, installStates, dispatch, onBeforeLaunch } = props;
+  const { input, installStates, dispatch, onBeforeLaunch, restoreFocus } = props;
   const inputMissing = input === null;
   const hint = contextRowHint(inputMissing);
 
@@ -189,7 +192,10 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
                         void openInstallUrl(target);
                         return;
                       }
-                      void dispatch(target.id, input);
+                      void dispatch(target.id, input, {
+                        installState: installStates[target.id],
+                        restoreFocus,
+                      });
                     }}
                     data-testid={`file-tree-open-in-${target.id}`}
                     aria-label={accessibleLabel}

@@ -21,7 +21,7 @@ const MIGRATED_MODULES: ReadonlyArray<readonly [path: string, messages: number]>
   ['src/hooks/use-folder-config.ts', 2],
   ['src/lib/install-onboarding-toast.ts', 9],
   ['src/lib/install-deep-link-listener.ts', 1],
-  ['src/components/handoff/useHandoffDispatch.ts', 7],
+  ['src/components/handoff/useHandoffDispatch.ts', 8],
   ['src/editor/utils/editor-strings.ts', 2],
   ['src/editor/components/IconPickerInput.tsx', 4],
   ['src/editor/components/ColorPickerInput.tsx', 2],

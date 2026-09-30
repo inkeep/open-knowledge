@@ -1677,6 +1677,7 @@
     "IA1wNb": ["The Claude Desktop App didn't open the file. Is it installed? (", ["msg"], ")"],
     "IA6JW2": ["Detecting"],
     "ICoNYz": ["You can also manage this in Settings."],
+    "IDXn2n": ["Don't ask again when opening this app without setup in this project"],
     "IFALcX": ["Description for ", ["field"]],
     "IFezUv": ["The audit could not be completed. Try again."],
     "IIgshV": ["locked"],
@@ -1764,6 +1765,7 @@
     "JgaVnN": ["Allow external access"],
     "Jhj_lh": ["Modify the link target, anchor, and display label."],
     "JhqycE": ["No recent files"],
+    "Ji6oie": ["A newer handoff replaced this retry."],
     "JkCD2u": ["Sync paused — you don't have permission to push to this repo"],
     "JlFcis": ["Send"],
     "JmfgFc": ["(a worktree of ", ["0"], ")"],
@@ -1943,6 +1945,7 @@
       ["1"],
       ")."
     ],
+    "LhVIxY": ["Show prompts again"],
     "LhWYpm": ["Other OK paths are tracked upstream:"],
     "Li4U-T": ["Learn more about ", ["title"]],
     "Lj_5Uv": ["Required checks are failing"],
@@ -2332,6 +2335,7 @@
     "PrVaZo": ["Uninstall OpenKnowledge?"],
     "PrWQiT": ["Move Terminal to right"],
     "PrhzDE": ["Pan up"],
+    "Pur9o0": ["To save this setup, turn on Project MCP server or Global MCP server."],
     "Pw5PTU": ["External origin"],
     "PxZCNM": ["Outside what Open Knowledge commits."],
     "Q-DKvr": ["Install from ", ["source"]],
@@ -2510,8 +2514,8 @@
       ["scopeLabel"],
       " is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
     ],
-    "Rah7yq": ["What should the AI do? (optional)"],
     "Rb1zMa": ["No excerpt"],
+    "RcPztQ": ["Open ", ["handoffLabel"]],
     "RcrskJ": ["Formatting looked wrong"],
     "RduDYw": ["<0>", ["filePath"], "</0> can't be merged here. Pick the version to keep."],
     "RfHNf8": ["Open activity panel for ", ["tooltipName"]],
@@ -3130,7 +3134,6 @@
     "Z8nach": ["Upload failed: ", ["0"]],
     "ZBF9fn": ["Manage skill folders"],
     "ZBZEkP": ["Captured before this dialog, with the pointer marked."],
-    "ZBt4rI": ["Instruction for the AI"],
     "ZBxvV3": ["New Terminal"],
     "ZDOq9A": ["What you share is sent to the OpenKnowledge team."],
     "ZGVsOD": ["Push this branch to GitHub before sharing."],
@@ -4242,6 +4245,7 @@
     "jBVUXo": ["Couldn't open the terminal — please try again."],
     "jC8Bv4": ["Having a look around…"],
     "jC8LSZ": ["Reset view filters"],
+    "jDejAI": ["Checking connection to ", ["checkingLabel"], "…"],
     "jDhTLC": ["Choose icon"],
     "jEVipR": [
       "These currently read from another folder. After linking, they read from ",
@@ -4250,6 +4254,7 @@
     ],
     "jEZ6Lf": ["provisional"],
     "jEdF24": ["Missing page: ", ["linkTitle"], ". Click to create."],
+    "jIWP0P": ["Show prompts again for ", ["displayName"], " in this project"],
     "jJdwCB": ["Revert"],
     "jKd3AP": ["Could not enable the terminal: ", ["0"]],
     "jKeGuZ": ["Deletes a document, folder, template, skill, or asset"],
@@ -5140,6 +5145,11 @@
     "sqUrlK": ["Musing…"],
     "sqgz2k": [
       "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
+    ],
+    "srbby-": [
+      "Changes were saved, but OpenKnowledge could not confirm a connection to ",
+      ["handoffLabel"],
+      ". Check the MCP server settings for this app, then select Save changes to check again."
     ],
     "srdlOs": [
       "Auto-sync is paused — you don't have permission to push to this repo. Switch to Auto (Pull only) to keep receiving updates."

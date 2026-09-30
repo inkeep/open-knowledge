@@ -1,3 +1,4 @@
+import { AGENT_REGISTRY, type HostSnapshot } from '@inkeep/open-knowledge-core';
 import type { Page } from '@playwright/test';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
@@ -12,6 +13,12 @@ export interface HandoffMockConfig {
   readonly install: InstallMap;
   readonly workerBaseURL: string;
   readonly workerContentDir: string;
+  readonly initialConnectionSnapshot?: HostSnapshot;
+}
+
+interface HandoffMockInitConfig extends HandoffMockConfig {
+  readonly snapshot: HostSnapshot;
+  readonly connectedSnapshot: HostSnapshot;
 }
 
 export interface CapturedHandoff {
@@ -26,7 +33,29 @@ export interface CapturedHandoff {
   readonly recordHandoffCalls: ReadonlyArray<Record<string, unknown>>;
 }
 
+function connectedAgentSnapshot(): HostSnapshot {
+  return {
+    probes: {
+      env: 'desktop',
+      satisfiers: Object.fromEntries(
+        Object.values(AGENT_REGISTRY).flatMap((agent) =>
+          agent.satisfiers
+            .filter((satisfier) => satisfier.probe.mode === 'probeable')
+            .map((satisfier) => [satisfier.id, { state: 'satisfied' }] as const),
+        ),
+      ),
+    },
+    detection: { detected: ['claude', 'codex', 'cursor'], probed: true },
+  };
+}
+
 export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): Promise<void> {
+  const connectionSnapshot = connectedAgentSnapshot();
+  const initConfig: HandoffMockInitConfig = {
+    ...cfg,
+    snapshot: cfg.initialConnectionSnapshot ?? connectionSnapshot,
+    connectedSnapshot: connectionSnapshot,
+  };
   await page.route('**/api/handoff', async (route) => {
     await route.fulfill({
       status: 200,
@@ -35,6 +64,18 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
     });
   });
   if (cfg.host === 'web') {
+    await page.route('**/api/agent-integrations/apply', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          actions: [],
+          conflicts: [],
+          withheld: [],
+          snapshot: connectionSnapshot,
+        }),
+      });
+    });
     await page.route('**/api/installed-agents', async (route) => {
       await route.fulfill({
         status: 200,
@@ -74,7 +115,8 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
   });
 
   await page.addInitScript((args) => {
-    const { host, install, workerBaseURL, workerContentDir } = args as HandoffMockConfig;
+    const init = args as HandoffMockInitConfig;
+    const { host, install, workerBaseURL, workerContentDir } = init;
 
     interface HandoffApiCall {
       target: string;
@@ -171,6 +213,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
     Date.now = () => realDateNow() + mocks.fakeTimeOffset;
 
     if (host === 'electron') {
+      let connectionSnapshot = init.snapshot;
       const shellStub = {
         openExternal: async (url: string): Promise<void> => {
           mocks.openExternalCalls.push(url);
@@ -427,15 +470,14 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           }),
         },
         agentIntegrations: {
-          apply: async () => ({
-            ok: false as const,
-            error: 'unavailable in tests',
-            report: { actions: [], conflicts: [], withheld: [] },
-            snapshot: {
-              probes: { env: 'desktop' as const, satisfiers: {} },
-              detection: { detected: [], probed: false },
-            },
-          }),
+          apply: async ({ intents }) => {
+            if (intents.length > 0) connectionSnapshot = init.connectedSnapshot;
+            return {
+              ok: true as const,
+              report: { actions: [], conflicts: [], withheld: [] },
+              snapshot: connectionSnapshot,
+            };
+          },
         },
         remoteAccess: {
           probePort: async () => true,
@@ -533,7 +575,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
       const ver = (window as any).okDesktop?.appVersion ?? 'unknown';
       window.localStorage.setItem(`ok:skill:cowork:installed:v${ver}`, '1');
     } catch {}
-  }, cfg);
+  }, initConfig);
 }
 
 export async function readCapturedHandoff(page: Page): Promise<CapturedHandoff> {
