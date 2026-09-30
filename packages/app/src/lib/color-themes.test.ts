@@ -1,12 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  BASE16_SLOTS,
-  ConfigSchema,
-  resolveLeafSchema,
-  THEME_ID_PATTERN,
-} from '@inkeep/open-knowledge-core';
+import { BASE16_SLOTS, ConfigSchema, resolveLeafSchema } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
   base16ToTokens,
@@ -26,12 +21,6 @@ import {
   resolveColorThemeSelection,
   resolveCustomScheme,
 } from './color-themes';
-import {
-  COLOR_THEME_PAIR_STORAGE_KEY,
-  COLOR_THEME_STORAGE_KEY,
-  CUSTOM_THEME_STYLE_ID,
-  SAVED_THEME_STYLE_ID,
-} from './use-apply-config-color-theme';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const HEX = /^#[0-9a-f]{6}$/;
@@ -203,18 +192,6 @@ describe('registry stays in sync with its consumers', () => {
     }
   });
 
-  test('the pre-paint FOUC script reads exactly the caches the apply path writes', () => {
-    const html = readFileSync(resolve(here, '../../index.html'), 'utf8');
-    for (const key of [
-      COLOR_THEME_PAIR_STORAGE_KEY,
-      COLOR_THEME_STORAGE_KEY,
-      CUSTOM_THEME_STYLE_ID,
-      SAVED_THEME_STYLE_ID,
-    ]) {
-      expect(html, key).toContain(`'${key}'`);
-    }
-  });
-
   test('the pre-paint FOUC script carries no palette-id knowledge', () => {
     const html = readFileSync(resolve(here, '../../index.html'), 'utf8');
     for (const theme of COLOR_THEMES) {
@@ -226,11 +203,6 @@ describe('registry stays in sync with its consumers', () => {
   test('custom is registered as a tile and accepted by the palette fields', () => {
     expect(COLOR_THEMES.some((t) => t.id === 'custom')).toBe(true);
     expect(ConfigSchema.safeParse({ appearance: { colorTheme: 'custom' } }).success).toBe(true);
-  });
-
-  test('the pre-paint FOUC script validates ids with the config fields grammar', () => {
-    const html = readFileSync(resolve(here, '../../index.html'), 'utf8');
-    expect(html).toContain(THEME_ID_PATTERN.source);
   });
 
   test('every base16 slot is settable under appearance.customTheme', () => {

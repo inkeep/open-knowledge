@@ -81,10 +81,11 @@ describe('route dispatch and precedence — normal mode (no React shell)', () =>
 
   test('a live /collab WebSocket connects through the composed upgrade path', async () => {
     const ws = new WebSocket(`ws://127.0.0.1:${normal.port}/collab`);
-    await new Promise<void>((resolvePromise, reject) => {
-      ws.on('open', () => resolvePromise());
-      ws.on('error', reject);
+    const outcome = await new Promise<'open' | Error>((resolvePromise) => {
+      ws.on('open', () => resolvePromise('open'));
+      ws.on('error', resolvePromise);
     });
+    expect(outcome).toBe('open');
     ws.close();
     await new Promise<void>((resolvePromise) => ws.on('close', () => resolvePromise()));
   });

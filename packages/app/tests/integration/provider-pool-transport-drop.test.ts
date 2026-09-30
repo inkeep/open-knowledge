@@ -89,7 +89,7 @@ describe('ProviderPool transport drop recovery', () => {
     for (let i = 0; i < 30; i += 1) {
       writeFileSync(join(server.contentDir, `churn-${i}.md`), `# churn ${i}\n`, 'utf-8');
     }
-    dropTransport(server, docName);
+    expect(dropTransport(server, docName)).toBeGreaterThan(0);
     for (let i = 30; i < 60; i += 1) {
       writeFileSync(join(server.contentDir, `churn-${i}.md`), `# churn ${i}\n`, 'utf-8');
     }
@@ -108,6 +108,9 @@ describe('ProviderPool transport drop recovery', () => {
       20_000,
       100,
     );
+    expect(pool.getActive()?.provider.document.getText('source').toString()).toContain(
+      'CHURN-DROP MARKER',
+    );
   }, 60_000);
 
   test('two consecutive drops in quick succession still recover', async () => {
@@ -120,8 +123,10 @@ describe('ProviderPool transport drop recovery', () => {
     await seedPoolServerInstanceId(server, pool);
     await openSynced(server, pool, docName);
 
-    dropTransport(server, docName);
-    await pollUntil(() => dropTransport(server, docName) > 0, 10_000, 100);
+    expect(dropTransport(server, docName)).toBeGreaterThan(0);
+    await expect(
+      pollUntil(() => dropTransport(server, docName) > 0, 10_000, 100),
+    ).resolves.toBeUndefined();
 
     await pollUntil(() => pool.getActive()?.provider.isSynced === true, 20_000, 100);
     writeFileSync(
@@ -136,6 +141,9 @@ describe('ProviderPool transport drop recovery', () => {
         ),
       15_000,
       100,
+    );
+    expect(pool.getActive()?.provider.document.getText('source').toString()).toContain(
+      'SECOND-DROP MARKER',
     );
   }, 60_000);
 });

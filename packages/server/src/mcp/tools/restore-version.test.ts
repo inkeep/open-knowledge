@@ -1,22 +1,13 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import {
-  describe as _bunDescribe,
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  expect,
-  test,
-} from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import { DESCRIPTION, type RestoreVersionDeps, register } from './restore-version.ts';
 import type { ServerInstance } from './shared.ts';
 import { HOCUSPOCUS_NOT_RUNNING_ERROR } from './shared.ts';
 
-const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 

@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { useComposerAttachments } from '@/editor/use-composer-attachments';
 import { MAX_TOTAL_ATTACHMENT_BYTES } from '@/lib/acp/image-attachment';
+import { stubImageCanvas } from '@/lib/acp/image-canvas.test-helper';
 
 i18n.load('en', {});
 i18n.activate('en');
@@ -20,6 +21,7 @@ function renderAttachments(onError: (message: string) => void = () => {}) {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('useComposerAttachments', () => {
@@ -166,6 +168,84 @@ describe('useComposerAttachments', () => {
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onError.mock.calls[0]?.[0]).toContain(
       `${Math.round(MAX_TOTAL_ATTACHMENT_BYTES / 1024)} KB`,
+    );
+  });
+
+  test('photos too big to send whole attach as copies shrunk to fit the message', async () => {
+    stubImageCanvas({ width: 4000, height: 3000, bytesPerPixel: 0.15 });
+    const onError = vi.fn();
+    const { result } = renderAttachments(onError);
+    const photo = (name: string) =>
+      new File([new Uint8Array(MAX_TOTAL_ATTACHMENT_BYTES * 3)], name, { type: 'image/png' });
+
+    await act(async () => {
+      await result.current.ingestFiles([photo('one.png'), photo('two.png')]);
+    });
+
+    await waitFor(() => {
+      expect(result.current.pendingAttachments).toHaveLength(2);
+    });
+    const sizes = result.current.pendingAttachments.map((part) =>
+      part.kind === 'image' ? part.sizeBytes : undefined,
+    );
+    expect(
+      result.current.pendingAttachments.map((part) => part.kind === 'image' && part.mimeType),
+    ).toEqual(['image/webp', 'image/webp']);
+    expect(sizes.reduce((sum = 0, size = 0) => sum + size, 0)).toBeLessThanOrEqual(
+      MAX_TOTAL_ATTACHMENT_BYTES,
+    );
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  test('a shrunk copy refused by the message budget is logged as that copy', async () => {
+    stubImageCanvas({ width: 4000, height: 3000, bytesPerPixel: 1 });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const onError = vi.fn();
+    const { result } = renderAttachments(onError);
+    const photoBytes = MAX_TOTAL_ATTACHMENT_BYTES * 3;
+
+    await act(async () => {
+      await result.current.ingestFiles([
+        new File(['a'.repeat(Math.ceil(MAX_TOTAL_ATTACHMENT_BYTES * 0.85))], 'notes.txt', {
+          type: 'text/plain',
+        }),
+        new File([new Uint8Array(photoBytes)], 'photo.png', { type: 'image/png' }),
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(onError).toHaveBeenCalledTimes(1);
+    });
+    expect(result.current.pendingAttachments).toHaveLength(1);
+    const refusal = warn.mock.calls.find(
+      ([tag, detail]) =>
+        tag === '[acp-attachment] refused' &&
+        (detail as { reason?: string }).reason === 'total-too-large',
+    )?.[1] as { mimeType: string; sizeBytes: number } | undefined;
+    expect(refusal?.mimeType).toBe('image/webp');
+    expect(refusal?.sizeBytes).toBeLessThanOrEqual(MAX_TOTAL_ATTACHMENT_BYTES);
+    expect(refusal?.sizeBytes).not.toBe(photoBytes);
+  });
+
+  test('a refused file is logged with its size and reason', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { result } = renderAttachments(() => {});
+
+    await act(async () => {
+      await result.current.ingestFiles([
+        new File([new Uint8Array(MAX_TOTAL_ATTACHMENT_BYTES + 1)], 'huge.log', {
+          type: 'text/plain',
+        }),
+      ]);
+    });
+
+    expect(warn).toHaveBeenCalledWith(
+      '[acp-attachment] refused',
+      expect.objectContaining({
+        surface: 'composer',
+        reason: 'file-too-large',
+        sizeBytes: MAX_TOTAL_ATTACHMENT_BYTES + 1,
+      }),
     );
   });
 

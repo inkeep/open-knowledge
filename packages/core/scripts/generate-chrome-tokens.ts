@@ -7,7 +7,7 @@
  *
  * After running, diff the output — landing it should only flip values when
  * `--sidebar` itself moved. The drift test in
- * `packages/core/src/constants/chrome.test.ts` enforces parity at CI time.
+ * `packages/core/src/constants/chrome.uncached.test.ts` enforces parity at CI time.
  */
 import { writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

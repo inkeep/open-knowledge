@@ -1,7 +1,3 @@
-import { describe as _bunDescribe, afterAll, beforeAll, expect, test } from 'vitest';
-
-const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
-
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
@@ -10,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { type BootedServer, bootServer } from './boot.ts';
 import { ConfigSchema } from './config/schema.ts';
 import { connectMcpTestClient } from './mcp/client.test-helper.ts';

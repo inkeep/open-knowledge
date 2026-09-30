@@ -73,6 +73,7 @@ import {
   ComposerCommentsMenuItem,
   ComposerFilesMenuItem,
   ComposerMentionMenuItem,
+  ComposerTooltipProvider,
 } from '@/components/ComposerAddMenu';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
 import { CopyButton } from '@/components/CopyButton';
@@ -145,7 +146,9 @@ import {
   embeddedAttachmentBytes,
   fileToAttachment,
   isAttachmentRefusal,
+  logAttachmentRejection,
   MAX_TOTAL_ATTACHMENT_BYTES,
+  rejectedPart,
   totalEmbeddedAttachmentBytes,
 } from '@/lib/acp/image-attachment';
 import { computeDiffRows } from '@/lib/acp/inline-diff';
@@ -154,6 +157,7 @@ import { contextChoicesForModel, useModelCandidates } from '@/lib/acp/model-cand
 import { formatShellCommand, revealHiddenCharacters } from '@/lib/acp/shell-command-format';
 import { parseSignInOutput, shortenUrl } from '@/lib/acp/sign-in-output';
 import { renderTerminalText } from '@/lib/acp/terminal-text';
+import { thoughtPreview } from '@/lib/acp/thought-preview';
 import { threadAttachmentPaths } from '@/lib/acp/thread-attachment-paths';
 import {
   getAgentThreadClient,
@@ -489,6 +493,7 @@ export function ThreadView({
       const isImage = (file.type || '').startsWith('image/');
       if (isImage && !imagesAccepted) {
         rejectedImageCount += 1;
+        logAttachmentRejection('agent-chat', file, { kind: 'images-not-accepted' });
       } else {
         accepted.push(file);
       }
@@ -519,6 +524,8 @@ export function ThreadView({
           absPathOf,
           workspaceContentDir,
           pathSeparator,
+          imageBudgetBytes:
+            MAX_TOTAL_ATTACHMENT_BYTES - totalEmbeddedAttachmentBytes(attachmentsRef.current),
         });
         setPendingUploads((previous) => previous.filter((p) => p.id !== placeholderId));
         if (outcome.ok) {
@@ -528,13 +535,17 @@ export function ThreadView({
             MAX_TOTAL_ATTACHMENT_BYTES
           ) {
             tooLargeTotalCount += 1;
+            logAttachmentRejection('agent-chat', rejectedPart(outcome.part), {
+              kind: 'total-too-large',
+              limitBytes: MAX_TOTAL_ATTACHMENT_BYTES,
+            });
           } else {
             commitPendingAttachments([...current, outcome.part], generation);
           }
-        } else if (isAttachmentRefusal(outcome.error)) {
-          refusals.push(outcome.error);
         } else {
-          report(describeImageError(outcome.error));
+          logAttachmentRejection('agent-chat', file, outcome.error);
+          if (isAttachmentRefusal(outcome.error)) refusals.push(outcome.error);
+          else report(describeImageError(outcome.error));
         }
       } catch (err) {
         setPendingUploads((previous) => previous.filter((p) => p.id !== placeholderId));
@@ -1842,40 +1853,33 @@ function AgentSettingsPopover({
 
   return (
     <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <AgentSettingsTrigger
-              ref={triggerRef}
-              label={settingsLabel}
-              className="min-w-0 max-w-sm shrink gap-1.5"
+      <DropdownMenuTrigger asChild>
+        <AgentSettingsTrigger
+          ref={triggerRef}
+          label={settingsLabel}
+          className="min-w-0 max-w-sm shrink gap-1.5"
+        >
+          <span className="min-w-0 truncate">{triggerText}</span>
+          {fastOn ? (
+            <span className="shrink-0 text-muted-foreground" data-testid="agent-thread-fast">
+              {t`Fast`}
+            </span>
+          ) : null}
+          {effortText !== null ? (
+            <span className="shrink-0 text-muted-foreground" data-testid="agent-thread-effort">
+              {effortText}
+            </span>
+          ) : null}
+          {readOnlyShellOn ? (
+            <span
+              className="shrink-0 text-muted-foreground"
+              data-testid="agent-thread-read-only-shell"
             >
-              <span className="min-w-0 truncate">{triggerText}</span>
-              {fastOn ? (
-                <span className="shrink-0 text-muted-foreground" data-testid="agent-thread-fast">
-                  {t`Fast`}
-                </span>
-              ) : null}
-              {effortText !== null ? (
-                <span className="shrink-0 text-muted-foreground" data-testid="agent-thread-effort">
-                  {effortText}
-                </span>
-              ) : null}
-              {readOnlyShellOn ? (
-                <span
-                  className="shrink-0 text-muted-foreground"
-                  data-testid="agent-thread-read-only-shell"
-                >
-                  {t`Read-only allowed`}
-                </span>
-              ) : null}
-            </AgentSettingsTrigger>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" aria-label={t`Agent settings`}>
-          <span data-testid="agent-thread-settings-tooltip">{settingsLabel}</span>
-        </TooltipContent>
-      </Tooltip>
+              {t`Read-only allowed`}
+            </span>
+          ) : null}
+        </AgentSettingsTrigger>
+      </DropdownMenuTrigger>
       {}
       <DropdownMenuContent align="end" className="w-60" data-testid="agent-thread-settings-popover">
         {}
@@ -2519,8 +2523,6 @@ function ThoughtBlock({
 }): ReactNode {
   const { t } = useLingui();
   const [open, setOpen] = useState(false);
-  const lines = item.text.split('\n').filter((line) => line.trim().length > 0);
-  const preview = (streaming ? lines[lines.length - 1] : lines[0]) ?? '';
   return (
     <div data-testid="agent-thread-thought">
       <Button
@@ -2540,7 +2542,7 @@ function ThoughtBlock({
         {t`Thinking`}
         {open ? null : (
           <span className="min-w-0 flex-1 truncate text-left font-normal text-xs normal-case italic tracking-normal">
-            {preview}
+            {thoughtPreview(item.text, streaming)}
           </span>
         )}
       </Button>
@@ -4443,183 +4445,189 @@ function ThreadComposer({
   );
 
   return (
-    <div className="p-2">
-      {queue.length > 0 && !archived ? (
-        <QueuedMessageList threadId={info.threadId} queue={queue} turnActive={turnActive} />
-      ) : null}
-      {}
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only affordance — pressing the card's whitespace focuses the composer input; keyboard/AT users reach it via Tab. See focus-composer-on-card-pointer.ts. */}
-      <div
-        onMouseDown={(event) => focusComposerInputOnCardPointer(event, composerRef)}
-        onPaste={(event) => {
-          const files = collectImageFiles(event.clipboardData);
-          if (files.length === 0) return;
-          event.preventDefault();
-          if (!imagesAccepted) {
-            toast.error(t`${agentName} doesn't accept image attachments.`);
-            return;
-          }
-          void onIngestImageFiles(files);
-        }}
-        className="relative cursor-text rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30"
-      >
-        {}
-        {}
-        {hasQueuedComments ? (
-          <ComposerContextChips className="px-3 pt-2 pb-1">
-            <QueuedCommentsChip
-              count={selectedCommentCount}
-              docs={selectedCommentDocs}
-              onDismiss={onDismissComments}
-            />
-          </ComposerContextChips>
+    <ComposerTooltipProvider>
+      <div className="p-2">
+        {queue.length > 0 && !archived ? (
+          <QueuedMessageList threadId={info.threadId} queue={queue} turnActive={turnActive} />
         ) : null}
-        {pendingAttachments.length > 0 || pendingUploads.length > 0 ? (
-          <PendingImageStrip
-            testIdPrefix="agent-thread"
-            images={pendingAttachments}
-            uploads={pendingUploads}
-            onRemove={onRemovePendingAttachment}
-          />
-        ) : null}
-        <div className="relative">
-          <ComposerMentionInput
-            ref={composerRef}
-            ariaLabel={t`Message ${agentName}`}
-            ariaDescribedBy={placeholderRotating ? composerHintId : undefined}
-            onEmptyChange={setIsEmpty}
-            onSubmit={onSubmit}
-            attachmentDrop={{ kind: 'host' }}
-            onEscape={() => {
-              if (turnActive && !cancelPending) onCancel();
-            }}
-            disabled={composerDisabled}
-            slashCommands={info.availableCommands ?? null}
-            mentionRecency={mentionRecency}
-            className={cn(
-              'max-h-40 overflow-y-auto px-2.5 pt-1 text-base md:text-sm',
-              composerDisabled && 'opacity-50',
-            )}
-            testId="agent-thread-composer"
-          />
-          {placeholderRotating ? (
-            <span id={composerHintId} className="sr-only">
-              {composerHint}
-            </span>
+        {}
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only affordance — pressing the card's whitespace focuses the composer input; keyboard/AT users reach it via Tab. See focus-composer-on-card-pointer.ts. */}
+        <div
+          onMouseDown={(event) => focusComposerInputOnCardPointer(event, composerRef)}
+          onPaste={(event) => {
+            const files = collectImageFiles(event.clipboardData);
+            if (files.length === 0) return;
+            event.preventDefault();
+            if (!imagesAccepted) {
+              toast.error(t`${agentName} doesn't accept image attachments.`);
+              return;
+            }
+            void onIngestImageFiles(files);
+          }}
+          className="relative cursor-text rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30"
+        >
+          {}
+          {}
+          {hasQueuedComments ? (
+            <ComposerContextChips className="px-3 pt-2 pb-1">
+              <QueuedCommentsChip
+                count={selectedCommentCount}
+                docs={selectedCommentDocs}
+                onDismiss={onDismissComments}
+              />
+            </ComposerContextChips>
           ) : null}
-          {isEmpty ? (
-            <RotatingComposerPlaceholder
-              phrases={placeholderPhrases}
-              rotating={placeholderRotating}
-              className={cn('px-2.5 pt-2', composerDisabled && 'opacity-50')}
-              testId="agent-thread-composer-placeholder"
+          {pendingAttachments.length > 0 || pendingUploads.length > 0 ? (
+            <PendingImageStrip
+              testIdPrefix="agent-thread"
+              images={pendingAttachments}
+              uploads={pendingUploads}
+              onRemove={onRemovePendingAttachment}
             />
           ) : null}
-        </div>
-        {}
-        <div className="flex items-center gap-0.5 px-1.5 pt-1 pb-1.5">
-          <ComposerAddMenu
-            disabled={composerDisabled}
-            disabledFocusTargetRef={settingsTriggerRef}
-            testId="agent-thread-add-to-prompt"
-          >
-            <ComposerFilesMenuItem
-              onFiles={onIngestAllFiles}
-              attachmentMode={
-                info.promptCapabilities !== null &&
-                info.promptCapabilities !== undefined &&
-                info.promptCapabilities.embeddedContext !== true
-                  ? 'reference'
-                  : 'embedded'
-              }
+          <div className="relative">
+            <ComposerMentionInput
+              ref={composerRef}
+              ariaLabel={t`Message ${agentName}`}
+              ariaDescribedBy={placeholderRotating ? composerHintId : undefined}
+              onEmptyChange={setIsEmpty}
+              onSubmit={onSubmit}
+              attachmentDrop={{ kind: 'host' }}
+              onEscape={() => {
+                if (turnActive && !cancelPending) onCancel();
+              }}
+              disabled={composerDisabled}
+              slashCommands={info.availableCommands ?? null}
+              mentionRecency={mentionRecency}
+              className={cn(
+                'max-h-40 overflow-y-auto px-2.5 pt-1 text-base md:text-sm',
+                composerDisabled && 'opacity-50',
+              )}
+              testId="agent-thread-composer"
             />
-            {selectedCommentCount > 0 && !hasQueuedComments ? (
-              <ComposerCommentsMenuItem count={selectedCommentCount} onSelect={onAttachComments} />
+            {placeholderRotating ? (
+              <span id={composerHintId} className="sr-only">
+                {composerHint}
+              </span>
             ) : null}
-            <ComposerMentionMenuItem onSelect={() => composerRef.current?.openMentionPicker()} />
-            {agentHasCommands && isEmpty ? (
-              <ComposerCommandsMenuItem
-                onSelect={() => composerRef.current?.openSlashCommandPicker()}
+            {isEmpty ? (
+              <RotatingComposerPlaceholder
+                phrases={placeholderPhrases}
+                rotating={placeholderRotating}
+                className={cn('px-2.5 pt-2', composerDisabled && 'opacity-50')}
+                testId="agent-thread-composer-placeholder"
               />
             ) : null}
-          </ComposerAddMenu>
-          <AgentSettingsPopover
-            info={info}
-            hasStartedWork={hasStartedWork}
-            onNewChat={onNewChat}
-            {...(canReportProblem ? { onReportProblem: () => setReportOpen(true) } : {})}
-            triggerRef={settingsTriggerRef}
-          />
-          {canReportProblem ? (
-            <ReportBugDialog
-              open={reportOpen}
-              onOpenChange={setReportOpen}
-              agentChat={{ threadId: info.threadId }}
-              launcherBorne
+          </div>
+          {}
+          <div className="flex items-center gap-0.5 px-1.5 pt-1 pb-1.5">
+            <ComposerAddMenu
+              composerRef={composerRef}
+              disabled={composerDisabled}
+              disabledFocusTargetRef={settingsTriggerRef}
+              testId="agent-thread-add-to-prompt"
+            >
+              <ComposerFilesMenuItem
+                onFiles={onIngestAllFiles}
+                attachmentMode={
+                  info.promptCapabilities !== null &&
+                  info.promptCapabilities !== undefined &&
+                  info.promptCapabilities.embeddedContext !== true
+                    ? 'reference'
+                    : 'embedded'
+                }
+              />
+              {selectedCommentCount > 0 && !hasQueuedComments ? (
+                <ComposerCommentsMenuItem
+                  count={selectedCommentCount}
+                  onSelect={onAttachComments}
+                />
+              ) : null}
+              <ComposerMentionMenuItem onSelect={() => composerRef.current?.openMentionPicker()} />
+              {agentHasCommands && isEmpty ? (
+                <ComposerCommandsMenuItem
+                  onSelect={() => composerRef.current?.openSlashCommandPicker()}
+                />
+              ) : null}
+            </ComposerAddMenu>
+            <AgentSettingsPopover
+              info={info}
+              hasStartedWork={hasStartedWork}
+              onNewChat={onNewChat}
+              {...(canReportProblem ? { onReportProblem: () => setReportOpen(true) } : {})}
+              triggerRef={settingsTriggerRef}
             />
-          ) : null}
-          <div className="ml-auto flex items-center gap-1.5">
-            {usagePercent !== null && usage?.used !== undefined && usage?.size !== undefined ? (
-              <ContextUsageRing used={usage.used} size={usage.size} percent={usagePercent} />
+            {canReportProblem ? (
+              <ReportBugDialog
+                open={reportOpen}
+                onOpenChange={setReportOpen}
+                agentChat={{ threadId: info.threadId }}
+                launcherBorne
+              />
             ) : null}
-            {}
-            {turnActive && (cancelPending || !hasSendableContent) ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    className="rounded-lg"
-                    disabled={cancelPending}
-                    onClick={onCancel}
-                    aria-label={cancelPending ? t`Stopping` : t`Stop`}
-                    data-testid="agent-thread-cancel"
-                  >
-                    {cancelPending ? (
-                      <Spinner className="size-3.5" aria-hidden="true" />
-                    ) : (
-                      <Square className="size-3 fill-current" aria-hidden="true" />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                {}
-                <TooltipContent side="top">{t`Stop (Esc)`}</TooltipContent>
-              </Tooltip>
-            ) : canQueue ? (
-              <>
-                {}
-                {!isEmpty ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="outline"
-                        className="rounded-lg"
-                        disabled={pendingUploads.length > 0}
-                        onClick={onSteer}
-                        aria-label={t`Steer now`}
-                        data-testid="agent-thread-steer"
-                      >
-                        <Zap className="size-4" aria-hidden="true" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">{t`Stops the current run and sends this instead`}</TooltipContent>
-                  </Tooltip>
-                ) : null}
+            <div className="ml-auto flex items-center gap-1.5">
+              {usagePercent !== null && usage?.used !== undefined && usage?.size !== undefined ? (
+                <ContextUsageRing used={usage.used} size={usage.size} percent={usagePercent} />
+              ) : null}
+              {}
+              {turnActive && (cancelPending || !hasSendableContent) ? (
                 <Tooltip>
-                  <TooltipTrigger asChild>{sendButton}</TooltipTrigger>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      className="rounded-lg"
+                      disabled={cancelPending}
+                      onClick={onCancel}
+                      aria-label={cancelPending ? t`Stopping` : t`Stop`}
+                      data-testid="agent-thread-cancel"
+                    >
+                      {cancelPending ? (
+                        <Spinner className="size-3.5" aria-hidden="true" />
+                      ) : (
+                        <Square className="size-3 fill-current" aria-hidden="true" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
                   {}
-                  <TooltipContent side="top">{t`Queues behind the running turn`}</TooltipContent>
+                  <TooltipContent side="top">{t`Stop (Esc)`}</TooltipContent>
                 </Tooltip>
-              </>
-            ) : (
-              sendButton
-            )}
+              ) : canQueue ? (
+                <>
+                  {}
+                  {!isEmpty ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="outline"
+                          className="rounded-lg"
+                          disabled={pendingUploads.length > 0}
+                          onClick={onSteer}
+                          aria-label={t`Steer now`}
+                          data-testid="agent-thread-steer"
+                        >
+                          <Zap className="size-4" aria-hidden="true" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">{t`Stops the current run and sends this instead`}</TooltipContent>
+                    </Tooltip>
+                  ) : null}
+                  <Tooltip>
+                    <TooltipTrigger asChild>{sendButton}</TooltipTrigger>
+                    {}
+                    <TooltipContent side="top">{t`Queues behind the running turn`}</TooltipContent>
+                  </Tooltip>
+                </>
+              ) : (
+                sendButton
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </ComposerTooltipProvider>
   );
 }
 

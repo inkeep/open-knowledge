@@ -81,26 +81,6 @@ describe('Observer A: XmlFragment → Y.Text', () => {
 });
 
 describe('Observer B: Y.Text → XmlFragment', () => {
-  test.skip('Y.Text mutation propagates to XmlFragment after debounce', async () => {
-    const doc = new Y.Doc();
-    const fragment = doc.getXmlFragment('default');
-    const ytext = doc.getText('source');
-
-    const cleanup = setupObservers({ doc, xmlFragment: fragment, ytext, mdManager, schema });
-
-    doc.transact(() => {
-      ytext.insert(0, '# Heading\n\nParagraph text\n');
-    }, 'user-edit');
-
-    await wait();
-
-    const json = yXmlFragmentToProseMirrorRootNode(fragment, schema).toJSON();
-    const md = mdManager.serialize(json);
-    expect(md).toContain('# Heading');
-    expect(md).toContain('Paragraph text');
-    cleanup();
-  });
-
   test('handles markdown parse errors gracefully — logs but does not crash', async () => {
     const doc = new Y.Doc();
     const fragment = doc.getXmlFragment('default');
@@ -122,32 +102,6 @@ describe('Observer B: Y.Text → XmlFragment', () => {
     expect(md).toContain('Original content');
 
     cleanup();
-  });
-
-  test.skip('Observer B renders broken MDX as rawMdxFallback (G9 always-live) and recovers on next valid write', async () => {});
-});
-
-describe('WikiLink bridge regression', () => {
-  test.skip('wikilink markdown survives XmlFragment ↔ Y.Text synchronization', async () => {
-    const doc = new Y.Doc();
-    const fragment = doc.getXmlFragment('default');
-    const ytext = doc.getText('source');
-
-    const cleanup = setupObservers({ doc, xmlFragment: fragment, ytext, mdManager, schema });
-
-    try {
-      applyMarkdown(doc, fragment, 'Alpha [[Page#Heading|Alias]]\n');
-
-      await wait();
-
-      expect(ytext.toString().trim()).toBe('Alpha [[Page#Heading|Alias]]');
-
-      const json = yXmlFragmentToProseMirrorRootNode(fragment, schema).toJSON();
-      const md = mdManager.serialize(json);
-      expect(md.trim()).toBe('Alpha [[Page#Heading|Alias]]');
-    } finally {
-      cleanup();
-    }
   });
 });
 
@@ -182,61 +136,7 @@ describe('Origin guard loop prevention', () => {
   });
 });
 
-describe('Frontmatter handling', () => {
-  test.skip('Observer A includes frontmatter from metadata map in Y.Text', async () => {
-    const doc = new Y.Doc();
-    const fragment = doc.getXmlFragment('default');
-    const ytext = doc.getText('source');
-
-    const metaMap = doc.getMap('metadata');
-    metaMap.set('frontmatter', '---\ntitle: Test\n---\n');
-
-    applyMarkdown(doc, fragment, '# Hello\n');
-    const cleanup = setupObservers({ doc, xmlFragment: fragment, ytext, mdManager, schema });
-
-    expect(ytext.toString()).toContain('---\ntitle: Test\n---\n');
-    expect(ytext.toString()).toContain('# Hello');
-    cleanup();
-  });
-
-  test.skip('Observer B strips frontmatter and stores in metadata map', async () => {
-    const doc = new Y.Doc();
-    const fragment = doc.getXmlFragment('default');
-    const ytext = doc.getText('source');
-
-    const cleanup = setupObservers({ doc, xmlFragment: fragment, ytext, mdManager, schema });
-
-    doc.transact(() => {
-      ytext.insert(0, '---\ntitle: New\n---\n# Body\n');
-    }, 'user-edit');
-
-    await wait();
-
-    const metaMap = doc.getMap('metadata');
-    expect(metaMap.get('frontmatter')).toBe('---\ntitle: New\n---\n');
-
-    const json = yXmlFragmentToProseMirrorRootNode(fragment, schema).toJSON();
-    const md = mdManager.serialize(json);
-    expect(md).toContain('# Body');
-    cleanup();
-  });
-});
-
-describe('Agent writes through observer chain', () => {
-  test.skip('raw agent write to XmlFragment → Observer A → Y.Text updated', async () => {});
-
-  test.skip('agent markdown write to Y.Text → Observer B → XmlFragment updated', async () => {});
-
-  test.skip('agent markdown prepend to Y.Text → Observer B → XmlFragment updated with correct order', async () => {});
-
-  test.skip('multiple rapid agent writes via XmlFragment all propagate to Y.Text', async () => {});
-
-  test.skip('agent writes propagate bidirectionally: XmlFragment write visible in both', async () => {});
-});
-
 describe('Agent write origin and activity map', () => {
-  test.skip('agent-write origin Y.Text write propagates to XmlFragment via Observer B', async () => {});
-
   test('activity map entries coexist with content writes in same transaction', async () => {
     const doc = new Y.Doc();
     const ytext = doc.getText('source');
@@ -353,8 +253,6 @@ describe('Per-origin undo (server-side UndoManager)', () => {
     expect(ytext.toString()).toBe('Agent content\n');
   });
 
-  test.skip('agent undo propagates through Observer B to XmlFragment', async () => {});
-
   test('multiple UndoManagers on same Y.Text do not conflict', () => {
     const doc = new Y.Doc();
     const ytext = doc.getText('source');
@@ -420,38 +318,6 @@ describe('Y.Text CRDT foundation', () => {
   });
 });
 
-describe('Concurrent edit race conditions (regression)', () => {
-  test.skip('Observer B defers while user is typing to avoid destroying in-flight edits', async () => {});
-
-  test.skip('Observer B early-exits when XmlFragment already matches Y.Text', async () => {});
-
-  test.skip('Observer A defers after agent write so the diff does not subtract agent content', async () => {});
-
-  test.skip('agent undo during active user typing — user keystrokes preserved, agent text removed', async () => {});
-});
-
-describe('Remote write baseline staleness (regression)', () => {
-  test.skip('remote agent write with non-stable markdown does not duplicate on local type', async () => {});
-
-  test.skip('typing state is isolated per Y.Doc', async () => {});
-});
-
-describe('R7: source-mode typing defers Observer B', () => {
-  test.skip('markUserTyping(doc) from source-mode events defers tree replacement', async () => {});
-});
-
-describe('Observer A: remote transaction baseline refresh', () => {
-  test.skip('remote write propagates, then next local edit computes delta from refreshed baseline', async () => {});
-  test.skip('multiple sequential remote writes each refresh baseline', async () => {});
-  test.skip('remote delete refreshes baseline so next local add does not resurrect deleted content', async () => {});
-});
-
-describe('applyUserDelta: divergence preservation', () => {
-  test.skip('user adds a paragraph — agent content already in Y.Text is preserved', async () => {});
-  test.skip('user deletes a baseline paragraph — agent content is preserved, deletion applied', async () => {});
-  test.skip('user modifies a baseline line — agent content is preserved, modification applied', async () => {});
-});
-
 describe('FR-1: content-comparison gate skips no-op replacements', () => {
   test('Observer A produces zero ORIGIN_TREE_TO_TEXT mutations (server-authoritative)', async () => {
     const doc = new Y.Doc();
@@ -481,27 +347,6 @@ describe('FR-1: content-comparison gate skips no-op replacements', () => {
 
     cleanup();
   });
-
-  test.skip('Path A multi-hunk diff with length-changing first hunk produces correct ytext', async () => {});
-});
-
-describe('FR-2: applyUserDelta DMP three-way merge', () => {
-  test.skip('B1: same-line collision merges both edits', async () => {});
-  test.skip('B2: prepend + append preserves both', async () => {});
-  test.skip('B3: different-line edits preserve both', async () => {});
-  test.skip('B4: user-delete + agent-modify same line — user-wins (D9)', async () => {});
-  test.skip('B5: exact-char overlap — D8 duplication characterization', async () => {});
-  test.skip('early return produces zero CRDT mutations when merged text equals agent text', async () => {});
-});
-
-describe('FR-7: onMergeFailed diagnostic', () => {
-  test.skip('no diagnostic on successful three-way merge', async () => {});
-  test.skip('diagnostic fires on failed patches (unmatchable agent text)', async () => {});
-});
-
-describe('FR-4: Observer A preserves agent-origin CRDT Items', () => {
-  test.skip('Path A: content-gate preserves agent Items (UM stack survives sync)', async () => {});
-  test.skip('Path B: DMP merge preserves agent Items in non-overlapping regions', async () => {});
 });
 
 describe('A1: middle-region replacement preserves outer agent Items', () => {

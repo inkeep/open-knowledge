@@ -229,4 +229,6 @@ describe('rawMdxFallback multi-client Y.Item identity (US-011, M8, Q5)', () => {
     // biome-ignore lint/style/noNonNullAssertion: checked above
     expect((fallbackBAfter! as unknown as { _item: unknown })._item).toBe(itemB);
   });
+
+  test.todo('broken MDX renders as a raw MDX fallback and recovers on the next valid write');
 });

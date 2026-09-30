@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, '..', '..');
@@ -85,7 +86,7 @@ describe('loopback bind discipline (app test sources)', () => {
     expect(files.length).toBeGreaterThan(0);
     expect(files.some((f) => f.path.endsWith('integration/test-harness.ts'))).toBe(true);
     expect(files.some((f) => f.path.endsWith('_helpers/server-process.ts'))).toBe(true);
-    expect(files.some((f) => f.path.endsWith('.e2e.ts'))).toBe(true);
+    expect(files.some((f) => isTestOnlySourceFile(f.path, 'playwright'))).toBe(true);
   });
 
   test('every .listen( call binds an explicit loopback host literal', () => {
@@ -95,14 +96,13 @@ describe('loopback bind discipline (app test sources)', () => {
         violations.push(`  ${file.path}:${v.line}    ${v.text}`);
       }
     }
-    if (violations.length > 0) {
-      throw new Error(
-        `Hostless rig bind found — a bare listen(0) binds the IPv6 wildcard '::', whose loopback-specific ` +
-          `port slots stay silently bindable by foreign processes; their listeners then intercept this rig's ` +
-          `localhost dials (the rotating integration-suite flake). Bind a loopback-specific host ` +
-          `(e.g. listen(0, '127.0.0.1', cb)) and dial the literal from server.address():\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `Hostless rig bind found — a bare listen(0) binds the IPv6 wildcard '::', whose loopback-specific ` +
+        `port slots stay silently bindable by foreign processes; their listeners then intercept this rig's ` +
+        `localhost dials (the rotating integration-suite flake). Bind a loopback-specific host ` +
+        `(e.g. listen(0, '127.0.0.1', cb)) and dial the literal from server.address():\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('no interpolated-port localhost dial URLs', () => {
@@ -112,14 +112,13 @@ describe('loopback bind discipline (app test sources)', () => {
         violations.push(`  ${file.path}:${v.line}    ${v.text}`);
       }
     }
-    if (violations.length > 0) {
-      throw new Error(
-        `Ambiguous-name rig dial found — 'localhost' resolves '::1'-first, exactly the loopback-specific slot ` +
-          `a foreign process can hold while the rig sits on a wildcard (or single-family) bind. Dial the ` +
-          `literal address the rig actually bound (a harness-advertised base URL, or ` +
-          `http://127.0.0.1:\${port}):\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `Ambiguous-name rig dial found — 'localhost' resolves '::1'-first, exactly the loopback-specific slot ` +
+        `a foreign process can hold while the rig sits on a wildcard (or single-family) bind. Dial the ` +
+        `literal address the rig actually bound (a harness-advertised base URL, or ` +
+        `http://127.0.0.1:\${port}):\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('listen predicate fires on planted violations and not on adjacent negatives', () => {

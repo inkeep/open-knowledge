@@ -55,6 +55,7 @@ export default defineConfig({
     'ok/no-blind-agent-host-fanout': 'error',
     'ok/no-demoted-dialog-confirm': 'error',
     'ok/no-hand-rolled-branch-validation': 'error',
+    'ok/no-hand-rolled-test-file-suffix': 'error',
     'ok/no-hand-rolled-spinner': 'error',
     'ok/no-inline-tolerance-class': 'error',
     'ok/no-loosely-typed-webcontents-ipc': 'error',

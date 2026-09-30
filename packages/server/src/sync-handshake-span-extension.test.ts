@@ -218,9 +218,15 @@ describe('sync.handshake span — OTel SDK fault isolation', () => {
     } as any;
     trace.setGlobalTracerProvider(faultyProvider);
 
-    const extension = createSyncHandshakeSpanExtension();
-    await extension.afterLoadDocument?.(makePayload({ documentName: 'README', mountId: UUID_A }));
-    trace.disable();
-    setupExporter();
+    try {
+      const extension = createSyncHandshakeSpanExtension();
+      expect(extension.afterLoadDocument).toBeTypeOf('function');
+      await expect(
+        extension.afterLoadDocument?.(makePayload({ documentName: 'README', mountId: UUID_A })),
+      ).resolves.toBeUndefined();
+    } finally {
+      trace.disable();
+      setupExporter();
+    }
   });
 });

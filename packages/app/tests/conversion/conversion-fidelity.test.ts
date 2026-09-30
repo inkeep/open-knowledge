@@ -156,7 +156,7 @@ const CONSTRUCTS: Array<{ name: string; input: string; stable?: boolean; note?: 
 
 describe('markdown round-trip: serialize(parse(md))', () => {
   for (const { name, input, stable } of CONSTRUCTS) {
-    test.concurrent(name, () => {
+    test.concurrent(name, ({ expect }) => {
       const output = stripTrailingWhitespace(mdRoundTrip(input));
       const normalized = stripTrailingWhitespace(input);
 
@@ -164,6 +164,9 @@ describe('markdown round-trip: serialize(parse(md))', () => {
         expect(output).toBe(normalized);
       } else {
         const tokens = normalized.match(/[\w&<>]+/g) ?? [];
+        if (tokens.length === 0) {
+          expect(mdManager.parse(output)).toEqual(mdManager.parse(input));
+        }
         for (const token of tokens) {
           expect(output).toContain(token);
         }
@@ -174,11 +177,14 @@ describe('markdown round-trip: serialize(parse(md))', () => {
 
 describe('tree round-trip: pmJSON → updateYFragment → yXmlFragmentToProsemirrorJSON → serialize', () => {
   for (const { name, input } of CONSTRUCTS) {
-    test.concurrent(name, () => {
+    test.concurrent(name, ({ expect }) => {
       const output = stripTrailingWhitespace(treeRoundTrip(input));
       const normalized = stripTrailingWhitespace(input);
 
       const tokens = normalized.match(/[\w&<>]+/g) ?? [];
+      if (tokens.length === 0) {
+        expect(mdManager.parse(output)).toEqual(mdManager.parse(input));
+      }
       for (const token of tokens) {
         expect(output).toContain(token);
       }
@@ -284,7 +290,7 @@ const MARKED_INLINE_LEAF: Array<{ name: string; input: string; expected: string 
 
 describe('marked inline leaf nodes: byte-exact through chains 1 and 2', () => {
   for (const { name, input, expected } of MARKED_INLINE_LEAF) {
-    test.concurrent(name, () => {
+    test.concurrent(name, ({ expect }) => {
       expect(mdRoundTrip(input)).toBe(expected);
       expect(treeRoundTrip(input)).toBe(expected);
     });
@@ -347,6 +353,10 @@ describe('disk round-trip: XmlFragment → persistence → disk → onLoadDocume
             () => tokens.every((t) => readTestDoc(server.contentDir).includes(t)),
             5000,
           );
+        } else {
+          await expect
+            .poll(() => mdManager.parse(readTestDoc(server.contentDir)), { timeout: 5000 })
+            .toEqual(json);
         }
 
         const diskContent = readTestDoc(server.contentDir);
@@ -366,6 +376,10 @@ describe('disk round-trip: XmlFragment → persistence → disk → onLoadDocume
         const tokens = stripTrailingWhitespace(input).match(/[\w&<>]+/g) ?? [];
         if (tokens.length > 0) {
           await pollUntil(() => tokens.every((t) => client2.ytext.toString().includes(t)), 5000);
+        } else {
+          await expect
+            .poll(() => mdManager.parse(client2.ytext.toString()), { timeout: 5000 })
+            .toEqual(mdManager.parse(input));
         }
 
         for (const token of tokens) {

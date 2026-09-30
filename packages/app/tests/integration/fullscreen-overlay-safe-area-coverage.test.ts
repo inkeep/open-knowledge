@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
 const APP_SRC = join(import.meta.dir, '..', '..', 'src');
 const REPO_RELATIVE_PREFIX = 'packages/app/src';
@@ -79,11 +80,7 @@ function* walkSourceFiles(dir: string): Generator<string> {
     const stat = statSync(full);
     if (stat.isDirectory()) {
       yield* walkSourceFiles(full);
-    } else if (
-      entry.endsWith('.tsx') &&
-      !entry.endsWith('.test.tsx') &&
-      !entry.endsWith('.dom.test.tsx')
-    ) {
+    } else if (entry.endsWith('.tsx') && !isTestOnlySourceFile(entry)) {
       yield full;
     }
   }

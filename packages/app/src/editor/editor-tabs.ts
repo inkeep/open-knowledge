@@ -1,4 +1,5 @@
 import {
+  isExcalidrawDocFile,
   isManagedArtifactDocName,
   MANAGED_ARTIFACT_SCOPES,
   parseExternalSkillDocName,
@@ -79,7 +80,11 @@ function sharesStemWithAnotherQualifiedTab(
 }
 
 function canonicalTabId(tabId: string, siblingTabIds: readonly string[] = []): string {
-  if (parseEditorTabId(tabId).kind !== 'doc') return tabId;
+  const parsed = parseEditorTabId(tabId);
+  if (parsed.kind === 'asset' && isExcalidrawDocFile(parsed.assetPath)) {
+    return docTabId(parsed.assetPath);
+  }
+  if (parsed.kind !== 'doc') return tabId;
   if (sharesStemWithAnotherQualifiedTab(tabId, siblingTabIds)) return tabId;
   let docName = tabId;
   let stripped = stripMarkdownTabExtension(docName);

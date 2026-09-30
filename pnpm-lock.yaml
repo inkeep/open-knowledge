@@ -1086,6 +1086,9 @@ importers:
       remark-stringify:
         specifier: ^11.0.0
         version: 11.0.0
+      remend:
+        specifier: 1.3.0
+        version: 1.3.0
       unified:
         specifier: ^11.0.5
         version: 11.0.5

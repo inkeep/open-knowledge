@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
+import { expectKnownBug } from '../../../../test-support/known-bug.test-helper';
 import {
   expect,
   landingMarkCount,
@@ -109,86 +110,98 @@ async function openSplitDoc(
     .toBe(false);
 }
 
-test('KNOWN-BUG: view-in-source jump lands one block past the target on a divergent doc; the unverified landing must not flash', async ({
-  page,
-  api,
-}) => {
-  const name = docName('jump');
-  await openSplitDoc(page, api, name);
+test.describe('landings on a document with adjacent lists', () => {
+  test.describe.configure({ retries: 0 });
 
-  await selectText(page, EOL_TAIL);
-  const bubble = page.getByTestId(VIEW_IN_SOURCE_BUBBLE);
-  await expect(bubble, 'the View in source bubble entry did not appear').toBeVisible();
+  test('view-in-source jumps to the selected block of a divergent doc, and an unverified landing does not flash', {
+    tag: '@known-bug',
+    annotation: [
+      { type: 'issue', description: 'https://github.com/inkeep/agents-private/issues/5143' },
+      { type: 'owner', description: 'get-main-green' },
+      { type: 'until', description: '2026-12-15' },
+    ],
+  }, async ({ page, api }) => {
+    const name = docName('jump');
+    await openSplitDoc(page, api, name);
 
-  const before = await landingMarkCount(page);
-  await bubble.click();
-  const mark = await waitForLandingSettled(page, { since: before });
-  expect(mark.kind, `jump did not land (grade ${mark.grade})`).toBe('land');
+    await selectText(page, EOL_TAIL);
+    const bubble = page.getByTestId(VIEW_IN_SOURCE_BUBBLE);
+    await expect(bubble, 'the View in source bubble entry did not appear').toBeVisible();
 
-  const landed = await caretLine(page);
-  const flashes = await page.locator(LANDING_FLASH).count();
-  console.log(
-    `landing: grade=${mark.grade} caret head=${landed.head} -> line ${landed.line}: ${JSON.stringify(landed.text)}, flash spans=${flashes}`,
-  );
+    const before = await landingMarkCount(page);
+    await bubble.click();
+    const mark = await waitForLandingSettled(page, { since: before });
+    expect(mark.kind, `jump did not land (grade ${mark.grade})`).toBe('land');
 
-  expect(mark.grade).toBe('ordinal');
+    const landed = await caretLine(page);
+    const flashes = await page.locator(LANDING_FLASH).count();
+    console.log(
+      `landing: grade=${mark.grade} caret head=${landed.head} -> line ${landed.line}: ${JSON.stringify(landed.text)}, flash spans=${flashes}`,
+    );
 
-  expect(flashes, 'an ordinal-grade landing must not paint the landing flash').toBe(0);
+    expect(mark.grade).toBe('ordinal');
 
-  expect(
-    landed.text,
-    'landing moved off the known-wrong block — the mis-landing may be fixed; flip this assertion to the correct target',
-  ).toContain('competitors');
-});
+    expect(flashes, 'an ordinal-grade landing must not paint the landing flash').toBe(0);
 
-test('KNOWN-BUG: the plain mode toggle mis-anchors by one block on a divergent doc', async ({
-  page,
-  api,
-}) => {
-  const name = docName('toggle');
-  await openSplitDoc(page, api, name, PADDING);
-
-  const anchor = 'BLOCK-060';
-  const residual = await scrollWysiwygBlockToTop(page, anchor);
-  expect(Math.abs(residual), 'setup scroll did not converge').toBeLessThan(40);
-
-  const before = await landingMarkCount(page);
-  await toggleMode(page, 'source');
-  const mark = await waitForLandingSettled(page, { since: before });
-  expect(mark.kind, `toggle did not land (grade ${mark.grade})`).toBe('land');
-
-  expect(mark.grade).toBe('ordinal');
-
-  const topLine = await page.evaluate(() => {
-    const scroller = Array.from(
-      document.querySelectorAll<HTMLElement>('[data-testid="editor-scroll-container"]'),
-    ).find((el) => el.getClientRects().length > 0);
-    if (!scroller) throw new Error('no visible scroll container');
-    const content = Array.from(document.querySelectorAll<HTMLElement>('.cm-editor'))
-      .find((el) => el.getClientRects().length > 0)
-      ?.querySelector('.cm-content');
-    const handle = content as
-      | (Element & {
-          cmTile?: { root?: { view?: unknown } };
-          cmView?: { rootView?: { view?: unknown } };
-        })
-      | null;
-    const view = (handle?.cmTile?.root?.view ?? handle?.cmView?.rootView?.view) as
-      | {
-          posAtCoords: (c: { x: number; y: number }, precise: boolean) => number;
-          state: { doc: { lineAt: (p: number) => { number: number; text: string } } };
-        }
-      | undefined;
-    if (!view) throw new Error('no CodeMirror view');
-    const box = scroller.getBoundingClientRect();
-    const pos = view.posAtCoords({ x: box.left + 40, y: box.top + 56 + 4 }, false);
-    const line = view.state.doc.lineAt(pos);
-    return `L${line.number}: ${line.text}`;
+    await expectKnownBug(/Received string:\s+"competitors"/, () => {
+      expect(landed.text).toContain(EOL_TAIL);
+    });
   });
-  console.log(`toggle: grade=${mark.grade} anchored=${anchor} topmost=${JSON.stringify(topLine)}`);
 
-  expect(
-    topLine,
-    'the toggle preserved the anchored block — the mis-anchor may be fixed; flip this assertion to require the anchor',
-  ).not.toContain(anchor);
+  test('the plain mode toggle keeps the anchored block on a divergent doc', {
+    tag: '@known-bug',
+    annotation: [
+      { type: 'issue', description: 'https://github.com/inkeep/agents-private/issues/5143' },
+      { type: 'owner', description: 'get-main-green' },
+      { type: 'until', description: '2026-12-15' },
+    ],
+  }, async ({ page, api }) => {
+    const name = docName('toggle');
+    await openSplitDoc(page, api, name, PADDING);
+
+    const anchor = 'BLOCK-060';
+    const residual = await scrollWysiwygBlockToTop(page, anchor);
+    expect(Math.abs(residual), 'setup scroll did not converge').toBeLessThan(40);
+
+    const before = await landingMarkCount(page);
+    await toggleMode(page, 'source');
+    const mark = await waitForLandingSettled(page, { since: before });
+    expect(mark.kind, `toggle did not land (grade ${mark.grade})`).toBe('land');
+
+    expect(mark.grade).toBe('ordinal');
+
+    const topLine = await page.evaluate(() => {
+      const scroller = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-testid="editor-scroll-container"]'),
+      ).find((el) => el.getClientRects().length > 0);
+      if (!scroller) throw new Error('no visible scroll container');
+      const content = Array.from(document.querySelectorAll<HTMLElement>('.cm-editor'))
+        .find((el) => el.getClientRects().length > 0)
+        ?.querySelector('.cm-content');
+      const handle = content as
+        | (Element & {
+            cmTile?: { root?: { view?: unknown } };
+            cmView?: { rootView?: { view?: unknown } };
+          })
+        | null;
+      const view = (handle?.cmTile?.root?.view ?? handle?.cmView?.rootView?.view) as
+        | {
+            posAtCoords: (c: { x: number; y: number }, precise: boolean) => number;
+            state: { doc: { lineAt: (p: number) => { number: number; text: string } } };
+          }
+        | undefined;
+      if (!view) throw new Error('no CodeMirror view');
+      const box = scroller.getBoundingClientRect();
+      const pos = view.posAtCoords({ x: box.left + 40, y: box.top + 56 + 4 }, false);
+      const line = view.state.doc.lineAt(pos);
+      return `L${line.number}: ${line.text}`;
+    });
+    console.log(
+      `toggle: grade=${mark.grade} anchored=${anchor} topmost=${JSON.stringify(topLine)}`,
+    );
+
+    await expectKnownBug(/BLOCK-061 padding paragraph/, () => {
+      expect(topLine).toContain(anchor);
+    });
+  });
 });

@@ -539,13 +539,15 @@ describe('AcpThreadManager (real subprocess)', () => {
       agentPath,
       [
         "import { spawn } from 'node:child_process';",
-        "import { writeFileSync } from 'node:fs';",
+        "import { renameSync, writeFileSync } from 'node:fs';",
         "process.on('SIGTERM', () => {});",
         'const kid = spawn(process.execPath, [',
         "  '-e',",
         '  "process.on(\'SIGTERM\', () => {}); setInterval(() => {}, 1000);",',
         "], { stdio: 'ignore' });",
-        'writeFileSync(process.env.KID_PID_FILE, String(kid.pid));',
+        "const pendingPidFile = process.env.KID_PID_FILE + '.pending';",
+        'writeFileSync(pendingPidFile, String(kid.pid));',
+        'renameSync(pendingPidFile, process.env.KID_PID_FILE);',
         'setInterval(() => {}, 1000);',
         '',
       ].join('\n'),
@@ -571,6 +573,7 @@ describe('AcpThreadManager (real subprocess)', () => {
       await new Promise((r) => setTimeout(r, 25));
     }
     const kidPid = Number(readFileSync(kidPidFile, 'utf8'));
+    expect(kidPid).toBeGreaterThan(0);
     const rootPid = (
       manager as unknown as { threads: Map<string, { child: { pid?: number } | null }> }
     ).threads.get(info.threadId)?.child?.pid;
@@ -649,6 +652,7 @@ describe('AcpThreadManager (real subprocess)', () => {
       10_000,
       'thread force-closed',
     );
+    expect(manager.listThreads().filter((t) => t.archived !== true)).toEqual([]);
   }, 45_000);
 
   test('unknown agents and capacity are refused cleanly', async () => {
@@ -4037,6 +4041,10 @@ describe('AcpThreadManager prompt queueing', () => {
       5_000,
       'the file read cleared the stall',
     );
+    expect(
+      infoLog.mock.calls.some((call) => call[1] === '[acp-threads] turn resumed after stall'),
+    ).toBe(true);
+    expect(manager.getInfo(info.threadId)?.stalledSince).toBeUndefined();
     await waitUntil(() => !internals(manager).turnActive(info.threadId), 20_000, 'turn ended');
 
     await manager.closeThread(info.threadId);
@@ -4168,6 +4176,7 @@ describe.skipIf(process.platform === 'win32')('login-shell PATH fallback', () =>
     const info = await manager.createThread({ agent: { source: 'custom', id: 'shell-agent' } });
     await manager.subscribe(info.threadId, 0, () => {});
     await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    expect(manager.getInfo(info.threadId)?.status).toBe('ready');
   }, 30_000);
 
   test('a command missing from the login shell too still fails with the install hint', async () => {

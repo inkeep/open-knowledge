@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prependFrontmatter, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
-import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { __resetQuiescenceForTests } from './bridge-quiescence.ts';
 import { resetMetrics } from './metrics.ts';
 import { createServer } from './server-factory.ts';
@@ -19,8 +19,6 @@ function reconstructSerializeDoc(
   const { frontmatter, body } = stripFrontmatter(ytext);
   return prependFrontmatter(frontmatter, body);
 }
-
-const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
 vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 });
 

@@ -184,17 +184,22 @@ describe('CC1 broadcast — L1 integration', () => {
         50,
         'a files signal caused after the empty-file write',
       );
-
-      await pollUntil(
-        async () => {
-          const docsRes = await fetch(`http://127.0.0.1:${server.port}/api/documents`);
-          const docsBody: { documents?: Array<{ docName: string }> } = await docsRes.json();
-          return docsBody.documents?.some((doc) => doc.docName === docName) === true;
-        },
-        5000,
-        50,
-        'the empty file to appear in documents',
+      expect(signals.some((signal) => signal.ch === 'files' && signal.seq > filesBefore)).toBe(
+        true,
       );
+
+      await expect(
+        pollUntil(
+          async () => {
+            const docsRes = await fetch(`http://127.0.0.1:${server.port}/api/documents`);
+            const docsBody: { documents?: Array<{ docName: string }> } = await docsRes.json();
+            return docsBody.documents?.some((doc) => doc.docName === docName) === true;
+          },
+          5000,
+          50,
+          'the empty file to appear in documents',
+        ),
+      ).resolves.toBeUndefined();
     } finally {
       destroy();
     }

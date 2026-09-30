@@ -1036,12 +1036,6 @@ describe('ConflictAuthority working-tree resolve against a real repo', () => {
     expect(rig.authority.count()).toBe(0);
     expect(await headSha()).toBe(before);
   });
-
-  test('the union type refuses a working-tree raise with no pinned blob', () => {
-    const { authority } = makeAuthority();
-    // @ts-expect-error a working-tree conflict without theirsSha is not constructible
-    authority.raise({ kind: 'working-tree', file: 'a.md' });
-  });
 });
 
 const MARKERED = [

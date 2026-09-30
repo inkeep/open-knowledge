@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 import { E2E_CI_EXCLUSIONS } from '../stress/e2e-ci-ledger';
 
 const APP_ROOT = join(import.meta.dirname, '..', '..');
@@ -12,13 +13,13 @@ const LEDGER_HINT =
 
 function listStressE2eFiles(): string[] {
   return readdirSync(STRESS_DIR)
-    .filter((name) => name.endsWith('.e2e.ts'))
+    .filter((name) => isTestOnlySourceFile(name, 'playwright'))
     .sort();
 }
 
 function nestedE2ePaths(relPaths: readonly string[]): string[] {
   return relPaths
-    .filter((p) => p.endsWith('.e2e.ts') && /[/\\]/.test(p))
+    .filter((p) => isTestOnlySourceFile(p, 'playwright') && /[/\\]/.test(p))
     .map((p) => p.replace(/\\/g, '/'))
     .sort();
 }
@@ -26,7 +27,9 @@ function nestedE2ePaths(relPaths: readonly string[]): string[] {
 function parseEnumeratedFiles(script: string): string[] {
   return script
     .split(/\s+/)
-    .filter((token) => token.startsWith('tests/stress/') && token.endsWith('.e2e.ts'))
+    .filter(
+      (token) => token.startsWith('tests/stress/') && isTestOnlySourceFile(token, 'playwright'),
+    )
     .map((token) => token.slice('tests/stress/'.length));
 }
 
@@ -77,49 +80,45 @@ describe('test:e2e membership meta-guard', () => {
   test('every tests/stress/*.e2e.ts is in the test:e2e enumeration or the exclusion ledger', () => {
     const { onDisk, enumerated, ledgered } = loadRealSets();
     const { unlisted } = computeMembershipViolations(onDisk, enumerated, ledgered);
-    if (unlisted.length > 0) {
-      throw new Error(
-        `CI-invisible stress e2e file(s) — ${LEDGER_HINT}:\n${unlisted
-          .map((f) => `  tests/stress/${f}`)
-          .join('\n')}`,
-      );
-    }
+    expect(
+      unlisted,
+      `CI-invisible stress e2e file(s) — ${LEDGER_HINT}:\n${unlisted
+        .map((f) => `  tests/stress/${f}`)
+        .join('\n')}`,
+    ).toEqual([]);
   });
 
   test('no file is in BOTH the test:e2e enumeration and the exclusion ledger', () => {
     const { onDisk, enumerated, ledgered } = loadRealSets();
     const { dual } = computeMembershipViolations(onDisk, enumerated, ledgered);
-    if (dual.length > 0) {
-      throw new Error(
-        `File(s) present in both the test:e2e enumeration and the ledger — a promoted file must have its ledger entry deleted:\n${dual
-          .map((f) => `  tests/stress/${f}`)
-          .join('\n')}`,
-      );
-    }
+    expect(
+      dual,
+      `File(s) present in both the test:e2e enumeration and the ledger — a promoted file must have its ledger entry deleted:\n${dual
+        .map((f) => `  tests/stress/${f}`)
+        .join('\n')}`,
+    ).toEqual([]);
   });
 
   test('every ledger entry points at a file that still exists', () => {
     const { onDisk, enumerated, ledgered } = loadRealSets();
     const { staleLedger } = computeMembershipViolations(onDisk, enumerated, ledgered);
-    if (staleLedger.length > 0) {
-      throw new Error(
-        `Stale ledger entr(ies) — the file no longer exists; delete the entry from e2e-ci-ledger.ts:\n${staleLedger
-          .map((f) => `  ${f}`)
-          .join('\n')}`,
-      );
-    }
+    expect(
+      staleLedger,
+      `Stale ledger entr(ies) — the file no longer exists; delete the entry from e2e-ci-ledger.ts:\n${staleLedger
+        .map((f) => `  ${f}`)
+        .join('\n')}`,
+    ).toEqual([]);
   });
 
   test('every enumerated test:e2e file still exists', () => {
     const { onDisk, enumerated, ledgered } = loadRealSets();
     const { staleEnumeration } = computeMembershipViolations(onDisk, enumerated, ledgered);
-    if (staleEnumeration.length > 0) {
-      throw new Error(
-        `Stale test:e2e entr(ies) — the file no longer exists on disk. Playwright file args are filters, so a stale entry silently matches nothing; remove it from the script:\n${staleEnumeration
-          .map((f) => `  tests/stress/${f}`)
-          .join('\n')}`,
-      );
-    }
+    expect(
+      staleEnumeration,
+      `Stale test:e2e entr(ies) — the file no longer exists on disk. Playwright file args are filters, so a stale entry silently matches nothing; remove it from the script:\n${staleEnumeration
+        .map((f) => `  tests/stress/${f}`)
+        .join('\n')}`,
+    ).toEqual([]);
   });
 
   test('ledger entries are unique and carry non-empty reason + evidence', () => {
@@ -131,9 +130,7 @@ describe('test:e2e membership meta-guard', () => {
       if (entry.reason.trim() === '') problems.push(`  empty reason: ${entry.file}`);
       if (entry.evidence.trim() === '') problems.push(`  empty evidence: ${entry.file}`);
     }
-    if (problems.length > 0) {
-      throw new Error(`Ledger hygiene violation(s):\n${problems.join('\n')}`);
-    }
+    expect(problems, `Ledger hygiene violation(s):\n${problems.join('\n')}`).toEqual([]);
   });
 
   test('membership predicate fires on planted violations and not on adjacent negatives', () => {

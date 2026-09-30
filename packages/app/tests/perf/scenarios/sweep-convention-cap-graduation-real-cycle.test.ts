@@ -25,14 +25,12 @@ async function isDevServerReachable(target: string): Promise<boolean> {
 describe('convention-cap-graduation sweep — real-cycle integration', () => {
   test.skipIf(!INTEGRATION_GATE)(
     'one real localhost cycle produces a well-formed CycleOutcome',
-    async () => {
+    async (ctx) => {
       const reachable = await isDevServerReachable(DEFAULT_TARGET);
-      if (!reachable) {
-        console.warn(
-          `[sweep-real-cycle] OK_SWEEP_INTEGRATION=1 but ${DEFAULT_TARGET} is not reachable — start the dev server with: cd packages/app && bun run dev`,
-        );
-        return;
-      }
+      ctx.skip(
+        !reachable,
+        `OK_SWEEP_INTEGRATION=1 but ${DEFAULT_TARGET} is not reachable — start the dev server with: cd packages/app && pnpm dev`,
+      );
 
       const browser = await chromium.launch({
         headless: true,

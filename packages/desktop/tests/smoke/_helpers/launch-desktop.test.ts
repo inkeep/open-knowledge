@@ -9,6 +9,7 @@ import {
   resolveServerRuntimeConfig,
 } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../../test-support/test-only-source-file.mjs';
 import { SPAWN_STARTUP_DEADLINE_MS } from '../../../src/shared/boot-narration.ts';
 import {
   DEFAULT_LAUNCH_TIMEOUT_MS,
@@ -203,10 +204,12 @@ describe("desktopLaunchOptions — a packaged launch bounds its detached server'
 
 describe('no smoke file references __dirname without defining it', () => {
   const SMOKE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const files = readdirSync(SMOKE_DIR)
+    .filter((file) => isTestOnlySourceFile(file, 'playwright'))
+    .map((file) => ({ file, src: readFileSync(join(SMOKE_DIR, file), 'utf8') }))
+    .filter(({ src }) => src.includes('__dirname'));
 
-  it.each(readdirSync(SMOKE_DIR).filter((f) => f.endsWith('.e2e.ts')))('%s', (file) => {
-    const src = readFileSync(join(SMOKE_DIR, file), 'utf8');
-    if (!src.includes('__dirname')) return;
+  it.each(files)('$file', ({ file, src }) => {
     expect(src, `${file} uses __dirname without defining it`).toMatch(/const __dirname\s*=/);
   });
 });

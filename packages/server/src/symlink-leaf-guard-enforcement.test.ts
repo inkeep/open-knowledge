@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../test-support/test-only-source-file.mjs';
 import { checkSymlinkLeaf } from './fs-safety.ts';
 
 const SERVER_SRC = dirname(fileURLToPath(import.meta.url));
@@ -57,12 +58,7 @@ function listServerSourceFiles(root: string): string[] {
     const abs = join(root, entry.name);
     if (entry.isDirectory()) {
       out.push(...listServerSourceFiles(abs));
-    } else if (
-      entry.isFile() &&
-      entry.name.endsWith('.ts') &&
-      !entry.name.endsWith('.test.ts') &&
-      !entry.name.endsWith('.test-helper.ts')
-    ) {
+    } else if (entry.isFile() && entry.name.endsWith('.ts') && !isTestOnlySourceFile(entry.name)) {
       out.push(abs);
     }
   }

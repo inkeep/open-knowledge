@@ -412,14 +412,17 @@ describe('updateSavedTheme', () => {
     expect(readFileSync(path, 'utf-8')).toBe(original);
   });
 
-  test('updates only the exact lowercase stem when a mixed-case pair exists', async () => {
+  test('updates only the exact lowercase stem when a mixed-case pair exists', async (ctx) => {
     const dir = savedThemesDir(home);
     mkdirSync(dir, { recursive: true });
     const uppercasePath = join(dir, 'Ocean.yaml');
     const lowercasePath = join(dir, 'ocean.yaml');
     const uppercase = base16ToYaml(scheme('Uppercase stem'));
     writeFileSync(uppercasePath, uppercase);
-    if (existsSync(lowercasePath)) return;
+    ctx.skip(
+      existsSync(lowercasePath),
+      'a case-insensitive filesystem holds Ocean.yaml and ocean.yaml as one file',
+    );
     writeFileSync(lowercasePath, base16ToYaml(scheme('Lowercase stem')));
 
     expect(
@@ -530,14 +533,17 @@ describe('deleteSavedTheme', () => {
     expect(readFileSync(path, 'utf-8')).toBe(original);
   });
 
-  test('deletes only the exact lowercase stem when a mixed-case pair exists', async () => {
+  test('deletes only the exact lowercase stem when a mixed-case pair exists', async (ctx) => {
     const dir = savedThemesDir(home);
     mkdirSync(dir, { recursive: true });
     const uppercasePath = join(dir, 'Ocean.yaml');
     const lowercasePath = join(dir, 'ocean.yaml');
     const uppercase = base16ToYaml(scheme('Uppercase stem'));
     writeFileSync(uppercasePath, uppercase);
-    if (existsSync(lowercasePath)) return;
+    ctx.skip(
+      existsSync(lowercasePath),
+      'a case-insensitive filesystem holds Ocean.yaml and ocean.yaml as one file',
+    );
     writeFileSync(lowercasePath, base16ToYaml(scheme('Lowercase stem')));
 
     expect(await deleteSavedTheme({ id: 'saved-ocean', homedirOverride: home })).toEqual({

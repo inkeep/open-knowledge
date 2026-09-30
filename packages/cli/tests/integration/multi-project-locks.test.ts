@@ -220,97 +220,94 @@ function stopLockWorker(handle: WorkerHandle): Promise<void> {
   });
 }
 
-(process.env.CI ? describe.skip : describe)(
-  'multi-project lock isolation — cross-process (A1)',
-  () => {
-    let testRoot: string;
-    let workers: WorkerHandle[];
+describe('multi-project lock isolation — cross-process (A1)', () => {
+  let testRoot: string;
+  let workers: WorkerHandle[];
 
-    beforeEach(() => {
-      testRoot = resolve(
-        tmpdir(),
-        `multi-project-locks-xp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      );
-      mkdirSync(testRoot, { recursive: true });
-      workers = [];
-    });
+  beforeEach(() => {
+    testRoot = resolve(
+      tmpdir(),
+      `multi-project-locks-xp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    mkdirSync(testRoot, { recursive: true });
+    workers = [];
+  });
 
-    afterEach(async () => {
-      await Promise.all(workers.map(stopLockWorker));
-      rmSync(testRoot, { recursive: true, force: true });
-    });
+  afterEach(async () => {
+    await Promise.all(workers.map(stopLockWorker));
+    rmSync(testRoot, { recursive: true, force: true });
+  });
 
-    it('three concurrent worker processes each hold their own server lock (no cross-contamination)', async () => {
-      const lockDirs = [1, 2, 3].map((i) => {
-        const lockDir = join(testRoot, `project-${i}`, '.ok', LOCAL_DIR);
-        mkdirSync(lockDir, { recursive: true });
-        return { i, lockDir, serverPort: 52100 + i };
-      });
-
-      const spawnResults = await Promise.allSettled(
-        lockDirs.map(({ lockDir, serverPort }) => spawnLockWorker(lockDir, serverPort)),
-      );
-      workers = spawnResults.flatMap((result) =>
-        result.status === 'fulfilled' ? [result.value] : [],
-      );
-      const failedSpawn = spawnResults.find(
-        (result): result is PromiseRejectedResult => result.status === 'rejected',
-      );
-      if (failedSpawn) throw failedSpawn.reason;
-
-      for (const w of workers) {
-        expect(isProcessAlive(w.pid)).toBe(true);
-      }
-
-      const workerPids = workers.map((w) => w.pid);
-      expect(new Set(workerPids).size).toBe(3);
-
-      for (const pid of workerPids) {
-        expect(pid).not.toBe(process.pid);
-      }
-
-      for (const w of workers) {
-        const serverLockPath = join(w.lockDir, 'server.lock');
-        expect(existsSync(serverLockPath)).toBe(true);
-
-        const serverLock = JSON.parse(readFileSync(serverLockPath, 'utf-8'));
-        expect(serverLock.pid).toBe(w.pid);
-        expect(serverLock.port).toBe(w.serverPort);
-      }
-
-      const allPorts = workers.map((w) => w.serverPort);
-      expect(new Set(allPorts).size).toBe(3);
-    });
-
-    it('a fourth worker against an already-held lockDir collides on the live foreign pid (US-001 collision branch)', async () => {
-      const lockDir = join(testRoot, 'shared-project', '.ok', LOCAL_DIR);
+  it('three concurrent worker processes each hold their own server lock (no cross-contamination)', async () => {
+    const lockDirs = [1, 2, 3].map((i) => {
+      const lockDir = join(testRoot, `project-${i}`, '.ok', LOCAL_DIR);
       mkdirSync(lockDir, { recursive: true });
-
-      const holder = await spawnLockWorker(lockDir, 52200);
-      workers.push(holder);
-
-      const colliderProc = nativeSpawn(
-        'node',
-        ['--import', 'tsx', LOCK_WORKER_PATH, lockDir, '52201'],
-        {
-          stdio: ['ignore', 'pipe', 'pipe'],
-        },
-      );
-      let colliderStderr = '';
-      colliderProc.stderr?.on('data', (chunk) => {
-        colliderStderr += chunk.toString('utf-8');
-      });
-      const colliderExit = await new Promise<number>((resolveExit) => {
-        colliderProc.once('exit', (code) => resolveExit(code ?? -1));
-      });
-
-      expect(colliderExit).not.toBe(0);
-      expect(colliderStderr).toContain('acquire failed');
-      expect(colliderStderr).toContain(`pid ${holder.pid}`);
-
-      const serverLock = JSON.parse(readFileSync(join(lockDir, 'server.lock'), 'utf-8'));
-      expect(serverLock.pid).toBe(holder.pid);
-      expect(serverLock.port).toBe(52200);
+      return { i, lockDir, serverPort: 52100 + i };
     });
-  },
-);
+
+    const spawnResults = await Promise.allSettled(
+      lockDirs.map(({ lockDir, serverPort }) => spawnLockWorker(lockDir, serverPort)),
+    );
+    workers = spawnResults.flatMap((result) =>
+      result.status === 'fulfilled' ? [result.value] : [],
+    );
+    const failedSpawn = spawnResults.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    if (failedSpawn) throw failedSpawn.reason;
+
+    for (const w of workers) {
+      expect(isProcessAlive(w.pid)).toBe(true);
+    }
+
+    const workerPids = workers.map((w) => w.pid);
+    expect(new Set(workerPids).size).toBe(3);
+
+    for (const pid of workerPids) {
+      expect(pid).not.toBe(process.pid);
+    }
+
+    for (const w of workers) {
+      const serverLockPath = join(w.lockDir, 'server.lock');
+      expect(existsSync(serverLockPath)).toBe(true);
+
+      const serverLock = JSON.parse(readFileSync(serverLockPath, 'utf-8'));
+      expect(serverLock.pid).toBe(w.pid);
+      expect(serverLock.port).toBe(w.serverPort);
+    }
+
+    const allPorts = workers.map((w) => w.serverPort);
+    expect(new Set(allPorts).size).toBe(3);
+  });
+
+  it('a fourth worker against an already-held lockDir collides on the live foreign pid (US-001 collision branch)', async () => {
+    const lockDir = join(testRoot, 'shared-project', '.ok', LOCAL_DIR);
+    mkdirSync(lockDir, { recursive: true });
+
+    const holder = await spawnLockWorker(lockDir, 52200);
+    workers.push(holder);
+
+    const colliderProc = nativeSpawn(
+      'node',
+      ['--import', 'tsx', LOCK_WORKER_PATH, lockDir, '52201'],
+      {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    let colliderStderr = '';
+    colliderProc.stderr?.on('data', (chunk) => {
+      colliderStderr += chunk.toString('utf-8');
+    });
+    const colliderExit = await new Promise<number>((resolveExit) => {
+      colliderProc.once('exit', (code) => resolveExit(code ?? -1));
+    });
+
+    expect(colliderExit).not.toBe(0);
+    expect(colliderStderr).toContain('acquire failed');
+    expect(colliderStderr).toContain(`pid ${holder.pid}`);
+
+    const serverLock = JSON.parse(readFileSync(join(lockDir, 'server.lock'), 'utf-8'));
+    expect(serverLock.pid).toBe(holder.pid);
+    expect(serverLock.port).toBe(52200);
+  });
+});

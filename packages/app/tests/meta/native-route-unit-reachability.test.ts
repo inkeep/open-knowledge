@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 import {
   extractRouteHandlerNames,
   listNativeRouteFiles,
@@ -43,7 +44,8 @@ function listServerTestFiles(): string[] {
       const full = join(dir, entry);
       const st = statSync(full);
       if (st.isDirectory()) walk(full);
-      else if (st.isFile() && entry.endsWith('.test.ts')) out.push(full);
+      else if (st.isFile() && isTestOnlySourceFile(entry, 'vitest') && entry.endsWith('.ts'))
+        out.push(full);
     }
   };
   walk(SERVER_SRC_ROOT);

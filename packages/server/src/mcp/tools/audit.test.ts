@@ -1,15 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import {
-  describe as _bunDescribe,
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  expect,
-  test,
-} from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import type { AuditDeps } from './audit.ts';
 import { DESCRIPTION, register } from './audit.ts';
@@ -21,10 +13,6 @@ import {
   AUDIT_WARNING_CAP,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
 } from './shared.ts';
-
-const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
-
-const describeEvenOnCI = _bunDescribe;
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 
@@ -369,7 +357,7 @@ describe('audit — unified project audit', () => {
   });
 });
 
-describeEvenOnCI('audit — broken-link suppression', () => {
+describe('audit — broken-link suppression', () => {
   test('a filtered clean audit exposes a content-free suppression marker', async () => {
     const { server, getTool } = createFakeServer();
     register(server, makeDeps(baseUrl, tmpDir));

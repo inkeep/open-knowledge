@@ -1,9 +1,9 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, onTestFinished, test, vi } from 'vitest';
 import { createVitest, type TestProject } from 'vitest/node';
 import { gitCleanEnv } from '../scripts/git-clean-env.mjs';
 import tierConfig from '../vitest.uncached.config';
@@ -41,6 +41,9 @@ function git(root: string, args: string[]): void {
 }
 
 const SERVER = 'packages/server/src/reads-app.uncached.test.ts';
+const privateInfix = (stem: string, suffix: string) => `${stem}.private.${suffix}`;
+const TRANSPOSED = privateInfix('packages/server/src/reads-app.uncached', 'test.ts');
+const INFIXED = privateInfix('packages/server/src/reads-app', 'uncached.test.ts');
 const server = (collected: string[]) => ({
   name: 'packages/server/vitest.config.ts',
   dir: 'packages/server',
@@ -97,6 +100,18 @@ describe('the uncached tier reconciles the suffixed files git lists against what
         `${ignored} takes the .uncached.test suffix and the tier collects it, but git ignores it`,
       ),
     ]);
+  });
+
+  test('a test named for the tier with .uncached. short of its closing suffix fails, since no tier project collects it', () => {
+    expect(
+      uncachedTierProblems(packages(), [SERVER, TRANSPOSED], [server([SERVER]), scripts([])]),
+    ).toEqual([expect.stringContaining(`${TRANSPOSED} names the uncached tier, but`)]);
+  });
+
+  test('the same infix ahead of the closing .uncached.test suffix passes', () => {
+    expect(
+      uncachedTierProblems(packages(), [SERVER, INFIXED], [server([SERVER, INFIXED]), scripts([])]),
+    ).toEqual([]);
   });
 
   test('an empty listing fails rather than passing having run nothing', () => {
@@ -187,14 +202,30 @@ describe('reconcile() over the real tier config, as Vitest resolves it under a -
     }
   }
 
+  let declared: string[] = [];
+
+  beforeAll(async () => {
+    const { resolved, failure } = await reconcileUnder(undefined);
+    expect(failure).toBeUndefined();
+    declared = resolved;
+  });
+
+  test('every declared project is a Vitest config on disk, the server and root scripts configs among them', () => {
+    expect(declared).toEqual(expect.arrayContaining([SERVER_PROJECT, SCRIPTS_PROJECT]));
+    expect(declared.filter((name) => !existsSync(join(root, name)))).toEqual([]);
+  });
+
   test.each([
-    { filter: [SCRIPTS_PROJECT], kept: [SCRIPTS_PROJECT] },
-    { filter: [`!${SCRIPTS_PROJECT}`], kept: [SERVER_PROJECT] },
+    { filter: [SCRIPTS_PROJECT], kept: () => [SCRIPTS_PROJECT] },
+    {
+      filter: [`!${SCRIPTS_PROJECT}`],
+      kept: () => declared.filter((name) => name !== SCRIPTS_PROJECT),
+    },
   ])(
     'a run narrowed by --project=$filter refuses once, naming the filter rather than SOURCES',
     async ({ filter, kept }) => {
       const { resolved, failure } = await reconcileUnder(filter);
-      expect(resolved).toEqual(kept);
+      expect(resolved).toEqual(kept());
       expect(failure).toBeInstanceOf(Error);
       const message = failure instanceof Error ? failure.message : '';
       expect(message).toContain('--project');
@@ -204,14 +235,13 @@ describe('reconcile() over the real tier config, as Vitest resolves it under a -
   );
 
   test.each([
-    { filter: undefined },
-    { filter: ['*'] },
-    { filter: [SCRIPTS_PROJECT, SERVER_PROJECT] },
+    { form: 'the * glob', filter: () => ['*'] },
+    { form: 'every declared project by name', filter: () => declared },
   ])(
-    'a run whose filter ($filter) keeps every declared project reconciles cleanly',
+    'a run whose filter ($form) keeps every declared project reconciles cleanly',
     async ({ filter }) => {
-      const { resolved, failure } = await reconcileUnder(filter);
-      expect(resolved).toEqual([SERVER_PROJECT, SCRIPTS_PROJECT]);
+      const { resolved, failure } = await reconcileUnder(filter());
+      expect(resolved).toEqual(declared);
       expect(failure).toBeUndefined();
     },
   );
@@ -234,6 +264,19 @@ describe("the tier's discovery domain: what git lists, and what every project ex
       'packages/server/src/tracked.uncached.test.ts',
       'packages/server/src/untracked.uncached.test.ts',
     ]);
+  });
+
+  test('git lists a test that carries .uncached. short of its closing suffix, and no file that is not a test', () => {
+    const root = workspace({
+      [SERVER]: '',
+      [TRANSPOSED]: '',
+      'packages/server/src/reads-app.uncached.test-helper.ts': '',
+      'packages/server/src/__snapshots__/reads-app.uncached.test.ts.snap': '',
+      [`${SERVER}.orig`]: '',
+      'vitest.uncached.config.ts': '',
+    });
+    git(root, ['init', '-q']);
+    expect(listUncachedTestFiles(root).sort()).toEqual([SERVER, TRANSPOSED].sort());
   });
 
   test('every tier project excludes node_modules, so a vendored suffixed file is in neither view', () => {

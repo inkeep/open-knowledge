@@ -98,7 +98,7 @@ describe('/readyz', () => {
     expect(res.status).toBe(200);
   });
 
-  test('destroy() flips readiness to draining before the listener closes', async () => {
+  test('destroy() flips readiness to draining before the listener closes', async (ctx) => {
     const tmp = await mkdtemp(resolve(tmpdir(), 'ok-readyz-drain-'));
     try {
       const draining = await bootCompositionRig(tmp);
@@ -117,11 +117,11 @@ describe('/readyz', () => {
       }
       await destroyed;
 
-      if (probe !== 'refused') {
-        expect(probe.status).toBe(503);
-        expect(probe.body?.ready).toBe(false);
-        expect(probe.body?.status).toBe('draining');
-      }
+      ctx.skip(
+        probe === 'refused',
+        'the listener closed before the probe connected, so this run could not observe the draining window',
+      );
+      expect(probe).toMatchObject({ status: 503, body: { ready: false, status: 'draining' } });
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }

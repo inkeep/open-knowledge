@@ -111,11 +111,10 @@ describe('Histogram', () => {
           const got = snap[r];
           const allowed = Math.max(1, oracle * tolerance);
           const error = Math.abs(got - oracle);
-          if (error > allowed) {
-            throw new Error(
-              `${distroName} n=${n} ${r}: got=${got}, oracle=${oracle}, error=${error}, allowed=${allowed.toFixed(2)}`,
-            );
-          }
+          expect(
+            error,
+            `${distroName} n=${n} ${r}: got=${got}, oracle=${oracle}, error=${error}, allowed=${allowed.toFixed(2)}`,
+          ).toBeLessThanOrEqual(allowed);
         }
       }
     }

@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../test-support/test-only-source-file.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCAN_ROOT = __dirname;
@@ -50,7 +51,7 @@ function listScannedSourceFiles(): FileLines[] {
         continue;
       }
       if (!entry.isFile() || !entry.name.endsWith('.ts')) continue;
-      if (entry.name.endsWith('.test.ts') || entry.name.endsWith('.test-helper.ts')) continue;
+      if (isTestOnlySourceFile(entry.name)) continue;
       if (entry.name === SELF_BASENAME) continue;
       out.push({
         path: relative(SCAN_ROOT, abs),
@@ -107,16 +108,15 @@ describe('console discipline (server sources)', () => {
         violations.push(`  ${file.path}:${v.line}    ${v.text}`);
       }
     }
-    if (violations.length > 0) {
-      throw new Error(
-        `Raw console.* call found in packages/server/src — console output never reaches the pino file sink ` +
-          `(.ok/local/logs/server-current.jsonl) that bug-report bundles collect, and the packaged desktop app ` +
-          `runs the server detached with no persistent stdio. Use getLogger(name) from './logger.ts' ` +
-          `(warn/error still reach the terminal through the console stream). The only sanctioned console shapes ` +
-          `are the structured telemetry-event channel (console.<level>(JSON.stringify({ event: ... }))) and the ` +
-          `FILE_ALLOWLIST bootstrap/stdio surfaces in console-discipline.test.ts:\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `Raw console.* call found in packages/server/src — console output never reaches the pino file sink ` +
+        `(.ok/local/logs/server-current.jsonl) that bug-report bundles collect, and the packaged desktop app ` +
+        `runs the server detached with no persistent stdio. Use getLogger(name) from './logger.ts' ` +
+        `(warn/error still reach the terminal through the console stream). The only sanctioned console shapes ` +
+        `are the structured telemetry-event channel (console.<level>(JSON.stringify({ event: ... }))) and the ` +
+        `FILE_ALLOWLIST bootstrap/stdio surfaces in console-discipline.test.ts:\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('predicate fires on planted violations and not on adjacent negatives', () => {

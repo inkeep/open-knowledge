@@ -2,6 +2,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isTestOnlySourceFile } from '../test-support/test-only-source-file.mjs';
 import { isUncachedTestFile } from '../test-support/uncached-tier.ts';
 
 const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -25,7 +26,12 @@ function walkTestFiles(dir, out = []) {
     if (entry.name === 'node_modules' || entry.name === 'dist') continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) walkTestFiles(full, out);
-    else if (entry.name.endsWith('.test.ts') && !isUncachedTestFile(entry.name)) out.push(full);
+    else if (
+      isTestOnlySourceFile(entry.name, 'vitest') &&
+      entry.name.endsWith('.ts') &&
+      !isUncachedTestFile(entry.name)
+    )
+      out.push(full);
   }
   return out;
 }

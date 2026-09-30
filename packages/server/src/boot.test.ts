@@ -1,9 +1,3 @@
-import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
-
-const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
-
-const describeEvenOnCI = _bunDescribe;
-
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -19,6 +13,7 @@ import {
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { bootServer } from './boot.ts';
 import { getBootTimings } from './boot-timings.ts';
 import { ConfigSchema } from './config/schema.ts';
@@ -442,7 +437,7 @@ describe('bootServer — reactShellDistDir end-to-end HTTP shape', () => {
   });
 });
 
-describeEvenOnCI('bootServer — MCP internal RPC stays loopback under a public externalUrl', () => {
+describe('bootServer — MCP internal RPC stays loopback under a public externalUrl', () => {
   const MCP_PROTOCOL_VERSION = '2025-06-18';
   const UNREACHABLE_EXTERNAL_URL = 'https://prd-8062-unreachable.invalid';
 
@@ -871,7 +866,7 @@ describe('parseKeepaliveConnectionId', () => {
   });
 });
 
-describeEvenOnCI('bootServer — exposure consent interlock', () => {
+describe('bootServer — exposure consent interlock', () => {
   async function tryBoot(
     server: Record<string, unknown>,
     passServerRuntime = false,
@@ -967,7 +962,7 @@ describeEvenOnCI('bootServer — exposure consent interlock', () => {
   });
 });
 
-describeEvenOnCI('bootServer — multi-address bind', () => {
+describe('bootServer — multi-address bind', () => {
   test('every bind address answers on the same port; teardown closes all listeners', async () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'multibind-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);

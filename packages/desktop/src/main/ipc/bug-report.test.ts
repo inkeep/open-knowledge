@@ -2584,6 +2584,7 @@ describe('handleBugReportCrashAck', () => {
     let clockMs = Date.parse('2026-07-10T00:00:00.000Z');
     const deps = {
       sentinelPath: join(dir, 'sentinel.json'),
+      mainExitPath: join(dir, 'main-exit.json'),
       ackStorePath: join(dir, 'crash-acks.json'),
       crashDumpsDir: join(dir, 'dumps'),
       appBundleRoot: join(dir, 'OpenKnowledge.app'),
@@ -2595,6 +2596,7 @@ describe('handleBugReportCrashAck', () => {
       currentBootSessionUuid: () => 'boot-epoch-test',
       mainThreadWatchdog: {
         readPrevious: () => ({ kind: 'absent' }) as const,
+        readPreviousStall: () => ({ kind: 'absent' }) as const,
         start: () => ({ stop: () => {} }),
       },
       logger: { info: () => {}, warn: () => {} },

@@ -36,7 +36,8 @@ export const unreasonedLintignore = 9;
 // we should add here someday
 export const launderedTagAppend = 10;
 
-export const launderedTagInline = 11;
+/** long prose about the module @remarks something */
+export const proseWithUnsanctionedTag = 11;
 
 /**
  * Architectural floor: `entity-ref-preservation`

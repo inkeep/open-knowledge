@@ -1,22 +1,11 @@
-import {
-  describe as _bunDescribe,
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  expect,
-  test,
-} from 'vitest';
-import { bindTestUiServerLock } from './preview-url-test-helpers.ts';
-
-const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
-
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import { type GetHistoryDeps, register } from './history.ts';
+import { bindTestUiServerLock } from './preview-url-test-helpers.ts';
 import type { ServerInstance } from './shared.ts';
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});

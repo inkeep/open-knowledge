@@ -139,8 +139,8 @@ describe('startConfigFileWatcher', () => {
 
   test('cleanup function returned is idempotent', async () => {
     const cleanup = await startConfigFileWatcher(fx.absPath, () => {});
-    await cleanup();
-    await cleanup();
+    await expect(cleanup()).resolves.toBeUndefined();
+    await expect(cleanup()).resolves.toBeUndefined();
   });
 
   test('handler exceptions are caught and do not crash the watcher', async () => {
@@ -316,8 +316,8 @@ describe('startMultiPathConfigFileWatcher', () => {
 
   test('cleanup function is idempotent', async () => {
     const cleanup = await startMultiPathConfigFileWatcher([multiFx.pathA, multiFx.pathB], () => {});
-    await cleanup();
-    await cleanup();
+    await expect(cleanup()).resolves.toBeUndefined();
+    await expect(cleanup()).resolves.toBeUndefined();
   });
 
   test('does not fire onChange for sibling files in the same dir that are not in the watched set', async () => {

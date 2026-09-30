@@ -399,10 +399,11 @@ describe('detectGit (integration)', () => {
     expect(['PATH', 'fallback']).toContain(detected.source);
   });
 
-  test('Stage 2 fallback fires when PATH has no git and a fallback candidate exists', () => {
-    if (process.platform === 'win32') {
-      return;
-    }
+  test('Stage 2 fallback fires when PATH has no git and a fallback candidate exists', (ctx) => {
+    ctx.skip(
+      process.platform === 'win32',
+      'the PATH override and the fallback candidates are POSIX',
+    );
     const originalPath = process.env.PATH;
     process.env.PATH = '/nonexistent-stage2-fallback-test-xyz';
     try {

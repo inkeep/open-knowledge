@@ -1,5 +1,6 @@
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { isTestOnlySourceFile } from '../../../test-support/test-only-source-file.mjs';
 
 export const HANDLER_RUN_END_NEEDLES = [
   '\n  const routes:',
@@ -13,7 +14,7 @@ export function extractRouteHandlerNames(text: string): string[] {
 
 export function listNativeRouteFiles(serverSrcRoot: string): string[] {
   return readdirSync(join(serverSrcRoot, 'http'))
-    .filter((entry) => entry.endsWith('-routes.ts') && !entry.endsWith('.test.ts'))
+    .filter((entry) => entry.endsWith('-routes.ts') && !isTestOnlySourceFile(entry))
     .sort()
     .map((entry) => `http/${entry}`);
 }

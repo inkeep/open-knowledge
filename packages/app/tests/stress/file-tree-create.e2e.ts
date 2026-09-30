@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
+import { expectKnownBug } from '../../../../test-support/known-bug.test-helper';
 import type { EditorTabSessionState } from '../../src/editor/editor-tabs';
 import {
   type ApiHelpers,
@@ -506,93 +507,11 @@ test.describe('FileTree sidebar create', () => {
     }
   });
 
-  test('bulk delete closes tabs already deleted before a later delete fails', async ({
-    page,
-    workerServer,
-    api,
-  }) => {
-    test.skip(
-      true,
-      'PR #1010 FileTree refactor broke applyDeleteAftermath partial-failure recovery — sidebar tree does not update after model.remove. See issue #1056.',
-    );
-    const firstDoc = 'zz-partial-delete-a';
-    const secondDoc = 'zz-partial-delete-b';
-
-    await deletePathIfExists(workerServer.baseURL, 'file', firstDoc);
-    await deletePathIfExists(workerServer.baseURL, 'file', secondDoc);
-    await api.createPage(`${firstDoc}.md`);
-    await api.createPage(`${secondDoc}.md`);
-
-    await page.route('**/api/delete-path', async (route) => {
-      const body = route.request().postDataJSON() as { path?: string } | null;
-      if (body?.path === secondDoc) {
-        await route.fulfill({
-          status: 500,
-          contentType: 'application/json',
-          body: JSON.stringify({ ok: false, error: 'Injected delete failure' }),
-        });
-        return;
-      }
-      await route.fallback();
-    });
-
-    try {
-      await gotoRootAndAwaitSidebar(page);
-
-      await sidebarTreeItem(page, `${firstDoc}.md`).click();
-      await expect(page.getByRole('button', { name: `${firstDoc}.md`, exact: true })).toBeVisible({
-        timeout: 10_000,
-      });
-      await sidebarTreeItem(page, `${secondDoc}.md`).click();
-      await expect(page.getByRole('button', { name: `${secondDoc}.md`, exact: true })).toBeVisible({
-        timeout: 10_000,
-      });
-
-      await sidebarTreeItem(page, `${firstDoc}.md`).click();
-      await sidebarTreeItem(page, `${secondDoc}.md`).click({
-        modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'],
-      });
-      await expect(sidebarTreeItem(page, `${firstDoc}.md`)).toHaveAttribute(
-        'aria-selected',
-        'true',
-      );
-      await expect(sidebarTreeItem(page, `${secondDoc}.md`)).toHaveAttribute(
-        'aria-selected',
-        'true',
-      );
-
-      await sidebarTreeItem(page, `${firstDoc}.md`).click({ button: 'right' });
-      await page.getByRole('menuitem', { name: /^Delete/ }).click({ timeout: 5_000 });
-      await expect(page.getByRole('alertdialog', { name: /Delete selected items/i })).toBeVisible({
-        timeout: 5_000,
-      });
-      await page.getByRole('button', { name: /^Delete$/ }).click();
-
-      await expect(page.getByRole('button', { name: `${firstDoc}.md`, exact: true })).toHaveCount(
-        0,
-        { timeout: 10_000 },
-      );
-      await expect(sidebarTreeItem(page, `${firstDoc}.md`)).toHaveCount(0, { timeout: 10_000 });
-      await expect(sidebarTreeItem(page, `${secondDoc}.md`)).toBeVisible();
-      expect(existsSync(join(workerServer.contentDir, `${firstDoc}.md`))).toBe(false);
-      expect(existsSync(join(workerServer.contentDir, `${secondDoc}.md`))).toBe(true);
-    } finally {
-      await page.unroute('**/api/delete-path');
-      await deletePathIfExists(workerServer.baseURL, 'file', firstDoc);
-      await deletePathIfExists(workerServer.baseURL, 'file', secondDoc);
-      await restoreRequiredFixtureEntries(workerServer.baseURL, api);
-    }
-  });
-
   test('cmd+a bulk delete closes many default-created file and folder tabs', async ({
     page,
     workerServer,
     api,
   }) => {
-    test.skip(
-      true,
-      'PR #1010 FileTree refactor broke bulk-delete sidebar tree updates. See issue #1056.',
-    );
     const fileNames = Array.from({ length: 8 }, (_, index) => defaultName('Untitled', index));
     const folderNames = Array.from({ length: 8 }, (_, index) => defaultName('New Folder', index));
 
@@ -708,10 +627,6 @@ test.describe('FileTree sidebar create', () => {
     workerServer,
     api,
   }) => {
-    test.skip(
-      true,
-      'PR #1010 FileTree refactor broke bulk-delete sidebar tree updates. See issue #1056.',
-    );
     const fileNames = Array.from({ length: 6 }, (_, index) => defaultName('Untitled', index));
     const pendingFolderName = 'New Folder';
 
@@ -842,10 +757,6 @@ test.describe('FileTree sidebar create', () => {
     workerServer,
     api,
   }) => {
-    test.skip(
-      true,
-      'PR #1010 FileTree refactor broke sidebar tree updates after blur-commit. See issue #1056.',
-    );
     await deletePathIfExists(workerServer.baseURL, 'file', 'Untitled');
     await deletePathIfExists(workerServer.baseURL, 'folder', 'New Folder');
 
@@ -884,75 +795,161 @@ test.describe('FileTree sidebar create', () => {
   test('creates default file and empty folder on disk, then survives refresh/delete', async ({
     page,
     workerServer,
+    api,
   }) => {
-    test.skip(
-      true,
-      'PR #1010 FileTree refactor broke sidebar tree updates after default-name create. See issue #1056.',
-    );
     await deletePathIfExists(workerServer.baseURL, 'file', 'Untitled');
     await deletePathIfExists(workerServer.baseURL, 'folder', 'New Folder');
 
-    await gotoRootAndAwaitSidebar(page);
+    try {
+      await gotoRootAndAwaitSidebar(page);
 
-    await page.getByRole('button', { name: 'New file', exact: true }).click();
-    const canceledFileInput = page.getByRole('textbox', { name: /rename Untitled\.md/i });
-    await expect(canceledFileInput).toBeVisible({ timeout: 10_000 });
-    await canceledFileInput.press('Escape');
-    await expect(sidebarTreeItem(page, 'Untitled.md')).toHaveCount(0);
-    expect(existsSync(join(workerServer.contentDir, 'Untitled.md'))).toBe(false);
+      await page.getByRole('button', { name: 'New file', exact: true }).click();
+      const canceledFileInput = page.getByRole('textbox', { name: /rename Untitled\.md/i });
+      await expect(canceledFileInput).toBeVisible({ timeout: 10_000 });
+      await canceledFileInput.press('Escape');
+      await expect(sidebarTreeItem(page, 'Untitled.md')).toHaveCount(0);
+      expect(existsSync(join(workerServer.contentDir, 'Untitled.md'))).toBe(false);
 
-    await page.getByRole('button', { name: 'New folder', exact: true }).click();
-    const canceledFolderInput = page.getByRole('textbox', { name: /rename New Folder/i });
-    await expect(canceledFolderInput).toBeVisible({ timeout: 10_000 });
-    await canceledFolderInput.press('Escape');
-    await expect(sidebarTreeItem(page, 'New Folder')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'New Folder/', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'New Folder.md', exact: true })).toHaveCount(0);
-    expect(existsSync(join(workerServer.contentDir, 'New Folder'))).toBe(false);
+      await page.getByRole('button', { name: 'New folder', exact: true }).click();
+      const canceledFolderInput = page.getByRole('textbox', { name: /rename New Folder/i });
+      await expect(canceledFolderInput).toBeVisible({ timeout: 10_000 });
+      await canceledFolderInput.press('Escape');
+      await expect(sidebarTreeItem(page, 'New Folder')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'New Folder/', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'New Folder.md', exact: true })).toHaveCount(0);
+      expect(existsSync(join(workerServer.contentDir, 'New Folder'))).toBe(false);
 
-    await page.getByRole('button', { name: 'New file', exact: true }).click();
-    const fileRenameInput = page.getByRole('textbox', { name: /rename Untitled\.md/i });
-    await expect(fileRenameInput).toBeVisible({ timeout: 10_000 });
-    await fileRenameInput.press('Enter');
+      await page.getByRole('button', { name: 'New file', exact: true }).click();
+      const fileRenameInput = page.getByRole('textbox', { name: /rename Untitled\.md/i });
+      await expect(fileRenameInput).toBeVisible({ timeout: 10_000 });
+      await fileRenameInput.press('Enter');
 
-    await expect(sidebarTreeItem(page, 'Untitled.md')).toBeVisible({ timeout: 10_000 });
-    await expect(page).toHaveURL(/#\/Untitled$/);
-    expect(existsSync(join(workerServer.contentDir, 'Untitled.md'))).toBe(true);
-    await expectDocumentLoads(workerServer.baseURL, 'Untitled');
+      await expect(sidebarTreeItem(page, 'Untitled.md')).toBeVisible({ timeout: 10_000 });
+      await expect(page).toHaveURL(/#\/Untitled$/);
+      expect(existsSync(join(workerServer.contentDir, 'Untitled.md'))).toBe(true);
+      await expectDocumentLoads(workerServer.baseURL, 'Untitled');
 
-    await page.getByRole('button', { name: 'New folder', exact: true }).click();
-    const folderRenameInput = page.getByRole('textbox', { name: /rename New Folder/i });
-    await expect(folderRenameInput).toBeVisible({ timeout: 10_000 });
-    await folderRenameInput.press('Enter');
+      await page.getByRole('button', { name: 'New folder', exact: true }).click();
+      const folderRenameInput = page.getByRole('textbox', { name: /rename New Folder/i });
+      await expect(folderRenameInput).toBeVisible({ timeout: 10_000 });
+      await folderRenameInput.press('Enter');
 
-    const folderPath = join(workerServer.contentDir, 'New Folder');
-    await expect(sidebarTreeItem(page, 'New Folder')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('button', { name: 'New Folder/', exact: true })).toBeVisible({
-      timeout: 10_000,
+      const folderPath = join(workerServer.contentDir, 'New Folder');
+      await expect(sidebarTreeItem(page, 'New Folder')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole('button', { name: 'New Folder/', exact: true })).toBeVisible({
+        timeout: 10_000,
+      });
+      await expect(page.getByRole('button', { name: 'New Folder.md', exact: true })).toHaveCount(0);
+      expect(existsSync(folderPath)).toBe(true);
+      expect(statSync(folderPath).isDirectory()).toBe(true);
+      expect(existsSync(join(folderPath, 'index.md'))).toBe(false);
+
+      await page.reload();
+      await expect(sidebarTreeItem(page, 'Untitled.md')).toBeVisible({ timeout: 10_000 });
+      await expect(sidebarTreeItem(page, 'New Folder')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole('button', { name: 'New Folder/', exact: true })).toBeVisible({
+        timeout: 10_000,
+      });
+      await expect(page.getByRole('button', { name: 'New Folder.md', exact: true })).toHaveCount(0);
+      expect(existsSync(join(folderPath, 'index.md'))).toBe(false);
+
+      await sidebarTreeItem(page, 'New Folder').click({ button: 'right' });
+      await page.getByRole('menuitem', { name: /^Delete$/ }).click({ timeout: 5_000 });
+      await expect(page.getByRole('alertdialog', { name: /Delete New Folder\// })).toBeVisible({
+        timeout: 5_000,
+      });
+      await page.getByRole('button', { name: /^Delete$/ }).click();
+
+      await expect(sidebarTreeItem(page, 'New Folder')).toHaveCount(0, { timeout: 10_000 });
+      await expect(page.getByRole('button', { name: 'New Folder/', exact: true })).toHaveCount(0);
+      expect(existsSync(folderPath)).toBe(false);
+    } finally {
+      await deletePathIfExists(workerServer.baseURL, 'file', 'Untitled');
+      await deletePathIfExists(workerServer.baseURL, 'folder', 'New Folder');
+      await restoreRequiredFixtureEntries(workerServer.baseURL, api);
+    }
+  });
+});
+
+test.describe('FileTree bulk delete with a partial failure', () => {
+  test.describe.configure({ retries: 0 });
+
+  test('bulk delete closes tabs already deleted before a later delete fails', {
+    tag: '@known-bug',
+    annotation: [
+      { type: 'issue', description: 'https://github.com/inkeep/agents-private/issues/1056' },
+      { type: 'owner', description: 'get-main-green' },
+      { type: 'until', description: '2026-12-15' },
+    ],
+  }, async ({ page, workerServer, api }) => {
+    const firstDoc = 'zz-partial-delete-a';
+    const secondDoc = 'zz-partial-delete-b';
+
+    await deletePathIfExists(workerServer.baseURL, 'file', firstDoc);
+    await deletePathIfExists(workerServer.baseURL, 'file', secondDoc);
+    await api.createPage(`${firstDoc}.md`);
+    await api.createPage(`${secondDoc}.md`);
+
+    await page.route('**/api/delete-path', async (route) => {
+      const body = route.request().postDataJSON() as { path?: string } | null;
+      if (body?.path === secondDoc) {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: false, error: 'Injected delete failure' }),
+        });
+        return;
+      }
+      await route.fallback();
     });
-    await expect(page.getByRole('button', { name: 'New Folder.md', exact: true })).toHaveCount(0);
-    expect(existsSync(folderPath)).toBe(true);
-    expect(statSync(folderPath).isDirectory()).toBe(true);
-    expect(existsSync(join(folderPath, 'index.md'))).toBe(false);
 
-    await page.reload();
-    await expect(sidebarTreeItem(page, 'Untitled.md')).toBeVisible({ timeout: 10_000 });
-    await expect(sidebarTreeItem(page, 'New Folder')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('button', { name: 'New Folder/', exact: true })).toBeVisible({
-      timeout: 10_000,
-    });
-    await expect(page.getByRole('button', { name: 'New Folder.md', exact: true })).toHaveCount(0);
-    expect(existsSync(join(folderPath, 'index.md'))).toBe(false);
+    try {
+      await gotoRootAndAwaitSidebar(page);
 
-    await sidebarTreeItem(page, 'New Folder').click({ button: 'right' });
-    await page.getByRole('menuitem', { name: /^Delete$/ }).click({ timeout: 5_000 });
-    await expect(page.getByRole('alertdialog', { name: /Delete New Folder\// })).toBeVisible({
-      timeout: 5_000,
-    });
-    await page.getByRole('button', { name: /^Delete$/ }).click();
+      await sidebarTreeItem(page, `${firstDoc}.md`).click();
+      await expect(page.getByRole('button', { name: `${firstDoc}.md`, exact: true })).toBeVisible({
+        timeout: 10_000,
+      });
+      await sidebarTreeItem(page, `${secondDoc}.md`).click();
+      await expect(page.getByRole('button', { name: `${secondDoc}.md`, exact: true })).toBeVisible({
+        timeout: 10_000,
+      });
 
-    await expect(sidebarTreeItem(page, 'New Folder')).toHaveCount(0, { timeout: 10_000 });
-    await expect(page.getByRole('button', { name: 'New Folder/', exact: true })).toHaveCount(0);
-    expect(existsSync(folderPath)).toBe(false);
+      await sidebarTreeItem(page, `${firstDoc}.md`).click();
+      await sidebarTreeItem(page, `${secondDoc}.md`).click({
+        modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'],
+      });
+      await expect(sidebarTreeItem(page, `${firstDoc}.md`)).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await expect(sidebarTreeItem(page, `${secondDoc}.md`)).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+
+      await sidebarTreeItem(page, `${firstDoc}.md`).click({ button: 'right' });
+      await page.getByRole('menuitem', { name: /^Delete/ }).click({ timeout: 5_000 });
+      await expect(page.getByRole('alertdialog', { name: /Delete selected items/i })).toBeVisible({
+        timeout: 5_000,
+      });
+      await page.getByRole('button', { name: /^Delete$/ }).click();
+
+      await expect(page.getByRole('button', { name: `${firstDoc}.md`, exact: true })).toHaveCount(
+        0,
+        { timeout: 10_000 },
+      );
+      await expectKnownBug(/Expected: 0\s+Received: 1/, async () => {
+        await expect(sidebarTreeItem(page, `${firstDoc}.md`)).toHaveCount(0, { timeout: 10_000 });
+      });
+      await expect(sidebarTreeItem(page, `${secondDoc}.md`)).toBeVisible();
+      expect(existsSync(join(workerServer.contentDir, `${firstDoc}.md`))).toBe(false);
+      expect(existsSync(join(workerServer.contentDir, `${secondDoc}.md`))).toBe(true);
+    } finally {
+      await page.unroute('**/api/delete-path');
+      await deletePathIfExists(workerServer.baseURL, 'file', firstDoc);
+      await deletePathIfExists(workerServer.baseURL, 'file', secondDoc);
+      await restoreRequiredFixtureEntries(workerServer.baseURL, api);
+    }
   });
 });

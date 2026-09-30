@@ -88,7 +88,7 @@ extraResources:
   # expects `cli/package.json` adjacent. Without this rule the file is missing
   # in the shipped `.app` and every lock writes `runtimeVersion: "0.0.0-unknown"`,
   # which collapses cross-install drift diagnostics. Coverage:
-  # `tests/unit/electron-builder-cli-pkgjson.test.ts`.
+  # `tests/unit/electron-builder-cli-pkgjson.uncached.test.ts`.
   - from: "../cli/package.json"
     to: "cli/package.json"
   # Top-level discoverable third-party attribution. The same file ships inside

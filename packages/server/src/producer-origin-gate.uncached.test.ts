@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Node, Project, type SourceFile, SyntaxKind } from 'ts-morph';
 import { describe, expect, it } from 'vitest';
+import { isTestOnlySourceFile } from '../../../test-support/test-only-source-file.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packagesDir = join(here, '..', '..');
@@ -179,8 +180,8 @@ function analyzeSourceFile(rel: string, sf: SourceFile): Violation[] {
 function isScannableFile(name: string): boolean {
   if (!name.endsWith('.ts') && !name.endsWith('.tsx')) return false;
   if (name.endsWith('.d.ts')) return false;
-  if (name.includes('.test-helper.')) return false;
-  if (/\.(test|spec|e2e)\./.test(name)) return false;
+  if (isTestOnlySourceFile(name)) return false;
+  if (/\.spec\./.test(name)) return false;
   return true;
 }
 

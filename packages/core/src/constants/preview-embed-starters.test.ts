@@ -10,15 +10,16 @@ describe('PREVIEW_EMBED_STARTERS — SVG paint-attribute hygiene (PRD-6760)', ()
   for (const starter of PREVIEW_EMBED_STARTERS) {
     test(`${starter.id} — no var() in SVG paint-accepting presentation attributes`, () => {
       const svgBlocks = starter.html.match(SVG_BLOCK_RE) ?? [];
+      const violations: string[] = [];
       for (const svg of svgBlocks) {
         const match = svg.match(PAINT_ATTR_RE);
-        expect(
-          match,
-          match
-            ? `${starter.id}: ${match[0]} — route through style="${match[1]}: var(...)" instead`
-            : undefined,
-        ).toBeNull();
+        if (match) {
+          violations.push(
+            `${starter.id}: ${match[0]} — route through style="${match[1]}: var(...)" instead`,
+          );
+        }
       }
+      expect(violations).toEqual([]);
     });
   }
 

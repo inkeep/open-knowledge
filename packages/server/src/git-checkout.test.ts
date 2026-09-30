@@ -130,7 +130,7 @@ describe('isBranchInOtherWorktreeError', () => {
     expect(result).toEqual({ held: true, path: '/Users/Me/My Repo/wt' });
   });
 
-  test('truncates a path containing an apostrophe at the first inner quote (known limitation)', () => {
+  test('worktree stderr parsing truncates an apostrophe-containing path at that apostrophe', () => {
     const result = isBranchInOtherWorktreeError(
       new Error("fatal: 'feat' is already checked out at '/Users/me/it's-fine/wt'"),
     );

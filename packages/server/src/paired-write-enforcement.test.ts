@@ -1,3 +1,4 @@
+import { isTestOnlySourceFile } from '../../../test-support/test-only-source-file.mjs';
 /** Structural enforcement of the paired-write contract (precedent #38). */
 
 import { join, relative } from 'node:path';
@@ -70,8 +71,7 @@ function loadServerSourceFiles(): ReadonlyArray<readonly [string, SourceFile]> {
   const out: Array<readonly [string, SourceFile]> = [];
   const glob = new Bun.Glob('**/*.ts');
   for (const rel of glob.scanSync({ cwd: SERVER_SRC_DIR, absolute: false, onlyFiles: true })) {
-    if (rel.endsWith('.test.ts') || rel.endsWith('.test-helper.ts') || rel.endsWith('.d.ts'))
-      continue;
+    if (isTestOnlySourceFile(rel) || rel.endsWith('.d.ts')) continue;
     const abs = join(SERVER_SRC_DIR, rel);
     const sf = project.addSourceFileAtPath(abs);
     out.push([abs, sf] as const);
@@ -175,11 +175,10 @@ describe('paired-write enforcement', () => {
         }
       }
     }
-    if (failures.length > 0) {
-      throw new Error(
-        `Found ${failures.length} unrecognized transact origin(s):\n  ${failures.join('\n  ')}`,
-      );
-    }
+    expect(
+      failures,
+      `Found ${failures.length} unrecognized transact origin(s):\n  ${failures.join('\n  ')}`,
+    ).toEqual([]);
   });
 
   test('paired-write origins route through a sanctioned primitive', () => {
@@ -217,12 +216,11 @@ describe('paired-write enforcement', () => {
         }
       }
     }
-    if (failures.length > 0) {
-      throw new Error(
-        `Found ${failures.length} paired-write transact site(s) bypassing sanctioned primitives:\n  ` +
-          failures.join('\n  '),
-      );
-    }
+    expect(
+      failures,
+      `Found ${failures.length} paired-write transact site(s) bypassing sanctioned primitives:\n  ` +
+        failures.join('\n  '),
+    ).toEqual([]);
   });
 
   test('all three sanctioned primitives are exported from bridge-intake.ts', () => {

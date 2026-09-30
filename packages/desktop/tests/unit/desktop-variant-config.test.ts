@@ -1,7 +1,18 @@
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { type ChildProcess, spawn } from 'node:child_process';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import {
   betaBuildVersion,
   createLocalEntitlements,
@@ -12,8 +23,128 @@ import {
   createVariantPostRemove,
   parseBuilderConfig,
 } from '../../scripts/desktop-variant-config.ts';
+import { DESKTOP_VARIANTS } from '../../src/shared/desktop-variant.ts';
+import { removeTempDirBestEffort } from '../support/temp-dir-cleanup.test-helper';
 
 const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+
+const fixtures: string[] = [];
+const children = new Map<ChildProcess, Promise<void>>();
+
+afterEach(async () => {
+  for (const [child, closed] of children) {
+    if (child.pid !== undefined && child.exitCode === null && child.signalCode === null)
+      child.kill();
+    await closed;
+  }
+  children.clear();
+  for (const fixture of fixtures.splice(0)) removeTempDirBestEffort(fixture);
+});
+
+async function runBuilder(
+  args: string[],
+  status = 0,
+  signal = false,
+  platform: NodeJS.Platform = process.platform,
+  variant = 'stable',
+) {
+  const fixture = mkdtempSync(join(tmpdir(), 'ok-builder-wrapper-'));
+  fixtures.push(fixture);
+  for (const file of [
+    'scripts/run-electron-builder.mjs',
+    'scripts/desktop-variant-config.ts',
+    'src/shared/desktop-variant.ts',
+    'package.json',
+    'electron-builder.yml',
+    'build/installer.nsh',
+    'build/deb-postinst.sh',
+    'build/deb-postrm.sh',
+    'build/entitlements.mac.plist',
+    'build/helper-bundle/Info.plist',
+  ]) {
+    const target = join(fixture, file);
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(join(desktopRoot, file), target);
+  }
+  for (const dep of ['yaml', '@inkeep/open-knowledge-core']) {
+    const target = join(fixture, 'node_modules', dep);
+    mkdirSync(dirname(target), { recursive: true });
+    symlinkSync(realpathSync(join(desktopRoot, 'node_modules', dep)), target, 'junction');
+  }
+  const builderDir = join(fixture, 'node_modules/electron-builder');
+  mkdirSync(builderDir, { recursive: true });
+  writeFileSync(
+    join(builderDir, 'package.json'),
+    JSON.stringify({ name: 'electron-builder', type: 'module' }),
+  );
+  writeFileSync(
+    join(builderDir, 'cli.js'),
+    `
+    import { writeFileSync } from 'node:fs';
+    writeFileSync('invocation.json', JSON.stringify({
+      execPath: process.execPath,
+      args: process.argv.slice(2),
+      entry: process.argv[1],
+      cwd: process.cwd(),
+      marker: process.env.OK_BUILDER_TEST_MARKER,
+    }));
+    process.exit(Number(process.env.OK_BUILDER_TEST_STATUS));
+  `,
+  );
+  const preload = join(fixture, 'platform.mjs');
+  writeFileSync(
+    preload,
+    `
+    import childProcess from 'node:child_process';
+    import { writeFileSync } from 'node:fs';
+    import { syncBuiltinESMExports } from 'node:module';
+    Object.defineProperty(process, 'platform', { value: process.env.OK_BUILDER_TEST_PLATFORM });
+    const spawnSync = childProcess.spawnSync;
+    childProcess.spawnSync = (command, args, options) => {
+      writeFileSync('spawn.json', JSON.stringify({ command, args, shell: options?.shell ?? false, platform: process.platform }));
+      return process.env.OK_BUILDER_TEST_SIGNAL === '1'
+        ? { status: null, signal: 'SIGTERM' }
+        : spawnSync(command, args, options);
+    };
+    syncBuiltinESMExports();
+  `,
+  );
+  const child = spawn(
+    process.execPath,
+    ['--import', preload, join(fixture, 'scripts/run-electron-builder.mjs'), ...args],
+    {
+      cwd: fixture,
+      env: {
+        ...process.env,
+        PATH: '',
+        CSC_LINK: '',
+        CSC_KEYCHAIN: '',
+        OK_DESKTOP_VARIANT: variant,
+        OK_BUILDER_TEST_MARKER: 'forwarded',
+        OK_BUILDER_TEST_STATUS: String(status),
+        OK_BUILDER_TEST_SIGNAL: signal ? '1' : '0',
+        OK_BUILDER_TEST_PLATFORM: platform,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  children.set(child, new Promise<void>((resolve) => child.once('close', () => resolve())));
+  let stderr = '';
+  child.stdout.resume();
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk: string) => {
+    stderr += chunk;
+  });
+  const result = await new Promise<{
+    status: number | null;
+    signal: NodeJS.Signals | null;
+    stderr: string;
+  }>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', (status, signal) => resolve({ status, signal, stderr }));
+  });
+  return { fixture: realpathSync(fixture), result };
+}
 
 const configSource = `
 appId: com.inkeep.open-knowledge
@@ -276,19 +407,73 @@ describe('desktop variant builder config', () => {
       /bundle identifier/,
     );
   });
+});
 
-  test('invokes the builder JavaScript entrypoint without a Windows command shim', () => {
-    const wrapper = readFileSync(resolve(desktopRoot, 'scripts/run-electron-builder.mjs'), 'utf8');
-    expect(wrapper).toContain("require.resolve('electron-builder/cli.js')");
-    expect(wrapper).toMatch(/spawnSync\(\s*process\.execPath/);
-    expect(wrapper).not.toContain('pnpm.cmd');
-    expect(wrapper).toMatch(/electron-builder terminated by \$\{result\.signal\}/);
+const WRAPPER_CELLS = Object.keys(DESKTOP_VARIANTS).flatMap((variant) =>
+  ['--linux', '--win', '--mac'].flatMap((target) =>
+    (['darwin', 'win32', 'linux'] as const).map((platform) => ({ variant, target, platform })),
+  ),
+);
+
+describe('electron-builder wrapper execution', () => {
+  const baseRebuild = parseYaml(
+    readFileSync(join(desktopRoot, 'electron-builder.yml'), 'utf8'),
+  ).npmRebuild;
+
+  test.each(WRAPPER_CELLS)(
+    'runs $variant $target on $platform through Node with the target rebuild policy',
+    async ({ variant, target, platform }) => {
+      const { fixture, result } = await runBuilder(
+        [target, '--publish', 'never'],
+        0,
+        false,
+        platform,
+        variant,
+      );
+      expect(result.status, result.stderr).toBe(0);
+      const entry = join(fixture, 'node_modules/electron-builder/cli.js');
+      const args = [
+        target,
+        '--publish',
+        'never',
+        '--config',
+        '.variant-build/electron-builder.yml',
+      ];
+      expect(JSON.parse(readFileSync(join(fixture, 'spawn.json'), 'utf8'))).toEqual({
+        command: process.execPath,
+        args: [entry, ...args],
+        shell: false,
+        platform,
+      });
+      expect(JSON.parse(readFileSync(join(fixture, 'invocation.json'), 'utf8'))).toEqual({
+        execPath: process.execPath,
+        entry,
+        args,
+        cwd: fixture,
+        marker: 'forwarded',
+      });
+      const generated = parseYaml(
+        readFileSync(join(fixture, '.variant-build/electron-builder.yml'), 'utf8'),
+      );
+      expect(generated.npmRebuild).toBe(target === '--linux' ? false : baseRebuild);
+    },
+  );
+
+  test('forwards a failing builder exit status', async () => {
+    const { result } = await runBuilder(['--linux'], 7);
+    expect(result.status, result.stderr).toBe(7);
   });
 
-  test('keeps direct and generated Linux configs aligned on the rebuild policy', () => {
-    const wrapper = readFileSync(resolve(desktopRoot, 'scripts/run-electron-builder.mjs'), 'utf8');
-    const overlay = readFileSync(resolve(desktopRoot, 'electron-builder.linux.yml'), 'utf8');
-    expect(wrapper).toContain("if (args.includes('--linux')) config.npmRebuild = false;");
-    expect(overlay).toMatch(/^npmRebuild:\s*false$/m);
+  test('reports a signaled builder as failure', async () => {
+    const { result } = await runBuilder(['--linux'], 0, true);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('electron-builder terminated by SIGTERM');
+  });
+
+  test('the direct Linux overlay disables native rebuilds as well', () => {
+    const overlay = parseYaml(
+      readFileSync(join(desktopRoot, 'electron-builder.linux.yml'), 'utf8'),
+    );
+    expect(overlay.npmRebuild).toBe(false);
   });
 });

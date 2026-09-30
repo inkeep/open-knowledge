@@ -612,6 +612,7 @@ describe('startManagedArtifactWatcher when a SKILL.md or its skill directory goe
       `onUnlink to report ${leaf('demo')} once its skill directory was deleted, which drops it from the listing`,
       (reports) => unlinked(reports, leaf('demo')),
     );
+    expect(unlinked(run.reports(), leaf('demo'))).toBe(true);
   });
 });
 
@@ -651,6 +652,7 @@ describe.skipIf(process.platform === 'win32' || process.geteuid?.() === 0)(
           `onChange to report the edit of ${target} made once its directory was readable, after a start that met it unreadable`,
           (reports) => delivered(reports, target, READABLE_AGAIN),
         );
+        expect(delivered(run.reports(), target, READABLE_AGAIN)).toBe(true);
       },
     );
   },

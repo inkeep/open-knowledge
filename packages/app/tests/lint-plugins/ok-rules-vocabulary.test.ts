@@ -1,3 +1,4 @@
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 /**
  * The rule corpus precedent #42 names carries no vocabulary from the retired GritQL plugin or
  * the Bun runner; the corpus is `CORPUS_DIRS` and `TEST_DIRS`, read from the constants.
@@ -148,7 +149,7 @@ function testDirFiles(): string[] {
     const abs = join(REPO_ROOT, dir);
     if (!existsSync(abs)) continue;
     for (const entry of readdirSync(abs)) {
-      if (!entry.endsWith('.test.ts')) continue;
+      if (!(isTestOnlySourceFile(entry, 'vitest') && entry.endsWith('.ts'))) continue;
       if (stems.has(entry.replace(/\.test\.ts$/, ''))) found.push(join(abs, entry));
     }
   }
@@ -216,8 +217,11 @@ describe('ok-rules corpus vocabulary', () => {
     ).toEqual([]);
   });
 
-  test('on a full checkout the exempt directories are held to the same standard', () => {
-    if (!existsSync(join(REPO_ROOT, MIRROR_ABSENT_PACKAGE_ROOT))) return;
+  test('on a full checkout the exempt directories are held to the same standard', (ctx) => {
+    ctx.skip(
+      !existsSync(join(REPO_ROOT, MIRROR_ABSENT_PACKAGE_ROOT)),
+      'the public mirror omits the exempt package root',
+    );
     const counts = filesPerDir();
     expect(ABSENT_ON_MIRROR.filter((dir) => (counts.get(dir) ?? 0) === 0)).toEqual([]);
   });

@@ -305,10 +305,7 @@ describe('UploadAssetSuccessSchema', () => {
   test('does NOT contain ok:true wrapper field (D22 success drops wrapper)', () => {
     const result = UploadAssetSuccessSchema.safeParse({ src: 'foo.png' });
     expect(result.success).toBe(true);
-    if (result.success) {
-      // @ts-expect-error -- ok is not a field on UploadAssetSuccess
-      void result.data.ok;
-    }
+    expect(UploadAssetSuccessSchema.shape).not.toHaveProperty('ok');
   });
 
   test('fails when src is missing', () => {
