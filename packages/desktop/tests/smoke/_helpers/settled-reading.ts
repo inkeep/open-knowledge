@@ -49,6 +49,17 @@ export type SettleBound =
 
 export type SettledReadingOptions = { reading: string; of: string } & SettleBound;
 
+export function pollSettledReading<T>(
+  read: () => Promise<T>,
+  options: Extract<SettledReadingOptions, { timeout: number }>,
+): ReturnType<typeof expect.poll<T>> {
+  requirePositiveTimeout('pollSettledReading', options.timeout);
+  return expect.poll(read, {
+    timeout: options.timeout,
+    message: `${options.reading} of ${options.of}`,
+  });
+}
+
 type SettleAttempt =
   | { readonly kind: 'none' }
   | { readonly kind: 'read' }

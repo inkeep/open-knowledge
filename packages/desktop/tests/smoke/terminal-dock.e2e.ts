@@ -29,6 +29,7 @@ import {
 import { expectCollapsedRailColumn } from './_helpers/rail-column';
 import {
   expectSettledReading,
+  pollSettledReading,
   RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
   settleBudget,
 } from './_helpers/settled-reading';
@@ -936,26 +937,38 @@ test.describe('Docked terminal — live Electron', () => {
     await page.mouse.move(box.x + box.width / 2, box.y - 160, { steps: 12 });
     await page.mouse.up();
 
-    await expect
-      .poll(() => panel.evaluate((el) => el.getBoundingClientRect().height))
-      .toBeGreaterThan(heightBefore);
+    await pollSettledReading(() => panel.evaluate((el) => el.getBoundingClientRect().height), {
+      reading: 'height',
+      of: '#terminal-dock-panel after resize',
+      timeout: 10_000 satisfies typeof RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+    }).toBeGreaterThan(heightBefore);
 
     const heightAfter = await panel.evaluate((el) => el.getBoundingClientRect().height);
 
-    await expect
-      .poll(() => page.evaluate(() => Number(localStorage.getItem('ok-terminal-height-v1') ?? 0)))
-      .toBeGreaterThan(heightBefore);
+    await pollSettledReading(
+      () => page.evaluate(() => Number(localStorage.getItem('ok-terminal-height-v1') ?? 0)),
+      {
+        reading: 'persisted height',
+        of: 'bottom terminal',
+        timeout: 10_000 satisfies typeof RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+      },
+    ).toBeGreaterThan(heightBefore);
 
     await clickViewTerminalItem(app, page);
     await expect(panel).toHaveAttribute('inert', '', { timeout: 10_000 });
     await clickViewTerminalItem(app, page);
     await expect(terminalSection(page)).toBeVisible({ timeout: 10_000 });
-    await expect
-      .poll(async () => {
+    await pollSettledReading(
+      async () => {
         const heightReopen = await panel.evaluate((el) => el.getBoundingClientRect().height);
         return Math.abs(heightReopen - heightAfter);
-      })
-      .toBeLessThan(40);
+      },
+      {
+        reading: 'reopened height difference',
+        of: '#terminal-dock-panel',
+        timeout: 10_000 satisfies typeof RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+      },
+    ).toBeLessThan(40);
   });
 
   test('QA-015/032 shell exit shows restart; banner hidden on exit', async ({
