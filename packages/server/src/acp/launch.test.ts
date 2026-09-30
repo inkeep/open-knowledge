@@ -14,6 +14,7 @@ import { homedir, tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { pid1Reaps } from '../../../../test-support/capabilities.test-helper.ts';
 import { getLogger, type PinoLogger } from '../logger.ts';
 import { withLocalAcquisitionRegistry } from './acquisition-contract.test-helper.ts';
 import { createDiagnosticStderrCapture } from './diagnostics.ts';
@@ -1036,7 +1037,8 @@ describe.skipIf(process.platform === 'win32')('probeInterpreterHealth', () => {
     expect(detail).not.toBeNull();
   });
 
-  test('a hung probe times out as healthy and does not leak the process', async () => {
+  test('a hung probe times out as healthy and does not leak the process', async (ctx) => {
+    ctx.skip(!pid1Reaps, 'PID 1 must reap the orphans this test waits on');
     const dir = tmp();
     const kidPidFile = join(dir, 'kid.pid');
     writeFileSync(

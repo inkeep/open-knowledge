@@ -17,7 +17,10 @@ import {
 
 type AcquisitionFactory = (run: (home: string) => Promise<void>) => Promise<void>;
 
-export function acquisitionFailureContract(factory: AcquisitionFactory): void {
+export function acquisitionFailureContract(
+  factory: AcquisitionFactory,
+  { uvxOnAgentSpawnPath = true }: { uvxOnAgentSpawnPath?: boolean } = {},
+): void {
   const log = getLogger('acquisition-contract');
   describe('native acquisition contract', () => {
     test('an admitted exact package keeps its pin', async () => {
@@ -33,7 +36,11 @@ export function acquisitionFailureContract(factory: AcquisitionFactory): void {
         expect(launch.args).toEqual(['-y', 'is-number@6.0.0', '--version']);
       });
     });
-    test('uvx retains the native cutoff refusal', async () => {
+    test('uvx retains the native cutoff refusal', async (ctx) => {
+      ctx.skip(
+        !uvxOnAgentSpawnPath,
+        'uvx must be available to exercise its native acquisition refusal',
+      );
       await factory(async (home) => {
         process.env.UV_EXCLUDE_NEWER = '1970-01-01';
         const launch = await resolveRegistryLaunch(

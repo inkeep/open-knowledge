@@ -11,6 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { runningAsRoot } from '../../../../test-support/capabilities.test-helper.ts';
 import { createTestServer, HARNESS_BOOT_TIMEOUT_MS, type TestServer } from './test-harness.ts';
 
 let srcRoot: string;
@@ -125,7 +126,8 @@ describe('POST /api/skills/import-bulk', () => {
     expect(await listedNames()).toContain('alpha-skill');
   });
 
-  test('an unreadable bundle fails only itself, not the selection', async () => {
+  test('an unreadable bundle fails only itself, not the selection', async (ctx) => {
+    ctx.skip(runningAsRoot, 'root bypasses the chmod refusal this test induces');
     const locked = join(srcRoot, 'bundle', 'locked-skill');
     writeSkillDir(locked, 'locked-skill', 'Cannot be read');
     chmodSync(locked, 0o000);

@@ -486,6 +486,34 @@ describe('known-reds feed: gate atoms and title chains', () => {
     expect(atomsOf(source)).toEqual([atoms]);
   });
 
+  test.each([
+    ['import { hasLsof } from "../test-support/capabilities.test-helper.ts";', 'hasLsof'],
+    [
+      'import { hasLsof as present } from "../test-support/capabilities.test-helper.ts";',
+      'present',
+    ],
+    ['import present from "../test-support/capabilities.test-helper.ts";', 'present'],
+    ['import * as present from "../test-support/capabilities.test-helper.ts";', 'present'],
+  ])('attributes a statically imported condition to its module: %s', (imported, condition) => {
+    const source = `${imported}\ntest('x', (ctx) => { ctx.skip(!${condition}, 'requires the tool'); });`;
+    expect(atomsOf(source)).toEqual([
+      [{ kind: 'import', name: '../test-support/capabilities.test-helper.ts', text: condition }],
+    ]);
+  });
+
+  test('a local binding shadows a statically imported capability', () => {
+    const source = [
+      'import { hasLsof } from "../test-support/capabilities.test-helper.ts";',
+      "test('x', (ctx) => {",
+      '  const hasLsof = localProbe();',
+      "  ctx.skip(!hasLsof, 'requires the local tool');",
+      '});',
+    ].join('\n');
+    expect(atomsOf(source)).toEqual([
+      [{ kind: 'runtime', name: 'localProbe()', text: 'localProbe()' }],
+    ]);
+  });
+
   test('follows aliases to the facts they read', () => {
     const source = [
       "const ON_WINDOWS = process.platform === 'win32';",
@@ -1038,7 +1066,10 @@ describe('known-reds through its real invocation', () => {
   write('packages/app/tests/stress/hide.e2e.ts', playwrightPin(''));
   write(
     'packages/app/src/helper.test-helper.ts',
-    "test.skip(process.env.CI, 'not a test file');\n",
+    [
+      "import { hasLsof } from '../../../../test-support/capabilities.test-helper.ts';",
+      "test('helper contract', (ctx) => { ctx.skip(!hasLsof, 'the product inspects processes with lsof'); });",
+    ].join('\n'),
   );
   write('reports/spike/probe.test.ts', "test.skip(process.env.CI, 'evidence');\n");
   write('specs/spike/probe.e2e.ts', "test.skip(process.env.CI, 'evidence');\n");
@@ -1050,12 +1081,37 @@ describe('known-reds through its real invocation', () => {
     encoding: 'utf8',
   });
 
-  test('scans exactly the test files a runner could run', () => {
+  test('scans test files and helpers that can declare their tests', () => {
     expect(init.status).toBe(0);
     expect(listTestFiles(root)).toEqual([
+      'packages/app/src/helper.test-helper.ts',
       'packages/app/tests/stress/hide.e2e.ts',
       'packages/server/src/planted-boot.test.ts',
       'packages/server/src/spawn.test.ts',
+    ]);
+  });
+
+  test('lists a reasoned environment gate declared in a helper file', () => {
+    const report = scanTree(root);
+    expect(report.envGates).toEqual([
+      {
+        path: 'packages/app/src/helper.test-helper.ts',
+        line: 2,
+        form: 'context-skip',
+        scope: 'test',
+        condition: '!hasLsof',
+        skipWhen: 'condition',
+        ci: null,
+        reason: 'the product inspects processes with lsof',
+        atoms: [
+          {
+            kind: 'import',
+            name: '../../../../test-support/capabilities.test-helper.ts',
+            text: 'hasLsof',
+          },
+        ],
+        titles: ['helper contract'],
+      },
     ]);
   });
 
@@ -1080,7 +1136,7 @@ describe('known-reds through its real invocation', () => {
     expect(run.status).toBe(1);
     const feed = JSON.parse(run.stdout);
     expect(feed.schemaVersion).toBe(2);
-    expect(feed.files).toBe(3);
+    expect(feed.files).toBe(4);
     expect(feed.violations.map((violation) => violation.rule)).toEqual(
       expect.arrayContaining(['pin-retries', 'ci-skip', 'early-return']),
     );
@@ -1135,7 +1191,7 @@ describe('known-reds through its real invocation', () => {
     });
     expect(run.status).toBe(1);
     expect(run.stdout).toContain('Known reds in open-knowledge on ');
-    expect(run.stdout).toContain(': 3 test files scanned.');
+    expect(run.stdout).toContain(': 4 test files scanned.');
     expect(run.stdout).toContain(
       'packages/server/src/planted-boot.test.ts:2  file  process.env.CI',
     );

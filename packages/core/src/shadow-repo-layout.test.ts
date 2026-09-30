@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { runningAsRoot } from '../../../test-support/capabilities.test-helper.ts';
 import {
   COMMIT_SUBJECT_MAX_LEN,
   composeCommitSubject,
@@ -403,7 +404,8 @@ describe('resolveShadowDir', () => {
     expect(e.message).toContain('git worktree prune');
   });
 
-  test('threads the underlying readFileSync error as `cause` when the .git pointer is unreadable', () => {
+  test('threads the underlying readFileSync error as `cause` when the .git pointer is unreadable', (ctx) => {
+    ctx.skip(runningAsRoot, 'root bypasses the chmod refusal this test induces');
     const project = resolve(tmp, 'unreadable');
     mkdirSync(project, { recursive: true });
     const gitPath = resolve(project, '.git');
@@ -433,7 +435,8 @@ describe('resolveShadowDir', () => {
     expect(['EACCES', 'EPERM']).toContain(causeCode);
   });
 
-  test('throws GitDirAccessError (not MalformedGitPointerError) when statSync fails with non-ENOENT', () => {
+  test('throws GitDirAccessError (not MalformedGitPointerError) when statSync fails with non-ENOENT', (ctx) => {
+    ctx.skip(runningAsRoot, 'root bypasses the chmod refusal this test induces');
     const project = resolve(tmp, 'unstattable');
     mkdirSync(project, { recursive: true });
     writeFileSync(resolve(project, '.git'), 'gitdir: /tmp/whatever\n');
@@ -605,7 +608,8 @@ describe('getShadowRepoPath', () => {
     expect(getShadowRepoPath(project)).toBe(null);
   });
 
-  test('swallows GitDirAccessError, returns null — preserves string|null contract on EACCES', () => {
+  test('swallows GitDirAccessError, returns null — preserves string|null contract on EACCES', (ctx) => {
+    ctx.skip(runningAsRoot, 'root bypasses the chmod refusal this test induces');
     const project = resolve(tmp, 'eaccess-probe');
     mkdirSync(project, { recursive: true });
     writeFileSync(resolve(project, '.git'), 'gitdir: /tmp/whatever\n');

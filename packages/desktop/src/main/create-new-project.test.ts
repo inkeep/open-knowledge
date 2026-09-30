@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { ALL_EDITOR_IDS } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { runningAsRoot } from '../../../../test-support/capabilities.test-helper.ts';
 import {
   CreateNewProjectError,
   folderState,
@@ -516,7 +517,8 @@ describe('runCreateNew — defense-in-depth rejections', () => {
     expect(result.target).toBe(join(tmpRoot, 'escape'));
   });
 
-  test('surfaces mkdir-failed when the parent is not writable', async () => {
+  test('surfaces mkdir-failed when the parent is not writable', async (ctx) => {
+    ctx.skip(runningAsRoot, 'root bypasses the chmod refusal this test induces');
     const parent = join(tmpRoot, 'readonly');
     mkdirSync(parent);
     chmodSync(parent, 0o555);

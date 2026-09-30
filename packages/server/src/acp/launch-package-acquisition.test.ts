@@ -3,12 +3,16 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import {
+  executableFacts,
+  findExecutable,
+} from '../../../../test-support/capabilities.test-helper.ts';
 import { getLogger } from '../logger.ts';
 import {
   acquisitionFailureContract,
   withLocalAcquisitionRegistry,
 } from './acquisition-contract.test-helper.ts';
-import { AgentLaunchError, resolveRegistryLaunch } from './launch.ts';
+import { AgentLaunchError, agentSpawnPath, resolveRegistryLaunch } from './launch.ts';
 import {
   installNodeFixture,
   npmNative,
@@ -21,7 +25,9 @@ import {
 
 const log = getLogger('package-acquisition-test');
 
-acquisitionFailureContract(withLocalAcquisitionRegistry);
+acquisitionFailureContract(withLocalAcquisitionRegistry, {
+  uvxOnAgentSpawnPath: findExecutable('uvx', agentSpawnPath(), executableFacts),
+});
 
 describe('hermetic package acquisition and native dispatch', () => {
   test('the fixture latest tag is independent of release insertion order', async () => {

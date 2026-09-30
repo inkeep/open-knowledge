@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { runningAsRoot } from '../../../../test-support/capabilities.test-helper.ts';
 import {
   type PtyHostOutgoingMessage,
   type PtyProcessLike,
@@ -235,7 +236,8 @@ describe('production support-file writer', () => {
 
   test.skipIf(process.platform === 'win32')(
     'keeps a permission failure distinct from a containment refusal',
-    () => {
+    (ctx) => {
+      ctx.skip(runningAsRoot, 'root bypasses the chmod refusal this test induces');
       const locked = join(outside, 'locked');
       const target = join(locked, 'target');
       mkdirSync(target, { recursive: true });

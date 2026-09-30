@@ -21,6 +21,7 @@ import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { isProcessAlive } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { hasLsof } from '../../../../test-support/capabilities.test-helper.ts';
 import { startDefunctProcess } from './defunct-process.test-helper.ts';
 import { buildDeinitPlan, runRemoval } from './removal-plan.ts';
 import { stopServerForRemoval } from './stop-for-removal.ts';
@@ -278,7 +279,8 @@ describe.skipIf(process.platform === 'win32')(
       expect(readFileSync(join(project, 'notes.md'), 'utf8')).toBe('# Keep');
     });
 
-    test('refuses removal while a live server is attributable to this project', async () => {
+    test('refuses removal while a live server is attributable to this project', async (ctx) => {
+      ctx.skip(!hasLsof, 'the product inspects processes with lsof');
       const server = await startLiveProcess(project);
       expect(isProcessAlive(server)).toBe(true);
       installHost({ processes: [{ pid: server, command: 'open-knowledge-server notes' }] });
@@ -292,7 +294,8 @@ describe.skipIf(process.platform === 'win32')(
       expect(readFileSync(join(project, 'notes.md'), 'utf8')).toBe('# Keep');
     });
 
-    test('reports an unreadable process state once per run, not once per probing caller', async () => {
+    test('reports an unreadable process state once per run, not once per probing caller', async (ctx) => {
+      ctx.skip(!hasLsof, 'the product inspects processes with lsof');
       const server = await startLiveProcess(project);
       installHost({ processes: [{ pid: server, command: 'open-knowledge-server notes' }] });
       const binDir = installFailingPsProbe();

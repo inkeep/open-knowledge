@@ -17,6 +17,7 @@ import {
   SUPPORTED_SCHEMA_DIALECTS,
 } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { runningAsRoot } from '../../../../test-support/capabilities.test-helper.ts';
 import {
   listProjectSchemaFiles,
   resolveFrontmatterSchemas,
@@ -218,7 +219,8 @@ describe('resolveFrontmatterSchemas — escape guards', () => {
     expect(entries[0]?.key).toBe(realpathSync(join(projectDir, 'real/doc.schema.json')));
   });
 
-  test('an unreadable file is a cannot-read problem', () => {
+  test('an unreadable file is a cannot-read problem', (ctx) => {
+    ctx.skip(runningAsRoot, 'root bypasses the chmod refusal this test induces');
     const abs = write('locked.json', GOOD_SCHEMA);
     chmodSync(abs, 0o000);
     const { problems } = resolveFrontmatterSchemas(projectDir, [{ file: 'locked.json' }]);
