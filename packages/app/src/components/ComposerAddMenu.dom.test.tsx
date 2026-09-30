@@ -34,7 +34,7 @@ describe('ComposerAddMenu', () => {
 
     render(
       <TooltipProvider>
-        <ComposerAddMenu testId="composer-add">
+        <ComposerAddMenu composerRef={createRef()} testId="composer-add">
           <ComposerFilesMenuItem onFiles={() => {}} />
           <ComposerCommentsMenuItem count={3} onSelect={onComments} />
           <ComposerMentionMenuItem onSelect={onMention} />
@@ -77,7 +77,7 @@ describe('ComposerAddMenu', () => {
           onSubmit={() => {}}
           slashCommands={[{ name: 'review', description: 'Review the current diff' }]}
         />
-        <ComposerAddMenu testId="composer-add">
+        <ComposerAddMenu composerRef={createRef()} testId="composer-add">
           <ComposerFilesMenuItem onFiles={() => {}} attachmentMode="reference" />
           <ComposerCommandsMenuItem
             onSelect={() => composerRef.current?.openSlashCommandPicker()}
@@ -117,7 +117,7 @@ describe('ComposerAddMenu', () => {
 
     render(
       <TooltipProvider>
-        <ComposerAddMenu testId="composer-add">
+        <ComposerAddMenu composerRef={createRef()} testId="composer-add">
           <ComposerFilesMenuItem onFiles={onFiles} />
         </ComposerAddMenu>
       </TooltipProvider>,
@@ -126,9 +126,47 @@ describe('ComposerAddMenu', () => {
     await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
     await user.click(screen.getByRole('menuitem', { name: 'Attach files' }));
 
-    expect(onFiles).toHaveBeenCalledWith([notesFile, imageFile]);
+    await waitFor(() => expect(onFiles).toHaveBeenCalledWith([notesFile, imageFile]));
     clickSpy.mockRestore();
   });
+
+  test.each(['Attach files', 'Attach comments: 1'])(
+    'choosing %s puts focus back in the composer, not on the Add to prompt button',
+    async (item) => {
+      const user = userEvent.setup();
+      const composerRef = createRef<ComposerMentionInputHandle>();
+      const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+      const { ComposerAddMenu, ComposerCommentsMenuItem, ComposerFilesMenuItem } = await import(
+        './ComposerAddMenu'
+      );
+      const { ComposerMentionInput } = await import('@/editor/ComposerMentionInput');
+
+      render(
+        <TooltipProvider>
+          <ComposerMentionInput
+            ref={composerRef}
+            ariaLabel="Prompt"
+            attachmentDrop={{ kind: 'host' }}
+            onEmptyChange={() => {}}
+            onSubmit={() => {}}
+          />
+          <ComposerAddMenu composerRef={composerRef} testId="composer-add">
+            <ComposerFilesMenuItem onFiles={() => {}} />
+            <ComposerCommentsMenuItem count={1} onSelect={() => {}} />
+          </ComposerAddMenu>
+        </TooltipProvider>,
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
+      await user.click(screen.getByRole('menuitem', { name: item }));
+
+      await waitFor(() => {
+        expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Prompt' }));
+      });
+      expect(screen.queryByRole('tooltip')).toBeNull();
+      clickSpy.mockRestore();
+    },
+  );
 
   test('choosing Mention a page leaves keyboard focus in the composer', async () => {
     const user = userEvent.setup();
@@ -145,7 +183,7 @@ describe('ComposerAddMenu', () => {
           onEmptyChange={() => {}}
           onSubmit={() => {}}
         />
-        <ComposerAddMenu testId="composer-add">
+        <ComposerAddMenu composerRef={createRef()} testId="composer-add">
           <ComposerMentionMenuItem onSelect={() => composerRef.current?.openMentionPicker()} />
         </ComposerAddMenu>
       </TooltipProvider>,
@@ -166,7 +204,7 @@ describe('ComposerAddMenu', () => {
 
     render(
       <TooltipProvider>
-        <ComposerAddMenu testId="composer-add">
+        <ComposerAddMenu composerRef={createRef()} testId="composer-add">
           <ComposerMentionMenuItem onSelect={() => {}} />
         </ComposerAddMenu>
       </TooltipProvider>,

@@ -969,41 +969,28 @@ describe('ThreadView chat header', () => {
     );
   });
 
-  test('the hover text carries the state the accessible name carries', async () => {
+  test('hovering the settings trigger opens no tooltip over the chat', async () => {
     const user = userEvent.setup();
     render(<ThreadView info={headerInfo({ effort: 'max', fast: true })} />);
-    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
 
-    await user.hover(trigger);
+    await user.hover(screen.getByRole('button', { name: /^Agent settings/ }));
 
-    await screen.findByRole('tooltip');
-    const hover = screen.getByTestId('agent-thread-settings-tooltip');
-    expect(hover.textContent).toBe(trigger.getAttribute('aria-label'));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
-  test('the state is described once, so it is not announced twice', async () => {
+  test('composer tooltips close once the pointer leaves the trigger, even toward the tooltip', async () => {
     const user = userEvent.setup();
-    render(<ThreadView info={headerInfo({ effort: 'max', fast: true })} />);
-    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+    render(<ThreadView info={headerInfo()} />);
+    const addToPrompt = screen.getByTestId('agent-thread-add-to-prompt');
 
-    await user.hover(trigger);
-
-    const described = await screen.findByRole('tooltip');
-    expect(trigger.getAttribute('aria-label')).toContain('Opus 5');
-    expect(described.textContent).toBe('Agent settings');
-  });
-
-  test('the archived hover text carries the resume hint too', async () => {
-    const user = userEvent.setup();
-    render(<ThreadView info={{ ...headerInfo({ effort: 'max', fast: true }), archived: true }} />);
-    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
-
-    await user.hover(trigger);
-
+    await user.hover(addToPrompt);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(screen.queryByRole('tooltip')).toBeNull();
     await screen.findByRole('tooltip');
-    const hover = screen.getByTestId('agent-thread-settings-tooltip');
-    expect(hover.textContent).toBe(trigger.getAttribute('aria-label'));
-    expect(hover.textContent).toContain('changes apply when you pick this conversation back up');
+    await user.unhover(addToPrompt);
+
+    await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull(), { timeout: 200 });
   });
 
   test('an archived thread announces the same state it shows', () => {

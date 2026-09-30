@@ -18,7 +18,7 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { openFilePicker } from '@/lib/file-picker';
 
 const ComposerFocusActionContext = createContext<((action: () => void) => void) | null>(null);
@@ -31,8 +31,17 @@ function useComposerFocusAction(): (action: () => void) => void {
   return scheduleComposerFocusAction;
 }
 
+export function ComposerTooltipProvider({ children }: { children: ReactNode }): ReactNode {
+  return (
+    <TooltipProvider delayDuration={400} disableHoverableContent>
+      {children}
+    </TooltipProvider>
+  );
+}
+
 type ComposerAddMenuProps = {
   children: ReactNode;
+  composerRef: RefObject<{ focus: () => void } | null>;
   testId: string;
   size?: Extract<ComponentProps<typeof Button>['size'], 'icon-sm' | 'icon'>;
 } & (
@@ -48,6 +57,7 @@ type ComposerAddMenuProps = {
 
 export function ComposerAddMenu({
   children,
+  composerRef,
   disabled = false,
   disabledFocusTargetRef,
   testId,
@@ -106,6 +116,7 @@ export function ComposerAddMenu({
             if (action !== null) {
               event.preventDefault();
               composerFocusActionRef.current = null;
+              composerRef.current?.focus();
               action();
             }
           }}
@@ -125,8 +136,13 @@ export function ComposerFilesMenuItem({
   attachmentMode?: 'embedded' | 'reference';
 }): ReactNode {
   const { t } = useLingui();
+  const scheduleComposerFocusAction = useComposerFocusAction();
   return (
-    <DropdownMenuItem onSelect={() => openFilePicker({ multiple: true, onFiles })}>
+    <DropdownMenuItem
+      onSelect={() =>
+        scheduleComposerFocusAction(() => openFilePicker({ multiple: true, onFiles }))
+      }
+    >
       <Paperclip className="size-3.5 text-muted-foreground" aria-hidden="true" />
       <span>
         {t`Attach files`}
@@ -144,8 +160,12 @@ export function ComposerCommentsMenuItem({
   onSelect: () => void;
 }): ReactNode {
   const { t } = useLingui();
+  const scheduleComposerFocusAction = useComposerFocusAction();
   return (
-    <DropdownMenuItem aria-label={t`Attach comments: ${count}`} onSelect={onSelect}>
+    <DropdownMenuItem
+      aria-label={t`Attach comments: ${count}`}
+      onSelect={() => scheduleComposerFocusAction(onSelect)}
+    >
       <MessageSquare className="size-3.5 text-muted-foreground" aria-hidden="true" />
       <span>{t`Attach comments`}</span>
       <Badge
