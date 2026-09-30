@@ -1,5 +1,8 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "remoteCache": {
+    "signature": true
+  },
   "globalDependencies": [
     "turbo-cache-key.json",
     "test-support/fixtures/share-url-v1-v2.json",
