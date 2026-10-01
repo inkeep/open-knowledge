@@ -1047,6 +1047,21 @@ export interface CliReadiness {
   readonly okServerConfigured?: boolean;
 }
 
+export interface CopyImageRequest {
+  readonly src: string;
+}
+
+export type CopyImageFailureReason =
+  | 'fetch-failed'
+  | 'path-escape'
+  | 'empty-image'
+  | 'read-error'
+  | 'write-error';
+
+export type CopyImageResult =
+  | { ok: true }
+  | { ok: false; reason: CopyImageFailureReason; detail?: string };
+
 export interface OkDesktopBridge {
   readonly config: OkDesktopConfig;
 
@@ -1132,14 +1147,7 @@ export interface OkDesktopBridge {
 
   clipboard: {
     writeText(text: string): Promise<void>;
-    copyImage(params: { readonly src: string; readonly alt: string }): Promise<
-      | { ok: true }
-      | {
-          ok: false;
-          reason: 'fetch-failed' | 'path-escape' | 'empty-image' | 'read-error' | 'write-error';
-          detail?: string;
-        }
-    >;
+    copyImage(request: CopyImageRequest): Promise<CopyImageResult>;
   };
 
   project: {

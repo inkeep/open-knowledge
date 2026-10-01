@@ -3,18 +3,15 @@ import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import * as pathPosix from 'node:path/posix';
 import * as pathWin32 from 'node:path/win32';
+import type {
+  CopyImageFailureReason,
+  CopyImageRequest,
+  CopyImageResult,
+} from '@inkeep/open-knowledge-core/desktop-bridge';
 import type { Clipboard, ClipboardItem, NativeImage } from 'electron';
 import { isPathWithinProject } from './ipc-handlers.ts';
 
 const CLIPBOARD_IMAGE_EXTS: ReadonlySet<string> = new Set(['png', 'jpg', 'jpeg']);
-
-type CopyImageResult =
-  | { ok: true }
-  | {
-      ok: false;
-      reason: 'fetch-failed' | 'path-escape' | 'empty-image' | 'read-error' | 'write-error';
-      detail?: string;
-    };
 
 export interface CopyImageToClipboardDeps {
   readonly projectPath: string;
@@ -30,14 +27,9 @@ export interface CopyImageToClipboardDeps {
   readonly readFile?: (path: string) => Promise<Buffer>;
 }
 
-export interface CopyImageInput {
-  readonly src: string;
-  readonly alt: string;
-}
-
 export async function copyImageToClipboard(
   deps: CopyImageToClipboardDeps,
-  input: CopyImageInput,
+  input: CopyImageRequest,
 ): Promise<CopyImageResult> {
   const fetchImpl = deps.fetch ?? globalThis.fetch;
   const bytesResult = await loadImageBytes(deps, input.src, fetchImpl);
@@ -68,7 +60,11 @@ async function loadImageBytes(
   fetchImpl: typeof fetch,
 ): Promise<
   | { ok: true; bytes: Buffer; ext: string }
-  | { ok: false; reason: 'fetch-failed' | 'path-escape' | 'read-error'; detail?: string }
+  | {
+      ok: false;
+      reason: Extract<CopyImageFailureReason, 'fetch-failed' | 'path-escape' | 'read-error'>;
+      detail?: string;
+    }
 > {
   let url: URL;
   try {

@@ -4414,7 +4414,7 @@ function registerIpcHandlers() {
     return undefined;
   });
 
-  handle('ok:clipboard:copy-image', async (event, { src, alt }) => {
+  handle('ok:clipboard:copy-image', async (event, { src }) => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
     if (!callerWin || !wm) {
       return { ok: false as const, reason: 'read-error' as const, detail: 'no window context' };
@@ -4432,7 +4432,7 @@ function registerIpcHandlers() {
         ClipboardItem,
         nativeImage,
       },
-      { src, alt },
+      { src },
     );
     if (!result.ok) {
       getLogger('copy-image').warn(

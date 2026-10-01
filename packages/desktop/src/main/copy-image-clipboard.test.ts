@@ -34,7 +34,7 @@ describe('copyImageToClipboard — same-origin path handling', () => {
         clipboard: { write },
         resolveCanonical: () => '/etc/passwd',
       }),
-      { src: 'http://localhost:5173/%2E%2E/%2E%2E/etc/passwd', alt: 'x' },
+      { src: 'http://localhost:5173/%2E%2E/%2E%2E/etc/passwd' },
     );
     expect(result).toEqual({
       ok: false,
@@ -53,7 +53,7 @@ describe('copyImageToClipboard — same-origin path handling', () => {
         clipboard: { write },
         resolveCanonical,
       }),
-      { src: 'http://localhost:5173/C:/Windows/System32/passwd', alt: 'x' },
+      { src: 'http://localhost:5173/C:/Windows/System32/passwd' },
     );
     expect(result).toEqual({
       ok: false,
@@ -73,7 +73,7 @@ describe('copyImageToClipboard — same-origin path handling', () => {
           throw Object.assign(new Error('no such file'), { code: 'ENOENT' });
         },
       }),
-      { src: 'http://localhost:5173/assets/missing.png', alt: 'x' },
+      { src: 'http://localhost:5173/assets/missing.png' },
     );
     expect(result).toEqual({
       ok: false,
@@ -92,7 +92,7 @@ describe('copyImageToClipboard — same-origin path handling', () => {
           throw Object.assign(new Error('permission denied'), { code: 'EACCES' });
         },
       }),
-      { src: 'http://localhost:5173/assets/logo.png', alt: 'x' },
+      { src: 'http://localhost:5173/assets/logo.png' },
     );
     expect(result).toEqual({
       ok: false,
@@ -110,7 +110,7 @@ describe('copyImageToClipboard — same-origin path handling', () => {
         clipboard: { write },
         readFile,
       }),
-      { src: 'http://localhost:5173/.ok/config.yml', alt: 'x' },
+      { src: 'http://localhost:5173/.ok/config.yml' },
     );
     expect(result).toEqual({
       ok: false,
@@ -128,7 +128,7 @@ describe('copyImageToClipboard — same-origin path handling', () => {
         clipboard: { write },
         resolveCanonical: () => '/etc/passwd',
       }),
-      { src: 'http://localhost:5173/assets/logo.png', alt: 'x' },
+      { src: 'http://localhost:5173/assets/logo.png' },
     );
     expect(result).toEqual({
       ok: false,
@@ -147,7 +147,7 @@ describe('copyImageToClipboard — cross-origin fetch', () => {
         clipboard: { write },
         fetch: vi.fn(async () => new Response('', { status: 404 })),
       }),
-      { src: 'https://cdn.example.com/missing.png', alt: 'x' },
+      { src: 'https://cdn.example.com/missing.png' },
     );
     expect(result).toEqual({
       ok: false,
@@ -166,7 +166,7 @@ describe('copyImageToClipboard — cross-origin fetch', () => {
           throw new Error('boom');
         }),
       }),
-      { src: 'https://cdn.example.com/foo.png', alt: 'x' },
+      { src: 'https://cdn.example.com/foo.png' },
     );
     expect(result).toEqual({
       ok: false,
@@ -187,7 +187,7 @@ describe('copyImageToClipboard — decode + write', () => {
           createFromBuffer: () => ({ isEmpty: () => true, toPNG: () => Buffer.alloc(0) }),
         },
       }),
-      { src: 'https://cdn.example.com/x.svg', alt: 'x' },
+      { src: 'https://cdn.example.com/x.svg' },
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -200,7 +200,6 @@ describe('copyImageToClipboard — decode + write', () => {
     const write = vi.fn(async () => {});
     const result = await copyImageToClipboard(baseDeps({ clipboard: { write } }), {
       src: 'https://cdn.example.com/pic.jpg',
-      alt: 'x',
     });
     expect(result).toEqual({ ok: true });
     expect(write).toHaveBeenCalledTimes(1);
@@ -218,7 +217,6 @@ describe('copyImageToClipboard — decode + write', () => {
     });
     const result = await copyImageToClipboard(baseDeps({ clipboard: { write } }), {
       src: 'https://cdn.example.com/pic.png',
-      alt: 'x',
     });
     expect(result).toEqual({
       ok: false,
