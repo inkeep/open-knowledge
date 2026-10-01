@@ -61,6 +61,8 @@ export const okVitestBase = {
       '**/*.e2e.*',
       '**/*.dom.test.ts?(x)',
       ...UNCACHED_TEST_GLOBS,
+      '**/dist/**',
+      '**/.next/**',
     ],
     ...(boundedMaxForks === undefined ? {} : { minWorkers: 1, maxWorkers: boundedMaxForks }),
   },

@@ -67,14 +67,13 @@ describe('Managed rename — loaded-Y.Doc rewrite path (QA-040 / QA-008)', () =>
     expect(body.renamed).toHaveLength(1);
     expect(body.rewrittenDocs.length).toBeGreaterThan(0);
 
-    await pollUntil(() => ytext.toString().includes('[[new]]'), 5000, 25);
-    expect(ytext.toString()).toContain('[[new]]');
+    await pollUntil(() => ytext.toString().includes('[[new|old]]'), 5000, 25);
+    expect(ytext.toString()).toContain('Link: [[new|old]]');
     expect(ytext.toString()).not.toContain('[[old]]');
 
     await wait(800);
     const hostDisk = readFileSync(join(server.contentDir, 'host.md'), 'utf-8');
-    expect(hostDisk).toContain('[[new]]');
-    expect(hostDisk).not.toContain('[[old]]');
+    expect(hostDisk).toBe('# Host doc\n\nLink: [[new|old]]\n');
 
     const fragmentText = fragment.toString();
     expect(fragmentText).toContain('new');

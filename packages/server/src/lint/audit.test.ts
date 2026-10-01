@@ -2,12 +2,13 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  AUDIT_EMPTY_SCOPE_WARNING,
   DEFAULT_LINTER_CONFIG,
   LINT_PLUGINS,
   type LinterConfig,
 } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { auditProject, lintDoc } from './audit.ts';
+import { auditProject, lintDoc, resolveScope } from './audit.ts';
 import { AuditCache } from './audit-cache.ts';
 
 let root: string;
@@ -112,6 +113,43 @@ describe('lintDoc', () => {
 });
 
 describe('auditProject', () => {
+  test('a directory lost after scope resolution reports an incomplete scan, not an empty selection', async () => {
+    mkdirSync(join(root, 'notes'));
+    const resolvedScope = resolveScope('notes', root);
+    rmSync(join(root, 'notes'), { recursive: true });
+
+    const audit = await auditProject({
+      projectDir: root,
+      contentDir: root,
+      baseConfig: DEFAULT_LINTER_CONFIG,
+      resolvedScope,
+    });
+
+    expect(audit.fileCount).toBe(0);
+    expect(audit.warnings).toEqual([expect.stringContaining('could not read notes:')]);
+    expect(audit.warnings).not.toContain(AUDIT_EMPTY_SCOPE_WARNING);
+  });
+
+  test('reports zero admitted documents alongside a configuration warning', async () => {
+    const audit = await auditProject({
+      projectDir: root,
+      contentDir: root,
+      baseConfig: {
+        ...DEFAULT_LINTER_CONFIG,
+        plugins: {
+          ...DEFAULT_LINTER_CONFIG.plugins,
+          frontmatter: {
+            enabled: true,
+            schemas: [{ appliesTo: '**', file: '.ok/schemas/missing.json' }],
+          },
+        },
+      },
+    });
+    expect(audit.fileCount).toBe(0);
+    expect(audit.warnings).toContain(AUDIT_EMPTY_SCOPE_WARNING);
+    expect(audit.warnings.some((warning) => warning.includes('missing.json'))).toBe(true);
+  });
+
   test('emits an explicit empty selection when linting is disabled', async () => {
     write('clean.md', CLEAN_DOC);
     const audit = await auditProject({

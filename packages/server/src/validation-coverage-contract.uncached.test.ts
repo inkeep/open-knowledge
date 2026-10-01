@@ -54,6 +54,12 @@ function mcpReferenceRow(tool: string): string {
 }
 
 describe('validation coverage source contract', () => {
+  test('narrowing an audit scope does not promise to remove per-file caps', () => {
+    for (const description of [LINT_DESCRIPTION, AUDIT_DESCRIPTION]) {
+      expect(description).not.toContain('scoped to a folder or file to see what was omitted');
+    }
+  });
+
   test('OKF documents every parser reservation neutralized by generated indexes', () => {
     const executable = Array.from({ length: 0xf8ff - 0xe000 + 1 }, (_, offset) => 0xe000 + offset)
       .filter((codepoint) => isMutatingParserReservation(String.fromCodePoint(codepoint)))

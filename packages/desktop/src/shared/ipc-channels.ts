@@ -35,6 +35,8 @@ import type {
   OkCheckTargetExistsResult as CheckTargetExistsResult,
   ClaudeReadiness,
   CliReadiness,
+  CopyImageRequest,
+  CopyImageResult,
   OkHeadBranchInfo as HeadBranchInfo,
   OkAssetUploadResult,
   OkChromeColors,
@@ -422,16 +424,7 @@ export interface RequestChannels {
         };
   };
   'ok:clipboard:write-text': { args: [text: string]; result: undefined };
-  'ok:clipboard:copy-image': {
-    args: [params: { readonly src: string; readonly alt: string }];
-    result:
-      | { ok: true }
-      | {
-          ok: false;
-          reason: 'fetch-failed' | 'path-escape' | 'empty-image' | 'read-error' | 'write-error';
-          detail?: string;
-        };
-  };
+  'ok:clipboard:copy-image': { args: [request: CopyImageRequest]; result: CopyImageResult };
   'ok:project:get-info': { args: []; result: OkDesktopConfig };
 
   'ok:sharing:dispatch': {

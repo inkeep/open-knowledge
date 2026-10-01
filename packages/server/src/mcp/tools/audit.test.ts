@@ -475,7 +475,11 @@ describe('audit — output cap', () => {
     const text = result.content[0]?.text ?? '';
     expect(text).toContain(`${AUDIT_FILE_CAP + 2} of ${AUDIT_FILE_CAP + 2} documents`);
     expect(text).toContain('… and 3 more problems');
+    expect(text).toContain('lint({ document: "doc-00.md" })');
+    expect(text).toContain('links({ kind: "dead", sourceDocuments: ["doc-00.md"] })');
+    expect(text).toContain('Project-tree OKF findings remain capped');
     expect(text).toContain('… and 2 more files with problems');
+    expect(text).toContain('Narrow path to reduce competing files; per-file caps still apply');
     expect(text).toContain('markdownlint/MD010');
     expect(text).toContain('links/dead-link');
     const shownFileHeaders = text.match(/^doc-\d+\.md:$/gm) ?? [];

@@ -211,8 +211,9 @@ Changing an existing location is `convert`, which leaves membership alone; pass
 every location to make them uniform.
 
 **What each form means.** A symlink points at the source, so it cannot drift. A
-copy is its own folder and refreshes automatically from the source — until
-someone hand-edits it, at which point it forks and is never overwritten again.
+copy is its own folder. A recorded, unedited copy refreshes from the source
+when the skill watcher runs or the server starts, so it may briefly lag a source
+edit. A hand edit forks the copy and prevents further automatic overwrites.
 
 **Lifecycle.** Edit with `edit({ skill })`; it routes to the source and versions
 in place. There is no "uninstall everywhere" — removing every other location
@@ -226,7 +227,7 @@ on pull.
 ## Reminders
 
 - Prefer ONE good skill over many overlapping ones; split only when triggers diverge. (The Stage 1 gate is where you ENFORCE this — don't leave overlap to discover later.)
-- Scope is the only placement decision — don't fold harness/format/toolchain assumptions into it, and don't bake one into the scope question's wording. You are authoring an OpenKnowledge skill: create it with `write({ skill })` — it lands as a real folder at the project's default skill home with attribution and versioning — and fan it out with `install`; don't hand-scatter copies across editor dirs, because `install` owns fan-out and refreshes unedited copies from the source (a hand-edited copy forks and stops refreshing). If you load this flow, author through it.
+- Scope is the only placement decision — don't fold harness/format/toolchain assumptions into it, and don't bake one into the scope question's wording. You are authoring an OpenKnowledge skill: create it with `write({ skill })` — it lands as a real folder at the project's default skill home with attribution and versioning — and fan it out with `install`; don't hand-scatter copies across editor dirs, because `install` owns fan-out; recorded, unedited copies refresh on watcher/startup sync (a hand-edited copy forks and stops refreshing). If you load this flow, author through it.
 - Ground claims about how skills behave (versioning, install targets, scope semantics) in this guide or the tool descriptions — don't assert system facts from assumption.
 - Avoid blanket ALWAYS/NEVER rules without a stated reason — they read as noise and
   get ignored. Explain the why.

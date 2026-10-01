@@ -1,10 +1,11 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterAll, afterEach, beforeAll, expect, test, vi } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, rawRequest } from './composition-rig.test-helper.ts';
 import * as contributorTracker from './contributor-tracker.ts';
+import { moveSkillCrossScope } from './mcp/tools/skill-target.ts';
 
 let root: string;
 let server: BootedServer;
@@ -166,3 +167,66 @@ test('external editing resolves a real skill directory without launching an edit
   const result = await request('/api/skill/edit-external', 'POST', { name: 'external', home: dir });
   expect(result.docName).toBe('__extskill__/external');
 });
+
+test.each(['same-storage', 'plain-collision'])(
+  'cross-scope %s refusal retains server detail and teaches repair before retry',
+  async (refusal) => {
+    const name = `move-${refusal}`;
+    const created = await request('/api/skill', 'PUT', {
+      name,
+      scope: 'project',
+      frontmatter: { name, description: 'Source skill' },
+      body: 'Source bytes.\n',
+    });
+    const sourcePath = join(root, created.path as string);
+    const destinationDir = join(home, '.claude/skills', name);
+    if (refusal === 'same-storage') {
+      mkdirSync(dirname(destinationDir), { recursive: true });
+      symlinkSync(dirname(sourcePath), destinationDir, 'dir');
+    } else {
+      const destination = await request('/api/skill', 'PUT', {
+        name,
+        scope: 'global',
+        frontmatter: { name, description: 'Destination skill' },
+        body: 'Destination bytes.\n',
+      });
+      expect(join(home, destination.path as string)).toBe(join(destinationDir, 'SKILL.md'));
+    }
+    const destinationPath = join(destinationDir, 'SKILL.md');
+    const sourceBefore = readFileSync(sourcePath, 'utf8');
+    const destinationBefore = readFileSync(destinationPath, 'utf8');
+    const response = await rawRequest(server.port, '/api/skill/move-scope', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, fromScope: 'project', toScope: 'global' }),
+    });
+    expect(response.status, response.body).toBe(409);
+    const problem = JSON.parse(response.body);
+    expect(problem).toMatchObject({
+      type: 'urn:ok:error:doc-already-exists',
+      moveState: 'nothing-written',
+      detail:
+        refusal === 'same-storage'
+          ? 'SAME_STORAGE'
+          : 'Delete or rename it first; this move will not overwrite it.',
+    });
+    expect(problem).not.toHaveProperty('retentionLedger');
+
+    const result = await moveSkillCrossScope(`http://127.0.0.1:${server.port}`, {
+      fromName: name,
+      toName: name,
+      fromScope: 'project',
+      toScope: 'global',
+    });
+    const text = result.content
+      .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+      .join('\n');
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({ ok: false, moveState: 'nothing-written' });
+    expect(text).toContain(problem.detail);
+    expect(text).toContain('safe to retry once the refusal is addressed');
+    expect(text).not.toContain('occupant is unverified');
+    expect(readFileSync(sourcePath, 'utf8')).toBe(sourceBefore);
+    expect(readFileSync(destinationPath, 'utf8')).toBe(destinationBefore);
+  },
+);

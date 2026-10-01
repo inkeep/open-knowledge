@@ -14,6 +14,7 @@ vi.mock('node:child_process', async (importOriginal) => {
 const spawnSyncMock = vi.mocked(spawnSync);
 
 import { MCP_SERVER_NAME } from '../constants/mcp.ts';
+import { DESKTOP_PRODUCTS } from '../constants/product.ts';
 import {
   buildClaudeLaunchCommand,
   buildCliLaunchArgString,
@@ -112,6 +113,7 @@ describe('Windows launch composition', () => {
       buildWindowsCliLaunch('claude', prompt, {
         mcpPreApprove: true,
         autoApproveOkTools: true,
+        mcpServerName: MCP_SERVER_NAME,
       }),
     ).toEqual({
       executable: 'claude',
@@ -122,7 +124,12 @@ describe('Windows launch composition', () => {
         contents: `{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"],"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}`,
       },
     });
-    expect(buildWindowsCliLaunch('codex', prompt, { autoApproveOkTools: true })).toEqual({
+    expect(
+      buildWindowsCliLaunch('codex', prompt, {
+        autoApproveOkTools: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
+    ).toEqual({
       executable: 'codex',
       args: ['-c', `mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode=approve`],
     });
@@ -135,9 +142,9 @@ describe('Windows launch composition', () => {
   it('degrades a support-file launch to the bare launch the same builder would emit', () => {
     const prompt = 'review the failing gate';
     for (const opts of [
-      { mcpPreApprove: true },
-      { autoApproveOkTools: true },
-      { mcpPreApprove: true, autoApproveOkTools: true },
+      { mcpPreApprove: true, mcpServerName: MCP_SERVER_NAME },
+      { autoApproveOkTools: true, mcpServerName: MCP_SERVER_NAME },
+      { mcpPreApprove: true, autoApproveOkTools: true, mcpServerName: MCP_SERVER_NAME },
     ]) {
       const withSupport = buildWindowsCliLaunch('claude', prompt, opts);
       expect(withSupport.supportFile).toBeDefined();
@@ -148,7 +155,10 @@ describe('Windows launch composition', () => {
   });
 
   it('leaves a launch that carries no support file untouched', () => {
-    const bare = buildWindowsCliLaunch('codex', null, { autoApproveOkTools: true });
+    const bare = buildWindowsCliLaunch('codex', null, {
+      autoApproveOkTools: true,
+      mcpServerName: MCP_SERVER_NAME,
+    });
     expect(launchWithoutSupportFile(bare)).toBe(bare);
   });
 
@@ -853,6 +863,7 @@ describe('buildClaudeLaunchCommand', () => {
     expect(
       buildClaudeLaunchCommand("Let's work on `foo.md` using OpenKnowledge.", {
         mcpPreApprove: true,
+        mcpServerName: MCP_SERVER_NAME,
       }),
     ).toBe(
       "claude --settings '{\"enabledMcpjsonServers\":[\"open-knowledge\"]}' 'Let'\\''s work on `foo.md` using OpenKnowledge.'\r",
@@ -860,7 +871,10 @@ describe('buildClaudeLaunchCommand', () => {
   });
 
   it('keeps an injection payload inert and contained in the prompt arg (pre-approved)', () => {
-    const cmd = buildClaudeLaunchCommand("'; rm -rf / #", { mcpPreApprove: true });
+    const cmd = buildClaudeLaunchCommand("'; rm -rf / #", {
+      mcpPreApprove: true,
+      mcpServerName: MCP_SERVER_NAME,
+    });
     expect(cmd).toBe(`claude ${CLAUDE_PREAPPROVE} ''\\''; rm -rf / #'\r`);
     expect(cmd.startsWith(`claude ${CLAUDE_PREAPPROVE} `)).toBe(true);
     expect(cmd.endsWith("''\\''; rm -rf / #'\r")).toBe(true);
@@ -883,7 +897,10 @@ describe('buildCliLaunchCommand', () => {
   it('escapes the prompt identically for every argv-prompt CLI regardless of fixed args', () => {
     for (const cli of TERMINAL_CLI_IDS) {
       if (startupInjectionFor(cli, 'darwin') != null) continue;
-      const cmd = buildCliLaunchCommand(cli, "'; rm -rf / #", { mcpPreApprove: true });
+      const cmd = buildCliLaunchCommand(cli, "'; rm -rf / #", {
+        mcpPreApprove: true,
+        mcpServerName: MCP_SERVER_NAME,
+      });
       expect(cmd.startsWith(`${TERMINAL_CLIS[cli].bin} `)).toBe(true);
       expect(cmd.endsWith("''\\''; rm -rf / #'\r")).toBe(true);
     }
@@ -891,8 +908,13 @@ describe('buildCliLaunchCommand', () => {
 
   it('buildClaudeLaunchCommand is the claude specialization (opts forwarded)', () => {
     expect(buildClaudeLaunchCommand('hi')).toBe(buildCliLaunchCommand('claude', 'hi'));
-    expect(buildClaudeLaunchCommand('hi', { mcpPreApprove: true })).toBe(
-      buildCliLaunchCommand('claude', 'hi', { mcpPreApprove: true }),
+    expect(
+      buildClaudeLaunchCommand('hi', { mcpPreApprove: true, mcpServerName: MCP_SERVER_NAME }),
+    ).toBe(
+      buildCliLaunchCommand('claude', 'hi', {
+        mcpPreApprove: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
     );
   });
 });
@@ -900,9 +922,14 @@ describe('buildCliLaunchCommand', () => {
 describe('buildCliLaunchArgString', () => {
   it('is the launch command WITHOUT the trailing carriage return', () => {
     for (const cli of TERMINAL_CLI_IDS) {
-      const arg = buildCliLaunchArgString(cli, 'hi', { mcpPreApprove: true });
+      const arg = buildCliLaunchArgString(cli, 'hi', {
+        mcpPreApprove: true,
+        mcpServerName: MCP_SERVER_NAME,
+      });
       expect(arg.endsWith('\r')).toBe(false);
-      expect(`${arg}\r`).toBe(buildCliLaunchCommand(cli, 'hi', { mcpPreApprove: true }));
+      expect(`${arg}\r`).toBe(
+        buildCliLaunchCommand(cli, 'hi', { mcpPreApprove: true, mcpServerName: MCP_SERVER_NAME }),
+      );
     }
   });
 
@@ -939,13 +966,19 @@ describe('buildCliLaunchArgString promptless (New chat)', () => {
   });
 
   it('still applies Claude MCP pre-approval on a promptless launch when opted in', () => {
-    const arg = buildCliLaunchArgString('claude', null, { mcpPreApprove: true });
+    const arg = buildCliLaunchArgString('claude', null, {
+      mcpPreApprove: true,
+      mcpServerName: MCP_SERVER_NAME,
+    });
     expect(arg).toBe(`claude ${CLAUDE_PREAPPROVE}`);
     expect(arg.endsWith(' ')).toBe(false);
   });
 
   it('still applies Claude OK auto-approve on a promptless launch, alone and merged with pre-approval', () => {
-    const autoOnly = buildCliLaunchArgString('claude', null, { autoApproveOkTools: true });
+    const autoOnly = buildCliLaunchArgString('claude', null, {
+      autoApproveOkTools: true,
+      mcpServerName: MCP_SERVER_NAME,
+    });
     expect(autoOnly).toBe(
       `claude --settings '{"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}'`,
     );
@@ -954,6 +987,7 @@ describe('buildCliLaunchArgString promptless (New chat)', () => {
     const both = buildCliLaunchArgString('claude', null, {
       mcpPreApprove: true,
       autoApproveOkTools: true,
+      mcpServerName: MCP_SERVER_NAME,
     });
     expect(both).toBe(
       `claude --settings '{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"],"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}'`,
@@ -962,14 +996,22 @@ describe('buildCliLaunchArgString promptless (New chat)', () => {
   });
 
   it('never adds --prompt or a positional to a promptless opencode launch, even opted in', () => {
-    expect(buildCliLaunchArgString('opencode', '', { mcpPreApprove: true })).toBe('opencode');
+    expect(
+      buildCliLaunchArgString('opencode', '', {
+        mcpPreApprove: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
+    ).toBe('opencode');
   });
 
   it('leaves the non-empty prompted shape byte-identical (promptless branch must not perturb it)', () => {
     expect(buildCliLaunchArgString('claude', 'hi')).toBe("claude 'hi'");
-    expect(buildCliLaunchArgString('claude', 'hi', { mcpPreApprove: true })).toBe(
-      `claude ${CLAUDE_PREAPPROVE} 'hi'`,
-    );
+    expect(
+      buildCliLaunchArgString('claude', 'hi', {
+        mcpPreApprove: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
+    ).toBe(`claude ${CLAUDE_PREAPPROVE} 'hi'`);
     expect(buildCliLaunchArgString('opencode', 'hi')).toBe("opencode --prompt 'hi'");
   });
 });
@@ -1031,48 +1073,75 @@ describe('buildStartupInjectionBytes', () => {
 describe('claude MCP pre-approval', () => {
   it('is OFF by default and only added for claude when opted in', () => {
     expect(buildCliLaunchCommand('claude', 'hi')).not.toContain('--settings');
-    expect(buildCliLaunchCommand('claude', 'hi', { mcpPreApprove: true })).toContain(
-      CLAUDE_PREAPPROVE,
-    );
+    expect(
+      buildCliLaunchCommand('claude', 'hi', {
+        mcpPreApprove: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
+    ).toContain(CLAUDE_PREAPPROVE);
   });
 
   it('never added for codex/copilot/cursor/opencode, even when opted in (claude-only flag)', () => {
-    expect(buildCliLaunchCommand('codex', 'hi', { mcpPreApprove: true })).toBe("codex 'hi'\r");
-    expect(buildCliLaunchCommand('copilot', 'hi', { mcpPreApprove: true })).toBe(
-      "copilot --interactive 'hi'\r",
-    );
-    expect(buildCliLaunchCommand('cursor', 'hi', { mcpPreApprove: true })).toBe(
-      "cursor-agent 'hi'\r",
-    );
-    expect(buildCliLaunchCommand('opencode', 'hi', { mcpPreApprove: true })).toBe(
-      "opencode --prompt 'hi'\r",
-    );
+    expect(
+      buildCliLaunchCommand('codex', 'hi', { mcpPreApprove: true, mcpServerName: MCP_SERVER_NAME }),
+    ).toBe("codex 'hi'\r");
+    expect(
+      buildCliLaunchCommand('copilot', 'hi', {
+        mcpPreApprove: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
+    ).toBe("copilot --interactive 'hi'\r");
+    expect(
+      buildCliLaunchCommand('cursor', 'hi', {
+        mcpPreApprove: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
+    ).toBe("cursor-agent 'hi'\r");
+    expect(
+      buildCliLaunchCommand('opencode', 'hi', {
+        mcpPreApprove: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
+    ).toBe("opencode --prompt 'hi'\r");
   });
 
   it('names the canonical MCP server, matching what editor wiring registers in .mcp.json', () => {
-    expect(buildCliLaunchCommand('claude', 'hi', { mcpPreApprove: true })).toContain(
-      `["${MCP_SERVER_NAME}"]`,
-    );
+    expect(
+      buildCliLaunchCommand('claude', 'hi', {
+        mcpPreApprove: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
+    ).toContain(`["${MCP_SERVER_NAME}"]`);
   });
 });
 
 describe('OK auto-approve (autoApproveOkTools)', () => {
   it('adds the OK allow-list + destructive ask-list to Claude --settings when on', () => {
-    expect(buildCliLaunchArgString('claude', 'hi', { autoApproveOkTools: true })).toBe(
-      `claude --settings '{"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}' 'hi'`,
-    );
+    expect(
+      buildCliLaunchArgString('claude', 'hi', {
+        autoApproveOkTools: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
+    ).toBe(`claude --settings '{"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}' 'hi'`);
   });
 
   it('merges server-trust + auto-approve into one --settings object when both on', () => {
     expect(
-      buildCliLaunchArgString('claude', 'hi', { mcpPreApprove: true, autoApproveOkTools: true }),
+      buildCliLaunchArgString('claude', 'hi', {
+        mcpPreApprove: true,
+        autoApproveOkTools: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
     ).toBe(
       `claude --settings '{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"],"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}' 'hi'`,
     );
   });
 
   it('keeps every gated tool in the ask list (never silently auto-approved)', () => {
-    const arg = buildCliLaunchArgString('claude', 'hi', { autoApproveOkTools: true });
+    const arg = buildCliLaunchArgString('claude', 'hi', {
+      autoApproveOkTools: true,
+      mcpServerName: MCP_SERVER_NAME,
+    });
     expect(OK_GATED_TOOL_NAMES).toEqual(['delete', 'move', 'share_link', 'install', 'import']);
     for (const gated of OK_GATED_TOOL_NAMES) {
       expect(arg).toContain(`"mcp__${MCP_SERVER_NAME}__${gated}"`);
@@ -1080,39 +1149,137 @@ describe('OK auto-approve (autoApproveOkTools)', () => {
   });
 
   it('never gates with `deny` (that would hide the tools from the agent)', () => {
-    const arg = buildCliLaunchArgString('claude', 'hi', { autoApproveOkTools: true });
+    const arg = buildCliLaunchArgString('claude', 'hi', {
+      autoApproveOkTools: true,
+      mcpServerName: MCP_SERVER_NAME,
+    });
     expect(arg).not.toContain('"deny"');
   });
 
   it('adds the codex per-server `-c approve` override only when on', () => {
-    expect(buildCliLaunchArgString('codex', 'hi', { autoApproveOkTools: true })).toBe(
-      `codex -c 'mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode="approve"' 'hi'`,
-    );
+    expect(
+      buildCliLaunchArgString('codex', 'hi', {
+        autoApproveOkTools: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
+    ).toBe(`codex -c 'mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode="approve"' 'hi'`);
     expect(buildCliLaunchArgString('codex', 'hi')).toBe("codex 'hi'");
   });
 
   it('is claude/codex only — copilot/cursor/opencode/pi never get an auto-approve arg', () => {
-    expect(buildCliLaunchArgString('copilot', 'hi', { autoApproveOkTools: true })).toBe(
-      "copilot --interactive 'hi'",
-    );
-    expect(buildCliLaunchArgString('cursor', 'hi', { autoApproveOkTools: true })).toBe(
-      "cursor-agent 'hi'",
-    );
-    expect(buildCliLaunchArgString('opencode', 'hi', { autoApproveOkTools: true })).toBe(
-      "opencode --prompt 'hi'",
-    );
-    expect(buildCliLaunchArgString('pi', 'hi', { autoApproveOkTools: true })).toBe("pi 'hi'");
+    expect(
+      buildCliLaunchArgString('copilot', 'hi', {
+        autoApproveOkTools: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
+    ).toBe("copilot --interactive 'hi'");
+    expect(
+      buildCliLaunchArgString('cursor', 'hi', {
+        autoApproveOkTools: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
+    ).toBe("cursor-agent 'hi'");
+    expect(
+      buildCliLaunchArgString('opencode', 'hi', {
+        autoApproveOkTools: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
+    ).toBe("opencode --prompt 'hi'");
+    expect(
+      buildCliLaunchArgString('pi', 'hi', {
+        autoApproveOkTools: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
+    ).toBe("pi 'hi'");
   });
 
   it('keeps the prompt the final escaped arg with auto-approve on (injection inert)', () => {
-    const arg = buildCliLaunchArgString('claude', "'; rm -rf / #", { autoApproveOkTools: true });
+    const arg = buildCliLaunchArgString('claude', "'; rm -rf / #", {
+      autoApproveOkTools: true,
+      mcpServerName: MCP_SERVER_NAME,
+    });
     expect(arg.endsWith("''\\''; rm -rf / #'")).toBe(true);
   });
 
   it('emits a bare `<bin>` for a promptless auto-approve launch with the fixed args', () => {
-    expect(buildCliLaunchArgString('codex', null, { autoApproveOkTools: true })).toBe(
-      `codex -c 'mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode="approve"'`,
+    expect(
+      buildCliLaunchArgString('codex', null, {
+        autoApproveOkTools: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }),
+    ).toBe(`codex -c 'mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode="approve"'`);
+  });
+});
+
+describe('launch approval names the server the main process checked', () => {
+  const BETA = DESKTOP_PRODUCTS.beta.mcpServerName;
+  const ALL_ON = { mcpPreApprove: true, autoApproveOkTools: true } as const;
+
+  function artifacts(opts: Parameters<typeof buildCliLaunchArgString>[2]): string[] {
+    const winClaude = buildWindowsCliLaunch('claude', 'hi', opts);
+    return [
+      buildCliLaunchArgString('claude', 'hi', opts),
+      buildCliLaunchArgString('codex', 'hi', opts),
+      winClaude.supportFile?.contents ?? '',
+      buildWindowsCliLaunch('codex', 'hi', opts).args.join(' '),
+    ];
+  }
+
+  it('uses only the supplied Beta name, even when this process resolves to Stable', () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    try {
+      const out = artifacts({ ...ALL_ON, mcpServerName: BETA });
+      expect(out[0]).toBe(
+        `claude --settings '{"enabledMcpjsonServers":["${BETA}"],"permissions":{"allow":["mcp__${BETA}","Bash(ok open:*)"],"ask":["mcp__${BETA}__delete","mcp__${BETA}__move","mcp__${BETA}__share_link","mcp__${BETA}__install","mcp__${BETA}__import"]}}' 'hi'`,
+      );
+      expect(out[1]).toBe(
+        `codex -c 'mcp_servers.${BETA}.default_tools_approval_mode="approve"' 'hi'`,
+      );
+      expect(out[2]).toContain(`["${BETA}"]`);
+      expect(out[3]).toBe(`-c mcp_servers.${BETA}.default_tools_approval_mode=approve`);
+      for (const artifact of out) {
+        expect(artifact.replaceAll(BETA, '')).not.toContain('open-knowledge');
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('emits no pre-approval and no auto-approve when main supplied no name', () => {
+    for (const opts of [ALL_ON, { ...ALL_ON, mcpServerName: '' }]) {
+      expect(buildCliLaunchArgString('claude', 'hi', opts)).toBe("claude 'hi'");
+      expect(buildCliLaunchArgString('codex', 'hi', opts)).toBe("codex 'hi'");
+      expect(buildWindowsCliLaunch('claude', 'hi', opts)).toEqual({
+        executable: 'claude',
+        args: [],
+      });
+      expect(buildWindowsCliLaunch('codex', 'hi', opts)).toEqual({ executable: 'codex', args: [] });
+    }
+  });
+
+  it('keeps the Stable artifacts byte-identical when main supplies the Stable name', () => {
+    const out = artifacts({ ...ALL_ON, mcpServerName: 'open-knowledge' });
+    expect(out[0]).toBe(
+      `claude --settings '{"enabledMcpjsonServers":["open-knowledge"],"permissions":{"allow":["mcp__open-knowledge","Bash(ok open:*)"],"ask":["mcp__open-knowledge__delete","mcp__open-knowledge__move","mcp__open-knowledge__share_link","mcp__open-knowledge__install","mcp__open-knowledge__import"]}}' 'hi'`,
     );
+    expect(out[1]).toBe(
+      `codex -c 'mcp_servers.open-knowledge.default_tools_approval_mode="approve"' 'hi'`,
+    );
+    expect(out[3]).toBe('-c mcp_servers.open-knowledge.default_tools_approval_mode=approve');
+  });
+
+  it('imports without resolving the channel, so an unrecognised OK_CHANNEL cannot crash boot', async () => {
+    vi.stubEnv('OK_CHANNEL', 'nightly');
+    vi.resetModules();
+    try {
+      const mod = await import('./terminal-launch.ts');
+      expect(mod.buildCliLaunchArgString('codex', 'hi', { autoApproveOkTools: true })).toBe(
+        "codex 'hi'",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
   });
 });
 

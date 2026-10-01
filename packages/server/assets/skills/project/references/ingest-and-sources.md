@@ -143,9 +143,9 @@ The body is just the wiki-embed reference. For images, video, and audio, the emb
 
 Write via `write` (NOT native `Write` — the CRDT path is mandatory for in-scope markdown).
 
-## Step 2b: Save the text wrapper (only after Step 1c — text path or shell-less fallback)
+## Step 2b: Save the text wrapper (fetched text, local text, or shell-less fallback)
 
-Write a markdown wrapper at `external-sources/<slug>.md` with the text content preserved verbatim in the body. Strip obvious boilerplate (nav menus, cookie banners, ads, footer links, "related articles" widgets) but **do not summarize, paraphrase, or interpret**.
+Write a markdown wrapper at `external-sources/<slug>.md`. For fetched pages, strip obvious boilerplate (nav menus, cookie banners, ads, footer links, "related articles" widgets), but do not summarize, paraphrase, or interpret. For a supplied local text file, preserve every line verbatim without boilerplate stripping. Set `source_url` to the supplied local path as plain text; do not leave it blank or fetch it as a URL.
 
 Frontmatter shape:
 
@@ -158,7 +158,7 @@ source_url: https://example.com/article
 media_type: text/html
 date_fetched: YYYY-MM-DD
 author: Original author if known
-preservation: text-extracted    # OR: text-only (a shell-less fallback for a binary source)
+preservation: text-extracted
 # NOTE: no `source_path` — text wrappers ARE the content. `source_path` is meaningful only for
 # binary wrappers (Step 2a), where it points at the co-located binary sibling.
 tags:
@@ -169,7 +169,7 @@ tags:
 ---
 ```
 
-**If this is a shell-less fallback for a source that should have been binary** (you detected binary in Step 1a but your host couldn't `curl`), set `preservation: text-only` AND prepend a top-of-body admonition so a future agent (or you, on a different host) can detect and upgrade:
+For a supplied local text file, always use `preservation: text-extracted`. Reserve `preservation: text-only` for a shell-less fallback for a source that should have been binary (you detected binary in Step 1a but your host couldn't `curl`). In that fallback, prepend a top-of-body admonition so a future agent (or you, on a different host) can detect and upgrade:
 
 ```markdown
 > Binary not preserved — this is an extracted-text snapshot of a binary source.

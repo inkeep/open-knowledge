@@ -66,12 +66,20 @@ describe('identifyOpenKnowledgeToolCall', () => {
     for (const title of [
       'mcp__open-knowledge__write',
       'mcp__open-knowledge-dev__write',
+      'mcp__open-knowledge-beta__write',
       'mcp.open_knowledge.write',
       'ok_write',
+      'ok-beta_write',
     ]) {
       expect(identifyOpenKnowledgeToolCall({ title, rawInput: {} }, 'known')?.tool).toBe('write');
     }
-    for (const title of ['mcp__ok__write', 'mcp__ok-dev__write', 'mcp.ok.write', 'ok-dev_write']) {
+    for (const title of [
+      'mcp__ok__write',
+      'mcp__ok-dev__write',
+      'mcp.ok.write',
+      'ok-dev_write',
+      'mcp__open-knowledge-payments__write',
+    ]) {
       expect(identifyOpenKnowledgeToolCall({ title, rawInput: {} }, 'known')).toBeNull();
     }
     expect(

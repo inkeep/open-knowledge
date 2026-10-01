@@ -1,10 +1,18 @@
 import { readFile } from 'node:fs/promises';
 import type { Document, Hocuspocus } from '@hocuspocus/server';
-import { resolveInternalHref, stripFrontmatter, toWikiLinkSlug } from '@inkeep/open-knowledge-core';
+import {
+  resolveInternalHref,
+  resolveSkillBundleWikiTarget,
+  resolveWikiLinkTargetDocName,
+  stripFrontmatter,
+  toWikiLinkSlug,
+  type WikiLinkLookupIndex,
+} from '@inkeep/open-knowledge-core';
 import type { FileIndexEntry } from './file-watcher.ts';
 import { readMarkdownLinkAt, readWikiLinkAt } from './link-syntax.ts';
 import { getLogger } from './logger.ts';
 import { extractPageIdentity, type PageIdentity } from './page-identity.ts';
+import { buildProjectWikiLinkLookup } from './project-wiki-link-lookup.ts';
 
 const log = getLogger('suggest-links');
 
@@ -316,18 +324,13 @@ function contiguousOffsets(start: number, text: string): number[] {
   return offsets;
 }
 
-function wikiLinkResolvesToTarget(target: string, targetDocName: string): boolean {
-  const trimmed = target.trim();
-  if (!trimmed) return false;
-  return trimmed === targetDocName || toWikiLinkSlug(trimmed) === targetDocName;
-}
-
 function scanLineForMentions(
   line: string,
   lineStartOffset: number,
   sourceDocName: string,
   targetDocName: string,
   labels: readonly SearchLabel[],
+  lookup: WikiLinkLookupIndex,
 ): Array<{ excerpt: string; offset: number }> {
   let flatText = '';
   const plainSegments: PlainSegment[] = [];
@@ -406,7 +409,12 @@ function scanLineForMentions(
       const wikiLink = readWikiLink(line, index);
       if (wikiLink) {
         const label = wikiLink.label;
-        if (wikiLinkResolvesToTarget(wikiLink.target, targetDocName)) {
+        if (
+          resolveWikiLinkTargetDocName(
+            resolveSkillBundleWikiTarget(wikiLink.target, sourceDocName) ?? wikiLink.target,
+            lookup,
+          ) === targetDocName
+        ) {
           appendNonMatchableText(label);
         } else {
           appendMatchableText(
@@ -463,6 +471,7 @@ function scanMarkdownForMentions(
   sourceDocName: string,
   targetDocName: string,
   labels: readonly SearchLabel[],
+  lookup: WikiLinkLookupIndex,
 ): Array<{ excerpt: string; offset: number }> {
   const { frontmatter, body } = stripFrontmatter(markdown);
   const bodyStartOffset = frontmatter.length;
@@ -494,6 +503,7 @@ function scanMarkdownForMentions(
             sourceDocName,
             targetDocName,
             labels,
+            lookup,
           ),
         );
       }
@@ -570,6 +580,7 @@ export async function suggestLinks(options: SuggestLinksOptions): Promise<Sugges
     .filter((candidateDocName) => candidateDocName !== docName)
     .sort((left, right) => left.localeCompare(right));
 
+  const lookup = buildProjectWikiLinkLookup(fileIndex.keys());
   const mentionsBySource = new Map<string, SuggestLinksMention[]>();
   let truncated = false;
 
@@ -595,6 +606,7 @@ export async function suggestLinks(options: SuggestLinksOptions): Promise<Sugges
       sourceDocName,
       docName,
       searchLabels,
+      lookup,
     ).map((mention) => ({
       source: sourceDocName,
       excerpt: mention.excerpt,

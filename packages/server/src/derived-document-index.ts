@@ -113,6 +113,9 @@ export interface DerivedDocumentIndexApiPort {
   ): Promise<LocalTargetSourceAssessments[]>;
   readLocalTargetGeneration?(): string | number;
   getIndexedDocNames(): Promise<string[]>;
+  getRenameSourceInventory(): Promise<
+    Array<{ docName: string; wikiTargets: string[]; indexedMtimeMs: number | undefined }>
+  >;
   getAllTags(): Promise<TagSummaryEntry[]>;
   getDocsForTagWithMatches(tag: string): Promise<TagDocMatch[]>;
 }
@@ -607,6 +610,12 @@ export class DerivedDocumentIndex
     return this.runQuery(() => this.backlinkIndex.getIndexedDocNames());
   }
 
+  getRenameSourceInventory(): Promise<
+    Array<{ docName: string; wikiTargets: string[]; indexedMtimeMs: number | undefined }>
+  > {
+    return this.runQuery(() => this.backlinkIndex.getRenameSourceInventory());
+  }
+
   getAllTags(): Promise<TagSummaryEntry[]> {
     return this.runQuery(() => this.tagIndex.getAllTags());
   }
@@ -699,8 +708,12 @@ export class DerivedDocumentIndex
         deletedDocNames = diff.deletedDocNames;
         if (diff.added > 0 || diff.updated > 0 || diff.deleted > 0) {
           log.info(
-            { added: diff.added, updated: diff.updated, deleted: diff.deleted },
-            '[backlinks] startup reconcile: offline changes applied',
+            {
+              added: diff.added,
+              updated: diff.updated,
+              deleted: diff.deleted,
+            },
+            '[backlinks] startup reconcile',
           );
         }
       } else {

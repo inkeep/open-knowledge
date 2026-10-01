@@ -1040,12 +1040,29 @@ export interface ClaudeReadiness {
   readonly claude: 'present' | 'not-found' | 'unknown';
   readonly mcpPreApprovable?: boolean;
   readonly okToolsAutoApprovable?: boolean;
+  readonly mcpServerName?: string;
 }
 
 export interface CliReadiness {
   readonly onPath: 'present' | 'not-found' | 'unknown';
   readonly okServerConfigured?: boolean;
+  readonly mcpServerName?: string;
 }
+
+export interface CopyImageRequest {
+  readonly src: string;
+}
+
+export type CopyImageFailureReason =
+  | 'fetch-failed'
+  | 'path-escape'
+  | 'empty-image'
+  | 'read-error'
+  | 'write-error';
+
+export type CopyImageResult =
+  | { ok: true }
+  | { ok: false; reason: CopyImageFailureReason; detail?: string };
 
 export interface OkDesktopBridge {
   readonly config: OkDesktopConfig;
@@ -1132,14 +1149,7 @@ export interface OkDesktopBridge {
 
   clipboard: {
     writeText(text: string): Promise<void>;
-    copyImage(params: { readonly src: string; readonly alt: string }): Promise<
-      | { ok: true }
-      | {
-          ok: false;
-          reason: 'fetch-failed' | 'path-escape' | 'empty-image' | 'read-error' | 'write-error';
-          detail?: string;
-        }
-    >;
+    copyImage(request: CopyImageRequest): Promise<CopyImageResult>;
   };
 
   project: {
@@ -1411,6 +1421,7 @@ export interface OkDesktopBridge {
   readonly platform: 'darwin' | 'win32' | 'linux';
   readonly appVersion: string;
   readonly instanceLabel: string | null;
+  readonly mcpServerName: string | null;
 
   getPathForFile(file: File): string | null;
 

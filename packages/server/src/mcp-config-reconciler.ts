@@ -1,4 +1,9 @@
-import { classifyMcpLauncherEntry, type McpLauncherDescriptor } from '@inkeep/open-knowledge-core';
+import {
+  classifyMcpLauncherEntry,
+  currentDesktopProduct,
+  type DesktopProduct,
+  type McpLauncherDescriptor,
+} from '@inkeep/open-knowledge-core';
 import {
   applyEdits,
   findNodeAtLocation,
@@ -63,10 +68,15 @@ export type McpConfigReconcilePlan =
   | { kind: 'unchanged' }
   | { kind: 'declined'; reason: McpConfigReconcileDeclineReason };
 
-interface TargetShape {
+interface TargetLayout {
   readonly format: 'json' | 'toml';
   readonly topLevelKey: 'mcpServers' | 'mcp_servers' | 'mcp';
   readonly managedKeys: readonly string[];
+}
+
+interface TargetShape extends TargetLayout {
+  readonly serverName: DesktopProduct['mcpServerName'];
+  readonly chainTag: DesktopProduct['mcpChainTag'];
 }
 
 interface ClassifiedRaw {
@@ -82,7 +92,7 @@ type RawClassification =
   | ({ kind: 'managed' } & ClassifiedRaw)
   | { kind: 'declined'; reason: McpConfigReconcileDeclineReason };
 
-const TARGET_SHAPES: Record<TrackedMcpConfigTarget, TargetShape> = {
+const TARGET_SHAPES: Record<TrackedMcpConfigTarget, TargetLayout> = {
   '.mcp.json': { format: 'json', topLevelKey: 'mcpServers', managedKeys: ['command', 'args'] },
   '.cursor/mcp.json': {
     format: 'json',
@@ -102,9 +112,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function targetShape(target: string): TargetShape | null {
-  return Object.hasOwn(TARGET_SHAPES, target)
-    ? TARGET_SHAPES[target as TrackedMcpConfigTarget]
-    : null;
+  if (!Object.hasOwn(TARGET_SHAPES, target)) return null;
+  const product = currentDesktopProduct();
+  return {
+    ...TARGET_SHAPES[target as TrackedMcpConfigTarget],
+    serverName: product.mcpServerName,
+    chainTag: product.mcpChainTag,
+  };
 }
 
 function splitBom(raw: string): { bom: string; body: string } {
@@ -155,12 +169,12 @@ function classifyJson(raw: string, shape: TargetShape): RawClassification {
   if (countRootProperties(root, shape.topLevelKey) > 1) {
     return { kind: 'declined', reason: 'duplicate-container' };
   }
-  const entryPath = [shape.topLevelKey, 'open-knowledge'];
+  const entryPath = [shape.topLevelKey, shape.serverName];
   const entryNode = findNodeAtLocation(root, entryPath);
   if (!entryNode) return { kind: 'no-entry', raw, shell: raw };
   const entry = getNodeValue(entryNode) as unknown;
   if (!isRecord(entry)) return { kind: 'declined', reason: 'foreign-entry' };
-  const launcher = classifyMcpLauncherEntry(entry);
+  const launcher = classifyMcpLauncherEntry(entry, undefined, shape.chainTag);
   if (launcher.kind === 'declined') return { kind: 'declined', reason: 'foreign-entry' };
 
   let shellBody = body;
@@ -197,16 +211,16 @@ function classifyToml(
     return { kind: 'declined', reason: 'unparseable' };
   }
   const container = parsed[shape.topLevelKey];
-  const entry = isRecord(container) ? container['open-knowledge'] : undefined;
+  const entry = isRecord(container) ? container[shape.serverName] : undefined;
   if (entry === undefined) return { kind: 'no-entry', raw, shell: raw };
   if (!isRecord(entry)) return { kind: 'declined', reason: 'foreign-entry' };
-  const launcher = classifyMcpLauncherEntry(entry);
+  const launcher = classifyMcpLauncherEntry(entry, undefined, shape.chainTag);
   if (launcher.kind === 'declined') return { kind: 'declined', reason: 'foreign-entry' };
   let masked: { text: string; existed: boolean };
   try {
     masked = editor.upsertEntry(
       body,
-      'open-knowledge',
+      shape.serverName,
       Object.fromEntries(shape.managedKeys.map((key) => [key, managedFieldSentinel(shape, key)])),
     );
   } catch {
@@ -241,14 +255,14 @@ function upsertJsonManagedFields(
       disallowComments: false,
     });
     const currentNode = currentRoot
-      ? findNodeAtLocation(currentRoot, [shape.topLevelKey, 'open-knowledge', key])
+      ? findNodeAtLocation(currentRoot, [shape.topLevelKey, shape.serverName, key])
       : undefined;
     if (currentNode && JSON.stringify(getNodeValue(currentNode)) === JSON.stringify(entry[key])) {
       continue;
     }
     edited = applyEdits(
       edited,
-      modify(edited, [shape.topLevelKey, 'open-knowledge', key], entry[key], {
+      modify(edited, [shape.topLevelKey, shape.serverName, key], entry[key], {
         formattingOptions: formattingOptions(body),
       }),
     );
@@ -269,7 +283,7 @@ function upsertManagedFields(
   try {
     return normalizeNativeTomlResult(
       raw,
-      editor.upsertEntry(body, 'open-knowledge', managedEntry).text,
+      editor.upsertEntry(body, shape.serverName, managedEntry).text,
     );
   } catch {
     return null;
@@ -351,7 +365,7 @@ export function reconcileTrackedMcpConfig(input: {
     descriptor: state.descriptor,
   }));
   if (input.runningEntry) {
-    const running = classifyMcpLauncherEntry(input.runningEntry);
+    const running = classifyMcpLauncherEntry(input.runningEntry, undefined, shape.chainTag);
     if (running.kind === 'recognized') {
       candidates.push({ entry: input.runningEntry, descriptor: running.descriptor });
     }

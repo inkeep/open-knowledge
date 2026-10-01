@@ -232,7 +232,30 @@ describe('MCP stdio shim server resolution', () => {
     }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AutoStartDisabledError);
     expect((err as Error).message).toContain('OK_MCP_AUTOSTART=0');
+    expect((err as Error).message).toContain('Run `ok start` in the target project');
+    expect((err as Error).message).toContain('then retry this tool');
+    expect((err as Error).message).toContain('native file edits for OpenKnowledge content');
   });
+
+  test.each(['missing', 'overlong'])(
+    'native spawn failure for a %s working directory teaches recovery',
+    async (kind) => {
+      const err: unknown = await resolveMcpHttpUrl({
+        lockDir,
+        contentDir: resolve(tmp, kind === 'missing' ? 'missing' : 'x'.repeat(32768)),
+        timeoutMs: 1000,
+        pollIntervalMs: 1,
+      }).catch((error: unknown) => error);
+
+      expect(err).toBeInstanceOf(Error);
+      expect(err).not.toBeInstanceOf(AutoStartDisabledError);
+      expect((err as Error).message).toContain('spawn failed:');
+      expect((err as Error).message).toMatch(/ENOENT|ENAMETOOLONG/);
+      expect((err as Error).message).toContain('Run `ok start` in the target project');
+      expect((err as Error).message).toContain('then retry this tool');
+      expect((err as Error).message).toContain('native file edits for OpenKnowledge content');
+    },
+  );
 
   test('valid port override bypasses discovery and targets the default loopback host', async () => {
     const url = await resolveMcpHttpUrl({

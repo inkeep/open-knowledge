@@ -3,6 +3,7 @@
 import {
   type BrokenLinkSuppression,
   type FrontmatterScope,
+  isAuditEmptyScopeWarning,
   isEditableTextDocFile,
   type ValidationAuditResponse,
   type ValidationDocResult,
@@ -1048,11 +1049,13 @@ function ProjectAuditResults({
   onToggleFile: (file: string, open: boolean) => void;
 }) {
   const { t } = useLingui();
+  const configWarnings = result.warnings.filter((warning) => !isAuditEmptyScopeWarning(warning));
+  const emptyScopeWarnings = result.warnings.filter(isAuditEmptyScopeWarning);
   return (
     <div className="flex flex-col gap-1">
-      {result.warnings.length > 0 && (
+      {configWarnings.length > 0 && (
         <ul aria-label={t`Configuration warnings`} className="flex flex-col gap-0.5 pb-1">
-          {result.warnings.map((warning, index) => (
+          {configWarnings.map((warning, index) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: the warnings array is a static audit snapshot (no reorder/insert between renders), and identical config warnings can legitimately repeat — a text-only key would collide.
             <li key={`${index}-${warning}`} className="flex items-start gap-1.5 px-2 text-xs">
               <AlertTriangle
@@ -1064,11 +1067,17 @@ function ProjectAuditResults({
           ))}
         </ul>
       )}
+      {emptyScopeWarnings.map((warning) => (
+        <div key={warning} role="status" className="flex items-start gap-1.5 px-2 text-xs">
+          <Info aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 text-foreground">{warning}</span>
+        </div>
+      ))}
       {result.brokenLinkSuppression !== undefined && (
         <BrokenLinkSuppressionNote suppression={result.brokenLinkSuppression} />
       )}
       {result.files.length === 0 ? (
-        result.brokenLinkSuppression === undefined ? (
+        result.brokenLinkSuppression === undefined && emptyScopeWarnings.length === 0 ? (
           <PanelEmpty className="px-2">
             <Plural
               value={result.fileCount}

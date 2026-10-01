@@ -3,40 +3,33 @@ import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import * as pathPosix from 'node:path/posix';
 import * as pathWin32 from 'node:path/win32';
-import type { Clipboard, NativeImage } from 'electron';
+import type {
+  CopyImageFailureReason,
+  CopyImageRequest,
+  CopyImageResult,
+} from '@inkeep/open-knowledge-core/desktop-bridge';
+import type { Clipboard, ClipboardItem, NativeImage } from 'electron';
 import { isPathWithinProject } from './ipc-handlers.ts';
 
 const CLIPBOARD_IMAGE_EXTS: ReadonlySet<string> = new Set(['png', 'jpg', 'jpeg']);
-
-type CopyImageResult =
-  | { ok: true }
-  | {
-      ok: false;
-      reason: 'fetch-failed' | 'path-escape' | 'empty-image' | 'read-error' | 'write-error';
-      detail?: string;
-    };
 
 export interface CopyImageToClipboardDeps {
   readonly projectPath: string;
   readonly platform: NodeJS.Platform;
   readonly assetOrigin: string;
-  readonly clipboard: Pick<Clipboard, 'writeImage'>;
+  readonly clipboard: Pick<Clipboard, 'write'>;
+  readonly ClipboardItem: new (items: Record<string, Blob>) => ClipboardItem;
   readonly nativeImage: {
-    createFromBuffer(buffer: Buffer): Pick<NativeImage, 'isEmpty'>;
+    createFromBuffer(buffer: Buffer): Pick<NativeImage, 'isEmpty' | 'toPNG'>;
   };
   readonly fetch?: typeof fetch;
   readonly resolveCanonical?: (path: string) => string;
   readonly readFile?: (path: string) => Promise<Buffer>;
 }
 
-export interface CopyImageInput {
-  readonly src: string;
-  readonly alt: string;
-}
-
 export async function copyImageToClipboard(
   deps: CopyImageToClipboardDeps,
-  input: CopyImageInput,
+  input: CopyImageRequest,
 ): Promise<CopyImageResult> {
   const fetchImpl = deps.fetch ?? globalThis.fetch;
   const bytesResult = await loadImageBytes(deps, input.src, fetchImpl);
@@ -49,13 +42,13 @@ export async function copyImageToClipboard(
   }
 
   try {
-    // biome-ignore lint/suspicious/noExplicitAny: nativeImage.createFromBuffer returns Pick<>, writeImage wants full NativeImage — safe at runtime because Electron only reads the surface Pick<> covers.
-    deps.clipboard.writeImage(img as any);
+    const png = new Blob([new Uint8Array(img.toPNG())], { type: 'image/png' });
+    await deps.clipboard.write([new deps.ClipboardItem({ 'image/png': png })]);
   } catch (err) {
     return {
       ok: false,
       reason: 'write-error',
-      detail: (err as Error)?.message ?? 'writeImage failed',
+      detail: (err as Error)?.message ?? 'clipboard write failed',
     };
   }
   return { ok: true };
@@ -67,7 +60,11 @@ async function loadImageBytes(
   fetchImpl: typeof fetch,
 ): Promise<
   | { ok: true; bytes: Buffer; ext: string }
-  | { ok: false; reason: 'fetch-failed' | 'path-escape' | 'read-error'; detail?: string }
+  | {
+      ok: false;
+      reason: Extract<CopyImageFailureReason, 'fetch-failed' | 'path-escape' | 'read-error'>;
+      detail?: string;
+    }
 > {
   let url: URL;
   try {

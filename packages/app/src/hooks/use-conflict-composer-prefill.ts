@@ -1,6 +1,7 @@
+import { useLingui } from '@lingui/react/macro';
 import { type RefObject, useEffect, useRef, useState } from 'react';
 import { useConflicts } from '@/hooks/use-conflicts';
-import { buildResolveDraft } from '@/lib/conflict-resolve-draft';
+import { buildResolveDraft, isLegacyResolveDraft } from '@/lib/conflict-resolve-draft';
 
 interface PrefillTarget {
   getContent: () => { instruction: string; mentions: string[] };
@@ -16,7 +17,9 @@ interface PrefillState {
 function isSeedText(text: string, conflictFilesKey: string, lastSeed: string | null): boolean {
   if (text === '') return false;
   if (text === lastSeed) return true;
-  return conflictFilesKey.split('\u0000').some((file) => buildResolveDraft(file) === text);
+  return conflictFilesKey
+    .split('\u0000')
+    .some((file) => buildResolveDraft(file) === text || isLegacyResolveDraft(text, file));
 }
 
 export function useConflictComposerPrefill(
@@ -24,6 +27,7 @@ export function useConflictComposerPrefill(
   inputRef: RefObject<PrefillTarget | null>,
 ): PrefillState {
   const { conflicts } = useConflicts();
+  const { i18n } = useLingui();
   const conflictFile =
     docName === null ? undefined : conflicts.find((entry) => entry.docName === docName)?.file;
 
@@ -35,6 +39,7 @@ export function useConflictComposerPrefill(
   const [isSeedIntact, setIsSeedIntact] = useState(false);
   const lastSeedRef = useRef<string | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: i18n.locale re-runs recognition after activation because buildResolveDraft reads the active locale.
   useEffect(() => {
     const input = inputRef.current;
     if (input === null) return;
@@ -60,7 +65,7 @@ export function useConflictComposerPrefill(
     input.setText(draft);
     lastSeedRef.current = draft;
     setIsSeedIntact(true);
-  }, [conflictFile, conflictFilesKey, inputRef]);
+  }, [conflictFile, conflictFilesKey, inputRef, i18n.locale]);
 
   return {
     isSeedIntact,

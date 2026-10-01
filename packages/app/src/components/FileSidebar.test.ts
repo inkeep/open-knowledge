@@ -1,15 +1,13 @@
 import { describe, expect, test } from 'vitest';
-import { isInteractiveSidebarControl } from './FileSidebar';
+import { FileSidebar, isInteractiveSidebarControl } from './FileSidebar';
 
 describe('FileSidebar module', () => {
-  test('exports the FileSidebar component', async () => {
-    const mod = await import('./FileSidebar');
-    expect(typeof mod.FileSidebar).toBe('function');
+  test('exports the FileSidebar component', () => {
+    expect(typeof FileSidebar).toBe('function');
   });
 
-  test('exports isInteractiveSidebarControl for the sidebar surface context-menu opt-out', async () => {
-    const mod = await import('./FileSidebar');
-    expect(typeof mod.isInteractiveSidebarControl).toBe('function');
+  test('exports isInteractiveSidebarControl for the sidebar surface context-menu opt-out', () => {
+    expect(typeof isInteractiveSidebarControl).toBe('function');
   });
 });
 

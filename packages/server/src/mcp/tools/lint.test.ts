@@ -333,7 +333,10 @@ describe('lint — audit output cap', () => {
     const text = result.content[0]?.text ?? '';
     expect(text).toContain(`${AUDIT_FILE_CAP + 2} of ${AUDIT_FILE_CAP + 2} documents`);
     expect(text).toContain('… and 3 more problems');
+    expect(text).toContain('lint({ document: "doc-00.md" })');
+    expect(text).toContain('all document lint findings');
     expect(text).toContain('… and 2 more files with problems');
+    expect(text).toContain('Narrow path to reduce competing files; per-file caps still apply');
     const shownFileHeaders = text.match(/^doc-\d+\.md:$/gm) ?? [];
     expect(shownFileHeaders).toHaveLength(AUDIT_FILE_CAP);
   });

@@ -1,3 +1,4 @@
+import { i18n } from '@lingui/core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import {
   act,
@@ -39,6 +40,7 @@ vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
+    i18n,
     t: (strings: TemplateStringsArray, ...values: unknown[]) =>
       strings.reduce((acc, part, index) => `${acc}${part}${values[index] ?? ''}`, ''),
   }),

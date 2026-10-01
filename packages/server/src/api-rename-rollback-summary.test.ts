@@ -520,14 +520,14 @@ describe('handleRenamePath — actor identity routing', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(readFileSync(join(tmpDir, 'journal.md'), 'utf-8')).toContain('[[renamed-notes]]');
+    expect(readFileSync(join(tmpDir, 'journal.md'), 'utf-8')).toContain('[[renamed-notes|notes]]');
     const parsed = JSON.parse(response.body);
     expect(parsed.rewrittenDocs).toEqual(
       expect.arrayContaining([expect.objectContaining({ docName: 'journal' })]),
     );
   });
 
-  test('case-only rename succeeds and rewrites inbound wiki-links', async () => {
+  test('case-only rename succeeds and preserves resolving inbound wiki-links', async () => {
     writeFileSync(join(tmpDir, 'Notes.md'), '# Notes\n', 'utf-8');
     writeFileSync(join(tmpDir, 'journal.md'), '# Journal\n\nSee [[Notes]].\n', 'utf-8');
 
@@ -540,7 +540,7 @@ describe('handleRenamePath — actor identity routing', () => {
     expect(response.status).toBe(200);
     expect(readdirSync(tmpDir)).toContain('notes.md');
     expect(readdirSync(tmpDir)).not.toContain('Notes.md');
-    expect(readFileSync(join(tmpDir, 'journal.md'), 'utf-8')).toContain('[[notes]]');
+    expect(readFileSync(join(tmpDir, 'journal.md'), 'utf-8')).toContain('[[Notes]]');
     const parsed = JSON.parse(response.body) as Record<string, unknown>;
     expect(parsed.renamed).toEqual([{ fromDocName: 'Notes', toDocName: 'notes' }]);
   });
@@ -619,8 +619,8 @@ describe('handleRenamePath — folder rename via consolidated endpoint', () => {
 
       expect(response.status).toBe(200);
       const indexContent = readFileSync(join(setupDir, 'index.md'), 'utf-8');
-      expect(indexContent).toContain('[[essays/auth]]');
-      expect(indexContent).toContain('[[essays/login]]');
+      expect(indexContent).toContain('[[essays/auth|articles/auth]]');
+      expect(indexContent).toContain('[[essays/login|articles/login]]');
       expect(indexContent).not.toContain('[[articles/');
     } finally {
       rmSync(setupDir, { recursive: true, force: true });

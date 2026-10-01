@@ -87,7 +87,7 @@ export function writeCliCredentialStandIn(options: {
     runner,
     [
       `import { FileBackend } from ${moduleUrl('src/auth/token-store.ts')};`,
-      `import { handleCredentialGet } from ${moduleUrl('src/commands/auth/git-credential.ts')};`,
+      `import { handleCredentialGet } from ${moduleUrl('src/commands/auth/git-credential-get.ts')};`,
       `const store = new FileBackend(${JSON.stringify(options.authFile)});`,
       'process.exit(await handleCredentialGet(process.stdin, process.stdout, store));',
       '',

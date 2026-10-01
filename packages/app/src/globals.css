@@ -3613,7 +3613,7 @@ button:active:not(:disabled) {
   with it. No drift, no cycle (we override background-color, NOT --sidebar).
 
   Browser support: relative-color syntax is Chromium 119+ / WebKit 16.4+ /
-  Firefox 128+. Electron 43 ships Chromium 150+ — fully supported.
+  Firefox 128+. Electron 44 ships Chromium 152+ — fully supported.
 
   prefers-reduced-transparency has its own dedicated fallback path below
   (the @media (prefers-reduced-transparency: reduce) block) and is

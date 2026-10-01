@@ -23,10 +23,21 @@ import {
   createVariantPostRemove,
   parseBuilderConfig,
 } from '../../scripts/desktop-variant-config.ts';
+import { MAC_UPDATE_MINIMUM_DARWIN_VERSION } from '../../scripts/mac-update-manifest.ts';
 import { DESKTOP_VARIANTS } from '../../src/shared/desktop-variant.ts';
 import { removeTempDirBestEffort } from '../support/temp-dir-cleanup.test-helper';
 
 const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+
+const MAC_MANIFEST = `version: 1.0.0
+files:
+  - url: OpenKnowledge-arm64.zip
+    sha512: abc
+    size: 1
+path: OpenKnowledge-arm64.zip
+sha512: abc
+releaseDate: '2026-10-01T00:00:00.000Z'
+`;
 
 const fixtures: string[] = [];
 const children = new Map<ChildProcess, Promise<void>>();
@@ -47,12 +58,15 @@ async function runBuilder(
   signal = false,
   platform: NodeJS.Platform = process.platform,
   variant = 'stable',
+  writesMacManifest = true,
 ) {
   const fixture = mkdtempSync(join(tmpdir(), 'ok-builder-wrapper-'));
   fixtures.push(fixture);
   for (const file of [
     'scripts/run-electron-builder.mjs',
     'scripts/desktop-variant-config.ts',
+    'scripts/mac-update-manifest.ts',
+    'scripts/packaging-diagnostics.mjs',
     'src/shared/desktop-variant.ts',
     'package.json',
     'electron-builder.yml',
@@ -80,7 +94,11 @@ async function runBuilder(
   writeFileSync(
     join(builderDir, 'cli.js'),
     `
-    import { writeFileSync } from 'node:fs';
+    import { mkdirSync, writeFileSync } from 'node:fs';
+    if (process.argv.includes('--mac') && process.env.OK_BUILDER_TEST_MAC_MANIFEST === '1') {
+      mkdirSync('dist-desktop', { recursive: true });
+      writeFileSync('dist-desktop/latest-mac.yml', ${JSON.stringify(MAC_MANIFEST)});
+    }
     writeFileSync('invocation.json', JSON.stringify({
       execPath: process.execPath,
       args: process.argv.slice(2),
@@ -124,6 +142,7 @@ async function runBuilder(
         OK_BUILDER_TEST_STATUS: String(status),
         OK_BUILDER_TEST_SIGNAL: signal ? '1' : '0',
         OK_BUILDER_TEST_PLATFORM: platform,
+        OK_BUILDER_TEST_MAC_MANIFEST: writesMacManifest ? '1' : '0',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
@@ -456,8 +475,53 @@ describe('electron-builder wrapper execution', () => {
         readFileSync(join(fixture, '.variant-build/electron-builder.yml'), 'utf8'),
       );
       expect(generated.npmRebuild).toBe(target === '--linux' ? false : baseRebuild);
+      if (target === '--mac') {
+        const manifest = parseYaml(
+          readFileSync(join(fixture, 'dist-desktop/latest-mac.yml'), 'utf8'),
+        );
+        expect(manifest.minimumSystemVersion).toBe(MAC_UPDATE_MINIMUM_DARWIN_VERSION);
+        expect(manifest.version).toBe('1.0.0');
+      }
     },
   );
+
+  test('fails a macOS package whose builder wrote no update manifest', async () => {
+    const { result } = await runBuilder(
+      ['--mac', '--publish', 'never'],
+      0,
+      false,
+      'darwin',
+      'stable',
+      false,
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('wrote no macOS update manifest');
+    expect(result.stderr).toContain('[OK_PACKAGING_UPDATE_MANIFEST_FAILURE]');
+  });
+
+  test('an unpacked --mac --dir build leaves any manifest unstamped', async () => {
+    const { fixture, result } = await runBuilder(
+      ['--mac', '--dir', '--publish', 'never'],
+      0,
+      false,
+      'darwin',
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(join(fixture, 'dist-desktop/latest-mac.yml'), 'utf8')).toBe(MAC_MANIFEST);
+  });
+
+  test('a failing --mac build forwards its own status instead of the manifest check', async () => {
+    const { result } = await runBuilder(
+      ['--mac', '--publish', 'never'],
+      7,
+      false,
+      'darwin',
+      'stable',
+      false,
+    );
+    expect(result.status).toBe(7);
+    expect(result.stderr).not.toContain('update manifest');
+  });
 
   test('forwards a failing builder exit status', async () => {
     const { result } = await runBuilder(['--linux'], 7);

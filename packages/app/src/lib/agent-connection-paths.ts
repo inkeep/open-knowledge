@@ -1,10 +1,10 @@
 import {
   AGENTS_SKILLS_ROOT,
-  EDITOR_PROJECT_CONFIG_PATH,
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_USER_SKILL_ROOT,
   parsePathId,
   RESERVED_PROJECT_SKILL_NAME,
+  STABLE_EDITOR_PROJECT_CONFIG_PATH,
 } from '@inkeep/open-knowledge-core';
 
 export function connectionPathDisplay(pathId: string | undefined): string | null {
@@ -16,7 +16,7 @@ export function connectionPathDisplay(pathId: string | undefined): string | null
 
   switch (location.kind) {
     case 'editor-project-config':
-      return EDITOR_PROJECT_CONFIG_PATH[location.editor];
+      return STABLE_EDITOR_PROJECT_CONFIG_PATH[location.editor];
     case 'editor-project-skill-root': {
       const root = EDITOR_PROJECT_SKILL_ROOT[location.editor];
       return root === null ? null : `${root}/${RESERVED_PROJECT_SKILL_NAME}/`;

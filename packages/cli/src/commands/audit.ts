@@ -1,6 +1,7 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import {
   clientVersionHeaders,
+  ProblemDetailsSchema,
   type ValidationAuditResponse,
   ValidationAuditResponseSchema,
 } from '@inkeep/open-knowledge-core';
@@ -9,10 +10,12 @@ import {
   formatAuditBrokenLinkSuppressionLine,
   RUNTIME_VERSION,
   readServerLock,
+  resolveAuditScope,
   resolveContentDir,
   resolveLockDir,
 } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
+import { z } from 'zod';
 import { getInvocationCwd } from '../project-anchor.ts';
 import { formatLintReport, type LintReportInput } from './lint.ts';
 
@@ -30,6 +33,12 @@ const defaultIo: AuditIo = {
   out: (line) => process.stdout.write(`${line}\n`),
   err: (line) => process.stderr.write(`${line}\n`),
 };
+
+const LegacyAuditErrorSchema = z.object({
+  title: z.string().optional(),
+  error: z.string().optional(),
+  message: z.string().optional(),
+});
 
 const SERVER_NOT_RUNNING_MESSAGE =
   'OpenKnowledge server is not running — the links validator needs the live backlink index. ' +
@@ -66,10 +75,13 @@ export async function runAudit(
   if (path !== undefined) {
     const rel = toContentRelativeTarget(path, invocationCwd, contentDir);
     if (rel === null) {
-      io.err(`Path is outside the content directory (${contentDir}): ${path}`);
-      return 1;
+      if (resolveAuditScope(undefined, contentDir).ok) {
+        io.err(`Path is outside the content directory (${contentDir}): ${path}`);
+        return 1;
+      }
+    } else {
+      target = rel === '' ? undefined : rel;
     }
-    target = rel === '' ? undefined : rel;
   }
 
   const lock = readServerLock(resolveLockDir(projectDir));
@@ -91,14 +103,18 @@ export async function runAudit(
   }
 
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as {
-      title?: string;
-      error?: string;
-      message?: string;
-    };
-    io.err(
-      `Audit failed: ${body.title ?? body.error ?? body.message ?? `server responded with ${res.status}`}`,
-    );
+    const body: unknown = await res.json().catch(() => null);
+    const problem = ProblemDetailsSchema.safeParse(body);
+    if (problem.success) {
+      if (opts.json === true) io.out(JSON.stringify(problem.data, null, 2));
+      else io.err(`Audit failed: ${problem.data.title}`);
+    } else {
+      const legacy = LegacyAuditErrorSchema.safeParse(body);
+      const message = legacy.success
+        ? (legacy.data.title ?? legacy.data.error ?? legacy.data.message)
+        : undefined;
+      io.err(`Audit failed: ${message ?? `server responded with ${res.status}`}`);
+    }
     return 1;
   }
 

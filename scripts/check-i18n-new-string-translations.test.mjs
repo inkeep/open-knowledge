@@ -1,9 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   findTranslationGaps,
   formatReport,
@@ -274,8 +275,9 @@ describe('wiring', () => {
   });
 
   test('the source locale is the one Lingui extracts from', () => {
-    const linguiConfig = readFileSync(join(OK_ROOT, 'packages/app/lingui.config.ts'), 'utf8');
-    expect(linguiConfig).toContain(`sourceLocale: '${SOURCE_LOCALE}'`);
+    expect(readLinguiConfig(join(OK_ROOT, 'packages/app/lingui.config.ts')).sourceLocale).toBe(
+      SOURCE_LOCALE,
+    );
   });
 });
 
@@ -337,4 +339,55 @@ describe('invocation environment', () => {
     expect(result.stdout + result.stderr).toContain('new message(s)');
     expect(result.status).toBe(0);
   });
+});
+
+function readLinguiConfig(configPath) {
+  const fromApp = createRequire(join(OK_ROOT, 'packages/app/package.json'));
+  const fromCli = createRequire(fromApp.resolve('@lingui/cli'));
+  try {
+    return fromCli('@lingui/conf').getConfig({ configPath, cwd: join(OK_ROOT, 'packages/app') });
+  } catch (cause) {
+    if (!existsSync(configPath)) throw cause;
+    throw new Error(`${configPath} exists but Lingui could not load or validate it`, { cause });
+  }
+}
+
+describe('Lingui config evaluation', () => {
+  test('distinguishes a present config that fails evaluation', () => {
+    const scratch = mkdtempSync(join(tmpdir(), 'lingui-config-error-'));
+    try {
+      const broken = join(scratch, 'broken.config.ts');
+      const valid = join(scratch, 'valid.config.ts');
+      writeFileSync(broken, "throw new Error('evaluation failed'); export default {}; ");
+      writeFileSync(valid, "export default { sourceLocale: 'en', locales: ['en'] }; ");
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        expect(() => readLinguiConfig(broken)).toThrow(
+          `${broken} exists but Lingui could not load or validate it`,
+        );
+      } finally {
+        consoleError.mockRestore();
+      }
+      expect(readLinguiConfig(valid).sourceLocale).toBe('en');
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
+  test.each(['en', 'fr'])(
+    'reads the effective source locale %s through spreads',
+    (sourceLocale) => {
+      const scratch = mkdtempSync(join(tmpdir(), 'lingui-config-'));
+      try {
+        const path = join(scratch, 'lingui.config.ts');
+        writeFileSync(
+          path,
+          `const selected = ${JSON.stringify(sourceLocale)}; export default { sourceLocale: 'en', locales: ['en', 'fr'], ...{ sourceLocale: selected } };`,
+        );
+        expect(readLinguiConfig(path).sourceLocale).toBe(sourceLocale);
+      } finally {
+        rmSync(scratch, { recursive: true, force: true });
+      }
+    },
+  );
 });

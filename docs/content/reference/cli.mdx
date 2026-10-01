@@ -4,7 +4,7 @@ icon: LuTerminal
 description: Install the ok CLI and run the OpenKnowledge web app in your browser — on any platform, including Intel Macs and servers.
 ---
 
-For the smoothest experience, use the [desktop app](/docs/get-started/quickstart) — it ships for **macOS**, **Windows**, and **Linux**. Anywhere else (an **Intel Mac**, a server), or when you'd rather stay in the terminal, install the `ok` CLI from npm and run the **same editor as a local web app** in your browser.
+For the smoothest experience, use the [desktop app](/docs/get-started/quickstart) — it ships for **macOS 13 or later**, **Windows**, and **Linux**. Anywhere else (an **Intel Mac**, a server), or when you'd rather stay in the terminal, install the `ok` CLI from npm and run the **same editor as a local web app** in your browser.
 
 <Callout type="info" title="Prerequisites — Verify Node and Git are installed">
 Open a terminal and run:
@@ -154,7 +154,7 @@ Every command takes `--cwd <path>` to run from another directory, `--log-level <
 
 ## Commands that run for you
 
-The rest of the CLI exists mostly for tooling and automation. Your AI editor spawns `ok mcp` to talk to the knowledge base; `ok repair-skills` refreshes bundled editor skills automatically during `ok start`; and `ok diagnose` / `ok bug-report` produce support bundles when something goes wrong. Run `ok --help` if you want to see an overview of all commands.
+The rest of the CLI exists mostly for tooling and automation. Your AI editor spawns `ok mcp` to talk to the knowledge base. `ok start` repairs existing editor connection settings; it leaves installed editor skills alone. Run `ok repair-skills` explicitly to restore missing project skill copies and repair user-global bundles. To update an existing project skill, follow [Refresh agent guidance](./mcp.mdx#refresh-agent-guidance). `ok diagnose` and `ok bug-report` produce support bundles when something goes wrong. Run `ok --help` for an overview of all commands.
 
 ## Remove OpenKnowledge
 

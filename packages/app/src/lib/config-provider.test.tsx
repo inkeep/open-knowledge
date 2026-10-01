@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest';
+import { ConfigProvider, useConfigContext } from './config-provider';
 
 describe('ConfigProvider module surface', () => {
-  test('exports ConfigProvider component and useConfigContext hook', async () => {
-    const mod = await import('./config-provider');
-    expect(typeof mod.ConfigProvider).toBe('function');
-    expect(typeof mod.useConfigContext).toBe('function');
+  test('exports ConfigProvider component and useConfigContext hook', () => {
+    expect(typeof ConfigProvider).toBe('function');
+    expect(typeof useConfigContext).toBe('function');
   });
 });

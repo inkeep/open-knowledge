@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { BacklinkIndex } from '../backlink-index.ts';
 import type { LinkAdvisoryPolicy } from '../link-advisory-policy.ts';
 import { LocalTargetIndex } from '../local-target-index.ts';
+import { resolveAuditScope } from './audit-scope.ts';
 import {
   createProjectValidators,
   type ProjectValidator,
@@ -209,6 +210,29 @@ describe('runValidationAudit', () => {
     ]);
     expect(scoped.fileCount).toBe(1);
     expect(scoped.warningCount).toBe(1);
+  });
+
+  test('an extensionless direct scope selects the same physical document in every validator', async () => {
+    const source = '# Guide\n\n\tTabbed.\n\nSee [[ghost]].\n';
+    writeFileSync(join(root, 'guide.md'), '# Other\n');
+    writeFileSync(join(root, 'guide.mdx'), source);
+    index.updateDocumentFromMarkdown('guide', source);
+    localTargets.setSource('guide', source);
+    admitted.add('guide');
+    const config: LinterConfig = {
+      ...lintOn,
+      plugins: { ...lintOn.plugins, okf: { enabled: true } },
+    };
+
+    const result = await runValidationAudit(createProjectValidators(deps({ baseConfig: config })), {
+      targetPath: 'guide',
+    });
+
+    expect(result.fileCount).toBe(1);
+    expect(result.files.map((file) => file.file)).toEqual(['guide.mdx']);
+    expect(result.files[0]?.diagnostics.map((diagnostic) => diagnostic.source)).toEqual(
+      expect.arrayContaining(['markdownlint', 'links', 'okf']),
+    );
   });
 
   test('a scope matching no docs returns no findings even when dead links exist elsewhere', async () => {
@@ -1203,5 +1227,92 @@ describe('reserved-log link advisory policy', () => {
 
     expect(result.files).toEqual([]);
     expect(result.brokenLinkSuppression).toBeUndefined();
+  });
+});
+
+describe('selected physical scope with same-stem document siblings', () => {
+  test('each explicit suffix checks its own lint and link source without mutating the live index', async () => {
+    seedDoc('guides/dual', '# MD\n\nA\ttab.\n\n[[md-ghost]] and [missing](./md-file.txt).\n');
+    writeFileSync(
+      join(root, 'guides/dual.mdx'),
+      '# MDX\n\nA\ttab.\n\n[[mdx-ghost]] and [missing](./mdx-file.txt).\n',
+    );
+    const before = index.getDeadLinks(admitted);
+    const validators = createProjectValidators(deps());
+    const results = new Map<string, Awaited<ReturnType<typeof runValidationAudit>>>();
+    for (const path of ['guides/dual', 'guides/dual.mdx', 'guides/dual.md']) {
+      const resolution = resolveAuditScope(path, root);
+      if (!resolution.ok) throw new Error(resolution.title);
+      const result = await runValidationAudit(validators, {
+        targetPath: path,
+        resolvedScope: resolution.scope,
+      });
+      results.set(path, result);
+      const target = path.endsWith('.md') ? 'md' : 'mdx';
+      expect(result.ran).toEqual(['markdownlint', 'links']);
+      expect(result.fileCount).toBe(1);
+      expect(result.files.map((file) => file.file)).toEqual([`guides/dual.${target}`]);
+      const links =
+        result.files[0]?.diagnostics.filter((diagnostic) => diagnostic.source === 'links') ?? [];
+      expect(links).toHaveLength(2);
+      expect(links.map((diagnostic) => diagnostic.linkTarget).filter(Boolean)).toEqual([
+        `${target}-ghost`,
+      ]);
+      expect(links.find((diagnostic) => diagnostic.localTarget)?.localTarget?.resolvedTarget).toBe(
+        `guides/${target}-file.txt`,
+      );
+      expect(result.warningCount).toBe(
+        result.files
+          .flatMap((file) => file.diagnostics)
+          .filter((diagnostic) => diagnostic.severity !== 'error').length,
+      );
+    }
+    expect(results.get('guides/dual')).toEqual(results.get('guides/dual.mdx'));
+    expect(index.getDeadLinks(admitted)).toEqual(before);
+  });
+
+  test('an overlong link target is reported as missing instead of failing the links validator', async () => {
+    const overlong = `${'x'.repeat(300)}.txt`;
+    seedDoc('long', `# MD\n\n[[ghost]] and [missing](./${overlong}).\n`);
+    writeFileSync(join(root, 'long.mdx'), '# MDX\n');
+    const resolution = resolveAuditScope('long.md', root);
+    if (!resolution.ok) throw new Error(resolution.title);
+    const result = await runValidationAudit(createProjectValidators(deps()), {
+      targetPath: 'long.md',
+      resolvedScope: resolution.scope,
+    });
+    expect(result.warnings ?? []).toEqual([]);
+    const links = result.files
+      .flatMap((file) => file.diagnostics)
+      .filter((diagnostic) => diagnostic.source === 'links');
+    expect(links.map((diagnostic) => diagnostic.linkTarget).filter(Boolean)).toEqual(['ghost']);
+    expect(links.find((diagnostic) => diagnostic.localTarget)?.localTarget?.resolvedTarget).toBe(
+      overlong,
+    );
+  });
+
+  test('uses live source for the canonical sibling and disk source for the alternate sibling', async () => {
+    seedDoc('dual', '# MD\n\n[[md-disk-ghost]]\n');
+    writeFileSync(join(root, 'dual.mdx'), '# MDX\n\n[[mdx-disk-ghost]]\n');
+    const validators = createProjectValidators(
+      deps({ liveSourceFor: () => '# Live\n\n[[live-ghost]]\n' }),
+    );
+    for (const [path, expected] of [
+      ['dual.mdx', 'live-ghost'],
+      ['dual.md', 'md-disk-ghost'],
+    ]) {
+      const resolution = resolveAuditScope(path, root);
+      if (!resolution.ok) throw new Error(resolution.title);
+      const result = await runValidationAudit(validators, {
+        targetPath: path,
+        resolvedScope: resolution.scope,
+      });
+      expect(
+        result.files
+          .flatMap((file) => file.diagnostics)
+          .filter((diagnostic) => diagnostic.source === 'links')
+          .map((diagnostic) => diagnostic.linkTarget),
+      ).toEqual([expected]);
+    }
   });
 });

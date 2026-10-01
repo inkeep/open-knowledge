@@ -35,6 +35,10 @@ describe('resolveProjectAnchor — command gating', () => {
     },
   );
 
+  test.each(['lint', 'audit'])('anchors validation command %s', (name) => {
+    expect(resolveProjectAnchor(name, '/proj/sub/dir', stubHit)).toBe('/proj');
+  });
+
   test('anchors the bare-`ok` dispatch (undefined command name)', () => {
     expect(resolveProjectAnchor(undefined, '/proj/sub/dir', stubHit)).toBe('/proj');
   });

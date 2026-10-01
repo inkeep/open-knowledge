@@ -186,22 +186,3 @@ export function projectFull(descriptor: JsxComponentMeta): ComponentEntryFull {
     params: projectParams(descriptor),
   };
 }
-
-export function renderInventoryList(): string {
-  const lite = getAgentCanonicalDescriptors().map(projectLite);
-  const lines = lite.map((entry) => `- \`${entry.id}\` (${entry.kind}) — ${entry.description}`);
-  return [
-    '',
-    '**Custom canonical components.** OK `.md` / `.mdx` supports the JSX components below. For source syntax + parameter schemas, call `palette({ components: [ids] })`. Arbitrary `<TagName>` JSX falls through as raw MDX when no canonical fits.',
-    '',
-    ...lines,
-  ].join('\n');
-}
-
-export function renderInventoryFooter(): string {
-  return [
-    renderInventoryList(),
-    '',
-    'Fenced code blocks render naturally and don\'t need a fetch — including ` ```mermaid ` for diagrams (mermaid label text has sharp edges — `palette({ components: ["Mermaid"] })` lists them; parse failures come back as `warnings` entries on write/edit) and ` ```html preview ` for interactive HTML/JS/CSS pages (the fence info-string `preview` token renders the block as a live iframe; works for `html` / `htm` / `xml`; optional `h=` / `w=` tokens set size, e.g. ` ```html preview h=400px `). Use ` ```html preview ` whenever you want anything interactive or JS-powered (charts, demos, calculators, animations) — just author the standalone HTML page in the fence. Call `palette` for the markdown-native component forms (write `> [!NOTE]`, not `<Callout>`), copy-ready themed `html preview` starters, and the theme tokens (`var(--chart-1)`, `var(--foreground)`, …) an embed should reference so it tracks the reader\'s light/dark theme.',
-  ].join('\n');
-}

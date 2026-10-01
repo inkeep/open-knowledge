@@ -343,9 +343,9 @@ jobs:
         working-directory: packages/desktop
         run: |
           if [[ "${{ steps.signmode.outputs.mode }}" == "unsigned" ]]; then
-            node scripts/run-electron-builder.mjs --mac --publish never -c.mac.identity=null
+            pnpm exec node "$GITHUB_WORKSPACE/.github/scripts/package-desktop.mjs" --mac --publish never -c.mac.identity=null
           else
-            node scripts/run-electron-builder.mjs --mac --publish never
+            pnpm exec node "$GITHUB_WORKSPACE/.github/scripts/package-desktop.mjs" --mac --publish never
           fi
 
       # Twin of desktop-release.yml's "Attest the signed macOS app": with

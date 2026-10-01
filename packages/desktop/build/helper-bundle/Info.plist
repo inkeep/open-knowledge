@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-    UPSTREAM(electron@43.4.0): the helper stub `scripts/afterPack.mjs` clones
+    UPSTREAM(electron@44.5.1): the helper stub `scripts/afterPack.mjs` clones
       into this bundle reads its own `_NSGetExecutablePath()` basename early in
       boot and silently SIGTRAPs (exit 133, empty stderr) unless it is
       `<productName> Helper`, so `CFBundleExecutable` carries that name

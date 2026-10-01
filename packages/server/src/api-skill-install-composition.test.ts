@@ -178,3 +178,69 @@ async function readArchive(bytes: Buffer): Promise<Map<string, string>> {
     });
   });
 }
+
+test.each(['convert', 'unplace'] as const)(
+  '%s preserves an untouched copy after a source edit and reports divergence without assigning blame',
+  async (operation) => {
+    const name = `source-edit-${operation}`;
+    const source = join(seed(name), 'SKILL.md');
+    const copyDir = join(root, 'qa048/bundles', name);
+    const placement = await post('/api/skill/install', {
+      scope: 'project',
+      name,
+      place: { dir: 'qa048/bundles', mode: 'copy' },
+    });
+    expect(placement.status, placement.body).toBe(200);
+    const originalCopy = readFileSync(join(copyDir, 'SKILL.md'));
+    const editedSource = `${markdown(name)}\nSource-only change.\n`;
+    writeFileSync(source, editedSource);
+    const response = await post('/api/skill/install', {
+      scope: 'project',
+      name,
+      ...(operation === 'convert'
+        ? { convert: { target: 'qa048/bundles', mode: 'link' } }
+        : { unplace: { path: `qa048/bundles/${name}` } }),
+    });
+    expect(response.status, response.body).toBe(409);
+    expect(JSON.parse(response.body)).toMatchObject({
+      type: 'urn:ok:error:doc-already-exists',
+      title:
+        operation === 'convert'
+          ? 'This copy differs from the current source and was preserved. Inspect both versions before replacing or converting it.'
+          : 'This copy differs from the current source and was preserved. Inspect both versions before removing it.',
+      detail: operation === 'convert' ? 'qa048/bundles' : `qa048/bundles/${name}`,
+    });
+    expect(readFileSync(join(copyDir, 'SKILL.md'))).toEqual(originalCopy);
+    expect(readFileSync(source, 'utf8')).toBe(editedSource);
+    expect(lstatSync(copyDir).isSymbolicLink()).toBe(false);
+  },
+);
+
+test('custom-root removal preserves an untouched copy after a source edit and reports divergence without assigning blame', async () => {
+  const name = 'source-edit-custom-remove';
+  const source = join(seed(name), 'SKILL.md');
+  const copy = join(root, 'qa048/skills', name, 'SKILL.md');
+  const placement = await post('/api/skill/install', {
+    scope: 'project',
+    name,
+    place: { dir: 'qa048/skills', mode: 'copy' },
+  });
+  expect(placement.status, placement.body).toBe(200);
+  const originalCopy = readFileSync(copy);
+  const editedSource = `${markdown(name)}\nSource-only change.\n`;
+  writeFileSync(source, editedSource);
+  const response = await post('/api/skill/install', {
+    scope: 'project',
+    name,
+    remove: ['qa048/skills'],
+  });
+  expect(response.status, response.body).toBe(200);
+  expect(SkillInstallSuccessSchema.parse(JSON.parse(response.body))).toMatchObject({
+    warnings: [
+      `The copy at qa048/skills/${name} differs from the current source and was preserved. Inspect both versions before removing it.`,
+    ],
+    warningCodes: ['place-fork-refused'],
+  });
+  expect(readFileSync(copy)).toEqual(originalCopy);
+  expect(readFileSync(source, 'utf8')).toBe(editedSource);
+});

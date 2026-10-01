@@ -22,7 +22,7 @@ import {
   USER_SKILL_HOSTS,
 } from '@inkeep/open-knowledge-core';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   hostSkillsRootEscapes,
   hostSlotPaths,
@@ -32,6 +32,7 @@ import {
   relocateInPlaceCanonical,
   removeInPlaceSkillCopies,
   resolvedHosts,
+  resolveSkillTargets,
   reverseProjectSkill,
   skillHostDir,
   skillProjectionEditorIds,
@@ -522,5 +523,41 @@ describe('resolvedHosts keeps the hosts its scope actually has', () => {
       'claude',
     ]);
     expect(resolvedHosts(['antigravity', 'lm-studio', 'claude'], 'project')).toEqual(['claude']);
+  });
+});
+
+describe('resolveSkillTargets finds the Pi bridge the running channel wrote', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'ok-skill-targets-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    vi.unstubAllEnvs();
+  });
+
+  function writePiBridge(fileName: string): void {
+    mkdirSync(join(dir, '.pi', 'extensions'), { recursive: true });
+    writeFileSync(join(dir, '.pi', 'extensions', fileName), '');
+  }
+
+  test('a Beta server detects Pi from the Beta bridge alone', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    writePiBridge('open-knowledge-beta.ts');
+    expect(resolveSkillTargets(dir)).toEqual(['pi']);
+  });
+
+  test('a Beta server does not take the Stable bridge as its own', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    writePiBridge('open-knowledge.ts');
+    expect(resolveSkillTargets(dir)).toEqual([]);
+  });
+
+  test('a Stable server detects Pi from the Stable bridge', () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    writePiBridge('open-knowledge.ts');
+    expect(resolveSkillTargets(dir)).toEqual(['pi']);
   });
 });

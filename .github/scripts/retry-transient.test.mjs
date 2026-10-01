@@ -306,6 +306,7 @@ describe('failure evidence classification', () => {
     'ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command "electron-builder" not found',
     'spawn electron-builder ENOENT',
     'ENOSPC: no space left on device',
+    '[desktop-builder] beta-mac.yml: The macOS update manifest is not a YAML mapping [OK_PACKAGING_UPDATE_MANIFEST_FAILURE]',
   ])('classifies explicit terminal evidence as terminal: %s', (text) => {
     expect(inspect(text).classification).toBe('terminal');
   });
@@ -445,6 +446,13 @@ describe('failure evidence classification', () => {
     });
     expect(maskedTlsTrust.log).toContain('reason=rule:tls-trust outcome=terminal');
     expect(maskedTlsTrust.log).not.toContain('rule:download-integrity');
+    const maskedUpdateManifest = await run({
+      command: nodeCmd(
+        'console.error("sha512 checksum mismatch, expected AAA, got BBB\\n[desktop-builder] beta-mac.yml: not a YAML mapping [OK_PACKAGING_UPDATE_MANIFEST_FAILURE]");process.exit(1)',
+      ),
+    });
+    expect(maskedUpdateManifest.log).toContain('reason=rule:update-manifest outcome=terminal');
+    expect(maskedUpdateManifest.log).not.toContain('rule:download-integrity');
     const tlsTrustWithSymptom = await run({
       command: nodeCmd(
         'console.error("Error Domain=NSURLErrorDomain Code=-1202\\nError: Exit code: ENOENT. spawn /Users/runner/Library/Caches/electron-builder/app-builder/app-builder ENOENT");process.exit(1)',

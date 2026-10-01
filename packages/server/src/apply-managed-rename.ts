@@ -4,7 +4,8 @@ import {
   rewriteJsxSrcRefsForDocumentRename,
   rewriteMarkdownLinksForDocumentRename,
   rewriteOutboundMarkdownLinksForSourceMove,
-  rewriteWikiLinksForDocumentRename,
+  rewriteWikiLinksForRenameMap,
+  type WikiRenameContext,
 } from './managed-rename-rewrite.ts';
 
 interface ManagedRenameAffectedDocPair {
@@ -131,9 +132,8 @@ function rewriteSupportedLinksForRename(
   newDocName: string,
 ): ManagedRenameRewriteSummary {
   const { frontmatter, body } = stripFrontmatter(markdown);
-  const wikiRewrite = rewriteWikiLinksForDocumentRename(body, oldDocName, newDocName);
   const markdownRewrite = rewriteMarkdownLinksForDocumentRename(
-    wikiRewrite.markdown,
+    body,
     sourceDocName,
     oldDocName,
     newDocName,
@@ -146,21 +146,23 @@ function rewriteSupportedLinksForRename(
   );
   return {
     markdown: prependFrontmatter(frontmatter, jsxRewrite.markdown),
-    rewrites: wikiRewrite.rewrites + markdownRewrite.rewrites + jsxRewrite.rewrites,
+    rewrites: markdownRewrite.rewrites + jsxRewrite.rewrites,
   };
 }
 
 export function applyRenameMap(
   content: string,
   currentDocName: string,
-  renameMap: ReadonlyMap<string, string>,
+  wikiContext: WikiRenameContext,
 ): ManagedRenameRewriteSummary {
-  let markdown = content;
-  let rewrites = 0;
+  const { frontmatter, body } = stripFrontmatter(content);
+  const wikiRewrite = rewriteWikiLinksForRenameMap(body, currentDocName, wikiContext);
+  let markdown = prependFrontmatter(frontmatter, wikiRewrite.markdown);
+  let rewrites = wikiRewrite.rewrites;
 
   let selfRenamedTo: string | undefined;
   const otherRenames: Array<readonly [string, string]> = [];
-  for (const [from, to] of renameMap) {
+  for (const [from, to] of wikiContext.renames) {
     if (from === to) continue;
     if (from === currentDocName) {
       selfRenamedTo = to;

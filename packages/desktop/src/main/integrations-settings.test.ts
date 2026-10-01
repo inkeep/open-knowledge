@@ -1,6 +1,6 @@
 import { EMPTY_DETECTION_SNAPSHOT, EMPTY_PROBE_SNAPSHOT } from '@inkeep/open-knowledge-core';
 import type { IpcMainInvokeEvent } from 'electron';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import type {
   AgentIntegrationsApplyRequest,
   AgentIntegrationsApplyResult,
@@ -385,6 +385,24 @@ describe('ok:integrations:dispatch — set editor', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain("isn't one OpenKnowledge wrote");
     expect(cli.removals).toEqual(['claude']);
+  });
+
+  test("a foreign-entry refusal names the running channel's own entry", async () => {
+    const { set } = setup({ cli: makeCli({ removeKind: 'left-foreign' }) });
+    const disable = { component: { kind: 'editor', id: 'claude' }, enabled: false } as const;
+    const stable = await set(disable);
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    try {
+      const beta = await set(disable);
+      expect(stable.ok ? null : stable.error).toBe(
+        "The open-knowledge entry in Claude isn't one OpenKnowledge wrote — it was left unchanged. Remove it manually if you no longer want it.",
+      );
+      expect(beta.ok ? null : beta.error).toBe(
+        "The open-knowledge-beta entry in Claude isn't one OpenKnowledge wrote — it was left unchanged. Remove it manually if you no longer want it.",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   test('a declined write surfaces the left-unchanged error', async () => {

@@ -1,5 +1,18 @@
-import { EDITOR_LABELS, type GuidanceRef } from '@inkeep/open-knowledge-core';
+import { DESKTOP_PRODUCTS, EDITOR_LABELS, type GuidanceRef } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
+
+function desktopMcpServerName(): string | null {
+  return (typeof window === 'undefined' ? null : window.okDesktop?.mcpServerName) || null;
+}
+
+export function mcpServerLabel(): string {
+  return desktopMcpServerName() ?? 'OpenKnowledge';
+}
+
+function cursorServerKey(param: unknown): string {
+  if (typeof param === 'string' && param !== '') return param;
+  return desktopMcpServerName() ?? DESKTOP_PRODUCTS.stable.mcpServerName;
+}
 
 function labelOf(id: unknown): string | null {
   if (typeof id !== 'string') return null;
@@ -66,11 +79,13 @@ export function troubleshootingText(ref: GuidanceRef | undefined): string | null
         id: 'troubleshooting.claude-desktop.per-tool-approval',
         message: `${agent} asks you to approve each OpenKnowledge tool the first time it is used.`,
       });
-    case 'troubleshooting.cursor.project-entry-not-loaded':
+    case 'troubleshooting.cursor.project-entry-not-loaded': {
+      const server = cursorServerKey(ref.params?.server);
       return t({
         id: 'troubleshooting.cursor.project-entry-not-loaded',
-        message: `If ${agent} shows no OpenKnowledge tools, open Customize → MCPs, pick open-knowledge and switch on its .cursor/mcp.json source; ${agent} leaves project servers off until you do.`,
+        message: `If ${agent} shows no OpenKnowledge tools, open Customize → MCPs, pick ${server} and switch on its .cursor/mcp.json source; ${agent} leaves project servers off until you do.`,
       });
+    }
     case 'troubleshooting.codex.folder-trust':
       return t({
         id: 'troubleshooting.codex.folder-trust',

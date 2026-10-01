@@ -592,7 +592,7 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
           const cls = classifyInPlaceDest(absDir, canonAbs, inPlaceEntry.contentHash);
           if (cls === 'different') {
             warnings.push(
-              `The copy at ${rel} has been hand-edited (a fork) — refused, never deleted. Remove it manually if you mean it.`,
+              `The copy at ${rel} differs from the current source and was preserved. Inspect both versions before removing it.`,
             );
             warningCodes.push('place-fork-refused');
             continue;

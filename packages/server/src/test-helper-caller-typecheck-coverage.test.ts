@@ -17,6 +17,10 @@ const HELPERS = [
 ];
 
 const UNSCANNED_DIRS = new Set(['node_modules', 'dist', '.turbo']);
+const UNSCANNED_DIR_PREFIXES = ['.ok-skill-publish-'];
+
+const isUnscanned = (name: string): boolean =>
+  UNSCANNED_DIRS.has(name) || UNSCANNED_DIR_PREFIXES.some((prefix) => name.startsWith(prefix));
 
 const RELATIVE_SPECIFIER = /(?:\bfrom|\bimport\s*\()\s*'(\.{1,2}\/[^']*)'/g;
 
@@ -35,7 +39,7 @@ function filesUnder(dir: string, suffix: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) {
-      return UNSCANNED_DIRS.has(entry.name) ? [] : filesUnder(path, suffix);
+      return isUnscanned(entry.name) ? [] : filesUnder(path, suffix);
     }
     return entry.isFile() && entry.name.endsWith(suffix) ? [path] : [];
   });
@@ -149,6 +153,24 @@ describe('every caller of a shared test-only helper sits inside a typecheck prog
         'reads one directory level calls a nested helper missing and, through the assertion ' +
         'below, reports every caller of a helper that is present as already covered',
     ).toEqual(['buried.test-helper.ts', 'flat.test-helper.ts']);
+  });
+
+  test('skips the skill-bundle staging roots a server build leaves beside its sources', () => {
+    const root = mkdtempSync(join(tmpdir(), 'test-helper-scan-'));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const plant = (path: string) => {
+      mkdirSync(join(root, dirname(path)), { recursive: true });
+      writeFileSync(join(root, path), '');
+    };
+    plant('src/source.test.ts');
+    plant('.ok-skill-publish-a1b2c3/assets/staged.test.ts');
+    plant('.ok-skill-publish-kept-a1b2c3/staged.test.ts');
+
+    expect(
+      filesUnder(root, '.test.ts').map((path) => relative(root, path).replaceAll('\\', '/')),
+      'a staging root is gitignored and written by the server build, so it sits outside the ' +
+        "cache key of the test task this walk runs in, and entering it reads the build's output",
+    ).toEqual(['src/source.test.ts']);
   });
 
   test('names in HELPERS only helpers that are on disk', () => {

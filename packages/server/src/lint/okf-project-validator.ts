@@ -1,10 +1,10 @@
-import { dirname, relative } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import {
   deriveValidationRunSources,
   type LinterConfig,
   runOkfProjectRules,
 } from '@inkeep/open-knowledge-core';
-import { collectDocFiles, resolveScope } from './audit.ts';
+import { auditScopeWarning, collectDocFiles, resolveScope } from './audit.ts';
 import type {
   ProjectValidator,
   ValidationDiagnosticFor,
@@ -36,7 +36,16 @@ export function createOkfProjectValidator(deps: OkfProjectValidatorDeps): Projec
       }
 
       const warnings: string[] = [];
-      const resolved = resolveScope(scope.targetPath, deps.contentDir);
+      if (
+        auditScopeWarning(
+          scope.resolvedScope ?? { path: resolve(deps.contentDir, scope.targetPath ?? '') },
+          deps.contentDir,
+          scope.targetPath,
+        ) !== undefined
+      ) {
+        return { files: [], fileCount: 0, warnings: [] };
+      }
+      const resolved = scope.resolvedScope ?? resolveScope(scope.targetPath, deps.contentDir);
       const targetFile =
         resolved.kind === 'file' ? relative(deps.contentDir, resolved.path) : undefined;
       const walkDir = resolved.kind === 'file' ? dirname(resolved.path) : resolved.path;
@@ -63,7 +72,8 @@ export function createOkfProjectValidator(deps: OkfProjectValidatorDeps): Projec
 
       return {
         files: [...byFile.entries()].map(([file, diagnostics]) => ({ file, diagnostics })),
-        fileCount: targetFile === undefined ? docFiles.length : 1,
+        fileCount:
+          targetFile === undefined ? docFiles.length : Number(docFiles.includes(targetFile)),
         warnings,
       };
     },

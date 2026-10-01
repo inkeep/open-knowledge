@@ -132,6 +132,7 @@ export interface ResolveClaudeReadinessDeps {
   isProjectMcpPreApprovable(): boolean;
   hasProjectMcpEntry?(): boolean;
   isGlobalMcpOwnManaged?(): boolean;
+  mcpServerName?: string;
 }
 
 function resolveOkToolsAutoApprovable(scopes: {
@@ -204,12 +205,14 @@ export async function resolveClaudeReadiness(
         deps.isGlobalMcpOwnManaged !== undefined && (kind === 'present' || kind === 'decline'),
       globalEntryIsOwn,
     }),
+    ...(deps.mcpServerName === undefined ? {} : { mcpServerName: deps.mcpServerName }),
   };
 }
 
 export interface ResolveCliOnPathDeps {
   probe(): Promise<number | null>;
   okServerConfigured?(): boolean;
+  mcpServerName?: string;
 }
 
 export async function resolveCliOnPath(deps: ResolveCliOnPathDeps): Promise<CliReadiness> {
@@ -231,7 +234,11 @@ export async function resolveCliOnPath(deps: ResolveCliOnPathDeps): Promise<CliR
       'okServerConfigured probe threw; treating the OK server as not configured',
     );
   }
-  return { onPath, okServerConfigured };
+  return {
+    onPath,
+    okServerConfigured,
+    ...(deps.mcpServerName === undefined ? {} : { mcpServerName: deps.mcpServerName }),
+  };
 }
 
 export interface ResolveCliInstalledMapDeps {

@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest';
+import { describe, expect, onTestFinished, test, vi } from 'vitest';
 import {
   classifyInstallFailure,
   detectGraphicalAuthCommand,
@@ -186,7 +186,7 @@ describe('runManualInstallFallbackDialog', () => {
     const shown = vi.fn(async (_request: ManualInstallDialogRequest) => ({
       response: queue.shift() ?? 2,
     }));
-    const copied = vi.fn();
+    const copied = vi.fn(async (_command: string) => {});
     const relaunched = vi.fn();
     return {
       shown,
@@ -227,8 +227,42 @@ describe('runManualInstallFallbackDialog', () => {
     expect(deps.relaunched).toHaveBeenCalledTimes(1);
   });
 
+  test('a failed clipboard write re-shows the dialog saying the command was not copied', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    onTestFinished(() => warn.mockRestore());
+    const outcomes = [false, true];
+    const copied = vi.fn(async (_command: string) => {
+      if (!outcomes.shift()) throw new Error('clipboard unavailable');
+    });
+    const shown: ManualInstallDialogRequest[] = [];
+    const responses = [0, 0, 1];
+    const deps: ManualInstallDialogDeps = {
+      showDialog: async (request) => {
+        shown.push(request);
+        return { response: responses.shift() ?? 2 };
+      },
+      copyCommandToClipboard: copied,
+      relaunchApp: vi.fn(),
+    };
+    await expect(runManualInstallFallbackDialog(deps, ctx)).resolves.toBe('relaunch');
+    expect(shown).toHaveLength(3);
+    expect(shown[0]?.detail).not.toContain('was not copied');
+    expect(shown[1]?.detail).toMatch(/^The command was not copied\./);
+    expect(shown[1]?.detail).toContain(ctx.command);
+    expect(shown[1]?.buttons).toEqual(shown[0]?.buttons);
+    expect(shown[2]).toEqual(shown[0]);
+    expect(warn).toHaveBeenCalledWith(
+      '[linux-install-fallback] copying the install command failed',
+      expect.objectContaining({
+        version: ctx.version,
+        installerPath: ctx.installerPath,
+        err: expect.any(Error),
+      }),
+    );
+  });
+
   test('a dialog rejection mid-loop (parent window destroyed) resolves as dismissal', async () => {
-    const copied = vi.fn();
+    const copied = vi.fn(async (_command: string) => {});
     const relaunched = vi.fn();
     let calls = 0;
     const deps: ManualInstallDialogDeps = {

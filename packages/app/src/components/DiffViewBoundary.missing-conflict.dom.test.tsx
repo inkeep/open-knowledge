@@ -41,7 +41,7 @@ const FILE = 'notes/roadmap.md';
 const DOC = 'notes/roadmap';
 const MISSING_TYPE = 'urn:ok:error:no-conflict-tracked';
 const MISSING_DETAIL =
-  'This file has no tracked conflict — it may have been resolved by another session, or the path may be stale. Re-read conflicts({ kind: "list" }) before retrying.';
+  'This file has no tracked conflict — it may have been resolved by another session, or the path may be stale. Refresh the conflict list in the OpenKnowledge app before retrying.';
 const FIRST_CONFLICT: ConflictEntryWire = {
   file: FILE,
   docName: DOC,

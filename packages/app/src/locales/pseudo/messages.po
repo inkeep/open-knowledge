@@ -7103,6 +7103,10 @@ msgstr ""
 msgid "Help"
 msgstr ""
 
+#: src/lib/conflict-resolve-draft.ts
+msgid "Help me understand the conflict in {filePath}. Explain what I should compare in the OpenKnowledge Conflict view; I will choose and apply the resolution there."
+msgstr ""
+
 #. Subtext under the discovery-skill checkbox
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -10371,10 +10375,6 @@ msgid "OpenKnowledge checked {subject}"
 msgstr ""
 
 #: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge checked for conflicts"
-msgstr ""
-
-#: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked the project"
 msgstr ""
 
@@ -10553,14 +10553,6 @@ msgstr ""
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge read the setting {key}"
-msgstr ""
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict"
-msgstr ""
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict in {subject}"
 msgstr ""
 
 #: src/lib/acp/tool-call-display.ts
@@ -11541,10 +11533,6 @@ msgstr ""
 msgid "Reads this project's OpenKnowledge settings"
 msgstr ""
 
-#: src/lib/acp/tool-call-display.ts
-msgid "Reads unresolved conflicts between edits"
-msgstr ""
-
 #: src/components/SessionsHost.tsx
 msgid "Ready"
 msgstr ""
@@ -12045,7 +12033,7 @@ msgid "Replace these symlinks with independent copies?"
 msgstr ""
 
 #: src/components/settings/AgentConnectionDialogs.tsx
-msgid "Replaces the existing \"open-knowledge\" entry in this file. Other servers in the file are left alone."
+msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
 msgstr ""
 
 #. placeholder {0}: formatToolList( replacing.map((e) => e.label), i18n.locale, )
@@ -12203,10 +12191,6 @@ msgstr ""
 
 #: src/comments/ThreadCard.tsx
 msgid "Resolved"
-msgstr ""
-
-#: src/lib/acp/tool-call-display.ts
-msgid "Resolves a conflict by choosing which content to keep"
 msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
@@ -15151,7 +15135,7 @@ msgid "This file can't be opened in the text editor."
 msgstr ""
 
 #: src/components/ConflictView.tsx
-msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI."
+msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve the markers in the file by hand."
 msgstr ""
 
 #: src/components/use-viewer-text.ts

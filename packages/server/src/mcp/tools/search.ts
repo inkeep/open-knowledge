@@ -31,24 +31,10 @@ import {
 const log = getLogger('mcp:search');
 
 export const DESCRIPTION = [
-  '[Requires: Hocuspocus server] Ranked retrieval across ALL non-ignored files (markdown by title/body, other file types by name/path, plus folders) — pair with `exec` `grep` for exhaustive content search. The cmd-K engine (title boost + body BM25 + recency).',
-  '',
-  'NAMES/paths are indexed for all files; BODY content for markdown only. Two-tier agent model: run this fast indexed `search` (all files by name/path + markdown content) IN PARALLEL with `exec` (`grep`) for exhaustive literal-string content search across every file — instant ranked hits plus full content coverage. Reach for `exec` grep when you need to match content inside code/config/data files.',
-  '',
-  'When semantic search is enabled for the workspace (an opt-in setting with an API key), an embeddings signal is additionally fused into `full_text` ranking, surfacing conceptually-related pages that share no keywords. This tool opts in by default; the `semantic` block in the response reports coverage. Note: with semantic enabled, the query and matching page content are sent to the configured embeddings provider (content egress). Set `semantic: false` to force pure-lexical ranking for a call.',
-  '',
-  'Returns scored `page`, `folder`, and name-only `file` hits, each with a `signals` breakdown (lexical / fullText / recency / vector); markdown `page` hits also carry a body snippet (`file` hits never do — name-only).',
-  '',
-  'Cold start: right after the server boots, the response may carry `ready: false` with an empty `results` while the index is still building. That empty set is NOT authoritative — wait ~2-3 seconds, then retry (agents have no built-in delay, so do not retry in immediate succession). If it is still `ready: false` after 2-3 retries (e.g. a very large workspace), fall back to `exec("grep ...")` rather than polling further. Once `ready` is true/omitted the results are complete.',
-  '',
-  '**Parameters:**',
-  '- `query` — Free-form; tokenized across title, name, path segments, and (with `full_text`) body.',
-  '- `intent` (optional) — `omnibar` searches title/path/folders only (fast); `full_text` includes body. Default `full_text`.',
-  '- `scopes` (optional) — Result scope: `page` | `folder` | `file` | `content`. Defaults derive from `intent`.',
-  '- `limit` (optional) — Max rows; default 20, max 100.',
-  '- `semantic` (optional) — Set `false` to force pure-lexical ranking even when semantic search is enabled. Omit to use semantic when available.',
-  '',
-  'If the server is down, the tool returns a recovery hint — use `exec("grep ...")` as the server-free fallback.',
+  'Ranked search across ALL non-ignored files and folders. Requires the Hocuspocus server. All file name/path values are indexed; only markdown bodies are indexed. Run in parallel with exec grep for exhaustive literal content search, especially code/config/data.',
+  'Pass query; intent full_text (default) includes bodies, omnibar searches title/path/folders. scopes: page/folder/file/content; defaults follow intent. limit: 20 default, 100 max. Ranking combines title boost, BM25 and recency; hits include signals, and pages include snippets (other files are name-only).',
+  'When workspace semantic search is enabled, full_text adds embeddings by default; query and matching content go to the configured provider. Set semantic:false for lexical-only/no embedding egress. Response semantic reports coverage.',
+  'ready:false means an incomplete cold index, not an authoritative empty result. Wait 2–3 seconds before retrying; after 2–3 retries use exec grep. If the server is down, follow recovery text; exec grep is the server-free search fallback.',
 ].join('\n');
 
 interface SearchDeps {

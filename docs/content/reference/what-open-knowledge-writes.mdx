@@ -98,6 +98,14 @@ Both are **consent-gated**, but at different moments. Declining `open-knowledge-
 
 When you initialize or open a project, the app scaffolds the same project files the CLI's `ok init` creates, and registers the `open-knowledge` MCP server with the AI editors it detects. The MCP registration is **surgical** — it touches only its own entry and leaves your other settings, comments, and formatting byte-for-byte intact. "Its own entry" means the one named `open-knowledge`; if that name is already taken by something OpenKnowledge does not recognize, see [Opt-outs in one place](#opt-outs-in-one-place).
 
+#### Beta uses its own entry
+
+Each product registers under its own name, so Stable and Beta can both be connected to the same editor without overwriting each other. Stable uses `open-knowledge`; Beta uses `open-knowledge-beta`, with its own launcher that runs OpenKnowledge Beta and falls back to `npx @inkeep/open-knowledge@beta`. Everywhere this page names the `open-knowledge` entry, Beta's app, repair sweeps, and `ok-beta init` act only on `open-knowledge-beta`, and Beta's Pi bridge is `.pi/extensions/open-knowledge-beta.ts`. Agents see Beta's tools as `mcp__open-knowledge-beta__*`, and Pi sees them as `ok-beta_*`.
+
+Earlier releases of the separately installed `OpenKnowledge Beta` app registered under `open-knowledge`, and updating does not move that entry. If an editor's config has no `open-knowledge-beta` entry, reconnect that editor from **Settings → Agent connections** in OpenKnowledge Beta, then remove the old `open-knowledge` entry from the file listed under [`ok init`](#ok-init) if you don't also run Stable. An older Beta install still named `OpenKnowledge` keeps using `open-knowledge`; leave that entry in place.
+
+A CLI process decides which product it belongs to in this order: the `OK_CHANNEL` environment variable (`stable` or `beta`; any other value is an error), then the name of the executable it runs as, and otherwise Stable. The CLI bundled in OpenKnowledge Beta resolves as Beta from its executable name, and Beta's launcher sets `OK_CHANNEL=beta` before it falls back to npx. A CLI run under plain Node, such as `npx @inkeep/open-knowledge@beta init` typed by hand, resolves as Stable and writes the `open-knowledge` entry unless you set `OK_CHANNEL=beta`.
+
 | Path | What it is | Scope |
 | --- | --- | --- |
 | `.ok/`, `.ok/config.yml` | Project directory and its [config](./configuration.mdx) | In-project, committed |
@@ -226,7 +234,7 @@ With `--scope user` or `both` (the default), `ok init` also registers the `open-
 | `~/.ok/skill-state.yml` | Records which skill version is installed, so the step is skipped next time | Outside-project (home dir) |
 | `~/.ok/skill-install-events.jsonl` | Append-only local log of skill-install attempts | Outside-project (home dir) |
 
-The install is **non-fatal** (`ok init` still exits 0 if it fails), **version-gated** (a no-op when the current version is already installed), and needs **no network access**. Skip it for one run with `ok init --no-skills`, or choose individual bundles with `--skills <ids>`. Skipping records nothing and removes nothing, so skills already on the machine are left alone. An installed bundle is remembered in `~/.ok/skill-state.yml` and honored by every later install path; to turn the built-in skills off for good, decline at the first-launch prompt or uninstall from **Settings → Skills Studio**, either of which records a durable machine-wide choice. `ok repair-skills` re-runs it.
+The install is **non-fatal** (`ok init` still exits 0 if it fails), **version-gated** (a no-op when the current version is already installed), and needs **no network access**. Skip it for one run with `ok init --no-skills`, or choose individual bundles with `--skills <ids>`. Skipping records nothing and removes nothing, so skills already on the machine are left alone. An installed bundle is remembered in `~/.ok/skill-state.yml` and honored by every later install path; to turn the built-in skills off for good, decline at the first-launch prompt or uninstall from **Settings → Skills Studio**, either of which records a durable machine-wide choice. `ok repair-skills` explicitly repairs these user-global bundles. Its project sweep restores missing skill copies but leaves existing project copies unchanged; see [Refresh agent guidance](./mcp.mdx#refresh-agent-guidance) to update those.
 
 Pi has no user-level MCP config. `ok init` writes its project-scoped bridge extension; using Pi inside OpenKnowledge can also add a [folder trust grant](#pi-folder-trust), whose location respects `PI_CODING_AGENT_DIR`.
 
@@ -274,7 +282,7 @@ On each boot, `ok start` also runs **repair sweeps**: it re-checks a few things 
 | Existing `open-knowledge` MCP entries | The same editor configs `ok init` writes — **both** user-level (`~/.claude.json`, `~/.cursor/mcp.json`, …) and project-level | Outside-project (editor config) **and** in-project |
 | Stale `open-knowledge-ui` entry in `.claude/launch.json` | Project | Removed if present — OK no longer writes launch.json |
 
-Disable both repair sweeps with `OK_RECLAIM_DISABLE=1`. They leave installed editor skills alone; `ok repair-skills` is the explicit command for those. Starting an in-app agent thread creates or refreshes the runtime skill copy listed above.
+Disable both repair sweeps with `OK_RECLAIM_DISABLE=1`. They leave installed editor skills alone. `ok repair-skills` explicitly restores missing project copies and repairs user-global bundles; [refresh existing project guidance](./mcp.mdx#refresh-agent-guidance) with `ok init` or the integration settings. Starting an in-app agent thread creates or refreshes the runtime skill copy listed above.
 
 Projects initialized by an older CLI may lack the `local/` rule in `.ok/.gitignore`, which leaves these runtime files visible in `git status`. Add `local/` to that file or open the project in the desktop app, which updates it automatically. The runtime skill copy is always excluded from the knowledge base.
 

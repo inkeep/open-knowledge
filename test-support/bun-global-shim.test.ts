@@ -1,13 +1,26 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import fs, { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { bunFacade, installBunGlobal } from './bun-global-shim';
 
 const selfPath = fileURLToPath(import.meta.url);
 const selfDir = fileURLToPath(new URL('.', import.meta.url));
+
+function thrownCode(run: () => unknown): string | undefined {
+  try {
+    run();
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code;
+  }
+  return undefined;
+}
+
+function missingDirectory(): string {
+  return join(tmpdir(), `bun-glob-missing-${process.pid}-${Date.now()}`);
+}
 
 describe('Bun global facade', () => {
   test('installs globalThis.Bun (idempotently)', () => {
@@ -69,6 +82,64 @@ describe('Bun global facade', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test('Bun.Glob.scanSync throws ENOENT at the call for a missing cwd, as Bun does', () => {
+    expect(
+      thrownCode(() => new bunFacade.Glob('**/*.ts').scanSync({ cwd: missingDirectory() })),
+    ).toBe('ENOENT');
+  });
+
+  test('Bun.Glob.scanSync throws ENOTDIR when cwd is a file, as Bun does', () => {
+    expect(thrownCode(() => new bunFacade.Glob('**/*.ts').scanSync({ cwd: selfPath }))).toBe(
+      'ENOTDIR',
+    );
+  });
+
+  test('Bun.Glob.scanSync throws EACCES for an unreadable directory it walks, as Bun does', () => {
+    const root = mkdtempSync(join(tmpdir(), 'bun-glob-unreadable-'));
+    const locked = join(root, 'locked');
+    mkdirSync(locked);
+    writeFileSync(join(locked, 'inside.ts'), '');
+    const realReaddirSync = fs.readdirSync;
+    const readdirSpy = vi
+      .spyOn(fs, 'readdirSync')
+      .mockImplementation((target: fs.PathLike, options?: unknown) => {
+        if (String(target) === locked) {
+          throw Object.assign(new Error(`EACCES: permission denied, scandir '${locked}'`), {
+            code: 'EACCES',
+          });
+        }
+        return Reflect.apply(realReaddirSync, fs, [target, options]);
+      });
+    try {
+      expect(thrownCode(() => new bunFacade.Glob('**/*.ts').scanSync({ cwd: root }))).toBe(
+        'EACCES',
+      );
+    } finally {
+      readdirSpy.mockRestore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('Bun.Glob.scanSync yields nothing for an empty cwd or a missing directory named in the pattern, as Bun does', () => {
+    const root = mkdtempSync(join(tmpdir(), 'bun-glob-empty-'));
+    try {
+      expect([...new bunFacade.Glob('**/*.ts').scanSync({ cwd: root })]).toEqual([]);
+      mkdirSync(join(root, 'src'));
+      writeFileSync(join(root, 'src', 'present.ts'), '');
+      expect([...new bunFacade.Glob('lib/**/*.ts').scanSync({ cwd: root })]).toEqual([]);
+      expect([...new bunFacade.Glob('src/**/*.ts').scanSync({ cwd: root })]).toEqual([
+        'src/present.ts',
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('Bun.Glob.scan rejects on the first step for a missing cwd, as Bun does', async () => {
+    const steps = new bunFacade.Glob('**/*.ts').scan({ cwd: missingDirectory() });
+    await expect(steps.next()).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   test('Bun.TOML parses on Node', () => {

@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import {
   AGENTS_SKILLS_ROOT,
   buildProbeSnapshot,
-  EDITOR_PROJECT_CONFIG_PATH,
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_USER_SKILL_ROOT,
   type EditorId,
@@ -197,10 +196,10 @@ export function createCliProbeResolver(ctx: CliProbeContext): ProbeResolver {
       case 'editor-user-config':
         return mcpEntryAnswer(editor, item.strictness, cwd, home);
       case 'editor-project-config': {
-        const relative = EDITOR_PROJECT_CONFIG_PATH[editor];
-        return relative === null
+        const projectPath = EDITOR_TARGETS[editor].projectConfigPath?.(cwd);
+        return projectPath === undefined
           ? null
-          : mcpEntryAnswer(editor, item.strictness, cwd, home, join(cwd, relative));
+          : mcpEntryAnswer(editor, item.strictness, cwd, home, projectPath);
       }
     }
   };

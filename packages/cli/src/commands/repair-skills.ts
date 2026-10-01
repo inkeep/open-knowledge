@@ -807,7 +807,7 @@ function formatRepairSkillsResult(result: RepairSkillsResult): string {
 export function repairSkillsCommand(): Command {
   return new Command('repair-skills')
     .description(
-      'Refresh bundled SKILL.md files for installed AI editors (project-local + user-global). Runs automatically during `ok start`; this command forces an explicit sweep.',
+      'Restore missing project skill copies and repair user-global bundles for installed AI editors. Existing project skills are preserved; run `ok init` to refresh them.',
     )
     .option(
       '-y, --yes',

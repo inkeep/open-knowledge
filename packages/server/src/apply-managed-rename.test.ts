@@ -4,6 +4,15 @@ import {
   buildRenameMap,
   ManagedRenameCollisionError,
 } from './apply-managed-rename.ts';
+import { createWikiRenameContext } from './managed-rename-rewrite.ts';
+
+function rewriteInCorpus(content: string, source: string, renames: ReadonlyMap<string, string>) {
+  return applyRenameMap(
+    content,
+    source,
+    createWikiRenameContext([source, ...renames.keys()], renames),
+  );
+}
 
 describe('buildRenameMap — collision detection', () => {
   test('builds a map for non-colliding entries', () => {
@@ -82,17 +91,17 @@ describe('buildRenameMap — collision detection', () => {
 
 describe('applyRenameMap — single-entry rewrites', () => {
   test('rewrites wiki-links for a single entry', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       'See [[old-page]] and [[other]].\n',
       'source',
       new Map([['old-page', 'new-page']]),
     );
-    expect(result.markdown).toBe('See [[new-page]] and [[other]].\n');
+    expect(result.markdown).toBe('See [[new-page|old-page]] and [[other]].\n');
     expect(result.rewrites).toBe(1);
   });
 
   test('rewrites does not touch unrelated content', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       '# Title\n\nNo links here.\n',
       'source',
       new Map([['old', 'new']]),
@@ -102,7 +111,7 @@ describe('applyRenameMap — single-entry rewrites', () => {
   });
 
   test('skips identity entries (from === to)', () => {
-    const result = applyRenameMap('See [[same]].\n', 'source', new Map([['same', 'same']]));
+    const result = rewriteInCorpus('See [[same]].\n', 'source', new Map([['same', 'same']]));
     expect(result.markdown).toBe('See [[same]].\n');
     expect(result.rewrites).toBe(0);
   });
@@ -110,7 +119,7 @@ describe('applyRenameMap — single-entry rewrites', () => {
 
 describe('applyRenameMap — multi-entry rewrites', () => {
   test('rewrites all entries in a multi-entry map', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       'See [[A]] and [[B]] and [[C]].\n',
       'source',
       new Map([
@@ -119,12 +128,12 @@ describe('applyRenameMap — multi-entry rewrites', () => {
         ['C', 'Z'],
       ]),
     );
-    expect(result.markdown).toBe('See [[X]] and [[Y]] and [[Z]].\n');
+    expect(result.markdown).toBe('See [[X|A]] and [[Y|B]] and [[Z|C]].\n');
     expect(result.rewrites).toBe(3);
   });
 
-  test('swap cycle ({A→B, B→A}) produces correct output via placeholder-substitute', () => {
-    const result = applyRenameMap(
+  test('swap cycle ({A→B, B→A}) preserves destinations and display text', () => {
+    const result = rewriteInCorpus(
       'See [[A]] and [[B]].\n',
       'source',
       new Map([
@@ -132,12 +141,12 @@ describe('applyRenameMap — multi-entry rewrites', () => {
         ['B', 'A'],
       ]),
     );
-    expect(result.markdown).toBe('See [[B]] and [[A]].\n');
+    expect(result.markdown).toBe('See [[B|A]] and [[A|B]].\n');
     expect(result.rewrites).toBe(2);
   });
 
   test('swap cycle with multiple references each preserves both directions', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       'A1: [[A]]\nA2: [[A]]\nB1: [[B]]\nB2: [[B]]\n',
       'source',
       new Map([
@@ -145,12 +154,12 @@ describe('applyRenameMap — multi-entry rewrites', () => {
         ['B', 'A'],
       ]),
     );
-    expect(result.markdown).toBe('A1: [[B]]\nA2: [[B]]\nB1: [[A]]\nB2: [[A]]\n');
+    expect(result.markdown).toBe('A1: [[B|A]]\nA2: [[B|A]]\nB1: [[A|B]]\nB2: [[A|B]]\n');
     expect(result.rewrites).toBe(4);
   });
 
   test('three-way cycle ({A→B, B→C, C→A}) preserves correct mapping', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       '[[A]] [[B]] [[C]]\n',
       'source',
       new Map([
@@ -159,12 +168,12 @@ describe('applyRenameMap — multi-entry rewrites', () => {
         ['C', 'A'],
       ]),
     );
-    expect(result.markdown).toBe('[[B]] [[C]] [[A]]\n');
+    expect(result.markdown).toBe('[[B|A]] [[C|B]] [[A|C]]\n');
     expect(result.rewrites).toBe(3);
   });
 
-  test('rewrites count is Phase 1 only — Phase 2 unwrap does not double-count', () => {
-    const result = applyRenameMap(
+  test('counts each wiki link once across a multi-entry rename', () => {
+    const result = rewriteInCorpus(
       'See [[A]] [[A]] [[B]].\n',
       'source',
       new Map([
@@ -172,22 +181,22 @@ describe('applyRenameMap — multi-entry rewrites', () => {
         ['B', 'Y'],
       ]),
     );
-    expect(result.markdown).toBe('See [[X]] [[X]] [[Y]].\n');
+    expect(result.markdown).toBe('See [[X|A]] [[X|A]] [[Y|B]].\n');
     expect(result.rewrites).toBe(3);
   });
 
   test('preserves frontmatter unchanged across rewrites', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       `---\ntitle: Doc\n---\n\nSee [[A]].\n`,
       'source',
       new Map([['A', 'X']]),
     );
-    expect(result.markdown).toBe(`---\ntitle: Doc\n---\n\nSee [[X]].\n`);
+    expect(result.markdown).toBe(`---\ntitle: Doc\n---\n\nSee [[X|A]].\n`);
     expect(result.rewrites).toBe(1);
   });
 
   test('rewrites Mirror src for a renamed source doc', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       '<Mirror src="api-spec" anchor="intro" />\n',
       'viewer-doc',
       new Map([['api-spec', 'api-reference']]),
@@ -197,19 +206,19 @@ describe('applyRenameMap — multi-entry rewrites', () => {
   });
 
   test('rewrites Mirror src alongside wiki + markdown links in the same body', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       'See [[api-spec]] and [docs](./api-spec.md):\n<Mirror src="api-spec" anchor="dep" />\n',
       'viewer-doc',
       new Map([['api-spec', 'api-reference']]),
     );
     expect(result.markdown).toBe(
-      'See [[api-reference]] and [docs](./api-reference.md):\n<Mirror src="api-reference" anchor="dep" />\n',
+      'See [[api-reference|api-spec]] and [docs](./api-reference.md):\n<Mirror src="api-reference" anchor="dep" />\n',
     );
     expect(result.rewrites).toBe(3);
   });
 
   test('Mirror rewrite cooperates with frontmatter strip', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       `---\ntitle: Doc\n---\n\n<Mirror src="A" anchor="x" />\n`,
       'source',
       new Map([['A', 'B']]),
@@ -219,7 +228,7 @@ describe('applyRenameMap — multi-entry rewrites', () => {
   });
 
   test('rewrites a doc-relative Excalidraw src for a renamed board', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       '<Excalidraw src="board.excalidraw" />\n',
       'notes/index',
       new Map([['notes/board.excalidraw', 'notes/sketch.excalidraw']]),
@@ -229,7 +238,7 @@ describe('applyRenameMap — multi-entry rewrites', () => {
   });
 
   test('self-rename recomputes a doc-relative Excalidraw src for the new location', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       '<Excalidraw src="board.excalidraw" />\n',
       'notes/index',
       new Map([['notes/index', 'archive/index']]),
@@ -239,7 +248,7 @@ describe('applyRenameMap — multi-entry rewrites', () => {
   });
 
   test('folder move carrying both doc and board keeps the doc-relative src stable', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       '<Excalidraw src="board.excalidraw" />\n',
       'notes/index',
       new Map([
@@ -253,7 +262,7 @@ describe('applyRenameMap — multi-entry rewrites', () => {
 
 describe('applyRenameMap — outbound link recomputation when source doc moves', () => {
   test('recomputes outbound markdown link to non-renamed target when source moves folders', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       'See [Picasso](./picasso.md).\n',
       'artists/some-file',
       new Map([['artists/some-file', 'venues/some-file']]),
@@ -263,7 +272,7 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
   });
 
   test('recomputes multiple outbound markdown links in one body', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       ['# Header', '', '[A](./a.md), [B](./b.md), and [C](../shared/c.md)', ''].join('\n'),
       'artists/some-file',
       new Map([['artists/some-file', 'venues/some-file']]),
@@ -280,7 +289,7 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
   });
 
   test('preserves anchors and query strings on outbound recomputation', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       'See [Section](./other.md#install?tab=api).\n',
       'artists/some-file',
       new Map([['artists/some-file', 'venues/some-file']]),
@@ -290,7 +299,7 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
   });
 
   test('preserves .mdx extension on outbound recomputation', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       'See [Component](./widget.mdx).\n',
       'artists/some-file',
       new Map([['artists/some-file', 'venues/some-file']]),
@@ -300,7 +309,7 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
   });
 
   test('preserves angle brackets on outbound recomputation', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       'See [Spaced](<./other.md>).\n',
       'artists/some-file',
       new Map([['artists/some-file', 'venues/some-file']]),
@@ -310,7 +319,7 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
   });
 
   test('leaves external URLs, anchor-only links, and root-absolute links unchanged', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       [
         '[Ext](https://example.com)',
         '[Anchor](#section)',
@@ -334,7 +343,7 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
   });
 
   test('skips outbound recomputation inside fenced code blocks', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       ['```md', '[Code](./other.md)', '```', '', '[Real](./other.md)', ''].join('\n'),
       'artists/some-file',
       new Map([['artists/some-file', 'venues/some-file']]),
@@ -346,7 +355,7 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
   });
 
   test('skips outbound recomputation inside inline code spans', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       'Inline `[Skip](./other.md)` and live [Real](./other.md).\n',
       'artists/some-file',
       new Map([['artists/some-file', 'venues/some-file']]),
@@ -358,7 +367,7 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
   });
 
   test('same-folder rename leaves outbound markdown links untouched', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       'See [Picasso](./picasso.md).\n',
       'artists/some-file',
       new Map([['artists/some-file', 'artists/some-other-file']]),
@@ -368,7 +377,7 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
   });
 
   test('source moves AND target also renamed — both rewrites compose correctly', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       'See [Picasso](./picasso.md).\n',
       'artists/some-file',
       new Map([
@@ -381,7 +390,7 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
   });
 
   test('moved doc with self-link resolves correctly post-move', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       '[self](./some-file.md)\n',
       'artists/some-file',
       new Map([['artists/some-file', 'venues/some-file']]),
@@ -392,7 +401,7 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
   });
 
   test('image refs are handled by the self-rename pass (not double-recomputed)', () => {
-    const result = applyRenameMap(
+    const result = rewriteInCorpus(
       '![first draft](first-draft.png)\n',
       'docs/meeting-notes',
       new Map([['docs/meeting-notes', 'archive/2026/meeting-notes']]),

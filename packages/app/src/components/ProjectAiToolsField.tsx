@@ -1,9 +1,9 @@
 import {
   EDITOR_LABELS,
-  EDITOR_PROJECT_CONFIG_PATH,
   EDITOR_PROJECT_SKILL_ROOT,
   type EditorId,
   RESERVED_PROJECT_SKILL_NAME,
+  STABLE_EDITOR_PROJECT_CONFIG_PATH,
 } from '@inkeep/open-knowledge-core';
 import { i18n } from '@lingui/core';
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -111,7 +111,7 @@ export function ProjectAiToolsField({
           {}
           <ul className="flex flex-col gap-2" data-testid={`${testIdPrefix}-details`}>
             {status.editors.map((id) => {
-              const configPath = EDITOR_PROJECT_CONFIG_PATH[id];
+              const configPath = STABLE_EDITOR_PROJECT_CONFIG_PATH[id];
               const skillRoot = EDITOR_PROJECT_SKILL_ROOT[id];
               return (
                 <li

@@ -1,5 +1,5 @@
-import { globSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { existsSync, globSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { basename, join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
@@ -200,6 +200,12 @@ function contractFileHits(file: string): string[] {
   );
 }
 
+function missingSearchRoots(roots: readonly string[]): string[] {
+  return roots
+    .filter((root) => !existsSync(root))
+    .map((root) => relative(join(HERE, '../../..'), root));
+}
+
 function enumerateOriginConstants(): string[] {
   const files: string[] = [];
   for (const root of SRC_ROOTS) walkTsFiles(root, files);
@@ -274,6 +280,17 @@ describe('origin-undoability sweep', () => {
   test('the contract resolver catches an invented file (planted positive)', () => {
     expect(contractFileHits('__never_a_real__.test.ts')).toEqual([]);
     expect(contractFileHits(basename(import.meta.filename))).toHaveLength(1);
+  });
+
+  test('every contract search root exists, and a missing one is named (planted positive)', () => {
+    expect(
+      missingSearchRoots(CONTRACT_SEARCH_ROOTS),
+      'contract search roots that do not exist: the resolver would stop searching them, so point ' +
+        'CONTRACT_SEARCH_ROOTS at where those sources moved',
+    ).toEqual([]);
+    expect(
+      missingSearchRoots([...CONTRACT_SEARCH_ROOTS, join(HERE, '__no_such_search_root__')]),
+    ).toEqual([join('app', 'tests', 'integration', '__no_such_search_root__')]);
   });
 
   test('the reserved machine-merge undo row is documented for the conflict-spec extension point', () => {

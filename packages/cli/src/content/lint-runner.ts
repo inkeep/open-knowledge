@@ -1,13 +1,7 @@
+import { readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, sep } from 'node:path';
 import {
-  readdirSync,
-  readFileSync,
-  renameSync,
-  statSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import {
+  AUDIT_EMPTY_SCOPE_WARNING,
   deriveValidationRunSources,
   fixDocument,
   type LintDiagnostic,
@@ -20,9 +14,11 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import {
+  type AuditScope,
   composeEffectiveLinterConfig,
   composeFrontmatterSchemasConfig,
   createContentFilter,
+  resolveAuditScope,
   resolveNativeConfigForDoc,
 } from '@inkeep/open-knowledge-server';
 
@@ -48,12 +44,19 @@ export interface RunLintOptions {
   contentDir: string;
   baseConfig: LinterConfig;
   targetPath?: string;
+  resolvedScope?: AuditScope;
   fix?: boolean;
 }
 
 export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
   const { projectDir, contentDir, baseConfig, targetPath, fix = false } = opts;
 
+  const resolution =
+    opts.resolvedScope === undefined
+      ? resolveAuditScope(targetPath, contentDir)
+      : { ok: true as const, scope: opts.resolvedScope };
+  if (!resolution.ok) throw new Error(resolution.title);
+  const scope = resolution.scope;
   const warnings: string[] = [];
   const filter = createContentFilter({ projectDir, contentDir });
 
@@ -83,10 +86,14 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
   };
 
   const docFiles: string[] = [];
-  const scope = resolveScope(targetPath, contentDir);
+  let scanIncomplete = false;
+  const scopeRel = relative(contentDir, scope.path);
+  const explicitHidden = scopeRel
+    .split(sep)
+    .some((segment) => segment.startsWith('.') && segment !== '..');
   if (scope.kind === 'file') {
-    docFiles.push(relative(contentDir, scope.path));
-  } else {
+    docFiles.push(scopeRel);
+  } else if (scopeRel === '' || explicitHidden || !filter.isDirExcluded(scopeRel)) {
     walk(scope.path);
   }
 
@@ -95,6 +102,7 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
     try {
       entries = readdirSync(absDir, { withFileTypes: true });
     } catch (e) {
+      scanIncomplete = true;
       warnings.push(
         `could not read directory ${relative(contentDir, absDir) || '.'}: ${errMsg(e)}`,
       );
@@ -116,6 +124,7 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
   }
 
   docFiles.sort();
+  if (docFiles.length === 0 && !scanIncomplete) warnings.push(AUDIT_EMPTY_SCOPE_WARNING);
 
   const files: FileLintResult[] = [];
   let errorCount = 0;
@@ -173,17 +182,6 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
     fixedCount,
     ran,
   };
-}
-
-type Scope = { kind: 'dir' | 'file'; path: string };
-
-function resolveScope(targetPath: string | undefined, contentDir: string): Scope {
-  if (targetPath === undefined || targetPath === '') return { kind: 'dir', path: contentDir };
-  const abs = isAbsolute(targetPath) ? targetPath : resolve(contentDir, targetPath);
-  try {
-    if (statSync(abs).isFile()) return { kind: 'file', path: abs };
-  } catch {}
-  return { kind: 'dir', path: abs };
 }
 
 function isDocFile(name: string): boolean {

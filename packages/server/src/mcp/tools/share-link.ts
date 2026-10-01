@@ -26,18 +26,8 @@ import {
 type ShareKind = 'doc' | 'folder';
 
 const DESCRIPTION = [
-  "[Requires: Hocuspocus server] Build a shareable GitHub-substrate URL (`https://openknowledge.ai/d/...`) pinned to the project's current branch + the focused target (a doc or a folder). Read-only against the working tree — no commits, no pushes, no `git fetch`.",
-  '',
-  'Use this when the user asks for a share link / shareable link / URL to send to a teammate. Recipients open the link to receive the doc (or folder subtree) into their own OpenKnowledge install.',
-  '',
-  '**Publishing is a user act.** Agents do NOT publish projects to GitHub from this tool. When the project has no GitHub remote, this tool returns an error pointing the user at the Share wizard (or `gh repo create` + `git push`) — it does not run those steps itself.',
-  '',
-  '**Parameters:**',
-  '- `path` — Content-dir-relative target. For a doc, extension-less (trailing `.md`/`.mdx` is stripped; the on-disk file is probed automatically). For a folder, the directory path. The empty string `""` is the content-root sentinel (folder-only).',
-  "- `kind` (optional) — `'doc'` or `'folder'`. Omit to auto-probe disk (`.mdx` → `.md` → directory, first hit wins). REQUIRED when `path` is empty (`\"\"`), since auto-probe cannot disambiguate the root.",
-  '- `cwd` (optional) — Project root (see `cwd` description below).',
-  '',
-  '**Preconditions:** project on a named branch (not detached HEAD); origin set to a GitHub remote (`github.com` or a GitHub Enterprise Server host); the branch already pushed to origin.',
+  'Build a shareable GitHub-substrate URL for a teammate to receive a doc/folder subtree in OpenKnowledge, pinned to current branch. Requires the Hocuspocus server. Read-only, no commits/pushes/fetch. Publishing is a user act: agents do NOT publish; a missing remote returns Share-wizard guidance.',
+  '`path` is content-relative, docs accept .md/.mdx, empty string means root folder. `kind` doc/folder is optional for auto-probe (.mdx → .md → directory); REQUIRED when `path` is empty (use folder). Optional `cwd` selects project. Requires a named branch, GitHub/GH Enterprise origin, and branch already pushed.',
 ].join('\n');
 
 export interface ShareLinkDeps {

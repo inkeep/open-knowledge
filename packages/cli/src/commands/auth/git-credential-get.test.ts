@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { FileBackend } from '../../auth/token-store.ts';
-import { type CredentialGetLogContext, handleCredentialGet } from './git-credential.ts';
+import { type CredentialGetLogContext, handleCredentialGet } from './git-credential-get.ts';
 
 function makeStream(content: string): Readable {
   return Readable.from([Buffer.from(content, 'utf-8')]);

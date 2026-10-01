@@ -32,25 +32,12 @@ import { resolveSkillName, SKILL_NAME_DESCRIBE, SkillScopeArg } from './verb-sch
 const KNOWN_INSTALL_CODES: ReadonlySet<string> = new Set(SKILL_INSTALL_WARNING_CODES);
 
 const DESCRIPTION = [
-  '[Requires: Hocuspocus server] Manage WHERE a skill is available. A skill is ONE real folder (its SOURCE — the skill itself) plus managed copies/symlinks at other locations. `add`/`remove` change the other locations; `mode` flips copies↔symlinks; `source` moves the real folder. There is NO "uninstall everywhere" and no draft state — a skill with no extra locations still lives (and loads) at its source folder; to make a skill stop existing, use `delete`.',
-  '',
-  'Location ids: editor host ids (`claude` | `cursor` | `codex` | `copilot` | `opencode` | `pi`), `agents` (the vendor-neutral `.agents/skills` hub), or a base-relative custom root path containing `/` (e.g. `.team/skills`; home-relative at global scope). The source is validated FIRST — a SKILL.md with git conflict markers, missing/invalid frontmatter, XML tags in name/description, or a reserved `open-knowledge*` name is refused (never fanned into your agent context).',
-  '',
-  '**Parameters:**',
-  `- \`name\` — ${SKILL_NAME_DESCRIBE}`,
-  '- `add` — Locations to ADD the skill to (everything else untouched). Editor ids fan out a copy/symlink; a custom root path places the bundle there. Omitting both `add` and `remove` installs into the project-configured editors.',
-  '- `remove` — Locations to REMOVE it from (lossless only: a hand-edited fork is refused, never deleted). Works however the agent gets the skill: removing an editor that reads it through a folder alias (its skills folder symlinked into a shared root) automatically unfollows that folder from the root MINUS this skill — the editor keeps its other skills. The SOURCE cannot be removed — its folder is the skill; move it with `source` or use `delete`.',
-  '- `mode` — `"link"`: a live symlink to the source. `"copy"`: an independent folder, auto-refreshed from the source until hand-edited (a hand-edit forks that copy). Applies ONLY to the locations this call names — the ones in `add`, or the ones in `convert` — and sets no skill-wide default. Omit it on `add` and the new location takes the form the skill already uses. Requires `add` or `convert` — passing `mode` alone is refused rather than silently ignored.',
-  '- `convert` — Existing locations to change the FORM of, leaving membership alone. Requires `mode`. Pass every location to make them uniform. Lossless both ways; a hand-edited copy is refused rather than overwritten.',
-  "- `source` — Move the skill's REAL folder to this location; the old source becomes a symlink to it. Run alone (not with add/remove).",
-  '- `scope` — `project` (default, shared via git) or `global` (user-level, every project on this machine).',
-  '',
-  '- `skillFolders` — Folder-level topology instead of one skill (the Settings → Folders surface). Run alone; `name` is not used with it. One action per call:',
-  '  - `{ action: "link", scope, root, target }` — merge the skills folder `root` into `target` and replace `root` with a symlink, so its agent reads everything placed in `target`. Same-content entries drop; a DIFFERENT skill in both folders aborts with a conflict list; an interrupted merge is resumable by re-running. `target` is required — nothing is ever assumed.',
-  '  - `{ action: "unlink", scope, root, exclude? }` — turn a linked folder back into a real directory holding one per-skill symlink per skill it sees (lossless, reversible). `exclude: ["<skill>"]` leaves named skills out — "this agent should not get that skill": the folder keeps everything else but stops following the root.',
-  '  - `{ action: "add-root", scope, root }` — declare a NEW custom skills root (base-relative, e.g. ".team/skills"); it becomes a folder row and an install/link target immediately.',
-  '',
-  'Copies auto-refresh when the source changes — you do NOT need to re-run install after editing a skill. After `delete({skill})` every location is removed with the source.',
+  'Manage where a SKILL is available: `{name, add?, remove?, convert?, mode?, source?, scope?}` or `{skillFolders: {...}}` alone. Requires the Hocuspocus server. One real source folder plus managed copies/symlinks; the source still loads with no extra locations. Use delete to remove the skill everywhere.',
+  "name is the bundle identity: lowercase letters/digits/hyphens, ≤64 chars. Locations: claude/cursor/codex/copilot/opencode/pi, agents (.agents/skills), or custom root containing '/' such as .team/skills. Custom roots are project-relative, home-relative at global scope. scope: project (default, shared via git) or global (user-wide).",
+  'add/remove change membership; omitting both installs to configured editors. remove cannot remove the source; folder aliases unfollow minus this skill and keep others. Differing copies are preserved; editor removal may succeed and leave them in place.',
+  'mode: link = live symlink for source updates; copy = separate folder, refreshed on watcher/startup sync while unedited. Hand-edited copies fork; differing copies are preserved and cannot be converted. Requires add or convert; affects named locations only, no skill-wide default. Omit mode on add to inherit form. convert requires mode and changes form without membership; name all locations for uniformity.',
+  'source moves the real folder; its old location becomes a symlink. Run alone, not with add/remove. Source SKILL.md with conflict markers, invalid/missing frontmatter, XML in name/description or reserved open-knowledge* names is refused before projection.',
+  "skillFolders runs alone without name. link: {action:'link', scope, root, target}; target required, merge then symlink root; equal entries deduplicate, differing skills abort, interrupted merges can rerun. unlink: {action:'unlink', scope, root, exclude?}; makes a real directory of per-skill symlinks, excluding named skills and retaining others. add-root: {action:'add-root', scope, root}; declares a custom root for install/link.",
 ].join('\n');
 
 async function runSkillFolderAction(
@@ -111,19 +98,19 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
           .array(SkillLocationIdSchema)
           .optional()
           .describe(
-            'Locations to REMOVE the skill from (lossless only; a hand-edited fork is refused). An editor reading via a folder alias is unfollowed from the shared root minus this skill (it keeps the rest). The SOURCE cannot be removed — its folder IS the skill; use `source` to move it or `delete` to remove the skill.',
+            'Locations to REMOVE the skill from; differing copies are preserved and may remain after success. An editor reading via a folder alias is unfollowed from the shared root minus this skill (it keeps the rest). The SOURCE cannot be removed — its folder IS the skill; use `source` to move it or `delete` to remove the skill.',
           ),
         convert: z
           .array(SkillLocationIdSchema)
           .optional()
           .describe(
-            'Existing locations to change the FORM of, leaving their membership alone. Requires `mode`. Pass every location to make them uniform. Lossless both ways; a hand-edited copy is refused rather than overwritten.',
+            'Existing locations to change the FORM of, leaving their membership alone. Requires `mode`. Pass every location to make them uniform. Lossless both ways; a differing copy is refused rather than overwritten.',
           ),
         mode: z
           .enum(['copy', 'link'])
           .optional()
           .describe(
-            'The form for the locations THIS call touches — the ones in `add`, or the ones in `convert`. "link": a pointer to the source, so nothing can drift. "copy": an independent folder, auto-refreshed from the source until hand-edited. Omit on `add` to follow the form the skill already uses. This does not change locations the call does not name, and sets no skill-wide default. Requires `add` or `convert` — passing `mode` alone is refused rather than silently ignored.',
+            'Form for locations in `add` or `convert`. "link": live pointer to the source. "copy": independent folder, refreshed on watcher/startup sync while unedited; a hand edit forks it. Omit on `add` to inherit the existing form. Other locations stay unchanged; no skill-wide default. Requires `add` or `convert`; `mode` alone is refused.',
           ),
         source: SkillLocationIdSchema.optional().describe(
           "Move the skill's REAL folder to this location (the old source becomes a symlink — never a removal). Run alone, not combined with add/remove.",

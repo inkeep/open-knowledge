@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
+import { SettingsDialogBody } from './SettingsDialogBody';
 
 describe('SettingsDialogBody module', () => {
-  test('exports SettingsDialogBody component', async () => {
-    const mod = await import('./SettingsDialogBody');
-    expect(typeof mod.SettingsDialogBody).toBe('function');
+  test('exports SettingsDialogBody component', () => {
+    expect(typeof SettingsDialogBody).toBe('function');
   });
 });

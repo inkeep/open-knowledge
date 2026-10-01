@@ -1,7 +1,7 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: shell and GitHub expression fixtures must remain literal.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -909,19 +909,70 @@ describe('every release-pipeline post prefers the releases webhook', () => {
     });
   }
 
-  test('the aggregate smoke alarm resolves the releases webhook first', () => {
+  test('the aggregate smoke alarm resolves the releases webhook first', async () => {
     const alarm = stepAfter(selectBeta, 'Page the release channel');
     expect(alarm).toContain(
       'SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}',
     );
     expect(alarm).toContain('node .github/scripts/release-alert-state.mjs');
-    const reporter = readFileSync(
-      join(WORKFLOWS, '..', 'scripts', 'release-alert-state.mjs'),
-      'utf8',
-    );
-    expect(reporter).toContain(
-      'process.env.SLACK_RELEASES_WEBHOOK_URL || process.env.SLACK_WEBHOOK_URL',
-    );
+    const { execFile } = await import('node:child_process');
+    const { createServer } = await import('node:http');
+    const requests = [];
+    const server = createServer((request, response) => {
+      requests.push(request.url);
+      request.resume();
+      response.end('ok');
+    });
+    const dir = mkdtempSync(join(tmpdir(), 'ok-webhook-precedence-'));
+    try {
+      await new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', resolve);
+      });
+      const origin = `http://127.0.0.1:${server.address().port}`;
+      let index = 0;
+      const state = (value) => (value === undefined ? 'unset' : value ? 'set' : 'empty');
+      for (const releases of [undefined, '', `${origin}/releases`]) {
+        for (const fallback of [undefined, '', `${origin}/fallback`]) {
+          requests.length = 0;
+          const label = `releases webhook ${state(releases)}, fallback webhook ${state(fallback)}`;
+          const statePath = join(dir, `state-${index++}.json`);
+          const env = {
+            ...process.env,
+            ALERT_STATE_PATH: statePath,
+            ALERT_INCIDENT: 'smoke-failure',
+            ALERT_TEXT: 'webhook precedence test',
+          };
+          delete env.SLACK_RELEASES_WEBHOOK_URL;
+          delete env.SLACK_WEBHOOK_URL;
+          delete env.GITHUB_OUTPUT;
+          delete env.NODE_OPTIONS;
+          if (releases !== undefined) env.SLACK_RELEASES_WEBHOOK_URL = releases;
+          if (fallback !== undefined) env.SLACK_WEBHOOK_URL = fallback;
+          const result = await new Promise((resolve) => {
+            execFile(
+              process.execPath,
+              [join(WORKFLOWS, '..', 'scripts', 'release-alert-state.mjs')],
+              { env, timeout: 5_000 },
+              (error, _stdout, stderr) => resolve({ error, stderr }),
+            );
+          });
+          const target = releases ? '/releases' : fallback ? '/fallback' : undefined;
+          const ended = result.error?.signal ?? `exit code ${result.error ? result.error.code : 0}`;
+          const outcome = `${label}, reporter ended with ${ended}: ${result.stderr}`;
+          expect(requests, outcome).toEqual(target ? [target] : []);
+          expect(result.error ? result.error.code : 0, outcome).toBe(target ? 0 : 1);
+          expect(existsSync(statePath), outcome).toBe(Boolean(target));
+        }
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      if (server.listening) {
+        await new Promise((resolve, reject) => {
+          server.close((error) => (error ? reject(error) : resolve()));
+        });
+      }
+    }
   });
 
   test('fast-tier attempts have one incident reporter and save only successful acknowledgements', () => {
@@ -1087,7 +1138,22 @@ describe('public desktop product variants stay independently buildable', () => {
     for (const workflow of [desktopBuild, desktopBuildWinLinux]) {
       expect(workflow).toContain('options: [stable, beta]');
       expect(workflow).toContain('OK_DESKTOP_VARIANT:');
-      expect(workflow).toContain('run-electron-builder.mjs');
+    }
+  });
+
+  test('every manual public packaging call runs the wrapper under pnpm exec', () => {
+    for (const workflow of [desktopBuild, desktopBuildWinLinux]) {
+      const calls = workflow
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => !line.startsWith('#'))
+        .filter((line) => /--publish |(?:run-electron-builder|package-desktop)\.mjs/.test(line));
+      expect(calls.length).toBeGreaterThan(0);
+      for (const call of calls) {
+        expect(call).toMatch(
+          /^pnpm exec node "\$GITHUB_WORKSPACE\/\.github\/scripts\/package-desktop\.mjs" --/,
+        );
+      }
     }
   });
 
@@ -1141,6 +1207,115 @@ describe('the macOS artifact is attested signed before it can ship', () => {
       expect(step).toContain('runtime');
       expect(step).toContain('xcrun stapler validate "$APP"');
       expect(step).toContain('No .app found under dist-desktop to attest');
+    }
+  });
+});
+
+describe('Linux packaging ships the native prebuilds and checks them before upload', () => {
+  const NATIVE_GUARD =
+    'pnpm exec vitest run tests/unit/linux-package-native-guards.test.ts tests/unit/linux-package-terminal-spawn.test.ts';
+  const linuxJobs = [
+    ['desktop-release.yml', parse(desktopRelease).jobs['build-linux']],
+    ['desktop-build-win-linux.yml', parse(desktopBuildWinLinux).jobs['build-linux']],
+  ];
+  const uploads = (step) =>
+    step.uses?.startsWith('actions/upload-artifact@') ||
+    /\bgh\s+release\s+(upload|create|edit)\b/.test(step.run ?? '');
+
+  test.each(linuxJobs)('%s installs without forcing an Electron-ABI rebuild', (_name, job) => {
+    const install = job.steps.find((step) => step.name === 'Install dependencies');
+    expect(install.env).toEqual({ ELECTRON_SKIP_REBUILD: '1' });
+  });
+
+  test.each(linuxJobs)(
+    '%s runs the native guard after packaging and before every upload, unskippably',
+    (name, job) => {
+      const packaged = job.steps.findIndex((step) => step.name?.startsWith('Package '));
+      const guarded = job.steps.findIndex((step) => step.run?.trim() === NATIVE_GUARD);
+      expect(packaged, `${name} build-linux has no "Package" step`).toBeGreaterThan(-1);
+      expect(guarded, `${name} build-linux runs no native guard after packaging`).toBeGreaterThan(
+        packaged,
+      );
+      const uploadSteps = job.steps.flatMap((step, index) =>
+        uploads(step) ? [[index, step.name ?? step.uses]] : [],
+      );
+      expect(uploadSteps.length, `${name} build-linux uploads nothing`).toBeGreaterThan(0);
+      for (const [index, label] of uploadSteps) {
+        expect(index, `step "${label}" uploads before the native guard`).toBeGreaterThan(guarded);
+      }
+      const guard = job.steps[guarded];
+      expect(guard['working-directory']).toBe('packages/desktop');
+      expect(guard.env).toEqual({
+        OK_LINUX_PACKAGE_DIR: 'dist-desktop/${{ matrix.unpacked_dir }}',
+      });
+      expect(guard).not.toHaveProperty('if');
+      expect(guard).not.toHaveProperty('continue-on-error');
+    },
+  );
+
+  test.each(linuxJobs)(
+    '%s installs the runtime dependencies the built deb declares before the native guard, unskippably',
+    (name, job) => {
+      const packaged = job.steps.findIndex((step) => step.name?.startsWith('Package '));
+      const guarded = job.steps.findIndex((step) => step.run?.trim() === NATIVE_GUARD);
+      const provisioned = job.steps.findIndex((step) =>
+        /\bdpkg-deb\s+--field\s+\S+\s+Depends\b/.test(step.run ?? ''),
+      );
+      expect(packaged, `${name} build-linux has no "Package" step`).toBeGreaterThan(-1);
+      expect(
+        provisioned,
+        `${name} build-linux reads no built deb's Depends after packaging`,
+      ).toBeGreaterThan(packaged);
+      expect(provisioned, `${name} build-linux provisions after the native guard`).toBeLessThan(
+        guarded,
+      );
+      const step = job.steps[provisioned];
+      const lines = step.run
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => !line.startsWith('#'));
+      const operands = lines.flatMap((line) =>
+        (/\bapt-get\s+satisfy\b(.*)$/.exec(line)?.[1] ?? '')
+          .split(/\s+/)
+          .filter((token) => token && !token.startsWith('-')),
+      );
+      expect(
+        operands.length,
+        `${name} provisioning does not install with apt-get satisfy`,
+      ).toBeGreaterThan(0);
+      for (const operand of operands) {
+        const variable = /^"?\$\{?(\w+)/.exec(operand)?.[1];
+        expect(variable, `${name} satisfies "${operand}", not a variable`).toBeDefined();
+        const fromDeb = new RegExp(
+          `^${variable}\\+=\\("\\$\\(dpkg-deb\\s+--field\\s+\\S+\\s+Depends\\)"\\)$`,
+        );
+        const empty = new RegExp(`^(?:declare\\s+-a\\s+)?${variable}=\\(\\)$`);
+        const written = new RegExp(`(?<![\\w$#!{])${variable}\\b`);
+        const writes = lines.filter((line) => written.test(line));
+        expect(
+          writes.some((line) => fromDeb.test(line)),
+          `${name} never fills ${variable} from the built deb's Depends`,
+        ).toBe(true);
+        expect(
+          writes.filter((line) => !fromDeb.test(line) && !empty.test(line)),
+          `${name} fills ${variable} from something other than the built deb's Depends`,
+        ).toEqual([]);
+      }
+      expect(step.run).not.toMatch(/\bapt-get\s+install\b/);
+      expect(step['working-directory']).toBe('packages/desktop');
+      expect(step).not.toHaveProperty('if');
+      expect(step).not.toHaveProperty('continue-on-error');
+    },
+  );
+
+  test('every test file the native guard names exists in the desktop package', () => {
+    const desktop = join(WORKFLOWS, '..', '..', 'packages', 'desktop');
+    const files = /\bvitest run (.+)$/.exec(NATIVE_GUARD)[1].split(/\s+/);
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      expect(existsSync(join(desktop, file)), `${file} is missing from packages/desktop`).toBe(
+        true,
+      );
     }
   });
 });

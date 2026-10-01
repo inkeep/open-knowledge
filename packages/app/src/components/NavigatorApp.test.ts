@@ -1,4 +1,8 @@
 import { describe, expect, test, vi } from 'vitest';
+import * as NavigatorAppModule from './NavigatorApp';
+
+const { displayNameForPath, removeRecentFromList, resolveErrorMessage, runWithErrorStatePure } =
+  NavigatorAppModule;
 
 interface MockBridge {
   config: {
@@ -68,11 +72,10 @@ function makeBridge(overrides: Partial<MockBridge> = {}): MockBridge {
 }
 
 describe('NavigatorApp bridge contract', () => {
-  test('Component module imports cleanly', async () => {
-    const mod = await import('./NavigatorApp');
-    expect(typeof mod.NavigatorApp).toBe('function');
-    expect(typeof mod.resolveErrorMessage).toBe('function');
-    expect(typeof mod.runWithErrorStatePure).toBe('function');
+  test('Component module imports cleanly', () => {
+    expect(typeof NavigatorAppModule.NavigatorApp).toBe('function');
+    expect(typeof NavigatorAppModule.resolveErrorMessage).toBe('function');
+    expect(typeof NavigatorAppModule.runWithErrorStatePure).toBe('function');
   });
 
   test('bridge.project.listRecent returns RecentProjectEntry[] shape', async () => {
@@ -187,7 +190,6 @@ describe('NavigatorApp bridge contract', () => {
 
 describe('NavigatorApp recent-project removal helpers', () => {
   test('removeRecentFromList drops only the matching path and preserves order', async () => {
-    const { removeRecentFromList } = await import('./NavigatorApp');
     const next = removeRecentFromList(
       [
         { path: '/tmp/a', name: 'a', lastOpenedAt: '2026-04-20T00:00:00Z' },
@@ -200,7 +202,6 @@ describe('NavigatorApp recent-project removal helpers', () => {
   });
 
   test('removeRecentFromList is a no-op for unknown paths', async () => {
-    const { removeRecentFromList } = await import('./NavigatorApp');
     const recents = [{ path: '/tmp/a', name: 'a', lastOpenedAt: '2026-04-20T00:00:00Z' }];
     expect(removeRecentFromList(recents, '/tmp/missing')).toEqual(recents);
   });
@@ -208,17 +209,14 @@ describe('NavigatorApp recent-project removal helpers', () => {
 
 describe('NavigatorApp error-state helpers', () => {
   test('resolveErrorMessage prefers Error.message', async () => {
-    const { resolveErrorMessage } = await import('./NavigatorApp');
     expect(resolveErrorMessage(new Error('boom'), 'fallback')).toBe('boom');
   });
 
   test('resolveErrorMessage falls back when message is empty', async () => {
-    const { resolveErrorMessage } = await import('./NavigatorApp');
     expect(resolveErrorMessage(new Error(''), 'fallback')).toBe('fallback');
   });
 
   test('resolveErrorMessage falls back for non-Error throws (string, undefined, object)', async () => {
-    const { resolveErrorMessage } = await import('./NavigatorApp');
     expect(resolveErrorMessage('plain-string', 'fallback')).toBe('fallback');
     expect(resolveErrorMessage(undefined, 'fallback')).toBe('fallback');
     expect(resolveErrorMessage({ weird: 'object' }, 'fallback')).toBe('fallback');
@@ -226,7 +224,6 @@ describe('NavigatorApp error-state helpers', () => {
   });
 
   test('runWithErrorStatePure clears error state then awaits the wrapped fn', async () => {
-    const { runWithErrorStatePure } = await import('./NavigatorApp');
     const setError = vi.fn(() => {});
     const fn = vi.fn(() => Promise.resolve());
     await runWithErrorStatePure(fn, 'fallback', setError);
@@ -235,7 +232,6 @@ describe('NavigatorApp error-state helpers', () => {
   });
 
   test('runWithErrorStatePure surfaces rejections via setError with Error.message', async () => {
-    const { runWithErrorStatePure } = await import('./NavigatorApp');
     const setErrorCalls: Array<string | null> = [];
     await runWithErrorStatePure(
       () => Promise.reject(new Error('boot failed')),
@@ -248,7 +244,6 @@ describe('NavigatorApp error-state helpers', () => {
   });
 
   test('runWithErrorStatePure falls back when rejection has no usable message', async () => {
-    const { runWithErrorStatePure } = await import('./NavigatorApp');
     const setErrorCalls: Array<string | null> = [];
     await runWithErrorStatePure(
       () => Promise.reject('network dropped'),
@@ -261,7 +256,6 @@ describe('NavigatorApp error-state helpers', () => {
   });
 
   test('runWithErrorStatePure does NOT re-throw on rejection (caller continues)', async () => {
-    const { runWithErrorStatePure } = await import('./NavigatorApp');
     let afterAwait = false;
     await runWithErrorStatePure(
       () => Promise.reject(new Error('x')),
@@ -273,7 +267,6 @@ describe('NavigatorApp error-state helpers', () => {
   });
 
   test('displayNameForPath returns the last path segment for the Opening… overlay', async () => {
-    const { displayNameForPath } = await import('./NavigatorApp');
     expect(displayNameForPath('/Users/me/Documents/oktest')).toBe('oktest');
     expect(displayNameForPath('/Users/me/Documents/oktest/')).toBe('oktest');
     expect(displayNameForPath('C:\\Users\\me\\oktest')).toBe('oktest');

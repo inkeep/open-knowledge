@@ -149,6 +149,36 @@ describe('AcpPermissionStore', () => {
     expect(fresh.decide('claude', toolCall('other'), OPTIONS, NOT_A_BROWSER_CALL).auto).toBeNull();
   });
 
+  test("every channel's own server name and Pi bridge prefix keep gated tools gated and the rest auto-approved", async () => {
+    const always = OPTIONS.find((o) => o.kind === 'allow_always');
+    if (always === undefined) throw new Error('fixture');
+    for (const prefix of [
+      'mcp__open-knowledge__',
+      'mcp__open-knowledge-beta__',
+      'ok_',
+      'ok-beta_',
+    ]) {
+      const store = new AcpPermissionStore(tmp(), log);
+      await store.recordChoice('claude', toolCall('other'), always, NOT_A_BROWSER_CALL);
+      for (const tool of ['delete', 'move', 'share_link', 'install', 'import']) {
+        const call = {
+          toolCallId: 'tc1',
+          title: `${prefix}${tool}`,
+          kind: 'other',
+        } as ToolCallUpdate;
+        expect(store.decide('claude', call, OPTIONS, NOT_A_BROWSER_CALL).auto).toBeNull();
+      }
+      const write = {
+        toolCallId: 'tc2',
+        title: `${prefix}write`,
+        kind: 'edit',
+      } as ToolCallUpdate;
+      expect(
+        store.decide('claude', write, OPTIONS, NOT_A_BROWSER_CALL, undefined, true).auto?.optionId,
+      ).toBe('allow');
+    }
+  });
+
   test('a browser action never rides a stored grant, an OK-tool setting, or a read kind', () => {
     const dir = tmp();
     writeFileSync(

@@ -1,5 +1,6 @@
 import { menuLabelForPlatform, NATIVE_MENU_LABELS } from '@inkeep/open-knowledge-core';
 import type { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron';
+import { getLogger } from './desktop-logger.ts';
 import { type MenuTranslator, translateEnglish } from './menu-translator.ts';
 
 type AssetMenuKind = 'asset' | 'wiki-link' | 'image';
@@ -8,6 +9,17 @@ interface AssetMenuActions {
   readonly reveal: () => void | Promise<void>;
   readonly openInDefault: () => void | Promise<void>;
   readonly copyLink: () => void | Promise<void>;
+}
+
+function runAssetMenuAction(name: keyof AssetMenuActions, action: () => void | Promise<void>) {
+  const report = (err: unknown) => {
+    getLogger('asset-context-menu').warn({ err, action: name }, 'asset menu action failed');
+  };
+  try {
+    void Promise.resolve(action()).catch(report);
+  } catch (err) {
+    report(err);
+  }
 }
 
 export function revealMenuLabel(platform: NodeJS.Platform): string {
@@ -30,20 +42,20 @@ export function buildAssetMenuTemplate(
     {
       label: translate(revealMenuLabel(platform)),
       click: () => {
-        void actions.reveal();
+        runAssetMenuAction('reveal', actions.reveal);
       },
     },
     {
       label: translate(NATIVE_MENU_LABELS.openInDefaultApp),
       click: () => {
-        void actions.openInDefault();
+        runAssetMenuAction('openInDefault', actions.openInDefault);
       },
     },
     { type: 'separator' },
     {
       label: translate(NATIVE_MENU_LABELS.copyLink),
       click: () => {
-        void actions.copyLink();
+        runAssetMenuAction('copyLink', actions.copyLink);
       },
     },
   ];

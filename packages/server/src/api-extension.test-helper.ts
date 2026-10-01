@@ -68,6 +68,9 @@ export function createDerivedDocumentIndexApiPortStub(
     async getIndexedDocNames() {
       return [];
     },
+    async getRenameSourceInventory() {
+      return [];
+    },
     async getAllTags() {
       return [];
     },
@@ -214,6 +217,9 @@ function createLegacyDerivedIndexPort(
     },
     async getIndexedDocNames() {
       return backlinkIndex?.getIndexedDocNames() ?? [];
+    },
+    async getRenameSourceInventory() {
+      return backlinkIndex?.getRenameSourceInventory() ?? [];
     },
     async getAllTags() {
       return tagIndex?.getAllTags() ?? [];

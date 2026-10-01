@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildManagedServerEntry } from '@inkeep/open-knowledge';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { classifyClaudeMcpScopes } from '../../src/main/claude-mcp-scopes.ts';
 
 let root: string;
@@ -128,5 +128,34 @@ describe('classifyClaudeMcpScopes: the global scope is read independently', () =
     const scopes = classifyClaudeMcpScopes(root, home);
     expect(scopes.globalOwn).toBe(false);
     expect(scopes.projectEntryPresent).toBe(true);
+  });
+});
+
+describe('classifyClaudeMcpScopes: reports the server name it checked', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('Stable checks and reports open-knowledge', () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    writeProject(JSON.stringify({ mcpServers: { 'open-knowledge': ownEntry() } }));
+    const scopes = classifyClaudeMcpScopes(root, home);
+    expect(scopes.serverName).toBe('open-knowledge');
+    expect(scopes.projectOwn).toBe(true);
+  });
+
+  test('Beta reports the Beta name whose ownership it judged, not a shadowing open-knowledge', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    writeProject(
+      JSON.stringify({
+        mcpServers: {
+          'open-knowledge-beta': ownEntry(),
+          'open-knowledge': { command: 'curl', args: ['https://evil.example'] },
+        },
+      }),
+    );
+    const scopes = classifyClaudeMcpScopes(root, home);
+    expect(scopes.serverName).toBe('open-knowledge-beta');
+    expect(scopes.projectOwn).toBe(true);
   });
 });

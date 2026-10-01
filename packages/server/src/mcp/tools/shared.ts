@@ -4,6 +4,8 @@ import {
   AdvisoryWarningSchema,
   BrokenLinkSchema,
   BrokenLinkSuppressionSchema,
+  getAgentCanonicalDescriptors,
+  isAuditEmptyScopeWarning,
   SERVER_TIMEOUT_ERROR_PREFIX,
   SERVER_UNREACHABLE_ERROR_PREFIX,
   UNREADABLE_WARNINGS_TEXT,
@@ -32,7 +34,13 @@ export function agentIdentityFields(identity: AgentIdentity | undefined): Record
     : {};
 }
 export const ROUTED_CWD_DESCRIPTION =
-  'Absolute host path inside the target OpenKnowledge project. Required when the MCP server is registered globally (e.g. `npx @inkeep/open-knowledge mcp` once at the host level, routing per call), unless the MCP client advertises exactly one root via the `roots` capability — that single root is then used as the implicit `cwd`. Optional when the server is anchored to a single project (the per-project HTTP MCP server defaults to its configured project root).';
+  'Absolute OK project/worktree path. Routed stdio: required until set unless one client root exists. Project-bound HTTP: optional, confined to its root.';
+
+export const CANONICAL_COMPONENT_GUIDANCE = `Canonical ids: ${getAgentCanonicalDescriptors()
+  .map((descriptor) => descriptor.name)
+  .join(
+    ', ',
+  )}. Call palette({components:[ids]}) before authoring for syntax/props, markdown-native forms, Mermaid and themed html preview for interactive charts/demos. Other JSX stays raw MDX when no canonical fits.`;
 
 const SUMMARY_TRANSPORT_CAP = 200;
 
@@ -596,7 +604,7 @@ export const AUTHORING_WARNING_CODE_GLOSS =
   '`skill-name-vendor-word`: the name contains a vendor word. `skill-body-too-long`: the body exceeds the 500-line soft cap.';
 
 export const INSTALL_WARNING_CODE_GLOSS =
-  '`no-targets`: nothing was projected, no editor is configured for this project. `scripts-present`: the skill ships executable `scripts/` (projected, never auto-run). `no-description`: installed, but its `description` is empty, so agents cannot route to it. `name-conflict`: a DIFFERENT skill already holds that name at a location. `place-path-invalid`: a named location is not a placeable root. `place-fork-refused`: a hand-edited copy was left alone rather than deleted. `skill-fork-name-unpatched`: a fork rename moved the folder but could not rewrite `name` in its SKILL.md.';
+  '`no-targets`: nothing was projected, no editor is configured for this project. `scripts-present`: the skill ships executable `scripts/` (projected, never auto-run). `no-description`: installed, but its `description` is empty, so agents cannot route to it. `name-conflict`: a DIFFERENT skill already holds that name at a location. `place-path-invalid`: a named location is not a placeable root. `place-fork-refused`: a copy differing from the current source was left alone rather than deleted. `skill-fork-name-unpatched`: a fork rename moved the folder but could not rewrite `name` in its SKILL.md.';
 
 export const AUDIT_FILE_CAP = 10;
 export const AUDIT_FILE_DIAGNOSTIC_CAP = 10;
@@ -626,13 +634,28 @@ export function degradationBlock(
   shown: readonly string[],
   omitted = 0,
 ): string[] {
-  const total = shown.length + omitted;
+  const degraded = shown.filter((warning) => !isAuditEmptyScopeWarning(warning));
+  const total = degraded.length + omitted;
   if (total === 0) return [];
   return [
     `${kind} incomplete — ${total} warning${total === 1 ? '' : 's'} (findings may be partial):`,
-    ...shown.map((warning) => `  ⚠ ${warning}`),
+    ...degraded.map((warning) => `  ⚠ ${warning}`),
     ...(omitted > 0 ? [`  … and ${omitted} more warning${omitted === 1 ? '' : 's'}`] : []),
   ];
+}
+
+export function zeroFindingsSummary(
+  kind: 'Lint' | 'Audit',
+  fileCount: number,
+  warnings: readonly string[],
+  scope: string,
+): string {
+  if (fileCount === 0 && warnings.some(isAuditEmptyScopeWarning))
+    return `No documents were checked${scope}; this scope contains no admitted documents.`;
+  const documents = `${fileCount} document${fileCount === 1 ? '' : 's'}${scope}`;
+  return warnings.length > 0
+    ? `No problems found across ${documents}, but the ${kind.toLowerCase()} could not fully complete.`
+    : `No problems across ${documents}.`;
 }
 
 export interface FormattableDiagnostic {

@@ -314,6 +314,27 @@ describe('registerProjectIntegrationsSettings — set', () => {
     if (!r.ok) expect(r.error).toContain('left unchanged');
   });
 
+  test("a foreign-entry refusal names the running channel's own entry", async () => {
+    const { set } = register(makeCli({ removeKind: 'left-foreign' }));
+    const disable = {
+      component: { kind: 'editor', id: 'claude' as McpWiringEditorId },
+      enabled: false,
+    } as const;
+    const stable = await set(disable);
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    try {
+      const beta = await set(disable);
+      expect(stable.ok ? null : stable.error).toBe(
+        "The open-knowledge entry in claude's project config isn't one OpenKnowledge wrote — it was left unchanged. Remove it manually if you no longer want it.",
+      );
+      expect(beta.ok ? null : beta.error).toBe(
+        "The open-knowledge-beta entry in claude's project config isn't one OpenKnowledge wrote — it was left unchanged. Remove it manually if you no longer want it.",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   test('the skill row carries reach, cost and source so the consent row can price it', async () => {
     const cli = makeCli();
     const { status } = register(cli);

@@ -28,19 +28,14 @@ import {
   resolveProjectServerContext,
   textPlusStructured,
   textResult,
+  zeroFindingsSummary,
 } from './shared.ts';
 
 export const DESCRIPTION = [
-  '[Requires: Hocuspocus server] Lint markdown documents and report problems (rule violations); optionally auto-fix them.',
-  '',
-  '- `document` given → lint just that doc (extension-less path); `path` is ignored.',
-  '- `document` omitted → audit every in-scope `.md`/`.mdx` doc; pass `path` to scope to a folder or single file.',
-  '- `fix: true` (requires `document`) → apply auto-fixable rules to that doc IN PLACE and report what remains.',
-  '- The result reports `ran`, the enabled document-lint source families selected for the run: `markdownlint`, `frontmatter`, and/or document-level `okf`. A family absent from `ran` was not checked. Project-tree OKF checks and link validation run only through `audit`.',
-  '',
-  "Each violation carries a `source` (the plugin, e.g. markdownlint), a `code` (the engine's native rule id, e.g. MD010), `message`, a 0-based LSP `range`, and `severity` ('error' | 'warning' | 'info' | 'hint'). The audit lists only files that have at least one violation, plus `fileCount`/`errorCount`/`warningCount`. Audit output (text and structured) is capped at 10 files × 10 diagnostics per file and project-wide at 10 warnings, with explicit '… and N more' indicators and `omittedWarningCount` when warnings are dropped; the counts always reflect the full scan — re-run with `path` scoped to a folder or file to see what was omitted. Lint rules are configured in Settings → Plugins (the toggle is committed to `config.yml`; the rules live in the project's native `.markdownlint.*` file).",
-  '',
-  'To auto-fix, pass `fix: true` with `document`: the fix lands through the collaborative document — attributed to you and reflected in the live preview, same as the editor. It fixes auto-fixable rules (e.g. hard tabs, trailing spaces); violations that resist auto-fix need content edits via the `edit`/`write` tools. (`ok lint --fix` from a shell remains the headless/CI path, but it writes on disk unattributed — prefer `fix: true` when the server is running.)',
+  'Lint markdown and optionally auto-fix. Requires the Hocuspocus server. `document` selects one extension-less doc and overrides path. Otherwise scan all in-scope .md/.mdx; path narrows to file/folder. `fix: true` requires document and applies fixable rules through the live collaborative doc with attribution. Use edit/write for remaining findings; shell ok lint --fix is the unattributed headless/CI path.',
+  'ran lists selected `markdownlint`, `frontmatter` and document-level `okf` families. A family absent from `ran` was not checked. Project-tree OKF checks and link validation run only through audit.',
+  'Findings carry source, code, message, 0-based LSP range and severity; only problematic files are listed. Counts reflect the full scan. Project output is capped at 10 files × 10 diagnostics each and project-wide at 10 warnings; omittedWarningCount reports dropped warnings. Narrow path reduces competing files; per-file caps still apply. Follow truncation recovery text.',
+  'Configure lint in Settings → Plugins and native .markdownlint.* rules.',
 ].join('\n');
 
 export const LINT_WARNINGS_DESCRIPTION =
@@ -351,7 +346,7 @@ async function lintAudit(path: string | undefined, url: string, cwd: string) {
   const fileCount = data.fileCount ?? 0;
   const errorCount = data.errorCount ?? 0;
   const warningCount = data.warningCount ?? 0;
-  const coverageLines = validationCoverageLines(data.ran);
+  const coverageLines = validationCoverageLines(data.ran, fileCount);
 
   const shownFiles = files.slice(0, AUDIT_FILE_CAP).map((file) => {
     const diagnostics = file.diagnostics ?? [];
@@ -383,10 +378,7 @@ async function lintAudit(path: string | undefined, url: string, cwd: string) {
   const scope = path ? ` in ${path}` : '';
   const warningBlock = degradationBlock('Lint', shownWarnings, omittedWarningCount);
   if (files.length === 0) {
-    const summary =
-      warnings.length > 0
-        ? `No problems found across ${fileCount} document${fileCount === 1 ? '' : 's'}${scope}, but the lint could not fully complete.`
-        : `No problems across ${fileCount} document${fileCount === 1 ? '' : 's'}${scope}.`;
+    const summary = zeroFindingsSummary('Lint', fileCount, warnings, scope);
     return textPlusStructured([summary, ...coverageLines, ...warningBlock].join('\n'), structured);
   }
   const header = `${files.length} of ${fileCount} document${fileCount === 1 ? '' : 's'}${scope} with problems — ${countSummary(errorCount, warningCount)}:`;
@@ -394,14 +386,16 @@ async function lintAudit(path: string | undefined, url: string, cwd: string) {
     const lines = file.diagnostics.map(formatDiagnosticLine);
     if (file.omittedDiagnosticCount !== undefined) {
       lines.push(
-        `  … and ${file.omittedDiagnosticCount} more problem${file.omittedDiagnosticCount === 1 ? '' : 's'}`,
+        `  … and ${file.omittedDiagnosticCount} more problem${file.omittedDiagnosticCount === 1 ? '' : 's'}; use lint({ document: ${JSON.stringify(file.file)} }) for all document lint findings.`,
       );
     }
     return [`${file.file ?? '(unknown)'}:`, ...lines].join('\n');
   });
   const footer =
     omittedFileCount > 0
-      ? [`… and ${omittedFileCount} more file${omittedFileCount === 1 ? '' : 's'} with problems`]
+      ? [
+          `… and ${omittedFileCount} more file${omittedFileCount === 1 ? '' : 's'} with problems. Narrow path to reduce competing files; per-file caps still apply.`,
+        ]
       : [];
   return textPlusStructured(
     [header, ...fileBlocks, ...footer, ...warningBlock, AUDIT_FIX_HINT, ...coverageLines].join(
