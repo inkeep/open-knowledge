@@ -106,17 +106,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-ok-pnpm-store-
 
-      # Turbo cache keeps `build` fast across runs. Keying on pnpm-lock.yaml
-      # warm-caches across commits that don't change dependencies — cold
-      # cache only when the lockfile actually moves. `github.sha` in the
-      # restore-keys fallback still picks up same-commit re-runs.
-      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-desktop-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-desktop-
-
       - name: Install dependencies
         # ELECTRON_SKIP_REBUILD=0 overrides the default CI skip in
         # packages/desktop/scripts/postinstall.mjs — we *need* the native
@@ -125,31 +114,16 @@ jobs:
           ELECTRON_SKIP_REBUILD: "0"
         run: pnpm install --frozen-lockfile
 
-      # electron-builder.yml's `extraResources` rule copies from
-      # `packages/cli/dist/public/`, which the CLI's `build:assets` populates
-      # via `cp -r ../app/dist dist/public`. The CLI does not declare the
-      # app as a workspace dep (app is private, and the CLI ships the
-      # compiled bundle — not a package reference), so turbo's `^build`
-      # runs them in parallel by default. Without explicit sequencing, cli's
-      # `build:assets` races app's vite build and can fail (no `app/dist`
-      # yet) or copy stale content. Use turbo's `--filter=@inkeep/...`
-      # which DOES respect the `^build` graph (so server + core build
-      # before app), and run the two filters in sequence to enforce
-      # app → cli ordering.
-      #
-      # A bare per-package `--filter` run was the previous approach; it does
-      # not honor turbo's dep graph (only runs the named package's `build`
-      # script in isolation). After the workspace started shipping
-      # `.mjs` builds for `@inkeep/open-knowledge-server` and
-      # `@inkeep/open-knowledge-core` (specs/2026-04-24-desktop-packaging-
-      # first-boot/), Vite's config loader in app-build resolves those
-      # workspace deps via `exports.default → ./dist/index.mjs`. Without
-      # an upstream `^build`, the `dist/` doesn't exist yet → "Failed to
-      # resolve entry for package @inkeep/open-knowledge-server".
       - name: Build workspace (produces packages/cli/dist/public for extraResources)
         run: |
-          pnpm exec turbo run build --filter=@inkeep/open-knowledge-app
-          pnpm exec turbo run build --filter=@inkeep/open-knowledge
+          pnpm exec turbo run build --filter=@inkeep/open-knowledge --cache=local:,remote:
+
+      - name: Assert the native-config binary set
+        run: |
+          set -euo pipefail
+          git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git show "$GITHUB_SHA:.github/scripts/assert-native-set.mjs" > "$RUNNER_TEMP/assert-native-set.mjs"
+          node "$RUNNER_TEMP/assert-native-set.mjs" host
 
       # Decide signed-vs-unsigned path BEFORE invoking electron-builder so
       # the artifact can be named to match. We key off CSC_LINK alone: it's

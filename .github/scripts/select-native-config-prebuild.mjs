@@ -91,19 +91,40 @@ export function listPrebuildRuns({
   );
 }
 
+function failureOf(res) {
+  if (res.error) return `failed to spawn: ${res.error.message}`;
+  if (res.signal) return `killed by signal ${res.signal}`;
+  const stderr = String(res.stderr || '').trim();
+  return `failed (exit ${res.status})${stderr ? `: ${stderr}` : ''}`;
+}
+
+function makeGitAnswer(run) {
+  return (args) => {
+    const res = run('git', args, { encoding: 'utf8' });
+    if (res.error || res.signal || (res.status !== 0 && res.status !== 1)) {
+      throw new Error(`git ${args.join(' ')} ${failureOf(res)}`);
+    }
+    return { yes: res.status === 0, stdout: String(res.stdout || '').trim() };
+  };
+}
+
 export function makeIsAncestor(run = spawnSync) {
+  const git = makeGitAnswer(run);
   return (sha, ref) =>
-    run('git', ['merge-base', '--is-ancestor', sha, ref], { encoding: 'utf8' }).status === 0;
+    git(['rev-parse', '--verify', '--quiet', `${sha}^{commit}`]).yes &&
+    git(['merge-base', '--is-ancestor', sha, ref]).yes;
 }
 
 export function makeTreeAt(run = spawnSync) {
+  const git = makeGitAnswer(run);
   return (ref) => {
-    const res = run('git', ['rev-parse', '--verify', `${ref}:${NATIVE_CONFIG_PATH}`], {
-      encoding: 'utf8',
-    });
-    if (res.status !== 0) return null;
-    const tree = String(res.stdout || '').trim();
-    return tree === '' ? null : tree;
+    const { yes, stdout } = git([
+      'rev-parse',
+      '--verify',
+      '--quiet',
+      `${ref}:${NATIVE_CONFIG_PATH}`,
+    ]);
+    return yes && stdout !== '' ? stdout : null;
   };
 }
 

@@ -89,35 +89,47 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-ok-pnpm-store-
 
-      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-desktop-manual-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-desktop-manual-
-            ${{ runner.os }}-turbo-desktop-
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Stage native-config prebuilt binaries (best-effort)
+      - name: Stage native-config prebuilt binaries
+        id: stage
         env:
           GH_TOKEN: ${{ github.token }}
+          PLATFORMS: ${{ inputs.platforms }}
         run: |
           set -uo pipefail
+          judge_staging() {
+            if [ ! -s "$judge" ]; then
+              echo "::error::the native-set judge is missing at $GITHUB_SHA and in the checkout; refusing this QA build"
+              exit 1
+            fi
+            node "$judge" staged --serves "${PLATFORMS/both/windows,linux}" --requires "${PLATFORMS/both/windows,linux}" --reason "$1" \
+              --recovery "Re-dispatch this workflow once native-config-prebuild.yml has a green run on main whose native-config-bindings-all artifact is complete (RELEASES.md 'Native addon staging')."
+            exit $?
+          }
+          judge="${RUNNER_TEMP:-/tmp}/assert-native-set.mjs"
+          if ! git show "$GITHUB_SHA:.github/scripts/assert-native-set.mjs" > "$judge" 2>/dev/null; then
+            cp .github/scripts/assert-native-set.mjs "$judge" 2>/dev/null || true
+          fi
+          list_err="${RUNNER_TEMP:-/tmp}/native-config-list.err"
+          list_rc=0
           run_id=$(gh run list --workflow=native-config-prebuild.yml --branch main --event push \
-            --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>"$list_err") || list_rc=$?
+          if [ "$list_rc" -ne 0 ]; then
+            reason=$(tr '\n' ' ' < "$list_err" | sed 's/  *$//')
+            judge_staging "could not list native-config-prebuild runs on main: ${reason:-gh run list exited $list_rc with no error output}"
+          fi
           if [ -z "$run_id" ]; then
-            echo "::warning::no successful native-config-prebuild run found; Windows cleanup requires the native addon; QA artifacts may lack it"
-            exit 0
+            judge_staging "no successful native-config-prebuild run found on main"
           fi
           if ! gh run download "$run_id" --name native-config-bindings-all --dir /tmp/nc-bindings; then
-            echo "::warning::could not download native-config-bindings-all from run $run_id; Windows cleanup requires the native addon; QA artifacts may lack it"
-            exit 0
+            judge_staging "could not download native-config-bindings-all from run $run_id"
           fi
           find /tmp/nc-bindings -name '*.node' -exec cp -f {} packages/native-config/ \;
           count=$(find packages/native-config -maxdepth 1 -name '*.node' | wc -l | tr -d ' ')
           echo "staged $count native-config prebuilt binaries from run $run_id"
+          judge_staging "staged $count native-config binaries from run $run_id"
 
       # The workspace build produces native-config's host `.node` via `napi
       # build` (turbo dep of the cli build), which needs a Rust toolchain —
@@ -127,12 +139,18 @@ jobs:
         with:
           toolchain: stable
 
-      # Same two-filter sequencing as desktop-release.yml: app must build
-      # before cli's build:assets copies app/dist into cli/dist/public.
       - name: Build workspace (produces packages/cli/dist for extraResources)
         run: |
-          pnpm exec turbo run build --filter=@inkeep/open-knowledge-app
-          pnpm exec turbo run build --filter=@inkeep/open-knowledge
+          pnpm exec turbo run build --filter=@inkeep/open-knowledge --cache=local:,remote:
+
+      - name: Assert the native-config binary set
+        env:
+          NATIVE_SET_PLATFORMS: ${{ steps.stage.outputs.platforms }}
+        run: |
+          set -euo pipefail
+          git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git show "$GITHUB_SHA:.github/scripts/assert-native-set.mjs" > "$RUNNER_TEMP/assert-native-set.mjs"
+          node "$RUNNER_TEMP/assert-native-set.mjs" platforms "$NATIVE_SET_PLATFORMS"
 
       # Hand the platform-neutral build products to the packaging jobs:
       # the full bundled CLI tree + core/server dist + the native-config addon

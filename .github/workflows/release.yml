@@ -193,19 +193,14 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Stage native-config prebuilt binaries
+        id: stage
         env:
           GH_TOKEN: ${{ github.token }}
-          IS_STABLE: ${{ github.event_name == 'repository_dispatch' }}
+          SERVES: mac,windows,linux
+          REQUIRES: mac,windows,linux
         run: |
           summarize() {
             echo "Staged native-config binaries: $1" >> "$GITHUB_STEP_SUMMARY"
-          }
-          require_windows_targets() {
-            for required in native-config.win32-x64-msvc.node native-config.win32-arm64-msvc.node; do
-              if [ -f "packages/native-config/$required" ]; then continue; fi
-              echo "::error::$1; $required was not staged, and Windows removal reads process identity through the native addon, so this cut cannot publish. If no prebuild run matches this commit's packages/native-config tree, re-run native-config-prebuild.yml on an ancestor of this commit; if staging failed for another reason, re-run this workflow. Either way resume per RELEASES.md 'Native addon staging (Windows is mandatory)'."
-              exit 1
-            done
           }
           download_bindings() {
             for attempt in 1 2 3; do
@@ -217,16 +212,15 @@ jobs:
             done
             return 1
           }
-          degrade_or_fail() {
-            # $1: human-readable reason, $2: staged-count label for the summary
-            summarize "$2 — $1"
-            require_windows_targets "$1"
-            if [ "$IS_STABLE" = "true" ]; then
-              echo "::error::$1; refusing to cut a stable @latest release with an incomplete native-config binary set"
+          judge_staging() {
+            summarize "$1"
+            if [ ! -s "$judge" ]; then
+              echo "::error::the native-set judge is missing at $GITHUB_SHA and in the release checkout; refusing this cut"
               exit 1
             fi
-            echo "::warning::$1; both Windows binaries were staged, so only other targets are missing"
-            exit 0
+            node "$judge" staged --serves "$SERVES" --requires "$REQUIRES" --reason "$1" \
+              --recovery "If no prebuild run matches this commit's packages/native-config tree, re-run native-config-prebuild.yml on an ancestor of this commit; if staging failed for another reason, re-run this workflow. Either way resume per RELEASES.md 'Native addon staging'."
+            exit $?
           }
 
           # Which prebuild run may be staged is release policy shared with the
@@ -246,18 +240,23 @@ jobs:
           # checked-out copy. Pairing the two is what lets a re-fire on a stale
           # tag run CURRENT release machinery rather than whatever was frozen in
           # that tag, which is the only way re-firing a blocked release can ever
-          # clear it. fetch-depth:0 in checkout has $GITHUB_SHA.
+          # clear it. fetch-depth:0 in checkout has $GITHUB_SHA. The native-set
+          # judge that decides what staging may package comes the same way.
+          judge="${RUNNER_TEMP:-/tmp}/assert-native-set.mjs"
+          if ! git show "$GITHUB_SHA:.github/scripts/assert-native-set.mjs" > "$judge" 2>/dev/null; then
+            cp .github/scripts/assert-native-set.mjs "$judge" 2>/dev/null || true
+          fi
           selector="${RUNNER_TEMP:-/tmp}/select-native-config-prebuild.mjs"
           if ! git show "$GITHUB_SHA:.github/scripts/select-native-config-prebuild.mjs" > "$selector" 2>/dev/null; then
             cp .github/scripts/select-native-config-prebuild.mjs "$selector" 2>/dev/null || true
           fi
           if [ ! -s "$selector" ]; then
-            degrade_or_fail "native-config prebuild selector is missing at $GITHUB_SHA and in the release checkout" "0/8"
+            judge_staging "native-config prebuild selector is missing at $GITHUB_SHA and in the release checkout"
           fi
           nc_err="${RUNNER_TEMP:-/tmp}/native-config-select.err"
           if ! selection=$(node "$selector" 2>"$nc_err"); then
             reason=$(tr '\n' ' ' < "$nc_err" | sed 's/  *$//')
-            degrade_or_fail "${reason:-could not select a native-config prebuild run}" "0/8"
+            judge_staging "${reason:-could not select a native-config prebuild run}"
           fi
           # Assert the WHOLE shape, on ONE line. Testing for a tab anywhere is
           # not enough: a stray line ahead of the real answer still contains a
@@ -269,25 +268,21 @@ jobs:
           selection_shape='^[0-9]+'$'\t''[0-9a-f]{7,40}$'
           if [[ ! $selection =~ $selection_shape ]]; then
             flattened=$(printf '%s' "$selection" | tr '\n' ' ')
-            degrade_or_fail "native-config prebuild selector returned an unusable answer: $flattened" "0/8"
+            judge_staging "native-config prebuild selector returned an unusable answer: $flattened"
           fi
           run_id="${selection%%$'\t'*}"
           head_sha="${selection##*$'\t'}"
 
           if ! download_bindings "$run_id"; then
-            degrade_or_fail "could not download native-config-bindings-all from run $run_id after 3 attempts" "0/8"
+            judge_staging "could not download native-config-bindings-all from run $run_id after 3 attempts"
           fi
           find /tmp/nc-bindings -name '*.node' -exec cp -f {} packages/native-config/ \;
           count=$(find packages/native-config -maxdepth 1 -name '*.node' | wc -l | tr -d ' ')
           echo "staged $count native-config prebuilt binaries from run $run_id (commit $head_sha)"
-          if [ "$count" -lt 8 ]; then
-            degrade_or_fail "staged only $count/8 native-config binaries" "$count/8"
-          fi
-          require_windows_targets "staged $count/8 native-config binaries from run $run_id"
-          summarize "$count/8 from run $run_id (commit $head_sha)"
+          judge_staging "staged $count native-config binaries from run $run_id (commit $head_sha)"
 
-      # `pnpm run build` builds the native-config addon's host `.node` via
-      # `napi build` (turbo dep of the cli build), which needs a Rust toolchain.
+      # The workspace build produces native-config's host `.node` via `napi
+      # build` (turbo dep of the cli build), which needs a Rust toolchain.
       # Pin it explicitly rather than relying on whatever `ubuntu-latest`
       # preinstalls, so an image change can't silently break the whole publish at
       # the unguarded cargo invocation. Mirrors native-config-prebuild.yml.
@@ -300,11 +295,21 @@ jobs:
       # in turn fires the cli's `prepublishOnly` (-> `pnpm run build`). The
       # cli's own build chain includes `cp -r ../app/dist dist/public`
       # which silently fails when the app hasn't been built first. Run a
-      # top-level `pnpm run build` (turbo orchestrates the dep order:
+      # top-level turbo build (turbo orchestrates the dep order:
       # app -> cli) so every package's dist/ exists before the publish
       # step runs.
       - name: Build packages
-        run: pnpm run build
+        run: |
+          pnpm exec turbo run build --cache=local:,remote:
+
+      - name: Assert the native-config binary set
+        env:
+          NATIVE_SET_PLATFORMS: ${{ steps.stage.outputs.platforms }}
+        run: |
+          set -euo pipefail
+          git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git show "$GITHUB_SHA:.github/scripts/assert-native-set.mjs" > "$RUNNER_TEMP/assert-native-set.mjs"
+          node "$RUNNER_TEMP/assert-native-set.mjs" platforms "$NATIVE_SET_PLATFORMS"
 
       # --- BETA PATH (push + workflow_dispatch) ---
 
