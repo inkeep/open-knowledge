@@ -1,5 +1,11 @@
 import type { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron';
 import { describe, expect, test, vi } from 'vitest';
+
+const warn = vi.hoisted(() => vi.fn());
+vi.mock('../../src/main/desktop-logger.ts', () => ({
+  getLogger: () => ({ info: () => {}, warn, error: () => {}, debug: () => {} }),
+}));
+
 import {
   buildAssetMenuTemplate,
   popAssetMenu,
@@ -78,6 +84,33 @@ describe('buildAssetMenuTemplate', () => {
     (template[3] as any).click();
     expect(actions.copyLink).toHaveBeenCalledTimes(1);
   });
+
+  test.each([
+    ['reveal', 0],
+    ['openInDefault', 1],
+    ['copyLink', 3],
+  ] as const)(
+    'a rejected or throwing %s action is logged, not left unhandled',
+    async (name, index) => {
+      for (const failure of [
+        () => Promise.reject(new Error('clipboard write failed')),
+        () => {
+          throw new Error('sync failure');
+        },
+      ]) {
+        warn.mockClear();
+        const actions = { ...makeActions(), [name]: vi.fn(failure) };
+        const template = buildAssetMenuTemplate({ kind: 'asset', platform: 'darwin', actions });
+        // biome-ignore lint/suspicious/noExplicitAny: test invokes the click callback
+        (template[index] as any).click();
+        await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(1));
+        expect(warn).toHaveBeenCalledWith(
+          { err: expect.any(Error), action: name },
+          'asset menu action failed',
+        );
+      }
+    },
+  );
 
   test('wiki-link kind produces the same template shape (uniform UX)', () => {
     const wikiActions = makeActions();

@@ -8,7 +8,7 @@ import { describe, expect, test } from 'vitest';
 
 const desktopRoot = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 
-/* UPSTREAM(electron@43.4.0): a sandboxed preload's require resolves only the module names that
+/* UPSTREAM(electron@44.5.1): a sandboxed preload's require resolves only the module names that
    lib/sandboxed_renderer/init.ts maps, and lib/sandboxed_renderer/preload.ts throws
    "module not found" for any other name, Node builtins such as fs included. */
 const SANDBOXED_PRELOAD_MODULES = new Set([

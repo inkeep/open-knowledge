@@ -1,14 +1,24 @@
 import { describe, expect, test, vi } from 'vitest';
 import { type CopyImageToClipboardDeps, copyImageToClipboard } from './copy-image-clipboard.ts';
 
+const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+
+class FakeClipboardItem {
+  readonly types: string[];
+  constructor(readonly items: Record<string, Blob>) {
+    this.types = Object.keys(items);
+  }
+}
+
 function baseDeps(overrides: Partial<CopyImageToClipboardDeps> = {}): CopyImageToClipboardDeps {
   return {
     projectPath: '/proj',
     platform: 'darwin',
     assetOrigin: 'http://localhost:5173',
-    clipboard: { writeImage: vi.fn() },
+    clipboard: { write: vi.fn(async () => {}) },
+    ClipboardItem: FakeClipboardItem as unknown as CopyImageToClipboardDeps['ClipboardItem'],
     nativeImage: {
-      createFromBuffer: () => ({ isEmpty: () => false }),
+      createFromBuffer: () => ({ isEmpty: () => false, toPNG: () => PNG_BYTES }),
     },
     fetch: vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 })),
     resolveCanonical: (p) => p,
@@ -18,10 +28,10 @@ function baseDeps(overrides: Partial<CopyImageToClipboardDeps> = {}): CopyImageT
 
 describe('copyImageToClipboard — same-origin path handling', () => {
   test('refuses %-encoded ../ traversal with path-escape', async () => {
-    const writeImage = vi.fn();
+    const write = vi.fn(async () => {});
     const result = await copyImageToClipboard(
       baseDeps({
-        clipboard: { writeImage },
+        clipboard: { write },
         resolveCanonical: () => '/etc/passwd',
       }),
       { src: 'http://localhost:5173/%2E%2E/%2E%2E/etc/passwd', alt: 'x' },
@@ -31,16 +41,16 @@ describe('copyImageToClipboard — same-origin path handling', () => {
       reason: 'path-escape',
       detail: expect.stringContaining('outside project'),
     });
-    expect(writeImage).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 
   test('windows drive-letter after decode triggers the isAbsolute guard', async () => {
-    const writeImage = vi.fn();
+    const write = vi.fn(async () => {});
     const resolveCanonical = vi.fn((p: string) => p);
     const result = await copyImageToClipboard(
       baseDeps({
         platform: 'win32',
-        clipboard: { writeImage },
+        clipboard: { write },
         resolveCanonical,
       }),
       { src: 'http://localhost:5173/C:/Windows/System32/passwd', alt: 'x' },
@@ -51,14 +61,14 @@ describe('copyImageToClipboard — same-origin path handling', () => {
       detail: expect.stringContaining('absolute rel path'),
     });
     expect(resolveCanonical).not.toHaveBeenCalled();
-    expect(writeImage).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 
   test('realpath ENOENT surfaces as read-error (missing file along the chain)', async () => {
-    const writeImage = vi.fn();
+    const write = vi.fn(async () => {});
     const result = await copyImageToClipboard(
       baseDeps({
-        clipboard: { writeImage },
+        clipboard: { write },
         resolveCanonical: () => {
           throw Object.assign(new Error('no such file'), { code: 'ENOENT' });
         },
@@ -70,14 +80,14 @@ describe('copyImageToClipboard — same-origin path handling', () => {
       reason: 'read-error',
       detail: expect.stringContaining('no such file'),
     });
-    expect(writeImage).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 
   test('readFile EACCES surfaces as read-error (permission denied)', async () => {
-    const writeImage = vi.fn();
+    const write = vi.fn(async () => {});
     const result = await copyImageToClipboard(
       baseDeps({
-        clipboard: { writeImage },
+        clipboard: { write },
         readFile: async () => {
           throw Object.assign(new Error('permission denied'), { code: 'EACCES' });
         },
@@ -89,15 +99,15 @@ describe('copyImageToClipboard — same-origin path handling', () => {
       reason: 'read-error',
       detail: expect.stringContaining('permission denied'),
     });
-    expect(writeImage).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 
   test('non-image extension is refused at the disk-read gate (extension whitelist)', async () => {
-    const writeImage = vi.fn();
+    const write = vi.fn(async () => {});
     const readFile = vi.fn();
     const result = await copyImageToClipboard(
       baseDeps({
-        clipboard: { writeImage },
+        clipboard: { write },
         readFile,
       }),
       { src: 'http://localhost:5173/.ok/config.yml', alt: 'x' },
@@ -108,14 +118,14 @@ describe('copyImageToClipboard — same-origin path handling', () => {
       detail: expect.stringContaining('unsupported ext'),
     });
     expect(readFile).not.toHaveBeenCalled();
-    expect(writeImage).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 
   test('realpath refuses a symlink escape (containment on canonical path, not lexical)', async () => {
-    const writeImage = vi.fn();
+    const write = vi.fn(async () => {});
     const result = await copyImageToClipboard(
       baseDeps({
-        clipboard: { writeImage },
+        clipboard: { write },
         resolveCanonical: () => '/etc/passwd',
       }),
       { src: 'http://localhost:5173/assets/logo.png', alt: 'x' },
@@ -125,16 +135,16 @@ describe('copyImageToClipboard — same-origin path handling', () => {
       reason: 'path-escape',
       detail: expect.stringContaining('outside project'),
     });
-    expect(writeImage).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 });
 
 describe('copyImageToClipboard — cross-origin fetch', () => {
   test('4xx / 5xx response resolves fetch-failed with HTTP status', async () => {
-    const writeImage = vi.fn();
+    const write = vi.fn(async () => {});
     const result = await copyImageToClipboard(
       baseDeps({
-        clipboard: { writeImage },
+        clipboard: { write },
         fetch: vi.fn(async () => new Response('', { status: 404 })),
       }),
       { src: 'https://cdn.example.com/missing.png', alt: 'x' },
@@ -144,14 +154,14 @@ describe('copyImageToClipboard — cross-origin fetch', () => {
       reason: 'fetch-failed',
       detail: 'HTTP 404',
     });
-    expect(writeImage).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 
   test('fetch throw (network error, timeout) surfaces as fetch-failed', async () => {
-    const writeImage = vi.fn();
+    const write = vi.fn(async () => {});
     const result = await copyImageToClipboard(
       baseDeps({
-        clipboard: { writeImage },
+        clipboard: { write },
         fetch: vi.fn(async () => {
           throw new Error('boom');
         }),
@@ -163,18 +173,18 @@ describe('copyImageToClipboard — cross-origin fetch', () => {
       reason: 'fetch-failed',
       detail: 'boom',
     });
-    expect(writeImage).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 });
 
 describe('copyImageToClipboard — decode + write', () => {
   test('empty-image branch when nativeImage.createFromBuffer decodes empty (SVG / AVIF / WebP)', async () => {
-    const writeImage = vi.fn();
+    const write = vi.fn(async () => {});
     const result = await copyImageToClipboard(
       baseDeps({
-        clipboard: { writeImage },
+        clipboard: { write },
         nativeImage: {
-          createFromBuffer: () => ({ isEmpty: () => true }),
+          createFromBuffer: () => ({ isEmpty: () => true, toPNG: () => Buffer.alloc(0) }),
         },
       }),
       { src: 'https://cdn.example.com/x.svg', alt: 'x' },
@@ -183,24 +193,30 @@ describe('copyImageToClipboard — decode + write', () => {
     if (!result.ok) {
       expect(result.reason).toBe('empty-image');
     }
-    expect(writeImage).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 
-  test('happy path: writeImage called, ok:true returned', async () => {
-    const writeImage = vi.fn();
-    const result = await copyImageToClipboard(baseDeps({ clipboard: { writeImage } }), {
-      src: 'https://cdn.example.com/pic.png',
+  test('happy path: writes the image to the clipboard as PNG', async () => {
+    const write = vi.fn(async () => {});
+    const result = await copyImageToClipboard(baseDeps({ clipboard: { write } }), {
+      src: 'https://cdn.example.com/pic.jpg',
       alt: 'x',
     });
     expect(result).toEqual({ ok: true });
-    expect(writeImage).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledTimes(1);
+    const [items] = write.mock.calls[0] as unknown as [FakeClipboardItem[]];
+    expect(items).toHaveLength(1);
+    expect(items[0].types).toEqual(['image/png']);
+    const blob = items[0].items['image/png'];
+    expect(blob.type).toBe('image/png');
+    expect(Buffer.from(await blob.arrayBuffer())).toEqual(PNG_BYTES);
   });
 
-  test('writeImage throw surfaces as write-error (defends against NSPasteboard flakes)', async () => {
-    const writeImage = vi.fn(() => {
+  test('clipboard write rejection surfaces as write-error (defends against NSPasteboard flakes)', async () => {
+    const write = vi.fn(async () => {
       throw new Error('NSPasteboard write failed');
     });
-    const result = await copyImageToClipboard(baseDeps({ clipboard: { writeImage } }), {
+    const result = await copyImageToClipboard(baseDeps({ clipboard: { write } }), {
       src: 'https://cdn.example.com/pic.png',
       alt: 'x',
     });

@@ -79,6 +79,7 @@ const TERMINAL_RULES = [
     'missing-executable',
     /(?:\bspawn\s+\S+\s+ENOENT\b|[\r\n]\s*Error:\s*Cannot find module\b|\bERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL\b[^\r\n]*\bCommand\b[^\r\n]*\bnot found\b|[\r\n]\s*\S{0,256}(?:ba)?sh(?:\.exe)?:[^\r\n]{0,512}:\s*command not found\b)/i,
   ],
+  ['update-manifest', /\bOK_PACKAGING_UPDATE_MANIFEST_FAILURE\b/],
   ['download-integrity', /\b(?:checksum|hash) mismatch,\s*expected\b/i],
 ];
 const TERMINAL_RULE_IDS = Object.freeze(TERMINAL_RULES.map(([id]) => id));

@@ -116,6 +116,7 @@ import type {
 import {
   app,
   BrowserWindow,
+  ClipboardItem,
   clipboard,
   crashReporter,
   dialog,
@@ -4248,9 +4249,7 @@ function registerIpcHandlers() {
               params.relPath,
             );
           },
-          copyLink: () => {
-            clipboard.writeText(params.relPath);
-          },
+          copyLink: () => clipboard.writeText(params.relPath),
         },
       },
     );
@@ -4411,7 +4410,7 @@ function registerIpcHandlers() {
   });
 
   handle('ok:clipboard:write-text', async (_event, text) => {
-    clipboard.writeText(text);
+    await clipboard.writeText(text);
     return undefined;
   });
 
@@ -4424,16 +4423,24 @@ function registerIpcHandlers() {
     if (!projectPath || !apiOrigin) {
       return { ok: false as const, reason: 'read-error' as const, detail: 'no project context' };
     }
-    return copyImageToClipboard(
+    const result = await copyImageToClipboard(
       {
         projectPath,
         platform: process.platform,
         assetOrigin: apiOrigin,
         clipboard,
+        ClipboardItem,
         nativeImage,
       },
       { src, alt },
     );
+    if (!result.ok) {
+      getLogger('copy-image').warn(
+        { reason: result.reason, detail: result.detail },
+        'copy image to clipboard failed',
+      );
+    }
+    return result;
   });
 
   handle('ok:locale:set-preference', async (_event, { preference }) => {
@@ -5810,7 +5817,7 @@ function installDockIcon(instanceLabel: string | null) {
   if (process.platform !== 'darwin') return;
   if (app.isPackaged) return;
   /*
-   * UPSTREAM(electron@43.4.0): an unpackaged app runs out of Electron's own
+   * UPSTREAM(electron@44.5.1): an unpackaged app runs out of Electron's own
    * bundle, so macOS reads the Dock tile name from that Info.plist and
    * `app.setName()` cannot reach it. A badge is the only runtime way to put an
    * instance label on the Dock icon.
