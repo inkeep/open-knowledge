@@ -276,7 +276,7 @@ jobs:
             echo "::warning::No (complete) Azure signing config — building UNSIGNED installers (internal QA only; never distribute)."
             echo "signing_requested=false" >> "$GITHUB_OUTPUT"
           fi
-          node scripts/run-electron-builder.mjs --win --publish never "${extra[@]}"
+          pnpm exec node "$GITHUB_WORKSPACE/.github/scripts/package-desktop.mjs" --win --publish never "${extra[@]}"
 
       - name: Attest signed Windows packages and preserved Microsoft signatures
         id: attest-windows-signing
@@ -516,7 +516,7 @@ jobs:
         # The variant wrapper turns off the native-rebuild pass for `--linux`
         # without asserting that node_modules are staged externally.
         run: |
-          node scripts/run-electron-builder.mjs --linux ${{ matrix.targets }} --publish never
+          pnpm exec node "$GITHUB_WORKSPACE/.github/scripts/package-desktop.mjs" --linux ${{ matrix.targets }} --publish never
 
       - name: Assert Linux terminal native package compatibility
         working-directory: packages/desktop

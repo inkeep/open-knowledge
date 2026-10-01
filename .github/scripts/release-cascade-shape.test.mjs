@@ -1087,7 +1087,22 @@ describe('public desktop product variants stay independently buildable', () => {
     for (const workflow of [desktopBuild, desktopBuildWinLinux]) {
       expect(workflow).toContain('options: [stable, beta]');
       expect(workflow).toContain('OK_DESKTOP_VARIANT:');
-      expect(workflow).toContain('run-electron-builder.mjs');
+    }
+  });
+
+  test('every manual public packaging call runs the wrapper under pnpm exec', () => {
+    for (const workflow of [desktopBuild, desktopBuildWinLinux]) {
+      const calls = workflow
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => !line.startsWith('#'))
+        .filter((line) => /--publish |(?:run-electron-builder|package-desktop)\.mjs/.test(line));
+      expect(calls.length).toBeGreaterThan(0);
+      for (const call of calls) {
+        expect(call).toMatch(
+          /^pnpm exec node "\$GITHUB_WORKSPACE\/\.github\/scripts\/package-desktop\.mjs" --/,
+        );
+      }
     }
   });
 
