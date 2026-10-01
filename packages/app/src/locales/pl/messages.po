@@ -10939,7 +10939,7 @@ msgstr "oczekuje"
 
 #: src/components/acp/working-status.ts
 msgid "Percolating…"
-msgstr "Parzy się…"
+msgstr "Analizowanie…"
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgctxt "settings search keyword"
@@ -13149,7 +13149,7 @@ msgstr "Ustawienia…"
 #. Primary button — begins scaffolding the project
 #: src/components/ConsentDialogBody.tsx
 msgid "Setup"
-msgstr "Konfiguracja"
+msgstr "Skonfiguruj"
 
 #: src/components/ConfigSharingInfoTooltip.tsx
 msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files). Your skills are not covered — they follow git like any other file in the project.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
@@ -14825,11 +14825,11 @@ msgstr "Wiersze terminala i aplikacji desktopowej dla {label} współdzielą jed
 
 #: src/components/TerminalExitNotice.tsx
 msgid "The terminal background service isn't running."
-msgstr "Usługa w tle terminala nie działa."
+msgstr "Usługa terminala w tle nie jest uruchomiona."
 
 #: src/components/TerminalExitNotice.tsx
 msgid "The terminal background service stopped before the shell could start."
-msgstr "Usługa w tle terminala zatrzymała się, zanim powłoka zdążyła się uruchomić."
+msgstr "Usługa terminala w tle zatrzymała się, zanim powłoka zdążyła się uruchomić."
 
 #: src/components/TerminalExitNotice.tsx
 msgid "The terminal can't run this command in the configured shell."

@@ -2868,7 +2868,7 @@
       "Open Knowledge przepisuje te pliki index.md, gdy dokumenty się zmieniają, więc ręczne w nich poprawki są zastępowane."
     ],
     "RD8cCw": ["Zarządzanie połączeniami agentów jest niedostępne w tej wersji."],
-    "RDjuBN": ["Konfiguracja"],
+    "RDjuBN": ["Skonfiguruj"],
     "RDrXh4": ["Skonfiguruj ustawienia użytkownika, projektu i integracji."],
     "RDzxes": ["Przeniesiono ", ["moved"], " z ", ["total"], " umiejętności do: ", ["scopeLabel"]],
     "REkvLz": [
@@ -4574,7 +4574,7 @@
       " utrzymuje serwery MCP projektu jako wyłączone, dopóki nie włączysz ich w sekcji Dostosuj → MCP. OpenKnowledge nie widzi tego ustawienia."
     ],
     "fqSfXY": ["Zamień"],
-    "frREUl": ["Usługa w tle terminala zatrzymała się, zanim powłoka zdążyła się uruchomić."],
+    "frREUl": ["Usługa terminala w tle zatrzymała się, zanim powłoka zdążyła się uruchomić."],
     "ft-BOm": ["Zgłoś błąd…"],
     "fuJZKk": ["Szukaj gałęzi"],
     "fvrHin": ["Dostępne w każdym projekcie na tym komputerze. Nieudostępniane przez git."],
@@ -5590,7 +5590,7 @@
     "oJl7eO": ["Nieznany komponent: ", ["componentName"], " — źródło można edytować poniżej"],
     "oKBnk5": ["Zablokowano kolejne żądania."],
     "oKE6QZ": ["Git zablokował ten worktree, ale nadal można go otworzyć."],
-    "oLyLo6": ["Usługa w tle terminala nie działa."],
+    "oLyLo6": ["Usługa terminala w tle nie jest uruchomiona."],
     "oP-FQW": ["Użyj ścieżki względnej wewnątrz umiejętności"],
     "oPU_4D": ["Wyślij, gdy agent będzie wolny"],
     "oPbSBQ": ["Tworzy link umożliwiający udostępnienie dokumentu lub folderu"],
@@ -6266,7 +6266,7 @@
       "Opisz architekturę tego repozytorium: utwórz stronę przeglądową prowadzącą do osobnej strony każdego głównego modułu, opisującą jego obowiązki i punkty wejścia."
     ],
     "uDzLV-": ["Wpisz poprawny adres URL, np. https://notes.example.com"],
-    "uF82hk": ["Parzy się…"],
+    "uF82hk": ["Analizowanie…"],
     "uF9ruK": ["Zapisywanie"],
     "uFQbYd": ["Strona główna i punkt wejścia."],
     "uGaIIS": ["Przełącz worktree"],
