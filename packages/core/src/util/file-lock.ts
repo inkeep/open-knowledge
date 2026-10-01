@@ -28,8 +28,13 @@ export async function withFileLock<T>(
   const retryIntervalMs = opts.retryIntervalMs ?? 25;
   const staleThresholdMs = timeoutMs * 2;
   const deadline = Date.now() + timeoutMs;
+  let firstAttempt = true;
 
   while (true) {
+    if (!firstAttempt && Date.now() >= deadline) {
+      throw new FileLockTimeoutError(lockPath, timeoutMs);
+    }
+    firstAttempt = false;
     let fd: number;
     try {
       fd = openSync(lockPath, 'wx', 0o600);
@@ -93,8 +98,13 @@ export function withFileLockSync<T>(
   const retryIntervalMs = opts.retryIntervalMs ?? 25;
   const staleThresholdMs = timeoutMs * 2;
   const deadline = Date.now() + timeoutMs;
+  let firstAttempt = true;
 
   while (true) {
+    if (!firstAttempt && Date.now() >= deadline) {
+      throw new FileLockTimeoutError(lockPath, timeoutMs);
+    }
+    firstAttempt = false;
     let fd: number;
     try {
       fd = openSync(lockPath, 'wx', 0o600);
