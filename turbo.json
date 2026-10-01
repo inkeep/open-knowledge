@@ -1,6 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "cacheDir": ".turbo/cache",
+  "agentGuidance": false,
   "remoteCache": {
     "signature": true
   },
@@ -102,7 +103,6 @@
     "@inkeep/open-knowledge-server#test": {
       "dependsOn": ["^build"],
       "cache": true,
-      "with": ["//#test:uncached"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "!CHANGELOG.md",

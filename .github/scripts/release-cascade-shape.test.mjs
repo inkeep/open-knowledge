@@ -664,7 +664,7 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     expect(retry).not.toContain('--force');
   });
 
-  test('both attempts run every package, so server#test and the uncached tier it brings run on the verified tree', () => {
+  test('both attempts run every package, so a filter cannot drop server#test or the uncached tier from the verified tree', () => {
     const commands = verify
       .replace(/\\\n\s*/g, ' ')
       .split('\n')

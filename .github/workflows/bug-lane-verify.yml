@@ -342,7 +342,7 @@ jobs:
           TIER_BUDGET_SECONDS=1500
           FIRST_STATUS=0
           timeout --foreground --kill-after=10s "${TIER_BUDGET_SECONDS}s" \
-            pnpm exec turbo run typecheck test --concurrency=2 --continue --output-logs=errors-only \
+            pnpm exec turbo run typecheck test test:uncached --concurrency=2 --continue --output-logs=errors-only \
             || FIRST_STATUS=$?
           RETRY_STATUS=0
           if [[ "$FIRST_STATUS" -ne 0 ]]; then
@@ -359,7 +359,7 @@ jobs:
                 ;;
               *)
                 if timeout --foreground --kill-after=10s "${TIER_BUDGET_SECONDS}s" \
-                  pnpm exec turbo run typecheck test --concurrency=2 --output-logs=errors-only 2>&1 | tee "$RETRY_LOG"; then
+                  pnpm exec turbo run typecheck test test:uncached --concurrency=2 --output-logs=errors-only 2>&1 | tee "$RETRY_LOG"; then
                   RETRY_STATUS=0
                 else
                   # Read BEFORE any other command: the next one clobbers it.

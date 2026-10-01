@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { CACHE_KEY_FILE, cacheKey, writeCacheKey } from './create-turbo-cache-key.mjs';
+import { withoutTurboAgentDetection } from '../test-support/turbo-agent-env.test-helper.mjs';
 import { gitCleanEnv } from './git-clean-env.mjs';
 
 const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -80,7 +81,7 @@ function write(root, path, body) {
 }
 
 function isolatedEnv(extra = {}) {
-  const ambient = Object.entries(gitCleanEnv()).filter(
+  const ambient = Object.entries(withoutTurboAgentDetection(gitCleanEnv())).filter(
     ([key]) => !key.startsWith('TURBO_') && !key.startsWith('GIT_CONFIG'),
   );
   return {
@@ -133,6 +134,7 @@ function fixture(globalDependencies) {
     'turbo.json',
     `${JSON.stringify(
       {
+        agentGuidance: false,
         globalDependencies,
         tasks: {
           build: { dependsOn: ['^build'], outputs: ['dist/**'] },
