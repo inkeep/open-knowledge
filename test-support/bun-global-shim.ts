@@ -82,20 +82,14 @@ class BunGlobFacade {
     return this.#regex.test(candidate);
   }
 
-  *scanSync(options: GlobScanOptions | string = {}): Generator<string> {
+  scanSync(options: GlobScanOptions | string = {}): Generator<string> {
     const opts = typeof options === 'string' ? { cwd: options } : options;
     const cwd = opts.cwd ?? process.cwd();
     const absolute = opts.absolute ?? false;
     const onlyFiles = opts.onlyFiles ?? true;
     const walk = (dir: string, prefix: string): string[] => {
       const results: string[] = [];
-      let entries: fs.Dirent[];
-      try {
-        entries = fs.readdirSync(dir, { withFileTypes: true });
-      } catch {
-        return results;
-      }
-      for (const entry of entries) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         if (entry.name.startsWith('.')) continue;
         const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
         if (entry.isDirectory()) {
@@ -107,9 +101,10 @@ class BunGlobFacade {
       }
       return results;
     };
-    for (const rel of walk(cwd, '')) {
-      yield absolute ? path.join(cwd, rel) : rel;
-    }
+    const found = walk(cwd, '');
+    return (function* () {
+      for (const rel of found) yield absolute ? path.join(cwd, rel) : rel;
+    })();
   }
 
   async *scan(options: GlobScanOptions | string = {}): AsyncGenerator<string> {
@@ -196,8 +191,7 @@ function bunWhich(command: string, options?: { PATH?: string; cwd?: string }): s
     try {
       fs.accessSync(candidate, fs.constants.X_OK);
       return candidate;
-    } catch {
-    }
+    } catch {}
   }
   return null;
 }
