@@ -1189,7 +1189,6 @@
     "AddR83": ["Nie udało się utworzyć projektu. Spróbuj ponownie albo wybierz inną lokalizację."],
     "AdjDox": ["Szkic"],
     "AeHuzT": ["# Jeden wzorzec w linii.\n# Przykłady:\n#   drafts/\n#   *.draft.md\n#   !keep.md"],
-    "AeLo3p": ["OpenKnowledge rozwiązało konflikt w ", ["subject"]],
     "AeORtB": [
       "Zaznaczono: ",
       ["innermostLabel"],
@@ -1297,7 +1296,6 @@
     "BgV29F": ["Aktywne pole wyszukiwania w edytorze wizualnym"],
     "Bgaa_U": ["Nie udało się zaktualizować ustawienia wydajności — ", ["detail"]],
     "BhLPRk": ["Cofnięto \"", ["name"], "\" do zainstalowanej wersji"],
-    "BhMWIs": ["Odczytuje nierozwiązane konflikty między zmianami"],
     "BiVBP9": ["Nie udało się odczytać języków sprawdzania pisowni."],
     "BjitBo": ["Pobierz ", ["0"]],
     "BkGtRl": [
@@ -2748,6 +2746,11 @@
     "Pw5PTU": ["Zewnętrzny origin"],
     "PxZCNM": ["Poza zakresem, który Open Knowledge zapisuje w commitach."],
     "Q-DKvr": ["Zainstaluj z ", ["source"]],
+    "Q-a_4h": [
+      "Pomóż mi zrozumieć konflikt w ",
+      ["filePath"],
+      ". Wyjaśnij, co powinienem porównać w widoku konfliktów OpenKnowledge; tam wybiorę i zastosuję rozwiązanie."
+    ],
     "Q1mtyd": ["Ukryj panel boczny"],
     "Q5fqMz": ["Błąd połączenia — spróbuj ponownie"],
     "Q6hhn8": ["Preferencje"],
@@ -2992,9 +2995,6 @@
     "S33tz3": ["Niepołączone"],
     "S3qu11": ["To był projekt próbny lub jednorazowy"],
     "S48xcO": ["oczekuje"],
-    "S6SbxA": [
-      "Zastępuje istniejący wpis \"open-knowledge\" w tym pliku. Inne serwery w pliku pozostają bez zmian."
-    ],
     "S6eHlw": ["Najpierw otwórz projekt."],
     "S6l5dv": ["Nie udało się rozpocząć tworzenia nowego elementu"],
     "S9Vnum": ["Usuń ", ["patternText"]],
@@ -3856,7 +3856,6 @@
       "Kopia tylko do odczytu bloku MirrorSource z innego dokumentu. Edytuj w źródle — zaktualizuje się na żywo."
     ],
     "_XWY2J": ["Terminal wyłączony"],
-    "_YWqV2": ["OpenKnowledge rozwiązało konflikt"],
     "_ayOfA": [
       "Baza wiedzy zgodna z Google Open Knowledge Format, wspólnym sposobem organizowania posiadanej wiedzy. Wybierz ją, jeśli chcesz, aby twoje notatki dobrze współpracowały z innymi narzędziami rozumiejącymi ten format."
     ],
@@ -4901,7 +4900,6 @@
     "i92eAT": [
       "Utworzymy repozytorium i rozpoczniemy synchronizację — terminal nie jest potrzebny."
     ],
-    "i94lQe": ["OpenKnowledge sprawdziło konflikty"],
     "i9OyGp": ["Cofnij lub przywróć"],
     "i9TPUi": [
       "Tego ",
@@ -5701,9 +5699,6 @@
       ", ponieważ zawiera folder .git"
     ],
     "pZAs1T": ["Nie udało się wczytać linków wychodzących"],
-    "pZaMLc": [
-      "Ten plik zawiera linie wyglądające jak znaczniki konfliktu, więc granic konfliktu nie da się wiarygodnie odczytać. Rozwiąż go ręcznie albo za pomocą Zapytaj AI."
-    ],
     "paCw0z": ["wszystko w folderach ", ["0"], "/ wewnątrz ", ["1"], "/"],
     "pajIrl": ["Nie udało się wyłączyć terminala: ", ["0"]],
     "pbwTg6": [["seconds"], " sek. temu"],
@@ -6283,6 +6278,11 @@
     "uM6jnS": ["Przywracanie nie powiodło się"],
     "uNGmQn": ["Nie udało się uruchomić testu. Sprawdź, czy OpenKnowledge nadal działa."],
     "uO9WLl": ["Wyślij"],
+    "uOKoBM": [
+      "Zastępuje istniejący wpis ",
+      ["server"],
+      " w tym pliku. Inne serwery w pliku pozostają bez zmian."
+    ],
     "uPJml1": ["Zezwolono tylko na odczyt"],
     "uQNW00": ["Odłączony HEAD — przełącz na gałąź, aby wznowić"],
     "uQewpR": [
@@ -6329,7 +6329,6 @@
         }
       ]
     ],
-    "uhYnaD": ["Rozwiązuje konflikt, wybierając zawartość do zachowania"],
     "uksqrP": ["Nie znaleziono repozytorium. Mogło zostać zmienione, usunięte lub przeniesione."],
     "ul1Atu": ["Konwertowanie..."],
     "um-es7": ["Dostarcz edytor z"],
@@ -6699,6 +6698,9 @@
     "xtJgSe": ["To źródło zawiera kilka umiejętności — wybierz tę do zaimportowania."],
     "xvv5gL": ["Podgląd zrzutu ekranu"],
     "xxRpzT": ["Znaleziono Slidev w Twoim systemie."],
+    "xxxG_a": [
+      "Ten plik zawiera linie wyglądające jak znaczniki konfliktu, więc granic konfliktu nie da się wiarygodnie odczytać. Rozwiąż znaczniki w pliku ręcznie."
+    ],
     "xzAmL_": ["Zatwierdzone automatycznie"],
     "xzktOa": ["Edytuj link wiki"],
     "y-LQPF": ["Nie można rozwiązać obrazu ", ["identity"], ". Przejdź do odwołania."],

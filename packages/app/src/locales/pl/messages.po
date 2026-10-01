@@ -7107,6 +7107,10 @@ msgstr "Witaj, świecie!"
 msgid "Help"
 msgstr "Pomoc"
 
+#: src/lib/conflict-resolve-draft.ts
+msgid "Help me understand the conflict in {filePath}. Explain what I should compare in the OpenKnowledge Conflict view; I will choose and apply the resolution there."
+msgstr "Pomóż mi zrozumieć konflikt w {filePath}. Wyjaśnij, co powinienem porównać w widoku konfliktów OpenKnowledge; tam wybiorę i zastosuję rozwiązanie."
+
 #. Subtext under the discovery-skill checkbox
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -10375,10 +10379,6 @@ msgid "OpenKnowledge checked {subject}"
 msgstr "OpenKnowledge sprawdziło {subject}"
 
 #: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge checked for conflicts"
-msgstr "OpenKnowledge sprawdziło konflikty"
-
-#: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge sprawdziło projekt"
 
@@ -10558,14 +10558,6 @@ msgstr "OpenKnowledge odczytało ustawienia projektu"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge read the setting {key}"
 msgstr "OpenKnowledge odczytało ustawienie {key}"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict"
-msgstr "OpenKnowledge rozwiązało konflikt"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict in {subject}"
-msgstr "OpenKnowledge rozwiązało konflikt w {subject}"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge restored an earlier version"
@@ -11545,10 +11537,6 @@ msgstr "Odczytuje historię wersji dokumentu lub umiejętności albo aktywność
 msgid "Reads this project's OpenKnowledge settings"
 msgstr "Odczytuje ustawienia OpenKnowledge tego projektu"
 
-#: src/lib/acp/tool-call-display.ts
-msgid "Reads unresolved conflicts between edits"
-msgstr "Odczytuje nierozwiązane konflikty między zmianami"
-
 #: src/components/SessionsHost.tsx
 msgid "Ready"
 msgstr "Gotowe"
@@ -12049,8 +12037,8 @@ msgid "Replace these symlinks with independent copies?"
 msgstr "Zastąpić te dowiązania symboliczne niezależnymi kopiami?"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
-msgid "Replaces the existing \"open-knowledge\" entry in this file. Other servers in the file are left alone."
-msgstr "Zastępuje istniejący wpis \"open-knowledge\" w tym pliku. Inne serwery w pliku pozostają bez zmian."
+msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
+msgstr "Zastępuje istniejący wpis {server} w tym pliku. Inne serwery w pliku pozostają bez zmian."
 
 #. placeholder {0}: formatToolList( replacing.map((e) => e.label), i18n.locale, )
 #: src/components/McpConsentDialogBody.tsx
@@ -12208,10 +12196,6 @@ msgstr "Rozwiąż konflikt dotyczący {files} i jeszcze {overflow} przed usunię
 #: src/comments/ThreadCard.tsx
 msgid "Resolved"
 msgstr "Rozwiązano"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "Resolves a conflict by choosing which content to keep"
-msgstr "Rozwiązuje konflikt, wybierając zawartość do zachowania"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
@@ -15155,8 +15139,8 @@ msgid "This file can't be opened in the text editor."
 msgstr "Tego pliku nie można otworzyć w edytorze tekstu."
 
 #: src/components/ConflictView.tsx
-msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI."
-msgstr "Ten plik zawiera linie wyglądające jak znaczniki konfliktu, więc granic konfliktu nie da się wiarygodnie odczytać. Rozwiąż go ręcznie albo za pomocą Zapytaj AI."
+msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve the markers in the file by hand."
+msgstr "Ten plik zawiera linie wyglądające jak znaczniki konfliktu, więc granic konfliktu nie da się wiarygodnie odczytać. Rozwiąż znaczniki w pliku ręcznie."
 
 #: src/components/use-viewer-text.ts
 msgid "This file could not be found."
