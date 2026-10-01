@@ -17,6 +17,7 @@ const CATALOG_LOADERS: Record<SupportedLocale, CatalogLoader> = {
   id: () => import('@/locales/id/messages.json'),
   ur: () => import('@/locales/ur/messages.json'),
   ko: () => import('@/locales/ko/messages.json'),
+  pl: () => import('@/locales/pl/messages.json'),
 };
 
 const loadedLocales = new Set<SupportedLocale>([FALLBACK_LOCALE]);

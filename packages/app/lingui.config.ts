@@ -41,6 +41,7 @@ export default defineConfig({
     'id',
     'ur',
     'ko',
+    'pl',
     'pseudo',
   ],
   pseudoLocale: 'pseudo',

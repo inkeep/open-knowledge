@@ -90,6 +90,7 @@ test.describe('language picker', () => {
       'português (Brasil)',
       'Indonesia',
       '한국어',
+      'polski',
     ]);
   });
 });

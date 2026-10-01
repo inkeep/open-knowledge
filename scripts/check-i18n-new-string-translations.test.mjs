@@ -37,6 +37,7 @@ describe('locale enumeration', () => {
       'id',
       'ur',
       'ko',
+      'pl',
     ]);
   });
 

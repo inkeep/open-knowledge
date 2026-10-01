@@ -15,6 +15,7 @@ const EXCALIDRAW_LANG_CODE_BY_LOCALE = {
   id: 'id-ID',
   ur: null,
   ko: 'ko-KR',
+  pl: 'pl-PL',
 } as const satisfies Record<SupportedLocale, string | null>;
 
 export const BOARD_FALLBACK_LOCALES = SUPPORTED_LOCALES.filter(
