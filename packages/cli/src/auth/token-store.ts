@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/server';
+import { currentDesktopProduct, okUserHomeDisplayPath } from '@inkeep/open-knowledge-core';
+import { atomicWriteFileSync, okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { parse as yamlParse, stringify as yamlStringify } from 'yaml';
 
 interface TokenEntry {
@@ -24,7 +24,13 @@ export interface TokenStore {
   clear(host: string): Promise<void>;
 }
 
-const KEYRING_SERVICE = 'open-knowledge';
+export function authFileDisplayPath(): string {
+  return okUserHomeDisplayPath('auth.yml');
+}
+
+function keyringService(): string {
+  return currentDesktopProduct().keyringService;
+}
 
 function safeDiag(fn: () => void): void {
   try {
@@ -54,7 +60,7 @@ class KeyringBackend implements TokenStore {
     const { Entry } = await import('@napi-rs/keyring');
     let raw: string | null;
     try {
-      raw = new Entry(KEYRING_SERVICE, host).getPassword();
+      raw = new Entry(keyringService(), host).getPassword();
     } catch (e) {
       safeDiag(() =>
         this.onKeychainRead?.({
@@ -88,7 +94,7 @@ class KeyringBackend implements TokenStore {
     extra?: Pick<TokenEntry, 'gitProtocol' | 'name' | 'email'>,
   ): Promise<void> {
     const { Entry } = await import('@napi-rs/keyring');
-    const entry = new Entry(KEYRING_SERVICE, host);
+    const entry = new Entry(keyringService(), host);
     const data: TokenEntry = { login, token, ...extra };
     entry.setPassword(JSON.stringify(data));
   }
@@ -96,7 +102,7 @@ class KeyringBackend implements TokenStore {
   async clear(host: string): Promise<void> {
     const { Entry } = await import('@napi-rs/keyring');
     try {
-      const entry = new Entry(KEYRING_SERVICE, host);
+      const entry = new Entry(keyringService(), host);
       entry.deletePassword();
     } catch {}
   }
@@ -107,7 +113,7 @@ export class FileBackend implements TokenStore {
   private readonly authFile: string;
 
   constructor(authFile?: string) {
-    this.authFile = authFile ?? join(homedir(), '.ok', 'auth.yml');
+    this.authFile = authFile ?? join(okUserHomeDir(), 'auth.yml');
   }
 
   private read(): Record<string, TokenEntry> {
@@ -177,7 +183,7 @@ class KeychainWithFileFallback implements TokenStore {
       });
       await this.file.clear(host);
       process.stderr.write(
-        `[auth] migrated ${host} credential from ~/.ok/auth.yml to the OS keychain\n`,
+        `[auth] migrated ${host} credential from ${authFileDisplayPath()} to the OS keychain\n`,
       );
     } catch {}
     return fromFile;
@@ -204,7 +210,7 @@ export async function createTokenStore(
 ): Promise<TokenStore> {
   try {
     const { Entry } = await import('@napi-rs/keyring');
-    new Entry(KEYRING_SERVICE, '__probe__');
+    new Entry(keyringService(), '__probe__');
     process.stderr.write('[auth] token storage: OS keychain\n');
     safeDiag(() => diag?.onBackendSelected?.({ backend: 'keyring' }));
     return new KeychainWithFileFallback(
@@ -214,7 +220,7 @@ export async function createTokenStore(
   } catch (e) {
     const reason = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
     process.stderr.write(
-      `[auth] token storage: file (~/.ok/auth.yml) — OS keychain unavailable: ${reason}\n`,
+      `[auth] token storage: file (${authFileDisplayPath()}) — OS keychain unavailable: ${reason}\n`,
     );
     safeDiag(() => diag?.onBackendSelected?.({ backend: 'file', reason }));
     return new FileBackend(authFile);
@@ -231,7 +237,7 @@ function lazyResolveTokenStore(authFile: string | undefined): () => Promise<Toke
       const timeout = new Promise<TokenStore>((res) => {
         timer = setTimeout(() => {
           process.stderr.write(
-            `[auth] token storage: keyring init exceeded ${TIMEOUT_MS}ms; falling back to file (~/.ok/auth.yml)\n`,
+            `[auth] token storage: keyring init exceeded ${TIMEOUT_MS}ms; falling back to file (${authFileDisplayPath()})\n`,
           );
           res(new FileBackend(authFile));
         }, TIMEOUT_MS);
@@ -295,7 +301,7 @@ export async function clearTokenFromAllBackends(
   let keychainError: string | undefined;
   try {
     const { Entry } = await import('@napi-rs/keyring');
-    new Entry(KEYRING_SERVICE, '__probe__');
+    new Entry(keyringService(), '__probe__');
     let readError: string | undefined;
     const keyring = new KeyringBackend((info) => {
       if (info.kind === 'read-error') readError = info.error ?? 'read-error';
@@ -305,7 +311,7 @@ export async function clearTokenFromAllBackends(
       keychainError = readError;
     } else if (existing != null) {
       try {
-        new Entry(KEYRING_SERVICE, host).deletePassword();
+        new Entry(keyringService(), host).deletePassword();
         touched.push('keychain');
       } catch (e) {
         keychainError = e instanceof Error ? e.name : 'delete-error';

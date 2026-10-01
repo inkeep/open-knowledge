@@ -18,6 +18,7 @@ import {
   type McpEntryClassification,
 } from '@inkeep/open-knowledge';
 import { CONNECTION_ROW_AGENT_IDS, classifyMcpLauncherEntry } from '@inkeep/open-knowledge-core';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type {
   McpWiringConfirmRequest,
@@ -33,7 +34,6 @@ import { type SendableWebContents, sendToRenderer } from '../shared/ipc-send.ts'
 import { classifyInstallShape } from './install-shape.ts';
 import { logIpcError } from './ipc-log.ts';
 
-const MCP_STATUS_DIR_NAME = '.ok';
 const MCP_STATUS_FILE_NAME = 'mcp-status.json';
 
 export type McpStatusMarker =
@@ -74,7 +74,7 @@ const defaultFsOps: McpWiringFsOps = {
 };
 
 function mcpStatusMarkerPath(home: string): string {
-  return join(home, MCP_STATUS_DIR_NAME, MCP_STATUS_FILE_NAME);
+  return join(okUserHomeDir(home), MCP_STATUS_FILE_NAME);
 }
 
 export function readMcpStatusMarker(

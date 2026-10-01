@@ -1,12 +1,14 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { pathShimBlockLabel, pathShimFishConfFileName } from '@inkeep/open-knowledge-core';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   extraSymlinkStillOurs,
   PATH_SHIM_BEGIN,
   PATH_SHIM_END,
   pathInstallMarkerPath,
+  pathShimFishConfName,
   readPathInstallMarker,
   stripManagedPathBlock,
 } from './path-shim.ts';
@@ -106,5 +108,48 @@ describe('extraSymlinkStillOurs', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('path shim per channel', () => {
+  const BETA_BLOCK =
+    '# >>> open-knowledge beta cli >>>\n[ -f "$HOME/.ok-beta/env.sh" ] && . "$HOME/.ok-beta/env.sh"\n# <<< open-knowledge beta cli <<<\n';
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('Stable keeps its Application Support marker and strips only the Stable block', () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    expect(pathInstallMarkerPath('/home/me')).toBe(
+      join('/home/me', 'Library', 'Application Support', 'OpenKnowledge', 'path-install.json'),
+    );
+    const { text } = stripManagedPathBlock(`${block()}${BETA_BLOCK}`);
+    expect(text).toBe(BETA_BLOCK);
+  });
+
+  test('Beta reads its marker under ~/.ok-beta and strips only the Beta block', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    expect(pathInstallMarkerPath('/home/me')).toBe(
+      join('/home/me', '.ok-beta', 'path-install.json'),
+    );
+    const { text, changed } = stripManagedPathBlock(`${block()}${BETA_BLOCK}`);
+    expect(changed).toBe(true);
+    expect(text).toBe(block());
+  });
+
+  test('Beta removes the fish file and block the desktop installer writes', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    expect(pathShimFishConfName()).toBe(pathShimFishConfFileName('beta'));
+    expect(pathShimFishConfName()).toBe('open-knowledge-beta.fish');
+    const label = pathShimBlockLabel('beta');
+    expect(label).toBe('open-knowledge beta cli');
+    const fish = `# >>> ${label} >>>\nset -gx PATH "$HOME/.ok-beta/bin" $PATH\n# <<< ${label} <<<\n`;
+    expect(stripManagedPathBlock(fish)).toEqual({ text: '', changed: true, emptyAfter: true });
+  });
+
+  test('Stable keeps its fish file name', () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    expect(pathShimFishConfName()).toBe('open-knowledge.fish');
   });
 });

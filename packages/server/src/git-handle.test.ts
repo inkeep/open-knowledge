@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { DESKTOP_PRODUCTS, resolveDesktopProductName } from '@inkeep/open-knowledge-core';
 import shellQuote from 'shell-quote';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -420,6 +421,31 @@ describe('buildSyncCredentialConfig()', () => {
     const argv = ['/Users/me/Library/Application Support/bun', '/opt/ok cli/cli.mjs'];
     const config = buildSyncCredentialConfig(argv, { resetAmbient: true });
     expect(argvFromHelper(config)).toEqual([...argv, 'auth', 'git-credential']);
+  });
+
+  test('Beta channel from OK_CHANNEL under a node execPath pins OK_CHANNEL=beta into the helper', () => {
+    withEnvEntries({ OK_CHANNEL: 'beta' }, () => {
+      const argv = ['/usr/local/bin/node', '/opt/ok/cli.mjs'];
+      const config = buildSyncCredentialConfig(argv, { resetAmbient: true });
+      const helper = config.at(-1)?.slice('credential.helper=!'.length) ?? '';
+      const parsed = shellQuote.parse(helper);
+      expect(parsed).toEqual(['OK_CHANNEL=beta', ...argv, 'auth', 'git-credential']);
+      const helperEnv = { OK_CHANNEL: String(parsed[0]).split('=')[1] };
+      expect(DESKTOP_PRODUCTS[resolveDesktopProductName(helperEnv, argv[0])].keyringService).toBe(
+        'open-knowledge-beta',
+      );
+    });
+  });
+
+  test('Stable channel keeps the helper unpinned', () => {
+    withEnvEntries({ OK_CHANNEL: undefined }, () => {
+      const config = buildSyncCredentialConfig(['/usr/local/bin/node', '/opt/ok/cli.mjs'], {
+        resetAmbient: true,
+      });
+      expect(config.at(-1)).toBe(
+        'credential.helper=!/usr/local/bin/node /opt/ok/cli.mjs auth git-credential',
+      );
+    });
   });
 
   test('embedded single quote in the path round-trips safely', () => {

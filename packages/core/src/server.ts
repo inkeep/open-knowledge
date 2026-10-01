@@ -25,6 +25,7 @@ export {
   type WriteConfigPatchSuccess,
   writeConfigPatch,
 } from './config/write-config-patch.ts';
+export { okUserHomeDir } from './constants/ok-user-home.ts';
 export {
   LOCALE_OVERRIDE_ENV_VAR,
   type LocaleEnvironment,

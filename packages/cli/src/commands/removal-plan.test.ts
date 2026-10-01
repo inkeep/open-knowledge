@@ -11,9 +11,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
+import { SHARED_OK_ENTRIES } from '@inkeep/open-knowledge-core';
 import { MCP_SERVER_NAME } from '@inkeep/open-knowledge-server';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { DESKTOP_UPDATER_CACHE_DIR_NAME } from '../integrations/desktop-state.ts';
 import { readPathInstallMarker } from '../integrations/path-shim.ts';
 import {
@@ -441,13 +442,16 @@ describe('runRemoval — uninstall end to end', () => {
     }
   });
 
-  test('--purge-content also removes user-authored ~/.ok/skills', async () => {
+  test('--purge-content also removes user-authored ~/.ok/skills but keeps the shared machine-id', async () => {
     const home = mkdtempSync(join(tmpdir(), 'ok-uninst-'));
     try {
       seedHome(home);
+      write(join(home, '.ok', 'machine-id'), 'abc\n');
       const plan = buildUninstallPlan(baseInput(home, { purgeContent: true }));
       await runRemoval(plan, stubDeps());
-      expect(existsSync(join(home, '.ok'))).toBe(false);
+      expect(existsSync(join(home, '.ok', 'skills'))).toBe(false);
+      expect(existsSync(join(home, '.ok', 'auth.yml'))).toBe(false);
+      expect(readFileSync(join(home, '.ok', 'machine-id'), 'utf-8')).toBe('abc\n');
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -1313,4 +1317,207 @@ describe('shell configuration symlinks', () => {
       }
     },
   );
+});
+
+describe('uninstall owns only its own channel', () => {
+  const STABLE_BLOCK =
+    '# >>> open-knowledge cli >>>\n[ -f "$HOME/.ok/env.sh" ] && . "$HOME/.ok/env.sh"\n# <<< open-knowledge cli <<<\n';
+  const BETA_BLOCK =
+    '# >>> open-knowledge beta cli >>>\n[ -f "$HOME/.ok-beta/env.sh" ] && . "$HOME/.ok-beta/env.sh"\n# <<< open-knowledge beta cli <<<\n';
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function seedBothChannels(home: string): string {
+    write(join(home, '.ok', 'auth.yml'), 'github.com: {}\n');
+    write(join(home, '.ok-beta', 'auth.yml'), 'github.com: {}\n');
+    write(join(home, '.ok', 'machine-id'), 'shared-id\n');
+    write(join(home, '.ok', 'skills', 'mine', 'SKILL.md'), '# mine\n');
+    const zshrc = join(home, '.zshrc');
+    writeFileSync(zshrc, `export EDITOR=vim\n\n${STABLE_BLOCK}\n${BETA_BLOCK}`);
+    return zshrc;
+  }
+
+  function planPaths(ops: readonly RemovalOp[]): string[] {
+    return ops.flatMap((op) => ('path' in op ? [op.path] : 'rcFile' in op ? [op.rcFile] : []));
+  }
+
+  test('Stable removes ~/.ok and its own rc block, never ~/.ok-beta or Beta app data', async () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    const home = mkdtempSync(join(tmpdir(), 'ok-uninst-channel-'));
+    try {
+      const zshrc = seedBothChannels(home);
+      const plan = buildUninstallPlan(baseInput(home, { marker: null }));
+      const globalOp = plan.ops.find((o) => o.group === 'Global directory');
+      expect(globalOp).toMatchObject({
+        path: join(home, '.ok'),
+        label:
+          'Remove ~/.ok (keeping ~/.ok/machine-id, ~/.ok/skills, ~/.ok/skills-lock.json, ~/.ok/local/installed-skills.json, ~/.ok/local/skill-placements.json, ~/.ok/local/skill-move-retained.json, shared by every channel)',
+      });
+      const paths = planPaths(plan.ops);
+      expect(paths).toContain(join(home, 'Library', 'Application Support', 'OpenKnowledge'));
+      expect(paths).toContain(join(home, 'Library', 'Caches', DESKTOP_UPDATER_CACHE_DIR_NAME));
+      expect(paths.filter((p) => relative(home, p).toLowerCase().includes('beta'))).toEqual([]);
+
+      expect((await runRemoval(plan, stubDeps())).failed).toHaveLength(0);
+      expect(existsSync(join(home, '.ok', 'auth.yml'))).toBe(false);
+      expect(readFileSync(join(home, '.ok', 'machine-id'), 'utf-8')).toBe('shared-id\n');
+      expect(existsSync(join(home, '.ok', 'skills', 'mine', 'SKILL.md'))).toBe(true);
+      expect(existsSync(join(home, '.ok-beta', 'auth.yml'))).toBe(true);
+      const after = readFileSync(zshrc, 'utf-8');
+      expect(after).not.toContain('# >>> open-knowledge cli >>>');
+      expect(after).toContain(BETA_BLOCK);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('Beta removes ~/.ok-beta and its own rc block, never ~/.ok or Stable app data', async () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    const home = mkdtempSync(join(tmpdir(), 'ok-uninst-channel-'));
+    try {
+      const zshrc = seedBothChannels(home);
+      const plan = buildUninstallPlan(baseInput(home, { marker: null }));
+      const globalOp = plan.ops.find((o) => o.group === 'Global directory');
+      expect(globalOp).toMatchObject({
+        path: join(home, '.ok-beta'),
+        label: 'Remove ~/.ok-beta (keeping ~/.ok/skills, shared by every channel)',
+      });
+      expect(globalOp).not.toHaveProperty('preserve');
+      const paths = planPaths(plan.ops);
+      expect(paths).toContain(join(home, 'Library', 'Application Support', 'OpenKnowledge Beta'));
+      expect(paths).toContain(
+        join(home, 'Library', 'Caches', 'openknowledge-beta-desktop-updater'),
+      );
+      expect(
+        paths.filter(
+          (p) =>
+            p === join(home, '.ok') ||
+            p.startsWith(`${join(home, '.ok')}/`) ||
+            p.endsWith('/OpenKnowledge') ||
+            p.endsWith('/Open Knowledge') ||
+            p.endsWith(DESKTOP_UPDATER_CACHE_DIR_NAME),
+        ),
+      ).toEqual([]);
+
+      expect((await runRemoval(plan, stubDeps())).failed).toHaveLength(0);
+      expect(existsSync(join(home, '.ok-beta', 'auth.yml'))).toBe(false);
+      expect(existsSync(join(home, '.ok', 'auth.yml'))).toBe(true);
+      expect(readFileSync(join(home, '.ok', 'machine-id'), 'utf-8')).toBe('shared-id\n');
+      expect(existsSync(join(home, '.ok', 'skills', 'mine', 'SKILL.md'))).toBe(true);
+      const after = readFileSync(zshrc, 'utf-8');
+      expect(after).toContain(STABLE_BLOCK);
+      expect(after).not.toContain('open-knowledge beta cli');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('Beta --purge-content removes the shared ~/.ok/skills store, never ~/.ok/machine-id', async () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    const home = mkdtempSync(join(tmpdir(), 'ok-uninst-channel-'));
+    try {
+      seedBothChannels(home);
+      const plan = buildUninstallPlan(baseInput(home, { marker: null, purgeContent: true }));
+      expect(plan.ops.filter((o) => o.group === 'Global directory')).toMatchObject([
+        { path: join(home, '.ok-beta'), label: 'Remove ~/.ok-beta' },
+        {
+          path: join(home, '.ok', 'skills'),
+          label: 'Remove ~/.ok/skills (user-authored skills, shared by every channel)',
+        },
+      ]);
+
+      expect((await runRemoval(plan, stubDeps())).failed).toHaveLength(0);
+      expect(existsSync(join(home, '.ok-beta'))).toBe(false);
+      expect(existsSync(join(home, '.ok', 'skills'))).toBe(false);
+      expect(readFileSync(join(home, '.ok', 'machine-id'), 'utf-8')).toBe('shared-id\n');
+      expect(existsSync(join(home, '.ok', 'auth.yml'))).toBe(true);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  const SHARED_BOOKKEEPING = [
+    ['skills-lock.json'],
+    ['local', 'installed-skills.json'],
+    ['local', 'skill-placements.json'],
+    ['local', 'skill-move-retained.json'],
+  ];
+
+  test.each([false, true])(
+    'Stable keeps machine-id and the global skill bookkeeping every channel reads (purgeContent=%s)',
+    async (purgeContent) => {
+      vi.stubEnv('OK_CHANNEL', 'stable');
+      const home = mkdtempSync(join(tmpdir(), 'ok-uninst-channel-'));
+      try {
+        seedBothChannels(home);
+        for (const rel of SHARED_BOOKKEEPING) write(join(home, '.ok', ...rel), '{}\n');
+        write(join(home, '.ok', 'local', 'logs', 'server.log'), 'log\n');
+        write(join(home, '.ok', 'local', 'conflicts.json'), '{}\n');
+        const plan = buildUninstallPlan(baseInput(home, { marker: null, purgeContent }));
+        const globalOp = plan.ops.find((o) => o.group === 'Global directory');
+        for (const entry of SHARED_OK_ENTRIES) {
+          if (purgeContent && entry === 'skills') continue;
+          expect(globalOp?.label).toContain(`~/.ok/${entry},`);
+        }
+        expect(globalOp?.label?.startsWith('Remove ~/.ok (including user-authored skills;')).toBe(
+          purgeContent,
+        );
+
+        expect((await runRemoval(plan, stubDeps())).failed).toHaveLength(0);
+        for (const rel of SHARED_BOOKKEEPING) {
+          expect(readFileSync(join(home, '.ok', ...rel), 'utf-8')).toBe('{}\n');
+        }
+        expect(readFileSync(join(home, '.ok', 'machine-id'), 'utf-8')).toBe('shared-id\n');
+        expect(existsSync(join(home, '.ok', 'local', 'logs'))).toBe(false);
+        expect(existsSync(join(home, '.ok', 'local', 'conflicts.json'))).toBe(false);
+        expect(existsSync(join(home, '.ok', 'auth.yml'))).toBe(false);
+        expect(existsSync(join(home, '.ok', 'skills', 'mine', 'SKILL.md'))).toBe(!purgeContent);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test('Beta --purge-content leaves ~/.ok/skills untouched after an earlier failure', async () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    const home = mkdtempSync(join(tmpdir(), 'ok-uninst-channel-'));
+    try {
+      seedBothChannels(home);
+      const plan = buildUninstallPlan(baseInput(home, { marker: null, purgeContent: true }));
+      const outcome = await runRemoval(
+        plan,
+        stubDeps({ clearToken: async () => ({ touched: [], keychainError: 'locked' }) }),
+      );
+      const skillsResult = outcome.results.find(
+        (r) => r.op.kind === 'remove-path' && r.op.path === join(home, '.ok', 'skills'),
+      );
+      expect(skillsResult?.status).toBe('blocked');
+      expect(existsSync(join(home, '.ok', 'skills', 'mine', 'SKILL.md'))).toBe(true);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    ['stable', 'open-knowledge'],
+    ['beta', 'open-knowledge-beta'],
+  ])('a keychain failure on %s names that channel keychain service', async (channel, service) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    const home = mkdtempSync(join(tmpdir(), 'ok-uninst-channel-'));
+    try {
+      const plan = buildUninstallPlan(baseInput(home, { marker: null }));
+      const outcome = await runRemoval(
+        plan,
+        stubDeps({ clearToken: async () => ({ touched: [], keychainError: 'locked' }) }),
+      );
+      const keychain = outcome.results.find((r) => r.op.kind === 'keychain-token');
+      expect(keychain?.detail).toBe(
+        `keychain unreachable (locked); remove manually: Keychain Access → service "${service}"`,
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 });

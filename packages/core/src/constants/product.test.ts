@@ -41,4 +41,12 @@ describe('resolveDesktopProductName', () => {
     expect(new Set(products.map((p) => p.mcpServerName)).size).toBe(products.length);
     expect(new Set(products.map((p) => p.mcpChainTag)).size).toBe(products.length);
   });
+
+  it('gives every channel a distinct user home and keychain service, keeping Stable unchanged', () => {
+    const products = Object.values(DESKTOP_PRODUCTS);
+    expect(new Set(products.map((p) => p.userHomeDirName)).size).toBe(products.length);
+    expect(new Set(products.map((p) => p.keyringService)).size).toBe(products.length);
+    expect(DESKTOP_PRODUCTS.stable.userHomeDirName).toBe('.ok');
+    expect(DESKTOP_PRODUCTS.stable.keyringService).toBe('open-knowledge');
+  });
 });

@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { LOCAL_DIR, OK_DIR, SKILL_PLACEMENTS_FILENAME } from '@inkeep/open-knowledge-core';
 import { atomicWriteFile } from '@inkeep/open-knowledge-core/server';
 import { tracedAtomicFs, tracedMkdir } from './fs-traced.ts';
 import { createKeyedSerializer } from './keyed-serializer.ts';
 import { getLogger } from './logger.ts';
 
-const PLACEMENTS_REL = ['.ok', 'local', 'skill-placements.json'] as const;
+const PLACEMENTS_REL = [OK_DIR, LOCAL_DIR, SKILL_PLACEMENTS_FILENAME] as const;
 const SCHEMA_VERSION = 1;
 
 export interface SkillPlacement {

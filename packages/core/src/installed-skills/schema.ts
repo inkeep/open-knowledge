@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { MANAGED_ARTIFACT_SCOPES } from '../constants/cc1.ts';
-import { OK_DIR } from '../constants/ok-dir.ts';
+import { LOCAL_DIR, OK_DIR } from '../constants/ok-dir.ts';
 
 export const INSTALLED_SKILLS_FILENAME = 'installed-skills.json';
 
-export const INSTALLED_SKILLS_REL = [OK_DIR, 'local', INSTALLED_SKILLS_FILENAME] as const;
+export const INSTALLED_SKILLS_REL = [OK_DIR, LOCAL_DIR, INSTALLED_SKILLS_FILENAME] as const;
 
 export const INSTALLED_SKILLS_SCHEMA_VERSION = 1;
 

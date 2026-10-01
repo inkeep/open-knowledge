@@ -1,7 +1,14 @@
 import { lstatSync, readdirSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
 import { basename, join, relative, resolve, sep } from 'node:path';
-import { PROJECT_SKILL_PROJECTION_PATHS } from '@inkeep/open-knowledge-core';
-import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/server';
+import {
+  currentDesktopProduct,
+  OK_DIR,
+  PROJECT_SKILL_PROJECTION_PATHS,
+  resolveDesktopProductName,
+  SHARED_OK_ENTRIES,
+  SKILLS_STORE_DIRNAME,
+} from '@inkeep/open-knowledge-core';
+import { atomicWriteFileSync, okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import {
   createProbeFailureReporter,
@@ -20,6 +27,7 @@ import {
 import {
   extraSymlinkStillOurs,
   type PathInstallMarker,
+  pathShimFishConfName,
   stripManagedPathBlock,
 } from '../integrations/path-shim.ts';
 import { userGlobalSkillBundleTargets } from '../integrations/skill-teardown.ts';
@@ -94,6 +102,18 @@ export interface RemovalOutcome {
   results: RemovalOpResult[];
   removed: RemovalOpResult[];
   failed: RemovalOpResult[];
+}
+
+function sharedOkEntriesKept(purgeContent: boolean): string[] {
+  return purgeContent
+    ? SHARED_OK_ENTRIES.filter((entry) => entry !== SKILLS_STORE_DIRNAME)
+    : [...SHARED_OK_ENTRIES];
+}
+
+export function sharedOkEntriesList(purgeContent: boolean): string {
+  return sharedOkEntriesKept(purgeContent)
+    .map((entry) => `~/${OK_DIR}/${entry}`)
+    .join(', ');
 }
 
 function tildify(p: string, home: string): string {
@@ -286,16 +306,38 @@ export function buildUninstallPlan(input: UninstallPlanInput): RemovalPlan {
     ),
   );
 
-  ops.push({
-    kind: 'remove-path',
-    group: 'Global directory',
-    requiresSuccessfulCleanup: true,
-    label: purgeContent
-      ? 'Remove ~/.ok (including user-authored skills)'
-      : 'Remove ~/.ok (keeping ~/.ok/skills)',
-    path: join(home, '.ok'),
-    preserve: purgeContent ? undefined : ['skills'],
-  });
+  const { userHomeDirName } = currentDesktopProduct();
+  if (userHomeDirName === OK_DIR) {
+    ops.push({
+      kind: 'remove-path',
+      group: 'Global directory',
+      requiresSuccessfulCleanup: true,
+      label: purgeContent
+        ? `Remove ~/${OK_DIR} (including user-authored skills; keeping ${sharedOkEntriesList(true)}, shared by every channel)`
+        : `Remove ~/${OK_DIR} (keeping ${sharedOkEntriesList(false)}, shared by every channel)`,
+      path: okUserHomeDir(home),
+      preserve: sharedOkEntriesKept(purgeContent),
+    });
+  } else {
+    ops.push({
+      kind: 'remove-path',
+      group: 'Global directory',
+      requiresSuccessfulCleanup: true,
+      label: purgeContent
+        ? `Remove ~/${userHomeDirName}`
+        : `Remove ~/${userHomeDirName} (keeping ~/${OK_DIR}/${SKILLS_STORE_DIRNAME}, shared by every channel)`,
+      path: okUserHomeDir(home),
+    });
+    if (purgeContent) {
+      ops.push({
+        kind: 'remove-path',
+        group: 'Global directory',
+        requiresSuccessfulCleanup: true,
+        label: `Remove ~/${OK_DIR}/${SKILLS_STORE_DIRNAME} (user-authored skills, shared by every channel)`,
+        path: join(home, OK_DIR, SKILLS_STORE_DIRNAME),
+      });
+    }
+  }
 
   return { scope: 'uninstall', ops };
 }
@@ -304,7 +346,7 @@ function standardRcFiles(home: string): string[] {
   return [
     join(home, '.zshrc'),
     join(home, '.bash_profile'),
-    join(home, '.config', 'fish', 'conf.d', 'open-knowledge.fish'),
+    join(home, '.config', 'fish', 'conf.d', pathShimFishConfName()),
   ];
 }
 
@@ -350,7 +392,7 @@ export function applicationDataOps(
     },
   ];
 
-  if (platform === 'darwin') {
+  if (platform === 'darwin' && resolveDesktopProductName() === 'stable') {
     const legacy = desktopUserDataDir({ ...options, productName: DESKTOP_LEGACY_PRODUCT_NAME });
     ops.push({
       kind: 'remove-path',
@@ -524,7 +566,7 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
         return {
           op,
           status: 'failed',
-          detail: `keychain unreachable (${keychainError}); remove manually: Keychain Access → service "open-knowledge"`,
+          detail: `keychain unreachable (${keychainError}); remove manually: Keychain Access → service "${currentDesktopProduct().keyringService}"`,
         };
       }
       return { op, status: touched.length > 0 ? 'removed' : 'not-present' };
@@ -728,18 +770,29 @@ function executeRemovePath(op: Extract<RemovalOp, { kind: 'remove-path' }>): Rem
   }
 
   if (op.preserve && op.preserve.length > 0) {
-    const keep = new Set(op.preserve);
-    let removedAny = false;
-    for (const entry of readdirSync(op.path)) {
-      if (keep.has(entry)) continue;
-      rmSync(join(op.path, entry), { recursive: true, force: true });
-      removedAny = true;
-    }
-    return { op, status: removedAny ? 'removed' : 'not-present' };
+    return { op, status: removeAllExcept(op.path, op.preserve) ? 'removed' : 'not-present' };
   }
 
   rmSync(op.path, { recursive: true, force: true });
   return { op, status: 'removed' };
+}
+
+function removeAllExcept(dir: string, keep: readonly string[]): boolean {
+  let removedAny = false;
+  for (const entry of readdirSync(dir)) {
+    if (keep.includes(entry)) continue;
+    const path = join(dir, entry);
+    const nested = keep.flatMap((kept) =>
+      kept.startsWith(`${entry}/`) ? [kept.slice(entry.length + 1)] : [],
+    );
+    if (nested.length > 0 && lstatSync(path).isDirectory()) {
+      if (removeAllExcept(path, nested)) removedAny = true;
+      continue;
+    }
+    rmSync(path, { recursive: true, force: true });
+    removedAny = true;
+  }
+  return removedAny;
 }
 
 function removableGitExcludePaths(projectRoot: string): readonly string[] {

@@ -605,7 +605,7 @@ export {
 } from './skill-install.ts';
 export {
   recordSkillInstallEvent,
-  SKILL_INSTALL_EVENTS_FILE_REL,
+  SKILL_INSTALL_EVENTS_FILENAME,
   type SkillInstallEvent,
   type SkillInstallEventOutcome,
   type SkillInstallEventSurface,

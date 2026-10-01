@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { currentDesktopProduct } from '@inkeep/open-knowledge-core';
 import {
   type AppSupportOptions,
   pathApiForPlatform,
@@ -17,7 +18,7 @@ interface DesktopUserDataOptions extends AppSupportOptions {
 
 export function desktopUserDataDir(options: DesktopUserDataOptions = {}): string {
   const platformName = options.platformName ?? process.platform;
-  const productName = options.productName ?? DESKTOP_PRODUCT_NAME;
+  const productName = options.productName ?? currentDesktopProduct().productName;
   return pathApiForPlatform(platformName).join(
     resolveAppSupportPath({ ...options, platformName }),
     productName,
@@ -39,7 +40,7 @@ export function desktopUpdaterCacheDir(options: AppSupportOptions = {}): string 
     base = env.XDG_CACHE_HOME || pathApi.join(home, '.cache');
   }
 
-  return pathApi.join(base, DESKTOP_UPDATER_CACHE_DIR_NAME);
+  return pathApi.join(base, `${currentDesktopProduct().packageName.replaceAll('/', '')}-updater`);
 }
 
 export interface DesktopRecentProject {

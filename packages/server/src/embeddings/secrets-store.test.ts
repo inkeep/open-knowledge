@@ -12,7 +12,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { parse } from 'yaml';
 import {
   canonicalProjectKey,
@@ -20,6 +20,7 @@ import {
   describeStoredEmbeddingsKey,
   FileEmbeddingsBackend,
   makeLazyEmbeddingsKeyStore,
+  secretsFilePath,
 } from './secrets-store.ts';
 
 const KEY = 'sk-secret-embeddings-key-1234567890';
@@ -221,5 +222,18 @@ describe('describe + list + canonicalProjectKey', () => {
     const s = store();
     await s.setForProject(link, CUSTOM, KEY);
     expect((await s.resolveForProject(projectA, CUSTOM)).key).toBe(KEY);
+  });
+});
+
+describe('secrets file per channel', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('Stable keeps ~/.ok/secrets.yml and Beta uses ~/.ok-beta/secrets.yml', () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    expect(secretsFilePath('/home/me')).toBe(join('/home/me', '.ok', 'secrets.yml'));
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    expect(secretsFilePath('/home/me')).toBe(join('/home/me', '.ok-beta', 'secrets.yml'));
   });
 });

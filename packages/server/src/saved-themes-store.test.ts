@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BASE16_SLOTS } from '@inkeep/open-knowledge-core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   SAVED_THEME_FILE_BYTE_LIMIT,
   SAVED_THEME_SCAN_CAP,
@@ -53,6 +53,15 @@ function byId(entries: SavedThemeEntry[]): Map<string | undefined, SavedThemeEnt
 describe('savedThemesDir', () => {
   test('resolves the store under <home>/.ok/themes', () => {
     expect(savedThemesDir(home)).toBe(join(home, '.ok', 'themes'));
+  });
+
+  test('resolves Beta themes under <home>/.ok-beta/themes', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    try {
+      expect(savedThemesDir(home)).toBe(join(home, '.ok-beta', 'themes'));
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

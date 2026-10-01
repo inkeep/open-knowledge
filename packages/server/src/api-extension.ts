@@ -54,6 +54,7 @@ import {
   pathspecArgs,
   readFmMap,
   SKILL_NAME_REGEX,
+  SKILLS_STORE_DIRNAME,
   SkillScopeSchema,
   SkillUninstallRequestSchema,
   SkillUninstallSuccessSchema,
@@ -1878,8 +1879,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       for (const scope of ['project', 'global'] as const) {
         const skillsRoot =
           scope === 'global'
-            ? resolve(skillsHome, '.ok', 'skills')
-            : resolve(contentDir, '.ok', 'skills');
+            ? resolve(skillsHome, OK_DIR, SKILLS_STORE_DIRNAME)
+            : resolve(contentDir, OK_DIR, SKILLS_STORE_DIRNAME);
         for (const skill of resolveSkillsList(skillsRoot, scope).skills) {
           admitted.add(`${MANAGED_ARTIFACT_PREFIX_SKILL}${scope}/${skill.name}`);
         }
@@ -4118,8 +4119,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
 
   function resolveSkillsRoot(scope: 'project' | 'global'): string {
     return scope === 'global'
-      ? resolve(skillsHome, '.ok', 'skills')
-      : resolve(contentDir, '.ok', 'skills');
+      ? resolve(skillsHome, OK_DIR, SKILLS_STORE_DIRNAME)
+      : resolve(contentDir, OK_DIR, SKILLS_STORE_DIRNAME);
   }
 
   function resolveSkillDirForRead(

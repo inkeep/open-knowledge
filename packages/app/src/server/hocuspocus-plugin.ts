@@ -1,12 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { relative, resolve } from 'node:path';
 import {
   ASSET_EXTENSIONS,
   EXECUTABLE_BLOCKLIST_EXTENSIONS,
   INLINE_RENDERABLE_EXTENSIONS,
-  OK_DIR,
 } from '@inkeep/open-knowledge-core';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import {
   AcpThreadManager,
   buildIngressPolicy,
@@ -190,7 +189,7 @@ export function hocuspocusPlugin(): Plugin {
         : new AcpThreadManager({
             contentDir: CONTENT_DIR,
             localDir: currentSrv.lockDir,
-            globalDir: resolve(homedir(), OK_DIR),
+            globalDir: okUserHomeDir(),
             registry: currentSrv.acpRegistry,
             permissions: currentSrv.acpPermissions,
             sessionManager,

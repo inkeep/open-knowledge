@@ -11,7 +11,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { okManagedBinDirs } from '../shared/ok-child-env.ts';
 import {
   computePathInstallDescriptor,
   computePathLeg,
@@ -400,6 +401,7 @@ describe('ensureCliOnPath', () => {
           lstatSync: () => {
             throw enoent();
           },
+          rmSync: () => {},
         },
         logger: { event: () => {} },
       }),
@@ -743,5 +745,28 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
     });
     expect(result.status).toBe('removed');
     expect(readFileSync(zshrc, 'utf8')).not.toContain('open-knowledge cli');
+  });
+});
+
+describe('Stable installer and runtime agree on the bin dir', () => {
+  test('the marker, env.sh and rc block all name the dir the runtime puts on PATH', async () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    try {
+      const h = home();
+      const result = await ensureCliOnPath(
+        baseOpts(h, { env: { HOME: h, SHELL: '/usr/bin/fish' }, consentDecision: GRANTED }),
+      );
+      if (result.status !== 'installed') throw new Error(`unexpected ${result.status}`);
+      const runtimeBin = okManagedBinDirs({ platform: 'darwin', home: h })[0];
+      expect(runtimeBin).toBe(join(h, '.ok', 'bin'));
+      expect(result.marker.binDir).toBe(runtimeBin);
+      const relative = runtimeBin?.slice(h.length);
+      expect(readFileSync(result.marker.envShimPath, 'utf8')).toContain(`"$\{HOME}${relative}"`);
+      expect(
+        readFileSync(join(h, '.config', 'fish', 'conf.d', 'open-knowledge.fish'), 'utf8'),
+      ).toContain(`"$HOME${relative}"`);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

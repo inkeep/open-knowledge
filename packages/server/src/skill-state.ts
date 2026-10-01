@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import {
   emptySkillState,
-  SKILL_STATE_REL,
+  SKILL_STATE_FILENAME,
   SKILL_STATE_TARGETS,
   SKILL_STATE_VERSION_RE,
   type SkillState,
@@ -12,7 +12,7 @@ import {
   type SkillStateSurface,
   type SkillStateTarget,
 } from '@inkeep/open-knowledge-core';
-import { atomicWriteFile, withFileLock } from '@inkeep/open-knowledge-core/server';
+import { atomicWriteFile, okUserHomeDir, withFileLock } from '@inkeep/open-knowledge-core/server';
 import { type ParsedNode, parseDocument } from 'yaml';
 import { tracedAtomicFs, tracedMkdir } from './fs-traced.ts';
 import { getLogger } from './logger.ts';
@@ -27,7 +27,7 @@ export {
 } from '@inkeep/open-knowledge-core';
 
 export function skillStateYamlPath(home: string): string {
-  return join(home, ...SKILL_STATE_REL);
+  return join(okUserHomeDir(home), SKILL_STATE_FILENAME);
 }
 
 async function withSkillStateWriteLock<T>(home: string, fn: () => Promise<T>): Promise<T> {

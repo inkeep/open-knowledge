@@ -277,6 +277,7 @@ import {
   shouldResetAmbientCredentials,
 } from './share/git-context.ts';
 import { resyncRecordedSkillCopies } from './skill-placements.ts';
+import { skillStateYamlPath } from './skill-state.ts';
 import { assertCompatibleStateManifest } from './state-manifest.ts';
 import { SyncEngine } from './sync-engine.ts';
 import { createSyncHandshakeSpanExtension } from './sync-handshake-span-extension.ts';
@@ -3771,11 +3772,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       }
 
       try {
-        const skillStatePath = resolve(
-          homeFor(persistence.managedArtifactCtx),
-          '.ok',
-          'skill-state.yml',
-        );
+        const skillStatePath = skillStateYamlPath(homeFor(persistence.managedArtifactCtx));
         const skillStateCleanup = await startConfigFileWatcher(skillStatePath, () => {
           signalChannel('files');
         });

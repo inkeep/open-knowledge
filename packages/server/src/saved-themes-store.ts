@@ -14,11 +14,11 @@ import {
   type Base16ParseError,
   type Base16Scheme,
   deriveSavedThemeId,
-  OK_DIR,
   parseBase16Scheme,
   SAVED_THEMES_DIRNAME,
   type SavedThemeIdError,
 } from '@inkeep/open-knowledge-core';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 import {
@@ -78,7 +78,7 @@ export interface ScanSavedThemesOptions {
 }
 
 export function savedThemesDir(homedirOverride?: string): string {
-  return resolve(homedirOverride ?? homedir(), OK_DIR, SAVED_THEMES_DIRNAME);
+  return resolve(okUserHomeDir(homedirOverride ?? homedir()), SAVED_THEMES_DIRNAME);
 }
 
 export function scanSavedThemes(options: ScanSavedThemesOptions = {}): SavedThemeScanResult {

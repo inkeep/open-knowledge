@@ -6,30 +6,34 @@ import {
   readFileSync as fsReadFileSync,
   readlinkSync as fsReadlinkSync,
   renameSync as fsRenameSync,
+  rmSync as fsRmSync,
   symlinkSync as fsSymlinkSync,
   unlinkSync as fsUnlinkSync,
   writeFileSync as fsWriteFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+import type { PathDiscovery, PathInstallConsent, PathInstallMarker } from '@inkeep/open-knowledge';
 import {
-  type PathDiscovery,
-  type PathInstallConsent,
-  type PathInstallMarker,
-  pathInstallMarkerPath as stablePathInstallMarkerPath,
-} from '@inkeep/open-knowledge';
-import { posixOkManagedBinDir } from '@inkeep/open-knowledge-core';
+  pathShimBinDir,
+  pathShimBlockLabel,
+  pathShimFishConfFileName,
+  pathShimHomeDirName,
+  pathShimMarkerPath,
+} from '@inkeep/open-knowledge-core';
 import { DESKTOP_VARIANT } from '../shared/desktop-variant.ts';
 import type { McpWiringPathInstallDescriptor } from '../shared/ipc-channels.ts';
 import { classifyInstallShape } from './install-shape.ts';
 
 const NAMES = DESKTOP_VARIANT.cliCommandNames;
-const CLI_HOME_PREFIX = DESKTOP_VARIANT.cliHomeSegment
+const CHANNEL = DESKTOP_VARIANT.name;
+const CLI_HOME_PREFIX = pathShimHomeDirName(CHANNEL);
+const RC_BIN_DIR = pathShimBinDir(CHANNEL, '$HOME');
+const ENV_SH_BIN_DIR = pathShimBinDir(CHANNEL, `\${HOME}`);
+const FISH_CONF_NAME = pathShimFishConfFileName(CHANNEL);
+const LEGACY_CLI_HOME_PREFIX = DESKTOP_VARIANT.cliHomeSegment
   ? `.ok/variants/${DESKTOP_VARIANT.cliHomeSegment}`
-  : '.ok';
-const CLI_BLOCK_NAME =
-  DESKTOP_VARIANT.name === 'stable'
-    ? 'open-knowledge cli'
-    : `open-knowledge ${DESKTOP_VARIANT.name} cli`;
+  : null;
+const CLI_BLOCK_NAME = pathShimBlockLabel(CHANNEL);
 const BEGIN = `# >>> ${CLI_BLOCK_NAME} >>>`;
 const END = `# <<< ${CLI_BLOCK_NAME} <<<`;
 const BLOCK_RE = new RegExp(
@@ -38,8 +42,29 @@ const BLOCK_RE = new RegExp(
 );
 
 export function pathInstallMarkerPath(home: string): string {
-  if (DESKTOP_VARIANT.name === 'stable') return stablePathInstallMarkerPath(home);
-  return join(home, CLI_HOME_PREFIX, 'path-install.json');
+  return pathShimMarkerPath(CHANNEL, home);
+}
+
+function legacyMarkerPath(home: string, fs: PathInstallFsOps): string | null {
+  if (LEGACY_CLI_HOME_PREFIX === null) return null;
+  const path = join(home, LEGACY_CLI_HOME_PREFIX, 'path-install.json');
+  return fs.existsSync(path) ? path : null;
+}
+
+function removeLegacyCliHome(home: string, fs: PathInstallFsOps, logger: PathInstallLogger): void {
+  if (LEGACY_CLI_HOME_PREFIX === null) return;
+  const dir = join(home, LEGACY_CLI_HOME_PREFIX);
+  if (!fs.existsSync(dir)) return;
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+    logger.event({ event: 'path-install-legacy-home-removed' });
+  } catch (err) {
+    logger.event({
+      event: 'path-install-legacy-home-remove-failed',
+      path: dir,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 interface PathInstallFsOps {
@@ -52,6 +77,7 @@ interface PathInstallFsOps {
   renameSync(oldPath: string, newPath: string): void;
   readlinkSync(path: string): string;
   lstatSync(path: string): { isSymbolicLink(): boolean };
+  rmSync(path: string, options: { recursive: boolean; force: boolean }): void;
 }
 
 const defaultFsOps: PathInstallFsOps = {
@@ -64,6 +90,7 @@ const defaultFsOps: PathInstallFsOps = {
   renameSync: (oldPath, newPath) => fsRenameSync(oldPath, newPath),
   readlinkSync: (path) => fsReadlinkSync(path),
   lstatSync: (path) => fsLstatSync(path),
+  rmSync: (path, options) => fsRmSync(path, options),
 };
 
 interface PathInstallLogger {
@@ -130,8 +157,9 @@ function readMarker(
   fs: PathInstallFsOps,
   logger: PathInstallLogger,
 ): PathInstallMarker | null {
-  const path = pathInstallMarkerPath(home);
-  if (!fs.existsSync(path)) return null;
+  const current = pathInstallMarkerPath(home);
+  const path = fs.existsSync(current) ? current : legacyMarkerPath(home, fs);
+  if (path === null) return null;
   try {
     const parsed = JSON.parse(fs.readFileSync(path, 'utf8')) as PathInstallMarker;
     if (parsed?.version !== 1) {
@@ -163,9 +191,7 @@ function writeMarker(home: string, marker: PathInstallMarker, fs: PathInstallFsO
 }
 
 function okBin(home: string): string {
-  return DESKTOP_VARIANT.name === 'stable'
-    ? posixOkManagedBinDir(home)
-    : join(home, CLI_HOME_PREFIX, 'bin');
+  return pathShimBinDir(CHANNEL, home);
 }
 
 function envShim(home: string): string {
@@ -180,7 +206,7 @@ function block(): string {
 }
 
 function fishBlock(): string {
-  return `${BEGIN}\n${MANAGED_HINT}\nif test -d "$HOME/${CLI_HOME_PREFIX}/bin"\n  if not contains "$HOME/${CLI_HOME_PREFIX}/bin" $PATH\n    set -gx PATH "$HOME/${CLI_HOME_PREFIX}/bin" $PATH\n  end\nend\n${END}\n`;
+  return `${BEGIN}\n${MANAGED_HINT}\nif test -d "${RC_BIN_DIR}"\n  if not contains "${RC_BIN_DIR}" $PATH\n    set -gx PATH "${RC_BIN_DIR}" $PATH\n  end\nend\n${END}\n`;
 }
 
 function rcTargets(
@@ -213,13 +239,7 @@ function rcTargets(
     ...(fishDetected
       ? [
           {
-            path: join(
-              fishConfigDir,
-              'conf.d',
-              DESKTOP_VARIANT.name === 'stable'
-                ? 'open-knowledge.fish'
-                : `open-knowledge-${DESKTOP_VARIANT.name}.fish`,
-            ),
+            path: join(fishConfigDir, 'conf.d', FISH_CONF_NAME),
             create: true,
             content: fishBlock(),
           },
@@ -457,8 +477,14 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
 
   const wrapper = shape.wrapperPath;
   const prior = readMarker(home, fs, logger);
+  const priorIsLegacy = prior !== null && !fs.existsSync(pathInstallMarkerPath(home));
   const explicitDecision = opts.consentDecision !== undefined;
-  if (prior && !explicitDecision && markerHealthy(prior, home, wrapper, fs, logger)) {
+  if (
+    prior &&
+    !priorIsLegacy &&
+    !explicitDecision &&
+    markerHealthy(prior, home, wrapper, fs, logger)
+  ) {
     if (!prior.consent && prior.rcFiles.length > 0) {
       const marker: PathInstallMarker = {
         ...prior,
@@ -478,9 +504,11 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
         source: 'grandfather',
         rcFileCount: prior.rcFiles.length,
       });
+      removeLegacyCliHome(home, fs, logger);
       return { status: 'healthy-current', marker };
     }
     logger.event({ event: 'path-install-healthy-current', binDir: prior.binDir });
+    removeLegacyCliHome(home, fs, logger);
     return { status: 'healthy-current', marker: prior };
   }
 
@@ -500,7 +528,7 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
     fs.mkdirSync(dirname(shim), { recursive: true });
     fs.writeFileSync(
       shim,
-      `# ${DESKTOP_VARIANT.productName} CLI environment — managed file, do not edit.\ncase ":\${PATH}:" in\n  *:"\${HOME}/${CLI_HOME_PREFIX}/bin":*) ;;\n  *) export PATH="\${HOME}/${CLI_HOME_PREFIX}/bin:\${PATH}" ;;\nesac\n`,
+      `# ${DESKTOP_VARIANT.productName} CLI environment — managed file, do not edit.\ncase ":\${PATH}:" in\n  *:"${ENV_SH_BIN_DIR}":*) ;;\n  *) export PATH="${ENV_SH_BIN_DIR}:\${PATH}" ;;\nesac\n`,
     );
 
     phase = 'discoverPath';
@@ -522,6 +550,7 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
     const canSkipRc =
       !explicitGrant &&
       prior != null &&
+      !priorIsLegacy &&
       discovery?.okBinAlreadyOnPath === true &&
       activePriorRcFiles.every((file) => rcBlockHealthy(file, fs));
     const nowIso = (opts.now?.() ?? new Date()).toISOString();
@@ -564,6 +593,7 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
       ...(consent ? { consent } : {}),
     };
     writeMarker(home, marker, fs);
+    removeLegacyCliHome(home, fs, logger);
     if (consent && consent.status !== prior?.consent?.status) {
       logger.event({
         event:
@@ -658,15 +688,7 @@ export function removePathShimFromRcFiles(opts: {
 }): RemovePathShimResult {
   const { home, fs = defaultFsOps, logger = DEFAULT_LOGGER } = opts;
   const marker = readMarker(home, fs, logger);
-  const okOwnedFishConf = join(
-    home,
-    '.config',
-    'fish',
-    'conf.d',
-    DESKTOP_VARIANT.name === 'stable'
-      ? 'open-knowledge.fish'
-      : `open-knowledge-${DESKTOP_VARIANT.name}.fish`,
-  );
+  const okOwnedFishConf = join(home, '.config', 'fish', 'conf.d', FISH_CONF_NAME);
   const candidates = new Set<string>([
     ...rcTargets(home, (opts.env ?? process.env).SHELL, fs, opts.platform).map(
       (target) => target.path,

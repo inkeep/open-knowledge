@@ -516,10 +516,18 @@ export {
   OK_PROJECT_MARKER,
   type OkMachineLocalRootDir,
   type OkMachineLocalRootFile,
+  okUserHomeDisplayPath,
   posixOkManagedBinDir,
   SAVED_THEMES_DIRNAME,
   WORKTREES_DIRNAME,
 } from './constants/ok-dir.ts';
+export {
+  pathShimBinDir,
+  pathShimBlockLabel,
+  pathShimFishConfFileName,
+  pathShimHomeDirName,
+  pathShimMarkerPath,
+} from './constants/path-shim-layout.ts';
 export {
   PREVIEW_EMBED_STARTERS,
   type PreviewEmbedStarter,
@@ -543,6 +551,13 @@ export {
 } from './constants/product.ts';
 export { isReservedLogDoc } from './constants/reserved-docs.ts';
 export { DEFAULT_SERVER_HOST } from './constants/server.ts';
+export {
+  MACHINE_ID_FILENAME,
+  SHARED_OK_ENTRIES,
+  SKILL_MOVE_RETAINED_FILENAME,
+  SKILL_PLACEMENTS_FILENAME,
+  SKILLS_STORE_DIRNAME,
+} from './constants/shared-ok-entries.ts';
 export {
   AGENTS_SKILLS_ROOT,
   extractSkillRefs,
@@ -1872,7 +1887,6 @@ export {
   emptySkillState,
   resolveBundleEnabled,
   SKILL_STATE_FILENAME,
-  SKILL_STATE_REL,
   SKILL_STATE_SCHEMA_VERSION,
   SKILL_STATE_SURFACES,
   SKILL_STATE_TARGETS,

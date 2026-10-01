@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import {
   recordSkillInstallEvent,
-  SKILL_INSTALL_EVENTS_FILE_REL,
+  SKILL_INSTALL_EVENTS_FILENAME,
   type SkillInstallEvent,
 } from './skill-install-events.ts';
 
@@ -14,7 +14,7 @@ function freshHome(): string {
 }
 
 function eventsFilePath(home: string): string {
-  return join(home, ...SKILL_INSTALL_EVENTS_FILE_REL);
+  return join(home, '.ok', SKILL_INSTALL_EVENTS_FILENAME);
 }
 
 function makeEvent(overrides: Partial<SkillInstallEvent> = {}): SkillInstallEvent {

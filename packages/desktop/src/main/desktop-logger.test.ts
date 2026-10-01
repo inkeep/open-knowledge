@@ -1,5 +1,9 @@
+import { once } from 'node:events';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import pino from 'pino';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { flushDesktopLogger, getLogger, getRootDesktopLogger } from './desktop-logger.ts';
 
 describe('flushDesktopLogger', () => {
@@ -27,6 +31,39 @@ describe('error serialization (what the raw-err discipline buys)', () => {
       );
       expect(rendered.message).toBe('boom-probe');
       expect(rendered.stack ?? '').toContain('boom-probe');
+    }
+  });
+});
+
+describe('logs dir per channel', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  test('importing under an unsupported OK_CHANNEL does not throw', async () => {
+    vi.stubEnv('OK_CHANNEL', 'bogus');
+    vi.resetModules();
+    await expect(import('./desktop-logger.ts')).resolves.toBeDefined();
+  });
+
+  test('Beta writes logs under ~/.ok-beta/logs, not ~/.ok/logs', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-desktop-logs-'));
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    vi.resetModules();
+    try {
+      const { getRootDesktopLogger } = await import('./desktop-logger.ts');
+      const stream = (
+        getRootDesktopLogger() as unknown as Record<symbol, NodeJS.EventEmitter & { end(): void }>
+      )[pino.symbols.streamSym];
+      const closed = once(stream, 'close');
+      stream.end();
+      await closed;
+      expect(existsSync(join(home, '.ok-beta', 'logs'))).toBe(true);
+      expect(existsSync(join(home, '.ok', 'logs'))).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
     }
   });
 });

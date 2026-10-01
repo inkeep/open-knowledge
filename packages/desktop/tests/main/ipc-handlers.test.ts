@@ -7,7 +7,7 @@ import {
   extractTrashDetail,
   isPathWithinProject,
   recordHandoff,
-  STATS_FILE_RELATIVE_PATH,
+  STATS_FILE_NAME,
   showItemInFolder,
   spawnCursor,
   trashItem,
@@ -746,7 +746,7 @@ describe('recordHandoff', () => {
     expect(calls.mkdir).toEqual(['/Users/test/.ok']);
     expect(calls.appendFile).toHaveLength(1);
     expect(calls.appendFile[0]?.path).toBe('/Users/test/.ok/stats.jsonl');
-    expect(STATS_FILE_RELATIVE_PATH).toEqual(['.ok', 'stats.jsonl']);
+    expect(STATS_FILE_NAME).toBe('stats.jsonl');
   });
 
   test('serializes the full schema verbatim including optional reason on errors', async () => {

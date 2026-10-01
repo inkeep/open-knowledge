@@ -1,13 +1,16 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { isSkillSourceStateCode, type SkillSourceStateCode } from '@inkeep/open-knowledge-core';
+import {
+  isSkillSourceStateCode,
+  SKILL_MOVE_RETAINED_FILENAME,
+  type SkillSourceStateCode,
+} from '@inkeep/open-knowledge-core';
 import { atomicWriteFile } from '@inkeep/open-knowledge-core/server';
 import { getLocalDir } from './config/paths.ts';
 import { tracedAtomicFs, tracedMkdir } from './fs-traced.ts';
 import { createKeyedSerializer } from './keyed-serializer.ts';
 import { getLogger } from './logger.ts';
 
-const RETAINED_FILENAME = 'skill-move-retained.json';
 const SCHEMA_VERSION = 1;
 
 export type SkillMoveScope = 'project' | 'global';
@@ -36,7 +39,7 @@ function retainedKey(scope: SkillMoveScope, name: string): string {
 }
 
 function retainedPath(base: string): string {
-  return join(getLocalDir(base), RETAINED_FILENAME);
+  return join(getLocalDir(base), SKILL_MOVE_RETAINED_FILENAME);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

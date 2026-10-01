@@ -14,7 +14,7 @@ import type {
   PiBridgeWriteAction,
   PiTrustWriteAction,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/server';
+import { atomicWriteFileSync, okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { buildPiExtensionSource, isOwnPiManagedFileEntry } from '../integrations/pi-extension.ts';
 import {
   type ConfigFileDeclineReason,
@@ -644,7 +644,7 @@ function accessPiTrustReceipts<T>(home: string, operation: () => T): T {
   } catch (error) {
     if (error instanceof PiTrustReceiptError) throw error;
     throw new Error(
-      `Could not access OpenKnowledge's Pi trust ownership records at ${escapeDisplayPath(join(home, '.ok', 'pi-trust'))}: ${escapeDisplayPath(error instanceof Error ? error.message : String(error))}. Check the records and their permissions, then retry.`,
+      `Could not access OpenKnowledge's Pi trust ownership records at ${escapeDisplayPath(join(okUserHomeDir(home), 'pi-trust'))}: ${escapeDisplayPath(error instanceof Error ? error.message : String(error))}. Check the records and their permissions, then retry.`,
       { cause: error },
     );
   }

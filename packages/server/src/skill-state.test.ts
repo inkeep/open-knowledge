@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   clearInstallReported,
   readAllTargets,
@@ -297,5 +297,25 @@ describe('clearInstallReported', () => {
     await writeInstallReported(home, ['o/r#a']);
     await expect(clearInstallReported(home, [])).resolves.toBeUndefined();
     expect([...(await readInstallReported(home))]).toEqual(['o/r#a']);
+  });
+});
+
+describe('skill-state file per channel', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('Stable keeps ~/.ok/skill-state.yml and Beta writes ~/.ok-beta/skill-state.yml', async () => {
+    const home = freshHome();
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    expect(skillStateYamlPath(home)).toBe(join(home, '.ok', 'skill-state.yml'));
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    expect(skillStateYamlPath(home)).toBe(join(home, '.ok-beta', 'skill-state.yml'));
+    await writeBundleDecision(home, 'discovery', true);
+    expect(await readFile(join(home, '.ok-beta', 'skill-state.yml'), 'utf8')).toContain(
+      'discovery',
+    );
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    expect(await readBundleDecision(home, 'discovery')).toBeNull();
   });
 });

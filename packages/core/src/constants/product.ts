@@ -12,6 +12,8 @@ export const DESKTOP_PRODUCTS = {
     mcpServerName: 'open-knowledge',
     mcpChainTag: '',
     npmDistTag: 'latest',
+    userHomeDirName: '.ok',
+    keyringService: 'open-knowledge',
   },
   beta: {
     appId: 'com.inkeep.open-knowledge.beta',
@@ -26,6 +28,8 @@ export const DESKTOP_PRODUCTS = {
     mcpServerName: 'open-knowledge-beta',
     mcpChainTag: '-beta',
     npmDistTag: 'beta',
+    userHomeDirName: '.ok-beta',
+    keyringService: 'open-knowledge-beta',
   },
 } as const;
 

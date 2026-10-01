@@ -23,6 +23,7 @@ import {
   LocalOpEmbeddingsTestResponseSchema,
   LocalOpOkInitRequestSchema,
   LocalOpOkInitResponseSchema,
+  okUserHomeDisplayPath,
 } from '@inkeep/open-knowledge-core';
 import { resolveGitDirDetailed } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import {
@@ -513,7 +514,7 @@ export function createLocalOpRoutes(
     const detail =
       rejectedHost === null
         ? "The project's origin URL could not be parsed to determine its host. Set a supported origin URL or explicitly select a GitHub host."
-        : `${rejectedHost} is not a declared GitHub host. If it runs GitHub Enterprise Server, declare git.hosts.${rejectedHost}.provider as github in ~/.ok/global.yml and restart OpenKnowledge.`;
+        : `${rejectedHost} is not a declared GitHub host. If it runs GitHub Enterprise Server, declare git.hosts.${rejectedHost}.provider as github in ${okUserHomeDisplayPath('global.yml')} and restart OpenKnowledge.`;
     errorResponse(
       res,
       409,

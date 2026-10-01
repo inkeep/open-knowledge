@@ -752,3 +752,70 @@ describe('createTokenStore cross-backend read fallback', () => {
     expect(await store.get('github.com')).toBeNull();
   });
 });
+
+describe('credentials per channel', () => {
+  let fakeHome: string;
+
+  beforeEach(() => {
+    resetKeyringMockState();
+    fakeHome = mkdtempSync(join(tmpdir(), 'ok-ts-channel-'));
+    vi.stubEnv('HOME', fakeHome);
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    rmSync(fakeHome, { recursive: true, force: true });
+  });
+
+  test('Stable keeps the open-knowledge keychain service and ~/.ok/auth.yml', async () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    const { createTokenStore, FileBackend: ChannelFileBackend } = await import('./token-store.ts');
+    await (await createTokenStore(join(fakeHome, 'unused.yml'))).set('github.com', 'a', 't');
+    expect(keyringMockState.setPasswordCalls.map((c) => c.service)).toEqual(['open-knowledge']);
+    await new ChannelFileBackend().set('github.com', 'a', 't');
+    expect(readFileSync(join(fakeHome, '.ok', 'auth.yml'), 'utf-8')).toContain('github.com');
+  });
+
+  test('Beta uses its own keychain service and ~/.ok-beta/auth.yml, sharing nothing', async () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    const { createTokenStore, FileBackend: ChannelFileBackend } = await import('./token-store.ts');
+    await (await createTokenStore(join(fakeHome, 'unused.yml'))).set('github.com', 'a', 't');
+    expect(keyringMockState.setPasswordCalls.map((c) => c.service)).toEqual([
+      'open-knowledge-beta',
+    ]);
+    await new ChannelFileBackend().set('github.com', 'a', 't');
+    expect(readFileSync(join(fakeHome, '.ok-beta', 'auth.yml'), 'utf-8')).toContain('github.com');
+    expect(() => readFileSync(join(fakeHome, '.ok', 'auth.yml'), 'utf-8')).toThrow();
+  });
+
+  test('Beta reads, clears and clears-all only its own keychain service', async () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    keyringMockState.getPasswordReturns.set(
+      'open-knowledge:github.com',
+      JSON.stringify({ login: 'stable', token: 'gho_stable' }),
+    );
+    keyringMockState.getPasswordReturns.set(
+      'open-knowledge-beta:github.com',
+      JSON.stringify({ login: 'beta', token: 'gho_beta' }),
+    );
+    const { createTokenStore, clearTokenFromAllBackends } = await import('./token-store.ts');
+    const authFile = join(fakeHome, 'unused.yml');
+    const store = await createTokenStore(authFile);
+
+    expect((await store.get('github.com'))?.token).toBe('gho_beta');
+
+    await store.clear('github.com');
+    expect(keyringMockState.deletePasswordCalls.map((c) => c.service)).toEqual([
+      'open-knowledge-beta',
+    ]);
+
+    keyringMockState.deletePasswordCalls = [];
+    const result = await clearTokenFromAllBackends('github.com', authFile);
+    expect(result.touched).toEqual(['keychain']);
+    expect(keyringMockState.deletePasswordCalls.map((c) => c.service)).toEqual([
+      'open-knowledge-beta',
+    ]);
+  });
+});

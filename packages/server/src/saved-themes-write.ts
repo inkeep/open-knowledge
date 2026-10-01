@@ -7,13 +7,13 @@ import {
   base16ToYaml,
   deriveSavedThemeId,
   deriveSavedThemeName,
-  OK_DIR,
   parseSavedThemeId,
   type SavedThemeIdError,
 } from '@inkeep/open-knowledge-core';
 import {
   atomicWriteFile,
   FileLockTimeoutError,
+  okUserHomeDir,
   withFileLock,
 } from '@inkeep/open-knowledge-core/server';
 import { tracedAtomicFs, tracedMkdir, tracedUnlinkSync } from './fs-traced.ts';
@@ -41,7 +41,7 @@ async function withSavedThemeWriteLock<T>(
   fn: () => Promise<T>,
   timeoutMs?: number,
 ): Promise<T | SavedThemeLockTimeoutResult> {
-  const lockDir = resolve(home, OK_DIR);
+  const lockDir = resolve(okUserHomeDir(home));
   await tracedMkdir(lockDir, { recursive: true });
   const rootKey = createHash('sha256').update(resolve(root)).digest('hex').slice(0, 24);
   try {

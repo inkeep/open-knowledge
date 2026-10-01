@@ -1,10 +1,7 @@
 import { z } from 'zod';
-import { OK_DIR } from '../constants/ok-dir.ts';
 import { skillStateFieldRegistry } from './field-registry.ts';
 
 export const SKILL_STATE_FILENAME = 'skill-state.yml';
-
-export const SKILL_STATE_REL = [OK_DIR, SKILL_STATE_FILENAME] as const;
 
 export const SKILL_STATE_TARGETS = ['claude-cowork', 'cli-hosts'] as const;
 export type SkillStateTarget = (typeof SKILL_STATE_TARGETS)[number];
