@@ -909,19 +909,70 @@ describe('every release-pipeline post prefers the releases webhook', () => {
     });
   }
 
-  test('the aggregate smoke alarm resolves the releases webhook first', () => {
+  test('the aggregate smoke alarm resolves the releases webhook first', async () => {
     const alarm = stepAfter(selectBeta, 'Page the release channel');
     expect(alarm).toContain(
       'SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}',
     );
     expect(alarm).toContain('node .github/scripts/release-alert-state.mjs');
-    const reporter = readFileSync(
-      join(WORKFLOWS, '..', 'scripts', 'release-alert-state.mjs'),
-      'utf8',
-    );
-    expect(reporter).toContain(
-      'process.env.SLACK_RELEASES_WEBHOOK_URL || process.env.SLACK_WEBHOOK_URL',
-    );
+    const { execFile } = await import('node:child_process');
+    const { createServer } = await import('node:http');
+    const requests = [];
+    const server = createServer((request, response) => {
+      requests.push(request.url);
+      request.resume();
+      response.end('ok');
+    });
+    const dir = mkdtempSync(join(tmpdir(), 'ok-webhook-precedence-'));
+    try {
+      await new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', resolve);
+      });
+      const origin = `http://127.0.0.1:${server.address().port}`;
+      let index = 0;
+      const state = (value) => (value === undefined ? 'unset' : value ? 'set' : 'empty');
+      for (const releases of [undefined, '', `${origin}/releases`]) {
+        for (const fallback of [undefined, '', `${origin}/fallback`]) {
+          requests.length = 0;
+          const label = `releases webhook ${state(releases)}, fallback webhook ${state(fallback)}`;
+          const statePath = join(dir, `state-${index++}.json`);
+          const env = {
+            ...process.env,
+            ALERT_STATE_PATH: statePath,
+            ALERT_INCIDENT: 'smoke-failure',
+            ALERT_TEXT: 'webhook precedence test',
+          };
+          delete env.SLACK_RELEASES_WEBHOOK_URL;
+          delete env.SLACK_WEBHOOK_URL;
+          delete env.GITHUB_OUTPUT;
+          delete env.NODE_OPTIONS;
+          if (releases !== undefined) env.SLACK_RELEASES_WEBHOOK_URL = releases;
+          if (fallback !== undefined) env.SLACK_WEBHOOK_URL = fallback;
+          const result = await new Promise((resolve) => {
+            execFile(
+              process.execPath,
+              [join(WORKFLOWS, '..', 'scripts', 'release-alert-state.mjs')],
+              { env, timeout: 5_000 },
+              (error, _stdout, stderr) => resolve({ error, stderr }),
+            );
+          });
+          const target = releases ? '/releases' : fallback ? '/fallback' : undefined;
+          const ended = result.error?.signal ?? `exit code ${result.error ? result.error.code : 0}`;
+          const outcome = `${label}, reporter ended with ${ended}: ${result.stderr}`;
+          expect(requests, outcome).toEqual(target ? [target] : []);
+          expect(result.error ? result.error.code : 0, outcome).toBe(target ? 0 : 1);
+          expect(existsSync(statePath), outcome).toBe(Boolean(target));
+        }
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      if (server.listening) {
+        await new Promise((resolve, reject) => {
+          server.close((error) => (error ? reject(error) : resolve()));
+        });
+      }
+    }
   });
 
   test('fast-tier attempts have one incident reporter and save only successful acknowledgements', () => {

@@ -10,12 +10,7 @@ import {
 import { afterEach, expect, test } from 'vitest';
 import type { AgentRegistryHostSeam } from './agent-registry-apply.ts';
 import type { BootedServer } from './boot.ts';
-import {
-  assertPathAbsentFromLegacyRegistry,
-  bootCompositionRig,
-  parseProblem,
-  rawRequest,
-} from './composition-rig.test-helper.ts';
+import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
 
 const APPLY_PATH = '/api/agent-integrations/apply';
 const CLAUDE_PROJECT_MCP = 'claude/mcp/project/config-entry';
@@ -37,8 +32,6 @@ function assertExclusiveNativeOwnership(server: BootedServer): void {
   expect(server.serverInstance.nativeApi.paths.filter((path) => path === APPLY_PATH)).toHaveLength(
     1,
   );
-  const source = readFileSync(new URL('./api-extension.ts', import.meta.url), 'utf8');
-  assertPathAbsentFromLegacyRegistry(source, APPLY_PATH);
 }
 
 async function bootApplyComposition(

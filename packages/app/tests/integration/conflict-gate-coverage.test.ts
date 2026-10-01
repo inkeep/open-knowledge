@@ -1,11 +1,19 @@
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import {
+  AgentSessionManager,
+  applyAgentMarkdownWrite,
+  applyAgentUndo,
+} from '../../../server/src/agent-sessions.ts';
+import { DocInConflictError } from '../../../server/src/conflict-errors.ts';
 import {
   extractRouteHandlerNames,
   HANDLER_RUN_END_NEEDLES,
   listNativeRouteFiles,
 } from '../native-route-files.test-helper.ts';
+import { createTestServer } from './test-harness.ts';
 
 const API_EXT_PATH = join(import.meta.dirname, '../../../server/src/api-extension.ts');
 const source = readFileSync(API_EXT_PATH, 'utf8');
@@ -233,13 +241,63 @@ describe('conflict-gate coverage (FR9)', () => {
     expect(untracked).toEqual([]);
   });
 
-  test('spine-level gate fires before transact in agent-sessions.ts', () => {
-    const sessionsSrc = readFileSync(
-      join(import.meta.dirname, '../../../server/src/agent-sessions.ts'),
-      'utf8',
-    );
-    expect(sessionsSrc).toContain('throw new DocInConflictError');
-    const throwMatches = sessionsSrc.match(/throw new DocInConflictError/g) ?? [];
-    expect(throwMatches.length).toBeGreaterThanOrEqual(2);
+  test('spine-level gate refuses writes and undo before any document transaction', async () => {
+    const server = await createTestServer();
+    const manager = new AgentSessionManager(server.instance.hocuspocus);
+    try {
+      for (const operation of [
+        'append',
+        'prepend',
+        'replace',
+        'patch',
+        'last',
+        'session',
+        'count',
+      ] as const) {
+        const label = `${operation} must be refused with DocInConflictError`;
+        const docName = `conflict-gate-${randomUUID()}`;
+        const session = await manager.getSession(docName, 'conflict-gate');
+        const document = session.dc.document;
+        document.transact(() => {
+          applyAgentMarkdownWrite(document, 'Before conflict.\n', 'replace');
+        }, session.origin);
+        session.um.stopCapturing();
+        const before = document.getText('source').toString();
+        const fragmentBefore = document.getXmlFragment('default').toJSON();
+        const undoBefore = session.um.undoStack.length;
+        expect(before, label).toBe('Before conflict.\n');
+        expect(undoBefore, label).toBeGreaterThan(0);
+        server.instance.conflicts.raise({
+          kind: 'reconcile',
+          file: `${docName}.md`,
+          reason: 'disk-markers',
+          stages: { base: before, ours: before, theirs: 'Other.\n' },
+        });
+        expect(server.instance.conflicts.has(docName), label).toBe(true);
+        let transactions = 0;
+        const observe = () => {
+          transactions += 1;
+        };
+        document.on('beforeTransaction', observe);
+        try {
+          expect(() => {
+            if (operation === 'last' || operation === 'session' || operation === 'count') {
+              applyAgentUndo(session, operation, undefined, 1);
+            } else {
+              applyAgentMarkdownWrite(document, 'Forbidden.\n', operation);
+            }
+          }, label).toThrow(DocInConflictError);
+          expect(document.getText('source').toString(), label).toBe(before);
+          expect(document.getXmlFragment('default').toJSON(), label).toBe(fragmentBefore);
+          expect(session.um.undoStack, label).toHaveLength(undoBefore);
+          expect(transactions, label).toBe(0);
+        } finally {
+          document.off('beforeTransaction', observe);
+        }
+      }
+    } finally {
+      await manager.closeAll();
+      await server.cleanup();
+    }
   });
 });
