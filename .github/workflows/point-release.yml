@@ -145,6 +145,12 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Install root dependencies for the Changesets reader
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile --filter=. --ignore-scripts
+
       - name: Prepare git for the synthetic commit
         run: |
           set -euo pipefail

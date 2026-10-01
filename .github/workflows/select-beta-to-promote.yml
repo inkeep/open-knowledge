@@ -216,6 +216,12 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Install root dependencies for the Changesets reader
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile --filter=. --ignore-scripts
+
       - name: Select the beta to promote
         id: select
         env:

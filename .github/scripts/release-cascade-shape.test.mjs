@@ -1,10 +1,10 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: shell and GitHub expression fixtures must remain literal.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
@@ -1208,6 +1208,48 @@ describe('the macOS artifact is attested signed before it can ship', () => {
       expect(step).toContain('xcrun stapler validate "$APP"');
       expect(step).toContain('No .app found under dist-desktop to attest');
     }
+  });
+});
+
+describe('every job that reads changesets installs the Changesets reader first', () => {
+  const OK_ROOT = join(WORKFLOWS, '..', '..');
+  const READER = join(OK_ROOT, 'scripts', 'compute-next-beta.mjs');
+  const importsReader = (file, seen = new Set()) => {
+    if (file === READER) return true;
+    if (seen.has(file) || !existsSync(file)) return false;
+    seen.add(file);
+    return [...readFileSync(file, 'utf8').matchAll(/\bfrom\s+['"](\.{1,2}\/[^'"]+)['"]/g)].some(([, spec]) =>
+      importsReader(resolve(dirname(file), spec), seen),
+    );
+  };
+  const readsChangesets = (step) =>
+    [...(step.run ?? '').matchAll(/[\w./-]+\.mjs\b/g)].some(([path]) => importsReader(resolve(OK_ROOT, path)));
+  const readerJobs = readdirSync(WORKFLOWS)
+    .filter((file) => file.endsWith('.yml'))
+    .flatMap((file) =>
+      Object.entries(parse(read(file)).jobs ?? {}).flatMap(([id, { steps = [] }]) => {
+        const readAt = steps.findIndex(readsChangesets);
+        return readAt === -1 ? [] : [{ job: `${file}#${id}`, before: steps.slice(0, readAt) }];
+      }),
+    );
+
+  test('the sweep finds every job that runs a version script', () => {
+    expect(readerJobs.map(({ job }) => job)).toEqual(
+      expect.arrayContaining([
+        'bug-lane.yml#bug-lane',
+        'point-release.yml#point-release',
+        'promote-stable.yml#promote',
+        'release.yml#release',
+        'select-beta-to-promote.yml#evaluate',
+      ]),
+    );
+  });
+
+  test('each one runs pnpm install before its first read', () => {
+    const uninstalled = readerJobs
+      .filter(({ before }) => !before.some((step) => /\bpnpm install\b/.test(step.run ?? '')))
+      .map(({ job }) => job);
+    expect(uninstalled).toEqual([]);
   });
 });
 

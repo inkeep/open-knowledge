@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const FIXED_GROUP_ANCHOR = '@inkeep/open-knowledge';
 const PRE_PATH = '.changeset/pre.json';
-const CHANGESET_DIR = '.changeset';
 const PUBLIC_REPO = process.env.GITHUB_REPOSITORY || 'inkeep/open-knowledge';
 const CHANGELOG_PKGS = ['cli', 'core', 'server', 'app', 'desktop'];
 const CONSUMED_MARKER_RE = /<!--\s*ok-consumed-set:\s*(\[[^\]]*\])\s*-->/;
 const BUMP_RANK = { patch: 1, minor: 2, major: 3 };
+const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 function log(...args) {
   process.stderr.write(`${args.join(' ')}\n`);
@@ -36,20 +39,23 @@ export function computeBaseVersion(anchor, bumpTypes) {
   return bumpSemver(anchor, maxBumpType(bumpTypes));
 }
 
-export function parseFrontmatterBumpType(content) {
-  const fmMatch = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(content);
-  if (!fmMatch) return null;
-  let maxType = null;
-  for (const m of fmMatch[1].matchAll(/:\s*(patch|minor|major)\s*$/gm)) {
-    if (!maxType || BUMP_RANK[m[1]] > BUMP_RANK[maxType]) maxType = m[1];
-  }
-  return maxType;
+export function loadChangesets(root = OK_ROOT) {
+  const cliRequire = createRequire(
+    createRequire(join(root, 'package.json')).resolve('@changesets/cli/package.json'),
+  );
+  const readerRequire = createRequire(cliRequire.resolve('@changesets/read'));
+  return {
+    read: cliRequire('@changesets/read').default,
+    parse: readerRequire('@changesets/parse').default,
+  };
 }
 
-export function pendingChangesetFiles(dir) {
-  return readdirSync(dir)
-    .filter((f) => f.endsWith('.md') && f !== 'README.md')
-    .sort();
+export function maxReleaseType(releases) {
+  let maxType = null;
+  for (const { type } of releases) {
+    if (BUMP_RANK[type] && (!maxType || BUMP_RANK[type] > BUMP_RANK[maxType])) maxType = type;
+  }
+  return maxType;
 }
 
 function findPrevBetaTag() {
@@ -218,7 +224,7 @@ export function renderNotes({ packageDeltas, newConsumedSet, prevBetaTag, newCou
   return lines.join('\n');
 }
 
-function main() {
+async function main() {
   const pre = JSON.parse(readFileSync(PRE_PATH, 'utf8'));
   if (pre.mode !== 'pre') {
     throw new Error(`Expected pre.json mode=pre, got mode=${pre.mode}`);
@@ -228,12 +234,12 @@ function main() {
     throw new Error(`No initialVersion for ${FIXED_GROUP_ANCHOR} in pre.json`);
   }
 
-  const changesetFiles = pendingChangesetFiles(CHANGESET_DIR);
-  if (changesetFiles.length === 0) {
+  const changesets = await loadChangesets().read(process.cwd());
+  if (changesets.length === 0) {
     console.log(JSON.stringify({ skip: true, reason: 'no pending changesets' }));
     return;
   }
-  const allIds = changesetFiles.map((f) => f.replace(/\.md$/, ''));
+  const allIds = changesets.map(({ id }) => id);
   const allIdsSet = new Set(allIds);
 
   const prevBetaTag = findPrevBetaTag();
@@ -255,9 +261,7 @@ function main() {
     return;
   }
 
-  const cycleBumpTypes = allIds.map((id) =>
-    parseFrontmatterBumpType(readFileSync(`${CHANGESET_DIR}/${id}.md`, 'utf8')),
-  );
+  const cycleBumpTypes = changesets.map(({ releases }) => maxReleaseType(releases));
   const cycleMaxBump = maxBumpType(cycleBumpTypes);
   const baseVersion = bumpSemver(anchor, cycleMaxBump);
 
@@ -303,5 +307,5 @@ function main() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+  await main();
 }
