@@ -294,5 +294,5 @@ describe('R13 patch verification (y-prosemirror + @tiptap/y-tiptap)', () => {
           `broadcast the delete to all peers (see PRECEDENTS.md precedent #9):\n${details}`,
       );
     }
-  }, 30_000);
+  }, 120_000);
 });

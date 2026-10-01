@@ -1,14 +1,13 @@
 import { describe, expect, test } from 'vitest';
+import * as EditorTabsModule from './EditorTabs';
 
 describe('EditorTabs module', () => {
-  test('exports the EditorTabs component', async () => {
-    const mod = await import('./EditorTabs');
-    expect(typeof mod.EditorTabs).toBe('function');
+  test('exports the EditorTabs component', () => {
+    expect(typeof EditorTabsModule.EditorTabs).toBe('function');
   });
 
-  test('does NOT re-export tabParts — canonical home is @/editor/editor-tabs', async () => {
-    const mod = await import('./EditorTabs');
-    expect('tabParts' in mod).toBe(false);
+  test('does NOT re-export tabParts — canonical home is @/editor/editor-tabs', () => {
+    expect('tabParts' in EditorTabsModule).toBe(false);
   });
 
   test('tabParts is exported from @/editor/editor-tabs and parses paths correctly', async () => {

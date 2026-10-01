@@ -13,12 +13,7 @@ import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-
 
 const APP_ROOT = join(import.meta.dir, '..', '..');
 
-const ALLOWLIST: Record<string, string> = {
-  'src/components/EditorActivityPool.lazy.test.ts::@/editor/SourceEditor':
-    'The factory COUNTS module loads to assert lazy non-loading — spreading the real module would ' +
-    "load it and defeat the test. Safe: the factory provides SourceEditor, the module's only " +
-    'value export consumed by plain tests in this process.',
-};
+const ALLOWLIST: Record<string, string> = {};
 
 interface DoMockCall {
   specifier: string | null;

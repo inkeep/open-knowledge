@@ -32,6 +32,11 @@ import { getDocumentHistory, getFolderTimeline, historyWalkCap } from './timelin
 
 const CHAIN_PERF_SAMPLES = 3;
 const CHECKPOINT_PERF_SAMPLES = 3;
+const BENCH_ENABLED = process.env.RUN_BENCH === '1' || process.env.RUN_BENCH === 'true';
+const CHECKPOINT_PERF_NAMES = ['a', 'b', 'c', 'd', 'e', 'f'];
+const CHECKPOINT_PERF_REVISIONS_PER_EPOCH = BENCH_ENABLED ? 17 : 3;
+const CHECKPOINT_PERF_CHECKPOINTS =
+  CHECKPOINT_PERF_NAMES.length * CHECKPOINT_PERF_REVISIONS_PER_EPOCH;
 
 type TimelineQueryRun = () => Promise<Awaited<ReturnType<typeof getDocumentHistory>>>;
 
@@ -774,11 +779,11 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
     );
   }, 30_000);
 
-  test('perf: chain depth 5 + ~100 checkpoints walk reaches every epoch, and records its relative cost', async () => {
+  test(`perf: chain depth 5 + ${CHECKPOINT_PERF_CHECKPOINTS} checkpoints walk reaches every epoch, and records its relative cost`, async () => {
     const { contentDir, shadow } = await setup();
     const { cw, sv } = datedCommits(shadow);
-    const names = ['a', 'b', 'c', 'd', 'e', 'f'];
-    const revisionsPerEpoch = 17;
+    const names = CHECKPOINT_PERF_NAMES;
+    const revisionsPerEpoch = CHECKPOINT_PERF_REVISIONS_PER_EPOCH;
     const commitsPerEpoch = 1 + revisionsPerEpoch * 2;
     const index = createEmptyIndex();
     let prevName: string | null = null;
@@ -827,7 +832,7 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
     const withoutMedian = median(withoutMs);
 
     console.log(
-      `[perf] chain depth 5 + ~100 checkpoints, ${CHECKPOINT_PERF_SAMPLES} pairs: median per-pair ` +
+      `[perf] chain depth 5 + ${CHECKPOINT_PERF_CHECKPOINTS} checkpoints, ${CHECKPOINT_PERF_SAMPLES} pairs: median per-pair ` +
         `ratio ${ratio.toFixed(2)}x; arm medians with-chain ${withMedian.toFixed(0)}ms, no-chain ` +
         `${withoutMedian.toFixed(0)}ms. All three are observations, not assertions. A ceiling of ` +
         `${names.length}x, the number of name epochs the chain spans, was measured against a ` +

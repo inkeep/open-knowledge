@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
+import { SettingsDialogShell } from './SettingsDialogShell';
 
 describe('SettingsDialogShell module', () => {
-  test('exports SettingsDialogShell component', async () => {
-    const mod = await import('./SettingsDialogShell');
-    expect(typeof mod.SettingsDialogShell).toBe('function');
+  test('exports SettingsDialogShell component', () => {
+    expect(typeof SettingsDialogShell).toBe('function');
   });
 });

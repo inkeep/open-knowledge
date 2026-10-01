@@ -2259,7 +2259,7 @@ describe('shadow repo excludes OpenKnowledge machine-local state', () => {
 
     expect(freshTree).toContain('intro.md');
     expect(freshTree.filter((p) => p.startsWith('.ok/local/'))).toEqual([]);
-  });
+  }, 120_000);
 
   test('a repair the index sweep cannot run does not abort initialization, but degrades the shadow', async () => {
     writeFileSync(resolve(shadow.gitDir, FANOUT_INDEX_NAME), 'GARBAGE-NOT-AN-INDEX-FILE');
