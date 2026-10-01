@@ -25,6 +25,7 @@ const idbPreloadPath = fileURLToPath(
 
 export const appVitestConfig = {
   ...okVitestBase,
+  publicDir: false,
   plugins: [...okVitestBase.plugins, react()],
   resolve: {
     ...okVitestBase.resolve,
@@ -40,6 +41,11 @@ export const appVitestConfig = {
   },
   test: {
     ...okVitestBase.test,
+    exclude: [
+      ...okVitestBase.test.exclude,
+      'public/excalidraw-assets/**',
+      '.excalidraw-assets-staging-*',
+    ],
     setupFiles: [...okVitestBase.test.setupFiles, idbPreloadPath],
   },
 } satisfies ViteUserConfig;
