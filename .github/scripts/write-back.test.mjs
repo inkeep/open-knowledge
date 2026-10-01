@@ -1,6 +1,7 @@
 /* biome-ignore-all lint/suspicious/noTemplateCurlyInString: GitHub expression fixtures must remain literal. */
 /* biome-ignore-all lint/suspicious/noUndeclaredEnvVars: Tests exercise the GitHub Actions environment outside Turbo. */
 import { readFileSync } from 'node:fs';
+import { Node, Project, SyntaxKind, ts } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 import { deriveChannel } from './published-release-tags.mjs';
@@ -73,6 +74,99 @@ function harness(overrides = {}) {
   return { deps, logs, writes, run: () => runWriteBack(deps) };
 }
 
+function inspectWriteBackBoundaries(source) {
+  const project = new Project({
+    useInMemoryFileSystem: true,
+    skipLoadingLibFiles: true,
+    compilerOptions: { allowJs: true },
+  });
+  const boundaries = [
+    ['published-release-tags', 'realPublishedReleaseTags'],
+    ['resolve-shipped-version', 'resolveShippedVersion'],
+    ['tag-containment', 'createTagContainment'],
+  ].map(([module, name]) =>
+    project
+      .createSourceFile(
+        `/${module}.mjs`,
+        readFileSync(new URL(`./${module}.mjs`, import.meta.url), 'utf8'),
+      )
+      .getFunctionOrThrow(name)
+      .getSymbolOrThrow(),
+  );
+  const file = project.createSourceFile('/write-back.ts', source);
+  const value = (node, seen = new Set()) => {
+    if (!node || seen.has(node)) return undefined;
+    const next = new Set(seen).add(node);
+    if (Node.isParenthesizedExpression(node)) return value(node.getExpression(), next);
+    if (Node.isVariableDeclaration(node) || Node.isPropertyAssignment(node))
+      return value(node.getInitializer(), next);
+    if (Node.isShorthandPropertyAssignment(node))
+      return value(node.getValueSymbol()?.getDeclarations()[0], next);
+    if (Node.isIdentifier(node)) return value(node.getSymbol()?.getDeclarations()[0], next);
+    return node;
+  };
+  const isCallOf = (node, symbol) =>
+    !!node && Node.isCallExpression(node) && node.getExpression().getType().getSymbol() === symbol;
+  const main = file.getFunction('main');
+  const derive = file.getFunction('deriveVersionForFixRefs');
+  const createVersion = file.getFunction('createVersionFor');
+  const census = Object.entries({
+    main: !!main?.getBody(),
+    deriveVersionForFixRefs: !!derive?.getBody(),
+    createVersionFor: !!createVersion?.getBody(),
+    forwarding: file
+      .getExportDeclarations()
+      .every((declaration) => !declaration.getModuleSpecifier()),
+    syntax: project.getProgram().getSyntacticDiagnostics(file).length === 0,
+  }).flatMap(([name, holds]) => (holds ? [] : [name]));
+  const consumers = (main?.getDescendantsOfKind(SyntaxKind.CallExpression) ?? []).filter((call) =>
+    isCallOf(call, createVersion?.getSymbol()),
+  );
+  const input = (call, key) =>
+    value(call.getArguments()[0]?.getType().getProperty(key)?.getDeclarations()[0]);
+  const localTags = file
+    .getDescendantsOfKind(SyntaxKind.FunctionDeclaration)
+    .some((fn) => ['realStableTags', 'realReleaseTags'].includes(fn.getName()));
+  const filterBindings = new Set(
+    file
+      .getDescendantsOfKind(SyntaxKind.Identifier)
+      .filter((node) => ts.idText(node.compilerNode) === 'STABLE_TAG_RE')
+      .map((node) => node.getSymbol()),
+  );
+  const localFilters = file
+    .getDescendantsOfKind(SyntaxKind.CallExpression)
+    .some((call) =>
+      call
+        .getDescendantsOfKind(SyntaxKind.Identifier)
+        .some((node) => filterBindings.has(node.getSymbol())),
+    );
+
+  const tags =
+    consumers.length > 0 &&
+    !localTags &&
+    !localFilters &&
+    consumers.every((call) => isCallOf(input(call, 'stableTags'), boundaries[0]));
+  const localContainment = file.getDescendants().some((node) => {
+    const literal = node.compilerNode;
+    return (
+      (ts.isStringLiteralLike(literal) ||
+        ts.isTemplateHead(literal) ||
+        ts.isTemplateMiddle(literal) ||
+        ts.isTemplateTail(literal) ||
+        ts.isRegularExpressionLiteral(literal)) &&
+      /merge-base|--contains/.test(literal.text)
+    );
+  });
+  const containment =
+    !localContainment &&
+    consumers.length > 0 &&
+    consumers.every((call) => isCallOf(input(call, 'contains'), boundaries[2])) &&
+    !!derive
+      ?.getDescendantsOfKind(SyntaxKind.CallExpression)
+      .some((call) => isCallOf(call, boundaries[1]));
+  return { census, tags, containment };
+}
+
 describe('candidate enumeration', () => {
   test('the candidate page proves whether a child lookup is necessary without filtering child states', () => {
     expect(CANDIDATE_QUERY).toContain(
@@ -110,18 +204,12 @@ describe('candidate enumeration', () => {
 
   test('the tag list comes from the shared boundary, never a private copy of it', () => {
     const source = readFileSync(new URL('./write-back.mjs', import.meta.url), 'utf8');
-    expect(source).toMatch(
-      /import \{[^}]*\brealPublishedReleaseTags\b[^}]*\} from '\.\/published-release-tags\.mjs'/,
-    );
-    expect(source).not.toMatch(/^function real(?:Stable|Release)Tags/m);
-    expect(source).not.toMatch(/Tags[^\n]*\.filter\([^\n]*STABLE_TAG_RE/);
+    expect(inspectWriteBackBoundaries(source)).toMatchObject({ census: [], tags: true });
   });
 
   test('the module imports the shared shipped-version resolver rather than reimplementing containment', () => {
     const source = readFileSync(new URL('./write-back.mjs', import.meta.url), 'utf8');
-    expect(source).toMatch(/from '\.\/resolve-shipped-version\.mjs'/);
-    expect(source).toContain('resolveShippedVersion');
-    expect(source.match(/merge-base/g)?.length ?? 0).toBeLessThanOrEqual(2);
+    expect(inspectWriteBackBoundaries(source)).toMatchObject({ census: [], containment: true });
   });
 });
 
@@ -1698,5 +1786,70 @@ describe('the beta leg', () => {
     expect(forDiscord.text).toContain(
       '<https://github.com/inkeep/open-knowledge/releases/tag/v0.36.0>',
     );
+  });
+});
+
+describe('write-back boundary rule self-test', () => {
+  const source = (tags = 'published()', contains = 'containment()') => `
+    import { realPublishedReleaseTags as published } from './published-release-tags.mjs';
+    import { resolveShippedVersion as resolveVersion } from './resolve-shipped-version.mjs';
+    import { createTagContainment as containment } from './tag-containment.mjs';
+    function main() { const stableTags = ${tags}; const contains = ${contains}; createVersionFor({stableTags, contains}); }
+    function createVersionFor(options) { return options; }
+    function deriveVersionForFixRefs() { return resolveVersion({}); }
+  `;
+  test('resolves the shared boundary and rejects an adjacent private list or predicate', () => {
+    expect(inspectWriteBackBoundaries(source())).toEqual({
+      census: [],
+      tags: true,
+      containment: true,
+    });
+    expect(
+      inspectWriteBackBoundaries(source().replace('return resolveVersion({});', 'return {};')),
+    ).toEqual({ census: [], tags: true, containment: false });
+    expect(inspectWriteBackBoundaries(source('[]'))).toEqual({
+      census: [],
+      tags: false,
+      containment: true,
+    });
+    expect(inspectWriteBackBoundaries(source('published()', '() => true'))).toEqual({
+      census: [],
+      tags: true,
+      containment: false,
+    });
+    expect(
+      inspectWriteBackBoundaries(source().replace('createVersionFor({stableTags, contains});', '')),
+    ).toEqual({ census: [], tags: false, containment: false });
+  });
+  test.each([
+    'function realStableTags() { return []; }',
+    'function legacyTags(allTags, STABLE_TAG_RE) { return allTags.filter(tag => STABLE_TAG_RE.test(tag)); }',
+    'function legacyTags(allTags) { return allTags.filter(tag => STABLE_TAG_RE.test(tag)); }',
+    'function realReleaseTags() { return []; }',
+    'const STABLE_TAG_RE = /^v/; function legacyTags(allTags) { return allTags.filter(tag => STABLE_TAG_RE.test(tag)); }',
+  ])('rejects a local tag boundary: %s', (local) => {
+    expect(inspectWriteBackBoundaries(`${source()} ${local}`).tags).toBe(false);
+    expect(
+      inspectWriteBackBoundaries(`${source()} function unrelatedTags() { return []; }`).tags,
+    ).toBe(true);
+  });
+  test('rejects local containment values and ignores their comment spelling', () => {
+    expect(
+      inspectWriteBackBoundaries(`${source()} const command = 'merge-base';`).containment,
+    ).toBe(false);
+    expect(inspectWriteBackBoundaries(`${source()} /* merge-base */`)).toEqual({
+      census: [],
+      tags: true,
+      containment: true,
+    });
+  });
+  test('rejects forwarding or syntax errors instead of an empty census', () => {
+    expect(inspectWriteBackBoundaries("export * from './moved.mjs';").census).toEqual([
+      'main',
+      'deriveVersionForFixRefs',
+      'createVersionFor',
+      'forwarding',
+    ]);
+    expect(inspectWriteBackBoundaries(`${source()} const = ;`).census).toEqual(['syntax']);
   });
 });

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
+import { Node, Project, SyntaxKind } from 'ts-morph';
 import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   createFuseFailure,
@@ -80,16 +81,96 @@ beforeEach(() => {
 const nodeCmd = (src) => [process.execPath, '-e', src];
 const childSelfExitMs = 60_000;
 const readinessTimeoutDefaultMs = 5_000;
-const sourceSection = (source, start, end) => {
-  const startIndex = source.indexOf(start);
-  const endIndex = source.indexOf(end, startIndex);
-  if (startIndex === -1 || endIndex === -1) throw new Error(`missing source section: ${start}`);
-  return source.slice(startIndex, endIndex);
-};
-const throwTargets = (source) =>
-  new Set(
-    [...source.matchAll(/\bthrow\s+((?:new\s+)?[A-Za-z_$][\w$]*)/g)].map((match) => match[1]),
-  );
+function inspectFuseThrows(source, ownedFunctions, boundaryName) {
+  const project = new Project({ useInMemoryFileSystem: true, skipLoadingLibFiles: true });
+  const file = project.createSourceFile('/fuses.ts', source);
+  const imported = file
+    .getImportDeclaration('./packaging-diagnostics.mjs')
+    ?.getNamedImports()
+    .find((specifier) => specifier.getName() === 'createFuseFailure');
+  const factory = (imported?.getAliasNode() ?? imported?.getNameNode())?.getSymbol();
+  const unwrap = (node) => {
+    while (
+      node &&
+      (Node.isParenthesizedExpression(node) ||
+        Node.isAsExpression(node) ||
+        Node.isSatisfiesExpression(node) ||
+        Node.isNonNullExpression(node) ||
+        Node.isTypeAssertion(node) ||
+        Node.isExpressionWithTypeArguments(node))
+    )
+      node = node.getExpression();
+    return node;
+  };
+  const resolve = (input, seen = new Set()) => {
+    const node = unwrap(input);
+    if (!node || seen.has(node)) return undefined;
+    const next = new Set(seen).add(node);
+    if (Node.isIdentifier(node)) {
+      const declaration = node.getSymbol()?.getDeclarations()[0];
+      if (
+        declaration &&
+        Node.isVariableDeclaration(declaration) &&
+        declaration.getVariableStatement()?.getDeclarationKind() === 'const'
+      )
+        return resolve(declaration.getInitializer(), next);
+      if (declaration && Node.isBindingElement(declaration)) {
+        const owner = declaration.getParent().getParent();
+        const object = Node.isVariableDeclaration(owner)
+          ? unwrap(owner.getInitializer())
+          : undefined;
+        const key =
+          declaration.getPropertyNameNode()?.getSymbol()?.getName() ?? declaration.getName();
+        const property =
+          object && Node.isObjectLiteralExpression(object)
+            ? object.getType().getProperty(key)?.getDeclarations()[0]
+            : undefined;
+        if (property && Node.isPropertyAssignment(property))
+          return resolve(property.getInitializer(), next);
+      }
+    }
+    return node;
+  };
+  const statements = file.getStatements();
+  const roots = ownedFunctions.map((name) => file.getFunction(name));
+  const start = statements.indexOf(roots[0]);
+  const end = statements.indexOf(file.getFunction(boundaryName));
+  const throws = statements
+    .slice(start, end)
+    .flatMap((statement) =>
+      [statement, ...statement.getDescendantsOfKind(SyntaxKind.ThrowStatement)].filter(
+        Node.isThrowStatement,
+      ),
+    );
+  const census = Object.entries({
+    createFuseFailure: !!factory,
+    ...Object.fromEntries(
+      ownedFunctions.map((name, index) => [
+        name,
+        !!roots[index]?.getBody() &&
+          roots[index].getDescendantsOfKind(SyntaxKind.ThrowStatement).length > 0 &&
+          (index > 0 || end < 0 || start < end),
+      ]),
+    ),
+    [boundaryName]: end >= 0,
+    forwarding: file
+      .getExportDeclarations()
+      .every((declaration) => !declaration.getModuleSpecifier()),
+    syntax: project.getProgram().getSyntacticDiagnostics(file).length === 0,
+  }).flatMap(([name, holds]) => (holds ? [] : [name]));
+  const violations = throws
+    .filter((statement) => {
+      const value = resolve(statement.getExpression());
+      return (
+        !value ||
+        !Node.isCallExpression(value) ||
+        resolve(value.getExpression())?.getSymbol() !== factory
+      );
+    })
+    .map((statement) => statement.getStartLineNumber());
+  return { census, throws: throws.length, violations };
+}
+
 const run = (overrides = {}) => {
   const lines = [];
   const now = Date.now();
@@ -236,18 +317,14 @@ describe('failure evidence classification', () => {
   });
 
   test('routes every throw in the owned fuse functions through the shared factory', () => {
-    const afterPackFuseFunction = sourceSection(
-      afterPackSource,
-      'async function flipElectronFuses',
-      '\n\nexport default async function afterPack',
-    );
-    const afterSignFuseFunction = sourceSection(
-      afterSignSource,
-      'async function verifyFuses',
-      '\n\nexport default async function afterSign',
-    );
-    expect(throwTargets(afterPackFuseFunction)).toEqual(new Set(['createFuseFailure']));
-    expect(throwTargets(afterSignFuseFunction)).toEqual(new Set(['createFuseFailure']));
+    for (const [source, owned, boundary, minimum] of [
+      [afterPackSource, ['flipElectronFuses', 'assertAdHocSealCoversBundle'], 'afterPack', 3],
+      [afterSignSource, ['verifyFuses'], 'afterSign', 2],
+    ]) {
+      const result = inspectFuseThrows(source, owned, boundary);
+      expect(result, `${boundary}.mjs`).toMatchObject({ census: [], violations: [] });
+      expect(result.throws, `${boundary}.mjs`).toBeGreaterThanOrEqual(minimum);
+    }
   });
 
   test.each([
@@ -2030,5 +2107,84 @@ describe('workflow wiring', () => {
     ]) {
       expect(desktopRelease).toContain(`- name: ${gate}`);
     }
+  });
+});
+
+describe('fuse throw rule self-test', () => {
+  const source = (body) => `
+    import { createFuseFailure as failure } from './packaging-diagnostics.mjs';
+    async function verifyFuses() { ${body} }
+    export default async function afterSign() {}
+  `;
+  const inspectThrows = (body) => inspectFuseThrows(source(body), ['verifyFuses'], 'afterSign');
+  test('rejects the adjacent unmarked throw and resolves the imported factory', () => {
+    expect(inspectThrows("throw new Error('detail');")).toMatchObject({ census: [], throws: 1 });
+    expect(inspectThrows("throw new Error('detail');").violations).toHaveLength(1);
+    expect(inspectThrows("throw wrapFailure('detail');").violations).toHaveLength(1);
+    expect(
+      inspectThrows(
+        "const {error} = {error: (failure<string>)('detail')}; throw (error as Error)!;",
+      ),
+    ).toEqual({ census: [], throws: 1, violations: [] });
+  });
+  test('rejects a runtime await wrapper while accepting a direct factory call', () => {
+    expect(inspectThrows("throw await failure('detail');").violations).toHaveLength(1);
+    expect(inspectThrows("throw failure('detail');").violations).toEqual([]);
+  });
+  test('includes nested throws but ignores quoted throw text', () => {
+    expect(
+      inspectThrows("throw failure('detail'); function nested() { throw new Error('nested'); }")
+        .violations,
+    ).toHaveLength(1);
+    expect(
+      inspectThrows(
+        "throw failure('detail'); /* throw new Error */ const prose = 'throw new Error';",
+      ),
+    ).toEqual({ census: [], throws: 1, violations: [] });
+  });
+  test('fails its census on removed throws, forwarding, or syntax errors', () => {
+    expect(inspectThrows('').census).toEqual(['verifyFuses']);
+    expect(
+      inspectFuseThrows("export * from './moved.mjs';", ['verifyFuses'], 'afterSign').census,
+    ).toEqual(['createFuseFailure', 'verifyFuses', 'afterSign', 'forwarding']);
+    expect(inspectThrows("throw failure('detail'); const = ;").census).toEqual(['syntax']);
+  });
+  test.each([
+    [
+      'renamed',
+      source("throw failure('detail');").replace('function verifyFuses', 'function renamedFuses'),
+    ],
+    [
+      'declared after the boundary',
+      `
+      import { createFuseFailure as failure } from './packaging-diagnostics.mjs';
+      export default async function afterSign() {}
+      async function verifyFuses() { throw failure('detail'); }
+    `,
+    ],
+  ])('names only the owned function when it is %s', (_label, input) => {
+    expect(inspectFuseThrows(input, ['verifyFuses'], 'afterSign').census).toEqual(['verifyFuses']);
+  });
+  test('names only the boundary when it is renamed', () => {
+    const renamed = source("throw failure('detail');").replace(
+      'function afterSign',
+      'function renamedSign',
+    );
+    expect(inspectFuseThrows(renamed, ['verifyFuses'], 'afterSign').census).toEqual(['afterSign']);
+  });
+  test('names only the first of two owned functions when it follows the boundary', () => {
+    const reordered = `
+      import { createFuseFailure as failure } from './packaging-diagnostics.mjs';
+      async function assertAdHocSealCoversBundle() { throw failure('detail'); }
+      export default async function afterPack() {}
+      async function flipElectronFuses() { throw failure('detail'); }
+    `;
+    expect(
+      inspectFuseThrows(
+        reordered,
+        ['flipElectronFuses', 'assertAdHocSealCoversBundle'],
+        'afterPack',
+      ).census,
+    ).toEqual(['flipElectronFuses']);
   });
 });
