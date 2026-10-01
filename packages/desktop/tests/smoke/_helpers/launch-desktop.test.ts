@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -70,12 +71,26 @@ describe('resolveDesktopTarget', () => {
     expect(target.appPath).toBe('/mnt/OpenKnowledge.app');
   });
 
-  it('reports existence and a mode-appropriate skip reason', () => {
+  it('reports a mode-appropriate skip reason', () => {
     const missing = resolveDesktopTarget({ env: { [PACKAGED_APP_ENV]: '/nope/Absent.app' } });
-    expect(missing.exists).toBe(false);
     expect(missing.missingReason).toContain('/nope/Absent.app/Contents/MacOS/Absent');
     expect(resolveDesktopTarget({ env: {} }).missingReason).toContain('pnpm run build:desktop');
     expect(resolveDesktopTarget({ env: {} }).missingReason).not.toContain('bun run');
+  });
+
+  it('probes the target when existence is read, not when the target resolves', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ok-launch-target-'));
+    try {
+      const target = resolveDesktopTarget({
+        env: { [PACKAGED_APP_ENV]: join(root, 'Absent.app') },
+      });
+      expect(target.exists).toBe(false);
+      mkdirSync(dirname(target.targetPath), { recursive: true });
+      writeFileSync(target.targetPath, '');
+      expect(target.exists).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

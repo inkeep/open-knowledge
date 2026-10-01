@@ -6,7 +6,8 @@
       boot and silently SIGTRAPs (exit 133, empty stderr) unless it is
       `<productName> Helper`, so `CFBundleExecutable` carries that name
       (Stable here; `scripts/desktop-variant-config.ts` rewrites it for Beta).
-      Runtime guard: `tests/integration/packaged-helper-runs-as-node.test.ts`.
+      Runtime guard: `scripts/assert-packaged-helper-runs-as-node.mjs`, run in CI against the
+      packaged app.
 
     `LSUIElement=true` is the Dock-suppression key that PR #1290 was
     written to introduce — without it, LaunchServices keys on the spawn
