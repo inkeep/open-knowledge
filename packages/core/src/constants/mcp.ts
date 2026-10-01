@@ -28,8 +28,6 @@ export const OPEN_KNOWLEDGE_MCP_TOOLS = [
   'import',
   'checkpoint',
   'restore_version',
-  'conflicts',
-  'resolve_conflict',
 ] as const;
 
 export type OpenKnowledgeMcpTool = (typeof OPEN_KNOWLEDGE_MCP_TOOLS)[number];
@@ -43,7 +41,6 @@ export const OPEN_KNOWLEDGE_MCP_WRITE_TOOLS = [
   'import',
   'checkpoint',
   'restore_version',
-  'resolve_conflict',
 ] as const satisfies ReadonlyArray<OpenKnowledgeMcpTool>;
 
 export const OK_HOSTED_AGENT_ENV = 'OK_HOSTED_AGENT';

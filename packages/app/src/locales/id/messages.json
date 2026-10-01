@@ -991,7 +991,6 @@
     "AddR83": ["Proyek tidak dapat dibuat. Coba lagi atau pilih lokasi lain."],
     "AdjDox": ["Draf"],
     "AeHuzT": ["# Satu pola per baris.\\n# Contoh:\\n#   drafts/\\n#   *.draft.md\\n#   !keep.md"],
-    "AeLo3p": ["OpenKnowledge menyelesaikan konflik di ", ["subject"]],
     "AeORtB": [
       "Dipilih: ",
       ["innermostLabel"],
@@ -1077,7 +1076,6 @@
     "BgV29F": ["Bidang pencarian penyunting visual sedang difokus"],
     "Bgaa_U": ["Gagal memperbarui pengaturan performa — ", ["detail"]],
     "BhLPRk": ["\"", ["name"], "\" dikembalikan ke versi yang terpasang"],
-    "BhMWIs": ["Membaca konflik yang belum terselesaikan antar suntingan"],
     "BiVBP9": ["Tidak dapat membaca bahasa pemeriksaan ejaan."],
     "BjitBo": ["Unduh ", ["0"]],
     "BkGtRl": [
@@ -2351,6 +2349,11 @@
     "Pw5PTU": ["Origin eksternal"],
     "PxZCNM": ["Di luar cakupan commit Open Knowledge."],
     "Q-DKvr": ["Pasang dari ", ["source"]],
+    "Q-a_4h": [
+      "Bantu saya memahami konflik dalam ",
+      ["filePath"],
+      ". Jelaskan apa yang perlu saya bandingkan di tampilan konflik OpenKnowledge; saya akan memilih dan menerapkan penyelesaiannya di sana."
+    ],
     "Q1mtyd": ["Sembunyikan bilah sisi"],
     "Q5fqMz": ["Galat koneksi — coba lagi"],
     "Q6hhn8": ["Preferensi"],
@@ -3275,7 +3278,6 @@
       "Salinan hanya-baca dari blok MirrorSource di dokumen lain. Sunting di sumbernya dan salinan ini diperbarui langsung."
     ],
     "_XWY2J": ["Terminal dinonaktifkan"],
-    "_YWqV2": ["OpenKnowledge menyelesaikan sebuah konflik"],
     "_ayOfA": [
       "Basis pengetahuan yang mengikuti Open Knowledge Format dari Google, cara bersama untuk menata apa yang Anda tahu. Pilih ini jika Anda ingin catatan Anda bekerja baik dengan alat lain yang memahami format tersebut."
     ],
@@ -4135,7 +4137,6 @@
     "i92eAT": [
       "Kami akan membuat sebuah repositori dan mulai menyinkronkan — tanpa perlu terminal."
     ],
-    "i94lQe": ["OpenKnowledge memeriksa konflik"],
     "i9OyGp": ["Batalkan atau ulangi"],
     "i9TPUi": [
       ["targetNoun"],
@@ -4860,9 +4861,6 @@
       " dibuka karena berisi folder .git"
     ],
     "pZAs1T": ["Gagal memuat tautan keluar"],
-    "pZaMLc": [
-      "File ini berisi baris yang menyerupai penanda konflik, sehingga batas konflik tidak dapat dibaca dengan andal. Selesaikan secara manual atau dengan Tanya AI."
-    ],
     "paCw0z": ["semua yang ada di folder ", ["0"], "/ di dalam ", ["1"], "/"],
     "pajIrl": ["Terminal tidak dapat dimatikan: ", ["0"]],
     "pbwTg6": [["seconds"], " dtk lalu"],
@@ -5379,7 +5377,6 @@
     ],
     "ugoTXs": ["folder"],
     "uhJEA2": [["count", "plural", { "other": ["#", " peserta lagi"] }]],
-    "uhYnaD": ["Menyelesaikan konflik dengan memilih isi yang dipertahankan"],
     "uksqrP": [
       "Repositori tidak ditemukan. Mungkin ia sudah diganti nama, dihapus, atau dipindahkan."
     ],
@@ -5661,6 +5658,9 @@
     "xtJgSe": ["Sumber ini memuat beberapa keterampilan — pilih yang akan diimpor."],
     "xvv5gL": ["Pratinjau tangkapan layar"],
     "xxRpzT": ["Slidev ditemukan di sistem Anda."],
+    "xxxG_a": [
+      "File ini berisi baris yang tampak seperti penanda konflik, sehingga batas konfliknya tidak dapat dibaca dengan andal. Selesaikan penanda di file secara manual."
+    ],
     "xzAmL_": ["Disetujui otomatis"],
     "xzktOa": ["Sunting tautan wiki"],
     "y-LQPF": ["Gambar ", ["identity"], " tidak dapat ditentukan. Buka referensi."],

@@ -2,18 +2,25 @@ import { posix } from 'node:path';
 import {
   encodeHrefPath,
   encodeHrefPathSegment,
+  getWikiLinkText,
   isExternalHref,
   type JsxSrcRefTagSpec,
   rawSegmentOr,
   resolveAssetProjectPath,
   resolveInternalHref,
+  resolveSkillBundleWikiTarget,
+  resolveWikiLinkTargetDocName,
+  type WikiLinkLookupIndex,
 } from '@inkeep/open-knowledge-core';
+import type { Nodes as MdastNodes } from 'mdast';
 import {
   createJsxSrcAttrRe,
   readJsxSrcRefTagAt,
   resolveJsxSrcRefTarget,
 } from './jsx-src-ref-tags.ts';
 import { readMarkdownLinkAt, readWikiLinkAt, type WikiLinkMatch } from './link-syntax.ts';
+import { mdManager } from './md-manager.ts';
+import { buildProjectWikiLinkLookup } from './project-wiki-link-lookup.ts';
 
 interface FenceState {
   char: '`' | '~';
@@ -173,12 +180,30 @@ function splitLines(markdown: string): Array<{ line: string; ending: string }> {
   return lines;
 }
 
+function gfmTableRows(markdown: string): ReadonlySet<number> {
+  const rows = new Set<number>();
+  if (!markdown.includes('|')) return rows;
+  const visit = (node: MdastNodes): void => {
+    if (node.type === 'table' && node.position) {
+      for (let line = node.position.start.line; line <= node.position.end.line; line++)
+        rows.add(line - 1);
+    }
+    if ('children' in node) for (const child of node.children) visit(child);
+  };
+  visit(mdManager.parseToMdast(markdown));
+  return rows;
+}
+
 type WikiLinkRenameSegments = Pick<
   WikiLinkMatch,
   'targetRaw' | 'anchor' | 'anchorRaw' | 'alias' | 'aliasRaw'
 >;
 
-function renderWikiLinkSegments(segments: WikiLinkRenameSegments, nextTarget: string): string {
+function renderWikiLinkSegments(
+  segments: WikiLinkRenameSegments,
+  nextTarget: string,
+  escapeAliasSeparator = false,
+): string {
   let out = `[[${nextTarget}`;
   const anchorRaw = segments.anchorRaw;
   const anchorSegmentSurvived = anchorRaw !== null && anchorRaw.trim() !== '';
@@ -193,7 +218,7 @@ function renderWikiLinkSegments(segments: WikiLinkRenameSegments, nextTarget: st
     : rawSegmentOr(segments.aliasRaw, '', 'alias');
   if (alias.length > 0) {
     if (!anchorSegmentSurvived && segments.targetRaw.trim().endsWith('\\')) out += '\\';
-    out += `|${alias}`;
+    out += escapeAliasSeparator ? `\\|${alias.replaceAll('|', '\\|')}` : `|${alias}`;
   }
   return `${out}]]`;
 }
@@ -202,6 +227,11 @@ function rewriteWikiLinksInLine(
   line: string,
   oldDocName: string,
   newDocName: string,
+  rewriteTarget?: (
+    link: WikiLinkRenameSegments & { target: string },
+    inTable: () => boolean,
+  ) => string | null,
+  inTable: () => boolean = () => false,
 ): RenameRewriteResult {
   let rewritten = '';
   let rewrites = 0;
@@ -232,8 +262,13 @@ function rewriteWikiLinksInLine(
     if (line[idx] === '[' && line[idx + 1] === '[') {
       const wikiLink = readWikiLink(line, idx);
       if (wikiLink) {
-        if (wikiLink.target === oldDocName) {
-          rewritten += renderWikiLinkSegments(wikiLink, newDocName);
+        const replacement = rewriteTarget
+          ? rewriteTarget(wikiLink, inTable)
+          : wikiLink.target === oldDocName
+            ? renderWikiLinkSegments(wikiLink, newDocName)
+            : null;
+        if (replacement !== null) {
+          rewritten += replacement;
           rewrites++;
         } else {
           rewritten += line.slice(idx, wikiLink.nextIndex);
@@ -769,16 +804,88 @@ export function rewriteJsxSrcRefsForDocumentRename(
   return { markdown: rewrittenMarkdown, rewrites };
 }
 
+export interface WikiRenameContext {
+  readonly before: WikiLinkLookupIndex;
+  readonly after: WikiLinkLookupIndex;
+  readonly renames: ReadonlyMap<string, string>;
+}
+
+export function createWikiRenameContext(
+  docNames: Iterable<string>,
+  renameMap: ReadonlyMap<string, string>,
+): WikiRenameContext {
+  const renames = new Map(renameMap);
+  const before = buildProjectWikiLinkLookup(docNames);
+  const after = buildProjectWikiLinkLookup(
+    [...before.pages].map((page) => renames.get(page) ?? page),
+  );
+  return { before, after, renames };
+}
+
+function resolveRenameWikiTarget(
+  target: string,
+  sourceDocName: string,
+  lookup: WikiLinkLookupIndex,
+): string | undefined {
+  return resolveWikiLinkTargetDocName(
+    resolveSkillBundleWikiTarget(target, sourceDocName) ?? target,
+    lookup,
+  );
+}
+
+export function wikiLinkRenameDestination(
+  target: string,
+  sourceDocName: string,
+  context: WikiRenameContext,
+): string | null {
+  const originalTarget = resolveRenameWikiTarget(target, sourceDocName, context.before);
+  if (originalTarget === undefined) return null;
+  const desired = context.renames.get(originalTarget) ?? originalTarget;
+  const nextSource = context.renames.get(sourceDocName) ?? sourceDocName;
+  return resolveRenameWikiTarget(target, nextSource, context.after) === desired ? null : desired;
+}
+
+export function rewriteWikiLinksForRenameMap(
+  markdown: string,
+  sourceDocName: string,
+  context: WikiRenameContext,
+): RenameRewriteResult {
+  const nextSource = context.renames.get(sourceDocName) ?? sourceDocName;
+  return rewriteWikiLinksForDocumentRename(markdown, '', '', (link, inTable) => {
+    const desired = wikiLinkRenameDestination(link.target, sourceDocName, context);
+    if (desired === null) return null;
+    const suffix = link.target.match(/\.(md|mdx)$/i)?.[0];
+    const withSuffix = suffix ? `${desired}${suffix}` : desired;
+    const nextTarget =
+      resolveRenameWikiTarget(withSuffix, nextSource, context.after) === desired
+        ? withSuffix
+        : desired;
+    if (link.alias) return renderWikiLinkSegments(link, nextTarget);
+    const display = getWikiLinkText({ target: link.target, alias: null, anchor: link.anchor });
+    return renderWikiLinkSegments(
+      { ...link, alias: display, aliasRaw: display },
+      nextTarget,
+      inTable(),
+    );
+  });
+}
+
 export function rewriteWikiLinksForDocumentRename(
   markdown: string,
   oldDocName: string,
   newDocName: string,
+  rewriteTarget?: (
+    link: WikiLinkRenameSegments & { target: string },
+    inTable: () => boolean,
+  ) => string | null,
 ): RenameRewriteResult {
   let fence: FenceState | null = null;
   let rewrites = 0;
+  const lines = splitLines(markdown);
+  let tableRows: ReadonlySet<number> | undefined;
 
-  const rewrittenMarkdown = splitLines(markdown)
-    .map(({ line, ending }) => {
+  const rewrittenMarkdown = lines
+    .map(({ line, ending }, row) => {
       if (fence) {
         if (isFenceClose(line, fence)) {
           fence = null;
@@ -792,7 +899,16 @@ export function rewriteWikiLinksForDocumentRename(
         return `${line}${ending}`;
       }
 
-      const rewrittenLine = rewriteWikiLinksInLine(line, oldDocName, newDocName);
+      const rewrittenLine = rewriteWikiLinksInLine(
+        line,
+        oldDocName,
+        newDocName,
+        rewriteTarget,
+        () => {
+          tableRows ??= gfmTableRows(markdown);
+          return tableRows.has(row);
+        },
+      );
       rewrites += rewrittenLine.rewrites;
       return `${rewrittenLine.markdown}${ending}`;
     })

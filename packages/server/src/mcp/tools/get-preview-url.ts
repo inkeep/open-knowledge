@@ -29,24 +29,10 @@ import {
 } from './shared.ts';
 
 const DESCRIPTION = [
-  'Resolve the browser-reachable preview URL for an OpenKnowledge project (optionally for a specific doc). Opening a preview counts as demand: when no OK server is running for the project, this call auto-starts one (same `OK_MCP_AUTOSTART` gate and spawn timeout as the read/write tools) and waits briefly for the preview UI to bind — a cold first call can take a few seconds; calls against a running system answer immediately.',
-  '',
-  'Per-response `previewUrl` fields on read/write tools are ROUTE-ONLY (`/#/<doc>`, no host:port) — they identify which doc to preview, not a URL to open by itself. Call this tool to get the full, openable URL.',
-  '',
-  'This is THE way to open a doc OR a loose file in a browser, and the only way to force a browser when the OK Desktop app is installed (the `ok open` CLI prefers Desktop). Use it when YOUR host opens the URL itself: navigate your in-app / embedded browser to the returned `url`, or — only on a stdio host with no browser tool — `open` it in the system browser. Do not hunt for the URL via `ok ps`/`ok status` or by guessing a port — this tool returns it. Claude Code Desktop opens its in-app Browser pane with `preview_start({url})` then `navigate({url})` to move; a pure stdio CLI with no browser uses `ok open <doc>` to open in the OK Desktop app.',
-  '',
-  'If you are running INSIDE an OpenKnowledge surface — the desktop app’s built-in terminal or its in-app agent panel — the response leads with an `ok open …` steer and returns it as `okOpenCommand`. Run that instead: the user is already looking at the app, so a localhost URL in your reply is noise at best and a dead link at worst. Never paste `url` into your answer in that case.',
-  '',
-  'Returns `{ url: null, baseUrl: null, running: false, autoOpen }` + a recovery hint only when no UI could be reached (auto-start disabled via `OK_MCP_AUTOSTART=0`, no spawn authority in this registration, or the UI did not bind in time) — the hint names the right command for the actual state.',
-  '',
-  'To open a single markdown file that may live OUTSIDE any Open Knowledge project (a loose file, or a doc in a different git worktree), pass `file` with an absolute path: the tool finds the running session whose content directory contains it and returns that session’s URL, then navigate your in-app browser there. `document`/`folder` are for a doc in the current project; `file` is the out-of-project form.',
-  '',
-  '**Parameters:**',
-  '- `document` (optional) — Extension-less doc path in the current project (e.g. `specs/foo/SPEC`). Omit for the UI root URL.',
-  '- `folder` (optional) — Folder path in the current project (e.g. `specs/foo`); returns the `…/#/<folder>/` route. Mutually exclusive with `document`.',
-  '- `skill` (optional) — A skill to open in the editor: `{ name, scope? }` (scope `project` default). Returns the `…/#/__skill__/<scope>/<name>` route. Mutually exclusive with `document`/`folder`/`file`.',
-  '- `file` (optional) — Absolute path to a single markdown file, including one outside any project. Resolves to the running single-file / worktree session serving it. Mutually exclusive with `document`/`folder`/`skill`; `cwd` is ignored when set.',
-  '- `cwd` (optional) — Project root (see `cwd` description below).',
+  'Get the full browser URL for this project or a document/folder/skill, or an absolute markdown file outside the project. Opening is demand: auto-starts OK under the normal OK_MCP_AUTOSTART gate and waits briefly for UI; cold calls can take seconds. Other tools return route-only previewUrl paths; use this tool for an openable URL, never guess ports or hunt via ok ps/status.',
+  'Choose one: document (extension-less), folder (trailing-slash route), skill:{name,scope?} (project default), or file (absolute .md/.mdx in a loose-file/worktree session). file ignores cwd; other targets use current project. Omit targets for UI root.',
+  'When YOUR host opens URLs, navigate its embedded browser to url; Claude Code Desktop uses preview_start({url}) then navigate({url}). Only a stdio host without a browser tool should open the URL in the system browser. A CLI without a browser can use ok open <doc> for OK Desktop. This tool forces browser access even when Desktop is installed.',
+  "INSIDE OK's terminal/agent panel, use returned okOpenCommand instead; never paste url in the answer. If no UI is reachable, returns url:null, baseUrl:null, running:false, autoOpen plus state-specific recovery text (autostart disabled, no spawn authority or UI timeout). Follow it.",
 ].join('\n');
 
 interface GetPreviewUrlDeps {

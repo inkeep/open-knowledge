@@ -39,20 +39,8 @@ const HistoryEntryOutputSchema = z.object({
 });
 
 const DESCRIPTION = [
-  '[Requires: Hocuspocus server] List version history for a document, or the activity timeline for a folder.',
-  'Returns timeline entries from the shadow repo, sorted by timestamp descending.',
-  'Each entry carries a `version` (40-char commit SHA) you pass straight to `restore_version({ document, version })` — same field name on both sides.',
-  '',
-  '**Parameters (pass EXACTLY ONE of `document` / `folder` / `skill`):**',
-  '- `document` — Document name to query history for, typically without extension. A trailing `.md` or `.mdx` is stripped automatically.',
-  '- `folder` — Folder path for the FOLDER timeline: attributed activity over the folder\'s `.ok/` artifacts (templates + frontmatter) — who created / edited / renamed / moved / deleted them, when. `""` = project root.',
-  "- `skill` — Skill NAME to query version history for (the skill folder's attributed versions). PROJECT-scope skills only — global skills are unversioned. Pass an entry's `version` to `restore_version({ skill, version })`.",
-  '- `branch` (optional) — Branch name (default: current branch)',
-  '- `limit` (optional) — Maximum entries to return (default 50, max 200)',
-  '- `offset` (optional) — Number of entries to skip for pagination (default 0)',
-  '- `kind` (optional) — Filter by entry type: "checkpoint", "upstream", or "wip"',
-  '- `author` (optional) — Filter to entries by this author name or email',
-  '- `excludeAuthor` (optional) — Exclude entries by this author name or email',
+  'Read version history: pass exactly one document, folder or skill. Requires the Hocuspocus server. Returns shadow-repo entries newest first; version is a 40-char SHA for restore_version({document,version}) or restore_version({skill,version}).',
+  'document accepts optional .md/.mdx. folder lists attributed template/frontmatter activity; empty string is project root. skill is a project-scope name; global skills are unversioned. Optional branch (current default), limit (50 default, 200 max), offset (0), kind (checkpoint/upstream/wip), author and excludeAuthor (name/email).',
 ].join('\n');
 
 export interface GetHistoryDeps {

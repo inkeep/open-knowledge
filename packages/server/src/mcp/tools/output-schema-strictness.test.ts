@@ -1,7 +1,10 @@
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { RE_LINT_FAILED_WARNING_PREFIX } from '@inkeep/open-knowledge-core';
+import {
+  AUDIT_EMPTY_SCOPE_WARNING,
+  RE_LINT_FAILED_WARNING_PREFIX,
+} from '@inkeep/open-knowledge-core';
 import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
@@ -138,7 +141,6 @@ describe('MCP outputSchema strictness — auto-discovered registerTool sweep (no
     'palette',
     'config',
     'preview_url',
-    'resolve_conflict',
     'search',
     'share_link',
     'history',
@@ -146,7 +148,6 @@ describe('MCP outputSchema strictness — auto-discovered registerTool sweep (no
     'restore_version',
     'delete',
     'move',
-    'conflicts',
     'exec',
     'edit',
     'write',
@@ -273,6 +274,92 @@ describe('audit and lint emitted coverage validates against the client schema', 
       expect(validation.valid, validation.errorMessage).toBe(true);
     });
   }
+
+  test.each([
+    { name: 'audit', register: registerAudit },
+    { name: 'lint', register: registerLint },
+  ])('$name keeps empty-scope information distinct from degradation', async ({ register }) => {
+    const cwd = newProject();
+    const captured = captureRegistration(register, {
+      config: BASE_CONFIG,
+      resolveCwd: async () => cwd,
+      serverUrl: 'http://127.0.0.1:31337',
+    });
+    const unknownWarning = 'No documents were checked: source could not be read.';
+    for (const warnings of [
+      [AUDIT_EMPTY_SCOPE_WARNING],
+      [AUDIT_EMPTY_SCOPE_WARNING, unknownWarning],
+    ]) {
+      const payload = {
+        files: [],
+        fileCount: 0,
+        errorCount: 0,
+        warningCount: 0,
+        warnings,
+        ran: ['markdownlint'],
+      };
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Response.json(payload)),
+      );
+      const result = await captured.handler({ path: 'empty' });
+      expect(result.structuredContent).toMatchObject(payload);
+      const text = result.content[0]?.text ?? '';
+      expect(text).toContain(
+        'No documents were checked in empty; this scope contains no admitted documents.',
+      );
+      expect(text).toContain('Checks selected: markdownlint; no document checks ran.');
+      expect(text).not.toContain('No problems');
+      if (warnings.length === 1) expect(text).not.toContain('incomplete');
+      else {
+        expect(text).toContain('incomplete — 1 warning');
+        expect(text).toContain(unknownWarning);
+      }
+      const validate = new AjvJsonSchemaValidator().getValidator(
+        compileOutputSchemaForClient(captured.cfg.outputSchema),
+      );
+      const validation = validate(result.structuredContent) as {
+        valid: boolean;
+        errorMessage?: string;
+      };
+      expect(validation.valid, validation.errorMessage).toBe(true);
+    }
+  });
+
+  test.each([
+    { name: 'audit', register: registerAudit },
+    { name: 'lint', register: registerLint },
+  ])(
+    '$name reports a refused zero-document scope as incomplete, not empty',
+    async ({ name, register }) => {
+      const cwd = newProject();
+      const captured = captureRegistration(register, {
+        config: BASE_CONFIG,
+        resolveCwd: async () => cwd,
+        serverUrl: 'http://127.0.0.1:31337',
+      });
+      const refused = 'refusing audit scope under a hidden path segment: .ok';
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          Response.json({
+            files: [],
+            fileCount: 0,
+            errorCount: 0,
+            warningCount: 0,
+            warnings: [refused],
+            ran: ['markdownlint'],
+          }),
+        ),
+      );
+      const text = (await captured.handler({ path: 'private' })).content[0]?.text ?? '';
+      expect(text).toContain(
+        `No problems found across 0 documents in private, but the ${name} could not fully complete.`,
+      );
+      expect(text).toContain(`  ⚠ ${refused}`);
+      expect(text).not.toContain('No documents were checked');
+    },
+  );
 
   test('audit text distinguishes clean, findings, empty selection, and degradation', async () => {
     const captured = captureRegistration(registerAudit, {

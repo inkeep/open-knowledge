@@ -242,7 +242,9 @@ export {
   ZERO_SOURCE_COUNTS,
 } from './validation-counts.ts';
 export {
+  AUDIT_EMPTY_SCOPE_WARNING,
   deriveValidationRunSources,
+  isAuditEmptyScopeWarning,
   type ValidationRunMode,
   validationCoverageLines,
 } from './validation-run-sources.ts';

@@ -1,12 +1,24 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import * as core from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import * as Y from 'yjs';
 import { createApiExtension } from './api-extension.test-helper.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { _resetDocExtensionsForTests } from './doc-extensions.ts';
+import type { FileIndexEntry } from './file-watcher.ts';
 
 interface CapturedResponse {
   status: number;
@@ -44,13 +56,19 @@ async function renameFolder(
   contentDir: string,
   from: string,
   to: string,
+  options: {
+    documents?: Map<string, Y.Doc>;
+    afterIndex?: () => void;
+    fileIndex?: Map<string, FileIndexEntry>;
+  } = {},
 ): Promise<{ status: number; structured: Record<string, unknown> }> {
   const backlinkIndex = new BacklinkIndex({ projectDir: contentDir, contentDir });
   await backlinkIndex.rebuildFromDisk();
+  options.afterIndex?.();
 
   const ext = createApiExtension({
     hocuspocus: {
-      documents: new Map(),
+      documents: options.documents ?? new Map(),
       closeConnections() {},
       unloadDocument: async () => {},
       debouncer: { isDebounced: () => false, executeNow: async () => undefined },
@@ -60,7 +78,7 @@ async function renameFolder(
       closeAllForDoc: async () => {},
     } as unknown as Parameters<typeof createApiExtension>[0]['sessionManager'],
     contentDir,
-    getFileIndex: () => new Map(),
+    getFileIndex: () => options.fileIndex ?? new Map(),
     backlinkIndex,
   });
 
@@ -108,9 +126,9 @@ describe('folder rename enumerates descendant docs from disk', () => {
     const rewrittenDocs = structured.rewrittenDocs as Array<{ docName: string }>;
     expect(rewrittenDocs.map((d) => d.docName)).toContain('src');
     const srcBody = readFileSync(join(contentDir, 'src.md'), 'utf-8');
-    expect(srcBody).toContain('[[fr-final/deep/leaf]]');
-    expect(srcBody).toContain('[[fr-final/note]]');
-    expect(srcBody).not.toContain('fr-nested');
+    expect(srcBody).toContain('[[fr-final/deep/leaf|fr-nested/deep/leaf]]');
+    expect(srcBody).toContain('[[fr-final/note|fr-nested/note]]');
+    expect(srcBody).not.toContain('[[fr-nested/');
   });
 
   test('preserves a .mdx descendant extension (registerDocExtension path)', async () => {
@@ -128,12 +146,12 @@ describe('folder rename enumerates descendant docs from disk', () => {
     expect(existsSync(join(contentDir, 'guides/page.md'))).toBe(false);
 
     const indexBody = readFileSync(join(contentDir, 'index.md'), 'utf-8');
-    expect(indexBody).toContain('[[guides/page]]');
+    expect(indexBody).toContain('[[guides/page|docs/page]]');
   });
 });
 
 describe('folder rename rewrites every inbound link shape and preserves intra-folder links', () => {
-  test('rewrites nested `../` inbound links and leaves no stale folder references', async () => {
+  test('rewrites nested `../` inbound links and preserves wiki display labels', async () => {
     seed(contentDir, 'foods/apple.md', '# Apple\n');
     seed(contentDir, 'foods/sub/banana.md', '# Banana\n');
 
@@ -147,16 +165,10 @@ describe('folder rename rewrites every inbound link shape and preserves intra-fo
     expect(status).toBe(200);
 
     const read = (p: string) => readFileSync(join(contentDir, p), 'utf-8');
-    for (const p of [
-      'top-wiki.md',
-      'top-root.md',
-      'top-dotrel.md',
-      'one/note.md',
-      'one/two/note.md',
-    ]) {
+    for (const p of ['top-root.md', 'top-dotrel.md', 'one/note.md', 'one/two/note.md']) {
       expect(read(p)).not.toContain('foods');
     }
-    expect(read('top-wiki.md')).toContain('[[recipes/apple]]');
+    expect(read('top-wiki.md')).toContain('[[recipes/apple|foods/apple]]');
     expect(read('top-root.md')).toContain('(/recipes/apple.md)');
     expect(read('top-dotrel.md')).toContain('(./recipes/apple.md)');
     expect(read('one/note.md')).toContain('(../recipes/apple.md)');
@@ -193,5 +205,137 @@ describe('folder rename rewrites every inbound link shape and preserves intra-fo
     expect(existsSync(join(contentDir, 'recipes/apple.md'))).toBe(true);
     expect(existsSync(join(contentDir, 'recipes/sub/banana.md'))).toBe(true);
     expect(existsSync(join(contentDir, 'veg/carrot.md'))).toBe(true);
+  });
+});
+
+describe('managed rename corpus discovery', () => {
+  test('does not parse unrelated indexed document bodies', async () => {
+    seed(contentDir, 'moving/target.md', '# Target\n');
+    const names = Array.from({ length: 96 }, (_, i) => `work-${i}`);
+    for (const name of names) seed(contentDir, `${name}.md`, `# Work source ${name}\n`);
+    seed(contentDir, 'linked.md', '[[moving/target]]\n');
+    const seen = new Set<string>();
+    let active = false;
+    const original = core.stripFrontmatter;
+    const parse = vi.spyOn(core, 'stripFrontmatter').mockImplementation((body) => {
+      if (active && body.startsWith('# Work source ')) seen.add(body);
+      return original(body);
+    });
+    try {
+      const result = await renameFolder(contentDir, 'moving', 'moved', {
+        afterIndex: () => {
+          active = true;
+        },
+      });
+      expect(result.status).toBe(200);
+      expect(seen.size).toBe(0);
+      expect(readFileSync(join(contentDir, 'linked.md'), 'utf8')).toBe(
+        '[[moved/target|moving/target]]\n',
+      );
+    } finally {
+      parse.mockRestore();
+    }
+  });
+
+  test('rewrites a link found only in loaded unsaved Y.Text', async () => {
+    seed(contentDir, 'moving/target.md', '# Target\n');
+    seed(contentDir, 'live.md', 'No link on disk.\n');
+    const doc = new Y.Doc();
+    doc.getText('source').insert(0, '[[moving/target]]\n');
+    try {
+      const result = await renameFolder(contentDir, 'moving', 'moved', {
+        documents: new Map([['live', doc]]),
+      });
+      expect(result.status).toBe(200);
+      expect(readFileSync(join(contentDir, 'live.md'), 'utf8')).toBe(
+        '[[moved/target|moving/target]]\n',
+      );
+    } finally {
+      doc.destroy();
+    }
+  });
+
+  test('discovers a stale referrer and protects an unmoved target outside moved backlinks', async () => {
+    seed(contentDir, 'notes/beta.md', '# Moving\n');
+    seed(contentDir, 'm/beta.md', '# Intended\n');
+    seed(contentDir, 'source.md', '[[beta|Original]]\n');
+    seed(contentDir, 'stale.md', 'Unlinked when indexed.\n');
+    const result = await renameFolder(contentDir, 'notes', 'archive', {
+      afterIndex: () => {
+        const path = join(contentDir, 'stale.md');
+        const { atime, mtimeMs } = statSync(path);
+        seed(contentDir, 'stale.md', '[[notes/beta|Added after indexing]]\n');
+        utimesSync(path, atime, new Date(mtimeMs + 2_000));
+      },
+    });
+    expect(result.status).toBe(200);
+    expect(readFileSync(join(contentDir, 'source.md'), 'utf8')).toBe('[[m/beta|Original]]\n');
+    expect(readFileSync(join(contentDir, 'stale.md'), 'utf8')).toBe(
+      '[[archive/beta|Added after indexing]]\n',
+    );
+  });
+
+  test('rewrites a file-indexed referrer that the backlink index has not seen yet', async () => {
+    seed(contentDir, 'moving/target.md', '# Target\n');
+    const result = await renameFolder(contentDir, 'moving', 'moved', {
+      afterIndex: () => seed(contentDir, 'late.md', '[[moving/target]]\n'),
+      fileIndex: new Map([
+        [
+          'late',
+          {
+            size: 18,
+            modified: new Date(0).toISOString(),
+            canonicalPath: join(contentDir, 'late.md'),
+            inode: 0,
+            aliases: [],
+            kind: 'markdown',
+          },
+        ],
+      ]),
+    });
+    expect(result.status).toBe(200);
+    expect(readFileSync(join(contentDir, 'late.md'), 'utf8')).toBe(
+      '[[moved/target|moving/target]]\n',
+    );
+  });
+
+  test('leaves loaded non-Markdown documents untouched when a wiki winner changes', async () => {
+    seed(contentDir, 'docs/Login.md', '# Login\n');
+    seed(contentDir, 'm/Login.md', '# Other login\n');
+    seed(contentDir, 'index.md', 'See [[Login]].\n');
+    const diagram = 'flowchart LR\n  A --> B[[Login]]\n';
+    seed(contentDir, 'diagram.mmd', diagram);
+    const doc = new Y.Doc();
+    doc.getText('source').insert(0, diagram);
+    try {
+      const result = await renameFolder(contentDir, 'docs', 'zz', {
+        documents: new Map([['diagram.mmd', doc]]),
+      });
+      expect(result.status).toBe(200);
+      expect(readFileSync(join(contentDir, 'index.md'), 'utf8')).toBe('See [[zz/Login|Login]].\n');
+      expect(doc.getText('source').toString()).toBe(diagram);
+      expect(readFileSync(join(contentDir, 'diagram.mmd'), 'utf8')).toBe(diagram);
+      expect(
+        (result.structured.rewrittenDocs as Array<{ docName: string }>).map((d) => d.docName),
+      ).toEqual(['index']);
+    } finally {
+      doc.destroy();
+    }
+  });
+
+  test('treats an unrelated document whose folder became a file as absent', async () => {
+    seed(contentDir, 'moving/target.md', '# Target\n');
+    seed(contentDir, 'linked.md', '[[moving/target]]\n');
+    seed(contentDir, 'unrelated/a.md', '# A\n');
+    const result = await renameFolder(contentDir, 'moving', 'moved', {
+      afterIndex: () => {
+        rmSync(join(contentDir, 'unrelated'), { recursive: true });
+        writeFileSync(join(contentDir, 'unrelated'), 'now a file');
+      },
+    });
+    expect(result.status).toBe(200);
+    expect(readFileSync(join(contentDir, 'linked.md'), 'utf8')).toBe(
+      '[[moved/target|moving/target]]\n',
+    );
   });
 });

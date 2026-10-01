@@ -11,8 +11,11 @@ import {
 import {
   buildPagesByBasenameIndex,
   buildPagesBySlugIndex,
+  buildWikiLinkAssetTargetKeys,
   type HeadingEntry,
+  isResolvedWikiLinkTarget,
   resolveWikiLinkTarget,
+  resolveWikiLinkTargetDocName,
   type WikiLinkLookupIndex,
 } from '@inkeep/open-knowledge-core';
 import { openExternalUrl } from '@/lib/external-link';
@@ -39,6 +42,7 @@ let pagesCache: PageItem[] | null = null;
 let pagesCacheTime = 0;
 let knownTargetSet: Set<string> | null = null;
 let wikiLinkLookup: WikiLinkLookupIndex | null = null;
+const resolvedSourceTargets = new WeakMap<WikiLinkLookupIndex, Map<string, boolean>>();
 
 const EMPTY_WIKI_LINK_LOOKUP: WikiLinkLookupIndex = {
   pages: new Set(),
@@ -92,25 +96,11 @@ const wikiLinkBrokenMark = Decoration.mark({
   class: 'cm-wiki-link cm-wiki-link-broken',
 });
 
-export function buildPageNameSet(pages: PageItem[]): Set<string> {
-  const s = new Set<string>();
-  for (const p of pages) {
-    s.add(p.docName.toLowerCase());
-    if (p.title) s.add(p.title.toLowerCase());
-    if (p.kind === 'asset') {
-      const path = p.docName.replace(/^\//, '');
-      s.add(path.toLowerCase());
-      const slash = path.lastIndexOf('/');
-      s.add((slash === -1 ? path : path.slice(slash + 1)).toLowerCase());
-    }
-  }
-  return s;
-}
-
 export function buildKnownWikilinkTargetSet(pages: PageItem[]): Set<string> {
-  const s = buildPageNameSet(pages);
+  const s = new Set<string>();
   for (const page of pages) {
     if (page.kind === 'asset') continue;
+    if (page.kind === 'folder') s.add(page.docName.toLowerCase());
     const segments = page.docName.split('/');
     segments.pop();
     let folderPath = '';
@@ -132,6 +122,7 @@ export function buildSourceWikiLinkLookup(pages: PageItem[]): WikiLinkLookupInde
   return {
     pages: docNames,
     assetPaths,
+    assetTargetKeys: buildWikiLinkAssetTargetKeys(assetPaths),
     pagesBySlug: buildPagesBySlugIndex(docNames, toWikiLinkSlug),
     pagesByBasename: buildPagesByBasenameIndex(docNames, toWikiLinkSlug),
   };
@@ -155,17 +146,31 @@ export function resolveSourceWikiLinkDestination(
       classified.url.replace(/^\//, '');
     return { kind: 'hash', href: hashFromAssetPath(assetPath) };
   }
-  return { kind: 'hash', href: hashFromDocName(classified.docName, classified.anchor) };
+  const docName = resolveWikiLinkTargetDocName(classified.docName, lookup) ?? classified.docName;
+  return { kind: 'hash', href: hashFromDocName(docName, classified.anchor) };
 }
 
-export function extractWikilinkTarget(inner: string): string {
-  return inner.split(/[#|]/)[0].trim().toLowerCase();
-}
-
-export function wikiLinkSourceClass(inner: string, targetSet: ReadonlySet<string> | null): string {
-  if (targetSet === null) return 'cm-wiki-link';
-  const target = extractWikilinkTarget(inner);
-  return target && !targetSet.has(target) && isLinkValidationVisible()
+export function wikiLinkSourceClass(
+  inner: string,
+  lookup: WikiLinkLookupIndex | null,
+  knownTargets?: ReadonlySet<string> | null,
+): string {
+  if (lookup === null) return 'cm-wiki-link';
+  const target = inner.split(/[#|]/)[0].trim();
+  let resolved = resolvedSourceTargets.get(lookup);
+  if (!resolved) {
+    resolved = new Map();
+    resolvedSourceTargets.set(lookup, resolved);
+  }
+  let targetResolved = resolved.get(target);
+  if (target && targetResolved === undefined) {
+    targetResolved = isResolvedWikiLinkTarget(target, lookup);
+    resolved.set(target, targetResolved);
+  }
+  return target &&
+    !targetResolved &&
+    !knownTargets?.has(target.toLowerCase()) &&
+    isLinkValidationVisible()
     ? 'cm-wiki-link cm-wiki-link-broken'
     : 'cm-wiki-link';
 }
@@ -179,7 +184,7 @@ function buildDecorations(view: EditorView): DecorationSet {
     WIKI_LINK_RE.lastIndex = 0;
     let m = WIKI_LINK_RE.exec(text);
     while (m !== null) {
-      const className = wikiLinkSourceClass(m[0].slice(2, -2), targetSet);
+      const className = wikiLinkSourceClass(m[0].slice(2, -2), wikiLinkLookup, targetSet);
       const mark = className.includes('cm-wiki-link-broken') ? wikiLinkBrokenMark : wikiLinkMark;
       builder.add(from + m.index, from + m.index + m[0].length, mark);
       m = WIKI_LINK_RE.exec(text);

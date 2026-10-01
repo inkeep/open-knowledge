@@ -52,7 +52,7 @@ test.describe('rename-consolidation — browser-fidelity outcomes', () => {
     }, baseURL);
 
     if (indexBytes.status === 200 && indexBytes.body) {
-      expect(indexBytes.body).toContain('[[sso]]');
+      expect(indexBytes.body).toContain('Link: [[sso|auth]]');
       expect(indexBytes.body).not.toContain('[[auth]]');
     } else {
       void indexBytes;

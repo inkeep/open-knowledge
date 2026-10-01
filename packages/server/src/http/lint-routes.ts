@@ -19,8 +19,9 @@ import type { ContentFilter } from '../content-filter.ts';
 import type { DerivedDocumentIndexApiPort } from '../derived-document-index.ts';
 import { isContainmentRejection } from '../fs-safety.ts';
 import type { LinkAdvisoryPolicy } from '../link-advisory-policy.ts';
-import { AuditSupersededError, auditProject, lintDoc } from '../lint/audit.ts';
+import { AuditSupersededError, auditProject, auditScopeWarning, lintDoc } from '../lint/audit.ts';
 import { AuditCache } from '../lint/audit-cache.ts';
+import { type AuditScope, resolveAuditScope } from '../lint/audit-scope.ts';
 import { listProjectSchemaFiles, SCHEMA_LIST_CAP } from '../lint/frontmatter-schemas.ts';
 import {
   composeEffectiveLinterConfig,
@@ -88,7 +89,8 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
   const liveLintSourceFor = (docRelPath: string): string | null => {
     const docName = docRelPath.replace(/\.(md|mdx)$/i, '');
     const doc = hocuspocus.documents.get(docName);
-    return doc === undefined ? null : doc.getText('source').toString();
+    if (doc === undefined || resolveDocFilePath(contentDir, docName) !== docRelPath) return null;
+    return doc.getText('source').toString();
   };
 
   const auditCache = new AuditCache();
@@ -98,9 +100,11 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
     validators: readonly ProjectValidator[],
     targetPath: string | undefined,
     configFingerprint: string,
+    resolvedScope?: AuditScope,
   ): Promise<ValidationAuditResult> {
-    const key = `${configFingerprint} ${readAuditGeneration()} ${targetPath ?? ''}`;
-    return auditFlight.run(key, () => runValidationAudit(validators, { targetPath })).promise;
+    const key = `${configFingerprint} ${readAuditGeneration()} ${resolvedScope?.kind ?? ''} ${targetPath ?? ''}`;
+    return auditFlight.run(key, () => runValidationAudit(validators, { targetPath, resolvedScope }))
+      .promise;
   }
 
   function respondAuditSuperseded(res: ServerResponse, handler: string): void {
@@ -269,12 +273,27 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
       try {
         const url = new URL(req.url ?? '', 'http://localhost');
         const rawTarget = url.searchParams.get('path');
-        const target = rawTarget === null || rawTarget === '' ? undefined : rawTarget;
+        let target = rawTarget === null || rawTarget === '' ? undefined : rawTarget;
         if (target !== undefined && !isValidRelativeContentPath(target)) {
           errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid path.', {
             handler: 'lint-audit',
           });
           return;
+        }
+        let resolvedScope: AuditScope | undefined;
+        if (
+          target === undefined ||
+          auditScopeWarning({ path: resolve(contentDir, target) }, contentDir, target) === undefined
+        ) {
+          const resolution = resolveAuditScope(target, contentDir);
+          if (!resolution.ok) {
+            errorResponse(res, 404, 'urn:ok:error:not-found', resolution.title, {
+              handler: 'lint-audit',
+            });
+            return;
+          }
+          resolvedScope = resolution.scope;
+          target = relative(contentDir, resolvedScope.path);
         }
         const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
         const result = await auditProject({
@@ -282,6 +301,7 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
           contentDir,
           baseConfig,
           targetPath: target,
+          resolvedScope,
           liveSourceFor: liveLintSourceFor,
           cache: auditCache,
           auditGeneration: readAuditGeneration,
@@ -325,6 +345,23 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
           }
           target = resolveDocFilePath(contentDir, docParam) ?? `${docParam}.md`;
         }
+        let resolvedScope: AuditScope | undefined;
+        if (
+          docParam === undefined &&
+          (target === undefined ||
+            auditScopeWarning({ path: resolve(contentDir, target) }, contentDir, target) ===
+              undefined)
+        ) {
+          const resolution = resolveAuditScope(target, contentDir);
+          if (!resolution.ok) {
+            errorResponse(res, 404, 'urn:ok:error:not-found', resolution.title, {
+              handler: 'audit',
+            });
+            return;
+          }
+          resolvedScope = resolution.scope;
+          target = relative(contentDir, resolvedScope.path);
+        }
         const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
         const linkPolicy = getLinkAdvisoryPolicy();
         const validators = createProjectValidators({
@@ -343,6 +380,7 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
           validators,
           target,
           AuditCache.fingerprintConfig(baseConfig),
+          resolvedScope,
         );
         if (url.searchParams.get('counts') === '1') {
           successResponse(

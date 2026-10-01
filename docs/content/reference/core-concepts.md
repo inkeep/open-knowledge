@@ -88,6 +88,14 @@ The set of files the engine treats as your knowledge base is the configured cont
 
 Internal cross-references are written with **standard markdown links**. The recommended form is **relative** — `[text](./sibling.md)`, `[text](../folder/doc.md)` — which stays portable across GitHub, Obsidian, VS Code, and published sites. A **root-absolute** form (`[text](/folder/doc.md)`, where the leading slash means the content root) is equally valid and convenient for cross-folder links. The two never mix: never glue `./` onto a content-root path, since `./folder/doc.md` written from a doc already inside `folder/` resolves to the doubled, broken `folder/folder/doc.md` — `write`/`edit` flag exactly this in their `brokenLinks` response. Whenever document A links to document B, OpenKnowledge automatically records the inverse on B: a **backlink** from B back to A.
 
+### Review links after upgrading
+
+A wiki link such as `[[notes/beta.md]]` first checks for a document whose path is exactly `notes/beta.md`. If none exists, OpenKnowledge removes **one** terminal `.md` or `.mdx` (case-insensitive) and resolves `notes/beta`. It does not repeatedly remove suffixes: `[[notes/beta.md.md]]` can fall back to `notes/beta.md`, but not `notes/beta`. If the suffix-free name finds no document, resolution tries the original spelling.
+
+After the original exact-path check, OpenKnowledge fully resolves the suffix-stripped spelling: exact path, case- and punctuation-insensitive slug, folder `index` page (or its same-named page), then matching basename when the link has no slash. Only if that finds nothing does it try the original spelling's fuzzy, folder-index, and basename fallbacks. Without a Markdown suffix, those checks run once on the original spelling. If multiple paths have the same fuzzy slug or basename, the path smallest in UTF-16 code-unit order wins. For example, with `reports/index.md` and `reports-md.md`, `[[reports.md]]` opens `reports/index` before trying the fuzzy match for `reports-md`. An exact, case-matching path avoids a fuzzy tie.
+
+After upgrading, review existing wiki links and shorthand targets that omit a folder, differ only by case or punctuation, or end in `.md` or `.mdx`. Open each link or use the MCP `links` tool with `kind: "forward"` to inspect its resolved destination. If a valid link now opens a different document, replace its target with the intended document's exact path. Use `audit` to find broken links, but do not rely on it to detect a link that still resolves to the wrong document. For new cross-document links, prefer the explicit relative or root-absolute Markdown paths above.
+
 You never write backlinks by hand. They are computed from the links you already write, and together they form the **link graph**: the network of relationships across your knowledge base.
 
 ```html preview

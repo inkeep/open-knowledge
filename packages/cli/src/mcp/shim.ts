@@ -29,6 +29,8 @@ import { resolveSelfSpawn } from '../commands/self-spawn.ts';
 const DEFAULT_SPAWN_TIMEOUT_MS = 5000;
 const DEFAULT_POLL_INTERVAL_MS = 100;
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
+const SERVER_START_RECOVERY =
+  'Run `ok start` in the target project, then retry this tool. Do not fall back to native file edits for OpenKnowledge content.';
 
 interface ShimTransport {
   onerror: ((err: Error) => void) | undefined;
@@ -155,7 +157,7 @@ function readErrorLogDefault(path: string): string {
 
 function formatTimeoutMessage(timeoutMs: number, stderr: string): string {
   const stderrBlock = stderr ? ` stderr:\n${stderr}` : '';
-  return `server did not start within ${timeoutMs}ms${stderrBlock}`;
+  return `server did not start within ${timeoutMs}ms${stderrBlock}\n${SERVER_START_RECOVERY}`;
 }
 
 function requestIdOf(message: JSONRPCMessage): RequestId | undefined {
@@ -212,7 +214,7 @@ export async function resolveMcpHttpUrl(opts: ResolveMcpHttpUrlOptions): Promise
 
   if (opts.envAutoStart === '0') {
     throw new AutoStartDisabledError(
-      'OpenKnowledge server is not running and OK_MCP_AUTOSTART=0 disables auto-start.',
+      `OpenKnowledge server is not running and OK_MCP_AUTOSTART=0 disables auto-start. ${SERVER_START_RECOVERY}`,
     );
   }
 
@@ -274,7 +276,7 @@ export async function resolveMcpHttpUrl(opts: ResolveMcpHttpUrlOptions): Promise
     if (asyncSpawnError) {
       const stderr = readErrorLog(stderrPath);
       const stderrBlock = stderr ? ` stderr:\n${stderr}` : '';
-      throw new Error(`spawn failed: ${asyncSpawnError}${stderrBlock}`);
+      throw new Error(`spawn failed: ${asyncSpawnError}${stderrBlock}\n${SERVER_START_RECOVERY}`);
     }
     await sleep(pollIntervalMs);
     const base = liveBaseUrlFromLock(readLock(), isAlive);
@@ -284,7 +286,7 @@ export async function resolveMcpHttpUrl(opts: ResolveMcpHttpUrlOptions): Promise
   if (asyncSpawnError) {
     const stderr = readErrorLog(stderrPath);
     const stderrBlock = stderr ? ` stderr:\n${stderr}` : '';
-    throw new Error(`spawn failed: ${asyncSpawnError}${stderrBlock}`);
+    throw new Error(`spawn failed: ${asyncSpawnError}${stderrBlock}\n${SERVER_START_RECOVERY}`);
   }
 
   throw new Error(formatTimeoutMessage(timeoutMs, readErrorLog(stderrPath)));

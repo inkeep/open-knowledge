@@ -7,6 +7,7 @@ import {
   interpretSkillMoveFailure,
   normalizeApiWarnings,
   SKILL_AUTHORING_WARNING_CODES,
+  type SkillMoveFailureOutcome,
   type SkillScope,
 } from '@inkeep/open-knowledge-core';
 import type { AgentIdentity } from '../agent-identity.ts';
@@ -310,6 +311,29 @@ export function crossScopeMoveSuccessText(input: {
   return parts.join(' ');
 }
 
+function crossScopeMoveFailureText(detail: string, outcome: SkillMoveFailureOutcome): string {
+  if (outcome.kind === 'unverified' || outcome.moveState === undefined) {
+    return `${detail}\nThe server returned a missing, unrecognized or inconsistent move outcome. Do not remove either copy before comparing the source and destination. Do not retry until the outcome is verified.`;
+  }
+  const lines = [detail, `moveState: ${outcome.moveState}.`];
+  if (outcome.moveState === 'nothing-written') {
+    if (outcome.retentionLedger !== undefined) {
+      lines.push(
+        `retentionLedger: ${outcome.retentionLedger}. Compare the source and destination before deleting either copy or retrying.`,
+      );
+    } else {
+      lines.push(
+        'This call changed neither location. It is safe to retry once the refusal is addressed; this does not rule out damage from an earlier call.',
+      );
+    }
+  } else if (outcome.moveState === 'destination-removed') {
+    lines.push(
+      'The failed destination copy was removed and the source is intact. It is safe to retry.',
+    );
+  }
+  return lines.join('\n');
+}
+
 export async function moveSkillCrossScope(
   url: string | undefined,
   input: {
@@ -321,7 +345,7 @@ export async function moveSkillCrossScope(
 ) {
   const refuse = (error: string) =>
     textPlusStructured(
-      error,
+      crossScopeMoveFailureText(error, { kind: 'coherent', moveState: 'nothing-written' }),
       { ok: false, kind: 'skill', error, moveState: 'nothing-written' as const },
       true,
     );
@@ -346,9 +370,7 @@ export async function moveSkillCrossScope(
     const outcome = interpretSkillMoveFailure(moved);
     const detail = errorTextWithDetail({ ...moved, error });
     return textPlusStructured(
-      outcome.kind === 'unverified'
-        ? `${detail}\nThe server returned an unrecognized or inconsistent move outcome. Do not remove either copy before comparing the source and destination.`
-        : detail,
+      crossScopeMoveFailureText(detail, outcome),
       {
         ok: false,
         kind: 'skill',

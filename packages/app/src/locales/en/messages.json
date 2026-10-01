@@ -985,7 +985,6 @@
     "AddR83": ["Could not create project. Try again or pick a different location."],
     "AdjDox": ["Draft"],
     "AeHuzT": ["# One pattern per line.\n# Examples:\n#   drafts/\n#   *.draft.md\n#   !keep.md"],
-    "AeLo3p": ["OpenKnowledge resolved a conflict in ", ["subject"]],
     "AeORtB": [
       "Selected: ",
       ["innermostLabel"],
@@ -1083,7 +1082,6 @@
     "BgV29F": ["Visual editor find input focused"],
     "Bgaa_U": ["Failed to update performance setting — ", ["detail"]],
     "BhLPRk": ["Reverted \"", ["name"], "\" to the installed version"],
-    "BhMWIs": ["Reads unresolved conflicts between edits"],
     "BiVBP9": ["Couldn't read the spelling languages."],
     "BjitBo": ["Download ", ["0"]],
     "BkGtRl": [
@@ -2339,6 +2337,11 @@
     "Pw5PTU": ["External origin"],
     "PxZCNM": ["Outside what Open Knowledge commits."],
     "Q-DKvr": ["Install from ", ["source"]],
+    "Q-a_4h": [
+      "Help me understand the conflict in ",
+      ["filePath"],
+      ". Explain what I should compare in the OpenKnowledge Conflict view; I will choose and apply the resolution there."
+    ],
     "Q1mtyd": ["Hide sidebar"],
     "Q5fqMz": ["Connection error — try again"],
     "Q6hhn8": ["Preferences"],
@@ -3262,7 +3265,6 @@
       "Read-only copy of a MirrorSource block from another doc. Edit at the source and it updates live."
     ],
     "_XWY2J": ["Terminal disabled"],
-    "_YWqV2": ["OpenKnowledge resolved a conflict"],
     "_ayOfA": [
       "A knowledge base that follows Google's Open Knowledge Format, a shared way of organizing what you know. Pick this if you want your notes to work well with other tools that understand the format."
     ],
@@ -4124,7 +4126,6 @@
     "i3f2kh": ["No matching commands."],
     "i6o7XB": ["Search languages"],
     "i92eAT": ["We'll create a repository and start syncing — no terminal needed."],
-    "i94lQe": ["OpenKnowledge checked for conflicts"],
     "i9OyGp": ["Undo or redo"],
     "i9TPUi": [
       "This ",
@@ -4842,9 +4843,6 @@
       " because it contains a .git folder"
     ],
     "pZAs1T": ["Failed to load outgoing links"],
-    "pZaMLc": [
-      "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI."
-    ],
     "paCw0z": ["everything under ", ["0"], "/ folders inside ", ["1"], "/"],
     "pajIrl": ["Could not turn off the terminal: ", ["0"]],
     "pbwTg6": [["seconds"], "s ago"],
@@ -5378,7 +5376,6 @@
         { "one": ["#", " more participant"], "other": ["#", " more participants"] }
       ]
     ],
-    "uhYnaD": ["Resolves a conflict by choosing which content to keep"],
     "uksqrP": ["Repository not found. It may have been renamed, deleted, or moved."],
     "ul1Atu": ["Converting..."],
     "um-es7": ["Ship the editor with a"],
@@ -5661,6 +5658,9 @@
     "xtJgSe": ["This source bundles several skills — choose the one to import."],
     "xvv5gL": ["Screenshot preview"],
     "xxRpzT": ["Slidev found on your system."],
+    "xxxG_a": [
+      "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve the markers in the file by hand."
+    ],
     "xzAmL_": ["Auto-approved"],
     "xzktOa": ["Edit wiki link"],
     "y-LQPF": ["Unresolvable image ", ["identity"], ". Go to reference."],

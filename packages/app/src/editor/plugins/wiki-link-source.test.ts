@@ -5,175 +5,151 @@ import {
 } from '../link-validation-policy';
 import {
   buildKnownWikilinkTargetSet,
-  buildPageNameSet,
-  extractWikilinkTarget,
+  buildSourceWikiLinkLookup,
   wikiLinkSourceClass,
 } from './wiki-link-source';
 
 beforeEach(() => resetLinkValidationPolicyForTest());
 
-describe('buildPageNameSet', () => {
-  test('empty input → empty set', () => {
-    expect(buildPageNameSet([]).size).toBe(0);
-  });
-
-  test('indexes docName', () => {
-    const s = buildPageNameSet([{ docName: 'README', title: '' }]);
-    expect(s.has('readme')).toBe(true);
-    expect(s.size).toBe(1);
-  });
-
-  test('indexes both docName AND title when present', () => {
-    const s = buildPageNameSet([{ docName: 'CLAUDE', title: 'CLAUDE Guide' }]);
-    expect(s.has('claude')).toBe(true);
-    expect(s.has('claude guide')).toBe(true);
-    expect(s.size).toBe(2);
-  });
-
-  test('indexes referenced assets by path and basename', () => {
-    const s = buildPageNameSet([
-      { kind: 'asset', docName: '/docs/public/Wide.png', title: 'Wide.png' },
-    ]);
-    expect(s.has('/docs/public/wide.png')).toBe(true);
-    expect(s.has('docs/public/wide.png')).toBe(true);
-    expect(s.has('wide.png')).toBe(true);
-  });
-
-  test('lowercases everything', () => {
-    const s = buildPageNameSet([{ docName: 'ReadMe', title: 'The README' }]);
-    expect(s.has('readme')).toBe(true);
-    expect(s.has('the readme')).toBe(true);
-    expect(s.has('ReadMe')).toBe(false);
-    expect(s.has('The README')).toBe(false);
-  });
-
-  test('missing/empty title is skipped (only docName indexed)', () => {
-    const s = buildPageNameSet([{ docName: 'NoTitle', title: '' }]);
-    expect(s.has('notitle')).toBe(true);
-    expect(s.size).toBe(1);
-  });
-
-  test('dedupes when docName === title (case-insensitive)', () => {
-    const s = buildPageNameSet([{ docName: 'Foo', title: 'foo' }]);
-    expect(s.has('foo')).toBe(true);
-    expect(s.size).toBe(1);
-  });
-
-  test('multiple pages aggregate into one set', () => {
-    const s = buildPageNameSet([
-      { docName: 'a', title: 'Alpha' },
-      { docName: 'b', title: 'Beta' },
-      { docName: 'c', title: '' },
-    ]);
-    expect(s.size).toBe(5);
-    expect(s.has('a')).toBe(true);
-    expect(s.has('alpha')).toBe(true);
-    expect(s.has('b')).toBe(true);
-    expect(s.has('beta')).toBe(true);
-    expect(s.has('c')).toBe(true);
-  });
-});
-
-describe('extractWikilinkTarget', () => {
-  test('plain page name', () => {
-    expect(extractWikilinkTarget('SomePage')).toBe('somepage');
-  });
-
-  test('strips #anchor', () => {
-    expect(extractWikilinkTarget('SomePage#heading-slug')).toBe('somepage');
-  });
-
-  test('strips |alias', () => {
-    expect(extractWikilinkTarget('SomePage|display text')).toBe('somepage');
-  });
-
-  test('strips both anchor and alias (anchor first)', () => {
-    expect(extractWikilinkTarget('SomePage#heading|display')).toBe('somepage');
-  });
-
-  test('strips both (alias first — whichever delimiter comes first wins)', () => {
-    expect(extractWikilinkTarget('SomePage|display#anchor')).toBe('somepage');
-  });
-
-  test('lowercases', () => {
-    expect(extractWikilinkTarget('UPPERcase')).toBe('uppercase');
-    expect(extractWikilinkTarget('CamelCase')).toBe('camelcase');
-  });
-
-  test('trims leading/trailing whitespace', () => {
-    expect(extractWikilinkTarget('  spaced  ')).toBe('spaced');
-    expect(extractWikilinkTarget('  spaced#anchor')).toBe('spaced');
-  });
-
-  test('empty inner → empty string', () => {
-    expect(extractWikilinkTarget('')).toBe('');
-  });
-
-  test('whitespace-only inner → empty string', () => {
-    expect(extractWikilinkTarget('   ')).toBe('');
-  });
-
-  test('only-anchor inner → empty string (no target)', () => {
-    expect(extractWikilinkTarget('#anchor-only')).toBe('');
-  });
-
-  test('only-alias inner → empty string', () => {
-    expect(extractWikilinkTarget('|alias-only')).toBe('');
-  });
-
-  test('preserves internal whitespace in the target', () => {
-    expect(extractWikilinkTarget('Some Page')).toBe('some page');
-    expect(extractWikilinkTarget('Some Page#heading')).toBe('some page');
-  });
-});
-
 describe('wikiLinkSourceClass', () => {
   test('validation.links off suppresses the broken wikilink decoration', () => {
-    const targets = new Set(['known']);
+    const targets = buildSourceWikiLinkLookup([{ docName: 'known', title: 'Known' }]);
     expect(wikiLinkSourceClass('missing', targets)).toBe('cm-wiki-link cm-wiki-link-broken');
     setLinkValidationVisible(false);
     expect(wikiLinkSourceClass('missing', targets)).toBe('cm-wiki-link');
   });
+
+  test('reuses asset resolution for each lookup and invalidates it with the inventory', () => {
+    class CountedAssets extends Set<string> {
+      scans = 0;
+
+      override *[Symbol.iterator](): SetIterator<string> {
+        this.scans += 1;
+        yield* super[Symbol.iterator]();
+      }
+    }
+
+    const assets = new CountedAssets(['images/Cover.png']);
+    const first = {
+      pages: new Set<string>(),
+      pagesBySlug: new Map<string, string>(),
+      assetPaths: assets,
+    };
+    expect(wikiLinkSourceClass('cover.png', first)).toBe('cm-wiki-link');
+    const firstScans = assets.scans;
+    expect(firstScans).toBeGreaterThan(0);
+    for (let index = 0; index < 200; index += 1)
+      expect(wikiLinkSourceClass('cover.png', first)).toBe('cm-wiki-link');
+    expect(assets.scans).toBe(firstScans);
+
+    const second = { ...first, assetPaths: new CountedAssets() };
+    expect(wikiLinkSourceClass('cover.png', second)).toBe('cm-wiki-link cm-wiki-link-broken');
+  });
+
+  test('checks distinct asset links against the inventory index without rescanning assets', () => {
+    class CountedAssets extends Set<string> {
+      scans = 0;
+
+      override *[Symbol.iterator](): SetIterator<string> {
+        this.scans += 1;
+        yield* super[Symbol.iterator]();
+      }
+    }
+
+    const pages = Array.from({ length: 10_000 }, (_, index) => ({
+      kind: 'asset',
+      docName: `/images/image-${index}.png`,
+      title: '',
+    }));
+    const built = buildSourceWikiLinkLookup(pages);
+    const assets = new CountedAssets(built.assetPaths);
+    const lookup = { ...built, assetPaths: assets };
+    for (let index = 0; index < 200; index += 1) {
+      expect(wikiLinkSourceClass(`image-${index}.png`, lookup)).toBe('cm-wiki-link');
+      expect(wikiLinkSourceClass(`images/image-${index}.png`, lookup)).toBe('cm-wiki-link');
+    }
+    expect(assets.scans).toBe(0);
+    expect(wikiLinkSourceClass('images/missing.png', lookup)).toBe(
+      'cm-wiki-link cm-wiki-link-broken',
+    );
+  });
 });
 
-describe('end-to-end target matching', () => {
-  test('valid wikilink resolves — target lookups succeed', () => {
-    const pageSet = buildPageNameSet([{ docName: 'existing-page', title: 'Existing' }]);
-    expect(pageSet.has(extractWikilinkTarget('existing-page'))).toBe(true);
-    expect(pageSet.has(extractWikilinkTarget('EXISTING-PAGE'))).toBe(true);
-    expect(pageSet.has(extractWikilinkTarget('existing-page#anchor'))).toBe(true);
-    expect(pageSet.has(extractWikilinkTarget('existing-page|alias'))).toBe(true);
-    expect(pageSet.has(extractWikilinkTarget('Existing'))).toBe(true);
+describe('source decoration target extraction', () => {
+  const pages = [
+    { docName: 'SomePage', title: 'Some Page' },
+    { docName: 'reports/index', title: 'Reports' },
+    { docName: 'reports/q1/summary', title: 'Quarter One Summary' },
+    { kind: 'folder', docName: 'specs/foo', title: 'foo' },
+  ];
+  const lookup = buildSourceWikiLinkLookup(pages);
+  const known = buildKnownWikilinkTargetSet(pages);
+
+  test.each([
+    'SomePage',
+    'SOMEPAGE',
+    'SomePage#heading',
+    'SomePage|Alias',
+    'SomePage#heading|Alias',
+    'SomePage|Alias#heading',
+    '  SomePage  ',
+    '',
+    '   ',
+    '#heading',
+    '|Alias',
+    'reports',
+    'reports/q1',
+    'specs/foo',
+  ])('%s keeps its resolved or anchor-only decoration', (inner) => {
+    expect(wikiLinkSourceClass(inner, lookup, known)).toBe('cm-wiki-link');
   });
 
-  test('broken wikilink → target not in set', () => {
-    const pageSet = buildPageNameSet([{ docName: 'real', title: 'Real' }]);
-    expect(pageSet.has(extractWikilinkTarget('ghost'))).toBe(false);
-    expect(pageSet.has(extractWikilinkTarget('ghost#anchor'))).toBe(false);
+  test.each(['Some Page', 'Some Page#heading', 'Quarter One Summary', 'foo'])(
+    '%s names only a title, so it stays broken like its click destination',
+    (inner) => {
+      expect(wikiLinkSourceClass(inner, lookup, known)).toBe('cm-wiki-link cm-wiki-link-broken');
+    },
+  );
+
+  test.each(['ghost', 'ghost#heading', 'ghost|Alias', 'ghost#heading|Alias'])(
+    '%s stays broken after removing its heading and alias',
+    (inner) => {
+      expect(wikiLinkSourceClass(inner, lookup, known)).toBe('cm-wiki-link cm-wiki-link-broken');
+    },
+  );
+});
+
+describe('source decoration uses document resolution', () => {
+  const lookup = buildSourceWikiLinkLookup([
+    { docName: 'notes/beta', title: 'Beta' },
+    { docName: 'notes/beta-md', title: 'Other' },
+    { docName: 'reports/index', title: 'Reports' },
+    { docName: 'fallback-md', title: 'Fallback' },
+    { docName: 'dotted.md', title: 'Dotted' },
+  ]);
+
+  test.each([
+    'notes/beta.md',
+    'NOTES/BETA.MDX#heading|Alias',
+    'beta.md|Alias',
+    'reports.md',
+    'fallback.md',
+    'dotted.md.md',
+  ])('%s is decorated as a resolved link', (target) => {
+    expect(wikiLinkSourceClass(target, lookup)).toBe('cm-wiki-link');
   });
 
-  test('folder targets are treated as known when a child note exists', () => {
-    const targetSet = buildKnownWikilinkTargetSet([
-      { docName: 'reports/index', title: 'Reports' },
-      { docName: 'reports/q1/summary', title: 'Quarter One Summary' },
-    ]);
-
-    expect(targetSet.has(extractWikilinkTarget('reports'))).toBe(true);
-    expect(targetSet.has(extractWikilinkTarget('reports/q1'))).toBe(true);
+  test('one suffix removal leaves a genuinely missing link broken', () => {
+    const singlePage = buildSourceWikiLinkLookup([{ docName: 'notes/beta', title: 'Beta' }]);
+    expect(wikiLinkSourceClass('notes/beta.md.md', singlePage)).toBe(
+      'cm-wiki-link cm-wiki-link-broken',
+    );
+    expect(wikiLinkSourceClass('missing.md#heading|Alias', lookup)).toBe(
+      'cm-wiki-link cm-wiki-link-broken',
+    );
   });
 
-  test('folder rows keep seeding the known-target set: full path AND basename', () => {
-    const targetSet = buildKnownWikilinkTargetSet([
-      { kind: 'folder', docName: 'specs/foo', title: 'foo' },
-    ]);
-
-    expect(targetSet.has(extractWikilinkTarget('specs/foo'))).toBe(true);
-    expect(targetSet.has(extractWikilinkTarget('foo'))).toBe(true);
-  });
-
-  test('empty target (bare #anchor in wikilink) matches nothing', () => {
-    const target = extractWikilinkTarget('#anchor-only');
-    expect(target).toBe('');
-    expect(Boolean(target)).toBe(false);
+  test('known folder targets retain their decoration without becoming document identities', () => {
+    expect(wikiLinkSourceClass('notes', lookup, new Set(['notes']))).toBe('cm-wiki-link');
   });
 });

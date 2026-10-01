@@ -7107,6 +7107,10 @@ msgstr "你好，世界！"
 msgid "Help"
 msgstr "說明"
 
+#: src/lib/conflict-resolve-draft.ts
+msgid "Help me understand the conflict in {filePath}. Explain what I should compare in the OpenKnowledge Conflict view; I will choose and apply the resolution there."
+msgstr "幫我理解 {filePath} 中的衝突。說明我應該在 OpenKnowledge 的衝突檢視中比較哪些內容；我會在那裡選擇並套用解決方案。"
+
 #. Subtext under the discovery-skill checkbox
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -10375,10 +10379,6 @@ msgid "OpenKnowledge checked {subject}"
 msgstr "OpenKnowledge 檢查了 {subject}"
 
 #: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge checked for conflicts"
-msgstr "OpenKnowledge 檢查了衝突"
-
-#: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge 檢查了專案"
 
@@ -10558,14 +10558,6 @@ msgstr "OpenKnowledge 讀取了專案設定"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge read the setting {key}"
 msgstr "OpenKnowledge 讀取了設定 {key}"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict"
-msgstr "OpenKnowledge 解決了一個衝突"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict in {subject}"
-msgstr "OpenKnowledge 解決了 {subject} 中的衝突"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge restored an earlier version"
@@ -11545,10 +11537,6 @@ msgstr "讀取文件或技能的版本記錄，或資料夾的活動"
 msgid "Reads this project's OpenKnowledge settings"
 msgstr "讀取此專案的 OpenKnowledge 設定"
 
-#: src/lib/acp/tool-call-display.ts
-msgid "Reads unresolved conflicts between edits"
-msgstr "讀取編輯之間尚未解決的衝突"
-
 #: src/components/SessionsHost.tsx
 msgid "Ready"
 msgstr "就緒"
@@ -12208,10 +12196,6 @@ msgstr "刪除前請先解決 {files} 以及另外 {overflow} 個檔案上的衝
 #: src/comments/ThreadCard.tsx
 msgid "Resolved"
 msgstr "已解決"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "Resolves a conflict by choosing which content to keep"
-msgstr "透過選擇要保留的內容來解決衝突"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
@@ -15155,8 +15139,8 @@ msgid "This file can't be opened in the text editor."
 msgstr "這個檔案無法在文字編輯器中開啟。"
 
 #: src/components/ConflictView.tsx
-msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI."
-msgstr "此檔案包含看起來像衝突標記的行，因此無法可靠地辨識衝突邊界。請手動解決，或使用「問 AI」。"
+msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve the markers in the file by hand."
+msgstr "此檔案包含看起來像衝突標記的行，因此無法可靠地辨識衝突邊界。請手動處理檔案中的標記。"
 
 #: src/components/use-viewer-text.ts
 msgid "This file could not be found."

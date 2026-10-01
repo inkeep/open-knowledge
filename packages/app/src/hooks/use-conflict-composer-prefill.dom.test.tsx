@@ -7,6 +7,17 @@ let conflictsState: {
   conflicts: [],
 };
 vi.doMock('@/hooks/use-conflicts', () => ({ useConflicts: () => conflictsState }));
+vi.doMock('@/lib/conflict-resolve-draft', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/conflict-resolve-draft')>();
+  const { i18n } = await import('@lingui/core');
+  return {
+    ...actual,
+    buildResolveDraft: (filePath: string) =>
+      i18n.locale === 'hi'
+        ? `hi: ${actual.buildResolveDraft(filePath)}`
+        : actual.buildResolveDraft(filePath),
+  };
+});
 
 const { useConflictComposerPrefill } = await import('./use-conflict-composer-prefill');
 
@@ -47,12 +58,13 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 describe('useConflictComposerPrefill', () => {
-  test('seeds the resolve instruction for a conflicted doc', () => {
+  test('seeds guidance without asking the agent to apply a conflict resolution', () => {
     conflictsState = { conflicts: [ENTRY] };
     const input = makeInput();
     renderHook(() => useConflictComposerPrefill('notes/roadmap', { current: input }));
 
-    expect(input.read()).toBe('Resolve all the merge conflicts in notes/roadmap.md.');
+    expect(input.read()).toContain('Help me understand the conflict in notes/roadmap.md.');
+    expect(input.read()).toContain('I will choose and apply the resolution there.');
   });
 
   test('leaves an unconflicted doc alone', () => {
@@ -124,7 +136,8 @@ describe('useConflictComposerPrefill', () => {
     conflictsState = { conflicts: [ENTRY, DOC2] };
     const input = makeInput('Resolve all the merge conflicts in notes/roadmap.md.');
     renderHook(() => useConflictComposerPrefill('notes/doc2', { current: input }));
-    expect(input.read()).toBe('Resolve all the merge conflicts in notes/doc2.md.');
+    expect(input.read()).toContain('notes/doc2.md');
+    expect(input.read()).toContain('I will choose and apply the resolution there.');
   });
 
   test('a restored draft the user actually wrote is left alone', () => {
@@ -163,5 +176,35 @@ describe('useConflictComposerPrefill', () => {
     conflictsState = { conflicts: [] };
     rerender({ doc: 'notes/roadmap' });
     expect(input.read()).toContain('Keep my Region 2.');
+  });
+
+  test('recognises a restored seed once the locale it was written in activates', async () => {
+    const { i18n } = await import('@lingui/core');
+    const { buildResolveDraft } = await vi.importActual<
+      typeof import('@/lib/conflict-resolve-draft')
+    >('@/lib/conflict-resolve-draft');
+    const previous = i18n.locale;
+    const restored = `hi: ${buildResolveDraft('notes/roadmap.md')}`;
+    conflictsState = { conflicts: [ENTRY] };
+    const input = makeInput(restored);
+    const inputRef = { current: input };
+    try {
+      act(() => i18n.loadAndActivate({ locale: 'en', messages: {} }));
+      const { result, rerender } = renderHook(() =>
+        useConflictComposerPrefill('notes/roadmap', inputRef),
+      );
+      expect(result.current.isSeedIntact).toBe(false);
+      expect(input.read()).toBe(restored);
+
+      act(() => i18n.loadAndActivate({ locale: 'hi', messages: {} }));
+      rerender();
+      expect(result.current.isSeedIntact).toBe(true);
+
+      conflictsState = { conflicts: [] };
+      rerender();
+      expect(input.read()).toBe('');
+    } finally {
+      act(() => i18n.loadAndActivate({ locale: previous || 'en', messages: {} }));
+    }
   });
 });

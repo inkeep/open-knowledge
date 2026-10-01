@@ -312,7 +312,7 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
             {
               handler: 'sync-resolve-conflict',
               detail:
-                'This file has no tracked conflict — it may have been resolved by another session, or the path may be stale. Re-read conflicts({ kind: "list" }) before retrying.',
+                'This file has no tracked conflict — it may have been resolved by another session, or the path may be stale. Refresh the conflict list in the OpenKnowledge app before retrying.',
               extensions: { file: e.file },
             },
           );

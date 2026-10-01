@@ -382,7 +382,7 @@ export function ConflictView({
       </div>
       {parseMismatch && (
         <p role="status" className="shrink-0 border-b px-3 py-2 text-xs text-muted-foreground">
-          {t`This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI.`}
+          {t`This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve the markers in the file by hand.`}
         </p>
       )}
       <div className="flex shrink-0 items-center gap-1 border-b px-3 py-2">

@@ -22,8 +22,10 @@ function readSkillBundle(): string {
 describe('project SKILL.md starter-pack awareness list', () => {
   test('lists exactly the packs in STARTER_PACK_IDS (drift guard)', () => {
     const skill = readSkillBundle();
-    const listed = [...skill.matchAll(PACK_BULLET_RE)].map((m) => m[1]);
-    expect(listed.length).toBeGreaterThan(0);
+    const packSection = skill.split(/^## Starter packs[^\n]*\n/m)[1]?.split(/^## /m)[0];
+    expect(packSection).toBeDefined();
+    const listed = [...(packSection ?? '').matchAll(PACK_BULLET_RE)].map((m) => m[1]);
+    expect(listed).toHaveLength(STARTER_PACK_IDS.length);
     expect(new Set(listed)).toEqual(new Set(STARTER_PACK_IDS));
   });
 

@@ -25,7 +25,22 @@ export function deriveValidationRunSources(
   return sources;
 }
 
-export function validationCoverageLines(ran: readonly string[] | undefined): string[] {
+export const AUDIT_EMPTY_SCOPE_WARNING =
+  'No documents were checked: this scope contains no admitted documents.';
+
+export function isAuditEmptyScopeWarning(warning: string): boolean {
+  return warning === AUDIT_EMPTY_SCOPE_WARNING;
+}
+
+export function validationCoverageLines(
+  ran: readonly string[] | undefined,
+  fileCount?: number,
+): string[] {
+  if (fileCount === 0) {
+    return ran !== undefined && ran.length > 0
+      ? [`Checks selected: ${ran.join(', ')}; no document checks ran.`]
+      : ['No document checks ran.'];
+  }
   if (ran === undefined) return [];
   if (ran.length === 0) return ['No checks ran.'];
   return [`Checks run: ${ran.join(', ')}.`];

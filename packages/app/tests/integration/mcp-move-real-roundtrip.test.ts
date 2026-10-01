@@ -104,8 +104,7 @@ describe('MCP move tool — real roundtrip against live OK server (QA-004 / QA-0
     expect(existsSync(join(server.contentDir, 'articles', 'a.md'))).toBe(false);
     expect(existsSync(join(server.contentDir, 'articles'))).toBe(false);
     const indexBody = readFileSync(join(server.contentDir, 'index.md'), 'utf-8');
-    expect(indexBody).toContain('[[essays/a]]');
-    expect(indexBody).not.toContain('[[articles/a]]');
+    expect(indexBody).toBe('# Index\n\nLink: [[essays/a|articles/a]]\n');
   }, 60_000);
 
   test('QA-005: move (document) posts to live /api/rename-path with kind:file → backlinks rewrite', async () => {
@@ -154,7 +153,6 @@ describe('MCP move tool — real roundtrip against live OK server (QA-004 / QA-0
     expect(existsSync(join(server.contentDir, 'sso.md'))).toBe(true);
     expect(existsSync(join(server.contentDir, 'auth.md'))).toBe(false);
     const indexBody = readFileSync(join(server.contentDir, 'index.md'), 'utf-8');
-    expect(indexBody).toContain('[[sso]]');
-    expect(indexBody).not.toContain('[[auth]]');
+    expect(indexBody).toBe('# Index\n\nLink: [[sso|auth]]\n');
   }, 60_000);
 });

@@ -1,7 +1,15 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DEFAULT_LINTER_CONFIG } from '@inkeep/open-knowledge-core';
+import { AUDIT_EMPTY_SCOPE_WARNING, DEFAULT_LINTER_CONFIG } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { lintDoc } from '../../../server/src/lint/audit.ts';
 import { runLint } from './lint-runner.ts';
@@ -112,6 +120,118 @@ describe('runLint — scope', () => {
     const result = await run({ targetPath: join(root, 'sub') });
     expect(result.files.map((f) => f.file)).toEqual([join('sub', 'b.md')]);
   });
+
+  test('uses mdx-first extensionless resolution and preserves explicit suffixes', async () => {
+    write('guide.md', '# MD\n\na\tb\n');
+    write('guide.mdx', '# MDX\n\nc\td\n');
+    const short = await run({ targetPath: join(root, 'guide') });
+    expect(short).toEqual(await run({ targetPath: join(root, 'guide.mdx') }));
+    expect(short.files.map((file) => file.file)).toEqual(['guide.mdx']);
+    expect(
+      (await run({ targetPath: join(root, 'guide.md') })).files.map((file) => file.file),
+    ).toEqual(['guide.md']);
+  });
+
+  test('resolves a dotted document stem through the shared scope resolver', async () => {
+    write('notes/v1.2.md', '# MD\n\na\tb\n');
+    write('notes/v1.2.mdx', '# MDX\n\nc\td\n');
+    const short = await run({ targetPath: join(root, 'notes/v1.2') });
+    expect(short.files.map((file) => file.file)).toEqual(['notes/v1.2.mdx']);
+    expect(short).toEqual(await run({ targetPath: join(root, 'notes/v1.2.mdx') }));
+  });
+
+  test('reports an ignored directory as zero coverage without fixing its files', async () => {
+    write('.gitignore', 'ignored/\n');
+    write('ignored/guide.md', '# Guide\n\na\tb\n');
+    const result = await run({ targetPath: join(root, 'ignored'), fix: true });
+    expect(result).toMatchObject({
+      files: [],
+      fileCount: 0,
+      errorCount: 0,
+      warningCount: 0,
+      fixedCount: 0,
+      warnings: ['No documents were checked: this scope contains no admitted documents.'],
+    });
+    expect(readFileSync(join(root, 'ignored/guide.md'), 'utf8')).toContain('a\tb');
+  });
+
+  test('reports zero coverage alongside a schema warning', async () => {
+    mkdirSync(join(root, 'empty'));
+    const result = await run({
+      targetPath: join(root, 'empty'),
+      baseConfig: {
+        ...DEFAULT_LINTER_CONFIG,
+        plugins: {
+          ...DEFAULT_LINTER_CONFIG.plugins,
+          frontmatter: {
+            enabled: true,
+            schemas: [{ appliesTo: '**', file: '.ok/schemas/missing.json' }],
+          },
+        },
+      },
+    });
+    expect(result.fileCount).toBe(0);
+    expect(result.warnings).toEqual([
+      expect.stringContaining('missing.json'),
+      AUDIT_EMPTY_SCOPE_WARNING,
+    ]);
+  });
+
+  test('does not classify an unreadable directory as an empty admitted scope', async () => {
+    const result = await run({
+      resolvedScope: { kind: 'dir', path: join(root, 'missing') },
+    });
+    expect(result.fileCount).toBe(0);
+    expect(result.warnings).toEqual([expect.stringContaining('could not read directory missing')]);
+  });
+
+  test.each(['.gitignore', '.okignore'])(
+    'lints and fixes explicitly requested files excluded by %s',
+    async (ignoreFile) => {
+      write(ignoreFile, 'ignored/\n');
+      for (const path of ['ignored/guide.md', 'ignored/guide.mdx', 'ignored/plain']) {
+        write(path, '# Guide\n\na\tb\n');
+        const linted = await run({ targetPath: join(root, path) });
+        expect(linted.fileCount).toBe(1);
+        expect(linted.files.map((file) => file.file)).toEqual([path]);
+        expect(linted.files[0]?.diagnostics.some((diagnostic) => diagnostic.code === 'MD010')).toBe(
+          true,
+        );
+        expect(linted.warnings).toEqual([]);
+        const fixed = await run({ targetPath: join(root, path), fix: true });
+        expect(fixed.fixedCount).toBe(1);
+        expect(fixed.files[0]?.fixed).toBe(true);
+        expect(readFileSync(join(root, path), 'utf8')).not.toContain('\t');
+      }
+    },
+  );
+
+  test('an unknown explicit suffix rejects before fixing an existing alternate suffix', async () => {
+    write('guide.mdx', '# Guide\n\na\tb\n');
+    await expect(run({ targetPath: join(root, 'guide.md'), fix: true })).rejects.toThrow(
+      'was not found',
+    );
+    expect(readFileSync(join(root, 'guide.mdx'), 'utf8')).toContain('a\tb');
+  });
+
+  test('a missing content directory fails without fixing a sibling document', async () => {
+    write('content.md', '# Sibling\n\na\tb\n');
+    await expect(run({ contentDir: join(root, 'content'), fix: true })).rejects.toThrow(
+      'Set content.dir to an existing directory.',
+    );
+    expect(readFileSync(join(root, 'content.md'), 'utf8')).toContain('a\tb');
+  });
+
+  test.each(['overlong segment', 'symlink loop'])(
+    'teaches how to repair a scope with a %s',
+    async (kind) => {
+      const target = kind === 'overlong segment' ? 'x'.repeat(300) : 'loop';
+      if (kind === 'symlink loop') symlinkSync(join(root, target), join(root, target));
+      await expect(run({ targetPath: join(root, target) })).rejects.toThrow(
+        'Use an existing file or directory',
+      );
+    },
+  );
 
   test('scopes to a single file', async () => {
     write('a.md', '# A\n\na\tb\n');

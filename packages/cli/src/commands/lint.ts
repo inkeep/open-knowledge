@@ -1,12 +1,20 @@
+import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import {
   DEFAULT_LINTER_CONFIG,
+  isAuditEmptyScopeWarning,
   type LinterConfig,
   type PersistedLinterConfig,
+  type ProblemDetails,
   toEffectiveBase,
   validationCoverageLines,
 } from '@inkeep/open-knowledge-core';
-import { type Config, resolveContentDir } from '@inkeep/open-knowledge-server';
+import {
+  auditScopeNotFoundTitle,
+  type Config,
+  resolveAuditScope,
+  resolveContentDir,
+} from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { type LintRunResult, runLint } from '../content/lint-runner.ts';
 import { getInvocationCwd } from '../project-anchor.ts';
@@ -33,6 +41,22 @@ export function lintCommand(getConfig: () => Config): Command {
       const projectDir = process.cwd();
       const contentDir = resolveContentDir(config, projectDir);
       const targetPath = path === undefined ? undefined : resolveTarget(path, getInvocationCwd());
+      const resolution = resolveAuditScope(targetPath, contentDir);
+      if (!resolution.ok) {
+        const problem: ProblemDetails = {
+          type: 'urn:ok:error:not-found',
+          title:
+            path === undefined || resolution.path === contentDir
+              ? resolution.title
+              : auditScopeNotFoundTitle(path),
+          status: 404,
+          instance: `urn:uuid:${randomUUID()}`,
+        };
+        if (opts.json === true) process.stdout.write(`${JSON.stringify(problem, null, 2)}\n`);
+        else process.stderr.write(`${problem.title}\n`);
+        process.exitCode = 1;
+        return;
+      }
       const persistedLinter = config.contentRules as PersistedLinterConfig | undefined;
       const baseConfig: LinterConfig = persistedLinter
         ? toEffectiveBase(persistedLinter)
@@ -43,6 +67,7 @@ export function lintCommand(getConfig: () => Config): Command {
         contentDir,
         baseConfig,
         targetPath,
+        resolvedScope: resolution.scope,
         fix: opts.fix === true,
       });
 
@@ -107,7 +132,9 @@ export function formatLintReport(result: LintReportInput): string {
   }
 
   const problemTotal = result.errorCount + result.warningCount;
-  if (problemTotal === 0) {
+  if (result.fileCount === 0) {
+    lines.push(dim('No documents were checked.'));
+  } else if (problemTotal === 0) {
     lines.push(
       success(`✓ No problems in ${result.fileCount} file${result.fileCount === 1 ? '' : 's'}.`),
     );
@@ -122,10 +149,13 @@ export function formatLintReport(result: LintReportInput): string {
   if (result.fixedCount > 0) {
     lines.push(dim(`Fixed ${result.fixedCount} file${result.fixedCount === 1 ? '' : 's'}.`));
   }
-  lines.push(...validationCoverageLines(result.ran).map((line) => dim(line)));
+  const coverage = validationCoverageLines(result.ran, result.fileCount);
+  lines.push(...coverage.map((line) => dim(line)));
   if (result.warnings.length > 0) {
     lines.push('');
-    for (const w of result.warnings) lines.push(yellow(`! ${w}`));
+    for (const warning of result.warnings) {
+      lines.push(isAuditEmptyScopeWarning(warning) ? dim(warning) : yellow(`! ${warning}`));
+    }
   }
 
   return lines.join('\n');

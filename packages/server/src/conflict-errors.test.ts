@@ -66,7 +66,7 @@ describe('respondDocInConflict — slim RFC 9457 envelope', () => {
     expect(body.title).toBe('Document is in conflict.');
     expect(body.status).toBe(409);
     expect(body.detail).toBe(
-      'The document is in a conflict state. Call conflicts({ kind: "content" }) + resolve_conflict before retrying.',
+      'The document is in a conflict state. Ask the user to resolve it in the OpenKnowledge app, then retry.',
     );
 
     expect(body.file).toBe('docs/notes.md');

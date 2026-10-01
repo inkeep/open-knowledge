@@ -236,16 +236,6 @@ function openKnowledgeDisplay(tool: string, args: Record<string, unknown>): Tool
       };
     case 'checkpoint':
       return { glyph: 'history', text: t`OpenKnowledge saved a checkpoint` };
-    case 'conflicts':
-      return { glyph: 'check', text: t`OpenKnowledge checked for conflicts` };
-    case 'resolve_conflict':
-      return {
-        glyph: 'edit',
-        text:
-          subject === null
-            ? t`OpenKnowledge resolved a conflict`
-            : t`OpenKnowledge resolved a conflict in ${subject}`,
-      };
     case 'restore_version':
       return {
         glyph: 'restore',
@@ -334,10 +324,6 @@ function openKnowledgePurpose(tool: string): string | null {
       return t`Saves a restore point for every document in the project`;
     case 'restore_version':
       return t`Restores a document or skill to an earlier version`;
-    case 'conflicts':
-      return t`Reads unresolved conflicts between edits`;
-    case 'resolve_conflict':
-      return t`Resolves a conflict by choosing which content to keep`;
     default:
       return null;
   }

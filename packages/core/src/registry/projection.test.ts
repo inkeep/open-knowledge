@@ -7,7 +7,6 @@ import {
   getCanonicalDescriptors,
   projectFull,
   projectLite,
-  renderInventoryFooter,
 } from './projection.ts';
 
 const PARSE_EXTENSIONS = [mdx()];
@@ -143,44 +142,5 @@ describe('projectFull — example + form-aware params (FR-11)', () => {
     const full = projectFull(tabs as Parameters<typeof projectFull>[0]);
     expect(full.example).toContain('<Tab');
     expect(full.example).toContain('</Tabs>');
-  });
-});
-
-describe('renderInventoryFooter (FR-1)', () => {
-  test('mentions every agent-facing canonical id', () => {
-    const text = renderInventoryFooter();
-    for (const d of getAgentCanonicalDescriptors()) {
-      expect(text).toContain(`\`${d.name}\``);
-    }
-  });
-
-  test('does NOT list MermaidFence (fence-kind excluded from agent surface)', () => {
-    const text = renderInventoryFooter();
-    expect(text).not.toContain('`MermaidFence`');
-  });
-
-  test('carries the look-up pointer to palette', () => {
-    const text = renderInventoryFooter();
-    expect(text).toContain('palette');
-  });
-
-  test('mentions fenced code blocks as a separate authoring path (not a component)', () => {
-    const text = renderInventoryFooter();
-    expect(text).toContain('Fenced code blocks');
-  });
-
-  test('carries the wildcard tolerance contract for no-canonical-fits authoring', () => {
-    const text = renderInventoryFooter();
-    expect(text).toContain('<TagName>');
-  });
-
-  test('stays under 3.5KB at N=11 (NFR performance bound — extra ~600 bytes covers the fenced-code-block authoring guidance + the Embed→video-block steer for YouTube/Vimeo/Loom URLs added per PRD-7069)', () => {
-    const text = renderInventoryFooter();
-    expect(text.length).toBeLessThan(3584);
-  });
-
-  test('mentions the `html preview` fence affordance for interactive content', () => {
-    const text = renderInventoryFooter();
-    expect(text).toContain('```html preview');
   });
 });

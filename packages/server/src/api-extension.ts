@@ -143,6 +143,7 @@ import { findHubCandidates } from './hub-candidates.ts';
 import { recordSkillInstall, removeSkillInstall } from './installed-skills-marker.ts';
 import { collectDocFiles } from './lint/audit.ts';
 import { composeAuditGeneration } from './lint/audit-generation.ts';
+import { isAbsentPathError } from './lint/audit-scope.ts';
 import { unmatchedAppliesToProblems } from './lint/frontmatter-schemas.ts';
 import { resolveEffectiveLinterConfig } from './lint/resolve-config.ts';
 import { createProjectValidators } from './lint/validation-audit.ts';
@@ -191,7 +192,12 @@ import {
 } from './apply-managed-rename.ts';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
 import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
-import { isConfigDoc, isLinkIndexExcludedDoc, isSystemDoc } from './cc1-broadcast.ts';
+import {
+  isConfigDoc,
+  isLinkIndexExcludedDoc,
+  isPersistenceExcludedDoc,
+  isSystemDoc,
+} from './cc1-broadcast.ts';
 import {
   isReservedProjectStatePath,
   listManagedDocNamesUnderFolder,
@@ -315,13 +321,20 @@ import {
   type ManagedRenameSnapshot,
   withManagedRenameRecovery,
 } from './managed-rename-journal.ts';
-import { rewriteAssetReferencesForRename } from './managed-rename-rewrite.ts';
+import {
+  createWikiRenameContext,
+  rewriteAssetReferencesForRename,
+  rewriteWikiLinksForRenameMap,
+  type WikiRenameContext,
+  wikiLinkRenameDestination,
+} from './managed-rename-rewrite.ts';
 import {
   incrementAgentWriteCalls,
   incrementSummariesProvided,
   incrementSummariesTruncated,
 } from './metrics.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
+import { isValidRelativeContentPath } from './relative-content-path.ts';
 import {
   appendRenameLogEntry,
   getOrLoadRenameLogIndex,
@@ -905,14 +918,6 @@ type ContentEntryKind = 'file' | 'folder';
 interface ManagedRenameRewriteSummary {
   markdown: string;
   rewrites: number;
-}
-
-function isValidRelativeContentPath(path: string): boolean {
-  if (!path || path.startsWith('/') || path.includes('\\') || path.includes('\x00')) {
-    return false;
-  }
-
-  return path.split('/').every((segment) => segment && segment !== '.' && segment !== '..');
 }
 
 function listAffectedDocNames(
@@ -1817,7 +1822,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       type: 'urn:ok:error:stale-external-write' as const,
       title: 'Edit retained; disk write blocked by a stale external-write conflict.',
       detail:
-        'An older version was restored on disk. Your edit was applied and is retained in memory and in the recovery snapshot, but its Markdown disk write was skipped. Do not repeat this edit: inspect conflicts({ kind: "content" }) for this file and resolve_conflict, then re-read the document before making further changes.',
+        'An older version was restored on disk. Your edit was applied and is retained in memory and in the recovery snapshot, but its Markdown disk write was skipped. Do not repeat this edit: ask the user to resolve the conflict in the OpenKnowledge app, then re-read the document before making further changes.',
       file:
         durabilityState.getStaleExternalWrite(docName)?.file ??
         relative(projectDir ?? contentDir, safeContentPath(docName, contentDir)).replaceAll(
@@ -2240,8 +2245,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
 
   function applyManagedRenameMapToLoadedDocument(
     docName: string,
-    renameMap: ReadonlyMap<string, string>,
-    renamedAssets: readonly RenamedAssetMapping[] = [],
+    renamedAssets: readonly RenamedAssetMapping[],
+    wikiContext: WikiRenameContext,
   ): ManagedRenameRewriteSummary {
     const document = hocuspocus.documents.get(docName);
     if (!document) {
@@ -2254,9 +2259,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       result = applyRenameAndAssetReferenceRewrites(
         ytext.toString(),
         docName,
-        renameMap.get(docName) ?? docName,
-        renameMap,
+        wikiContext.renames.get(docName) ?? docName,
         renamedAssets,
+        wikiContext,
       );
       if (result.rewrites === 0) {
         return;
@@ -2285,10 +2290,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     markdown: string,
     currentDocName: string,
     rewrittenDocName: string,
-    renameMap: ReadonlyMap<string, string>,
     renamedAssets: readonly RenamedAssetMapping[],
+    wikiContext: WikiRenameContext,
   ): ManagedRenameRewriteSummary {
-    const docRename = applyRenameMap(markdown, currentDocName, renameMap);
+    const docRename = applyRenameMap(markdown, currentDocName, wikiContext);
     const assetRename = rewriteAssetReferencesForMappings(
       docRename.markdown,
       rewrittenDocName,
@@ -2744,6 +2749,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
           }
 
           const renameMap = buildRenameMap(affectedDocs);
+          const wikiContext = createWikiRenameContext(
+            new Set([
+              ...getFileIndex().keys(),
+              ...(await derivedDocumentIndex.getIndexedDocNames()),
+              ...renameMap.keys(),
+            ]),
+            renameMap,
+          );
           const renamed: RenamedDocMapping[] = affectedDocs.map(({ from, to }) => ({
             fromDocName: from,
             toDocName: to,
@@ -2757,10 +2770,83 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
               }
             }
           }
-          const backlinkSources = [...backlinkSourceSet].sort((a, b) => a.localeCompare(b));
-
           const snapshotContents = new Map<string, string>();
           const rewriteDocNameSet = new Set<string>();
+          const sourceInventory = await derivedDocumentIndex.getRenameSourceInventory();
+          const indexedNames = new Set(sourceInventory.map(({ docName }) => docName));
+          const discoveryCandidates = new Set<string>(hocuspocus.documents.keys());
+          for (const docName of wikiContext.before.pages) {
+            if (!indexedNames.has(docName)) discoveryCandidates.add(docName);
+          }
+          const mtimeChecks: Array<{ docName: string; indexedMtimeMs: number | undefined }> = [];
+          for (const { docName, wikiTargets, indexedMtimeMs } of sourceInventory) {
+            if (
+              wikiTargets.some(
+                (target) => wikiLinkRenameDestination(target, docName, wikiContext) !== null,
+              )
+            ) {
+              discoveryCandidates.add(docName);
+            }
+            if (!discoveryCandidates.has(docName)) mtimeChecks.push({ docName, indexedMtimeMs });
+          }
+          for (let offset = 0; offset < mtimeChecks.length; offset += 128) {
+            const checks = mtimeChecks.slice(offset, offset + 128);
+            const checked = await Promise.allSettled(
+              checks.map(async ({ docName, indexedMtimeMs }) => {
+                try {
+                  const filePath = resolveContentEntryPath(contentDir, 'file', docName);
+                  return indexedMtimeMs !== (await stat(filePath)).mtimeMs ? docName : null;
+                } catch (error) {
+                  if (isAbsentPathError(error)) return null;
+                  const code = error instanceof Error && 'code' in error ? error.code : 'unknown';
+                  throw new Error(`Rename discovery could not check ${docName} (${code})`, {
+                    cause: error,
+                  });
+                }
+              }),
+            );
+            for (const result of checked) {
+              if (result.status === 'rejected') throw result.reason;
+              if (result.value) discoveryCandidates.add(result.value);
+            }
+          }
+          for (const docName of discoveryCandidates) {
+            if (
+              renameMap.has(docName) ||
+              isPersistenceExcludedDoc(docName) ||
+              isDocNameContentExcluded(docName)
+            )
+              continue;
+            let candidatePath: string;
+            try {
+              candidatePath = resolveContentEntryPath(contentDir, 'file', docName);
+            } catch (error) {
+              if (isAbsentPathError(error)) continue;
+              throw error;
+            }
+            if (!existsSync(candidatePath)) continue;
+            reconcileDiskBeforeAgentWrite(
+              durabilityState,
+              hocuspocus,
+              docName,
+              contentDir,
+              undefined,
+              getBridgeLossReporter?.(),
+              conflicts,
+            );
+            const content = readCurrentDocumentContent(docName);
+            if (typeof content !== 'string') continue;
+            if (
+              rewriteWikiLinksForRenameMap(stripFrontmatter(content).body, docName, wikiContext)
+                .rewrites > 0
+            ) {
+              backlinkSourceSet.add(docName);
+              snapshotContents.set(docName, content);
+              rewriteDocNameSet.add(docName);
+            }
+          }
+          const backlinkSources = [...backlinkSourceSet].sort((a, b) => a.localeCompare(b));
+
           const assetRewriteDocNameSet = new Set<string>();
           const missingBacklinkSources: string[] = [];
 
@@ -2804,8 +2890,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
                 content,
                 docName,
                 renameMap.get(docName) ?? docName,
-                renameMap,
                 renamedAssets,
+                wikiContext,
               );
               if (rewritten.rewrites === 0) continue;
               if (!snapshotContents.has(docName)) {
@@ -2844,13 +2930,13 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
             for (const docName of rewriteDocNames) {
               const document = hocuspocus.documents.get(docName);
               const rewritten = document
-                ? applyManagedRenameMapToLoadedDocument(docName, renameMap, renamedAssets)
+                ? applyManagedRenameMapToLoadedDocument(docName, renamedAssets, wikiContext)
                 : applyRenameAndAssetReferenceRewrites(
                     snapshotContents.get(docName) ?? '',
                     docName,
                     docName,
-                    renameMap,
                     renamedAssets,
+                    wikiContext,
                   );
 
               if (rewritten.rewrites > 0) {
@@ -2990,8 +3076,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
                 sourceCurrentContent,
                 fromDocName,
                 toDocName,
-                renameMap,
                 renamedAssets,
+                wikiContext,
               );
 
               syncRenamedDocsToDisk(

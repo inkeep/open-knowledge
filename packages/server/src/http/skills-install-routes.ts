@@ -437,7 +437,7 @@ export function createSkillsInstallRoutes(deps: SkillsInstallRouteDeps): ApiRout
                   res,
                   409,
                   'urn:ok:error:doc-already-exists',
-                  'That copy has been edited and no longer matches the skill — remove it manually if you mean it.',
+                  'This copy differs from the current source and was preserved. Inspect both versions before removing it.',
                   { handler: 'skill-install', detail: unplaced.path },
                 );
                 return;
@@ -525,7 +525,7 @@ export function createSkillsInstallRoutes(deps: SkillsInstallRouteDeps): ApiRout
                   res,
                   409,
                   'urn:ok:error:doc-already-exists',
-                  'That copy has been edited and no longer matches the skill — resolve the fork before converting it.',
+                  'This copy differs from the current source and was preserved. Inspect both versions before replacing or converting it.',
                   { handler: 'skill-install', detail: target },
                 );
                 return;

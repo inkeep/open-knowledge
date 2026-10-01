@@ -3,8 +3,6 @@ import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import {
   type BrokenLinkReason,
-  buildPagesByBasenameIndex,
-  buildPagesBySlugIndex,
   classifyMarkdownHref,
   classifyWikiLinkTarget,
   extractSkillRefs,
@@ -42,6 +40,7 @@ import { readMarkdownLinkAt, readWikiLinkAt } from './link-syntax.ts';
 import { extractLocalTargetOccurrences } from './local-target-occurrences.ts';
 import { getLogger } from './logger.ts';
 import { toPosix } from './path-utils.ts';
+import { buildProjectWikiLinkLookup } from './project-wiki-link-lookup.ts';
 
 const log = getLogger('backlinks');
 
@@ -157,10 +156,12 @@ interface BranchGraphState {
   externalForward: Map<string, Map<string, { label: string | null; snippet: string | null }>>;
   externalBackward: Map<string, Map<string, { label: string | null; snippet: string | null }>>;
   skillRefs: Map<string, Set<string>>;
-  epoch: number;
+  sourceLinks: Map<string, readonly ExtractedWikiLink[]>;
+  inventoryEpoch: number;
 }
 
-const SNAPSHOT_VERSION = 3;
+const SNAPSHOT_VERSION = 4;
+const EMPTY_BUNDLE_NEIGHBORS: ReadonlySet<string> = new Set();
 
 interface SerializedBranchGraphState {
   version?: number;
@@ -171,6 +172,7 @@ interface SerializedBranchGraphState {
     Array<{ url: string; label: string | null; snippet: string | null }>
   >;
   skillRefs?: Record<string, string[]>;
+  sourceLinks?: Record<string, ExtractedWikiLink[]>;
   mtimes?: Record<string, number>;
 }
 
@@ -179,6 +181,7 @@ interface BacklinkIndexOptions {
   contentDir: string;
   contentFilter?: ContentFilter;
   getFileOracle?: () => GraphFileOracle | undefined;
+  documentNames?: Iterable<string>;
 }
 
 function createEmptyState(): BranchGraphState {
@@ -188,17 +191,36 @@ function createEmptyState(): BranchGraphState {
     externalForward: new Map(),
     externalBackward: new Map(),
     skillRefs: new Map(),
-    epoch: 0,
+    sourceLinks: new Map(),
+    inventoryEpoch: 0,
   };
 }
 
-function isUndecidedTarget(state: BranchGraphState, target: string): boolean {
-  const sources = state.backward.get(target);
-  if (!sources || sources.size === 0) return false;
-  for (const meta of sources.values()) {
-    if (meta.rawWikiTarget !== true) return false;
-  }
-  return true;
+function requireSourceLinks(state: BranchGraphState, source: string): readonly ExtractedWikiLink[] {
+  const links = state.sourceLinks.get(source);
+  if (!links) throw new Error(`Missing source links for indexed document ${source}`);
+  return links;
+}
+
+interface ResolvedGraphState {
+  inventoryEpoch: number;
+  forward: Map<string, Set<string>>;
+  backward: Map<string, Map<string, BackwardLinkMeta>>;
+  sortedBacklinks: Map<string, BacklinkEntry[]>;
+  wikiSourcesByPathSlug: Map<string, Set<string>>;
+  wikiSourcesByBasenameSlug: Map<string, Set<string>>;
+  wikiSourcesByFolder: Map<string, Set<string>>;
+  wikiKeysBySource: Map<
+    string,
+    { paths: Set<string>; basenames: Set<string>; folders: Set<string> }
+  >;
+}
+
+interface CachedDocumentLookup {
+  epoch: number;
+  lookup: WikiLinkLookupIndex;
+  slugBuckets: Map<string, Set<string>>;
+  basenameBuckets: Map<string, Set<string>>;
 }
 
 export function parseSkillBundleDocAnyScope(
@@ -239,6 +261,10 @@ function mergeLinkMeta(
     column: positioned.column,
     rawWikiTarget: existing.rawWikiTarget === true && next.rawWikiTarget === true,
   };
+}
+
+function compareBacklinkSources(a: string, b: string): number {
+  return a.localeCompare(b) || (a < b ? -1 : a > b ? 1 : 0);
 }
 
 function getRepresentativeAnchor(
@@ -939,21 +965,10 @@ export function computeBrokenOutboundLinks(
     }
   };
 
-  let pagesBySlug: ReadonlyMap<string, string> | undefined;
-  let pagesByBasename: ReadonlyMap<string, string> | undefined;
-  const wikiLookup: WikiLinkLookupIndex = {
-    pages: admitted,
-    get pagesBySlug() {
-      pagesBySlug ??= buildPagesBySlugIndex(admitted, toWikiLinkSlug);
-      return pagesBySlug;
-    },
-    get pagesByBasename() {
-      pagesByBasename ??= buildPagesByBasenameIndex(admitted, toWikiLinkSlug);
-      return pagesByBasename;
-    },
-  };
+  let wikiLookup: WikiLinkLookupIndex | undefined;
 
   const recordWikiLink = (target: string, anchor: string | null): void => {
+    wikiLookup ??= buildProjectWikiLinkLookup(admitted);
     const resolved = resolveWikiLinkTarget(target, anchor, wikiLookup);
     if (resolved?.kind !== 'doc') return;
     if (
@@ -1055,6 +1070,12 @@ function serializeState(state: BranchGraphState): SerializedBranchGraphState {
     skillRefs: Object.fromEntries(
       [...state.skillRefs.entries()].map(([source, names]) => [source, [...names].sort()]),
     ),
+    sourceLinks: Object.fromEntries(
+      [...state.sourceLinks.entries()].map(([source, links]) => [
+        source,
+        links.map((link) => ({ ...link })),
+      ]),
+    ),
   };
 }
 
@@ -1132,7 +1153,26 @@ function deserializeState(data: SerializedBranchGraphState): BranchGraphState {
     skillRefs: new Map(
       Object.entries(data.skillRefs ?? {}).map(([source, names]) => [source, new Set(names)]),
     ),
-    epoch: 0,
+    sourceLinks: new Map(
+      Object.entries(data.sourceLinks ?? {}).map(([source, links]) => [
+        source,
+        links.map((link) => ({
+          target: link.target,
+          anchor: link.anchor ?? null,
+          snippet: link.snippet ?? null,
+          sourceForm:
+            link.sourceForm === 'wiki' ||
+            link.sourceForm === 'markdown' ||
+            link.sourceForm === 'jsx'
+              ? link.sourceForm
+              : undefined,
+          line: cachePosition(link.line),
+          column: cachePosition(link.column),
+          rawWikiTarget: link.rawWikiTarget === true,
+        })),
+      ]),
+    ),
+    inventoryEpoch: 0,
   };
 }
 
@@ -1153,12 +1193,12 @@ export class BacklinkIndex {
   private readonly contentDir: string;
   private readonly contentFilter?: ContentFilter;
   private readonly getFileOracle: () => GraphFileOracle | undefined;
+  private readonly documentNames: readonly string[];
   private readonly states = new Map<string, BranchGraphState>();
   private readonly mtimesByBranch = new Map<string, Map<string, number>>();
-  private readonly documentLookups = new WeakMap<
-    BranchGraphState,
-    { epoch: number; lookup: WikiLinkLookupIndex }
-  >();
+  private readonly documentLookups = new WeakMap<BranchGraphState, CachedDocumentLookup>();
+  private readonly resolvedGraphs = new WeakMap<BranchGraphState, ResolvedGraphState>();
+  private readonly fixedDocumentNames: ReadonlySet<string>;
   private activeBranch = 'main';
 
   constructor(options: BacklinkIndexOptions) {
@@ -1166,6 +1206,8 @@ export class BacklinkIndex {
     this.contentDir = options.contentDir;
     this.contentFilter = options.contentFilter;
     this.getFileOracle = options.getFileOracle ?? (() => undefined);
+    this.documentNames = [...(options.documentNames ?? [])];
+    this.fixedDocumentNames = new Set(this.documentNames);
     this.states.set(this.activeBranch, createEmptyState());
   }
 
@@ -1235,7 +1277,10 @@ export class BacklinkIndex {
     return neighbors;
   }
 
-  private bundleNeighbors(docName: string, branch = this.activeBranch): Set<string> {
+  private bundleNeighbors(docName: string, branch = this.activeBranch): ReadonlySet<string> {
+    if (docName[0] !== '.' && !docName.startsWith(MANAGED_ARTIFACT_PREFIX_SKILL))
+      return EMPTY_BUNDLE_NEIGHBORS;
+    if (!parseSkillBundleDocAnyScope(docName)) return EMPTY_BUNDLE_NEIGHBORS;
     const neighbors = this.structuralBundleNeighbors(docName, branch);
     for (const n of this.skillRefNeighbors(docName, branch)) neighbors.add(n);
     return neighbors;
@@ -1267,6 +1312,7 @@ export class BacklinkIndex {
 
   private registerNodeOnly(docName: string, branch = this.activeBranch): void {
     const state = this.getState(branch);
+    const added = !state.forward.has(docName);
     const priorTargets = state.forward.get(docName) ?? new Set<string>();
     const priorExternalTargets = state.externalForward.get(docName) ?? new Map();
     for (const target of priorTargets) {
@@ -1282,8 +1328,10 @@ export class BacklinkIndex {
       if (sources.size === 0) state.externalBackward.delete(url);
     }
     state.forward.set(docName, new Set());
-    state.epoch++;
+    state.sourceLinks.set(docName, []);
     state.externalForward.set(docName, new Map());
+    if (added) this.inventoryChanged(state, docName, true);
+    this.refreshResolvedSource(state, docName, branch);
   }
 
   registerGlobalSkillBundleNode(docName: string, branch = this.activeBranch): void {
@@ -1296,6 +1344,7 @@ export class BacklinkIndex {
     links: ExtractedWikiLink[],
     externalLinks: ExtractedExternalLink[] = [],
     branch = this.activeBranch,
+    sourceLinks: readonly ExtractedWikiLink[] = links,
   ): void {
     if (isLinkIndexExcludedDoc(docName)) return;
     if (parseGlobalSkillBundleDoc(docName)) {
@@ -1303,6 +1352,7 @@ export class BacklinkIndex {
       return;
     }
     const state = this.getState(branch);
+    const added = !state.forward.has(docName);
     const priorTargets = state.forward.get(docName) ?? new Set<string>();
     const priorExternalTargets = state.externalForward.get(docName) ?? new Map();
 
@@ -1323,7 +1373,10 @@ export class BacklinkIndex {
     const nextTargets = new Set<string>();
     const nextExternalTargets = new Map<string, { label: string | null; snippet: string | null }>();
     state.forward.set(docName, nextTargets);
-    state.epoch++;
+    state.sourceLinks.set(
+      docName,
+      sourceLinks.map((link) => ({ ...link })),
+    );
     state.externalForward.set(docName, nextExternalTargets);
 
     for (const link of links) {
@@ -1365,6 +1418,8 @@ export class BacklinkIndex {
         });
       }
     }
+    if (added) this.inventoryChanged(state, docName, true);
+    this.refreshResolvedSource(state, docName, branch);
   }
 
   updateDocumentFromMarkdown(docName: string, markdown: string, branch = this.activeBranch): void {
@@ -1400,7 +1455,11 @@ export class BacklinkIndex {
         ...mdExternalLinks.filter((link) => !externalSeen.has(link.url)),
       ];
       this.recordSkillRefs(docName, body, branch);
-      this.updateDocument(docName, merged, mergedExternal, branch);
+      this.updateDocument(docName, merged, mergedExternal, branch, [
+        ...wikiLinks,
+        ...mdLinks,
+        ...jsxLinks,
+      ]);
     } catch (err) {
       log.warn({ docName, err }, `Failed to scan ${docName} for link extraction`);
       this.deleteDocument(docName, branch);
@@ -1424,10 +1483,11 @@ export class BacklinkIndex {
       sources.delete(docName);
       if (sources.size === 0) state.externalBackward.delete(url);
     }
-    state.forward.delete(docName);
-    state.epoch++;
+    const deleted = state.forward.delete(docName);
     state.externalForward.delete(docName);
     state.skillRefs.delete(docName);
+    state.sourceLinks.delete(docName);
+    if (deleted) this.inventoryChanged(state, docName, false);
   }
 
   renameDocument(
@@ -1441,15 +1501,19 @@ export class BacklinkIndex {
   }
 
   getBacklinks(target: string, branch = this.activeBranch): BacklinkEntry[] {
-    const state = this.getState(branch);
-    const sources = state.backward.get(target);
+    const resolved = this.resolvedState(branch);
+    const sources = resolved.backward.get(target);
+    const structural = this.bundleNeighbors(target, branch);
+    if (structural.size === 0) {
+      return resolved.sortedBacklinks.get(target)?.map((entry) => ({ ...entry })) ?? [];
+    }
     const entries = new Map<string, BacklinkEntry>();
     if (sources) {
       for (const [source, meta] of sources) {
         entries.set(source, { source, anchor: meta.anchor, snippet: meta.snippet });
       }
     }
-    for (const partner of this.bundleNeighbors(target, branch)) {
+    for (const partner of structural) {
       if (!entries.has(partner))
         entries.set(partner, { source: partner, anchor: null, snippet: null });
     }
@@ -1457,8 +1521,7 @@ export class BacklinkIndex {
   }
 
   getBacklinkCount(target: string, branch = this.activeBranch): number {
-    const state = this.getState(branch);
-    const authored = state.backward.get(target);
+    const authored = this.resolvedBackward(branch).get(target);
     const structural = this.bundleNeighbors(target, branch);
     if (structural.size === 0) return authored?.size ?? 0;
     const union = new Set(authored?.keys() ?? []);
@@ -1467,14 +1530,14 @@ export class BacklinkIndex {
   }
 
   getForwardLinks(source: string, branch = this.activeBranch): string[] {
-    const state = this.getState(branch);
+    const state = this.resolvedGraph(branch);
     const targets = new Set(state.forward.get(source) ?? new Set<string>());
     for (const partner of this.bundleNeighbors(source, branch)) targets.add(partner);
     return [...targets].sort((a, b) => a.localeCompare(b));
   }
 
   getForwardLinkEntries(source: string, branch = this.activeBranch): ForwardLinkEntry[] {
-    const state = this.getState(branch);
+    const state = this.resolvedGraph(branch);
     const internalEntries: ForwardLinkEntry[] = this.getForwardLinks(source, branch).map(
       (target) => ({
         kind: 'doc',
@@ -1497,7 +1560,7 @@ export class BacklinkIndex {
   }
 
   getOrphans(allDocs: string[], mode: OrphanMode = 'both', branch = this.activeBranch): string[] {
-    const state = this.getState(branch);
+    const state = this.resolvedGraph(branch);
     const skillDocsWithReference = new Set<string>();
     for (const candidate of state.forward.keys()) {
       const parsed = parseSkillBundleDocAnyScope(candidate);
@@ -1524,7 +1587,7 @@ export class BacklinkIndex {
   }
 
   getHubs(limit = 20, branch = this.activeBranch): HubEntry[] {
-    const state = this.getState(branch);
+    const state = this.resolvedGraph(branch);
     return [...state.backward.entries()]
       .map(([docName, sources]) => ({ docName, count: sources.size }))
       .sort((a, b) =>
@@ -1537,13 +1600,26 @@ export class BacklinkIndex {
     return [...this.getState(branch).forward.keys()];
   }
 
+  getRenameSourceInventory(
+    branch = this.activeBranch,
+  ): Array<{ docName: string; wikiTargets: string[]; indexedMtimeMs: number | undefined }> {
+    const state = this.getState(branch);
+    const mtimes = this.mtimesByBranch.get(branch);
+    return [...state.forward].map(([docName]) => {
+      const wikiTargets = requireSourceLinks(state, docName)
+        .filter((link) => link.sourceForm === 'wiki')
+        .map((link) => link.target);
+      return { docName, wikiTargets, indexedMtimeMs: mtimes?.get(docName) };
+    });
+  }
+
   getDeadLinks(
     admittedDocs: Iterable<string>,
     sourceDocNames?: readonly string[],
     branch = this.activeBranch,
     knownFolderPaths?: Iterable<string>,
   ): DeadLinkEntry[] {
-    const state = this.getState(branch);
+    const state = this.resolvedGraph(branch);
     const admittedDocSet = new Set(admittedDocs);
     const sourceDocSet = sourceDocNames?.length ? new Set(sourceDocNames) : null;
     const folderPathSet = deriveFolderPathsFromDocNames([
@@ -1598,47 +1674,287 @@ export class BacklinkIndex {
   private documentLookup(branch = this.activeBranch): WikiLinkLookupIndex {
     const state = this.getState(branch);
     const cached = this.documentLookups.get(state);
-    if (cached?.epoch === state.epoch) return cached.lookup;
-
-    const pages = new Set(state.forward.keys());
-    const lookup: WikiLinkLookupIndex = {
-      pages,
-      pagesBySlug: buildPagesBySlugIndex(pages, toWikiLinkSlug),
-      pagesByBasename: buildPagesByBasenameIndex(pages, toWikiLinkSlug),
+    if (cached?.epoch === state.inventoryEpoch) return cached.lookup;
+    const lookup = buildProjectWikiLinkLookup([...state.forward.keys(), ...this.documentNames]);
+    const slugBuckets = new Map<string, Set<string>>();
+    const basenameBuckets = new Map<string, Set<string>>();
+    for (const page of lookup.pages) {
+      if (parseGlobalSkillBundleDoc(page)) continue;
+      const pathSlug = toWikiLinkSlug(page);
+      const basenameSlug = toWikiLinkSlug(page.slice(page.lastIndexOf('/') + 1));
+      if (pathSlug) {
+        const bucket = slugBuckets.get(pathSlug) ?? new Set<string>();
+        bucket.add(page);
+        slugBuckets.set(pathSlug, bucket);
+      }
+      if (basenameSlug) {
+        const bucket = basenameBuckets.get(basenameSlug) ?? new Set<string>();
+        bucket.add(page);
+        basenameBuckets.set(basenameSlug, bucket);
+      }
+    }
+    const mutableLookup: WikiLinkLookupIndex = {
+      pages: new Set(lookup.pages),
+      pagesBySlug: new Map(lookup.pagesBySlug),
+      pagesByBasename: new Map(lookup.pagesByBasename),
     };
-    this.documentLookups.set(state, { epoch: state.epoch, lookup });
-    return lookup;
+    this.documentLookups.set(state, {
+      epoch: state.inventoryEpoch,
+      lookup: mutableLookup,
+      slugBuckets,
+      basenameBuckets,
+    });
+    return mutableLookup;
   }
 
-  private undecidedTargetResolves(target: string, branch = this.activeBranch): boolean {
-    return resolveWikiLinkTarget(target, null, this.documentLookup(branch))?.kind === 'doc';
+  private updateDocumentLookup(state: BranchGraphState, docName: string, added: boolean): void {
+    const cached = this.documentLookups.get(state);
+    if (!cached || cached.epoch !== state.inventoryEpoch - 1) return;
+    cached.epoch = state.inventoryEpoch;
+    if (!added && this.fixedDocumentNames.has(docName)) return;
+    const pages = cached.lookup.pages as Set<string>;
+    if (added ? pages.has(docName) : !pages.has(docName)) return;
+    if (added) pages.add(docName);
+    else pages.delete(docName);
+    if (parseGlobalSkillBundleDoc(docName)) return;
+    const pathSlug = toWikiLinkSlug(docName);
+    const basenameSlug = toWikiLinkSlug(docName.slice(docName.lastIndexOf('/') + 1));
+    const refresh = (
+      key: string,
+      buckets: Map<string, Set<string>>,
+      winners: ReadonlyMap<string, string>,
+    ) => {
+      if (!key) return;
+      const bucket = buckets.get(key) ?? new Set<string>();
+      if (added) bucket.add(docName);
+      else bucket.delete(docName);
+      if (bucket.size) buckets.set(key, bucket);
+      else buckets.delete(key);
+      const mutableWinners = winners as Map<string, string>;
+      const best = [...bucket].sort()[0];
+      if (best) mutableWinners.set(key, best);
+      else mutableWinners.delete(key);
+    };
+    refresh(pathSlug, cached.slugBuckets, cached.lookup.pagesBySlug);
+    refresh(basenameSlug, cached.basenameBuckets, cached.lookup.pagesByBasename ?? new Map());
+  }
+
+  private inventoryChanged(state: BranchGraphState, docName: string, added: boolean): void {
+    state.inventoryEpoch++;
+    this.updateDocumentLookup(state, docName, added);
+    const resolved = this.resolvedGraphs.get(state);
+    if (!resolved || resolved.inventoryEpoch !== state.inventoryEpoch - 1) return;
+    resolved.inventoryEpoch = state.inventoryEpoch;
+    const pathSlug = toWikiLinkSlug(docName) || docName;
+    const basenameSlug = toWikiLinkSlug(docName.slice(docName.lastIndexOf('/') + 1));
+    const affected = new Set<string>([
+      ...(resolved.wikiSourcesByPathSlug.get(pathSlug) ?? []),
+      ...(resolved.wikiSourcesByBasenameSlug.get(basenameSlug) ?? []),
+    ]);
+    const slash = docName.lastIndexOf('/');
+    if (slash !== -1) {
+      const parent = docName.slice(0, slash);
+      const leaf = docName.slice(slash + 1);
+      if (leaf === 'index' || leaf === parent.slice(parent.lastIndexOf('/') + 1)) {
+        for (const source of resolved.wikiSourcesByFolder.get(parent) ?? []) affected.add(source);
+      }
+    }
+    affected.add(docName);
+    const lookup = this.documentLookupForResolved(state);
+    const changedTargets = new Set<string>();
+    for (const source of affected) {
+      for (const target of this.resolveSource(state, resolved, source, lookup))
+        changedTargets.add(target);
+    }
+    for (const target of changedTargets) this.refreshSortedBacklinks(resolved, target);
+  }
+
+  private documentLookupForResolved(state: BranchGraphState): WikiLinkLookupIndex {
+    const cached = this.documentLookups.get(state);
+    if (!cached || cached.epoch !== state.inventoryEpoch) {
+      throw new Error('Resolved link graph has no matching document lookup');
+    }
+    return cached.lookup;
+  }
+
+  private resolveSource(
+    state: BranchGraphState,
+    resolved: ResolvedGraphState,
+    source: string,
+    lookup: WikiLinkLookupIndex,
+  ): Set<string> {
+    const priorKeys = resolved.wikiKeysBySource.get(source);
+    if (priorKeys) {
+      for (const [keys, index] of [
+        [priorKeys.paths, resolved.wikiSourcesByPathSlug],
+        [priorKeys.basenames, resolved.wikiSourcesByBasenameSlug],
+        [priorKeys.folders, resolved.wikiSourcesByFolder],
+      ] as const) {
+        for (const key of keys) {
+          const sources = index.get(key);
+          sources?.delete(source);
+          if (sources?.size === 0) index.delete(key);
+        }
+      }
+    }
+    const changedTargets = new Set(resolved.forward.get(source) ?? []);
+    for (const target of changedTargets) {
+      const sources = resolved.backward.get(target);
+      sources?.delete(source);
+      if (sources?.size === 0) resolved.backward.delete(target);
+    }
+    const targets = new Set<string>();
+    if (state.forward.has(source)) resolved.forward.set(source, targets);
+    else resolved.forward.delete(source);
+    const wikiKeys = {
+      paths: new Set<string>(),
+      basenames: new Set<string>(),
+      folders: new Set<string>(),
+    };
+    const sourceLinks = state.forward.has(source) ? requireSourceLinks(state, source) : [];
+    for (const meta of sourceLinks) {
+      const rawTarget = meta.target;
+      if (!rawTarget) continue;
+      let target = rawTarget;
+      if (meta.sourceForm === 'wiki' || meta.sourceForm === undefined) {
+        const trimmed = rawTarget.trim();
+        for (const form of [trimmed, trimmed.replace(/\.(md|mdx)$/i, '')]) {
+          const slug = toWikiLinkSlug(form) || form;
+          wikiKeys.paths.add(slug);
+          if (!form.includes('/')) wikiKeys.basenames.add(slug);
+          wikiKeys.folders.add(form);
+        }
+        const canonical = resolveWikiLinkTargetDocName(rawTarget, lookup);
+        if (meta.rawWikiTarget === true && canonical === undefined) continue;
+        target = canonical ?? rawTarget;
+      }
+      targets.add(target);
+      changedTargets.add(target);
+      let sources = resolved.backward.get(target);
+      if (!sources) {
+        sources = new Map();
+        resolved.backward.set(target, sources);
+      }
+      sources.set(source, mergeLinkMeta(sources.get(source), meta));
+    }
+    if (state.forward.has(source)) {
+      resolved.wikiKeysBySource.set(source, wikiKeys);
+      for (const [keys, index] of [
+        [wikiKeys.paths, resolved.wikiSourcesByPathSlug],
+        [wikiKeys.basenames, resolved.wikiSourcesByBasenameSlug],
+        [wikiKeys.folders, resolved.wikiSourcesByFolder],
+      ] as const) {
+        for (const key of keys) {
+          const sources = index.get(key) ?? new Set<string>();
+          sources.add(source);
+          index.set(key, sources);
+        }
+      }
+    } else {
+      resolved.wikiKeysBySource.delete(source);
+    }
+    return changedTargets;
+  }
+
+  private refreshSortedBacklinks(resolved: ResolvedGraphState, target: string): void {
+    const sources = resolved.backward.get(target);
+    if (!sources) {
+      resolved.sortedBacklinks.delete(target);
+      return;
+    }
+    resolved.sortedBacklinks.set(
+      target,
+      Array.from(sources, ([source, meta]) => ({
+        source,
+        anchor: meta.anchor,
+        snippet: meta.snippet,
+      })).sort((a, b) => compareBacklinkSources(a.source, b.source)),
+    );
+  }
+
+  private updateSortedBacklink(resolved: ResolvedGraphState, target: string, source: string): void {
+    const meta = resolved.backward.get(target)?.get(source);
+    const list = resolved.sortedBacklinks.get(target) ?? [];
+    let low = 0;
+    let high = list.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (compareBacklinkSources((list[mid] as BacklinkEntry).source, source) < 0) low = mid + 1;
+      else high = mid;
+    }
+    const present = list[low]?.source === source;
+    if (meta)
+      list.splice(low, present ? 1 : 0, { source, anchor: meta.anchor, snippet: meta.snippet });
+    else if (present) list.splice(low, 1);
+    if (list.length > 0) resolved.sortedBacklinks.set(target, list);
+    else resolved.sortedBacklinks.delete(target);
+  }
+
+  private refreshResolvedSource(state: BranchGraphState, source: string, branch: string): void {
+    const resolved = this.resolvedGraphs.get(state);
+    if (resolved?.inventoryEpoch !== state.inventoryEpoch) return;
+    for (const target of this.resolveSource(state, resolved, source, this.documentLookup(branch)))
+      this.updateSortedBacklink(resolved, target, source);
+  }
+
+  private resolvedState(branch: string): ResolvedGraphState {
+    const state = this.getState(branch);
+    const resolved = this.resolvedGraphs.get(state);
+    if (resolved?.inventoryEpoch === state.inventoryEpoch) return resolved;
+    this.resolvedGraph(branch);
+    const rebuilt = this.resolvedGraphs.get(state);
+    if (!rebuilt) throw new Error('Resolved link graph was not created');
+    return rebuilt;
+  }
+
+  private resolvedBackward(branch: string): ResolvedGraphState['backward'] {
+    return this.resolvedState(branch).backward;
+  }
+
+  private resolvedGraph(branch = this.activeBranch): ResolvedGraphState & BranchGraphState {
+    const state = this.getState(branch);
+    let resolved = this.resolvedGraphs.get(state);
+    if (resolved?.inventoryEpoch !== state.inventoryEpoch) {
+      resolved = {
+        inventoryEpoch: state.inventoryEpoch,
+        forward: new Map(),
+        backward: new Map(),
+        sortedBacklinks: new Map(),
+        wikiSourcesByPathSlug: new Map(),
+        wikiSourcesByBasenameSlug: new Map(),
+        wikiSourcesByFolder: new Map(),
+        wikiKeysBySource: new Map(),
+      };
+      const lookup = this.documentLookup(branch);
+      for (const source of state.forward.keys())
+        this.resolveSource(state, resolved, source, lookup);
+      for (const target of resolved.backward.keys()) this.refreshSortedBacklinks(resolved, target);
+      this.resolvedGraphs.set(state, resolved);
+    }
+    return { ...state, ...resolved };
   }
 
   getLinkGraph(branch = this.activeBranch): {
     nodes: GraphNode[];
     links: Array<{ source: string; target: string }>;
   } {
-    const state = this.getState(branch);
+    const state = this.resolvedGraph(branch);
     const nodes = new Map<string, GraphNode>();
     const links: Array<{ source: string; target: string }> = [];
+    const addDocumentNode = (docName: string) => {
+      if (nodes.has(docName)) return;
+      nodes.set(docName, {
+        kind: 'doc',
+        id: docName,
+        docName,
+        anchor: getRepresentativeAnchor(state.backward.get(docName)),
+      });
+    };
 
     for (const [source, targets] of state.forward) {
-      nodes.set(source, {
-        kind: 'doc',
-        id: source,
-        docName: source,
-        anchor: getRepresentativeAnchor(state.backward.get(source)),
-      });
+      addDocumentNode(source);
       for (const target of targets) {
-        if (isUndecidedTarget(state, target) && !this.undecidedTargetResolves(target, branch)) {
-          continue;
-        }
-        nodes.set(target, {
-          kind: 'doc',
-          id: target,
-          docName: target,
-          anchor: getRepresentativeAnchor(state.backward.get(target)),
-        });
+        addDocumentNode(target);
         links.push({ source, target });
       }
     }
@@ -1694,7 +2010,7 @@ export class BacklinkIndex {
     nodes: GraphNode[];
     links: Array<{ source: string; target: string }>;
   } {
-    const state = this.getState(branch);
+    const state = this.resolvedGraph(branch);
     const externalLabelsByUrl = new Map<string, string | null>();
     for (const targets of state.externalForward.values()) {
       for (const [url, meta] of targets) {
@@ -1720,9 +2036,6 @@ export class BacklinkIndex {
         }
       } else {
         for (const target of state.forward.get(current.nodeId) ?? new Set<string>()) {
-          if (isUndecidedTarget(state, target) && !this.undecidedTargetResolves(target, branch)) {
-            continue;
-          }
           neighbors.add(target);
         }
         for (const url of state.externalForward.get(current.nodeId)?.keys() ?? []) {
@@ -1814,6 +2127,19 @@ export class BacklinkIndex {
       const raw = await readFile(filePath, 'utf-8');
       const parsed = JSON.parse(raw) as SerializedBranchGraphState;
       if (parsed.version !== SNAPSHOT_VERSION) return false;
+      if (
+        !parsed.sourceLinks ||
+        Object.entries(parsed.forward ?? {}).some(([source, targets]) => {
+          const links = parsed.sourceLinks?.[source];
+          return !Array.isArray(links) || (targets.length > 0 && links.length === 0);
+        })
+      ) {
+        log.warn(
+          { branch },
+          `Incomplete backlink cache snapshot for ${branch}; rebuilding from disk`,
+        );
+        return false;
+      }
       this.states.set(branch, deserializeState(parsed));
       if (parsed.mtimes) {
         this.mtimesByBranch.set(branch, new Map(Object.entries(parsed.mtimes)));
@@ -1903,7 +2229,7 @@ export class BacklinkIndex {
         const externalTargets = new Map<string, { label: string | null; snippet: string | null }>();
         this.recordSkillRefsInto(state, docName, body);
         state.forward.set(docName, targets);
-        state.epoch++;
+        state.sourceLinks.set(docName, [...wikiLinks, ...mdLinks, ...jsxLinks]);
         state.externalForward.set(docName, externalTargets);
         for (const link of links) {
           if (!link.target) continue;
@@ -1994,7 +2320,13 @@ export class BacklinkIndex {
     changedDocs: Array<{ docName: string; filePath: string }>;
   }> {
     if (!existsSync(this.contentDir))
-      return { added: 0, updated: 0, deleted: 0, deletedDocNames: [], changedDocs: [] };
+      return {
+        added: 0,
+        updated: 0,
+        deleted: 0,
+        deletedDocNames: [],
+        changedDocs: [],
+      };
 
     const storedMtimes = this.mtimesByBranch.get(branch) ?? new Map<string, number>();
     const rawDocs: Array<{ docName: string; filePath: string }> = [];
@@ -2012,8 +2344,12 @@ export class BacklinkIndex {
     let added = 0;
     let updated = 0;
 
-    const toProcess: Array<{ docName: string; filePath: string; mtimeMs: number; isNew: boolean }> =
-      [];
+    const toProcess: Array<{
+      docName: string;
+      filePath: string;
+      mtimeMs: number;
+      isNew: boolean;
+    }> = [];
     const statResults = await Promise.allSettled(
       docs.map(async ({ docName, filePath }) => ({
         docName,
@@ -2025,11 +2361,17 @@ export class BacklinkIndex {
       if (result.status === 'rejected') continue;
       const { docName, filePath, mtimeMs } = result.value;
       const storedMtime = storedMtimes.get(docName);
-      if (storedMtime !== undefined && storedMtime === mtimeMs) {
+      const unchanged = storedMtime !== undefined && storedMtime === mtimeMs;
+      if (unchanged) {
         newMtimes.set(docName, mtimeMs);
         continue;
       }
-      toProcess.push({ docName, filePath, mtimeMs, isNew: storedMtime === undefined });
+      toProcess.push({
+        docName,
+        filePath,
+        mtimeMs,
+        isNew: storedMtime === undefined,
+      });
     }
 
     const BATCH_SIZE = 50;

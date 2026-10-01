@@ -120,7 +120,7 @@ const SkillLocationEntryOutputSchema = z.object({
   role: z
     .enum(['source', 'copy', 'symlink'])
     .describe(
-      'source = the REAL folder (the skill itself); copy = independent folder, auto-refreshed from the source until hand-edited (then it forks); symlink = live link to the source.',
+      'source = the REAL folder (the skill itself); copy = independent folder, refreshed from the source on watcher/startup sync while unedited (hand edits fork it); symlink = live link to the source.',
     ),
   audience: z
     .array(z.string())
@@ -205,19 +205,9 @@ const SkillMarketplaceResultOutputSchema = z.object({
 });
 
 const DESCRIPTION = [
-  '[Requires: Hocuspocus server] Read-only discovery for SKILLS — the read half of the skill vocabulary (`write`/`edit`/`delete`/`move`/`install` are the mutate half).',
-  '',
-  'This is how you search the marketplace, list managed skills, and read managed skill content. Managed skills are addressed by `name` + `scope`, NOT by path — do NOT `ls`/`cat` `.ok/skills/` or pass raw `.ok/...` paths; `.ok/` is opaque internal state.',
-  '',
-  'Marketplace rows are external candidates; they are NOT managed content until you call `import({ source, skill: name })`, and they are NOT active in editors until `install` projects them.',
-  '',
-  "OpenKnowledge's own built-in `open-knowledge*` skills (e.g. the `open-knowledge` project skill) are runtime skills already loaded in your skill list — they are NOT here, and you never fetch them through this tool.",
-  '',
-  '**Four modes:**',
-  '- **Marketplace search** (pass `query`): search skills.sh and return import-ready rows (`name`, `source`, `description`, `publisher`, installs). Use when a user asks to find/browse/add an external skill. Then call `import({ source, skill: name })` on the chosen row.',
-  '- **List** (omit `name`): every skill across BOTH levels — Project (this KB) and Global (user-level). Returns name, scope, description, installed/hosts.',
-  "- **Read skill** (pass `name`): that skill's description + body + a `files` list (`{ path, kind }`, no inline text) of its bundle files (`references/**`, `scripts/**`, and any other file the skill ships). `scope` optional — omitted, it resolves by name (preferring Project when a name exists at both levels).",
-  "- **Read file** (pass `name` + `file`): one bundle file's text — the universal read path for references + scripts (no native `cat`).",
+  'Read-only skill discovery. Requires the Hocuspocus server. query searches the skills.sh marketplace and returns import-ready name/source/description/publisher/install-count rows. Import a chosen row with import({source,skill:name}); external rows are not managed or active editor content until imported/projected.',
+  'Omit name to list Project and Global managed skills with scope/description/hosts. name reads description/body plus a bundle files list (path/kind, no inline text); name+file reads one reference/script/bundle file. Optional scope; name-only prefers Project. Address skills by name/scope, never raw .ok/ paths or native cat.',
+  'Built-in open-knowledge* runtime skills are already in your skill list; do not fetch them here. Use write/edit/delete/move/install for changes.',
 ].join('\n');
 
 export interface SkillsToolDeps {

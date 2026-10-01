@@ -87,10 +87,9 @@ export function isRegisteredMarkdownDocName(docName: string): boolean {
 }
 
 export function canonicalDocName(docName: string): string {
-  if (!isSupportedDocFile(docName)) return docName;
-  if (addressesShadowedSibling(docName)) return docName;
   let candidate = docName;
   while (isSupportedDocFile(candidate)) {
+    if (docExtensionByName.has(candidate) || addressesShadowedSibling(candidate)) return candidate;
     candidate = stripDocExtension(candidate);
   }
   return candidate;
@@ -105,6 +104,8 @@ function addressesShadowedSibling(docName: string): boolean {
 }
 
 export function docNameToRelativePath(docName: string): string {
+  const registeredExtension = docExtensionByName.get(docName);
+  if (registeredExtension !== undefined) return `${docName}${registeredExtension}`;
   return isSupportedDocFile(docName) ||
     isMermaidDocFile(docName) ||
     isExcalidrawDocFile(docName) ||

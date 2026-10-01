@@ -283,3 +283,58 @@ test.describe('apex — clipboard pre-fill under real permission denial', () => 
     }
   });
 });
+
+for (const exactDottedIdentity of [false, true]) {
+  test(`Markdown wiki targets preserve ${exactDottedIdentity ? 'exact dotted' : 'suffix-stripped'} identity in both editor modes`, async ({
+    page,
+    api,
+  }) => {
+    const folder = `wiki-suffix-${randomUUID().slice(0, 8)}`;
+    const source = `${folder}/source`;
+    const base = `${folder}/beta`;
+    const target = `${base}.md`;
+    const expected = exactDottedIdentity ? target : base;
+    const marker = `Intended document ${folder}`;
+    const missing = `${folder}/missing.md`;
+    const docs = [
+      { name: base, markdown: `# Beta\n\n${exactDottedIdentity ? 'Other document' : marker}\n` },
+      { name: `${base}-md`, markdown: '# Fuzzy collision\n\nWrong destination\n' },
+      { name: source, markdown: `# Source\n\n[[${target}#beta|Open target]]\n\n[[${missing}]]\n` },
+    ];
+    if (exactDottedIdentity) docs.push({ name: `${target}.md`, markdown: `# Beta\n\n${marker}\n` });
+    await api.seedDocs(docs);
+    await page.goto(`/#/${source}`);
+    await waitForActiveProviderSynced(page);
+
+    const chip = page.locator(`${EDITOR} [data-wiki-link][data-target="${target}"]`);
+    await expect(chip).toHaveText('Open target');
+    await expect(chip).toHaveAttribute('data-resolution-state', 'resolved');
+    await chip.click();
+    await expect.poll(() => new URL(page.url()).hash).toBe(`#/${expected}#beta`);
+    await expect(page.locator(EDITOR)).toContainText(marker);
+
+    await page.goto(`/#/${source}`);
+    await waitForActiveProviderSynced(page);
+    await page.getByRole('radio', { name: 'Markdown source' }).click();
+    const sourceLink = page.locator('.cm-content .cm-wiki-link').filter({ hasText: target });
+    await expect(
+      page.locator('.cm-content .cm-wiki-link').filter({ hasText: missing }),
+    ).toHaveClass(/cm-wiki-link-broken/);
+    await expect(sourceLink).toHaveText(`[[${target}#beta|Open target]]`);
+    await expect(sourceLink).not.toHaveClass(/cm-wiki-link-broken/);
+    const openedPage = page.context().waitForEvent('page');
+    await sourceLink.click({ modifiers: ['ControlOrMeta'] });
+    const destination = await openedPage;
+    try {
+      await expect.poll(() => new URL(destination.url()).hash).toBe(`#/${expected}#beta`);
+      await waitForActiveProviderSynced(destination);
+      await expect(
+        destination
+          .locator('.cm-content, .ProseMirror:not(.composer-prosemirror)')
+          .filter({ visible: true }),
+      ).toContainText(marker);
+    } finally {
+      await destination.close();
+    }
+  });
+}

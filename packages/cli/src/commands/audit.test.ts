@@ -312,6 +312,22 @@ describe('runAudit', () => {
     expect(err.join('\n')).toContain('outside the content directory');
   });
 
+  test('preserves the full ProblemDetails object in JSON mode', async () => {
+    const problem = {
+      type: 'urn:ok:error:not-found',
+      title: 'Audit scope "missing" was not found. Use an existing file or directory.',
+      status: 404,
+      instance: 'urn:uuid:ef975a9a-8229-4e36-82a8-2eae23141320',
+      detail: 'Server detail survives.',
+      recovery: { retryable: false },
+    };
+    stubFetch(problem, 404);
+    const { io, out, err } = collectIo();
+    expect(await runAudit('missing', { json: true }, minimalConfig, dir, dir, io)).toBe(1);
+    expect(JSON.parse(out.join('\n'))).toEqual(problem);
+    expect(err).toEqual([]);
+  });
+
   test('surfaces the problem+json title on a non-OK response', async () => {
     stubFetch({ title: 'Invalid path.' }, 400);
     const { io, err } = collectIo();

@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { context, metrics, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import {
@@ -7,6 +10,7 @@ import {
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { BacklinkIndex } from './backlink-index.ts';
 import {
   __resetIndexTelemetryForTests,
   instrumentIndexRebuild,
@@ -68,6 +72,35 @@ describe('instrumentIndexRebuild', () => {
     expect(span.attributes['index.added']).toBe(3);
     expect(span.attributes['index.updated']).toBe(1);
     expect(span.attributes['index.deleted']).toBe(2);
+  });
+
+  test('warm backlink reconciliation reports source-link reuse', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlink-rehydrate-span-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir);
+    try {
+      writeFileSync(join(contentDir, 'source.md'), '[[target]]');
+      writeFileSync(join(contentDir, 'target.md'), '# Target');
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      await index.rebuildFromDisk();
+      await index.saveToDisk();
+      const reloaded = new BacklinkIndex({ projectDir, contentDir });
+      expect(await reloaded.loadFromDisk()).toBe(true);
+      expect(await reloaded.reconcileWithDisk()).toMatchObject({ updated: 0, changedDocs: [] });
+      const span = exporter
+        .getFinishedSpans()
+        .find(
+          (entry) =>
+            entry.name === 'ok.index.rebuild' && entry.attributes['index.mode'] === 'reconcile',
+        );
+      expect(span?.attributes).toMatchObject({
+        'index.name': 'backlink',
+        'index.mode': 'reconcile',
+        'index.updated': 0,
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 
   test('propagates the rebuild error and still ends the span', async () => {

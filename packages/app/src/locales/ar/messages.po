@@ -7107,6 +7107,10 @@ msgstr "مرحبًا بالعالم!"
 msgid "Help"
 msgstr "مساعدة"
 
+#: src/lib/conflict-resolve-draft.ts
+msgid "Help me understand the conflict in {filePath}. Explain what I should compare in the OpenKnowledge Conflict view; I will choose and apply the resolution there."
+msgstr "ساعدني في فهم التعارض في {filePath}. اشرح ما الذي ينبغي أن أقارنه في عرض التعارضات في OpenKnowledge؛ سأختار الحل وأطبقه هناك."
+
 #. Subtext under the discovery-skill checkbox
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -10375,10 +10379,6 @@ msgid "OpenKnowledge checked {subject}"
 msgstr "تحقق OpenKnowledge من {subject}"
 
 #: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge checked for conflicts"
-msgstr "تحقق OpenKnowledge من التعارضات"
-
-#: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked the project"
 msgstr "تحقق OpenKnowledge من المشروع"
 
@@ -10558,14 +10558,6 @@ msgstr "قرأ OpenKnowledge إعدادات المشروع"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge read the setting {key}"
 msgstr "قرأ OpenKnowledge الإعداد {key}"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict"
-msgstr "حلّ OpenKnowledge تعارضًا"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict in {subject}"
-msgstr "حلّ OpenKnowledge تعارضًا في {subject}"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge restored an earlier version"
@@ -11545,10 +11537,6 @@ msgstr "يقرأ سجل إصدارات مستند أو مهارة، أو نشا�
 msgid "Reads this project's OpenKnowledge settings"
 msgstr "يقرأ إعدادات OpenKnowledge لهذا المشروع"
 
-#: src/lib/acp/tool-call-display.ts
-msgid "Reads unresolved conflicts between edits"
-msgstr "يقرأ التعارضات غير المحلولة بين التعديلات"
-
 #: src/components/SessionsHost.tsx
 msgid "Ready"
 msgstr "جاهز"
@@ -12208,10 +12196,6 @@ msgstr "احسم التعارض في {files} و{overflow} ملفات أخرى ق
 #: src/comments/ThreadCard.tsx
 msgid "Resolved"
 msgstr "محلول"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "Resolves a conflict by choosing which content to keep"
-msgstr "يحل تعارضًا باختيار المحتوى الذي يُحتفظ به"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
@@ -15155,8 +15139,8 @@ msgid "This file can't be opened in the text editor."
 msgstr "لا يمكن فتح هذا الملف في محرر النصوص."
 
 #: src/components/ConflictView.tsx
-msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI."
-msgstr "يحتوي هذا الملف على أسطر تبدو كعلامات تعارض، لذا لا يمكن قراءة حدود التعارض بشكل موثوق. قم بحله يدويًا أو باستخدام اسأل الذكاء الاصطناعي."
+msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve the markers in the file by hand."
+msgstr "يحتوي هذا الملف على أسطر تبدو كعلامات تعارض، لذلك لا يمكن تحديد حدود التعارضات على نحو موثوق. عالج العلامات في الملف يدويًا."
 
 #: src/components/use-viewer-text.ts
 msgid "This file could not be found."

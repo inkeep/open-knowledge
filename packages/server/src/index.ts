@@ -303,6 +303,13 @@ export {
   writeRootGitignoreForNewRepo,
 } from './init-project.ts';
 export {
+  AUDIT_EMPTY_SCOPE_WARNING,
+  type AuditScope,
+  type AuditScopeResolution,
+  auditScopeNotFoundTitle,
+  resolveAuditScope,
+} from './lint/audit-scope.ts';
+export {
   type DiscoveredMarkdownlintConfig,
   discoverMarkdownlintConfig,
   findNativeMarkdownlintFile,

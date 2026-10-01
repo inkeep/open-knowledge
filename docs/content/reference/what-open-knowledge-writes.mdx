@@ -226,7 +226,7 @@ With `--scope user` or `both` (the default), `ok init` also registers the `open-
 | `~/.ok/skill-state.yml` | Records which skill version is installed, so the step is skipped next time | Outside-project (home dir) |
 | `~/.ok/skill-install-events.jsonl` | Append-only local log of skill-install attempts | Outside-project (home dir) |
 
-The install is **non-fatal** (`ok init` still exits 0 if it fails), **version-gated** (a no-op when the current version is already installed), and needs **no network access**. Skip it for one run with `ok init --no-skills`, or choose individual bundles with `--skills <ids>`. Skipping records nothing and removes nothing, so skills already on the machine are left alone. An installed bundle is remembered in `~/.ok/skill-state.yml` and honored by every later install path; to turn the built-in skills off for good, decline at the first-launch prompt or uninstall from **Settings → Skills Studio**, either of which records a durable machine-wide choice. `ok repair-skills` re-runs it.
+The install is **non-fatal** (`ok init` still exits 0 if it fails), **version-gated** (a no-op when the current version is already installed), and needs **no network access**. Skip it for one run with `ok init --no-skills`, or choose individual bundles with `--skills <ids>`. Skipping records nothing and removes nothing, so skills already on the machine are left alone. An installed bundle is remembered in `~/.ok/skill-state.yml` and honored by every later install path; to turn the built-in skills off for good, decline at the first-launch prompt or uninstall from **Settings → Skills Studio**, either of which records a durable machine-wide choice. `ok repair-skills` explicitly repairs these user-global bundles. Its project sweep restores missing skill copies but leaves existing project copies unchanged; see [Refresh agent guidance](./mcp.mdx#refresh-agent-guidance) to update those.
 
 Pi has no user-level MCP config. `ok init` writes its project-scoped bridge extension; using Pi inside OpenKnowledge can also add a [folder trust grant](#pi-folder-trust), whose location respects `PI_CODING_AGENT_DIR`.
 
@@ -274,7 +274,7 @@ On each boot, `ok start` also runs **repair sweeps**: it re-checks a few things 
 | Existing `open-knowledge` MCP entries | The same editor configs `ok init` writes — **both** user-level (`~/.claude.json`, `~/.cursor/mcp.json`, …) and project-level | Outside-project (editor config) **and** in-project |
 | Stale `open-knowledge-ui` entry in `.claude/launch.json` | Project | Removed if present — OK no longer writes launch.json |
 
-Disable both repair sweeps with `OK_RECLAIM_DISABLE=1`. They leave installed editor skills alone; `ok repair-skills` is the explicit command for those. Starting an in-app agent thread creates or refreshes the runtime skill copy listed above.
+Disable both repair sweeps with `OK_RECLAIM_DISABLE=1`. They leave installed editor skills alone. `ok repair-skills` explicitly restores missing project copies and repairs user-global bundles; [refresh existing project guidance](./mcp.mdx#refresh-agent-guidance) with `ok init` or the integration settings. Starting an in-app agent thread creates or refreshes the runtime skill copy listed above.
 
 Projects initialized by an older CLI may lack the `local/` rule in `.ok/.gitignore`, which leaves these runtime files visible in `git status`. Add `local/` to that file or open the project in the desktop app, which updates it automatically. The runtime skill copy is always excluded from the knowledge base.
 

@@ -7107,6 +7107,10 @@ msgstr "안녕하세요, 여러분!"
 msgid "Help"
 msgstr "도움말"
 
+#: src/lib/conflict-resolve-draft.ts
+msgid "Help me understand the conflict in {filePath}. Explain what I should compare in the OpenKnowledge Conflict view; I will choose and apply the resolution there."
+msgstr "{filePath}의 충돌을 이해할 수 있도록 도와주세요. OpenKnowledge 충돌 보기에서 무엇을 비교해야 하는지 설명해 주세요. 해결 방법은 제가 그곳에서 선택하고 적용하겠습니다."
+
 #. Subtext under the discovery-skill checkbox
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -10375,10 +10379,6 @@ msgid "OpenKnowledge checked {subject}"
 msgstr "OpenKnowledge에서 {subject} 확인"
 
 #: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge checked for conflicts"
-msgstr "OpenKnowledge에서 충돌 확인"
-
-#: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge에서 프로젝트 확인"
 
@@ -10558,14 +10558,6 @@ msgstr "OpenKnowledge에서 프로젝트 설정 조회"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge read the setting {key}"
 msgstr "OpenKnowledge에서 설정 조회: {key}"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict"
-msgstr "OpenKnowledge에서 충돌 해결"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict in {subject}"
-msgstr "OpenKnowledge에서 {subject} 충돌 해결"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge restored an earlier version"
@@ -11545,10 +11537,6 @@ msgstr "문서나 스킬의 버전 기록, 또는 폴더의 활동을 읽습니�
 msgid "Reads this project's OpenKnowledge settings"
 msgstr "이 프로젝트의 OpenKnowledge 설정을 읽습니다"
 
-#: src/lib/acp/tool-call-display.ts
-msgid "Reads unresolved conflicts between edits"
-msgstr "편집 간의 미해결 충돌을 읽습니다"
-
 #: src/components/SessionsHost.tsx
 msgid "Ready"
 msgstr "준비됨"
@@ -12208,10 +12196,6 @@ msgstr "삭제하기 전에 {files}의 충돌을 해결하고, +{overflow}개 �
 #: src/comments/ThreadCard.tsx
 msgid "Resolved"
 msgstr "해결됨"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "Resolves a conflict by choosing which content to keep"
-msgstr "유지할 내용을 골라 충돌을 해결합니다"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
@@ -15155,8 +15139,8 @@ msgid "This file can't be opened in the text editor."
 msgstr "이 파일은 텍스트 편집기에서 열 수 없습니다."
 
 #: src/components/ConflictView.tsx
-msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI."
-msgstr "이 파일에는 충돌 마커처럼 보이는 줄이 있어 충돌 경계를 정확히 읽을 수 없습니다. 직접 해결하거나 AI에게 묻기를 사용하세요."
+msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve the markers in the file by hand."
+msgstr "이 파일에는 충돌 표시처럼 보이는 줄이 있어 충돌 경계를 정확히 읽을 수 없습니다. 파일의 표시를 수동으로 해결하세요."
 
 #: src/components/use-viewer-text.ts
 msgid "This file could not be found."

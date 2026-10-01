@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  DeadLinksSuccessSchema,
   type ValidationAuditCountsResponse,
   ValidationAuditCountsResponseSchema,
   type ValidationAuditResponse,
@@ -8,7 +10,12 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
-import { awaitBacklinkIndexed, createTestServer, type TestServer } from './test-harness.ts';
+import {
+  awaitBacklinkIndexed,
+  awaitFileWatcherIndexed,
+  createTestServer,
+  type TestServer,
+} from './test-harness.ts';
 
 let server: TestServer;
 
@@ -254,3 +261,48 @@ describe('GET /api/audit', () => {
     HARNESS_BOOT_TIMEOUT_MS,
   );
 });
+
+test(
+  'audit and dead-link output accept explicit Markdown wiki targets',
+  async () => {
+    const uid = randomUUID().slice(0, 8);
+    const folder = `audit-suffix-${uid}`;
+    const beta = `beta-${uid}`;
+    const source = `${folder}/source`;
+    mkdirSync(join(server.contentDir, folder, 'reports'), { recursive: true });
+    try {
+      for (const target of [
+        `${folder}/${beta}`,
+        `${folder}/dotted.md`,
+        `${folder}/reports/index`,
+      ]) {
+        writeFileSync(join(server.contentDir, `${target}.md`), '# Target\n\nBody.\n');
+        await awaitFileWatcherIndexed(server, target);
+      }
+      const missing = `${folder}/missing.md`;
+      writeFileSync(
+        join(server.contentDir, `${source}.md`),
+        `# Source\n\n[[${folder}/${beta}.md]] [[${beta}.MDX#body|Alias]] [[${folder}/dotted.md.md]] [[${folder}/reports.md]] [[${missing}]].\n`,
+      );
+      await awaitBacklinkIndexed(server, missing, source);
+      await awaitBacklinkIndexed(server, `${folder}/reports/index`, source);
+      const response = await fetch(api(`/api/audit?path=${encodeURIComponent(`${source}.md`)}`));
+      expect(response.status).toBe(200);
+      const audit = ValidationAuditResponseSchema.parse(await response.json());
+      const linkFindings = audit.files
+        .flatMap((file) => file.diagnostics)
+        .filter((finding) => finding.source === 'links');
+      expect(linkFindings.map((finding) => finding.linkTarget)).toEqual([missing]);
+
+      const deadResponse = await fetch(
+        api(`/api/dead-links?sourceDocName=${encodeURIComponent(source)}`),
+      );
+      expect(deadResponse.status).toBe(200);
+      const dead = DeadLinksSuccessSchema.parse(await deadResponse.json());
+      expect(dead.deadLinks.map((link) => link.target)).toEqual([missing]);
+    } finally {
+      rmSync(join(server.contentDir, folder), { recursive: true, force: true });
+    }
+  },
+  BACKLINK_SEED_TIMEOUT_MS,
+);

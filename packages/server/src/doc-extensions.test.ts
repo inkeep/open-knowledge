@@ -91,6 +91,14 @@ describe('docNameToRelativePath', () => {
     expect(docNameToRelativePath('notes.ts')).toBe('notes.ts.md');
   });
 
+  test.each(['.md', '.mdx', '.MD', '.MDX'])(
+    'appends the observed %s extension to an exact dotted identity',
+    (extension) => {
+      registerDocExtension('notes.md', extension);
+      expect(docNameToRelativePath('notes.md')).toBe(`notes.md${extension}`);
+    },
+  );
+
   test('returns Mermaid docNames verbatim (extension retained, no .md appended)', () => {
     expect(docNameToRelativePath('assets/flow.mmd')).toBe('assets/flow.mmd');
     expect(docNameToRelativePath('diagrams/seq.mermaid')).toBe('diagrams/seq.mermaid');
@@ -223,9 +231,26 @@ describe('canonicalDocName', () => {
     expect(canonicalDocName('foo.md')).toBe('foo');
   });
 
-  test('registering a qualified name does not manufacture ambiguity', () => {
+  test('preserves an exact registered dotted identity before removing a suffix', () => {
+    registerDocExtension('notes', '.md');
     registerDocExtension('notes.md', '.md');
-    expect(canonicalDocName('notes.md')).toBe('notes');
+    expect(canonicalDocName('notes.md')).toBe('notes.md');
+    expect(canonicalDocName('notes.md.md')).toBe('notes.md');
+    expect(canonicalDocName(canonicalDocName('notes.md.md'))).toBe('notes.md');
+  });
+
+  test('stops at a registered identity after removing one suffix', () => {
+    registerDocExtension('nested/topic.md.md', '.MDX');
+    expect(canonicalDocName('nested/topic.md.md')).toBe('nested/topic.md.md');
+    expect(canonicalDocName('nested/topic.md.md.MDX')).toBe('nested/topic.md.md');
+  });
+
+  test('an exact dotted identity wins over a same-stem shadowed sibling', () => {
+    registerDocExtension('notes', '.md');
+    registerDocExtension('notes', '.mdx');
+    registerDocExtension('notes.md', '.md');
+    expect(canonicalDocName('notes.md')).toBe('notes.md');
+    expect(docNameToRelativePath(canonicalDocName('notes.md'))).toBe('notes.md.md');
   });
 
   test('leaves non-markdown docNames that own their extension alone', () => {

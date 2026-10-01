@@ -99,6 +99,8 @@ Links work the way they do in the editors you already know:
 - **Link to a section.** Append `#` and the heading's slug to a doc link — `[text](./spec.md#data-model-v2)` — and the WYSIWYG editor opens the doc scrolled to that heading (the source editor ignores the fragment and opens at the top). The slug is the heading text in lowercase with accents dropped, every run of characters that aren't letters or digits replaced by one hyphen, and hyphens trimmed from both ends: `## Data model: v2` becomes `data-model-v2`, `## FAQ:` becomes `faq`, and a second identical heading in the same doc gets `-1`. Agents write the same form in chat, so a reply about one part of a long spec can take you straight to it.
 - **Press `Cmd+K` with text selected.** The link popover opens with the URL field focused, pre-filled from your clipboard when it holds a URL. With the cursor inside an existing link, `Cmd+K` opens that link for editing. With no selection, `Cmd+K` keeps opening the command palette, as everywhere else. To reach the command palette while text is selected, use `Cmd+P` (`Ctrl+P` on Windows / Linux), which always opens it.
 
+For legacy wiki links and ambiguous names, see [how links resolve and what to review after upgrading](../reference/core-concepts.md#review-links-after-upgrading).
+
 ## Right-click menu and spell check
 
 In the desktop app, right-clicking editable text opens a native context menu. Any editable field gets **Cut / Copy / Paste / Select All**; when there's a selection or a flagged word under the cursor, **Search with Google** joins it — plus, on macOS, **Look Up** (the dictionary panel).

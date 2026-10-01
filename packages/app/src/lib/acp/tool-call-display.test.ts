@@ -181,16 +181,6 @@ describe('describeToolCall — Open Knowledge MCP tools', () => {
     ).toEqual({ glyph: 'install', text: 'OpenKnowledge installed trip-log' });
   });
 
-  test('resolve_conflict names its target with a bare `file` string', () => {
-    expect(
-      describeToolCall({
-        title: 'mcp__open-knowledge__resolve_conflict',
-        toolKind: 'other',
-        rawInput: { file: 'notes/sso.md', strategy: 'mine' },
-      }),
-    ).toEqual({ glyph: 'edit', text: 'OpenKnowledge resolved a conflict in notes/sso' });
-  });
-
   test('template and asset writes name what they wrote', () => {
     expect(
       describeToolCall({

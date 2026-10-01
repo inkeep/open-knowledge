@@ -902,6 +902,7 @@ export { MarkdownManager, type SerializeCallOptions } from './markdown/index.ts'
 export {
   type AppliesToPatternSummary,
   type AppliesToSummary,
+  AUDIT_EMPTY_SCOPE_WARNING,
   applyFieldConstraint,
   applyTextEdits,
   assertNeverOkfRuleGroupId,
@@ -935,6 +936,7 @@ export {
   fixMarkdownText,
   frontmatterSchemaCompileError,
   type GoverningFrontmatterSchema,
+  isAuditEmptyScopeWarning,
   isFrontmatterSchemaAsset,
   isFrontmatterScoped,
   isMarkdownlintJsonConfig,
@@ -1110,8 +1112,6 @@ export {
   getCanonicalDescriptors,
   projectFull,
   projectLite,
-  renderInventoryFooter,
-  renderInventoryList,
 } from './registry/projection.ts';
 export type {
   ClipboardHastContext,
@@ -2127,6 +2127,7 @@ export { isVimeoUrl } from './utils/vimeo-embed.ts';
 export {
   buildPagesByBasenameIndex,
   buildPagesBySlugIndex,
+  buildWikiLinkAssetTargetKeys,
   getWikiLinkResolutionCandidates,
   isResolvedWikiLinkTarget,
   resolveWikiLinkAssetTarget,

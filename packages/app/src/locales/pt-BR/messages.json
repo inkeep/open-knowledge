@@ -1140,7 +1140,6 @@
     "AeHuzT": [
       "# Um padrão por linha.\\n# Exemplos:\\n#   drafts/\\n#   *.draft.md\\n#   !keep.md"
     ],
-    "AeLo3p": ["OpenKnowledge resolveu um conflito em ", ["subject"]],
     "AeORtB": [
       "Selecionado: ",
       ["innermostLabel"],
@@ -1246,7 +1245,6 @@
     "BgV29F": ["Campo de busca do editor visual em foco"],
     "Bgaa_U": ["Falha ao atualizar a configuração de desempenho — ", ["detail"]],
     "BhLPRk": ["\"", ["name"], "\" revertido para a versão instalada"],
-    "BhMWIs": ["Lê conflitos não resolvidos entre edições"],
     "BiVBP9": ["Não foi possível ler os idiomas da verificação ortográfica."],
     "BjitBo": ["Baixar ", ["0"]],
     "BkGtRl": [
@@ -2663,6 +2661,11 @@
     "Pw5PTU": ["Origem externa"],
     "PxZCNM": ["Fora do que o Open Knowledge faz commit."],
     "Q-DKvr": ["Instalar a partir de ", ["source"]],
+    "Q-a_4h": [
+      "Ajude-me a entender o conflito em ",
+      ["filePath"],
+      ". Explique o que devo comparar na visualização de conflitos do OpenKnowledge; vou escolher e aplicar a resolução lá."
+    ],
     "Q1mtyd": ["Ocultar a barra lateral"],
     "Q5fqMz": ["Erro de conexão — tente de novo"],
     "Q6hhn8": ["Preferências"],
@@ -3706,7 +3709,6 @@
       "Cópia somente leitura de um bloco MirrorSource de outro documento. Edite na fonte e ela se atualiza ao vivo."
     ],
     "_XWY2J": ["Terminal desativado"],
-    "_YWqV2": ["OpenKnowledge resolveu um conflito"],
     "_ayOfA": [
       "Uma base de conhecimento que segue o Open Knowledge Format do Google, uma forma comum de organizar o que você sabe. Escolha isto se quiser que suas notas funcionem bem com outras ferramentas que entendem o formato."
     ],
@@ -4700,7 +4702,6 @@
     "i3f2kh": ["Nenhum comando corresponde."],
     "i6o7XB": ["Pesquisar idiomas"],
     "i92eAT": ["Vamos criar um repositório e começar a sincronizar — sem precisar de terminal."],
-    "i94lQe": ["OpenKnowledge verificou se há conflitos"],
     "i9OyGp": ["Desfazer ou refazer"],
     "i9TPUi": [
       "Este ",
@@ -5471,9 +5472,6 @@
       " foi aberta porque contém uma pasta .git"
     ],
     "pZAs1T": ["Falha ao carregar os links de saída"],
-    "pZaMLc": [
-      "Este arquivo contém linhas que parecem marcadores de conflito, então os limites do conflito não podem ser lidos de forma confiável. Resolva-o manualmente ou com Perguntar à IA."
-    ],
     "paCw0z": ["tudo dentro das pastas ", ["0"], "/ que estão em ", ["1"], "/"],
     "pajIrl": ["Não foi possível desligar o terminal: ", ["0"]],
     "pbwTg6": ["há ", ["seconds"], " s"],
@@ -6065,7 +6063,6 @@
         }
       ]
     ],
-    "uhYnaD": ["Resolve um conflito escolhendo qual conteúdo manter"],
     "uksqrP": ["Repositório não encontrado. Ele pode ter sido renomeado, excluído ou movido."],
     "ul1Atu": ["Convertendo..."],
     "um-es7": ["Publique o editor com um"],
@@ -6385,6 +6382,9 @@
     "xtJgSe": ["Esta fonte traz várias habilidades — escolha qual importar."],
     "xvv5gL": ["Prévia da captura de tela"],
     "xxRpzT": ["Slidev encontrado no seu sistema."],
+    "xxxG_a": [
+      "Este arquivo contém linhas que parecem marcadores de conflito, então não é possível identificar os limites dos conflitos com segurança. Resolva os marcadores no arquivo manualmente."
+    ],
     "xzAmL_": ["Aprovado automaticamente"],
     "xzktOa": ["Editar o link wiki"],
     "y-LQPF": ["Não foi possível resolver a imagem ", ["identity"], ". Ir para a referência."],

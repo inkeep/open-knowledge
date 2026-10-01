@@ -1,7 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import {
   type FrontmatterPatch,
-  renderInventoryList,
   SKILL_AUTHORING_WARNING_CODES,
   stripFrontmatter,
   unwrapFrontmatterFences,
@@ -27,6 +26,7 @@ import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './sh
 import {
   AUTHORING_WARNING_CODE_GLOSS,
   agentIdentityFields,
+  CANONICAL_COMPONENT_GUIDANCE,
   documentResultBaseShape,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpPost,
@@ -66,19 +66,15 @@ import {
   TEMPLATE_PATH_DESCRIBE,
 } from './verb-schemas.ts';
 
-const BASE_DESCRIPTION = [
-  'Edit one thing in place. Pass EXACTLY ONE of `document`, `folder`, `template`, or `skill`. Within each: a body edit (`find` + `replace`) OR a metadata patch — not both in one call.',
-  '',
-  '- `document` — Edit a doc [Requires: Hocuspocus server]. Body: `{ path, find, replace, occurrence? }` (occurrence = which match, 1 = first). Metadata: `{ path, frontmatter }` (merge-patch; `null` deletes a key). Body find/replace is body-only; frontmatter-intersecting finds are rejected.',
-  '- `folder` — Edit a folder (folders have no body): `{ path, frontmatter }` (merge-patch).',
-  '- `template` — Edit a template: `{ path: "<folder>/<name>", ... }`; body `find`/`replace`/`occurrence?` or metadata `frontmatter`.',
-  "- `skill` — Edit a SKILL: `{ name, ... }`; body `find`/`replace`/`occurrence?` OR a `description` change (a skill's only metadata leaf). Every recorded copy re-syncs from the source, so there is nothing to re-install.",
-  '- `summary` — Optional one-line user-outcome (≤80 chars) recorded in the timeline for any `document`, `folder`, `template`, or `skill` edit. Avoid secrets or PII — persisted to git history.',
-  '',
-  'Responses may include `structuredContent.document.warnings` — advisory entries discriminated by `kind`: `content-divergence` / `disk-edit-reconciled` (write-integrity — re-read the doc with `exec("cat <path>")`) and `mermaid-parse-error` (the edit landed but that fence will not render — fix it and re-edit).',
+const DESCRIPTION = [
+  'Edit exactly one `document`, `folder`, `template`, or `skill`: body find/replace OR metadata, never both in one call. Requires the Hocuspocus server.',
+  '`document: {path, find, replace, occurrence?}` edits body only; frontmatter-intersecting finds are rejected. occurrence selects a match (1 = first). `{path, frontmatter}` merge-patches metadata; null deletes a key.',
+  "`folder: {path, frontmatter}` patches metadata (no body). `template: {path: '<folder>/<name>', ...}` takes body find/replace/occurrence or frontmatter.",
+  '`skill: {name, ...}` takes body find/replace/occurrence OR description (its only metadata leaf). Recorded, unedited copies refresh from the source on watcher/startup sync; links reflect edits immediately. Hand-edited copies are preserved.',
+  'Optional summary: one-line outcome ≤80 chars for any edit, persisted to git history; avoid secrets or PII.',
+  'Read structuredContent.document.warnings: content-divergence/disk-edit-reconciled means re-read with exec; mermaid-parse-error means the edit landed but fix the fence and re-edit.',
+  CANONICAL_COMPONENT_GUIDANCE,
 ].join('\n');
-
-const DESCRIPTION = `${BASE_DESCRIPTION}\n${renderInventoryList()}`;
 
 interface EditDeps {
   serverUrl: ServerUrlOrResolver;

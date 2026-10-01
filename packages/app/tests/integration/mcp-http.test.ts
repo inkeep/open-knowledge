@@ -73,7 +73,8 @@ test('POST /mcp serves MCP JSON-RPC over Streamable HTTP', async () => {
     expect(toolNames).toContain('links');
     expect(toolNames).toContain('checkpoint');
     expect(toolNames).toContain('restore_version');
-    expect(toolNames).toContain('conflicts');
+    expect(toolNames).not.toContain('conflicts');
+    expect(toolNames).not.toContain('resolve_conflict');
     expect(toolNames).toContain('palette');
     expect(toolNames).not.toContain('read_document');
     expect(toolNames).not.toContain('write_document');

@@ -153,8 +153,7 @@ describe('rename write-amplification — no-content-change rename writes destina
 
       const bravoFinal = readFileSync(join(server.contentDir, 'bravo.md'), 'utf-8');
       console.log('[content-change] final bravo.md =', JSON.stringify(bravoFinal));
-      expect(bravoFinal).toContain('[[bravo]]');
-      expect(bravoFinal).not.toContain('[[alpha]]');
+      expect(bravoFinal).toBe('# Self\n\nlink to [[bravo|alpha]]\n');
     } finally {
       await client?.cleanup();
       await server.cleanup();
@@ -186,8 +185,8 @@ describe('rename write-amplification — no-content-change rename writes destina
       );
 
       expect(renamedWrites.length).toBe(1);
-      expect(readFileSync(join(server.contentDir, 'referrer.md'), 'utf-8')).toContain(
-        '[[renamed]]',
+      expect(readFileSync(join(server.contentDir, 'referrer.md'), 'utf-8')).toBe(
+        '# Ref\n\nsee [[renamed|target]]\n',
       );
     } finally {
       await server.cleanup();

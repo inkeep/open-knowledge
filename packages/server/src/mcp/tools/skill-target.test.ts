@@ -65,7 +65,9 @@ describe('skill verb tools — name grammar short-circuits before the network', 
       toName: 'trip-log',
     })) as ToolResult;
     expect(r.isError).toBe(true);
-    expect(text(r)).toBe(HOCUSPOCUS_NOT_RUNNING_ERROR);
+    expect(text(r)).toContain(HOCUSPOCUS_NOT_RUNNING_ERROR);
+    expect(text(r)).toContain('moveState: nothing-written');
+    expect(text(r)).toContain('safe to retry once the refusal is addressed');
   });
 
   test('moveSkillCrossScope rejects an invalid name before the network', async () => {
@@ -158,6 +160,110 @@ describe('moveSkillCrossScope — delegates to the canonical /api/skill/move-sco
       fromName: 'trip-log',
       toName,
     }) as Promise<ToolResult>;
+
+  test.each(['nothing-written', 'destination-removed'])(
+    '%s names the validated outcome and teaches when retry is safe',
+    async (moveState) => {
+      mockFetch(() => ({ ok: false, status: 500, error: 'Move failed.', moveState }));
+      const result = await move('trip-log');
+      expect(text(result)).toContain(`moveState: ${moveState}`);
+      expect(text(result)).toContain('safe to retry');
+      expect(result.structuredContent).toMatchObject({ moveState });
+    },
+  );
+
+  test.each(['Delete or rename it first; this move will not overwrite it.', 'SAME_STORAGE'])(
+    'a verified refusal preserves its detail and permits retry after repair: %s',
+    async (detail) => {
+      mockFetch(() => ({
+        ok: false,
+        status: 409,
+        type: 'urn:ok:error:doc-already-exists',
+        error: 'A global skill named "trip-log" already exists.',
+        detail,
+        moveState: 'nothing-written',
+      }));
+      const result = await move('trip-log');
+      expect(text(result)).toContain('moveState: nothing-written');
+      expect(text(result)).toContain(detail);
+      expect(text(result)).toContain('safe to retry once the refusal is addressed');
+      expect(text(result)).not.toContain('occupant is unverified');
+    },
+  );
+
+  test.each([400, 409, 500])('a missing state stays unknown even with HTTP %s', async (status) => {
+    mockFetch(() => ({ ok: false, status, error: 'Move failed.' }));
+    const result = await move('trip-log');
+    expect(text(result)).toContain('Do not remove either copy before comparing');
+    expect(text(result)).not.toContain('safe to retry');
+    expect(result.structuredContent).not.toHaveProperty('moveState');
+  });
+
+  test.each([
+    { moveState: 'destination-stray', detail: 'Remove the stray destination before retrying.' },
+    {
+      moveState: 'destination-retained',
+      sourceState: 'intact',
+      detail: 'The source was intact at removal. Remove the duplicate destination before retrying.',
+    },
+    {
+      moveState: 'destination-retained',
+      sourceState: 'lossy',
+      detail: 'Recover missing source files from the retained copy before removing either copy.',
+    },
+    {
+      moveState: 'destination-retained',
+      sourceState: 'unknown',
+      detail: 'Compare both locations before removing either.',
+    },
+    {
+      moveState: 'destination-retained-blocking',
+      sourceState: 'intact',
+      detail:
+        'The source was intact at the earlier failed removal; compare current contents before removing the duplicate.',
+    },
+    {
+      moveState: 'destination-retained-blocking',
+      sourceState: 'lossy',
+      detail: 'Recover missing source files from the retained copy before removing either copy.',
+    },
+    {
+      moveState: 'destination-retained-blocking',
+      sourceState: 'unknown',
+      detail: 'Compare both locations before removing either.',
+    },
+    {
+      moveState: 'nothing-written',
+      retentionLedger: 'unreadable',
+      detail: 'The retention ledger is unreadable; compare both copies before deleting anything.',
+    },
+    {
+      moveState: 'nothing-written',
+      retentionLedger: 'occupant-unverifiable',
+      detail: 'The occupant is unverifiable; compare both copies before deleting anything.',
+    },
+    {
+      moveState: 'destination-unreadable',
+      detail: 'Do not retry. Restore the skill from a backup or project history.',
+    },
+    {
+      moveState: 'partially-applied',
+      detail:
+        'Inspect source and destination; preserve remaining copies and recover missing files.',
+    },
+  ])(
+    'preserves the guarded recovery for $moveState / $sourceState / $retentionLedger',
+    async (outcome) => {
+      mockFetch(() => ({ ok: false, status: 500, error: 'Move failed.', ...outcome }));
+      const result = await move('trip-log');
+      expect(text(result)).toContain(`moveState: ${outcome.moveState}`);
+      expect(text(result)).toContain(outcome.detail);
+      expect(text(result).split(outcome.detail)).toHaveLength(2);
+      expect(text(result)).not.toContain('safe to retry');
+      const { detail: _, ...fields } = outcome;
+      expect(result.structuredContent).toMatchObject(fields);
+    },
+  );
 
   test.each(['unreadable', 'future-ledger-reason'])(
     'an inconsistent retained result cannot advertise an intact source: %s',
@@ -390,7 +496,8 @@ describe('moveSkillCrossScope — delegates to the canonical /api/skill/move-sco
     const error = 'Cannot move to project scope.';
     mockFetch(() => ({ ok: false, status: 400, error, detail: 'NO_PROJECT_ROOT' }));
     const result = await move('fishing-log');
-    expect(text(result)).toBe(`Error: ${error} (NO_PROJECT_ROOT)`);
+    expect(text(result)).toContain(`Error: ${error} (NO_PROJECT_ROOT)`);
+    expect(text(result)).toContain('missing, unrecognized or inconsistent move outcome');
     expect(result.structuredContent).toMatchObject({ ok: false, error });
   });
 });

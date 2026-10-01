@@ -7107,6 +7107,10 @@ msgstr "Bonjour, tout le monde !"
 msgid "Help"
 msgstr "Aide"
 
+#: src/lib/conflict-resolve-draft.ts
+msgid "Help me understand the conflict in {filePath}. Explain what I should compare in the OpenKnowledge Conflict view; I will choose and apply the resolution there."
+msgstr "Aide-moi à comprendre le conflit dans {filePath}. Explique ce que je dois comparer dans la vue des conflits d’OpenKnowledge ; je choisirai et appliquerai la résolution là-bas."
+
 #. Subtext under the discovery-skill checkbox
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -10375,10 +10379,6 @@ msgid "OpenKnowledge checked {subject}"
 msgstr "OpenKnowledge a vérifié {subject}"
 
 #: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge checked for conflicts"
-msgstr "OpenKnowledge a recherché des conflits"
-
-#: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge a vérifié le projet"
 
@@ -10558,14 +10558,6 @@ msgstr "OpenKnowledge a lu les paramètres du projet"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge read the setting {key}"
 msgstr "OpenKnowledge a lu le paramètre {key}"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict"
-msgstr "OpenKnowledge a résolu un conflit"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict in {subject}"
-msgstr "OpenKnowledge a résolu un conflit dans {subject}"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge restored an earlier version"
@@ -11545,10 +11537,6 @@ msgstr "Lit l'historique des versions d'un document ou d'une compétence, ou l'a
 msgid "Reads this project's OpenKnowledge settings"
 msgstr "Lit les paramètres OpenKnowledge de ce projet"
 
-#: src/lib/acp/tool-call-display.ts
-msgid "Reads unresolved conflicts between edits"
-msgstr "Lit les conflits non résolus entre modifications"
-
 #: src/components/SessionsHost.tsx
 msgid "Ready"
 msgstr "Prêt"
@@ -12208,10 +12196,6 @@ msgstr "Résolvez le conflit sur {files} et {overflow} autres fichiers avant de 
 #: src/comments/ThreadCard.tsx
 msgid "Resolved"
 msgstr "Résolu"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "Resolves a conflict by choosing which content to keep"
-msgstr "Résout un conflit en choisissant le contenu à conserver"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
@@ -15155,8 +15139,8 @@ msgid "This file can't be opened in the text editor."
 msgstr "Ce fichier ne peut pas être ouvert dans l'éditeur de texte."
 
 #: src/components/ConflictView.tsx
-msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI."
-msgstr "Ce fichier contient des lignes qui ressemblent à des marqueurs de conflit, si bien que les limites du conflit ne peuvent pas être lues de façon fiable. Résolvez-le à la main ou avec Demander à l'IA."
+msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve the markers in the file by hand."
+msgstr "Ce fichier contient des lignes qui ressemblent à des marqueurs de conflit ; les limites des conflits ne peuvent donc pas être déterminées de façon fiable. Résolvez manuellement les marqueurs dans le fichier."
 
 #: src/components/use-viewer-text.ts
 msgid "This file could not be found."
