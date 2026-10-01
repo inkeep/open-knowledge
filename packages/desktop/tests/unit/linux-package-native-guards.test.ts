@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 
@@ -62,6 +62,30 @@ function findNativeAddons(root: string): string[] {
   return found.sort();
 }
 
+interface FloorViolation {
+  addon: string;
+  family: NativeVersionFamily;
+  required: string;
+  maximum: string;
+}
+
+function floorViolations(root: string): FloorViolation[] {
+  return findNativeAddons(root).flatMap((addon) => {
+    const versions = requiredNativeVersions(readFileSync(addon));
+    return (Object.entries(MAX_NATIVE_VERSIONS) as Array<[NativeVersionFamily, string]>).flatMap(
+      ([family, maximum]) => {
+        const required = versions.get(family);
+        if (required === undefined || compareVersions(required, maximum) <= 0) return [];
+        return [{ addon: relative(root, addon), family, required, maximum }];
+      },
+    );
+  });
+}
+
+function describeFloorViolation({ addon, family, required, maximum }: FloorViolation): string {
+  return `${addon} requires ${family}_${required}, above the recorded ${family}_${maximum} Electron floor`;
+}
+
 const fixtureDirs: string[] = [];
 afterEach(() => {
   for (const dir of fixtureDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -85,6 +109,59 @@ describe('Linux package native-version guard helpers', () => {
     writeFileSync(addon, 'ELF');
     writeFileSync(sibling, 'not native');
     expect(findNativeAddons(root)).toEqual([addon]);
+  });
+
+  test.each<[string, Record<string, string>, FloorViolation[]]>([
+    ['passes addons at the floor', { 'a.node': 'GLIBC_2.31\0GLIBCXX_3.4.28' }, []],
+    [
+      'refuses one GLIBC step over the floor',
+      { 'a.node': 'GLIBC_2.32' },
+      [{ addon: 'a.node', family: 'GLIBC', required: '2.32', maximum: '2.31' }],
+    ],
+    [
+      'refuses one GLIBCXX step over the floor',
+      { 'a.node': 'GLIBCXX_3.4.29' },
+      [{ addon: 'a.node', family: 'GLIBCXX', required: '3.4.29', maximum: '3.4.28' }],
+    ],
+    [
+      'refuses a planted too-new addon beside a compliant one',
+      { 'ok.node': 'GLIBC_2.28', 'new.node': 'GLIBC_2.38' },
+      [{ addon: 'new.node', family: 'GLIBC', required: '2.38', maximum: '2.31' }],
+    ],
+    [
+      'names every addon over the floor',
+      { 'pty.node': 'GLIBC_2.34', 'watcher.node': 'GLIBC_2.38' },
+      [
+        { addon: 'pty.node', family: 'GLIBC', required: '2.34', maximum: '2.31' },
+        { addon: 'watcher.node', family: 'GLIBC', required: '2.38', maximum: '2.31' },
+      ],
+    ],
+  ])('%s', (_label, addons, expected) => {
+    const root = mkdtempSync(join(tmpdir(), 'ok-linux-native-floor-'));
+    fixtureDirs.push(root);
+    const dir = join(root, 'resources', 'app.asar.unpacked', 'node_modules', 'fixture');
+    mkdirSync(dir, { recursive: true });
+    for (const [name, tags] of Object.entries(addons)) {
+      writeFileSync(join(dir, name), `\x7fELF\0${tags}\0`);
+    }
+    const found = floorViolations(root).map((violation) => ({
+      ...violation,
+      addon: basename(violation.addon),
+    }));
+    expect(found).toEqual(expected);
+  });
+
+  test('describes a violation by its addon, its requirement and the floor', () => {
+    expect(
+      describeFloorViolation({
+        addon: 'resources/app.asar.unpacked/node_modules/w/watcher.node',
+        family: 'GLIBC',
+        required: '2.38',
+        maximum: '2.31',
+      }),
+    ).toBe(
+      'resources/app.asar.unpacked/node_modules/w/watcher.node requires GLIBC_2.38, above the recorded GLIBC_2.31 Electron floor',
+    );
   });
 });
 
@@ -124,19 +201,6 @@ describe.skipIf(packageDir === null)('packaged Linux native modules', () => {
   test('keeps every shipped native addon within Electron’s Debian 11 ABI floor', () => {
     const addons = findNativeAddons(packageDir as string);
     expect(addons.length, `no .node binaries found under ${packageDir}`).toBeGreaterThan(0);
-
-    for (const addon of addons) {
-      const versions = requiredNativeVersions(readFileSync(addon));
-      for (const [family, maximum] of Object.entries(MAX_NATIVE_VERSIONS) as Array<
-        [NativeVersionFamily, string]
-      >) {
-        const required = versions.get(family);
-        if (required === undefined) continue;
-        expect(
-          compareVersions(required, maximum),
-          `${relative(packageDir as string, addon)} requires ${family}_${required}, above the recorded ${family}_${maximum} Electron floor`,
-        ).toBeLessThanOrEqual(0);
-      }
-    }
+    expect(floorViolations(packageDir as string).map(describeFloorViolation)).toEqual([]);
   });
 });

@@ -463,9 +463,7 @@ jobs:
 
       - name: Install dependencies
         env:
-          # Rebuild native modules against Electron's Node ABI — mirrors
-          # desktop-release.yml.
-          ELECTRON_SKIP_REBUILD: "0"
+          ELECTRON_SKIP_REBUILD: "1"
         run: pnpm install --frozen-lockfile
 
       - name: Download workspace bundle
@@ -497,8 +495,7 @@ jobs:
       # host's `rpmbuild` to assemble an `.rpm` — and an Ubuntu runner has no
       # rpm tooling preinstalled, so the rpm target dies with "Can't find
       # rpmbuild". Ubuntu's `rpm` package carries /usr/bin/rpmbuild. The deb
-      # and AppImage targets need nothing extra, so this is the only apt step
-      # in the job.
+      # and AppImage targets need nothing extra.
       - name: Install rpmbuild (fpm's rpm backend)
         run: |
           set -euo pipefail
@@ -518,11 +515,28 @@ jobs:
         run: |
           pnpm exec node "$GITHUB_WORKSPACE/.github/scripts/package-desktop.mjs" --linux ${{ matrix.targets }} --publish never
 
+      - name: Install the packaged deb's runtime dependencies
+        working-directory: packages/desktop
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          debs=(dist-desktop/*.deb)
+          if [[ ${#debs[@]} -eq 0 ]]; then
+            echo "::error::No .deb found under dist-desktop to read runtime dependencies from."
+            exit 1
+          fi
+          depends=()
+          for deb in "${debs[@]}"; do
+            depends+=("$(dpkg-deb --field "$deb" Depends)")
+          done
+          sudo apt-get update
+          sudo apt-get satisfy -y --no-install-recommends "${depends[@]}"
+
       - name: Assert Linux terminal native package compatibility
         working-directory: packages/desktop
         env:
           OK_LINUX_PACKAGE_DIR: dist-desktop/${{ matrix.unpacked_dir }}
-        run: pnpm exec vitest run tests/unit/linux-package-native-guards.test.ts
+        run: pnpm exec vitest run tests/unit/linux-package-native-guards.test.ts tests/unit/linux-package-terminal-spawn.test.ts
 
       # Fail before uploading an installer that cannot start (see the Windows
       # step for the full rationale). This is the control that would have caught
