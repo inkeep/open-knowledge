@@ -1,4 +1,5 @@
 import {
+  currentMcpServerName,
   EMPTY_DETECTION_SNAPSHOT,
   EMPTY_PROBE_SNAPSHOT,
   TERMINAL_CLI_IDS,
@@ -310,7 +311,7 @@ export function registerIntegrationsSettings(
       case 'left-foreign':
         return {
           ok: false,
-          error: `The open-knowledge entry in ${label} isn't one OpenKnowledge wrote — it was left unchanged. Remove it manually if you no longer want it.`,
+          error: `The ${currentMcpServerName()} entry in ${label} isn't one OpenKnowledge wrote — it was left unchanged. Remove it manually if you no longer want it.`,
         };
       case 'declined':
         return {

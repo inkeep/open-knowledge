@@ -342,6 +342,7 @@ import { applyDevShmPosture } from './linux-shm-posture.ts';
 import { resolveLocalOpCliInvocation } from './local-op-cli-invocation.ts';
 import { createMenuTranslator, resolveMenuCatalogDir } from './main-i18n.ts';
 import { createMainThreadWatchdog } from './main-thread-watchdog.ts';
+import { withMcpServerNameArg } from './mcp-server-name-arg.ts';
 import {
   checkAndRepairMcpWiringOnStartup,
   type McpStartupRepairResult,
@@ -1241,9 +1242,10 @@ function runDriverBootSmokeInProduction(): void {
 }
 
 function withWindowRuntimeArgs(args: readonly string[]): string[] {
+  const withServerName = withMcpServerNameArg(args);
   const withDebug = isDebugKeyringSmokeAllowed()
-    ? [...args, '--ok-debug-keyring-smoke=1']
-    : [...args];
+    ? [...withServerName, '--ok-debug-keyring-smoke=1']
+    : withServerName;
   const withTerminalCapability = withTerminalCapabilityArg(withDebug, isTerminalAvailable());
   const withSmoke =
     process.env.OK_DESKTOP_E2E_SMOKE === '1'
@@ -3701,6 +3703,7 @@ function resolveTerminalClaudeReadiness(projectRoot: string | undefined): Promis
     isProjectMcpPreApprovable: () => scopes.projectOwn,
     hasProjectMcpEntry: () => scopes.projectEntryPresent,
     isGlobalMcpOwnManaged: () => scopes.globalOwn,
+    mcpServerName: scopes.serverName,
   });
 }
 
@@ -3717,6 +3720,7 @@ function resolveTerminalCliOnPath(cli: TerminalCli): Promise<CliReadiness> {
       ? {
           okServerConfigured: () =>
             classifyExistingMcpEntry(EDITOR_TARGETS.codex, '', osHomedir()).kind === 'present',
+          mcpServerName: EDITOR_TARGETS.codex.serverName(''),
         }
       : {}),
   });

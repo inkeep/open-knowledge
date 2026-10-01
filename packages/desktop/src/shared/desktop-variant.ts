@@ -38,7 +38,7 @@ const DESKTOP_PRODUCT_VARIANTS = {
     iconPath: 'build/icon.png',
     linuxExecutableName: DESKTOP_PRODUCTS.stable.linuxExecutableName,
     linuxPackageNames: DESKTOP_PRODUCTS.stable.linuxPackageNames,
-    cliCommandNames: ['ok', 'open-knowledge'],
+    cliCommandNames: DESKTOP_PRODUCTS.stable.cliCommandNames,
     cliHomeSegment: null,
   },
   beta: {
@@ -54,7 +54,7 @@ const DESKTOP_PRODUCT_VARIANTS = {
     iconPath: 'build/icon-beta.png',
     linuxExecutableName: DESKTOP_PRODUCTS.beta.linuxExecutableName,
     linuxPackageNames: DESKTOP_PRODUCTS.beta.linuxPackageNames,
-    cliCommandNames: ['ok-beta', 'open-knowledge-beta'],
+    cliCommandNames: DESKTOP_PRODUCTS.beta.cliCommandNames,
     cliHomeSegment: 'beta',
   },
 } as const satisfies Record<DesktopProductName, DesktopVariantIdentity>;

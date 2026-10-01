@@ -98,6 +98,14 @@ Both are **consent-gated**, but at different moments. Declining `open-knowledge-
 
 When you initialize or open a project, the app scaffolds the same project files the CLI's `ok init` creates, and registers the `open-knowledge` MCP server with the AI editors it detects. The MCP registration is **surgical** — it touches only its own entry and leaves your other settings, comments, and formatting byte-for-byte intact. "Its own entry" means the one named `open-knowledge`; if that name is already taken by something OpenKnowledge does not recognize, see [Opt-outs in one place](#opt-outs-in-one-place).
 
+#### Beta uses its own entry
+
+Each product registers under its own name, so Stable and Beta can both be connected to the same editor without overwriting each other. Stable uses `open-knowledge`; Beta uses `open-knowledge-beta`, with its own launcher that runs OpenKnowledge Beta and falls back to `npx @inkeep/open-knowledge@beta`. Everywhere this page names the `open-knowledge` entry, Beta's app, repair sweeps, and `ok-beta init` act only on `open-knowledge-beta`, and Beta's Pi bridge is `.pi/extensions/open-knowledge-beta.ts`. Agents see Beta's tools as `mcp__open-knowledge-beta__*`, and Pi sees them as `ok-beta_*`.
+
+Earlier releases of the separately installed `OpenKnowledge Beta` app registered under `open-knowledge`, and updating does not move that entry. If an editor's config has no `open-knowledge-beta` entry, reconnect that editor from **Settings → Agent connections** in OpenKnowledge Beta, then remove the old `open-knowledge` entry from the file listed under [`ok init`](#ok-init) if you don't also run Stable. An older Beta install still named `OpenKnowledge` keeps using `open-knowledge`; leave that entry in place.
+
+A CLI process decides which product it belongs to in this order: the `OK_CHANNEL` environment variable (`stable` or `beta`; any other value is an error), then the name of the executable it runs as, and otherwise Stable. The CLI bundled in OpenKnowledge Beta resolves as Beta from its executable name, and Beta's launcher sets `OK_CHANNEL=beta` before it falls back to npx. A CLI run under plain Node, such as `npx @inkeep/open-knowledge@beta init` typed by hand, resolves as Stable and writes the `open-knowledge` entry unless you set `OK_CHANNEL=beta`.
+
 | Path | What it is | Scope |
 | --- | --- | --- |
 | `.ok/`, `.ok/config.yml` | Project directory and its [config](./configuration.mdx) | In-project, committed |

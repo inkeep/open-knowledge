@@ -2243,7 +2243,6 @@
     "S33tz3": ["未連接"],
     "S3qu11": ["那只是一次試用或一次性的專案"],
     "S48xcO": ["待處理"],
-    "S6SbxA": ["取代此檔案中現有的 \"open-knowledge\" 項目。檔案中的其他伺服器維持不變。"],
     "S6eHlw": ["請先開啟一個專案。"],
     "S6l5dv": ["無法開始建立新項目"],
     "S9Vnum": ["移除 ", ["patternText"]],
@@ -4594,7 +4593,9 @@
     "troubleshooting.cursor.project-entry-not-loaded": [
       "如果 ",
       ["agent"],
-      " 沒有顯示 OpenKnowledge 工具，請開啟 Customize → MCPs，選擇 open-knowledge 並開啟它的 .cursor/mcp.json 來源；在你開啟之前，",
+      " 沒有顯示 OpenKnowledge 工具，請開啟 Customize → MCPs，選擇 ",
+      ["server"],
+      " 並開啟它的 .cursor/mcp.json 來源；在你開啟之前，",
       ["agent"],
       " 會讓專案伺服器保持關閉。"
     ],
@@ -4659,6 +4660,7 @@
     "uM6jnS": ["還原失敗"],
     "uNGmQn": ["無法執行測試。請確認 OpenKnowledge 仍在執行。"],
     "uO9WLl": ["推送"],
+    "uOKoBM": ["取代此檔案中現有的 ", ["server"], " 項目。檔案中的其他伺服器維持不變。"],
     "uPJml1": ["已允許唯讀命令"],
     "uQNW00": ["HEAD 處於分離狀態——請簽出一個分支再繼續"],
     "uQewpR": [

@@ -1,5 +1,5 @@
 import { parse as parseJsonc } from 'jsonc-parser';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { type NativeTomlMcpEditor, reconcileTrackedMcpConfig } from './mcp-config-reconciler.ts';
 
 const v1 = { command: '/bin/sh', args: ['-l', '-c', '# ok-mcp-v1\nexit 127'] };
@@ -200,5 +200,73 @@ describe('reconcileTrackedMcpConfig', () => {
         layers: { base: null, head: null, index: null, worktree: null, incoming: null },
       }),
     ).toEqual({ kind: 'declined', reason: 'unsupported-target' });
+  });
+
+  describe('under the Beta channel', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    const betaV1 = { command: '/bin/sh', args: ['-l', '-c', '# ok-mcp-beta-v1\nexit 127'] };
+    const betaV2 = { command: '/bin/sh', args: ['-l', '-c', '# ok-mcp-beta-v2\nexit 127'] };
+
+    function both(beta: unknown): string {
+      return `${JSON.stringify({ mcpServers: { 'open-knowledge': v1, 'open-knowledge-beta': beta } }, null, 2)}\n`;
+    }
+
+    test('upgrades only its own JSON entry and leaves the Stable neighbour byte-for-byte', () => {
+      vi.stubEnv('OK_CHANNEL', 'beta');
+      const base = both(betaV1);
+      const plan = reconcileTrackedMcpConfig({
+        target: '.mcp.json',
+        layers: { base, head: base, index: base, worktree: base, incoming: both(betaV2) },
+      });
+
+      expect(plan.kind).toBe('resolved');
+      if (plan.kind !== 'resolved') return;
+      const servers = parseJsonc(plan.raw).mcpServers;
+      expect(servers['open-knowledge']).toEqual(v1);
+      expect(servers['open-knowledge-beta']).toEqual(betaV2);
+      expect(plan.winner.revision).toBe(2);
+    });
+
+    test('treats a config holding only the Stable entry as having no Beta entry', () => {
+      vi.stubEnv('OK_CHANNEL', 'beta');
+      const raw = config(v2);
+      expect(
+        reconcileTrackedMcpConfig({
+          target: '.mcp.json',
+          layers: { base: raw, head: raw, index: raw, worktree: raw, incoming: raw },
+        }),
+      ).toEqual({ kind: 'declined', reason: 'no-entry' });
+    });
+
+    test('addresses only the Beta key in TOML', () => {
+      vi.stubEnv('OK_CHANNEL', 'beta');
+      const touched: string[] = [];
+      const editor: NativeTomlMcpEditor = {
+        parseToObject: (raw) => ({
+          mcp_servers: {
+            'open-knowledge': v1,
+            'open-knowledge-beta': raw.includes('beta-v2') ? betaV2 : betaV1,
+          },
+        }),
+        removeEntry: (raw) => ({ text: raw, existed: true }),
+        upsertEntry: (raw, name) => {
+          touched.push(name);
+          return { text: raw, existed: true };
+        },
+      };
+      const base = '[mcp_servers.open-knowledge-beta]\n# beta-v1\n';
+      const incoming = '[mcp_servers.open-knowledge-beta]\n# beta-v2\n';
+      reconcileTrackedMcpConfig({
+        target: '.codex/config.toml',
+        layers: { base, head: base, index: base, worktree: base, incoming },
+        tomlEditor: editor,
+      });
+
+      expect(touched.length).toBeGreaterThan(0);
+      expect(new Set(touched)).toEqual(new Set(['open-knowledge-beta']));
+    });
   });
 });

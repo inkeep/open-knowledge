@@ -13,6 +13,8 @@ Run `ok init` in your project (or open the project in the OpenKnowledge desktop 
 - **`.pi/extensions/open-knowledge.ts`** — the bridge extension. On session start it launches OpenKnowledge's MCP server with the same resilient launcher every other editor uses, then registers each OpenKnowledge tool as a native Pi tool under an `ok_` prefix (`ok_exec`, `ok_search`, `ok_write`, …). The prefix keeps OpenKnowledge's `edit` / `write` from shadowing Pi's built-in file tools.
 - **`.pi/skills/open-knowledge/`** — the OpenKnowledge skill, in the [Agent Skills](https://pi.dev/docs/latest) format Pi reads natively from `.pi/skills/`.
 
+OpenKnowledge Beta writes `.pi/extensions/open-knowledge-beta.ts` instead and registers its tools as `ok-beta_*`; see [Beta uses its own entry](/docs/reference/what-open-knowledge-writes#beta-uses-its-own-entry).
+
 These files are managed by OpenKnowledge. Running `ok init` again refreshes them in place, while `ok deinit` removes them.
 
 ## Trust the project
@@ -25,6 +27,6 @@ Run `pi` in the project, and ask:
 
 <CopyPrompt>List the first 5 documents you come across in this project.</CopyPrompt>
 
-Pi should call the OpenKnowledge `ok_exec` tool and respond with some of your documents.
+Pi should call the OpenKnowledge `ok_exec` tool (`ok-beta_exec` in OpenKnowledge Beta) and respond with some of your documents.
 
-If the `ok_` tools are missing: make sure you trusted the folder, then `/reload` (or restart `pi`). The first tool call can take a moment on a fresh machine — the launcher may be installing the OpenKnowledge CLI via `npx`. If Pi shows an "Open Knowledge tools unavailable" notice, install [Node.js 24+](https://nodejs.org) or the OpenKnowledge desktop app and reload.
+If the `ok_` tools (`ok-beta_` in Beta) are missing: make sure you trusted the folder, then `/reload` (or restart `pi`). The first tool call can take a moment on a fresh machine — the launcher may be installing the OpenKnowledge CLI via `npx`. If Pi shows an "Open Knowledge tools unavailable" notice, install [Node.js 24+](https://nodejs.org) or the OpenKnowledge desktop app and reload.

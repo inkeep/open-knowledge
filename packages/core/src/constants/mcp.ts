@@ -1,8 +1,10 @@
+import { DESKTOP_PRODUCTS } from './product.ts';
+
 export const READ_DOCUMENT_HISTORY_DEPTH = 5;
 
 export const GREP_MAX_RESULTS = 50;
 
-export const MCP_SERVER_NAME = 'open-knowledge';
+export const MCP_SERVER_NAME = DESKTOP_PRODUCTS.stable.mcpServerName;
 
 export const SERVER_UNREACHABLE_ERROR_PREFIX = 'Server unreachable:';
 

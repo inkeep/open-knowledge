@@ -1,3 +1,7 @@
+import { currentDesktopProduct, type DesktopProduct } from './product.ts';
+
+type McpChainTag = DesktopProduct['mcpChainTag'];
+
 export type McpLauncherEnvelope = 'split-command-args' | 'opencode-argv';
 export type McpLauncherFamily = 'unix-chain' | 'windows-chain';
 
@@ -125,10 +129,19 @@ function extractLauncher(
   return decline('foreign-command');
 }
 
-function revisionFromFirstLine(body: string, family: McpLauncherFamily): number | null {
+export function mcpChainMarkerPrefix(family: McpLauncherFamily, chainTag: McpChainTag): string {
+  return family === 'unix-chain' ? `# ok-mcp${chainTag}-v` : `# ok-mcp${chainTag}-win-v`;
+}
+
+function revisionFromFirstLine(
+  body: string,
+  family: McpLauncherFamily,
+  chainTag: McpChainTag,
+): number | null {
   const firstLine = body.split(/\r?\n/, 1)[0];
-  const pattern = family === 'unix-chain' ? /^# ok-mcp-v([1-9]\d*)$/ : /^# ok-mcp-win-v([1-9]\d*)$/;
-  const match = firstLine?.match(pattern);
+  const prefix = mcpChainMarkerPrefix(family, chainTag);
+  if (firstLine === undefined || !firstLine.startsWith(prefix)) return null;
+  const match = firstLine.slice(prefix.length).match(/^([1-9]\d*)$/);
   if (match === null || match === undefined) return null;
   const revision = Number(match[1]);
   return Number.isSafeInteger(revision) ? revision : null;
@@ -137,12 +150,13 @@ function revisionFromFirstLine(body: string, family: McpLauncherFamily): number 
 export function classifyMcpLauncherEntry(
   entry: unknown,
   catalog: McpLauncherRevisionCatalog = DEFAULT_MCP_LAUNCHER_REVISION_CATALOG,
+  chainTag: McpChainTag = currentDesktopProduct().mcpChainTag,
 ): McpLauncherClassification {
   if (typeof entry !== 'object' || entry === null) return decline('not-an-object');
   const extracted = extractLauncher(entry as Record<string, unknown>);
   if ('kind' in extracted) return extracted;
 
-  const revision = revisionFromFirstLine(extracted.body, extracted.family);
+  const revision = revisionFromFirstLine(extracted.body, extracted.family, chainTag);
   if (revision === null) return decline('malformed-marker');
 
   const registry = catalog[extracted.family];

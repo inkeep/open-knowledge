@@ -12033,7 +12033,7 @@ msgid "Replace these symlinks with independent copies?"
 msgstr ""
 
 #: src/components/settings/AgentConnectionDialogs.tsx
-msgid "Replaces the existing \"open-knowledge\" entry in this file. Other servers in the file are left alone."
+msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
 msgstr ""
 
 #. placeholder {0}: formatToolList( replacing.map((e) => e.label), i18n.locale, )

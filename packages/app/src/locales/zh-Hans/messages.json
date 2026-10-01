@@ -2225,7 +2225,6 @@
     "S33tz3": ["未连接"],
     "S3qu11": ["那只是一次试用或一次性项目"],
     "S48xcO": ["待处理"],
-    "S6SbxA": ["替换此文件中现有的 \"open-knowledge\" 条目。文件中的其他服务器保持不变。"],
     "S6eHlw": ["请先打开一个项目。"],
     "S6l5dv": ["无法开始创建新项目"],
     "S9Vnum": ["移除 ", ["patternText"]],
@@ -4576,7 +4575,9 @@
     "troubleshooting.cursor.project-entry-not-loaded": [
       "如果 ",
       ["agent"],
-      " 没有显示 OpenKnowledge 工具，请打开 Customize → MCPs，选择 open-knowledge 并开启它的 .cursor/mcp.json 来源；在你开启之前，",
+      " 没有显示 OpenKnowledge 工具，请打开 Customize → MCPs，选择 ",
+      ["server"],
+      " 并开启它的 .cursor/mcp.json 来源；在你开启之前，",
       ["agent"],
       " 会保持项目服务器关闭。"
     ],
@@ -4641,6 +4642,7 @@
     "uM6jnS": ["恢复失败"],
     "uNGmQn": ["无法运行测试。请确认 OpenKnowledge 仍在运行。"],
     "uO9WLl": ["推送"],
+    "uOKoBM": ["替换此文件中现有的 ", ["server"], " 条目。文件中的其他服务器保持不变。"],
     "uPJml1": ["已允许只读命令"],
     "uQNW00": ["HEAD 处于游离状态——请检出一个分支以继续"],
     "uQewpR": ["无法重启服务器——它正以另一个账户运行。请重启电脑清除后再打开这个项目。"],

@@ -23,7 +23,9 @@ export const GUIDANCE_IDS = {
 
   'troubleshooting.claude.project-entry-not-approved': { params: z.strictObject(agentParam) },
   'troubleshooting.claude-desktop.per-tool-approval': { params: z.strictObject(agentParam) },
-  'troubleshooting.cursor.project-entry-not-loaded': { params: z.strictObject(agentParam) },
+  'troubleshooting.cursor.project-entry-not-loaded': {
+    params: z.strictObject({ ...agentParam, server: z.string().optional() }),
+  },
   'troubleshooting.codex.desktop-project-config': {
     params: z.strictObject({ ...agentParam, honoredByDesktop: z.boolean() }),
   },

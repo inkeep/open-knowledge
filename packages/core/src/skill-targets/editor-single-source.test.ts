@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'vitest';
 import {
   ALL_EDITOR_IDS,
-  EDITOR_PROJECT_CONFIG_PATH,
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_USER_SKILL_ROOT,
   HOSTS_WITH_USER_SKILL_DIR,
   HUB_READER_EDITORS,
   PROJECT_SKILL_EDITOR_IDS,
   receivesProjectIntegrationWrite,
+  STABLE_EDITOR_PROJECT_CONFIG_PATH,
   USER_MCP_GATED_EDITOR_IDS,
   USER_SKILL_HOSTS,
 } from '../constants/editors.ts';
@@ -74,7 +74,7 @@ describe('receivesProjectIntegrationWrite', () => {
 
   test('an editor with a project MCP config always writes, whatever the global state', () => {
     for (const id of ['claude', 'cursor', 'codex', 'opencode', 'pi'] as const) {
-      expect(EDITOR_PROJECT_CONFIG_PATH[id]).not.toBeNull();
+      expect(STABLE_EDITOR_PROJECT_CONFIG_PATH[id]).not.toBeNull();
       expect(receivesProjectIntegrationWrite(id, installed)).toBe(true);
       expect(receivesProjectIntegrationWrite(id, notInstalled)).toBe(true);
     }
@@ -94,7 +94,7 @@ describe('receivesProjectIntegrationWrite', () => {
   });
 
   test('Copilot writes only once its user-global entry exists', () => {
-    expect(EDITOR_PROJECT_CONFIG_PATH.copilot).toBeNull();
+    expect(STABLE_EDITOR_PROJECT_CONFIG_PATH.copilot).toBeNull();
     expect(USER_MCP_GATED_EDITOR_IDS.map(String)).toContain('copilot');
     expect(receivesProjectIntegrationWrite('copilot', notInstalled)).toBe(false);
     expect(receivesProjectIntegrationWrite('copilot', installed)).toBe(true);
@@ -102,7 +102,7 @@ describe('receivesProjectIntegrationWrite', () => {
 
   test('every gated editor is skill-only — a project MCP config would make the gate moot', () => {
     for (const id of USER_MCP_GATED_EDITOR_IDS) {
-      expect(EDITOR_PROJECT_CONFIG_PATH[id]).toBeNull();
+      expect(STABLE_EDITOR_PROJECT_CONFIG_PATH[id]).toBeNull();
       expect(EDITOR_PROJECT_SKILL_ROOT[id]).not.toBeNull();
     }
   });

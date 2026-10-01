@@ -2447,9 +2447,6 @@
     "S33tz3": ["연결되지 않음"],
     "S3qu11": ["시험 삼아 사용했거나 일회성 프로젝트였습니다"],
     "S48xcO": ["대기 중"],
-    "S6SbxA": [
-      "이 파일의 기존 \"open-knowledge\" 항목을 대체합니다. 파일의 다른 서버는 그대로 유지됩니다."
-    ],
     "S6eHlw": ["먼저 프로젝트를 여세요."],
     "S6l5dv": ["새 항목 만들기를 시작하지 못했습니다"],
     "S9Vnum": [["patternText"], " 제거"],
@@ -5041,7 +5038,9 @@
     ],
     "troubleshooting.cursor.project-entry-not-loaded": [
       ["agent"],
-      "에 OpenKnowledge 도구가 보이지 않으면 Customize → MCPs를 열고 open-knowledge를 선택한 뒤 해당 .cursor/mcp.json 소스를 켜세요. ",
+      "에 OpenKnowledge 도구가 보이지 않으면 Customize → MCPs를 열고 ",
+      ["server"],
+      "를 선택한 뒤 해당 .cursor/mcp.json 소스를 켜세요. ",
       ["agent"],
       "은(는) 직접 켜기 전까지 프로젝트 서버를 꺼 둡니다."
     ],
@@ -5113,6 +5112,11 @@
     "uM6jnS": ["복원 실패"],
     "uNGmQn": ["테스트를 실행하지 못했습니다. OpenKnowledge가 계속 실행 중인지 확인합니다."],
     "uO9WLl": ["푸시"],
+    "uOKoBM": [
+      "이 파일의 기존 ",
+      ["server"],
+      " 항목을 대체합니다. 파일의 다른 서버는 그대로 유지됩니다."
+    ],
     "uPJml1": ["읽기 전용 허용됨"],
     "uQNW00": ["HEAD가 분리되었습니다. 계속하려면 브랜치를 체크아웃하세요."],
     "uQewpR": [

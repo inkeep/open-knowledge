@@ -2563,9 +2563,6 @@
     "S33tz3": ["Tidak terhubung"],
     "S3qu11": ["Itu hanya percobaan atau proyek sekali pakai"],
     "S48xcO": ["tertunda"],
-    "S6SbxA": [
-      "Mengganti entri \"open-knowledge\" yang ada di file ini. Server lain dalam file ini tidak diubah."
-    ],
     "S6eHlw": ["Buka proyek terlebih dahulu."],
     "S6l5dv": ["Pembuatan item baru tidak dapat dimulai"],
     "S9Vnum": ["Hapus ", ["patternText"]],
@@ -5275,7 +5272,9 @@
     "troubleshooting.cursor.project-entry-not-loaded": [
       "Jika ",
       ["agent"],
-      " tidak menampilkan alat OpenKnowledge, buka Customize → MCPs, pilih open-knowledge dan nyalakan sumber .cursor/mcp.json miliknya; ",
+      " tidak menampilkan alat OpenKnowledge, buka Customize → MCPs, pilih ",
+      ["server"],
+      " dan nyalakan sumber .cursor/mcp.json miliknya; ",
       ["agent"],
       " membiarkan server proyek mati sampai Anda melakukannya."
     ],
@@ -5351,6 +5350,11 @@
     "uM6jnS": ["Gagal memulihkan"],
     "uNGmQn": ["Pengujiannya tidak bisa dijalankan. Pastikan OpenKnowledge masih berjalan."],
     "uO9WLl": ["Push"],
+    "uOKoBM": [
+      "Mengganti entri ",
+      ["server"],
+      " yang ada di file ini. Server lain dalam file ini tidak diubah."
+    ],
     "uPJml1": ["Hanya-baca diizinkan"],
     "uQNW00": ["HEAD terlepas — ambil sebuah cabang untuk melanjutkan"],
     "uQewpR": [

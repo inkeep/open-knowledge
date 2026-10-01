@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { resolveOnPath } from '../git-preflight.ts';
 import { getLogger } from '../logger.ts';
@@ -141,6 +141,19 @@ describe('buildMcpServers × probeHarnessManagedMcpEntry', () => {
     const { servers } = await m.buildMcpServers(record('registry', 'codex-acp'), HTTP_INIT);
     expect(servers).toHaveLength(1);
     expect(servers[0]).toMatchObject({ name: 'open-knowledge', type: 'http' });
+  });
+
+  test('a Beta server injects its own server name on both transports', async () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    try {
+      const m = makeManager(() => null);
+      const http = await m.buildMcpServers(record('registry', 'codex-acp'), HTTP_INIT);
+      const stdio = await m.buildMcpServers(record('registry', 'claude-acp'), {});
+      expect(http.servers[0]).toMatchObject({ name: 'open-knowledge-beta', type: 'http' });
+      expect(stdio.servers[0]).toMatchObject({ name: 'open-knowledge-beta' });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   test('the injected HTTP server carries the hosted-agent header', async () => {

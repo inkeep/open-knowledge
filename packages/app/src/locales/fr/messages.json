@@ -2983,9 +2983,6 @@
     "S33tz3": ["Non connecté"],
     "S3qu11": ["C'était un essai ou un projet ponctuel"],
     "S48xcO": ["en attente"],
-    "S6SbxA": [
-      "Remplace l'entrée \"open-knowledge\" existante dans ce fichier. Les autres serveurs du fichier ne sont pas modifiés."
-    ],
     "S6eHlw": ["Ouvrez d'abord un projet."],
     "S6l5dv": ["Impossible de commencer la création d'un nouvel élément"],
     "S9Vnum": ["Retirer ", ["patternText"]],
@@ -6120,7 +6117,9 @@
     "troubleshooting.cursor.project-entry-not-loaded": [
       "Si ",
       ["agent"],
-      " n'affiche aucun outil OpenKnowledge, ouvrez Customize → MCPs, sélectionnez open-knowledge et activez sa source .cursor/mcp.json ; ",
+      " n'affiche aucun outil OpenKnowledge, ouvrez Customize → MCPs, sélectionnez ",
+      ["server"],
+      " et activez sa source .cursor/mcp.json ; ",
       ["agent"],
       " laisse les serveurs de projet désactivés tant que vous ne le faites pas."
     ],
@@ -6205,6 +6204,11 @@
     "uM6jnS": ["Échec de la restauration"],
     "uNGmQn": ["Impossible d'exécuter le test. Vérifiez qu'OpenKnowledge fonctionne toujours."],
     "uO9WLl": ["Pousser"],
+    "uOKoBM": [
+      "Remplace l'entrée ",
+      ["server"],
+      " existante dans ce fichier. Les autres serveurs du fichier ne sont pas modifiés."
+    ],
     "uPJml1": ["Lecture seule autorisée"],
     "uQNW00": ["HEAD détachée — extrayez une branche pour reprendre"],
     "uQewpR": [

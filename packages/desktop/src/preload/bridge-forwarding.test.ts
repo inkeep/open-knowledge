@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withMcpServerNameArg } from '../main/mcp-server-name-arg.ts';
 
 const invokeMock = vi.fn(() => Promise.resolve({ ok: true }));
 const exposed = new Map<string, Record<string, unknown>>();
@@ -18,6 +19,7 @@ vi.mock('electron', () => ({
 }));
 
 type BridgeProbe = {
+  mcpServerName: string | null;
   config: {
     languagePreference?: string;
     themePreference?: string;
@@ -77,6 +79,7 @@ const originalArgv = process.argv;
 
 afterEach(() => {
   process.argv = originalArgv;
+  vi.unstubAllEnvs();
 });
 
 describe('preload argv config', () => {
@@ -101,6 +104,15 @@ describe('preload argv config', () => {
 
     expect(bridge.config).not.toHaveProperty('languagePreference');
     expect(bridge.config).not.toHaveProperty('themePreference');
+  });
+
+  it('exposes the server key main hands a Beta window', async () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    process.argv = withMcpServerNameArg(originalArgv);
+
+    const bridge = await loadBridge();
+
+    expect(bridge.mcpServerName).toBe('open-knowledge-beta');
   });
 });
 

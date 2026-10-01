@@ -1040,11 +1040,13 @@ export interface ClaudeReadiness {
   readonly claude: 'present' | 'not-found' | 'unknown';
   readonly mcpPreApprovable?: boolean;
   readonly okToolsAutoApprovable?: boolean;
+  readonly mcpServerName?: string;
 }
 
 export interface CliReadiness {
   readonly onPath: 'present' | 'not-found' | 'unknown';
   readonly okServerConfigured?: boolean;
+  readonly mcpServerName?: string;
 }
 
 export interface CopyImageRequest {
@@ -1419,6 +1421,7 @@ export interface OkDesktopBridge {
   readonly platform: 'darwin' | 'win32' | 'linux';
   readonly appVersion: string;
   readonly instanceLabel: string | null;
+  readonly mcpServerName: string | null;
 
   getPathForFile(file: File): string | null;
 

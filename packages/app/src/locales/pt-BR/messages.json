@@ -2898,9 +2898,6 @@
     "S33tz3": ["Não conectado"],
     "S3qu11": ["Era um teste ou um projeto pontual"],
     "S48xcO": ["pendente"],
-    "S6SbxA": [
-      "Substitui a entrada \"open-knowledge\" existente neste arquivo. Os outros servidores do arquivo permanecem inalterados."
-    ],
     "S6eHlw": ["Abra um projeto primeiro."],
     "S6l5dv": ["Não foi possível começar a criar um novo item"],
     "S9Vnum": ["Remover ", ["patternText"]],
@@ -5936,7 +5933,9 @@
     "troubleshooting.cursor.project-entry-not-loaded": [
       "Se o ",
       ["agent"],
-      " não mostrar as ferramentas do OpenKnowledge, abra Customize → MCPs, escolha o open-knowledge e ative a origem .cursor/mcp.json dele; o ",
+      " não mostrar as ferramentas do OpenKnowledge, abra Customize → MCPs, escolha o ",
+      ["server"],
+      " e ative a origem .cursor/mcp.json dele; o ",
       ["agent"],
       " deixa os servidores de projeto desligados até você fazer isso."
     ],
@@ -6019,6 +6018,11 @@
     "uM6jnS": ["Falha ao restaurar"],
     "uNGmQn": ["Não deu para executar o teste. Verifique se o OpenKnowledge ainda está rodando."],
     "uO9WLl": ["Push"],
+    "uOKoBM": [
+      "Substitui a entrada ",
+      ["server"],
+      " existente neste arquivo. Os outros servidores do arquivo permanecem inalterados."
+    ],
     "uPJml1": ["Somente leitura permitido"],
     "uQNW00": ["HEAD desanexado — extraia um ramo para continuar"],
     "uQewpR": [

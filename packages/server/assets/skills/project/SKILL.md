@@ -1,6 +1,6 @@
 ---
 name: open-knowledge
-description: "Authoritative agent-runtime contract for working inside an OpenKnowledge project — a markdown-CRDT knowledge base exposed over MCP. Use whenever reading, listing, searching, editing, or linting any `.md` or `.mdx` file in the project, and before any `mcp__open-knowledge__*` tool call (`exec`, `search`, `write`, `edit`, `lint`, and the rest). Installed by `ok init`, so its presence means this is an OpenKnowledge project and it governs every markdown file here. Covers the read/write tool surface, grounding and linking rules, folder/template conventions, the live browser preview, and the rule that OK's MCP tools — never native file tools — handle in-scope markdown."
+description: "Authoritative agent-runtime contract for working inside an OpenKnowledge project — a markdown-CRDT knowledge base exposed over MCP. Use whenever reading, listing, searching, editing, or linting any `.md` or `.mdx` file in the project, and before any `mcp__open-knowledge*` tool call (`exec`, `search`, `write`, `edit`, `lint`, and the rest). Installed by `ok init`, so its presence means this is an OpenKnowledge project and it governs every markdown file here. Covers the read/write tool surface, grounding and linking rules, folder/template conventions, the live browser preview, and the rule that OK's MCP tools — never native file tools — handle in-scope markdown."
 compatibility: "Any agent host with the OpenKnowledge MCP server configured; `ok init` wires the agents it detects on your machine. Some steps shell out to the `ok` CLI. Hosts that take an uploaded skill bundle instead of reading a project directory (Claude Desktop, Cowork, claude.ai) are covered by `ok cowork`."
 metadata:
   author: "Inkeep"
@@ -12,7 +12,7 @@ OpenKnowledge (OK) is a markdown-CRDT collaboration platform exposed via MCP. Th
 
 > Skill version tracks `@inkeep/open-knowledge-server`. `cat ~/.ok/skill-state.yml` shows what's installed. `ok seed` needs `@inkeep/open-knowledge` >= 0.4.0; if it errors `unknown command`, `npm install -g @inkeep/open-knowledge`.
 
-> **Setup (not connected yet?).** If the `mcp__open-knowledge__*` tools aren't available in your client, this project isn't wired up on this machine — see [`references/setup.md`](references/setup.md) for the rung ladder (approve `.mcp.json` → `ok start` CLI → optional desktop app) and the canonical quickstart.
+> **Setup (not connected yet?).** If the `mcp__open-knowledge*` tools aren't available in your client, this project isn't wired up on this machine — see [`references/setup.md`](references/setup.md) for the rung ladder (approve `.mcp.json` → `ok start` CLI → optional desktop app) and the canonical quickstart.
 
 ## TL;DR — the 90% case
 

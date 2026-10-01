@@ -51,7 +51,7 @@ import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { connectionPathDisplay, sharedPathDisplays } from '@/lib/agent-connection-paths';
 import type { ApplyAgentConnectionsResult } from '@/lib/agent-connections';
-import { guidanceText, troubleshootingText } from '@/lib/agent-guidance-copy';
+import { guidanceText, mcpServerLabel, troubleshootingText } from '@/lib/agent-guidance-copy';
 import { formatToolList } from '@/lib/tool-list-format';
 import { groupHeadingFor } from './group-heading';
 
@@ -437,9 +437,10 @@ function PartControl({
       : blockedReasons[reason];
   }
 
+  const server = mcpServerLabel();
   const foreignInfo =
     cell.state === 'foreign-replaceable'
-      ? t`Replaces the existing "open-knowledge" entry in this file. Other servers in the file are left alone.`
+      ? t`Replaces the existing ${server} entry in this file. Other servers in the file are left alone.`
       : null;
 
   const alsoAffects =

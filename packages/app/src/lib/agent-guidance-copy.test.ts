@@ -4,7 +4,7 @@ import {
   GUIDANCE_KEYS,
   guidanceId,
 } from '@inkeep/open-knowledge-core';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { followupHintText } from '@/lib/agent-followup-hint';
 import { guidanceText, troubleshootingText } from '@/lib/agent-guidance-copy';
 
@@ -77,8 +77,34 @@ describe('guidance and troubleshooting copy', () => {
       id: guidanceId('troubleshooting.cursor.project-entry-not-loaded'),
       params: { agent: 'cursor' },
     });
-    expect(text).toContain('pick open-knowledge');
+    expect(text).toContain('pick open-knowledge and');
     expect(text).toContain('Customize → MCPs');
+  });
+
+  test("Cursor's note names the server key its reference carries", () => {
+    vi.stubGlobal('window', { okDesktop: { mcpServerName: 'open-knowledge-beta' } });
+    try {
+      const text = troubleshootingText({
+        id: guidanceId('troubleshooting.cursor.project-entry-not-loaded'),
+        params: { agent: 'cursor', server: 'team-knowledge' },
+      });
+      expect(text).toContain('pick team-knowledge and');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("Cursor's note names the desktop channel's own server key", () => {
+    vi.stubGlobal('window', { okDesktop: { mcpServerName: 'open-knowledge-beta' } });
+    try {
+      const text = troubleshootingText({
+        id: guidanceId('troubleshooting.cursor.project-entry-not-loaded'),
+        params: { agent: 'cursor' },
+      });
+      expect(text).toContain('pick open-knowledge-beta and');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   test('a ref without an agent or with an unknown id renders nothing', () => {

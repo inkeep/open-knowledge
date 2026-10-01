@@ -4,6 +4,7 @@ import type {
   McpEntryClassification,
   McpRemoveOutcome,
 } from '@inkeep/open-knowledge';
+import { currentMcpServerName } from '@inkeep/open-knowledge-core';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type {
   IntegrationsEditorState,
@@ -250,7 +251,7 @@ export function registerProjectIntegrationsSettings(
       case 'left-foreign':
         return {
           ok: false,
-          error: `The open-knowledge entry in ${label}'s project config isn't one OpenKnowledge wrote — it was left unchanged. Remove it manually if you no longer want it.`,
+          error: `The ${currentMcpServerName()} entry in ${label}'s project config isn't one OpenKnowledge wrote — it was left unchanged. Remove it manually if you no longer want it.`,
         };
       case 'declined':
         return {

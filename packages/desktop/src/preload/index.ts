@@ -76,6 +76,7 @@ import {
 } from '../shared/menu-dispatch-results.ts';
 import {
   LANGUAGE_PREFERENCE_ARG_NAME,
+  MCP_SERVER_NAME_ARG_NAME,
   resolveOkDesktopMode,
   resolveOkThemePreference,
   THEME_PREFERENCE_ARG_NAME,
@@ -899,6 +900,7 @@ const bridge: OkDesktopBridge = {
   platform: process.platform as 'darwin' | 'win32' | 'linux',
   appVersion: parseArg('app-version') ?? '0.0.0',
   instanceLabel: parseArg('instance-label') ?? null,
+  mcpServerName: parseArg(MCP_SERVER_NAME_ARG_NAME) ?? null,
 
   getPathForFile: (file) => {
     const path = webUtils.getPathForFile(file);

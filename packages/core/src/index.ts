@@ -415,17 +415,20 @@ export {
 export {
   ALL_EDITOR_IDS,
   EDITOR_LABELS,
-  EDITOR_PROJECT_CONFIG_PATH,
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_SETUP_DOC_SLUG,
   EDITOR_USER_SKILL_ROOT,
   type EditorId,
+  editorProjectConfigPath,
   HOSTS_WITH_USER_SKILL_DIR,
   HUB_READER_EDITORS,
   PROJECT_SKILL_EDITOR_IDS,
   PROJECT_SKILL_PROJECTION_PATHS,
+  piExtensionProjectPath,
+  piToolNamespace,
   RESERVED_PROJECT_SKILL_NAME,
   receivesProjectIntegrationWrite,
+  STABLE_EDITOR_PROJECT_CONFIG_PATH,
   skillRootActivationPath,
   USER_MCP_GATED_EDITOR_IDS,
   USER_SKILL_EDITOR_IDS,
@@ -490,6 +493,7 @@ export {
   type McpLauncherEnvelope,
   type McpLauncherFamily,
   type McpLauncherRevisionCatalog,
+  mcpChainMarkerPrefix,
 } from './constants/mcp-launcher.ts';
 export {
   MENU_LABELS,
@@ -526,12 +530,16 @@ export {
   type PreviewThemeToken,
 } from './constants/preview-theme-tokens.ts';
 export {
+  currentDesktopProduct,
+  currentMcpServerName,
   DESKTOP_PRODUCTS,
   type DesktopProduct,
   type DesktopProductName,
   desktopWindowsExecutableName,
   desktopWindowsInstallDirNames,
+  OK_CHANNEL_ENV,
   PRODUCT_NAME,
+  resolveDesktopProductName,
 } from './constants/product.ts';
 export { isReservedLogDoc } from './constants/reserved-docs.ts';
 export { DEFAULT_SERVER_HOST } from './constants/server.ts';

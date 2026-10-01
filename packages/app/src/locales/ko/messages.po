@@ -7404,7 +7404,7 @@ msgstr "{agent}에 OpenKnowledge 도구가 보이지 않으면 설정에 있는 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.cursor.project-entry-not-loaded"
-msgstr "{agent}에 OpenKnowledge 도구가 보이지 않으면 Customize → MCPs를 열고 open-knowledge를 선택한 뒤 해당 .cursor/mcp.json 소스를 켜세요. {agent}은(는) 직접 켜기 전까지 프로젝트 서버를 꺼 둡니다."
+msgstr "{agent}에 OpenKnowledge 도구가 보이지 않으면 Customize → MCPs를 열고 {server}를 선택한 뒤 해당 .cursor/mcp.json 소스를 켜세요. {agent}은(는) 직접 켜기 전까지 프로젝트 서버를 꺼 둡니다."
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
@@ -12037,8 +12037,8 @@ msgid "Replace these symlinks with independent copies?"
 msgstr "이 심볼릭 링크를 독립적인 복사본으로 바꿀까요?"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
-msgid "Replaces the existing \"open-knowledge\" entry in this file. Other servers in the file are left alone."
-msgstr "이 파일의 기존 \"open-knowledge\" 항목을 대체합니다. 파일의 다른 서버는 그대로 유지됩니다."
+msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
+msgstr "이 파일의 기존 {server} 항목을 대체합니다. 파일의 다른 서버는 그대로 유지됩니다."
 
 #. placeholder {0}: formatToolList( replacing.map((e) => e.label), i18n.locale, )
 #: src/components/McpConsentDialogBody.tsx

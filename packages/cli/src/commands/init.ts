@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { inspect } from 'node:util';
 import {
+  currentMcpServerName,
   type McpLauncherDeclineReason,
   OPENKNOWLEDGE_SKILLS_REPO,
 } from '@inkeep/open-knowledge-core';
@@ -21,7 +22,6 @@ import {
   HomeProjectRootError,
   initContent,
   installUserSkill,
-  MCP_SERVER_NAME,
   ONBOARDING_BUNDLE_IDS,
   ProjectGitInitError,
   removeProjectSkillGitignoreBlock,
@@ -1562,7 +1562,8 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
       const displayPath = editor.configPath.startsWith(cwd)
         ? relative(cwd, editor.configPath)
         : editor.configPath.replace(/^\/Users\/[^/]+/, '~');
-      const serverNameNote = editor.serverName === MCP_SERVER_NAME ? '' : ` (${editor.serverName})`;
+      const serverNameNote =
+        editor.serverName === currentMcpServerName() ? '' : ` (${editor.serverName})`;
       const scopeTag = editor.configScope === 'project' ? ' (project)' : '';
       const labelWithScope = `${editor.label}${scopeTag}`;
       const pad = ' '.repeat(Math.max(1, 20 - labelWithScope.length));

@@ -7404,7 +7404,7 @@ msgstr "Si {agent} n'affiche aucun outil OpenKnowledge, vérifiez que le chemin 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.cursor.project-entry-not-loaded"
-msgstr "Si {agent} n'affiche aucun outil OpenKnowledge, ouvrez Customize → MCPs, sélectionnez open-knowledge et activez sa source .cursor/mcp.json ; {agent} laisse les serveurs de projet désactivés tant que vous ne le faites pas."
+msgstr "Si {agent} n'affiche aucun outil OpenKnowledge, ouvrez Customize → MCPs, sélectionnez {server} et activez sa source .cursor/mcp.json ; {agent} laisse les serveurs de projet désactivés tant que vous ne le faites pas."
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
@@ -12037,8 +12037,8 @@ msgid "Replace these symlinks with independent copies?"
 msgstr "Remplacer ces liens symboliques par des copies indépendantes ?"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
-msgid "Replaces the existing \"open-knowledge\" entry in this file. Other servers in the file are left alone."
-msgstr "Remplace l'entrée \"open-knowledge\" existante dans ce fichier. Les autres serveurs du fichier ne sont pas modifiés."
+msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
+msgstr "Remplace l'entrée {server} existante dans ce fichier. Les autres serveurs du fichier ne sont pas modifiés."
 
 #. placeholder {0}: formatToolList( replacing.map((e) => e.label), i18n.locale, )
 #: src/components/McpConsentDialogBody.tsx

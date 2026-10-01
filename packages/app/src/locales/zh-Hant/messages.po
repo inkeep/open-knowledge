@@ -7404,7 +7404,7 @@ msgstr "如果 {agent} 沒有顯示 OpenKnowledge 工具，請檢查它設定中
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.cursor.project-entry-not-loaded"
-msgstr "如果 {agent} 沒有顯示 OpenKnowledge 工具，請開啟 Customize → MCPs，選擇 open-knowledge 並開啟它的 .cursor/mcp.json 來源；在你開啟之前，{agent} 會讓專案伺服器保持關閉。"
+msgstr "如果 {agent} 沒有顯示 OpenKnowledge 工具，請開啟 Customize → MCPs，選擇 {server} 並開啟它的 .cursor/mcp.json 來源；在你開啟之前，{agent} 會讓專案伺服器保持關閉。"
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
@@ -12037,8 +12037,8 @@ msgid "Replace these symlinks with independent copies?"
 msgstr "要把這些符號連結換成獨立的副本嗎？"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
-msgid "Replaces the existing \"open-knowledge\" entry in this file. Other servers in the file are left alone."
-msgstr "取代此檔案中現有的 \"open-knowledge\" 項目。檔案中的其他伺服器維持不變。"
+msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
+msgstr "取代此檔案中現有的 {server} 項目。檔案中的其他伺服器維持不變。"
 
 #. placeholder {0}: formatToolList( replacing.map((e) => e.label), i18n.locale, )
 #: src/components/McpConsentDialogBody.tsx

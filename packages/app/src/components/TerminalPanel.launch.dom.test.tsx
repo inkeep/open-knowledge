@@ -81,6 +81,7 @@ const WIRED: ClaudeReadiness = {
   claude: 'present',
   mcpPreApprovable: true,
   okToolsAutoApprovable: true,
+  mcpServerName: 'open-knowledge',
 };
 const WIRED_FOREIGN_PROJECT: ClaudeReadiness = {
   claude: 'present',
@@ -91,9 +92,14 @@ const WIRED_GLOBAL_ONLY: ClaudeReadiness = {
   claude: 'present',
   mcpPreApprovable: false,
   okToolsAutoApprovable: true,
+  mcpServerName: 'open-knowledge',
 };
 const ON_PATH: CliReadiness = { onPath: 'present' };
-const CODEX_OK_CONFIGURED: CliReadiness = { onPath: 'present', okServerConfigured: true };
+const CODEX_OK_CONFIGURED: CliReadiness = {
+  onPath: 'present',
+  okServerConfigured: true,
+  mcpServerName: 'open-knowledge',
+};
 
 function makeBridge(
   preflight: ClaudeReadiness = WIRED,
@@ -607,6 +613,28 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     );
   });
 
+  test('codex auto-approves only the server name main checked, and nothing without one', async () => {
+    const beta = makeBridge(WIRED, {
+      ...CODEX_OK_CONFIGURED,
+      mcpServerName: 'open-knowledge-beta',
+    });
+    render(
+      <TerminalPanel bridge={beta.bridge} launch={{ prompt: 'hi', cli: 'codex', nonce: 1 }} />,
+    );
+    await waitFor(() => expect(beta.terminal.create).toHaveBeenCalledTimes(1));
+    expect(bakedLaunch(beta.terminal.create)).toBe(
+      `codex -c 'mcp_servers.open-knowledge-beta.default_tools_approval_mode="approve"' 'hi'`,
+    );
+    cleanup();
+
+    const unnamed = makeBridge(WIRED, { onPath: 'present', okServerConfigured: true });
+    render(
+      <TerminalPanel bridge={unnamed.bridge} launch={{ prompt: 'hi', cli: 'codex', nonce: 1 }} />,
+    );
+    await waitFor(() => expect(unnamed.terminal.create).toHaveBeenCalledTimes(1));
+    expect(bakedLaunch(unnamed.terminal.create)).toBe("codex 'hi'");
+  });
+
   test('codex stays BARE (no -c) when OK is not configured in codex — the launch never breaks', async () => {
     const { bridge, terminal } = makeBridge(WIRED, {
       onPath: 'present',
@@ -752,11 +780,13 @@ describe('the two --settings halves are gated independently, across all four MCP
     claude: 'present',
     mcpPreApprovable: true,
     okToolsAutoApprovable: true,
+    mcpServerName: 'open-knowledge',
   };
   const BOTH_SCOPES: ClaudeReadiness = {
     claude: 'present',
     mcpPreApprovable: true,
     okToolsAutoApprovable: true,
+    mcpServerName: 'open-knowledge',
   };
   const NEITHER_SCOPE: ClaudeReadiness = {
     claude: 'present',
@@ -807,6 +837,19 @@ describe('the two --settings halves are gated independently, across all four MCP
     });
     expect(baked).toBe("claude 'hi'");
     expect(baked).not.toContain('--settings');
+  });
+
+  test('names only the server main checked: a Beta verdict never approves open-knowledge', async () => {
+    const baked = await bakeClaudeLaunch({ ...BOTH_SCOPES, mcpServerName: 'open-knowledge-beta' });
+    expect(baked).toContain('"enabledMcpjsonServers":["open-knowledge-beta"]');
+    expect(baked).toContain('"mcp__open-knowledge-beta__delete"');
+    expect(baked?.replaceAll('open-knowledge-beta', '')).not.toContain('open-knowledge');
+  });
+
+  test('a verdict that carries no server name bakes a bare launch, never a guessed name', async () => {
+    const { mcpServerName: _omitted, ...unnamed } = BOTH_SCOPES;
+    const baked = await bakeClaudeLaunch(unnamed);
+    expect(baked).toBe("claude 'hi'");
   });
 
   test('toggle OFF on a global-only install: neither half, so the launch is bare', async () => {

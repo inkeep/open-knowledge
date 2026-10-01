@@ -12,6 +12,8 @@ icon: LuCpu
 
 After `ok init` writes the config, open LM Studio's **Program** tab and enable the `open-knowledge` server (LM Studio spawns a process per MCP server on save). The model you chat with must support tool use — see [Pick a tool-capable model](#pick-a-tool-capable-model).
 
+OpenKnowledge Beta registers as `open-knowledge-beta` instead; see [Beta uses its own entry](/docs/reference/what-open-knowledge-writes#beta-uses-its-own-entry).
+
 `ok init` writes the OpenKnowledge server into LM Studio's `mcp.json`, using the same resilient launcher every other editor gets — it finds `ok` whether you installed the desktop app or the npm CLI, so there's no PATH to configure. LM Studio follows Cursor's `mcp.json` notation, so the entry lands under a top-level `mcpServers` map.
 
 <Callout type="info">

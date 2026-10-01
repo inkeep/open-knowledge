@@ -36,6 +36,7 @@ import {
   agentIdForAcpAgent,
   changedBlockRange,
   colorFromSeed,
+  currentMcpServerName,
   type EditorId,
   type HostSnapshot,
   iconFromClientName,
@@ -1616,7 +1617,7 @@ export class AcpThreadManager {
       if (serverUrl !== undefined && init.agentCapabilities?.mcpCapabilities?.http === true) {
         servers.push({
           type: 'http',
-          name: 'open-knowledge',
+          name: currentMcpServerName(),
           url: `${serverUrl}/mcp`,
           headers: [{ name: MCP_HOSTED_AGENT_HEADER, value: '1' }],
         });
@@ -1626,7 +1627,7 @@ export class AcpThreadManager {
         const entryPath = agentSpawnPath();
         if (stdio !== null && stdio !== undefined) {
           servers.push({
-            name: 'open-knowledge',
+            name: currentMcpServerName(),
             command: stdio.command,
             args: [...stdio.args],
             env: [
