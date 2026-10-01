@@ -175,7 +175,7 @@ describe('POST /api/link-preview anti-proxy gate', () => {
     expect(fake.calls).toHaveLength(0);
   });
 
-  test('rejects a non-JSON content type without fetching', async () => {
+  test('rejects a non-JSON content type with the shared 415 without fetching', async () => {
     const fake = makeFakeFetch({ html: '<title>never</title>' });
     const harness = await rig.open(fake.impl);
     const res = await postPreview(harness.baseURL, {
@@ -183,7 +183,10 @@ describe('POST /api/link-preview anti-proxy gate', () => {
       contentType: 'text/plain',
       body: JSON.stringify({ url: 'https://example.com' }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(415);
+    expect(((await res.json()) as { type?: string }).type).toBe(
+      'urn:ok:error:unsupported-media-type',
+    );
     expect(fake.calls).toHaveLength(0);
   });
 

@@ -161,7 +161,8 @@ test('disabled test routes retain unknown-path admission, in ephemeral servers',
   }
   for (const path of WRITES) {
     const response = await rawRequest(ephemeral.port, path, { method: 'POST', body: '{' });
-    expect(response.status, `${path}: ${response.body}`).toBe(400);
+    expect(response.status, `${path}: ${response.body}`).toBe(415);
+    expect(parseProblem(response.body).type, path).toBe('urn:ok:error:unsupported-media-type');
   }
   for (const path of READS) {
     const response = await rawRequest(ephemeral.port, path);

@@ -2,8 +2,11 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
 import {
+  isJsonContentType,
   PayloadTooLargeError,
   RequestBodyTimeoutError,
+  readBoundedJsonBody,
+  UnsupportedMediaTypeError,
   validateBody,
   withValidation,
 } from './request-validation.ts';
@@ -30,11 +33,13 @@ interface MockReqOptions {
   method?: string;
   chunks?: Buffer[];
   throwOnRead?: Error;
+  headers?: Record<string, string>;
 }
 
 function makeMockReq(opts: MockReqOptions = {}): IncomingMessage {
   return {
     method: opts.method ?? 'POST',
+    headers: opts.headers ?? {},
     destroy(_err?: Error) {},
     [Symbol.asyncIterator]: async function* () {
       if (opts.throwOnRead) {
@@ -382,5 +387,229 @@ describe('validateBody — direct unit tests (multipart handler entry point)', (
     expect(body.status).toBe(400);
     expect(typeof body.detail).toBe('string');
     expect(body.detail).toContain('field');
+  });
+});
+
+describe('withValidation: body media type gate', () => {
+  const wrappedWithSpy = (options: Parameters<typeof withValidation>[2] = {}) => {
+    const calls: string[] = [];
+    const wrapped = withValidation(
+      TestSchema,
+      async () => {
+        calls.push('handler');
+      },
+      { handler: 'test', ...options },
+    );
+    return { wrapped, calls };
+  };
+
+  const declaredBody = (headers: Record<string, string>, chunks = [Buffer.from('{"foo":"bar"}')]) =>
+    makeMockReq({
+      headers: { 'content-length': String(chunks[0]?.length ?? 0), ...headers },
+      chunks,
+    });
+
+  test.each([
+    ['text/plain'],
+    ['text/plain;charset=UTF-8'],
+    ['application/x-www-form-urlencoded'],
+    ['multipart/form-data; boundary=b'],
+    ['application/jsonp'],
+    ['application/xml'],
+  ])(
+    'a declared body typed %s → 415 problem+json, before the body is read',
+    async (contentType) => {
+      const { res, writeHeadCalls, endCalls } = makeMockRes();
+      const { wrapped, calls } = wrappedWithSpy();
+      let bodyConsumed = false;
+      const req = makeMockReq({
+        headers: { 'content-type': contentType, 'content-length': '13' },
+        chunks: [Buffer.from('{"foo":"bar"}')],
+      });
+      Object.defineProperty(req, Symbol.asyncIterator, {
+        value: async function* () {
+          bodyConsumed = true;
+          yield Buffer.from('{"foo":"bar"}');
+        },
+      });
+      await wrapped(req, res);
+      expect(calls).toEqual([]);
+      expect(bodyConsumed).toBe(false);
+      expect(writeHeadCalls.length).toBe(1);
+      expect(writeHeadCalls[0].status).toBe(415);
+      expect(writeHeadCalls[0].headers['Content-Type']).toBe('application/problem+json');
+      const body = JSON.parse(endCalls[0]);
+      expect(body.type).toBe('urn:ok:error:unsupported-media-type');
+      expect(body.title).toBe('Request body must be JSON.');
+      expect(body.status).toBe(415);
+      expect(body.detail).toContain('Content-Type: application/json');
+    },
+  );
+
+  test('a declared body with no content-type at all → 415', async () => {
+    const { res, writeHeadCalls } = makeMockRes();
+    const { wrapped, calls } = wrappedWithSpy();
+    await wrapped(declaredBody({}), res);
+    expect(calls).toEqual([]);
+    expect(writeHeadCalls[0].status).toBe(415);
+  });
+
+  test.each([
+    ['application/json'],
+    ['application/json; charset=utf-8'],
+    ['Application/JSON'],
+    ['application/json ;charset=utf-8'],
+    ['application/merge-patch+json'],
+  ])('a body typed %s reaches the handler', async (contentType) => {
+    const { res, writeHeadCalls } = makeMockRes();
+    const { wrapped, calls } = wrappedWithSpy();
+    await wrapped(declaredBody({ 'content-type': contentType }), res);
+    expect(calls).toEqual(['handler']);
+    expect(writeHeadCalls.length).toBe(0);
+  });
+
+  test('an undeclared body (no content-length, no transfer-encoding) skips the gate', async () => {
+    const { res, writeHeadCalls } = makeMockRes();
+    const { wrapped, calls } = wrappedWithSpy();
+    await wrapped(
+      makeMockReq({
+        headers: { 'content-type': 'text/plain' },
+        chunks: [Buffer.from('{"foo":"bar"}')],
+      }),
+      res,
+    );
+    expect(calls).toEqual(['handler']);
+    expect(writeHeadCalls.length).toBe(0);
+  });
+
+  test('transfer-encoding alone declares a body → 415 without a content-type', async () => {
+    const { res, writeHeadCalls } = makeMockRes();
+    const { wrapped, calls } = wrappedWithSpy();
+    await wrapped(makeMockReq({ headers: { 'transfer-encoding': 'chunked' } }), res);
+    expect(calls).toEqual([]);
+    expect(writeHeadCalls[0].status).toBe(415);
+  });
+
+  test('skipBodyParse routes ignore the body entirely, media type included', async () => {
+    const { res, writeHeadCalls, endCalls } = makeMockRes();
+    const { wrapped, calls } = wrappedWithSpy({ skipBodyParse: true, method: 'DELETE' });
+    await wrapped(
+      makeMockReq({
+        method: 'DELETE',
+        headers: { 'content-type': 'text/plain', 'content-length': '3' },
+        chunks: [Buffer.from('{}')],
+      }),
+      res,
+    );
+    expect(calls).toEqual([]);
+    expect(writeHeadCalls.length).toBe(1);
+    expect(writeHeadCalls[0].status).toBe(400);
+    expect(JSON.parse(endCalls[0]).type).toBe('urn:ok:error:invalid-request');
+  });
+
+  test('the method check outranks the media gate: a wrong method is still 405 with Allow', async () => {
+    const { res, writeHeadCalls } = makeMockRes();
+    const { wrapped, calls } = wrappedWithSpy({ method: 'POST' });
+    await wrapped(
+      makeMockReq({
+        method: 'PATCH',
+        headers: { 'content-type': 'text/plain', 'content-length': '13' },
+        chunks: [Buffer.from('{"foo":"bar"}')],
+      }),
+      res,
+    );
+    expect(calls).toEqual([]);
+    expect(writeHeadCalls[0].status).toBe(405);
+    expect(writeHeadCalls[0].headers.Allow).toBe('POST');
+  });
+
+  test('a preBodyGate refusal still wins over the media gate', async () => {
+    const { res, writeHeadCalls, endCalls } = makeMockRes();
+    const wrapped = withValidation(
+      TestSchema,
+      async () => {
+        throw new Error('handler must not run');
+      },
+      {
+        handler: 'test',
+        preBodyGate: (_req, response) => {
+          response.writeHead(403, { 'Content-Type': 'application/problem+json' });
+          response.end(JSON.stringify({ type: 'urn:ok:error:invalid-origin' }));
+          (response as { headersSent?: boolean }).headersSent = true;
+          (response as { writableEnded?: boolean }).writableEnded = true;
+          return false;
+        },
+      },
+    );
+    await wrapped(
+      makeMockReq({
+        headers: { 'content-type': 'text/plain', 'content-length': '13' },
+        chunks: [Buffer.from('{"foo":"bar"}')],
+      }),
+      res,
+    );
+    expect(writeHeadCalls.length).toBe(1);
+    expect(writeHeadCalls[0].status).toBe(403);
+    expect(JSON.parse(endCalls[0]).type).toBe('urn:ok:error:invalid-origin');
+  });
+});
+
+describe('isJsonContentType', () => {
+  test.each([
+    ['application/json'],
+    ['application/json; charset=utf-8'],
+    ['APPLICATION/JSON'],
+    ['Application/JSON'],
+    ['  application/json  '],
+    ['application/json ;charset=utf-8'],
+    ['application/merge-patch+json'],
+    ['application/json-patch+json'],
+    ['application/vnd.api+json'],
+  ])('admits %s', (contentType) => {
+    expect(isJsonContentType(contentType)).toBe(true);
+  });
+
+  test.each([
+    [undefined],
+    [''],
+    ['text/plain'],
+    ['text/plain;charset=UTF-8'],
+    ['multipart/form-data; boundary=x'],
+    ['application/x-www-form-urlencoded'],
+    ['application/jsonp'],
+    ['application/+json'],
+    ['text/json'],
+    ['application/xml'],
+  ])('refuses %s', (contentType) => {
+    expect(isJsonContentType(contentType)).toBe(false);
+  });
+});
+
+describe('readBoundedJsonBody: media type refusal', () => {
+  const limits = { maxBytes: 1024, timeoutMs: 5_000 };
+
+  test('throws UnsupportedMediaTypeError for a declared non-JSON body without reading it', async () => {
+    let bodyConsumed = false;
+    const req = makeMockReq({ headers: { 'content-type': 'text/plain', 'content-length': '2' } });
+    Object.defineProperty(req, Symbol.asyncIterator, {
+      value: async function* () {
+        bodyConsumed = true;
+        yield Buffer.from('{}');
+      },
+    });
+    await expect(readBoundedJsonBody(req, limits)).rejects.toBeInstanceOf(
+      UnsupportedMediaTypeError,
+    );
+    expect(bodyConsumed).toBe(false);
+  });
+
+  test('reads a JSON body and an undeclared body', async () => {
+    const json = makeMockReq({
+      headers: { 'content-type': 'application/json', 'content-length': '13' },
+      chunks: [Buffer.from('{"foo":"bar"}')],
+    });
+    expect((await readBoundedJsonBody(json, limits)).toString('utf8')).toBe('{"foo":"bar"}');
+    const undeclared = makeMockReq({ headers: { 'content-type': 'text/plain' } });
+    expect((await readBoundedJsonBody(undeclared, limits)).length).toBe(0);
   });
 });

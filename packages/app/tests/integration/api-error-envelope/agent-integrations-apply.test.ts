@@ -32,10 +32,38 @@ afterAll(async () => {
 });
 
 describe('agent-integrations apply — a host with no writers injected', () => {
-  test('accepts loose JSON without a Content-Type gate and emits shared success headers', async () => {
+  test('refuses a JSON body that is not labeled JSON, the shapes a cross-site form, beacon or curl -d sends', async () => {
+    const json = JSON.stringify({
+      intents: [{ satisfierId: CLAUDE_PROJECT_MCP, desired: 'present' }],
+    });
+    const cases: Array<[string, RequestInit]> = [
+      ['no Content-Type at all', { body: new TextEncoder().encode(json) }],
+      ['text/plain', { headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: json }],
+      [
+        'form-urlencoded',
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: json },
+      ],
+    ];
+    for (const [label, init] of cases) {
+      const res = await fetch(`${base()}/api/agent-integrations/apply`, {
+        method: 'POST',
+        ...init,
+      });
+      expect(res.status, label).toBe(415);
+      const problem = ProblemDetailsSchema.parse(await res.json());
+      expect(problem.type, label).toBe('urn:ok:error:unsupported-media-type');
+      expect(problem.detail, label).toContain('Content-Type: application/json');
+    }
+  });
+
+  test('accepts loose JSON fields and emits shared success headers', async () => {
     const res = await fetch(`${base()}/api/agent-integrations/apply`, {
       method: 'POST',
-      headers: { Origin: 'http://localhost:5173', 'X-Request-Id': 'apply-success-contract' },
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: 'http://localhost:5173',
+        'X-Request-Id': 'apply-success-contract',
+      },
       body: JSON.stringify({
         intents: [{ satisfierId: CLAUDE_PROJECT_MCP, desired: 'present', futureIntentField: true }],
         futureRequestField: true,
@@ -105,6 +133,7 @@ describe('agent-integrations apply — a host with no writers injected', () => {
   test('matches the exact path with a query but not a slash or neighboring path', async () => {
     const query = await fetch(`${base()}/api/agent-integrations/apply?source=test`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ intents: [] }),
     });
     expect(query.status).toBe(200);
@@ -173,7 +202,7 @@ describe('agent-integrations apply — refusals use the shared envelope', () => 
   ])('rejects %s with its validation title', async (_label, body, title) => {
     const res = await fetch(`${base()}/api/agent-integrations/apply`, {
       method: 'POST',
-      ...(body === undefined ? {} : { body }),
+      ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body }),
     });
     expect(res.status).toBe(400);
     const problem = ProblemDetailsSchema.parse(await res.json());
@@ -208,6 +237,7 @@ describe('agent-integrations apply — refusals use the shared envelope', () => 
   test('rejects a body larger than one mebibyte', async () => {
     const res = await fetch(`${base()}/api/agent-integrations/apply`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ intents: [], extra: 'x'.repeat(1_048_576) }),
     });
     expect(res.status).toBe(413);
@@ -288,6 +318,7 @@ describe('agent-integrations apply — refusals use the shared envelope', () => 
         {
           method: 'POST',
           headers: {
+            'Content-Type': 'application/json',
             Origin: 'https://integrations.example.com',
             'X-Forwarded-For': '203.0.113.8',
           },
@@ -320,6 +351,7 @@ describe('agent-integrations apply — ephemeral admission', () => {
       });
       const res = await fetch(`http://127.0.0.1:${ephemeral.port}/api/agent-integrations/apply`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ intents: [] }),
       });
       expect(res.status).toBe(200);

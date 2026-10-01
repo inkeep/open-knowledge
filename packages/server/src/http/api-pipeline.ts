@@ -11,11 +11,11 @@ import {
 } from '@opentelemetry/semantic-conventions';
 import { recordEmbedProbe } from '../embed-probe.ts';
 import {
+  admitRequestOrigin,
   buildIngressPolicy,
   HOST_NOT_ADMITTED_REMEDIATION,
   type IngressPolicy,
   isHostAdmitted,
-  isOriginAdmitted,
   isPeerAdmitted,
   stampIngressContext,
 } from '../ingress-policy.ts';
@@ -201,23 +201,29 @@ export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPi
 
     if (url.startsWith('/api/')) {
       const origin = request.headers.origin;
-      if (origin !== undefined && !isOriginAdmitted(origin, policy)) {
+      const admission = admitRequestOrigin(origin, method, policy);
+      if (!admission.admitted) {
         errorResponse(response, 403, 'urn:ok:error:invalid-origin', 'Origin not allowed.', {
           handler: 'api-origin-gate',
+          detail: admission.detail,
         });
         return true;
       }
       if (typeof response.setHeader === 'function') {
         if (origin !== undefined) {
-          response.setHeader('Access-Control-Allow-Origin', origin);
           response.setHeader('Vary', 'Origin');
         }
-        response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        response.setHeader(
-          'Access-Control-Allow-Headers',
-          `Content-Type, Authorization, traceparent, tracestate, baggage, ${REQUEST_ID_HEADER}, ${CLIENT_VERSION_HEADER.protocol}, ${CLIENT_VERSION_HEADER.runtime}, ${CLIENT_VERSION_HEADER.kind}`,
-        );
-        response.setHeader('Access-Control-Expose-Headers', REQUEST_ID_HEADER);
+        if (admission.corsGrant) {
+          if (origin !== undefined) {
+            response.setHeader('Access-Control-Allow-Origin', origin);
+          }
+          response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+          response.setHeader(
+            'Access-Control-Allow-Headers',
+            `Content-Type, Authorization, traceparent, tracestate, baggage, ${REQUEST_ID_HEADER}, ${CLIENT_VERSION_HEADER.protocol}, ${CLIENT_VERSION_HEADER.runtime}, ${CLIENT_VERSION_HEADER.kind}`,
+          );
+          response.setHeader('Access-Control-Expose-Headers', REQUEST_ID_HEADER);
+        }
       }
       if (request.method === 'OPTIONS') {
         response.writeHead(204);

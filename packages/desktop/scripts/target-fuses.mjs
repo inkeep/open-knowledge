@@ -8,6 +8,7 @@ export const targetFuses = {
   [FuseV1Options.EnableNodeCliInspectArguments]: true,
   [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
   [FuseV1Options.OnlyLoadAppFromAsar]: true,
+  [FuseV1Options.GrantFileProtocolExtraPrivileges]: true,
 };
 
 export function fuseStateName(state) {

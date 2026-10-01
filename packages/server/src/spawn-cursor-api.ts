@@ -16,6 +16,8 @@ import {
   PayloadTooLargeError,
   RequestBodyTimeoutError,
   readBoundedJsonBody,
+  respondUnsupportedMediaType,
+  UnsupportedMediaTypeError,
 } from './http/request-validation.ts';
 import { successResponse } from './http/success-response.ts';
 import { getLogger } from './logger.ts';
@@ -66,6 +68,10 @@ export async function handleSpawnCursor(
       timeoutMs: SPAWN_CURSOR_BODY_READ_TIMEOUT_MS,
     });
   } catch (err) {
+    if (err instanceof UnsupportedMediaTypeError) {
+      respondUnsupportedMediaType(res, HANDLER);
+      return;
+    }
     if (err instanceof PayloadTooLargeError) {
       errorResponse(res, 413, 'urn:ok:error:payload-too-large', 'Payload too large.', {
         handler: HANDLER,

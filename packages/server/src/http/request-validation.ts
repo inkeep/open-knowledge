@@ -18,10 +18,26 @@ function readRequestBody(req: IncomingMessage): Promise<Buffer> {
   });
 }
 
+export function isJsonContentType(contentType: string | undefined): boolean {
+  const mediaType = contentType?.split(';', 1)[0]?.trim().toLowerCase();
+  if (mediaType === undefined) return false;
+  return (
+    mediaType === 'application/json' || /^application\/[a-z0-9!#$&^_.+-]+\+json$/.test(mediaType)
+  );
+}
+
+function hasRequestBody(req: IncomingMessage): boolean {
+  if (req.headers['transfer-encoding'] !== undefined) return true;
+  return Number(req.headers['content-length'] ?? 0) > 0;
+}
+
 export async function readBoundedJsonBody(
   req: IncomingMessage,
   opts: { readonly maxBytes: number; readonly timeoutMs: number },
 ): Promise<Buffer> {
+  if (hasRequestBody(req) && !isJsonContentType(req.headers['content-type'])) {
+    throw new UnsupportedMediaTypeError();
+  }
   const chunks: Buffer[] = [];
   let totalBytes = 0;
   const timeoutSignal = AbortSignal.timeout(opts.timeoutMs);
@@ -39,6 +55,23 @@ export async function readBoundedJsonBody(
   } finally {
     timeoutSignal.removeEventListener('abort', onTimeout);
   }
+}
+
+export class UnsupportedMediaTypeError extends Error {
+  constructor() {
+    super('Request body is not labeled as JSON');
+    this.name = 'UnsupportedMediaTypeError';
+  }
+}
+
+export function respondUnsupportedMediaType(
+  res: ServerResponse,
+  handler: string | undefined,
+): void {
+  errorResponse(res, 415, 'urn:ok:error:unsupported-media-type', 'Request body must be JSON.', {
+    handler,
+    detail: 'Send the request body as JSON with the header Content-Type: application/json.',
+  });
 }
 
 export class PayloadTooLargeError extends Error {
@@ -144,6 +177,10 @@ export function withValidation<T>(
     try {
       raw = await readRequestBody(req);
     } catch (err) {
+      if (err instanceof UnsupportedMediaTypeError) {
+        respondUnsupportedMediaType(res, options.handler);
+        return;
+      }
       if (err instanceof PayloadTooLargeError) {
         errorResponse(res, 413, 'urn:ok:error:payload-too-large', 'Payload too large.', {
           handler: options.handler,

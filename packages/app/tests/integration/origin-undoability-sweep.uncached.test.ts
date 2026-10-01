@@ -134,6 +134,8 @@ const NON_CONTENT_ORIGINS: Record<string, string> = {
     'The uninstall-feedback submission source label, not a CRDT transaction origin.',
   LAUNCHER_FREE_ORIGIN:
     'The default provenance stamp on a menu-action dispatch, describing whether the surface that dispatched dismisses itself. It rides the menu-action bus, never a Y.Doc transaction.',
+  OPAQUE_ORIGIN_REFUSAL_DETAIL:
+    'The problem-details text the server sends when it refuses a null or file: HTTP Origin header, never a Y.Doc transaction origin.',
 };
 
 const HERE = import.meta.dirname;
