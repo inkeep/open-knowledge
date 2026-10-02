@@ -2,17 +2,38 @@ packages:
   - 'packages/*'
   - 'docs'
 
-# Patch application failures fail the install CLOSED (never silently skipped) —
-# the markdown pipeline depends on the pinned/patched remark-prosemirror hunks.
-ignorePatchFailures: false
+packageExtensions:
+  '@hookform/resolvers@5':
+    peerDependencies:
+      zod: '^3.25.0 || ^4.0.0'
+
+# Fail the install/run fast when the active Node is below the engines.node floor
+# (>=24). CI and local development both use .node-version, so pnpm must not
+# silently continue under a different runtime.
+engineStrict: true
+
+# Corepack selects packageManager. Avoid a second pnpm bootstrap and its env
+# lockfile document, which single-document dependency scanners cannot read.
+pmOnFail: ignore
+
+# Surgical flat-root hoist for the desktop native packaging deps only.
+# electron-builder.yml copies these packages from the workspace-root
+# node_modules, and the packaging guards assert that source layout. pnpm's
+# default isolated layout remains in place for everything else.
+publicHoistPattern:
+  - '@napi-rs/keyring*'
+  - '@parcel/watcher'
 
 # Supply-chain cooldown (admission-time): refuse npm versions published less
 # than 3 days ago, to dodge freshly-published malware. Unit = MINUTES
 # (4320 = 3 days). Own-org packages (@inkeep/*) are exempt. This replaces the
 # retired bunfig.toml posture (which expressed the same window in seconds:
 # minimumReleaseAge = 259200). Emergency reproduction escape hatch (bypass the
-# cooldown for a single install): `pnpm install --config.minimumReleaseAge=0`.
+# cooldown for a single install): `pnpm install --config.minimum-release-age=0`.
+# Corepack's exact packageManager pin is a separately reviewed toolchain
+# upgrade; pnpm's dependency cooldown does not gate that download.
 minimumReleaseAge: 4320
+minimumReleaseAgeStrict: true
 minimumReleaseAgeExclude:
   - '@inkeep/*'
   - '@visimer/*'
@@ -25,19 +46,38 @@ minimumReleaseAgeExclude:
   - 'electron-builder-squirrel-windows@26.16.1'
   - 'app-builder-lib@26.16.1'
   - 'dmg-builder@26.16.1'
+  # pnpm 12 re-verifies locked entries against the cooldown, so the exact
+  # Electron pin from #5276 (published 2026-09-30T06:59Z) fails every install
+  # until 2026-10-03T06:59Z. Version-qualified; delete it after that.
+  - 'electron@44.5.1'
 
-# Dependency build scripts are blocked by default under pnpm; only these run.
-# electron ships no install script of its own as of 43 — it fetches its platform
-# binary lazily on first use instead — but the entry stays so a future release
-# that reintroduces one is not silently blocked. The napi native addon
+# Bootstrap is explicit; running a script must not trigger an implicit install.
+verifyDepsBeforeRun: false
+
+# Dependency build scripts are blocked by default. Every detected
+# script is explicitly allowed or denied. Electron ships no install script of
+# its own as of 43, but the entry stays so a future release that reintroduces one
+# is not silently blocked. The napi native addon
 # (@inkeep/open-knowledge-native-config) builds via its own turbo `napi build`
 # task, not a dependency install script, so it needs no entry here. node-pty
 # publishes N-API prebuilds for the supported desktop platforms; its install
 # script remains allowlisted as a source-build fallback when no matching
 # prebuild is present.
-onlyBuiltDependencies:
-  - electron
-  - node-pty
+allowBuilds:
+  '@memlab/cli': false
+  '@mongodb-js/zstd': false
+  '@parcel/watcher': false
+  core-js: false
+  electron: true
+  electron-winstaller: false
+  esbuild: false
+  memlab: false
+  node-liblzma: false
+  node-pty: true
+  protobufjs: false
+  puppeteer: false
+  sharp: false
+  sleep: false
 
 overrides:
   # --- Security advisories (Dependabot). Each floor is a `~` range, so a later
@@ -67,21 +107,7 @@ overrides:
   # On 0.x packages the minor is the breaking axis, so those two are majors in
   # effect. pnpm applies an out-of-range override silently; these are the ones
   # that would not surface on their own.
-  #
-  # `next` is floored at ~16.3.x, the first line on which Next type-checks
-  # through the project-local `tsc` CLI instead of the JavaScript compiler API
-  # that TypeScript 7 no longer ships. A 16.2.x build under TypeScript 7 does not
-  # merely fail: it shells out an unsolicited `pnpm add -D typescript` inside the
-  # repo (firing the husky prepare + postinstall hooks) before dying with an
-  # opaque worker error, and `ignoreBuildErrors` does not suppress it. So this
-  # floor moves in lockstep with the compiler, never after it. From here the line
-  # is security-only again -- a bare `^16` caret would float to the next minor.
-  #
-  # `vite` is deliberately absent. 8.0.16 pulls rolldown 1.0.0-rc.15 -> 1.0.3,
-  # which re-partitions chunks and moves ~253 kB gzipped into the app's main
-  # entry (423.8 kB -> 676.8 kB, over the 487 kB size-limit). Its two advisories
-  # are dev-server-only on Windows and never reach a shipped artifact. Tracked
-  # for unpinning in PRD-8169. ---
+  # ---
   '@babel/core@7': ~7.29.6
   '@hono/node-server@1': ~1.19.15
   '@opentelemetry/core@2': ~2.8.0
@@ -101,12 +127,26 @@ overrides:
   'nanoid@3': ~3.3.18
   'nanoid@4': ~5.1.16
   'nanoid@5': ~5.1.16
+  # `next` is floored at ~16.3.x, the first line on which Next type-checks
+  # through the project-local `tsc` CLI instead of the JavaScript compiler API
+  # that TypeScript 7 no longer ships. A 16.2.x build under TypeScript 7 does not
+  # merely fail: it shells out an unsolicited `pnpm add -D typescript` inside the
+  # repo (firing the husky prepare + postinstall hooks) before dying with an
+  # opaque worker error, and `ignoreBuildErrors` does not suppress it. So this
+  # floor moves in lockstep with the compiler, never after it. From here the line
+  # is security-only again -- a bare `^16` caret would float to the next minor.
   'next@16': ~16.3.3
   'postcss@8': ~8.5.23
   'sharp@0.34': ~0.35.0
   'tar@7': ~7.5.21
   'undici@6': ~6.28.0
   'undici@7': ~7.29.0
+  # `vite` is deliberately absent. 8.0.16 pulls rolldown 1.0.0-rc.15 -> 1.0.3,
+  # which re-partitions chunks and moves ~253 kB gzipped into the app's main
+  # entry (423.8 kB -> 676.8 kB, over the 487 kB size-limit). Its two advisories
+  # are dev-server-only on Windows and never reach a shipped artifact. Tracked
+  # for unpinning in PRD-8169.
+  #
   # CodeMirror is the source-mode editor core. Freezing `view` is the point of
   # this pair, for the same reason the `@tiptap/*` + `prosemirror-*` pins below
   # exist: an unpinned editor core floats on every install. `state` is pinned

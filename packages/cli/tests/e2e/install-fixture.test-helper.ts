@@ -20,11 +20,12 @@ export async function createInstallFixture(optionalParent = false) {
   const archives = new Map<string, Buffer>();
   const metadata = new Map<string, Record<string, unknown>>();
   const responses = new Map<string, number | 'reset' | 'timeout'>();
+  const oneShotResponses = new Map<string, number[]>();
   const requests: string[] = [];
   const registry = createServer((request, response) => {
     const path = decodeURIComponent((request.url ?? '/').split('?')[0]);
     requests.push(path);
-    const failure = responses.get(path);
+    const failure = oneShotResponses.get(path)?.shift() ?? responses.get(path);
     if (failure === 'timeout') return;
     if (failure === 'reset') {
       response.destroy();
@@ -54,6 +55,9 @@ export async function createInstallFixture(optionalParent = false) {
     npm_config_registry: registryUrl,
     npm_config_cache: join(root, 'npm-cache'),
     npm_config_fetch_retries: '0',
+    pnpm_config_registry: registryUrl,
+    pnpm_config_cache_dir: join(root, 'pnpm-cache'),
+    pnpm_config_fetch_retries: '0',
   };
   const close = async () => {
     await new Promise<void>((resolve, reject) =>
@@ -125,7 +129,11 @@ export async function createInstallFixture(optionalParent = false) {
     );
     writeFileSync(
       join(root, 'pnpm-workspace.yaml'),
-      YAML.stringify({ packages: ['packages/*'], storeDir: join(root, 'store') }),
+      YAML.stringify({
+        packages: ['packages/*'],
+        storeDir: join(root, 'store'),
+        pmOnFail: 'ignore',
+      }),
     );
     const manifest = {
       name: '@inkeep/open-knowledge',
@@ -190,6 +198,7 @@ export async function createInstallFixture(optionalParent = false) {
       close,
       requests,
       responses,
+      oneShotResponses,
       manifest,
       lock,
       lockPath,

@@ -12,6 +12,7 @@ Thanks for contributing! Bug reports, feature requests, and pull requests are al
 A fresh clone builds and tests with no environment variables:
 
 ```bash
+corepack enable pnpm  # make the pnpm commands below use the packageManager pin
 pnpm install
 pnpm run check        # lint, typecheck, and tests
 ```
@@ -32,7 +33,7 @@ See `.env.example` for optional settings (OpenTelemetry, a custom dev port).
 
 ### Toolchain
 
-The repo pins **Node.js >=24.2.0** and **pnpm 10+** (via `.node-version`, the `packageManager` field, and `engines`). The minor matters: `engines.node` is `>=24.2.0`, not `>=24`, because the build scripts use `import.meta.main`, which landed in 24.2. Enable pnpm with `corepack enable pnpm`, or install it standalone (`npm install -g pnpm@10`). With a Node version manager, use `fnm install`, `mise install`, or `volta install node@24`. pnpm enforces the engine range (`engine-strict`), so on 24.0 or 24.1 `pnpm install` fails fast — pin 24.2.0 or newer first.
+The repo pins **Node.js >=24.2.0** via `engines.node` and `.node-version`, and the `packageManager` field selects the exact **pnpm 12** version. The minor matters: `engines.node` is `>=24.2.0`, not `>=24`, because the build scripts use `import.meta.main`, which landed in 24.2. Run `corepack enable pnpm` once so the `pnpm` commands below use Corepack's shim, or install pnpm 12 standalone (`npm install -g pnpm@12`). A pnpm 10 on your `PATH` cannot switch itself to pnpm 12, so upgrade it or use Corepack. With a Node version manager, use `fnm install`, `mise install`, or `volta install node@24`. pnpm enforces the engine range (`engineStrict` in `pnpm-workspace.yaml`), so on 24.0 or 24.1 `pnpm install` fails fast — pin 24.2.0 or newer first.
 
 TypeScript is pinned twice on purpose. `@typescript/native` is this repo's alias for `typescript@~7.0.2`, the Go compiler the gates run; it owns the `tsc` binary, so `node_modules/.bin/tsc --version` at the root reports 7. The root's own `typescript` stays on `~6.0.3` only to supply tsserver to your editor, because TypeScript 7 ships none — that is an API resolution, not the compiler. The split means 7.0-only lib typings or an unchecked side-effect import can red a gate your editor calls clean. Open your editor at the repo root, not inside a package, or its language server falls back to a machine-global TypeScript. Any package that runs `tsc` in a script declares `"typescript": "~7.0.2"` of its own; `node scripts/check-typescript-resolution.mjs`, which `pnpm run check:drift:guards` runs, enforces the *resolved* 7.0 line rather than the declared range; the range is a tilde for that reason, because a caret installs clean today and reds once 7.1 ships. Its errors say why.
 

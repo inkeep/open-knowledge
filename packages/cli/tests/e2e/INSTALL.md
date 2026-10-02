@@ -10,6 +10,8 @@ Fresh mode writes npm's generated package-lock JSON to `packages/cli/test-result
 
 Installer output is printed on failure. Only classified registry or transport errors receive retries: at most three attempts share the existing 180-second acquisition budget, with installer retries disabled and request deadlines fitted inside the remaining budget. Product errors, unclassified errors and external interruption do not become unavailable outcomes. Missing packed assets remain product failures.
 
+pnpm 12 skips an optional dependency it fails to fetch without reporting why: the ndjson stream shows the fetch start and never finish. For each such package the harness fetches the locked tarball itself and classifies that result. A 404 or other client error, or a tarball whose integrity does not match the lockfile, is a product failure naming `ERR_PNPM_FETCH_<status>` or `ERR_PNPM_TARBALL_INTEGRITY`. A 408, a 429, a 5xx, or a request that times out or loses its connection is a transport failure, and so is a tarball that now downloads and matches, because pnpm's failure was transient; any other request error is not. The harness checks only an install that exited 0 with no reported error, never after the acquisition deadline, and fits each request to the time left.
+
 If all failures in a Vitest run are acquisition exhaustion, the reporter returns exit 77 and writes one stderr line beginning `INKEEP_GATE_RESULT_V1 ` followed by JSON. Any product failure keeps the ordinary failed-run result and suppresses this marker. This marker is diagnostic evidence, not an admission or successful-check result. The future gate reader and its complete shared schema belong to the gate integration.
 
 This producer emits these fields:

@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { type ExecFileOptionsWithStringEncoding, execFile } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -126,18 +126,34 @@ test.each(['dist/public/index.html', 'dist/assets/skills'])(
   },
 );
 
+function countingInstaller() {
+  const counter = {
+    attempts: 0,
+    executeInstall: (
+      command: string,
+      args: string[],
+      options: ExecFileOptionsWithStringEncoding,
+    ) => {
+      counter.attempts++;
+      return promisify(execFile)(command, args, options);
+    },
+  };
+  return counter;
+}
+
 test('does not retry an optional dependency integrity mismatch', async () => {
   const fixture = await createInstallFixture(true);
+  const installer = countingInstaller();
   try {
     fixture.lock.packages[`${LEAF}@1.0.0`].resolution.integrity =
       `sha512-${Buffer.alloc(64).toString('base64')}`;
     writeFileSync(fixture.lockPath, YAML.stringify(fixture.lock));
-    const installation = installPackedCli(fixture);
-    await expect(installation).rejects.toThrow('ERR_PNPM_TARBALL_INTEGRITY');
-    await expect(installation).rejects.not.toMatchObject({ exitCode: 77 });
-    expect(fixture.requests.filter((path) => path === `/${LEAF}/-/${LEAF}-1.0.0.tgz`)).toHaveLength(
-      1,
+    const installation = installPackedCli(fixture, { now: Date.now, ...installer });
+    await expect(installation).rejects.toThrow(
+      'ERR_PNPM_TARBALL_INTEGRITY: its integrity does not match the lockfile',
     );
+    await expect(installation).rejects.not.toMatchObject({ exitCode: 77 });
+    expect(installer.attempts).toBe(1);
   } finally {
     await fixture.close();
   }
@@ -145,14 +161,59 @@ test('does not retry an optional dependency integrity mismatch', async () => {
 
 test('reports exhausted optional acquisition as unavailable', async () => {
   const fixture = await createInstallFixture(true);
-  const path = `/${LEAF}/-/${LEAF}-1.0.0.tgz`;
+  const installer = countingInstaller();
   try {
-    fixture.responses.set(path, 503);
-    await expect(installPackedCli(fixture)).rejects.toMatchObject({
+    fixture.responses.set(`/${LEAF}/-/${LEAF}-1.0.0.tgz`, 503);
+    const installation = installPackedCli(fixture, { now: Date.now, ...installer });
+    await expect(installation).rejects.toMatchObject({
       name: 'CliInstallUnavailableError',
       exitCode: 77,
     });
-    expect(fixture.requests.filter((request) => request === path)).toHaveLength(3);
+    await expect(installation).rejects.toThrow('the registry answered 503');
+    expect(installer.attempts).toBe(3);
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('reports a rate-limited optional dependency as unavailable', async () => {
+  const fixture = await createInstallFixture(true);
+  const installer = countingInstaller();
+  try {
+    fixture.responses.set(`/${LEAF}/-/${LEAF}-1.0.0.tgz`, 429);
+    const installation = installPackedCli(fixture, { now: Date.now, ...installer });
+    await expect(installation).rejects.toMatchObject({
+      name: 'CliInstallUnavailableError',
+      exitCode: 77,
+    });
+    await expect(installation).rejects.toThrow('the registry answered 429');
+    expect(installer.attempts).toBe(3);
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('retries an optional dependency whose tarball fails once and then downloads', async () => {
+  const fixture = await createInstallFixture(true);
+  const installer = countingInstaller();
+  try {
+    fixture.oneShotResponses.set(`/${LEAF}/-/${LEAF}-1.0.0.tgz`, [503]);
+    const installed = await installPackedCli(fixture, { now: Date.now, ...installer });
+    expect(installer.attempts).toBe(2);
+    const result = await promisify(execFile)(process.execPath, [installed.cliPath]);
+    expect(JSON.parse(result.stdout)).toEqual({ leaf: '1.0.0', peer: '1.0.0' });
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('retries an optional dependency whose refetch is rate-limited', async () => {
+  const fixture = await createInstallFixture(true);
+  const installer = countingInstaller();
+  try {
+    fixture.oneShotResponses.set(`/${LEAF}/-/${LEAF}-1.0.0.tgz`, [503, 429]);
+    await installPackedCli(fixture, { now: Date.now, ...installer });
+    expect(installer.attempts).toBe(2);
   } finally {
     await fixture.close();
   }
@@ -160,13 +221,13 @@ test('reports exhausted optional acquisition as unavailable', async () => {
 
 test('does not retry an unavailable package version', async () => {
   const fixture = await createInstallFixture(true);
-  const path = `/${LEAF}/-/${LEAF}-1.0.0.tgz`;
+  const installer = countingInstaller();
   try {
-    fixture.responses.set(path, 404);
-    const installation = installPackedCli(fixture);
-    await expect(installation).rejects.toThrow('ERR_PNPM_FETCH_404');
+    fixture.responses.set(`/${LEAF}/-/${LEAF}-1.0.0.tgz`, 404);
+    const installation = installPackedCli(fixture, { now: Date.now, ...installer });
+    await expect(installation).rejects.toThrow('ERR_PNPM_FETCH_404: the registry answered 404');
     await expect(installation).rejects.not.toMatchObject({ exitCode: 77 });
-    expect(fixture.requests.filter((request) => request === path)).toHaveLength(1);
+    expect(installer.attempts).toBe(1);
   } finally {
     await fixture.close();
   }
@@ -215,11 +276,18 @@ test('bounds transport retries for a required package', async () => {
   const path = `/${LEAF}/-/${LEAF}-1.0.0.tgz`;
   try {
     fixture.responses.set(path, 'reset');
-    await expect(installPackedCli(fixture)).rejects.toMatchObject({
-      name: 'CliInstallUnavailableError',
-      exitCode: 77,
-    });
-    expect(fixture.requests.filter((request) => request === path)).toHaveLength(3);
+    let attempts = 0;
+    await expect(
+      installPackedCli(fixture, {
+        now: Date.now,
+        executeInstall: (command, args, options) => {
+          attempts++;
+          return promisify(execFile)(command, args, options);
+        },
+      }),
+    ).rejects.toMatchObject({ name: 'CliInstallUnavailableError', exitCode: 77 });
+    expect(attempts).toBe(3);
+    expect(fixture.requests.filter((request) => request === path).length).toBeGreaterThanOrEqual(3);
   } finally {
     await fixture.close();
   }
@@ -230,13 +298,21 @@ test('reports registry socket timeouts as unavailable', async () => {
   const path = `/${LEAF}/-/${LEAF}-1.0.0.tgz`;
   try {
     fixture.responses.set(path, 'timeout');
+    let attempts = 0;
     await expect(
-      installPackedCli({
-        ...fixture,
-        env: { ...fixture.env, npm_config_fetch_timeout: '1000' },
-      }),
+      installPackedCli(
+        { ...fixture, env: { ...fixture.env, npm_config_fetch_timeout: '1000' } },
+        {
+          now: Date.now,
+          executeInstall: (command, args, options) => {
+            attempts++;
+            return promisify(execFile)(command, args, options);
+          },
+        },
+      ),
     ).rejects.toMatchObject({ name: 'CliInstallUnavailableError', exitCode: 77 });
-    expect(fixture.requests.filter((request) => request === path)).toHaveLength(3);
+    expect(attempts).toBe(3);
+    expect(fixture.requests.filter((request) => request === path).length).toBeGreaterThanOrEqual(3);
   } finally {
     await fixture.close();
   }
@@ -249,13 +325,18 @@ test('rejects a successful install without the fetch observer', async () => {
     const installation = installPackedCli(fixture, {
       now: Date.now,
       executeInstall: async (command, args, options) => {
-        const lockPath = join(fixture.installPrefix, 'pnpm-lock.yaml');
-        const lock = YAML.parse(readFileSync(lockPath, 'utf8'));
-        delete lock.pnpmfileChecksum;
-        writeFileSync(lockPath, YAML.stringify(lock));
-        const output = await promisify(execFile)(command, [...args, '--ignore-pnpmfile'], options);
+        const output = await promisify(execFile)(command, args, options);
         installed = true;
-        return output;
+        const withoutFetches = (text: string) =>
+          text
+            .split('\n')
+            .filter((line) => !line.includes('"pnpm:fetching-progress"'))
+            .join('\n');
+        return {
+          ...output,
+          stdout: withoutFetches(output.stdout),
+          stderr: withoutFetches(output.stderr),
+        };
       },
     });
     await expect(installation).rejects.toThrow('CLI fetch observer did not run');

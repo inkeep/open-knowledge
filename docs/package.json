@@ -3,7 +3,7 @@
   "version": "0.0.237",
   "license": "GPL-3.0-or-later",
   "private": true,
-  "packageManager": "pnpm@10.33.0",
+  "packageManager": "pnpm@12.8.1",
   "scripts": {
     "dev": "next dev --port 3010",
     "build": "next build",

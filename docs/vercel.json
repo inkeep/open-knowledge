@@ -1,5 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm exec turbo run build --filter=@inkeep/open-knowledge-docs --cache=local:rw"
+  "installCommand": "corepack pnpm install --frozen-lockfile",
+  "buildCommand": "corepack enable pnpm --install-directory node_modules/.bin && corepack pnpm exec turbo run build --filter=@inkeep/open-knowledge-docs --cache=local:rw"
 }

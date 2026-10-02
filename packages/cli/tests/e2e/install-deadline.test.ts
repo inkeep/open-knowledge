@@ -23,10 +23,10 @@ function transportFailure(mode: 'locked' | 'fresh'): Error & {
     code: 1,
     killed: false,
     signal: null,
-    stdout: mode === 'locked' ? '{"level":"error","code":"ERR_SOCKET_TIMEOUT"}\n' : '',
+    stdout: '',
     stderr:
       mode === 'locked'
-        ? 'OK_CLI_FETCH_OBSERVER_V1\nOK_CLI_FETCH_FAILURE_V1 {"code":"ERR_SOCKET_TIMEOUT"}\nRegistry unavailable…\n'
+        ? '{"name":"pnpm:fetching-progress","status":"started"}\nError: ERR_PNPM_TARBALL_FETCH_TARBALL\n\n  × installing dependencies\n  ╰─▶ operation timed out\nRegistry unavailable…\n'
         : 'npm error code ETIMEDOUT\nRegistry unavailable…\n',
   });
 }
@@ -238,7 +238,11 @@ test.each(['locked', 'fresh'] as const)(
 
 test('preserves unclassified pnpm exits with optional acquisition errors', async () => {
   let attempts = 0;
-  const failure = Object.assign(transportFailure('locked'), { stdout: '' });
+  const failure = Object.assign(transportFailure('locked'), {
+    stdout: '',
+    stderr:
+      '{"name":"pnpm:fetching-progress","status":"started","packageId":"ok-cli-fixture-leaf@1.0.0"}\nRegistry unavailable…\n',
+  });
   const installation = installPackedCli(fixture, {
     now: () => 0,
     executeInstall: async () => {
@@ -249,4 +253,84 @@ test('preserves unclassified pnpm exits with optional acquisition errors', async
   await expect(installation).rejects.toThrow('Packed CLI pnpm installation failed');
   await expect(installation).rejects.not.toMatchObject({ exitCode: 77 });
   expect(attempts).toBe(1);
+});
+
+const UNFINISHED_LEAF_FETCH =
+  '{"name":"pnpm:fetching-progress","status":"started","packageId":"ok-cli-fixture-leaf@1.0.0"}\n';
+
+test('an install killed at the acquisition deadline makes no refetch requests', async () => {
+  let clock = 0;
+  const before = fixture.requests.length;
+  const output = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  try {
+    const installation = installPackedCli(
+      { ...fixture, mode: 'locked' },
+      {
+        now: () => clock,
+        executeInstall: async (_command, _args, options) => {
+          clock += options.timeout ?? 0;
+          throw Object.assign(new Error('Installation deadline expired'), {
+            code: null,
+            killed: true,
+            signal: 'SIGTERM',
+            stdout: '',
+            stderr: UNFINISHED_LEAF_FETCH,
+          });
+        },
+      },
+    );
+    await expect(installation).rejects.toThrow('acquisition deadline elapsed');
+    expect(fixture.requests.slice(before).filter((path) => path.endsWith('.tgz'))).toEqual([]);
+  } finally {
+    output.mockRestore();
+  }
+});
+
+test('a silent optional skip with no budget left is not checked against the registry', async () => {
+  let clock = 0;
+  const before = fixture.requests.length;
+  const output = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  try {
+    const installation = installPackedCli(
+      { ...fixture, mode: 'locked' },
+      {
+        now: () => clock,
+        executeInstall: async (_command, _args, options) => {
+          clock += options.timeout ?? 0;
+          return { stdout: '', stderr: UNFINISHED_LEAF_FETCH };
+        },
+      },
+    );
+    await expect(installation).rejects.toThrow('the acquisition deadline left no time to check it');
+    await expect(installation).rejects.not.toMatchObject({ exitCode: 77 });
+    expect(fixture.requests.slice(before).filter((path) => path.endsWith('.tgz'))).toEqual([]);
+  } finally {
+    output.mockRestore();
+  }
+});
+
+test("a failed install with budget left leaves its unfinished fetches to pnpm's own errors", async () => {
+  const before = fixture.requests.length;
+  const output = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  try {
+    const installation = installPackedCli(
+      { ...fixture, mode: 'locked' },
+      {
+        now: () => 0,
+        executeInstall: async () => {
+          throw Object.assign(new Error('Registry request timed out'), {
+            code: 1,
+            killed: false,
+            signal: null,
+            stdout: '',
+            stderr: `${UNFINISHED_LEAF_FETCH}Error: ERR_PNPM_TARBALL_FETCH_TARBALL\n\n  × installing dependencies\n  ╰─▶ operation timed out\n`,
+          });
+        },
+      },
+    );
+    await expect(installation).rejects.toMatchObject({ name: 'CliInstallUnavailableError' });
+    expect(fixture.requests.slice(before).filter((path) => path.endsWith('.tgz'))).toEqual([]);
+  } finally {
+    output.mockRestore();
+  }
 });
