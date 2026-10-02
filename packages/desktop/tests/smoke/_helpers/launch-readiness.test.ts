@@ -2234,21 +2234,21 @@ describe('the recorded ready wait names which wait it measured', () => {
       JSON.stringify({ event: DESKTOP_BOOT_EVENT, time: '2026-09-04T00:00:00.000Z' }),
       markLine('appReady', 0, '2026-09-04T00:00:00.100Z'),
     ]);
-    const editor = { evaluate: async () => 'editor' };
-    let windowsCalls = 0;
-    const app = {
-      windows: () => {
-        windowsCalls += 1;
-        if (windowsCalls === 2) {
+    let modeReads = 0;
+    const editor = {
+      evaluate: async () => {
+        modeReads += 1;
+        if (modeReads === 2) {
           appendFileSync(
             join(bootLogDirFor(home), 'desktop.2026-09-03.log'),
             `${markLine('loadUrlResolved', 900, '2026-09-04T00:00:00.900Z')}\n`,
             'utf8',
           );
         }
-        return windowsCalls >= 3 ? [editor] : [];
+        return modeReads >= 3 ? 'editor' : undefined;
       },
     };
+    const app = { windows: () => [editor] };
     rememberLaunchHome(app, home);
     const requestedCapMs = BOOT_LOG_STALL_MS / 2;
     try {
