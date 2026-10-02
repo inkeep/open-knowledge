@@ -346,11 +346,8 @@ async function prepareOne({
 export async function prepareNatives({
   repoRoot,
   platform = process.platform,
-  registry = process.env.npm_config_registry || DEFAULT_REGISTRY,
-  fetchImpl = fetch,
-  extract = extractWithTar(defaultTarBin(platform)),
-  checkOnly = false,
   log = console.log,
+  ...options
 }) {
   const suffixes = PLATFORM_PACKAGES[platform];
   if (!suffixes) {
@@ -367,6 +364,21 @@ export async function prepareNatives({
     );
   }
   const version = JSON.parse(readFileSync(wrapperPkgJson, 'utf8')).version;
+  return prepareKeyringNatives({ ...options, repoRoot, platform, log, version, suffixes });
+}
+
+export async function prepareKeyringNatives({
+  repoRoot,
+  version,
+  suffixes,
+  platform = process.platform,
+  registry = process.env.npm_config_registry || DEFAULT_REGISTRY,
+  fetchImpl = fetch,
+  extract = extractWithTar(defaultTarBin(platform)),
+  checkOnly = false,
+  log = console.log,
+}) {
+  const napiDir = join(repoRoot, 'node_modules', '@napi-rs');
   const lockfile = readFileSync(join(repoRoot, 'pnpm-lock.yaml'), 'utf8');
   log(`${LOG_PREFIX} target version: @napi-rs/keyring-* v${version}`);
   log(`${LOG_PREFIX} @napi-rs root: ${napiDir}`);
