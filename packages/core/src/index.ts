@@ -1966,6 +1966,7 @@ export {
   SkillCostTiersSchema,
 } from './skills-catalog/skill-cost.ts';
 export {
+  isLocalSkillSource,
   parseSkillsShCatalogSource,
   type SkillsShCatalogSource,
   type SkillsShSkillLinks,

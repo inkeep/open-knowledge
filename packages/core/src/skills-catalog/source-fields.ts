@@ -54,3 +54,14 @@ export function slug(id: string): string {
   const last = id.split('/').pop();
   return last && last.length > 0 ? last : id;
 }
+
+export function isLocalSkillSource(source: string): boolean {
+  return (
+    source.startsWith('/') ||
+    source.startsWith('.') ||
+    source.startsWith('~') ||
+    source.startsWith('file://') ||
+    /^[A-Za-z]:[\\/]/.test(source) ||
+    source.startsWith('\\\\')
+  );
+}

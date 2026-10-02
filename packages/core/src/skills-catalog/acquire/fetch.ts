@@ -1,8 +1,9 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { isLocalSkillSource } from '../source-fields.ts';
 import { SkillFetchError } from './errors.ts';
 import {
   fetchWellKnownSkill,
@@ -36,9 +37,11 @@ export const ALLOWED_GIT_TRANSPORTS: readonly RegExp[] = [
 export function parseSource(raw: string): SourceSpec | null {
   const s = raw.trim();
   if (s === '') return null;
-  if (s.startsWith('file://')) return { kind: 'local', path: s.slice('file://'.length) };
-  if (s.startsWith('/') || s.startsWith('.') || s.startsWith('~'))
-    return { kind: 'local', path: s };
+  if (s.startsWith('file://')) {
+    const path = s.slice('file://'.length);
+    return { kind: 'local', path: /^\/[A-Za-z]:[\\/]/.test(path) ? path.slice(1) : path };
+  }
+  if (isLocalSkillSource(s)) return { kind: 'local', path: s };
   if (s.startsWith('git@') || s.includes('://')) {
     if (!ALLOWED_GIT_TRANSPORTS.some((p) => p.test(s))) return null;
     return { kind: 'git', url: s };
@@ -99,7 +102,7 @@ export async function fetchSource(
 ): Promise<Fetched> {
   if (spec.kind === 'well-known') return fetchWellKnownSkill(spec, opts);
   if (spec.kind === 'local') {
-    const dir = resolve(spec.path.replace(/^~(?=\/|$)/, process.env.HOME ?? '~'));
+    const dir = resolve(spec.path.replace(/^~(?=[\\/]|$)/, homedir()));
     if (!existsSync(dir)) throw new SkillFetchError(`Local path not found: ${dir}`);
     return { dir, cleanup: () => {} };
   }

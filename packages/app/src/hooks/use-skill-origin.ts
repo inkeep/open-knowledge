@@ -1,4 +1,9 @@
-import { type SkillOrigin, type SkillScope, skillsShSkillLinks } from '@inkeep/open-knowledge-core';
+import {
+  isLocalSkillSource,
+  type SkillOrigin,
+  type SkillScope,
+  skillsShSkillLinks,
+} from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -28,15 +33,7 @@ const autoApplied = new Set<string>();
 export function skillAutoUpdateEnabled(origin: SkillOrigin | null): boolean {
   if (!origin) return false;
   if (origin.autoUpdate !== undefined) return origin.autoUpdate;
-  const source = origin.source.trim();
-  return (
-    source.startsWith('/') ||
-    source.startsWith('.') ||
-    source.startsWith('~') ||
-    source.startsWith('file://') ||
-    /^[A-Za-z]:[\\/]/.test(source) ||
-    source.startsWith('\\\\')
-  );
+  return isLocalSkillSource(origin.source.trim());
 }
 
 export function useSkillOrigin({ scope, name }: { scope: SkillScope; name: string }): {
