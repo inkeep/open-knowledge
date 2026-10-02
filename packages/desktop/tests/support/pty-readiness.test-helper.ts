@@ -86,7 +86,7 @@ export function createPtyHostProbe(options: PtyHostProbeOptions): PtyHostProbe {
         if (error !== null) return `spawn-error: ${error}`;
         const exit = exitOf(ptyId);
         if (exit === null) return null;
-        return `exited (code ${exit.exitCode ?? 'none'}, signal ${exit.signal ?? 'none'})`;
+        return describeExit(exit);
       },
     }),
   };
@@ -100,6 +100,36 @@ export interface WaitOptions {
 
 export interface ShellReadyOptions extends WaitOptions {
   quietSamples?: number;
+}
+
+export interface HarnessReadinessObserver {
+  waitForCondition(
+    predicate: () => boolean,
+    label: string,
+    options?: Omit<WaitOptions, 'backstopAt'>,
+  ): Promise<void>;
+  waitForCompletion(
+    predicate: () => boolean,
+    label: string,
+    options?: Omit<WaitOptions, 'backstopAt'>,
+  ): Promise<HarnessCompletion>;
+  waitForShellReady(label: string, options?: Omit<ShellReadyOptions, 'backstopAt'>): Promise<void>;
+  waitForEvaluatedInput(
+    send: (data: string) => void,
+    probe: EvaluatedInputProbe,
+    label: string,
+    options?: Omit<EvaluatedInputOptions, 'budgetMs'>,
+  ): Promise<EvaluatedInputTiming>;
+}
+
+export interface HarnessCompletion {
+  readonly observedAt: number;
+}
+
+export interface HarnessCompletionBounds {
+  readonly after: HarnessCompletion;
+  readonly initialDeadlineAt: number;
+  readonly reportDeadlineAt: number;
 }
 
 const DEFAULT_INTERVAL_MS = 15;
@@ -145,8 +175,8 @@ const HARNESS_TEARDOWN_GRACE_MS = 15_000;
 export const HARNESS_VERDICT_POLL_INTERVAL_MS = 25;
 export const HARNESS_CHILD_KILL_WAIT_MS = 2_000;
 export const HARNESS_REPORT_RESERVE_MS = 1_000;
-export const harnessWindowsLaunchWait = (backstopAt: number) => ({ stallMs: 20_000, backstopAt });
-export const harnessExitAfterKillWait = (backstopAt: number) => ({ stallMs: 12_000, backstopAt });
+export const HARNESS_WINDOWS_LAUNCH_STALL_MS = 20_000;
+export const HARNESS_EXIT_AFTER_KILL_STALL_MS = 12_000;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -169,6 +199,84 @@ function describeLeading(text: string): string {
   if (text.length === 0) return 'nothing';
   if (text.length <= RECEIVED_EXCERPT_CHARS) return JSON.stringify(text);
   return `${JSON.stringify(text.slice(0, RECEIVED_EXCERPT_CHARS))}...`;
+}
+
+function describeExit(exit: { exitCode: number | undefined; signal: number | null }): string {
+  return `exited (code ${exit.exitCode ?? 'none'}, signal ${exit.signal ?? 'none'})`;
+}
+
+interface ShellOutputObservation {
+  advanced: number;
+  lastAdvanceAt: number | null;
+  observe(stream: PtyStream, now: number): void;
+}
+
+function createShellOutputObservation(): ShellOutputObservation {
+  let leadingAttachChars: number | null = null;
+  return {
+    advanced: 0,
+    lastAdvanceAt: null,
+    observe(stream, now) {
+      const text = stream.read();
+      if (leadingAttachChars === null) {
+        const beyondAttach = shellOutputBeyondAttach(text);
+        if (beyondAttach.length === 0) return;
+        leadingAttachChars = text.length - beyondAttach.length;
+      }
+      const seen = text.length - leadingAttachChars;
+      if (seen > this.advanced) {
+        this.advanced = seen;
+        this.lastAdvanceAt = now;
+      }
+    },
+  };
+}
+
+interface ReadinessState {
+  initialDeadline: WaitDeadline;
+  reportDeadlineAt: number;
+  output: ShellOutputObservation;
+}
+
+interface WaitDeadline {
+  at: number;
+  bound: string;
+}
+
+function cappedByReportDeadline(phase: WaitDeadline, reportDeadlineAt: number): WaitDeadline {
+  return reportDeadlineAt <= phase.at
+    ? { at: reportDeadlineAt, bound: 'the report deadline' }
+    : phase;
+}
+
+function readinessDeadline(readiness: ReadinessState, stallMs: number): WaitDeadline {
+  const { lastAdvanceAt } = readiness.output;
+  const stallEndsAt = lastAdvanceAt === null ? null : lastAdvanceAt + stallMs;
+  return cappedByReportDeadline(
+    stallEndsAt !== null && stallEndsAt > readiness.initialDeadline.at
+      ? { at: stallEndsAt, bound: `its ${Math.round(stallMs)}ms stall window ran out` }
+      : readiness.initialDeadline,
+    readiness.reportDeadlineAt,
+  );
+}
+
+function harnessExitDeadline(bounds: HarnessCompletionBounds): WaitDeadline {
+  const windowEndsAt = bounds.after.observedAt + HARNESS_EXIT_AFTER_KILL_STALL_MS;
+  return cappedByReportDeadline(
+    bounds.initialDeadlineAt > windowEndsAt
+      ? { at: bounds.initialDeadlineAt, bound: 'its initial allowance ended' }
+      : { at: windowEndsAt, bound: `its ${HARNESS_EXIT_AFTER_KILL_STALL_MS}ms exit window ended` },
+    bounds.reportDeadlineAt,
+  );
+}
+
+function throwIfShellFailed(stream: PtyStream, label: string, startedAt: number): void {
+  const failure = stream.failure();
+  if (failure !== null) {
+    throw new Error(
+      `shell failed before ${label}: ${failure} (after ${Math.round(performance.now() - startedAt)}ms, received ${describeReceived(stream.read())})`,
+    );
+  }
 }
 
 export async function waitForCondition(
@@ -201,45 +309,28 @@ export async function waitForCondition(
     Math.round(stallWindowMs) < Math.round(stallMs)
       ? ` (the containment it runs inside cut the ${Math.round(stallMs)}ms it declared)`
       : '';
-  let leadingAttachChars: number | null = null;
-  const shellChars = (): number => {
-    const text = stream.read();
-    if (leadingAttachChars === null) {
-      const beyondAttach = shellOutputBeyondAttach(text);
-      if (beyondAttach.length === 0) return 0;
-      leadingAttachChars = text.length - beyondAttach.length;
-    }
-    return text.length - leadingAttachChars;
-  };
-  let advanced = shellChars();
-  let lastAdvanceAt = startedAt;
+  const output = createShellOutputObservation();
+  output.observe(stream, startedAt);
+  let lastAdvanceAt = output.lastAdvanceAt ?? startedAt;
   for (;;) {
-    const failure = stream.failure();
-    if (failure !== null) {
-      throw new Error(
-        `shell failed before ${label}: ${failure} (after ${Math.round(performance.now() - startedAt)}ms, received ${describeReceived(stream.read())})`,
-      );
-    }
+    throwIfShellFailed(stream, label, startedAt);
     const now = performance.now();
-    const seen = shellChars();
-    if (seen !== advanced) {
-      advanced = seen;
-      lastAdvanceAt = now;
-    }
+    output.observe(stream, now);
+    lastAdvanceAt = output.lastAdvanceAt ?? lastAdvanceAt;
     if (now >= backstopAt) {
       const silentPastWindow = now - lastAdvanceAt >= stallWindowMs;
       if (declaredWindowSpansContainment && silentPastWindow) {
         throw new Error(
-          `timeout waiting for: ${label} after ${Math.round(stallWindowMs)}ms${cutNote} without ${advanced === 0 ? 'any' : 'new'} shell output, the only progress signal this wait watches (received ${describeReceived(stream.read())})`,
+          `timeout waiting for: ${label} after ${Math.round(stallWindowMs)}ms${cutNote} without ${output.advanced === 0 ? 'any' : 'new'} shell output, the only progress signal this wait watches (received ${describeReceived(stream.read())})`,
         );
       }
       const stallNote = silentPastWindow
         ? `, longer than its ${Math.round(stallWindowMs)}ms stall window`
         : '';
       throw new Error(
-        advanced === 0
+        output.advanced === 0
           ? `${label} was not reached inside its ${Math.round(containmentMs)}ms containment without any shell output (received ${describeReceived(stream.read())})`
-          : `${label} was not reached inside its ${Math.round(containmentMs)}ms containment; the stream last advanced ${Math.round(now - lastAdvanceAt)}ms ago${stallNote}, ${advanced} characters past the shell's first output (received ${describeReceived(stream.read())})`,
+          : `${label} was not reached inside its ${Math.round(containmentMs)}ms containment; the stream last advanced ${Math.round(now - lastAdvanceAt)}ms ago${stallNote}, ${output.advanced} characters counted from the shell's first output on (received ${describeReceived(stream.read())})`,
       );
     }
     await sleep(intervalMs);
@@ -247,11 +338,89 @@ export async function waitForCondition(
   }
 }
 
-export async function waitForShellReady(
+async function waitForReadinessCondition(
+  stream: PtyStream,
+  predicate: () => boolean,
+  label: string,
+  readiness: ReadinessState,
+  options: Omit<WaitOptions, 'backstopAt'>,
+): Promise<HarnessCompletion> {
+  const intervalMs = requireDuration(
+    options.intervalMs ?? DEFAULT_INTERVAL_MS,
+    'the poll interval',
+    label,
+  );
+  const stallMs = requireDuration(options.stallMs ?? DEFAULT_STALL_MS, 'the stall window', label);
+  const startedAt = performance.now();
+  const { output } = readiness;
+  for (;;) {
+    throwIfShellFailed(stream, label, startedAt);
+    const now = performance.now();
+    output.observe(stream, now);
+    const deadline = readinessDeadline(readiness, stallMs);
+    if (now >= deadline.at) {
+      throw new Error(
+        output.lastAdvanceAt === null
+          ? `${label} was not reached before ${deadline.bound}, without any shell output (received ${describeReceived(stream.read())})`
+          : `${label} was not reached before ${deadline.bound}; the stream last advanced ${Math.round(now - output.lastAdvanceAt)}ms ago, ${output.advanced} characters counted from the shell's first output on (received ${describeReceived(stream.read())})`,
+      );
+    }
+    if (predicate()) return { observedAt: now };
+    await sleep(intervalMs);
+  }
+}
+
+export async function waitForHarnessExit(
+  stream: PtyStream,
+  exitOf: () => { exitCode: number | undefined; signal: number | null } | null,
+  label: string,
+  bounds: HarnessCompletionBounds,
+): Promise<HarnessCompletion> {
+  const deadline = harnessExitDeadline(bounds);
+  const startedAt = performance.now();
+  for (;;) {
+    const now = performance.now();
+    if (now >= deadline.at) {
+      const exit = exitOf();
+      const elapsedMs = Math.round(now - bounds.after.observedAt);
+      throw new Error(
+        exit === null
+          ? `${label} was not reached before ${deadline.bound}: no exit observed (${elapsedMs}ms after the completion it follows, received ${describeReceived(stream.read())})`
+          : `${label} was not reached before ${deadline.bound}: the exit (${describeExit(exit)}) was observed only after that bound (${elapsedMs}ms after the completion it follows, received ${describeReceived(stream.read())})`,
+      );
+    }
+    if (exitOf() !== null) return { observedAt: now };
+    throwIfShellFailed(stream, label, startedAt);
+    await sleep(DEFAULT_INTERVAL_MS);
+  }
+}
+
+export function createHarnessReadinessAfterCompletion(
+  stream: PtyStream,
+  bounds: HarnessCompletionBounds,
+): HarnessReadinessObserver {
+  const windowEndsAt = bounds.after.observedAt + DEFAULT_STALL_MS;
+  const initialDeadline = cappedByReportDeadline(
+    bounds.initialDeadlineAt > windowEndsAt
+      ? { at: bounds.initialDeadlineAt, bound: 'its initial allowance ended' }
+      : { at: windowEndsAt, bound: `its ${DEFAULT_STALL_MS}ms first-output window ended` },
+    bounds.reportDeadlineAt,
+  );
+  return createReadinessObserver(stream, initialDeadline, bounds.reportDeadlineAt);
+}
+
+interface QuietShellWait {
+  quietSamples: number;
+  quietWindowMs: number;
+  pacing: { stallMs: number; intervalMs: number };
+  isQuiet: () => boolean;
+}
+
+function quietShellWait(
   stream: PtyStream,
   label: string,
-  options: ShellReadyOptions = {},
-): Promise<void> {
+  options: Omit<ShellReadyOptions, 'backstopAt'>,
+): QuietShellWait {
   const quietSamples = options.quietSamples ?? DEFAULT_QUIET_SAMPLES;
   const intervalMs = requireDuration(
     options.intervalMs ?? DEFAULT_READY_INTERVAL_MS,
@@ -269,6 +438,27 @@ export async function waitForShellReady(
       `the stall window for ${label} must outlast the ${quietWindowMs}ms of quiet it counts as ready, got ${stallMs}ms`,
     );
   }
+  let previous: string | null = null;
+  let stable = 0;
+  return {
+    quietSamples,
+    quietWindowMs,
+    pacing: { stallMs, intervalMs },
+    isQuiet: () => {
+      const current = stream.read();
+      stable = current.length > 0 && current === previous ? stable + 1 : 0;
+      previous = current;
+      return stable >= quietSamples;
+    },
+  };
+}
+
+export async function waitForShellReady(
+  stream: PtyStream,
+  label: string,
+  options: ShellReadyOptions = {},
+): Promise<void> {
+  const { quietSamples, quietWindowMs, pacing, isQuiet } = quietShellWait(stream, label, options);
   if (options.backstopAt !== undefined && Number.isFinite(options.backstopAt)) {
     const containmentMs = options.backstopAt - performance.now();
     if (!(containmentMs > quietWindowMs)) {
@@ -277,23 +467,10 @@ export async function waitForShellReady(
       );
     }
   }
-  let previous: string | null = null;
-  let stable = 0;
-  await waitForCondition(
-    stream,
-    () => {
-      const current = stream.read();
-      stable = current.length > 0 && current === previous ? stable + 1 : 0;
-      previous = current;
-      return stable >= quietSamples;
-    },
-    label,
-    {
-      stallMs,
-      intervalMs,
-      ...(options.backstopAt === undefined ? {} : { backstopAt: options.backstopAt }),
-    },
-  );
+  await waitForCondition(stream, isQuiet, label, {
+    ...pacing,
+    ...(options.backstopAt === undefined ? {} : { backstopAt: options.backstopAt }),
+  });
 }
 
 export interface EvaluatedInputProbe {
@@ -331,6 +508,7 @@ export function harnessTimeouts(platform: NodeJS.Platform): HarnessTimeouts {
 
 export interface HarnessBudget {
   grantMs(before: string): number;
+  readonly reportDeadlineAt: number;
 }
 
 export class HarnessBudgetRefusal extends Error {
@@ -347,6 +525,7 @@ export function createHarnessBudget(
   const startedAt = now();
   const remainingMs = (): number => budgetMs - (now() - startedAt);
   return {
+    reportDeadlineAt: startedAt + budgetMs - reserveMs,
     grantMs: (before) => {
       const granted = Math.min(remainingMs() - reserveMs, remainingMs() / 2);
       if (granted <= 0) {
@@ -455,6 +634,27 @@ async function waitForShellFirstOutput(
   }
 }
 
+async function runEvaluatedInputProbe(
+  stream: PtyStream,
+  send: (data: string) => void,
+  probe: EvaluatedInputProbe,
+  firstOutputWait: () => Promise<{ firstOutputMs: number; firstOutput: string }>,
+  prepareReply: (
+    firstOutputMs: number,
+    predicate: () => boolean,
+  ) => (startedAt: number) => Promise<void>,
+): Promise<EvaluatedInputTiming> {
+  if (probe.input.includes(probe.marker)) {
+    throw new Error(`readiness probe input must not contain its marker: ${probe.marker}`);
+  }
+  const { firstOutputMs, firstOutput } = await firstOutputWait();
+  const replyWait = prepareReply(firstOutputMs, () => stream.read().includes(probe.marker));
+  const startedAt = performance.now();
+  send(probe.input);
+  await replyWait(startedAt);
+  return { firstOutputMs, firstOutput, roundTripMs: performance.now() - startedAt };
+}
+
 export async function waitForEvaluatedInput(
   stream: PtyStream,
   send: (data: string) => void,
@@ -462,9 +662,6 @@ export async function waitForEvaluatedInput(
   label: string,
   options: EvaluatedInputOptions,
 ): Promise<EvaluatedInputTiming> {
-  if (probe.input.includes(probe.marker)) {
-    throw new Error(`readiness probe input must not contain its marker: ${probe.marker}`);
-  }
   const budgetMs = requireDuration(options.budgetMs, 'the budget', label);
   const roundTripStallMs = requireDuration(
     options.roundTripStallMs ?? DEFAULT_INPUT_READY_STALL_MS,
@@ -472,24 +669,95 @@ export async function waitForEvaluatedInput(
     label,
   );
   const interval = options.intervalMs === undefined ? {} : { intervalMs: options.intervalMs };
-  const { firstOutputMs, firstOutput } = await waitForShellFirstOutput(stream, label, {
-    timeoutMs: budgetMs,
-    ...interval,
-  });
-  const remainingMs = budgetMs - firstOutputMs;
-  if (remainingMs <= 0) {
-    throw new HarnessBudgetRefusal(
-      `the ${Math.round(budgetMs)}ms grant for ${label} was spent before the round trip could start: first output after ${Math.round(firstOutputMs)}ms left nothing`,
-    );
-  }
-  const startedAt = performance.now();
-  send(probe.input);
-  await waitForCondition(stream, () => stream.read().includes(probe.marker), label, {
-    stallMs: roundTripStallMs,
-    backstopAt: startedAt + remainingMs,
-    ...interval,
-  });
-  return { firstOutputMs, firstOutput, roundTripMs: performance.now() - startedAt };
+  return runEvaluatedInputProbe(
+    stream,
+    send,
+    probe,
+    () => waitForShellFirstOutput(stream, label, { timeoutMs: budgetMs, ...interval }),
+    (firstOutputMs, predicate) => {
+      const remainingMs = budgetMs - firstOutputMs;
+      if (remainingMs <= 0) {
+        throw new HarnessBudgetRefusal(
+          `the ${Math.round(budgetMs)}ms grant for ${label} was spent before the round trip could start: first output after ${Math.round(firstOutputMs)}ms left nothing`,
+        );
+      }
+      return (startedAt) =>
+        waitForCondition(stream, predicate, label, {
+          stallMs: roundTripStallMs,
+          backstopAt: startedAt + remainingMs,
+          ...interval,
+        });
+    },
+  );
+}
+
+export function createHarnessReadinessObserver(
+  stream: PtyStream,
+  initialDeadlineAt: number,
+  reportDeadlineAt: number,
+): HarnessReadinessObserver {
+  return createReadinessObserver(
+    stream,
+    { at: initialDeadlineAt, bound: 'its initial allowance ended' },
+    reportDeadlineAt,
+  );
+}
+
+function createReadinessObserver(
+  stream: PtyStream,
+  initialDeadline: WaitDeadline,
+  reportDeadlineAt: number,
+): HarnessReadinessObserver {
+  const readiness: ReadinessState = {
+    initialDeadline,
+    reportDeadlineAt,
+    output: createShellOutputObservation(),
+  };
+  return {
+    waitForCondition: (predicate, label, options = {}) =>
+      waitForReadinessCondition(stream, predicate, label, readiness, options).then(() => undefined),
+    waitForCompletion: (predicate, label, options = {}) =>
+      waitForReadinessCondition(stream, predicate, label, readiness, options),
+    waitForShellReady: async (label, options = {}) => {
+      const { pacing, isQuiet } = quietShellWait(stream, label, options);
+      await waitForReadinessCondition(stream, isQuiet, label, readiness, pacing);
+    },
+    waitForEvaluatedInput: (send, probe, label, options = {}) => {
+      const roundTripStallMs = requireDuration(
+        options.roundTripStallMs ?? DEFAULT_INPUT_READY_STALL_MS,
+        'the round-trip stall window',
+        label,
+      );
+      const interval = options.intervalMs === undefined ? {} : { intervalMs: options.intervalMs };
+      return runEvaluatedInputProbe(
+        stream,
+        send,
+        probe,
+        async () => {
+          const startedAt = performance.now();
+          await waitForReadinessCondition(
+            stream,
+            () => shellOutputBeyondAttach(stream.read()).length > 0,
+            label,
+            readiness,
+            { stallMs: DEFAULT_INPUT_READY_STALL_MS, ...interval },
+          );
+          return {
+            firstOutputMs: performance.now() - startedAt,
+            firstOutput: describeLeading(shellOutputBeyondAttach(stream.read())),
+          };
+        },
+        (_firstOutputMs, predicate) => {
+          return async () => {
+            await waitForReadinessCondition(stream, predicate, label, readiness, {
+              stallMs: roundTripStallMs,
+              ...interval,
+            });
+          };
+        },
+      );
+    },
+  };
 }
 
 export function buildCwdFileProofCommand(platform: NodeJS.Platform, fileName: string): string {

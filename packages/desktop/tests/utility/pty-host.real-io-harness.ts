@@ -11,17 +11,17 @@ import {
 import {
   buildCwdFileProofCommand,
   createHarnessBudget,
+  createHarnessReadinessAfterCompletion,
+  createHarnessReadinessObserver,
   createPtyHostProbe,
   HARNESS_REPORT_RESERVE_MS,
+  HARNESS_WINDOWS_LAUNCH_STALL_MS,
   HarnessBudgetRefusal,
-  harnessExitAfterKillWait,
+  type HarnessReadinessObserver,
   harnessTimeouts,
-  harnessWindowsLaunchWait,
-  remainingGrantMs,
   resolveHarnessBudgetMs,
   waitForCondition,
-  waitForEvaluatedInput,
-  waitForShellReady,
+  waitForHarnessExit,
 } from '../support/pty-readiness.test-helper.ts';
 import { createHarnessScenarioRunner } from '../support/pty-startup-trace.test-helper.ts';
 import { harnessScenarioTitles } from '../support/real-io-harness-roster.test-helper.ts';
@@ -75,15 +75,13 @@ async function waitForWindowsInputReady(
   host: ReturnType<typeof createHost>,
   ptyId: string,
   label: string,
-  deadlineAt: number,
+  readiness: HarnessReadinessObserver,
 ): Promise<void> {
   const probe = buildInputReadyProbe();
-  const timing = await waitForEvaluatedInput(
-    host.streamOf(ptyId),
+  const timing = await readiness.waitForEvaluatedInput(
     (data) => host.send({ type: 'input', ptyId, data }),
     { input: `${probe.command}\r`, marker: probe.marker },
     label,
-    { budgetMs: remainingGrantMs(deadlineAt, label) },
   );
   console.log(
     `INPUT_READY ${label} firstOutputMs=${timing.firstOutputMs} firstOutput=${timing.firstOutput} readyMs=${timing.roundTripMs}`,
@@ -94,13 +92,13 @@ async function waitForInteractiveShellReady(
   host: ReturnType<typeof createHost>,
   ptyId: string,
   label: string,
-  deadlineAt: number,
+  readiness: HarnessReadinessObserver,
 ): Promise<void> {
   if (process.platform === 'win32') {
-    await waitForWindowsInputReady(host, ptyId, label, deadlineAt);
+    await waitForWindowsInputReady(host, ptyId, label, readiness);
     return;
   }
-  await waitForShellReady(host.streamOf(ptyId), label, { backstopAt: deadlineAt });
+  await readiness.waitForShellReady(label);
 }
 
 async function main(): Promise<void> {
@@ -113,34 +111,35 @@ async function main(): Promise<void> {
     writeFileSync(join(tmp, CWD_PROOF_FILE), cwdToken, 'utf8');
     const host = createHost(BASE_ENV);
     const io = host.streamOf('io');
+    const readiness = createHarnessReadinessObserver(
+      io,
+      deadlineAt,
+      harnessBudget.reportDeadlineAt,
+    );
     host.send({ type: 'create', ptyId: 'io', cwd: tmp, cols: 80, rows: 24 });
     await waitForInteractiveShellReady(
       host,
       'io',
       'interactive shell ready at project root',
-      deadlineAt,
+      readiness,
     );
     host.send({
       type: 'input',
       ptyId: 'io',
       data: `${shellCommands.arithmetic('HARNESS', 6, 7, 'DONE')}\r`,
     });
-    await waitForCondition(
-      io,
+    await readiness.waitForCondition(
       () => io.read().includes('HARNESS_42_DONE'),
       'evaluated command output',
-      { backstopAt: deadlineAt },
     );
     host.send({
       type: 'input',
       ptyId: 'io',
       data: `${buildCwdFileProofCommand(process.platform, CWD_PROOF_FILE)}\r`,
     });
-    await waitForCondition(
-      io,
+    await readiness.waitForCondition(
       () => io.read().includes(`CWD_PROOF=${cwdToken}`),
       'relative sentinel read at project root',
-      { backstopAt: deadlineAt },
     );
   });
 
@@ -151,12 +150,17 @@ async function main(): Promise<void> {
       OK_LOCK_KIND: 'interactive',
     });
     const env = host.streamOf('env');
+    const readiness = createHarnessReadinessObserver(
+      env,
+      deadlineAt,
+      harnessBudget.reportDeadlineAt,
+    );
     host.send({ type: 'create', ptyId: 'env', cwd: tmp, cols: 80, rows: 24 });
     await waitForInteractiveShellReady(
       host,
       'env',
       'interactive shell ready with desktop markers stripped',
-      deadlineAt,
+      readiness,
     );
     host.send({
       type: 'input',
@@ -168,11 +172,9 @@ async function main(): Promise<void> {
       ptyId: 'env',
       data: `${shellCommands.readEnvironment('OK_ELECTRON_PROTOCOL_HOST', 'HOST')}\r`,
     });
-    await waitForCondition(
-      env,
+    await readiness.waitForCondition(
       () => env.read().includes('LOCK=[]') && env.read().includes('HOST=[]'),
       'empty markers in shell',
-      { backstopAt: deadlineAt },
     );
     if (env.read().includes('LOCK=[interactive]')) {
       throw new Error('OK_LOCK_KIND leaked into the shell');
@@ -196,6 +198,11 @@ async function main(): Promise<void> {
         OK_HARNESS_LAUNCH_TOKEN: launchToken,
       });
       const launch = host.streamOf('launch');
+      const readiness = createHarnessReadinessObserver(
+        launch,
+        deadlineAt,
+        harnessBudget.reportDeadlineAt,
+      );
       host.send({
         type: 'create',
         ptyId: 'launch',
@@ -208,17 +215,16 @@ async function main(): Promise<void> {
           args: ['/d', '/c', 'echo', '%OK_HARNESS_LAUNCH_TOKEN%'],
         },
       });
-      await waitForCondition(
-        launch,
+      await readiness.waitForCondition(
         () => launch.read().includes(launchToken),
         'PowerShell EncodedCommand output',
-        harnessWindowsLaunchWait(deadlineAt),
+        { stallMs: HARNESS_WINDOWS_LAUNCH_STALL_MS },
       );
       await waitForWindowsInputReady(
         host,
         'launch',
         'PowerShell remains interactive after EncodedCommand',
-        deadlineAt,
+        readiness,
       );
       if (host.errorOf('launch') !== null) {
         throw new Error(`PowerShell launch failed: ${host.errorOf('launch')}`);
@@ -229,24 +235,32 @@ async function main(): Promise<void> {
   await runner.run('host survives a PTY death and respawns', async (deadlineAt) => {
     const host = createHost(BASE_ENV);
     const first = host.streamOf('c1');
-    const second = host.streamOf('c2');
-    host.send({ type: 'create', ptyId: 'c1', cwd: tmp, cols: 80, rows: 24 });
-    await waitForCondition(first, () => first.read().length > 0, 'first shell prompt', {
-      backstopAt: deadlineAt,
-    });
-    host.send({ type: 'kill', ptyId: 'c1' });
-    await waitForCondition(
+    const firstReadiness = createHarnessReadinessObserver(
       first,
-      () => host.exitOf('c1') !== null,
-      'exit after kill',
-      harnessExitAfterKillWait(deadlineAt),
+      deadlineAt,
+      harnessBudget.reportDeadlineAt,
     );
+    host.send({ type: 'create', ptyId: 'c1', cwd: tmp, cols: 80, rows: 24 });
+    const firstOutput = await firstReadiness.waitForCompletion(
+      () => first.read().length > 0,
+      'first shell prompt',
+    );
+    host.send({ type: 'kill', ptyId: 'c1' });
+    const exited = await waitForHarnessExit(first, () => host.exitOf('c1'), 'exit after kill', {
+      after: firstOutput,
+      initialDeadlineAt: deadlineAt,
+      reportDeadlineAt: harnessBudget.reportDeadlineAt,
+    });
+    const second = host.streamOf('c2');
+    const secondReadiness = createHarnessReadinessAfterCompletion(second, {
+      after: exited,
+      initialDeadlineAt: deadlineAt,
+      reportDeadlineAt: harnessBudget.reportDeadlineAt,
+    });
     host.send({ type: 'create', ptyId: 'c2', cwd: tmp, cols: 80, rows: 24 });
-    await waitForCondition(
-      second,
+    await secondReadiness.waitForCondition(
       () => second.read().length > 0,
       'second shell prompt (host survived)',
-      { backstopAt: deadlineAt },
     );
   });
 
