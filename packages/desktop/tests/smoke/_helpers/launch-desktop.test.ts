@@ -131,6 +131,10 @@ describe('desktopLaunchOptions', () => {
     );
   });
 
+  it('opts the unpackaged build into claiming the URL scheme so open -g deep links reach it', () => {
+    expect(desktopLaunchOptions({ target: unpackaged }).env?.OK_DEV_PROTOCOL).toBe('1');
+  });
+
   it('passes a supplied env through, over the inherited copy', () => {
     const env = { HOME: '/tmp/home', OK_DESKTOP_E2E_SMOKE: '1' };
     const opts = desktopLaunchOptions({ target: unpackaged, env });

@@ -4,6 +4,7 @@ import {
   type GitInstanceContext,
   resolveEffectiveInstanceName,
 } from './auto-instance.ts';
+import { sanitizeInstanceName } from './instance-isolation.ts';
 
 describe('deriveAutoInstanceName', () => {
   test('uses the branch name for a normal feature branch', () => {
@@ -16,9 +17,27 @@ describe('deriveAutoInstanceName', () => {
     expect(deriveAutoInstanceName({ branch: 'feat/foo', worktreeDir: '/repo' })).toBe('feat/foo');
   });
 
-  test('skips the repo default branch so plain dev on main is unchanged', () => {
-    expect(deriveAutoInstanceName({ branch: 'main', worktreeDir: '/repo' })).toBeNull();
-    expect(deriveAutoInstanceName({ branch: 'master', worktreeDir: '/repo' })).toBeNull();
+  test("the repo default branch gets its own dev instance instead of Stable's userData", () => {
+    expect(deriveAutoInstanceName({ branch: 'main', worktreeDir: '/repo' })).toBe('dev');
+    expect(deriveAutoInstanceName({ branch: 'master', worktreeDir: '/repo' })).toBe('dev');
+  });
+
+  test('a branch or worktree named dev never lands on the default-branch dev instance', () => {
+    const fromMain = deriveAutoInstanceName({ branch: 'main', worktreeDir: '/repo' });
+    for (const ctx of [
+      { branch: 'dev', worktreeDir: '/repo' },
+      { branch: 'dev-', worktreeDir: '/repo' },
+      { branch: 'Dev', worktreeDir: '/repo' },
+      { branch: 'DEV', worktreeDir: '/repo' },
+      { branch: 'HEAD', worktreeDir: '/Users/me/wt/dev' },
+      { branch: 'HEAD', worktreeDir: '/Users/me/wt/Dev' },
+    ]) {
+      const derived = deriveAutoInstanceName(ctx);
+      expect(derived).toBe('dev..branch');
+      expect(sanitizeInstanceName(derived ?? '').toLowerCase()).not.toBe(
+        sanitizeInstanceName(fromMain ?? '').toLowerCase(),
+      );
+    }
   });
 
   test('falls back to the worktree dir basename on detached HEAD', () => {
@@ -91,10 +110,10 @@ describe('resolveEffectiveInstanceName', () => {
     }
   });
 
-  test('returns null on the default branch with no explicit override', () => {
+  test('derives the dev instance on the default branch with no explicit override', () => {
     expect(
       resolveEffectiveInstanceName({}, '/repo', gitOn({ branch: 'main', worktreeDir: '/repo' })),
-    ).toBeNull();
+    ).toEqual({ name: 'dev', source: 'git' });
   });
 
   test('autoDeriveEnabled: false disables git derivation (E2E smoke) but explicit still wins', () => {

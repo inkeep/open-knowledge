@@ -381,6 +381,7 @@ interface ProtocolHandlerDeps {
     setAsDefaultProtocolClient(scheme: string): boolean;
     removeAsDefaultProtocolClient(scheme: string): boolean;
   };
+  registerDevProtocol?: boolean;
   focusWindowForProject(projectPath: string): BrowserWindowHandle | null;
   openProject(
     projectPath: string,
@@ -474,7 +475,24 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
     settleResolve = null;
   };
 
-  if (!deps.app.isPackaged) {
+  if (deps.app.isPackaged) {
+    try {
+      const ok = deps.app.setAsDefaultProtocolClient(protocolScheme);
+      if (!ok) {
+        deps.log?.error(
+          {},
+          '[url-scheme] packaged setAsDefaultProtocolClient returned false — openknowledge:// links may not reach this install',
+        );
+      }
+    } catch (err) {
+      deps.log?.error({ err }, '[url-scheme] packaged setAsDefaultProtocolClient failed');
+    }
+  } else if (deps.registerDevProtocol !== true) {
+    deps.log?.info?.(
+      { protocolScheme },
+      '[url-scheme] this dev build is not registered for the protocol, so its links go to whichever app owns the scheme, or nowhere; set OK_DEV_PROTOCOL=1 to claim it',
+    );
+  } else {
     try {
       const ok = deps.app.setAsDefaultProtocolClient(protocolScheme);
       if (!ok) {
@@ -496,18 +514,6 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
       }
     } catch (err) {
       deps.log?.warn({ err }, '[url-scheme] setAsDefaultProtocolClient failed');
-    }
-  } else {
-    try {
-      const ok = deps.app.setAsDefaultProtocolClient(protocolScheme);
-      if (!ok) {
-        deps.log?.error(
-          {},
-          '[url-scheme] packaged setAsDefaultProtocolClient returned false — openknowledge:// links may not reach this install',
-        );
-      }
-    } catch (err) {
-      deps.log?.error({ err }, '[url-scheme] packaged setAsDefaultProtocolClient failed');
     }
   }
 

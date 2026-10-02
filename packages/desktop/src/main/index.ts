@@ -6230,6 +6230,7 @@ function bootPrimaryInstance(): void {
       setAsDefaultProtocolClient: (scheme) => app.setAsDefaultProtocolClient(scheme),
       removeAsDefaultProtocolClient: (scheme) => app.removeAsDefaultProtocolClient(scheme),
     },
+    registerDevProtocol: process.env.OK_DEV_PROTOCOL === '1',
     focusWindowForProject: (projectPath) => {
       if (!wm) return null;
       yieldRestoreToDeepLink();
