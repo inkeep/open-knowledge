@@ -21,7 +21,7 @@ import { createContentFilter } from './content-filter.ts';
 import { classifyGitError } from './error-classification.ts';
 import type { GitHandle } from './git-handle.ts';
 import { listNames } from './git-paths.ts';
-import type { DetectGhAccountsFn, DetectGhFn, ProbeTokenStore } from './github-permissions.ts';
+import type { DetectGhAccountsFn, DetectGhFn } from './github-permissions.ts';
 import { getLogger } from './logger.ts';
 import { declareGitHubHosts, useIsolatedHome } from './share/git-host-declarations.test-helper.ts';
 import type { CredentialUrlMatchReader } from './share/github-account.ts';
@@ -32,7 +32,6 @@ import {
   SyncEngine,
   type SyncState,
 } from './sync-engine.ts';
-import { ANONYMOUS_PULL_MIN_SECONDS } from './sync-timing.ts';
 
 const execFileAsync = promisify(execFile);
 const JITTER_SAMPLES = [
@@ -1971,94 +1970,25 @@ describe('SyncEngine backoff thresholds via persisted state', () => {
   });
 });
 
-describe('SyncEngine pull-only cadence (auth-conditional)', () => {
-  const AUTHENTICATED_BAND = jitterBand(30);
-  const ANONYMOUS_BAND = jitterBand(ANONYMOUS_PULL_MIN_SECONDS);
-
-  type CadenceInternals = {
-    refreshAuthTier(): Promise<void>;
-    effectivePullDelayMs(): number;
-  };
-
-  function makeCadenceEngine(opts: {
-    mode: SyncMode;
-    detectGh?: DetectGhFn;
-    tokenStore?: ProbeTokenStore | null;
-  }) {
-    return new SyncEngine({
-      conflicts: newAuthority(),
-      projectDir,
-      contentDir,
-      contentFilter: stubContentFilter,
-      mode: opts.mode,
-      pullIntervalSeconds: 30,
-      pushIntervalSeconds: 99999,
-      detectGh: opts.detectGh,
-      tokenStore: opts.tokenStore,
-    });
-  }
-
-  async function scheduledPullDelayMs(engine: SyncEngine): Promise<number> {
-    const internals = engine as unknown as CadenceInternals;
-    await internals.refreshAuthTier();
-    return internals.effectivePullDelayMs();
-  }
-
+describe('SyncEngine pull-only cadence', () => {
   test.each(JITTER_SAMPLES)(
-    'an anonymous follower schedules pulls at the gentle cadence (draw $draw)',
-    async ({ draw, edge }) => {
+    'a follower with no credentials pulls at the configured interval (draw $draw)',
+    ({ draw, edge }) => {
       const random = vi.spyOn(Math, 'random').mockReturnValue(draw);
       onTestFinished(() => random.mockRestore());
-      const engine = makeCadenceEngine({ mode: 'follow' });
-      const delayMs = await scheduledPullDelayMs(engine);
-      expect(delayMs).toBe(ANONYMOUS_BAND[edge]);
-    },
-  );
-
-  test('a gh-authenticated follower keeps the responsive cadence', async () => {
-    const engine = makeCadenceEngine({
-      mode: 'follow',
-      detectGh: () => ({ available: true, token: 'gh-token' }),
-    });
-    const delayMs = await scheduledPullDelayMs(engine);
-    expect(delayMs).toBeGreaterThanOrEqual(AUTHENTICATED_BAND.min);
-    expect(delayMs).toBeLessThanOrEqual(AUTHENTICATED_BAND.max);
-  });
-
-  test('a follower authenticated only through the token store keeps the responsive cadence', async () => {
-    const engine = makeCadenceEngine({
-      mode: 'follow',
-      tokenStore: { get: async () => ({ token: 'store-token' }) },
-    });
-    const delayMs = await scheduledPullDelayMs(engine);
-    expect(delayMs).toBeGreaterThanOrEqual(AUTHENTICATED_BAND.min);
-    expect(delayMs).toBeLessThanOrEqual(AUTHENTICATED_BAND.max);
-  });
-
-  test.each(JITTER_SAMPLES)(
-    'a token-store read failure degrades to the gentle cadence (draw $draw)',
-    async ({ draw, edge }) => {
-      const random = vi.spyOn(Math, 'random').mockReturnValue(draw);
-      onTestFinished(() => random.mockRestore());
-      const engine = makeCadenceEngine({
+      const engine = new SyncEngine({
+        conflicts: newAuthority(),
+        projectDir,
+        contentDir,
+        contentFilter: stubContentFilter,
         mode: 'follow',
-        tokenStore: {
-          get: async () => {
-            throw new Error('EACCES');
-          },
-        },
+        pullIntervalSeconds: 30,
+        pushIntervalSeconds: 99999,
       });
-      const delayMs = await scheduledPullDelayMs(engine);
-      expect(delayMs).toBe(ANONYMOUS_BAND[edge]);
+      const internals = engine as unknown as { effectivePullDelayMs(): number };
+      expect(internals.effectivePullDelayMs()).toBe(jitterBand(30)[edge]);
     },
   );
-
-  test('full-sync cadence is untouched even with no credentials', async () => {
-    const engine = makeCadenceEngine({ mode: 'full' });
-    const delayMs = await scheduledPullDelayMs(engine);
-    expect(delayMs).toBeGreaterThanOrEqual(AUTHENTICATED_BAND.min);
-    expect(delayMs).toBeLessThanOrEqual(AUTHENTICATED_BAND.max);
-  });
 });
 
 describe('SyncEngine lastRunUtc survives a restart', () => {
@@ -2410,31 +2340,7 @@ describe('SyncEngine setIntervals()', () => {
     expect(internals.pushTimer).toBeNull();
   });
 
-  test.each(JITTER_SAMPLES)(
-    'the anonymous floor still outranks a shorter configured pull interval (draw $draw)',
-    async ({ draw, edge }) => {
-      const random = vi.spyOn(Math, 'random').mockReturnValue(draw);
-      onTestFinished(() => random.mockRestore());
-      const engine = new SyncEngine({
-        conflicts: newAuthority(),
-        projectDir,
-        contentDir,
-        contentFilter: stubContentFilter,
-        mode: 'follow',
-        pullIntervalSeconds: 30,
-        pushIntervalSeconds: 60,
-      });
-      const internals = engine as unknown as IntervalInternals & {
-        refreshAuthTier(): Promise<void>;
-      };
-      engine.setIntervals(30, 60);
-      await internals.refreshAuthTier();
-      const delayMs = internals.effectivePullDelayMs();
-      expect(delayMs).toBe(jitterBand(ANONYMOUS_PULL_MIN_SECONDS)[edge]);
-    },
-  );
-
-  test('a longer configured interval is honored for an anonymous follower', async () => {
+  test('a longer configured interval is honored for a follower', async () => {
     const engine = new SyncEngine({
       conflicts: newAuthority(),
       projectDir,
@@ -2444,11 +2350,8 @@ describe('SyncEngine setIntervals()', () => {
       pullIntervalSeconds: 30,
       pushIntervalSeconds: 60,
     });
-    const internals = engine as unknown as IntervalInternals & {
-      refreshAuthTier(): Promise<void>;
-    };
+    const internals = engine as unknown as IntervalInternals;
     engine.setIntervals(3600, 60);
-    await internals.refreshAuthTier();
     const delayMs = internals.effectivePullDelayMs();
     expect(delayMs).toBeGreaterThanOrEqual(jitterBand(3600).min);
     expect(delayMs).toBeLessThanOrEqual(jitterBand(3600).max);
@@ -2672,7 +2575,7 @@ describe('SyncEngine effectivePushDelayMs floors on the configured interval', ()
   }
 
   test.each(
-    [60, ANONYMOUS_PULL_MIN_SECONDS].flatMap((intervalSeconds) =>
+    [60, 180].flatMap((intervalSeconds) =>
       JITTER_SAMPLES.map((sample) => ({ intervalSeconds, ...sample })),
     ),
   )(
@@ -5148,19 +5051,6 @@ describe('SyncEngine declared-account resolution', () => {
       logs.restore();
     }
   });
-
-  test('the auth tier resolves the same declared account as git handles', async () => {
-    await initGitWithOrigin('https://alice@github.com/mona/kb.git');
-    const detect = recordDetectGh(honorRequested);
-    const engine = makeAccountEngine(detect.fn, countingUrlMatch(null).fn);
-
-    const tier = await (
-      engine as unknown as { resolveAuthTier: () => Promise<string> }
-    ).resolveAuthTier();
-
-    expect(tier).toBe('authenticated');
-    expect(detect.logins()).toEqual(['alice']);
-  });
 });
 
 describe('SyncEngine sync mode', () => {
@@ -7235,7 +7125,6 @@ describe('SyncEngine exclusive merge ownership', () => {
     doPushCycle(retriesLeft?: number): Promise<void>;
     doPullCycle(invocation: 'explicit' | 'sync'): Promise<'up-to-date'>;
     runPullCycle(): Promise<void>;
-    refreshAuthTier(): Promise<void>;
     handleError(classified: ReturnType<typeof classifyGitError>, op: 'push' | 'pull'): void;
   }
 
@@ -7352,15 +7241,15 @@ describe('SyncEngine exclusive merge ownership', () => {
     }
   });
 
-  test('follow-mode auth refresh holds ownership before its await', async () => {
+  test('a follow-mode pull holds ownership while it is in flight', async () => {
     const { engine, internals } = await setup('follow');
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    internals.refreshAuthTier = async () => {
+    const pull = vi.fn(async () => {
       entered.resolve();
       await release.promise;
-    };
-    const pull = vi.fn(async () => 'up-to-date' as const);
+      return 'up-to-date' as const;
+    });
     const push = vi.fn(async () => {});
     internals.doPullCycle = pull;
     internals.doPushCycle = push;
@@ -7370,10 +7259,9 @@ describe('SyncEngine exclusive merge ownership', () => {
       await engine.pushOnce();
       expect(await engine.pullOnce()).toBe('refused');
       expect(push).not.toHaveBeenCalled();
-      expect(pull).not.toHaveBeenCalled();
+      expect(pull).toHaveBeenCalledTimes(1);
       release.resolve();
       await running;
-      expect(pull).toHaveBeenCalledTimes(1);
       await engine.pushOnce();
       expect(push).toHaveBeenCalledTimes(1);
     } finally {

@@ -16510,10 +16510,6 @@ msgstr "यह कहाँ रहना चाहिए?"
 msgid "Which skill"
 msgstr "कौन सी स्किल"
 
-#: src/components/settings/SyncSection.tsx
-msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
-msgstr "जब तक आप साइन आउट हैं, इस सेटिंग के बावजूद अपडेट अधिकतम हर 3 मिनट में जाँचे जाते हैं।"
-
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr "रिक्त स्थान"

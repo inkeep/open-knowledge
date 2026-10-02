@@ -16514,10 +16514,6 @@ msgstr "یہ کہاں رہنا چاہیے؟"
 msgid "Which skill"
 msgstr "کون سی مہارت"
 
-#: src/components/settings/SyncSection.tsx
-msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
-msgstr "جب تک آپ سائن آؤٹ ہیں، اس ترتیب سے قطع نظر اپ ڈیٹس زیادہ سے زیادہ ہر 3 منٹ بعد دیکھی جاتی ہیں۔"
-
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr "خالی جگہ"

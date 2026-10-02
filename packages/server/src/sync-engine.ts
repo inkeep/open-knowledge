@@ -85,11 +85,7 @@ import {
   type GitHubAccount,
 } from './share/github-account.ts';
 import { assertRealpathWithinDir } from './symlink-guard.ts';
-import {
-  computeRemainingMs,
-  type PullAuthTier,
-  pullIntervalSecondsForAuthTier,
-} from './sync-timing.ts';
+import { computeRemainingMs } from './sync-timing.ts';
 
 const log = getLogger('sync-engine');
 const TRACKED_MCP_CONFIG_TARGET_SET: ReadonlySet<string> = new Set(TRACKED_MCP_CONFIG_TARGETS);
@@ -416,7 +412,6 @@ export class SyncEngine {
   private checkPushPermissionFn: (opts: CheckPushPermissionOptions) => Promise<PushPermission>;
   private pushPermission: PushPermissionStatus | null = null;
   private pushPermissionProbeInFlight = false;
-  private authTier: PullAuthTier | 'unknown' = 'unknown';
 
   private pullTimer: ReturnType<typeof setTimeout> | null = null;
   private pushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -646,12 +641,7 @@ export class SyncEngine {
       return;
     }
 
-    if (this.mode === 'follow') await this.refreshAuthTier();
-
-    const pullRemainingMs = computeRemainingMs(
-      this.lastFetchUtc,
-      this.currentPullIntervalSeconds(),
-    );
+    const pullRemainingMs = computeRemainingMs(this.lastFetchUtc, this.pullIntervalSeconds);
     const pushRemainingMs = computeRemainingMs(this.lastPushOkUtc, this.pushIntervalSeconds);
     this.schedulePull(pullRemainingMs > 0 ? pullRemainingMs : undefined);
     this.schedulePush(pushRemainingMs > 0 ? pushRemainingMs : undefined);
@@ -1385,35 +1375,10 @@ export class SyncEngine {
     }, delayMs);
   }
 
-  private async resolveAuthTier(): Promise<PullAuthTier> {
-    if (this.resolveRelayGhToken() !== null) return 'authenticated';
-    if (this.tokenStore) {
-      try {
-        const entry = await this.tokenStore.get(this.syncGhTarget().host);
-        if (entry?.token) return 'authenticated';
-      } catch (err) {
-        log.warn({ err }, '[sync] auth-tier token-store lookup threw — treating as anonymous');
-      }
-    }
-    return 'anonymous';
-  }
-
-  private async refreshAuthTier(): Promise<void> {
-    this.authTier = await this.resolveAuthTier();
-  }
-
-  private currentPullIntervalSeconds(): number {
-    if (this.mode !== 'follow') return this.pullIntervalSeconds;
-    return pullIntervalSecondsForAuthTier(
-      this.pullIntervalSeconds,
-      this.authTier === 'anonymous' ? 'anonymous' : 'authenticated',
-    );
-  }
-
   private effectivePullDelayMs(): number {
     const bkoff = backoffMs(this.consecutivePullFailures);
     const backoffSeconds = bkoff > 0 ? bkoff / 1000 : 0;
-    return jitteredMs(Math.max(backoffSeconds, this.currentPullIntervalSeconds()));
+    return jitteredMs(Math.max(backoffSeconds, this.pullIntervalSeconds));
   }
 
   private effectivePushDelayMs(): number {
@@ -1472,7 +1437,6 @@ export class SyncEngine {
     this.cycleInFlight = 'pull';
     this.beginIndexLockWatch('pull');
     try {
-      if (this.mode === 'follow') await this.refreshAuthTier();
       this.recordPullOutcome(await this.doPullCycle(this.mode === 'full' ? 'sync' : 'explicit'));
     } finally {
       this.cycleInFlight = null;

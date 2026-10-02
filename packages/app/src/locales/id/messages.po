@@ -16510,10 +16510,6 @@ msgstr "Di mana ia sebaiknya berada?"
 msgid "Which skill"
 msgstr "Keterampilan yang mana"
 
-#: src/components/settings/SyncSection.tsx
-msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
-msgstr "Selama Anda keluar dari akun, pembaruan diperiksa paling cepat setiap 3 menit, terlepas dari pengaturan ini."
-
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr "Spasi"

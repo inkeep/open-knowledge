@@ -16514,10 +16514,6 @@ msgstr "¿Dónde debería vivir?"
 msgid "Which skill"
 msgstr "Qué habilidad"
 
-#: src/components/settings/SyncSection.tsx
-msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
-msgstr "Mientras tengas la sesión cerrada, las actualizaciones se buscan como mucho cada 3 minutos, independientemente de este ajuste."
-
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr "Espacios en blanco"

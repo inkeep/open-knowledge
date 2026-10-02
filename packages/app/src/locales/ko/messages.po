@@ -16514,10 +16514,6 @@ msgstr "어디에 둘까요?"
 msgid "Which skill"
 msgstr "어떤 스킬"
 
-#: src/components/settings/SyncSection.tsx
-msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
-msgstr "로그아웃 상태에서는 이 설정과 관계없이 업데이트를 최대 3분에 한 번만 확인합니다."
-
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr "공백"

@@ -16510,10 +16510,6 @@ msgstr "এটি কোথায় থাকবে?"
 msgid "Which skill"
 msgstr "কোন স্কিল"
 
-#: src/components/settings/SyncSection.tsx
-msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
-msgstr "আপনি সাইন আউট থাকা অবস্থায় এই সেটিং যা-ই হোক, আপডেট সর্বোচ্চ প্রতি 3 মিনিটে একবার দেখা হয়।"
-
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr "ফাঁকা জায়গা"

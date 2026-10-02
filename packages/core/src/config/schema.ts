@@ -467,7 +467,7 @@ export const ConfigSchema = z.looseObject({
           reload: 'live',
           defaultScope: 'project-local',
           description:
-            'Seconds between scheduled pulls while autoSync.mode is follow or full (default 30). An unauthenticated follower is additionally floored to the anonymous poll minimum, so a lower value there has no effect. Per-machine (project-local) — not shared.',
+            'Seconds between scheduled pulls while autoSync.mode is follow or full (default 30). Per-machine (project-local) — not shared.',
         })
         .optional()
         .catch(undefined),

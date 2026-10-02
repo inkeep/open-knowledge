@@ -16514,10 +16514,6 @@ msgstr "أين ينبغي أن يعيش؟"
 msgid "Which skill"
 msgstr "أي مهارة"
 
-#: src/components/settings/SyncSection.tsx
-msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
-msgstr "أثناء تسجيل خروجك، يجري التحقق من التحديثات كل 3 دقائق على الأكثر بغض النظر عن هذا الإعداد."
-
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr "المسافات البيضاء"

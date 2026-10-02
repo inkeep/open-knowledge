@@ -16514,10 +16514,6 @@ msgstr "Gdzie ma się znajdować?"
 msgid "Which skill"
 msgstr "Która umiejętność"
 
-#: src/components/settings/SyncSection.tsx
-msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
-msgstr "Gdy jesteś wylogowany, aktualizacje są sprawdzane co najwyżej co 3 minuty, niezależnie od tego ustawienia."
-
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr "Białe znaki"

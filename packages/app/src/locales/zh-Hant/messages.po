@@ -16514,10 +16514,6 @@ msgstr "它應該放在哪裡？"
 msgid "Which skill"
 msgstr "哪一個技能"
 
-#: src/components/settings/SyncSection.tsx
-msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
-msgstr "在你登出期間，無論此設定為何，更新最多每 3 分鐘檢查一次。"
-
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr "空白字元"

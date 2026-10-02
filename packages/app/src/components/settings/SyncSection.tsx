@@ -165,9 +165,6 @@ function SyncSectionContent({
     status?.pushPermission?.checkStatus === 'denied' &&
     status.pushPermission.deniedReason !== 'not-authenticated' &&
     !notFoundAsIdentity;
-  const isSignedOut =
-    status?.pushPermission?.checkStatus === 'denied' &&
-    status.pushPermission.deniedReason === 'not-authenticated';
   const parkedOnNotFound = isParkedOnNotFoundAsIdentity(status);
   const pausedNotice = !status?.pausedReason ? null : parkedOnNotFound ? (
     formatSyncFailureCode('auth-not-found-as-identity')
@@ -496,17 +493,6 @@ function SyncSectionContent({
                   </SelectContent>
                 </Select>
               </div>
-              {isSignedOut && (
-                <p
-                  className="text-1sm text-muted-foreground"
-                  data-testid="settings-sync-anon-floor-hint"
-                >
-                  <Trans>
-                    While you're signed out, updates are checked at most every 3 minutes regardless
-                    of this setting.
-                  </Trans>
-                </p>
-              )}
               {localMode === 'full' && (
                 <div className="flex items-start justify-between gap-4 border-t pt-3">
                   <div className="min-w-0 flex-1">

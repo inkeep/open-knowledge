@@ -16510,10 +16510,6 @@ msgstr ""
 msgid "Which skill"
 msgstr ""
 
-#: src/components/settings/SyncSection.tsx
-msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
-msgstr ""
-
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr ""

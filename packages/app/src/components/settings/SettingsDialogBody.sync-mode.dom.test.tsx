@@ -486,25 +486,6 @@ describe('Settings Sync section — cycle cadence controls', () => {
       autoSync: { pullIntervalSeconds: 300, pushIntervalSeconds: 900 },
     });
   });
-
-  test('a signed-out follower is told the anonymous floor overrides the setting', async () => {
-    syncStatus = {
-      ...syncStatus,
-      pushPermission: { checkStatus: 'denied', deniedReason: 'not-authenticated' },
-    } as SyncStatus;
-
-    await renderSyncSection();
-
-    expect(screen.queryByTestId('settings-sync-anon-floor-hint')).not.toBeNull();
-  });
-
-  test('a signed-in follower sees no anonymous-floor caption', async () => {
-    syncStatus = { ...syncStatus, pushPermission: { checkStatus: 'allowed' } } as SyncStatus;
-
-    await renderSyncSection();
-
-    expect(screen.queryByTestId('settings-sync-anon-floor-hint')).toBeNull();
-  });
 });
 
 describe('Settings Sync section — Advanced disclosure intent', () => {
