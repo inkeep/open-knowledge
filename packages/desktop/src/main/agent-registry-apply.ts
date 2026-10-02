@@ -336,6 +336,7 @@ const DEFAULT_LOGGER: AgentIntegrationsLogger = {
 
 export interface AgentIntegrationsApplyDelegateOpts {
   available: boolean;
+  devBuild?: boolean;
   surfaces: AgentRegistryWriterSurfaces;
   resolveProjectDir(event: IpcMainInvokeEvent): string | null;
   snapshot(projectDir: string | null): Promise<HostSnapshot>;
@@ -356,7 +357,13 @@ const EMPTY_SNAPSHOT: HostSnapshot = {
 export function createAgentIntegrationsApplyDelegate(
   opts: AgentIntegrationsApplyDelegateOpts,
 ): AgentIntegrationsApplyDelegate {
-  const { available, surfaces, resolveProjectDir, logger = DEFAULT_LOGGER } = opts;
+  const {
+    available,
+    devBuild = false,
+    surfaces,
+    resolveProjectDir,
+    logger = DEFAULT_LOGGER,
+  } = opts;
 
   async function safeSnapshot(projectDir: string | null): Promise<HostSnapshot> {
     try {
@@ -391,6 +398,7 @@ export function createAgentIntegrationsApplyDelegate(
         ok: false,
         error: 'Managing AI tool connections is unavailable in this build.',
         unavailable: true,
+        ...(devBuild ? { devBuild: true } : {}),
         report: EMPTY_REPORT,
         snapshot,
       };

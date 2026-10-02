@@ -993,6 +993,9 @@
     "AT0e50": ["Simpan keduanya"],
     "ATGYL1": ["Alamat surel"],
     "AUMPjj": ["Spasi untuk melompat, panah bawah untuk menunduk. Hanya itu permainannya."],
+    "AUORpp": [
+      "Build pengembangan ini tidak dapat menghubungkan agen, jadi tidak akan mengubah pengaturan agen di aplikasi OpenKnowledge yang terpasang."
+    ],
     "AUV-TY": ["Berpikir"],
     "AVW-K9": ["Gagal memuat halaman yatim"],
     "AWOSPo": ["Perbesar"],

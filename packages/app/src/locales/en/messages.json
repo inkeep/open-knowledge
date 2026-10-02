@@ -987,6 +987,9 @@
     "AT0e50": ["Keep both"],
     "ATGYL1": ["Email address"],
     "AUMPjj": ["Space to jump, down arrow to duck. That is the whole game."],
+    "AUORpp": [
+      "This development build can't connect agents, so it won't change the agent setup of your installed OpenKnowledge app."
+    ],
     "AUV-TY": ["Thinking"],
     "AVW-K9": ["Failed to load orphan pages"],
     "AWOSPo": ["Zoom in"],

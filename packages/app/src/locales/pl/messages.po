@@ -15109,6 +15109,11 @@ msgstr "Nie udało się tego skonfigurować, ponieważ nie zapisano wymaganego w
 msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
 msgstr "Operacja usuwa wpisy serwera MCP i pliki umiejętności wymienione poniżej. Agent straci dostęp do Twoich dokumentów, dopóki nie dodasz go ponownie."
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "This development build can't connect agents, so it won't change the agent setup of your installed OpenKnowledge app."
+msgstr "Ta wersja deweloperska nie może łączyć agentów, więc nie zmieni konfiguracji agentów w zainstalowanej aplikacji OpenKnowledge."
+
 #. placeholder {0}: connection.label
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This disconnects {0} from OpenKnowledge."

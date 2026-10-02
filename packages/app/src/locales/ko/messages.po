@@ -15109,6 +15109,11 @@ msgstr "필요한 MCP 서버 항목이 기록되지 않아 설정할 수 없었�
 msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
 msgstr "아래 나열된 MCP 서버 항목과 스킬 파일을 삭제합니다. 다시 추가할 때까지 에이전트가 문서에 접근할 수 없습니다."
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "This development build can't connect agents, so it won't change the agent setup of your installed OpenKnowledge app."
+msgstr "이 개발 빌드는 에이전트를 연결할 수 없으므로 설치된 OpenKnowledge 앱의 에이전트 설정을 변경하지 않습니다."
+
 #. placeholder {0}: connection.label
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This disconnects {0} from OpenKnowledge."

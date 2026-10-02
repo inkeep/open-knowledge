@@ -15105,6 +15105,11 @@ msgstr ""
 msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
 msgstr ""
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "This development build can't connect agents, so it won't change the agent setup of your installed OpenKnowledge app."
+msgstr ""
+
 #. placeholder {0}: connection.label
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This disconnects {0} from OpenKnowledge."

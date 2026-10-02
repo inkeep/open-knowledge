@@ -1183,6 +1183,9 @@
     "AT0e50": ["Conserver les deux"],
     "ATGYL1": ["Adresse e-mail"],
     "AUMPjj": ["Espace pour sauter, flèche bas pour s'accroupir. C'est tout le jeu."],
+    "AUORpp": [
+      "Cette version de développement ne peut pas connecter d'agents, elle ne modifiera donc pas la configuration des agents de votre application OpenKnowledge installée."
+    ],
     "AUV-TY": ["Réflexion"],
     "AVW-K9": ["Échec du chargement des pages orphelines"],
     "AWOSPo": ["Zoom avant"],

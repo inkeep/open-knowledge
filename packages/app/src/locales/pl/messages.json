@@ -1191,6 +1191,9 @@
     "AT0e50": ["Zachowaj oba"],
     "ATGYL1": ["Adres e-mail"],
     "AUMPjj": ["Spacja do skoku, strzałka w dół, żeby się schować. To cała gra."],
+    "AUORpp": [
+      "Ta wersja deweloperska nie może łączyć agentów, więc nie zmieni konfiguracji agentów w zainstalowanej aplikacji OpenKnowledge."
+    ],
     "AUV-TY": ["Myślenie"],
     "AVW-K9": ["Nie udało się wczytać stron osieroconych"],
     "AWOSPo": ["Powiększ"],

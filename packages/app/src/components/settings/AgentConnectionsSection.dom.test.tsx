@@ -1976,6 +1976,23 @@ describe('a host that cannot manage connections', () => {
     }
   });
 
+  test('a dev build explains why instead of saying "unavailable"', async () => {
+    renderSection(async () => ({
+      ok: false,
+      unavailable: true,
+      devBuild: true,
+      error: 'Managing AI tool connections is unavailable in this build.',
+      report: EMPTY_REPORT,
+      snapshot: snapshotWith([]),
+    }));
+
+    const notice = await screen.findByTestId('configure-agents-read-only');
+    expect(notice.textContent).toContain(
+      "This development build can't connect agents, so it won't change the agent setup of your installed OpenKnowledge app.",
+    );
+    expect(notice.textContent).not.toContain('unavailable in this build');
+  });
+
   test('a read-only build hides the cleanup link even when files are on disk', async () => {
     terminalLaunchValue = { installedClis: { claude: true, pi: false } };
     reloadEnabledAgentsFromStorage();

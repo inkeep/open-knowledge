@@ -1154,6 +1154,9 @@
     "AT0e50": ["Conservar ambos"],
     "ATGYL1": ["Dirección de correo"],
     "AUMPjj": ["Espacio para saltar, flecha abajo para agacharse. Ese es todo el juego."],
+    "AUORpp": [
+      "Esta versión de desarrollo no puede conectar agentes, así que no cambiará la configuración de agentes de tu app OpenKnowledge instalada."
+    ],
     "AUV-TY": ["Pensando"],
     "AVW-K9": ["No se pudieron cargar las páginas huérfanas"],
     "AWOSPo": ["Acercar"],

@@ -1171,6 +1171,26 @@ describe('a failed save names its reason', () => {
     expect(text).toContain('Managing agent connections is unavailable in this build.');
   });
 
+  test('a dev build explains the lock in the save dialog instead of saying "unavailable"', async () => {
+    const before = snapshotWith();
+    const apply = vi.fn(async (intents: readonly ApplyIntent[]) => {
+      if (intents.length === 0) return result(before);
+      return {
+        ok: false,
+        unavailable: true,
+        devBuild: true,
+        error: 'Managing AI tool connections is unavailable in this build.',
+        report: EMPTY_REPORT,
+        snapshot: before,
+      } satisfies ApplyAgentConnectionsResult;
+    });
+    const text = await saveAndReadAlert('claude', apply);
+    expect(text).toContain(
+      "This development build can't connect agents, so it won't change the agent setup of your installed OpenKnowledge app.",
+    );
+    expect(text).not.toContain('unavailable in this build');
+  });
+
   test('an unexplained failure still shows the host error text under the generic line', async () => {
     const before = snapshotWith();
     const apply = vi.fn(async (intents: readonly ApplyIntent[]) => {

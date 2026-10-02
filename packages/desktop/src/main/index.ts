@@ -289,7 +289,7 @@ import { createBootBudgetDirSizeProbe } from './fs-walk-budget.ts';
 import { ensureGitAvailable } from './git-preflight-handler.ts';
 import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
 import { failedOpenHolder, promptHolderStop } from './holder-stop-prompt.ts';
-import { classifyInstallShape } from './install-shape.ts';
+import { agentConnectionsAvailability, isSupportedInstallShape } from './install-shape.ts';
 import {
   combineInstanceLabels,
   formatInstanceAppName,
@@ -2580,8 +2580,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
 }
 
 function supportedPackagedInstall(): boolean {
-  const kind = classifyInstallShape(process.platform, app.getPath('exe'), process.env).kind;
-  return kind !== 'appimage' && kind !== 'unsupported';
+  return isSupportedInstallShape(process.platform, app.getPath('exe'), process.env);
 }
 
 function desktopSelfUninstallAvailable(): boolean {
@@ -5611,12 +5610,12 @@ function projectDirForSender(event: IpcMainInvokeEvent): string | null {
 
 function registerIntegrationsSettingsIpc(): void {
   const integrationsLogger = getLogger('integrations-settings');
-  const available =
-    process.env.OK_RECLAIM_DISABLE !== '1' &&
-    (app.isPackaged || process.env.OK_M6B_FORCE === '1') &&
-    !['appimage', 'unsupported'].includes(
-      classifyInstallShape(process.platform, app.getPath('exe'), process.env).kind,
-    );
+  const { available, devBuild } = agentConnectionsAvailability(
+    app.isPackaged,
+    process.platform,
+    app.getPath('exe'),
+    process.env,
+  );
   const applyLogger = getLogger('agent-integrations-apply');
   registerIntegrationsSettings({
     home: osHomedir(),
@@ -5624,6 +5623,7 @@ function registerIntegrationsSettingsIpc(): void {
     ipcMain,
     applyBatch: createAgentIntegrationsApplyDelegate({
       available,
+      devBuild,
       surfaces: { global: globalMcpWriterSurface(), project: projectWriterSurface() },
       resolveProjectDir: projectDirForSender,
       snapshot: (projectDir) => {
@@ -5761,10 +5761,12 @@ function registerIntegrationsSettingsIpc(): void {
 
 function registerProjectIntegrationsSettingsIpc(): void {
   const projectLogger = getLogger('project-integrations-settings');
-  const available =
-    process.env.OK_RECLAIM_DISABLE !== '1' &&
-    (app.isPackaged || process.env.OK_M6B_FORCE === '1') &&
-    supportedPackagedInstall();
+  const { available } = agentConnectionsAvailability(
+    app.isPackaged,
+    process.platform,
+    app.getPath('exe'),
+    process.env,
+  );
   const tildifyHomePath = (path: string): string => {
     const home = osHomedir();
     return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;

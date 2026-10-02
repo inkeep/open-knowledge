@@ -15109,6 +15109,11 @@ msgstr "تعذّر إعداد هذا لأن إدخال خادم MCP الذي ي�
 msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
 msgstr "يحذف هذا إدخالات خادم MCP وملفات المهارات المدرجة أدناه. سيفقد الوكيل إمكانية الوصول إلى مستنداتك حتى تضيفه مرة أخرى."
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "This development build can't connect agents, so it won't change the agent setup of your installed OpenKnowledge app."
+msgstr "لا يمكن لإصدار التطوير هذا ربط الوكلاء، لذا لن يغيّر إعداد الوكلاء في تطبيق OpenKnowledge المثبّت لديك."
+
 #. placeholder {0}: connection.label
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This disconnects {0} from OpenKnowledge."
