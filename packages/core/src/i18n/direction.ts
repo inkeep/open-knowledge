@@ -19,6 +19,7 @@ const STATIC_DIRECTIONS: Record<SupportedLocale, TextDirection> = {
   id: 'ltr',
   ur: 'rtl',
   ko: 'ltr',
+  pl: 'ltr',
 };
 
 export function localeDirection(locale: SupportedLocale): TextDirection {
