@@ -91,6 +91,23 @@ describe('release jobs install the pnpm version declared by the checked-out tag'
   });
 });
 
+test('bug-lane-verify installs the pnpm version declared by the stable it verifies', () => {
+  const [steps] = Object.values(parse(bugLaneVerify).jobs)
+    .map((job) => job.steps ?? [])
+    .filter((jobSteps) => jobSteps.some((step) => step.id === 'verify'));
+  const stable = steps.findIndex((step) => step.name === 'Check out the stable tag');
+  const pnpmSteps = steps.filter((step) => step.uses?.startsWith('pnpm/'));
+  const verify = steps.findIndex((step) => step.id === 'verify');
+
+  expect(steps[stable]?.run).toBe('git checkout --detach "$STABLE"');
+  expect(pnpmSteps).toHaveLength(1);
+  expect(pnpmSteps[0].uses).toBe(tagCompatiblePnpmSetup);
+  expect(pnpmSteps[0].with).toBeUndefined();
+  expect(steps.indexOf(pnpmSteps[0])).toBeGreaterThan(stable);
+  expect(verify).toBeGreaterThan(steps.indexOf(pnpmSteps[0]));
+  expect(steps[verify].run).not.toContain('git checkout --detach');
+});
+
 function stepLevelIfConditions(source) {
   const lines = source.split('\n');
   const out = [];
