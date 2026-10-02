@@ -1724,6 +1724,46 @@ describe('ProviderPool stored-state validation spine', () => {
     expect(persistenceFactory).toHaveBeenCalledTimes(1);
   });
 
+  test('a record-present open that attaches eagerly still backfills the cache after its first sync', async () => {
+    const flushSpy = vi.fn(async () => {});
+    const persistenceFactory = vi.fn(
+      () =>
+        ({
+          whenSynced: Promise.resolve(undefined as never),
+          synced: true,
+          destroy: async () => {},
+          clearData: async () => {},
+          flushFullState: flushSpy,
+        }) as unknown as ClientPersistenceProvider,
+    );
+    pool = new ProviderPool(3, DUMMY_WS, {
+      storage: null,
+      persistenceFactory,
+      peekStoredLineageEpoch: async () => null,
+    });
+    const docName = uniqueDocName('pp-eager-backfill');
+
+    const first = pool.open(docName);
+    if (!first) throw new Error('expected first entry');
+    first.provider.document.getMap('lifecycle').set('epoch', 'epoch-x');
+    first.provider.emit('synced', { state: true });
+    pool.close(docName);
+    pool.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);
+
+    const entry = pool.open(docName);
+    if (!entry) throw new Error('expected entry');
+    expect(entry.lineageEpochRecordAtOpen).toBe('epoch-x');
+    expect(entry.persistence).not.toBeNull();
+    expect(persistenceFactory).toHaveBeenCalledTimes(1);
+
+    await wait(20);
+    expect(flushSpy).not.toHaveBeenCalled();
+    entry.provider.document.getMap('lifecycle').set('epoch', 'epoch-x');
+    entry.provider.emit('synced', { state: true });
+    const flushed = await waitFor(() => flushSpy.mock.calls.length === 1, 2_000);
+    expect(flushed).toBe(true);
+  });
+
   test('a re-dispatch onto an entry with an in-flight spine run is a no-op (attach ownership)', async () => {
     let resolvePeek: (value: string | null) => void = () => {};
     const peek = vi.fn(
