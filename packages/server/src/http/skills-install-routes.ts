@@ -27,6 +27,7 @@ import type { SkillPlacementOpsService } from '../services/skill-placement-ops.t
 import { isInternalBundleSkillName } from '../skill-bundles.ts';
 import { detectUserSkillHosts } from '../skill-install.ts';
 import {
+  linksNotPermittedWarning,
   projectSkill,
   resolvedHosts,
   resolveSkillTargets,
@@ -385,8 +386,12 @@ export function createSkillsInstallRoutes(deps: SkillsInstallRouteDeps): ApiRout
               name: body.name,
               hosts: inPlaceEntry ? [...inPlaceEntry.hosts] : [],
               scripts: validity.hasScripts,
-              warnings: [],
-              warningCodes: [],
+              ...('copiedInsteadOfLinked' in placed && placed.copiedInsteadOfLinked
+                ? {
+                    warnings: [linksNotPermittedWarning([dirname(placed.placedAt)])],
+                    warningCodes: ['links-not-permitted' as const],
+                  }
+                : { warnings: [], warningCodes: [] }),
               placedAt: placed.placedAt,
             },
             { handler: 'skill-install' },
@@ -535,6 +540,15 @@ export function createSkillsInstallRoutes(deps: SkillsInstallRouteDeps): ApiRout
                   404,
                   'urn:ok:error:not-found',
                   'The skill is not installed there.',
+                  { handler: 'skill-install', detail: target },
+                );
+                return;
+              case 'links-not-permitted':
+                errorResponse(
+                  res,
+                  403,
+                  'urn:ok:error:links-not-permitted',
+                  'This system does not allow creating symlinks, so that location was left as a copy. On Windows, creating symlinks needs administrator rights or Developer Mode.',
                   { handler: 'skill-install', detail: target },
                 );
                 return;

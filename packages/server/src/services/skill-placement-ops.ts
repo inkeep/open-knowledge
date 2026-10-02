@@ -3,7 +3,7 @@ import { dirname, relative, resolve, sep } from 'node:path';
 import type { EditorId } from '@inkeep/open-knowledge-core';
 import { AGENTS_SKILLS_ROOT, isSkillInstallTarget } from '@inkeep/open-knowledge-core';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
-import { tracedCpSync, tracedMkdirSync, tracedRmSync, tracedSymlinkSync } from '../fs-traced.ts';
+import { tracedCpSync, tracedMkdirSync, tracedRmSync } from '../fs-traced.ts';
 import {
   isRefusedOkPlacementRoot,
   readSkillPlacements,
@@ -11,10 +11,14 @@ import {
   removeSkillPlacement,
   resolveSkillPlacementPath,
 } from '../skill-placements.ts';
-import { classifyInPlaceDest, skillProjectionRoots } from '../skill-projection.ts';
+import {
+  classifyInPlaceDest,
+  linkOrCopySkillDir,
+  skillProjectionRoots,
+} from '../skill-projection.ts';
 
 type PlaceOutcome =
-  | { ok: true; placedAt: string }
+  | { ok: true; placedAt: string; copiedInsteadOfLinked?: true }
   | { ok: true; alreadyAtSource: true; placedAt: string }
   | { ok: false; kind: 'invalid-path' }
   | { ok: false; kind: 'dest-exists' };
@@ -31,7 +35,8 @@ type ConvertOutcome =
   | { ok: false; kind: 'invalid-location' }
   | { ok: false; kind: 'canonical-dir' }
   | { ok: false; kind: 'forked' }
-  | { ok: false; kind: 'not-installed' };
+  | { ok: false; kind: 'not-installed' }
+  | { ok: false; kind: 'links-not-permitted' };
 
 export interface SkillPlacementOpsService {
   place(input: {
@@ -85,17 +90,28 @@ export function createSkillPlacementOpsService(): SkillPlacementOpsService {
         return { ok: false, kind: 'dest-exists' };
       }
       tracedMkdirSync(parentAbs, { recursive: true });
+      let placedMode = input.mode;
       if (input.mode === 'link') {
-        tracedSymlinkSync(relative(parentAbs, resolve(input.skillDir)), destAbs, 'dir');
+        placedMode = linkOrCopySkillDir(
+          relative(parentAbs, resolve(input.skillDir)),
+          destAbs,
+          resolve(input.skillDir),
+        );
       } else {
         tracedCpSync(input.skillDir, destAbs, { recursive: true, dereference: true });
       }
       await recordSkillPlacement(input.placeBase, input.name, {
         path: placementRel,
-        mode: input.mode,
-        ...(input.mode === 'copy' ? { hash: parseSkillDir(input.skillDir)?.contentHash } : {}),
+        mode: placedMode,
+        ...(placedMode === 'copy' ? { hash: parseSkillDir(input.skillDir)?.contentHash } : {}),
       });
-      return { ok: true, placedAt: placementRel };
+      return {
+        ok: true,
+        placedAt: placementRel,
+        ...(input.mode === 'link' && placedMode === 'copy'
+          ? { copiedInsteadOfLinked: true as const }
+          : {}),
+      };
     },
 
     async unplace(input) {
@@ -165,7 +181,11 @@ export function createSkillPlacementOpsService(): SkillPlacementOpsService {
         tracedRmSync(absDir, { recursive: true, force: true });
         tracedMkdirSync(hostRoot, { recursive: true });
         if (input.mode === 'link') {
-          tracedSymlinkSync(relative(hostRoot, canonicalAbs), absDir, 'dir');
+          if (
+            linkOrCopySkillDir(relative(hostRoot, canonicalAbs), absDir, canonicalAbs) === 'copy'
+          ) {
+            return { ok: false, kind: 'links-not-permitted' };
+          }
         } else {
           tracedCpSync(canonicalAbs, absDir, { recursive: true, dereference: true });
         }

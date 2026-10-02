@@ -55,6 +55,7 @@ export const ProblemTypeSchema = z.enum([
   'urn:ok:error:no-file-received',
   'urn:ok:error:path-escape',
   'urn:ok:error:symlink-refused',
+  'urn:ok:error:links-not-permitted',
   'urn:ok:error:method-not-allowed',
   'urn:ok:error:invalid-request',
   'urn:ok:error:unsupported-media-type',

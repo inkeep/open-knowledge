@@ -12,13 +12,7 @@ import {
 import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { parseSkillDir, type SkillHostId } from '@inkeep/open-knowledge-core/skills-catalog';
 import { applySkillDirNameSync } from '../content/skills-write.ts';
-import {
-  tracedCpSync,
-  tracedMkdirSync,
-  tracedRenameSync,
-  tracedRmSync,
-  tracedSymlinkSync,
-} from '../fs-traced.ts';
+import { tracedCpSync, tracedMkdirSync, tracedRenameSync, tracedRmSync } from '../fs-traced.ts';
 import {
   scanGlobalInPlaceSkills,
   scanHostRootAliases,
@@ -39,6 +33,8 @@ import {
 import {
   classifyInPlaceDest,
   hostSlotPaths,
+  linkOrCopySkillDir,
+  linksNotPermittedWarning,
   projectInPlaceSkill,
   relocateInPlaceCanonical,
   removeInPlaceSkillCopies,
@@ -488,6 +484,7 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
         convertCopies: input.linkModeReq === true,
         roots: skillProjectionRoots(scope),
       });
+      const linkFallbacks = new Set<string>(fanned.linkFallbacks);
       for (const editor of fanned.conflicted) {
         warnings.push(
           `A different skill named "${name}" already exists in the ${editor} skills folder — left untouched.`,
@@ -495,25 +492,26 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
         warningCodes.push('name-conflict');
       }
       if (input.linkModeReq !== undefined && prefBase && input.rootAdds.length > 0) {
-        const adding = new Set(input.rootAdds.map((r) => `${r}/${name}`));
-        for (const p of (readSkillPlacements(prefBase)[name] ?? []).filter((p) =>
-          adding.has(p.path),
-        )) {
-          const abs = resolve(prefBase, p.path);
+        const recorded = new Set((readSkillPlacements(prefBase)[name] ?? []).map((p) => p.path));
+        for (const rootRel of input.rootAdds) {
+          if (!recorded.has(`${rootRel}/${name}`)) continue;
+          const abs = resolve(prefBase, rootRel, name);
           if (abs === resolve(skillDir)) continue;
           const cls = classifyInPlaceDest(abs, resolve(skillDir), inPlaceEntry.contentHash);
           if (input.linkModeReq === true && cls === 'same-copy') {
             tracedRmSync(abs, { recursive: true, force: true });
-            tracedSymlinkSync(relative(dirname(abs), resolve(skillDir)), abs, 'dir');
-            await recordSkillPlacement(prefBase, name, { path: p.path, mode: 'link' });
+            if (
+              linkOrCopySkillDir(
+                relative(dirname(abs), resolve(skillDir)),
+                abs,
+                resolve(skillDir),
+              ) === 'copy'
+            ) {
+              linkFallbacks.add(rootRel);
+            }
           } else if (input.linkModeReq === false && cls === 'link-to-canonical') {
             tracedRmSync(abs, { recursive: true, force: true });
             tracedCpSync(resolve(skillDir), abs, { recursive: true, dereference: true });
-            await recordSkillPlacement(prefBase, name, {
-              path: p.path,
-              mode: 'copy',
-              hash: inPlaceEntry.contentHash,
-            });
           }
         }
       }
@@ -569,15 +567,18 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
           if (cls === 'absent') {
             tracedMkdirSync(parentAbs, { recursive: true });
             if (input.installMode === 'link') {
-              tracedSymlinkSync(relative(parentAbs, canonAbs), destAbs, 'dir');
+              if (linkOrCopySkillDir(relative(parentAbs, canonAbs), destAbs, canonAbs) === 'copy') {
+                linkFallbacks.add(rootRel);
+              }
             } else {
               tracedCpSync(canonAbs, destAbs, { recursive: true, dereference: true });
             }
           }
+          const placedMode: 'link' | 'copy' = lstatSync(destAbs).isSymbolicLink() ? 'link' : 'copy';
           await recordSkillPlacement(prefBase, name, {
             path: `${rootRel}/${name}`,
-            mode: input.installMode,
-            ...(input.installMode === 'copy' ? { hash: inPlaceEntry.contentHash } : {}),
+            mode: placedMode,
+            ...(placedMode === 'copy' ? { hash: inPlaceEntry.contentHash } : {}),
           });
         }
         for (const rootRel of input.rootRemoves) {
@@ -602,6 +603,11 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
           }
           if (recorded) await removeSkillPlacement(prefBase, name, rel);
         }
+      }
+
+      if (linkFallbacks.size > 0) {
+        warnings.push(linksNotPermittedWarning([...linkFallbacks]));
+        warningCodes.push('links-not-permitted');
       }
 
       const postEntry = scanScope(scope).find((s) => s.name === name);
