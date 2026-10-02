@@ -320,6 +320,16 @@ interface CreateProjectWindowOpts {
   freshlyCreated?: boolean;
 }
 
+type SpawnCliServer = (opts: {
+  contentDir: string;
+  reactShellDistDir: string;
+  singleFile?: string;
+  projectDir?: string;
+}) => Promise<{
+  pid: number;
+  readExit?: () => { code: number | null; signal: string | null } | null;
+}>;
+
 export interface WindowManagerDeps {
   createWindow(opts: {
     additionalArguments: string[];
@@ -333,15 +343,8 @@ export interface WindowManagerDeps {
     opts: { windowLifecycleBound?: boolean; serviceName: string },
   ): UtilityProcessLike;
   utilityEntryPath: string;
-  spawnDetachedServer?(opts: {
-    contentDir: string;
-    reactShellDistDir: string;
-    singleFile?: string;
-    projectDir?: string;
-  }): Promise<{
-    pid: number;
-    readExit?: () => { code: number | null; signal: string | null } | null;
-  }>;
+  spawnDetachedServer?: SpawnCliServer;
+  spawnSingleFileServer?: SpawnCliServer;
   createEphemeralProjectDir?(contentDir: string): string;
   removeDir?(dir: string): Promise<void>;
   spawnLockPollDeadlineMs?: number;
@@ -1770,10 +1773,10 @@ export class WindowManager {
     opts: { canonicalFilePath: string; contentDir: string; docName: string },
     canonicalKey: string,
   ): Promise<ProjectContext> {
-    const { createEphemeralProjectDir, spawnDetachedServer, removeDir } = this.deps;
-    if (!createEphemeralProjectDir || !spawnDetachedServer || !removeDir) {
+    const { createEphemeralProjectDir, spawnSingleFileServer, removeDir } = this.deps;
+    if (!createEphemeralProjectDir || !spawnSingleFileServer || !removeDir) {
       throw new Error(
-        'createEphemeralWindow requires createEphemeralProjectDir + spawnDetachedServer + removeDir deps to be wired',
+        'createEphemeralWindow requires createEphemeralProjectDir + spawnSingleFileServer + removeDir deps to be wired',
       );
     }
 
@@ -1783,9 +1786,9 @@ export class WindowManager {
     const lockDir = getLocalDir(tempProjectDir);
 
     const reactShellDistDir = dirname(this.deps.rendererEntryPath);
-    let handle: Awaited<ReturnType<NonNullable<WindowManagerDeps['spawnDetachedServer']>>>;
+    let handle: Awaited<ReturnType<SpawnCliServer>>;
     try {
-      handle = await spawnDetachedServer({
+      handle = await spawnSingleFileServer({
         contentDir: opts.contentDir,
         reactShellDistDir,
         singleFile: opts.canonicalFilePath,

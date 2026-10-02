@@ -316,6 +316,20 @@ describe('WindowManager', () => {
     await secondPromise;
   });
 
+  test('single-file spawning does not switch project opens away from the utility', async () => {
+    const singleFileSpawn = vi.fn(async () => ({ pid: 88001 }));
+    env.deps.spawnSingleFileServer = singleFileSpawn;
+    const wm = new WindowManager(env.deps);
+
+    const pending = wm.createProjectWindow({ projectPath: '/tmp/single-file-capable-project' });
+    expect(env.utilities).toHaveLength(1);
+    expect(singleFileSpawn).not.toHaveBeenCalled();
+    env.utilities[0]?.fire({ type: 'ready', port: 52012, apiOrigin: 'http://localhost:52012' });
+
+    const ctx = await pending;
+    expect(ctx.utility).toBe(env.utilities[0]);
+  });
+
   test('createProjectWindow binds the utility server to numeric IPv4 loopback, never a hostname', async () => {
     const wm = new WindowManager(env.deps);
     const promise = wm.createProjectWindow({ projectPath: '/tmp/loopback-bind' });

@@ -141,7 +141,7 @@ function withEphemeralDeps(env: TestEnv): void {
   env.deps.removeDir = async () => {};
   env.deps.isProcessAlive = () => true;
   env.deps.readServerLock = (lockDir) => ephemeralLocks.get(lockDir) ?? null;
-  env.deps.spawnDetachedServer = async (opts) => {
+  env.deps.spawnSingleFileServer = async (opts) => {
     const spawnedPid = ++pid;
     if (opts.projectDir !== undefined) {
       ephemeralLocks.set(getLocalDir(opts.projectDir), {

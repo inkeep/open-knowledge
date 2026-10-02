@@ -186,6 +186,10 @@ describe('the real CHECKS list, not an injected one', () => {
     });
     const cli = verdict.missing.find((m) => m.name.includes('CLI'));
     expect(cli?.out).toMatch(/cli[/\\]dist[/\\]index\.mjs$/);
+    const cliExecutable = verdict.missing.find(
+      (m) => m.name === '@inkeep/open-knowledge CLI executable',
+    );
+    expect(cliExecutable?.out).toMatch(/cli[/\\]dist[/\\]cli\.mjs$/);
     expect(verdict.missing.map((m) => m.name)).toEqual([
       'main dispatcher',
       'uninstall result window',
@@ -194,6 +198,7 @@ describe('the real CHECKS list, not an injected one', () => {
       'renderer',
       'utility server entry',
       '@inkeep/open-knowledge CLI',
+      '@inkeep/open-knowledge CLI executable',
     ]);
   });
 });

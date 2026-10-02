@@ -552,6 +552,7 @@ import {
   setWindowInstanceLabel,
   type UtilityProcessLike,
   WindowManager,
+  type WindowManagerDeps,
 } from './window-manager.ts';
 import { WINDOW_MIN_SIZE } from './window-min-size.ts';
 import { resolveRestoredPlacement, sortWindowsByFocusSequence } from './window-placement.ts';
@@ -1303,7 +1304,136 @@ function ensureWindowManager() {
         'dist',
         'cli.mjs',
       )
-    : null;
+    : join(__dirname, '../../../cli/dist/cli.mjs');
+
+  const spawnCliServer: NonNullable<WindowManagerDeps['spawnSingleFileServer']> = async ({
+    contentDir,
+    reactShellDistDir,
+    singleFile,
+    projectDir,
+  }) => {
+    const projectRoot = projectDir ?? contentDir;
+    const lockDir = getLocalDir(projectRoot);
+    if (!existsSync(lockDir)) {
+      try {
+        mkdirSync(lockDir, { recursive: true });
+      } catch (err) {
+        throw Object.assign(
+          new Error(
+            `spawnCliServer: failed to create lock dir at ${lockDir}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+          {
+            kind: 'spawn-error' as const,
+            code: (err as NodeJS.ErrnoException).code,
+            cause: err,
+          },
+        );
+      }
+    }
+    const spawnErrorLogPath = join(lockDir, SPAWN_ERROR_LOG);
+    let spawnErrorLogFd: number;
+    try {
+      spawnErrorLogFd = openSpawnErrorLog(spawnErrorLogPath, process.pid);
+    } catch (err) {
+      throw Object.assign(
+        new Error(
+          `spawnCliServer: failed to open spawn-error log fd at ${spawnErrorLogPath}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        ),
+        {
+          kind: 'spawn-error' as const,
+          code: (err as NodeJS.ErrnoException).code,
+          cause: err,
+        },
+      );
+    }
+    const spawnArgs = resolveDetachedSpawnArgs({
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+      parentExecPath: process.execPath,
+      bundleCliMjsPath,
+      reactShellDistDir,
+      contentDir,
+      spawnErrorLogFd,
+      env: buildUtilityForkEnv(process.env, {
+        startupTraceparent: injectTraceparent(),
+        otlpEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+      }),
+      ...(singleFile !== undefined ? { singleFile, projectDir } : {}),
+      terminalAuthAvailable: isTerminalAvailable(),
+    });
+    let childRef: ReturnType<typeof spawn>;
+    startupWaterfall.mark('serverSpawned');
+    try {
+      childRef = spawn(spawnArgs.file, spawnArgs.args, {
+        ...spawnArgs.opts,
+        windowsHide: true,
+      });
+    } catch (spawnErr) {
+      try {
+        closeSync(spawnErrorLogFd);
+      } catch {}
+      throw Object.assign(
+        new Error(
+          `spawnCliServer: child_process.spawn threw synchronously: ${
+            spawnErr instanceof Error ? spawnErr.message : String(spawnErr)
+          }`,
+        ),
+        {
+          kind: 'spawn-error' as const,
+          code: (spawnErr as NodeJS.ErrnoException).code,
+          cause: spawnErr,
+        },
+      );
+    }
+    try {
+      await new Promise<void>((resolveSpawn, rejectSpawn) => {
+        const onSpawn = (): void => {
+          childRef.removeListener('error', onError);
+          resolveSpawn();
+        };
+        const onError = (err: Error): void => {
+          childRef.removeListener('spawn', onSpawn);
+          rejectSpawn(
+            Object.assign(
+              new Error(`spawnCliServer: child_process.spawn emitted 'error': ${err.message}`),
+              {
+                kind: 'spawn-error' as const,
+                code: (err as NodeJS.ErrnoException).code,
+                cause: err,
+              },
+            ),
+          );
+        };
+        childRef.once('spawn', onSpawn);
+        childRef.once('error', onError);
+      });
+    } finally {
+      try {
+        closeSync(spawnErrorLogFd);
+      } catch {}
+    }
+    let exitRecord: { code: number | null; signal: string | null } | null = null;
+    childRef.on('exit', (code, signal) => {
+      exitRecord = { code, signal };
+    });
+    attachServerExitObserver(childRef, {
+      lockDir,
+      recordExit: (info) => getServerExitRecorder().recordExit(info),
+      logger: getLogger('server-exit'),
+    });
+    childRef.unref();
+    const pid = childRef.pid;
+    if (pid === undefined) {
+      throw new Error(
+        'spawnCliServer: child_process.spawn did not return a pid after spawn-event resolution.',
+      );
+    }
+    return { pid, readExit: () => exitRecord };
+  };
 
   wm = new WindowManager({
     createWindow: (opts) => {
@@ -1377,140 +1507,8 @@ function ensureWindowManager() {
     },
     terminalAuthAvailable: isTerminalAvailable(),
     utilityEntryPath,
-    ...(bundleCliMjsPath !== null
-      ? {
-          spawnDetachedServer: async ({
-            contentDir,
-            reactShellDistDir,
-            singleFile,
-            projectDir,
-          }) => {
-            const projectRoot = projectDir ?? contentDir;
-            const lockDir = getLocalDir(projectRoot);
-            if (!existsSync(lockDir)) {
-              try {
-                mkdirSync(lockDir, { recursive: true });
-              } catch (err) {
-                throw Object.assign(
-                  new Error(
-                    `spawnDetachedServer: failed to create lock dir at ${lockDir}: ${
-                      err instanceof Error ? err.message : String(err)
-                    }`,
-                  ),
-                  {
-                    kind: 'spawn-error' as const,
-                    code: (err as NodeJS.ErrnoException).code,
-                    cause: err,
-                  },
-                );
-              }
-            }
-            const spawnErrorLogPath = join(lockDir, SPAWN_ERROR_LOG);
-            let spawnErrorLogFd: number;
-            try {
-              spawnErrorLogFd = openSpawnErrorLog(spawnErrorLogPath, process.pid);
-            } catch (err) {
-              throw Object.assign(
-                new Error(
-                  `spawnDetachedServer: failed to open spawn-error log fd at ${spawnErrorLogPath}: ${
-                    err instanceof Error ? err.message : String(err)
-                  }`,
-                ),
-                {
-                  kind: 'spawn-error' as const,
-                  code: (err as NodeJS.ErrnoException).code,
-                  cause: err,
-                },
-              );
-            }
-            const spawnArgs = resolveDetachedSpawnArgs({
-              platform: process.platform,
-              isPackaged: app.isPackaged,
-              parentExecPath: process.execPath,
-              bundleCliMjsPath,
-              reactShellDistDir,
-              contentDir,
-              spawnErrorLogFd,
-              env: buildUtilityForkEnv(process.env, {
-                startupTraceparent: injectTraceparent(),
-                otlpEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
-              }),
-              ...(singleFile !== undefined ? { singleFile, projectDir } : {}),
-              terminalAuthAvailable: isTerminalAvailable(),
-            });
-            let childRef: ReturnType<typeof spawn>;
-            startupWaterfall.mark('serverSpawned');
-            try {
-              childRef = spawn(spawnArgs.file, spawnArgs.args, {
-                ...spawnArgs.opts,
-                windowsHide: true,
-              });
-            } catch (spawnErr) {
-              try {
-                closeSync(spawnErrorLogFd);
-              } catch {}
-              throw Object.assign(
-                new Error(
-                  `spawnDetachedServer: child_process.spawn threw synchronously: ${
-                    spawnErr instanceof Error ? spawnErr.message : String(spawnErr)
-                  }`,
-                ),
-                {
-                  kind: 'spawn-error' as const,
-                  code: (spawnErr as NodeJS.ErrnoException).code,
-                  cause: spawnErr,
-                },
-              );
-            }
-            try {
-              await new Promise<void>((resolveSpawn, rejectSpawn) => {
-                const onSpawn = (): void => {
-                  childRef.removeListener('error', onError);
-                  resolveSpawn();
-                };
-                const onError = (err: Error): void => {
-                  childRef.removeListener('spawn', onSpawn);
-                  rejectSpawn(
-                    Object.assign(
-                      new Error(
-                        `spawnDetachedServer: child_process.spawn emitted 'error': ${err.message}`,
-                      ),
-                      {
-                        kind: 'spawn-error' as const,
-                        code: (err as NodeJS.ErrnoException).code,
-                        cause: err,
-                      },
-                    ),
-                  );
-                };
-                childRef.once('spawn', onSpawn);
-                childRef.once('error', onError);
-              });
-            } finally {
-              try {
-                closeSync(spawnErrorLogFd);
-              } catch {}
-            }
-            let exitRecord: { code: number | null; signal: string | null } | null = null;
-            childRef.on('exit', (code, signal) => {
-              exitRecord = { code, signal };
-            });
-            attachServerExitObserver(childRef, {
-              lockDir,
-              recordExit: (info) => getServerExitRecorder().recordExit(info),
-              logger: getLogger('server-exit'),
-            });
-            childRef.unref();
-            const pid = childRef.pid;
-            if (pid === undefined) {
-              throw new Error(
-                'spawnDetachedServer: child_process.spawn did not return a pid after spawn-event resolution.',
-              );
-            }
-            return { pid, readExit: () => exitRecord };
-          },
-        }
-      : {}),
+    spawnSingleFileServer: spawnCliServer,
+    ...(app.isPackaged ? { spawnDetachedServer: spawnCliServer } : {}),
     createEphemeralProjectDir,
     removeDir: (dir: string) => fsPromises.rm(dir, { recursive: true, force: true }),
     rendererEntryPath,
