@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { hostname } from 'node:os';
 import { resolve } from 'node:path';
+import { resolveDesktopProductName } from '@inkeep/open-knowledge-core';
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 import { getMachineId } from './machine-id.ts';
@@ -36,6 +37,7 @@ export interface ProcessLockMetadata {
   capabilities?: string[];
   protocolVersion?: number;
   runtimeVersion?: string;
+  channel?: string;
 }
 
 export interface ProcessLockHandle {
@@ -126,6 +128,22 @@ function parseLock(lockPath: string, logPrefix: string): ProcessLockMetadata | n
   }
 }
 
+function writerChannel(logPrefix: string): string | undefined {
+  try {
+    return resolveDesktopProductName();
+  } catch (err) {
+    log.warn(
+      { err },
+      `${logPrefix} Not recording a channel: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return undefined;
+  }
+}
+
+function lockChannel(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
 export function acquireProcessLock(opts: {
   lockName: LockName;
   lockDir: string;
@@ -159,6 +177,7 @@ export function acquireProcessLock(opts: {
     ...(init.capabilities !== undefined && { capabilities: init.capabilities }),
     protocolVersion: init.protocolVersion ?? PROTOCOL_VERSION,
     runtimeVersion: init.runtimeVersion ?? RUNTIME_VERSION,
+    channel: writerChannel(logPrefix),
   };
   const payload = JSON.stringify(record, null, 2);
 
@@ -380,7 +399,7 @@ export function readProcessLock(opts: {
     const parsed = JSON.parse(readFileSync(lockPath, 'utf-8'));
     if (!parsed || typeof parsed !== 'object' || !isValidLockPid((parsed as { pid?: unknown }).pid))
       return null;
-    existing = parsed as ProcessLockMetadata;
+    existing = { ...parsed, channel: lockChannel(parsed.channel) } as ProcessLockMetadata;
   } catch {
     return null;
   }
@@ -446,6 +465,7 @@ export function readProcessLockDetailed(opts: {
         : undefined,
     protocolVersion: typeof r.protocolVersion === 'number' ? r.protocolVersion : undefined,
     runtimeVersion: typeof r.runtimeVersion === 'string' ? r.runtimeVersion : undefined,
+    channel: lockChannel(r.channel),
   };
 
   if (!isSameMachine(lock)) return { status: 'stale', lock };

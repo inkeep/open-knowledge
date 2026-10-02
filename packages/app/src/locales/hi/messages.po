@@ -912,6 +912,10 @@ msgstr "{folderCount, plural, one {फ़ोल्डर} other {फ़ोल्
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} GitHub स्टार"
 
+#: src/lib/restart-collab-server.ts
+msgid "{holder} is serving this project, so this app won't stop it. Close this window and open the project again to stop {holder}'s server and open the project here."
+msgstr "{holder} इस प्रोजेक्ट को सर्व कर रहा है, इसलिए यह ऐप उसे नहीं रोकेगा। यह विंडो बंद करें और {holder} का सर्वर रोककर प्रोजेक्ट यहाँ खोलने के लिए प्रोजेक्ट फिर से खोलें।"
+
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx

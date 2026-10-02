@@ -52,6 +52,13 @@ function isDesktopProductName(value: string): value is DesktopProductName {
   return Object.hasOwn(DESKTOP_PRODUCTS, value);
 }
 
+export function desktopChannelLabel(channel: string): string {
+  if (channel === 'stable') return `${PRODUCT_NAME} (Stable)`;
+  return isDesktopProductName(channel)
+    ? DESKTOP_PRODUCTS[channel].productName
+    : `${PRODUCT_NAME} (${channel})`;
+}
+
 function executableBaseName(execPath: string): string {
   return (execPath.split(/[\\/]/).pop() ?? '').replace(/\.exe$/i, '');
 }

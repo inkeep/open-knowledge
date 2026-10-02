@@ -56,6 +56,7 @@ import {
   OPENKNOWLEDGE_SKILLS_REPO,
   PROTOCOL_VERSION,
   projectWorktreeCreateResult,
+  resolveDesktopProductName,
   ServerInfoSuccessSchema,
   SPAWN_ERROR_LOG,
   TERMINAL_CLIS,
@@ -287,6 +288,7 @@ import {
 import { createBootBudgetDirSizeProbe } from './fs-walk-budget.ts';
 import { ensureGitAvailable } from './git-preflight-handler.ts';
 import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
+import { failedOpenHolder, promptHolderStop } from './holder-stop-prompt.ts';
 import { classifyInstallShape } from './install-shape.ts';
 import {
   combineInstanceLabels,
@@ -1516,6 +1518,7 @@ function ensureWindowManager() {
     appVersion: app.getVersion(),
     selfProtocolVersion: PROTOCOL_VERSION,
     selfRuntimeVersion: RUNTIME_VERSION,
+    selfChannel: resolveDesktopProductName(),
     spawnLockPollDeadlineMs: readPositiveIntEnv('OK_SPAWN_STARTUP_TIMEOUT_MS'),
     spawnLockProgressDeadlineMs: readPositiveIntEnv('OK_SPAWN_BIND_TIMEOUT_MS'),
     reclaimForeignServerInDev: !app.isPackaged,
@@ -2105,7 +2108,9 @@ async function openProjectOrFallbackToNavigator(
   } catch (err) {
     const errorMessage = (err as Error).message;
     const kind = (err as Error & { kind?: string }).kind;
-    const holderPid = (err as Error & { holderPid?: number }).holderPid;
+    const otherChannelHolder = failedOpenHolder(err, projectPath, wm as WindowManager | undefined);
+    const holderPid =
+      otherChannelHolder?.holderPid ?? (err as Error & { holderPid?: number }).holderPid;
     const isStaleLockHolder = kind === 'stale-lock-holder';
     const staleLockReason = isStaleLockHolder
       ? (err as Error & { reason?: string }).reason
@@ -2119,6 +2124,8 @@ async function openProjectOrFallbackToNavigator(
         projectPath,
         entryPoint,
         kind,
+        holderPid,
+        holderChannel: otherChannelHolder?.holderChannel,
         exitCode: (err as Error & { exitCode?: number | null }).exitCode,
         exitSignal: (err as Error & { exitSignal?: string | null }).exitSignal,
         err,
@@ -2145,35 +2152,27 @@ async function openProjectOrFallbackToNavigator(
           : 'A stopped server is still holding this project';
       dialogBody = `${projectPath}\n\n${errorMessage}`;
     }
-    const holderInTheWay =
-      kind === 'lock-collision' ||
-      kind === 'stale-lock-holder' ||
-      (kind === 'spawn-lock-timeout' && errorMessage.includes('already running'));
     const warnsHolderMayBeLive = staleLockReason === 'lock-not-attachable' && !holderIsOwnChild;
-    if (holderInTheWay) {
-      const { response } = await dialog.showMessageBox({
-        type: 'warning',
-        title: dialogTitle,
-        message: dialogTitle,
-        detail:
-          `${dialogBody}\n\n` +
-          (warnsHolderMayBeLive
-            ? `OpenKnowledge can stop that process and retry opening the project. It may still be ` +
-              `running, so stop it only if you do not need it.`
-            : holderIsOwnChild
-              ? `OpenKnowledge already asked that server to stop during this open. It can make ` +
-                `sure it is gone and try again.`
-              : `OpenKnowledge can stop the conflicting server process and retry opening the project.`),
-        buttons: ['Stop Server & Retry', 'Cancel'],
-        defaultId: warnsHolderMayBeLive ? 1 : 0,
-        cancelId: 1,
-      });
-      if (response === 0) {
-        ensureWindowManager();
-        const stop = await wm.forceStopConflictingServer(projectPath);
-        if (stop.ok) {
+    const prompt = await promptHolderStop(
+      {
+        projectPath,
+        kind,
+        errorMessage,
+        dialogTitle,
+        dialogBody,
+        otherChannelHolder,
+        warnsHolderMayBeLive,
+        holderIsOwnChild,
+      },
+      {
+        showMessageBox: (options) => dialog.showMessageBox(options),
+        forceStop: (expectedHolder) => {
+          ensureWindowManager();
+          return wm.forceStopConflictingServer(projectPath, expectedHolder);
+        },
+        retryOpen: async () => {
           try {
-            const opened = await openProject(
+            return await openProject(
               projectPath,
               entryPoint,
               pendingDeepLinkTarget,
@@ -2183,7 +2182,6 @@ async function openProjectOrFallbackToNavigator(
               pendingTargetMissing,
               options,
             );
-            return opened;
           } catch (retryErr) {
             getLogger('project').error(
               {
@@ -2199,17 +2197,34 @@ async function openProjectOrFallbackToNavigator(
               'Unable to open project',
               `${projectPath}\n\n${(retryErr as Error).message}`,
             );
+            openNavigator();
+            return false;
           }
-        } else {
-          flushDesktopLogger();
-          dialog.showErrorBox(
-            'Unable to open project',
-            `${projectPath}\n\n` +
-              (stop.reason === 'eperm'
-                ? 'The conflicting server belongs to another user account and cannot be stopped from here. Quit it from that account and try again.'
-                : 'Could not stop the conflicting server. Quit it manually (`ok stop`) and try again.'),
-          );
-        }
+        },
+        reopen: () =>
+          openProjectOrFallbackToNavigator(
+            projectPath,
+            entryPoint,
+            pendingDeepLinkTarget,
+            pendingBranch,
+            pendingMultiCandidate,
+            pendingShareBranchSwitch,
+            pendingTargetMissing,
+            options,
+          ),
+      },
+    );
+    if (prompt.kind === 'retried' || prompt.kind === 'reopened') return prompt.opened;
+    if (prompt.kind !== 'not-offered') {
+      if (prompt.kind === 'stop-failed') {
+        flushDesktopLogger();
+        dialog.showErrorBox(
+          'Unable to open project',
+          `${projectPath}\n\n` +
+            (prompt.reason === 'eperm'
+              ? 'The conflicting server belongs to another user account and cannot be stopped from here. Quit it from that account and try again.'
+              : 'Could not stop the conflicting server. Quit it manually (`ok stop`) and try again.'),
+        );
       } else {
         getLogger('project').info(
           {
@@ -2220,7 +2235,7 @@ async function openProjectOrFallbackToNavigator(
           },
           'user declined the stop-and-retry remedy',
         );
-        if (isStaleLockHolder) {
+        if (isStaleLockHolder && otherChannelHolder === null) {
           const stopCommandTarget = quoteStopCommandPath(projectPath, process.platform);
           flushDesktopLogger();
           dialog.showErrorBox(

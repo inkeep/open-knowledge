@@ -1392,6 +1392,12 @@
     "C_cPoW": [
       "Twoja sesja GitHub wygasła — zaloguj się ponownie, aby zweryfikować dostęp do wysyłania."
     ],
+    "CacpkO": [
+      ["holder"],
+      " obsługuje ten projekt, więc ta aplikacja go nie zatrzyma. Zamknij to okno i otwórz projekt ponownie, aby zatrzymać serwer aplikacji ",
+      ["holder"],
+      " i otworzyć projekt tutaj."
+    ],
     "CbxTfe": ["Zaznacz blok"],
     "CcaU4i": ["Zmiany są widoczne na żywo i zapisują się automatycznie w tym motywie."],
     "ChMshD": ["Zakończ ", ["appName"]],

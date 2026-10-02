@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { getMachineId } from './machine-id';
 import {
   acquireProcessLock,
@@ -708,6 +708,87 @@ describe('version metadata (protocolVersion + runtimeVersion)', () => {
     expect(md.port).toBe(4000);
     expect(md.protocolVersion).toBe(7);
     expect(md.runtimeVersion).toBe('preserve-test');
+  });
+});
+
+describe('channel metadata (one writer per project across channels)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('the lock names the channel that wrote it, and both readers return it', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    acquireProcessLock({
+      lockName: LOCK_NAME,
+      lockDir,
+      metadata: { port: 3000, worktreeRoot: '/me' },
+    });
+    const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
+    expect(md.channel).toBe('beta');
+    expect(readProcessLock({ lockName: LOCK_NAME, lockDir })?.channel).toBe('beta');
+    const detailed = readProcessLockDetailed({ lockName: LOCK_NAME, lockDir });
+    expect(detailed.status === 'live' ? detailed.lock.channel : null).toBe('beta');
+  });
+
+  test('a lock with no channel reads back without one, and a channel this build does not know is kept', () => {
+    mkdirSync(lockDir, { recursive: true });
+    for (const channel of [undefined, 'cloud']) {
+      writeFileSync(
+        lockPath,
+        JSON.stringify({
+          pid: process.pid,
+          hostname: hostname(),
+          port: 3000,
+          startedAt: new Date().toISOString(),
+          worktreeRoot: '/me',
+          machineId: getMachineId(),
+          protocolVersion: PROTOCOL_VERSION,
+          runtimeVersion: RUNTIME_VERSION,
+          ...(channel === undefined ? {} : { channel }),
+        }),
+      );
+      const detailed = readProcessLockDetailed({ lockName: LOCK_NAME, lockDir });
+      expect(detailed.status).toBe('live');
+      expect(detailed.status === 'live' ? detailed.lock.channel : 'unread').toBe(channel);
+    }
+  });
+
+  test('both readers treat a channel that is not a non-empty string as absent', () => {
+    mkdirSync(lockDir, { recursive: true });
+    for (const channel of ['', 42, null]) {
+      writeFileSync(
+        lockPath,
+        JSON.stringify({
+          pid: process.pid,
+          hostname: hostname(),
+          port: 3000,
+          startedAt: new Date().toISOString(),
+          worktreeRoot: '/me',
+          machineId: getMachineId(),
+          protocolVersion: PROTOCOL_VERSION,
+          runtimeVersion: RUNTIME_VERSION,
+          channel,
+        }),
+      );
+      const plain = readProcessLock({ lockName: LOCK_NAME, lockDir });
+      const detailed = readProcessLockDetailed({ lockName: LOCK_NAME, lockDir });
+      expect({
+        plain: plain === null ? 'unread' : plain.channel,
+        detailed: detailed.status === 'live' ? detailed.lock.channel : 'unread',
+      }).toEqual({ plain: undefined, detailed: undefined });
+    }
+  });
+
+  test('an unsupported OK_CHANNEL still acquires the lock, without a channel', () => {
+    vi.stubEnv('OK_CHANNEL', 'cloud');
+    acquireProcessLock({
+      lockName: LOCK_NAME,
+      lockDir,
+      metadata: { port: 3000, worktreeRoot: '/me' },
+    });
+    const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
+    expect(md.pid).toBe(process.pid);
+    expect('channel' in md).toBe(false);
   });
 });
 

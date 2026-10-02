@@ -1331,6 +1331,12 @@
       "Este arquivo é grande demais para abrir no editor de texto integrado (limite de 1 MB). Use Abrir arquivo, abaixo, para abri-lo em outro app."
     ],
     "C_cPoW": ["Sua sessão do GitHub expirou — entre de novo para verificar o acesso de envio."],
+    "CacpkO": [
+      ["holder"],
+      " está servindo este projeto, então este app não vai pará-lo. Feche esta janela e abra o projeto novamente para parar o servidor de ",
+      ["holder"],
+      " e abrir o projeto aqui."
+    ],
     "CbxTfe": ["Selecionar bloco"],
     "CcaU4i": ["As alterações são aplicadas imediatamente e salvas automaticamente neste tema."],
     "ChMshD": ["Encerrar o ", ["appName"]],

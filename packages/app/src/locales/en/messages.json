@@ -1154,6 +1154,12 @@
       "This file is too large to open in the built-in text editor (1 MB limit). Use Open file below to open it in another app."
     ],
     "C_cPoW": ["Your GitHub session expired — sign in again to verify push access."],
+    "CacpkO": [
+      ["holder"],
+      " is serving this project, so this app won't stop it. Close this window and open the project again to stop ",
+      ["holder"],
+      "'s server and open the project here."
+    ],
     "CbxTfe": ["Select block"],
     "CcaU4i": ["Edits apply live and save automatically to this theme."],
     "ChMshD": ["Quit ", ["appName"]],

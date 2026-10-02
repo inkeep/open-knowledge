@@ -4,9 +4,11 @@ import { toast } from 'sonner';
 import { ServerDriftToast } from '@/components/ServerDriftToast';
 import type {
   OkDesktopBridge,
+  OkServerRestartFailure,
   OkServerRestartOutcome,
   OkServerVersionDriftInfo,
 } from '@/lib/desktop-bridge-types';
+import { otherChannelRestartMessage } from '@/lib/restart-collab-server';
 
 export function restartDisruptionWarning(): string {
   return t`Restarting closes this project's server. Connected agents (Claude Code, Codex, Cursor) will see their OpenKnowledge MCP connection close unexpectedly — you may need to restart the agent, or toggle its OpenKnowledge MCP server off and on, to reconnect.`;
@@ -25,10 +27,15 @@ export function restartSuccessMessage(appRuntime: string): string {
   return t`Restarted — now running v${appRuntime}.`;
 }
 
-export function restartFailureMessage(reason: 'eperm' | 'other'): string {
-  return reason === 'eperm'
-    ? t`Couldn't restart the server — it's running under a different account. Restart your computer to clear it, then reopen this project.`
-    : t`Couldn't restart the server automatically. Try running \`ok stop all\` in a terminal, then reopen this project — or restart your computer if it persists.`;
+export function restartFailureMessage(failure: OkServerRestartFailure): string {
+  switch (failure.reason) {
+    case 'other-channel':
+      return otherChannelRestartMessage(failure.holderChannel);
+    case 'eperm':
+      return t`Couldn't restart the server — it's running under a different account. Restart your computer to clear it, then reopen this project.`;
+    case 'other':
+      return t`Couldn't restart the server automatically. Try running \`ok stop all\` in a terminal, then reopen this project — or restart your computer if it persists.`;
+  }
 }
 
 async function runRestart(bridge: OkDesktopBridge): Promise<void> {
@@ -43,7 +50,7 @@ async function runRestart(bridge: OkDesktopBridge): Promise<void> {
   }
   toast.dismiss(loadingId);
   if (outcome.ok === false) {
-    toast.error(restartFailureMessage(outcome.reason), {
+    toast.error(restartFailureMessage(outcome), {
       duration: Number.POSITIVE_INFINITY,
     });
   }

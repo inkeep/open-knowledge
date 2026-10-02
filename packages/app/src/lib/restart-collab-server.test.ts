@@ -3,14 +3,22 @@ import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { restartCollabServer, restartServerFailureMessage } from './restart-collab-server';
 
 describe('restartServerFailureMessage', () => {
+  test('other-channel says the other app keeps the project', () => {
+    expect(
+      restartServerFailureMessage({ ok: false, reason: 'other-channel', holderChannel: 'stable' }),
+    ).toBe(
+      "OpenKnowledge (Stable) is serving this project, so this app won't stop it. Close this window and open the project again to stop OpenKnowledge (Stable)'s server and open the project here.",
+    );
+  });
+
   test('eperm names the ownership conflict', () => {
-    expect(restartServerFailureMessage('eperm')).toBe(
+    expect(restartServerFailureMessage({ ok: false, reason: 'eperm' })).toBe(
       "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again.",
     );
   });
 
   test('other points at the ok start fallback', () => {
-    expect(restartServerFailureMessage('other')).toBe(
+    expect(restartServerFailureMessage({ ok: false, reason: 'other' })).toBe(
       "Couldn't restart the server. Try `ok start` in this folder.",
     );
   });
@@ -41,12 +49,18 @@ describe('restartCollabServer', () => {
   test('maps an eperm failure to the ownership message', async () => {
     const { bridge } = makeBridge({ ok: false, reason: 'eperm' });
     const result = await restartCollabServer(bridge);
-    expect(result).toEqual({ ok: false, message: restartServerFailureMessage('eperm') });
+    expect(result).toEqual({
+      ok: false,
+      message: restartServerFailureMessage({ ok: false, reason: 'eperm' }),
+    });
   });
 
   test('maps an other failure to the ok start fallback message', async () => {
     const { bridge } = makeBridge({ ok: false, reason: 'other' });
     const result = await restartCollabServer(bridge);
-    expect(result).toEqual({ ok: false, message: restartServerFailureMessage('other') });
+    expect(result).toEqual({
+      ok: false,
+      message: restartServerFailureMessage({ ok: false, reason: 'other' }),
+    });
   });
 });

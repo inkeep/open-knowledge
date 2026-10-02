@@ -1384,6 +1384,12 @@
     "C_cPoW": [
       "Votre session GitHub a expiré — reconnectez-vous pour vérifier l'accès en écriture."
     ],
+    "CacpkO": [
+      ["holder"],
+      " sert ce projet, cette app ne l'arrêtera donc pas. Fermez cette fenêtre et rouvrez le projet pour arrêter le serveur de ",
+      ["holder"],
+      " et ouvrir le projet ici."
+    ],
     "CbxTfe": ["Sélectionner le bloc"],
     "CcaU4i": [
       "Les modifications s’appliquent immédiatement et sont automatiquement enregistrées dans ce thème."

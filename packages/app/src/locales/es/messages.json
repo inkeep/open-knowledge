@@ -1357,6 +1357,12 @@
     "C_cPoW": [
       "Tu sesión de GitHub ha caducado: inicia sesión de nuevo para verificar el acceso de push."
     ],
+    "CacpkO": [
+      ["holder"],
+      " está sirviendo este proyecto, así que esta app no lo detendrá. Cierra esta ventana y vuelve a abrir el proyecto para detener el servidor de ",
+      ["holder"],
+      " y abrir el proyecto aquí."
+    ],
     "CbxTfe": ["Seleccionar bloque"],
     "CcaU4i": ["Los cambios se aplican al instante y se guardan automáticamente en este tema."],
     "ChMshD": ["Salir de ", ["appName"]],

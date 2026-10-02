@@ -1146,6 +1146,12 @@
       "Berkas ini terlalu besar untuk dibuka di penyunting teks bawaan (batas 1 MB). Gunakan Buka berkas di bawah untuk membukanya di aplikasi lain."
     ],
     "C_cPoW": ["Sesi GitHub Anda kedaluwarsa — masuk lagi untuk memverifikasi akses push."],
+    "CacpkO": [
+      ["holder"],
+      " sedang melayani proyek ini, jadi aplikasi ini tidak akan menghentikannya. Tutup jendela ini lalu buka proyek lagi untuk menghentikan server ",
+      ["holder"],
+      " dan membuka proyek di sini."
+    ],
     "CbxTfe": ["Pilih blok"],
     "CcaU4i": ["Suntingan langsung diterapkan dan disimpan otomatis ke tema ini."],
     "ChMshD": ["Keluar dari ", ["appName"]],

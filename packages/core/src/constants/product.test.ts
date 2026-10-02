@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DESKTOP_PRODUCTS, resolveDesktopProductName } from './product.ts';
+import { DESKTOP_PRODUCTS, desktopChannelLabel, resolveDesktopProductName } from './product.ts';
 
 describe('resolveDesktopProductName', () => {
   it.each([
@@ -48,5 +48,15 @@ describe('resolveDesktopProductName', () => {
     expect(new Set(products.map((p) => p.keyringService)).size).toBe(products.length);
     expect(DESKTOP_PRODUCTS.stable.userHomeDirName).toBe('.ok');
     expect(DESKTOP_PRODUCTS.stable.keyringService).toBe('open-knowledge');
+  });
+});
+
+describe('desktopChannelLabel', () => {
+  it.each([
+    ['stable', 'OpenKnowledge (Stable)'],
+    ['beta', 'OpenKnowledge Beta'],
+    ['cloud', 'OpenKnowledge (cloud)'],
+  ])('%s is named %s', (channel, expected) => {
+    expect(desktopChannelLabel(channel)).toBe(expected);
   });
 });

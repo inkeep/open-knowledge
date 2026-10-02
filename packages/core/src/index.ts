@@ -543,6 +543,7 @@ export {
   DESKTOP_PRODUCTS,
   type DesktopProduct,
   type DesktopProductName,
+  desktopChannelLabel,
   desktopWindowsExecutableName,
   desktopWindowsInstallDirNames,
   OK_CHANNEL_ENV,
