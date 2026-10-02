@@ -2,6 +2,12 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 import { SYNC_MODES } from '../../config/auto-sync-mode.ts';
 
+export const REFUSED_SYMLINK_PATHS_CAP = 50;
+
+export const RefusedSymlinkPathsSchema = z
+  .array(z.string().min(1))
+  .max(REFUSED_SYMLINK_PATHS_CAP) satisfies StandardSchemaV1;
+
 export const SyncStateSchema = z.enum([
   'dormant',
   'idle',
@@ -100,6 +106,7 @@ export const SyncStatusSchema = z
     pullErrorCode: SyncErrorCodeSchema.optional(),
     pausedReason: z.string().optional(),
     blockingPaths: z.array(z.string().min(1)).optional(),
+    refusedSymlinkPaths: RefusedSymlinkPathsSchema.optional(),
     pushPermission: PushPermissionSchema.optional(),
     syncMode: SyncModeSchema.optional(),
     lastPullUtc: z.string().nullable().optional(),

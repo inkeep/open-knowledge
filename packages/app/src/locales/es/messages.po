@@ -912,6 +912,10 @@ msgstr "{folderCount, plural, one {carpeta} many {carpetas} other {carpetas}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} estrellas en GitHub"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "{hiddenCount, plural, one {# more link} other {# more links}}"
+msgstr "{hiddenCount, plural, one {# enlace más} many {# enlaces más} other {# enlaces más}}"
+
 #: src/lib/restart-collab-server.ts
 msgid "{holder} is serving this project, so this app won't stop it. Close this window and open the project again to stop {holder}'s server and open the project here."
 msgstr "{holder} está sirviendo este proyecto, así que esta app no lo detendrá. Cierra esta ventana y vuelve a abrir el proyecto para detener el servidor de {holder} y abrir el proyecto aquí."
@@ -3934,6 +3938,10 @@ msgstr "Copiando"
 msgid "Copying..."
 msgstr "Copiando..."
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
+msgstr "No se pudieron comprobar los enlaces simbólicos de {shareBranch}, así que no se cambió. Vuelve a intentarlo; si sigue fallando, comprueba que Git esté instalado y que la carpeta del proyecto se pueda leer."
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Could not classify the merge — try again."
 msgstr "No se pudo clasificar la fusión. Inténtalo de nuevo."
@@ -5163,6 +5171,10 @@ msgstr "Diagrama a partir de código Mermaid: de flujo, de secuencia, de clases,
 #: src/components/MermaidFileViewer.tsx
 msgid "Diagram view mode"
 msgstr "Modo de vista del diagrama"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "No se cambió a {shareBranch}: tiene un enlace simbólico que apunta fuera del repositorio, a archivos privados o a un lugar que no se puede comprobar. Normalmente quien envió la rama tiene que corregir el enlace. Si no se puede leer una carpeta de este equipo, hazla legible y vuelve a intentarlo."
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx
@@ -14113,6 +14125,10 @@ msgstr "Falló la sincronización: consulta los registros del servidor para ver 
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Sync is failing. See the sync status for details."
 msgstr "La sincronización está fallando. Consulta el estado de sincronización para ver los detalles."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Sync is paused because incoming changes leave a symlink pointing outside the repository or into private files, or with a target that cannot be checked. Ask whoever pushed them to fix the link, or update Git if yours is older than 2.38. Automatic sync then resumes; in Manual mode, pull again."
+msgstr "La sincronización está en pausa porque los cambios entrantes dejan un enlace simbólico que apunta fuera del repositorio o a archivos privados, o con un destino que no se puede comprobar. Pide a quien los envió que corrija el enlace, o actualiza Git si tu versión es anterior a la 2.38. Después, la sincronización automática se reanuda; en modo Manual, vuelve a hacer pull."
 
 #: src/components/SyncBlockingChanges.tsx
 msgid "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."

@@ -154,6 +154,11 @@
     "0t0bbC": ["Preferensi sinkronisasi tidak dapat disimpan: ", ["detail"]],
     "0tV-rz": ["Pengaturan masih dimuat. Coba lagi sebentar."],
     "0uTHCg": ["Mulai proyek OpenKnowledge baru."],
+    "0uxLib": [
+      "Tidak dapat memeriksa symlink di ",
+      ["shareBranch"],
+      ", jadi tidak beralih. Coba lagi; jika terus gagal, pastikan Git terpasang dan folder proyek dapat dibaca."
+    ],
     "0wkh7o": ["Log OpenKnowledge, termasuk aktivitas lintas proyek."],
     "0wswKc": ["Garis mendatar yang memisahkan bagian."],
     "0x9smA": ["Halaman ini tidak lagi berada di jalur ini."],
@@ -408,6 +413,11 @@
       "Sudah punya repositori git? Tambahkan dengan <0>git remote add origin <url></0> di folder proyek ini. Halaman ini diperbarui otomatis begitu sebuah remote terdeteksi."
     ],
     "45MZFs": ["Perintah"],
+    "461Vg9": [
+      "Tidak beralih ke ",
+      ["shareBranch"],
+      ": cabang ini memiliki symlink yang mengarah ke luar repositori, ke berkas pribadi, atau ke tempat yang tidak dapat diperiksa. Biasanya orang yang melakukan push cabang ini yang harus memperbaiki tautannya. Jika sebuah folder di komputer ini tidak dapat dibaca, buat agar dapat dibaca lalu coba lagi."
+    ],
     "46YgRZ": ["Tambahkan blok di bawah"],
     "484LKL": ["Hapus tautan"],
     "49Mb7P": [
@@ -839,6 +849,9 @@
     "8nWu1k": ["Diagram kosong"],
     "8oWgty": ["Tandai semua komentar untuk dikirim"],
     "8qgfac": ["Server MCP"],
+    "8qsUJv": [
+      "Sinkronisasi dijeda karena perubahan yang masuk membuat symlink mengarah ke luar repositori atau ke berkas pribadi, atau targetnya tidak dapat diperiksa. Minta orang yang melakukan push untuk memperbaiki tautannya, atau perbarui Git jika versi Anda lebih lama dari 2.38. Setelah itu sinkronisasi otomatis berlanjut; dalam mode Manual, lakukan pull lagi."
+    ],
     "8rZ1pk": ["Aktifkan ", ["id"]],
     "8ruqQi": ["Tautan internal rusak"],
     "8t9CRE": ["Memulai ", ["agentName"], "…"],
@@ -4824,6 +4837,7 @@
     "pBROkv": [
       "Terima kasih sudah berlangganan. Pantau kotak masuk Anda untuk kabar terbaru produk."
     ],
+    "pCJv30": [["hiddenCount", "plural", { "other": ["#", " tautan lainnya"] }]],
     "pCralD": ["Pindahkan ke panel baru di kiri"],
     "pEQFsW": ["Tidak ada proyek yang cocok."],
     "pFPzHA": ["Pemilih emoji"],

@@ -912,6 +912,10 @@ msgstr "{folderCount, plural, other {folder}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} bintang GitHub"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "{hiddenCount, plural, one {# more link} other {# more links}}"
+msgstr "{hiddenCount, plural, other {# tautan lainnya}}"
+
 #: src/lib/restart-collab-server.ts
 msgid "{holder} is serving this project, so this app won't stop it. Close this window and open the project again to stop {holder}'s server and open the project here."
 msgstr "{holder} sedang melayani proyek ini, jadi aplikasi ini tidak akan menghentikannya. Tutup jendela ini lalu buka proyek lagi untuk menghentikan server {holder} dan membuka proyek di sini."
@@ -3930,6 +3934,10 @@ msgstr "Menyalin"
 msgid "Copying..."
 msgstr "Menyalin..."
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
+msgstr "Tidak dapat memeriksa symlink di {shareBranch}, jadi tidak beralih. Coba lagi; jika terus gagal, pastikan Git terpasang dan folder proyek dapat dibaca."
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Could not classify the merge — try again."
 msgstr "Penggabungan tidak dapat diklasifikasikan — coba lagi."
@@ -5159,6 +5167,10 @@ msgstr "Diagram dari sumber Mermaid — bagan alir, sekuens, kelas, keadaan, ER,
 #: src/components/MermaidFileViewer.tsx
 msgid "Diagram view mode"
 msgstr "Mode tampilan diagram"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "Tidak beralih ke {shareBranch}: cabang ini memiliki symlink yang mengarah ke luar repositori, ke berkas pribadi, atau ke tempat yang tidak dapat diperiksa. Biasanya orang yang melakukan push cabang ini yang harus memperbaiki tautannya. Jika sebuah folder di komputer ini tidak dapat dibaca, buat agar dapat dibaca lalu coba lagi."
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx
@@ -14109,6 +14121,10 @@ msgstr "Sinkronisasi gagal — periksa log server untuk detailnya."
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Sync is failing. See the sync status for details."
 msgstr "Sinkronisasi sedang gagal. Lihat status sinkronisasi untuk detailnya."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Sync is paused because incoming changes leave a symlink pointing outside the repository or into private files, or with a target that cannot be checked. Ask whoever pushed them to fix the link, or update Git if yours is older than 2.38. Automatic sync then resumes; in Manual mode, pull again."
+msgstr "Sinkronisasi dijeda karena perubahan yang masuk membuat symlink mengarah ke luar repositori atau ke berkas pribadi, atau targetnya tidak dapat diperiksa. Minta orang yang melakukan push untuk memperbaiki tautannya, atau perbarui Git jika versi Anda lebih lama dari 2.38. Setelah itu sinkronisasi otomatis berlanjut; dalam mode Manual, lakukan pull lagi."
 
 #: src/components/SyncBlockingChanges.tsx
 msgid "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."

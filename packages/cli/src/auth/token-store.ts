@@ -1,6 +1,10 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { currentDesktopProduct, okUserHomeDisplayPath } from '@inkeep/open-knowledge-core';
+import {
+  currentDesktopProduct,
+  OK_USER_HOME_AUTH_FILE,
+  okUserHomeDisplayPath,
+} from '@inkeep/open-knowledge-core';
 import { atomicWriteFileSync, okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { parse as yamlParse, stringify as yamlStringify } from 'yaml';
 
@@ -25,7 +29,7 @@ export interface TokenStore {
 }
 
 export function authFileDisplayPath(): string {
-  return okUserHomeDisplayPath('auth.yml');
+  return okUserHomeDisplayPath(OK_USER_HOME_AUTH_FILE);
 }
 
 function keyringService(): string {
@@ -113,7 +117,7 @@ export class FileBackend implements TokenStore {
   private readonly authFile: string;
 
   constructor(authFile?: string) {
-    this.authFile = authFile ?? join(okUserHomeDir(), 'auth.yml');
+    this.authFile = authFile ?? join(okUserHomeDir(), OK_USER_HOME_AUTH_FILE);
   }
 
   private read(): Record<string, TokenEntry> {

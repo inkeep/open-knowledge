@@ -912,6 +912,10 @@ msgstr "{folderCount, plural, other {文件夹}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} 个 GitHub star"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "{hiddenCount, plural, one {# more link} other {# more links}}"
+msgstr "{hiddenCount, plural, other {另外 # 个链接}}"
+
 #: src/lib/restart-collab-server.ts
 msgid "{holder} is serving this project, so this app won't stop it. Close this window and open the project again to stop {holder}'s server and open the project here."
 msgstr "{holder} 正在为此项目提供服务，因此此应用不会停止它。关闭此窗口并再次打开项目，即可停止 {holder} 的服务器并在此处打开项目。"
@@ -3934,6 +3938,10 @@ msgstr "正在复制"
 msgid "Copying..."
 msgstr "正在复制…"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
+msgstr "无法检查 {shareBranch} 中的符号链接，因此未切换。请重试；如果仍然失败，请确认已安装 Git 且项目文件夹可读。"
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Could not classify the merge — try again."
 msgstr "无法对合并进行分类，请重试。"
@@ -5163,6 +5171,10 @@ msgstr "由 Mermaid 源码生成的图示——流程图、时序图、类图、
 #: src/components/MermaidFileViewer.tsx
 msgid "Diagram view mode"
 msgstr "图示查看模式"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "未切换到 {shareBranch}：它包含一个指向仓库之外、私有文件或无法检查之处的符号链接。通常需要由推送该分支的人修复该链接。如果这台电脑上的某个文件夹无法读取，请使其可读后重试。"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx
@@ -14113,6 +14125,10 @@ msgstr "同步失败——详情请查看服务器日志。"
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Sync is failing. See the sync status for details."
 msgstr "同步正在失败。详情请查看同步状态。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Sync is paused because incoming changes leave a symlink pointing outside the repository or into private files, or with a target that cannot be checked. Ask whoever pushed them to fix the link, or update Git if yours is older than 2.38. Automatic sync then resumes; in Manual mode, pull again."
+msgstr "同步已暂停，因为传入的更改会使某个符号链接指向仓库之外或私有文件，或其目标无法检查。请让推送这些更改的人修复该链接；如果你的 Git 早于 2.38，请更新 Git。之后自动同步会恢复；在手动模式下，请重新拉取。"
 
 #: src/components/SyncBlockingChanges.tsx
 msgid "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."

@@ -188,6 +188,13 @@ describe('classifyCheckoutOutcome', () => {
     });
   });
 
+  test('symlink-check-failed classifies to its own stay-with-toast reason', () => {
+    expect(classifyCheckoutOutcome({ ok: false, reason: 'symlink-check-failed' })).toEqual({
+      action: 'stay-with-toast',
+      reason: 'symlink-check-failed',
+    });
+  });
+
   test('dirty-conflict re-renders the variant with the fresh file list — never navigates', () => {
     expect(
       classifyCheckoutOutcome({
@@ -315,6 +322,25 @@ describe('BranchSwitchDialogState transitions', () => {
     const result = applyCheckoutOutcome(switching, { ok: false, reason: 'checkout-failed' });
     expect(result.state).toEqual({ phase: 'ready', info: cleanInfo() });
     expect(result.sideEffect).toEqual({ kind: 'toast', reason: 'checkout-failed' });
+  });
+
+  test('an unsafe-symlink refusal returns to ready with its own toast and the refused links', () => {
+    const switching: BranchSwitchDialogState = {
+      phase: 'switching',
+      info: cleanInfo(),
+      pendingDoc: 'docs/foo.md',
+    };
+    const result = applyCheckoutOutcome(switching, {
+      ok: false,
+      reason: 'unsafe-symlinks',
+      refusedSymlinkPaths: ['notes/leak.md'],
+    });
+    expect(result.state).toEqual({ phase: 'ready', info: cleanInfo() });
+    expect(result.sideEffect).toEqual({
+      kind: 'toast',
+      reason: 'unsafe-symlinks',
+      paths: ['notes/leak.md'],
+    });
   });
 
   test('checkout null (proxy failure) returns to ready with proxy-null toast', () => {

@@ -3,6 +3,8 @@ import { basename, join, relative, resolve, sep } from 'node:path';
 import {
   currentDesktopProduct,
   OK_DIR,
+  OK_USER_HOME_AUTH_FILE,
+  OK_USER_HOME_SECRETS_FILE,
   PROJECT_SKILL_PROJECTION_PATHS,
   resolveDesktopProductName,
   SHARED_OK_ENTRIES,
@@ -256,13 +258,13 @@ export function buildUninstallPlan(input: UninstallPlanInput): RemovalPlan {
   ops.push({
     kind: 'keychain-token',
     group: 'Credentials',
-    label: `Remove the GitHub credential (${host}) from the OS keychain + auth.yml`,
+    label: `Remove the GitHub credential (${host}) from the OS keychain + ${OK_USER_HOME_AUTH_FILE}`,
     host,
   });
   ops.push({
     kind: 'embeddings-key',
     group: 'Credentials',
-    label: 'Remove all embeddings API keys (secrets.yml)',
+    label: `Remove all embeddings API keys (${OK_USER_HOME_SECRETS_FILE})`,
   });
 
   ops.push(...pathRevertOps(marker, home));

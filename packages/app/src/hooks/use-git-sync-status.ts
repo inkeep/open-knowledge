@@ -47,6 +47,7 @@ export interface GitSyncStatus {
   pullErrorCode?: SyncErrorCode;
   pausedReason?: string;
   blockingPaths?: string[];
+  refusedSymlinkPaths?: string[];
   pushPermission?: GitPushPermission;
 }
 

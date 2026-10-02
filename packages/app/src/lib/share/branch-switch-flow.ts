@@ -59,7 +59,7 @@ export type CheckoutOutcome =
   | { readonly action: 'dismiss-with-toast'; readonly reason: 'branch-not-found' }
   | {
       readonly action: 'stay-with-toast';
-      readonly reason: 'fetch-failed' | 'checkout-failed';
+      readonly reason: 'fetch-failed' | 'checkout-failed' | 'symlink-check-failed';
     }
   | { readonly action: 'rerender-conflict'; readonly files: readonly string[] }
   | {
@@ -68,6 +68,10 @@ export type CheckoutOutcome =
     }
   | {
       readonly action: 'branch-diverged';
+    }
+  | {
+      readonly action: 'refused-unsafe-symlinks';
+      readonly paths: readonly string[];
     };
 
 export function classifyCheckoutOutcome(response: CheckoutResponse): CheckoutOutcome {
@@ -91,6 +95,10 @@ export function classifyCheckoutOutcome(response: CheckoutResponse): CheckoutOut
     }
     case 'ff-diverged':
       return { action: 'branch-diverged' };
+    case 'unsafe-symlinks':
+      return { action: 'refused-unsafe-symlinks', paths: response.refusedSymlinkPaths ?? [] };
+    case 'symlink-check-failed':
+      return { action: 'stay-with-toast', reason: 'symlink-check-failed' };
     default: {
       const _exhaustive: never = response.reason;
       throw new Error(`Unhandled CheckoutFailureReason: ${String(_exhaustive)}`);
@@ -201,11 +209,17 @@ export type CheckoutSideEffectReason =
   | 'proxy-null'
   | 'fetch-failed'
   | 'checkout-failed'
-  | 'branch-not-found';
+  | 'branch-not-found'
+  | 'unsafe-symlinks'
+  | 'symlink-check-failed';
 
 export interface ApplyCheckoutOutcomeResult {
   readonly state: BranchSwitchDialogState;
-  readonly sideEffect?: { readonly kind: 'toast'; readonly reason: CheckoutSideEffectReason };
+  readonly sideEffect?: {
+    readonly kind: 'toast';
+    readonly reason: CheckoutSideEffectReason;
+    readonly paths?: readonly string[];
+  };
 }
 
 export function applyCheckoutOutcome(
@@ -253,6 +267,12 @@ export function applyCheckoutOutcome(
   if (outcome.action === 'branch-diverged') {
     return {
       state: { phase: 'verdict', info: state.info, resolution: { kind: 'diverged' } },
+    };
+  }
+  if (outcome.action === 'refused-unsafe-symlinks') {
+    return {
+      state: { phase: 'ready', info: state.info },
+      sideEffect: { kind: 'toast', reason: 'unsafe-symlinks', paths: outcome.paths },
     };
   }
   return {

@@ -6,11 +6,16 @@ import {
   normalizeGitHostname,
 } from '@inkeep/open-knowledge-core';
 import {
+  assertIncomingSymlinksSafe,
+  assertMergeNameResolvesTo,
   type Config,
   RUNTIME_VERSION,
   readDeclaredGitHubHosts,
   readServerLock,
   resolveLockDir,
+  SYMLINK_MERGE_MIN_GIT_LABEL,
+  UnsafeIncomingSymlinkError,
+  type UnsafeSymlinkReason,
 } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import simpleGit, { type SimpleGit } from 'simple-git';
@@ -198,6 +203,83 @@ async function runOnRemote<T>(
   }
 }
 
+interface IncomingCommit {
+  commit: string;
+  trackingRef: string | null;
+}
+
+async function fetchIncomingCommit(git: SimpleGit): Promise<IncomingCommit> {
+  await git.fetch();
+  const tracked = (
+    await git.raw(['rev-parse', '--verify', '--quiet', '@{upstream}^{commit}'])
+  ).trim();
+  if (tracked !== '') {
+    const trackingRef = (
+      await git.raw(['rev-parse', '--symbolic-full-name', '@{upstream}'])
+    ).trim();
+    return { commit: tracked, trackingRef: trackingRef.startsWith('refs/') ? trackingRef : null };
+  }
+  const branch = (await git.raw(['symbolic-ref', '--quiet', '--short', 'HEAD'])).trim();
+  if (branch === '') {
+    throw new Error(
+      'not on a branch, so there is nothing to pull into; switch to a branch first, for example: git switch main',
+    );
+  }
+  const mergeRef = (await git.raw(['config', '--get', `branch.${branch}.merge`])).trim();
+  const remote = (await git.raw(['config', '--get', `branch.${branch}.remote`])).trim() || 'origin';
+  if (mergeRef === '') {
+    throw new Error(
+      `no upstream configured for branch "${branch}"; set one with: git branch --set-upstream-to=${remote}/${branch} ${branch}`,
+    );
+  }
+  await git.fetch(remote, mergeRef);
+  const fetched = (
+    await git.raw(['rev-parse', '--verify', '--quiet', 'FETCH_HEAD^{commit}'])
+  ).trim();
+  if (fetched === '') throw new Error(`could not resolve the fetched ${mergeRef}`);
+  return { commit: fetched, trackingRef: null };
+}
+
+type SymlinkRemedy = 'update-git' | 'readable-folder' | 'fix-link';
+
+function remediesFor(reason: UnsafeSymlinkReason): readonly SymlinkRemedy[] {
+  switch (reason) {
+    case 'requires-newer-git':
+      return ['update-git'];
+    case 'unverifiable-target':
+      return ['readable-folder', 'fix-link'];
+    case 'outside-repository':
+    case 'repository-root':
+    case 'private-state':
+    case 'secret-file':
+    case 'inside-private-state':
+      return ['fix-link'];
+    default: {
+      const exhaustive: never = reason;
+      return exhaustive;
+    }
+  }
+}
+
+const REMEDY_TEXT: Record<SymlinkRemedy, string> = {
+  'update-git': `Update Git to ${SYMLINK_MERGE_MIN_GIT_LABEL} or newer.`,
+  'readable-folder': 'If a folder on the way is unreadable on this machine, make it readable.',
+  'fix-link':
+    'Remove or fix these links on the remote, or fix your own local change to them, then pull again.',
+};
+
+export function syncFailureMessage(err: unknown): string {
+  if (err instanceof UnsafeIncomingSymlinkError) {
+    const remedies = new Set(err.unsafe.flatMap(({ reason }) => remediesFor(reason)));
+    const steps = Object.entries(REMEDY_TEXT)
+      .filter(([remedy]) => remedies.has(remedy as SymlinkRemedy))
+      .map(([, text]) => text);
+    if (!remedies.has('fix-link')) steps.push('Then pull again.');
+    return `incoming symlinks are unsafe to check out: ${err.describeLinks()}. ${steps.join(' ')}`;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
 export async function runSync(
   opts: SyncOptions,
   _config: Config,
@@ -270,7 +352,17 @@ export async function runSync(
     emit(opts.json, { type: 'step', step: 'pull' });
     const url = await contactedRemoteUrl(local, 'pull');
     pulled = { url, remote: await remoteFor(url) };
-    const result = await runOnRemote(pulled.remote, 'pull', (git) => git.pull());
+    const incoming = await runOnRemote(pulled.remote, 'pull', fetchIncomingCommit);
+    await assertIncomingSymlinksSafe(local, incoming.commit, 'merge');
+    const { trackingRef } = incoming;
+    if (trackingRef !== null) {
+      await assertMergeNameResolvesTo(local, {
+        name: trackingRef,
+        trackingRef,
+        commit: incoming.commit,
+      });
+    }
+    const result = await local.pull('.', trackingRef ?? incoming.commit);
     emit(opts.json, { type: 'pull', summary: result.summary });
     if (!opts.json) {
       process.stderr.write(`  pull: ${result.summary.changes} changes\n`);
@@ -303,7 +395,7 @@ export function syncCommand(getConfig: () => Config): Command {
       try {
         await runSync({ json: opts.json, op: 'sync' }, getConfig());
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = syncFailureMessage(err);
         if (opts.json) {
           process.stdout.write(`${JSON.stringify({ type: 'error', message: msg })}\n`);
         } else {

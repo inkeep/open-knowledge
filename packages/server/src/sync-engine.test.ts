@@ -3,6 +3,7 @@ import {
   appendFileSync,
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -5583,7 +5584,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
     }
   });
 
-  test('refuses to write an overlay through a symlink escaping the repo, and surfaces the failure', async () => {
+  test('refuses an incoming symlink that escapes the repo before any overlay write, leaving its target untouched', async () => {
     const bareDir = await seedBareOrigin();
     const sisterDir = join(tmpDir, 'sister');
     mkdirSync(sisterDir, { recursive: true });
@@ -5617,7 +5618,53 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
       await engine.trigger('pull');
 
       expect(readFileSync(escapeTarget, 'utf-8')).toBe('PRECIOUS\n');
-      expect(engine.getStatus().lastPullOutcome).toBe('error');
+      expect(engine.getStatus().lastPullOutcome).toBe('refused');
+      expect(engine.getStatus().pausedReason).toBe('unsafe-incoming-symlinks');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a local symlink in the way of an overlay is replaced by the restore, never written through', async () => {
+    const bareDir = await seedBareOrigin();
+    const sisterDir = join(tmpDir, 'sister');
+    mkdirSync(sisterDir, { recursive: true });
+    const sister = simpleGit(sisterDir);
+    await sister.init(['--initial-branch=main']);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    writeFileSync(join(sisterDir, 'a.md'), 'A1\n', 'utf-8');
+    mkdirSync(join(sisterDir, 'sub'), { recursive: true });
+    writeFileSync(join(sisterDir, 'sub', 'a.md'), 'A1\n', 'utf-8');
+    await sister.add('.');
+    await sister.commit('seed');
+    await sister.addRemote('origin', bareDir);
+    await sister.push('origin', 'main');
+
+    rmSync(projectDir, { recursive: true, force: true });
+    await simpleGit(tmpDir).clone(bareDir, projectDir);
+    mkdirSync(okDir, { recursive: true });
+
+    const escapeDir = join(tmpDir, 'escape-dir');
+    mkdirSync(escapeDir, { recursive: true });
+    const escapeTarget = join(escapeDir, 'a.md');
+    writeFileSync(escapeTarget, 'A1\nLOCAL\n', 'utf-8');
+    rmSync(join(projectDir, 'sub'), { recursive: true, force: true });
+    symlinkSync(escapeDir, join(projectDir, 'sub'));
+
+    writeFileSync(join(sisterDir, 'sub', 'a.md'), 'A1\nREMOTE\n', 'utf-8');
+    await sister.add('sub/a.md');
+    await sister.commit('remote edit');
+    await sister.push('origin', 'main');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      expect(readFileSync(escapeTarget, 'utf-8')).toBe('A1\nLOCAL\n');
+      expect(lstatSync(join(projectDir, 'sub')).isSymbolicLink()).toBe(false);
+      expect(engine.getStatus().pausedReason).not.toBe('unsafe-incoming-symlinks');
     } finally {
       await engine.destroy();
     }

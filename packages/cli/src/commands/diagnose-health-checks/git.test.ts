@@ -31,6 +31,19 @@ describe('git check', () => {
     expect(result.summary).toContain('/usr/bin/git');
   });
 
+  test('warns below the Git version sync needs to check symlink merges', async () => {
+    const detected: GitDetected = {
+      ok: true,
+      version: '2.34.1',
+      resolvedPath: '/usr/bin/git',
+      source: 'PATH',
+    };
+    const result = await makeGitCheck({ assert: () => detected }).run(ctx);
+    expect(result.status).toBe('warn');
+    expect(result.summary).toContain('2.34.1');
+    expect(result.remediation).toBe('Update Git to 2.38 or newer');
+  });
+
   test('fails when assert throws GitNotAvailableError; embeds install guidance', async () => {
     const def = makeGitCheck({
       assert: () => {

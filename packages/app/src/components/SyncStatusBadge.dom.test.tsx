@@ -1166,6 +1166,21 @@ describe('SyncStatusBadge runtime behavior', () => {
     expect(screen.getByText('.claude/launch.json')).toBeTruthy();
   });
 
+  test('a refused incoming symlink names the refused link without a commit action', async () => {
+    status = {
+      ...baseStatus,
+      state: 'idle',
+      pausedReason: 'unsafe-incoming-symlinks',
+      refusedSymlinkPaths: ['notes/leak.md'],
+    } as GitSyncStatus;
+    await renderBadge();
+    expect(screen.getByRole('button', { name: 'Sync status: Sync paused' })).toBeTruthy();
+    await openPopover();
+
+    expect(screen.getByTestId('sync-refused-symlinks').textContent).toContain('notes/leak.md');
+    expect(screen.queryByTestId('sync-blocking-commit')).toBeNull();
+  });
+
   test('a paused reason with no actionable paths keeps the explanatory line', async () => {
     status = {
       ...baseStatus,

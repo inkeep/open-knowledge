@@ -359,7 +359,7 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
 
   function expectCredentialConfinedToCliHelper(
     token: string,
-    context: { tracedCommand?: 'pull' | 'push'; remoteName?: string } = {},
+    context: { tracedCommand?: 'fetch' | 'pull' | 'push'; remoteName?: string } = {},
   ): void {
     const { tracedCommand = 'pull', remoteName = 'origin' } = context;
     const trace = readFileSync(traceFile, 'utf-8');
@@ -1465,10 +1465,10 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
 
     const outcome = await syncWith(signedInSeam());
 
-    expect.soft(outcome.error, 'the error runSync threw').not.toBeNull();
+    expect.soft(String(outcome.error), 'the error runSync threw').toMatch(/no upstream configured/);
     expect
-      .soft(readFileSync(traceFile, 'utf-8'), "git's own pull in the trace")
-      .toMatch(/built-in: git pull/);
+      .soft(readFileSync(traceFile, 'utf-8'), 'a pull that could merge')
+      .not.toMatch(/built-in: git pull/);
     expect
       .soft(readJsonLines<CliHelperCall>(cliHelperLog), "calls reaching the CLI's own helper")
       .toEqual([]);
@@ -1492,6 +1492,6 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
       .toContainEqual(
         authenticatedRequest('fetch', { username: expect.any(String), password: OK_TOKEN }),
       );
-    expectCredentialConfinedToCliHelper(OK_TOKEN);
+    expectCredentialConfinedToCliHelper(OK_TOKEN, { tracedCommand: 'fetch' });
   });
 });

@@ -158,6 +158,11 @@
     "0t0bbC": ["Could not save sync preference: ", ["detail"]],
     "0tV-rz": ["Settings are still loading. Try again in a moment."],
     "0uTHCg": ["Start a new OpenKnowledge project."],
+    "0uxLib": [
+      "Could not check the symlinks in ",
+      ["shareBranch"],
+      ", so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
+    ],
     "0wkh7o": ["OpenKnowledge logs, including activity across projects."],
     "0wswKc": ["Horizontal rule that divides sections."],
     "0x9smA": ["This page is no longer at this path."],
@@ -417,6 +422,11 @@
       "Already have a git repository? Add it with <0>git remote add origin <url></0> in this project's folder. This page updates automatically once a remote is detected."
     ],
     "45MZFs": ["Commands"],
+    "461Vg9": [
+      "Did not switch to ",
+      ["shareBranch"],
+      ": it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+    ],
     "46YgRZ": ["Add block below"],
     "484LKL": ["Remove link"],
     "49Mb7P": ["We couldn't check whether Slidev is installed. Return to this window to retry."],
@@ -828,6 +838,9 @@
     "8nWu1k": ["Empty diagram"],
     "8oWgty": ["Mark every comment to send"],
     "8qgfac": ["MCP servers"],
+    "8qsUJv": [
+      "Sync is paused because incoming changes leave a symlink pointing outside the repository or into private files, or with a target that cannot be checked. Ask whoever pushed them to fix the link, or update Git if yours is older than 2.38. Automatic sync then resumes; in Manual mode, pull again."
+    ],
     "8rZ1pk": ["Enable ", ["id"]],
     "8ruqQi": ["Broken internal links"],
     "8t9CRE": ["Starting ", ["agentName"], "…"],
@@ -4808,6 +4821,9 @@
     "pA16WG": ["This project has no GitHub remote."],
     "pAgkuZ": ["Reopening \"", ["docName"], "\" with a fresh local collaboration cache."],
     "pBROkv": ["Thanks for subscribing. Watch your inbox for product updates."],
+    "pCJv30": [
+      ["hiddenCount", "plural", { "one": ["#", " more link"], "other": ["#", " more links"] }]
+    ],
     "pCralD": ["Move to new pane left"],
     "pEQFsW": ["No matching projects."],
     "pFPzHA": ["Emoji picker"],

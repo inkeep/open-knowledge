@@ -306,6 +306,34 @@ describe('ShareReceiveMissPanel pull recovery', () => {
     expect(probeCount).toBe(2);
   });
 
+  test('a pull refused for an unsafe incoming symlink explains the pause instead of asking to retry', async () => {
+    installBridge(stubVerdict({ verdict: 'on-origin' }));
+    setSyncStatus(pullableSyncStatus());
+    await renderResolved();
+
+    fireEvent.click(screen.getByTestId('share-receive-miss-pull-now'));
+    setSyncStatus(
+      pullableSyncStatus({
+        lastPullUtc: 'p1',
+        lastPullOutcome: 'refused',
+        pausedReason: 'unsafe-incoming-symlinks',
+        refusedSymlinkPaths: ['notes/leak.md', 'skills/chain'],
+      }),
+    );
+
+    const failure = await screen.findByTestId('share-receive-miss-pull-error');
+    await waitFor(() => {
+      expect(failure.textContent).toContain('symlink');
+    });
+    expect(failure.textContent).not.toContain('Try again in a moment');
+    const refused = screen.getByTestId('sync-refused-symlinks');
+    expect(
+      within(refused)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual(['notes/leak.md', 'skills/chain']);
+  });
+
   test('an already-syncing receiver re-probes directly, with no follow offer in between', async () => {
     const verdicts: ShareTargetStatusResponse[] = [
       { verdict: 'on-origin' },

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { OK_USER_HOME_AUTH_FILE } from '@inkeep/open-knowledge-core';
 import { isHomeDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { accent, dim, error as errorColor, warning } from '../ui/colors.ts';
@@ -46,7 +47,7 @@ export async function runDeinit(opts: DeinitOptions = {}): Promise<DeinitResult>
       message:
         `${errorColor('Refusing to deinit your home directory.')}\n` +
         `  ${projectRoot}/.ok is OpenKnowledge's user-global directory (global.yml, skills/,\n` +
-        `  auth.yml), not a project. Removing it would delete your global settings and skills.\n` +
+        `  ${OK_USER_HOME_AUTH_FILE}), not a project. Removing it would delete your global settings and skills.\n` +
         `  To remove OpenKnowledge everywhere, use 'ok uninstall'.`,
       exitCode: 64,
     };

@@ -190,6 +190,11 @@
     "0t0bbC": ["Impossible d'enregistrer la préférence de synchronisation : ", ["detail"]],
     "0tV-rz": ["Les paramètres sont toujours en cours de chargement. Réessayez dans un instant."],
     "0uTHCg": ["Démarrez un nouveau projet OpenKnowledge."],
+    "0uxLib": [
+      "Impossible de vérifier les liens symboliques de ",
+      ["shareBranch"],
+      " : le passage n'a donc pas eu lieu. Réessayez ; si l'échec persiste, vérifiez que Git est installé et que le dossier du projet est lisible."
+    ],
     "0wkh7o": ["Journaux OpenKnowledge, y compris l’activité de plusieurs projets."],
     "0wswKc": ["Filet horizontal qui sépare les sections."],
     "0x9smA": ["Cette page ne se trouve plus à ce chemin."],
@@ -496,6 +501,11 @@
       "Vous avez déjà un dépôt git ? Ajoutez-le avec <0>git remote add origin <url></0> dans le dossier de ce projet. Cette page se met à jour automatiquement dès qu'un dépôt distant est détecté."
     ],
     "45MZFs": ["Commandes"],
+    "461Vg9": [
+      "Le passage à ",
+      ["shareBranch"],
+      " n'a pas eu lieu : cette branche contient un lien symbolique qui pointe hors du dépôt, vers des fichiers privés ou vers un emplacement qui ne peut pas être vérifié. En général, la personne qui a poussé la branche doit corriger le lien. Si un dossier de cet ordinateur ne peut pas être lu, rendez-le lisible et réessayez."
+    ],
     "46YgRZ": ["Ajouter un bloc en dessous"],
     "484LKL": ["Retirer le lien"],
     "49Mb7P": [
@@ -995,6 +1005,9 @@
     "8nWu1k": ["Diagramme vide"],
     "8oWgty": ["Cocher tous les commentaires à envoyer"],
     "8qgfac": ["Serveurs MCP"],
+    "8qsUJv": [
+      "La synchronisation est en pause, car les modifications entrantes laissent un lien symbolique qui pointe hors du dépôt ou vers des fichiers privés, ou dont la cible ne peut pas être vérifiée. Demandez à la personne qui les a poussées de corriger le lien, ou mettez à jour Git si votre version est antérieure à 2.38. La synchronisation automatique reprend ensuite ; en mode Manuel, tirez à nouveau."
+    ],
     "8rZ1pk": ["Activer ", ["id"]],
     "8ruqQi": ["Liens internes cassés"],
     "8t9CRE": ["Démarrage de ", ["agentName"], "…"],
@@ -5587,6 +5600,17 @@
     "pAgkuZ": ["Réouverture de « ", ["docName"], " » avec un cache de collaboration local neuf."],
     "pBROkv": [
       "Merci pour votre abonnement. Surveillez votre boîte mail pour les nouveautés du produit."
+    ],
+    "pCJv30": [
+      [
+        "hiddenCount",
+        "plural",
+        {
+          "one": ["#", " autre lien"],
+          "many": ["#", " autres liens"],
+          "other": ["#", " autres liens"]
+        }
+      ]
     ],
     "pCralD": ["Déplacer vers un nouveau volet à gauche"],
     "pEQFsW": ["Aucun projet correspondant."],

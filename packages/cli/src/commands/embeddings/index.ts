@@ -6,6 +6,7 @@ import {
   DEFAULT_EMBEDDINGS_MODEL,
   humanFormat,
   isSemanticSearchOffered,
+  OK_USER_HOME_SECRETS_FILE,
   okUserHomeDisplayPath,
   type SemanticIndexStatus,
   SemanticIndexStatusSchema,
@@ -119,7 +120,7 @@ function setKeyCommand(): Command {
       }
       process.stderr.write(
         `✓ Embeddings API key stored for ${baseUrl}\n` +
-          `  (kept in ${okUserHomeDisplayPath('secrets.yml')}, 0600, this machine only — never in the project).\n` +
+          `  (kept in ${okUserHomeDisplayPath(OK_USER_HOME_SECRETS_FILE)}, 0600, this machine only — never in the project).\n` +
           '  Enable semantic search with `ok embeddings enable`, or in\n' +
           '  OK Desktop → Settings → This project → Search.\n',
       );
@@ -366,7 +367,7 @@ function statusCommand(): Command {
       }
 
       const keyLabel = hasKey
-        ? `set for this endpoint — ${keySource === 'env' ? `environment (${EMBEDDINGS_API_KEY_ENV})` : okUserHomeDisplayPath('secrets.yml')}`
+        ? `set for this endpoint — ${keySource === 'env' ? `environment (${EMBEDDINGS_API_KEY_ENV})` : okUserHomeDisplayPath(OK_USER_HOME_SECRETS_FILE)}`
         : keyNotRequired
           ? 'not required (loopback endpoint)'
           : 'not set';

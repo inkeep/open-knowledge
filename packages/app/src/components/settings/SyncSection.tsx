@@ -19,6 +19,7 @@ import {
   hasNotFoundAsIdentityError,
   isParkedOnNotFoundAsIdentity,
   PausedReasonNotice,
+  SyncRefusedSymlinks,
   shouldOfferReconnect,
   shouldOfferSignInAgain,
 } from '@/components/SyncStatusBadge';
@@ -166,9 +167,10 @@ function SyncSectionContent({
     status.pushPermission.deniedReason !== 'not-authenticated' &&
     !notFoundAsIdentity;
   const parkedOnNotFound = isParkedOnNotFoundAsIdentity(status);
+  const pushDenialCoversPause = isPushDenied && status?.pausedReason !== 'unsafe-incoming-symlinks';
   const pausedNotice = !status?.pausedReason ? null : parkedOnNotFound ? (
     formatSyncFailureCode('auth-not-found-as-identity')
-  ) : isPushDenied ? null : (
+  ) : pushDenialCoversPause ? null : (
     <PausedReasonNotice reason={status.pausedReason} />
   );
 
@@ -415,6 +417,11 @@ function SyncSectionContent({
           <p className="text-1sm text-muted-foreground mt-2" data-testid="settings-sync-reason">
             {pausedNotice}
           </p>
+        )}
+        {pausedNotice !== null && (status?.refusedSymlinkPaths?.length ?? 0) > 0 && (
+          <div className="mt-2">
+            <SyncRefusedSymlinks paths={status?.refusedSymlinkPaths} />
+          </div>
         )}
         {}
         {status?.pushPermission?.checkStatus === 'denied' &&

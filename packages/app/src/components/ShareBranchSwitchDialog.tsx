@@ -1,6 +1,8 @@
 // oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import type { WorktreeCreateResult } from '@inkeep/open-knowledge-core';
+import { i18n } from '@lingui/core';
+import { plural } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { AppWindow, GitBranch, MapPin } from 'lucide-react';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -44,6 +46,7 @@ import {
 import { missDialogStore } from '@/lib/share/miss-dialog-store';
 import { formatReceiveLog } from '@/lib/share/receive-flow';
 import { type ShareReceiveStore, shareReceiveStore } from '@/lib/share/receive-store';
+import { formatToolList } from '@/lib/tool-list-format';
 import { worktreeCreateErrorCopy } from '@/lib/worktree-create-error';
 import { refreshWorktrees } from '@/lib/worktree-store';
 
@@ -84,6 +87,12 @@ function isBranchSwitchPayload(
   payload: OkShareReceivedPayload | null,
 ): payload is ProjectBranchSwitchPayload {
   return payload !== null && payload.kind === 'project-branch-switch';
+}
+
+const REFUSED_LINKS_SHOWN = 5;
+
+function shareSwitchRefusalToastId(branch: string): string {
+  return `share-switch-unsafe-symlinks:${branch}`;
 }
 
 export function ShareBranchSwitchDialog({
@@ -295,18 +304,44 @@ export function ShareBranchSwitchDialog({
       .then((response) => {
         let toastReason: CheckoutSideEffectReason | null = null;
         let shouldDismiss = false;
+        let refusedPaths: readonly string[] = [];
         setBranchSwitchState((prev) => {
           const { state: next, sideEffect } = applyCheckoutOutcome(prev, response);
           if (sideEffect) {
             toastReason = sideEffect.reason;
+            refusedPaths = sideEffect.paths ?? [];
             shouldDismiss = next.phase === 'dismissed';
           }
           return next;
         });
-        if (toastReason === 'branch-not-found') {
+        const refusalToastId = shareSwitchRefusalToastId(shareBranch);
+        if (toastReason !== 'unsafe-symlinks') toast.dismiss(refusalToastId);
+        if (toastReason === 'unsafe-symlinks') {
+          const shownPaths = refusedPaths.slice(0, REFUSED_LINKS_SHOWN);
+          const hiddenCount = refusedPaths.length - shownPaths.length;
+          const listed =
+            hiddenCount > 0
+              ? [
+                  ...shownPaths,
+                  t`${plural(hiddenCount, { one: '# more link', other: '# more links' })}`,
+                ]
+              : shownPaths;
+          toast.error(
+            t`Did not switch to ${shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again.`,
+            {
+              description: listed.length === 0 ? undefined : formatToolList(listed, i18n.locale),
+              id: refusalToastId,
+              duration: Infinity,
+            },
+          );
+        } else if (toastReason === 'branch-not-found') {
           toast.error(t`Branch ${shareBranch} no longer exists on the remote.`);
         } else if (toastReason === 'fetch-failed') {
           toast.error(t`Could not fetch branch. Check your connection.`);
+        } else if (toastReason === 'symlink-check-failed') {
+          toast.error(
+            t`Could not check the symlinks in ${shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable.`,
+          );
         } else if (toastReason === 'checkout-failed' || toastReason === 'proxy-null') {
           toast.error(t`Could not switch to ${shareBranch}. Try switching manually.`);
         }
@@ -318,6 +353,7 @@ export function ShareBranchSwitchDialog({
           err instanceof Error ? err.message : err,
         );
         setBranchSwitchState((prev) => applyCheckoutOutcome(prev, null).state);
+        toast.dismiss(shareSwitchRefusalToastId(shareBranch));
         toast.error(t`Could not switch to ${shareBranch}. Try switching manually.`);
       });
   }

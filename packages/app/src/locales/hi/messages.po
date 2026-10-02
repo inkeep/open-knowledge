@@ -912,6 +912,10 @@ msgstr "{folderCount, plural, one {फ़ोल्डर} other {फ़ोल्
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} GitHub स्टार"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "{hiddenCount, plural, one {# more link} other {# more links}}"
+msgstr "{hiddenCount, plural, one {# और लिंक} other {# और लिंक}}"
+
 #: src/lib/restart-collab-server.ts
 msgid "{holder} is serving this project, so this app won't stop it. Close this window and open the project again to stop {holder}'s server and open the project here."
 msgstr "{holder} इस प्रोजेक्ट को सर्व कर रहा है, इसलिए यह ऐप उसे नहीं रोकेगा। यह विंडो बंद करें और {holder} का सर्वर रोककर प्रोजेक्ट यहाँ खोलने के लिए प्रोजेक्ट फिर से खोलें।"
@@ -3930,6 +3934,10 @@ msgstr "कॉपी किया जा रहा है"
 msgid "Copying..."
 msgstr "कॉपी किया जा रहा है…"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
+msgstr "{shareBranch} के सिमलिंक की जाँच नहीं हो सकी, इसलिए उस पर स्विच नहीं किया गया। फिर से कोशिश करें; अगर यह बार-बार विफल हो, तो देखें कि Git इंस्टॉल है और प्रोजेक्ट फ़ोल्डर पढ़ा जा सकता है।"
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Could not classify the merge — try again."
 msgstr "मर्ज को वर्गीकृत नहीं किया जा सका — फिर से कोशिश करें।"
@@ -5159,6 +5167,10 @@ msgstr "Mermaid स्रोत से आरेख — फ़्लोचार
 #: src/components/MermaidFileViewer.tsx
 msgid "Diagram view mode"
 msgstr "आरेख दृश्य मोड"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "{shareBranch} पर स्विच नहीं किया गया: इसमें एक सिमलिंक है जो रिपॉज़िटरी के बाहर, निजी फ़ाइलों की ओर, या ऐसी जगह की ओर इशारा करता है जिसकी जाँच नहीं की जा सकती। आमतौर पर जिसने ब्रांच भेजी है उसे ही लिंक ठीक करना होगा। अगर इस कंप्यूटर का कोई फ़ोल्डर पढ़ा नहीं जा सकता, तो उसे पढ़ने योग्य बनाएँ और फिर से कोशिश करें।"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx
@@ -14109,6 +14121,10 @@ msgstr "सिंक विफल — विवरण के लिए सर्
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Sync is failing. See the sync status for details."
 msgstr "सिंक विफल हो रहा है। विवरण के लिए सिंक स्थिति देखें।"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Sync is paused because incoming changes leave a symlink pointing outside the repository or into private files, or with a target that cannot be checked. Ask whoever pushed them to fix the link, or update Git if yours is older than 2.38. Automatic sync then resumes; in Manual mode, pull again."
+msgstr "सिंक रुका हुआ है क्योंकि आने वाले बदलावों के बाद एक सिमलिंक रिपॉज़िटरी के बाहर या निजी फ़ाइलों की ओर इशारा करता है, या इसके लक्ष्य की जाँच नहीं की जा सकती। जिसने ये बदलाव भेजे हैं उससे लिंक ठीक करने को कहें, या आपका Git 2.38 से पुराना हो तो Git अपडेट करें। इसके बाद स्वचालित सिंक फिर शुरू हो जाएगा; मैन्युअल मोड में फिर से खींचें।"
 
 #: src/components/SyncBlockingChanges.tsx
 msgid "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."

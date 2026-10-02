@@ -15,6 +15,7 @@ import {
   OK_DIR,
   type PullOutcome,
   pathspecArgs,
+  REFUSED_SYMLINK_PATHS_CAP,
   SYNC_PAUSED_REASONS,
   type SyncMode,
   type SyncModeChangeSource,
@@ -62,6 +63,15 @@ import {
   type ProbeTokenStore,
   type PushPermission,
 } from './github-permissions.ts';
+import {
+  assertIncomingSymlinksSafe,
+  assertMergeNameResolvesTo,
+  escapePathForDisplay,
+  IncomingRefMovedError,
+  IncomingRefShadowedError,
+  resolveIncomingCommit,
+  UnsafeIncomingSymlinkError,
+} from './incoming-symlink-guard.ts';
 import { getLogger } from './logger.ts';
 import {
   applyManagedMcpEntry,
@@ -264,6 +274,7 @@ const ONE_SHOT_PAUSES: ReadonlySet<SyncPausedReason | undefined> = new Set<SyncP
   'git-index-locked',
   'git-operation-in-progress',
   'no-commits-yet',
+  'unsafe-incoming-symlinks',
 ]);
 
 const NON_PERSISTED_PAUSE_LIST = [
@@ -272,6 +283,7 @@ const NON_PERSISTED_PAUSE_LIST = [
   'git-index-locked',
   'git-operation-in-progress',
   'no-commits-yet',
+  'unsafe-incoming-symlinks',
 ] as const satisfies readonly SyncPausedReason[];
 
 const NON_PERSISTED_PAUSES: ReadonlySet<SyncPausedReason | undefined> = new Set<SyncPausedReason>(
@@ -453,6 +465,8 @@ export class SyncEngine {
   private lastLockNoticeKind: 'index-locked' | 'git-lock-held' | undefined;
   private restingIndexLockPause: SyncPausedReason | undefined;
   private blockingPaths: string[] = [];
+  private loggedSymlinkRefusal: string | undefined;
+  private refusedSymlinkPaths: string[] = [];
   private currentBranch = 'main';
 
   private cycleInFlight: 'pull' | 'push' | null = null;
@@ -1109,6 +1123,9 @@ export class SyncEngine {
       ...(this.blockingPathsForStatus().length > 0
         ? { blockingPaths: this.blockingPathsForStatus() }
         : {}),
+      ...(this.pausedReason === 'unsafe-incoming-symlinks' && this.refusedSymlinkPaths.length > 0
+        ? { refusedSymlinkPaths: this.refusedSymlinkPaths.slice(0, REFUSED_SYMLINK_PATHS_CAP) }
+        : {}),
       ...(this.pushPermission !== null ? { pushPermission: this.pushPermission } : {}),
     };
   }
@@ -1499,8 +1516,26 @@ export class SyncEngine {
 
     await this.refreshDivergenceCounts(handle);
 
+    let incoming = '';
+    const willLand =
+      this.behind > 0 && (invocation === 'explicit' ? this.ahead === 0 : this.conflictCount === 0);
+    if (willLand) {
+      try {
+        incoming = await this.validateIncomingSymlinks(handle, branch);
+      } catch (e) {
+        if (e instanceof UnsafeIncomingSymlinkError) {
+          this.handleIncomingSymlinkRefusal(e, 'pull');
+          return 'refused';
+        }
+        this.handleError(classifyGitError(e instanceof Error ? e : new Error(String(e))), 'pull');
+        return 'error';
+      }
+    } else if (this.behind === 0) {
+      this.clearIncomingSymlinkPause();
+    }
+
     if (this.behind > 0 && invocation === 'explicit') {
-      const outcome = await this.doPullCycleB1(handle, branch);
+      const outcome = await this.doPullCycleB1(handle, branch, incoming);
       this.scheduleSaveState();
       return outcome;
     }
@@ -1508,15 +1543,16 @@ export class SyncEngine {
       if (this.pausedReason === 'diverged-local-commits') this.pausedReason = undefined;
       this.transitionTo('pulling');
       this.setBatchInProgress?.(true);
+      let stashRestored = true;
+      let overlaysRestored = true;
       try {
         await this.commitDirtyContentFilesToHead(handle, 'pull');
-        const mergePrep = await this.prepareForMerge(handle, branch);
+        await this.validateIncomingSymlinks(handle, branch, incoming);
+        const mergePrep = await this.prepareForMerge(handle, branch, incoming);
         if (!mergePrep.proceed) return 'refused';
-        let stashRestored = true;
-        let overlaysRestored = true;
         try {
           await this.applyCommitIdentity(handle);
-          await handle.git.merge([`origin/${branch}`]);
+          await this.mergeIncomingCommit(handle, branch, incoming);
           this.lastSyncUtc = new Date().toISOString();
           this.behind = 0;
           if (this.pausedReason === 'external-changes-pending') this.clearBlockingPause();
@@ -1537,7 +1573,28 @@ export class SyncEngine {
           this.handleGitOperationRefusal(e, 'pull');
           return 'refused';
         }
-        const classified = classifyGitError(e instanceof Error ? e : new Error(String(e)));
+        if (e instanceof UnsafeIncomingSymlinkError) {
+          this.handleIncomingSymlinkRefusal(e, 'pull');
+          return 'refused';
+        }
+        if (e instanceof IncomingRefMovedError && stashRestored && overlaysRestored) {
+          log.info(
+            { branch, incoming, ref: e.ref },
+            '[sync] incoming commit moved after inspection; re-inspecting next cycle',
+          );
+          this.transitionTo('idle');
+          return 'refused';
+        }
+        const failure = !(e instanceof IncomingRefMovedError)
+          ? e
+          : new Error(
+              stashRestored
+                ? 'failed to restore reconciled MCP overlays'
+                : 'failed to replay pre-merge working-tree state',
+            );
+        const classified = classifyGitError(
+          failure instanceof Error ? failure : new Error(String(failure)),
+        );
         if (classified.class === 'semantic' && classified.subclass === 'merge-conflict') {
           await this.handleMergeConflict();
           if (this.state === 'conflict') return 'conflict';
@@ -1554,7 +1611,11 @@ export class SyncEngine {
     return this.behind === 0 ? 'up-to-date' : 'conflict';
   }
 
-  private async doPullCycleB1(handle: GitHandle, branch: string): Promise<PullOutcome> {
+  private async doPullCycleB1(
+    handle: GitHandle,
+    branch: string,
+    incomingCommit: string,
+  ): Promise<PullOutcome> {
     this.transitionTo('pulling');
 
     if (this.ahead > 0) {
@@ -1574,7 +1635,7 @@ export class SyncEngine {
       oldHead = (await handle.git.revparse(['HEAD'])).trim();
       const overlayPaths = await listNames(handle.git, ['diff-index', '--name-only', 'HEAD']);
       const incoming = new Set(
-        await listNames(handle.git, ['diff', '--name-only', `HEAD..origin/${branch}`]),
+        await listNames(handle.git, ['diff', '--name-only', `HEAD..${incomingCommit}`]),
       );
       overlapping = overlayPaths.filter((p) => incoming.has(p));
     } catch (e) {
@@ -1589,7 +1650,13 @@ export class SyncEngine {
 
     let plan: Awaited<ReturnType<typeof this.planOverlapReconciliation>>;
     try {
-      plan = await this.planOverlapReconciliation(handle, branch, oldHead, overlapping, existing);
+      plan = await this.planOverlapReconciliation(
+        handle,
+        incomingCommit,
+        oldHead,
+        overlapping,
+        existing,
+      );
     } catch (e) {
       this.handleError(classifyGitError(e instanceof Error ? e : new Error(String(e))), 'pull');
       return 'error';
@@ -1624,7 +1691,7 @@ export class SyncEngine {
         }
       }
 
-      const ff = await this.fastForwardOnly(handle, branch);
+      const ff = await this.fastForwardOnly(handle, incomingCommit);
       if (!ff.ok) {
         try {
           this.applyOverlayPlan(plan.mineRestore, plan.deletions);
@@ -1696,7 +1763,7 @@ export class SyncEngine {
 
   private async fastForwardOnly(
     handle: GitHandle,
-    branch: string,
+    incoming: string,
   ): Promise<
     | { ok: true }
     | {
@@ -1708,11 +1775,12 @@ export class SyncEngine {
       }
   > {
     try {
-      await execFileAsync(
-        'git',
-        ['-c', 'core.autocrlf=false', 'merge', '--ff-only', `origin/${branch}`],
-        { cwd: this.projectDir, env: handle.env, windowsHide: true, timeout: FF_ONLY_TIMEOUT_MS },
-      );
+      await execFileAsync('git', ['-c', 'core.autocrlf=false', 'merge', '--ff-only', incoming], {
+        cwd: this.projectDir,
+        env: handle.env,
+        windowsHide: true,
+        timeout: FF_ONLY_TIMEOUT_MS,
+      });
       return { ok: true };
     } catch (e) {
       const err = e as {
@@ -1737,7 +1805,7 @@ export class SyncEngine {
 
   private async planOverlapReconciliation(
     handle: GitHandle,
-    branch: string,
+    incoming: string,
     oldHead: string,
     overlapping: string[],
     existing: Map<string, Extract<Conflict, { kind: 'working-tree' }>>,
@@ -1766,7 +1834,7 @@ export class SyncEngine {
 
       if (!existsSync(join(this.projectDir, p))) {
         try {
-          await handle.git.revparse([`origin/${branch}:${p}`]);
+          await handle.git.revparse([`${incoming}:${p}`]);
         } catch (e) {
           if (this.classifyRefReadFailure(e) === 'error') {
             deletions.push(p);
@@ -1800,7 +1868,7 @@ export class SyncEngine {
 
       let theirsStr: string | null = null;
       try {
-        theirsStr = await handle.git.raw(['show', `origin/${branch}:${p}`]);
+        theirsStr = await handle.git.raw(['show', `${incoming}:${p}`]);
       } catch (e) {
         if (this.classifyRefReadFailure(e) === 'error') {
           log.warn(
@@ -1871,7 +1939,7 @@ export class SyncEngine {
       }
 
       writes.push({ path: p, bytes: mineBuf });
-      const theirsSha = await this.gitBlobSha(handle, `origin/${branch}:${p}`);
+      const theirsSha = await this.gitBlobSha(handle, `${incoming}:${p}`);
       if (theirsSha === undefined) {
         log.warn(
           { path: p },
@@ -1973,6 +2041,10 @@ export class SyncEngine {
     this.clearUnbornHeadPause();
     if (this.cycleInFlight !== null) {
       if (this.cycleInFlight === 'pull' && this.pushTimer === null) this.schedulePush();
+      return;
+    }
+    if (this.pausedReason === 'unsafe-incoming-symlinks') {
+      this.schedulePush();
       return;
     }
 
@@ -2199,21 +2271,25 @@ export class SyncEngine {
           const retryHandle = this.gitHandle();
           this.setBatchInProgress?.(true);
           let retryStage: 'fetch' | 'merge' | 'push' = 'fetch';
+          let stashRestored = true;
+          let overlaysRestored = true;
           try {
             await retryHandle.git.fetch('origin');
+            const incoming = await this.validateIncomingSymlinks(retryHandle, this.currentBranch);
             retryStage = 'push';
             await this.commitDirtyContentFilesToHead(retryHandle, 'push');
-            const mergePrep = await this.prepareForMerge(retryHandle, this.currentBranch);
+            retryStage = 'fetch';
+            await this.validateIncomingSymlinks(retryHandle, this.currentBranch, incoming);
+            retryStage = 'push';
+            const mergePrep = await this.prepareForMerge(retryHandle, this.currentBranch, incoming);
             if (!mergePrep.proceed) {
               this.setBatchInProgress?.(false);
               return;
             }
-            let stashRestored = true;
-            let overlaysRestored = true;
             try {
               await this.applyCommitIdentity(retryHandle);
               retryStage = 'merge';
-              await retryHandle.git.merge([`origin/${this.currentBranch}`]);
+              await this.mergeIncomingCommit(retryHandle, this.currentBranch, incoming);
               retryStage = 'push';
             } finally {
               if (mergePrep.needsStashPop) {
@@ -2229,8 +2305,28 @@ export class SyncEngine {
               this.handleGitOperationRefusal(mergeErr, 'push');
               return;
             }
+            if (mergeErr instanceof UnsafeIncomingSymlinkError) {
+              this.handleIncomingSymlinkRefusal(mergeErr, 'push');
+              return;
+            }
+            if (mergeErr instanceof IncomingRefMovedError && stashRestored && overlaysRestored) {
+              log.info(
+                { ref: mergeErr.ref },
+                '[sync] push retry: incoming commit moved after inspection; re-inspecting next cycle',
+              );
+              if (this.state === 'pushing') this.transitionTo('idle');
+              this.scheduleSaveState();
+              return;
+            }
+            const failure = !(mergeErr instanceof IncomingRefMovedError)
+              ? mergeErr
+              : new Error(
+                  stashRestored
+                    ? 'failed to restore reconciled MCP overlays'
+                    : 'failed to replay pre-merge working-tree state',
+                );
             const mc = classifyGitError(
-              mergeErr instanceof Error ? mergeErr : new Error(String(mergeErr)),
+              failure instanceof Error ? failure : new Error(String(failure)),
             );
             if (mc.class === 'semantic' && mc.subclass === 'merge-conflict') {
               await this.handleMergeConflict();
@@ -2350,15 +2446,15 @@ export class SyncEngine {
 
   private async planTrackedMcpOverlap(
     handle: GitHandle,
-    branch: string,
+    incomingCommit: string,
     path: string,
   ): Promise<ReturnType<typeof reconcileTrackedMcpConfig>> {
     let baseRevision: string;
     try {
-      baseRevision = (await handle.git.raw(['merge-base', 'HEAD', `origin/${branch}`])).trim();
+      baseRevision = (await handle.git.raw(['merge-base', 'HEAD', incomingCommit])).trim();
     } catch (err) {
       log.warn(
-        { err, branch, path },
+        { err, incomingCommit, path },
         '[sync] MCP reconciliation merge-base unavailable — declining',
       );
       return { kind: 'declined', reason: 'merge-base-unavailable' };
@@ -2367,7 +2463,7 @@ export class SyncEngine {
       this.readMcpGitBlob(handle, baseRevision, path),
       this.readMcpGitBlob(handle, 'HEAD', path),
       this.readMcpGitBlob(handle, '', path),
-      this.readMcpGitBlob(handle, `origin/${branch}`, path),
+      this.readMcpGitBlob(handle, incomingCommit, path),
     ]);
     let worktree: string | null = null;
     try {
@@ -2380,7 +2476,11 @@ export class SyncEngine {
     });
   }
 
-  private async prepareForMerge(handle: GitHandle, branch: string): Promise<MergePreparation> {
+  private async prepareForMerge(
+    handle: GitHandle,
+    branch: string,
+    incoming: string,
+  ): Promise<MergePreparation> {
     const reconciled: PreparedMcpReconciliation[] = [];
     let dirtyPaths: string[];
     try {
@@ -2394,7 +2494,7 @@ export class SyncEngine {
     let mergePaths: Set<string>;
     try {
       mergePaths = new Set(
-        await listNames(handle.git, ['diff', '--name-only', `HEAD..origin/${branch}`]),
+        await listNames(handle.git, ['diff', '--name-only', `HEAD..${incoming}`]),
       );
     } catch (err) {
       log.warn({ err, branch }, '[sync] merge-path diff failed — allowing merge attempt');
@@ -2408,7 +2508,7 @@ export class SyncEngine {
       const plans = await Promise.all(
         mcpOverlaps.map(async (path) => ({
           path,
-          plan: await this.planTrackedMcpOverlap(handle, branch, path),
+          plan: await this.planTrackedMcpOverlap(handle, incoming, path),
         })),
       );
       const declined = plans.find(({ plan }) => plan.kind === 'declined');
@@ -2564,6 +2664,88 @@ export class SyncEngine {
     );
     this.cc1Broadcaster?.signal('sync-status');
     this.scheduleSaveState();
+  }
+
+  private async validateIncomingSymlinks(
+    handle: GitHandle,
+    branch: string,
+    inspected?: string,
+  ): Promise<string> {
+    const trackingRef = `refs/remotes/origin/${branch}`;
+    let incoming = inspected;
+    try {
+      incoming ??= await resolveIncomingCommit(handle.git, trackingRef);
+      await assertIncomingSymlinksSafe(handle.git, incoming, 'merge', handle.env);
+    } catch (e) {
+      const links =
+        e instanceof UnsafeIncomingSymlinkError
+          ? e.unsafe.slice(0, REFUSED_SYMLINK_PATHS_CAP)
+          : null;
+      const refusalKey = links === null ? undefined : JSON.stringify([incoming, links]);
+      if (links !== null && refusalKey !== this.loggedSymlinkRefusal) {
+        this.loggedSymlinkRefusal = refusalKey;
+        log.warn(
+          { event: 'unsafe-incoming-symlinks', branch, incoming, links },
+          '[sync] refusing incoming changes with unsafe symlinks until they are fixed',
+        );
+      }
+      if (links === null) {
+        log.warn(
+          { err: e, branch, trackingRef, incoming },
+          '[sync] incoming symlink inspection failed',
+        );
+      }
+      throw e;
+    }
+    this.clearIncomingSymlinkPause();
+    return incoming;
+  }
+
+  private handleIncomingSymlinkRefusal(
+    error: UnsafeIncomingSymlinkError,
+    op: 'push' | 'pull',
+  ): void {
+    this.pausedReason = 'unsafe-incoming-symlinks';
+    this.refusedSymlinkPaths = error.unsafe.map(({ path }) => escapePathForDisplay(path));
+    if (op === 'push') this.clearPushError();
+    else this.clearPullError();
+    if (this.state === 'pushing' || this.state === 'pulling' || this.state === 'fetching') {
+      this.transitionTo('idle');
+    }
+    this.cc1Broadcaster?.signal('sync-status');
+    this.scheduleSaveState();
+  }
+
+  private clearIncomingSymlinkPause(): void {
+    this.loggedSymlinkRefusal = undefined;
+    if (this.pausedReason !== 'unsafe-incoming-symlinks') return;
+    this.pausedReason = undefined;
+    this.refusedSymlinkPaths = [];
+    this.cc1Broadcaster?.signal('sync-status');
+  }
+
+  private async mergeIncomingCommit(
+    handle: GitHandle,
+    branch: string,
+    incoming: string,
+  ): Promise<void> {
+    const name = `origin/${branch}`;
+    try {
+      await assertMergeNameResolvesTo(handle.git, {
+        name,
+        trackingRef: `refs/remotes/${name}`,
+        commit: incoming,
+      });
+    } catch (e) {
+      if (e instanceof IncomingRefShadowedError) {
+        log.warn(
+          { event: 'incoming-ref-shadowed', shadowedName: e.shadowedName, incoming },
+          '[sync] another ref shadows the incoming branch name; delete it locally and on the remote',
+        );
+      }
+      throw e;
+    }
+    await handle.git.merge([name]);
   }
 
   private hasGitOperationInProgress(): boolean {

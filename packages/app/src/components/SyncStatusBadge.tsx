@@ -111,13 +111,26 @@ function isFollowingMode(status: GitSyncStatus): boolean {
   return status.syncMode === 'follow';
 }
 
+const SYNC_DISABLING_PAUSED_REASONS = [
+  'git-operation-in-progress',
+  'unsafe-incoming-symlinks',
+] as const satisfies readonly SyncPausedReason[];
+
+export type SyncDisablingPausedReason = (typeof SYNC_DISABLING_PAUSED_REASONS)[number];
+
+export function isSyncDisablingPausedReason(
+  reason: string | undefined,
+): reason is SyncDisablingPausedReason {
+  return (SYNC_DISABLING_PAUSED_REASONS as readonly (string | undefined)[]).includes(reason);
+}
+
 export function displayState(status: GitSyncStatus): GitSyncStatus['state'] {
   if (status.state === 'idle' && status.conflictCount > 0) {
     return 'conflict';
   }
   if (
     (status.state === 'idle' || status.state === 'offline') &&
-    status.pausedReason === 'git-operation-in-progress'
+    isSyncDisablingPausedReason(status.pausedReason)
   ) {
     return 'disabled';
   }
@@ -231,6 +244,7 @@ const PAUSED_REASON_MESSAGES: Record<SyncPausedReason, MessageDescriptor> = {
   'protected-branch': msg`Protected branch — cannot push`,
   'no-push-permission': msg`You don't have permission to push to this repo.`,
   'no-commits-yet': msg`This repository has no commits yet — reopen the project to create the first commit, then Push will work`,
+  'unsafe-incoming-symlinks': msg`Sync is paused because incoming changes leave a symlink pointing outside the repository or into private files, or with a target that cannot be checked. Ask whoever pushed them to fix the link, or update Git if yours is older than 2.38. Automatic sync then resumes; in Manual mode, pull again.`,
 };
 
 function isKnownPausedReason(reason: string): reason is SyncPausedReason {
@@ -264,6 +278,27 @@ function PausedReasonNode({ reason }: { reason: NodeRenderedPausedReason }) {
     default:
       return assertNeverPausedReasonNode(reason);
   }
+}
+
+export function SyncRefusedSymlinks({ paths }: { paths: readonly string[] | undefined }) {
+  if (paths === undefined || paths.length === 0) return null;
+  return (
+    <ul
+      className="flex max-h-28 flex-col gap-1 overflow-y-auto overscroll-contain"
+      data-testid="sync-refused-symlinks"
+    >
+      {paths.map((path) => (
+        <li
+          key={path}
+          title={path}
+          dir="ltr"
+          className="min-w-0 truncate font-mono text-2xs text-foreground"
+        >
+          {path}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export function PausedReasonNotice({ reason }: { reason: string }) {
@@ -1219,9 +1254,12 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
       ) : blockingPaths.length > 0 ? (
         <SyncBlockingChanges paths={blockingPaths} />
       ) : isParkedOnNotFoundAsIdentity(status) ? null : status.pausedReason ? (
-        <p className="text-xs text-muted-foreground">
-          <PausedReasonNotice reason={status.pausedReason} />
-        </p>
+        <>
+          <p className="text-xs text-muted-foreground">
+            <PausedReasonNotice reason={status.pausedReason} />
+          </p>
+          <SyncRefusedSymlinks paths={status.refusedSymlinkPaths} />
+        </>
       ) : !following && genuineReadOnly && status.pushPermission?.checkStatus === 'denied' ? (
         formatPushPermissionDenied(status.pushPermission.deniedReason, status.pushPermission).map(
           (sentence) => (
