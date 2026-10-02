@@ -21,6 +21,7 @@ import {
   registerDocExtension,
   stripDocExtension,
 } from './doc-extensions.ts';
+import { resolvesIntoPrivateState } from './fs-safety.ts';
 import { classifyFsPath, normalizeFsPath } from './fs-traced.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
@@ -362,7 +363,10 @@ function eventEscapesContentDir(rawPath: string, contentDir: string): boolean {
     }
     return true;
   }
-  return !isWithinContentDir(canonical, contentDir);
+  return (
+    !isWithinContentDir(canonical, contentDir) ||
+    resolvesIntoPrivateState(rawPath, canonical, contentDir)
+  );
 }
 
 export function pathToDocName(absPath: string, contentDir: string): string {
@@ -685,7 +689,10 @@ async function seedLastKnownHashes(
           continue;
         }
 
-        if (!isWithinContentDir(canonical, contentDir)) {
+        if (
+          !isWithinContentDir(canonical, contentDir) ||
+          resolvesIntoPrivateState(fullPath, canonical, contentDir)
+        ) {
           log.warn(
             { path: fullPath, canonical },
             `Symlink escape: ${fullPath} → ${canonical}, skipping`,

@@ -153,6 +153,7 @@ import {
   startWatcher,
   type WatcherHandle,
 } from './file-watcher.ts';
+import { canonicalContentPathIsRefused } from './fs-safety.ts';
 import {
   normalizeFsPath,
   tracedAtomicFs,
@@ -1873,9 +1874,9 @@ export function createServer(options: ServerOptions): ServerInstance {
             }
             throw err;
           }
-          if (!isWithinContentDir(canonical, contentDir)) {
+          if (canonicalContentPathIsRefused(requestedPath, canonical, contentDir)) {
             throw new StructuralDiskReadError(
-              `symlink-escape: ${requestedPath} resolves outside the content dir`,
+              `symlink-escape: ${requestedPath} resolves outside the content dir or into private state`,
             );
           }
           if (size > DOCUMENT_OPEN_BYTE_LIMIT) {
@@ -4212,6 +4213,15 @@ export function createServer(options: ServerOptions): ServerInstance {
                     continue;
                   }
 
+                  if (canonicalContentPathIsRefused(filePath, realpathSync(filePath), contentDir)) {
+                    rescueUnflushedEditsBeforeTeardown(docName, newBranch, 'branch-switch');
+                    document.getMap('lifecycle').set('status', 'deleted-upstream');
+                    log.warn(
+                      { docName, branch: newBranch },
+                      `[branch-switch] tombstone: ${docName} resolves outside the content dir or into private state on ${newBranch}`,
+                    );
+                    continue;
+                  }
                   const diskContent = readFileSync(filePath, 'utf-8');
                   if (getReconciledBase(docName) === undefined) {
                     const ours = serializeDoc(docName) ?? '';

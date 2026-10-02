@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, request as httpRequest, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -25,6 +25,7 @@ async function startHarness(contentDir: string): Promise<Harness> {
     contentDir,
   });
   const middleware = createAssetServeMiddleware({
+    contentDir,
     contentFilter,
     contentSirv: sirv(contentDir, { dev: true, dotfiles: false }),
     inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,
@@ -243,6 +244,67 @@ describe('asset-serve middleware (narrow integration)', () => {
       const body = await res.text();
       expect(body).toContain('spa fallback sentinel');
       expect(res.headers.get('content-disposition')).toBeNull();
+    });
+  });
+
+  describe('Symlinked content stays inside the repository', () => {
+    const SECRET = 'machine-local-secret';
+
+    beforeEach(() => {
+      mkdirSync(join(contentDir, '.ok', 'local'), { recursive: true });
+      writeFileSync(join(contentDir, '.ok', 'local', 'principal.json'), `{"token":"${SECRET}"}`);
+      mkdirSync(join(contentDir, '.git'), { recursive: true });
+      writeFileSync(join(contentDir, '.git', 'config'), `[core]\n\t# ${SECRET}\n`);
+    });
+
+    test('a markdown link into machine-local state is not served', async () => {
+      symlinkSync('../.ok/local/principal.json', join(contentDir, 'docs', 'leak.md'));
+      const res = await fetch(`${harness.baseURL}/docs/leak.md`);
+      const body = await res.text();
+      expect(body).not.toContain(SECRET);
+      expect(body).toContain('spa fallback sentinel');
+    });
+
+    test('an asset link to the git config is not served', async () => {
+      symlinkSync('../.git/config', join(contentDir, 'docs', 'cfg.txt'));
+      const res = await fetch(`${harness.baseURL}/docs/cfg.txt`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain(SECRET);
+    });
+
+    test('an asset link outside the content dir is not served', async () => {
+      const outsideDir = mkdtempSync(join(tmpdir(), 'ok-asset-serve-outside-'));
+      try {
+        writeFileSync(join(outsideDir, 'secret.png'), SECRET);
+        symlinkSync(join(outsideDir, 'secret.png'), join(contentDir, 'docs', 'outside.png'));
+        const res = await fetch(`${harness.baseURL}/docs/outside.png`);
+        expect(res.status).toBe(404);
+        expect(await res.text()).not.toContain(SECRET);
+      } finally {
+        rmSync(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    test('a path is checked as sirv decodes it, not as the extension gate decodes it', async () => {
+      writeFileSync(join(contentDir, 'docs', 'x+.png'), 'harmless-bytes');
+      symlinkSync('../.ok/local/principal.json', join(contentDir, 'docs', 'x%2B.png'));
+      const res = await fetch(`${harness.baseURL}/docs/x%2B.png`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain(SECRET);
+    });
+
+    test('a missing asset does not fall back to a linked html sibling', async () => {
+      symlinkSync('../.ok/local/principal.json', join(contentDir, 'docs', 'gone.png.html'));
+      const res = await fetch(`${harness.baseURL}/docs/gone.png`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain(SECRET);
+    });
+
+    test('an in-root link to an ordinary asset is still served', async () => {
+      symlinkSync('photo.png', join(contentDir, 'docs', 'alias.png'));
+      const res = await fetch(`${harness.baseURL}/docs/alias.png`);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe('fake-png-bytes');
     });
   });
 

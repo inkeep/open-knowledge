@@ -5173,6 +5173,10 @@ msgid "Diagram view mode"
 msgstr "다이어그램 보기 모드"
 
 #: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not open {shareBranch} in a worktree: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "워크트리에서 {shareBranch} 브랜치를 열지 않았습니다. 저장소 밖이나 비공개 파일, 또는 확인할 수 없는 위치를 가리키는 심볼릭 링크가 있습니다. 보통 브랜치를 푸시한 사람이 링크를 수정해야 합니다. 이 컴퓨터의 폴더를 읽을 수 없다면 읽을 수 있게 한 뒤 다시 시도하세요."
+
+#: src/components/ShareBranchSwitchDialog.tsx
 msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
 msgstr "{shareBranch}(으)로 전환하지 않았습니다. 저장소 밖이나 비공개 파일, 또는 확인할 수 없는 위치를 가리키는 심볼릭 링크가 있습니다. 보통 브랜치를 푸시한 사람이 링크를 수정해야 합니다. 이 컴퓨터의 폴더를 읽을 수 없다면 읽을 수 있게 한 뒤 다시 시도하세요."
 

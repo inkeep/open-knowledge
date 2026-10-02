@@ -5173,6 +5173,10 @@ msgid "Diagram view mode"
 msgstr "Mode d'affichage du diagramme"
 
 #: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not open {shareBranch} in a worktree: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "L'ouverture de {shareBranch} dans un worktree n'a pas eu lieu : cette branche contient un lien symbolique qui pointe hors du dépôt, vers des fichiers privés ou vers un emplacement qui ne peut pas être vérifié. En général, la personne qui a poussé la branche doit corriger le lien. Si un dossier de cet ordinateur ne peut pas être lu, rendez-le lisible et réessayez."
+
+#: src/components/ShareBranchSwitchDialog.tsx
 msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
 msgstr "Le passage à {shareBranch} n'a pas eu lieu : cette branche contient un lien symbolique qui pointe hors du dépôt, vers des fichiers privés ou vers un emplacement qui ne peut pas être vérifié. En général, la personne qui a poussé la branche doit corriger le lien. Si un dossier de cet ordinateur ne peut pas être lu, rendez-le lisible et réessayez."
 

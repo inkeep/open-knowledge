@@ -5173,6 +5173,10 @@ msgid "Diagram view mode"
 msgstr "خاکے کا منظر موڈ"
 
 #: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not open {shareBranch} in a worktree: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "{shareBranch} کسی ورک ٹری میں نہیں کھولا گیا: اس میں ایک سِم لنک ہے جو ریپازٹری سے باہر، نجی فائلوں کی طرف، یا ایسی جگہ کی طرف اشارہ کرتا ہے جس کی جانچ نہیں ہو سکتی۔ عام طور پر جس نے برانچ پُش کی ہے اسی کو لنک درست کرنا ہوگا۔ اگر اس کمپیوٹر کا کوئی فولڈر پڑھا نہیں جا سکتا تو اسے پڑھنے کے قابل بنائیں اور دوبارہ کوشش کریں۔"
+
+#: src/components/ShareBranchSwitchDialog.tsx
 msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
 msgstr "{shareBranch} پر منتقل نہیں کیا گیا: اس میں ایک سِم لنک ہے جو ریپازٹری سے باہر، نجی فائلوں کی طرف، یا ایسی جگہ کی طرف اشارہ کرتا ہے جس کی جانچ نہیں ہو سکتی۔ عام طور پر جس نے برانچ پُش کی ہے اسی کو لنک درست کرنا ہوگا۔ اگر اس کمپیوٹر کا کوئی فولڈر پڑھا نہیں جا سکتا تو اسے پڑھنے کے قابل بنائیں اور دوبارہ کوشش کریں۔"
 

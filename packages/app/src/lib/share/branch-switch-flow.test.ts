@@ -719,6 +719,20 @@ describe('applyWorktreeCheckoutOutcome (worktree leg)', () => {
     });
   });
 
+  test('a branch with unsafe symlinks stays open and carries the refused paths to the toast', () => {
+    const result = applyWorktreeCheckoutOutcome(creating, {
+      ok: false,
+      reason: 'unsafe-symlinks',
+      refusedSymlinkPaths: ['notes/leak.md', 'notes/root'],
+    });
+    expect(result.state).toEqual({ phase: 'ready', info: cleanInfo() });
+    expect(result.sideEffect).toEqual({
+      kind: 'toast',
+      reason: 'unsafe-symlinks',
+      paths: ['notes/leak.md', 'notes/root'],
+    });
+  });
+
   test('branch-not-found dismisses with the branch-gone toast signal (terminal, mirrors the switch leg)', () => {
     const result = applyWorktreeCheckoutOutcome(creating, {
       ok: false,

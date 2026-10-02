@@ -1806,6 +1806,74 @@ describe('startWatcher symlink handling', () => {
     expect(collected).toHaveLength(0);
   });
 
+  describe('links into private repository state', () => {
+    const SECRET = '# machine-local-secret\n';
+
+    beforeEach(() => {
+      mkdirSync(resolve(contentDir, '.ok', 'local'), { recursive: true });
+      writeFileSync(resolve(contentDir, '.ok', 'local', 'secret.md'), SECRET);
+      mkdirSync(resolve(contentDir, '.git'), { recursive: true });
+      writeFileSync(resolve(contentDir, '.git', 'config'), '[core]\n');
+      writeFileSync(resolve(contentDir, '.ok', 'config.yml'), '');
+    });
+
+    const filterFor = () => createContentFilter({ projectDir: contentDir, contentDir });
+
+    test('the startup walk does not follow a directory link into .git', async () => {
+      writeFileSync(resolve(contentDir, '.git', 'notes.md'), SECRET);
+      symlinkSync('.git', resolve(contentDir, 'repo'));
+
+      const handle = await startWatcher(contentDir, async () => {}, filterFor());
+      try {
+        expect(handle.getFolderAliasIndex().has('repo')).toBe(false);
+        for (const docName of handle.getFileIndex().keys()) {
+          expect(docName.startsWith('.git/')).toBe(false);
+        }
+      } finally {
+        await handle.unsubscribe();
+      }
+    });
+
+    test('runtime events for a doc linked into machine-local state are dropped', async () => {
+      const linkPath = resolve(contentDir, 'leak.md');
+      symlinkSync('.ok/local/secret.md', linkPath);
+
+      const collected: DiskEvent[] = [];
+      await handleRawEvents(
+        [{ type: 'create', path: linkPath }],
+        contentDir,
+        filterFor(),
+        new Map(),
+        new Map(),
+        async (e) => {
+          collected.push(e);
+        },
+        new Map(),
+      );
+
+      expect(collected).toHaveLength(0);
+    });
+
+    test('runtime events for an asset linked to the git config are dropped', async () => {
+      const linkPath = resolve(contentDir, 'leak.png');
+      symlinkSync('.git/config', linkPath);
+
+      const collected: DiskEvent[] = [];
+      await handleRawEvents(
+        [{ type: 'create', path: linkPath }],
+        contentDir,
+        filterFor(),
+        new Map(),
+        new Map(),
+        async (e) => {
+          collected.push(e);
+        },
+      );
+
+      expect(collected).toHaveLength(0);
+    });
+  });
+
   test('preserves runtime events for symlinks pointing inside contentDir', async () => {
     const targetPath = resolve(contentDir, 'real-target.md');
     const aliasPath = resolve(contentDir, 'alias.md');

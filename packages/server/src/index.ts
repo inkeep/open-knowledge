@@ -279,8 +279,10 @@ export {
   type IdleShutdownHandle,
 } from './idle-shutdown.ts';
 export {
+  assertCheckoutSymlinksSafe,
   assertIncomingSymlinksSafe,
   assertMergeNameResolvesTo,
+  assertRepoCheckoutSymlinksSafe,
   SYMLINK_MERGE_MIN_GIT_LABEL,
   SYMLINK_MERGE_MIN_GIT_VERSION,
   type UnsafeIncomingSymlink,

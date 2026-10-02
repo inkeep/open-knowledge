@@ -296,7 +296,15 @@ export type WorktreeCheckoutSideEffect =
     }
   | {
       readonly kind: 'toast';
-      readonly reason: Exclude<WorktreeCheckoutSideEffectReason, 'project-scope-unavailable'>;
+      readonly reason: 'unsafe-symlinks';
+      readonly paths: readonly string[];
+    }
+  | {
+      readonly kind: 'toast';
+      readonly reason: Exclude<
+        WorktreeCheckoutSideEffectReason,
+        'project-scope-unavailable' | 'unsafe-symlinks'
+      >;
       readonly helper?: string;
       readonly authFailed?: true;
       readonly notFoundAsIdentity?: true;
@@ -335,6 +343,12 @@ export function applyWorktreeCheckoutOutcome(
         reason: result.reason,
         projectScopeIssue: result.issue,
       },
+    };
+  }
+  if (result.reason === 'unsafe-symlinks') {
+    return {
+      state: { phase: 'ready', info: state.info },
+      sideEffect: { kind: 'toast', reason: result.reason, paths: result.refusedSymlinkPaths },
     };
   }
   return {

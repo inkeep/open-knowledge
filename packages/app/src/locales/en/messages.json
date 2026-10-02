@@ -3232,6 +3232,11 @@
       " uses instead of the plugin's — it stops tracking plugin updates."
     ],
     "_6FVBz": ["Jump to tab 1-8"],
+    "_6cS9O": [
+      "Did not open ",
+      ["shareBranch"],
+      " in a worktree: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+    ],
     "_7UQ7y": ["Whole word"],
     "_8quCH": ["From template"],
     "_902BE": [

@@ -3791,6 +3791,11 @@
       " utilise à la place de celle du plugin — elle ne suit plus les mises à jour du plugin."
     ],
     "_6FVBz": ["Aller aux onglets 1 à 8"],
+    "_6cS9O": [
+      "L'ouverture de ",
+      ["shareBranch"],
+      " dans un worktree n'a pas eu lieu : cette branche contient un lien symbolique qui pointe hors du dépôt, vers des fichiers privés ou vers un emplacement qui ne peut pas être vérifié. En général, la personne qui a poussé la branche doit corriger le lien. Si un dossier de cet ordinateur ne peut pas être lu, rendez-le lisible et réessayez."
+    ],
     "_7UQ7y": ["Mot entier"],
     "_8quCH": ["À partir d'un modèle"],
     "_902BE": [

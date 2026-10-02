@@ -659,6 +659,93 @@ describe('worktree-service — share-branch checkout', () => {
     expect(await repoSnapshot(handle.mainRepo)).toEqual(before);
   });
 
+  async function pushBranchWithLinks(
+    root: string,
+    branch: string,
+    links: Record<string, string>,
+  ): Promise<string> {
+    const scratch = join(root, `scratch-${branch}`);
+    await git(root, 'clone', join(root, 'origin.git'), scratch);
+    await git(scratch, 'config', 'user.email', 'test@example.com');
+    await git(scratch, 'config', 'user.name', 'Test');
+    await git(scratch, 'checkout', '-b', branch);
+    for (const [path, target] of Object.entries(links)) {
+      const targetFile = join(root, `link-target-${branch}`);
+      writeFileSync(targetFile, target);
+      const blob = (await git(scratch, 'hash-object', '-w', targetFile)).trim();
+      await git(scratch, 'update-index', '--add', '--cacheinfo', `120000,${blob},${path}`);
+    }
+    await git(scratch, 'commit', '-m', `links on ${branch}`);
+    await git(scratch, 'push', 'origin', branch);
+    return (await git(scratch, 'rev-parse', 'HEAD')).trim();
+  }
+
+  test('checkoutShareBranchWorktree refuses a remote branch carrying an unsafe symlink and creates nothing', async () => {
+    handle = await makeRepo();
+    await addBareRemote(handle.mainRepo, ['main']);
+    await pushBranchWithLinks(handle.root, 'unsafe-share', { 'notes/leak.md': '../.git/config' });
+    const before = await repoSnapshot(handle.mainRepo);
+
+    const res = await checkoutShareBranchWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'unsafe-share',
+    });
+
+    expect(res).toEqual({
+      ok: false,
+      reason: 'unsafe-symlinks',
+      refusedSymlinkPaths: ['notes/leak.md'],
+    });
+    expect(existsSync(join(handle.mainRepo, '.ok', 'worktrees', 'unsafe-share'))).toBe(false);
+    expect((await git(handle.mainRepo, 'branch', '--list', 'unsafe-share')).trim()).toBe('');
+    expect(await repoSnapshot(handle.mainRepo)).toEqual(before);
+  });
+
+  test('checkoutShareBranchWorktree refuses a local branch carrying an unsafe symlink', async () => {
+    handle = await makeRepo();
+    await addBareRemote(handle.mainRepo, ['main']);
+    await pushBranchWithLinks(handle.root, 'local-unsafe', { 'notes/root': '..' });
+    await git(handle.mainRepo, 'fetch', 'origin', 'local-unsafe:local-unsafe');
+
+    const res = await checkoutShareBranchWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'local-unsafe',
+    });
+
+    expect(res).toEqual({
+      ok: false,
+      reason: 'unsafe-symlinks',
+      refusedSymlinkPaths: ['notes/root'],
+    });
+    expect(existsSync(join(handle.mainRepo, '.ok', 'worktrees', 'local-unsafe'))).toBe(false);
+  });
+
+  test('checkoutShareBranchWorktree checks out the remote branch, not a tag that shadows its short name', async () => {
+    handle = await makeRepo();
+    await addBareRemote(handle.mainRepo, ['main']);
+    const safe = await pushBranchWithLinks(handle.root, 'tagged', {
+      'notes/readme.md': '../README.md',
+    });
+    const unsafe = await pushBranchWithLinks(handle.root, 'evil', {
+      'notes/leak.md': '../.git/config',
+    });
+    await git(handle.mainRepo, 'fetch', 'origin');
+    await git(handle.mainRepo, 'tag', 'origin/tagged', unsafe);
+
+    const res = await checkoutShareBranchWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'tagged',
+    });
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect((await git(res.path, 'rev-parse', 'HEAD')).trim()).toBe(safe);
+    expect(existsSync(join(res.path, 'notes', 'readme.md'))).toBe(true);
+    expect(readdirSync(join(res.path, 'notes'))).toEqual(['readme.md']);
+    const upstream = await git(res.path, 'rev-parse', '--symbolic-full-name', '@{upstream}');
+    expect(upstream.trim()).toBe('refs/remotes/origin/tagged');
+  });
+
   test('share fetch pins credential interactivity off so no helper can open a dialog', () => {
     const args = buildShareFetchArgs('feat-x');
     expect(args).toEqual(['-c', 'credential.interactive=false', 'fetch', 'origin', 'feat-x']);

@@ -5173,6 +5173,10 @@ msgid "Diagram view mode"
 msgstr "圖表檢視模式"
 
 #: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not open {shareBranch} in a worktree: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "未在 worktree 中開啟 {shareBranch}：它包含一個指向儲存庫之外、私有檔案或無法檢查之處的符號連結。通常需要由推送該分支的人修正該連結。如果這台電腦上的某個資料夾無法讀取，請使其可讀後重試。"
+
+#: src/components/ShareBranchSwitchDialog.tsx
 msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
 msgstr "未切換到 {shareBranch}：它包含一個指向儲存庫之外、私有檔案或無法檢查之處的符號連結。通常需要由推送該分支的人修正該連結。如果這台電腦上的某個資料夾無法讀取，請使其可讀後重試。"
 

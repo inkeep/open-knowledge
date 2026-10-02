@@ -91,8 +91,8 @@ function isBranchSwitchPayload(
 
 const REFUSED_LINKS_SHOWN = 5;
 
-function shareSwitchRefusalToastId(branch: string): string {
-  return `share-switch-unsafe-symlinks:${branch}`;
+function shareBranchRefusalToastId(branch: string): string {
+  return `share-branch-unsafe-symlinks:${branch}`;
 }
 
 export function ShareBranchSwitchDialog({
@@ -100,6 +100,16 @@ export function ShareBranchSwitchDialog({
   store = shareReceiveStore,
 }: ShareBranchSwitchDialogProps) {
   const { t } = useLingui();
+
+  function refusedLinksDescription(paths: readonly string[]): string | undefined {
+    const shownPaths = paths.slice(0, REFUSED_LINKS_SHOWN);
+    const hiddenCount = paths.length - shownPaths.length;
+    const listed =
+      hiddenCount > 0
+        ? [...shownPaths, t`${plural(hiddenCount, { one: '# more link', other: '# more links' })}`]
+        : shownPaths;
+    return listed.length === 0 ? undefined : formatToolList(listed, i18n.locale);
+  }
   const payload = useSyncExternalStore(store.subscribe, store.getSnapshot, () => null);
   const [branchSwitchState, setBranchSwitchState] =
     useState<BranchSwitchDialogState>(initialBranchSwitchState);
@@ -314,22 +324,13 @@ export function ShareBranchSwitchDialog({
           }
           return next;
         });
-        const refusalToastId = shareSwitchRefusalToastId(shareBranch);
+        const refusalToastId = shareBranchRefusalToastId(shareBranch);
         if (toastReason !== 'unsafe-symlinks') toast.dismiss(refusalToastId);
         if (toastReason === 'unsafe-symlinks') {
-          const shownPaths = refusedPaths.slice(0, REFUSED_LINKS_SHOWN);
-          const hiddenCount = refusedPaths.length - shownPaths.length;
-          const listed =
-            hiddenCount > 0
-              ? [
-                  ...shownPaths,
-                  t`${plural(hiddenCount, { one: '# more link', other: '# more links' })}`,
-                ]
-              : shownPaths;
           toast.error(
             t`Did not switch to ${shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again.`,
             {
-              description: listed.length === 0 ? undefined : formatToolList(listed, i18n.locale),
+              description: refusedLinksDescription(refusedPaths),
               id: refusalToastId,
               duration: Infinity,
             },
@@ -353,7 +354,7 @@ export function ShareBranchSwitchDialog({
           err instanceof Error ? err.message : err,
         );
         setBranchSwitchState((prev) => applyCheckoutOutcome(prev, null).state);
-        toast.dismiss(shareSwitchRefusalToastId(shareBranch));
+        toast.dismiss(shareBranchRefusalToastId(shareBranch));
         toast.error(t`Could not switch to ${shareBranch}. Try switching manually.`);
       });
   }
@@ -472,6 +473,17 @@ export function ShareBranchSwitchDialog({
           ),
         );
         return;
+      case 'unsafe-symlinks': {
+        toast.error(
+          t`Did not open ${shareBranch} in a worktree: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again.`,
+          {
+            description: refusedLinksDescription(failure.paths),
+            id: shareBranchRefusalToastId(shareBranch),
+            duration: Infinity,
+          },
+        );
+        return;
+      }
       case 'proxy-null':
       case 'error':
         toast.error(t`Could not open ${shareBranch} in a worktree. Try again.`);
@@ -501,6 +513,9 @@ export function ShareBranchSwitchDialog({
       }
       return next;
     });
+    if (failureSideEffect?.reason !== 'unsafe-symlinks') {
+      toast.dismiss(shareBranchRefusalToastId(shareBranch));
+    }
     if (failureSideEffect !== undefined) {
       console.log(
         formatReceiveLog({

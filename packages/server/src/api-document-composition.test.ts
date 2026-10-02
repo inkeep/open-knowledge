@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -7,12 +7,13 @@ import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
 
 let tmpRoot: string;
+let contentDir: string;
 let server: BootedServer;
 let ephemeral: BootedServer;
 
 beforeAll(async () => {
   tmpRoot = await mkdtemp(resolve(tmpdir(), 'ok-document-native-'));
-  const contentDir = mkdtempSync(resolve(tmpRoot, 'content-'));
+  contentDir = mkdtempSync(resolve(tmpRoot, 'content-'));
   writeFileSync(
     resolve(contentDir, 'alpha.md'),
     '# Alpha Title\n\n## Section One\n\nBody.\n',
@@ -72,6 +73,21 @@ describe('document/pages group over the composed listener — served natively', 
     expect(missing.status).toBe(404);
     expect(missing.headers.get('content-type')).toBe('application/problem+json');
     expect(((await missing.json()) as { type?: string }).type).toBe('urn:ok:error:doc-not-found');
+  });
+
+  test('document read refuses a doc linked into machine-local OpenKnowledge state', async () => {
+    mkdirSync(resolve(contentDir, '.ok', 'local'), { recursive: true });
+    writeFileSync(
+      resolve(contentDir, '.ok', 'local', 'leak-fixture.json'),
+      '{"token":"machine-local-secret"}',
+      'utf-8',
+    );
+    mkdirSync(resolve(contentDir, 'linked'), { recursive: true });
+    symlinkSync('../.ok/local/leak-fixture.json', resolve(contentDir, 'linked', 'leak.md'));
+
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/document?docName=linked/leak`);
+    expect(res.status).toBe(500);
+    expect(await res.text()).not.toContain('machine-local-secret');
   });
 
   test('documents lists both docs; pages carries derived titles; headings extract', async () => {

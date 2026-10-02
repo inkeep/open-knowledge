@@ -3,6 +3,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -229,6 +230,182 @@ describe('symlink-safe atomic write', () => {
     const hash = contentHash(markdown);
     expect(isSelfWrite(targetPath, hash)).toBe(true);
     expect(isSelfWrite(linkPath, hash)).toBe(false);
+  });
+});
+
+describe('persistence refuses links into private repository state', () => {
+  const SECRET = '{"token":"machine-local-secret"}';
+  const GIT_CONFIG = '[core]\n\tbare = false\n';
+  let contentDir: string;
+
+  beforeEach(() => {
+    contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-private-link-persistence-')));
+    mkdirSync(join(contentDir, '.ok', 'local'), { recursive: true });
+    mkdirSync(join(contentDir, '.git'), { recursive: true });
+    mkdirSync(join(contentDir, 'notes'), { recursive: true });
+    mkdirSync(join(contentDir, 'shared'), { recursive: true });
+    writeFileSync(join(contentDir, '.ok', 'local', 'principal.json'), SECRET);
+    writeFileSync(join(contentDir, '.git', 'config'), GIT_CONFIG);
+  });
+
+  afterEach(() => {
+    rmSync(contentDir, { recursive: true, force: true });
+  });
+
+  function createPersistence(durabilityState = new DocumentDurabilityState()) {
+    return createPersistenceExtension({
+      contentDir,
+      projectDir: contentDir,
+      gitEnabled: false,
+      durabilityState,
+    });
+  }
+
+  async function storeDocument(
+    persistence: ReturnType<typeof createPersistenceExtension>,
+    document: Y.Doc,
+    documentName: string,
+  ): Promise<void> {
+    await persistence.extension.onStoreDocument?.({
+      document,
+      documentName,
+      lastTransactionOrigin: {
+        source: 'connection',
+        connection: { context: { principalId: 'principal-test' } },
+      },
+      lastContext: {},
+    } as never);
+  }
+
+  test('load leaves a doc linked to machine-local state empty', async () => {
+    symlinkSync('../.ok/local/principal.json', join(contentDir, 'notes', 'leak.md'));
+    const persistence = createPersistence();
+    const document = new Y.Doc();
+
+    await persistence.extension.onLoadDocument?.({
+      document,
+      documentName: 'notes/leak',
+      context: {},
+    } as never);
+
+    expect(document.getText('source').toString()).toBe('');
+    document.destroy();
+  });
+
+  test('store refuses to write through a link to the git config', async () => {
+    const linkPath = join(contentDir, 'notes', 'cfg.md');
+    symlinkSync('../.git/config', linkPath);
+    const durabilityState = new DocumentDurabilityState();
+    durabilityState.setReconciledBase('notes/cfg', '# Loaded before the link appeared\n');
+    const persistence = createPersistence(durabilityState);
+    const document = new Y.Doc();
+    composeAndWriteRawBody(document, '# Overwrite\n', 'test');
+
+    await expect(storeDocument(persistence, document, 'notes/cfg')).rejects.toThrow(
+      'symlink-escape',
+    );
+
+    expect(readFileSync(join(contentDir, '.git', 'config'), 'utf-8')).toBe(GIT_CONFIG);
+    expect(lstatSync(linkPath).isSymbolicLink()).toBe(true);
+    document.destroy();
+  });
+
+  test('store refuses a new doc under a directory link into .git', async () => {
+    symlinkSync('../.git', join(contentDir, 'notes', 'repo'));
+    const persistence = createPersistence();
+    const document = new Y.Doc();
+    composeAndWriteRawBody(document, '# Planted\n', 'test');
+
+    await expect(storeDocument(persistence, document, 'notes/repo/planted')).rejects.toThrow(
+      'symlink-escape',
+    );
+
+    expect(existsSync(join(contentDir, '.git', 'planted.md'))).toBe(false);
+    document.destroy();
+  });
+
+  test('load leaves a Mermaid doc linked to the git config empty', async () => {
+    symlinkSync('../.git/config', join(contentDir, 'notes', 'cfg.mmd'));
+    const persistence = createPersistence();
+    const document = new Y.Doc();
+
+    await persistence.extension.onLoadDocument?.({
+      document,
+      documentName: 'notes/cfg.mmd',
+      context: {},
+    } as never);
+
+    expect(document.getText('source').toString()).toBe('');
+    document.destroy();
+  });
+
+  test('load leaves an editable text doc linked outside the content dir empty', async () => {
+    const outsideDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-private-link-outside-')));
+    try {
+      writeFileSync(join(outsideDir, 'secret.ts'), 'export const secret = 1;\n');
+      symlinkSync(join(outsideDir, 'secret.ts'), join(contentDir, 'notes', 'outside.ts'));
+      const persistence = createPersistence();
+      const document = new Y.Doc();
+
+      await persistence.extension.onLoadDocument?.({
+        document,
+        documentName: 'notes/outside.ts',
+        context: {},
+      } as never);
+
+      expect(document.getText('source').toString()).toBe('');
+      document.destroy();
+    } finally {
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  test('store neither reads nor replaces a Mermaid doc linked into machine-local state', async () => {
+    const linkPath = join(contentDir, 'notes', 'leak.mmd');
+    symlinkSync('../.ok/local/principal.json', linkPath);
+    const persistence = createPersistence();
+    const document = new Y.Doc();
+    document.getText('source').insert(0, 'graph TD; A-->B;\n');
+
+    await storeDocument(persistence, document, 'notes/leak.mmd');
+
+    expect(document.getText('source').toString()).toBe('graph TD; A-->B;\n');
+    expect(lstatSync(linkPath).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(contentDir, '.ok', 'local', 'principal.json'), 'utf-8')).toBe(SECRET);
+    document.destroy();
+  });
+
+  test('store does not write a Mermaid doc under a directory link outside the content dir', async () => {
+    const outsideDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-private-link-outside-')));
+    try {
+      symlinkSync(outsideDir, join(contentDir, 'notes', 'away'));
+      const persistence = createPersistence();
+      const document = new Y.Doc();
+      document.getText('source').insert(0, 'graph TD; A-->B;\n');
+
+      await storeDocument(persistence, document, 'notes/away/flow.mmd');
+
+      expect(readdirSync(outsideDir)).toEqual([]);
+      document.destroy();
+    } finally {
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  test('store still writes through an in-root link to ordinary content', async () => {
+    const targetPath = join(contentDir, 'shared', 'a.md');
+    const linkPath = join(contentDir, 'notes', 'alias.md');
+    writeFileSync(targetPath, '# Before\n');
+    symlinkSync('../shared/a.md', linkPath);
+    const persistence = createPersistence();
+    const document = new Y.Doc();
+    composeAndWriteRawBody(document, '# After\n', 'test');
+
+    await storeDocument(persistence, document, 'notes/alias');
+
+    expect(readFileSync(targetPath, 'utf-8')).toBe('# After\n');
+    expect(lstatSync(linkPath).isSymbolicLink()).toBe(true);
+    document.destroy();
   });
 });
 

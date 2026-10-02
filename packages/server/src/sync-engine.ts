@@ -66,7 +66,6 @@ import {
 import {
   assertIncomingSymlinksSafe,
   assertMergeNameResolvesTo,
-  escapePathForDisplay,
   IncomingRefMovedError,
   IncomingRefShadowedError,
   resolveIncomingCommit,
@@ -2706,7 +2705,7 @@ export class SyncEngine {
     op: 'push' | 'pull',
   ): void {
     this.pausedReason = 'unsafe-incoming-symlinks';
-    this.refusedSymlinkPaths = error.unsafe.map(({ path }) => escapePathForDisplay(path));
+    this.refusedSymlinkPaths = error.displayPaths();
     if (op === 'push') this.clearPushError();
     else this.clearPullError();
     if (this.state === 'pushing' || this.state === 'pulling' || this.state === 'fetching') {

@@ -9,7 +9,6 @@ import { dirtyFilesOverlapWith } from './git-dirty.ts';
 import { createGitInstance } from './git-handle.ts';
 import {
   assertIncomingSymlinksSafe,
-  escapePathForDisplay,
   resolveIncomingCommit,
   UnsafeIncomingSymlinkError,
 } from './incoming-symlink-guard.ts';
@@ -118,9 +117,7 @@ export async function runCheckoutFlow(
       return {
         ok: false,
         reason: 'unsafe-symlinks',
-        refusedSymlinkPaths: err.unsafe
-          .slice(0, REFUSED_SYMLINK_PATHS_CAP)
-          .map(({ path }) => escapePathForDisplay(path)),
+        refusedSymlinkPaths: err.displayPaths(),
       };
     }
     log.warn({ branch, target, err }, `action=symlink-check-failed branch=${branch}`);

@@ -5169,6 +5169,10 @@ msgid "Diagram view mode"
 msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not open {shareBranch} in a worktree: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr ""
+
+#: src/components/ShareBranchSwitchDialog.tsx
 msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
 msgstr ""
 

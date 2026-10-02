@@ -5173,6 +5173,10 @@ msgid "Diagram view mode"
 msgstr "وضع عرض المخطط"
 
 #: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not open {shareBranch} in a worktree: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "لم يتم فتح {shareBranch} في شجرة عمل: يحتوي على رابط رمزي يشير إلى خارج المستودع أو إلى ملفات خاصة أو إلى موضع لا يمكن التحقق منه. عادةً يجب على من دفع الفرع إصلاح الرابط. إذا تعذّرت قراءة مجلد على هذا الكمبيوتر، فاجعله قابلًا للقراءة وحاول مرة أخرى."
+
+#: src/components/ShareBranchSwitchDialog.tsx
 msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
 msgstr "لم يتم التبديل إلى {shareBranch}: يحتوي على رابط رمزي يشير إلى خارج المستودع أو إلى ملفات خاصة أو إلى موضع لا يمكن التحقق منه. عادةً يجب على من دفع الفرع إصلاح الرابط. إذا تعذّرت قراءة مجلد على هذا الكمبيوتر، فاجعله قابلًا للقراءة وحاول مرة أخرى."
 

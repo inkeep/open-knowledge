@@ -6,9 +6,11 @@ import {
   OK_MACHINE_LOCAL_ROOT_DIRS,
   OK_MACHINE_LOCAL_ROOT_FILES,
   OK_USER_HOME_CREDENTIAL_FILES,
+  REFUSED_SYMLINK_PATHS_CAP,
 } from '@inkeep/open-knowledge-core';
 import type { SimpleGit } from 'simple-git';
 import { isSecretBearingFile, pathHasSecretBearingDirSegment } from './content-filter.ts';
+import { createGitInstance } from './git-handle.ts';
 import { compareSemver, parseGitVersion } from './git-preflight.ts';
 import { errnoCode } from './http/handler-utils.ts';
 
@@ -151,13 +153,31 @@ interface WalkOutcome {
   complete: boolean;
 }
 
-function touchesPrivateState(folded: readonly string[]): boolean {
-  return folded.some(
+function privateStateIndex(folded: readonly string[]): number {
+  return folded.findIndex(
     (segment, index) =>
       isGitDirName(segment) ||
       (isConfigDirName(segment) &&
         (index === folded.length - 1 || MACHINE_LOCAL_NAMES.has(folded[index + 1] ?? ''))),
   );
+}
+
+function touchesPrivateState(folded: readonly string[]): boolean {
+  return privateStateIndex(folded) >= 0;
+}
+
+export function symlinkReachesPrivateState(lexicalRel: string, canonicalRel: string): boolean {
+  const lexical = foldPath(lexicalRel).split('/');
+  const canonical = foldPath(canonicalRel).split('/');
+  if (lexical.join('/') === canonical.join('/')) return false;
+  const index = privateStateIndex(canonical);
+  if (index < 0) return false;
+  const last = canonical.length - 1;
+  const spelledFolderConfigDir =
+    index === last &&
+    isConfigDirName(canonical[last] ?? '') &&
+    lexical[lexical.length - 1] === canonical[last];
+  return !spelledFolderConfigDir;
 }
 
 function isUnverifiableTarget(target: string): boolean {
@@ -541,10 +561,14 @@ async function findUnsafeIncomingSymlinks(
   incoming: string,
   landing: IncomingLanding,
   env: NodeJS.ProcessEnv | undefined,
+  base: 'head' | 'empty-tree' = 'head',
 ): Promise<UnsafeIncomingSymlink[]> {
   const repoRoot = (await git.raw(['rev-parse', '--show-toplevel'])).trim();
   if (repoRoot === '') throw new Error('could not resolve the repository root');
-  const head = (await git.raw(['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'])).trim();
+  const head =
+    base === 'empty-tree'
+      ? ''
+      : (await git.raw(['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'])).trim();
   const inspection = await inspect(
     git,
     repoRoot,
@@ -680,7 +704,7 @@ function describeSymlinkReason(reason: UnsafeSymlinkReason): string {
   }
 }
 
-export function escapePathForDisplay(path: string): string {
+function escapePathForDisplay(path: string): string {
   return JSON.stringify(path)
     .slice(1, -1)
     .replace(INVISIBLE_CHARACTERS, (character) =>
@@ -698,6 +722,12 @@ export class UnsafeIncomingSymlinkError extends Error {
     super('refusing to pull: incoming symlinks are unsafe to check out');
     this.name = 'UnsafeIncomingSymlinkError';
     this.unsafe = unsafe;
+  }
+
+  displayPaths(): string[] {
+    return this.unsafe
+      .slice(0, REFUSED_SYMLINK_PATHS_CAP)
+      .map(({ path }) => escapePathForDisplay(path));
   }
 
   describeLinks(): string {
@@ -725,6 +755,21 @@ export async function assertIncomingSymlinksSafe(
   const commit = await resolveIncomingCommit(git, incoming);
   const unsafe = await findUnsafeIncomingSymlinks(git, commit, landing, env);
   if (unsafe.length > 0) throw new UnsafeIncomingSymlinkError(unsafe);
+}
+
+export async function assertCheckoutSymlinksSafe(
+  git: SimpleGit,
+  ref: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<void> {
+  const commit = await resolveIncomingCommit(git, ref);
+  const unsafe = await findUnsafeIncomingSymlinks(git, commit, 'checkout', env, 'empty-tree');
+  if (unsafe.length > 0) throw new UnsafeIncomingSymlinkError(unsafe);
+}
+
+export async function assertRepoCheckoutSymlinksSafe(repoDir: string, ref: string): Promise<void> {
+  const handle = createGitInstance(repoDir, { credentialConfig: [] });
+  await assertCheckoutSymlinksSafe(handle.git, ref, handle.env);
 }
 
 export class IncomingRefMovedError extends Error {

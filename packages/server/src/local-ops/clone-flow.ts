@@ -1,4 +1,5 @@
 import { dirname, isAbsolute } from 'node:path';
+import { REFUSED_SYMLINK_PATHS_CAP } from '@inkeep/open-knowledge-core';
 import {
   assertGitAvailable,
   type GitDetected,
@@ -13,11 +14,19 @@ import { type LocalOpCliInvocation, runSubprocess } from './subprocess.ts';
 
 const log = getLogger('clone-flow');
 
+export const UNSAFE_SYMLINKS_CLONE_MESSAGE =
+  'The repository has symlinks that are unsafe to check out, so the clone was removed. Fix or remove those links on the remote, then clone again.';
+
 export type RawCloneEvent =
   | { type: 'progress'; phase: string; pct: number }
   | { type: 'complete'; dir: string }
   | { type: 'branch-fallback'; branch: string }
-  | { type: 'error'; message: string };
+  | {
+      type: 'error';
+      message: string;
+      code?: 'unsafe-symlinks';
+      refusedSymlinkPaths?: string[];
+    };
 
 export interface RunCloneOptions extends LocalOpCliInvocation {
   url: string;
@@ -61,6 +70,17 @@ function asRawCloneEvent(parsed: Record<string, unknown>): RawCloneEvent | null 
       return { type: 'branch-fallback', branch: parsed.branch };
     }
     return null;
+  }
+  if (type === 'error' && parsed.code === 'unsafe-symlinks') {
+    const paths = Array.isArray(parsed.refusedSymlinkPaths) ? parsed.refusedSymlinkPaths : [];
+    return {
+      type: 'error',
+      code: 'unsafe-symlinks',
+      message: UNSAFE_SYMLINKS_CLONE_MESSAGE,
+      refusedSymlinkPaths: paths
+        .filter((path): path is string => typeof path === 'string' && path.length > 0)
+        .slice(0, REFUSED_SYMLINK_PATHS_CAP),
+    };
   }
   if (type === 'error') {
     const message = typeof parsed.message === 'string' ? redactedStderrDetail(parsed.message) : '';

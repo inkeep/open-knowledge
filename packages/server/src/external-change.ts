@@ -26,12 +26,13 @@ import {
 } from './cc1-broadcast.ts';
 import { type ConflictAuthority, isDocInConflict } from './conflict-authority.ts';
 import type { ReconcileReason } from './conflict-kinds.ts';
-import { isWithinContentDir, safeContentPath } from './content-path.ts';
+import { safeContentPath } from './content-path.ts';
 import { recordContributor } from './contributor-tracker.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 import type { DocumentDurabilityState } from './document-durability-state.ts';
 import { takeExternalChangeAttribution } from './external-change-attribution.ts';
 import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
+import { canonicalContentPathIsRefused } from './fs-safety.ts';
 import { getLogger } from './logger.ts';
 import {
   incrementExternalChangeHandlerErrors,
@@ -316,16 +317,17 @@ export function reconcileDiskBeforeAgentWrite(
   const base = durabilityState.getReconciledBase(docName);
   if (base === undefined) return NOT_RECONCILED;
 
+  let requestedPath: string;
   let canonical: string;
   try {
-    const requestedPath = safeContentPath(docName, contentDir);
+    requestedPath = safeContentPath(docName, contentDir);
     if (!existsSync(requestedPath)) return NOT_RECONCILED;
     canonical = realpathSync(requestedPath);
   } catch {
     return NOT_RECONCILED;
   }
 
-  if (!isWithinContentDir(canonical, contentDir)) {
+  if (canonicalContentPathIsRefused(requestedPath, canonical, contentDir)) {
     getLogger('reconcile').warn(
       { docName, canonical, contentDir },
       `[reconcile] symlink-escape on disk read for ${docName}; skipping reconcile`,

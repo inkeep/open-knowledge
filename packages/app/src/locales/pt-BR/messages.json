@@ -484,7 +484,7 @@
     "461Vg9": [
       "A troca para ",
       ["shareBranch"],
-      " não foi feita: ela tem um link simbólico apontando para fora do repositório, para arquivos privados ou para um lugar que não pode ser verificado. Normalmente quem enviou o branch precisa corrigir o link. Se uma pasta deste computador não puder ser lida, torne-a legível e tente novamente."
+      " não foi feita: ela tem um link simbólico apontando para fora do repositório, para arquivos privados ou para um lugar que não pode ser verificado. Normalmente quem enviou o ramo precisa corrigir o link. Se uma pasta deste computador não puder ser lida, torne-a legível e tente novamente."
     ],
     "46YgRZ": ["Adicionar bloco abaixo"],
     "484LKL": ["Remover o link"],
@@ -3676,6 +3676,10 @@
       " usa no lugar da do plugin — ela deixa de acompanhar as atualizações do plugin."
     ],
     "_6FVBz": ["Ir para as abas 1-8"],
+    "_6cS9O": [
+      ["shareBranch"],
+      " não foi aberto em um worktree: o ramo tem um link simbólico apontando para fora do repositório, para arquivos privados ou para um lugar que não pode ser verificado. Normalmente quem enviou o ramo precisa corrigir o link. Se uma pasta deste computador não puder ser lida, torne-a legível e tente novamente."
+    ],
     "_7UQ7y": ["Palavra inteira"],
     "_8quCH": ["A partir de um modelo"],
     "_902BE": [

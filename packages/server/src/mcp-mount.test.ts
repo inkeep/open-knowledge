@@ -399,6 +399,7 @@ describe('mountMcpAndApi content-asset middleware', () => {
       hocuspocus,
       log,
       contentAssetMiddleware: createAssetServeMiddleware({
+        contentDir,
         contentFilter: filter,
         contentSirv: sirv(contentDir, { dev: true, dotfiles: false }),
         inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,
@@ -499,6 +500,7 @@ describe('mountMcpAndApi ephemeral content-asset gate', () => {
       log,
       ephemeral,
       contentAssetMiddleware: createAssetServeMiddleware({
+        contentDir,
         contentFilter: { isPathIgnored: () => false },
         contentSirv: sirv(contentDir, { dev: true, dotfiles: false }),
         inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,
@@ -598,6 +600,7 @@ describe('mountMcpAndApi react-shell middleware', () => {
     tmpDirs.push(contentDir);
     const filter = { isPathIgnored: () => false };
     const contentAssetMiddleware = createAssetServeMiddleware({
+      contentDir,
       contentFilter: filter,
       contentSirv: sirv(contentDir, { dev: true, dotfiles: false }),
       inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,
@@ -634,6 +637,7 @@ describe('mountMcpAndApi react-shell middleware', () => {
     writeFileSync(join(contentDir, 'assets', 'user-upload.png'), bytes);
     const filter = { isPathIgnored: () => false };
     const contentAssetMiddleware = createAssetServeMiddleware({
+      contentDir,
       contentFilter: filter,
       contentSirv: sirv(contentDir, { dev: true, dotfiles: false }),
       inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,
@@ -657,6 +661,7 @@ describe('mountMcpAndApi react-shell middleware', () => {
     writeFileSync(join(contentDir, 'assets', 'inter-cafebabe.woff2'), contentBytes);
     const filter = { isPathIgnored: () => false };
     const contentAssetMiddleware = createAssetServeMiddleware({
+      contentDir,
       contentFilter: filter,
       contentSirv: sirv(contentDir, { dev: true, dotfiles: false }),
       inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,
@@ -677,6 +682,7 @@ describe('mountMcpAndApi react-shell middleware', () => {
     tmpDirs.push(contentDir);
     const filter = { isPathIgnored: () => false };
     const contentAssetMiddleware = createAssetServeMiddleware({
+      contentDir,
       contentFilter: filter,
       contentSirv: sirv(contentDir, { dev: true, dotfiles: false }),
       inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,

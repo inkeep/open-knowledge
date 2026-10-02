@@ -3246,6 +3246,11 @@
       " alih-alih milik plugin — salinan itu berhenti mengikuti pembaruan plugin."
     ],
     "_6FVBz": ["Lompat ke tab 1-8"],
+    "_6cS9O": [
+      "Tidak membuka ",
+      ["shareBranch"],
+      " di worktree: cabang ini memiliki symlink yang mengarah ke luar repositori, ke berkas pribadi, atau ke tempat yang tidak dapat diperiksa. Biasanya orang yang melakukan push cabang ini yang harus memperbaiki tautannya. Jika sebuah folder di komputer ini tidak dapat dibaca, buat agar dapat dibaca lalu coba lagi."
+    ],
     "_7UQ7y": ["Kata utuh"],
     "_8quCH": ["Dari templat"],
     "_902BE": [

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, win32 } from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -58,6 +58,96 @@ describe('containment error family classification', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('assertNoSymlinkEscape refuses links into private repository state', () => {
+  function withRepo(run: (contentDir: string) => void): void {
+    const contentDir = mkdtempSync(join(tmpdir(), 'fs-safety-private-'));
+    try {
+      for (const dir of ['.ok/local', '.ok/templates', '.git', 'notes', 'shared', 'docs/.ok']) {
+        mkdirSync(join(contentDir, dir), { recursive: true });
+      }
+      writeFileSync(join(contentDir, '.ok/local/principal.json'), '{"secret":true}');
+      writeFileSync(join(contentDir, '.ok/config.yml'), '');
+      writeFileSync(join(contentDir, '.ok/templates/t.md'), '# T');
+      writeFileSync(join(contentDir, '.git/config'), '[core]');
+      writeFileSync(join(contentDir, 'shared/a.md'), '# A');
+      run(contentDir);
+    } finally {
+      rmSync(contentDir, { recursive: true, force: true });
+    }
+  }
+
+  const refusal = (path: string, contentDir: string): unknown => {
+    try {
+      assertNoSymlinkEscape(path, contentDir);
+      return null;
+    } catch (e) {
+      return e;
+    }
+  };
+
+  test.each([
+    [
+      'a file link to machine-local state',
+      'notes/leak.md',
+      '../.ok/local/principal.json',
+      'notes/leak.md',
+    ],
+    ['a file link to the git config', 'notes/cfg.md', '../.git/config', 'notes/cfg.md'],
+    ['a link to the config dir itself', 'notes/ok', '../.ok', 'notes/ok'],
+    [
+      'a descent into .git through a link to the root',
+      'notes/root',
+      '..',
+      'notes/root/.git/config',
+    ],
+    ['a new file under a link into .git', 'notes/hooks', '../.git', 'notes/hooks/new.md'],
+  ])('%s is refused', (_label, link, target, requested) => {
+    withRepo((contentDir) => {
+      symlinkSync(target, join(contentDir, link));
+      const caught = refusal(join(contentDir, requested), contentDir);
+      expect(caught).toBeInstanceOf(SymlinkEscapeError);
+      expect(isContainmentRejection(caught)).toBe(true);
+    });
+  });
+
+  test.each([
+    ['the config file', '.ok/config.yml'],
+    ['the templates dir', '.ok/templates'],
+    ['a nested folder config dir', 'docs/.ok'],
+    ['a missing nested folder config dir', 'notes/.ok'],
+  ])('direct access to %s still passes', (_label, requested) => {
+    withRepo((contentDir) => {
+      expect(refusal(join(contentDir, requested), contentDir)).toBeNull();
+    });
+  });
+
+  test('in-root links to ordinary content still pass', () => {
+    withRepo((contentDir) => {
+      symlinkSync('../shared/a.md', join(contentDir, 'notes/alias.md'));
+      symlinkSync('../shared', join(contentDir, 'notes/shared-dir'));
+      expect(refusal(join(contentDir, 'notes/alias.md'), contentDir)).toBeNull();
+      expect(refusal(join(contentDir, 'notes/shared-dir/a.md'), contentDir)).toBeNull();
+    });
+  });
+
+  test("a symlinked folder's own config dir classifies like the folder it links to", () => {
+    withRepo((contentDir) => {
+      symlinkSync('../docs', join(contentDir, 'notes/docs-link'));
+      expect(refusal(join(contentDir, 'notes/docs-link/.ok'), contentDir)).toBeNull();
+      expect(
+        refusal(join(contentDir, 'notes/docs-link/.ok/frontmatter.yml'), contentDir),
+      ).toBeNull();
+    });
+  });
+
+  test('a link whose own target is a config dir stays refused', () => {
+    withRepo((contentDir) => {
+      symlinkSync('../docs/.ok', join(contentDir, 'notes/cfg'));
+      expect(refusal(join(contentDir, 'notes/cfg'), contentDir)).toBeInstanceOf(SymlinkEscapeError);
+    });
   });
 });
 

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { Config } from '@inkeep/open-knowledge-server';
+import { type Config, UnsafeIncomingSymlinkError } from '@inkeep/open-knowledge-server';
 import simpleGit, { type SimpleGitOptions } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, it, test } from 'vitest';
 import type { ExecFileSyncFn, GhDetectResult } from '../auth/gh-detect.ts';
@@ -1281,6 +1281,26 @@ describe('emitCloneFailure', () => {
       message: 'fatal: could not read Username',
     });
     expect(c.stderr).toHaveLength(0);
+  });
+
+  test('--json: an unsafe-symlink refusal keeps link names out of the message', () => {
+    const c = makeCollectors();
+    emitCloneFailure({
+      error: new UnsafeIncomingSymlinkError([
+        { path: 'docs/permission denied.md', reason: 'private-state' },
+        { path: 'notes/‮gnp.md', reason: 'outside-repository' },
+      ]),
+      url: 'inkeep/playbooks',
+      json: true,
+      emit: c.emit,
+      printStderr: c.printStderr,
+    });
+    expect(c.emitted).toHaveLength(1);
+    const event = c.emitted[0] as { message: string; code: string; refusedSymlinkPaths: string[] };
+    expect(event.code).toBe('unsafe-symlinks');
+    expect(event.message).not.toContain('permission denied');
+    expect(event.message).not.toContain('docs/');
+    expect(event.refusedSymlinkPaths).toEqual(['docs/permission denied.md', 'notes/\\u202egnp.md']);
   });
 
   test('--json: shape unchanged for non-auth failures too', () => {

@@ -228,6 +228,7 @@ export function hocuspocusPlugin(): Plugin {
       server.httpServer?.prependListener('upgrade', collaborationHost.handleUpgrade);
 
       const assetMiddleware = createAssetServeMiddleware({
+        contentDir: CONTENT_DIR,
         contentFilter: currentSrv.contentFilter,
         contentSirv: sirv(CONTENT_DIR, { dev: true, dotfiles: false }),
         inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,

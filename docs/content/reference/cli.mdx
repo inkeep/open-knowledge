@@ -88,6 +88,8 @@ ok clone <owner/repo> -b <branch>
 
 If the branch no longer exists, `ok clone` falls back to the repository's default branch.
 
+Before checking out any files, `ok clone` checks the repository's symlinks. If a link points outside the repository, at its root, or into a `.git` folder or OpenKnowledge's private state, it removes the clone and names up to five refused links, each with its reason.
+
 A **public** repo clones without authentication. For a **private** repo, sign in first:
 
 ```bash

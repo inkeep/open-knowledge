@@ -674,7 +674,12 @@ export type OkLocalOpCloneEvent =
   | { type: 'progress'; phase: string; pct: number }
   | { type: 'complete'; dir: string }
   | { type: 'branch-fallback'; branch: string }
-  | { type: 'error'; message: string };
+  | {
+      type: 'error';
+      message: string;
+      code?: 'unsafe-symlinks';
+      refusedSymlinkPaths?: string[];
+    };
 
 export interface OkLocalOpStream<E> {
   readonly events: AsyncIterable<E>;

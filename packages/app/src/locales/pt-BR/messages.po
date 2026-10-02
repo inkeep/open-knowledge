@@ -5169,8 +5169,12 @@ msgid "Diagram view mode"
 msgstr "Modo de visualização do diagrama"
 
 #: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not open {shareBranch} in a worktree: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "{shareBranch} não foi aberto em um worktree: o ramo tem um link simbólico apontando para fora do repositório, para arquivos privados ou para um lugar que não pode ser verificado. Normalmente quem enviou o ramo precisa corrigir o link. Se uma pasta deste computador não puder ser lida, torne-a legível e tente novamente."
+
+#: src/components/ShareBranchSwitchDialog.tsx
 msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
-msgstr "A troca para {shareBranch} não foi feita: ela tem um link simbólico apontando para fora do repositório, para arquivos privados ou para um lugar que não pode ser verificado. Normalmente quem enviou o branch precisa corrigir o link. Se uma pasta deste computador não puder ser lida, torne-a legível e tente novamente."
+msgstr "A troca para {shareBranch} não foi feita: ela tem um link simbólico apontando para fora do repositório, para arquivos privados ou para um lugar que não pode ser verificado. Normalmente quem enviou o ramo precisa corrigir o link. Se uma pasta deste computador não puder ser lida, torne-a legível e tente novamente."
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx

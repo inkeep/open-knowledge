@@ -1,10 +1,12 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { classifyCloneError } from './clone-error-classify.ts';
 import {
   type RawCloneEvent,
   type RunCloneController,
   runCloneSubprocess,
+  UNSAFE_SYMLINKS_CLONE_MESSAGE,
   validateCloneInputs,
 } from './clone-flow.ts';
 
@@ -145,6 +147,33 @@ describe('runCloneSubprocess', () => {
     await ctrl.done;
     expect(events).toHaveLength(1);
     expect(events[0]).toEqual({ type: 'error', message: 'permission denied' });
+  });
+
+  test('an unsafe-symlink refusal reaches the consumer with fixed wording and a structured path list', async () => {
+    const events: RawCloneEvent[] = [];
+    const ctrl = runCloneSubprocess({
+      cliArgs: fixtureCli(`
+        console.log(JSON.stringify({
+          type: 'error',
+          code: 'unsafe-symlinks',
+          message: 'permission denied: docs/permission denied.md',
+          refusedSymlinkPaths: ['docs/permission denied.md', 42, ''],
+        }));
+      `),
+      url: 'https://github.com/octocat/linked.git',
+      dir: '/tmp/linked',
+      onEvent: (e) => events.push(e),
+    });
+    await ctrl.done;
+    expect(events).toEqual([
+      {
+        type: 'error',
+        code: 'unsafe-symlinks',
+        message: UNSAFE_SYMLINKS_CLONE_MESSAGE,
+        refusedSymlinkPaths: ['docs/permission denied.md'],
+      },
+    ]);
+    expect(classifyCloneError(UNSAFE_SYMLINKS_CLONE_MESSAGE).title).not.toMatch(/access/i);
   });
 
   test('CLI-emitted error message is redacted and capped before it reaches the consumer', async () => {

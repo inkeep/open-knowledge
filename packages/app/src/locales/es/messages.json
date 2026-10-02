@@ -3740,6 +3740,11 @@
       " usa en lugar de la del plugin; deja de seguir las actualizaciones del plugin."
     ],
     "_6FVBz": ["Ir a las pestañas 1-8"],
+    "_6cS9O": [
+      "No se abrió ",
+      ["shareBranch"],
+      " en un worktree: tiene un enlace simbólico que apunta fuera del repositorio, a archivos privados o a un lugar que no se puede comprobar. Normalmente quien envió la rama tiene que corregir el enlace. Si no se puede leer una carpeta de este equipo, hazla legible y vuelve a intentarlo."
+    ],
     "_7UQ7y": ["Palabra completa"],
     "_8quCH": ["Desde plantilla"],
     "_902BE": [

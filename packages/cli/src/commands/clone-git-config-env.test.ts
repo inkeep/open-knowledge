@@ -3,7 +3,9 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -13,6 +15,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { shellSingleQuote } from '@inkeep/open-knowledge-core';
+import { UnsafeIncomingSymlinkError } from '@inkeep/open-knowledge-server';
 import simpleGit, { GitPluginError, type SimpleGitOptions } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { GhDetectResult } from '../auth/gh-detect.ts';
@@ -347,4 +350,160 @@ describe('clone honours the environment command-scope git config (GIT_CONFIG_COU
     expect(out).toContain('GIT_CONFIG_GLOBAL');
     expect(out).not.toContain('GIT_CONFIG_KEY_<n>');
   });
+});
+
+describe('ok clone checks symlinks before checking anything out', () => {
+  let workspace: string;
+
+  function seedBareRepoWithLinks(bareDir: string, links: Record<string, string>): void {
+    const seedDir = `${bareDir}.seed`;
+    mkdirSync(seedDir, { recursive: true });
+    const git = (args: string[], input?: string) =>
+      execFileSync('git', args, { cwd: seedDir, input, encoding: 'utf-8' });
+    git(['init', '--initial-branch=main']);
+    writeFileSync(join(seedDir, 'README.md'), '# seeded\n', 'utf-8');
+    git(['add', 'README.md']);
+    for (const [path, target] of Object.entries(links)) {
+      const blob = git(['hash-object', '-w', '--stdin'], target).trim();
+      git(['update-index', '--add', '--cacheinfo', `120000,${blob},${path}`]);
+    }
+    git([
+      '-c',
+      'user.name=Seed',
+      '-c',
+      'user.email=seed@example.com',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-m',
+      'seed',
+    ]);
+    execFileSync('git', ['clone', '--bare', seedDir, bareDir], {
+      cwd: dirname(bareDir),
+      stdio: 'ignore',
+    });
+  }
+
+  beforeEach(() => {
+    workspace = realpathSync(mkdtempSync(join(tmpdir(), 'ok-clone-links-')));
+    vi.stubEnv('HOME', workspace);
+    vi.stubEnv('USERPROFILE', workspace);
+    vi.stubEnv('XDG_CONFIG_HOME', join(workspace, '.config'));
+    vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
+    vi.stubEnv('GIT_CONFIG_COUNT', '1');
+    vi.stubEnv('GIT_CONFIG_KEY_0', 'url../.insteadOf');
+    vi.stubEnv('GIT_CONFIG_VALUE_0', 'https://127.0.0.1:1/');
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    rmSync(workspace, { recursive: true, force: true });
+  });
+
+  test('a repository with unsafe links is refused and leaves no clone behind', async () => {
+    seedBareRepoWithLinks(join(workspace, 'o', 'r.git'), {
+      'notes/leak.md': '../.git/config',
+      'notes/q"uote.md': '../.ok/local/principal.json',
+    });
+    const url = 'https://127.0.0.1:1/o/r.git';
+
+    const error = await runClone(
+      url,
+      { json: true, dir: 'target', _detectGhFn: relayTokenGh },
+      {} as never,
+      workspace,
+    ).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(UnsafeIncomingSymlinkError);
+    expect(existsSync(join(workspace, 'target'))).toBe(false);
+
+    const emitted: Record<string, unknown>[] = [];
+    await handleCloneFailure({
+      error,
+      url,
+      branch: null,
+      json: true,
+      emit: (event) => emitted.push(event),
+      printStderr: () => undefined,
+    });
+    expect(emitted[0]?.type).toBe('error');
+    expect(emitted[0]?.code).toBe('unsafe-symlinks');
+    expect(String(emitted[0]?.message)).not.toContain('notes/');
+    expect(emitted[0]?.refusedSymlinkPaths).toEqual(
+      expect.arrayContaining(['notes/leak.md', 'notes/q\\"uote.md']),
+    );
+
+    const printed: string[] = [];
+    await handleCloneFailure({
+      error,
+      url,
+      branch: null,
+      json: false,
+      emit: () => undefined,
+      printStderr: (text) => printed.push(text),
+    });
+    expect(printed.join('')).toContain(
+      '"notes/leak.md" (points into private .git or OpenKnowledge state)',
+    );
+    expect(printed.join('')).toContain('"notes/q\\"uote.md"');
+  });
+
+  test('refusing keeps an existing empty target directory and empties it again', async () => {
+    seedBareRepoWithLinks(join(workspace, 'o', 'r.git'), { 'notes/root': '..' });
+    mkdirSync(join(workspace, 'target'));
+
+    await expect(
+      runClone(
+        'https://127.0.0.1:1/o/r.git',
+        { json: true, dir: 'target', _detectGhFn: relayTokenGh },
+        {} as never,
+        workspace,
+      ),
+    ).rejects.toBeInstanceOf(UnsafeIncomingSymlinkError);
+
+    expect(readdirSync(join(workspace, 'target'))).toEqual([]);
+  });
+
+  test('an empty repository still clones', async () => {
+    const bareDir = join(workspace, 'o', 'r.git');
+    mkdirSync(bareDir, { recursive: true });
+    execFileSync('git', ['init', '--bare', '--initial-branch=main'], {
+      cwd: bareDir,
+      stdio: 'ignore',
+    });
+
+    await expect(
+      runClone(
+        'https://127.0.0.1:1/o/r.git',
+        { json: true, dir: 'target', _detectGhFn: relayTokenGh },
+        {} as never,
+        workspace,
+      ),
+    ).resolves.toBe(join(workspace, 'target'));
+  });
+
+  test.runIf(process.platform !== 'win32')(
+    'a repository whose links stay inside it is cloned and checked out',
+    async () => {
+      seedBareRepoWithLinks(join(workspace, 'o', 'r.git'), { 'notes/readme.md': '../README.md' });
+      const targetDir = join(workspace, 'target');
+
+      await expect(
+        runClone(
+          'https://127.0.0.1:1/o/r.git',
+          { json: true, dir: 'target', _detectGhFn: relayTokenGh },
+          {} as never,
+          workspace,
+        ),
+      ).resolves.toBe(targetDir);
+
+      expect(readFileSync(join(targetDir, 'README.md'), 'utf-8')).toBe('# seeded\n');
+      expect(readlinkSync(join(targetDir, 'notes', 'readme.md'))).toBe('../README.md');
+      expect(
+        execFileSync('git', ['status', '--porcelain'], { cwd: targetDir, encoding: 'utf-8' }),
+      ).toBe('');
+    },
+  );
 });

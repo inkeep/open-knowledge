@@ -587,7 +587,7 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
       ['a.md', 'b.md', 'c.md', 'd.md', 'e.md', 'f.md', 'g.md'],
       {
         description: 'a.md, b.md, c.md, d.md, e.md, and 2 more links',
-        id: 'share-switch-unsafe-symlinks:feat/branch-x',
+        id: 'share-branch-unsafe-symlinks:feat/branch-x',
         duration: Infinity,
       },
     ],
@@ -596,7 +596,7 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
       ['a.md', 'b.md', 'c.md', 'd.md', 'e.md', 'f.md'],
       {
         description: 'a.md, b.md, c.md, d.md, e.md, and 1 more link',
-        id: 'share-switch-unsafe-symlinks:feat/branch-x',
+        id: 'share-branch-unsafe-symlinks:feat/branch-x',
         duration: Infinity,
       },
     ],
@@ -605,19 +605,19 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
       ['a.md', 'b.md', 'c.md', 'd.md', 'e.md'],
       {
         description: 'a.md, b.md, c.md, d.md, and e.md',
-        id: 'share-switch-unsafe-symlinks:feat/branch-x',
+        id: 'share-branch-unsafe-symlinks:feat/branch-x',
         duration: Infinity,
       },
     ],
     [
       'one link',
       ['a.md'],
-      { description: 'a.md', id: 'share-switch-unsafe-symlinks:feat/branch-x', duration: Infinity },
+      { description: 'a.md', id: 'share-branch-unsafe-symlinks:feat/branch-x', duration: Infinity },
     ],
     [
       'no listed links',
       [],
-      { id: 'share-switch-unsafe-symlinks:feat/branch-x', duration: Infinity },
+      { id: 'share-branch-unsafe-symlinks:feat/branch-x', duration: Infinity },
     ],
   ])(
     'Switch refused for unsafe symlinks (%s) names the links, never suggests a manual switch, and stays open',
@@ -710,7 +710,7 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
         await Promise.resolve();
       });
       await waitFor(() => {
-        expect(toastDismiss).toHaveBeenCalledWith('share-switch-unsafe-symlinks:feat/branch-x');
+        expect(toastDismiss).toHaveBeenCalledWith('share-branch-unsafe-symlinks:feat/branch-x');
       });
       await waitFor(() => {
         expect(toastError).toHaveBeenCalledTimes(errorToasts);
@@ -1307,6 +1307,73 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     );
     expect(refreshWorktrees).toHaveBeenCalledTimes(1);
     expect(calls.open).not.toHaveBeenCalled();
+  });
+
+  test('a branch with unsafe symlinks shows its own copy with the refused links and never opens', async () => {
+    const store = createShareReceiveStore();
+    const refusedSymlinkPaths = ['l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7'];
+    const { bridge, calls } = makeBridge({
+      checkout: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'unsafe-symlinks' as const,
+        refusedSymlinkPaths,
+      })),
+    });
+    renderDialog(bridge, store);
+
+    const worktreeBtn = await findEnabledWorktreeButton();
+    await act(async () => {
+      fireEvent.click(worktreeBtn);
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        'Did not open feat/branch-x in a worktree: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again.',
+        {
+          description: 'l1, l2, l3, l4, l5, and 2 more links',
+          id: 'share-branch-unsafe-symlinks:feat/branch-x',
+          duration: Infinity,
+        },
+      ),
+    );
+    expect(calls.open).not.toHaveBeenCalled();
+  });
+
+  test('a worktree open that succeeds after a refusal clears the branch refusal toast', async () => {
+    toastDismiss.mockReset();
+    const store = createShareReceiveStore();
+    const checkout = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false as const,
+        reason: 'unsafe-symlinks' as const,
+        refusedSymlinkPaths: ['l1'],
+      })
+      .mockResolvedValue({
+        ok: true as const,
+        path: '/repo/.ok/worktrees/feat-branch-x',
+        created: true as const,
+      });
+    const { bridge } = makeBridge({ checkout });
+    renderDialog(bridge, store);
+
+    const first = await findEnabledWorktreeButton();
+    await act(async () => {
+      fireEvent.click(first);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    expect(toastDismiss).not.toHaveBeenCalledWith('share-branch-unsafe-symlinks:feat/branch-x');
+
+    const second = await findEnabledWorktreeButton();
+    await act(async () => {
+      fireEvent.click(second);
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(toastDismiss).toHaveBeenCalledWith('share-branch-unsafe-symlinks:feat/branch-x'),
+    );
   });
 
   test('a not-found fetch failure shows the not-found copy, not the connection toast', async () => {

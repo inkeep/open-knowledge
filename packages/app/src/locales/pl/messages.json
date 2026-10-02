@@ -3826,6 +3826,11 @@
       " używa zamiast kopii z wtyczki — to zatrzymuje śledzenie aktualizacji wtyczki."
     ],
     "_6FVBz": ["Przejdź do karty 1-8"],
+    "_6cS9O": [
+      "Nie otwarto ",
+      ["shareBranch"],
+      " w worktree: gałąź zawiera dowiązanie symboliczne wskazujące poza repozytorium, na prywatne pliki albo w miejsce, którego nie da się sprawdzić. Zwykle dowiązanie musi poprawić osoba, która wypchnęła gałąź. Jeśli nie da się odczytać folderu na tym komputerze, nadaj mu uprawnienia do odczytu i spróbuj ponownie."
+    ],
     "_7UQ7y": ["Całe słowo"],
     "_8quCH": ["Z szablonu"],
     "_902BE": [

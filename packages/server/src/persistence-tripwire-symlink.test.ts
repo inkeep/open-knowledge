@@ -1,4 +1,5 @@
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -95,5 +96,45 @@ describe('tripwire reset symlink-escape', () => {
     }
 
     expect(readFileSync(secretPath, 'utf-8')).toBe(secretContent);
+  });
+
+  test('refuses to load an in-root link into machine-local state into Y.Doc', async () => {
+    const docName = 'incident-tripwire-private-link';
+    const baseMarkdown = loadFixture('incident-changeset-readme-doubled.base.md');
+    const doubledMarkdown = loadFixture('incident-changeset-readme-doubled.candidate.md');
+
+    mkdirSync(join(contentDir, '.ok', 'local'), { recursive: true });
+    const principalPath = join(contentDir, '.ok', 'local', 'principal.json');
+    writeFileSync(principalPath, secretContent, 'utf-8');
+    symlinkSync('.ok/local/principal.json', join(contentDir, `${docName}.md`));
+
+    const persistence = createPersistenceExtension({
+      contentDir,
+      projectDir: contentDir,
+      gitEnabled: false,
+      durabilityState,
+    });
+
+    const document = new Y.Doc();
+    composeAndWriteRawBody(document, doubledMarkdown, 'agent');
+    durabilityState.setReconciledBase(docName, baseMarkdown);
+
+    const warnSpy = vi.spyOn(getLogger('persistence'), 'warn');
+    try {
+      await storeDocument(persistence, document, docName).catch(() => {});
+
+      const ytextAfter = document.getText('source').toString();
+      expect(ytextAfter).not.toContain('SECRET');
+      expect(ytextAfter).not.toContain('lives outside the content root');
+
+      const escapeWarning = warnSpy.mock.calls
+        .map((call) => String(call[1] ?? ''))
+        .find((s) => s.includes('symlink-escape on tripwire reset'));
+      expect(escapeWarning).toBeDefined();
+    } finally {
+      warnSpy.mockRestore();
+    }
+
+    expect(readFileSync(principalPath, 'utf-8')).toBe(secretContent);
   });
 });
