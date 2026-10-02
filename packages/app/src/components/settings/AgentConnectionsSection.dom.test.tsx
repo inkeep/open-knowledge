@@ -28,6 +28,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { AgentCatalog } from '@/lib/acp/catalog';
 import type { ApplyAgentConnectionsResult } from '@/lib/agent-connections';
+import { scopedStorageKey } from '@/lib/storage-scope';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 const backing = new Map<string, string>();
@@ -113,6 +114,10 @@ vi.doMock('@/lib/acp/catalog', async (importOriginal) => ({
 }));
 
 let states: Record<string, InstallState> = {};
+let projectDir = '/project';
+vi.doMock('@/lib/use-workspace', () => ({
+  useWorkspace: () => ({ contentDir: projectDir, pathSeparator: '/' }),
+}));
 vi.doMock('@/components/handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states, refresh: () => Promise.resolve() }),
 }));
@@ -244,6 +249,7 @@ function renderSection(
 
 beforeEach(() => {
   localStorage.clear();
+  projectDir = '/project';
   reloadRegisteredAgentsFromStorage();
   reloadEnabledAgentsFromStorage();
   fetchCatalog = () => Promise.resolve(catalog);
@@ -1007,6 +1013,38 @@ describe('AgentConnectionsSection — connection status and action', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ 'terminal:claude': false }));
     reloadEnabledAgentsFromStorage();
   }
+
+  test('a skipped external app can resume setup checks for this project alone', async () => {
+    const key = (target: string, dir: string) =>
+      `${scopedStorageKey('ok-external-handoff-setup-dismissed-v1', dir)}:${target}`;
+    localStorage.setItem(key('cursor', '/project'), 'true');
+    localStorage.setItem(key('claude-code', '/project'), 'true');
+    localStorage.setItem(key('cursor', '/other-project'), 'true');
+    states = { ...states, cursor: { installed: true } } as Record<string, InstallState>;
+    renderSection(async () => result(snapshotWith()));
+
+    const cursorRow = await screen.findByTestId('configure-agents-desktop-row-cursor');
+    const resetCursor = within(cursorRow).getByRole('button', {
+      name: 'Show prompts again for Cursor in this project',
+    });
+    expect(resetCursor.textContent).toBe('Show prompts again');
+    await userEvent.click(resetCursor);
+
+    expect(
+      within(cursorRow).queryByRole('button', {
+        name: 'Show prompts again for Cursor in this project',
+      }),
+    ).toBeNull();
+    expect(localStorage.getItem(key('cursor', '/project'))).toBeNull();
+    expect(localStorage.getItem(key('cursor', '/other-project'))).toBe('true');
+    expect(localStorage.getItem(key('claude-code', '/project'))).toBe('true');
+    expect(
+      within(await screen.findByTestId('configure-agents-desktop-row-claude-code')).getByRole(
+        'button',
+        { name: 'Show prompts again for Claude in this project' },
+      ),
+    ).toBeTruthy();
+  });
 
   test('a connectable CLI with its MCP entry reads Connected and offers Manage', async () => {
     const snapshot = snapshotWith([satisfierId('claude', 'mcp', 'project')]);

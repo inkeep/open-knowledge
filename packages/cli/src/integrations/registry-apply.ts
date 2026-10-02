@@ -1,7 +1,5 @@
 import { homedir } from 'node:os';
-import { join } from 'node:path';
 import {
-  EDITOR_PROJECT_CONFIG_PATH,
   type EditorId,
   type ExecutedOutcome,
   type PlannedStep,
@@ -129,9 +127,8 @@ function applyProjectMcp(
   ctx: CliWriteContext,
   desired: PlannedStep['desired'],
 ): ExecutedOutcome {
-  const relative = EDITOR_PROJECT_CONFIG_PATH[editor];
-  if (relative === null) return missing();
-  const projectPath = join(ctx.cwd, relative);
+  const projectPath = EDITOR_TARGETS[editor].projectConfigPath?.(ctx.cwd);
+  if (projectPath === undefined) return missing();
 
   if (desired === 'absent') {
     return removeMcp(editor, ctx.cwd, ctx.home, projectPath, ctx.env);

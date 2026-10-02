@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { type BridgeRaceRig, createBridgeRaceRig } from './bridge-race-rig.test-helper.ts';
+import type { LossCaptureEventInput } from './loss-capture.ts';
 import { getMetrics } from './metrics.ts';
 import { initShadowRepo, type ShadowHandle, shadowGit } from './shadow-repo.ts';
 import { getDocumentHistory } from './timeline-query.ts';
@@ -153,12 +154,21 @@ describe('QA-009: restore is NEVER automatic — checkpoint content stays out of
 
   test('a force-resolve checkpoint is restore-reachable via history, but its content is NEVER auto-re-inserted into the live Y.Text/fragment (no user rollback)', async () => {
     const shadow = await setupShadow();
+    const { promise: checkpointWrite, resolve: checkpointWritten } =
+      Promise.withResolvers<LossCaptureEventInput>();
     const rig = createBridgeRaceRig({
       docName: 'qa009',
       setupOverrides: {
         shadow: () => shadow,
         getBranch: () => 'main',
         contentRoot: CONTENT_ROOT,
+        lossRing: {
+          record: async (event) => {
+            if (event.event === 'checkpoint-write' && event.site === 'derive-timing-exhaustion') {
+              checkpointWritten(event);
+            }
+          },
+        },
       },
     });
     const before = getMetrics().deriveTimingDeferForceResolved;
@@ -173,15 +183,15 @@ describe('QA-009: restore is NEVER automatic — checkpoint content stays out of
       expect(count(rig.serializeFragment(), PENDING_LINE)).toBe(0);
       expect(count(rig.ytext.toString(), PENDING_LINE)).toBe(0);
 
-      await vi.waitFor(async () => {
-        const hist = await getDocumentHistory(shadow, { docName: 'qa009' }, CONTENT_ROOT);
-        const cp = hist.entries.find((e) => e.checkpoint?.kind === 'defer-exhaustion-loss');
-        expect(cp?.sha).toMatch(/^[0-9a-f]{40}$/);
-        const blob = (
-          await shadowGit(shadow).raw('show', `${cp?.sha}:${CONTENT_ROOT}/qa009`)
-        ).toString();
-        expect(blob).toContain(PENDING_LINE);
-      });
+      const written = await checkpointWrite;
+      expect(written.checkpointSha).toMatch(/^[0-9a-f]{40}$/);
+      const hist = await getDocumentHistory(shadow, { docName: 'qa009' }, CONTENT_ROOT);
+      const cp = hist.entries.find((e) => e.checkpoint?.kind === 'defer-exhaustion-loss');
+      expect(cp?.sha).toBe(written.checkpointSha);
+      const blob = (
+        await shadowGit(shadow).raw('show', `${cp?.sha}:${CONTENT_ROOT}/qa009`)
+      ).toString();
+      expect(blob).toContain(PENDING_LINE);
 
       rig.settle(6);
       expect(count(rig.serializeFragment(), PENDING_LINE)).toBe(0);

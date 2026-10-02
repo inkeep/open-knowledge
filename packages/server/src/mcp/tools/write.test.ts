@@ -287,7 +287,7 @@ describe('write({ document }) relaying a concurrent-overwrite refusal', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toBe(
-      `Error: ${CONCURRENT_OVERWRITE_REFUSED_TITLE} (${CONCURRENT_OVERWRITE_REFUSED_DETAIL_WITH_POSITIONS}) Retry after ${CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS}s.`,
+      `Error: ${CONCURRENT_OVERWRITE_REFUSED_TITLE} (${CONCURRENT_OVERWRITE_REFUSED_DETAIL_WITH_POSITIONS}) Retry after ${CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS}s. Wait and retry, or use edit for a targeted change.`,
     );
   });
 
@@ -300,6 +300,7 @@ describe('write({ document }) relaying a concurrent-overwrite refusal', () => {
     expect(result.content[0]?.text).toContain(
       `Retry after ${CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS}s.`,
     );
+    expect(result.content[0]?.text).toContain('or use edit');
   });
 });
 describe('write — an asset upload whose request to the server fails', () => {

@@ -842,7 +842,6 @@ msgstr "{displayName} ({bin}) n'est pas installé ni présent dans votre PATH."
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} CLI"
 msgstr "CLI {displayName}"
@@ -1443,6 +1442,10 @@ msgstr "un nouveau volet à gauche de {0}"
 #: src/components/EditorWorkspace.tsx
 msgid "a new pane to the right of {0}"
 msgstr "un nouveau volet à droite de {0}"
+
+#: src/components/handoff/useHandoffDispatch.ts
+msgid "A newer handoff replaced this retry."
+msgstr "Un transfert plus récent a remplacé cette nouvelle tentative."
 
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
@@ -2229,7 +2232,6 @@ msgstr "Demander à la CLI {0}"
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Ask {agentName}"
 msgstr "Demander à {agentName}"
 
@@ -2851,6 +2853,10 @@ msgstr "Les modifications sont enregistrées automatiquement."
 msgid "Changes saved automatically."
 msgstr "Modifications enregistrées automatiquement."
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Changes were saved, but OpenKnowledge could not confirm a connection to {handoffLabel}. Check the MCP server settings for this app, then select Save changes to check again."
+msgstr "Les modifications ont été enregistrées, mais OpenKnowledge n’a pas pu confirmer la connexion à {handoffLabel}. Vérifiez les paramètres du serveur MCP de cette application, puis sélectionnez Enregistrer les modifications pour vérifier à nouveau."
+
 #: src/components/settings/SearchSection.tsx
 msgid "Character budget per indexing request"
 msgstr "Budget de caractères par requête d'indexation"
@@ -2907,6 +2913,10 @@ msgstr "Vérifié par : {0}"
 #: src/components/SkillEditorActions.tsx
 msgid "Checking"
 msgstr "Vérification"
+
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Checking connection to {checkingLabel}…"
+msgstr "Vérification de la connexion à {checkingLabel}…"
 
 #: src/components/BottomComposer.tsx
 msgid "Checking for agents"
@@ -3542,7 +3552,6 @@ msgstr "Avertissements de configuration"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/SessionsHost.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -5311,6 +5320,10 @@ msgstr "La réponse des documents ne correspond pas à la forme attendue."
 msgid "Documents tagged <0>#{tagName}</0>"
 msgstr "Documents étiquetés <0>#{tagName}</0>"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Don't ask again when opening this app without setup in this project"
+msgstr "Ne plus demander lors de l’ouverture de cette application sans configuration dans ce projet"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
 msgstr "Vous ne voyez pas <0>Compétences</0> ? Activez d'abord <1>Paramètres <2/> Fonctionnalités <3/> Exécution de code et création de fichiers</1>."
@@ -6066,7 +6079,6 @@ msgstr "externe"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "External apps"
 msgstr "Applications externes"
@@ -7095,6 +7107,10 @@ msgstr "Bonjour, tout le monde !"
 msgid "Help"
 msgstr "Aide"
 
+#: src/lib/conflict-resolve-draft.ts
+msgid "Help me understand the conflict in {filePath}. Explain what I should compare in the OpenKnowledge Conflict view; I will choose and apply the resolution there."
+msgstr "Aide-moi à comprendre le conflit dans {filePath}. Explique ce que je dois comparer dans la vue des conflits d’OpenKnowledge ; je choisirai et appliquerai la résolution là-bas."
+
 #. Subtext under the discovery-skill checkbox
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -7388,7 +7404,7 @@ msgstr "Si {agent} n'affiche aucun outil OpenKnowledge, vérifiez que le chemin 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.cursor.project-entry-not-loaded"
-msgstr "Si {agent} n'affiche aucun outil OpenKnowledge, ouvrez Customize → MCPs, sélectionnez open-knowledge et activez sa source .cursor/mcp.json ; {agent} laisse les serveurs de projet désactivés tant que vous ne le faites pas."
+msgstr "Si {agent} n'affiche aucun outil OpenKnowledge, ouvrez Customize → MCPs, sélectionnez {server} et activez sa source .cursor/mcp.json ; {agent} laisse les serveurs de projet désactivés tant que vous ne le faites pas."
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
@@ -7517,7 +7533,6 @@ msgstr "Dans un document d'index : les entrées se trouvent sous un en-tête de
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
@@ -7901,10 +7916,6 @@ msgstr "S'installe dans"
 #: src/components/SkillDirectoryResult.tsx
 msgid "installs:"
 msgstr "installations :"
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Instruction for the AI"
-msgstr "Instruction pour l'IA"
 
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -9987,6 +9998,10 @@ msgstr "Ouvrir {displayName} Desktop"
 msgid "Open {docName}"
 msgstr "Ouvrir {docName}"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Open {handoffLabel}"
+msgstr "Ouvrir {handoffLabel}"
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr "Ouvrir {keyName} dans le navigateur"
@@ -10299,14 +10314,12 @@ msgstr "Ouvre la recherche de l'éditeur visuel avec les contrôles de remplacem
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI"
 msgstr "Ouvrir avec l'IA"
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI {displayName} Desktop"
 msgstr "Ouvrir avec l'IA {displayName} Desktop"
 
@@ -10364,10 +10377,6 @@ msgstr "OpenKnowledge"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked {subject}"
 msgstr "OpenKnowledge a vérifié {subject}"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge checked for conflicts"
-msgstr "OpenKnowledge a recherché des conflits"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked the project"
@@ -10549,14 +10558,6 @@ msgstr "OpenKnowledge a lu les paramètres du projet"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge read the setting {key}"
 msgstr "OpenKnowledge a lu le paramètre {key}"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict"
-msgstr "OpenKnowledge a résolu un conflit"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict in {subject}"
-msgstr "OpenKnowledge a résolu un conflit dans {subject}"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge restored an earlier version"
@@ -11536,10 +11537,6 @@ msgstr "Lit l'historique des versions d'un document ou d'une compétence, ou l'a
 msgid "Reads this project's OpenKnowledge settings"
 msgstr "Lit les paramètres OpenKnowledge de ce projet"
 
-#: src/lib/acp/tool-call-display.ts
-msgid "Reads unresolved conflicts between edits"
-msgstr "Lit les conflits non résolus entre modifications"
-
 #: src/components/SessionsHost.tsx
 msgid "Ready"
 msgstr "Prêt"
@@ -12040,8 +12037,8 @@ msgid "Replace these symlinks with independent copies?"
 msgstr "Remplacer ces liens symboliques par des copies indépendantes ?"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
-msgid "Replaces the existing \"open-knowledge\" entry in this file. Other servers in the file are left alone."
-msgstr "Remplace l'entrée \"open-knowledge\" existante dans ce fichier. Les autres serveurs du fichier ne sont pas modifiés."
+msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
+msgstr "Remplace l'entrée {server} existante dans ce fichier. Les autres serveurs du fichier ne sont pas modifiés."
 
 #. placeholder {0}: formatToolList( replacing.map((e) => e.label), i18n.locale, )
 #: src/components/McpConsentDialogBody.tsx
@@ -12199,10 +12196,6 @@ msgstr "Résolvez le conflit sur {files} et {overflow} autres fichiers avant de 
 #: src/comments/ThreadCard.tsx
 msgid "Resolved"
 msgstr "Résolu"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "Resolves a conflict by choosing which content to keep"
-msgstr "Résout un conflit en choisissant le contenu à conserver"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
@@ -13351,6 +13344,14 @@ msgstr "Afficher le panneau"
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "Afficher le panneau ({panelShortcutLabel})"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again"
+msgstr "Réafficher les invites"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again for {displayName} in this project"
+msgstr "Réafficher les invites pour {displayName} dans ce projet"
+
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Show replace"
 msgstr "Afficher le remplacement"
@@ -14316,7 +14317,6 @@ msgstr "Modèles disponibles"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -15139,8 +15139,8 @@ msgid "This file can't be opened in the text editor."
 msgstr "Ce fichier ne peut pas être ouvert dans l'éditeur de texte."
 
 #: src/components/ConflictView.tsx
-msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI."
-msgstr "Ce fichier contient des lignes qui ressemblent à des marqueurs de conflit, si bien que les limites du conflit ne peuvent pas être lues de façon fiable. Résolvez-le à la main ou avec Demander à l'IA."
+msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve the markers in the file by hand."
+msgstr "Ce fichier contient des lignes qui ressemblent à des marqueurs de conflit ; les limites des conflits ne peuvent donc pas être déterminées de façon fiable. Résolvez manuellement les marqueurs dans le fichier."
 
 #: src/components/use-viewer-text.ts
 msgid "This file could not be found."
@@ -15517,6 +15517,10 @@ msgstr "À faire"
 #: src/uninstall/UninstallNoticeScreen.tsx
 msgid "To do."
 msgstr "À faire."
+
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "To save this setup, turn on Project MCP server or Global MCP server."
+msgstr "Pour enregistrer cette configuration, activez le serveur MCP du projet ou le serveur MCP global."
 
 #: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Today"
@@ -16433,10 +16437,6 @@ msgstr "Quelle est la différence entre les copies et les liens symboliques ?"
 #: src/components/PublishToGitHubDialog.tsx
 msgid "What is this knowledge base for?"
 msgstr "À quoi sert cette base de connaissances ?"
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "What should the AI do? (optional)"
-msgstr "Que doit faire l'IA ? (facultatif)"
 
 #: src/components/acp/ThreadView.tsx
 msgid "What should we work on?"

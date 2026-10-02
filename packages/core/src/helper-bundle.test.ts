@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { DESKTOP_PRODUCTS } from './constants/product.ts';
 import {
   HELPER_BUNDLE_NAME,
   HELPER_EXECUTABLE_NAME,
@@ -20,4 +21,22 @@ describe('resolveHelperBundleBinary', () => {
       `/Users/alex/Applications/OpenKnowledge.app/Contents/Frameworks/${HELPER_BUNDLE_NAME}/Contents/MacOS/${HELPER_EXECUTABLE_NAME}`,
     );
   });
+
+  test('keys off the executable, so a renamed app bundle still resolves', () => {
+    expect(
+      resolveHelperBundleBinary('/Applications/Renamed.app/Contents/MacOS/OpenKnowledge Beta'),
+    ).toBe(
+      '/Applications/Renamed.app/Contents/Frameworks/OpenKnowledge Beta Server.app/Contents/MacOS/OpenKnowledge Beta Helper',
+    );
+  });
+
+  test.each(Object.values(DESKTOP_PRODUCTS))(
+    'matches the layout afterPack writes for $productName',
+    ({ productName }) => {
+      const app = `/Applications/${productName}.app`;
+      expect(resolveHelperBundleBinary(`${app}/Contents/MacOS/${productName}`)).toBe(
+        `${app}/Contents/Frameworks/${productName} Server.app/Contents/MacOS/${productName} Helper`,
+      );
+    },
+  );
 });

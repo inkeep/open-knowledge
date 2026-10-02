@@ -2,8 +2,22 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { CHAIN_V2 } from './editors.ts';
+import { DESKTOP_PRODUCTS, type DesktopProductName } from '@inkeep/open-knowledge-core';
+import { describe, expect, it, vi } from 'vitest';
+import { buildManagedServerEntry } from './editors.ts';
+
+const CHANNELS = ['stable', 'beta'] as const satisfies readonly DesktopProductName[];
+
+function chainFor(channel: DesktopProductName): string {
+  vi.stubEnv('OK_CHANNEL', channel);
+  try {
+    const args = buildManagedServerEntry({ mode: 'published', platformName: 'darwin' }).args;
+    if (!Array.isArray(args) || typeof args[2] !== 'string') throw new Error('expected a chain');
+    return args[2];
+  } finally {
+    vi.unstubAllEnvs();
+  }
+}
 
 const SKIP_PERSONA = process.platform !== 'darwin';
 
@@ -25,22 +39,23 @@ function replaceOrThrow(input: string, search: string | RegExp, replacement: str
   return next;
 }
 
-function instrumentChain(opts: InstrumentOpts = {}): string {
+function instrumentChain(channel: DesktopProductName, opts: InstrumentOpts = {}): string {
+  const product = DESKTOP_PRODUCTS[channel];
   let chain = replaceOrThrow(
-    CHAIN_V2,
+    chainFor(channel),
     'exec "$USER_BUNDLE" mcp',
     'echo "HIT:user-bundle:$USER_BUNDLE" && exit 0',
   );
   chain = replaceOrThrow(chain, 'exec "$BUNDLE" mcp', 'echo "HIT:bundle:$BUNDLE" && exit 0');
   chain = replaceOrThrow(
     chain,
-    'exec npx -y @inkeep/open-knowledge@latest mcp',
-    'echo "HIT:npx:$(command -v npx)" && exit 0',
+    `exec npx -y @inkeep/open-knowledge@${product.npmDistTag} mcp`,
+    'echo "HIT:npx:$(command -v npx):channel=$OK_CHANNEL" && exit 0',
   );
   chain = replaceOrThrow(
     chain,
-    'exec "$d/npx" -y @inkeep/open-knowledge@latest mcp',
-    'echo "HIT:glob:$d/npx" && exit 0',
+    `exec "$d/npx" -y @inkeep/open-knowledge@${product.npmDistTag} mcp`,
+    'echo "HIT:glob:$d/npx:channel=$OK_CHANNEL" && exit 0',
   );
   if (opts.suppressNpxPath) {
     chain = replaceOrThrow(
@@ -64,12 +79,12 @@ function instrumentChain(opts: InstrumentOpts = {}): string {
     }
     chain = replaceOrThrow(
       chain,
-      'USER_BUNDLE="$HOME/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh"',
+      `USER_BUNDLE="$HOME/Applications/${product.productName}.app/Contents/Resources/cli/bin/ok.sh"`,
       `USER_BUNDLE="${opts.bundleOverride}__user_bundle__"`,
     );
     chain = replaceOrThrow(
       chain,
-      'BUNDLE="/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh"',
+      `BUNDLE="/Applications/${product.productName}.app/Contents/Resources/cli/bin/ok.sh"`,
       `BUNDLE="${opts.bundleOverride}"`,
     );
   }
@@ -79,11 +94,11 @@ function instrumentChain(opts: InstrumentOpts = {}): string {
 interface RunOpts {
   home: string;
   path: string | null;
-  chainOverride?: string;
+  chainOverride: string;
 }
 
 function runChain(opts: RunOpts): { stdout: string; stderr: string; status: number | null } {
-  const chain = opts.chainOverride ?? instrumentChain();
+  const chain = opts.chainOverride;
   const env: NodeJS.ProcessEnv = { HOME: opts.home };
   if (opts.path !== null) env.PATH = opts.path;
   const result = spawnSync('/bin/sh', ['-l', '-c', chain], { env, encoding: 'utf8' });
@@ -98,11 +113,11 @@ function setupTmp(label: string): string {
   return mkdtempSync(join(tmpdir(), `mcp-chain-${label}-`));
 }
 
-describe('CHAIN_V2 POSIX shell grammar (cross-platform)', () => {
+describe.each(CHANNELS)('%s chain POSIX shell grammar (cross-platform)', (channel) => {
   it('bundle missing, no npx, no version-manager dirs → exit 127 + stderr', () => {
     const tmpHome = setupTmp('nofall');
     try {
-      const chain = instrumentChain({
+      const chain = instrumentChain(channel, {
         suppressNpxPath: true,
         restrictGlobToHome: true,
         bundleOverride: join(tmpHome, 'no-such-bundle.sh'),
@@ -124,7 +139,7 @@ describe('CHAIN_V2 POSIX shell grammar (cross-platform)', () => {
     try {
       const dirBundle = join(tmpHome, 'fake-bundle');
       mkdirSync(dirBundle);
-      const chain = instrumentChain({ bundleOverride: dirBundle });
+      const chain = instrumentChain(channel, { bundleOverride: dirBundle });
       const { stdout } = runChain({ home: tmpHome, path: '/usr/bin:/bin', chainOverride: chain });
       expect(stdout).not.toContain('HIT:bundle:');
     } finally {
@@ -138,7 +153,7 @@ describe('CHAIN_V2 POSIX shell grammar (cross-platform)', () => {
       const noxBundle = join(tmpHome, 'bundle.sh');
       writeFileSync(noxBundle, '#!/bin/sh\necho should-not-run\n');
       chmodSync(noxBundle, 0o644);
-      const chain = instrumentChain({ bundleOverride: noxBundle });
+      const chain = instrumentChain(channel, { bundleOverride: noxBundle });
       const { stdout } = runChain({ home: tmpHome, path: '/usr/bin:/bin', chainOverride: chain });
       expect(stdout).not.toContain('HIT:bundle:');
     } finally {
@@ -149,7 +164,7 @@ describe('CHAIN_V2 POSIX shell grammar (cross-platform)', () => {
   it('unmatched glob does NOT abort the shell (regression for zsh-glob-error bug)', () => {
     const tmpHome = setupTmp('zshglob');
     try {
-      const chain = instrumentChain({
+      const chain = instrumentChain(channel, {
         suppressNpxPath: true,
         restrictGlobToHome: true,
         bundleOverride: join(tmpHome, 'no-such-bundle.sh'),
@@ -167,6 +182,32 @@ describe('CHAIN_V2 POSIX shell grammar (cross-platform)', () => {
     }
   });
 
+  it("the npx fallback runs with this chain's channel", () => {
+    const tmpHome = setupTmp('npxchannel');
+    try {
+      const bin = join(tmpHome, 'bin');
+      mkdirSync(bin);
+      const fakeNpx = join(bin, 'npx');
+      writeFileSync(fakeNpx, '#!/bin/sh\nexit 0\n');
+      chmodSync(fakeNpx, 0o755);
+      const chain = instrumentChain(channel, {
+        restrictGlobToHome: true,
+        bundleOverride: join(tmpHome, 'no-such-bundle.sh'),
+      });
+      const { stdout, status } = runChain({
+        home: tmpHome,
+        path: `${bin}:/usr/bin:/bin`,
+        chainOverride: chain,
+      });
+      expect(status).toBe(0);
+      expect(stdout).toContain(
+        `HIT:npx:${fakeNpx}:channel=${channel === 'stable' ? '' : channel}\n`,
+      );
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
   it('bundle process crashes — exit code propagates, no fallback fires', () => {
     const tmpHome = setupTmp('crash');
     try {
@@ -174,14 +215,15 @@ describe('CHAIN_V2 POSIX shell grammar (cross-platform)', () => {
       writeFileSync(crashBundle, '#!/bin/sh\nexit 42\n');
       chmodSync(crashBundle, 0o755);
 
+      const productName = DESKTOP_PRODUCTS[channel].productName;
       let chain = replaceOrThrow(
-        CHAIN_V2,
-        'USER_BUNDLE="$HOME/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh"',
+        chainFor(channel),
+        `USER_BUNDLE="$HOME/Applications/${productName}.app/Contents/Resources/cli/bin/ok.sh"`,
         `USER_BUNDLE="${join(tmpHome, 'no-such-user-bundle.sh')}"`,
       );
       chain = replaceOrThrow(
         chain,
-        'BUNDLE="/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh"',
+        `BUNDLE="/Applications/${productName}.app/Contents/Resources/cli/bin/ok.sh"`,
         `BUNDLE="${crashBundle}"`,
       );
       const { stdout, status } = runChain({
@@ -197,46 +239,50 @@ describe('CHAIN_V2 POSIX shell grammar (cross-platform)', () => {
   });
 });
 
-describe.skipIf(SKIP_PERSONA)('CHAIN_V2 macOS persona behavior (darwin only)', () => {
-  it('bundle missing, npx on login PATH → npx branch fires', () => {
-    const tmpHome = setupTmp('npx');
-    try {
-      const { stdout, status } = runChain({
-        home: tmpHome,
-        path: '/usr/bin:/bin:/usr/sbin:/sbin',
-      });
-      expect([0, 127]).toContain(status ?? -1);
-      if (status === 0) {
-        expect(stdout).toMatch(/HIT:(bundle|npx|glob):/);
+describe.skipIf(SKIP_PERSONA).each(CHANNELS)(
+  '%s chain macOS persona behavior (darwin only)',
+  (channel) => {
+    it('bundle missing, npx on login PATH → npx branch fires', () => {
+      const tmpHome = setupTmp('npx');
+      try {
+        const { stdout, status } = runChain({
+          home: tmpHome,
+          path: '/usr/bin:/bin:/usr/sbin:/sbin',
+          chainOverride: instrumentChain(channel),
+        });
+        expect([0, 127]).toContain(status ?? -1);
+        if (status === 0) {
+          expect(stdout).toMatch(/HIT:(bundle|npx|glob):/);
+        }
+      } finally {
+        rmSync(tmpHome, { recursive: true, force: true });
       }
-    } finally {
-      rmSync(tmpHome, { recursive: true, force: true });
-    }
-  });
+    });
 
-  it('bundle missing, no npx on PATH, but version-manager glob fires', () => {
-    const tmpHome = setupTmp('glob');
-    try {
-      const nvmBin = join(tmpHome, '.nvm', 'versions', 'node', 'v24.0.0', 'bin');
-      mkdirSync(nvmBin, { recursive: true });
-      const fakeNpx = join(nvmBin, 'npx');
-      writeFileSync(fakeNpx, '#!/bin/sh\necho fake-npx-should-not-run\n');
-      chmodSync(fakeNpx, 0o755);
+    it('bundle missing, no npx on PATH, but version-manager glob fires', () => {
+      const tmpHome = setupTmp('glob');
+      try {
+        const nvmBin = join(tmpHome, '.nvm', 'versions', 'node', 'v24.0.0', 'bin');
+        mkdirSync(nvmBin, { recursive: true });
+        const fakeNpx = join(nvmBin, 'npx');
+        writeFileSync(fakeNpx, '#!/bin/sh\necho fake-npx-should-not-run\n');
+        chmodSync(fakeNpx, 0o755);
 
-      const chain = instrumentChain({
-        suppressNpxPath: true,
-        restrictGlobToHome: true,
-        bundleOverride: join(tmpHome, 'no-such-bundle.sh'),
-      });
-      const { stdout, status } = runChain({
-        home: tmpHome,
-        path: '/usr/bin:/bin',
-        chainOverride: chain,
-      });
-      expect(status).toBe(0);
-      expect(stdout).toContain(`HIT:glob:${fakeNpx}`);
-    } finally {
-      rmSync(tmpHome, { recursive: true, force: true });
-    }
-  });
-});
+        const chain = instrumentChain(channel, {
+          suppressNpxPath: true,
+          restrictGlobToHome: true,
+          bundleOverride: join(tmpHome, 'no-such-bundle.sh'),
+        });
+        const { stdout, status } = runChain({
+          home: tmpHome,
+          path: '/usr/bin:/bin',
+          chainOverride: chain,
+        });
+        expect(status).toBe(0);
+        expect(stdout).toContain(`HIT:glob:${fakeNpx}`);
+      } finally {
+        rmSync(tmpHome, { recursive: true, force: true });
+      }
+    });
+  },
+);

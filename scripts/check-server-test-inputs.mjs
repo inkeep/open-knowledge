@@ -189,7 +189,8 @@ function main() {
         `${detail}\n\n` +
         `Fix: a test that reads files outside its package's key takes the \`.uncached.test\`\n` +
         `suffix. Rename each reader to <name>.uncached.test.ts, and the uncached tier runs it\n` +
-        `every round, in CI's lint job and beside every \`turbo run test\` of this package.\n` +
+        `every round, in CI's lint job, and in every whole-suite \`turbo run\` that names\n` +
+        `\`test:uncached\` beside \`test\`, such as \`pnpm test\`; a --filter'ed run does not.\n` +
         `Add a matching glob to \`${TASK}\`.inputs in public/open-knowledge/turbo.json\n` +
         `instead only if the whole server tier should re-run whenever that path changes.\n`,
     );

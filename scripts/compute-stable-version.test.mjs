@@ -1,5 +1,17 @@
-import { describe, expect, test } from 'vitest';
-import { computePointReleaseVersion, computeStablePromotion, evaluateAnchorGuard } from './compute-stable-version.mjs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
+import { loadChangesets, maxReleaseType } from './compute-next-beta.mjs';
+import {
+  changesetIdsFromTreePaths,
+  computePointReleaseVersion,
+  computeStablePromotion,
+  evaluateAnchorGuard,
+  gitAt,
+} from './compute-stable-version.mjs';
+import { gitCleanEnv } from './git-clean-env.mjs';
 
 function fakeGit({ shas = {}, newestStable = '', changesets = {}, ancestor = () => false, bumps = {} } = {}) {
   return {
@@ -332,5 +344,91 @@ describe('computePointReleaseVersion', () => {
     );
     expect(r.tag).toBe('v0.32.1');
     expect(r.addedIds).toEqual(['fix']);
+  });
+});
+
+const repos = [];
+
+afterEach(() => {
+  while (repos.length) rmSync(repos.pop(), { recursive: true, force: true });
+});
+
+function git(cwd, args) {
+  const res = spawnSync('git', args, { cwd, env: gitCleanEnv(), encoding: 'utf8' });
+  if (res.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${res.stderr}`);
+  return res.stdout;
+}
+
+function committedChangesets(files, { subtree = '' } = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'stable-version-changesets-'));
+  repos.push(root);
+  for (const [name, body] of Object.entries(files)) {
+    const target = join(root, subtree, '.changeset', name);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, body);
+  }
+  git(root, ['init', '-q', '-b', 'main']);
+  git(root, ['add', '-A']);
+  git(root, ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', 'changesets']);
+  return root;
+}
+
+const OK = '@inkeep/open-knowledge';
+const bump = (body) => `---\n${body}\n---\n\nA change.\n`;
+
+const disagreementsWithTheOldRawReader = {
+  'quoted.md': bump(`"${OK}": "major"`),
+  'trailing-comment.md': bump(`"${OK}": minor # was: major`),
+  'comment-line.md': bump(`# bump: major\n"${OK}": patch`),
+  'readme.md': bump(`"${OK}": major`),
+  'README.md': '# Changesets\n',
+  '.hidden.md': bump(`"${OK}": major`),
+  'plain.md': bump(`"${OK}": patch`),
+  'config.json': '{}',
+};
+
+describe('changesetIdsFromTreePaths', () => {
+  test('keeps what @changesets/read keeps: top-level .md files except dotfiles and README in any case', () => {
+    const paths = [
+      '.changeset/README.md',
+      '.changeset/readme.md',
+      '.changeset/.hidden.md',
+      '.changeset/config.json',
+      '.changeset/wise-cats-sing.md',
+      '',
+    ];
+    expect(changesetIdsFromTreePaths(paths)).toEqual(['wise-cats-sing']);
+  });
+});
+
+describe('gitAt reads a commit\'s changesets the way Changesets reads the same tree', () => {
+  test('the ids and bumps it reads at HEAD equal @changesets/read on the checkout', async () => {
+    const root = committedChangesets(disagreementsWithTheOldRawReader);
+    const reader = gitAt(root);
+    const fromGit = Object.fromEntries(
+      reader.changesetIds('HEAD').map((id) => [id, reader.bumpTypeOf('HEAD', id)]),
+    );
+    const fromChangesets = Object.fromEntries(
+      (await loadChangesets().read(root)).map(({ id, releases }) => [id, maxReleaseType(releases)]),
+    );
+    expect(fromGit).toEqual(fromChangesets);
+    expect(fromGit).toEqual({
+      quoted: 'major',
+      'trailing-comment': 'minor',
+      'comment-line': 'patch',
+      plain: 'patch',
+    });
+  });
+
+  test('from a subtree checkout it reads the subtree\'s .changeset, as in the monorepo', () => {
+    const root = committedChangesets({ 'quoted.md': bump(`"${OK}": "minor"`) }, { subtree: 'public/open-knowledge' });
+    const reader = gitAt(join(root, 'public/open-knowledge'));
+    expect(reader.changesetIds('HEAD')).toEqual(['quoted']);
+    expect(reader.bumpTypeOf('HEAD', 'quoted')).toBe('minor');
+  });
+
+  test('a changeset Changesets cannot parse fails the read instead of counting as no bump', () => {
+    const root = committedChangesets({ 'broken.md': bump(`"${OK}": Major`) });
+    expect(() => gitAt(root).bumpTypeOf('HEAD', 'broken')).toThrow();
   });
 });

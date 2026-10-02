@@ -936,8 +936,8 @@ describe('the worker witness', () => {
         if (held) return;
         held = true;
         setTimeout(() => {
+          parentPort.postMessage('released');
           session.post('Debugger.resume', () => {
-            parentPort.postMessage('released');
             session.post('Debugger.disable', () => {
               session.disconnect();
               clearInterval(keepAlive);
@@ -945,13 +945,23 @@ describe('the worker witness', () => {
           });
         }, 2_000);
       });
-      session.post('Debugger.enable', () => session.post('Debugger.pause'));
+      session.post('Debugger.enable', () => parentPort.postMessage('armed'));
       `,
       { eval: true },
     );
     await new Promise((resolve) => {
-      developerDebugger.once('message', resolve);
+      developerDebugger.on('message', (message) => {
+        if (message === 'armed') {
+          lastMainTickAt = Date.now();
+          longestMainGapMs = 0;
+          // biome-ignore lint/suspicious/noDebugger: This test deliberately pauses its owned main thread.
+          debugger; // oxlint-disable-line no-debugger -- Pause the test-owned main thread.
+          return;
+        }
+        resolve(message);
+      });
     });
+    longestMainGapMs = Math.max(longestMainGapMs, Date.now() - lastMainTickAt);
     clearInterval(mainTicks);
     await developerDebugger.terminate();
     const read = await pollFor(() => {
@@ -959,7 +969,7 @@ describe('the worker witness', () => {
       return stall.kind === 'record' && stall.value.outcome !== 'pending' ? stall.value : null;
     });
 
-    expect(longestMainGapMs).toBeGreaterThanOrEqual(1_900);
+    expect(longestMainGapMs, JSON.stringify(read)).toBeGreaterThanOrEqual(1_900);
     expect(read).toMatchObject({
       outcome: 'failed',
       error: 'the main thread was already paused by another debugger session',

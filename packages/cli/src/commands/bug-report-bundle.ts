@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
-import { freemem, homedir, type as osType, platform, release, totalmem, uptime } from 'node:os';
+import { freemem, type as osType, platform, release, totalmem, uptime } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import {
   ACP_LAUNCH_FAILURE_LOG,
@@ -11,6 +11,7 @@ import {
   REPORT_SIDECAR_BUNDLE_DIR,
   SERVER_CRASH_LOG,
 } from '@inkeep/open-knowledge-core';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import type { ZipFile } from 'yazl';
 import type { DesktopMetadata } from '../diagnose/bundle.ts';
@@ -24,7 +25,7 @@ import { redactContent, SECRET_PATTERN_NAMES } from './bug-report-redact.ts';
 import { DESKTOP_BUNDLE_ID } from './desktop-dispatch.ts';
 
 export function okBugReportsDir(): string {
-  return join(homedir(), '.ok', 'bug-reports');
+  return join(okUserHomeDir(), 'bug-reports');
 }
 
 export function defaultBugReportZipPath(now: Date = new Date()): string {
@@ -356,7 +357,7 @@ export async function collectStandardBundle(
 ): Promise<StandardBundleResult> {
   const { redact, outputPath, logger } = opts;
   const revealDocNames = opts.revealDocNames ?? false;
-  const userLogsDir = opts.userLogsDir ?? join(homedir(), '.ok', 'logs');
+  const userLogsDir = opts.userLogsDir ?? join(okUserHomeDir(), 'logs');
   const projectSlug = opts.projectDir ? resolveProjectSlug(opts.projectDir, logger) : null;
 
   mkdirSync(dirname(outputPath), { recursive: true });

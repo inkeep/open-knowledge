@@ -5,6 +5,7 @@ import type {
   ReportBundleLevel as CoreReportBundleLevel,
   ReportBundleSummary as CoreReportBundleSummary,
 } from '@inkeep/open-knowledge-core';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { parse as parseYaml } from 'yaml';
 import {
   type BundleExtraFile,
@@ -89,7 +90,7 @@ async function collectFullBundle(
     note: opts.note,
     extraFiles: opts.extraFiles,
     userLogFiles: [
-      ...collectUserLogFiles(projectSlug, opts.userLogsDir ?? join(homedir(), '.ok', 'logs')),
+      ...collectUserLogFiles(projectSlug, opts.userLogsDir ?? join(okUserHomeDir(), 'logs')),
       ...collectShipItLogFiles(opts.cachesDir ?? join(homedir(), 'Library', 'Caches')),
     ],
     userStateFiles: collectBugReportLedgerFiles(opts.bugReportsDir ?? okBugReportsDir()),

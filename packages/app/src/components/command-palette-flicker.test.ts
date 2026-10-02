@@ -1,21 +1,10 @@
 import { describe, expect, test } from 'vitest';
+import { computeVisibleSearchResults } from './CommandPalette';
 import type { WorkspaceEntry, WorkspaceSearchEntry } from './command-palette-search';
 
-interface VisibleSearchResultsHelperArgs {
-  searchResults: readonly WorkspaceSearchEntry[];
-  fallbackSearchResults: readonly WorkspaceEntry[];
-  searchStatus: 'idle' | 'loading' | 'success' | 'error';
-}
+type VisibleSearchResultsHelper = typeof computeVisibleSearchResults;
 
-type VisibleSearchResultsHelper = (
-  args: VisibleSearchResultsHelperArgs,
-) => readonly (WorkspaceEntry | WorkspaceSearchEntry)[];
-
-async function loadHelper(): Promise<VisibleSearchResultsHelper | undefined> {
-  const mod = (await import('./CommandPalette')) as Record<string, unknown>;
-  const candidate = mod.computeVisibleSearchResults;
-  return typeof candidate === 'function' ? (candidate as VisibleSearchResultsHelper) : undefined;
-}
+const helper: VisibleSearchResultsHelper = computeVisibleSearchResults;
 
 const apiResultsForPriorQuery: readonly WorkspaceSearchEntry[] = [
   { kind: 'file', path: 'aa.md', name: 'aa', snippet: 'queue manager handles items' },
@@ -29,18 +18,11 @@ const apiResultsForCurrentQuery: readonly WorkspaceSearchEntry[] = [
 const fallbackResults: readonly WorkspaceEntry[] = [{ kind: 'file', path: 'cc.md', name: 'cc' }];
 
 describe('computeVisibleSearchResults — stale-while-revalidate contract', () => {
-  test('helper is exported and is a function', async () => {
-    const helper = await loadHelper();
+  test('helper is exported and is a function', () => {
     expect(typeof helper).toBe('function');
   });
 
-  test('mid-keystroke loading: prior API results stay visible (stale-while-revalidate)', async () => {
-    const helper = await loadHelper();
-    if (!helper) {
-      expect(typeof helper).toBe('function');
-      return;
-    }
-
+  test('mid-keystroke loading: prior API results stay visible (stale-while-revalidate)', () => {
     const visible = helper({
       searchResults: apiResultsForPriorQuery,
       fallbackSearchResults: fallbackResults,
@@ -50,13 +32,7 @@ describe('computeVisibleSearchResults — stale-while-revalidate contract', () =
     expect(visible).toEqual(apiResultsForPriorQuery);
   });
 
-  test('loading with empty results: fall back to local corpus', async () => {
-    const helper = await loadHelper();
-    if (!helper) {
-      expect(typeof helper).toBe('function');
-      return;
-    }
-
+  test('loading with empty results: fall back to local corpus', () => {
     const visible = helper({
       searchResults: [],
       fallbackSearchResults: fallbackResults,
@@ -66,13 +42,7 @@ describe('computeVisibleSearchResults — stale-while-revalidate contract', () =
     expect(visible).toEqual(fallbackResults);
   });
 
-  test('idle with empty results: fall back to local corpus', async () => {
-    const helper = await loadHelper();
-    if (!helper) {
-      expect(typeof helper).toBe('function');
-      return;
-    }
-
+  test('idle with empty results: fall back to local corpus', () => {
     const visible = helper({
       searchResults: [],
       fallbackSearchResults: fallbackResults,
@@ -82,13 +52,7 @@ describe('computeVisibleSearchResults — stale-while-revalidate contract', () =
     expect(visible).toEqual(fallbackResults);
   });
 
-  test('error with empty results: fall back to local corpus', async () => {
-    const helper = await loadHelper();
-    if (!helper) {
-      expect(typeof helper).toBe('function');
-      return;
-    }
-
+  test('error with empty results: fall back to local corpus', () => {
     const visible = helper({
       searchResults: [],
       fallbackSearchResults: fallbackResults,
@@ -98,13 +62,7 @@ describe('computeVisibleSearchResults — stale-while-revalidate contract', () =
     expect(visible).toEqual(fallbackResults);
   });
 
-  test('success with empty result: empty list, NOT fallback', async () => {
-    const helper = await loadHelper();
-    if (!helper) {
-      expect(typeof helper).toBe('function');
-      return;
-    }
-
+  test('success with empty result: empty list, NOT fallback', () => {
     const visible = helper({
       searchResults: [],
       fallbackSearchResults: fallbackResults,
@@ -114,13 +72,7 @@ describe('computeVisibleSearchResults — stale-while-revalidate contract', () =
     expect(visible).toEqual([]);
   });
 
-  test('post-fetch swap: new API results replace prior results', async () => {
-    const helper = await loadHelper();
-    if (!helper) {
-      expect(typeof helper).toBe('function');
-      return;
-    }
-
+  test('post-fetch swap: new API results replace prior results', () => {
     const visible = helper({
       searchResults: apiResultsForCurrentQuery,
       fallbackSearchResults: fallbackResults,

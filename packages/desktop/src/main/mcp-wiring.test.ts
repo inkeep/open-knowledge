@@ -17,7 +17,7 @@ import {
   type EditorMcpTarget,
   type McpEntryClassification,
 } from '@inkeep/open-knowledge';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { classifyExistingMcpEntry as classifyWithOverridableEngine } from '../../../cli/src/commands/init.ts';
 import {
   createTomlConfigEngine,
@@ -597,6 +597,25 @@ describe('MCP status marker', () => {
     };
     writeMcpStatusMarker('/home/alice', marker, fs);
     expect(JSON.parse(fs.files['/home/alice/.ok/mcp-status.json'])).toEqual(marker);
+  });
+
+  test("Beta keeps its own marker under ~/.ok-beta and never reads Stable's", () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    try {
+      const fs = memoryFs({
+        '/home/alice/.ok/mcp-status.json': JSON.stringify({
+          configured: true,
+          configuredAt: '2026-05-26T00:00:00.000Z',
+          editors: ['claude'],
+        }),
+      });
+      expect(readMcpStatusMarker('/home/alice', fs)).toBeNull();
+      const marker: McpStatusMarker = { configured: false, skippedAt: '2026-09-30T00:00:00.000Z' };
+      writeMcpStatusMarker('/home/alice', marker, fs);
+      expect(JSON.parse(fs.files['/home/alice/.ok-beta/mcp-status.json'])).toEqual(marker);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   test('reader accepts legacy confirmed marker carrying cliPath', () => {

@@ -1,3 +1,4 @@
+import { okUserHomeDisplayPath } from '@inkeep/open-knowledge-core';
 import {
   type BuildAndOpenSkillResult,
   buildAndOpenSkill,
@@ -49,7 +50,7 @@ function formatSkipCurrentMessage(result: BuildAndOpenSkillResult): string {
   const recordedAt = result.recordedAt ?? 'unknown';
   return [
     info(`OpenKnowledge skill ${accent(`v${version}`)} already delivered to Claude Desktop.`),
-    dim(`  Recorded at ${recordedAt} in ~/.ok/skill-state.yml`),
+    dim(`  Recorded at ${recordedAt} in ${okUserHomeDisplayPath('skill-state.yml')}`),
     dim(`  Use ${accent('--force')} to rebuild and re-open the install dialog.`),
   ].join('\n');
 }

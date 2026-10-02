@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { Project, ts } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
 import {
   deriveEntryLevelResolution,
@@ -17,6 +18,38 @@ import {
   runPointRelease,
   verifyWorkspaceMatchesLockfile,
 } from './point-release-plan.mjs';
+
+function inspectGitEscapes(source) {
+  const project = new Project({ useInMemoryFileSystem: true, skipLoadingLibFiles: true });
+  const file = project.createSourceFile('/point-release-plan.ts', source);
+  const census = Object.entries({
+    syntax:
+      project.getProgram().compilerObject.getSyntacticDiagnostics(file.compilerNode).length === 0,
+    realIo: !!file.getFunction('realIo')?.getBody(),
+    runPointRelease: !!file.getFunction('runPointRelease')?.getBody(),
+    forwarding: file
+      .getExportDeclarations()
+      .every((declaration) => !declaration.getModuleSpecifier()),
+  }).flatMap(([name, holds]) => (holds ? [] : [name]));
+  const escapes = file.getDescendants().flatMap((node) => {
+    const literal = node.compilerNode;
+    if (
+      !ts.isStringLiteralLike(literal) &&
+      !ts.isTemplateHead(literal) &&
+      !ts.isTemplateMiddle(literal) &&
+      !ts.isTemplateTail(literal) &&
+      !ts.isRegularExpressionLiteral(literal)
+    )
+      return [];
+    const value = literal.text;
+    return /--strategy|-Xours|-Xtheirs|'ours'|'theirs'|--skip|--abort|--no-commit/.test(value) ||
+      value === 'ours' ||
+      value === 'theirs'
+      ? [value]
+      : [];
+  });
+  return { census, escapes };
+}
 
 const membership = (...members) => {
   const set = new Set(members);
@@ -39,13 +72,19 @@ describe('guardAnchor', () => {
   });
 
   test('propagates a malformed anchor instead of reporting it as drift', () => {
-    expect(() => guardAnchor({ anchorVersion: 'not-a-version', latestStableTag: 'v0.32.1' })).toThrow();
+    expect(() =>
+      guardAnchor({ anchorVersion: 'not-a-version', latestStableTag: 'v0.32.1' }),
+    ).toThrow();
   });
 });
 
 describe('parseFixRefs', () => {
   test('splits on commas and whitespace, trims, and dedupes', () => {
-    expect(parseFixRefs(' abc123 ,  def456\ndef456\tghi789 ')).toEqual(['abc123', 'def456', 'ghi789']);
+    expect(parseFixRefs(' abc123 ,  def456\ndef456\tghi789 ')).toEqual([
+      'abc123',
+      'def456',
+      'ghi789',
+    ]);
   });
 
   test('throws when no ref survives parsing', () => {
@@ -72,7 +111,9 @@ describe('guardRefsOnMain', () => {
   });
 
   test('propagates an ancestry infra error instead of reading it as not-on-main', () => {
-    expect(() => guardRefsOnMain({ fixRefs: ['THROW'], isOnMain: membership() })).toThrow(/infra error/);
+    expect(() => guardRefsOnMain({ fixRefs: ['THROW'], isOnMain: membership() })).toThrow(
+      /infra error/,
+    );
   });
 });
 
@@ -169,7 +210,7 @@ describe('guardNativeConfigProvenance', () => {
     expect(r.message).toContain('prebuild');
   });
 
-  test('refuses with the selector\'s own account of why nothing qualified', () => {
+  test("refuses with the selector's own account of why nothing qualified", () => {
     const r = guardNativeConfigProvenance({
       selection: { headSha: '', reason: 'newest green run 42 @ abc123 does not' },
     });
@@ -193,7 +234,10 @@ describe('guardNativeConfigProvenance', () => {
 
 describe('guardMainResetDeltaIds', () => {
   test('passes on a non-empty delta', () => {
-    expect(guardMainResetDeltaIds({ deltaIds: ['brave-pandas-sing'] })).toMatchObject({ ok: true, code: null });
+    expect(guardMainResetDeltaIds({ deltaIds: ['brave-pandas-sing'] })).toMatchObject({
+      ok: true,
+      code: null,
+    });
   });
 
   test('refuses an empty array, which main-reset reads as consolidate-everything', () => {
@@ -203,7 +247,10 @@ describe('guardMainResetDeltaIds', () => {
   });
 
   test('refuses an absent delta for the same reason', () => {
-    expect(guardMainResetDeltaIds({ deltaIds: null })).toMatchObject({ ok: false, code: 'empty-delta-ids' });
+    expect(guardMainResetDeltaIds({ deltaIds: null })).toMatchObject({
+      ok: false,
+      code: 'empty-delta-ids',
+    });
   });
 });
 
@@ -269,7 +316,9 @@ describe('parseResolvePaths', () => {
   });
 
   test('splits and dedupes like the sibling list inputs', () => {
-    expect(parseResolvePaths('pnpm-workspace.yaml, pnpm-workspace.yaml')).toEqual(['pnpm-workspace.yaml']);
+    expect(parseResolvePaths('pnpm-workspace.yaml, pnpm-workspace.yaml')).toEqual([
+      'pnpm-workspace.yaml',
+    ]);
   });
 });
 
@@ -288,7 +337,11 @@ describe('guardResolvePathsAllowlisted', () => {
 
   test('refuses a source path, naming every offender', () => {
     const r = guardResolvePathsAllowlisted({
-      resolvePaths: ['pnpm-workspace.yaml', 'packages/app/src/main.tsx', '.github/workflows/release.yml'],
+      resolvePaths: [
+        'pnpm-workspace.yaml',
+        'packages/app/src/main.tsx',
+        '.github/workflows/release.yml',
+      ],
     });
     expect(r.ok).toBe(false);
     expect(r.code).toBe('resolve-path-not-allowlisted');
@@ -297,8 +350,12 @@ describe('guardResolvePathsAllowlisted', () => {
   });
 
   test('refuses a glob or a parent directory rather than expanding it', () => {
-    expect(guardResolvePathsAllowlisted({ resolvePaths: ['*'] }).code).toBe('resolve-path-not-allowlisted');
-    expect(guardResolvePathsAllowlisted({ resolvePaths: ['.'] }).code).toBe('resolve-path-not-allowlisted');
+    expect(guardResolvePathsAllowlisted({ resolvePaths: ['*'] }).code).toBe(
+      'resolve-path-not-allowlisted',
+    );
+    expect(guardResolvePathsAllowlisted({ resolvePaths: ['.'] }).code).toBe(
+      'resolve-path-not-allowlisted',
+    );
   });
 });
 
@@ -309,9 +366,13 @@ describe('deriveEntryLevelResolution', () => {
       fixBefore: WS_FIX_PARENT,
       fixAfter: WS_FIX,
     });
-    expect(added).toEqual(["  'react-resizable-panels@4.12.1': patches/react-resizable-panels@4.12.1.patch"]);
+    expect(added).toEqual([
+      "  'react-resizable-panels@4.12.1': patches/react-resizable-panels@4.12.1.patch",
+    ]);
     expect(removed).toEqual([]);
-    expect(resolved).toContain("'react-resizable-panels@4.12.1': patches/react-resizable-panels@4.12.1.patch");
+    expect(resolved).toContain(
+      "'react-resizable-panels@4.12.1': patches/react-resizable-panels@4.12.1.patch",
+    );
     expect(resolved).not.toContain('@lingui/core');
     expect(resolved).toBe(
       `${WS_STABLE}  'react-resizable-panels@4.12.1': patches/react-resizable-panels@4.12.1.patch\n`,
@@ -332,7 +393,10 @@ describe('deriveEntryLevelResolution', () => {
   });
 
   test('carries a removal through as a deletion of that exact entry', () => {
-    const fixAfter = WS_FIX_PARENT.replace("  'y-prosemirror@1.3.7': patches/y-prosemirror@1.3.7.patch\n", '');
+    const fixAfter = WS_FIX_PARENT.replace(
+      "  'y-prosemirror@1.3.7': patches/y-prosemirror@1.3.7.patch\n",
+      '',
+    );
     const { resolved, added, removed } = deriveEntryLevelResolution({
       base: WS_STABLE,
       fixBefore: WS_FIX_PARENT,
@@ -349,33 +413,42 @@ describe('deriveEntryLevelResolution', () => {
       "  '@pierre/trees@1.0.0-beta.4': patches/@pierre%2Ftrees@1.0.0-beta.4.patch",
       "  'react-resizable-panels@4.12.1': patches/react-resizable-panels@4.11.0.patch",
     );
-    expect(() => deriveEntryLevelResolution({ base, fixBefore: WS_FIX_PARENT, fixAfter: WS_FIX })).toThrow(
-      /CHANGES that entry/,
-    );
+    expect(() =>
+      deriveEntryLevelResolution({ base, fixBefore: WS_FIX_PARENT, fixAfter: WS_FIX }),
+    ).toThrow(/CHANGES that entry/);
   });
 
   test('refuses when the block the entry belongs to is not in the stable file', () => {
     const base = "packages:\n  - 'packages/*'\n";
-    expect(() => deriveEntryLevelResolution({ base, fixBefore: WS_FIX_PARENT, fixAfter: WS_FIX })).toThrow(
-      /not in the last stable/,
-    );
+    expect(() =>
+      deriveEntryLevelResolution({ base, fixBefore: WS_FIX_PARENT, fixAfter: WS_FIX }),
+    ).toThrow(/not in the last stable/);
   });
 
   test.each([
     ['a new top-level key', `${WS_FIX_PARENT}ignorePatchFailures: false\n`],
-    ['a comment inside the block', WS_FIX_PARENT.replace('patchedDependencies:\n', 'patchedDependencies:\n  # note\n')],
-    ['a sequence item', WS_FIX_PARENT.replace("  - 'packages/*'\n", "  - 'packages/*'\n  - 'apps/*'\n")],
+    [
+      'a comment inside the block',
+      WS_FIX_PARENT.replace('patchedDependencies:\n', 'patchedDependencies:\n  # note\n'),
+    ],
+    [
+      'a sequence item',
+      WS_FIX_PARENT.replace("  - 'packages/*'\n", "  - 'packages/*'\n  - 'apps/*'\n"),
+    ],
   ])('refuses %s, which is not an indented mapping entry', (_label, fixAfter) => {
-    expect(() => deriveEntryLevelResolution({ base: WS_STABLE, fixBefore: WS_FIX_PARENT, fixAfter })).toThrow(
-      /not an indented mapping entry/,
-    );
+    expect(() =>
+      deriveEntryLevelResolution({ base: WS_STABLE, fixBefore: WS_FIX_PARENT, fixAfter }),
+    ).toThrow(/not an indented mapping entry/);
   });
 
   test('refuses to remove a line the stable no longer has', () => {
-    const fixAfter = WS_FIX_PARENT.replace("  '@lingui/core@6.5.0': patches/@lingui%2Fcore@6.5.0.patch\n", '');
-    expect(() => deriveEntryLevelResolution({ base: WS_STABLE, fixBefore: WS_FIX_PARENT, fixAfter })).toThrow(
-      /does not appear exactly once in the last stable/,
+    const fixAfter = WS_FIX_PARENT.replace(
+      "  '@lingui/core@6.5.0': patches/@lingui%2Fcore@6.5.0.patch\n",
+      '',
     );
+    expect(() =>
+      deriveEntryLevelResolution({ base: WS_STABLE, fixBefore: WS_FIX_PARENT, fixAfter }),
+    ).toThrow(/does not appear exactly once in the last stable/);
   });
 
   test('refuses when the fix does not touch the file at all', () => {
@@ -424,22 +497,31 @@ describe('verifyWorkspaceMatchesLockfile', () => {
   });
 
   test('reads through the two files differing quote styles rather than calling them a mismatch', () => {
-    expect(verifyWorkspaceMatchesLockfile({ resolved, readWorktreeFile: () => LOCK_AFTER_MERGE })).toContain(
-      'overrides',
-    );
+    expect(
+      verifyWorkspaceMatchesLockfile({ resolved, readWorktreeFile: () => LOCK_AFTER_MERGE }),
+    ).toContain('overrides');
   });
 
   test('checks overrides too, not just patch registrations', () => {
-    const withExtraOverride = resolved.replace("  'radix-ui': 1.4.3", "  'radix-ui': 1.4.3\n  'left-pad': 1.3.0");
+    const withExtraOverride = resolved.replace(
+      "  'radix-ui': 1.4.3",
+      "  'radix-ui': 1.4.3\n  'left-pad': 1.3.0",
+    );
     expect(() =>
-      verifyWorkspaceMatchesLockfile({ resolved: withExtraOverride, readWorktreeFile: () => LOCK_AFTER_MERGE }),
+      verifyWorkspaceMatchesLockfile({
+        resolved: withExtraOverride,
+        readWorktreeFile: () => LOCK_AFTER_MERGE,
+      }),
     ).toThrow(/overrides.*left-pad/s);
   });
 
   test('catches an overrides VALUE that drifted, not just a missing key', () => {
     const bumped = resolved.replace("  'radix-ui': 1.4.3", "  'radix-ui': 1.9.9");
     expect(() =>
-      verifyWorkspaceMatchesLockfile({ resolved: bumped, readWorktreeFile: () => LOCK_AFTER_MERGE }),
+      verifyWorkspaceMatchesLockfile({
+        resolved: bumped,
+        readWorktreeFile: () => LOCK_AFTER_MERGE,
+      }),
     ).toThrow(/radix-ui: 1\.9\.9/);
   });
 
@@ -558,7 +640,9 @@ function makeIo(overrides = {}) {
     },
     gh: {
       selectNativeConfigPrebuild: () =>
-        typeof nativeConfigSelection === 'function' ? nativeConfigSelection() : nativeConfigSelection,
+        typeof nativeConfigSelection === 'function'
+          ? nativeConfigSelection()
+          : nativeConfigSelection,
       createRelease: (r) => {
         calls.createRelease++;
         releases.push(r);
@@ -627,7 +711,10 @@ describe('runPointRelease dry run', () => {
         'fix2^': ['keep-a', 'fix1-cs'],
       },
     });
-    const plan = runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1', 'fix2'], dryRun: true }, io);
+    const plan = runPointRelease(
+      { mode: 'cherry-pick', fixRefs: ['fix1', 'fix2'], dryRun: true },
+      io,
+    );
     expect(plan.addedIds).toEqual(['fix1-cs', 'fix2-cs']);
     expect(io.calls).toEqual({ tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 });
   });
@@ -691,7 +778,11 @@ describe('runPointRelease cascade', () => {
       {
         repo: 'inkeep/agents-private',
         eventType: 'main-reset',
-        clientPayload: { stable_version: '0.32.1', delta_ids: ['shiny-fix'], dispatched_by: 'https://run/1' },
+        clientPayload: {
+          stable_version: '0.32.1',
+          delta_ids: ['shiny-fix'],
+          dispatched_by: 'https://run/1',
+        },
       },
     ]);
   });
@@ -700,7 +791,11 @@ describe('runPointRelease cascade', () => {
     const io = cherryPickIo();
     runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], dryRun: false }, io);
     expect(io.calls).toMatchObject({ tag: 1, pushTag: 1, createRelease: 1 });
-    expect(io.releases[0]).toMatchObject({ tag: 'v0.32.1', targetSha: 'synthetic-sha', draft: true });
+    expect(io.releases[0]).toMatchObject({
+      tag: 'v0.32.1',
+      targetSha: 'synthetic-sha',
+      draft: true,
+    });
   });
 
   test('the release notes quote each added changeset the way a stable body does', () => {
@@ -759,7 +854,8 @@ describe('runPointRelease cascade', () => {
         'fix1^': ['keep-a'],
       },
       changesetContents: {
-        'shiny-fix': '---\n"@inkeep/open-knowledge": patch\n---\n\nChips no longer balloon into ovals.\n',
+        'shiny-fix':
+          '---\n"@inkeep/open-knowledge": patch\n---\n\nChips no longer balloon into ovals.\n',
       },
     });
     const plan = runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], dryRun: true }, io);
@@ -781,7 +877,10 @@ describe('runPointRelease cascade', () => {
 
   test('revert forwards the changeset the operator landed to represent it', () => {
     const io = makeIo();
-    runPointRelease({ mode: 'revert', fixRefs: ['bad1'], anchorDeltaIds: '["undo-bad"]', dryRun: false }, io);
+    runPointRelease(
+      { mode: 'revert', fixRefs: ['bad1'], anchorDeltaIds: '["undo-bad"]', dryRun: false },
+      io,
+    );
     const mainReset = io.dispatches.find((d) => d.eventType === 'main-reset');
     expect(mainReset.clientPayload.delta_ids).toEqual(['undo-bad']);
   });
@@ -790,7 +889,10 @@ describe('runPointRelease cascade', () => {
     const io = makeIo();
     let refusal;
     try {
-      runPointRelease({ mode: 'revert', fixRefs: ['bad1'], anchorDeltaIds: '[]', dryRun: false }, io);
+      runPointRelease(
+        { mode: 'revert', fixRefs: ['bad1'], anchorDeltaIds: '[]', dryRun: false },
+        io,
+      );
     } catch (err) {
       refusal = err;
     }
@@ -800,7 +902,10 @@ describe('runPointRelease cascade', () => {
 
   test('skips main-reset when the cross-repo bridge App is absent, without failing the run', () => {
     const io = cherryPickIo();
-    const plan = runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], dryRun: false, bridgeConfigured: false }, io);
+    const plan = runPointRelease(
+      { mode: 'cherry-pick', fixRefs: ['fix1'], dryRun: false, bridgeConfigured: false },
+      io,
+    );
     expect(plan.mainReset).toMatchObject({ dispatch: false, skipReason: 'bridge-not-configured' });
     expect(io.dispatches.map((d) => d.eventType)).toEqual(['desktop-release']);
     expect(plan.warnings.join(' ')).toContain('shiny-fix');
@@ -856,22 +961,27 @@ describe('runPointRelease refusals', () => {
     ],
   ];
 
-  test.each(cases)('refuses with %s and mutates nothing, even in a real run', (code, ioOpts, runOpts) => {
-    const io = makeIo(ioOpts);
-    let refusal;
-    try {
-      runPointRelease({ ...runOpts, dryRun: false }, io);
-    } catch (err) {
-      refusal = err;
-    }
-    expect(refusal?.code).toBe(code);
-    expect(refusal?.message).toBeTruthy();
-    expect(io.calls).toEqual({ tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 });
-  });
+  test.each(cases)(
+    'refuses with %s and mutates nothing, even in a real run',
+    (code, ioOpts, runOpts) => {
+      const io = makeIo(ioOpts);
+      let refusal;
+      try {
+        runPointRelease({ ...runOpts, dryRun: false }, io);
+      } catch (err) {
+        refusal = err;
+      }
+      expect(refusal?.code).toBe(code);
+      expect(refusal?.message).toBeTruthy();
+      expect(io.calls).toEqual({ tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 });
+    },
+  );
 
   test('a failing anchor guard stops before the synthetic commit is even built', () => {
     const io = makeIo({ anchorVersion: '0.31.0' });
-    expect(() => runPointRelease({ mode: 'revert', fixRefs: ['bad1'], dryRun: false }, io)).toThrow();
+    expect(() =>
+      runPointRelease({ mode: 'revert', fixRefs: ['bad1'], dryRun: false }, io),
+    ).toThrow();
     expect(io.checkedOut).toEqual([]);
     expect(io.applied).toEqual([]);
   });
@@ -973,10 +1083,7 @@ describe('runPointRelease refusals', () => {
 
   test('offers no side-picking escape hatch to reach for', () => {
     const source = readFileSync(new URL('./point-release-plan.mjs', import.meta.url), 'utf8');
-    const escapes = ['--strategy', '-Xours', '-Xtheirs', "'ours'", "'theirs'", '--skip', '--abort', '--no-commit'];
-    for (const escape of escapes) {
-      expect(source).not.toContain(escape);
-    }
+    expect(inspectGitEscapes(source)).toEqual({ census: [], escapes: [] });
   });
 
   test('the resolvable-path allowlist admits config registries only, never behavior', () => {
@@ -989,7 +1096,9 @@ describe('runPointRelease refusals', () => {
 
   test('rejects a mode it does not recognize rather than defaulting to cherry-pick', () => {
     const io = makeIo();
-    expect(() => runPointRelease({ mode: 'rebase', fixRefs: ['bad1'], dryRun: true }, io)).toThrow(/not one of/);
+    expect(() => runPointRelease({ mode: 'rebase', fixRefs: ['bad1'], dryRun: true }, io)).toThrow(
+      /not one of/,
+    );
     expect(io.applied).toEqual([]);
   });
 });
@@ -1020,7 +1129,10 @@ describe('runPointRelease with an authorized config path', () => {
 
   test('the derivation reads the stable from HEAD, not from the tag', () => {
     const io = conflictIo();
-    runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: true }, io);
+    runPointRelease(
+      { mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: true },
+      io,
+    );
     expect(io.reads).toContain('HEAD:pnpm-workspace.yaml');
     expect(io.reads).not.toContain('stable-sha:pnpm-workspace.yaml');
   });
@@ -1080,7 +1192,10 @@ describe('runPointRelease with an authorized config path', () => {
     });
     let refusal;
     try {
-      runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false }, io);
+      runPointRelease(
+        { mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false },
+        io,
+      );
     } catch (err) {
       refusal = err;
     }
@@ -1095,12 +1210,16 @@ describe('runPointRelease with an authorized config path', () => {
     const io = conflictIo();
     const real = io.git.fileAt;
     io.git.fileAt = (rev, path) => {
-      if (rev === 'fix1') throw new Error(`fatal: path '${path}' exists on disk, but not in 'fix1'`);
+      if (rev === 'fix1')
+        throw new Error(`fatal: path '${path}' exists on disk, but not in 'fix1'`);
       return real(rev, path);
     };
     let refusal;
     try {
-      runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false }, io);
+      runPointRelease(
+        { mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false },
+        io,
+      );
     } catch (err) {
       refusal = err;
     }
@@ -1116,7 +1235,10 @@ describe('runPointRelease with an authorized config path', () => {
     };
     let caught;
     try {
-      runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false }, io);
+      runPointRelease(
+        { mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false },
+        io,
+      );
     } catch (err) {
       caught = err;
     }
@@ -1159,7 +1281,10 @@ importers:
 `,
       },
     });
-    runPointRelease({ mode: 'revert', fixRefs: ['bad1'], resolvePaths: authorized, dryRun: false }, io);
+    runPointRelease(
+      { mode: 'revert', fixRefs: ['bad1'], resolvePaths: authorized, dryRun: false },
+      io,
+    );
     expect(io.written['pnpm-workspace.yaml']).not.toContain('@pierre/trees');
     expect(io.written['pnpm-workspace.yaml']).toContain('y-prosemirror');
     expect(io.continued).toEqual(['revert']);
@@ -1184,7 +1309,9 @@ importers:
       { mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: true },
       io,
     );
-    expect(plan.guards.some((g) => g.message.includes('Re-derived pnpm-workspace.yaml'))).toBe(true);
+    expect(plan.guards.some((g) => g.message.includes('Re-derived pnpm-workspace.yaml'))).toBe(
+      true,
+    );
     const warning = plan.warnings.join(' ');
     expect(warning).toContain('did not apply cleanly');
     expect(warning).toContain('react-resizable-panels@4.12.1');
@@ -1194,7 +1321,10 @@ importers:
     const io = conflictIo({ conflicts: ['pnpm-workspace.yaml', 'packages/app/src/main.tsx'] });
     let refusal;
     try {
-      runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false }, io);
+      runPointRelease(
+        { mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false },
+        io,
+      );
     } catch (err) {
       refusal = err;
     }
@@ -1207,12 +1337,18 @@ importers:
   test('refuses when the re-derived file disagrees with the merged lockfile', () => {
     const io = conflictIo({
       worktree: {
-        'pnpm-lock.yaml': LOCK_AFTER_MERGE.replace(/ {2}react-resizable-panels@4\.12\.1:\n.*\n.*\n/, ''),
+        'pnpm-lock.yaml': LOCK_AFTER_MERGE.replace(
+          / {2}react-resizable-panels@4\.12\.1:\n.*\n.*\n/,
+          '',
+        ),
       },
     });
     let refusal;
     try {
-      runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false }, io);
+      runPointRelease(
+        { mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false },
+        io,
+      );
     } catch (err) {
       refusal = err;
     }
@@ -1260,7 +1396,9 @@ describe('point-release.yml contract with this script', () => {
     const read = [...source.matchAll(/process\.env\.([A-Z][A-Z0-9_]*)/g)].map((m) => m[1]);
     expect(read.length).toBeGreaterThan(0);
 
-    expect([...new Set(read)].filter((name) => !provided.has(name) && !fromRunner.has(name))).toEqual([]);
+    expect(
+      [...new Set(read)].filter((name) => !provided.has(name) && !fromRunner.has(name)),
+    ).toEqual([]);
   });
 
   test('reads back only step outputs this script writes', () => {
@@ -1268,7 +1406,9 @@ describe('point-release.yml contract with this script', () => {
     const emitted = new Set([...outputBlock.matchAll(/`([a-z_]+)=\$\{/g)].map((m) => m[1]));
     expect(emitted.size).toBeGreaterThan(0);
 
-    const consumed = [...new Set([...workflow.matchAll(/steps\.plan\.outputs\.([a-z_]+)/g)].map((m) => m[1]))];
+    const consumed = [
+      ...new Set([...workflow.matchAll(/steps\.plan\.outputs\.([a-z_]+)/g)].map((m) => m[1])),
+    ];
     expect(consumed.length).toBeGreaterThan(0);
 
     expect(consumed.filter((name) => !emitted.has(name))).toEqual([]);
@@ -1276,7 +1416,10 @@ describe('point-release.yml contract with this script', () => {
 
   test('defaults to a dry run and passes that default through to the script', () => {
     const inputStart = workflow.indexOf('      dry_run:');
-    const input = workflow.slice(inputStart, workflow.indexOf('\n      dispatched_by:', inputStart));
+    const input = workflow.slice(
+      inputStart,
+      workflow.indexOf('\n      dispatched_by:', inputStart),
+    );
     expect(input).toContain('type: boolean');
     expect(input).toContain('default: true');
 
@@ -1315,5 +1458,52 @@ describe('formatReleaseNotes "Applied" line', () => {
         { ref: 'hotfix-tag', sha: other },
       ]),
     ).toBe(`Applied: ${SHA}, hotfix-tag (${other})`);
+  });
+});
+
+describe('git escape rule self-test', () => {
+  const declarations = 'function realIo() {} export function runPointRelease() {}';
+  test('flags a forbidden literal and accepts the adjacent command', () => {
+    expect(inspectGitEscapes(`${declarations} const args = ['--skip'];`)).toEqual({
+      census: [],
+      escapes: ['--skip'],
+    });
+    expect(inspectGitEscapes(`${declarations} const args = ['--continue'];`)).toEqual({
+      census: [],
+      escapes: [],
+    });
+  });
+  test.each([
+    ["['--strategy']", ['--strategy']],
+    ["['-Xours']", ['-Xours']],
+    ["['-Xtheirs']", ['-Xtheirs']],
+    [`"-X 'ours'"`, ["-X 'ours'"]],
+    [`"-X 'theirs'"`, ["-X 'theirs'"]],
+    ["['--abort']", ['--abort']],
+    ["['--no-commit']", ['--no-commit']],
+    ["['-X', 'ours']", ['ours']],
+    ["['-X', 'theirs']", ['theirs']],
+    ['`--skip`', ['--skip']],
+    [`\`--skip \${ref}\``, ['--skip ']],
+    [`\`\${ref} --skip \${ref}\``, [' --skip ']],
+    [`\`\${ref} --skip\``, [' --skip']],
+    ['/--skip/', ['/--skip/']],
+  ])('flags the forbidden side-picking or abort token in %s', (literal, escapes) => {
+    expect(inspectGitEscapes(`${declarations} const args = ${literal};`)).toEqual({
+      census: [],
+      escapes,
+    });
+  });
+  test('ignores comments and rejects relocation or unparseable source', () => {
+    expect(inspectGitEscapes(`${declarations} /* --skip */`)).toEqual({
+      census: [],
+      escapes: [],
+    });
+    expect(inspectGitEscapes("export * from './moved.mjs';").census).toEqual([
+      'realIo',
+      'runPointRelease',
+      'forwarding',
+    ]);
+    expect(inspectGitEscapes(`${declarations} const = ;`).census).toEqual(['syntax']);
   });
 });

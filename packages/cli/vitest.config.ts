@@ -10,4 +10,10 @@ import { okVitestBase } from '../../test-support/vitest.base';
  * black-box `tests/e2e/cli-linux-e2e.ts` deliberately omits the `.test` infix so
  * it stays out of this tier; it runs under `vitest.e2e.config.ts`.
  */
-export default defineConfig({ ...okVitestBase });
+export default defineConfig({
+  ...okVitestBase,
+  test: {
+    ...okVitestBase.test,
+    exclude: [...okVitestBase.test.exclude, '.ok-skill-publish-*'],
+  },
+});

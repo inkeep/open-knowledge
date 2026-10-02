@@ -27,6 +27,7 @@ function reportSucceeded(report: ApplyReport): boolean {
 
 async function requestAgentConnectionIntents(
   intents: readonly ApplyIntent[],
+  options?: { readonly webSignal?: AbortSignal },
 ): Promise<ApplyAgentConnectionsResult> {
   const bridge = globalThis.window?.okDesktop;
   if (bridge !== undefined) {
@@ -56,6 +57,7 @@ async function requestAgentConnectionIntents(
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ intents }),
+      signal: options?.webSignal,
     });
   } catch (err) {
     return failure(err instanceof Error ? err.message : String(err));
@@ -104,8 +106,9 @@ export function subscribeAgentConnectionChanges(
 
 export async function applyAgentConnectionIntents(
   intents: readonly ApplyIntent[],
+  options?: { readonly webSignal?: AbortSignal },
 ): Promise<ApplyAgentConnectionsResult> {
-  const result = await requestAgentConnectionIntents(intents);
+  const result = await requestAgentConnectionIntents(intents, options);
   if (intents.length > 0) {
     const listeners = [...connectionChangeListeners];
     for (const listener of listeners) {

@@ -17,6 +17,10 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, Check, Search, TriangleAlert, WifiOff } from 'lucide-react';
 import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
+import {
+  setSetupPromptDismissed,
+  setupPromptDismissed,
+} from '@/components/handoff/ExternalHandoffGate';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
 import { useTerminalLaunch } from '@/components/handoff/TerminalLaunchContext';
 import { cliIconTargetId } from '@/components/handoff/terminal-cli-display';
@@ -56,6 +60,7 @@ import {
 } from '@/lib/agent-connections';
 import { followupHintText } from '@/lib/agent-followup-hint';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
+import { useWorkspace } from '@/lib/use-workspace';
 import {
   type ApplyConnections,
   allAvailableCellsChecked,
@@ -143,6 +148,34 @@ function AgentRow({
         )}
       </div>
     </div>
+  );
+}
+
+function ResetHandoffSetupPrompt({
+  target,
+  projectDir,
+  displayName,
+}: {
+  target: HandoffTarget;
+  projectDir: string;
+  displayName: string;
+}): ReactNode {
+  const { t } = useLingui();
+  const [dismissed, setDismissed] = useState(() => setupPromptDismissed(target, projectDir));
+  if (!dismissed) return null;
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="shrink-0 font-mono uppercase"
+      aria-label={t`Show prompts again for ${displayName} in this project`}
+      onClick={() => {
+        setSetupPromptDismissed(target, projectDir, false);
+        setDismissed(setupPromptDismissed(target, projectDir));
+      }}
+    >
+      {t`Show prompts again`}
+    </Button>
   );
 }
 
@@ -475,6 +508,7 @@ export function AgentConnectionsSection({
   const registered = useRegisteredAgents();
   const { states, refresh } = useInstalledAgents();
   const terminalLaunch = useTerminalLaunch();
+  const workspace = useWorkspace();
   const [query, setQuery] = useState('');
   const [showInAppOverflow, setShowInAppOverflow] = useState(false);
   const [showTerminalOverflow, setShowTerminalOverflow] = useState(false);
@@ -966,7 +1000,19 @@ export function AgentConnectionsSection({
                 : undefined
             }
             status={status}
-            action={action}
+            action={
+              <>
+                {action}
+                {workspace === null ? null : (
+                  <ResetHandoffSetupPrompt
+                    key={`${workspace.contentDir}:${target.id}`}
+                    target={target.id}
+                    projectDir={workspace.contentDir}
+                    displayName={displayName}
+                  />
+                )}
+              </>
+            }
             checked={enabled}
             disabled={isToggleLocked(presence, enabled)}
             ariaLabel={t`Enable ${displayName} Desktop`}

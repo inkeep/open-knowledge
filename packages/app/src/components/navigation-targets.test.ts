@@ -35,6 +35,19 @@ describe('resolveNavigationTarget', () => {
     });
   });
 
+  test('slug-collision navigation agrees for reversed page inventories', () => {
+    for (const order of [
+      ['a/b', 'a-b'],
+      ['a-b', 'a/b'],
+    ]) {
+      expect(resolveNavigationTarget('A B', { pages: new Set(order) })).toEqual({
+        kind: 'doc',
+        target: 'a-b',
+        docName: 'a-b',
+      });
+    }
+  });
+
   test('resolves managed-artifact docs as real doc targets (never missing)', () => {
     const docName = '__skill__/global/foo';
     expect(resolveNavigationTarget(docName, { pages: new Set() })).toEqual({
@@ -159,7 +172,7 @@ describe('resolveNavigationTarget', () => {
     });
   });
 
-  test('an extension-less page outranks a qualified entry for the same stem', () => {
+  test('an exact dotted identity outranks the extension-less page for the same stem', () => {
     const resolved = resolveNavigationTarget('docs/guide.md', {
       pages: new Set(['docs/guide.md', 'docs/guide.mdx', 'docs/guide']),
       folderPaths: new Set(['docs']),
@@ -167,8 +180,8 @@ describe('resolveNavigationTarget', () => {
 
     expect(resolved).toEqual({
       kind: 'doc',
-      target: 'docs/guide',
-      docName: 'docs/guide',
+      target: 'docs/guide.md',
+      docName: 'docs/guide.md',
     });
   });
 
@@ -822,7 +835,7 @@ describe('editable text docs resolve as doc targets', () => {
   });
 });
 
-describe('markdown-extension normalization keeps one room per file', () => {
+describe('markdown-extension normalization preserves document identity', () => {
   test('a managed-artifact skill reference normalizes before the early return', () => {
     expect(
       resolveNavigationTarget('__skill__/global/my-skill/references/guide.md', {
@@ -846,20 +859,24 @@ describe('markdown-extension normalization keeps one room per file', () => {
     });
   });
 
-  test('the stripped twin wins over an extension-qualified index entry', () => {
+  test('an exact dotted identity wins over its stripped twin', () => {
     const pages = new Set(['specs/demo/SPEC', 'specs/demo/SPEC.md']);
     expect(resolveNavigationTarget('specs/demo/SPEC.md', { pages })).toEqual({
       kind: 'doc',
-      target: 'specs/demo/SPEC',
-      docName: 'specs/demo/SPEC',
+      target: 'specs/demo/SPEC.md',
+      docName: 'specs/demo/SPEC.md',
     });
   });
 
-  test('repeated extensions collapse to the stem', () => {
+  test('only one terminal Markdown extension is removed', () => {
     const pages = new Set(['notes/idea']);
     expect(resolveNavigationTarget('notes/idea.md.md', { pages })).toMatchObject({
+      kind: 'missing',
+    });
+    pages.add('notes/idea.md');
+    expect(resolveNavigationTarget('notes/idea.md.md', { pages })).toMatchObject({
       kind: 'doc',
-      docName: 'notes/idea',
+      docName: 'notes/idea.md',
     });
   });
 

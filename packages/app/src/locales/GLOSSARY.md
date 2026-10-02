@@ -11,7 +11,7 @@ strings here are written by a coding agent following
 many sessions and models, so the vocabulary has to be pinned somewhere rather than re-derived
 each time.
 
-Eight nouns is deliberately small — under a hundred cells against ~2,800 catalog entries per
+Eight nouns is deliberately small — under a hundred cells against ~3,900 catalog entries per
 locale. It is the one artifact in this system short enough for a native speaker to review end
 to end, which is what makes it worth more than the same effort spread over the catalogs.
 That review, and which locales have actually had one, is [`REVIEW.md`](./REVIEW.md).
@@ -24,8 +24,9 @@ These carry through every locale byte-for-byte:
 - **Markdown**, **Git**, **GitHub**, **MCP**, **YAML**, **JSON**, **PATH** — proper nouns and
   format names.
 - **frontmatter** — names a Markdown construct, the way `<head>` names an HTML one. There is no
-  settled translation in any of the twelve locales, so twelve inventions is the likely outcome
-  of translating it. Gloss it on first use if a sentence needs the help; do not replace it.
+  settled translation in any of the thirteen locales, so thirteen inventions is the likely
+  outcome of translating it. Gloss it on first use if a sentence needs the help; do not replace
+  it.
 - **ICU placeholders** — `{name}`, `{count}`, `#` inside a plural. Renaming one silently breaks
   the substitution; the string compiles and renders the literal brace text.
 - **Command names, flags, and machine-readable output** — the CLI surface is permanently
@@ -37,8 +38,9 @@ Two adjectives recur across the connection and sync notices, and both invite a s
 rendering than the English carries. Settle them here rather than per-PR.
 
 - **safe** (as in *your changes are safe on this device*) may render as *safely saved* or
-  *safely stored* where the bare adjective reads stilted — `ko` 안전하게 보관됩니다, `zh-Hans`
-  已安全保存, `zh-Hant` 已安全儲存, `ar` محفوظة بأمان, `bn` নিরাপদে সংরক্ষিত, `ur` محفوظ. The
+  *safely stored* where the bare adjective reads stilted — `ko` 안전하게 보관됩니다, `pl` bezpiecznie
+  zapisane, `zh-Hans` 已安全保存, `zh-Hant` 已安全儲存, `ar` محفوظة بأمان, `bn` নিরাপদে সংরক্ষিত,
+  `ur` محفوظ. The
   stronger form is accurate: edits are durable in IndexedDB plus the replay outbox before any
   notice mentions them. Locales where the weaker adjective reads naturally (`es` a salvo,
   `fr` en sécurité, `hi` सुरक्षित, `id` aman, `pt-BR` seguras) keep it.
@@ -80,16 +82,16 @@ rendering than the English carries. Settle them here rather than per-PR.
 | checkpoint | نقطة تحقق | چیک پوائنٹ |
 | branch | فرع | برانچ |
 
-| Term | `ko` |
-| --- | --- |
-| document | 문서 |
-| folder | 폴더 |
-| workspace | 워크스페이스 |
-| knowledge base | 지식 베이스 |
-| wiki-link | 위키 링크 |
-| agent | 에이전트 |
-| checkpoint | 체크포인트 |
-| branch | 브랜치 |
+| Term | `ko` | `pl` |
+| --- | --- | --- |
+| document | 문서 | dokument |
+| folder | 폴더 | folder |
+| workspace | 워크스페이스 | obszar roboczy |
+| knowledge base | 지식 베이스 | baza wiedzy |
+| wiki-link | 위키 링크 | link wiki |
+| agent | 에이전트 | agent |
+| checkpoint | 체크포인트 | punkt kontrolny |
+| branch | 브랜치 | gałąź |
 
 ## Why these forms
 
@@ -98,7 +100,8 @@ rendering than the English carries. Settle them here rather than per-PR.
   `zh-Hant` takes 文件 (the Taiwanese reading of *document*) where `zh-Hans` takes 文档 — the
   two scripts genuinely diverge here, which is the whole reason they are separate catalogs.
 - **branch** takes the form each language's own Git translation uses (`rama`, `branche`, `ramo`,
-  `cabang`, 分支), so a user reading OpenKnowledge and reading `git status` sees one word.
+  `cabang`, `gałąź`, 分支), so a user reading OpenKnowledge and reading `git status` sees one
+  word.
 - **agent** means an AI agent, not a network proxy. `zh-Hans` 智能体 and `zh-Hant` 智慧代理 are
   the current AI-context readings; 代理 alone would read as *proxy*.
 - **checkpoint** is a saved state, not a security post — Arabic takes نقطة تحقق rather than

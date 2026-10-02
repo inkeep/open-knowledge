@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import {
+  AUDIT_EMPTY_SCOPE_WARNING,
   deriveValidationRunSources,
   fixDocument,
   type LintDiagnostic,
@@ -16,6 +17,7 @@ import { SymlinkEscapeError } from '../apply-managed-rename.ts';
 import { createContentFilter } from '../content-filter.ts';
 import { isWithinContentDir } from '../content-path.ts';
 import { AuditCache } from './audit-cache.ts';
+import { type AuditScope, resolveAuditScope } from './audit-scope.ts';
 import { unmatchedAppliesToProblems } from './frontmatter-schemas.ts';
 import { composeFrontmatterSchemasConfig, resolveEffectiveLinterConfig } from './resolve-config.ts';
 
@@ -54,6 +56,7 @@ export interface AuditOptions {
   liveSourceFor?: (docRelPath: string) => string | null;
   cache?: AuditCache;
   auditGeneration?: () => string;
+  resolvedScope?: AuditScope;
 }
 
 export async function lintDoc(
@@ -168,6 +171,8 @@ export function collectDocFiles(opts: {
     }
   }
 
+  const scopeRel = relative(contentDir, scopeDir ?? contentDir);
+  if (scopeRel !== '' && filter.isDirExcluded(scopeRel)) return [];
   walk(scopeDir ?? contentDir);
   return docFiles;
 }
@@ -181,22 +186,17 @@ export async function auditProject(
   const startGeneration = auditGeneration?.();
 
   const docFiles: string[] = [];
-  const scope = resolveScope(targetPath, contentDir);
-  const scopeRel = relative(contentDir, scope.path);
-  if (scopeRel.startsWith('..') || isAbsolute(scopeRel)) {
-    warnings.push(`refusing audit scope outside the content directory: ${targetPath ?? ''}`);
+  let scanIncomplete = false;
+  const scopeWarning = auditScopeWarning(
+    opts.resolvedScope ?? { path: resolve(contentDir, targetPath ?? '') },
+    contentDir,
+    targetPath,
+  );
+  if (scopeWarning !== undefined) {
+    warnings.push(scopeWarning);
     return { files: [], fileCount: 0, errorCount: 0, warningCount: 0, warnings, ran: [] };
   }
-  if (scopeRel.split('/').some((segment) => segment.startsWith('.'))) {
-    warnings.push(`refusing audit scope under a hidden path segment: ${targetPath ?? ''}`);
-    return { files: [], fileCount: 0, errorCount: 0, warningCount: 0, warnings, ran: [] };
-  }
-  try {
-    if (!isWithinContentDir(realpathSync(scope.path), realpathSync(contentDir))) {
-      warnings.push(`symlink-escape: audit scope resolves outside the content directory`);
-      return { files: [], fileCount: 0, errorCount: 0, warningCount: 0, warnings, ran: [] };
-    }
-  } catch {}
+  const scope = opts.resolvedScope ?? resolveScope(targetPath, contentDir);
   if (scope.kind === 'file') {
     docFiles.push(relative(contentDir, scope.path));
   } else {
@@ -205,12 +205,16 @@ export async function auditProject(
         projectDir,
         contentDir,
         scopeDir: scope.path,
-        onWarning: (warning) => warnings.push(warning),
+        onWarning: (warning) => {
+          scanIncomplete = true;
+          warnings.push(warning);
+        },
       }),
     );
   }
 
   docFiles.sort();
+  if (docFiles.length === 0 && !scanIncomplete) warnings.push(AUDIT_EMPTY_SCOPE_WARNING);
 
   const files: FileLintResult[] = [];
   const pluginFailures: LintPluginFailure[] = [];
@@ -225,7 +229,7 @@ export async function auditProject(
   const auditBase = composeFrontmatterSchemasConfig(projectDir, baseConfig, onConfigProblem);
   ran = deriveValidationRunSources(auditBase, { mode: 'lint' });
   const fmSlice = auditBase.plugins.frontmatter;
-  if ((targetPath === undefined || targetPath === '') && fmSlice.enabled) {
+  if (scope.kind === 'dir' && relative(contentDir, scope.path) === '' && fmSlice.enabled) {
     for (const problem of unmatchedAppliesToProblems(fmSlice.schemas, docFiles)) {
       onConfigProblem(problem);
     }
@@ -290,15 +294,52 @@ function resolveCanonicalDocPath(abs: string, contentDir: string): string {
   return canonical;
 }
 
-type Scope = { kind: 'dir' | 'file'; path: string };
-
-export function resolveScope(targetPath: string | undefined, contentDir: string): Scope {
-  if (targetPath === undefined || targetPath === '') return { kind: 'dir', path: contentDir };
-  const abs = isAbsolute(targetPath) ? targetPath : resolve(contentDir, targetPath);
+export function auditScopeWarning(
+  scope: Pick<AuditScope, 'path'>,
+  contentDir: string,
+  targetPath: string | undefined,
+): string | undefined {
+  const scopeRel = relative(contentDir, scope.path);
+  if (scopeRel.startsWith('..') || isAbsolute(scopeRel)) {
+    return `refusing audit scope outside the content directory: ${targetPath ?? ''}`;
+  }
+  if (scopeRel.split('/').some((segment) => segment.startsWith('.'))) {
+    return `refusing audit scope under a hidden path segment: ${targetPath ?? ''}`;
+  }
+  let canonicalContent: string;
   try {
-    if (statSync(abs).isFile()) return { kind: 'file', path: abs };
-  } catch {}
-  return { kind: 'dir', path: abs };
+    canonicalContent = realpathSync(contentDir);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      (error.code === 'ENOENT' || error.code === 'ENOTDIR')
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
+  let candidate = scope.path;
+  for (;;) {
+    try {
+      if (!isWithinContentDir(realpathSync(candidate), canonicalContent)) {
+        return 'symlink-escape: audit scope resolves outside the content directory';
+      }
+      return undefined;
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error)) throw error;
+      if (error.code === 'ELOOP' || error.code === 'ENAMETOOLONG') return undefined;
+      if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error;
+      const parent = dirname(candidate);
+      if (parent === candidate) return undefined;
+      candidate = parent;
+    }
+  }
+}
+
+export function resolveScope(targetPath: string | undefined, contentDir: string): AuditScope {
+  const resolution = resolveAuditScope(targetPath, contentDir);
+  return resolution.ok ? resolution.scope : { kind: 'dir', path: resolution.path };
 }
 
 function isDocFile(name: string): boolean {

@@ -1067,6 +1067,23 @@ describe('ProblemsPanel — project scope', () => {
     );
   });
 
+  test('an empty-scope notice is informational rather than a configuration warning', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({
+        fileCount: 0,
+        warnings: ['No documents were checked: this scope contains no admitted documents.'],
+      });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    const notice = await screen.findByText(
+      'No documents were checked: this scope contains no admitted documents.',
+    );
+    expect(notice.closest('[role="status"]')).not.toBeNull();
+    expect(screen.queryByRole('list', { name: 'Configuration warnings' })).toBeNull();
+    expect(screen.queryByText(/No problems across/)).toBeNull();
+  });
+
   test('project audit shows a content-free note when reserved-log links are suppressed', async () => {
     runLintAuditImpl = async () =>
       auditResult({

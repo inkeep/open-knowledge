@@ -1,5 +1,5 @@
-import { globSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { existsSync, globSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { basename, join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
@@ -134,6 +134,8 @@ const NON_CONTENT_ORIGINS: Record<string, string> = {
     'The uninstall-feedback submission source label, not a CRDT transaction origin.',
   LAUNCHER_FREE_ORIGIN:
     'The default provenance stamp on a menu-action dispatch, describing whether the surface that dispatched dismisses itself. It rides the menu-action bus, never a Y.Doc transaction.',
+  OPAQUE_ORIGIN_REFUSAL_DETAIL:
+    'The problem-details text the server sends when it refuses a null or file: HTTP Origin header, never a Y.Doc transaction origin.',
 };
 
 const HERE = import.meta.dirname;
@@ -198,6 +200,12 @@ function contractFileHits(file: string): string[] {
       join(root, hit),
     ),
   );
+}
+
+function missingSearchRoots(roots: readonly string[]): string[] {
+  return roots
+    .filter((root) => !existsSync(root))
+    .map((root) => relative(join(HERE, '../../..'), root));
 }
 
 function enumerateOriginConstants(): string[] {
@@ -274,6 +282,17 @@ describe('origin-undoability sweep', () => {
   test('the contract resolver catches an invented file (planted positive)', () => {
     expect(contractFileHits('__never_a_real__.test.ts')).toEqual([]);
     expect(contractFileHits(basename(import.meta.filename))).toHaveLength(1);
+  });
+
+  test('every contract search root exists, and a missing one is named (planted positive)', () => {
+    expect(
+      missingSearchRoots(CONTRACT_SEARCH_ROOTS),
+      'contract search roots that do not exist: the resolver would stop searching them, so point ' +
+        'CONTRACT_SEARCH_ROOTS at where those sources moved',
+    ).toEqual([]);
+    expect(
+      missingSearchRoots([...CONTRACT_SEARCH_ROOTS, join(HERE, '__no_such_search_root__')]),
+    ).toEqual([join('app', 'tests', 'integration', '__no_such_search_root__')]);
   });
 
   test('the reserved machine-merge undo row is documented for the conflict-spec extension point', () => {

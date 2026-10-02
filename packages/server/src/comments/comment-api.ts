@@ -11,7 +11,11 @@ import {
 import { z } from 'zod';
 import { extractActorIdentity } from '../extract-actor-identity.ts';
 import { errorResponse } from '../http/error-response.ts';
-import { readBoundedJsonBody } from '../http/request-validation.ts';
+import {
+  readBoundedJsonBody,
+  respondUnsupportedMediaType,
+  UnsupportedMediaTypeError,
+} from '../http/request-validation.ts';
 import { successResponse } from '../http/success-response.ts';
 import {
   type CommentService,
@@ -294,7 +298,11 @@ async function parseBody<T extends z.ZodType>(
   let raw: Buffer;
   try {
     raw = await readBoundedJsonBody(req, BODY_LIMITS);
-  } catch {
+  } catch (err) {
+    if (err instanceof UnsupportedMediaTypeError) {
+      respondUnsupportedMediaType(res, HANDLER);
+      return null;
+    }
     badRequest(res, 'Request body could not be read.');
     return null;
   }

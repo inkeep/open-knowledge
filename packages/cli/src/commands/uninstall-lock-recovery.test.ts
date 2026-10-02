@@ -17,6 +17,7 @@ import {
   scanLockProcesses,
 } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { hasLsof } from '../../../../test-support/capabilities.test-helper.ts';
 import {
   buildDeinitPlan,
   buildUninstallPlan,
@@ -252,14 +253,15 @@ describe.skipIf(process.platform === 'win32')('uninstall lock recovery in an iso
     expect(readFileSync(join(project, 'notes.md'), 'utf8')).toBe('# Keep');
   });
 
-  test.each([
+  test.for([
     { associated: false, unrecorded: false },
     { associated: true, unrecorded: false },
     { associated: false, unrecorded: true },
     { associated: true, unrecorded: true },
   ])(
     'retains a live foreign or unverified lock (associated=$associated, unrecorded=$unrecorded)',
-    async ({ associated, unrecorded }) => {
+    async ({ associated, unrecorded }, ctx) => {
+      ctx.skip(!hasLsof, 'the product inspects processes with lsof');
       const home = join(root, 'home');
       const settings = join(home, '.ok', 'config.yml');
       const project = join(root, 'foreign-project');

@@ -12,6 +12,8 @@ import {
   rawRequest,
 } from './composition-rig.test-helper.ts';
 
+const LOOPBACK_ORIGIN = 'http://localhost:5173';
+
 const SKILL_METHODS = [
   ['/api/skills', 'GET'],
   ['/api/skill', 'GET, PUT, POST, DELETE'],
@@ -91,24 +93,27 @@ describe('skills contracts over the composed listener', () => {
     request.destroy();
   });
 
-  test('null Origin reaches catalog install and import validation but is refused by handoff admission', async () => {
-    for (const path of ['/api/skill/install', '/api/skill/import']) {
-      const catalog = await rawRequest(server.port, path, {
+  test('null Origin is refused by the shared origin gate on every write, JSON included', async () => {
+    for (const path of ['/api/skill/install', '/api/skill/import', '/api/install-skill']) {
+      const res = await rawRequest(server.port, path, {
         method: 'POST',
         headers: { Origin: 'null', 'Content-Type': 'application/json' },
         body: '{}',
       });
-      expect(catalog.status, `${path}: ${catalog.body}`).toBe(400);
-      expect(parseProblem(catalog.body).type).toBe('urn:ok:error:invalid-request');
-      expect(parseProblem(catalog.body).title).toBe('Request body is invalid.');
+      expect(res.status, `${path}: ${res.body}`).toBe(403);
+      expect(parseProblem(res.body).type, path).toBe('urn:ok:error:invalid-origin');
+      expect(res.headers['access-control-allow-origin'], path).toBeUndefined();
     }
-    const handoff = await rawRequest(server.port, '/api/install-skill', {
-      method: 'POST',
-      headers: { Origin: 'null', 'Content-Type': 'application/json' },
-      body: '{}',
-    });
-    expect(handoff.status, handoff.body).toBe(403);
-    expect(parseProblem(handoff.body).type).toBe('urn:ok:error:invalid-origin');
+    for (const path of ['/api/skill/install', '/api/skill/import']) {
+      const loopback = await rawRequest(server.port, path, {
+        method: 'POST',
+        headers: { Origin: LOOPBACK_ORIGIN, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      expect(loopback.status, `${path}: ${loopback.body}`).toBe(400);
+      expect(parseProblem(loopback.body).type, path).toBe('urn:ok:error:invalid-request');
+      expect(parseProblem(loopback.body).title, path).toBe('Request body is invalid.');
+    }
   });
 
   test('both install routes accept consented external origins before parsing malformed JSON', async () => {

@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
+import { pid1Reaps } from '../../../../test-support/capabilities.test-helper.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI_ENTRY = join(HERE, '..', '..', 'dist', 'cli.mjs');
@@ -63,7 +64,8 @@ describe('ok mcp orphan reaping (PRD-6917)', () => {
     }
   });
 
-  test('ok mcp exits when its launching parent dies even if stdin never EOFs (no orphan to launchd)', async () => {
+  test('ok mcp exits when its launching parent dies even if stdin never EOFs (no orphan to launchd)', async (ctx) => {
+    ctx.skip(!pid1Reaps, 'PID 1 must reap the orphans this test waits on');
     const dir = mkdtempSync(join(tmpdir(), 'ok-orphan-reaping-'));
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
 

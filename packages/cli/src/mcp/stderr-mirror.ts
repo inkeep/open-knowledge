@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 
 const MAX_AGE_DAYS = 7;
 const MAX_TOTAL_BYTES = 45 * 1024 * 1024;
@@ -9,7 +9,7 @@ const MAX_CONSECUTIVE_FAILURES = 5;
 const MIRROR_FILE_PATTERN = /^mcp\.\d{4}-\d{2}-\d{2}\.log$/;
 
 function defaultMcpLogsDir(): string {
-  return join(homedir(), '.ok', 'logs');
+  return join(okUserHomeDir(), 'logs');
 }
 
 export function pruneMirrorLogs(logsDir: string, now: () => Date = () => new Date()): void {

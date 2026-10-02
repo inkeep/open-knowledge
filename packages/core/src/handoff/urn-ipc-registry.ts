@@ -34,6 +34,7 @@ export const URN_HTTP_ONLY: ReadonlySet<ProblemType> = new Set<ProblemType>([
   'urn:ok:error:storage-error',
   'urn:ok:error:no-file-received',
   'urn:ok:error:method-not-allowed',
+  'urn:ok:error:unsupported-media-type',
   'urn:ok:error:payload-too-large',
   'urn:ok:error:request-timeout',
   'urn:ok:error:internal-server-error',

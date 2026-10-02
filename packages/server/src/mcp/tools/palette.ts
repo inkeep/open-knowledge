@@ -11,22 +11,10 @@ import type { ConfigOrResolver, ServerInstance } from './shared.ts';
 import { outputSchemaWithText, ROUTED_CWD_DESCRIPTION, textPlusStructured } from './shared.ts';
 
 const DESCRIPTION = [
-  '[Operates on registry data; no running OK server required] Return the OK authoring palette so a generated document reads as one coherent, themed artifact.',
-  '',
-  'Three sections:',
-  '- `components` — the **markdown-native forms** OK auto-promotes into themed canonical components at parse time. Write `> [!NOTE]` (not `<Callout>`), `<details>` (not `<Accordion>`), ` ```mermaid `, `$x$`. Each entry carries a copy-ready `example` + `guidance`.',
-  '- `embedPatterns` — copy-ready ` ```html preview ` starters (chart, stat cards, custom SVG, interactive control) already wired to the theme tokens, so an embed tracks light/dark with no hand-picked colors.',
-  '- `tokens` — the CSS custom properties injected into every preview iframe; reference them as `var(--chart-1)`, `var(--foreground)`, … inside an `html preview` embed. **Inside SVG, route theme tokens through `style="..."` rather than presentation attributes** — `<circle style="fill: var(--chart-1)">` works; `<circle fill="var(--chart-1)">` silently falls back to black in Safari / older Chromium because CSS `var()` is not a valid SVG `<paint>` value per the W3C spec.',
-  '',
-  '**These delimiters are live syntax in ordinary prose, not just inside the constructs above:** `==highlight==`, `$inline math$` / `$$block math$$`, `%%comment%%` and `<!-- comment -->` (both hidden from readers), `~~strikethrough~~`. An accidental pair silently formats — or, for the comment forms, HIDES — the text between it. To keep a pair literal, either wrap it in an inline code span (`` `==x==` ``, `` `$5` ``), which always works and reads as code, or backslash-escape either delimiter (`\\==x\\==`, `\\$5`, `\\%\\%note\\%\\%`, `\\<!-- note -->`) to keep it as running prose. `~~` is the exception: escape both tildes (`\\~\\~x\\~\\~`), because a one-sided `\\~~x~~` renders right but gets rewritten to the two-sided form on save.',
-  '',
-  'External resources load directly: the preview iframe has open network access, so an embed can load external stylesheets, `fetch` live data, or pull map tiles / remote images / web fonts over `https:`. The iframe is a sandboxed null-origin frame — an embed can reach the network but never the knowledge base, cookies, or auth.',
-  '',
-  'Pass `components: [ids]` to ALSO get the full JSX-form prop schema for specific canonicals (e.g. `palette({ components: ["Callout", "Tabs"] })`) — merged from the former `get_components`.',
-  '',
-  '**Parameters:**',
-  '- `components` (optional) — Canonical ids to expand to full JSX-form detail (max 32). Case-sensitive (`Callout` not `callout`). Returns `componentDetails` + `notFound`.',
-  '- `cwd` (optional) — Project root (see `cwd` description below).',
+  'Read the authoring palette: markdown-native components/examples/guidance, themed html preview embedPatterns (charts, stat cards, SVG, interactive controls), and CSS tokens. No running OK server needed. Optional components:[ids] adds full JSX props in componentDetails plus notFound; ids are case-sensitive, max 32. cwd selects project.',
+  'Prefer native forms: > [!NOTE], <details>, mermaid fences, $math$. For interactive HTML/JS/CSS use html preview starters and var(--chart-1)/var(--foreground) tokens for light/dark themes. Inside SVG use style="fill: var(--chart-1)", not a fill presentation attribute.',
+  'Delimiters are live even in ordinary prose: ==highlight==, $inline math$/$$block math$$, %%comment%% and <!-- comment --> (HIDES text), ~~strikethrough~~. Keep literal pairs in an inline code span or backslash-escape either delimiter. For ~~ escape BOTH tildes on both sides; one-sided escaping is rewritten on save.',
+  'Preview iframes have open network access for external HTTPS resources/fetch/fonts/maps. They are sandboxed null-origin frames and cannot access the knowledge base, cookies or auth.',
 ].join('\n');
 
 interface GetAuthoringPaletteDeps {

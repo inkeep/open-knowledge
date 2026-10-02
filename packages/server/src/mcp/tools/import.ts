@@ -34,16 +34,8 @@ const KNOWN_CODES: ReadonlySet<string> = new Set<string>([
 ]);
 
 const DESCRIPTION = [
-  '[Requires: Hocuspocus server] Import a skill into this project as versioned content.',
-  '',
-  'Fetches an agentskills.io / skills.sh skill-dir from a `source` and writes it into the vendor-neutral `.agents/skills/<name>/` hub — where it gains history, search, attribution, and cross-harness projection (via `install`) for free. Provenance (source, commit, content hash, publisher) is recorded in `.ok/skills-lock.json`. Scripts are imported as content and are NEVER executed. `add` says where it goes — an import always places the skill somewhere, so `install` afterwards is only for changing WHERE it lives (add/remove/convert/source).',
-  '',
-  '**Parameters:**',
-  '- `source` — paste the full skills.sh skill-page URL (`https://www.skills.sh/<owner>/<repo>/<skill>`, or `https://www.skills.sh/site/<hostname>/<skill>` for a website catalog), or pass `owner/repo[/subpath]` (GitHub), a git URL, or a local / `file://` path.',
-  '- `skill` — Pick ONE skill when the source bundles several.',
-  '- `scope` — `project` (default, versioned + shared) or `global` (user-global, unversioned).',
-  '',
-  'On a name collision with an existing skill the import lands under `<name>-imported` (never overwrites). An identical re-import (same content hash) is a no-op.',
+  'Import an external agentskills.io/skills.sh skill as managed content. Requires the Hocuspocus server. source accepts a full skills.sh page URL (including website catalogs), owner/repo[/subpath], git URL, or local/file:// path. skill picks one from a multi-skill source. scope: project (default, versioned/shared) or global (user-wide, unversioned).',
+  'Writes the .agents/skills/<name>/ hub with provenance in .ok/skills-lock.json. Scripts are NEVER executed. add selects editor locations; import always places the skill somewhere. Use install later to change placement/form/source. Name collisions use <name>-imported, never overwrite; identical content-hash re-import is a no-op.',
 ].join('\n');
 
 interface ImportDeps {
@@ -77,7 +69,7 @@ export function register(server: ServerInstance, deps: ImportDeps): void {
           .enum(['copy', 'link'])
           .optional()
           .describe(
-            'The form for the locations in `add`. "link": a symlink to the source. "copy": an independent folder, auto-refreshed until hand-edited. Omit to follow the form the skill already uses.',
+            'The form for the locations in `add`. "link": a symlink to the source. "copy": an independent folder, refreshed on watcher/startup sync while unedited; hand edits fork it. Omit to follow the form the skill already uses.',
           ),
         scope: SkillScopeArg.optional(),
         summary: summaryArgSchema,

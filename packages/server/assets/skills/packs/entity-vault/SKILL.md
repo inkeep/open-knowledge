@@ -36,7 +36,7 @@ Per the platform skill, prefer **standard markdown links** for new dossiers, and
 Two deltas from the platform default, both GBrain-specific:
 
 - **Don't use the leading-slash root-absolute form** (`[Alice](/people/alice-chen.md)`). OK resolves it fine, but GBrain reads a leading `/` as an absolute filesystem path and rejects it — use a relative path. (GBrain also accepts a bare `[Alice](people/alice-chen.md)`, but from a subfolder OK resolves that *source-dir-relative* — `meetings/people/alice-chen` — and reports it broken, so stick to the `../`-correct relative form, which both accept.)
-- **Path-qualified wikilinks are first-class here**, not legacy: `[[people/alice-chen|Alice Chen]]` resolves vault-root from any folder (no `../` to count), is validated by `brokenLinks` like any link, and imports into GBrain. Keep them **extensionless** (`[[people/alice-chen]]`, never `[[people/alice-chen.md]]` — the `.md` makes it resolve to a nonexistent doc). A *bare* `[[note-name]]` with no folder is ambiguous (resolves only if GBrain's basename-globbing is on) — reserve it for Obsidian migration.
+- **Path-qualified wikilinks are first-class here**, not legacy: `[[people/alice-chen|Alice Chen]]` resolves vault-root from any folder (no `../` to count), is validated by `brokenLinks` like any link, and imports into GBrain. Prefer **extensionless** targets (`[[people/alice-chen]]`) for a consistent wiki-link style; OK also resolves explicit `.md` and `.mdx` suffixes. A *bare* `[[note-name]]` with no folder is ambiguous (resolves only if GBrain's basename-globbing is on) — reserve it for Obsidian migration.
 
 ## Agent behaviors
 

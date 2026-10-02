@@ -1,10 +1,10 @@
-// FIXTURE — drives `cst-pm-handler-todo-stub.test.ts` via shell-out
-// to `pnpm exec oxlint`. Not part of the main lint: `__fixtures__/` is in `oxlint.config.ts#ignorePatterns`,
+// FIXTURE — drives `cst-pm-handler-todo-stub.uncached.test.mjs` via shell-out
+// to oxlint. Not part of the main lint: `__fixtures__/` is in `oxlint.config.ts#ignorePatterns`,
 // and `__fixtures__/oxlint.fixtures.json` re-enables the rules for the test.
 //
 // 4 positive cases (deliberate codemod-stub bodies — rule must fire) +
 // 4 negative cases (filled-in bodies + non-handler error throws that must
-// NOT fire). Exact-equality (`toBe(4)`) in the test catches both
+// NOT fire). Exact-equality (the 4-position list) in the test catches both
 // false-negative regressions (drop below 4) and false-positive widenings
 // (above 4).
 //

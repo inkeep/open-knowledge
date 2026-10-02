@@ -1,11 +1,11 @@
-// FIXTURE — drives `no-demoted-dialog-confirm.test.ts` via shell-out to
-// `pnpm exec oxlint`. Not part of the main lint: `__fixtures__/` is in
+// FIXTURE — drives `no-demoted-dialog-confirm.uncached.test.mjs` via shell-out to
+// oxlint. Not part of the main lint: `__fixtures__/` is in
 // `oxlint.config.ts#ignorePatterns`, and `__fixtures__/oxlint.fixtures.json`
 // re-enables the rules for the test.
 //
 // Three positive cases (deliberate violations — rule must fire) + four
 // negative cases (clean usage that must NOT fire). Exact-equality
-// (`toBe(3)`) in the test catches both false-negative regressions (drop
+// (the 3-position list) in the test catches both false-negative regressions (drop
 // below 3) and false-positive widenings (above 3).
 
 import { AlertDialogFooter } from '@/components/ui/alert-dialog';

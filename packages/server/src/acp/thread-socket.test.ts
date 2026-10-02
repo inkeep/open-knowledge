@@ -5,7 +5,7 @@ import type {
   ThreadEvent,
   ThreadServerFrame,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, onTestFailed, test } from 'vitest';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { getLogger } from '../logger.ts';
 import { AcpPermissionStore } from './permissions.ts';
@@ -107,6 +107,10 @@ interface FakeSocket {
   frames: ThreadServerFrame[];
   emit(raw: string): void;
   close(): void;
+  nextFrame<T extends ThreadServerFrame['op']>(
+    op: T,
+    matches?: (frame: Extract<ThreadServerFrame, { op: T }>) => boolean,
+  ): Promise<Extract<ThreadServerFrame, { op: T }>>;
   awaitFrame<T extends ThreadServerFrame['op']>(
     op: T,
     ms?: number,
@@ -115,10 +119,12 @@ interface FakeSocket {
 
 function attachFakeSocket(manager: AcpThreadManager): FakeSocket {
   const frames: ThreadServerFrame[] = [];
+  const frameListeners = new Set<(frame: ThreadServerFrame) => void>();
   const listeners = new Map<string, Array<(...args: unknown[]) => void>>();
   const ws = {
     send(data: string) {
       frames.push(JSON.parse(data) as ThreadServerFrame);
+      for (const listener of frameListeners) listener(frames[frames.length - 1]);
     },
     close() {},
     on(event: string, listener: (...args: unknown[]) => void) {
@@ -135,7 +141,33 @@ function attachFakeSocket(manager: AcpThreadManager): FakeSocket {
     },
     close: () => {
       for (const l of listeners.get('close') ?? []) l();
+      frameListeners.clear();
     },
+    nextFrame: (op, matches) =>
+      new Promise((resolve, reject) => {
+        let settled = false;
+        const listener = (frame: ThreadServerFrame) => {
+          if (frame.op === 'error' && op !== 'error') {
+            settled = true;
+            frameListeners.delete(listener);
+            reject(new Error(`${frame.code}: ${frame.message}`));
+            return;
+          }
+          if (frame.op !== op) return;
+          const matched = frame as Extract<ThreadServerFrame, { op: typeof op }>;
+          if (matches !== undefined && !matches(matched)) return;
+          settled = true;
+          frameListeners.delete(listener);
+          resolve(matched);
+        };
+        frameListeners.add(listener);
+        onTestFailed(() => {
+          if (settled) return;
+          throw new Error(
+            `no ${matches === undefined ? '' : 'matching '}'${op}' frame; saw: ${frames.map((f) => f.op).join(',')}`,
+          );
+        });
+      }),
     awaitFrame: async (op, ms = 20_000) => {
       const deadline = Date.now() + ms;
       let cursor = 0;
@@ -414,47 +446,39 @@ describe('/collab/thread socket — history ops', () => {
     const manager = makeManager(tmp(), localDir);
     await manager.init();
     const socket = attachFakeSocket(manager);
+    const createdFrame = socket.nextFrame('created');
+    const readyFrame = socket.nextFrame('info', (frame) => frame.info.status === 'ready');
 
     socket.emit(
       JSON.stringify({ op: 'create', reqId: 'c1', agent: { source: 'custom', id: 'fixture' } }),
     );
-    const created = await socket.awaitFrame('created');
+    const [created] = await Promise.all([createdFrame, readyFrame]);
     const threadId = created.info.threadId;
-    await waitStatus(manager, threadId, 'ready');
 
+    const liveRename = socket.nextFrame('info');
     socket.emit(JSON.stringify({ op: 'rename', threadId, title: 'Roadmap rewrite' }));
-    const deadline = Date.now() + 10_000;
-    while (manager.getInfo(threadId)?.title !== 'Roadmap rewrite') {
-      if (Date.now() > deadline) throw new Error('rename never applied');
-      await new Promise((r) => setTimeout(r, 25));
-    }
-    const infoFrames = socket.frames.filter(
-      (f): f is Extract<ThreadServerFrame, { op: 'info' }> => f.op === 'info',
-    );
-    expect(infoFrames.some((f) => f.info.title === 'Roadmap rewrite')).toBe(true);
+    expect((await liveRename).info.title).toBe('Roadmap rewrite');
 
+    const firstTurn = socket.nextFrame('events', (frame) =>
+      frame.events.some((event) => event.kind === 'turn_ended'),
+    );
     socket.emit(JSON.stringify({ op: 'prompt', threadId, reqId: 'p1', content: 'do the thing' }));
-    await waitStatus(manager, threadId, 'ready');
+    await firstTurn;
     expect(manager.getInfo(threadId)?.title).toBe('Roadmap rewrite');
 
+    const closed = socket.nextFrame('threads');
     socket.emit(JSON.stringify({ op: 'close', threadId }));
-    await waitStatus(manager, threadId, 'exited');
+    await closed;
     const lastActivityAt = manager.getInfo(threadId)?.lastActivityAt;
+    const archivedRename = socket.nextFrame('info');
     socket.emit(JSON.stringify({ op: 'rename', threadId, title: 'Archived and renamed' }));
-    const deadline2 = Date.now() + 10_000;
-    while (
-      !socket.frames.some(
-        (frame) => frame.op === 'info' && frame.info.title === 'Archived and renamed',
-      )
-    ) {
-      if (Date.now() > deadline2) throw new Error('archived rename never applied');
-      await new Promise((r) => setTimeout(r, 25));
-    }
+    expect((await archivedRename).info.title).toBe('Archived and renamed');
     expect(manager.getInfo(threadId)?.archived).toBe(true);
     expect(manager.getInfo(threadId)?.lastActivityAt).toBe(lastActivityAt);
 
+    const unknownThread = socket.nextFrame('error');
     socket.emit(JSON.stringify({ op: 'rename', threadId: 'nope', title: 'x' }));
-    const err = await socket.awaitFrame('error');
+    const err = await unknownThread;
     expect(err.code).toBe('unknown-thread');
     socket.close();
   }, 45_000);

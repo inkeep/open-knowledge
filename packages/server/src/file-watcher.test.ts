@@ -1,4 +1,12 @@
-import { mkdirSync, realpathSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -2139,5 +2147,127 @@ describe('structural-ignore discovery feeds the parcel prefix list', () => {
     } finally {
       await watcher.unsubscribe();
     }
+  });
+});
+
+describe('file index canonical path after a real rename', () => {
+  let tmpDir: string;
+  let contentDir: string;
+
+  beforeEach(async () => {
+    tmpDir = realpathSync(await mkdtemp(resolve(tmpdir(), 'ok-watcher-rename-')));
+    contentDir = resolve(tmpDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    lastKnownHash.clear();
+  });
+
+  afterEach(async () => {
+    lastKnownHash.clear();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  async function seedIndexFromStartupWalk() {
+    const handle = await startWatcher(contentDir, async () => {});
+    try {
+      return {
+        fileIndex: new Map(handle.getAllFilesIndex()),
+        folderIndex: new Map(handle.getFolderIndex()),
+        aliasMap: new Map(handle.getAliasMap()),
+      };
+    } finally {
+      await handle.unsubscribe();
+    }
+  }
+
+  function declareLastKnownContent(filePath: string): void {
+    updateLastKnownHash(filePath, contentHash(readFileSync(filePath, 'utf-8')));
+  }
+
+  function readOrErrnoCode(filePath: string): string {
+    try {
+      return readFileSync(filePath, 'utf-8');
+    } catch (e) {
+      return `<${(e as { code?: string }).code}: ${filePath}>`;
+    }
+  }
+
+  async function applyRawEvents(
+    seeded: Awaited<ReturnType<typeof seedIndexFromStartupWalk>>,
+    rawEvents: Array<{ type: 'create' | 'update' | 'delete'; path: string }>,
+  ): Promise<DiskEvent[]> {
+    const dispatched: DiskEvent[] = [];
+    await handleRawEvents(
+      rawEvents,
+      contentDir,
+      undefined,
+      seeded.fileIndex,
+      seeded.folderIndex,
+      async (event) => {
+        dispatched.push(event);
+      },
+      seeded.aliasMap,
+    );
+    return dispatched;
+  }
+
+  test.each([
+    { ext: '.md', stem: 'md-target', body: '# Unique real md rename target\n' },
+    { ext: '.mdx', stem: 'mdx-target', body: '# Unique real mdx rename target\n' },
+  ])(
+    'a real $ext rename publishes a path that reads the moved file',
+    async ({ ext, stem, body }) => {
+      mkdirSync(resolve(contentDir, 'z'), { recursive: true });
+      mkdirSync(resolve(contentDir, 'f'), { recursive: true });
+      const oldPath = resolve(contentDir, 'z', `${stem}${ext}`);
+      const newPath = resolve(contentDir, 'f', `${stem}${ext}`);
+      writeFileSync(oldPath, body, 'utf-8');
+
+      const seeded = await seedIndexFromStartupWalk();
+      expect(seeded.fileIndex.get(`z/${stem}`)?.canonicalPath).toBe(oldPath);
+
+      declareLastKnownContent(oldPath);
+      renameSync(oldPath, newPath);
+
+      const dispatched = await applyRawEvents(seeded, [
+        { type: 'delete', path: oldPath },
+        { type: 'create', path: newPath },
+      ]);
+
+      expect(dispatched.filter((event) => event.kind === 'rename')).toHaveLength(1);
+      expect(seeded.fileIndex.has(`z/${stem}`)).toBe(false);
+      const entry = seeded.fileIndex.get(`f/${stem}`);
+      expect(entry).toBeDefined();
+      expect(readOrErrnoCode(entry?.canonicalPath ?? '')).toBe(body);
+      expect(entry?.canonicalPath).toBe(newPath);
+    },
+  );
+
+  test('a rename landing on a symlink publishes the canonical target, not the alias path', async () => {
+    mkdirSync(resolve(contentDir, 'real'), { recursive: true });
+    mkdirSync(resolve(contentDir, 'z'), { recursive: true });
+    const body = '# Shared body carried by the alias\n';
+    const keeperPath = resolve(contentDir, 'real', 'keeper.md');
+    const originPath = resolve(contentDir, 'z', 'origin.md');
+    const aliasPath = resolve(contentDir, 'alias.md');
+    writeFileSync(keeperPath, body, 'utf-8');
+    writeFileSync(originPath, body, 'utf-8');
+
+    const seeded = await seedIndexFromStartupWalk();
+    expect(seeded.fileIndex.get('real/keeper')?.canonicalPath).toBe(keeperPath);
+
+    declareLastKnownContent(originPath);
+    unlinkSync(originPath);
+    symlinkSync(keeperPath, aliasPath);
+
+    const dispatched = await applyRawEvents(seeded, [
+      { type: 'delete', path: originPath },
+      { type: 'create', path: aliasPath },
+    ]);
+
+    expect(dispatched.filter((event) => event.kind === 'rename')).toHaveLength(1);
+    const entry = seeded.fileIndex.get('real/keeper');
+    expect(entry).toBeDefined();
+    expect(readOrErrnoCode(entry?.canonicalPath ?? '')).toBe(body);
+    expect(entry?.canonicalPath).toBe(keeperPath);
   });
 });

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
+import { connectMcpTestClient } from '../../../server/src/mcp/client.test-helper.ts';
 import {
   createTestClient,
   createTestServer,
@@ -74,6 +75,69 @@ async function expectHumanWriteRefused(
 }
 
 describe('concurrent whole-document replace refusal', () => {
+  test('two MCP sessions receive edit recovery while HTTP keeps its positional advice', async () => {
+    const server = await createTestServer({ debounce: 50, maxDebounce: 200 });
+    const clients: Awaited<ReturnType<typeof connectMcpTestClient>>[] = [];
+    try {
+      const first = await connectMcpTestClient(`${server.baseUrl}/mcp`, { name: 'writer-a' });
+      clients.push(first);
+      const second = await connectMcpTestClient(`${server.baseUrl}/mcp`, { name: 'writer-b' });
+      clients.push(second);
+      const docName = `mcp-race-${crypto.randomUUID()}`;
+      expect(
+        (
+          await first.callTool({
+            name: 'write',
+            arguments: { document: { path: docName, content: '# From A\n\nAlpha.\n' } },
+          })
+        ).isError,
+      ).toBeUndefined();
+      const refused = await second.callTool({
+        name: 'write',
+        arguments: { document: { path: docName, content: '# From B\n', position: 'replace' } },
+      });
+      expect(refused.isError).toBe(true);
+      expect(refused.content).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'text', text: expect.stringContaining('or use edit') }),
+        ]),
+      );
+      expect(refused.content).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'text',
+            text: expect.stringContaining('Retry after 3s.'),
+          }),
+        ]),
+      );
+      const http = await write(server, {
+        docName,
+        markdown: '# HTTP replacement\n',
+        position: 'replace',
+        agentId: 'http-writer',
+      });
+      expect(http.status).toBe(409);
+      expect(await http.json()).toMatchObject({
+        detail:
+          'Another writer changed this document recently. Wait a few seconds and retry. A write with position append or prepend is not refused.',
+      });
+      expect(
+        (
+          await second.callTool({
+            name: 'edit',
+            arguments: { document: { path: docName, find: 'Alpha.', replace: 'Targeted edit.' } },
+          })
+        ).isError,
+      ).toBeUndefined();
+      expect(
+        server.instance.hocuspocus.documents.get(docName)?.getText('source').toString(),
+      ).toContain('Targeted edit.');
+    } finally {
+      await Promise.all(clients.map((client) => client.close()));
+      await server.cleanup();
+    }
+  });
+
   test('two identified agents cannot replace the same document concurrently', async () => {
     const server = await createTestServer({ debounce: 50, maxDebounce: 200 });
     try {

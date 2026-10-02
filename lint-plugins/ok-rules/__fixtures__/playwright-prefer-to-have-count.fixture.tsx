@@ -1,11 +1,11 @@
-// FIXTURE — drives `playwright-prefer-to-have-count.test.ts` via shell-out to `pnpm exec oxlint`. Not part
+// FIXTURE — drives `playwright-prefer-to-have-count.uncached.test.mjs` via shell-out to oxlint. Not part
 // of the main lint: `__fixtures__/` is in `oxlint.config.ts#ignorePatterns`,
 // and `__fixtures__/oxlint.fixtures.json` re-enables the rules for the test.
 //
 // 3 positive cases (one-shot count reads — rule MUST fire) paired with
 // 5 negative cases (web-first / legitimately different shapes — rule
 // must NOT fire). The fixture-file test asserts the diagnostic count with
-// exact equality (`toBe(3)`) so both weakened-pattern and widened-pattern
+// exact equality (the 3-position list) so both weakened-pattern and widened-pattern
 // drift fail the gate.
 //
 // Deliberately NOT linted by the main `pnpm run lint` pass (`__fixtures__/` is in

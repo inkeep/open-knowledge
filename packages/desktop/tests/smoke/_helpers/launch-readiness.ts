@@ -497,6 +497,7 @@ export function formatBootGapLine(line: BootGapLine): string {
           'firstWaitAdvancements=none',
           'firstWaitLastAdvancementMs=none',
           'firstWaitSinceAdvancementMs=none',
+          'firstWaitRendererActivityMs=none',
         ]
       : [
           `firstWaitMs=${line.firstWait.elapsedMs}`,
@@ -510,6 +511,7 @@ export function formatBootGapLine(line: BootGapLine): string {
           )}`,
           `firstWaitLastAdvancementMs=${lastAdvancementMs(line.firstWait) ?? 'none'}`,
           `firstWaitSinceAdvancementMs=${sinceLastAdvancementMs(line.firstWait) ?? 'none'}`,
+          `firstWaitRendererActivityMs=${line.firstWait.rendererActivityMs ?? 'none'}`,
         ]),
   ];
   if (line.summary === undefined) {
@@ -531,6 +533,11 @@ export function formatBootGapLine(line: BootGapLine): string {
 
 export type ReadyLiveness = 'boot' | 'none';
 
+interface RendererObservation {
+  sequence: number;
+  receivedAt: number;
+}
+
 export interface ReadySignalOptions<T> {
   probe: () => Promise<T | undefined>;
   home: string;
@@ -547,7 +554,10 @@ export interface ReadySignalOptions<T> {
   onCapExtended?: (capMs: number) => void;
   onDeclaredGrant?: (grantMs: number) => void;
   onAdvancement?: (advancement: LaunchAdvancement) => void;
+  onRendererActivity?: (atMs: number) => void;
   onNewLaunch?: () => void;
+  onDeadlineArmed?: (deadlineAt: number) => void;
+  latestRendererObservation?: () => RendererObservation | undefined;
 }
 
 export interface ReadyDeadline {
@@ -600,6 +610,7 @@ function describeFailure(
   snapshot: BootLogSnapshot,
   probeError: ProbeErrorSummary | undefined,
   probePending: boolean,
+  rendererActivityMs: number | undefined,
 ): string {
   const phase = snapshot.lastEvent ?? '(no boot event recorded)';
   const state = classifyBootLog(snapshot);
@@ -618,10 +629,17 @@ function describeFailure(
             'declared is still open, and it had shown a window before this silence, so this ' +
             `silence after phase ${phase} means the app stopped making progress inside that ` +
             'open phase rather than before its first window.'
-          : probePending
+          : probePending || rendererActivityMs !== undefined
             ? `${what} did not arrive within ${elapsedMs}ms.`
             : `${what} did not arrive within ${elapsedMs}ms, though the app kept logging boot activity.`;
-  const lines = [head, `Last main-process boot event: ${phase}`, describeBootLog(snapshot)];
+  const lines = [
+    head,
+    `Last main-process boot event: ${phase}`,
+    ...(rendererActivityMs === undefined
+      ? []
+      : [`Last credited Page console activity: ${rendererActivityMs}ms into the wait.`]),
+    describeBootLog(snapshot),
+  ];
   lines.push(
     probeError === undefined
       ? 'Probe errors: none on any poll.'
@@ -682,6 +700,8 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
   let launchBootLine: string | undefined;
   let lastLegibleReadAt: number | undefined;
   let lastStageRenewalAt: number | undefined;
+  let lastRendererRenewalAt: number | undefined;
+  let lastRendererSequence = 0;
   let snapshot = emptyBootLog(bootLogDirFor(options.home));
   const explicitLiveness = options.liveness;
   let lastProbeError: string | undefined;
@@ -697,6 +717,7 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
   let deadline = startDeadline(capMs);
   let capReached = armCapReached(deadline);
   let armedCapMs = capMs;
+  options.onDeadlineArmed?.(startedAt + armedCapMs);
   let grantedBudget: DeclaredPhaseBudget | undefined;
   let derivedDeadlineAt: number | undefined;
   let probePendingAtGiveUp = false;
@@ -737,6 +758,7 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
           advancementSeen.clear();
           grantedBudget = undefined;
           derivedDeadlineAt = undefined;
+          lastRendererRenewalAt = undefined;
           if (armedCapMs !== capMs) {
             deadline.cancel();
             capElapsed = false;
@@ -744,6 +766,7 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
             armedCapMs = capMs;
             deadline = startDeadline(Math.max(startedAt + armedCapMs - now(), 0));
             capReached = armCapReached(deadline);
+            options.onDeadlineArmed?.(startedAt + armedCapMs);
           }
           options.onNewLaunch?.();
         }
@@ -770,6 +793,19 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
           options.onDeclaredGrant?.(derivedDeadlineAt - startedAt);
         }
       }
+      const rendererObservation =
+        explicitLiveness === 'none' ? undefined : options.latestRendererObservation?.();
+      if (
+        rendererObservation !== undefined &&
+        rendererObservation.sequence > lastRendererSequence &&
+        rendererObservation.receivedAt >= startedAt &&
+        rendererObservation.receivedAt <= startedAt + armedCapMs
+      ) {
+        lastRendererSequence = rendererObservation.sequence;
+        lastRendererRenewalAt = rendererObservation.receivedAt;
+        lastProgressAt = Math.max(lastProgressAt, rendererObservation.receivedAt);
+        options.onRendererActivity?.(lastRendererRenewalAt - startedAt);
+      }
       const effectiveCapMs = Math.min(
         readinessWorstCaseMs({ path: 'fork', capMs, stallMs }),
         Math.max(
@@ -781,6 +817,16 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
                 lastStageRenewalAt - startedAt + stallMs,
                 readinessWorstCaseMs({ path: 'packaged', capMs, stallMs }),
               ),
+          lastRendererRenewalAt === undefined
+            ? capMs
+            : Math.min(
+                lastRendererRenewalAt - startedAt + stallMs,
+                readinessWorstCaseMs({
+                  path: grantedBudget === undefined ? 'packaged' : 'fork',
+                  capMs,
+                  stallMs,
+                }),
+              ),
         ),
       );
       if (effectiveCapMs > armedCapMs) {
@@ -791,10 +837,13 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
         options.onCapExtended?.(armedCapMs);
         deadline = startDeadline(Math.max(startedAt + armedCapMs - now(), 0));
         capReached = armCapReached(deadline);
+        options.onDeadlineArmed?.(startedAt + armedCapMs);
       }
 
       const probeError: ProbeErrorSummary | undefined =
         lastProbeError === undefined ? undefined : { last: lastProbeError, threwPolls, totalPolls };
+      const rendererActivityMs =
+        lastRendererRenewalAt === undefined ? undefined : lastRendererRenewalAt - startedAt;
       const elapsed = now() - startedAt;
       const probePending = probePendingAtGiveUp || options.isProbePending?.() === true;
       const stallArmed =
@@ -813,6 +862,7 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
             snapshot,
             probeError,
             probePending,
+            rendererActivityMs,
           ),
           giveUpReason('stall', snapshot),
         );
@@ -827,6 +877,7 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
             snapshot,
             probeError,
             probePending,
+            rendererActivityMs,
           ),
           giveUpReason('cap', snapshot),
         );
@@ -840,8 +891,19 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
 
 export type WindowMode = 'editor' | 'navigator' | 'terminal' | 'note';
 
-interface ModeProbePage {
+interface ModeProbePageCore {
   evaluate(fn: () => string | undefined): Promise<string | undefined>;
+}
+
+interface ConsoleObservingPage extends ModeProbePageCore {
+  on(event: 'console', listener: () => void): unknown;
+  off(event: 'console', listener: () => void): unknown;
+}
+
+type ModeProbePage = ConsoleObservingPage | (ModeProbePageCore & { on?: never; off?: never });
+
+function observesConsole(page: ModeProbePage): page is ConsoleObservingPage {
+  return typeof page.on === 'function';
 }
 
 interface ModeProbeApp<TPage> {
@@ -855,6 +917,9 @@ type ModeProbeResult =
 interface ModeProbeState {
   pending: boolean;
   result: ModeProbeResult | undefined;
+  lastMode: string | undefined;
+  observation: RendererObservation | undefined;
+  detachConsole: (() => void) | undefined;
 }
 
 const HOME_BY_APP = new WeakMap<object, string>();
@@ -878,6 +943,7 @@ export interface ReadyWaitRecord {
   elapsedMs: number;
   capMs: number;
   declaredGrantMs?: number;
+  rendererActivityMs?: number;
   requestedCapMs: number;
   gaveUp: boolean;
   reason: ReadyWaitGiveUpReason;
@@ -963,12 +1029,23 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
   const capMs = options.capMs ?? BOOT_LOG_CAP_MS;
   let decidingCapMs = capMs;
   let declaredGrantMs: number | undefined;
+  let rendererActivityMs: number | undefined;
   const startedAt = Date.now();
-  const probeStates = new WeakMap<TPage, ModeProbeState>();
+  const probeStates = new Map<TPage, ModeProbeState>();
+  let rendererSequence = 0;
+  let rendererDeadlineAt = -Infinity;
   let pendingProbeCount = 0;
   let succeeded = false;
   let reason: ReadyWaitGiveUpReason = 'none';
   const advancements: LaunchAdvancement[] = [];
+  const removeMissingPages = (pages: readonly TPage[]) => {
+    const present = new Set(pages);
+    for (const [page, state] of probeStates) {
+      if (present.has(page)) continue;
+      state.detachConsole?.();
+      probeStates.delete(page);
+    }
+  };
   try {
     const found = await waitForReadySignal<TPage>({
       home,
@@ -981,23 +1058,66 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
       onCapExtended: (extended) => {
         decidingCapMs = extended;
       },
+      onDeadlineArmed: (deadlineAt) => {
+        rendererDeadlineAt = deadlineAt;
+      },
       onDeclaredGrant: (grantMs) => {
         declaredGrantMs = grantMs;
       },
       onAdvancement: (advancement) => {
         advancements.push(advancement);
       },
+      onRendererActivity: (atMs) => {
+        rendererActivityMs = atMs;
+      },
       onNewLaunch: () => {
         advancements.length = 0;
         declaredGrantMs = undefined;
+        rendererActivityMs = undefined;
         decidingCapMs = capMs;
+        for (const state of probeStates.values()) state.observation = undefined;
+      },
+      latestRendererObservation: () => {
+        removeMissingPages(app.windows());
+        let latest: RendererObservation | undefined;
+        for (const state of probeStates.values()) {
+          if (state.lastMode !== undefined && state.lastMode !== mode) continue;
+          if (
+            state.observation !== undefined &&
+            (latest === undefined || state.observation.sequence > latest.sequence)
+          ) {
+            latest = state.observation;
+          }
+        }
+        return latest;
       },
       probe: async () => {
         const pages = app.windows();
+        removeMissingPages(pages);
         for (const page of pages) {
           let state = probeStates.get(page);
           if (state === undefined) {
-            state = { pending: false, result: undefined };
+            state = {
+              pending: false,
+              result: undefined,
+              lastMode: undefined,
+              observation: undefined,
+              detachConsole: undefined,
+            };
+            if (options.liveness !== 'none' && observesConsole(page)) {
+              const observedState = state;
+              const listener = () => {
+                const receivedAt = Date.now();
+                if (receivedAt > rendererDeadlineAt) return;
+                rendererSequence += 1;
+                observedState.observation = {
+                  sequence: rendererSequence,
+                  receivedAt,
+                };
+              };
+              page.on('console', listener);
+              state.detachConsole = () => page.off('console', listener);
+            }
             probeStates.set(page, state);
           }
           if (state.pending || state.result !== undefined) continue;
@@ -1008,6 +1128,7 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
               (value) => {
                 state.pending = false;
                 pendingProbeCount -= 1;
+                if (value !== undefined) state.lastMode = value;
                 state.result = { kind: 'mode', value };
               },
               (error: unknown) => {
@@ -1054,12 +1175,14 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
     if (error instanceof ReadySignalGiveUp) reason = error.reason;
     throw error;
   } finally {
+    for (const state of probeStates.values()) state.detachConsole?.();
     rememberBootLog(app, readBootLogLines(home));
     rememberReadyWait(app, {
       what,
       elapsedMs: Date.now() - startedAt,
       capMs: decidingCapMs,
       ...(declaredGrantMs === undefined ? {} : { declaredGrantMs }),
+      ...(rendererActivityMs === undefined ? {} : { rendererActivityMs }),
       requestedCapMs: capMs,
       gaveUp: !succeeded,
       reason,

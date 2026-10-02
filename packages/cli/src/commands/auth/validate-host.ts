@@ -1,4 +1,8 @@
-import { isGitHubHost, normalizeGitHostname } from '@inkeep/open-knowledge-core';
+import {
+  isGitHubHost,
+  normalizeGitHostname,
+  okUserHomeDisplayPath,
+} from '@inkeep/open-knowledge-core';
 import {
   findEnclosingProjectRoot,
   readDeclaredGitHubHosts,
@@ -12,7 +16,7 @@ function authProjectDir(): string {
 }
 
 function declarationRemedy(host: string): string {
-  return `~/.ok/global.yml:\n\n  git:\n    hosts:\n      ${host}:\n        provider: github\n`;
+  return `${okUserHomeDisplayPath('global.yml')}:\n\n  git:\n    hosts:\n      ${host}:\n        provider: github\n`;
 }
 
 function explicitGitHubHostRejection(host: string): string {

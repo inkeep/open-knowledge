@@ -1,4 +1,4 @@
-// FIXTURE — drives `no-raw-route-hash-construction.test.ts` via shell-out to `pnpm exec oxlint`. Not part
+// FIXTURE — drives `no-raw-route-hash-construction.uncached.test.mjs` via shell-out to oxlint. Not part
 // of the main lint: `__fixtures__/` is in `oxlint.config.ts#ignorePatterns`,
 // and `__fixtures__/oxlint.fixtures.json` re-enables the rules for the test.
 //

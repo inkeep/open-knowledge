@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, test } from 'vitest';
+import { runningAsRoot } from '../../../../test-support/capabilities.test-helper.ts';
 import { readGitDirKind } from './read-git-dir-kind.ts';
 
 const execFileAsync = promisify(execFile);
@@ -80,7 +81,8 @@ describe('readGitDirKind', () => {
     expect(readGitDirKind(sub)).toBe('absent');
   });
 
-  test('returns "inaccessible" for a real checkout whose gitdir cannot be traversed', () => {
+  test('returns "inaccessible" for a real checkout whose gitdir cannot be traversed', (ctx) => {
+    ctx.skip(runningAsRoot, 'root bypasses the chmod refusal this test induces');
     testRoot = realpathSync(mkdtempSync(join(tmpdir(), 'gitdir-kind-')));
     const gitDir = join(testRoot, '.git');
     mkdirSync(gitDir, { recursive: true });

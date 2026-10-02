@@ -303,6 +303,13 @@ export {
   writeRootGitignoreForNewRepo,
 } from './init-project.ts';
 export {
+  AUDIT_EMPTY_SCOPE_WARNING,
+  type AuditScope,
+  type AuditScopeResolution,
+  auditScopeNotFoundTitle,
+  resolveAuditScope,
+} from './lint/audit-scope.ts';
+export {
   type DiscoveredMarkdownlintConfig,
   discoverMarkdownlintConfig,
   findNativeMarkdownlintFile,
@@ -598,7 +605,7 @@ export {
 } from './skill-install.ts';
 export {
   recordSkillInstallEvent,
-  SKILL_INSTALL_EVENTS_FILE_REL,
+  SKILL_INSTALL_EVENTS_FILENAME,
   type SkillInstallEvent,
   type SkillInstallEventOutcome,
   type SkillInstallEventSurface,

@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,12 +50,17 @@ function declaresServerDependency(manifestPath: string): boolean {
   ].some((deps) => deps !== undefined && Object.hasOwn(deps, SERVER_PACKAGE_NAME));
 }
 
-function listServerConsumerSrcRoots(): string[] {
-  return listWorkspaceManifests(monorepoRoot, 4)
+function listServerConsumerSrcRoots(workspaceRoot: string): string[] {
+  return listWorkspaceManifests(workspaceRoot, 4)
     .filter(declaresServerDependency)
     .map((manifestPath) => join(dirname(manifestPath), 'src'))
-    .filter((srcRoot) => existsSync(srcRoot))
     .sort();
+}
+
+function consumersWithoutSource(srcRoots: readonly string[], workspaceRoot: string): string[] {
+  return srcRoots
+    .filter((srcRoot) => !existsSync(srcRoot))
+    .map((srcRoot) => relative(workspaceRoot, dirname(srcRoot)));
 }
 
 function listCensusFiles(): string[] {
@@ -81,11 +94,16 @@ function spineWalkRootArguments(censusFile: string): string[] {
 
 describe('agent-write spine walk root coverage contract', () => {
   it('keeps every applyAgentMarkdownWrite call site inside the walk root both censuses use', () => {
-    const consumerSrcRoots = listServerConsumerSrcRoots();
+    const consumerSrcRoots = listServerConsumerSrcRoots(monorepoRoot);
     expect(
       consumerSrcRoots.length,
       `no ${SERVER_PACKAGE_NAME} consumer src roots derived from the workspace manifests`,
     ).toBeGreaterThan(0);
+    expect(
+      consumersWithoutSource(consumerSrcRoots, monorepoRoot),
+      `${SERVER_PACKAGE_NAME} consumers without a src directory: their applyAgentMarkdownWrite call ` +
+        'sites would go unchecked, so keep each consumer source under src',
+    ).toEqual([]);
     const outsideCensus = consumerSrcRoots
       .flatMap((srcRoot) =>
         listAgentWriteSpineFiles(srcRoot).map((path) =>
@@ -116,6 +134,24 @@ describe('agent-write spine walk root coverage contract', () => {
       expect(listAgentWriteSpineFiles(plantedRoot)).toEqual(['stray-handler.ts']);
     } finally {
       rmSync(plantedRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('names a server consumer with no src directory, and not one that has src or a package that is no consumer (planted positive)', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'ok-agent-write-consumers-'));
+    const consumerManifest = `${JSON.stringify({ dependencies: { [SERVER_PACKAGE_NAME]: 'workspace:*' } })}\n`;
+    try {
+      mkdirSync(join(workspace, 'with-src', 'src'), { recursive: true });
+      writeFileSync(join(workspace, 'with-src', 'package.json'), consumerManifest);
+      mkdirSync(join(workspace, 'without-src'));
+      writeFileSync(join(workspace, 'without-src', 'package.json'), consumerManifest);
+      mkdirSync(join(workspace, 'not-a-consumer'));
+      writeFileSync(join(workspace, 'not-a-consumer', 'package.json'), '{}\n');
+      expect(consumersWithoutSource(listServerConsumerSrcRoots(workspace), workspace)).toEqual([
+        'without-src',
+      ]);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
     }
   });
 });

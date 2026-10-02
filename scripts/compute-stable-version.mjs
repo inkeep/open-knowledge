@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { gitCleanEnv } from './git-clean-env.mjs';
-import { FIXED_GROUP_ANCHOR, bumpSemver, maxBumpType, parseFrontmatterBumpType } from './compute-next-beta.mjs';
+import { FIXED_GROUP_ANCHOR, bumpSemver, loadChangesets, maxBumpType, maxReleaseType } from './compute-next-beta.mjs';
 
 const BETA_TAG_RE = /^v\d+\.\d+\.\d+-beta\.\d+$/;
 const STABLE_TAG_RE = /^v\d+\.\d+\.\d+$/;
@@ -154,8 +154,8 @@ function compareVersions(a, b) {
   return 0;
 }
 
-export function runGit(args) {
-  const res = spawnSync('git', args, { encoding: 'utf8', env: gitCleanEnv() });
+export function runGit(args, cwd) {
+  const res = spawnSync('git', args, { cwd, encoding: 'utf8', env: gitCleanEnv() });
   if (res.status !== 0) {
     throw new Error(`git ${args.join(' ')} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`);
   }
@@ -164,34 +164,41 @@ export function runGit(args) {
 
 export function changesetIdsFromTreePaths(paths) {
   const ids = [];
-  for (const line of paths) {
-    const m = /^\.changeset\/(.+)\.md$/.exec(line.trim());
-    if (m && m[1] !== 'README') ids.push(m[1]);
+  for (const path of paths) {
+    const file = path.trim().replace(/^\.changeset\//, '');
+    if (!file.startsWith('.') && file.endsWith('.md') && !/^README\.md$/i.test(file)) {
+      ids.push(file.replace('.md', ''));
+    }
   }
   return ids;
 }
 
-export const realGit = {
-  revParse: (ref) => runGit(['rev-parse', '--verify', `${ref}^{commit}`]).trim(),
-  newestStableTag: () => {
-    for (const line of runGit(['tag', '--list', 'v*', '--sort=-version:refname']).split('\n')) {
-      const t = line.trim();
-      if (STABLE_TAG_RE.test(t)) return t;
-    }
-    return '';
-  },
-  changesetIds: (sha) =>
-    changesetIdsFromTreePaths(runGit(['ls-tree', '-r', '--name-only', sha, '--', '.changeset']).split('\n')),
-  isAncestor: (a, b) => {
-    const res = spawnSync('git', ['merge-base', '--is-ancestor', a, b], { encoding: 'utf8', env: gitCleanEnv() });
-    if (res.status === 0) return true;
-    if (res.status === 1) return false;
-    throw new Error(
-      `git merge-base --is-ancestor ${a} ${b} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`,
-    );
-  },
-  bumpTypeOf: (sha, id) => parseFrontmatterBumpType(runGit(['show', `${sha}:.changeset/${id}.md`])),
-};
+export function gitAt(cwd) {
+  return {
+    revParse: (ref) => runGit(['rev-parse', '--verify', `${ref}^{commit}`], cwd).trim(),
+    newestStableTag: () => {
+      for (const line of runGit(['tag', '--list', 'v*', '--sort=-version:refname'], cwd).split('\n')) {
+        const t = line.trim();
+        if (STABLE_TAG_RE.test(t)) return t;
+      }
+      return '';
+    },
+    changesetIds: (sha) =>
+      changesetIdsFromTreePaths(runGit(['ls-tree', '--name-only', sha, '--', '.changeset/'], cwd).split('\n')),
+    isAncestor: (a, b) => {
+      const res = spawnSync('git', ['merge-base', '--is-ancestor', a, b], { cwd, encoding: 'utf8', env: gitCleanEnv() });
+      if (res.status === 0) return true;
+      if (res.status === 1) return false;
+      throw new Error(
+        `git merge-base --is-ancestor ${a} ${b} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`,
+      );
+    },
+    bumpTypeOf: (sha, id) =>
+      maxReleaseType(loadChangesets().parse(runGit(['show', `${sha}:./.changeset/${id}.md`], cwd)).releases),
+  };
+}
+
+export const realGit = gitAt();
 
 export function readAnchorVersion() {
   const pre = JSON.parse(readFileSync('.changeset/pre.json', 'utf8'));

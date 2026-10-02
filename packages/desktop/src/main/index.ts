@@ -116,6 +116,7 @@ import type {
 import {
   app,
   BrowserWindow,
+  ClipboardItem,
   clipboard,
   crashReporter,
   dialog,
@@ -341,6 +342,7 @@ import { applyDevShmPosture } from './linux-shm-posture.ts';
 import { resolveLocalOpCliInvocation } from './local-op-cli-invocation.ts';
 import { createMenuTranslator, resolveMenuCatalogDir } from './main-i18n.ts';
 import { createMainThreadWatchdog } from './main-thread-watchdog.ts';
+import { withMcpServerNameArg } from './mcp-server-name-arg.ts';
 import {
   checkAndRepairMcpWiringOnStartup,
   type McpStartupRepairResult,
@@ -610,8 +612,6 @@ function fanOutChromeColors(): void {
 const DEFAULT_WIN_OPTS: BrowserWindowConstructorOptions = {
   width: 1280,
   height: 800,
-  minWidth: WINDOW_MIN_SIZE.NAVIGATOR.width,
-  minHeight: WINDOW_MIN_SIZE.NAVIGATOR.height,
   show: false,
   ...(process.platform === 'darwin'
     ? {
@@ -622,6 +622,8 @@ const DEFAULT_WIN_OPTS: BrowserWindowConstructorOptions = {
         transparent: true,
       }
     : buildNonDarwinChromeOpts(nativeTheme.shouldUseDarkColors)),
+  minWidth: WINDOW_MIN_SIZE.NAVIGATOR.width,
+  minHeight: WINDOW_MIN_SIZE.NAVIGATOR.height,
   webPreferences: {
     contextIsolation: true,
     nodeIntegration: false,
@@ -1240,9 +1242,10 @@ function runDriverBootSmokeInProduction(): void {
 }
 
 function withWindowRuntimeArgs(args: readonly string[]): string[] {
+  const withServerName = withMcpServerNameArg(args);
   const withDebug = isDebugKeyringSmokeAllowed()
-    ? [...args, '--ok-debug-keyring-smoke=1']
-    : [...args];
+    ? [...withServerName, '--ok-debug-keyring-smoke=1']
+    : withServerName;
   const withTerminalCapability = withTerminalCapabilityArg(withDebug, isTerminalAvailable());
   const withSmoke =
     process.env.OK_DESKTOP_E2E_SMOKE === '1'
@@ -3700,6 +3703,7 @@ function resolveTerminalClaudeReadiness(projectRoot: string | undefined): Promis
     isProjectMcpPreApprovable: () => scopes.projectOwn,
     hasProjectMcpEntry: () => scopes.projectEntryPresent,
     isGlobalMcpOwnManaged: () => scopes.globalOwn,
+    mcpServerName: scopes.serverName,
   });
 }
 
@@ -3716,6 +3720,7 @@ function resolveTerminalCliOnPath(cli: TerminalCli): Promise<CliReadiness> {
       ? {
           okServerConfigured: () =>
             classifyExistingMcpEntry(EDITOR_TARGETS.codex, '', osHomedir()).kind === 'present',
+          mcpServerName: EDITOR_TARGETS.codex.serverName(''),
         }
       : {}),
   });
@@ -4248,9 +4253,7 @@ function registerIpcHandlers() {
               params.relPath,
             );
           },
-          copyLink: () => {
-            clipboard.writeText(params.relPath);
-          },
+          copyLink: () => clipboard.writeText(params.relPath),
         },
       },
     );
@@ -4411,11 +4414,11 @@ function registerIpcHandlers() {
   });
 
   handle('ok:clipboard:write-text', async (_event, text) => {
-    clipboard.writeText(text);
+    await clipboard.writeText(text);
     return undefined;
   });
 
-  handle('ok:clipboard:copy-image', async (event, { src, alt }) => {
+  handle('ok:clipboard:copy-image', async (event, { src }) => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
     if (!callerWin || !wm) {
       return { ok: false as const, reason: 'read-error' as const, detail: 'no window context' };
@@ -4424,16 +4427,24 @@ function registerIpcHandlers() {
     if (!projectPath || !apiOrigin) {
       return { ok: false as const, reason: 'read-error' as const, detail: 'no project context' };
     }
-    return copyImageToClipboard(
+    const result = await copyImageToClipboard(
       {
         projectPath,
         platform: process.platform,
         assetOrigin: apiOrigin,
         clipboard,
+        ClipboardItem,
         nativeImage,
       },
-      { src, alt },
+      { src },
     );
+    if (!result.ok) {
+      getLogger('copy-image').warn(
+        { reason: result.reason, detail: result.detail },
+        'copy image to clipboard failed',
+      );
+    }
+    return result;
   });
 
   handle('ok:locale:set-preference', async (_event, { preference }) => {
@@ -5810,7 +5821,7 @@ function installDockIcon(instanceLabel: string | null) {
   if (process.platform !== 'darwin') return;
   if (app.isPackaged) return;
   /*
-   * UPSTREAM(electron@43.4.0): an unpackaged app runs out of Electron's own
+   * UPSTREAM(electron@44.5.1): an unpackaged app runs out of Electron's own
    * bundle, so macOS reads the Dock tile name from that Info.plist and
    * `app.setName()` cannot reach it. A badge is the only runtime way to put an
    * instance label on the Dock icon.

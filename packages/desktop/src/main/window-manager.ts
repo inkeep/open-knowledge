@@ -1451,7 +1451,7 @@ export class WindowManager {
         this.deps.flushLog?.();
       };
       const terminate = (): 'killed' | 'deferred-until-spawn' | 'kill-refused' => {
-        // UPSTREAM(electron@43.4.0): kill() before spawn returns false and leaves the launch running.
+        // UPSTREAM(electron@44.5.1): kill() before spawn returns false and leaves the launch running.
         if (utility.kill()) return 'killed';
         if (utility.pid !== undefined) return 'kill-refused';
         utility.once('spawn', killOnceSpawned);

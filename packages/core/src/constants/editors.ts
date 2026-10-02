@@ -1,3 +1,5 @@
+import { DESKTOP_PRODUCTS, type DesktopProduct } from './product.ts';
+
 export type EditorId =
   | 'claude'
   | 'claude-desktop'
@@ -133,7 +135,15 @@ export const EDITOR_SETUP_DOC_SLUG = {
   hermes: 'hermes',
 } as const satisfies Record<EditorId, string>;
 
-export const EDITOR_PROJECT_CONFIG_PATH = {
+export function piExtensionProjectPath(product: DesktopProduct): string {
+  return `.pi/extensions/${product.mcpServerName}.ts`;
+}
+
+export function piToolNamespace(product: DesktopProduct): string {
+  return `ok${product.mcpChainTag}`;
+}
+
+export const STABLE_EDITOR_PROJECT_CONFIG_PATH = {
   claude: '.mcp.json',
   'claude-desktop': null,
   cursor: '.cursor/mcp.json',
@@ -141,11 +151,15 @@ export const EDITOR_PROJECT_CONFIG_PATH = {
   copilot: null,
   opencode: 'opencode.json',
   openclaw: null,
-  pi: '.pi/extensions/open-knowledge.ts',
+  pi: piExtensionProjectPath(DESKTOP_PRODUCTS.stable),
   antigravity: null,
   'lm-studio': null,
   hermes: null,
 } as const satisfies Record<EditorId, string | null>;
+
+export function editorProjectConfigPath(id: EditorId, product: DesktopProduct): string | null {
+  return id === 'pi' ? piExtensionProjectPath(product) : STABLE_EDITOR_PROJECT_CONFIG_PATH[id];
+}
 
 export const USER_MCP_GATED_EDITOR_IDS: readonly EditorId[] = ['copilot'];
 
@@ -153,7 +167,7 @@ export function receivesProjectIntegrationWrite(
   id: EditorId,
   opts: { userMcpEntryInstalled: boolean },
 ): boolean {
-  if (EDITOR_PROJECT_CONFIG_PATH[id] !== null) return true;
+  if (STABLE_EDITOR_PROJECT_CONFIG_PATH[id] !== null) return true;
   if (EDITOR_PROJECT_SKILL_ROOT[id] === null) return false;
   return !USER_MCP_GATED_EDITOR_IDS.includes(id) || opts.userMcpEntryInstalled;
 }

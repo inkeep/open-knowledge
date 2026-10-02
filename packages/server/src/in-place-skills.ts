@@ -8,7 +8,9 @@ import {
   estimateSkillCost,
   HUB_READER_EDITORS,
   LEGACY_SKILL_STORE_ROOT,
+  OK_DIR,
   parseFrontmatterRecord,
+  SKILLS_STORE_DIRNAME,
   type SkillCostTiers,
   type SkillScope,
   skillRootActivationPath,
@@ -97,7 +99,7 @@ function hostSkillRootsFor(
 
 export function globalSkillGraphRoots(home: string): string[] {
   const roots = knownSkillRootsFor(home, 'global').map((r) => join(home, r.root));
-  const legacyStore = join(home, '.ok', 'skills');
+  const legacyStore = join(home, OK_DIR, SKILLS_STORE_DIRNAME);
   return roots.includes(legacyStore) ? roots : [...roots, legacyStore];
 }
 

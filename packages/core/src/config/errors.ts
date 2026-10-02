@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { okUserHomeDisplayPath } from '../constants/ok-dir.ts';
 
 export const ConfigIssueSourceSchema = z.object({
   file: z.string(),
@@ -186,13 +187,13 @@ export function isKnownConfigError(
 function scopeConfigFile(scope: FieldScope): string {
   switch (scope) {
     case 'user':
-      return '~/.ok/global.yml';
+      return okUserHomeDisplayPath('global.yml');
     case 'project':
       return '.ok/config.yml';
     case 'project-local':
       return '.ok/local/config.yml';
     case 'either':
-      return '.ok/config.yml or ~/.ok/global.yml';
+      return `.ok/config.yml or ${okUserHomeDisplayPath('global.yml')}`;
   }
 }
 

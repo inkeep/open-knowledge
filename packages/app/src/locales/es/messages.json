@@ -1152,7 +1152,6 @@
     "AddR83": ["No se pudo crear el proyecto. Inténtalo de nuevo o elige otra ubicación."],
     "AdjDox": ["Borrador"],
     "AeHuzT": ["# Un patrón por línea.\n# Ejemplos:\n#   drafts/\n#   *.draft.md\n#   !keep.md"],
-    "AeLo3p": ["OpenKnowledge resolvió un conflicto en ", ["subject"]],
     "AeORtB": [
       "Seleccionado: ",
       ["innermostLabel"],
@@ -1264,7 +1263,6 @@
     "BgV29F": ["Campo de búsqueda del editor visual enfocado"],
     "Bgaa_U": ["No se pudo actualizar el ajuste de rendimiento — ", ["detail"]],
     "BhLPRk": ["Se revirtió \"", ["name"], "\" a la versión instalada"],
-    "BhMWIs": ["Lee los conflictos sin resolver entre ediciones"],
     "BiVBP9": ["No se pudieron leer los idiomas de la corrección ortográfica."],
     "BjitBo": ["Descargar ", ["0"]],
     "BkGtRl": [
@@ -1955,6 +1953,7 @@
     ],
     "IA6JW2": ["Detectando"],
     "ICoNYz": ["También puedes gestionar esto en Ajustes."],
+    "IDXn2n": ["No volver a preguntar al abrir esta aplicación sin configurarla en este proyecto"],
     "IFALcX": ["Descripción de ", ["field"]],
     "IFezUv": ["No se pudo completar la auditoría. Inténtalo de nuevo."],
     "IIgshV": ["bloqueado"],
@@ -2056,6 +2055,7 @@
     "JgaVnN": ["Permitir acceso externo"],
     "Jhj_lh": ["Modifica el destino del enlace, el ancla y el texto mostrado."],
     "JhqycE": ["No hay archivos recientes"],
+    "Ji6oie": ["Una transferencia más reciente reemplazó este reintento."],
     "JkCD2u": ["Sincronización en pausa: no tienes permiso para hacer push a este repositorio"],
     "JlFcis": ["Enviar"],
     "JmfgFc": ["(un worktree de ", ["0"], ")"],
@@ -2260,6 +2260,7 @@
       ["1"],
       ")."
     ],
+    "LhVIxY": ["Mostrar avisos de nuevo"],
     "LhWYpm": ["Hay otras rutas OK seguidas en el remoto:"],
     "Li4U-T": ["Más información sobre ", ["title"]],
     "Lj_5Uv": ["Fallan comprobaciones obligatorias"],
@@ -2689,9 +2690,17 @@
     "PrVaZo": ["¿Desinstalar OpenKnowledge?"],
     "PrWQiT": ["Mover Terminal a la derecha"],
     "PrhzDE": ["Desplazar hacia arriba"],
+    "Pur9o0": [
+      "Para guardar esta configuración, activa el servidor MCP del proyecto o el servidor MCP global."
+    ],
     "Pw5PTU": ["Origen externo"],
     "PxZCNM": ["Fuera de lo que confirma Open Knowledge."],
     "Q-DKvr": ["Instalar desde ", ["source"]],
+    "Q-a_4h": [
+      "Ayúdame a entender el conflicto en ",
+      ["filePath"],
+      ". Explica qué debo comparar en la vista de conflictos de OpenKnowledge; yo elegiré y aplicaré la resolución allí."
+    ],
     "Q1mtyd": ["Ocultar la barra lateral"],
     "Q5fqMz": ["Error de conexión: inténtalo de nuevo"],
     "Q6hhn8": ["Preferencias"],
@@ -2884,8 +2893,8 @@
       ["scopeLabel"],
       " es un duplicado redundante: se verificó que el original no cambió. Elimina esa copia y vuelve a intentar el movimiento."
     ],
-    "Rah7yq": ["¿Qué debería hacer la IA? (opcional)"],
     "Rb1zMa": ["Sin extracto"],
+    "RcPztQ": ["Abrir ", ["handoffLabel"]],
     "RcrskJ": ["El formato se veía mal"],
     "RduDYw": [
       "<0>",
@@ -2928,9 +2937,6 @@
     "S33tz3": ["Sin conexión"],
     "S3qu11": ["Era una prueba o un proyecto puntual"],
     "S48xcO": ["pendiente"],
-    "S6SbxA": [
-      "Sustituye la entrada \"open-knowledge\" existente en este archivo. Los demás servidores del archivo no se modifican."
-    ],
     "S6eHlw": ["Abre primero un proyecto."],
     "S6l5dv": ["No se pudo empezar a crear un elemento nuevo"],
     "S9Vnum": ["Quitar ", ["patternText"]],
@@ -3631,7 +3637,6 @@
     "Z8nach": ["Falló la subida: ", ["0"]],
     "ZBF9fn": ["Gestionar las carpetas de habilidades"],
     "ZBZEkP": ["Capturada antes de este diálogo, con el puntero marcado."],
-    "ZBt4rI": ["Instrucción para la IA"],
     "ZBxvV3": ["Terminal nueva"],
     "ZDOq9A": ["Lo que compartes se envía al equipo de OpenKnowledge."],
     "ZGVsOD": ["Envía esta rama a GitHub antes de compartir."],
@@ -3771,7 +3776,6 @@
       "Copia de solo lectura de un bloque MirrorSource de otro documento. Edítalo en el origen y se actualiza en vivo."
     ],
     "_XWY2J": ["Terminal desactivada"],
-    "_YWqV2": ["OpenKnowledge resolvió un conflicto"],
     "_ayOfA": [
       "Una base de conocimiento que sigue el Open Knowledge Format de Google, una forma común de organizar lo que sabes. Elige esto si quieres que tus notas funcionen bien con otras herramientas que entienden el formato."
     ],
@@ -4791,7 +4795,6 @@
     "i3f2kh": ["Ningún comando coincide."],
     "i6o7XB": ["Buscar idiomas"],
     "i92eAT": ["Crearemos un repositorio y empezaremos a sincronizar; no hace falta terminal."],
-    "i94lQe": ["OpenKnowledge buscó conflictos"],
     "i9OyGp": ["Deshacer o rehacer"],
     "i9TPUi": [
       "Este ",
@@ -4918,6 +4921,7 @@
     "jBVUXo": ["No se pudo abrir la terminal; inténtalo de nuevo."],
     "jC8Bv4": ["Echando un vistazo…"],
     "jC8LSZ": ["Restablecer los filtros de vista"],
+    "jDejAI": ["Comprobando la conexión con ", ["checkingLabel"], "…"],
     "jDhTLC": ["Elegir icono"],
     "jEVipR": [
       "Actualmente se leen desde otra carpeta. Después de vincularlas, se leerán desde ",
@@ -4926,6 +4930,7 @@
     ],
     "jEZ6Lf": ["provisional"],
     "jEdF24": ["Página inexistente: ", ["linkTitle"], ". Haz clic para crearla."],
+    "jIWP0P": ["Mostrar avisos de nuevo para ", ["displayName"], " en este proyecto"],
     "jJdwCB": ["Revertir"],
     "jKd3AP": ["No se pudo activar la terminal: ", ["0"]],
     "jKeGuZ": ["Elimina un documento, carpeta, plantilla, habilidad o recurso"],
@@ -5576,9 +5581,6 @@
       " porque contiene una carpeta .git"
     ],
     "pZAs1T": ["No se pudieron cargar los enlaces salientes"],
-    "pZaMLc": [
-      "Este archivo contiene líneas que parecen marcadores de conflicto, por lo que los límites del conflicto no se pueden leer de forma fiable. Resuélvelo a mano o con Preguntar a la IA."
-    ],
     "paCw0z": ["todo lo que hay en las carpetas ", ["0"], "/ dentro de ", ["1"], "/"],
     "pajIrl": ["No se pudo desactivar la terminal: ", ["0"]],
     "pbwTg6": ["hace ", ["seconds"], " s"],
@@ -5922,6 +5924,11 @@
     "sqgz2k": [
       "OpenKnowledge no pudo terminar de configurar este proyecto. El worktree se creó, pero no se abrió."
     ],
+    "srbby-": [
+      "Los cambios se guardaron, pero OpenKnowledge no pudo confirmar la conexión con ",
+      ["handoffLabel"],
+      ". Revisa la configuración del servidor MCP de esta aplicación y selecciona Guardar cambios para comprobarlo de nuevo."
+    ],
     "srdlOs": [
       "La sincronización automática está en pausa: no tienes permiso para hacer push en este repositorio. Cambia a Automático (solo Pull) para seguir recibiendo actualizaciones."
     ],
@@ -6041,7 +6048,9 @@
     "troubleshooting.cursor.project-entry-not-loaded": [
       "Si ",
       ["agent"],
-      " no muestra las herramientas de OpenKnowledge, abre Customize → MCPs, elige open-knowledge y activa su origen .cursor/mcp.json; ",
+      " no muestra las herramientas de OpenKnowledge, abre Customize → MCPs, elige ",
+      ["server"],
+      " y activa su origen .cursor/mcp.json; ",
       ["agent"],
       " deja apagados los servidores de proyecto hasta que lo hagas."
     ],
@@ -6123,6 +6132,11 @@
     "uM6jnS": ["Falló la restauración"],
     "uNGmQn": ["No se pudo ejecutar la prueba. Comprueba que OpenKnowledge siga en marcha."],
     "uO9WLl": ["Push"],
+    "uOKoBM": [
+      "Sustituye la entrada ",
+      ["server"],
+      " existente en este archivo. Los demás servidores del archivo no se modifican."
+    ],
     "uPJml1": ["Solo lectura permitido"],
     "uQNW00": ["HEAD desacoplado: extrae una rama para continuar"],
     "uQewpR": [
@@ -6167,7 +6181,6 @@
         }
       ]
     ],
-    "uhYnaD": ["Resuelve un conflicto eligiendo qué contenido conservar"],
     "uksqrP": ["No se encontró el repositorio. Puede que lo hayan renombrado, eliminado o movido."],
     "ul1Atu": ["Convirtiendo..."],
     "um-es7": ["Publica el editor con un"],
@@ -6497,6 +6510,9 @@
     "xtJgSe": ["Este origen incluye varias habilidades: elige cuál importar."],
     "xvv5gL": ["Vista previa de la captura"],
     "xxRpzT": ["Slidev encontrado en tu sistema."],
+    "xxxG_a": [
+      "Este archivo contiene líneas que parecen marcadores de conflicto, por lo que no se pueden identificar con fiabilidad los límites de los conflictos. Resuelve los marcadores del archivo manualmente."
+    ],
     "xzAmL_": ["Aprobado automáticamente"],
     "xzktOa": ["Editar el enlace wiki"],
     "y-LQPF": ["No se puede resolver la imagen ", ["identity"], ". Ir a la referencia."],

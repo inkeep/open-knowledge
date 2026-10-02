@@ -28,6 +28,8 @@ pnpm run test
 
 For routine local Turbo runs, use an absolute `TURBO_CACHE_DIR` inside this worktree; use `TURBO_FORCE=true` only for a deliberate fresh run.
 
+A test that reads files outside its own package's Turbo inputs is named `*.uncached.test.ts` (or `.tsx`, `.mjs`, matching the file's language); `pnpm run test:uncached` runs those on every call, and no cached tier does.
+
 Run local apps:
 
 ```bash

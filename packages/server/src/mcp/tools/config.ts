@@ -8,19 +8,8 @@ import {
 } from './shared.ts';
 
 const DESCRIPTION = [
-  '[Operates on disk; no running OK server required] Read the effective merged OpenKnowledge config (defaults → user → project).',
-  '',
-  'Use this when you need to inspect the config mid-session — e.g., after a write that may have changed disk state, or to re-confirm the value of a field before reading it again.',
-  '',
-  'Read returns the FULL merged config or a sub-tree when `key` is provided. There is no allowlist on reads — every field is readable.',
-  '',
-  'Note: the `server.*`, `mcp.*`, and `github.*` config sub-trees, plus `preview.baseUrl` and `preview.scriptSrc`, were removed; their values are now built-in constants in `@inkeep/open-knowledge-core` (or, for the preview iframe, a fixed open network policy). Reading those keys returns `exists: false`. (`appearance.preview.autoOpen` is still a live key.)',
-  '',
-  "This tool is a pure READ. Folder-level skill topology (link / unlink / add-root) moved to the `install` tool's `skillFolders` argument, so this one keeps its read-only annotation and stays auto-approvable.",
-  '',
-  '**Parameters:**',
-  '- `key` (optional) — Dotted config key. `"content"` returns the content sub-tree; `"appearance.theme"` returns just that leaf. Omit for full config.',
-  '- `cwd` (optional) — Project root (see `cwd` description below).',
+  'Read effective config merged defaults → user → project; no running OK server needed. Optional key is a dotted path (content, appearance.theme); omit for the full config. All fields are readable. Re-read after disk changes or before relying on an old value.',
+  'Removed server.*, mcp.*, github.*, preview.baseUrl and preview.scriptSrc return exists:false; appearance.preview.autoOpen remains live. This is a pure read. Use `install` skillFolders for folder topology.',
 ].join('\n');
 
 interface GetConfigDeps {

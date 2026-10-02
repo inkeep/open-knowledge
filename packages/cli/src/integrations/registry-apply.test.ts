@@ -20,7 +20,7 @@ import {
   type SatisfierId,
 } from '@inkeep/open-knowledge-core';
 import { loggerFactory, logsCurrentPath } from '@inkeep/open-knowledge-server';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EDITOR_TARGETS } from '../commands/editors.ts';
 import { ensurePiBridge, probePiBridgeState } from '../commands/pi-acp-bridge.ts';
 import { type CliWriteContext, createCliStepExecutor } from './registry-apply.ts';
@@ -169,6 +169,28 @@ it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
     }
   },
 );
+
+describe('a Beta Pi bridge', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('is written beside a Stable bridge without touching it, and only its own file reads back satisfied', async () => {
+    const stablePath = join(ctx.cwd, '.pi', 'extensions', 'open-knowledge.ts');
+    const betaPath = join(ctx.cwd, '.pi', 'extensions', 'open-knowledge-beta.ts');
+    await run([{ satisfierId: 'pi/mcp/project/managed-file', desired: 'present' }]);
+    const stableBytes = readFileSync(stablePath, 'utf-8');
+
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    expect(await stateOf('pi/mcp/project/managed-file')).not.toBe('satisfied');
+    const report = await run([{ satisfierId: 'pi/mcp/project/managed-file', desired: 'present' }]);
+
+    expect(actionFor(report, 'pi/mcp/project/managed-file')?.action).toBe('written');
+    expect(readFileSync(stablePath, 'utf-8')).toBe(stableBytes);
+    expect(readFileSync(betaPath, 'utf-8').split('\n')[0]).toBe('// ok-pi-bridge-beta-v1');
+    expect(await stateOf('pi/mcp/project/managed-file')).toBe('satisfied');
+  });
+});
 
 describe('a project MCP artifact', () => {
   it('is written by the same primitive a single toggle uses, and reads back satisfied', async () => {

@@ -26,17 +26,24 @@ interface NativeRig {
   port: number;
   baseUrl: string;
   legacyCalls: string[];
+  dispatched: string[];
   close: () => Promise<void>;
 }
 
 async function bootNativeRig(opts: { ephemeral?: boolean } = {}): Promise<NativeRig> {
   const legacyCalls: string[] = [];
+  const dispatched: string[] = [];
   const table: ApiRouteTable = {
     resolve(pathname) {
-      if (pathname === '/api/native-ping' || pathname === '/api/native-mutating') {
+      if (
+        pathname === '/api/native-ping' ||
+        pathname === '/api/native-mutating' ||
+        pathname === '/api/native-upload'
+      ) {
         return {
           template: pathname,
-          dispatch: async (_req, res) => {
+          dispatch: async (req, res) => {
+            dispatched.push(`${req.method} ${pathname}`);
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ pong: true }));
           },
@@ -61,6 +68,7 @@ async function bootNativeRig(opts: { ephemeral?: boolean } = {}): Promise<Native
     paths: [
       '/api/native-ping',
       '/api/native-mutating',
+      '/api/native-upload',
       '/api/native-throw',
       '/api/native-empty',
       '/api/native-declined',
@@ -87,6 +95,7 @@ async function bootNativeRig(opts: { ephemeral?: boolean } = {}): Promise<Native
     port,
     baseUrl,
     legacyCalls,
+    dispatched,
     close: () =>
       new Promise<void>((resolvePromise, reject) => {
         server.close((err) => (err ? reject(err) : resolvePromise()));
@@ -178,9 +187,10 @@ describe('natively-mounted /api routes run the shared admission pipeline', () =>
       });
       expect(res.status).toBe(403);
       expect(res.headers.get('content-type')).toBe('application/problem+json');
-      const body = (await res.json()) as { type?: string; title?: string };
+      const body = (await res.json()) as { type?: string; title?: string; detail?: string };
       expect(body.type).toBe('urn:ok:error:invalid-origin');
       expect(body.title).toBe('Origin not allowed.');
+      expect(body.detail).toBeUndefined();
       expect(res.headers.get('x-request-id')).not.toBeNull();
     } finally {
       await rig.close();
@@ -302,6 +312,141 @@ describe('natively-mounted /api routes run the shared admission pipeline', () =>
       expect(res.headers.get('content-type')).toBe('application/problem+json');
       const body = (await res.json()) as { type?: string };
       expect(body.type).toBe('urn:ok:error:internal-server-error');
+    } finally {
+      await rig.close();
+    }
+  });
+});
+
+describe('opaque origins and request body media types', () => {
+  const OPAQUE_ORIGINS = ['null', 'file://', 'file://127.0.0.1'];
+  const FILE_ORIGINS = ['file://', 'file://127.0.0.1'];
+  const OPAQUE_DETAIL =
+    'Requests from a null origin, and writes from a file: origin, are refused. Send the request from a loopback page, the OpenKnowledge app, or a client that sends no Origin header.';
+
+  function expectNoCorsGrant(headers: Record<string, string | string[] | undefined>): void {
+    expect(headers['access-control-allow-origin']).toBeUndefined();
+    expect(headers['access-control-allow-methods']).toBeUndefined();
+    expect(headers['access-control-allow-headers']).toBeUndefined();
+    expect(headers['access-control-expose-headers']).toBeUndefined();
+  }
+
+  test('a read from a null Origin is refused 403 before dispatch', async () => {
+    const rig = await bootNativeRig();
+    try {
+      const res = await rawRequest(rig.port, '/api/native-ping', { headers: { Origin: 'null' } });
+      expect(res.status).toBe(403);
+      const problem = parseProblem(res.body);
+      expect(problem.type).toBe('urn:ok:error:invalid-origin');
+      expect(problem.detail).toBe(OPAQUE_DETAIL);
+      expectNoCorsGrant(res.headers);
+      expect(rig.dispatched).toEqual([]);
+    } finally {
+      await rig.close();
+    }
+  });
+
+  test('a read from a file: Origin is served with no CORS grant, so a browser cannot read it', async () => {
+    const rig = await bootNativeRig();
+    try {
+      for (const origin of FILE_ORIGINS) {
+        const res = await rawRequest(rig.port, '/api/native-ping', { headers: { Origin: origin } });
+        expect(res.status, origin).toBe(200);
+        expectNoCorsGrant(res.headers);
+        expect(res.headers.vary, origin).toContain('Origin');
+      }
+    } finally {
+      await rig.close();
+    }
+  });
+
+  test('an opaque-Origin preflight is not granted; a loopback preflight still is', async () => {
+    const rig = await bootNativeRig();
+    try {
+      const preflight = (origin: string) =>
+        rawRequest(rig.port, '/api/native-mutating', {
+          method: 'OPTIONS',
+          headers: {
+            Origin: origin,
+            'Access-Control-Request-Method': 'POST',
+            'Access-Control-Request-Headers': 'content-type',
+          },
+        });
+      for (const origin of OPAQUE_ORIGINS) {
+        const res = await preflight(origin);
+        expect(res.status, origin).toBe(origin === 'null' ? 403 : 204);
+        expectNoCorsGrant(res.headers);
+      }
+      const loopback = await preflight('http://localhost:5173');
+      expect(loopback.status).toBe(204);
+      expect(loopback.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+      expect(loopback.headers['access-control-allow-headers']).toBe(EXPECTED_ALLOW_HEADERS);
+      expect(rig.dispatched).toEqual([]);
+    } finally {
+      await rig.close();
+    }
+  });
+
+  test('every write from an opaque Origin is refused 403 before dispatch, whatever its body', async () => {
+    const rig = await bootNativeRig();
+    try {
+      const bodies: Array<{ headers: Record<string, string>; body?: string }> = [
+        { headers: { 'Content-Type': 'application/json' }, body: '{"path":"x.md"}' },
+        { headers: { 'Content-Type': 'text/plain' }, body: '{"path":"x.md"}' },
+        { headers: { 'Content-Type': 'multipart/form-data; boundary=b' }, body: '--b--\r\n' },
+        { headers: {} },
+      ];
+      for (const origin of OPAQUE_ORIGINS) {
+        for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+          for (const path of ['/api/native-mutating', '/api/native-upload']) {
+            for (const shape of bodies) {
+              const res = await rawRequest(rig.port, path, {
+                method,
+                headers: { ...shape.headers, Origin: origin },
+                ...(shape.body !== undefined ? { body: shape.body } : {}),
+              });
+              const label = `${origin} ${method} ${path} ${shape.headers['Content-Type'] ?? 'bodyless'}`;
+              expect(res.status, label).toBe(403);
+              const problem = parseProblem(res.body);
+              expect(problem.type, label).toBe('urn:ok:error:invalid-origin');
+              expect(problem.detail, label).toBe(OPAQUE_DETAIL);
+              expectNoCorsGrant(res.headers);
+            }
+          }
+        }
+      }
+      expect(rig.dispatched).toEqual([]);
+    } finally {
+      await rig.close();
+    }
+  });
+
+  test('body media types are not gated at the pipeline layer: every shape reaches dispatch', async () => {
+    const rig = await bootNativeRig();
+    try {
+      for (const [method, contentType, hasBody] of [
+        ['POST', 'application/json', true],
+        ['POST', 'text/plain', true],
+        ['POST', 'multipart/form-data; boundary=b', true],
+        ['POST', undefined, false],
+        ['DELETE', 'text/plain', true],
+        ['GET', 'text/plain', false],
+      ] as const) {
+        const res = await rawRequest(rig.port, '/api/native-mutating', {
+          method,
+          headers: contentType === undefined ? {} : { 'Content-Type': contentType },
+          ...(hasBody ? { body: '{"path":"x.md"}' } : {}),
+        });
+        expect(res.status, `${method} ${contentType ?? 'bodyless'}`).toBe(200);
+      }
+      expect(rig.dispatched).toEqual([
+        'POST /api/native-mutating',
+        'POST /api/native-mutating',
+        'POST /api/native-mutating',
+        'POST /api/native-mutating',
+        'DELETE /api/native-mutating',
+        'GET /api/native-mutating',
+      ]);
     } finally {
       await rig.close();
     }

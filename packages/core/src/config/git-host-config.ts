@@ -12,7 +12,7 @@ const gitHostEntryShape = {
     reload: 'boot',
     defaultScope: 'user',
     description:
-      "Declares that this git host is a GitHub Enterprise Server instance, so OpenKnowledge treats its remotes the way it treats github.com (OpenKnowledge credential handling, the push-permission check, share links, and the default host for `ok auth`). 'github' is the only accepted value today. A host that is not declared here and is not github.com is treated as a generic git remote, so OpenKnowledge leaves the machine's own git credentials alone and does not check push permission. Per-machine (user scope, `~/.ok/global.yml`); a value in a project's `.ok/config.yml` is ignored. The declaration takes effect when OpenKnowledge next starts.",
+      "Declares that this git host is a GitHub Enterprise Server instance, so OpenKnowledge treats its remotes the way it treats github.com (OpenKnowledge credential handling, the push-permission check, share links, and the default host for `ok auth`). 'github' is the only accepted value today. A host that is not declared here and is not github.com is treated as a generic git remote, so OpenKnowledge leaves the machine's own git credentials alone and does not check push permission. Per-machine (user scope, global.yml in the OpenKnowledge home folder); a value in a project's `.ok/config.yml` is ignored. The declaration takes effect when OpenKnowledge next starts.",
   }),
 };
 

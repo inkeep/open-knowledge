@@ -1,24 +1,11 @@
-import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { join, sep } from 'node:path';
+import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseFrontmatterBumpType, pendingChangesetFiles } from './compute-next-beta.mjs';
-import { changesetIdsFromTreePaths } from './compute-stable-version.mjs';
+import { loadChangesets } from './compute-next-beta.mjs';
 
 const PASS = "No 'major' bumps in changesets.";
 const root = fileURLToPath(new URL('..', import.meta.url));
 const changesetDir = join(root, '.changeset');
-
-function loadChangesets() {
-  const cliRequire = createRequire(
-    createRequire(join(root, 'package.json')).resolve('@changesets/cli/package.json'),
-  );
-  const readerRequire = createRequire(cliRequire.resolve('@changesets/read'));
-  return {
-    read: cliRequire('@changesets/read').default,
-    parse: readerRequire('@changesets/parse').default,
-  };
-}
 
 function parseRejection(parse, file) {
   try {
@@ -56,16 +43,6 @@ function changesetsEntryPath(id) {
     : `.changeset/${id}.md`;
 }
 
-function versionReaderPaths() {
-  const tree = readdirSync(changesetDir, { recursive: true })
-    .map((entry) => `.changeset/${entry.split(sep).join('/')}`)
-    .filter((path) => !statSync(join(root, path)).isDirectory());
-  return [
-    ...pendingChangesetFiles(changesetDir).map((file) => `.changeset/${file}`),
-    ...changesetIdsFromTreePaths(tree).map((id) => `.changeset/${id}.md`),
-  ];
-}
-
 export async function main() {
   if (!existsSync(changesetDir)) {
     console.log(PASS);
@@ -73,7 +50,7 @@ export async function main() {
   }
   let changesets;
   try {
-    changesets = loadChangesets();
+    changesets = loadChangesets(root);
   } catch (error) {
     return refuse(`Changesets could not be loaded from ${root}`, error);
   }
@@ -94,28 +71,15 @@ export async function main() {
   if (readRejections.length > 0) {
     return refuse('Changesets could not read .changeset', readRejections[0]);
   }
-  let violations;
-  try {
-    violations = new Set([
-      ...entries
-        .filter(({ releases }) => releases.some(({ type }) => type === 'major'))
-        .map(({ id }) => changesetsEntryPath(id)),
-      ...versionReaderPaths().filter(
-        (path) => parseFrontmatterBumpType(readFileSync(join(root, path), 'utf8')) === 'major',
-      ),
-    ]);
-  } catch (error) {
-    return refuse('the release version readers could not read .changeset', error);
-  }
-  if (violations.size > 0) {
+  const violations = entries
+    .filter(({ releases }) => releases.some(({ type }) => type === 'major'))
+    .map(({ id }) => changesetsEntryPath(id));
+  if (violations.length > 0) {
     console.error(
-      `::error::Forbidden 'major' bump in changeset(s): ${[...violations].sort().join(' ')}`,
+      `::error::Forbidden 'major' bump in changeset(s): ${violations.sort().join(' ')}`,
     );
     console.error(
       "Open Knowledge is pre-1.0 — declare 'minor' for breaking changes, 'patch' for fixes.",
-    );
-    console.error(
-      "The release version scripts read the frontmatter as raw text and count 'major' wherever it ends a line after ':' and optional whitespace, YAML comments included.",
     );
     console.error(
       'See .changeset/README.md. 1.0.0 is a deliberate team decision, not a single changeset.',

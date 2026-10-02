@@ -1,3 +1,5 @@
+import { currentDesktopProduct } from './product.ts';
+
 export const OK_DIR = '.ok';
 
 export const OK_PROJECT_MARKER = '.ok/config.yml';
@@ -37,7 +39,14 @@ const activeMachineLocalRootDirs: ReadonlySet<string> = new Set(OK_ACTIVE_MACHIN
 export const OK_LEGACY_MACHINE_LOCAL_ROOT_DIRS: readonly OkMachineLocalRootDir[] =
   OK_MACHINE_LOCAL_ROOT_DIRS.filter((name) => !activeMachineLocalRootDirs.has(name));
 
-export function posixOkManagedBinDir(homeDir: string): string {
+export function posixOkManagedBinDir(
+  homeDir: string,
+  userHomeDirName: string = currentDesktopProduct().userHomeDirName,
+): string {
   const base = homeDir.replace(/\/+/g, '/').replace(/\/+$/, '');
-  return `${base}/${OK_DIR}/${OK_BIN_DIRNAME}`;
+  return `${base}/${userHomeDirName}/${OK_BIN_DIRNAME}`;
+}
+
+export function okUserHomeDisplayPath(...segments: string[]): string {
+  return ['~', currentDesktopProduct().userHomeDirName, ...segments].join('/');
 }

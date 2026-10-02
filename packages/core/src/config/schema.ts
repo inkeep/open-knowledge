@@ -510,7 +510,7 @@ export const ConfigSchema = z.looseObject({
           reload: 'boot',
           defaultScope: 'user',
           description:
-            "Per-git-host declarations, keyed by hostname (for example ghes.example.com). Each entry says how OpenKnowledge should treat remotes on that host; today the only key an entry carries is `provider`. Hosts absent from this map are treated as generic git remotes. Per-machine (user scope, `~/.ok/global.yml`); a value in a project's `.ok/config.yml` is ignored. Declarations take effect when OpenKnowledge next starts.",
+            "Per-git-host declarations, keyed by hostname (for example ghes.example.com). Each entry says how OpenKnowledge should treat remotes on that host; today the only key an entry carries is `provider`. Hosts absent from this map are treated as generic git remotes. Per-machine (user scope, global.yml in the OpenKnowledge home folder); a value in a project's `.ok/config.yml` is ignored. Declarations take effect when OpenKnowledge next starts.",
         })
         .default({})
         .catch({}),
@@ -799,7 +799,7 @@ export const ConfigSchema = z.looseObject({
               reload: 'live',
               defaultScope: 'project-local',
               description:
-                'Base URL of the OpenAI-compatible embeddings API (default https://api.openai.com/v1). Override to point at a self-hosted server (Ollama / vLLM / LM Studio) or another provider. The API key is NOT stored here — set it with `ok embeddings set-key` (`~/.ok/secrets.yml`); it is sent to whichever endpoint this names.',
+                'Base URL of the OpenAI-compatible embeddings API (default https://api.openai.com/v1). Override to point at a self-hosted server (Ollama / vLLM / LM Studio) or another provider. The API key is NOT stored here — set it with `ok embeddings set-key` (stored in secrets.yml in the OpenKnowledge home folder); it is sent to whichever endpoint this names.',
             })
             .default(DEFAULT_EMBEDDINGS_BASE_URL),
           model: z

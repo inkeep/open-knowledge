@@ -28,15 +28,8 @@ import {
 } from './verb-schemas.ts';
 
 const BASE_DESCRIPTION = [
-  'Delete one thing. Pass EXACTLY ONE of `document`, `folder`, `template`, `skill`, or `asset`.',
-  '',
-  '- `document` — Doc path(s) to delete (a single path or an array). Inbound links become redlinks. Irreversible. [Requires: Hocuspocus server]',
-  '- `folder` — Folder path to delete (recursive). [Requires: Hocuspocus server]',
-  '- `template` — `{ path: "<folder>/<name>" }` — a template to delete (server-routed, attributed; auto-cleans empty `.ok/`). [Requires: Hocuspocus server]',
-  '- `skill` — `{ name }` deletes a whole SKILL; `{ name, files: ["references/x.md"] }` deletes specific bundle files (server-routed, attributed; auto-cleans empty `.ok/`). [Requires: Hocuspocus server]',
-  '- `asset` — `{ path: "<folder>/<file.ext>" }` — a binary asset to delete. [Requires: Hocuspocus server]',
-  '',
-  'Call `links({ kind: "backlinks", document })` BEFORE deleting a doc to see what links here.',
+  "Delete exactly one document, folder, template, skill or asset. Requires the Hocuspocus server. Irreversible; deleting a doc leaves inbound redlinks. Call links({kind:'backlinks',document}) BEFORE deleting.",
+  "document: path or paths array; folder: recursive folder path; template: {path:'<folder>/<name>'}; asset: {path:'<folder>/<file.ext>'}. skill: {name} deletes the whole bundle, or {name,files:['references/x.md']} deletes selected files. Template/skill deletion is attributed and cleans empty .ok/ directories.",
 ].join('\n');
 
 const DESCRIPTION = BASE_DESCRIPTION;

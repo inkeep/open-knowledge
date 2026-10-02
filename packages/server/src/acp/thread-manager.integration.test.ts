@@ -20,6 +20,12 @@ import type {
 import { THREAD_REOPEN_OP_TIMEOUT_MS } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
+import {
+  executableFacts,
+  findExecutable,
+  hasUvx,
+  pid1Reaps,
+} from '../../../../test-support/capabilities.test-helper.ts';
 import codexFixture from '../../../../test-support/fixtures/codex-legacy-warning-envelopes.json' with {
   type: 'json',
 };
@@ -31,6 +37,7 @@ import { isValidLockPid } from '../process-alive.ts';
 import { RUNTIME_VERSION } from '../version-constants.ts';
 import { withLocalAcquisitionRegistry } from './acquisition-contract.test-helper.ts';
 import { isWithin } from './archive.ts';
+import { agentSpawnPath } from './launch.ts';
 import {
   installNodeFixture,
   npmCli,
@@ -168,9 +175,14 @@ function stagedSkillNote(localDir: string): string {
 }
 
 describe('package acquisition failure projection', () => {
-  test.each(['npx', 'uvx'] as const)(
+  test.for(['npx', 'uvx'] as const)(
     '%s start and retry retain actionable native refusal and clean up',
-    async (runtime) => {
+    { timeout: 90_000 },
+    async (runtime, ctx) => {
+      ctx.skip(
+        runtime === 'uvx' && !findExecutable('uvx', agentSpawnPath(), executableFacts),
+        'uvx must be available to exercise its native acquisition refusal',
+      );
       await withLocalAcquisitionRegistry(async (home) => {
         process.env.npm_config_before = '1970-01-01';
         process.env.UV_EXCLUDE_NEWER = '1970-01-01';
@@ -246,12 +258,16 @@ describe('package acquisition failure projection', () => {
         }
       });
     },
-    90_000,
   );
 
-  test.each(['npx', 'uvx'] as const)(
+  test.for(['npx', 'uvx'] as const)(
     '%s resume exposes typed install-failed after real native acquisition refusal',
-    async (runtime) => {
+    { timeout: 90_000 },
+    async (runtime, ctx) => {
+      ctx.skip(
+        runtime === 'uvx' && !hasUvx,
+        'uvx must be available to exercise its native acquisition refusal',
+      );
       await withLocalAcquisitionRegistry(async (home) => {
         const realNpx = npmCli('npx');
         const realNpm = npmCli('npm');
@@ -331,10 +347,10 @@ describe('package acquisition failure projection', () => {
         }
       });
     },
-    90_000,
   );
 
-  test('a ceiling-sized acquisition primary preserves its headline and a distinct stderr tail', async () => {
+  test('a ceiling-sized acquisition primary preserves its headline and a distinct stderr tail', async (ctx) => {
+    ctx.skip(!hasUvx, 'uvx must be available to exercise its native acquisition refusal');
     await withLocalAcquisitionRegistry(async (home) => {
       const localDir = tmp();
       const bin = join(home, 'bin');
@@ -530,7 +546,8 @@ describe('AcpThreadManager (real subprocess)', () => {
     expect(manager.listThreads()[0]?.archived).toBe(true);
   }, 45_000);
 
-  test('closeThread kills a SIGTERM-ignoring agent tree before resolving', async () => {
+  test('closeThread kills a SIGTERM-ignoring agent tree before resolving', async (ctx) => {
+    ctx.skip(!pid1Reaps, 'PID 1 must reap the orphans this test waits on');
     const contentDir = tmp();
     const localDir = tmp();
     const kidPidFile = join(localDir, 'kid.pid');

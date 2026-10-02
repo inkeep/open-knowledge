@@ -9,7 +9,7 @@ copyright: Copyright © 2026 Inkeep
 # "electron" devDep in packages/desktop/package.json — that devDep is
 # pinned exact (no caret) so the packaged runtime and the version used by
 # electron-rebuild / native-module ABI compilation cannot drift.
-electronVersion: "43.4.0"
+electronVersion: "44.5.1"
 
 # @electron/rebuild stays enabled for mac and Windows from this config because
 # other native modules still use that pass. node-pty's N-API prebuilds do not
@@ -334,13 +334,10 @@ mac:
   # declares `LSUIElement=true` so macOS LaunchServices launches the
   # spawned server process without a Dock tile — without this, the
   # re-exec into the parent's MacOS binary triggers LaunchServices to
-  # pin a stuck "exec" Dock placeholder for the child's lifetime. The
-  # MacOS binary slot at
-  # `Frameworks/OpenKnowledge Server.app/Contents/MacOS/OpenKnowledge Helper`
-  # is populated by `scripts/afterPack.mjs` (clones the Electron Helper
-  # stub for its correct rpath). The executable basename MUST stay
-  # `OpenKnowledge Helper` (Electron's canonical generic-helper name) —
-  # see `src/main/resolve-detached-spawn-args.ts` for the SIGTRAP cause.
+  # pin a stuck "exec" Dock placeholder for the child's lifetime.
+  # UPSTREAM(electron@44.5.1): the helper binary afterPack clones into
+  #   `<productName> Server.app/Contents/MacOS` SIGTRAPs unless it is named
+  #   `<productName> Helper`; see `build/helper-bundle/Info.plist`.
   extraFiles:
     - from: build/helper-bundle/Info.plist
       to: Frameworks/OpenKnowledge Server.app/Contents/Info.plist

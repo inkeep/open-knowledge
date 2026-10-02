@@ -12,6 +12,7 @@ export interface WikiLinkLookupIndex {
   readonly pagesBySlug: ReadonlyMap<string, string>;
   readonly pagesByBasename?: ReadonlyMap<string, string>;
   readonly assetPaths?: ReadonlySet<string>;
+  readonly assetTargetKeys?: ReadonlySet<string>;
   readonly filePaths?: ReadonlySet<string>;
 }
 
@@ -33,6 +34,10 @@ function getFilePathsSet(input: WikiLinkPagesInput, filePaths?: ReadonlySet<stri
   return isLookupIndex(input) ? (input.filePaths ?? new Set<string>()) : (filePaths ?? new Set());
 }
 
+function queryUsesCompatibilityFold(text: string): boolean {
+  return text.normalize('NFKC') !== text.normalize('NFC');
+}
+
 function compareDocNames(a: string, b: string): number {
   if (a < b) return -1;
   if (a > b) return 1;
@@ -46,7 +51,10 @@ export function buildPagesBySlugIndex(
   const index = new Map<string, string>();
   for (const page of pages) {
     const key = slugFn(page);
-    if (key && !index.has(key)) index.set(key, page);
+    const previous = index.get(key);
+    if (key && (previous === undefined || compareDocNames(page, previous) < 0)) {
+      index.set(key, page);
+    }
   }
   return index;
 }
@@ -72,10 +80,12 @@ function slugLookup(target: string, input: WikiLinkPagesInput): string | undefin
   if (isLookupIndex(input)) {
     return input.pagesBySlug.get(targetSlug);
   }
+  let bestMatch: string | undefined;
   for (const page of input) {
-    if (toWikiLinkSlug(page) === targetSlug) return page;
+    if (toWikiLinkSlug(page) !== targetSlug) continue;
+    if (bestMatch === undefined || compareDocNames(page, bestMatch) < 0) bestMatch = page;
   }
-  return undefined;
+  return bestMatch;
 }
 
 function basenameLookup(target: string, input: WikiLinkPagesInput): string | undefined {
@@ -111,11 +121,30 @@ export function resolveWikiLinkTargetDocName(
   const pages = getPagesSet(input);
   const stored = resolveStoredPath(pages, trimmed);
   if (stored) return stored;
+  const withoutMarkdownSuffix = trimmed.replace(/\.(md|mdx)$/i, '');
+  if (withoutMarkdownSuffix !== trimmed) {
+    const strippedMatch = resolveWikiLinkDocNameWithoutSuffixFallback(withoutMarkdownSuffix, input);
+    if (strippedMatch !== undefined) return strippedMatch;
+  }
+  return resolveWikiLinkDocNameWithoutSuffixFallback(trimmed, input);
+}
+
+function resolveWikiLinkDocNameWithoutSuffixFallback(
+  target: string,
+  input: WikiLinkPagesInput,
+): string | undefined {
+  const trimmed = target.trim();
+  if (!trimmed) return undefined;
+  const pages = getPagesSet(input);
+  const stored = resolveStoredPath(pages, trimmed);
+  if (stored) return stored;
   const viaSlug = slugLookup(trimmed, input);
   if (viaSlug) return viaSlug;
-  for (const candidate of getWikiLinkResolutionCandidates(trimmed)) {
-    const storedCandidate = resolveStoredPath(pages, candidate);
-    if (storedCandidate) return storedCandidate;
+  if (!queryUsesCompatibilityFold(trimmed)) {
+    for (const candidate of getWikiLinkResolutionCandidates(trimmed)) {
+      const storedCandidate = resolveStoredPath(pages, candidate);
+      if (storedCandidate) return storedCandidate;
+    }
   }
   const folderIndexDocName = resolveFolderIndexDocName(trimmed, pages);
   if (folderIndexDocName) return folderIndexDocName;
@@ -173,6 +202,20 @@ export function resolveWikiLinkAssetTarget(
   return matches.sort(compareDocNames)[0] ?? null;
 }
 
+export function buildWikiLinkAssetTargetKeys(
+  ...partitions: ReadonlyArray<Iterable<string>>
+): ReadonlySet<string> {
+  const keys = new Set<string>();
+  for (const partition of partitions) {
+    for (const path of partition) {
+      const lower = canonicalPathKey(path).toLowerCase();
+      keys.add(`path:${lower}`);
+      keys.add(`basename:${lower.slice(lower.lastIndexOf('/') + 1)}`);
+    }
+  }
+  return keys;
+}
+
 export function isResolvedWikiLinkTarget(
   target: string,
   pages: WikiLinkPagesInput,
@@ -181,7 +224,15 @@ export function isResolvedWikiLinkTarget(
 ): boolean {
   const trimmed = target.trim();
   if (!trimmed) return false;
-  if (
+  const normalizedAsset = canonicalPathKey(normalizeAssetTarget(trimmed)).toLowerCase();
+  const indexedAsset = isLookupIndex(pages) ? pages.assetTargetKeys : undefined;
+  if (indexedAsset !== undefined) {
+    if (
+      indexedAsset.has(`path:${normalizedAsset}`) ||
+      (!normalizedAsset.includes('/') && indexedAsset.has(`basename:${normalizedAsset}`))
+    )
+      return true;
+  } else if (
     resolveWikiLinkAssetTarget(
       trimmed,
       getAssetPathsSet(pages, assetPaths),
@@ -191,18 +242,7 @@ export function isResolvedWikiLinkTarget(
     return true;
   }
 
-  const pagesSet = getPagesSet(pages);
-  if (pagesSet.has(trimmed)) return true;
-
-  if (getWikiLinkResolutionCandidates(trimmed).some((candidate) => pagesSet.has(candidate))) {
-    return true;
-  }
-
-  if (slugLookup(trimmed, pages) !== undefined) return true;
-
-  if (resolveFolderIndexDocName(trimmed, pagesSet)) return true;
-
-  return basenameLookup(trimmed, pages) !== undefined;
+  return resolveWikiLinkTargetDocName(trimmed, pages) !== undefined;
 }
 
 export function resolveWikiLinkTarget(

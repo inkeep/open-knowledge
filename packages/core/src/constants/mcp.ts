@@ -1,8 +1,10 @@
+import { DESKTOP_PRODUCTS } from './product.ts';
+
 export const READ_DOCUMENT_HISTORY_DEPTH = 5;
 
 export const GREP_MAX_RESULTS = 50;
 
-export const MCP_SERVER_NAME = 'open-knowledge';
+export const MCP_SERVER_NAME = DESKTOP_PRODUCTS.stable.mcpServerName;
 
 export const SERVER_UNREACHABLE_ERROR_PREFIX = 'Server unreachable:';
 
@@ -28,8 +30,6 @@ export const OPEN_KNOWLEDGE_MCP_TOOLS = [
   'import',
   'checkpoint',
   'restore_version',
-  'conflicts',
-  'resolve_conflict',
 ] as const;
 
 export type OpenKnowledgeMcpTool = (typeof OPEN_KNOWLEDGE_MCP_TOOLS)[number];
@@ -43,7 +43,6 @@ export const OPEN_KNOWLEDGE_MCP_WRITE_TOOLS = [
   'import',
   'checkpoint',
   'restore_version',
-  'resolve_conflict',
 ] as const satisfies ReadonlyArray<OpenKnowledgeMcpTool>;
 
 export const OK_HOSTED_AGENT_ENV = 'OK_HOSTED_AGENT';

@@ -1,6 +1,6 @@
 {
   "name": "@inkeep/open-knowledge",
-  "version": "0.79.7",
+  "version": "0.79.13",
   "description": "Local-first, agent-friendly Markdown knowledge base with a cross-platform CLI and web editor",
   "keywords": [
     "knowledge-base",
@@ -45,7 +45,7 @@
     "build:skill-asset": "tsx scripts/build-skill-assets.ts",
     "build:notices": "mkdir -p dist && cp ../../THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md",
     "build:license": "mkdir -p dist && cp ../../LICENSE dist/LICENSE",
-    "build:native": "mkdir -p dist/native && cp ../native-config/index.js ../native-config/index.d.ts ../native-config/package.json dist/native/ && (cp ../native-config/*.node dist/native/ 2>/dev/null || true)",
+    "build:native": "mkdir -p dist/native && cp ../native-config/index.js ../native-config/index.d.ts ../native-config/package.json ../native-config/*.node dist/native/",
     "build:schema": "node --import tsx --conditions=development scripts/build-config-schema.mjs",
     "build:assets": "pnpm run build:app && pnpm run build:skill-asset && pnpm run build:notices && pnpm run build:license && pnpm run build:native && pnpm run build:schema",
     "build": "pnpm run build:cli && pnpm run build:assets",

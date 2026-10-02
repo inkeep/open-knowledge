@@ -71,3 +71,33 @@ describe('bare-name resolution ordering contract', () => {
     expect(viaNavigation('notes', forward)).toBe(viaNavigation('notes', reversed));
   });
 });
+
+describe('explicit Markdown suffix navigation parity', () => {
+  test.each([
+    ['x.md', ['x', 'x.md'], 'x.md'],
+    ['x.md.md', ['x', 'x.md', 'x.md.md'], 'x.md.md'],
+    ['x.md.md', ['x', 'x.md'], 'x.md'],
+    ['notes/beta.md', ['notes/beta', 'notes/beta-md'], 'notes/beta'],
+    ['notes/beta.md', ['Notes/Beta', 'notes/beta-md'], 'Notes/Beta'],
+    ['Beta Guide.MDX', ['notes/Beta Guide', 'beta-guide-mdx'], 'notes/Beta Guide'],
+    ['reports.md', ['reports/index', 'reports-md'], 'reports/index'],
+    ['reports.mdx', ['reports/reports', 'reports-mdx'], 'reports/reports'],
+    ['beta.md', ['notes/beta', 'beta-md'], 'notes/beta'],
+    ['notes/beta.md', ['notes/beta-md'], 'notes/beta-md'],
+    ['beta.md', ['notes/beta-md'], 'notes/beta-md'],
+    ['reports.md', ['reports.md/index'], 'reports.md/index'],
+  ] satisfies Array<[string, string[], string]>)(
+    '%s in %j opens %s',
+    (target, docNames, expected) => {
+      const pages = new Set(docNames);
+      expect(viaShared(target, pages)).toBe(expected);
+      expect(viaNavigation(target, pages)).toBe(expected);
+    },
+  );
+
+  test('a doubled suffix does not fall through to a second suffix removal', () => {
+    const pages = new Set(['x']);
+    expect(viaShared('x.md.md', pages)).toBeUndefined();
+    expect(resolveNavigationTarget('x.md.md', { pages }).kind).toBe('missing');
+  });
+});

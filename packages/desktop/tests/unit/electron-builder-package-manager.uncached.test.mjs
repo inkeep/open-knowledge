@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -45,10 +45,9 @@ describe('desktop packaging package manager', () => {
       );
       expect(result.error).toBeUndefined();
       expect(result.status, result.stderr).toBe(0);
-      expect(JSON.parse(result.stdout.trim().split('\n').at(-1))).toEqual({
-        pm: 'pnpm',
-        root: workspaceRoot,
-      });
+      const collected = JSON.parse(result.stdout.trim().split('\n').at(-1));
+      expect(collected.pm).toBe('pnpm');
+      expect(realpathSync(collected.root)).toBe(realpathSync(workspaceRoot));
     },
   );
 });

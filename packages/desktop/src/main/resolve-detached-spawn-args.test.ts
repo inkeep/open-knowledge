@@ -45,6 +45,16 @@ describe('resolveDetachedSpawnArgs', () => {
     expect(file).not.toBe(PARENT_EXEC);
   });
 
+  test('darwin packaged Beta → file targets the Beta-named helper bundle the build produces', () => {
+    const betaApp = '/Applications/OpenKnowledge Beta.app';
+    const { file } = resolveDetachedSpawnArgs(
+      makeInput({ parentExecPath: `${betaApp}/Contents/MacOS/OpenKnowledge Beta` }),
+    );
+    expect(file).toBe(
+      `${betaApp}/Contents/Frameworks/OpenKnowledge Beta Server.app/Contents/MacOS/OpenKnowledge Beta Helper`,
+    );
+  });
+
   test.each([
     ['darwin', false],
     ['linux', true],

@@ -1,9 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
+  admitRequestOrigin,
   HOST_NOT_ADMITTED_REMEDIATION,
   type IngressPolicy,
   isHostAdmitted,
-  isOriginAdmitted,
   isPeerAdmitted,
 } from '../ingress-policy.ts';
 import type { PinoLogger } from '../logger.ts';
@@ -42,18 +42,24 @@ export function createMcpDispatch(
       });
       return;
     }
-    if (origin !== undefined && !isOriginAdmitted(origin, policy)) {
+    const admission = admitRequestOrigin(origin, req.method, policy);
+    if (!admission.admitted) {
       errorResponse(res, 403, 'urn:ok:error:invalid-origin', 'Origin not allowed.', {
         handler: 'mcp',
+        detail: admission.detail,
       });
       return;
     }
     if (origin !== undefined) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
     }
-    for (const [header, value] of Object.entries(MCP_CORS_HEADERS)) {
-      res.setHeader(header, value);
+    if (admission.corsGrant) {
+      if (origin !== undefined) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+      }
+      for (const [header, value] of Object.entries(MCP_CORS_HEADERS)) {
+        res.setHeader(header, value);
+      }
     }
     if (req.method === 'OPTIONS') {
       res.writeHead(204);

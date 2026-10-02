@@ -21,20 +21,15 @@ import {
   resolveProjectServerContext,
   textPlusStructured,
   textResult,
+  zeroFindingsSummary,
 } from './shared.ts';
 
 export const DESCRIPTION = [
-  '[Requires: Hocuspocus server] Unified validation audit: every content problem — markdown-lint violations AND broken internal links — in one read-only call, grouped by the file to fix.',
-  '',
-  '- No args → audit every in-scope `.md`/`.mdx` doc; pass `path` to scope to a folder or a single file.',
-  '- The result reports `ran`, the source families selected for this run. Project audit can report `markdownlint`, `frontmatter`, `okf`, and `links`. A family absent from `ran` was not checked. `okf` covers both document and project-tree OKF checks here.',
-  '- A selected family stays in `ran` if it degrades, with the reason in `warnings`. A partial degradation may still have contributed findings.',
-  '- To CHECK whether links resolve, use this tool: each broken link is reported under the SOURCE doc that contains it, at the offending line. (The `links` tool is the navigation/graph reader — backlinks, forward links, orphans, hubs — not the validation surface.)',
-  '- Broken links written INSIDE a lowercase-stemmed `log.md`/`log.mdx` are omitted at any depth while the project\'s default-on `validation.suppressLogLinkAdvisories` setting is enabled. When findings are withheld, `brokenLinkSuppression: { reason: "reserved-log-policy", count: N }` makes the filtered result explicit without exposing paths or hrefs. A log is an append-only history whose entries deliberately reference pages that moved or were never written, so repairing them would rewrite that history. `LOG.md` is an ordinary doc and keeps its findings, and `links({ kind: "dead" })` reads the raw state unconditionally.',
-  '',
-  "Each diagnostic carries a `source` naming the validator ('markdownlint' rule violations; 'links' broken internal links), a `code` (e.g. MD010, dead-link), `message`, a 0-based LSP `range` (for links: line exact, column approximate), and `severity` ('error' | 'warning' — broken links default to warnings; the project's `validation.links` setting can raise them to errors or hide them). Only files with at least one problem are listed, plus `fileCount`/`errorCount`/`warningCount` totals. Output (text and structured) is capped at 10 files × 10 diagnostics per file and project-wide at 10 warnings, with explicit '… and N more' indicators and `omittedWarningCount` when warnings are dropped; the counts always reflect the full scan — re-run with `path` scoped to a folder or file to see what was omitted.",
-  '',
-  'Read-only: nothing is modified. Auto-fix fixable lint findings with `lint({ document, fix: true })`; broken links need content edits via `edit`/`write`.',
+  'Read-only validation of markdownlint, frontmatter, OKF and broken internal links. Requires the Hocuspocus server. No args scans all in-scope .md/.mdx; `path` narrows to file/folder. `links` is the navigation/graph tool.',
+  'ran names selected `markdownlint`, `frontmatter`, `okf`, `links`. A family absent from `ran` was not checked. A selected family remains in ran if degraded; warnings explain why and it may still have contributed findings. okf covers document and project-tree OKF checks here.',
+  "Broken links are reported under the source doc. Default-on validation.suppressLogLinkAdvisories omits links inside lowercase log.md/log.mdx at any depth; LOG.md is ordinary. brokenLinkSuppression reports reason reserved-log-policy and count without paths/hrefs. Logs are append-only history: never rewrite old entries to clear links. links({kind:'dead'}) reads raw state.",
+  'Diagnostics carry source, code, message, 0-based LSP range (link columns approximate) and severity. Broken links default to warning; validation.links can raise/hide them. Only problematic files are listed; fileCount/errorCount/warningCount reflect full scan. Output is capped at 10 files × 10 diagnostics each and project-wide at 10 warnings; omittedWarningCount reports dropped warnings. Narrow path reduces competing files; per-file caps still apply. Follow runtime hints for document lint and raw dead links; project-tree OKF findings remain capped.',
+  'Nothing is modified. Auto-fix document lint with lint({document,fix:true}); fix broken links with edit/write.',
 ].join('\n');
 
 export const AUDIT_WARNINGS_DESCRIPTION =
@@ -153,7 +148,7 @@ async function runAudit(path: string | undefined, url: string, cwd: string) {
   const fileCount = data.fileCount ?? 0;
   const errorCount = data.errorCount ?? 0;
   const warningCount = data.warningCount ?? 0;
-  const coverageLines = validationCoverageLines(data.ran);
+  const coverageLines = validationCoverageLines(data.ran, fileCount);
   const rawSuppression = data.brokenLinkSuppression;
   const suppressionPresent = rawSuppression !== undefined && rawSuppression !== null;
   const suppression = parseBrokenLinkSuppression(rawSuppression);
@@ -197,10 +192,7 @@ async function runAudit(path: string | undefined, url: string, cwd: string) {
 
   const scope = path ? ` in ${path}` : '';
   if (files.length === 0) {
-    const summary =
-      warnings.length > 0
-        ? `No problems found across ${fileCount} document${fileCount === 1 ? '' : 's'}${scope}, but the audit could not fully complete.`
-        : `No problems across ${fileCount} document${fileCount === 1 ? '' : 's'}${scope}.`;
+    const summary = zeroFindingsSummary('Audit', fileCount, warnings, scope);
     return textPlusStructured(
       [
         summary,
@@ -216,14 +208,16 @@ async function runAudit(path: string | undefined, url: string, cwd: string) {
     const lines = file.diagnostics.map(formatDiagnosticLine);
     if (file.omittedDiagnosticCount !== undefined) {
       lines.push(
-        `  … and ${file.omittedDiagnosticCount} more problem${file.omittedDiagnosticCount === 1 ? '' : 's'}`,
+        `  … and ${file.omittedDiagnosticCount} more problem${file.omittedDiagnosticCount === 1 ? '' : 's'}. For lint findings, use lint({ document: ${JSON.stringify(file.file)} }); for broken links, use links({ kind: "dead", sourceDocuments: [${JSON.stringify(file.file)}] }). Project-tree OKF findings remain capped.`,
       );
     }
     return [`${file.file ?? '(unknown)'}:`, ...lines].join('\n');
   });
   const footer =
     omittedFileCount > 0
-      ? [`… and ${omittedFileCount} more file${omittedFileCount === 1 ? '' : 's'} with problems`]
+      ? [
+          `… and ${omittedFileCount} more file${omittedFileCount === 1 ? '' : 's'} with problems. Narrow path to reduce competing files; per-file caps still apply.`,
+        ]
       : [];
   return textPlusStructured(
     [

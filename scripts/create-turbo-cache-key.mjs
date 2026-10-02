@@ -7,8 +7,8 @@ const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 export const CACHE_KEY_FILE = 'turbo-cache-key.json';
 
-export function cacheKey({ platform, arch } = process) {
-  return { platform, arch };
+export function cacheKey({ platform, arch, version } = process) {
+  return { platform, arch, node: version };
 }
 
 export function writeCacheKey(root = OK_ROOT, proc = process) {

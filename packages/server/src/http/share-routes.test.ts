@@ -52,6 +52,7 @@ describe('createShareRoutes table', () => {
         ]) as IncomingMessage;
         req.method = 'POST';
         req.url = '/api/share/construct-url';
+        req.headers = { 'content-type': 'application/json', 'transfer-encoding': 'chunked' };
         const { res, captured } = makeCaptureRes();
         const route = group.table.resolve(req.url);
         if (!route?.dispatch) throw new Error('missing construct-url handler');

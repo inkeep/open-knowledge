@@ -21,7 +21,7 @@ export const CONVENTION_DOC = 'test-support/KNOWN-REDS.md';
 export const MIN_SIGNATURE_LITERAL = 4;
 export const EXPIRY_WARNING_DAYS = 14;
 
-const TEST_FILE = /\.test\.[cm]?[jt]sx?$|\.e2e\.tsx?$/;
+const TEST_FILE = /\.test\.[cm]?[jt]sx?$|\.e2e\.tsx?$|\.test-helper\.[cm]?[jt]sx?$/;
 const PLAYWRIGHT_FILE = /\.e2e\.tsx?$/;
 const ISSUE_URL =
   /^https:\/\/(?:github\.com\/inkeep\/[\w.-]+\/issues\/\d+|linear\.app\/inkeep\/issue\/[A-Z]+-\d+(?:\/[\w-]*)?)$/;
@@ -744,6 +744,10 @@ function conditionAtoms(condition, context) {
     }
     if (ts.isIdentifier(node)) {
       const binding = visibleBinding(node, node.text);
+      if (binding?.imported) {
+        add('import', binding.imported.module, textNode);
+        return;
+      }
       const initializer = binding?.initializer ?? null;
       if (initializer && !following.has(initializer)) {
         const specifier = importSpecifier(initializer, sourceFile);

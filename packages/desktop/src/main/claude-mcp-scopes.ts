@@ -13,6 +13,7 @@ export interface ClaudeMcpScopes {
   readonly projectEntryPresent: boolean;
   readonly globalOwn: boolean;
   readonly globalKind: McpEntryKind;
+  readonly serverName: string;
 }
 
 const NO_PROJECT_SCOPE = {
@@ -28,7 +29,7 @@ export function classifyClaudeMcpScopes(
   const target = EDITOR_TARGETS.claude;
   const global = classifyExistingMcpEntry(target, '', home);
   const globalOwn = global.kind === 'present' && isOwnManagedEntry(global.entry);
-  const globalScope = { globalOwn, globalKind: global.kind };
+  const globalScope = { globalOwn, globalKind: global.kind, serverName: target.serverName('') };
 
   const projectPath =
     projectRoot === undefined ? undefined : target.projectConfigPath?.(projectRoot);

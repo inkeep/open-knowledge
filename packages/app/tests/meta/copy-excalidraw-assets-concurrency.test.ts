@@ -19,6 +19,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { runningAsRoot } from '../../../../test-support/capabilities.test-helper.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -345,7 +346,8 @@ describe('copy-excalidraw-assets predev step', () => {
     expect(strayRootEntries(root)).toEqual([]);
   });
 
-  test('a displaced tree that cannot be removed still publishes, and says so', async () => {
+  test('a displaced tree that cannot be removed still publishes, and says so', async (ctx) => {
+    ctx.skip(runningAsRoot, 'root bypasses the chmod refusal this test induces');
     seedStaleVendoredDir(root);
     chmodSync(join(vendoredDir(root), 'fonts'), 0o500);
 

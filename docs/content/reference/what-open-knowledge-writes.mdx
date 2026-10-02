@@ -20,6 +20,17 @@ Writes fall into two buckets, and each table's **Scope** column tells you which:
 - **In-project** — inside your project folder. Either **committed** (shared through git with your team) or **gitignored** (this machine only, under `.ok/local/` or `.git/`).
 - **Outside-project** — your **home directory** (`~/.ok/`, `~/Library/...`), your **shell startup files** (`~/.zshrc` and friends), your editors' **user-level configs**, or the OS credential store.
 
+#### Stable and Beta home folders
+
+Every `~/.ok/` path on this page belongs to Stable, except the shared entries listed below. OpenKnowledge Beta, and the `ok-beta` CLI, write the other files under `~/.ok-beta/` instead, and keep credentials in the OS credential store under the service `open-knowledge-beta` rather than `open-knowledge`. These entries stay under `~/.ok/` for both products:
+
+- `~/.ok/machine-id`, a random id that identifies this machine to project server locks.
+- `~/.ok/skills/`, the user skills store.
+- `~/.ok/skills-lock.json`, provenance for skills imported at Global scope.
+- `~/.ok/local/installed-skills.json`, `~/.ok/local/skill-placements.json`, and `~/.ok/local/skill-move-retained.json`, the install markers, placement records (where each copy of a skill was written, and whether as a copy or a link), and unfinished-scope-move bookkeeping for Global-scope skills.
+
+No product's uninstall removes `~/.ok/machine-id`, and Stable's `ok uninstall` keeps every entry in this list. See [the uninstall notes](#opt-outs-in-one-place) for how `--purge-content` treats the shared skills store.
+
 OpenKnowledge installs one of two ways, and the footprint differs a little between them. Pick yours below — each tab lists the complete set of writes for that path. The [opt-outs](#opt-outs-in-one-place) and [what leaves your machine](#what-leaves-your-machine) at the end apply to both.
 
 <Tabs groupId="ok-install" persist className="ok-flush-tabs ok-tabs-h2" items={['Desktop app', 'CLI']}>
@@ -34,14 +45,14 @@ How the app lands depends on your platform:
 - **Windows** — a per-user installer: the app lands under `%LOCALAPPDATA%\Programs\`, with no admin prompt. Stable adds `ok` to your **user** `PATH` and registers `openknowledge://`; Beta adds `ok-beta` and `open-knowledge-beta` and registers `openknowledge-beta://`. These are registry values under `HKCU\Environment` and `HKCU\Software\Classes`, removed by the matching uninstaller. Each product also registers itself for `.md` and `.mdx` files under `HKCU\Software\Classes`, which can make it the default opener when you have not explicitly chosen one in Windows. Uninstall removes that product's Open With and file-handler registrations but does not restore a previous file-type default. To choose another opener, use **Settings → Apps → Default apps**. Your shell startup files are never touched.
 - **Linux** — a deb or rpm package: Stable installs to `/opt/OpenKnowledge/` and symlinks `/usr/bin/ok`, `/usr/bin/open-knowledge`, and `/usr/bin/openknowledge`; Beta installs to `/opt/OpenKnowledge Beta/` and symlinks `/usr/bin/ok-beta`, `/usr/bin/open-knowledge-beta`, and `/usr/bin/openknowledge-beta`. Their desktop entries register `openknowledge://` and `openknowledge-beta://` respectively, and each installs its own AppArmor profile on Ubuntu 24.04+ so the Chromium sandbox keeps working. Your shell startup files are touched only with your consent, as described below.
 
-On every platform the app writes app-level state and logs on launch. The table below shows the macOS locations; Beta substitutes `OpenKnowledge Beta` for the app-data directory and uses its own updater cache. On Windows, Stable app state lives under `%APPDATA%\OpenKnowledge\` and Beta under `%APPDATA%\OpenKnowledge Beta\`. On Linux, the corresponding defaults are `~/.config/OpenKnowledge/` and `~/.config/OpenKnowledge Beta/` (or the matching XDG directories). Stable owns the traditional `~/.ok/bin` paths; Beta owns `~/.ok/variants/beta`.
+On every platform the app writes app-level state and logs on launch. The table below shows the macOS locations; Beta substitutes `OpenKnowledge Beta` for the app-data directory and uses its own updater cache. On Windows, Stable app state lives under `%APPDATA%\OpenKnowledge\` and Beta under `%APPDATA%\OpenKnowledge Beta\`. On Linux, the corresponding defaults are `~/.config/OpenKnowledge/` and `~/.config/OpenKnowledge Beta/` (or the matching XDG directories). Stable keeps its command-line shortcuts under `~/.ok/` and Beta keeps its own under `~/.ok-beta/`. When Beta sets up its `PATH` shim, it removes the `~/.ok/variants/beta/` folder that earlier Beta builds used.
 
 | Path | What it is | Scope |
 | --- | --- | --- |
 | `~/Library/Application Support/OpenKnowledge/state.json` | Recent projects, window/view state, update channel | Outside-project (home dir) |
 | `~/Library/Application Support/OpenKnowledge/path-install.json` | Records the `PATH`/shell changes it made and your `PATH`-consent choice, so they can be reverted | Outside-project (home dir) |
 | `~/Library/Application Support/OpenKnowledge Beta/state.json` | Beta's separate recent projects, window/view state, and update channel | Outside-project (home dir) |
-| `~/.ok/variants/beta/path-install.json` | Records Beta's separate `PATH`/shell changes and consent choice | Outside-project (home dir) |
+| `~/.ok-beta/path-install.json` | Records Beta's separate `PATH`/shell changes and consent choice | Outside-project (home dir) |
 | `~/.ok/logs/desktop.<date>.log` | Desktop app + renderer log | Outside-project (home dir) |
 | `~/.ok/mcp-status.json` | Records your first-launch MCP-setup consent choice | Outside-project (home dir) |
 | `~/Library/Caches/@inkeepopen-knowledge-desktop-updater/` | Staged auto-update downloads (electron-updater) | Outside-project (home dir) |
@@ -69,8 +80,8 @@ The first two rows below live in OpenKnowledge's own `~/.ok/` directory and are 
 | `~/.ok/bin/ok`, `~/.ok/bin/open-knowledge` | Symlinks to the CLI bundled inside the app | Outside-project (home dir) |
 | `~/.ok/env.sh` | A managed shim that prepends `~/.ok/bin` to your `PATH` | Outside-project (home dir) |
 | `~/.zshrc`, `~/.bash_profile`, `~/.bashrc` (Linux), `~/.config/fish/conf.d/open-knowledge.fish` | A **fenced managed block** that sources `~/.ok/env.sh` — written **only if you consent** in the first-launch dialog. The block is created in the startup file for your login shell, and maintained in any of these that already exists, except `~/.bashrc`, which is only ever touched on Linux | Outside-project (shell config) |
-| `~/.ok/variants/beta/bin/ok-beta`, `~/.ok/variants/beta/bin/open-knowledge-beta` | Beta-only symlinks to the CLI bundled inside OpenKnowledge Beta | Outside-project (home dir) |
-| `~/.ok/variants/beta/env.sh`, `~/.config/fish/conf.d/open-knowledge-beta.fish` | Beta's separate environment shim and fish startup file; other shells receive a separately fenced `open-knowledge beta cli` block | Outside-project (home dir / shell config) |
+| `~/.ok-beta/bin/ok-beta`, `~/.ok-beta/bin/open-knowledge-beta` | Beta-only symlinks to the CLI bundled inside OpenKnowledge Beta | Outside-project (home dir) |
+| `~/.ok-beta/env.sh`, `~/.config/fish/conf.d/open-knowledge-beta.fish` | Beta's separate environment shim and fish startup file; other shells receive a separately fenced `open-knowledge beta cli` block | Outside-project (home dir / shell config) |
 
 If you decline, only `ok` typed in an *external* terminal (Terminal, iTerm) is affected — the app's built-in terminal, the MCP server, and the "Open with AI" launches all work without it. You can add it later from **File → Set up OpenKnowledge integrations…**. Machines that already had the block from a version before the consent dialog are treated as consented: the block is left in place and maintained.
 
@@ -111,6 +122,20 @@ When you initialize or open a project, the app scaffolds the same project files 
 
 The **Scope** column assumes you share this setup with your team. New projects don't: they keep OpenKnowledge's config to yourself, adding every in-project path above to `.git/info/exclude`, so those files are written but stay out of git.
 
+#### Beta uses its own entry
+
+Each product registers under its own name, so Stable and Beta can both be connected to the same editor without overwriting each other. Stable uses `open-knowledge`; Beta uses `open-knowledge-beta`, with its own launcher that runs OpenKnowledge Beta and falls back to `npx @inkeep/open-knowledge@beta`. Everywhere this page names the `open-knowledge` entry, Beta's app, repair sweeps, and `ok-beta init` act only on `open-knowledge-beta`, and Beta's Pi bridge is `.pi/extensions/open-knowledge-beta.ts`. Agents see Beta's tools as `mcp__open-knowledge-beta__*`, and Pi sees them as `ok-beta_*`.
+
+Earlier releases of the separately installed `OpenKnowledge Beta` app registered under `open-knowledge`, and updating does not move that entry. If an editor's config has no `open-knowledge-beta` entry, reconnect that editor from **Settings → Agent connections** in OpenKnowledge Beta, then remove the old `open-knowledge` entry from the file listed under [`ok init`](#ok-init) if you don't also run Stable. An older Beta install still named `OpenKnowledge` keeps using `open-knowledge`; leave that entry in place.
+
+A CLI process decides which product it belongs to in this order: the `OK_CHANNEL` environment variable (`stable` or `beta`; any other value is an error), then the name of the executable it runs as, and otherwise Stable. The CLI bundled in OpenKnowledge Beta resolves as Beta from its executable name, and Beta's launcher sets `OK_CHANNEL=beta` before it falls back to npx. A CLI run under plain Node, such as `npx @inkeep/open-knowledge@beta init` typed by hand, resolves as Stable and writes the `open-knowledge` entry unless you set `OK_CHANNEL=beta`.
+
+#### Upgrading Beta to its own home folder
+
+Beta now keeps its data in `~/.ok-beta/` (see [Stable and Beta home folders](#stable-and-beta-home-folders)), so the first launch after this change starts fresh: settings, logs, saved themes, agent chat history, and your user config in `global.yml`, including any GitHub Enterprise Server host declarations, all begin empty. Beta also reads credentials from its own credential-store service, so sign in again. The data an earlier Beta wrote to `~/.ok/` stays there for Stable; copy `~/.ok/global.yml` or `~/.ok/themes/` into `~/.ok-beta/` yourself if you want them in Beta too.
+
+An earlier Beta stored its GitHub token in the OS credential store under the service `open-knowledge`. That token stays there and now belongs to Stable: signing out of Beta and uninstalling Beta both leave it in place. Remove it with Stable's `ok auth signout`, or delete it from your credential store directly.
+
 ### While a project is open
 
 The app runs a collaboration server for the open project. It writes runtime state, gitignored under `.ok/local/`, plus a shadow git repo that powers the timeline and recovery features:
@@ -146,6 +171,8 @@ On each launch and project open, the app also runs **repair sweeps**: it rewrite
 
 ### Home directory and credentials (`~/.ok/`)
 
+Beta writes the `~/.ok/` entries below under `~/.ok-beta/` instead, except the shared Global-scope skill files (`~/.ok/local/installed-skills.json`, `~/.ok/local/skill-placements.json`, `~/.ok/local/skill-move-retained.json`, and `~/.ok/skills-lock.json`), which every product keeps in `~/.ok/`; see [Stable and Beta home folders](#stable-and-beta-home-folders).
+
 | Path | What it is | Sensitive? |
 | --- | --- | --- |
 | `~/.ok/global.yml` | User-global [config](./configuration.mdx) (applies to every project) | No |
@@ -153,7 +180,7 @@ On each launch and project open, the app also runs **repair sweeps**: it rewrite
 | `~/.ok/auth.yml` | Auth-token fallback, used only when the Keychain is unavailable. Written `0600` | **Yes** (`0600`) |
 | `~/.ok/skill-state.yml`, `~/.ok/skill-install-events.jsonl` | Skill-install bookkeeping | No |
 | `~/.agents/skills/<name>/`, `~/.claude/skills/<name>/`, … | Your global-scope skills, versioned in place in your home editor dirs (kept by `ok uninstall` unless `--purge-content`) | No |
-| `~/.ok/local/installed-skills.json`, `~/.ok/local/skill-move-retained.json` | The same skill-install markers and unfinished-scope-move bookkeeping the tables above list under a project's `.ok/local/`, written under your home directory for Global-scope skills instead | No |
+| `~/.ok/local/installed-skills.json`, `~/.ok/local/skill-placements.json`, `~/.ok/local/skill-move-retained.json`, `~/.ok/skills-lock.json` | The same skill-install markers, placement records, unfinished-scope-move bookkeeping, and import provenance that a project keeps under its own `.ok/`, written under your home directory for Global-scope skills instead. Shared by every product: Beta writes these to `~/.ok/` too | No |
 | `~/.ok/stats.jsonl` | Local "open with AI" handoff stats — local-only, no phone-home | No |
 | `~/.ok/agent-browser/<chat>/` | Only while **Let agent chats use a browser** is on: `npm/`, the folder that chat's browser server starts from, rebuilt each time it launches, and `files/`, everything the browser saves. Removed when you delete the chat in OpenKnowledge; turning the setting off keeps it, and nothing else clears it, so delete the folder yourself to remove every chat's saved files at once | No |
 | `_npx/<hash>/` in the npm cache that launch uses: your own npm cache (`~/.npm` unless your `npm_config_cache` says otherwise) when the agent runs through your system npx, or OpenKnowledge's managed Node.js runtime cache at `~/.ok/runtimes/cache/node` when no usable system Node.js was found and the agent runs on that runtime | Deleted, not written: when a catalog-managed in-app agent that OpenKnowledge launched through npx fails because npm reports that entry is missing its `package.json`, OpenKnowledge removes that one directory so npx rebuilds it on the single relaunch that follows. Never for custom agent commands or uv-managed adapters | No |
@@ -162,7 +189,7 @@ On each launch and project open, the app also runs **repair sweeps**: it rewrite
 | `~/.ok/logs/`, `~/.ok/bug-reports/` | Desktop and CLI logs, and bug-report bundles from `ok bug-report` and the app's **Help → Report a bug…** dialog (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`). Each report from the dialog also gets a small YAML record holding its send state and a secret-redacted copy of the note you wrote, so report history can still show what a report was about. The zip is deleted once the report is sent; the record is kept, and both go when you delete the report from report history. If that record ever can't be read back, OpenKnowledge leaves it exactly as it is rather than overwriting your note, and writes a second tiny `.sent.yaml` file beside it when a report does send, so history still shows it as sent instead of offering to send it again | No |
 | `~/.ok/bin/`, `~/.ok/env.sh` | `PATH` shim (see [Shell and `PATH`](#shell-and-path) above) | No |
 
-**Auth tokens** (for GitHub sync, sharing, and cloning) are stored in your OS credential store under the service name `open-knowledge` — the **Keychain** on macOS, **Credential Manager** on Windows, and the Secret Service keyring (libsecret) on Linux. The `~/.ok/auth.yml` file is only a fallback for headless environments where the credential store isn't reachable; when it becomes available, the token is migrated into it and the file copy is removed.
+**Auth tokens** (for GitHub sync, sharing, and cloning) are stored in your OS credential store under the service name `open-knowledge` (`open-knowledge-beta` for Beta) — the **Keychain** on macOS, **Credential Manager** on Windows, and the Secret Service keyring (libsecret) on Linux. The `~/.ok/auth.yml` file is only a fallback for headless environments where the credential store isn't reachable; when it becomes available, the token is migrated into it and the file copy is removed.
 
 The **Install for Claude Chat & Cowork** command (command palette or Help menu) builds `~/Downloads/openknowledge.skill` on demand and hands it to Claude Desktop for upload; the build is version-gated via `~/.ok/skill-state.yml`.
 
@@ -226,7 +253,7 @@ With `--scope user` or `both` (the default), `ok init` also registers the `open-
 | `~/.ok/skill-state.yml` | Records which skill version is installed, so the step is skipped next time | Outside-project (home dir) |
 | `~/.ok/skill-install-events.jsonl` | Append-only local log of skill-install attempts | Outside-project (home dir) |
 
-The install is **non-fatal** (`ok init` still exits 0 if it fails), **version-gated** (a no-op when the current version is already installed), and needs **no network access**. Skip it for one run with `ok init --no-skills`, or choose individual bundles with `--skills <ids>`. Skipping records nothing and removes nothing, so skills already on the machine are left alone. An installed bundle is remembered in `~/.ok/skill-state.yml` and honored by every later install path; to turn the built-in skills off for good, decline at the first-launch prompt or uninstall from **Settings → Skills Studio**, either of which records a durable machine-wide choice. `ok repair-skills` re-runs it.
+The install is **non-fatal** (`ok init` still exits 0 if it fails), **version-gated** (a no-op when the current version is already installed), and needs **no network access**. Skip it for one run with `ok init --no-skills`, or choose individual bundles with `--skills <ids>`. Skipping records nothing and removes nothing, so skills already on the machine are left alone. An installed bundle is remembered in `~/.ok/skill-state.yml` and honored by every later install path; to turn the built-in skills off for good, decline at the first-launch prompt or uninstall from **Settings → Skills Studio**, either of which records a durable machine-wide choice. `ok repair-skills` explicitly repairs these user-global bundles. Its project sweep restores missing skill copies but leaves existing project copies unchanged; see [Refresh agent guidance](./mcp.mdx#refresh-agent-guidance) to update those.
 
 Pi has no user-level MCP config. `ok init` writes its project-scoped bridge extension; using Pi inside OpenKnowledge can also add a [folder trust grant](#pi-folder-trust), whose location respects `PI_CODING_AGENT_DIR`.
 
@@ -274,7 +301,7 @@ On each boot, `ok start` also runs **repair sweeps**: it re-checks a few things 
 | Existing `open-knowledge` MCP entries | The same editor configs `ok init` writes — **both** user-level (`~/.claude.json`, `~/.cursor/mcp.json`, …) and project-level | Outside-project (editor config) **and** in-project |
 | Stale `open-knowledge-ui` entry in `.claude/launch.json` | Project | Removed if present — OK no longer writes launch.json |
 
-Disable both repair sweeps with `OK_RECLAIM_DISABLE=1`. They leave installed editor skills alone; `ok repair-skills` is the explicit command for those. Starting an in-app agent thread creates or refreshes the runtime skill copy listed above.
+Disable both repair sweeps with `OK_RECLAIM_DISABLE=1`. They leave installed editor skills alone. `ok repair-skills` explicitly restores missing project copies and repairs user-global bundles; [refresh existing project guidance](./mcp.mdx#refresh-agent-guidance) with `ok init` or the integration settings. Starting an in-app agent thread creates or refreshes the runtime skill copy listed above.
 
 Projects initialized by an older CLI may lack the `local/` rule in `.ok/.gitignore`, which leaves these runtime files visible in `git status`. Add `local/` to that file or open the project in the desktop app, which updates it automatically. The runtime skill copy is always excluded from the knowledge base.
 
@@ -284,6 +311,8 @@ Projects initialized by an older CLI may lack the `local/` rule in `.ok/.gitigno
 
 ### Home directory and credentials (`~/.ok/`)
 
+Beta writes the `~/.ok/` entries below under `~/.ok-beta/` instead, except the shared Global-scope skill files (`~/.ok/local/installed-skills.json`, `~/.ok/local/skill-placements.json`, `~/.ok/local/skill-move-retained.json`, and `~/.ok/skills-lock.json`), which every product keeps in `~/.ok/`; see [Stable and Beta home folders](#stable-and-beta-home-folders). Upgrading from an earlier Beta that used `~/.ok/`? See [Upgrading Beta to its own home folder](#upgrading-beta-to-its-own-home-folder).
+
 | Path | What it is | Sensitive? |
 | --- | --- | --- |
 | `~/.ok/global.yml` | User-global [config](./configuration.mdx) (applies to every project) | No |
@@ -291,7 +320,7 @@ Projects initialized by an older CLI may lack the `local/` rule in `.ok/.gitigno
 | `~/.ok/auth.yml` | Auth-token fallback, used when no OS credential store is reachable. Written `0600` | **Yes** (`0600`) |
 | `~/.ok/skill-state.yml`, `~/.ok/skill-install-events.jsonl` | Skill-install bookkeeping | No |
 | `~/.agents/skills/<name>/`, `~/.claude/skills/<name>/`, … | Your global-scope skills, versioned in place in your home editor dirs (kept by `ok uninstall` unless `--purge-content`) | No |
-| `~/.ok/local/installed-skills.json`, `~/.ok/local/skill-move-retained.json` | The same skill-install markers and unfinished-scope-move bookkeeping the tables above list under a project's `.ok/local/`, written under your home directory for Global-scope skills instead | No |
+| `~/.ok/local/installed-skills.json`, `~/.ok/local/skill-placements.json`, `~/.ok/local/skill-move-retained.json`, `~/.ok/skills-lock.json` | The same skill-install markers, placement records, unfinished-scope-move bookkeeping, and import provenance that a project keeps under its own `.ok/`, written under your home directory for Global-scope skills instead. Shared by every product: Beta writes these to `~/.ok/` too | No |
 | `~/.ok/stats.jsonl` | Local "open with AI" handoff stats — local-only, no phone-home | No |
 | `~/.ok/agent-browser/<chat>/` | Only while **Let agent chats use a browser** is on: `npm/`, the folder that chat's browser server starts from, rebuilt each time it launches, and `files/`, everything the browser saves. Removed when you delete the chat in OpenKnowledge; turning the setting off keeps it, and nothing else clears it, so delete the folder yourself to remove every chat's saved files at once | No |
 | `_npx/<hash>/` in the npm cache that launch uses: your own npm cache (`~/.npm` unless your `npm_config_cache` says otherwise) when the agent runs through your system npx, or OpenKnowledge's managed Node.js runtime cache at `~/.ok/runtimes/cache/node` when no usable system Node.js was found and the agent runs on that runtime | Deleted, not written: when a catalog-managed in-app agent that OpenKnowledge launched through npx fails because npm reports that entry is missing its `package.json`, OpenKnowledge removes that one directory so npx rebuilds it on the single relaunch that follows. Never for custom agent commands or uv-managed adapters | No |
@@ -299,7 +328,7 @@ Projects initialized by an older CLI may lack the `local/` rule in `.ok/.gitigno
 | `~/.ok/logs/` | CLI logs (`cli.<date>.log`), size- and age-capped | No |
 | `~/.ok/bug-reports/` | Bug-report bundles from `ok bug-report` — the desktop app's **Help → Report a bug…** dialog writes here too (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`). A report filed from the dialog also leaves a small YAML record beside its bundle, holding the report's send state and a secret-redacted copy of the note you wrote so report history can name it. That record outlives the bundle: the zip is deleted once the report is sent, and the record is kept until you delete the report from report history. If the record ever can't be read back, OpenKnowledge leaves it exactly as it is rather than overwriting your note, and writes a second tiny `.sent.yaml` file beside it when a report does send. That marker holds only the send time and the report's reference, never your note, and it is removed with the rest of the report | No |
 
-**Auth tokens** (for GitHub sync, sharing, and cloning) are stored in your operating system's secure credential store when one is available — the macOS **Keychain** (service `open-knowledge`), or the platform equivalent (Windows Credential Manager, Linux Secret Service) — falling back to a `0600` `~/.ok/auth.yml` file on headless systems (a Linux server, CI) where none is reachable.
+**Auth tokens** (for GitHub sync, sharing, and cloning) are stored in your operating system's secure credential store when one is available — the macOS **Keychain** (service `open-knowledge`, or `open-knowledge-beta` for Beta), or the platform equivalent (Windows Credential Manager, Linux Secret Service) — falling back to a `0600` `~/.ok/auth.yml` file on headless systems (a Linux server, CI) where none is reachable.
 
 </Tab>
 
@@ -349,7 +378,7 @@ Bridge setup requires a project directory it can resolve and access, and refuses
 | Local diagnostic logs and telemetry | `telemetry.localSink.enabled: false` in config |
 | Auto-starting the MCP server | `OK_MCP_AUTOSTART=0` |
 
-To review the footprint after the fact, `ok diagnose` reports what's on disk (and the desktop `path-install.json` records exactly which shell/`PATH` changes were made). To reverse it, `ok deinit` removes OpenKnowledge from one project and `ok uninstall` removes the global footprint, with optional project cleanup. Both keep your markdown and authored skills by default; OpenKnowledge's bundled skills are removed. Shared configs and their symlinks are preserved, and incomplete cleanup reports a failure while retaining state needed to retry. Both commands take `--dry-run` to preview. See the [CLI reference](./cli.mdx#remove-openknowledge) for project selection and scripting behavior.
+To review the footprint after the fact, `ok diagnose` reports what's on disk (and the desktop `path-install.json` records exactly which shell/`PATH` changes were made). To reverse it, `ok deinit` removes OpenKnowledge from one project and `ok uninstall` removes the global footprint, with optional project cleanup. It keeps the [shared `~/.ok/` entries](#stable-and-beta-home-folders): no product's uninstall removes `~/.ok/machine-id`, and Stable's keeps the rest of that list too. `--purge-content` also removes the user skills store at `~/.ok/skills/`, which every product shares, whichever product you uninstall; it is skipped if an earlier uninstall step failed. Both keep your markdown and authored skills by default; OpenKnowledge's bundled skills are removed. Shared configs and their symlinks are preserved, and incomplete cleanup reports a failure while retaining state needed to retry. Both commands take `--dry-run` to preview. See the [CLI reference](./cli.mdx#remove-openknowledge) for project selection and scripting behavior.
 
 In the desktop app you don't need the CLI for finer control, and the split follows what each thing is. **Settings → Agent connections** lists every agent OpenKnowledge can wire up, grouped by how you reach it — In app, Terminal, External apps. Each row says whether OpenKnowledge can reach that agent's tools and offers the action that fits: **Add MCP & skill** when nothing is set up, **Manage** when something is, and **Remove** when the tool itself is present but you have turned it off. A tool that is not on this machine always leads with **Install**, or **How to set up** when OpenKnowledge has no download link for it; neither writes anything. When OpenKnowledge files are still on disk for a tool that is not on this machine, the row keeps whichever of **Install** or **How to set up** it already had, and adds a muted **Remove** link beside the hint — `Not installed · OpenKnowledge files present`, or `Not detected on this machine · OpenKnowledge files present` for a tool OpenKnowledge cannot launch directly. Where one tool has two rows — a CLI and its editor, sharing a single setup — that hint and link appear only when OpenKnowledge can confirm the other row's tool is also absent, so the row for the half you do not have never offers to delete a setup the other half is using — and when it cannot tell, it says nothing rather than guess. Both scopes are chosen in the same place: the dialog behind those actions groups what it writes under *This project* and *This machine*, so a project-scoped MCP config and a user-global one sit side by side, each naming the file it touches. *Skills* live on their own page at both scopes: **Settings → Skills Studio** carries the skills OpenKnowledge ships (user scope) or the project's own skill (project scope), each with an explicit Install/Uninstall button behind a confirmation naming every path it touches, plus the folders your AI tools read skills from. Removal keeps the guest discipline you would expect: only entries OpenKnowledge recognizably wrote are removed, and anything you customized is left intact.
 

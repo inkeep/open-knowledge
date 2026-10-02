@@ -4,8 +4,9 @@ import { type FileHandle, lstat, open, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { BundleExtraFile } from '@inkeep/open-knowledge';
-import { BUG_REPORT_AGENT_CHAT_ZIP_DIR, OK_DIR, redactSecrets } from '@inkeep/open-knowledge-core';
+import { BUG_REPORT_AGENT_CHAT_ZIP_DIR, redactSecrets } from '@inkeep/open-knowledge-core';
 import type { CodexLegacyAgentIdentity } from '@inkeep/open-knowledge-core/acp/codex-legacy-notice';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import {
   acpThreadStoreRoots,
   acpThreadsDir,
@@ -63,7 +64,7 @@ export function defaultAgentChatThreadDirs(
   home: string = homedir(),
 ): string[] {
   return acpThreadStoreRoots(
-    join(home, OK_DIR),
+    okUserHomeDir(home),
     projectDir === null ? null : getLocalDir(projectDir),
   ).map((root) => acpThreadsDir(root));
 }

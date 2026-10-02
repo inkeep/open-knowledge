@@ -1,7 +1,8 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readdirSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { basename, isAbsolute, join, resolve } from 'node:path';
+import type { Readable } from 'node:stream';
 import {
   LOCAL_OP_PIPE_STDIO_OPTIONS,
   withHiddenWindowsConsole,
@@ -13,6 +14,7 @@ const LOCK_SCAN_MAX_DEPTH = 3;
 const LOCK_SCAN_MAX_ENTRIES = 2000;
 const OK_LOCK_DIR_ARG_PREFIX = '--ok-lock-dir-b64=';
 const OK_PROJECT_PATH_ARG_PREFIX = '--ok-project-path=';
+const LISTENER_QUERY_ARGS = ['-iTCP', '-sTCP:LISTEN', '-nP'];
 const OK_PROCESS_PGREP_QUERY =
   'cli\\.mjs|open-knowledge|Open ?Knowledge(\\.app| Helper)|--ok-lock-dir-b64=|--ok-project-path=|(^|[ /])ok[ ]+(start|mcp|ui)([ ]|$)|packages/(cli|app)|hocuspocus|vite';
 
@@ -80,62 +82,165 @@ function parsePgrepOutput(output: string): OkProcessEntry[] {
   return entries;
 }
 
-function parsePsOutput(output: string): OkProcessEntry[] {
-  const entries: OkProcessEntry[] = [];
-  const lines = output.split('\n');
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i]?.trim();
-    if (!line) continue;
-    const spaceIdx = line.indexOf(' ');
-    if (spaceIdx === -1) continue;
-    const pidStr = line.slice(0, spaceIdx);
-    const command = line.slice(spaceIdx + 1).trim();
-    const pid = Number.parseInt(pidStr, 10);
-    if (!Number.isNaN(pid) && isOkProcess(command)) {
-      entries.push({ pid, command });
-    }
+interface ListingResult {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  timedOut: boolean;
+  hasStdout: boolean;
+  hasStderr: boolean;
+  diagnostic: string;
+}
+
+function readCommandLines(
+  program: string,
+  args: string[],
+  onLine: (line: string) => void,
+): Promise<ListingResult> {
+  return new Promise((resolveResult, reject) => {
+    const child = spawn(
+      program,
+      args,
+      withHiddenWindowsConsole({
+        ...LOCAL_OP_PIPE_STDIO_OPTIONS,
+        timeout: SPAWN_TIMEOUT_MS,
+        env: {
+          ...process.env,
+          LC_CTYPE: process.env.LC_ALL || process.env.LC_CTYPE,
+          LC_ALL: undefined,
+          LC_MESSAGES: 'C',
+        },
+      }),
+    );
+    let hasStdout = false;
+    let hasStderr = false;
+    let diagnostic = '';
+    child.once('error', reject);
+    const readLines = (stream: Readable, visit: (line: string) => void) => {
+      let pending = '';
+      stream.once('error', reject);
+      stream.setEncoding('utf8');
+      stream.on('data', (chunk: string) => {
+        pending += chunk;
+        let newline = pending.indexOf('\n');
+        while (newline !== -1) {
+          visit(pending.slice(0, newline));
+          pending = pending.slice(newline + 1);
+          newline = pending.indexOf('\n');
+        }
+      });
+      stream.once('end', () => {
+        if (pending) visit(pending);
+      });
+    };
+    readLines(child.stdout, (line) => {
+      hasStdout = true;
+      onLine(line);
+    });
+    readLines(child.stderr, (line) => {
+      hasStderr = true;
+      diagnostic ||= line.trim();
+    });
+    child.once('close', (code, signal) => {
+      resolveResult({ code, signal, timedOut: child.killed, hasStdout, hasStderr, diagnostic });
+    });
+  });
+}
+
+function describeListingError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const code = (error as NodeJS.ErrnoException).code;
+  return code ? `${code}: ${error.message}` : error.message;
+}
+
+function describeListingResult(result: ListingResult): string {
+  const completion = result.signal ? `signal ${result.signal}` : `exit status ${result.code}`;
+  const ending = result.timedOut
+    ? `timed out after ${SPAWN_TIMEOUT_MS} ms (${completion})`
+    : completion;
+  return `${ending}${result.diagnostic ? `: ${result.diagnostic}` : ''}`;
+}
+
+class PsListingError extends Error {
+  readonly result: ListingResult;
+
+  constructor(result: ListingResult) {
+    super(describeListingResult(result));
+    this.result = result;
   }
+}
+
+async function readPsEntries(args: string[]): Promise<OkProcessEntry[]> {
+  const entries: OkProcessEntry[] = [];
+  let header = true;
+  const result = await readCommandLines('ps', args, (line) => {
+    if (header) {
+      header = false;
+      return;
+    }
+    const trimmed = line.trim();
+    const spaceIdx = trimmed.indexOf(' ');
+    if (spaceIdx === -1) return;
+    const pid = Number.parseInt(trimmed.slice(0, spaceIdx), 10);
+    const command = trimmed.slice(spaceIdx + 1).trim();
+    if (!Number.isNaN(pid) && isOkProcess(command)) entries.push({ pid, command });
+  });
+  if (result.code !== 0 || result.signal) {
+    throw new PsListingError(result);
+  }
+  if (header) throw new Error('no process table returned');
   return entries;
 }
 
 async function findOkProcessEntries(strict = false): Promise<OkProcessEntry[]> {
-  const pgrepResult = spawnSync(
-    'pgrep',
-    ['-a', '-f', OK_PROCESS_PGREP_QUERY],
-    withHiddenWindowsConsole({
-      encoding: 'utf-8',
-      timeout: SPAWN_TIMEOUT_MS,
-    }),
-  );
+  const failures: string[] = [];
+  const unix = process.platform === 'darwin' || process.platform === 'linux';
+  if (!unix) {
+    const pgrepResult = spawnSync(
+      'pgrep',
+      ['-a', '-f', OK_PROCESS_PGREP_QUERY],
+      withHiddenWindowsConsole({
+        encoding: 'utf-8',
+        timeout: SPAWN_TIMEOUT_MS,
+      }),
+    );
 
-  const pgrepUnavailable =
-    pgrepResult.error != null && (pgrepResult.error as NodeJS.ErrnoException).code === 'ENOENT';
-
-  if (
-    !pgrepUnavailable &&
-    !pgrepResult.error &&
-    (pgrepResult.status === 0 || pgrepResult.status === 1)
-  ) {
-    const output = pgrepResult.stdout ?? '';
-    const entries = parsePgrepOutput(output);
-    if (entries.length > 0 || output.trim() === '') return entries;
+    if (!pgrepResult.error && (pgrepResult.status === 0 || pgrepResult.status === 1)) {
+      const output = pgrepResult.stdout ?? '';
+      const entries = parsePgrepOutput(output);
+      if (entries.length > 0 || output.trim() === '') return entries;
+      failures.push('pgrep: no command rows returned');
+    } else {
+      failures.push(
+        `pgrep: ${pgrepResult.error ? describeListingError(pgrepResult.error) : `exit status ${pgrepResult.status}`}`,
+      );
+    }
   }
 
-  const psResult = spawnSync(
-    'ps',
-    ['-axo', 'pid,command'],
-    withHiddenWindowsConsole({
-      encoding: 'utf-8',
-      timeout: SPAWN_TIMEOUT_MS,
-    }),
-  );
-
-  if (psResult.error != null || psResult.status !== 0 || !psResult.stdout) {
-    if (strict) throw new Error('Could not enumerate processes with pgrep or ps');
-    return [];
+  const formats =
+    process.platform === 'linux'
+      ? [
+          ['-ww', '-A', '-o', 'pid,cmdline'],
+          ['-ww', '-A', '-o', 'pid,args'],
+          ['-A', '-o', 'pid,args'],
+        ]
+      : unix
+        ? [['-ww', '-A', '-o', 'pid,args']]
+        : [['-axo', 'pid,command']];
+  for (const args of formats) {
+    try {
+      return await readPsEntries(args);
+    } catch (error) {
+      failures.push(`ps (${args.join(' ')}): ${describeListingError(error)}`);
+      const unsupportedFormat =
+        error instanceof PsListingError &&
+        error.result.code === 1 &&
+        !error.result.signal &&
+        !error.result.hasStdout;
+      if (!unsupportedFormat) break;
+    }
   }
-
-  return parsePsOutput(psResult.stdout);
+  if (strict) throw new Error(`Could not enumerate processes: ${failures.join('; ')}`);
+  return [];
 }
 
 export async function findOkProcessPids(): Promise<number[]> {
@@ -322,20 +427,23 @@ export function readPidCwds(pids: readonly number[]): Map<number, string> {
   return cwds;
 }
 
-function parseListeningPids(output: string): number[] {
-  const pids: number[] = [];
-  const lines = output.split('\n');
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i]?.trim();
-    if (!line) continue;
-    const parts = line.split(/\s+/);
-    if (parts.length < 2) continue;
-    const pid = Number.parseInt(parts[1] ?? '', 10);
-    if (!Number.isNaN(pid)) {
-      pids.push(pid);
+async function readListeningPids(strict = false): Promise<number[]> {
+  const pids = new Set<number>();
+  let header = true;
+  const result = await readCommandLines('lsof', LISTENER_QUERY_ARGS, (line) => {
+    if (header) {
+      header = false;
+      return;
     }
+    const parts = line.trim().split(/\s+/);
+    const pid = Number.parseInt(parts[1] ?? '', 10);
+    if (!Number.isNaN(pid)) pids.add(pid);
+  });
+  const noListeners = result.code === 1 && !result.hasStdout && !result.hasStderr;
+  if (result.signal || result.code === null || (strict && result.code !== 0 && !noListeners)) {
+    throw new Error(describeListingResult(result));
   }
-  return [...new Set(pids)];
+  return [...pids];
 }
 
 function hasLockFile(lockDir: string): boolean {
@@ -410,17 +518,8 @@ export async function discoverLockDirs(): Promise<string[]> {
     addLockDirsForCwd(candidateDirs, cwd);
   }
 
-  const lsofResult = spawnSync(
-    'lsof',
-    ['-iTCP', '-sTCP:LISTEN', '-nP'],
-    withHiddenWindowsConsole({
-      encoding: 'utf-8',
-      timeout: SPAWN_TIMEOUT_MS,
-    }),
-  );
-
-  if (lsofResult.error == null && lsofResult.stdout) {
-    const listeningPids = parseListeningPids(lsofResult.stdout);
+  const listeningPids = await readListeningPids().catch(() => null);
+  if (listeningPids !== null) {
     const knownPidSet = new Set(okEntries.map((e) => e.pid));
     const newPids = listeningPids.filter((p) => !knownPidSet.has(p));
     const portCwdsByPid = readPidCwds(newPids);
@@ -505,22 +604,16 @@ export async function scanLockProcesses(
     else if (project) await addProject(project, entry.pid, 'project-argument');
     else pendingCwd.push({ pid: entry.pid, source: 'process-cwd' });
   }
-  const listeners = spawnSync(
-    'lsof',
-    ['-iTCP', '-sTCP:LISTEN', '-nP'],
-    withHiddenWindowsConsole({
-      encoding: 'utf-8',
-      timeout: SPAWN_TIMEOUT_MS,
-    }),
-  );
-  const listenersUnavailable =
-    listeners.error != null ||
-    (listeners.status !== 0 && !(listeners.status === 1 && !listeners.stdout && !listeners.stderr));
-  if (!listenersUnavailable) {
-    const known = new Set(entries.map((entry) => entry.pid));
-    for (const pid of parseListeningPids(listeners.stdout ?? '')) {
-      if (isValidLockPid(pid) && !known.has(pid)) pendingCwd.push({ pid, source: 'listener-cwd' });
-    }
+  let listeners: number[] = [];
+  let listenerFailure = '';
+  try {
+    listeners = await readListeningPids(true);
+  } catch (error) {
+    listenerFailure = `Could not enumerate TCP listeners: lsof (${LISTENER_QUERY_ARGS.join(' ')}): ${describeListingError(error)}`;
+  }
+  const known = new Set(entries.map((entry) => entry.pid));
+  for (const pid of listeners) {
+    if (isValidLockPid(pid) && !known.has(pid)) pendingCwd.push({ pid, source: 'listener-cwd' });
   }
   const cwds = readPidCwds(pendingCwd.map(({ pid }) => pid));
   for (const { pid, source } of pendingCwd) {
@@ -529,7 +622,7 @@ export async function scanLockProcesses(
     else if (isLockProcessRunning(pid, probeOptions(pid)))
       scan.unavailable.push(`Could not read the working directory of process ${pid}`);
   }
-  if (listenersUnavailable) scan.unavailable.push('Could not enumerate TCP listeners with lsof');
+  if (listenerFailure) scan.unavailable.push(listenerFailure);
   const defunctCandidates = new Set<number>();
   for (const pid of new Set(scan.candidates.map((candidate) => candidate.pid))) {
     if (isDefunctProcess(pid, probeOptions(pid))) defunctCandidates.add(pid);

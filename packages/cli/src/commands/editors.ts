@@ -6,8 +6,16 @@ import {
   EDITOR_LABELS as CORE_EDITOR_LABELS,
   HOSTS_WITH_USER_SKILL_DIR as CORE_HOSTS_WITH_USER_SKILL_DIR,
   type EditorId as CoreEditorId,
+  currentDesktopProduct,
+  currentMcpServerName,
+  DESKTOP_PRODUCTS,
+  type DesktopProduct,
+  type DesktopProductName,
+  mcpChainMarkerPrefix,
+  OK_CHANNEL_ENV,
+  piExtensionProjectPath,
+  resolveDesktopProductName,
 } from '@inkeep/open-knowledge-core';
-import { MCP_SERVER_NAME } from '@inkeep/open-knowledge-server';
 import { getTomlConfigEngine } from '../native/toml-config-engine.ts';
 
 export type EditorId = CoreEditorId;
@@ -21,38 +29,56 @@ const DEV_MCP_ENV = {
   OK_LOG_FILE: '/tmp/ok-mcp.log',
 } as const;
 
-export const CHAIN_VERSION_SENTINEL = '# ok-mcp-v2';
-
-export const CHAIN_V2 = `# ok-mcp-v2
-USER_BUNDLE="$HOME/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh"
-[ -f "$USER_BUNDLE" ] && [ -x "$USER_BUNDLE" ] && exec "$USER_BUNDLE" mcp
-BUNDLE="/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh"
-[ -f "$BUNDLE" ] && [ -x "$BUNDLE" ] && exec "$BUNDLE" mcp
-DEB_BUNDLE="/opt/OpenKnowledge/resources/cli/bin/ok.sh"
-[ -f "$DEB_BUNDLE" ] && [ -x "$DEB_BUNDLE" ] && exec "$DEB_BUNDLE" mcp
-command -v npx >/dev/null 2>&1 && exec npx -y @inkeep/open-knowledge@latest mcp
-for d in "$HOME/.nvm/versions/node"/*/bin "$HOME/.fnm/node-versions"/*/installation/bin "$HOME/.asdf/installs/nodejs"/*/bin /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin" "$HOME/.volta/bin"; do
-  [ -f "$d/npx" ] && [ -x "$d/npx" ] && exec "$d/npx" -y @inkeep/open-knowledge@latest mcp
-done
-echo "OpenKnowledge: install OK Desktop or Node.js 24+, then restart your editor" >&2
-exit 127`;
-
-export const CHAIN_WIN_VERSION_SENTINEL = '# ok-mcp-win-v1';
+const UNIX_CHAIN_REVISION = 2;
+const WIN_CHAIN_REVISION = 1;
 
 const OK_MCP_CHAIN_MARKER = '# ok-mcp';
 
 const OK_PACKAGE_SPEC = '@inkeep/open-knowledge';
 
-export const CHAIN_WIN_V1 = `# ok-mcp-win-v1
+function unixChainSentinel(product: DesktopProduct): string {
+  return `${mcpChainMarkerPrefix('unix-chain', product.mcpChainTag)}${UNIX_CHAIN_REVISION}`;
+}
+
+function winChainSentinel(product: DesktopProduct): string {
+  return `${mcpChainMarkerPrefix('windows-chain', product.mcpChainTag)}${WIN_CHAIN_REVISION}`;
+}
+
+function buildUnixChain(name: DesktopProductName): string {
+  const product = DESKTOP_PRODUCTS[name];
+  const npxSpec = `${OK_PACKAGE_SPEC}@${product.npmDistTag}`;
+  const channelLine = name === 'stable' ? '' : `\nexport ${OK_CHANNEL_ENV}=${name}`;
+  return `${unixChainSentinel(product)}${channelLine}
+USER_BUNDLE="$HOME/Applications/${product.productName}.app/Contents/Resources/cli/bin/ok.sh"
+[ -f "$USER_BUNDLE" ] && [ -x "$USER_BUNDLE" ] && exec "$USER_BUNDLE" mcp
+BUNDLE="/Applications/${product.productName}.app/Contents/Resources/cli/bin/ok.sh"
+[ -f "$BUNDLE" ] && [ -x "$BUNDLE" ] && exec "$BUNDLE" mcp
+DEB_BUNDLE="/opt/${product.productName}/resources/cli/bin/ok.sh"
+[ -f "$DEB_BUNDLE" ] && [ -x "$DEB_BUNDLE" ] && exec "$DEB_BUNDLE" mcp
+command -v npx >/dev/null 2>&1 && exec npx -y ${npxSpec} mcp
+for d in "$HOME/.nvm/versions/node"/*/bin "$HOME/.fnm/node-versions"/*/installation/bin "$HOME/.asdf/installs/nodejs"/*/bin /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin" "$HOME/.volta/bin"; do
+  [ -f "$d/npx" ] && [ -x "$d/npx" ] && exec "$d/npx" -y ${npxSpec} mcp
+done
+echo "OpenKnowledge: install OK Desktop or Node.js 24+, then restart your editor" >&2
+exit 127`;
+}
+
+function buildWinChain(name: DesktopProductName): string {
+  const product = DESKTOP_PRODUCTS[name];
+  const npxSpec = `${OK_PACKAGE_SPEC}@${product.npmDistTag}`;
+  const cmd = `${product.cliCommandNames[0]}.cmd`;
+  const installSpec = product.npmDistTag === 'latest' ? OK_PACKAGE_SPEC : npxSpec;
+  const channelLine = name === 'stable' ? '' : `\n$env:${OK_CHANNEL_ENV} = '${name}'`;
+  return `${winChainSentinel(product)}${channelLine}
 if ($env:PATHEXT -notmatch 'CMD') { $env:PATHEXT = '.COM;.EXE;.BAT;.CMD;' + $env:PATHEXT }
 if ($env:APPDATA) {
-  $shim = Join-Path $env:APPDATA 'npm\\ok.cmd'
+  $shim = Join-Path $env:APPDATA 'npm\\${cmd}'
   if (Test-Path -LiteralPath $shim -PathType Leaf) { & $shim mcp; exit $LASTEXITCODE }
 }
-$ok = Get-Command ok.cmd -CommandType Application -ErrorAction SilentlyContinue
+$ok = Get-Command ${cmd} -CommandType Application -ErrorAction SilentlyContinue
 if ($ok) { & $ok.Source mcp; exit $LASTEXITCODE }
 $npx = Get-Command npx.cmd -CommandType Application -ErrorAction SilentlyContinue
-if ($npx) { & $npx.Source -y '@inkeep/open-knowledge@latest' mcp; exit $LASTEXITCODE }
+if ($npx) { & $npx.Source -y '${npxSpec}' mcp; exit $LASTEXITCODE }
 $dirs = @()
 if ($env:ProgramFiles) { $dirs += Join-Path $env:ProgramFiles 'nodejs' }
 if ($env:NVM_SYMLINK) { $dirs += $env:NVM_SYMLINK }
@@ -64,14 +90,31 @@ if ($env:LOCALAPPDATA) {
 if ($env:USERPROFILE) { $dirs += Join-Path $env:USERPROFILE 'scoop\\shims' }
 foreach ($d in $dirs) {
   $probe = Join-Path $d 'npx.cmd'
-  if (Test-Path -LiteralPath $probe -PathType Leaf) { & $probe -y '@inkeep/open-knowledge@latest' mcp; exit $LASTEXITCODE }
+  if (Test-Path -LiteralPath $probe -PathType Leaf) { & $probe -y '${npxSpec}' mcp; exit $LASTEXITCODE }
 }
-[Console]::Error.WriteLine('OpenKnowledge: install Node.js 24+ (npm i -g @inkeep/open-knowledge), then restart your editor')
+[Console]::Error.WriteLine('OpenKnowledge: install Node.js 24+ (npm i -g ${installSpec}), then restart your editor')
 exit 127`;
+}
 
-export const PI_EXTENSION_OWNERSHIP_MARKER = '// ok-pi-bridge';
+export const CHAIN_VERSION_SENTINEL = unixChainSentinel(DESKTOP_PRODUCTS.stable);
 
-export const PI_EXTENSION_VERSION_SENTINEL = `${PI_EXTENSION_OWNERSHIP_MARKER}-v1`;
+export const CHAIN_V2 = buildUnixChain('stable');
+
+export const CHAIN_WIN_VERSION_SENTINEL = winChainSentinel(DESKTOP_PRODUCTS.stable);
+
+export const CHAIN_WIN_V1 = buildWinChain('stable');
+
+export function piExtensionOwnershipMarker(product: DesktopProduct): string {
+  return `// ok-pi-bridge${product.mcpChainTag}`;
+}
+
+export function piExtensionVersionSentinel(product: DesktopProduct): string {
+  return `${piExtensionOwnershipMarker(product)}-v1`;
+}
+
+export const PI_EXTENSION_OWNERSHIP_MARKER = piExtensionOwnershipMarker(DESKTOP_PRODUCTS.stable);
+
+export const PI_EXTENSION_VERSION_SENTINEL = piExtensionVersionSentinel(DESKTOP_PRODUCTS.stable);
 
 export const PI_MANAGED_FILE_ENTRY_COMMAND = 'ok-pi-managed-extension';
 
@@ -88,13 +131,14 @@ export interface McpInstallOptions {
 
 export function isEntryUpToDate(entry: unknown): boolean {
   if (typeof entry !== 'object' || entry === null) return false;
+  const product = currentDesktopProduct();
   const e = entry as Record<string, unknown>;
 
   if (e.command === '/bin/sh') {
     if (!Array.isArray(e.args)) return false;
     if (e.args[0] !== '-l' || e.args[1] !== '-c') return false;
     const body = e.args[2];
-    return scriptBodyOpensWith(body, CHAIN_VERSION_SENTINEL);
+    return scriptBodyOpensWith(body, unixChainSentinel(product));
   }
 
   if (e.command === 'powershell') {
@@ -103,14 +147,14 @@ export function isEntryUpToDate(entry: unknown): boolean {
       return false;
     }
     const body = e.args[3];
-    return scriptBodyOpensWith(body, CHAIN_WIN_VERSION_SENTINEL);
+    return scriptBodyOpensWith(body, winChainSentinel(product));
   }
 
   if (e.type === 'local' && Array.isArray(e.command)) {
     if (e.command[0] === '/bin/sh') {
       if (e.command[1] !== '-l' || e.command[2] !== '-c') return false;
       const body = e.command[3];
-      return scriptBodyOpensWith(body, CHAIN_VERSION_SENTINEL);
+      return scriptBodyOpensWith(body, unixChainSentinel(product));
     }
     if (e.command[0] === 'powershell') {
       if (
@@ -121,7 +165,7 @@ export function isEntryUpToDate(entry: unknown): boolean {
         return false;
       }
       const body = e.command[4];
-      return scriptBodyOpensWith(body, CHAIN_WIN_VERSION_SENTINEL);
+      return scriptBodyOpensWith(body, winChainSentinel(product));
     }
     return false;
   }
@@ -129,7 +173,7 @@ export function isEntryUpToDate(entry: unknown): boolean {
   if (e.command === PI_MANAGED_FILE_ENTRY_COMMAND) {
     if (!Array.isArray(e.args)) return false;
     const text = e.args[0];
-    return typeof text === 'string' && text.startsWith(PI_EXTENSION_VERSION_SENTINEL);
+    return typeof text === 'string' && text.startsWith(piExtensionVersionSentinel(product));
   }
 
   return false;
@@ -173,12 +217,17 @@ export function buildManagedServerEntry(options: McpInstallOptions = {}): Record
   if (platformName === 'win32') {
     return {
       command: 'powershell',
-      args: ['-NoProfile', '-NonInteractive', '-Command', CHAIN_WIN_V1],
+      args: [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        buildWinChain(resolveDesktopProductName()),
+      ],
     };
   }
   return {
     command: '/bin/sh',
-    args: ['-l', '-c', CHAIN_V2],
+    args: ['-l', '-c', buildUnixChain(resolveDesktopProductName())],
   };
 }
 
@@ -197,13 +246,19 @@ function buildOpenCodeEntry(options: McpInstallOptions = {}): Record<string, unk
     return {
       type: 'local',
       enabled: true,
-      command: ['powershell', '-NoProfile', '-NonInteractive', '-Command', CHAIN_WIN_V1],
+      command: [
+        'powershell',
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        buildWinChain(resolveDesktopProductName()),
+      ],
     };
   }
   return {
     type: 'local',
     enabled: true,
-    command: ['/bin/sh', '-l', '-c', CHAIN_V2],
+    command: ['/bin/sh', '-l', '-c', buildUnixChain(resolveDesktopProductName())],
   };
 }
 
@@ -567,7 +622,7 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> & { pi: ManagedFi
     configPath: (_cwd, home) => resolveClaudeCodeConfigPath({ home }),
     format: 'json',
     topLevelKey: 'mcpServers',
-    serverName: () => MCP_SERVER_NAME,
+    serverName: () => currentMcpServerName(),
     buildEntry: (_cwd, options) => buildManagedServerEntry(options),
     scope: 'global',
     detectPath: (_cwd, home) => join(home ?? homedir(), '.claude'),
@@ -580,7 +635,7 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> & { pi: ManagedFi
     configPath: (_cwd, home) => resolveClaudeDesktopConfigPath({ home }),
     format: 'json',
     topLevelKey: 'mcpServers',
-    serverName: () => MCP_SERVER_NAME,
+    serverName: () => currentMcpServerName(),
     buildEntry: (_cwd, options) => buildManagedServerEntry(options),
     scope: 'global',
     detectPath: (_cwd, home) => dirname(resolveClaudeDesktopConfigPath({ home })),
@@ -591,7 +646,7 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> & { pi: ManagedFi
     configPath: (_cwd, home) => resolveCursorConfigPath({ home }),
     format: 'json',
     topLevelKey: 'mcpServers',
-    serverName: () => MCP_SERVER_NAME,
+    serverName: () => currentMcpServerName(),
     buildEntry: (_cwd, options) => buildManagedServerEntry(options),
     scope: 'global',
     detectPath: (_cwd, home) => dirname(resolveCursorConfigPath({ home })),
@@ -604,7 +659,7 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> & { pi: ManagedFi
     configPath: (_cwd, home) => resolveCodexConfigPath({ home }),
     format: 'toml',
     topLevelKey: 'mcp_servers',
-    serverName: () => MCP_SERVER_NAME,
+    serverName: () => currentMcpServerName(),
     buildEntry: (_cwd, options) => buildManagedServerEntry(options),
     scope: 'global',
     detectPath: (_cwd, home) => dirname(resolveCodexConfigPath({ home })),
@@ -617,7 +672,7 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> & { pi: ManagedFi
     configPath: (_cwd, home) => resolveCopilotConfigPath({ home }),
     format: 'json',
     topLevelKey: 'mcpServers',
-    serverName: () => MCP_SERVER_NAME,
+    serverName: () => currentMcpServerName(),
     buildEntry: (_cwd, options) => buildManagedServerEntry(options),
     scope: 'global',
     detectPath: (_cwd, home) => dirname(resolveCopilotConfigPath({ home })),
@@ -629,7 +684,7 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> & { pi: ManagedFi
     configPath: (_cwd, home) => resolveOpenCodeConfigPath({ home }),
     format: 'json',
     topLevelKey: 'mcp',
-    serverName: () => MCP_SERVER_NAME,
+    serverName: () => currentMcpServerName(),
     buildEntry: (_cwd, options) => buildOpenCodeEntry(options),
     scope: 'global',
     detectPath: (_cwd, home) => dirname(resolveOpenCodeConfigPath({ home })),
@@ -643,7 +698,7 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> & { pi: ManagedFi
     format: 'json',
     topLevelKey: 'mcp',
     serverMapSubKey: 'servers',
-    serverName: () => MCP_SERVER_NAME,
+    serverName: () => currentMcpServerName(),
     buildEntry: (_cwd, options) => buildManagedServerEntry(options),
     scope: 'global',
     detectPath: (_cwd, home) => join(home ?? homedir(), '.openclaw'),
@@ -654,15 +709,15 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> & { pi: ManagedFi
     label: EDITOR_LABELS.pi,
     configPath: () => {
       throw new Error(
-        "Pi has no user-global MCP config; OK's integration is the project-scoped bridge extension at .pi/extensions/open-knowledge.ts (run `ok init` in the project).",
+        `Pi has no user-global MCP config; OK's integration is the project-scoped bridge extension at ${piExtensionProjectPath(currentDesktopProduct())} (run \`ok init\` in the project).`,
       );
     },
     format: 'file',
     topLevelKey: 'mcpServers',
-    serverName: () => MCP_SERVER_NAME,
+    serverName: () => currentMcpServerName(),
     scope: 'project',
     detectPath: (_cwd, home) => resolvePiAgentDirPath({ home }),
-    projectConfigPath: (cwd) => join(cwd, '.pi', 'extensions', 'open-knowledge.ts'),
+    projectConfigPath: (cwd) => join(cwd, piExtensionProjectPath(currentDesktopProduct())),
     projectSkillPath: (cwd) => join(cwd, '.pi', 'skills', 'open-knowledge', 'SKILL.md'),
   },
   antigravity: {
@@ -671,7 +726,7 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> & { pi: ManagedFi
     configPath: (_cwd, home) => resolveAntigravityConfigPath({ home }),
     format: 'json',
     topLevelKey: 'mcpServers',
-    serverName: () => MCP_SERVER_NAME,
+    serverName: () => currentMcpServerName(),
     buildEntry: (_cwd, options) => buildManagedServerEntry(options),
     scope: 'global',
     detectPath: (_cwd, home) => join(home ?? homedir(), '.gemini'),
@@ -683,7 +738,7 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> & { pi: ManagedFi
     configPath: (_cwd, home) => resolveLmStudioConfigPath({ home }),
     format: 'json',
     topLevelKey: 'mcpServers',
-    serverName: () => MCP_SERVER_NAME,
+    serverName: () => currentMcpServerName(),
     buildEntry: (_cwd, options) => buildManagedServerEntry(options),
     scope: 'global',
     detectPath: (_cwd, home) => dirname(resolveLmStudioConfigPath({ home })),
@@ -695,7 +750,7 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> & { pi: ManagedFi
     configPath: (_cwd, home) => resolveHermesConfigPath({ home }),
     format: 'yaml',
     topLevelKey: 'mcp_servers',
-    serverName: () => MCP_SERVER_NAME,
+    serverName: () => currentMcpServerName(),
     buildEntry: (_cwd, options) => buildManagedServerEntry(options),
     scope: 'global',
     detectPath: (_cwd, home) => join(home ?? homedir(), '.hermes'),

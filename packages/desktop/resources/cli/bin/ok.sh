@@ -34,9 +34,9 @@ if [ ! -f "$CLI" ] || [ ! -x "$ELECTRON" ]; then
   exit 69
 fi
 
-# UPSTREAM(electron@43.4.0): an ELECTRON_RUN_AS_NODE boot reads its own basename
-#   via _NSGetExecutablePath() and SIGTRAPs on anything but "OpenKnowledge
-#   Helper", so the executable literal below is fixed by Electron, not by us.
+# UPSTREAM(electron@44.5.1): an ELECTRON_RUN_AS_NODE boot reads its own basename
+#   via _NSGetExecutablePath() and SIGTRAPs on anything but "<product> Helper",
+#   so the executable name below is fixed by Electron, not by us.
 RUNTIME="$ELECTRON"
 case "$1" in
   mcp|start)

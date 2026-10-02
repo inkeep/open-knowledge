@@ -2,7 +2,7 @@ import { defineConfig, type ViteUserConfig } from 'vitest/config';
 import { appVitestConfig } from './vitest.config';
 
 // Integration tier: multi-client CRDT convergence over the real Node test
-// harness (tests/integration) plus the meta and lint-plugin suites. Reuses the
+// harness (tests/integration) plus the meta suite. Reuses the
 // app base config (lingui macro shim, single-instance dedupe, development-
 // conditions pin, Bun global facade, per-test IDB reset); the three CI cells
 // map 1:1 onto vitest's native `--shard=1/3`, `--shard=2/3`, `--shard=3/3`.
@@ -17,11 +17,7 @@ export const appIntegrationVitestConfig = {
   ...appVitestConfig,
   test: {
     ...appVitestConfig.test,
-    include: [
-      'tests/integration/**/*.test.ts?(x)',
-      'tests/meta/**/*.test.ts?(x)',
-      'tests/lint-plugins/**/*.test.ts?(x)',
-    ],
+    include: ['tests/integration/**/*.test.ts?(x)', 'tests/meta/**/*.test.ts?(x)'],
     exclude: [...appVitestConfig.test.exclude, '**/per-session-um-perf.test.ts'],
     // Per-test / per-hook budget for the CRDT convergence suite, carried over
     // from the bun `--timeout 30000`. Declared here (not only inherited) so the

@@ -415,17 +415,20 @@ export {
 export {
   ALL_EDITOR_IDS,
   EDITOR_LABELS,
-  EDITOR_PROJECT_CONFIG_PATH,
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_SETUP_DOC_SLUG,
   EDITOR_USER_SKILL_ROOT,
   type EditorId,
+  editorProjectConfigPath,
   HOSTS_WITH_USER_SKILL_DIR,
   HUB_READER_EDITORS,
   PROJECT_SKILL_EDITOR_IDS,
   PROJECT_SKILL_PROJECTION_PATHS,
+  piExtensionProjectPath,
+  piToolNamespace,
   RESERVED_PROJECT_SKILL_NAME,
   receivesProjectIntegrationWrite,
+  STABLE_EDITOR_PROJECT_CONFIG_PATH,
   skillRootActivationPath,
   USER_MCP_GATED_EDITOR_IDS,
   USER_SKILL_EDITOR_IDS,
@@ -490,6 +493,7 @@ export {
   type McpLauncherEnvelope,
   type McpLauncherFamily,
   type McpLauncherRevisionCatalog,
+  mcpChainMarkerPrefix,
 } from './constants/mcp-launcher.ts';
 export {
   MENU_LABELS,
@@ -512,10 +516,18 @@ export {
   OK_PROJECT_MARKER,
   type OkMachineLocalRootDir,
   type OkMachineLocalRootFile,
+  okUserHomeDisplayPath,
   posixOkManagedBinDir,
   SAVED_THEMES_DIRNAME,
   WORKTREES_DIRNAME,
 } from './constants/ok-dir.ts';
+export {
+  pathShimBinDir,
+  pathShimBlockLabel,
+  pathShimFishConfFileName,
+  pathShimHomeDirName,
+  pathShimMarkerPath,
+} from './constants/path-shim-layout.ts';
 export {
   PREVIEW_EMBED_STARTERS,
   type PreviewEmbedStarter,
@@ -526,15 +538,26 @@ export {
   type PreviewThemeToken,
 } from './constants/preview-theme-tokens.ts';
 export {
+  currentDesktopProduct,
+  currentMcpServerName,
   DESKTOP_PRODUCTS,
   type DesktopProduct,
   type DesktopProductName,
   desktopWindowsExecutableName,
   desktopWindowsInstallDirNames,
+  OK_CHANNEL_ENV,
   PRODUCT_NAME,
+  resolveDesktopProductName,
 } from './constants/product.ts';
 export { isReservedLogDoc } from './constants/reserved-docs.ts';
 export { DEFAULT_SERVER_HOST } from './constants/server.ts';
+export {
+  MACHINE_ID_FILENAME,
+  SHARED_OK_ENTRIES,
+  SKILL_MOVE_RETAINED_FILENAME,
+  SKILL_PLACEMENTS_FILENAME,
+  SKILLS_STORE_DIRNAME,
+} from './constants/shared-ok-entries.ts';
 export {
   AGENTS_SKILLS_ROOT,
   extractSkillRefs,
@@ -902,6 +925,7 @@ export { MarkdownManager, type SerializeCallOptions } from './markdown/index.ts'
 export {
   type AppliesToPatternSummary,
   type AppliesToSummary,
+  AUDIT_EMPTY_SCOPE_WARNING,
   applyFieldConstraint,
   applyTextEdits,
   assertNeverOkfRuleGroupId,
@@ -935,6 +959,7 @@ export {
   fixMarkdownText,
   frontmatterSchemaCompileError,
   type GoverningFrontmatterSchema,
+  isAuditEmptyScopeWarning,
   isFrontmatterSchemaAsset,
   isFrontmatterScoped,
   isMarkdownlintJsonConfig,
@@ -1110,8 +1135,6 @@ export {
   getCanonicalDescriptors,
   projectFull,
   projectLite,
-  renderInventoryFooter,
-  renderInventoryList,
 } from './registry/projection.ts';
 export type {
   ClipboardHastContext,
@@ -1864,7 +1887,6 @@ export {
   emptySkillState,
   resolveBundleEnabled,
   SKILL_STATE_FILENAME,
-  SKILL_STATE_REL,
   SKILL_STATE_SCHEMA_VERSION,
   SKILL_STATE_SURFACES,
   SKILL_STATE_TARGETS,
@@ -2133,6 +2155,7 @@ export { isVimeoUrl } from './utils/vimeo-embed.ts';
 export {
   buildPagesByBasenameIndex,
   buildPagesBySlugIndex,
+  buildWikiLinkAssetTargetKeys,
   getWikiLinkResolutionCandidates,
   isResolvedWikiLinkTarget,
   resolveWikiLinkAssetTarget,

@@ -2,9 +2,15 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
-import { describe, expect, test } from 'vitest';
+import { SHARED_OK_ENTRIES } from '@inkeep/open-knowledge-core';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ensurePiBridge } from './pi-acp-bridge.ts';
-import { detectInstallMethods, resolveRecentDeinitProjects, runUninstall } from './uninstall.ts';
+import {
+  detectInstallMethods,
+  resolveRecentDeinitProjects,
+  runUninstall,
+  uninstallCommand,
+} from './uninstall.ts';
 
 function write(path: string, content: string): void {
   mkdirSync(dirname(path), { recursive: true });
@@ -565,3 +571,24 @@ test.each([false, true])(
     }
   },
 );
+
+describe('uninstallCommand', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('building the command never resolves the channel', () => {
+    vi.stubEnv('OK_CHANNEL', 'bogus');
+    const command = uninstallCommand();
+    expect(command.description()).toContain('~/.ok (~/.ok-beta on Beta)');
+    const kept =
+      '~/.ok/machine-id, ~/.ok/skills-lock.json, ~/.ok/local/installed-skills.json, ~/.ok/local/skill-placements.json, ~/.ok/local/skill-move-retained.json';
+    expect(command.description()).toContain(`always keeps ${kept}, shared by every channel.`);
+    expect(command.options.find((o) => o.long === '--purge-content')?.description).toBe(
+      `Also remove user-authored content (~/.ok/skills, shared by every channel); still keeps ${kept}`,
+    );
+    for (const entry of SHARED_OK_ENTRIES) {
+      expect(command.description()).toContain(`~/.ok/${entry}`);
+    }
+  });
+});

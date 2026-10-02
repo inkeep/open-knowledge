@@ -153,11 +153,7 @@ export function makeIsInStable(stable, git = (args) => spawnSync('git', args, { 
 }
 
 function realPendingChangesets() {
-  const ids = runGit(['ls-tree', '--name-only', 'HEAD', '.changeset/'])
-    .split('\n')
-    .map((s) => s.trim())
-    .filter((p) => p.endsWith('.md') && !p.endsWith('README.md'))
-    .map((p) => p.replace(/^\.changeset\//, '').replace(/\.md$/, ''));
+  const ids = realGit.changesetIds('HEAD');
 
   const entries = [];
   for (const id of ids) {

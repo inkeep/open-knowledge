@@ -1,4 +1,5 @@
 import { realpathSync } from 'node:fs';
+import { AGENT_REGISTRY, type HostSnapshot } from '@inkeep/open-knowledge-core';
 import type { Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced } from './_helpers';
 import {
@@ -16,6 +17,22 @@ function resolvedContentDir(contentDir: string): string {
   } catch {
     return contentDir;
   }
+}
+
+function disconnectedAgentSnapshot(): HostSnapshot {
+  return {
+    probes: {
+      env: 'desktop',
+      satisfiers: Object.fromEntries(
+        Object.values(AGENT_REGISTRY).flatMap((agent) =>
+          agent.satisfiers
+            .filter((satisfier) => satisfier.probe.mode === 'probeable')
+            .map((satisfier) => [satisfier.id, { state: 'absent' }] as const),
+        ),
+      ),
+    },
+    detection: { detected: ['claude', 'codex', 'cursor'], probed: true },
+  };
 }
 
 function seededDocRow(page: Page) {
@@ -86,7 +103,7 @@ async function waitForProbeSettled(page: Page, host: 'electron' | 'web'): Promis
     .toBe(true);
 }
 
-test.describe('handoff — 8-cell matrix', () => {
+test.describe('handoff — 9-cell matrix', () => {
   test('cell 1: Electron — claude-cowork row stays hidden even when Claude Desktop is installed', async ({
     page,
     api,
@@ -331,5 +348,88 @@ test.describe('handoff — 8-cell matrix', () => {
     expect(line?.host).toBe('electron');
     expect(line?.outcome).toBe('error');
     expect(line?.reason).toBe('not-installed');
+  });
+
+  test('cell 9: Electron blocked Cursor handoff opens setup and resumes once after save', async ({
+    page,
+    api,
+    workerServer,
+  }) => {
+    const cfg: HandoffMockConfig = {
+      host: 'electron',
+      install: { claude: true, codex: true, cursor: true },
+      workerBaseURL: workerServer.baseURL,
+      workerContentDir: resolvedContentDir(workerServer.contentDir),
+      initialConnectionSnapshot: disconnectedAgentSnapshot(),
+    };
+    await installHandoffMocks(page, cfg);
+    await seedAndNavigate(page, api);
+
+    await waitForProbeSettled(page, 'electron');
+    await openHandoffSubmenu(page);
+    await page.getByTestId('file-tree-open-in-cursor').click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('Cursor');
+    expect((await readCapturedHandoff(page)).handoffApiCalls).toEqual([]);
+
+    const save = dialog.getByRole('button', { name: 'Save changes' });
+    await expect(save).toBeEnabled();
+    await save.click();
+
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByText('Opened in Cursor.')).toBeVisible();
+    await expect.poll(async () => (await readCapturedHandoff(page)).handoffApiCalls.length).toBe(1);
+    const captured = await readCapturedHandoff(page);
+    expect(captured.handoffApiCalls[0]?.target).toBe('cursor');
+  });
+
+  test('setup save failure keeps the blocking dialog usable without dispatching', async ({
+    page,
+    api,
+    workerServer,
+  }) => {
+    const cfg: HandoffMockConfig = {
+      host: 'web',
+      install: { claude: true, codex: true, cursor: true },
+      workerBaseURL: workerServer.baseURL,
+      workerContentDir: resolvedContentDir(workerServer.contentDir),
+    };
+    await installHandoffMocks(page, cfg);
+    await page.unroute('**/api/agent-integrations/apply');
+    let applyCalls = 0;
+    await page.route('**/api/agent-integrations/apply', async (route) => {
+      applyCalls++;
+      if (applyCalls === 1) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            actions: [],
+            conflicts: [],
+            withheld: [],
+            snapshot: disconnectedAgentSnapshot(),
+          }),
+        });
+        return;
+      }
+      await route.fulfill({ status: 503, body: 'unavailable' });
+    });
+    await seedAndNavigate(page, api);
+
+    await waitForProbeSettled(page, 'web');
+    await openHandoffSubmenu(page);
+    await page.getByTestId('file-tree-open-in-cursor').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Save changes' }).click();
+
+    await expect(dialog.getByRole('alert')).toContainText(
+      'Something went wrong. Please try again.',
+    );
+    await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+    await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+    expect((await readCapturedHandoff(page)).handoffApiCalls).toEqual([]);
   });
 });

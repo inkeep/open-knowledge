@@ -9,6 +9,7 @@ const PROJECT_ANCHORED_COMMANDS: ReadonlySet<string> = new Set([
   'mcp',
   'preview',
   'lint',
+  'audit',
   'deinit',
   'auth',
 ]);

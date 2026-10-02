@@ -2,6 +2,7 @@ import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { pid1Reaps } from '../../../../test-support/capabilities.test-helper.ts';
 import {
   installSignalBoundary,
   type SignalBoundary,
@@ -178,7 +179,8 @@ describe('killGracefully signals only a tree whose leader it still holds', () =>
     }).toEqual({ refused: [], leaderExited: true, descendantReapedOrReported: true });
   });
 
-  test('escalates to SIGKILL while the leader is still held when the tree ignores SIGTERM', async () => {
+  test('escalates to SIGKILL while the leader is still held when the tree ignores SIGTERM', async (ctx) => {
+    ctx.skip(!pid1Reaps, 'PID 1 must reap the orphans this test waits on');
     const tree = spawnLifelineTree('trap "" TERM; echo READY; while :; do sleep 1; done');
     const leaderPid = pidOf(tree.proc);
     await awaitOutput(tree, /READY/);
@@ -212,7 +214,8 @@ describe('killGracefully signals only a tree whose leader it still holds', () =>
     expect(boundary.refused).toEqual([]);
   });
 
-  test('reports no survivor when the leader exits on SIGTERM and its group drains', async () => {
+  test('reports no survivor when the leader exits on SIGTERM and its group drains', async (ctx) => {
+    ctx.skip(!pid1Reaps, 'PID 1 must reap the orphans this test waits on');
     const tree = spawnLifelineTree(`${DESCENDANT} & wait`);
     const leaderPid = pidOf(tree.proc);
     const descendantPid = await reportedDescendant(tree);

@@ -4,7 +4,7 @@ import {
   computeBaseVersion,
   extractDeltaSection,
   maxBumpType,
-  parseFrontmatterBumpType,
+  maxReleaseType,
   parseSection,
   renderNotes,
 } from './compute-next-beta.mjs';
@@ -424,22 +424,30 @@ describe('computeBaseVersion — normative cadence vectors', () => {
   });
 });
 
-describe('parseFrontmatterBumpType', () => {
-  test('returns the max bump declared across the frontmatter block', () => {
-    const cs = `---\n"@inkeep/open-knowledge": minor\n"@inkeep/open-knowledge-app": patch\n---\n\nbody`;
-    expect(parseFrontmatterBumpType(cs)).toBe('minor');
+describe('maxReleaseType', () => {
+  test('returns the max bump across the releases Changesets read from one changeset', () => {
+    const releases = [
+      { name: '@inkeep/open-knowledge', type: 'minor' },
+      { name: '@inkeep/open-knowledge-app', type: 'patch' },
+    ];
+    expect(maxReleaseType(releases)).toBe('minor');
   });
 
-  test('returns major when a changeset declares a major bump', () => {
-    const cs = `---\n"@inkeep/open-knowledge": major\n---\n\nbody`;
-    expect(parseFrontmatterBumpType(cs)).toBe('major');
+  test('returns major when any release is major', () => {
+    expect(maxReleaseType([{ name: '@inkeep/open-knowledge', type: 'major' }])).toBe('major');
   });
 
-  test('returns null when there is no frontmatter', () => {
-    expect(parseFrontmatterBumpType('no frontmatter here')).toBeNull();
+  test('returns null for a changeset that declares no release', () => {
+    expect(maxReleaseType([])).toBeNull();
   });
 
-  test('returns null for an empty changeset, which declares no bump for any package', () => {
-    expect(parseFrontmatterBumpType('---\n---\n\nNo release.\n')).toBeNull();
+  test('ignores a none release, which bumps nothing', () => {
+    expect(maxReleaseType([{ name: '@inkeep/open-knowledge', type: 'none' }])).toBeNull();
+    expect(
+      maxReleaseType([
+        { name: '@inkeep/open-knowledge', type: 'none' },
+        { name: '@inkeep/open-knowledge-app', type: 'patch' },
+      ]),
+    ).toBe('patch');
   });
 });

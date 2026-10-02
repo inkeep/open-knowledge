@@ -2,7 +2,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import pino from 'pino';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createFileLogger, flushFileLogger, MAX_FILE_SIZE } from './file-logger.ts';
 
 const TEST_DIR = join(tmpdir(), `ok-file-logger-test-${process.pid}`);
@@ -188,5 +188,27 @@ describe('file logger', () => {
     };
     await flushFileLogger(makeFakeLogger(stream), 5000);
     expect(flushed).toBe(true);
+  });
+});
+
+describe('logs dir per channel', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  test('importing under an unsupported OK_CHANNEL does not throw', async () => {
+    vi.stubEnv('OK_CHANNEL', 'bogus');
+    vi.resetModules();
+    const mod = await import('./file-logger.ts');
+    expect(() => mod.getLogsDir()).toThrow(/OK_CHANNEL/);
+  });
+
+  test('Beta resolves logs under ~/.ok-beta/logs', async () => {
+    vi.stubEnv('HOME', '/tmp/ok-logs-home');
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    vi.resetModules();
+    const { getLogsDir } = await import('./file-logger.ts');
+    expect(getLogsDir()).toBe(join('/tmp/ok-logs-home', '.ok-beta', 'logs'));
   });
 });

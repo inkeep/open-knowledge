@@ -1,4 +1,10 @@
-import { OPEN_KNOWLEDGE_MCP_TOOLS, type OpenKnowledgeMcpTool } from '../constants/mcp.ts';
+import { piToolNamespace } from '../constants/editors.ts';
+import {
+  MCP_SERVER_NAME,
+  OPEN_KNOWLEDGE_MCP_TOOLS,
+  type OpenKnowledgeMcpTool,
+} from '../constants/mcp.ts';
+import { DESKTOP_PRODUCTS } from '../constants/product.ts';
 
 export function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -50,9 +56,20 @@ const OPEN_KNOWLEDGE_TOOLS: ReadonlySet<string> = new Set(OPEN_KNOWLEDGE_MCP_TOO
 
 const ANY_OPEN_KNOWLEDGE_SERVER = /^(?:open[-_ ]?knowledge|ok)(?:[-_][a-z]+)*$/;
 
-const KNOWN_OPEN_KNOWLEDGE_SERVER = /^open[-_ ]?knowledge(?:-dev)?$/;
+const KNOWN_SERVER_SUFFIXES = [
+  '-dev',
+  ...Object.values(DESKTOP_PRODUCTS)
+    .map((product) => product.mcpServerName.slice(MCP_SERVER_NAME.length))
+    .filter((suffix) => suffix !== ''),
+];
 
-const PI_BRIDGE_PREFIX = 'ok';
+const KNOWN_OPEN_KNOWLEDGE_SERVER = new RegExp(
+  `^open[-_ ]?knowledge(?:${KNOWN_SERVER_SUFFIXES.join('|')})?$`,
+);
+
+const PI_BRIDGE_NAMESPACES: ReadonlySet<string> = new Set(
+  Object.values(DESKTOP_PRODUCTS).map(piToolNamespace),
+);
 
 const OPEN_KNOWLEDGE_TITLE =
   /^(mcp[^a-z0-9]+)?((?:open[-_ ]?knowledge|ok)(?:-[a-z]+)*)[^a-z0-9]+([a-z_]+)$/;
@@ -79,7 +96,7 @@ export function identifyOpenKnowledgeToolCall(
     if (titleServer === null) return null;
     const knownServer = titleViaMcp
       ? serverPattern.test(titleServer)
-      : titleServer === PI_BRIDGE_PREFIX && inputServer === null;
+      : PI_BRIDGE_NAMESPACES.has(titleServer) && inputServer === null;
     if (!knownServer) return null;
     if (!isOpenKnowledgeTool(titleTool)) return null;
     const inputTool = unwrapped?.tool ?? null;

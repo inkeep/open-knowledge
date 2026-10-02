@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { withFsCopyCompletionObserver } from '../../../server/src/fs-copy-observer.test-helper.ts';
+import { connectMcpTestClient } from '../../../server/src/mcp/client.test-helper.ts';
 import { moveSkillCrossScope } from '../../../server/src/mcp/tools/skill-target.ts';
 import { createTestServer, HARNESS_BOOT_TIMEOUT_MS, type TestServer } from './test-harness.ts';
 
@@ -52,6 +53,75 @@ afterAll(async () => {
 });
 
 describe('MCP cross-scope move', () => {
+  test('MCP names a pre-copy refusal and teaches safe retry after addressing it', async () => {
+    const client = await connectMcpTestClient(`${server.baseUrl}/mcp`);
+    try {
+      const result = await client.callTool({
+        name: 'move',
+        arguments: {
+          skill: { from: 'mcp-absent-source', to: 'mcp-absent-source', toScope: 'global' },
+        },
+      });
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toMatchObject({ moveState: 'nothing-written' });
+      expect(result.content).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            text: expect.stringContaining('safe to retry once the refusal is addressed'),
+          }),
+        ]),
+      );
+      expect(existsSync(join(fixtureRoot, 'home/.claude/skills/mcp-absent-source'))).toBe(false);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test('MCP reports removed destination recovery and the recommended retry succeeds', async () => {
+    const fromName = 'mcp-cleanup-source';
+    const toName = 'mcp-cleanup-destination';
+    const original = seedSkill(server.contentDir, fromName);
+    const source = join(server.contentDir, '.claude/skills', fromName);
+    const destination = join(fixtureRoot, 'home/.claude/skills', toName);
+    const client = await connectMcpTestClient(`${server.baseUrl}/mcp`);
+    const request = {
+      name: 'move',
+      arguments: { skill: { from: fromName, to: toName, toScope: 'global' } },
+    };
+    try {
+      const result = await withFsCopyCompletionObserver(
+        (path) => path.endsWith(join('skills', toName)),
+        () => {
+          const copied = join(destination, 'SKILL.md');
+          rmSync(copied);
+          mkdirSync(copied);
+          writeFileSync(join(copied, 'occupant.txt'), 'Not a skill file.');
+        },
+        () => client.callTool(request),
+      );
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toMatchObject({ moveState: 'destination-removed' });
+      expect(result.content).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            text: expect.stringContaining('moveState: destination-removed'),
+          }),
+          expect.objectContaining({ text: expect.stringContaining('safe to retry') }),
+        ]),
+      );
+      expect(existsSync(destination)).toBe(false);
+      expect(readFileSync(join(source, 'SKILL.md'), 'utf8')).toBe(original);
+      const retried = await client.callTool(request);
+      expect(retried.isError).toBeUndefined();
+      expect(existsSync(source)).toBe(false);
+      expect(readFileSync(join(destination, 'SKILL.md'), 'utf8')).toBe(
+        original.replace(`name: ${fromName}`, `name: ${toName}`),
+      );
+    } finally {
+      await client.close();
+    }
+  });
+
   test('preserves binary bundles, provenance and installed editors', async () => {
     const name = 'complete-bundle';
     const source = join(fixtureRoot, 'source', name);
@@ -178,6 +248,11 @@ describe('MCP cross-scope move', () => {
 
     expect(result.isError).toBe(true);
     expect(result.structuredContent?.moveState).toBe('nothing-written');
+    expect(result.content[0]?.text).toContain('moveState: nothing-written');
+    expect(result.structuredContent).not.toHaveProperty('retentionLedger');
+    expect(result.content[0]?.text).toContain('This call changed neither location.');
+    expect(result.content[0]?.text).toContain('safe to retry once the refusal is addressed');
+    expect(result.content[0]?.text).not.toContain('unverified');
     expect(result.content[0]?.text).toContain('Delete or rename it first');
     expect(
       readFileSync(join(server.contentDir, '.claude', 'skills', fromName, 'SKILL.md'), 'utf8'),

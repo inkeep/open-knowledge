@@ -260,7 +260,7 @@ describe('file operation API routes', () => {
     expect(existsSync(join(dir, 'notes.md'))).toBe(false);
     expect(readFileSync(join(dir, 'renamed-notes.md'), 'utf-8')).toBe('# Notes\n');
     expect(readFileSync(join(dir, 'journal.md'), 'utf-8')).toBe(
-      '# Journal\n\nSee [[renamed-notes]] and [Notes](./renamed-notes.md).\n',
+      '# Journal\n\nSee [[renamed-notes|notes]] and [Notes](./renamed-notes.md).\n',
     );
     expect(readFileSync(join(dir, 'nested/child.md'), 'utf-8')).toBe(
       '# Child\n\nJump to [Notes](../renamed-notes.md#intro "Section").\n',
@@ -427,9 +427,11 @@ describe('file operation API routes', () => {
       );
 
       expect(result.status).toBe(200);
-      expect(document.getText('source').toString()).toBe('# Journal\n\nSee [[renamed-notes]].\n');
+      expect(document.getText('source').toString()).toBe(
+        '# Journal\n\nSee [[renamed-notes|notes]].\n',
+      );
       expect(readFileSync(join(dir, 'journal.md'), 'utf-8')).toBe(
-        '# Journal\n\nSee [[renamed-notes]].\n',
+        '# Journal\n\nSee [[renamed-notes|notes]].\n',
       );
     } finally {
       await conn.disconnect();
@@ -500,7 +502,7 @@ describe('file operation API routes', () => {
 
       expect(existsSync(join(dir, 'renamed-notes.md'))).toBe(true);
       expect(readFileSync(join(dir, 'journal.md'), 'utf-8')).toBe(
-        '# Journal\n\nSee [[renamed-notes]].\n',
+        '# Journal\n\nSee [[renamed-notes|notes]].\n',
       );
 
       expect(existsSync(join(dir, 'phantom-doc.md'))).toBe(false);

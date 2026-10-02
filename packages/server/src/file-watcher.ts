@@ -968,7 +968,7 @@ export function updateFileIndex(event: DiskEvent, fileIndex: Map<string, FileInd
       fileIndex.set(event.newDocName, {
         size: Buffer.byteLength(event.content, 'utf-8'),
         modified: new Date().toISOString(),
-        canonicalPath: existing?.canonicalPath ?? event.newPath,
+        canonicalPath: event.newPath,
         inode: existing?.inode ?? 0,
         aliases: existing?.aliases ?? [],
         kind: 'markdown',
@@ -1197,6 +1197,7 @@ export async function handleRawEvents(
 
   for (const event of diskEvents) {
     let isSelf = false;
+    let indexEvent = event;
 
     const previousIndexedFields =
       event.kind === 'update'
@@ -1242,6 +1243,7 @@ export async function handleRawEvents(
         }
       }
       isSelf = isSelfWrite(checkPath, hash);
+      indexEvent = { ...event, newPath: checkPath };
       voidRemoval(event.oldPath, declaredBeforeBatch);
       voidRemoval(event.newPath, declaredBeforeBatch);
     } else {
@@ -1253,7 +1255,7 @@ export async function handleRawEvents(
         ? { ...event, previousIndexedFields }
         : event;
 
-    updateFileIndex(event, fileIndex);
+    updateFileIndex(indexEvent, fileIndex);
 
     if (contentFilter && !isSelf) {
       switch (event.kind) {

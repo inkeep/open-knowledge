@@ -14,6 +14,11 @@ import {
   createVariantPostRemove,
   parseBuilderConfig,
 } from './desktop-variant-config.ts';
+import {
+  MAC_UPDATE_MINIMUM_DARWIN_VERSION,
+  stampMacUpdateManifests,
+} from './mac-update-manifest.ts';
+import { UPDATE_MANIFEST_FAILURE_MARKER } from './packaging-diagnostics.mjs';
 
 const variantName = parseDesktopVariantName(process.env.OK_DESKTOP_VARIANT);
 const variant = DESKTOP_VARIANTS[variantName];
@@ -93,5 +98,22 @@ const result = spawnSync(
 if (result.error) throw result.error;
 if (result.signal) {
   console.error(`[desktop-builder] electron-builder terminated by ${result.signal}`);
+}
+if (result.status === 0 && args.includes('--mac') && !args.includes('--dir')) {
+  const outputDir = join(process.cwd(), config.directories?.output ?? 'dist');
+  let stamped;
+  try {
+    stamped = stampMacUpdateManifests(outputDir);
+  } catch (err) {
+    console.error(
+      `[desktop-builder] ${err instanceof Error ? err.message : String(err)} [${UPDATE_MANIFEST_FAILURE_MARKER}]`,
+    );
+    process.exit(1);
+  }
+  for (const name of stamped) {
+    console.log(
+      `[desktop-builder] ${name} requires Darwin ${MAC_UPDATE_MINIMUM_DARWIN_VERSION} or later`,
+    );
+  }
 }
 process.exit(result.status ?? 1);

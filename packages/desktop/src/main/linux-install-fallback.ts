@@ -97,7 +97,7 @@ export interface ManualInstallDialogRequest {
 
 export interface ManualInstallDialogDeps {
   showDialog: (request: ManualInstallDialogRequest) => Promise<{ response: number }>;
-  copyCommandToClipboard: (command: string) => void;
+  copyCommandToClipboard: (command: string) => Promise<void>;
   relaunchApp: () => void;
 }
 
@@ -105,24 +105,33 @@ export async function runManualInstallFallbackDialog(
   deps: ManualInstallDialogDeps,
   ctx: LinuxManualInstallContext,
 ): Promise<'relaunch' | 'dismissed'> {
+  const detail =
+    'Administrator authorization is not available in this session, so the update ' +
+    'cannot be installed for you.\n\n' +
+    'To install it manually, run this in a terminal:\n\n' +
+    `${ctx.command}\n\n` +
+    'The downloaded update stays on disk until it is installed or replaced by a ' +
+    'newer version. Relaunch restarts OpenKnowledge whether or not you have ' +
+    'installed it yet.';
   const request: ManualInstallDialogRequest = {
     message: `OpenKnowledge ${ctx.version} couldn't install automatically`,
-    detail:
-      'Administrator authorization is not available in this session, so the update ' +
-      'cannot be installed for you.\n\n' +
-      'To install it manually, run this in a terminal:\n\n' +
-      `${ctx.command}\n\n` +
-      'The downloaded update stays on disk until it is installed or replaced by a ' +
-      'newer version. Relaunch restarts OpenKnowledge whether or not you have ' +
-      'installed it yet.',
+    detail,
     buttons: ['Copy Command', 'Relaunch OpenKnowledge', 'Not Now'],
     defaultId: 0,
     cancelId: 2,
   };
+  const copyFailedRequest: ManualInstallDialogRequest = {
+    ...request,
+    detail:
+      'The command was not copied. Type it into the terminal yourself rather than pasting, ' +
+      'because the clipboard still holds whatever it held before.\n\n' +
+      detail,
+  };
+  let copyFailed = false;
   for (;;) {
     let result: { response: number };
     try {
-      result = await deps.showDialog(request);
+      result = await deps.showDialog(copyFailed ? copyFailedRequest : request);
     } catch (err) {
       console.warn('[linux-install-fallback] dialog failed — treating as dismissal', {
         version: ctx.version,
@@ -132,7 +141,17 @@ export async function runManualInstallFallbackDialog(
       return 'dismissed';
     }
     if (result.response === 0) {
-      deps.copyCommandToClipboard(ctx.command);
+      copyFailed = await deps.copyCommandToClipboard(ctx.command).then(
+        () => false,
+        (err: unknown) => {
+          console.warn('[linux-install-fallback] copying the install command failed', {
+            version: ctx.version,
+            installerPath: ctx.installerPath,
+            err,
+          });
+          return true;
+        },
+      );
       continue;
     }
     if (result.response === 1) {

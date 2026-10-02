@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
+import { Node, Project, SyntaxKind } from 'ts-morph';
 import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   createFuseFailure,
@@ -19,7 +20,9 @@ import {
   DEFAULT_MAX_ATTEMPTS,
   FailureEvidence,
   parseArgs,
+  RETRY_ON_STOP_OUTCOMES,
   runWithRetry,
+  STOP_OUTCOMES,
 } from './retry-transient.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -78,16 +81,96 @@ beforeEach(() => {
 const nodeCmd = (src) => [process.execPath, '-e', src];
 const childSelfExitMs = 60_000;
 const readinessTimeoutDefaultMs = 5_000;
-const sourceSection = (source, start, end) => {
-  const startIndex = source.indexOf(start);
-  const endIndex = source.indexOf(end, startIndex);
-  if (startIndex === -1 || endIndex === -1) throw new Error(`missing source section: ${start}`);
-  return source.slice(startIndex, endIndex);
-};
-const throwTargets = (source) =>
-  new Set(
-    [...source.matchAll(/\bthrow\s+((?:new\s+)?[A-Za-z_$][\w$]*)/g)].map((match) => match[1]),
-  );
+function inspectFuseThrows(source, ownedFunctions, boundaryName) {
+  const project = new Project({ useInMemoryFileSystem: true, skipLoadingLibFiles: true });
+  const file = project.createSourceFile('/fuses.ts', source);
+  const imported = file
+    .getImportDeclaration('./packaging-diagnostics.mjs')
+    ?.getNamedImports()
+    .find((specifier) => specifier.getName() === 'createFuseFailure');
+  const factory = (imported?.getAliasNode() ?? imported?.getNameNode())?.getSymbol();
+  const unwrap = (node) => {
+    while (
+      node &&
+      (Node.isParenthesizedExpression(node) ||
+        Node.isAsExpression(node) ||
+        Node.isSatisfiesExpression(node) ||
+        Node.isNonNullExpression(node) ||
+        Node.isTypeAssertion(node) ||
+        Node.isExpressionWithTypeArguments(node))
+    )
+      node = node.getExpression();
+    return node;
+  };
+  const resolve = (input, seen = new Set()) => {
+    const node = unwrap(input);
+    if (!node || seen.has(node)) return undefined;
+    const next = new Set(seen).add(node);
+    if (Node.isIdentifier(node)) {
+      const declaration = node.getSymbol()?.getDeclarations()[0];
+      if (
+        declaration &&
+        Node.isVariableDeclaration(declaration) &&
+        declaration.getVariableStatement()?.getDeclarationKind() === 'const'
+      )
+        return resolve(declaration.getInitializer(), next);
+      if (declaration && Node.isBindingElement(declaration)) {
+        const owner = declaration.getParent().getParent();
+        const object = Node.isVariableDeclaration(owner)
+          ? unwrap(owner.getInitializer())
+          : undefined;
+        const key =
+          declaration.getPropertyNameNode()?.getSymbol()?.getName() ?? declaration.getName();
+        const property =
+          object && Node.isObjectLiteralExpression(object)
+            ? object.getType().getProperty(key)?.getDeclarations()[0]
+            : undefined;
+        if (property && Node.isPropertyAssignment(property))
+          return resolve(property.getInitializer(), next);
+      }
+    }
+    return node;
+  };
+  const statements = file.getStatements();
+  const roots = ownedFunctions.map((name) => file.getFunction(name));
+  const start = statements.indexOf(roots[0]);
+  const end = statements.indexOf(file.getFunction(boundaryName));
+  const throws = statements
+    .slice(start, end)
+    .flatMap((statement) =>
+      [statement, ...statement.getDescendantsOfKind(SyntaxKind.ThrowStatement)].filter(
+        Node.isThrowStatement,
+      ),
+    );
+  const census = Object.entries({
+    createFuseFailure: !!factory,
+    ...Object.fromEntries(
+      ownedFunctions.map((name, index) => [
+        name,
+        !!roots[index]?.getBody() &&
+          roots[index].getDescendantsOfKind(SyntaxKind.ThrowStatement).length > 0 &&
+          (index > 0 || end < 0 || start < end),
+      ]),
+    ),
+    [boundaryName]: end >= 0,
+    forwarding: file
+      .getExportDeclarations()
+      .every((declaration) => !declaration.getModuleSpecifier()),
+    syntax: project.getProgram().getSyntacticDiagnostics(file).length === 0,
+  }).flatMap(([name, holds]) => (holds ? [] : [name]));
+  const violations = throws
+    .filter((statement) => {
+      const value = resolve(statement.getExpression());
+      return (
+        !value ||
+        !Node.isCallExpression(value) ||
+        resolve(value.getExpression())?.getSymbol() !== factory
+      );
+    })
+    .map((statement) => statement.getStartLineNumber());
+  return { census, throws: throws.length, violations };
+}
+
 const run = (overrides = {}) => {
   const lines = [];
   const now = Date.now();
@@ -223,6 +306,7 @@ describe('failure evidence classification', () => {
     'ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command "electron-builder" not found',
     'spawn electron-builder ENOENT',
     'ENOSPC: no space left on device',
+    '[desktop-builder] beta-mac.yml: The macOS update manifest is not a YAML mapping [OK_PACKAGING_UPDATE_MANIFEST_FAILURE]',
   ])('classifies explicit terminal evidence as terminal: %s', (text) => {
     expect(inspect(text).classification).toBe('terminal');
   });
@@ -234,18 +318,14 @@ describe('failure evidence classification', () => {
   });
 
   test('routes every throw in the owned fuse functions through the shared factory', () => {
-    const afterPackFuseFunction = sourceSection(
-      afterPackSource,
-      'async function flipElectronFuses',
-      '\n\nexport default async function afterPack',
-    );
-    const afterSignFuseFunction = sourceSection(
-      afterSignSource,
-      'async function verifyFuses',
-      '\n\nexport default async function afterSign',
-    );
-    expect(throwTargets(afterPackFuseFunction)).toEqual(new Set(['createFuseFailure']));
-    expect(throwTargets(afterSignFuseFunction)).toEqual(new Set(['createFuseFailure']));
+    for (const [source, owned, boundary, minimum] of [
+      [afterPackSource, ['flipElectronFuses', 'assertAdHocSealCoversBundle'], 'afterPack', 3],
+      [afterSignSource, ['verifyFuses'], 'afterSign', 2],
+    ]) {
+      const result = inspectFuseThrows(source, owned, boundary);
+      expect(result, `${boundary}.mjs`).toMatchObject({ census: [], violations: [] });
+      expect(result.throws, `${boundary}.mjs`).toBeGreaterThanOrEqual(minimum);
+    }
   });
 
   test.each([
@@ -366,6 +446,13 @@ describe('failure evidence classification', () => {
     });
     expect(maskedTlsTrust.log).toContain('reason=rule:tls-trust outcome=terminal');
     expect(maskedTlsTrust.log).not.toContain('rule:download-integrity');
+    const maskedUpdateManifest = await run({
+      command: nodeCmd(
+        'console.error("sha512 checksum mismatch, expected AAA, got BBB\\n[desktop-builder] beta-mac.yml: not a YAML mapping [OK_PACKAGING_UPDATE_MANIFEST_FAILURE]");process.exit(1)',
+      ),
+    });
+    expect(maskedUpdateManifest.log).toContain('reason=rule:update-manifest outcome=terminal');
+    expect(maskedUpdateManifest.log).not.toContain('rule:download-integrity');
     const tlsTrustWithSymptom = await run({
       command: nodeCmd(
         'console.error("Error Domain=NSURLErrorDomain Code=-1202\\nError: Exit code: ENOENT. spawn /Users/runner/Library/Caches/electron-builder/app-builder/app-builder ENOENT");process.exit(1)',
@@ -676,6 +763,227 @@ describe('retry state machine', () => {
     );
     expect(signals.listenerCount('SIGINT')).toBe(0);
     expect(signals.listenerCount('SIGTERM')).toBe(0);
+  });
+});
+
+describe('opt-in fail-closed eligibility', () => {
+  const undiciPausedParser = [
+    'undici-paused-parser',
+    /assert\(!this\.paused\)[\s\S]{0,512}?\bParser\.finish\b/,
+  ];
+  const pausedParserCrash = [
+    '[prepare-platform-natives]   @napi-rs/keyring-win32-arm64-msvc@1.3.0 missing — fetching',
+    'node:internal/assert/utils:77',
+    '    throw err;',
+    '    ^',
+    '',
+    'AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:',
+    '',
+    '  assert(!this.paused)',
+    '',
+    '    at Parser.finish (node:internal/deps/undici/undici:7380:9)',
+    '    at TLSSocket.onHttpSocketEnd (node:internal/deps/undici/undici:7819:34)',
+  ].join('\n');
+  const failClosed = { retryOn: { http5xx: true, connection: true, rules: [] } };
+  const withPausedParserRule = {
+    retryOn: { http5xx: true, connection: true, rules: ['undici-paused-parser'] },
+    transientRules: [undiciPausedParser],
+  };
+  const failOnceThen = (name, text) => {
+    const count = join(scratch, name);
+    writeFileSync(count, '0');
+    return nodeCmd(
+      `const fs=require('fs');const p=${JSON.stringify(count)};const n=+fs.readFileSync(p,'utf8')+1;fs.writeFileSync(p,String(n));if(n===1){console.error(${JSON.stringify(text)});process.exit(1)}`,
+    );
+  };
+  const failAlways = (text, exitCode = 1) =>
+    nodeCmd(`console.error(${JSON.stringify(text)});process.exit(${exitCode})`);
+
+  test('the default policy is unchanged when no opt-in flag is given', async () => {
+    const unknown = await run({
+      command: failOnceThen('default-unknown', 'unrecognized packager failure'),
+    });
+    expect(unknown).toMatchObject({ ok: true, attempts: 2, recoveredFrom: 'unknown' });
+    expect(unknown.log).toContain(
+      'UNKNOWN_CLASSIFICATION_RETRY allowance=invocation-wide-single-use',
+    );
+    const rateLimited = await run({
+      command: failOnceThen('default-429', 'HTTPError: Response code 429 (Too Many Requests)'),
+    });
+    expect(rateLimited).toMatchObject({ ok: true, attempts: 2, recoveredFrom: 'transient' });
+    const crash = await run({ command: failOnceThen('default-crash', pausedParserCrash) });
+    expect(crash).toMatchObject({ ok: true, attempts: 2, recoveredFrom: 'unknown' });
+    expect(unknown.log).not.toContain('ineligible');
+  });
+
+  test('the ineligible outcome is registered apart from the default outcomes', () => {
+    expect(RETRY_ON_STOP_OUTCOMES).toEqual(['ineligible']);
+    expect(STOP_OUTCOMES).not.toContain('ineligible');
+  });
+
+  test.each([
+    ['http-500', 'HTTPError: Response code 500 (Internal Server Error)', 'http:500'],
+    ['http-501', 'fetch https://registry.example/x.tgz → HTTP 501 Not Implemented', 'http:501'],
+    [
+      'connection',
+      'TypeError: fetch failed\nFETCH 1: connection to host errored - read ECONNRESET',
+      'code:ECONNRESET',
+    ],
+    ['socket', 'Error: socket hang up', 'rule:socket-hangup'],
+  ])('retries %s evidence and recovers', async (name, text, reason) => {
+    const result = await run({ command: failOnceThen(`fail-closed-${name}`, text), ...failClosed });
+    expect(result).toMatchObject({ ok: true, attempts: 2, recoveredFrom: 'transient' });
+    expect(result.log).toContain(
+      `decision=retry reason=${reason} classification=transient attempt=1/3`,
+    );
+  });
+
+  test('a persistent eligible failure stops as transient-exhausted', async () => {
+    const result = await run({
+      command: failAlways('HTTPError: Response code 503 (Service Unavailable)'),
+      ...failClosed,
+    });
+    expect(result).toMatchObject({ ok: false, reason: 'transient-exhausted', attempts: 3 });
+  });
+
+  test.each([
+    [
+      'an unknown failure',
+      'unrecognized packager failure',
+      'reason=diagnostic:unknown outcome=ineligible classification=unknown',
+    ],
+    [
+      'a 429 outside the policy',
+      'HTTPError: Response code 429 (Too Many Requests)',
+      'reason=http:429 outcome=ineligible classification=transient',
+    ],
+    [
+      'a checksum mismatch',
+      'Error: Generated checksum for "electron-v43.4.0-win32-x64.zip" did not match expected checksum.',
+      'reason=diagnostic:unknown outcome=ineligible classification=unknown',
+    ],
+    [
+      'an unrelated crash',
+      'Error: planted unrelated crash\n    at Object.<anonymous> ([eval]:1:7)',
+      'reason=diagnostic:unknown outcome=ineligible classification=unknown',
+    ],
+    [
+      'the libuv abort line alone',
+      'Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\\win\\async.c, line 94',
+      'reason=diagnostic:unknown outcome=ineligible classification=unknown',
+    ],
+  ])('stops %s at once, without a retry', async (_name, text, decision) => {
+    const result = await run({ command: failAlways(text, 127), ...withPausedParserRule });
+    expect(result).toMatchObject({ ok: false, reason: 'ineligible', attempts: 1 });
+    expect(result.log).toContain(`decision=stop ${decision}`);
+  });
+
+  test.each([
+    ['an HTTP 404', 'HTTPError: Response code 404 (Not Found)', 'reason=http:404'],
+    [
+      'an integrity mismatch',
+      '[prepare-platform-natives]   @napi-rs/keyring-win32-arm64-msvc@1.3.0: sha512 hash mismatch, expected sha512-AAA, got sha512-BBB',
+      'reason=rule:download-integrity',
+    ],
+  ])('keeps %s terminal', async (_name, text, decision) => {
+    const result = await run({ command: failAlways(text), ...withPausedParserRule });
+    expect(result).toMatchObject({ ok: false, reason: 'terminal', attempts: 1 });
+    expect(result.log).toContain(`decision=stop ${decision} outcome=terminal`);
+  });
+
+  test('retries the paused-parser crash only through a listed caller rule', async () => {
+    const listed = await run({
+      command: failOnceThen('rule-listed', pausedParserCrash),
+      ...withPausedParserRule,
+    });
+    expect(listed).toMatchObject({ ok: true, attempts: 2, recoveredFrom: 'transient' });
+    expect(listed.log).toContain(
+      'decision=retry reason=rule:undici-paused-parser classification=transient',
+    );
+    const defined = await run({
+      command: failAlways(pausedParserCrash),
+      retryOn: { http5xx: true, connection: true, rules: [] },
+      transientRules: [undiciPausedParser],
+    });
+    expect(defined).toMatchObject({ ok: false, reason: 'ineligible', attempts: 1 });
+    const undefinedRule = await run({ command: failAlways(pausedParserCrash), ...failClosed });
+    expect(undefinedRule).toMatchObject({ ok: false, reason: 'ineligible', attempts: 1 });
+  });
+
+  test('a process abort without the diagnostic is never retried', async () => {
+    const result = await run({ command: nodeCmd('process.abort()'), ...withPausedParserRule });
+    expect(result.ok).toBe(false);
+    expect(result.attempts).toBe(1);
+    expect(['child-signal', 'ineligible']).toContain(result.reason);
+    expect(result.log).not.toContain('decision=retry');
+  });
+});
+
+describe('the result file', () => {
+  const cli = (resultFile, ...rest) =>
+    spawnSync(
+      process.execPath,
+      [
+        SCRIPT,
+        '--label',
+        'result-file probe',
+        '--deadline-epoch-ms',
+        String(Date.now() + 60_000),
+        '--attempt-timeout',
+        '30s',
+        '--retry-on',
+        'http-5xx,connection',
+        '--result-file',
+        resultFile,
+        '--',
+        ...rest,
+      ],
+      { encoding: 'utf8' },
+    );
+
+  test('records a success and an ineligible stop for the caller', () => {
+    const ok = join(scratch, 'result-ok.json');
+    expect(cli(ok, process.execPath, '-e', 'process.exit(0)').status).toBe(0);
+    expect(JSON.parse(readFileSync(ok, 'utf8'))).toEqual({ ok: true, attempts: 1 });
+    const stopped = join(scratch, 'result-stopped.json');
+    const failed = cli(
+      stopped,
+      process.execPath,
+      '-e',
+      'console.error("unrecognized failure");process.exit(2)',
+    );
+    expect(failed.status).toBe(1);
+    expect(JSON.parse(readFileSync(stopped, 'utf8'))).toEqual({
+      ok: false,
+      reason: 'ineligible',
+      attempts: 1,
+      code: 2,
+    });
+    expect(failed.stdout).toContain(
+      '::error::result-file probe decision=stop reason=diagnostic:unknown outcome=ineligible',
+    );
+  });
+
+  test('writes nothing unless asked', () => {
+    const empty = mkdtempSync(join(scratch, 'no-result-'));
+    const result = spawnSync(
+      process.execPath,
+      [
+        SCRIPT,
+        '--deadline-epoch-ms',
+        String(Date.now() + 60_000),
+        '--attempt-timeout',
+        '30s',
+        '--',
+        process.execPath,
+        '-e',
+        'process.exit(0)',
+      ],
+      { encoding: 'utf8', cwd: empty },
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('command succeeded on attempt 1.');
+    expect(readdirSync(empty)).toEqual([]);
   });
 });
 
@@ -1494,6 +1802,69 @@ describe('parseArgs', () => {
     ).toThrow(/--label requires a value/);
   });
 
+  test('parses the opt-in policy flags only when given', () => {
+    const parsed = parseArgs(
+      argv(
+        '--deadline-epoch-ms',
+        '2000000000000',
+        '--attempt-timeout',
+        '1m',
+        '--transient-rule',
+        'undici-paused-parser=assert\\(!this\\.paused\\)',
+        '--transient-rule',
+        'undici-terminated=\\bTypeError: terminated\\b',
+        '--retry-on',
+        'http-5xx,connection,rule:undici-paused-parser',
+        '--result-file',
+        '/tmp/result.json',
+        '--',
+        'true',
+      ),
+    );
+    expect(parsed.retryOn).toEqual({
+      http5xx: true,
+      connection: true,
+      rules: ['undici-paused-parser'],
+    });
+    expect(parsed.transientRules.map(([id]) => id)).toEqual([
+      'undici-paused-parser',
+      'undici-terminated',
+    ]);
+    expect(parsed.transientRules[0][1].test('assert(!this.paused)')).toBe(true);
+    expect(parsed.resultFile).toBe('/tmp/result.json');
+    const plain = parseArgs(
+      argv('--deadline-epoch-ms', '2000000000000', '--attempt-timeout', '1m', '--', 'true'),
+    );
+    expect(Object.keys(plain)).not.toEqual(expect.arrayContaining(['retryOn']));
+    expect('transientRules' in plain || 'resultFile' in plain || 'retryOn' in plain).toBe(false);
+  });
+
+  test.each([
+    [['--retry-on', 'http-5xx,retry-everything'], /unknown token: retry-everything/],
+    [['--retry-on', 'rule:undici-paused-parser'], /names no --transient-rule/],
+    [['--transient-rule', 'Bad_Id=x'], /lowercase id/],
+    [['--transient-rule', 'no-pattern='], /empty pattern/],
+    [['--transient-rule', 'bad-regex=('], /not a valid pattern/],
+    [['--transient-rule', 'socket-hangup=x'], /shadows a built-in rule/],
+    [['--transient-rule', 'twice=a', '--transient-rule', 'twice=b'], /must be unique/],
+    [['--transient-rule', 'lonely=x'], /--transient-rule requires --retry-on/],
+    [['--result-file'], /--result-file requires a value/],
+  ])('rejects the malformed opt-in %j', (flags, message) => {
+    expect(() =>
+      parseArgs(
+        argv(
+          '--deadline-epoch-ms',
+          '2000000000000',
+          '--attempt-timeout',
+          '1m',
+          ...flags,
+          '--',
+          'true',
+        ),
+      ),
+    ).toThrow(message);
+  });
+
   test('accepts an explicit empty retry warning', () => {
     const parsed = parseArgs(
       argv(
@@ -1744,5 +2115,84 @@ describe('workflow wiring', () => {
     ]) {
       expect(desktopRelease).toContain(`- name: ${gate}`);
     }
+  });
+});
+
+describe('fuse throw rule self-test', () => {
+  const source = (body) => `
+    import { createFuseFailure as failure } from './packaging-diagnostics.mjs';
+    async function verifyFuses() { ${body} }
+    export default async function afterSign() {}
+  `;
+  const inspectThrows = (body) => inspectFuseThrows(source(body), ['verifyFuses'], 'afterSign');
+  test('rejects the adjacent unmarked throw and resolves the imported factory', () => {
+    expect(inspectThrows("throw new Error('detail');")).toMatchObject({ census: [], throws: 1 });
+    expect(inspectThrows("throw new Error('detail');").violations).toHaveLength(1);
+    expect(inspectThrows("throw wrapFailure('detail');").violations).toHaveLength(1);
+    expect(
+      inspectThrows(
+        "const {error} = {error: (failure<string>)('detail')}; throw (error as Error)!;",
+      ),
+    ).toEqual({ census: [], throws: 1, violations: [] });
+  });
+  test('rejects a runtime await wrapper while accepting a direct factory call', () => {
+    expect(inspectThrows("throw await failure('detail');").violations).toHaveLength(1);
+    expect(inspectThrows("throw failure('detail');").violations).toEqual([]);
+  });
+  test('includes nested throws but ignores quoted throw text', () => {
+    expect(
+      inspectThrows("throw failure('detail'); function nested() { throw new Error('nested'); }")
+        .violations,
+    ).toHaveLength(1);
+    expect(
+      inspectThrows(
+        "throw failure('detail'); /* throw new Error */ const prose = 'throw new Error';",
+      ),
+    ).toEqual({ census: [], throws: 1, violations: [] });
+  });
+  test('fails its census on removed throws, forwarding, or syntax errors', () => {
+    expect(inspectThrows('').census).toEqual(['verifyFuses']);
+    expect(
+      inspectFuseThrows("export * from './moved.mjs';", ['verifyFuses'], 'afterSign').census,
+    ).toEqual(['createFuseFailure', 'verifyFuses', 'afterSign', 'forwarding']);
+    expect(inspectThrows("throw failure('detail'); const = ;").census).toEqual(['syntax']);
+  });
+  test.each([
+    [
+      'renamed',
+      source("throw failure('detail');").replace('function verifyFuses', 'function renamedFuses'),
+    ],
+    [
+      'declared after the boundary',
+      `
+      import { createFuseFailure as failure } from './packaging-diagnostics.mjs';
+      export default async function afterSign() {}
+      async function verifyFuses() { throw failure('detail'); }
+    `,
+    ],
+  ])('names only the owned function when it is %s', (_label, input) => {
+    expect(inspectFuseThrows(input, ['verifyFuses'], 'afterSign').census).toEqual(['verifyFuses']);
+  });
+  test('names only the boundary when it is renamed', () => {
+    const renamed = source("throw failure('detail');").replace(
+      'function afterSign',
+      'function renamedSign',
+    );
+    expect(inspectFuseThrows(renamed, ['verifyFuses'], 'afterSign').census).toEqual(['afterSign']);
+  });
+  test('names only the first of two owned functions when it follows the boundary', () => {
+    const reordered = `
+      import { createFuseFailure as failure } from './packaging-diagnostics.mjs';
+      async function assertAdHocSealCoversBundle() { throw failure('detail'); }
+      export default async function afterPack() {}
+      async function flipElectronFuses() { throw failure('detail'); }
+    `;
+    expect(
+      inspectFuseThrows(
+        reordered,
+        ['flipElectronFuses', 'assertAdHocSealCoversBundle'],
+        'afterPack',
+      ).census,
+    ).toEqual(['flipElectronFuses']);
   });
 });

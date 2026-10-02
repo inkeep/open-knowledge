@@ -1,20 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-    Helper bundle Info.plist for `OpenKnowledge Server.app`, the detached-
-    server helper bundle inside `OpenKnowledge.app/Contents/Frameworks/`.
-
-    `CFBundleExecutable` MUST stay byte-for-byte `OpenKnowledge Helper` —
-    matches Electron's canonical generic-helper basename. The helper stub
-    cloned into this bundle by `scripts/afterPack.mjs` inspects its own
-    `_NSGetExecutablePath()` basename early in boot and silently SIGTRAPs
-    (exit 133, empty stderr) for any other name, including descriptive
-    choices ("OpenKnowledge Server") or invented suffixes ("Helper
-    (Server)") not in Electron's hardcoded {generic, Renderer, GPU,
-    Plugin} type set. The bundle directory name (`OpenKnowledge
-    Server.app`) is free to be descriptive — only the executable
-    basename is load-bearing. Runtime guard:
-    `tests/integration/packaged-helper-runs-as-node.test.ts`.
+    UPSTREAM(electron@44.5.1): the helper stub `scripts/afterPack.mjs` clones
+      into this bundle reads its own `_NSGetExecutablePath()` basename early in
+      boot and silently SIGTRAPs (exit 133, empty stderr) unless it is
+      `<productName> Helper`, so `CFBundleExecutable` carries that name
+      (Stable here; `scripts/desktop-variant-config.ts` rewrites it for Beta).
+      Runtime guard: `scripts/assert-packaged-helper-runs-as-node.mjs`, run in CI against the
+      packaged app.
 
     `LSUIElement=true` is the Dock-suppression key that PR #1290 was
     written to introduce — without it, LaunchServices keys on the spawn

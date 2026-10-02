@@ -105,13 +105,7 @@ function isScannableFile(name: string): boolean {
 function collectCandidateFiles(root: string): string[] {
   const out: string[] = [];
   const walk = (dir: string): void => {
-    let entries: string[];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
+    for (const entry of readdirSync(dir)) {
       if (entry === 'node_modules' || entry === 'dist' || entry === '__mocks__') continue;
       const abs = join(dir, entry);
       if (statSync(abs).isDirectory()) walk(abs);

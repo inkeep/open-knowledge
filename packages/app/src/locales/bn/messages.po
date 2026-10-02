@@ -842,7 +842,6 @@ msgstr "{displayName} ({bin}) ইনস্টল করা নেই বা আ�
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} CLI"
 msgstr "{displayName} CLI"
@@ -1439,6 +1438,10 @@ msgstr "{0}-এর বাঁ পাশে একটি নতুন প্যা
 #: src/components/EditorWorkspace.tsx
 msgid "a new pane to the right of {0}"
 msgstr "{0}-এর ডান পাশে একটি নতুন প্যান"
+
+#: src/components/handoff/useHandoffDispatch.ts
+msgid "A newer handoff replaced this retry."
+msgstr "একটি নতুন হ্যান্ডঅফ এই পুনরায় চেষ্টার জায়গা নিয়েছে।"
 
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
@@ -2225,7 +2228,6 @@ msgstr "{0} CLI-কে জিজ্ঞেস করুন"
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Ask {agentName}"
 msgstr "{agentName}-কে জিজ্ঞেস করুন"
 
@@ -2847,6 +2849,10 @@ msgstr "পরিবর্তনগুলি স্বয়ংক্রিয�
 msgid "Changes saved automatically."
 msgstr "পরিবর্তনগুলি স্বয়ংক্রিয়ভাবে সংরক্ষিত হয়েছে।"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Changes were saved, but OpenKnowledge could not confirm a connection to {handoffLabel}. Check the MCP server settings for this app, then select Save changes to check again."
+msgstr "পরিবর্তনগুলি সংরক্ষিত হয়েছে, কিন্তু OpenKnowledge {handoffLabel}-এর সঙ্গে সংযোগ নিশ্চিত করতে পারেনি। এই অ্যাপের MCP সার্ভারের সেটিংস পরীক্ষা করুন, তারপর আবার পরীক্ষা করতে পরিবর্তনগুলি সংরক্ষণ করুন নির্বাচন করুন।"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Character budget per indexing request"
 msgstr "প্রতি ইনডেক্সিং অনুরোধে অক্ষর বাজেট"
@@ -2903,6 +2909,10 @@ msgstr "পরীক্ষা করেছেন: {0}"
 #: src/components/SkillEditorActions.tsx
 msgid "Checking"
 msgstr "পরীক্ষা করা হচ্ছে"
+
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Checking connection to {checkingLabel}…"
+msgstr "{checkingLabel}-এর সঙ্গে সংযোগ পরীক্ষা করা হচ্ছে…"
 
 #: src/components/BottomComposer.tsx
 msgid "Checking for agents"
@@ -3538,7 +3548,6 @@ msgstr "কনফিগারেশন সতর্কতা"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/SessionsHost.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -5307,6 +5316,10 @@ msgstr "নথিগুলোর সাড়া প্রত্যাশিত 
 msgid "Documents tagged <0>#{tagName}</0>"
 msgstr "<0>#{tagName}</0> ট্যাগযুক্ত নথি"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Don't ask again when opening this app without setup in this project"
+msgstr "এই প্রকল্পে সেটআপ ছাড়া এই অ্যাপ খুললে আবার জিজ্ঞাসা করবেন না"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
 msgstr "<0>Skills</0> দেখতে পাচ্ছেন না? আগে <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> চালু করুন।"
@@ -6062,7 +6075,6 @@ msgstr "বাহ্যিক"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "External apps"
 msgstr "বাহ্যিক অ্যাপ"
@@ -7091,6 +7103,10 @@ msgstr "ওহে, বিশ্ব!"
 msgid "Help"
 msgstr "সহায়তা"
 
+#: src/lib/conflict-resolve-draft.ts
+msgid "Help me understand the conflict in {filePath}. Explain what I should compare in the OpenKnowledge Conflict view; I will choose and apply the resolution there."
+msgstr "{filePath}-এর কনফ্লিক্টটি বুঝতে আমাকে সাহায্য করুন। OpenKnowledge-এর কনফ্লিক্ট দৃশ্যে কী তুলনা করা উচিত তা ব্যাখ্যা করুন; আমি সেখানেই সমাধান বেছে নিয়ে প্রয়োগ করব।"
+
 #. Subtext under the discovery-skill checkbox
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -7384,7 +7400,7 @@ msgstr "{agent}-এ OpenKnowledge টুল না দেখালে, দেখ
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.cursor.project-entry-not-loaded"
-msgstr "{agent}-এ OpenKnowledge টুল না দেখালে, Customize → MCPs খুলুন, open-knowledge বেছে নিন এবং তার .cursor/mcp.json উৎসটি চালু করুন; আপনি চালু না করা পর্যন্ত {agent} প্রকল্পের সার্ভার বন্ধ রাখে।"
+msgstr "{agent}-এ OpenKnowledge টুল না দেখালে, Customize → MCPs খুলুন, {server} বেছে নিন এবং তার .cursor/mcp.json উৎসটি চালু করুন; আপনি চালু না করা পর্যন্ত {agent} প্রকল্পের সার্ভার বন্ধ রাখে।"
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
@@ -7513,7 +7529,6 @@ msgstr "একটি সূচক নথিতে: এন্ট্রিগু�
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
@@ -7897,10 +7912,6 @@ msgstr "যেখানে ইনস্টল হবে"
 #: src/components/SkillDirectoryResult.tsx
 msgid "installs:"
 msgstr "ইনস্টল:"
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Instruction for the AI"
-msgstr "AI-এর জন্য নির্দেশ"
 
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -9983,6 +9994,10 @@ msgstr "{displayName} Desktop খুলুন"
 msgid "Open {docName}"
 msgstr "{docName} খুলুন"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Open {handoffLabel}"
+msgstr "{handoffLabel} খুলুন"
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr "{keyName} ব্রাউজারে খুলুন"
@@ -10295,14 +10310,12 @@ msgstr "দৃশ্য-সম্পাদকের খোঁজা বদলা
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI"
 msgstr "AI দিয়ে খুলুন"
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI {displayName} Desktop"
 msgstr "AI {displayName} Desktop দিয়ে খুলুন"
 
@@ -10360,10 +10373,6 @@ msgstr "OpenKnowledge"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked {subject}"
 msgstr "OpenKnowledge {subject} পরীক্ষা করেছে"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge checked for conflicts"
-msgstr "OpenKnowledge দ্বন্দ্ব পরীক্ষা করেছে"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked the project"
@@ -10545,14 +10554,6 @@ msgstr "OpenKnowledge প্রকল্পের সেটিংস পড়�
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge read the setting {key}"
 msgstr "OpenKnowledge {key} সেটিংটি পড়েছে"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict"
-msgstr "OpenKnowledge একটি দ্বন্দ্ব সমাধান করেছে"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict in {subject}"
-msgstr "OpenKnowledge {subject} এ একটি দ্বন্দ্ব সমাধান করেছে"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge restored an earlier version"
@@ -11532,10 +11533,6 @@ msgstr "নথি বা স্কিলের সংস্করণ ইতি�
 msgid "Reads this project's OpenKnowledge settings"
 msgstr "এই প্রকল্পের OpenKnowledge সেটিং পড়ে"
 
-#: src/lib/acp/tool-call-display.ts
-msgid "Reads unresolved conflicts between edits"
-msgstr "সম্পাদনার মধ্যে অমীমাংসিত দ্বন্দ্ব পড়ে"
-
 #: src/components/SessionsHost.tsx
 msgid "Ready"
 msgstr "প্রস্তুত"
@@ -12036,8 +12033,8 @@ msgid "Replace these symlinks with independent copies?"
 msgstr "এই সিমলিংকগুলো স্বতন্ত্র অনুলিপি দিয়ে বদলাবেন?"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
-msgid "Replaces the existing \"open-knowledge\" entry in this file. Other servers in the file are left alone."
-msgstr "এই ফাইলে বিদ্যমান \"open-knowledge\" এন্ট্রিটি প্রতিস্থাপন করে। ফাইলের অন্য সার্ভারগুলি অপরিবর্তিত থাকে।"
+msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
+msgstr "এই ফাইলে বিদ্যমান {server} এন্ট্রিটি প্রতিস্থাপন করে। ফাইলের অন্য সার্ভারগুলি অপরিবর্তিত থাকে।"
 
 #. placeholder {0}: formatToolList( replacing.map((e) => e.label), i18n.locale, )
 #: src/components/McpConsentDialogBody.tsx
@@ -12195,10 +12192,6 @@ msgstr "মোছার আগে {files} এবং আরও {overflow}টি �
 #: src/comments/ThreadCard.tsx
 msgid "Resolved"
 msgstr "মীমাংসিত"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "Resolves a conflict by choosing which content to keep"
-msgstr "কোন বিষয়বস্তু রাখা হবে তা বেছে দ্বন্দ্ব মেটায়"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
@@ -13347,6 +13340,14 @@ msgstr "প্যানেল দেখান"
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "প্যানেল দেখান ({panelShortcutLabel})"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again"
+msgstr "আবার নির্দেশনা দেখান"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again for {displayName} in this project"
+msgstr "আবার নির্দেশনা দেখান: এই প্রকল্পে {displayName}-এর জন্য"
+
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Show replace"
 msgstr "বদলানো দেখান"
@@ -14312,7 +14313,6 @@ msgstr "উপলব্ধ টেমপ্লেট"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -15135,8 +15135,8 @@ msgid "This file can't be opened in the text editor."
 msgstr "এই ফাইলটি টেক্সট সম্পাদকে খোলা যায় না।"
 
 #: src/components/ConflictView.tsx
-msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI."
-msgstr "এই ফাইলে এমন লাইন রয়েছে যা কনফ্লিক্ট মার্কারের মতো দেখায়, তাই কনফ্লিক্টের সীমা নির্ভরযোগ্যভাবে পড়া যাচ্ছে না। এটি নিজে সমাধান করুন বা AI-কে জিজ্ঞেস করুন ব্যবহার করুন।"
+msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve the markers in the file by hand."
+msgstr "এই ফাইলে এমন কিছু লাইন আছে যা কনফ্লিক্ট মার্কারের মতো দেখায়, তাই কনফ্লিক্টের সীমা নির্ভরযোগ্যভাবে বোঝা যাচ্ছে না। ফাইলের মার্কারগুলো হাতে সমাধান করুন।"
 
 #: src/components/use-viewer-text.ts
 msgid "This file could not be found."
@@ -15513,6 +15513,10 @@ msgstr "করণীয়"
 #: src/uninstall/UninstallNoticeScreen.tsx
 msgid "To do."
 msgstr "করণীয়।"
+
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "To save this setup, turn on Project MCP server or Global MCP server."
+msgstr "এই সেটআপ সংরক্ষণ করতে, প্রকল্প MCP সার্ভার বা গ্লোবাল MCP সার্ভার চালু করুন।"
 
 #: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Today"
@@ -16429,10 +16433,6 @@ msgstr "অনুলিপি ও সিমলিংকের মধ্যে �
 #: src/components/PublishToGitHubDialog.tsx
 msgid "What is this knowledge base for?"
 msgstr "এই জ্ঞানভাণ্ডারটি কিসের জন্য?"
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "What should the AI do? (optional)"
-msgstr "AI-এর কী করা উচিত? (ঐচ্ছিক)"
 
 #: src/components/acp/ThreadView.tsx
 msgid "What should we work on?"

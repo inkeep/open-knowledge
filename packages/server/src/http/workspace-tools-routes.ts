@@ -59,7 +59,7 @@ import { catchErrors } from './catch-errors.ts';
 import { errorResponse } from './error-response.ts';
 import { parseQuery } from './handler-utils.ts';
 import { methodRouter } from './method-router.ts';
-import { withValidation } from './request-validation.ts';
+import { respondUnsupportedMediaType, withValidation } from './request-validation.ts';
 import { successResponse } from './success-response.ts';
 
 const GeneratedIndexSettingsStatusSchema = z.object({
@@ -107,13 +107,7 @@ function loopbackJsonGate(handler: string): (req: IncomingMessage, res: ServerRe
     if (verdict.reason === 'origin') {
       errorResponse(res, 403, 'urn:ok:error:invalid-origin', 'Origin not allowed.', { handler });
     } else {
-      errorResponse(
-        res,
-        400,
-        'urn:ok:error:invalid-request',
-        'Content-Type must be application/json.',
-        { handler },
-      );
+      respondUnsupportedMediaType(res, handler);
     }
     return false;
   };

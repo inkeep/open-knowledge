@@ -7,7 +7,6 @@ import {
   instantiateDoc,
   normalizeBridge,
   parseFrontmatterYaml,
-  renderInventoryFooter,
   SKILL_AUTHORING_WARNING_CODES,
   serializeFrontmatterMap,
   stripFrontmatter,
@@ -19,6 +18,7 @@ import {
   formatBrokenLinkSuppressionBrief,
   formatBrokenLinkSuppressionLine,
 } from '../../broken-link-suppression.ts';
+import { CONCURRENT_OVERWRITE_REFUSED_TYPE } from '../../concurrent-overwrite-refused-error.ts';
 import { resolveContentDir, resolveLockDir } from '../../config/paths.ts';
 import { mergePatch } from '../../content/frontmatter-merge.ts';
 import { parentFolderOf } from '../../content/nested-folder-rules.ts';
@@ -42,6 +42,7 @@ import {
   AUTHORING_WARNING_CODE_GLOSS,
   agentIdentityFields,
   apiTarget,
+  CANONICAL_COMPONENT_GUIDANCE,
   docExtensionOnDisk,
   documentResultBaseShape,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
@@ -82,21 +83,17 @@ import {
   TEMPLATE_PATH_DESCRIBE,
 } from './verb-schemas.ts';
 
-const BASE_DESCRIPTION = [
-  'Create or replace one thing. Pass EXACTLY ONE of `document`, `folder`, `template`, `skill`, or `asset` (or `documents` for a batch of docs).',
-  '',
-  '- `document` — Create or overwrite a doc via the CRDT layer [Requires: Hocuspocus server]. `{ path, content }`, or `{ path, template }` to instantiate from a folder template (mutually exclusive with `content`). Optional `frontmatter` (its own YAML) and `position` (`replace` default for a new doc; required for an existing one) — note supplying `frontmatter` alongside literal `content` forces `position: replace` (the only position that persists a YAML block), overriding an explicit `append`/`prepend`. A replace is refused when another writer changed the document in the last few seconds: wait and retry, or use `append`, `prepend`, or `edit`, which are never refused. Peers are told apart per MCP connection. Writers sharing one connection are not refused against each other; there is no `agentId` to send. The MCP connection records you as a peer, while your own recent write does not arm the refusal against your follow-up `replace`. A recent change from a connected editor refuses a `replace` too. Example: `{ document: { path: "meetings/standup", content: "# Standup\\n..." } }`.',
-  '- `folder` — Create a NEW folder (optionally with its own properties) [Requires: Hocuspocus server]. `{ path, frontmatter? }`. To change an EXISTING folder use `edit`. Example: `{ folder: { path: "ideas" } }`.',
-  '- `template` — Create a reusable starting shape for new docs in a folder. `{ path: "<folder>/<name>", content, frontmatter: { title, description?, tags? } }`.',
-  '- `skill` — Create or overwrite an agent SKILL: reusable agent guidance you author in OK and `install` into your editors. A NEW skill lands at the project\'s default skill home (e.g. `.agents/skills/<name>/`); an existing one is edited at its real folder. `{ name, description, body, scope? }`. `name` is the identity (lowercase-hyphen); `description` is the trigger (when to use it). Example: `{ skill: { name: "trip-log", description: "Use when logging a fishing trip.", body: "# Steps\\n..." } }`.',
-  '- `asset` — Upload a binary (image/file) via the media route [Requires: Hocuspocus server]. `{ path: "<folder>/<file.ext>", content(base64) | source(local path) }`.',
-  '- `documents` — Batch: `[{ path, content?|template?, frontmatter?, position?, summary? }, ...]` written in order; the response reports each.',
-  '- `summary` — Optional one-line user-outcome (≤80 chars) for the timeline, for a single `document`/`folder`/`template`/`asset` write. For a `documents` batch, give each entry its own `summary` instead (a top-level `summary` is ignored on the batch path). Avoid secrets or PII — persisted to git history.',
-  '',
-  'Responses may include `structuredContent.document.warnings` (batch: per-entry under `documents[]`) — advisory entries discriminated by `kind`: `content-divergence` / `disk-edit-reconciled` (write-integrity — re-read the doc) and `mermaid-parse-error` (the write landed but that fence will not render — fix it and re-edit).',
+const DESCRIPTION = [
+  'Create/replace exactly one `document`, `folder`, `template`, `skill`, or `asset`; use `documents` for an ordered batch. Requires the Hocuspocus server.',
+  'Nested paths such as `guides/overview` can be documents; put all requested blocks in one `document.content`. Use `folder` only for separate pages.',
+  '`document: {path, content|template, frontmatter?, position?}`: content and template are exclusive. Existing docs require position: replace/append/prepend; new docs default replace. frontmatter with literal content forces replace, even with append/prepend. Recent edits by another writer can refuse replace; follow the recovery response; append/prepend/edit bypass this refusal. Peers are per MCP connection; own writes and writers sharing a connection do not refuse each other; connected editors can. No agentId is needed.',
+  "`folder: {path, frontmatter?}` creates NEW folders; edit existing ones. `template: {path: '<folder>/<name>', content, frontmatter: {title, description?, tags?}}` creates reusable doc templates.",
+  '`skill: {name, description, body, scope?}` writes agent guidance; lowercase letters/digits/hyphens name is identity, description is when to use it. New skills use the default skill home; existing ones keep their real folder. Use install for editors.',
+  '`asset: {path, content|source}` uploads binary image/file: base64 content or local source path. `documents` takes document specs and reports each result.',
+  'Optional summary: one-line outcome ≤80 chars, persisted to git history; avoid secrets or PII. Batches need per-entry summary; top-level is ignored.',
+  'Read response warnings: content-divergence/disk-edit-reconciled means re-read; mermaid-parse-error means the write landed but fix the fence.',
+  CANONICAL_COMPONENT_GUIDANCE,
 ].join('\n');
-
-const DESCRIPTION = `${BASE_DESCRIPTION}\n${renderInventoryFooter()}`;
 
 interface WriteDeps {
   serverUrl: ServerUrlOrResolver;
@@ -319,10 +316,14 @@ async function writeOneDoc(
       typeof result.retryAfterSeconds === 'number'
         ? ` Retry after ${result.retryAfterSeconds}s.`
         : '';
+    const recovery =
+      result.type === CONCURRENT_OVERWRITE_REFUSED_TYPE
+        ? ' Wait and retry, or use edit for a targeted change.'
+        : '';
     return {
       docName,
       ok: false,
-      error: `${detail ? `${String(result.error)} (${detail})` : String(result.error)}${retryAfter}`,
+      error: `${detail ? `${String(result.error)} (${detail})` : String(result.error)}${retryAfter}${recovery}`,
     };
   }
 

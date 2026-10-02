@@ -15,7 +15,9 @@ import {
   requiresExternalConsent,
   resolveServerRuntimeConfig,
   type ServerRuntimeConfig,
+  SKILLS_STORE_DIRNAME,
 } from '@inkeep/open-knowledge-core';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { resolveGitDirDetailed } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { context, propagation } from '@opentelemetry/api';
 import sirv from 'sirv';
@@ -464,7 +466,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     : new AcpThreadManager({
         contentDir: opts.contentDir,
         localDir: lockDir,
-        globalDir: resolve(homedir(), OK_DIR),
+        globalDir: okUserHomeDir(),
         registry: serverInstance.acpRegistry,
         permissions: serverInstance.acpPermissions,
         sessionManager,
@@ -744,7 +746,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   try {
     const m = await migrateStoreSkillsInPlace({
       projectDir,
-      skillsRoot: resolve(opts.contentDir, OK_DIR, 'skills'),
+      skillsRoot: resolve(opts.contentDir, OK_DIR, SKILLS_STORE_DIRNAME),
       inPlaceNames: genuineInPlaceNames(opts.contentDir, scanInPlaceSkills(opts.contentDir)),
     });
     if (m.migrated.length + m.skipped.length > 0) {
@@ -768,7 +770,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     const home = homedir();
     const gm = await migrateStoreSkillsInPlace({
       projectDir: home,
-      skillsRoot: resolve(home, OK_DIR, 'skills'),
+      skillsRoot: resolve(home, OK_DIR, SKILLS_STORE_DIRNAME),
       hostRoots: USER_HOST_ROOTS_BY_PRECEDENCE,
       inPlaceNames: genuineInPlaceNames(home, scanGlobalInPlaceSkills(home)),
     });

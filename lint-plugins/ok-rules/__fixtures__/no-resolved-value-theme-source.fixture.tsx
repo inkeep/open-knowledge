@@ -1,5 +1,5 @@
-// FIXTURE — drives `no-resolved-value-theme-source.test.ts` via shell-out
-// to `pnpm exec oxlint`. Excluded from `pnpm run lint` because `__fixtures__/`
+// FIXTURE — drives `no-resolved-value-theme-source.uncached.test.mjs` via shell-out
+// to oxlint. Excluded from `pnpm run lint` because `__fixtures__/`
 // is in `oxlint.config.ts#ignorePatterns`; `__fixtures__/oxlint.fixtures.json`
 // re-enables the rules for the test.
 //

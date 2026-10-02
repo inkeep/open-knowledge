@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
 import { pathToFileURL } from 'node:url';
 
@@ -16,6 +17,7 @@ export const STOP_OUTCOMES = Object.freeze([
   'spawn-failure',
   'cleanup-failure',
 ]);
+export const RETRY_ON_STOP_OUTCOMES = Object.freeze(['ineligible']);
 
 const MAX_CAPTURE_BYTES = 16_384;
 const MIN_PROJECTED_ATTEMPT_MS = 1_000;
@@ -23,7 +25,7 @@ const DEFAULT_ATTEMPT_TIMEOUT_MS = 15 * 60 * 1000;
 const DEFAULT_CLEANUP_GRACE_MS = 5_000;
 const DEFAULT_CLEANUP_RESERVE_MS = 15_000;
 const DEFAULT_POLL_INTERVAL_MS = 25;
-const STOP_OUTCOME_SET = new Set(STOP_OUTCOMES);
+const STOP_OUTCOME_SET = new Set([...STOP_OUTCOMES, ...RETRY_ON_STOP_OUTCOMES]);
 const TRANSIENT_HTTP_STATUSES = new Set([408, 429, 500, 502, 503, 504, 521, 522, 524]);
 const TERMINAL_HTTP_STATUSES = new Set([400, 401, 404, 413, 422]);
 const NETWORK_CODES = [
@@ -77,6 +79,7 @@ const TERMINAL_RULES = [
     'missing-executable',
     /(?:\bspawn\s+\S+\s+ENOENT\b|[\r\n]\s*Error:\s*Cannot find module\b|\bERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL\b[^\r\n]*\bCommand\b[^\r\n]*\bnot found\b|[\r\n]\s*\S{0,256}(?:ba)?sh(?:\.exe)?:[^\r\n]{0,512}:\s*command not found\b)/i,
   ],
+  ['update-manifest', /\bOK_PACKAGING_UPDATE_MANIFEST_FAILURE\b/],
   ['download-integrity', /\b(?:checksum|hash) mismatch,\s*expected\b/i],
 ];
 const TERMINAL_RULE_IDS = Object.freeze(TERMINAL_RULES.map(([id]) => id));
@@ -95,6 +98,15 @@ const TRANSIENT_RULES = [
   ['abuse-limit', /\babuse detection mechanism\b/i],
   ['submitted-too-fast', /\bwas submitted too quickly\b/i],
 ];
+const CONNECTION_TRANSIENT_RULE_IDS = Object.freeze([
+  'server-connect',
+  'socket-hangup',
+  'tls-disconnect',
+  'unexpected-eof',
+  'network-lost',
+  'request-timeout',
+]);
+const RULE_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 function appendUtf8Tail(current, chunk, limit) {
   const combined = current.length === 0 ? chunk : Buffer.concat([current, chunk]);
@@ -164,10 +176,18 @@ function collectPhraseEvidence(evidence, text) {
   for (const [id, pattern] of TRANSIENT_RULES) {
     if (pattern.test(text)) evidence.transientRules.add(id);
   }
+  for (const [id, pattern] of evidence.extraTransientRules) {
+    if (pattern.test(text)) evidence.transientRules.add(id);
+  }
 }
 
 export class FailureEvidence {
-  constructor({ maxTailBytes = MAX_CAPTURE_BYTES, nowFn = Date.now } = {}) {
+  constructor({
+    maxTailBytes = MAX_CAPTURE_BYTES,
+    nowFn = Date.now,
+    extraTransientRules = [],
+  } = {}) {
+    this.extraTransientRules = extraTransientRules;
     this.httpStatuses = new Set();
     this.errorCodes = new Set();
     this.terminalRules = new Set();
@@ -276,6 +296,25 @@ function matchedReason(evidence, classification) {
     return `http:${status}`;
   }
   return 'diagnostic:unknown';
+}
+
+function retryOnReason(evidence, retryOn) {
+  if (retryOn.http5xx) {
+    const status = [...evidence.httpStatuses]
+      .sort((left, right) => left - right)
+      .find((candidate) => candidate >= 500 && candidate <= 599);
+    if (status !== undefined) return `http:${status}`;
+  }
+  if (retryOn.connection) {
+    const errorCode = firstSorted(evidence.errorCodes);
+    if (errorCode) return `code:${errorCode}`;
+    const connectionRule = CONNECTION_TRANSIENT_RULE_IDS.find((id) =>
+      evidence.transientRules.has(id),
+    );
+    if (connectionRule) return `rule:${connectionRule}`;
+  }
+  const callerRule = retryOn.rules.find((id) => evidence.transientRules.has(id));
+  return callerRule ? `rule:${callerRule}` : undefined;
 }
 
 function redactDiagnosticTail(tail) {
@@ -523,8 +562,9 @@ async function runAttempt({
   cleanupGraceMs,
   treeController,
   nowFn,
+  transientRules = [],
 }) {
-  const evidence = new FailureEvidence({ nowFn });
+  const evidence = new FailureEvidence({ nowFn, extraTransientRules: transientRules });
   const invocation = commandInvocation(command, shell, platform);
   let child;
   try {
@@ -707,6 +747,8 @@ export async function runWithRetry({
   platform = process.platform,
   treeController,
   attemptRunner = runAttempt,
+  retryOn,
+  transientRules = [],
 } = {}) {
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > DEFAULT_MAX_ATTEMPTS) {
     throw new Error(`maxAttempts must be an integer from 1 to ${DEFAULT_MAX_ATTEMPTS}`);
@@ -777,6 +819,7 @@ export async function runWithRetry({
         cleanupGraceMs,
         treeController: ownedTree,
         nowFn,
+        transientRules,
       });
       state.lastAttemptDurationMs = Math.max(0, nowFn() - attemptStartedAt);
       log('::endgroup::');
@@ -799,8 +842,8 @@ export async function runWithRetry({
         };
       }
 
-      const classification = classifyEvidence(result.evidence);
-      const reasonId = matchedReason(result.evidence, classification);
+      let classification = classifyEvidence(result.evidence);
+      let reasonId = matchedReason(result.evidence, classification);
       state.lastFailureClassification = classification;
       if (classification === 'terminal') {
         recordDecision('error', 'stop', reasonId, result, { outcome: 'terminal' });
@@ -814,7 +857,27 @@ export async function runWithRetry({
           result,
         );
       }
-      if (classification === 'unknown') {
+      if (retryOn) {
+        const eligibleReason = retryOnReason(result.evidence, retryOn);
+        if (eligibleReason === undefined) {
+          recordDecision('error', 'stop', reasonId, result, {
+            outcome: 'ineligible',
+            classification,
+          });
+          return finishFailure(
+            {
+              ok: false,
+              reason: 'ineligible',
+              attempts: state.attemptsStarted,
+              code: result.code,
+            },
+            result,
+          );
+        }
+        classification = 'transient';
+        reasonId = eligibleReason;
+        state.lastFailureClassification = classification;
+      } else if (classification === 'unknown') {
         if (state.unknownRetryUsed) {
           recordDecision('error', 'stop', reasonId, result, {
             outcome: 'unknown-exhausted',
@@ -922,6 +985,54 @@ function flagValue(flags, name, required = false) {
   return flags[index + 1];
 }
 
+function flagValues(flags, name) {
+  const values = [];
+  for (let index = 0; index < flags.length; index += 1) {
+    if (flags[index] === '--shell') continue;
+    if (flags[index] === name) values.push(flags[index + 1]);
+    index += 1;
+  }
+  return values;
+}
+
+const BUILT_IN_RULE_IDS = new Set([
+  ...TERMINAL_RULES.map(([id]) => id),
+  ...TRANSIENT_RULES.map(([id]) => id),
+]);
+
+function parseTransientRule(raw) {
+  const separator = raw.indexOf('=');
+  const id = separator === -1 ? '' : raw.slice(0, separator);
+  if (!RULE_ID_PATTERN.test(id)) {
+    throw new Error('--transient-rule must be <id>=<regex> with a lowercase id');
+  }
+  if (BUILT_IN_RULE_IDS.has(id)) throw new Error(`--transient-rule ${id} shadows a built-in rule`);
+  const source = raw.slice(separator + 1);
+  if (source === '') throw new Error(`--transient-rule ${id} has an empty pattern`);
+  try {
+    return [id, new RegExp(source)];
+  } catch (error) {
+    throw new Error(`--transient-rule ${id} is not a valid pattern: ${error.message}`);
+  }
+}
+
+function parseRetryOn(raw, transientRules) {
+  const retryOn = { http5xx: false, connection: false, rules: [] };
+  const callerRuleIds = new Set(transientRules.map(([id]) => id));
+  for (const token of raw.split(',').map((part) => part.trim())) {
+    if (token === 'http-5xx') retryOn.http5xx = true;
+    else if (token === 'connection') retryOn.connection = true;
+    else if (token.startsWith('rule:') && callerRuleIds.has(token.slice('rule:'.length))) {
+      retryOn.rules.push(token.slice('rule:'.length));
+    } else if (token.startsWith('rule:')) {
+      throw new Error(`--retry-on ${token} names no --transient-rule`);
+    } else {
+      throw new Error(`--retry-on has an unknown token: ${token || '(empty)'}`);
+    }
+  }
+  return retryOn;
+}
+
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   const separator = rest.indexOf('--');
@@ -936,6 +1047,9 @@ export function parseArgs(argv) {
     '--attempt-timeout',
     '--retry-warning',
     '--shell',
+    '--retry-on',
+    '--transient-rule',
+    '--result-file',
   ]);
   for (let index = 0; index < flags.length; index += 1) {
     const flag = flags[index];
@@ -966,7 +1080,7 @@ export function parseArgs(argv) {
     flagValue(flags, '--attempt-timeout', true),
     '--attempt-timeout',
   );
-  return {
+  const parsed = {
     label: flagValue(flags, '--label') ?? 'command',
     maxAttempts,
     deadlineEpochMs,
@@ -975,11 +1089,28 @@ export function parseArgs(argv) {
     shell,
     command,
   };
+  const transientRules = flagValues(flags, '--transient-rule').map(parseTransientRule);
+  if (new Set(transientRules.map(([id]) => id)).size !== transientRules.length) {
+    throw new Error('--transient-rule ids must be unique');
+  }
+  const retryOn = flagValue(flags, '--retry-on');
+  if (transientRules.length > 0 && retryOn === undefined) {
+    throw new Error(
+      '--transient-rule requires --retry-on, which decides whether a rule match is retried',
+    );
+  }
+  if (transientRules.length > 0) parsed.transientRules = transientRules;
+  if (retryOn !== undefined) parsed.retryOn = parseRetryOn(retryOn, transientRules);
+  const resultFile = flagValue(flags, '--result-file');
+  if (resultFile !== undefined) parsed.resultFile = resultFile;
+  return parsed;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const result = await runWithRetry(parseArgs(process.argv));
+    const options = parseArgs(process.argv);
+    const result = await runWithRetry(options);
+    if (options.resultFile) writeFileSync(options.resultFile, `${JSON.stringify(result)}\n`);
     if (result.reason === 'signal' && result.signal) {
       process.kill(process.pid, result.signal);
     } else {

@@ -29,7 +29,7 @@ export interface DesktopTarget {
   mode: DesktopLaunchMode;
   appPath?: string;
   targetPath: string;
-  exists: boolean;
+  readonly exists: boolean;
   missingReason: string;
 }
 
@@ -40,6 +40,15 @@ export interface ResolveDesktopTargetOptions {
 
 export function executableForAppBundle(appPath: string): string {
   return join(appPath, 'Contents', 'MacOS', basename(appPath, '.app'));
+}
+
+function probedOnRead(target: Omit<DesktopTarget, 'exists'>): DesktopTarget {
+  return {
+    ...target,
+    get exists() {
+      return existsSync(target.targetPath);
+    },
+  };
 }
 
 export function resolveDesktopTarget(options: ResolveDesktopTargetOptions = {}): DesktopTarget {
@@ -54,21 +63,19 @@ export function resolveDesktopTarget(options: ResolveDesktopTargetOptions = {}):
 
   if (appPath !== undefined) {
     const targetPath = executableForAppBundle(appPath);
-    return {
+    return probedOnRead({
       mode: 'packaged',
       appPath,
       targetPath,
-      exists: existsSync(targetPath),
       missingReason: `Packaged desktop build missing at ${targetPath} — build a packaged app, or point ${PACKAGED_APP_ENV} at one.`,
-    };
+    });
   }
 
-  return {
+  return probedOnRead({
     mode: 'unpackaged',
     targetPath: UNPACKAGED_MAIN_ENTRY,
-    exists: existsSync(UNPACKAGED_MAIN_ENTRY),
     missingReason: `Main build missing at ${UNPACKAGED_MAIN_ENTRY} — run "pnpm run build:desktop" first.`,
-  };
+  });
 }
 
 export interface DesktopLaunchOptionsInput {

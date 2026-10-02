@@ -121,3 +121,25 @@ describe('WYSIWYG wiki-link activation', () => {
     expect(currentHash()).toBe('#/__asset__/absent.pdf');
   });
 });
+
+describe('WYSIWYG activation preserves Markdown target identity', () => {
+  test.each([
+    ['notes/beta.md', ['notes/beta', 'notes/beta-md'], 'notes/beta'],
+    ['NOTES/BETA.MDX', ['notes/beta', 'notes/beta-mdx'], 'notes/beta'],
+    ['beta.md', ['notes/beta', 'beta-md'], 'notes/beta'],
+    ['x.md', ['x', 'x.md'], 'x.md'],
+    ['x.md.md', ['x', 'x.md'], 'x.md'],
+    ['fallback.md', ['fallback-md'], 'fallback-md'],
+  ] satisfies Array<[string, string[], string]>)('%s opens %s', (target, docNames, expected) => {
+    const pages = new Set(docNames);
+    setPageListCache({
+      pages,
+      folderPaths: new Set(),
+      pagesBySlug: buildPagesBySlugIndex(pages, toWikiLinkSlug),
+      pagesByBasename: buildPagesByBasenameIndex(pages, toWikiLinkSlug),
+    });
+    const { activate, currentHash } = mountWikiLink(target);
+    expect(activate()).toBe(true);
+    expect(currentHash()).toBe(`#/${expected}`);
+  });
+});

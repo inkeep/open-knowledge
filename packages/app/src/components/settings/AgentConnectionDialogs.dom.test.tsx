@@ -12,7 +12,7 @@ import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ReactNode, useState } from 'react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { ApplyAgentConnectionsResult } from '@/lib/agent-connections';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
@@ -176,6 +176,25 @@ async function renderRemoveDialog(
 }
 
 afterEach(cleanup);
+
+test('Escape dismisses a connection tip without discarding an unsaved settings choice', async () => {
+  const user = userEvent.setup();
+  await renderConfigureDialog(async () => result(snapshotWith()), 'claude');
+  const checkbox = screen.getByRole('checkbox', { name: /project mcp server/i });
+  await user.click(checkbox);
+  const unsavedChoice = checkbox.getAttribute('aria-checked');
+  const informationTrigger = screen.getAllByRole('button', { name: 'More information' })[0];
+  informationTrigger.focus();
+  await screen.findByRole('tooltip');
+
+  await user.keyboard('{Escape}');
+
+  await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
+  expect(screen.getByRole('dialog')).toBeTruthy();
+  expect(checkbox.getAttribute('aria-checked')).toBe(unsavedChoice);
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+});
 
 describe('a rejected write never seals the dialog', () => {
   test('a save that rejects surfaces the failure and leaves the dialog closable', async () => {
@@ -658,6 +677,24 @@ describe('AgentConnectionDialogs', () => {
     const describedBy = box.getAttribute('aria-describedby');
     expect(describedBy).toBeTruthy();
     expect(dialog.querySelector(`#${describedBy}`)?.textContent).toMatch(/replaces it/i);
+  });
+
+  test('a replaceable entry names the server key this channel writes', async () => {
+    vi.stubGlobal('okDesktop', { mcpServerName: 'open-knowledge-beta' });
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+    const mcp = satisfierId('cursor', 'mcp', 'project');
+    const snapshot = withSurfaceStates(snapshotWith(), { [mcp]: 'foreign-replaceable' });
+    const user = userEvent.setup();
+    await renderConfigureDialog(async () => result(snapshot), 'cursor');
+
+    const dialog = await screen.findByRole('dialog', { name: 'Cursor' });
+    await user.hover(within(dialog).getByRole('button', { name: 'Why this needs attention' }));
+    const tooltip = await screen.findAllByRole('tooltip');
+    expect(tooltip[0].textContent).toContain(
+      'Replaces the existing open-knowledge-beta entry in this file. Other servers in the file are left alone.',
+    );
   });
 
   test('the remove dialog prints a path, never the internal pathId key', async () => {

@@ -9,8 +9,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
-import { beforeEach, describe, expect, test } from 'vitest';
+import { LOCAL_DIR, skillLiveDocName } from '@inkeep/open-knowledge-core';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   BacklinkIndex,
   type BrokenOutboundLink,
@@ -22,6 +22,7 @@ import {
   resolveMarkdownHref,
 } from './backlink-index.ts';
 import { _resetDocExtensionsForTests } from './doc-extensions.ts';
+import { getLogger } from './logger.ts';
 
 beforeEach(() => {
   _resetDocExtensionsForTests();
@@ -517,7 +518,7 @@ describe('BacklinkIndex', () => {
       const index = new BacklinkIndex({ projectDir, contentDir });
       await index.rebuildFromDisk();
 
-      expect(index.getForwardLinks('index')).toContain('acp.daemon');
+      expect(index.getForwardLinks('index')).toContain('notes/acp.daemon');
       expect(index.getDeadLinks(['index', 'notes/acp.daemon'])).toEqual([]);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
@@ -604,8 +605,8 @@ describe('BacklinkIndex', () => {
 
       expect(neighborhood).not.toContain('diagram.png');
       expect(whole).not.toContain('diagram.png');
-      expect(neighborhood).toContain('acp.daemon');
-      expect(whole).toContain('acp.daemon');
+      expect(neighborhood).toContain('notes/acp.daemon');
+      expect(whole).toContain('notes/acp.daemon');
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }
@@ -668,7 +669,7 @@ describe('BacklinkIndex', () => {
 
       index.updateDocument('notes/acp.daemon', []);
 
-      expect(index.getLinkGraph().nodes.map((node) => node.id)).toContain('acp.daemon');
+      expect(index.getLinkGraph().nodes.map((node) => node.id)).toContain('notes/acp.daemon');
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }
@@ -804,7 +805,7 @@ describe('BacklinkIndex', () => {
       writeFileSync(
         join(cacheDir, 'backlinks.json'),
         JSON.stringify({
-          version: 3,
+          version: 4,
           backward: {
             ghost: [{ source: 'alpha', anchor: null, snippet: 'See ghost.' }],
             wraith: [
@@ -814,6 +815,26 @@ describe('BacklinkIndex', () => {
           },
           forward: { alpha: ['ghost', 'wraith', 'shade'] },
           externalForward: {},
+          sourceLinks: {
+            alpha: [
+              { target: 'ghost', anchor: null, snippet: 'See ghost.', sourceForm: 'wiki' },
+              {
+                target: 'wraith',
+                anchor: null,
+                snippet: 'See wraith.',
+                sourceForm: 'wiki',
+                line: '7',
+                column: -2,
+              },
+              {
+                target: 'shade',
+                anchor: null,
+                snippet: 'See shade.',
+                sourceForm: 'wiki',
+                line: 1.5,
+              },
+            ],
+          },
         }),
         'utf-8',
       );
@@ -884,6 +905,59 @@ describe('BacklinkIndex', () => {
       expect(index.getBacklinks(research)).toEqual([
         { source: analyze, anchor: null, snippet: null },
       ]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    { version: 3, sourceLinks: undefined, expectedWarnings: [] },
+    {
+      version: 4,
+      sourceLinks: {},
+      expectedWarnings: [
+        [{ branch: 'main' }, 'Incomplete backlink cache snapshot for main; rebuilding from disk'],
+      ],
+    },
+    {
+      version: 4,
+      sourceLinks: { alpha: [], beta: [] },
+      expectedWarnings: [
+        [{ branch: 'main' }, 'Incomplete backlink cache snapshot for main; rebuilding from disk'],
+      ],
+    },
+  ])('rejects incomplete source-link snapshots and rebuilds from disk: $version', async (cache) => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-source-links-guard-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      writeFileSync(join(contentDir, 'alpha.md'), '[[beta]]');
+      writeFileSync(join(contentDir, 'beta.md'), '# Beta');
+      const cacheDir = join(projectDir, '.ok', LOCAL_DIR, 'cache', 'main');
+      mkdirSync(cacheDir, { recursive: true });
+      writeFileSync(
+        join(cacheDir, 'backlinks.json'),
+        JSON.stringify({
+          ...cache,
+          backward: { beta: [{ source: 'alpha', anchor: null, snippet: 'beta' }] },
+          forward: { alpha: ['beta'], beta: [] },
+          externalForward: {},
+        }),
+      );
+
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      const warn = vi.spyOn(getLogger('backlinks'), 'warn');
+      try {
+        expect(await index.loadFromDisk()).toBe(false);
+        expect(warn.mock.calls).toEqual(cache.expectedWarnings);
+      } finally {
+        warn.mockRestore();
+      }
+      await index.rebuildFromDisk();
+      expect(index.getForwardLinks('alpha')).toEqual(['beta']);
+      expect(index.getRenameSourceInventory().find((entry) => entry.docName === 'alpha')).toEqual(
+        expect.objectContaining({ wikiTargets: ['beta'] }),
+      );
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }
@@ -1813,7 +1887,7 @@ describe('BacklinkIndex with markdown links', () => {
 });
 
 describe('reconcileWithDisk', () => {
-  test('unchanged files are not re-parsed; mtime snapshot is preserved', async () => {
+  test('unchanged snapshot files reuse persisted source links without rereading', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-reconcile-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
@@ -1839,6 +1913,9 @@ describe('reconcileWithDisk', () => {
       expect(reloaded.getBacklinks('beta')).toEqual([
         { source: 'alpha', anchor: null, snippet: 'Links to beta.' },
       ]);
+      expect(
+        reloaded.getRenameSourceInventory().find((entry) => entry.docName === 'alpha'),
+      ).toEqual(expect.objectContaining({ wikiTargets: ['beta'] }));
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }
@@ -2002,6 +2079,33 @@ describe('computeBrokenOutboundLinks', () => {
     expect(computeBrokenOutboundLinks(md, 'notes/a', admitted)).toEqual<BrokenOutboundLink[]>([
       { href: '[[nowhere]]', resolvedTo: 'nowhere', reason: 'no-such-doc' },
     ]);
+  });
+
+  test.each(['guide', 'Guide', 'runbook'])(
+    'does not resolve fuzzy [[%s]] against global skill documents',
+    (target) => {
+      const global = skillLiveDocName('global', 'guide');
+      const admitted = new Set([global, `${global}/references/runbook`]);
+      expect(computeBrokenOutboundLinks(`[[${target}]]`, 'notes/a', admitted)).toEqual([
+        { href: `[[${target}]]`, resolvedTo: target, reason: 'no-such-doc' },
+      ]);
+    },
+  );
+
+  test('keeps explicit global and fuzzy project skill references admitted', () => {
+    const global = skillLiveDocName('global', 'guide');
+    const globalReference = `${global}/references/runbook`;
+    const projectReference = '.agents/skills/project/references/project-guide';
+    const markdown = `[[${global}]] [[${globalReference}]] [[Project Guide]]`;
+    expect(
+      computeBrokenOutboundLinks(markdown, 'notes/a', [global, globalReference, projectReference]),
+    ).toEqual([]);
+  });
+
+  test('markdown document links stay literal when the wiki target resolves fuzzily', () => {
+    expect(
+      computeBrokenOutboundLinks('[[guide]] [guide](./guide.md)', 'notes/a', ['archive/guide']),
+    ).toEqual([{ href: './guide.md', resolvedTo: 'notes/guide', reason: 'no-such-doc' }]);
   });
 
   test('a dotted-filename document target is not reported broken', () => {

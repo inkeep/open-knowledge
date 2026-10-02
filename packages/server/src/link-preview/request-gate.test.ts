@@ -1,9 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import {
-  classifyLinkPreviewRequest,
-  isJsonContentType,
-  isLoopbackHttpOrigin,
-} from './request-gate.ts';
+import { classifyLinkPreviewRequest, isLoopbackHttpOrigin } from './request-gate.ts';
 
 describe('isLoopbackHttpOrigin', () => {
   test.each([
@@ -31,29 +27,6 @@ describe('isLoopbackHttpOrigin', () => {
     ['', 'empty string'],
   ] as const)('rejects %s (%s)', (origin, _why) => {
     expect(isLoopbackHttpOrigin(origin)).toBe(false);
-  });
-});
-
-describe('isJsonContentType', () => {
-  test.each([
-    ['application/json', true],
-    ['application/json; charset=utf-8', true],
-    ['APPLICATION/JSON', true],
-    ['  application/json  ', true],
-  ] as const)('admits JSON content type %s', (ct, expected) => {
-    expect(isJsonContentType(ct)).toBe(expected);
-  });
-
-  test.each([
-    [undefined, 'missing'],
-    ['', 'empty'],
-    ['text/plain', 'simple-request text'],
-    ['text/plain;charset=UTF-8', 'simple-request text with charset'],
-    ['multipart/form-data; boundary=x', 'simple-request multipart'],
-    ['application/x-www-form-urlencoded', 'simple-request form'],
-    ['application/json-patch+json', 'json-adjacent but not json'],
-  ] as const)('rejects %s content type (%s)', (ct, _why) => {
-    expect(isJsonContentType(ct)).toBe(false);
   });
 });
 
@@ -86,6 +59,16 @@ describe('classifyLinkPreviewRequest', () => {
     expect(classifyLinkPreviewRequest({ origin: 'http://localhost:5173', contentType })).toEqual({
       ok: false,
       reason: 'content-type',
+    });
+  });
+
+  test.each([
+    ['application/json; charset=utf-8'],
+    ['Application/JSON'],
+    ['application/merge-patch+json'],
+  ] as const)('admits %s, the same JSON types the body reader accepts', (contentType) => {
+    expect(classifyLinkPreviewRequest({ origin: 'http://localhost:5173', contentType })).toEqual({
+      ok: true,
     });
   });
 

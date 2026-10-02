@@ -404,3 +404,45 @@ test('bare-name wiki links are validated the way the editor navigates them', asy
     { href: `[[nowhere-${suffix}]]`, resolvedTo: `nowhere-${suffix}`, reason: 'no-such-doc' },
   ]);
 });
+
+test('write-time wiki validation accepts explicit Markdown suffixes and keeps true misses', async () => {
+  const session = await openMcpSession(server.port);
+  const suffix = randomUUID().slice(0, 8);
+  const folder = `suffix-${suffix}`;
+  const sourceDoc = `${folder}/source`;
+  const beta = `beta-${suffix}`;
+  mkdirSync(join(server.contentDir, folder), { recursive: true });
+  for (const target of [`${folder}/${beta}`, `${folder}/dotted.md`, `${folder}/reports/index`]) {
+    if (target.endsWith('.md')) {
+      writeFileSync(join(server.contentDir, `${target}.md`), '# Target\n\nBody.\n');
+      await awaitFileWatcherIndexed(server, target);
+      continue;
+    }
+    await callTool(
+      server.port,
+      session,
+      'write',
+      { document: { path: `${target}.md`, content: '# Target\n\nBody.\n', position: 'replace' } },
+      server.contentDir,
+    );
+    await awaitFileWatcherIndexed(server, target);
+  }
+  const missing = `${folder}/missing.md`;
+  const result = await callTool(
+    server.port,
+    session,
+    'write',
+    {
+      document: {
+        path: sourceDoc,
+        content: `# Source\n\n[[${folder}/${beta}.md]] [[${beta}.mdx#body|Alias]] [[${folder}/dotted.md.md]] [[${folder}/reports.md]] [[${missing}]].\n`,
+        position: 'replace',
+      },
+    },
+    server.contentDir,
+  );
+  expect(result.isError ?? false).toBe(false);
+  expect(docResult(result.structuredContent).brokenLinks).toEqual([
+    { href: `[[${missing}]]`, resolvedTo: missing, reason: 'no-such-doc' },
+  ]);
+});

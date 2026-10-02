@@ -4,6 +4,7 @@ import { toWikiLinkSlug } from './slug.ts';
 import {
   buildPagesByBasenameIndex,
   buildPagesBySlugIndex,
+  buildWikiLinkAssetTargetKeys,
   isResolvedWikiLinkTarget,
   resolveWikiLinkAssetTarget,
   resolveWikiLinkTarget,
@@ -178,11 +179,59 @@ describe('wiki-link resolution equivalence corpus', () => {
   });
 });
 
+describe('indexed asset target keys', () => {
+  test('answer every asset target exactly as the path scan does', () => {
+    const assetPaths = new Set(['images/Cover.PNG', 'docs/guide.pdf']);
+    const filePaths = new Set(['data/Table.csv']);
+    const scanned: WikiLinkLookupIndex = {
+      pages: new Set(['notes/a']),
+      pagesBySlug: new Map(),
+      pagesByBasename: new Map(),
+      assetPaths,
+      filePaths,
+    };
+    const keyed: WikiLinkLookupIndex = {
+      ...scanned,
+      assetTargetKeys: buildWikiLinkAssetTargetKeys(assetPaths, filePaths),
+    };
+    for (const [target, expected] of [
+      ['Cover.PNG', true],
+      ['cover.png', true],
+      ['/images/cover.png?x#y', true],
+      ['IMAGES/COVER.PNG', true],
+      ['guide.pdf#page=2', true],
+      ['table.csv', true],
+      ['data/table.csv', true],
+      ['missing.png', false],
+      ['images/missing.png', false],
+      ['other/cover.png', false],
+    ] as const) {
+      expect(isResolvedWikiLinkTarget(target, scanned), target).toBe(expected);
+      expect(isResolvedWikiLinkTarget(target, keyed), target).toBe(expected);
+    }
+  });
+});
+
 describe('derived index construction', () => {
-  test('slug index keys the full docName and keeps the first entry on collision', () => {
-    const index = buildPagesBySlugIndex(new Set(['README', 'ReadMe']), toWikiLinkSlug);
-    expect(index.get('readme')).toBe('README');
-    expect(index.size).toBe(1);
+  test('slug collisions choose the code-unit minimum regardless of inventory order', () => {
+    for (const order of [
+      ['a/b', 'a-b'],
+      ['a-b', 'a/b'],
+    ]) {
+      const pages = new Set(order);
+      const index: WikiLinkLookupIndex = {
+        pages,
+        pagesBySlug: buildPagesBySlugIndex(pages, toWikiLinkSlug),
+        pagesByBasename: buildPagesByBasenameIndex(pages, toWikiLinkSlug),
+      };
+      expect(index.pagesBySlug.get('a-b')).toBe('a-b');
+      for (const input of [pages, index]) {
+        for (const spelling of ['A B', 'A B.md', 'A B.mdx']) {
+          expect(resolveWikiLinkTargetDocName(spelling, input)).toBe('a-b');
+        }
+        expect(resolveWikiLinkTargetDocName('a/b', input)).toBe('a/b');
+      }
+    }
   });
 
   test('basename index keys the leaf segment so a bare name finds a subfolder doc', () => {
@@ -426,4 +475,37 @@ describe('composed wiki-link resolution', () => {
       anchor: null,
     });
   });
+});
+
+describe('explicit Markdown suffix precedence', () => {
+  test.each([
+    ['x.md', ['x', 'x.md'], 'x.md'],
+    ['x.md.md', ['x', 'x.md', 'x.md.md'], 'x.md.md'],
+    ['x.md.md', ['x', 'x.md'], 'x.md'],
+    ['x.md.md', ['x'], undefined],
+    ['notes/beta.md', ['notes/beta', 'notes/beta-md'], 'notes/beta'],
+    ['notes/beta.md', ['Notes/Beta', 'notes/beta-md'], 'Notes/Beta'],
+    ['Beta Guide.MDX', ['notes/Beta Guide', 'beta-guide-mdx'], 'notes/Beta Guide'],
+    ['reports.md', ['reports/index', 'reports-md'], 'reports/index'],
+    ['reports.mdx', ['reports/reports', 'reports-mdx'], 'reports/reports'],
+    ['beta.md', ['notes/beta', 'beta-md'], 'notes/beta'],
+    ['notes/beta.md', ['notes/beta-md'], 'notes/beta-md'],
+    ['beta.md', ['notes/beta-md'], 'notes/beta-md'],
+    ['reports.md', ['reports.md/index'], 'reports.md/index'],
+    ['missing.md', ['notes/exists'], undefined],
+  ] satisfies Array<[string, string[], string | undefined]>)(
+    '%s in %j resolves to %s',
+    (target, docNames, expected) => {
+      const pages = new Set(docNames);
+      const index: WikiLinkLookupIndex = {
+        pages,
+        pagesBySlug: buildPagesBySlugIndex(pages, toWikiLinkSlug),
+        pagesByBasename: buildPagesByBasenameIndex(pages, toWikiLinkSlug),
+      };
+      for (const input of [pages, index]) {
+        expect(resolveWikiLinkTargetDocName(target, input)).toBe(expected);
+        expect(isResolvedWikiLinkTarget(target, input)).toBe(expected !== undefined);
+      }
+    },
+  );
 });

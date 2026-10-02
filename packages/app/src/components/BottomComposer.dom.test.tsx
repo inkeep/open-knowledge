@@ -1,4 +1,5 @@
 import type { EditorView as CodeMirrorView } from '@codemirror/view';
+import { i18n } from '@lingui/core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -27,6 +28,7 @@ vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
+    i18n,
     t: (strings: TemplateStringsArray, ...values: unknown[]) =>
       strings.reduce((acc, part, index) => `${acc}${part}${values[index] ?? ''}`, ''),
   }),
@@ -1259,6 +1261,24 @@ describe('BottomComposer (conflict footer stacking)', () => {
 });
 
 describe('BottomComposer (failure + defensive guards)', () => {
+  test.each(['setup-canceled', 'superseded'] as const)(
+    '%s preserves the typed prompt for another send',
+    async (reason) => {
+      dispatchImpl = () => Promise.resolve({ ok: false, reason });
+
+      await renderComposer();
+      fireEvent.change(getInput(), { target: { value: 'condense this doc' } });
+      fireEvent.click(screen.getByTestId('ask-ai-send'));
+
+      await waitFor(() => expect(dispatchCalls).toHaveLength(1));
+      await waitFor(() =>
+        expect((screen.getByTestId('ask-ai-send') as HTMLButtonElement).disabled).toBe(false),
+      );
+      expect(getInput().value).toBe('condense this doc');
+      expect(recordAskedAiSpy).not.toHaveBeenCalled();
+    },
+  );
+
   test('an unsuccessful ({ok:false}) dispatch still clears the field and adds no bespoke toast', async () => {
     dispatchImpl = () => Promise.resolve({ ok: false });
 

@@ -141,6 +141,7 @@ jobs:
       product_name: ${{ steps.channel.outputs.product_name }}
       artifact_name: ${{ steps.channel.outputs.artifact_name }}
       required: ${{ steps.required.outputs.required }}
+      platforms: ${{ steps.stage.outputs.platforms }}
     steps:
       - name: Link to triggering run
         # Back-link: promote-stable forwards its run URL in
@@ -225,7 +226,12 @@ jobs:
       # subset of mac,windows,linux; unset = all three — fail-closed) names
       # the platforms whose build failure blocks publication. Non-required
       # platforms still BUILD every cut, and when their build succeeds their
-      # assets still ship — requiredness only changes what can block. `mac`
+      # assets still ship — requiredness only changes what can block. On a
+      # beta cut the same set judges native-config staging: a gap in a
+      # required platform's set refuses the cut, and a non-required platform
+      # with a gap is not packaged that cut (its build job is skipped), never
+      # shipped without its binary. A stable cut's staging requires every
+      # platform whatever this variable says (see the staging step). `mac`
       # can never be dropped: the stable DMG smoke gate (FR5b) and the npm
       # dispatch hang off build-macos, so a mac-less release would ship
       # unsmoked. A client on a platform missing from a cut simply 404s that
@@ -291,31 +297,18 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-ok-pnpm-store-
 
-      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-desktop-release-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-desktop-release-
-            ${{ runner.os }}-turbo-desktop-
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Stage native-config prebuilt binaries
+        id: stage
         env:
           GH_TOKEN: ${{ github.token }}
-          IS_STABLE: ${{ steps.channel.outputs.channel == 'latest' }}
+          CHANNEL: ${{ steps.channel.outputs.channel }}
+          REQUIRED: ${{ steps.required.outputs.required }}
         run: |
           summarize() {
             echo "Staged native-config binaries: $1" >> "$GITHUB_STEP_SUMMARY"
-          }
-          require_windows_targets() {
-            for required in native-config.win32-x64-msvc.node native-config.win32-arm64-msvc.node; do
-              if [ -f "packages/native-config/$required" ]; then continue; fi
-              echo "::error::$1; $required was not staged, and the Windows installer built from this bundle would refuse removal without it. If no prebuild run matches this commit's packages/native-config tree, re-run native-config-prebuild.yml on an ancestor of this commit; if staging failed for another reason, re-run this workflow. Either way resume per RELEASES.md 'Resuming a blocked cut'."
-              exit 1
-            done
           }
           download_bindings() {
             for attempt in 1 2 3; do
@@ -327,16 +320,20 @@ jobs:
             done
             return 1
           }
-          degrade_or_fail() {
-            # $1: human-readable reason, $2: staged-count label for the summary
-            summarize "$2 — $1"
-            require_windows_targets "$1"
-            if [ "$IS_STABLE" = "true" ]; then
-              echo "::error::$1; refusing to cut a stable release with an incomplete native-config binary set"
+          judge_staging() {
+            summarize "$1"
+            if [ ! -s "$judge" ]; then
+              echo "::error::the native-set judge is missing at $GITHUB_SHA and in the release checkout; refusing this cut"
               exit 1
             fi
-            echo "::warning::$1; both Windows binaries were staged, so only other targets are missing"
-            exit 0
+            local serves=windows,linux requires="$REQUIRED"
+            if [ "$CHANNEL" = latest ]; then
+              serves=mac,windows,linux
+              requires=mac,windows,linux
+            fi
+            node "$judge" staged --serves "$serves" --requires "$requires" --reason "$1" \
+              --recovery "If no prebuild run matches this commit's packages/native-config tree, re-run native-config-prebuild.yml on an ancestor of this commit; if staging failed for another reason, re-run this workflow. Either way resume per RELEASES.md 'Resuming a blocked cut'."
+            exit $?
           }
 
           # Which prebuild run may be staged is release policy shared with the
@@ -356,18 +353,23 @@ jobs:
           # checked-out copy. Pairing the two is what lets a re-fire on a stale
           # tag run CURRENT release machinery rather than whatever was frozen in
           # that tag, which is the only way re-firing a blocked release can ever
-          # clear it. fetch-depth:0 in checkout has $GITHUB_SHA.
+          # clear it. fetch-depth:0 in checkout has $GITHUB_SHA. The native-set
+          # judge that decides what staging may package comes the same way.
+          judge="${RUNNER_TEMP:-/tmp}/assert-native-set.mjs"
+          if ! git show "$GITHUB_SHA:.github/scripts/assert-native-set.mjs" > "$judge" 2>/dev/null; then
+            cp .github/scripts/assert-native-set.mjs "$judge" 2>/dev/null || true
+          fi
           selector="${RUNNER_TEMP:-/tmp}/select-native-config-prebuild.mjs"
           if ! git show "$GITHUB_SHA:.github/scripts/select-native-config-prebuild.mjs" > "$selector" 2>/dev/null; then
             cp .github/scripts/select-native-config-prebuild.mjs "$selector" 2>/dev/null || true
           fi
           if [ ! -s "$selector" ]; then
-            degrade_or_fail "native-config prebuild selector is missing at $GITHUB_SHA and in the release checkout" "0/8"
+            judge_staging "native-config prebuild selector is missing at $GITHUB_SHA and in the release checkout"
           fi
           nc_err="${RUNNER_TEMP:-/tmp}/native-config-select.err"
           if ! selection=$(node "$selector" 2>"$nc_err"); then
             reason=$(tr '\n' ' ' < "$nc_err" | sed 's/  *$//')
-            degrade_or_fail "${reason:-could not select a native-config prebuild run}" "0/8"
+            judge_staging "${reason:-could not select a native-config prebuild run}"
           fi
           # Assert the WHOLE shape, on ONE line. Testing for a tab anywhere is
           # not enough: a stray line ahead of the real answer still contains a
@@ -379,22 +381,18 @@ jobs:
           selection_shape='^[0-9]+'$'\t''[0-9a-f]{7,40}$'
           if [[ ! $selection =~ $selection_shape ]]; then
             flattened=$(printf '%s' "$selection" | tr '\n' ' ')
-            degrade_or_fail "native-config prebuild selector returned an unusable answer: $flattened" "0/8"
+            judge_staging "native-config prebuild selector returned an unusable answer: $flattened"
           fi
           run_id="${selection%%$'\t'*}"
           head_sha="${selection##*$'\t'}"
 
           if ! download_bindings "$run_id"; then
-            degrade_or_fail "could not download native-config-bindings-all from run $run_id after 3 attempts" "0/8"
+            judge_staging "could not download native-config-bindings-all from run $run_id after 3 attempts"
           fi
           find /tmp/nc-bindings -name '*.node' -exec cp -f {} packages/native-config/ \;
           count=$(find packages/native-config -maxdepth 1 -name '*.node' | wc -l | tr -d ' ')
           echo "staged $count native-config prebuilt binaries from run $run_id (commit $head_sha)"
-          if [ "$count" -lt 8 ]; then
-            degrade_or_fail "staged only $count/8 native-config binaries" "$count/8"
-          fi
-          require_windows_targets "staged $count/8 native-config binaries from run $run_id"
-          summarize "$count/8 from run $run_id (commit $head_sha)"
+          judge_staging "staged $count native-config binaries from run $run_id (commit $head_sha)"
 
       # The workspace build produces native-config's host `.node` via `napi
       # build` (turbo dep of the cli build), which needs a Rust toolchain —
@@ -433,12 +431,18 @@ jobs:
           done
           echo "All fixed-group package.json files + both skill bundles' metadata.version now at ${VERSION} (in-memory only)."
 
-      # Same two-filter sequencing as the mac job: app must build before cli's
-      # build:assets copies app/dist into cli/dist/public.
       - name: Build workspace (produces packages/cli/dist for extraResources)
         run: |
-          pnpm exec turbo run build --filter=@inkeep/open-knowledge-app
-          pnpm exec turbo run build --filter=@inkeep/open-knowledge
+          pnpm exec turbo run build --filter=@inkeep/open-knowledge --cache=local:,remote:
+
+      - name: Assert the native-config binary set
+        env:
+          NATIVE_SET_PLATFORMS: ${{ steps.stage.outputs.platforms }}
+        run: |
+          set -euo pipefail
+          git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git show "$GITHUB_SHA:.github/scripts/assert-native-set.mjs" > "$RUNNER_TEMP/assert-native-set.mjs"
+          node "$RUNNER_TEMP/assert-native-set.mjs" platforms "$NATIVE_SET_PLATFORMS"
 
       # Hand the platform-neutral build products to the Windows/Linux packaging
       # jobs: the full bundled CLI tree + core/server dist + the native-config
@@ -559,14 +563,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-ok-pnpm-store-
 
-      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-desktop-release-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-desktop-release-
-            ${{ runner.os }}-turbo-desktop-
-
       - name: Install dependencies
         env:
           # Rebuild native modules against Electron's Node ABI — same as
@@ -595,21 +591,16 @@ jobs:
           done
           echo "All fixed-group package.json files + both skill bundles' metadata.version now at ${VERSION} (in-memory only)."
 
-      # electron-builder.yml's `extraResources` rule copies from
-      # `packages/cli/dist/public/`, which the CLI's `build:assets` populates
-      # via `cp -r ../app/dist dist/public`. The CLI does not declare the
-      # app as a workspace dep (app is private, and the CLI ships the
-      # compiled bundle — not a package reference), so turbo's `^build`
-      # runs them in parallel by default. Without explicit sequencing, cli's
-      # `build:assets` races app's vite build and can fail (no `app/dist`
-      # yet) or copy stale content. Use turbo's `--filter=@inkeep/...`
-      # which DOES respect the `^build` graph (so server + core build
-      # before app), and run the two filters in sequence to enforce
-      # app → cli ordering.
       - name: Build workspace (produces packages/cli/dist/public for extraResources)
         run: |
-          pnpm exec turbo run build --filter=@inkeep/open-knowledge-app
-          pnpm exec turbo run build --filter=@inkeep/open-knowledge
+          pnpm exec turbo run build --filter=@inkeep/open-knowledge --cache=local:,remote:
+
+      - name: Assert the native-config binary set
+        run: |
+          set -euo pipefail
+          git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git show "$GITHUB_SHA:.github/scripts/assert-native-set.mjs" > "$RUNNER_TEMP/assert-native-set.mjs"
+          node "$RUNNER_TEMP/assert-native-set.mjs" host
 
       - name: Detect signing mode
         id: signmode
@@ -1030,6 +1021,7 @@ jobs:
 
   build-windows:
     needs: prepare
+    if: contains(needs.prepare.outputs.platforms, 'windows')
     strategy:
       fail-fast: false
       matrix:
@@ -1359,6 +1351,7 @@ jobs:
   # installs the arm64 prebuilds directly.
   build-linux:
     needs: prepare
+    if: contains(needs.prepare.outputs.platforms, 'linux')
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
@@ -1419,11 +1412,7 @@ jobs:
 
       - name: Install dependencies
         env:
-          # Rebuild native modules against Electron's Node ABI — mirrors the
-          # mac job. (The packaging pass itself skips @electron/rebuild via
-          # the generated variant config; this install-time rebuild provides
-          # the ABI-correct prebuilds that decision depends on.)
-          ELECTRON_SKIP_REBUILD: "0"
+          ELECTRON_SKIP_REBUILD: "1"
         run: pnpm install --frozen-lockfile
 
       - name: Download workspace bundle
@@ -1464,7 +1453,7 @@ jobs:
       # host's `rpmbuild` to assemble an `.rpm` — and an Ubuntu runner has no
       # rpm tooling preinstalled, so the rpm target dies with "Can't find
       # rpmbuild". Ubuntu's `rpm` package carries /usr/bin/rpmbuild. The deb
-      # target needs nothing extra, so this is the only apt step in the job.
+      # target needs nothing extra.
       - name: Install rpmbuild (fpm's rpm backend)
         run: |
           set -euo pipefail
@@ -1516,6 +1505,29 @@ jobs:
           fi
           echo "::notice::Retry wrapper materialized from workflow SHA ${GITHUB_WORKFLOW_SHA}."
           node "$WRAPPER" --label "electron-builder (Linux ${LINUX_TARGETS})" --max-attempts 3 --deadline-epoch-ms "$PACKAGING_DEADLINE_EPOCH_MS" --attempt-timeout "15m" --shell -- "$PKG_CMD"
+
+      - name: Install the packaged deb's runtime dependencies
+        working-directory: packages/desktop
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          debs=(dist-desktop/*.deb)
+          if [[ ${#debs[@]} -eq 0 ]]; then
+            echo "::error::No .deb found under dist-desktop to read runtime dependencies from."
+            exit 1
+          fi
+          depends=()
+          for deb in "${debs[@]}"; do
+            depends+=("$(dpkg-deb --field "$deb" Depends)")
+          done
+          sudo apt-get update
+          sudo apt-get satisfy -y --no-install-recommends "${depends[@]}"
+
+      - name: Assert Linux terminal native package compatibility
+        working-directory: packages/desktop
+        env:
+          OK_LINUX_PACKAGE_DIR: dist-desktop/${{ matrix.unpacked_dir }}
+        run: pnpm exec vitest run tests/unit/linux-package-native-guards.test.ts tests/unit/linux-package-terminal-spawn.test.ts
 
       # Fail before staging an installer that cannot start (see the Windows
       # step for the full rationale). This is the control that would have

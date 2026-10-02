@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   ConfigDiagnosticSchema,
   ConfigDiagnosticsReportSchema,
@@ -272,6 +272,23 @@ describe('humanFormat', () => {
     expect(out).toContain('~/.ok/global.yml');
     expect(out).toContain('.ok/config.yml');
     expect(out).toContain('Move it to ~/.ok/global.yml');
+  });
+
+  test('SCOPE_VIOLATION names the Beta user config when the running channel is Beta', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    try {
+      const out = humanFormat({
+        code: 'SCOPE_VIOLATION',
+        path: ['appearance', 'theme'],
+        expectedScope: 'user',
+        actualScope: 'either',
+      });
+      expect(out).toContain('Move it to ~/.ok-beta/global.yml');
+      expect(out).toContain('(.ok/config.yml or ~/.ok-beta/global.yml)');
+      expect(out).not.toContain('~/.ok/');
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   test('MIXED_SCOPE summarizes per-path scope assignments with target files', () => {

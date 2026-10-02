@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { isMap, isSeq, type ParsedNode, parseDocument } from 'yaml';
 import { LOCAL_DIR, OK_DIR } from '../constants/ok-dir.ts';
+import { okUserHomeDir } from '../constants/ok-user-home.ts';
 import { atomicWriteFile } from '../util/atomic-yaml-write.ts';
 import { FileLockTimeoutError, withFileLock } from '../util/file-lock.ts';
 import type { ConfigValidationError, WriteScope } from './errors.ts';
@@ -56,8 +57,7 @@ export function resolveConfigPath(
   homedirOverride?: string,
 ): string {
   if (scope === 'user') {
-    const home = homedirOverride ?? homedir();
-    return resolve(home, OK_DIR, USER_CONFIG_FILENAME);
+    return resolve(okUserHomeDir(homedirOverride ?? homedir()), USER_CONFIG_FILENAME);
   }
   const absCwd = isAbsolute(cwd) ? cwd : resolve(cwd);
   if (scope === 'project-local') {

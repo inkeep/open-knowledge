@@ -1,11 +1,11 @@
-// FIXTURE — drives `no-unwrapped-user-facing-string.test.ts` via shell-out to
-// `pnpm exec oxlint`. Not part of the main lint: `__fixtures__/` is in
+// FIXTURE — drives `no-unwrapped-user-facing-string.uncached.test.mjs` via shell-out to
+// oxlint. Not part of the main lint: `__fixtures__/` is in
 // `oxlint.config.ts#ignorePatterns`, and `__fixtures__/oxlint.fixtures.json`
 // re-enables the rules for the test.
 //
 // Positive cases (deliberate violations — rule must fire) paired with
 // negative cases (already-wrapped copy, and the non-prose token shapes this
-// codebase legitimately writes raw). Exact-equality `toBe(N)` in the test
+// codebase legitimately writes raw). The exact positions list in the test
 // catches both a weakened pattern (count drops) and a widened one (a negative
 // starts firing, count rises).
 

@@ -310,7 +310,7 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
       mentions,
     });
     if (input === null) return;
-    void dispatch(targetId, input);
+    void dispatch(targetId, input, { installState: states[targetId] });
     inputRef.current?.clear();
     clearComposerDraft();
   }

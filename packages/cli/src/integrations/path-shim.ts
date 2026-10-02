@@ -4,7 +4,12 @@ import {
   readFileSync as fsReadFileSync,
   readlinkSync as fsReadlinkSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import {
+  pathShimBlockLabel,
+  pathShimFishConfFileName,
+  pathShimMarkerPath,
+  resolveDesktopProductName,
+} from '@inkeep/open-knowledge-core';
 
 export const PATH_SHIM_BEGIN = '# >>> open-knowledge cli >>>';
 export const PATH_SHIM_END = '# <<< open-knowledge cli <<<';
@@ -43,7 +48,18 @@ export interface PathInstallMarker {
 }
 
 export function pathInstallMarkerPath(home: string): string {
-  return join(home, 'Library', 'Application Support', 'OpenKnowledge', 'path-install.json');
+  return pathShimMarkerPath(resolveDesktopProductName(), home);
+}
+
+export function pathShimFishConfName(): string {
+  return pathShimFishConfFileName(resolveDesktopProductName());
+}
+
+function channelPathShimBlockRe(): RegExp {
+  const name = resolveDesktopProductName();
+  if (name === 'stable') return PATH_SHIM_BLOCK_RE;
+  const label = pathShimBlockLabel(name);
+  return new RegExp(`^# >>> ${label} >>>\\n[\\s\\S]*?^# <<< ${label} <<<\\n?`, 'm');
 }
 
 export interface PathShimFsOps {
@@ -79,7 +95,7 @@ export function stripManagedPathBlock(text: string): {
   changed: boolean;
   emptyAfter: boolean;
 } {
-  const next = text.replace(PATH_SHIM_BLOCK_RE, '');
+  const next = text.replace(channelPathShimBlockRe(), '');
   return { text: next, changed: next !== text, emptyAfter: next.trim() === '' };
 }
 

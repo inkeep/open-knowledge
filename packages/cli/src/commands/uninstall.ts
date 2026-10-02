@@ -21,6 +21,7 @@ import {
   describeAttachedClients,
   type RunRemovalDeps,
   runRemoval,
+  sharedOkEntriesList,
 } from './removal-plan.ts';
 import {
   formatRemovalOutcome,
@@ -428,7 +429,7 @@ export async function runUninstall(opts: UninstallOptions = {}): Promise<Uninsta
 export function uninstallCommand(): Command {
   return new Command('uninstall')
     .description(
-      'Remove OpenKnowledge from your machine — credentials, PATH entries, editor MCP configs, skill bundles, app data, and ~/.ok. Keeps your markdown content and your authored skills (~/.ok/skills) unless --purge-content. Detects the app install and prints how to remove it; never self-deletes.',
+      `Remove OpenKnowledge from your machine — credentials, PATH entries, editor MCP configs, skill bundles, app data, and ~/${DESKTOP_PRODUCTS.stable.userHomeDirName} (~/${DESKTOP_PRODUCTS.beta.userHomeDirName} on Beta). Keeps your markdown content and your authored skills (~/.ok/skills) unless --purge-content, and always keeps ${sharedOkEntriesList(true)}, shared by every channel. Detects the app install and prints how to remove it; never self-deletes.`,
     )
     .option(
       '-y, --yes',
@@ -436,7 +437,10 @@ export function uninstallCommand(): Command {
     )
     .option('--dry-run', 'Print the removal plan and exit without changing anything')
     .option('--json', 'Emit a machine-readable plan/outcome (requires --yes or --dry-run)')
-    .option('--purge-content', 'Also remove user-authored content (~/.ok/skills)')
+    .option(
+      '--purge-content',
+      `Also remove user-authored content (~/.ok/skills, shared by every channel); still keeps ${sharedOkEntriesList(true)}`,
+    )
     .option(
       '--all-projects',
       'Also deinit every recent/running project (by default no project is removed — you pick them interactively)',

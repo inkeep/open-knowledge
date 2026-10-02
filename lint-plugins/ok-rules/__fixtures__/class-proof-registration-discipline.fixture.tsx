@@ -1,5 +1,5 @@
-// FIXTURE — drives `class-proof-registration-discipline.test.ts` via
-// shell-out to `pnpm exec oxlint`. Not part of the main lint: `__fixtures__/`
+// FIXTURE — drives `class-proof-registration-discipline.uncached.test.mjs` via
+// shell-out to oxlint. Not part of the main lint: `__fixtures__/`
 // is in `oxlint.config.ts#ignorePatterns`, and
 // `__fixtures__/oxlint.fixtures.json` re-enables the rules for the test.
 //
@@ -17,7 +17,7 @@
 //                                    (1 fire — Pattern B diagnostic)
 //   - Negative cases: 0 fires (must NOT fire)
 //
-// Exact-equality (`toBe(3)`) catches both false-negative regressions (drop
+// Exact-equality (the 3-position list) catches both false-negative regressions (drop
 // below 3) and false-positive widenings (above 3).
 
 declare const defineClassProof: any;

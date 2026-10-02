@@ -622,6 +622,7 @@ function TerminalSession({
             if (!cancelled) setConnectionCli('claude');
             return buildLaunch({
               mcpPreApprove: fresh.mcpPreApprovable === true,
+              mcpServerName: fresh.mcpServerName,
               autoApproveOkTools:
                 autoApproveOkToolsRef.current && fresh.okToolsAutoApprovable === true,
             });
@@ -652,6 +653,7 @@ function TerminalSession({
               intent.cli === 'codex' &&
               res.okServerConfigured === true &&
               autoApproveOkToolsRef.current,
+            mcpServerName: res.mcpServerName,
           });
         }
         if (!cancelled) {

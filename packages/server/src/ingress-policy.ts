@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import type { ServerRuntimeConfig } from '@inkeep/open-knowledge-core';
-import { isAllowedApiOrigin } from './api-origin.ts';
+import { isAllowedApiOrigin, isOpaqueOrigin, isSafeMethod } from './api-origin.ts';
 import type { PinoLogger } from './logger.ts';
 import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
 
@@ -129,6 +129,26 @@ export function isOriginAdmitted(origin: string, policy: IngressPolicy): boolean
     if (policy.bindLiterals.includes(hostname)) return true;
   }
   return false;
+}
+
+export const OPAQUE_ORIGIN_REFUSAL_DETAIL =
+  'Requests from a null origin, and writes from a file: origin, are refused. Send the request from a loopback page, the OpenKnowledge app, or a client that sends no Origin header.';
+
+export type OriginAdmission =
+  | { readonly admitted: true; readonly corsGrant: boolean }
+  | { readonly admitted: false; readonly detail: string | undefined };
+
+export function admitRequestOrigin(
+  origin: string | undefined,
+  method: string | undefined,
+  policy: IngressPolicy,
+): OriginAdmission {
+  if (origin === undefined) return { admitted: true, corsGrant: true };
+  const opaque = isOpaqueOrigin(origin);
+  if (!isOriginAdmitted(origin, policy) || (opaque && !isSafeMethod(method))) {
+    return { admitted: false, detail: opaque ? OPAQUE_ORIGIN_REFUSAL_DETAIL : undefined };
+  }
+  return { admitted: true, corsGrant: !opaque };
 }
 
 export function tripsForwardedHeaderTripwire(

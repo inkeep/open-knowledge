@@ -9,6 +9,7 @@ import {
   SKILL_NAME_REGEX,
   type SkillInstallWarningCode,
 } from '@inkeep/open-knowledge-core';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { parseSkillDir, type SkillHostId } from '@inkeep/open-knowledge-core/skills-catalog';
 import { applySkillDirNameSync } from '../content/skills-write.ts';
 import {
@@ -169,8 +170,7 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
       const stash = (dirAbs: string, label: string): void => {
         try {
           const dest = resolve(
-            deps.skillsHome,
-            '.ok',
+            okUserHomeDir(deps.skillsHome),
             'edit-backups',
             'forks',
             `${name}-${label}-${stamp}`,
@@ -592,7 +592,7 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
           const cls = classifyInPlaceDest(absDir, canonAbs, inPlaceEntry.contentHash);
           if (cls === 'different') {
             warnings.push(
-              `The copy at ${rel} has been hand-edited (a fork) — refused, never deleted. Remove it manually if you mean it.`,
+              `The copy at ${rel} differs from the current source and was preserved. Inspect both versions before removing it.`,
             );
             warningCodes.push('place-fork-refused');
             continue;

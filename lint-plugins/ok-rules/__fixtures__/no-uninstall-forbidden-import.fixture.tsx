@@ -1,5 +1,5 @@
-// FIXTURE — drives `no-uninstall-forbidden-import.test.ts` via shell-out to
-// `pnpm exec oxlint`. Not part of the main lint: `__fixtures__/` is in
+// FIXTURE — drives `no-uninstall-forbidden-import.uncached.test.mjs` via shell-out to
+// oxlint. Not part of the main lint: `__fixtures__/` is in
 // `oxlint.config.ts#ignorePatterns`, and `__fixtures__/oxlint.fixtures.json`
 // re-enables the rules for the test.
 //
@@ -7,7 +7,7 @@
 // forbidden specifier across every import shape (named / default / namespace /
 // type / side-effect / subpath) plus a dynamic import. Paired with negative
 // cases (clean usage that must NOT fire), including the allowed core package and
-// the plain markdown-render prosemirror/@tiptap libs. Exact-equality (`toBe(13)`)
+// the plain markdown-render prosemirror/@tiptap libs. Exact-equality (the 13-position list)
 // in the test catches both false-negative regressions (drop below 13) and
 // false-positive widenings (above 13).
 

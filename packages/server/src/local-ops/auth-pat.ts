@@ -1,7 +1,9 @@
 import { stderrDetailSuffix } from './clone-error-classify.ts';
 import { type LocalOpCliInvocation, runSubprocess } from './subprocess.ts';
+import type { LocalOpSubprocessLifetime } from './subprocess-lifetime.ts';
 
 export interface RunPatOptions extends LocalOpCliInvocation {
+  lifetime?: LocalOpSubprocessLifetime;
   host?: string;
   token: string;
   timeoutMs?: number;
@@ -18,6 +20,7 @@ export async function runPatSubprocess(opts: RunPatOptions): Promise<RunPatResul
   let terminal: RunPatResult | null = null;
 
   const proc = runSubprocess({
+    lifetime: opts.lifetime,
     cliArgs: opts.cliArgs,
     cliEnv: opts.cliEnv,
     cwd: opts.cwd,

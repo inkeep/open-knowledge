@@ -1,56 +1,43 @@
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
-  oxlintFixtureArgs,
+  lintOkRulesFixture,
   readEnabledRuleIds,
   readRegisteredRuleNames,
   readRuleScope,
 } from '../../../test-support/read-ok-rules-config.test-helper.ts';
+import { isInScope } from '../scope.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
-const FIXTURE_REL = 'lint-plugins/ok-rules/__fixtures__/require-utf8-multipart-parser.fixture.tsx';
+const RULE = 'require-utf8-multipart-parser';
+const CODE = `ok(${RULE})`;
+const FIXTURE = `lint-plugins/ok-rules/__fixtures__/${RULE}.fixture.tsx`;
+const DOCS = `lint-plugins/ok-rules/README.md#${RULE}`;
 
-describe('require-utf8-multipart-parser oxlint rule', () => {
-  test('fires exactly 3 times — one per direct busboy construction', () => {
-    const result = spawnSync('pnpm', oxlintFixtureArgs(FIXTURE_REL), {
-      cwd: REPO_ROOT,
-      encoding: 'utf-8',
-      windowsHide: true,
-    });
-    expect(result.error).toBeUndefined();
-    expect(result.status).not.toBe(0);
-    const output = `${result.stdout}\n${result.stderr}`;
+function fires() {
+  return lintOkRulesFixture(FIXTURE).filter((d) => d.code === CODE);
+}
 
-    const fires = (output.match(/busboy constructed directly/g) ?? []).length;
-    expect(fires).toBe(3);
-
-    expect(output).toContain('createMultipartParser');
-    expect(output).toContain('packages/server/src/multipart.ts');
-    expect(output).toMatch(/https?:\/\/[^\s]+/);
-    expect(output).toContain('lint-plugins/ok-rules/README.md#require-utf8-multipart-parser');
-  });
-
-  test('the factory module itself is exempt, so the sanctioned call passes', () => {
-    const result = spawnSync('pnpm', oxlintFixtureArgs('packages/server/src/multipart.ts'), {
-      cwd: REPO_ROOT,
-      encoding: 'utf-8',
-      windowsHide: true,
-    });
-    expect(result.error).toBeUndefined();
-    const output = `${result.stdout}\n${result.stderr}`;
-    expect(output).not.toContain('ok(require-utf8-multipart-parser)');
-    expect(output).not.toContain('busboy constructed directly');
+describe(`${RULE} oxlint rule`, () => {
+  test('fires at exactly its 3 direct busboy constructions, by its own code, and on no negative case', () => {
+    const found = fires();
+    expect(found.map((fire) => fire.position)).toEqual(['41:19', '47:19', '50:19']);
+    for (const fire of found) {
+      expect(fire.message).toContain('busboy constructed directly');
+      expect(fire.message).toContain('createMultipartParser');
+      expect(fire.message).toContain('packages/server/src/multipart.ts');
+      expect(fire.message).toMatch(/https?:\/\/[^\s]+/);
+      expect(fire.message).toContain(DOCS);
+    }
   });
 
   test('rule is registered, enabled, and scoped via its RULE_SCOPES entry', async () => {
-    expect(await readRegisteredRuleNames(REPO_ROOT)).toContain('require-utf8-multipart-parser');
-    expect(await readEnabledRuleIds(REPO_ROOT)).toContain('ok/require-utf8-multipart-parser');
+    expect(await readRegisteredRuleNames(REPO_ROOT)).toContain(RULE);
+    expect(await readEnabledRuleIds(REPO_ROOT)).toContain(`ok/${RULE}`);
   });
 
   test('its scope table still carries every include and exclude the rule depends on', () => {
-    const scope = readRuleScope(REPO_ROOT, 'require-utf8-multipart-parser');
-    expect(scope.sort()).toEqual(
+    expect(readRuleScope(REPO_ROOT, RULE).sort()).toEqual(
       [
         '**/*.ts',
         '**/*.tsx',
@@ -62,8 +49,13 @@ describe('require-utf8-multipart-parser oxlint rule', () => {
         '!**/*.test.mts',
         '!**/*.test-helper.ts',
         '!packages/server/src/multipart.ts',
-        'lint-plugins/ok-rules/__fixtures__/require-utf8-multipart-parser.fixture.tsx',
+        FIXTURE,
       ].sort(),
     );
+  });
+
+  test('the scope table excludes the factory module and includes a sibling server module', () => {
+    expect(isInScope(RULE, 'packages/server/src/multipart.ts')).toBe(false);
+    expect(isInScope(RULE, 'packages/server/src/api-extension.ts')).toBe(true);
   });
 });

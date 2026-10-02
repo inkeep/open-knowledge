@@ -111,6 +111,16 @@ function indexGreaterThan(source: string): number[] {
   return positions;
 }
 
+function indexLiteralDoubleNewlines(source: string): number[] {
+  const offsets: number[] = [];
+  let i = source.indexOf('\n\n');
+  while (i !== -1) {
+    offsets.push(i);
+    i = source.indexOf('\n\n', i + 1);
+  }
+  return offsets;
+}
+
 const ANGLE_DEST_SCAN_CAP = 1024;
 
 function isAngleBracketDestinationOpen(offset: number, result: string): boolean {
@@ -179,6 +189,7 @@ function isSelfClosingTagAt(
 
 function indexUppercaseTagSpans(source: string): Array<[number, number]> {
   const spans: Array<[number, number]> = [];
+  const doubleNewlineOffsets = indexLiteralDoubleNewlines(source);
   const TAG_START_RE = /<\/?([A-Z][A-Za-z0-9.]*)/g;
   for (const m of source.matchAll(TAG_START_RE)) {
     const tagStart = m.index;
@@ -187,12 +198,15 @@ function indexUppercaseTagSpans(source: string): Array<[number, number]> {
       if (tagStart > prevStart && tagStart <= prevEnd) continue;
     }
     let i = tagStart + m[0].length;
+    const dnIdx = lowerBound(doubleNewlineOffsets, tagStart);
+    const scanEnd =
+      dnIdx < doubleNewlineOffsets.length ? doubleNewlineOffsets[dnIdx] : source.length;
     let inSingleQuote = false;
     let inDoubleQuote = false;
     let inBacktick = false;
     let braceDepth = 0;
     let terminator = -1;
-    while (i < source.length) {
+    while (i < scanEnd) {
       const ch = source[i];
       if (inSingleQuote) {
         if (ch === "'") inSingleQuote = false;
@@ -219,10 +233,7 @@ function indexUppercaseTagSpans(source: string): Array<[number, number]> {
       }
       i++;
     }
-    if (terminator !== -1) {
-      if (source.slice(tagStart, terminator).includes('\n\n')) continue;
-      spans.push([tagStart, terminator]);
-    }
+    if (terminator !== -1) spans.push([tagStart, terminator]);
   }
   return spans;
 }

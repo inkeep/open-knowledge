@@ -419,15 +419,7 @@ export class ProviderPool {
       const persistence = this.buildPersistence(serverInstanceId, docName, entry.provider.document);
       entry.persistence = persistence;
       this.notify();
-      void this.backfillCacheAfterFirstSync(entry, persistence).catch((err: unknown) => {
-        this.emitStructuredClientRecoveryEvent({
-          event: 'ok-client-persistence-attach-failed',
-          ...this.recoveryTelemetryBase(docName),
-          phase: 'backfill',
-          errorName: err instanceof Error ? err.name : 'non-error-throw',
-          errorMessage: err instanceof Error ? err.message : String(err),
-        });
-      });
+      this.scheduleCacheBackfill(entry, persistence);
     } catch (err: unknown) {
       this.emitStructuredClientRecoveryEvent({
         event: 'ok-client-persistence-attach-failed',
@@ -437,6 +429,21 @@ export class ProviderPool {
         errorMessage: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  private scheduleCacheBackfill(
+    entry: ActivePoolEntry,
+    persistence: ClientPersistenceProvider,
+  ): void {
+    void this.backfillCacheAfterFirstSync(entry, persistence).catch((err: unknown) => {
+      this.emitStructuredClientRecoveryEvent({
+        event: 'ok-client-persistence-attach-failed',
+        ...this.recoveryTelemetryBase(entry.docName),
+        phase: 'backfill',
+        errorName: err instanceof Error ? err.name : 'non-error-throw',
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
+    });
   }
 
   private async backfillCacheAfterFirstSync(
@@ -1355,6 +1362,8 @@ export class ProviderPool {
     this._entries.set(docName, entry);
     this.touch(docName);
     this.notify();
+
+    if (persistence !== null) this.scheduleCacheBackfill(entry, persistence);
 
     if (
       persistence === null &&

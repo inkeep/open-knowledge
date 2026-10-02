@@ -842,7 +842,6 @@ msgstr "{displayName} ({bin}) 미설치 또는 PATH 미등록"
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} CLI"
 msgstr "{displayName} CLI"
@@ -1443,6 +1442,10 @@ msgstr "{0} 왼쪽의 새 패널"
 #: src/components/EditorWorkspace.tsx
 msgid "a new pane to the right of {0}"
 msgstr "{0} 오른쪽의 새 패널"
+
+#: src/components/handoff/useHandoffDispatch.ts
+msgid "A newer handoff replaced this retry."
+msgstr "새로운 핸드오프가 이 재시도를 대체했습니다."
 
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
@@ -2229,7 +2232,6 @@ msgstr "{0} CLI 질문"
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Ask {agentName}"
 msgstr "{agentName}에게 질문"
 
@@ -2851,6 +2853,10 @@ msgstr "변경사항이 자동으로 저장됩니다."
 msgid "Changes saved automatically."
 msgstr "변경사항이 자동으로 저장되었습니다."
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Changes were saved, but OpenKnowledge could not confirm a connection to {handoffLabel}. Check the MCP server settings for this app, then select Save changes to check again."
+msgstr "변경 사항을 저장했지만 OpenKnowledge에서 {handoffLabel} 연결을 확인하지 못했습니다. 이 앱의 MCP 서버 설정을 확인한 다음 변경 사항 저장을 선택하여 다시 확인하세요."
+
 #: src/components/settings/SearchSection.tsx
 msgid "Character budget per indexing request"
 msgstr "인덱싱 요청당 문자 예산"
@@ -2907,6 +2913,10 @@ msgstr "확인한 사람: {0}"
 #: src/components/SkillEditorActions.tsx
 msgid "Checking"
 msgstr "확인 중"
+
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Checking connection to {checkingLabel}…"
+msgstr "{checkingLabel} 연결 확인 중…"
 
 #: src/components/BottomComposer.tsx
 msgid "Checking for agents"
@@ -3542,7 +3552,6 @@ msgstr "구성 경고"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/SessionsHost.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -5311,6 +5320,10 @@ msgstr "문서 응답이 예상한 형식과 일치하지 않습니다."
 msgid "Documents tagged <0>#{tagName}</0>"
 msgstr "<0>#{tagName}</0> 태그가 지정된 문서"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Don't ask again when opening this app without setup in this project"
+msgstr "이 프로젝트에서 설정 없이 이 앱을 열 때 다시 묻지 않기"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
 msgstr "<0>Skills</0> 미표시? 먼저 <1>설정 <2/> 기능 <3/> 코드 실행 및 파일 생성</1> 활성화."
@@ -6066,7 +6079,6 @@ msgstr "외부"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "External apps"
 msgstr "외부 앱"
@@ -7095,6 +7107,10 @@ msgstr "안녕하세요, 여러분!"
 msgid "Help"
 msgstr "도움말"
 
+#: src/lib/conflict-resolve-draft.ts
+msgid "Help me understand the conflict in {filePath}. Explain what I should compare in the OpenKnowledge Conflict view; I will choose and apply the resolution there."
+msgstr "{filePath}의 충돌을 이해할 수 있도록 도와주세요. OpenKnowledge 충돌 보기에서 무엇을 비교해야 하는지 설명해 주세요. 해결 방법은 제가 그곳에서 선택하고 적용하겠습니다."
+
 #. Subtext under the discovery-skill checkbox
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -7388,7 +7404,7 @@ msgstr "{agent}에 OpenKnowledge 도구가 보이지 않으면 설정에 있는 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.cursor.project-entry-not-loaded"
-msgstr "{agent}에 OpenKnowledge 도구가 보이지 않으면 Customize → MCPs를 열고 open-knowledge를 선택한 뒤 해당 .cursor/mcp.json 소스를 켜세요. {agent}은(는) 직접 켜기 전까지 프로젝트 서버를 꺼 둡니다."
+msgstr "{agent}에 OpenKnowledge 도구가 보이지 않으면 Customize → MCPs를 열고 {server}를 선택한 뒤 해당 .cursor/mcp.json 소스를 켜세요. {agent}은(는) 직접 켜기 전까지 프로젝트 서버를 꺼 둡니다."
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
@@ -7517,7 +7533,6 @@ msgstr "인덱스 문서에서는 항목이 섹션 제목 아래에 있고 각 �
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
@@ -7901,10 +7916,6 @@ msgstr "설치 위치"
 #: src/components/SkillDirectoryResult.tsx
 msgid "installs:"
 msgstr "설치 항목:"
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "Instruction for the AI"
-msgstr "AI용 지침"
 
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -9987,6 +9998,10 @@ msgstr "{displayName} Desktop 열기"
 msgid "Open {docName}"
 msgstr "{docName} 열기"
 
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "Open {handoffLabel}"
+msgstr "{handoffLabel} 열기"
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr "브라우저에서 {keyName} 열기"
@@ -10299,14 +10314,12 @@ msgstr "교체 컨트롤을 확장한 상태로 비주얼 편집기 찾기를 �
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI"
 msgstr "AI로 열기"
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Open with AI {displayName} Desktop"
 msgstr "AI {displayName} Desktop으로 열기"
 
@@ -10364,10 +10377,6 @@ msgstr "OpenKnowledge"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked {subject}"
 msgstr "OpenKnowledge에서 {subject} 확인"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge checked for conflicts"
-msgstr "OpenKnowledge에서 충돌 확인"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked the project"
@@ -10549,14 +10558,6 @@ msgstr "OpenKnowledge에서 프로젝트 설정 조회"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge read the setting {key}"
 msgstr "OpenKnowledge에서 설정 조회: {key}"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict"
-msgstr "OpenKnowledge에서 충돌 해결"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "OpenKnowledge resolved a conflict in {subject}"
-msgstr "OpenKnowledge에서 {subject} 충돌 해결"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge restored an earlier version"
@@ -11536,10 +11537,6 @@ msgstr "문서나 스킬의 버전 기록, 또는 폴더의 활동을 읽습니�
 msgid "Reads this project's OpenKnowledge settings"
 msgstr "이 프로젝트의 OpenKnowledge 설정을 읽습니다"
 
-#: src/lib/acp/tool-call-display.ts
-msgid "Reads unresolved conflicts between edits"
-msgstr "편집 간의 미해결 충돌을 읽습니다"
-
 #: src/components/SessionsHost.tsx
 msgid "Ready"
 msgstr "준비됨"
@@ -12040,8 +12037,8 @@ msgid "Replace these symlinks with independent copies?"
 msgstr "이 심볼릭 링크를 독립적인 복사본으로 바꿀까요?"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
-msgid "Replaces the existing \"open-knowledge\" entry in this file. Other servers in the file are left alone."
-msgstr "이 파일의 기존 \"open-knowledge\" 항목을 대체합니다. 파일의 다른 서버는 그대로 유지됩니다."
+msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
+msgstr "이 파일의 기존 {server} 항목을 대체합니다. 파일의 다른 서버는 그대로 유지됩니다."
 
 #. placeholder {0}: formatToolList( replacing.map((e) => e.label), i18n.locale, )
 #: src/components/McpConsentDialogBody.tsx
@@ -12199,10 +12196,6 @@ msgstr "삭제하기 전에 {files}의 충돌을 해결하고, +{overflow}개 �
 #: src/comments/ThreadCard.tsx
 msgid "Resolved"
 msgstr "해결됨"
-
-#: src/lib/acp/tool-call-display.ts
-msgid "Resolves a conflict by choosing which content to keep"
-msgstr "유지할 내용을 골라 충돌을 해결합니다"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
@@ -13351,6 +13344,14 @@ msgstr "패널 보기"
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "패널 보기 ({panelShortcutLabel})"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again"
+msgstr "안내 다시 표시"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Show prompts again for {displayName} in this project"
+msgstr "안내 다시 표시: 이 프로젝트의 {displayName}"
+
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Show replace"
 msgstr "바꾸기 표시"
@@ -14316,7 +14317,6 @@ msgstr "사용 가능한 템플릿"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -15139,8 +15139,8 @@ msgid "This file can't be opened in the text editor."
 msgstr "이 파일은 텍스트 편집기에서 열 수 없습니다."
 
 #: src/components/ConflictView.tsx
-msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI."
-msgstr "이 파일에는 충돌 마커처럼 보이는 줄이 있어 충돌 경계를 정확히 읽을 수 없습니다. 직접 해결하거나 AI에게 묻기를 사용하세요."
+msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve the markers in the file by hand."
+msgstr "이 파일에는 충돌 표시처럼 보이는 줄이 있어 충돌 경계를 정확히 읽을 수 없습니다. 파일의 표시를 수동으로 해결하세요."
 
 #: src/components/use-viewer-text.ts
 msgid "This file could not be found."
@@ -15517,6 +15517,10 @@ msgstr "할 일"
 #: src/uninstall/UninstallNoticeScreen.tsx
 msgid "To do."
 msgstr "할 일"
+
+#: src/components/handoff/ExternalHandoffGate.tsx
+msgid "To save this setup, turn on Project MCP server or Global MCP server."
+msgstr "이 설정을 저장하려면 프로젝트 MCP 서버 또는 전역 MCP 서버를 켜세요."
 
 #: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Today"
@@ -16433,10 +16437,6 @@ msgstr "복사본과 심볼릭 링크의 차이는 무엇인가요?"
 #: src/components/PublishToGitHubDialog.tsx
 msgid "What is this knowledge base for?"
 msgstr "이 지식 베이스는 무엇에 쓰나요?"
-
-#: src/components/handoff/OpenInAgentMenu.tsx
-msgid "What should the AI do? (optional)"
-msgstr "AI 작업 내용? (선택 사항)"
 
 #: src/components/acp/ThreadView.tsx
 msgid "What should we work on?"

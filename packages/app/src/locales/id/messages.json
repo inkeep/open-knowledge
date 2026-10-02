@@ -991,7 +991,6 @@
     "AddR83": ["Proyek tidak dapat dibuat. Coba lagi atau pilih lokasi lain."],
     "AdjDox": ["Draf"],
     "AeHuzT": ["# Satu pola per baris.\\n# Contoh:\\n#   drafts/\\n#   *.draft.md\\n#   !keep.md"],
-    "AeLo3p": ["OpenKnowledge menyelesaikan konflik di ", ["subject"]],
     "AeORtB": [
       "Dipilih: ",
       ["innermostLabel"],
@@ -1077,7 +1076,6 @@
     "BgV29F": ["Bidang pencarian penyunting visual sedang difokus"],
     "Bgaa_U": ["Gagal memperbarui pengaturan performa — ", ["detail"]],
     "BhLPRk": ["\"", ["name"], "\" dikembalikan ke versi yang terpasang"],
-    "BhMWIs": ["Membaca konflik yang belum terselesaikan antar suntingan"],
     "BiVBP9": ["Tidak dapat membaca bahasa pemeriksaan ejaan."],
     "BjitBo": ["Unduh ", ["0"]],
     "BkGtRl": [
@@ -1702,6 +1700,7 @@
     ],
     "IA6JW2": ["Mendeteksi"],
     "ICoNYz": ["Anda juga bisa mengelola ini di Pengaturan."],
+    "IDXn2n": ["Jangan tanya lagi saat membuka aplikasi ini tanpa penyiapan di proyek ini"],
     "IFALcX": ["Deskripsi untuk ", ["field"]],
     "IFezUv": ["Audit tidak dapat diselesaikan. Coba lagi."],
     "IIgshV": ["terkunci"],
@@ -1791,6 +1790,7 @@
     "JgaVnN": ["Izinkan akses eksternal"],
     "Jhj_lh": ["Ubah tujuan tautan, jangkar, dan label tampilannya."],
     "JhqycE": ["Tidak ada berkas terbaru"],
+    "Ji6oie": ["Handoff yang lebih baru menggantikan percobaan ulang ini."],
     "JkCD2u": ["Sinkronisasi dijeda — Anda tidak punya izin push ke repo ini"],
     "JlFcis": ["Kirim"],
     "JmfgFc": ["(sebuah worktree dari ", ["0"], ")"],
@@ -1971,6 +1971,7 @@
       ["1"],
       ")."
     ],
+    "LhVIxY": ["Tampilkan petunjuk lagi"],
     "LhWYpm": ["Ada jalur OK lain yang dilacak di remote:"],
     "Li4U-T": ["Pelajari lebih lanjut tentang ", ["title"]],
     "Lj_5Uv": ["Pemeriksaan wajib gagal"],
@@ -2344,9 +2345,15 @@
     "PrVaZo": ["Copot OpenKnowledge?"],
     "PrWQiT": ["Pindahkan Terminal ke kanan"],
     "PrhzDE": ["Geser ke atas"],
+    "Pur9o0": ["Untuk menyimpan penyiapan ini, aktifkan server MCP proyek atau server MCP global."],
     "Pw5PTU": ["Origin eksternal"],
     "PxZCNM": ["Di luar cakupan commit Open Knowledge."],
     "Q-DKvr": ["Pasang dari ", ["source"]],
+    "Q-a_4h": [
+      "Bantu saya memahami konflik dalam ",
+      ["filePath"],
+      ". Jelaskan apa yang perlu saya bandingkan di tampilan konflik OpenKnowledge; saya akan memilih dan menerapkan penyelesaiannya di sana."
+    ],
     "Q1mtyd": ["Sembunyikan bilah sisi"],
     "Q5fqMz": ["Galat koneksi — coba lagi"],
     "Q6hhn8": ["Preferensi"],
@@ -2513,8 +2520,8 @@
       ["scopeLabel"],
       " adalah duplikat yang tidak diperlukan: aslinya sudah diverifikasi tidak berubah. Hapus salinan itu, lalu coba pemindahan lagi."
     ],
-    "Rah7yq": ["Apa yang harus dilakukan AI? (opsional)"],
     "Rb1zMa": ["Tanpa cuplikan"],
+    "RcPztQ": ["Buka ", ["handoffLabel"]],
     "RcrskJ": ["Format terlihat salah"],
     "RduDYw": [
       "<0>",
@@ -2556,9 +2563,6 @@
     "S33tz3": ["Tidak terhubung"],
     "S3qu11": ["Itu hanya percobaan atau proyek sekali pakai"],
     "S48xcO": ["tertunda"],
-    "S6SbxA": [
-      "Mengganti entri \"open-knowledge\" yang ada di file ini. Server lain dalam file ini tidak diubah."
-    ],
     "S6eHlw": ["Buka proyek terlebih dahulu."],
     "S6l5dv": ["Pembuatan item baru tidak dapat dimulai"],
     "S9Vnum": ["Hapus ", ["patternText"]],
@@ -3151,7 +3155,6 @@
     "Z8nach": ["Unggahan gagal: ", ["0"]],
     "ZBF9fn": ["Kelola folder keterampilan"],
     "ZBZEkP": ["Diambil sebelum dialog ini, dengan penunjuk ditandai."],
-    "ZBt4rI": ["Instruksi untuk AI"],
     "ZBxvV3": ["Terminal Baru"],
     "ZDOq9A": ["Apa yang Anda bagikan dikirim ke tim OpenKnowledge."],
     "ZGVsOD": ["Push cabang ini ke GitHub sebelum berbagi."],
@@ -3272,7 +3275,6 @@
       "Salinan hanya-baca dari blok MirrorSource di dokumen lain. Sunting di sumbernya dan salinan ini diperbarui langsung."
     ],
     "_XWY2J": ["Terminal dinonaktifkan"],
-    "_YWqV2": ["OpenKnowledge menyelesaikan sebuah konflik"],
     "_ayOfA": [
       "Basis pengetahuan yang mengikuti Open Knowledge Format dari Google, cara bersama untuk menata apa yang Anda tahu. Pilih ini jika Anda ingin catatan Anda bekerja baik dengan alat lain yang memahami format tersebut."
     ],
@@ -4132,7 +4134,6 @@
     "i92eAT": [
       "Kami akan membuat sebuah repositori dan mulai menyinkronkan — tanpa perlu terminal."
     ],
-    "i94lQe": ["OpenKnowledge memeriksa konflik"],
     "i9OyGp": ["Batalkan atau ulangi"],
     "i9TPUi": [
       ["targetNoun"],
@@ -4252,6 +4253,7 @@
     "jBVUXo": ["Terminal tidak bisa dibuka — silakan coba lagi."],
     "jC8Bv4": ["Melihat-lihat sekitar…"],
     "jC8LSZ": ["Setel ulang filter tampilan"],
+    "jDejAI": ["Memeriksa koneksi ke ", ["checkingLabel"], "…"],
     "jDhTLC": ["Pilih ikon"],
     "jEVipR": [
       "Saat ini keterampilan ini dibaca dari folder lain. Setelah ditautkan, keterampilan ini dibaca dari ",
@@ -4260,6 +4262,7 @@
     ],
     "jEZ6Lf": ["sementara"],
     "jEdF24": ["Halaman belum ada: ", ["linkTitle"], ". Klik untuk membuat."],
+    "jIWP0P": ["Tampilkan petunjuk lagi untuk ", ["displayName"], " di proyek ini"],
     "jJdwCB": ["Kembalikan"],
     "jKd3AP": ["Terminal tidak dapat diaktifkan: ", ["0"]],
     "jKeGuZ": ["Menghapus dokumen, folder, templat, keterampilan, atau aset"],
@@ -4855,9 +4858,6 @@
       " dibuka karena berisi folder .git"
     ],
     "pZAs1T": ["Gagal memuat tautan keluar"],
-    "pZaMLc": [
-      "File ini berisi baris yang menyerupai penanda konflik, sehingga batas konflik tidak dapat dibaca dengan andal. Selesaikan secara manual atau dengan Tanya AI."
-    ],
     "paCw0z": ["semua yang ada di folder ", ["0"], "/ di dalam ", ["1"], "/"],
     "pajIrl": ["Terminal tidak dapat dimatikan: ", ["0"]],
     "pbwTg6": [["seconds"], " dtk lalu"],
@@ -5149,6 +5149,11 @@
     "sqgz2k": [
       "OpenKnowledge tidak dapat menyelesaikan penyiapan proyek ini. Worktree dibuat, tetapi tidak dibuka."
     ],
+    "srbby-": [
+      "Perubahan telah disimpan, tetapi OpenKnowledge tidak dapat memastikan koneksi ke ",
+      ["handoffLabel"],
+      ". Periksa pengaturan server MCP aplikasi ini, lalu pilih Simpan perubahan untuk memeriksa lagi."
+    ],
     "srdlOs": [
       "Sinkronisasi otomatis dijeda: Anda tidak punya izin push ke repositori ini. Beralihlah ke Otomatis (hanya Pull) agar tetap menerima pembaruan."
     ],
@@ -5267,7 +5272,9 @@
     "troubleshooting.cursor.project-entry-not-loaded": [
       "Jika ",
       ["agent"],
-      " tidak menampilkan alat OpenKnowledge, buka Customize → MCPs, pilih open-knowledge dan nyalakan sumber .cursor/mcp.json miliknya; ",
+      " tidak menampilkan alat OpenKnowledge, buka Customize → MCPs, pilih ",
+      ["server"],
+      " dan nyalakan sumber .cursor/mcp.json miliknya; ",
       ["agent"],
       " membiarkan server proyek mati sampai Anda melakukannya."
     ],
@@ -5343,6 +5350,11 @@
     "uM6jnS": ["Gagal memulihkan"],
     "uNGmQn": ["Pengujiannya tidak bisa dijalankan. Pastikan OpenKnowledge masih berjalan."],
     "uO9WLl": ["Push"],
+    "uOKoBM": [
+      "Mengganti entri ",
+      ["server"],
+      " yang ada di file ini. Server lain dalam file ini tidak diubah."
+    ],
     "uPJml1": ["Hanya-baca diizinkan"],
     "uQNW00": ["HEAD terlepas — ambil sebuah cabang untuk melanjutkan"],
     "uQewpR": [
@@ -5369,7 +5381,6 @@
     ],
     "ugoTXs": ["folder"],
     "uhJEA2": [["count", "plural", { "other": ["#", " peserta lagi"] }]],
-    "uhYnaD": ["Menyelesaikan konflik dengan memilih isi yang dipertahankan"],
     "uksqrP": [
       "Repositori tidak ditemukan. Mungkin ia sudah diganti nama, dihapus, atau dipindahkan."
     ],
@@ -5651,6 +5662,9 @@
     "xtJgSe": ["Sumber ini memuat beberapa keterampilan — pilih yang akan diimpor."],
     "xvv5gL": ["Pratinjau tangkapan layar"],
     "xxRpzT": ["Slidev ditemukan di sistem Anda."],
+    "xxxG_a": [
+      "File ini berisi baris yang tampak seperti penanda konflik, sehingga batas konfliknya tidak dapat dibaca dengan andal. Selesaikan penanda di file secara manual."
+    ],
     "xzAmL_": ["Disetujui otomatis"],
     "xzktOa": ["Sunting tautan wiki"],
     "y-LQPF": ["Gambar ", ["identity"], " tidak dapat ditentukan. Buka referensi."],

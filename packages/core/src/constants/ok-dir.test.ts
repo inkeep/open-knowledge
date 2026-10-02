@@ -1,6 +1,25 @@
 import { posix } from 'node:path';
-import { describe, expect, test } from 'vitest';
-import { OK_BIN_DIRNAME, OK_DIR, posixOkManagedBinDir } from './ok-dir.ts';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { OK_BIN_DIRNAME, OK_DIR, okUserHomeDisplayPath, posixOkManagedBinDir } from './ok-dir.ts';
+
+describe('okUserHomeDisplayPath', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('names the Stable home folder by default', () => {
+    vi.stubEnv('OK_CHANNEL', '');
+    expect(okUserHomeDisplayPath()).toBe('~/.ok');
+    expect(okUserHomeDisplayPath('global.yml')).toBe('~/.ok/global.yml');
+    expect(okUserHomeDisplayPath('logs')).toBe('~/.ok/logs');
+  });
+
+  test('names the Beta home folder when the running channel is Beta', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    expect(okUserHomeDisplayPath('global.yml')).toBe('~/.ok-beta/global.yml');
+    expect(okUserHomeDisplayPath('secrets.yml')).toBe('~/.ok-beta/secrets.yml');
+  });
+});
 
 describe('posixOkManagedBinDir', () => {
   test('is the OK dir plus the bin dirname, under the given home', () => {

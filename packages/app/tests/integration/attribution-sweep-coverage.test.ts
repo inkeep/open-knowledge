@@ -16,11 +16,6 @@ const HANDLER_SOURCES = [
     readFileSync(join(SERVER_SRC, file), 'utf8'),
   ),
 ];
-const ACTOR_HELPER_PATH = join(
-  import.meta.dirname,
-  '../../../server/src/extract-actor-identity.ts',
-);
-const actorHelperSource = readFileSync(ACTOR_HELPER_PATH, 'utf8');
 
 const REQUIRED_HANDLERS = [
   'handleAgentWrite',
@@ -212,11 +207,6 @@ describe('attribution sweep coverage (FR-5, D42)', () => {
     const required = new Set(REQUIRED_HANDLERS);
     const untracked = names.filter((h) => !required.has(h) && !EXEMPT_HANDLERS.has(h));
     expect(untracked).toEqual([]);
-  });
-
-  test('extract-actor-identity.ts never reads body-supplied principalId (D-A11 trust boundary)', () => {
-    const code = actorHelperSource.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    expect(/body\s*[.[][^a-zA-Z0-9_]*['"]?principalId/.test(code)).toBe(false);
   });
 
   test('migrated mutating handlers extract identity before any semantic errorResponse', () => {

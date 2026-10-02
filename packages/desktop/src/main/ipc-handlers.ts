@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 import { okBugReportsDir } from '@inkeep/open-knowledge';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { userGlobalSkillRoots } from '@inkeep/open-knowledge-core/skills-catalog';
 import {
   createOsProbe,
@@ -258,15 +259,15 @@ interface RecordHandoffDeps {
   readonly warn?: (message: string) => void;
 }
 
-export const STATS_FILE_RELATIVE_PATH = ['.ok', 'stats.jsonl'] as const;
+export const STATS_FILE_NAME = 'stats.jsonl';
 
 export async function recordHandoff(
   deps: RecordHandoffDeps,
   line: HandoffStatsLine,
 ): Promise<void> {
   const home = deps.homedir();
-  const dir = join(home, STATS_FILE_RELATIVE_PATH[0]);
-  const file = join(dir, STATS_FILE_RELATIVE_PATH[1]);
+  const dir = okUserHomeDir(home);
+  const file = join(dir, STATS_FILE_NAME);
   const json = `${JSON.stringify(line)}\n`;
 
   const warn = deps.warn ?? ((m: string) => console.warn(m));

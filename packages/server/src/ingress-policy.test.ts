@@ -1,6 +1,7 @@
 import type { ServerRuntimeConfig } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
+  admitRequestOrigin,
   buildIngressPolicy,
   getIngressContext,
   hasForwardingHeaders,
@@ -9,6 +10,7 @@ import {
   isOriginAdmitted,
   isPeerAdmitted,
   normalizeHostHeader,
+  OPAQUE_ORIGIN_REFUSAL_DETAIL,
   stampIngressContext,
   tripsForwardedHeaderTripwire,
 } from './ingress-policy.ts';
@@ -194,10 +196,11 @@ describe('isOriginAdmitted — if present, must match; scheme-matched for extern
     expect(isOriginAdmitted('ftp://100.64.0.7', bound)).toBe(false);
   });
 
-  test('loopback and the Electron null/file shapes always pass', () => {
+  test('loopback and the desktop file:// shape pass; the sandboxed-frame null origin never does', () => {
     const local = buildIngressPolicy({});
     expect(isOriginAdmitted('http://localhost:5173', local)).toBe(true);
-    expect(isOriginAdmitted('null', local)).toBe(true);
+    expect(isOriginAdmitted('null', local)).toBe(false);
+    expect(isOriginAdmitted('null', case3)).toBe(false);
     expect(isOriginAdmitted('file://', local)).toBe(true);
     expect(isOriginAdmitted('https://evil.example.com', local)).toBe(false);
   });
@@ -300,5 +303,50 @@ describe('ingress request context', () => {
     const context = stampIngressContext(req, { requestId: 'r-1' });
     expect(context).toEqual({ requestId: 'r-1', peerClass: 'external', actor: undefined });
     expect(getIngressContext(req)).toBe(context);
+  });
+});
+
+describe('admitRequestOrigin', () => {
+  const local = buildIngressPolicy({});
+  const opaqueRefusal = { admitted: false, detail: OPAQUE_ORIGIN_REFUSAL_DETAIL };
+
+  test('no Origin and site origins are admitted with the CORS grant', () => {
+    expect(admitRequestOrigin(undefined, 'POST', local)).toEqual({
+      admitted: true,
+      corsGrant: true,
+    });
+    expect(admitRequestOrigin('http://localhost:5173', 'GET', local)).toEqual({
+      admitted: true,
+      corsGrant: true,
+    });
+    expect(admitRequestOrigin('http://127.0.0.1:4000', 'DELETE', local)).toEqual({
+      admitted: true,
+      corsGrant: true,
+    });
+  });
+
+  test('a null origin is refused for every method with the opaque-origin detail', () => {
+    for (const method of ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE']) {
+      expect(admitRequestOrigin('null', method, local), method).toEqual(opaqueRefusal);
+    }
+  });
+
+  test('a file: origin may read without a grant and may not write', () => {
+    for (const method of ['GET', 'HEAD', 'OPTIONS']) {
+      expect(admitRequestOrigin('file://', method, local), method).toEqual({
+        admitted: true,
+        corsGrant: false,
+      });
+    }
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      expect(admitRequestOrigin('file://', method, local), method).toEqual(opaqueRefusal);
+    }
+  });
+
+  test('a foreign origin is refused without the opaque-origin detail', () => {
+    expect(admitRequestOrigin('https://evil.example', 'GET', local)).toEqual({
+      admitted: false,
+      detail: undefined,
+    });
   });
 });

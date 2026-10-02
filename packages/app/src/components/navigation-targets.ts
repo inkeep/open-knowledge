@@ -12,9 +12,9 @@ import {
   parseTemplateContentDocName,
   projectSkillContentDocName,
   resolveStoredPath,
+  resolveWikiLinkTargetDocName,
   type SkillScope,
   templateContentDocName,
-  toWikiLinkSlug,
 } from '@inkeep/open-knowledge-core';
 import type { SkillPreviewFlavor } from '@/lib/doc-hash';
 import { normalizeDocNameInput } from '@/lib/doc-paths';
@@ -108,24 +108,16 @@ function extensionlessTargetPath(target: string): string {
 
 const MARKDOWN_TARGET_EXTENSION = /\.(md|mdx)$/i;
 
-function stripMarkdownTargetExtensions(target: string): string {
-  let candidate = target;
-  while (MARKDOWN_TARGET_EXTENSION.test(candidate)) {
-    const next = candidate.replace(MARKDOWN_TARGET_EXTENSION, '');
-    if (!next) return candidate;
-    candidate = next;
-  }
-  return candidate;
+function folderPathOfStoredNote(storedDocName: string): string {
+  const slash = storedDocName.lastIndexOf('/');
+  return slash === -1 ? '' : storedDocName.slice(0, slash);
 }
 
-function canonicalNavigationTarget(target: string, pages: ReadonlySet<string>): string {
+function managedArtifactNavigationTarget(target: string, pages: ReadonlySet<string>): string {
   const { normalizedTarget, expectsFolder } = normalizeTargetPath(target);
   if (expectsFolder || !MARKDOWN_TARGET_EXTENSION.test(normalizedTarget)) return target;
-  const stripped = stripMarkdownTargetExtensions(normalizedTarget);
-  if (resolveStoredPath(pages, normalizedTarget) && !resolveStoredPath(pages, stripped)) {
-    return target;
-  }
-  return stripped;
+  if (resolveStoredPath(pages, normalizedTarget)) return target;
+  return normalizedTarget.replace(MARKDOWN_TARGET_EXTENSION, '');
 }
 
 export function deriveKnownFolderPaths(docNames: Iterable<string>): Set<string> {
@@ -136,27 +128,6 @@ export function deriveKnownFolderPaths(docNames: Iterable<string>): Set<string> 
     }
   }
   return folderPaths;
-}
-
-function slugResolve(
-  normalizedTarget: string,
-  pagesBySlug: ReadonlyMap<string, string> | undefined,
-): string | undefined {
-  if (!pagesBySlug) return undefined;
-  const slug = toWikiLinkSlug(normalizedTarget);
-  if (!slug) return undefined;
-  return pagesBySlug.get(slug);
-}
-
-function basenameResolve(
-  normalizedTarget: string,
-  pagesByBasename: ReadonlyMap<string, string> | undefined,
-): string | undefined {
-  if (!pagesByBasename) return undefined;
-  if (normalizedTarget.includes('/')) return undefined;
-  const slug = toWikiLinkSlug(normalizedTarget);
-  if (!slug) return undefined;
-  return pagesByBasename.get(slug);
 }
 
 function okReadOnlyAssetPath(docName: string, docExt?: string): string {
@@ -190,24 +161,25 @@ export function resolveNavigationTarget(
     pagesByBasename?: ReadonlyMap<string, string>;
   },
 ): ResolvedContentTarget {
-  const target = canonicalNavigationTarget(requestedTarget, options.pages);
-  if (isManagedArtifactDocName(target)) {
-    const parsed = parseManagedArtifactName(target);
+  const target = requestedTarget;
+  const artifactTarget = managedArtifactNavigationTarget(target, options.pages);
+  if (isManagedArtifactDocName(artifactTarget)) {
+    const parsed = parseManagedArtifactName(artifactTarget);
     if (parsed?.kind === 'skill' && parsed.scope === 'project') {
       const docName = projectSkillContentDocName(parsed.name);
       return { kind: 'doc', target: docName, docName };
     }
-    const legacyTemplate = parseLegacyTemplateDocName(target);
+    const legacyTemplate = parseLegacyTemplateDocName(artifactTarget);
     if (legacyTemplate) {
       const docName = templateContentDocName(legacyTemplate.folder, legacyTemplate.name);
       return { kind: 'doc', target: docName, docName };
     }
-    return { kind: 'doc', target, docName: target };
+    return { kind: 'doc', target: artifactTarget, docName: artifactTarget };
   }
-  if (parseProjectSkillContentDocName(target)) {
-    return { kind: 'doc', target, docName: target };
+  if (parseProjectSkillContentDocName(artifactTarget)) {
+    return { kind: 'doc', target: artifactTarget, docName: artifactTarget };
   }
-  const templateContent = parseTemplateContentDocName(target);
+  const templateContent = parseTemplateContentDocName(artifactTarget);
   if (templateContent) {
     const docName = templateContentDocName(templateContent.folder, templateContent.name);
     return { kind: 'doc', target: docName, docName };
@@ -226,77 +198,46 @@ export function resolveNavigationTarget(
   }
   const extensionlessTarget = extensionlessTargetPath(target);
 
-  const storedExtensionless =
-    !expectsFolder && extensionlessTarget !== normalizedTarget
-      ? resolveStoredPath(options.pages, extensionlessTarget)
-      : null;
-  if (storedExtensionless) {
-    return {
-      kind: 'doc',
-      target: storedExtensionless,
-      docName: storedExtensionless,
-    };
-  }
+  const resolvedDocName = expectsFolder
+    ? undefined
+    : resolveWikiLinkTargetDocName(normalizedTarget, {
+        pages: options.pages,
+        pagesBySlug: options.pagesBySlug ?? new Map<string, string>(),
+        pagesByBasename: options.pagesByBasename,
+      });
 
-  const storedNormalized = !expectsFolder
-    ? resolveStoredPath(options.pages, normalizedTarget)
-    : null;
-  if (storedNormalized) {
-    return {
-      kind: 'doc',
-      target: storedNormalized,
-      docName: storedNormalized,
-    };
-  }
-
-  if (!expectsFolder) {
-    const slugMatchDocName = slugResolve(extensionlessTarget, options.pagesBySlug);
-    if (slugMatchDocName) {
+  const folderTargets = expectsFolder
+    ? [extensionlessTarget]
+    : [normalizedTarget, extensionlessTarget];
+  for (const folderTarget of folderTargets) {
+    const storedIndex = resolveStoredPath(options.pages, `${folderTarget}/index`);
+    if (storedIndex && (expectsFolder || resolvedDocName === storedIndex)) {
+      const folderPath = folderPathOfStoredNote(storedIndex);
       return {
-        kind: 'doc',
-        target: slugMatchDocName,
-        docName: slugMatchDocName,
+        kind: 'folder-index',
+        target: folderPath,
+        folderPath,
+        docName: storedIndex,
+        noteKind: 'canonical-index',
+      };
+    }
+
+    const leaf = folderTarget.split('/').pop();
+    const storedLegacy = leaf ? resolveStoredPath(options.pages, `${folderTarget}/${leaf}`) : null;
+    if (storedLegacy && (expectsFolder || resolvedDocName === storedLegacy)) {
+      const folderPath = folderPathOfStoredNote(storedLegacy);
+      return {
+        kind: 'folder-index',
+        target: folderPath,
+        folderPath,
+        docName: storedLegacy,
+        noteKind: 'legacy-folder-note',
       };
     }
   }
 
-  const storedIndex = resolveStoredPath(options.pages, `${extensionlessTarget}/index`);
-  if (storedIndex) {
-    const folderPath = storedIndex.slice(0, -'/index'.length);
-    return {
-      kind: 'folder-index',
-      target: folderPath,
-      folderPath,
-      docName: storedIndex,
-      noteKind: 'canonical-index',
-    };
-  }
-
-  const leaf = extensionlessTarget.split('/').pop();
-  const storedLegacy = leaf
-    ? resolveStoredPath(options.pages, `${extensionlessTarget}/${leaf}`)
-    : null;
-  if (storedLegacy) {
-    const slash = storedLegacy.lastIndexOf('/');
-    const folderPath = slash === -1 ? '' : storedLegacy.slice(0, slash);
-    return {
-      kind: 'folder-index',
-      target: folderPath,
-      folderPath,
-      docName: storedLegacy,
-      noteKind: 'legacy-folder-note',
-    };
-  }
-
-  if (!expectsFolder) {
-    const basenameMatchDocName = basenameResolve(extensionlessTarget, options.pagesByBasename);
-    if (basenameMatchDocName) {
-      return {
-        kind: 'doc',
-        target: basenameMatchDocName,
-        docName: basenameMatchDocName,
-      };
-    }
+  if (resolvedDocName !== undefined) {
+    return { kind: 'doc', target: resolvedDocName, docName: resolvedDocName };
   }
 
   const knownFolderPaths = options.folderPaths ?? deriveKnownFolderPaths(options.pages);

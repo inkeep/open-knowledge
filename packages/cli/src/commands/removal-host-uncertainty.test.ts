@@ -5,7 +5,7 @@ import {
   spawn,
   spawnSync,
 } from 'node:child_process';
-import { once } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import {
   chmodSync,
   existsSync,
@@ -18,19 +18,22 @@ import {
 } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { Readable } from 'node:stream';
 import { isProcessAlive } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { hasLsof } from '../../../../test-support/capabilities.test-helper.ts';
 import { startDefunctProcess } from './defunct-process.test-helper.ts';
 import { buildDeinitPlan, runRemoval } from './removal-plan.ts';
 import { stopServerForRemoval } from './stop-for-removal.ts';
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
-  return { ...actual, spawnSync: vi.fn() };
+  return { ...actual, spawn: vi.fn(actual.spawn), spawnSync: vi.fn() };
 });
 
+const spawnMock = vi.mocked(spawn);
 const spawnSyncMock = vi.mocked(spawnSync);
-const { spawnSync: realSpawnSync } =
+const { spawn: realSpawn, spawnSync: realSpawnSync } =
   await vi.importActual<typeof import('node:child_process')>('node:child_process');
 
 interface HostProcess {
@@ -74,6 +77,7 @@ describe.skipIf(process.platform === 'win32')(
       escapedSpawns = [];
       write(join(project, '.ok', 'local', 'server.lock'), 'not json');
       write(join(project, 'notes.md'), '# Keep');
+      spawnMock.mockReset().mockImplementation(realSpawn);
       spawnSyncMock.mockReset();
     });
 
@@ -84,6 +88,7 @@ describe.skipIf(process.platform === 'win32')(
         child.kill('SIGKILL');
         await exited;
       }
+      spawnMock.mockReset().mockImplementation(realSpawn);
       spawnSyncMock.mockReset();
       rmSync(root, { recursive: true, force: true });
       expect(escapedSpawns).toEqual([]);
@@ -96,14 +101,33 @@ describe.skipIf(process.platform === 'win32')(
 
     function installHost(plan: HostPlan): void {
       const scriptedCwds = new Map((plan.cwdQueries ?? []).map((q) => [q.pids, q.result]));
+      spawnMock.mockImplementation((...args: Parameters<typeof spawn>) => {
+        const processListing =
+          args[0] === 'ps' && (args[1]?.includes('-A') || args[1]?.includes('-axo'));
+        const listenerListing = args[0] === 'lsof' && args[1]?.includes('-iTCP');
+        if (!processListing && !listenerListing) {
+          if (args[0] !== 'ps' && args[0] !== 'lsof') return realSpawn(...args);
+          escapedSpawns.push(`${args[0]} ${args[1]?.join(' ')}`);
+          throw new Error(`unplanned ${args[0]} spawn`);
+        }
+        const rows = plan.processes.map((p) => `${p.pid} ${p.command}`);
+        const output = processListing ? `  PID COMMAND\n${rows.join('\n')}\n` : LSOF_HEADER;
+        const child = Object.assign(new EventEmitter(), {
+          stdout: Readable.from([output]),
+          stderr: Readable.from([]),
+        });
+        let closed = 0;
+        for (const stream of [child.stdout, child.stderr]) {
+          stream.once('close', () => {
+            if (++closed === 2) child.emit('close', 0);
+          });
+        }
+        return child as ChildProcess;
+      });
       spawnSyncMock.mockImplementation(
         (command: string, args: readonly string[] = [], options?: SpawnSyncOptions) => {
           if (command === 'pgrep') {
             return spawnResult({ stdout: plan.processes.map((p) => `${p.pid}\n`).join('') });
-          }
-          if (command === 'ps' && args[0] === '-axo') {
-            const rows = plan.processes.map((p) => `${p.pid} ${p.command}`);
-            return spawnResult({ stdout: `  PID COMMAND\n${rows.join('\n')}\n` });
           }
           if (command === 'lsof' && args[0] === '-iTCP') {
             return spawnResult({ stdout: LSOF_HEADER });
@@ -255,7 +279,8 @@ describe.skipIf(process.platform === 'win32')(
       expect(readFileSync(join(project, 'notes.md'), 'utf8')).toBe('# Keep');
     });
 
-    test('refuses removal while a live server is attributable to this project', async () => {
+    test('refuses removal while a live server is attributable to this project', async (ctx) => {
+      ctx.skip(!hasLsof, 'the product inspects processes with lsof');
       const server = await startLiveProcess(project);
       expect(isProcessAlive(server)).toBe(true);
       installHost({ processes: [{ pid: server, command: 'open-knowledge-server notes' }] });
@@ -269,7 +294,8 @@ describe.skipIf(process.platform === 'win32')(
       expect(readFileSync(join(project, 'notes.md'), 'utf8')).toBe('# Keep');
     });
 
-    test('reports an unreadable process state once per run, not once per probing caller', async () => {
+    test('reports an unreadable process state once per run, not once per probing caller', async (ctx) => {
+      ctx.skip(!hasLsof, 'the product inspects processes with lsof');
       const server = await startLiveProcess(project);
       installHost({ processes: [{ pid: server, command: 'open-knowledge-server notes' }] });
       const binDir = installFailingPsProbe();

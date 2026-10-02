@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { error as errorColor } from '../../ui/colors.ts';
 import { gitHubHostRejection, resolveAuthHost, validateGitHubHost } from './validate-host.ts';
 
 function hostsYaml(provider: string, ...hostnames: string[]): string {
@@ -68,6 +69,21 @@ describe('gitHubHostRejection', () => {
     expect(rejection).toContain(
       'git:\n    hosts:\n      git.example.internal:\n        provider: github',
     );
+  });
+
+  test('prints the Stable remedy byte-for-byte', () => {
+    vi.stubEnv('OK_CHANNEL', '');
+    expect(gitHubHostRejection('git.example.internal')).toBe(
+      `${errorColor('Error:')} git.example.internal is not a known GitHub host.\n` +
+        'To use a GitHub Enterprise Server host, declare it in ~/.ok/global.yml:\n\n  git:\n    hosts:\n      git.example.internal:\n        provider: github\n',
+    );
+  });
+
+  test('names the Beta user config when the running channel is Beta', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    const rejection = gitHubHostRejection('git.example.internal');
+    expect(rejection).toContain('declare it in ~/.ok-beta/global.yml:\n');
+    expect(rejection).not.toContain('~/.ok/');
   });
 
   test('suggests a port-free hostname as the config key', () => {

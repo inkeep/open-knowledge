@@ -3,10 +3,11 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import {
   AGENTS_SKILLS_ROOT,
   containsXmlTag,
-  EDITOR_PROJECT_CONFIG_PATH,
+  currentDesktopProduct,
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_USER_SKILL_ROOT,
   type EditorId,
+  editorProjectConfigPath,
   PROJECT_SKILL_EDITOR_IDS,
   RENAMED_PACK_SKILLS,
   USER_SKILL_EDITOR_IDS,
@@ -117,8 +118,9 @@ export function validateSkillForInstall(
 }
 
 function detectProjectConfiguredTargets(cwd: string): EditorId[] {
+  const product = currentDesktopProduct();
   return PROJECT_SKILL_EDITOR_IDS.filter((id) => {
-    const rel = EDITOR_PROJECT_CONFIG_PATH[id];
+    const rel = editorProjectConfigPath(id, product);
     return rel !== null && existsSync(resolve(cwd, rel));
   });
 }

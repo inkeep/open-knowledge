@@ -6,11 +6,13 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
+  createWikiRenameContext,
   rewriteAssetReferencesForRename,
   rewriteJsxSrcRefsForDocumentRename,
   rewriteMarkdownLinksForDocumentRename,
   rewriteOutboundMarkdownLinksForSourceMove,
   rewriteWikiLinksForDocumentRename,
+  rewriteWikiLinksForRenameMap,
 } from './managed-rename-rewrite.ts';
 import { findWikiLinkAttrs, type PmJson } from './wiki-pm-json.test-helper.ts';
 
@@ -992,6 +994,61 @@ describe('rewriteWikiLinksForDocumentRename — escaped alias separators inside 
     walk(mdManager.parse(markdown) as unknown as PmJson);
     return count;
   }
+
+  test.each([
+    ['| Link |\n| --- |\n| [[beta]] |', '| Link |\n| --- |\n| [[gamma\\|beta]] |'],
+    [
+      'Link | Note\n--- | ---\n[[beta#part]] | value',
+      'Link | Note\n--- | ---\n[[gamma#part\\|beta#part]] | value',
+    ],
+  ])('synthesized alias keeps the table row intact', (before, after) => {
+    const context = createWikiRenameContext(['beta'], new Map([['beta', 'gamma']]));
+    const result = rewriteWikiLinksForRenameMap(before, 'index', context);
+    expect(result).toEqual({ markdown: after, rewrites: 1 });
+    expect(dataRowCellCount(result.markdown)).toBe(dataRowCellCount(before));
+    expect(findWikiLinkAttrs(mdManager.parse(result.markdown) as unknown as PmJson)).toMatchObject({
+      target: 'gamma',
+      alias: before.includes('#part') ? 'beta#part' : 'beta',
+    });
+  });
+
+  test.each([
+    ['| A | B |\n|-|-|\n| [[beta]] | c |', '| A | B |\n|-|-|\n| [[gamma\\|beta]] | c |'],
+    ['| A | B |\n|--|--|\n| [[beta]] | c |', '| A | B |\n|--|--|\n| [[gamma\\|beta]] | c |'],
+    ['| A | B |\n|:-:|:-:|\n| [[beta]] | c |', '| A | B |\n|:-:|:-:|\n| [[gamma\\|beta]] | c |'],
+    [
+      '> | A | B |\n> |---|---|\n> | [[beta]] | c |',
+      '> | A | B |\n> |---|---|\n> | [[gamma\\|beta]] | c |',
+    ],
+    [
+      '- | A | B |\n  | --- | --- |\n  | [[beta]] | c |',
+      '- | A | B |\n  | --- | --- |\n  | [[gamma\\|beta]] | c |',
+    ],
+    ['| A |\n| --- |\n| x |\n[[beta]]', '| A |\n| --- |\n| x |\n[[gamma\\|beta]]'],
+  ])('synthesized alias keeps every GFM table form intact: %j', (before, after) => {
+    const context = createWikiRenameContext(['beta'], new Map([['beta', 'gamma']]));
+    const result = rewriteWikiLinksForRenameMap(before, 'index', context);
+    expect(result).toEqual({ markdown: after, rewrites: 1 });
+    expect(dataRowCellCount(result.markdown)).toBe(dataRowCellCount(before));
+    expect(findWikiLinkAttrs(mdManager.parse(result.markdown) as unknown as PmJson)).toMatchObject({
+      target: 'gamma',
+      alias: 'beta',
+    });
+  });
+
+  test.each([
+    [
+      '| A |\n| --- |\n| x |\n# Heading [[beta]]',
+      '| A |\n| --- |\n| x |\n# Heading [[gamma|beta]]',
+    ],
+    ['```\n| A |\n| --- |\n```\n[[beta]]', '```\n| A |\n| --- |\n```\n[[gamma|beta]]'],
+  ])('synthesized alias outside a GFM table stays unescaped: %j', (before, after) => {
+    const context = createWikiRenameContext(['beta'], new Map([['beta', 'gamma']]));
+    expect(rewriteWikiLinksForRenameMap(before, 'index', context)).toEqual({
+      markdown: after,
+      rewrites: 1,
+    });
+  });
 
   test('no-anchor rename keeps the escape and the cell whole', () => {
     const row = '| Link |\n| --- |\n| [[Page\\|Friendly label]] |';

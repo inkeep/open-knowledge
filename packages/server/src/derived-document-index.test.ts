@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -81,6 +89,43 @@ afterEach(async () => {
 });
 
 describe('DerivedDocumentIndex', () => {
+  test('every body feeder refreshes the resolved graph with unchanged document inventory', async () => {
+    const rig = createRig();
+    writeDoc(rig, 'notes/beta.md', '# Beta');
+    writeDoc(rig, 'notes/gamma.md', '# Gamma');
+    writeDoc(rig, 'source.md', '[[beta]]');
+    await settleStartup(rig);
+    expect(await rig.index.getBacklinkCount('notes/beta')).toBe(1);
+    const feed = [
+      async (markdown: string) => rig.index.recordDirectDocument('source', markdown),
+      async (markdown: string) => {
+        const token = rig.index.captureLiveUpdateToken();
+        if (token === null) throw new Error('Live token unavailable');
+        await rig.index.recordLiveDocument('source', markdown, token);
+      },
+      async (markdown: string) => rig.index.recordDurableStore('source', markdown),
+      async (markdown: string) => rig.index.recordDiskUpsert('source', markdown),
+      async (markdown: string) => rig.index.recordLinkRewrite('source', markdown),
+    ];
+    for (const [i, write] of feed.entries()) {
+      const target = i % 2 === 0 ? 'gamma' : 'beta';
+      const previous = target === 'beta' ? 'gamma' : 'beta';
+      await write(`[[${target.toUpperCase()}.md#section]]`);
+      expect(await rig.index.getBacklinkCount(`notes/${target}`)).toBe(1);
+      expect(await rig.index.getBacklinkCount(`notes/${previous}`)).toBe(0);
+      expect(await rig.index.getForwardLinkEntries('source')).toEqual([
+        expect.objectContaining({ kind: 'doc', target: `notes/${target}`, anchor: 'section' }),
+      ]);
+      expect((await rig.index.getLinkGraph()).links).toEqual([
+        { source: 'source', target: `notes/${target}` },
+      ]);
+      expect(await rig.index.getHubs()).toEqual([{ docName: `notes/${target}`, count: 1 }]);
+      expect(await rig.index.getOrphans(['notes/beta', 'notes/gamma'], 'incoming')).toEqual([
+        `notes/${previous}`,
+      ]);
+    }
+  });
+
   test('direct documents update links and tags before returning and signal B/G/T', async () => {
     const rig = createRig();
     await settleStartup(rig);
@@ -1162,5 +1207,80 @@ describe('DerivedDocumentIndex local-target projection', () => {
       status: 'missing',
       reason: 'no-such-doc',
     });
+  });
+
+  test('startup and branch-switch reuse persisted source links without reconcile logs', async () => {
+    const rig = createRig();
+    writeDoc(rig, 'source.md', 'See [[target]].\n');
+    writeDoc(rig, 'target.md', '# Target\n');
+    await settleStartup(rig);
+    await rig.index.close();
+    const info = vi.spyOn(getLogger('derived-document-index'), 'info');
+    const restarted = new DerivedDocumentIndex({
+      projectDir: rig.projectDir,
+      contentDir: rig.contentDir,
+      contentFilter: rig.contentFilter,
+      getGlobalSkillRoots: () => [],
+      signalChannel: () => {},
+    });
+    cleanups.unshift(() => restarted.close());
+    await restarted.beginStartup('main').backlinksReady;
+    await restarted.settleStartupAfterWatcherSeed();
+    expect(info).not.toHaveBeenCalled();
+
+    await restarted.settleBranchFromDisk(await restarted.beginBranchSwitch('feature'));
+    info.mockClear();
+    await restarted.settleBranchFromDisk(await restarted.beginBranchSwitch('main'));
+    expect(info).not.toHaveBeenCalled();
+  });
+
+  test('startup and branch-switch reconcile changed sources from valid snapshots', async () => {
+    const rig = createRig();
+    writeDoc(rig, 'source.md', 'See [[first]].\n');
+    await settleStartup(rig);
+    await rig.index.close();
+
+    const sourcePath = join(rig.contentDir, 'source.md');
+    let nextMtimeMs = statSync(sourcePath).mtimeMs + 2000;
+    const changeSource = (markdown: string) => {
+      writeFileSync(sourcePath, markdown);
+      const bumped = new Date(nextMtimeMs);
+      nextMtimeMs += 2000;
+      utimesSync(sourcePath, bumped, bumped);
+    };
+    const info = vi.spyOn(getLogger('derived-document-index'), 'info');
+    const rebuild = vi.spyOn(BacklinkIndex.prototype, 'rebuildFromDisk');
+    changeSource('See [[second]].\n');
+
+    const restarted = new DerivedDocumentIndex({
+      projectDir: rig.projectDir,
+      contentDir: rig.contentDir,
+      contentFilter: rig.contentFilter,
+      getGlobalSkillRoots: () => [],
+      signalChannel: () => {},
+    });
+    cleanups.unshift(() => restarted.close());
+    await restarted.beginStartup('main').backlinksReady;
+    await restarted.settleStartupAfterWatcherSeed();
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ added: 0, updated: 1, deleted: 0 }),
+      '[backlinks] startup reconcile',
+    );
+    expect(await restarted.getBacklinks('second')).toHaveLength(1);
+    expect(await restarted.getBacklinks('first')).toHaveLength(0);
+    expect(rebuild).not.toHaveBeenCalled();
+
+    await restarted.settleBranchFromDisk(await restarted.beginBranchSwitch('feature'));
+    expect(rebuild).toHaveBeenCalledTimes(1);
+    changeSource('See [[third]].\n');
+    info.mockClear();
+    await restarted.settleBranchFromDisk(await restarted.beginBranchSwitch('main'));
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ added: 0, updated: 1, deleted: 0 }),
+      '[backlinks] branch-switch reconcile for main',
+    );
+    expect(await restarted.getBacklinks('third')).toHaveLength(1);
+    expect(await restarted.getBacklinks('second')).toHaveLength(0);
+    expect(rebuild).toHaveBeenCalledTimes(1);
   });
 });

@@ -3,7 +3,8 @@ import { constants, existsSync, statSync } from 'node:fs';
 import { access, chmod, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
-import { augmentAgentSpawnPath, OK_DIR, OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
+import { augmentAgentSpawnPath, OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { z } from 'zod';
 import {
   tracedMkdir,
@@ -56,7 +57,7 @@ export class AgentLaunchError extends Error {
 }
 
 function defaultBinaryCacheDir(): string {
-  return join(homedir(), OK_DIR, 'acp-agents');
+  return join(okUserHomeDir(), 'acp-agents');
 }
 
 function isDir(dir: string): boolean {
@@ -1048,7 +1049,7 @@ export function windowsCmdWrap(cmd: string, args: string[]): { cmd: string; args
 }
 
 function acpNpxIsolatedCwd(): string {
-  const dir = join(homedir(), OK_DIR, 'acp-npx-cwd');
+  const dir = join(okUserHomeDir(), 'acp-npx-cwd');
   tracedMkdirSync(dir, { recursive: true, mode: 0o700 });
   const marker = join(dir, 'package.json');
   if (!existsSync(marker)) {

@@ -99,6 +99,8 @@ describe('sync-resolve-conflict envelope (RFC 9457)', () => {
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       expect(parsed.data.type).toBe('urn:ok:error:no-conflict-tracked');
+      expect(parsed.data.detail).toContain('Refresh the conflict list in the OpenKnowledge app');
+      expect(parsed.data.detail).not.toContain('conflicts(');
     }
   });
 

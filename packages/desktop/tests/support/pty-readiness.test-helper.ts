@@ -1,3 +1,7 @@
+import { type SpawnOptions, spawn } from 'node:child_process';
+import { closeSync, openSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   type PtyHostIncomingMessage,
   type PtyHostOutgoingMessage,
@@ -5,6 +9,8 @@ import {
   type SpawnPty,
   setupPtyHost,
 } from '../../src/utility/pty-host.ts';
+import { windowsPtyStartupTrace } from './pty-startup-trace.test-helper.ts';
+import { harnessScenarioTitles } from './real-io-harness-roster.test-helper.ts';
 
 export interface PtyStream {
   read(): string;
@@ -17,6 +23,7 @@ export interface PtyHostProbe {
   dataOf(ptyId: string): string;
   exitOf(ptyId: string): { exitCode: number | undefined; signal: number | null } | null;
   errorOf(ptyId: string): string | null;
+  snapshotStartup(): void;
   killActive(): void;
 }
 
@@ -26,6 +33,9 @@ export interface PtyHostProbeOptions {
   platform?: NodeJS.Platform;
   shellExists?: (path: string) => boolean;
   logger?: SetupPtyHostDeps['logger'];
+  startupTrace?:
+    | (NonNullable<SetupPtyHostDeps['startupTrace']> & { native?: never })
+    | { native: boolean; aroundSpawn?: never };
 }
 
 export function createPtyHostProbe(options: PtyHostProbeOptions): PtyHostProbe {
@@ -52,6 +62,7 @@ export function createPtyHostProbe(options: PtyHostProbeOptions): PtyHostProbe {
       },
     },
     spawn: options.spawn,
+    startupTrace: options.startupTrace?.native ? windowsPtyStartupTrace : options.startupTrace,
     env: options.env,
     ...(options.platform === undefined ? {} : { platform: options.platform }),
     shellExists: options.shellExists,
@@ -66,6 +77,7 @@ export function createPtyHostProbe(options: PtyHostProbeOptions): PtyHostProbe {
     dataOf,
     exitOf,
     errorOf,
+    snapshotStartup: () => handle.snapshotStartup?.(),
     killActive: () => handle.killActive(),
     streamOf: (ptyId) => ({
       read: () => dataOf(ptyId),
@@ -488,4 +500,103 @@ export function buildCwdFileProofCommand(platform: NodeJS.Platform, fileName: st
     return `Write-Output "CWD_PROOF=$(Get-Content -Raw -LiteralPath './${fileName}')"`;
   }
   return `printf 'CWD_PROOF=%s\\n' "$(cat './${fileName}')"`;
+}
+
+const HARNESS = fileURLToPath(new URL('../utility/pty-host.real-io-harness.ts', import.meta.url));
+const TRACE_PRELOAD = new URL('./pty-startup-trace-preload.test-helper.mjs', import.meta.url).href;
+const HARNESS_TIMEOUTS = harnessTimeouts(process.platform);
+const SUCCESS_RESULT = `HARNESS_RESULT ok=${harnessScenarioTitles(process.platform).length} fail=0 refused=0`;
+
+interface HarnessProcess {
+  once(event: 'error', listener: (error: Error) => void): unknown;
+  once(event: 'exit', listener: (code: number | null, signal: string | null) => void): unknown;
+  kill(): unknown;
+  unref(): unknown;
+}
+
+export type HarnessSpawn = (file: string, args: string[], options: SpawnOptions) => HarnessProcess;
+
+export async function runHarness(
+  outputDir: string,
+  extraEnv: Record<string, string> = {},
+  spawnChild: HarnessSpawn = spawn,
+): Promise<string> {
+  const outputPath = join(outputDir, 'output.log');
+  const outputFd = openSync(outputPath, 'w');
+  const child = (() => {
+    try {
+      return spawnChild(process.execPath, ['--import', TRACE_PRELOAD, HARNESS], {
+        env: {
+          ...process.env,
+          TEMP: outputDir,
+          TMP: outputDir,
+          TMPDIR: outputDir,
+          ...extraEnv,
+        },
+        stdio: ['ignore', outputFd, outputFd],
+        windowsHide: true,
+      });
+    } finally {
+      closeSync(outputFd);
+    }
+  })();
+
+  let spawnError = null as Error | null;
+  let exitResult = null as { code: number | null; signal: string | null } | null;
+  let resolveExit: () => void = () => undefined;
+  const exitPromise = new Promise<void>((resolve) => {
+    resolveExit = resolve;
+  });
+  child.once('error', (error) => {
+    spawnError = error;
+  });
+  child.once('exit', (code, signal) => {
+    exitResult = { code, signal };
+    resolveExit();
+  });
+
+  async function terminateChild(): Promise<void> {
+    if (exitResult === null) {
+      child.kill();
+      await Promise.race([exitPromise, sleep(HARNESS_CHILD_KILL_WAIT_MS)]);
+    }
+    child.unref();
+  }
+
+  try {
+    const deadline = Date.now() + HARNESS_TIMEOUTS.verdictDeadlineMs;
+    while (Date.now() < deadline) {
+      const output = readFileSync(outputPath, 'utf8');
+      if (spawnError !== null) {
+        throw new Error(`real-PTY harness could not start: ${spawnError.message}\n${output}`);
+      }
+
+      const completeLines = output.split(/\r?\n/u);
+      completeLines.pop();
+      const resultLine = completeLines.find((line) => line.startsWith('HARNESS_RESULT '));
+      if (resultLine !== undefined) {
+        if (resultLine !== SUCCESS_RESULT) {
+          throw new Error(`real-PTY harness reported failure:\n${output}`);
+        }
+        if (exitResult !== null && exitResult.code !== 0) {
+          throw new Error(
+            `real-PTY harness exited ${exitResult.code ?? exitResult.signal} after success:\n${output}`,
+          );
+        }
+        return output;
+      }
+
+      if (exitResult !== null) {
+        throw new Error(
+          `real-PTY harness exited ${exitResult.code ?? exitResult.signal} without a verdict:\n${output}`,
+        );
+      }
+      await sleep(HARNESS_VERDICT_POLL_INTERVAL_MS);
+    }
+
+    const output = readFileSync(outputPath, 'utf8');
+    throw new Error(`real-PTY harness timed out without a verdict:\n${output}`);
+  } finally {
+    await terminateChild();
+  }
 }

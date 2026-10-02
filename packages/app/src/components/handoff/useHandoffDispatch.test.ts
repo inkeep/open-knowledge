@@ -428,6 +428,26 @@ describe('runHandoffDispatch — failure path', () => {
     expect(dispatch).toHaveBeenCalledTimes(3);
   });
 
+  test('a superseded retry tells the user it was replaced without recording a second transport', async () => {
+    const { runHandoffDispatch } = await import('./useHandoffDispatch');
+    const deps = buildDeps({
+      dispatchHandoff: vi.fn(
+        async () => ({ ok: false, reason: 'dispatch-error' }) as HandoffOutcome,
+      ),
+    });
+    const retryDispatch = vi.fn(
+      async () => ({ ok: false, reason: 'superseded' }) as HandoffOutcome,
+    );
+
+    await runHandoffDispatch('cursor', sampleInput(), deps, 1, retryDispatch);
+    deps.toast.errorCalls[0]?.action?.onClick();
+
+    await vi.waitFor(() => expect(deps.toast.errorCalls).toHaveLength(2));
+    expect(deps.toast.errorCalls[1]?.message).toBe('A newer handoff replaced this retry.');
+    expect(deps.recordHandoff).toHaveBeenCalledTimes(1);
+    expect(deps.dispatchHandoff).toHaveBeenCalledTimes(1);
+  });
+
   test('web-host-cursor-unsupported reason flows through to telemetry + toast', async () => {
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const deps = buildDeps({

@@ -23,15 +23,8 @@ import {
 } from './shared.ts';
 
 export const DESCRIPTION = [
-  '[Requires: Hocuspocus server] Restore a DOCUMENT (CRDT, append-only) or a SKILL (fs-direct) to a historical version. Pass EXACTLY ONE of `document` or `skill`.',
-  '',
-  '**Parameters:**',
-  '- `document` — The document to restore (path, no extension; trailing `.md`/`.mdx` is stripped). Append-only via the CRDT layer; all connected editors see the change live.',
-  '- `skill` — The skill NAME to restore (PROJECT-scope skills only — global skills are unversioned). Rewrites the skill folder to the target version (fs-direct); every recorded copy re-syncs from it, so there is nothing to re-install.',
-  '- `version` — The 40-character commit SHA to restore to. Copy it from the `history` tool (same field name there).',
-  '- `summary` — Optional one-line summary (≤80 chars). Avoid secrets or PII — persisted to git history.',
-  '',
-  'A response may include `structuredContent.warnings` (kind `content-divergence`) when the restored `Y.Text` does not byte-match the target-version bytes. The restore still landed; re-read the doc with `exec("cat <document>")` to see what converged.',
+  'Restore exactly one document or skill to version (40-char SHA from history). Requires the Hocuspocus server. document accepts optional .md/.mdx; restore is append-only through CRDT and visible to connected editors. skill is a PROJECT-scope name (global is unversioned); its folder is rewritten. Recorded, unedited copies refresh on watcher/startup sync; links reflect edits immediately. Hand-edited copies are preserved.',
+  'Optional summary ≤80 chars; avoid secrets or PII, persisted to git history. content-divergence in structuredContent.warnings means restore landed but bytes differ: re-read with exec to see the converged result.',
 ].join('\n');
 
 export interface RestoreVersionDeps {

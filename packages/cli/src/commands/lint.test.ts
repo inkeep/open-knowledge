@@ -1,4 +1,5 @@
 import { isAbsolute } from 'node:path';
+import { AUDIT_EMPTY_SCOPE_WARNING } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import type { LintRunResult } from '../content/lint-runner.ts';
 import { formatLintReport, resolveTarget } from './lint.ts';
@@ -22,6 +23,28 @@ describe('formatLintReport', () => {
     const out = formatLintReport(result({ fileCount: 3 }));
     expect(out).toContain('No problems in 3 files');
     expect(out).toContain('Checks run: markdownlint.');
+  });
+
+  test('reports zero-document coverage without a clean-check claim', () => {
+    const out = formatLintReport(
+      result({
+        warnings: ['No documents were checked: this scope contains no admitted documents.'],
+      }),
+    );
+    expect(out).toContain('No documents were checked.');
+    expect(out).toContain('Checks selected: markdownlint; no document checks ran.');
+    expect(out).not.toContain('No problems');
+    expect(out).not.toContain('could not fully complete');
+  });
+
+  test('renders known zero-coverage information neutrally while retaining other warnings', () => {
+    const warning = 'No documents were checked: source could not be read.';
+    const out = formatLintReport(result({ warnings: [AUDIT_EMPTY_SCOPE_WARNING, warning] }));
+    expect(out).toContain(AUDIT_EMPTY_SCOPE_WARNING);
+    expect(out).not.toContain(`! ${AUDIT_EMPTY_SCOPE_WARNING}`);
+    expect(out).toContain(`! ${warning}`);
+    expect(formatLintReport(result({ ran: [] }))).toContain('No document checks ran.');
+    expect(formatLintReport(result({ ran: undefined }))).toContain('No document checks ran.');
   });
 
   test('groups diagnostics under their file with a summary', async () => {
@@ -82,9 +105,11 @@ describe('formatLintReport', () => {
   });
 
   test('distinguishes an explicit empty selection from an older response', () => {
-    expect(formatLintReport(result({ ran: [] }))).toContain('No checks ran.');
-    expect(formatLintReport(result({ ran: undefined }))).not.toContain('Checks run:');
-    expect(formatLintReport(result({ ran: undefined }))).not.toContain('No checks ran.');
+    expect(formatLintReport(result({ fileCount: 1, ran: [] }))).toContain('No checks ran.');
+    expect(formatLintReport(result({ fileCount: 1, ran: undefined }))).not.toContain('Checks run:');
+    expect(formatLintReport(result({ fileCount: 1, ran: undefined }))).not.toContain(
+      'No checks ran.',
+    );
   });
 });
 

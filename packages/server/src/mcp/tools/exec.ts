@@ -60,23 +60,12 @@ const SOFT_CAP_BYTES =
 const BINARY_EXT_RE = /\.(png|jpe?g|gif|webp|svg|pdf|zip|tar|gz|tgz|mp4|mov|mp3|wav|ico|bmp)$/i;
 
 export const DESCRIPTION = [
-  '**STOP — when the project has `.ok/`, do NOT use native `Read`/`Grep`/`Glob` on in-scope `.md`/`.mdx`; use `exec` (this tool).** Native tools skip the frontmatter, backlinks, unresolved comments, shadow-repo activity, and git history `exec` returns per wiki file. Reserve native tools for source code, non-markdown, and projects without `.ok/`. (Full rule + escape hatch: the `open-knowledge` skill.)',
-  '',
-  'Run a read-only bash-like command against the project content directory. Returns raw stdout plus enriched metadata for every wiki file referenced (frontmatter, backlink/forward-link counts, shadow-repo activity with agent/human attribution).',
-  '',
-  '`⚠ N unresolved comment(s)` = open human review requests — factor in before editing, and report them.',
-  '',
-  'Allowlist: cat, ls, grep, find, head, tail, wc, sort, uniq, cut. One command or a pipe (|) per call — NOT a shell: `&&`, `;`, subshells, writes, and ALL redirection are rejected, `<` too (read via `cat a.md`, not `< a.md`). For several things use separate exec calls or multiple paths (`cat a b c`).',
-  '',
-  "cwd: the command runs in the explicit absolute `cwd` you pass, or in the MCP client's only advertised root when there is exactly one. If the client has zero or multiple roots, pass `cwd` explicitly. Paths inside the command resolve relative to that cwd; traversal above it is rejected.",
-  '',
-  'Stdout provenance headers (GNU-style): `ls <dir>/` prepends `<dir>/:`, single-file `cat`/`head`/`tail` prepends `==> <path> <==`. Multi-file `cat a b` emits no header — the `enrichedPaths` array still lists every file. `head`/`tail` used as pipe trimmers (no file arg) defer to the upstream producer.',
-  '',
-  'Examples:',
-  '- `exec({ command: "cat articles/auth.md" })` — file contents + full enrichment',
-  '- `exec({ command: "ls articles/" })` — listing + per-file enrichment (slim)',
-  '- `exec({ command: "grep -rn oauth articles/ | head -5" })` — pipe with enrichment on matched files',
-  '- `exec({ command: "ls", cwd: "/abs/path/to/other-repo" })` — run in a different project',
+  'STOP: with `.ok/`, use exec for in-scope .md/.mdx; native Read/Grep/Glob omit wiki context. Native tools are for source code, non-markdown or projects without .ok/. See the open-knowledge skill for the full rule and escape hatch.',
+  'Read-only bash-like command; returns stdout and enrichedPaths with frontmatter, backlinks/forward links, unresolved comments, shadow-repo activity and git history with human/agent attribution. Unresolved comments are open human review requests: consider before editing and report them.',
+  'Allowlist: cat, ls, grep, find, head, tail, wc, sort, uniq, cut. One command or pipe per call. No &&, ;, subshells, writes or redirection (including <). Use multiple paths or separate calls.',
+  "cwd: command paths resolve inside explicit absolute cwd, or the client's sole advertised root. With zero/multiple roots pass cwd; traversal above it is rejected.",
+  'Stdout provenance: ls <dir>/ labels the directory; single-file cat/head/tail labels its path. Multi-file cat has no header; enrichedPaths still lists files. Piped head/tail preserve upstream provenance.',
+  "Examples: exec({command:'cat notes/a.md'}); exec({command:'grep -rn oauth notes/ | head -5'}); exec({command:'ls',cwd:'/abs/project'}).",
 ].join('\n');
 
 interface ExecDeps {

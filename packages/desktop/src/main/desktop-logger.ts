@@ -1,9 +1,11 @@
 import { mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import pino from 'pino';
 
-const OK_LOGS_DIR = join(homedir(), '.ok', 'logs');
+function okLogsDir(): string {
+  return join(okUserHomeDir(), 'logs');
+}
 const MAX_AGE_DAYS = 7;
 const MAX_DIR_SIZE_BYTES = 45 * 1024 * 1024;
 
@@ -87,10 +89,10 @@ let rootDest: { flushSync: () => void } | undefined;
 function getRootLogger(): pino.Logger {
   if (rootLogger) return rootLogger;
 
-  mkdirSync(OK_LOGS_DIR, { recursive: true });
-  setTimeout(() => pruneLogsDir(OK_LOGS_DIR), 5000);
+  mkdirSync(okLogsDir(), { recursive: true });
+  setTimeout(() => pruneLogsDir(okLogsDir()), 5000);
 
-  const filePath = join(OK_LOGS_DIR, logFileName);
+  const filePath = join(okLogsDir(), logFileName);
   const dest = pino.destination({ dest: filePath, append: true, sync: false });
   rootDest = dest as unknown as { flushSync: () => void };
 

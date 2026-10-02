@@ -277,6 +277,7 @@ import {
   shouldResetAmbientCredentials,
 } from './share/git-context.ts';
 import { resyncRecordedSkillCopies } from './skill-placements.ts';
+import { skillStateYamlPath } from './skill-state.ts';
 import { assertCompatibleStateManifest } from './state-manifest.ts';
 import { SyncEngine } from './sync-engine.ts';
 import { createSyncHandshakeSpanExtension } from './sync-handshake-span-extension.ts';
@@ -990,6 +991,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   let sessionManager: AgentSessionManager;
   let nativeApi: NativeApiHandle;
   let localApi: LocalApiDispatch;
+  let shutdownLocalOps: () => Promise<void>;
   let bridgeLossReporter: BridgeDeriveLossReporter | undefined;
   let inPlaceRescanTimer: ReturnType<typeof setTimeout> | null = null;
   let shadowWarmupTimer: ReturnType<typeof setTimeout> | null = null;
@@ -2198,6 +2200,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     hocuspocus.configuration.extensions.push(apiExtension);
     nativeApi = apiExtension.nativeApi;
     localApi = apiExtension.localApi;
+    shutdownLocalOps = apiExtension.shutdownLocalOps;
 
     const bridgeGuardConfig = readConfigSafely({
       absPath: resolveConfigPath('project', projectDir),
@@ -3155,6 +3158,8 @@ export function createServer(options: ServerOptions): ServerInstance {
       const t0 = Date.now();
       const phaseErrors: Array<{ phase: string; error: string }> = [];
       shutdownAllowsUnload = true;
+      const authShutdown = Promise.allSettled([shutdownLocalOps()]);
+      let authResult: PromiseSettledResult<void> | undefined;
 
       try {
         await closeIndexRegeneration();
@@ -3401,6 +3406,18 @@ export function createServer(options: ServerOptions): ServerInstance {
             }
           }
 
+          [authResult] = await authShutdown;
+          if (authResult.status === 'rejected') {
+            const reason: unknown = authResult.reason;
+            const failures = reason instanceof AggregateError ? reason.errors : [reason];
+            phaseErrors.push({
+              phase: 'local-op-subprocess-shutdown',
+              error: failures
+                .map((failure) => (failure instanceof Error ? failure.message : String(failure)))
+                .join('; '),
+            });
+            log.error({ err: reason }, '[server] shutdown local-op subprocess drain failed');
+          }
           const durationMs = Date.now() - t0;
           if (phaseErrors.length === 0) {
             log.info(
@@ -3433,6 +3450,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           });
         }
       }
+      if (authResult?.status === 'rejected') throw authResult.reason;
     })();
 
     return inflightDestroy;
@@ -3754,11 +3772,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       }
 
       try {
-        const skillStatePath = resolve(
-          homeFor(persistence.managedArtifactCtx),
-          '.ok',
-          'skill-state.yml',
-        );
+        const skillStatePath = skillStateYamlPath(homeFor(persistence.managedArtifactCtx));
         const skillStateCleanup = await startConfigFileWatcher(skillStatePath, () => {
           signalChannel('files');
         });

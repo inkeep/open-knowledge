@@ -20,6 +20,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import lockfile from 'proper-lockfile';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { runningAsRoot } from '../../../../test-support/capabilities.test-helper.ts';
 import { buildPiExtensionSource, isOwnPiExtensionSource } from '../integrations/pi-extension.ts';
 import { EDITOR_TARGETS, PI_EXTENSION_OWNERSHIP_MARKER } from './editors.ts';
 import { removeOwnMcpEntry } from './mcp-config-removal.ts';
@@ -1915,7 +1916,8 @@ describe('folder-scoped trust', () => {
     expect(probeReadyPiBridgeState(cwd, home).trust).toBe('trusted');
   });
 
-  test('an unreadable extensions folder is kept, not treated as verified empty', async () => {
+  test('an unreadable extensions folder is kept, not treated as verified empty', async (ctx) => {
+    ctx.skip(runningAsRoot, 'root bypasses the chmod refusal this test induces');
     const cwd = tmp();
     const home = tmp();
     await ensurePiBridge(cwd, { mode: 'published' }, home);

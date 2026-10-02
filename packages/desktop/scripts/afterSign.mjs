@@ -139,7 +139,9 @@ async function verifyFuses(electronBinary, expected) {
       `[afterSign] fuse verification failed (D17 paranoid check):\n  ${mismatches.join('\n  ')}`,
     );
   }
-  console.log('[afterSign] fuse verification passed — all 6 fuses match targetFuses');
+  console.log(
+    `[afterSign] fuse verification passed: all ${Object.keys(expected).length} fuses match targetFuses`,
+  );
 }
 
 export default async function afterSign(context) {

@@ -3,6 +3,7 @@ import { once } from 'node:events';
 import { Readable } from 'node:stream';
 import { isProcessAlive } from '@inkeep/open-knowledge-server';
 import { describe, expect, test } from 'vitest';
+import { pid1Reaps } from '../../../../test-support/capabilities.test-helper.ts';
 
 const HARNESS = new URL('./pty-host.reap-harness.ts', import.meta.url).pathname;
 
@@ -64,7 +65,8 @@ describe.skipIf(process.platform === 'win32')(
       await assertNoOrphan('SIGTERM');
     }, 60_000);
 
-    test('a SIGKILL to the host leaves no orphan shell (OS backstop, no handler runs)', async () => {
+    test('a SIGKILL to the host leaves no orphan shell (OS backstop, no handler runs)', async (ctx) => {
+      ctx.skip(!pid1Reaps, 'PID 1 must reap the orphans this test waits on');
       await assertNoOrphan('SIGKILL');
     }, 60_000);
   },

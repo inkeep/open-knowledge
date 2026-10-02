@@ -12,6 +12,8 @@ const BASE_CONFIG: Config = ConfigSchema.parse({});
 const EXPECTED_TOOLS = OPEN_KNOWLEDGE_MCP_TOOLS;
 
 const RETIRED_TOOL_NAMES = [
+  'conflicts',
+  'resolve_conflict',
   'graph_view',
   'get_backlinks',
   'get_forward_links',
@@ -112,8 +114,6 @@ const OK_AUTO_APPROVED_TOOLS = [
   'edit',
   'checkpoint',
   'restore_version',
-  'conflicts',
-  'resolve_conflict',
   'lint',
   'audit',
 ] as const;

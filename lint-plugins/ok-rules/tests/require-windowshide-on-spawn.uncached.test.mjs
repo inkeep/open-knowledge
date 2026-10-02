@@ -1,51 +1,57 @@
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
-  oxlintFixtureArgs,
+  lintOkRulesFixture,
   readEnabledRuleIds,
   readRegisteredRuleNames,
   readRuleScope,
 } from '../../../test-support/read-ok-rules-config.test-helper.ts';
 
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
-const FIXTURE_REL = 'lint-plugins/ok-rules/__fixtures__/require-windowshide-on-spawn.fixture.tsx';
+const RULE = 'require-windowshide-on-spawn';
+const CODE = `ok(${RULE})`;
+const FIXTURE = `lint-plugins/ok-rules/__fixtures__/${RULE}.fixture.tsx`;
+const DOCS = `lint-plugins/ok-rules/README.md#${RULE}`;
 
-describe('require-windowshide-on-spawn oxlint rule', () => {
-  test('fires exactly 7 times — one per spawn that hides neither way', () => {
-    const result = spawnSync('pnpm', oxlintFixtureArgs(FIXTURE_REL), {
-      cwd: REPO_ROOT,
-      encoding: 'utf-8',
-      windowsHide: true,
-    });
-    expect(result.error).toBeUndefined();
-    expect(result.status).not.toBe(0);
-    const output = `${result.stdout}\n${result.stderr}`;
+function fires() {
+  return lintOkRulesFixture(FIXTURE).filter((d) => d.code === CODE);
+}
 
-    const fires = (output.match(/without a hidden Windows console/g) ?? []).length;
-    expect(fires).toBe(7);
-
-    expect(output).toContain('withHiddenWindowsConsole');
-    expect(output).toContain('windowsHide: true');
-    expect(output).toMatch(/https?:\/\/[^\s]+/);
-    expect(output).toContain('lint-plugins/ok-rules/README.md#require-windowshide-on-spawn');
+describe(`${RULE} oxlint rule`, () => {
+  test('fires at exactly its 7 spawns that hide neither way, by its own code, and on no negative case', () => {
+    const found = fires();
+    expect(found.map((fire) => fire.position)).toEqual([
+      '35:19',
+      '36:19',
+      '37:19',
+      '38:19',
+      '39:19',
+      '40:19',
+      '41:19',
+    ]);
+    for (const fire of found) {
+      expect(fire.message).toContain('child_process spawn without a hidden Windows console');
+      expect(fire.message).toContain('withHiddenWindowsConsole');
+      expect(fire.message).toContain('windowsHide: true');
+      expect(fire.message).toMatch(/https?:\/\/[^\s]+/);
+      expect(fire.message).toContain(DOCS);
+    }
   });
 
   test('rule is registered, enabled, and scoped via its RULE_SCOPES entry', async () => {
-    expect(await readRegisteredRuleNames(REPO_ROOT)).toContain('require-windowshide-on-spawn');
-    expect(await readEnabledRuleIds(REPO_ROOT)).toContain('ok/require-windowshide-on-spawn');
+    expect(await readRegisteredRuleNames(REPO_ROOT)).toContain(RULE);
+    expect(await readEnabledRuleIds(REPO_ROOT)).toContain(`ok/${RULE}`);
   });
 
   test('its scope table still carries every include and exclude the rule depends on', () => {
-    const scope = readRuleScope(REPO_ROOT, 'require-windowshide-on-spawn');
-    expect(scope.sort()).toEqual(
+    expect(readRuleScope(REPO_ROOT, RULE).sort()).toEqual(
       [
         'packages/server/src/**/*.ts',
         'packages/cli/src/**/*.ts',
         'packages/desktop/src/**/*.ts',
         '!**/*.test.ts',
         '!**/*.test-helper.ts',
-        'lint-plugins/ok-rules/__fixtures__/require-windowshide-on-spawn.fixture.tsx',
+        FIXTURE,
       ].sort(),
     );
   });

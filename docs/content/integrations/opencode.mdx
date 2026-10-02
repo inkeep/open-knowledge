@@ -12,6 +12,8 @@ icon: custom/OpenCode
 
 OpenCode reads MCP servers from `opencode.json` in the project root, or `~/.config/opencode/opencode.json` for a global install. `ok init` writes the `open-knowledge` server under the top-level `mcp` key in both, using the same resilient launcher every other editor gets. It also installs the OpenKnowledge skill to `.opencode/skills/open-knowledge/`, which OpenCode scans automatically.
 
+OpenKnowledge Beta registers as `open-knowledge-beta` instead; see [Beta uses its own entry](/docs/reference/what-open-knowledge-writes#beta-uses-its-own-entry).
+
 ## Use a local model
 
 OpenCode is model-agnostic and talks to any OpenAI-compatible endpoint, so you can pair OpenKnowledge with a model running entirely on your machine — no cloud round-trip. Point OpenCode at [Ollama](https://ollama.com), [LM Studio](https://lmstudio.ai), or a self-hosted server in the same `opencode.json` that holds the OpenKnowledge MCP entry:

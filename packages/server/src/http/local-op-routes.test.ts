@@ -263,9 +263,34 @@ describe('auth-login stream displacement (a second start orphans the first clien
     }
   });
 
+  test('the undeclared-host refusal names the Beta user config when the running channel is Beta', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-local-op-beta-home-'));
+    const home = mkdtempSync(join(tmpdir(), 'ok-local-op-beta-user-'));
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('USERPROFILE', home);
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: projectDir });
+      execFileSync('git', ['remote', 'add', 'origin', 'https://git.example.internal/team/kb.git'], {
+        cwd: projectDir,
+      });
+      const baseUrl = await serveLocalOpGroup({ projectDir });
+      const res = await postJson(baseUrl, '/api/local-op/auth/status', {});
+      expect(res.status).toBe(409);
+      const body = (await res.json()) as { detail: string };
+      expect(body.detail).toContain('as github in ~/.ok-beta/global.yml and restart');
+      expect(body.detail).not.toContain('~/.ok/');
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(projectDir, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test('gh-login rejects an explicit undeclared host before looking up gh and accepts a declaration', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-gh-login-host-'));
-    const probe = vi.spyOn(ghLogin, 'cachedGhBinaryPath').mockResolvedValue(null);
+    const probe = vi.fn(async () => null);
+    vi.spyOn(ghLogin, 'createGhBinaryPathResolver').mockReturnValue(probe);
     try {
       const baseUrl = await serveLocalOpGroup({ projectDir });
       const rejected = await postJson(baseUrl, '/api/local-op/auth/gh-login', {
@@ -367,7 +392,7 @@ describe('auth-login stream displacement (a second start orphans the first clien
 
   test('auth subprocesses run in the project directory instead of the server cwd', async () => {
     const projectDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-auth-cwd-')));
-    vi.spyOn(ghLogin, 'cachedGhBinaryPath').mockResolvedValue(null);
+    vi.spyOn(ghLogin, 'createGhBinaryPathResolver').mockReturnValue(async () => null);
     try {
       const localOpCliArgs = [
         process.execPath,

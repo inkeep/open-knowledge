@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { MACHINE_ID_FILENAME, OK_DIR } from '@inkeep/open-knowledge-core';
 import { getLogger } from './logger.ts';
 
 const MACHINE_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
@@ -9,7 +10,7 @@ const MACHINE_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
 let cachedMachineId: string | null = null;
 
 export function machineIdFilePath(homedirOverride?: string): string {
-  return join(homedirOverride ?? homedir(), '.ok', 'machine-id');
+  return join(homedirOverride ?? homedir(), OK_DIR, MACHINE_ID_FILENAME);
 }
 
 export function getMachineId(homedirOverride?: string): string {

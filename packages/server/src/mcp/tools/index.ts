@@ -6,7 +6,6 @@ import { createLoggedServer } from '../tool-logging.ts';
 import { register as registerAudit } from './audit.ts';
 import { register as registerCheckpoint } from './checkpoint.ts';
 import { register as registerConfig } from './config.ts';
-import { register as registerConflicts } from './conflicts.ts';
 import { register as registerDelete } from './delete.ts';
 import { register as registerEdit } from './edit.ts';
 import { register as registerExec } from './exec.ts';
@@ -18,7 +17,6 @@ import { register as registerLinks } from './links.ts';
 import { register as registerLint } from './lint.ts';
 import { register as registerMove } from './move.ts';
 import { register as registerPalette } from './palette.ts';
-import { register as registerResolveConflict } from './resolve-conflict.ts';
 import { register as registerRestoreVersion } from './restore-version.ts';
 import { register as registerSearch } from './search.ts';
 import { register as registerShareLink } from './share-link.ts';
@@ -171,16 +169,6 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     serverUrl: opts.serverUrl,
     isHostedAgent: opts.isHostedAgent,
     ...(opts.serverUrl ? { ensureSingleFileSession: createEnsureSingleFileSession() } : {}),
-  });
-  registerConflicts(registrationServer, {
-    serverUrl: opts.serverUrl,
-    config: opts.config,
-    resolveCwd: named('conflicts'),
-  });
-  registerResolveConflict(registrationServer, {
-    serverUrl: opts.serverUrl,
-    config: opts.config,
-    resolveCwd: named('resolve_conflict'),
   });
 
   registerShareLink(registrationServer, {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   classifyMcpLauncherEntry,
+  DEFAULT_MCP_LAUNCHER_REVISION_CATALOG,
   type McpLauncherFamily,
   type McpLauncherRevisionCatalog,
 } from './mcp-launcher.ts';
@@ -216,5 +217,36 @@ describe('classifyMcpLauncherEntry', () => {
     [{ type: 'local', command: ['/bin/sh', '-l', '-c', '# ok-mcp-v2', 'extra'] }, 'malformed-argv'],
   ] as const)('declines %j with bounded reason %s', (entry, reason) => {
     expect(classifyMcpLauncherEntry(entry)).toEqual({ kind: 'declined', reason });
+  });
+});
+
+describe('channel-tagged launcher markers', () => {
+  const unixEntry = (marker: string) => ({
+    command: '/bin/sh',
+    args: ['-l', '-c', `${marker}\nexit 127`],
+  });
+
+  test('beta recognizes its own marker and declines the stable one', () => {
+    const catalog = DEFAULT_MCP_LAUNCHER_REVISION_CATALOG;
+    expect(classifyMcpLauncherEntry(unixEntry('# ok-mcp-beta-v2'), catalog, '-beta')).toMatchObject(
+      {
+        kind: 'recognized',
+        disposition: 'keep',
+      },
+    );
+    expect(classifyMcpLauncherEntry(unixEntry('# ok-mcp-v2'), catalog, '-beta')).toEqual({
+      kind: 'declined',
+      reason: 'malformed-marker',
+    });
+  });
+
+  test('stable declines the beta marker', () => {
+    expect(
+      classifyMcpLauncherEntry(
+        unixEntry('# ok-mcp-beta-v2'),
+        DEFAULT_MCP_LAUNCHER_REVISION_CATALOG,
+        '',
+      ),
+    ).toEqual({ kind: 'declined', reason: 'malformed-marker' });
   });
 });

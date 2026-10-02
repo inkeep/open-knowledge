@@ -1,26 +1,73 @@
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { join, relative, sep } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { expect, inject } from 'vitest';
 // @ts-expect-error untyped ESM lint-plugin module
 import { RULE_SCOPES } from '../lint-plugins/ok-rules/scope.mjs';
+import type { OkRulesFixtureLint } from './ok-rules-fixture-lint.ts';
+import { UNCACHED_TIER_CONFIG } from './uncached-tier';
 
-const OK_RULES_FIXTURE_CONFIG = 'lint-plugins/ok-rules/__fixtures__/oxlint.fixtures.json';
+const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
-export function oxlintFixtureArgs(fixtureRel: string): string[] {
-  return ['exec', 'oxlint', '-f', 'json', '-c', OK_RULES_FIXTURE_CONFIG, fixtureRel];
-}
-
-export interface OxlintDiagnostic {
-  message: string;
+interface OkRulesFixtureDiagnostic {
   code: string;
-  filename: string;
-  labels?: Array<{ span?: { line?: number; column?: number } }>;
+  position: string;
+  message: string;
 }
 
-export function parseOxlintDiagnostics(output: string): OxlintDiagnostic[] {
-  const start = output.indexOf('{');
-  const end = output.lastIndexOf('}');
-  if (start === -1 || end === -1) return [];
-  return (JSON.parse(output.slice(start, end + 1)).diagnostics ?? []) as OxlintDiagnostic[];
+function positionOf(line: number, column: number): string {
+  return `${line}:${column}`;
+}
+
+function comparePositions(a: OkRulesFixtureDiagnostic, b: OkRulesFixtureDiagnostic): number {
+  const [aLine, aColumn] = a.position.split(':').map(Number);
+  const [bLine, bColumn] = b.position.split(':').map(Number);
+  return (
+    a.code.localeCompare(b.code) ||
+    aLine - bLine ||
+    aColumn - bColumn ||
+    a.message.localeCompare(b.message)
+  );
+}
+
+function outsideTheTier(): Error {
+  const testPath = expect.getState().testPath;
+  const test = testPath
+    ? relative(OK_ROOT, testPath).split(sep).join('/')
+    : 'lint-plugins/ok-rules/tests';
+  return new Error(
+    `read-ok-rules-config: no ok-rules fixture lint was provided to this test, so it is running outside the uncached tier, whose global setup lints every fixture once. Run it from the Open Knowledge root with: pnpm exec vitest run --config ${UNCACHED_TIER_CONFIG} ${test}`,
+  );
+}
+
+export function lintOkRulesFixture(fixtureRel: string): OkRulesFixtureDiagnostic[] {
+  const lint: OkRulesFixtureLint | undefined = inject('okRulesFixtureLint');
+  if (lint === undefined) throw outsideTheTier();
+  if ('error' in lint) throw new Error(lint.error);
+  return lint.diagnostics
+    .filter((diagnostic) => diagnostic.filename === fixtureRel)
+    .map((diagnostic) => {
+      const span = diagnostic.labels?.[0]?.span;
+      if (typeof diagnostic.code !== 'string') {
+        throw new Error(
+          `read-ok-rules-config: oxlint reported a diagnostic on ${fixtureRel} that names no rule, so a rule threw while linting it or oxlint could not parse it. oxlint says:\n${diagnostic.message ?? '(no message)'}\nFull diagnostic: ${JSON.stringify(diagnostic)}`,
+        );
+      }
+      if (
+        typeof diagnostic.message !== 'string' ||
+        typeof span?.line !== 'number' ||
+        typeof span.column !== 'number'
+      ) {
+        throw new Error(
+          `read-ok-rules-config: oxlint reported a ${diagnostic.code} diagnostic on ${fixtureRel} without a message or position: ${JSON.stringify(diagnostic)}`,
+        );
+      }
+      return {
+        code: diagnostic.code,
+        position: positionOf(span.line, span.column),
+        message: diagnostic.message,
+      };
+    })
+    .sort(comparePositions);
 }
 
 interface OxlintConfig {

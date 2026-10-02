@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { posix, win32 } from 'node:path';
 import { withHiddenWindowsConsole } from '../child-process-windows-hide.ts';
+import type { LocalOpSubprocessLifetime } from './subprocess-lifetime.ts';
 
 interface ParsedLine {
   raw: string;
@@ -16,6 +17,7 @@ export interface LocalOpCliInvocation {
 }
 
 interface SubprocessRunOptions extends LocalOpCliInvocation {
+  lifetime?: LocalOpSubprocessLifetime;
   trailingArgs: readonly string[];
   extraPathDirs?: readonly string[];
   timeoutMs: number;
@@ -132,15 +134,17 @@ export function runSubprocess(opts: SubprocessRunOptions): SubprocessController 
     opts.stdinData !== undefined ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'];
   let child: ReturnType<typeof spawn>;
   try {
-    child = spawn(
-      cmd,
-      argv,
-      withHiddenWindowsConsole({
-        stdio,
-        cwd: opts.cwd,
-        env: childEnv,
-      }),
-    );
+    const launch = () =>
+      spawn(
+        cmd,
+        argv,
+        withHiddenWindowsConsole({
+          stdio,
+          cwd: opts.cwd,
+          env: childEnv,
+        }),
+      );
+    child = opts.lifetime ? opts.lifetime.spawn(launch) : launch();
   } catch (err) {
     return {
       done: Promise.resolve({

@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { clearTokenFromAllBackends } from '../../auth/token-store.ts';
+import { authFileDisplayPath, clearTokenFromAllBackends } from '../../auth/token-store.ts';
 import { resolveSignoutHost } from './validate-host.ts';
 
 interface SignoutOptions {
@@ -20,7 +20,7 @@ async function runSignout(opts: SignoutOptions): Promise<void> {
     process.stderr.write(`  cleared from OS keychain\n`);
   }
   if (touched.includes('file')) {
-    process.stderr.write(`  cleared from ~/.ok/auth.yml\n`);
+    process.stderr.write(`  cleared from ${authFileDisplayPath()}\n`);
   }
 }
 

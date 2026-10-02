@@ -1,4 +1,4 @@
-import { MCP_SERVER_NAME, type OpenKnowledgeMcpTool } from '../constants/mcp.ts';
+import type { OpenKnowledgeMcpTool } from '../constants/mcp.ts';
 import type { HandoffTarget } from './types.ts';
 
 export function shellSingleQuote(s: string): string {
@@ -253,7 +253,6 @@ export type TerminalCli =
 
 export interface TerminalCliInfo {
   readonly bin: string;
-  readonly autoApproveArg?: string;
   readonly displayName: string;
   readonly docsUrl: string;
   readonly handoffTarget: HandoffTarget;
@@ -267,11 +266,6 @@ export interface TerminalCliInfo {
   };
 }
 
-const OK_AUTO_APPROVE_ALLOW_RULES: readonly string[] = [
-  `mcp__${MCP_SERVER_NAME}`,
-  'Bash(ok open:*)',
-];
-
 export const OK_GATED_TOOL_NAMES = [
   'delete',
   'move',
@@ -280,26 +274,28 @@ export const OK_GATED_TOOL_NAMES = [
   'import',
 ] as const satisfies ReadonlyArray<OpenKnowledgeMcpTool>;
 
-const OK_AUTO_APPROVE_ASK_RULES: readonly string[] = OK_GATED_TOOL_NAMES.map(
-  (tool) => `mcp__${MCP_SERVER_NAME}__${tool}`,
-);
+function approvedServerName(opts: BuildCliLaunchOptions): string | null {
+  return opts.mcpServerName ? opts.mcpServerName : null;
+}
 
-const CODEX_OK_AUTO_APPROVE_ARG = `-c ${shellSingleQuote(
-  `mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode="approve"`,
-)}`;
+function codexAutoApproveSetting(server: string, quote: string): string {
+  return `mcp_servers.${server}.default_tools_approval_mode=${quote}approve${quote}`;
+}
 
 function buildClaudeSettingsJson(opts: BuildCliLaunchOptions): string | null {
+  const server = approvedServerName(opts);
+  if (server === null) return null;
   const settings: {
     enabledMcpjsonServers?: string[];
     permissions?: { allow: string[]; ask: string[] };
   } = {};
   if (opts.mcpPreApprove === true) {
-    settings.enabledMcpjsonServers = [MCP_SERVER_NAME];
+    settings.enabledMcpjsonServers = [server];
   }
   if (opts.autoApproveOkTools === true) {
     settings.permissions = {
-      allow: [...OK_AUTO_APPROVE_ALLOW_RULES],
-      ask: [...OK_AUTO_APPROVE_ASK_RULES],
+      allow: [`mcp__${server}`, 'Bash(ok open:*)'],
+      ask: OK_GATED_TOOL_NAMES.map((tool) => `mcp__${server}__${tool}`),
     };
   }
   if (settings.enabledMcpjsonServers === undefined && settings.permissions === undefined) {
@@ -341,7 +337,6 @@ export const TERMINAL_CLIS = {
     displayName: 'Codex',
     docsUrl: 'https://developers.openai.com/codex/cli',
     handoffTarget: 'codex',
-    autoApproveArg: CODEX_OK_AUTO_APPROVE_ARG,
   },
   copilot: {
     bin: 'copilot',
@@ -414,6 +409,7 @@ export const TERMINAL_CLI_IDS = [
 export interface BuildCliLaunchOptions {
   readonly mcpPreApprove?: boolean;
   readonly autoApproveOkTools?: boolean;
+  readonly mcpServerName?: string;
 }
 
 export function buildWindowsCliLaunch(
@@ -443,10 +439,11 @@ export function buildWindowsCliLaunch(
       };
     }
   }
-  if (cli === 'codex' && opts.autoApproveOkTools === true) {
+  const server = approvedServerName(opts);
+  if (cli === 'codex' && opts.autoApproveOkTools === true && server !== null) {
     return {
       executable: info.bin,
-      args: ['-c', `mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode=approve`],
+      args: ['-c', codexAutoApproveSetting(server, '')],
     };
   }
   return {
@@ -461,11 +458,12 @@ export function buildCliLaunchArgString(
   opts: BuildCliLaunchOptions = {},
 ): string {
   const info: TerminalCliInfo = TERMINAL_CLIS[cli];
+  const server = approvedServerName(opts);
   const fixedArgs =
     cli === 'claude'
       ? buildClaudeSettingsArg(opts)
-      : opts.autoApproveOkTools === true && info.autoApproveArg
-        ? info.autoApproveArg
+      : cli === 'codex' && opts.autoApproveOkTools === true && server !== null
+        ? `-c ${shellSingleQuote(codexAutoApproveSetting(server, '"'))}`
         : '';
   const fixedPrefix = fixedArgs ? `${fixedArgs} ` : '';
   const sub = info.subcommand ? `${info.subcommand} ` : '';

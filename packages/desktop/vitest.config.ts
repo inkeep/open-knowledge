@@ -29,6 +29,10 @@ export default defineConfig({
     exclude: [
       ...okVitestBase.test.exclude,
       ...lumeQaExcludeFor(process.platform, process.env.OK_LUME_QA_SUITES),
+      'out/**',
+      'dist-desktop/**',
+      '.variant-build/**',
+      'build/parcel-watcher-staging/**',
     ],
   },
 });

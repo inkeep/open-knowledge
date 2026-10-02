@@ -2,7 +2,15 @@ import { spawn as nativeSpawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { arrangeExpiredFileLock } from '../../../core/src/util/file-lock-deadline.test-helper.ts';
+import { EDITOR_TARGETS } from '../../src/commands/editors.ts';
+import { writeEditorMcpConfig } from '../../src/commands/init.ts';
+
+vi.mock('node:fs', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs')>();
+  return { ...fs, openSync: vi.fn(fs.openSync) };
+});
 
 const WORKER_PATH = resolve(__dirname, '_helpers', 'config-race-worker.ts');
 const WORKER_TIMEOUT_MS = 30_000;
@@ -69,8 +77,32 @@ describe('mcp host config — concurrent-write race', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
+    vi.resetAllMocks();
     rmSync(testRoot, { recursive: true, force: true });
   });
+
+  it.each(['stable', 'disappearing'] as const)(
+    'reports the acquisition deadline without changing config for a %s lock',
+    async (schedule) => {
+      const original = readFileSync(configPath, 'utf-8');
+      await arrangeExpiredFileLock(`${configPath}.lock`, schedule, 5_000);
+      const target = {
+        ...EDITOR_TARGETS.cursor,
+        configPath: () => configPath,
+        serverName: () => 'deadline-writer',
+      };
+
+      const result = writeEditorMcpConfig(target, '', {
+        mode: 'published',
+        skipAvailabilityCheck: true,
+      });
+
+      expect(result.action).toBe('failed');
+      expect(result.error).toBe(`Could not acquire file lock at ${configPath}.lock within 5000ms`);
+      expect(readFileSync(configPath, 'utf-8')).toBe(original);
+    },
+  );
 
   it('N=20 concurrent writers all add their entries; no lost updates, no corruption, no destruction of pre-existing servers', async () => {
     const N = 20;

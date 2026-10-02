@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { type Node, Project, SyntaxKind } from 'ts-morph';
+import { Node, Project, SyntaxKind, ts } from 'ts-morph';
 import { loadConfigFromFile } from 'vite';
 import { describe, expect, test } from 'vitest';
 
@@ -9,14 +10,152 @@ const WORKER_FIXTURES = resolve(APP_PACKAGE_ROOT, 'tests/stress/_helpers/fixture
 
 const CACHE_DIR_ENV_VAR = 'OK_TEST_VITE_CACHE_DIR';
 
-function parseSource(filePath: string) {
-  const project = new Project({
-    skipFileDependencyResolution: true,
-    skipLoadingLibFiles: true,
-    skipAddingFilesFromTsConfig: true,
-    compilerOptions: { noLib: true, allowJs: false },
-  });
-  return project.addSourceFileAtPath(filePath);
+function inspectWorkerCache(source: string) {
+  const project = new Project({ useInMemoryFileSystem: true, compilerOptions: { noLib: true } });
+  const syntax = project.createSourceFile('/input.ts', source);
+  const file = project.createSourceFile(
+    '/fixtures.ts',
+    ts.transpile(source, {
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.ESNext,
+      verbatimModuleSyntax: true,
+    }),
+  );
+  const imported = (module: string, name: string) => {
+    const declaration =
+      file.getImportDeclaration(module) ?? file.getImportDeclaration(module.replace('node:', ''));
+    const entry = declaration?.getNamedImports().find((item) => item.getName() === name);
+    return (entry?.getAliasNode() ?? entry?.getNameNode())?.getSymbol();
+  };
+  const returned = new Map<import('ts-morph').Symbol, Node>();
+  const value = (node: Node | undefined, seen = new Set<Node>()): Node | undefined => {
+    if (!node || seen.has(node)) return undefined;
+    const next = new Set(seen).add(node);
+    if (Node.isParenthesizedExpression(node) || Node.isAwaitExpression(node))
+      return value(node.getExpression(), next);
+    if (Node.isVariableDeclaration(node))
+      return value(node.getInitializer() ?? returned.get(node.getSymbolOrThrow()), next);
+    if (Node.isPropertyAssignment(node)) return value(node.getInitializer(), next);
+    if (Node.isShorthandPropertyAssignment(node))
+      return value(node.getValueSymbol()?.getDeclarations()[0], next);
+    if (Node.isIdentifier(node)) {
+      const declaration = node.getSymbol()?.getDeclarations()[0];
+      return declaration &&
+        (Node.isVariableDeclaration(declaration) || Node.isBindingElement(declaration))
+        ? value(declaration, next)
+        : node;
+    }
+    if (Node.isBindingElement(node)) {
+      const owner = node.getParent().getParent();
+      const object = Node.isVariableDeclaration(owner)
+        ? value(owner.getInitializer(), next)
+        : undefined;
+      const name = node.getPropertyNameNode();
+      const key = name && Node.isIdentifier(name) ? ts.idText(name.compilerNode) : node.getName();
+      const field = object?.getType().getProperty(key)?.getDeclarations()[0];
+      return field ? value(field, next) : node;
+    }
+    return node;
+  };
+  const property = (node: Node | undefined, key: string) =>
+    value(
+      value(node)
+        ?.asKind(SyntaxKind.ObjectLiteralExpression)
+        ?.getProperties()
+        .find((field) => field.getSymbol()?.getName() === key),
+    );
+  const calls = file.getDescendantsOfKind(SyntaxKind.CallExpression);
+  const phase = file.getFunction('spendOnBudgetPhase')?.getSymbol();
+  for (const call of calls) {
+    if (!phase || value(call.getExpression())?.getSymbol() !== phase) continue;
+    const callback = call.getArguments()[1];
+    const result = callback
+      ?.getDescendantsOfKind(SyntaxKind.ReturnStatement)
+      .find(
+        (statement) =>
+          statement.getFirstAncestor((node) => ts.isFunctionLike(node.compilerNode)) === callback,
+      )
+      ?.getExpression();
+    const assignment = call.getFirstAncestorByKind(SyntaxKind.BinaryExpression);
+    const binding = assignment?.getLeft().getSymbol();
+    if (result && binding && assignment?.getOperatorToken().getKind() === SyntaxKind.EqualsToken)
+      returned.set(binding, result);
+  }
+  const declaration = file.getVariableDeclaration('test');
+  const extend = declaration?.getInitializerIfKind(SyntaxKind.CallExpression);
+  const callee = extend?.getExpression().asKind(SyntaxKind.PropertyAccessExpression);
+  const fixture = property(extend?.getArguments()[0], 'workerServer')
+    ?.asKind(SyntaxKind.ArrayLiteralExpression)
+    ?.getElements()[0]
+    ?.asKind(SyntaxKind.ArrowFunction);
+  const base = imported('@playwright/test', 'test');
+  const worker = fixture?.getParameters()[2]?.getSymbol();
+  const spawn = imported('node:child_process', 'spawn');
+  const fresh = imported('node:fs', 'mkdtempSync');
+  const removals = [
+    imported('node:fs', 'rmSync'),
+    imported('./teardown-fs.ts', 'removeAllDuringTeardown'),
+  ].filter((symbol) => symbol !== undefined);
+  const spawns = (fixture?.getDescendantsOfKind(SyntaxKind.CallExpression) ?? []).filter(
+    (call) => spawn && value(call.getExpression())?.getSymbol() === spawn,
+  );
+  const census = Object.entries({
+    syntax: project.getProgram().getSyntacticDiagnostics(syntax).length === 0,
+    test: !!declaration?.getVariableStatement()?.isExported(),
+    extend: callee?.getName() === 'extend' && !!base && callee.getExpression().getSymbol() === base,
+    workerServer: !!fixture,
+    workerInfo: !!worker,
+    spawn: spawns.length > 0,
+  }).flatMap(([name, holds]) => (holds ? [] : [name]));
+  const unique = (input: Node | undefined): boolean => {
+    const node = value(input);
+    return (
+      !!node &&
+      [node, ...node.getDescendants()].some(
+        (part) =>
+          (Node.isCallExpression(part) &&
+            !!fresh &&
+            value(part.getExpression())?.getSymbol() === fresh) ||
+          (Node.isPropertyAccessExpression(part) &&
+            part.getName() === 'workerIndex' &&
+            value(part.getExpression())?.getSymbol() === worker),
+      )
+    );
+  };
+  const cacheProperties = file
+    .getDescendants()
+    .filter(
+      (node) =>
+        (Node.isPropertyAssignment(node) || Node.isShorthandPropertyAssignment(node)) &&
+        node.getSymbol()?.getName() === CACHE_DIR_ENV_VAR,
+    );
+  const nonUnique = cacheProperties.filter((node) => !unique(node)).length;
+  let missingEnv = 0,
+    missingCleanup = 0,
+    teardowns = 0;
+  const reclaims = calls.filter((call) =>
+    removals.some((symbol) => value(call.getExpression())?.getSymbol() === symbol),
+  );
+  const blocksOf = (resource: Node | undefined) =>
+    resource
+      ? reclaims
+          .filter((call) => call.getArguments().some((arg) => value(arg) === resource))
+          .map((call) => call.getFirstAncestorByKind(SyntaxKind.Block))
+      : [];
+  for (const call of spawns) {
+    const env = property(call.getArguments()[2], 'env');
+    const cache = property(env, CACHE_DIR_ENV_VAR);
+    if (!cache) {
+      missingEnv++;
+      continue;
+    }
+    const contents = blocksOf(property(env, 'OK_TEST_CONTENT_DIR'));
+    const caches = new Set(blocksOf(cache));
+    teardowns += contents.length;
+    missingCleanup +=
+      Number(contents.length < 2) + contents.filter((block) => !block || !caches.has(block)).length;
+  }
+  return { census, missingEnv, nonUnique, missingCleanup, spawns: spawns.length, teardowns };
 }
 
 async function withEnv<T>(
@@ -33,52 +172,6 @@ async function withEnv<T>(
     if (orig === undefined) delete process.env[key];
     else process.env[key] = orig;
   }
-}
-
-function classifyPerWorkerExpression(node: Node): { ok: boolean; why: string } {
-  const text = node.getText();
-  if (text.includes('workerInfo.workerIndex')) {
-    return { ok: true, why: 'references workerInfo.workerIndex' };
-  }
-  if (text.includes('mkdtempSync')) {
-    return {
-      ok: true,
-      why: 'uses mkdtempSync (fresh dir per call → per-worker unique by construction)',
-    };
-  }
-  if (node.isKind(SyntaxKind.Identifier)) {
-    const ident = node.asKindOrThrow(SyntaxKind.Identifier);
-    const symbol = ident.getSymbol();
-    if (!symbol) {
-      return {
-        ok: false,
-        why: `identifier ${text} has no resolvable symbol; cannot trace declaration`,
-      };
-    }
-    for (const decl of symbol.getDeclarations()) {
-      const declText = decl.getText();
-      if (declText.includes('workerInfo.workerIndex')) {
-        return {
-          ok: true,
-          why: `identifier ${text} declared at line ${decl.getStartLineNumber()}; declaration references workerInfo.workerIndex`,
-        };
-      }
-      if (declText.includes('mkdtempSync')) {
-        return {
-          ok: true,
-          why: `identifier ${text} declared at line ${decl.getStartLineNumber()}; declaration uses mkdtempSync`,
-        };
-      }
-    }
-    return {
-      ok: false,
-      why: `identifier ${text} traced to declaration(s) that do NOT reference workerInfo.workerIndex or mkdtempSync — a static string variable does not provide per-worker uniqueness`,
-    };
-  }
-  return {
-    ok: false,
-    why: `expression ${text.slice(0, 100)}${text.length > 100 ? '…' : ''} is not a recognized per-worker-unique form (expected to reference workerInfo.workerIndex or mkdtempSync, either inline or via a single-level identifier)`,
-  };
 }
 
 describe('per-worker Vite cacheDir isolation — vite.config.ts side', () => {
@@ -120,138 +213,128 @@ describe('per-worker Vite cacheDir isolation — vite.config.ts side', () => {
 });
 
 describe('per-worker Vite cacheDir isolation — workerServer fixture side', () => {
+  const inspect = () => inspectWorkerCache(readFileSync(WORKER_FIXTURES, 'utf8'));
   test(`B1: workerServer spawn() env declares ${CACHE_DIR_ENV_VAR}`, () => {
-    const sf = parseSource(WORKER_FIXTURES);
-    const matches = sf
-      .getDescendantsOfKind(SyntaxKind.PropertyAssignment)
-      .filter((prop) => prop.getName() === CACHE_DIR_ENV_VAR);
-    if (matches.length === 0) {
-      throw new Error(
-        `tests/stress/_helpers/fixtures.ts must declare an \`${CACHE_DIR_ENV_VAR}\` env entry on the workerServer fixture's spawn() call.\n` +
-          `Without it, every worker's Vite dev server resolves its cacheDir to the default <root>/node_modules/.vite — a shared directory that the dependency optimizer is single-writer over.\n` +
-          `See PR #1146 body for the AC-T3 / F1 e2e flake class this contract closes.`,
-      );
-    }
-    expect(matches.length).toBeGreaterThan(0);
+    const result = inspect();
+    expect(result.census).toEqual([]);
+    expect(
+      result.missingEnv,
+      `Declare ${CACHE_DIR_ENV_VAR} on the workerServer fixture's spawn env. Otherwise workers share Vite's default node_modules/.vite cache, whose optimizer is single-writer. See PR #1146 AC-T3 / F1.`,
+    ).toBe(0);
   });
-
   test(`B2: ${CACHE_DIR_ENV_VAR} value is per-worker unique (references workerInfo.workerIndex or mkdtempSync)`, () => {
-    const sf = parseSource(WORKER_FIXTURES);
-    const props = sf
-      .getDescendantsOfKind(SyntaxKind.PropertyAssignment)
-      .filter((prop) => prop.getName() === CACHE_DIR_ENV_VAR);
-    if (props.length === 0) {
-      throw new Error(
-        `B2 prerequisite missing: no \`${CACHE_DIR_ENV_VAR}\` property in fixtures.ts (B1 should have failed first).`,
-      );
-    }
-    const failures: string[] = [];
-    for (const prop of props) {
-      const initializer = prop.getInitializer();
-      if (!initializer) {
-        failures.push(`${prop.getName()} at line ${prop.getStartLineNumber()} has no initializer`);
-        continue;
-      }
-      const verdict = classifyPerWorkerExpression(initializer);
-      if (!verdict.ok) {
-        failures.push(`${CACHE_DIR_ENV_VAR} at line ${prop.getStartLineNumber()}: ${verdict.why}`);
-      }
-    }
-    if (failures.length > 0) {
-      throw new Error(
-        [
-          `\`${CACHE_DIR_ENV_VAR}\` value must be per-worker unique. Acceptable shapes:`,
-          `  - Template literal referencing workerInfo.workerIndex, e.g.:`,
-          `      \`${CACHE_DIR_ENV_VAR}: join(APP_PACKAGE_ROOT, 'node_modules', \\\`.vite-w\${workerInfo.workerIndex}\\\`)\``,
-          `  - Computed via mkdtempSync, e.g.:`,
-          `      \`OK_TEST_VITE_CACHE_DIR: mkdtempSync(join(APP_PACKAGE_ROOT, 'node_modules', \\\`.vite-w\${workerInfo.workerIndex}-\\\`))\``,
-          `  - Bound to a local variable (single-level identifier) whose declaration matches one of the above`,
-          ``,
-          `Violations:`,
-          ...failures.map((f) => `  - ${f}`),
-        ].join('\n'),
-      );
-    }
-    expect(failures).toEqual([]);
+    const result = inspect();
+    expect(result.census).toEqual([]);
+    expect(result.missingEnv).toBe(0);
+    expect(
+      result.nonUnique,
+      `${CACHE_DIR_ENV_VAR} must be, or be bound through variables to, an expression that itself calls the imported mkdtempSync or reads the fixture's workerInfo.workerIndex. A static string does not isolate workers, and an index first read into another variable is not followed.`,
+    ).toBe(0);
   });
-
   test(`B3: workerServer teardown reclaims the per-worker ${CACHE_DIR_ENV_VAR} at both teardown sites`, () => {
-    const sf = parseSource(WORKER_FIXTURES);
+    const result = inspect();
+    expect(result.census).toEqual([]);
+    expect(result.missingEnv).toBe(0);
+    expect(
+      result.missingCleanup,
+      `Bind ${CACHE_DIR_ENV_VAR} to a local variable and reclaim the same resource alongside contentDir at BOTH failure and happy teardown sites. Recognised primitives are node:fs rmSync and teardown-fs removeAllDuringTeardown; admit a new removal primitive by adding its import to the removals list in inspectWorkerCache. Missing cleanup leaves orphan Vite cache directories under packages/app/node_modules.`,
+    ).toBe(0);
+    expect(result.teardowns).toBeGreaterThanOrEqual(2);
+  });
+});
 
-    const props = sf
-      .getDescendantsOfKind(SyntaxKind.PropertyAssignment)
-      .filter((prop) => prop.getName() === CACHE_DIR_ENV_VAR);
-    if (props.length === 0) {
-      throw new Error(
-        `B3 prerequisite missing: no \`${CACHE_DIR_ENV_VAR}\` property in fixtures.ts (B1 should have failed first).\n` +
-          `Without the property, there is no identifier to hand the removal at teardown — so the per-worker Vite cacheDir cannot be reclaimed and CI accumulates orphan directories under tmpdir() until the runner's filesystem fills.`,
-      );
-    }
-    const initializer = props[0]?.getInitializer();
-    if (!initializer) {
-      throw new Error(
-        `B3 prerequisite missing: \`${CACHE_DIR_ENV_VAR}\` property at line ${props[0]?.getStartLineNumber()} has no initializer.`,
-      );
-    }
-    if (!initializer.isKind(SyntaxKind.Identifier)) {
-      throw new Error(
-        `B3 requires \`${CACHE_DIR_ENV_VAR}\` to be bound to a named local variable so the workerServer fixture can reclaim the same path at teardown.\n` +
-          `Found initializer at line ${initializer.getStartLineNumber()}: \`${initializer.getText().slice(0, 80)}\` (kind: ${initializer.getKindName()}).\n` +
-          `Acceptable shape: \`const viteCacheDir = mkdtempSync(...); ...; ${CACHE_DIR_ENV_VAR}: viteCacheDir,\`.`,
-      );
-    }
-    const cacheDirVar = initializer.getText();
+const workerFixture = `import { test as base } from '@playwright/test';
+  import { spawn } from 'node:child_process';
+  import { mkdtempSync, rmSync } from 'node:fs';
+  export const test = base.extend({ workerServer: [async ({}, use, workerInfo) => {
+    const contentDir = mkdtempSync('content');
+    const viteCacheDir = mkdtempSync('cache');
+    spawn('pnpm', [], { env: { OK_TEST_CONTENT_DIR: contentDir, OK_TEST_VITE_CACHE_DIR: viteCacheDir } });
+    try { await use(); } catch { rmSync(contentDir); rmSync(viteCacheDir); }
+    rmSync(contentDir); rmSync(viteCacheDir);
+  }, { scope: 'worker' }] });`;
 
-    const REMOVAL_CALLEES = new Set(['rmSync', 'removeAllDuringTeardown']);
-    const allCalls = sf.getDescendantsOfKind(SyntaxKind.CallExpression);
-    const reclaimsOf = (targetName: string) =>
-      allCalls.filter((call) => {
-        if (!REMOVAL_CALLEES.has(call.getExpression().getText())) return false;
-        return call
-          .getArguments()
-          .some((arg) => arg.isKind(SyntaxKind.Identifier) && arg.getText() === targetName);
-      });
-    const contentDirTeardowns = reclaimsOf('contentDir');
-    const cacheDirTeardowns = reclaimsOf(cacheDirVar);
+const phasedFixture = `import { test as base } from '@playwright/test';
+  import { spawn } from 'node:child_process';
+  import { mkdtempSync, rmSync } from 'node:fs';
+  async function spendOnBudgetPhase(phase, body) { return body(); }
+  export const test = base.extend({ workerServer: [async ({}, use, workerInfo) => {
+    let started;
+    started = await spendOnBudgetPhase(0, async () => {
+      const contentDir = mkdtempSync('content');
+      const viteCacheDir = mkdtempSync('cache');
+      const log = () => { return 0; };
+      try { spawn('pnpm', [], { env: { OK_TEST_CONTENT_DIR: contentDir, OK_TEST_VITE_CACHE_DIR: viteCacheDir } }); }
+      catch { rmSync(contentDir); rmSync(viteCacheDir); }
+      return { contentDir, viteCacheDir };
+    });
+    const { contentDir, viteCacheDir } = started;
+    await use();
+    rmSync(contentDir); rmSync(viteCacheDir);
+  }, { scope: 'worker' }] });`;
 
-    if (contentDirTeardowns.length < 2) {
-      throw new Error(
-        `B3 expected at least 2 removal calls reclaiming \`contentDir\` to anchor the failure-path + happy-path teardown sites; found ${contentDirTeardowns.length}.\n` +
-          `Recognised removal primitives: ${[...REMOVAL_CALLEES].join(', ')}.\n` +
-          `If the fixture now reclaims through a different primitive, add it to REMOVAL_CALLEES rather than reverting the fixture — the invariant is that both directories are reclaimed at both teardown sites, not which function does it.`,
-      );
+describe('worker cache rule self-test', () => {
+  test('accepts a unique reclaimed cache and rejects the adjacent shared cache', () => {
+    expect(inspectWorkerCache(workerFixture)).toEqual({
+      census: [],
+      missingEnv: 0,
+      nonUnique: 0,
+      missingCleanup: 0,
+      spawns: 1,
+      teardowns: 2,
+    });
+    expect(
+      inspectWorkerCache(workerFixture.replace("mkdtempSync('cache')", "'shared'")).nonUnique,
+    ).toBe(1);
+    expect(
+      inspectWorkerCache(
+        workerFixture
+          .replace("mkdtempSync('cache')", "'shared'; const OK_TEST_VITE_CACHE_DIR = viteCacheDir")
+          .replace('OK_TEST_VITE_CACHE_DIR: viteCacheDir', 'OK_TEST_VITE_CACHE_DIR'),
+      ),
+    ).toMatchObject({ missingEnv: 0, nonUnique: 1, missingCleanup: 0 });
+    for (const shared of [
+      "prepareViteCacheDir('shared')",
+      "'cache-' + ({ workerIndex: 0 }).workerIndex",
+    ]) {
+      expect(
+        inspectWorkerCache(workerFixture.replace("mkdtempSync('cache')", shared)).nonUnique,
+        shared,
+      ).toBe(1);
     }
-
-    const missing: string[] = [];
-    for (const cTeardown of contentDirTeardowns) {
-      const parentBlock = cTeardown.getFirstAncestorByKind(SyntaxKind.Block);
-      if (!parentBlock) {
-        missing.push(
-          `removal call reclaiming \`contentDir\` at line ${cTeardown.getStartLineNumber()} has no Block ancestor; cannot locate the ${cacheDirVar} reclaim for that site`,
-        );
-        continue;
-      }
-      const sibling = cacheDirTeardowns.find(
-        (cdt) => cdt.getFirstAncestorByKind(SyntaxKind.Block) === parentBlock,
-      );
-      if (!sibling) {
-        missing.push(
-          `teardown site at line ${cTeardown.getStartLineNumber()} reclaims \`contentDir\` but nothing in the same block reclaims \`${cacheDirVar}\``,
-        );
-      }
-    }
-
-    if (missing.length > 0) {
-      throw new Error(
-        [
-          `tests/stress/_helpers/fixtures.ts must reclaim \`${cacheDirVar}\` at BOTH teardown sites — the failure-path catch block AND the happy-path after-\`use\` block — alongside the \`contentDir\` reclaim already there.`,
-          `Without cleanup at both sites, CI accumulates orphan per-worker Vite cache directories under tmpdir() until the runner's filesystem fills.`,
-          ``,
-          `Missing:`,
-          ...missing.map((m) => `  - ${m}`),
-        ].join('\n'),
-      );
-    }
-    expect(missing).toEqual([]);
+  });
+  test('requires the spawn entry and both cleanup sites', () => {
+    expect(
+      inspectWorkerCache(workerFixture.replace('OK_TEST_VITE_CACHE_DIR:', 'OTHER:')).missingEnv,
+    ).toBe(1);
+    expect(
+      inspectWorkerCache(workerFixture.replace('rmSync(viteCacheDir);', '')).missingCleanup,
+    ).toBe(1);
+    expect(
+      inspectWorkerCache(workerFixture.replace('rmSync(viteCacheDir);\n', '\n')).missingCleanup,
+    ).toBe(1);
+  });
+  test('reads the setup phase result past a nested block-bodied return', () => {
+    expect(inspectWorkerCache(phasedFixture)).toEqual({
+      census: [],
+      missingEnv: 0,
+      nonUnique: 0,
+      missingCleanup: 0,
+      spawns: 1,
+      teardowns: 2,
+    });
+  });
+  test('ignores comments and refuses a forwarding or unparseable fixture', () => {
+    expect(
+      inspectWorkerCache(`${workerFixture} /* OK_TEST_VITE_CACHE_DIR: 'shared' */`).nonUnique,
+    ).toBe(0);
+    expect(inspectWorkerCache("export {test} from './moved.ts';").census).toEqual([
+      'test',
+      'extend',
+      'workerServer',
+      'workerInfo',
+      'spawn',
+    ]);
+    expect(inspectWorkerCache(`${workerFixture} const = ;`).census).toEqual(['syntax']);
   });
 });

@@ -1,10 +1,10 @@
+import { relative, resolve } from 'node:path';
 import {
   type BrokenLinkSuppression,
   countDiagnosticsBySource,
   deriveValidationRunSources,
   type LinterConfig,
   type LintPluginId,
-  SUPPORTED_DOC_EXTENSIONS,
   type ValidationDiagnostic,
   type ValidationDocCounts,
   type ValidationSource,
@@ -21,9 +21,12 @@ import {
   type LocalTargetAssessment,
 } from '../local-target-assessment.ts';
 import { getLogger } from '../logger.ts';
-import { AuditSupersededError, auditProject } from './audit.ts';
+import { toPosix } from '../path-utils.ts';
+import { AuditSupersededError, auditProject, auditScopeWarning, resolveScope } from './audit.ts';
 import type { AuditCache } from './audit-cache.ts';
+import type { AuditScope } from './audit-scope.ts';
 import { createOkfProjectValidator } from './okf-project-validator.ts';
+import { physicalScopeLinks } from './physical-scope-links.ts';
 
 type DeadLinksResult = Awaited<ReturnType<DerivedDocumentIndexApiPort['getDeadLinks']>>;
 type LocalTargetsResult = Awaited<
@@ -89,6 +92,7 @@ export function toValidationCountsPlane(
 
 export interface ValidationScope {
   targetPath?: string;
+  resolvedScope?: AuditScope;
 }
 
 interface ValidatorRunResult<Source extends ValidationSource = ValidationSource> {
@@ -239,6 +243,7 @@ function createLintValidator(deps: ValidationAuditDeps): ProjectValidator<LintPl
         contentDir: deps.contentDir,
         baseConfig: deps.baseConfig,
         targetPath: scope.targetPath,
+        resolvedScope: scope.resolvedScope,
         liveSourceFor: deps.liveSourceFor,
         cache: deps.cache,
         auditGeneration: deps.auditGeneration,
@@ -268,6 +273,15 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'link
       if (setting === 'off') {
         return { files: [], fileCount: 0, warnings: [] };
       }
+      if (
+        auditScopeWarning(
+          scope.resolvedScope ?? { path: resolve(deps.contentDir, scope.targetPath ?? '') },
+          deps.contentDir,
+          scope.targetPath,
+        ) !== undefined
+      ) {
+        return { files: [], fileCount: 0, warnings: [] };
+      }
       const severity = setting === 'error' ? 'error' : 'warning';
       if (!deps.derivedDocumentIndex) {
         return {
@@ -288,12 +302,26 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'link
         }
       };
       const admitted = [...(await deps.admittedDocNames())];
-      const sourceFilter = scopedSourceDocNames(admitted, scope.targetPath);
+      const normalizedScope = {
+        ...scope,
+        resolvedScope: scope.resolvedScope ?? resolveScope(scope.targetPath, deps.contentDir),
+      };
+      const physical = physicalScopeLinks(normalizedScope, deps, admitted);
+      const sourceFilter =
+        physical === undefined
+          ? scopedSourceDocNames(admitted, normalizedScope.resolvedScope, deps)
+          : [physical.source];
+      const filePathFor = (source: string): string =>
+        physical?.source === source
+          ? physical.file
+          : (deps.docFilePathFor(source) ?? `${source}.md`);
       if (sourceFilter !== undefined && sourceFilter.length === 0) {
         assertCurrent();
         return { files: [], fileCount: 0, warnings: [] };
       }
-      const deadLinks = await deps.derivedDocumentIndex.getDeadLinks(admitted, sourceFilter);
+      const deadLinks =
+        physical?.deadLinks ??
+        (await deps.derivedDocumentIndex.getDeadLinks(admitted, sourceFilter));
 
       const isSuppressedLogAdvisorySource = (source: string): boolean =>
         shouldSuppressLogLinkAdvisories(source, suppressLogAdvisories);
@@ -315,11 +343,12 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'link
       let suppressedBrokenLinkCount = 0;
       try {
         const assessed =
-          await deps.derivedDocumentIndex.getLocalTargetAssessmentsForSources(sourceFilter);
+          physical?.localTargets ??
+          (await deps.derivedDocumentIndex.getLocalTargetAssessmentsForSources(sourceFilter));
         for (const { source, assessments } of assessed) {
           if (isProblemsPlaneExcludedDoc(source)) continue;
           const suppressSource = isSuppressedLogAdvisorySource(source);
-          const file = deps.docFilePathFor(source) ?? `${source}.md`;
+          const file = filePathFor(source);
           for (const assessment of assessments) {
             const diagnostic = toLocalTargetDiagnostic(assessment, severity);
             if (!diagnostic) continue;
@@ -364,7 +393,7 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'link
             suppressedBrokenLinkCount++;
             continue;
           }
-          const file = deps.docFilePathFor(occurrence.source) ?? `${occurrence.source}.md`;
+          const file = filePathFor(occurrence.source);
           const line = occurrence.line ?? 0;
           const character = occurrence.column ?? 0;
           push(file, {
@@ -440,14 +469,13 @@ function toLocalTargetDiagnostic(
 
 function scopedSourceDocNames(
   admitted: readonly string[],
-  targetPath: string | undefined,
+  scope: AuditScope,
+  deps: Pick<ValidationAuditDeps, 'contentDir' | 'docFilePathFor'>,
 ): string[] | undefined {
-  if (targetPath === undefined || targetPath === '') return undefined;
-  const lower = targetPath.toLowerCase();
-  if (SUPPORTED_DOC_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
-    const docName = targetPath.slice(0, targetPath.lastIndexOf('.'));
-    return admitted.filter((name) => name === docName);
+  const scopePath = toPosix(relative(deps.contentDir, scope.path));
+  if (scope.kind === 'file') {
+    return admitted.filter((name) => deps.docFilePathFor(name) === scopePath);
   }
-  const prefix = `${targetPath.replace(/\/+$/, '')}/`;
-  return admitted.filter((name) => name.startsWith(prefix));
+  if (scopePath === '') return undefined;
+  return admitted.filter((name) => deps.docFilePathFor(name)?.startsWith(`${scopePath}/`));
 }

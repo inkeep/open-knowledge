@@ -46,6 +46,8 @@ ok lint --json          # structured JSON output
 ok lint --errors-only   # exit non-zero only on error-severity problems
 ```
 
+Both `ok lint` and `ok audit` accept an existing file or directory as their scope. For a missing document stem without `.md` or `.mdx`, they try the same path with `.mdx`, then `.md`; an explicit `.md` or `.mdx` path must exist as written. A typo returns a not-found error naming the supplied path and exits with code 1, before `--fix` can change files. With `--json`, this error is an RFC 9457 problem response object. An existing empty or ignored directory succeeds with zero findings, an informational warning, and exit code 0. An explicitly named file is still checked even if an ignore rule excludes it from directory scans. Server-backed `ok audit` refuses hidden-segment scopes: it checks zero documents, reports the refusal as an ordinary warning, and exits with code 0; headless `ok lint` checks an explicitly named hidden path. A missing configured content directory also returns a not-found error and exits with code 1.
+
 The exit code is non-zero when any problem is found. Findings are warnings unless your `.markdownlint.*` promotes a rule to `"error"`, so `--errors-only` gates CI on just the rules you chose to enforce. Only markdownlint rules can be promoted — [frontmatter](/docs/advanced/content-rules/frontmatter) findings are always warnings, so `--errors-only` never gates on them.
 
 ### What it returns
@@ -205,13 +207,15 @@ The structured content is close to `ok lint --json`, with four differences:
 | Cap fields | — | `omittedFileCount`, per-file `omittedDiagnosticCount`, `omittedWarningCount` |
 | Fix-mode keys | — | `diagnosticsArePreFix`, `reLintFailure` (only when the post-write re-lint could not report) |
 
-Everything else matches: `files[].diagnostics` with 0-based `range`, `severity`, `source`, `code`, `message`, plus `errorCount`, `warningCount`, `fileCount` on an audit, configuration or degradation `warnings`, and `ran` for the selected source families. Audit output is capped project-wide at 10 warnings, plus 10 files × 10 diagnostics per file — the text channel marks the remainder with "… and N more", the structured channel with the three cap fields above. Counts always reflect the full scan, and re-running with a narrower `path` recovers the detail. With `fix: true` the summary reports what was applied and what remains: `Fixed 1 problem in docs/guide.md.` followed by the unfixable findings.
+Everything else matches: `files[].diagnostics` with 0-based `range`, `severity`, `source`, `code`, `message`, plus `errorCount`, `warningCount`, `fileCount` on an audit, configuration or degradation `warnings`, and `ran` for the selected source families. Audit output is capped project-wide at 10 warnings, plus 10 files × 10 diagnostics per file — the text channel marks the remainder with "… and N more", the structured channel with the three cap fields above. Counts always reflect the full scan. A narrower `path` reduces competing files but does not lift per-file caps. For all lint findings in one document, call `lint({ document: "file" })`; project-tree OKF findings remain capped. With `fix: true` the summary reports what was applied and what remains: `Fixed 1 problem in docs/guide.md.` followed by the unfixable findings.
 
 When the fix landed but the post-write re-lint could not report, the response carries `diagnosticsArePreFix: true` and explains itself in `reLintFailure`: `reason` is the machine-readable discriminant (`re-lint-threw` or `source-went-blind`) and `message` is the prose. The diagnostics and counts are then the PRE-fix set and `fixedCount` is 0, so re-run `lint` to see what remains rather than reading 0 as nothing fixed.
 
 ### The `audit` tool
 
 The agent-side `ok audit` — content-rule problems and broken links in one read-only call, grouped by file, same 10 × 10 + 10-warning cap with `omittedWarningCount` when warnings are dropped, no fix shape. Its text and structured results both report `ran`. If the reserved-log policy withholds one or more link findings, `brokenLinkSuppression: { reason: "reserved-log-policy", count: N }` makes that filtered result explicit without exposing paths or hrefs; the text result says the same. If a selected validator degrades, its family remains in `ran` and the `warnings` channel explains why; a partial degradation may still have contributed findings.
+
+The `path` scope follows the same file, directory, extension fallback, and valid-empty rules as the CLI. To inspect omitted findings for one file, use `lint({ document: "file" })` for document lint and `links({ kind: "dead", sourceDocuments: ["file"] })` for raw dead links. The raw link query also includes links excluded by audit policy. Narrowing the audit does not remove its per-file caps, and project-tree OKF findings remain capped.
 
 ### Write responses
 

@@ -13,6 +13,7 @@ import {
   type SpawnPty,
   setupPtyHost,
 } from '../../src/utility/pty-host.ts';
+import { createPtyHostProbe } from '../support/pty-readiness.test-helper.ts';
 
 type Backend = 'bundled-conpty-dll' | 'os-conpty-fallback';
 
@@ -44,6 +45,7 @@ interface Scenario {
   nativeExit: ((exitCode: number) => void) | null;
   terminals: IPty[];
   nodePtyExit: { pid: number; exitCode: number | undefined } | null;
+  onNativeConnect?: () => void;
 }
 
 interface CreateOutcome {
@@ -123,6 +125,7 @@ const nativeConptyFake: NativeConptyFake = {
     }
     const scenario = activeScenario();
     scenario.connectCalls += 1;
+    scenario.onNativeConnect?.();
     const plan = scenario.plan;
     if (plan.kind === 'connect-throws') throw new Error(plan.message);
     if (plan.kind !== 'attached-then-silent-exit') {
@@ -197,10 +200,8 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
   }
 }
 
-async function createThroughPtyHost(scenario: Scenario): Promise<CreateOutcome> {
-  const posted: PtyHostOutgoingMessage[] = [];
-  let handler: ((event: { data: unknown }) => void) | null = null;
-  const spawn: SpawnPty = (file, args, options) => {
+function scenarioSpawn(scenario: Scenario): SpawnPty {
+  return (file, args, options) => {
     const terminal = new WindowsTerminal(file, args, options);
     scenario.terminals.push(terminal);
     terminal.onExit(({ exitCode }) => {
@@ -208,6 +209,11 @@ async function createThroughPtyHost(scenario: Scenario): Promise<CreateOutcome> 
     });
     return terminal;
   };
+}
+
+async function createThroughPtyHost(scenario: Scenario): Promise<CreateOutcome> {
+  const posted: PtyHostOutgoingMessage[] = [];
+  let handler: ((event: { data: unknown }) => void) | null = null;
   const host = setupPtyHost({
     parentPort: {
       on(_event, h) {
@@ -217,7 +223,7 @@ async function createThroughPtyHost(scenario: Scenario): Promise<CreateOutcome> 
         posted.push(message);
       },
     },
-    spawn,
+    spawn: scenarioSpawn(scenario),
     env: WINDOWS_ENV,
     platform: 'win32',
     shellExists: (path) => path === PWSH,
@@ -333,6 +339,68 @@ describe.skipIf(process.platform === 'win32')(
       return createThroughPtyHost(scenario);
     }
 
+    async function runTraced(backend: Backend, plan: AttachPlan, observeNativeExit = false) {
+      scenario = await openScenario(backend, plan);
+      active = scenario;
+      const current = scenario;
+      const entries: Record<string, unknown>[] = [];
+      let atNativeConnect: Record<string, unknown>[] = [];
+      let afterNativeExit: Record<string, unknown>[] = [];
+      const trace = () => entries.filter((entry) => entry.event === 'pty-host-startup');
+      current.onNativeConnect = () => {
+        atNativeConnect = trace();
+      };
+      const options = {
+        spawn: scenarioSpawn(current),
+        env: WINDOWS_ENV,
+        platform: 'win32' as const,
+        shellExists: (path: string) => path === PWSH,
+        startupTrace: { native: true },
+        logger: {
+          info: (entry: Record<string, unknown>) => entries.push(entry),
+          warn: (entry: Record<string, unknown>) => entries.push(entry),
+        },
+      };
+      const host = createPtyHostProbe(options);
+      try {
+        host.send({
+          type: 'create',
+          ptyId: PTY_ID,
+          cwd: current.dir,
+          cols: 80,
+          rows: 24,
+          shell: PWSH,
+        });
+        if (plan.kind === 'readiness-bound-fires-before-worker') vi.advanceTimersToNextTimer();
+        if (plan.kind === 'attached-then-silent-exit') {
+          await waitFor(
+            () => current.terminals.at(-1)?.pid === plan.shellPid,
+            'the traced shell to attach',
+          );
+          if (observeNativeExit) {
+            current.nativeExit?.(plan.nativeExitCode);
+            afterNativeExit = trace();
+            for (const socket of current.conoutSockets) socket.end();
+            await waitFor(() => host.exitOf(PTY_ID) !== null, 'the traced terminal to exit');
+          }
+        } else {
+          await waitFor(
+            () => host.errorOf(PTY_ID) !== null,
+            'the traced host to report the connection failure',
+          );
+        }
+      } finally {
+        host.killActive();
+      }
+      return {
+        trace: trace(),
+        atNativeConnect,
+        afterNativeExit,
+        connectCalls: current.connectCalls,
+        nodePtyExit: current.nodePtyExit,
+      };
+    }
+
     describe.each(BACKENDS)('%s', (backend) => {
       test.each(NEVER_ATTACHED)(
         'reports a start failure, not a shell exit, when $name',
@@ -374,6 +442,176 @@ describe.skipIf(process.platform === 'win32')(
         expect(outcome.terminalMessages).toEqual([
           { type: 'exit', ptyId: PTY_ID, exitCode: -1, signal: null },
         ]);
+      });
+
+      test('startup diagnostics preserve READY and connection entry before native connect runs', async () => {
+        const outcome = await runTraced(backend, {
+          kind: 'attached-then-silent-exit',
+          shellPid: SILENT_SHELL_PID,
+          nativeExitCode: -1,
+        });
+
+        expect(outcome.connectCalls).toBe(1);
+        expect(
+          outcome.atNativeConnect
+            .map((entry) => entry.stage)
+            .filter(
+              (stage) => stage === 'worker-ready-received' || stage === 'native-connect-enter',
+            ),
+        ).toEqual(['worker-ready-received', 'native-connect-enter']);
+        const connected = outcome.trace.find((entry) => entry.stage === 'native-connect-return');
+        expect(connected).toEqual(
+          expect.objectContaining({
+            traceId: expect.any(Number),
+            attempt: expect.any(Number),
+            shellPid: SILENT_SHELL_PID,
+          }),
+        );
+        expect(outcome.trace).toContainEqual(
+          expect.objectContaining({
+            stage: 'snapshot',
+            reason: 'before-cleanup',
+            publicPid: SILENT_SHELL_PID,
+            terminalExitObserved: false,
+            receivedBytes: 0,
+            forwardedBytes: 0,
+          }),
+        );
+        const snapshot = outcome.trace.find((entry) => entry.stage === 'snapshot');
+        expect(snapshot).toEqual(
+          expect.objectContaining({
+            native: expect.objectContaining({
+              shell: {
+                pid: SILENT_SHELL_PID,
+                nativeExitObserved: false,
+                exitCode: null,
+                osState: 'unobserved',
+              },
+              console: expect.objectContaining({
+                connection: 'returned',
+                outputConnectionDisposed: false,
+                osState: 'unobserved',
+              }),
+              worker: expect.objectContaining({
+                online: true,
+                readyReceived: true,
+                errorObserved: false,
+                exitCode: null,
+                osState: 'unobserved',
+              }),
+              transport: expect.objectContaining({
+                capture: 'missing',
+                nativeBytes: 0,
+                workerSubmittedBytes: 0,
+                mainBytes: 0,
+              }),
+            }),
+          }),
+        );
+        const starts = outcome.trace.filter((entry) => entry.stage === 'spawn-start');
+        expect(starts.map((entry) => entry.backend)).toEqual(
+          backend === 'bundled-conpty-dll' ? ['bundled'] : ['bundled', 'inbox'],
+        );
+        expect(new Set(starts.map((entry) => entry.traceId)).size).toBe(1);
+        expect(new Set(starts.map((entry) => entry.attempt)).size).toBe(starts.length);
+        expect(connected).toEqual(
+          expect.objectContaining({
+            traceId: starts.at(-1)?.traceId,
+            attempt: starts.at(-1)?.attempt,
+          }),
+        );
+        expect(outcome.trace.map((entry) => entry.stage)).not.toContain('native-connect-failed');
+      });
+
+      test('startup diagnostics preserve a worker error observed before READY', async () => {
+        const outcome = await runTraced(backend, { kind: 'worker-cannot-reach-conout' });
+        expect(outcome.trace).toContainEqual(expect.objectContaining({ stage: 'worker-error' }));
+        expect(outcome.trace).toContainEqual(
+          expect.objectContaining({
+            stage: 'snapshot',
+            native: expect.objectContaining({
+              shell: expect.objectContaining({ pid: null, nativeExitObserved: false }),
+              console: expect.objectContaining({ connection: 'pending' }),
+              worker: expect.objectContaining({ readyReceived: false, errorObserved: true }),
+            }),
+          }),
+        );
+        expect(outcome.trace.map((entry) => entry.stage)).not.toContain('native-connect-enter');
+      });
+
+      test('startup diagnostics preserve a worker readiness deadline before native creation', async () => {
+        const outcome = await runTraced(backend, { kind: 'readiness-bound-fires-before-worker' });
+        expect(outcome.trace).toContainEqual(
+          expect.objectContaining({
+            stage: 'snapshot',
+            native: expect.objectContaining({
+              shell: expect.objectContaining({ pid: null, nativeExitObserved: false }),
+              console: expect.objectContaining({ connection: 'pending' }),
+              worker: expect.objectContaining({ readyReceived: false }),
+            }),
+          }),
+        );
+        expect(outcome.trace.map((entry) => entry.stage)).not.toContain('native-connect-enter');
+      });
+
+      test('startup diagnostics distinguish a caught connection failure from a successful return', async () => {
+        const outcome = await runTraced(backend, {
+          kind: 'connect-throws',
+          message: 'Cannot create process, error code: 2',
+        });
+
+        expect(outcome.connectCalls).toBe(1);
+        expect(outcome.nodePtyExit).toEqual({ pid: 0, exitCode: 2 });
+        expect(
+          outcome.trace
+            .map((entry) => entry.stage)
+            .filter(
+              (stage) =>
+                stage === 'worker-ready-received' ||
+                stage === 'native-connect-enter' ||
+                stage === 'native-connect-return' ||
+                stage === 'native-connect-failed',
+            ),
+        ).toEqual(['worker-ready-received', 'native-connect-enter', 'native-connect-failed']);
+        expect(outcome.trace.map((entry) => entry.stage)).not.toContain('native-shell-exit');
+        expect(outcome.trace).toContainEqual(
+          expect.objectContaining({ stage: 'terminal-exit', exitCode: 2 }),
+        );
+      });
+
+      test('startup diagnostics distinguish native shell exit from later terminal transport closure', async () => {
+        const outcome = await runTraced(
+          backend,
+          {
+            kind: 'attached-then-silent-exit',
+            shellPid: SILENT_SHELL_PID,
+            nativeExitCode: -1,
+          },
+          true,
+        );
+
+        expect(outcome.nodePtyExit).toEqual({ pid: SILENT_SHELL_PID, exitCode: -1 });
+        expect(outcome.afterNativeExit).toContainEqual(
+          expect.objectContaining({
+            stage: 'native-shell-exit',
+            shellPid: SILENT_SHELL_PID,
+            exitCode: -1,
+          }),
+        );
+        expect(outcome.afterNativeExit.map((entry) => entry.stage)).not.toContain('terminal-exit');
+        expect(
+          outcome.trace
+            .map((entry) => entry.stage)
+            .filter((stage) => stage === 'native-shell-exit' || stage === 'terminal-exit'),
+        ).toEqual(['native-shell-exit', 'terminal-exit']);
+        expect(outcome.trace).toContainEqual(
+          expect.objectContaining({
+            stage: 'snapshot',
+            reason: 'exit',
+            publicPid: SILENT_SHELL_PID,
+            terminalExitObserved: true,
+          }),
+        );
       });
     });
   },

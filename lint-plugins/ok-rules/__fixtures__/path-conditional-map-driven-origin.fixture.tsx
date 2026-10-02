@@ -1,10 +1,10 @@
 // FIXTURE — drives `path-conditional-map-driven-origin.uncached.test.mjs` via shell-out
-// to `pnpm exec oxlint`. Not part of the main lint: `__fixtures__/` is in
+// to oxlint. Not part of the main lint: `__fixtures__/` is in
 // `oxlint.config.ts#ignorePatterns`, and `__fixtures__/oxlint.fixtures.json`
 // re-enables the rules for the test.
 //
 // 7 positive cases (deliberate violations — rule must fire) + 3 negative
-// cases (sanctioned shapes that must NOT fire). Exact-equality (`toBe(7)`) in
+// cases (sanctioned shapes that must NOT fire). Exact-equality (the 7-position list) in
 // the test catches both false-negative regressions (drop below 7) and
 // false-positive widenings (above 7).
 //

@@ -510,6 +510,37 @@ describe('resolveClaudeReadiness', () => {
   });
 });
 
+describe('readiness carries the MCP server name main checked', () => {
+  test('claude readiness returns the checked name beside the verdicts', async () => {
+    const r = await resolveClaudeReadiness({
+      probeClaude: () => Promise.resolve(0),
+      classifyMcpEntry: () => 'present',
+      isProjectMcpPreApprovable: () => true,
+      mcpServerName: 'open-knowledge-beta',
+    });
+    expect(r).toEqual({
+      claude: 'present',
+      mcpPreApprovable: true,
+      okToolsAutoApprovable: true,
+      mcpServerName: 'open-knowledge-beta',
+    });
+  });
+
+  test('codex readiness returns the checked name beside okServerConfigured', async () => {
+    expect(
+      await resolveCliOnPath({
+        probe: () => Promise.resolve(0),
+        okServerConfigured: () => true,
+        mcpServerName: 'open-knowledge-beta',
+      }),
+    ).toEqual({
+      onPath: 'present',
+      okServerConfigured: true,
+      mcpServerName: 'open-knowledge-beta',
+    });
+  });
+});
+
 describe('OK-tool auto-approve is gated separately from project server trust', () => {
   function readiness(scopes: {
     projectEntryPresent: boolean;

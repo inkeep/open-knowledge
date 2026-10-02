@@ -1,19 +1,26 @@
 import {
+  currentDesktopProduct,
+  DESKTOP_PRODUCTS,
+  piToolNamespace,
+} from '@inkeep/open-knowledge-core';
+import {
   buildManagedServerEntry,
   type McpInstallOptions,
-  PI_EXTENSION_OWNERSHIP_MARKER,
-  PI_EXTENSION_VERSION_SENTINEL,
   PI_MANAGED_FILE_ENTRY_COMMAND,
+  piExtensionOwnershipMarker,
+  piExtensionVersionSentinel,
 } from '../commands/editors.ts';
 
-const PI_EXTENSION_DEV_HEADER = `${PI_EXTENSION_OWNERSHIP_MARKER}-dev`;
-
 export function isOwnPiExtensionSource(text: string): boolean {
-  return text.startsWith(PI_EXTENSION_OWNERSHIP_MARKER);
+  const marker = piExtensionOwnershipMarker(currentDesktopProduct());
+  if (!text.startsWith(marker)) return false;
+  return Object.values(DESKTOP_PRODUCTS)
+    .map(piExtensionOwnershipMarker)
+    .every((other) => other.length <= marker.length || !text.startsWith(other));
 }
 
 export function isPiExtensionSourceUpToDate(text: string): boolean {
-  return text.startsWith(PI_EXTENSION_VERSION_SENTINEL);
+  return text.startsWith(piExtensionVersionSentinel(currentDesktopProduct()));
 }
 
 export function isOwnPiManagedFileEntry(entry: unknown): boolean {
@@ -30,7 +37,11 @@ export function makePiManagedFileEntry(text: string): Record<string, unknown> {
 
 export function buildPiExtensionSource(options: McpInstallOptions = {}): string {
   const dev = options.mode === 'dev';
-  const header = dev ? PI_EXTENSION_DEV_HEADER : PI_EXTENSION_VERSION_SENTINEL;
+  const product = currentDesktopProduct();
+  const header = dev
+    ? `${piExtensionOwnershipMarker(product)}-dev`
+    : piExtensionVersionSentinel(product);
+  const toolPrefix = `${piToolNamespace(product)}_`;
   const launchers = {
     unix: buildManagedServerEntry({ ...options, platformName: 'darwin' }),
     win32: buildManagedServerEntry({ ...options, platformName: 'win32' }),
@@ -44,7 +55,7 @@ export function buildPiExtensionSource(options: McpInstallOptions = {}): string 
  * On session start it spawns Open Knowledge's MCP stdio server via OK's
  * resilient launcher (bundle, then npx, then version-manager probes), performs
  * the MCP handshake, and registers each MCP tool as a Pi tool under an
- * \`ok_\` prefix (Pi has no MCP namespacing; the prefix keeps OK's \`edit\` /
+ * \`${toolPrefix}\` prefix (Pi has no MCP namespacing; the prefix keeps OK's \`edit\` /
  * \`write\` from shadowing Pi's built-in tools).
  */
 import { spawn } from "node:child_process";
@@ -52,7 +63,7 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
 const LAUNCHERS = ${JSON.stringify(launchers, null, 2)} as const;
 
-const TOOL_PREFIX = "ok_";
+const TOOL_PREFIX = ${JSON.stringify(toolPrefix)};
 // First contact may cold-install the CLI through npx — allow a generous window.
 const INIT_TIMEOUT_MS = 120000;
 const STDERR_TAIL_LIMIT = 2000;

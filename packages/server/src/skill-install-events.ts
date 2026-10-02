@@ -1,10 +1,11 @@
 import { dirname, join } from 'node:path';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import type { BundleId } from './build-skill-zip.ts';
 import { tracedMkdir, tracedWriteFile } from './fs-traced.ts';
 import { getLogger } from './logger.ts';
 import type { SkillStateLogger, SkillStateTarget } from './skill-state.ts';
 
-export const SKILL_INSTALL_EVENTS_FILE_REL = ['.ok', 'skill-install-events.jsonl'] as const;
+export const SKILL_INSTALL_EVENTS_FILENAME = 'skill-install-events.jsonl';
 
 export type SkillInstallEventSurface =
   | 'server-build-and-open'
@@ -49,7 +50,7 @@ export async function recordSkillInstallEvent(
     );
     return;
   }
-  const file = join(home, ...SKILL_INSTALL_EVENTS_FILE_REL);
+  const file = join(okUserHomeDir(home), SKILL_INSTALL_EVENTS_FILENAME);
   const json = `${JSON.stringify(event)}\n`;
 
   try {

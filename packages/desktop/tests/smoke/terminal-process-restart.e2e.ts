@@ -24,6 +24,7 @@ import {
 import { readRailColumnWidth } from './_helpers/rail-column';
 import {
   expectSettledReading,
+  pollSettledReading,
   RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
   settleBudget,
 } from './_helpers/settled-reading';
@@ -119,9 +120,11 @@ async function setWindowSize(
     },
     { width, height },
   );
-  await expect
-    .poll(() => page.evaluate(() => window.innerWidth))
-    .toBeGreaterThanOrEqual(width - 100);
+  await pollSettledReading(() => page.evaluate(() => window.innerWidth), {
+    reading: 'viewport width',
+    of: 'editor window',
+    timeout: 10_000 satisfies typeof RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+  }).toBeGreaterThanOrEqual(width - 100);
 }
 
 async function dispatchRendererMenuAction(

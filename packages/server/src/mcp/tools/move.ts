@@ -40,16 +40,14 @@ export const DROPPED_LOCATIONS_DESCRIPTION =
   'Skill cross-level move only: locations the skill occupied at the source that the move did not automatically re-project at the destination — the `agents` hub, custom roots, and any editor with no skills root at that level — as `install` location ids. On a SUCCESS they were removed at the source and not re-created at the destination, and the ones the destination level can place (the `agents` hub and custom roots) go back with `install` as `add`, together with `scope` set to the DESTINATION level; an editor with no skills root there cannot be placed at all — `install` accepts its id and projects nothing, so the move\'s own success text names the equivalent (an editor that reads the `agents` hub at that level takes `add: ["agents"]` instead) or states that no destination-level placement exists. Custom roots resolve against that level\'s base — your home directory at the Global level, the project directory at the Project level — not wherever the root lived before the move. On a FAILURE this is instead the set of source-side placements this call had already removed, and whether the skill moved is what `moveState` says: on `nothing-written`, `destination-removed`, `destination-stray` and the two retained states the source is still there, so do not pass these to `install` at the DESTINATION level — re-add them at the SOURCE level, and retry the move only once that state is resolved. On `destination-unreadable` and `partially-applied` the source removal may already have run, so inspect both locations before re-adding anywhere.';
 
 const DESCRIPTION = [
-  '[Requires: Hocuspocus server] Move or rename a document, folder, or asset through the managed flow at `POST /api/rename-path`. Works for all three — the tool probes the content directory to decide. Inbound wiki-links plus supported inline Markdown links are rewritten across affected docs; renamed assets are reported.',
-  '',
-  '**Parameters:**',
-  '- `from` — Current path. Doc: docName (trailing `.md`/`.mdx` stripped). Folder: relative path, no leading/trailing slash. Asset: the file path incl. extension.',
-  '- `to` — New path. Same shape as `from`.',
-  '- `template` — Move/rename a TEMPLATE instead of a doc/folder/asset: `{ from: "<folder>/<name>", to: "<folder>/<name>" }` (nested — a flat path cannot disambiguate a template under `.ok/templates/` from a same-named doc). Mutually exclusive with flat `from`/`to`. Inherited templates are not moved (move the local copy / the owning folder); templates carry no inbound links, so nothing is rewritten.',
-  `- \`skill\` — Move/rename a SKILL: \`{ from: "<name>", to: "<name>", scope?, toScope? }\` (nested). Within one level (omit \`toScope\`, or \`toScope\` === \`scope\`): renames the skill folder and keeps the SKILL.md \`name\` in sync. ACROSS levels (\`toScope\` differs from \`scope\`): moves the skill between the Project level (this KB) and the Global level (your user home); ${CROSS_LEVEL_TRANSFER_CLAUSE} Mutually exclusive with flat \`from\`/\`to\`.`,
-  '- `summary` — Optional one-line user-outcome (≤80 chars). If omitted, defaults to "Renamed X → Y". Avoid secrets or PII — persisted to git history.',
-  '',
-  `**Errors:** 400 — invalid path / excluded by \`.gitignore\`/\`.okignore\`; 404 — source does not exist; 409 — destination already exists (\`colliding[]\` returned); 500 — a cross-level skill move can leave partial state (source, destination, or both), so it is not a safe blind retry. Every cross-level skill-move failure this handler reports carries a \`moveState\` code whatever its status, and the two refusals that turn on a retained destination copy arrive as 409, not 500 — \`destination-retained-blocking\`, and the \`nothing-written\` collision that carries a \`retentionLedger\` — so read \`moveState\` before retrying regardless of status. The one exception is a response whose \`moveState\`/\`sourceState\`/\`retentionLedger\` triple this build cannot recognise as consistent: all three are withheld and the text says so instead — "The server returned an unrecognized or inconsistent move outcome. Do not remove either copy before comparing the source and destination."`,
+  'For .md/.mdx inspection before or after a move in a project with .ok/, use exec; native Read/Grep/Glob omit wiki context.',
+  'Move/rename a document, folder or asset with `{from, to}`, a template with `{template: {from, to}}`, or a skill with `{skill: {from, to, scope?, toScope?}}`. Choose one form. Requires the Hocuspocus server. Document/folder/asset kind is auto-detected.',
+  "Paths: docs accept optional .md/.mdx; folders are relative with no leading/trailing slash; assets include the extension. Templates use '<folder>/<name>'; inherited templates cannot move (move their local copy or owning folder). Template moves rewrite no inbound links.",
+  'Links to the moved document keep pointing to it. The old path stops existing; do not leave a redirect or stub.',
+  'Managed moves preserve wiki-link targets and rewrite supported inline Markdown links; renamed assets are reported.',
+  'Skills: scope defaults project; global means your home. Within one scope, rename keeps SKILL.md name in sync. A differing toScope moves between project/global: history does not transfer; supported editor locations are re-projected. Other locations are dropped; on SUCCESS only, use droppedLocations and the response to reinstall at the destination.',
+  'Cross-scope failures can leave partial state. Before retrying or reinstalling, read moveState and recovery text regardless of status. Never remove either copy without comparing source/destination when the outcome is missing or inconsistent.',
+  'Optional summary: one-line outcome ≤80 chars. If omitted, defaults to "Renamed X → Y". Avoid secrets or PII; persisted to git history. Invalid/excluded paths, missing sources and existing destinations are refused; collisions report colliding[].',
 ].join('\n');
 
 interface RenameMapping {
@@ -158,7 +156,9 @@ export function register(server: ServerInstance, deps: MoveDeps): void {
         to: z
           .string()
           .optional()
-          .describe('New path. All inbound wiki-links + inline links are rewritten automatically.'),
+          .describe(
+            'New path. Links keep their intended targets; supported inline links are rewritten.',
+          ),
         template: z
           .object({ from: z.string(), to: z.string() })
           .optional()

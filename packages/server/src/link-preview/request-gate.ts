@@ -1,3 +1,5 @@
+import { isJsonContentType } from '../http/request-validation.ts';
+
 /** @lintignore Referenced by the exported LinkPreviewGateVerdict type; no direct importer. */
 export type LinkPreviewGateRejection = 'origin' | 'content-type';
 
@@ -14,12 +16,6 @@ export function isLoopbackHttpOrigin(origin: string | undefined): boolean {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
   const host = parsed.hostname;
   return host === 'localhost' || host === '[::1]' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
-}
-
-export function isJsonContentType(contentType: string | undefined): boolean {
-  if (!contentType) return false;
-  const base = contentType.split(';', 1)[0]?.trim().toLowerCase();
-  return base === 'application/json';
 }
 
 export function classifyLinkPreviewRequest(headers: {

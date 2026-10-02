@@ -15,6 +15,7 @@ const SECOND_PID_BEYOND_ANY_KERNEL_LIMIT = 4_194_337;
 const STAND_IN_LIFETIME_MS = 5_000;
 const LOCK_READY_BOUND_MS = 20_000;
 const REAP_LIVENESS_BOUND_MS = 120_000;
+const INJECTED_RELEASE_BOUND_MS = 1_000;
 
 const STAND_IN_SERVER = [
   "const fs = require('node:fs');",
@@ -305,8 +306,11 @@ describe('reapDetachedServers — reports what outlives the release bound, never
 
       let survivors: unknown;
       let aliveWhenTheReaperReturned = false;
+      let reapedForMs = 0;
       try {
-        survivors = await reapDetachedServers([root]);
+        const reapStartedAt = Date.now();
+        survivors = await reapDetachedServers([root], { boundMs: INJECTED_RELEASE_BOUND_MS });
+        reapedForMs = Date.now() - reapStartedAt;
         aliveWhenTheReaperReturned = standIn.exitCode === null && standIn.signalCode === null;
       } finally {
         standIn.stdin?.end();
@@ -315,10 +319,14 @@ describe('reapDetachedServers — reports what outlives the release bound, never
 
       expect({
         releaseBoundIsExported: typeof DETACHED_SERVER_RELEASE_BOUND_MS === 'number',
+        waitedOutTheBound: reapedForMs >= INJECTED_RELEASE_BOUND_MS,
         aliveWhenTheReaperReturned,
         survivors,
         warnedWithPidAndLockPath: warnings().some(
-          (line) => line.includes(lockPath) && mentionsPid(line, standInPid),
+          (line) =>
+            line.includes(lockPath) &&
+            mentionsPid(line, standInPid) &&
+            line.includes(`after ${INJECTED_RELEASE_BOUND_MS}ms`),
         ),
         staleLockReported: warnings().some(
           (line) => line.includes(staleLockPath) || mentionsPid(line, PID_BEYOND_ANY_KERNEL_LIMIT),
@@ -330,6 +338,7 @@ describe('reapDetachedServers — reports what outlives the release bound, never
         ],
       }).toEqual({
         releaseBoundIsExported: true,
+        waitedOutTheBound: true,
         aliveWhenTheReaperReturned: true,
         survivors: [{ lockPath, pid: standInPid }],
         warnedWithPidAndLockPath: true,
@@ -338,7 +347,7 @@ describe('reapDetachedServers — reports what outlives the release bound, never
         signalsThatReachedTheStandIn: [],
       });
     },
-    REAP_LIVENESS_BOUND_MS + DETACHED_SERVER_RELEASE_BOUND_MS,
+    REAP_LIVENESS_BOUND_MS + INJECTED_RELEASE_BOUND_MS,
   );
 
   test.each<[string, (lockText: string) => string]>([
@@ -357,7 +366,7 @@ describe('reapDetachedServers — reports what outlives the release bound, never
       let lockTextWhenTheReaperReturned: string | undefined;
       let aliveWhenTheReaperReturned = false;
       try {
-        const reaping = reapDetachedServers([root]);
+        const reaping = reapDetachedServers([root], { boundMs: INJECTED_RELEASE_BOUND_MS });
         probedBeforeTheTear = boundary.probes.some((probe) => probe.target === standInPid);
         writeFileSync(lockPath, tornText);
         survivors = await reaping;
@@ -388,7 +397,7 @@ describe('reapDetachedServers — reports what outlives the release bound, never
         signalsThatReachedTheStandIn: [],
       });
     },
-    REAP_LIVENESS_BOUND_MS + DETACHED_SERVER_RELEASE_BOUND_MS,
+    REAP_LIVENESS_BOUND_MS + INJECTED_RELEASE_BOUND_MS,
   );
 
   test(
@@ -442,7 +451,7 @@ describe('reapDetachedServers — reports what outlives the release bound, never
       let aliveWhenTheReaperReturned = false;
       try {
         writeFileSync(lockPath, '');
-        const reaping = reapDetachedServers([root]);
+        const reaping = reapDetachedServers([root], { boundMs: INJECTED_RELEASE_BOUND_MS });
         writeFileSync(lockPath, lockText);
         survivors = await reaping;
         aliveWhenTheReaperReturned = standIn.exitCode === null && standIn.signalCode === null;
@@ -467,6 +476,6 @@ describe('reapDetachedServers — reports what outlives the release bound, never
         signalsThatReachedTheStandIn: [],
       });
     },
-    REAP_LIVENESS_BOUND_MS + DETACHED_SERVER_RELEASE_BOUND_MS,
+    REAP_LIVENESS_BOUND_MS + INJECTED_RELEASE_BOUND_MS,
   );
 });

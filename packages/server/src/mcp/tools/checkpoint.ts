@@ -17,12 +17,7 @@ import {
 } from './shared.ts';
 
 export const DESCRIPTION = [
-  '[Requires: Hocuspocus server] Save a project-wide checkpoint of every document — a single restore point you can return to.',
-  '',
-  '**Parameters:**',
-  '- `summary` — Optional one-line label for the checkpoint (≤80 chars). Defaults to "Checkpoint version". Appears as the checkpoint subject in `history`. Avoid secrets or PII — persisted to git history.',
-  '',
-  'Returns `{ version }` — the 40-char checkpoint SHA. Find checkpoints later via `history`; restore a single doc with `restore_version({ document, version })`.',
+  'Save a project-wide checkpoint of every document. Requires the Hocuspocus server. Optional summary ≤80 chars defaults to "Checkpoint version"; avoid secrets or PII because it persists in git history. Returns version (40-char SHA). Find it with history and restore one doc with restore_version({document,version}).',
 ].join('\n');
 
 export interface CheckpointDeps {

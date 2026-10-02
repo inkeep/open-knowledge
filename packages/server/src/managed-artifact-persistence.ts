@@ -21,6 +21,7 @@ import {
 import {
   atomicWriteFile,
   FileLockTimeoutError,
+  okUserHomeDir,
   withFileLock,
 } from '@inkeep/open-knowledge-core/server';
 import type * as Y from 'yjs';
@@ -260,7 +261,7 @@ async function stashDiscardedEdit(
 ): Promise<void> {
   try {
     const safe = documentName.replace(/[^A-Za-z0-9._-]+/g, '__');
-    const dir = resolve(homeFor(ctx), '.ok', 'edit-backups', 'discarded', safe);
+    const dir = resolve(okUserHomeDir(homeFor(ctx)), 'edit-backups', 'discarded', safe);
     await tracedMkdir(dir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     await atomicWriteFile(resolve(dir, `${stamp}.md`), content, { fs: tracedAtomicFs });
@@ -283,7 +284,7 @@ async function backupExternalSkillOnce(
   if (ext.rel !== null) return;
   try {
     if (!existsSync(filePath)) return;
-    const backupDir = resolve(homeFor(ctx), '.ok', 'edit-backups', ext.name);
+    const backupDir = resolve(okUserHomeDir(homeFor(ctx)), 'edit-backups', ext.name);
     const backupPath = resolve(backupDir, 'SKILL.md.bak');
     if (existsSync(backupPath)) return;
     await tracedMkdir(backupDir, { recursive: true });

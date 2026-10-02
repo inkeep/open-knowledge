@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Hocuspocus } from '@hocuspocus/server';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type * as Y from 'yjs';
@@ -42,6 +42,78 @@ describe('suggestLinks', () => {
 
   afterEach(() => {
     loggerFactory.reset();
+  });
+
+  test('canonical wiki spellings suppress linked labels while unrelated prose remains suggestible', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'ok-suggest-resolved-'));
+    const hocuspocus = new Hocuspocus({ quiet: true });
+    try {
+      mkdirSync(join(root, 'notes'));
+      writeFileSync(join(root, 'notes/beta.md'), '# Beta\n');
+      writeFileSync(
+        join(root, 'source.md'),
+        [
+          '[[beta|Beta]]',
+          '[[NOTES/BETA|Beta]]',
+          '[[beta.md|Beta]]',
+          '[[notes/beta.mdx#intro|Beta]]',
+          'Plain Beta remains useful.',
+        ].join('\n'),
+      );
+      const result = await suggestLinks({
+        hocuspocus,
+        fileIndex: buildFileIndex(root, ['notes/beta', 'source']),
+        docName: 'notes/beta',
+      });
+      expect(result.mentions).toEqual([
+        expect.objectContaining({ source: 'source', excerpt: 'Plain Beta remains useful.' }),
+      ]);
+      writeFileSync(join(root, 'source.md'), '[[missing|Beta]]\n');
+      const edited = await suggestLinks({
+        hocuspocus,
+        fileIndex: buildFileIndex(root, ['notes/beta', 'source']),
+        docName: 'notes/beta',
+      });
+      expect(edited.mentions).toEqual([
+        expect.objectContaining({ source: 'source', excerpt: 'Beta' }),
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('bundle-relative wiki links suppress only mentions of the target in their own bundle', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'ok-suggest-bundle-'));
+    const hocuspocus = new Hocuspocus({ quiet: true });
+    const bundle = '.agents/skills/demo';
+    const pages = {
+      [`${bundle}/references/beta`]: '# Beta\n',
+      [`${bundle}/SKILL`]: '[[references/beta.md#intro|Beta]]\nPlain Beta remains useful.\n',
+      [`${bundle}/references/nested/guide`]: '[[references/beta|Beta]]\n',
+      '.agents/skills/other/references/beta': '# Other target\n',
+      '.agents/skills/other/SKILL': '[[references/beta|Beta]]\n',
+    };
+    try {
+      for (const [name, body] of Object.entries(pages)) {
+        const path = join(root, `${name}.md`);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, body);
+      }
+      const result = await suggestLinks({
+        hocuspocus,
+        fileIndex: buildFileIndex(root, Object.keys(pages)),
+        docName: `${bundle}/references/beta`,
+      });
+      expect(result.mentions).toEqual([
+        expect.objectContaining({
+          source: `${bundle}/SKILL`,
+          excerpt: 'Plain Beta remains useful.',
+        }),
+        expect.objectContaining({ source: '.agents/skills/other/SKILL', excerpt: 'Beta' }),
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test('returns a plain unlinked mention from the admitted disk corpus', async () => {

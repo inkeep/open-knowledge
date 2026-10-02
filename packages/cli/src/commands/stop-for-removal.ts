@@ -1,6 +1,7 @@
 import { realpath } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
+import { okUserHomeDisplayPath } from '@inkeep/open-knowledge-core';
 import {
   createProbeFailureReporter,
   isLockProcessRunning,
@@ -178,7 +179,7 @@ export async function stopServerForRemoval(
             : 'Stop the server manually. ';
       const causeRecord =
         nativeFailures.length > 0
-          ? 'The failure detail is recorded in the CLI log under ~/.ok/logs. '
+          ? `The failure detail is recorded in the CLI log under ${okUserHomeDisplayPath('logs')}. `
           : '';
       throw refusal(
         `Cannot verify the identity of process ${state.lock.pid} recorded in the server lock at ${state.lockPath}; the OS process-start query failed or is unavailable, so it was not signalled. ` +
