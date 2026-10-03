@@ -1,0 +1,3 @@
+*
+!scripts/container-entrypoint.sh
+!scripts/container-healthcheck.mjs
