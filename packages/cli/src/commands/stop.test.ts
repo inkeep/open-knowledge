@@ -4,7 +4,31 @@ import { join } from 'node:path';
 import { lockFilePath } from '@inkeep/open-knowledge-server';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { LockState } from './lock-state.ts';
-import { buildStopPlan, formatNoTargetMessage, probeCollabClients, runStop } from './stop.ts';
+import {
+  buildStopPlan,
+  findLockDirByNumber,
+  formatNoTargetMessage,
+  probeCollabClients,
+  runStop,
+} from './stop.ts';
+
+test('legacy numeric lookup retains first port match before PID fallback', async () => {
+  const dirs = ['/tmp/a', '/tmp/b', '/tmp/c'];
+  const inspect = (dir: string) =>
+    dir === dirs[0]
+      ? aliveLock(4242, 3333)
+      : dir === dirs[1]
+        ? aliveLock(10, 4242)
+        : aliveLock(11, 4242);
+  expect(
+    await findLockDirByNumber(
+      4242,
+      () => true,
+      async () => dirs,
+      inspect,
+    ),
+  ).toBe('/tmp/b');
+});
 
 function aliveLock(pid: number, port: number): LockState {
   return {
@@ -65,6 +89,19 @@ describe('buildStopPlan', () => {
 });
 
 describe('runStop', () => {
+  test('never signals an unverified owner even with force', async () => {
+    const kill = vi.fn();
+    const outcome = await runStop({
+      lockDir: '/tmp/x',
+      force: true,
+      inspect: () => ({ status: 'unverified-owner', lockPath: '/tmp/server.lock', pid: 100 }),
+      kill,
+      log: () => {},
+      error: () => {},
+    });
+    expect(outcome.decision.code).toBe('ownership-unverified');
+    expect(kill).not.toHaveBeenCalled();
+  });
   test('no running processes → log and exit 0 equivalent', async () => {
     const logs: string[] = [];
     const killed: Array<[number, string]> = [];
@@ -78,6 +115,7 @@ describe('runStop', () => {
     expect(outcome.hadTargets).toBe(false);
     expect(outcome.stopped).toEqual([]);
     expect(outcome.failed).toEqual([]);
+    expect(outcome.decision.code).toBe('already-stopped');
     expect(killed).toEqual([]);
     expect(logs).toEqual(['No running open-knowledge processes.']);
   });
@@ -95,6 +133,7 @@ describe('runStop', () => {
     expect(killed).toEqual([[100, 'SIGTERM']]);
     expect(outcome.stopped.map((t) => t.name)).toEqual(['server']);
     expect(outcome.failed).toEqual([]);
+    expect(outcome.decision.code).toBe('signalled');
     expect(logs.at(0)).toContain('server (pid=100, port=3001)');
   });
 
@@ -113,6 +152,7 @@ describe('runStop', () => {
     expect(outcome.failed).toHaveLength(1);
     expect(outcome.failed[0]?.target.pid).toBe(100);
     expect(outcome.failed[0]?.error).toBe('EPERM');
+    expect(outcome.decision.code).toBe('signal-failed');
     expect(errors.at(0)).toContain('server (pid=100)');
   });
 
@@ -192,6 +232,7 @@ describe('runStop in-use guard', () => {
     expect(killed).toEqual([]);
     expect(outcome.stopped).toEqual([]);
     expect(outcome.declined).toEqual({ clients: 2 });
+    expect(outcome.decision.code).toBe('clients-connected');
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain('2 collaboration clients');
     expect(errors[0]).toContain('--force');

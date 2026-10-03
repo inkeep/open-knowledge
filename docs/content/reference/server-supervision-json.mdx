@@ -1,0 +1,217 @@
+---
+title: Server supervision JSON
+icon: LuBraces
+description: Versioned CLI output for local server readiness, inventory, stop, and cleanup.
+---
+
+Use the opt-in `json-v1` format when a local process supervisor needs to observe or act on an OpenKnowledge server. Run these commands from the project, or use the global `--cwd <directory>` option:
+
+```bash
+ok status --format json-v1
+ok ps --format json-v1
+ok stop [target] --format json-v1
+ok clean --format json-v1
+```
+
+`--format=json-v1` is equivalent. This format is available on these four commands only. Omitting `--format` preserves their text output. The older `--json` output of `status` and `ps` is unchanged and cannot be combined with `--format`; `stop` and `clean` still reject `--json`. An unsupported or missing format value, unknown option, or invalid combination is a parser error on stderr with no v1 document.
+
+## Launch and poll
+
+Start the project server with `ok start` and retain that child process. Poll `ok status --format json-v1` for the same project until `server.readiness.status` is `ready`; choose your own polling interval and deadline, and stop polling if the child exits. An exit code of `0` from `status` means the observation succeeded, even when readiness is `pending`, `failed`, or another non-ready state. Readiness is in the document, not in the CLI exit code. Read the CLI result instead of parsing terminal text or reading `server.lock` yourself.
+
+V1 provides no structured `start` output, readiness stream, fleet management, Tailscale policy, standalone capabilities command, or new lock owner/profile token. The wrapper retains the launch process and owns its deadlines, retries, and response to child exit.
+
+## Shared document and compatibility rules
+
+An established v1 invocation writes exactly one complete JSON object followed by one newline to stdout. Progress and diagnostics go to stderr or file logging. Every document contains the following required fields:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `schemaVersion` | integer, always `1` | The CLI document contract version. |
+| `command` | `status`, `ps`, `stop`, or `clean` | The command that produced the document. |
+| `result.kind` | `success`, `no-op`, `refused`, `partial`, or `error` | The outcome class. |
+| `result.code` | stable string | The machine-readable outcome listed below. |
+| `result.detail` | string or `null` | Human-readable context; do not parse it as a code. |
+
+All fields named below are required unless stated otherwise. Unavailable values are explicit `null`, never guessed. Names use camelCase. Timestamps are UTC ISO 8601 strings with millisecond precision or `null`.
+
+`success` and `no-op` exit `0`; `refused`, `partial`, and `error` exit `1`. The exit code reports whether the CLI operation succeeded, not whether an application is ready or a signalled process has exited. A project or config failure after the valid format is selected produces a structured error document. Parser errors, help/version output, failures before the command and format can be identified, serialization failures, and a closed stdout pipe may use ordinary CLI handling without a document. A serialization or write failure exits nonzero when the process can report an exit status.
+
+`schemaVersion` is separate from the server's nullable `protocolVersion`, nullable `runtimeVersion`, and the `revision` of a confirmed effective-runtime snapshot. V1 consumers must ignore unknown object fields. Treat unknown enum values and codes as unrecognized; never infer readiness or a successful mutation from an unknown value. Adding optional fields or new enum/code values can extend v1 under that rule. Removing required fields, changing types, or redefining a value requires a new format value.
+
+## Project status
+
+`ok status --format json-v1` selects one project. `project` has `root` (absolute path or `null`) and `resolution` (`cwd`, `enclosing-project`, or `unavailable`). `server` contains:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `lock` | `{path, state}` | `path` is an absolute path or `null`; `state` is `missing`, `corrupt`, `read-error`, `unverified-owner`, `foreign-host`, `dead-pid`, `alive`, or `unknown` if classification could not run. |
+| `process` | object or `null` | A safely parsed PID and nullable lock metadata: `{pid, startedAt, port, hostname, draining}`. `pid` is a positive integer; `startedAt` is a timestamp or `null`; `port` is an integer or `null`; `hostname` is a string or `null`; `draining` is a boolean or `null`. |
+| `alive` | boolean or `null` | Local process liveness, or unknown. |
+| `identity` | `{serverInstanceId}` or `null` | Nonempty instance ID only after the server response matches the selected project and live PID. |
+| `runtimeVersion` | string or `null` | Validated server version metadata, if available. |
+| `protocolVersion` | positive integer or `null` | Validated server protocol metadata, if available. |
+| `capabilities` | string array or `null` | Validated advertised capabilities; an empty array differs from unavailable metadata. |
+| `launchKind` | `interactive`, `mcp-spawned`, or `null` | Known launch kind, with no inferred profile. |
+| `readiness` | `{status, checkedAt, degraded}` | `checkedAt` is a timestamp after a probe or `null` if none was attempted; `degraded` is a string array. |
+| `runtime` | object or `null` | A complete server-confirmed applied snapshot, never a reconstruction from config or a lock. |
+
+Readiness has seven values:
+
+| `readiness.status` | Meaning |
+| --- | --- |
+| `ready` | The matched server returned a valid ready response; `degraded` preserves its reported components. |
+| `pending` | The matched server is still starting. |
+| `failed` | The matched server reported failed readiness. |
+| `draining` | The matched server is draining. |
+| `unreachable` | Identity was confirmed, but the bounded readiness request failed or timed out. |
+| `not-running` | No live process was found for the selected project. |
+| `unknown` | Ownership or identity is uncertain, the endpoint or response is incompatible, or there is no safe local dial address. |
+
+The identity and readiness requests share a two-second deadline. `degraded` is `[]` except on validated `ready` responses. A PID or an unverified readiness response alone never proves the server is ready. Older servers without compatible inspection leave `identity` and `runtime` as `null` and readiness as `unknown` when identity cannot be confirmed. Older lock files can also leave optional process, version, capability, and launch fields `null`.
+
+When nonnull, `runtime` is `{source, revision, effectiveSince, port, bind, idleShutdown, externalUrl}`: `source` is `server`; `revision` is a positive integer local to this server instance (initially `1`); `effectiveSince` is a timestamp; `port` is the actual bound integer port; `bind` is a nonempty array of applied listener addresses; `idleShutdown` is the effective duration string or `off`; and `externalUrl` is a string or `null`. It reports applied startup settings, including effective launch overrides. A later config edit does not make an unapplied setting appear in this snapshot. When a complete truthful snapshot is unavailable, `runtime` is `null`.
+
+### Ready server
+
+```json
+{
+  "schemaVersion": 1,
+  "command": "status",
+  "result": { "kind": "success", "code": "observed", "detail": null },
+  "project": { "root": "/projects/wiki", "resolution": "enclosing-project" },
+  "server": {
+    "lock": { "path": "/projects/wiki/.ok/local/server.lock", "state": "alive" },
+    "process": { "pid": 1234, "startedAt": "2026-09-22T14:20:00.000Z", "port": 4242, "hostname": "host-a", "draining": false },
+    "alive": true,
+    "identity": { "serverInstanceId": "5c73a6b7-4c44-499c-9b2c-2973108f7988" },
+    "runtimeVersion": "0.75.0",
+    "protocolVersion": 2,
+    "capabilities": ["http", "ws", "ui"],
+    "launchKind": "interactive",
+    "readiness": { "status": "ready", "checkedAt": "2026-09-22T14:30:00.000Z", "degraded": [] },
+    "runtime": {
+      "source": "server", "revision": 1, "effectiveSince": "2026-09-22T14:20:01.000Z",
+      "port": 4242, "bind": ["127.0.0.1"], "idleShutdown": "30m", "externalUrl": null
+    }
+  }
+}
+```
+
+### No server lock
+
+```json
+{
+  "schemaVersion": 1,
+  "command": "status",
+  "result": { "kind": "success", "code": "observed", "detail": null },
+  "project": { "root": "/projects/wiki", "resolution": "cwd" },
+  "server": {
+    "lock": { "path": "/projects/wiki/.ok/local/server.lock", "state": "missing" },
+    "process": null,
+    "alive": false,
+    "identity": null,
+    "runtimeVersion": null,
+    "protocolVersion": null,
+    "capabilities": null,
+    "launchKind": null,
+    "readiness": { "status": "not-running", "checkedAt": null, "degraded": [] },
+    "runtime": null
+  }
+}
+```
+
+### Status result codes
+
+| Code | Kind | Exit | Meaning |
+| --- | --- | --- | --- |
+| `observed` | success | 0 | Lock classification and status observation completed, regardless of readiness. |
+| `project-unavailable` | error | 1 | Project or configuration resolution failed. |
+| `operation-failed` | error | 1 | Another command-level operation failed. |
+
+## Machine inventory
+
+`ok ps --format json-v1` returns `servers`, an array of discovered lock observations. Each entry has `projectRoot` (recognized absolute project path or `null`) and the same required `lock`, `process`, `alive`, `runtimeVersion`, `protocolVersion`, `capabilities`, and `launchKind` fields and nullability as status. Entries have no `identity`, `readiness`, or `runtime`: inventory does not probe every server. It retains malformed, unreadable, dead, foreign, and unverified observations; entries are sorted and duplicate lock paths collapse. Distinct paths remain distinct. `ok ps all --format json-v1` and `ok ps --all --format json-v1` yield the same inventory. An empty array means discovery found no lock, not that no server exists anywhere on the machine.
+
+```json
+{
+  "schemaVersion": 1,
+  "command": "ps",
+  "result": { "kind": "success", "code": "inventoried", "detail": null },
+  "servers": []
+}
+```
+
+| Code | Kind | Exit | Meaning |
+| --- | --- | --- | --- |
+| `inventoried` | success | 0 | Discovery and inventory completed. |
+| `discovery-failed` | error | 1 | Discovery failed before an inventory could be built. |
+| `operation-failed` | error | 1 | Another command-level operation failed. |
+
+## Stop decisions
+
+`ok stop [target] --format json-v1` accepts an omitted project target, a directory path, a numeric port or PID, or `all`. The required `target` object has `kind` (`project`, `path`, `number`, or `all`), the original selector string as `value` (`null` when omitted), and a resolved absolute `projectRoot` or `null`. `force` is a required boolean. `targets` has one record per considered lock. Each record has `lockPath` and retryable `projectRoot` (absolute paths or `null`), `serverInstanceId` (confirmed nonempty string or `null`), `pid` (positive integer or `null`), `port` (integer or `null`), stable `code`, and human `detail` (string or `null`). A known project/path lock has a record even when missing; a numeric target with no match has none.
+
+For a numeric target, v1 resolves all matching discovered stoppable locks before mutation. Repeated discovery of one normalized lock path collapses. Distinct paths collapse only when server inspection confirms the same instance ID, PID, and canonical project root for both. If more than one candidate remains, `ambiguous-target` refuses without a signal, client probe, or lock mutation. Use a reported validated `projectRoot` to retry with `ok stop <directory>`. Copied lock metadata, a matching port/PID, or an older or unreachable inspection endpoint never proves two paths identify one server. Legacy text invocations retain their first-match lookup.
+
+`--force` bypasses only the connected-client refusal. An unverified owner is never signalled. A foreign-host lock with a locally live PID retains the existing stoppable behavior. When the connected-client probe fails or is unavailable, stop proceeds under its existing fail-open policy. `signalled` means SIGTERM was sent; it does not mean process exit was observed. There is no termination-wait or termination-timeout result. `all` keeps a record for each considered lock; a mix of successful signals and refusal or failure is `partially-signalled`.
+
+### Connected clients refuse stop
+
+```json
+{
+  "schemaVersion": 1,
+  "command": "stop",
+  "result": { "kind": "refused", "code": "clients-connected", "detail": "2 collaboration clients are connected." },
+  "target": { "kind": "project", "value": null, "projectRoot": "/projects/wiki" },
+  "force": false,
+  "targets": [
+    { "lockPath": "/projects/wiki/.ok/local/server.lock", "projectRoot": "/projects/wiki", "serverInstanceId": null, "pid": 1234, "port": 4242, "code": "clients-connected", "detail": "2 collaboration clients are connected." }
+  ]
+}
+```
+
+| Code | Kind | Exit | Meaning |
+| --- | --- | --- | --- |
+| `signalled` | success | 0 | SIGTERM was sent, with no claim that exit was observed. |
+| `already-stopped` | no-op | 0 | No stoppable selected project/path process, or no stoppable `all` candidate. |
+| `target-not-found` | no-op | 0 | No discovered stoppable lock matched the numeric selector. |
+| `clients-connected` | refused | 1 | A positive client count blocked an unforced stop. |
+| `ownership-unverified` | refused | 1 | Ownership could not be safely verified. |
+| `ambiguous-target` | refused | 1 | More than one distinct numeric candidate remains. |
+| `signal-failed` | error | 1 | Sending SIGTERM failed. |
+| `partially-signalled` | partial | 1 | `all` signalled some candidates and refused or failed others. |
+| `project-unavailable` | error | 1 | Project or configuration resolution failed. |
+| `operation-failed` | error | 1 | Another command-level operation failed. |
+
+## Clean decisions
+
+`ok clean --format json-v1` acts on the selected project's server lock. `project` has the same required `root` and `resolution` fields as status. After project resolution, `targets` contains exactly one record with `lockPath` (absolute path or `null`), stable `code`, and human `detail` (string or `null`), including when the lock is missing or retained. A project-resolution failure has `project.root: null` and `targets: []`.
+
+Clean removes a dead-PID lock or locally owned corrupt lock when unlink succeeds. It retains a live process, foreign-host evidence, unverified ownership, a malformed foreign-owned lock, and an unreadable lock. It never broadens deletion to turn uncertain state into stale state. Current clean acts on one lock, so it does not emit `partially-cleaned` today.
+
+### Failed removal
+
+```json
+{
+  "schemaVersion": 1,
+  "command": "clean",
+  "result": { "kind": "error", "code": "remove-failed", "detail": "EACCES" },
+  "project": { "root": "/projects/wiki", "resolution": "cwd" },
+  "targets": [
+    { "lockPath": "/projects/wiki/.ok/local/server.lock", "code": "remove-failed", "detail": "EACCES" }
+  ]
+}
+```
+
+| Code | Kind | Exit | Meaning |
+| --- | --- | --- | --- |
+| `stale-removed` | success | 0 | A stale or locally owned corrupt lock was removed. |
+| `nothing-to-clean` | no-op | 0 | The lock was missing. |
+| `live-retained` | no-op | 0 | A live local lock was retained. |
+| `ownership-unverified` | refused | 1 | Foreign or uncertain ownership caused retention. |
+| `read-failed` | error | 1 | The lock could not be read. |
+| `remove-failed` | error | 1 | Unlink failed. |
+| `partially-cleaned` | partial | 1 | Reserved for a future compatible multi-target cleanup; not emitted today. |
+| `project-unavailable` | error | 1 | Project or configuration resolution failed. |
+| `operation-failed` | error | 1 | Another command-level operation failed. |
