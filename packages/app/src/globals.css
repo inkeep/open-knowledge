@@ -2274,9 +2274,13 @@
   text-decoration-style: dotted;
 }
 
-/* External — leaves-the-workspace visual. Find decorations split a single
-   link into adjacent inline fragments; only the final fragment gets the cue. */
-.ProseMirror [data-resolution-state="external"]:has(+ [data-resolution-state="external"])::after {
+/* External — leaves-the-workspace visual. Find decorations and remote caret
+   widgets split a single link into sibling fragments inside its `[data-link]`
+   wrapper; only the final fragment gets the cue. Wiki-link chips are
+   paragraph-level siblings of each other, so they stay out of this rule. */
+.ProseMirror
+  [data-link]
+  [data-resolution-state="external"]:has(~ [data-resolution-state="external"])::after {
   content: none;
 }
 

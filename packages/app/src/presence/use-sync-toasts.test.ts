@@ -36,14 +36,18 @@ describe('runDisconnectRestart', () => {
     const { bridge } = makeBridge({ ok: false, reason: 'eperm' });
     await runDisconnectRestart(bridge);
     expect(errorSpy).toHaveBeenCalledTimes(1);
-    expect(errorSpy.mock.calls[0]?.[0]).toBe(restartServerFailureMessage('eperm'));
+    expect(errorSpy.mock.calls[0]?.[0]).toBe(
+      restartServerFailureMessage({ ok: false, reason: 'eperm' }),
+    );
   });
 
   test('surfaces an error toast with the mapped message on an other failure', async () => {
     const { bridge } = makeBridge({ ok: false, reason: 'other' });
     await runDisconnectRestart(bridge);
     expect(errorSpy).toHaveBeenCalledTimes(1);
-    expect(errorSpy.mock.calls[0]?.[0]).toBe(restartServerFailureMessage('other'));
+    expect(errorSpy.mock.calls[0]?.[0]).toBe(
+      restartServerFailureMessage({ ok: false, reason: 'other' }),
+    );
   });
 
   test('swallows a thrown invoke (window torn down mid-restart) — no error toast', async () => {

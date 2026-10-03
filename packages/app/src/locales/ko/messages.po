@@ -912,6 +912,14 @@ msgstr "{folderCount, plural, other {폴더}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} GitHub 스타"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "{hiddenCount, plural, one {# more link} other {# more links}}"
+msgstr "{hiddenCount, plural, other {링크 #개 더}}"
+
+#: src/lib/restart-collab-server.ts
+msgid "{holder} is serving this project, so this app won't stop it. Close this window and open the project again to stop {holder}'s server and open the project here."
+msgstr "{holder}이(가) 이 프로젝트를 서비스하고 있으므로 이 앱은 중지하지 않습니다. 이 창을 닫고 프로젝트를 다시 열면 {holder}의 서버를 중지하고 여기에서 프로젝트를 열 수 있습니다."
+
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -3930,6 +3938,10 @@ msgstr "복사 중"
 msgid "Copying..."
 msgstr "복사 중…"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
+msgstr "{shareBranch}의 심볼릭 링크를 확인할 수 없어 전환하지 않았습니다. 다시 시도하세요. 계속 실패하면 Git이 설치되어 있고 프로젝트 폴더를 읽을 수 있는지 확인하세요."
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Could not classify the merge — try again."
 msgstr "병합을 분류할 수 없습니다. 다시 시도하세요."
@@ -5159,6 +5171,14 @@ msgstr "Mermaid 소스에서 만든 다이어그램입니다. 플로차트, 시�
 #: src/components/MermaidFileViewer.tsx
 msgid "Diagram view mode"
 msgstr "다이어그램 보기 모드"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not open {shareBranch} in a worktree: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "워크트리에서 {shareBranch} 브랜치를 열지 않았습니다. 저장소 밖이나 비공개 파일, 또는 확인할 수 없는 위치를 가리키는 심볼릭 링크가 있습니다. 보통 브랜치를 푸시한 사람이 링크를 수정해야 합니다. 이 컴퓨터의 폴더를 읽을 수 없다면 읽을 수 있게 한 뒤 다시 시도하세요."
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "{shareBranch}(으)로 전환하지 않았습니다. 저장소 밖이나 비공개 파일, 또는 확인할 수 없는 위치를 가리키는 심볼릭 링크가 있습니다. 보통 브랜치를 푸시한 사람이 링크를 수정해야 합니다. 이 컴퓨터의 폴더를 읽을 수 없다면 읽을 수 있게 한 뒤 다시 시도하세요."
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx
@@ -14110,6 +14130,10 @@ msgstr "동기화 실패. 자세한 내용은 서버 로그를 확인하세요."
 msgid "Sync is failing. See the sync status for details."
 msgstr "동기화에 실패하고 있습니다. 자세한 내용은 동기화 상태를 확인하세요."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Sync is paused because incoming changes leave a symlink pointing outside the repository or into private files, or with a target that cannot be checked. Ask whoever pushed them to fix the link, or update Git if yours is older than 2.38. Automatic sync then resumes; in Manual mode, pull again."
+msgstr "들어오는 변경 사항으로 인해 심볼릭 링크가 저장소 밖이나 비공개 파일을 가리키거나 대상을 확인할 수 없게 되어 동기화가 일시 중지되었습니다. 푸시한 사람에게 링크 수정을 요청하거나, Git 버전이 2.38보다 오래되었다면 Git을 업데이트하세요. 그러면 자동 동기화가 다시 시작되며, 수동 모드에서는 다시 풀하세요."
+
 #: src/components/SyncBlockingChanges.tsx
 msgid "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."
 msgstr "동기화가 일시 중지되었습니다. 계속하려면 이 로컬 편집 내용을 커밋하거나 터미널에서 정리하세요."
@@ -15088,6 +15112,11 @@ msgstr "필요한 MCP 서버 항목이 기록되지 않아 설정할 수 없었�
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
 msgstr "아래 나열된 MCP 서버 항목과 스킬 파일을 삭제합니다. 다시 추가할 때까지 에이전트가 문서에 접근할 수 없습니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "This development build can't connect agents, so it won't change the agent setup of your installed OpenKnowledge app."
+msgstr "이 개발 빌드는 에이전트를 연결할 수 없으므로 설치된 OpenKnowledge 앱의 에이전트 설정을 변경하지 않습니다."
 
 #. placeholder {0}: connection.label
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -16509,10 +16538,6 @@ msgstr "어디에 둘까요?"
 #: src/components/ImportSkillForm.tsx
 msgid "Which skill"
 msgstr "어떤 스킬"
-
-#: src/components/settings/SyncSection.tsx
-msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
-msgstr "로그아웃 상태에서는 이 설정과 관계없이 업데이트를 최대 3분에 한 번만 확인합니다."
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"

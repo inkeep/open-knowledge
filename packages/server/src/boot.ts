@@ -443,6 +443,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   const contentAssetMiddleware =
     opts.serveContentAssets !== false
       ? createAssetServeMiddleware({
+          contentDir: opts.contentDir,
           contentFilter: serverInstance.contentFilter,
           contentSirv: sirv(opts.contentDir, { dev: true, dotfiles: false }),
           inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,

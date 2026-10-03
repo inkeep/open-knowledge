@@ -50,7 +50,11 @@ import {
   stripDocExtension,
 } from '../doc-extensions.ts';
 import { extractActorIdentity } from '../extract-actor-identity.ts';
-import { canonicalRelPathForNewTarget, isContainmentRejection } from '../fs-safety.ts';
+import {
+  canonicalRelPathForNewTarget,
+  isContainmentRejection,
+  PrivateStateSymlinkError,
+} from '../fs-safety.ts';
 import { classifyFsPath, normalizeFsPath } from '../fs-traced.ts';
 import type { PinoLogger } from '../logger.ts';
 import { createMultipartParser, type MultipartParser } from '../multipart.ts';
@@ -372,8 +376,8 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
     let fullPath: string;
     try {
       fullPath = resolveContentEntryPath(contentDir, 'folder', lexicalRelPath);
-    } catch {
-      return false;
+    } catch (err) {
+      return err instanceof PrivateStateSymlinkError;
     }
     return isReservedProjectStatePath(
       canonicalRelPathForNewTarget(fullPath, resolve(contentDir), log),

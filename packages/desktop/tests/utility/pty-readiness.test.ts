@@ -6,16 +6,17 @@ import type { PtyProcessLike, PtySpawnOptions, SpawnPty } from '../../src/utilit
 import {
   buildCwdFileProofCommand,
   createHarnessBudget,
+  createHarnessReadinessAfterCompletion,
+  createHarnessReadinessObserver,
   createPtyHostProbe,
   type EvaluatedInputOptions,
   type EvaluatedInputTiming,
   HARNESS_CHILD_KILL_WAIT_MS,
+  HARNESS_EXIT_AFTER_KILL_STALL_MS,
   HARNESS_REPORT_RESERVE_MS,
   HARNESS_VERDICT_POLL_INTERVAL_MS,
   HarnessBudgetRefusal,
-  harnessExitAfterKillWait,
   harnessTimeouts,
-  harnessWindowsLaunchWait,
   type PtyStream,
   remainingGrantMs,
   resolveHarnessBudgetMs,
@@ -24,8 +25,13 @@ import {
   type WaitOptions,
   waitForCondition,
   waitForEvaluatedInput,
+  waitForHarnessExit,
   waitForShellReady,
 } from '../support/pty-readiness.test-helper.ts';
+import {
+  type ControlledHarnessResult,
+  runControlledHarness,
+} from './pty-harness-environment.test-helper.ts';
 
 interface FakeStream extends PtyStream {
   emit(chunk: string): void;
@@ -49,9 +55,605 @@ function createFakeStream(): FakeStream {
 
 const FAST_READY = { intervalMs: 5, quietSamples: 20, stallMs: 5_000 } as const;
 
+function lifecycleEventIndex(
+  result: ControlledHarnessResult,
+  shell: number,
+  event: string,
+): number {
+  return result.events.findIndex((entry) => entry.shell === shell && entry.event === event);
+}
+
+function scenarioVerdicts(result: ControlledHarnessResult): string[] {
+  return result.lines
+    .filter((line) => /^(?:PASS|FAIL|REFUSED) /u.test(line))
+    .map((line) => {
+      const detailAt = line.indexOf(' :: ');
+      return detailAt === -1 ? line : line.slice(0, detailAt);
+    });
+}
+
+function scenarioFailureLine(result: ControlledHarnessResult, scenario: string): string {
+  const prefix = `FAIL ${scenario} :: `;
+  const line = result.lines.find((entry) => entry.startsWith(prefix));
+  if (line === undefined) throw new Error(`the harness printed no line starting ${prefix}`);
+  return line;
+}
+
+function expectLifecyclePredecessors(result: ControlledHarnessResult): void {
+  expect(result.lines).toContain('PASS real command round-trip at project root');
+  expect(result.lines).toContain('PASS strips desktop env markers from the shell');
+  expect(result.lines).toContain('PASS PowerShell executes a structured launch command');
+  expect(lifecycleEventIndex(result, 3, 'launch-token')).toBeGreaterThan(-1);
+  expect(lifecycleEventIndex(result, 3, 'evaluated-reply')).toBeGreaterThan(-1);
+  expect(lifecycleEventIndex(result, 4, 'spawn')).toBeGreaterThan(-1);
+  expect(lifecycleEventIndex(result, 4, 'output')).toBeGreaterThan(-1);
+  expect(lifecycleEventIndex(result, 4, 'kill-request')).toBeGreaterThan(-1);
+}
+
+function expectLifecyclePass(result: ControlledHarnessResult): void {
+  expectLifecyclePredecessors(result);
+  const exited = lifecycleEventIndex(result, 4, 'exit:1');
+  const respawned = lifecycleEventIndex(result, 5, 'spawn');
+  expect(exited).toBeGreaterThan(lifecycleEventIndex(result, 4, 'kill-request'));
+  expect(respawned).toBeGreaterThan(exited);
+  expect(result.events.slice(respawned + 1)).toContainEqual(
+    expect.objectContaining({ shell: 5, event: 'output' }),
+  );
+  expect(result.lines).toContain('PASS host survives a PTY death and respawns');
+  expect(result.lines).toContain('HARNESS_RESULT ok=5 fail=0 refused=0');
+  expect(result.exitCode).toBe(0);
+}
+
+function expectLifecycleExitFailure(
+  result: ControlledHarnessResult,
+  verdicts: readonly string[],
+  harnessResult: string,
+): void {
+  expectLifecyclePredecessors(result);
+  expect(scenarioVerdicts(result)).toEqual(verdicts);
+  expect(result.lines).toContain(harnessResult);
+  expect(result.lines.join('\n')).toContain('exit after kill');
+  expect(result.lines).not.toContain('PASS host survives a PTY death and respawns');
+  expect(lifecycleEventIndex(result, 5, 'spawn')).toBe(-1);
+  expect(result.exitCode).toBe(1);
+}
+
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+describe('real harness readiness across sequential scenarios', () => {
+  test('keeps an advancing later shell eligible after an earlier scenario passes slowly', async () => {
+    const fast = await runControlledHarness({ firstScenario: 'fast' });
+    expect(fast.lines.join('\n')).toContain('HARNESS_RESULT ok=5 fail=0 refused=0');
+    expect(fast.exitCode).toBe(0);
+    const slow = await runControlledHarness({ firstScenario: 'slow' });
+    expect(slow.lines).toContain('PASS real command round-trip at project root');
+    expect(slow.lines).toContain('PASS strips desktop env markers from the shell');
+    expect(slow.lines.join('\n')).toContain('HARNESS_RESULT ok=5 fail=0 refused=0');
+    expect(slow.exitCode).toBe(0);
+  });
+
+  test('keeps a delayed exit and respawn eligible after an earlier scenario passes slowly', async () => {
+    for (const firstScenario of ['fast', 'slow'] as const) {
+      const result = await runControlledHarness({ firstScenario, phase: 'delayed-exit' });
+      expect(result.lines).toContain('PASS real command round-trip at project root');
+      expect(result.lines).toContain('PASS strips desktop env markers from the shell');
+      expect(result.lines).toContain('PASS PowerShell executes a structured launch command');
+      expect(result.lines).toContain('HARNESS_RESULT ok=5 fail=0 refused=0');
+      expect(result.exitCode).toBe(0);
+      const exited = result.events.findIndex(
+        (event) => event.shell === 4 && event.event === 'exit:1',
+      );
+      const respawned = result.events.findIndex(
+        (event) => event.shell === 5 && event.event === 'spawn',
+      );
+      expect(exited).toBeGreaterThan(-1);
+      expect(respawned).toBeGreaterThan(exited);
+    }
+  });
+
+  test('accepts a silent exit acknowledgement after the kill request', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'slow',
+      lifecycle: { launchAtMs: 44_000, exitAfterKillMs: 1_800, outputAfterKill: false },
+    });
+    expectLifecyclePass(result);
+    const killed = lifecycleEventIndex(result, 4, 'kill-request');
+    const exited = lifecycleEventIndex(result, 4, 'exit:1');
+    expect(result.events.slice(killed + 1, exited)).not.toContainEqual(
+      expect.objectContaining({ shell: 4, event: 'output' }),
+    );
+  });
+
+  test('waits for replacement output after accepting a late exit', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'slow',
+      lifecycle: {
+        launchAtMs: 44_000,
+        exitAfterKillMs: 1_200,
+        replacementOutputAfterCreateMs: 400,
+      },
+    });
+    expectLifecyclePass(result);
+    expect(lifecycleEventIndex(result, 5, 'replacement-first-data')).toBeGreaterThan(
+      lifecycleEventIndex(result, 5, 'spawn'),
+    );
+  });
+
+  test('uses the exit window for a silent acknowledgement', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'slow',
+      lifecycle: { launchAtMs: 33_000, exitAfterKillMs: 9_000, outputAfterKill: false },
+    });
+    expectLifecyclePass(result);
+    const killed = lifecycleEventIndex(result, 4, 'kill-request');
+    const exited = lifecycleEventIndex(result, 4, 'exit:1');
+    expect(result.events.slice(killed + 1, exited)).not.toContainEqual(
+      expect.objectContaining({ shell: 4, event: 'output' }),
+    );
+  });
+
+  test.each([null, 35_000])(
+    'never treats output during termination as an exit acknowledgement when exit is %s',
+    async (exitAfterKillMs) => {
+      const result = await runControlledHarness({
+        firstScenario: 'fast',
+        lifecycle: { launchAtMs: 26_000, exitAfterKillMs, outputAfterKill: true },
+      });
+      expectLifecycleExitFailure(
+        result,
+        [
+          'PASS real command round-trip at project root',
+          'PASS strips desktop env markers from the shell',
+          'PASS PowerShell executes a structured launch command',
+          'FAIL host survives a PTY death and respawns',
+          'PASS bad shell surfaces as a spawn failure',
+        ],
+        'HARNESS_RESULT ok=4 fail=1 refused=0',
+      );
+      const killed = lifecycleEventIndex(result, 4, 'kill-request');
+      expect(result.events.slice(killed + 1)).toContainEqual(
+        expect.objectContaining({ shell: 4, event: 'output' }),
+      );
+      expect(result.lines).toContain('PASS bad shell surfaces as a spawn failure');
+    },
+  );
+
+  test.each([
+    {
+      ending: 'stays alive',
+      replacement: { replacementOutputAfterCreateMs: null },
+      reason: `before its ${INITIAL_ALLOWANCE_BOUND} ended, ${NO_SHELL_OUTPUT_VERDICT}`,
+      notReason: 'shell failed before',
+    },
+    {
+      ending: 'then exits',
+      replacement: { replacementOutputAfterCreateMs: null, replacementExitAfterCreateMs: 500 },
+      reason: `shell failed before second shell prompt (host survived): ${SHELL_EXIT}`,
+      notReason: NO_SHELL_OUTPUT_VERDICT,
+    },
+  ])(
+    'fails the respawn scenario when the replacement writes nothing and $ending',
+    async ({ replacement, reason, notReason }) => {
+      const result = await runControlledHarness({
+        firstScenario: 'fast',
+        lifecycle: { launchAtMs: 26_000, exitAfterKillMs: 1_200, ...replacement },
+      });
+      expectLifecyclePredecessors(result);
+      const exited = lifecycleEventIndex(result, 4, 'exit:1');
+      const respawned = lifecycleEventIndex(result, 5, 'spawn');
+      expect(exited).toBeGreaterThan(-1);
+      expect(respawned).toBeGreaterThan(exited);
+      expect(result.events.slice(respawned + 1)).not.toContainEqual(
+        expect.objectContaining({ shell: 5, event: 'output' }),
+      );
+      expect(result.lines.join('\n')).toContain('FAIL host survives a PTY death and respawns');
+      expect(result.lines).toContain('PASS bad shell surfaces as a spawn failure');
+      expect(scenarioVerdicts(result)).toEqual([
+        'PASS real command round-trip at project root',
+        'PASS strips desktop env markers from the shell',
+        'PASS PowerShell executes a structured launch command',
+        'FAIL host survives a PTY death and respawns',
+        'PASS bad shell surfaces as a spawn failure',
+      ]);
+      expect(result.lines).toContain('HARNESS_RESULT ok=4 fail=1 refused=0');
+      expect(result.exitCode).toBe(1);
+      const respawnFailure = scenarioFailureLine(result, 'host survives a PTY death and respawns');
+      expect(respawnFailure).toContain(reason);
+      expect(respawnFailure).not.toContain(notReason);
+      expect(respawnFailure).not.toContain(SHELL_PROGRESS_ADVANCED);
+    },
+  );
+
+  test('rejects replacement output when that shell has already exited', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'fast',
+      lifecycle: {
+        launchAtMs: 26_000,
+        exitAfterKillMs: 1_200,
+        replacementOutputAfterCreateMs: 1,
+        replacementExitAfterCreateMs: 1,
+      },
+    });
+    expectLifecyclePredecessors(result);
+    const respawned = lifecycleEventIndex(result, 5, 'spawn');
+    const output = lifecycleEventIndex(result, 5, 'output');
+    const exited = lifecycleEventIndex(result, 5, 'exit:1');
+    expect(respawned).toBeGreaterThan(lifecycleEventIndex(result, 4, 'exit:1'));
+    expect(output).toBeGreaterThan(respawned);
+    expect(exited).toBeGreaterThan(output);
+    expect(result.lines.join('\n')).toContain('FAIL host survives a PTY death and respawns');
+    expect(result.lines).toContain('PASS bad shell surfaces as a spawn failure');
+    expect(scenarioVerdicts(result)).toEqual([
+      'PASS real command round-trip at project root',
+      'PASS strips desktop env markers from the shell',
+      'PASS PowerShell executes a structured launch command',
+      'FAIL host survives a PTY death and respawns',
+      'PASS bad shell surfaces as a spawn failure',
+    ]);
+    expect(result.lines).toContain('HARNESS_RESULT ok=4 fail=1 refused=0');
+    expect(result.exitCode).toBe(1);
+  });
+
+  test.each([null, 3_000])(
+    'keeps the report bound authoritative when exit is %s',
+    async (exitAfterKillMs) => {
+      const result = await runControlledHarness({
+        firstScenario: 'slow',
+        lifecycle: { launchAtMs: 44_000, exitAfterKillMs, outputAfterKill: true },
+      });
+      expectLifecycleExitFailure(
+        result,
+        [
+          'PASS real command round-trip at project root',
+          'PASS strips desktop env markers from the shell',
+          'PASS PowerShell executes a structured launch command',
+          'FAIL host survives a PTY death and respawns',
+          'REFUSED bad shell surfaces as a spawn failure',
+        ],
+        'HARNESS_RESULT ok=3 fail=1 refused=1',
+      );
+      expect(result.lines.join('\n')).not.toContain('hard timeout');
+      const killed = lifecycleEventIndex(result, 4, 'kill-request');
+      expect(result.events.slice(killed + 1)).toContainEqual(
+        expect.objectContaining({ shell: 4, event: 'output' }),
+      );
+      const respawnFailure = scenarioFailureLine(result, 'host survives a PTY death and respawns');
+      expect(respawnFailure).toContain(REPORT_DEADLINE_BOUND);
+      expect(respawnFailure).toContain(NO_EXIT_OBSERVED);
+    },
+  );
+
+  test('does not re-anchor the exit window after delayed kill delivery', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'slow',
+      lifecycle: {
+        launchAtMs: 33_000,
+        exitAfterKillMs: 12_500,
+        firstKillDeliveryMs: 9_000,
+      },
+    });
+    expectLifecycleExitFailure(
+      result,
+      [
+        'PASS real command round-trip at project root',
+        'PASS strips desktop env markers from the shell',
+        'PASS PowerShell executes a structured launch command',
+        'FAIL host survives a PTY death and respawns',
+        'PASS bad shell surfaces as a spawn failure',
+      ],
+      'HARNESS_RESULT ok=4 fail=1 refused=0',
+    );
+    const kills = result.events.filter(
+      (event) => event.shell === 4 && event.event === 'kill-request',
+    );
+    expect(kills.length).toBeGreaterThan(1);
+    expect(result.lines).toContain('PASS bad shell surfaces as a spawn failure');
+  });
+
+  test('preserves the original longer allowance for a fast predecessor', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'fast',
+      lifecycle: { launchAtMs: 44_000, exitAfterKillMs: 14_000, outputAfterKill: false },
+    });
+    expectLifecyclePass(result);
+  });
+
+  test('preserves the original replacement allowance after a fast exit', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'fast',
+      lifecycle: {
+        launchAtMs: 44_000,
+        exitAfterKillMs: 1_800,
+        replacementOutputAfterCreateMs: 10_000,
+      },
+    });
+    expectLifecyclePass(result);
+  });
+
+  test('keeps a slow replacement inside its own output window', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'slow',
+      lifecycle: {
+        launchAtMs: 26_000,
+        exitAfterKillMs: 3_000,
+        replacementOutputAfterCreateMs: 10_000,
+      },
+    });
+    expectLifecyclePredecessors(result);
+    const exited = lifecycleEventIndex(result, 4, 'exit:1');
+    const respawned = lifecycleEventIndex(result, 5, 'spawn');
+    expect(exited).toBeGreaterThan(-1);
+    expect(respawned).toBeGreaterThan(exited);
+    expect(scenarioVerdicts(result)).toEqual([
+      'PASS real command round-trip at project root',
+      'PASS strips desktop env markers from the shell',
+      'PASS PowerShell executes a structured launch command',
+      'FAIL host survives a PTY death and respawns',
+      'PASS bad shell surfaces as a spawn failure',
+    ]);
+    expect(result.lines).toContain('HARNESS_RESULT ok=4 fail=1 refused=0');
+    expect(result.lines.join('\n')).toContain('second shell prompt (host survived)');
+    expect(result.exitCode).toBe(1);
+    const respawnFailure = scenarioFailureLine(result, 'host survives a PTY death and respawns');
+    expectOnlyBoundNamed(respawnFailure, FIRST_OUTPUT_WINDOW_BOUND);
+    expect(respawnFailure).toContain(NO_SHELL_OUTPUT_VERDICT);
+  });
+
+  test('anchors replacement readiness before delayed creation returns', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'slow',
+      lifecycle: {
+        launchAtMs: 26_000,
+        exitAfterKillMs: 3_000,
+        replacementCreateAdvanceMs: 9_000,
+        replacementOutputAfterCreateMs: 500,
+      },
+    });
+    expectLifecyclePredecessors(result);
+    const exited = lifecycleEventIndex(result, 4, 'exit:1');
+    const respawned = lifecycleEventIndex(result, 5, 'spawn');
+    expect(exited).toBeGreaterThan(-1);
+    expect(respawned).toBeGreaterThan(exited);
+    expect(lifecycleEventIndex(result, 5, 'creation-delivery-complete')).toBeGreaterThan(respawned);
+    expect(scenarioVerdicts(result)).toEqual([
+      'PASS real command round-trip at project root',
+      'PASS strips desktop env markers from the shell',
+      'PASS PowerShell executes a structured launch command',
+      'FAIL host survives a PTY death and respawns',
+      'PASS bad shell surfaces as a spawn failure',
+    ]);
+    expect(result.lines).toContain('HARNESS_RESULT ok=4 fail=1 refused=0');
+    expect(result.lines.join('\n')).toContain('second shell prompt (host survived)');
+    expect(result.lines).toContain('PASS bad shell surfaces as a spawn failure');
+    expect(result.exitCode).toBe(1);
+    const respawnFailure = scenarioFailureLine(result, 'host survives a PTY death and respawns');
+    expectOnlyBoundNamed(respawnFailure, FIRST_OUTPUT_WINDOW_BOUND);
+    expect(respawnFailure).toContain(NO_SHELL_OUTPUT_VERDICT);
+  });
+
+  test('fails when a later shell stops producing output without answering', async () => {
+    const result = await runControlledHarness({ firstScenario: 'slow', launchReadiness: 'stuck' });
+    expect(result.lines).toContain('PASS real command round-trip at project root');
+    expect(result.lines).toContain('PASS strips desktop env markers from the shell');
+    expect(result.lines.join('\n')).toContain(
+      'FAIL PowerShell executes a structured launch command',
+    );
+    expect(result.lines).toContain('HARNESS_RESULT ok=4 fail=1 refused=0');
+    expect(result.exitCode).toBe(1);
+  });
+
+  test('fails when a later shell exits before answering', async () => {
+    const result = await runControlledHarness({ firstScenario: 'slow', launchReadiness: 'dead' });
+    expect(result.lines).toContain('PASS real command round-trip at project root');
+    expect(result.lines).toContain('PASS strips desktop env markers from the shell');
+    expect(result.lines.join('\n')).toContain(
+      'shell failed before PowerShell remains interactive after EncodedCommand: exited',
+    );
+    expect(scenarioVerdicts(result)).toEqual([
+      'PASS real command round-trip at project root',
+      'PASS strips desktop env markers from the shell',
+      'FAIL PowerShell executes a structured launch command',
+      'PASS host survives a PTY death and respawns',
+      'PASS bad shell surfaces as a spawn failure',
+    ]);
+    expect(result.lines).toContain('HARNESS_RESULT ok=4 fail=1 refused=0');
+    expect(result.exitCode).toBe(1);
+  });
+
+  test('accepts a launch token after the original allowance and then evaluates input', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'slow',
+      phase: 'launch-after-grant',
+    });
+    expect(result.lines).toContain('PASS real command round-trip at project root');
+    expect(result.lines).toContain('PASS strips desktop env markers from the shell');
+    expect(result.lines).toContain('HARNESS_RESULT ok=5 fail=0 refused=0');
+    expect(result.exitCode).toBe(0);
+    expect(result.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ shell: 3, event: 'launch-token' }),
+        expect.objectContaining({ shell: 3, event: 'evaluated-reply' }),
+      ]),
+    );
+    expect(result.lines).toContain('PASS PowerShell executes a structured launch command');
+  });
+
+  test.each([
+    { phase: 'first-input-after-grant', proof: 'evaluated-reply' },
+    { phase: 'arithmetic-after-grant', proof: 'arithmetic-output' },
+    { phase: 'cwd-after-grant', proof: 'cwd-output' },
+    { phase: 'environment-after-grant', proof: 'environment-output' },
+  ] as const)('continues $phase through its own output phase', async ({ phase, proof }) => {
+    const result = await runControlledHarness({ firstScenario: 'fast', phase });
+    expect(result.lines).toContain('HARNESS_RESULT ok=5 fail=0 refused=0');
+    expect(result.exitCode).toBe(0);
+    expect(result.events).toContainEqual(expect.objectContaining({ event: proof }));
+    expect(result.lines).toContain('PASS real command round-trip at project root');
+    expect(result.lines).toContain('PASS strips desktop env markers from the shell');
+  });
+
+  test('keeps a silent but contained evaluated reply eligible', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'fast',
+      phase: 'silent-contained',
+    });
+    expect(result.events).toContainEqual(
+      expect.objectContaining({ shell: 1, event: 'evaluated-reply' }),
+    );
+    expect(result.lines).toContain('PASS real command round-trip at project root');
+    expect(result.lines).toContain('HARNESS_RESULT ok=5 fail=0 refused=0');
+    expect(result.exitCode).toBe(0);
+  });
+
+  test('keeps input evaluation within its current phase window', async () => {
+    const result = await runControlledHarness({ firstScenario: 'slow', phase: 'input-window' });
+    expect(result.events).toContainEqual(expect.objectContaining({ shell: 3, event: 'input' }));
+    expect(result.lines).toContain('PASS real command round-trip at project root');
+    expect(result.lines).toContain('PASS strips desktop env markers from the shell');
+    expect(result.lines.join('\n')).toContain(
+      'FAIL PowerShell executes a structured launch command',
+    );
+    expect(result.lines).toContain('PASS host survives a PTY death and respawns');
+    expect(result.lines).toContain('PASS bad shell surfaces as a spawn failure');
+    expect(result.lines).toContain('HARNESS_RESULT ok=4 fail=1 refused=0');
+    expect(result.exitCode).toBe(1);
+  });
+
+  test.each([
+    { phase: 'attach-only', prerequisite: 'output' },
+    { phase: 'stale-launch', prerequisite: 'launch-token' },
+    { phase: 'echo-only', prerequisite: 'input' },
+  ] as const)('does not accept $phase as a launch reply', async ({ phase, prerequisite }) => {
+    const result = await runControlledHarness({ firstScenario: 'slow', phase });
+    expect(result.events).toContainEqual(
+      expect.objectContaining({ shell: 3, event: prerequisite }),
+    );
+    expect(result.lines).toContain('PASS real command round-trip at project root');
+    expect(result.lines).toContain('PASS strips desktop env markers from the shell');
+    expect(result.lines.join('\n')).toContain(
+      'FAIL PowerShell executes a structured launch command',
+    );
+    expect(result.lines).toContain('PASS host survives a PTY death and respawns');
+    expect(result.lines).toContain('PASS bad shell surfaces as a spawn failure');
+    expect(result.lines).toContain('HARNESS_RESULT ok=4 fail=1 refused=0');
+    expect(result.exitCode).toBe(1);
+    if (phase === 'attach-only') {
+      const launchFailure = scenarioFailureLine(
+        result,
+        'PowerShell executes a structured launch command',
+      );
+      expect(launchFailure).toContain(NO_SHELL_OUTPUT_VERDICT);
+      expect(launchFailure).not.toContain(SHELL_PROGRESS_ADVANCED);
+    }
+  });
+
+  test('retains the last shell observation when input delivery is delayed', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'slow',
+      phase: 'delayed-input-write',
+    });
+    expect(result.events).toContainEqual(expect.objectContaining({ shell: 3, event: 'input' }));
+    expect(result.lines).toContain('PASS real command round-trip at project root');
+    expect(result.lines).toContain('PASS strips desktop env markers from the shell');
+    expect(scenarioVerdicts(result)).toEqual([
+      'PASS real command round-trip at project root',
+      'PASS strips desktop env markers from the shell',
+      'FAIL PowerShell executes a structured launch command',
+      'PASS host survives a PTY death and respawns',
+      'PASS bad shell surfaces as a spawn failure',
+    ]);
+    expect(result.lines).toContain('PASS host survives a PTY death and respawns');
+    expect(result.lines).toContain('PASS bad shell surfaces as a spawn failure');
+    expect(result.lines).toContain('HARNESS_RESULT ok=4 fail=1 refused=0');
+    expect(result.exitCode).toBe(1);
+  });
+
+  test('reports a bounded failure for a shell that continually writes the wrong answer', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'fast',
+      phase: 'continuous-wrong-output',
+    });
+    expect(result.events).toContainEqual(
+      expect.objectContaining({ shell: 3, event: 'launch-token' }),
+    );
+    expect(result.lines).toContain('PASS real command round-trip at project root');
+    expect(result.lines).toContain('PASS strips desktop env markers from the shell');
+    expect(scenarioVerdicts(result)).toEqual([
+      'PASS real command round-trip at project root',
+      'PASS strips desktop env markers from the shell',
+      'FAIL PowerShell executes a structured launch command',
+      'REFUSED host survives a PTY death and respawns',
+      'REFUSED bad shell surfaces as a spawn failure',
+    ]);
+    expect(result.lines.join('\n')).not.toContain('hard timeout during');
+    expect(result.lines).toContain('HARNESS_RESULT ok=2 fail=1 refused=2');
+    expect(result.exitCode).toBe(1);
+    const launchFailure = scenarioFailureLine(
+      result,
+      'PowerShell executes a structured launch command',
+    );
+    expect(launchFailure).toContain(REPORT_DEADLINE_BOUND);
+    expect(launchFailure).toContain(SHELL_PROGRESS_ADVANCED);
+  });
+
+  test('refuses every scenario when the run has no admissible grant', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'fast',
+      budgetOverride: '1',
+    });
+    expect(result.lines.filter((line) => line.startsWith('REFUSED '))).toHaveLength(5);
+    expect(result.lines).toContain('HARNESS_RESULT ok=0 fail=0 refused=5');
+    expect(result.exitCode).toBe(1);
+  });
+});
+
+describe('real harness POSIX quiet readiness', () => {
+  test('completes all four scenarios with a prompt inside the allowance', async () => {
+    const result = await runControlledHarness({ firstScenario: 'fast', platform: 'linux' });
+    expect(result.lines).toContain('PASS real command round-trip at project root');
+    expect(result.lines).toContain('PASS strips desktop env markers from the shell');
+    expect(result.lines).toContain('PASS host survives a PTY death and respawns');
+    expect(result.lines).toContain('PASS bad shell surfaces as a spawn failure');
+    expect(result.lines).toContain('HARNESS_RESULT ok=4 fail=0 refused=0');
+    expect(result.exitCode).toBe(0);
+  });
+
+  test('counts the full quiet sequence after a late prompt', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'fast',
+      platform: 'linux',
+      phase: 'posix-late-quiet',
+    });
+    expect(result.lines).toContain('HARNESS_RESULT ok=4 fail=0 refused=0');
+    expect(result.exitCode).toBe(0);
+    expect(result.events).toContainEqual(expect.objectContaining({ shell: 1, event: 'output' }));
+    expect(result.lines).toContain('PASS real command round-trip at project root');
+    expect(result.lines).toContain('PASS strips desktop env markers from the shell');
+    expect(result.lines).toContain('PASS host survives a PTY death and respawns');
+    expect(result.lines).toContain('PASS bad shell surfaces as a spawn failure');
+  });
+
+  test('does not count a changing prompt as consecutive quiet polls', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'fast',
+      platform: 'linux',
+      phase: 'posix-unstable-quiet',
+    });
+    expect(result.events).toContainEqual(expect.objectContaining({ shell: 1, event: 'output' }));
+    expect(scenarioVerdicts(result)).toEqual([
+      'FAIL real command round-trip at project root',
+      'REFUSED strips desktop env markers from the shell',
+      'REFUSED host survives a PTY death and respawns',
+      'REFUSED bad shell surfaces as a spawn failure',
+    ]);
+    expect(result.lines).toContain('HARNESS_RESULT ok=0 fail=1 refused=3');
+    expect(result.lines).not.toContain('PASS real command round-trip at project root');
+    expect(result.lines.join('\n')).not.toContain('hard timeout during');
+    expect(result.exitCode).toBe(1);
+  });
 });
 
 describe('shell readiness gate', () => {
@@ -540,7 +1142,22 @@ const READINESS_CEILING_MS = 16_000;
 const SILENT_SHELL_VERDICT = 'without new shell output, the only progress signal this wait watches';
 const ROUND_TRIP_CONTAINMENT_VERDICT = 'input ready was not reached inside its';
 const NO_SHELL_OUTPUT_VERDICT = 'without any shell output';
-const SHELL_PROGRESS_COUNTED = "characters past the shell's first output";
+const SHELL_PROGRESS_COUNTED = "characters counted from the shell's first output on";
+const SHELL_PROGRESS_ADVANCED = 'last advanced';
+const INITIAL_ALLOWANCE_BOUND = 'initial allowance';
+const STALL_WINDOW_BOUND = 'stall window';
+const REPORT_DEADLINE_BOUND = 'report deadline';
+const EXIT_WINDOW_BOUND = 'exit window';
+const FIRST_OUTPUT_WINDOW_BOUND = 'first-output window';
+const WAIT_BOUNDS = [
+  INITIAL_ALLOWANCE_BOUND,
+  STALL_WINDOW_BOUND,
+  REPORT_DEADLINE_BOUND,
+  EXIT_WINDOW_BOUND,
+  FIRST_OUTPUT_WINDOW_BOUND,
+] as const;
+const NO_EXIT_OBSERVED = 'no exit observed';
+const EXIT_OBSERVED_LATE = 'observed only after';
 
 function driveEvaluatingShell(
   stream: FakeStream,
@@ -1591,7 +2208,7 @@ describe('a console host speaking before the shell is never counted as shell out
       expect(verdict.message).toContain(CONTAINMENT_VERDICT);
       expect(verdict.message).not.toContain(SILENT_SHELL_VERDICT);
       expect(verdict.message).toContain(
-        `${verdict.buffer.length - ATTACH_PROLOGUE.length} characters past the shell's first output`,
+        `${verdict.buffer.length - ATTACH_PROLOGUE.length} characters counted from the shell's first output on`,
       );
     } finally {
       stopHostNoise();
@@ -1677,7 +2294,7 @@ describe("a plain wait counts progress from the shell's own first byte, whicheve
         expect(verdict.settled).toBe('refused');
         expect(verdict.message).toContain(CONTAINMENT_VERDICT);
         expect(verdict.message).toContain(
-          `${verdict.buffer.length - prologue.length} characters past the shell's first output`,
+          `${verdict.buffer.length - prologue.length} characters counted from the shell's first output on`,
         );
       } finally {
         stopShell();
@@ -1837,7 +2454,7 @@ describe('a grant gone before a wait could poll once is refused as spent, not re
     );
     expect(stall).toContain('without any shell output');
     expect(stall).not.toContain(SILENT_SHELL_VERDICT);
-    expect(stall).not.toContain("characters past the shell's first output");
+    expect(stall).not.toContain(SHELL_PROGRESS_COUNTED);
   });
 });
 
@@ -1926,7 +2543,7 @@ describe('a wait window the containment cut is named as cut, so a red tells star
       expect(verdict.message).toContain(CONTAINMENT_VERDICT);
       expect(verdict.message).not.toContain(SILENT_SHELL_VERDICT);
       expect(verdict.message).toContain(
-        `${verdict.buffer.length - ATTACH_PROLOGUE.length} characters past the shell's first output`,
+        `${verdict.buffer.length - ATTACH_PROLOGUE.length} characters counted from the shell's first output on`,
       );
     } finally {
       stopShell();
@@ -1961,7 +2578,7 @@ describe('a wait window the containment cut is named as cut, so a red tells star
         expect(verdict.message).toContain(CONTAINMENT_VERDICT);
         expect(verdict.message).not.toContain(SILENT_SHELL_VERDICT);
         expect(verdict.message).toContain(
-          `${verdict.buffer.length - ATTACH_PROLOGUE.length} characters past the shell's first output`,
+          `${verdict.buffer.length - ATTACH_PROLOGUE.length} characters counted from the shell's first output on`,
         );
       }
       expect(silentPast.verdict.message).toContain(
@@ -2094,8 +2711,6 @@ describe('a wait whose readiness is silence is refused at entry when its stall w
 
 const RECORDED_S1_BANNER_THEN_SILENCE =
   '\u001b[1t\u001b[c\u001b[?1004h\u001b[?9001hPowerShell 7.6.6\r\n\u001b]0;Administrator: C:\\Program Files\\PowerShell\\7\\pwsh.exe\u001b\\';
-const RECORDED_LAUNCH_TITLE_THEN_SILENCE =
-  '\u001b[1t\u001b[c\u001b[?1004h\u001b[?9001h\u001b]0;Administrator: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\u001b\\';
 const RECORDED_FIRST_OUTPUT_AT_MS = 3_647;
 const HARNESS_COMMAND_ECHO = 'Write-Output "HARNESS_$((6*7))_DONE"\r\n';
 const HARNESS_COMMAND_OUTPUT = 'HARNESS_42_DONE';
@@ -2185,36 +2800,6 @@ const READINESS_SITES: readonly ReadinessSite[] = [
         }),
         probesWritten: () => shell.sent,
         dispose: shell.dispose,
-      };
-    },
-  },
-  {
-    site: 'the EncodedCommand launch wait',
-    platform: 'win32',
-    label: ENCODED_COMMAND_LABEL,
-    speaks: [
-      { atMs: 0, chunk: BUNDLED_ATTACH_PROLOGUE },
-      {
-        atMs: RECORDED_FIRST_OUTPUT_AT_MS,
-        chunk: RECORDED_LAUNCH_TITLE_THEN_SILENCE.slice(BUNDLED_ATTACH_PROLOGUE.length),
-      },
-    ],
-    probesWritten: null,
-    begin: (stream, label, containmentMs, answerAtMs) => {
-      const stopAnswer = answerAt(
-        stream,
-        answerAtMs,
-        `${WINDOWS_POWERSHELL_WRAP_TOGGLE}${LAUNCH_OUTPUT}`,
-      );
-      return {
-        settled: waitForCondition(
-          stream,
-          () => stream.read().includes(LAUNCH_OUTPUT),
-          label,
-          harnessWindowsLaunchWait(performance.now() + containmentMs),
-        ),
-        probesWritten: () => null,
-        dispose: stopAnswer,
       };
     },
   },
@@ -2428,12 +3013,9 @@ async function waitOutExitAfterKill(
       message: '',
       exited: false,
     };
-    void waitForCondition(
-      first,
-      () => host.exitOf('c1') !== null,
-      EXIT_AFTER_KILL_LABEL,
-      harnessExitAfterKillWait(startedAt + containmentMs),
-    ).then(
+    void waitForCondition(first, () => host.exitOf('c1') !== null, EXIT_AFTER_KILL_LABEL, {
+      backstopAt: startedAt + containmentMs,
+    }).then(
       () => {
         verdict.settled = 'reached';
         verdict.atMs = performance.now() - startedAt;
@@ -2473,4 +3055,280 @@ describe('a wait whose condition is the shell exiting keeps its meaning: the exi
     expect(verdict.atMs).toBeGreaterThanOrEqual(containmentMs);
     expect(verdict.atMs).toBeLessThan(containmentMs * (1 + NOTICE_SHARE_OF_CONTAINMENT));
   });
+});
+
+const BOUND_STALL_MS = 400;
+const BOUND_POLL_MS = BOUND_STALL_MS / 20;
+const BOUND_WAIT = { stallMs: BOUND_STALL_MS, intervalMs: BOUND_POLL_MS } as const;
+const EXIT_WINDOW_MS = HARNESS_EXIT_AFTER_KILL_STALL_MS;
+const EXIT_WAIT_BOUNDS = [
+  {
+    bound: EXIT_WINDOW_BOUND,
+    initialMs: EXIT_WINDOW_MS / 2,
+    reportMs: EXIT_WINDOW_MS * 2,
+    endsAtMs: EXIT_WINDOW_MS,
+  },
+  {
+    bound: INITIAL_ALLOWANCE_BOUND,
+    initialMs: EXIT_WINDOW_MS * 2,
+    reportMs: EXIT_WINDOW_MS * 4,
+    endsAtMs: EXIT_WINDOW_MS * 2,
+  },
+  {
+    bound: REPORT_DEADLINE_BOUND,
+    initialMs: EXIT_WINDOW_MS * 2,
+    reportMs: EXIT_WINDOW_MS / 2,
+    endsAtMs: EXIT_WINDOW_MS / 2,
+  },
+] as const;
+const WIN32_HARNESS_BUDGET_MS = harnessTimeouts('win32').budgetMs;
+
+interface BoundedWaitVerdict {
+  settled: 'pending' | 'reached' | 'refused';
+  message: string;
+}
+
+async function settleBoundedWait(
+  wait: Promise<unknown>,
+  runForMs: number,
+): Promise<BoundedWaitVerdict> {
+  const verdict: BoundedWaitVerdict = { settled: 'pending', message: '' };
+  void wait.then(
+    () => {
+      verdict.settled = 'reached';
+    },
+    (error: unknown) => {
+      verdict.settled = 'refused';
+      verdict.message = error instanceof Error ? error.message : String(error);
+    },
+  );
+  await vi.advanceTimersByTimeAsync(runForMs);
+  return verdict;
+}
+
+function expectOnlyBoundNamed(message: string, fired: (typeof WAIT_BOUNDS)[number]): void {
+  expect(message).toContain(fired);
+  for (const bound of WAIT_BOUNDS.filter((name) => name !== fired)) {
+    expect(message).not.toContain(bound);
+  }
+}
+
+function expectNoShellOutputReported(message: string): void {
+  expect(message).toContain(NO_SHELL_OUTPUT_VERDICT);
+  expect(message).not.toContain(SHELL_PROGRESS_ADVANCED);
+  expect(message).not.toContain(SHELL_PROGRESS_COUNTED);
+}
+
+function expectShellProgressReported(message: string): void {
+  expect(message).toContain(SHELL_PROGRESS_ADVANCED);
+  expect(message).toContain(SHELL_PROGRESS_COUNTED);
+  expect(message).not.toContain(NO_SHELL_OUTPUT_VERDICT);
+}
+
+function shellExitingAt(
+  stream: FakeStream,
+  atMs: number,
+): {
+  exitOf: () => { exitCode: number | undefined; signal: number | null } | null;
+  dispose: () => void;
+} {
+  let exit: { exitCode: number | undefined; signal: number | null } | null = null;
+  const timer = setTimeout(() => {
+    exit = { exitCode: 1, signal: null };
+    stream.fail(SHELL_EXIT);
+  }, atMs);
+  return { exitOf: () => exit, dispose: () => clearTimeout(timer) };
+}
+
+describe('a readiness or exit wait names the bound that ended it, and reports shell progress or an exit only when it saw one', () => {
+  test('a readiness wait that sees nothing past attach is refused at its initial allowance and says it saw no shell output', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const stream = createFakeStream();
+    stream.emit(ATTACH_PROLOGUE);
+    const startedAt = performance.now();
+    const readiness = createHarnessReadinessObserver(
+      stream,
+      startedAt + BOUND_STALL_MS * 2,
+      startedAt + BOUND_STALL_MS * 4,
+    );
+    const verdict = await settleBoundedWait(
+      readiness.waitForCondition(() => false, ENCODED_COMMAND_LABEL, BOUND_WAIT),
+      BOUND_STALL_MS * 4 + BOUND_POLL_MS,
+    );
+    expect(verdict.settled).toBe('refused');
+    expectOnlyBoundNamed(verdict.message, INITIAL_ALLOWANCE_BOUND);
+    expectNoShellOutputReported(verdict.message);
+  });
+
+  test('a readiness wait that sees nothing past attach is refused at the report deadline that caps its allowance and says it saw no shell output', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const stream = createFakeStream();
+    stream.emit(ATTACH_PROLOGUE);
+    const startedAt = performance.now();
+    const readiness = createHarnessReadinessAfterCompletion(stream, {
+      after: { observedAt: startedAt },
+      initialDeadlineAt: startedAt + BOUND_STALL_MS * 4,
+      reportDeadlineAt: startedAt + BOUND_STALL_MS * 2,
+    });
+    const verdict = await settleBoundedWait(
+      readiness.waitForCondition(() => false, ENCODED_COMMAND_LABEL, BOUND_WAIT),
+      BOUND_STALL_MS * 4 + BOUND_POLL_MS,
+    );
+    expect(verdict.settled).toBe('refused');
+    expectOnlyBoundNamed(verdict.message, REPORT_DEADLINE_BOUND);
+    expectNoShellOutputReported(verdict.message);
+  });
+
+  test.each([
+    {
+      bound: FIRST_OUTPUT_WINDOW_BOUND,
+      outlasts: INITIAL_ALLOWANCE_BOUND,
+      initialMs: 0,
+      reportMs: WIN32_HARNESS_BUDGET_MS,
+    },
+    {
+      bound: INITIAL_ALLOWANCE_BOUND,
+      outlasts: FIRST_OUTPUT_WINDOW_BOUND,
+      initialMs: WIN32_HARNESS_BUDGET_MS,
+      reportMs: WIN32_HARNESS_BUDGET_MS * 2,
+    },
+  ] as const)(
+    'a readiness wait that follows a completion and sees nothing past attach is refused at its $bound when that outlasts its $outlasts, and says it saw no shell output',
+    async ({ bound, initialMs, reportMs }) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+      const stream = createFakeStream();
+      stream.emit(ATTACH_PROLOGUE);
+      const completedAt = performance.now();
+      const readiness = createHarnessReadinessAfterCompletion(stream, {
+        after: { observedAt: completedAt },
+        initialDeadlineAt: completedAt + initialMs,
+        reportDeadlineAt: completedAt + reportMs,
+      });
+      const verdict = await settleBoundedWait(
+        readiness.waitForCondition(() => false, ENCODED_COMMAND_LABEL, BOUND_WAIT),
+        reportMs + BOUND_POLL_MS,
+      );
+      expect(verdict.settled).toBe('refused');
+      expectOnlyBoundNamed(verdict.message, bound);
+      expectNoShellOutputReported(verdict.message);
+    },
+  );
+
+  test('a readiness wait whose shell spoke and then stayed silent for its stall window is refused at that window and says how far the shell got', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const stream = createFakeStream();
+    stream.emit(`${ATTACH_PROLOGUE}${BOOTED_PROMPT}`);
+    const startedAt = performance.now();
+    const readiness = createHarnessReadinessObserver(
+      stream,
+      startedAt + BOUND_STALL_MS / 2,
+      startedAt + BOUND_STALL_MS * 4,
+    );
+    const verdict = await settleBoundedWait(
+      readiness.waitForCondition(() => false, ENCODED_COMMAND_LABEL, BOUND_WAIT),
+      BOUND_STALL_MS * 4 + BOUND_POLL_MS,
+    );
+    expect(verdict.settled).toBe('refused');
+    expectOnlyBoundNamed(verdict.message, STALL_WINDOW_BOUND);
+    expectShellProgressReported(verdict.message);
+  });
+
+  test('a readiness wait whose initial allowance outlasts the stall window after the last shell output is refused at that allowance and says how far the shell got', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const stream = createFakeStream();
+    stream.emit(`${ATTACH_PROLOGUE}${BOOTED_PROMPT}`);
+    const startedAt = performance.now();
+    const readiness = createHarnessReadinessObserver(
+      stream,
+      startedAt + BOUND_STALL_MS * 3,
+      startedAt + BOUND_STALL_MS * 6,
+    );
+    const verdict = await settleBoundedWait(
+      readiness.waitForCondition(() => false, ENCODED_COMMAND_LABEL, BOUND_WAIT),
+      BOUND_STALL_MS * 6 + BOUND_POLL_MS,
+    );
+    expect(verdict.settled).toBe('refused');
+    expectOnlyBoundNamed(verdict.message, INITIAL_ALLOWANCE_BOUND);
+    expectShellProgressReported(verdict.message);
+  });
+
+  test('a readiness wait whose shell is still writing when the report deadline passes is refused at that deadline and says how far the shell got', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const stream = createFakeStream();
+    stream.emit(`${ATTACH_PROLOGUE}${BOOTED_PROMPT}`);
+    const stopShell = scheduleEmissions(
+      stream,
+      evenCadence(SHELL_WRITTEN_STEP, BOUND_STALL_MS / 4, BOUND_STALL_MS * 3),
+    );
+    const startedAt = performance.now();
+    const readiness = createHarnessReadinessObserver(
+      stream,
+      startedAt + BOUND_STALL_MS / 2,
+      startedAt + BOUND_STALL_MS * 2,
+    );
+    try {
+      const verdict = await settleBoundedWait(
+        readiness.waitForCondition(() => false, ENCODED_COMMAND_LABEL, BOUND_WAIT),
+        BOUND_STALL_MS * 3,
+      );
+      expect(verdict.settled).toBe('refused');
+      expectOnlyBoundNamed(verdict.message, REPORT_DEADLINE_BOUND);
+      expectShellProgressReported(verdict.message);
+    } finally {
+      stopShell();
+    }
+  });
+
+  test.each(EXIT_WAIT_BOUNDS)(
+    'an exit wait that sees no exit is refused at its $bound and says no exit was observed',
+    async ({ bound, initialMs, reportMs }) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+      const stream = createFakeStream();
+      stream.emit(`${ATTACH_PROLOGUE}${BOOTED_PROMPT}`);
+      const startedAt = performance.now();
+      const verdict = await settleBoundedWait(
+        waitForHarnessExit(stream, () => null, EXIT_AFTER_KILL_LABEL, {
+          after: { observedAt: startedAt },
+          initialDeadlineAt: startedAt + initialMs,
+          reportDeadlineAt: startedAt + reportMs,
+        }),
+        Math.max(initialMs, reportMs),
+      );
+      expect(verdict.settled).toBe('refused');
+      expectOnlyBoundNamed(verdict.message, bound);
+      expect(verdict.message).toContain(NO_EXIT_OBSERVED);
+      expect(verdict.message).not.toContain(EXIT_OBSERVED_LATE);
+    },
+  );
+
+  test.each(EXIT_WAIT_BOUNDS)(
+    'an exit that lands just as the $bound ends an exit wait is reported as observed only after that bound, not as no exit',
+    async ({ bound, initialMs, reportMs, endsAtMs }) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+      const stream = createFakeStream();
+      stream.emit(`${ATTACH_PROLOGUE}${BOOTED_PROMPT}`);
+      const shell = shellExitingAt(stream, endsAtMs);
+      const startedAt = performance.now();
+      let exitedWhenSettled = false;
+      try {
+        const verdict = await settleBoundedWait(
+          waitForHarnessExit(stream, shell.exitOf, EXIT_AFTER_KILL_LABEL, {
+            after: { observedAt: startedAt },
+            initialDeadlineAt: startedAt + initialMs,
+            reportDeadlineAt: startedAt + reportMs,
+          }).finally(() => {
+            exitedWhenSettled = shell.exitOf() !== null;
+          }),
+          Math.max(initialMs, reportMs),
+        );
+        expect(verdict.settled).toBe('refused');
+        expect(exitedWhenSettled).toBe(true);
+        expect(verdict.message).toContain(EXIT_OBSERVED_LATE);
+        expect(verdict.message).not.toContain(NO_EXIT_OBSERVED);
+        expectOnlyBoundNamed(verdict.message, bound);
+      } finally {
+        shell.dispose();
+      }
+    },
+  );
 });

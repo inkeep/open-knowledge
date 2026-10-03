@@ -92,7 +92,7 @@ A `reconcile` conflict also carries a `reason`: `merged-with-markers`, `refused-
 
 A write to a document whose file has been deleted returns `urn:ok:error:doc-removed` (409): the edit reached collaborative state, but the disk write was refused rather than recreating the removed file. This is not retryable — the document is gone. Re-create it with `write` if you still want the content.
 
-A write whose document path cannot be resolved inside the content directory returns `urn:ok:error:path-escape` (400): the edit reached collaborative state, but the disk write was refused. This covers a symlink cycle at the document's own path and a link resolving outside the content directory. It is not retryable — repair the path on disk before writing this content again.
+A write whose document path cannot be resolved inside the content directory returns `urn:ok:error:path-escape` (400): the edit reached collaborative state, but the disk write was refused. This covers a symlink cycle at the document's own path, a link resolving outside the content directory, and a link resolving into a `.git` folder, an OpenKnowledge config folder itself, or its machine-local state. It is not retryable — repair the path on disk before writing this content again.
 
 A write refused because the document's duplication baseline could not be read at the final disk flush returns `urn:ok:error:store-refused` (503): the edit reached collaborative state, but the disk write was refused rather than risk persisting duplicated content. The document file was not updated; the server preserves the edited document, with a copy in its recovery buffer unless that buffer is unavailable or unwritable. Retry only after the filesystem fault is repaired.
 

@@ -912,6 +912,14 @@ msgstr "{folderCount, plural, one {dossier} many {dossiers} other {dossiers}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} étoiles GitHub"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "{hiddenCount, plural, one {# more link} other {# more links}}"
+msgstr "{hiddenCount, plural, one {# autre lien} many {# autres liens} other {# autres liens}}"
+
+#: src/lib/restart-collab-server.ts
+msgid "{holder} is serving this project, so this app won't stop it. Close this window and open the project again to stop {holder}'s server and open the project here."
+msgstr "{holder} sert ce projet, cette app ne l'arrêtera donc pas. Fermez cette fenêtre et rouvrez le projet pour arrêter le serveur de {holder} et ouvrir le projet ici."
+
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -3930,6 +3938,10 @@ msgstr "Copie en cours"
 msgid "Copying..."
 msgstr "Copie en cours…"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
+msgstr "Impossible de vérifier les liens symboliques de {shareBranch} : le passage n'a donc pas eu lieu. Réessayez ; si l'échec persiste, vérifiez que Git est installé et que le dossier du projet est lisible."
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Could not classify the merge — try again."
 msgstr "Impossible de classer la fusion. Réessayez."
@@ -5159,6 +5171,14 @@ msgstr "Diagramme issu d'une source Mermaid — organigramme, séquence, classes
 #: src/components/MermaidFileViewer.tsx
 msgid "Diagram view mode"
 msgstr "Mode d'affichage du diagramme"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not open {shareBranch} in a worktree: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "L'ouverture de {shareBranch} dans un worktree n'a pas eu lieu : cette branche contient un lien symbolique qui pointe hors du dépôt, vers des fichiers privés ou vers un emplacement qui ne peut pas être vérifié. En général, la personne qui a poussé la branche doit corriger le lien. Si un dossier de cet ordinateur ne peut pas être lu, rendez-le lisible et réessayez."
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "Le passage à {shareBranch} n'a pas eu lieu : cette branche contient un lien symbolique qui pointe hors du dépôt, vers des fichiers privés ou vers un emplacement qui ne peut pas être vérifié. En général, la personne qui a poussé la branche doit corriger le lien. Si un dossier de cet ordinateur ne peut pas être lu, rendez-le lisible et réessayez."
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx
@@ -14110,6 +14130,10 @@ msgstr "Échec de la synchronisation — consultez les journaux du serveur pour 
 msgid "Sync is failing. See the sync status for details."
 msgstr "La synchronisation échoue. Consultez l'état de la synchronisation pour les détails."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Sync is paused because incoming changes leave a symlink pointing outside the repository or into private files, or with a target that cannot be checked. Ask whoever pushed them to fix the link, or update Git if yours is older than 2.38. Automatic sync then resumes; in Manual mode, pull again."
+msgstr "La synchronisation est en pause, car les modifications entrantes laissent un lien symbolique qui pointe hors du dépôt ou vers des fichiers privés, ou dont la cible ne peut pas être vérifiée. Demandez à la personne qui les a poussées de corriger le lien, ou mettez à jour Git si votre version est antérieure à 2.38. La synchronisation automatique reprend ensuite ; en mode Manuel, tirez à nouveau."
+
 #: src/components/SyncBlockingChanges.tsx
 msgid "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."
 msgstr "La synchronisation est en pause. Validez ces modifications locales pour continuer, ou réglez-les dans un terminal."
@@ -15088,6 +15112,11 @@ msgstr "La configuration a échoué, car l'entrée de serveur MCP nécessaire n'
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
 msgstr "Cela supprime les entrées du serveur MCP et les fichiers de compétences ci-dessous. L'agent perdra l'accès à vos documents jusqu'à ce que vous l'ajoutiez à nouveau."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "This development build can't connect agents, so it won't change the agent setup of your installed OpenKnowledge app."
+msgstr "Cette version de développement ne peut pas connecter d'agents, elle ne modifiera donc pas la configuration des agents de votre application OpenKnowledge installée."
 
 #. placeholder {0}: connection.label
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -16509,10 +16538,6 @@ msgstr "Où doit-elle résider ?"
 #: src/components/ImportSkillForm.tsx
 msgid "Which skill"
 msgstr "Quelle compétence"
-
-#: src/components/settings/SyncSection.tsx
-msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
-msgstr "Tant que vous êtes déconnecté, les mises à jour sont recherchées au plus toutes les 3 minutes, quel que soit ce réglage."
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"

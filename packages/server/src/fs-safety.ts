@@ -3,6 +3,7 @@ import { dirname, join, relative, sep } from 'node:path';
 import { isWithinContentDir } from './content-path.ts';
 import { normalizeFsPath } from './fs-traced.ts';
 import { errnoCode } from './http/handler-utils.ts';
+import { symlinkReachesPrivateState } from './incoming-symlink-guard.ts';
 import type { PinoLogger } from './logger.ts';
 
 export class SymlinkEscapeError extends Error {
@@ -12,11 +13,52 @@ export class SymlinkEscapeError extends Error {
   }
 }
 
+export class PrivateStateSymlinkError extends SymlinkEscapeError {
+  constructor() {
+    super('path resolves into private repository state');
+    this.name = 'PrivateStateSymlinkError';
+  }
+}
+
 export class ContentRootUnavailableError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ContentRootUnavailableError';
   }
+}
+
+function contentRelative(root: string, path: string): string {
+  return relative(root, path).split(sep).join('/');
+}
+
+export function resolvesIntoPrivateState(
+  requestedPath: string,
+  canonicalPath: string,
+  contentRoot: string,
+): boolean {
+  return symlinkReachesPrivateState(
+    contentRelative(contentRoot, requestedPath),
+    contentRelative(contentRoot, canonicalPath),
+  );
+}
+
+export function canonicalContentPathIsRefused(
+  requestedPath: string,
+  canonicalPath: string,
+  contentDir: string,
+): boolean {
+  let contentRoot = contentDir;
+  try {
+    contentRoot = realpathSync(contentDir);
+  } catch {
+    return true;
+  }
+  if (!isWithinContentDir(canonicalPath, contentRoot)) return true;
+  const lexicalRoot = isWithinContentDir(requestedPath, contentDir) ? contentDir : contentRoot;
+  return symlinkReachesPrivateState(
+    contentRelative(lexicalRoot, requestedPath),
+    contentRelative(contentRoot, canonicalPath),
+  );
 }
 
 export function assertNoSymlinkEscape(fullPath: string, resolvedContentDir: string): void {
@@ -37,6 +79,18 @@ export function assertNoSymlinkEscape(fullPath: string, resolvedContentDir: stri
       const canonical = realpathSync(cur);
       if (!isWithinContentDir(canonical, contentRoot)) {
         throw new SymlinkEscapeError('path resolves outside content directory');
+      }
+      const lexicalRoot = isWithinContentDir(fullPath, resolvedContentDir)
+        ? resolvedContentDir
+        : contentRoot;
+      if (
+        resolvesIntoPrivateState(
+          join(contentRoot, relative(lexicalRoot, fullPath)),
+          join(canonical, relative(cur, fullPath)),
+          contentRoot,
+        )
+      ) {
+        throw new PrivateStateSymlinkError();
       }
       return;
     } catch (err) {

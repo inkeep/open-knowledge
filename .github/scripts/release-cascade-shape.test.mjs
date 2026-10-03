@@ -20,6 +20,10 @@ const promoteStable = read('promote-stable.yml');
 const releaseYml = read('release.yml');
 const bugLane = read('bug-lane.yml');
 const bugLaneVerify = read('bug-lane-verify.yml');
+const tagCompatiblePnpmSetup =
+  'pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86';
+const desktopReleaseRef = '${{ github.event.client_payload.release_tag || inputs.release_tag }}';
+const publishRef = '${{ github.event.client_payload.ref || github.sha }}';
 
 const workflowStep = (source, workflowName, name) => {
   const start = source.indexOf(`- name: ${name}`);
@@ -43,6 +47,66 @@ function stepNames(source) {
 }
 
 const indexOfStep = (names, needle) => names.findIndex((n) => n.includes(needle));
+
+describe('release jobs install the pnpm version declared by the checked-out tag', () => {
+  const taggedJobs = [
+    ['desktop-release.yml', desktopRelease, desktopReleaseRef],
+    ['release.yml', releaseYml, publishRef],
+  ].flatMap(([workflowName, source, expectedRef]) =>
+    Object.entries(parse(source).jobs).flatMap(([jobName, job]) => {
+      const steps = job.steps ?? [];
+      return steps.some(
+        (step) => step.uses?.startsWith('actions/checkout@') && step.with?.ref === expectedRef,
+      )
+        ? [[`${workflowName}#${jobName}`, steps, expectedRef]]
+        : [];
+    }),
+  );
+
+  test('retains the five existing release entry points', () => {
+    expect(taggedJobs.map(([label]) => label)).toEqual(
+      expect.arrayContaining([
+        'desktop-release.yml#prepare',
+        'desktop-release.yml#build-macos',
+        'desktop-release.yml#build-windows',
+        'desktop-release.yml#build-linux',
+        'release.yml#release',
+      ]),
+    );
+  });
+
+  test.each(taggedJobs)('%s supports both pnpm 10 and 12 tags', (label, steps, expectedRef) => {
+    const checkout = steps.findIndex((step) => step.uses?.startsWith('actions/checkout@'));
+    const setupNode = steps.findIndex((step) => step.uses?.startsWith('actions/setup-node@'));
+    const pnpmSteps = steps.filter((step) => step.uses?.startsWith('pnpm/'));
+    const setup = steps.indexOf(pnpmSteps[0]);
+
+    expect(checkout, `${label} checkout`).toBeGreaterThan(-1);
+    expect(steps[checkout].with.ref).toBe(expectedRef);
+    expect(setupNode, `${label} Node setup`).toBeGreaterThan(-1);
+    expect(pnpmSteps, `${label} pnpm setup`).toHaveLength(1);
+    expect(setup).toBeGreaterThan(checkout);
+    expect(pnpmSteps[0].uses).toBe(tagCompatiblePnpmSetup);
+    expect(pnpmSteps[0].with).toBeUndefined();
+  });
+});
+
+test('bug-lane-verify installs the pnpm version declared by the stable it verifies', () => {
+  const [steps] = Object.values(parse(bugLaneVerify).jobs)
+    .map((job) => job.steps ?? [])
+    .filter((jobSteps) => jobSteps.some((step) => step.id === 'verify'));
+  const stable = steps.findIndex((step) => step.name === 'Check out the stable tag');
+  const pnpmSteps = steps.filter((step) => step.uses?.startsWith('pnpm/'));
+  const verify = steps.findIndex((step) => step.id === 'verify');
+
+  expect(steps[stable]?.run).toBe('git checkout --detach "$STABLE"');
+  expect(pnpmSteps).toHaveLength(1);
+  expect(pnpmSteps[0].uses).toBe(tagCompatiblePnpmSetup);
+  expect(pnpmSteps[0].with).toBeUndefined();
+  expect(steps.indexOf(pnpmSteps[0])).toBeGreaterThan(stable);
+  expect(verify).toBeGreaterThan(steps.indexOf(pnpmSteps[0]));
+  expect(steps[verify].run).not.toContain('git checkout --detach');
+});
 
 function stepLevelIfConditions(source) {
   const lines = source.split('\n');

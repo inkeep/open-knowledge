@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import { parseSkillsShSource } from './acquire/fetch.ts';
-import { ownerOf, parseSkillsShCatalogSource, skillsShSkillLinks } from './source-fields.ts';
+import {
+  isLocalSkillSource,
+  ownerOf,
+  parseSkillsShCatalogSource,
+  skillsShSkillLinks,
+} from './source-fields.ts';
 
 describe('parseSkillsShCatalogSource', () => {
   test('distinguishes GitHub repositories from website publishers', () => {
@@ -72,5 +77,34 @@ describe('the skills.sh URL we render is one we can parse back', () => {
       owner: 'open.feishu.cn',
       skill: 'lark-attendance',
     });
+  });
+});
+
+describe('isLocalSkillSource', () => {
+  test.each([
+    '/abs/skill',
+    './rel/skill',
+    '../up/skill',
+    '~/skill',
+    '~\\skill',
+    'file:///abs/skill',
+    'C:/skills',
+    'C:\\skills',
+    'd:\\skills',
+    '\\\\server\\share\\skills',
+  ])('%s is local', (source) => {
+    expect(isLocalSkillSource(source)).toBe(true);
+  });
+
+  test.each([
+    'owner/repo',
+    'https://github.com/o/r.git',
+    'git@github.com:o/r.git',
+    'x::sh -c evil',
+    'C:skills',
+    'ab:/skills',
+    '',
+  ])('%s is not local', (source) => {
+    expect(isLocalSkillSource(source)).toBe(false);
   });
 });

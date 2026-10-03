@@ -186,6 +186,11 @@
     "0t0bbC": ["Não foi possível salvar a preferência de sincronização: ", ["detail"]],
     "0tV-rz": ["As configurações ainda estão carregando. Tente de novo em instantes."],
     "0uTHCg": ["Comece um projeto do OpenKnowledge."],
+    "0uxLib": [
+      "Não foi possível verificar os links simbólicos de ",
+      ["shareBranch"],
+      ", então a troca não foi feita. Tente novamente; se continuar falhando, confira se o Git está instalado e se a pasta do projeto pode ser lida."
+    ],
     "0wkh7o": ["Logs do OpenKnowledge, incluindo atividade de vários projetos."],
     "0wswKc": ["Linha horizontal que separa seções."],
     "0x9smA": ["Esta página não está mais neste caminho."],
@@ -476,6 +481,11 @@
       "Já tem um repositório git? Adicione-o com <0>git remote add origin <url></0> na pasta deste projeto. Esta página se atualiza sozinha assim que um remoto for detectado."
     ],
     "45MZFs": ["Comandos"],
+    "461Vg9": [
+      "A troca para ",
+      ["shareBranch"],
+      " não foi feita: ela tem um link simbólico apontando para fora do repositório, para arquivos privados ou para um lugar que não pode ser verificado. Normalmente quem enviou o ramo precisa corrigir o link. Se uma pasta deste computador não puder ser lida, torne-a legível e tente novamente."
+    ],
     "46YgRZ": ["Adicionar bloco abaixo"],
     "484LKL": ["Remover o link"],
     "49Mb7P": [
@@ -956,6 +966,9 @@
     "8nWu1k": ["Diagrama vazio"],
     "8oWgty": ["Marcar todos os comentários para enviar"],
     "8qgfac": ["Servidores MCP"],
+    "8qsUJv": [
+      "A sincronização está pausada porque as alterações recebidas deixam um link simbólico apontando para fora do repositório ou para arquivos privados, ou com um destino que não pode ser verificado. Peça a quem as enviou que corrija o link, ou atualize o Git se a sua versão for anterior à 2.38. Depois, a sincronização automática é retomada; no modo Manual, faça pull novamente."
+    ],
     "8rZ1pk": ["Habilitar ", ["id"]],
     "8ruqQi": ["Links internos quebrados"],
     "8t9CRE": ["Iniciando ", ["agentName"], "…"],
@@ -1127,6 +1140,9 @@
     "AT0e50": ["Manter os dois"],
     "ATGYL1": ["Endereço de e-mail"],
     "AUMPjj": ["Espaço para pular, seta para baixo para agachar. É esse o jogo inteiro."],
+    "AUORpp": [
+      "Esta versão de desenvolvimento não pode conectar agentes, então não vai alterar a configuração de agentes do seu app OpenKnowledge instalado."
+    ],
     "AUV-TY": ["Pensando"],
     "AVW-K9": ["Falha ao carregar as páginas órfãs"],
     "AWOSPo": ["Aproximar"],
@@ -1331,6 +1347,12 @@
       "Este arquivo é grande demais para abrir no editor de texto integrado (limite de 1 MB). Use Abrir arquivo, abaixo, para abri-lo em outro app."
     ],
     "C_cPoW": ["Sua sessão do GitHub expirou — entre de novo para verificar o acesso de envio."],
+    "CacpkO": [
+      ["holder"],
+      " está servindo este projeto, então este app não vai pará-lo. Feche esta janela e abra o projeto novamente para parar o servidor de ",
+      ["holder"],
+      " e abrir o projeto aqui."
+    ],
     "CbxTfe": ["Selecionar bloco"],
     "CcaU4i": ["As alterações são aplicadas imediatamente e salvas automaticamente neste tema."],
     "ChMshD": ["Encerrar o ", ["appName"]],
@@ -3654,6 +3676,10 @@
       " usa no lugar da do plugin — ela deixa de acompanhar as atualizações do plugin."
     ],
     "_6FVBz": ["Ir para as abas 1-8"],
+    "_6cS9O": [
+      ["shareBranch"],
+      " não foi aberto em um worktree: o ramo tem um link simbólico apontando para fora do repositório, para arquivos privados ou para um lugar que não pode ser verificado. Normalmente quem enviou o ramo precisa corrigir o link. Se uma pasta deste computador não puder ser lida, torne-a legível e tente novamente."
+    ],
     "_7UQ7y": ["Palavra inteira"],
     "_8quCH": ["A partir de um modelo"],
     "_902BE": [
@@ -3948,9 +3974,6 @@
     "cFgW76": ["Mesclagem bloqueada"],
     "cH0dkG": ["Faltava um recurso de que eu precisava"],
     "cHhH3i": ["uma ferramenta git necessária"],
-    "cIFYZn": [
-      "Enquanto você estiver desconectado, as atualizações são verificadas no máximo a cada 3 minutos, independentemente desta configuração."
-    ],
     "cIptmH": ["No app Claude Desktop"],
     "cK5W4m": [
       ["0"],
@@ -5426,6 +5449,17 @@
     "pA16WG": ["Este projeto não tem nenhum remoto do GitHub."],
     "pAgkuZ": ["Reabrindo \"", ["docName"], "\" com um cache local de colaboração novo."],
     "pBROkv": ["Obrigado por assinar. Fique de olho no seu e-mail para as novidades do produto."],
+    "pCJv30": [
+      [
+        "hiddenCount",
+        "plural",
+        {
+          "one": ["mais ", "#", " link"],
+          "many": ["mais ", "#", " links"],
+          "other": ["mais ", "#", " links"]
+        }
+      ]
+    ],
     "pCralD": ["Mover para um novo painel à esquerda"],
     "pEQFsW": ["Nenhum projeto corresponde."],
     "pFPzHA": ["Seletor de emojis"],

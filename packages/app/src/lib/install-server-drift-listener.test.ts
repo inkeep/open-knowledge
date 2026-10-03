@@ -126,14 +126,22 @@ describe('drift copy', () => {
   });
 
   test('eperm failure points at a different account + reboot, never `ok stop all`', () => {
-    const msg = restartFailureMessage('eperm');
+    const msg = restartFailureMessage({ ok: false, reason: 'eperm' });
     expect(msg.toLowerCase()).toContain('different account');
     expect(msg.toLowerCase()).toContain('restart your computer');
     expect(msg).not.toContain('ok stop all');
   });
 
   test('other failure suggests `ok stop all`', () => {
-    expect(restartFailureMessage('other')).toContain('ok stop all');
+    expect(restartFailureMessage({ ok: false, reason: 'other' })).toContain('ok stop all');
+  });
+
+  test("another channel's server is left running and never offered `ok stop all`", () => {
+    expect(
+      restartFailureMessage({ ok: false, reason: 'other-channel', holderChannel: 'stable' }),
+    ).toBe(
+      "OpenKnowledge (Stable) is serving this project, so this app won't stop it. Close this window and open the project again to stop OpenKnowledge (Stable)'s server and open the project here.",
+    );
   });
 });
 
@@ -184,7 +192,9 @@ describe('installServerDriftListener', () => {
     expect(toastDismiss).toHaveBeenCalledWith('toast-1');
     expect(h.restartServer).toHaveBeenCalledWith('/tmp/proj');
     expect(toastError).toHaveBeenCalledTimes(1);
-    expect(toastError.mock.calls[0]?.[0]).toBe(restartFailureMessage('eperm'));
+    expect(toastError.mock.calls[0]?.[0]).toBe(
+      restartFailureMessage({ ok: false, reason: 'eperm' }),
+    );
   });
 
   test('a restart that recreates the window (invoke rejects) shows no failure toast', async () => {

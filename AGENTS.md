@@ -6,7 +6,7 @@ This is the public OpenKnowledge repository. Keep changes compatible with the pu
 
 - Read [README.md](./README.md) for the project overview.
 - Read [CONTRIBUTING.md](./CONTRIBUTING.md) before changing public PR flow, dependencies, or exported docs.
-- Use Node.js 24 or newer and pnpm 10 or newer.
+- Use Node.js 24 or newer and pnpm 12 or newer.
 - This repo does not use code comments. Read [Comment policy](#comment-policy) before writing any.
 
 ## Commands

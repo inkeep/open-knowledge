@@ -66,6 +66,11 @@ const CHECKS: BuildArtifactCheck[] = [
     out: resolve(DESKTOP_PKG, '..', 'cli', 'dist', 'index.mjs'),
     srcs: [],
   },
+  {
+    name: '@inkeep/open-knowledge CLI executable',
+    out: resolve(DESKTOP_PKG, '..', 'cli', 'dist', 'cli.mjs'),
+    srcs: [resolve(DESKTOP_PKG, '..', 'cli', 'src', 'cli.ts')],
+  },
 ];
 
 export interface GuardDeps {

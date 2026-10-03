@@ -10,6 +10,7 @@ import { LINEAGE_EPOCH_KEY } from '@inkeep/open-knowledge-core';
 import { atomicWriteFile } from '@inkeep/open-knowledge-core/server';
 import type * as Y from 'yjs';
 import { docNameToRelativePath } from './doc-extensions.ts';
+import { assertNoSymlinkEscape } from './fs-safety.ts';
 import { tracedAtomicFs, tracedMkdir } from './fs-traced.ts';
 import { getLogger } from './logger.ts';
 import { isWithinDir } from './path-utils.ts';
@@ -64,6 +65,7 @@ export function loadMermaidDoc(
 
   let raw: string;
   try {
+    assertNoSymlinkEscape(filePath, ctx.contentDir);
     raw = readFileSync(filePath, 'utf-8');
   } catch (e) {
     log.warn({ documentName, err: e }, 'load: could not read; seeding empty');
@@ -88,6 +90,7 @@ export async function storeMermaidDoc(
 
   const filePath = mermaidAbsPath(documentName, ctx.contentDir);
   try {
+    assertNoSymlinkEscape(filePath, ctx.contentDir);
     await tracedMkdir(resolve(filePath, '..'), { recursive: true });
 
     if (existsSync(filePath)) {

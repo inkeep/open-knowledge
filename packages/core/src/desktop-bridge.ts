@@ -468,6 +468,7 @@ export type OkAgentIntegrationsApplyResult =
       readonly ok: false;
       readonly error: string;
       readonly unavailable?: boolean;
+      readonly devBuild?: boolean;
       readonly report: ApplyReport;
       readonly snapshot: HostSnapshot;
     };
@@ -673,7 +674,12 @@ export type OkLocalOpCloneEvent =
   | { type: 'progress'; phase: string; pct: number }
   | { type: 'complete'; dir: string }
   | { type: 'branch-fallback'; branch: string }
-  | { type: 'error'; message: string };
+  | {
+      type: 'error';
+      message: string;
+      code?: 'unsafe-symlinks';
+      refusedSymlinkPaths?: string[];
+    };
 
 export interface OkLocalOpStream<E> {
   readonly events: AsyncIterable<E>;
@@ -914,9 +920,11 @@ export interface OkRecentRemovedMissingInfo {
   readonly projectName: string;
 }
 
-export type OkServerRestartOutcome =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly reason: 'eperm' | 'other' };
+export type OkServerRestartFailure =
+  | { readonly ok: false; readonly reason: 'eperm' | 'other' }
+  | { readonly ok: false; readonly reason: 'other-channel'; readonly holderChannel: string };
+
+export type OkServerRestartOutcome = { readonly ok: true } | OkServerRestartFailure;
 
 export type OkPtyCreateReason = 'no-project' | 'not-consented';
 

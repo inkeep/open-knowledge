@@ -10,6 +10,7 @@ export const SYNC_PAUSED_REASONS = [
   'no-push-permission',
   'non-content-merge-failure',
   'protected-branch',
+  'unsafe-incoming-symlinks',
 ] as const;
 
 export type SyncPausedReason = (typeof SYNC_PAUSED_REASONS)[number];

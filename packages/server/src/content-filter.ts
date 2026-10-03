@@ -349,7 +349,7 @@ function isAlwaysSkipFile(relativePath: string): boolean {
 
 const SECRET_BEARING_DIRS = new Set(['.ssh', '.aws', '.gnupg', '.kube', '.docker']);
 
-function pathHasSecretBearingDirSegment(relativePath: string): boolean {
+export function pathHasSecretBearingDirSegment(relativePath: string): boolean {
   for (const segment of relativePath.split('/')) {
     if (SECRET_BEARING_DIRS.has(segment.toLowerCase())) return true;
   }
@@ -364,7 +364,7 @@ const SECRET_CREDENTIAL_BASENAMES = new Set([
   '.git-credentials',
 ]);
 const SECRET_KEY_SUFFIXES = ['.pem', '.key', '.p12', '.pfx', '.keystore', '.jks', '.ppk'] as const;
-function isSecretBearingFile(relativePath: string): boolean {
+export function isSecretBearingFile(relativePath: string): boolean {
   const lower = relativePath.slice(relativePath.lastIndexOf('/') + 1).toLowerCase();
   if (lower === '.env' || lower.startsWith('.env.')) return true;
   if (SECRET_CREDENTIAL_BASENAMES.has(lower)) return true;

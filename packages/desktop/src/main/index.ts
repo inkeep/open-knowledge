@@ -56,6 +56,7 @@ import {
   OPENKNOWLEDGE_SKILLS_REPO,
   PROTOCOL_VERSION,
   projectWorktreeCreateResult,
+  resolveDesktopProductName,
   ServerInfoSuccessSchema,
   SPAWN_ERROR_LOG,
   TERMINAL_CLIS,
@@ -287,7 +288,8 @@ import {
 import { createBootBudgetDirSizeProbe } from './fs-walk-budget.ts';
 import { ensureGitAvailable } from './git-preflight-handler.ts';
 import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
-import { classifyInstallShape } from './install-shape.ts';
+import { failedOpenHolder, promptHolderStop } from './holder-stop-prompt.ts';
+import { agentConnectionsAvailability, isSupportedInstallShape } from './install-shape.ts';
 import {
   combineInstanceLabels,
   formatInstanceAppName,
@@ -550,6 +552,7 @@ import {
   setWindowInstanceLabel,
   type UtilityProcessLike,
   WindowManager,
+  type WindowManagerDeps,
 } from './window-manager.ts';
 import { WINDOW_MIN_SIZE } from './window-min-size.ts';
 import { resolveRestoredPlacement, sortWindowsByFocusSequence } from './window-placement.ts';
@@ -1301,7 +1304,136 @@ function ensureWindowManager() {
         'dist',
         'cli.mjs',
       )
-    : null;
+    : join(__dirname, '../../../cli/dist/cli.mjs');
+
+  const spawnCliServer: NonNullable<WindowManagerDeps['spawnSingleFileServer']> = async ({
+    contentDir,
+    reactShellDistDir,
+    singleFile,
+    projectDir,
+  }) => {
+    const projectRoot = projectDir ?? contentDir;
+    const lockDir = getLocalDir(projectRoot);
+    if (!existsSync(lockDir)) {
+      try {
+        mkdirSync(lockDir, { recursive: true });
+      } catch (err) {
+        throw Object.assign(
+          new Error(
+            `spawnCliServer: failed to create lock dir at ${lockDir}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+          {
+            kind: 'spawn-error' as const,
+            code: (err as NodeJS.ErrnoException).code,
+            cause: err,
+          },
+        );
+      }
+    }
+    const spawnErrorLogPath = join(lockDir, SPAWN_ERROR_LOG);
+    let spawnErrorLogFd: number;
+    try {
+      spawnErrorLogFd = openSpawnErrorLog(spawnErrorLogPath, process.pid);
+    } catch (err) {
+      throw Object.assign(
+        new Error(
+          `spawnCliServer: failed to open spawn-error log fd at ${spawnErrorLogPath}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        ),
+        {
+          kind: 'spawn-error' as const,
+          code: (err as NodeJS.ErrnoException).code,
+          cause: err,
+        },
+      );
+    }
+    const spawnArgs = resolveDetachedSpawnArgs({
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+      parentExecPath: process.execPath,
+      bundleCliMjsPath,
+      reactShellDistDir,
+      contentDir,
+      spawnErrorLogFd,
+      env: buildUtilityForkEnv(process.env, {
+        startupTraceparent: injectTraceparent(),
+        otlpEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+      }),
+      ...(singleFile !== undefined ? { singleFile, projectDir } : {}),
+      terminalAuthAvailable: isTerminalAvailable(),
+    });
+    let childRef: ReturnType<typeof spawn>;
+    startupWaterfall.mark('serverSpawned');
+    try {
+      childRef = spawn(spawnArgs.file, spawnArgs.args, {
+        ...spawnArgs.opts,
+        windowsHide: true,
+      });
+    } catch (spawnErr) {
+      try {
+        closeSync(spawnErrorLogFd);
+      } catch {}
+      throw Object.assign(
+        new Error(
+          `spawnCliServer: child_process.spawn threw synchronously: ${
+            spawnErr instanceof Error ? spawnErr.message : String(spawnErr)
+          }`,
+        ),
+        {
+          kind: 'spawn-error' as const,
+          code: (spawnErr as NodeJS.ErrnoException).code,
+          cause: spawnErr,
+        },
+      );
+    }
+    try {
+      await new Promise<void>((resolveSpawn, rejectSpawn) => {
+        const onSpawn = (): void => {
+          childRef.removeListener('error', onError);
+          resolveSpawn();
+        };
+        const onError = (err: Error): void => {
+          childRef.removeListener('spawn', onSpawn);
+          rejectSpawn(
+            Object.assign(
+              new Error(`spawnCliServer: child_process.spawn emitted 'error': ${err.message}`),
+              {
+                kind: 'spawn-error' as const,
+                code: (err as NodeJS.ErrnoException).code,
+                cause: err,
+              },
+            ),
+          );
+        };
+        childRef.once('spawn', onSpawn);
+        childRef.once('error', onError);
+      });
+    } finally {
+      try {
+        closeSync(spawnErrorLogFd);
+      } catch {}
+    }
+    let exitRecord: { code: number | null; signal: string | null } | null = null;
+    childRef.on('exit', (code, signal) => {
+      exitRecord = { code, signal };
+    });
+    attachServerExitObserver(childRef, {
+      lockDir,
+      recordExit: (info) => getServerExitRecorder().recordExit(info),
+      logger: getLogger('server-exit'),
+    });
+    childRef.unref();
+    const pid = childRef.pid;
+    if (pid === undefined) {
+      throw new Error(
+        'spawnCliServer: child_process.spawn did not return a pid after spawn-event resolution.',
+      );
+    }
+    return { pid, readExit: () => exitRecord };
+  };
 
   wm = new WindowManager({
     createWindow: (opts) => {
@@ -1375,140 +1507,8 @@ function ensureWindowManager() {
     },
     terminalAuthAvailable: isTerminalAvailable(),
     utilityEntryPath,
-    ...(bundleCliMjsPath !== null
-      ? {
-          spawnDetachedServer: async ({
-            contentDir,
-            reactShellDistDir,
-            singleFile,
-            projectDir,
-          }) => {
-            const projectRoot = projectDir ?? contentDir;
-            const lockDir = getLocalDir(projectRoot);
-            if (!existsSync(lockDir)) {
-              try {
-                mkdirSync(lockDir, { recursive: true });
-              } catch (err) {
-                throw Object.assign(
-                  new Error(
-                    `spawnDetachedServer: failed to create lock dir at ${lockDir}: ${
-                      err instanceof Error ? err.message : String(err)
-                    }`,
-                  ),
-                  {
-                    kind: 'spawn-error' as const,
-                    code: (err as NodeJS.ErrnoException).code,
-                    cause: err,
-                  },
-                );
-              }
-            }
-            const spawnErrorLogPath = join(lockDir, SPAWN_ERROR_LOG);
-            let spawnErrorLogFd: number;
-            try {
-              spawnErrorLogFd = openSpawnErrorLog(spawnErrorLogPath, process.pid);
-            } catch (err) {
-              throw Object.assign(
-                new Error(
-                  `spawnDetachedServer: failed to open spawn-error log fd at ${spawnErrorLogPath}: ${
-                    err instanceof Error ? err.message : String(err)
-                  }`,
-                ),
-                {
-                  kind: 'spawn-error' as const,
-                  code: (err as NodeJS.ErrnoException).code,
-                  cause: err,
-                },
-              );
-            }
-            const spawnArgs = resolveDetachedSpawnArgs({
-              platform: process.platform,
-              isPackaged: app.isPackaged,
-              parentExecPath: process.execPath,
-              bundleCliMjsPath,
-              reactShellDistDir,
-              contentDir,
-              spawnErrorLogFd,
-              env: buildUtilityForkEnv(process.env, {
-                startupTraceparent: injectTraceparent(),
-                otlpEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
-              }),
-              ...(singleFile !== undefined ? { singleFile, projectDir } : {}),
-              terminalAuthAvailable: isTerminalAvailable(),
-            });
-            let childRef: ReturnType<typeof spawn>;
-            startupWaterfall.mark('serverSpawned');
-            try {
-              childRef = spawn(spawnArgs.file, spawnArgs.args, {
-                ...spawnArgs.opts,
-                windowsHide: true,
-              });
-            } catch (spawnErr) {
-              try {
-                closeSync(spawnErrorLogFd);
-              } catch {}
-              throw Object.assign(
-                new Error(
-                  `spawnDetachedServer: child_process.spawn threw synchronously: ${
-                    spawnErr instanceof Error ? spawnErr.message : String(spawnErr)
-                  }`,
-                ),
-                {
-                  kind: 'spawn-error' as const,
-                  code: (spawnErr as NodeJS.ErrnoException).code,
-                  cause: spawnErr,
-                },
-              );
-            }
-            try {
-              await new Promise<void>((resolveSpawn, rejectSpawn) => {
-                const onSpawn = (): void => {
-                  childRef.removeListener('error', onError);
-                  resolveSpawn();
-                };
-                const onError = (err: Error): void => {
-                  childRef.removeListener('spawn', onSpawn);
-                  rejectSpawn(
-                    Object.assign(
-                      new Error(
-                        `spawnDetachedServer: child_process.spawn emitted 'error': ${err.message}`,
-                      ),
-                      {
-                        kind: 'spawn-error' as const,
-                        code: (err as NodeJS.ErrnoException).code,
-                        cause: err,
-                      },
-                    ),
-                  );
-                };
-                childRef.once('spawn', onSpawn);
-                childRef.once('error', onError);
-              });
-            } finally {
-              try {
-                closeSync(spawnErrorLogFd);
-              } catch {}
-            }
-            let exitRecord: { code: number | null; signal: string | null } | null = null;
-            childRef.on('exit', (code, signal) => {
-              exitRecord = { code, signal };
-            });
-            attachServerExitObserver(childRef, {
-              lockDir,
-              recordExit: (info) => getServerExitRecorder().recordExit(info),
-              logger: getLogger('server-exit'),
-            });
-            childRef.unref();
-            const pid = childRef.pid;
-            if (pid === undefined) {
-              throw new Error(
-                'spawnDetachedServer: child_process.spawn did not return a pid after spawn-event resolution.',
-              );
-            }
-            return { pid, readExit: () => exitRecord };
-          },
-        }
-      : {}),
+    spawnSingleFileServer: spawnCliServer,
+    ...(app.isPackaged ? { spawnDetachedServer: spawnCliServer } : {}),
     createEphemeralProjectDir,
     removeDir: (dir: string) => fsPromises.rm(dir, { recursive: true, force: true }),
     rendererEntryPath,
@@ -1516,6 +1516,7 @@ function ensureWindowManager() {
     appVersion: app.getVersion(),
     selfProtocolVersion: PROTOCOL_VERSION,
     selfRuntimeVersion: RUNTIME_VERSION,
+    selfChannel: resolveDesktopProductName(),
     spawnLockPollDeadlineMs: readPositiveIntEnv('OK_SPAWN_STARTUP_TIMEOUT_MS'),
     spawnLockProgressDeadlineMs: readPositiveIntEnv('OK_SPAWN_BIND_TIMEOUT_MS'),
     reclaimForeignServerInDev: !app.isPackaged,
@@ -2105,7 +2106,9 @@ async function openProjectOrFallbackToNavigator(
   } catch (err) {
     const errorMessage = (err as Error).message;
     const kind = (err as Error & { kind?: string }).kind;
-    const holderPid = (err as Error & { holderPid?: number }).holderPid;
+    const otherChannelHolder = failedOpenHolder(err, projectPath, wm as WindowManager | undefined);
+    const holderPid =
+      otherChannelHolder?.holderPid ?? (err as Error & { holderPid?: number }).holderPid;
     const isStaleLockHolder = kind === 'stale-lock-holder';
     const staleLockReason = isStaleLockHolder
       ? (err as Error & { reason?: string }).reason
@@ -2119,6 +2122,8 @@ async function openProjectOrFallbackToNavigator(
         projectPath,
         entryPoint,
         kind,
+        holderPid,
+        holderChannel: otherChannelHolder?.holderChannel,
         exitCode: (err as Error & { exitCode?: number | null }).exitCode,
         exitSignal: (err as Error & { exitSignal?: string | null }).exitSignal,
         err,
@@ -2145,35 +2150,27 @@ async function openProjectOrFallbackToNavigator(
           : 'A stopped server is still holding this project';
       dialogBody = `${projectPath}\n\n${errorMessage}`;
     }
-    const holderInTheWay =
-      kind === 'lock-collision' ||
-      kind === 'stale-lock-holder' ||
-      (kind === 'spawn-lock-timeout' && errorMessage.includes('already running'));
     const warnsHolderMayBeLive = staleLockReason === 'lock-not-attachable' && !holderIsOwnChild;
-    if (holderInTheWay) {
-      const { response } = await dialog.showMessageBox({
-        type: 'warning',
-        title: dialogTitle,
-        message: dialogTitle,
-        detail:
-          `${dialogBody}\n\n` +
-          (warnsHolderMayBeLive
-            ? `OpenKnowledge can stop that process and retry opening the project. It may still be ` +
-              `running, so stop it only if you do not need it.`
-            : holderIsOwnChild
-              ? `OpenKnowledge already asked that server to stop during this open. It can make ` +
-                `sure it is gone and try again.`
-              : `OpenKnowledge can stop the conflicting server process and retry opening the project.`),
-        buttons: ['Stop Server & Retry', 'Cancel'],
-        defaultId: warnsHolderMayBeLive ? 1 : 0,
-        cancelId: 1,
-      });
-      if (response === 0) {
-        ensureWindowManager();
-        const stop = await wm.forceStopConflictingServer(projectPath);
-        if (stop.ok) {
+    const prompt = await promptHolderStop(
+      {
+        projectPath,
+        kind,
+        errorMessage,
+        dialogTitle,
+        dialogBody,
+        otherChannelHolder,
+        warnsHolderMayBeLive,
+        holderIsOwnChild,
+      },
+      {
+        showMessageBox: (options) => dialog.showMessageBox(options),
+        forceStop: (expectedHolder) => {
+          ensureWindowManager();
+          return wm.forceStopConflictingServer(projectPath, expectedHolder);
+        },
+        retryOpen: async () => {
           try {
-            const opened = await openProject(
+            return await openProject(
               projectPath,
               entryPoint,
               pendingDeepLinkTarget,
@@ -2183,7 +2180,6 @@ async function openProjectOrFallbackToNavigator(
               pendingTargetMissing,
               options,
             );
-            return opened;
           } catch (retryErr) {
             getLogger('project').error(
               {
@@ -2199,17 +2195,34 @@ async function openProjectOrFallbackToNavigator(
               'Unable to open project',
               `${projectPath}\n\n${(retryErr as Error).message}`,
             );
+            openNavigator();
+            return false;
           }
-        } else {
-          flushDesktopLogger();
-          dialog.showErrorBox(
-            'Unable to open project',
-            `${projectPath}\n\n` +
-              (stop.reason === 'eperm'
-                ? 'The conflicting server belongs to another user account and cannot be stopped from here. Quit it from that account and try again.'
-                : 'Could not stop the conflicting server. Quit it manually (`ok stop`) and try again.'),
-          );
-        }
+        },
+        reopen: () =>
+          openProjectOrFallbackToNavigator(
+            projectPath,
+            entryPoint,
+            pendingDeepLinkTarget,
+            pendingBranch,
+            pendingMultiCandidate,
+            pendingShareBranchSwitch,
+            pendingTargetMissing,
+            options,
+          ),
+      },
+    );
+    if (prompt.kind === 'retried' || prompt.kind === 'reopened') return prompt.opened;
+    if (prompt.kind !== 'not-offered') {
+      if (prompt.kind === 'stop-failed') {
+        flushDesktopLogger();
+        dialog.showErrorBox(
+          'Unable to open project',
+          `${projectPath}\n\n` +
+            (prompt.reason === 'eperm'
+              ? 'The conflicting server belongs to another user account and cannot be stopped from here. Quit it from that account and try again.'
+              : 'Could not stop the conflicting server. Quit it manually (`ok stop`) and try again.'),
+        );
       } else {
         getLogger('project').info(
           {
@@ -2220,7 +2233,7 @@ async function openProjectOrFallbackToNavigator(
           },
           'user declined the stop-and-retry remedy',
         );
-        if (isStaleLockHolder) {
+        if (isStaleLockHolder && otherChannelHolder === null) {
           const stopCommandTarget = quoteStopCommandPath(projectPath, process.platform);
           flushDesktopLogger();
           dialog.showErrorBox(
@@ -2567,8 +2580,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
 }
 
 function supportedPackagedInstall(): boolean {
-  const kind = classifyInstallShape(process.platform, app.getPath('exe'), process.env).kind;
-  return kind !== 'appimage' && kind !== 'unsupported';
+  return isSupportedInstallShape(process.platform, app.getPath('exe'), process.env);
 }
 
 function desktopSelfUninstallAvailable(): boolean {
@@ -5598,12 +5610,12 @@ function projectDirForSender(event: IpcMainInvokeEvent): string | null {
 
 function registerIntegrationsSettingsIpc(): void {
   const integrationsLogger = getLogger('integrations-settings');
-  const available =
-    process.env.OK_RECLAIM_DISABLE !== '1' &&
-    (app.isPackaged || process.env.OK_M6B_FORCE === '1') &&
-    !['appimage', 'unsupported'].includes(
-      classifyInstallShape(process.platform, app.getPath('exe'), process.env).kind,
-    );
+  const { available, devBuild } = agentConnectionsAvailability(
+    app.isPackaged,
+    process.platform,
+    app.getPath('exe'),
+    process.env,
+  );
   const applyLogger = getLogger('agent-integrations-apply');
   registerIntegrationsSettings({
     home: osHomedir(),
@@ -5611,6 +5623,7 @@ function registerIntegrationsSettingsIpc(): void {
     ipcMain,
     applyBatch: createAgentIntegrationsApplyDelegate({
       available,
+      devBuild,
       surfaces: { global: globalMcpWriterSurface(), project: projectWriterSurface() },
       resolveProjectDir: projectDirForSender,
       snapshot: (projectDir) => {
@@ -5748,10 +5761,12 @@ function registerIntegrationsSettingsIpc(): void {
 
 function registerProjectIntegrationsSettingsIpc(): void {
   const projectLogger = getLogger('project-integrations-settings');
-  const available =
-    process.env.OK_RECLAIM_DISABLE !== '1' &&
-    (app.isPackaged || process.env.OK_M6B_FORCE === '1') &&
-    supportedPackagedInstall();
+  const { available } = agentConnectionsAvailability(
+    app.isPackaged,
+    process.platform,
+    app.getPath('exe'),
+    process.env,
+  );
   const tildifyHomePath = (path: string): string => {
     const home = osHomedir();
     return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
@@ -6215,6 +6230,7 @@ function bootPrimaryInstance(): void {
       setAsDefaultProtocolClient: (scheme) => app.setAsDefaultProtocolClient(scheme),
       removeAsDefaultProtocolClient: (scheme) => app.removeAsDefaultProtocolClient(scheme),
     },
+    registerDevProtocol: process.env.OK_DEV_PROTOCOL === '1',
     focusWindowForProject: (projectPath) => {
       if (!wm) return null;
       yieldRestoreToDeepLink();

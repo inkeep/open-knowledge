@@ -234,6 +234,22 @@ describe('file-ops group over the composed listener — served natively', () => 
     expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:path-escape');
   });
 
+  test('duplicate-path refuses an extensionless file path linked into machine-local state', async () => {
+    mkdirSync(resolve(contentDir, '.ok', 'local'), { recursive: true });
+    writeFileSync(
+      resolve(contentDir, '.ok', 'local', 'dup-fixture.json'),
+      '{"token":"machine-local-secret"}',
+      'utf-8',
+    );
+    mkdirSync(resolve(contentDir, 'dup-linked'), { recursive: true });
+    symlinkSync('../.ok/local/dup-fixture.json', resolve(contentDir, 'dup-linked', 'leak.md'));
+
+    const res = await postJson('/api/duplicate-path', { kind: 'file', path: 'dup-linked/leak' });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:path-escape');
+    expect(readdirSync(resolve(contentDir, 'dup-linked'))).toEqual(['leak.md']);
+  });
+
   test('duplicate-path maps a symlink escape OUT of the content root to a 400, not a 500', async () => {
     const outsideTarget = mkdtempSync(resolve(tmpRoot, 'escape-dup-out-'));
     symlinkSync(outsideTarget, resolve(contentDir, 'escape-dup-out'), 'dir');

@@ -364,6 +364,7 @@ export type AgentIntegrationsApplyResult =
       readonly ok: false;
       readonly error: string;
       readonly unavailable?: boolean;
+      readonly devBuild?: boolean;
       readonly report: ApplyReport;
       readonly snapshot: HostSnapshot;
     };

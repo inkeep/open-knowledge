@@ -39,3 +39,23 @@ export function classifyInstallShape(
   }
   return { kind: 'unsupported' };
 }
+
+export function isSupportedInstallShape(
+  platform: string,
+  executablePath: string,
+  env: Record<string, string | undefined>,
+): boolean {
+  const { kind } = classifyInstallShape(platform, executablePath, env);
+  return kind !== 'appimage' && kind !== 'unsupported';
+}
+
+export function agentConnectionsAvailability(
+  isPackaged: boolean,
+  platform: string,
+  executablePath: string,
+  env: Record<string, string | undefined>,
+): { available: boolean; devBuild: boolean } {
+  if (env.OK_RECLAIM_DISABLE === '1') return { available: false, devBuild: false };
+  if (!isPackaged && env.OK_M6B_FORCE !== '1') return { available: false, devBuild: true };
+  return { available: isSupportedInstallShape(platform, executablePath, env), devBuild: false };
+}

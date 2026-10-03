@@ -243,6 +243,22 @@ describe('what a refused desktop apply carries back', () => {
     });
   });
 
+  test('keeps the dev-build flag', async () => {
+    const apply = vi.fn(async () => ({
+      ok: false as const,
+      error: 'Managing AI tool connections is unavailable in this build.',
+      unavailable: true,
+      devBuild: true,
+      report: EMPTY_REPORT,
+      snapshot: SNAPSHOT,
+    }));
+    vi.stubGlobal('window', { okDesktop: { agentIntegrations: { apply } } });
+
+    const result = await applyAgentConnectionIntents([]);
+
+    expect(result).toMatchObject({ unavailable: true, devBuild: true });
+  });
+
   test('keeps a thrown bridge error as text', async () => {
     const apply = vi.fn(async () => {
       throw new Error('bridge exploded');

@@ -640,7 +640,9 @@ function ApplyFailureAlert({
   if (result.unavailable === true) {
     return (
       <p role="alert" className="text-sm text-destructive">
-        {t`Managing agent connections is unavailable in this build.`}
+        {result.devBuild === true
+          ? t`This development build can't connect agents, so it won't change the agent setup of your installed OpenKnowledge app.`
+          : t`Managing agent connections is unavailable in this build.`}
       </p>
     );
   }

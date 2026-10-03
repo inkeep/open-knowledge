@@ -10,7 +10,6 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual, promisify, stripVTControlCharacters } from 'node:util';
 import YAML from 'yaml';
 import { z } from 'zod';
@@ -18,8 +17,9 @@ import { z } from 'zod';
 const execute = promisify(execFile);
 const INSTALL_ATTEMPTS = 3;
 const INSTALL_TIMEOUT_MS = 180_000;
-const OBSERVER_READY = 'OK_CLI_FETCH_OBSERVER_V1';
-const FETCH_FAILURE = 'OK_CLI_FETCH_FAILURE_V1 ';
+const TRANSPORT_CAUSE =
+  /operation timed out|timed out|connection (?:closed|reset|refused)|socket hang up|ECONNRESET|ECONNREFUSED|ETIMEDOUT/i;
+const TRANSPORT_WRAPPERS = new Set(['ERR_PNPM_TARBALL_FETCH_TARBALL', 'ERR_PNPM_META_FETCH_FAIL']);
 const TRANSPORT_CODES = new Set([
   'ECONNRESET',
   'ECONNREFUSED',
@@ -30,6 +30,14 @@ const TRANSPORT_CODES = new Set([
   'ENOTFOUND',
   'ENETUNREACH',
   'EHOSTUNREACH',
+]);
+const FETCH_TRANSPORT_CODES = new Set([
+  ...TRANSPORT_CODES,
+  'UND_ERR_SOCKET',
+  'UND_ERR_CLOSED',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
 ]);
 const declarations = z.record(z.string(), z.string());
 const manifestSchema = z.object({
@@ -53,8 +61,121 @@ const lockSchema = z.looseObject({
   packages: z.record(z.string(), z.unknown()),
   snapshots: z.record(z.string(), z.unknown()),
 });
-const fetchFailureSchema = z.object({ code: z.string().optional(), status: z.number().optional() });
 const pnpmErrorSchema = z.object({ level: z.literal('error'), code: z.string() });
+const lockedTarball = z.object({
+  resolution: z.object({ integrity: z.string(), tarball: z.string().optional() }),
+});
+
+type FetchVerdict = { code: string; transport?: boolean; reason: string };
+
+async function refetchLockedTarball(
+  packageId: string,
+  installPrefix: string,
+  registry: string,
+  timeoutMs: number,
+): Promise<FetchVerdict> {
+  const lock = lockSchema.parse(
+    YAML.parse(readFileSync(join(installPrefix, 'pnpm-lock.yaml'), 'utf8')),
+  );
+  const entry = lockedTarball.safeParse(lock.packages[packageId]);
+  if (!entry.success)
+    return {
+      code: `INCOMPLETE_FETCH ${packageId}`,
+      transport: false,
+      reason: 'it has no locked tarball to check',
+    };
+  const at = packageId.lastIndexOf('@');
+  const name = packageId.slice(0, at);
+  const url =
+    entry.data.resolution.tarball ??
+    `${registry.replace(/\/+$/, '')}/${name}/-/${name.split('/').at(-1)}-${packageId.slice(at + 1)}.tgz`;
+  let body: Buffer;
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!response.ok)
+      return {
+        code: `ERR_PNPM_FETCH_${response.status}`,
+        reason: `the registry answered ${response.status}`,
+      };
+    body = Buffer.from(await response.arrayBuffer());
+  } catch (error) {
+    const cause = error instanceof Error && error.cause instanceof Error ? error.cause : undefined;
+    const code = z.object({ code: z.string() }).safeParse(cause ?? error).data?.code;
+    const timedOut =
+      error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+    return {
+      code: `INCOMPLETE_FETCH ${packageId}`,
+      transport: timedOut || (code !== undefined && FETCH_TRANSPORT_CODES.has(code)),
+      reason: `the request failed (${[error instanceof Error ? error.message : String(error), cause?.message, code].filter(Boolean).join(': ')})`,
+    };
+  }
+  const [locked] = entry.data.resolution.integrity.split(/\s+/);
+  const separator = locked.indexOf('-');
+  const actual = createHash(locked.slice(0, separator)).update(body).digest('base64');
+  return actual === locked.slice(separator + 1)
+    ? {
+        code: `INCOMPLETE_FETCH ${packageId}`,
+        transport: true,
+        reason: 'it downloads and matches the lockfile now, so the failure was transient',
+      }
+    : {
+        code: 'ERR_PNPM_TARBALL_INTEGRITY',
+        transport: false,
+        reason: 'its integrity does not match the lockfile',
+      };
+}
+
+function ndjsonEvents(stdout: string) {
+  return stdout.split('\n').flatMap((line) => {
+    try {
+      return [z.record(z.string(), z.unknown()).parse(JSON.parse(line))];
+    } catch {
+      return [];
+    }
+  });
+}
+
+function pnpmStartedFetching(output: string) {
+  return ndjsonEvents(output).some(
+    (event) => event.name === 'pnpm:fetching-progress' && event.status === 'started',
+  );
+}
+
+function pnpmIncompleteFetches(output: string) {
+  const events = ndjsonEvents(output);
+  const started = new Set(
+    events
+      .filter(
+        (event) =>
+          event.name === 'pnpm:fetching-progress' &&
+          event.status === 'started' &&
+          typeof event.packageId === 'string',
+      )
+      .map((event) => String(event.packageId)),
+  );
+  for (const event of events)
+    if (event.name === 'pnpm:progress' && event.status === 'fetched')
+      started.delete(String(event.packageId));
+  return [...started];
+}
+
+function pnpmReportedErrors(output: string) {
+  return ndjsonEvents(output).flatMap((event) => {
+    const parsed = pnpmErrorSchema.safeParse(event);
+    return parsed.success ? [{ code: parsed.data.code }] : [];
+  });
+}
+
+function pnpmPrintedErrors(stderr: string) {
+  const text = stripVTControlCharacters(stderr);
+  return [
+    ...text.matchAll(/^Error: (ERR_PNPM_[A-Z0-9_]+)\n([\s\S]*?)(?=^Error: |(?![\s\S]))/gm),
+  ].map(([, code, cause]) => ({
+    code,
+    transport:
+      TRANSPORT_WRAPPERS.has(code) && TRANSPORT_CAUSE.test(cause.replace(/\s*[│├╰─▶]+\s*/g, ' ')),
+  }));
+}
 
 export class CliInstallUnavailableError extends Error {
   readonly exitCode = 77;
@@ -128,12 +249,6 @@ async function prepareLockedConsumer(
   const { packageManager } = z
     .object({ packageManager: z.string().regex(/^pnpm@\d+\.\d+\.\d+(?:\+.+)?$/) })
     .parse(JSON.parse(readFileSync(join(workspaceDir, 'package.json'), 'utf8')));
-  const hook = readFileSync(
-    fileURLToPath(new URL('./packed-fetch.test-helper.cjs', import.meta.url)),
-    'utf8',
-  );
-  writeFileSync(join(options.installPrefix, '.pnpmfile.cjs'), hook);
-  lock.pnpmfileChecksum = `sha256-${createHash('sha256').update(hook.replaceAll('\r\n', '\n')).digest('base64')}`;
   cpSync(tarball, join(options.installPrefix, 'cli.tgz'));
   const reference = 'file:cli.tgz';
   const key = `${manifest.name}@${reference}`;
@@ -261,12 +376,9 @@ export async function installPackedCli(
       failed = true;
     }
     outputBytes += Buffer.byteLength(stdout) + Buffer.byteLength(stderr);
-    const failures =
+    const failures: { code: string; transport?: boolean }[] =
       mode === 'locked'
-        ? stderr
-            .split('\n')
-            .filter((line) => line.startsWith(FETCH_FAILURE))
-            .map((line) => fetchFailureSchema.parse(JSON.parse(line.slice(FETCH_FAILURE.length))))
+        ? []
         : failed
           ? [
               {
@@ -280,34 +392,48 @@ export async function installPackedCli(
             ]
           : [];
     if (mode === 'locked' && failed) {
-      const terminalErrors = stdout.split('\n').flatMap((line) => {
-        try {
-          const parsed = pnpmErrorSchema.safeParse(JSON.parse(line));
-          return parsed.success ? [{ code: parsed.data.code }] : [];
-        } catch {
-          return [];
-        }
-      });
+      const terminalErrors = [
+        ...pnpmReportedErrors(`${stdout}\n${stderr}`),
+        ...pnpmPrintedErrors(stderr),
+      ];
       failures.push(...terminalErrors);
       if (!terminalErrors.length && !deadlineError)
         failures.push({ code: 'UNCLASSIFIED_PNPM_FAILURE' });
     }
-    const observed = mode !== 'locked' || stderr.split('\n').includes(OBSERVER_READY);
+    const refetched: { packageId: string; verdict: FetchVerdict }[] = [];
+    if (mode === 'locked' && !failed)
+      for (const packageId of pnpmIncompleteFetches(`${stdout}\n${stderr}`)) {
+        const remaining = deadline - now();
+        const verdict =
+          remaining > 0
+            ? await refetchLockedTarball(
+                packageId,
+                installPrefix,
+                env.pnpm_config_registry ??
+                  env.npm_config_registry ??
+                  'https://registry.npmjs.org/',
+                Math.min(fetchTimeout, remaining),
+              )
+            : {
+                code: `INCOMPLETE_FETCH ${packageId}`,
+                transport: false,
+                reason: 'the acquisition deadline left no time to check it',
+              };
+        refetched.push({ packageId, verdict });
+        failures.push(verdict);
+      }
+    const observed = mode !== 'locked' || pnpmStartedFetching(`${stdout}\n${stderr}`);
     if (!failed && !failures.length && observed) break;
     process.stderr.write(stdout + stderr);
     const retryable =
       failures.length > 0 &&
       failures.every(
         (failure) =>
-          TRANSPORT_CODES.has(failure.code ?? '') ||
-          /^(?:E|ERR_PNPM_FETCH_)(?:429|5\d\d)$/.test(failure.code ?? '') ||
-          ('status' in failure &&
-            (failure.status === 429 ||
-              (typeof failure.status === 'number' &&
-                failure.status >= 500 &&
-                failure.status <= 599))),
+          failure.transport === true ||
+          TRANSPORT_CODES.has(failure.code) ||
+          /^(?:E|ERR_PNPM_FETCH_)(?:408|429|5\d\d)$/.test(failure.code),
       );
-    const message = `Packed CLI ${command} installation failed.\n${stdout}${stderr}`;
+    const message = `Packed CLI ${command} installation failed.\n${refetched.map(({ packageId, verdict }) => `pnpm started fetching ${packageId} but never finished, and pnpm 12 skips a failed optional dependency without reporting why. Fetched again by the harness: ${verdict.code.startsWith('INCOMPLETE_FETCH') ? '' : `${verdict.code}: `}${verdict.reason}.\n`).join('')}${stdout}${stderr}`;
     if (!retryable) {
       if (deadlineError)
         throw new Error(

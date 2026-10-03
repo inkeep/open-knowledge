@@ -5,11 +5,14 @@ import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { DEFAULT_SERVER_HOST, formatSpawnAttemptHeader } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { failedOpenHolder, promptHolderStop } from '../../src/main/holder-stop-prompt.ts';
 import { resolveLocalOpCliInvocation } from '../../src/main/local-op-cli-invocation.ts';
 import { breakServerLockHeldBy } from '../../src/main/server-lock-break.ts';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import {
   type BrowserWindowLike,
+  isOtherChannelHolderError,
+  otherChannelStopOffer,
   type ServerLockMetadataLike,
   type UtilityProcessLike,
   WindowManager,
@@ -311,6 +314,20 @@ describe('WindowManager', () => {
       apiOrigin: 'http://localhost:51235',
     });
     await secondPromise;
+  });
+
+  test('single-file spawning does not switch project opens away from the utility', async () => {
+    const singleFileSpawn = vi.fn(async () => ({ pid: 88001 }));
+    env.deps.spawnSingleFileServer = singleFileSpawn;
+    const wm = new WindowManager(env.deps);
+
+    const pending = wm.createProjectWindow({ projectPath: '/tmp/single-file-capable-project' });
+    expect(env.utilities).toHaveLength(1);
+    expect(singleFileSpawn).not.toHaveBeenCalled();
+    env.utilities[0]?.fire({ type: 'ready', port: 52012, apiOrigin: 'http://localhost:52012' });
+
+    const ctx = await pending;
+    expect(ctx.utility).toBe(env.utilities[0]);
   });
 
   test('createProjectWindow binds the utility server to numeric IPv4 loopback, never a hostname', async () => {
@@ -770,6 +787,437 @@ describe('WindowManager', () => {
       env.deps.hostname = overrides?.hostname ?? (() => 'my-host');
       env.deps.probeWsUpgrade = overrides?.probeWsUpgrade ?? (() => Promise.resolve(true));
     }
+
+    describe('one writer per project across channels', () => {
+      const stableLock: ServerLockMetadataLike = { ...liveLock, channel: 'stable' };
+
+      async function openOutcome(wm: WindowManager) {
+        return wm.createProjectWindow({ projectPath: '/tmp/dragon' }).then(
+          (ctx) => ({ kind: 'attached' as const, port: ctx.port }),
+          (err) => ({
+            kind: 'refused' as const,
+            errKind: (err as Error & { kind?: string }).kind,
+            holderChannel: (err as Error & { holderChannel?: string }).holderChannel,
+            message: (err as Error).message,
+          }),
+        );
+      }
+
+      test("beta refuses to attach to stable's live server and never stops it, even on a reclaiming or post-upgrade launch", async () => {
+        const killProbe = vi.fn(() => {});
+        env.deps.killProbe = killProbe;
+        env.deps.selfChannel = 'beta';
+        env.deps.reclaimForeignServerInDev = true;
+        env.deps.isFirstLaunchAfterUpgrade = () => true;
+        env.deps.selfProtocolVersion = 999;
+        env.deps.selfRuntimeVersion = '99.0.0';
+        enableAttachProbe({ readServerLock: () => stableLock });
+
+        const outcome = await openOutcome(new WindowManager(env.deps));
+
+        expect(outcome).toEqual({
+          kind: 'refused',
+          errKind: 'other-channel-holder',
+          holderChannel: 'stable',
+          message:
+            'OpenKnowledge (Stable) is serving this project (pid 65792). Only one OpenKnowledge app can edit a project at a time.',
+        });
+        expect(killProbe).not.toHaveBeenCalled();
+        expect(env.utilities.length).toBe(0);
+        expect(env.windows.length).toBe(0);
+        expect(
+          env.logEntries.filter(
+            (e) =>
+              (e.payload as { event?: string }).event === 'desktop-server-refused-other-channel',
+          ),
+        ).toEqual([
+          {
+            payload: {
+              event: 'desktop-server-refused-other-channel',
+              operation: 'attach',
+              lockPid: 65792,
+              holderChannel: 'stable',
+              selfChannel: 'beta',
+              projectPath: '/tmp/dragon',
+            },
+            message: "[window-manager] refusing another channel's server for this project",
+          },
+        ]);
+      });
+
+      test("another channel's holder that is not serving gets the stale-lock recovery, not the serving refusal", async () => {
+        env.deps.setTimeout = (cb: () => void, _ms: number) => {
+          cb();
+          return null;
+        };
+        env.deps.selfChannel = 'beta';
+        enableAttachProbe({
+          readServerLock: () => stableLock,
+          probeWsUpgrade: () => Promise.resolve(false),
+        });
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 22020 });
+        env.deps.spawnLockPollDeadlineMs = 50;
+        env.deps.spawnLockProgressDeadlineMs = 50;
+
+        expect(await openOutcome(new WindowManager(env.deps))).toMatchObject({
+          kind: 'refused',
+          errKind: 'stale-lock-holder',
+        });
+      });
+
+      async function stopFromDialog(
+        lockOnDisk: ServerLockMetadataLike,
+        expectedHolder?: { pid: number; channel: string },
+        probeWsUpgrade?: WindowManagerDeps['probeWsUpgrade'],
+      ) {
+        const killed = new Set<number>();
+        env.deps.killProbe = (pid, signal) => {
+          if (signal === 'SIGTERM') killed.add(pid);
+        };
+        env.deps.selfChannel = 'beta';
+        enableAttachProbe({
+          readServerLock: () => lockOnDisk,
+          isProcessAlive: (pid) => !killed.has(pid),
+          probeWsUpgrade,
+        });
+        const projectPath = mkdtempSync(join(tmpdir(), 'ok-other-channel-stop-'));
+        mkdirSync(join(projectPath, '.ok', 'local'), { recursive: true });
+        writeFileSync(
+          join(projectPath, '.ok', 'local', 'server.lock'),
+          JSON.stringify(lockOnDisk),
+          'utf-8',
+        );
+        try {
+          const outcome = await new WindowManager(env.deps).forceStopConflictingServer(
+            projectPath,
+            expectedHolder,
+          );
+          const stopLog = env.logEntries
+            .map((e) => e.payload as Record<string, unknown>)
+            .filter((p) => p.event === 'desktop-force-stop-conflicting-server')
+            .map(({ projectPath: _projectPath, ...rest }) => rest);
+          return { outcome, stopped: [...killed], stopLog };
+        } finally {
+          rmSync(projectPath, { recursive: true, force: true });
+        }
+      }
+
+      test('the user-chosen stop frees a project another channel is serving', async () => {
+        expect(await stopFromDialog(stableLock, { pid: 65792, channel: 'stable' })).toEqual({
+          outcome: { ok: true },
+          stopped: [65792],
+          stopLog: [
+            {
+              event: 'desktop-force-stop-conflicting-server',
+              pid: 65792,
+              holderChannel: 'stable',
+              outcome: 'stopped',
+            },
+          ],
+        });
+      });
+
+      test('the user-chosen stop signals nothing when the holder changed after the dialog named it', async () => {
+        expect(
+          await stopFromDialog({ ...stableLock, pid: 70001 }, { pid: 65792, channel: 'stable' }),
+        ).toEqual({
+          outcome: { ok: false, reason: 'holder-changed' },
+          stopped: [],
+          stopLog: [
+            {
+              event: 'desktop-force-stop-conflicting-server',
+              outcome: 'holder-changed',
+              pid: 70001,
+              holderChannel: 'stable',
+              expectedPid: 65792,
+              expectedHolderChannel: 'stable',
+            },
+          ],
+        });
+        expect(
+          (await stopFromDialog(stableLock, { pid: 65792, channel: 'cloud' })).outcome,
+        ).toEqual({ ok: false, reason: 'holder-changed' });
+      });
+
+      test('the generic stop, bound to no holder, signals nothing when another channel holds the project', async () => {
+        expect(
+          await stopFromDialog({ ...stableLock, pid: 65793 }, undefined, () =>
+            Promise.resolve(false),
+          ),
+        ).toEqual({
+          outcome: { ok: false, reason: 'holder-changed' },
+          stopped: [],
+          stopLog: [],
+        });
+        env.logEntries.length = 0;
+        expect(await stopFromDialog(stableLock)).toEqual({
+          outcome: { ok: false, reason: 'holder-changed' },
+          stopped: [],
+          stopLog: [],
+        });
+        expect(
+          env.logEntries
+            .map((e) => e.payload as Record<string, unknown>)
+            .filter((p) => p.event === 'desktop-server-refused-other-channel')
+            .map(({ projectPath: _projectPath, ...rest }) => rest),
+        ).toEqual([
+          {
+            event: 'desktop-server-refused-other-channel',
+            operation: 'force-stop',
+            lockPid: 65792,
+            holderChannel: 'stable',
+            selfChannel: 'beta',
+          },
+        ]);
+        expect(await stopFromDialog({ ...stableLock, channel: 'beta' })).toMatchObject({
+          outcome: { ok: true },
+          stopped: [65792],
+        });
+      });
+
+      test('the generic stop still stops a lock that names no channel', async () => {
+        expect(await stopFromDialog(liveLock)).toMatchObject({
+          outcome: { ok: true },
+          stopped: [65792],
+        });
+      });
+
+      async function openThenStopStaleStableHolder(onDialog?: (projectPath: string) => void) {
+        env.deps.setTimeout = (cb: () => void, _ms: number) => {
+          cb();
+          return null;
+        };
+        const STALE_PID = 65792;
+        const signalled: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
+        env.deps.killProbe = (pid, signal) => {
+          signalled.push({ pid, signal });
+        };
+        const stopped = () => signalled.some((c) => c.pid === STALE_PID);
+        const betaLock: ServerLockMetadataLike = {
+          ...liveLock,
+          pid: 70002,
+          port: 59600,
+          channel: 'beta',
+        };
+        env.deps.selfChannel = 'beta';
+        enableAttachProbe({
+          readServerLock: () => (stopped() ? betaLock : stableLock),
+          isProcessAlive: (pid) => !(pid === STALE_PID && stopped()),
+          probeWsUpgrade: (url) => Promise.resolve(!url.includes(String(stableLock.port))),
+        });
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 22020 });
+        env.deps.spawnLockPollDeadlineMs = 50;
+        env.deps.spawnLockProgressDeadlineMs = 50;
+        const projectPath = mkdtempSync(join(tmpdir(), 'ok-other-channel-stale-'));
+        mkdirSync(join(projectPath, '.ok', 'local'), { recursive: true });
+        writeFileSync(
+          join(projectPath, '.ok', 'local', 'server.lock'),
+          JSON.stringify(stableLock),
+          'utf-8',
+        );
+        try {
+          const wm = new WindowManager(env.deps);
+          const err = await wm.createProjectWindow({ projectPath }).then(
+            () => null,
+            (e: unknown) => e as Error & { kind?: string },
+          );
+          let dialog: { detail: string; defaultId: number } | null = null;
+          const stopTargets: unknown[] = [];
+          let reopens = 0;
+          const result = await promptHolderStop(
+            {
+              kind: err?.kind,
+              errorMessage: err?.message ?? '',
+              dialogTitle: 'A stopped server is still holding this project',
+              dialogBody: err?.message ?? '',
+              projectPath,
+              otherChannelHolder: failedOpenHolder(err, projectPath, wm),
+              warnsHolderMayBeLive: false,
+              holderIsOwnChild: false,
+            },
+            {
+              showMessageBox: (options) => {
+                dialog = options;
+                onDialog?.(projectPath);
+                return Promise.resolve({ response: 0 });
+              },
+              forceStop: (expected) => {
+                stopTargets.push(expected);
+                return wm.forceStopConflictingServer(projectPath, expected);
+              },
+              retryOpen: () =>
+                wm.createProjectWindow({ projectPath }).then(
+                  () => true,
+                  () => false,
+                ),
+              reopen: () => {
+                reopens += 1;
+                return Promise.resolve(false);
+              },
+            },
+          );
+          return {
+            errKind: err?.kind,
+            dialog: dialog as { detail: string; defaultId: number } | null,
+            stopTargets,
+            result,
+            reopens,
+            signalledHolders: signalled.filter((c) => c.pid !== 22020),
+          };
+        } finally {
+          rmSync(projectPath, { recursive: true, force: true });
+        }
+      }
+
+      test("Stop Server & Retry names another channel's holder that is not serving, defaults to Cancel, and stops only that holder", async () => {
+        const run = await openThenStopStaleStableHolder();
+        expect(run.errKind).toBe('stale-lock-holder');
+        expect(
+          env.logEntries
+            .map((e) => e.payload as { event?: string; holderChannel?: string })
+            .filter((p) => p.event === 'desktop-server-spawn-refused-stale-lock')
+            .map((p) => p.holderChannel),
+        ).toEqual(['stable']);
+        expect(run.dialog?.detail).toContain(
+          "OpenKnowledge (Stable) holds this project's server lock (pid 65792)",
+        );
+        expect(run.dialog?.detail).toContain('This OpenKnowledge (Stable) server keeps running');
+        expect(run.dialog?.defaultId).toBe(1);
+        expect(run.stopTargets).toEqual([{ pid: 65792, channel: 'stable' }]);
+        expect({ result: run.result, reopens: run.reopens }).toEqual({
+          result: { kind: 'retried', opened: true },
+          reopens: 0,
+        });
+        expect(run.signalledHolders).toEqual([{ pid: 65792, signal: 'SIGTERM' }]);
+      });
+
+      test('Stop Server & Retry signals nothing when another holder took the lock while the dialog was open', async () => {
+        const run = await openThenStopStaleStableHolder((projectPath) => {
+          writeFileSync(
+            join(projectPath, '.ok', 'local', 'server.lock'),
+            JSON.stringify({ ...stableLock, pid: 70001 }),
+            'utf-8',
+          );
+        });
+        expect(run.stopTargets).toEqual([{ pid: 65792, channel: 'stable' }]);
+        expect({ result: run.result, reopens: run.reopens }).toEqual({
+          result: { kind: 'reopened', opened: false },
+          reopens: 1,
+        });
+        expect(run.signalledHolders).toEqual([]);
+      });
+
+      test("the lock on disk names another channel's holder for every failed-open dialog, and only that channel's", () => {
+        env.deps.selfChannel = 'beta';
+        let onDisk: ServerLockMetadataLike | null = null;
+        env.deps.readServerLock = () => onDisk;
+        const holderOf = (lock: ServerLockMetadataLike | null) => {
+          onDisk = lock;
+          return new WindowManager(env.deps).otherChannelLockHolder('/tmp/dragon');
+        };
+        expect(holderOf({ ...stableLock, port: 0, kind: 'mcp-spawned' })).toEqual({
+          holderPid: 65792,
+          holderChannel: 'stable',
+          holderKind: 'mcp-spawned',
+          selfChannel: 'beta',
+        });
+        expect(holderOf({ ...stableLock, channel: 'beta' })).toBeNull();
+        expect(holderOf(liveLock)).toBeNull();
+        expect(holderOf(null)).toBeNull();
+      });
+
+      test('the refusal error carries the holder it names, recoverable through one guard', async () => {
+        env.deps.selfChannel = 'beta';
+        enableAttachProbe({ readServerLock: () => ({ ...stableLock, kind: 'mcp-spawned' }) });
+        const err = await new WindowManager(env.deps)
+          .createProjectWindow({ projectPath: '/tmp/dragon' })
+          .then(
+            () => null,
+            (e: unknown) => e,
+          );
+        expect(isOtherChannelHolderError(err)).toBe(true);
+        expect(err).toMatchObject({
+          kind: 'other-channel-holder',
+          holderPid: 65792,
+          holderChannel: 'stable',
+          holderKind: 'mcp-spawned',
+          selfChannel: 'beta',
+        });
+        expect(
+          isOtherChannelHolderError(
+            Object.assign(new Error('x'), {
+              kind: 'other-channel-holder',
+              holderPid: 65792,
+              holderChannel: 'stable',
+            }),
+          ),
+        ).toBe(false);
+      });
+
+      test('the stop offer names the acting app and describes who loses the connection by holder kind', () => {
+        expect(
+          otherChannelStopOffer({
+            holderChannel: 'stable',
+            holderKind: 'interactive',
+            selfChannel: 'beta',
+          }),
+        ).toEqual({
+          detail:
+            'This OpenKnowledge (Stable) server keeps running after any window showing the project closes, so the project stays busy until the server stops. OpenKnowledge Beta can stop it now and open the project here. Every window, editor, or agent connected to it loses its connection to this project.',
+          button: 'Stop OpenKnowledge (Stable) Server & Open Here',
+        });
+        expect(
+          otherChannelStopOffer({
+            holderChannel: 'beta',
+            holderKind: 'mcp-spawned',
+            selfChannel: 'stable',
+          }),
+        ).toEqual({
+          detail:
+            'An agent or editor started this OpenKnowledge Beta server over MCP. It does not stop when that session ends: it stops on its own once nothing has had the project open for a while (30 minutes by default). OpenKnowledge (Stable) can stop it now and open the project here. Whatever the agent or editor is doing right now is interrupted, and its next request reaches the server opened here.',
+          button: 'Stop OpenKnowledge Beta Server & Open Here',
+        });
+      });
+
+      test('a lock from the same channel, or one written before locks named a channel, still attaches', async () => {
+        env.deps.selfChannel = 'stable';
+        enableAttachProbe({ readServerLock: () => stableLock });
+        expect(await openOutcome(new WindowManager(env.deps))).toEqual({
+          kind: 'attached',
+          port: 59534,
+        });
+
+        env.deps.selfChannel = 'beta';
+        enableAttachProbe();
+        expect(await openOutcome(new WindowManager(env.deps))).toEqual({
+          kind: 'attached',
+          port: 59534,
+        });
+      });
+
+      test('a lock from a channel this build does not know is refused too, and named by its channel', async () => {
+        env.deps.selfChannel = 'stable';
+        enableAttachProbe({ readServerLock: () => ({ ...liveLock, channel: 'cloud' }) });
+        expect(await openOutcome(new WindowManager(env.deps))).toMatchObject({
+          kind: 'refused',
+          errKind: 'other-channel-holder',
+          holderChannel: 'cloud',
+          message: expect.stringMatching(/^OpenKnowledge \(cloud\) is serving this project/),
+        });
+      });
+
+      test("restart refuses to stop another channel's server", async () => {
+        const killProbe = vi.fn(() => {});
+        env.deps.killProbe = killProbe;
+        env.deps.selfChannel = 'beta';
+        enableAttachProbe({ readServerLock: () => stableLock });
+
+        const outcome = await new WindowManager(env.deps).restartAttachedServer('/tmp/dragon');
+
+        expect(outcome).toEqual({ ok: false, reason: 'other-channel', holderChannel: 'stable' });
+        expect(killProbe).not.toHaveBeenCalled();
+      });
+    });
 
     test('attaches to live same-host lock — no utility forked', async () => {
       enableAttachProbe();
@@ -2340,6 +2788,70 @@ describe('WindowManager', () => {
 
         expect(ctx.port).toBe(52999);
         expect(env.windows.length).toBe(1);
+      });
+
+      test("a spawn that finds another channel's server holding the lock refuses it and stops only its own child", async () => {
+        enableSyncTimers();
+        const OUR_CHILD_PID = 22019;
+        const stableLock: ServerLockMetadataLike = { ...spawnedLock, pid: 871, channel: 'stable' };
+        let reads = 0;
+        env.deps.selfChannel = 'beta';
+        env.deps.readServerLock = () => (reads++ === 0 ? null : stableLock);
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: OUR_CHILD_PID });
+        const killCalls: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
+        env.deps.killProbe = (pid, signal) => {
+          killCalls.push({ pid, signal });
+          throw Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+        };
+        env.deps.spawnLockPollDeadlineMs = 50;
+        env.deps.spawnLockProgressDeadlineMs = 50;
+
+        const outcome = await new WindowManager(env.deps)
+          .createProjectWindow({ projectPath: '/tmp/spawned-project' })
+          .then(
+            () => ({ kind: 'attached' as const }),
+            (err) => ({
+              kind: 'refused' as const,
+              errKind: (err as Error & { kind?: string }).kind,
+              holderPid: (err as Error & { holderPid?: number }).holderPid,
+            }),
+          );
+
+        expect(outcome).toEqual({
+          kind: 'refused',
+          errKind: 'other-channel-holder',
+          holderPid: 871,
+        });
+        expect(killCalls).toEqual([{ pid: OUR_CHILD_PID, signal: 'SIGTERM' }]);
+        expect(env.windows.length).toBe(0);
+        expect(
+          env.logEntries
+            .map((e) => e.payload as Record<string, unknown>)
+            .filter(
+              (p) =>
+                p.event === 'desktop-spawn-orphan-sigterm-failed' ||
+                p.event === 'desktop-server-refused-other-channel',
+            )
+            .map(({ err: _err, ...rest }) => rest),
+        ).toEqual([
+          {
+            event: 'desktop-spawn-orphan-sigterm-failed',
+            code: 'EPERM',
+            pid: OUR_CHILD_PID,
+            projectPath: '/tmp/spawned-project',
+          },
+          {
+            event: 'desktop-server-refused-other-channel',
+            operation: 'spawn',
+            lockPid: 871,
+            holderChannel: 'stable',
+            selfChannel: 'beta',
+            projectPath: '/tmp/spawned-project',
+          },
+        ]);
       });
 
       test('a stale lock our child never replaced is NOT declared ready (dead port)', async () => {

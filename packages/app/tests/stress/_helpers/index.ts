@@ -16,6 +16,11 @@ export {
 } from './editor-state.ts';
 export { filterCriticalErrors, type LogEntry } from './error-filters.ts';
 export {
+  type ExternalLinkCue,
+  externalLinkCueSnapshot,
+  hasExternalCue,
+} from './external-link-cue.ts';
+export {
   type AgentIdentity,
   type ApiHelpers,
   expect,

@@ -912,6 +912,14 @@ msgstr "{folderCount, plural, other {資料夾}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} 個 GitHub star"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "{hiddenCount, plural, one {# more link} other {# more links}}"
+msgstr "{hiddenCount, plural, other {另外 # 個連結}}"
+
+#: src/lib/restart-collab-server.ts
+msgid "{holder} is serving this project, so this app won't stop it. Close this window and open the project again to stop {holder}'s server and open the project here."
+msgstr "{holder} 正在為此專案提供服務，因此此應用程式不會停止它。關閉此視窗並再次開啟專案，即可停止 {holder} 的伺服器並在此處開啟專案。"
+
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -3930,6 +3938,10 @@ msgstr "正在複製"
 msgid "Copying..."
 msgstr "正在複製…"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
+msgstr "無法檢查 {shareBranch} 中的符號連結，因此未切換。請重試；如果仍然失敗，請確認已安裝 Git 且專案資料夾可讀取。"
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Could not classify the merge — try again."
 msgstr "無法對合併進行分類，請再試一次。"
@@ -5159,6 +5171,14 @@ msgstr "由 Mermaid 原始碼產生的圖表——流程圖、循序圖、類別
 #: src/components/MermaidFileViewer.tsx
 msgid "Diagram view mode"
 msgstr "圖表檢視模式"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not open {shareBranch} in a worktree: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "未在 worktree 中開啟 {shareBranch}：它包含一個指向儲存庫之外、私有檔案或無法檢查之處的符號連結。通常需要由推送該分支的人修正該連結。如果這台電腦上的某個資料夾無法讀取，請使其可讀後重試。"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "未切換到 {shareBranch}：它包含一個指向儲存庫之外、私有檔案或無法檢查之處的符號連結。通常需要由推送該分支的人修正該連結。如果這台電腦上的某個資料夾無法讀取，請使其可讀後重試。"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx
@@ -14110,6 +14130,10 @@ msgstr "同步失敗——詳情請看伺服器記錄。"
 msgid "Sync is failing. See the sync status for details."
 msgstr "同步一直失敗。詳情請看同步狀態。"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Sync is paused because incoming changes leave a symlink pointing outside the repository or into private files, or with a target that cannot be checked. Ask whoever pushed them to fix the link, or update Git if yours is older than 2.38. Automatic sync then resumes; in Manual mode, pull again."
+msgstr "同步已暫停，因為傳入的變更會使某個符號連結指向儲存庫之外或私有檔案，或其目標無法檢查。請推送這些變更的人修正該連結；如果你的 Git 早於 2.38，請更新 Git。之後自動同步會恢復；在手動模式下，請重新拉取。"
+
 #: src/components/SyncBlockingChanges.tsx
 msgid "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."
 msgstr "同步已暫停。提交這些本地編輯以繼續，或在終端機中處理它們。"
@@ -15088,6 +15112,11 @@ msgstr "無法完成設定，因為它所需的 MCP 伺服器項目未寫入。"
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
 msgstr "這會刪除下方列出的 MCP 伺服器項目和技能檔案。在重新新增之前，智慧代理將無法存取你的文件。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "This development build can't connect agents, so it won't change the agent setup of your installed OpenKnowledge app."
+msgstr "此開發版本無法連接智慧代理，因此不會變更你已安裝的 OpenKnowledge 應用程式的智慧代理設定。"
 
 #. placeholder {0}: connection.label
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -16509,10 +16538,6 @@ msgstr "它應該放在哪裡？"
 #: src/components/ImportSkillForm.tsx
 msgid "Which skill"
 msgstr "哪一個技能"
-
-#: src/components/settings/SyncSection.tsx
-msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
-msgstr "在你登出期間，無論此設定為何，更新最多每 3 分鐘檢查一次。"
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"

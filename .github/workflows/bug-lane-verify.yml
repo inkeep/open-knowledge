@@ -127,12 +127,17 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Check out the stable tag
+        env:
+          STABLE: ${{ inputs.stable }}
+        run: git checkout --detach "$STABLE"
+
       - name: Set up Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
 
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
       - name: Setup uv for ACP package acquisition tests
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
@@ -156,7 +161,6 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout --detach "$STABLE"
           # Drop conflicting refs iteratively instead of aborting the batch: a
           # ref that does not apply onto the current stack (stable + earlier
           # clean picks) is dropped and the remainder continues — conflicts are

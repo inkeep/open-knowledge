@@ -148,7 +148,7 @@ function buildEphemeralEnv(): EphemeralEnv {
         removedDirs.push(dir);
         effectLog.push(`rm:${dir}`);
       },
-      spawnDetachedServer: async (opts) => {
+      spawnSingleFileServer: async (opts) => {
         spawnCalls.push(opts);
         const pid = ++pidCounter;
         if (env.publishLock && opts.projectDir !== undefined) {
@@ -354,7 +354,7 @@ describe('createEphemeralWindow', () => {
       recordingKill(pid, signal);
       if (signal === 'SIGTERM') exitRecord = { code: null, signal: 'SIGTERM' };
     };
-    env.deps.spawnDetachedServer = async () => ({ pid: 42001, readExit: () => exitRecord });
+    env.deps.spawnSingleFileServer = async () => ({ pid: 42001, readExit: () => exitRecord });
 
     const wm = new WindowManager(env.deps);
     const err = await wm
@@ -372,7 +372,7 @@ describe('createEphemeralWindow', () => {
   });
 
   test('a spawn failure removes the temp dir before rethrowing (no leak)', async () => {
-    env.deps.spawnDetachedServer = async () => {
+    env.deps.spawnSingleFileServer = async () => {
       throw Object.assign(new Error('spawn boom'), { kind: 'spawn-error' });
     };
     const wm = new WindowManager(env.deps);
@@ -498,6 +498,23 @@ describe('createEphemeralWindow', () => {
     await expect(
       wm.createEphemeralWindow({ canonicalFilePath: FILE, contentDir: PARENT, docName: 'todo' }),
     ).rejects.toThrow(/requires createEphemeralProjectDir/);
+  });
+
+  test('opens a single file through its own spawner when a project spawner exists', async () => {
+    const projectSpawn = vi.fn(async () => {
+      throw new Error('project server spawner must not handle a single file');
+    });
+    env.deps.spawnDetachedServer = projectSpawn;
+    const wm = new WindowManager(env.deps);
+
+    const ctx = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+
+    expect(ctx.ephemeral?.pid).toBe(42001);
+    expect(env.spawnCalls).toHaveLength(1);
   });
 
   test('re-open after the ephemeral server dies spawns a FRESH live session, not the dead one', async () => {
@@ -817,7 +834,7 @@ describe('ephemeral keepalive lifecycle', () => {
     expect(ka.handles[0]?.closed).toBe(false);
 
     env.killServer(first.ephemeral?.pid as number);
-    env.deps.spawnDetachedServer = async () => {
+    env.deps.spawnSingleFileServer = async () => {
       throw Object.assign(new Error('spawn boom'), { kind: 'spawn-error' });
     };
     await expect(
@@ -1030,7 +1047,7 @@ describe('restartEphemeralServer', () => {
     });
     const identity = identityOf(wm, first.window);
     env.killServer(first.ephemeral?.pid as number);
-    env.deps.spawnDetachedServer = async () => {
+    env.deps.spawnSingleFileServer = async () => {
       throw Object.assign(new Error('spawn boom'), { kind: 'spawn-error' });
     };
 

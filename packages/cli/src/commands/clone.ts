@@ -1,5 +1,5 @@
-import { existsSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import {
   type ClassifiedGitAuthError,
   classifyGitAuthError,
@@ -8,6 +8,7 @@ import {
   shellSingleQuote,
 } from '@inkeep/open-knowledge-core';
 import {
+  assertCheckoutSymlinksSafe,
   assertGitAvailable,
   type Config,
   type CredentialUrlMatchReader,
@@ -18,6 +19,7 @@ import {
   redactShareSubprocessStderr,
   resolveGitHubAccountFromUrl,
   sameGitHubLogin,
+  UnsafeIncomingSymlinkError,
 } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import simpleGit, { GitPluginError, type SimpleGitOptions } from 'simple-git';
@@ -238,8 +240,9 @@ export async function runClone(
   const cloneUrl = resolveCloneUrl(url, parsed);
 
   const targetDir = opts.dir ? resolve(cwd, opts.dir) : resolve(cwd, parsed.name);
+  const targetExisted = existsSync(targetDir);
 
-  if (existsSync(targetDir)) {
+  if (targetExisted) {
     const entries = readdirSync(targetDir);
     if (entries.length > 0) {
       throw new Error(`Target directory is not empty: ${targetDir}`);
@@ -297,7 +300,7 @@ export async function runClone(
     typeof opts.branch === 'string' && opts.branch.length > 0 ? opts.branch : null;
   await cloneWithBranchFallback({
     branch: requestedBranch,
-    clone: (args) => git.clone(cloneUrl, targetDir, args),
+    clone: (args) => git.clone(cloneUrl, targetDir, [...args, '--no-checkout']),
     onFallback: (branch) => {
       emit(opts.json, { type: 'branch-fallback', branch });
       if (!opts.json) {
@@ -309,6 +312,17 @@ export async function runClone(
   });
 
   if (!opts.json) process.stderr.write('\n');
+
+  const cloned = simpleGit({ ...gitOptions, baseDir: targetDir }).env(env);
+  if ((await cloned.raw(['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'])).trim() !== '') {
+    try {
+      await assertCheckoutSymlinksSafe(cloned, 'HEAD', env);
+    } catch (err) {
+      rmSync(targetExisted ? join(targetDir, '.git') : targetDir, { recursive: true, force: true });
+      throw err;
+    }
+    await cloned.raw(['checkout', '--force', 'HEAD']);
+  }
 
   try {
     const { runInit } = await import('./init.ts');
@@ -452,11 +466,23 @@ export function emitCloneFailure(opts: {
   principal?: string | null;
   resolvedLogin?: string | null;
 }): void {
-  const rawMessage = redactShareSubprocessStderr(
-    opts.error instanceof Error ? opts.error.message : String(opts.error),
-  );
+  const rawMessage =
+    opts.error instanceof UnsafeIncomingSymlinkError
+      ? `The repository has symlinks that are unsafe to check out: ${opts.error.describeLinks()}. The clone was removed. Remove or fix these links on the remote, then clone again.`
+      : redactShareSubprocessStderr(
+          opts.error instanceof Error ? opts.error.message : String(opts.error),
+        );
   if (opts.json) {
-    opts.emit({ type: 'error', message: rawMessage });
+    opts.emit(
+      opts.error instanceof UnsafeIncomingSymlinkError
+        ? {
+            type: 'error',
+            code: 'unsafe-symlinks',
+            message: `The repository has ${opts.error.unsafe.length} symlink(s) that are unsafe to check out. The clone was removed. Remove or fix these links on the remote, then clone again.`,
+            refusedSymlinkPaths: opts.error.displayPaths(),
+          }
+        : { type: 'error', message: rawMessage },
+    );
     return;
   }
   const actionable =

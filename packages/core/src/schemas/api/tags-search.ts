@@ -837,6 +837,7 @@ export const SKILL_INSTALL_WARNING_CODES = [
   'skill-fork-name-unpatched',
   'place-path-invalid',
   'place-fork-refused',
+  'links-not-permitted',
 ] as const;
 export type SkillInstallWarningCode = (typeof SKILL_INSTALL_WARNING_CODES)[number];
 

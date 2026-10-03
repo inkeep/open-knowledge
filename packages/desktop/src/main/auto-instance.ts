@@ -1,7 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { basename } from 'node:path';
+import { sanitizeInstanceName } from './instance-isolation.ts';
 
 const DEFAULT_BRANCH_NAMES = new Set(['main', 'master']);
+const DEFAULT_BRANCH_INSTANCE = 'dev';
+const NON_DEFAULT_DEV_INSTANCE = 'dev..branch';
 
 export interface GitInstanceContext {
   readonly branch: string | null;
@@ -29,15 +32,21 @@ function readGitInstanceContext(dir: string): GitInstanceContext {
   };
 }
 
+function avoidDefaultBranchInstance(name: string): string {
+  return sanitizeInstanceName(name).toLowerCase() === DEFAULT_BRANCH_INSTANCE
+    ? NON_DEFAULT_DEV_INSTANCE
+    : name;
+}
+
 export function deriveAutoInstanceName(ctx: GitInstanceContext): string | null {
   const branch = ctx.branch;
   if (branch && branch !== 'HEAD') {
-    if (DEFAULT_BRANCH_NAMES.has(branch)) return null;
-    return branch;
+    if (DEFAULT_BRANCH_NAMES.has(branch)) return DEFAULT_BRANCH_INSTANCE;
+    return avoidDefaultBranchInstance(branch);
   }
   if (ctx.worktreeDir) {
     const base = basename(ctx.worktreeDir);
-    return base.length > 0 ? base : null;
+    return base.length > 0 ? avoidDefaultBranchInstance(base) : null;
   }
   return null;
 }

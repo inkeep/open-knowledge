@@ -17,7 +17,11 @@ import {
   type WorktreeListResult,
   worktreeRelativeDir,
 } from '@inkeep/open-knowledge-core';
-import { redactShareSubprocessStderr } from '@inkeep/open-knowledge-server';
+import {
+  assertRepoCheckoutSymlinksSafe,
+  redactShareSubprocessStderr,
+  UnsafeIncomingSymlinkError,
+} from '@inkeep/open-knowledge-server';
 import { isPathWithinProject } from '../shared/path-containment.ts';
 import { getLogger } from './desktop-logger.ts';
 import { gitSpawnEnv } from './git-spawn-env.ts';
@@ -239,18 +243,23 @@ export async function checkoutShareBranchWorktree(
   }
   const worktrees = await listGitWorktrees(args.anchorPath);
   if (worktrees.length === 0) return { ok: false, reason: 'no-git' };
+  const target = {
+    anchorPath: args.anchorPath,
+    branch,
+    projectSubPath: args.projectSubPath,
+    sourceProjectPath: args.sourceProjectPath,
+  };
 
-  if (await refExists(args.anchorPath, `refs/heads/${branch}`)) {
-    return createWorktree({
-      anchorPath: args.anchorPath,
-      branch,
-      createBranch: false,
-      projectSubPath: args.projectSubPath,
-      sourceProjectPath: args.sourceProjectPath,
-    });
+  const localRef = `refs/heads/${branch}`;
+  if (await refExists(args.anchorPath, localRef)) {
+    if (!worktrees.some((w) => !w.prunable && w.branch === branch)) {
+      const refused = await refuseUnsafeSymlinks(args.anchorPath, localRef);
+      if (refused !== null) return refused;
+    }
+    return createWorktree({ ...target, createBranch: false });
   }
-  const remoteRef = `origin/${branch}`;
-  if (!(await refExists(args.anchorPath, `refs/remotes/${remoteRef}`))) {
+  const remoteRef = `refs/remotes/origin/${branch}`;
+  if (!(await refExists(args.anchorPath, remoteRef))) {
     const failure = await fetchShareBranch(
       args.anchorPath,
       branch,
@@ -258,14 +267,77 @@ export async function checkoutShareBranchWorktree(
     );
     if (failure !== null) return failure;
   }
-  return createWorktree({
-    anchorPath: args.anchorPath,
-    branch,
-    remoteRef,
-    createBranch: true,
-    projectSubPath: args.projectSubPath,
-    sourceProjectPath: args.sourceProjectPath,
-  });
+  const commit = await resolveCommit(args.anchorPath, remoteRef);
+  if (commit === null) return { ok: false, reason: 'branch-not-found' };
+  const refused = await refuseUnsafeSymlinks(args.anchorPath, commit);
+  if (refused !== null) return refused;
+  const result = await createWorktree({ ...target, baseRef: commit, createBranch: true });
+  if (result.ok ? result.created : result.reason === 'project-scope-unavailable') {
+    await setOriginUpstream(args.anchorPath, branch);
+  }
+  return result;
+}
+
+async function resolveCommit(anchorPath: string, ref: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`],
+      { cwd: anchorPath, env: gitSpawnEnv(), timeout: 5_000, windowsHide: true },
+    );
+    const commit = String(stdout).trim();
+    return /^[0-9a-f]{40,64}$/u.test(commit) ? commit : null;
+  } catch {
+    return null;
+  }
+}
+
+async function refuseUnsafeSymlinks(
+  anchorPath: string,
+  ref: string,
+): Promise<Extract<WorktreeCreateResult, { ok: false }> | null> {
+  try {
+    await assertRepoCheckoutSymlinksSafe(anchorPath, ref);
+    return null;
+  } catch (err) {
+    if (err instanceof UnsafeIncomingSymlinkError) {
+      getLogger('worktree').warn(
+        { refusedCount: err.unsafe.length },
+        'refused a share-branch worktree whose branch carries unsafe symlinks',
+      );
+      return {
+        ok: false,
+        reason: 'unsafe-symlinks',
+        refusedSymlinkPaths: err.displayPaths(),
+      };
+    }
+    return {
+      ok: false,
+      reason: 'error',
+      message: redactShareSubprocessStderr(gitErrorText(err)).replace(/\s+/g, ' ').slice(0, 300),
+    };
+  }
+}
+
+async function setOriginUpstream(anchorPath: string, branch: string): Promise<void> {
+  for (const [key, value] of [
+    [`branch.${branch}.remote`, 'origin'],
+    [`branch.${branch}.merge`, `refs/heads/${branch}`],
+  ]) {
+    try {
+      await execFileAsync('git', ['config', key, value], {
+        cwd: anchorPath,
+        env: gitSpawnEnv(),
+        timeout: 5_000,
+        windowsHide: true,
+      });
+    } catch (err) {
+      getLogger('worktree').warn(
+        { key, error: gitErrorText(err).replace(/\s+/g, ' ').slice(0, 200) },
+        'could not record the share branch upstream',
+      );
+    }
+  }
 }
 
 async function refExists(anchorPath: string, ref: string): Promise<boolean> {

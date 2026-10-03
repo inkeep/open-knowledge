@@ -11,7 +11,14 @@ import {
 import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { triggerSync } from '@/lib/trigger-sync';
+import { cn } from '@/lib/utils';
 import { EnableSyncConfirmDialog } from './EnableSyncConfirmDialog';
+import {
+  displayState,
+  isSyncDisablingPausedReason,
+  PausedReasonNotice,
+  SyncRefusedSymlinks,
+} from './SyncStatusBadge';
 
 type ShareKind = 'doc' | 'folder';
 
@@ -29,11 +36,33 @@ export function shareFreshnessRowVisible(
 
 export function syncNowActionable(status: GitSyncStatus | null): boolean {
   if (!status) return false;
+  const state = displayState(status);
   return (
-    status.state !== 'dormant' &&
-    status.state !== 'disabled' &&
-    status.state !== 'auth-error' &&
-    status.state !== 'conflict'
+    state !== 'dormant' && state !== 'disabled' && state !== 'auth-error' && state !== 'conflict'
+  );
+}
+
+export function SyncNowPausedNotice({
+  status,
+  className,
+}: {
+  status: GitSyncStatus | null;
+  className?: string;
+}) {
+  const reason = status?.pausedReason;
+  if (!isSyncDisablingPausedReason(reason)) return null;
+  return (
+    <div
+      className={cn('flex min-w-0 flex-col gap-1.5', className)}
+      data-testid="sync-now-paused-notice"
+    >
+      <span>
+        <PausedReasonNotice reason={reason} />
+      </span>
+      {reason === 'unsafe-incoming-symlinks' ? (
+        <SyncRefusedSymlinks paths={status?.refusedSymlinkPaths} />
+      ) : null}
+    </div>
   );
 }
 
@@ -154,7 +183,9 @@ export function ShareFreshnessWarning({ freshness, status, kind }: ShareFreshnes
                   </Button>
                 )}
               </div>
-            ) : null
+            ) : (
+              <SyncNowPausedNotice status={status} />
+            )
           ) : (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <Button variant="outline" size="xs" onClick={() => onToggleRequest(true)}>

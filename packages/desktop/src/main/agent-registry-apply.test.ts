@@ -786,6 +786,7 @@ function delegateFor(
   surfaces: AgentRegistryWriterSurfaces,
   opts: {
     available?: boolean;
+    devBuild?: boolean;
     projectDir?: string | null;
     states?: Record<string, SurfaceState>;
     snapshot?: () => Promise<HostSnapshot>;
@@ -793,6 +794,7 @@ function delegateFor(
 ) {
   const delegate = createAgentIntegrationsApplyDelegate({
     available: opts.available ?? true,
+    devBuild: opts.devBuild,
     surfaces,
     resolveProjectDir: () => (opts.projectDir === undefined ? PROJECT : opts.projectDir),
     snapshot: opts.snapshot ?? (async () => snapshotWith(opts.states ?? {})),
@@ -834,6 +836,17 @@ describe('the batch arm of the AI-tools channel', () => {
     const result = await apply({ intents: [want(CLAUDE_PROJECT_MCP)] });
 
     expect(result).toMatchObject({ ok: false, unavailable: true });
+    expect(result).not.toHaveProperty('devBuild');
+    expect(surfaces.calls.projectWrites).toEqual([]);
+  });
+
+  test('an unavailable dev build says it is a dev build', async () => {
+    const surfaces = makeSurfaces();
+    const apply = delegateFor(surfaces, { available: false, devBuild: true });
+
+    const result = await apply({ intents: [want(CLAUDE_PROJECT_MCP)] });
+
+    expect(result).toMatchObject({ ok: false, unavailable: true, devBuild: true });
     expect(surfaces.calls.projectWrites).toEqual([]);
   });
 

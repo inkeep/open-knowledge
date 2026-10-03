@@ -185,6 +185,43 @@ describe('ShareReceiveMissDialog', () => {
     });
   });
 
+  test('changed-locally during an unsafe-symlink pause explains the pause instead of offering Sync now', async () => {
+    installBridge(stubVerdict({ verdict: 'changed-locally' }));
+    setSyncStatus(makeSyncStatus({ syncEnabled: true }));
+    await renderArmed();
+
+    const region = screen.getByTestId('share-receive-miss-sync-paused');
+    expect(region.getAttribute('role')).toBe('status');
+    expect(region.textContent).toBe('');
+    expect(screen.getByTestId('share-receive-miss-sync-now')).toBeTruthy();
+
+    setSyncStatus(
+      makeSyncStatus({
+        syncEnabled: true,
+        pausedReason: 'unsafe-incoming-symlinks',
+        refusedSymlinkPaths: ['notes/leak.md'],
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByTestId('share-receive-miss-sync-now')).toBeNull();
+    });
+    expect(screen.getByTestId('share-receive-miss-sync-paused')).toBe(region);
+    const notice = within(region).getByTestId('sync-now-paused-notice');
+    expect(notice.textContent).toContain('Sync is paused because incoming changes leave a symlink');
+    expect(within(notice).getByTestId('sync-refused-symlinks').textContent).toBe('notes/leak.md');
+  });
+
+  test('changed-locally while blocked on a conflict keeps the pause region visually hidden', async () => {
+    installBridge(stubVerdict({ verdict: 'changed-locally' }));
+    setSyncStatus(makeSyncStatus({ syncEnabled: true, conflictCount: 1 }));
+    await renderArmed();
+
+    expect(screen.queryByTestId('share-receive-miss-sync-now')).toBeNull();
+    const region = screen.getByTestId('share-receive-miss-sync-paused');
+    expect(region.className).toBe('sr-only');
+    expect(region.textContent).toBe('');
+  });
+
   test('changed-locally with auto-sync ON offers Sync now; a landed sync re-probes to the honest verdict', async () => {
     const verdicts: ShareTargetStatusResponse[] = [
       { verdict: 'changed-locally' },

@@ -207,6 +207,11 @@
     "0t0bbC": ["Nie udało się zapisać ustawienia synchronizacji: ", ["detail"]],
     "0tV-rz": ["Ustawienia nadal się wczytują. Spróbuj ponownie za chwilę."],
     "0uTHCg": ["Rozpocznij nowy projekt OpenKnowledge."],
+    "0uxLib": [
+      "Nie udało się sprawdzić dowiązań symbolicznych w ",
+      ["shareBranch"],
+      ", więc nie przełączono. Spróbuj ponownie; jeśli błąd się powtarza, sprawdź, czy Git jest zainstalowany i czy folder projektu można odczytać."
+    ],
     "0wkh7o": ["Logi OpenKnowledge, w tym aktywność ze wszystkich projektów."],
     "0wswKc": ["Pozioma linia dzieląca sekcje."],
     "0x9smA": ["Ta strona nie jest już pod tą ścieżką."],
@@ -500,6 +505,11 @@
       "Masz już repozytorium git? Dodaj je poleceniem <0>git remote add origin <url></0> w folderze tego projektu. Ta strona zaktualizuje się automatycznie po wykryciu repozytorium zdalnego."
     ],
     "45MZFs": ["Polecenia"],
+    "461Vg9": [
+      "Nie przełączono na ",
+      ["shareBranch"],
+      ": gałąź zawiera dowiązanie symboliczne wskazujące poza repozytorium, na prywatne pliki albo w miejsce, którego nie da się sprawdzić. Zwykle dowiązanie musi poprawić osoba, która wypchnęła gałąź. Jeśli nie da się odczytać folderu na tym komputerze, nadaj mu uprawnienia do odczytu i spróbuj ponownie."
+    ],
     "46YgRZ": ["Dodaj blok poniżej"],
     "484LKL": ["Usuń link"],
     "49Mb7P": [
@@ -1005,6 +1015,9 @@
     "8nWu1k": ["Pusty diagram"],
     "8oWgty": ["Zaznacz każdy komentarz do wysłania"],
     "8qgfac": ["Serwery MCP"],
+    "8qsUJv": [
+      "Synchronizacja jest wstrzymana, ponieważ przychodzące zmiany zostawiają dowiązanie symboliczne wskazujące poza repozytorium lub na prywatne pliki albo takie, którego celu nie da się sprawdzić. Poproś osobę, która je wypchnęła, o poprawienie dowiązania lub zaktualizuj Git, jeśli Twoja wersja jest starsza niż 2.38. Potem automatyczna synchronizacja zostanie wznowiona; w trybie ręcznym pobierz zmiany ponownie."
+    ],
     "8rZ1pk": ["Włącz ", ["id"]],
     "8ruqQi": ["Zerwane linki wewnętrzne"],
     "8t9CRE": ["Uruchamianie ", ["agentName"], "…"],
@@ -1178,6 +1191,9 @@
     "AT0e50": ["Zachowaj oba"],
     "ATGYL1": ["Adres e-mail"],
     "AUMPjj": ["Spacja do skoku, strzałka w dół, żeby się schować. To cała gra."],
+    "AUORpp": [
+      "Ta wersja deweloperska nie może łączyć agentów, więc nie zmieni konfiguracji agentów w zainstalowanej aplikacji OpenKnowledge."
+    ],
     "AUV-TY": ["Myślenie"],
     "AVW-K9": ["Nie udało się wczytać stron osieroconych"],
     "AWOSPo": ["Powiększ"],
@@ -1391,6 +1407,12 @@
     ],
     "C_cPoW": [
       "Twoja sesja GitHub wygasła — zaloguj się ponownie, aby zweryfikować dostęp do wysyłania."
+    ],
+    "CacpkO": [
+      ["holder"],
+      " obsługuje ten projekt, więc ta aplikacja go nie zatrzyma. Zamknij to okno i otwórz projekt ponownie, aby zatrzymać serwer aplikacji ",
+      ["holder"],
+      " i otworzyć projekt tutaj."
     ],
     "CbxTfe": ["Zaznacz blok"],
     "CcaU4i": ["Zmiany są widoczne na żywo i zapisują się automatycznie w tym motywie."],
@@ -3804,6 +3826,11 @@
       " używa zamiast kopii z wtyczki — to zatrzymuje śledzenie aktualizacji wtyczki."
     ],
     "_6FVBz": ["Przejdź do karty 1-8"],
+    "_6cS9O": [
+      "Nie otwarto ",
+      ["shareBranch"],
+      " w worktree: gałąź zawiera dowiązanie symboliczne wskazujące poza repozytorium, na prywatne pliki albo w miejsce, którego nie da się sprawdzić. Zwykle dowiązanie musi poprawić osoba, która wypchnęła gałąź. Jeśli nie da się odczytać folderu na tym komputerze, nadaj mu uprawnienia do odczytu i spróbuj ponownie."
+    ],
     "_7UQ7y": ["Całe słowo"],
     "_8quCH": ["Z szablonu"],
     "_902BE": [
@@ -4099,9 +4126,6 @@
     "cFgW76": ["Zablokowane przed scaleniem"],
     "cH0dkG": ["Brakowało funkcji, których potrzebowałem"],
     "cHhH3i": ["wymagane narzędzie git"],
-    "cIFYZn": [
-      "Gdy jesteś wylogowany, aktualizacje są sprawdzane co najwyżej co 3 minuty, niezależnie od tego ustawienia."
-    ],
     "cIptmH": ["W aplikacji Claude Desktop"],
     "cK5W4m": [
       ["0"],
@@ -5655,6 +5679,18 @@
     ],
     "pBROkv": [
       "Dziękujemy za subskrypcję. Sprawdzaj skrzynkę na wiadomości o aktualizacjach produktu."
+    ],
+    "pCJv30": [
+      [
+        "hiddenCount",
+        "plural",
+        {
+          "one": ["jeszcze ", "#", " dowiązanie"],
+          "few": ["jeszcze ", "#", " dowiązania"],
+          "many": ["jeszcze ", "#", " dowiązań"],
+          "other": ["jeszcze ", "#", " dowiązania"]
+        }
+      ]
     ],
     "pCralD": ["Przenieś do nowego panelu po lewej"],
     "pEQFsW": ["Brak pasujących projektów."],

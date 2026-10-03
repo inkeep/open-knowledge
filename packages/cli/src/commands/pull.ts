@@ -1,6 +1,6 @@
 import type { Config } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
-import { runSync } from './sync.ts';
+import { runSync, syncFailureMessage } from './sync.ts';
 
 export function pullCommand(getConfig: () => Config): Command {
   return new Command('pull')
@@ -10,7 +10,7 @@ export function pullCommand(getConfig: () => Config): Command {
       try {
         await runSync({ json: opts.json, op: 'pull' }, getConfig());
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = syncFailureMessage(err);
         if (opts.json) {
           process.stdout.write(`${JSON.stringify({ type: 'error', message: msg })}\n`);
         } else {

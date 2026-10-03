@@ -200,6 +200,14 @@ export function createLocalOpRoutes(
           cloneCompleteDir = event.dir;
           return;
         }
+        if (event.type === 'error' && event.code === 'unsafe-symlinks') {
+          log.warn(
+            { url, dir, refusedSymlinkPaths: event.refusedSymlinkPaths ?? [] },
+            '[local-op/clone] clone refused: the repository has unsafe symlinks',
+          );
+          writeStreamError(500, 'urn:ok:error:clone-failed', event.message);
+          return;
+        }
         if (event.type === 'error') {
           if (event.message) {
             log.warn(

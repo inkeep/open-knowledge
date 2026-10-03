@@ -514,6 +514,9 @@ export {
   OK_MACHINE_LOCAL_ROOT_DIRS,
   OK_MACHINE_LOCAL_ROOT_FILES,
   OK_PROJECT_MARKER,
+  OK_USER_HOME_AUTH_FILE,
+  OK_USER_HOME_CREDENTIAL_FILES,
+  OK_USER_HOME_SECRETS_FILE,
   type OkMachineLocalRootDir,
   type OkMachineLocalRootFile,
   okUserHomeDisplayPath,
@@ -543,6 +546,7 @@ export {
   DESKTOP_PRODUCTS,
   type DesktopProduct,
   type DesktopProductName,
+  desktopChannelLabel,
   desktopWindowsExecutableName,
   desktopWindowsInstallDirNames,
   OK_CHANNEL_ENV,
@@ -1457,6 +1461,7 @@ export {
   type PushPermissionWire,
   QueueSuccessSchema,
   RECONCILE_REASONS,
+  REFUSED_SYMLINK_PATHS_CAP,
   RESOLVE_STRATEGIES,
   ReconcileReasonSchema,
   type ReconcileReasonWire,
@@ -1961,6 +1966,7 @@ export {
   SkillCostTiersSchema,
 } from './skills-catalog/skill-cost.ts';
 export {
+  isLocalSkillSource,
   parseSkillsShCatalogSource,
   type SkillsShCatalogSource,
   type SkillsShSkillLinks,

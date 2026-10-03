@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import {
   expect,
+  externalLinkCueSnapshot,
+  hasExternalCue,
   matchIsWithinReadableScrollport,
   test,
   waitForActiveProviderSynced,
@@ -28,21 +30,6 @@ function visibleScrollContainer(page: Page) {
 
 async function activeElementIsEditor(page: Page): Promise<boolean> {
   return page.evaluate(() => document.activeElement?.classList.contains('ProseMirror') ?? false);
-}
-
-async function externalLinkCueSnapshot(page: Page) {
-  return page.evaluate(() =>
-    Array.from(
-      document.querySelectorAll<HTMLElement>('.ProseMirror [data-resolution-state="external"]'),
-    ).map((element) => ({
-      text: element.textContent ?? '',
-      afterContent: window.getComputedStyle(element, '::after').content,
-    })),
-  );
-}
-
-function hasExternalCue(afterContent: string): boolean {
-  return !['none', 'normal', '""', "''"].includes(afterContent);
 }
 
 test('TipTap find/replace highlights, navigates, replaces current, and replaces all', async ({

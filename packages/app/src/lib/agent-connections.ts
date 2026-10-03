@@ -11,6 +11,7 @@ export interface ApplyAgentConnectionsResult {
   readonly snapshot: HostSnapshot | null;
   readonly error?: string;
   readonly unavailable?: boolean;
+  readonly devBuild?: boolean;
 }
 
 const EMPTY_REPORT: ApplyReport = { actions: [], conflicts: [], withheld: [] };
@@ -40,6 +41,7 @@ async function requestAgentConnectionIntents(
         snapshot: result.snapshot,
         error: result.error,
         ...(result.unavailable === true ? { unavailable: true } : {}),
+        ...(result.devBuild === true ? { devBuild: true } : {}),
       };
     } catch (err) {
       return {

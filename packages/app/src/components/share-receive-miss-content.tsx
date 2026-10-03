@@ -23,7 +23,12 @@ import { type GitSyncStatus, useGitSyncStatus } from '@/hooks/use-git-sync-statu
 import type { PendingReceiveNav } from '@/lib/share/pending-receive-nav-store';
 import { triggerSync } from '@/lib/trigger-sync';
 import { EnableSyncConfirmDialog } from './EnableSyncConfirmDialog';
-import { syncNowActionable } from './ShareFreshnessWarning';
+import { SyncNowPausedNotice, syncNowActionable } from './ShareFreshnessWarning';
+import {
+  isSyncDisablingPausedReason,
+  PausedReasonNotice,
+  SyncRefusedSymlinks,
+} from './SyncStatusBadge';
 
 export type ShareTargetVerdictState =
   | { readonly phase: 'pending' }
@@ -447,7 +452,20 @@ export function ShareReceiveMissContent({
     }
     let syncAction: ReactNode = null;
     if (syncStatus?.syncEnabled) {
-      if (syncNowActionable(syncStatus) && !pushDegraded) {
+      const actionable = syncNowActionable(syncStatus);
+      const noticeShown = !actionable && isSyncDisablingPausedReason(syncStatus.pausedReason);
+      failureLine = (
+        <div
+          role="status"
+          className={
+            noticeShown ? 'w-full max-w-md text-balance text-1sm text-muted-foreground' : 'sr-only'
+          }
+          data-testid="share-receive-miss-sync-paused"
+        >
+          {noticeShown ? <SyncNowPausedNotice status={syncStatus} /> : null}
+        </div>
+      );
+      if (actionable && !pushDegraded) {
         syncAction = <SyncNowButton status={syncStatus} onSyncCompleted={onSyncCompleted} />;
       }
     } else if (syncStatus !== null) {
@@ -487,20 +505,31 @@ export function ShareReceiveMissContent({
           </Trans>
         );
     }
+    const refusedForUnsafeSymlinks =
+      pull.failure === 'refused' && syncStatus?.pausedReason === 'unsafe-incoming-symlinks';
     failureLine = (
-      <p
-        role="alert"
-        className={
-          pull.failure !== null ? 'max-w-md text-balance text-1sm text-destructive' : 'sr-only'
-        }
-        data-testid="share-receive-miss-pull-error"
+      <div
+        className={refusedForUnsafeSymlinks ? 'flex w-full max-w-md flex-col gap-2' : 'contents'}
       >
-        {pull.failure === 'refused' ? (
-          <Trans>Another sync operation is in progress. Try again in a moment.</Trans>
-        ) : pull.failure === 'error' ? (
-          <Trans>Couldn't pull from GitHub. Check your connection and sign-in, then retry.</Trans>
+        <p
+          role="alert"
+          className={
+            pull.failure !== null ? 'max-w-md text-balance text-1sm text-destructive' : 'sr-only'
+          }
+          data-testid="share-receive-miss-pull-error"
+        >
+          {refusedForUnsafeSymlinks ? (
+            <PausedReasonNotice reason="unsafe-incoming-symlinks" />
+          ) : pull.failure === 'refused' ? (
+            <Trans>Another sync operation is in progress. Try again in a moment.</Trans>
+          ) : pull.failure === 'error' ? (
+            <Trans>Couldn't pull from GitHub. Check your connection and sign-in, then retry.</Trans>
+          ) : null}
+        </p>
+        {refusedForUnsafeSymlinks ? (
+          <SyncRefusedSymlinks paths={syncStatus?.refusedSymlinkPaths} />
         ) : null}
-      </p>
+      </div>
     );
     actions = (
       <>

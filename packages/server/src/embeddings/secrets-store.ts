@@ -11,7 +11,10 @@ import {
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { DEFAULT_EMBEDDINGS_BASE_URL } from '@inkeep/open-knowledge-core';
+import {
+  DEFAULT_EMBEDDINGS_BASE_URL,
+  OK_USER_HOME_SECRETS_FILE,
+} from '@inkeep/open-knowledge-core';
 import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { parse as yamlParse, stringify as yamlStringify } from 'yaml';
 import {
@@ -47,7 +50,7 @@ export function canonicalProjectKey(projectDir: string): string {
 }
 
 export function secretsFilePath(homedirOverride?: string): string {
-  return join(okUserHomeDir(homedirOverride ?? homedir()), 'secrets.yml');
+  return join(okUserHomeDir(homedirOverride ?? homedir()), OK_USER_HOME_SECRETS_FILE);
 }
 
 export interface EmbeddingsKeyPresence {

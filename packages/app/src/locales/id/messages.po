@@ -912,6 +912,14 @@ msgstr "{folderCount, plural, other {folder}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} bintang GitHub"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "{hiddenCount, plural, one {# more link} other {# more links}}"
+msgstr "{hiddenCount, plural, other {# tautan lainnya}}"
+
+#: src/lib/restart-collab-server.ts
+msgid "{holder} is serving this project, so this app won't stop it. Close this window and open the project again to stop {holder}'s server and open the project here."
+msgstr "{holder} sedang melayani proyek ini, jadi aplikasi ini tidak akan menghentikannya. Tutup jendela ini lalu buka proyek lagi untuk menghentikan server {holder} dan membuka proyek di sini."
+
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -3926,6 +3934,10 @@ msgstr "Menyalin"
 msgid "Copying..."
 msgstr "Menyalin..."
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
+msgstr "Tidak dapat memeriksa symlink di {shareBranch}, jadi tidak beralih. Coba lagi; jika terus gagal, pastikan Git terpasang dan folder proyek dapat dibaca."
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Could not classify the merge — try again."
 msgstr "Penggabungan tidak dapat diklasifikasikan — coba lagi."
@@ -5155,6 +5167,14 @@ msgstr "Diagram dari sumber Mermaid — bagan alir, sekuens, kelas, keadaan, ER,
 #: src/components/MermaidFileViewer.tsx
 msgid "Diagram view mode"
 msgstr "Mode tampilan diagram"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not open {shareBranch} in a worktree: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "Tidak membuka {shareBranch} di worktree: cabang ini memiliki symlink yang mengarah ke luar repositori, ke berkas pribadi, atau ke tempat yang tidak dapat diperiksa. Biasanya orang yang melakukan push cabang ini yang harus memperbaiki tautannya. Jika sebuah folder di komputer ini tidak dapat dibaca, buat agar dapat dibaca lalu coba lagi."
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "Tidak beralih ke {shareBranch}: cabang ini memiliki symlink yang mengarah ke luar repositori, ke berkas pribadi, atau ke tempat yang tidak dapat diperiksa. Biasanya orang yang melakukan push cabang ini yang harus memperbaiki tautannya. Jika sebuah folder di komputer ini tidak dapat dibaca, buat agar dapat dibaca lalu coba lagi."
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx
@@ -14106,6 +14126,10 @@ msgstr "Sinkronisasi gagal — periksa log server untuk detailnya."
 msgid "Sync is failing. See the sync status for details."
 msgstr "Sinkronisasi sedang gagal. Lihat status sinkronisasi untuk detailnya."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Sync is paused because incoming changes leave a symlink pointing outside the repository or into private files, or with a target that cannot be checked. Ask whoever pushed them to fix the link, or update Git if yours is older than 2.38. Automatic sync then resumes; in Manual mode, pull again."
+msgstr "Sinkronisasi dijeda karena perubahan yang masuk membuat symlink mengarah ke luar repositori atau ke berkas pribadi, atau targetnya tidak dapat diperiksa. Minta orang yang melakukan push untuk memperbaiki tautannya, atau perbarui Git jika versi Anda lebih lama dari 2.38. Setelah itu sinkronisasi otomatis berlanjut; dalam mode Manual, lakukan pull lagi."
+
 #: src/components/SyncBlockingChanges.tsx
 msgid "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."
 msgstr "Sinkronisasi dijeda. Commit suntingan lokal ini untuk melanjutkan, atau selesaikan di terminal."
@@ -15084,6 +15108,11 @@ msgstr "Ini tidak dapat disiapkan karena entri server MCP yang diperlukan tidak 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
 msgstr "Tindakan ini menghapus entri server MCP dan file keterampilan yang tercantum di bawah. Agen akan kehilangan akses ke dokumen Anda sampai Anda menambahkannya lagi."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "This development build can't connect agents, so it won't change the agent setup of your installed OpenKnowledge app."
+msgstr "Build pengembangan ini tidak dapat menghubungkan agen, jadi tidak akan mengubah pengaturan agen di aplikasi OpenKnowledge yang terpasang."
 
 #. placeholder {0}: connection.label
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -16505,10 +16534,6 @@ msgstr "Di mana ia sebaiknya berada?"
 #: src/components/ImportSkillForm.tsx
 msgid "Which skill"
 msgstr "Keterampilan yang mana"
-
-#: src/components/settings/SyncSection.tsx
-msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
-msgstr "Selama Anda keluar dari akun, pembaruan diperiksa paling cepat setiap 3 menit, terlepas dari pengaturan ini."
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"

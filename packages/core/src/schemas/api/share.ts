@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
+import { RefusedSymlinkPathsSchema } from './sync-seed.ts';
 
 export const ShareConstructUrlRequestSchema = z.discriminatedUnion('kind', [
   z
@@ -309,6 +310,8 @@ export const CheckoutFailureReasonSchema = z.enum([
   'checkout-failed',
   'branch-in-other-worktree',
   'ff-diverged',
+  'unsafe-symlinks',
+  'symlink-check-failed',
 ]) satisfies StandardSchemaV1;
 export type CheckoutFailureReason = z.infer<typeof CheckoutFailureReasonSchema>;
 
@@ -324,6 +327,7 @@ export const CheckoutResponseSchema = z.discriminatedUnion('ok', [
       reason: CheckoutFailureReasonSchema,
       files: z.array(z.string().min(1)).optional(),
       otherWorktreePath: z.string().min(1).optional(),
+      refusedSymlinkPaths: RefusedSymlinkPathsSchema.optional(),
     })
     .loose(),
 ]) satisfies StandardSchemaV1;

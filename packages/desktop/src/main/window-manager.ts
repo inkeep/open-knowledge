@@ -4,6 +4,8 @@ import {
   DEFAULT_SERVER_HOST,
   DEFAULT_SIGTERM_GRACE_MS,
   DEFAULT_SIGTERM_POLL_MS,
+  type DesktopProductName,
+  desktopChannelLabel,
   SPAWN_ERROR_LOG,
   sliceLastSpawnAttempt,
 } from '@inkeep/open-knowledge-core';
@@ -156,7 +158,81 @@ export interface ServerLockMetadataLike {
   runtimeVersion?: string;
   machineId?: string;
   draining?: boolean;
+  channel?: string;
 }
+
+export type OtherChannelHolderError = Error & {
+  kind: 'other-channel-holder';
+  holderPid: number;
+  holderChannel: string;
+  holderKind: ServerLockMetadataLike['kind'];
+  selfChannel: string;
+};
+
+function otherChannelHolderError(
+  lock: ServerLockMetadataLike,
+  { holderChannel, selfChannel }: ChannelConflict,
+): OtherChannelHolderError {
+  return Object.assign(
+    new Error(
+      `${desktopChannelLabel(holderChannel)} is serving this project (pid ${lock.pid}). Only one ` +
+        `OpenKnowledge app can edit a project at a time.`,
+    ),
+    {
+      name: 'OtherChannelHolderError',
+      kind: 'other-channel-holder' as const,
+      holderPid: lock.pid,
+      holderChannel,
+      holderKind: lock.kind,
+      selfChannel,
+    },
+  );
+}
+
+export function isOtherChannelHolderError(err: unknown): err is OtherChannelHolderError {
+  if (!(err instanceof Error)) return false;
+  const fields = err as Partial<OtherChannelHolderError>;
+  return (
+    fields.kind === 'other-channel-holder' &&
+    typeof fields.holderPid === 'number' &&
+    typeof fields.holderChannel === 'string' &&
+    typeof fields.selfChannel === 'string'
+  );
+}
+
+export type OtherChannelHolder = Pick<
+  OtherChannelHolderError,
+  'holderPid' | 'holderChannel' | 'holderKind' | 'selfChannel'
+>;
+
+export function otherChannelStopOffer(
+  holder: Pick<OtherChannelHolderError, 'holderChannel' | 'holderKind' | 'selfChannel'>,
+): { detail: string; button: string } {
+  const holderLabel = desktopChannelLabel(holder.holderChannel);
+  const selfLabel = desktopChannelLabel(holder.selfChannel);
+  const situation =
+    holder.holderKind === 'mcp-spawned'
+      ? `An agent or editor started this ${holderLabel} server over MCP. It does not stop when ` +
+        `that session ends: it stops on its own once nothing has had the project open for a ` +
+        `while (30 minutes by default).`
+      : `This ${holderLabel} server keeps running after any window showing the project closes, ` +
+        `so the project stays busy until the server stops.`;
+  const loses =
+    holder.holderKind === 'mcp-spawned'
+      ? 'Whatever the agent or editor is doing right now is interrupted, and its next request ' +
+        'reaches the server opened here.'
+      : 'Every window, editor, or agent connected to it loses its connection to this project.';
+  return {
+    detail: `${situation} ${selfLabel} can stop it now and open the project here. ${loses}`,
+    button: `Stop ${holderLabel} Server & Open Here`,
+  };
+}
+
+type ChannelConflict = { holderChannel: string; selfChannel: DesktopProductName };
+
+export type ForceStopOutcome =
+  | { ok: true }
+  | { ok: false; reason: 'eperm' | 'other' | 'holder-changed' };
 
 function loopbackOriginFromUrl(url: unknown): string | null {
   if (typeof url !== 'string' || url.length === 0) return null;
@@ -244,6 +320,16 @@ interface CreateProjectWindowOpts {
   freshlyCreated?: boolean;
 }
 
+type SpawnCliServer = (opts: {
+  contentDir: string;
+  reactShellDistDir: string;
+  singleFile?: string;
+  projectDir?: string;
+}) => Promise<{
+  pid: number;
+  readExit?: () => { code: number | null; signal: string | null } | null;
+}>;
+
 export interface WindowManagerDeps {
   createWindow(opts: {
     additionalArguments: string[];
@@ -257,15 +343,8 @@ export interface WindowManagerDeps {
     opts: { windowLifecycleBound?: boolean; serviceName: string },
   ): UtilityProcessLike;
   utilityEntryPath: string;
-  spawnDetachedServer?(opts: {
-    contentDir: string;
-    reactShellDistDir: string;
-    singleFile?: string;
-    projectDir?: string;
-  }): Promise<{
-    pid: number;
-    readExit?: () => { code: number | null; signal: string | null } | null;
-  }>;
+  spawnDetachedServer?: SpawnCliServer;
+  spawnSingleFileServer?: SpawnCliServer;
   createEphemeralProjectDir?(contentDir: string): string;
   removeDir?(dir: string): Promise<void>;
   spawnLockPollDeadlineMs?: number;
@@ -279,6 +358,7 @@ export interface WindowManagerDeps {
   appVersion: string;
   selfProtocolVersion?: number;
   selfRuntimeVersion?: string;
+  selfChannel?: DesktopProductName;
   reclaimForeignServerInDev?: boolean;
   isFirstLaunchAfterUpgrade?(): boolean;
   setTimeout(cb: () => void, ms: number): unknown;
@@ -566,8 +646,47 @@ export class WindowManager {
     return lock !== null && lock.draining !== true;
   }
 
+  private otherChannelOf(lock: Pick<ServerLockMetadataLike, 'channel'>): ChannelConflict | null {
+    const self = this.deps.selfChannel;
+    return self !== undefined && lock.channel !== undefined && lock.channel !== self
+      ? { holderChannel: lock.channel, selfChannel: self }
+      : null;
+  }
+
+  private logOtherChannelRefusal(args: {
+    lock: Pick<ServerLockMetadataLike, 'pid'>;
+    holderChannel: string;
+    projectPath: string;
+    operation: 'attach' | 'spawn' | 'restart' | 'force-stop';
+  }): void {
+    this.deps.log?.warn(
+      {
+        event: 'desktop-server-refused-other-channel',
+        operation: args.operation,
+        lockPid: args.lock.pid,
+        holderChannel: args.holderChannel,
+        selfChannel: this.deps.selfChannel ?? null,
+        projectPath: args.projectPath,
+      },
+      "[window-manager] refusing another channel's server for this project",
+    );
+  }
+
+  private sigtermSpawnOrphan(pid: number, projectPath: string, message: string): void {
+    try {
+      this.deps.killProbe(pid, 'SIGTERM');
+    } catch (signalErr) {
+      const code = (signalErr as NodeJS.ErrnoException).code;
+      if (code !== 'ESRCH') {
+        this.deps.log?.warn(
+          { event: 'desktop-spawn-orphan-sigterm-failed', err: signalErr, code, pid, projectPath },
+          message,
+        );
+      }
+    }
+  }
+
   private async terminateServerByPid(
-    _lockDir: string,
     pid: number,
   ): Promise<{ ok: true; escalated: boolean } | { ok: false; reason: 'eperm' | 'other' }> {
     try {
@@ -675,29 +794,78 @@ export class WindowManager {
     return true;
   }
 
+  otherChannelLockHolder(projectPath: string): OtherChannelHolder | null {
+    const lock = this.deps.readServerLock?.(getLocalDir(resolve(projectPath))) ?? null;
+    if (lock === null || !isValidLockPidLocal(lock.pid)) return null;
+    const conflict = this.otherChannelOf(lock);
+    if (conflict === null) return null;
+    return {
+      holderPid: lock.pid,
+      holderChannel: conflict.holderChannel,
+      holderKind: lock.kind,
+      selfChannel: conflict.selfChannel,
+    };
+  }
+
   async forceStopConflictingServer(
     projectPath: string,
-  ): Promise<{ ok: true } | { ok: false; reason: 'eperm' | 'other' }> {
+    expectedHolder?: { pid: number; channel: string },
+  ): Promise<ForceStopOutcome> {
     const lockDir = getLocalDir(resolve(projectPath));
     let pid: unknown;
     let rawPort: unknown;
     let rawUrl: unknown;
+    let rawChannel: unknown;
     try {
       const raw = JSON.parse(readFileSync(join(lockDir, 'server.lock'), 'utf-8')) as {
         pid?: unknown;
         port?: unknown;
         url?: unknown;
+        channel?: unknown;
       };
       pid = raw?.pid;
       rawPort = raw?.port;
       rawUrl = raw?.url;
+      rawChannel = raw?.channel;
     } catch {
       return { ok: true };
     }
     if (!isValidLockPidLocal(pid) || pid === process.pid) {
       return { ok: true };
     }
-    const term = await this.terminateServerByPid(lockDir, pid);
+    const holderChannel = typeof rawChannel === 'string' ? rawChannel : null;
+    const unboundConflict =
+      expectedHolder === undefined
+        ? this.otherChannelOf({ channel: holderChannel ?? undefined })
+        : null;
+    if (unboundConflict !== null) {
+      this.logOtherChannelRefusal({
+        lock: { pid },
+        holderChannel: unboundConflict.holderChannel,
+        projectPath,
+        operation: 'force-stop',
+      });
+      return { ok: false, reason: 'holder-changed' };
+    }
+    if (
+      expectedHolder !== undefined &&
+      (pid !== expectedHolder.pid || holderChannel !== expectedHolder.channel)
+    ) {
+      this.deps.log?.warn(
+        {
+          event: 'desktop-force-stop-conflicting-server',
+          outcome: 'holder-changed',
+          pid,
+          holderChannel,
+          expectedPid: expectedHolder.pid,
+          expectedHolderChannel: expectedHolder.channel,
+          projectPath,
+        },
+        '[window-manager] lock holder changed since the user agreed to stop it; not signalling',
+      );
+      return { ok: false, reason: 'holder-changed' };
+    }
+    const term = await this.terminateServerByPid(pid);
     if (!term.ok && term.reason === 'eperm') {
       const broke = await this.breakUnservingHolderLock({
         lockDir,
@@ -715,6 +883,7 @@ export class WindowManager {
       {
         event: 'desktop-force-stop-conflicting-server',
         pid,
+        holderChannel,
         projectPath,
         outcome: term.ok ? 'stopped' : term.reason,
       },
@@ -731,8 +900,18 @@ export class WindowManager {
     const canonicalKey = this.canonicalizeKey(resolved);
     const lockDir = getLocalDir(resolved);
     const lock = this.deps.readServerLock?.(lockDir) ?? null;
+    const conflict = lock === null ? null : this.otherChannelOf(lock);
+    if (lock !== null && conflict !== null) {
+      this.logOtherChannelRefusal({
+        lock,
+        holderChannel: conflict.holderChannel,
+        projectPath: resolved,
+        operation: 'restart',
+      });
+      return { ok: false, reason: 'other-channel', holderChannel: conflict.holderChannel };
+    }
     if (lock && isValidLockPidLocal(lock.pid)) {
-      const term = await this.terminateServerByPid(lockDir, lock.pid);
+      const term = await this.terminateServerByPid(lock.pid);
       if (!term.ok) {
         const broke =
           term.reason === 'eperm' &&
@@ -999,11 +1178,21 @@ export class WindowManager {
     const candidate = this.tryAttachExistingServer(lockDir);
     const attached =
       candidate !== null && (await this.probeAttachableLock(candidate)) ? candidate : null;
+    const attachedConflict = attached === null ? null : this.otherChannelOf(attached);
+    if (attached !== null && attachedConflict !== null) {
+      this.logOtherChannelRefusal({
+        lock: attached,
+        holderChannel: attachedConflict.holderChannel,
+        projectPath,
+        operation: 'attach',
+      });
+      throw otherChannelHolderError(attached, attachedConflict);
+    }
     if (attached) {
       const isForeign = this.spawnedDetachedPids.get(canonicalKey) !== attached.pid;
       let reclaimed = false;
       if (this.deps.reclaimForeignServerInDev === true && isForeign) {
-        const term = await this.terminateServerByPid(lockDir, attached.pid);
+        const term = await this.terminateServerByPid(attached.pid);
         if (term.ok) {
           this.deps.log?.info(
             {
@@ -1037,7 +1226,7 @@ export class WindowManager {
             { protocolVersion: selfProtocol, runtimeVersion: selfRuntime },
           );
           if (drift.relation === 'older' || drift.relation === 'newer') {
-            const term = await this.terminateServerByPid(lockDir, attached.pid);
+            const term = await this.terminateServerByPid(attached.pid);
             if (term.ok) {
               this.deps.log?.info(
                 {
@@ -1110,23 +1299,11 @@ export class WindowManager {
           ? !this.deps.isProcessAlive(handle.pid)
           : undefined;
         const childExit = handle.readExit?.() ?? null;
-        try {
-          this.deps.killProbe(handle.pid, 'SIGTERM');
-        } catch (signalErr) {
-          const code = (signalErr as NodeJS.ErrnoException).code;
-          if (code !== 'ESRCH') {
-            this.deps.log?.warn(
-              {
-                event: 'desktop-spawn-orphan-sigterm-failed',
-                err: signalErr,
-                code,
-                pid: handle.pid,
-                projectPath,
-              },
-              '[window-manager] SIGTERM on orphan after spawn-lock-timeout failed',
-            );
-          }
-        }
+        this.sigtermSpawnOrphan(
+          handle.pid,
+          projectPath,
+          '[window-manager] SIGTERM on orphan after spawn-lock-timeout failed',
+        );
         this.spawnedDetachedPids.delete(canonicalKey);
         throw this.buildSpawnFailureError({
           pid: handle.pid,
@@ -1144,30 +1321,20 @@ export class WindowManager {
           ? !this.deps.isProcessAlive(handle.pid)
           : undefined;
         const childExit = handle.readExit?.() ?? null;
-        try {
-          this.deps.killProbe(handle.pid, 'SIGTERM');
-        } catch (signalErr) {
-          const code = (signalErr as NodeJS.ErrnoException).code;
-          if (code !== 'ESRCH') {
-            this.deps.log?.warn(
-              {
-                event: 'desktop-spawn-orphan-sigterm-failed',
-                err: signalErr,
-                code,
-                pid: handle.pid,
-                projectPath,
-              },
-              '[window-manager] SIGTERM on orphan after refusing a stale lock failed',
-            );
-          }
-        }
+        this.sigtermSpawnOrphan(
+          handle.pid,
+          projectPath,
+          '[window-manager] SIGTERM on orphan after refusing a stale lock failed',
+        );
         this.spawnedDetachedPids.delete(canonicalKey);
+        const staleConflict = adoptedForeignLock ? this.otherChannelOf(lock) : null;
         this.deps.log?.warn(
           {
             event: 'desktop-server-spawn-refused-stale-lock',
             reason: unusableLock ? 'lock-not-attachable' : 'holder-not-serving',
             pid: handle.pid,
             lockPid: lock.pid,
+            ...(staleConflict !== null && { holderChannel: staleConflict.holderChannel }),
             port: lock.port,
             portType: typeof lock.port,
             rawPort: String(lock.port),
@@ -1201,6 +1368,22 @@ export class WindowManager {
             exitSignal: childExit?.signal ?? null,
           },
         );
+      }
+      const adoptedConflict = adoptedForeignLock ? this.otherChannelOf(lock) : null;
+      if (adoptedConflict !== null) {
+        this.sigtermSpawnOrphan(
+          handle.pid,
+          projectPath,
+          "[window-manager] SIGTERM on orphan after refusing another channel's server failed",
+        );
+        this.spawnedDetachedPids.delete(canonicalKey);
+        this.logOtherChannelRefusal({
+          lock,
+          holderChannel: adoptedConflict.holderChannel,
+          projectPath,
+          operation: 'spawn',
+        });
+        throw otherChannelHolderError(lock, adoptedConflict);
       }
       this.deps.log?.info(
         {
@@ -1590,10 +1773,10 @@ export class WindowManager {
     opts: { canonicalFilePath: string; contentDir: string; docName: string },
     canonicalKey: string,
   ): Promise<ProjectContext> {
-    const { createEphemeralProjectDir, spawnDetachedServer, removeDir } = this.deps;
-    if (!createEphemeralProjectDir || !spawnDetachedServer || !removeDir) {
+    const { createEphemeralProjectDir, spawnSingleFileServer, removeDir } = this.deps;
+    if (!createEphemeralProjectDir || !spawnSingleFileServer || !removeDir) {
       throw new Error(
-        'createEphemeralWindow requires createEphemeralProjectDir + spawnDetachedServer + removeDir deps to be wired',
+        'createEphemeralWindow requires createEphemeralProjectDir + spawnSingleFileServer + removeDir deps to be wired',
       );
     }
 
@@ -1603,9 +1786,9 @@ export class WindowManager {
     const lockDir = getLocalDir(tempProjectDir);
 
     const reactShellDistDir = dirname(this.deps.rendererEntryPath);
-    let handle: Awaited<ReturnType<NonNullable<WindowManagerDeps['spawnDetachedServer']>>>;
+    let handle: Awaited<ReturnType<SpawnCliServer>>;
     try {
-      handle = await spawnDetachedServer({
+      handle = await spawnSingleFileServer({
         contentDir: opts.contentDir,
         reactShellDistDir,
         singleFile: opts.canonicalFilePath,
@@ -1801,7 +1984,7 @@ export class WindowManager {
     lockDir: string;
   }): Promise<void> {
     try {
-      const term = await this.terminateServerByPid(session.lockDir, session.pid);
+      const term = await this.terminateServerByPid(session.pid);
       if (!term.ok) {
         this.deps.log?.warn(
           {

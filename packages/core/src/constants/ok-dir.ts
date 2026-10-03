@@ -22,6 +22,15 @@ export const OK_MACHINE_LOCAL_ROOT_FILES = [
   'last-spawn-error.log',
 ] as const;
 
+export const OK_USER_HOME_AUTH_FILE = 'auth.yml';
+
+export const OK_USER_HOME_SECRETS_FILE = 'secrets.yml';
+
+export const OK_USER_HOME_CREDENTIAL_FILES = [
+  OK_USER_HOME_AUTH_FILE,
+  OK_USER_HOME_SECRETS_FILE,
+] as const;
+
 export const OK_ACTIVE_MACHINE_LOCAL_ROOT_DIRS = [LOCAL_DIR, WORKTREES_DIRNAME] as const;
 
 export const OK_MACHINE_LOCAL_ROOT_DIRS = [

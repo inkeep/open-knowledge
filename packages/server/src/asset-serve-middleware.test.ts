@@ -1,6 +1,9 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
   type AssetServeFilter,
   createAssetServeMiddleware,
@@ -76,8 +79,35 @@ const INLINE = new Set(['png', 'jpg', 'pdf', 'mp4', 'm4v', 'svg']);
 const ASSETS = new Set([...INLINE, 'docx', 'csv', 'json', 'txt', 'zip', 'html', 'htm']);
 const BLOCKLIST = new Set(['exe', 'dmg', 'sh', 'html', 'htm']);
 
+const SERVABLE_FIXTURES = [
+  'photo.png',
+  'clip.m4v',
+  'data.csv',
+  'spec.docx',
+  'doc.pdf',
+  'icon.svg',
+  'trip-viewer.html',
+  'legacy.htm',
+  'notes.md',
+  'Notes.MD',
+  'doc.mdx',
+  'my file.m4v',
+];
+
+let fixtureDir: string;
+
+beforeAll(() => {
+  fixtureDir = mkdtempSync(join(tmpdir(), 'ok-asset-serve-unit-'));
+  for (const name of SERVABLE_FIXTURES) writeFileSync(join(fixtureDir, name), 'fixture');
+});
+
+afterAll(() => {
+  rmSync(fixtureDir, { recursive: true, force: true });
+});
+
 function buildMiddleware(sirv: SirvLikeMiddleware, filter: AssetServeFilter = admitAll) {
   return createAssetServeMiddleware({
+    contentDir: fixtureDir,
     contentFilter: filter,
     contentSirv: sirv,
     inlineExtensions: INLINE,

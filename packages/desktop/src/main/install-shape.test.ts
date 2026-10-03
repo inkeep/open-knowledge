@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { wrapperPathInBundle } from './bundle-paths.ts';
-import { classifyInstallShape } from './install-shape.ts';
+import { agentConnectionsAvailability, classifyInstallShape } from './install-shape.ts';
 
 describe('classifyInstallShape', () => {
   test('darwin bundle → mac-bundle with Contents/Resources wrapper', () => {
@@ -79,5 +79,57 @@ describe('wrapperPathInBundle per-platform layouts', () => {
     expect(wrapperPathInBundle('/opt/OpenKnowledge/openknowledge', 'linux')).toBe(
       '/opt/OpenKnowledge/resources/cli/bin/ok.sh',
     );
+  });
+});
+
+describe('agentConnectionsAvailability', () => {
+  const devExe = '/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron';
+  const packagedExe = '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge';
+
+  test.each([
+    ['plain unpackaged build', false, 'darwin', devExe, {}, { available: false, devBuild: true }],
+    [
+      'unpackaged build forced open',
+      false,
+      'darwin',
+      devExe,
+      { OK_M6B_FORCE: '1' },
+      { available: true, devBuild: false },
+    ],
+    [
+      'unpackaged build locked by OK_RECLAIM_DISABLE',
+      false,
+      'darwin',
+      devExe,
+      { OK_RECLAIM_DISABLE: '1' },
+      { available: false, devBuild: false },
+    ],
+    [
+      'unpackaged build forced open but locked by OK_RECLAIM_DISABLE',
+      false,
+      'darwin',
+      devExe,
+      { OK_M6B_FORCE: '1', OK_RECLAIM_DISABLE: '1' },
+      { available: false, devBuild: false },
+    ],
+    [
+      'unpackaged build forced open but locked by install shape',
+      false,
+      'linux',
+      '/tmp/.mount_ok/openknowledge',
+      { OK_M6B_FORCE: '1', APPIMAGE: '/home/u/OK.AppImage' },
+      { available: false, devBuild: false },
+    ],
+    ['packaged build', true, 'darwin', packagedExe, {}, { available: true, devBuild: false }],
+    [
+      'packaged build in an unsupported shape',
+      true,
+      'darwin',
+      '/usr/local/bin/OpenKnowledge',
+      {},
+      { available: false, devBuild: false },
+    ],
+  ] as const)('%s', (_label, isPackaged, platform, exe, env, expected) => {
+    expect(agentConnectionsAvailability(isPackaged, platform, exe, env)).toEqual(expected);
   });
 });

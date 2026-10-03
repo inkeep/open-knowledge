@@ -1,6 +1,9 @@
+import { realpathSync, statSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { extname } from 'node:path';
+import { extname, join, normalize, relative, resolve, sep } from 'node:path';
 import { SANDBOXED_HTML_EXTENSIONS } from '@inkeep/open-knowledge-core';
+import { isWithinContentDir } from './content-path.ts';
+import { resolvesIntoPrivateState } from './fs-safety.ts';
 import { errorResponse } from './http/error-response.ts';
 import {
   HOST_NOT_ADMITTED_REMEDIATION,
@@ -21,6 +24,7 @@ export type SirvLikeMiddleware = (
 ) => void;
 
 interface AssetServeMiddlewareDeps {
+  contentDir: string;
   contentFilter: AssetServeFilter;
   contentSirv: SirvLikeMiddleware;
   inlineExtensions: ReadonlySet<string>;
@@ -29,10 +33,48 @@ interface AssetServeMiddlewareDeps {
   ingressPolicy: IngressPolicy;
 }
 
+function sirvLookupPath(url: string): string {
+  let pathname = url;
+  if (pathname.length > 1) {
+    const hash = pathname.indexOf('#', 1);
+    if (hash !== -1) pathname = pathname.slice(0, hash);
+    const query = pathname.indexOf('?', 1);
+    if (query !== -1) pathname = pathname.slice(0, query);
+  }
+  if (!pathname.includes('%')) return pathname;
+  try {
+    return decodeURI(pathname);
+  } catch {
+    return pathname;
+  }
+}
+
+function isServableContentFile(contentDir: string, url: string): boolean {
+  const root = resolve(contentDir);
+  const requested = normalize(join(`${root}${sep}`, sirvLookupPath(url)));
+  if (!requested.startsWith(`${root}${sep}`)) return false;
+  try {
+    const contentRoot = realpathSync(root);
+    const canonical = realpathSync(requested);
+    return (
+      statSync(canonical).isFile() &&
+      isWithinContentDir(canonical, contentRoot) &&
+      !resolvesIntoPrivateState(
+        join(contentRoot, relative(root, requested)),
+        canonical,
+        contentRoot,
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function createAssetServeMiddleware(
   deps: AssetServeMiddlewareDeps,
 ): (req: IncomingMessage, res: ServerResponse, next: () => void) => void {
   const {
+    contentDir,
     contentFilter,
     contentSirv,
     inlineExtensions,
@@ -77,7 +119,7 @@ export function createAssetServeMiddleware(
     if (classified.sandboxedHtml) {
       res.setHeader('Cache-Control', 'no-store');
     }
-    contentSirv(req, res, () => {
+    const notServed = () => {
       if (res.headersSent) return;
       const isHtml = SANDBOXED_HTML_EXTENSIONS.has(ext);
       if (!isHtml && (assetExtensions.has(ext) || blocklistExtensions.has(ext))) {
@@ -92,6 +134,11 @@ export function createAssetServeMiddleware(
         res.removeHeader('Cache-Control');
       }
       next();
-    });
+    };
+    if (!isServableContentFile(contentDir, req.url ?? '')) {
+      notServed();
+      return;
+    }
+    contentSirv(req, res, notServed);
   };
 }

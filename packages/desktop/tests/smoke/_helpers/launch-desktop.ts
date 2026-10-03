@@ -120,6 +120,7 @@ export function desktopLaunchOptions(input: DesktopLaunchOptionsInput = {}): Des
       ...input.env,
       OK_LANG: 'en',
       OK_LOG_LEVEL: 'info',
+      OK_DEV_PROTOCOL: '1',
       ...(target.mode === 'packaged'
         ? { OK_IDLE_SHUTDOWN: `${PACKAGED_SMOKE_SERVER_IDLE_SHUTDOWN_MS / 1000}s` }
         : {}),

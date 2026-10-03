@@ -1,8 +1,17 @@
 import { realpathSync } from 'node:fs';
-import { type CheckoutFailureReason, isBranchNotFoundGitError } from '@inkeep/open-knowledge-core';
+import {
+  type CheckoutFailureReason,
+  isBranchNotFoundGitError,
+  REFUSED_SYMLINK_PATHS_CAP,
+} from '@inkeep/open-knowledge-core';
 import { truncateError } from './error-format.ts';
 import { dirtyFilesOverlapWith } from './git-dirty.ts';
 import { createGitInstance } from './git-handle.ts';
+import {
+  assertIncomingSymlinksSafe,
+  resolveIncomingCommit,
+  UnsafeIncomingSymlinkError,
+} from './incoming-symlink-guard.ts';
 import { getLogger } from './logger.ts';
 
 const log = getLogger('git-checkout');
@@ -16,6 +25,7 @@ export type CheckoutOutcome =
       reason: CheckoutFailureReason;
       files?: string[];
       otherWorktreePath?: string;
+      refusedSymlinkPaths?: string[];
     };
 
 const BRANCH_IN_OTHER_WORKTREE_RE =
@@ -54,7 +64,9 @@ export async function runCheckoutFlow(
     }
   }
 
-  const { git } = createGitInstance(projectDir, { credentialConfig: opts.credentialConfig });
+  const { git, env: gitEnv } = createGitInstance(projectDir, {
+    credentialConfig: opts.credentialConfig,
+  });
 
   const branchIsLocal = await git
     .raw(['rev-parse', '--verify', `refs/heads/${branch}`])
@@ -72,16 +84,78 @@ export async function runCheckoutFlow(
     }
   }
 
-  const targetRef = branchIsLocal ? branch : `origin/${branch}`;
-  const overlap = await dirtyFilesOverlapWith(projectDir, targetRef);
+  let target: string;
+  try {
+    target = await resolveIncomingCommit(
+      git,
+      branchIsLocal ? `refs/heads/${branch}` : `refs/remotes/origin/${branch}`,
+    );
+  } catch (err) {
+    log.warn({ branch, err }, `action=checkout-failed branch=${branch}`);
+    return { ok: false, reason: 'checkout-failed' };
+  }
+
+  const overlap = await dirtyFilesOverlapWith(projectDir, target);
   if (overlap.conflicts) {
     return { ok: false, reason: 'dirty-conflict', files: overlap.files };
   }
 
   try {
+    await assertIncomingSymlinksSafe(git, target, 'checkout', gitEnv);
+  } catch (err) {
+    if (err instanceof UnsafeIncomingSymlinkError) {
+      log.warn(
+        {
+          event: 'unsafe-incoming-symlinks',
+          branch,
+          target,
+          links: err.unsafe.slice(0, REFUSED_SYMLINK_PATHS_CAP),
+          refusedCount: err.unsafe.length,
+        },
+        `action=checkout-refused branch=${branch}`,
+      );
+      return {
+        ok: false,
+        reason: 'unsafe-symlinks',
+        refusedSymlinkPaths: err.displayPaths(),
+      };
+    }
+    log.warn({ branch, target, err }, `action=symlink-check-failed branch=${branch}`);
+    return { ok: false, reason: 'symlink-check-failed' };
+  }
+
+  const readHeadRef = (): Promise<string> =>
+    git
+      .raw(['symbolic-ref', '--quiet', 'HEAD'])
+      .then((ref) => ref.trim())
+      .catch(() => '');
+  const targetHeadRef = `refs/heads/${branch}`;
+  const headRefBefore = await readHeadRef();
+  let createdBranch = false;
+  try {
+    if (!branchIsLocal) {
+      await git.raw(['branch', '--no-track', branch, target]);
+      createdBranch = true;
+      await git.raw(['branch', `--set-upstream-to=refs/remotes/origin/${branch}`, branch]);
+    }
     await git.raw(['checkout', branch]);
     return { ok: true };
   } catch (err) {
+    if (headRefBefore !== targetHeadRef && (await readHeadRef()) === targetHeadRef) {
+      log.warn(
+        { branch, target, err },
+        `action=checkout-hook-failed branch=${branch} error=${truncateError(err)}`,
+      );
+      return { ok: true };
+    }
+    if (createdBranch) {
+      await git.raw(['branch', '-D', branch]).catch((cleanupErr: unknown) => {
+        log.warn(
+          { branch, target, err: cleanupErr },
+          `action=checkout-cleanup-failed branch=${branch}`,
+        );
+      });
+    }
     const heldElsewhere = isBranchInOtherWorktreeError(err);
     if (heldElsewhere.held) {
       log.warn(

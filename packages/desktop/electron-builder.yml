@@ -114,8 +114,8 @@ extraResources:
   # platform-neutral JS) + the per-platform binary packages under each platform
   # block's extraResources so the CLI resolves the keychain. Sourced from the
   # workspace-root `node_modules` — pnpm isolates packages under `.pnpm/` by
-  # default, so `.npmrc` surgically hoists `@napi-rs/keyring*` to the public
-  # root (`public-hoist-pattern`) to keep these copy sources resolvable. pnpm
+  # default, so pnpm-workspace.yaml surgically hoists `@napi-rs/keyring*` to the
+  # public root (`publicHoistPattern`) to keep these copy sources resolvable. pnpm
   # installs only the host-matching binary package, so cross-arch builds run
   # `scripts/prepare-platform-natives.mjs` (or `prepare-universal.mjs` on mac)
   # first to force-install the missing arch prebuilds.
@@ -152,7 +152,7 @@ extraResources:
   # (inkeep/open-knowledge#760). `scripts/stage-parcel-watcher.mjs` (run from the
   # per-platform build scripts) resolves the wrapper + its runtime deps
   # (picomatch v4 / is-glob / is-extglob / detect-libc) + the present per-arch
-  # binary package the way Node's `require()` does — NOT via `.npmrc` hoist,
+  # binary package the way Node's `require()` does — NOT via workspace hoisting,
   # which the tree's dual picomatch v2/v4 would make ship the wrong major — and
   # stages them per-OS. This one rule copies that staged tree onto the CLI path.
   # Coverage: tests/unit/electron-builder-parcel-watcher-deps.test.ts.

@@ -9,6 +9,7 @@ type SyncStatus = {
   state: string;
   hasRemote: boolean;
   pausedReason?: string;
+  refusedSymlinkPaths?: string[];
   pushPermission?: { checkStatus: 'allowed' | 'denied' | 'unknown'; deniedReason?: string };
   syncEnabled?: boolean;
   syncMode?: 'off' | 'follow' | 'full';
@@ -342,6 +343,40 @@ describe('Settings Sync section — three-way mode control (real hooks + dialog)
     expect(localPatchCalls).toEqual([{ autoSync: { mode: 'follow', enabled: null } }]);
   });
 
+  test('a refused incoming symlink is named under the paused reason', async () => {
+    projectLocalConfig = { autoSync: { mode: 'full' } };
+    syncStatus = {
+      state: 'idle',
+      hasRemote: true,
+      syncEnabled: true,
+      syncMode: 'full',
+      pausedReason: 'unsafe-incoming-symlinks',
+      refusedSymlinkPaths: ['notes/leak.md'],
+    };
+
+    await renderSyncSection();
+
+    expect(screen.getByTestId('sync-refused-symlinks').textContent).toContain('notes/leak.md');
+  });
+
+  test('a read-only follower still sees the symlink pause and the refused link', async () => {
+    projectLocalConfig = { autoSync: { mode: 'follow' } };
+    syncStatus = {
+      state: 'disabled',
+      hasRemote: true,
+      syncEnabled: true,
+      syncMode: 'follow',
+      pausedReason: 'unsafe-incoming-symlinks',
+      refusedSymlinkPaths: ['notes/leak.md'],
+      pushPermission: { checkStatus: 'denied', deniedReason: 'no-collaborator' },
+    };
+
+    await renderSyncSection();
+
+    expect(screen.getByTestId('settings-sync-reason').textContent).toContain('Sync is paused');
+    expect(screen.getByTestId('sync-refused-symlinks').textContent).toContain('notes/leak.md');
+  });
+
   test('a genuine read-only denial disables Full but keeps Off and Pull-only reachable', async () => {
     const user = userEvent.setup();
     syncStatus = {
@@ -485,25 +520,6 @@ describe('Settings Sync section — cycle cadence controls', () => {
     expect(localPatchCalls).toContainEqual({
       autoSync: { pullIntervalSeconds: 300, pushIntervalSeconds: 900 },
     });
-  });
-
-  test('a signed-out follower is told the anonymous floor overrides the setting', async () => {
-    syncStatus = {
-      ...syncStatus,
-      pushPermission: { checkStatus: 'denied', deniedReason: 'not-authenticated' },
-    } as SyncStatus;
-
-    await renderSyncSection();
-
-    expect(screen.queryByTestId('settings-sync-anon-floor-hint')).not.toBeNull();
-  });
-
-  test('a signed-in follower sees no anonymous-floor caption', async () => {
-    syncStatus = { ...syncStatus, pushPermission: { checkStatus: 'allowed' } } as SyncStatus;
-
-    await renderSyncSection();
-
-    expect(screen.queryByTestId('settings-sync-anon-floor-hint')).toBeNull();
   });
 });
 

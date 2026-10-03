@@ -19,6 +19,7 @@ import {
   hasNotFoundAsIdentityError,
   isParkedOnNotFoundAsIdentity,
   PausedReasonNotice,
+  SyncRefusedSymlinks,
   shouldOfferReconnect,
   shouldOfferSignInAgain,
 } from '@/components/SyncStatusBadge';
@@ -165,13 +166,11 @@ function SyncSectionContent({
     status?.pushPermission?.checkStatus === 'denied' &&
     status.pushPermission.deniedReason !== 'not-authenticated' &&
     !notFoundAsIdentity;
-  const isSignedOut =
-    status?.pushPermission?.checkStatus === 'denied' &&
-    status.pushPermission.deniedReason === 'not-authenticated';
   const parkedOnNotFound = isParkedOnNotFoundAsIdentity(status);
+  const pushDenialCoversPause = isPushDenied && status?.pausedReason !== 'unsafe-incoming-symlinks';
   const pausedNotice = !status?.pausedReason ? null : parkedOnNotFound ? (
     formatSyncFailureCode('auth-not-found-as-identity')
-  ) : isPushDenied ? null : (
+  ) : pushDenialCoversPause ? null : (
     <PausedReasonNotice reason={status.pausedReason} />
   );
 
@@ -419,6 +418,11 @@ function SyncSectionContent({
             {pausedNotice}
           </p>
         )}
+        {pausedNotice !== null && (status?.refusedSymlinkPaths?.length ?? 0) > 0 && (
+          <div className="mt-2">
+            <SyncRefusedSymlinks paths={status?.refusedSymlinkPaths} />
+          </div>
+        )}
         {}
         {status?.pushPermission?.checkStatus === 'denied' &&
         (parkedOnNotFound || showSwitchToPullOnly || showDeniedHint) ? (
@@ -496,17 +500,6 @@ function SyncSectionContent({
                   </SelectContent>
                 </Select>
               </div>
-              {isSignedOut && (
-                <p
-                  className="text-1sm text-muted-foreground"
-                  data-testid="settings-sync-anon-floor-hint"
-                >
-                  <Trans>
-                    While you're signed out, updates are checked at most every 3 minutes regardless
-                    of this setting.
-                  </Trans>
-                </p>
-              )}
               {localMode === 'full' && (
                 <div className="flex items-start justify-between gap-4 border-t pt-3">
                   <div className="min-w-0 flex-1">

@@ -516,6 +516,7 @@ export function AgentConnectionsSection({
   const [snapshot, setSnapshot] = useState<HostSnapshot | null>(null);
   const [readFailed, setReadFailed] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
+  const [devBuild, setDevBuild] = useState(false);
   const [reloadInstallState, setReloadInstallState] = useState(0);
   const [configureId, setConfigureId] = useState<AgentId | null>(null);
   const [removeId, setRemoveId] = useState<AgentId | null>(null);
@@ -559,6 +560,7 @@ export function AgentConnectionsSection({
         if (result.snapshot !== null) setSnapshot(result.snapshot);
         setReadFailed(!readProducedFacts(result.snapshot));
         setReadOnly(result.unavailable === true);
+        setDevBuild(result.devBuild === true);
       })
       .catch(() => {
         if (active && requestVersion.current === version) setReadFailed(true);
@@ -584,6 +586,7 @@ export function AgentConnectionsSection({
     if (result.snapshot !== null) setSnapshot(result.snapshot);
     setReadFailed(!readProducedFacts(result.snapshot));
     if (result.unavailable === true) setReadOnly(true);
+    if (result.devBuild === true) setDevBuild(true);
     return result;
   }
 
@@ -1122,7 +1125,11 @@ export function AgentConnectionsSection({
           data-testid="configure-agents-read-only"
         >
           <TriangleAlert aria-hidden className="size-4 shrink-0" />
-          <span>{t`Managing agent connections is unavailable in this build.`}</span>
+          <span>
+            {devBuild
+              ? t`This development build can't connect agents, so it won't change the agent setup of your installed OpenKnowledge app.`
+              : t`Managing agent connections is unavailable in this build.`}
+          </span>
         </div>
       ) : null}
 

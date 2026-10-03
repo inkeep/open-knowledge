@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
-import { dirname, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { Extension } from '@hocuspocus/server';
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
 import {
@@ -66,6 +66,7 @@ import {
 } from './document-durability-state.ts';
 import { refuseStaleExternalWrite } from './external-change.ts';
 import { contentHash, registerWrite } from './file-watcher.ts';
+import { resolvesIntoPrivateState } from './fs-safety.ts';
 import { tracedMkdir, tracedRenameSync, tracedUnlinkSync, tracedWriteFile } from './fs-traced.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
@@ -929,7 +930,10 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       );
       return { kind: 'unavailable', reason: 'read-failed' };
     }
-    if (!isWithinContentDir(canonical, contentDir)) {
+    if (
+      !isWithinContentDir(canonical, contentDir) ||
+      resolvesIntoPrivateState(requestedDiskPath, canonical, contentDir)
+    ) {
       log.warn(
         { docName: documentName, originalPath: requestedDiskPath, canonical, contentDir },
         `[persistence] symlink-escape on tripwire reset: ${requestedDiskPath} → ${canonical}, skipping tripwire baseline read`,
@@ -1637,13 +1641,18 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           }
         }
 
-        if (!isWithinContentDir(canonicalPath, contentDir)) {
-          const msg = `symlink-escape: ${requestedPath} resolves to ${canonicalPath} outside ${contentDir}`;
+        const checkedPath =
+          canonicalPath === requestedPath
+            ? join(await realpath(dirname(requestedPath)), basename(requestedPath))
+            : canonicalPath;
+        const outsideContent = !isWithinContentDir(checkedPath, contentDir);
+        if (outsideContent || resolvesIntoPrivateState(requestedPath, checkedPath, contentDir)) {
+          const msg = `symlink-escape: ${requestedPath} resolves to ${checkedPath} ${outsideContent ? `outside ${contentDir}` : 'inside private repository state'}`;
           log.error(
             {
               docName: documentName,
               originalPath: requestedPath,
-              canonical: canonicalPath,
+              canonical: checkedPath,
               contentDir,
             },
             `[persistence] ${msg}`,
@@ -2027,7 +2036,10 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           let canonical = filePath;
           try {
             const resolvedCanonical = realpathSync(filePath);
-            if (!isWithinContentDir(resolvedCanonical, contentDir)) {
+            if (
+              !isWithinContentDir(resolvedCanonical, contentDir) ||
+              resolvesIntoPrivateState(filePath, resolvedCanonical, contentDir)
+            ) {
               log.warn(
                 { path: filePath, canonical: resolvedCanonical },
                 `[persistence] symlink-escape on load: ${filePath} → ${resolvedCanonical}, refusing`,

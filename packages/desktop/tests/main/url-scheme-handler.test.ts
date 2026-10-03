@@ -180,9 +180,29 @@ function tickTimer(env: TestEnv): void {
 }
 
 describe('registerProtocolHandler — setAsDefaultProtocolClient', () => {
-  test('calls setAsDefaultProtocolClient in dev mode (!isPackaged)', () => {
+  test('a dev build leaves the scheme unclaimed unless OK_DEV_PROTOCOL opts in', () => {
     const env = makeEnv({ isPackaged: false });
     registerProtocolHandler({
+      log: env.log,
+      app: env.app,
+      focusWindowForProject: env.focusWindowForProject,
+      openProject: env.openProject,
+      sendDeepLink: env.sendDeepLink,
+      getAnyReadyWindow: env.getAnyReadyWindow,
+      setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+    });
+    expect(env.app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
+    expect(env.app.on).not.toHaveBeenCalledWith('before-quit', expect.anything());
+    const skip = env.infoLog.find((e) => e.msg.includes('OK_DEV_PROTOCOL=1'))?.msg ?? '';
+    expect(skip).toContain('not registered');
+    expect(skip).toContain('or nowhere');
+    expect(skip).not.toContain('installed app');
+  });
+
+  test('calls setAsDefaultProtocolClient in dev mode when OK_DEV_PROTOCOL opts in', () => {
+    const env = makeEnv({ isPackaged: false });
+    registerProtocolHandler({
+      registerDevProtocol: true,
       app: env.app,
       focusWindowForProject: env.focusWindowForProject,
       openProject: env.openProject,
@@ -236,6 +256,7 @@ describe('registerProtocolHandler — setAsDefaultProtocolClient', () => {
     const env = makeEnv({ isPackaged: false });
     env.app.setAsDefaultProtocolClient = vi.fn(() => false);
     registerProtocolHandler({
+      registerDevProtocol: true,
       app: env.app,
       focusWindowForProject: env.focusWindowForProject,
       openProject: env.openProject,
@@ -291,6 +312,7 @@ describe('registerProtocolHandler — before-quit Launch Services cleanup', () =
   test('registers before-quit handler that calls removeAsDefaultProtocolClient in dev mode', () => {
     const env = makeEnv({ isPackaged: false });
     registerProtocolHandler({
+      registerDevProtocol: true,
       app: env.app,
       focusWindowForProject: env.focusWindowForProject,
       openProject: env.openProject,
@@ -320,6 +342,7 @@ describe('registerProtocolHandler — before-quit Launch Services cleanup', () =
     const env = makeEnv({ isPackaged: false });
     env.app.setAsDefaultProtocolClient = vi.fn(() => false);
     registerProtocolHandler({
+      registerDevProtocol: true,
       app: env.app,
       focusWindowForProject: env.focusWindowForProject,
       openProject: env.openProject,
@@ -337,6 +360,7 @@ describe('registerProtocolHandler — before-quit Launch Services cleanup', () =
       throw new Error('launch services refused');
     });
     registerProtocolHandler({
+      registerDevProtocol: true,
       app: env.app,
       focusWindowForProject: env.focusWindowForProject,
       openProject: env.openProject,

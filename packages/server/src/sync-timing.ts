@@ -9,16 +9,3 @@ export function computeRemainingMs(
   const nextMs = lastMs + intervalSeconds * 1000;
   return Math.max(0, nextMs - now);
 }
-
-export const ANONYMOUS_PULL_MIN_SECONDS = 180;
-
-export type PullAuthTier = 'authenticated' | 'anonymous';
-
-export function pullIntervalSecondsForAuthTier(
-  baseIntervalSeconds: number,
-  tier: PullAuthTier,
-): number {
-  return tier === 'anonymous'
-    ? Math.max(ANONYMOUS_PULL_MIN_SECONDS, baseIntervalSeconds)
-    : baseIntervalSeconds;
-}

@@ -191,6 +191,44 @@ describe('ShareFreshnessWarning — recovery CTAs (FR4/FR5)', () => {
     expect(screen.queryByRole('link', { name: /How to push manually/ })).toBeNull();
   });
 
+  test('does not offer Sync now while sync is paused on unsafe incoming symlinks', () => {
+    render(
+      <ShareFreshnessWarning
+        freshness="absent"
+        status={makeStatus({
+          syncEnabled: true,
+          state: 'idle',
+          pausedReason: 'unsafe-incoming-symlinks',
+          refusedSymlinkPaths: ['notes/leak.md'],
+        })}
+        kind="doc"
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
+    const notice = screen.getByTestId('sync-now-paused-notice');
+    expect(notice.textContent).toContain('Sync is paused because incoming changes leave a symlink');
+    expect(within(notice).getByTestId('sync-refused-symlinks').textContent).toBe('notes/leak.md');
+  });
+
+  test('explains a paused Git operation where Sync now would be', () => {
+    render(
+      <ShareFreshnessWarning
+        freshness="absent"
+        status={makeStatus({
+          syncEnabled: true,
+          state: 'idle',
+          pausedReason: 'git-operation-in-progress',
+          refusedSymlinkPaths: ['notes/stale.md'],
+        })}
+        kind="doc"
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
+    const notice = screen.getByTestId('sync-now-paused-notice');
+    expect(notice.textContent).toContain('Git syncing is paused');
+    expect(within(notice).queryByTestId('sync-refused-symlinks')).toBeNull();
+  });
+
   test('Sync now goes in-flight, then self-clears to Synced on a completed sync', () => {
     const { rerender } = render(
       <ShareFreshnessWarning

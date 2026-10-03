@@ -181,6 +181,31 @@ function isAliasOfCanonicalRoot(hostRoot: string, canonicalRoot: string): boolea
   }
 }
 
+function isSymlinkNotPermitted(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException | null)?.code;
+  return code === 'EPERM' || code === 'EACCES';
+}
+
+export function linkOrCopySkillDir(
+  linkTarget: string,
+  dest: string,
+  source: string,
+): 'link' | 'copy' {
+  try {
+    tracedSymlinkSync(linkTarget, dest, 'dir');
+    return 'link';
+  } catch (err) {
+    if (!isSymlinkNotPermitted(err)) throw err;
+    tracedRmSync(dest, { recursive: true, force: true });
+    tracedCpSync(source, dest, { recursive: true, dereference: true });
+    return 'copy';
+  }
+}
+
+export function linksNotPermittedWarning(locations: readonly string[]): string {
+  return `This system does not allow creating symlinks, so ${locations.join(', ')} got a copy instead of a link. On Windows, creating symlinks needs administrator rights or Developer Mode.`;
+}
+
 function skillLinkTarget(cwd: string, hostRoot: string, skillDir: string): string {
   const absSkill = resolve(skillDir);
   const fromCwd = relative(resolve(cwd), absSkill);
@@ -223,7 +248,7 @@ export function projectSkill(
     if (mode === 'copy') {
       tracedCpSync(skillDir, dest, { recursive: true, dereference: true });
     } else {
-      tracedSymlinkSync(skillLinkTarget(cwd, hostRoot, skillDir), dest, 'dir');
+      linkOrCopySkillDir(skillLinkTarget(cwd, hostRoot, skillDir), dest, skillDir);
     }
     written.push(editor);
   }
@@ -270,17 +295,23 @@ export function projectInPlaceSkill(opts: {
   convertLinks?: boolean;
   convertCopies?: boolean;
   roots?: SkillProjectionRoots;
-}): { hosts: SkillHostId[]; conflicted: SkillHostId[] } {
+}): { hosts: SkillHostId[]; conflicted: SkillHostId[]; linkFallbacks: SkillHostId[] } {
   const { canonicalAbs, canonicalHash, canonicalRootRel, name, cwd, targets } = opts;
   const roots = opts.roots ?? EDITOR_PROJECT_SKILL_ROOT;
   const mode = opts.mode ?? 'copy';
   const hosts: SkillHostId[] = [];
   const conflicted: SkillHostId[] = [];
-  const materialize = (dest: string, hostRoot: string): void => {
+  const linkFallbacks: SkillHostId[] = [];
+  const materialize = (dest: string, hostRoot: string, editor: SkillHostId): void => {
     tracedRmSync(dest, { recursive: true, force: true });
     tracedMkdirSync(hostRoot, { recursive: true });
     if (mode === 'link') {
-      tracedSymlinkSync(skillLinkTarget(cwd, hostRoot, canonicalAbs), dest, 'dir');
+      if (
+        linkOrCopySkillDir(skillLinkTarget(cwd, hostRoot, canonicalAbs), dest, canonicalAbs) ===
+        'copy'
+      ) {
+        linkFallbacks.push(editor);
+      }
     } else {
       tracedCpSync(canonicalAbs, dest, { recursive: true, dereference: true });
     }
@@ -298,7 +329,7 @@ export function projectInPlaceSkill(opts: {
           (mode === 'link' && opts.convertCopies === true && cls === 'same-copy') ||
           (mode === 'copy' && opts.convertLinks === true && cls === 'link-to-canonical')
         ) {
-          materialize(own, dirname(own));
+          materialize(own, dirname(own), editor);
         }
       }
       hosts.push(editor);
@@ -317,16 +348,16 @@ export function projectInPlaceSkill(opts: {
         hosts.push(editor);
         break;
       case 'link-to-canonical':
-        if (mode === 'copy' && opts.convertLinks === true) materialize(dest, hostRoot);
+        if (mode === 'copy' && opts.convertLinks === true) materialize(dest, hostRoot, editor);
         hosts.push(editor);
         break;
       case 'same-copy':
-        if (mode === 'link' && opts.convertCopies === true) materialize(dest, hostRoot);
+        if (mode === 'link' && opts.convertCopies === true) materialize(dest, hostRoot, editor);
         hosts.push(editor);
         break;
       case 'different':
         if (isStaleBundleProjection(dest, name)) {
-          materialize(dest, hostRoot);
+          materialize(dest, hostRoot, editor);
           hosts.push(editor);
           break;
         }
@@ -334,12 +365,12 @@ export function projectInPlaceSkill(opts: {
         break;
       case 'link':
       case 'absent':
-        materialize(dest, hostRoot);
+        materialize(dest, hostRoot, editor);
         hosts.push(editor);
         break;
     }
   }
-  return { hosts, conflicted };
+  return { hosts, conflicted, linkFallbacks };
 }
 
 export function relocateInPlaceCanonical(opts: {

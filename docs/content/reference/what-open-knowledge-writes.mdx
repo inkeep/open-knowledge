@@ -124,7 +124,7 @@ The **Scope** column assumes you share this setup with your team. New projects d
 
 #### Beta uses its own entry
 
-Each product registers under its own name, so Stable and Beta can both be connected to the same editor without overwriting each other. Stable uses `open-knowledge`; Beta uses `open-knowledge-beta`, with its own launcher that runs OpenKnowledge Beta and falls back to `npx @inkeep/open-knowledge@beta`. Everywhere this page names the `open-knowledge` entry, Beta's app, repair sweeps, and `ok-beta init` act only on `open-knowledge-beta`, and Beta's Pi bridge is `.pi/extensions/open-knowledge-beta.ts`. Agents see Beta's tools as `mcp__open-knowledge-beta__*`, and Pi sees them as `ok-beta_*`.
+Each product registers under its own name, so Stable and Beta can both be connected to the same editor without overwriting each other. Stable uses `open-knowledge`; Beta uses `open-knowledge-beta`, with its own launcher that runs OpenKnowledge Beta and falls back to `npx @inkeep/open-knowledge@beta`. Everywhere this page names the `open-knowledge` entry, Beta's app, repair sweeps, and `ok-beta init` act only on `open-knowledge-beta`, and Beta's Pi bridge is `.pi/extensions/open-knowledge-beta.ts`. Agents see Beta's tools as `mcp__open-knowledge-beta__*`, and Pi sees them as `ok-beta_*`. The two apps do not share a project's server, though; see [Stable and Beta on the same project](#stable-and-beta-on-the-same-project).
 
 Earlier releases of the separately installed `OpenKnowledge Beta` app registered under `open-knowledge`, and updating does not move that entry. If an editor's config has no `open-knowledge-beta` entry, reconnect that editor from **Settings → Agent connections** in OpenKnowledge Beta, then remove the old `open-knowledge` entry from the file listed under [`ok init`](#ok-init) if you don't also run Stable. An older Beta install still named `OpenKnowledge` keeps using `open-knowledge`; leave that entry in place.
 
@@ -142,7 +142,7 @@ The app runs a collaboration server for the open project. It writes runtime stat
 
 | Path | What it is | Scope |
 | --- | --- | --- |
-| `.ok/local/server.lock` | Advertise the running server's URL and capabilities (the `ui` capability marks a UI-serving server) | In-project, gitignored |
+| `.ok/local/server.lock` | Advertise the running server's URL and capabilities (the `ui` capability marks a UI-serving server), and the product that started it (`channel`: `stable` or `beta`); see [Stable and Beta on the same project](#stable-and-beta-on-the-same-project) | In-project, gitignored |
 | `.ok/local/principal.json` | Your local identity (id, email) for edit attribution | In-project, gitignored |
 | `.ok/local/sync-state.json` | GitHub-sync engine state | In-project, gitignored |
 | `.ok/local/conflicts.json` | Every conflict the app is holding a document for, including conflicts that involve no remote. A row for OpenKnowledge's own merge of the editor against disk embeds up to three full copies of the document body, so **keep this file while any conflict is open**. Deleting it loses those copies. If the app cannot read the file, it renames it to `conflicts.json.corrupt-<timestamp>` and leaves it in place | In-project, gitignored |
@@ -168,6 +168,16 @@ Diagnostic logs and telemetry are **on by default but local-only** — credentia
 On each launch and project open, the app also runs **repair sweeps**: it rewrites *existing* `open-knowledge` MCP entries (in the editor configs above) to the current canonical form, and removes any stale `open-knowledge-ui` entry left in `.claude/launch.json` by an older OK version. It **never adds** an MCP entry to an editor that doesn't already have one. Same `OK_RECLAIM_DISABLE=1` opt-out.
 
 **Skills are never installed by a sweep.** OpenKnowledge writes a skill into editor folders only when you ask for one — the first-launch setup dialog, the Settings toggles, Skills Studio, or `ok init`. A launch does two housekeeping passes over installed editor skills and writes nothing new into those folders: it removes superseded pre-split `open-knowledge` copies OpenKnowledge itself left in your agent folders, and it removes a bundle you switched off that is still on disk.
+
+#### Stable and Beta on the same project
+
+Only one OpenKnowledge app serves a project at a time. `server.lock` records which product started the server, resolved the same way a [CLI process picks its product](#beta-uses-its-own-entry). When OpenKnowledge Beta opens a project that Stable is serving, or the other way round, it does not connect to that server, take it over, or stop it on its own. It shows **This project is open in another OpenKnowledge app**, naming the app that holds it (for example **OpenKnowledge (Stable)**), and **Restart server** reports that the other app keeps the project. A lock that names a product this app does not know gets the same treatment. The same dialog appears when another app's lock blocks the open in other ways too: its server is not answering, a server of this app collided with that lock, or a new server timed out because that lock was already held. This dialog is the only way the app stops another app's server.
+
+Closing the other app's window does not free the project, because its server keeps running in the background. To move the project, choose the dialog's **Stop … Server & Open Here** button (for example **Stop OpenKnowledge (Stable) Server & Open Here**). Every window, editor, or agent connected to that server loses its connection to the project. Cancel is the default and stops nothing. From a terminal, `ok stop` in the project folder does the same.
+
+A server you start with `ok start`, or one an editor's MCP connection starts, counts as the product its CLI resolves to. Under plain Node that is Stable unless `OK_CHANNEL=beta` is set, so OpenKnowledge Beta also refuses a project served that way. A server an editor's MCP connection started does not stop when that session ends. It stops on its own once nothing has had the project open for a while (30 minutes by default), so you can also wait for it. Stopping it from the dialog interrupts whatever the agent or editor is doing right now, and the agent's next request reaches the server the app opened.
+
+A lock written by an earlier release has no `channel`, and both apps attach to it as before. An app from an earlier release does not read `channel` at all, so the rule holds only once both apps are on this release.
 
 ### Home directory and credentials (`~/.ok/`)
 
@@ -274,7 +284,7 @@ On Windows, Claude Desktop and OpenCode configs live under `%APPDATA%\Claude\` a
 
 | Path | What it is | Scope |
 | --- | --- | --- |
-| `.ok/local/server.lock` | Advertise the running server's URL and capabilities (the `ui` capability marks a UI-serving server) | In-project, gitignored |
+| `.ok/local/server.lock` | Advertise the running server's URL and capabilities (the `ui` capability marks a UI-serving server), and the product that started it (`channel`: `stable` or `beta`); see [Stable and Beta on the same project](#stable-and-beta-on-the-same-project) | In-project, gitignored |
 | `.ok/local/principal.json` | Your local identity (id, email) for edit attribution | In-project, gitignored |
 | `.ok/local/sync-state.json` | GitHub-sync engine state | In-project, gitignored |
 | `.ok/local/conflicts.json` | Every conflict the app is holding a document for, including conflicts that involve no remote. A row for OpenKnowledge's own merge of the editor against disk embeds up to three full copies of the document body, so **keep this file while any conflict is open**. Deleting it loses those copies. If the app cannot read the file, it renames it to `conflicts.json.corrupt-<timestamp>` and leaves it in place | In-project, gitignored |

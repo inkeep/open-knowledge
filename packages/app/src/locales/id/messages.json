@@ -154,6 +154,11 @@
     "0t0bbC": ["Preferensi sinkronisasi tidak dapat disimpan: ", ["detail"]],
     "0tV-rz": ["Pengaturan masih dimuat. Coba lagi sebentar."],
     "0uTHCg": ["Mulai proyek OpenKnowledge baru."],
+    "0uxLib": [
+      "Tidak dapat memeriksa symlink di ",
+      ["shareBranch"],
+      ", jadi tidak beralih. Coba lagi; jika terus gagal, pastikan Git terpasang dan folder proyek dapat dibaca."
+    ],
     "0wkh7o": ["Log OpenKnowledge, termasuk aktivitas lintas proyek."],
     "0wswKc": ["Garis mendatar yang memisahkan bagian."],
     "0x9smA": ["Halaman ini tidak lagi berada di jalur ini."],
@@ -408,6 +413,11 @@
       "Sudah punya repositori git? Tambahkan dengan <0>git remote add origin <url></0> di folder proyek ini. Halaman ini diperbarui otomatis begitu sebuah remote terdeteksi."
     ],
     "45MZFs": ["Perintah"],
+    "461Vg9": [
+      "Tidak beralih ke ",
+      ["shareBranch"],
+      ": cabang ini memiliki symlink yang mengarah ke luar repositori, ke berkas pribadi, atau ke tempat yang tidak dapat diperiksa. Biasanya orang yang melakukan push cabang ini yang harus memperbaiki tautannya. Jika sebuah folder di komputer ini tidak dapat dibaca, buat agar dapat dibaca lalu coba lagi."
+    ],
     "46YgRZ": ["Tambahkan blok di bawah"],
     "484LKL": ["Hapus tautan"],
     "49Mb7P": [
@@ -839,6 +849,9 @@
     "8nWu1k": ["Diagram kosong"],
     "8oWgty": ["Tandai semua komentar untuk dikirim"],
     "8qgfac": ["Server MCP"],
+    "8qsUJv": [
+      "Sinkronisasi dijeda karena perubahan yang masuk membuat symlink mengarah ke luar repositori atau ke berkas pribadi, atau targetnya tidak dapat diperiksa. Minta orang yang melakukan push untuk memperbaiki tautannya, atau perbarui Git jika versi Anda lebih lama dari 2.38. Setelah itu sinkronisasi otomatis berlanjut; dalam mode Manual, lakukan pull lagi."
+    ],
     "8rZ1pk": ["Aktifkan ", ["id"]],
     "8ruqQi": ["Tautan internal rusak"],
     "8t9CRE": ["Memulai ", ["agentName"], "…"],
@@ -980,6 +993,9 @@
     "AT0e50": ["Simpan keduanya"],
     "ATGYL1": ["Alamat surel"],
     "AUMPjj": ["Spasi untuk melompat, panah bawah untuk menunduk. Hanya itu permainannya."],
+    "AUORpp": [
+      "Build pengembangan ini tidak dapat menghubungkan agen, jadi tidak akan mengubah pengaturan agen di aplikasi OpenKnowledge yang terpasang."
+    ],
     "AUV-TY": ["Berpikir"],
     "AVW-K9": ["Gagal memuat halaman yatim"],
     "AWOSPo": ["Perbesar"],
@@ -1146,6 +1162,12 @@
       "Berkas ini terlalu besar untuk dibuka di penyunting teks bawaan (batas 1 MB). Gunakan Buka berkas di bawah untuk membukanya di aplikasi lain."
     ],
     "C_cPoW": ["Sesi GitHub Anda kedaluwarsa — masuk lagi untuk memverifikasi akses push."],
+    "CacpkO": [
+      ["holder"],
+      " sedang melayani proyek ini, jadi aplikasi ini tidak akan menghentikannya. Tutup jendela ini lalu buka proyek lagi untuk menghentikan server ",
+      ["holder"],
+      " dan membuka proyek di sini."
+    ],
     "CbxTfe": ["Pilih blok"],
     "CcaU4i": ["Suntingan langsung diterapkan dan disimpan otomatis ke tema ini."],
     "ChMshD": ["Keluar dari ", ["appName"]],
@@ -3224,6 +3246,11 @@
       " alih-alih milik plugin — salinan itu berhenti mengikuti pembaruan plugin."
     ],
     "_6FVBz": ["Lompat ke tab 1-8"],
+    "_6cS9O": [
+      "Tidak membuka ",
+      ["shareBranch"],
+      " di worktree: cabang ini memiliki symlink yang mengarah ke luar repositori, ke berkas pribadi, atau ke tempat yang tidak dapat diperiksa. Biasanya orang yang melakukan push cabang ini yang harus memperbaiki tautannya. Jika sebuah folder di komputer ini tidak dapat dibaca, buat agar dapat dibaca lalu coba lagi."
+    ],
     "_7UQ7y": ["Kata utuh"],
     "_8quCH": ["Dari templat"],
     "_902BE": [
@@ -3505,9 +3532,6 @@
     "cFgW76": ["Merge diblokir"],
     "cH0dkG": ["Ada fitur yang saya butuhkan tetapi tidak ada"],
     "cHhH3i": ["sebuah alat git yang diperlukan"],
-    "cIFYZn": [
-      "Selama Anda keluar dari akun, pembaruan diperiksa paling cepat setiap 3 menit, terlepas dari pengaturan ini."
-    ],
     "cIptmH": ["Di aplikasi Claude Desktop"],
     "cK5W4m": [
       ["0"],
@@ -4821,6 +4845,7 @@
     "pBROkv": [
       "Terima kasih sudah berlangganan. Pantau kotak masuk Anda untuk kabar terbaru produk."
     ],
+    "pCJv30": [["hiddenCount", "plural", { "other": ["#", " tautan lainnya"] }]],
     "pCralD": ["Pindahkan ke panel baru di kiri"],
     "pEQFsW": ["Tidak ada proyek yang cocok."],
     "pFPzHA": ["Pemilih emoji"],

@@ -1,4 +1,7 @@
-import { summarizeLintPluginFailures } from '@inkeep/open-knowledge-core';
+import {
+  SKILL_INSTALL_WARNING_CODES,
+  summarizeLintPluginFailures,
+} from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { z } from 'zod';
 
@@ -16,6 +19,7 @@ import {
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpGet,
   httpPost,
+  INSTALL_WARNING_CODE_GLOSS,
   normalizeDocName,
   okReservedPathRedirect,
   outputSchemaWithText,
@@ -905,5 +909,11 @@ describe('okReservedPathRedirect', () => {
   test('non-.ok path → null (normal docName error stands)', () => {
     expect(okReservedPathRedirect('meetings/standup')).toBeNull();
     expect(okReservedPathRedirect('docs/.hidden/x')).toBeNull();
+  });
+});
+
+describe('INSTALL_WARNING_CODE_GLOSS', () => {
+  test.each([...SKILL_INSTALL_WARNING_CODES])('defines %s', (code) => {
+    expect(INSTALL_WARNING_CODE_GLOSS).toContain(`\`${code}\`:`);
   });
 });

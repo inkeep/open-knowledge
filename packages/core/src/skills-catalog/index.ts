@@ -98,6 +98,7 @@ export {
   skillRegistryKey,
 } from './skill-registry.ts';
 export {
+  isLocalSkillSource,
   ownerOf,
   parseSkillsShCatalogSource,
   type SkillsShCatalogSource,

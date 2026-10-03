@@ -61,6 +61,7 @@ export const SPEC_PLATFORM_GATES = {
   'terminal-tabs.e2e.ts': ['!PTY_PLATFORM_SUPPORTED', '!WINDOWS'],
   'terminal-window.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
   'theme-sync.e2e.ts': ['!DARWIN'],
+  'unpackaged-open-file.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'uninstall-ipc-bridge.e2e.ts': ['!DARWIN'],
   'uninstall-result.e2e.ts': ['!DARWIN', '!DARWIN'],
   'uninstall-notice.e2e.ts': ['!DARWIN'],

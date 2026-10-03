@@ -52,6 +52,13 @@ export type WorktreeCreateResult =
     }
   | {
       readonly ok: false;
+      readonly reason: 'unsafe-symlinks';
+      readonly refusedSymlinkPaths: readonly string[];
+      readonly message?: never;
+      readonly helper?: never;
+    }
+  | {
+      readonly ok: false;
       readonly reason: 'fetch-failed';
       readonly message?: string;
       readonly helper?: never;

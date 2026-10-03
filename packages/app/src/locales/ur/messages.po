@@ -912,6 +912,14 @@ msgstr "{folderCount, plural, one {فولڈر} other {فولڈرز}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} GitHub ستارے"
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "{hiddenCount, plural, one {# more link} other {# more links}}"
+msgstr "{hiddenCount, plural, one {# مزید لنک} other {# مزید لنکس}}"
+
+#: src/lib/restart-collab-server.ts
+msgid "{holder} is serving this project, so this app won't stop it. Close this window and open the project again to stop {holder}'s server and open the project here."
+msgstr "{holder} اس پروجیکٹ کو سرو کر رہا ہے، اس لیے یہ ایپ اسے نہیں روکے گی۔ یہ ونڈو بند کریں اور {holder} کا سرور روک کر پروجیکٹ یہاں کھولنے کے لیے پروجیکٹ دوبارہ کھولیں۔"
+
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -3930,6 +3938,10 @@ msgstr "نقل کیا جا رہا ہے"
 msgid "Copying..."
 msgstr "نقل کیا جا رہا ہے..."
 
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Could not check the symlinks in {shareBranch}, so it was not switched. Try again; if it keeps failing, check that Git is installed and the project folder is readable."
+msgstr "{shareBranch} کے سِم لنکس کی جانچ نہیں ہو سکی، اس لیے اس پر منتقل نہیں کیا گیا۔ دوبارہ کوشش کریں؛ اگر یہ بار بار ناکام ہو تو دیکھیں کہ Git انسٹال ہے اور پروجیکٹ فولڈر پڑھا جا سکتا ہے۔"
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Could not classify the merge — try again."
 msgstr "ضم کی درجہ بندی نہیں ہو سکی — دوبارہ کوشش کریں۔"
@@ -5159,6 +5171,14 @@ msgstr "Mermaid سورس سے خاکہ — فلو چارٹ، سیکوئنس، ک
 #: src/components/MermaidFileViewer.tsx
 msgid "Diagram view mode"
 msgstr "خاکے کا منظر موڈ"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not open {shareBranch} in a worktree: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "{shareBranch} کسی ورک ٹری میں نہیں کھولا گیا: اس میں ایک سِم لنک ہے جو ریپازٹری سے باہر، نجی فائلوں کی طرف، یا ایسی جگہ کی طرف اشارہ کرتا ہے جس کی جانچ نہیں ہو سکتی۔ عام طور پر جس نے برانچ پُش کی ہے اسی کو لنک درست کرنا ہوگا۔ اگر اس کمپیوٹر کا کوئی فولڈر پڑھا نہیں جا سکتا تو اسے پڑھنے کے قابل بنائیں اور دوبارہ کوشش کریں۔"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+msgid "Did not switch to {shareBranch}: it has a symlink pointing outside the repository, into private files, or somewhere that cannot be checked. Usually whoever pushed the branch has to fix the link. If a folder on this computer cannot be read, make it readable and try again."
+msgstr "{shareBranch} پر منتقل نہیں کیا گیا: اس میں ایک سِم لنک ہے جو ریپازٹری سے باہر، نجی فائلوں کی طرف، یا ایسی جگہ کی طرف اشارہ کرتا ہے جس کی جانچ نہیں ہو سکتی۔ عام طور پر جس نے برانچ پُش کی ہے اسی کو لنک درست کرنا ہوگا۔ اگر اس کمپیوٹر کا کوئی فولڈر پڑھا نہیں جا سکتا تو اسے پڑھنے کے قابل بنائیں اور دوبارہ کوشش کریں۔"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx
@@ -14110,6 +14130,10 @@ msgstr "مطابقت پذیری ناکام رہی — تفصیلات کے لیے
 msgid "Sync is failing. See the sync status for details."
 msgstr "مطابقت پذیری ناکام ہو رہی ہے۔ تفصیلات کے لیے مطابقت پذیری کی حالت دیکھیں۔"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Sync is paused because incoming changes leave a symlink pointing outside the repository or into private files, or with a target that cannot be checked. Ask whoever pushed them to fix the link, or update Git if yours is older than 2.38. Automatic sync then resumes; in Manual mode, pull again."
+msgstr "مطابقت پذیری روکی گئی ہے کیونکہ آنے والی تبدیلیوں کے بعد ایک سِم لنک ریپازٹری سے باہر یا نجی فائلوں کی طرف اشارہ کرتا ہے، یا اس کے ہدف کی جانچ نہیں ہو سکتی۔ جس نے یہ تبدیلیاں پُش کی ہیں اس سے لنک درست کرنے کو کہیں، یا اگر آپ کا Git ورژن 2.38 سے پرانا ہے تو Git اپ ڈیٹ کریں۔ اس کے بعد خودکار مطابقت پذیری دوبارہ شروع ہو جائے گی؛ دستی موڈ میں دوبارہ کھینچیں۔"
+
 #: src/components/SyncBlockingChanges.tsx
 msgid "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."
 msgstr "مطابقت پذیری روکی گئی ہے۔ جاری رکھنے کے لیے ان مقامی ترامیم کو کمٹ کریں، یا انہیں ٹرمینل میں حل کریں۔"
@@ -15088,6 +15112,11 @@ msgstr "اسے سیٹ اپ نہیں کیا جا سکا کیونکہ اس کے ل
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
 msgstr "یہ ذیل میں درج MCP سرور اندراجات اور اسکل فائلیں حذف کر دیتا ہے۔ دوبارہ شامل کرنے تک ایجنٹ آپ کی دستاویزات تک رسائی کھو دے گا۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "This development build can't connect agents, so it won't change the agent setup of your installed OpenKnowledge app."
+msgstr "یہ ڈیولپمنٹ بلڈ ایجنٹس کو منسلک نہیں کر سکتا، اس لیے یہ آپ کی انسٹال شدہ OpenKnowledge ایپ کا ایجنٹ سیٹ اپ تبدیل نہیں کرے گا۔"
 
 #. placeholder {0}: connection.label
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -16509,10 +16538,6 @@ msgstr "یہ کہاں رہنا چاہیے؟"
 #: src/components/ImportSkillForm.tsx
 msgid "Which skill"
 msgstr "کون سی مہارت"
-
-#: src/components/settings/SyncSection.tsx
-msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
-msgstr "جب تک آپ سائن آؤٹ ہیں، اس ترتیب سے قطع نظر اپ ڈیٹس زیادہ سے زیادہ ہر 3 منٹ بعد دیکھی جاتی ہیں۔"
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
