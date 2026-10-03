@@ -2077,6 +2077,12 @@ export {
 } from './util/doc-name.ts';
 export { applyByPrefixSuffix } from './utils/apply-by-prefix-suffix.ts';
 export { toDesktopAssetHref } from './utils/asset-href.ts';
+export {
+  canonicalPathKey,
+  indexPathsByCanonicalKey,
+  matchStoredPath,
+  resolveStoredPath,
+} from './utils/canonical-path.ts';
 export { ChunkedInsertError, chunkedYTextInsert } from './utils/chunked-insert.ts';
 export { createCodeFenceTracker } from './utils/code-fence-tracker.ts';
 export { isEmbedUrlRewritable, rewriteEmbedUrl } from './utils/embed-url-rewrite.ts';

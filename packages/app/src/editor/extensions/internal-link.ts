@@ -19,7 +19,11 @@ import { getPageListCache } from '../page-list-cache';
 import { createAssetContextMenuPlugin } from '../plugins/asset-context-menu';
 import { isSafeNavigationUrl } from '../safe-navigation-url';
 import { InternalLinkPropPanel } from './InternalLinkPropPanel';
-import { isResolvedAssetHref, makeLinkResolutionAttrsComputer } from './link-resolution';
+import {
+  isResolvedAssetHref,
+  makeLinkResolutionAttrsComputer,
+  resolveStoredAssetProjectPath,
+} from './link-resolution';
 import { linkResolutionDecorationPlugin } from './link-resolution-decoration';
 import { createMarkInteractionBridgePlugin, getCurrentMarkInfo } from './mark-interaction-bridge';
 
@@ -37,6 +41,8 @@ export function resolveLinkMarkAssetActivation(params: {
   sourceForm: unknown;
   docName: string;
   classified: ReturnType<typeof classifyMarkdownHref>;
+  assetPaths?: ReadonlySet<string>;
+  filePaths?: ReadonlySet<string>;
 }): LinkMarkAssetActivation {
   const { href, sourceForm, docName, classified } = params;
   const hrefExt = extractAssetExtension(href);
@@ -49,7 +55,8 @@ export function resolveLinkMarkAssetActivation(params: {
   const literal = isWikiEmbed;
   const projectRelPath = resolveAssetProjectPath(url, docName, { literal });
   if (!projectRelPath) return { kind: 'refused' };
-  return { kind: 'asset', url, ext, literal, projectRelPath };
+  const stored = resolveStoredAssetProjectPath(projectRelPath, params.assetPaths, params.filePaths);
+  return { kind: 'asset', url, ext, literal, projectRelPath: stored ?? projectRelPath };
 }
 
 export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
@@ -92,16 +99,18 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
       if (typeof href !== 'string' || !href) return false;
 
       const target = classifyMarkdownHref(href, docName);
+      const cache = getPageListCache();
       const activation = resolveLinkMarkAssetActivation({
         href,
         sourceForm: info?.attrs?.sourceForm,
         docName,
         classified: target,
+        assetPaths: cache?.assetPaths,
+        filePaths: cache?.filePaths,
       });
       if (activation.kind === 'refused') return false;
       if (activation.kind === 'asset') {
         const { url, ext, literal, projectRelPath } = activation;
-        const cache = getPageListCache();
         if (cache === null) return false;
         if (cache.assetPaths !== undefined || cache.filePaths !== undefined) {
           if (!isResolvedAssetHref(url, docName, cache.assetPaths, cache.filePaths, { literal })) {
@@ -124,17 +133,17 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
         case 'asset':
           return false;
         case 'doc': {
-          const cache = getPageListCache();
           const intent = resolveLinkTargetIntent(target.docName, {
             pages: cache?.pages ?? new Set<string>(),
             folderPaths: cache?.folderPaths ?? new Set<string>(),
           });
           if (intent.kind === 'create') return false;
+          const resolvedDocName = intent.hashDocName;
           if (newTab) {
-            openInternalHashHrefInNewTab({ docName: target.docName, anchor: target.anchor });
+            openInternalHashHrefInNewTab({ docName: resolvedDocName, anchor: target.anchor });
           } else {
             window.location.assign(
-              toInternalHashHref({ docName: target.docName, anchor: target.anchor }),
+              toInternalHashHref({ docName: resolvedDocName, anchor: target.anchor }),
             );
           }
           return true;

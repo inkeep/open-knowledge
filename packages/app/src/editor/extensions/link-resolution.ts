@@ -1,4 +1,9 @@
-import { classifyMarkdownHref, resolveAssetProjectPath } from '@inkeep/open-knowledge-core';
+import {
+  canonicalPathKey,
+  classifyMarkdownHref,
+  resolveAssetProjectPath,
+  resolveStoredPath,
+} from '@inkeep/open-knowledge-core';
 import { resolveLinkTargetIntent } from '../../components/link-target-intent';
 import { isLinkValidationVisible } from '../link-validation-policy';
 import type { PageListCacheSnapshot } from '../page-list-cache';
@@ -13,13 +18,30 @@ type LinkResolutionState =
   | 'unresolved'
   | 'asset';
 
-function setHasPathCaseInsensitive(paths: ReadonlySet<string>, target: string): boolean {
-  if (paths.has(target)) return true;
-  const lowerTarget = target.toLowerCase();
+function storedAssetPath(paths: ReadonlySet<string>, target: string): string | null {
+  const stored = resolveStoredPath(paths, target);
+  if (stored) return stored;
+  const lowerTarget = canonicalPathKey(target).toLowerCase();
   for (const path of paths) {
-    if (path.toLowerCase() === lowerTarget) return true;
+    if (canonicalPathKey(path).toLowerCase() === lowerTarget) return path;
   }
-  return false;
+  return null;
+}
+
+export function resolveStoredAssetProjectPath(
+  projectRelPath: string,
+  assetPaths: ReadonlySet<string> | undefined,
+  filePaths: ReadonlySet<string> | undefined,
+): string | null {
+  if (assetPaths) {
+    const stored = storedAssetPath(assetPaths, projectRelPath);
+    if (stored) return stored;
+  }
+  if (filePaths) {
+    const stored = storedAssetPath(filePaths, projectRelPath);
+    if (stored) return stored;
+  }
+  return null;
 }
 
 export function isResolvedAssetHref(
@@ -33,9 +55,7 @@ export function isResolvedAssetHref(
     literal: options.literal,
   });
   if (projectRelPath === null) return false;
-  if (assetPaths && setHasPathCaseInsensitive(assetPaths, projectRelPath)) return true;
-  if (filePaths && setHasPathCaseInsensitive(filePaths, projectRelPath)) return true;
-  return false;
+  return resolveStoredAssetProjectPath(projectRelPath, assetPaths, filePaths) !== null;
 }
 
 export function computeLinkResolutionState(

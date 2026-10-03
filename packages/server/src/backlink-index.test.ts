@@ -371,6 +371,22 @@ describe('BacklinkIndex', () => {
     }
   });
 
+  test('getDeadLinks treats an NFC link and an NFD admitted id as the same document', () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-nfc-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      index.updateDocumentFromMarkdown('source', '[Ren\u00E9](./Ren%C3%A9.md)\n');
+      expect(
+        index.getDeadLinks(['source', 'Ren\u0065\u0301']).map((entry) => entry.target),
+      ).toEqual([]);
+      expect(index.getDeadLinks(['source']).map((entry) => entry.target)).toEqual(['Ren\u00E9']);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   test('getDeadLinks returns missing targets ordered by source count then target', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dead-links-'));
     const contentDir = join(projectDir, 'content');
@@ -2173,6 +2189,47 @@ describe('computeBrokenOutboundLinks', () => {
     expect(computeBrokenOutboundLinks(md, 'notes/a', new Set(['notes/a']))).toEqual([]);
   });
 
+  test('an NFC markdown link to an NFD admitted id is not broken', () => {
+    const md = '[Ren\u00E9](/People/Ren%C3%A9.md)';
+    expect(
+      computeBrokenOutboundLinks(md, 'notes/index', new Set(['People/Ren\u0065\u0301'])),
+    ).toEqual([]);
+  });
+
+  test('an NFD markdown link to an NFC admitted id is not broken', () => {
+    const nfd = 'Ren\u0065\u0301';
+    const md = `[${nfd}](/People/${nfd}.md)`;
+    expect(computeBrokenOutboundLinks(md, 'notes/index', new Set(['People/Ren\u00E9']))).toEqual(
+      [],
+    );
+  });
+
+  test('an accented markdown link does not bind to the unaccented document', () => {
+    const md = '[Ren\u00E9](/People/Ren%C3%A9.md)';
+    expect(computeBrokenOutboundLinks(md, 'notes/index', new Set(['People/Rene']))).toEqual<
+      BrokenOutboundLink[]
+    >([
+      {
+        href: '/People/Ren%C3%A9.md',
+        resolvedTo: 'People/Ren\u00E9',
+        reason: 'no-such-doc',
+      },
+    ]);
+  });
+
+  test('document identity stays case-sensitive across compositions', () => {
+    const md = '[Ren\u00E9](/People/Ren%C3%A9.md)';
+    expect(
+      computeBrokenOutboundLinks(md, 'notes/index', new Set(['people/Ren\u0065\u0301'])),
+    ).toEqual<BrokenOutboundLink[]>([
+      {
+        href: '/People/Ren%C3%A9.md',
+        resolvedTo: 'People/Ren\u00E9',
+        reason: 'no-such-doc',
+      },
+    ]);
+  });
+
   const fileOracle = (existing: string[]) => {
     const set = new Set(existing);
     return (p: string) => set.has(p);
@@ -2404,6 +2461,13 @@ describe('computeBrokenOutboundLinks — JSX src refs', () => {
         fileOracle(['notes/board.excalidraw']),
       ),
     ).toEqual([]);
+  });
+
+  test('a Mirror src in NFC matches an NFD admitted id', () => {
+    const md = '<Mirror src="People/Ren\u00E9" />\n';
+    expect(computeBrokenOutboundLinks(md, 'index', new Set(['People/Ren\u0065\u0301']))).toEqual(
+      [],
+    );
   });
 
   test('a Mirror src naming a missing doc reports no-such-doc', () => {

@@ -504,6 +504,29 @@ describe('buildIndexMarkdown', () => {
     expect(resolved.toSorted()).toEqual(names.map((name) => `blogs/drafts/${name}`).toSorted());
   });
 
+  test('an NFD entry path is percent-encoded from its NFC spelling', () => {
+    const out = buildIndexMarkdown(
+      [entry({ path: 'guides/caf\u0065\u0301.md', title: 'Cafe', type: 'note' })],
+      { warningScope: false, isRoot: false, directory: 'guides' },
+    );
+    expect(out).toContain('](./caf%C3%A9.md)');
+    expect(out).not.toContain('%CC%81');
+    expect(resolveInternalHref('./caf%C3%A9.md', 'guides/index')?.docName).toBe('guides/caf\u00E9');
+  });
+
+  test('two entries that differ only by composition emit one NFC row', () => {
+    const out = buildIndexMarkdown(
+      [
+        entry({ path: 'guides/caf\u0065\u0301.md', title: 'From NFD', type: 'note' }),
+        entry({ path: 'guides/caf\u00E9.md', title: 'From NFC', type: 'note' }),
+      ],
+      { warningScope: false, isRoot: false, directory: 'guides' },
+    );
+    expect(out.match(/\]\(([^)]+)\)/g)).toEqual(['](./caf%C3%A9.md)']);
+    expect(out).toContain('[From NFC]');
+    expect(out).not.toContain('[From NFD]');
+  });
+
   test('no heading the generator owns collides with a section derived from a document type', () => {
     const reserved = generatorOwnedHeadings();
     expect(reserved.toSorted()).toEqual([...GENERATOR_OWNED_HEADINGS].toSorted());

@@ -11,6 +11,7 @@ import {
   parseManagedArtifactName,
   parseTemplateContentDocName,
   projectSkillContentDocName,
+  resolveStoredPath,
   resolveWikiLinkTargetDocName,
   type SkillScope,
   templateContentDocName,
@@ -107,10 +108,15 @@ function extensionlessTargetPath(target: string): string {
 
 const MARKDOWN_TARGET_EXTENSION = /\.(md|mdx)$/i;
 
+function folderPathOfStoredNote(storedDocName: string): string {
+  const slash = storedDocName.lastIndexOf('/');
+  return slash === -1 ? '' : storedDocName.slice(0, slash);
+}
+
 function managedArtifactNavigationTarget(target: string, pages: ReadonlySet<string>): string {
   const { normalizedTarget, expectsFolder } = normalizeTargetPath(target);
   if (expectsFolder || !MARKDOWN_TARGET_EXTENSION.test(normalizedTarget)) return target;
-  if (pages.has(normalizedTarget)) return target;
+  if (resolveStoredPath(pages, normalizedTarget)) return target;
   return normalizedTarget.replace(MARKDOWN_TARGET_EXTENSION, '');
 }
 
@@ -136,7 +142,7 @@ export function okContentNavigationTarget(
 ): ResolvedContentTarget | null {
   if (!hasOkPathSegment(docName)) return null;
   if (parseTemplateContentDocName(docName)) return null;
-  if (options.pages.has(docName)) return null;
+  if (resolveStoredPath(options.pages, docName)) return null;
   const assetPath = okReadOnlyAssetPath(docName, options.docExt);
   return {
     kind: 'asset',
@@ -204,34 +210,27 @@ export function resolveNavigationTarget(
     ? [extensionlessTarget]
     : [normalizedTarget, extensionlessTarget];
   for (const folderTarget of folderTargets) {
-    const canonicalIndexDocName = `${folderTarget}/index`;
-    if (
-      expectsFolder
-        ? options.pages.has(canonicalIndexDocName)
-        : resolvedDocName === canonicalIndexDocName
-    ) {
+    const storedIndex = resolveStoredPath(options.pages, `${folderTarget}/index`);
+    if (storedIndex && (expectsFolder || resolvedDocName === storedIndex)) {
+      const folderPath = folderPathOfStoredNote(storedIndex);
       return {
         kind: 'folder-index',
-        target: folderTarget,
-        folderPath: folderTarget,
-        docName: canonicalIndexDocName,
+        target: folderPath,
+        folderPath,
+        docName: storedIndex,
         noteKind: 'canonical-index',
       };
     }
 
     const leaf = folderTarget.split('/').pop();
-    const legacyFolderNoteDocName = leaf ? `${folderTarget}/${leaf}` : null;
-    if (
-      legacyFolderNoteDocName &&
-      (expectsFolder
-        ? options.pages.has(legacyFolderNoteDocName)
-        : resolvedDocName === legacyFolderNoteDocName)
-    ) {
+    const storedLegacy = leaf ? resolveStoredPath(options.pages, `${folderTarget}/${leaf}`) : null;
+    if (storedLegacy && (expectsFolder || resolvedDocName === storedLegacy)) {
+      const folderPath = folderPathOfStoredNote(storedLegacy);
       return {
         kind: 'folder-index',
-        target: folderTarget,
-        folderPath: folderTarget,
-        docName: legacyFolderNoteDocName,
+        target: folderPath,
+        folderPath,
+        docName: storedLegacy,
         noteKind: 'legacy-folder-note',
       };
     }
@@ -242,11 +241,12 @@ export function resolveNavigationTarget(
   }
 
   const knownFolderPaths = options.folderPaths ?? deriveKnownFolderPaths(options.pages);
-  if (knownFolderPaths.has(extensionlessTarget)) {
+  const storedFolder = resolveStoredPath(knownFolderPaths, extensionlessTarget);
+  if (storedFolder) {
     return {
       kind: 'folder',
-      target: extensionlessTarget,
-      folderPath: extensionlessTarget,
+      target: storedFolder,
+      folderPath: storedFolder,
     };
   }
 
