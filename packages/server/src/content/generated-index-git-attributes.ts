@@ -1,8 +1,9 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 import { atomicWriteFile } from '@inkeep/open-knowledge-core/server';
 import { normalizeFsPath, tracedAtomicFs, tracedRm } from '../fs-traced.ts';
+import { escapeGitPatternSegment, realpathOrResolved } from '../git-paths.ts';
 import { getLogger } from '../logger.ts';
 
 const MANAGED_BLOCK_START = '# BEGIN OpenKnowledge generated indexes';
@@ -67,15 +68,8 @@ function gitContext(
       : { state: 'unavailable' };
   }
 
-  const canonical = (path: string): string => {
-    try {
-      return realpathSync(path);
-    } catch {
-      return resolve(path);
-    }
-  };
-  const gitRoot = canonical(String(rootResult.stdout).trim());
-  const canonicalContentDir = canonical(contentDir);
+  const gitRoot = realpathOrResolved(String(rootResult.stdout).trim());
+  const canonicalContentDir = realpathOrResolved(contentDir);
   const contentRelative = relative(gitRoot, canonicalContentDir);
   if (contentRelative === '..' || contentRelative.startsWith(`..${sep}`)) {
     return { state: 'not-applicable' };
@@ -94,7 +88,7 @@ function gitContext(
   const escapedContentPath = contentRelative
     .split(sep)
     .filter(Boolean)
-    .map(escapeAttributePatternSegment)
+    .map(escapeGitPatternSegment)
     .join('/');
   const prefix = escapedContentPath.length > 0 ? `/${escapedContentPath}` : '';
   const patterns = [
@@ -115,10 +109,6 @@ function gitContext(
     generatedPaths: [...new Set(generatedPaths)].sort(),
     expectedBlock,
   };
-}
-
-function escapeAttributePatternSegment(segment: string): string {
-  return segment.replace(/[\\!?*[\]]/g, (character) => `\\${character}`);
 }
 
 function formatAttributePattern(pattern: string): string {
