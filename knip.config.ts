@@ -39,6 +39,7 @@ export default {
     'xcrun', // macOS notarization tool — desktop afterSign.mjs
     'xdg-mime', // Linux default-app query — desktop ipc-handlers.ts
     'ssh-keygen', // ephemeral VM keypair — lume-qa lume-orchestrator.ts
+    'zsh', // the executor's `.private.` test also runs the printed Biome fix under zsh -c
   ],
   ignoreIssues: {
     'test-support/vitest.base.ts': ['exports'],
