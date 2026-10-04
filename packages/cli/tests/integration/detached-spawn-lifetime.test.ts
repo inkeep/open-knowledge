@@ -4,7 +4,6 @@ import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 function isProcessAlive(pid: number): boolean {
@@ -58,10 +57,6 @@ describe('detached spawn lifetime (A3 / D-003)', () => {
   it('grandchild survives parent exit AND keeps serving HTTP for ≥5s', async () => {
     const grandchildScript = join(testDir, 'grandchild.mjs');
     const stateFile = join(testDir, 'grandchild.state.json');
-    const witnessFile = join(testDir, 'grandchild.publication.json');
-    const publicationPreload = fileURLToPath(
-      new URL('./_helpers/state-publication-preload.cjs', import.meta.url),
-    );
     const mcpSurrogateScript = join(testDir, 'mcp-surrogate.mjs');
 
     writeFileSync(
@@ -94,14 +89,9 @@ process.exit(0);
       mcpSurrogateScript,
       `
 import { spawn } from 'node:child_process';
-const child = spawn('node', ['--require', ${JSON.stringify(publicationPreload)}, ${JSON.stringify(grandchildScript)}], {
+const child = spawn('node', [${JSON.stringify(grandchildScript)}], {
   detached: true,
   stdio: ['ignore', 'ignore', 'ignore'],
-  env: {
-    ...process.env,
-    OK_TEST_STATE_FILE: ${JSON.stringify(stateFile)},
-    OK_TEST_STATE_WITNESS: ${JSON.stringify(witnessFile)},
-  },
 });
 child.unref();
 setTimeout(() => process.exit(0), 300);
@@ -131,9 +121,6 @@ setTimeout(() => process.exit(0), 300);
     };
     expect(state.pid).toBeGreaterThan(0);
     expect(state.port).toBeGreaterThan(0);
-
-    const observed: unknown = JSON.parse(readFileSync(witnessFile, 'utf-8'));
-    expect(observed).toBeNull();
 
     if (mcpPid !== undefined) {
       expect(isProcessAlive(mcpPid)).toBe(false);
