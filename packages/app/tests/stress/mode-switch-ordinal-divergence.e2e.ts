@@ -200,8 +200,11 @@ test.describe('landings on a document with adjacent lists', () => {
       `toggle: grade=${mark.grade} anchored=${anchor} topmost=${JSON.stringify(topLine)}`,
     );
 
-    await expectKnownBug(/BLOCK-061 padding paragraph/, () => {
-      expect(topLine).toContain(anchor);
-    });
+    await expectKnownBug(
+      /Expected substring: "BLOCK-060"\s+Received string:\s+"L144: BLOCK-061 padding paragraph"/,
+      () => {
+        expect(topLine).toContain(anchor);
+      },
+    );
   });
 });

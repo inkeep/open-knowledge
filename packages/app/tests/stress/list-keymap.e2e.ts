@@ -333,7 +333,7 @@ test.describe('known bugs in the list and code-block keymaps', () => {
     await waitForPmSelectionInNode(page, 'listItem');
 
     await page.keyboard.press('Enter');
-    await expectKnownBug(/&#x20;/, async () => {
+    await expectKnownBug(/Received string:\s+"- \[ \] sf\n- \[ \] &#x20;\n"/, async () => {
       await expect.poll(() => getYText(page)).toMatch(/^- \[ \] sf\n- \[ \] ?$/m);
     });
   });

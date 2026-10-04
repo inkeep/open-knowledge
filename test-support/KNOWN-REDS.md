@@ -24,8 +24,8 @@ test(
     },
   },
   async () => {
-    await expectKnownBug(/row still visible/, async () => {
-      expect(await sidebarRowVisible('draft.md')).toBe(false);
+    await expectKnownBug(/expected \[ 'notes\.md', 'draft\.md' \] to deeply equal/, async () => {
+      expect(await sidebarRowNames()).toEqual(['notes.md']);
     });
   },
 );
@@ -36,7 +36,9 @@ test(
 - Once the bug is fixed, it fails with "known bug appears fixed".
 - If anything else goes wrong, it fails with the original error.
 
-**The signature** names the wrong outcome itself: the received value, or the Playwright call-log line that shows it. An assertion's name or a timeout alone is not enough, because a broken selector would match it too. The guard refuses a signature without at least 4 literal characters in a row, such as `/./`.
+**The signature** names the wrong outcome itself: the whole received value, or the Playwright call-log line that shows it. An assertion's name or a timeout alone is not enough, because a broken selector would match it too. The guard refuses a signature without at least 4 literal characters in a row, such as `/./`.
+
+**Before you pin,** run the test several times at the revision you pin, and state the count in the PR. Pin only a failure that shows the same wrong outcome on every run. A test that now passes needs no pin: un-skip it. One that fails only sometimes is a flake: quarantine it, as below. Parked tests are often already fixed, or fail only sometimes, by the time someone pins them.
 
 **The three fields:**
 - `issue` is a GitHub or Linear issue URL.
