@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -498,8 +499,12 @@ describe.skipIf(process.platform === 'win32')('the browser server relay', () => 
       child.stdin.write(`${typeof message === 'string' ? message : JSON.stringify(message)}\n`);
     }
     const deadline = Date.now() + 10_000;
-    while (!settled() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
-    child.stdin.end();
+    try {
+      while (!settled() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
+    } finally {
+      child.stdin.end();
+      await exited;
+    }
     expect(await exited).toBe(0);
     return stdout;
   }
@@ -518,10 +523,37 @@ describe.skipIf(process.platform === 'win32')('the browser server relay', () => 
   const receivedLines = (path: string): Array<Record<string, unknown>> =>
     existsSync(path)
       ? readFileSync(path, 'utf8')
-          .trim()
           .split('\n')
+          .slice(0, -1)
           .map((line) => JSON.parse(line) as Record<string, unknown>)
       : [];
+
+  test('reads no receive records from an empty file', () => {
+    const received = join(tmp(), 'received.ndjson');
+    writeFileSync(received, '');
+    expect(receivedLines(received)).toEqual([]);
+    appendFileSync(received, '{"id":1}\n');
+    expect(receivedLines(received)).toEqual([{ id: 1 }]);
+  });
+
+  test.each([
+    { stage: 'empty tail', tail: '', rest: '{"id":2}' },
+    { stage: 'partial JSON', tail: '{"id":', rest: '2}' },
+    { stage: 'unterminated JSON', tail: '{"id":2}', rest: '' },
+  ])('reads only complete receive records with $stage', ({ tail, rest }) => {
+    const received = join(tmp(), 'received.ndjson');
+    writeFileSync(received, `{"id":1}\n${tail}`);
+    expect(() => receivedLines(received)).not.toThrow();
+    expect(receivedLines(received)).toEqual([{ id: 1 }]);
+    appendFileSync(received, `${rest}\n`);
+    expect(receivedLines(received)).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
+  test('reports malformed completed receive records', () => {
+    const received = join(tmp(), 'received.ndjson');
+    writeFileSync(received, 'not-json\n');
+    expect(() => receivedLines(received)).toThrow(SyntaxError);
+  });
 
   test("answers the server's roots request with the chat's files folder instead of the agent's roots", async () => {
     const root = tmp();

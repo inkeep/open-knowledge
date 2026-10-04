@@ -51,8 +51,8 @@ test('installs the recommended skill through the real endpoint and recognizes it
     'SKILL.md',
   );
   await expect.poll(() => existsSync(installedSkill), { timeout: 15_000 }).toBe(true);
-  expect(readFileSync(installedSkill, 'utf-8')).toContain('name: okf-knowledge-base');
   await expect(card).toContainText('Installed');
+  expect(readFileSync(installedSkill, 'utf-8')).toContain('name: okf-knowledge-base');
 
   await page.reload();
   await waitForSettingsPanel(page, 'settings-plugin-okf');
