@@ -204,6 +204,12 @@ test('retries an optional dependency whose tarball fails once and then downloads
     fixture.oneShotResponses.set(`/${LEAF}/-/${LEAF}-1.0.0.tgz`, [503]);
     const installed = await installPackedCli(fixture, { now: Date.now, ...installer });
     expect(installer.attempts).toBe(2);
+    const retried = new Set([`${LEAF}@1.0.0`]);
+    expect(installed.acquisition?.fetchStarts).toEqual(retried);
+    expect(installed.acquisition?.progress.get('fetched')).toEqual(retried);
+    expect(installed.acquisition?.progress.get('found_in_store')).toEqual(
+      new Set(['file:cli.tgz', ...[PARENT, PEER].map((name) => `${name}@1.0.0`)]),
+    );
     const result = await promisify(execFile)(process.execPath, [installed.cliPath]);
     expect(JSON.parse(result.stdout)).toEqual({ leaf: '1.0.0', peer: '1.0.0' });
   } finally {
@@ -554,10 +560,16 @@ test.each([
   const fixture = await createInstallFixture();
   try {
     const coldStart = fixture.requests.length;
-    await installPackedCli(fixture);
+    const cold = await installPackedCli(fixture);
     expect(new Set(tarballRequestsSince(fixture, coldStart))).toEqual(
       new Set([LEAF, PARENT, PEER].map((name) => `/${name}/-/${name}-1.0.0.tgz`)),
     );
+    const coldFetches = new Set([
+      'file:cli.tgz',
+      ...[LEAF, PARENT, PEER].map((name) => `${name}@1.0.0`),
+    ]);
+    expect(cold.acquisition?.fetchStarts).toEqual(coldFetches);
+    expect(cold.acquisition?.progress.get('fetched')).toEqual(coldFetches);
     const firstPack = readPackedCli(fixture.packDest);
     if (rebuild) {
       const cli = join(fixture.packageDir, 'dist/cli.mjs');
@@ -570,7 +582,13 @@ test.each([
     expect(readPackedCli(fixture.packDest).equals(firstPack)).toBe(!rebuild);
     expect(tarballRequestsSince(fixture, warmStart)).toEqual([]);
     await expect(installation).resolves.toMatchObject({ cliPath: expect.any(String) });
-    const { cliPath } = await installation;
+    const { cliPath, acquisition } = await installation;
+    const warmFetches = new Set(rebuild ? ['file:cli.tgz'] : []);
+    expect(acquisition?.progress.get('found_in_store')).toEqual(
+      new Set([...coldFetches].filter((id) => !warmFetches.has(id))),
+    );
+    expect(acquisition?.fetchStarts).toEqual(warmFetches);
+    expect(acquisition?.progress.get('fetched') ?? new Set()).toEqual(warmFetches);
     const result = await promisify(execFile)(process.execPath, [cliPath]);
     expect(JSON.parse(result.stdout)).toEqual({ leaf: '1.0.0', peer: '1.0.0' });
   } finally {

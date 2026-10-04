@@ -176,6 +176,19 @@ function pnpmIncompleteFetches(output: string) {
   return [...started];
 }
 
+function pnpmAcquisition(output: string) {
+  const events = ndjsonEvents(output);
+  const progress = new Map<string, Set<string>>();
+  for (const event of events)
+    if (
+      event.name === 'pnpm:progress' &&
+      typeof event.status === 'string' &&
+      typeof event.packageId === 'string'
+    )
+      progress.set(event.status, (progress.get(event.status) ?? new Set()).add(event.packageId));
+  return { fetchStarts: pnpmStartedFetches(events), progress };
+}
+
 function pnpmReportedErrors(output: string) {
   return ndjsonEvents(output).flatMap((event) => {
     const parsed = pnpmErrorSchema.safeParse(event);
@@ -345,6 +358,7 @@ export async function installPackedCli(
   const deadline = now() + INSTALL_TIMEOUT_MS;
   let unavailable: CliInstallUnavailableError | undefined;
   let outputBytes = 0;
+  let acceptedOutput = '';
   for (let attempt = 1; attempt <= INSTALL_ATTEMPTS; attempt++) {
     const timeout = deadline - now();
     if (timeout <= 0)
@@ -441,7 +455,10 @@ export async function installPackedCli(
       }
     const unobserved =
       mode === 'locked' && !failed && !pnpmRecordedAcquisition(`${stdout}\n${stderr}`);
-    if (!failed && !failures.length && !unobserved) break;
+    if (!failed && !failures.length && !unobserved) {
+      acceptedOutput = `${stdout}\n${stderr}`;
+      break;
+    }
     process.stderr.write(stdout + stderr);
     const retryable =
       failures.length > 0 &&
@@ -482,5 +499,6 @@ export async function installPackedCli(
   return {
     cliPath: join(installed, 'dist', 'cli.mjs'),
     binShim,
+    acquisition: mode === 'locked' ? pnpmAcquisition(acceptedOutput) : null,
   };
 }

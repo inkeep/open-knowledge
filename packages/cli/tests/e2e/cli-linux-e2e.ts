@@ -14,14 +14,19 @@ const CLI_PKG_DIR = resolve(HERE, '..', '..');
 const WORKSPACE_DIST_CLI = join(CLI_PKG_DIR, 'dist', 'cli.mjs');
 const NODE = process.execPath.includes('bun') ? 'node' : process.execPath;
 const SUT_MODE = process.env.OK_E2E_SUT === 'workspace' ? 'workspace' : 'packed';
+const LOCKED_PACKED_INSTALL =
+  SUT_MODE === 'packed' && (process.env.OK_CLI_E2E_INSTALL_MODE ?? 'locked') === 'locked';
 const HERMETIC_ENV = { OK_BUNDLE_PROXY: '0' } as const;
 const START_PORT = Number(process.env.OK_E2E_PORT ?? 13581);
+
+type Acquisition = Awaited<ReturnType<typeof installPackedCli>>['acquisition'];
 
 interface Harness {
   cliPath: string;
   binShim: string | null;
   installPrefix: string | null;
   packDest: string | null;
+  acquisition: Acquisition;
   contentDir: string;
   lockPath: string;
   server: ChildProcess | null;
@@ -32,10 +37,15 @@ const H: Harness = {
   binShim: null,
   installPrefix: null,
   packDest: null,
+  acquisition: null,
   contentDir: '',
   lockPath: '',
   server: null,
 };
+
+function progressOf(acquisition: Acquisition, status: string) {
+  return acquisition?.progress.get(status) ?? new Set<string>();
+}
 
 function runOk(
   args: string[],
@@ -102,7 +112,7 @@ function readLockPort(): number | null {
 beforeAll(async () => {
   if (!existsSync(WORKSPACE_DIST_CLI)) {
     throw new Error(
-      `Missing ${WORKSPACE_DIST_CLI}. Run \`bun run build --filter=@inkeep/open-knowledge\` before this smoke.`,
+      `Missing ${WORKSPACE_DIST_CLI}. Run \`pnpm exec turbo run build --filter=@inkeep/open-knowledge\` before this smoke.`,
     );
   }
 
@@ -117,6 +127,7 @@ beforeAll(async () => {
     });
     H.cliPath = installed.cliPath;
     H.binShim = installed.binShim;
+    H.acquisition = installed.acquisition;
   } else {
     H.cliPath = WORKSPACE_DIST_CLI;
   }
@@ -150,6 +161,43 @@ describe(`CLI Linux e2e (${SUT_MODE} SUT)`, () => {
       expect(H.binShim && existsSync(H.binShim)).toBe(true);
     }
   });
+
+  test.skipIf(!LOCKED_PACKED_INSTALL)(
+    '1b. a second install of the same packed CLI takes the warm-store path and its bin runs',
+    async () => {
+      const installPrefix = mkdtempSync(join(tmpdir(), 'ok-e2e-warm-install-'));
+      try {
+        const installation = installPackedCli({
+          packageDir: CLI_PKG_DIR,
+          packDest: H.packDest as string,
+          installPrefix,
+        });
+        await expect(installation).resolves.toMatchObject({ binShim: expect.any(String) });
+        const { binShim, acquisition } = await installation;
+
+        const version = spawnSync(binShim, ['--version'], {
+          cwd: installPrefix,
+          timeout: 30_000,
+          encoding: 'utf8',
+          env: { ...process.env, ...HERMETIC_ENV },
+        });
+        expect(version.status, version.stderr).toBe(0);
+        expect(version.stdout.split('\n')[0]).toMatch(/^\d+\.\d+\.\d+\S*$/);
+
+        const acquired = new Set([
+          ...progressOf(H.acquisition, 'fetched'),
+          ...progressOf(H.acquisition, 'found_in_store'),
+        ]);
+        expect(progressOf(acquisition, 'found_in_store')).toContain('file:cli.tgz');
+        expect(progressOf(acquisition, 'found_in_store')).toEqual(acquired);
+        expect(acquisition?.fetchStarts).toEqual(new Set());
+        expect(progressOf(acquisition, 'fetched')).toEqual(new Set());
+      } finally {
+        rmSync(installPrefix, { recursive: true, force: true });
+      }
+    },
+    240_000,
+  );
 
   test('2. ok init scaffolds .ok/ in the content dir', () => {
     const r = runOk(['init', '--no-mcp'], { timeoutMs: 60_000 });
