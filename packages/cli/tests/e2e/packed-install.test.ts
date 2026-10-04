@@ -1,4 +1,8 @@
-import { type ExecFileOptionsWithStringEncoding, execFile } from 'node:child_process';
+import {
+  type ExecFileException,
+  type ExecFileOptionsWithStringEncoding,
+  execFile,
+} from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -226,6 +230,7 @@ test('does not retry an unavailable package version', async () => {
     fixture.responses.set(`/${LEAF}/-/${LEAF}-1.0.0.tgz`, 404);
     const installation = installPackedCli(fixture, { now: Date.now, ...installer });
     await expect(installation).rejects.toThrow('ERR_PNPM_FETCH_404: the registry answered 404');
+    await expect(installation).rejects.not.toThrow('CLI fetch observer did not run');
     await expect(installation).rejects.not.toMatchObject({ exitCode: 77 });
     expect(installer.attempts).toBe(1);
   } finally {
@@ -318,29 +323,279 @@ test('reports registry socket timeouts as unavailable', async () => {
   }
 });
 
+function strippingInstaller(stripped: (line: string) => boolean) {
+  const installer = {
+    removedLines: 0,
+    now: Date.now,
+    executeInstall: async (
+      command: string,
+      args: string[],
+      options: ExecFileOptionsWithStringEncoding,
+    ) => {
+      const output = await promisify(execFile)(command, args, options);
+      const strip = (text: string) => {
+        const lines = text.split('\n');
+        const kept = lines.filter((line) => !stripped(line));
+        installer.removedLines += lines.length - kept.length;
+        return kept.join('\n');
+      };
+      return { ...output, stdout: strip(output.stdout), stderr: strip(output.stderr) };
+    },
+  };
+  return installer;
+}
+
 test('rejects a successful install without the fetch observer', async () => {
   const fixture = await createInstallFixture();
-  let installed = false;
+  const installer = strippingInstaller((line) => line.includes('"pnpm:fetching-progress"'));
   try {
-    const installation = installPackedCli(fixture, {
-      now: Date.now,
-      executeInstall: async (command, args, options) => {
-        const output = await promisify(execFile)(command, args, options);
-        installed = true;
-        const withoutFetches = (text: string) =>
-          text
-            .split('\n')
-            .filter((line) => !line.includes('"pnpm:fetching-progress"'))
-            .join('\n');
-        return {
-          ...output,
-          stdout: withoutFetches(output.stdout),
-          stderr: withoutFetches(output.stderr),
-        };
-      },
-    });
+    await expect(installPackedCli(fixture, installer)).rejects.toThrow(
+      'CLI fetch observer did not run',
+    );
+    expect(installer.removedLines).toBeGreaterThan(0);
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('rejects an install whose reporter stream never reaches the harness', async () => {
+  const fixture = await createInstallFixture();
+  const installer = strippingInstaller((line) => line.startsWith('{'));
+  try {
+    await expect(installPackedCli(fixture, installer)).rejects.toThrow(
+      'CLI fetch observer did not run',
+    );
+    expect(installer.removedLines).toBeGreaterThan(0);
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('rejects an install whose reporter stream stops after its first event', async () => {
+  const fixture = await createInstallFixture();
+  const kept: string[] = [];
+  const installer = strippingInstaller((line) => {
+    if (!line.startsWith('{')) return false;
+    if (kept.length) return true;
+    kept.push(line);
+    return false;
+  });
+  try {
+    await expect(installPackedCli(fixture, installer)).rejects.toThrow(
+      'CLI fetch observer did not run',
+    );
+    expect(kept).toHaveLength(1);
+    expect(installer.removedLines).toBeGreaterThan(0);
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('rejects an install whose reporter stream records no package acquisition', async () => {
+  const fixture = await createInstallFixture();
+  const keptLines: string[] = [];
+  const installer = strippingInstaller((line) => {
+    if (line.includes('"pnpm:progress"') || line.includes('"pnpm:fetching-progress"')) return true;
+    keptLines.push(line);
+    return false;
+  });
+  try {
+    const installation = installPackedCli(fixture, installer);
+    await installation.catch(() => undefined);
+    expect(installer.removedLines).toBeGreaterThan(0);
+    expect(keptLines).toContainEqual(expect.stringContaining('"importing_done"'));
     await expect(installation).rejects.toThrow('CLI fetch observer did not run');
-    expect(installed).toBe(true);
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('rejects an install whose reporter stream stops before importing_done', async () => {
+  const fixture = await createInstallFixture();
+  const keptLines: string[] = [];
+  const installer = strippingInstaller((line) => {
+    if (line.includes('"importing_done"')) return true;
+    keptLines.push(line);
+    return false;
+  });
+  try {
+    const installation = installPackedCli(fixture, installer);
+    await installation.catch(() => undefined);
+    expect(installer.removedLines).toBeGreaterThan(0);
+    expect(keptLines).toContainEqual(
+      expect.stringMatching(/"pnpm:progress".*"status":"(?:fetched|found_in_store)"/),
+    );
+    await expect(installation).rejects.toThrow('CLI fetch observer did not run');
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('accepts an install whose pnpm reports progress after importing_done', async () => {
+  const fixture = await createInstallFixture();
+  let moved = 0;
+  const installer = {
+    now: Date.now,
+    executeInstall: async (
+      command: string,
+      args: string[],
+      options: ExecFileOptionsWithStringEncoding,
+    ) => {
+      const output = await promisify(execFile)(command, args, options);
+      const reorder = (text: string) => {
+        const lines = text.split('\n');
+        const done = lines.findIndex((line) => line.includes('"importing_done"'));
+        const late = lines.findIndex(
+          (line, index) =>
+            index < done && line.includes('"pnpm:progress"') && line.includes('"fetched"'),
+        );
+        if (done < 0 || late < 0) return text;
+        const [line] = lines.splice(late, 1);
+        lines.splice(done, 0, line);
+        moved++;
+        return lines.join('\n');
+      };
+      return { ...output, stdout: reorder(output.stdout), stderr: reorder(output.stderr) };
+    },
+  };
+  try {
+    await expect(installPackedCli(fixture, installer)).resolves.toMatchObject({
+      cliPath: expect.any(String),
+    });
+    expect(moved).toBe(1);
+  } finally {
+    await fixture.close();
+  }
+});
+
+function outdatedLockfileInstaller() {
+  const installer = {
+    attempts: 0,
+    exits: [] as { code: unknown; killed: unknown; signal: unknown; output: string }[],
+    now: Date.now,
+    executeInstall: async (
+      command: string,
+      args: string[],
+      options: ExecFileOptionsWithStringEncoding,
+    ) => {
+      installer.attempts++;
+      const manifestPath = join(String(options.cwd), 'package.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          ...manifest,
+          dependencies: { ...manifest.dependencies, [LEAF]: '1.1.0' },
+        }),
+      );
+      return promisify(execFile)(command, args, options).catch(
+        (error: ExecFileException & { stdout: string; stderr: string }) => {
+          installer.exits.push({
+            code: error.code,
+            killed: error.killed,
+            signal: error.signal,
+            output: `${error.stdout}\n${error.stderr}`,
+          });
+          throw error;
+        },
+      );
+    },
+  };
+  return installer;
+}
+
+test("rejects a locked install that pnpm refuses before fetching with pnpm's own error", async () => {
+  const fixture = await createInstallFixture();
+  const installer = outdatedLockfileInstaller();
+  try {
+    const installation = installPackedCli(fixture, installer);
+    await expect(installation).rejects.toThrow('ERR_PNPM_OUTDATED_LOCKFILE');
+    expect(installer.exits).toEqual([
+      {
+        code: expect.any(Number),
+        killed: false,
+        signal: null,
+        output: expect.stringContaining('ERR_PNPM_OUTDATED_LOCKFILE'),
+      },
+    ]);
+    expect(installer.exits).not.toContainEqual(
+      expect.objectContaining({ output: expect.stringContaining('"pnpm:fetching-progress"') }),
+    );
+    await expect(installation).rejects.not.toMatchObject({ exitCode: 77 });
+    expect(installer.attempts).toBe(1);
+    await expect(installation).rejects.not.toThrow('CLI fetch observer did not run');
+  } finally {
+    await fixture.close();
+  }
+});
+
+type InstallFixture = Awaited<ReturnType<typeof createInstallFixture>>;
+
+function readPackedCli(packDest: string) {
+  const archives = readdirSync(packDest).filter((name) => name.endsWith('.tgz'));
+  expect(archives).toHaveLength(1);
+  return readFileSync(join(packDest, archives[0]));
+}
+
+function tarballRequestsSince(fixture: InstallFixture, start: number) {
+  return fixture.requests.slice(start).filter((path) => path.endsWith('.tgz'));
+}
+
+function newInstallPrefix(fixture: InstallFixture) {
+  const installPrefix = join(fixture.root, 'warm-install');
+  mkdirSync(installPrefix);
+  return installPrefix;
+}
+
+test.each([
+  { cli: 'the same packed CLI again', rebuild: false },
+  { cli: 'a rebuilt packed CLI', rebuild: true },
+])('installs $cli on the store an earlier install filled', async ({ rebuild }) => {
+  const fixture = await createInstallFixture();
+  try {
+    const coldStart = fixture.requests.length;
+    await installPackedCli(fixture);
+    expect(new Set(tarballRequestsSince(fixture, coldStart))).toEqual(
+      new Set([LEAF, PARENT, PEER].map((name) => `/${name}/-/${name}-1.0.0.tgz`)),
+    );
+    const firstPack = readPackedCli(fixture.packDest);
+    if (rebuild) {
+      const cli = join(fixture.packageDir, 'dist/cli.mjs');
+      writeFileSync(cli, `${readFileSync(cli, 'utf8')}\n`);
+    }
+    const installPrefix = newInstallPrefix(fixture);
+    const warmStart = fixture.requests.length;
+    const installation = installPackedCli({ ...fixture, installPrefix });
+    await installation.catch(() => undefined);
+    expect(readPackedCli(fixture.packDest).equals(firstPack)).toBe(!rebuild);
+    expect(tarballRequestsSince(fixture, warmStart)).toEqual([]);
+    await expect(installation).resolves.toMatchObject({ cliPath: expect.any(String) });
+    const { cliPath } = await installation;
+    const result = await promisify(execFile)(process.execPath, [cliPath]);
+    expect(JSON.parse(result.stdout)).toEqual({ leaf: '1.0.0', peer: '1.0.0' });
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('rejects an unavailable optional package on a store that holds the rest of the graph', async () => {
+  const fixture = await createInstallFixture(true);
+  const tarball = `/${LEAF}/-/${LEAF}-1.0.0.tgz`;
+  try {
+    fixture.responses.set(tarball, 404);
+    await expect(installPackedCli(fixture)).rejects.toThrow('ERR_PNPM_FETCH_404');
+    const installPrefix = newInstallPrefix(fixture);
+    const warmStart = fixture.requests.length;
+    const installer = countingInstaller();
+    const installation = installPackedCli(
+      { ...fixture, installPrefix },
+      { now: Date.now, ...installer },
+    );
+    await expect(installation).rejects.toThrow('ERR_PNPM_FETCH_404: the registry answered 404');
+    await expect(installation).rejects.not.toThrow('CLI fetch observer did not run');
+    await expect(installation).rejects.not.toMatchObject({ exitCode: 77 });
+    expect(installer.attempts).toBe(1);
+    expect(new Set(tarballRequestsSince(fixture, warmStart))).toEqual(new Set([tarball]));
   } finally {
     await fixture.close();
   }

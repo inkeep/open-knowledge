@@ -135,15 +135,8 @@ function ndjsonEvents(stdout: string) {
   });
 }
 
-function pnpmStartedFetching(output: string) {
-  return ndjsonEvents(output).some(
-    (event) => event.name === 'pnpm:fetching-progress' && event.status === 'started',
-  );
-}
-
-function pnpmIncompleteFetches(output: string) {
-  const events = ndjsonEvents(output);
-  const started = new Set(
+function pnpmStartedFetches(events: Record<string, unknown>[]) {
+  return new Set(
     events
       .filter(
         (event) =>
@@ -153,6 +146,30 @@ function pnpmIncompleteFetches(output: string) {
       )
       .map((event) => String(event.packageId)),
   );
+}
+
+function pnpmRecordedAcquisition(output: string) {
+  const events = ndjsonEvents(output);
+  const started = pnpmStartedFetches(events);
+  return (
+    events.some((event) => event.name === 'pnpm:stage' && event.stage === 'importing_done') &&
+    events.some(
+      (event) =>
+        event.name === 'pnpm:progress' &&
+        (event.status === 'fetched' || event.status === 'found_in_store'),
+    ) &&
+    events.every(
+      (event) =>
+        event.name !== 'pnpm:progress' ||
+        event.status !== 'fetched' ||
+        started.has(String(event.packageId)),
+    )
+  );
+}
+
+function pnpmIncompleteFetches(output: string) {
+  const events = ndjsonEvents(output);
+  const started = pnpmStartedFetches(events);
   for (const event of events)
     if (event.name === 'pnpm:progress' && event.status === 'fetched')
       started.delete(String(event.packageId));
@@ -422,8 +439,9 @@ export async function installPackedCli(
         refetched.push({ packageId, verdict });
         failures.push(verdict);
       }
-    const observed = mode !== 'locked' || pnpmStartedFetching(`${stdout}\n${stderr}`);
-    if (!failed && !failures.length && observed) break;
+    const unobserved =
+      mode === 'locked' && !failed && !pnpmRecordedAcquisition(`${stdout}\n${stderr}`);
+    if (!failed && !failures.length && !unobserved) break;
     process.stderr.write(stdout + stderr);
     const retryable =
       failures.length > 0 &&
@@ -440,7 +458,7 @@ export async function installPackedCli(
           `Packed CLI ${command} acquisition deadline elapsed on attempt ${attempt} of ${INSTALL_ATTEMPTS}.`,
           { cause: deadlineError },
         );
-      throw new Error(observed ? message : `CLI fetch observer did not run.\n${message}`);
+      throw new Error(unobserved ? `CLI fetch observer did not run.\n${message}` : message);
     }
     unavailable = new CliInstallUnavailableError(
       `Packed CLI acquisition did-not-run after ${attempt} of ${INSTALL_ATTEMPTS} attempts.\n${message}`,
