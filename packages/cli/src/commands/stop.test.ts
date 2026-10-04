@@ -172,6 +172,97 @@ describe('runStop with foreign-host states', () => {
   });
 });
 
+describe('runStop channel guard', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const lockOf = (channel: string | undefined, state = aliveLock(100, 3001)): LockState =>
+    (state.status === 'alive' || state.status === 'foreign-host') && channel !== undefined
+      ? { ...state, lock: { ...state.lock, channel } }
+      : state;
+  const run = (
+    channel: string | undefined,
+    overrides: Partial<Parameters<typeof runStop>[0]> = {},
+  ) => {
+    const killed: Array<[number, string]> = [];
+    const errors: string[] = [];
+    const outcome = runStop({
+      lockDir: '/tmp/channel',
+      inspect: () => lockOf(channel),
+      selfChannel: 'beta',
+      kill: (pid, sig) => killed.push([pid, sig]),
+      log: () => {},
+      error: (msg) => errors.push(msg),
+      probeClients: async () => 0,
+      ...overrides,
+    });
+    return { outcome, killed, errors };
+  };
+
+  test("refuses to stop another channel's server", async () => {
+    const { outcome, killed, errors } = run('stable');
+    expect((await outcome).declined).toEqual({ otherChannel: 'stable' });
+    expect(killed).toEqual([]);
+    expect(errors[0]).toContain('OpenKnowledge (Stable)');
+    expect(errors[0]).toContain('--force');
+  });
+
+  test("--force stops another channel's server", async () => {
+    const { outcome, killed } = run('stable', { force: true });
+    expect((await outcome).stopped).toHaveLength(1);
+    expect(killed).toEqual([[100, 'SIGTERM']]);
+  });
+
+  test('stops a server of the same channel', async () => {
+    const { outcome, killed } = run('beta');
+    expect((await outcome).declined).toBeUndefined();
+    expect(killed).toEqual([[100, 'SIGTERM']]);
+  });
+
+  test('stops a server whose lock records no channel', async () => {
+    const { outcome, killed } = run(undefined);
+    expect((await outcome).declined).toBeUndefined();
+    expect(killed).toEqual([[100, 'SIGTERM']]);
+  });
+
+  test("OK_CHANNEL=beta refuses Stable's server", async () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    const { outcome, killed } = run('stable', { selfChannel: undefined });
+    expect((await outcome).declined).toEqual({ otherChannel: 'stable' });
+    expect(killed).toEqual([]);
+  });
+
+  test("OK_CHANNEL=stable stops Stable's server", async () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    const { outcome, killed } = run('stable', { selfChannel: undefined });
+    expect((await outcome).declined).toBeUndefined();
+    expect(killed).toEqual([[100, 'SIGTERM']]);
+  });
+
+  test('an unsupported OK_CHANNEL skips the check, warns, and stops as before', async () => {
+    vi.stubEnv('OK_CHANNEL', 'bogus');
+    const warnings: string[] = [];
+    const logger = {
+      info: () => {},
+      warn: (_obj: unknown, msg: string) => warnings.push(msg),
+    } as unknown as Parameters<typeof runStop>[0]['logger'];
+    const { outcome, killed } = run('stable', { selfChannel: undefined, logger });
+    expect((await outcome).declined).toBeUndefined();
+    expect(killed).toEqual([[100, 'SIGTERM']]);
+    expect(warnings.some((msg) => msg.includes('Unsupported OK_CHANNEL'))).toBe(true);
+  });
+
+  test('refuses a foreign-host lock of another channel whose pid is alive here', async () => {
+    const { outcome, killed } = run('stable', {
+      inspect: () => lockOf('stable', foreign(100, 3001)),
+      isAlive: () => true,
+    });
+    expect((await outcome).declined).toEqual({ otherChannel: 'stable' });
+    expect(killed).toEqual([]);
+  });
+});
+
 describe('runStop in-use guard', () => {
   const oneAlive = () => ({
     lockDir: '/tmp/guard',

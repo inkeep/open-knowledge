@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { desktopChannelLabel, resolveDesktopProductName } from '@inkeep/open-knowledge-core';
 import {
   type Config,
   isProcessAlive,
@@ -90,13 +91,26 @@ interface RunStopDeps {
   error?: (msg: string) => void;
   probeClients?: (lockDir: string, logger?: PinoLoggerInstance) => Promise<number | null>;
   logger?: PinoLoggerInstance;
+  selfChannel?: 'stable' | 'beta';
 }
 
 interface StopOutcome {
   stopped: StopTargetPlan[];
   failed: Array<{ target: StopTargetPlan; error: string }>;
   hadTargets: boolean;
-  declined?: { clients: number };
+  declined?: { clients: number } | { otherChannel: string };
+}
+
+function currentChannel(logger: PinoLoggerInstance | undefined): RunStopDeps['selfChannel'] {
+  try {
+    return resolveDesktopProductName();
+  } catch (err) {
+    logger?.warn(
+      { err },
+      `stop channel check skipped: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return undefined;
+  }
 }
 
 export async function runStop(deps: RunStopDeps): Promise<StopOutcome> {
@@ -114,6 +128,30 @@ export async function runStop(deps: RunStopDeps): Promise<StopOutcome> {
     log('No running open-knowledge processes.');
     logger?.info({ lockDir: deps.lockDir, targets: 0 }, 'stop found nothing to signal');
     return { stopped: [], failed: [], hadTargets: false };
+  }
+
+  const holder =
+    serverState.status === 'alive' || serverState.status === 'foreign-host'
+      ? serverState.lock.channel
+      : undefined;
+  if (deps.force !== true && typeof holder === 'string' && holder.length > 0) {
+    const self = deps.selfChannel ?? currentChannel(logger);
+    if (self !== undefined && holder !== self) {
+      error(
+        `Not stopping: the server at ${deps.lockDir} belongs to ${desktopChannelLabel(holder)}. ` +
+          'Stop it from that app or its CLI, or re-run with --force to terminate anyway.',
+      );
+      logger?.warn(
+        {
+          lockDir: deps.lockDir,
+          holderChannel: holder,
+          selfChannel: self,
+          pids: plan.targets.map((t) => t.pid),
+        },
+        'stop declined: server belongs to another channel',
+      );
+      return { stopped: [], failed: [], hadTargets: true, declined: { otherChannel: holder } };
+    }
   }
 
   if (deps.force !== true) {
@@ -233,7 +271,10 @@ export function stopCommand(getConfig: () => Config): Command {
         'Pass a port number, a directory path, or "all" to target globally.',
     )
     .argument('[target...]', 'port number, directory path (spaces OK), or "all"')
-    .option('--force', 'Stop even when editor windows or agents are still connected to the server')
+    .option(
+      '--force',
+      'Stop even when the server belongs to another OpenKnowledge app (Stable or Beta) or editor windows or agents are still connected to it',
+    )
     .action(async (parts: string[], options: { force?: boolean }) => {
       const force = options.force === true;
       const target = parts.length === 0 ? undefined : parts.join(' ');

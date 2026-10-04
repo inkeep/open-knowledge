@@ -2221,7 +2221,7 @@ async function openProjectOrFallbackToNavigator(
           `${projectPath}\n\n` +
             (prompt.reason === 'eperm'
               ? 'The conflicting server belongs to another user account and cannot be stopped from here. Quit it from that account and try again.'
-              : 'Could not stop the conflicting server. Quit it manually (`ok stop`) and try again.'),
+              : `Could not stop the conflicting server. Quit it manually (\`ok stop --force ${quoteStopCommandPath(projectPath, process.platform)}\`) and try again.`),
         );
       } else {
         getLogger('project').info(
