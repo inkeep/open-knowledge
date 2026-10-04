@@ -380,6 +380,25 @@ export interface ServerInstance {
   readonly acpPermissions: AcpPermissionStore;
 }
 
+export function observeShutdownDocumentRetirements(
+  hocuspocus: Hocuspocus,
+  onDocumentRetired: () => void,
+): () => void {
+  let active = true;
+  const observer: Extension = {
+    async afterUnloadDocument() {
+      if (active) onDocumentRetired();
+    },
+  };
+  hocuspocus.configuration.extensions.unshift(observer);
+  return () => {
+    active = false;
+    const extensions = hocuspocus.configuration.extensions;
+    const index = extensions.indexOf(observer);
+    if (index !== -1) extensions.splice(index, 1);
+  };
+}
+
 export const SHADOW_FANOUT_WARMUP_MS = 3000;
 
 const PARK_SNAPSHOT_ORIGIN = (() => {
@@ -2992,117 +3011,138 @@ export function createServer(options: ServerOptions): ServerInstance {
   async function flushAllStoresAndWait(timeoutMs: number): Promise<void> {
     if (hocuspocus.documents.size === 0) return;
 
-    let resolved = false;
-    const allDone = new Promise<void>((resolve) => {
-      hocuspocus.configuration.extensions.push({
-        async afterUnloadDocument({ instance }) {
-          if (!resolved && instance.getDocumentsCount() === 0) {
-            resolved = true;
-            resolve();
-          }
-        },
-      });
-    });
-
-    const pendingDocNames = Array.from(hocuspocus.documents.keys());
-
-    hocuspocus.closeConnections();
-    hocuspocus.flushPendingStores();
-
-    for (const doc of hocuspocus.documents.values()) {
-      if (doc.getConnectionsCount() === 0) {
-        void hocuspocus.unloadDocument(doc).catch((err: unknown) => {
-          console.warn(
-            JSON.stringify({
-              event: 'ok-shutdown-unload-document-failed',
-              docName: doc.name,
-              reason: err instanceof Error ? err.message : String(err),
-            }),
-          );
-        });
-      }
-    }
-
-    const flushDeadline = Date.now() + timeoutMs;
+    let settled = false;
+    let flushDeadline = Date.now() + timeoutMs;
     const raceFloorMs = 250;
-    while (Date.now() < flushDeadline - raceFloorMs) {
-      const unsettled = Array.from(hocuspocus.documents.values()).some(
-        (doc) => doc.getConnectionsCount() === 0 && !defaultShouldUnloadDocument(doc),
-      );
-      if (!unsettled) break;
-      await new Promise((r) => setTimeout(r, 25));
-    }
+    let timeoutState: { id: ReturnType<typeof setTimeout>; expire: () => void } | undefined;
+    const allDone = Promise.withResolvers<void>();
+    const stopObserving = observeShutdownDocumentRetirements(hocuspocus, () => {
+      if (settled) return;
+      flushDeadline = Date.now() + timeoutMs;
+      if (timeoutState) {
+        clearTimeout(timeoutState.id);
+        timeoutState.id = setTimeout(
+          timeoutState.expire,
+          Math.max(flushDeadline - Date.now(), raceFloorMs),
+        );
+      }
+    });
+    const allDoneExtension: Extension = {
+      async afterUnloadDocument({ instance }) {
+        if (!settled && instance.getDocumentsCount() === 0) {
+          settled = true;
+          allDone.resolve();
+        }
+      },
+    };
+    hocuspocus.configuration.extensions.push(allDoneExtension);
 
-    const perDocUnloadFloorMs = 50;
-    for (const docName of durabilityState.getRefusedStoreDocNames()) {
-      if (isReservedForUserTree(docName)) continue;
-      const doc = hocuspocus.documents.get(docName);
-      if (!doc) continue;
-      if (!defaultShouldUnloadDocument(doc)) continue;
-      if (flushDeadline - Date.now() < perDocUnloadFloorMs) {
-        log.warn(
-          { docName },
-          `[rescue] refused-store pass out of budget before ${docName}; leaving it and any remaining refused docs to the flush timeout path`,
-        );
-        break;
-      }
-      if (rescueDocToShadowBuffer(docName, 'refused-store-shutdown') !== 'rescued') {
-        log.warn(
-          { docName },
-          `[rescue] refused-store doc rescue failed; leaving ${docName} to the flush timeout path`,
-        );
-        continue;
-      }
-      let unloadSettled = false;
-      let unloadFailed = false;
-      const unload = forceUnloadDocument(doc)
-        .then(() => {
-          unloadSettled = true;
-        })
-        .catch((err: unknown) => {
-          unloadFailed = true;
-          unloadSettled = true;
-          log.warn(
-            { docName, err },
-            `[rescue] refused-store doc unload failed at shutdown: ${docName}`,
-          );
-        });
-      const unloadDeadline = Math.max(flushDeadline - Date.now(), perDocUnloadFloorMs);
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, unloadDeadline);
-        void unload.then(() => {
-          clearTimeout(timer);
-          resolve();
-        });
-      });
-      if (!unloadSettled) {
-        log.warn(
-          { docName, unloadDeadline },
-          `[rescue] refused-store doc unload did not finish before the flush deadline; leaving ${docName} to the flush timeout path`,
-        );
-        void unload.then(() => {
-          if (!unloadFailed) {
-            log.info(
-              { docName },
-              `[rescue] refused-store doc unload completed after the flush deadline: ${docName}`,
+    try {
+      const pendingDocNames = Array.from(hocuspocus.documents.keys());
+
+      hocuspocus.closeConnections();
+      hocuspocus.flushPendingStores();
+
+      for (const doc of hocuspocus.documents.values()) {
+        if (doc.getConnectionsCount() === 0) {
+          void hocuspocus.unloadDocument(doc).catch((err: unknown) => {
+            console.warn(
+              JSON.stringify({
+                event: 'ok-shutdown-unload-document-failed',
+                docName: doc.name,
+                reason: err instanceof Error ? err.message : String(err),
+              }),
             );
-          }
-        });
-        continue;
+          });
+        }
       }
-      if (!unloadFailed) {
-        log.info(
-          { docName },
-          `[rescue] refused-store doc rescued and unloaded at shutdown: ${docName}`,
-        );
-      }
-    }
 
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<void>((_, reject) => {
-      timeoutId = setTimeout(
-        () => {
-          resolved = true;
+      while (Date.now() < flushDeadline - raceFloorMs) {
+        const unsettled = Array.from(hocuspocus.documents.values()).some(
+          (doc) => doc.getConnectionsCount() === 0 && !defaultShouldUnloadDocument(doc),
+        );
+        if (!unsettled) break;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+
+      const perDocUnloadFloorMs = 50;
+      for (const docName of durabilityState.getRefusedStoreDocNames()) {
+        if (isReservedForUserTree(docName)) continue;
+        const doc = hocuspocus.documents.get(docName);
+        if (!doc) continue;
+        if (!defaultShouldUnloadDocument(doc)) continue;
+        if (flushDeadline - Date.now() < perDocUnloadFloorMs) {
+          log.warn(
+            { docName },
+            `[rescue] refused-store pass out of budget before ${docName}; leaving it and any remaining refused docs to the flush timeout path`,
+          );
+          break;
+        }
+        if (rescueDocToShadowBuffer(docName, 'refused-store-shutdown') !== 'rescued') {
+          log.warn(
+            { docName },
+            `[rescue] refused-store doc rescue failed; leaving ${docName} to the flush timeout path`,
+          );
+          continue;
+        }
+        let unloadSettled = false;
+        let unloadFailed = false;
+        const unload = forceUnloadDocument(doc)
+          .then(() => {
+            unloadSettled = true;
+          })
+          .catch((err: unknown) => {
+            unloadFailed = true;
+            unloadSettled = true;
+            log.warn(
+              { docName, err },
+              `[rescue] refused-store doc unload failed at shutdown: ${docName}`,
+            );
+          });
+        let unloadDeadline = 0;
+        do {
+          const unloadSlice = Math.max(flushDeadline - Date.now(), perDocUnloadFloorMs);
+          unloadDeadline += unloadSlice;
+          let waitTimer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await Promise.race([
+              unload,
+              new Promise<void>((resolve) => {
+                waitTimer = setTimeout(resolve, unloadSlice);
+              }),
+            ]);
+          } finally {
+            if (waitTimer !== undefined) clearTimeout(waitTimer);
+          }
+        } while (!unloadSettled && Date.now() < flushDeadline);
+        if (!unloadSettled) {
+          log.warn(
+            { docName, unloadDeadline },
+            `[rescue] refused-store doc unload did not finish before the flush deadline; leaving ${docName} to the flush timeout path`,
+          );
+          void unload.then(() => {
+            if (!unloadFailed) {
+              log.info(
+                { docName },
+                `[rescue] refused-store doc unload completed after the flush deadline: ${docName}`,
+              );
+            }
+          });
+          continue;
+        }
+        if (!unloadFailed) {
+          log.info(
+            { docName },
+            `[rescue] refused-store doc rescued and unloaded at shutdown: ${docName}`,
+          );
+        }
+      }
+
+      const timeout = new Promise<never>((_, reject) => {
+        const expire = () => {
+          if (settled) return;
+          settled = true;
+          stopObserving();
           const stillLoaded = Array.from(hocuspocus.documents.keys());
 
           const rescued: string[] = [];
@@ -3137,18 +3177,24 @@ export function createServer(options: ServerOptions): ServerInstance {
 
           reject(
             new Error(
-              `flushAllStoresAndWait timeout after ${timeoutMs}ms — ${stillLoaded.length}/${pendingDocNames.length} docs did not unload: [${stillLoaded.join(', ')}]${rescueSummary}`,
+              `flushAllStoresAndWait timeout: no document retired for ${timeoutMs}ms — ${stillLoaded.length}/${pendingDocNames.length} docs did not unload: [${stillLoaded.join(', ')}]${rescueSummary}`,
             ),
           );
-        },
-        Math.max(flushDeadline - Date.now(), raceFloorMs),
-      );
-    });
+        };
+        timeoutState = {
+          id: setTimeout(expire, Math.max(flushDeadline - Date.now(), raceFloorMs)),
+          expire,
+        };
+      });
 
-    try {
-      await Promise.race([allDone, timeout]);
+      await Promise.race([allDone.promise, timeout]);
     } finally {
-      if (timeoutId !== undefined) clearTimeout(timeoutId);
+      settled = true;
+      stopObserving();
+      const extensions = hocuspocus.configuration.extensions;
+      const index = extensions.indexOf(allDoneExtension);
+      if (index !== -1) extensions.splice(index, 1);
+      if (timeoutState) clearTimeout(timeoutState.id);
     }
   }
 
