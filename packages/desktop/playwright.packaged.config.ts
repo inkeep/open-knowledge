@@ -52,7 +52,7 @@ export default defineConfig({
   testDir: './tests/smoke',
   // Without this, the tier would default to the unpackaged run's
   // `test-results/` and clear it at run start, taking that run's per-test
-  // artifacts with it — Playwright 1.59.1, re-verify on any upgrade, not just
+  // artifacts with it — Playwright 1.63.0, re-verify on any upgrade, not just
   // a major, since the range admits minors and this is undocumented behavior
   // of a public API.
   //
@@ -64,7 +64,7 @@ export default defineConfig({
   // separate tree makes it structural instead of conditional.
   //
   // Only the artifact trees separate. A reporter's `outputFile` is its own
-  // path — same 1.59.1 measurement, same re-verify-on-any-upgrade — so
+  // path — same 1.63.0 measurement, same re-verify-on-any-upgrade — so
   // `PACKAGED_JSON_REPORT_PATH` still lands in `test-results/` beside its
   // sibling, and nothing clears it now: fine on a fresh CI workspace, worth
   // knowing on a reused one. Both trees upload on failure.

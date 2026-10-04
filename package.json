@@ -84,7 +84,7 @@
     "turbo": "^2.11.5",
     "typescript": "~6.0.3",
     "undici": "~7.29.0",
-    "vitest": "^4.1.0",
+    "vitest": "^5.0.3",
     "yaml": "^2.8.3"
   },
   "puppeteer": {

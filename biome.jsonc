@@ -135,6 +135,7 @@
       "!**/test-results-packaged",
       "!**/playwright-report",
       "!**/playwright-report-json",
+      "!**/.vitest",
       "!**/next-env.d.ts",
       "!.claude",
       // .agents/skills, .codex/skills under public/open-knowledge/

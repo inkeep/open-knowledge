@@ -54,7 +54,7 @@
   "devDependencies": {
     "@electron/fuses": "^2.1.1",
     "@electron/notarize": "^3.1.1",
-    "@playwright/test": "^1.59.1",
+    "@playwright/test": "^1.63.0",
     "@rolldown/plugin-babel": "^0.2.2",
     "@types/node": "^24.7.0",
     "@types/semver": "^7.5.8",

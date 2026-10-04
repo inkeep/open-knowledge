@@ -88,7 +88,6 @@ beforeEach(() => {
   originalInnerWidth = window.innerWidth;
   originalMatchMedia = window.matchMedia;
   originalUserAgent = window.navigator.userAgent;
-  (globalThis as { localStorage?: Storage }).localStorage = window.localStorage;
   window.localStorage.clear();
 });
 

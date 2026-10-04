@@ -166,7 +166,7 @@ async function failureReport(
         'run',
         relative(desktopRoot, fileURLToPath(import.meta.url)),
         '--testNamePattern',
-        `${suite} ${name}$`,
+        `${suite}(?: >)? ${name}$`,
         '--reporter=github-actions',
         '--maxWorkers=1',
       ],

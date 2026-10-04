@@ -48,27 +48,31 @@ describe('transient notice caused by a trigger', () => {
   test('replays CI retry 1: observes a notice shown and dismissed before the trigger returned', async () => {
     const surface = noticeSurface();
 
-    await expectNoticeFromTrigger(
-      NOTICE,
-      surface.observation(() => {
-        surface.show(NOTICE);
-        return Promise.resolve();
-      }),
-      { timeout: OBSERVE_BOUND_MS },
-    );
+    await expect(
+      expectNoticeFromTrigger(
+        NOTICE,
+        surface.observation(() => {
+          surface.show(NOTICE);
+          return Promise.resolve();
+        }),
+        { timeout: OBSERVE_BOUND_MS },
+      ),
+    ).resolves.toBeUndefined();
   });
 
   test('observes a notice that fires after the trigger returns', async () => {
     const surface = noticeSurface();
 
-    await expectNoticeFromTrigger(
-      NOTICE,
-      surface.observation(() => {
-        setTimeout(() => surface.show(NOTICE), 0);
-        return Promise.resolve();
-      }),
-      { timeout: OBSERVE_BOUND_MS },
-    );
+    await expect(
+      expectNoticeFromTrigger(
+        NOTICE,
+        surface.observation(() => {
+          setTimeout(() => surface.show(NOTICE), 0);
+          return Promise.resolve();
+        }),
+        { timeout: OBSERVE_BOUND_MS },
+      ),
+    ).resolves.toBeUndefined();
   });
 
   test('fails naming the notice when the trigger shows none', async () => {
@@ -400,15 +404,17 @@ describe('transient notice observed in the document its trigger produced', () =>
     const tab = documentAwarePage();
     tab.whenBooted((reloaded) => showsAndRemoves(reloaded, NOTICE));
 
-    await expectNoticeFromTrigger(
-      NOTICE,
-      transientNoticeObservation(tab.page, {
-        document: 'next',
-        trigger: () => tab.reload(),
-        recorder: realmRecorder,
-      }),
-      { timeout: OBSERVE_BOUND_MS },
-    );
+    await expect(
+      expectNoticeFromTrigger(
+        NOTICE,
+        transientNoticeObservation(tab.page, {
+          document: 'next',
+          trigger: () => tab.reload(),
+          recorder: realmRecorder,
+        }),
+        { timeout: OBSERVE_BOUND_MS },
+      ),
+    ).resolves.toBeUndefined();
   });
 
   test('is never satisfied by a notice the pre-reload document was showing when observation armed', async () => {
@@ -476,18 +482,20 @@ describe('transient notice observed in the document its trigger produced', () =>
   test('current-document arming records a notice the trigger shows and removes', async () => {
     const tab = documentAwarePage();
 
-    await expectNoticeFromTrigger(
-      NOTICE,
-      transientNoticeObservation(tab.page, {
-        document: 'current',
-        trigger: () => {
-          showsAndRemoves(tab.current(), NOTICE);
-          return Promise.resolve();
-        },
-        recorder: realmRecorder,
-      }),
-      { timeout: OBSERVE_BOUND_MS },
-    );
+    await expect(
+      expectNoticeFromTrigger(
+        NOTICE,
+        transientNoticeObservation(tab.page, {
+          document: 'current',
+          trigger: () => {
+            showsAndRemoves(tab.current(), NOTICE);
+            return Promise.resolve();
+          },
+          recorder: realmRecorder,
+        }),
+        { timeout: OBSERVE_BOUND_MS },
+      ),
+    ).resolves.toBeUndefined();
   });
 
   test('gives each observation its own record, so a notice an earlier observation recorded never satisfies a later one', async () => {

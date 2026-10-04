@@ -20,6 +20,7 @@ packages/app/test-results/
 playwright-report/
 playwright-report-json/
 blob-report/
+.vitest/
 .vscode/
 .mcp.json
 .cursor/mcp.json

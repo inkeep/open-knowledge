@@ -181,7 +181,7 @@ describe('reconcile() over the real tier config, as Vitest resolves it under a -
   const SCRIPTS_PROJECT = 'vitest.scripts.config.ts';
 
   async function reconcileUnder(project: string[] | undefined) {
-    const vitest = await createVitest('test', {
+    const vitest = await createVitest({
       root,
       config: 'vitest.uncached.config.ts',
       watch: false,

@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 describe('file logger', () => {
-  test('pino.destination writes NDJSON to file', () => {
+  test('pino.destination writes NDJSON to file', async () => {
     mkdirSync(TEST_DIR, { recursive: true });
     const filePath = join(TEST_DIR, 'test.log');
     const dest = pino.destination({ dest: filePath, sync: true });
@@ -25,10 +25,10 @@ describe('file logger', () => {
     logger.info({ foo: 'bar' }, 'hello');
     dest.flushSync();
     const content = Bun.file(filePath).text();
-    expect(content).resolves.toContain('"msg":"hello"');
+    await expect(content).resolves.toContain('"msg":"hello"');
   });
 
-  test('project field is included in records', () => {
+  test('project field is included in records', async () => {
     mkdirSync(TEST_DIR, { recursive: true });
     const filePath = join(TEST_DIR, 'test-project.log');
     const dest = pino.destination({ dest: filePath, sync: true });
@@ -39,10 +39,10 @@ describe('file logger', () => {
     logger.info({}, 'check');
     dest.flushSync();
     const content = Bun.file(filePath).text();
-    expect(content).resolves.toContain('"project":"test-slug"');
+    await expect(content).resolves.toContain('"project":"test-slug"');
   });
 
-  test('redact config censors sensitive top-level fields', () => {
+  test('redact config censors sensitive top-level fields', async () => {
     mkdirSync(TEST_DIR, { recursive: true });
     const filePath = join(TEST_DIR, 'test-redact.log');
     const dest = pino.destination({ dest: filePath, sync: true });
@@ -56,7 +56,7 @@ describe('file logger', () => {
     logger.info({ authorization: 'Bearer sk-secret123' }, 'auth check');
     dest.flushSync();
     const content = Bun.file(filePath).text();
-    expect(content).resolves.toContain('[REDACTED]');
+    await expect(content).resolves.toContain('[REDACTED]');
   });
 
   test('rotation renames when file exceeds 5MB', () => {

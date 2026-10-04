@@ -13,7 +13,7 @@
   },
   "targetToolchain": {
     "runtime": "node@24.19.0",
-    "testRunner": "vitest@4.1.10"
+    "testRunner": "vitest@5.0.3"
   },
   "calibrationRuns": 4,
   "threshold": {

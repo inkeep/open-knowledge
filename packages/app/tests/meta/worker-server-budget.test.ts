@@ -1,12 +1,21 @@
 import { type ChildProcess, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { compileFunction } from 'node:vm';
 import { errors } from '@playwright/test';
-import { type CallExpression, type Node, Project, type SourceFile, SyntaxKind } from 'ts-morph';
+import {
+  type CallExpression,
+  type ClassExpression,
+  type InterfaceDeclaration,
+  type Node,
+  Project,
+  type SourceFile,
+  SyntaxKind,
+} from 'ts-morph';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { getFreePort } from '../free-port.test-helper.ts';
 import {
@@ -102,11 +111,13 @@ interface WorkerInternals {
   TimeoutManagerError: new (...args: never[]) => Error;
 }
 
-// UPSTREAM(@playwright/test@1.59.1): a worker fixture's setup and teardown draw down one shared slot object
-const PLAYWRIGHT_WORKER_INTERNALS_VERIFIED_AT = '1.59.1';
+// UPSTREAM(@playwright/test@1.63.0): a worker fixture's setup and teardown draw down one shared slot object
+const PLAYWRIGHT_WORKER_INTERNALS_VERIFIED_AT = '1.63.0';
 
-const FIXTURE_RUNNER_MODULE = 'playwright/lib/worker/fixtureRunner.js';
-const TIMEOUT_MANAGER_MODULE = 'playwright/lib/worker/timeoutManager.js';
+const WORKER_BUNDLE_PATH = 'lib/worker/workerProcessEntry.js';
+const WORKER_BUNDLE_MODULE = `playwright/${WORKER_BUNDLE_PATH}`;
+const WORKER_BUNDLE_BINDINGS = ['FixtureRunner', 'TimeoutManager', 'TimeoutManagerError'] as const;
+const WORKER_BUNDLE_RUNNER_START = /\(0, import_common\d*\.startProcessRunner\)\(create\);/g;
 
 const FIXTURE_RUNNER_MEMBERS = [
   'instanceForId',
@@ -198,7 +209,7 @@ function meetsVersionFloor(actual: string, floor: string): boolean {
 
 function workerInternalsCouplingMessage(version: string, broken: readonly string[]): string {
   return [
-    `these budget tests drive Playwright's worker internals directly: ${FIXTURE_RUNNER_MODULE} and ${TIMEOUT_MANAGER_MODULE}, neither of which the playwright package lists in its exports map.`,
+    `these budget tests drive Playwright's worker internals directly: ${WORKER_BUNDLE_BINDINGS.join(', ')}, which ${WORKER_BUNDLE_MODULE} defines without exporting, in a file the playwright package does not list in its exports map.`,
     `The resolved playwright@${version} no longer supplies ${broken.join(', ')}.`,
     `The coupling expects ${WORKER_INTERNALS_EXPECTED.join(', ')}, verified against playwright@${PLAYWRIGHT_WORKER_INTERNALS_VERIFIED_AT}.`,
     'Re-verify the driver against this release and move that pin forward, or replace the driver.',
@@ -211,6 +222,44 @@ function resolvedPackageVersion(packageJsonPath: string): string {
     throw new Error(`${packageJsonPath} declares no version string`);
   }
   return parsed.version;
+}
+
+function workerBundleBindings(
+  version: string,
+  entry: string,
+): Partial<Record<(typeof WORKER_BUNDLE_BINDINGS)[number], unknown>> {
+  let source: string;
+  try {
+    source = readFileSync(entry, 'utf-8');
+  } catch (err) {
+    throw new Error(
+      workerInternalsCouplingMessage(version, ['the worker bundle at its pinned path']),
+      { cause: err },
+    );
+  }
+  const runnerStarts = source.match(WORKER_BUNDLE_RUNNER_START) ?? [];
+  if (runnerStarts.length !== 1) {
+    throw new Error(
+      `${WORKER_BUNDLE_MODULE} from playwright@${version} starts its process runner at ${runnerStarts.length} sites this loader recognises instead of one, so evaluating it here could start a worker runner inside this test process. Re-verify the loader against this release, or replace the driver.`,
+    );
+  }
+  const exposed = WORKER_BUNDLE_BINDINGS.map(
+    (name) => `${name}: typeof ${name} === 'undefined' ? undefined : ${name}`,
+  ).join(', ');
+  try {
+    const evaluate = compileFunction(
+      `${source.replace(WORKER_BUNDLE_RUNNER_START, '')}\nreturn { ${exposed} };`,
+      ['exports', 'require', 'module', '__filename', '__dirname'],
+      { filename: entry },
+    );
+    const module = { exports: {} };
+    return evaluate(module.exports, createRequire(entry), module, entry, dirname(entry));
+  } catch (err) {
+    throw new Error(
+      `${WORKER_BUNDLE_MODULE} from playwright@${version} failed while this loader compiled and evaluated it with its process runner start removed, so it supplied none of ${WORKER_BUNDLE_BINDINGS.join(', ')}. Re-verify the loader against this release, or replace the driver.`,
+      { cause: err },
+    );
+  }
 }
 
 let cachedInternals: WorkerInternals | undefined;
@@ -228,18 +277,23 @@ function workerInternals(): WorkerInternals {
       ]),
     );
   }
-  const fromPlaywrightLib = createRequire(join(dirname(playwrightPackageJson), 'lib', 'index.js'));
+  const bindings = workerBundleBindings(
+    version,
+    join(dirname(playwrightPackageJson), WORKER_BUNDLE_PATH),
+  );
+  cachedInternals = internalsFromBindings(version, bindings);
+  return cachedInternals;
+}
 
-  let fixtureRunnerModule: unknown;
-  let timeoutManagerModule: unknown;
-  try {
-    fixtureRunnerModule = fromPlaywrightLib('./worker/fixtureRunner.js');
-    timeoutManagerModule = fromPlaywrightLib('./worker/timeoutManager.js');
-  } catch (err) {
-    throw new Error(workerInternalsCouplingMessage(version, ['either module at its pinned path']), {
-      cause: err,
-    });
-  }
+function internalsFromBindings(
+  version: string,
+  bindings: ReturnType<typeof workerBundleBindings>,
+): WorkerInternals {
+  const fixtureRunnerModule = { FixtureRunner: bindings.FixtureRunner };
+  const timeoutManagerModule = {
+    TimeoutManager: bindings.TimeoutManager,
+    TimeoutManagerError: bindings.TimeoutManagerError,
+  };
 
   const missing = missingWorkerInternalsMembers(fixtureRunnerModule, timeoutManagerModule);
   if (missing.length > 0) throw new Error(workerInternalsCouplingMessage(version, missing));
@@ -249,8 +303,7 @@ function workerInternals(): WorkerInternals {
     WorkerInternals,
     'TimeoutManager' | 'TimeoutManagerError'
   >;
-  cachedInternals = { version, FixtureRunner, TimeoutManager, TimeoutManagerError };
-  return cachedInternals;
+  return { version, FixtureRunner, TimeoutManager, TimeoutManagerError };
 }
 
 let cachedFixtureExports: Record<string, unknown> | undefined;
@@ -623,6 +676,24 @@ function plantedTimeoutManagerModule(
     : { TimeoutManager: PlantedTimeoutManager, TimeoutManagerError: class extends Error {} };
 }
 
+const PLANTED_BUNDLE_VERSION = '0.0.0-planted';
+const PLANTED_RUNNER_START_FAILURE = 'the planted process runner was started';
+const PLANTED_EVALUATION_FAILURE = 'the planted bundle threw while it was evaluated';
+const PLANTED_BUNDLE_DEFINITIONS = [
+  `const import_common = { startProcessRunner() { throw new Error('${PLANTED_RUNNER_START_FAILURE}'); } };`,
+  'function create() {}',
+  'class FixtureRunner {}',
+  'class TimeoutManager {}',
+  'class TimeoutManagerError extends Error {}',
+];
+const PLANTED_RUNNER_START = '(0, import_common.startProcessRunner)(create);';
+
+function plantedWorkerBundle(statements: readonly string[]): string {
+  const entry = join(makeFixtureDir(), 'workerProcessEntry.js');
+  writeFileSync(entry, statements.join('\n'));
+  return entry;
+}
+
 function withoutMember(shape: Record<string, unknown>, member: string): Record<string, unknown> {
   const copy = { ...shape };
   delete copy[member];
@@ -766,6 +837,116 @@ describe('playwright worker-internals coupling', () => {
       ),
       'the planted full shape is the must-NOT-fire control for every case above',
     ).toEqual([]);
+  });
+
+  test('the worker bundle loader evaluates a bundle without starting the one process runner it recognises, and refuses any other count', () => {
+    const loaded = workerBundleBindings(
+      PLANTED_BUNDLE_VERSION,
+      plantedWorkerBundle([...PLANTED_BUNDLE_DEFINITIONS, PLANTED_RUNNER_START]),
+    );
+    expect(
+      typeof loaded.FixtureRunner,
+      'evaluating the bundle must not run its runner start, which in playwright posts ready over IPC and installs signal and message handlers in this test process',
+    ).toBe('function');
+
+    for (const starts of [0, 2]) {
+      expect(
+        () =>
+          workerBundleBindings(
+            PLANTED_BUNDLE_VERSION,
+            plantedWorkerBundle([
+              ...PLANTED_BUNDLE_DEFINITIONS,
+              ...Array<string>(starts).fill(PLANTED_RUNNER_START),
+            ]),
+          ),
+        'a bundle whose runner start the loader cannot pin to exactly one site is refused before it is evaluated',
+      ).toThrow(
+        `starts its process runner at ${starts} sites this loader recognises instead of one`,
+      );
+    }
+  });
+
+  test('each way the worker bundle loader fails is named for what failed', () => {
+    expect(() =>
+      workerBundleBindings(PLANTED_BUNDLE_VERSION, join(makeFixtureDir(), 'workerProcessEntry.js')),
+    ).toThrow(
+      expect.objectContaining({
+        message: expect.stringContaining(
+          `The resolved playwright@${PLANTED_BUNDLE_VERSION} no longer supplies the worker bundle at its pinned path.`,
+        ),
+        cause: expect.objectContaining({ code: 'ENOENT' }),
+      }),
+    );
+    expect(
+      () =>
+        workerBundleBindings(
+          PLANTED_BUNDLE_VERSION,
+          plantedWorkerBundle([
+            ...PLANTED_BUNDLE_DEFINITIONS,
+            PLANTED_RUNNER_START,
+            PLANTED_RUNNER_START,
+          ]),
+        ),
+      'a refused runner start is reported as the refusal, not as a bundle that went missing',
+    ).toThrow(
+      expect.objectContaining({
+        message: expect.stringMatching(
+          new RegExp(
+            `^${WORKER_BUNDLE_MODULE} from playwright@${PLANTED_BUNDLE_VERSION} starts its process runner at 2 sites`,
+          ),
+        ),
+      }),
+    );
+    expect(
+      () =>
+        workerBundleBindings(
+          PLANTED_BUNDLE_VERSION,
+          plantedWorkerBundle([
+            `throw new Error('${PLANTED_EVALUATION_FAILURE}');`,
+            ...PLANTED_BUNDLE_DEFINITIONS,
+            PLANTED_RUNNER_START,
+          ]),
+        ),
+      'a bundle that throws while it is evaluated is reported as that failure, carrying the error it threw',
+    ).toThrow(
+      expect.objectContaining({
+        message: expect.stringMatching(
+          new RegExp(
+            `^${WORKER_BUNDLE_MODULE} from playwright@${PLANTED_BUNDLE_VERSION} failed while this loader compiled and evaluated it`,
+          ),
+        ),
+        cause: expect.objectContaining({ message: PLANTED_EVALUATION_FAILURE }),
+      }),
+    );
+  });
+
+  test('a worker bundle that defines every binding but TimeoutManagerError is named for the binding it lacks, not as a loader failure', () => {
+    const fullShapeDefinitions = [
+      ...PLANTED_BUNDLE_DEFINITIONS.filter((statement) => !statement.startsWith('class ')),
+      'class FixtureRunner { instanceForId = new Map(); workerFixtureTimeout = 0; _setupFixtureForRegistration() {} teardownScope() {} }',
+      'class TimeoutManager { withRunnable() {} }',
+      PLANTED_RUNNER_START,
+    ];
+    expect(() =>
+      internalsFromBindings(
+        PLANTED_BUNDLE_VERSION,
+        workerBundleBindings(PLANTED_BUNDLE_VERSION, plantedWorkerBundle(fullShapeDefinitions)),
+      ),
+    ).toThrow(
+      `The resolved playwright@${PLANTED_BUNDLE_VERSION} no longer supplies TimeoutManagerError.`,
+    );
+    expect(
+      typeof internalsFromBindings(
+        PLANTED_BUNDLE_VERSION,
+        workerBundleBindings(
+          PLANTED_BUNDLE_VERSION,
+          plantedWorkerBundle([
+            ...fullShapeDefinitions,
+            'class TimeoutManagerError extends Error {}',
+          ]),
+        ),
+      ).TimeoutManagerError,
+    ).toBe('function');
   });
 
   test('the verified-release pin admits a later release and refuses an earlier one', () => {
@@ -3633,68 +3814,224 @@ function spacingSettlingBefore(settleByMs: number): number {
   return Math.floor((settleByMs - 1) / OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS);
 }
 
-const PLAYWRIGHT_CLIENT_MODULES = {
-  events: './lib/client/events.js',
-  Browser: './lib/client/browser.js',
-  BrowserContext: './lib/client/browserContext.js',
-  Page: './lib/client/page.js',
-  Locator: './lib/client/locator.js',
-  network: './lib/client/network.js',
-} as const;
+const PLAYWRIGHT_CLIENT_DECLARATIONS = 'types/types.d.ts';
+const PLAYWRIGHT_CLIENT_BUNDLE = 'playwright-core/lib/coreBundle';
+const PLAYWRIGHT_CLIENT_EVENTS_MODULE = 'packages/playwright-core/src/client/events.ts';
 
 interface PlaywrightClientSurface {
   version: string;
-  prototypes: Partial<Record<FakeOwner, object>>;
+  members: Partial<Record<FakeOwner, ReadonlySet<string>>>;
   pageEvents: readonly string[];
   contextEvents: readonly string[];
 }
 
+function declaredMethods(owner: InterfaceDeclaration | undefined): ReadonlySet<string> | undefined {
+  return owner === undefined
+    ? undefined
+    : new Set(owner.getMethods().map((method) => method.getName()));
+}
+
+function declaredEvents(owner: InterfaceDeclaration | undefined): string[] {
+  return (owner?.getMethods() ?? [])
+    .filter((method) => method.getName() === 'on')
+    .flatMap((method) => {
+      const event = method
+        .getParameters()[0]
+        ?.getTypeNode()
+        ?.asKind(SyntaxKind.LiteralType)
+        ?.getLiteral()
+        .asKind(SyntaxKind.StringLiteral)
+        ?.getLiteralText();
+      return event === undefined ? [] : [event];
+    });
+}
+
+function locatedInClientBundle<T>(found: T | undefined, what: string): T {
+  if (found === undefined) {
+    throw new Error(
+      `the fake first-load page's drift canary cannot locate ${what} in the client code playwright loads from ${PLAYWRIGHT_CLIENT_BUNDLE}. Re-verify the fake against this release and teach the canary the bundle's new layout, or replace the canary`,
+    );
+  }
+  return found;
+}
+
+function onlyOneInClientBundle<T>(found: readonly T[], what: string): T {
+  return locatedInClientBundle(
+    found.length === 1 ? found[0] : undefined,
+    `${what} (found ${found.length}, expected exactly one)`,
+  );
+}
+
+function bundledClient(bundle: SourceFile) {
+  const classes = bundle.getDescendantsOfKind(SyntaxKind.ClassExpression);
+  const assignedTo = (binding: string): ClassExpression =>
+    onlyOneInClientBundle(
+      classes.filter(
+        (candidate) =>
+          candidate.getParentIfKind(SyntaxKind.BinaryExpression)?.getLeft().getText() === binding,
+      ),
+      `the class assigned to ${binding}`,
+    );
+  const constructedIn = (scope: Node | undefined, what: string): ClassExpression =>
+    assignedTo(
+      locatedInClientBundle(
+        scope?.getFirstDescendantByKind(SyntaxKind.NewExpression)?.getExpression().getText(),
+        what,
+      ),
+    );
+  const typeDispatch = onlyOneInClientBundle(
+    bundle
+      .getDescendantsOfKind(SyntaxKind.CallExpression)
+      .filter(
+        (call) =>
+          call.getExpressionIfKind(SyntaxKind.PropertyAccessExpression)?.getName() ===
+          'registerObjectFactories',
+      ),
+    'the registerObjectFactories call that maps each type name the client connection receives to the class it constructs',
+  )
+    .getArguments()
+    .at(0)
+    ?.asKind(SyntaxKind.ObjectLiteralExpression);
+  const dispatched = (type: string): ClassExpression =>
+    constructedIn(
+      typeDispatch?.getProperty(type),
+      `the class the client connection constructs for a ${type}`,
+    );
+  const prototypeMethods = (declaration: ClassExpression): ReadonlySet<string> => {
+    const base = declaration.getExtends()?.getExpression().getText();
+    return new Set([
+      ...declaration.getInstanceMethods().map((method) => method.getName()),
+      ...(base === undefined ? [] : prototypeMethods(assignedTo(base))),
+    ]);
+  };
+  const eventsModule = onlyOneInClientBundle(
+    bundle
+      .getDescendantsOfKind(SyntaxKind.MethodDeclaration)
+      .filter(
+        (init) =>
+          init.getNameNode().asKind(SyntaxKind.StringLiteral)?.getLiteralText() ===
+          PLAYWRIGHT_CLIENT_EVENTS_MODULE,
+      ),
+    `the module initializer for ${PLAYWRIGHT_CLIENT_EVENTS_MODULE}`,
+  );
+  const eventsTable = onlyOneInClientBundle(
+    eventsModule
+      .getDescendantsOfKind(SyntaxKind.ObjectLiteralExpression)
+      .filter((table) => table.getParentIfKind(SyntaxKind.BinaryExpression) !== undefined),
+    `the Events table ${PLAYWRIGHT_CLIENT_EVENTS_MODULE} assigns`,
+  );
+  const emitted = (owner: string): string[] =>
+    locatedInClientBundle(
+      eventsTable
+        .getProperty(owner)
+        ?.asKind(SyntaxKind.PropertyAssignment)
+        ?.getInitializerIfKind(SyntaxKind.ObjectLiteralExpression),
+      `the ${owner} entry of the client Events table`,
+    )
+      .getProperties()
+      .map((event) =>
+        locatedInClientBundle(
+          event
+            .asKind(SyntaxKind.PropertyAssignment)
+            ?.getInitializerIfKind(SyntaxKind.StringLiteral),
+          `a literal name for each ${owner} event of the client Events table`,
+        ).getLiteralText(),
+      );
+  return {
+    members: {
+      Browser: prototypeMethods(dispatched('Browser')),
+      BrowserContext: prototypeMethods(dispatched('BrowserContext')),
+      Page: prototypeMethods(dispatched('Page')),
+      Locator: prototypeMethods(
+        constructedIn(
+          dispatched('Frame').getInstanceMethod('locator'),
+          'the class the client Frame#locator constructs',
+        ),
+      ),
+      Request: prototypeMethods(dispatched('Request')),
+      Response: prototypeMethods(dispatched('Response')),
+    },
+    pageEvents: emitted('Page'),
+    contextEvents: emitted('BrowserContext'),
+  };
+}
+
+function clientSurfaceInBoth(
+  declarations: SourceFile,
+  runtime: ReturnType<typeof bundledClient>,
+): Omit<PlaywrightClientSurface, 'version'> {
+  const declared = (owner: FakeOwner) => declarations.getInterface(owner);
+  const declaredAndAtRuntime = (owner: FakeOwner): ReadonlySet<string> | undefined => {
+    const declaredMembers = declaredMethods(declared(owner));
+    return declaredMembers === undefined
+      ? undefined
+      : new Set([...runtime.members[owner]].filter((member) => declaredMembers.has(member)));
+  };
+  return {
+    members: {
+      Browser: declaredAndAtRuntime('Browser'),
+      BrowserContext: declaredAndAtRuntime('BrowserContext'),
+      Page: declaredAndAtRuntime('Page'),
+      Locator: declaredAndAtRuntime('Locator'),
+      Request: declaredAndAtRuntime('Request'),
+      Response: declaredAndAtRuntime('Response'),
+    },
+    pageEvents: declaredEvents(declared('Page')).filter((event) =>
+      runtime.pageEvents.includes(event),
+    ),
+    contextEvents: declaredEvents(declared('BrowserContext')).filter((event) =>
+      runtime.contextEvents.includes(event),
+    ),
+  };
+}
+
+let cachedClientSurface: PlaywrightClientSurface | undefined;
+
 function playwrightClientSurface(): PlaywrightClientSurface {
+  if (cachedClientSurface !== undefined) return cachedClientSurface;
   const fromHere = createRequire(import.meta.url);
   const fromPlaywrightTest = createRequire(fromHere.resolve('@playwright/test'));
   const fromPlaywright = createRequire(fromPlaywrightTest.resolve('playwright/package.json'));
   const corePackageJson = fromPlaywright.resolve('playwright-core/package.json');
-  const fromCore = createRequire(corePackageJson);
-  const load = (path: string): Record<string, unknown> => {
+  const project = new Project({
+    skipFileDependencyResolution: true,
+    skipLoadingLibFiles: true,
+    skipAddingFilesFromTsConfig: true,
+  });
+  const clientSource = (describes: string, locate: () => string): SourceFile => {
     try {
-      return fromCore(path) as Record<string, unknown>;
+      return project.addSourceFileAtPath(locate());
     } catch (err) {
       throw new Error(
-        `the fake first-load page's drift canary reads playwright-core's client module ${path}, which the resolved playwright-core no longer ships at that path. Re-verify the fake against this release and move the path, or replace the canary`,
+        `the fake first-load page's drift canary reads playwright-core's ${describes}, which the resolved playwright-core no longer ships at that path. Re-verify the fake against this release and move the path, or replace the canary`,
         { cause: err },
       );
     }
   };
-  const prototypeOf = (value: unknown): object | undefined =>
-    typeof value === 'function' ? (value as { prototype: object }).prototype : undefined;
-  const events = load(PLAYWRIGHT_CLIENT_MODULES.events).Events as
-    | { Page?: Record<string, string>; BrowserContext?: Record<string, string> }
-    | undefined;
-  const network = load(PLAYWRIGHT_CLIENT_MODULES.network);
-  return {
+  const declarations = clientSource(
+    `public client declarations ${PLAYWRIGHT_CLIENT_DECLARATIONS}`,
+    () => join(dirname(corePackageJson), PLAYWRIGHT_CLIENT_DECLARATIONS),
+  );
+  const runtime = bundledClient(
+    clientSource(`bundled client code ${PLAYWRIGHT_CLIENT_BUNDLE}`, () =>
+      fromPlaywright.resolve(PLAYWRIGHT_CLIENT_BUNDLE),
+    ),
+  );
+  cachedClientSurface = {
     version: resolvedPackageVersion(corePackageJson),
-    prototypes: {
-      Browser: prototypeOf(load(PLAYWRIGHT_CLIENT_MODULES.Browser).Browser),
-      BrowserContext: prototypeOf(load(PLAYWRIGHT_CLIENT_MODULES.BrowserContext).BrowserContext),
-      Page: prototypeOf(load(PLAYWRIGHT_CLIENT_MODULES.Page).Page),
-      Locator: prototypeOf(load(PLAYWRIGHT_CLIENT_MODULES.Locator).Locator),
-      Request: prototypeOf(network.Request),
-      Response: prototypeOf(network.Response),
-    },
-    pageEvents: Object.values(events?.Page ?? {}),
-    contextEvents: Object.values(events?.BrowserContext ?? {}),
+    ...clientSurfaceInBoth(declarations, runtime),
   };
+  return cachedClientSurface;
 }
 
 function unmatchedFakeMembers(
-  prototypes: Partial<Record<string, object>>,
+  declaredMembers: Partial<Record<string, ReadonlySet<string>>>,
   modelledMembers: Readonly<Record<string, readonly string[]>>,
 ): string[] {
   const unmatched: string[] = [];
   for (const [owner, members] of Object.entries(modelledMembers)) {
-    const prototype = prototypes[owner] as Record<string, unknown> | undefined;
     for (const member of members) {
-      if (typeof prototype?.[member] !== 'function') unmatched.push(`${owner}#${member}`);
+      if (declaredMembers[owner]?.has(member) !== true) unmatched.push(`${owner}#${member}`);
     }
   }
   return unmatched;
@@ -3709,21 +4046,21 @@ describe('worker-server fixture first-load warmup liveness', () => {
     const client = playwrightClientSurface();
     expect(
       client.version,
-      `the client modules this canary reads ship in the playwright-core the worker-internals pin names, so a release that moves them is caught by the same re-verification`,
+      `the client code and declarations this canary reads ship in the playwright-core the worker-internals pin names, so a release that moves them is caught by the same re-verification`,
     ).toBe(PLAYWRIGHT_WORKER_INTERNALS_VERIFIED_AT);
 
     expect(
-      unmatchedFakeMembers(client.prototypes, FAKE_MODELLED_MEMBERS),
-      'every member the fake exposes must exist on the real playwright client class it stands in for, or a warmup written against the fake calls something production does not have',
+      unmatchedFakeMembers(client.members, FAKE_MODELLED_MEMBERS),
+      `every member the fake exposes must be a method of the class the installed playwright client constructs for it at runtime, read from ${PLAYWRIGHT_CLIENT_BUNDLE}, and be declared on its public interface in ${PLAYWRIGHT_CLIENT_DECLARATIONS}, or a warmup written against the fake calls something production does not have`,
     ).toEqual([]);
     expect(
       unmatchedFakeEvents(client.pageEvents, FAKE_PAGE_EVENTS),
-      'every page event the fake emits must be one the real Page emits, or a progress watcher keyed on it would hear the fake and never production',
+      `every page event the fake emits must be one the installed playwright client's Events table lists for Page in ${PLAYWRIGHT_CLIENT_BUNDLE} and one its public Page interface declares in ${PLAYWRIGHT_CLIENT_DECLARATIONS}, or a progress watcher keyed on it would hear the fake and never production`,
     ).toEqual([]);
     expect(unmatchedFakeEvents(client.contextEvents, FAKE_CONTEXT_EVENTS)).toEqual([]);
 
     expect(
-      unmatchedFakeMembers(client.prototypes, {
+      unmatchedFakeMembers(client.members, {
         Page: [...FAKE_MODELLED_MEMBERS.Page, PLANTED_UNREAL_MEMBER],
       }),
       'the must-fire control: a member the real Page lacks is named rather than admitted',
@@ -3736,6 +4073,52 @@ describe('worker-server fixture first-load warmup liveness', () => {
       unmatchedFakeEvents(client.pageEvents, [PLANTED_UNREAL_EVENT]),
       'the must-fire control: an event the real Page never emits is named rather than admitted',
     ).toEqual([PLANTED_UNREAL_EVENT]);
+  });
+
+  test('the client surface keeps a member or event only when the declarations and the bundled client both have it', () => {
+    const surface = clientSurfaceInBoth(
+      new Project({ useInMemoryFileSystem: true, skipLoadingLibFiles: true }).createSourceFile(
+        '/planted-types.d.ts',
+        [
+          'export interface Browser {}',
+          'export interface BrowserContext {',
+          "  on(event: 'page', listener: () => void): this;",
+          "  on(event: 'declaredonly', listener: () => void): this;",
+          '}',
+          'export interface Page {',
+          '  goto(url: string): Promise<null>;',
+          '  declaredOnly(): void;',
+          "  on(event: 'load', listener: () => void): this;",
+          "  on(event: 'declaredonly', listener: () => void): this;",
+          '}',
+          'export interface Locator {}',
+          'export interface Request {}',
+          'export interface Response {}',
+        ].join('\n'),
+      ),
+      {
+        members: {
+          Browser: new Set(),
+          BrowserContext: new Set(),
+          Page: new Set(['goto', 'runtimeOnly']),
+          Locator: new Set(),
+          Request: new Set(),
+          Response: new Set(),
+        },
+        pageEvents: ['load', 'runtimeonly'],
+        contextEvents: ['page', 'runtimeonly'],
+      },
+    );
+
+    expect(
+      unmatchedFakeMembers(surface.members, { Page: ['goto', 'declaredOnly', 'runtimeOnly'] }),
+    ).toEqual(['Page#declaredOnly', 'Page#runtimeOnly']);
+    expect(
+      unmatchedFakeEvents(surface.pageEvents, ['load', 'declaredonly', 'runtimeonly']),
+    ).toEqual(['declaredonly', 'runtimeonly']);
+    expect(
+      unmatchedFakeEvents(surface.contextEvents, ['page', 'declaredonly', 'runtimeonly']),
+    ).toEqual(['declaredonly', 'runtimeonly']);
   });
 
   test('the fake first-load page honours a navigation bound while the load it bounds keeps running behind it', async () => {

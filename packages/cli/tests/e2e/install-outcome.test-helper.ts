@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import type { Reporter } from 'vitest/reporters';
+import type { Reporter } from 'vitest/node';
 import { z } from 'zod';
 
 const unavailable = z.object({

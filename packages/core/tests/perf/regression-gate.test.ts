@@ -411,7 +411,7 @@ describe('committed baseline.json as the gate substrate', () => {
     expect(baseline.capturedUnder).toEqual({ runtime: 'bun@1.3.11', testRunner: 'bun test' });
     expect(baseline.targetToolchain).toEqual({
       runtime: 'node@24.19.0',
-      testRunner: 'vitest@4.1.10',
+      testRunner: 'vitest@5.0.3',
     });
     expect(baselineResultsToolchain(baseline)?.runtime).toBe('bun@1.3.11');
   });

@@ -1,5 +1,8 @@
 import { execFile } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { NetConnectBlockedError } from './no-net-connect';
@@ -37,6 +40,7 @@ type FixtureResult = {
   signal: NodeJS.Signals | null;
   stdout: string;
   stderr: string;
+  report: string | null;
 };
 
 type FixtureRun = {
@@ -44,8 +48,21 @@ type FixtureRun = {
   reporter?: 'json' | 'default';
 };
 
+function readReport(reportPath: string): string | null {
+  try {
+    return readFileSync(reportPath, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  } finally {
+    rmSync(reportPath, { force: true });
+  }
+}
+
 function runFixture(testNamePattern: string, run: FixtureRun = {}): Promise<FixtureResult> {
-  return new Promise((resolveResult) => {
+  const reporter = run.reporter ?? 'json';
+  const reportPath = join(tmpdir(), `ok-no-net-connect-fixture-${randomUUID()}.json`);
+  return new Promise((resolveResult, rejectResult) => {
     execFile(
       process.execPath,
       [
@@ -55,7 +72,8 @@ function runFixture(testNamePattern: string, run: FixtureRun = {}): Promise<Fixt
         FIXTURE_CONFIG,
         '--testNamePattern',
         testNamePattern,
-        `--reporter=${run.reporter ?? 'json'}`,
+        `--reporter=${reporter}`,
+        ...(reporter === 'json' ? [`--outputFile.json=${reportPath}`] : []),
         '--no-color',
       ],
       {
@@ -70,13 +88,22 @@ function runFixture(testNamePattern: string, run: FixtureRun = {}): Promise<Fixt
         timeout: FIXTURE_TIMEOUT_MS,
       },
       (error, stdout, stderr) => {
-        resolveResult({
-          exitCode: error?.code ?? 0,
-          killed: error?.killed ?? false,
-          signal: error?.signal ?? null,
-          stdout,
-          stderr,
-        });
+        try {
+          resolveResult({
+            exitCode: error?.code ?? 0,
+            killed: error?.killed ?? false,
+            signal: error?.signal ?? null,
+            stdout,
+            stderr,
+            report: reporter === 'json' ? readReport(reportPath) : null,
+          });
+        } catch (readError) {
+          rejectResult(
+            new Error(`Vitest fixture report ${reportPath} could not be read\n${stderr}`, {
+              cause: readError,
+            }),
+          );
+        }
       },
     );
   });
@@ -100,10 +127,13 @@ function assertLaunched(
 
 function parseReport(result: FixtureResult): VitestJsonReport {
   assertLaunched(result);
+  if (result.report === null) {
+    throw new Error(`Vitest fixture wrote no JSON report\n${result.stdout}\n${result.stderr}`);
+  }
   try {
-    return JSON.parse(result.stdout) as VitestJsonReport;
+    return JSON.parse(result.report) as VitestJsonReport;
   } catch (error) {
-    throw new Error(`Vitest fixture returned invalid JSON\n${result.stdout}\n${result.stderr}`, {
+    throw new Error(`Vitest fixture returned invalid JSON\n${result.report}\n${result.stderr}`, {
       cause: error,
     });
   }

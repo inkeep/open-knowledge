@@ -1559,6 +1559,11 @@ Homepage: https://github.com/jridgewell/sourcemaps/tree/main/packages/sourcemap-
 
 Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
 
+### `@jridgewell/sourcemap-codec@1.6.0`
+Homepage: https://github.com/jridgewell/sourcemaps/tree/main/packages/sourcemap-codec
+
+Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
+
 ### `@jridgewell/trace-mapping@0.3.31`
 Homepage: https://github.com/jridgewell/sourcemaps/tree/main/packages/trace-mapping
 

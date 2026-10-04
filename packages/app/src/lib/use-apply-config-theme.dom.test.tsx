@@ -26,7 +26,6 @@ function dispatchCrossWindowStorage(newValue: string) {
 
 describe('useApplyConfigTheme — cross-window flicker guard', () => {
   beforeEach(() => {
-    (globalThis as { localStorage?: Storage }).localStorage = window.localStorage;
     window.localStorage.clear();
     document.documentElement.className = '';
   });
