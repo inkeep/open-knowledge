@@ -290,10 +290,14 @@ jobs:
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - name: Hash the lockfile for the pnpm store key
+        id: lockfile
+        shell: bash
+        run: echo "hash=${{ hashFiles('pnpm-lock.yaml') }}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-ok-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-ok-pnpm-store-${{ steps.lockfile.outputs.hash }}
           restore-keys: |
             ${{ runner.os }}-ok-pnpm-store-
 
@@ -556,10 +560,14 @@ jobs:
       - name: Get pnpm store directory
         shell: bash
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - name: Hash the lockfile for the pnpm store key
+        id: lockfile
+        shell: bash
+        run: echo "hash=${{ hashFiles('pnpm-lock.yaml') }}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-ok-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-ok-pnpm-store-${{ steps.lockfile.outputs.hash }}
           restore-keys: |
             ${{ runner.os }}-ok-pnpm-store-
 
@@ -1057,10 +1065,14 @@ jobs:
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - name: Hash the lockfile for the pnpm store key
+        id: lockfile
+        shell: bash
+        run: echo "hash=${{ hashFiles('pnpm-lock.yaml') }}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-ok-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-ok-pnpm-store-${{ steps.lockfile.outputs.hash }}
           restore-keys: |
             ${{ runner.os }}-ok-pnpm-store-
 
@@ -1399,6 +1411,10 @@ jobs:
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - name: Hash the lockfile for the pnpm store key
+        id: lockfile
+        shell: bash
+        run: echo "hash=${{ hashFiles('pnpm-lock.yaml') }}" >> "$GITHUB_OUTPUT"
       # `runner.arch` is part of the key: both Linux cells report
       # `runner.os == 'Linux'`, and a store populated on x64 carries none of the
       # arm64 prebuilds (and vice versa), so a shared key would thrash the cache
@@ -1406,7 +1422,7 @@ jobs:
       - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-${{ runner.arch }}-ok-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-ok-pnpm-store-${{ steps.lockfile.outputs.hash }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-ok-pnpm-store-
 
