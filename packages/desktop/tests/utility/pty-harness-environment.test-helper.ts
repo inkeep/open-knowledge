@@ -1,5 +1,7 @@
+import { EventEmitter } from 'node:events';
 import { readFileSync, rmSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { vi } from 'vitest';
 import type { PtyProcessLike, SpawnPty } from '../../src/utility/pty-host.ts';
 
@@ -33,18 +35,27 @@ export interface ControlledHarnessOptions {
     | 'posix-unstable-quiet';
   launchReadiness?: 'advancing' | 'stuck' | 'dead';
   budgetOverride?: string;
+  silentAt?: 'initial-input' | 'environment-input' | 'launch-token' | 'command-output';
+  queryMode?: 'delayed-invalid';
 }
 
 export interface ControlledHarnessResult {
   exitCode: Parameters<typeof process.exit>[0];
   lines: string[];
-  events: Array<{ shell: number; event: string; at: number }>;
+  events: Array<{ shell: number; event: string; at: number; trace?: Record<string, unknown> }>;
+  traceEvents: Record<string, unknown>[];
+  delayedQuery?: { traceBeforeDelivery: string; linesBeforeDelivery: string };
 }
 
 export async function runControlledHarness(
   options: ControlledHarnessOptions,
 ): Promise<ControlledHarnessResult> {
-  const result: ControlledHarnessResult = { exitCode: undefined, lines: [], events: [] };
+  const result: ControlledHarnessResult = {
+    exitCode: undefined,
+    lines: [],
+    events: [],
+    traceEvents: [],
+  };
   const dirs: string[] = [];
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
@@ -55,8 +66,14 @@ export async function runControlledHarness(
     options.lifecycle ??
     (options.phase === 'delayed-exit' ? { launchAtMs: 44_000, exitAfterKillMs: 1_800 } : undefined);
   let shellCount = 0;
-  const record = (shell: number, event: string): void => {
-    result.events.push({ shell, event, at: performance.now() });
+  const delayedQuery = { release: undefined as (() => void) | undefined };
+  const record = (shell: number, event: string, trace?: Record<string, unknown>): void => {
+    result.events.push({
+      shell,
+      event,
+      at: performance.now(),
+      ...(trace === undefined ? {} : { trace }),
+    });
   };
   const spawn: SpawnPty = (file, args, spawnOptions): PtyProcessLike => {
     if (file.includes('no-such-shell-xyz')) throw new Error('file not found');
@@ -128,7 +145,10 @@ export async function runControlledHarness(
         progressingUntil(84_000, 500, '\u001b[?1004h');
       } else {
         for (const when of [1_000, 8_000, 15_000, 22_000]) {
-          later(when, () => emit('PowerShell startup\r\n'));
+          later(when, () => {
+            record(shell, 'launch-startup-output');
+            emit('PowerShell startup\r\n');
+          });
         }
         if (options.phase === 'launch-after-grant') {
           for (const when of [24_000, 25_000]) at(when, () => emit('PowerShell startup\r\n'));
@@ -139,10 +159,12 @@ export async function runControlledHarness(
           }
         }
         const launchAt = lifecycle?.launchAtMs ?? 23_000;
-        at(options.phase === 'launch-after-grant' ? 26_000 : launchAt, () => {
-          record(shell, 'launch-token');
-          emit(`${spawnOptions.env.OK_HARNESS_LAUNCH_TOKEN}\r\nPS C:\\project> `);
-        });
+        if (options.silentAt !== 'launch-token') {
+          at(options.phase === 'launch-after-grant' ? 26_000 : launchAt, () => {
+            record(shell, 'launch-token');
+            emit(`${spawnOptions.env.OK_HARNESS_LAUNCH_TOKEN}\r\nPS C:\\project> `);
+          });
+        }
       }
     } else {
       if (platform === 'linux' && shell === 1 && options.phase === 'posix-late-quiet') {
@@ -174,6 +196,17 @@ export async function runControlledHarness(
             : /^echo (.*)_\$\(\((\d+)\*(\d+)\)\)_(.*)$/u.exec(command);
         if (arithmetic !== null) {
           const output = `${arithmetic[1]}_${Number(arithmetic[2]) * Number(arithmetic[3])}_${arithmetic[4]}\r\n`;
+          if (
+            (shell === 1 && options.silentAt === 'initial-input') ||
+            (shell === 2 && options.silentAt === 'environment-input')
+          ) {
+            record(shell, 'unanswered-readiness-input');
+            return;
+          }
+          if (shell === 1 && arithmetic[1] === 'HARNESS') {
+            record(shell, 'command-input');
+            if (options.silentAt === 'command-output') return;
+          }
           if (launch && arithmetic[1]?.startsWith('OK_INPUT_READY_')) {
             const readiness = options.launchReadiness ?? 'advancing';
             if (readiness === 'dead') {
@@ -337,7 +370,29 @@ export async function runControlledHarness(
         return 'C:\\Program Files\\PowerShell\\7\\pwsh.exe\r\n';
       },
       spawn: () => {
-        throw new Error('controlled harness cannot spawn a native subprocess');
+        record(0, 'query-start');
+        if (options.queryMode !== 'delayed-invalid') {
+          throw new Error('controlled harness cannot spawn a native subprocess');
+        }
+        const stdout = new PassThrough();
+        const stderr = new PassThrough();
+        const child = Object.assign(new EventEmitter(), {
+          pid: 93_421,
+          stdout,
+          stderr,
+          stdin: new PassThrough(),
+          kill() {
+            record(0, 'query-termination-request');
+            return true;
+          },
+        });
+        delayedQuery.release = () => {
+          record(0, 'late-query-output');
+          stdout.end('{"extra":"private shell text"');
+          stderr.end('private fixture stderr');
+          child.emit('close', 1, null);
+        };
+        return child;
       },
     };
   });
@@ -364,6 +419,14 @@ export async function runControlledHarness(
   });
   const log = vi.spyOn(console, 'log').mockImplementation((line: string) => {
     result.lines.push(line);
+    if (line.startsWith('PTY_HOST ')) {
+      const start = line.indexOf('{');
+      if (start >= 0) {
+        const trace = JSON.parse(line.slice(start)) as Record<string, unknown>;
+        result.traceEvents.push(trace);
+        record(0, `trace:${String(trace.stage)}`, trace);
+      }
+    }
   });
   const exit = vi.spyOn(process, 'exit').mockImplementation((code) => {
     result.exitCode = code;
@@ -377,6 +440,13 @@ export async function runControlledHarness(
     Object.defineProperty(process, 'platform', { ...platformDescriptor, value: platform });
     await import('./pty-host.real-io-harness.ts');
     await vi.runAllTimersAsync();
+    if (options.queryMode === 'delayed-invalid' && delayedQuery.release !== undefined) {
+      const traceBeforeDelivery = JSON.stringify(result.traceEvents);
+      const linesBeforeDelivery = JSON.stringify(result.lines);
+      delayedQuery.release();
+      await vi.runAllTimersAsync();
+      result.delayedQuery = { traceBeforeDelivery, linesBeforeDelivery };
+    }
     return result;
   } finally {
     Object.defineProperty(process, 'platform', platformDescriptor);

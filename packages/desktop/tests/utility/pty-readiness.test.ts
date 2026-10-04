@@ -29,6 +29,7 @@ import {
   waitForShellReady,
 } from '../support/pty-readiness.test-helper.ts';
 import {
+  type ControlledHarnessOptions,
   type ControlledHarnessResult,
   runControlledHarness,
 } from './pty-harness-environment.test-helper.ts';
@@ -124,6 +125,176 @@ afterEach(() => {
 });
 
 describe('real harness readiness across sequential scenarios', () => {
+  test.each([
+    {
+      name: 'initial interactive readiness',
+      options: { firstScenario: 'fast', silentAt: 'initial-input' },
+      shell: 1,
+      predecessor: 'unanswered-readiness-input',
+      scenario: 'real command round-trip at project root',
+    },
+    {
+      name: 'env-stripped interactive readiness',
+      options: { firstScenario: 'fast', silentAt: 'environment-input' },
+      shell: 2,
+      predecessor: 'unanswered-readiness-input',
+      scenario: 'strips desktop env markers from the shell',
+    },
+    {
+      name: 'structured launch token',
+      options: { firstScenario: 'fast', silentAt: 'launch-token' },
+      shell: 3,
+      predecessor: 'launch-startup-output',
+      scenario: 'PowerShell executes a structured launch command',
+    },
+    {
+      name: 'post-launch evaluated reply',
+      options: { firstScenario: 'slow', launchReadiness: 'stuck' },
+      shell: 3,
+      predecessor: 'input',
+      scenario: 'PowerShell executes a structured launch command',
+    },
+    {
+      name: 'post-output command marker',
+      options: { firstScenario: 'fast', silentAt: 'command-output' },
+      shell: 1,
+      predecessor: 'command-input',
+      scenario: 'real command round-trip at project root',
+    },
+    {
+      name: 'silent replacement output',
+      options: {
+        firstScenario: 'fast',
+        lifecycle: {
+          launchAtMs: 26_000,
+          exitAfterKillMs: 1_200,
+          replacementOutputAfterCreateMs: null,
+        },
+      },
+      shell: 5,
+      predecessor: 'spawn',
+      scenario: 'host survives a PTY death and respawns',
+    },
+  ] as const)(
+    '$name retains an OS observation in the real harness before release',
+    async ({ options, shell, predecessor, scenario }) => {
+      const result = await runControlledHarness(options as ControlledHarnessOptions);
+      const reached = lifecycleEventIndex(result, shell, predecessor);
+      expect(reached).toBeGreaterThan(-1);
+      if (shell === 5) {
+        expect(reached).toBeGreaterThan(lifecycleEventIndex(result, 4, 'exit:1'));
+      }
+      expect(scenarioVerdicts(result)).toContain(`FAIL ${scenario}`);
+      expect(result.lines.join('\n')).not.toContain('hard timeout during');
+      const failure = result.traceEvents.find(
+        (entry) => entry.stage === 'snapshot' && entry.reason === 'failure',
+      );
+      expect(failure).toEqual(expect.objectContaining({ publicPid: 4_000 + shell }));
+      expect(result.traceEvents).toContainEqual(
+        expect.objectContaining({
+          event: 'pty-host-startup',
+          stage: 'observer-unavailable',
+          traceId: failure?.traceId,
+          attempt: failure?.attempt,
+        }),
+      );
+      const observation = result.traceEvents.find(
+        (entry) =>
+          entry.event === 'pty-host-startup' &&
+          entry.stage === 'os-snapshot' &&
+          entry.traceId === failure?.traceId &&
+          entry.attempt === failure?.attempt,
+      );
+      expect(observation?.observation).toEqual(
+        expect.objectContaining({
+          status: 'unavailable',
+          reason: 'query-start-failed',
+          shell: { status: 'unavailable', reason: 'query-start-failed' },
+          console: { status: 'unavailable', reason: 'query-start-failed' },
+          worker: { status: 'unavailable', reason: 'worker-unavailable' },
+        }),
+      );
+      const observed = result.events.findIndex((entry) => entry.trace === observation);
+      expect(observed).toBeGreaterThan(reached);
+      expect(
+        result.events.findIndex(
+          (entry, index) =>
+            index > reached &&
+            index < observed &&
+            entry.shell === 0 &&
+            entry.event === 'query-start',
+        ),
+      ).toBeGreaterThan(-1);
+      expect(lifecycleEventIndex(result, shell, 'kill-request')).toBeGreaterThan(observed);
+      if (shell === 1 && predecessor === 'unanswered-readiness-input') {
+        const queryStart = lifecycleEventIndex(result, 0, 'query-start');
+        expect(queryStart).toBeGreaterThan(reached);
+        expect(lifecycleEventIndex(result, shell, 'kill-request')).toBeGreaterThan(queryStart);
+      }
+      if (shell === 5) {
+        expect(
+          result.events.filter((entry) => entry.shell === 0 && entry.event === 'query-start'),
+        ).toHaveLength(1);
+      }
+      expect(JSON.stringify(observation)).not.toContain('PowerShell startup');
+      expect(JSON.stringify(observation)).not.toContain(
+        'controlled harness cannot spawn a native subprocess',
+      );
+    },
+  );
+
+  test('a delayed OS query cannot rewrite a released failure attempt', async () => {
+    const result = await runControlledHarness({
+      firstScenario: 'fast',
+      silentAt: 'initial-input',
+      queryMode: 'delayed-invalid',
+    });
+    const sent = lifecycleEventIndex(result, 1, 'unanswered-readiness-input');
+    expect(sent).toBeGreaterThan(-1);
+    expect(scenarioVerdicts(result)).toContain('FAIL real command round-trip at project root');
+    const failure = result.traceEvents.find(
+      (entry) => entry.stage === 'snapshot' && entry.reason === 'failure',
+    );
+    expect(failure).toEqual(expect.objectContaining({ publicPid: 4_001 }));
+    const release = lifecycleEventIndex(result, 1, 'kill-request');
+    expect(release).toBeGreaterThan(sent);
+    const observation = result.traceEvents.find(
+      (entry) =>
+        entry.event === 'pty-host-startup' &&
+        entry.stage === 'os-snapshot' &&
+        entry.traceId === failure?.traceId &&
+        entry.attempt === failure?.attempt,
+    );
+    expect(observation).toEqual(expect.objectContaining({ observation: expect.any(Object) }));
+    expect(lifecycleEventIndex(result, 0, 'query-start')).toBeGreaterThan(sent);
+    expect(lifecycleEventIndex(result, 0, 'late-query-output')).toBeGreaterThan(release);
+    expect(result.delayedQuery).toEqual(
+      expect.objectContaining({
+        traceBeforeDelivery: expect.any(String),
+        linesBeforeDelivery: expect.any(String),
+      }),
+    );
+    expect(result.events.findIndex((entry) => entry.trace === observation)).toBeLessThan(release);
+    expect(JSON.stringify(result.traceEvents)).toBe(result.delayedQuery?.traceBeforeDelivery);
+    expect(JSON.stringify(result.lines)).toBe(result.delayedQuery?.linesBeforeDelivery);
+    expect(scenarioVerdicts(result)).toContain('FAIL real command round-trip at project root');
+    expect(JSON.stringify(result.traceEvents)).not.toContain('private shell text');
+    expect(JSON.stringify(result.traceEvents)).not.toContain('private fixture stderr');
+  });
+
+  test('passing cleanup and spent-budget refusal issue no OS query', async () => {
+    const passing = await runControlledHarness({ firstScenario: 'fast' });
+    expect(passing.lines).toContain('HARNESS_RESULT ok=5 fail=0 refused=0');
+    expect(passing.exitCode).toBe(0);
+    expect(lifecycleEventIndex(passing, 1, 'kill-request')).toBeGreaterThan(-1);
+    expect(passing.events.filter((entry) => entry.event === 'query-start')).toEqual([]);
+
+    const refused = await runControlledHarness({ firstScenario: 'fast', budgetOverride: '1' });
+    expect(refused.lines.filter((line) => line.startsWith('REFUSED '))).toHaveLength(5);
+    expect(refused.lines).toContain('HARNESS_RESULT ok=0 fail=0 refused=5');
+    expect(refused.events.filter((entry) => entry.event === 'query-start')).toEqual([]);
+  });
+
   test('keeps an advancing later shell eligible after an earlier scenario passes slowly', async () => {
     const fast = await runControlledHarness({ firstScenario: 'fast' });
     expect(fast.lines.join('\n')).toContain('HARNESS_RESULT ok=5 fail=0 refused=0');
@@ -597,6 +768,24 @@ describe('real harness readiness across sequential scenarios', () => {
     );
     expect(launchFailure).toContain(REPORT_DEADLINE_BOUND);
     expect(launchFailure).toContain(SHELL_PROGRESS_ADVANCED);
+    const launchToken = lifecycleEventIndex(result, 3, 'launch-token');
+    const queryStart = lifecycleEventIndex(result, 0, 'query-start');
+    const release = lifecycleEventIndex(result, 3, 'kill-request');
+    const failure = result.traceEvents.find(
+      (entry) => entry.stage === 'snapshot' && entry.reason === 'failure',
+    );
+    const observation = result.traceEvents.find(
+      (entry) =>
+        entry.event === 'pty-host-startup' &&
+        entry.stage === 'os-snapshot' &&
+        entry.traceId === failure?.traceId &&
+        entry.attempt === failure?.attempt,
+    );
+    const observed = result.events.findIndex((entry) => entry.trace === observation);
+    expect(queryStart).toBeGreaterThan(launchToken);
+    expect(observation).toEqual(expect.objectContaining({ observation: expect.any(Object) }));
+    expect(observed).toBeGreaterThan(queryStart);
+    expect(release).toBeGreaterThan(observed);
   });
 
   test('refuses every scenario when the run has no admissible grant', async () => {

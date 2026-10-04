@@ -6,6 +6,7 @@ import { isTerminalPlatform } from '../../src/shared/terminal-platform.ts';
 import { harnessTimeouts, runHarness } from '../support/pty-readiness.test-helper.ts';
 import { harnessScenarioTitles } from '../support/real-io-harness-roster.test-helper.ts';
 import { removeTempDirBestEffort } from '../support/temp-dir-cleanup.test-helper.ts';
+import { runWindowsOsStateProof } from '../support/windows-os-state-proof.test-helper.ts';
 
 const HARNESS_TIMEOUTS = harnessTimeouts(process.platform);
 
@@ -45,6 +46,7 @@ describe('PTY host — real shell I/O (Node runtime)', () => {
         expect(failure).toContain('the 1ms harness budget was spent before this scenario started');
         expect(failure).toContain(`HARNESS_RESULT ok=0 fail=0 refused=${SCENARIO_COUNT}`);
         expect(failure).not.toContain('hard timeout');
+        if (process.platform === 'win32') await runWindowsOsStateProof();
       } finally {
         removeTempDirBestEffort(outputDir);
       }
