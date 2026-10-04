@@ -330,6 +330,21 @@ describe('known-reds scanner: CI-keyed skips', () => {
       "const TIMEOUT = process.env.CI ? 60_000 : 5_000;\ntest.skipIf(TIMEOUT > 10_000)('x', () => {});",
       'test',
     ],
+    ["const e = process.env;\ntest.skipIf(e.CI)('x', () => {});", 'test'],
+    ["const { env: e } = process;\ntest.skipIf(e.CI)('x', () => {});", 'test'],
+    ["const { CI } = process.env;\ntest.skipIf(CI)('x', () => {});", 'test'],
+    ["const { GITHUB_ACTIONS: gha } = process.env;\ntest.skipIf(gha)('x', () => {});", 'test'],
+    ["const key = 'CI';\ntest.skipIf(process.env[key])('x', () => {});", 'test'],
+    ["const onCi = () => Boolean(process.env.CI);\ntest.skipIf(onCi())('x', () => {});", 'test'],
+    [
+      "function onCi() { return process.env.CI === 'true'; }\ntest.skipIf(onCi())('x', () => {});",
+      'test',
+    ],
+    ["import ci from 'ci-info';\ntest.skipIf(ci.isCI)('x', () => {});", 'test'],
+    ["import * as ci from 'ci-info';\ntest.skipIf(ci.isCI)('x', () => {});", 'test'],
+    ["import { isCI } from 'ci-info';\ntest.skipIf(isCI)('x', () => {});", 'test'],
+    ["test.skipIf('CI' in process.env)('x', () => {});", 'test'],
+    ["const key = 'GITHUB_ACTIONS';\ntest.skipIf(key in process.env)('x', () => {});", 'test'],
   ])('finds the Vitest skip in %s', (source, scope) => {
     const gates = scanSource('packages/server/src/a.test.ts', source).gates;
     expect(gates.filter((gate) => gate.ci === 'skips-on-ci').map((gate) => gate.scope)).toEqual([
@@ -353,6 +368,22 @@ describe('known-reds scanner: CI-keyed skips', () => {
     "test.skipIf(process.env.CIRCLE)('x', () => {});",
     "test.skipIf({ CI: true }.CI_FLAG)('x', () => {});",
     "test.skipIf(process.platform === 'win32')('x', () => {});",
+    "const e = process.env;\ntest.skipIf(e.OK_LIVE_API)('x', () => {});",
+    "const { HOME } = process.env;\ntest.skipIf(HOME)('x', () => {});",
+    "const key = 'OK_LIVE_API';\ntest.skipIf(process.env[key])('x', () => {});",
+    "const hasDocker = () => process.env.DOCKER_HOST !== undefined;\ntest.skipIf(hasDocker())('x', () => {});",
+    "import ci from 'ci-info';\ntest.skipIf(ci.isPR)('x', () => {});",
+    "import { isCI } from './ci';\ntest.skipIf(isCI)('x', () => {});",
+    "import { isCi } from './env';\ntest.skipIf(isCi())('x', () => {});",
+    "const { ...CI } = process.env;\ntest.skipIf(CI)('x', () => {});",
+    "const { CI } = config;\ntest.skipIf(CI)('x', () => {});",
+    "const { env: e } = config;\ntest.skipIf(e.CI)('x', () => {});",
+    "import ci from './ci';\ntest.skipIf(ci.isCI)('x', () => {});",
+    "import * as ci from './ci';\ntest.skipIf(ci.isCI)('x', () => {});",
+    "const onCi = (flag) => Boolean(process.env.CI);\ntest.skipIf(onCi())('x', () => {});",
+    "function onCi() { return Boolean(process.env.CI); console.log('after'); }\ntest.skipIf(onCi())('x', () => {});",
+    "test.skipIf('OK_LIVE_API' in process.env)('x', () => {});",
+    "test.skipIf('CI' in flags)('x', () => {});",
   ])('lists %s as an environment gate', (source) => {
     const gates = scanSource('packages/server/src/a.test.ts', source).gates;
     expect(gates.map((gate) => gate.ci)).toEqual([null]);
@@ -432,7 +463,7 @@ describe('known-reds feed: gate atoms and title chains', () => {
     ],
     [
       "test.skipIf(hasDocker())('x', () => {});",
-      [{ kind: 'runtime', name: 'hasDocker()', text: 'hasDocker()' }],
+      [{ kind: 'unknown', name: 'hasDocker()', text: 'hasDocker()' }],
     ],
     [
       "import * as os from 'node:os';\ntest.skipIf(os.type() === 'Windows_NT')('x', () => {});",
@@ -482,6 +513,92 @@ describe('known-reds feed: gate atoms and title chains', () => {
       [{ kind: 'env', name: 'OK_FLAG', text: "env.OK_FLAG === '1'" }],
     ],
     ["test.skipIf(IS_CI)('x', () => {});", [{ kind: 'ci', name: 'IS_CI', text: 'IS_CI' }]],
+    [
+      "test.skipIf(process.geteuid?.() === 0)('x', () => {});",
+      [{ kind: 'uid', name: 'process.geteuid', text: 'process.geteuid?.() === 0' }],
+    ],
+    [
+      "import { isTerminalPlatform } from './p';\ntest.skipIf(isTerminalPlatform(process.platform))('x', () => {});",
+      [
+        {
+          kind: 'unknown',
+          name: 'isTerminalPlatform(process.platform)',
+          text: 'isTerminalPlatform(process.platform)',
+        },
+        { kind: 'platform', name: 'process.platform', text: 'process.platform' },
+      ],
+    ],
+    [
+      "const { CI } = process.env;\ntest.skipIf(CI)('x', () => {});",
+      [{ kind: 'ci', name: 'CI', text: 'CI' }],
+    ],
+    [
+      "const e = process.env;\ntest.skipIf(e.OK_LIVE_API)('x', () => {});",
+      [{ kind: 'env', name: 'OK_LIVE_API', text: 'e.OK_LIVE_API' }],
+    ],
+    [
+      "const { platform } = process;\ntest.skipIf(platform === 'win32')('x', () => {});",
+      [{ kind: 'platform', name: 'process.platform', text: "platform === 'win32'" }],
+    ],
+    [
+      "import ci from 'ci-info';\ntest.skipIf(ci.isCI)('x', () => {});",
+      [{ kind: 'ci', name: 'ci-info', text: 'ci.isCI' }],
+    ],
+    [
+      "const onCi = () => Boolean(process.env.CI);\ntest.skipIf(onCi())('x', () => {});",
+      [{ kind: 'ci', name: 'CI', text: 'process.env.CI' }],
+    ],
+    [
+      "import { isCi } from './env';\ntest.skipIf(isCi())('x', () => {});",
+      [{ kind: 'unknown', name: 'isCi()', text: 'isCi()' }],
+    ],
+    [
+      "const onCi = (name) => Boolean(process.env[name]);\ntest.skipIf(onCi('CI'))('x', () => {});",
+      [{ kind: 'unknown', name: "onCi('CI')", text: "onCi('CI')" }],
+    ],
+    [
+      "test.skipIf(!process.env.OK_PACKAGE_DIR?.trim())('x', () => {});",
+      [
+        {
+          kind: 'unknown',
+          name: 'process.env.OK_PACKAGE_DIR?.trim()',
+          text: 'process.env.OK_PACKAGE_DIR?.trim()',
+        },
+        { kind: 'env', name: 'OK_PACKAGE_DIR', text: 'process.env.OK_PACKAGE_DIR' },
+      ],
+    ],
+    [
+      "test.skipIf(process.getegid?.() === 0)('x', () => {});",
+      [{ kind: 'uid', name: 'process.getegid', text: 'process.getegid?.() === 0' }],
+    ],
+    [
+      "const key = 'OK_LIVE_API';\ntest.skipIf(process.env[key] === '1')('x', () => {});",
+      [{ kind: 'env', name: 'OK_LIVE_API', text: "process.env[key] === '1'" }],
+    ],
+    [
+      "import { isCI } from 'ci-info';\ntest.skipIf(isCI)('x', () => {});",
+      [{ kind: 'ci', name: 'ci-info', text: 'isCI' }],
+    ],
+    [
+      "const key = 'CI';\ntest.skipIf(key in process.env)('x', () => {});",
+      [{ kind: 'ci', name: 'CI', text: 'key in process.env' }],
+    ],
+    [
+      "const { ...rest } = process.env;\ntest.skipIf(rest)('x', () => {});",
+      [{ kind: 'unknown', name: 'rest', text: 'rest' }],
+    ],
+    [
+      "const { ...platform } = process;\ntest.skipIf(platform)('x', () => {});",
+      [{ kind: 'unknown', name: 'platform', text: 'platform' }],
+    ],
+    [
+      "const { env: { CI } } = process;\ntest.skipIf(CI)('x', () => {});",
+      [{ kind: 'unknown', name: 'CI', text: 'CI' }],
+    ],
+    [
+      "function onCi() { const v = process.env.CI; return Boolean(v); }\ntest.skipIf(onCi())('x', () => {});",
+      [{ kind: 'unknown', name: 'onCi()', text: 'onCi()' }],
+    ],
   ])('reads the atoms of %s', (source, atoms) => {
     expect(atomsOf(source)).toEqual([atoms]);
   });
@@ -510,7 +627,7 @@ describe('known-reds feed: gate atoms and title chains', () => {
       '});',
     ].join('\n');
     expect(atomsOf(source)).toEqual([
-      [{ kind: 'runtime', name: 'localProbe()', text: 'localProbe()' }],
+      [{ kind: 'unknown', name: 'localProbe()', text: 'localProbe()' }],
     ]);
   });
 
@@ -552,7 +669,7 @@ describe('known-reds feed: gate atoms and title chains', () => {
       '});',
     ].join('\n');
     expect(atomsOf(source)).toEqual([
-      [{ kind: 'runtime', name: 'platform', text: "platform === 'win32'" }],
+      [{ kind: 'unknown', name: 'platform', text: "platform === 'win32'" }],
     ]);
   });
 
@@ -615,7 +732,7 @@ describe('known-reds feed: gate atoms and title chains', () => {
     ].join('\n');
     const { gates, earlyReturns } = scanSource('packages/server/src/a.test.ts', source);
     expect(gates.map(({ ci, atoms }) => ({ ci, atoms }))).toEqual([
-      { ci: null, atoms: [{ kind: 'runtime', name: 'capability()', text: 'capability()' }] },
+      { ci: null, atoms: [{ kind: 'unknown', name: 'capability()', text: 'capability()' }] },
     ]);
     expect(earlyReturns.map(({ line, condition }) => ({ line, condition }))).toEqual([
       { line: 8, condition: 'FLAG' },
@@ -635,7 +752,7 @@ describe('known-reds feed: gate atoms and title chains', () => {
       ].join('\n');
       const { gates } = scanSource('packages/server/src/a.test.ts', source);
       expect(gates.map(({ ci, atoms }) => ({ ci, atoms }))).toEqual([
-        { ci: null, atoms: [{ kind: 'runtime', name: 'FLAG', text: 'FLAG' }] },
+        { ci: null, atoms: [{ kind: 'unknown', name: 'FLAG', text: 'FLAG' }] },
       ]);
     },
   );
@@ -659,7 +776,7 @@ describe('known-reds feed: gate atoms and title chains', () => {
     const source = `const FLAG = process.env.CI;\n${body}`;
     const { gates } = scanSource('packages/server/src/a.test.ts', source);
     expect(gates.map(({ ci, atoms }) => ({ ci, atoms }))).toEqual([
-      { ci: null, atoms: [{ kind: 'runtime', name: 'FLAG', text: 'FLAG' }] },
+      { ci: null, atoms: [{ kind: 'unknown', name: 'FLAG', text: 'FLAG' }] },
     ]);
   });
 
@@ -694,7 +811,8 @@ describe('known-reds feed: gate atoms and title chains', () => {
     ].join('\n');
     const { gates, earlyReturns } = scanSource('packages/server/src/a.test.ts', source);
     expect(gates[0].ci).toBeNull();
-    expect(gates[0].atoms).toEqual([{ kind: 'runtime', name: condition, text: condition }]);
+    expect(gates[0].atoms).toContainEqual({ kind: 'unknown', name: condition, text: condition });
+    expect(gates[0].atoms.every((atom) => atom.kind === 'unknown')).toBe(true);
     expect(earlyReturns).toEqual([]);
   });
 
@@ -714,7 +832,7 @@ describe('known-reds feed: gate atoms and title chains', () => {
     ].join('\n');
     const { gates, earlyReturns } = scanSource('packages/server/src/a.test.ts', source);
     expect(gates.map(({ ci, atoms }) => ({ ci, atoms }))).toEqual([
-      { ci: null, atoms: [{ kind: 'runtime', name: 'FIRST', text: 'FIRST' }] },
+      { ci: null, atoms: [{ kind: 'unknown', name: 'FIRST', text: 'FIRST' }] },
       { ci: 'skips-on-ci', atoms: [{ kind: 'ci', name: 'CI', text: 'process.env.CI' }] },
     ]);
     expect(earlyReturns.map(({ condition }) => condition)).toEqual(['A']);
@@ -784,6 +902,8 @@ describe('known-reds scanner: early returns and not-run tests', () => {
     "import os from 'node:os';\ntest('x', () => { if (os.platform() !== 'darwin') return; expect(1).toBe(1); });",
     "test('x', () => { if (process.env.OK_AUDIT === '1') { report(); return; } expect(1).toBe(1); });",
     "describe('x', () => { const isWin = process.platform === 'win32'; test('y', () => { if (isWin) return; expect(1).toBe(1); }); });",
+    "const { OK_LIVE_API } = process.env;\ntest('x', () => { if (!OK_LIVE_API) return; expect(1).toBe(1); });",
+    "const { platform } = process;\ntest('x', () => { if (platform === 'win32') return; expect(1).toBe(1); });",
   ])('flags the environment early return in %s', (source) => {
     expect(scanSource('packages/server/src/a.test.ts', source).earlyReturns).toHaveLength(1);
   });
@@ -796,8 +916,22 @@ describe('known-reds scanner: early returns and not-run tests', () => {
     "test('x', () => { if (process.platform === 'win32') return promise; expect(1).toBe(1); });",
     "test('x', (ctx) => { if (process.platform === 'win32') { ctx.skip(); return; } expect(1).toBe(1); });",
     "describe('x', () => { if (process.platform === 'win32') return; test('y', () => { expect(1).toBe(1); }); });",
+    "const { value } = config;\ntest('x', () => { if (!value) return; expect(1).toBe(1); });",
+    "const { platform } = opts;\ntest('x', () => { if (platform === 'win32') return; expect(1).toBe(1); });",
+    "const { argv } = process;\ntest('x', () => { if (!argv) return; expect(1).toBe(1); });",
   ])('leaves %s alone', (source) => {
     expect(scanSource('packages/server/src/a.test.ts', source).earlyReturns).toEqual([]);
+  });
+
+  test.each([
+    ["function f() { return f(); }\ntest.skipIf(f())('x', () => {});", 'f()'],
+    ["const a = b;\nconst b = a;\ntest.skipIf(process.env[a])('x', () => {});", null],
+    ["const e = f;\nconst f = e;\ntest.skipIf(e.CI)('x', () => {});", null],
+  ])('terminates on the cyclic declarations in %s', (source, unknownName) => {
+    const [gate] = scanSource('packages/server/src/a.test.ts', source).gates;
+    expect(gate.ci).toBeNull();
+    if (unknownName !== null)
+      expect(gate.atoms).toContainEqual({ kind: 'unknown', name: unknownName, text: unknownName });
   });
 
   test('flags a Playwright early return too', () => {
@@ -954,6 +1088,60 @@ describe('known-reds validation', () => {
         '  allowlisted CI skip  d.test.ts  owner known-reds, until 2026-10-02',
       ].join('\n'),
     );
+  });
+
+  test('the listing counts gates it cannot read, and lists them with --all', () => {
+    const unread = { kind: 'unknown', name: 'isCi()', text: 'isCi()' };
+    const report = {
+      files: 1,
+      problems: [],
+      pins: [],
+      quarantines: [],
+      earlyReturns: [],
+      ciSkips: [],
+      notRun: [],
+      envGates: [
+        {
+          path: 'a.test.ts',
+          line: 3,
+          form: 'skipIf',
+          condition: 'isCi()',
+          ci: null,
+          atoms: [unread],
+        },
+        {
+          path: 'b.test.ts',
+          line: 5,
+          form: 'skipIf',
+          condition: "process.platform === 'win32'",
+          ci: null,
+          atoms: [{ kind: 'platform', name: 'process.platform', text: 'process.platform' }],
+        },
+      ],
+    };
+    report.ciSkips = [
+      {
+        path: 'c.test.ts',
+        line: 7,
+        form: 'skipIf',
+        scope: 'test',
+        condition: 'process.env.CI && isFoo()',
+        ci: 'skips-on-ci',
+        atoms: [
+          { kind: 'ci', name: 'CI', text: 'process.env.CI' },
+          { kind: 'unknown', name: 'isFoo()', text: 'isFoo()' },
+        ],
+      },
+    ];
+    const heading = 'Gates with a condition the scanner cannot read (2)';
+    const rows = [
+      '  c.test.ts:7  skipIf  cannot read: isFoo()',
+      '  a.test.ts:3  skipIf  cannot read: isCi()',
+    ];
+    const brief = render(report, [], [], TODAY, { all: false });
+    expect(brief).toContain(heading);
+    for (const row of rows) expect(brief).not.toContain(row);
+    expect(render(report, [], [], TODAY, { all: true })).toContain([heading, ...rows].join('\n'));
   });
 
   test('the date boundaries are inclusive', () => {
@@ -1135,7 +1323,7 @@ describe('known-reds through its real invocation', () => {
     });
     expect(run.status).toBe(1);
     const feed = JSON.parse(run.stdout);
-    expect(feed.schemaVersion).toBe(2);
+    expect(feed.schemaVersion).toBe(3);
     expect(feed.files).toBe(4);
     expect(feed.violations.map((violation) => violation.rule)).toEqual(
       expect.arrayContaining(['pin-retries', 'ci-skip', 'early-return']),

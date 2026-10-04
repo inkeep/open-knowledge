@@ -77,6 +77,8 @@ A test in the uncached tier (`*.uncached.test.*`) may not skip at all. That tier
 
 A skip keyed on CI (`process.env.CI`, `IS_CI` and the like) hides the test from the run that gates merges. It fails the guard unless `scripts/known-reds-allowlist.json` lists it with an owner, a date and a reason. Prefer to key the skip on the missing capability instead.
 
+The guard follows a condition through names declared in the same file: a renamed or destructured `process.env`, a destructured `CI`, a constant key, a helper that takes no arguments and whose body is a single return expression, and `isCI` from `ci-info`. Anything else, such as a helper imported from another file, a longer helper body, a rest element or a nested destructuring, is labelled `unknown` and listed under "Gates with a condition the scanner cannot read", where a reviewer has to check it.
+
 ## A test not written yet
 
 Use `test.todo('title')`.
@@ -84,7 +86,7 @@ Use `test.todo('title')`.
 ## The listing
 
 - `pnpm known-reds` prints the pins, the quarantines and the CI-keyed skips.
-- `--all` adds every test that does not run and every environment gate.
-- `--json` prints the full feed (`schemaVersion` 2). Beyond the listing, it carries:
-  - `atoms` on each CI skip and environment gate: the facts its condition reads, following each name to the declaration visible where the gate sits. Each is `{ kind, name, text }`, and `kind` is `platform`, `arch`, `uid`, `env`, `ci`, `fs`, `import` or `runtime`. `runtime` covers what the scanner cannot resolve, such as a call to a helper, and also resolved reads of `process.versions` or `process.release`, which keep their full name.
+- `--all` adds every test that does not run, every environment gate, and each gate whose condition the scanner cannot read. Without it, those groups show only their counts.
+- `--json` prints the full feed (`schemaVersion` 3). Beyond the listing, it carries:
+  - `atoms` on each CI skip and environment gate: the facts its condition reads, following each name to the declaration visible where the gate sits. Each is `{ kind, name, text }`, and `kind` is `platform`, `arch`, `uid`, `env`, `ci`, `fs`, `import`, `runtime` or `unknown`. `runtime` is a resolved read of `process.versions` or `process.release`, which keeps its full name, or of an `os` function with no narrower kind. `unknown` is anything the scanner cannot resolve, such as a helper imported from another file; the receiver and arguments of an unresolved call are still read, so `isTerminalPlatform(process.platform)` yields `unknown` and `platform`, and `process.env.DIR?.trim()` yields `unknown` and `env`.
   - `titles` on every pin and quarantine, and on each other entry scoped to a test or describe: the enclosing describe titles, ending with the entry's own declaration title, so a describe-scoped gate ends with its describe's title. A title that is not a string literal appears as `{ nonLiteral: <source> }`.

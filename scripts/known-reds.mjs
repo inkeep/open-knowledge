@@ -11,7 +11,7 @@ export const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const ALLOWLIST_PATH = fileURLToPath(
   new URL('./known-reds-allowlist.json', import.meta.url),
 );
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 export const KNOWN_BUG_TAG = 'known-bug';
 export const QUARANTINE_TAG = 'quarantine';
 export const OWNERS = Object.freeze(['get-main-green', 'known-reds']);
@@ -55,6 +55,8 @@ const CI_ENV_NAMES = new Set([
   'RUNNER_OS',
 ]);
 const CI_IDENTIFIERS = new Set(['CI', 'IS_CI', 'isCI', 'isCi', 'ON_CI', 'onCI', 'IN_CI', 'inCI']);
+const CI_INFO_MODULE = 'ci-info';
+const CI_INFO_FLAG = 'isCI';
 const FIELDS = ['issue', 'owner', 'until'];
 
 function scriptKind(path) {
@@ -248,10 +250,64 @@ function isExpressionIdentifier(node) {
   return true;
 }
 
-function isEnvObject(node) {
+function isProcessObject(node) {
   const value = unwrap(node);
-  if (ts.isIdentifier(value)) return value.text === 'env';
-  return ts.isPropertyAccessExpression(value) && value.name.text === 'env';
+  if (ts.isIdentifier(value)) return value.text === 'process';
+  return ts.isPropertyAccessExpression(value) && value.name.text === 'process';
+}
+
+function isEnvObject(node, seen = new Set()) {
+  const value = unwrap(node);
+  if (!value) return false;
+  if (ts.isPropertyAccessExpression(value)) return value.name.text === 'env';
+  if (!ts.isIdentifier(value)) return false;
+  if (value.text === 'env') return true;
+  const binding = visibleBinding(value, value.text);
+  if (binding?.destructured)
+    return binding.destructured.key === 'env' && isProcessObject(binding.destructured.from);
+  const initializer = binding?.initializer;
+  if (!initializer || seen.has(initializer)) return false;
+  seen.add(initializer);
+  return isEnvObject(initializer, seen);
+}
+
+function constantString(node, seen = new Set()) {
+  const direct = stringValue(node);
+  if (direct !== null) return direct;
+  const value = unwrap(node);
+  if (!value || !ts.isIdentifier(value)) return null;
+  const initializer = visibleBinding(value, value.text)?.initializer;
+  if (!initializer || seen.has(initializer)) return null;
+  seen.add(initializer);
+  return constantString(initializer, seen);
+}
+
+function localHelperResult(call) {
+  if (!ts.isCallExpression(call) || call.arguments.length > 0) return null;
+  const callee = unwrap(call.expression);
+  if (!ts.isIdentifier(callee)) return null;
+  const binding = visibleBinding(callee, callee.text);
+  const initializer = binding?.initializer ? unwrap(binding.initializer) : null;
+  const fn = binding?.declaration ?? (isFunction(initializer) ? initializer : null);
+  if (!fn?.body || fn.parameters.length > 0) return null;
+  if (!ts.isBlock(fn.body)) return fn.body;
+  const [only] = fn.body.statements;
+  return fn.body.statements.length === 1 && ts.isReturnStatement(only)
+    ? (only.expression ?? null)
+    : null;
+}
+
+function isCiInfoNamespace(node) {
+  const value = unwrap(node);
+  if (!value || !ts.isIdentifier(value)) return false;
+  const imported = visibleBinding(value, value.text)?.imported;
+  return Boolean(imported?.namespace) && imported.module === CI_INFO_MODULE;
+}
+
+function isCiInfoFlag(imported) {
+  return (
+    imported?.module === CI_INFO_MODULE && !imported.namespace && imported.name === CI_INFO_FLAG
+  );
 }
 
 function ciAtom(node, aliases) {
@@ -259,18 +315,25 @@ function ciAtom(node, aliases) {
     if (!isExpressionIdentifier(node)) return null;
     return aliases(node);
   }
-  if (
-    ts.isPropertyAccessExpression(node) &&
-    CI_ENV_NAMES.has(node.name.text) &&
-    isEnvObject(node.expression)
-  ) {
-    return 'positive';
+  if (ts.isPropertyAccessExpression(node)) {
+    if (CI_ENV_NAMES.has(node.name.text) && isEnvObject(node.expression)) return 'positive';
+    if (node.name.text === CI_INFO_FLAG && isCiInfoNamespace(node.expression)) return 'positive';
+    return null;
   }
   if (ts.isElementAccessExpression(node) && isEnvObject(node.expression)) {
-    const key = stringValue(node.argumentExpression);
+    const key = constantString(node.argumentExpression);
     return key !== null && CI_ENV_NAMES.has(key) ? 'positive' : null;
   }
-  return null;
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.InKeyword &&
+    isEnvObject(node.right)
+  ) {
+    const key = constantString(node.left);
+    return key !== null && CI_ENV_NAMES.has(key) ? 'positive' : null;
+  }
+  const result = ts.isCallExpression(node) ? localHelperResult(node) : null;
+  return result ? aliases(result) : null;
 }
 
 function containsCi(node, aliases) {
@@ -358,17 +421,14 @@ function ciValue(node, aliases, onCi) {
 function ciAliases() {
   const aliases = new Map();
   const following = new Set();
-  const resolve = (identifier) => {
-    const binding = visibleBinding(identifier, identifier.text);
-    if (!binding) return CI_IDENTIFIERS.has(identifier.text) ? 'positive' : null;
-    const { initializer } = binding;
-    if (!initializer || following.has(initializer)) return null;
-    if (aliases.has(initializer)) return aliases.get(initializer);
-    following.add(initializer);
+  const polarityOf = (expression) => {
+    if (following.has(expression)) return null;
+    if (aliases.has(expression)) return aliases.get(expression);
+    following.add(expression);
     let polarity = null;
-    if (containsCi(initializer, resolve)) {
-      const onCi = ciValue(initializer, resolve, true);
-      const offCi = ciValue(initializer, resolve, false);
+    if (containsCi(expression, resolve)) {
+      const onCi = ciValue(expression, resolve, true);
+      const offCi = ciValue(expression, resolve, false);
       polarity =
         onCi === true && offCi === false
           ? 'positive'
@@ -376,9 +436,20 @@ function ciAliases() {
             ? 'negative'
             : 'unknown';
     }
-    following.delete(initializer);
-    aliases.set(initializer, polarity);
+    following.delete(expression);
+    aliases.set(expression, polarity);
     return polarity;
+  };
+  const resolve = (node) => {
+    if (!ts.isIdentifier(node)) return polarityOf(node);
+    const binding = visibleBinding(node, node.text);
+    if (!binding) return CI_IDENTIFIERS.has(node.text) ? 'positive' : null;
+    if (binding.destructured) {
+      const { key, from } = binding.destructured;
+      return CI_ENV_NAMES.has(key) && isEnvObject(from) ? 'positive' : null;
+    }
+    if (binding.imported) return isCiInfoFlag(binding.imported) ? 'positive' : null;
+    return binding.initializer ? polarityOf(binding.initializer) : null;
   };
   return resolve;
 }
@@ -388,6 +459,8 @@ const PROCESS_ATOMS = new Map([
   ['arch', 'arch'],
   ['getuid', 'uid'],
   ['getgid', 'uid'],
+  ['geteuid', 'uid'],
+  ['getegid', 'uid'],
   ['versions', 'runtime'],
   ['release', 'runtime'],
 ]);
@@ -450,7 +523,12 @@ function environmentBindings(ciAliasMap) {
   const environment = {
     ciAliases: ciAliasMap,
     aliases: (identifier) => {
-      const initializer = visibleBinding(identifier, identifier.text)?.initializer;
+      const binding = visibleBinding(identifier, identifier.text);
+      if (binding?.destructured) {
+        const { key, from } = binding.destructured;
+        return isEnvObject(from) || (isProcessObject(from) && PROCESS_ENVIRONMENT.has(key));
+      }
+      const initializer = binding?.initializer;
       if (!initializer || following.has(initializer)) return false;
       if (aliases.has(initializer)) return aliases.get(initializer);
       following.add(initializer);
@@ -517,7 +595,7 @@ function envKey(node) {
   const value = unwrap(node);
   if (ts.isPropertyAccessExpression(value) && isEnvObject(value.expression)) return value.name.text;
   if (ts.isElementAccessExpression(value) && isEnvObject(value.expression))
-    return stringValue(value.argumentExpression);
+    return constantString(value.argumentExpression);
   return undefined;
 }
 
@@ -571,18 +649,31 @@ function bindsName(name, target) {
 
 function variableBinding(list, target) {
   const declaration = list.declarations.find((entry) => bindsName(entry.name, target));
-  return declaration
-    ? {
-        initializer: ts.isIdentifier(declaration.name) ? (declaration.initializer ?? null) : null,
-      }
-    : null;
+  if (!declaration) return null;
+  if (ts.isIdentifier(declaration.name)) return { initializer: declaration.initializer ?? null };
+  const element = ts.isObjectBindingPattern(declaration.name)
+    ? declaration.name.elements.find(
+        (entry) => ts.isIdentifier(entry.name) && entry.name.text === target,
+      )
+    : undefined;
+  const key =
+    element && !element.dotDotDotToken
+      ? propertyName({ name: element.propertyName ?? element.name })
+      : null;
+  return {
+    initializer: null,
+    destructured:
+      key !== null && declaration.initializer ? { from: declaration.initializer, key } : null,
+  };
 }
 
 function statementBinding(statement, target) {
   if (ts.isVariableStatement(statement)) return variableBinding(statement.declarationList, target);
+  if (ts.isFunctionDeclaration(statement) && statement.name && bindsName(statement.name, target)) {
+    return { initializer: null, declaration: statement };
+  }
   if (
-    (ts.isFunctionDeclaration(statement) ||
-      ts.isClassDeclaration(statement) ||
+    (ts.isClassDeclaration(statement) ||
       ts.isEnumDeclaration(statement) ||
       ts.isModuleDeclaration(statement) ||
       (ts.isImportEqualsDeclaration(statement) && !statement.isTypeOnly)) &&
@@ -721,6 +812,21 @@ function conditionAtoms(condition, context) {
         add('fs', first ? oneLine(first, sourceFile) : name, textNode);
         return;
       }
+      const result = localHelperResult(node);
+      if (result && !following.has(result)) {
+        following.add(result);
+        visit(result, null);
+        following.delete(result);
+        return;
+      }
+    }
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      node.name.text === CI_INFO_FLAG &&
+      isCiInfoNamespace(node.expression)
+    ) {
+      add('ci', CI_INFO_MODULE, textNode);
+      return;
     }
     const { root, members } = memberPath(node);
     if (root?.text === 'process' && PROCESS_ATOMS.has(members[0])) {
@@ -745,8 +851,19 @@ function conditionAtoms(condition, context) {
     if (ts.isIdentifier(node)) {
       const binding = visibleBinding(node, node.text);
       if (binding?.imported) {
-        add('import', binding.imported.module, textNode);
+        add(isCiInfoFlag(binding.imported) ? 'ci' : 'import', binding.imported.module, textNode);
         return;
+      }
+      if (binding?.destructured) {
+        const { key, from } = binding.destructured;
+        if (isEnvObject(from)) {
+          envAtom(key, textNode);
+          return;
+        }
+        if (isProcessObject(from) && PROCESS_ATOMS.has(key)) {
+          add(PROCESS_ATOMS.get(key), `process.${key}`, textNode);
+          return;
+        }
       }
       const initializer = binding?.initializer ?? null;
       if (initializer && !following.has(initializer)) {
@@ -765,7 +882,24 @@ function conditionAtoms(condition, context) {
         return;
       }
     }
-    add(probesFilesystem(node) ? 'fs' : 'runtime', oneLine(node, sourceFile), textNode);
+    if (probesFilesystem(node)) {
+      add('fs', oneLine(node, sourceFile), textNode);
+      return;
+    }
+    add('unknown', oneLine(node, sourceFile), textNode);
+    if (ts.isCallExpression(node)) {
+      const callee = unwrap(node.expression);
+      if (ts.isPropertyAccessExpression(callee)) visit(callee.expression, null);
+      for (const argument of node.arguments) {
+        const value = unwrap(argument);
+        if (
+          !isFunction(value) &&
+          !ts.isArrayLiteralExpression(value) &&
+          !ts.isObjectLiteralExpression(value)
+        )
+          visit(argument, null);
+      }
+    }
   };
   const visit = (raw, textNode) => {
     const node = unwrap(raw);
@@ -795,7 +929,7 @@ function conditionAtoms(condition, context) {
         return;
       }
       if (operator === ts.SyntaxKind.InKeyword && isEnvObject(node.right)) {
-        envAtom(stringValue(node.left), textNode ?? node);
+        envAtom(constantString(node.left), textNode ?? node);
         return;
       }
     }
@@ -1602,6 +1736,18 @@ export function render(report, violations, upcoming, today, { all }) {
     all,
   );
   section(
+    'Gates with a condition the scanner cannot read',
+    [...report.ciSkips, ...report.envGates].filter((row) =>
+      row.atoms.some((atom) => atom.kind === 'unknown'),
+    ),
+    (row) =>
+      `${row.path}:${row.line}  ${row.form}  cannot read: ${row.atoms
+        .filter((atom) => atom.kind === 'unknown')
+        .map((atom) => atom.name)
+        .join(', ')}`,
+    all,
+  );
+  section(
     `Expiring within ${EXPIRY_WARNING_DAYS} days`,
     upcoming,
     (row) =>
@@ -1614,7 +1760,7 @@ export function render(report, violations, upcoming, today, { all }) {
   );
   if (!all)
     lines.push(
-      'Pass --all to list every not-run test and environment gate, or --json for the full feed.',
+      'Pass --all to list every not-run test, environment gate and gate the scanner cannot read, or --json for the full feed.',
     );
   lines.push(`The convention: ${CONVENTION_DOC}.`);
   return `${lines.join('\n')}\n`;
