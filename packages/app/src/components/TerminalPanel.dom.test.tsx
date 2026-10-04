@@ -539,7 +539,7 @@ describe('TerminalPanel', () => {
     await waitFor(() => expect(terminal.adopt).toHaveBeenCalledWith('pty-survivor'));
     expect(lastTerm?.write).toHaveBeenCalledWith('REPLAYED-SCREEN-BYTES', expect.any(Function));
     expect(terminal.create).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('terminal-starting-notice')).toBeNull();
+    await waitFor(() => expect(screen.queryByTestId('terminal-starting-notice')).toBeNull());
   });
 
   test('reload rehydration: does not send replay-generated terminal replies into the live shell', async () => {
