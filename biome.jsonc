@@ -158,6 +158,7 @@
       "!**/tests/perf/playwright-results",
       "!packages/desktop/out",
       "!packages/desktop/dist-desktop",
+      "!packages/desktop/electron.vite.config.*.mjs",
       // Self-contained internal unit with its own tsconfig, conventions, and
       // test entry points; never OK-biome-formatted, so it stays out of the
       // format scan.

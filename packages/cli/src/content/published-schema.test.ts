@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeAll, describe, expect, test } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(here, '..', '..', 'dist');
@@ -14,18 +14,13 @@ const VERSIONED_USER_PATH = resolve(VERSIONED_DIR, 'config.user.schema.json');
 const ALIAS_PROJECT_PATH = resolve(DIST, 'config.project.schema.json');
 const ALIAS_USER_PATH = resolve(DIST, 'config.user.schema.json');
 
-async function ensurePublishedSchemas(): Promise<void> {
-  vi.resetModules();
-  await import('../../scripts/build-config-schema.mjs');
-}
-
 describe('published dist/config-schema.json', () => {
-  beforeEach(async () => {
-    await ensurePublishedSchemas();
-  });
-
-  test('artifact exists at the path npm ships via files:["dist"]', () => {
-    expect(existsSync(PUBLISHED_SCHEMA_PATH)).toBe(true);
+  beforeAll(() => {
+    if (!existsSync(PUBLISHED_SCHEMA_PATH)) {
+      throw new Error(
+        `${PUBLISHED_SCHEMA_PATH} is absent: these tests read the schema files the CLI build publishes, so generate them with pnpm run build:schema in packages/cli (the CLI build includes that step, and turbo runs the CLI build before this package's tests).`,
+      );
+    }
   });
 
   test('versioned per-scope artifacts exist at dist/schemas/v0/ (canonical URLs)', () => {

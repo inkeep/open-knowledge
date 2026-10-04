@@ -11,6 +11,8 @@ const FRESHNESS_GLOBAL_SETUP = './tests/stress/_helpers/i18n-catalog-freshness.t
 const TURBO_DRY_RUN_TIMEOUT_MS = 120_000;
 const TURBO_DRY_RUN_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 const TURBO_OUTPUT_HEAD_CHARS = 400;
+const BUILD_EDGE_REASON =
+  'The edge keeps the ordering associated with a recorded CI failure: the app build, scheduled beside the e2e tier, could not resolve @inkeep/open-knowledge-core while Vite loaded its config. Concurrency is the most-supported explanation for that failure rather than a reproduced one.';
 
 const PLAYWRIGHT_TIERS = {
   e2e: {
@@ -92,7 +94,7 @@ function turboResolvedGraph(): Map<string, string[]> {
   });
   if (dryRun.error || dryRun.status !== 0) {
     throw new Error(
-      `could not resolve turbo's task graph, so this run cannot tell whether a Playwright tier races the app build that rewrites src/locales/*/messages.json — ${turboBin} exited ${String(dryRun.status)}${dryRun.signal ? ` on ${dryRun.signal}` : ''}${dryRun.error ? ` (${String(dryRun.error)})` : ''}:\n${dryRun.stderr ?? ''}${dryRun.stdout ?? ''}`,
+      `could not resolve turbo's task graph, so this run cannot tell whether every Playwright tier is ordered behind the app build — ${turboBin} exited ${String(dryRun.status)}${dryRun.signal ? ` on ${dryRun.signal}` : ''}${dryRun.error ? ` (${String(dryRun.error)})` : ''}:\n${dryRun.stderr ?? ''}${dryRun.stdout ?? ''}`,
     );
   }
   const parsed = parseTurboDryRun(
@@ -140,9 +142,9 @@ function declaredGlobalSetups(globalSetup: string | string[] | undefined): strin
   return Array.isArray(globalSetup) ? [...globalSetup] : [globalSetup];
 }
 
-describe('i18n catalog freshness gate wiring', () => {
+describe('Playwright tiers wait for the app build', () => {
   test.each(TIER_NAMES)(
-    'turbo orders the %s tier behind the app build that rewrites the catalogs',
+    'turbo orders the %s tier behind the app build',
     (tier) => {
       const { turboTask } = PLAYWRIGHT_TIERS[tier];
       const taskId = `${APP_PACKAGE_NAME}#${turboTask}`;
@@ -153,12 +155,14 @@ describe('i18n catalog freshness gate wiring', () => {
       ).toBeDefined();
       expect(
         dependencies,
-        `${taskId} does not depend on ${APP_PACKAGE_NAME}#build, so turbo may run the app build concurrently with the ${tier} tier. That build runs "pnpm run i18n:compile", which truncates and rewrites all 13 src/locales/*/messages.json, and the ${tier} tier's globalSetup JSON.parses those same files. Add "build" to turbo.json "${turboTask}".dependsOn.`,
+        `${taskId} does not depend on ${APP_PACKAGE_NAME}#build, so turbo may run the app build concurrently with the ${tier} tier. ${BUILD_EDGE_REASON} Add "build" to turbo.json "${turboTask}".dependsOn.`,
       ).toContain(`${APP_PACKAGE_NAME}#build`);
     },
     TURBO_DRY_RUN_TIMEOUT_MS,
   );
+});
 
+describe('i18n catalog freshness gate wiring', () => {
   test.each(TIER_NAMES)('the %s tier declares the catalog freshness globalSetup', async (tier) => {
     const { configFile, load } = PLAYWRIGHT_TIERS[tier];
     const declared = declaredGlobalSetups((await load()).default.globalSetup);
@@ -260,7 +264,7 @@ describe('scoped turbo overrides stay aligned with the global entries they repla
       const scopedDependsOn = (scoped as TurboTaskDefinition).dependsOn as string[];
       expect(
         scopedDependsOn,
-        `the scoped override exists to add the app build edge that keeps this tier from reading src/locales/*/messages.json while the build rewrites them, so dropping "build" from it silently restores the race`,
+        `the scoped override exists to give this tier the "build" edge test:e2e has, so dropping "build" from it lets turbo run the app build concurrently with this tier. ${BUILD_EDGE_REASON}`,
       ).toContain('build');
     },
   );

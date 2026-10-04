@@ -3,6 +3,7 @@ dist/
 packages/desktop/out/
 packages/desktop/dist-desktop/
 packages/desktop/dev-app-update.yml
+packages/desktop/electron.vite.config.*.mjs
 .turbo/
 turbo-cache-key.json
 tmp/

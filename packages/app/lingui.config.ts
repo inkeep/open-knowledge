@@ -15,8 +15,7 @@ import { formatter } from '@lingui/format-po';
  * Compiled catalogs (`messages.json`) are committed alongside the `.po` sources
  * so the same import path resolves under Vite dev, the production build, the
  * Electron renderer, and the test runtime without a per-entrypoint compile
- * step. `i18n:compile` is also wired into `predev` / `build` to keep them
- * fresh and Biome-formatted; run `pnpm run i18n` after adding strings.
+ * step.
  *
  * `locales` is `SUPPORTED_LOCALES` from `@inkeep/open-knowledge-core` plus the
  * generated `pseudo`. It is spelled out literally rather than imported: the
