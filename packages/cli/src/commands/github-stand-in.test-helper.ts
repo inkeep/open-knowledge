@@ -213,6 +213,7 @@ function serveThroughHttpBackend(
   user: string,
   repositoriesRoot: string,
   settle: (status: number) => void,
+  onPhase?: (phase: string) => void,
 ): void {
   const env: Record<string, string> = {
     ...hermeticGitEnv(repositoriesRoot),
@@ -233,7 +234,11 @@ function serveThroughHttpBackend(
     const value = req.headers[header];
     if (typeof value === 'string') env[variable] = value;
   }
+  onPhase?.('backend:start');
   const backend = spawn('git', ['http-backend'], { env, stdio: ['pipe', 'pipe', 'ignore'] });
+  backend.stdin.once('finish', () => onPhase?.('backend:stdin-finished'));
+  backend.once('exit', () => onPhase?.('backend:exited'));
+  backend.stdout.once('end', () => onPhase?.('backend:stdout-ended'));
   req.pipe(backend.stdin);
   let pending = Buffer.alloc(0);
   let headersSent = false;
@@ -262,6 +267,7 @@ function serveThroughHttpBackend(
     if (body.length > 0) res.write(body);
   });
   backend.on('close', () => {
+    onPhase?.('backend:closed');
     if (!headersSent) {
       settle(500);
       res.writeHead(500);
@@ -276,6 +282,7 @@ export async function startGitHubStandIn(options: {
   deniedPassword?: string;
   repositories: string[];
   enterpriseHosts?: Record<string, string[]>;
+  onPhase?: (phase: string, requestId?: number) => void;
 }): Promise<GitHubStandIn> {
   const hosts = new Map<string, StandInHost>();
   for (const [host, acceptedPasswords] of [
@@ -323,9 +330,16 @@ export async function startGitHubStandIn(options: {
   const caFile = join(options.root, 'github-stand-in-ca.pem');
   writeFileSync(caFile, certificates.caPem, 'utf8');
 
+  let requestId = 0;
   const tlsServer = createHttpsServer(
     { key: certificates.serverKeyPem, cert: certificates.serverCertPem },
     (req, res) => {
+      const id = ++requestId;
+      const phase = (stage: string) => options.onPhase?.(stage, id);
+      phase('request:received');
+      req.once('end', () => phase('request:ended'));
+      res.once('finish', () => phase('response:finished'));
+      res.once('close', () => phase('response:closed'));
       const host = String(req.headers.host ?? '')
         .replace(/:\d+$/, '')
         .toLowerCase();
@@ -368,15 +382,18 @@ export async function startGitHubStandIn(options: {
         (status) => {
           request.status = status;
         },
+        phase,
       );
     },
   );
+  tlsServer.on('secureConnection', () => options.onPhase?.('tls:ready'));
   const proxy = createHttpServer((req, res) => {
     req.resume();
     res.writeHead(403);
     res.end();
   });
   proxy.on('connect', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    options.onPhase?.('proxy:connected');
     const target = (req.url ?? '').toLowerCase();
     if (!/:\d+$/.test(target) || !hosts.has(target.replace(/:\d+$/, ''))) {
       socket.end('HTTP/1.1 403 Forbidden\r\n\r\n');

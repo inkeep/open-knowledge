@@ -6,12 +6,23 @@ import { shellSingleQuote } from '@inkeep/open-knowledge-core';
 
 const CLI_PACKAGE_DIR = resolve(import.meta.dirname, '../..');
 
-function recordCliCallLines(callLog: string): string[] {
+function phaseRecorderLines(phaseLog: string | undefined): string[] {
+  return phaseLog === undefined
+    ? []
+    : [
+        `const phase = stage => appendFileSync(${JSON.stringify(phaseLog)}, JSON.stringify({ stage, pid: process.pid, ppid: process.ppid, at: Date.now() }) + '\\n');`,
+      ];
+}
+
+function recordCliCallLines(callLog: string, phaseLog?: string): string[] {
   return [
     "import { spawnSync } from 'node:child_process';",
     "import { appendFileSync, readFileSync } from 'node:fs';",
+    ...phaseRecorderLines(phaseLog),
+    ...(phaseLog === undefined ? [] : ["phase('wrapper:loaded');"]),
     'const args = process.argv.slice(2);',
     "const input = readFileSync(0, 'utf-8');",
+    ...(phaseLog === undefined ? [] : ["phase('wrapper:input-ended');"]),
     'const fields = {};',
     "for (const line of input.split('\\n')) {",
     "  const at = line.indexOf('=');",
@@ -79,6 +90,7 @@ export function writeCliCredentialStandIn(options: {
   dir: string;
   callLog: string;
   authFile: string;
+  phaseLog?: string;
 }): string {
   const runner = join(options.dir, 'ok-git-credential-get.mts');
   const moduleUrl = (path: string) =>
@@ -88,8 +100,18 @@ export function writeCliCredentialStandIn(options: {
     [
       `import { FileBackend } from ${moduleUrl('src/auth/token-store.ts')};`,
       `import { handleCredentialGet } from ${moduleUrl('src/commands/auth/git-credential-get.ts')};`,
+      ...(options.phaseLog === undefined
+        ? []
+        : [
+            "import { appendFileSync } from 'node:fs';",
+            ...phaseRecorderLines(options.phaseLog),
+            "phase('module-loaded');",
+            "process.stdin.once('end', () => phase('input-ended'));",
+          ]),
       `const store = new FileBackend(${JSON.stringify(options.authFile)});`,
-      'process.exit(await handleCredentialGet(process.stdin, process.stdout, store));',
+      'const code = await handleCredentialGet(process.stdin, process.stdout, store);',
+      ...(options.phaseLog === undefined ? [] : ["phase('handler-returned');"]),
+      'process.exit(code);',
       '',
     ].join('\n'),
     'utf-8',
@@ -98,9 +120,11 @@ export function writeCliCredentialStandIn(options: {
   writeFileSync(
     entry,
     [
-      ...recordCliCallLines(options.callLog),
+      ...recordCliCallLines(options.callLog, options.phaseLog),
       "if (args.join(' ') !== 'auth git-credential get') process.exit(1);",
+      ...(options.phaseLog === undefined ? [] : ["phase('helper:start');"]),
       `const helper = spawnSync(process.execPath, ['--conditions=development', '--import', 'tsx', ${JSON.stringify(runner)}], { cwd: ${JSON.stringify(CLI_PACKAGE_DIR)}, input, stdio: ['pipe', 'inherit', 'inherit'] });`,
+      ...(options.phaseLog === undefined ? [] : ["phase('helper:returned');"]),
       'process.exit(helper.status ?? 1);',
       '',
     ].join('\n'),
