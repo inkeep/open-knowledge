@@ -569,6 +569,7 @@ export {
   type GitHubAuthHostResult,
   loginShapedUserinfoUser,
   readDeclaredGitHubHosts,
+  readOriginCredentialHost,
   readOriginGitHubRepo,
   resolveGitHubAuthHost,
   sameGitHubLogin,

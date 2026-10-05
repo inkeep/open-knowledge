@@ -1544,6 +1544,10 @@ msgstr "Templat bernama <0>{trimmedSlug}</0> sudah ada di sini. Menyimpan akan m
 msgid "A title, description, tags — anything that describes this folder."
 msgstr "Judul, deskripsi, tag — apa saja yang menggambarkan folder ini."
 
+#: src/components/settings/AccountSection.tsx
+msgid "A token added here only applies to HTTPS remotes, and this project's remote doesn't use HTTPS."
+msgstr "Token yang ditambahkan di sini hanya berlaku untuk remote HTTPS, dan remote proyek ini tidak memakai HTTPS."
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "Folder worktree untuk {shareBranch} sudah ada."
@@ -1596,9 +1600,8 @@ msgid "Accept their deletion"
 msgstr "Terima penghapusan mereka"
 
 #: src/components/settings/AccountSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-msgid "Account"
-msgstr "Akun"
+msgid "Access token"
+msgstr "Token akses"
 
 #: src/components/TemplateRow.tsx
 msgid "Actions for {label}"
@@ -1676,6 +1679,10 @@ msgstr "Tambahkan properti"
 #: src/components/empty-state/CreateView.tsx
 msgid "Add a starter pack"
 msgstr "Tambahkan paket awal"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Add an access token for a GitLab, Gitea, Bitbucket, Azure DevOps or self-hosted git server. Without one, git uses the credentials it already has saved for that host; with one, OpenKnowledge uses the token instead."
+msgstr "Tambahkan token akses untuk server GitLab, Gitea, Bitbucket, Azure DevOps, atau git yang di-host sendiri. Tanpa token, git memakai kredensial yang sudah tersimpan untuk host tersebut; dengan token, OpenKnowledge memakai token itu sebagai gantinya."
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Add another pattern"
@@ -1806,6 +1813,12 @@ msgstr "Tambahkan ke kamus"
 msgid "Add to prompt"
 msgstr "Tambahkan ke prompt"
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/SyncStatusBadge.tsx
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "Add token"
+msgstr "Tambah token"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "Tambahkan nilai"
@@ -1815,6 +1828,10 @@ msgstr "Tambahkan nilai"
 #: src/components/SyncStatusBadge.tsx
 msgid "Added"
 msgstr "Ditambahkan"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Adding"
+msgstr "Menambahkan"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Adds a global OpenKnowledge MCP entry for this agent."
@@ -2331,6 +2348,10 @@ msgstr "Total lampiran harus di bawah 3 MB."
 msgid "Authenticated as {login}."
 msgstr "Diautentikasi sebagai {login}."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authentication failed for this git host. Add a token for it in Settings, or replace the one stored."
+msgstr "Autentikasi gagal untuk host git ini. Tambahkan token untuknya di Pengaturan, atau ganti token yang tersimpan."
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr "Konten otoritatif; dicerminkan apa adanya di mana pun ia dirujuk."
@@ -2531,6 +2552,11 @@ msgstr "Judul bagian besar."
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Bird wiki"
 msgstr "Wiki burung"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "Bitbucket"
+msgstr "Bitbucket"
 
 #: src/components/NewItemDialog.tsx
 msgid "Blank note"
@@ -3601,8 +3627,8 @@ msgid "Connect"
 msgstr "Hubungkan"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Connect a GitHub account to browse and sync your repositories."
-msgstr "Hubungkan akun GitHub untuk menelusuri dan menyinkronkan repositori Anda."
+msgid "Connect a GitHub account to browse and publish GitHub repositories."
+msgstr "Hubungkan akun GitHub untuk menjelajahi dan menerbitkan repositori GitHub."
 
 #: src/components/settings/SyncSection.tsx
 msgid "Connect an existing repository"
@@ -3694,6 +3720,7 @@ msgid "Connection dropped"
 msgstr "Koneksi terputus"
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 #: src/lib/transports/auth-transport.ts
 msgid "Connection error — try again"
 msgstr "Galat koneksi — coba lagi"
@@ -5933,6 +5960,10 @@ msgstr "Masukkan bilangan bulat antara {minimum} dan {maximum}."
 msgid "Enter at least 3 characters to search by meaning."
 msgstr "Masukkan minimal 3 karakter untuk mencari berdasarkan makna."
 
+#: src/components/settings/AccountSection.tsx
+msgid "Enter the host name git connects to, with an optional :port and no scheme or path, for example git.example.com."
+msgstr "Masukkan nama host yang dihubungi git, dengan :port opsional dan tanpa skema atau path, misalnya git.example.com."
+
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "Masukkan origin publik yang dilayani tunnel Anda, misalnya https://notes.example.com"
@@ -6408,6 +6439,7 @@ msgid "Failed to start sign-in — try again"
 msgstr "Gagal memulai proses masuk — coba lagi"
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 #: src/lib/transports/auth-transport.ts
 msgid "Failed to store the token — try again"
 msgstr "Gagal menyimpan token — coba lagi"
@@ -6881,6 +6913,11 @@ msgctxt "settings search keyword"
 msgid "GHES"
 msgstr "GHES"
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Git"
+msgstr "Git"
+
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
 msgstr "Git & PR"
@@ -6888,6 +6925,10 @@ msgstr "Git & PR"
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git tidak bisa melacak folder ini — folder ini kosong atau hanya berisi berkas yang diabaikan. Tautannya tidak akan berfungsi sampai Anda menambahkan dokumen yang dilacak."
+
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "Git couldn't authenticate with this host. Check the SSH key or saved credentials git uses for it."
+msgstr "git tidak dapat mengautentikasi ke host ini. Periksa kunci SSH atau kredensial tersimpan yang dipakai git untuk host tersebut."
 
 #: src/components/RecentProjectsMenu.tsx
 msgid "Git has locked this worktree, but it can still be opened."
@@ -6948,10 +6989,6 @@ msgstr "Host GitHub Enterprise Server"
 msgid "GitHub sign-in is missing or expired. Reconnect to resume syncing."
 msgstr "Status masuk GitHub tidak ada atau kedaluwarsa. Sambungkan ulang untuk melanjutkan sinkronisasi."
 
-#: src/components/settings/AccountSection.tsx
-msgid "GitHub sign-in isn't available for this project"
-msgstr "Masuk ke GitHub tidak tersedia untuk proyek ini"
-
 #: src/components/ImportSkillForm.tsx
 msgid "GitHub, a git URL, or a local path."
 msgstr "GitHub, sebuah URL git, atau jalur lokal."
@@ -6959,6 +6996,11 @@ msgstr "GitHub, sebuah URL git, atau jalur lokal."
 #: src/components/settings/EnterpriseHostsSection.tsx
 msgid "github.com is always recognized, so it doesn't need to be added."
 msgstr "github.com selalu dikenali, jadi tidak perlu ditambahkan."
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GitLab"
+msgstr "GitLab"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Give it a name before editing its colors."
@@ -7313,6 +7355,10 @@ msgstr "Deretan pil mendatar + panel aktif di bawahnya; klik sebuah pil untuk be
 #: src/editor/slash-command/items.tsx
 msgid "Horizontal rule that divides sections."
 msgstr "Garis mendatar yang memisahkan bagian."
+
+#: src/components/settings/AccountSection.tsx
+msgid "Host"
+msgstr "Host"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Hosting is on. The server is running on port {boundPort}. Reach it through your tunnel."
@@ -8607,8 +8653,8 @@ msgid "Manage skill folders"
 msgstr "Kelola folder keterampilan"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Manage the GitHub account OpenKnowledge uses to browse and sync your repositories."
-msgstr "Kelola akun GitHub yang dipakai OpenKnowledge untuk menelusuri dan menyinkronkan repositori Anda."
+msgid "Manage the accounts and access tokens OpenKnowledge uses to connect to your git hosts."
+msgstr "Kelola akun dan token akses yang dipakai OpenKnowledge untuk terhubung ke host git Anda."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
@@ -9437,6 +9483,10 @@ msgstr "Tidak ada perubahan isi pada versi ini."
 #: src/components/TimelineDiffPane.tsx
 msgid "No content changes in this version"
 msgstr "Tidak ada perubahan isi pada versi ini"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "No credential is stored for this git host. Add a token in Settings, or let git use the credentials it already has."
+msgstr "Tidak ada kredensial yang tersimpan untuk host git ini. Tambahkan token di Pengaturan, atau biarkan git memakai kredensial yang sudah dimilikinya."
 
 #: src/components/GraphPanel.tsx
 msgid "No disconnected pages. Pages appear here only when they have no incoming and no outgoing graph edges."
@@ -10390,6 +10440,10 @@ msgstr "Membuka..."
 msgid "OpenKnowledge"
 msgstr "OpenKnowledge"
 
+#: src/components/AuthModal.tsx
+msgid "OpenKnowledge can't sign in to GitHub for this project."
+msgstr "OpenKnowledge tidak dapat masuk ke GitHub untuk proyek ini."
+
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked {subject}"
 msgstr "OpenKnowledge memeriksa {subject}"
@@ -10401,10 +10455,6 @@ msgstr "OpenKnowledge memeriksa proyek"
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge tidak menemukan agen ini di mesin ini."
-
-#: src/components/settings/AccountSection.tsx
-msgid "OpenKnowledge couldn't find a host name in this project's git remote, so it can't tell which GitHub server to sign in to."
-msgstr "OpenKnowledge tidak menemukan nama host di remote git proyek ini, jadi tidak dapat mengetahui server GitHub mana yang harus dimasuki."
 
 #: src/lib/worktree-create-error.ts
 msgid "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
@@ -10461,6 +10511,10 @@ msgstr "OpenKnowledge menyunting sebuah dokumen"
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "OpenKnowledge files were removed"
 msgstr "File OpenKnowledge telah dihapus"
+
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "OpenKnowledge has no credential stored for this host. Add a token in Settings, or let git use the credentials it already has."
+msgstr "OpenKnowledge tidak menyimpan kredensial apa pun untuk host ini. Tambahkan token di Pengaturan, atau biarkan git memakai kredensial yang sudah dimilikinya."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge imported {source}"
@@ -10689,6 +10743,11 @@ msgstr "lainnya"
 #: src/components/FeedbackForm.tsx
 msgid "Other"
 msgstr "Lainnya"
+
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Other Git hosts"
+msgstr "Host Git lainnya"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Other OK paths are tracked upstream:"
@@ -11623,6 +11682,14 @@ msgstr "Perlu menyambung ulang"
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required to keep syncing."
 msgstr "Perlu menyambung ulang untuk melanjutkan sinkronisasi."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing. Add a token for this host in Settings, or replace the one stored."
+msgstr "Perlu menyambung ulang untuk melanjutkan sinkronisasi. Tambahkan token untuk host ini di Pengaturan, atau ganti token yang tersimpan."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing. Check the SSH key or saved credentials git uses for this host."
+msgstr "Perlu menyambung ulang untuk melanjutkan sinkronisasi. Periksa kunci SSH atau kredensial tersimpan yang dipakai git untuk host ini."
 
 #: src/presence/use-sync-toasts.ts
 msgid "Reconnected"
@@ -14815,6 +14882,10 @@ msgstr "Daftar skill tidak cocok dengan skemanya."
 msgid "The source folder itself does not move."
 msgstr "Folder sumbernya sendiri tidak berpindah."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "The stored token is missing the permissions this host needs to push."
+msgstr "Token yang tersimpan tidak memiliki izin yang dibutuhkan host ini untuk melakukan push."
+
 #: src/components/TemplateProperties.tsx
 msgid "The template's filename (without `.md`)."
 msgstr "Nama berkas templatnya (tanpa `.md`)."
@@ -14872,6 +14943,10 @@ msgstr "Executable terminal.shell di .ok/local/config.yml tidak ditemukan. Shell
 #: src/components/AuthModal.tsx
 msgid "The token needs the repo and read:user scopes."
 msgstr "Token itu memerlukan cakupan repo dan read:user."
+
+#: src/components/settings/AccountSection.tsx
+msgid "The username git sends with the token. Some hosts expect a fixed value: type <0>x-bitbucket-api-token-auth</0> for a Bitbucket API token, <1>x-token-auth</1> for a Bitbucket repository or workspace access token, or <2>oauth2</2> for GitLab. For Gitea, use your Gitea username. Azure DevOps accepts any value."
+msgstr "Nama pengguna yang dikirim git bersama token. Beberapa host mengharapkan nilai tetap: ketik <0>x-bitbucket-api-token-auth</0> untuk token API Bitbucket, <1>x-token-auth</1> untuk token akses repositori atau workspace Bitbucket, atau <2>oauth2</2> untuk GitLab. Untuk Gitea, gunakan nama pengguna Gitea Anda. Azure DevOps menerima nilai apa pun."
 
 #: src/lib/tab-session-restore-recovery-notice.ts
 msgid "The workspace opened without it so the app could start."
@@ -15401,10 +15476,6 @@ msgstr "Proyek ini bukan repositori git, jadi worktree tidak tersedia."
 msgid "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
 msgstr "Proyek ini hanya ada di komputer ini. Hubungkan ke GitHub untuk mencadangkannya dan membagikannya dengan orang lain."
 
-#: src/components/settings/AccountSection.tsx
-msgid "This project's git remote is on {host}, which OpenKnowledge doesn't recognize as a GitHub host. If {host} runs GitHub Enterprise Server, add it to GitHub Enterprise Server hosts below, then restart OpenKnowledge."
-msgstr "Remote git proyek ini berada di {host}, yang tidak dikenali OpenKnowledge sebagai host GitHub. Jika {host} menjalankan GitHub Enterprise Server, tambahkan ke Host GitHub Enterprise Server di bawah, lalu mulai ulang OpenKnowledge."
-
 #: src/components/DocumentErrorBoundary.tsx
 msgid "This project's running server doesn't support live editing. Restart OpenKnowledge to fix."
 msgstr "Server proyek ini yang sedang berjalan tidak mendukung penyuntingan langsung. Mulai ulang OpenKnowledge untuk memperbaikinya."
@@ -15501,6 +15572,7 @@ msgid "This usually means one of:"
 msgstr "Biasanya ini berarti salah satu dari:"
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 msgid "This window can't store a token — open Settings from the main app window."
 msgstr "Jendela ini tidak bisa menyimpan token — buka Pengaturan dari jendela utama aplikasi."
 
@@ -15653,6 +15725,15 @@ msgstr "Menyalakan atau mematikan format garis bawah."
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "Toggles the pattern {0}/**"
 msgstr "Mengaktifkan atau menonaktifkan pola {0}/**"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "token"
+msgstr "token"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Token stored for {login} on {host}. To remove it, run <0>ok auth signout --host {host}</0>."
+msgstr "Token disimpan untuk {login} di {host}. Untuk menghapusnya, jalankan <0>ok auth signout --host {host}</0>."
 
 #: src/components/SkillBundlePreview.tsx
 #: src/components/SkillProperties.tsx
@@ -16239,6 +16320,10 @@ msgstr "Pengguna"
 #: src/components/settings/LintingSection.tsx
 msgid "User plugins are personal to this device — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
 msgstr "Plugin pengguna bersifat pribadi untuk perangkat ini — nyalakan atau matikan di sini. Setiap plugin yang aktif mendapat halamannya sendiri di bawah Plugin pada bilah sisi pengaturan."
+
+#: src/components/settings/AccountSection.tsx
+msgid "Username"
+msgstr "Nama pengguna"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."

@@ -1,6 +1,6 @@
 import type { Counter, Histogram } from '@opentelemetry/api';
 import { getLogger } from './logger.ts';
-import { type OriginTransport, sameGitHubLogin } from './share/git-context.ts';
+import { type ParsedOriginTransport, sameGitHubLogin } from './share/git-context.ts';
 import type { GitHubAccountSource } from './share/github-account.ts';
 import { getMeter } from './telemetry.ts';
 
@@ -60,7 +60,7 @@ export interface CheckPushPermissionOptions {
   owner: string;
   repo: string;
   host?: string;
-  transport?: OriginTransport;
+  transport?: ParsedOriginTransport;
   account?: ProbeAccount;
   detectGh?: DetectGhFn;
   detectGhAccounts?: DetectGhAccountsFn;

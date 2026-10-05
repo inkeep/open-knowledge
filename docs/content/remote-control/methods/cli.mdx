@@ -211,6 +211,6 @@ printf '\nautoSync:\n  mode: full\n' >> .ok/local/config.yml
 sudo systemctl restart openknowledge
 ```
 
-From now on every edit is committed and pushed automatically. The commit author comes from the machine's git identity (`git config user.name` / `user.email`). A fresh server has none set, so commits fall back to a service identity, **OpenKnowledge**. Signing in with `gh` handles pushing, not authorship. Set a git identity if you'd rather commits carry your name. See [GitHub sync](/docs/features/github-sync) for sync modes, conflict handling, and authentication.
+From now on every edit is committed and pushed automatically. The commit author comes from the machine's git identity (`git config user.name` / `user.email`). A fresh server has none set, so commits fall back to a service identity, **OpenKnowledge**. Signing in with `gh` handles pushing, not authorship. Set a git identity if you'd rather commits carry your name. See [Git sync](/docs/features/git/sync) for sync modes, conflict handling, and authentication.
 
 The git remote is also a way to edit locally: `git clone` it on your laptop and open the clone in OK Desktop. That gives you a separate local copy with the full editor. It syncs with the server through git (each side pushes and pulls), not live, so changes cross over on the next sync rather than instantly.

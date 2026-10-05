@@ -97,7 +97,11 @@ const verification = {
   expires_in: 900,
 };
 
-function postAuth(baseUrl: string, route: 'login' | 'pat', body: object): Promise<Response> {
+function postAuth(
+  baseUrl: string,
+  route: 'login' | 'pat' | 'token',
+  body: object,
+): Promise<Response> {
   return fetch(`${baseUrl}/api/local-op/auth/${route}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -322,6 +326,90 @@ test('shutdown suppresses a late token completion and sync resume', async () => 
     child.close();
     await shutdown;
     await response;
+    await fixture.close();
+  }
+});
+
+const tokenBody = { host: 'git.corp.example', username: 'alice', token: 'fixture-token' };
+
+test('an in-flight token store keeps shutdown pending and is signalled to stop', async () => {
+  guardNativeSpawn();
+  const child = new RecordedChild();
+  const spawned = Promise.withResolvers<void>();
+  spawn.mockImplementation(() => {
+    spawned.resolve();
+    return child;
+  });
+  const fixture = await createRecordingServer();
+  let shutdown: Promise<void> | undefined;
+  let response: Promise<Response> | undefined;
+  try {
+    response = postAuth(fixture.baseUrl, 'token', tokenBody);
+    await spawned.promise;
+    let shutdownSettled = false;
+    shutdown = fixture.group.shutdown().then(() => {
+      shutdownSettled = true;
+    });
+    await drainPriorEvents(fixture.baseUrl);
+    expect(shutdownSettled).toBe(false);
+    expect(child.signals.length).toBeGreaterThan(0);
+    child.close();
+    await shutdown;
+    expect(shutdownSettled).toBe(true);
+  } finally {
+    child.close();
+    await shutdown;
+    await response;
+    await fixture.close();
+  }
+});
+
+test('shutdown suppresses a late host-token completion and sync resume', async () => {
+  guardNativeSpawn();
+  const child = new RecordedChild();
+  const spawned = Promise.withResolvers<void>();
+  spawn.mockImplementation(() => {
+    spawned.resolve();
+    return child;
+  });
+  const notifyCredentialsChanged = vi.fn(async () => {});
+  const refreshPushPermission = vi.fn(async () => null);
+  const engine = { notifyCredentialsChanged, refreshPushPermission } as unknown as SyncEngine;
+  const fixture = await createRecordingServer(() => engine);
+  let shutdown: Promise<void> | undefined;
+  let response: Promise<Response> | undefined;
+  try {
+    response = postAuth(fixture.baseUrl, 'token', tokenBody);
+    await spawned.promise;
+    shutdown = fixture.group.shutdown();
+    await drainPriorEvents(fixture.baseUrl);
+    child.stdout.write(
+      `${JSON.stringify({ type: 'complete', host: 'git.corp.example', login: 'alice' })}\n`,
+    );
+    child.close();
+    const result = await response;
+    await shutdown;
+    expect.soft(result.status).toBe(503);
+    expect.soft(notifyCredentialsChanged).not.toHaveBeenCalled();
+    expect.soft(refreshPushPermission).not.toHaveBeenCalled();
+  } finally {
+    child.close();
+    await shutdown;
+    await response;
+    await fixture.close();
+  }
+});
+
+test('a host-token request after shutdown is refused with 503 and spawns nothing', async () => {
+  guardNativeSpawn();
+  const fixture = await createRecordingServer();
+  try {
+    await fixture.group.shutdown();
+    const response = await postAuth(fixture.baseUrl, 'token', tokenBody);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ title: 'The server is shutting down.' });
+    expect(spawn).not.toHaveBeenCalled();
+  } finally {
     await fixture.close();
   }
 });

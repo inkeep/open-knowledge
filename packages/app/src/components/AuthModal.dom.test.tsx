@@ -160,28 +160,8 @@ describe('AuthModal identityPrompt (set-identity) path', () => {
     }
   });
 
-  test('a hostless dialog probe that reports a refused origin opens the token step for that host', async () => {
-    renderModal({
-      queryTransport: makeQueryTransport({
-        authenticated: false,
-        host: 'ghes.acme.test',
-        unsupportedOrigin: { host: 'ghes.acme.test' },
-      }),
-    });
-
-    expect(await screen.findByText('Create a token on ghes.acme.test')).toBeDefined();
-    expect(screen.queryByText('Starting sign-in flow')).toBeNull();
-  });
-
-  test('sign-in path (no identityPrompt) goes straight to the device flow', async () => {
-    const throwingQuery: AuthQueryTransport = {
-      status: async () => {
-        throw new Error('status must not be called for the sign-in path');
-      },
-      repos: async () => ({ ok: false, error: 'unused' }),
-    };
-
-    renderModal({ identityPrompt: false, queryTransport: throwingQuery });
+  test('sign-in path (no identityPrompt) reaches the device flow once the host probe says github.com', async () => {
+    renderModal({ identityPrompt: false, queryTransport: makeQueryTransport(NOT_CONNECTED) });
 
     expect(await screen.findByText('Starting sign-in flow')).toBeDefined();
     expect(screen.getByText('Connect GitHub')).toBeDefined();

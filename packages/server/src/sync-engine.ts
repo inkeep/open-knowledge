@@ -321,6 +321,7 @@ interface SyncEngineOptions {
   mode?: SyncMode;
   syncEnabled?: boolean;
   credentialConfig?: string[];
+  resolveCredentialConfig?: () => Promise<string[]>;
   cc1Broadcaster?: Pick<CC1Broadcaster, 'signal'> | null;
   conflicts: ConflictAuthority;
   onStateChange?: (state: SyncState) => void;
@@ -401,6 +402,7 @@ export class SyncEngine {
   private pushIntervalSeconds: number;
   private mode: SyncMode;
   private credentialConfig: string[];
+  private readonly resolveCredentialConfig: (() => Promise<string[]>) | undefined;
   private cc1Broadcaster: Pick<CC1Broadcaster, 'signal'> | null;
   private onStateChange: ((state: SyncState) => void) | undefined;
   private setBatchInProgress: ((value: boolean) => void) | undefined;
@@ -491,6 +493,7 @@ export class SyncEngine {
     this.pushIntervalSeconds = options.pushIntervalSeconds ?? 60;
     this.mode = options.mode ?? (options.syncEnabled === true ? 'full' : 'off');
     this.credentialConfig = options.credentialConfig ?? [];
+    this.resolveCredentialConfig = options.resolveCredentialConfig;
     this.cc1Broadcaster = options.cc1Broadcaster ?? null;
     this.onStateChange = options.onStateChange;
     this.setBatchInProgress = options.setBatchInProgress;
@@ -853,7 +856,21 @@ export class SyncEngine {
     }
   }
 
+  getCredentialConfig(): string[] {
+    return this.credentialConfig;
+  }
+
+  private async refreshCredentialConfig(): Promise<void> {
+    if (!this.resolveCredentialConfig) return;
+    try {
+      this.credentialConfig = await this.resolveCredentialConfig();
+    } catch (err) {
+      log.warn({ err }, '[sync] credential config refresh failed — keeping the previous chain');
+    }
+  }
+
   async notifyCredentialsChanged(): Promise<void> {
+    await this.refreshCredentialConfig();
     if (this.mode === 'off') return;
 
     this.ghTokenSource.invalidate();
@@ -1002,6 +1019,7 @@ export class SyncEngine {
     if (this.cycleInFlight !== null || this.fetchOnlyInFlight) return false;
 
     this.fetchOnlyInFlight = true;
+    await this.refreshCredentialConfig();
     const handle = this.gitHandle();
     try {
       await handle.git.fetch('origin');
@@ -1223,7 +1241,17 @@ export class SyncEngine {
       const next: PushPermissionStatus = { checkStatus: 'unknown' };
       const prev = this.pushPermission;
       this.pushPermission = next;
-      if (!pushPermissionStatusEqual(prev, next)) {
+      if (this.pausedReason === 'no-push-permission') {
+        this.pausedReason = undefined;
+        if (this.state === 'disabled' && this.mode === 'full') {
+          this.transitionTo('idle');
+        }
+        log.info(
+          { caller, originKind: origin.kind },
+          '[sync] push-permission pause cleared — origin is no longer a GitHub host',
+        );
+        this.cc1Broadcaster?.signal('sync-status');
+      } else if (!pushPermissionStatusEqual(prev, next)) {
         this.cc1Broadcaster?.signal('sync-status');
       }
       return next;
@@ -1474,6 +1502,7 @@ export class SyncEngine {
         return 'error';
       }
     }
+    await this.refreshCredentialConfig();
     const handle = this.gitHandle();
 
     let branch: string;
@@ -2061,6 +2090,7 @@ export class SyncEngine {
 
   private async doPushCycle(retriesLeft = 0): Promise<void> {
     this.pushCycleLanded = false;
+    await this.refreshCredentialConfig();
     const tmpIndexPath = join(tmpdir(), `ok-sync-idx-${process.pid}-${Date.now()}.idx`);
     let commitSha: string | null = null;
 

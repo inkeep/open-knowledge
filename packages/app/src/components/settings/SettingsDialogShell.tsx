@@ -218,7 +218,7 @@ export function SettingsDialogShell({
         { id: 'hotkeys', label: t`Hotkeys` },
         {
           id: 'account',
-          label: t`Account`,
+          label: t`Git`,
           subsections: [
             {
               id: 'enterprise-hosts',
@@ -227,6 +227,17 @@ export function SettingsDialogShell({
               keywords: [
                 t({ message: 'GHES', context: 'settings search keyword' }),
                 t({ message: 'enterprise', context: 'settings search keyword' }),
+                t({ message: 'git host', context: 'settings search keyword' }),
+              ],
+            },
+            {
+              id: 'host-tokens',
+              label: t`Other Git hosts`,
+              anchor: 'section:host-tokens',
+              keywords: [
+                t({ message: 'token', context: 'settings search keyword' }),
+                t({ message: 'GitLab', context: 'settings search keyword' }),
+                t({ message: 'Bitbucket', context: 'settings search keyword' }),
                 t({ message: 'git host', context: 'settings search keyword' }),
               ],
             },

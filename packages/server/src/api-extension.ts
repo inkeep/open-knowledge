@@ -351,7 +351,10 @@ import { createSkillInstallOpsService } from './services/skill-install-ops.ts';
 import { createSkillPlacementOpsService } from './services/skill-placement-ops.ts';
 import { createSkillReimportService } from './services/skill-reimport.ts';
 import { SERVICE_WRITER, type ShadowRef, shadowGit } from './shadow-repo.ts';
-import { readDeclaredGitHubHosts } from './share/git-context.ts';
+import {
+  createSyncCredentialConfigResolver,
+  readDeclaredGitHubHosts,
+} from './share/git-context.ts';
 
 import { readSkillInstallModeRaw } from './skill-placements.ts';
 
@@ -1286,6 +1289,7 @@ interface ApiExtensionBaseOptions {
   agentPresenceBroadcaster?: AgentPresenceBroadcaster;
   onAgentWrite?: () => void;
   getSyncEngine?: () => SyncEngine | null;
+  resolveSyncCredentialConfig?: () => Promise<string[]>;
   conflicts: ConflictAuthority;
   setBatchInProgress?: (value: boolean) => void;
   localOpCliArgs?: string[];
@@ -1511,6 +1515,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
   } = options;
   const declaredGitHubHosts =
     options.declaredGitHubHosts ?? readDeclaredGitHubHosts(homeDirOverride);
+  const resolveSyncCredentialConfig =
+    options.resolveSyncCredentialConfig ??
+    createSyncCredentialConfigResolver({
+      projectDir: projectDir ?? contentDir,
+      tokenStore: null,
+      localOpCliArgs,
+      declaredGitHubHosts,
+    });
   const catalogCache = createSkillsCatalogCache({ homeDirOverride, log });
   const { bumpSkillsCatalogGen, enumerateInstalledSkillsCached, pluginSkillsByName } = catalogCache;
   const signalChannel: typeof rawSignalChannel = rawSignalChannel
@@ -5076,10 +5088,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     localOpCliArgs,
     localOpGuard,
     getSyncEngine,
+    resolveCredentialConfig: resolveSyncCredentialConfig,
     toGitRelativePath,
   });
   const gitRoutes = createGitRoutes({
-    declaredGitHubHosts,
     projectDir,
     contentDir,
     contentFilter,
@@ -5087,7 +5099,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     checkLocalOpSecurity,
     getSyncEngine,
     getPrincipal,
-    localOpCliArgs,
+    resolveCredentialConfig: resolveSyncCredentialConfig,
   });
   const localOpRoutes = createLocalOpRoutes({
     declaredGitHubHosts,

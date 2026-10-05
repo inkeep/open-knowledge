@@ -14,8 +14,12 @@ export function redactedStderrDetail(rawStderr: string): string {
   return scrubSecrets(redactShareSubprocessStderr(rawStderr)).trim().slice(0, MAX_DETAIL_LEN);
 }
 
-export function stderrDetailSuffix(rawStderr: string): string {
-  const detail = redactedStderrDetail(rawStderr);
+export function stderrDetailSuffix(rawStderr: string, secrets: readonly string[] = []): string {
+  const withoutSecrets = secrets.reduce(
+    (text, secret) => (secret.length > 0 ? text.split(secret).join('[REDACTED]') : text),
+    rawStderr,
+  );
+  const detail = redactedStderrDetail(withoutSecrets);
   return detail.length > 0 ? ` — ${detail}` : '';
 }
 

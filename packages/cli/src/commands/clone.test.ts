@@ -195,6 +195,53 @@ describe('resolveCloneAuth', () => {
     expect(declaredMiss).toBeUndefined();
   });
 
+  test.each([
+    ['https://git.corp.example:8443/team/kb.git', 'git.corp.example:8443'],
+    ['https://Git.Corp.example/team/kb.git', 'git.corp.example'],
+    ['https://git.corp.example:443/team/kb.git', 'git.corp.example'],
+  ])('a token stored for the host git asks for authenticates a clone of %s', async (url, key) => {
+    const store = makeStore();
+    await store.set(key, 'alice', 'tok_A', { gitProtocol: 'https' });
+
+    const { auth: resolved } = await resolveCloneAuth(url, store, {
+      selfCliArgs: SELF,
+      _detectGhFn: () => ({ available: false }),
+      _readCredentialUrlMatch: () => null,
+    });
+
+    expect(resolved.tier).toBe('B');
+    expect(resolved.gitConfig[0]).toBe('credential.helper=');
+  });
+
+  test.each(['http://git.corp.example/team/kb.git', 'http://git.corp.example:8080/team/kb.git'])(
+    'a plain-http clone of %s keeps ambient git credentials, since the helper answers only https',
+    async (url) => {
+      const store = makeStore();
+      await store.set('git.corp.example', 'alice', 'tok_A', { gitProtocol: 'https' });
+
+      const { auth: resolved } = await resolveCloneAuth(url, store, {
+        selfCliArgs: SELF,
+        _detectGhFn: () => ({ available: true, token: 'ghs_x', fallback: false }),
+        _readCredentialUrlMatch: () => null,
+      });
+
+      expect(resolved).toEqual({ tier: 'none', gitConfig: [] });
+    },
+  );
+
+  test('a clone URL with a port still finds an entry stored under the bare host', async () => {
+    const store = makeStore();
+    await store.set('ghes.corp.example', 'alice', 'tok_A', { gitProtocol: 'https' });
+
+    const { auth: resolved } = await resolveCloneAuth('https://ghes.corp.example:8443/o/r', store, {
+      selfCliArgs: SELF,
+      _detectGhFn: () => ({ available: false }),
+      _readCredentialUrlMatch: () => null,
+    });
+
+    expect(resolved.tier).toBe('B');
+  });
+
   test('an unparseable clone URL is rejected the way runClone rejects it', async () => {
     await expect(resolveCloneAuth('not-a-url', makeStore(), { selfCliArgs: SELF })).rejects.toThrow(
       'Invalid git URL: not-a-url',

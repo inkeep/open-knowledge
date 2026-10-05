@@ -7,10 +7,11 @@ import { patCommand } from './pat.ts';
 import { reposCommand } from './repos.ts';
 import { signoutCommand } from './signout.ts';
 import { statusCommand } from './status.ts';
+import { tokenCommand } from './token.ts';
 
 export function authCommand(getLog?: () => PinoLoggerInstance | undefined): Command {
   const cmd = new Command('auth');
-  cmd.description('GitHub authentication management');
+  cmd.description('Git host authentication management');
 
   const getTokenStore = (diag?: TokenStoreDiagnostics) => createTokenStore(undefined, diag);
 
@@ -19,6 +20,7 @@ export function authCommand(getLog?: () => PinoLoggerInstance | undefined): Comm
   cmd.addCommand(reposCommand(getTokenStore));
   cmd.addCommand(signoutCommand());
   cmd.addCommand(patCommand(getTokenStore));
+  cmd.addCommand(tokenCommand(getTokenStore));
   cmd.addCommand(gitCredentialCommand(getTokenStore, getLog));
 
   return cmd;

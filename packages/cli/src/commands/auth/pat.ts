@@ -3,19 +3,12 @@ import { Octokit } from '@octokit/rest';
 import { Command } from 'commander';
 import { describeAuthFailure } from '../../auth/describe-auth-error.ts';
 import type { TokenStore } from '../../auth/token-store.ts';
+import { readTokenFromStdin } from './read-token-stdin.ts';
 import { resolveAuthHost } from './validate-host.ts';
 
 interface PatOptions {
   host: string;
   json: boolean;
-}
-
-async function readTokenFromStdin(): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(chunk as Buffer);
-  }
-  return Buffer.concat(chunks).toString('utf8').trim();
 }
 
 async function runPat(
@@ -54,7 +47,18 @@ async function runPat(
     process.exit(1);
   }
 
-  await tokenStore.set(host, login, token, { gitProtocol: 'https', name, email });
+  try {
+    await tokenStore.set(host, login, token, { gitProtocol: 'https', name, email });
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    const message = `Could not save the token to the credential store: ${reason}`;
+    if (json) {
+      process.stdout.write(`${JSON.stringify({ type: 'error', message })}\n`);
+    } else {
+      process.stderr.write(`${message}\n`);
+    }
+    process.exit(1);
+  }
 
   if (json) {
     process.stdout.write(`${JSON.stringify({ type: 'complete', host, login })}\n`);

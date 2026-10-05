@@ -1,5 +1,9 @@
 import { stderrDetailSuffix } from './clone-error-classify.ts';
-import { type LocalOpCliInvocation, runSubprocess } from './subprocess.ts';
+import {
+  LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS,
+  type LocalOpCliInvocation,
+  runSubprocess,
+} from './subprocess.ts';
 import type { LocalOpSubprocessLifetime } from './subprocess-lifetime.ts';
 
 export interface RunPatOptions extends LocalOpCliInvocation {
@@ -13,8 +17,6 @@ export type RunPatResult =
   | { ok: true; host: string; login: string }
   | { ok: false; host: string; error: string };
 
-const DEFAULT_TIMEOUT_MS = 30_000;
-
 export async function runPatSubprocess(opts: RunPatOptions): Promise<RunPatResult> {
   const host = opts.host ?? 'github.com';
   let terminal: RunPatResult | null = null;
@@ -26,7 +28,7 @@ export async function runPatSubprocess(opts: RunPatOptions): Promise<RunPatResul
     cwd: opts.cwd,
     trailingArgs: ['auth', 'pat', '--json', '--host', host, '--token-stdin'],
     stdinData: opts.token,
-    timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    timeoutMs: opts.timeoutMs ?? LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS,
     onLine: ({ parsed }) => {
       if (!parsed) return;
       if (parsed.type === 'complete') {
@@ -48,5 +50,9 @@ export async function runPatSubprocess(opts: RunPatOptions): Promise<RunPatResul
   const result = await proc.done;
   if (terminal) return terminal;
   if (result.timedOut) return { ok: false, host, error: 'Token validation timed out.' };
-  return { ok: false, host, error: `Token validation failed.${stderrDetailSuffix(result.stderr)}` };
+  return {
+    ok: false,
+    host,
+    error: `Token validation failed.${stderrDetailSuffix(result.stderr, [opts.token, opts.token.trim()])}`,
+  };
 }

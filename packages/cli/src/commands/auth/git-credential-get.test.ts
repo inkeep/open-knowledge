@@ -2,9 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { FileBackend } from '../../auth/token-store.ts';
 import { type CredentialGetLogContext, handleCredentialGet } from './git-credential-get.ts';
+import { runTokenPaste } from './token.ts';
 
 function makeStream(content: string): Readable {
   return Readable.from([Buffer.from(content, 'utf-8')]);
@@ -107,6 +108,100 @@ describe('handleCredentialGet', () => {
 
     expect(code).toBe(0);
     expect(result()).toBe('username=alice\npassword=gho_abc\n');
+  });
+
+  test('serves the credential that ok auth token stored for a non-GitHub host', async () => {
+    const store = makeStore(tmpDir);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      await runTokenPaste(
+        { host: 'git.example.internal', username: 'alice', json: false },
+        store,
+        async () => 'tok_internal_123',
+      );
+    } finally {
+      stderrSpy.mockRestore();
+    }
+    const input = makeStream('protocol=https\nhost=git.example.internal\n\n');
+    const { writable, result } = makeOutput();
+
+    const code = await handleCredentialGet(input, writable, store);
+
+    expect(code).toBe(0);
+    expect(result()).toBe('username=alice\npassword=tok_internal_123\n');
+  });
+
+  async function storeWithTokenPaste(store: FileBackend, host: string): Promise<void> {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      await runTokenPaste({ host, username: 'alice', json: false }, store, async () => 'tok_A');
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  }
+
+  test.each([
+    ['git.example.internal', 'protocol=https\nhost=GIT.Example.Internal\n\n'],
+    ['Git.Example.Internal', 'protocol=https\nhost=git.example.internal\n\n'],
+    ['git.example.internal', 'protocol=https\nhost=git.example.internal:443\n\n'],
+    ['git.example.internal:443', 'protocol=https\nhost=git.example.internal\n\n'],
+    ['git.example.internal:8443', 'protocol=https\nhost=Git.Example.Internal:8443\n\n'],
+    ['git.example.internal', 'host=git.example.internal:443\n\n'],
+  ])('a token stored for %s answers git request %j', async (stored, request) => {
+    const store = makeStore(tmpDir);
+    await storeWithTokenPaste(store, stored);
+    const { writable, result } = makeOutput();
+
+    const code = await handleCredentialGet(makeStream(request), writable, store);
+
+    expect(code).toBe(0);
+    expect(result()).toBe('username=alice\npassword=tok_A\n');
+  });
+
+  test.each([
+    ['git.example.internal:8443', 'protocol=https\nhost=git.example.internal\n\n'],
+    ['git.example.internal', 'protocol=https\nhost=git.example.internal:8443\n\n'],
+    ['git.example.internal', 'protocol=http\nhost=git.example.internal\n\n'],
+    ['git.example.internal', 'protocol=http\nhost=git.example.internal:80\n\n'],
+  ])('a token stored for %s does not answer git request %j', async (stored, request) => {
+    const store = makeStore(tmpDir);
+    await storeWithTokenPaste(store, stored);
+    const { writable, result } = makeOutput();
+
+    const code = await handleCredentialGet(makeStream(request), writable, store);
+
+    expect(code).toBe(1);
+    expect(result()).toBe('');
+  });
+
+  test('still serves an entry stored under a mixed-case key before keys were lowercased', async () => {
+    const store = makeStore(tmpDir);
+    await store.set('GHES.Example.com', 'alice', 'tok_legacy');
+    const { writable, result } = makeOutput();
+
+    const code = await handleCredentialGet(
+      makeStream('protocol=https\nhost=GHES.Example.com\n\n'),
+      writable,
+      store,
+    );
+
+    expect(code).toBe(0);
+    expect(result()).toBe('username=alice\npassword=tok_legacy\n');
+  });
+
+  test('never hands a stored GitHub token to a plain-http request', async () => {
+    const store = makeStore(tmpDir);
+    await store.set('github.com', 'alice', 'gho_abc123');
+    const { writable, result } = makeOutput();
+
+    const code = await handleCredentialGet(
+      makeStream('protocol=http\nhost=github.com\n\n'),
+      writable,
+      store,
+    );
+
+    expect(code).toBe(1);
+    expect(result()).toBe('');
   });
 
   test('output format matches git credential protocol', async () => {
@@ -294,6 +389,53 @@ describe('handleCredentialGet gh-token relay', () => {
 
     expect(code).toBe(0);
     expect(result()).toBe('username=x-access-token\npassword=gho_relayed\n');
+  });
+
+  test.each(['protocol=https\nhost=GitHub.com\n\n', 'protocol=https\nhost=github.com:443\n\n'])(
+    'the relayed token answers %j, the same host spelled differently',
+    async (request) => {
+      const store = makeStore(tmpDir);
+      process.env.OK_GH_TOKEN = 'gho_relayed';
+      process.env.OK_GH_TOKEN_HOST = 'github.com';
+      const { writable, result } = makeOutput();
+
+      const code = await handleCredentialGet(makeStream(request), writable, store);
+
+      expect(code).toBe(0);
+      expect(result()).toBe('username=x-access-token\npassword=gho_relayed\n');
+    },
+  );
+
+  test('the relayed token does not answer a different port on the same host', async () => {
+    const store = makeStore(tmpDir);
+    process.env.OK_GH_TOKEN = 'gho_relayed';
+    process.env.OK_GH_TOKEN_HOST = 'github.com';
+    const { writable, result } = makeOutput();
+
+    const code = await handleCredentialGet(
+      makeStream('protocol=https\nhost=github.com:8443\n\n'),
+      writable,
+      store,
+    );
+
+    expect(code).toBe(1);
+    expect(result()).toBe('');
+  });
+
+  test('a relayed token is never handed to a plain-http request', async () => {
+    const store = makeStore(tmpDir);
+    process.env.OK_GH_TOKEN = 'gho_relayed';
+    process.env.OK_GH_TOKEN_HOST = 'github.com';
+    const { writable, result } = makeOutput();
+
+    const code = await handleCredentialGet(
+      makeStream('protocol=http\nhost=github.com\n\n'),
+      writable,
+      store,
+    );
+
+    expect(code).toBe(1);
+    expect(result()).toBe('');
   });
 
   test('relayed token serves even when the store is empty (the reported bug)', async () => {

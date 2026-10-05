@@ -75,7 +75,8 @@ describe('gitHubHostRejection', () => {
     vi.stubEnv('OK_CHANNEL', '');
     expect(gitHubHostRejection('git.example.internal')).toBe(
       `${errorColor('Error:')} git.example.internal is not a known GitHub host.\n` +
-        'To use a GitHub Enterprise Server host, declare it in ~/.ok/global.yml:\n\n  git:\n    hosts:\n      git.example.internal:\n        provider: github\n',
+        'To use a GitHub Enterprise Server host, declare it in ~/.ok/global.yml:\n\n  git:\n    hosts:\n      git.example.internal:\n        provider: github\n\n' +
+        'If git.example.internal is not a GitHub host, store an access token for git with:\n\n  ok auth token --host git.example.internal --username <username>\n',
     );
   });
 

@@ -26,6 +26,7 @@ interface PatResult {
 export interface AuthTransport {
   start(): AuthTransportHandle;
   pat?(host: string, token: string): Promise<PatResult>;
+  hostToken?(host: string, username: string, token: string): Promise<PatResult>;
   ghLogin?(host: string): AuthTransportHandle;
 }
 
@@ -198,6 +199,27 @@ export function httpAuthTransport(): AuthTransport {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ host, token }),
+        });
+        if (res.ok) {
+          const body = (await res.json()) as { login?: unknown };
+          return { ok: true, login: typeof body.login === 'string' ? body.login : '' };
+        }
+        let error = t`Failed to store the token — try again`;
+        try {
+          const result = ProblemDetailsSchema.safeParse(await res.json());
+          if (result.success) error = result.data.detail || result.data.title;
+        } catch {}
+        return { ok: false, error };
+      } catch {
+        return { ok: false, error: t`Connection error — try again` };
+      }
+    },
+    async hostToken(host: string, username: string, token: string): Promise<PatResult> {
+      try {
+        const res = await fetch('/api/local-op/auth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ host, username, token }),
         });
         if (res.ok) {
           const body = (await res.json()) as { login?: unknown };

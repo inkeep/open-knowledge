@@ -108,6 +108,9 @@ vi.doMock('@/lib/use-settings-route', () => ({
   openSyncSettings: () => {
     settingsNavigations.push('sync');
   },
+  openAccountSettings: () => {
+    settingsNavigations.push('account');
+  },
 }));
 
 const emptyWorktree = {
@@ -311,7 +314,8 @@ describe('SyncStatusBadge helper behavior', () => {
       {
         key: 'push',
         direction: null,
-        message: 'GitHub authentication failed. Try signing in again.',
+        message:
+          'Authentication failed for this git host. Add a token for it in Settings, or replace the one stored.',
       },
     ]);
     expect(
@@ -323,7 +327,8 @@ describe('SyncStatusBadge helper behavior', () => {
       {
         key: 'sync',
         direction: null,
-        message: 'GitHub authentication failed. Try signing in again.',
+        message:
+          'Authentication failed for this git host. Add a token for it in Settings, or replace the one stored.',
       },
     ]);
     expect(
@@ -357,7 +362,7 @@ describe('SyncStatusBadge helper behavior', () => {
     );
 
     for (const format of [formatSyncFailureCode, formatPushFailureCode, formatPullFailureCode]) {
-      expect(format('auth-no-credential')).toMatch(/reconnect/i);
+      expect(format('auth-no-credential', true)).toMatch(/reconnect/i);
     }
   });
 
@@ -367,7 +372,7 @@ describe('SyncStatusBadge helper behavior', () => {
     );
 
     for (const format of [formatSyncFailureCode, formatPushFailureCode, formatPullFailureCode]) {
-      expect(format('auth-not-found-as-identity')).toBe(
+      expect(format('auth-not-found-as-identity', true)).toBe(
         'Repository not found — it may not exist, or the account used may not have access.',
       );
     }
@@ -379,15 +384,110 @@ describe('SyncStatusBadge helper behavior', () => {
     );
 
     const futureCode = 'auth-far-future' as Parameters<typeof formatPushFailureCode>[0];
-    expect(formatPushFailureCode(futureCode)).toBe(
+    expect(formatPushFailureCode(futureCode, true)).toBe(
       'Push failed — check the server logs for details.',
     );
-    expect(formatPullFailureCode(futureCode)).toBe(
+    expect(formatPullFailureCode(futureCode, true)).toBe(
       'Fetch failed — check the server logs for details.',
     );
-    expect(formatSyncFailureCode(futureCode)).toBe(
+    expect(formatSyncFailureCode(futureCode, true)).toBe(
       'Sync failed — check the server logs for details.',
     );
+  });
+
+  test('isGitHubRemote keys off a non-null webUrl and nothing else', async () => {
+    const { isGitHubRemote } = await import('./SyncStatusBadge');
+
+    expect(isGitHubRemote(undefined)).toBe(false);
+    expect(isGitHubRemote(null)).toBe(false);
+    expect(isGitHubRemote({ label: 'git.example.com/team/wiki', webUrl: null })).toBe(false);
+    expect(
+      isGitHubRemote({
+        label: 'inkeep/open-knowledge',
+        webUrl: 'https://github.com/inkeep/open-knowledge',
+      }),
+    ).toBe(true);
+  });
+
+  test('hasNonGitHubRemote fires only for a remote that is present and not GitHub', async () => {
+    const { hasNonGitHubRemote } = await import('./SyncStatusBadge');
+
+    expect(hasNonGitHubRemote(undefined)).toBe(false);
+    expect(hasNonGitHubRemote(null)).toBe(false);
+    expect(
+      hasNonGitHubRemote({
+        label: 'inkeep/open-knowledge',
+        webUrl: 'https://github.com/inkeep/open-knowledge',
+      }),
+    ).toBe(false);
+    expect(hasNonGitHubRemote({ label: 'git.example.com/team/wiki', webUrl: null })).toBe(true);
+  });
+
+  test('auth failure copy names GitHub only for a GitHub remote', async () => {
+    const { formatAuthFailureCode } = await import('./SyncStatusBadge');
+
+    expect(formatAuthFailureCode('auth-401', true)).toBe(
+      'GitHub authentication failed. Try signing in again.',
+    );
+    expect(formatAuthFailureCode('auth-401', false)).toBe(
+      'Authentication failed for this git host. Add a token for it in Settings, or replace the one stored.',
+    );
+    expect(formatAuthFailureCode('auth-scope-mismatch', true)).toBe(
+      'Your GitHub token is missing required scopes. Try signing in again.',
+    );
+    expect(formatAuthFailureCode('auth-scope-mismatch', false)).toBe(
+      'The stored token is missing the permissions this host needs to push.',
+    );
+    expect(formatAuthFailureCode('auth-no-credential', true)).toBe(
+      'GitHub sign-in is missing or expired. Reconnect to resume syncing.',
+    );
+    expect(formatAuthFailureCode('auth-no-credential', false)).toBe(
+      'No credential is stored for this git host. Add a token in Settings, or let git use the credentials it already has.',
+    );
+
+    for (const code of ['auth-401', 'auth-scope-mismatch', 'auth-no-credential'] as const) {
+      expect(formatAuthFailureCode(code, false)).not.toContain('GitHub');
+    }
+  });
+
+  test('non-auth codes fall through formatAuthFailureCode', async () => {
+    const { formatAuthFailureCode } = await import('./SyncStatusBadge');
+
+    expect(formatAuthFailureCode('auth-403', false)).toBeNull();
+    expect(formatAuthFailureCode('semantic-protected-branch', true)).toBeNull();
+  });
+
+  test('computeSyncErrorLines picks auth copy from the remote host kind', async () => {
+    const { computeSyncErrorLines } = await import('./SyncStatusBadge');
+
+    expect(
+      computeSyncErrorLines({
+        pushErrorCode: 'auth-401',
+        remote: { label: 'git.example.com/team/wiki', webUrl: null },
+      }),
+    ).toEqual([
+      {
+        key: 'push',
+        direction: null,
+        message:
+          'Authentication failed for this git host. Add a token for it in Settings, or replace the one stored.',
+      },
+    ]);
+    expect(
+      computeSyncErrorLines({
+        pushErrorCode: 'auth-401',
+        remote: {
+          label: 'inkeep/open-knowledge',
+          webUrl: 'https://github.com/inkeep/open-knowledge',
+        },
+      }),
+    ).toEqual([
+      {
+        key: 'push',
+        direction: null,
+        message: 'GitHub authentication failed. Try signing in again.',
+      },
+    ]);
   });
 
   test('only token-invalid unknown push-permission probes offer sign-in again', async () => {
@@ -1017,6 +1117,91 @@ describe('SyncStatusBadge runtime behavior', () => {
 
     expect(screen.getByText(/GitHub session expired — sign in again/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
+  });
+
+  test('a non-GitHub auth-401 renders host-neutral authentication copy', async () => {
+    status = {
+      ...baseStatus,
+      state: 'idle',
+      remote: { label: 'git.example.com/team/wiki', webUrl: null },
+      pushErrorCode: 'auth-401',
+    };
+    await renderBadge();
+    await openPopover();
+
+    const region = screen.getByTestId('sync-popover-status').textContent ?? '';
+    expect(region).toContain('Authentication failed for this git host');
+    expect(region).not.toContain('GitHub');
+  });
+
+  test('a GitHub auth-401 keeps the GitHub-named authentication copy', async () => {
+    status = { ...baseStatus, state: 'idle', pushErrorCode: 'auth-401' };
+    await renderBadge();
+    await openPopover();
+
+    expect(screen.getByTestId('sync-popover-status').textContent ?? '').toContain(
+      'GitHub authentication failed',
+    );
+  });
+
+  test('a GitHub reconnect prompt keeps the signed-out line and its Sign in button', async () => {
+    status = {
+      ...baseStatus,
+      state: 'idle',
+      pushPermission: { checkStatus: 'denied', deniedReason: 'not-authenticated' },
+    };
+    await renderBadge({ onSignIn: () => {} });
+    await openPopover();
+
+    expect(screen.getByText(/signed out — sign in to resume syncing/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
+  });
+
+  test('a non-GitHub auth-error points at the stored token and offers no sign-in', async () => {
+    status = {
+      ...baseStatus,
+      state: 'auth-error',
+      remote: { label: 'git.example.com/team/wiki', webUrl: null },
+    };
+    await renderBadge({ onSignIn: () => {} });
+    await openPopover();
+
+    const region = screen.getByTestId('sync-popover-auth-error-unverified');
+    expect(region.textContent).toBe(
+      'Reconnect required to keep syncing. Add a token for this host in Settings, or replace the one stored.',
+    );
+    expect(region.textContent ?? '').not.toContain('GitHub');
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
+    settingsNavigations.length = 0;
+    act(() => screen.getByRole('button', { name: 'Add token' }).click());
+    expect(settingsNavigations).toEqual(['account']);
+  });
+
+  test('an SSH non-GitHub auth-error points at the SSH key and offers no token', async () => {
+    status = {
+      ...baseStatus,
+      state: 'auth-error',
+      remote: { label: 'git.example.com/team/wiki', webUrl: null, transport: 'ssh' },
+    };
+    await renderBadge({ onSignIn: () => {} });
+    await openPopover();
+
+    expect(screen.getByTestId('sync-popover-auth-error-no-token').textContent).toBe(
+      'Reconnect required to keep syncing. Check the SSH key or saved credentials git uses for this host.',
+    );
+    expect(screen.queryByTestId('sync-popover-auth-error-unverified')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add token' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
+  });
+
+  test('a GitHub auth-error keeps the reconnect line and its Sign in button', async () => {
+    status = { ...baseStatus, state: 'auth-error' };
+    await renderBadge({ onSignIn: () => {} });
+    await openPopover();
+
+    expect(screen.getByText('Reconnect required to keep syncing.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
+    expect(screen.queryByTestId('sync-popover-auth-error-unverified')).toBeNull();
   });
 
   test('the denied popover line renders the identity sentences from the wire payload', async () => {

@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import {
   classifyGitHubShareHost,
+  credentialHostFromRemoteUrl,
   declaredGitHubHostsFrom,
+  gitCredentialHostKey,
   isGitHubHost,
   normalizeGitHostname,
 } from './github.ts';
@@ -116,5 +118,56 @@ describe('classifyGitHubShareHost', () => {
 
   test('still folds www.github.com', () => {
     expect(classifyGitHubShareHost('www.github.com')).toBe('github.com');
+  });
+});
+
+describe('gitCredentialHostKey', () => {
+  test('lowercases the host', () => {
+    expect(gitCredentialHostKey('Git.Example.COM')).toBe('git.example.com');
+  });
+
+  test('keeps a non-default port', () => {
+    expect(gitCredentialHostKey('Git.Example.com:8443')).toBe('git.example.com:8443');
+  });
+
+  test('drops the default HTTPS port', () => {
+    expect(gitCredentialHostKey('git.example.com:443')).toBe('git.example.com');
+    expect(gitCredentialHostKey('git.example.com:443', 'https')).toBe('git.example.com');
+  });
+
+  test('drops the default HTTP port only for http', () => {
+    expect(gitCredentialHostKey('git.example.com:80', 'http')).toBe('git.example.com');
+    expect(gitCredentialHostKey('git.example.com:80', 'https')).toBe('git.example.com:80');
+    expect(gitCredentialHostKey('git.example.com:443', 'http')).toBe('git.example.com:443');
+  });
+
+  test('keeps the port for a protocol with no known default', () => {
+    expect(gitCredentialHostKey('git.example.com:443', 'ssh')).toBe('git.example.com:443');
+  });
+
+  test('does not fold www.github.com', () => {
+    expect(gitCredentialHostKey('www.github.com')).toBe('www.github.com');
+  });
+});
+
+describe('credentialHostFromRemoteUrl', () => {
+  test.each([
+    ['https://git.example.com/team/kb.git', 'git.example.com'],
+    ['https://alice@Git.Example.com:8443/team/kb.git', 'git.example.com:8443'],
+    ['https://git.example.com:443/team/kb.git', 'git.example.com'],
+    ['http://git.example.com:80/team/kb.git', 'git.example.com'],
+    ['http://git.example.com:8080/team/kb.git', 'git.example.com:8080'],
+    ['https://gitlab.example.com/group/sub/kb.git', 'gitlab.example.com'],
+    ['https://dev.azure.com/org/proj/_git/kb', 'dev.azure.com'],
+    ['https://git.example.com', 'git.example.com'],
+    ['ssh://git@Git.Example.com:2222/team/kb.git', 'git.example.com'],
+    ['git@Git.Example.com:team/kb.git', 'git.example.com'],
+    ['git://git.example.com:9418/team/kb.git', 'git.example.com'],
+  ])('%s -> %s', (url, expected) => {
+    expect(credentialHostFromRemoteUrl(url)).toBe(expected);
+  });
+
+  test.each(['', '/srv/git/kb.git', '../kb', 'C:\\repos\\kb'])('%j has no host', (url) => {
+    expect(credentialHostFromRemoteUrl(url)).toBeNull();
   });
 });

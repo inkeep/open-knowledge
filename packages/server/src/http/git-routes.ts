@@ -21,10 +21,9 @@ import {
   isValidBranchName,
 } from '../git-branch-info.ts';
 import { CHECKOUT_HANDLER_TAG, runCheckoutFlow } from '../git-checkout.ts';
-import { buildSyncCredentialConfig, withParentLock } from '../git-handle.ts';
+import { withParentLock } from '../git-handle.ts';
 import { readWorktreeStatus } from '../git-worktree-status.ts';
 import { toPosix } from '../path-utils.ts';
-import { readDeclaredGitHubHosts, shouldResetAmbientCredentials } from '../share/git-context.ts';
 import type { SyncEngine } from '../sync-engine.ts';
 import { type ApiRouteGroup, type ApiRouteRecord, createApiRouteGroup } from './api-pipeline.ts';
 import { errorResponse } from './error-response.ts';
@@ -33,7 +32,6 @@ import { withValidation } from './request-validation.ts';
 import { successResponse } from './success-response.ts';
 
 export interface GitRouteDeps {
-  declaredGitHubHosts?: ReadonlySet<string>;
   projectDir: string | undefined;
   contentDir: string;
   contentFilter: ContentFilter | undefined;
@@ -45,7 +43,7 @@ export interface GitRouteDeps {
   ) => boolean;
   getSyncEngine: (() => SyncEngine | null) | undefined;
   getPrincipal: (() => Principal | null) | undefined;
-  localOpCliArgs: string[];
+  resolveCredentialConfig: () => Promise<string[]>;
 }
 
 export function createGitRoutes(deps: GitRouteDeps): ApiRouteGroup {
@@ -57,9 +55,8 @@ export function createGitRoutes(deps: GitRouteDeps): ApiRouteGroup {
     checkLocalOpSecurity,
     getSyncEngine,
     getPrincipal,
-    localOpCliArgs,
+    resolveCredentialConfig,
   } = deps;
-  const declaredGitHubHosts = deps.declaredGitHubHosts ?? readDeclaredGitHubHosts();
 
   function toOpenTarget(projectRelPath: string): GitWorktreeOpenTarget | undefined {
     const absPath = join(projectDir ?? contentDir, projectRelPath);
@@ -195,12 +192,11 @@ export function createGitRoutes(deps: GitRouteDeps): ApiRouteGroup {
       }
 
       try {
+        const credentialConfig = await resolveCredentialConfig();
         const outcome = await withParentLock(() =>
           runCheckoutFlow(projectDir, body.branch, {
             fastForward: body.fastForward === true,
-            credentialConfig: buildSyncCredentialConfig(localOpCliArgs, {
-              resetAmbient: shouldResetAmbientCredentials(projectDir, declaredGitHubHosts),
-            }),
+            credentialConfig,
           }),
         );
         successResponse(res, 200, CheckoutResponseSchema, outcome, {

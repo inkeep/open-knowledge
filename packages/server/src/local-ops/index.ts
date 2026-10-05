@@ -12,6 +12,7 @@ export {
   runAuthReposSubprocess,
   runAuthStatusSubprocess,
 } from './auth-query.ts';
+export { runAuthTokenSubprocess } from './auth-token.ts';
 export { classifyCloneError } from './clone-error-classify.ts';
 export {
   type RawCloneEvent,

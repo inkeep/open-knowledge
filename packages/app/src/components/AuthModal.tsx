@@ -418,7 +418,7 @@ export function AuthModal({
     };
   }, [open, identityPrompt]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: probe runs on open; resolvedQueryTransport is a fresh object each render and excluded intentionally
+  // biome-ignore lint/correctness/useExhaustiveDependencies: probe runs on open; resolvedQueryTransport, onOpenChange and t are recreated each render and excluded intentionally
   useEffect(() => {
     if (!open || !needsHostProbe) return;
     let settled = false;
@@ -428,10 +428,20 @@ export function AuthModal({
       setStep(next);
     };
     const timer = setTimeout(() => settle('auth'), IDENTITY_PROBE_TIMEOUT_MS);
+    const refuse = (message: string) => {
+      if (settled) return;
+      settled = true;
+      toast.error(message);
+      onOpenChange(false);
+    };
     void resolvedQueryTransport
       .status()
       .then((status) => {
         if (settled) return;
+        if (!status.authenticated && status.unsupportedOrigin !== undefined) {
+          refuse(status.error ?? t`OpenKnowledge can't sign in to GitHub for this project.`);
+          return;
+        }
         const enterprise = !!status.host && status.host !== 'github.com';
         setProbedHost(status.host);
         setProbedGhAvailable(status.ghAvailable);

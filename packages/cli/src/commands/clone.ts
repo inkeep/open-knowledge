@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import {
   type ClassifiedGitAuthError,
   classifyGitAuthError,
+  credentialHostFromRemoteUrl,
   isBranchNotFoundGitError,
   isLoginFixableGitAuthError,
   shellSingleQuote,
@@ -199,14 +200,16 @@ export async function resolveCloneAuth(
   if (!parsed) {
     throw new Error(`Invalid git URL: ${stripUrlPassword(cloneUrl)}`);
   }
+  if (cloneUrl.trim().startsWith('http://')) return { auth: { tier: 'none', gitConfig: [] } };
   const account = resolveGitHubAccountFromUrl(cloneUrl, {
     cwd: options.cwd,
     _readCredentialUrlMatch: options._readCredentialUrlMatch,
   });
+  const credentialHost = credentialHostFromRemoteUrl(cloneUrl) ?? undefined;
   const auth = await resolveAuth(
     account.host ?? parsed.hostname,
     tokenStore,
-    { selfCliArgs: options.selfCliArgs, login: account.login },
+    { selfCliArgs: options.selfCliArgs, login: account.login, credentialHost },
     options._detectGhFn,
   );
   const declaredMiss =

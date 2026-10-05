@@ -15,6 +15,8 @@ import {
   LocalOpAuthPatSuccessSchema,
   LocalOpAuthSetIdentityRequestSchema,
   LocalOpAuthStatusSuccessSchema,
+  LocalOpAuthTokenRequestSchema,
+  LocalOpAuthTokenSuccessSchema,
   type LocalOpCloneRequest,
   LocalOpCloneRequestSchema,
   LocalOpEmbeddingsMutationSuccessSchema,
@@ -52,6 +54,7 @@ import {
   type AuthEvent,
   classifyCloneError,
   createGhBinaryPathResolver,
+  runAuthTokenSubprocess,
   runCloneSubprocess,
   runDeviceFlowSubprocess,
   runGhDeviceLoginSubprocess,
@@ -501,6 +504,7 @@ export function createLocalOpRoutes(
   const LOCAL_OP_AUTH_REPOS_KEY = '/api/local-op/auth/repos';
   const LOCAL_OP_AUTH_SIGNOUT_KEY = '/api/local-op/auth/signout';
   const LOCAL_OP_AUTH_PAT_KEY = '/api/local-op/auth/pat';
+  const LOCAL_OP_AUTH_TOKEN_KEY = '/api/local-op/auth/token';
   const LOCAL_OP_AUTH_GH_LOGIN_KEY = '/api/local-op/auth/gh-login';
 
   const LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS = 30_000;
@@ -978,6 +982,65 @@ export function createLocalOpRoutes(
       method: 'POST',
       preBodyGate: (req, res) =>
         checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AUTH_PAT }),
+    },
+  );
+
+  const HANDLE_LOCAL_OP_AUTH_TOKEN = 'local-op-auth-token';
+  const handleLocalOpAuthToken = withValidation(
+    LocalOpAuthTokenRequestSchema,
+    async (_req, res, body) => {
+      if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_TOKEN)) return;
+      if (!localOpGuard.tryAcquire(LOCAL_OP_AUTH_TOKEN_KEY)) {
+        errorResponse(
+          res,
+          429,
+          'urn:ok:error:concurrent-operation',
+          'An auth operation is already in progress.',
+          { handler: HANDLE_LOCAL_OP_AUTH_TOKEN, extraHeaders: { 'Retry-After': '5' } },
+        );
+        return;
+      }
+
+      const finish = subprocessLifetime.begin();
+      try {
+        const result = await runAuthTokenSubprocess({
+          lifetime: subprocessLifetime,
+          cliArgs: localOpCliArgs,
+          host: body.host,
+          username: body.username,
+          token: body.token,
+        });
+        if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_TOKEN)) return;
+        if (result.ok) {
+          onAuthCredentialLanded(getSyncEngine);
+          successResponse(
+            res,
+            200,
+            LocalOpAuthTokenSuccessSchema,
+            { host: result.host, login: result.login },
+            { handler: HANDLE_LOCAL_OP_AUTH_TOKEN },
+          );
+        } else {
+          errorResponse(res, 400, 'urn:ok:error:auth-failed', result.error, {
+            handler: HANDLE_LOCAL_OP_AUTH_TOKEN,
+          });
+        }
+      } catch (err) {
+        if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_TOKEN, err)) return;
+        errorResponse(res, 500, 'urn:ok:error:auth-failed', 'Storing the token failed.', {
+          handler: HANDLE_LOCAL_OP_AUTH_TOKEN,
+          cause: err,
+        });
+      } finally {
+        localOpGuard.release(LOCAL_OP_AUTH_TOKEN_KEY);
+        finish();
+      }
+    },
+    {
+      handler: HANDLE_LOCAL_OP_AUTH_TOKEN,
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AUTH_TOKEN }),
     },
   );
 
@@ -1464,6 +1527,7 @@ export function createLocalOpRoutes(
     '/api/local-op/auth/login': handleLocalOpAuthLogin,
     '/api/local-op/auth/status': handleLocalOpAuthStatus,
     '/api/local-op/auth/pat': handleLocalOpAuthPat,
+    '/api/local-op/auth/token': handleLocalOpAuthToken,
     '/api/local-op/auth/gh-login': handleLocalOpAuthGhLogin,
     '/api/local-op/auth/cancel': handleLocalOpAuthCancel,
     '/api/local-op/auth/repos': handleLocalOpAuthRepos,

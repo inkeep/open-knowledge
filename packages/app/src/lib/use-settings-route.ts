@@ -40,6 +40,12 @@ export function openAgentSettings(): void {
   openSettingsSection(AGENT_SETTINGS_SECTION);
 }
 
+const ACCOUNT_SECTION = 'account';
+
+export function openAccountSettings(): void {
+  openSettingsSection(ACCOUNT_SECTION);
+}
+
 const PROJECT_SYNC_SECTION = 'sync';
 
 let pendingSyncAdvanced = false;

@@ -1409,14 +1409,17 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
   });
 
   test.each([
-    { spelling: 'in different letter case', writtenHost: 'GitHub.com' },
-    { spelling: 'with an explicit :443', writtenHost: `${GITHUB_HOST}:443` },
-  ])(
-    "with a second push URL that writes the signed-in host $spelling, ok push sends that URL's credential request only to OpenKnowledge's helper, which declines it, and never to the user's own helpers",
-    async ({ writtenHost }) => {
+    { spelling: 'in different letter case', writtenHost: 'GitHub.com', source: 'stored' },
+    { spelling: 'with an explicit :443', writtenHost: `${GITHUB_HOST}:443`, source: 'stored' },
+    { spelling: 'in different letter case', writtenHost: 'GitHub.com', source: 'gh' },
+    { spelling: 'with an explicit :443', writtenHost: `${GITHUB_HOST}:443`, source: 'gh' },
+  ] as const)(
+    "with a second push URL that writes the signed-in host $spelling, ok push answers it from OpenKnowledge's helper with the $source token and never asks the user's own helpers",
+    async ({ writtenHost, source }) => {
+      const token = source === 'stored' ? OK_TOKEN : GH_TOKEN;
       const server = await arrange({
-        gitHubAccepts: OK_TOKEN,
-        okStoreToken: OK_TOKEN,
+        gitHubAccepts: token,
+        ...(source === 'stored' ? { okStoreToken: OK_TOKEN } : {}),
         repository: (git, github) => {
           originUpstreamOnGitHub(git, github);
           git('config', '--add', 'remote.origin.pushurl', ORIGIN_URL);
@@ -1424,11 +1427,26 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
         },
       });
 
-      const outcome = await syncWith(signedInSeam(), 'push');
-
-      expect(server.requests, "the first push URL's receive-pack").toContainEqual(
-        authenticatedRequest('push', { username: expect.any(String), password: OK_TOKEN }),
+      const outcome = await syncWith(
+        source === 'stored'
+          ? signedInSeam()
+          : {
+              tokenStore: new FileBackend(authFile),
+              _detectGhFn: () => ({ available: true, token: GH_TOKEN }),
+            },
+        'push',
       );
+
+      expect.soft(outcome.error, 'the error runSync threw').toBeNull();
+      expect(
+        server.requests.filter(
+          (request) =>
+            request.path.endsWith('/info/refs?service=git-receive-pack') &&
+            request.credential?.password === token &&
+            request.status === 200,
+        ),
+        'authenticated push discoveries, one per push URL',
+      ).toHaveLength(2);
       expect
         .soft(
           readJsonLines<CliHelperCall>(cliHelperLog),
@@ -1442,12 +1460,6 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
       expect
         .soft(readJsonLines<RecordedHelperCall>(helperLog), 'calls reaching the ambient helpers')
         .toEqual([]);
-      expect.soft(outcome.error, 'the error runSync threw').not.toBeNull();
-      const message =
-        outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
-      expect
-        .soft(message, 'the failure ok push reports for the second push URL')
-        .not.toContain("OpenKnowledge's GitHub sign-in");
     },
   );
 

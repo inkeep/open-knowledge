@@ -4,7 +4,12 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { GhDetectResult } from '../../auth/gh-detect.ts';
 import { FileBackend } from '../../auth/token-store.ts';
-import { buildStatusPayload, resolveStatusSource } from './status.ts';
+import {
+  buildStatusPayload,
+  formatStoredEntryStatus,
+  resolveStatusSource,
+  resolveStoredEntryStatus,
+} from './status.ts';
 
 function makeStore(tmpDir: string) {
   return new FileBackend(join(tmpDir, 'auth.yml'));
@@ -130,5 +135,50 @@ describe('buildStatusPayload', () => {
       authenticated: false,
       error: 'token invalid',
     });
+  });
+});
+
+describe('resolveStoredEntryStatus', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'ok-stored-entry-status-'));
+  });
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('a stored entry reports its login as unverified', async () => {
+    const store = makeStore(tmpDir);
+    await store.set('gitea.internal', 'alice', 'tok', { gitProtocol: 'https' });
+    expect(await resolveStoredEntryStatus('gitea.internal', store)).toEqual({
+      authenticated: false,
+      unverified: true,
+      login: 'alice',
+    });
+  });
+
+  test('no stored entry reports signed out', async () => {
+    expect(await resolveStoredEntryStatus('gitea.internal', makeStore(tmpDir))).toEqual({
+      authenticated: false,
+    });
+  });
+});
+
+describe('formatStoredEntryStatus', () => {
+  test('the unverified line names the login and host and never claims a GitHub identity', () => {
+    const line = formatStoredEntryStatus(
+      { authenticated: false, unverified: true, login: 'alice' },
+      'gitea.internal',
+    );
+    expect(line).toContain('alice');
+    expect(line).toContain('gitea.internal');
+    expect(line).toContain('git uses this credential');
+    expect(line).not.toContain('Logged in as');
+  });
+
+  test('no stored entry names the command that stores one', () => {
+    const line = formatStoredEntryStatus({ authenticated: false }, 'gitea.internal');
+    expect(line).toContain('No token stored for gitea.internal');
+    expect(line).toContain('ok auth token --host gitea.internal --username <username>');
   });
 });

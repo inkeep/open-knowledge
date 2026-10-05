@@ -1,4 +1,5 @@
 import type { Readable, Writable } from 'node:stream';
+import { gitCredentialHostKey } from '@inkeep/open-knowledge-core';
 import type { Logger as PinoLoggerInstance } from 'pino';
 import type { TokenStore, TokenStoreDiagnostics } from '../../auth/token-store.ts';
 
@@ -29,9 +30,18 @@ export async function handleCredentialGet(
     return 1;
   }
 
+  if (attrs.protocol !== undefined && attrs.protocol !== 'https') {
+    ctx?.log?.warn(
+      { host, protocol: attrs.protocol, outcome: 'insecure-protocol', backend: tokenStore.backend },
+      '[auth] git-credential get',
+    );
+    return 1;
+  }
+
+  const key = gitCredentialHostKey(host, attrs.protocol);
   const relayToken = process.env.OK_GH_TOKEN;
   const relayTokenHost = process.env.OK_GH_TOKEN_HOST;
-  if (relayToken && relayTokenHost === host) {
+  if (relayToken && relayTokenHost && gitCredentialHostKey(relayTokenHost) === key) {
     ctx?.log?.debug(
       {
         host,
@@ -45,7 +55,7 @@ export async function handleCredentialGet(
     return 0;
   }
 
-  const entry = await tokenStore.get(host);
+  const entry = (await tokenStore.get(key)) ?? (key === host ? null : await tokenStore.get(host));
   const diag = ctx?.getDiag?.();
   const outcome = entry != null ? 'found' : (diag?.kind ?? 'absent');
   if (ctx?.log) {

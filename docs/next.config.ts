@@ -79,6 +79,16 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
       {
+        source: '/docs/features/github-sync',
+        destination: '/docs/features/git/sync',
+        permanent: true,
+      },
+      {
+        source: '/docs/features/github-sync/',
+        destination: '/docs/features/git/sync',
+        permanent: true,
+      },
+      {
         source: '/docs/get-started/obsidian',
         destination: '/docs/migrate/obsidian',
         permanent: true,

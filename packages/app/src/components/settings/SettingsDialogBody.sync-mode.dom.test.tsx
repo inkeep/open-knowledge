@@ -11,7 +11,11 @@ type SyncStatus = {
   hasRemote: boolean;
   pausedReason?: string;
   refusedSymlinkPaths?: string[];
-  pushPermission?: { checkStatus: 'allowed' | 'denied' | 'unknown'; deniedReason?: string };
+  pushPermission?: {
+    checkStatus: 'allowed' | 'denied' | 'unknown';
+    deniedReason?: string;
+    unknownError?: string;
+  };
   syncEnabled?: boolean;
   syncMode?: 'off' | 'follow' | 'full';
   ahead?: number;
@@ -585,5 +589,116 @@ describe('Settings Sync section — Advanced disclosure intent', () => {
     await renderSyncSection();
 
     expect(disclosureState()).toBe('closed');
+  });
+});
+
+describe('Settings Sync section — GitHub sign-in prompts', () => {
+  beforeEach(() => {
+    cleanup();
+    syncStatus = {
+      state: 'idle',
+      hasRemote: true,
+      syncEnabled: true,
+      syncMode: 'full',
+      ahead: 0,
+      remote: {
+        label: 'inkeep/open-knowledge',
+        webUrl: 'https://github.com/inkeep/open-knowledge',
+      },
+    };
+    projectLocalConfig = { autoSync: { mode: 'full' } };
+    projectConfig = { autoSync: { default: null }, content: { attachmentFolderPath: './' } };
+    projectLocalSynced = true;
+    projectSynced = true;
+    localPatchCalls = [];
+    toastErrors.length = 0;
+  });
+
+  test('a GitHub paused sync keeps the sign-in prompt and its button', async () => {
+    syncStatus = {
+      ...syncStatus,
+      pushPermission: { checkStatus: 'denied', deniedReason: 'not-authenticated' },
+    } as SyncStatus;
+
+    await renderSyncSection();
+
+    const region = screen.getByTestId('settings-sync-reconnect');
+    expect(region.textContent ?? '').toContain('Auto-sync is paused');
+    expect(within(region).getByRole('button', { name: 'Sign in' })).not.toBeNull();
+  });
+
+  test('a GitHub host keeps the expired-session line and its sign-in button', async () => {
+    syncStatus = {
+      ...syncStatus,
+      pushPermission: { checkStatus: 'unknown', unknownError: 'token-invalid' },
+    } as SyncStatus;
+
+    await renderSyncSection();
+
+    const region = screen.getByTestId('settings-sync-signin-again');
+    expect(region.textContent ?? '').toContain('GitHub session expired');
+    expect(within(region).getByRole('button', { name: 'Sign in' })).not.toBeNull();
+  });
+});
+
+describe('Settings Sync section — publish-to-GitHub reachability', () => {
+  beforeEach(() => {
+    cleanup();
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    projectConfig = { autoSync: { default: null }, content: { attachmentFolderPath: './' } };
+    projectLocalSynced = true;
+    projectSynced = true;
+    localPatchCalls = [];
+    toastErrors.length = 0;
+  });
+
+  test('a project with no remote is offered the GitHub publish flow', async () => {
+    syncStatus = {
+      state: 'dormant',
+      hasRemote: false,
+      syncEnabled: false,
+      ahead: 0,
+    } as SyncStatus;
+
+    await renderSyncSection();
+
+    expect(screen.getByTestId('settings-sync-setup')).not.toBeNull();
+  });
+
+  test('a non-GitHub remote is never offered the GitHub publish flow', async () => {
+    syncStatus = {
+      state: 'idle',
+      hasRemote: true,
+      syncEnabled: true,
+      syncMode: 'off',
+      ahead: 0,
+      remote: { label: 'git.example.com/team/wiki', webUrl: null },
+    } as SyncStatus;
+
+    await renderSyncSection();
+
+    expect(screen.queryByTestId('settings-sync-setup')).toBeNull();
+    expect(screen.queryByTestId('settings-sync-empty')).toBeNull();
+    expect(screen.getByTestId('settings-sync-remote-label').textContent).toContain(
+      'git.example.com',
+    );
+  });
+
+  test('a GitHub remote is not offered the publish flow either — it is already published', async () => {
+    syncStatus = {
+      state: 'idle',
+      hasRemote: true,
+      syncEnabled: true,
+      syncMode: 'off',
+      ahead: 0,
+      remote: {
+        label: 'inkeep/open-knowledge',
+        webUrl: 'https://github.com/inkeep/open-knowledge',
+      },
+    } as SyncStatus;
+
+    await renderSyncSection();
+
+    expect(screen.queryByTestId('settings-sync-setup')).toBeNull();
   });
 });

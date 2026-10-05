@@ -12,6 +12,25 @@ import { useIsolatedHome } from '../share/git-host-declarations.test-helper.ts';
 import { SHARE_PUBLISH_TIMEOUT_MS } from '../share/publish.ts';
 import { createShareRoutes, type ShareRouteDeps } from './share-routes.ts';
 
+const targetStatusCredentialConfigs = vi.hoisted(() => [] as string[][]);
+
+vi.mock('../share/target-status.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../share/target-status.ts')>();
+  return {
+    ...actual,
+    computeShareTargetStatus: async (
+      _projectDir: string,
+      _branch: string,
+      _path: string,
+      _kind: string,
+      options: { credentialConfig: string[] },
+    ) => {
+      targetStatusCredentialConfigs.push(options.credentialConfig);
+      return { verdict: 'on-origin' };
+    },
+  };
+});
+
 function buildGroup(overrides: Partial<ShareRouteDeps> = {}) {
   return createShareRoutes({
     projectDir: undefined,
@@ -21,10 +40,42 @@ function buildGroup(overrides: Partial<ShareRouteDeps> = {}) {
     localOpCliArgs: ['open-knowledge'],
     localOpGuard: { tryAcquire: () => true, release: () => {} },
     getSyncEngine: undefined,
+    resolveCredentialConfig: async () => ['credential.helper=!open-knowledge auth git-credential'],
     toGitRelativePath: () => null,
     ...overrides,
   });
 }
+
+describe('share target-status credential chain', () => {
+  test('each status check runs with the chain the resolver returns at request time', async () => {
+    targetStatusCredentialConfigs.length = 0;
+    const chains = [
+      ['credential.helper=', 'credential.helper=!open-knowledge auth git-credential'],
+      ['credential.helper=!open-knowledge auth git-credential'],
+    ];
+    let call = 0;
+    const group = buildGroup({
+      projectDir: '/nonexistent-project',
+      resolveCredentialConfig: async () => chains[call++] ?? [],
+    });
+
+    for (const _chain of chains) {
+      const req = Readable.from([
+        Buffer.from(JSON.stringify({ branch: 'main', path: 'README.md', kind: 'doc' })),
+      ]) as IncomingMessage;
+      req.method = 'POST';
+      req.url = '/api/share/target-status';
+      req.headers = { 'content-type': 'application/json', 'transfer-encoding': 'chunked' };
+      const { res, captured } = makeCaptureRes();
+      const route = group.table.resolve(req.url);
+      if (!route?.dispatch) throw new Error('missing target-status handler');
+      await route.dispatch(req, res);
+      expect(captured.status).toBe(200);
+    }
+
+    expect(targetStatusCredentialConfigs).toEqual(chains);
+  });
+});
 
 describe('createShareRoutes table', () => {
   const home = useIsolatedHome();

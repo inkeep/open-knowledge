@@ -40,7 +40,11 @@ export interface GitSyncStatus {
   syncEnabled: boolean;
   syncMode?: SyncMode;
   identityUnresolved?: boolean;
-  remote?: { label: string; webUrl: string | null } | null;
+  remote?: {
+    label: string;
+    webUrl: string | null;
+    transport?: 'https' | 'http' | 'ssh' | 'git';
+  } | null;
   pushError?: string;
   pushErrorCode?: SyncErrorCode;
   pullError?: string;

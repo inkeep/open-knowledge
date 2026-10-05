@@ -1,11 +1,30 @@
+import type { IncomingMessage } from 'node:http';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { Readable } from 'node:stream';
 import { describe, expect, test, vi } from 'vitest';
+import { makeCaptureRes } from '../composition-rig.test-helper.ts';
 import type { FileIndexEntry } from '../file-watcher.ts';
 import { getLogger } from '../logger.ts';
 import { createGitRoutes } from './git-routes.ts';
 
 const worktreeReadCalls = vi.hoisted(() => [] as (AbortSignal | undefined)[]);
+const checkoutCredentialConfigs = vi.hoisted(() => [] as string[][]);
+
+vi.mock('../git-checkout.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../git-checkout.ts')>();
+  return {
+    ...actual,
+    runCheckoutFlow: async (
+      _projectDir: string,
+      _branch: string,
+      options: { credentialConfig: string[] },
+    ) => {
+      checkoutCredentialConfigs.push(options.credentialConfig);
+      return { ok: true };
+    },
+  };
+});
 
 vi.mock('../git-worktree-status.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../git-worktree-status.ts')>();
@@ -40,7 +59,7 @@ vi.mock('../git-worktree-status.ts', async (importOriginal) => {
   };
 });
 
-function buildGroup() {
+function buildGroup(overrides: Partial<Parameters<typeof createGitRoutes>[0]> = {}) {
   return createGitRoutes({
     projectDir: undefined,
     contentDir: '/nonexistent-content',
@@ -49,9 +68,42 @@ function buildGroup() {
     checkLocalOpSecurity: () => true,
     getSyncEngine: undefined,
     getPrincipal: undefined,
-    localOpCliArgs: ['open-knowledge'],
+    resolveCredentialConfig: async () => ['credential.helper=!open-knowledge auth git-credential'],
+    ...overrides,
   });
 }
+
+async function postCheckout(group: ReturnType<typeof buildGroup>): Promise<number> {
+  const req = Readable.from([Buffer.from(JSON.stringify({ branch: 'main' }))]) as IncomingMessage;
+  req.method = 'POST';
+  req.url = '/api/git/checkout';
+  req.headers = { 'content-type': 'application/json', 'transfer-encoding': 'chunked' };
+  const { res, captured } = makeCaptureRes();
+  const route = group.table.resolve(req.url);
+  if (!route?.dispatch) throw new Error('missing checkout handler');
+  await route.dispatch(req, res);
+  return captured.status;
+}
+
+describe('checkout credential chain', () => {
+  test('each checkout runs with the chain the resolver returns at request time', async () => {
+    checkoutCredentialConfigs.length = 0;
+    const chains = [
+      ['credential.helper=', 'credential.helper=!open-knowledge auth git-credential'],
+      ['credential.helper=!open-knowledge auth git-credential'],
+    ];
+    let call = 0;
+    const group = buildGroup({
+      projectDir: '/nonexistent-project',
+      resolveCredentialConfig: async () => chains[call++] ?? [],
+    });
+
+    expect(await postCheckout(group)).toBe(200);
+    expect(await postCheckout(group)).toBe(200);
+
+    expect(checkoutCredentialConfigs).toEqual(chains);
+  });
+});
 
 describe('createGitRoutes table', () => {
   test('registers exactly the three git paths', () => {

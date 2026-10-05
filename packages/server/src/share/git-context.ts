@@ -1,4 +1,5 @@
 import {
+  credentialHostFromRemoteUrl,
   declaredGitHubHostsFrom,
   isGitHubHost,
   normalizeGitHostname,
@@ -8,11 +9,14 @@ import {
   inspectGitRepository,
 } from '@inkeep/open-knowledge-core/git-repository';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
+import { buildSyncCredentialConfig } from '../git-handle.ts';
 import { getLogger } from '../logger.ts';
 
 const log = getLogger('git-context');
 
-export type OriginTransport = 'https' | 'ssh' | 'git';
+export type OriginTransport = 'https' | 'http' | 'ssh' | 'git';
+
+export type ParsedOriginTransport = Exclude<OriginTransport, 'http'>;
 
 export type OriginResult =
   | {
@@ -20,7 +24,7 @@ export type OriginResult =
       host: string;
       owner: string;
       repo: string;
-      transport: OriginTransport;
+      transport: ParsedOriginTransport;
     }
   | { kind: 'no-remote' }
   | { kind: 'non-github'; host: string | null };
@@ -39,7 +43,7 @@ export interface ParsedOriginRepo {
   host: string;
   owner: string;
   repo: string;
-  transport: OriginTransport;
+  transport: ParsedOriginTransport;
   login?: string;
 }
 
@@ -110,7 +114,7 @@ export function parseGitRemoteUrl(originUrl: string): ParsedOriginRepo | null {
     host: string,
     owner: string,
     repo: string,
-    transport: OriginTransport,
+    transport: ParsedOriginTransport,
     userinfo?: string,
   ): ParsedOriginRepo | null => {
     const normalized = normalizeGitHostname(host);
@@ -152,6 +156,11 @@ export function parseGitHubOriginUrl(
 export function readOriginRemoteUrl(projectDir: string): string | null {
   const origin = readRepository(projectDir)?.readRemoteUrl('origin');
   return origin?.kind === 'configured' ? origin.url : null;
+}
+
+export function readOriginCredentialHost(projectDir: string): string | null {
+  const originUrl = readOriginRemoteUrl(projectDir);
+  return originUrl === null ? null : credentialHostFromRemoteUrl(originUrl);
 }
 
 function readParsedOrigin(
@@ -210,9 +219,75 @@ export function shouldResetAmbientCredentials(
   return readOriginGitHubRepo(projectDir, declaredGitHubHosts).kind !== 'non-github';
 }
 
+export interface CredentialPresenceStore {
+  get(host: string): Promise<unknown>;
+}
+
+export async function resolveAmbientCredentialReset(
+  projectDir: string,
+  tokenStore: CredentialPresenceStore | null | undefined,
+  declaredGitHubHosts: ReadonlySet<string> = readDeclaredGitHubHosts(),
+): Promise<boolean> {
+  const originUrl = readOriginRemoteUrl(projectDir);
+  const transport = originUrl === null ? undefined : originTransport(originUrl);
+  if (transport === 'http') return false;
+  if (shouldResetAmbientCredentials(projectDir, declaredGitHubHosts)) return true;
+  if (originUrl === null || transport !== 'https' || !tokenStore) return false;
+  const host = credentialHostFromRemoteUrl(originUrl);
+  if (host === null) return false;
+  try {
+    return (await tokenStore.get(host)) != null;
+  } catch (err) {
+    log.warn({ err, host }, '[sync] stored-token lookup for the credential reset decision failed');
+    throw err;
+  }
+}
+
+export function createSyncCredentialConfigResolver(deps: {
+  projectDir: string;
+  tokenStore: CredentialPresenceStore | null | undefined;
+  localOpCliArgs: string[] | undefined;
+  declaredGitHubHosts?: ReadonlySet<string>;
+}): () => Promise<string[]> {
+  const declaredGitHubHosts = deps.declaredGitHubHosts ?? readDeclaredGitHubHosts();
+  let lastConfig: string[] | null = null;
+  return async () => {
+    let resetAmbient: boolean;
+    try {
+      resetAmbient = await resolveAmbientCredentialReset(
+        deps.projectDir,
+        deps.tokenStore,
+        declaredGitHubHosts,
+      );
+    } catch {
+      if (lastConfig !== null) return lastConfig;
+      resetAmbient = false;
+    }
+    log.debug(
+      {
+        resetAmbient,
+        originKind: readOriginGitHubRepo(deps.projectDir, declaredGitHubHosts).kind,
+      },
+      '[sync] ambient credential-chain reset decision',
+    );
+    lastConfig = buildSyncCredentialConfig(deps.localOpCliArgs, { resetAmbient });
+    return lastConfig;
+  };
+}
+
 export interface SyncRemoteInfo {
   label: string;
   webUrl: string | null;
+  transport?: OriginTransport;
+}
+
+function originTransport(url: string): OriginTransport | undefined {
+  const trimmed = url.trim();
+  if (/^https:\/\//i.test(trimmed)) return 'https';
+  if (/^http:\/\//i.test(trimmed)) return 'http';
+  if (/^ssh:\/\//i.test(trimmed) || /^[\w.-]+@[^:/]+:/.test(trimmed)) return 'ssh';
+  if (/^git:\/\//i.test(trimmed)) return 'git';
+  return undefined;
 }
 
 export function readSyncRemoteInfo(
@@ -221,14 +296,17 @@ export function readSyncRemoteInfo(
 ): SyncRemoteInfo | null {
   const parsed = readParsedOrigin(projectDir, declaredGitHubHosts);
   if (!parsed) return null;
+  const transport = originTransport(parsed.originUrl);
+  const withTransport = transport === undefined ? {} : { transport };
   if (parsed.github) {
     const { host, owner, repo } = parsed.github;
     return {
       label: host === 'github.com' ? `${owner}/${repo}` : `${host}/${owner}/${repo}`,
       webUrl: `https://${host}/${owner}/${repo}`,
+      ...withTransport,
     };
   }
-  return { label: labelFromNonGitHubUrl(parsed.originUrl), webUrl: null };
+  return { label: labelFromNonGitHubUrl(parsed.originUrl), webUrl: null, ...withTransport };
 }
 
 function labelFromNonGitHubUrl(url: string): string {

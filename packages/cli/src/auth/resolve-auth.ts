@@ -20,6 +20,7 @@ interface ResolveAuthOptions {
   skipGhDetect?: boolean;
   login?: string;
   selfCliArgs?: readonly string[];
+  credentialHost?: string;
 }
 
 function cliCredentialHelperCommand(selfCliArgs: readonly string[]): string {
@@ -65,7 +66,9 @@ export async function resolveAuth(
     }
   }
 
-  const entry = await tokenStore.get(host);
+  const entry =
+    (options.credentialHost === undefined ? null : await tokenStore.get(options.credentialHost)) ??
+    (await tokenStore.get(host));
   if (entry != null) {
     const tier: AuthTier = entry.gitProtocol === 'ssh' ? 'C' : 'B';
     return { tier, gitConfig: authenticatedConfig };

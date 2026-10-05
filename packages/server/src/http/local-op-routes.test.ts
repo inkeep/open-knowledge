@@ -19,6 +19,7 @@ const LOCAL_OP_PATHS = [
   '/api/local-op/auth/login',
   '/api/local-op/auth/status',
   '/api/local-op/auth/pat',
+  '/api/local-op/auth/token',
   '/api/local-op/auth/gh-login',
   '/api/local-op/auth/cancel',
   '/api/local-op/auth/repos',
@@ -49,7 +50,7 @@ function buildGroup(overrides: Partial<LocalOpRouteDeps> = {}) {
 }
 
 describe('createLocalOpRoutes table', () => {
-  test('claims the namespace with a single wildcard and resolves all thirteen members', () => {
+  test('claims the namespace with a single wildcard and resolves all fourteen members', () => {
     const group = buildGroup();
     expect([...group.paths]).toEqual(['/api/local-op/*']);
     for (const path of LOCAL_OP_PATHS) {
@@ -182,49 +183,49 @@ async function* ndjsonLines(body: ReadableStream<Uint8Array>): AsyncGenerator<St
   }
 }
 
-describe('auth-login stream displacement (a second start orphans the first client)', () => {
-  const home = useIsolatedHome();
+const home = useIsolatedHome();
 
-  let servers: HttpServer[] = [];
+let servers: HttpServer[] = [];
 
-  afterEach(async () => {
-    vi.restoreAllMocks();
-    const active = servers;
-    servers = [];
-    await Promise.allSettled(
-      active.map(
-        (server) =>
-          new Promise<void>((resolve) => {
-            server.closeAllConnections();
-            server.close(() => resolve());
-          }),
-      ),
-    );
+afterEach(async () => {
+  vi.restoreAllMocks();
+  const active = servers;
+  servers = [];
+  await Promise.allSettled(
+    active.map(
+      (server) =>
+        new Promise<void>((resolve) => {
+          server.closeAllConnections();
+          server.close(() => resolve());
+        }),
+    ),
+  );
+});
+
+async function serveLocalOpGroup(overrides: Partial<LocalOpRouteDeps> = {}): Promise<string> {
+  const group = buildGroup(overrides);
+  const server = createServer((req, res) => {
+    const pathname = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
+    const dispatch = group.table.resolve(pathname)?.dispatch;
+    if (!dispatch) {
+      res.writeHead(404).end();
+      return;
+    }
+    void dispatch(req, res);
+  });
+  const { baseUrl } = await listenOnLoopback(server);
+  servers.push(server);
+  return baseUrl;
+}
+
+const postJson = (baseUrl: string, path: string, body: unknown): Promise<Response> =>
+  fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
 
-  async function serveLocalOpGroup(overrides: Partial<LocalOpRouteDeps> = {}): Promise<string> {
-    const group = buildGroup(overrides);
-    const server = createServer((req, res) => {
-      const pathname = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
-      const dispatch = group.table.resolve(pathname)?.dispatch;
-      if (!dispatch) {
-        res.writeHead(404).end();
-        return;
-      }
-      void dispatch(req, res);
-    });
-    const { baseUrl } = await listenOnLoopback(server);
-    servers.push(server);
-    return baseUrl;
-  }
-
-  const postJson = (baseUrl: string, path: string, body: unknown): Promise<Response> =>
-    fetch(`${baseUrl}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
+describe('auth-login stream displacement (a second start orphans the first client)', () => {
   test('a project whose origin is not a GitHub host refuses GitHub auth routes that name no host', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-local-op-non-github-'));
     try {
@@ -452,4 +453,118 @@ describe('auth-login stream displacement (a second start orphans the first clien
     for await (const line of ndjsonLines(second.body)) secondLines.push(line);
     expect(secondLines.some((line) => line.type === 'verification')).toBe(true);
   }, 30_000);
+});
+
+const ECHO_TOKEN_STDIN_CLI = `
+let d='';
+process.stdin.on('data', c => { d += c; });
+process.stdin.on('end', () => {
+  if (d.trim() === 'good-token') {
+    process.stdout.write(JSON.stringify({ type: 'complete', host: 'ghes.test', login: process.argv[process.argv.indexOf('--username') + 1] }) + '\\n');
+    process.exit(0);
+  }
+  process.stdout.write(JSON.stringify({ type: 'error', message: 'Could not store the token for ghes.test' }) + '\\n');
+  process.exit(1);
+});
+`;
+
+const tokenCli = (): string[] => [process.execPath, '-e', ECHO_TOKEN_STDIN_CLI];
+
+describe('POST /api/local-op/auth/token', () => {
+  test('stores the host-scoped token and returns the supplied login', async () => {
+    const baseUrl = await serveLocalOpGroup({ localOpCliArgs: tokenCli() });
+
+    const res = await postJson(baseUrl, '/api/local-op/auth/token', {
+      host: 'ghes.test',
+      username: 'alice',
+      token: 'good-token',
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ host: 'ghes.test', login: 'alice' });
+  });
+
+  test('stays open on a project whose origin is not a GitHub host', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-local-op-token-non-github-'));
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: projectDir });
+      execFileSync('git', ['remote', 'add', 'origin', 'https://gitlab.example.com/team/kb.git'], {
+        cwd: projectDir,
+      });
+      const baseUrl = await serveLocalOpGroup({ projectDir, localOpCliArgs: tokenCli() });
+
+      const res = await postJson(baseUrl, '/api/local-op/auth/token', {
+        host: 'gitlab.example.com',
+        username: 'oauth2',
+        token: 'good-token',
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ login: 'oauth2' });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a stored token rebuilds the sync credential chain; a refused one does not', async () => {
+    const notifyCredentialsChanged = vi.fn(async () => {});
+    const refreshPushPermission = vi.fn(async () => null);
+    const engine = { notifyCredentialsChanged, refreshPushPermission } as unknown as SyncEngine;
+    const baseUrl = await serveLocalOpGroup({
+      localOpCliArgs: tokenCli(),
+      getSyncEngine: () => engine,
+    });
+
+    const refused = await postJson(baseUrl, '/api/local-op/auth/token', {
+      host: 'ghes.test',
+      username: 'alice',
+      token: 'wrong-token',
+    });
+    expect(refused.status).toBe(400);
+    expect(notifyCredentialsChanged).not.toHaveBeenCalled();
+
+    const stored = await postJson(baseUrl, '/api/local-op/auth/token', {
+      host: 'ghes.test',
+      username: 'alice',
+      token: 'good-token',
+    });
+    expect(stored.status).toBe(200);
+    expect(notifyCredentialsChanged).toHaveBeenCalledTimes(1);
+  });
+
+  test('surfaces a CLI failure as a 400 auth-failed problem', async () => {
+    const baseUrl = await serveLocalOpGroup({ localOpCliArgs: tokenCli() });
+
+    const res = await postJson(baseUrl, '/api/local-op/auth/token', {
+      host: 'ghes.test',
+      username: 'alice',
+      token: 'wrong-token',
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      type: 'urn:ok:error:auth-failed',
+      title: 'Could not store the token for ghes.test',
+    });
+  });
+
+  test('rejects a body with no host rather than defaulting to the origin host', async () => {
+    const baseUrl = await serveLocalOpGroup({ localOpCliArgs: tokenCli() });
+
+    const res = await postJson(baseUrl, '/api/local-op/auth/token', {
+      username: 'alice',
+      token: 'good-token',
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ type: 'urn:ok:error:invalid-request' });
+  });
+
+  test('rejects a GET with 405', async () => {
+    const baseUrl = await serveLocalOpGroup({ localOpCliArgs: tokenCli() });
+
+    const res = await fetch(`${baseUrl}/api/local-op/auth/token`);
+
+    expect(res.status).toBe(405);
+  });
 });

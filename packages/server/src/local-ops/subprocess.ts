@@ -10,6 +10,8 @@ interface ParsedLine {
 
 type LocalOpCliEnv = Readonly<Record<string, string | undefined>>;
 
+export const LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS = 30_000;
+
 export interface LocalOpCliInvocation {
   readonly cliArgs: readonly string[];
   readonly cliEnv?: LocalOpCliEnv;

@@ -443,10 +443,13 @@ export { SHOW_INSTALL_SKILL } from './constants/feature-flags.ts';
 export type { OkFolderState } from './constants/folder-state.ts';
 export {
   classifyGitHubShareHost,
+  credentialHostFromRemoteUrl,
   DEFAULT_GITHUB_OAUTH_CLIENT_ID,
   declaredGitHubHostsFrom,
   GIT_HOST_PROVIDERS,
   type GitHostProvider,
+  gitCredentialHostKey,
+  isGitCredentialHost,
   isGitHubHost,
   normalizeGitHostname,
 } from './constants/github.ts';
@@ -1406,6 +1409,10 @@ export {
   LocalOpAuthSetIdentityRequestSchema,
   type LocalOpAuthStatusSuccess,
   LocalOpAuthStatusSuccessSchema,
+  type LocalOpAuthTokenRequest,
+  LocalOpAuthTokenRequestSchema,
+  type LocalOpAuthTokenSuccess,
+  LocalOpAuthTokenSuccessSchema,
   type LocalOpCloneRequest,
   LocalOpCloneRequestSchema,
   type LocalOpEmbeddingsMutationSuccess,

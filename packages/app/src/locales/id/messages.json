@@ -35,6 +35,9 @@
     ],
     "-l6jM7": ["Mulai obrolan dengan tombol ＋, atau luncurkan agen dari halaman."],
     "-lCAuQ": ["Memuat graf"],
+    "-nA68n": [
+      "Tambahkan token akses untuk server GitLab, Gitea, Bitbucket, Azure DevOps, atau git yang di-host sendiri. Tanpa token, git memakai kredensial yang sudah tersimpan untuk host tersebut; dengan token, OpenKnowledge memakai token itu sebagai gantinya."
+    ],
     "-o5XAG": [
       "Dikirim secara pribadi ke tim OpenKnowledge, beserta catatan Anda dan versi aplikasinya. Tidak pernah dipublikasikan."
     ],
@@ -237,6 +240,7 @@
     "1vczDE": ["Buka ", ["displayName"], " Desktop"],
     "1vn0CI": ["Respons server tidak valid"],
     "1xui0Q": ["Gagal memuat berkas lokal"],
+    "1yHVE-": ["Menambahkan"],
     "2-3Mlu": ["Tidak dapat melepas sematan ", ["name"]],
     "20LVKb": ["Sesuatu di luar obrolan ini meminta proses agen berhenti (", ["signal"], ")."],
     "2277Tu": ["Ciutkan graf"],
@@ -471,6 +475,15 @@
     "4mp6Tv": ["OpenKnowledge menampilkan daftar keterampilan yang terpasang"],
     "4niEzY": ["Sematan HTML tersekat — tulis HTML, lihat pratinjau terendernya secara langsung."],
     "4nj6n8": ["/api/config mengembalikan HTTP ", ["code"]],
+    "4p8Baj": [
+      "Token disimpan untuk ",
+      ["login"],
+      " di ",
+      ["host"],
+      ". Untuk menghapusnya, jalankan <0>ok auth signout --host ",
+      ["host"],
+      "</0>."
+    ],
     "4pDZ2N": ["\"", ["0"], "\" dihapus dari semua lokasi lain — folder sumbernya tetap dimuat"],
     "4r6p_B": [
       "Perintah ini berisi karakter tersembunyi yang dapat membuatnya terlihat berbeda dari yang dijalankan. Karakter tersebut ditampilkan di sini sebagai ⟨U+…⟩."
@@ -736,13 +749,6 @@
     "7YRrJ9": [
       "Tersedia di aplikasi desktop OpenKnowledge. Dari terminal, gunakan<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
-    "7_I248": [
-      "Remote git proyek ini berada di ",
-      ["host"],
-      ", yang tidak dikenali OpenKnowledge sebagai host GitHub. Jika ",
-      ["host"],
-      " menjalankan GitHub Enterprise Server, tambahkan ke Host GitHub Enterprise Server di bawah, lalu mulai ulang OpenKnowledge."
-    ],
     "7_bFEL": ["Seret ", ["patternText"], " untuk menata ulang"],
     "7a0YcF": ["Tekan <0>Spasi</0> atau ketuk blob untuk mulai"],
     "7aNk5D": ["OpenKnowledge menyunting ", ["subject"]],
@@ -775,6 +781,7 @@
     "7lFX_h": ["Alihkan sekarang"],
     "7m3Ade": ["pemasangan:"],
     "7qRHf0": ["Pasang untuk Claude Chat & Cowork"],
+    "7sNhEz": ["Nama pengguna"],
     "7uBlRT": ["Menyalin item pohon berkas yang sedang difokus agar Tempel bisa menggandakannya."],
     "7vxWET": ["Pratinjau paket tidak tersedia."],
     "7wogIQ": [["0", "plural", { "other": ["Plugin"] }]],
@@ -926,6 +933,7 @@
     "9bCiQ8": ["Tidak ada halaman yang kehilangan tautan graf masuk."],
     "9bG48P": ["Mengirim"],
     "9clcD5": ["Buka dokumen bertag #", ["chip"]],
+    "9djC8C": ["Hubungkan akun GitHub untuk menjelajahi dan menerbitkan repositori GitHub."],
     "9euN0m": [["count", "plural", { "other": ["#", " peserta lagi dari dokumen lain"] }]],
     "9fhQRL": ["Kanal beta"],
     "9fvog2": ["Pratinjau tidak tersedia: ", ["errorDetail"]],
@@ -1017,7 +1025,6 @@
       " dalam ",
       ["parentLabel"]
     ],
-    "AeXO77": ["Akun"],
     "AgoIW4": [
       ["source"],
       ": ",
@@ -1030,6 +1037,7 @@
       ["detail"]
     ],
     "AhoGwP": ["Siapkan integrasi OpenKnowledge"],
+    "Ai2U7L": ["Host"],
     "AiNMQ7": [
       "Proyek ini hanya ada di komputer ini. Hubungkan ke GitHub untuk mencadangkannya dan membagikannya dengan orang lain."
     ],
@@ -1306,9 +1314,6 @@
     "E2Mv-X": ["Salin sumber"],
     "E4XYYH": ["Aktifkan terminal untuk proyek ini"],
     "E5WeIy": ["Membuka lagi tab penyunting yang paling akhir ditutup."],
-    "E6lrpp": [
-      "Kelola akun GitHub yang dipakai OpenKnowledge untuk menelusuri dan menyinkronkan repositori Anda."
-    ],
     "E7BhZn": ["Catatan kosong"],
     "E8NbNG": ["Worktree tidak dapat dimuat."],
     "E91VZY": ["Buka di Jendela Baru"],
@@ -1322,7 +1327,6 @@
     "EEYbdt": ["Terbitkan"],
     "EFfGAv": ["Pesan itu sudah terkirim — hasil suntinganmu tidak diterapkan."],
     "EHu0x2": ["Menyinkronkan"],
-    "EJuO7B": ["Hubungkan akun GitHub untuk menelusuri dan menyinkronkan repositori Anda."],
     "EKwNEe": [
       "Embedding dalam cache milik endpoint dan model yang menghasilkannya, jadi ini membangun ulang indeksnya dari nol."
     ],
@@ -1477,6 +1481,9 @@
     "FgRAvd": ["Log & info sistem"],
     "Fhp4Gn": ["Lihat plugin"],
     "Fim5F3": ["embedding"],
+    "FioJgb": [
+      "Perlu menyambung ulang untuk melanjutkan sinkronisasi. Tambahkan token untuk host ini di Pengaturan, atau ganti token yang tersimpan."
+    ],
     "FiyNln": ["Lompat ke teks terpilih di properti"],
     "FjkaiT": ["Perkecil"],
     "Fjz6aJ": ["Kirim ke obrolan baru"],
@@ -1922,6 +1929,9 @@
     "KvwJv8": ["Sebagian file tidak ditampilkan: working tree memiliki terlalu banyak perubahan."],
     "Kx881F": [["0"], " dipulihkan."],
     "KziH2K": ["Cepat"],
+    "L-crEu": [
+      "git tidak dapat mengautentikasi ke host ini. Periksa kunci SSH atau kredensial tersimpan yang dipakai git untuk host tersebut."
+    ],
     "L-rMC9": ["Setel ulang ke bawaan"],
     "L1BQTH": [["0"], " belum terpasang — membuka halaman unduhannya."],
     "L1ZE3M": ["Statistik dokumen"],
@@ -1976,6 +1986,9 @@
     "LRgZAt": [["owner"], "/", ["name"], " sudah ada"],
     "LSuMte": [["0"], " dari ", ["totalCount"]],
     "LTeJuX": ["Layar Penuh"],
+    "LVWA9A": [
+      "Autentikasi gagal untuk host git ini. Tambahkan token untuknya di Pengaturan, atau ganti token yang tersimpan."
+    ],
     "LXIm4m": ["Jendela konteks"],
     "LXdWeS": ["Judul bagian sedang."],
     "LXfNU-": ["Navigasi dan saran"],
@@ -2088,6 +2101,7 @@
     "Mj8R8K": ["Keterampilan tidak bisa dipasang: ", ["0"]],
     "MmDDWK": ["Baru saja dibuka"],
     "Mnavhe": ["Properti ", ["propPanelDescriptorLabel"]],
+    "MpZRQy": ["Git"],
     "MqQoV-": [
       "Jelaskan apa yang ingin Anda bangun, mulai dari berkas kosong, atau susun dari templat."
     ],
@@ -2257,6 +2271,9 @@
     "OPOiKn": ["Aturan konten"],
     "OTF92M": ["Label <0>(teks tampilan opsional)</0>"],
     "OVjNeX": ["Terminal ", ["0"]],
+    "OWs-8P": [
+      "Token yang ditambahkan di sini hanya berlaku untuk remote HTTPS, dan remote proyek ini tidak memakai HTTPS."
+    ],
     "OX2Neh": ["Kode sebaris"],
     "OXb_Df": ["Isi pengaturan"],
     "OXdGnd": ["Masalah"],
@@ -2376,6 +2393,7 @@
       ["filePath"],
       ". Jelaskan apa yang perlu saya bandingkan di tampilan konflik OpenKnowledge; saya akan memilih dan menerapkan penyelesaiannya di sana."
     ],
+    "Q14Keq": ["Bitbucket"],
     "Q1mtyd": ["Sembunyikan bilah sisi"],
     "Q5fqMz": ["Galat koneksi — coba lagi"],
     "Q6hhn8": ["Preferensi"],
@@ -2634,6 +2652,7 @@
     "SiUUCS": ["Kecocokan berikutnya"],
     "SkMZlS": ["<0>", ["targetGitPath"], "</0> tidak bisa dihapus: ", ["removeGitError"]],
     "SkTkKV": ["Agen tidak berhenti. Hentikan paksa menutup obrolan ini dan keluar dari agen."],
+    "SkUcEr": ["Token akses"],
     "Ske_wc": [
       "Plugin pengguna bersifat pribadi untuk perangkat ini — nyalakan atau matikan di sini. Setiap plugin yang aktif mendapat halamannya sendiri di bawah Plugin pada bilah sisi pengaturan."
     ],
@@ -2969,9 +2988,6 @@
     "XAyxsa": ["Ambil cabang remote"],
     "XBBZnv": ["Target tautan \"", ["shown"], "\" tidak merujuk ke dokumen yang ada."],
     "XBgr2S": ["Salin ke sini"],
-    "XBpH6-": [
-      "OpenKnowledge tidak menemukan nama host di remote git proyek ini, jadi tidak dapat mengetahui server GitHub mana yang harus dimasuki."
-    ],
     "XDzAnp": ["Terbuka di tab baru"],
     "XF1kgP": ["Semua dari ", ["source"], " sudah yang terbaru"],
     "XGKy1z": ["Gambar tidak dapat ditampilkan"],
@@ -3405,6 +3421,9 @@
     "arUUsK": ["Kabar terbaru produk"],
     "ax9kie": ["Pengaturan pratinjau tautan belum dimuat — coba lagi sebentar"],
     "axQ1h6": ["Ada yang ingin Anda tambahkan? (opsional)"],
+    "azrR7I": [
+      "Nama pengguna yang dikirim git bersama token. Beberapa host mengharapkan nilai tetap: ketik <0>x-bitbucket-api-token-auth</0> untuk token API Bitbucket, <1>x-token-auth</1> untuk token akses repositori atau workspace Bitbucket, atau <2>oauth2</2> untuk GitLab. Untuk Gitea, gunakan nama pengguna Gitea Anda. Azure DevOps menerima nilai apa pun."
+    ],
     "b18t0_": ["Tutup perbedaan"],
     "b1FDss": ["Gulir ke awal"],
     "b2ezG_": ["Keduanya disimpan — \"", ["0"], "\" kini menjadi keterampilan tersendiri"],
@@ -3725,6 +3744,7 @@
     "e8zRrb": ["Tampilkan Berkas"],
     "e8zYa8": [["shareBranch"], " tidak dapat dibuka di worktree. Coba lagi."],
     "e9sHSO": ["Lanjutkan dari tempat Anda berhenti"],
+    "eAYJMv": ["token"],
     "eBGWcy": [
       "Alat Open Knowledge tidak tersedia karena folder proyek tidak ada, tidak dapat diakses, atau telah berubah. Periksa lokasi dan izinnya, lalu coba lagi."
     ],
@@ -4317,6 +4337,7 @@
     "jZ_E5M": ["Fetch gagal — periksa log server untuk detailnya."],
     "j_Z6g7": ["Bawaan bersama"],
     "jbSG8V": ["Tampilkan Berkas (", ["sidebarShortcutLabel"], ")"],
+    "jbhCDS": ["Host Git lainnya"],
     "jcEoUi": ["Pindahkan ke panel kanan"],
     "jdGUeI": ["Templat tidak bisa dibuat: ", ["error"]],
     "jeCFV7": ["Pindahkan ke panel baru di kanan"],
@@ -4890,6 +4911,9 @@
     "pckX1A": [["0", "plural", { "other": ["#", " penggunaan"] }]],
     "pcqlQu": [["0", "plural", { "other": ["Folder"] }]],
     "pd0UH2": ["Rata kanan"],
+    "pd6t3G": [
+      "Kelola akun dan token akses yang dipakai OpenKnowledge untuk terhubung ke host git Anda."
+    ],
     "peq20S": [
       "Browser tidak tersedia di obrolan ini karena tidak dapat disiapkan. Log OpenKnowledge berisi detailnya."
     ],
@@ -4988,6 +5012,7 @@
     "qi17kj": ["Sematkan cuplikan langsung papan .excalidraw dari ruang kerja ini."],
     "qi1F96": ["Tampilkan di Penjelajah Berkas"],
     "qiRoLb": ["Ringkas semua yang saya ubah minggu ini"],
+    "qimTXH": ["OpenKnowledge tidak dapat masuk ke GitHub untuk proyek ini."],
     "qioCwA": ["Lompat ke halaman ", ["pageNumber"]],
     "qjHMHf": ["Gagal menonaktifkan sinkronisasi — ", ["detail"]],
     "qkqG0b": ["Ambil versi remote"],
@@ -5050,6 +5075,9 @@
     "rVxu1k": ["Belum ada halaman yang menaut ke sini."],
     "rXz97P": ["Daftar item bernomor."],
     "rZ9HZq": ["Akan dikerjakan"],
+    "rZFxkH": [
+      "Masukkan nama host yang dihubungi git, dengan :port opsional dan tanpa skema atau path, misalnya git.example.com."
+    ],
     "rZVMkf": ["Bidang penggantian penyunting visual sedang difokus"],
     "radOpL": ["Gambar ", ["identity"], ". Buka referensi."],
     "rageVb": ["HTML khusus dengan panel pratinjau langsung (iframe tersekat)."],
@@ -5265,6 +5293,9 @@
     "tlGXxX": ["Otomatis (hanya Pull)"],
     "tnG-m6": ["Sinkronisasi otomatis dijeda — masuk untuk melanjutkan."],
     "toyw51": ["Kendali diagram Mermaid"],
+    "tpOnU9": [
+      "OpenKnowledge tidak menyimpan kredensial apa pun untuk host ini. Tambahkan token di Pengaturan, atau biarkan git memakai kredensial yang sudah dimilikinya."
+    ],
     "tqQBwN": ["Skrip apa pun ditampilkan untuk ditinjau, tidak pernah dijalankan."],
     "troubleshooting.claude-desktop.per-tool-approval": [
       ["agent"],
@@ -5417,6 +5448,7 @@
     "uoJF_D": ["Terlalu sulit disiapkan atau dimulai"],
     "uqs8Gd": [["others", "plural", { "other": ["#", " lainnya"] }]],
     "ur2XSb": ["Penyunting visual"],
+    "uraHF0": ["GitLab"],
     "uuoHOU": ["Perintah gagal."],
     "uwzRx4": [
       "Sesuaikan ukuran dan batas waktu permintaan pengindeksan untuk server embedding yang lambat atau terbatas memori. Sebagian besar penyiapan sebaiknya mempertahankan nilai bawaan."
@@ -5514,6 +5546,9 @@
     "vwV-kH": ["Perbaikan berkas berhenti secara tidak terduga."],
     "vy_VIN": [
       "Dilacak di git — pembaruan mengalir lewat repo Anda (pull atau CI), bukan pembaruan otomatis"
+    ],
+    "w-Wt3H": [
+      "Perlu menyambung ulang untuk melanjutkan sinkronisasi. Periksa kunci SSH atau kredensial tersimpan yang dipakai git untuk host ini."
     ],
     "w0YVAE": ["Tampilkan simpul keterampilan"],
     "w3tVpc": [
@@ -5630,7 +5665,6 @@
     "x57cJf": ["Buka tautan"],
     "xAlHfe": [["basename"], " — penyunting teks"],
     "xBFg6z": ["Dari plugin ", ["0"]],
-    "xBjIs7": ["Masuk ke GitHub tidak tersedia untuk proyek ini"],
     "xCJdfg": ["Bersihkan"],
     "xCdTnb": ["Tutup tab baru"],
     "xD4Xm2": ["Ambil"],
@@ -5642,6 +5676,9 @@
     "xG4tb6": ["Koneksi ke \"", ["docName"], "\" terputus."],
     "xG8Ish": ["Tidak direncanakan"],
     "xHGM4U": ["Sembunyikan pratinjau HTML"],
+    "xJ7qrb": [
+      "Tidak ada kredensial yang tersimpan untuk host git ini. Tambahkan token di Pengaturan, atau biarkan git memakai kredensial yang sudah dimilikinya."
+    ],
     "xK291b": ["Dua halaman (ganjil)"],
     "xKDsGS": ["Ke baris ", ["0"], " di ", ["1"]],
     "xKcXG6": [["addingCount", "plural", { "other": ["#", " ditambahkan"] }]],
@@ -5722,6 +5759,9 @@
     "yLq4w4": ["Pemisah"],
     "yLwx9e": [
       "Direktori di atasnya yang merupakan symlink — lepaskan tautan folder itu untuk mengambil kembali yang ini."
+    ],
+    "yLyiQV": [
+      "Token yang tersimpan tidak memiliki izin yang dibutuhkan host ini untuk melakukan push."
     ],
     "yMgL_E": ["Navigasi bidang pencarian"],
     "yOjRUV": ["Tidak ada alat AI yang terdeteksi. Pasang satu untuk memakai keterampilan ini."],
@@ -5820,6 +5860,7 @@
     "zLak8b": ["Aktifkan tab baru"],
     "zMmwh4": ["Pilih tema atau buat tema Anda sendiri."],
     "zWZBPx": ["Tipe berubah"],
+    "zXZJoN": ["Tambah token"],
     "zXj1rA": ["Cari berdasarkan makna"],
     "zYp8Sr": [
       "Lencana <0>Diubah</0> menandai aturan yang disetel konfigurasi Anda secara eksplisit — langsung, atau diwarisi lewat <1>extends</1>. Aturan tanpa lencana tetap pada keadaan bawaannya."

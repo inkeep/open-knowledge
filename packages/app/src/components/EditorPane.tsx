@@ -3,15 +3,7 @@ import type { AttachmentPart } from '@inkeep/open-knowledge-core/acp/thread-prot
 import { isEditableTextDocFile } from '@inkeep/open-knowledge-core/constants/code-languages';
 import type { TerminalCli, TerminalLaunchCommand } from '@inkeep/open-knowledge-core/handoff';
 import type { TerminalPlacement } from '@inkeep/open-knowledge-core/terminal-layout';
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { getEditorForDoc } from '@/editor/active-editor';
 import { EmojiInsertPopover } from '@/editor/components/EmojiInsertPopover';
 import { TagDialog } from '@/editor/components/TagDialog';
@@ -27,8 +19,8 @@ import { VIEW_IN_SOURCE_EVENT, type ViewInSourceDetail } from '@/editor/view-in-
 import { useGitSyncStatus } from '@/hooks/use-git-sync-status';
 import { useInstalledClis } from '@/hooks/use-installed-clis';
 import { useNoPushPermissionToast } from '@/hooks/use-no-push-permission-toast';
+import { useSyncAuthPrompt } from '@/hooks/use-sync-auth-prompt';
 import { useWorktreeAutoSyncNotice } from '@/hooks/use-worktree-autosync-notice';
-import { authPromptStore } from '@/lib/auth-prompt-store';
 import { useConfigContext } from '@/lib/config-provider';
 import { readWebDockSessionOrder } from '@/lib/dock-session-persistence';
 import { matchesKeyboardShortcut, matchesRendererShortcut } from '@/lib/keyboard-shortcuts';
@@ -167,17 +159,11 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   const [editorMode, setEditorMode] = useState<EditorMode>(persistedMode);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authInitialStep, setAuthInitialStep] = useState<'auth' | 'identity'>('auth');
-  const authPromptPending = useSyncExternalStore(
-    authPromptStore.subscribe,
-    authPromptStore.getSnapshot,
-    () => false,
-  );
-  useEffect(() => {
-    if (!authPromptPending) return;
-    authPromptStore.clear();
+  const syncStatus = useGitSyncStatus();
+  useSyncAuthPrompt(syncStatus?.remote, () => {
     setAuthInitialStep('auth');
     setAuthModalOpen(true);
-  }, [authPromptPending]);
+  });
   const [activeTab, setActiveTab] = useState<PanelTab>(TABS[0].id);
   const [autoSyncOnboardingDismissed, setAutoSyncOnboardingDismissed] = useState(false);
   const desktopBridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
@@ -235,7 +221,6 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     setAgentsVisible(true);
   }
 
-  const syncStatus = useGitSyncStatus();
   const { projectConfig, projectLocalConfig, projectLocalSynced, projectSynced } =
     useConfigContext();
 

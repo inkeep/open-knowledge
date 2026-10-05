@@ -87,7 +87,7 @@ export function EnterpriseHostsSection({ binding }: { binding: ConfigBinding }) 
   return (
     <section
       aria-labelledby="settings-enterprise-hosts-title"
-      className="space-y-4 pt-5"
+      className="space-y-4"
       data-field="section:enterprise-hosts"
       data-testid="settings-enterprise-hosts"
     >

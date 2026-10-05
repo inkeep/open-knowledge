@@ -1,7 +1,9 @@
 import { redactedStderrDetail } from './clone-error-classify.ts';
-import { type LocalOpCliInvocation, runSubprocess } from './subprocess.ts';
-
-const DEFAULT_TIMEOUT_MS = 30_000;
+import {
+  LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS,
+  type LocalOpCliInvocation,
+  runSubprocess,
+} from './subprocess.ts';
 
 const SIGNED_OUT_SENTENCE = /^not logged in to /i;
 const BENIGN_TOKEN_STORAGE_BANNER = /^\[auth\] token storage: /;
@@ -53,7 +55,7 @@ export async function runAuthStatusSubprocess(
     cliEnv: opts.cliEnv,
     cwd: opts.cwd,
     trailingArgs: ['auth', 'status', '--json', '--host', host],
-    timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    timeoutMs: opts.timeoutMs ?? LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS,
     onLine: ({ parsed }) => {
       if (parsed) lines.push(parsed);
     },
@@ -102,7 +104,7 @@ export async function runAuthReposSubprocess(
     cliEnv: opts.cliEnv,
     cwd: opts.cwd,
     trailingArgs: ['auth', 'repos', '--json', '--host', host],
-    timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    timeoutMs: opts.timeoutMs ?? LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS,
     onLine: ({ parsed }) => {
       if (parsed) lines.push(parsed);
     },

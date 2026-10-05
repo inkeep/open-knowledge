@@ -9,6 +9,7 @@ import { shareNameCheckCommand } from '../share/name-check.ts';
 import { shareOwnersCommand } from '../share/owners.ts';
 import { patCommand } from './pat.ts';
 import { signoutCommand } from './signout.ts';
+import { statusCommand } from './status.ts';
 
 vi.mock('@inquirer/password', () => ({ default: vi.fn() }));
 vi.mock('../../auth/gh-detect.ts', () => ({ detectGh: () => ({ available: false }) }));
@@ -118,6 +119,230 @@ test('PAT refuses an undeclared explicit host before opening the token prompt', 
   ).rejects.toThrow('exit');
   expect(getStore).not.toHaveBeenCalled();
   expect(password).not.toHaveBeenCalled();
+});
+
+test('status on an explicit non-GitHub host reports the stored token without asking GitHub', async () => {
+  const exit = vi.spyOn(process, 'exit').mockImplementation(() => {
+    throw new Error('exit');
+  });
+  const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  const store = new FileBackend(join(projectDir, 'auth.yml'));
+  await store.set('gitea.internal', 'alice', 'tok', { gitProtocol: 'https' });
+  await expect(
+    statusCommand(async () => store).parseAsync(['--host', 'gitea.internal', '--json'], {
+      from: 'user',
+    }),
+  ).rejects.toThrow('exit');
+  expect(JSON.parse(String(stdout.mock.calls[0]?.[0]))).toEqual({
+    type: 'status',
+    host: 'gitea.internal',
+    backend: 'file',
+    authenticated: false,
+    unverified: true,
+    login: 'alice',
+  });
+  expect(exit).toHaveBeenCalledWith(0);
+});
+
+test('status with no --host on a non-GitHub origin reports the stored token for that host', async () => {
+  execFileSync('git', ['remote', 'add', 'origin', 'https://gitea.internal/team/kb.git'], {
+    cwd: projectDir,
+  });
+  vi.spyOn(process, 'exit').mockImplementation(() => {
+    throw new Error('exit');
+  });
+  const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  const store = new FileBackend(join(projectDir, 'auth.yml'));
+  await store.set('gitea.internal', 'alice', 'tok', { gitProtocol: 'https' });
+  await expect(
+    statusCommand(async () => store).parseAsync(['--json'], { from: 'user' }),
+  ).rejects.toThrow('exit');
+  expect(JSON.parse(String(stdout.mock.calls[0]?.[0]))).toMatchObject({
+    host: 'gitea.internal',
+    unverified: true,
+    login: 'alice',
+  });
+});
+
+test('status with no --host on a non-GitHub origin with nothing stored names ok auth token', async () => {
+  execFileSync('git', ['remote', 'add', 'origin', 'git@gitea.internal:team/kb.git'], {
+    cwd: projectDir,
+  });
+  const exit = vi.spyOn(process, 'exit').mockImplementation(() => {
+    throw new Error('exit');
+  });
+  const store = new FileBackend(join(projectDir, 'auth.yml'));
+  await expect(statusCommand(async () => store).parseAsync([], { from: 'user' })).rejects.toThrow(
+    'exit',
+  );
+  const written = vi
+    .mocked(process.stderr.write)
+    .mock.calls.map((c) => String(c[0]))
+    .join('');
+  expect(written).toContain('ok auth token --host gitea.internal --username <username>');
+  expect(written).not.toContain('declare it in');
+  expect(exit).toHaveBeenCalledWith(1);
+});
+
+test('status with no --host on an origin with a port reports the token stored for host:port', async () => {
+  execFileSync('git', ['remote', 'add', 'origin', 'https://Git.Corp.example:8443/team/kb.git'], {
+    cwd: projectDir,
+  });
+  vi.spyOn(process, 'exit').mockImplementation(() => {
+    throw new Error('exit');
+  });
+  const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  const store = new FileBackend(join(projectDir, 'auth.yml'));
+  await store.set('git.corp.example:8443', 'alice', 'tok', { gitProtocol: 'https' });
+  await expect(
+    statusCommand(async () => store).parseAsync(['--json'], { from: 'user' }),
+  ).rejects.toThrow('exit');
+  expect(JSON.parse(String(stdout.mock.calls[0]?.[0]))).toMatchObject({
+    host: 'git.corp.example:8443',
+    unverified: true,
+    login: 'alice',
+  });
+});
+
+test('status with no --host on a ported origin with nothing stored names the host with its port', async () => {
+  execFileSync('git', ['remote', 'add', 'origin', 'https://git.corp.example:8443/team/kb.git'], {
+    cwd: projectDir,
+  });
+  vi.spyOn(process, 'exit').mockImplementation(() => {
+    throw new Error('exit');
+  });
+  const store = new FileBackend(join(projectDir, 'auth.yml'));
+  await expect(statusCommand(async () => store).parseAsync([], { from: 'user' })).rejects.toThrow(
+    'exit',
+  );
+  const written = vi
+    .mocked(process.stderr.write)
+    .mock.calls.map((c) => String(c[0]))
+    .join('');
+  expect(written).toContain('ok auth token --host git.corp.example:8443 --username <username>');
+});
+
+test('status with no --host on an origin URL deeper than owner/repo still finds the host', async () => {
+  execFileSync('git', ['remote', 'add', 'origin', 'https://gitlab.corp.example/group/sub/kb.git'], {
+    cwd: projectDir,
+  });
+  vi.spyOn(process, 'exit').mockImplementation(() => {
+    throw new Error('exit');
+  });
+  const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  const store = new FileBackend(join(projectDir, 'auth.yml'));
+  await store.set('gitlab.corp.example', 'oauth2', 'tok', { gitProtocol: 'https' });
+  await expect(
+    statusCommand(async () => store).parseAsync(['--json'], { from: 'user' }),
+  ).rejects.toThrow('exit');
+  expect(JSON.parse(String(stdout.mock.calls[0]?.[0]))).toMatchObject({
+    host: 'gitlab.corp.example',
+    unverified: true,
+    login: 'oauth2',
+  });
+});
+
+test('status --host on a non-GitHub host matches the stored key regardless of case or :443', async () => {
+  vi.spyOn(process, 'exit').mockImplementation(() => {
+    throw new Error('exit');
+  });
+  const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  const store = new FileBackend(join(projectDir, 'auth.yml'));
+  await store.set('gitea.internal', 'alice', 'tok', { gitProtocol: 'https' });
+  await expect(
+    statusCommand(async () => store).parseAsync(['--host', 'Gitea.Internal:443', '--json'], {
+      from: 'user',
+    }),
+  ).rejects.toThrow('exit');
+  expect(JSON.parse(String(stdout.mock.calls[0]?.[0]))).toMatchObject({
+    host: 'gitea.internal',
+    unverified: true,
+    login: 'alice',
+  });
+});
+
+test('PAT on a ported non-GitHub origin names ok auth token with the port kept', async () => {
+  execFileSync('git', ['remote', 'add', 'origin', 'https://git.corp.example:8443/team/kb.git'], {
+    cwd: projectDir,
+  });
+  vi.spyOn(process, 'exit').mockImplementation(() => {
+    throw new Error('exit');
+  });
+  await expect(
+    patCommand(async () => new FileBackend(join(projectDir, 'auth.yml'))).parseAsync([], {
+      from: 'user',
+    }),
+  ).rejects.toThrow('exit');
+  const written = vi
+    .mocked(process.stderr.write)
+    .mock.calls.map((c) => String(c[0]))
+    .join('');
+  expect(written).toContain("this project's git remote is git.corp.example,");
+  expect(written).toContain('ok auth token --host git.corp.example:8443 --username <username>');
+  expect(password).not.toHaveBeenCalled();
+});
+
+test('PAT on an origin deeper than owner/repo names the host and ok auth token', async () => {
+  execFileSync('git', ['remote', 'add', 'origin', 'https://gitlab.corp.example/group/sub/kb.git'], {
+    cwd: projectDir,
+  });
+  vi.spyOn(process, 'exit').mockImplementation(() => {
+    throw new Error('exit');
+  });
+  await expect(
+    patCommand(async () => new FileBackend(join(projectDir, 'auth.yml'))).parseAsync([], {
+      from: 'user',
+    }),
+  ).rejects.toThrow('exit');
+  const written = vi
+    .mocked(process.stderr.write)
+    .mock.calls.map((c) => String(c[0]))
+    .join('');
+  expect(written).toContain(
+    "this project's git remote is gitlab.corp.example, which is not a GitHub host",
+  );
+  expect(written).toContain('ok auth token --host gitlab.corp.example --username <username>');
+  expect(written).not.toContain('Cannot determine');
+  expect(written).not.toContain('declare it in');
+  expect(password).not.toHaveBeenCalled();
+});
+
+test('implicit signout on an origin deeper than owner/repo names the host in the lead', async () => {
+  execFileSync('git', ['remote', 'add', 'origin', 'https://gitlab.corp.example/group/sub/kb.git'], {
+    cwd: projectDir,
+  });
+  vi.spyOn(process, 'exit').mockImplementation(() => {
+    throw new Error('exit');
+  });
+  await expect(signoutCommand().parseAsync([], { from: 'user' })).rejects.toThrow('exit');
+  const written = vi
+    .mocked(process.stderr.write)
+    .mock.calls.map((c) => String(c[0]))
+    .join('');
+  expect(written).toContain("This project's git remote is gitlab.corp.example");
+  expect(written).toContain('ok auth signout --host gitlab.corp.example');
+  expect(written).not.toContain('Cannot determine');
+});
+
+test('explicit signout of a non-GitHub host clears the key git asks for', async () => {
+  await signoutCommand().parseAsync(['--host', 'Git.Corp.example:443'], { from: 'user' });
+  expect(clearTokenFromAllBackends).toHaveBeenCalledWith('git.corp.example');
+});
+
+test('implicit signout on a ported origin names the host with its port', async () => {
+  execFileSync('git', ['remote', 'add', 'origin', 'https://git.corp.example:8443/team/kb.git'], {
+    cwd: projectDir,
+  });
+  vi.spyOn(process, 'exit').mockImplementation(() => {
+    throw new Error('exit');
+  });
+  await expect(signoutCommand().parseAsync([], { from: 'user' })).rejects.toThrow('exit');
+  const written = vi
+    .mocked(process.stderr.write)
+    .mock.calls.map((c) => String(c[0]))
+    .join('');
+  expect(written).toContain('ok auth signout --host git.corp.example:8443');
+  expect(clearTokenFromAllBackends).not.toHaveBeenCalled();
 });
 
 test.each(['owners', 'name-check'])(

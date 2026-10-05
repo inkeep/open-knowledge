@@ -41,6 +41,9 @@
     ],
     "-l6jM7": ["Start a chat with the ＋ button, or launch an agent from a page."],
     "-lCAuQ": ["Loading graph"],
+    "-nA68n": [
+      "Add an access token for a GitLab, Gitea, Bitbucket, Azure DevOps or self-hosted git server. Without one, git uses the credentials it already has saved for that host; with one, OpenKnowledge uses the token instead."
+    ],
     "-o5XAG": [
       "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
     ],
@@ -241,6 +244,7 @@
     "1vczDE": ["Open ", ["displayName"], " Desktop"],
     "1vn0CI": ["Invalid server response"],
     "1xui0Q": ["Failed to load local files"],
+    "1yHVE-": ["Adding"],
     "2-3Mlu": ["Couldn't unpin ", ["name"]],
     "20LVKb": [
       "The agent process was told to stop (",
@@ -474,6 +478,15 @@
     "4mp6Tv": ["OpenKnowledge listed the installed skills"],
     "4niEzY": ["Sandboxed HTML embed — write HTML, see the rendered preview live."],
     "4nj6n8": ["/api/config returned HTTP ", ["code"]],
+    "4p8Baj": [
+      "Token stored for ",
+      ["login"],
+      " on ",
+      ["host"],
+      ". To remove it, run <0>ok auth signout --host ",
+      ["host"],
+      "</0>."
+    ],
     "4pDZ2N": ["Removed \"", ["0"], "\" from every other location — its source folder still loads"],
     "4r6p_B": [
       "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
@@ -727,13 +740,6 @@
     "7YRrJ9": [
       "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
-    "7_I248": [
-      "This project's git remote is on ",
-      ["host"],
-      ", which OpenKnowledge doesn't recognize as a GitHub host. If ",
-      ["host"],
-      " runs GitHub Enterprise Server, add it to GitHub Enterprise Server hosts below, then restart OpenKnowledge."
-    ],
     "7_bFEL": ["Drag ", ["patternText"], " to reorder"],
     "7a0YcF": ["Press <0>Space</0> or tap the blob to start"],
     "7aNk5D": ["OpenKnowledge edited ", ["subject"]],
@@ -766,6 +772,7 @@
     "7lFX_h": ["Steer now"],
     "7m3Ade": ["installs:"],
     "7qRHf0": ["Install for Claude Chat & Cowork"],
+    "7sNhEz": ["Username"],
     "7uBlRT": ["Copy the focused file-tree item so Paste can duplicate it."],
     "7vxWET": ["Pack preview unavailable."],
     "7wogIQ": [["0", "plural", { "one": ["Plugin"], "other": ["Plugins"] }]],
@@ -911,6 +918,7 @@
     "9bCiQ8": ["No pages are missing incoming graph links."],
     "9bG48P": ["Sending"],
     "9clcD5": ["Open documents tagged #", ["chip"]],
+    "9djC8C": ["Connect a GitHub account to browse and publish GitHub repositories."],
     "9euN0m": [
       [
         "count",
@@ -1011,7 +1019,6 @@
       " in ",
       ["parentLabel"]
     ],
-    "AeXO77": ["Account"],
     "AgoIW4": [
       ["source"],
       ": ",
@@ -1024,6 +1031,7 @@
       ["detail"]
     ],
     "AhoGwP": ["Set up OpenKnowledge integrations"],
+    "Ai2U7L": ["Host"],
     "AiNMQ7": [
       "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
     ],
@@ -1306,9 +1314,6 @@
     "E2Mv-X": ["Copy source"],
     "E4XYYH": ["Enable terminal for this project"],
     "E5WeIy": ["Reopen the most recently closed editor tab."],
-    "E6lrpp": [
-      "Manage the GitHub account OpenKnowledge uses to browse and sync your repositories."
-    ],
     "E7BhZn": ["Blank note"],
     "E8NbNG": ["Couldn't load worktrees."],
     "E91VZY": ["Open in New Window"],
@@ -1322,7 +1327,6 @@
     "EEYbdt": ["Publish"],
     "EFfGAv": ["That message already went out — your edit wasn't applied."],
     "EHu0x2": ["Syncing"],
-    "EJuO7B": ["Connect a GitHub account to browse and sync your repositories."],
     "EKwNEe": [
       "Cached embeddings belong to the endpoint and model that produced them, so this rebuilds the index from scratch."
     ],
@@ -1473,6 +1477,9 @@
     "FgRAvd": ["Logs & system info"],
     "Fhp4Gn": ["View plugin"],
     "Fim5F3": ["embeddings"],
+    "FioJgb": [
+      "Reconnect required to keep syncing. Add a token for this host in Settings, or replace the one stored."
+    ],
     "FiyNln": ["Jump to selected text in property"],
     "FjkaiT": ["Zoom out"],
     "Fjz6aJ": ["Send to a new chat"],
@@ -1889,6 +1896,9 @@
     "KvwJv8": ["Some files are not listed — the working tree has too many changes."],
     "Kx881F": ["Restored ", ["0"], "."],
     "KziH2K": ["Fast"],
+    "L-crEu": [
+      "Git couldn't authenticate with this host. Check the SSH key or saved credentials git uses for it."
+    ],
     "L-rMC9": ["Reset to default"],
     "L1BQTH": [["0"], " isn't installed yet — opening its download page."],
     "L1ZE3M": ["Document statistics"],
@@ -1944,6 +1954,9 @@
     "LRgZAt": [["owner"], "/", ["name"], " already exists"],
     "LSuMte": [["0"], " of ", ["totalCount"]],
     "LTeJuX": ["Toggle Full Screen"],
+    "LVWA9A": [
+      "Authentication failed for this git host. Add a token for it in Settings, or replace the one stored."
+    ],
     "LXIm4m": ["Context window"],
     "LXdWeS": ["Medium section heading."],
     "LXfNU-": ["Navigation and suggestions"],
@@ -2076,6 +2089,7 @@
     "Mj8R8K": ["Couldn't install skill: ", ["0"]],
     "MmDDWK": ["Recently opened"],
     "Mnavhe": [["propPanelDescriptorLabel"], " Properties"],
+    "MpZRQy": ["Git"],
     "MqQoV-": ["Describe what you want to build, start a blank file, or scaffold from a template."],
     "MqsbfN": ["Turn on external link previews?"],
     "MrUmCD": ["unknown build failure"],
@@ -2247,6 +2261,9 @@
     "OPOiKn": ["Content rules"],
     "OTF92M": ["Label <0>(optional display text)</0>"],
     "OVjNeX": ["Terminal ", ["0"]],
+    "OWs-8P": [
+      "A token added here only applies to HTTPS remotes, and this project's remote doesn't use HTTPS."
+    ],
     "OX2Neh": ["Inline code"],
     "OXb_Df": ["Settings content"],
     "OXdGnd": ["Problems"],
@@ -2364,6 +2381,7 @@
       ["filePath"],
       ". Explain what I should compare in the OpenKnowledge Conflict view; I will choose and apply the resolution there."
     ],
+    "Q14Keq": ["Bitbucket"],
     "Q1mtyd": ["Hide sidebar"],
     "Q5fqMz": ["Connection error — try again"],
     "Q6hhn8": ["Preferences"],
@@ -2632,6 +2650,7 @@
     "SiUUCS": ["Next match"],
     "SkMZlS": ["Couldn't remove <0>", ["targetGitPath"], "</0>: ", ["removeGitError"]],
     "SkTkKV": ["The agent isn't stopping. Force stop closes this chat and quits the agent."],
+    "SkUcEr": ["Access token"],
     "Ske_wc": [
       "User plugins are personal to this device — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
     ],
@@ -2947,9 +2966,6 @@
     "XAyxsa": ["Check out remote branch"],
     "XBBZnv": ["Link target \"", ["shown"], "\" does not resolve to an existing document."],
     "XBgr2S": ["Copy in"],
-    "XBpH6-": [
-      "OpenKnowledge couldn't find a host name in this project's git remote, so it can't tell which GitHub server to sign in to."
-    ],
     "XDzAnp": ["Opens in a new tab"],
     "XF1kgP": ["Everything from ", ["source"], " is already up to date"],
     "XGKy1z": ["Image couldn't be displayed"],
@@ -3388,6 +3404,9 @@
     "arUUsK": ["Product updates"],
     "ax9kie": ["Link preview settings not yet loaded — try again in a moment"],
     "axQ1h6": ["Anything you'd like to add? (optional)"],
+    "azrR7I": [
+      "The username git sends with the token. Some hosts expect a fixed value: type <0>x-bitbucket-api-token-auth</0> for a Bitbucket API token, <1>x-token-auth</1> for a Bitbucket repository or workspace access token, or <2>oauth2</2> for GitLab. For Gitea, use your Gitea username. Azure DevOps accepts any value."
+    ],
     "b18t0_": ["Close diff"],
     "b1FDss": ["Scroll to start"],
     "b2ezG_": ["Kept both — \"", ["0"], "\" is its own skill now"],
@@ -3722,6 +3741,7 @@
     "e8zRrb": ["Show Files"],
     "e8zYa8": ["Could not open ", ["shareBranch"], " in a worktree. Try again."],
     "e9sHSO": ["Pick up where you left off"],
+    "eAYJMv": ["token"],
     "eBGWcy": [
       "Open Knowledge tools are unavailable because the project folder is missing, inaccessible, or has changed. Check its location and permissions, then retry."
     ],
@@ -4301,6 +4321,7 @@
     "jZ_E5M": ["Fetch failed — check the server logs for details."],
     "j_Z6g7": ["Shared default"],
     "jbSG8V": ["Show Files (", ["sidebarShortcutLabel"], ")"],
+    "jbhCDS": ["Other Git hosts"],
     "jcEoUi": ["Move to right panel"],
     "jdGUeI": ["Couldn't create template: ", ["error"]],
     "jeCFV7": ["Move to new pane right"],
@@ -4874,6 +4895,9 @@
     "pckX1A": [["0", "plural", { "one": ["#", " use"], "other": ["#", " uses"] }]],
     "pcqlQu": [["0", "plural", { "one": ["Folder"], "other": ["Folders"] }]],
     "pd0UH2": ["Align right"],
+    "pd6t3G": [
+      "Manage the accounts and access tokens OpenKnowledge uses to connect to your git hosts."
+    ],
     "peq20S": [
       "The browser isn't available in this chat because it couldn't be set up. OpenKnowledge's log has the details."
     ],
@@ -4985,6 +5009,7 @@
     "qi17kj": ["Embed a live snapshot of an .excalidraw board from this workspace."],
     "qi1F96": ["Reveal in File Explorer"],
     "qiRoLb": ["Summarize everything I changed this week"],
+    "qimTXH": ["OpenKnowledge can't sign in to GitHub for this project."],
     "qioCwA": ["Jump to page ", ["pageNumber"]],
     "qjHMHf": ["Failed to disable sync — ", ["detail"]],
     "qkqG0b": ["Take upstream"],
@@ -5045,6 +5070,9 @@
     "rVxu1k": ["No pages link here yet."],
     "rXz97P": ["Numbered list of items."],
     "rZ9HZq": ["To do"],
+    "rZFxkH": [
+      "Enter the host name git connects to, with an optional :port and no scheme or path, for example git.example.com."
+    ],
     "rZVMkf": ["Visual editor replace input focused"],
     "radOpL": ["Image ", ["identity"], ". Go to reference."],
     "rageVb": ["Custom HTML with a live preview pane (sandboxed iframe)."],
@@ -5256,6 +5284,9 @@
     "tlGXxX": ["Auto (Pull only)"],
     "tnG-m6": ["Auto-sync is paused — sign in to resume."],
     "toyw51": ["Mermaid diagram controls"],
+    "tpOnU9": [
+      "OpenKnowledge has no credential stored for this host. Add a token in Settings, or let git use the credentials it already has."
+    ],
     "tqQBwN": ["Any scripts are shown for review, never run."],
     "troubleshooting.claude-desktop.per-tool-approval": [
       ["agent"],
@@ -5416,6 +5447,7 @@
     "uoJF_D": ["It was too hard to set up or get started"],
     "uqs8Gd": [["others", "plural", { "one": ["#", " other"], "other": ["#", " others"] }]],
     "ur2XSb": ["Visual editor"],
+    "uraHF0": ["GitLab"],
     "uuoHOU": ["Command failed."],
     "uwzRx4": [
       "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
@@ -5513,6 +5545,9 @@
     "vvWZnu": ["Diff unavailable"],
     "vwV-kH": ["Fixing files stopped unexpectedly."],
     "vy_VIN": ["Tracked in git — updates flow through your repo (pull or CI), not auto-update"],
+    "w-Wt3H": [
+      "Reconnect required to keep syncing. Check the SSH key or saved credentials git uses for this host."
+    ],
     "w0YVAE": ["Show skill nodes"],
     "w3tVpc": ["No links yet. Add wiki links or markdown links to build a graph."],
     "w3vFfL": ["Hide Files"],
@@ -5632,7 +5667,6 @@
     "x57cJf": ["Open link"],
     "xAlHfe": [["basename"], " — text editor"],
     "xBFg6z": ["From the ", ["0"], " plugin"],
-    "xBjIs7": ["GitHub sign-in isn't available for this project"],
     "xCJdfg": ["Clear"],
     "xCdTnb": ["Close new tab"],
     "xD4Xm2": ["Fetch"],
@@ -5644,6 +5678,9 @@
     "xG4tb6": ["Lost connection to \"", ["docName"], "\"."],
     "xG8Ish": ["Not planned"],
     "xHGM4U": ["Hide HTML preview"],
+    "xJ7qrb": [
+      "No credential is stored for this git host. Add a token in Settings, or let git use the credentials it already has."
+    ],
     "xK291b": ["Two-page (odd)"],
     "xKDsGS": ["Go to line ", ["0"], " in ", ["1"]],
     "xKcXG6": [["addingCount", "plural", { "one": ["#", " added"], "other": ["#", " added"] }]],
@@ -5730,6 +5767,7 @@
     "yLwx9e": [
       "A parent directory is the symlink — unlink that folder itself to take this one back."
     ],
+    "yLyiQV": ["The stored token is missing the permissions this host needs to push."],
     "yMgL_E": ["Find field navigation"],
     "yOjRUV": ["No AI tools detected. Install one to use this skill."],
     "yQE2r9": ["Loading"],
@@ -5817,6 +5855,7 @@
     "zLak8b": ["Activate new tab"],
     "zMmwh4": ["Pick a theme or create your own."],
     "zWZBPx": ["Type changed"],
+    "zXZJoN": ["Add token"],
     "zXj1rA": ["Search by meaning"],
     "zYp8Sr": [
       "A <0>Modified</0> badge marks rules your config sets explicitly — directly, or inherited through <1>extends</1>. Unmarked rules keep their default state."

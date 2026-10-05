@@ -38,7 +38,7 @@ import { useGitWorktreeStatus } from '@/hooks/use-git-worktree-status';
 import { useConfigContext } from '@/lib/config-provider';
 import { hashFromAssetPath, hashFromDocName, isSameHash } from '@/lib/doc-hash';
 import { triggerSync } from '@/lib/trigger-sync';
-import { openSyncSettings } from '@/lib/use-settings-route';
+import { openAccountSettings, openSyncSettings } from '@/lib/use-settings-route';
 import { EnableSyncConfirmDialog } from './EnableSyncConfirmDialog';
 import { SyncBlockingChanges } from './SyncBlockingChanges';
 import {
@@ -393,16 +393,43 @@ export function shouldOfferReconnect(pushPermission: PushPermissionWire | undefi
   );
 }
 
-export function formatPushFailureCode(code: SyncErrorCode): string {
+export function isGitHubRemote(remote: GitSyncStatus['remote']): boolean {
+  return typeof remote?.webUrl === 'string';
+}
+
+export function hasNonGitHubRemote(remote: GitSyncStatus['remote']): boolean {
+  return remote != null && !isGitHubRemote(remote);
+}
+
+export function remoteTakesStoredToken(remote: GitSyncStatus['remote'] | undefined): boolean {
+  return remote?.transport === undefined || remote.transport === 'https';
+}
+
+export function formatAuthFailureCode(code: SyncErrorCode, isGitHub: boolean): string | null {
+  switch (code) {
+    case 'auth-401':
+      return isGitHub
+        ? t`GitHub authentication failed. Try signing in again.`
+        : t`Authentication failed for this git host. Add a token for it in Settings, or replace the one stored.`;
+    case 'auth-scope-mismatch':
+      return isGitHub
+        ? t`Your GitHub token is missing required scopes. Try signing in again.`
+        : t`The stored token is missing the permissions this host needs to push.`;
+    case 'auth-no-credential':
+      return isGitHub
+        ? t`GitHub sign-in is missing or expired. Reconnect to resume syncing.`
+        : t`No credential is stored for this git host. Add a token in Settings, or let git use the credentials it already has.`;
+    default:
+      return null;
+  }
+}
+
+export function formatPushFailureCode(code: SyncErrorCode, isGitHub: boolean): string {
+  const authMessage = formatAuthFailureCode(code, isGitHub);
+  if (authMessage !== null) return authMessage;
   switch (code) {
     case 'auth-403':
       return t`You don't have permission to push to this repo.`;
-    case 'auth-401':
-      return t`GitHub authentication failed. Try signing in again.`;
-    case 'auth-scope-mismatch':
-      return t`Your GitHub token is missing required scopes. Try signing in again.`;
-    case 'auth-no-credential':
-      return t`GitHub sign-in is missing or expired. Reconnect to resume syncing.`;
     case 'semantic-protected-branch':
       return t`The default branch is protected — pushes need a pull request.`;
     case 'auth-not-found-as-identity':
@@ -412,16 +439,12 @@ export function formatPushFailureCode(code: SyncErrorCode): string {
   }
 }
 
-export function formatPullFailureCode(code: SyncErrorCode): string {
+export function formatPullFailureCode(code: SyncErrorCode, isGitHub: boolean): string {
+  const authMessage = formatAuthFailureCode(code, isGitHub);
+  if (authMessage !== null) return authMessage;
   switch (code) {
     case 'auth-403':
       return t`You don't have access to this repository.`;
-    case 'auth-401':
-      return t`GitHub authentication failed. Try signing in again.`;
-    case 'auth-scope-mismatch':
-      return t`Your GitHub token is missing required scopes. Try signing in again.`;
-    case 'auth-no-credential':
-      return t`GitHub sign-in is missing or expired. Reconnect to resume syncing.`;
     case 'auth-not-found-as-identity':
       return t`Repository not found — it may not exist, or the account used may not have access.`;
     default:
@@ -429,16 +452,12 @@ export function formatPullFailureCode(code: SyncErrorCode): string {
   }
 }
 
-export function formatSyncFailureCode(code: SyncErrorCode): string {
+export function formatSyncFailureCode(code: SyncErrorCode, isGitHub: boolean): string {
+  const authMessage = formatAuthFailureCode(code, isGitHub);
+  if (authMessage !== null) return authMessage;
   switch (code) {
     case 'auth-403':
       return t`You don't have access to this repository.`;
-    case 'auth-401':
-      return t`GitHub authentication failed. Try signing in again.`;
-    case 'auth-scope-mismatch':
-      return t`Your GitHub token is missing required scopes. Try signing in again.`;
-    case 'auth-no-credential':
-      return t`GitHub sign-in is missing or expired. Reconnect to resume syncing.`;
     case 'semantic-protected-branch':
       return t`The default branch is protected — pushes need a pull request.`;
     case 'auth-not-found-as-identity':
@@ -457,8 +476,12 @@ export interface SyncErrorLine {
 }
 
 export function computeSyncErrorLines(
-  status: Pick<GitSyncStatus, 'pushError' | 'pushErrorCode' | 'pullError' | 'pullErrorCode'>,
+  status: Pick<
+    GitSyncStatus,
+    'pushError' | 'pushErrorCode' | 'pullError' | 'pullErrorCode' | 'remote'
+  >,
 ): SyncErrorLine[] {
+  const isGitHub = isGitHubRemote(status.remote);
   const pushPresent = status.pushErrorCode != null || status.pushError != null;
   const pullPresent = status.pullErrorCode != null || status.pullError != null;
 
@@ -474,7 +497,7 @@ export function computeSyncErrorLines(
           direction: null,
           message:
             status.pushErrorCode != null
-              ? formatSyncFailureCode(status.pushErrorCode)
+              ? formatSyncFailureCode(status.pushErrorCode, isGitHub)
               : (status.pushError as string),
         },
       ];
@@ -488,7 +511,7 @@ export function computeSyncErrorLines(
       key: 'push',
       direction: labelDirections ? 'push' : null,
       message: status.pushErrorCode
-        ? formatPushFailureCode(status.pushErrorCode)
+        ? formatPushFailureCode(status.pushErrorCode, isGitHub)
         : (status.pushError as string),
     });
   }
@@ -497,7 +520,7 @@ export function computeSyncErrorLines(
       key: 'pull',
       direction: labelDirections ? 'pull' : null,
       message: status.pullErrorCode
-        ? formatPullFailureCode(status.pullErrorCode)
+        ? formatPullFailureCode(status.pullErrorCode, isGitHub)
         : (status.pullError as string),
     });
   }
@@ -1007,6 +1030,22 @@ function UpdatedLine({
   );
 }
 
+function AddHostTokenButton() {
+  return (
+    <PopoverClose asChild>
+      <Button
+        variant="outline"
+        size="xs"
+        className="self-start"
+        onClick={() => openAccountSettings()}
+        data-testid="sync-popover-add-host-token"
+      >
+        <Trans>Add token</Trans>
+      </Button>
+    </PopoverClose>
+  );
+}
+
 function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
   const { t } = useLingui();
   const { conflictCount } = status;
@@ -1039,6 +1078,7 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
     status.pushPermission?.checkStatus === 'denied' &&
     status.pushPermission.deniedReason !== 'not-authenticated' &&
     !notFoundAsIdentity;
+  const isGitHub = isGitHubRemote(status.remote);
 
   const canPush = !genuineReadOnly;
   const busy = state === 'fetching' || state === 'pulling' || state === 'pushing';
@@ -1300,16 +1340,40 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
         </div>
       )}
 
-      {state === 'auth-error' && !isParkedOnNotFoundAsIdentity(status) && onSignIn && (
-        <div className="flex items-start gap-2">
-          <p className="min-w-0 flex-1 text-xs text-destructive">
-            <Trans>Reconnect required to keep syncing.</Trans>
+      {state === 'auth-error' &&
+        !isParkedOnNotFoundAsIdentity(status) &&
+        (isGitHub ? (
+          onSignIn && (
+            <div className="flex items-start gap-2">
+              <p className="min-w-0 flex-1 text-xs text-destructive">
+                <Trans>Reconnect required to keep syncing.</Trans>
+              </p>
+              <Button variant="outline" size="xs" className="self-start" onClick={onSignIn}>
+                <Trans>Sign in</Trans>
+              </Button>
+            </div>
+          )
+        ) : remoteTakesStoredToken(status.remote) ? (
+          <div className="flex items-start gap-2">
+            <p
+              className="min-w-0 flex-1 text-xs text-destructive"
+              data-testid="sync-popover-auth-error-unverified"
+            >
+              <Trans>
+                Reconnect required to keep syncing. Add a token for this host in Settings, or
+                replace the one stored.
+              </Trans>
+            </p>
+            <AddHostTokenButton />
+          </div>
+        ) : (
+          <p className="text-xs text-destructive" data-testid="sync-popover-auth-error-no-token">
+            <Trans>
+              Reconnect required to keep syncing. Check the SSH key or saved credentials git uses
+              for this host.
+            </Trans>
           </p>
-          <Button variant="outline" size="xs" className="self-start" onClick={onSignIn}>
-            <Trans>Sign in</Trans>
-          </Button>
-        </div>
-      )}
+        ))}
 
       {conflictCount > 0 && (
         <p className="text-xs text-muted-foreground">

@@ -1544,6 +1544,10 @@ msgstr "<0>{trimmedSlug}</0> নামের একটি টেমপ্লে�
 msgid "A title, description, tags — anything that describes this folder."
 msgstr "একটি শিরোনাম, বিবরণ, ট্যাগ — এই ফোল্ডারকে বর্ণনা করে এমন যা কিছু।"
 
+#: src/components/settings/AccountSection.tsx
+msgid "A token added here only applies to HTTPS remotes, and this project's remote doesn't use HTTPS."
+msgstr "এখানে যোগ করা টোকেন শুধু HTTPS রিমোটে প্রযোজ্য, আর এই প্রকল্পের রিমোট HTTPS ব্যবহার করে না।"
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "{shareBranch}-এর জন্য একটি ওয়ার্কট্রি ফোল্ডার আগে থেকেই আছে।"
@@ -1596,9 +1600,8 @@ msgid "Accept their deletion"
 msgstr "তাদের মুছে ফেলা গ্রহণ করুন"
 
 #: src/components/settings/AccountSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-msgid "Account"
-msgstr "অ্যাকাউন্ট"
+msgid "Access token"
+msgstr "প্রবেশ টোকেন"
 
 #: src/components/TemplateRow.tsx
 msgid "Actions for {label}"
@@ -1676,6 +1679,10 @@ msgstr "একটি প্রপার্টি যোগ করুন"
 #: src/components/empty-state/CreateView.tsx
 msgid "Add a starter pack"
 msgstr "একটি স্টার্টার প্যাক যোগ করুন"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Add an access token for a GitLab, Gitea, Bitbucket, Azure DevOps or self-hosted git server. Without one, git uses the credentials it already has saved for that host; with one, OpenKnowledge uses the token instead."
+msgstr "GitLab, Gitea, Bitbucket, Azure DevOps বা স্ব-হোস্ট করা git সার্ভারের জন্য একটি প্রবেশ টোকেন যোগ করুন। টোকেন না থাকলে git ওই হোস্টের জন্য আগে থেকে সংরক্ষিত শংসাপত্র ব্যবহার করে; টোকেন থাকলে OpenKnowledge তার বদলে টোকেনটি ব্যবহার করে।"
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Add another pattern"
@@ -1806,6 +1813,12 @@ msgstr "অভিধানে যোগ করুন"
 msgid "Add to prompt"
 msgstr "প্রম্পটে যোগ করুন"
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/SyncStatusBadge.tsx
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "Add token"
+msgstr "টোকেন যোগ করুন"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "মান যোগ করুন"
@@ -1815,6 +1828,10 @@ msgstr "মান যোগ করুন"
 #: src/components/SyncStatusBadge.tsx
 msgid "Added"
 msgstr "যোগ করা হয়েছে"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Adding"
+msgstr "যোগ করা হচ্ছে"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Adds a global OpenKnowledge MCP entry for this agent."
@@ -2331,6 +2348,10 @@ msgstr "সংযুক্তির মোট আকার ৩ MB-র কম হ
 msgid "Authenticated as {login}."
 msgstr "{login} হিসেবে প্রমাণীকৃত।"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authentication failed for this git host. Add a token for it in Settings, or replace the one stored."
+msgstr "এই git হোস্টের জন্য প্রমাণীকরণ ব্যর্থ হয়েছে। সেটিং-এ এর জন্য একটি টোকেন যোগ করুন, নয়তো সংরক্ষিত টোকেনটি বদলে দিন।"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr "প্রামাণিক বিষয়বস্তু; যেখানেই উল্লেখ করা হোক হুবহু প্রতিফলিত।"
@@ -2531,6 +2552,11 @@ msgstr "বড় বিভাগ শিরোনাম।"
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Bird wiki"
 msgstr "পাখি উইকি"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "Bitbucket"
+msgstr "Bitbucket"
 
 #: src/components/NewItemDialog.tsx
 msgid "Blank note"
@@ -3601,8 +3627,8 @@ msgid "Connect"
 msgstr "যুক্ত করুন"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Connect a GitHub account to browse and sync your repositories."
-msgstr "আপনার রিপোজিটরি ব্রাউজ ও সিঙ্ক করতে একটি GitHub অ্যাকাউন্ট যুক্ত করুন।"
+msgid "Connect a GitHub account to browse and publish GitHub repositories."
+msgstr "GitHub রিপোজিটরি ব্রাউজ ও প্রকাশ করতে একটি GitHub অ্যাকাউন্ট যুক্ত করুন।"
 
 #: src/components/settings/SyncSection.tsx
 msgid "Connect an existing repository"
@@ -3694,6 +3720,7 @@ msgid "Connection dropped"
 msgstr "সংযোগ বিচ্ছিন্ন হয়েছে"
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 #: src/lib/transports/auth-transport.ts
 msgid "Connection error — try again"
 msgstr "সংযোগ ত্রুটি — আবার চেষ্টা করুন"
@@ -5933,6 +5960,10 @@ msgstr "{minimum} থেকে {maximum} এর মধ্যে একটি প
 msgid "Enter at least 3 characters to search by meaning."
 msgstr "অর্থের ভিত্তিতে অনুসন্ধান করতে অন্তত ৩টি অক্ষর লিখুন।"
 
+#: src/components/settings/AccountSection.tsx
+msgid "Enter the host name git connects to, with an optional :port and no scheme or path, for example git.example.com."
+msgstr "git যে হোস্ট নামে সংযোগ করে সেটি লিখুন, ঐচ্ছিক :port সহ এবং কোনো স্কিম বা পাথ ছাড়া, যেমন git.example.com।"
+
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "আপনার টানেল যে পাবলিক অরিজিন পরিবেশন করে তা লিখুন, উদাহরণস্বরূপ https://notes.example.com"
@@ -6408,6 +6439,7 @@ msgid "Failed to start sign-in — try again"
 msgstr "সাইন-ইন শুরু করতে ব্যর্থ — আবার চেষ্টা করুন"
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 #: src/lib/transports/auth-transport.ts
 msgid "Failed to store the token — try again"
 msgstr "টোকেন সংরক্ষণ করতে ব্যর্থ — আবার চেষ্টা করুন"
@@ -6881,6 +6913,11 @@ msgctxt "settings search keyword"
 msgid "GHES"
 msgstr "GHES"
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Git"
+msgstr "Git"
+
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
 msgstr "Git ও PR"
@@ -6888,6 +6925,10 @@ msgstr "Git ও PR"
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git এই ফোল্ডারের হিসাব রাখতে পারে না — এটি খালি বা এতে কেবল উপেক্ষিত ফাইল আছে। আপনি একটি হিসাবভুক্ত নথি যোগ না করা পর্যন্ত লিংকটি কাজ করবে না।"
+
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "Git couldn't authenticate with this host. Check the SSH key or saved credentials git uses for it."
+msgstr "git এই হোস্টে প্রমাণীকরণ করতে পারেনি। এর জন্য git যে SSH কী বা সংরক্ষিত শংসাপত্র ব্যবহার করে তা পরীক্ষা করুন।"
 
 #: src/components/RecentProjectsMenu.tsx
 msgid "Git has locked this worktree, but it can still be opened."
@@ -6948,10 +6989,6 @@ msgstr "GitHub Enterprise Server হোস্ট"
 msgid "GitHub sign-in is missing or expired. Reconnect to resume syncing."
 msgstr "GitHub সাইন-ইন অনুপস্থিত বা এর মেয়াদ শেষ। সিঙ্ক আবার শুরু করতে পুনরায় যুক্ত হোন।"
 
-#: src/components/settings/AccountSection.tsx
-msgid "GitHub sign-in isn't available for this project"
-msgstr "এই প্রজেক্টের জন্য GitHub সাইন-ইন উপলব্ধ নয়"
-
 #: src/components/ImportSkillForm.tsx
 msgid "GitHub, a git URL, or a local path."
 msgstr "GitHub, একটি git URL, বা একটি স্থানীয় পথ।"
@@ -6959,6 +6996,11 @@ msgstr "GitHub, একটি git URL, বা একটি স্থানীয�
 #: src/components/settings/EnterpriseHostsSection.tsx
 msgid "github.com is always recognized, so it doesn't need to be added."
 msgstr "github.com সবসময় চেনা হয়, তাই এটি যোগ করার দরকার নেই।"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GitLab"
+msgstr "GitLab"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Give it a name before editing its colors."
@@ -7313,6 +7355,10 @@ msgstr "অনুভূমিক পিল স্ট্রিপ + নিচে 
 #: src/editor/slash-command/items.tsx
 msgid "Horizontal rule that divides sections."
 msgstr "বিভাগ ভাগ করে দেওয়া অনুভূমিক রেখা।"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Host"
+msgstr "হোস্ট"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Hosting is on. The server is running on port {boundPort}. Reach it through your tunnel."
@@ -8607,8 +8653,8 @@ msgid "Manage skill folders"
 msgstr "স্কিল ফোল্ডার সামলান"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Manage the GitHub account OpenKnowledge uses to browse and sync your repositories."
-msgstr "আপনার রিপোজিটরি ব্রাউজ ও সিঙ্ক করতে OpenKnowledge যে GitHub অ্যাকাউন্ট ব্যবহার করে তা সামলান।"
+msgid "Manage the accounts and access tokens OpenKnowledge uses to connect to your git hosts."
+msgstr "OpenKnowledge আপনার git হোস্টগুলোর সঙ্গে সংযোগ করতে যে অ্যাকাউন্ট ও প্রবেশ টোকেন ব্যবহার করে সেগুলো সামলান।"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
@@ -9437,6 +9483,10 @@ msgstr "এই সংস্করণে বিষয়বস্তুর কো
 #: src/components/TimelineDiffPane.tsx
 msgid "No content changes in this version"
 msgstr "এই সংস্করণে বিষয়বস্তুর কোনো পরিবর্তন নেই"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "No credential is stored for this git host. Add a token in Settings, or let git use the credentials it already has."
+msgstr "এই git হোস্টের জন্য কোনো ক্রেডেনশিয়াল সংরক্ষিত নেই। সেটিং-এ একটি টোকেন যোগ করুন, নয়তো git-কে তার আগে থেকেই থাকা ক্রেডেনশিয়াল ব্যবহার করতে দিন।"
 
 #: src/components/GraphPanel.tsx
 msgid "No disconnected pages. Pages appear here only when they have no incoming and no outgoing graph edges."
@@ -10390,6 +10440,10 @@ msgstr "খোলা হচ্ছে…"
 msgid "OpenKnowledge"
 msgstr "OpenKnowledge"
 
+#: src/components/AuthModal.tsx
+msgid "OpenKnowledge can't sign in to GitHub for this project."
+msgstr "OpenKnowledge এই প্রকল্পের জন্য GitHub-এ সাইন ইন করতে পারে না।"
+
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked {subject}"
 msgstr "OpenKnowledge {subject} পরীক্ষা করেছে"
@@ -10401,10 +10455,6 @@ msgstr "OpenKnowledge প্রকল্প পরীক্ষা করেছ�
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge এই মেশিনে এই এজেন্টটি খুঁজে পায়নি।"
-
-#: src/components/settings/AccountSection.tsx
-msgid "OpenKnowledge couldn't find a host name in this project's git remote, so it can't tell which GitHub server to sign in to."
-msgstr "OpenKnowledge এই প্রজেক্টের git রিমোটে কোনো হোস্টনেম খুঁজে পায়নি, তাই কোন GitHub সার্ভারে সাইন ইন করতে হবে তা বুঝতে পারছে না।"
 
 #: src/lib/worktree-create-error.ts
 msgid "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
@@ -10461,6 +10511,10 @@ msgstr "OpenKnowledge একটি নথি সম্পাদনা করে�
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "OpenKnowledge files were removed"
 msgstr "OpenKnowledge-এর ফাইল সরানো হয়েছে"
+
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "OpenKnowledge has no credential stored for this host. Add a token in Settings, or let git use the credentials it already has."
+msgstr "OpenKnowledge এই হোস্টের জন্য কোনো ক্রেডেনশিয়াল সংরক্ষণ করেনি। সেটিং-এ একটি টোকেন যোগ করুন, নয়তো git-কে তার আগে থেকেই থাকা ক্রেডেনশিয়াল ব্যবহার করতে দিন।"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge imported {source}"
@@ -10689,6 +10743,11 @@ msgstr "অন্যান্য"
 #: src/components/FeedbackForm.tsx
 msgid "Other"
 msgstr "অন্যান্য"
+
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Other Git hosts"
+msgstr "অন্যান্য Git হোস্ট"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Other OK paths are tracked upstream:"
@@ -11623,6 +11682,14 @@ msgstr "পুনরায় যুক্ত হওয়া দরকার"
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required to keep syncing."
 msgstr "সিঙ্ক চালিয়ে যেতে আবার সংযোগ করতে হবে।"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing. Add a token for this host in Settings, or replace the one stored."
+msgstr "সিঙ্ক চালিয়ে যেতে আবার সংযোগ করতে হবে। সেটিং-এ এই হোস্টের জন্য একটি টোকেন যোগ করুন, নয়তো সংরক্ষিত টোকেনটি বদলে দিন।"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing. Check the SSH key or saved credentials git uses for this host."
+msgstr "সিঙ্ক চালিয়ে যেতে আবার সংযোগ করতে হবে। এই হোস্টের জন্য git যে SSH কী বা সংরক্ষিত শংসাপত্র ব্যবহার করে তা পরীক্ষা করুন।"
 
 #: src/presence/use-sync-toasts.ts
 msgid "Reconnected"
@@ -14815,6 +14882,10 @@ msgstr "স্কিল তালিকা তার স্কিমার স�
 msgid "The source folder itself does not move."
 msgstr "উৎস ফোল্ডারটি নিজে সরে না।"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "The stored token is missing the permissions this host needs to push."
+msgstr "সংরক্ষিত টোকেনে সেই অনুমতিগুলো নেই যা পুশ করতে এই হোস্টের দরকার।"
+
 #: src/components/TemplateProperties.tsx
 msgid "The template's filename (without `.md`)."
 msgstr "টেমপ্লেটের ফাইলের নাম (`.md` ছাড়া)।"
@@ -14872,6 +14943,10 @@ msgstr ".ok/local/config.yml-এ terminal.shell এক্সিকিউটে�
 #: src/components/AuthModal.tsx
 msgid "The token needs the repo and read:user scopes."
 msgstr "টোকেনটির repo ও read:user স্কোপ দরকার।"
+
+#: src/components/settings/AccountSection.tsx
+msgid "The username git sends with the token. Some hosts expect a fixed value: type <0>x-bitbucket-api-token-auth</0> for a Bitbucket API token, <1>x-token-auth</1> for a Bitbucket repository or workspace access token, or <2>oauth2</2> for GitLab. For Gitea, use your Gitea username. Azure DevOps accepts any value."
+msgstr "টোকেনের সাথে git যে ব্যবহারকারীর নাম পাঠায়। কিছু হোস্ট একটি নির্দিষ্ট মান আশা করে: Bitbucket API টোকেনের জন্য <0>x-bitbucket-api-token-auth</0>, Bitbucket রিপোজিটরি বা ওয়ার্কস্পেস প্রবেশ টোকেনের জন্য <1>x-token-auth</1>, অথবা GitLab-এর জন্য <2>oauth2</2> লিখুন। Gitea-র জন্য আপনার Gitea ব্যবহারকারীর নাম দিন। Azure DevOps যেকোনো মান গ্রহণ করে।"
 
 #: src/lib/tab-session-restore-recovery-notice.ts
 msgid "The workspace opened without it so the app could start."
@@ -15401,10 +15476,6 @@ msgstr "এই প্রকল্পটি একটি git রিপোজি�
 msgid "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
 msgstr "এই প্রকল্পটি কেবল এই কম্পিউটারেই আছে। এর ব্যাকআপ রাখতে ও অন্যদের সঙ্গে ভাগ করতে এটি GitHub-এর সঙ্গে যুক্ত করুন।"
 
-#: src/components/settings/AccountSection.tsx
-msgid "This project's git remote is on {host}, which OpenKnowledge doesn't recognize as a GitHub host. If {host} runs GitHub Enterprise Server, add it to GitHub Enterprise Server hosts below, then restart OpenKnowledge."
-msgstr "এই প্রজেক্টের git রিমোট {host}-এ আছে, যাকে OpenKnowledge GitHub হোস্ট হিসেবে চেনে না। {host}-এ যদি GitHub Enterprise Server চলে, তবে নিচের GitHub Enterprise Server হোস্ট অংশে এটি যোগ করুন, তারপর OpenKnowledge আবার চালু করুন।"
-
 #: src/components/DocumentErrorBoundary.tsx
 msgid "This project's running server doesn't support live editing. Restart OpenKnowledge to fix."
 msgstr "এই প্রকল্পের চলমান সার্ভার সরাসরি সম্পাদনা সমর্থন করে না। ঠিক করতে OpenKnowledge পুনরায় চালু করুন।"
@@ -15501,6 +15572,7 @@ msgid "This usually means one of:"
 msgstr "এর সাধারণত অর্থ এগুলোর একটি:"
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 msgid "This window can't store a token — open Settings from the main app window."
 msgstr "এই জানালাটি কোনো টোকেন সংরক্ষণ করতে পারে না — মূল অ্যাপ জানালা থেকে Settings খুলুন।"
 
@@ -15653,6 +15725,15 @@ msgstr "নিম্নরেখার বিন্যাস চালু বা
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "Toggles the pattern {0}/**"
 msgstr "প্যাটার্ন {0}/** টগল করুন"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "token"
+msgstr "টোকেন"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Token stored for {login} on {host}. To remove it, run <0>ok auth signout --host {host}</0>."
+msgstr "{host}-এ {login}-এর জন্য টোকেন সংরক্ষিত হয়েছে। এটি সরাতে <0>ok auth signout --host {host}</0> চালান।"
 
 #: src/components/SkillBundlePreview.tsx
 #: src/components/SkillProperties.tsx
@@ -16239,6 +16320,10 @@ msgstr "ব্যবহারকারী"
 #: src/components/settings/LintingSection.tsx
 msgid "User plugins are personal to this device — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
 msgstr "ব্যবহারকারী প্লাগইন এই যন্ত্রেই সীমাবদ্ধ — সেগুলো এখানে চালু বা বন্ধ করুন। চালু করা প্রতিটি প্লাগইন সেটিং সাইডবারে Plugins-এর নিচে নিজের পাতা পায়।"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Username"
+msgstr "ব্যবহারকারীর নাম"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."

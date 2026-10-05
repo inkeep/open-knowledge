@@ -64,6 +64,60 @@ describe('httpAuthTransport().pat', () => {
   });
 });
 
+describe('httpAuthTransport().hostToken', () => {
+  test('POSTs { host, username, token } to the token relay and returns the login on success', async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: JSON.parse(String(init?.body)) });
+      return new Response(JSON.stringify({ host: 'gitea.internal', login: 'oauth2' }), {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+
+    const result = await httpAuthTransport().hostToken?.(
+      'gitea.internal',
+      'oauth2',
+      'glpat_secret',
+    );
+    expect(result).toEqual({ ok: true, login: 'oauth2' });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe('/api/local-op/auth/token');
+    expect(calls[0]?.body).toEqual({
+      host: 'gitea.internal',
+      username: 'oauth2',
+      token: 'glpat_secret',
+    });
+  });
+
+  test('surfaces the problem+json detail on a rejected request (bounded reason)', async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            type: 'urn:ok:error:auth-failed',
+            title: 'Authentication failed',
+            status: 400,
+            detail: 'Host must not include a scheme',
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
+        ),
+    ) as unknown as typeof fetch;
+
+    const result = await httpAuthTransport().hostToken?.('https://gitea.internal', 'oauth2', 'x');
+    expect(result).toEqual({ ok: false, error: 'Host must not include a scheme' });
+  });
+
+  test('returns a generic connection error when the request throws', async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error('network down');
+    }) as unknown as typeof fetch;
+
+    const result = await httpAuthTransport().hostToken?.('gitea.internal', 'oauth2', 'x');
+    expect(result?.ok).toBe(false);
+    expect(result?.error).toBe('Connection error — try again');
+  });
+});
+
 describe('httpAuthTransport().start / ghLogin (streamAuthEndpoint)', () => {
   test('a pre-stream problem+json failure surfaces the typed title as a single error event', async () => {
     globalThis.fetch = vi.fn(

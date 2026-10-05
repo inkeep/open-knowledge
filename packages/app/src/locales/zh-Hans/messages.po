@@ -1548,6 +1548,10 @@ msgstr "这里已存在名为 <0>{trimmedSlug}</0> 的模板。保存会创建�
 msgid "A title, description, tags — anything that describes this folder."
 msgstr "标题、描述、标签——任何能描述这个文件夹的信息。"
 
+#: src/components/settings/AccountSection.tsx
+msgid "A token added here only applies to HTTPS remotes, and this project's remote doesn't use HTTPS."
+msgstr "在此添加的令牌只适用于 HTTPS 远程仓库，而此项目的远程仓库不使用 HTTPS。"
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "{shareBranch} 的 worktree 文件夹已存在。"
@@ -1600,9 +1604,8 @@ msgid "Accept their deletion"
 msgstr "接受对方的删除"
 
 #: src/components/settings/AccountSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-msgid "Account"
-msgstr "账户"
+msgid "Access token"
+msgstr "访问令牌"
 
 #: src/components/TemplateRow.tsx
 msgid "Actions for {label}"
@@ -1680,6 +1683,10 @@ msgstr "添加属性"
 #: src/components/empty-state/CreateView.tsx
 msgid "Add a starter pack"
 msgstr "添加入门包"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Add an access token for a GitLab, Gitea, Bitbucket, Azure DevOps or self-hosted git server. Without one, git uses the credentials it already has saved for that host; with one, OpenKnowledge uses the token instead."
+msgstr "为 GitLab、Gitea、Bitbucket、Azure DevOps 或自托管 git 服务器添加访问令牌。没有令牌时，git 会使用它已为该主机保存的凭据；添加令牌后，OpenKnowledge 改用该令牌。"
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Add another pattern"
@@ -1810,6 +1817,12 @@ msgstr "添加到词典"
 msgid "Add to prompt"
 msgstr "添加到提示词"
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/SyncStatusBadge.tsx
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "Add token"
+msgstr "添加令牌"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "添加值"
@@ -1819,6 +1832,10 @@ msgstr "添加值"
 #: src/components/SyncStatusBadge.tsx
 msgid "Added"
 msgstr "已添加"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Adding"
+msgstr "正在添加"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Adds a global OpenKnowledge MCP entry for this agent."
@@ -2335,6 +2352,10 @@ msgstr "附件总大小必须小于 3 MB。"
 msgid "Authenticated as {login}."
 msgstr "已以 {login} 身份验证。"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authentication failed for this git host. Add a token for it in Settings, or replace the one stored."
+msgstr "这个 git 主机的身份验证失败。请在「设置」中为它添加令牌，或者替换已保存的令牌。"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr "权威内容；在所有被引用的地方逐字镜像。"
@@ -2535,6 +2556,11 @@ msgstr "大号章节标题。"
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Bird wiki"
 msgstr "鸟类维基"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "Bitbucket"
+msgstr "Bitbucket"
 
 #: src/components/NewItemDialog.tsx
 msgid "Blank note"
@@ -3605,8 +3631,8 @@ msgid "Connect"
 msgstr "连接"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Connect a GitHub account to browse and sync your repositories."
-msgstr "连接一个 GitHub 账户，以便浏览和同步你的仓库。"
+msgid "Connect a GitHub account to browse and publish GitHub repositories."
+msgstr "连接一个 GitHub 账户，以浏览和发布 GitHub 仓库。"
 
 #: src/components/settings/SyncSection.tsx
 msgid "Connect an existing repository"
@@ -3698,6 +3724,7 @@ msgid "Connection dropped"
 msgstr "连接已断开"
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 #: src/lib/transports/auth-transport.ts
 msgid "Connection error — try again"
 msgstr "连接出错——请重试"
@@ -5937,6 +5964,10 @@ msgstr "请输入 {minimum} 到 {maximum} 之间的整数。"
 msgid "Enter at least 3 characters to search by meaning."
 msgstr "输入至少 3 个字符以按含义搜索。"
 
+#: src/components/settings/AccountSection.tsx
+msgid "Enter the host name git connects to, with an optional :port and no scheme or path, for example git.example.com."
+msgstr "输入 git 连接的主机名，可带可选的 :port，不要包含协议或路径，例如 git.example.com。"
+
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "输入你的隧道所服务的公开来源，例如 https://notes.example.com"
@@ -6412,6 +6443,7 @@ msgid "Failed to start sign-in — try again"
 msgstr "启动登录失败——请重试"
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 #: src/lib/transports/auth-transport.ts
 msgid "Failed to store the token — try again"
 msgstr "保存令牌失败——请重试"
@@ -6885,6 +6917,11 @@ msgctxt "settings search keyword"
 msgid "GHES"
 msgstr "GHES"
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Git"
+msgstr "Git"
+
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
 msgstr "Git 与 PR"
@@ -6892,6 +6929,10 @@ msgstr "Git 与 PR"
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git 无法跟踪这个文件夹——它是空的，或者只包含被忽略的文件。在你添加一个受跟踪的文档之前，链接不会生效。"
+
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "Git couldn't authenticate with this host. Check the SSH key or saved credentials git uses for it."
+msgstr "git 无法向此主机进行身份验证。请检查 git 为该主机使用的 SSH 密钥或已保存的凭据。"
 
 #: src/components/RecentProjectsMenu.tsx
 msgid "Git has locked this worktree, but it can still be opened."
@@ -6952,10 +6993,6 @@ msgstr "GitHub Enterprise Server 主机"
 msgid "GitHub sign-in is missing or expired. Reconnect to resume syncing."
 msgstr "GitHub 登录缺失或已过期。请重新连接以继续同步。"
 
-#: src/components/settings/AccountSection.tsx
-msgid "GitHub sign-in isn't available for this project"
-msgstr "此项目无法使用 GitHub 登录"
-
 #: src/components/ImportSkillForm.tsx
 msgid "GitHub, a git URL, or a local path."
 msgstr "GitHub、一个 git URL，或一个本地路径。"
@@ -6963,6 +7000,11 @@ msgstr "GitHub、一个 git URL，或一个本地路径。"
 #: src/components/settings/EnterpriseHostsSection.tsx
 msgid "github.com is always recognized, so it doesn't need to be added."
 msgstr "github.com 始终会被识别，无需添加。"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GitLab"
+msgstr "GitLab"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Give it a name before editing its colors."
@@ -7317,6 +7359,10 @@ msgstr "水平胶囊条，活动面板在下方；点击胶囊可切换面板。
 #: src/editor/slash-command/items.tsx
 msgid "Horizontal rule that divides sections."
 msgstr "用于分隔章节的水平分割线。"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Host"
+msgstr "主机"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Hosting is on. The server is running on port {boundPort}. Reach it through your tunnel."
@@ -8611,8 +8657,8 @@ msgid "Manage skill folders"
 msgstr "管理技能文件夹"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Manage the GitHub account OpenKnowledge uses to browse and sync your repositories."
-msgstr "管理 OpenKnowledge 用来浏览和同步你的仓库的 GitHub 账户。"
+msgid "Manage the accounts and access tokens OpenKnowledge uses to connect to your git hosts."
+msgstr "管理 OpenKnowledge 用来连接你的 git 主机的账户和访问令牌。"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
@@ -9441,6 +9487,10 @@ msgstr "这个版本没有内容改动。"
 #: src/components/TimelineDiffPane.tsx
 msgid "No content changes in this version"
 msgstr "这个版本没有内容改动"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "No credential is stored for this git host. Add a token in Settings, or let git use the credentials it already has."
+msgstr "没有为这个 git 主机保存任何凭据。请在「设置」中添加一个令牌，或者让 git 使用它已有的凭据。"
 
 #: src/components/GraphPanel.tsx
 msgid "No disconnected pages. Pages appear here only when they have no incoming and no outgoing graph edges."
@@ -10394,6 +10444,10 @@ msgstr "正在打开…"
 msgid "OpenKnowledge"
 msgstr "OpenKnowledge"
 
+#: src/components/AuthModal.tsx
+msgid "OpenKnowledge can't sign in to GitHub for this project."
+msgstr "OpenKnowledge 无法为此项目登录 GitHub。"
+
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked {subject}"
 msgstr "OpenKnowledge 检查了 {subject}"
@@ -10405,10 +10459,6 @@ msgstr "OpenKnowledge 检查了项目"
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge 未在此设备上找到该智能体。"
-
-#: src/components/settings/AccountSection.tsx
-msgid "OpenKnowledge couldn't find a host name in this project's git remote, so it can't tell which GitHub server to sign in to."
-msgstr "OpenKnowledge 在此项目的 git 远程地址中找不到主机名，因此无法确定要登录哪个 GitHub 服务器。"
 
 #: src/lib/worktree-create-error.ts
 msgid "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
@@ -10465,6 +10515,10 @@ msgstr "OpenKnowledge 编辑了一个文档"
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "OpenKnowledge files were removed"
 msgstr "已移除 OpenKnowledge 文件"
+
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "OpenKnowledge has no credential stored for this host. Add a token in Settings, or let git use the credentials it already has."
+msgstr "OpenKnowledge 没有为这个主机保存任何凭据。请在「设置」中添加一个令牌，或者让 git 使用它已有的凭据。"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge imported {source}"
@@ -10693,6 +10747,11 @@ msgstr "其他"
 #: src/components/FeedbackForm.tsx
 msgid "Other"
 msgstr "其他"
+
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Other Git hosts"
+msgstr "其他 Git 主机"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Other OK paths are tracked upstream:"
@@ -11627,6 +11686,14 @@ msgstr "需要重新连接"
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required to keep syncing."
 msgstr "需要重新连接才能继续同步。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing. Add a token for this host in Settings, or replace the one stored."
+msgstr "需要重新连接才能继续同步。请在「设置」中为这个主机添加令牌，或者替换已保存的令牌。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing. Check the SSH key or saved credentials git uses for this host."
+msgstr "需要重新连接才能继续同步。请检查 git 为此主机使用的 SSH 密钥或已保存的凭据。"
 
 #: src/presence/use-sync-toasts.ts
 msgid "Reconnected"
@@ -14819,6 +14886,10 @@ msgstr "技能列表与其结构定义不匹配。"
 msgid "The source folder itself does not move."
 msgstr "来源文件夹本身不会移动。"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "The stored token is missing the permissions this host needs to push."
+msgstr "保存的令牌缺少这个主机推送所需的权限。"
+
 #: src/components/TemplateProperties.tsx
 msgid "The template's filename (without `.md`)."
 msgstr "模板的文件名（不含 `.md`）。"
@@ -14876,6 +14947,10 @@ msgstr "未找到 .ok/local/config.yml 中指定的 terminal.shell 可执行文�
 #: src/components/AuthModal.tsx
 msgid "The token needs the repo and read:user scopes."
 msgstr "这个令牌需要 repo 和 read:user 权限范围。"
+
+#: src/components/settings/AccountSection.tsx
+msgid "The username git sends with the token. Some hosts expect a fixed value: type <0>x-bitbucket-api-token-auth</0> for a Bitbucket API token, <1>x-token-auth</1> for a Bitbucket repository or workspace access token, or <2>oauth2</2> for GitLab. For Gitea, use your Gitea username. Azure DevOps accepts any value."
+msgstr "git 随令牌一起发送的用户名。有些主机要求填写固定值：Bitbucket API 令牌填 <0>x-bitbucket-api-token-auth</0>，Bitbucket 仓库或工作区访问令牌填 <1>x-token-auth</1>，GitLab 填 <2>oauth2</2>。Gitea 请填你的 Gitea 用户名。Azure DevOps 可填任意值。"
 
 #: src/lib/tab-session-restore-recovery-notice.ts
 msgid "The workspace opened without it so the app could start."
@@ -15405,10 +15480,6 @@ msgstr "这个项目不是 git 仓库，因此无法使用 worktree。"
 msgid "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
 msgstr "这个项目只存在于这台电脑上。把它连接到 GitHub 即可备份并与他人共享。"
 
-#: src/components/settings/AccountSection.tsx
-msgid "This project's git remote is on {host}, which OpenKnowledge doesn't recognize as a GitHub host. If {host} runs GitHub Enterprise Server, add it to GitHub Enterprise Server hosts below, then restart OpenKnowledge."
-msgstr "此项目的 git 远程位于 {host}，OpenKnowledge 未将其识别为 GitHub 主机。如果 {host} 运行的是 GitHub Enterprise Server，请在下方的“GitHub Enterprise Server 主机”中添加它，然后重启 OpenKnowledge。"
-
 #: src/components/DocumentErrorBoundary.tsx
 msgid "This project's running server doesn't support live editing. Restart OpenKnowledge to fix."
 msgstr "这个项目正在运行的服务器不支持实时编辑。重启 OpenKnowledge 即可修复。"
@@ -15505,6 +15576,7 @@ msgid "This usually means one of:"
 msgstr "这通常意味着以下之一："
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 msgid "This window can't store a token — open Settings from the main app window."
 msgstr "这个窗口无法保存令牌——请从应用主窗口打开「设置」。"
 
@@ -15657,6 +15729,15 @@ msgstr "切换下划线格式。"
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "Toggles the pattern {0}/**"
 msgstr "切换模式 {0}/**"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "token"
+msgstr "令牌"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Token stored for {login} on {host}. To remove it, run <0>ok auth signout --host {host}</0>."
+msgstr "已为 {host} 上的 {login} 保存令牌。要移除它，请运行 <0>ok auth signout --host {host}</0>。"
 
 #: src/components/SkillBundlePreview.tsx
 #: src/components/SkillProperties.tsx
@@ -16243,6 +16324,10 @@ msgstr "用户"
 #: src/components/settings/LintingSection.tsx
 msgid "User plugins are personal to this device — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
 msgstr "用户插件是这台设备的个人设置——在这里开启或关闭它们。每个启用的插件在设置侧边栏的「插件」下都有自己的页面。"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Username"
+msgstr "用户名"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."

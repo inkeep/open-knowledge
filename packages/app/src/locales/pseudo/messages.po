@@ -1544,6 +1544,10 @@ msgstr ""
 msgid "A title, description, tags — anything that describes this folder."
 msgstr ""
 
+#: src/components/settings/AccountSection.tsx
+msgid "A token added here only applies to HTTPS remotes, and this project's remote doesn't use HTTPS."
+msgstr ""
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr ""
@@ -1596,8 +1600,7 @@ msgid "Accept their deletion"
 msgstr ""
 
 #: src/components/settings/AccountSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-msgid "Account"
+msgid "Access token"
 msgstr ""
 
 #: src/components/TemplateRow.tsx
@@ -1675,6 +1678,10 @@ msgstr ""
 
 #: src/components/empty-state/CreateView.tsx
 msgid "Add a starter pack"
+msgstr ""
+
+#: src/components/settings/AccountSection.tsx
+msgid "Add an access token for a GitLab, Gitea, Bitbucket, Azure DevOps or self-hosted git server. Without one, git uses the credentials it already has saved for that host; with one, OpenKnowledge uses the token instead."
 msgstr ""
 
 #: src/components/settings/OkignoreSection.tsx
@@ -1806,6 +1813,12 @@ msgstr ""
 msgid "Add to prompt"
 msgstr ""
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/SyncStatusBadge.tsx
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "Add token"
+msgstr ""
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr ""
@@ -1814,6 +1827,10 @@ msgstr ""
 #: src/components/SkillDirectoryResult.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Added"
+msgstr ""
+
+#: src/components/settings/AccountSection.tsx
+msgid "Adding"
 msgstr ""
 
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -2331,6 +2348,10 @@ msgstr ""
 msgid "Authenticated as {login}."
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authentication failed for this git host. Add a token for it in Settings, or replace the one stored."
+msgstr ""
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr ""
@@ -2530,6 +2551,11 @@ msgstr ""
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Bird wiki"
+msgstr ""
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "Bitbucket"
 msgstr ""
 
 #: src/components/NewItemDialog.tsx
@@ -3601,7 +3627,7 @@ msgid "Connect"
 msgstr ""
 
 #: src/components/settings/AccountSection.tsx
-msgid "Connect a GitHub account to browse and sync your repositories."
+msgid "Connect a GitHub account to browse and publish GitHub repositories."
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
@@ -3694,6 +3720,7 @@ msgid "Connection dropped"
 msgstr ""
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 #: src/lib/transports/auth-transport.ts
 msgid "Connection error — try again"
 msgstr ""
@@ -5933,6 +5960,10 @@ msgstr ""
 msgid "Enter at least 3 characters to search by meaning."
 msgstr ""
 
+#: src/components/settings/AccountSection.tsx
+msgid "Enter the host name git connects to, with an optional :port and no scheme or path, for example git.example.com."
+msgstr ""
+
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr ""
@@ -6408,6 +6439,7 @@ msgid "Failed to start sign-in — try again"
 msgstr ""
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 #: src/lib/transports/auth-transport.ts
 msgid "Failed to store the token — try again"
 msgstr ""
@@ -6881,12 +6913,21 @@ msgctxt "settings search keyword"
 msgid "GHES"
 msgstr ""
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Git"
+msgstr ""
+
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
 msgstr ""
 
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
+msgstr ""
+
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "Git couldn't authenticate with this host. Check the SSH key or saved credentials git uses for it."
 msgstr ""
 
 #: src/components/RecentProjectsMenu.tsx
@@ -6948,16 +6989,17 @@ msgstr ""
 msgid "GitHub sign-in is missing or expired. Reconnect to resume syncing."
 msgstr ""
 
-#: src/components/settings/AccountSection.tsx
-msgid "GitHub sign-in isn't available for this project"
-msgstr ""
-
 #: src/components/ImportSkillForm.tsx
 msgid "GitHub, a git URL, or a local path."
 msgstr ""
 
 #: src/components/settings/EnterpriseHostsSection.tsx
 msgid "github.com is always recognized, so it doesn't need to be added."
+msgstr ""
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GitLab"
 msgstr ""
 
 #: src/components/settings/SavedThemesTiles.tsx
@@ -7312,6 +7354,10 @@ msgstr ""
 
 #: src/editor/slash-command/items.tsx
 msgid "Horizontal rule that divides sections."
+msgstr ""
+
+#: src/components/settings/AccountSection.tsx
+msgid "Host"
 msgstr ""
 
 #: src/components/settings/NetworkAccessSection.tsx
@@ -8607,7 +8653,7 @@ msgid "Manage skill folders"
 msgstr ""
 
 #: src/components/settings/AccountSection.tsx
-msgid "Manage the GitHub account OpenKnowledge uses to browse and sync your repositories."
+msgid "Manage the accounts and access tokens OpenKnowledge uses to connect to your git hosts."
 msgstr ""
 
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -9436,6 +9482,10 @@ msgstr ""
 
 #: src/components/TimelineDiffPane.tsx
 msgid "No content changes in this version"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "No credential is stored for this git host. Add a token in Settings, or let git use the credentials it already has."
 msgstr ""
 
 #: src/components/GraphPanel.tsx
@@ -10390,6 +10440,10 @@ msgstr ""
 msgid "OpenKnowledge"
 msgstr ""
 
+#: src/components/AuthModal.tsx
+msgid "OpenKnowledge can't sign in to GitHub for this project."
+msgstr ""
+
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked {subject}"
 msgstr ""
@@ -10400,10 +10454,6 @@ msgstr ""
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
-msgstr ""
-
-#: src/components/settings/AccountSection.tsx
-msgid "OpenKnowledge couldn't find a host name in this project's git remote, so it can't tell which GitHub server to sign in to."
 msgstr ""
 
 #: src/lib/worktree-create-error.ts
@@ -10460,6 +10510,10 @@ msgstr ""
 
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "OpenKnowledge files were removed"
+msgstr ""
+
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "OpenKnowledge has no credential stored for this host. Add a token in Settings, or let git use the credentials it already has."
 msgstr ""
 
 #: src/lib/acp/tool-call-display.ts
@@ -10688,6 +10742,11 @@ msgstr ""
 
 #: src/components/FeedbackForm.tsx
 msgid "Other"
+msgstr ""
+
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Other Git hosts"
 msgstr ""
 
 #: src/components/settings/SharingSection.tsx
@@ -11622,6 +11681,14 @@ msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required to keep syncing."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing. Add a token for this host in Settings, or replace the one stored."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing. Check the SSH key or saved credentials git uses for this host."
 msgstr ""
 
 #: src/presence/use-sync-toasts.ts
@@ -14815,6 +14882,10 @@ msgstr ""
 msgid "The source folder itself does not move."
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "The stored token is missing the permissions this host needs to push."
+msgstr ""
+
 #: src/components/TemplateProperties.tsx
 msgid "The template's filename (without `.md`)."
 msgstr ""
@@ -14871,6 +14942,10 @@ msgstr ""
 
 #: src/components/AuthModal.tsx
 msgid "The token needs the repo and read:user scopes."
+msgstr ""
+
+#: src/components/settings/AccountSection.tsx
+msgid "The username git sends with the token. Some hosts expect a fixed value: type <0>x-bitbucket-api-token-auth</0> for a Bitbucket API token, <1>x-token-auth</1> for a Bitbucket repository or workspace access token, or <2>oauth2</2> for GitLab. For Gitea, use your Gitea username. Azure DevOps accepts any value."
 msgstr ""
 
 #: src/lib/tab-session-restore-recovery-notice.ts
@@ -15401,10 +15476,6 @@ msgstr ""
 msgid "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
 msgstr ""
 
-#: src/components/settings/AccountSection.tsx
-msgid "This project's git remote is on {host}, which OpenKnowledge doesn't recognize as a GitHub host. If {host} runs GitHub Enterprise Server, add it to GitHub Enterprise Server hosts below, then restart OpenKnowledge."
-msgstr ""
-
 #: src/components/DocumentErrorBoundary.tsx
 msgid "This project's running server doesn't support live editing. Restart OpenKnowledge to fix."
 msgstr ""
@@ -15501,6 +15572,7 @@ msgid "This usually means one of:"
 msgstr ""
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 msgid "This window can't store a token — open Settings from the main app window."
 msgstr ""
 
@@ -15652,6 +15724,15 @@ msgstr ""
 #. placeholder {0}: row.path
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "Toggles the pattern {0}/**"
+msgstr ""
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "token"
+msgstr ""
+
+#: src/components/settings/AccountSection.tsx
+msgid "Token stored for {login} on {host}. To remove it, run <0>ok auth signout --host {host}</0>."
 msgstr ""
 
 #: src/components/SkillBundlePreview.tsx
@@ -16238,6 +16319,10 @@ msgstr ""
 
 #: src/components/settings/LintingSection.tsx
 msgid "User plugins are personal to this device — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
+msgstr ""
+
+#: src/components/settings/AccountSection.tsx
+msgid "Username"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx

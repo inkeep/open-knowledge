@@ -161,7 +161,7 @@ import {
   tracedUnlinkSync,
   tracedWriteFileSync,
 } from './fs-traced.ts';
-import { buildSyncCredentialConfig, createGitInstance } from './git-handle.ts';
+import { createGitInstance } from './git-handle.ts';
 import type {
   CheckPushPermissionOptions,
   DetectGhAccountsFn,
@@ -274,9 +274,8 @@ import {
   shadowGit,
 } from './shadow-repo.ts';
 import {
+  createSyncCredentialConfigResolver,
   readDeclaredGitHubHosts,
-  readOriginGitHubRepo,
-  shouldResetAmbientCredentials,
 } from './share/git-context.ts';
 import { resyncRecordedSkillCopies } from './skill-placements.ts';
 import { skillStateYamlPath } from './skill-state.ts';
@@ -515,6 +514,12 @@ export function createServer(options: ServerOptions): ServerInstance {
     ephemeral = false,
   } = options;
   const declaredGitHubHosts = readDeclaredGitHubHosts(configHomedirOverride);
+  const resolveSyncCredentialConfig = createSyncCredentialConfigResolver({
+    projectDir,
+    tokenStore: options.tokenStore,
+    localOpCliArgs,
+    declaredGitHubHosts,
+  });
 
   const log = getLogger('server');
   let headWatcher: HeadWatcherHandle | null = null;
@@ -2116,6 +2121,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
     const apiExtension = createApiExtension({
       declaredGitHubHosts,
+      resolveSyncCredentialConfig,
       hocuspocus,
       durabilityState,
       ingressPolicy,
@@ -4485,17 +4491,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       log.warn({ err }, '[conflicts] boot prune of merge-native entries failed');
     }
 
-    const resetAmbientCredentials = shouldResetAmbientCredentials(projectDir, declaredGitHubHosts);
-    log.debug(
-      {
-        resetAmbientCredentials,
-        originKind: readOriginGitHubRepo(projectDir, declaredGitHubHosts).kind,
-      },
-      '[sync] ambient credential-chain reset decision at boot',
-    );
-    const syncCredentialConfig = buildSyncCredentialConfig(localOpCliArgs, {
-      resetAmbient: resetAmbientCredentials,
-    });
+    const syncCredentialConfig = await resolveSyncCredentialConfig();
     const bootAutoSyncMode = readProjectAutoSyncMode();
     const bootAutoSyncIntervals = readProjectAutoSyncIntervals();
     if (bootAutoSyncMode.mode !== 'off') {
@@ -4518,6 +4514,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         pushIntervalSeconds:
           options.pushIntervalSeconds ?? bootAutoSyncIntervals.pushIntervalSeconds,
         credentialConfig: syncCredentialConfig,
+        resolveCredentialConfig: resolveSyncCredentialConfig,
         cc1Broadcaster,
         conflicts,
         detectGh: options.detectGh,

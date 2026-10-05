@@ -10,8 +10,6 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { shellSingleQuote } from '@inkeep/open-knowledge-core';
@@ -29,6 +27,7 @@ import {
   resolveCloneAuth,
   runClone,
 } from './clone.ts';
+import { startGitHubStandIn } from './github-stand-in.test-helper.ts';
 
 const relayTokenGh = (): GhDetectResult => ({ available: true, token: 'ghs_relay_probe' });
 
@@ -90,18 +89,38 @@ function helperConfigValue(helperPath: string): string {
   return `!${shellSingleQuote(process.execPath)} ${shellSingleQuote(helperPath)}`;
 }
 
-async function listenUnauthorized(): Promise<{ port: number; close: () => Promise<void> }> {
-  const server = createServer((req, res) => {
-    req.resume();
-    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="ok-test"' });
-    res.end();
+const TOKEN_HOST = 'git.example.test';
+
+async function startHttpsTokenHost(root: string): Promise<{
+  url: string;
+  gitConfig: Array<[string, string]>;
+  close: () => Promise<void>;
+}> {
+  mkdirSync(root, { recursive: true });
+  const standIn = await startGitHubStandIn({
+    root,
+    acceptedPassword: 'stand-in-only',
+    repositories: [],
+    enterpriseHosts: { [TOKEN_HOST]: ['stand-in-only'] },
   });
-  await new Promise<void>((resolveListen) => server.listen(0, '127.0.0.1', resolveListen));
-  const { port } = server.address() as AddressInfo;
   return {
-    port,
-    close: () => new Promise<void>((resolveClose) => server.close(() => resolveClose())),
+    url: `https://${TOKEN_HOST}/o/r.git`,
+    gitConfig: [
+      ['http.proxy', standIn.proxyUrl],
+      ['http.sslCAInfo', standIn.caFile],
+      ['http.curloptResolve', `${TOKEN_HOST}:443:127.0.0.1`],
+    ],
+    close: standIn.close,
   };
+}
+
+function commandScopeConfig(entries: Array<[string, string]>): Record<string, string> {
+  const env: Record<string, string> = { GIT_CONFIG_COUNT: String(entries.length) };
+  entries.forEach(([key, value], index) => {
+    env[`GIT_CONFIG_KEY_${index}`] = key;
+    env[`GIT_CONFIG_VALUE_${index}`] = value;
+  });
+  return env;
 }
 
 describe('clone honours the environment command-scope git config (GIT_CONFIG_COUNT)', () => {
@@ -151,16 +170,21 @@ describe('clone honours the environment command-scope git config (GIT_CONFIG_COU
   test("runClone asks the CLI's own credential helper and never an environment-configured one", async () => {
     const okHelper = writeCredentialHelper(join(workspace, 'ok-cli.mjs'), 'ok');
     const envHelper = writeCredentialHelper(join(workspace, 'env-helper.mjs'), 'env');
-    vi.stubEnv('GIT_CONFIG_COUNT', '1');
-    vi.stubEnv('GIT_CONFIG_KEY_0', 'credential.helper');
-    vi.stubEnv('GIT_CONFIG_VALUE_0', helperConfigValue(envHelper));
-    const server = await listenUnauthorized();
+    const server = await startHttpsTokenHost(join(workspace, 'stand-in'));
+    for (const [name, value] of Object.entries(
+      commandScopeConfig([
+        ['credential.helper', helperConfigValue(envHelper)],
+        ...server.gitConfig,
+      ]),
+    )) {
+      vi.stubEnv(name, value);
+    }
     const cliEntry = process.argv[1];
     process.argv[1] = okHelper;
     try {
       await expect(
         runClone(
-          `http://127.0.0.1:${server.port}/o/r.git`,
+          server.url,
           { json: true, dir: 'target', _detectGhFn: relayTokenGh },
           {} as never,
           workspace,
@@ -182,10 +206,10 @@ describe('clone honours the environment command-scope git config (GIT_CONFIG_COU
     const okHelper = writeCredentialHelper(join(workspace, 'ok-cli.mjs'), 'ok');
     const envHelper = writeCredentialHelper(join(workspace, 'env-helper.mjs'), 'env');
     const tokenStore = new FileBackend(join(workspace, 'auth.yml'));
-    await tokenStore.set('127.0.0.1', 'alice', 'ghp_stored_probe', { gitProtocol: 'https' });
-    const server = await listenUnauthorized();
+    await tokenStore.set(TOKEN_HOST, 'alice', 'ghp_stored_probe', { gitProtocol: 'https' });
+    const server = await startHttpsTokenHost(join(workspace, 'stand-in'));
     try {
-      const url = `http://127.0.0.1:${server.port}/o/r.git`;
+      const url = server.url;
       const { auth } = await resolveCloneAuth(url, tokenStore, {
         selfCliArgs: [process.execPath, okHelper],
         cwd: workspace,
@@ -199,9 +223,10 @@ describe('clone honours the environment command-scope git config (GIT_CONFIG_COU
           PATH: process.env.PATH ?? '',
           HOME: workspace,
           GIT_CONFIG_NOSYSTEM: '1',
-          GIT_CONFIG_COUNT: '1',
-          GIT_CONFIG_KEY_0: 'credential.helper',
-          GIT_CONFIG_VALUE_0: helperConfigValue(envHelper),
+          ...commandScopeConfig([
+            ['credential.helper', helperConfigValue(envHelper)],
+            ...server.gitConfig,
+          ]),
         }),
       );
 

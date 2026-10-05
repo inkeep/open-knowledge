@@ -24,6 +24,7 @@ import type { GitHandle } from './git-handle.ts';
 import { listNames } from './git-paths.ts';
 import type { DetectGhAccountsFn, DetectGhFn } from './github-permissions.ts';
 import { getLogger } from './logger.ts';
+import { createSyncCredentialConfigResolver } from './share/git-context.ts';
 import { declareGitHubHosts, useIsolatedHome } from './share/git-host-declarations.test-helper.ts';
 import type { CredentialUrlMatchReader } from './share/github-account.ts';
 import {
@@ -4583,6 +4584,110 @@ describe('SyncEngine auth-error recovery', () => {
     (engine as unknown as InternalState).pausedReason = 'auth-error';
     await engine.notifyCredentialsChanged();
     expect(engine.getStatus().pausedReason).toBe('auth-error');
+  });
+
+  test('notifyCredentialsChanged rebuilds the credential chain, even when sync is off', async () => {
+    const resolved = [
+      ['credential.helper=!ok auth git-credential'],
+      ['credential.helper=', 'credential.helper=!ok auth git-credential'],
+    ];
+    let calls = 0;
+    const engine = new SyncEngine({
+      conflicts: newAuthority(),
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      syncEnabled: false,
+      credentialConfig: resolved[0],
+      resolveCredentialConfig: async () => resolved[Math.min(++calls, 1)],
+    });
+    expect(engine.getCredentialConfig()).toEqual(resolved[0]);
+
+    await engine.notifyCredentialsChanged();
+
+    expect(engine.getCredentialConfig()).toEqual(resolved[1]);
+  });
+
+  test.each([
+    ['pull', (engine: SyncEngine) => engine.pullOnce()],
+    ['push', (engine: SyncEngine) => engine.pushOnce()],
+  ] as const)(
+    'a token removed outside the server drops the ambient reset from the next %s',
+    async (_op, runCycle) => {
+      await initGitWithOrigin('https://git.invalid/team/notes.git');
+      const storedHosts = new Set(['git.invalid']);
+      const resolveCredentialConfig = createSyncCredentialConfigResolver({
+        projectDir,
+        tokenStore: {
+          async get(host: string) {
+            return storedHosts.has(host) ? { login: 'alice', token: 'tok' } : null;
+          },
+        },
+        localOpCliArgs: ['open-knowledge'],
+        declaredGitHubHosts: new Set(),
+      });
+      const engine = new SyncEngine({
+        conflicts: newAuthority(),
+        projectDir,
+        contentDir,
+        contentFilter: stubContentFilter,
+        syncEnabled: false,
+        credentialConfig: await resolveCredentialConfig(),
+        resolveCredentialConfig,
+      });
+      const internal = engine as unknown as { hasRemote: boolean; gitHandle: () => GitHandle };
+      internal.hasRemote = true;
+      const createGitHandle = internal.gitHandle.bind(engine);
+      const invocationChains: string[][] = [];
+      internal.gitHandle = () => {
+        const handle = createGitHandle();
+        invocationChains.push(handle.credentialConfig);
+        return handle;
+      };
+      expect(engine.getCredentialConfig()).toContain('credential.helper=');
+
+      storedHosts.delete('git.invalid');
+      await runCycle(engine);
+
+      expect(invocationChains.length).toBeGreaterThan(0);
+      expect(invocationChains[0]).not.toContain('credential.helper=');
+      expect(invocationChains[0]).toHaveLength(1);
+      await engine.destroy();
+    },
+  );
+
+  test('a failed credential chain rebuild keeps the previous chain', async () => {
+    const engine = new SyncEngine({
+      conflicts: newAuthority(),
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      syncEnabled: false,
+      credentialConfig: ['credential.helper=!ok auth git-credential'],
+      resolveCredentialConfig: async () => {
+        throw new Error('keychain locked');
+      },
+    });
+
+    await engine.notifyCredentialsChanged();
+
+    expect(engine.getCredentialConfig()).toEqual(['credential.helper=!ok auth git-credential']);
+  });
+
+  test('a push-permission pause left over from a GitHub origin clears once the origin is not GitHub', async () => {
+    await initGitWithOrigin('https://gitlab.com/team/notes.git');
+    const engine = makeEngine({ syncEnabled: true });
+    const internal = engine as unknown as InternalState & { hasRemote: boolean };
+    internal.hasRemote = true;
+    internal.state = 'disabled';
+    internal.pausedReason = 'no-push-permission';
+
+    const result = await engine.refreshPushPermission();
+
+    expect(result).toEqual({ checkStatus: 'unknown' });
+    expect(engine.getStatus().pausedReason).toBeUndefined();
+    expect(engine.getStatus().state).toBe('idle');
+    await engine.destroy();
   });
 
   test('notifyCredentialsChanged is a no-op when not parked on auth-error', async () => {

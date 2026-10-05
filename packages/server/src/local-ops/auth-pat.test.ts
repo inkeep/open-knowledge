@@ -80,8 +80,8 @@ describe('runPatSubprocess', () => {
     }
   });
 
-  test('redacts a bare PAT in stderr before it reaches the fallback error', async () => {
-    const token = `ghp_${'g'.repeat(36)}`;
+  test('removes the submitted token from stderr even when no scrubber pattern knows its shape', async () => {
+    const token = `${'a'.repeat(8)}0123456789abcdef0123456789abcdef`;
     const result = await runPatSubprocess({
       cliArgs: fixtureCli(`
         process.stderr.write("[auth] Failed to parse auth.yml: bad indentation at line 2:\\n  token: ${token}");
@@ -93,6 +93,23 @@ describe('runPatSubprocess', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).not.toContain(token);
+      expect(result.error).toContain('token: [REDACTED]');
+    }
+  });
+
+  test('redacts a bare PAT in stderr other than the submitted token', async () => {
+    const storedToken = `ghp_${'g'.repeat(36)}`;
+    const result = await runPatSubprocess({
+      cliArgs: fixtureCli(`
+        process.stderr.write("[auth] Failed to parse auth.yml: bad indentation at line 2:\\n  token: ${storedToken}");
+        process.exitCode = 3;
+      `),
+      host: 'ghes.test',
+      token: 'submitted-token',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).not.toContain(storedToken);
       expect(result.error).toContain('[REDACTED-GH-PAT]');
     }
   });

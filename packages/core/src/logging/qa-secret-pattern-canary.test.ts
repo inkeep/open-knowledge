@@ -83,6 +83,11 @@ const PLANTED: Record<string, { input: string; secret: string; marker: string }>
     secret: 'glpat-abcdefghij0123456789XYZABC',
     marker: '[REDACTED-GITLAB]',
   },
+  'atlassian-api-token': {
+    input: 'bitbucket ATATT3xFfGF0abcdefghij0123456789KLMNOPQR= here',
+    secret: 'ATATT3xFfGF0abcdefghij0123456789KLMNOPQR=',
+    marker: '[REDACTED-ATLASSIAN]',
+  },
   'bearer-token-json': {
     input: '{"authorization":"Bearer opaque:Tokenv1/1234567890abcXYZ","k":1}',
     secret: 'opaque:Tokenv1/1234567890abcXYZ',

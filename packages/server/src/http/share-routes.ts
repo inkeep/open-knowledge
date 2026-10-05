@@ -19,7 +19,6 @@ import {
   withHiddenWindowsConsole,
 } from '../child-process-windows-hide.ts';
 import { isValidBranchInfoPath } from '../git-branch-info.ts';
-import { buildSyncCredentialConfig } from '../git-handle.ts';
 import type { ConcurrencyGuard } from '../local-op-security.ts';
 import type { PinoLogger } from '../logger.ts';
 import {
@@ -36,7 +35,6 @@ import {
   readDeclaredGitHubHosts,
   readGitHeadBranch,
   readOriginGitHubRepo,
-  shouldResetAmbientCredentials,
 } from '../share/git-context.ts';
 import {
   emitSharePublishLog,
@@ -79,6 +77,7 @@ export interface ShareRouteDeps {
   localOpCliArgs: string[];
   localOpGuard: ConcurrencyGuard;
   getSyncEngine: (() => SyncEngine | null) | undefined;
+  resolveCredentialConfig: () => Promise<string[]>;
   toGitRelativePath: (projectDir: string, absolutePath: string) => string | null;
 }
 
@@ -91,6 +90,7 @@ export function createShareRoutes(deps: ShareRouteDeps): ApiRouteGroup {
     localOpCliArgs,
     localOpGuard,
     getSyncEngine,
+    resolveCredentialConfig,
     toGitRelativePath,
   } = deps;
   const declaredGitHubHosts = deps.declaredGitHubHosts ?? readDeclaredGitHubHosts();
@@ -308,9 +308,7 @@ export function createShareRoutes(deps: ShareRouteDeps): ApiRouteGroup {
           body.path,
           body.kind,
           {
-            credentialConfig: buildSyncCredentialConfig(localOpCliArgs, {
-              resetAmbient: shouldResetAmbientCredentials(projectDir, declaredGitHubHosts),
-            }),
+            credentialConfig: await resolveCredentialConfig(),
           },
         );
         const contentStatus =

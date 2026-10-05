@@ -1,3 +1,4 @@
+
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
@@ -439,13 +440,13 @@ describe('QA canary — cold-reopen / concurrent-peer / idempotence (Observer-A 
 });
 
 const OK_ROOT = join(import.meta.dirname, '..', '..', '..', '..');
-const GITHUB_SYNC = join(OK_ROOT, 'docs', 'content', 'features', 'github-sync.mdx');
+const GITHUB_DOC = join(OK_ROOT, 'docs', 'content', 'features', 'git', 'github.mdx');
 const QUICKSTART = join(OK_ROOT, 'docs', 'content', 'get-started', 'quickstart.mdx');
 
 describe('QA canary — real repo docs with <Steps>', () => {
-  test('github-sync.mdx loads byte-clean through the bridge (frontmatter + Callout + Steps intact)', async () => {
-    const md = readFileSync(GITHUB_SYNC, 'utf-8');
-    expect(md).toContain('title: GitHub sync');
+  test('git/github.mdx loads byte-clean through the bridge (frontmatter + Steps intact)', async () => {
+    const md = readFileSync(GITHUB_DOC, 'utf-8');
+    expect(md).toMatch(/^title: GitHub$/m);
     expect((md.match(/^<Step>$/gm) ?? []).length).toBe(4);
     expect(md).toMatch(/^<Steps>$/m);
     expect(md).toMatch(/\n {4}### /);
@@ -458,8 +459,7 @@ describe('QA canary — real repo docs with <Steps>', () => {
     try {
       await awaitDocQuiescence(client.doc);
       const ytext = client.doc.getText('source').toString();
-      expect(ytext).toContain('title: GitHub sync');
-      expect(ytext).toContain('<Callout type="warn">');
+      expect(ytext).toMatch(/^title: GitHub$/m);
       expect((ytext.match(/^<Step>$/gm) ?? []).length).toBe(4);
       expect(ytext).not.toMatch(INDENTED_STEP);
       expect(ytext).toMatch(/\n {4}### Open the clone dialog/);
@@ -472,7 +472,7 @@ describe('QA canary — real repo docs with <Steps>', () => {
   });
 
   test('live source edit inside a real Step fires no Observer-A re-indent; disk cold-reopen clean', async () => {
-    const md = readFileSync(GITHUB_SYNC, 'utf-8');
+    const md = readFileSync(GITHUB_DOC, 'utf-8');
     const docName = `real-gh-edit-${crypto.randomUUID()}`;
     await agentWriteMd(server.port, md, { docName, position: 'replace' });
     await wait(300);
@@ -490,7 +490,7 @@ describe('QA canary — real repo docs with <Steps>', () => {
       expect(memory).toContain('Paste a repository URL (edited)');
       expect(memory).not.toMatch(INDENTED_STEP);
       expect((memory.match(/^<Step>$/gm) ?? []).length).toBe(4);
-      expect(memory).toContain('title: GitHub sync');
+      expect(memory).toMatch(/^title: GitHub$/m);
       expect(memory.length).toBeLessThan(md.length + 32);
 
       const disk = await pollDiskContentStable(join(server.contentDir, `${docName}.md`), (c) =>

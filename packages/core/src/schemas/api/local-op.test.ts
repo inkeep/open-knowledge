@@ -4,6 +4,7 @@ import {
   LocalOpAuthHostRequestSchema,
   LocalOpAuthSetIdentityRequestSchema,
   LocalOpAuthStatusSuccessSchema,
+  LocalOpAuthTokenRequestSchema,
   ProblemTypeSchema,
 } from './index.ts';
 
@@ -79,6 +80,49 @@ describe('LocalOpAuthStatusSuccessSchema', () => {
   });
   test('rejects missing authenticated field', () => {
     expect(LocalOpAuthStatusSuccessSchema.safeParse({ login: 'alice' }).success).toBe(false);
+  });
+});
+
+describe('LocalOpAuthTokenRequestSchema', () => {
+  const valid = { host: 'ghes.test', username: 'alice', token: 'tkn-1' };
+
+  test('parses a full host + username + token body', () => {
+    expect(LocalOpAuthTokenRequestSchema.safeParse(valid).success).toBe(true);
+  });
+  test('rejects a missing host', () => {
+    expect(
+      LocalOpAuthTokenRequestSchema.safeParse({ username: 'alice', token: 'tkn-1' }).success,
+    ).toBe(false);
+  });
+  test('rejects an empty host', () => {
+    expect(LocalOpAuthTokenRequestSchema.safeParse({ ...valid, host: '' }).success).toBe(false);
+  });
+  test.each(['https://ghes.test', 'ghes.test/team', 'ghes.test/', 'alice@ghes.test'])(
+    'rejects %s, a host git never sends to a credential helper',
+    (host) => {
+      expect(LocalOpAuthTokenRequestSchema.safeParse({ ...valid, host }).success).toBe(false);
+    },
+  );
+  test('accepts a host with a port', () => {
+    expect(
+      LocalOpAuthTokenRequestSchema.safeParse({ ...valid, host: 'ghes.test:8443' }).success,
+    ).toBe(true);
+  });
+  test('rejects a missing username', () => {
+    expect(
+      LocalOpAuthTokenRequestSchema.safeParse({ host: 'ghes.test', token: 'tkn-1' }).success,
+    ).toBe(false);
+  });
+  test('rejects an empty username', () => {
+    expect(LocalOpAuthTokenRequestSchema.safeParse({ ...valid, username: '' }).success).toBe(false);
+  });
+  test('rejects a missing token', () => {
+    expect(
+      LocalOpAuthTokenRequestSchema.safeParse({ host: 'ghes.test', username: 'alice' }).success,
+    ).toBe(false);
+  });
+  test('rejects an empty token', () => {
+    expect(LocalOpAuthTokenRequestSchema.safeParse({ ...valid, token: '' }).success).toBe(false);
   });
 });
 

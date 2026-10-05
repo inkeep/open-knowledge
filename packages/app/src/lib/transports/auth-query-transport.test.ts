@@ -174,6 +174,17 @@ describe('httpAuthQueryTransport().status', () => {
 
     expect(fetchCalls).toHaveLength(2);
   });
+
+  it('leaves an ordinary signed-out 200 free of an origin refusal', async () => {
+    stubFetch(
+      () =>
+        new Response(JSON.stringify({ authenticated: false, host: 'github.com', error: 'nope' })),
+    );
+
+    const result = await httpAuthQueryTransport().status();
+    expect(result.authenticated).toBe(false);
+    expect(result.authenticated ? undefined : result.unsupportedOrigin).toBeUndefined();
+  });
 });
 
 describe('httpAuthQueryTransport().signout', () => {

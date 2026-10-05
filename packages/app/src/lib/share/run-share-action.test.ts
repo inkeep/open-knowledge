@@ -384,6 +384,54 @@ describe('runShareAction — no-remote routing', () => {
     expect(deps.errorToasts).toEqual([]);
   });
 
+  test('a share that succeeds against a remote never opens the GitHub publish wizard', async () => {
+    const deps = makeDeps({
+      fetchResponse: {
+        ok: true,
+        shareUrl: 'https://openknowledge.ai/d/Aaa',
+        sharedUrl: 'https://git.example.com/team/wiki/blob/main/a.md',
+        branch: 'main',
+      },
+    });
+    let wizardOpened = false;
+
+    await runShareAction(
+      {
+        kind: 'doc',
+        docName: 'a',
+        hasRemote: true,
+        onClickWhenNoRemote: () => {
+          wizardOpened = true;
+        },
+      },
+      deps,
+    );
+
+    expect(wizardOpened).toBe(false);
+  });
+
+  test('a share error other than no-remote never opens the GitHub publish wizard', async () => {
+    const deps = makeDeps({
+      fetchResponse: { ok: false, error: 'branch-not-on-origin', branch: 'wip' },
+    });
+    let wizardOpened = false;
+
+    const result = await runShareAction(
+      {
+        kind: 'doc',
+        docName: 'a',
+        hasRemote: true,
+        onClickWhenNoRemote: () => {
+          wizardOpened = true;
+        },
+      },
+      deps,
+    );
+
+    expect(result.kind).toBe('business-error');
+    expect(wizardOpened).toBe(false);
+  });
+
   test('server-side no-remote response also fires the wizard (worktree dev parity)', async () => {
     const deps = makeDeps({
       fetchResponse: { ok: false, error: 'no-remote' },

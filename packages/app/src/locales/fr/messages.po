@@ -1548,6 +1548,10 @@ msgstr "Un modèle nommé <0>{trimmedSlug}</0> existe déjà ici. L'enregistrer 
 msgid "A title, description, tags — anything that describes this folder."
 msgstr "Un titre, une description, des étiquettes — tout ce qui décrit ce dossier."
 
+#: src/components/settings/AccountSection.tsx
+msgid "A token added here only applies to HTTPS remotes, and this project's remote doesn't use HTTPS."
+msgstr "Un jeton ajouté ici ne s'applique qu'aux dépôts distants HTTPS, et le dépôt distant de ce projet n'utilise pas HTTPS."
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "Un dossier de worktree pour {shareBranch} existe déjà."
@@ -1600,9 +1604,8 @@ msgid "Accept their deletion"
 msgstr "Accepter leur suppression"
 
 #: src/components/settings/AccountSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-msgid "Account"
-msgstr "Compte"
+msgid "Access token"
+msgstr "Jeton d'accès"
 
 #: src/components/TemplateRow.tsx
 msgid "Actions for {label}"
@@ -1680,6 +1683,10 @@ msgstr "Ajouter une propriété"
 #: src/components/empty-state/CreateView.tsx
 msgid "Add a starter pack"
 msgstr "Ajouter un pack de démarrage"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Add an access token for a GitLab, Gitea, Bitbucket, Azure DevOps or self-hosted git server. Without one, git uses the credentials it already has saved for that host; with one, OpenKnowledge uses the token instead."
+msgstr "Ajoutez un jeton d'accès pour un serveur GitLab, Gitea, Bitbucket, Azure DevOps ou git auto-hébergé. Sans jeton, git utilise les identifiants qu'il a déjà enregistrés pour cet hôte ; avec un jeton, OpenKnowledge utilise le jeton à la place."
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Add another pattern"
@@ -1810,6 +1817,12 @@ msgstr "Ajouter au dictionnaire"
 msgid "Add to prompt"
 msgstr "Ajouter à l’invite"
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/SyncStatusBadge.tsx
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "Add token"
+msgstr "Ajouter le jeton"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "Ajouter une valeur"
@@ -1819,6 +1832,10 @@ msgstr "Ajouter une valeur"
 #: src/components/SyncStatusBadge.tsx
 msgid "Added"
 msgstr "Ajouté"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Adding"
+msgstr "Ajout"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Adds a global OpenKnowledge MCP entry for this agent."
@@ -2335,6 +2352,10 @@ msgstr "Les pièces jointes doivent totaliser moins de 3 Mo."
 msgid "Authenticated as {login}."
 msgstr "Authentifié en tant que {login}."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authentication failed for this git host. Add a token for it in Settings, or replace the one stored."
+msgstr "L'authentification a échoué pour cet hôte git. Ajoutez un jeton pour lui dans les Paramètres, ou remplacez celui qui est enregistré."
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr "Contenu faisant autorité ; reproduit tel quel partout où il est référencé."
@@ -2535,6 +2556,11 @@ msgstr "Grand titre de section."
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Bird wiki"
 msgstr "Wiki des oiseaux"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "Bitbucket"
+msgstr "Bitbucket"
 
 #: src/components/NewItemDialog.tsx
 msgid "Blank note"
@@ -3605,8 +3631,8 @@ msgid "Connect"
 msgstr "Connecter"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Connect a GitHub account to browse and sync your repositories."
-msgstr "Connectez un compte GitHub pour parcourir et synchroniser vos dépôts."
+msgid "Connect a GitHub account to browse and publish GitHub repositories."
+msgstr "Connectez un compte GitHub pour parcourir et publier des dépôts GitHub."
 
 #: src/components/settings/SyncSection.tsx
 msgid "Connect an existing repository"
@@ -3698,6 +3724,7 @@ msgid "Connection dropped"
 msgstr "Connexion interrompue"
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 #: src/lib/transports/auth-transport.ts
 msgid "Connection error — try again"
 msgstr "Erreur de connexion — réessayez"
@@ -5937,6 +5964,10 @@ msgstr "Saisissez un nombre entier compris entre {minimum} et {maximum}."
 msgid "Enter at least 3 characters to search by meaning."
 msgstr "Saisissez au moins 3 caractères pour rechercher par sens."
 
+#: src/components/settings/AccountSection.tsx
+msgid "Enter the host name git connects to, with an optional :port and no scheme or path, for example git.example.com."
+msgstr "Saisissez le nom d'hôte auquel git se connecte, avec un :port facultatif et sans schéma ni chemin, par exemple git.example.com."
+
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "Saisissez l'origine publique servie par votre tunnel, par exemple https://notes.example.com"
@@ -6412,6 +6443,7 @@ msgid "Failed to start sign-in — try again"
 msgstr "Échec du démarrage de la connexion — réessayez"
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 #: src/lib/transports/auth-transport.ts
 msgid "Failed to store the token — try again"
 msgstr "Échec de l'enregistrement du jeton — réessayez"
@@ -6885,6 +6917,11 @@ msgctxt "settings search keyword"
 msgid "GHES"
 msgstr "GHES"
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Git"
+msgstr "Git"
+
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
 msgstr "Git et PR"
@@ -6892,6 +6929,10 @@ msgstr "Git et PR"
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git ne peut pas suivre ce dossier — il est vide ou ne contient que des fichiers ignorés. Le lien ne fonctionnera pas tant que vous n'aurez pas ajouté un document suivi."
+
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "Git couldn't authenticate with this host. Check the SSH key or saved credentials git uses for it."
+msgstr "git n'a pas pu s'authentifier auprès de cet hôte. Vérifiez la clé SSH ou les identifiants enregistrés que git utilise pour lui."
 
 #: src/components/RecentProjectsMenu.tsx
 msgid "Git has locked this worktree, but it can still be opened."
@@ -6952,10 +6993,6 @@ msgstr "Hôtes GitHub Enterprise Server"
 msgid "GitHub sign-in is missing or expired. Reconnect to resume syncing."
 msgstr "La connexion GitHub est absente ou expirée. Reconnectez-vous pour reprendre la synchronisation."
 
-#: src/components/settings/AccountSection.tsx
-msgid "GitHub sign-in isn't available for this project"
-msgstr "La connexion GitHub n’est pas disponible pour ce projet"
-
 #: src/components/ImportSkillForm.tsx
 msgid "GitHub, a git URL, or a local path."
 msgstr "GitHub, une URL git, ou un chemin local."
@@ -6963,6 +7000,11 @@ msgstr "GitHub, une URL git, ou un chemin local."
 #: src/components/settings/EnterpriseHostsSection.tsx
 msgid "github.com is always recognized, so it doesn't need to be added."
 msgstr "github.com est toujours reconnu : inutile de l’ajouter."
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GitLab"
+msgstr "GitLab"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Give it a name before editing its colors."
@@ -7317,6 +7359,10 @@ msgstr "Bande horizontale de pastilles + panneau actif en dessous ; cliquez sur 
 #: src/editor/slash-command/items.tsx
 msgid "Horizontal rule that divides sections."
 msgstr "Filet horizontal qui sépare les sections."
+
+#: src/components/settings/AccountSection.tsx
+msgid "Host"
+msgstr "Hôte"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Hosting is on. The server is running on port {boundPort}. Reach it through your tunnel."
@@ -8611,8 +8657,8 @@ msgid "Manage skill folders"
 msgstr "Gérer les dossiers de compétences"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Manage the GitHub account OpenKnowledge uses to browse and sync your repositories."
-msgstr "Gérez le compte GitHub qu'OpenKnowledge utilise pour parcourir et synchroniser vos dépôts."
+msgid "Manage the accounts and access tokens OpenKnowledge uses to connect to your git hosts."
+msgstr "Gérez les comptes et les jetons d'accès qu'OpenKnowledge utilise pour se connecter à vos hôtes git."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
@@ -9441,6 +9487,10 @@ msgstr "Aucune modification de contenu dans cette version."
 #: src/components/TimelineDiffPane.tsx
 msgid "No content changes in this version"
 msgstr "Aucune modification de contenu dans cette version"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "No credential is stored for this git host. Add a token in Settings, or let git use the credentials it already has."
+msgstr "Aucun identifiant n'est enregistré pour cet hôte git. Ajoutez un jeton dans les Paramètres, ou laissez git utiliser les identifiants dont il dispose déjà."
 
 #: src/components/GraphPanel.tsx
 msgid "No disconnected pages. Pages appear here only when they have no incoming and no outgoing graph edges."
@@ -10394,6 +10444,10 @@ msgstr "Ouverture…"
 msgid "OpenKnowledge"
 msgstr "OpenKnowledge"
 
+#: src/components/AuthModal.tsx
+msgid "OpenKnowledge can't sign in to GitHub for this project."
+msgstr "OpenKnowledge ne peut pas se connecter à GitHub pour ce projet."
+
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked {subject}"
 msgstr "OpenKnowledge a vérifié {subject}"
@@ -10405,10 +10459,6 @@ msgstr "OpenKnowledge a vérifié le projet"
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge n'a pas trouvé cet agent sur cette machine."
-
-#: src/components/settings/AccountSection.tsx
-msgid "OpenKnowledge couldn't find a host name in this project's git remote, so it can't tell which GitHub server to sign in to."
-msgstr "OpenKnowledge n’a trouvé aucun nom d’hôte dans le dépôt distant git de ce projet : impossible de savoir à quel serveur GitHub se connecter."
 
 #: src/lib/worktree-create-error.ts
 msgid "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
@@ -10465,6 +10515,10 @@ msgstr "OpenKnowledge a modifié un document"
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "OpenKnowledge files were removed"
 msgstr "Les fichiers OpenKnowledge ont été supprimés"
+
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "OpenKnowledge has no credential stored for this host. Add a token in Settings, or let git use the credentials it already has."
+msgstr "OpenKnowledge n'a aucun identifiant enregistré pour cet hôte. Ajoutez un jeton dans les Paramètres, ou laissez git utiliser les identifiants dont il dispose déjà."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge imported {source}"
@@ -10693,6 +10747,11 @@ msgstr "autres"
 #: src/components/FeedbackForm.tsx
 msgid "Other"
 msgstr "Autre"
+
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Other Git hosts"
+msgstr "Autres hôtes Git"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Other OK paths are tracked upstream:"
@@ -11627,6 +11686,14 @@ msgstr "Reconnexion nécessaire"
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required to keep syncing."
 msgstr "Reconnexion requise pour continuer la synchronisation."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing. Add a token for this host in Settings, or replace the one stored."
+msgstr "Reconnexion requise pour continuer la synchronisation. Ajoutez un jeton pour cet hôte dans les Paramètres, ou remplacez celui qui est enregistré."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing. Check the SSH key or saved credentials git uses for this host."
+msgstr "Reconnexion requise pour continuer la synchronisation. Vérifiez la clé SSH ou les identifiants enregistrés que git utilise pour cet hôte."
 
 #: src/presence/use-sync-toasts.ts
 msgid "Reconnected"
@@ -14819,6 +14886,10 @@ msgstr "La liste de compétences ne correspond pas à son schéma."
 msgid "The source folder itself does not move."
 msgstr "Le dossier source lui-même ne bouge pas."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "The stored token is missing the permissions this host needs to push."
+msgstr "Il manque au jeton enregistré les permissions dont cet hôte a besoin pour pousser."
+
 #: src/components/TemplateProperties.tsx
 msgid "The template's filename (without `.md`)."
 msgstr "Le nom de fichier du modèle (sans `.md`)."
@@ -14876,6 +14947,10 @@ msgstr "L’exécutable terminal.shell indiqué dans .ok/local/config.yml est in
 #: src/components/AuthModal.tsx
 msgid "The token needs the repo and read:user scopes."
 msgstr "Le jeton doit avoir les portées repo et read:user."
+
+#: src/components/settings/AccountSection.tsx
+msgid "The username git sends with the token. Some hosts expect a fixed value: type <0>x-bitbucket-api-token-auth</0> for a Bitbucket API token, <1>x-token-auth</1> for a Bitbucket repository or workspace access token, or <2>oauth2</2> for GitLab. For Gitea, use your Gitea username. Azure DevOps accepts any value."
+msgstr "Le nom d'utilisateur que git envoie avec le jeton. Certains hôtes attendent une valeur fixe : saisissez <0>x-bitbucket-api-token-auth</0> pour un jeton d'API Bitbucket, <1>x-token-auth</1> pour un jeton d'accès de dépôt ou d'espace de travail Bitbucket, ou <2>oauth2</2> pour GitLab. Pour Gitea, utilisez votre nom d'utilisateur Gitea. Azure DevOps accepte n'importe quelle valeur."
 
 #: src/lib/tab-session-restore-recovery-notice.ts
 msgid "The workspace opened without it so the app could start."
@@ -15405,10 +15480,6 @@ msgstr "Ce projet n'est pas un dépôt git, les worktrees ne sont donc pas dispo
 msgid "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
 msgstr "Ce projet n'existe que sur cet ordinateur. Connectez-le à GitHub pour le sauvegarder et le partager avec d'autres personnes."
 
-#: src/components/settings/AccountSection.tsx
-msgid "This project's git remote is on {host}, which OpenKnowledge doesn't recognize as a GitHub host. If {host} runs GitHub Enterprise Server, add it to GitHub Enterprise Server hosts below, then restart OpenKnowledge."
-msgstr "Le dépôt distant git de ce projet se trouve sur {host}, qu’OpenKnowledge ne reconnaît pas comme un hôte GitHub. Si {host} exécute GitHub Enterprise Server, ajoutez-le dans Hôtes GitHub Enterprise Server ci-dessous, puis redémarrez OpenKnowledge."
-
 #: src/components/DocumentErrorBoundary.tsx
 msgid "This project's running server doesn't support live editing. Restart OpenKnowledge to fix."
 msgstr "Le serveur en cours d'exécution de ce projet ne prend pas en charge l'édition en direct. Redémarrez OpenKnowledge pour corriger cela."
@@ -15505,6 +15576,7 @@ msgid "This usually means one of:"
 msgstr "Cela signifie généralement l'une de ces choses :"
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 msgid "This window can't store a token — open Settings from the main app window."
 msgstr "Cette fenêtre ne peut pas stocker de jeton — ouvrez les Paramètres depuis la fenêtre principale de l'application."
 
@@ -15657,6 +15729,15 @@ msgstr "Bascule la mise en forme soulignée."
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "Toggles the pattern {0}/**"
 msgstr "Active ou désactive le motif {0}/**"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "token"
+msgstr "jeton"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Token stored for {login} on {host}. To remove it, run <0>ok auth signout --host {host}</0>."
+msgstr "Jeton enregistré pour {login} sur {host}. Pour le supprimer, exécutez <0>ok auth signout --host {host}</0>."
 
 #: src/components/SkillBundlePreview.tsx
 #: src/components/SkillProperties.tsx
@@ -16243,6 +16324,10 @@ msgstr "Utilisateur"
 #: src/components/settings/LintingSection.tsx
 msgid "User plugins are personal to this device — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
 msgstr "Les plugins utilisateur sont propres à cet appareil — activez-les ou désactivez-les ici. Chaque plugin activé obtient sa propre page sous Plugins dans la barre latérale des paramètres."
+
+#: src/components/settings/AccountSection.tsx
+msgid "Username"
+msgstr "Nom d'utilisateur"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."

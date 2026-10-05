@@ -119,6 +119,11 @@ const SECRET_PATTERNS: readonly SecretPattern[] = [
   },
   { name: 'gitlab-pat', regex: /glpat-[0-9A-Za-z_-]{20,}/g, replacement: '[REDACTED-GITLAB]' },
   {
+    name: 'atlassian-api-token',
+    regex: /\b(?:ATATT|ATCTT|ATBB)[0-9A-Za-z_=-]{20,}/g,
+    replacement: '[REDACTED-ATLASSIAN]',
+  },
+  {
     name: 'bearer-token-json',
     regex: /("[Aa]uthorization"\s*:\s*"[Bb]earer\s+)(?:\\"[^"\\]+\\"|[^"\\]+)/g,
     replacement: '$1[REDACTED]',

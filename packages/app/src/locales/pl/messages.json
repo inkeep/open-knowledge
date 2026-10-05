@@ -57,6 +57,9 @@
     ],
     "-l6jM7": ["Rozpocznij czat przyciskiem ＋ albo uruchom agenta ze strony."],
     "-lCAuQ": ["Ładowanie grafu"],
+    "-nA68n": [
+      "Dodaj token dostępowy dla serwera GitLab, Gitea, Bitbucket, Azure DevOps lub własnego serwera git. Bez tokenu git używa danych logowania, które ma już zapisane dla tego hosta; z tokenem OpenKnowledge używa zamiast nich tokenu."
+    ],
     "-o5XAG": [
       "Wysłane prywatnie do zespołu OpenKnowledge wraz z Twoją notatką i wersją aplikacji. Nigdy publikowane publicznie."
     ],
@@ -296,6 +299,7 @@
     "1vczDE": ["Otwórz ", ["displayName"], " Desktop"],
     "1vn0CI": ["Nieprawidłowa odpowiedź serwera"],
     "1xui0Q": ["Nie udało się wczytać plików lokalnych"],
+    "1yHVE-": ["Dodawanie"],
     "2-3Mlu": ["Nie udało się odpiąć ", ["name"]],
     "20LVKb": ["Coś spoza tego czatu nakazało zatrzymanie procesu agenta (", ["signal"], ")."],
     "2277Tu": ["Zwiń graf"],
@@ -563,6 +567,15 @@
     "4mp6Tv": ["OpenKnowledge wypisało zainstalowane umiejętności"],
     "4niEzY": ["Osadzenie HTML w piaskownicy — wpisz HTML i zobacz renderowany podgląd na żywo."],
     "4nj6n8": ["/api/config zwrócił HTTP ", ["code"]],
+    "4p8Baj": [
+      "Zapisano token dla ",
+      ["login"],
+      " na ",
+      ["host"],
+      ". Aby go usunąć, uruchom <0>ok auth signout --host ",
+      ["host"],
+      "</0>."
+    ],
     "4pDZ2N": [
       "Usunięto \"",
       ["0"],
@@ -896,13 +909,6 @@
     "7YRrJ9": [
       "Dostępne w aplikacji desktopowej OpenKnowledge. W terminalu użyj<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
-    "7_I248": [
-      "Zdalne repozytorium gita tego projektu znajduje się na ",
-      ["host"],
-      ", którego OpenKnowledge nie rozpoznaje jako hosta GitHub. Jeśli ",
-      ["host"],
-      " działa pod GitHub Enterprise Server, dodaj go do listy hostów GitHub Enterprise Server poniżej, a następnie uruchom ponownie OpenKnowledge."
-    ],
     "7_bFEL": ["Przeciągnij ", ["patternText"], ", aby zmienić kolejność"],
     "7a0YcF": ["Naciśnij <0>Spację</0> lub dotknij bloba, aby rozpocząć"],
     "7aNk5D": ["OpenKnowledge edytowało ", ["subject"]],
@@ -935,6 +941,7 @@
     "7lFX_h": ["Skieruj teraz"],
     "7m3Ade": ["instalacje:"],
     "7qRHf0": ["Zainstaluj dla Claude Chat i Cowork"],
+    "7sNhEz": ["Nazwa użytkownika"],
     "7uBlRT": ["Skopiuj zaznaczony element drzewa plików, aby dało się go potem wkleić."],
     "7vxWET": ["Podgląd pakietu niedostępny."],
     "7wogIQ": [
@@ -1105,6 +1112,7 @@
     "9bCiQ8": ["Żadnej stronie nie brakuje linków przychodzących w grafie."],
     "9bG48P": ["Wysyłanie"],
     "9clcD5": ["Otwórz dokumenty oznaczone #", ["chip"]],
+    "9djC8C": ["Połącz konto GitHub, aby przeglądać i publikować repozytoria GitHub."],
     "9euN0m": [
       [
         "count",
@@ -1215,7 +1223,6 @@
       " w ",
       ["parentLabel"]
     ],
-    "AeXO77": ["Konto"],
     "AgoIW4": [
       ["source"],
       ": ",
@@ -1228,6 +1235,7 @@
       ["detail"]
     ],
     "AhoGwP": ["Konfiguruj integracje OpenKnowledge"],
+    "Ai2U7L": ["Host"],
     "AiNMQ7": [
       "Ten projekt znajduje się tylko na tym komputerze. Połącz go z GitHub, aby zrobić kopię zapasową i udostępnić go innym osobom."
     ],
@@ -1570,9 +1578,6 @@
     "E2Mv-X": ["Kopiuj źródło"],
     "E4XYYH": ["Włącz terminal dla tego projektu"],
     "E5WeIy": ["Otwiera ponownie ostatnio zamkniętą kartę edytora."],
-    "E6lrpp": [
-      "Zarządzaj kontem GitHub, którego OpenKnowledge używa do przeglądania i synchronizowania twoich repozytoriów."
-    ],
     "E7BhZn": ["Pusta notatka"],
     "E8NbNG": ["Nie udało się wczytać worktrees."],
     "E91VZY": ["Otwórz w nowym oknie"],
@@ -1586,7 +1591,6 @@
     "EEYbdt": ["Opublikuj"],
     "EFfGAv": ["Ta wiadomość została już wysłana — Twoja edycja nie została zastosowana."],
     "EHu0x2": ["Synchronizowanie"],
-    "EJuO7B": ["Połącz konto GitHub, aby przeglądać i synchronizować swoje repozytoria."],
     "EKwNEe": [
       "Zapisane embeddingi należą do punktu końcowego i modelu, który je wygenerował, dlatego to odbudowuje indeks od zera."
     ],
@@ -1741,6 +1745,9 @@
     "FgRAvd": ["Logi i informacje o systemie"],
     "Fhp4Gn": ["Zobacz wtyczkę"],
     "Fim5F3": ["embeddingi"],
+    "FioJgb": [
+      "Aby kontynuować synchronizację, wymagane jest ponowne połączenie. Dodaj token dla tego hosta w Ustawieniach albo zastąp zapisany."
+    ],
     "FiyNln": ["Przejdź do zaznaczonego tekstu we właściwości"],
     "FjkaiT": ["Pomniejsz"],
     "Fjz6aJ": ["Wyślij do nowego czatu"],
@@ -2224,6 +2231,9 @@
     "KvwJv8": ["Niektóre pliki nie są wymienione — drzewo robocze ma zbyt wiele zmian."],
     "Kx881F": ["Przywrócono ", ["0"], "."],
     "KziH2K": ["Szybko"],
+    "L-crEu": [
+      "git nie mógł uwierzytelnić się na tym hoście. Sprawdź klucz SSH lub zapisane dane logowania, których git używa dla tego hosta."
+    ],
     "L-rMC9": ["Zresetuj do wartości domyślnej"],
     "L1BQTH": [["0"], " nie jest jeszcze zainstalowany — otwieranie strony pobierania."],
     "L1ZE3M": ["Statystyki dokumentu"],
@@ -2294,6 +2304,9 @@
     "LRgZAt": [["owner"], "/", ["name"], " już istnieje"],
     "LSuMte": [["0"], " z ", ["totalCount"]],
     "LTeJuX": ["Przełącz tryb pełnoekranowy"],
+    "LVWA9A": [
+      "Uwierzytelnianie na tym hoście git nie powiodło się. Dodaj dla niego token w Ustawieniach albo zastąp zapisany."
+    ],
     "LXIm4m": ["Okno kontekstu"],
     "LXdWeS": ["Średni nagłówek sekcji."],
     "LXfNU-": ["Nawigacja i podpowiedzi"],
@@ -2465,6 +2478,7 @@
     "Mj8R8K": ["Nie udało się zainstalować umiejętności: ", ["0"]],
     "MmDDWK": ["Ostatnio otwarte"],
     "Mnavhe": ["Właściwości: ", ["propPanelDescriptorLabel"]],
+    "MpZRQy": ["Git"],
     "MqQoV-": ["Opisz, co chcesz zbudować, zacznij od pustego pliku albo skorzystaj z szablonu."],
     "MqsbfN": ["Włączyć podglądy zewnętrznych linków?"],
     "MrUmCD": ["nieznana przyczyna niepowodzenia budowania"],
@@ -2650,6 +2664,9 @@
     "OPOiKn": ["Zasady treści"],
     "OTF92M": ["Etykieta <0>(opcjonalny tekst wyświetlany)</0>"],
     "OVjNeX": ["Terminal ", ["0"]],
+    "OWs-8P": [
+      "Token dodany tutaj dotyczy tylko zdalnych repozytoriów HTTPS, a zdalne repozytorium tego projektu nie używa HTTPS."
+    ],
     "OX2Neh": ["Kod w wierszu"],
     "OXb_Df": ["Treść ustawień"],
     "OXdGnd": ["Problemy"],
@@ -2773,6 +2790,7 @@
       ["filePath"],
       ". Wyjaśnij, co powinienem porównać w widoku konfliktów OpenKnowledge; tam wybiorę i zastosuję rozwiązanie."
     ],
+    "Q14Keq": ["Bitbucket"],
     "Q1mtyd": ["Ukryj panel boczny"],
     "Q5fqMz": ["Błąd połączenia — spróbuj ponownie"],
     "Q6hhn8": ["Preferencje"],
@@ -3092,6 +3110,7 @@
     "SkTkKV": [
       "Agent nie zatrzymuje się. Wymuszone zatrzymanie zamyka ten czat i kończy działanie agenta."
     ],
+    "SkUcEr": ["Token dostępowy"],
     "Ske_wc": [
       "Wtyczki użytkownika są prywatne dla tego urządzenia — włączaj i wyłączaj je tutaj. Każda włączona wtyczka ma własną stronę w sekcji Wtyczki na pasku bocznym ustawień."
     ],
@@ -3501,9 +3520,6 @@
     "XAyxsa": ["Przełącz zdalną gałąź"],
     "XBBZnv": ["Cel linku „", ["shown"], "” nie wskazuje na istniejący dokument."],
     "XBgr2S": ["Skopiuj tutaj"],
-    "XBpH6-": [
-      "OpenKnowledge nie znalazło nazwy hosta w zdalnym repozytorium git tego projektu, więc nie może określić, do jakiego serwera GitHub się zalogować."
-    ],
     "XDzAnp": ["Otwiera się w nowej karcie"],
     "XF1kgP": ["Wszystko z ", ["source"], " jest już aktualne"],
     "XGKy1z": ["Nie można wyświetlić obrazu"],
@@ -3990,6 +4006,9 @@
     "arUUsK": ["Aktualizacje produktu"],
     "ax9kie": ["Ustawienia podglądu linków jeszcze się nie wczytały — spróbuj za chwilę"],
     "axQ1h6": ["Chcesz coś dodać? (opcjonalnie)"],
+    "azrR7I": [
+      "Nazwa użytkownika, którą git wysyła razem z tokenem. Niektóre hosty oczekują stałej wartości: wpisz <0>x-bitbucket-api-token-auth</0> dla tokenu API Bitbucket, <1>x-token-auth</1> dla tokenu dostępowego repozytorium lub obszaru roboczego Bitbucket albo <2>oauth2</2> dla GitLab. W Gitea użyj swojej nazwy użytkownika Gitea. Azure DevOps akceptuje dowolną wartość."
+    ],
     "b18t0_": ["Zamknij widok różnic"],
     "b1FDss": ["Przewiń na początek"],
     "b2ezG_": ["Zachowano oba — „", ["0"], "” jest teraz osobną umiejętnością"],
@@ -4404,6 +4423,7 @@
     "e8zRrb": ["Pokaż pliki"],
     "e8zYa8": ["Nie udało się otworzyć ", ["shareBranch"], " w worktree. Spróbuj ponownie."],
     "e9sHSO": ["Wróć do miejsca przerwania"],
+    "eAYJMv": ["token"],
     "eBGWcy": [
       "Narzędzia Open Knowledge są niedostępne, ponieważ folder projektu jest nieobecny, niedostępny lub się zmienił. Sprawdź jego lokalizację i uprawnienia, a następnie spróbuj ponownie."
     ],
@@ -5097,6 +5117,7 @@
     "jZ_E5M": ["Pobieranie nie powiodło się — sprawdź logi serwera, aby poznać szczegóły."],
     "j_Z6g7": ["Domyślnie współdzielone"],
     "jbSG8V": ["Pokaż pliki (", ["sidebarShortcutLabel"], ")"],
+    "jbhCDS": ["Inne hosty Git"],
     "jcEoUi": ["Przenieś do prawego panelu"],
     "jdGUeI": ["Nie udało się utworzyć szablonu: ", ["error"]],
     "jeCFV7": ["Przenieś do nowego panelu po prawej"],
@@ -5761,6 +5782,9 @@
       ]
     ],
     "pd0UH2": ["Wyrównaj do prawej"],
+    "pd6t3G": [
+      "Zarządzaj kontami i tokenami dostępowymi, których OpenKnowledge używa do łączenia się z Twoimi hostami git."
+    ],
     "peq20S": [
       "Przeglądarka nie jest dostępna w tym czacie, ponieważ nie udało się jej uruchomić. Szczegóły znajdziesz w logu OpenKnowledge."
     ],
@@ -5897,6 +5921,7 @@
     "qi17kj": ["Osadź żywą migawkę tablicy .excalidraw z tego obszaru roboczego."],
     "qi1F96": ["Pokaż w Eksploratorze plików"],
     "qiRoLb": ["Podsumuj wszystko, co zmieniłem w tym tygodniu"],
+    "qimTXH": ["OpenKnowledge nie może zalogować się do GitHub dla tego projektu."],
     "qioCwA": ["Przejdź do strony ", ["pageNumber"]],
     "qjHMHf": ["Nie udało się wyłączyć synchronizacji — ", ["detail"]],
     "qkqG0b": ["Przyjmij wersję nadrzędną"],
@@ -5964,6 +5989,9 @@
     "rVxu1k": ["Żadna strona nie linkuje jeszcze tutaj."],
     "rXz97P": ["Lista numerowana elementów."],
     "rZ9HZq": ["Do zrobienia"],
+    "rZFxkH": [
+      "Wpisz nazwę hosta, z którym łączy się git, z opcjonalnym :port, bez schematu i ścieżki, na przykład git.example.com."
+    ],
     "rZVMkf": ["Aktywne pole zamiany w edytorze wizualnym"],
     "radOpL": ["Obraz ", ["identity"], ". Przejdź do odnośnika."],
     "rageVb": ["Niestandardowy HTML z panelem podglądu na żywo (izolowany iframe)."],
@@ -6197,6 +6225,9 @@
     "tlGXxX": ["Auto (tylko Pull)"],
     "tnG-m6": ["Synchronizacja automatyczna jest wstrzymana — zaloguj się, aby wznowić."],
     "toyw51": ["Sterowanie diagramem Mermaid"],
+    "tpOnU9": [
+      "OpenKnowledge nie ma zapisanych danych logowania dla tego hosta. Dodaj token w Ustawieniach albo pozwól git użyć danych logowania, które już ma."
+    ],
     "tqQBwN": ["Wszystkie skrypty są wyświetlane do przeglądu i nigdy nie są uruchamiane."],
     "troubleshooting.claude-desktop.per-tool-approval": [
       ["agent"],
@@ -6389,6 +6420,7 @@
       ]
     ],
     "ur2XSb": ["Edytor wizualny"],
+    "uraHF0": ["GitLab"],
     "uuoHOU": ["Polecenie nie powiodło się."],
     "uwzRx4": [
       "Dostosuj rozmiar żądania indeksowania i limit czasu dla wolnych serwerów embeddingów lub o ograniczonej pamięci. W większości konfiguracji warto zostawić ustawienia domyślne."
@@ -6540,6 +6572,9 @@
     "vy_VIN": [
       "Śledzone w gicie — aktualizacje docierają przez Twoje repozytorium (pull lub CI), nie przez automatyczną aktualizację"
     ],
+    "w-Wt3H": [
+      "Aby kontynuować synchronizację, wymagane jest ponowne połączenie. Sprawdź klucz SSH lub zapisane dane logowania, których git używa dla tego hosta."
+    ],
     "w0YVAE": ["Pokazuj węzły umiejętności"],
     "w3tVpc": ["Brak linków. Dodaj linki wiki lub linki markdown, aby zbudować graf."],
     "w3vFfL": ["Ukryj pliki"],
@@ -6666,7 +6701,6 @@
     "x57cJf": ["Otwórz link"],
     "xAlHfe": [["basename"], " — edytor tekstowy"],
     "xBFg6z": ["Z wtyczki ", ["0"]],
-    "xBjIs7": ["Logowanie do GitHub nie jest dostępne dla tego projektu"],
     "xCJdfg": ["Wyczyść"],
     "xCdTnb": ["Zamknij nową kartę"],
     "xD4Xm2": ["Pobierz"],
@@ -6678,6 +6712,9 @@
     "xG4tb6": ["Utracono połączenie z „", ["docName"], "”."],
     "xG8Ish": ["Niezaplanowane"],
     "xHGM4U": ["Ukryj podgląd HTML"],
+    "xJ7qrb": [
+      "Dla tego hosta git nie zapisano danych logowania. Dodaj token w Ustawieniach albo pozwól git użyć danych logowania, które już ma."
+    ],
     "xK291b": ["Dwustronicowe (nieparzyste)"],
     "xKDsGS": ["Przejdź do linii ", ["0"], " w ", ["1"]],
     "xKcXG6": [
@@ -6794,6 +6831,7 @@
     "yLwx9e": [
       "Katalog nadrzędny jest dowiązaniem symbolicznym — odłącz sam folder, aby odzyskać ten."
     ],
+    "yLyiQV": ["Zapisany token nie ma uprawnień, których ten host wymaga do wypychania zmian."],
     "yMgL_E": ["Nawigacja w polu wyszukiwania"],
     "yOjRUV": ["Nie wykryto narzędzi AI. Zainstaluj jedno, aby używać tej umiejętności."],
     "yQE2r9": ["Ładowanie"],
@@ -6921,6 +6959,7 @@
     "zLak8b": ["Aktywuj nową kartę"],
     "zMmwh4": ["Wybierz motyw lub stwórz własny."],
     "zWZBPx": ["Typ się zmienił"],
+    "zXZJoN": ["Dodaj token"],
     "zXj1rA": ["Szukaj według znaczenia"],
     "zYp8Sr": [
       "Znacznik <0>Zmodyfikowane</0> oznacza reguły, które twoja konfiguracja ustawia jawnie — bezpośrednio lub przez dziedziczenie w <1>extends</1>. Reguły bez znacznika zachowują swój stan domyślny."

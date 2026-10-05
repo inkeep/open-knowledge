@@ -4,11 +4,14 @@ import { join, relative, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   branchExistsOnOrigin,
+  createSyncCredentialConfigResolver,
   parseGitHubOriginUrl,
   readDeclaredGitHubHosts,
   readGitHeadBranch,
+  readOriginCredentialHost,
   readOriginGitHubRepo,
   readSyncRemoteInfo,
+  resolveAmbientCredentialReset,
   resolveGitHubAuthHost,
   sameGitHubLogin,
   shouldResetAmbientCredentials,
@@ -577,6 +580,155 @@ describe('shouldResetAmbientCredentials', () => {
   });
 });
 
+describe('resolveAmbientCredentialReset', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'share-git-reset-token-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function storeWith(...hosts: string[]) {
+    const asked: string[] = [];
+    return {
+      asked,
+      store: {
+        async get(host: string) {
+          asked.push(host);
+          return hosts.includes(host) ? { login: 'alice', token: 'tok' } : null;
+        },
+      },
+    };
+  }
+
+  test('a non-GitHub origin with a stored token resets, so a stale ambient credential cannot win', async () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://Git.Corp.example:8443/team/kb.git\n',
+    });
+    const { store, asked } = storeWith('git.corp.example:8443');
+    expect(await resolveAmbientCredentialReset(dir, store)).toBe(true);
+    expect(asked).toEqual(['git.corp.example:8443']);
+  });
+
+  test('a plain http origin with a stored token keeps the ambient chain the helper cannot replace', async () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = http://git.corp.example/team/kb.git\n',
+    });
+    expect(await resolveAmbientCredentialReset(dir, storeWith('git.corp.example').store)).toBe(
+      false,
+    );
+  });
+
+  test('a non-GitHub origin with nothing stored keeps the ambient chain', async () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://gitlab.com/team/notes.git\n',
+    });
+    expect(await resolveAmbientCredentialReset(dir, storeWith().store)).toBe(false);
+  });
+
+  test('a non-GitHub origin with no token store keeps the ambient chain', async () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://gitlab.com/team/notes.git\n',
+    });
+    expect(await resolveAmbientCredentialReset(dir, null)).toBe(false);
+  });
+
+  test('a token store that throws surfaces the failure instead of choosing a chain', async () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://gitlab.com/team/notes.git\n',
+    });
+    const store = {
+      async get(): Promise<never> {
+        throw new Error('keychain locked');
+      },
+    };
+    await expect(resolveAmbientCredentialReset(dir, store)).rejects.toThrow('keychain locked');
+  });
+
+  test('a declared GitHub Enterprise origin over plain http keeps the ambient chain', async () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = http://ghes.corp.example/team/kb.git\n',
+    });
+    const declared = new Set(['ghes.corp.example']);
+    expect(await resolveAmbientCredentialReset(dir, storeWith().store, declared)).toBe(false);
+    const resolve = createSyncCredentialConfigResolver({
+      projectDir: dir,
+      tokenStore: storeWith().store,
+      localOpCliArgs: ['ok'],
+      declaredGitHubHosts: declared,
+    });
+    expect(await resolve()).not.toContain('credential.helper=');
+  });
+
+  test('a declared GitHub Enterprise origin over https still resets the ambient chain', async () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://ghes.corp.example/team/kb.git\n',
+    });
+    const declared = new Set(['ghes.corp.example']);
+    expect(await resolveAmbientCredentialReset(dir, storeWith().store, declared)).toBe(true);
+  });
+
+  test('a failed lookup keeps the chain the resolver already chose', async () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://gitlab.com/team/notes.git\n',
+    });
+    let fail = false;
+    const store = {
+      async get(host: string) {
+        if (fail) throw new Error('keychain locked');
+        return host === 'gitlab.com' ? { login: 'oauth2', token: 'tok' } : null;
+      },
+    };
+    const resolve = createSyncCredentialConfigResolver({
+      projectDir: dir,
+      tokenStore: store,
+      localOpCliArgs: ['ok'],
+      declaredGitHubHosts: new Set(),
+    });
+    const first = await resolve();
+    expect(first).toContain('credential.helper=');
+    fail = true;
+    expect(await resolve()).toEqual(first);
+    expect(await resolve()).toEqual(first);
+  });
+
+  test('a lookup that fails before any chain was chosen falls back to the ambient chain', async () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://gitlab.com/team/notes.git\n',
+    });
+    const resolve = createSyncCredentialConfigResolver({
+      projectDir: dir,
+      tokenStore: {
+        async get(): Promise<never> {
+          throw new Error('keychain locked');
+        },
+      },
+      localOpCliArgs: ['ok'],
+      declaredGitHubHosts: new Set(),
+    });
+    expect(await resolve()).not.toContain('credential.helper=');
+  });
+
+  test('a GitHub origin resets without reading the token store', async () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://github.com/inkeep/open-knowledge.git\n',
+    });
+    const { store, asked } = storeWith();
+    expect(await resolveAmbientCredentialReset(dir, store)).toBe(true);
+    expect(asked).toEqual([]);
+  });
+
+  test('readOriginCredentialHost keeps a non-default port and drops the case', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://Git.Corp.example:8443/group/sub/kb.git\n',
+    });
+    expect(readOriginCredentialHost(dir)).toBe('git.corp.example:8443');
+  });
+});
+
 describe('branchExistsOnOrigin', () => {
   let dir: string;
 
@@ -653,6 +805,7 @@ describe('readSyncRemoteInfo', () => {
     expect(readSyncRemoteInfo(dir)).toEqual({
       label: 'inkeep/open-knowledge',
       webUrl: 'https://github.com/inkeep/open-knowledge',
+      transport: 'https',
     });
   });
 
@@ -663,6 +816,7 @@ describe('readSyncRemoteInfo', () => {
     expect(readSyncRemoteInfo(dir)).toEqual({
       label: 'inkeep/open-knowledge',
       webUrl: 'https://github.com/inkeep/open-knowledge',
+      transport: 'ssh',
     });
   });
 
@@ -674,6 +828,7 @@ describe('readSyncRemoteInfo', () => {
     expect(readSyncRemoteInfo(dir)).toEqual({
       label: 'ghes.acme.test/team/notes',
       webUrl: 'https://ghes.acme.test/team/notes',
+      transport: 'https',
     });
   });
 
@@ -685,6 +840,7 @@ describe('readSyncRemoteInfo', () => {
     expect(readSyncRemoteInfo(dir)).toEqual({
       label: 'ghes.corp.example/org/repo',
       webUrl: 'https://ghes.corp.example/org/repo',
+      transport: 'https',
     });
   });
 
@@ -695,19 +851,39 @@ describe('readSyncRemoteInfo', () => {
     expect(readSyncRemoteInfo(dir)).toEqual({
       label: 'gitlab.com/team/notes',
       webUrl: null,
+      transport: 'https',
+    });
+  });
+
+  test('a plain http origin reports the http transport, distinct from https', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = http://git.corp.example/team/notes.git\n',
+    });
+    expect(readSyncRemoteInfo(dir)).toEqual({
+      label: 'git.corp.example/team/notes',
+      webUrl: null,
+      transport: 'http',
     });
   });
 
   test('non-github scp-style ssh origin strips credentials into host/path label', () => {
     seedRepo(dir, { config: '[remote "origin"]\n\turl = git@gitlab.com:team/notes.git\n' });
-    expect(readSyncRemoteInfo(dir)).toEqual({ label: 'gitlab.com/team/notes', webUrl: null });
+    expect(readSyncRemoteInfo(dir)).toEqual({
+      label: 'gitlab.com/team/notes',
+      webUrl: null,
+      transport: 'ssh',
+    });
   });
 
   test('non-github https origin with embedded credentials (incl. @ in password) leaks none', () => {
     seedRepo(dir, {
       config: '[remote "origin"]\n\turl = https://user:p@ss@gitlab.com/org/repo.git\n',
     });
-    expect(readSyncRemoteInfo(dir)).toEqual({ label: 'gitlab.com/org/repo', webUrl: null });
+    expect(readSyncRemoteInfo(dir)).toEqual({
+      label: 'gitlab.com/org/repo',
+      webUrl: null,
+      transport: 'https',
+    });
   });
 
   test('returns null when no origin url is configured', () => {
@@ -763,6 +939,7 @@ describe('linked-worktree common-dir resolution', () => {
     expect(readSyncRemoteInfo(project)).toEqual({
       label: 'inkeep/open-knowledge',
       webUrl: 'https://github.com/inkeep/open-knowledge',
+      transport: 'https',
     });
   });
 
@@ -857,6 +1034,7 @@ describe('git host declaration gates GitHub treatment', () => {
     expect(readSyncRemoteInfo(dir)).toEqual({
       label: 'git.example.internal/team/kb',
       webUrl: 'https://git.example.internal/team/kb',
+      transport: 'https',
     });
   });
 
@@ -872,6 +1050,14 @@ describe('git host declaration gates GitHub treatment', () => {
       config: '[remote "origin"]\n\turl = ssh://git@git.example.internal/team/kb.git\n',
     });
     expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github', host: 'git.example.internal' });
+    expect(readSyncRemoteInfo(dir)?.transport).toBe('ssh');
+  });
+
+  test('an origin the parser cannot read still reports its transport', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://git.example.com/scm/team/sub/wiki.git\n',
+    });
+    expect(readSyncRemoteInfo(dir)).toMatchObject({ webUrl: null, transport: 'https' });
   });
 
   test.each(['gitlab.com', 'bitbucket.org', 'codeberg.org', 'gitea.com', 'sr.ht', 'sourcehut.org'])(

@@ -406,3 +406,29 @@ describe('redactSecrets', () => {
     expect(result.lineCount).toBe(1);
   });
 });
+
+describe('git host token prefixes', () => {
+  it('masks a Bitbucket/Atlassian API token', () => {
+    const token = 'ATATT3xFfGF0abcdefghij0123456789KLMNOPQR=';
+    const out = scrubSecrets(`password=${token}`);
+    expect(out).not.toContain(token);
+    expect(out).toContain('[REDACTED-ATLASSIAN]');
+  });
+
+  it.each([
+    [
+      'a Bitbucket repository or workspace access token',
+      'ATCTT3xFfGN0abcdefghij0123456789KLMNOPQR=',
+    ],
+    ['a Bitbucket app password', 'ATBB3xFfGF0abcdefghij0123456789KLMNOPQR'],
+  ])('masks %s', (_label, token) => {
+    const out = scrubSecrets(`password=${token}`);
+    expect(out).not.toContain(token);
+    expect(out).toContain('[REDACTED-ATLASSIAN]');
+  });
+
+  it('leaves a bare 40-char hex Gitea token alone because it is shaped like a commit sha', () => {
+    const giteaToken = 'a'.repeat(40);
+    expect(scrubSecrets(`token ${giteaToken}`)).toContain(giteaToken);
+  });
+});

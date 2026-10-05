@@ -7,7 +7,7 @@
     "assets-and-embeds",
     "ignore-patterns",
     "timeline-and-recovery",
-    "github-sync",
+    "git",
     "share",
     "agent-activity",
     "skills"

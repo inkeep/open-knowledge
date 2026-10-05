@@ -1548,6 +1548,10 @@ msgstr "<0>{trimmedSlug}</0>이라는 템플릿이 이미 있습니다. 저장�
 msgid "A title, description, tags — anything that describes this folder."
 msgstr "이 폴더를 설명하는 제목, 설명, 태그 등입니다."
 
+#: src/components/settings/AccountSection.tsx
+msgid "A token added here only applies to HTTPS remotes, and this project's remote doesn't use HTTPS."
+msgstr "여기에 추가한 토큰은 HTTPS 원격 저장소에만 적용되며, 이 프로젝트의 원격 저장소는 HTTPS를 사용하지 않습니다."
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "{shareBranch}용 워크트리 폴더가 이미 있습니다."
@@ -1600,9 +1604,8 @@ msgid "Accept their deletion"
 msgstr "삭제를 수락"
 
 #: src/components/settings/AccountSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-msgid "Account"
-msgstr "계정"
+msgid "Access token"
+msgstr "액세스 토큰"
 
 #: src/components/TemplateRow.tsx
 msgid "Actions for {label}"
@@ -1680,6 +1683,10 @@ msgstr "속성 추가"
 #: src/components/empty-state/CreateView.tsx
 msgid "Add a starter pack"
 msgstr "스타터 팩 추가"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Add an access token for a GitLab, Gitea, Bitbucket, Azure DevOps or self-hosted git server. Without one, git uses the credentials it already has saved for that host; with one, OpenKnowledge uses the token instead."
+msgstr "GitLab, Gitea, Bitbucket, Azure DevOps 또는 자체 호스팅 git 서버용 액세스 토큰을 추가합니다. 토큰이 없으면 git은 해당 호스트에 이미 저장된 자격 증명을 사용하고, 토큰이 있으면 OpenKnowledge가 대신 토큰을 사용합니다."
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Add another pattern"
@@ -1810,6 +1817,12 @@ msgstr "사전에 추가"
 msgid "Add to prompt"
 msgstr "프롬프트에 추가"
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/SyncStatusBadge.tsx
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "Add token"
+msgstr "토큰 추가"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "값 추가"
@@ -1819,6 +1832,10 @@ msgstr "값 추가"
 #: src/components/SyncStatusBadge.tsx
 msgid "Added"
 msgstr "추가됨"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Adding"
+msgstr "추가 중"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Adds a global OpenKnowledge MCP entry for this agent."
@@ -2335,6 +2352,10 @@ msgstr "첨부 파일 총 용량은 3MB 미만이어야 합니다."
 msgid "Authenticated as {login}."
 msgstr "{login}(으)로 인증되었습니다."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authentication failed for this git host. Add a token for it in Settings, or replace the one stored."
+msgstr "이 git 호스트에 대한 인증에 실패했습니다. 설정에서 이 호스트의 토큰을 추가하거나 저장된 토큰을 교체하세요."
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr "기준 콘텐츠이며, 참조되는 모든 곳에 그대로 미러링됩니다."
@@ -2535,6 +2556,11 @@ msgstr "큰 섹션 제목입니다."
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Bird wiki"
 msgstr "조류 위키"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "Bitbucket"
+msgstr "Bitbucket"
 
 #: src/components/NewItemDialog.tsx
 msgid "Blank note"
@@ -3605,8 +3631,8 @@ msgid "Connect"
 msgstr "연결"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Connect a GitHub account to browse and sync your repositories."
-msgstr "GitHub 계정을 연결하면 저장소를 찾아보고 동기화할 수 있습니다."
+msgid "Connect a GitHub account to browse and publish GitHub repositories."
+msgstr "GitHub 저장소를 찾아보고 게시하려면 GitHub 계정을 연결하세요."
 
 #: src/components/settings/SyncSection.tsx
 msgid "Connect an existing repository"
@@ -3698,6 +3724,7 @@ msgid "Connection dropped"
 msgstr "연결 끊김"
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 #: src/lib/transports/auth-transport.ts
 msgid "Connection error — try again"
 msgstr "연결 오류. 다시 시도하세요."
@@ -5937,6 +5964,10 @@ msgstr "{minimum}에서 {maximum} 사이의 정수를 입력하세요."
 msgid "Enter at least 3 characters to search by meaning."
 msgstr "의미로 검색하려면 3자 이상 입력하세요."
 
+#: src/components/settings/AccountSection.tsx
+msgid "Enter the host name git connects to, with an optional :port and no scheme or path, for example git.example.com."
+msgstr "git이 연결하는 호스트 이름을 입력하세요. :port는 선택 사항이며 스킴이나 경로는 넣지 마세요. 예: git.example.com."
+
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "터널이 제공하는 공개 오리진을 입력하세요. 예: https://notes.example.com"
@@ -6412,6 +6443,7 @@ msgid "Failed to start sign-in — try again"
 msgstr "로그인을 시작하지 못했습니다. 다시 시도하세요"
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 #: src/lib/transports/auth-transport.ts
 msgid "Failed to store the token — try again"
 msgstr "토큰 저장 실패. 다시 시도하세요."
@@ -6885,6 +6917,11 @@ msgctxt "settings search keyword"
 msgid "GHES"
 msgstr "GHES"
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Git"
+msgstr "Git"
+
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
 msgstr "Git 및 PR"
@@ -6892,6 +6929,10 @@ msgstr "Git 및 PR"
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git이 이 폴더를 추적할 수 없습니다. 비어 있거나 무시된 파일만 포함되어 있습니다. 추적할 문서를 추가해야 링크가 작동합니다."
+
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "Git couldn't authenticate with this host. Check the SSH key or saved credentials git uses for it."
+msgstr "git이 이 호스트에 인증하지 못했습니다. git이 이 호스트에 사용하는 SSH 키나 저장된 자격 증명을 확인하세요."
 
 #: src/components/RecentProjectsMenu.tsx
 msgid "Git has locked this worktree, but it can still be opened."
@@ -6952,10 +6993,6 @@ msgstr "GitHub Enterprise Server 호스트"
 msgid "GitHub sign-in is missing or expired. Reconnect to resume syncing."
 msgstr "GitHub 로그인이 없거나 만료되었습니다. 동기화를 계속하려면 다시 연결하세요."
 
-#: src/components/settings/AccountSection.tsx
-msgid "GitHub sign-in isn't available for this project"
-msgstr "이 프로젝트에서는 GitHub 로그인을 사용할 수 없습니다"
-
 #: src/components/ImportSkillForm.tsx
 msgid "GitHub, a git URL, or a local path."
 msgstr "GitHub, git URL 또는 로컬 경로입니다."
@@ -6963,6 +7000,11 @@ msgstr "GitHub, git URL 또는 로컬 경로입니다."
 #: src/components/settings/EnterpriseHostsSection.tsx
 msgid "github.com is always recognized, so it doesn't need to be added."
 msgstr "github.com은 항상 인식되므로 추가할 필요가 없습니다."
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GitLab"
+msgstr "GitLab"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Give it a name before editing its colors."
@@ -7317,6 +7359,10 @@ msgstr "가로 필 스트립과 아래의 활성 패널입니다. 필을 클릭�
 #: src/editor/slash-command/items.tsx
 msgid "Horizontal rule that divides sections."
 msgstr "섹션을 나누는 가로줄입니다."
+
+#: src/components/settings/AccountSection.tsx
+msgid "Host"
+msgstr "호스트"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Hosting is on. The server is running on port {boundPort}. Reach it through your tunnel."
@@ -8611,8 +8657,8 @@ msgid "Manage skill folders"
 msgstr "스킬 폴더 관리"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Manage the GitHub account OpenKnowledge uses to browse and sync your repositories."
-msgstr "OpenKnowledge가 저장소를 탐색하고 동기화할 때 사용하는 GitHub 계정을 관리합니다."
+msgid "Manage the accounts and access tokens OpenKnowledge uses to connect to your git hosts."
+msgstr "OpenKnowledge가 git 호스트에 연결할 때 사용하는 계정과 액세스 토큰을 관리합니다."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
@@ -9441,6 +9487,10 @@ msgstr "이 버전에서 내용 변경 없음."
 #: src/components/TimelineDiffPane.tsx
 msgid "No content changes in this version"
 msgstr "이 버전에는 콘텐츠 변경 없음"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "No credential is stored for this git host. Add a token in Settings, or let git use the credentials it already has."
+msgstr "이 git 호스트에 저장된 자격 증명이 없습니다. 설정에서 토큰을 추가하거나, git이 이미 가지고 있는 자격 증명을 사용하도록 두세요."
 
 #: src/components/GraphPanel.tsx
 msgid "No disconnected pages. Pages appear here only when they have no incoming and no outgoing graph edges."
@@ -10394,6 +10444,10 @@ msgstr "여는 중…"
 msgid "OpenKnowledge"
 msgstr "OpenKnowledge"
 
+#: src/components/AuthModal.tsx
+msgid "OpenKnowledge can't sign in to GitHub for this project."
+msgstr "OpenKnowledge는 이 프로젝트에서 GitHub에 로그인할 수 없습니다."
+
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked {subject}"
 msgstr "OpenKnowledge에서 {subject} 확인"
@@ -10405,10 +10459,6 @@ msgstr "OpenKnowledge에서 프로젝트 확인"
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge가 이 컴퓨터에서 이 에이전트를 찾지 못했습니다."
-
-#: src/components/settings/AccountSection.tsx
-msgid "OpenKnowledge couldn't find a host name in this project's git remote, so it can't tell which GitHub server to sign in to."
-msgstr "OpenKnowledge가 이 프로젝트의 git 원격 주소에서 호스트 이름을 찾지 못해 어느 GitHub 서버에 로그인해야 할지 알 수 없습니다."
 
 #: src/lib/worktree-create-error.ts
 msgid "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
@@ -10465,6 +10515,10 @@ msgstr "OpenKnowledge에서 문서 편집"
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "OpenKnowledge files were removed"
 msgstr "OpenKnowledge 파일을 제거했습니다"
+
+#: src/hooks/use-sync-auth-prompt.ts
+msgid "OpenKnowledge has no credential stored for this host. Add a token in Settings, or let git use the credentials it already has."
+msgstr "OpenKnowledge에 이 호스트용으로 저장된 자격 증명이 없습니다. 설정에서 토큰을 추가하거나, git이 이미 가지고 있는 자격 증명을 사용하도록 두세요."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge imported {source}"
@@ -10693,6 +10747,11 @@ msgstr "기타"
 #: src/components/FeedbackForm.tsx
 msgid "Other"
 msgstr "기타"
+
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Other Git hosts"
+msgstr "기타 Git 호스트"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Other OK paths are tracked upstream:"
@@ -11627,6 +11686,14 @@ msgstr "다시 연결 필요"
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required to keep syncing."
 msgstr "계속 동기화하려면 다시 연결해야 합니다."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing. Add a token for this host in Settings, or replace the one stored."
+msgstr "계속 동기화하려면 다시 연결해야 합니다. 설정에서 이 호스트의 토큰을 추가하거나 저장된 토큰을 교체하세요."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing. Check the SSH key or saved credentials git uses for this host."
+msgstr "계속 동기화하려면 다시 연결해야 합니다. git이 이 호스트에 사용하는 SSH 키나 저장된 자격 증명을 확인하세요."
 
 #: src/presence/use-sync-toasts.ts
 msgid "Reconnected"
@@ -14819,6 +14886,10 @@ msgstr "스킬 목록이 스키마와 일치하지 않습니다."
 msgid "The source folder itself does not move."
 msgstr "소스 폴더 자체는 이동하지 않습니다."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "The stored token is missing the permissions this host needs to push."
+msgstr "저장된 토큰에 이 호스트가 푸시하는 데 필요한 권한이 없습니다."
+
 #: src/components/TemplateProperties.tsx
 msgid "The template's filename (without `.md`)."
 msgstr "템플릿 파일 이름입니다(`.md` 제외)."
@@ -14876,6 +14947,10 @@ msgstr ".ok/local/config.yml의 terminal.shell 실행 파일을 찾을 수 없�
 #: src/components/AuthModal.tsx
 msgid "The token needs the repo and read:user scopes."
 msgstr "토큰에 repo 및 read:user 범위가 필요합니다."
+
+#: src/components/settings/AccountSection.tsx
+msgid "The username git sends with the token. Some hosts expect a fixed value: type <0>x-bitbucket-api-token-auth</0> for a Bitbucket API token, <1>x-token-auth</1> for a Bitbucket repository or workspace access token, or <2>oauth2</2> for GitLab. For Gitea, use your Gitea username. Azure DevOps accepts any value."
+msgstr "git이 토큰과 함께 보내는 사용자 이름입니다. 일부 호스트는 고정된 값을 요구합니다. Bitbucket API 토큰이면 <0>x-bitbucket-api-token-auth</0>, Bitbucket 저장소 또는 워크스페이스 액세스 토큰이면 <1>x-token-auth</1>, GitLab이면 <2>oauth2</2>를 입력하세요. Gitea는 Gitea 사용자 이름을 사용합니다. Azure DevOps는 아무 값이나 허용합니다."
 
 #: src/lib/tab-session-restore-recovery-notice.ts
 msgid "The workspace opened without it so the app could start."
@@ -15405,10 +15480,6 @@ msgstr "이 프로젝트는 git 저장소가 아니므로 워크트리를 사용
 msgid "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
 msgstr "이 프로젝트는 이 컴퓨터에만 있습니다. 백업하고 다른 사람과 공유하려면 GitHub에 연결합니다."
 
-#: src/components/settings/AccountSection.tsx
-msgid "This project's git remote is on {host}, which OpenKnowledge doesn't recognize as a GitHub host. If {host} runs GitHub Enterprise Server, add it to GitHub Enterprise Server hosts below, then restart OpenKnowledge."
-msgstr "이 프로젝트의 git 원격은 {host}에 있으며, OpenKnowledge는 이를 GitHub 호스트로 인식하지 않습니다. {host}이(가) GitHub Enterprise Server를 실행한다면 아래의 GitHub Enterprise Server 호스트에 추가한 다음 OpenKnowledge를 다시 시작하세요."
-
 #: src/components/DocumentErrorBoundary.tsx
 msgid "This project's running server doesn't support live editing. Restart OpenKnowledge to fix."
 msgstr "이 프로젝트에서 실행 중인 서버는 실시간 편집을 지원하지 않습니다. OpenKnowledge를 다시 시작하여 수정하세요."
@@ -15505,6 +15576,7 @@ msgid "This usually means one of:"
 msgstr "일반적으로 다음 중 하나입니다:"
 
 #: src/components/AuthModal.tsx
+#: src/components/settings/AccountSection.tsx
 msgid "This window can't store a token — open Settings from the main app window."
 msgstr "이 창에는 토큰을 저장할 수 없습니다. 기본 앱 창에서 설정을 여세요."
 
@@ -15657,6 +15729,15 @@ msgstr "밑줄 서식을 전환합니다."
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "Toggles the pattern {0}/**"
 msgstr "패턴 {0}/** 사용 설정 전환"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "token"
+msgstr "토큰"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Token stored for {login} on {host}. To remove it, run <0>ok auth signout --host {host}</0>."
+msgstr "{host}의 {login}에 대한 토큰이 저장되었습니다. 제거하려면 <0>ok auth signout --host {host}</0>을(를) 실행하세요."
 
 #: src/components/SkillBundlePreview.tsx
 #: src/components/SkillProperties.tsx
@@ -16243,6 +16324,10 @@ msgstr "사용자"
 #: src/components/settings/LintingSection.tsx
 msgid "User plugins are personal to this device — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
 msgstr "사용자 플러그인은 이 기기에만 적용됩니다. 여기에서 켜거나 끌 수 있습니다. 활성화된 각 플러그인은 설정 사이드바의 플러그인 아래에 전용 페이지가 생깁니다."
+
+#: src/components/settings/AccountSection.tsx
+msgid "Username"
+msgstr "사용자 이름"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."

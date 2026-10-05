@@ -25,6 +25,7 @@ export const SyncRemoteSchema = z
   .object({
     label: z.string().min(1),
     webUrl: z.url().nullable(),
+    transport: z.enum(['https', 'http', 'ssh', 'git']).optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type SyncRemoteWire = z.infer<typeof SyncRemoteSchema>;

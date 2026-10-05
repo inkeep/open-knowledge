@@ -17,6 +17,7 @@ import {
   formatDeniedIdentitySentences,
   formatSyncFailureCode,
   hasNotFoundAsIdentityError,
+  isGitHubRemote,
   isParkedOnNotFoundAsIdentity,
   PausedReasonNotice,
   SyncRefusedSymlinks,
@@ -169,7 +170,7 @@ function SyncSectionContent({
   const parkedOnNotFound = isParkedOnNotFoundAsIdentity(status);
   const pushDenialCoversPause = isPushDenied && status?.pausedReason !== 'unsafe-incoming-symlinks';
   const pausedNotice = !status?.pausedReason ? null : parkedOnNotFound ? (
-    formatSyncFailureCode('auth-not-found-as-identity')
+    formatSyncFailureCode('auth-not-found-as-identity', isGitHubRemote(status?.remote))
   ) : pushDenialCoversPause ? null : (
     <PausedReasonNotice reason={status.pausedReason} />
   );

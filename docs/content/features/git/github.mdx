@@ -1,0 +1,58 @@
+---
+title: GitHub
+icon: custom/GitHub
+description: Clone and publish GitHub repositories.
+---
+You can clone GitHub repositories and publish local projects to a GitHub remote directly from OpenKnowledge. To sign in and choose which GitHub account a project uses, see [Authentication](/docs/features/git/sync#authentication).
+
+## Clone an existing GitHub repository
+
+These steps use the desktop app; from a terminal, [`ok clone`](/docs/reference/cli#clone-from-github) does the same.
+
+<Steps>
+
+<Step>
+    ### Open the clone dialog
+
+    From the Navigator window, click **Clone from GitHub**. You can open the Navigator window from the editor by clicking on your project name in the bottom left and then clicking **Switch project**.
+</Step>
+
+<Step>
+    ### Sign in to GitHub
+
+    If you are already signed in with the GitHub CLI, OpenKnowledge will use those credentials by default. If not, click **Connect GitHub** and complete the device authentication flow.
+</Step>
+
+<Step>
+    ### Choose a repository
+
+    Paste a repository URL or `owner/repo` shorthand. You can also filter and select from a list of repositories your account can access.
+</Step>
+
+<Step>
+    ### Open the project
+
+    When the clone completes, the cloned project opens in a new editor window and the Navigator closes. Re-summon the Navigator from inside the editor via the sidebar Switch Project pill, the File menu, or the Command Palette.
+</Step>
+</Steps>
+
+## Publish a local project to GitHub
+
+You can publish your local project to GitHub directly from the OpenKnowledge app by opening a folder or file and clicking the **Share** button in the top right of the editor.
+
+This will open a dialog where you can choose an owner and repository name. You can also choose to make the repository public or private.
+
+## GitHub Enterprise Server
+
+For these features to work against a GitHub Enterprise Server, add the host under **Settings → Git → GitHub Enterprise Server hosts**, or declare it in your user configuration, `~/.ok/global.yml` (`~/.ok-beta/global.yml` in OpenKnowledge Beta), then restart OpenKnowledge:
+
+```yaml
+git:
+  hosts:
+    github.example.com:
+      provider: github
+```
+
+The declaration applies to every project on your machine. It enables GitHub credential handling, push-permission checks, share links, and the default host for `ok auth`. Without a declaration, OpenKnowledge treats the host as ordinary git, preserves your system git credentials unless you store a token for an `https:` remote on that host (see [Git sync](/docs/features/git/sync)), and refuses sharing and project GitHub sign-in requests.
+
+[Share links](/docs/features/share) work with declared enterprise remotes. A recipient opening a GHES share is asked to confirm the server unless they are already signed in to it.

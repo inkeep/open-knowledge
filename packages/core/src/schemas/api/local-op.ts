@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
+import { isGitCredentialHost } from '../../constants/github.ts';
 
 export const LocalOpOkInitRequestSchema = z
   .object({
@@ -53,6 +54,25 @@ export const LocalOpAuthPatSuccessSchema = z
   })
   .loose() satisfies StandardSchemaV1;
 export type LocalOpAuthPatSuccess = z.infer<typeof LocalOpAuthPatSuccessSchema>;
+
+export const LocalOpAuthTokenRequestSchema = z
+  .object({
+    host: z.string().refine(isGitCredentialHost, {
+      message: 'Host must be a hostname with an optional :port, with no scheme or path',
+    }),
+    username: z.string().min(1),
+    token: z.string().min(1),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalOpAuthTokenRequest = z.infer<typeof LocalOpAuthTokenRequestSchema>;
+
+export const LocalOpAuthTokenSuccessSchema = z
+  .object({
+    host: z.string(),
+    login: z.string(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalOpAuthTokenSuccess = z.infer<typeof LocalOpAuthTokenSuccessSchema>;
 
 export const LocalOpEmbeddingsSetKeyRequestSchema = z
   .object({
