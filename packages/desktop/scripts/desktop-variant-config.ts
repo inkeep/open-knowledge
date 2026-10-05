@@ -109,7 +109,7 @@ export function createVariantBuilderConfig(
   }));
   config.mac.icon = variant.name === 'stable' ? config.mac.icon : variant.iconPath;
   config.mac.artifactName = `${variant.artifactName}-\${version}-\${arch}-mac.\${ext}`;
-  config.win.icon = variant.iconPath;
+  config.win.icon = variant.windowsIconPath;
   config.linux.icon = variant.iconPath;
   config.dmg.artifactName = `${variant.artifactName}-\${arch}.\${ext}`;
   config.nsis.artifactName = `${variant.artifactName}-Setup-\${arch}.\${ext}`;

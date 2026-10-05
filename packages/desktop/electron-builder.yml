@@ -386,9 +386,7 @@ dmg:
   iconSize: 100
 
 win:
-  # electron-builder converts the 1024px PNG to the multi-size .ico via
-  # app-builder at package time — no committed .ico needed.
-  icon: build/icon.png
+  icon: build/icon.ico
   # Per-arch NSIS installers (see `nsis.buildUniversalInstaller: false`).
   # electron-updater on Windows supports NSIS only; MSI is Future Work.
   target:
