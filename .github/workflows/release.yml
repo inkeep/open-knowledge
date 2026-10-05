@@ -768,17 +768,26 @@ jobs:
           fi
           TARBALL="${tarballs[0]}"
           pacote="$(npm root -g)/npm/node_modules/pacote"
-          if ! manifest=$(node -e '
-            require(process.argv[1])
-              .manifest("file:" + process.argv[2], { fullMetadata: true, fullReadJson: true })
-              .then(
-                (manifest) => process.stdout.write(JSON.stringify(manifest)),
-                (error) => {
-                  process.stderr.write(JSON.stringify(String(error && error.message)) + "\n");
-                  process.exit(1);
-                },
-              )
-          ' "$pacote" "$TARBALL"); then
+          read_status=0
+          manifest=$(node -e '
+            const fail = (status) => (error) => {
+              process.stderr.write(JSON.stringify(String(error && error.message)) + "\n");
+              process.exit(status);
+            };
+            let reading;
+            try {
+              reading = require(process.argv[1])
+                .manifest("file:" + process.argv[2], { fullMetadata: true, fullReadJson: true });
+            } catch (error) {
+              fail(2)(error);
+            }
+            reading.then((manifest) => process.stdout.write(JSON.stringify(manifest)), fail(1));
+          ' "$pacote" "$TARBALL") || read_status=$?
+          if (( read_status == 2 )); then
+            echo "::error::npm's pacote did not load from ${pacote}, or threw before opening the tarball; its reason is printed above, JSON-encoded. Refusing to publish."
+            exit 1
+          fi
+          if (( read_status != 0 )); then
             echo "::error::npm cannot read the packed tarball's manifest; its reason is printed above, JSON-encoded. Refusing to publish."
             exit 1
           fi

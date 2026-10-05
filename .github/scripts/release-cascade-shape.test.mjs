@@ -2317,7 +2317,7 @@ describe('the release App credential never shares a job with installed packages'
       };
       const tgz = (...blocks) => gzipSync(Buffer.concat([...blocks, ZERO_BLOCK, ZERO_BLOCK]));
       let cases = 0;
-      const publishWith = ({ tarballs, action = '', beta = '0.82.0-beta.9', stable = '', view = '' }) => {
+      const publishWith = ({ tarballs, action = '', beta = '0.82.0-beta.9', stable = '', view = '', globalRoot = nodeGlobalRoot }) => {
         cases += 1;
         const dir = join(root, `case-${cases}`);
         const packageDir = join(dir, 'npm-package');
@@ -2346,7 +2346,7 @@ describe('the release App credential never shares a job with installed packages'
           PACKAGE_DIR: packageDir,
           NPM_LOG: log,
           NPM_VIEW: view,
-          NPM_GLOBAL_ROOT: nodeGlobalRoot,
+          NPM_GLOBAL_ROOT: globalRoot,
           HTTPS_PROXY: 'http://127.0.0.1:9',
           HTTP_PROXY: 'http://127.0.0.1:9',
           https_proxy: 'http://127.0.0.1:9',
@@ -2362,6 +2362,37 @@ describe('the release App credential never shares a job with installed packages'
         expect(existsSync(join(nodeGlobalRoot, 'npm', 'node_modules', 'pacote', 'package.json'))).toBe(true);
         expect(commands(publishStep())).toContain('pacote="$(npm root -g)/npm/node_modules/pacote"');
         expect(commands(publishStep())).not.toMatch(/\btar\s/);
+      });
+
+      test('a pacote that does not load from the computed path is named by that path, and the tarball is not blamed', () => {
+        const globalRoot = join(root, 'no-pacote');
+        mkdirSync(globalRoot);
+        const pacote = join(globalRoot, 'npm', 'node_modules', 'pacote');
+        const result = publishWith({ tarballs: [cli('0.82.0-beta.9')], globalRoot });
+        expect(result.status).toBe(1);
+        expect(result.publishes).toEqual([]);
+        const lines = `${result.stdout}\n${result.stderr}`.split('\n');
+        expect(lines.filter((line) => line.startsWith('::error::'))).toEqual([expect.stringContaining(pacote)]);
+        expect(lines.filter((line) => line.includes('packed tarball'))).toEqual([]);
+        expect(result.stderr).toContain(`"Cannot find module '${pacote}'`);
+      });
+
+      test('a tarball pacote loads but cannot read gets the tarball message, not the pacote one', () => {
+        const result = publishWith({ tarballs: [Buffer.from('not a gzip tarball\n')] });
+        expect(result.status).toBe(1);
+        expect(result.publishes).toEqual([]);
+        const lines = `${result.stdout}\n${result.stderr}`.split('\n');
+        expect(lines.filter((line) => line.startsWith('::error::'))).toEqual([
+          "::error::npm cannot read the packed tarball's manifest; its reason is printed above, JSON-encoded. Refusing to publish.",
+        ]);
+        const reasons = result.stderr.split('\n').filter((line) => {
+          try {
+            return typeof JSON.parse(line) === 'string';
+          } catch {
+            return false;
+          }
+        });
+        expect(reasons).toHaveLength(1);
       });
 
       test('the step passes provenance and the registry as CLI flags, which publishConfig cannot override, and names the package it checks', () => {
