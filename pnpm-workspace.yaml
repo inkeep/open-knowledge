@@ -95,12 +95,11 @@ overrides:
   #                       @excalidraw/mermaid-to-excalidraw pins it exactly at
   #                       4.0.2, and calls `nanoid()` with no arguments, so the
   #                       bad-`size` advisories were never reachable there)
-  #   sharp@0.34 -> 0.35 (0.34.5 is the final 0.34.x; consumer next declares
-  #                       ^0.34.5 as an optionalDependency. 0.35.0 is breaking:
-  #                       retuned lossy AVIF defaults, new limitInputChannels
-  #                       default, removed install script. It is next/image's
-  #                       optimizer on the docs site, so emitted image bytes can
-  #                       change even though no API does)
+  #   sharp@0.34 -> 0.35 (0.34.5 is the final 0.34.x. next has declared ^0.35
+  #                       itself since 16.3.0, so nothing resolves 0.34 today;
+  #                       the entry keeps a future 0.34 consumer off 0.34.5.
+  #                       0.35.0 is breaking: retuned lossy AVIF defaults, new
+  #                       limitInputChannels default, removed install script)
   #   esbuild@0.27 -> 0.28 (0.27.7 is the final 0.27.x; consumer fumadocs-mdx
   #                       declares ^0.27.0. Gates the docs build, so a real
   #                       incompatibility fails loudly)
@@ -135,7 +134,7 @@ overrides:
   # opaque worker error, and `ignoreBuildErrors` does not suppress it. So this
   # floor moves in lockstep with the compiler, never after it. From here the line
   # is security-only again -- a bare `^16` caret would float to the next minor.
-  'next@16': ~16.3.3
+  'next@16': ~16.3.8
   'postcss@8': ~8.5.23
   'sharp@0.34': ~0.35.0
   'tar@7': ~7.5.21

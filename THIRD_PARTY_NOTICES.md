@@ -4874,6 +4874,11 @@ Homepage: https://github.com/nodeca/pica
 
 Copyright (C) 2014-2017 by Vitaly Puzrin
 
+### `picomatch@4.0.7`
+Homepage: https://github.com/micromatch/picomatch
+
+Copyright (c) 2017-present, Jon Schlinkert.
+
 ### `picomatch@4.0.5`
 Homepage: https://github.com/micromatch/picomatch
 
