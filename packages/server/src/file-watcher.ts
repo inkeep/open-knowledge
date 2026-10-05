@@ -9,11 +9,12 @@ import {
   watch as watchFsPath,
 } from 'node:fs';
 import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
-import { basename, dirname, extname, join, relative } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import { LINKABLE_ASSET_EXTENSIONS } from '@inkeep/open-knowledge-core';
 import { isConfigDoc, isReservedForUserTree, isSystemDoc } from './cc1-broadcast.ts';
 import { type ContentFilter, WATCHER_STRUCTURAL_IGNORE_DIRS } from './content-filter.ts';
 import { isWithinContentDir } from './content-path.ts';
+import { resolveDirectoryRoot, resolveNativePath } from './directory-root.ts';
 import {
   forgetDocExtension,
   getDocExtension,
@@ -161,7 +162,11 @@ export function fileIndexEntryMembers(
       ],
     };
   }
-  const targetPath = toPosix(relative(contentDir, entry.canonicalPath));
+  const targetPath = indexedTargetPath(
+    contentDir,
+    entry.canonicalPath,
+    entry.kind === 'markdown' ? `${name}${extname(entry.canonicalPath)}` : name,
+  );
   return {
     resolved: false,
     members: [
@@ -171,11 +176,39 @@ export function fileIndexEntryMembers(
   };
 }
 
+export function indexedTargetPath(
+  contentDir: string,
+  canonicalPath: string,
+  recordedPath: string,
+): string {
+  const rel = toPosix(relative(contentDir, canonicalPath));
+  if (rel === '..' || rel.startsWith('../') || isAbsolute(rel)) return recordedPath;
+  return rel;
+}
+
 export interface FolderIndexEntry {
   size: 0;
   modified: string;
   canonicalPath: string;
   inode: number;
+}
+
+class WatcherFolderIndex extends Map<string, FolderIndexEntry> {
+  readonly #root: string;
+
+  constructor(root: string) {
+    super();
+    this.#root = root;
+  }
+
+  override set(relativePath: string, entry: FolderIndexEntry): this {
+    const spelledUnderRoot =
+      entry.canonicalPath === this.#root || entry.canonicalPath.startsWith(`${this.#root}${sep}`);
+    return super.set(
+      relativePath,
+      spelledUnderRoot ? entry : { ...entry, canonicalPath: declaredPathKey(entry.canonicalPath) },
+    );
+  }
 }
 
 function derivePageMeta(
@@ -225,24 +258,40 @@ const WRITE_TRACKER_TTL_MS = 10_000;
 const REMOVAL_TRACKER_TTL_MS = 30_000;
 
 export function registerWrite(filePath: string, hash: string): void {
-  const queue = writeTracker.get(filePath) ?? [];
+  const key = declaredPathKey(filePath);
+  const queue = writeTracker.get(key) ?? [];
   queue.push({ hash, timestamp: Date.now() });
-  writeTracker.set(filePath, queue);
+  writeTracker.set(key, queue);
 }
 
 export const removalTracker = new Map<string, number>();
 
-function removalKey(filePath: string): string {
+function declaredPathKey(filePath: string): string {
+  const parent = dirname(filePath);
+  if (parent === filePath) return filePath;
   try {
-    return join(realpathSync(dirname(filePath)), basename(filePath));
+    return join(resolveNativePath(parent), basename(filePath));
   } catch (e) {
     const code = errnoCode(e);
-    if (code !== 'ENOENT') {
-      log.warn(
-        { path: filePath, code },
-        `realpathSync failed for the removal key of ${filePath} (${code})`,
-      );
-    }
+    if (code === 'ENOENT') return join(declaredPathKey(parent), basename(filePath));
+    log.warn(
+      { path: filePath, code },
+      `native path resolution failed for the declared key of ${filePath} (${code})`,
+    );
+    return filePath;
+  }
+}
+
+function observedPathKey(filePath: string): string {
+  try {
+    return resolveNativePath(filePath);
+  } catch (e) {
+    const code = errnoCode(e);
+    if (code === 'ENOENT') return declaredPathKey(filePath);
+    log.warn(
+      { path: filePath, code },
+      `native path resolution failed for the observed key of ${filePath} (${code})`,
+    );
     return filePath;
   }
 }
@@ -255,7 +304,7 @@ type _RawStringIsNotARemovalDeclaration = Assert<string extends RemovalDeclarati
 /* STOP: call this before the unlink, retract it if the unlink throws, and never resolve the
    leaf; the watcher reports a removed alias at the alias, not at the target it pointed to. */
 export function registerRemoval(filePath: string): RemovalDeclaration {
-  const key = removalKey(filePath);
+  const key = declaredPathKey(filePath);
   removalTracker.set(key, Date.now());
   return key as RemovalDeclaration;
 }
@@ -266,7 +315,7 @@ export function retractRemoval(declaration: RemovalDeclaration): void {
 
 function voidRemoval(filePath: string, declaredBeforeBatch: ReadonlySet<string>): void {
   if (declaredBeforeBatch.size === 0) return;
-  const key = removalKey(filePath);
+  const key = declaredPathKey(filePath);
   if (!declaredBeforeBatch.has(key)) return;
   removalTracker.delete(key);
 }
@@ -274,7 +323,7 @@ function voidRemoval(filePath: string, declaredBeforeBatch: ReadonlySet<string>)
 /* STOP: return false on every ambiguous input; a true discards a real disk deletion. */
 export function isSelfRemoval(filePath: string): boolean {
   if (removalTracker.size === 0) return false;
-  const key = removalKey(filePath);
+  const key = declaredPathKey(filePath);
   const timestamp = removalTracker.get(key);
   if (timestamp === undefined) return false;
   removalTracker.delete(key);
@@ -406,7 +455,7 @@ function eventEscapesContentDir(rawPath: string, contentDir: string): boolean {
   if (!lst.isSymbolicLink()) return false;
   let canonical: string;
   try {
-    canonical = realpathSync(rawPath);
+    canonical = resolveNativePath(rawPath);
   } catch (e) {
     const code = errnoCode(e);
     if (code !== 'ENOENT' && code !== 'ELOOP') {
@@ -630,7 +679,7 @@ async function classifyEventsInternal(
 
     let canonical: string;
     try {
-      canonical = realpathSync(rawPath);
+      canonical = resolveNativePath(rawPath);
     } catch (e) {
       const code = errnoCode(e);
       if (code !== 'ENOENT' && code !== 'ELOOP') {
@@ -738,6 +787,17 @@ async function classifyEventsInternal(
   }
 
   return results;
+}
+
+function declaredDiskEvent(event: DiskEvent): DiskEvent {
+  if (event.kind === 'rename') {
+    return {
+      ...event,
+      oldPath: declaredPathKey(event.oldPath),
+      newPath: declaredPathKey(event.newPath),
+    };
+  }
+  return { ...event, path: declaredPathKey(event.path) };
 }
 
 export function isSelfWrite(filePath: string, hash: string): boolean {
@@ -1089,7 +1149,7 @@ function registerKnownGeneralPath(
       if (relation.path === lexicalName) continue;
       const path = join(contentDir, relation.path);
       try {
-        const actualTarget = realpathSync(path);
+        const actualTarget = resolveNativePath(path);
         if (!isWithinContentDir(actualTarget, contentDir)) {
           changes.set(relation.path, null);
           continue;
@@ -2093,7 +2153,7 @@ function updateFolderIndexFromRawEvents(
       folderStat = lst;
     } else if (lst.isSymbolicLink()) {
       try {
-        canonicalPath = realpathSync(raw.path);
+        canonicalPath = resolveNativePath(raw.path);
         if (!isWithinContentDir(canonicalPath, contentDir)) continue;
         const stat = statSync(canonicalPath);
         if (stat.isDirectory()) folderStat = stat;
@@ -2379,34 +2439,12 @@ async function handleRawEventsInternal(
 
     if (event.kind !== 'delete' && event.kind !== 'rename') {
       const hash = contentHash(event.content);
-      let checkPath = event.path;
-      try {
-        checkPath = realpathSync(event.path);
-      } catch (e) {
-        const code = errnoCode(e);
-        if (code !== 'ENOENT') {
-          log.warn(
-            { path: event.path, code },
-            `realpathSync failed for self-write check on ${event.path} (${code})`,
-          );
-        }
-      }
+      const checkPath = observedPathKey(event.path);
       isSelf = isSelfWrite(checkPath, hash);
       voidRemoval(event.path, declaredBeforeBatch);
     } else if (event.kind === 'rename') {
       const hash = contentHash(event.content);
-      let checkPath = event.newPath;
-      try {
-        checkPath = realpathSync(event.newPath);
-      } catch (e) {
-        const code = errnoCode(e);
-        if (code !== 'ENOENT') {
-          log.warn(
-            { path: event.newPath, code },
-            `realpathSync failed for self-write check on ${event.newPath} (${code})`,
-          );
-        }
-      }
+      const checkPath = observedPathKey(event.newPath);
       isSelf = isSelfWrite(checkPath, hash);
       indexEvent = { ...event, newPath: checkPath };
       voidRemoval(event.oldPath, declaredBeforeBatch);
@@ -2546,10 +2584,10 @@ async function handleRawEventsInternal(
     let canonicalPath: string;
     let canonicalContentDir: string;
     try {
-      canonicalContentDir = realpathSync(contentDir);
+      canonicalContentDir = resolveNativePath(contentDir);
       st = lstatSync(raw.path);
       leafSymlink = st.isSymbolicLink();
-      canonicalPath = realpathSync(raw.path);
+      canonicalPath = resolveNativePath(raw.path);
       if (leafSymlink) st = statSync(canonicalPath);
     } catch (e) {
       const code = errnoCode(e);
@@ -3004,7 +3042,7 @@ async function recoverDiskChanges(
     try {
       const lst = lstatSync(path);
       if (lst.isSymbolicLink()) {
-        canonicalPath = realpathSync(path);
+        canonicalPath = resolveNativePath(path);
         if (!isWithinContentDir(canonicalPath, contentDir)) {
           removeFolderIndexEntries(folderIndex, relativePath);
           folderAliasIndex.delete(relativePath);
@@ -3443,12 +3481,10 @@ export async function startWatcher(
   } = {},
 ): Promise<WatcherHandle> {
   const { onRawBatch, onRecoveryComplete } = opts;
-  let contentDir: string;
-  try {
-    contentDir = realpathSync(contentDirRaw);
-  } catch {
-    contentDir = contentDirRaw;
-  }
+  const contentDir = resolveDirectoryRoot(contentDirRaw, {
+    root: 'content',
+    component: 'file-watcher',
+  });
 
   const fileIndex = new Map<string, FileIndexEntry>();
   const generalFileIndex = new GeneralFileIndex(contentDir);
@@ -3458,7 +3494,7 @@ export async function startWatcher(
       yield* generalFileIndex;
     },
   };
-  const folderIndex = new Map<string, FolderIndexEntry>();
+  const folderIndex = new WatcherFolderIndex(contentDir);
   const aliasMap = new Map<string, string>();
   const aliasPaths = new Map<string, string>();
   const folderAliasIndex = new Map<string, string>();
@@ -3589,7 +3625,8 @@ export async function startWatcher(
     getStructuralIgnoreDirs() {
       return structuralIgnoreDirs;
     },
-    mutateFileIndex(event) {
+    mutateFileIndex(reportedEvent) {
+      const event = declaredDiskEvent(reportedEvent);
       if (event.kind === 'rename') {
         activePublicMutations?.markdownNames.add(event.oldDocName);
         activePublicMutations?.markdownNames.add(event.newDocName);
@@ -3612,7 +3649,7 @@ export async function startWatcher(
             const lexicalPath = join(contentDir, event.relativePath);
             const lexicalStat = lstatSync(lexicalPath);
             const leafSymlink = lexicalStat.isSymbolicLink();
-            const canonicalPath = realpathSync(lexicalPath);
+            const canonicalPath = resolveNativePath(lexicalPath);
             if (!isWithinContentDir(canonicalPath, contentDir)) {
               throw new Error('General file path resolves outside content directory');
             }

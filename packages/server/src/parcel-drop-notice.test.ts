@@ -134,6 +134,13 @@ vi.mock('node:fs', async (importOriginal) => {
     admissionFault.observed = true;
     throw Object.assign(new Error('directory read denied'), { code: 'EACCES', path });
   };
+  const denyRealpath = (path: unknown): void => {
+    fail('realpath', path);
+    if (admissionFault.maskedAncestor && String(path) === admissionFault.maskedAncestor) {
+      admissionFault.observed = true;
+      throw Object.assign(new Error('directory read denied'), { code: 'EACCES', path });
+    }
+  };
   return {
     ...fs,
     existsSync: ((...args: Parameters<typeof fs.existsSync>) => {
@@ -160,14 +167,18 @@ vi.mock('node:fs', async (importOriginal) => {
       }
       return fs.lstatSync(...args);
     }) as typeof fs.lstatSync,
-    realpathSync: ((...args: Parameters<typeof fs.realpathSync>) => {
-      fail('realpath', args[0]);
-      if (admissionFault.maskedAncestor && String(args[0]) === admissionFault.maskedAncestor) {
-        admissionFault.observed = true;
-        throw Object.assign(new Error('directory read denied'), { code: 'EACCES', path: args[0] });
-      }
-      return fs.realpathSync(...args);
-    }) as typeof fs.realpathSync,
+    realpathSync: Object.assign(
+      ((...args: Parameters<typeof fs.realpathSync>) => {
+        denyRealpath(args[0]);
+        return fs.realpathSync(...args);
+      }) as typeof fs.realpathSync,
+      {
+        native: ((...args: Parameters<typeof fs.realpathSync.native>) => {
+          denyRealpath(args[0]);
+          return fs.realpathSync.native(...args);
+        }) as typeof fs.realpathSync.native,
+      },
+    ),
     readFileSync: ((...args: Parameters<typeof fs.readFileSync>) => {
       fail('read', args[0]);
       if (admissionFault.maskedAncestor && String(args[0]) === admissionFault.maskedAncestor) {

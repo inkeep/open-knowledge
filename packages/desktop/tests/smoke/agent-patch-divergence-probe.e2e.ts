@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
@@ -234,6 +235,7 @@ async function executeRace(opts: {
       }),
     });
   let httpStatus: number;
+  let responseBody: string;
   if (randomizedStaggerMs !== undefined && randomizedStaggerMs > 0) {
     const firstHalf = humanText.slice(0, 4);
     const secondHalf = humanText.slice(4);
@@ -244,13 +246,16 @@ async function executeRace(opts: {
       page.keyboard.type(secondHalf, { delay: typingDelay }),
     ]);
     httpStatus = agentRes.status;
+    responseBody = await agentRes.text();
   } else {
     const [agentRes] = await Promise.all([
       agentPatchPromise(),
       page.keyboard.type(humanText, { delay: typingDelay }),
     ]);
     httpStatus = agentRes.status;
+    responseBody = await agentRes.text();
   }
+  console.log(`[PROBE ${variant} trial ${trial}] response:`, { httpStatus, responseBody });
 
   let finalContent = '';
   const readFailures: string[] = [];
@@ -309,6 +314,12 @@ async function setupElectron(
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   const contentDir = mkdtempSync(join(tmpdir(), `ok-agent-patch-probe-${variantTag}-`));
+  console.log(`[PROBE ${variantTag}] content root:`, {
+    contentDir,
+    realpathSync: realpathSync(contentDir),
+    realpathSyncNative: realpathSync.native(contentDir),
+    realpathAsync: await realpath(contentDir),
+  });
   const userDataDir = mkdtempSync(join(tmpdir(), `ok-pw-userdata-${variantTag}-`));
   const docName = `probe-${variantTag}-${randomUUID().slice(0, 8)}`;
   const initialContent = SEED_MARKDOWN;
@@ -527,6 +538,7 @@ test.describe('PRD-6666 — agent-patch divergence (production-built Electron)',
         trial,
         randomizedStaggerMs: stagger,
       });
+      expect(result.httpStatus).toBe(200);
       outcomes.cherryPresent.push(result.cherryPresent);
       outcomes.bananaAbsent.push(result.bananaAbsent);
       outcomes.raceFired.push(result.raceFired);

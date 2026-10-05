@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { relative, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import type { Document, Hocuspocus } from '@hocuspocus/server';
 import {
   type DocumentListEntry,
@@ -22,10 +22,10 @@ import {
   type FileIndexEntry,
   type FolderIndexEntry,
   fileIndexEntryMembers,
+  indexedTargetPath,
 } from '../file-watcher.ts';
 import type { PinoLogger } from '../logger.ts';
 import { extractPageIcon, extractPageTitle } from '../page-identity.ts';
-import { toPosix } from '../path-utils.ts';
 import type { ApiRouteTable } from './api-pipeline.ts';
 import { createStreamingErrorWriter, errorResponse } from './error-response.ts';
 import { withValidation } from './request-validation.ts';
@@ -565,7 +565,7 @@ export function createDocumentRoutes(deps: DocumentRouteDeps): DocumentRoutes {
           for (const [canonicalPrefix, aliasPrefixes] of aliasesByCanonical) {
             const canonRoot = folderIndex.get(canonicalPrefix);
             const rootTarget = canonRoot
-              ? toPosix(relative(contentDir, canonRoot.canonicalPath))
+              ? indexedTargetPath(contentDir, canonRoot.canonicalPath, canonicalPrefix)
               : canonicalPrefix;
             for (const aliasPrefix of aliasPrefixes) {
               if (!passesDirFilter(aliasPrefix)) continue;
@@ -606,7 +606,7 @@ export function createDocumentRoutes(deps: DocumentRouteDeps): DocumentRoutes {
                 docExt: '.md',
                 isSymlink: true,
                 canonicalDocName: folderPath,
-                targetPath: toPosix(relative(contentDir, fEntry.canonicalPath)),
+                targetPath: indexedTargetPath(contentDir, fEntry.canonicalPath, folderPath),
               });
             });
           }

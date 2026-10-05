@@ -7,10 +7,15 @@ import { isSelfRemoval, registerRemoval, removalTracker } from './file-watcher.t
 
 vi.mock('node:fs', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs')>();
-  return { ...fs, realpathSync: vi.fn(fs.realpathSync) };
+  return {
+    ...fs,
+    realpathSync: Object.assign(vi.fn(fs.realpathSync), {
+      native: vi.fn(fs.realpathSync.native),
+    }),
+  };
 });
 
-const mockedRealpathSync = vi.mocked(realpathSync);
+const mockedRealpathSync = vi.mocked(realpathSync.native);
 
 let removalDir: string;
 

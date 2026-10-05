@@ -8,6 +8,7 @@
     "src/file-watcher-chokidar-readiness.test.ts",
     "src/managed-artifact-watcher-readiness.test.ts",
     "src/managed-artifact-watcher.test.ts",
+    "src/path-identity.test.ts",
     "src/persistence-tripwire-block.test.ts",
     "src/persistence-tripwire-paste.test.ts",
     "src/polled-watcher-contract.test.ts",

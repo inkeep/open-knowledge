@@ -8,6 +8,7 @@ import {
   LINKABLE_ASSET_EXTENSIONS,
 } from '@inkeep/open-knowledge-core';
 import type { ContentFilter } from './content-filter.ts';
+import { resolveDirectoryRoot } from './directory-root.ts';
 import { isSupportedAssetFile } from './doc-extensions.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
 
@@ -51,7 +52,7 @@ export function seedSingleDirBasenameIndex(opts: {
 }
 
 export async function seedBasenameIndex(opts: SeedOptions): Promise<void> {
-  const root = opts.contentDir;
+  const root = resolveDirectoryRoot(opts.contentDir, { root: 'content', component: 'asset-walk' });
   const visited = new Set<number>();
 
   async function walk(dir: string): Promise<void> {

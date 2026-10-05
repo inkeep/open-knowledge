@@ -37,7 +37,7 @@ import {
 import { redactContent } from '../commands/bug-report-redact.ts';
 import { PACKAGE_VERSION } from '../constants.ts';
 import { defaultReadLanguage, type LanguageMetadata } from '../report-language.ts';
-import { isRotatedLogPath, redactStagedBundle } from './bundle-redact.ts';
+import { contentDirSpellings, isRotatedLogPath, redactStagedBundle } from './bundle-redact.ts';
 import {
   type DiagnosticReportCollection,
   prepareDiagnosticReportText,
@@ -710,9 +710,11 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
 
     writeFileSync(join(stagingDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 
+    const spellings = contentDirSpellings(contentDir);
     const contentDirVisible = stagedFiles.some((absPath) => {
       try {
-        return readFileSync(absPath, 'utf-8').includes(contentDir);
+        const text = readFileSync(absPath, 'utf-8');
+        return spellings.some((spelling) => text.includes(spelling));
       } catch {
         return false;
       }

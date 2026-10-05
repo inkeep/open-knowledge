@@ -110,6 +110,7 @@ import {
   DerivedDocumentIndex,
   type DerivedDocumentIndexBranchTransition,
 } from './derived-document-index.ts';
+import { resolveDirectoryRoot } from './directory-root.ts';
 import { applyDiskContentToDoc } from './disk-content-intake.ts';
 import {
   canonicalDocName,
@@ -513,6 +514,10 @@ export function createServer(options: ServerOptions): ServerInstance {
     singleDocRelPath,
     ephemeral = false,
   } = options;
+  const canonicalContentDir = resolveDirectoryRoot(contentDir, {
+    root: 'content',
+    component: 'server-factory',
+  });
   const declaredGitHubHosts = readDeclaredGitHubHosts(configHomedirOverride);
   const resolveSyncCredentialConfig = createSyncCredentialConfigResolver({
     projectDir,
@@ -1749,7 +1754,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       contentFilter,
       getGlobalSkillRoots: () => managedArtifactSkillsRoots(persistence.managedArtifactCtx),
       signalChannel,
-      getLocalTargetInventory: () => localTargetInventoryFromWatcher(watcher, contentDir),
+      getLocalTargetInventory: () => localTargetInventoryFromWatcher(watcher, canonicalContentDir),
       onRecoveredFileTarget: (relativePath, exists) => {
         if (!watcher) return;
         reconcileRecoveredFileTarget({
@@ -3965,7 +3970,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         const onRawBatch = (absPaths: readonly string[]): void => {
           if (
             !absPaths.some((p) =>
-              HOST_SKILLS_EVENT_RE.test(relative(contentDir, p).split(sep).join('/')),
+              HOST_SKILLS_EVENT_RE.test(relative(canonicalContentDir, p).split(sep).join('/')),
             )
           ) {
             return;
@@ -4011,7 +4016,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           }, IN_PLACE_RESCAN_DEBOUNCE_MS);
         };
         watcher = await withSpan('ok.boot.seed-walk', undefined, async () =>
-          startWatcher(contentDir, onDiskEvent, contentFilter, {
+          startWatcher(canonicalContentDir, onDiskEvent, contentFilter, {
             onRawBatch,
             onRecoveryComplete: () => derivedDocumentIndex.recordInventoryReconciled(),
           }),

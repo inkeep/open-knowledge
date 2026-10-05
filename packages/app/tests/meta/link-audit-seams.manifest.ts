@@ -212,7 +212,7 @@ export interface LinkAuditCompositionRoot {
 export const LINK_AUDIT_COMPOSITION_ROOTS: readonly LinkAuditCompositionRoot[] = [
   {
     path: 'packages/server/src/server-factory.ts',
-    requiredText: 'localTargetInventoryFromWatcher(watcher, contentDir)',
+    requiredText: 'localTargetInventoryFromWatcher(watcher, canonicalContentDir)',
   },
   {
     path: 'packages/server/src/http/link-graph-routes.ts',

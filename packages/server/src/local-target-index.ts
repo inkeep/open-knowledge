@@ -1,6 +1,6 @@
-import { type Dirent, existsSync, realpathSync } from 'node:fs';
+import { type Dirent, existsSync } from 'node:fs';
 import { readdir, readFile, realpath, stat } from 'node:fs/promises';
-import { isAbsolute, join, relative } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import {
   classifyMarkdownHref,
   resolveAssetProjectPath,
@@ -8,6 +8,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { isLinkIndexExcludedDoc } from './cc1-broadcast.ts';
 import type { ContentFilter } from './content-filter.ts';
+import { resolveDirectoryRoot } from './directory-root.ts';
 import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
 import { instrumentIndexRebuild, instrumentIndexUpdate } from './index-telemetry.ts';
 import {
@@ -199,11 +200,10 @@ export class LocalTargetIndex {
 
   constructor(options: LocalTargetIndexOptions) {
     this.contentDir = options.contentDir;
-    try {
-      this.canonicalContentDir = realpathSync(options.contentDir);
-    } catch {
-      this.canonicalContentDir = options.contentDir;
-    }
+    this.canonicalContentDir = resolveDirectoryRoot(resolve(options.contentDir), {
+      root: 'content',
+      component: 'local-target-index',
+    });
     this.contentFilter = options.contentFilter;
     this.readDocument = options.readDocument ?? ((filePath) => readFile(filePath, 'utf-8'));
     this.readDirectory = options.readDirectory ?? ((dir) => readdir(dir, { withFileTypes: true }));

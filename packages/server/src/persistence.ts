@@ -55,6 +55,7 @@ import {
   swapContributors,
 } from './contributor-tracker.ts';
 import type { DerivedDocumentIndexPersistencePort } from './derived-document-index.ts';
+import { resolveDirectoryRoot, resolveNativePath } from './directory-root.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 import {
   assertNeverStorePublishOutcome,
@@ -390,14 +391,14 @@ export interface PersistenceHandle {
 
 export function createPersistenceExtension(options?: PersistenceOptions): PersistenceHandle {
   const durabilityState = options?.durabilityState ?? new DocumentDurabilityState();
-  const contentDirRaw = options?.contentDir ?? process.cwd();
-  let contentDir: string;
-  try {
-    contentDir = realpathSync(contentDirRaw);
-  } catch {
-    contentDir = contentDirRaw;
-  }
-  const projectDir = options?.projectDir ?? process.cwd();
+  const contentDir = resolveDirectoryRoot(resolve(options?.contentDir ?? process.cwd()), {
+    root: 'content',
+    component: 'persistence',
+  });
+  const projectDir = resolveDirectoryRoot(resolve(options?.projectDir ?? process.cwd()), {
+    root: 'project',
+    component: 'persistence',
+  });
   const shadowRef = options?.shadowRef;
   const contentRoot = options?.contentRoot || toPosix(relative(projectDir, contentDir)) || '.';
   const derivedDocumentIndex = options?.derivedDocumentIndex;
@@ -922,7 +923,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     if (!existsSync(requestedDiskPath)) return { kind: 'missing' };
     let canonical: string | null = null;
     try {
-      canonical = realpathSync(requestedDiskPath);
+      canonical = resolveNativePath(requestedDiskPath);
     } catch (realpathErr) {
       log.warn(
         { err: realpathErr, documentName },
@@ -2033,20 +2034,9 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           if (!existsSync(filePath)) return;
           docsWithFileObservedOnDisk.add(documentName);
 
-          let canonical = filePath;
+          let canonical: string;
           try {
-            const resolvedCanonical = realpathSync(filePath);
-            if (
-              !isWithinContentDir(resolvedCanonical, contentDir) ||
-              resolvesIntoPrivateState(filePath, resolvedCanonical, contentDir)
-            ) {
-              log.warn(
-                { path: filePath, canonical: resolvedCanonical },
-                `[persistence] symlink-escape on load: ${filePath} → ${resolvedCanonical}, refusing`,
-              );
-              return;
-            }
-            canonical = resolvedCanonical;
+            canonical = resolveNativePath(filePath);
           } catch (e) {
             const code = errnoCode(e);
             if (code === 'ELOOP') {
@@ -2056,6 +2046,21 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
               );
               return;
             }
+            log.warn(
+              { path: filePath, code },
+              `[persistence] Could not resolve ${filePath} on load (${code}), refusing`,
+            );
+            return;
+          }
+          if (
+            !isWithinContentDir(canonical, contentDir) ||
+            resolvesIntoPrivateState(filePath, canonical, contentDir)
+          ) {
+            log.warn(
+              { path: filePath, canonical },
+              `[persistence] symlink-escape on load: ${filePath} → ${canonical}, refusing`,
+            );
+            return;
           }
 
           const fileSize = statSync(canonical).size;

@@ -5,12 +5,15 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { dirname, join, resolve, sep } from 'node:path';
+import { afterEach, describe, expect, onTestFinished, test } from 'vitest';
 import { ZipFile } from 'yazl';
 import type { LanguageMetadata } from '../report-language.ts';
 import {
@@ -700,6 +703,185 @@ describe('collectBundle — summary', () => {
     expect(collected.summary.totalBytes).toBe(expected);
     expect(collected.summary.fileCount).toBe(collected.manifest.files.length);
     collected.cleanup();
+  });
+});
+
+type SpellingRelation = 'same' | 'disjoint' | 'typed-within-native' | 'native-within-typed';
+
+function spellingRelation(typed: string, native: string): SpellingRelation {
+  if (typed === native) return 'same';
+  if (native.includes(typed)) return 'typed-within-native';
+  if (typed.includes(native)) return 'native-within-typed';
+  return 'disjoint';
+}
+
+function makeAliasedRoot(
+  link: string,
+  target: string,
+): { projectDir: string; typed: string; native: string } {
+  const projectDir = realpathSync.native(makeTmpDir('ok-bundle-alias-'));
+  const real = join(projectDir, target);
+  mkdirSync(real);
+  const typed = join(projectDir, link);
+  symlinkSync(real, typed, process.platform === 'win32' ? 'junction' : 'dir');
+  return { projectDir, typed, native: realpathSync.native(typed) };
+}
+
+function jsonl(lines: readonly Record<string, unknown>[]): string {
+  return lines.map((line) => `${JSON.stringify(line)}\n`).join('');
+}
+
+function readStagedJsonl(stagingDir: string, relPath: string): unknown[] {
+  return readFileSync(join(stagingDir, relPath), 'utf-8')
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line));
+}
+
+describe('collectBundle — a content root typed through a directory alias', () => {
+  test.each([
+    { shape: 'unrelated names', link: 'notes-link', target: 'vault', relation: 'disjoint' },
+    {
+      shape: 'link name prefixes the target name',
+      link: 'notes',
+      target: 'notes-real',
+      relation: 'typed-within-native',
+    },
+    {
+      shape: 'target name prefixes the link name',
+      link: 'notes-link',
+      target: 'notes',
+      relation: 'native-within-typed',
+    },
+  ] as const)(
+    'redaction masks both the typed and the native spelling of the root ($shape)',
+    async ({ link, target, relation }) => {
+      const { projectDir, typed, native } = makeAliasedRoot(link, target);
+      expect(spellingRelation(typed, native)).toBe(relation);
+      writeAt(
+        projectDir,
+        '.ok/local/logs/server-current.jsonl',
+        jsonl([
+          {
+            level: 30,
+            contentDir: native,
+            backend: 'parcel',
+            msg: 'watching for external .md changes',
+          },
+          {
+            level: 20,
+            kind: 'change',
+            path: join(native, 'note.md'),
+            msg: '[file-watcher] Dispatching: change',
+          },
+          { level: 30, path: join(typed, 'note.md'), msg: 'opened' },
+        ]),
+      );
+      const processDir = makeTmpDir('ok-bundle-procsrc-');
+      writeFileSync(
+        join(processDir, 'lsof.txt'),
+        `node 4242 jane cwd DIR ${native}\nnode 4242 jane 21r REG ${join(typed, 'note.md')}\n`,
+      );
+
+      const collected = await collectBundle({
+        contentDir: typed,
+        projectDir,
+        processDir,
+        redact: true,
+        deps: makeDeterministicDeps(),
+      });
+      onTestFinished(() => collected.cleanup());
+
+      expect
+        .soft(readStagedJsonl(collected.stagingDir, 'logs/server-current.jsonl'), 'server log')
+        .toEqual([
+          {
+            level: 30,
+            contentDir: '<CONTENT_DIR>',
+            backend: 'parcel',
+            msg: 'watching for external .md changes',
+          },
+          {
+            level: 20,
+            kind: 'change',
+            path: `<CONTENT_DIR>${sep}note.md`,
+            msg: '[file-watcher] Dispatching: change',
+          },
+          { level: 30, path: `<CONTENT_DIR>${sep}note.md`, msg: 'opened' },
+        ]);
+      expect
+        .soft(readFileSync(join(collected.stagingDir, 'process', 'lsof.txt'), 'utf-8'), 'lsof')
+        .toBe(
+          `node 4242 jane cwd DIR <CONTENT_DIR>\nnode 4242 jane 21r REG <CONTENT_DIR>${sep}note.md\n`,
+        );
+    },
+  );
+
+  test('contentDirVisible reports a root that appears only in its native spelling', async () => {
+    const { projectDir, typed, native } = makeAliasedRoot('notes-link', 'vault');
+    expect(spellingRelation(typed, native)).toBe('disjoint');
+    const processDir = makeTmpDir('ok-bundle-procsrc-');
+    writeFileSync(join(processDir, 'lsof.txt'), `node 4242 jane cwd DIR ${native}\n`);
+
+    const collected = await collectBundle({
+      contentDir: typed,
+      projectDir,
+      processDir,
+      deps: makeDeterministicDeps(),
+    });
+    onTestFinished(() => collected.cleanup());
+
+    expect(readFileSync(join(collected.stagingDir, 'process', 'lsof.txt'), 'utf-8')).toBe(
+      `node 4242 jane cwd DIR ${native}\n`,
+    );
+    expect(collected.summary.contentDirVisible).toBe(true);
+  });
+
+  test('redaction still masks the typed spelling of a root that does not exist on disk', async () => {
+    const projectDir = makeTmpDir();
+    const contentDir = join(projectDir, 'notes-not-created');
+    expect(existsSync(contentDir)).toBe(false);
+    writeAt(
+      projectDir,
+      '.ok/local/logs/server-current.jsonl',
+      jsonl([{ level: 30, path: join(contentDir, 'note.md'), msg: 'opened' }]),
+    );
+
+    const collected = await collectBundle({
+      contentDir,
+      projectDir,
+      redact: true,
+      deps: makeDeterministicDeps(),
+    });
+    onTestFinished(() => collected.cleanup());
+
+    expect(readStagedJsonl(collected.stagingDir, 'logs/server-current.jsonl')).toEqual([
+      { level: 30, path: `<CONTENT_DIR>${sep}note.md`, msg: 'opened' },
+    ]);
+  });
+
+  test('redaction still masks the typed spelling of a root whose path runs through a file', async () => {
+    const projectDir = makeTmpDir();
+    writeFileSync(join(projectDir, 'notes.txt'), 'not a directory\n');
+    const contentDir = join(projectDir, 'notes.txt', 'notes');
+    expect(statSync(dirname(contentDir)).isFile()).toBe(true);
+    writeAt(
+      projectDir,
+      '.ok/local/logs/server-current.jsonl',
+      jsonl([{ level: 30, path: join(contentDir, 'note.md'), msg: 'opened' }]),
+    );
+
+    const collected = await collectBundle({
+      contentDir,
+      projectDir,
+      redact: true,
+      deps: makeDeterministicDeps(),
+    });
+    onTestFinished(() => collected.cleanup());
+
+    expect(readStagedJsonl(collected.stagingDir, 'logs/server-current.jsonl')).toEqual([
+      { level: 30, path: `<CONTENT_DIR>${sep}note.md`, msg: 'opened' },
+    ]);
   });
 });
 

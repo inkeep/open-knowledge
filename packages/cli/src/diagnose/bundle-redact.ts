@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
 const CONTENT_DIR_TOKEN = '<CONTENT_DIR>';
@@ -9,13 +9,27 @@ export interface RedactStagedBundleOpts {
 }
 
 interface RedactCtx {
-  contentDir: string;
+  contentDirSpellings: readonly string[];
 }
 
-function replaceContentDir(value: string, contentDir: string): string {
-  if (contentDir.length === 0) return value;
-  if (!value.includes(contentDir)) return value;
-  return value.split(contentDir).join(CONTENT_DIR_TOKEN);
+export function contentDirSpellings(contentDir: string): readonly string[] {
+  const spellings = new Set([contentDir]);
+  try {
+    spellings.add(realpathSync.native(contentDir));
+  } catch {
+    return [contentDir].filter((spelling) => spelling.length > 0);
+  }
+  return [...spellings]
+    .filter((spelling) => spelling.length > 0)
+    .sort((a, b) => b.length - a.length);
+}
+
+function replaceContentDir(value: string, spellings: readonly string[]): string {
+  let result = value;
+  for (const spelling of spellings) {
+    if (result.includes(spelling)) result = result.split(spelling).join(CONTENT_DIR_TOKEN);
+  }
+  return result;
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -24,7 +38,7 @@ function isObject(v: unknown): v is Record<string, unknown> {
 
 function redactValue(node: unknown, ctx: RedactCtx): unknown {
   if (typeof node === 'string') {
-    return replaceContentDir(node, ctx.contentDir);
+    return replaceContentDir(node, ctx.contentDirSpellings);
   }
   if (Array.isArray(node)) {
     return node.map((item) => redactValue(item, ctx));
@@ -73,14 +87,14 @@ function redactJsonFile(filePath: string, ctx: RedactCtx): void {
     const trailingNewline = content.endsWith('\n') ? '\n' : '';
     writeFileSync(filePath, `${JSON.stringify(redacted, null, 2)}${trailingNewline}`);
   } catch {
-    const replaced = replaceContentDir(content, ctx.contentDir);
+    const replaced = replaceContentDir(content, ctx.contentDirSpellings);
     if (replaced !== content) writeFileSync(filePath, replaced);
   }
 }
 
 function redactPlainFile(filePath: string, ctx: RedactCtx): void {
   const content = readFileSync(filePath, 'utf-8');
-  const replaced = replaceContentDir(content, ctx.contentDir);
+  const replaced = replaceContentDir(content, ctx.contentDirSpellings);
   if (replaced !== content) writeFileSync(filePath, replaced);
 }
 
@@ -112,7 +126,7 @@ export const CONTENT_SUBDIRS_MASKED = [
 ] as const;
 
 export function redactStagedBundle(opts: RedactStagedBundleOpts): void {
-  const ctx: RedactCtx = { contentDir: opts.contentDir };
+  const ctx: RedactCtx = { contentDirSpellings: contentDirSpellings(opts.contentDir) };
 
   for (const subdir of CONTENT_SUBDIRS_MASKED) {
     for (const filePath of walkDirFiles(join(opts.stagingDir, subdir))) {
