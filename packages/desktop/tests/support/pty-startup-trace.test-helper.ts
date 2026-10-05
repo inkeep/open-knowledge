@@ -1,9 +1,15 @@
 import { getEnvironmentData, setEnvironmentData, type Worker } from 'node:worker_threads';
 import type {
+  PtyOsObservation,
   PtyStartupNativeSnapshot,
   PtyStartupSpawnContext,
   PtyStartupTraceOptions,
 } from '../../src/utility/pty-host.ts';
+import {
+  startWindowsOsState,
+  type WindowsOsCollection,
+  type WindowsOsStateOptions,
+} from './windows-os-state.test-helper.ts';
 
 export const PTY_STARTUP_WORKER_CONTEXT = 'ok-pty-startup-worker-trace-v1';
 
@@ -303,8 +309,110 @@ export const windowsPtyStartupTrace: PtyStartupTraceOptions = {
   },
 };
 
+export function createWindowsPtyStartupCoordinator(options: {
+  platform: NodeJS.Platform;
+  deadlineAt: () => number;
+  spawnQuery?: WindowsOsStateOptions['spawnQuery'];
+}) {
+  const attempts: Array<{
+    context: PtyStartupSpawnContext;
+    pty: ReturnType<NonNullable<PtyStartupTraceOptions['aroundSpawn']>>['pty'];
+    observation: PtyOsObservation | null;
+    collection: WindowsOsCollection | null;
+    disposed: boolean;
+    readTransport: () => PtyStartupNativeSnapshot['transport'] | null;
+    detectedTransport: PtyStartupNativeSnapshot['transport'] | null;
+  }> = [];
+  const trace: PtyStartupTraceOptions = {
+    aroundSpawn(next, context) {
+      const observed = windowsPtyStartupTrace.aroundSpawn?.(next, context) ?? { pty: next() };
+      const snapshot = observed.snapshot;
+      const attempt: (typeof attempts)[number] = {
+        context,
+        pty: observed.pty,
+        observation: null,
+        collection: null,
+        disposed: false,
+        readTransport: () => snapshot?.().transport ?? null,
+        detectedTransport: null,
+      };
+      attempts.push(attempt);
+      return {
+        pty: observed.pty,
+        ...(snapshot === undefined
+          ? {}
+          : {
+              snapshot() {
+                const native = snapshot();
+                if (attempt.observation === null) return native;
+                return {
+                  ...native,
+                  shell: { ...native.shell, osState: attempt.observation.shell },
+                  console: { ...native.console, osState: attempt.observation.console },
+                  worker: { ...native.worker, osState: attempt.observation.worker },
+                };
+              },
+            }),
+        dispose() {
+          attempt.disposed = true;
+          attempt.collection?.cancel('owner-loss');
+          observed.dispose?.();
+        },
+      };
+    },
+  };
+  return {
+    trace,
+    async captureFailure(): Promise<void> {
+      const pending = attempts.filter(
+        (attempt) =>
+          !attempt.disposed &&
+          attempt.observation === null &&
+          attempt.collection === null &&
+          attempt.pty.pid > 0,
+      );
+      for (const attempt of pending) attempt.detectedTransport = attempt.readTransport();
+      for (const attempt of pending) {
+        if (attempt.disposed || attempt.observation !== null) continue;
+        const terminal = inspectTerminal(attempt.pty);
+        attempt.collection = startWindowsOsState({
+          pid: attempt.pty.pid,
+          parentPid: process.pid,
+          deadlineAt: options.deadlineAt(),
+          platform: options.platform,
+          ...(terminal === null ? {} : { worker: terminal._agent._conoutSocketWorker._worker }),
+          ...(options.spawnQuery === undefined ? {} : { spawnQuery: options.spawnQuery }),
+        });
+        const observation = await attempt.collection.result;
+        if (attempt.disposed || attempt.observation !== null) continue;
+        attempt.observation = observation;
+        attempt.context.emit({
+          stage: 'os-snapshot',
+          observation,
+          transport: attempt.detectedTransport,
+        });
+      }
+    },
+    cancelCapture(): void {
+      for (const attempt of attempts) {
+        if (attempt.disposed || attempt.observation !== null) continue;
+        const observation = attempt.collection?.cancel('deadline');
+        if (observation === undefined || observation === null) continue;
+        attempt.observation = observation;
+        attempt.context.emit({
+          stage: 'os-snapshot',
+          observation,
+          transport: attempt.detectedTransport,
+        });
+      }
+    },
+  };
+}
+
 interface HarnessScenarioHost {
   snapshot(): void;
+  captureFailure?(): Promise<void>;
+  cancelCapture?(): void;
   release(): void;
 }
 
@@ -352,8 +460,11 @@ export function createHarnessScenarioRunner(options: HarnessScenarioRunnerOption
         results.push({ name, outcome: 'passed' });
         options.print(`PASS ${name}`);
       } catch (err) {
-        for (const host of owned) host.snapshot();
         const outcome = options.isRefusal(err) ? 'refused' : 'failed';
+        if (outcome === 'failed') {
+          for (const host of owned) await host.captureFailure?.();
+        }
+        for (const host of owned) host.snapshot();
         results.push({ name, outcome, detail: (err as Error).message });
         options.print(
           `${outcome === 'refused' ? 'REFUSED' : 'FAIL'} ${name} :: ${(err as Error).message}`,
@@ -365,6 +476,7 @@ export function createHarnessScenarioRunner(options: HarnessScenarioRunnerOption
     },
     verdictLine,
     hardTimeoutVerdict(): string {
+      for (const host of owned) host.cancelCapture?.();
       for (const host of owned) host.snapshot();
       return verdictLine(` :: hard timeout during ${inFlight ?? 'startup'}`);
     },

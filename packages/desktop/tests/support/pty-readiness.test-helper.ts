@@ -9,8 +9,12 @@ import {
   type SpawnPty,
   setupPtyHost,
 } from '../../src/utility/pty-host.ts';
-import { windowsPtyStartupTrace } from './pty-startup-trace.test-helper.ts';
+import { createWindowsPtyStartupCoordinator } from './pty-startup-trace.test-helper.ts';
 import { harnessScenarioTitles } from './real-io-harness-roster.test-helper.ts';
+import {
+  WINDOWS_OS_MAX_BUDGET_MS,
+  type WindowsOsStateOptions,
+} from './windows-os-state.test-helper.ts';
 
 export interface PtyStream {
   read(): string;
@@ -24,6 +28,8 @@ export interface PtyHostProbe {
   exitOf(ptyId: string): { exitCode: number | undefined; signal: number | null } | null;
   errorOf(ptyId: string): string | null;
   snapshotStartup(): void;
+  captureFailure(): Promise<void>;
+  cancelCapture(): void;
   killActive(): void;
 }
 
@@ -36,6 +42,8 @@ export interface PtyHostProbeOptions {
   startupTrace?:
     | (NonNullable<SetupPtyHostDeps['startupTrace']> & { native?: never })
     | { native: boolean; aroundSpawn?: never };
+  osCaptureDeadlineAt?: () => number;
+  spawnQuery?: WindowsOsStateOptions['spawnQuery'];
 }
 
 export function createPtyHostProbe(options: PtyHostProbeOptions): PtyHostProbe {
@@ -43,6 +51,14 @@ export function createPtyHostProbe(options: PtyHostProbeOptions): PtyHostProbe {
   const data = new Map<string, string>();
   const exits = new Map<string, { exitCode: number | undefined; signal: number | null }>();
   const errors = new Map<string, string>();
+  const coordinator = options.startupTrace?.native
+    ? createWindowsPtyStartupCoordinator({
+        platform: options.platform ?? process.platform,
+        deadlineAt:
+          options.osCaptureDeadlineAt ?? (() => performance.now() + WINDOWS_OS_MAX_BUDGET_MS),
+        ...(options.spawnQuery === undefined ? {} : { spawnQuery: options.spawnQuery }),
+      })
+    : null;
   const handle = setupPtyHost({
     parentPort: {
       on(_event, h) {
@@ -62,7 +78,7 @@ export function createPtyHostProbe(options: PtyHostProbeOptions): PtyHostProbe {
       },
     },
     spawn: options.spawn,
-    startupTrace: options.startupTrace?.native ? windowsPtyStartupTrace : options.startupTrace,
+    startupTrace: coordinator?.trace ?? options.startupTrace,
     env: options.env,
     ...(options.platform === undefined ? {} : { platform: options.platform }),
     shellExists: options.shellExists,
@@ -78,6 +94,10 @@ export function createPtyHostProbe(options: PtyHostProbeOptions): PtyHostProbe {
     exitOf,
     errorOf,
     snapshotStartup: () => handle.snapshotStartup?.(),
+    captureFailure: async () => {
+      await coordinator?.captureFailure();
+    },
+    cancelCapture: () => coordinator?.cancelCapture(),
     killActive: () => handle.killActive(),
     streamOf: (ptyId) => ({
       read: () => dataOf(ptyId),

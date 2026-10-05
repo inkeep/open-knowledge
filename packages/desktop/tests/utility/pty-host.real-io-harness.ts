@@ -25,6 +25,10 @@ import {
 } from '../support/pty-readiness.test-helper.ts';
 import { createHarnessScenarioRunner } from '../support/pty-startup-trace.test-helper.ts';
 import { harnessScenarioTitles } from '../support/real-io-harness-roster.test-helper.ts';
+import {
+  WINDOWS_OS_MAX_BUDGET_MS,
+  windowsPowerShellPath,
+} from '../support/windows-os-state.test-helper.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -57,8 +61,18 @@ const createHost = (
     shellExists,
     logger: hostLogger,
     startupTrace: { native: process.platform === 'win32' },
+    osCaptureDeadlineAt: () =>
+      Math.min(
+        performance.now() + WINDOWS_OS_MAX_BUDGET_MS,
+        harnessBudget.reportDeadlineAt + HARNESS_REPORT_RESERVE_MS / 2,
+      ),
   });
-  runner.own({ snapshot: () => host.snapshotStartup(), release: () => host.killActive() });
+  runner.own({
+    snapshot: () => host.snapshotStartup(),
+    captureFailure: () => host.captureFailure(),
+    cancelCapture: () => host.cancelCapture(),
+    release: () => host.killActive(),
+  });
   return host;
 };
 
@@ -183,13 +197,7 @@ async function main(): Promise<void> {
 
   if (process.platform === 'win32') {
     await runner.run('PowerShell executes a structured launch command', async (deadlineAt) => {
-      const powershell = join(
-        process.env.SystemRoot ?? 'C:\\Windows',
-        'System32',
-        'WindowsPowerShell',
-        'v1.0',
-        'powershell.exe',
-      );
+      const powershell = windowsPowerShellPath();
       if (!existsSync(powershell)) throw new Error(`Windows PowerShell is missing: ${powershell}`);
 
       const launchToken = randomUUID();
