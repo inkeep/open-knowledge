@@ -108,6 +108,9 @@ const DEV_SERVER_SPAWN_SITES = [
 ] as const;
 const NON_DEV_SERVER_SPAWN_SITES = [
   'packages/app/tests/stress/_helpers/i18n-catalog-freshness.ts',
+  'packages/app/tests/stress/_helpers/port-ownership/lifetime-global-setup.ts',
+  'packages/app/tests/stress/_helpers/port-ownership/owner-loss.test-helper.ts',
+  'packages/app/tests/stress/_helpers/port-ownership/run-case.test-helper.ts',
   'packages/app/tests/stress/okf-generated-index-settings.e2e.ts',
 ] as const;
 const PINNED_SPAWN_SITES = [...DEV_SERVER_SPAWN_SITES, ...NON_DEV_SERVER_SPAWN_SITES].sort();

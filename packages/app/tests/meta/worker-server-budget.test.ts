@@ -2898,7 +2898,7 @@ const REQUIRED_ENTRY_NAMES_EXPORT = 'REQUIRED_FIXTURE_ENTRY_NAMES';
 const OPEN_BUDGET_PHASE_EXPORT = 'openBudgetPhase';
 const WARMUP_BYPASS_NAVIGATION_CALLEE = 'goto';
 
-const LIVE_BASE_URL = 'started.baseURL';
+const LIVE_BASE_URL = 'endpoint.baseURL';
 const LIVE_WARMUP_CALL = [
   `        await ${WARMUP_FIRST_LOAD_EXPORT}(`,
   '          browser,',

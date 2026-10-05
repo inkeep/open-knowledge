@@ -1,4 +1,5 @@
 import type { ChildProcess } from 'node:child_process';
+import { randomInt, randomUUID } from 'node:crypto';
 import {
   closeSync,
   cpSync,
@@ -7,6 +8,7 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  watch,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,12 +16,21 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { SYSTEM_DOC_NAME } from '@inkeep/open-knowledge-core';
 import * as Y from 'yjs';
+import {
+  TEST_SERVER_CANDIDATE_PORTS,
+  TEST_SERVER_HOST_FAMILY,
+  TEST_SERVER_IDENTITY_PATH,
+  TEST_SERVER_STARTUP_ENV,
+  type TestServerStartupReceipt,
+  type TestServerStartupRequest,
+} from '../../../src/build/test-server-startup-contract.ts';
 import { APP_PACKAGE_ROOT } from './seed-key.ts';
-import { removeAllStrictDuringTeardown } from './teardown-fs.ts';
+import { removeAllDuringTeardown, removeAllStrictDuringTeardown } from './teardown-fs.ts';
 
 export { APP_PACKAGE_ROOT };
 
-export const VITE_E2E_SEED_DIR = join(APP_PACKAGE_ROOT, 'node_modules', '.vite-e2e-seed');
+export const VITE_E2E_SEED_DIR =
+  process.env.OK_TEST_VITE_SEED_DIR ?? join(APP_PACKAGE_ROOT, 'node_modules', '.vite-e2e-seed');
 
 export function viteSeedIsReady(): boolean {
   return existsSync(join(VITE_E2E_SEED_DIR, 'deps', '_metadata.json'));
@@ -125,6 +136,234 @@ export async function checkCollabSync(
 
 export { getFreePort } from '../../free-port.test-helper.ts';
 
+type TestServerHost = TestServerStartupRequest['host'];
+
+export interface ViteStartupRequest {
+  readonly candidatePort: number;
+  readonly environment: Record<string, string>;
+  readonly receiptDir: string;
+  readonly receiptPath: string;
+  readonly nonce: string;
+  readonly host: TestServerHost;
+  dispose(): void;
+}
+
+export interface PendingViteStartup {
+  readonly request: ViteStartupRequest;
+  readonly proc: ChildProcess;
+  readonly startedAt: number;
+}
+
+export interface BoundViteEndpoint {
+  readonly port: number;
+  readonly baseURL: string;
+}
+
+export function createViteStartupRequest(
+  host: TestServerHost,
+  candidatePort = randomInt(TEST_SERVER_CANDIDATE_PORTS.start, TEST_SERVER_CANDIDATE_PORTS.end),
+): ViteStartupRequest {
+  if (
+    !Number.isInteger(candidatePort) ||
+    candidatePort < TEST_SERVER_CANDIDATE_PORTS.start ||
+    candidatePort >= TEST_SERVER_CANDIDATE_PORTS.end
+  ) {
+    throw new RangeError('automatic Vite startup candidate is outside its supported range');
+  }
+  const receiptDir = mkdtempSync(join(tmpdir(), 'ok-vite-start-'));
+  const receiptPath = join(receiptDir, 'receipt.json');
+  const nonce = randomUUID();
+  const startupRequest: TestServerStartupRequest = { nonce, host, candidatePort, receiptPath };
+  return {
+    candidatePort,
+    environment: {
+      VITE_PORT: String(candidatePort),
+      [TEST_SERVER_STARTUP_ENV]: JSON.stringify(startupRequest),
+    },
+    receiptDir,
+    receiptPath,
+    nonce,
+    host,
+    dispose: () => removeAllDuringTeardown(receiptDir),
+  };
+}
+
+export function beginViteStartup(
+  request: ViteStartupRequest,
+  proc: ChildProcess,
+): PendingViteStartup {
+  return { request, proc, startedAt: Date.now() };
+}
+
+function parseStartupReceipt(pending: PendingViteStartup): TestServerStartupReceipt {
+  let value: unknown;
+  try {
+    value = JSON.parse(readFileSync(pending.request.receiptPath, 'utf-8'));
+  } catch (err) {
+    throw new Error(`automatic Vite startup receipt is unreadable: ${String(err)}`);
+  }
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('automatic Vite startup receipt has an invalid shape');
+  }
+  const receipt = value as Record<string, unknown>;
+  const { request } = pending;
+  if (
+    receipt.nonce !== request.nonce ||
+    receipt.address !== request.host ||
+    receipt.family !== TEST_SERVER_HOST_FAMILY[request.host] ||
+    typeof receipt.port !== 'number' ||
+    !Number.isInteger(receipt.port) ||
+    receipt.port < request.candidatePort ||
+    receipt.port > 65535
+  ) {
+    throw new Error('automatic Vite startup receipt does not match its request');
+  }
+  return {
+    nonce: request.nonce,
+    address: request.host,
+    family: TEST_SERVER_HOST_FAMILY[request.host],
+    port: receipt.port,
+  };
+}
+
+function waitForStartupReceipt(
+  pending: PendingViteStartup,
+  deadlineAt: number,
+): Promise<TestServerStartupReceipt> {
+  return new Promise((resolve, reject) => {
+    let watcher: ReturnType<typeof watch> | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+    const cleanup = () => {
+      watcher?.off('error', onWatchError);
+      watcher?.close();
+      if (timer !== undefined) clearTimeout(timer);
+      pending.proc.off('error', onError);
+      pending.proc.off('exit', onExit);
+    };
+    const finish = (result: TestServerStartupReceipt | Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (result instanceof Error) reject(result);
+      else resolve(result);
+    };
+    const onError = (err: Error) => {
+      finish(new Error(`automatic Vite startup command failed: ${err.message}`));
+    };
+    const onWatchError = (err: Error) => {
+      finish(
+        new Error(
+          `automatic Vite startup receipt watcher on ${pending.request.receiptDir} failed: ${err.message}`,
+        ),
+      );
+    };
+    const onExit = () => {
+      finish(
+        new Error(
+          `automatic Vite startup command exited ${describeExit(pending.proc)} without a receipt`,
+        ),
+      );
+    };
+    const readReceipt = () => {
+      if (!existsSync(pending.request.receiptPath)) return;
+      try {
+        finish(parseStartupReceipt(pending));
+      } catch (err) {
+        finish(err instanceof Error ? err : new Error(String(err)));
+      }
+    };
+    try {
+      watcher = watch(pending.request.receiptDir, readReceipt);
+      watcher.on('error', onWatchError);
+      pending.proc.once('error', onError);
+      pending.proc.once('exit', onExit);
+      const remainingMs = deadlineAt - Date.now();
+      if (remainingMs <= 0) {
+        finish(
+          new Error('automatic Vite startup exhausted its readiness budget before publication'),
+        );
+        return;
+      }
+      timer = setTimeout(
+        () =>
+          finish(
+            new Error(
+              'automatic Vite startup did not publish an endpoint within its readiness budget',
+            ),
+          ),
+        remainingMs,
+      );
+      readReceipt();
+      if (pending.proc.exitCode !== null || pending.proc.signalCode !== null) onExit();
+    } catch (err) {
+      finish(err instanceof Error ? err : new Error(String(err)));
+    }
+  });
+}
+
+export async function waitForBoundViteEndpoint(
+  pending: PendingViteStartup,
+  timeoutMs: number,
+): Promise<BoundViteEndpoint> {
+  requireBoundMs(timeoutMs, 'waitForBoundViteEndpoint');
+  const deadlineAt = pending.startedAt + timeoutMs;
+  const receipt = await waitForStartupReceipt(pending, deadlineAt);
+  const baseURL = endpointBaseURL(receipt);
+  await assertViteStartupIdentity(pending, receipt, deadlineAt);
+  return { port: receipt.port, baseURL };
+}
+
+function endpointBaseURL(receipt: TestServerStartupReceipt): string {
+  return `http://${receipt.family === 'IPv6' ? `[${receipt.address}]` : receipt.address}:${receipt.port}`;
+}
+
+async function assertViteStartupIdentity(
+  pending: PendingViteStartup,
+  receipt: TestServerStartupReceipt,
+  deadlineAt: number,
+): Promise<void> {
+  const baseURL = endpointBaseURL(receipt);
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) {
+    throw new Error(
+      'automatic Vite startup exhausted its readiness budget before identity verification',
+    );
+  }
+  const response = await fetch(`${baseURL}${TEST_SERVER_IDENTITY_PATH}`, {
+    signal: AbortSignal.timeout(remainingMs),
+  });
+  if (response.status !== 200) {
+    throw new Error(`automatic Vite startup identity returned status ${response.status}`);
+  }
+  let identity: unknown;
+  try {
+    identity = await response.json();
+  } catch (err) {
+    throw new Error(`automatic Vite startup identity is not JSON: ${String(err)}`);
+  }
+  if (
+    typeof identity !== 'object' ||
+    identity === null ||
+    (identity as Record<string, unknown>).nonce !== receipt.nonce ||
+    (identity as Record<string, unknown>).address !== receipt.address ||
+    (identity as Record<string, unknown>).family !== receipt.family ||
+    (identity as Record<string, unknown>).port !== receipt.port
+  ) {
+    throw new Error('automatic Vite startup identity does not match its receipt');
+  }
+  if (pending.proc.exitCode !== null || pending.proc.signalCode !== null) {
+    throw new Error(
+      `automatic Vite startup command exited ${describeExit(pending.proc)} after identity verification`,
+    );
+  }
+  if (Date.now() >= deadlineAt) {
+    throw new Error(
+      'automatic Vite startup exhausted its readiness budget during identity verification',
+    );
+  }
+}
+
 function describeExit(proc: ChildProcess): string {
   return proc.signalCode === null ? `with code ${proc.exitCode}` : `on ${proc.signalCode}`;
 }
@@ -133,14 +372,25 @@ export async function waitForHttpReady(
   baseURL: string,
   timeoutMs: number,
   proc?: ChildProcess,
+  startedAt = Date.now(),
 ): Promise<void> {
   requireBoundMs(timeoutMs, 'waitForHttpReady');
-  const start = Date.now();
+  const start = startedAt;
   let lastErr: unknown;
   while (Date.now() - start < timeoutMs) {
+    const remainingMs = timeoutMs - (Date.now() - start);
     try {
-      const res = await fetch(`${baseURL}/`, { signal: AbortSignal.timeout(1000) });
-      if (res.status === 200 || res.status === 404) return;
+      const res = await fetch(`${baseURL}/`, {
+        signal: AbortSignal.timeout(Math.min(1000, remainingMs)),
+      });
+      if (res.status === 200 || res.status === 404) {
+        if (proc !== undefined && (proc.exitCode !== null || proc.signalCode !== null)) {
+          throw new Error(
+            `dev server command for ${baseURL} exited ${describeExit(proc)} before readiness could be accepted`,
+          );
+        }
+        return;
+      }
       lastErr = new Error(`unexpected status ${res.status}`);
     } catch (err) {
       lastErr = err;
@@ -150,7 +400,7 @@ export async function waitForHttpReady(
         `dev server command for ${baseURL} exited ${describeExit(proc)} after ${Date.now() - start}ms without becoming ready. Last error: ${String(lastErr)}`,
       );
     }
-    await wait(250);
+    await wait(Math.min(250, Math.max(0, timeoutMs - (Date.now() - start))));
   }
   throw new Error(
     `dev server at ${baseURL} did not become ready within ${timeoutMs}ms. Last error: ${String(lastErr)}`,

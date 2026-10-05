@@ -8,15 +8,19 @@ import { resetContentToFixtureBaseline } from './content-reset.ts';
 import { gotoWhileLoadProgresses, requireDeadlineAt } from './load-progress.ts';
 import {
   APP_PACKAGE_ROOT,
+  type BoundViteEndpoint,
+  beginViteStartup,
   checkCollabSync,
   closeServerLog,
-  getFreePort,
+  createViteStartupRequest,
   killGracefully,
   openServerLog,
+  type PendingViteStartup,
   prepareViteCacheDir,
   requireBoundMs,
   type ServerLog,
   tailServerLog,
+  waitForBoundViteEndpoint,
   waitForHttpReady,
 } from './server-process.ts';
 import { declareSetupNonResult } from './setup-non-result.ts';
@@ -256,14 +260,21 @@ export async function checkApiConfig(baseURL: string, timeoutMs: number): Promis
   }
 }
 
-async function waitForServerReady(
-  baseURL: string,
-  port: number,
-  proc: ChildProcess,
-): Promise<void> {
-  await waitForHttpReady(baseURL, WORKER_SERVER_READINESS_BUDGET_MS, proc);
+async function waitForServerReady(started: StartedWorkerServer): Promise<BoundViteEndpoint> {
+  const { pending } = started;
+  const { baseURL, port } = await waitForBoundViteEndpoint(
+    pending,
+    WORKER_SERVER_READINESS_BUDGET_MS,
+  );
+  await waitForHttpReady(
+    baseURL,
+    WORKER_SERVER_READINESS_BUDGET_MS,
+    pending.proc,
+    pending.startedAt,
+  );
   await checkApiConfig(baseURL, WORKER_SERVER_BUDGET_RESERVES.apiConfig);
   await checkCollabSync(port, WORKER_SERVER_BUDGET_RESERVES.collabSync);
+  return { baseURL, port };
 }
 
 async function settleBeforeDeadline<T>(
@@ -427,8 +438,7 @@ function seedRequiredFixtureFiles(contentDir: string): void {
 }
 
 interface StartedWorkerServer {
-  port: number;
-  baseURL: string;
+  pending: PendingViteStartup;
   contentDir: string;
   viteCacheDir: string;
   serverLog: ServerLog;
@@ -436,7 +446,7 @@ interface StartedWorkerServer {
 }
 
 function setupResidueOf(started: StartedWorkerServer): string {
-  return `the detached dev server on port ${started.port}, the content dir ${started.contentDir} and the vite cache dir ${started.viteCacheDir} are reaped and removed by whichever of the failure path and the teardown path this worker reaches`;
+  return `the detached dev server started with candidate port ${started.pending.request.candidatePort}, the content dir ${started.contentDir} and the vite cache dir ${started.viteCacheDir} are reaped and removed by whichever of the failure path and the teardown path this worker reaches`;
 }
 
 export const test = base.extend<TestFixtures, WorkerFixtures>({
@@ -451,10 +461,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       const releaseSetupResources: Array<() => void | Promise<void>> = [];
       let openedServerLog: ServerLog | undefined;
       let started: StartedWorkerServer | undefined;
+      let endpoint: BoundViteEndpoint;
 
       try {
         started = await spendOnBudgetPhase(setupOverhead, async () => {
-          const port = await getFreePort();
+          const request = createViteStartupRequest('127.0.0.1');
+          releaseSetupResources.push(() => request.dispose());
 
           const contentDir = mkdtempSync(join(tmpdir(), `ok-w${workerInfo.workerIndex}-`));
           releaseSetupResources.push(() => removeAllDuringTeardown(contentDir));
@@ -468,13 +480,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           openedServerLog = serverLog;
           releaseSetupResources.push(() => closeServerLog(serverLog));
 
-          const proc = spawn('pnpm', ['run', 'dev', '--host', '127.0.0.1'], {
+          const proc = spawn('pnpm', ['run', 'dev', '--host', request.host], {
             cwd: APP_PACKAGE_ROOT,
             detached: true,
             env: {
               ...process.env,
               ...workerServerEnv,
-              VITE_PORT: String(port),
+              ...request.environment,
               OK_TEST_CONTENT_DIR: contentDir,
               OK_TEST_VITE_CACHE_DIR: viteCacheDir,
               OK_TEST_SKIP_I18N_COMPILE: '1',
@@ -492,8 +504,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           });
 
           return {
-            port,
-            baseURL: `http://127.0.0.1:${port}`,
+            pending: beginViteStartup(request, proc),
             contentDir,
             viteCacheDir,
             serverLog,
@@ -504,10 +515,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         const residue = setupResidueOf(started);
         reportBudgetOverrun(setupOverhead, workerInfo.workerIndex, residue);
 
-        await waitForServerReady(started.baseURL, started.port, started.proc);
+        endpoint = await waitForServerReady(started);
         await warmupAppFirstLoad(
           browser,
-          started.baseURL,
+          endpoint.baseURL,
           setupOverhead,
           fixtureStartedAt + WORKER_SERVER_SETUP_STARVATION_LINE_MS,
         );
@@ -535,9 +546,9 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         );
       }
 
-      const { port, baseURL, contentDir, viteCacheDir, serverLog, proc } = started;
+      const { contentDir, viteCacheDir, serverLog, proc, pending } = started;
 
-      await use({ port, baseURL, contentDir });
+      await use({ ...endpoint, contentDir });
 
       const teardown = openBudgetPhase(TEARDOWN_PHASE_NAME, WORKER_SERVER_BUDGET_RESERVES.teardown);
       try {
@@ -545,13 +556,18 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       } finally {
         await spendOnBudgetPhase(teardown, () => {
           closeServerLog(serverLog);
-          removeAllDuringTeardown(serverLog.path, contentDir, viteCacheDir);
+          removeAllDuringTeardown(
+            serverLog.path,
+            contentDir,
+            viteCacheDir,
+            pending.request.receiptDir,
+          );
         });
       }
       reportBudgetOverrun(
         teardown,
         workerInfo.workerIndex,
-        `the dev server was reaped and ${serverLog.path}, ${contentDir} and ${viteCacheDir} were removed before this report`,
+        `the dev server was reaped and ${serverLog.path}, ${contentDir}, ${viteCacheDir} and ${pending.request.receiptDir} were removed before this report`,
       );
     },
     { scope: 'worker', timeout: WORKER_SERVER_BUDGET_TOTAL_MS },

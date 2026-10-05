@@ -5,9 +5,9 @@ import { SETUP_NON_RESULT_REPORTER } from './tests/stress/_helpers/setup-non-res
 /**
  * Per-worker server isolation: there is no `webServer` block — instead a
  * worker-scoped fixture at `tests/stress/_helpers/fixtures.ts`. Each
- * Playwright worker spawns its own `pnpm run dev` process on a
- * kernel-allocated port + unique tmpdir, eliminating the cross-worker CPU
- * contention that created a structural flake class under shared webServer.
+ * Playwright worker spawns its own `pnpm run dev` process with a unique
+ * tmpdir, eliminating the cross-worker CPU contention that created a
+ * structural flake class under shared webServer.
  *
  * Per-test `baseURL` comes from the `baseURL` fixture in `fixtures.ts`, which
  * reads the worker's `workerServer.baseURL`. Consumers use

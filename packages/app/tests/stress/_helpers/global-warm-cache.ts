@@ -11,16 +11,18 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { APP_PACKAGE_ROOT, computeSeedKey } from './seed-key.ts';
 import {
+  beginViteStartup,
   closeServerLog,
-  getFreePort,
+  createViteStartupRequest,
   killGracefully,
   openServerLog,
   tailServerLog,
   VITE_E2E_SEED_DIR,
+  waitForBoundViteEndpoint,
   waitForHttpReady,
 } from './server-process.ts';
 import { removeAllDuringTeardown } from './teardown-fs.ts';
@@ -47,17 +49,18 @@ function depsDirSignature(depsDir: string): string {
 }
 
 async function buildSeedOnce(key: string): Promise<void> {
-  const port = await getFreePort();
   const contentDir = mkdtempSync(join(tmpdir(), 'ok-warm-cache-content-'));
-  mkdirSync(join(APP_PACKAGE_ROOT, 'node_modules'), { recursive: true });
-  const buildDir = mkdtempSync(join(APP_PACKAGE_ROOT, 'node_modules', '.vite-e2e-seed-building-'));
+  const seedParent = dirname(VITE_E2E_SEED_DIR);
+  mkdirSync(seedParent, { recursive: true });
+  const buildDir = mkdtempSync(join(seedParent, '.vite-e2e-seed-building-'));
   const log = openServerLog('warm-cache');
-  const proc = spawn('pnpm', ['run', 'dev', '--host', '127.0.0.1'], {
+  const request = createViteStartupRequest('127.0.0.1');
+  const proc = spawn('pnpm', ['run', 'dev', '--host', request.host], {
     cwd: APP_PACKAGE_ROOT,
     detached: true,
     env: {
       ...process.env,
-      VITE_PORT: String(port),
+      ...request.environment,
       OK_TEST_CONTENT_DIR: contentDir,
       OK_TEST_VITE_CACHE_DIR: buildDir,
       OK_TEST_SKIP_I18N_COMPILE: '1',
@@ -68,9 +71,11 @@ async function buildSeedOnce(key: string): Promise<void> {
   proc.on('error', (err) => {
     console.warn('[e2e warm-cache] spawn error:', err);
   });
+  const pending = beginViteStartup(request, proc);
   let succeeded = false;
   try {
-    await waitForHttpReady(`http://127.0.0.1:${port}`, 60_000, proc);
+    const { baseURL } = await waitForBoundViteEndpoint(pending, 60_000);
+    await waitForHttpReady(baseURL, 60_000, proc, pending.startedAt);
     const depsDir = join(buildDir, 'deps');
     const metaPath = join(depsDir, '_metadata.json');
     const deadline = Date.now() + OPTIMIZER_SETTLE_BUDGET_MS;
@@ -107,7 +112,7 @@ async function buildSeedOnce(key: string): Promise<void> {
       await killGracefully(proc);
     } finally {
       closeServerLog(log);
-      removeAllDuringTeardown(contentDir, ...(succeeded ? [] : [buildDir]));
+      removeAllDuringTeardown(contentDir, request.receiptDir, ...(succeeded ? [] : [buildDir]));
     }
   }
   try {
