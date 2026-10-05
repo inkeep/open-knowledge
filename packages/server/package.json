@@ -72,7 +72,7 @@
   },
   "scripts": {
     "build": "tsdown && pnpm run build:skill-bundles",
-    "build:skill-bundles": "tsx scripts/build-skill-bundles.ts",
+    "build:skill-bundles": "node --import tsx scripts/build-skill-bundles.ts",
     "typecheck": "pnpm run typecheck:bash && pnpm run typecheck:test-helper-callers && tsc",
     "test": "vitest run",
     "test:network": "vitest run --config vitest.network.config.ts",

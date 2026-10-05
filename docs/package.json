@@ -12,10 +12,10 @@
     "test": "vitest run src && pnpm run test:real-source",
     "test:real-source": "vitest run --config vitest.real-source.config.mts",
     "typecheck": "next typegen && fumadocs-mdx && tsc --noEmit",
-    "validate-link": "tsx scripts/validate-link.ts",
-    "generate:og-wordmark": "tsx scripts/generate-og-wordmark.ts",
-    "generate:brand-assets": "tsx scripts/generate-brand-assets.ts",
-    "generate:component-docs": "tsx scripts/generate-component-docs.ts",
+    "validate-link": "node --import tsx scripts/validate-link.ts",
+    "generate:og-wordmark": "node --import tsx scripts/generate-og-wordmark.ts",
+    "generate:brand-assets": "node --import tsx scripts/generate-brand-assets.ts",
+    "generate:component-docs": "node --import tsx scripts/generate-component-docs.ts",
     "postinstall": "fumadocs-mdx"
   },
   "dependencies": {

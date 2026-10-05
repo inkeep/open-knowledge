@@ -2,7 +2,10 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, test } from 'vitest';
-import { createTempDirFactory } from '../../../../test-support/temp-dir.test-helper.ts';
+import {
+  createSocketPathOverflowingTempDir,
+  createTempDirFactory,
+} from '../../../../test-support/temp-dir.test-helper.ts';
 import { withForcedGc } from './gc.ts';
 import {
   ACCEPT_MISMATCH_FLAG,
@@ -30,7 +33,7 @@ import {
 const makeTempDir = createTempDirFactory(afterAll);
 
 function comparatorEnv(): NodeJS.ProcessEnv {
-  const temporary = makeTempDir('ok-perf-cli-');
+  const temporary = createSocketPathOverflowingTempDir(makeTempDir('ok-perf-comparator-'));
   return { ...process.env, TMPDIR: temporary, TMP: temporary, TEMP: temporary };
 }
 
@@ -752,7 +755,16 @@ describe('the standalone comparator CLI surfaces methodology warnings and refuse
     );
     const result = spawnSync(
       'pnpm',
-      ['exec', 'tsx', join(PERF_DIR, script), COMMITTED_BASELINE_PATH, freshPath, ...extraArgs],
+      [
+        'exec',
+        'node',
+        '--import',
+        'tsx',
+        join(PERF_DIR, script),
+        COMMITTED_BASELINE_PATH,
+        freshPath,
+        ...extraArgs,
+      ],
       { cwd: join(PERF_DIR, '..', '..'), encoding: 'utf8', env: comparatorEnv(), timeout: 30_000 },
     );
     if (result.error) {
@@ -780,7 +792,7 @@ describe('the standalone comparator CLI surfaces methodology warnings and refuse
     );
     const result = spawnSync(
       'pnpm',
-      ['exec', 'tsx', join(PERF_DIR, 'regression-gate.ts'), badPath, freshPath],
+      ['exec', 'node', '--import', 'tsx', join(PERF_DIR, 'regression-gate.ts'), badPath, freshPath],
       { cwd: join(PERF_DIR, '..', '..'), encoding: 'utf8', env: comparatorEnv(), timeout: 30_000 },
     );
     expect(result.status).toBe(EXIT_DATA);
@@ -791,7 +803,15 @@ describe('the standalone comparator CLI surfaces methodology warnings and refuse
   function runComparator(baselinePath: string, freshPath: string) {
     const result = spawnSync(
       'pnpm',
-      ['exec', 'tsx', join(PERF_DIR, 'regression-gate.ts'), baselinePath, freshPath],
+      [
+        'exec',
+        'node',
+        '--import',
+        'tsx',
+        join(PERF_DIR, 'regression-gate.ts'),
+        baselinePath,
+        freshPath,
+      ],
       { cwd: join(PERF_DIR, '..', '..'), encoding: 'utf8', env: comparatorEnv(), timeout: 30_000 },
     );
     if (result.error) throw result.error;
@@ -882,7 +902,15 @@ describe('the standalone comparator CLI surfaces methodology warnings and refuse
     writeFileSync(freshPath, JSON.stringify(freshFromBaseline(baseline)));
     const result = spawnSync(
       'pnpm',
-      ['exec', 'tsx', join(PERF_DIR, 'regression-gate.ts'), baselinePath, freshPath],
+      [
+        'exec',
+        'node',
+        '--import',
+        'tsx',
+        join(PERF_DIR, 'regression-gate.ts'),
+        baselinePath,
+        freshPath,
+      ],
       { cwd: join(PERF_DIR, '..', '..'), encoding: 'utf8', env: comparatorEnv(), timeout: 30_000 },
     );
     expect(result.stderr).not.toContain('INCONCLUSIVE');

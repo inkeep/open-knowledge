@@ -1,7 +1,10 @@
-import { mkdtempSync } from 'node:fs';
+import { Buffer } from 'node:buffer';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+const LARGEST_UNIX_SOCKET_PATH_BYTES = 108;
 
 export async function withTempDir<T>(
   prefix: string,
@@ -34,4 +37,13 @@ export function createTempDirFactory(
     paths.push(path);
     return path;
   };
+}
+
+export function createSocketPathOverflowingTempDir(parent: string): string {
+  let dir = join(parent, 'temporary-files-with-a-long-inherited-path');
+  while (Buffer.byteLength(dir) <= LARGEST_UNIX_SOCKET_PATH_BYTES) {
+    dir = join(dir, 'nested-directory-beyond-unix-socket-path-capacity');
+  }
+  mkdirSync(dir, { recursive: true });
+  return dir;
 }

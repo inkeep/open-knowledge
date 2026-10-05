@@ -18,7 +18,7 @@
     "postinstall": "node scripts/create-turbo-cache-key.mjs",
     "knip": "turbo run build --filter=@inkeep/open-knowledge-server --filter=@inkeep/open-knowledge-core --output-logs=errors-only && knip",
     "notices": "node scripts/generate-third-party-notices.mjs",
-    "schema:dump": "tsx packages/core/scripts/dump-schema.ts",
+    "schema:dump": "node --import tsx packages/core/scripts/dump-schema.ts",
     "build": "turbo run build",
     "build:desktop": "turbo run build:desktop",
     "build:desktop:dir": "turbo run build:desktop:dir",
