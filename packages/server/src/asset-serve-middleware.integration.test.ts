@@ -11,6 +11,7 @@ import sirv from 'sirv';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createAssetServeMiddleware } from './asset-serve-middleware.ts';
 import { createContentFilter } from './content-filter.ts';
+import { closeTestHttpServer } from './http-server.test-helper.ts';
 import { buildIngressPolicy } from './ingress-policy.ts';
 import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
 
@@ -46,10 +47,7 @@ async function startHarness(contentDir: string): Promise<Harness> {
 
   return {
     baseURL,
-    close: () =>
-      new Promise<void>((resolve, reject) => {
-        server.close((err) => (err ? reject(err) : resolve()));
-      }),
+    close: () => closeTestHttpServer(server),
   };
 }
 
