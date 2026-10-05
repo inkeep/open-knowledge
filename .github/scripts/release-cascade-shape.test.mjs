@@ -2304,7 +2304,11 @@ describe('the release App credential never shares a job with installed packages'
       afterAll(() => rmSync(root, { recursive: true, force: true }));
       const bin = join(root, 'bin');
       mkdirSync(bin);
-      const nodeGlobalRoot = join(dirname(process.execPath), '..', 'lib', 'node_modules');
+      const npmCliPath = execFileSync('npm', ['exec', '--call', 'node -p process.env.npm_execpath'], {
+        cwd: tmpdir(),
+        encoding: 'utf8',
+      }).trim();
+      const nodeGlobalRoot = dirname(dirname(dirname(npmCliPath)));
       writeFileSync(
         join(bin, 'npm'),
         '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$NPM_LOG"\nif [ "$1" = root ]; then printf \'%s\\n\' "$NPM_GLOBAL_ROOT"; exit 0; fi\nif [ "$1" = view ]; then [ -n "$NPM_VIEW" ] || exit 1; printf \'%s\\n\' "$NPM_VIEW"; fi\nexit 0\n',
@@ -2372,7 +2376,7 @@ describe('the release App credential never shares a job with installed packages'
       };
       const cli = (version, extra = {}) => ({ name: '@inkeep/open-knowledge', version, publishConfig: { access: 'public' }, ...extra });
 
-      test('the stub npm hands the step a real pacote, the one bundled with the npm that runs these tests', () => {
+      test('the stub npm hands the step a real pacote, the one bundled with the npm on PATH', () => {
         expect(existsSync(join(nodeGlobalRoot, 'npm', 'node_modules', 'pacote', 'package.json'))).toBe(true);
         expect(commands(publishStep())).toContain('pacote="$(npm root -g)/npm/node_modules/pacote"');
         expect(commands(publishStep())).not.toMatch(/\btar\s/);

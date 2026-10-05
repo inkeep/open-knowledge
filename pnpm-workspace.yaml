@@ -7,9 +7,6 @@ packageExtensions:
     peerDependencies:
       zod: '^3.25.0 || ^4.0.0'
 
-# Fail the install/run fast when the active Node is below the engines.node floor
-# (>=24). CI and local development both use .node-version, so pnpm must not
-# silently continue under a different runtime.
 engineStrict: true
 
 # Corepack selects packageManager. Avoid a second pnpm bootstrap and its env

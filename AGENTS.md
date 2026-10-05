@@ -6,7 +6,7 @@ This is the public OpenKnowledge repository. Keep changes compatible with the pu
 
 - Read [README.md](./README.md) for the project overview.
 - Read [CONTRIBUTING.md](./CONTRIBUTING.md) before changing public PR flow, dependencies, or exported docs.
-- Use Node.js 24 or newer and pnpm 12 or newer.
+- Use pnpm 12 or newer. Corepack and npm need a Node.js to provide it, such as the `.node-version` release; the standalone installer needs none. pnpm commands run the Node.js version `package.json`'s `devEngines.runtime` pins, which equals `.node-version`; select `.node-version` yourself before running `node` directly.
 - This repo does not use code comments. Read [Comment policy](#comment-policy) before writing any.
 
 ## Commands

@@ -7,6 +7,13 @@
   "engines": {
     "node": ">=24.2.0"
   },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "24.21.0",
+      "onFail": "download"
+    }
+  },
   "scripts": {
     "postinstall": "node scripts/create-turbo-cache-key.mjs",
     "knip": "turbo run build --filter=@inkeep/open-knowledge-server --filter=@inkeep/open-knowledge-core --output-logs=errors-only && knip",
