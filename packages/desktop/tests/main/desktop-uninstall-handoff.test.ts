@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -3444,14 +3444,14 @@ function withTemporaryDirectory(shell: string, temporaryDirectory: string, scrip
   return `TMPDIR=${shellQuote(temporaryDirectory)}; export TMPDIR; exec ${shellQuote(shell)} -c ${shellQuote(script)}`;
 }
 
-function readHostPathLimit(limit: 'PATH_MAX' | 'NAME_MAX', path: string) {
-  const reported = spawnSyncBounded('/usr/bin/getconf', [limit, path], {
+function readHostPathMax(path: string) {
+  const reported = spawnSyncBounded('/usr/bin/getconf', ['PATH_MAX', path], {
     timeoutMs: DEFAULT_BOUNDED_SPAWN_TIMEOUT_MS,
   });
   const value = Number(reported.stdout.trim());
   if (reported.status !== 0 || !Number.isSafeInteger(value) || value <= 0) {
     throw new Error(
-      `getconf ${limit} ${path} exited ${String(reported.status)} reporting ${JSON.stringify(reported.stdout.trim())}, so this host gives no ${limit} to size a path against.\nstderr: ${reported.stderr.trim()}`,
+      `getconf PATH_MAX ${path} exited ${String(reported.status)} reporting ${JSON.stringify(reported.stdout.trim())}, so this host gives no PATH_MAX to size a path against.\nstderr: ${reported.stderr.trim()}`,
     );
   }
   return value;
@@ -3477,12 +3477,12 @@ function temporaryDirectoryWithRoomForADirectoryButNotItsFile(
   fileName: string,
 ) {
   const root = realpathSync(f.dir);
-  const pathMax = readHostPathLimit('PATH_MAX', root);
+  const pathMax = readHostPathMax(root);
   const directoryLength = pathMax - Math.ceil(`/${fileName}`.length / 2);
   const path = directoryPathOfLength(
     root,
     directoryLength - `/${directoryTemplate}`.length,
-    readHostPathLimit('NAME_MAX', root),
+    basename(root).length,
   );
   mkdirSync(path, { recursive: true });
   return { path, pathMax };

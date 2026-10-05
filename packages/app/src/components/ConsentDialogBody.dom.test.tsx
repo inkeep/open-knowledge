@@ -1,6 +1,6 @@
 import { EDITOR_LABELS } from '@inkeep/open-knowledge-core';
 import { i18n } from '@lingui/core';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { ConsentStore } from '@/lib/consent-store';
@@ -123,6 +123,7 @@ async function expandAdvanced() {
 describe('ConsentDialogBody runtime form behavior', () => {
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     i18n.activate('en');
     setBridge(undefined);
     vi.restoreAllMocks();
@@ -325,6 +326,7 @@ describe('ConsentDialogBody runtime form behavior', () => {
   });
 
   test('a never-settling detection probe keeps Cancel live and degrades to no wiring', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const harness = makeStore();
     setBridge(statusBridge([], { pending: true }));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -337,37 +339,35 @@ describe('ConsentDialogBody runtime form behavior', () => {
 
     fireEvent.submit(screen.getByTestId('consent-form') as HTMLFormElement);
 
-    await waitFor(() => {
-      expect(
-        (screen.getByTestId('consent-start') as HTMLButtonElement).getAttribute('aria-busy'),
-      ).toBe('true');
-    });
+    expect(
+      (screen.getByTestId('consent-start') as HTMLButtonElement).getAttribute('aria-busy'),
+    ).toBe('true');
     expect((screen.getByTestId('consent-cancel') as HTMLButtonElement).disabled).toBe(false);
 
-    await waitFor(() => {
-      expect(harness.confirmCalls).toHaveLength(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
     });
+    expect(harness.confirmCalls).toHaveLength(1);
+    expect((screen.getByTestId('consent-cancel') as HTMLButtonElement).disabled).toBe(true);
     expect(harness.confirmCalls[0]?.editorIds).toEqual([]);
     expect(harness.confirmCalls[0]?.connectEditors).toBe(true);
   });
 
   test('Escape during the detection wait cancels instead of being swallowed', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const harness = makeStore();
     setBridge(statusBridge([], { pending: true }));
     render(<ConsentDialogBody payload={payload} store={harness.store} />);
 
     fireEvent.submit(screen.getByTestId('consent-form') as HTMLFormElement);
-    await waitFor(() => {
-      expect(
-        (screen.getByTestId('consent-start') as HTMLButtonElement).getAttribute('aria-busy'),
-      ).toBe('true');
-    });
+    expect(
+      (screen.getByTestId('consent-start') as HTMLButtonElement).getAttribute('aria-busy'),
+    ).toBe('true');
 
-    fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
-
-    await waitFor(() => {
-      expect(harness.cancelCalls).toEqual(['cancel']);
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
     });
+    expect(harness.cancelCalls).toEqual(['cancel']);
   });
 
   test('a rejected detection probe does not hang the submit', async () => {
@@ -416,24 +416,21 @@ describe('ConsentDialogBody runtime form behavior', () => {
   });
 
   test('two rapid cancels during the detection wait issue a single cancel', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const harness = makeStore();
     setBridge(statusBridge([], { pending: true }));
     render(<ConsentDialogBody payload={payload} store={harness.store} />);
 
     fireEvent.submit(screen.getByTestId('consent-form') as HTMLFormElement);
-    await waitFor(() => {
-      expect(
-        (screen.getByTestId('consent-start') as HTMLButtonElement).getAttribute('aria-busy'),
-      ).toBe('true');
-    });
+    expect(
+      (screen.getByTestId('consent-start') as HTMLButtonElement).getAttribute('aria-busy'),
+    ).toBe('true');
 
     fireEvent.click(screen.getByTestId('consent-cancel'));
     fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
 
-    await waitFor(() => {
-      expect(harness.cancelCalls).toEqual(['cancel']);
-    });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(harness.cancelCalls).toEqual(['cancel']);
+    await act(async () => {});
     expect(harness.cancelCalls).toEqual(['cancel']);
   });
 
@@ -487,29 +484,26 @@ describe('ConsentDialogBody runtime form behavior', () => {
   });
 
   test('a successful cancel during the wait suppresses the parked confirm', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const harness = makeStore();
     const detection = deferredStatusBridge(['claude']);
     setBridge(detection.bridge);
     render(<ConsentDialogBody payload={payload} store={harness.store} />);
 
     fireEvent.submit(screen.getByTestId('consent-form') as HTMLFormElement);
-    await waitFor(() => {
-      expect(
-        (screen.getByTestId('consent-start') as HTMLButtonElement).getAttribute('aria-busy'),
-      ).toBe('true');
-    });
+    expect(
+      (screen.getByTestId('consent-start') as HTMLButtonElement).getAttribute('aria-busy'),
+    ).toBe('true');
 
-    fireEvent.click(screen.getByTestId('consent-cancel'));
-    await waitFor(() => {
-      expect(harness.cancelCalls).toEqual(['cancel']);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('consent-cancel'));
     });
+    expect(harness.cancelCalls).toEqual(['cancel']);
 
-    detection.release();
-    await waitFor(() => {
-      expect(screen.getByTestId('consent-editors-status').getAttribute('data-status')).toBe(
-        'ready',
-      );
+    await act(async () => {
+      detection.release();
     });
+    expect(screen.getByTestId('consent-editors-status').getAttribute('data-status')).toBe('ready');
     expect(harness.confirmCalls).toEqual([]);
   });
 

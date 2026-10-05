@@ -16,7 +16,10 @@ import {
   type Embedder,
   type LoadOpenAiEmbedderInput,
 } from './embeddings/index.ts';
-import { MAX_DIMS_DRIFT_RESETS } from './embeddings/semantic-search-service.ts';
+import {
+  MAX_DIMS_DRIFT_RESETS,
+  SemanticSearchService,
+} from './embeddings/semantic-search-service.ts';
 import { getLogger } from './logger.ts';
 import { createServer, type ServerInstance } from './server-factory.ts';
 import { initShadowRepo } from './shadow-repo.ts';
@@ -125,6 +128,27 @@ function searchViaServer(
   return callViaServer(srv, 'POST', '/api/search', bodyObj) as Promise<SearchBody>;
 }
 
+async function searchAfterCorpusCompletion(search: () => Promise<SearchBody>): Promise<SearchBody> {
+  const embedCorpus = vi.spyOn(SemanticSearchService.prototype, 'embedCorpus');
+  try {
+    await search();
+    expect(embedCorpus, 'the search started no corpus pass to await').toHaveBeenCalled();
+    const awaitObservedPasses = () =>
+      Promise.all(
+        embedCorpus.mock.results.map((result) => {
+          if (result.type !== 'return') throw result.value;
+          return result.value;
+        }),
+      );
+    await awaitObservedPasses();
+    const settled = await search();
+    await awaitObservedPasses();
+    return settled;
+  } finally {
+    embedCorpus.mockRestore();
+  }
+}
+
 beforeAll(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), 'ok-sem-factory-'));
   for (const [rel, content] of Object.entries({
@@ -176,24 +200,23 @@ afterAll(async () => {
 
 describe('createServer boot — flag-ON semantic search (factory glue)', () => {
   test('config-enabled boot fuses a vector signal and reports coverage; excluded content stays out', async () => {
-    const deadline = Date.now() + 20_000;
-    let result: SearchBody | undefined;
-    do {
-      result = await searchViaServer(server, {
+    const result = await searchAfterCorpusCompletion(async () => {
+      const response = await searchViaServer(server, {
         query: 'auth retries',
         intent: 'full_text',
         semantic: true,
       });
-      for (const r of result.results ?? []) {
+      for (const r of response.results ?? []) {
         expect(r.path.startsWith('archive/')).toBe(false);
       }
-      if ((result.semantic?.coverage.embedded ?? 0) >= SERVED_PAGE_COUNT) break;
-      await new Promise((r) => setTimeout(r, 25));
-    } while (Date.now() < deadline);
+      return response;
+    });
 
     expect(result?.semantic?.capable).toBe(true);
     expect(result?.semantic?.coverage.total).toBe(SERVED_PAGE_COUNT);
-    expect(result?.semantic?.coverage.embedded).toBe(SERVED_PAGE_COUNT);
+    expect(result?.semantic?.coverage.embedded, JSON.stringify(result?.semantic)).toBe(
+      SERVED_PAGE_COUNT,
+    );
     expect(result?.semantic?.applied).toBe(true);
     expect(result?.semantic?.outcome).toBe('applied');
 
@@ -427,10 +450,8 @@ test('the real search route maps terminal vector-size drift to restart_required'
         semantic: true,
       });
     const waitForCoverage = async () => {
-      await vi.waitFor(async () => {
-        const result = await search();
-        expect(result.semantic?.coverage.embedded).toBe(1);
-      });
+      const result = await searchAfterCorpusCompletion(search);
+      expect(result.semantic?.coverage.embedded, JSON.stringify(result.semantic)).toBe(1);
     };
 
     try {
@@ -746,20 +767,16 @@ describe('createServer boot — similarityFloor config reaches core ranking', ()
       });
       await srv.ready;
       try {
-        const deadline = Date.now() + 20_000;
-        let result: SearchBody | undefined;
-        do {
-          result = await searchViaServer(srv, {
+        const result = await searchAfterCorpusCompletion(() =>
+          searchViaServer(srv, {
             query: 'auth retries',
             intent: 'full_text',
             semantic: true,
-          });
-          if ((result.semantic?.coverage.embedded ?? 0) >= 1) break;
-          await new Promise((r) => setTimeout(r, 25));
-        } while (Date.now() < deadline);
+          }),
+        );
 
         expect(result?.semantic?.capable).toBe(true);
-        expect(result?.semantic?.coverage.embedded).toBe(1);
+        expect(result?.semantic?.coverage.embedded, JSON.stringify(result?.semantic)).toBe(1);
         expect(result?.results?.find((r) => r.path === 'rotation')).toBeUndefined();
         for (const r of result?.results ?? []) expect('vector' in r.signals).toBe(false);
         expect(result?.semantic?.applied).toBe(false);
