@@ -1,7 +1,6 @@
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
-import { expectKnownBug } from '../../../../test-support/known-bug.test-helper';
 import type { EditorTabSessionState } from '../../src/editor/editor-tabs';
 import {
   type ApiHelpers,
@@ -874,82 +873,151 @@ test.describe('FileTree sidebar create', () => {
 test.describe('FileTree bulk delete with a partial failure', () => {
   test.describe.configure({ retries: 0 });
 
-  test('bulk delete closes tabs already deleted before a later delete fails', {
-    tag: '@known-bug',
-    annotation: [
-      { type: 'issue', description: 'https://github.com/inkeep/agents-private/issues/1056' },
-      { type: 'owner', description: 'get-main-green' },
-      { type: 'until', description: '2026-12-15' },
-    ],
-  }, async ({ page, workerServer, api }) => {
-    const firstDoc = 'zz-partial-delete-a';
-    const secondDoc = 'zz-partial-delete-b';
+  for (const scenario of [
+    {
+      name: 'bulk delete closes tabs already deleted before a later delete fails',
+      failure: 'response',
+      trashFallback: false,
+    },
+    {
+      name: 'bulk delete preserves completed deletions when a later request disconnects',
+      failure: 'disconnect',
+      trashFallback: false,
+    },
+    {
+      name: 'permanent delete fallback preserves completed deletions after a later failure',
+      failure: 'response',
+      trashFallback: true,
+    },
+    {
+      name: 'permanent delete fallback preserves completed deletions when a request disconnects',
+      failure: 'disconnect',
+      trashFallback: true,
+    },
+  ] as const) {
+    test(scenario.name, async ({ page, workerServer, api }) => {
+      const firstDoc = 'zz-partial-delete-a';
+      const secondDoc = 'zz-partial-delete-b';
+      const refreshGate = Promise.withResolvers<void>();
 
-    await deletePathIfExists(workerServer.baseURL, 'file', firstDoc);
-    await deletePathIfExists(workerServer.baseURL, 'file', secondDoc);
-    await api.createPage(`${firstDoc}.md`);
-    await api.createPage(`${secondDoc}.md`);
-
-    await page.route('**/api/delete-path', async (route) => {
-      const body = route.request().postDataJSON() as { path?: string } | null;
-      if (body?.path === secondDoc) {
-        await route.fulfill({
-          status: 500,
-          contentType: 'application/json',
-          body: JSON.stringify({ ok: false, error: 'Injected delete failure' }),
-        });
-        return;
-      }
-      await route.fallback();
-    });
-
-    try {
-      await gotoRootAndAwaitSidebar(page);
-
-      await sidebarTreeItem(page, `${firstDoc}.md`).click();
-      await expect(page.getByRole('button', { name: `${firstDoc}.md`, exact: true })).toBeVisible({
-        timeout: 10_000,
-      });
-      await sidebarTreeItem(page, `${secondDoc}.md`).click();
-      await expect(page.getByRole('button', { name: `${secondDoc}.md`, exact: true })).toBeVisible({
-        timeout: 10_000,
-      });
-
-      await sidebarTreeItem(page, `${firstDoc}.md`).click();
-      await sidebarTreeItem(page, `${secondDoc}.md`).click({
-        modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'],
-      });
-      await expect(sidebarTreeItem(page, `${firstDoc}.md`)).toHaveAttribute(
-        'aria-selected',
-        'true',
-      );
-      await expect(sidebarTreeItem(page, `${secondDoc}.md`)).toHaveAttribute(
-        'aria-selected',
-        'true',
-      );
-
-      await sidebarTreeItem(page, `${firstDoc}.md`).click({ button: 'right' });
-      await page.getByRole('menuitem', { name: /^Delete/ }).click({ timeout: 5_000 });
-      await expect(page.getByRole('alertdialog', { name: /Delete selected items/i })).toBeVisible({
-        timeout: 5_000,
-      });
-      await page.getByRole('button', { name: /^Delete$/ }).click();
-
-      await expect(page.getByRole('button', { name: `${firstDoc}.md`, exact: true })).toHaveCount(
-        0,
-        { timeout: 10_000 },
-      );
-      await expectKnownBug(/Expected: 0\s+Received: 1/, async () => {
-        await expect(sidebarTreeItem(page, `${firstDoc}.md`)).toHaveCount(0, { timeout: 10_000 });
-      });
-      await expect(sidebarTreeItem(page, `${secondDoc}.md`)).toBeVisible();
-      expect(existsSync(join(workerServer.contentDir, `${firstDoc}.md`))).toBe(false);
-      expect(existsSync(join(workerServer.contentDir, `${secondDoc}.md`))).toBe(true);
-    } finally {
-      await page.unroute('**/api/delete-path');
       await deletePathIfExists(workerServer.baseURL, 'file', firstDoc);
       await deletePathIfExists(workerServer.baseURL, 'file', secondDoc);
-      await restoreRequiredFixtureEntries(workerServer.baseURL, api);
-    }
-  });
+      await api.createPage(`${firstDoc}.md`);
+      await api.createPage(`${secondDoc}.md`);
+
+      await page.route('**/api/delete-path', async (route) => {
+        const body = route.request().postDataJSON() as { path?: string } | null;
+        if (body?.path === secondDoc) {
+          if (scenario.failure === 'disconnect') {
+            await route.abort('connectionreset');
+            return;
+          }
+          await route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ ok: false, error: 'Injected delete failure' }),
+          });
+          return;
+        }
+        await route.fallback();
+      });
+
+      try {
+        if (scenario.trashFallback) {
+          await installDelayedDesktopSessionBridge(page, workerServer, {
+            panes: [
+              {
+                id: 'pane-main',
+                openTabs: [firstDoc, secondDoc],
+                pinnedTabIds: [],
+                activeTabId: firstDoc,
+                size: 100,
+              },
+            ],
+            focusedPaneId: 'pane-main',
+          });
+        }
+        await gotoRootAndAwaitSidebar(page);
+        if (scenario.trashFallback) {
+          await page.evaluate(() => {
+            const bridge = window.okDesktop;
+            if (!bridge) throw new Error('Desktop session bridge was not installed');
+            bridge.shell.trashItem = async () => ({ ok: false, reason: 'system-error' });
+          });
+        }
+
+        await sidebarTreeItem(page, `${firstDoc}.md`).click();
+        await expect(page.getByRole('button', { name: `${firstDoc}.md`, exact: true })).toBeVisible(
+          {
+            timeout: 10_000,
+          },
+        );
+        await sidebarTreeItem(page, `${secondDoc}.md`).click();
+        await expect(
+          page.getByRole('button', { name: `${secondDoc}.md`, exact: true }),
+        ).toBeVisible({
+          timeout: 10_000,
+        });
+
+        await page.route('**/api/documents?*', async (route) => {
+          await refreshGate.promise;
+          await route.fallback();
+        });
+
+        await sidebarTreeItem(page, `${firstDoc}.md`).click();
+        await sidebarTreeItem(page, `${secondDoc}.md`).click({
+          modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'],
+        });
+        await expect(sidebarTreeItem(page, `${firstDoc}.md`)).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+        await expect(sidebarTreeItem(page, `${secondDoc}.md`)).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+
+        await sidebarTreeItem(page, `${firstDoc}.md`).click({ button: 'right' });
+        await page.getByRole('menuitem', { name: /^Delete/ }).click({ timeout: 5_000 });
+        await expect(
+          page.getByRole('alertdialog', {
+            name: scenario.trashFallback
+              ? /Are you sure you want to delete the following/
+              : /Delete selected items/i,
+          }),
+        ).toBeVisible({ timeout: 5_000 });
+        await page
+          .getByRole('button', {
+            name: scenario.trashFallback ? /^Move to Trash$/ : /^Delete$/,
+          })
+          .click();
+        if (scenario.trashFallback) {
+          await page.getByTestId('trash-failure-modal-delete-permanently').click();
+        }
+
+        await page
+          .getByText(
+            scenario.failure === 'response' ? 'Failed to delete path' : 'Could not complete delete',
+            { exact: true },
+          )
+          .waitFor();
+
+        expect(existsSync(join(workerServer.contentDir, `${firstDoc}.md`))).toBe(false);
+        expect(existsSync(join(workerServer.contentDir, `${secondDoc}.md`))).toBe(true);
+
+        await expect(page.getByRole('button', { name: `${firstDoc}.md`, exact: true })).toHaveCount(
+          0,
+          { timeout: 10_000 },
+        );
+        await expect(sidebarTreeItem(page, `${firstDoc}.md`)).toHaveCount(0, { timeout: 10_000 });
+        await expect(sidebarTreeItem(page, `${secondDoc}.md`)).toBeVisible();
+      } finally {
+        refreshGate.resolve();
+        await page.unrouteAll({ behavior: 'wait' });
+        await deletePathIfExists(workerServer.baseURL, 'file', firstDoc);
+        await deletePathIfExists(workerServer.baseURL, 'file', secondDoc);
+        await restoreRequiredFixtureEntries(workerServer.baseURL, api);
+      }
+    });
+  }
 });

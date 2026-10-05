@@ -2643,37 +2643,53 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
 
   const handleImportTemplateEvent = useEffectEvent(handleImportTemplate);
 
-  async function hardDeleteTargets(targets: readonly FileTreeTarget[]): Promise<boolean> {
+  async function hardDeleteTargets(targets: readonly FileTreeTarget[]): Promise<void> {
     const deletedDocNames: string[] = [];
     const deletedFolderPaths: string[] = [];
     const successfulTargets: FileTreeTarget[] = [];
-    for (const target of targets) {
-      const kind = target.kind;
-      setBusyPath(target.path);
-      const res = await fetch('/api/delete-path', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind, path: target.path }),
-      });
-      const parsed = await parseServerResponse(res, t`Failed to delete path`);
-      if (!parsed.ok) {
-        if (successfulTargets.length > 0) {
-          await applyDeleteAftermath(successfulTargets, deletedDocNames, deletedFolderPaths);
+    async function deleteSequentially(): Promise<string | null> {
+      for (const target of targets) {
+        const kind = target.kind;
+        setBusyPath(target.path);
+        const res = await fetch('/api/delete-path', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind, path: target.path }),
+        });
+        const parsed = await parseServerResponse(res, t`Failed to delete path`);
+        if (!parsed.ok) {
+          return parsed.title;
         }
-        toast.error(parsed.title);
-        return false;
+        const success = parseSuccessOrWarn(DeletePathSuccessSchema, parsed.body, 'delete-path', {
+          deletedDocNames: [],
+        });
+        deletedDocNames.push(...success.deletedDocNames);
+        if (kind === 'folder') {
+          deletedFolderPaths.push(target.path);
+        }
+        successfulTargets.push(target);
       }
-      const success = parseSuccessOrWarn(DeletePathSuccessSchema, parsed.body, 'delete-path', {
-        deletedDocNames: [],
-      });
-      deletedDocNames.push(...success.deletedDocNames);
-      if (kind === 'folder') {
-        deletedFolderPaths.push(target.path);
-      }
-      successfulTargets.push(target);
+      return null;
     }
-    await applyDeleteAftermath(successfulTargets, deletedDocNames, deletedFolderPaths);
-    return true;
+    async function applyCompletedDeletions(deletionFailed: boolean) {
+      if (successfulTargets.length === 0) return;
+      try {
+        await applyDeleteAftermath(successfulTargets, deletedDocNames, deletedFolderPaths);
+      } catch (aftermathError) {
+        if (!deletionFailed) throw aftermathError;
+        console.warn('[FileTree] delete aftermath failed:', aftermathError);
+      }
+    }
+    return deleteSequentially().then(
+      async (failureTitle) => {
+        await applyCompletedDeletions(failureTitle !== null);
+        if (failureTitle !== null) toast.error(failureTitle);
+      },
+      async (deleteError: unknown) => {
+        await applyCompletedDeletions(true);
+        throw deleteError;
+      },
+    );
   }
 
   async function trashTargetsViaShell(
@@ -2818,16 +2834,14 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
         }
         setBusyPath(null);
       } else {
-        const ok = await hardDeleteTargets(deleteTargets);
+        await hardDeleteTargets(deleteTargets);
         setBusyPath(null);
-        if (!ok) resetModelToDocuments();
       }
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       console.warn('[FileTree] delete failed:', err);
       toast.error(t`Could not complete delete`, { description: detail });
       setBusyPath(null);
-      resetModelToDocuments();
     }
   }
 
@@ -2841,15 +2855,13 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     if (targetsToHardDelete.length === 0) return;
     setBusyPath(targetsToHardDelete[0]?.path ?? null);
     try {
-      const ok = await hardDeleteTargets(targetsToHardDelete);
+      await hardDeleteTargets(targetsToHardDelete);
       setBusyPath(null);
-      if (!ok) resetModelToDocuments();
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       console.warn('[FileTree] hard-delete fallback failed:', err);
       toast.error(t`Could not complete delete`, { description: detail });
       setBusyPath(null);
-      resetModelToDocuments();
     }
   }
 
