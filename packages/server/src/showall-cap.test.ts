@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DocumentListEntry } from '@inkeep/open-knowledge-core';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../test-support/temp-dir.test-helper.ts';
 import {
   __getShowAllWalkStatsForTesting,
   __resetShowAllWalkStatsForTesting,
@@ -13,8 +13,10 @@ import {
 } from './api-extension.ts';
 import { createContentFilter } from './content-filter.ts';
 
+const makeTempDir = createTempDirFactory(afterAll);
+
 function makeFlatFixture(fileCount: number): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-walk-')));
+  const dir = realpathSync(makeTempDir('ok-showall-walk-'));
   for (let i = 0; i < fileCount; i++) {
     writeFileSync(join(dir, `file-${String(i).padStart(3, '0')}.md`), `# File ${i}\n`);
   }
@@ -111,7 +113,7 @@ describe('walkContentDirForShowAll — entry-cap boundary honesty', () => {
   });
 
   test('cap consumed by a folder entry short-circuits the recursive descent', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-nested-')));
+    const dir = realpathSync(makeTempDir('ok-showall-nested-'));
     mkdirSync(join(dir, 'sub'));
     writeFileSync(join(dir, 'sub', 'a.md'), '# A\n');
     writeFileSync(join(dir, 'sub', 'b.md'), '# B\n');

@@ -1,11 +1,13 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../test-support/temp-dir.test-helper.ts';
 import { copyDirSync } from './copy-dir.ts';
 
+const makeTempDir = createTempDirFactory(afterAll);
+
 function tmpDir(): string {
-  return mkdtempSync(join(tmpdir(), 'ok-copy-dir-'));
+  return makeTempDir('ok-copy-dir-');
 }
 
 function seedSource(): string {

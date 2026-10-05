@@ -1,9 +1,10 @@
-import { appendFileSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { appendFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
+import { createTempDirFactory } from '../../../../test-support/temp-dir.test-helper.ts';
+import { runTeardownPhases } from '../stress/_helpers/teardown-fs';
 import {
   agentWriteMd,
   createRestartableServer,
@@ -15,6 +16,8 @@ import {
   serializeFragment,
   type TestClient,
 } from './test-harness';
+
+const makeTempDir = createTempDirFactory(afterAll);
 
 const DIAG = process.env.QA_DIAG_OUT;
 function diag(probe: string, data: Record<string, unknown>): void {
@@ -50,12 +53,13 @@ describe('healing bounds for the stranded states', () => {
   test('HEAL-A: repeated source-side drains eventually surface a source-authored edge run in the WYSIWYG', async () => {
     const server = await createTestServer();
     const docName = `qa-heal-a-${crypto.randomUUID()}`;
-    const clients = await createTestClients(server.port, {
-      count: 2,
-      docName,
-      perClientOptions: { skipInvariantWatcher: true },
-    });
+    let clients: TestClient[] = [];
     try {
+      clients = await createTestClients(server.port, {
+        count: 2,
+        docName,
+        perClientOptions: { skipInvariantWatcher: true },
+      });
       const seed = 'Above.\n\nBelow.\n';
       await agentWriteMd(server.port, seed, { docName, position: 'replace' });
       await pollUntil(() => clients.every((c) => c.ytext.toString() === seed), 10_000);
@@ -101,20 +105,22 @@ describe('healing bounds for the stranded states', () => {
         'WYSIWYG converged to the full source state within 10 further drains',
       ).toBeGreaterThanOrEqual(0);
     } finally {
-      for (const c of clients) await c.cleanup();
-      await server.cleanup();
+      await runTeardownPhases(...clients.map((client) => () => client.cleanup()), () =>
+        server.cleanup(),
+      );
     }
   }, 90_000);
 
   test('HEAL-B: repeated source-side drains eventually surface the merge-seam stranded keystroke', async () => {
     const server = await createTestServer();
     const docName = `qa-heal-b-${crypto.randomUUID()}`;
-    const clients = await createTestClients(server.port, {
-      count: 2,
-      docName,
-      perClientOptions: { skipInvariantWatcher: true },
-    });
+    let clients: TestClient[] = [];
     try {
+      clients = await createTestClients(server.port, {
+        count: 2,
+        docName,
+        perClientOptions: { skipInvariantWatcher: true },
+      });
       const seed = 'Above.\n\nBelow.\n';
       await agentWriteMd(server.port, seed, { docName, position: 'replace' });
       await pollUntil(() => clients.every((c) => c.ytext.toString() === seed), 10_000);
@@ -157,20 +163,22 @@ describe('healing bounds for the stranded states', () => {
         'WYSIWYG converged to the full source state within 10 further drains',
       ).toBeGreaterThanOrEqual(0);
     } finally {
-      for (const c of clients) await c.cleanup();
-      await server.cleanup();
+      await runTeardownPhases(...clients.map((client) => () => client.cleanup()), () =>
+        server.cleanup(),
+      );
     }
   }, 90_000);
 
   test('INV-04b: the phantom fragment run does not resurrect into Y.Text on a later WYSIWYG edit', async () => {
     const server = await createTestServer();
     const docName = `qa-heal-c-${crypto.randomUUID()}`;
-    const clients = await createTestClients(server.port, {
-      count: 2,
-      docName,
-      perClientOptions: { skipInvariantWatcher: true },
-    });
+    let clients: TestClient[] = [];
     try {
+      clients = await createTestClients(server.port, {
+        count: 2,
+        docName,
+        perClientOptions: { skipInvariantWatcher: true },
+      });
       const seed = 'Above.\n\nBelow.\n';
       await agentWriteMd(server.port, seed, { docName, position: 'replace' });
       await pollUntil(() => clients.every((c) => c.ytext.toString() === seed), 10_000);
@@ -202,79 +210,96 @@ describe('healing bounds for the stranded states', () => {
         );
       }
     } finally {
-      for (const c of clients) await c.cleanup();
-      await server.cleanup();
+      await runTeardownPhases(...clients.map((client) => () => client.cleanup()), () =>
+        server.cleanup(),
+      );
     }
   }, 60_000);
 });
 
 describe('restart lifecycle (corrected: no testReset truncation)', () => {
   test('RESTART-CLEAN: a source-authored edge run survives a clean server restart and re-derives', async () => {
-    const contentDir = mkdtempSync(join(tmpdir(), 'qa-restart-clean-'));
+    const contentDir = makeTempDir('qa-restart-clean-');
     const docName = `qa-restart-${crypto.randomUUID()}`;
     const withRun = 'Above.\n\nBelow.\n\n\n';
 
     const s1 = await createTestServer({ contentDir, keepContentDir: true });
-    const c1 = await createTestClient(s1.port, docName, { skipInvariantWatcher: true });
-    await agentWriteMd(s1.port, 'Above.\n\nBelow.\n', { docName, position: 'replace' });
-    await pollUntil(() => c1.ytext.toString() === 'Above.\n\nBelow.\n', 10_000);
-    c1.doc.transact(() => {
-      c1.ytext.insert(c1.ytext.length, '\n\n');
-    });
-    expect(
-      await settle(() => readTestDoc(contentDir, docName) === withRun, 15_000),
-      'flushed pre-restart',
-    ).toBe(true);
-    detachClient(c1);
-    await s1.cleanup();
+    try {
+      const c1 = await createTestClient(s1.port, docName, { skipInvariantWatcher: true });
+      try {
+        await agentWriteMd(s1.port, 'Above.\n\nBelow.\n', { docName, position: 'replace' });
+        await pollUntil(() => c1.ytext.toString() === 'Above.\n\nBelow.\n', 10_000);
+        c1.doc.transact(() => {
+          c1.ytext.insert(c1.ytext.length, '\n\n');
+        });
+        expect(
+          await settle(() => readTestDoc(contentDir, docName) === withRun, 15_000),
+          'flushed pre-restart',
+        ).toBe(true);
+      } finally {
+        detachClient(c1);
+      }
+    } finally {
+      await s1.cleanup();
+    }
     const diskAfterShutdown = readTestDoc(contentDir, docName);
 
     const s2 = await createTestServer({ contentDir, keepContentDir: true });
-    const c2 = await createTestClient(s2.port, docName, { skipInvariantWatcher: true });
     try {
-      const loaded = await settle(
-        () => c2.ytext.toString() === withRun && serializeFragment(c2.fragment) === withRun,
-        10_000,
-      );
-      await wait(3000);
-      const result = {
-        diskAfterShutdown,
-        loaded,
-        ytext: c2.ytext.toString(),
-        fragment: serializeFragment(c2.fragment),
-        blanks: countBlankLineNodes(c2.fragment),
-        diskFinal: readTestDoc(contentDir, docName),
-      };
-      diag('RESTART-CLEAN', result);
-      expect(diskAfterShutdown, 'clean shutdown preserves bytes').toBe(withRun);
-      expect(c2.ytext.toString(), 'reload restores bytes').toBe(withRun);
-      expect(serializeFragment(c2.fragment), 'reload re-derives the run into the fragment').toBe(
-        withRun,
-      );
-      expect(countBlankLineNodes(c2.fragment)).toBe(2);
-      expect(readTestDoc(contentDir, docName), 'no creep after a reload store cycle').toBe(withRun);
+      const c2 = await createTestClient(s2.port, docName, { skipInvariantWatcher: true });
+      try {
+        const loaded = await settle(
+          () => c2.ytext.toString() === withRun && serializeFragment(c2.fragment) === withRun,
+          10_000,
+        );
+        await wait(3000);
+        const result = {
+          diskAfterShutdown,
+          loaded,
+          ytext: c2.ytext.toString(),
+          fragment: serializeFragment(c2.fragment),
+          blanks: countBlankLineNodes(c2.fragment),
+          diskFinal: readTestDoc(contentDir, docName),
+        };
+        diag('RESTART-CLEAN', result);
+        expect(diskAfterShutdown, 'clean shutdown preserves bytes').toBe(withRun);
+        expect(c2.ytext.toString(), 'reload restores bytes').toBe(withRun);
+        expect(serializeFragment(c2.fragment), 'reload re-derives the run into the fragment').toBe(
+          withRun,
+        );
+        expect(countBlankLineNodes(c2.fragment)).toBe(2);
+        expect(readTestDoc(contentDir, docName), 'no creep after a reload store cycle').toBe(
+          withRun,
+        );
+      } finally {
+        detachClient(c2);
+      }
     } finally {
-      detachClient(c2);
       await s2.cleanup();
     }
   }, 90_000);
 
   test('RESTART-CRASH: a flushed edge run survives a crash-simulated fast restart', async () => {
-    let restartable = await createRestartableServer({ keepContentDir: true });
+    const contentDir = makeTempDir('ok-restartable-');
+    writeFileSync(join(contentDir, 'test-doc.md'), '', 'utf8');
+    let restartable = await createRestartableServer({ contentDir, keepContentDir: true });
     try {
       const docName = `qa-crash-${crypto.randomUUID()}`;
       await agentWriteMd(restartable.port, 'Above.\n\nBelow.\n', { docName, position: 'replace' });
-      const c1 = await createTestClient(restartable.port, docName, { skipInvariantWatcher: true });
-      await pollUntil(() => c1.ytext.toString() === 'Above.\n\nBelow.\n', 10_000);
-      c1.doc.transact(() => {
-        c1.ytext.insert(c1.ytext.length, '\n\n');
-      });
       const withRun = 'Above.\n\nBelow.\n\n\n';
-      expect(
-        await settle(() => readTestDoc(restartable.contentDir, docName) === withRun, 15_000),
-        'flushed pre-crash',
-      ).toBe(true);
-      detachClient(c1);
+      const c1 = await createTestClient(restartable.port, docName, { skipInvariantWatcher: true });
+      try {
+        await pollUntil(() => c1.ytext.toString() === 'Above.\n\nBelow.\n', 10_000);
+        c1.doc.transact(() => {
+          c1.ytext.insert(c1.ytext.length, '\n\n');
+        });
+        expect(
+          await settle(() => readTestDoc(restartable.contentDir, docName) === withRun, 15_000),
+          'flushed pre-crash',
+        ).toBe(true);
+      } finally {
+        detachClient(c1);
+      }
 
       restartable = await restartable.killAndRestartOnSamePort({ downtimeMs: 5000 });
       const c2 = await createTestClient(restartable.port, docName, { skipInvariantWatcher: true });
@@ -310,12 +335,13 @@ describe('defer-guard innocence under the honest early-exit', () => {
   test('C17: a pending WYSIWYG paragraph and a concurrent source keystroke both survive', async () => {
     const server = await createTestServer();
     const docName = `qa-c17-${crypto.randomUUID()}`;
-    const clients = await createTestClients(server.port, {
-      count: 2,
-      docName,
-      perClientOptions: { skipInvariantWatcher: true },
-    });
+    let clients: TestClient[] = [];
     try {
+      clients = await createTestClients(server.port, {
+        count: 2,
+        docName,
+        perClientOptions: { skipInvariantWatcher: true },
+      });
       const seed = 'Alpha.\n\nOmega.\n';
       await agentWriteMd(server.port, seed, { docName, position: 'replace' });
       await pollUntil(() => clients.every((c) => c.ytext.toString() === seed), 10_000);
@@ -350,8 +376,9 @@ describe('defer-guard innocence under the honest early-exit', () => {
         true,
       );
     } finally {
-      for (const c of clients) await c.cleanup();
-      await server.cleanup();
+      await runTeardownPhases(...clients.map((client) => () => client.cleanup()), () =>
+        server.cleanup(),
+      );
     }
   }, 30_000);
 });

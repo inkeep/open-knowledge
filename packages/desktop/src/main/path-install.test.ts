@@ -2,16 +2,15 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   readlinkSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { describe, expect, test, vi } from 'vitest';
+import { afterAll, describe, expect, test, vi } from 'vitest';
+import { createTempDirFactory } from '../../../../test-support/temp-dir.test-helper.ts';
 import { okManagedBinDirs } from '../shared/ok-child-env.ts';
 import {
   computePathInstallDescriptor,
@@ -23,6 +22,8 @@ import {
   removePathShimFromRcFiles,
 } from './path-install.ts';
 
+const makeTempDir = createTempDirFactory(afterAll);
+
 const EXE = '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge';
 const WRAPPER = '/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh';
 
@@ -30,7 +31,7 @@ const GRANTED = { status: 'granted', at: '2026-07-02T00:00:00.000Z' } as const;
 const DECLINED = { status: 'declined', at: '2026-07-02T00:00:00.000Z' } as const;
 
 function home() {
-  return mkdtempSync(join(tmpdir(), 'ok-path-install-'));
+  return makeTempDir('ok-path-install-');
 }
 
 type EnsureOpts = Parameters<typeof ensureCliOnPath>[0];

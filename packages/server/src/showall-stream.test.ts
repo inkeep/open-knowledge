@@ -1,15 +1,8 @@
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ASSET_EXTENSIONS, type DocumentListEntry } from '@inkeep/open-knowledge-core';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
+import { createTempDirFactory } from '../../../test-support/temp-dir.test-helper.ts';
 import {
   __getShowAllWalkStatsForTesting,
   __resetShowAllWalkStatsForTesting,
@@ -20,8 +13,10 @@ import {
 import { createContentFilter, createContentFilterAsync } from './content-filter.ts';
 import { getLogger } from './logger.ts';
 
+const makeTempDir = createTempDirFactory(afterAll);
+
 function makeFlatFixture(fileCount: number): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-stream-')));
+  const dir = realpathSync(makeTempDir('ok-showall-stream-'));
   for (let i = 0; i < fileCount; i++) {
     writeFileSync(join(dir, `file-${String(i).padStart(3, '0')}.md`), `# File ${i}\n`);
   }
@@ -29,7 +24,7 @@ function makeFlatFixture(fileCount: number): string {
 }
 
 function makeNestedFixture(): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-stream-nested-')));
+  const dir = realpathSync(makeTempDir('ok-showall-stream-nested-'));
   writeFileSync(join(dir, 'root.md'), '# root\n');
   writeFileSync(join(dir, 'note.txt'), 'plain\n');
   for (const sub of ['alpha', 'beta']) {
@@ -133,7 +128,7 @@ describe('streamShowAllEntries — abort + laziness', () => {
   });
 
   test('abort between queued directories is honored when the remaining dirs are empty', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-stream-abort-')));
+    const dir = realpathSync(makeTempDir('ok-showall-stream-abort-'));
     for (const sub of ['a', 'b', 'c']) {
       mkdirSync(join(dir, sub));
     }
@@ -160,7 +155,7 @@ function entryPath(e: DocumentListEntry): string {
 
 describe('streamShowAllEntries — .okignore', () => {
   test('root patterns hide matching folders from the all-files sidebar', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-okignore-')));
+    const dir = realpathSync(makeTempDir('ok-showall-okignore-'));
     mkdirSync(join(dir, 'src', 'adapters'), { recursive: true });
     writeFileSync(join(dir, 'src', 'main.rs'), 'fn main() {}\n');
     writeFileSync(join(dir, 'src', 'adapters', 'mod.rs'), 'pub mod adapter;\n');
@@ -196,7 +191,7 @@ describe('streamShowAllEntries — .okignore', () => {
   });
 
   test('async content filters apply the same all-files hide rules', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-okignore-async-')));
+    const dir = realpathSync(makeTempDir('ok-showall-okignore-async-'));
     mkdirSync(join(dir, 'src'));
     writeFileSync(join(dir, 'src', 'main.rs'), 'fn main() {}\n');
     mkdirSync(join(dir, 'target'));
@@ -223,7 +218,7 @@ describe('streamShowAllEntries — .okignore', () => {
   });
 
   test('nested .okignore patterns hide matching folders from the all-files sidebar', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-okignore-nested-')));
+    const dir = realpathSync(makeTempDir('ok-showall-okignore-nested-'));
     mkdirSync(join(dir, 'docs', 'drafts'), { recursive: true });
     writeFileSync(join(dir, 'docs', 'drafts', 'wip.md'), '# Draft\n');
     writeFileSync(join(dir, 'docs', 'guide.md'), '# Guide\n');
@@ -250,7 +245,7 @@ describe('streamShowAllEntries — .okignore', () => {
 
 describe('streamShowAllEntries — level-order emission (PRD-6858)', () => {
   function makeStarvationFixture(): { dir: string; rootFolders: string[]; rootDocs: string[] } {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-bfs-')));
+    const dir = realpathSync(makeTempDir('ok-showall-bfs-'));
     const rootFolders: string[] = [];
     const rootDocs: string[] = [];
     for (let d = 0; d < 5; d++) {
@@ -283,7 +278,7 @@ describe('streamShowAllEntries — level-order emission (PRD-6858)', () => {
   });
 
   test('every depth-N entry emits before the first depth-N+1 entry, parents before children', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-levelorder-')));
+    const dir = realpathSync(makeTempDir('ok-showall-levelorder-'));
     writeFileSync(join(dir, 'root.md'), '# root\n');
     mkdirSync(join(dir, 'a', 'sub'), { recursive: true });
     mkdirSync(join(dir, 'b'));
@@ -310,7 +305,7 @@ describe('streamShowAllEntries — level-order emission (PRD-6858)', () => {
   });
 
   test('maxDepth=1 yields a single level with hasChildren stamped, never recursing', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-depth1-')));
+    const dir = realpathSync(makeTempDir('ok-showall-depth1-'));
     writeFileSync(join(dir, 'top.md'), '# top\n');
     mkdirSync(join(dir, 'full', 'grandchild'), { recursive: true });
     writeFileSync(join(dir, 'full', 'child.md'), '# child\n');
@@ -331,7 +326,7 @@ describe('streamShowAllEntries — level-order emission (PRD-6858)', () => {
   });
 
   test('co-located .md and .mdx emit separate extension-qualified document rows', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-doc-ext-collision-')));
+    const dir = realpathSync(makeTempDir('ok-showall-doc-ext-collision-'));
     writeFileSync(join(dir, 'foo.md'), '# Markdown\n');
     writeFileSync(join(dir, 'foo.mdx'), '# MDX\n');
     writeFileSync(join(dir, 'bar.mdx'), '# Bar\n');
@@ -361,8 +356,8 @@ describe('streamShowAllEntries — level-order emission (PRD-6858)', () => {
   });
 
   test('escaping same-stem symlink does not force admitted document to extension-qualified row', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-doc-ext-symesc-')));
-    const outside = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-doc-ext-outside-')));
+    const dir = realpathSync(makeTempDir('ok-showall-doc-ext-symesc-'));
+    const outside = realpathSync(makeTempDir('ok-showall-doc-ext-outside-'));
     writeFileSync(join(dir, 'foo.md'), '# Markdown\n');
     writeFileSync(join(outside, 'foo.mdx'), '# Escaped MDX\n');
     symlinkSync(join(outside, 'foo.mdx'), join(dir, 'foo.mdx'));
@@ -384,7 +379,7 @@ describe('streamShowAllEntries — level-order emission (PRD-6858)', () => {
 
 describe('streamShowAllEntries — cap accounting boundary quirks', () => {
   test('an excludable entry past the cap still reports truncated (cap checked before exclusion)', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-quirk-')));
+    const dir = realpathSync(makeTempDir('ok-showall-quirk-'));
     const CAP = 4;
     mkdirSync(join(dir, 'sub'));
     for (let i = 0; i < CAP - 1; i++) {
@@ -399,7 +394,7 @@ describe('streamShowAllEntries — cap accounting boundary quirks', () => {
   });
 
   test('the same tree under a roomier cap drains untruncated — the exclusion gate still prunes', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-quirk-roomy-')));
+    const dir = realpathSync(makeTempDir('ok-showall-quirk-roomy-'));
     mkdirSync(join(dir, 'sub'));
     for (let i = 0; i < 3; i++) {
       writeFileSync(join(dir, `f-${i}.md`), `# f ${i}\n`);
@@ -419,7 +414,7 @@ describe('streamShowAllEntries — unreadable directory mid-queue', () => {
   test.skipIf(runningAsRoot)(
     'a permission-denied directory skips with a warn while every other entry still emits',
     async () => {
-      const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-eacces-')));
+      const dir = realpathSync(makeTempDir('ok-showall-eacces-'));
       writeFileSync(join(dir, 'root.md'), '# root\n');
       mkdirSync(join(dir, 'locked'));
       writeFileSync(join(dir, 'locked', 'hidden.md'), '# hidden\n');
@@ -457,7 +452,7 @@ describe('streamShowAllEntries — unreadable directory mid-queue', () => {
 
 describe('streamShowAllEntries — .base/.canvas mediaKind', () => {
   test('.base and .canvas entries report mediaKind text in showAll output', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-mediakind-')));
+    const dir = realpathSync(makeTempDir('ok-showall-mediakind-'));
     writeFileSync(join(dir, 'note.md'), '# Note\n');
     writeFileSync(join(dir, 'Characters.base'), 'fields:\n  - name\n');
     writeFileSync(join(dir, 'Board.canvas'), '{"nodes":[],"edges":[]}\n');
@@ -481,7 +476,7 @@ describe('streamShowAllEntries — .base/.canvas mediaKind', () => {
 
 describe('streamShowAllEntries — symlinked directories', () => {
   function makeSymlinkDirFixture(): string {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-symdir-')));
+    const dir = realpathSync(makeTempDir('ok-showall-symdir-'));
     const canonical = join(dir, 'canonical-folder');
     mkdirSync(canonical);
     writeFileSync(join(canonical, 'note-one.md'), '# one\n');
@@ -525,8 +520,8 @@ describe('streamShowAllEntries — symlinked directories', () => {
   });
 
   test('refuses a symlinked directory whose target escapes contentDir', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-symesc-')));
-    const outside = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-outside-')));
+    const dir = realpathSync(makeTempDir('ok-showall-symesc-'));
+    const outside = realpathSync(makeTempDir('ok-showall-outside-'));
     writeFileSync(join(outside, 'secret.md'), '# secret\n');
     symlinkSync(outside, join(dir, 'escape'));
     const { entries } = await drain(streamShowAllEntries(streamOptsFor(dir, 50_000)));
@@ -536,7 +531,7 @@ describe('streamShowAllEntries — symlinked directories', () => {
   });
 
   test('does not infinitely recurse on cyclic symlinked directories', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-symcycle-')));
+    const dir = realpathSync(makeTempDir('ok-showall-symcycle-'));
     mkdirSync(join(dir, 'A'));
     mkdirSync(join(dir, 'B'));
     writeFileSync(join(dir, 'A', 'a.md'), '# a\n');
@@ -552,7 +547,7 @@ describe('streamShowAllEntries — symlinked directories', () => {
 
 describe('streamShowAllEntries — showOk reveal', () => {
   function makeOkFixture(): string {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-showok-')));
+    const dir = realpathSync(makeTempDir('ok-showall-showok-'));
     writeFileSync(join(dir, 'note.md'), '# note\n');
     mkdirSync(join(dir, '.ok', 'templates'), { recursive: true });
     writeFileSync(join(dir, '.ok', 'config.yml'), 'content:\n  dir: .\n');

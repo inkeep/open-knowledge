@@ -2,25 +2,26 @@ import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
+import { createTempDirFactory } from '../../../../test-support/temp-dir.test-helper.ts';
 import { getLogger } from '../logger.ts';
 import {
   inspectGeneratedIndexGitAttributes,
   updateGeneratedIndexGitAttributes,
 } from './generated-index-git-attributes.ts';
 
+const makeTempDir = createTempDirFactory(afterAll);
+
 afterEach(() => vi.restoreAllMocks());
 
 function makeProject(contentSubdir = '.'): { projectDir: string; contentDir: string } {
-  const projectDir = mkdtempSync(join(tmpdir(), 'ok-generated-index-attrs-'));
+  const projectDir = makeTempDir('ok-generated-index-attrs-');
   execFileSync('git', ['init', '-q'], { cwd: projectDir });
   if (contentSubdir !== '.') mkdirSync(join(projectDir, contentSubdir), { recursive: true });
   return {
@@ -33,7 +34,7 @@ const generatedDocNames = ['index', 'guides/index'];
 
 describe('generated-index git attributes', () => {
   test('is not applicable outside a Git working tree', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-generated-index-no-git-'));
+    const projectDir = makeTempDir('ok-generated-index-no-git-');
     const result = await updateGeneratedIndexGitAttributes({
       projectDir,
       contentDir: projectDir,

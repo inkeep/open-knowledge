@@ -1,10 +1,12 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../../../test-support/temp-dir.test-helper.ts';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { register } from './config.ts';
 import type { ServerInstance } from './shared.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
 
 const BASE_CONFIG: Config = ConfigSchema.parse({
   content: { dir: '.' },
@@ -40,7 +42,7 @@ function captureRegistration(cwd: string, configOverride?: Partial<Config>): Too
 
 describe('config tool', () => {
   test('returns the full effective merged config when path is omitted', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-config-'));
+    const cwd = makeTempDir('ok-get-config-');
     const handler = captureRegistration(cwd);
     const result = await handler({});
     expect(result.isError).toBeUndefined();
@@ -50,7 +52,7 @@ describe('config tool', () => {
   });
 
   test('returns sub-tree when path is provided', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-config-'));
+    const cwd = makeTempDir('ok-get-config-');
     const handler = captureRegistration(cwd);
     const result = await handler({ key: 'appearance' });
     const value = result.structuredContent?.value as { theme: string };
@@ -58,14 +60,14 @@ describe('config tool', () => {
   });
 
   test('returns scalar leaf when path resolves to a primitive', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-config-'));
+    const cwd = makeTempDir('ok-get-config-');
     const handler = captureRegistration(cwd);
     const result = await handler({ key: 'content.dir' });
     expect(result.structuredContent?.value).toBe('.');
   });
 
   test('returns null + exists:false for a nonexistent path', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-config-'));
+    const cwd = makeTempDir('ok-get-config-');
     const handler = captureRegistration(cwd);
     const result = await handler({ key: 'nonexistent.leaf' });
     expect(result.structuredContent?.value).toBeNull();
@@ -74,14 +76,14 @@ describe('config tool', () => {
   });
 
   test('content[0].text is JSON-serialized for agent consumption', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-config-'));
+    const cwd = makeTempDir('ok-get-config-');
     const handler = captureRegistration(cwd);
     const result = await handler({ key: 'appearance.theme' });
     expect(result.content[0]?.text).toBe('"dark"');
   });
 
   test('reads any field — no allowlist gating on read', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-config-'));
+    const cwd = makeTempDir('ok-get-config-');
     const handler = captureRegistration(cwd);
     const result = await handler({ key: 'appearance.theme' });
     expect(result.isError).toBeUndefined();
@@ -89,7 +91,7 @@ describe('config tool', () => {
   });
 
   test('reflects on-disk config when caller passes a resolver that loads it', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-config-disk-'));
+    const cwd = makeTempDir('ok-get-config-disk-');
     mkdirSync(join(cwd, '.ok'), { recursive: true });
     writeFileSync(join(cwd, '.ok', 'config.yml'), 'appearance:\n  theme: light\n');
     const merged: Config = {

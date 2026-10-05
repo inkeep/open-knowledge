@@ -1,11 +1,11 @@
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { OK_GATED_TOOL_NAMES, OPEN_KNOWLEDGE_MCP_TOOLS } from '@inkeep/open-knowledge-core';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../../../test-support/temp-dir.test-helper.ts';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { registerAllTools } from './index.ts';
 import type { ServerInstance } from './shared.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 
@@ -53,7 +53,7 @@ const RETIRED_TOOL_NAMES = [
 
 function captureRegistered(): string[] {
   const names: string[] = [];
-  const cwd = mkdtempSync(join(tmpdir(), 'ok-registry-assertion-'));
+  const cwd = makeTempDir('ok-registry-assertion-');
   const server = {
     registerTool(name: string, _cfg: unknown, _handler: unknown) {
       names.push(name);

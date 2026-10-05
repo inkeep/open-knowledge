@@ -1,10 +1,19 @@
-import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../../test-support/temp-dir.test-helper.ts';
+import { runTeardownPhases } from '../stress/_helpers/teardown-fs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, type TestServer } from './test-harness';
+
+const makeTempDir = createTempDirFactory((cleanup) => {
+  afterAll(() =>
+    runTeardownPhases(async () => {
+      await server?.cleanup();
+    }, cleanup),
+  );
+});
 
 interface LinkGraphResponse {
   nodes: Array<{
@@ -23,7 +32,7 @@ interface LinkGraphResponse {
 let server: TestServer;
 
 beforeAll(async () => {
-  const contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-linkgraph-meta-')));
+  const contentDir = realpathSync(makeTempDir('ok-linkgraph-meta-'));
 
   writeFileSync(
     join(contentDir, 'hub.md'),
@@ -49,10 +58,6 @@ beforeAll(async () => {
   server = await createTestServer({ contentDir, keepContentDir: true });
   await wait(1500);
 }, HARNESS_BOOT_TIMEOUT_MS);
-
-afterAll(async () => {
-  await server.cleanup();
-});
 
 async function fetchLinkGraph(): Promise<LinkGraphResponse> {
   const res = await fetch(`http://127.0.0.1:${server.port}/api/link-graph`);

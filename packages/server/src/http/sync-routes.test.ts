@@ -5,19 +5,20 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { Hocuspocus } from '@hocuspocus/server';
 import simpleGit from 'simple-git';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../../test-support/temp-dir.test-helper.ts';
 import { makeCaptureRes, makeSyntheticReq } from '../composition-rig.test-helper.ts';
-import {
-  createTestConflictAuthority,
-  createTestConflictAuthorityInTmpDir,
-} from '../conflict-authority.test-helper.ts';
+import { createTestConflictAuthority } from '../conflict-authority.test-helper.ts';
+import type { ConflictAuthority } from '../conflict-authority.ts';
 import { loggerFactory } from '../logger.ts';
 import { createSyncRoutes } from './sync-routes.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
 
 const makeAuthority = createTestConflictAuthority;
 
 function emptyAuthority(): ConflictAuthority {
-  return createTestConflictAuthorityInTmpDir('sync-routes-authority-');
+  return createTestConflictAuthority(makeTempDir('sync-routes-authority-'));
 }
 
 function buildGroup() {

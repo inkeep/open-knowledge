@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../test-support/temp-dir.test-helper.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';
 import {
   loadRemovedDocsJournal,
@@ -9,8 +9,10 @@ import {
   saveRemovedDocsJournal,
 } from './removed-docs-journal.ts';
 
+const makeTempDir = createTempDirFactory(afterAll);
+
 function makeProjectDir(): string {
-  return mkdtempSync(join(tmpdir(), 'ok-removed-docs-journal-'));
+  return makeTempDir('ok-removed-docs-journal-');
 }
 
 describe('removed-docs journal — round trip', () => {

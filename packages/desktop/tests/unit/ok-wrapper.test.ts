@@ -1,7 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import { accessSync, constants, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../../test-support/temp-dir.test-helper.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
 
 const WRAPPER = join(import.meta.dir, '..', '..', 'resources', 'cli', 'bin', 'ok.sh');
 
@@ -27,9 +30,8 @@ describe('ok.sh wrapper', () => {
   });
 
   test('missing Electron binary but present CLI also diagnoses missing-bundle', async () => {
-    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
-    const { tmpdir } = await import('node:os');
-    const fixture = mkdtempSync(join(tmpdir(), 'ok-wrapper-'));
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    const fixture = makeTempDir('ok-wrapper-');
     const appRoot = join(fixture, 'OpenKnowledge.app');
     mkdirSync(join(appRoot, 'Contents', 'Resources', 'cli', 'dist'), { recursive: true });
     writeFileSync(join(appRoot, 'Contents', 'Resources', 'cli', 'dist', 'cli.mjs'), '// stub');
@@ -43,9 +45,8 @@ describe('ok.sh wrapper', () => {
   });
 
   test('Pass 0 Major #10: empty APP_PATH branch emits structured stderr + exit 69', async () => {
-    const { mkdtempSync, copyFileSync, chmodSync } = await import('node:fs');
-    const { tmpdir } = await import('node:os');
-    const dir = mkdtempSync(join(tmpdir(), 'ok-wrapper-empty-'));
+    const { copyFileSync, chmodSync } = await import('node:fs');
+    const dir = makeTempDir('ok-wrapper-empty-');
     const wrapperCopy = join(dir, 'ok.sh');
     copyFileSync(WRAPPER, wrapperCopy);
     chmodSync(wrapperCopy, 0o755);

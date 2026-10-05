@@ -1,9 +1,9 @@
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
+import { createTempDirFactory } from '../../../test-support/temp-dir.test-helper.ts';
 import {
   clearInstallReported,
   readAllTargets,
@@ -20,8 +20,10 @@ import {
   writeTargetVersion,
 } from './skill-state.ts';
 
+const makeTempDir = createTempDirFactory(afterAll);
+
 function freshHome(): string {
-  return mkdtempSync(join(tmpdir(), 'ok-skill-state-'));
+  return makeTempDir('ok-skill-state-');
 }
 
 describe('per-bundle opt-in decisions', () => {

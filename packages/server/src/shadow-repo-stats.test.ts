@@ -1,17 +1,18 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { mkdtemp } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import simpleGit from 'simple-git';
-import { beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, beforeEach, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../test-support/temp-dir.test-helper.ts';
 import { initShadowRepo, type ShadowHandle, shadowGit } from './shadow-repo.ts';
 import { countStaleAgentWipRefs } from './shadow-repo-stats.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
 
 let tmpDir: string;
 let shadow: ShadowHandle;
 
 beforeEach(async () => {
-  tmpDir = await mkdtemp(resolve(tmpdir(), 'ok-stale-stats-'));
+  tmpDir = makeTempDir('ok-stale-stats-');
   const projectRoot = resolve(tmpDir, 'project');
   const contentDir = resolve(projectRoot, 'content/docs');
   mkdirSync(contentDir, { recursive: true });

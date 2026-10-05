@@ -1,8 +1,15 @@
 import { symlinkSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../../../../test-support/temp-dir.test-helper.ts';
 import { walkFiles } from './fs-walk.ts';
-import { makeTree } from './mktree.test-helper.ts';
+import { makeTree as populateTree } from './mktree.test-helper.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
+
+function makeTree(files: Parameters<typeof populateTree>[1]): string {
+  return populateTree(makeTempDir('ok-migrate-'), files);
+}
 
 describe('walkFiles', () => {
   test('lists files recursively', () => {

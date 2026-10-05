@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../../test-support/temp-dir.test-helper.ts';
 import { withForcedGc } from './gc.ts';
 import {
   ACCEPT_MISMATCH_FLAG,
@@ -26,6 +26,13 @@ import {
   InconclusiveError,
   resultsStalenessFailure,
 } from './run-regression-gate.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
+
+function comparatorEnv(): NodeJS.ProcessEnv {
+  const temporary = makeTempDir('ok-perf-cli-');
+  return { ...process.env, TMPDIR: temporary, TMP: temporary, TEMP: temporary };
+}
 
 function makeBaseline(overrides: Partial<Baseline> = {}): Baseline {
   return {
@@ -268,7 +275,7 @@ describe('evaluateRegression (R4 synthetic gate)', () => {
 
 describe('loadBaseline / loadFreshResults finite-value validation', () => {
   function writeTmp(name: string, data: unknown): string {
-    const dir = mkdtempSync(join(tmpdir(), 'regression-gate-load-'));
+    const dir = makeTempDir('regression-gate-load-');
     const path = join(dir, name);
     writeFileSync(path, JSON.stringify(data));
     return path;
@@ -469,7 +476,7 @@ describe('toolchain provenance warning', () => {
   });
 
   test('RED: a schemaVersion 1 baseline is rejected, because `toolchain` meant something else there', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-baseline-schema-'));
+    const dir = makeTempDir('perf-baseline-schema-');
     const path = join(dir, 'baseline.json');
     const legacy = { ...makeBaseline(), schemaVersion: 1 };
     writeFileSync(path, JSON.stringify(legacy));
@@ -477,7 +484,7 @@ describe('toolchain provenance warning', () => {
   });
 
   test('RED: targetToolchain without capturedUnder is rejected as unrecorded provenance', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-baseline-schema-'));
+    const dir = makeTempDir('perf-baseline-schema-');
     const path = join(dir, 'baseline.json');
     const { capturedUnder: _dropped, ...noProvenance } = makeBaseline();
     writeFileSync(
@@ -491,7 +498,7 @@ describe('toolchain provenance warning', () => {
   });
 
   test('RED: the version-1 `toolchain` spelling under schemaVersion 2 is rejected, not silently accepted', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-baseline-schema-'));
+    const dir = makeTempDir('perf-baseline-schema-');
     const path = join(dir, 'baseline.json');
     const { capturedUnder, ...rest } = makeBaseline();
     writeFileSync(path, JSON.stringify({ ...rest, toolchain: capturedUnder }));
@@ -500,14 +507,14 @@ describe('toolchain provenance warning', () => {
   });
 
   test('RED: capturedUnder null is rejected the same way absence is', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-baseline-schema-'));
+    const dir = makeTempDir('perf-baseline-schema-');
     const path = join(dir, 'baseline.json');
     writeFileSync(path, JSON.stringify({ ...makeBaseline(), capturedUnder: null }));
     expect(() => loadBaseline(path)).toThrow(/capturedUnder must be an object declaring runtime/);
   });
 
   test('RED: a baseline with no provenance at all is rejected, so no run can be silently comparable', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-baseline-schema-'));
+    const dir = makeTempDir('perf-baseline-schema-');
     const path = join(dir, 'baseline.json');
     const { capturedUnder: _c, targetToolchain: _t, ...stripped } = makeBaseline();
     writeFileSync(path, JSON.stringify(stripped));
@@ -523,7 +530,7 @@ describe('toolchain provenance warning', () => {
     ['an object whose fields are empty strings', { runtime: '', testRunner: '' }],
   ] as const) {
     test(`RED: capturedUnder as ${label} is rejected, not carried through as silent provenance`, () => {
-      const dir = mkdtempSync(join(tmpdir(), 'perf-baseline-schema-'));
+      const dir = makeTempDir('perf-baseline-schema-');
       const path = join(dir, 'baseline.json');
       writeFileSync(path, JSON.stringify({ ...makeBaseline(), capturedUnder: value }));
       expect(() => loadBaseline(path)).toThrow(/capturedUnder must be an object declaring runtime/);
@@ -531,7 +538,7 @@ describe('toolchain provenance warning', () => {
   }
 
   test('RED: a results file with no toolchain is rejected, so a foreign capture cannot compare silently', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-fresh-schema-'));
+    const dir = makeTempDir('perf-fresh-schema-');
     const path = join(dir, 'results.json');
     const { toolchain: _dropped, ...bare } = makeFresh();
     writeFileSync(path, JSON.stringify(bare));
@@ -539,7 +546,7 @@ describe('toolchain provenance warning', () => {
   });
 
   test('RED: a version-1 results file is rejected on the VERSION, not on a field version 1 never had', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-fresh-schema-'));
+    const dir = makeTempDir('perf-fresh-schema-');
     const path = join(dir, 'results.json');
     const { toolchain: _dropped, ...preToolchain } = makeFresh();
     writeFileSync(path, JSON.stringify({ ...preToolchain, schemaVersion: 1 }));
@@ -549,7 +556,7 @@ describe('toolchain provenance warning', () => {
   });
 
   test('a version-2 results file carrying toolchain loads, so the bump is not a blanket rejection', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-fresh-schema-'));
+    const dir = makeTempDir('perf-fresh-schema-');
     const path = join(dir, 'results.json');
     writeFileSync(path, JSON.stringify(makeFresh()));
     const loaded = loadFreshResults(path);
@@ -558,7 +565,7 @@ describe('toolchain provenance warning', () => {
   });
 
   test('RED: a version-1 results file that already declares a toolchain is told to renumber, not to re-capture', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-fresh-schema-'));
+    const dir = makeTempDir('perf-fresh-schema-');
     const path = join(dir, 'results.json');
     writeFileSync(path, JSON.stringify({ ...makeFresh(), schemaVersion: 1 }));
     expect(() => loadFreshResults(path)).toThrow(/results\.json schemaVersion must be 2/);
@@ -574,7 +581,7 @@ describe('toolchain provenance warning', () => {
     ['an object whose fields are empty strings', { runtime: '', testRunner: '' }],
   ] as const) {
     test(`RED: a version-1 results file whose toolchain is ${label} is told to re-capture, not to renumber`, () => {
-      const dir = mkdtempSync(join(tmpdir(), 'perf-fresh-schema-'));
+      const dir = makeTempDir('perf-fresh-schema-');
       const path = join(dir, 'results.json');
       writeFileSync(path, JSON.stringify({ ...makeFresh(), schemaVersion: 1, toolchain: value }));
       expect(() => loadFreshResults(path)).toThrow(/declares no `toolchain`/);
@@ -589,7 +596,7 @@ describe('toolchain provenance warning', () => {
   });
 
   test('RED: a results file with no methodology block is rejected', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-fresh-schema-'));
+    const dir = makeTempDir('perf-fresh-schema-');
     const path = join(dir, 'results.json');
     const { methodology: _dropped, ...bare } = makeFresh();
     writeFileSync(path, JSON.stringify(bare));
@@ -602,7 +609,7 @@ describe('toolchain provenance warning', () => {
     ['a non-finite varianceMultiplier', { floorPct: 0.1, varianceMultiplier: Number.NaN }],
   ] as const) {
     test(`RED: threshold with ${label} is rejected rather than computing an NaN allowance`, () => {
-      const dir = mkdtempSync(join(tmpdir(), 'perf-baseline-threshold-'));
+      const dir = makeTempDir('perf-baseline-threshold-');
       const path = join(dir, 'baseline.json');
       writeFileSync(path, JSON.stringify({ ...makeBaseline(), threshold }));
       expect(() => loadBaseline(path)).toThrow(
@@ -618,7 +625,7 @@ describe('toolchain provenance warning', () => {
   });
 
   test('RED: capturedUnder equal to targetToolchain is rejected as a finished re-baseline', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-baseline-schema-'));
+    const dir = makeTempDir('perf-baseline-schema-');
     const path = join(dir, 'baseline.json');
     const same = { runtime: 'node@24.19.0', testRunner: 'vitest@4.1.10' };
     writeFileSync(
@@ -629,7 +636,7 @@ describe('toolchain provenance warning', () => {
   });
 
   test('NEGATIVE: capturedUnder alone, and capturedUnder differing from targetToolchain, both load', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-baseline-schema-'));
+    const dir = makeTempDir('perf-baseline-schema-');
     const soloPath = join(dir, 'solo.json');
     writeFileSync(
       soloPath,
@@ -737,7 +744,7 @@ describe('the standalone comparator CLI surfaces methodology warnings and refuse
     script: string,
     extraArgs: string[] = [],
   ): { status: number | null; stdout: string; stderr: string } {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-entrypoint-'));
+    const dir = makeTempDir('perf-entrypoint-');
     const freshPath = join(dir, 'fresh.json');
     writeFileSync(
       freshPath,
@@ -746,7 +753,7 @@ describe('the standalone comparator CLI surfaces methodology warnings and refuse
     const result = spawnSync(
       'pnpm',
       ['exec', 'tsx', join(PERF_DIR, script), COMMITTED_BASELINE_PATH, freshPath, ...extraArgs],
-      { cwd: join(PERF_DIR, '..', '..'), encoding: 'utf8', timeout: 30_000 },
+      { cwd: join(PERF_DIR, '..', '..'), encoding: 'utf8', env: comparatorEnv(), timeout: 30_000 },
     );
     if (result.error) {
       throw new Error(
@@ -763,7 +770,7 @@ describe('the standalone comparator CLI surfaces methodology warnings and refuse
   }, 60_000);
 
   test('RED: an unreadable baseline exits EXIT_DATA with the validator message, not a stack on 1', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-baddata-'));
+    const dir = makeTempDir('perf-baddata-');
     const badPath = join(dir, 'baseline.json');
     writeFileSync(badPath, JSON.stringify({ ...makeBaseline(), capturedUnder: {} }));
     const freshPath = join(dir, 'fresh.json');
@@ -774,7 +781,7 @@ describe('the standalone comparator CLI surfaces methodology warnings and refuse
     const result = spawnSync(
       'pnpm',
       ['exec', 'tsx', join(PERF_DIR, 'regression-gate.ts'), badPath, freshPath],
-      { cwd: join(PERF_DIR, '..', '..'), encoding: 'utf8', timeout: 30_000 },
+      { cwd: join(PERF_DIR, '..', '..'), encoding: 'utf8', env: comparatorEnv(), timeout: 30_000 },
     );
     expect(result.status).toBe(EXIT_DATA);
     expect(result.stderr).toContain('capturedUnder must be an object declaring runtime');
@@ -785,14 +792,14 @@ describe('the standalone comparator CLI surfaces methodology warnings and refuse
     const result = spawnSync(
       'pnpm',
       ['exec', 'tsx', join(PERF_DIR, 'regression-gate.ts'), baselinePath, freshPath],
-      { cwd: join(PERF_DIR, '..', '..'), encoding: 'utf8', timeout: 30_000 },
+      { cwd: join(PERF_DIR, '..', '..'), encoding: 'utf8', env: comparatorEnv(), timeout: 30_000 },
     );
     if (result.error) throw result.error;
     return result;
   }
 
   function badInputFixtures() {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-badinput-'));
+    const dir = makeTempDir('perf-badinput-');
     const freshPath = join(dir, 'fresh.json');
     writeFileSync(
       freshPath,
@@ -860,7 +867,7 @@ describe('the standalone comparator CLI surfaces methodology warnings and refuse
   }, 60_000);
 
   test('NEGATIVE: a comparable run needs no escape hatch', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'perf-comparable-'));
+    const dir = makeTempDir('perf-comparable-');
     const baseline = loadBaseline(COMMITTED_BASELINE_PATH);
     const baselinePath = join(dir, 'baseline.json');
     const freshPath = join(dir, 'fresh.json');
@@ -876,7 +883,7 @@ describe('the standalone comparator CLI surfaces methodology warnings and refuse
     const result = spawnSync(
       'pnpm',
       ['exec', 'tsx', join(PERF_DIR, 'regression-gate.ts'), baselinePath, freshPath],
-      { cwd: join(PERF_DIR, '..', '..'), encoding: 'utf8', timeout: 30_000 },
+      { cwd: join(PERF_DIR, '..', '..'), encoding: 'utf8', env: comparatorEnv(), timeout: 30_000 },
     );
     expect(result.stderr).not.toContain('INCONCLUSIVE');
     expect(result.status).toBe(0);
@@ -936,7 +943,7 @@ describe('p50 and p95 are recorded alongside p99', () => {
   });
 
   test('a baseline recording a non-finite p50 is rejected at load', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'regression-gate-percentiles-'));
+    const dir = makeTempDir('regression-gate-percentiles-');
     const path = join(dir, 'baseline.json');
     const baseline = makeBaseline();
     baseline.results[0].parseMs.p50 = Number.NaN;

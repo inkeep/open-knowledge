@@ -1,17 +1,10 @@
 import type { SpawnOptions } from 'node:child_process';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HOSTS_WITH_USER_SKILL_DIR } from '@inkeep/open-knowledge-core';
-import { beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, beforeEach, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../test-support/temp-dir.test-helper.ts';
 import { BUNDLE_SKILL_NAME } from './skill-bundles.ts';
 import {
   buildAndOpenSkill,
@@ -22,6 +15,8 @@ import {
   type SpawnLike,
 } from './skill-install.ts';
 import { writeBundleDecision } from './skill-state.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
 
 async function readServerVersion(): Promise<string> {
   const raw = await readFile(new URL('../package.json', import.meta.url), 'utf-8');
@@ -44,7 +39,7 @@ function makeRecordingLogger(): { logger: SkillInstallLogger; records: RecordedL
 }
 
 function freshHome(): string {
-  return mkdtempSync(join(tmpdir(), 'ok-skill-install-'));
+  return makeTempDir('ok-skill-install-');
 }
 
 function installHost(home: string, hostDir: string): void {

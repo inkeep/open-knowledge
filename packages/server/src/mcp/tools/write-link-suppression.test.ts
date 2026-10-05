@@ -1,15 +1,15 @@
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../../../test-support/temp-dir.test-helper.ts';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { register as registerEdit } from './edit.ts';
 import { startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import type { ServerInstance } from './shared.ts';
 import { register as registerWrite } from './write.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 
@@ -50,7 +50,7 @@ async function withStub(
   payload: Record<string, unknown>,
   body: (tools: StubbedTools) => Promise<void>,
 ): Promise<void> {
-  const cwd = mkdtempSync(join(tmpdir(), 'ok-mcp-link-suppression-'));
+  const cwd = makeTempDir('ok-mcp-link-suppression-');
   const stub = await startFetchTestServer({
     port: 0,
     async fetch(req) {

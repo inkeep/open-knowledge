@@ -1,6 +1,3 @@
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { ConflictAuthority } from './conflict-authority.ts';
 
 export const RECONCILE_TEST_CONFLICTS: Pick<
@@ -27,8 +24,4 @@ export function createTestConflictAuthority(
       applyResolvedContent: async () => {},
     },
   });
-}
-
-export function createTestConflictAuthorityInTmpDir(prefix: string): ConflictAuthority {
-  return createTestConflictAuthority(mkdtempSync(join(tmpdir(), prefix)));
 }

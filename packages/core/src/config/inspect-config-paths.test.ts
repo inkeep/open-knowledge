@@ -1,12 +1,14 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../../test-support/temp-dir.test-helper.ts';
 import { inspectConfigPaths } from './inspect-config-paths.ts';
 
+const makeTempDir = createTempDirFactory(afterAll);
+
 function makeTempProject(): { cwd: string; home: string } {
-  const cwd = mkdtempSync(join(tmpdir(), 'ok-inspect-cwd-'));
-  const home = mkdtempSync(join(tmpdir(), 'ok-inspect-home-'));
+  const cwd = makeTempDir('ok-inspect-cwd-');
+  const home = makeTempDir('ok-inspect-home-');
   mkdirSync(join(cwd, '.ok'), { recursive: true });
   mkdirSync(join(home, '.ok'), { recursive: true });
   return { cwd, home };

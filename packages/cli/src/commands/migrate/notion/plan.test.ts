@@ -1,8 +1,15 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../../../../test-support/temp-dir.test-helper.ts';
 import { walkFiles } from './fs-walk.ts';
-import { makeTree, read } from './mktree.test-helper.ts';
+import { makeTree as populateTree, read } from './mktree.test-helper.ts';
 import { applyPlan, buildPlan } from './plan.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
+
+function makeTree(files: Parameters<typeof populateTree>[1]): string {
+  return populateTree(makeTempDir('ok-migrate-'), files);
+}
 
 const PNG =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';

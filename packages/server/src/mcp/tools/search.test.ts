@@ -1,11 +1,11 @@
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createTempDirFactory } from '../../../../../test-support/temp-dir.test-helper.ts';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { bindTestUiServerLock } from './preview-url-test-helpers.ts';
 import { DESCRIPTION, register } from './search.ts';
 import type { ServerInstance } from './shared.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
 
 const DEFAULT_CONFIG: Config = ConfigSchema.parse({});
 
@@ -681,7 +681,7 @@ describe('search MCP tool — happy path', () => {
 
 describe('search MCP tool — route-only previewUrl + no ui block (PRD-6735)', () => {
   test('result rows carry route-only previewUrl; structured output has no ui block', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-search-preview-'));
+    const cwd = makeTempDir('ok-search-preview-');
     bindTestUiServerLock(cwd);
     mockFetchOk({
       ok: true,

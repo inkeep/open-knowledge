@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   AUDIT_EMPTY_SCOPE_WARNING,
@@ -8,7 +7,8 @@ import {
 import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
+import { createTempDirFactory } from '../../../../../test-support/temp-dir.test-helper.ts';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { register as registerAudit } from './audit.ts';
 import { register as registerConfig } from './config.ts';
@@ -20,6 +20,8 @@ import { register as registerLint } from './lint.ts';
 import { register as registerPalette } from './palette.ts';
 import { register as registerSearch } from './search.ts';
 import { AUDIT_WARNING_CAP, type ServerInstance, WARNINGS_FIELD_CONTRACT } from './shared.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 
@@ -59,7 +61,7 @@ function captureRegistration<TDeps>(
 }
 
 function newProject(): string {
-  const cwd = mkdtempSync(join(tmpdir(), 'ok-output-strict-'));
+  const cwd = makeTempDir('ok-output-strict-');
   mkdirSync(join(cwd, '.ok'), { recursive: true });
   return cwd;
 }
@@ -84,7 +86,10 @@ describe('MCP outputSchema strictness — every registerTool+textPlusStructured 
     return compileOutputSchemaForClient(captured.cfg.outputSchema);
   }
 
-  const cwd = newProject();
+  let cwd: string;
+  beforeAll(() => {
+    cwd = newProject();
+  });
   const deps = { config: BASE_CONFIG, resolveCwd: async () => cwd };
   const depsWithServer = {
     config: BASE_CONFIG,

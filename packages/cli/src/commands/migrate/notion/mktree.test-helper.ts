@@ -1,9 +1,7 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-export function makeTree(files: Record<string, string | Uint8Array>): string {
-  const root = mkdtempSync(join(tmpdir(), 'ok-migrate-'));
+export function makeTree(root: string, files: Record<string, string | Uint8Array>): string {
   for (const [rel, content] of Object.entries(files)) {
     const full = join(root, rel);
     mkdirSync(dirname(full), { recursive: true });

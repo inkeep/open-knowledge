@@ -1,11 +1,13 @@
-import { mkdirSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../test-support/temp-dir.test-helper.ts';
 import { reportSkillInstall } from './skills-sh-install-report.ts';
 
+const makeTempDir = createTempDirFactory(afterAll);
+
 function freshHome(): string {
-  return mkdtempSync(join(tmpdir(), 'ok-install-report-'));
+  return makeTempDir('ok-install-report-');
 }
 
 function recordingFetch(): { calls: string[]; impl: typeof fetch } {

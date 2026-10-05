@@ -1,12 +1,14 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { resolveConfigPath } from '@inkeep/open-knowledge-core/server';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../test-support/temp-dir.test-helper.ts';
 import { resolveSkillInstallReportSettings } from './skill-install-report-config.ts';
 
+const makeTempDir = createTempDirFactory(afterAll);
+
 function freshHome(): string {
-  return mkdtempSync(join(tmpdir(), 'ok-report-config-'));
+  return makeTempDir('ok-report-config-');
 }
 
 function writeUserConfig(home: string, yaml: string): string {

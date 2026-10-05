@@ -1,6 +1,13 @@
-import { afterEach, describe, expect, test } from 'vitest';
-import { makeTree } from './migrate/notion/mktree.test-helper.ts';
+import { afterAll, afterEach, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../../test-support/temp-dir.test-helper.ts';
+import { makeTree as populateTree } from './migrate/notion/mktree.test-helper.ts';
 import { migrateCommand } from './migrate.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
+
+function makeTree(files: Parameters<typeof populateTree>[1]): string {
+  return populateTree(makeTempDir('ok-migrate-'), files);
+}
 
 const ID = '30545f35b5ad80a38049d283dae66763';
 const R1 = '11111111111111111111111111111111';

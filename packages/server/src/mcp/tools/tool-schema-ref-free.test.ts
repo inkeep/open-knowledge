@@ -1,12 +1,14 @@
-import { mkdirSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
-import { describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../../../test-support/temp-dir.test-helper.ts';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { registerAllTools } from './index.ts';
 import type { ServerInstance } from './shared.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 
@@ -16,7 +18,7 @@ interface Registration {
   outputSchema?: unknown;
 }
 
-function captureAllRegistrations(cwd: string): Registration[] {
+function captureAllRegistrations(cwd: () => string): Registration[] {
   const captured: Registration[] = [];
   const server = {
     registerTool(name: string, cfg: { inputSchema?: unknown; outputSchema?: unknown }) {
@@ -26,7 +28,7 @@ function captureAllRegistrations(cwd: string): Registration[] {
   } as unknown as ServerInstance;
   registerAllTools(server, {
     config: BASE_CONFIG,
-    resolveCwd: async () => cwd,
+    resolveCwd: async () => cwd(),
     serverUrl: undefined,
   });
   return captured;
@@ -50,9 +52,12 @@ function refOffenders(rawShape: unknown, pipeStrategy: 'input' | 'output'): stri
 }
 
 describe('MCP tool schema portability — no intra-schema $ref (LM Studio / Gemini compat)', () => {
-  const cwd = mkdtempSync(join(tmpdir(), 'ok-reffree-'));
-  mkdirSync(join(cwd, '.ok'), { recursive: true });
-  const registrations = captureAllRegistrations(cwd);
+  let cwd: string;
+  beforeAll(() => {
+    cwd = makeTempDir('ok-reffree-');
+    mkdirSync(join(cwd, '.ok'), { recursive: true });
+  });
+  const registrations = captureAllRegistrations(() => cwd);
 
   test('registration sweep is non-empty (guards against a broken capture)', () => {
     expect(registrations.length).toBeGreaterThan(10);

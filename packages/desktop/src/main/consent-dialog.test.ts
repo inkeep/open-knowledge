@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../../test-support/temp-dir.test-helper.ts';
 import type { OnboardingConfirmRequest, OnboardingShowPayload } from '../shared/ipc-channels.ts';
 import {
   type ConsentIpcMainLike,
@@ -10,6 +10,8 @@ import {
   requestUserConsent,
   runProbe,
 } from './consent-dialog.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
 
 interface IpcStub extends ConsentIpcMainLike {
   handlers: Map<string, (event: unknown, ...args: unknown[]) => unknown | Promise<unknown>>;
@@ -352,7 +354,7 @@ describe('requestUserConsent — cancel', () => {
 
 describe('runProbe', () => {
   test('returns ok with count + sample for a real tmp-dir fixture', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'ok-probe-'));
+    const tmp = makeTempDir('ok-probe-');
     writeFileSync(join(tmp, 'a.md'), '# a');
     writeFileSync(join(tmp, 'b.md'), '# b');
     const recordedPreview: PreviewContentFn = ({ sampleCap }) => ({
@@ -381,7 +383,7 @@ describe('runProbe', () => {
   });
 
   test('small fixture is not truncated', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'ok-probe-small-'));
+    const tmp = makeTempDir('ok-probe-small-');
     writeFileSync(join(tmp, 'one.md'), 'x');
     const result = await runProbe(fakePreview, tmp, { contentDir: '.' });
     expect(result.ok).toBe(true);
@@ -389,7 +391,7 @@ describe('runProbe', () => {
   });
 
   test('throwing previewContent surfaces ok:false', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'ok-probe-throw-'));
+    const tmp = makeTempDir('ok-probe-throw-');
     writeFileSync(join(tmp, 'a.md'), '# a');
     const throwingPreview: PreviewContentFn = () => {
       throw new Error('synthetic boom');
@@ -429,7 +431,7 @@ describe('runProbe', () => {
   });
 
   test('subdirectory contentDir resolves correctly', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'ok-probe-subdir-'));
+    const tmp = makeTempDir('ok-probe-subdir-');
     mkdirSync(join(tmp, 'docs'));
     writeFileSync(join(tmp, 'docs', 'a.md'), '# a');
     let receivedContentDir = '';
@@ -447,7 +449,7 @@ describe('runProbe', () => {
 
 describe('requestUserConsent — probe-content pins to captured projectDir', () => {
   test('IPC probe-content uses captured payload.projectDir; renderer-supplied projectDir is ignored', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'ok-probe-pin-'));
+    const tmp = makeTempDir('ok-probe-pin-');
     writeFileSync(join(tmp, 'a.md'), '# a');
     let capturedProjectDir = '';
     let capturedContentDir = '';

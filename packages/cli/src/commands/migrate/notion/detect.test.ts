@@ -1,6 +1,13 @@
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../../../../test-support/temp-dir.test-helper.ts';
 import { isNotionExport } from './detect.ts';
-import { makeTree } from './mktree.test-helper.ts';
+import { makeTree as populateTree } from './mktree.test-helper.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
+
+function makeTree(files: Parameters<typeof populateTree>[1]): string {
+  return populateTree(makeTempDir('ok-migrate-'), files);
+}
 
 const ID = '2a145f35b5ad808e9200ff850d964d8f';
 

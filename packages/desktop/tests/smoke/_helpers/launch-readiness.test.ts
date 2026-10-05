@@ -4,14 +4,13 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
+import { createTempDirFactory } from '../../../../../test-support/temp-dir.test-helper.ts';
 import type { WaterfallPhase } from '../../../src/main/startup-waterfall.ts';
 import {
   BOOT_HEARTBEAT_ABANDONED_SUFFIX,
@@ -88,12 +87,14 @@ import {
   utilityForkWhoseFirstBeatLandsOnTheLastStagePoll,
 } from './readiness-reach.test-helper.ts';
 
+const makeTempDir = createTempDirFactory(afterAll);
+
 function markLine(phase: WaterfallPhase, elapsedMs: number, time: string): string {
   return JSON.stringify({ time, ...startupMarkLine(phase, elapsedMs) });
 }
 
 function seedHome(lines: string[] = []): string {
-  const home = mkdtempSync(join(tmpdir(), 'ok-readiness-'));
+  const home = makeTempDir('ok-readiness-');
   if (lines.length > 0) {
     const dir = bootLogDirFor(home);
     mkdirSync(dir, { recursive: true });
@@ -490,7 +491,7 @@ describe('waitForWindowByMode', () => {
   });
 
   it('handles a page rejection that arrives after the cap', () => {
-    const scriptDir = mkdtempSync(join(tmpdir(), 'ok-window-readiness-strict-'));
+    const scriptDir = makeTempDir('ok-window-readiness-strict-');
     const script = join(scriptDir, 'late-rejection.mjs');
     const home = seedHome();
     try {
@@ -2685,7 +2686,7 @@ describe('the cap bounds the wait itself, not only the gaps between polls', () =
   });
 
   it('swallows a probe rejection that arrives after the cap, so no worker dies of it', () => {
-    const script = join(mkdtempSync(join(tmpdir(), 'ok-readiness-strict-')), 'late-rejection.mjs');
+    const script = join(makeTempDir('ok-readiness-strict-'), 'late-rejection.mjs');
     writeFileSync(
       script,
       [

@@ -1,13 +1,14 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { mkdtemp } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { parseCheckpoint } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
-import { beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, beforeEach, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from '../../../test-support/temp-dir.test-helper.ts';
 import { createMaintenanceCoordinator } from './maintenance-coordinator.ts';
 import { commitWip, initShadowRepo, type ShadowHandle, shadowGit } from './shadow-repo.ts';
 import { getDocumentHistory } from './timeline-query.ts';
+
+const makeTempDir = createTempDirFactory(afterAll);
 
 let tmpDir: string;
 let projectRoot: string;
@@ -16,7 +17,7 @@ let shadow: ShadowHandle;
 let liveWriters: Set<string>;
 
 beforeEach(async () => {
-  tmpDir = await mkdtemp(resolve(tmpdir(), 'ok-consolidate-test-'));
+  tmpDir = makeTempDir('ok-consolidate-test-');
   projectRoot = resolve(tmpDir, 'project');
   contentDir = resolve(projectRoot, 'content/docs');
   mkdirSync(contentDir, { recursive: true });
