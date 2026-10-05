@@ -2963,7 +2963,9 @@ export class SyncEngine {
         '[sync] skipping gitignored untracked path(s) — in content scope but excluded from git',
       );
     }
-    const stageable = probeOk ? files.filter((f) => !refused.has(f.projectRelPath)) : files;
+    const refusedDirs = [...refused].filter((p) => p.endsWith('/'));
+    const isRefused = (p: string) => refused.has(p) || refusedDirs.some((d) => p.startsWith(d));
+    const stageable = probeOk ? files.filter((f) => !isRefused(f.projectRelPath)) : files;
     const hasOkSegment = (p: string) => p.startsWith(`${OK_DIR}/`) || p.includes(`/${OK_DIR}/`);
     const forced = probeOk ? stageable.filter((f) => hasOkSegment(f.projectRelPath)) : [];
     const plain = probeOk ? stageable.filter((f) => !hasOkSegment(f.projectRelPath)) : stageable;

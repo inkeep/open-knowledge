@@ -2899,6 +2899,44 @@ describe('SyncEngine push cycle vs gitignored content (precedent #55 at the stag
     }
   });
 
+  test('skips files inside an ignored nested repository instead of failing the whole push cycle', async () => {
+    const git = await initRepoWithBareRemote();
+    writeFileSync(join(projectDir, '.gitignore'), '/child/\n');
+    await git.add('.gitignore');
+    await git.commit('ignore child');
+    await git.push(['origin', 'main']);
+
+    const childDir = join(projectDir, 'child');
+    mkdirSync(childDir);
+    const child = simpleGit(childDir);
+    await child.init(['--initial-branch=main']);
+    await child.raw('config', 'user.name', 'Test');
+    await child.raw('config', 'user.email', 'test@test.com');
+    writeFileSync(join(childDir, 'AGENTS.md'), '# Child\n');
+    await child.add('AGENTS.md');
+    await child.commit('child');
+    writeFileSync(join(projectDir, 'root-note.md'), 'edited\n');
+
+    const engine = makePushEngine();
+    try {
+      await engine.start();
+      await engine.trigger('push');
+
+      const status = engine.getStatus();
+      expect(status.pushError).toBeUndefined();
+      expect(status.consecutiveFailures).toBe(0);
+
+      const headPaths = await listNames(git, ['ls-tree', '-r', '--name-only', 'HEAD']);
+      expect(headPaths).toContain('root-note.md');
+      expect(headPaths.filter((p) => p.startsWith('child/'))).toEqual([]);
+
+      const remoteHead = (await git.revparse(['origin/main'])).trim();
+      expect(remoteHead).toBe((await git.revparse(['HEAD'])).trim());
+    } finally {
+      await engine.destroy();
+    }
+  });
+
   test('keeps syncing edits to a tracked file that an ignore rule also matches', async () => {
     const git = await initRepoWithBareRemote();
     mkdirSync(join(projectDir, 'trips', '.ok', 'templates'), { recursive: true });
