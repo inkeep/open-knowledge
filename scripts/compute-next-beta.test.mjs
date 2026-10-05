@@ -1,4 +1,9 @@
-import { describe, expect, test } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterAll, describe, expect, test } from 'vitest';
 import {
   bumpSemver,
   computeBaseVersion,
@@ -6,6 +11,10 @@ import {
   maxBumpType,
   maxReleaseType,
   parseSection,
+  previousBeta,
+  RELEASE_LIST_ARGS,
+  recordedReleases,
+  releaseViewArgs,
   renderNotes,
 } from './compute-next-beta.mjs';
 
@@ -449,5 +458,132 @@ describe('maxReleaseType', () => {
         { name: '@inkeep/open-knowledge-app', type: 'patch' },
       ]),
     ).toBe('patch');
+  });
+});
+
+describe('previousBeta reads the previous beta through the gh calls it is handed', () => {
+  const TAG = 'v0.82.0-beta.8';
+  const answering = (list, view) => (args) => {
+    if (args[1] === 'list') return list;
+    if (args[1] === 'view' && args[2] === TAG) return view;
+    throw new Error(`unexpected gh ${args.join(' ')}`);
+  };
+  const ok = (stdout) => ({ status: 0, stdout, stderr: '' });
+  const body = (marker) => `Notes.\n${marker}\n`;
+
+  test.each([
+    ['a failed list bootstraps', { status: 1, stdout: '', stderr: 'HTTP 502' }, null, { prevBetaTag: null, recovered: null }],
+    ['an empty list bootstraps', ok('\n'), null, { prevBetaTag: null, recovered: null }],
+    ['a failed view keeps the tag and bootstraps the set', ok(`${TAG}\n`), { status: 1, stdout: '', stderr: '' }, { prevBetaTag: TAG, recovered: null }],
+    ['a body without a marker bootstraps the set', ok(`${TAG}\n`), ok(body('no marker here')), { prevBetaTag: TAG, recovered: null }],
+    ['a marker that is not JSON bootstraps the set', ok(`${TAG}\n`), ok(body('<!-- ok-consumed-set: [a, b] -->')), { prevBetaTag: TAG, recovered: null }],
+    ['a marker that is not a string array bootstraps the set', ok(`${TAG}\n`), ok(body('<!-- ok-consumed-set: [1, 2] -->')), { prevBetaTag: TAG, recovered: null }],
+    ['a well-formed marker is the consumed set', ok(`${TAG}\n`), ok(body('<!-- ok-consumed-set: ["a","b"] -->')), { prevBetaTag: TAG, recovered: ['a', 'b'] }],
+    ['a quoted tag is unquoted', ok(`"${TAG}"\n`), ok(body('<!-- ok-consumed-set: ["a"] -->')), { prevBetaTag: TAG, recovered: ['a'] }],
+  ])('%s', (_, list, view, expected) => {
+    expect(previousBeta(answering(list, view))).toEqual(expected);
+  });
+
+  test('the list and view calls are the queries the read-releases job runs', () => {
+    const calls = [];
+    previousBeta((args) => {
+      calls.push(args);
+      return args[1] === 'list' ? ok(`${TAG}\n`) : ok(body('<!-- ok-consumed-set: [] -->'));
+    });
+    expect(calls).toEqual([RELEASE_LIST_ARGS, releaseViewArgs(TAG)]);
+    expect(RELEASE_LIST_ARGS.slice(0, 3)).toEqual(['release', 'list', '--repo']);
+    expect(RELEASE_LIST_ARGS.at(-1)).toBe(
+      '[.[] | select(.isPrerelease) | select(.tagName | test("^v[0-9]+\\\\.[0-9]+\\\\.[0-9]+-beta\\\\.[0-9]+$")) | .tagName] | first // ""',
+    );
+  });
+});
+
+describe('recordedReleases replays what the read-releases job recorded', () => {
+  const TAG = 'v0.82.0-beta.8';
+  const recorded = {
+    RELEASE_LIST_STATUS: '0',
+    RELEASE_LIST_STDOUT: TAG,
+    RELEASE_LIST_STDERR: '',
+    RELEASE_VIEW_TAG: TAG,
+    RELEASE_VIEW_STATUS: '0',
+    RELEASE_VIEW_STDOUT: 'Notes.\n<!-- ok-consumed-set: ["a"] -->',
+  };
+
+  test('answers the recorded list and view calls', () => {
+    const gh = recordedReleases(recorded);
+    expect(gh(RELEASE_LIST_ARGS)).toEqual({ status: 0, stdout: TAG, stderr: '' });
+    expect(gh(releaseViewArgs(TAG))).toEqual({ status: 0, stdout: recorded.RELEASE_VIEW_STDOUT, stderr: '' });
+    expect(previousBeta(gh)).toEqual({ prevBetaTag: TAG, recovered: ['a'] });
+  });
+
+  test('replays a failed list with its status and stderr', () => {
+    const gh = recordedReleases({ RELEASE_LIST_STATUS: '1', RELEASE_LIST_STDOUT: '', RELEASE_LIST_STDERR: 'HTTP 502' });
+    expect(gh(RELEASE_LIST_ARGS)).toEqual({ status: 1, stdout: '', stderr: 'HTTP 502' });
+    expect(previousBeta(gh)).toEqual({ prevBetaTag: null, recovered: null });
+  });
+
+  test.each([
+    ['an empty list status', { ...recorded, RELEASE_LIST_STATUS: '' }, RELEASE_LIST_ARGS, 'RELEASE_LIST_STATUS is ""'],
+    ['a missing list status', (({ RELEASE_LIST_STATUS: _, ...rest }) => rest)(recorded), RELEASE_LIST_ARGS, 'RELEASE_LIST_STATUS is missing'],
+    ['a list status that is not a number', { ...recorded, RELEASE_LIST_STATUS: '0\n' }, RELEASE_LIST_ARGS, 'RELEASE_LIST_STATUS is "0\\n"'],
+    ['an empty view status', { ...recorded, RELEASE_VIEW_STATUS: '' }, releaseViewArgs(TAG), 'RELEASE_VIEW_STATUS is ""'],
+    ['a missing view status', (({ RELEASE_VIEW_STATUS: _, ...rest }) => rest)(recorded), releaseViewArgs(TAG), 'RELEASE_VIEW_STATUS is missing'],
+  ])('fails loudly on %s, naming the read-releases handoff', (_, env, args, message) => {
+    const gh = recordedReleases(env);
+    expect(() => gh(args)).toThrow(message);
+    expect(() => gh(args)).toThrow("the read-releases job's outputs did not reach this step");
+    expect(() => previousBeta(gh)).toThrow("the read-releases job's outputs did not reach this step");
+  });
+
+  test.each([
+    ['0', { prevBetaTag: TAG, recovered: ['a'] }],
+    ['1', { prevBetaTag: null, recovered: null }],
+  ])('a recorded list status of %s behaves as the exit status it is', (listStatus, expected) => {
+    expect(previousBeta(recordedReleases({ ...recorded, RELEASE_LIST_STATUS: listStatus }))).toEqual(expected);
+  });
+
+  test('a recorded view status of 1 keeps the tag and bootstraps the set', () => {
+    expect(previousBeta(recordedReleases({ ...recorded, RELEASE_VIEW_STATUS: '1' }))).toEqual({ prevBetaTag: TAG, recovered: null });
+  });
+
+  test('refuses any call the job did not record', () => {
+    const gh = recordedReleases(recorded);
+    expect(() => gh(releaseViewArgs('v0.82.0-beta.7'))).toThrow('the read-releases job recorded no result for gh release view v0.82.0-beta.7');
+    expect(() => gh(['release', 'list', '--repo', 'other/repo'])).toThrow('recorded no result');
+    expect(() => recordedReleases({ ...recorded, RELEASE_VIEW_TAG: '' })(releaseViewArgs(''))).toThrow('recorded no result');
+  });
+});
+
+describe('the compute-next-beta CLI takes the previous beta from the read-releases job, never from gh', () => {
+  const root = mkdtempSync(join(tmpdir(), 'compute-next-beta-cli-'));
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  const script = fileURLToPath(new URL('./compute-next-beta.mjs', import.meta.url));
+
+  test('a recorded previous beta that consumed every pending changeset skips the cut without running gh', () => {
+    mkdirSync(join(root, '.changeset'));
+    writeFileSync(
+      join(root, '.changeset', 'pre.json'),
+      JSON.stringify({ mode: 'pre', tag: 'beta', initialVersions: { '@inkeep/open-knowledge': '0.81.4' }, changesets: [] }),
+    );
+    writeFileSync(join(root, '.changeset', 'fixture-change.md'), "---\n'@inkeep/open-knowledge': patch\n---\n\nFixture change.\n");
+    const bin = join(root, 'bin');
+    mkdirSync(bin);
+    const tripwire = join(root, 'gh-calls.log');
+    writeFileSync(join(bin, 'gh'), `#!/bin/sh\necho "$*" >> '${tripwire}'\nexit 1\n`, { mode: 0o755 });
+    const out = execFileSync(process.execPath, [script], {
+      cwd: root,
+      encoding: 'utf8',
+      env: {
+        PATH: `${bin}:${process.env.PATH}`,
+        RELEASE_LIST_STATUS: '0',
+        RELEASE_LIST_STDOUT: 'v0.81.5-beta.0',
+        RELEASE_LIST_STDERR: '',
+        RELEASE_VIEW_TAG: 'v0.81.5-beta.0',
+        RELEASE_VIEW_STATUS: '0',
+        RELEASE_VIEW_STDOUT: 'Draft notes.\n<!-- ok-consumed-set: ["fixture-change"] -->',
+      },
+    });
+    expect(JSON.parse(out)).toEqual({ skip: true, reason: 'no new changesets since v0.81.5-beta.0' });
+    expect(existsSync(tripwire)).toBe(false);
   });
 });

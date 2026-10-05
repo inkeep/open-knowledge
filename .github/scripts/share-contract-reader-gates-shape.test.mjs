@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { parse } from 'yaml';
 
 const githubDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -29,7 +30,7 @@ const releaseLanes = [
     gate: 'Attest production reader before release',
     mutation: '      - name: Tag + create prerelease GitHub Release',
     condition:
-      "if: github.event.action == 'publish-stable' || steps.compute-beta.outputs.run_beta == 'true'",
+      "if: github.event.action == 'publish-stable' || needs.build.outputs.run_beta == 'true'",
   },
   {
     name: 'stable promotion',
@@ -136,18 +137,20 @@ describe.each(releaseLanes)('$name reader attestation', ({
 });
 
 describe('stable release reader attestation', () => {
-  test('restores the local composite action and its inputs from the workflow revision', () => {
-    const release = readGithubFile('workflows', 'release.yml');
-    const restore = stepBlock(release, 'Restore reader gate from workflow revision');
-    expect(restore).toContain("if: github.event.action == 'publish-stable'");
-    expect(restore).toContain('git checkout "$GITHUB_SHA" --');
-    expect(restore).toContain('.github/composite-actions/share-contract-reader-gate/action.yml');
-    expect(restore).toContain('.github/scripts/probe-share-contract.mjs');
-    expect(restore).toContain('test-support/fixtures/share-url-v1-v2.json');
-    const restoreAt = release.indexOf('- name: Restore reader gate from workflow revision');
-    const attestAt = release.indexOf('- name: Attest production reader before release');
-    expect(restoreAt, 'no "Restore reader gate" step').toBeGreaterThan(-1);
-    expect(attestAt, 'no "Attest production reader" step').toBeGreaterThan(-1);
-    expect(restoreAt).toBeLessThan(attestAt);
+  test('runs the gate in the one job that checks out the workflow revision rather than the stable tag', () => {
+    const gateAction = './.github/composite-actions/share-contract-reader-gate';
+    const { jobs } = parse(readGithubFile('workflows', 'release.yml'));
+    const gateJobs = Object.entries(jobs).filter(([, job]) =>
+      (job.steps ?? []).some((step) => step.uses === gateAction),
+    );
+    expect(gateJobs.map(([id]) => id)).toEqual(['release']);
+    const { steps } = gateJobs[0][1];
+    const gateAt = steps.findIndex((step) => step.uses === gateAction);
+    const checkouts = steps.filter((step) => step.uses?.startsWith('actions/checkout@'));
+    expect(checkouts).toHaveLength(1);
+    expect(checkouts[0].with.ref).toBe(workflowExpression('github.sha'));
+    expect(steps.indexOf(checkouts[0])).toBeLessThan(gateAt);
+    const beforeGate = steps.slice(0, gateAt).map((step) => step.run ?? '').join('\n');
+    expect(beforeGate).not.toMatch(/\bgit\s+(checkout|switch|restore|reset)\b/);
   });
 });

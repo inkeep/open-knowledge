@@ -94,8 +94,7 @@ permissions:
   # `Generate GitHub App token` step). npm publish (id-token) is delegated
   # to release.yml via repository_dispatch so this workflow does not need
   # id-token; the dispatched run keeps its own OIDC identity. No packages:
-  # write — see release.yml's permission comment for why npm publishing
-  # does not need that scope here.
+  # write.
   contents: write
   # Read-only: lets the dispatch steps resolve the run URLs of the workflows they
   # trigger (release.yml, desktop-release.yml, main-reset) for run-to-run links.

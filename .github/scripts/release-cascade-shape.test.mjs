@@ -70,7 +70,7 @@ describe('release jobs install the pnpm version declared by the checked-out tag'
         'desktop-release.yml#build-macos',
         'desktop-release.yml#build-windows',
         'desktop-release.yml#build-linux',
-        'release.yml#release',
+        'release.yml#build',
       ]),
     );
   });
@@ -1333,7 +1333,7 @@ describe('every job that reads changesets installs the Changesets reader first',
         'bug-lane.yml#read-bumps',
         'point-release.yml#read-bumps',
         'promote-stable.yml#read-bumps',
-        'release.yml#release',
+        'release.yml#build',
         'select-beta-to-promote.yml#read-bumps',
       ]),
     );
@@ -1955,6 +1955,705 @@ describe('the release App credential never shares a job with installed packages'
       });
       expect(commands(step)).toContain('gh workflow run promote-stable.yml -f beta_tag="$CANDIDATE" -f dispatched_by="$SELF_URL"');
       expect(commands(step)).toMatch(/gh run list --workflow=promote-stable\.yml/);
+    });
+  });
+
+  describe('release.yml keeps the OIDC publish permission and the write token out of every job that runs package code', () => {
+    const releaseWorkflow = parse(read('release.yml'));
+    const TARBALL_PUBLISH = 'npm publish "$TARBALL" --access public --tag "$TAG" --provenance --registry https://registry.npmjs.org/';
+    const PUBLISHER_COMMANDS = new Set([
+      'npm install -g npm@11.21.0',
+      'pacote="$(npm root -g)/npm/node_modules/pacote"',
+      'echo "npm $(npm --version)"',
+      'if [[ "$(npm view "${PACKAGE_NAME}@${VERSION}" version 2>/dev/null || true)" == "$VERSION" ]]; then',
+      TARBALL_PUBLISH,
+    ]);
+    const PUBLISHER_ACTIONS = ['actions/setup-node@', 'actions/download-artifact@'];
+    const PACK_IF = "github.event.action == 'publish-stable' || steps.compute-beta.outputs.run_beta == 'true'";
+    const RUN_IF = "github.event.action == 'publish-stable' || needs.build.outputs.run_beta == 'true'";
+    const BETA_IF = "needs.build.outputs.run_beta == 'true'";
+
+    const permissionsOf = (workflow, job) => job.permissions ?? workflow.permissions ?? 'write-all';
+    const grants = (permissions) =>
+      typeof permissions === 'string'
+        ? permissions === 'read-all'
+          ? []
+          : [permissions]
+        : Object.entries(permissions)
+            .filter(([, level]) => level === 'write')
+            .map(([scope]) => `${scope}: write`);
+    const mintsOidc = (workflow, job) =>
+      grants(permissionsOf(workflow, job)).some((grant) => grant === 'id-token: write' || grant === 'write-all');
+    const credentialsOf = (workflow, job) => [
+      ...grants(permissionsOf(workflow, job)),
+      ...(JSON.stringify(job).match(/secrets\.\w+/g) ?? []),
+      ...(mintsAppToken(job) ? ['App token'] : []),
+    ];
+    const publisherView = (step) =>
+      step.run === undefined
+        ? step
+        : { ...step, run: step.run.split('\n').filter((line) => !PUBLISHER_COMMANDS.has(line.trim())).join('\n') };
+    const releasePackageRoutes = (workflow, job) => {
+      const publisher = mintsOidc(workflow, job);
+      return packageRoutes(
+        steps(job)
+          .filter((step) => !(publisher && PUBLISHER_ACTIONS.some((prefix) => step.uses?.startsWith(prefix))))
+          .map((step) => (publisher ? publisherView(step) : step)),
+      );
+    };
+    const READS_RELEASES = /(^|[;&|({`\s])gh\s+release\s+(list|view)\b/m;
+    const seesDraftReleases = (workflow, job) =>
+      grants(permissionsOf(workflow, job)).some((grant) => grant === 'contents: write' || grant === 'write-all');
+    const releaseViolations = (workflow) => {
+      const jobs = Object.entries(workflow.jobs);
+      const violations = [];
+      for (const [id, job] of jobs) {
+        const routes = releasePackageRoutes(workflow, job);
+        const credentials = credentialsOf(workflow, job);
+        if (routes.length > 0 && credentials.length > 0) {
+          violations.push(`${id} runs package code (${routes.join(', ')}) and holds ${credentials.join(', ')}`);
+        }
+        if (mintsOidc(workflow, job)) {
+          const others = credentials.filter((credential) => credential !== 'id-token: write');
+          if (others.length > 0) violations.push(`${id} can mint an OIDC token and also holds ${others.join(', ')}`);
+          const repository = steps(job)
+            .filter((step) => step.uses?.startsWith('actions/checkout@') || step.uses?.startsWith('./'))
+            .map((step) => step.uses);
+          if (repository.length > 0) {
+            violations.push(`${id} can mint an OIDC token and runs repository content (${repository.join(', ')})`);
+          }
+        }
+        for (const step of steps(job).filter((candidate) => candidate.uses?.startsWith('actions/checkout@'))) {
+          if (step.with?.['persist-credentials'] !== false || step.with?.token !== undefined) {
+            violations.push(`${id} has a checkout that persists a credential`);
+          }
+        }
+      }
+      for (const [id, job] of jobs) {
+        if (steps(job).some((step) => READS_RELEASES.test(commands(step))) && !seesDraftReleases(workflow, job)) {
+          violations.push(`${id} reads Releases with gh but cannot see draft Releases`);
+        }
+        if (releasePackageRoutes(workflow, job).length === 0) continue;
+        for (const need of [job.needs ?? []].flat()) {
+          const feeder = workflow.jobs[need];
+          const actions = steps(feeder).filter((step) => step.uses).map((step) => step.uses);
+          const credentials = credentialsOf(workflow, feeder);
+          if (credentials.length > 0 && actions.length > 0) {
+            violations.push(`${need} holds ${credentials.join(', ')} and feeds package code in ${id}, but runs ${actions.join(', ')}`);
+          }
+        }
+      }
+      const publishers = jobs
+        .filter(([, job]) => steps(job).some((step) => commands(step).split('\n').some((line) => line.trim() === TARBALL_PUBLISH)))
+        .map(([id]) => id);
+      if (publishers.length !== 1 || !mintsOidc(workflow, workflow.jobs[publishers[0]])) {
+        violations.push(`expected one OIDC job to publish the packed tarball, found ${publishers.join(', ') || 'none'}`);
+      }
+      return violations;
+    };
+    const runBash = (script, env) => {
+      try {
+        return { status: 0, stdout: execFileSync('bash', ['-c', script], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] }), stderr: '' };
+      } catch (error) {
+        if (typeof error.status !== 'number') throw error;
+        return { status: error.status, stdout: error.stdout, stderr: error.stderr };
+      }
+    };
+    const mutated = (change) => {
+      const workflow = structuredClone(releaseWorkflow);
+      change(workflow);
+      return workflow;
+    };
+    const stepNamed = (job, name) => {
+      const step = steps(job ?? {}).find((candidate) => candidate.name === name);
+      if (!step) throw new Error(`release.yml has no step named ${name}`);
+      return step;
+    };
+    const PUBLISH_STEP = 'Publish to npm via Trusted Publishing';
+    const VALIDATE_STEP = 'Refuse build outputs that are not well-formed versions';
+    const replacePublishLine = (workflow, line) => {
+      const step = stepNamed(workflow.jobs.publish, PUBLISH_STEP);
+      step.run = step.run.replace(TARBALL_PUBLISH, line);
+    };
+
+    test('no job that runs package code holds a credential, and only the OIDC job publishes', () => {
+      expect(releaseViolations(releaseWorkflow)).toEqual([]);
+      expect(Object.keys(releaseWorkflow.jobs)).toEqual(['read-releases', 'build', 'release', 'publish']);
+      const { 'read-releases': readReleases, build, release, publish } = releaseWorkflow.jobs;
+      expect(releasePackageRoutes(releaseWorkflow, readReleases)).toEqual([]);
+      expect(readReleases.permissions).toEqual({ contents: 'write' });
+      expect(releasePackageRoutes(releaseWorkflow, build).length).toBeGreaterThan(0);
+      expect(credentialsOf(releaseWorkflow, build)).toEqual([]);
+      expect(build.permissions).toEqual({ contents: 'read' });
+      expect(releasePackageRoutes(releaseWorkflow, release)).toEqual([]);
+      expect(release.permissions).toEqual({ contents: 'write' });
+      expect(releasePackageRoutes(releaseWorkflow, publish)).toEqual([]);
+      expect(publish.permissions).toEqual({ 'id-token': 'write' });
+      expect(releaseWorkflow.permissions).toEqual({ contents: 'read' });
+    });
+
+    test.each([
+      ['an install in the publish job', (w) => w.jobs.publish.steps.push({ name: 'Install', run: 'pnpm install --frozen-lockfile' }), 'publish runs package code'],
+      ['changeset publish in the publish job', (w) => replacePublishLine(w, 'pnpm exec changeset publish --tag "$TAG"'), 'publish runs package code'],
+      ['a pnpm setup action in the publish job', (w) => w.jobs.publish.steps.unshift({ uses: tagCompatiblePnpmSetup }), 'publish runs package code'],
+      ['publishing a workspace folder', (w) => replacePublishLine(w, 'npm publish packages/cli --access public --tag "$TAG"'), 'publish runs package code'],
+      ['a checkout in the publish job', (w) => w.jobs.publish.steps.unshift({ uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', with: { 'persist-credentials': false } }), 'publish can mint an OIDC token and runs repository content'],
+      ['a local action in the publish job', (w) => w.jobs.publish.steps.push({ uses: './.github/composite-actions/share-contract-reader-gate' }), 'publish can mint an OIDC token and runs repository content'],
+      ['id-token on the build job', (w) => { w.jobs.build.permissions = { contents: 'read', 'id-token': 'write' }; }, 'build runs package code'],
+      ['a write token on the build job', (w) => { w.jobs.build.permissions = { contents: 'write' }; }, 'build runs package code'],
+      ['a secret in the build job', (w) => { stepNamed(w.jobs.build, 'Install').env = { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }; }, 'build runs package code'],
+      ['a build job that inherits write permissions', (w) => { delete w.jobs.build.permissions; w.permissions = { contents: 'write', 'id-token': 'write' }; }, 'build runs package code'],
+      ['id-token on the release job', (w) => { w.jobs.release.permissions = { contents: 'write', 'id-token': 'write' }; }, 'release can mint an OIDC token and also holds contents: write'],
+      ['a checkout that persists its token', (w) => { delete w.jobs.release.steps[0].with['persist-credentials']; }, 'release has a checkout that persists a credential'],
+      ['a publish job that publishes nothing', (w) => replacePublishLine(w, 'true'), 'expected one OIDC job to publish the packed tarball, found none'],
+      ['a gh release read in the build job', (w) => w.jobs.build.steps.push({ name: 'Peek', run: 'gh release list --repo "$GITHUB_REPOSITORY"' }), 'build reads Releases with gh but cannot see draft Releases'],
+      ['read-releases narrowed so drafts are invisible', (w) => { w.jobs['read-releases'].permissions = { contents: 'read' }; }, 'read-releases reads Releases with gh but cannot see draft Releases'],
+      ['a checkout in read-releases', (w) => w.jobs['read-releases'].steps.unshift({ uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', with: { 'persist-credentials': false } }), 'read-releases holds contents: write and feeds package code in build, but runs actions/checkout@'],
+      ['an install in read-releases', (w) => w.jobs['read-releases'].steps.push({ name: 'Install', run: 'pnpm install --frozen-lockfile' }), 'read-releases runs package code'],
+    ])('the shape check bites on %s', (_, change, expected) => {
+      const introduced = expect.arrayContaining([expect.stringContaining(expected)]);
+      expect(releaseViolations(releaseWorkflow)).not.toEqual(introduced);
+      expect(releaseViolations(mutated(change))).toEqual(introduced);
+    });
+
+    test('the build job packs the overridden cli after its prepublishOnly, and the publish job reads that artifact', () => {
+      const { build, publish } = releaseWorkflow.jobs;
+      const index = (name) => steps(build).indexOf(stepNamed(build, name));
+      const prepublish = stepNamed(build, "Run the cli's prepublishOnly against the overridden versions");
+      const pack = stepNamed(build, 'Pack the cli tarball');
+      const upload = stepNamed(build, 'Upload the packed tarball for the publish job');
+      expect(prepublish.run).toBe('pnpm run prepublishOnly');
+      expect(commands(pack)).toContain('pnpm pack --pack-destination "$RUNNER_TEMP/npm-package"');
+      for (const step of [prepublish, pack]) expect(step['working-directory']).toBe('packages/cli');
+      for (const step of [prepublish, pack, upload]) expect(step.if).toBe(PACK_IF);
+      expect(upload.uses).toMatch(/^actions\/upload-artifact@[0-9a-f]{40}$/);
+      expect(upload.with).toMatchObject({ name: 'npm-package', path: '${{ runner.temp }}/npm-package/*.tgz', 'if-no-files-found': 'error' });
+      expect(index('Override fixed-group versions to X.Y.Z-beta.N')).toBeLessThan(index(prepublish.name));
+      expect(index('Validate stable_version + override package.json (publish-stable)')).toBeLessThan(index(prepublish.name));
+      expect(index(prepublish.name)).toBeLessThan(index(pack.name));
+      expect(index(pack.name)).toBeLessThan(index(upload.name));
+      const download = steps(publish).find((step) => step.uses?.startsWith('actions/download-artifact@'));
+      expect(download.with).toEqual({ name: 'npm-package', path: '${{ runner.temp }}/npm-package' });
+      expect(stepNamed(publish, PUBLISH_STEP).env.PACKAGE_DIR).toBe('${{ runner.temp }}/npm-package');
+      expect(publish.needs).toEqual(['build', 'release']);
+      expect(releaseWorkflow.jobs.release.needs).toBe('build');
+      for (const job of ['release', 'publish']) expect(releaseWorkflow.jobs[job].if).toBe(RUN_IF);
+    });
+
+    test('the credential jobs take from the build job only what needs package code to compute', () => {
+      const reads = (id) => {
+        const job = releaseWorkflow.jobs[id];
+        return expressions(job)
+          .filter(({ expr }) => /\bneeds\b/.test(expr))
+          .map(({ path, expr }) =>
+            `${(path[0] === 'steps' ? ['steps', job.steps[path[1]].name, ...path.slice(2)] : path).join(' > ')}: ${expr}`,
+          );
+      };
+      const RESOLVE = 'Resolve -beta.N counter';
+      expect(reads('release')).toEqual([
+        `if: ${RUN_IF}`,
+        `steps > ${VALIDATE_STEP} > if: ${BETA_IF}`,
+        `steps > ${VALIDATE_STEP} > env > BASE_VERSION: needs.build.outputs.base_version`,
+        `steps > ${VALIDATE_STEP} > env > BUILD_VERSION: needs.build.outputs.version`,
+        `steps > Guard - beta base must lead the latest stable > if: ${BETA_IF}`,
+        'steps > Guard - beta base must lead the latest stable > env > BASE_VERSION: needs.build.outputs.base_version',
+        `steps > ${RESOLVE} > if: ${BETA_IF}`,
+        `steps > ${RESOLVE} > env > BASE_VERSION: needs.build.outputs.base_version`,
+        `steps > Refuse a beta the build job resolved differently > if: ${BETA_IF}`,
+        'steps > Refuse a beta the build job resolved differently > env > BUILD_VERSION: needs.build.outputs.version',
+        `steps > Attest production reader before release > if: ${RUN_IF}`,
+        `steps > Tag + create prerelease GitHub Release > if: ${BETA_IF}`,
+        'steps > Tag + create prerelease GitHub Release > env > NOTES_B64: needs.build.outputs.notes_b64',
+        `steps > Trigger desktop-release.yml to build + upload the desktop installers > if: ${BETA_IF}`,
+      ]);
+      expect(reads('publish')).toEqual([
+        `if: ${RUN_IF}`,
+        `steps > ${PUBLISH_STEP} > env > BETA_VERSION: needs.release.outputs.version`,
+      ]);
+      const { build, release } = releaseWorkflow.jobs;
+      const algorithm = (step) => commands(step).slice(commands(step).indexOf('MAX_N=-1'));
+      expect(algorithm(stepNamed(release, RESOLVE)).length).toBeGreaterThan(0);
+      expect(algorithm(stepNamed(release, RESOLVE))).toBe(algorithm(stepNamed(build, RESOLVE)));
+      expect(commands(stepNamed(release, RESOLVE))).not.toContain('::error::');
+      expect(stepNamed(release, 'Checkout').with.ref).toBe('${{ github.sha }}');
+      for (const name of ['Tag + create prerelease GitHub Release', 'Trigger desktop-release.yml to build + upload the desktop installers']) {
+        expect(stepNamed(release, name).env.TAG).toBe('${{ steps.resolve-beta.outputs.tag }}');
+      }
+      expect(release.outputs).toEqual({ version: '${{ steps.resolve-beta.outputs.version }}' });
+    });
+
+    test("the release job checks the build job's versions before any step prints them", () => {
+      const { release } = releaseWorkflow.jobs;
+      const validate = stepNamed(release, VALIDATE_STEP);
+      expect(validate.if).toBe(BETA_IF);
+      const readers = steps(release).filter(
+        (step) => step !== validate && /needs\.build\.outputs\.(base_version|version)\b/.test(JSON.stringify(step.env ?? {})),
+      );
+      expect(readers.map((step) => step.name)).toEqual([
+        'Guard - beta base must lead the latest stable',
+        'Resolve -beta.N counter',
+        'Refuse a beta the build job resolved differently',
+      ]);
+      for (const step of readers) expect(steps(release).indexOf(validate), step.name).toBeLessThan(steps(release).indexOf(step));
+      const run = (base, version) => runBash(validate.run, { PATH: process.env.PATH, BASE_VERSION: base, BUILD_VERSION: version });
+      expect(run('0.82.0', '0.82.0-beta.9').status).toBe(0);
+      for (const [base, version] of [
+        ['0.82.0\n::warning::injected', '0.82.0-beta.9'],
+        ['0.82.0', '0.82.0-beta.9\n::warning::injected'],
+        ['', '0.82.0-beta.9'],
+        ['0.82.0', '0.82.0'],
+      ]) {
+        const refused = run(base, version);
+        expect(refused.status, JSON.stringify([base, version])).toBe(1);
+        expect(refused.stdout).not.toContain('injected');
+        expect(refused.stdout).toMatch(/^::error::The build job's (base_version|version) is not/m);
+      }
+    });
+
+    describe('the release job pushes its tag with the job token through a one-command credential helper', () => {
+      const TAG_STEP = 'Tag + create prerelease GitHub Release';
+      const TAG = 'v0.82.0-beta.9';
+      const TOKEN = 'placeholder-job-token';
+      const root = mkdtempSync(join(tmpdir(), 'release-tag-push-'));
+      afterAll(() => rmSync(root, { recursive: true, force: true }));
+      const bin = join(root, 'bin');
+      mkdirSync(bin);
+      const recorder = (exitWhen) =>
+        [
+          '#!/usr/bin/env node',
+          "const { appendFileSync } = require('node:fs');",
+          'const args = process.argv.slice(2);',
+          "appendFileSync(process.env.CALL_LOG, `${JSON.stringify([require('node:path').basename(process.argv[1]), ...args])}\\n`);",
+          `process.exit(${exitWhen} ? 1 : 0);`,
+          '',
+        ].join('\n');
+      writeFileSync(join(bin, 'git'), recorder("args[0] === 'rev-parse'"), { mode: 0o755 });
+      writeFileSync(join(bin, 'gh'), recorder("args[0] === 'release' && args[1] === 'view'"), { mode: 0o755 });
+      let runs = 0;
+      const tagStepRun = (workflow) => {
+        runs += 1;
+        const step = stepNamed(workflow.jobs.release, TAG_STEP);
+        const log = join(root, `calls-${runs}.log`);
+        const env = { PATH: `${bin}:${process.env.PATH}`, CALL_LOG: log, TMPDIR: root };
+        const known = { GH_TOKEN: TOKEN, TAG, NOTES_B64: Buffer.from('Notes.\n').toString('base64') };
+        for (const name of Object.keys(step.env ?? {})) env[name] = known[name];
+        const result = runBash(step.run, env);
+        const calls = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+        return { result, calls, stepEnv: step.env ?? {} };
+      };
+      const credentialFill = (configured, env) =>
+        execFileSync('git', [...configured, 'credential', 'fill'], {
+          input: 'protocol=https\nhost=github.com\n\n',
+          encoding: 'utf8',
+          env: { PATH: process.env.PATH, HOME: root, GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0', ...env },
+        });
+
+      test('the push resets every configured helper and installs the App-style helper, and nothing else carries a credential', async () => {
+        const { APP_CREDENTIAL_HELPER } = await import('./point-release-plan.mjs');
+        const { result, calls } = tagStepRun(releaseWorkflow);
+        expect(result.status, result.stderr).toBe(0);
+        const pushes = calls.filter((call) => call[0] === 'git' && call.includes('push'));
+        expect(pushes).toEqual([
+          ['git', '-c', 'credential.helper=', '-c', `credential.helper=${APP_CREDENTIAL_HELPER}`, 'push', 'origin', TAG],
+        ]);
+      });
+
+      test('the helper answers with the GH_TOKEN the step is given, and a helper configured beforehand is not consulted', () => {
+        const { calls, stepEnv } = tagStepRun(releaseWorkflow);
+        expect(stepEnv.GH_TOKEN).toBe('${{ secrets.GITHUB_TOKEN }}');
+        const push = calls.find((call) => call[0] === 'git' && call.includes('push'));
+        const configured = push.slice(1, push.indexOf('push'));
+        const env = Object.fromEntries(Object.keys(stepEnv).filter((name) => name === 'GH_TOKEN').map((name) => [name, TOKEN]));
+        expect(credentialFill(configured, env)).toContain(`username=x-access-token\npassword=${TOKEN}\n`);
+        const preconfigured = ['-c', 'credential.helper=!f() { echo username=someone-else; echo password=persisted-credential; }; f'];
+        const filled = credentialFill([...preconfigured, ...configured], env);
+        expect(filled).not.toContain('persisted-credential');
+        expect(filled).toContain(`password=${TOKEN}\n`);
+      });
+    });
+
+    test('the release job refuses a beta the build job resolved differently', () => {
+      const refusal = stepNamed(releaseWorkflow.jobs.release, 'Refuse a beta the build job resolved differently');
+      expect(refusal.env.RESOLVED).toBe('${{ steps.resolve-beta.outputs.version }}');
+      const run = (resolved, built) =>
+        runBash(refusal.run, { PATH: process.env.PATH, RESOLVED: resolved, BUILD_VERSION: built });
+      expect(run('0.82.0-beta.9', '0.82.0-beta.9').status).toBe(0);
+      const refused = run('0.82.0-beta.10', '0.82.0-beta.9');
+      expect(refused.status).toBe(1);
+      expect(refused.stdout).toContain('::error::The build job packed 0.82.0-beta.9, but this job resolved 0.82.0-beta.10');
+      expect(refused.stdout).toContain('Re-run all jobs');
+    });
+
+    describe('the publish step publishes only the expected package from the downloaded tarball', () => {
+      const publishStep = () => stepNamed(releaseWorkflow.jobs.publish, PUBLISH_STEP);
+      const root = mkdtempSync(join(tmpdir(), 'release-publish-step-'));
+      afterAll(() => rmSync(root, { recursive: true, force: true }));
+      const bin = join(root, 'bin');
+      mkdirSync(bin);
+      const nodeGlobalRoot = join(dirname(process.execPath), '..', 'lib', 'node_modules');
+      writeFileSync(
+        join(bin, 'npm'),
+        '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$NPM_LOG"\nif [ "$1" = root ]; then printf \'%s\\n\' "$NPM_GLOBAL_ROOT"; exit 0; fi\nif [ "$1" = view ]; then [ -n "$NPM_VIEW" ] || exit 1; printf \'%s\\n\' "$NPM_VIEW"; fi\nexit 0\n',
+        { mode: 0o755 },
+      );
+      const { gzipSync } = createRequire(import.meta.url)('node:zlib');
+      const ZERO_BLOCK = Buffer.alloc(512);
+      const tarEntry = (name, content) => {
+        const body = Buffer.from(typeof content === 'string' ? content : JSON.stringify(content));
+        const header = Buffer.alloc(512);
+        const put = (text, offset, length) => header.write(text, offset, length, 'ascii');
+        put(name, 0, 100);
+        put('0000644\0', 100, 8);
+        put('0000000\0', 108, 8);
+        put('0000000\0', 116, 8);
+        put(`${body.length.toString(8).padStart(11, '0')}\0`, 124, 12);
+        put('00000000000\0', 136, 12);
+        put('        ', 148, 8);
+        put('0', 156, 1);
+        put('ustar\0', 257, 6);
+        put('00', 263, 2);
+        put(`${header.reduce((total, byte) => total + byte, 0).toString(8).padStart(6, '0')}\0 `, 148, 8);
+        return Buffer.concat([header, body, Buffer.alloc((512 - (body.length % 512)) % 512)]);
+      };
+      const tgz = (...blocks) => gzipSync(Buffer.concat([...blocks, ZERO_BLOCK, ZERO_BLOCK]));
+      let cases = 0;
+      const publishWith = ({ tarballs, action = '', beta = '0.82.0-beta.9', stable = '', view = '' }) => {
+        cases += 1;
+        const dir = join(root, `case-${cases}`);
+        const packageDir = join(dir, 'npm-package');
+        mkdirSync(packageDir, { recursive: true });
+        for (const [index, tarball] of tarballs.entries()) {
+          if (Buffer.isBuffer(tarball)) {
+            writeFileSync(join(packageDir, `package-${index}.tgz`), tarball);
+            continue;
+          }
+          const source = join(dir, `source-${index}`);
+          const { files, members } = tarball.files ? tarball : { files: { 'package/package.json': tarball }, members: ['package'] };
+          for (const [path, content] of Object.entries(files)) {
+            mkdirSync(dirname(join(source, path)), { recursive: true });
+            writeFileSync(join(source, path), typeof content === 'string' ? content : JSON.stringify(content));
+          }
+          execFileSync('tar', ['-czf', join(packageDir, `package-${index}.tgz`), '-C', source, ...members]);
+        }
+        const log = join(dir, 'npm.log');
+        const step = publishStep();
+        const result = runBash(step.run, {
+          PATH: `${bin}:${process.env.PATH}`,
+          ACTION: action,
+          BETA_VERSION: beta,
+          STABLE_VERSION: stable,
+          PACKAGE_NAME: step.env.PACKAGE_NAME,
+          PACKAGE_DIR: packageDir,
+          NPM_LOG: log,
+          NPM_VIEW: view,
+          NPM_GLOBAL_ROOT: nodeGlobalRoot,
+          HTTPS_PROXY: 'http://127.0.0.1:9',
+          HTTP_PROXY: 'http://127.0.0.1:9',
+          https_proxy: 'http://127.0.0.1:9',
+          http_proxy: 'http://127.0.0.1:9',
+          NO_PROXY: '',
+        });
+        const calls = existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n') : [];
+        return { ...result, calls, publishes: calls.filter((call) => call.startsWith('publish ')), packageDir };
+      };
+      const cli = (version, extra = {}) => ({ name: '@inkeep/open-knowledge', version, publishConfig: { access: 'public' }, ...extra });
+
+      test('the stub npm hands the step a real pacote, the one bundled with the npm that runs these tests', () => {
+        expect(existsSync(join(nodeGlobalRoot, 'npm', 'node_modules', 'pacote', 'package.json'))).toBe(true);
+        expect(commands(publishStep())).toContain('pacote="$(npm root -g)/npm/node_modules/pacote"');
+        expect(commands(publishStep())).not.toMatch(/\btar\s/);
+      });
+
+      test('the step passes provenance and the registry as CLI flags, which publishConfig cannot override, and names the package it checks', () => {
+        expect(commands(publishStep()).split('\n').map((line) => line.trim()).filter((line) => /\bnpm\s+publish\b/.test(line))).toEqual([TARBALL_PUBLISH]);
+        expect(publishStep().env).not.toHaveProperty('NPM_CONFIG_PROVENANCE');
+        expect(publishStep().env.PACKAGE_NAME).toBe('@inkeep/open-knowledge');
+      });
+
+      test('a well-formed tarball built byte by byte publishes, so the zero-block row is refused for its hidden manifest alone', () => {
+        const result = publishWith({ tarballs: [tgz(tarEntry('package/package.json', cli('0.82.0-beta.9')), tarEntry('package/index.js', 'module.exports = 1;\n'))] });
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.publishes).toHaveLength(1);
+      });
+
+      test('a beta publishes the downloaded tarball under the beta tag', () => {
+        const result = publishWith({ tarballs: [cli('0.82.0-beta.9')] });
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.publishes).toEqual([
+          `publish ${join(result.packageDir, 'package-0.tgz')} --access public --tag beta --provenance --registry https://registry.npmjs.org/`,
+        ]);
+      });
+
+      test('a stable publishes the dispatched version under the latest tag', () => {
+        const result = publishWith({ tarballs: [cli('0.82.0')], action: 'publish-stable', beta: '', stable: '0.82.0' });
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.publishes).toEqual([
+          `publish ${join(result.packageDir, 'package-0.tgz')} --access public --tag latest --provenance --registry https://registry.npmjs.org/`,
+        ]);
+      });
+
+      test.each([
+        ['a v-prefixed version', cli('v0.82.0-beta.9')],
+        ['build metadata on the version', cli('0.82.0-beta.9+build.1')],
+        ['a padded name', { ...cli('0.82.0-beta.9'), name: ' @inkeep/open-knowledge ' }],
+      ])('the step checks %s as the cleaned manifest npm publishes, not the raw bytes', (_, manifest) => {
+        const result = publishWith({ tarballs: [manifest] });
+        expect(result.status, result.stdout).toBe(0);
+        expect(result.publishes).toHaveLength(1);
+      });
+
+      test('a version already on npm is skipped, as changeset publish skipped it', () => {
+        const result = publishWith({ tarballs: [cli('0.82.0-beta.9')], view: '0.82.0-beta.9' });
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain('::notice::@inkeep/open-knowledge@0.82.0-beta.9 is already on npm');
+        expect(result.publishes).toEqual([]);
+      });
+
+      test.each([
+        ['a different version', { tarballs: [cli('0.82.0-beta.8')] }, '"version":"0.82.0-beta.8"'],
+        ['a different package', { tarballs: [{ ...cli('0.82.0-beta.9'), name: '@inkeep/open-knowledge-core' }] }, '"name":"@inkeep/open-knowledge-core"'],
+        ['a publishConfig that redirects the registry', { tarballs: [cli('0.82.0-beta.9', { publishConfig: { access: 'public', '@inkeep:registry': 'https://registry.example.test/' } })] }, 'whose publishConfig may set access and nothing else'],
+        ['a publishConfig that turns provenance off', { tarballs: [cli('0.82.0-beta.9', { publishConfig: { access: 'public', provenance: false } })] }, 'whose publishConfig may set access and nothing else'],
+        [
+          'a second manifest that npm would read instead',
+          { tarballs: [{ files: { 'package/package.json': cli('0.82.0-beta.9'), 'x/package.json': cli('0.82.0-beta.9', { publishConfig: { provenance: false } }) }, members: ['package', 'x'] }] },
+          '"publishConfig":{"provenance":false}',
+        ],
+        [
+          'a later package/package.json that differs',
+          {
+            tarballs: [
+              tgz(
+                tarEntry('package/package.json', cli('0.82.0-beta.9')),
+                tarEntry('package/package.json', cli('9.9.9', { publishConfig: { access: 'public', tag: 'latest' } })),
+              ),
+            ],
+          },
+          '"version":"9.9.9"',
+        ],
+        [
+          'a second package/package.json hidden behind one zero block',
+          {
+            tarballs: [
+              tgz(
+                tarEntry('package/package.json', cli('0.82.0-beta.9')),
+                tarEntry('package/index.js', 'module.exports = 1;\n'),
+                ZERO_BLOCK,
+                tarEntry('package/package.json', cli('9.9.9', { publishConfig: { access: 'public', tag: 'latest' } })),
+              ),
+            ],
+          },
+          '"version":"9.9.9"',
+        ],
+        ['two tarballs', { tarballs: [cli('0.82.0-beta.9'), cli('0.82.0-beta.9')] }, 'holds 2 tarballs, not one'],
+        ['no tarball', { tarballs: [] }, 'holds 0 tarballs, not one'],
+      ])('the step refuses %s', (_, input, message) => {
+        const result = publishWith(input);
+        expect(result.status).toBe(1);
+        expect(result.stdout).toContain(message);
+        expect(result.publishes).toEqual([]);
+      });
+
+      test.each([
+        ['name', { ...cli('0.82.0-beta.9'), name: 'evil\n::warning::injected' }],
+        ['version', cli('0.82.0-beta.9\n::warning::injected')],
+        ['publishConfig', cli('0.82.0-beta.9', { publishConfig: { access: 'public', 'x\n::warning::injected': true } })],
+      ])('a manifest %s carrying a newline cannot start a workflow command in the refusal', (_, manifest) => {
+        const result = publishWith({ tarballs: [manifest] });
+        expect(result.status).toBe(1);
+        expect(result.publishes).toEqual([]);
+        const lines = `${result.stdout}\n${result.stderr}`.split('\n');
+        expect(lines.filter((line) => line.startsWith('::warning::'))).toEqual([]);
+        expect(lines.some((line) => line.startsWith('::error::'))).toBe(true);
+      });
+    });
+
+    describe('read-releases hands build the previous beta that a contents: write read sees, drafts included', () => {
+      const READ_STEP = 'Read the newest beta Release, drafts included, and its body';
+      const COMPUTE_STEP = 'Compute next beta base version + render release notes';
+      const BETA_PATH = "github.event_name == 'push' || github.event_name == 'workflow_dispatch'";
+
+      test('read-releases always runs, runs only gh release list and view, and build takes its outputs under their own names', () => {
+        const { 'read-releases': readReleases, build } = releaseWorkflow.jobs;
+        expect(readReleases.if).toBeUndefined();
+        expect(readReleases.needs).toBeUndefined();
+        expect(steps(readReleases).map((step) => step.name)).toEqual([READ_STEP]);
+        const read = stepNamed(readReleases, READ_STEP);
+        expect(read.uses).toBeUndefined();
+        expect(read.if).toBe(BETA_PATH);
+        expect(read.if).toBe(stepNamed(build, COMPUTE_STEP).if);
+        expect(read.env).toEqual({ GH_TOKEN: '${{ github.token }}' });
+        expect(commands(read).match(/\bgh\s+\S+\s+\S+/g)).toEqual(['gh release list', 'gh release view']);
+        expect(build.needs).toBe('read-releases');
+        const names = Object.keys(readReleases.outputs);
+        expect(names.length).toBeGreaterThan(0);
+        for (const name of names) {
+          expect(readReleases.outputs[name]).toBe(`\${{ steps.read.outputs.${name} }}`);
+          expect(commands(read)).toContain(`record ${name} `);
+        }
+        const reads = expressions(build)
+          .filter(({ expr }) => /\bneeds\b/.test(expr))
+          .map(({ path, expr }) => `${(path[0] === 'steps' ? ['steps', build.steps[path[1]].name, ...path.slice(2)] : path).join(' > ')}: ${expr}`);
+        expect(reads).toEqual(
+          names.map((name) => `steps > ${COMPUTE_STEP} > env > ${name.toUpperCase()}: needs.read-releases.outputs.${name}`),
+        );
+      });
+
+      const root = mkdtempSync(join(tmpdir(), 'release-read-releases-'));
+      afterAll(() => rmSync(root, { recursive: true, force: true }));
+      const bin = join(root, 'bin');
+      mkdirSync(bin);
+      const stub = join(bin, 'gh');
+      writeFileSync(
+        stub,
+        [
+          '#!/usr/bin/env node',
+          "const { appendFileSync } = require('node:fs');",
+          'const args = process.argv.slice(2);',
+          "appendFileSync(process.env.STUB_LOG, `${JSON.stringify(args)}\\n`);",
+          'const world = JSON.parse(process.env.STUB_WORLD);',
+          'const failure = (world.fail ?? {})[args[1]];',
+          "if (failure) { process.stderr.write(failure.stderr ?? ''); process.exit(failure.status); }",
+          "const visible = world.releases.filter((release) => world.token === 'write' || !release.isDraft);",
+          "if (args[1] === 'list') {",
+          '  const first = visible.find((release) => release.isPrerelease && /^v[0-9]+\\.[0-9]+\\.[0-9]+-beta\\.[0-9]+$/.test(release.tagName));',
+          "  process.stdout.write(`${first ? first.tagName : ''}\\n`);",
+          '  process.exit(0);',
+          '}',
+          'const release = visible.find((candidate) => candidate.tagName === args[2]);',
+          "if (!release) { process.stderr.write('release not found\\n'); process.exit(1); }",
+          'process.stdout.write(`${release.body}\\n`);',
+          '',
+        ].join('\n'),
+        { mode: 0o755 },
+      );
+      let runs = 0;
+      const parseOutputs = (text) => {
+        const out = {};
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          const heredoc = /^([^=<]+)<<(.+)$/.exec(lines[i]);
+          if (heredoc) {
+            const end = lines.indexOf(heredoc[2], i + 1);
+            out[heredoc[1]] = lines.slice(i + 1, end).join('\n');
+            i = end;
+          } else if (lines[i].includes('=')) {
+            out[lines[i].slice(0, lines[i].indexOf('='))] = lines[i].slice(lines[i].indexOf('=') + 1);
+          }
+        }
+        return out;
+      };
+      const throughTheWorkflow = (workflow, world, repo) => {
+        runs += 1;
+        const dir = join(root, `run-${runs}`);
+        mkdirSync(dir);
+        const outputFile = join(dir, 'github-output');
+        writeFileSync(outputFile, '');
+        const log = join(dir, 'gh-calls.log');
+        const read = stepNamed(workflow.jobs['read-releases'], READ_STEP);
+        const result = runBash(read.run, {
+          PATH: `${bin}:${process.env.PATH}`,
+          GITHUB_OUTPUT: outputFile,
+          GITHUB_REPOSITORY: repo,
+          GH_TOKEN: 'stub',
+          STUB_LOG: log,
+          STUB_WORLD: JSON.stringify({ ...world, token: 'write' }),
+        });
+        expect(result.status, result.stderr).toBe(0);
+        const stepOutputs = parseOutputs(readFileSync(outputFile, 'utf8'));
+        const jobOutputs = Object.fromEntries(
+          Object.entries(workflow.jobs['read-releases'].outputs).map(([name, expression]) => [
+            name,
+            stepOutputs[/^\$\{\{ steps\.read\.outputs\.([\w-]+) \}\}$/.exec(expression)?.[1]] ?? '',
+          ]),
+        );
+        const env = Object.fromEntries(
+          Object.entries(stepNamed(workflow.jobs.build, COMPUTE_STEP).env ?? {}).flatMap(([name, expression]) => {
+            const output = /^\$\{\{ needs\.read-releases\.outputs\.([\w-]+) \}\}$/.exec(expression)?.[1];
+            return output ? [[name, jobOutputs[output] ?? '']] : [];
+          }),
+        );
+        const calls = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+        return { env, calls };
+      };
+      const directly = (world, token) => (args) => {
+        try {
+          return {
+            status: 0,
+            stdout: execFileSync(stub, args, {
+              encoding: 'utf8',
+              env: { PATH: process.env.PATH, STUB_LOG: join(root, 'direct.log'), STUB_WORLD: JSON.stringify({ ...world, token }) },
+              stdio: ['ignore', 'pipe', 'pipe'],
+            }),
+            stderr: '',
+          };
+        } catch (error) {
+          if (typeof error.status !== 'number') throw error;
+          return { status: error.status, stdout: error.stdout, stderr: error.stderr };
+        }
+      };
+      const marker = (ids) => `Notes for the beta.\n\n<!-- ok-consumed-set: ${JSON.stringify(ids)} -->\n\n`;
+      const beta = (tagName, body, isDraft = false) => ({ tagName, isDraft, isPrerelease: true, body });
+      const draftNewest = {
+        releases: [
+          beta('v0.82.0-beta.9', marker(['a', 'b']), true),
+          beta('v0.82.0-beta.8', marker(['a'])),
+          { tagName: 'v0.81.4', isDraft: false, isPrerelease: false, body: 'Stable.' },
+        ],
+      };
+      const worlds = {
+        'the previous beta is still a draft': draftNewest,
+        'the list fails': { releases: draftNewest.releases, fail: { list: { status: 1, stderr: 'HTTP 502: Bad Gateway\n' } } },
+        'there is no beta Release': { releases: [{ tagName: 'v0.81.4', isDraft: false, isPrerelease: false, body: 'Stable.' }] },
+        'the view fails': { releases: draftNewest.releases, fail: { view: { status: 1, stderr: 'HTTP 404\n' } } },
+        'the body has no marker': { releases: [beta('v0.82.0-beta.9', 'Notes without a marker.\n')] },
+        'the marker is not JSON': { releases: [beta('v0.82.0-beta.9', 'Notes.\n<!-- ok-consumed-set: [a, b] -->')] },
+        'the marker is not a string array': { releases: [beta('v0.82.0-beta.9', 'Notes.\n<!-- ok-consumed-set: [1, 2] -->')] },
+      };
+
+      test.each(Object.keys(worlds))('when %s, build replays exactly what a contents: write gh read returns', async (name) => {
+        const { previousBeta, recordedReleases, RELEASE_LIST_ARGS, releaseViewArgs } = await import('../../scripts/compute-next-beta.mjs');
+        const world = worlds[name];
+        const { env, calls } = throughTheWorkflow(releaseWorkflow, world, RELEASE_LIST_ARGS[3]);
+        const replayed = previousBeta(recordedReleases(env));
+        expect(replayed).toEqual(previousBeta(directly(world, 'write')));
+        expect(calls).toEqual(replayed.prevBetaTag ? [RELEASE_LIST_ARGS, releaseViewArgs(replayed.prevBetaTag)] : [RELEASE_LIST_ARGS]);
+      });
+
+      test('with the previous beta still a draft, the replay is the draft and not what a contents: read token sees', async () => {
+        const { previousBeta, recordedReleases, RELEASE_LIST_ARGS } = await import('../../scripts/compute-next-beta.mjs');
+        const { env } = throughTheWorkflow(releaseWorkflow, draftNewest, RELEASE_LIST_ARGS[3]);
+        expect(previousBeta(recordedReleases(env))).toEqual({ prevBetaTag: 'v0.82.0-beta.9', recovered: ['a', 'b'] });
+        expect(previousBeta(directly(draftNewest, 'read'))).toEqual({ prevBetaTag: 'v0.82.0-beta.8', recovered: ['a'] });
+      });
+    });
+
+    test('the build job packs the only public workspace package and runs the only publish-time script it declares', () => {
+      const patterns = parse(readFileSync(join(OK_ROOT, 'pnpm-workspace.yaml'), 'utf8')).packages;
+      const dirs = patterns.flatMap((pattern) => {
+        if (pattern.endsWith('/*') && !/[*?{}[\]!]/.test(pattern.slice(0, -2))) {
+          const parent = pattern.slice(0, -2);
+          return readdirSync(join(OK_ROOT, parent), { withFileTypes: true })
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => `${parent}/${entry.name}`);
+        }
+        if (/[*?{}[\]!]/.test(pattern)) throw new Error(`workspace pattern ${pattern} needs a matcher this test does not have`);
+        return [pattern];
+      });
+      const manifests = dirs
+        .filter((dir) => existsSync(join(OK_ROOT, dir, 'package.json')))
+        .map((dir) => ({ dir, manifest: JSON.parse(readFileSync(join(OK_ROOT, dir, 'package.json'), 'utf8')) }));
+      expect(manifests.filter(({ manifest }) => !manifest.private).map(({ dir, manifest }) => `${dir} ${manifest.name}`)).toEqual([
+        'packages/cli @inkeep/open-knowledge',
+      ]);
+      const cli = manifests.find(({ dir }) => dir === 'packages/cli').manifest;
+      expect(Object.keys(cli.scripts).filter((name) => ['prepublishOnly', 'prepublish', 'publish', 'postpublish'].includes(name))).toEqual([
+        'prepublishOnly',
+      ]);
+      const { build } = releaseWorkflow.jobs;
+      for (const name of ["Run the cli's prepublishOnly against the overridden versions", 'Pack the cli tarball']) {
+        expect(stepNamed(build, name)['working-directory'], name).toBe('packages/cli');
+      }
     });
   });
 });

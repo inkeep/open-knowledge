@@ -58,23 +58,47 @@ export function maxReleaseType(releases) {
   return maxType;
 }
 
-function findPrevBetaTag() {
-  const res = spawnSync(
-    'gh',
-    [
-      'release',
-      'list',
-      '--repo',
-      PUBLIC_REPO,
-      '--limit',
-      '50',
-      '--json',
-      'tagName,isPrerelease',
-      '--jq',
-      '[.[] | select(.isPrerelease) | select(.tagName | test("^v[0-9]+\\\\.[0-9]+\\\\.[0-9]+-beta\\\\.[0-9]+$")) | .tagName] | first // ""',
-    ],
-    { encoding: 'utf8' },
-  );
+export const RELEASE_LIST_ARGS = [
+  'release',
+  'list',
+  '--repo',
+  PUBLIC_REPO,
+  '--limit',
+  '50',
+  '--json',
+  'tagName,isPrerelease',
+  '--jq',
+  '[.[] | select(.isPrerelease) | select(.tagName | test("^v[0-9]+\\\\.[0-9]+\\\\.[0-9]+-beta\\\\.[0-9]+$")) | .tagName] | first // ""',
+];
+
+export function releaseViewArgs(tag) {
+  return ['release', 'view', tag, '--repo', PUBLIC_REPO, '--json', 'body', '--jq', '.body'];
+}
+
+export function recordedReleases(env) {
+  const sameArgs = (args, expected) => args.length === expected.length && args.every((arg, i) => arg === expected[i]);
+  const status = (name) => {
+    const value = env[name];
+    if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+      throw new Error(
+        `${name} is ${value === undefined ? 'missing' : JSON.stringify(value)}, not an exit status: the read-releases job's outputs did not reach this step`,
+      );
+    }
+    return Number(value);
+  };
+  return (args) => {
+    if (sameArgs(args, RELEASE_LIST_ARGS)) {
+      return { status: status('RELEASE_LIST_STATUS'), stdout: env.RELEASE_LIST_STDOUT, stderr: env.RELEASE_LIST_STDERR };
+    }
+    if (env.RELEASE_VIEW_TAG && sameArgs(args, releaseViewArgs(env.RELEASE_VIEW_TAG))) {
+      return { status: status('RELEASE_VIEW_STATUS'), stdout: env.RELEASE_VIEW_STDOUT, stderr: '' };
+    }
+    throw new Error(`the read-releases job recorded no result for gh ${args.join(' ')}`);
+  };
+}
+
+function findPrevBetaTag(gh) {
+  const res = gh(RELEASE_LIST_ARGS);
   if (res.status !== 0) {
     log(`[warn] gh release list failed (exit ${res.status}); treating as bootstrap.`);
     log(res.stderr);
@@ -84,12 +108,8 @@ function findPrevBetaTag() {
   return tag || null;
 }
 
-function recoverConsumedSet(tag) {
-  const res = spawnSync(
-    'gh',
-    ['release', 'view', tag, '--repo', PUBLIC_REPO, '--json', 'body', '--jq', '.body'],
-    { encoding: 'utf8' },
-  );
+function recoverConsumedSet(tag, gh) {
+  const res = gh(releaseViewArgs(tag));
   if (res.status !== 0) {
     log(`[warn] gh release view ${tag} failed (exit ${res.status}); treating as bootstrap.`);
     return null;
@@ -110,6 +130,11 @@ function recoverConsumedSet(tag) {
     log(`[warn] ${tag} consumed-set marker is not valid JSON: ${e.message}`);
     return null;
   }
+}
+
+export function previousBeta(gh) {
+  const prevBetaTag = findPrevBetaTag(gh);
+  return { prevBetaTag, recovered: prevBetaTag ? recoverConsumedSet(prevBetaTag, gh) : null };
 }
 
 function readChangelogs() {
@@ -242,12 +267,9 @@ async function main() {
   const allIds = changesets.map(({ id }) => id);
   const allIdsSet = new Set(allIds);
 
-  const prevBetaTag = findPrevBetaTag();
+  const { prevBetaTag, recovered } = previousBeta(recordedReleases(process.env));
   let priorConsumed = [];
-  if (prevBetaTag) {
-    const recovered = recoverConsumedSet(prevBetaTag);
-    if (recovered) priorConsumed = recovered.filter((id) => allIdsSet.has(id));
-  }
+  if (recovered) priorConsumed = recovered.filter((id) => allIdsSet.has(id));
   const priorSet = new Set(priorConsumed);
   const newIds = allIds.filter((id) => !priorSet.has(id));
 
