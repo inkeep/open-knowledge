@@ -156,7 +156,7 @@
     "zod": "^4.3.6"
   },
   "scripts": {
-    "build": "tsdown && pnpm run verify:exports",
+    "build": "node scripts/build-output.mjs build",
     "verify:exports": "node scripts/verify-exports-targets.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.perf.json --noEmit",
     "test": "vitest run src/ tests/contract/ scripts/",

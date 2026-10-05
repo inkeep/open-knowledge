@@ -18,7 +18,7 @@
   "scripts": {
     "dev": "turbo run dev:electron --filter=@inkeep/open-knowledge-desktop",
     "dev:electron": "electron-vite dev --watch",
-    "build:desktop": "electron-vite build",
+    "build:desktop": "node ../core/scripts/build-output.mjs verify && electron-vite build",
     "build:dir": "pnpm run build:desktop && node scripts/run-electron-builder.mjs --dir --publish never",
     "build:mac": "pnpm run build:desktop && node scripts/prepare-universal.mjs && node scripts/stage-parcel-watcher.mjs && node scripts/run-electron-builder.mjs --mac --publish never",
     "build:mac:unsigned": "pnpm run build:desktop && node scripts/prepare-universal.mjs && node scripts/stage-parcel-watcher.mjs && CSC_IDENTITY_AUTO_DISCOVERY=false node scripts/run-electron-builder.mjs --mac --publish never -c.mac.identity=null",

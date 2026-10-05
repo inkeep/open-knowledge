@@ -475,6 +475,7 @@ jobs:
             packages/native-config/*.node
           retention-days: 3
           if-no-files-found: error
+          include-hidden-files: true
 
   # Deliberately does NOT `needs: prepare` — the mac job is self-contained
   # (own workspace build, no bundle consumption) and is the longest job in

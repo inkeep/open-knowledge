@@ -2,6 +2,9 @@
   "$schema": "https://turbo.build/schema.json",
   "cacheDir": ".turbo/cache",
   "agentGuidance": false,
+  "futureFlags": {
+    "experimentalTaskCommand": true
+  },
   "remoteCache": {
     "signature": true
   },
@@ -18,6 +21,16 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**", "!.next/dev/**"]
+    },
+    "@inkeep/open-knowledge-core#build:output": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"],
+      "command": ["node", "scripts/build-output.mjs", "produce"]
+    },
+    "@inkeep/open-knowledge-core#build": {
+      "dependsOn": ["build:output"],
+      "cache": false,
+      "command": ["node", "scripts/build-output.mjs", "complete"]
     },
     "build:desktop": {
       "dependsOn": ["^build", "@inkeep/open-knowledge#build"],

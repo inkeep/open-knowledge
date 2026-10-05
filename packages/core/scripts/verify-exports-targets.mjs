@@ -6,6 +6,8 @@ const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 export const REQUIRED_CONDITIONS = ['types', 'default'];
 
+export class ExportsTargetsError extends Error {}
+
 const RELATIVE_IMPORT = /\bfrom\s*["'](\.\.?\/[^"']+)["']|\bimport\s*["'](\.\.?\/[^"']+)["']/g;
 
 export function nestedRelativeImports(source) {
@@ -117,7 +119,7 @@ export function verifyExportsTargets(packageRoot = PACKAGE_ROOT) {
   }
 
   if (errors.length > 0) {
-    throw new Error(
+    throw new ExportsTargetsError(
       `${packageJson.name} exports targets are not all on disk or not flat. Run \`pnpm --filter ${packageJson.name} build\` and check tsdown's entry map against package.json exports.\n- ${errors.join('\n- ')}`,
     );
   }

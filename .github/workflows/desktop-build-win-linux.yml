@@ -185,6 +185,7 @@ jobs:
             packages/native-config/*.node
           retention-days: 3
           if-no-files-found: error
+          include-hidden-files: true
 
   build-windows:
     if: inputs.platforms == 'both' || inputs.platforms == 'windows'
