@@ -1,35 +1,112 @@
 import type { ConfigBinding, OkignoreBinding } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { SharingSection } from '@/components/settings/SharingSection';
-import { AccountSection } from './AccountSection';
-import { AgentConnectionsSection } from './AgentConnectionsSection';
-import { AttachmentsSection } from './AttachmentsSection';
-import { ContentRulesSection } from './ContentRulesSection';
-import { SectionSkeleton } from './field-controls';
-import { HotkeysSection } from './HotkeysSection';
-import { IntegrationsSection } from './IntegrationsSection';
-import { LinkPreviewsSection } from './LinkPreviewsSection';
-import {
-  MarkdownlintPluginSection,
-  ProjectPluginsManageSection,
-  UserPluginsManageSection,
-} from './LintingSection';
-import { LINT_PLUGIN_UI } from './lint-plugins';
-import { NetworkAccessSection } from './NetworkAccessSection';
-import { OkCliPathRow } from './OkCliPathRow';
-import { OkignoreSection } from './OkignoreSection';
-import { ProjectTemplatesSection } from './ProjectTemplatesSection';
-import { SearchSection } from './SearchSection';
+import { type ComponentType, lazy } from 'react';
+import { lazyWithPreload } from '@/lib/lazy-with-preload';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
-import { SkillsManagerSection } from './SkillsManagerSection';
-import { SlidesPluginSection } from './SlidesPluginSection';
-import { SpellingSettings } from './SpellingSettings';
-import { SyncSection } from './SyncSection';
-import { BoundSchemaSection } from './schema-section';
 import { FIELDS_USER_PREFERENCES } from './settings-fields';
 import { isTerminalSettingsAvailable } from './settings-host-gates';
-import { TerminalSection } from './TerminalSection';
-import { ThemePluginSection } from './ThemePluginSection';
+
+function lazySection<Props>(load: () => Promise<ComponentType<Props>>) {
+  return lazy(async () => ({ default: await load() }));
+}
+
+const SharingSection = lazySection(async () => (await import('./SharingSection')).SharingSection);
+const AccountSection = lazySection(async () => (await import('./AccountSection')).AccountSection);
+const AgentConnectionsSection = lazySection(
+  async () => (await import('./AgentConnectionsSection')).AgentConnectionsSection,
+);
+const AttachmentsSection = lazySection(
+  async () => (await import('./AttachmentsSection')).AttachmentsSection,
+);
+const ContentRulesSection = lazySection(
+  async () => (await import('./ContentRulesSection')).ContentRulesSection,
+);
+const SectionSkeleton = lazySection(async () => (await import('./field-controls')).SectionSkeleton);
+const HotkeysSection = lazySection(async () => (await import('./HotkeysSection')).HotkeysSection);
+const IntegrationsSection = lazySection(
+  async () => (await import('./IntegrationsSection')).IntegrationsSection,
+);
+const LinkPreviewsSection = lazySection(
+  async () => (await import('./LinkPreviewsSection')).LinkPreviewsSection,
+);
+const MarkdownlintPluginSection = lazySection(
+  async () => (await import('./LintingSection')).MarkdownlintPluginSection,
+);
+const ProjectPluginsManageSection = lazySection(
+  async () => (await import('./LintingSection')).ProjectPluginsManageSection,
+);
+const UserPluginsManageSection = lazySection(
+  async () => (await import('./LintingSection')).UserPluginsManageSection,
+);
+const NetworkAccessSection = lazySection(
+  async () => (await import('./NetworkAccessSection')).NetworkAccessSection,
+);
+const OkignoreSection = lazySection(
+  async () => (await import('./OkignoreSection')).OkignoreSection,
+);
+const ProjectTemplatesSection = lazySection(
+  async () => (await import('./ProjectTemplatesSection')).ProjectTemplatesSection,
+);
+const SearchSection = lazySection(async () => (await import('./SearchSection')).SearchSection);
+const SkillsManagerSection = lazySection(
+  async () => (await import('./SkillsManagerSection')).SkillsManagerSection,
+);
+const SlidesPluginSection = lazySection(
+  async () => (await import('./SlidesPluginSection')).SlidesPluginSection,
+);
+const SyncSection = lazySection(async () => (await import('./SyncSection')).SyncSection);
+const TerminalSection = lazySection(
+  async () => (await import('./TerminalSection')).TerminalSection,
+);
+const ThemePluginSection = lazySection(
+  async () => (await import('./ThemePluginSection')).ThemePluginSection,
+);
+
+const LintPluginSection = lazySection(async () => {
+  const { LINT_PLUGIN_UI } = await import('./lint-plugins');
+  return function LintPluginSection({ id }: { id: string }) {
+    const plugin = LINT_PLUGIN_UI.find((entry) => entry.id === id);
+    if (!plugin) return null;
+    const PluginSection = plugin.Section;
+    return <PluginSection />;
+  };
+});
+
+const PreferencesSection = lazyWithPreload(async () => {
+  const [{ BoundSchemaSection }, { OkCliPathRow }, { SpellingSettings }] = await Promise.all([
+    import('./schema-section'),
+    import('./OkCliPathRow'),
+    import('./SpellingSettings'),
+  ]);
+  return {
+    default: function PreferencesSection({
+      title,
+      description,
+      binding,
+    }: {
+      title: string;
+      description: string;
+      binding: ConfigBinding;
+    }) {
+      return (
+        <BoundSchemaSection
+          title={title}
+          description={description}
+          scope="user"
+          scopeBadge="user"
+          binding={binding}
+          fields={FIELDS_USER_PREFERENCES}
+          slotsAfter={{
+            'appearance.theme': <OkCliPathRow />,
+            'appearance.language': <SpellingSettings />,
+          }}
+        />
+      );
+    },
+  };
+});
+
+export const preloadPreferencesSection = PreferencesSection.preload;
 
 interface SettingsDialogBodyProps {
   activeId: string;
@@ -49,17 +126,10 @@ export function SettingsDialogBody({
   const { t } = useLingui();
   if (activeId === 'preferences') {
     return userBinding ? (
-      <BoundSchemaSection
+      <PreferencesSection
         title={t`Preferences`}
         description={t`Customize how the editor looks and behaves.`}
-        scope="user"
-        scopeBadge="user"
         binding={userBinding}
-        fields={FIELDS_USER_PREFERENCES}
-        slotsAfter={{
-          'appearance.theme': <OkCliPathRow />,
-          'appearance.language': <SpellingSettings />,
-        }}
       />
     ) : (
       <SectionSkeleton />
@@ -135,11 +205,7 @@ export function SettingsDialogBody({
     return <MarkdownlintPluginSection initialRuleQuery={markdownlintRuleQuery ?? null} />;
   }
   if (activeId.startsWith('plugin:')) {
-    const pluginId = activeId.slice('plugin:'.length);
-    const plugin = LINT_PLUGIN_UI.find((p) => p.id === pluginId);
-    if (!plugin) return null;
-    const PluginSection = plugin.Section;
-    return <PluginSection key={activeId} />;
+    return <LintPluginSection key={activeId} id={activeId.slice('plugin:'.length)} />;
   }
   if (activeId === 'project-templates') {
     return <ProjectTemplatesSection />;

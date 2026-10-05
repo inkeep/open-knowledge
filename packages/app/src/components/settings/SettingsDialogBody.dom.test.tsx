@@ -11,7 +11,7 @@ import {
   SavedThemesListSuccessSchema,
 } from '@inkeep/open-knowledge-core';
 import { type Attributes, type Tracer, trace } from '@opentelemetry/api';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ThemeProvider, useTheme } from 'next-themes';
 import type { ReactNode } from 'react';
@@ -20,6 +20,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { emitConfigValidationRejected } from '@/lib/config-validation-events';
 import { SavedThemesProvider } from '@/lib/saved-themes-client';
+import { renderSettingsBody } from '@/test-utils/render-settings-body.test-helper';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 import { SettingsDialogBody } from './SettingsDialogBody';
 
@@ -114,8 +115,8 @@ function SettingsContextProvider({
   );
 }
 
-function renderPreferences(binding: ConfigBinding) {
-  return render(
+async function renderPreferences(binding: ConfigBinding) {
+  return renderSettingsBody(
     <SettingsContextProvider>
       <TooltipProvider>
         <SettingsDialogBody
@@ -129,8 +130,8 @@ function renderPreferences(binding: ConfigBinding) {
   );
 }
 
-function renderProjectPreferences() {
-  return render(
+async function renderProjectPreferences() {
+  return renderSettingsBody(
     <SettingsContextProvider>
       <TooltipProvider>
         <SettingsDialogBody
@@ -149,9 +150,9 @@ describe('SettingsDialogBody preferences runtime', () => {
     cleanup();
   });
 
-  test('renders editor.wordWrap in the Preferences section', () => {
+  test('renders editor.wordWrap in the Preferences section', async () => {
     const { binding } = makeBinding();
-    const { container } = renderPreferences(binding);
+    const { container } = await renderPreferences(binding);
 
     expect(screen.getByRole('heading', { name: 'Preferences' })).toBeDefined();
     expect(screen.getByText('Word wrap')).toBeDefined();
@@ -218,7 +219,7 @@ describe('SettingsDialogBody preferences runtime', () => {
     });
     try {
       const { binding } = makeBinding();
-      const { container } = renderPreferences(binding);
+      const { container } = await renderPreferences(binding);
 
       const row = await screen.findByTestId('settings-spellcheck-row');
       const languagesRow = await screen.findByTestId('settings-spellcheck-languages-row');
@@ -244,7 +245,7 @@ describe('SettingsDialogBody preferences runtime', () => {
 
   test('shows no desktop spelling controls without a desktop host', async () => {
     const { binding } = makeBinding();
-    renderPreferences(binding);
+    await renderPreferences(binding);
 
     await screen.findByText('Word wrap');
     expect(screen.queryByTestId('settings-spelling')).toBeNull();
@@ -255,7 +256,7 @@ describe('SettingsDialogBody preferences runtime', () => {
   test('offers the agent chat browser as a Preferences switch that starts off and writes agents.browserTools', async () => {
     const user = userEvent.setup();
     const { binding, patches } = makeBinding();
-    const { container } = renderPreferences(binding);
+    const { container } = await renderPreferences(binding);
 
     const field = container.querySelector('[data-field="agents.browserTools"]');
     expect(field).toBeTruthy();
@@ -271,7 +272,7 @@ describe('SettingsDialogBody preferences runtime', () => {
   test('commits editor.wordWrap changes through binding.patch', async () => {
     const user = userEvent.setup();
     const { binding, patches } = makeBinding();
-    renderPreferences(binding);
+    await renderPreferences(binding);
 
     const wordWrapSwitch = screen.getByRole('switch', { name: 'Word wrap' });
     await user.click(wordWrapSwitch);
@@ -285,7 +286,7 @@ describe('SettingsDialogBody preferences runtime', () => {
   test('commits editor.previewTabs changes through binding.patch', async () => {
     const user = userEvent.setup();
     const { binding, patches } = makeBinding();
-    renderPreferences(binding);
+    await renderPreferences(binding);
 
     const previewTabsSwitch = screen.getByRole('switch', { name: 'Preview tabs' });
     await user.click(previewTabsSwitch);
@@ -299,7 +300,7 @@ describe('SettingsDialogBody preferences runtime', () => {
   test('commits appearance.preview.autoOpen changes through binding.patch', async () => {
     const user = userEvent.setup();
     const { binding, patches } = makeBinding();
-    renderPreferences(binding);
+    await renderPreferences(binding);
 
     const autoOpenSwitch = screen.getByRole('switch', { name: 'Open preview when agent edits' });
     expect(autoOpenSwitch.getAttribute('aria-checked')).toBe('true');
@@ -324,7 +325,7 @@ describe('SettingsDialogBody preferences runtime', () => {
 
   test('surfaces L3 config-validation rejections on the matching user field', async () => {
     const { binding } = makeBinding();
-    const { container } = renderPreferences(binding);
+    const { container } = await renderPreferences(binding);
 
     const wordWrapField = container.querySelector('[data-field="editor.wordWrap"]');
     expect(wordWrapField).toBeTruthy();
@@ -357,7 +358,7 @@ describe('SettingsDialogBody preferences runtime', () => {
   });
 
   test('surfaces L3 config-validation rejections on the project attachment field', async () => {
-    const { container } = renderProjectPreferences();
+    const { container } = await renderProjectPreferences();
 
     const attachmentField = container.querySelector('[data-field="content.attachmentFolderPath"]');
     expect(attachmentField).toBeTruthy();
@@ -404,10 +405,10 @@ describe('SettingsDialogBody language picker', () => {
     cleanup();
   });
 
-  test('renders a Language row beside Theme, showing the stored preference', () => {
+  test('renders a Language row beside Theme, showing the stored preference', async () => {
     const config = ConfigSchema.parse({ appearance: { language: 'es' } });
     const { binding } = makeBinding(config);
-    const { container } = renderPreferences(binding);
+    const { container } = await renderPreferences(binding);
 
     expect(screen.getByRole('combobox', { name: 'Language' }).textContent).toContain('español');
     const fields = [...container.querySelectorAll('[data-field]')].map((el) =>
@@ -419,7 +420,7 @@ describe('SettingsDialogBody language picker', () => {
   test('names each language in itself, and offers none that is held back', async () => {
     const user = userEvent.setup();
     const { binding } = makeBinding();
-    renderPreferences(binding);
+    await renderPreferences(binding);
 
     await openLanguagePicker(user);
 
@@ -437,7 +438,7 @@ describe('SettingsDialogBody language picker', () => {
   test('derives its locale options from the offered set in core', async () => {
     const user = userEvent.setup();
     const { binding } = makeBinding();
-    renderPreferences(binding);
+    await renderPreferences(binding);
 
     await openLanguagePicker(user);
 
@@ -450,7 +451,7 @@ describe('SettingsDialogBody language picker', () => {
   test('commits the picked language through binding.patch', async () => {
     const user = userEvent.setup();
     const { binding, patches } = makeBinding();
-    renderPreferences(binding);
+    await renderPreferences(binding);
 
     await openLanguagePicker(user);
     await user.click(screen.getByRole('option', { name: 'español' }));
@@ -464,7 +465,7 @@ describe('SettingsDialogBody language picker', () => {
     const user = userEvent.setup();
     const config = ConfigSchema.parse({ appearance: { language: 'es' } });
     const { binding, patches } = makeBinding(config);
-    renderPreferences(binding);
+    await renderPreferences(binding);
 
     await openLanguagePicker(user);
     await user.click(screen.getByRole('option', { name: 'System' }));
@@ -499,7 +500,7 @@ describe('SettingsDialogBody language picker', () => {
       installTracerSpy();
       const user = userEvent.setup();
       const { binding } = makeBinding();
-      renderPreferences(binding);
+      await renderPreferences(binding);
 
       await openLanguagePicker(user);
       await user.click(screen.getByRole('option', { name: 'español' }));
@@ -518,7 +519,7 @@ describe('SettingsDialogBody language picker', () => {
       installTracerSpy();
       const user = userEvent.setup();
       const { binding } = makeBinding(ConfigSchema.parse({ appearance: { language: 'fr' } }));
-      renderPreferences(binding);
+      await renderPreferences(binding);
 
       await openLanguagePicker(user);
       await user.click(screen.getByRole('option', { name: 'System' }));
@@ -535,7 +536,7 @@ describe('SettingsDialogBody language picker', () => {
       installTracerSpy();
       const user = userEvent.setup();
       const { binding } = makeBinding(ConfigSchema.parse({ appearance: { language: 'es' } }));
-      renderPreferences(binding);
+      await renderPreferences(binding);
 
       await openLanguagePicker(user);
       await user.click(screen.getByRole('option', { name: 'System' }));
@@ -556,7 +557,7 @@ describe('SettingsDialogBody language picker', () => {
     const user = userEvent.setup();
     const config = ConfigSchema.parse({ appearance: { language: 'ar' } });
     const { binding } = makeBinding(config);
-    renderPreferences(binding);
+    await renderPreferences(binding);
 
     expect(screen.getByRole('combobox', { name: 'Language' }).textContent).toContain('العربية');
 
@@ -572,9 +573,9 @@ function ThemeProbe() {
   return <span data-testid="theme-probe">{theme ?? ''}</span>;
 }
 
-function renderPreferencesWithTheme(binding: ConfigBinding) {
+async function renderPreferencesWithTheme(binding: ConfigBinding) {
   themeStorageKeySeq += 1;
-  return render(
+  return renderSettingsBody(
     <ThemeProvider
       attribute="class"
       defaultTheme="system"
@@ -616,7 +617,7 @@ describe('SettingsDialogBody theme cards — optimistic apply', () => {
   test('clicking Dark flips next-themes immediately and still persists via binding.patch', async () => {
     const user = userEvent.setup();
     const { binding, patches } = makeBinding();
-    const { container } = renderPreferencesWithTheme(binding);
+    const { container } = await renderPreferencesWithTheme(binding);
 
     expect(screen.getByTestId('theme-probe').textContent).toBe('system');
 
@@ -631,7 +632,7 @@ describe('SettingsDialogBody theme cards — optimistic apply', () => {
   test("clicking System forwards 'system' verbatim to next-themes (does not resolve to light/dark)", async () => {
     const user = userEvent.setup();
     const { binding, patches } = makeBinding();
-    const { container } = renderPreferencesWithTheme(binding);
+    const { container } = await renderPreferencesWithTheme(binding);
 
     await user.click(themeCardItem(container, 'dark'));
     await waitFor(() => {
@@ -649,7 +650,7 @@ describe('SettingsDialogBody theme cards — optimistic apply', () => {
   test('clicking Light flips to light and records the patch', async () => {
     const user = userEvent.setup();
     const { binding, patches } = makeBinding();
-    const { container } = renderPreferencesWithTheme(binding);
+    const { container } = await renderPreferencesWithTheme(binding);
 
     await user.click(themeCardItem(container, 'light'));
 
@@ -660,9 +661,9 @@ describe('SettingsDialogBody theme cards — optimistic apply', () => {
   });
 });
 
-function renderThemePluginWithTheme(binding: ConfigBinding) {
+async function renderThemePluginWithTheme(binding: ConfigBinding) {
   themeStorageKeySeq += 1;
-  return render(
+  return renderSettingsBody(
     <ThemeProvider
       attribute="class"
       defaultTheme="system"
@@ -694,9 +695,9 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
     cleanup();
   });
 
-  test('the Themes plugin header shows a User scope badge (user-scope plugin)', () => {
+  test('the Themes plugin header shows a User scope badge (user-scope plugin)', async () => {
     const { binding } = makeBinding();
-    renderThemePluginWithTheme(binding);
+    await renderThemePluginWithTheme(binding);
     expect(screen.getByTestId('settings-scope-badge-user')).toBeDefined();
     expect(screen.queryByTestId('settings-scope-badge-project')).toBeNull();
   });
@@ -704,7 +705,7 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
   test('assigning a palette to the mode on screen applies it immediately', async () => {
     const user = userEvent.setup();
     const { binding } = makeBinding();
-    renderThemePluginWithTheme(binding);
+    await renderThemePluginWithTheme(binding);
 
     expect(screen.getByTestId('theme-probe').textContent).toBe('system');
 
@@ -741,7 +742,7 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
       );
     const user = userEvent.setup();
     const { binding, patches } = makeBinding();
-    renderThemePluginWithTheme(binding);
+    await renderThemePluginWithTheme(binding);
 
     await user.click(await screen.findByLabelText('Use Ocean as the light theme'));
 
@@ -803,7 +804,7 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
     };
     const user = userEvent.setup();
     const { binding } = makeBinding();
-    renderThemePluginWithTheme(binding);
+    await renderThemePluginWithTheme(binding);
 
     expect(screen.queryByRole('heading', { name: /Editing/ })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Create new theme' }));
@@ -887,7 +888,7 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
     };
     const user = userEvent.setup();
     const { binding, patches } = makeBinding();
-    renderThemePluginWithTheme(binding);
+    await renderThemePluginWithTheme(binding);
 
     await user.click(await screen.findByRole('button', { name: 'Edit Ocean' }));
     expect(screen.getByRole('heading', { name: 'Editing Ocean' })).toBeDefined();
@@ -935,7 +936,7 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
   test('a cross-variant palette in the on-screen slot forces its own mode', async () => {
     const user = userEvent.setup();
     const { binding } = makeBinding();
-    renderThemePluginWithTheme(binding);
+    await renderThemePluginWithTheme(binding);
 
     expect(screen.getByTestId('theme-probe').textContent).toBe('system');
 
@@ -950,7 +951,7 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
     globalThis.fetch = async () => Response.json({ themes: [], truncated: false });
     const user = userEvent.setup();
     const { binding, patches } = makeBinding();
-    renderThemePluginWithTheme(binding);
+    await renderThemePluginWithTheme(binding);
 
     await user.click(screen.getByLabelText('Use Dracula as the light theme'));
     await waitFor(() => {
@@ -974,7 +975,7 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
       globalThis.fetch = async () => Response.json({ themes: [], truncated: false });
       const user = userEvent.setup();
       const { binding } = makeBinding(ConfigSchema.parse({ appearance: { theme } }));
-      renderThemePluginWithTheme(binding);
+      await renderThemePluginWithTheme(binding);
 
       await user.click(
         screen.getByLabelText(
@@ -1000,7 +1001,7 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
   test('assigning a palette to the OTHER mode leaves the current appearance alone', async () => {
     const user = userEvent.setup();
     const { binding } = makeBinding();
-    renderThemePluginWithTheme(binding);
+    await renderThemePluginWithTheme(binding);
 
     await user.click(screen.getByLabelText('Use Catppuccin Frappé as the dark theme'));
 
@@ -1014,7 +1015,7 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
     const { binding, patches } = makeBinding(
       ConfigSchema.parse({ appearance: { colorThemeLight: 'dracula' } }),
     );
-    renderThemePluginWithTheme(binding);
+    await renderThemePluginWithTheme(binding);
 
     const resetButton = await screen.findByRole('button', {
       name: /Reset Color theme to default/i,
@@ -1030,7 +1031,7 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
 
   test('a rejected write surfaces an inline error instead of failing silently', async () => {
     const user = userEvent.setup();
-    renderThemePluginWithTheme(makeRejectingBinding());
+    await renderThemePluginWithTheme(makeRejectingBinding());
 
     expect(document.documentElement.hasAttribute('data-color-theme')).toBe(false);
 
@@ -1044,7 +1045,7 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
 
   test('a rejected cross-variant pick also reverts the forced light/dark mode', async () => {
     const user = userEvent.setup();
-    renderThemePluginWithTheme(makeRejectingBinding());
+    await renderThemePluginWithTheme(makeRejectingBinding());
 
     expect(screen.getByTestId('theme-probe').textContent).toBe('system');
 
@@ -1062,7 +1063,7 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
   test('one patch writes both slots and retires the pre-pair key', async () => {
     const user = userEvent.setup();
     const { binding, patches } = makeBinding();
-    renderThemePluginWithTheme(binding);
+    await renderThemePluginWithTheme(binding);
 
     await user.click(screen.getByLabelText('Use Catppuccin Frappé as the dark theme'));
 

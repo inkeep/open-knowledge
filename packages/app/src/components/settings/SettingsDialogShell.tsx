@@ -361,7 +361,7 @@ export function SettingsDialogShell({
           // biome-ignore lint/a11y/noNoninteractiveTabindex: this scrollable content section must be focusable so keyboard users can scroll long settings pages.
           tabIndex={0}
         >
-          <SettingsDialogErrorBoundary>
+          <SettingsDialogErrorBoundary key={activeId}>
             <Suspense fallback={<SettingsContentSkeleton />}>
               <SettingsDialogBodyLazy
                 activeId={activeId}

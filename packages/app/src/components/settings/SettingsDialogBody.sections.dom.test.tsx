@@ -1,9 +1,10 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { createContext, type ReactNode, use, useState } from 'react';
 import { FormProvider } from 'react-hook-form';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
+import { renderSettingsBody } from '@/test-utils/render-settings-body.test-helper';
 
 type SyncStatus = {
   state: string;
@@ -346,7 +347,7 @@ async function renderBody(
   } = { activeId: 'sync' },
 ) {
   const { SettingsDialogBody } = await import('./SettingsDialogBody');
-  render(
+  return renderSettingsBody(
     <TooltipProvider>
       <SettingsDialogBody
         activeId={props.activeId}

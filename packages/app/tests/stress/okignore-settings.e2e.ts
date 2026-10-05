@@ -163,7 +163,10 @@ test.describe('Settings — Ignore patterns section (US-007 / US-008 / US-009 / 
   }) => {
     await page.goto('/#settings');
 
-    await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: 10_000 });
+    const dialog = page.getByTestId('settings-dialog');
+    await expect(dialog.getByRole('heading', { name: 'Preferences', exact: true })).toBeVisible({
+      timeout: 10_000,
+    });
 
     await expect(page.getByTestId('settings-okignore-section')).toHaveCount(0);
     await expect(page.getByTestId('settings-okignore-skeleton')).toHaveCount(0);
@@ -449,6 +452,90 @@ test.describe('Settings — Ignore patterns section (US-007 / US-008 / US-009 / 
       .filter({ hasText: /matches \d+ / });
     await expect(preview).toBeVisible({ timeout: 2_000 });
     await expect(preview).toContainText(/matches 0 files/);
+  });
+});
+
+test.describe('Settings selected section loading', () => {
+  for (const { name, id, panel } of [
+    { name: 'Ignore patterns', id: 'okignore', panel: 'settings-okignore-section' },
+    { name: 'Hotkeys', id: 'hotkeys', panel: 'settings-hotkeys' },
+  ]) {
+    test(`${name} mounts while an unselected Themes module is pending`, async ({
+      page,
+      api,
+    }, testInfo) => {
+      await api.testReset();
+
+      const themesModule = /\/src\/components\/settings\/ThemePluginSection\.tsx(?:\?|$)/;
+      const releaseThemes = Promise.withResolvers<void>();
+      await page.route(themesModule, async (route) => {
+        await releaseThemes.promise;
+        await route.continue();
+      });
+      const themesRequested = page.waitForRequest(themesModule);
+
+      const section = page.getByTestId(panel);
+      try {
+        await page.goto('/#settings');
+        await page.getByTestId('settings-sidebar-item-plugin:theme').click();
+        await themesRequested;
+
+        await page.getByTestId(`settings-sidebar-item-${id}`).click();
+        await test.step('panel mounts before Themes delivery resumes', async () => {
+          await expect.soft(section).toBeVisible({ timeout: 10_000 });
+        });
+      } finally {
+        releaseThemes.resolve();
+      }
+
+      await test.step('panel remains visible after Themes delivery resumes', async () => {
+        await expect(section).toBeVisible({ timeout: 10_000 });
+      });
+      await testInfo.attach('post-release-panel-visible', {
+        body: `${name} mounted after Themes delivery resumed`,
+        contentType: 'text/plain',
+      });
+    });
+  }
+
+  test('Ignore patterns mounts after an unselected Hotkeys module fails to load', async ({
+    page,
+    api,
+  }) => {
+    await api.testReset();
+    await page.route(/\/src\/components\/settings\/HotkeysSection\.tsx(?:\?|$)/, (route) =>
+      route.abort(),
+    );
+
+    const dialog = page.getByTestId('settings-dialog');
+    await page.goto('/#settings');
+    await page.getByTestId('settings-sidebar-item-hotkeys').click();
+    await expect(dialog.getByRole('heading', { name: 'Settings failed to load' })).toBeVisible();
+
+    await page.getByTestId('settings-sidebar-item-okignore').click();
+    await expect(page.getByTestId('settings-okignore-section')).toBeVisible();
+  });
+
+  test('Hotkeys mounts while every other settings section module is pending', async ({
+    page,
+    api,
+  }) => {
+    await api.testReset();
+
+    const otherSectionModules =
+      /\/src\/components\/settings\/(?!HotkeysSection\.tsx)[A-Za-z]+Section\.tsx(?:\?|$)/;
+    const releaseOtherSections = Promise.withResolvers<void>();
+    await page.route(otherSectionModules, async (route) => {
+      await releaseOtherSections.promise;
+      await route.continue();
+    });
+
+    try {
+      await page.goto('/#settings/hotkeys');
+      await expect(page.getByTestId('settings-hotkeys')).toBeVisible();
+    } finally {
+      releaseOtherSections.resolve();
+    }
   });
 });
 

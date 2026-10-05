@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createContext, type ReactNode, StrictMode, use } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
+import { renderSettingsBody } from '@/test-utils/render-settings-body.test-helper';
 
 type SyncStatus = {
   state: string;
@@ -228,7 +229,7 @@ async function renderSyncSection({ strict = false }: { strict?: boolean } = {}) 
       />
     </TooltipProvider>
   );
-  render(strict ? <StrictMode>{tree}</StrictMode> : tree);
+  return renderSettingsBody(strict ? <StrictMode>{tree}</StrictMode> : tree);
 }
 
 describe('Settings Sync section — three-way mode control (real hooks + dialog)', () => {

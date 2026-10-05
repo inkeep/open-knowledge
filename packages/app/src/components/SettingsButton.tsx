@@ -1,7 +1,7 @@
 import { Trans } from '@lingui/react/macro';
 import { Settings } from 'lucide-react';
 import { type FC, useEffect, useRef } from 'react';
-import { SettingsDialogBodyLazy } from '@/components/settings/SettingsDialogBodyLazy';
+import { preloadSettingsOnIntent } from '@/components/settings/SettingsDialogBodyLazy';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { SETTINGS_OPEN_HASH } from '@/lib/use-settings-route';
@@ -15,7 +15,7 @@ export const SettingsButton: FC = () => {
     if (timerRef.current !== null) return;
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
-      SettingsDialogBodyLazy.preload();
+      preloadSettingsOnIntent();
     }, PREFETCH_INTENT_DELAY_MS);
   };
 
