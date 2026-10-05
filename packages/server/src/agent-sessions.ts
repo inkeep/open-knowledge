@@ -562,6 +562,7 @@ function evictionCounter(): ReturnType<ReturnType<typeof getMeter>['createCounte
 export class AgentSessionManager {
   private sessions = new Map<string, SessionRecord>();
   private pendingSessions = new Map<string, Promise<SessionRecord>>();
+  private activeOperations = new Map<string, { count: number }>();
   private hocuspocus: Hocuspocus;
   private readonly maxSessions: number;
   private readonly minEvictableIdleMs: number;
@@ -620,6 +621,39 @@ export class AgentSessionManager {
     const session = this.sessions.get(key);
     if (session) this.touchSession(key, session);
     return session;
+  }
+
+  async withSessions<T>(
+    operation: (getSession: AgentSessionManager['getSession']) => Promise<T>,
+  ): Promise<T> {
+    const releases: Array<() => void> = [];
+    const getSession: AgentSessionManager['getSession'] = async (
+      docName,
+      agentId = UNIDENTIFIED_WRITER_ID,
+      identity,
+    ) => {
+      const key = this.sessionKey(docName, agentId);
+      const active = this.activeOperations.get(key) ?? { count: 0 };
+      active.count += 1;
+      this.activeOperations.set(key, active);
+      const release = (): void => {
+        active.count -= 1;
+        if (active.count === 0) this.activeOperations.delete(key);
+      };
+      try {
+        const session = await this.getSession(docName, agentId, identity);
+        releases.push(release);
+        return session;
+      } catch (error) {
+        release();
+        throw error;
+      }
+    };
+    try {
+      return await operation(getSession);
+    } finally {
+      for (const release of releases) release();
+    }
   }
 
   /**
@@ -736,26 +770,27 @@ export class AgentSessionManager {
   }
 
   private async evictLruIdleSession(): Promise<string | null> {
-    const first = this.sessions.entries().next();
-    if (first.done) return null;
-    const [key, session] = first.value;
-    const idleMs = Date.now() - session.lastUsedAt;
-    if (idleMs < this.minEvictableIdleMs) return null;
+    for (const [key, session] of this.sessions) {
+      if (this.activeOperations.has(key)) continue;
+      const idleMs = Date.now() - session.lastUsedAt;
+      if (idleMs < this.minEvictableIdleMs) return null;
 
-    this.sessions.delete(key);
-    await this.cleanupSession(key, session, {
-      docName: session.docName,
-      agentId: session.agentId,
-      evicted: true,
-    });
-    this.evictions++;
-    incrementAgentSessionEvictions();
-    evictionCounter().add(1);
-    log.info(
-      { docName: session.docName, agentId: session.agentId, idleMs },
-      '[agent-session] Evicted LRU idle session under capacity pressure',
-    );
-    return key;
+      this.sessions.delete(key);
+      await this.cleanupSession(key, session, {
+        docName: session.docName,
+        agentId: session.agentId,
+        evicted: true,
+      });
+      this.evictions++;
+      incrementAgentSessionEvictions();
+      evictionCounter().add(1);
+      log.info(
+        { docName: session.docName, agentId: session.agentId, idleMs },
+        '[agent-session] Evicted LRU idle session under capacity pressure',
+      );
+      return key;
+    }
+    return null;
   }
 
   hasSession(docName: string, agentId = UNIDENTIFIED_WRITER_ID): boolean {

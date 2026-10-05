@@ -318,164 +318,166 @@ export function createLintWriteRoutes(deps: LintWriteRouteDeps): ApiRouteGroup {
 
         const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
         const { stored: storedSummary } = summaryResponseFields(actor.summary);
-        const session = await sessionManager.getSession(resolvedDocName, agentId, {
-          displayName: agentName,
-          colorSeed,
-          clientName,
-        });
+        await sessionManager.withSessions(async (getSession) => {
+          const session = await getSession(resolvedDocName, agentId, {
+            displayName: agentName,
+            colorSeed,
+            clientName,
+          });
 
-        const source = session.dc.document.getText('source').toString();
-        const configWarnings: string[] = [];
-        const { cfg, before, fixed, ran, failures } = await lintAndFixSource({
-          projectDir: projectDir ?? contentDir,
-          contentDir,
-          baseConfig,
-          docRelPath,
-          source,
-          onConfigProblem: (problem) => configWarnings.push(problem),
-        });
+          const source = session.dc.document.getText('source').toString();
+          const configWarnings: string[] = [];
+          const { cfg, before, fixed, ran, failures } = await lintAndFixSource({
+            projectDir: projectDir ?? contentDir,
+            contentDir,
+            baseConfig,
+            docRelPath,
+            source,
+            onConfigProblem: (problem) => configWarnings.push(problem),
+          });
 
-        let after = before;
-        let reLintFailure: ReLintFailure | undefined;
-        const reLintFailures: LintPluginFailure[] = [];
-        if (fixed !== source) {
-          try {
-            const icon = iconFromClientName(clientName);
-            const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
-            agentPresenceBroadcaster?.setPresence(agentId, {
-              displayName: agentName,
-              icon,
-              color,
-              currentDoc: resolvedDocName,
-              mode: 'writing',
-              ts: Date.now(),
-            });
-            const suppliedWriterId = sessionWriterId(session);
-            session.dc.document.transact(() => {
-              applyAgentMarkdownWrite(
-                session.dc.document,
-                fixed,
-                'patch',
-                options.resolveEmbed
-                  ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
-                  : undefined,
-                undefined,
-                agentWriteLossDetect(session),
-                suppliedWriterId,
-              );
-            }, session.origin);
+          let after = before;
+          let reLintFailure: ReLintFailure | undefined;
+          const reLintFailures: LintPluginFailure[] = [];
+          if (fixed !== source) {
+            try {
+              const icon = iconFromClientName(clientName);
+              const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
+              agentPresenceBroadcaster?.setPresence(agentId, {
+                displayName: agentName,
+                icon,
+                color,
+                currentDoc: resolvedDocName,
+                mode: 'writing',
+                ts: Date.now(),
+              });
+              const suppliedWriterId = sessionWriterId(session);
+              session.dc.document.transact(() => {
+                applyAgentMarkdownWrite(
+                  session.dc.document,
+                  fixed,
+                  'patch',
+                  options.resolveEmbed
+                    ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
+                    : undefined,
+                  undefined,
+                  agentWriteLossDetect(session),
+                  suppliedWriterId,
+                );
+              }, session.origin);
 
-            if (actor.kind !== 'anonymous') {
-              recordContributor(
-                resolvedDocName,
-                agentId,
-                agentName,
-                colorSeed,
-                undefined,
-                actor.kind === 'agent'
-                  ? buildAgentActor({
-                      clientName: actor.clientName,
-                      clientVersion: actor.clientVersion,
-                      label: actor.label,
-                    })
-                  : actor.actor,
-                storedSummary,
-              );
+              if (actor.kind !== 'anonymous') {
+                recordContributor(
+                  resolvedDocName,
+                  agentId,
+                  agentName,
+                  colorSeed,
+                  undefined,
+                  actor.kind === 'agent'
+                    ? buildAgentActor({
+                        clientName: actor.clientName,
+                        clientVersion: actor.clientVersion,
+                        label: actor.label,
+                      })
+                    : actor.actor,
+                  storedSummary,
+                );
+              }
+            } finally {
+              agentPresenceBroadcaster?.touchMode(agentId, 'idle');
             }
-          } finally {
-            agentPresenceBroadcaster?.touchMode(agentId, 'idle');
+
+            const flushOutcome = await flushDiskAndDetectOutcome(resolvedDocName);
+            if (flushOutcome?.kind === 'failure') {
+              respondPersistenceFailure(res, flushOutcome.failure, 'lint-fix');
+              return;
+            }
+            if (flushOutcome?.kind === 'divergence') {
+              respondDiskDivergence(res, 'lint-fix');
+              return;
+            }
+            if (flushOutcome?.kind === 'stale-external-write') {
+              respondStaleExternalWrite(res, 'lint-fix', resolvedDocName);
+              return;
+            }
+            flushDocToDisk(resolvedDocName, 'lint-fix');
+
+            try {
+              after = await lintDocument(
+                session.dc.document.getText('source').toString(),
+                cfg,
+                docRelPath,
+                (failure) => reLintFailures.push(failure),
+              );
+            } catch (relintErr) {
+              const relintMessage =
+                relintErr instanceof Error ? relintErr.message : String(relintErr);
+              reLintFailure = {
+                reason: 're-lint-threw',
+                message:
+                  relintMessage.trim().length > 0
+                    ? relintMessage
+                    : `${relintErr instanceof Error ? relintErr.name : 'non-Error value'} thrown with no message`,
+              };
+              log.warn(
+                { err: relintErr, handler: 'lint-fix', doc: resolvedDocName, agentId },
+                'post-write re-lint failed; reporting pre-fix diagnostics',
+              );
+              after = before;
+            }
           }
 
-          const flushOutcome = await flushDiskAndDetectOutcome(resolvedDocName);
-          if (flushOutcome?.kind === 'failure') {
-            respondPersistenceFailure(res, flushOutcome.failure, 'lint-fix');
-            return;
-          }
-          if (flushOutcome?.kind === 'divergence') {
-            respondDiskDivergence(res, 'lint-fix');
-            return;
-          }
-          if (flushOutcome?.kind === 'stale-external-write') {
-            respondStaleExternalWrite(res, 'lint-fix', resolvedDocName);
-            return;
-          }
-          flushDocToDisk(resolvedDocName, 'lint-fix');
-
-          try {
-            after = await lintDocument(
-              session.dc.document.getText('source').toString(),
-              cfg,
-              docRelPath,
-              (failure) => reLintFailures.push(failure),
-            );
-          } catch (relintErr) {
-            const relintMessage =
-              relintErr instanceof Error ? relintErr.message : String(relintErr);
+          const blindBeforeFix = new Set(
+            failures.filter((f) => f.phase === 'lint').map((f) => f.source),
+          );
+          const blindOnlyAfterFix = [
+            ...new Set(
+              reLintFailures
+                .filter((f) => f.phase === 'lint' && !blindBeforeFix.has(f.source))
+                .map((f) => f.source),
+            ),
+          ];
+          if (reLintFailure === undefined && blindOnlyAfterFix.length > 0) {
             reLintFailure = {
-              reason: 're-lint-threw',
-              message:
-                relintMessage.trim().length > 0
-                  ? relintMessage
-                  : `${relintErr instanceof Error ? relintErr.name : 'non-Error value'} thrown with no message`,
+              reason: 'source-went-blind',
+              message: `${blindOnlyAfterFix.join(', ')} linted the pre-fix text and failed on the post-fix text, so the re-lint is short their diagnostics and cannot be compared against the pre-fix run`,
             };
             log.warn(
-              { err: relintErr, handler: 'lint-fix', doc: resolvedDocName, agentId },
-              'post-write re-lint failed; reporting pre-fix diagnostics',
+              { handler: 'lint-fix', doc: resolvedDocName, agentId, sources: blindOnlyAfterFix },
+              'post-write re-lint lost a source that linted before the fix; reporting pre-fix diagnostics',
             );
             after = before;
           }
-        }
 
-        const blindBeforeFix = new Set(
-          failures.filter((f) => f.phase === 'lint').map((f) => f.source),
-        );
-        const blindOnlyAfterFix = [
-          ...new Set(
-            reLintFailures
-              .filter((f) => f.phase === 'lint' && !blindBeforeFix.has(f.source))
-              .map((f) => f.source),
-          ),
-        ];
-        if (reLintFailure === undefined && blindOnlyAfterFix.length > 0) {
-          reLintFailure = {
-            reason: 'source-went-blind',
-            message: `${blindOnlyAfterFix.join(', ')} linted the pre-fix text and failed on the post-fix text, so the re-lint is short their diagnostics and cannot be compared against the pre-fix run`,
-          };
-          log.warn(
-            { handler: 'lint-fix', doc: resolvedDocName, agentId, sources: blindOnlyAfterFix },
-            'post-write re-lint lost a source that linted before the fix; reporting pre-fix diagnostics',
+          const errorCount = after.filter((d) => d.severity === 'error').length;
+          const warningCount = after.length - errorCount;
+          const comparable = (d: (typeof before)[number]) => !blindBeforeFix.has(d.source);
+          const fixedCount = Math.max(
+            0,
+            before.filter(comparable).length - after.filter(comparable).length,
           );
-          after = before;
-        }
+          const responseWarnings = [
+            ...configWarnings,
+            ...summarizeLintPluginFailures([...failures, ...reLintFailures]),
+          ];
 
-        const errorCount = after.filter((d) => d.severity === 'error').length;
-        const warningCount = after.length - errorCount;
-        const comparable = (d: (typeof before)[number]) => !blindBeforeFix.has(d.source);
-        const fixedCount = Math.max(
-          0,
-          before.filter(comparable).length - after.filter(comparable).length,
-        );
-        const responseWarnings = [
-          ...configWarnings,
-          ...summarizeLintPluginFailures([...failures, ...reLintFailures]),
-        ];
-
-        successResponse(
-          res,
-          200,
-          LintFixResultSchema,
-          {
-            file: docRelPath,
-            fixedCount,
-            diagnostics: after,
-            errorCount,
-            warningCount,
-            ran,
-            ...(responseWarnings.length > 0 ? { warnings: responseWarnings } : {}),
-            ...(reLintFailure ? { diagnosticsArePreFix: true, reLintFailure } : {}),
-          },
-          { handler: 'lint-fix' },
-        );
+          successResponse(
+            res,
+            200,
+            LintFixResultSchema,
+            {
+              file: docRelPath,
+              fixedCount,
+              diagnostics: after,
+              errorCount,
+              warningCount,
+              ran,
+              ...(responseWarnings.length > 0 ? { warnings: responseWarnings } : {}),
+              ...(reLintFailure ? { diagnosticsArePreFix: true, reLintFailure } : {}),
+            },
+            { handler: 'lint-fix' },
+          );
+        });
       } catch (e) {
         if (isContainmentRejection(e)) {
           errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {

@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   CAPACITY_PROBLEM_TYPE,
   isCapacityRefusal,
@@ -9,7 +10,9 @@ import {
   sweepSleep,
 } from '@/components/problems-sweep';
 import { fixLintDoc } from '@/editor/lint-config-client';
-import { agentWriteMd, createTestServer, type TestServer } from './test-harness';
+import * as agentSessions from '../../../server/src/agent-sessions';
+import * as lintAudit from '../../../server/src/lint/audit';
+import { createTestServer, type TestServer } from './test-harness';
 
 type FetchFn = typeof globalThis.fetch;
 
@@ -19,10 +22,346 @@ let server: TestServer | undefined;
 let restoreFetch: (() => void) | undefined;
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   restoreFetch?.();
   restoreFetch = undefined;
   await server?.cleanup();
   server = undefined;
+});
+
+describe('agent-session operation lifetime', () => {
+  const startCappedServer = async (minEvictableIdleMs: number) => {
+    server = await createTestServer({
+      markdownlintEnabled: true,
+      agentSessionOptions: { maxSessions: 2, minEvictableIdleMs },
+    });
+    const { baseUrl, contentDir, instance } = server;
+    const post = (route: string, body: object): Promise<Response> =>
+      fetch(`${baseUrl}${route}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    return {
+      contentDir,
+      sessionManager: instance.sessionManager,
+      debouncer: instance.hocuspocus.debouncer,
+      post,
+    };
+  };
+
+  const freezeClock = () => {
+    let clock = Date.now();
+    vi.spyOn(Date, 'now').mockImplementation(() => clock);
+    return (ms: number): void => {
+      clock += ms;
+    };
+  };
+
+  test.each([
+    { label: 'markdown write below the idle floor', kind: 'markdown', floor: 700, advance: 0 },
+    { label: 'markdown write past the idle floor', kind: 'markdown', floor: 700, advance: 701 },
+    {
+      label: 'markdown write past the default floor',
+      kind: 'markdown',
+      floor: agentSessions.MIN_EVICTABLE_IDLE_MS,
+      advance: agentSessions.MIN_EVICTABLE_IDLE_MS + 1,
+    },
+    { label: 'frontmatter patch', kind: 'frontmatter', floor: 700, advance: 701 },
+    { label: 'text patch', kind: 'patch', floor: 700, advance: 701 },
+    { label: 'lint fix', kind: 'lint', floor: 700, advance: 701 },
+    { label: 'batched markdown write', kind: 'batch', floor: 700, advance: 701 },
+  ] as const)(
+    'an accepted $label retains its session across capacity admission',
+    async ({ kind, floor, advance }) => {
+      const { contentDir, sessionManager, post } = await startCappedServer(floor);
+      const docPrefix = `session-lifetime-${randomUUID()}`;
+      const writerDoc = `${docPrefix}/writer`;
+      const [firstDoc, nextDoc] = [`${docPrefix}/first`, `${docPrefix}/next`];
+      for (const docName of [firstDoc, nextDoc]) seedFixableDoc(contentDir, docName);
+      const identity = { agentId: 'held-writer', agentName: 'Held writer' };
+      const advanceClock = freezeClock();
+      expect(
+        (
+          await post('/api/agent-write-md', {
+            ...identity,
+            docName: writerDoc,
+            markdown: FIXABLE_BODY,
+            position: 'replace',
+          })
+        ).status,
+      ).toBe(200);
+
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const prepareMarkdown = agentSessions.prepareAgentMarkdownParse;
+      const prepareFrontmatter = agentSessions.prepareFrontmatterPatchParse;
+      const lintAndFix = lintAudit.lintAndFixSource;
+      vi.spyOn(agentSessions, 'prepareAgentMarkdownParse').mockImplementation(async (...args) => {
+        const parsed = await prepareMarkdown(...args);
+        if (args[0].name === writerDoc) {
+          entered.resolve();
+          await release.promise;
+        }
+        return parsed;
+      });
+      vi.spyOn(agentSessions, 'prepareFrontmatterPatchParse').mockImplementation(
+        async (...args) => {
+          const parsed = await prepareFrontmatter(...args);
+          if (args[0].name === writerDoc) {
+            entered.resolve();
+            await release.promise;
+          }
+          return parsed;
+        },
+      );
+      vi.spyOn(lintAudit, 'lintAndFixSource').mockImplementation(async (...args) => {
+        const fixed = await lintAndFix(...args);
+        if (args[0].docRelPath === `${writerDoc}.md`) {
+          entered.resolve();
+          await release.promise;
+        }
+        return fixed;
+      });
+      const requests = {
+        markdown: {
+          route: '/api/agent-write-md',
+          body: { ...identity, docName: writerDoc, markdown: 'After\n', position: 'append' },
+        },
+        frontmatter: {
+          route: '/api/frontmatter-patch',
+          body: { ...identity, docName: writerDoc, patch: { title: 'Updated title' } },
+        },
+        patch: {
+          route: '/api/agent-patch',
+          body: { ...identity, docName: writerDoc, find: '# Doc', replace: '# Updated doc' },
+        },
+        lint: { route: '/api/lint/fix', body: { ...identity, docName: writerDoc } },
+        batch: {
+          route: '/api/agent-write-batch',
+          body: {
+            ...identity,
+            docs: [{ docName: writerDoc, markdown: 'After\n', position: 'append' }],
+          },
+        },
+      };
+      const request = requests[kind];
+      const writing = post(request.route, request.body);
+      try {
+        await Promise.race([
+          entered.promise,
+          writing.then((response) => {
+            throw new Error(`Operation returned before its barrier: ${response.status}`);
+          }),
+        ]);
+        expect((await post('/api/lint/fix', { docName: firstDoc })).status).toBe(200);
+        advanceClock(advance);
+        const admission = await post('/api/lint/fix', { docName: nextDoc });
+        expect(admission.status).toBe(advance === 0 ? 503 : 200);
+        expect.soft(sessionManager.hasSession(writerDoc, 'agent-held-writer')).toBe(true);
+        expect(sessionManager.liveSessionCount).toBe(2);
+        release.resolve();
+        const response = await writing;
+        expect(response.status).toBe(200);
+        if (kind === 'batch') {
+          expect(await response.json()).toMatchObject({
+            written: 1,
+            failed: 0,
+            results: [{ docName: writerDoc, status: 'written' }],
+          });
+        }
+        advanceClock(floor + 1);
+        for (const suffix of ['released-first', 'released-next']) {
+          const docName = `${docPrefix}/${suffix}`;
+          seedFixableDoc(contentDir, docName);
+          expect((await post('/api/lint/fix', { docName })).status).toBe(200);
+        }
+        expect(sessionManager.hasSession(writerDoc, 'agent-held-writer')).toBe(false);
+        expect(sessionManager.liveSessionCount).toBe(2);
+      } finally {
+        release.resolve();
+        await writing;
+      }
+    },
+  );
+
+  test('an accepted batched markdown write retains its session while its write is flushed', async () => {
+    const { contentDir, sessionManager, debouncer, post } = await startCappedServer(700);
+    const docPrefix = `session-batch-flush-${randomUUID()}`;
+    const writerDoc = `${docPrefix}/writer`;
+    const [firstDoc, nextDoc] = [`${docPrefix}/first`, `${docPrefix}/next`];
+    for (const docName of [firstDoc, nextDoc]) seedFixableDoc(contentDir, docName);
+    const advanceClock = freezeClock();
+    expect(
+      (
+        await post('/api/agent-write-md', {
+          agentId: 'flushed-writer',
+          docName: writerDoc,
+          markdown: '# Doc\n',
+          position: 'replace',
+        })
+      ).status,
+    ).toBe(200);
+    const flushing = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const executeNow = debouncer.executeNow;
+    vi.spyOn(debouncer, 'executeNow').mockImplementation(async (id: string) => {
+      const stored = await executeNow(id);
+      if (id === `onStoreDocument-${writerDoc}`) {
+        flushing.resolve();
+        await release.promise;
+      }
+      return stored;
+    });
+    const writing = post('/api/agent-write-batch', {
+      agentId: 'flushed-writer',
+      docs: [{ docName: writerDoc, markdown: 'After\n', position: 'append' }],
+    });
+    try {
+      await Promise.race([
+        flushing.promise,
+        writing.then((response) => {
+          throw new Error(`Batch returned before its flush barrier: ${response.status}`);
+        }),
+      ]);
+      expect((await post('/api/lint/fix', { docName: firstDoc })).status).toBe(200);
+      advanceClock(701);
+      expect((await post('/api/lint/fix', { docName: nextDoc })).status).toBe(200);
+      expect.soft(sessionManager.hasSession(writerDoc, 'agent-flushed-writer')).toBe(true);
+      expect(sessionManager.liveSessionCount).toBe(2);
+      release.resolve();
+      const response = await writing;
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        written: 1,
+        failed: 0,
+        results: [{ docName: writerDoc, status: 'written' }],
+      });
+    } finally {
+      release.resolve();
+      await writing;
+    }
+  });
+
+  test('overlapping operations keep the session held until the last operation completes', async () => {
+    const { contentDir, sessionManager, post } = await startCappedServer(700);
+    const docPrefix = `session-overlap-${randomUUID()}`;
+    const writerDoc = `${docPrefix}/writer`;
+    const advanceClock = freezeClock();
+    expect(
+      (
+        await post('/api/agent-write-md', {
+          agentId: 'overlap-writer',
+          docName: writerDoc,
+          markdown: '# Doc\n',
+          position: 'replace',
+        })
+      ).status,
+    ).toBe(200);
+    const firstEntered = Promise.withResolvers<void>();
+    const secondEntered = Promise.withResolvers<void>();
+    const firstRelease = Promise.withResolvers<void>();
+    const secondRelease = Promise.withResolvers<void>();
+    const prepare = agentSessions.prepareFrontmatterPatchParse;
+    let preparation = 0;
+    vi.spyOn(agentSessions, 'prepareFrontmatterPatchParse').mockImplementation(async (...args) => {
+      const parsed = await prepare(...args);
+      if (args[0].name === writerDoc) {
+        preparation += 1;
+        if (preparation === 1) {
+          firstEntered.resolve();
+          await firstRelease.promise;
+        } else {
+          secondEntered.resolve();
+          await secondRelease.promise;
+        }
+      }
+      return parsed;
+    });
+    const body = { agentId: 'overlap-writer', docName: writerDoc, patch: {} };
+    const first = post('/api/frontmatter-patch', body);
+    const second = firstEntered.promise.then(() => post('/api/frontmatter-patch', body));
+    try {
+      await secondEntered.promise;
+      firstRelease.resolve();
+      expect((await first).status).toBe(200);
+      for (const suffix of ['first', 'next', 'last']) {
+        const docName = `${docPrefix}/${suffix}`;
+        seedFixableDoc(contentDir, docName);
+        advanceClock(701);
+        expect((await post('/api/lint/fix', { docName })).status).toBe(200);
+        expect(sessionManager.liveSessionCount).toBe(2);
+      }
+      expect.soft(sessionManager.hasSession(writerDoc, 'agent-overlap-writer')).toBe(true);
+      secondRelease.resolve();
+      expect((await second).status).toBe(200);
+      const nextDoc = `${docPrefix}/after-overlap`;
+      seedFixableDoc(contentDir, nextDoc);
+      advanceClock(701);
+      expect((await post('/api/lint/fix', { docName: nextDoc })).status).toBe(200);
+      expect(sessionManager.hasSession(writerDoc, 'agent-overlap-writer')).toBe(false);
+      expect(sessionManager.liveSessionCount).toBe(2);
+    } finally {
+      firstRelease.resolve();
+      secondRelease.resolve();
+      await Promise.allSettled([first, second]);
+    }
+  });
+
+  test('a refused text patch releases its session for later idle reclamation', async () => {
+    const { contentDir, sessionManager, post } = await startCappedServer(700);
+    const docPrefix = `session-refusal-${randomUUID()}`;
+    const writerDoc = `${docPrefix}/writer`;
+    const advanceClock = freezeClock();
+    const identity = { agentId: 'refused-writer', docName: writerDoc };
+    expect(
+      (await post('/api/agent-write-md', { ...identity, markdown: '# Doc\n', position: 'replace' }))
+        .status,
+    ).toBe(200);
+    expect(
+      (await post('/api/agent-patch', { ...identity, find: 'absent target', replace: 'new text' }))
+        .status,
+    ).toBe(404);
+    const firstDoc = `${docPrefix}/first`;
+    seedFixableDoc(contentDir, firstDoc);
+    expect((await post('/api/lint/fix', { docName: firstDoc })).status).toBe(200);
+    advanceClock(701);
+    const nextDoc = `${docPrefix}/next`;
+    seedFixableDoc(contentDir, nextDoc);
+    expect((await post('/api/lint/fix', { docName: nextDoc })).status).toBe(200);
+    expect(sessionManager.hasSession(writerDoc, 'agent-refused-writer')).toBe(false);
+    expect(sessionManager.liveSessionCount).toBe(2);
+  });
+
+  test('a write refused at capacity leaves its later session reclaimable once idle', async () => {
+    const { contentDir, sessionManager, post } = await startCappedServer(700);
+    const docPrefix = `session-capacity-refusal-${randomUUID()}`;
+    const writerDoc = `${docPrefix}/writer`;
+    const advanceClock = freezeClock();
+    for (const suffix of ['first', 'second']) {
+      const docName = `${docPrefix}/${suffix}`;
+      seedFixableDoc(contentDir, docName);
+      expect((await post('/api/lint/fix', { docName })).status).toBe(200);
+    }
+    const write = {
+      agentId: 'capacity-writer',
+      docName: writerDoc,
+      markdown: '# Doc\n',
+      position: 'replace',
+    };
+    expect((await post('/api/agent-write-md', write)).status).toBe(503);
+    advanceClock(701);
+    expect((await post('/api/agent-write-md', write)).status).toBe(200);
+    expect(sessionManager.hasSession(writerDoc, 'agent-capacity-writer')).toBe(true);
+    advanceClock(701);
+    for (const suffix of ['released-first', 'released-next']) {
+      const docName = `${docPrefix}/${suffix}`;
+      seedFixableDoc(contentDir, docName);
+      expect((await post('/api/lint/fix', { docName })).status).toBe(200);
+    }
+    expect(sessionManager.hasSession(writerDoc, 'agent-capacity-writer')).toBe(false);
+    expect(sessionManager.liveSessionCount).toBe(2);
+  });
 });
 
 function seedFixableDoc(contentDir: string, docName: string): void {
@@ -89,28 +428,49 @@ describe('project-scope Fix all under agent-session capacity', () => {
 
     const COLLATERAL_DOC = 'capacity-collateral/agent-doc';
     const WRITER_INTERVAL_MS = 50;
-    const writeCollateral = (): Promise<void> =>
-      agentWriteMd(port, 'concurrent agent line\n', {
-        docName: COLLATERAL_DOC,
-        position: 'append',
-        agentId: 'collateral-writer',
-        agentName: 'Collateral',
+    const conflicts = server.instance.conflicts;
+    const raise = conflicts.raise.bind(conflicts);
+    let firstConflict:
+      | { input: Parameters<typeof raise>[0]; stack: string | undefined }
+      | undefined;
+    vi.spyOn(conflicts, 'raise').mockImplementation((input) => {
+      const trace =
+        !firstConflict && input.file === `${COLLATERAL_DOC}.md`
+          ? { input, stack: new Error().stack }
+          : undefined;
+      raise(input);
+      if (trace && conflicts.has(COLLATERAL_DOC)) firstConflict = trace;
+    });
+    const writeCollateral = (): Promise<Response> =>
+      fetch(`http://127.0.0.1:${port}/api/agent-write-md`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          markdown: 'concurrent agent line\n',
+          docName: COLLATERAL_DOC,
+          position: 'append',
+          agentId: 'collateral-writer',
+          agentName: 'Collateral',
+        }),
       });
 
-    await writeCollateral();
+    expect((await writeCollateral()).status).toBe(200);
 
     let sweepDone = false;
     let collateralWrites = 0;
-    const collateralFailures: Array<{ status: number | null }> = [];
+    const collateralFailures: Array<
+      { status: number; body: string } | { status: null; error: unknown }
+    > = [];
     const runWriterLoop = async (): Promise<void> => {
       while (!sweepDone) {
         await sweepSleep(WRITER_INTERVAL_MS);
         if (sweepDone) break;
         try {
-          await writeCollateral();
-          collateralWrites += 1;
+          const response = await writeCollateral();
+          if (response.ok) collateralWrites += 1;
+          else collateralFailures.push({ status: response.status, body: await response.text() });
         } catch (err) {
-          collateralFailures.push({ status: (err as { status?: number }).status ?? null });
+          collateralFailures.push({ status: null, error: err });
         }
       }
     };
@@ -138,7 +498,11 @@ describe('project-scope Fix all under agent-session capacity', () => {
 
     expect(capacityRefusals).toBeGreaterThan(0);
 
-    expect(collateralWrites).toBeGreaterThan(0);
-    expect(collateralFailures).toEqual([]);
+    const failureContext = JSON.stringify({
+      firstConflict,
+      evictions: server.instance.sessionManager.evictionCount,
+    });
+    expect(collateralWrites, failureContext).toBeGreaterThan(0);
+    expect(collateralFailures, failureContext).toEqual([]);
   }, 30_000);
 });

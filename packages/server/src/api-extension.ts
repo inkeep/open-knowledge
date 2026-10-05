@@ -3665,205 +3665,207 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
             ts: Date.now(),
           });
 
-          for (let i = 0; i < body.docs.length; i++) {
-            const entry = body.docs[i];
-            const resolvedDocName = resolveAlias(entry.docName);
+          await sessionManager.withSessions(async (getSession) => {
+            for (let i = 0; i < body.docs.length; i++) {
+              const entry = body.docs[i];
+              const resolvedDocName = resolveAlias(entry.docName);
 
-            if (isSystemDoc(resolvedDocName) || isConfigDoc(resolvedDocName)) {
-              results[i] = entryError(
-                resolvedDocName,
-                'urn:ok:error:reserved-doc-name',
-                `'${resolvedDocName}' is a reserved document name.`,
-              );
-              continue;
-            }
-
-            try {
-              if (
-                entry.extension !== undefined &&
-                !docNameExistsWithAnySupportedExtension(contentDir, resolvedDocName)
-              ) {
-                registerDocExtension(resolvedDocName, entry.extension);
+              if (isSystemDoc(resolvedDocName) || isConfigDoc(resolvedDocName)) {
+                results[i] = entryError(
+                  resolvedDocName,
+                  'urn:ok:error:reserved-doc-name',
+                  `'${resolvedDocName}' is a reserved document name.`,
+                );
+                continue;
               }
 
-              const normalizedSummary = normalizeSummary(entry.summary);
-              const { response: summaryResponse, stored: storedSummary } =
-                summaryResponseFields(normalizedSummary);
-              const session = await sessionManager.getSession(resolvedDocName, agentId, {
-                displayName: agentName,
-                colorSeed,
-                clientName,
-              });
-
-              const reconcile = reconcileDiskBeforeAgentWrite(
-                durabilityState,
-                hocuspocus,
-                resolvedDocName,
-                contentDir,
-                options.resolveEmbed,
-                getBridgeLossReporter?.(),
-                conflicts,
-              );
-
-              const entryEmbedResolver = options.resolveEmbed
-                ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
-                : undefined;
-              const entryPrecomputed = await prepareAgentMarkdownParse(
-                session.dc.document,
-                entry.markdown,
-                entry.position ?? 'append',
-                entryEmbedResolver,
-              );
-
-              let writeDivergence: AgentWriteContentDivergence | undefined;
-              const disposeEntryEffectCapture = captureEffect(
-                session.dc.document.getText('source'),
-                agentId,
-                session.origin,
-                colorSeed,
-                clientName,
-              );
-              agentWritePreDrain(session.dc.document, entry.markdown, entry.position ?? 'append');
               try {
-                session.dc.document.transact(() => {
-                  const beforeBlocks = snapshotBlocks(session.dc.document);
-                  writeDivergence = applyAgentMarkdownWrite(
-                    session.dc.document,
-                    entry.markdown,
-                    entry.position ?? 'append',
-                    entryEmbedResolver,
-                    entryPrecomputed,
-                    agentWriteLossDetect(session),
-                    suppliedWriterId,
-                  );
+                if (
+                  entry.extension !== undefined &&
+                  !docNameExistsWithAnySupportedExtension(contentDir, resolvedDocName)
+                ) {
+                  registerDocExtension(resolvedDocName, entry.extension);
+                }
 
-                  const changedBlocks =
-                    changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ??
-                    undefined;
-                  const activityMap = session.dc.document.getMap('agent-flash');
-                  activityMap.set(agentId, {
-                    agentId,
-                    timestamp: Date.now(),
-                    type: 'insert',
-                    description: `Added (${agentName}): ${entry.markdown.trim().slice(0, 50)}`,
-                    ...(changedBlocks !== undefined ? { changedBlocks } : {}),
-                  });
-                }, session.origin);
-              } finally {
-                disposeEntryEffectCapture();
-              }
-
-              recordContentDivergenceGate('agent-write-batch', writeDivergence);
-              recordContributor(
-                resolvedDocName,
-                agentId,
-                agentName,
-                colorSeed,
-                undefined,
-                buildAgentActor({ clientName, clientVersion, label }),
-                storedSummary,
-              );
-              incrementAgentWriteCalls();
-              countNormalizedSummary(normalizedSummary);
-
-              const reconcileWarning = buildReconcileWarning(reconcile);
-              const warnings: AdvisoryWarning[] = [
-                ...(writeDivergence !== undefined
-                  ? [toContentDivergenceWarning(writeDivergence)]
-                  : []),
-                ...(reconcileWarning ? [reconcileWarning] : []),
-              ];
-              pending.push({
-                index: i,
-                docName: resolvedDocName,
-                session,
-                summaryResponse,
-                warnings,
-              });
-            } catch (e) {
-              results[i] = classifyEntryFailure(resolvedDocName, e);
-            }
-          }
-
-          const flushErrors = new Map<string, BatchErrorResult['error'] | undefined>();
-          for (const p of pending) {
-            if (flushErrors.has(p.docName)) continue;
-            const flushOutcome = await flushDiskAndDetectOutcome(p.docName);
-            if (flushOutcome?.kind === 'failure') {
-              if (flushOutcome.failure.code === OK_DOC_REMOVED) {
-                flushErrors.set(p.docName, removedDocProblem(flushOutcome.failure));
-              } else if (flushOutcome.failure.code === OK_PATH_UNRESOLVABLE) {
-                flushErrors.set(p.docName, pathFaultProblem(flushOutcome.failure));
-              } else if (flushOutcome.failure.code === OK_STORE_REFUSED) {
-                flushErrors.set(p.docName, refusedStoreProblem(flushOutcome.failure));
-              } else {
-                const reason = classifyUploadErrno({
-                  code: flushOutcome.failure.code,
-                } as NodeJS.ErrnoException);
-                flushErrors.set(p.docName, {
-                  type: reason,
-                  title: 'Write applied in memory but failed to persist to disk.',
-                  detail: `${flushOutcome.failure.code ?? 'unknown error'}: ${flushOutcome.failure.message}. The content was NOT saved and will be lost if the server restarts.`,
+                const normalizedSummary = normalizeSummary(entry.summary);
+                const { response: summaryResponse, stored: storedSummary } =
+                  summaryResponseFields(normalizedSummary);
+                const session = await getSession(resolvedDocName, agentId, {
+                  displayName: agentName,
+                  colorSeed,
+                  clientName,
                 });
+
+                const reconcile = reconcileDiskBeforeAgentWrite(
+                  durabilityState,
+                  hocuspocus,
+                  resolvedDocName,
+                  contentDir,
+                  options.resolveEmbed,
+                  getBridgeLossReporter?.(),
+                  conflicts,
+                );
+
+                const entryEmbedResolver = options.resolveEmbed
+                  ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
+                  : undefined;
+                const entryPrecomputed = await prepareAgentMarkdownParse(
+                  session.dc.document,
+                  entry.markdown,
+                  entry.position ?? 'append',
+                  entryEmbedResolver,
+                );
+
+                let writeDivergence: AgentWriteContentDivergence | undefined;
+                const disposeEntryEffectCapture = captureEffect(
+                  session.dc.document.getText('source'),
+                  agentId,
+                  session.origin,
+                  colorSeed,
+                  clientName,
+                );
+                agentWritePreDrain(session.dc.document, entry.markdown, entry.position ?? 'append');
+                try {
+                  session.dc.document.transact(() => {
+                    const beforeBlocks = snapshotBlocks(session.dc.document);
+                    writeDivergence = applyAgentMarkdownWrite(
+                      session.dc.document,
+                      entry.markdown,
+                      entry.position ?? 'append',
+                      entryEmbedResolver,
+                      entryPrecomputed,
+                      agentWriteLossDetect(session),
+                      suppliedWriterId,
+                    );
+
+                    const changedBlocks =
+                      changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ??
+                      undefined;
+                    const activityMap = session.dc.document.getMap('agent-flash');
+                    activityMap.set(agentId, {
+                      agentId,
+                      timestamp: Date.now(),
+                      type: 'insert',
+                      description: `Added (${agentName}): ${entry.markdown.trim().slice(0, 50)}`,
+                      ...(changedBlocks !== undefined ? { changedBlocks } : {}),
+                    });
+                  }, session.origin);
+                } finally {
+                  disposeEntryEffectCapture();
+                }
+
+                recordContentDivergenceGate('agent-write-batch', writeDivergence);
+                recordContributor(
+                  resolvedDocName,
+                  agentId,
+                  agentName,
+                  colorSeed,
+                  undefined,
+                  buildAgentActor({ clientName, clientVersion, label }),
+                  storedSummary,
+                );
+                incrementAgentWriteCalls();
+                countNormalizedSummary(normalizedSummary);
+
+                const reconcileWarning = buildReconcileWarning(reconcile);
+                const warnings: AdvisoryWarning[] = [
+                  ...(writeDivergence !== undefined
+                    ? [toContentDivergenceWarning(writeDivergence)]
+                    : []),
+                  ...(reconcileWarning ? [reconcileWarning] : []),
+                ];
+                pending.push({
+                  index: i,
+                  docName: resolvedDocName,
+                  session,
+                  summaryResponse,
+                  warnings,
+                });
+              } catch (e) {
+                results[i] = classifyEntryFailure(resolvedDocName, e);
               }
-            } else if (flushOutcome?.kind === 'divergence') {
-              flushErrors.set(p.docName, {
-                type: 'urn:ok:error:disk-divergence',
-                title:
-                  'The document changed on disk after your edit was prepared; your edit was NOT applied. Re-read the document and retry.',
-              });
-            } else if (flushOutcome?.kind === 'stale-external-write') {
-              flushErrors.set(p.docName, staleExternalWriteProblem(p.docName));
-            } else {
-              flushErrors.set(p.docName, undefined);
             }
-          }
 
-          const admittedForLinks = await collectAdmittedDocNames();
-          for (const p of pending) {
-            if (flushErrors.get(p.docName) === undefined) admittedForLinks.add(p.docName);
-          }
-          const linkedFileExists = createLinkedFileExists();
-          const linkedFolderExists = createLinkedFolderExists();
-
-          let lastWrittenDoc: string | undefined;
-          for (const p of pending) {
-            const flushError = flushErrors.get(p.docName);
-            if (flushError !== undefined) {
-              results[p.index] = { status: 'error', docName: p.docName, error: flushError };
-              continue;
+            const flushErrors = new Map<string, BatchErrorResult['error'] | undefined>();
+            for (const p of pending) {
+              if (flushErrors.has(p.docName)) continue;
+              const flushOutcome = await flushDiskAndDetectOutcome(p.docName);
+              if (flushOutcome?.kind === 'failure') {
+                if (flushOutcome.failure.code === OK_DOC_REMOVED) {
+                  flushErrors.set(p.docName, removedDocProblem(flushOutcome.failure));
+                } else if (flushOutcome.failure.code === OK_PATH_UNRESOLVABLE) {
+                  flushErrors.set(p.docName, pathFaultProblem(flushOutcome.failure));
+                } else if (flushOutcome.failure.code === OK_STORE_REFUSED) {
+                  flushErrors.set(p.docName, refusedStoreProblem(flushOutcome.failure));
+                } else {
+                  const reason = classifyUploadErrno({
+                    code: flushOutcome.failure.code,
+                  } as NodeJS.ErrnoException);
+                  flushErrors.set(p.docName, {
+                    type: reason,
+                    title: 'Write applied in memory but failed to persist to disk.',
+                    detail: `${flushOutcome.failure.code ?? 'unknown error'}: ${flushOutcome.failure.message}. The content was NOT saved and will be lost if the server restarts.`,
+                  });
+                }
+              } else if (flushOutcome?.kind === 'divergence') {
+                flushErrors.set(p.docName, {
+                  type: 'urn:ok:error:disk-divergence',
+                  title:
+                    'The document changed on disk after your edit was prepared; your edit was NOT applied. Re-read the document and retry.',
+                });
+              } else if (flushOutcome?.kind === 'stale-external-write') {
+                flushErrors.set(p.docName, staleExternalWriteProblem(p.docName));
+              } else {
+                flushErrors.set(p.docName, undefined);
+              }
             }
-            const writtenSource = p.session.dc.document.getText('source').toString();
-            registerWrittenDocInFileIndex(p.docName, writtenSource);
-            results[p.index] = {
-              status: 'written',
-              docName: p.docName,
-              ...(p.summaryResponse ? { summary: p.summaryResponse } : {}),
-              ...(p.warnings.length > 0 ? { warnings: p.warnings } : {}),
-              ...projectWriteAdvisoryLinks(
-                computeWriteAdvisoryLinks(
-                  writtenSource,
+
+            const admittedForLinks = await collectAdmittedDocNames();
+            for (const p of pending) {
+              if (flushErrors.get(p.docName) === undefined) admittedForLinks.add(p.docName);
+            }
+            const linkedFileExists = createLinkedFileExists();
+            const linkedFolderExists = createLinkedFolderExists();
+
+            let lastWrittenDoc: string | undefined;
+            for (const p of pending) {
+              const flushError = flushErrors.get(p.docName);
+              if (flushError !== undefined) {
+                results[p.index] = { status: 'error', docName: p.docName, error: flushError };
+                continue;
+              }
+              const writtenSource = p.session.dc.document.getText('source').toString();
+              registerWrittenDocInFileIndex(p.docName, writtenSource);
+              results[p.index] = {
+                status: 'written',
+                docName: p.docName,
+                ...(p.summaryResponse ? { summary: p.summaryResponse } : {}),
+                ...(p.warnings.length > 0 ? { warnings: p.warnings } : {}),
+                ...projectWriteAdvisoryLinks(
+                  computeWriteAdvisoryLinks(
+                    writtenSource,
+                    p.docName,
+                    admittedForLinks,
+                    linkedFileExists,
+                    linkedFolderExists,
+                  ),
                   p.docName,
-                  admittedForLinks,
-                  linkedFileExists,
-                  linkedFolderExists,
+                  linkPolicy.suppressLogLinkAdvisories,
                 ),
-                p.docName,
-                linkPolicy.suppressLogLinkAdvisories,
-              ),
-            };
-            lastWrittenDoc = p.docName;
-          }
+              };
+              lastWrittenDoc = p.docName;
+            }
 
-          if (lastWrittenDoc !== undefined) {
-            agentFocusBroadcaster?.setFocus(agentId, {
-              agentName,
-              currentDoc: lastWrittenDoc,
-              writeKind: 'write',
-              ts: Date.now(),
-            });
-            onAgentWrite?.();
-          }
+            if (lastWrittenDoc !== undefined) {
+              agentFocusBroadcaster?.setFocus(agentId, {
+                agentName,
+                currentDoc: lastWrittenDoc,
+                writeKind: 'write',
+                ts: Date.now(),
+              });
+              onAgentWrite?.();
+            }
+          });
         } finally {
           agentPresenceBroadcaster?.touchMode(agentId, 'idle');
         }
