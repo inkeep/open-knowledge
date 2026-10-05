@@ -35,7 +35,7 @@ export interface HeadWatcherHandle {
 const QUIET_WINDOW_MS = 100;
 const BATCH_TIMEOUT_MS = 30_000;
 
-const WATCHED_FILES = new Set(['HEAD', 'MERGE_HEAD', 'ORIG_HEAD', 'index.lock']);
+const WATCHED_FILES = new Set(['HEAD', 'MERGE_HEAD', 'ORIG_HEAD', 'index', 'index.lock']);
 
 export interface ProjectHeadState {
   readonly branch: string | null;
