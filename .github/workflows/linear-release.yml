@@ -135,7 +135,7 @@ jobs:
       # idempotent.
       - name: Sync issues into the Linear release
         if: env.HAS_KEY == 'true'
-        uses: linear/linear-release-action@c0cb8354a362c24c6d3e0948f37fd66d07588e3f # v0
+        uses: linear/linear-release-action@c0cb8354a362c24c6d3e0948f37fd66d07588e3f # v0.14.5
         with:
           access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
           command: sync
@@ -155,7 +155,7 @@ jobs:
       # every stable. Nothing is left half-finished.
       - name: Advance to Beta stage (beta cut)
         if: env.HAS_KEY == 'true' && steps.derive.outputs.channel == 'beta'
-        uses: linear/linear-release-action@c0cb8354a362c24c6d3e0948f37fd66d07588e3f # v0
+        uses: linear/linear-release-action@c0cb8354a362c24c6d3e0948f37fd66d07588e3f # v0.14.5
         with:
           access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
           command: update
@@ -167,7 +167,7 @@ jobs:
       # Linear status automations.
       - name: Complete the release (stable only)
         if: env.HAS_KEY == 'true' && steps.derive.outputs.channel == 'stable'
-        uses: linear/linear-release-action@c0cb8354a362c24c6d3e0948f37fd66d07588e3f # v0
+        uses: linear/linear-release-action@c0cb8354a362c24c6d3e0948f37fd66d07588e3f # v0.14.5
         with:
           access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
           command: complete

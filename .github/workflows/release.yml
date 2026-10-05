@@ -214,7 +214,7 @@ jobs:
 
       - name: Ensure npm 11 for the cli's package surface check
         run: |
-          npm install -g npm@11
+          npm install -g npm@11.21.0
           echo "npm $(npm --version)"
 
       - name: Install
@@ -658,21 +658,13 @@ jobs:
           NOTES_B64: ${{ needs.build.outputs.notes_b64 }}
         run: |
           set -euo pipefail
-          # Idempotency: a workflow re-fire (manual recovery from a flaky
-          # npm publish, or workflow_dispatch re-run) should not explode
-          # on `git tag` already exists. Within the concurrency slot, a
-          # tag-exists state only arises on retry.
-          if git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
-            echo "Tag ${TAG} already exists locally; skipping git tag step."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag "$TAG"
-            # shellcheck disable=SC2016
-            git -c credential.helper= \
-              -c 'credential.helper=!f() { test "$1" = get || return 0; echo username=x-access-token; echo "password=$GH_TOKEN"; }; f' \
-              push origin "$TAG"
-          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          # shellcheck disable=SC2016
+          git -c credential.helper= \
+            -c 'credential.helper=!f() { test "$1" = get || return 0; echo username=x-access-token; echo "password=$GH_TOKEN"; }; f' \
+            push origin "$TAG"
 
           BODY_FILE=$(mktemp)
           if [[ -n "${NOTES_B64:-}" ]]; then

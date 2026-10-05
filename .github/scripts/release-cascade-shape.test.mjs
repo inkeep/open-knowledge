@@ -2092,6 +2092,20 @@ describe('the release App credential never shares a job with installed packages'
       expect(releaseWorkflow.permissions).toEqual({ contents: 'read' });
     });
 
+    test('the build job checks the package surface with the exact npm the publish job publishes with', () => {
+      const npmInstalls = (job) =>
+        steps(job).flatMap((step) =>
+          commands(step)
+            .split('\n')
+            .map((line) => line.trim())
+            .filter((line) => line.startsWith('npm install -g npm@')),
+        );
+      const published = npmInstalls(releaseWorkflow.jobs.publish);
+      expect(published).toHaveLength(1);
+      expect(published[0]).toMatch(/^npm install -g npm@\d+\.\d+\.\d+$/);
+      expect(npmInstalls(releaseWorkflow.jobs.build)).toEqual(published);
+    });
+
     test.each([
       ['an install in the publish job', (w) => w.jobs.publish.steps.push({ name: 'Install', run: 'pnpm install --frozen-lockfile' }), 'publish runs package code'],
       ['changeset publish in the publish job', (w) => replacePublishLine(w, 'pnpm exec changeset publish --tag "$TAG"'), 'publish runs package code'],
@@ -2227,7 +2241,7 @@ describe('the release App credential never shares a job with installed packages'
           `process.exit(${exitWhen} ? 1 : 0);`,
           '',
         ].join('\n');
-      writeFileSync(join(bin, 'git'), recorder("args[0] === 'rev-parse'"), { mode: 0o755 });
+      writeFileSync(join(bin, 'git'), recorder('false'), { mode: 0o755 });
       writeFileSync(join(bin, 'gh'), recorder("args[0] === 'release' && args[1] === 'view'"), { mode: 0o755 });
       let runs = 0;
       const tagStepRun = (workflow) => {
