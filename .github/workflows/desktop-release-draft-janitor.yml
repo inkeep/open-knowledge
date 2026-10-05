@@ -57,6 +57,7 @@ concurrency:
 jobs:
   sweep:
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 10
     env:
       MAX_SWEEP_PER_RUN: "5"

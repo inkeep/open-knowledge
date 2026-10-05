@@ -123,6 +123,7 @@ jobs:
   # as it was; unifying it onto the bundle is a separate, QA-able change.)
   prepare:
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 30
     permissions:
       # write, not read, for one reason: the "Assert the target Release
@@ -288,18 +289,6 @@ jobs:
           node-version: "24"
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      - name: Get pnpm store directory
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
-      - name: Hash the lockfile for the pnpm store key
-        id: lockfile
-        shell: bash
-        run: echo "hash=${{ hashFiles('pnpm-lock.yaml') }}" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-ok-pnpm-store-${{ steps.lockfile.outputs.hash }}
-          restore-keys: |
-            ${{ runner.os }}-ok-pnpm-store-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -495,6 +484,7 @@ jobs:
     # electron-builder compiles `build/okglass.icon` → `Assets.car` via
     # `actool`, which only ships with Xcode 26+.
     runs-on: macos-26
+    cache-mode: none
     timeout-minutes: 75
     permissions:
       # Explicit so a future step needing more fails at review, not with a
@@ -558,19 +548,6 @@ jobs:
           node-version: "24"
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      - name: Get pnpm store directory
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
-      - name: Hash the lockfile for the pnpm store key
-        id: lockfile
-        shell: bash
-        run: echo "hash=${{ hashFiles('pnpm-lock.yaml') }}" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-ok-pnpm-store-${{ steps.lockfile.outputs.hash }}
-          restore-keys: |
-            ${{ runner.os }}-ok-pnpm-store-
 
       - name: Install dependencies
         env:
@@ -1036,6 +1013,7 @@ jobs:
       matrix:
         variant: ${{ fromJSON(contains(github.event.client_payload.release_tag || inputs.release_tag, '-beta.') && '["legacy-beta","beta"]' || '["stable"]') }}
     runs-on: windows-latest
+    cache-mode: none
     timeout-minutes: 45
     env:
       OK_DESKTOP_VARIANT: ${{ matrix.variant }}
@@ -1064,18 +1042,6 @@ jobs:
           node-version: "24"
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      - name: Get pnpm store directory
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
-      - name: Hash the lockfile for the pnpm store key
-        id: lockfile
-        shell: bash
-        run: echo "hash=${{ hashFiles('pnpm-lock.yaml') }}" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-ok-pnpm-store-${{ steps.lockfile.outputs.hash }}
-          restore-keys: |
-            ${{ runner.os }}-ok-pnpm-store-
 
       - name: Install dependencies
         env:
@@ -1626,6 +1592,7 @@ jobs:
       (needs.build-windows.result == 'success' || !contains(needs.prepare.outputs.required, 'windows')) &&
       (needs.build-linux.result == 'success' || !contains(needs.prepare.outputs.required, 'linux'))
     runs-on: ubuntu-latest
+    cache-mode: none
     # Sized to the upload retry envelope: 3 bounded 300s attempts + backoffs
     # (see the upload step) plus download/verify overhead.
     timeout-minutes: 20
@@ -1819,6 +1786,7 @@ jobs:
       needs.publish-assets.result == 'success' &&
       needs.build-macos.result == 'success'
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 15
     permissions:
       # Body edit, draft→published flip, and the repository_dispatch POST all
@@ -2095,6 +2063,7 @@ jobs:
     needs: finalize
     if: ${{ !cancelled() && needs.finalize.outputs.published == 'true' }}
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 5
     permissions:
       contents: write
@@ -2141,6 +2110,7 @@ jobs:
     # below treat that as "not stable" (FR5c skips, STUCK-DRAFT still logs).
     if: ${{ !cancelled() && needs.finalize.result != 'success' }}
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 10
     permissions:
       # Reads scripts from the checkout, posts to a webhook — nothing more.

@@ -107,6 +107,7 @@ jobs:
   read-releases:
     name: Read the previous beta Release
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 5
     permissions:
       contents: write
@@ -554,6 +555,7 @@ jobs:
     needs: build
     if: github.event.action == 'publish-stable' || needs.build.outputs.run_beta == 'true'
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 10
     permissions:
       contents: write
@@ -712,6 +714,7 @@ jobs:
     needs: [build, release]
     if: github.event.action == 'publish-stable' || needs.build.outputs.run_beta == 'true'
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 10
     permissions:
       id-token: write

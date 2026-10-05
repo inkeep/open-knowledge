@@ -30,6 +30,7 @@ jobs:
       (github.event.client_payload.environment == 'production' &&
       github.event.client_payload.project.name == 'open-knowledge-docs')
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 10
     steps:
       - name: Mark candidate reader check pending

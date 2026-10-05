@@ -57,6 +57,7 @@ jobs:
     if: github.event.pull_request.head.repo.full_name != github.repository
     name: Relay the pull request number to agents-private
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 5
     steps:
       - name: Generate agents-private dispatch token

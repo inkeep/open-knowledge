@@ -73,6 +73,7 @@ jobs:
       group: reporter-write-back-${{ matrix.channel }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 10
     env:
       WRITE_BACK_CHANNEL: ${{ matrix.channel }}

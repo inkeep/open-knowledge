@@ -184,6 +184,7 @@ jobs:
     name: Evaluate 24h soak + business-hours gate
     needs: read-bumps
     runs-on: ubuntu-latest
+    cache-mode: read
     timeout-minutes: 10
     outputs:
       # Seam for the FR5a fast tier: the armed soak-tier verdict nominates a
@@ -435,6 +436,7 @@ jobs:
     needs: [evaluate, smoke-fast-tier-candidate]
     if: needs.smoke-fast-tier-candidate.outputs.verdict == 'pass'
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 10
     steps:
       - name: Dispatch promote-stable for the smoke-proven candidate
@@ -575,6 +577,7 @@ jobs:
     needs: [aggregate-smoke-alarm, read-smoke-incident]
     if: needs.aggregate-smoke-alarm.outputs.observed == 'true'
     runs-on: ubuntu-latest
+    cache-mode: write-only
     timeout-minutes: 10
     permissions:
       contents: read

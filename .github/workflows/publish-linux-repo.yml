@@ -59,6 +59,7 @@ jobs:
     # createrepo-c, and rpm from the runner image's Ubuntu release — a
     # surprise image bump must not land mid-release-window.
     runs-on: ubuntu-24.04
+    cache-mode: none
     timeout-minutes: 20
     env:
       # inputs.tag is free-text: NEVER interpolate it into run: blocks

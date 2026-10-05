@@ -150,6 +150,7 @@ jobs:
     name: ${{ inputs.dry_run && 'Plan' || 'Ship' }} point release (${{ inputs.mode }})
     needs: read-bumps
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 20
     steps:
       - name: Generate GitHub App token

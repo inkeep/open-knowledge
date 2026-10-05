@@ -191,6 +191,7 @@ jobs:
     if: inputs.platforms == 'both' || inputs.platforms == 'windows'
     needs: prepare
     runs-on: windows-latest
+    cache-mode: none
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -202,19 +203,6 @@ jobs:
       - uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
           install: false
-      - name: Get pnpm store directory
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
-      - name: Hash the lockfile for the pnpm store key
-        id: lockfile
-        shell: bash
-        run: echo "hash=${{ hashFiles('pnpm-lock.yaml') }}" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-ok-pnpm-store-${{ steps.lockfile.outputs.hash }}
-          restore-keys: |
-            ${{ runner.os }}-ok-pnpm-store-
 
       - name: Install dependencies
         env:

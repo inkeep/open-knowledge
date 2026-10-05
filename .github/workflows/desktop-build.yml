@@ -80,6 +80,7 @@ jobs:
     # `build/okglass.icon` into `Assets.car` via Apple's `actool`, which only
     # ships with Xcode 26+.
     runs-on: macos-26
+    cache-mode: none
     # 45 min budget. Local `pnpm run build:mac:unsigned` baseline on M3 Max
     # is ~3-4 min wall-clock; CI runners are ~2× slower; signing +
     # notarization adds 2-5 min of Apple round-trip on top. 45 min leaves
@@ -98,19 +99,6 @@ jobs:
       - uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
           install: false
-      - name: Get pnpm store directory
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
-      - name: Hash the lockfile for the pnpm store key
-        id: lockfile
-        shell: bash
-        run: echo "hash=${{ hashFiles('pnpm-lock.yaml') }}" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-ok-pnpm-store-${{ steps.lockfile.outputs.hash }}
-          restore-keys: |
-            ${{ runner.os }}-ok-pnpm-store-
 
       - name: Install dependencies
         # ELECTRON_SKIP_REBUILD=0 overrides the default CI skip in

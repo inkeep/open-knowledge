@@ -88,6 +88,7 @@ concurrency:
 jobs:
   stamp:
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 10
     env:
       # Secrets are unavailable in step/job `if` on some event types, so map

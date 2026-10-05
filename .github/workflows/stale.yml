@@ -15,6 +15,7 @@ permissions:
 jobs:
   stale:
     runs-on: ubuntu-latest
+    cache-mode: none
 
     steps:
       - name: Mark stale pull requests

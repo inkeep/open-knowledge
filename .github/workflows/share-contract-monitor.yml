@@ -16,6 +16,7 @@ concurrency:
 jobs:
   probe:
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 10
     steps:
       - name: Checkout

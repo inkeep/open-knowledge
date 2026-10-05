@@ -178,6 +178,7 @@ jobs:
     name: Promote ${{ inputs.beta_tag || 'newest beta' }} to stable
     needs: read-bumps
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 20
     steps:
       - name: Generate GitHub App token

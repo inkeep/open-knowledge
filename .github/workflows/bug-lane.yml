@@ -106,6 +106,7 @@ jobs:
     name: Evaluate qualifying fixes
     needs: read-bumps
     runs-on: ubuntu-latest
+    cache-mode: none
     timeout-minutes: 10
     steps:
       - name: Checkout with full history and tags

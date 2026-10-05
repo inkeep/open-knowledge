@@ -11,6 +11,7 @@ import { parse } from 'yaml';
 import { buildSlackPayload } from './build-smoke-alert-payload.mjs';
 import { selectPromotion } from './select-beta-to-promote.mjs';
 import { smokePackagedDmg, VERDICT } from './smoke-packaged-dmg.mjs';
+import { credentialReasons, holdsCredential } from './workflow-credentials.test-helper.mjs';
 
 const WORKFLOWS = join(dirname(fileURLToPath(import.meta.url)), '..', 'workflows');
 const read = (name) => readFileSync(join(WORKFLOWS, name), 'utf8');
@@ -1669,18 +1670,6 @@ describe('the release App credential never shares a job with installed packages'
         ...kept.filter((step) => SETUP_NODE.test(step.uses ?? '') && !setupNodeRestoresNothing(step)).map((step) => step.uses),
       ];
     };
-    const writesWith = (permissions) =>
-      permissions === undefined ||
-      permissions === 'write-all' ||
-      (typeof permissions === 'object' && Object.values(permissions).includes('write'));
-    const otherSecrets = (value) =>
-      expressions(value)
-        .map(({ expr }) => expr.replace(/\bsecrets\.GITHUB_TOKEN\b/g, ''))
-        .filter((expr) => /\bsecrets\b/.test(expr));
-    const holdsCredential = (workflow, job) =>
-      writesWith(job.permissions ?? workflow.permissions) ||
-      otherSecrets(job).length > 0 ||
-      otherSecrets(workflow.env ?? {}).length > 0;
     const SANCTIONED_IF =
       /^(?:always\(\) && )?needs\.smoke-fast-tier-candidate\.outputs\.verdict == '(?:pass|fail)'$/;
     const readerOutputReads = (job, readers) => {
@@ -1719,10 +1708,7 @@ describe('the release App credential never shares a job with installed packages'
       expect(installers.length).toBe(4);
       for (const { file, id, job, workflow } of installers) {
         expect(job.permissions, `${file}#${id}`).toBeDefined();
-        expect(writesWith(job.permissions), `${file}#${id}`).toBe(false);
-        expect(otherSecrets(job), `${file}#${id}`).toEqual([]);
-        expect(otherSecrets(workflow.env ?? {}), file).toEqual([]);
-        expect(holdsCredential(workflow, job), `${file}#${id}`).toBe(false);
+        expect(credentialReasons(workflow, job), `${file}#${id}`).toEqual([]);
       }
     });
 
@@ -1876,6 +1862,10 @@ describe('the release App credential never shares a job with installed packages'
         'a secret in an action input': { ...readOnly, steps: [{ uses: 'x/y@v1', with: { token: '${{ secrets.APP_KEY }}' } }] },
         'a secret in job-level env': { ...readOnly, env: { KEY: '${{ secrets.LINEAR_API_KEY }}' } },
         'a secret in workflow-level env': [{ ...workflow, env: { KEY: '${{ secrets.LINEAR_API_KEY }}' } }, readOnly],
+        'a secret in a bare if': { ...readOnly, steps: [{ if: "secrets.SLACK_WEBHOOK_URL != ''", run: 'true' }] },
+        'id-token write': { permissions: { 'id-token': 'write' } },
+        'an App token step': { ...readOnly, steps: [{ uses: 'actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3' }] },
+        'inherited secrets on a reusable call': { ...readOnly, uses: './.github/workflows/x.yml', secrets: 'inherit' },
       };
       for (const [form, value] of Object.entries(holders)) {
         const [wf, job] = Array.isArray(value) ? value : [workflow, value];
