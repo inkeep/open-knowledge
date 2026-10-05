@@ -58,7 +58,9 @@ import {
   nativeSubscriptionDirs,
   nativeSubscriptionOn,
 } from './parcel-watcher-double.test-helper.ts';
+import { startPolledPathWatcher } from './polled-path-watcher.ts';
 import { createServer, type ServerInstance } from './server-factory.ts';
+import * as skillPlacements from './skill-placements.ts';
 import { mutateSkillPlacementsStore, readSkillPlacementsStore } from './skill-placements-store.ts';
 
 vi.mock('@parcel/watcher', async () => {
@@ -1402,10 +1404,39 @@ function startSkillServer(home: string): ServerInstance {
   });
 }
 
-async function deliverRawSkillCreate(path: string): Promise<void> {
-  await nativeSubscriptionOn(contentDir).deliver([{ type: 'create', path }]);
-  await vi.runAllTimersAsync();
-  await new Promise<void>((resolve) => setImmediate(resolve));
+async function startOpenPollingClockInput(): Promise<() => Promise<void>> {
+  return startPolledPathWatcher({
+    listPaths: async () => [],
+    onEvent: () => {},
+    onError: () => {},
+  });
+}
+
+async function deliverRawSkillEvents(server: ServerInstance, events: Event[]): Promise<void> {
+  const copies = vi.spyOn(skillPlacements, 'resyncRecordedSkillCopies');
+  const rebuilds = vi.spyOn(server.contentFilter, 'rebuildIgnorePatterns');
+  try {
+    await nativeSubscriptionOn(contentDir).deliver(events);
+    const refresh = await vi.waitUntil(() =>
+      copies.mock.results.find((result, index) => {
+        const [projectDir, root, override] = copies.mock.calls[index];
+        return (
+          result.type === 'return' &&
+          projectDir === contentDir &&
+          root === contentDir &&
+          override === undefined
+        );
+      }),
+    );
+    await Promise.allSettled([refresh.value, ...rebuilds.mock.results.map(({ value }) => value)]);
+  } finally {
+    copies.mockRestore();
+    rebuilds.mockRestore();
+  }
+}
+
+async function deliverRawSkillCreate(server: ServerInstance, path: string): Promise<void> {
+  await deliverRawSkillEvents(server, [{ type: 'create', path }]);
 }
 
 test.each([{ fault: 'ledger invalid JSON' }, { fault: 'bundle subdirectory unreadable' }] as const)(
@@ -1414,6 +1445,7 @@ test.each([{ fault: 'ledger invalid JSON' }, { fault: 'bundle subdirectory unrea
     vi.useRealTimers();
     const { home, ledger, references } = prepareCustomRootSkillProject();
     let server: ServerInstance | undefined;
+    let stopPolling: (() => Promise<void>) | undefined;
     try {
       server = startSkillServer(home);
       await server.ready;
@@ -1437,7 +1469,10 @@ test.each([{ fault: 'ledger invalid JSON' }, { fault: 'bundle subdirectory unrea
 
       admissionFault.observed = false;
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-      await deliverRawSkillCreate(writeSkillFixture(rawStandardSkillDir));
+      stopPolling = await startOpenPollingClockInput();
+      await expect(
+        deliverRawSkillCreate(server, writeSkillFixture(rawStandardSkillDir)),
+      ).resolves.toBeUndefined();
       if (fault !== 'ledger invalid JSON') expect(admissionFault.observed).toBe(true);
       expect.soft(filter.isExcluded(`${customRootSkillDir}/SKILL.md`)).toBe(false);
       expect.soft(filter.isExcluded(`${rawStandardSkillDir}/SKILL.md`)).toBe(false);
@@ -1446,6 +1481,7 @@ test.each([{ fault: 'ledger invalid JSON' }, { fault: 'bundle subdirectory unrea
       );
     } finally {
       clearAdmissionDenial();
+      await stopPolling?.();
       vi.useRealTimers();
       await server?.destroy();
     }
@@ -1500,6 +1536,7 @@ test('a denied ledger read keeps the prior admission until server refreshes can 
   vi.useRealTimers();
   const { home, ledger } = prepareCustomRootSkillProject();
   let server: ServerInstance | undefined;
+  let stopPolling: (() => Promise<void>) | undefined;
   try {
     server = startSkillServer(home);
     await server.ready;
@@ -1515,19 +1552,21 @@ test('a denied ledger read keeps the prior admission until server refreshes can 
 
     admissionFault.observed = false;
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    stopPolling = await startOpenPollingClockInput();
     const rawPath = writeSkillFixture(rawStandardSkillDir);
-    await deliverRawSkillCreate(rawPath);
+    await expect(deliverRawSkillCreate(server, rawPath)).resolves.toBeUndefined();
     expect(admissionFault.observed).toBe(true);
     expect.soft(filter.isExcluded(`${customRootSkillDir}/SKILL.md`)).toBe(false);
     expect.soft(filter.inPlaceSkillDirsFingerprint()).toBe(customRootSkillDir);
 
     clearAdmissionDenial();
-    await deliverRawSkillCreate(rawPath);
+    await expect(deliverRawSkillCreate(server, rawPath)).resolves.toBeUndefined();
     expect(filter.inPlaceSkillDirsFingerprint()).toBe(
       [customRootSkillDir, refreshedStandardSkillDir, rawStandardSkillDir].sort().join('\n'),
     );
   } finally {
     clearAdmissionDenial();
+    await stopPolling?.();
     vi.useRealTimers();
     await server?.destroy();
   }
@@ -1537,6 +1576,7 @@ test('an invalid-JSON ledger keeps the preferred copy of a duplicate skill while
   vi.useRealTimers();
   const { home, ledger } = preparePreferredDuplicateSkillProject();
   let server: ServerInstance | undefined;
+  let stopPolling: (() => Promise<void>) | undefined;
   try {
     server = startSkillServer(home);
     await server.ready;
@@ -1556,12 +1596,16 @@ test('an invalid-JSON ledger keeps the preferred copy of a duplicate skill while
       .toBe(fingerprintOf(preferredDuplicateSkillDir, refreshedStandardSkillDir));
 
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    await deliverRawSkillCreate(writeSkillFixture(rawStandardSkillDir));
+    stopPolling = await startOpenPollingClockInput();
+    await expect(
+      deliverRawSkillCreate(server, writeSkillFixture(rawStandardSkillDir)),
+    ).resolves.toBeUndefined();
     expect.soft(filter.isExcluded(`${defaultDuplicateSkillDir}/SKILL.md`)).toBe(true);
     expect(filter.inPlaceSkillDirsFingerprint()).toBe(
       fingerprintOf(preferredDuplicateSkillDir, refreshedStandardSkillDir, rawStandardSkillDir),
     );
   } finally {
+    await stopPolling?.();
     vi.useRealTimers();
     await server?.destroy();
   }
@@ -1577,6 +1621,7 @@ test.each([
     const { home, ledger } = preparePreferredDuplicateSkillProject();
     for (const dir of extraCopies) writeSkillFixture(dir);
     let server: ServerInstance | undefined;
+    let stopPolling: (() => Promise<void>) | undefined;
     try {
       server = startSkillServer(home);
       await server.ready;
@@ -1595,12 +1640,16 @@ test.each([
       expect.soft(filter.inPlaceSkillDirsFingerprint()).toBe(defaultDuplicateSkillDir);
 
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-      await deliverRawSkillCreate(writeSkillFixture(rawStandardSkillDir));
+      stopPolling = await startOpenPollingClockInput();
+      await expect(
+        deliverRawSkillCreate(server, writeSkillFixture(rawStandardSkillDir)),
+      ).resolves.toBeUndefined();
       for (const dir of extraCopies) expect.soft(filter.isExcluded(`${dir}/SKILL.md`)).toBe(true);
       expect(filter.inPlaceSkillDirsFingerprint()).toBe(
         fingerprintOf(defaultDuplicateSkillDir, rawStandardSkillDir),
       );
     } finally {
+      await stopPolling?.();
       vi.useRealTimers();
       await server?.destroy();
     }
@@ -1647,6 +1696,7 @@ test('an invalid-JSON ledger never admits a standard-root copy beside its retain
   vi.useRealTimers();
   const { home, ledger } = prepareCustomRootSkillProject();
   let server: ServerInstance | undefined;
+  let stopPolling: (() => Promise<void>) | undefined;
   try {
     server = startSkillServer(home);
     await server.ready;
@@ -1669,12 +1719,16 @@ test('an invalid-JSON ledger never admits a standard-root copy beside its retain
       .toBe(fingerprintOf(customRootSkillDir, refreshedStandardSkillDir));
 
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    await deliverRawSkillCreate(writeSkillFixture(rawStandardSkillDir));
+    stopPolling = await startOpenPollingClockInput();
+    await expect(
+      deliverRawSkillCreate(server, writeSkillFixture(rawStandardSkillDir)),
+    ).resolves.toBeUndefined();
     expect.soft(filter.isExcluded(`${standardCopyOfCustomRootSkillDir}/SKILL.md`)).toBe(true);
     expect(filter.inPlaceSkillDirsFingerprint()).toBe(
       fingerprintOf(customRootSkillDir, refreshedStandardSkillDir, rawStandardSkillDir),
     );
   } finally {
+    await stopPolling?.();
     vi.useRealTimers();
     await server?.destroy();
   }
@@ -1868,6 +1922,7 @@ test('server startup and raw skill refresh retain admission across an unreadable
   let connection:
     | Awaited<ReturnType<ServerInstance['hocuspocus']['openDirectConnection']>>
     | undefined;
+  let stopPolling: (() => Promise<void>) | undefined;
   denyAdmission('readdir', skillRoot);
   try {
     server = createServer({
@@ -1894,28 +1949,30 @@ test('server startup and raw skill refresh retain admission across an unreadable
 
     clearAdmissionDenial();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    await subscription.deliver([{ type: 'update', path: skillPath }]);
-    await vi.runAllTimersAsync();
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    stopPolling = await startOpenPollingClockInput();
+    await expect(
+      deliverRawSkillEvents(server, [{ type: 'update', path: skillPath }]),
+    ).resolves.toBeUndefined();
     expect(server.contentFilter.isExcluded(`${skillDir}/SKILL.md`)).toBe(false);
 
     denyAdmission('readdir', skillRoot);
-    await subscription.deliver([{ type: 'update', path: skillPath }]);
-    await vi.runAllTimersAsync();
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await expect(
+      deliverRawSkillEvents(server, [{ type: 'update', path: skillPath }]),
+    ).resolves.toBeUndefined();
     expect(admissionFault.observed).toBe(true);
     expect.soft(server.contentFilter.isExcluded(`${skillDir}/SKILL.md`)).toBe(false);
 
     clearAdmissionDenial();
     const laterDir = '.claude/skills/later';
     const laterPath = writeSkillFixture(laterDir);
-    await subscription.deliver([{ type: 'create', path: laterPath }]);
-    await vi.runAllTimersAsync();
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await expect(
+      deliverRawSkillEvents(server, [{ type: 'create', path: laterPath }]),
+    ).resolves.toBeUndefined();
     expect(server.contentFilter.isExcluded(`${skillDir}/SKILL.md`)).toBe(false);
     expect(server.contentFilter.isExcluded(`${laterDir}/SKILL.md`)).toBe(false);
   } finally {
     clearAdmissionDenial();
+    await stopPolling?.();
     vi.useRealTimers();
     await connection?.disconnect();
     await server?.destroy();
