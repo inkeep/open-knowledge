@@ -1,7 +1,8 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 import { loadChangesets, maxReleaseType } from './compute-next-beta.mjs';
 import {
@@ -10,6 +11,9 @@ import {
   computeStablePromotion,
   evaluateAnchorGuard,
   gitAt,
+  parseBumpVerdicts,
+  recordBumpVerdicts,
+  withBumpVerdicts,
 } from './compute-stable-version.mjs';
 import { gitCleanEnv } from './git-clean-env.mjs';
 
@@ -430,5 +434,126 @@ describe('gitAt reads a commit\'s changesets the way Changesets reads the same t
   test('a changeset Changesets cannot parse fails the read instead of counting as no bump', () => {
     const root = committedChangesets({ 'broken.md': bump(`"${OK}": Major`) });
     expect(() => gitAt(root).bumpTypeOf('HEAD', 'broken')).toThrow();
+  });
+});
+
+describe('parseBumpVerdicts', () => {
+  test('reads a blob-to-bump object, keeping a null bump', () => {
+    expect(parseBumpVerdicts('{"aaa":"minor","bbb":null}')).toEqual(
+      new Map([
+        ['aaa', 'minor'],
+        ['bbb', null],
+      ]),
+    );
+  });
+
+  test.each([
+    ['', /^BUMP_VERDICTS is empty: the read-bumps job wrote no bump_verdicts output/],
+    ['  \n', /^BUMP_VERDICTS is empty/],
+    ['{', /^bump verdicts are not JSON/],
+    ['[]', /JSON object/],
+    ['null', /JSON object/],
+    ['{"aaa":"huge"}', /aaa is "huge"/],
+  ])('refuses %j', (raw, message) => {
+    expect(() => parseBumpVerdicts(raw)).toThrow(message);
+  });
+});
+
+describe('bump verdicts carry a read from one job to another by blob id', () => {
+  test('a verdict recorded where the reader ran answers the same changeset where it cannot', () => {
+    const root = committedChangesets({ 'quoted.md': bump(`"${OK}": "minor"`), 'plain.md': bump(`"${OK}": patch`) });
+    const verdicts = new Map();
+    const reading = recordBumpVerdicts(gitAt(root), verdicts);
+    expect(reading.bumpTypeOf('HEAD', 'quoted')).toBe('minor');
+    expect([...verdicts.values()]).toEqual(['minor']);
+
+    const noReader = withBumpVerdicts(
+      {
+        ...gitAt(root),
+        bumpTypeOf: () => {
+          throw new Error('the Changesets reader is not installed in this job');
+        },
+      },
+      verdicts,
+    );
+    expect(noReader.bumpTypeOf('HEAD', 'quoted')).toBe('minor');
+    expect(() => noReader.bumpTypeOf('HEAD', 'plain')).toThrow(/no bump verdict for \.changeset\/plain\.md/);
+  });
+});
+
+describe('the promote job computes the stable version with no node_modules at all', () => {
+  const SCRIPTS = dirname(fileURLToPath(import.meta.url));
+  const SCRIPT_FILES = ['compute-stable-version.mjs', 'compute-next-beta.mjs', 'git-clean-env.mjs'];
+
+  function promotionFixture() {
+    const root = mkdtempSync(join(tmpdir(), 'stable-version-promotion-'));
+    repos.push(root);
+    const commit = (name, body, tagName) => {
+      mkdirSync(join(root, '.changeset'), { recursive: true });
+      writeFileSync(join(root, '.changeset', name), body);
+      git(root, ['add', '-A']);
+      git(root, ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', name]);
+      git(root, ['tag', tagName]);
+    };
+    git(root, ['init', '-q', '-b', 'main']);
+    commit('keep.md', bump(`"${OK}": patch`), 'v0.30.1');
+    commit('new-thing.md', bump(`"${OK}": minor`), 'v0.30.2-beta.1');
+    return root;
+  }
+
+  function isolatedScripts() {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'stable-version-no-node-modules-')));
+    repos.push(dir);
+    mkdirSync(join(dir, 'scripts'));
+    for (const file of SCRIPT_FILES) copyFileSync(join(SCRIPTS, file), join(dir, 'scripts', file));
+    return join(dir, 'scripts', 'compute-stable-version.mjs');
+  }
+
+  function run(script, cwd, env = {}) {
+    const output = join(mkdtempSync(join(tmpdir(), 'stable-version-output-')), 'github-output');
+    repos.push(dirname(output));
+    writeFileSync(output, '');
+    const { BUMP_VERDICTS: _inherited, ...base } = gitCleanEnv();
+    const res = spawnSync(process.execPath, [script, 'v0.30.2-beta.1'], {
+      cwd,
+      encoding: 'utf8',
+      env: { ...base, GITHUB_OUTPUT: output, ...env },
+    });
+    const outputs = Object.fromEntries(
+      readFileSync(output, 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => [line.split('=')[0], line.split('=').slice(1).join('=')]),
+    );
+    return { ...res, outputs };
+  }
+
+  test('with the reader job verdicts it writes every output the reader job wrote', () => {
+    const root = promotionFixture();
+    const withReader = run(join(SCRIPTS, 'compute-stable-version.mjs'), root);
+    expect(withReader.status, withReader.stderr).toBe(0);
+    expect(withReader.outputs.stable_tag).toBe('v0.31.0');
+    expect(Object.values(JSON.parse(withReader.outputs.bump_verdicts))).toEqual(['minor']);
+
+    const withoutReader = run(isolatedScripts(), root, { BUMP_VERDICTS: withReader.outputs.bump_verdicts });
+    expect(withoutReader.status, withoutReader.stderr).toBe(0);
+    const { bump_verdicts: recorded, ...promotion } = withReader.outputs;
+    expect(recorded).not.toBe('{}');
+    expect(withoutReader.outputs).toEqual({ ...promotion, bump_verdicts: '{}' });
+  });
+
+  test('without verdicts the same isolated copy cannot load the reader, so the run above proves it never tried', () => {
+    const root = promotionFixture();
+    const res = run(isolatedScripts(), root);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toMatch(/@changesets\/cli/);
+  });
+
+  test('an empty BUMP_VERDICTS stops the run with an error naming the read-bumps output, and writes nothing', () => {
+    const root = promotionFixture();
+    const res = run(isolatedScripts(), root, { BUMP_VERDICTS: '' });
+    expect(res.status).toBe(1);
+    expect(res.stderr).toMatch(/BUMP_VERDICTS is empty: the read-bumps job wrote no bump_verdicts output/);
+    expect(res.outputs).toEqual({});
   });
 });

@@ -1,7 +1,7 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: shell and GitHub expression fixtures must remain literal.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -1286,8 +1286,17 @@ describe('every job that reads changesets installs the Changesets reader first',
       importsReader(resolve(dirname(file), spec), seen),
     );
   };
-  const readsChangesets = (step) =>
-    [...(step.run ?? '').matchAll(/[\w./-]+\.mjs\b/g)].some(([path]) => importsReader(resolve(OK_ROOT, path)));
+  const VERDICT_MODE_SCRIPTS = new Set([
+    join(OK_ROOT, 'scripts', 'compute-stable-version.mjs'),
+    join(OK_ROOT, '.github', 'scripts', 'point-release-plan.mjs'),
+  ]);
+  const readsChangesets = (step) => {
+    const readers = [...(step.run ?? '').matchAll(/[\w./-]+\.mjs\b/g)]
+      .map(([path]) => resolve(OK_ROOT, path))
+      .filter((file) => importsReader(file));
+    if (readers.length === 0) return false;
+    return step.env?.BUMP_VERDICTS === undefined || readers.some((file) => !VERDICT_MODE_SCRIPTS.has(file));
+  };
   const readerJobs = readdirSync(WORKFLOWS)
     .filter((file) => file.endsWith('.yml'))
     .flatMap((file) =>
@@ -1301,8 +1310,8 @@ describe('every job that reads changesets installs the Changesets reader first',
     expect(readerJobs.map(({ job }) => job)).toEqual(
       expect.arrayContaining([
         'bug-lane.yml#bug-lane',
-        'point-release.yml#point-release',
-        'promote-stable.yml#promote',
+        'point-release.yml#read-bumps',
+        'promote-stable.yml#read-bumps',
         'release.yml#release',
         'select-beta-to-promote.yml#evaluate',
       ]),
@@ -1314,6 +1323,309 @@ describe('every job that reads changesets installs the Changesets reader first',
       .filter(({ before }) => !before.some((step) => /\bpnpm install\b/.test(step.run ?? '')))
       .map(({ job }) => job);
     expect(uninstalled).toEqual([]);
+  });
+
+  test('BUMP_VERDICTS exempts only a script that implements verdict mode', () => {
+    const env = { BUMP_VERDICTS: '${{ needs.read-bumps.outputs.bump_verdicts }}' };
+    expect(readsChangesets({ env, run: 'node scripts/compute-stable-version.mjs "$BETA_TAG"' })).toBe(false);
+    expect(readsChangesets({ env, run: 'node .github/scripts/point-release-plan.mjs' })).toBe(false);
+    expect(readsChangesets({ env, run: 'node scripts/compute-next-beta.mjs' })).toBe(true);
+    expect(
+      readsChangesets({ env, run: 'node scripts/compute-stable-version.mjs v1\nnode scripts/compute-next-beta.mjs' }),
+    ).toBe(true);
+    expect(readsChangesets({ run: 'node scripts/compute-stable-version.mjs "$BETA_TAG"' })).toBe(true);
+  });
+});
+
+describe('the release App credential never shares a job with installed packages', () => {
+  const OK_ROOT = join(WORKFLOWS, '..', '..');
+  const credentialWorkflows = ['point-release.yml', 'promote-stable.yml'];
+  const jobs = credentialWorkflows.flatMap((file) =>
+    Object.entries(parse(read(file)).jobs).map(([id, job]) => ({ name: `${file}#${id}`, job })),
+  );
+  const steps = (job) => job.steps ?? [];
+  const commands = (step) =>
+    (step.run ?? '')
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('#'))
+      .join('\n');
+  const COMMAND_START = '(?:^|[;&|({`])';
+  const COMMAND_PREFIX =
+    '(?:if|elif|then|do|else|while|until|!|(?:exec|sudo|xargs|env|time|nohup|command)(?:\\s+-\\S+)*|timeout(?:\\s+-\\S+)*\\s+\\S+|[A-Za-z_]\\w*=\\S*)';
+  const PACKAGE_RUNNER = '(?:pnpm|pnpx|npm|npx|yarn|bun|bunx|corepack)\\b';
+  const PACKAGE_COMMAND = new RegExp(`${COMMAND_START}\\s*(?:${COMMAND_PREFIX}\\s+)*${PACKAGE_RUNNER}`, 'm');
+  const PACKAGE_FREE_ACTIONS = [
+    'actions/checkout@',
+    'actions/setup-node@',
+    'actions/create-github-app-token@',
+    'actions/upload-artifact@',
+  ];
+  const compositeSteps = (uses, root) => {
+    const dir = join(root, uses);
+    const file = ['action.yml', 'action.yaml'].map((name) => join(dir, name)).find((path) => existsSync(path));
+    if (!file) throw new Error(`local action ${uses} has no action.yml`);
+    const action = parse(readFileSync(file, 'utf8'));
+    return action.runs?.using === 'composite' ? action.runs.steps : null;
+  };
+  const packageRoutes = (stepList, root = OK_ROOT, seen = new Set()) =>
+    stepList.flatMap((step) => {
+      const routes = PACKAGE_COMMAND.test(commands(step)) ? [step.name ?? step.run] : [];
+      if (step.uses?.startsWith('./')) {
+        if (seen.has(step.uses)) return routes;
+        const inner = compositeSteps(step.uses, root);
+        return inner === null
+          ? [...routes, step.uses]
+          : [...routes, ...packageRoutes(inner, root, new Set([...seen, step.uses])).map((r) => `${step.uses} > ${r}`)];
+      }
+      if (step.uses && !PACKAGE_FREE_ACTIONS.some((prefix) => step.uses.startsWith(prefix))) {
+        return [...routes, step.uses];
+      }
+      return routes;
+    });
+  const installs = (job) => packageRoutes(steps(job)).length > 0;
+  const mintsAppToken = (job) =>
+    steps(job).some((step) => step.uses?.startsWith('actions/create-github-app-token@'));
+
+  const REFUSAL = 'Refuse bumps read for a different beta';
+  const expressions = (value, path = []) => {
+    if (typeof value === 'string') {
+      if (path.at(-1) === 'if') return [{ path, expr: value.trim() }];
+      return [...value.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].map(([, body]) => ({ path, expr: body.trim() }));
+    }
+    if (value && typeof value === 'object') {
+      return Object.entries(value).flatMap(([key, item]) => expressions(item, [...path, key]));
+    }
+    return [];
+  };
+  const isSanctionedRead = (job, { path, expr }) => {
+    if (path[0] !== 'steps' || path[2] !== 'env') return false;
+    if (path[3] === 'BUMP_VERDICTS') return expr === 'needs.read-bumps.outputs.bump_verdicts';
+    return (
+      path[3] === 'READ_BUMPS_BETA_TAG' &&
+      job.steps[path[1]]?.name === REFUSAL &&
+      expr === 'needs.read-bumps.outputs.beta_tag'
+    );
+  };
+  const strayReaderReads = (job) =>
+    expressions(job)
+      .filter((found) => /\bneeds\b/.test(found.expr) && !isSanctionedRead(job, found))
+      .map(({ path, expr }) => `${path.join('.')}: ${expr}`);
+
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'release-cascade-local-actions-'));
+  afterAll(() => rmSync(fixtureRoot, { recursive: true, force: true }));
+  const localAction = (name, action, file = 'action.yml') => {
+    const dir = join(fixtureRoot, '.github', 'actions', name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, file), JSON.stringify(action));
+    return `./.github/actions/${name}`;
+  };
+  const composite = (...actionSteps) => ({ name: 'fixture', runs: { using: 'composite', steps: actionSteps } });
+  const INSTALLING_COMPOSITE = localAction(
+    'installs',
+    composite({ name: 'Install', shell: 'bash', run: 'pnpm install --frozen-lockfile' }),
+  );
+  const NESTED_COMPOSITE = localAction('nested', composite({ name: 'Inner', uses: INSTALLING_COMPOSITE }));
+  const PACKAGE_FREE_COMPOSITE = localAction(
+    'package-free',
+    composite({ name: 'Probe', shell: 'bash', run: 'node scripts/probe.mjs' }, { uses: 'actions/setup-node@v6' }),
+  );
+  const NODE_ACTION = localAction('node-action', { name: 'fixture', runs: { using: 'node24', main: 'index.js' } });
+  const LOOPING_COMPOSITE = localAction('loop', composite({ name: 'Self', uses: './.github/actions/loop' }));
+  const YAML_SPELLED_COMPOSITE = localAction(
+    'yaml-spelled',
+    composite({ name: 'Install', shell: 'bash', run: 'npm ci' }),
+    'action.yaml',
+  );
+
+  test('the package-route detector bites on every form that would reopen the exposure', () => {
+    const job = (step) => ({ steps: [step] });
+    for (const run of [
+      'pnpm install --frozen-lockfile',
+      'pnpm --filter=. install --ignore-scripts',
+      'pnpm -r install',
+      'set -e; npm ci',
+      'cd x && npx some-tool',
+      'corepack enable',
+      'FOO=1 pnpm exec vitest',
+      'out=$(yarn add left-pad)',
+      'if pnpm install; then echo ok; fi',
+      'if ! npm ci; then exit 1; fi',
+      'if true; then :; elif npm ci; then :; fi',
+      'while ! pnpm install; do sleep 5; done',
+      'until pnpm install; do sleep 5; done',
+      '! npm ci',
+      '{ pnpm install; }',
+      'time pnpm install',
+      'time -p npm ci',
+      'timeout 300 pnpm install',
+      'timeout --signal=KILL 300 npm ci',
+      'nohup pnpm install &',
+      'command pnpm install',
+      'if ! timeout 300 pnpm install; then exit 1; fi',
+      'if x; then pnpm install; fi',
+      'for a in b; do npm ci; done',
+      'if x; then :; else npm ci; fi',
+      'exec pnpm install',
+      'sudo npm ci',
+      'echo a | xargs npm install',
+      'env npm ci',
+      'echo y | npx some-tool',
+      '(npm ci)',
+      'out=`npm ci`',
+      'pnpx some-tool',
+      'bun install',
+      'bunx some-tool',
+      'set -e\npnpm install',
+    ]) {
+      expect(installs(job({ run })), run).toBe(true);
+    }
+    expect(installs(job({ uses: 'pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86' }))).toBe(true);
+    for (const run of [
+      'node scripts/compute-stable-version.mjs "$BETA_TAG"',
+      'echo "dispatches publish-stable to release.yml for npm. npm latest does NOT move"',
+      '# pnpm exec changeset version runs in main-reset',
+      '  # if ! timeout 300 pnpm install; then exit 1; fi',
+      '# x; pnpm install',
+      '  # x; pnpm install',
+      'bunyan --version',
+    ]) {
+      expect(installs(job({ run })), run).toBe(false);
+    }
+    for (const uses of [
+      'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+      'actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e',
+      'actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3',
+      'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+    ]) {
+      expect(installs(job({ uses })), uses).toBe(false);
+    }
+  });
+
+  test('the detector reads local actions from their action.yml, through nested composites', () => {
+    const routes = (uses) => packageRoutes([{ name: 'Use it', uses }], fixtureRoot);
+    expect(routes(INSTALLING_COMPOSITE)).toEqual([`${INSTALLING_COMPOSITE} > Install`]);
+    expect(routes(NESTED_COMPOSITE)).toEqual([`${NESTED_COMPOSITE} > ${INSTALLING_COMPOSITE} > Install`]);
+    expect(routes(NODE_ACTION)).toEqual([NODE_ACTION]);
+    expect(routes(PACKAGE_FREE_COMPOSITE)).toEqual([]);
+    expect(routes(LOOPING_COMPOSITE)).toEqual([]);
+    expect(routes(YAML_SPELLED_COMPOSITE)).toEqual([`${YAML_SPELLED_COMPOSITE} > Install`]);
+    expect(() => routes('./.github/actions/absent')).toThrow('local action ./.github/actions/absent has no action.yml');
+  });
+
+  test('each workflow has exactly one job that installs and one that mints, and they differ', () => {
+    for (const file of credentialWorkflows) {
+      const own = jobs.filter(({ name }) => name.startsWith(`${file}#`));
+      const installers = own.filter(({ job }) => installs(job)).map(({ name }) => name);
+      const minters = own.filter(({ job }) => mintsAppToken(job)).map(({ name }) => name);
+      expect(installers, file).toHaveLength(1);
+      expect(minters, file).toHaveLength(1);
+      expect(installers[0], file).not.toBe(minters[0]);
+    }
+  });
+
+  test('a job that installs packages references no secret and holds a read-only GITHUB_TOKEN', () => {
+    for (const { name, job } of jobs.filter(({ job }) => installs(job))) {
+      expect(JSON.stringify(job), name).not.toMatch(/secrets\.|create-github-app-token|app-token|bridge-token/);
+      expect(job.permissions, name).toEqual({ contents: 'read' });
+    }
+  });
+
+  test('a job that mints an App token has no package route, local composite actions included', () => {
+    for (const { name, job } of jobs.filter(({ job }) => mintsAppToken(job))) {
+      expect(packageRoutes(steps(job)), name).toEqual([]);
+      expect(job.needs, name).toBe('read-bumps');
+    }
+  });
+
+  test('the reader-output scan sees every way a job can read read-bumps', () => {
+    const verdictStep = {
+      name: 'Compute',
+      env: { BUMP_VERDICTS: '${{ needs.read-bumps.outputs.bump_verdicts }}' },
+      run: 'node scripts/compute-stable-version.mjs "$BETA_TAG"',
+    };
+    const refusal = {
+      name: REFUSAL,
+      env: {
+        RESOLVED: '${{ steps.resolve.outputs.beta_tag }}',
+        READ_BUMPS_BETA_TAG: '${{ needs.read-bumps.outputs.beta_tag }}',
+      },
+      run: 'test "$RESOLVED" = "$READ_BUMPS_BETA_TAG"',
+    };
+    const prose = { name: 'Announce', run: 'echo "the release needs a published beta"' };
+    const sanctioned = { needs: 'read-bumps', steps: [verdictStep, refusal, prose] };
+    expect(strayReaderReads(sanctioned)).toEqual([]);
+    const withStep = (step) => ({ ...sanctioned, steps: [verdictStep, refusal, { name: 'Stray', ...step }] });
+    const withRefusalEnv = (env) => ({ ...sanctioned, steps: [verdictStep, { ...refusal, env: { ...refusal.env, ...env } }] });
+    const strays = {
+      'job-level env': { ...sanctioned, env: { BETA_TAG: '${{ needs.read-bumps.outputs.beta_tag }}' } },
+      'job-level if': { ...sanctioned, if: "needs.read-bumps.outputs.beta_tag != ''" },
+      'job-level outputs': { ...sanctioned, outputs: { beta: '${{ needs.read-bumps.outputs.beta_tag }}' } },
+      'job-level name': { ...sanctioned, name: 'Promote ${{ needs.read-bumps.outputs.beta_tag }}' },
+      'single-quoted index': withStep({ env: { B: "${{ needs['read-bumps'].outputs['beta_tag'] }}" } }),
+      'double-quoted index': withStep({ env: { B: '${{ needs["read-bumps"].outputs["beta_tag"] }}' } }),
+      'whole needs object': withStep({ run: 'echo ${{ toJSON(needs) }}' }),
+      'whole outputs object': withStep({ env: { O: '${{ toJSON(needs.read-bumps.outputs) }}' } }),
+      'whole job by index': withStep({ env: { O: "${{ toJSON(needs['read-bumps']) }}" } }),
+      'step-level if': withStep({ if: "needs.read-bumps.outputs.beta_tag == 'v1.0.0-beta.1'" }),
+      'expression inside a run block': withStep({ run: 'git tag x "${{ needs.read-bumps.outputs.beta_tag }}"' }),
+      'bump_verdicts outside BUMP_VERDICTS': withStep({ env: { V: '${{ needs.read-bumps.outputs.bump_verdicts }}' } }),
+      'beta_tag outside the refusal step': withStep({
+        env: { READ_BUMPS_BETA_TAG: '${{ needs.read-bumps.outputs.beta_tag }}' },
+      }),
+      'the refusal step reading another expression': withRefusalEnv({
+        READ_BUMPS_BETA_TAG: '${{ toJSON(needs.read-bumps.outputs) }}',
+      }),
+      'the refusal step reading beta_tag under another name': withRefusalEnv({
+        ALSO_BETA_TAG: '${{ needs.read-bumps.outputs.beta_tag }}',
+      }),
+      'BUMP_VERDICTS reading another output': withStep({
+        env: { BUMP_VERDICTS: '${{ needs.read-bumps.outputs.beta_tag }}' },
+      }),
+      'an action input named BUMP_VERDICTS': withStep({
+        uses: './.github/actions/consumer',
+        with: { BUMP_VERDICTS: '${{ needs.read-bumps.outputs.bump_verdicts }}' },
+      }),
+      'a service container env named BUMP_VERDICTS': {
+        ...sanctioned,
+        services: { cache: { image: 'redis:7', env: { BUMP_VERDICTS: '${{ needs.read-bumps.outputs.bump_verdicts }}' } } },
+      },
+    };
+    for (const [form, job] of Object.entries(strays)) {
+      expect(strayReaderReads(job), form).not.toEqual([]);
+    }
+  });
+
+  test('a job that mints an App token takes only bump_verdicts from the reader job', () => {
+    for (const { name, job } of jobs.filter(({ job }) => mintsAppToken(job))) {
+      const verdictSteps = steps(job).filter((step) => step.env?.BUMP_VERDICTS !== undefined);
+      expect(verdictSteps.length, name).toBeGreaterThan(0);
+      for (const step of verdictSteps) {
+        expect(step.env.BUMP_VERDICTS, `${name} ${step.name}`).toBe(
+          '${{ needs.read-bumps.outputs.bump_verdicts }}',
+        );
+      }
+      expect(strayReaderReads(job), name).toEqual([]);
+      for (const step of steps(job).filter((candidate) => candidate.name === REFUSAL)) {
+        expect(step.id, name).toBeUndefined();
+        expect(step.if, name).toBeUndefined();
+        expect(commands(step), name).toMatch(/if \[\[ "\$RESOLVED" != "\$READ_BUMPS_BETA_TAG" \]\]; then[\s\S]*exit 1/);
+        expect(commands(step), name).toMatch(/Re-run all jobs/);
+        expect(commands(step), name).toMatch(/explicit beta_tag/);
+      }
+    }
+  });
+
+  test('no checkout in either workflow persists a credential or receives an App token', () => {
+    const checkouts = jobs.flatMap(({ name, job }) =>
+      steps(job)
+        .filter((step) => step.uses?.startsWith('actions/checkout@'))
+        .map((step) => ({ name, step })),
+    );
+    expect(checkouts.length).toBe(4);
+    for (const { name, step } of checkouts) {
+      expect(step.with?.['persist-credentials'], name).toBe(false);
+      expect(step.with?.token, name).toBeUndefined();
+    }
   });
 });
 

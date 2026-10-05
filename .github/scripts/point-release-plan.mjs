@@ -5,9 +5,13 @@ import { pathToFileURL } from 'node:url';
 import {
   computePointReleaseVersion,
   evaluateAnchorGuard,
+  parseBumpVerdicts,
   readAnchorVersion,
   realGit,
+  recordBumpVerdicts,
   runGit,
+  serializeBumpVerdicts,
+  withBumpVerdicts,
 } from '../../scripts/compute-stable-version.mjs';
 import {
   describeNoSelection,
@@ -396,6 +400,33 @@ export function guardMainResetDeltaIds({ deltaIds }) {
 
 const MAIN_RESET_REPO = 'inkeep/agents-private';
 
+export const APP_CREDENTIAL_HELPER =
+  '!f() { test "$1" = get || return 0; echo username=x-access-token; echo "password=$GH_TOKEN"; }; f';
+
+export const pushTagArgs = (tag) => [
+  '-c',
+  'credential.helper=',
+  '-c',
+  `credential.helper=${APP_CREDENTIAL_HELPER}`,
+  'push',
+  'origin',
+  tag,
+];
+
+export function readFixBumps({ mode, fixRefs }, git) {
+  const verdicts = new Map();
+  if (mode === 'revert') return verdicts;
+  const reading = recordBumpVerdicts(git, verdicts);
+  for (const ref of fixRefs) {
+    const sha = git.revParse(ref);
+    const before = git.changesetBlobs(`${sha}^`);
+    for (const [id, blob] of git.changesetBlobs(sha)) {
+      if (before.get(id) !== blob) reading.bumpTypeOf(sha, id);
+    }
+  }
+  return verdicts;
+}
+
 export class PointReleaseRefusal extends Error {
   constructor(code, message) {
     super(message);
@@ -685,7 +716,7 @@ export function formatReleaseNotes(plan) {
   return `${lines.join('\n')}\n`;
 }
 
-function realIo() {
+export function realIo() {
   return {
     readAnchorVersion,
     fs: {
@@ -718,7 +749,7 @@ function realIo() {
         void runGit(['-c', 'core.editor=true', mode === 'revert' ? 'revert' : 'cherry-pick', '--continue']),
       headSha: () => runGit(['rev-parse', 'HEAD']).trim(),
       tag: (tag, sha) => void runGit(['tag', tag, sha]),
-      pushTag: (tag) => void runGit(['push', 'origin', tag]),
+      pushTag: (tag) => void runGit(pushTagArgs(tag)),
     },
     gh: {
       selectNativeConfigPrebuild: (syntheticSha) => {
@@ -773,11 +804,34 @@ function log(...args) {
   process.stderr.write(`${args.join(' ')}\n`);
 }
 
+function readBumpsMain() {
+  let verdicts;
+  try {
+    verdicts = readFixBumps({ mode: process.env.MODE, fixRefs: parseFixRefs(process.env.FIX_REFS) }, realGit);
+  } catch (err) {
+    console.error(`::error::point-release-plan --read-bumps: ${messageOf(err)}`);
+    process.exit(1);
+  }
+  log(`Read the bump of ${verdicts.size} changeset(s) written by ${process.env.MODE} refs ${process.env.FIX_REFS}.`);
+  if (process.env.GITHUB_OUTPUT) {
+    appendFileSync(process.env.GITHUB_OUTPUT, `bump_verdicts=${serializeBumpVerdicts(verdicts)}\n`);
+  }
+}
+
 function main() {
+  if (process.argv[2] === '--read-bumps') {
+    readBumpsMain();
+    return;
+  }
+
   const dryRun = process.env.DRY_RUN !== 'false';
 
   let plan;
   try {
+    const io = realIo();
+    if (process.env.BUMP_VERDICTS !== undefined) {
+      io.git = withBumpVerdicts(io.git, parseBumpVerdicts(process.env.BUMP_VERDICTS));
+    }
     plan = runPointRelease(
       {
         mode: process.env.MODE,
@@ -789,7 +843,7 @@ function main() {
         selfRepo: process.env.GITHUB_REPOSITORY || '',
         bridgeConfigured: process.env.BRIDGE_CONFIGURED === 'true',
       },
-      realIo(),
+      io,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

@@ -110,8 +110,45 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  read-bumps:
+    name: Read changeset bumps (no release credential)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      bump_verdicts: ${{ steps.bumps.outputs.bump_verdicts }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
+      - name: Install root dependencies for the Changesets reader
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile --filter=. --ignore-scripts
+
+      - name: Read the bump of every changeset the fix refs write
+        id: bumps
+        env:
+          MODE: ${{ inputs.mode }}
+          FIX_REFS: ${{ inputs.fix_refs }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          node .github/scripts/point-release-plan.mjs --read-bumps
+
   point-release:
     name: ${{ inputs.dry_run && 'Plan' || 'Ship' }} point release (${{ inputs.mode }})
+    needs: read-bumps
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -134,22 +171,12 @@ jobs:
           # the synthetic commit, and walking ancestry to prove each fix ref is
           # already on main.
           fetch-depth: 0
-          # Persist the App token into .git/config so the later `git push origin
-          # <tag>` runs as the App. Without this the push falls back to
-          # GITHUB_TOKEN and hits the workflow-change policy on any stable whose
-          # .github/workflows/ tree differs from main HEAD.
-          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: false
 
       - name: Set up Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
-
-      - name: Install root dependencies for the Changesets reader
-        run: |
-          set -euo pipefail
-          corepack enable
-          pnpm install --frozen-lockfile --filter=. --ignore-scripts
 
       - name: Prepare git for the synthetic commit
         run: |
@@ -218,6 +245,7 @@ jobs:
           # "no cross-repo credential" and skips the main-reset dispatch.
           BRIDGE_GH_TOKEN: ${{ steps.bridge-token.outputs.token }}
           BRIDGE_CONFIGURED: ${{ steps.bridge-check.outputs.configured }}
+          BUMP_VERDICTS: ${{ needs.read-bumps.outputs.bump_verdicts }}
           MODE: ${{ inputs.mode }}
           FIX_REFS: ${{ inputs.fix_refs }}
           ANCHOR_DELTA_IDS: ${{ inputs.anchor_delta_ids }}

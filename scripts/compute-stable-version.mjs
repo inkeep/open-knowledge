@@ -185,6 +185,15 @@ export function gitAt(cwd) {
     },
     changesetIds: (sha) =>
       changesetIdsFromTreePaths(runGit(['ls-tree', '--name-only', sha, '--', '.changeset/'], cwd).split('\n')),
+    changesetBlobs: (sha) => {
+      const blobs = new Map();
+      for (const line of runGit(['ls-tree', sha, '--', '.changeset/'], cwd).split('\n')) {
+        const [meta, path] = line.split('\t');
+        const [id] = changesetIdsFromTreePaths([path ?? '']);
+        if (id !== undefined) blobs.set(id, meta.split(' ')[2]);
+      }
+      return blobs;
+    },
     isAncestor: (a, b) => {
       const res = spawnSync('git', ['merge-base', '--is-ancestor', a, b], { cwd, encoding: 'utf8', env: gitCleanEnv() });
       if (res.status === 0) return true;
@@ -199,6 +208,61 @@ export function gitAt(cwd) {
 }
 
 export const realGit = gitAt();
+
+const BUMP_VERDICT_TYPES = new Set(['patch', 'minor', 'major', null]);
+
+export function parseBumpVerdicts(raw) {
+  if (String(raw ?? '').trim() === '') {
+    throw new Error(
+      'BUMP_VERDICTS is empty: the read-bumps job wrote no bump_verdicts output, or this step does not ' +
+        'receive needs.read-bumps.outputs.bump_verdicts.',
+    );
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(String(raw));
+  } catch (err) {
+    throw new Error(`bump verdicts are not JSON: ${err.message}`);
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('bump verdicts must be a JSON object mapping changeset blob ids to bump types.');
+  }
+  for (const [blob, type] of Object.entries(parsed)) {
+    if (!BUMP_VERDICT_TYPES.has(type)) {
+      throw new Error(`bump verdict for blob ${blob} is ${JSON.stringify(type)}, not patch, minor, major or null.`);
+    }
+  }
+  return new Map(Object.entries(parsed));
+}
+
+export const serializeBumpVerdicts = (verdicts) => JSON.stringify(Object.fromEntries(verdicts));
+
+export function recordBumpVerdicts(git, verdicts) {
+  return {
+    ...git,
+    bumpTypeOf: (sha, id) => {
+      const type = git.bumpTypeOf(sha, id);
+      verdicts.set(git.changesetBlobs(sha).get(id), type);
+      return type;
+    },
+  };
+}
+
+export function withBumpVerdicts(git, verdicts) {
+  return {
+    ...git,
+    bumpTypeOf: (sha, id) => {
+      const blob = git.changesetBlobs(sha).get(id);
+      if (blob === undefined || !verdicts.has(blob)) {
+        throw new Error(
+          `no bump verdict for .changeset/${id}.md at ${sha} (blob ${blob ?? 'absent'}); the job that ran the ` +
+            'Changesets reader did not read this changeset, so its bump is unknown here.',
+        );
+      }
+      return verdicts.get(blob);
+    },
+  };
+}
 
 export function readAnchorVersion() {
   const pre = JSON.parse(readFileSync('.changeset/pre.json', 'utf8'));
@@ -304,9 +368,14 @@ function main() {
     process.exit(1);
   }
 
+  const verdicts = new Map();
   let result;
   try {
-    result = computeStablePromotion(betaTag, realGit);
+    const git =
+      process.env.BUMP_VERDICTS === undefined
+        ? recordBumpVerdicts(realGit, verdicts)
+        : withBumpVerdicts(realGit, parseBumpVerdicts(process.env.BUMP_VERDICTS));
+    result = computeStablePromotion(betaTag, git);
   } catch (err) {
     console.error(`::error::compute-stable-version: ${err.message}`);
     process.exit(1);
@@ -332,6 +401,7 @@ function main() {
       `beta_sha=${result.betaSha ?? ''}`,
       `latest_stable_sha=${result.latestStableSha ?? ''}`,
       `delta_ids=${JSON.stringify(result.deltaIds ?? [])}`,
+      `bump_verdicts=${serializeBumpVerdicts(verdicts)}`,
     ];
     appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
   }
