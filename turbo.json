@@ -84,6 +84,10 @@
         "$TURBO_ROOT$/scripts/read-jsonc.mjs"
       ]
     },
+    "@inkeep/open-knowledge-core#check:dts": {
+      "dependsOn": ["build"],
+      "inputs": ["tsconfig.json", "tsconfig.check.json", "tests/contract/subpath-types/consumer.ts"]
+    },
     "@inkeep/open-knowledge-docs#build": {
       "dependsOn": ["^build", "typecheck"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**", "!.next/dev/**"],

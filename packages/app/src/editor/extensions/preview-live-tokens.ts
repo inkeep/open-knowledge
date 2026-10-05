@@ -1,4 +1,4 @@
-import { PREVIEW_THEME_TOKENS } from '@inkeep/open-knowledge-core';
+import { PREVIEW_THEME_TOKENS } from '@inkeep/open-knowledge-core/constants/preview-theme-tokens';
 import { THEME_COLOR_PROPERTIES } from '@/lib/theme-color-properties';
 import { themeColorTransitionsActive } from '@/lib/theme-color-transitions';
 import { COLOR_THEME_ATTRIBUTE } from '@/lib/use-apply-config-color-theme';

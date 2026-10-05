@@ -2,10 +2,10 @@ import {
   DEFAULT_TERMINAL_PLACEMENT,
   normalizeTerminalPlacement,
   type TerminalPlacement,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/terminal-layout';
 
-export type { TerminalPlacement } from '@inkeep/open-knowledge-core';
-export { DEFAULT_TERMINAL_PLACEMENT } from '@inkeep/open-knowledge-core';
+export type { TerminalPlacement } from '@inkeep/open-knowledge-core/terminal-layout';
+export { DEFAULT_TERMINAL_PLACEMENT } from '@inkeep/open-knowledge-core/terminal-layout';
 
 export const TERMINAL_PLACEMENT_KEY = 'ok-terminal-placement-v1';
 

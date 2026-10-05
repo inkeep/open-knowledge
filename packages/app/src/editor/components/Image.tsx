@@ -1,4 +1,4 @@
-import { toDesktopAssetHref } from '@inkeep/open-knowledge-core';
+import { toDesktopAssetHref } from '@inkeep/open-knowledge-core/utils/asset-href';
 import type { ImgHTMLAttributes } from 'react';
 import Zoom from 'react-medium-image-zoom';
 import { LoadingImage } from '@/components/ui/loading-image';

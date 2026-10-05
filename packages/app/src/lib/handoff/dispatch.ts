@@ -5,7 +5,7 @@ import {
   type HandoffOutcome,
   type HandoffPayload,
   type HandoffTarget,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/handoff';
 
 interface DispatchHandoffDeps {
   readonly fetch?: typeof globalThis.fetch;

@@ -1,4 +1,4 @@
-import { stripFrontmatter } from '@inkeep/open-knowledge-core';
+import { stripFrontmatter } from '@inkeep/open-knowledge-core/extensions/frontmatter';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';

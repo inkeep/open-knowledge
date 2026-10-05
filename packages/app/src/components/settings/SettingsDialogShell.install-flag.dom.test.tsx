@@ -1,11 +1,15 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { createServedBindingLog } from '@/test-utils/served-binding.test-helper';
 
-vi.doMock('@inkeep/open-knowledge-core', () => ({
-  SHOW_INSTALL_SKILL: false,
-  MARKDOWNLINT_RULE_CATALOG: [],
-}));
+const servedCore = createServedBindingLog();
+
+vi.doMock('@inkeep/open-knowledge-core/constants/feature-flags', () =>
+  servedCore.serve('@inkeep/open-knowledge-core/constants/feature-flags', {
+    SHOW_INSTALL_SKILL: false,
+  }),
+);
 
 vi.doMock('@/components/settings/SettingsDialogBodyLazy', () => ({
   SettingsDialogBodyLazy: () => <div data-testid="settings-body-probe" />,
@@ -58,5 +62,20 @@ describe('SettingsDialogShell install-skill feature gate', () => {
 
     expect(screen.queryByTestId('settings-sidebar-item-claude-desktop')).toBeNull();
     expect(screen.queryByText('Integrations')).toBeNull();
+  });
+
+  test('the Claude Desktop integration is hidden because the feature-flag replacement serves the install-skill flag off', () => {
+    const since = servedCore.mark();
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+
+    expect(screen.getByTestId('settings-sidebar-item-preferences')).toBeTruthy();
+    expect(screen.queryByTestId('settings-sidebar-item-claude-desktop')).toBeNull();
+    expect(
+      servedCore.readersOf(
+        '@inkeep/open-knowledge-core/constants/feature-flags',
+        'SHOW_INSTALL_SKILL',
+        since,
+      ),
+    ).toEqual(['components/settings/SettingsDialogShell.tsx']);
   });
 });

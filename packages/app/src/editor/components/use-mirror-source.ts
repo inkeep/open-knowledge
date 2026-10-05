@@ -1,4 +1,4 @@
-import { mdastToHtml } from '@inkeep/open-knowledge-core';
+import { mdastToHtml } from '@inkeep/open-knowledge-core/markdown/mdast-to-html';
 import { useEffect, useRef, useState } from 'react';
 import { useCollabUrl } from '@/lib/use-collab-url';
 import { getSharedMarkdownManager } from '../utils/md-singleton.ts';

@@ -1,4 +1,4 @@
-import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
+import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core/schemas/api';
 import { t } from '@lingui/core/macro';
 import type { OkDesktopBridge, OkLocalOpCloneEvent } from '@/lib/desktop-bridge-types';
 import { createBufferedAsyncStream } from './buffered-async-stream';

@@ -1,4 +1,7 @@
-import { estimateSkillCost, type SkillCostTiers } from '@inkeep/open-knowledge-core';
+import {
+  estimateSkillCost,
+  type SkillCostTiers,
+} from '@inkeep/open-knowledge-core/skills-catalog/skill-cost';
 import { fetchSkillPreview } from '@/lib/skills-api';
 
 const cache = new Map<string, SkillCostTiers | null>();

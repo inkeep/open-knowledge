@@ -1,4 +1,4 @@
-import type { HeadingEntry } from '@inkeep/open-knowledge-core';
+import type { HeadingEntry } from '@inkeep/open-knowledge-core/utils/slug';
 import { useEffect, useState } from 'react';
 import { fetchHeadings } from './wiki-link-suggestion';
 

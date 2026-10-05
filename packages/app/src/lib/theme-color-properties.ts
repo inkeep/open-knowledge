@@ -1,4 +1,5 @@
-import { base16ToTokens, PREVIEW_THEME_TOKENS } from '@inkeep/open-knowledge-core';
+import { PREVIEW_THEME_TOKENS } from '@inkeep/open-knowledge-core/constants/preview-theme-tokens';
+import { base16ToTokens } from '@inkeep/open-knowledge-core/theme/base16';
 import { DEFAULT_CUSTOM_SCHEME } from './color-themes';
 
 const PALETTE_THEME_COLOR_PROPERTIES = Object.keys(base16ToTokens(DEFAULT_CUSTOM_SCHEME)).map(

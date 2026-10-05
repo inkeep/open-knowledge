@@ -1,8 +1,8 @@
 import {
   getWikiLinkText,
   normalizeNullableString,
-  resolveWikiLinkTarget,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/extensions/wiki-link';
+import { resolveWikiLinkTarget } from '@inkeep/open-knowledge-core/utils/wiki-link-resolve';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { Editor } from '@tiptap/core';
 import { posToDOMRect } from '@tiptap/core';

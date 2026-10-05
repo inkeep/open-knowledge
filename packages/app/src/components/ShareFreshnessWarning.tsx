@@ -1,4 +1,4 @@
-import type { ShareFreshness } from '@inkeep/open-knowledge-core';
+import type { ShareFreshness } from '@inkeep/open-knowledge-core/schemas/api';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, Check, Info, RefreshCw, TriangleAlert } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';

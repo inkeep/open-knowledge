@@ -1,8 +1,5 @@
-import {
-  type SkillScope,
-  skillFileLiveDocName,
-  skillLiveDocName,
-} from '@inkeep/open-knowledge-core';
+import { skillFileLiveDocName, skillLiveDocName } from '@inkeep/open-knowledge-core/constants/cc1';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
 import { SkillMarkdownViewer } from '@/components/SkillMarkdownViewer';
 import { ViewerErrorPane, ViewerLoadingPane } from '@/components/ViewerStatusPane';
 import { loadSkillFileText } from '@/lib/skills-api';

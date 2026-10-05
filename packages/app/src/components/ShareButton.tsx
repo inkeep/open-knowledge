@@ -1,6 +1,6 @@
 // oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
-import type { ShareFreshness } from '@inkeep/open-knowledge-core';
+import type { ShareFreshness } from '@inkeep/open-knowledge-core/schemas/api';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { CircleHelp, Share2 } from 'lucide-react';
 import { type Ref, useEffect, useRef, useState } from 'react';

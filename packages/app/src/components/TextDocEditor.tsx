@@ -10,8 +10,8 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   codeLanguageForExtension,
   EDITABLE_TEXT_EXTRA_LANGUAGE,
-  extensionOf,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/code-languages';
+import { extensionOf } from '@inkeep/open-knowledge-core/utils/extension';
 import { useLingui } from '@lingui/react/macro';
 import { basicSetup } from 'codemirror';
 import { useTheme } from 'next-themes';

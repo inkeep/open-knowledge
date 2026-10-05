@@ -1,4 +1,7 @@
-import { classifyMarkdownHref, resolveAssetProjectPath } from '@inkeep/open-knowledge-core';
+import {
+  classifyMarkdownHref,
+  resolveAssetProjectPath,
+} from '@inkeep/open-knowledge-core/utils/link-targets';
 import { resolveLinkTargetIntent } from '../../components/link-target-intent';
 import { isLinkValidationVisible } from '../link-validation-policy';
 import type { PageListCacheSnapshot } from '../page-list-cache';

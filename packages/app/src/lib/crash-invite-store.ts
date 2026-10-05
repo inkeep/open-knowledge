@@ -1,4 +1,4 @@
-import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
+import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core/logger-types';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
 export interface CrashInviteStore {

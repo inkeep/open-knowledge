@@ -1,4 +1,4 @@
-import { shellSingleQuote, type TerminalLaunchCommand } from '@inkeep/open-knowledge-core';
+import { shellSingleQuote, type TerminalLaunchCommand } from '@inkeep/open-knowledge-core/handoff';
 
 export type TerminalCommandId = 'install-slidev' | 'git-status';
 

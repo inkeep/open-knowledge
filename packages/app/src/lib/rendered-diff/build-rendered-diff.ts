@@ -1,5 +1,5 @@
 import { recreateTransform } from '@fellow/prosemirror-recreate-transform';
-import type { MarkdownManager } from '@inkeep/open-knowledge-core';
+import type { MarkdownManager } from '@inkeep/open-knowledge-core/markdown';
 import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 import { AddMarkStep, RemoveMarkStep, type Transform } from '@tiptap/pm/transform';
 import { buildBlockChanges, type SpanChange } from './block-diff';

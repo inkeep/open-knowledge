@@ -1,9 +1,9 @@
+import type { WorktreeCreateResult } from '@inkeep/open-knowledge-core/git/worktree-selector-model';
 import type {
   BranchInfoResponse,
   CheckoutResponse,
   ShareTargetStatusResponse,
-  WorktreeCreateResult,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/schemas/api';
 
 export type BranchSwitchVariant =
   | {

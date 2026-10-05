@@ -1,4 +1,5 @@
-import { createCodeFenceTracker, markdownToPlainText } from '@inkeep/open-knowledge-core';
+import { markdownToPlainText } from '@inkeep/open-knowledge-core/markdown/plain-text';
+import { createCodeFenceTracker } from '@inkeep/open-knowledge-core/utils/code-fence-tracker';
 
 function plainLines(markdown: string, toPlainText: (markdown: string) => string): string[] {
   return toPlainText(markdown)

@@ -1,12 +1,13 @@
+import type { ConfigBinding } from '@inkeep/open-knowledge-core/config/bind-config-doc';
+import { humanFormat } from '@inkeep/open-knowledge-core/config/errors';
+import type { ConfigPatch } from '@inkeep/open-knowledge-core/config/schema';
+import { OPENKNOWLEDGE_SKILLS_REPO } from '@inkeep/open-knowledge-core/constants/skills';
 import {
   type AppliesToPatternSummary,
   assertNeverOkfRuleGroupId,
   assertNeverOkfRuleId,
-  type ConfigBinding,
-  type ConfigPatch,
   type FrontmatterSchemaMapping,
   findZeroMatchAppliesToPatterns,
-  humanFormat,
   isFrontmatterSchemaAsset,
   isOkfRuleEnabled,
   type LintPluginId,
@@ -14,9 +15,8 @@ import {
   OKF_RULE_IDS,
   type OkfRuleGroupId,
   type OkfRuleId,
-  OPENKNOWLEDGE_SKILLS_REPO,
   summarizeAppliesTo,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/markdown/lint';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import {
   ArrowUpRight,

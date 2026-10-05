@@ -1,4 +1,4 @@
-import { incrementJsxArrowNodeSelectFailed } from '@inkeep/open-knowledge-core';
+import { incrementJsxArrowNodeSelectFailed } from '@inkeep/open-knowledge-core/metrics/parse-health';
 import type { Editor } from '@tiptap/core';
 import { Extension } from '@tiptap/core';
 import { NodeSelection, Selection, TextSelection } from '@tiptap/pm/state';

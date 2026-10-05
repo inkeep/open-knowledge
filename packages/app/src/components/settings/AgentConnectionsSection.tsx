@@ -6,12 +6,14 @@ import {
   agentIdForHandoffTarget,
   agentIdForTerminalCli,
   CONNECTION_ROW_AGENT_IDS,
-  type HandoffTarget,
   type HostSnapshot,
+} from '@inkeep/open-knowledge-core/agent-registry';
+import {
+  type HandoffTarget,
   TERMINAL_CLI_IDS,
   TERMINAL_CLIS,
   type TerminalCli,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/handoff';
 import { useLingui } from '@lingui/react/macro';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, Check, Search, TriangleAlert, WifiOff } from 'lucide-react';

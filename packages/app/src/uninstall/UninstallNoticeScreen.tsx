@@ -1,7 +1,7 @@
 import type {
   UninstallNoticeChecklistItem,
   UninstallNoticeScreen as UninstallNoticeSpec,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/uninstall-bridge';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Check } from 'lucide-react';
 import { useEffect, useId, useRef } from 'react';

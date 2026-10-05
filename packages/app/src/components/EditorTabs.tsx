@@ -4,7 +4,7 @@
 
 import { useDndContext } from '@dnd-kit/core';
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
-import { isEditableTextDocFile } from '@inkeep/open-knowledge-core';
+import { isEditableTextDocFile } from '@inkeep/open-knowledge-core/constants/code-languages';
 import { Trans, useLingui } from '@lingui/react/macro';
 import {
   AlertTriangle,

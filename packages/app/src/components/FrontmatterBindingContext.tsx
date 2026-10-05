@@ -1,4 +1,4 @@
-import type { FrontmatterBinding } from '@inkeep/open-knowledge-core';
+import type { FrontmatterBinding } from '@inkeep/open-knowledge-core/bridge';
 import { createContext, type ReactNode, use } from 'react';
 
 const FrontmatterBindingContext = createContext<FrontmatterBinding | null>(null);

@@ -1,9 +1,9 @@
-import type { TerminalCli } from '@inkeep/open-knowledge-core';
 import type {
   ThreadAuthMethod,
   ThreadInfo,
   ThreadStatus,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import type { TerminalCli } from '@inkeep/open-knowledge-core/handoff';
 import { t } from '@lingui/core/macro';
 
 export type ThreadAuthActionKind = 'resume' | 'retry' | 'new-chat' | 'terminal-sign-in';

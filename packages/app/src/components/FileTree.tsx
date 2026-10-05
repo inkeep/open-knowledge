@@ -1,20 +1,22 @@
 // oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
+import type { OkignoreBinding } from '@inkeep/open-knowledge-core/config/bind-okignore-doc';
+import { isDocumentOverOpenByteLimit } from '@inkeep/open-knowledge-core/constants/document-open';
+import type {
+  HandoffOutcome,
+  HandoffTarget,
+  InstallState,
+} from '@inkeep/open-knowledge-core/handoff';
 import {
   CreateFolderSuccessSchema,
   CreatePageSuccessSchema,
   DeletePathSuccessSchema,
   DuplicatePathSuccessSchema,
-  type HandoffOutcome,
-  type HandoffTarget,
-  type InstallState,
-  isDocumentOverOpenByteLimit,
-  type OkignoreBinding,
   RenamePathSuccessSchema,
   TrashCleanupSuccessSchema,
   UploadAssetSuccessSchema,
   WorkspaceSuccessSchema,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/schemas/api';
 import { plural, t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import {

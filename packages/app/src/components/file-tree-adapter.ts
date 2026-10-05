@@ -1,10 +1,10 @@
+import { isEditableTextDocFile } from '@inkeep/open-knowledge-core/constants/code-languages';
 import {
-  isEditableTextDocFile,
   isExcalidrawDocFile,
   isMermaidDocFile,
   mediaKindForSidebarAssetExtension,
-  type UploadAssetSuccess,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/upload';
+import type { UploadAssetSuccess } from '@inkeep/open-knowledge-core/schemas/api';
 import type { ContextMenuItem, FileTreeDropTarget } from '@pierre/trees';
 import { getFileExtension } from '@/components/file-tree-rename-validation';
 import {

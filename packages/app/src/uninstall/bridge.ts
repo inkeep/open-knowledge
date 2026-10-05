@@ -2,7 +2,7 @@ import type {
   OkUninstallBridge,
   UninstallDispatchResult,
   UninstallIntent,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/uninstall-bridge';
 
 declare global {
   interface Window {

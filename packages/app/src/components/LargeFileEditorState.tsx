@@ -1,4 +1,4 @@
-import { formatFileSize } from '@inkeep/open-knowledge-core';
+import { formatFileSize } from '@inkeep/open-knowledge-core/utils/file-size';
 import { Trans } from '@lingui/react/macro';
 import { ArrowLeft, FileWarning } from 'lucide-react';
 import { useEffect, useId, useRef } from 'react';

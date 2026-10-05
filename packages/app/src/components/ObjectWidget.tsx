@@ -20,7 +20,7 @@ import {
   frontmatterValuesEqual,
   inferType,
   RESERVED_FRONTMATTER_KEY,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/frontmatter/schema';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ChevronRight, Plus } from 'lucide-react';
 import { useState } from 'react';

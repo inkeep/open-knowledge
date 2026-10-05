@@ -7,7 +7,7 @@ import {
   PrepareBatchSuccessSchema,
   ProblemDetailsSchema,
   QueueSuccessSchema,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/schemas/api';
 
 export type { CommentThreadMeta, DispatchPayload };
 

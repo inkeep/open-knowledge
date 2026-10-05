@@ -1,11 +1,10 @@
-import type { SkillScope } from '@inkeep/open-knowledge-core';
 import {
-  isSkillRefCandidate,
   parseManagedArtifactName,
   parseProjectSkillBundleDoc,
-  RESERVED_PROJECT_SKILL_NAME,
-  SKILL_REF_RE,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/cc1';
+import { RESERVED_PROJECT_SKILL_NAME } from '@inkeep/open-knowledge-core/constants/editors';
+import { isSkillRefCandidate, SKILL_REF_RE } from '@inkeep/open-knowledge-core/constants/skills';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
 import { Extension } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';

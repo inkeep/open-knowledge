@@ -1,12 +1,12 @@
-import type { SkillPreview as SkillPreviewData, SkillScope } from '@inkeep/open-knowledge-core';
+import { skillFileLiveDocName, skillLiveDocName } from '@inkeep/open-knowledge-core/constants/cc1';
 import {
-  estimateSkillCost,
-  extractFrontmatterTags,
-  skillFileLiveDocName,
-  skillLiveDocName,
   stripFrontmatter,
   unwrapFrontmatterFences,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/extensions/frontmatter';
+import { extractFrontmatterTags } from '@inkeep/open-knowledge-core/frontmatter/tags';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
+import type { SkillPreview as SkillPreviewData } from '@inkeep/open-knowledge-core/skills-catalog/schema';
+import { estimateSkillCost } from '@inkeep/open-knowledge-core/skills-catalog/skill-cost';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { AlignLeft, Eye, Gauge, Tag, Type } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';

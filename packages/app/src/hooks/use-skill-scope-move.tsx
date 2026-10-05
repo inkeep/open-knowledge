@@ -1,4 +1,4 @@
-import type { SkillScope } from '@inkeep/open-knowledge-core';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
 import { type ReactNode, useState } from 'react';
 import { SkillScopeMoveDialog } from '@/components/SkillScopeMoveDialog';
 

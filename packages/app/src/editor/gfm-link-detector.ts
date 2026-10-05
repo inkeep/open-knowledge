@@ -1,4 +1,4 @@
-import { SAFE_URL_SCHEMES } from '@inkeep/open-knowledge-core';
+import { SAFE_URL_SCHEMES } from '@inkeep/open-knowledge-core/markdown/safe-url';
 
 export type GfmLinkToken = {
   href: string;

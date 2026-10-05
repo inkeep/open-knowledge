@@ -7,7 +7,7 @@ import {
   DEFAULT_LINTER_CONFIG,
   type PersistedLinterConfig,
   toEffectiveBase,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/markdown/lint';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef, useState } from 'react';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';

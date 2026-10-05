@@ -2,7 +2,7 @@
  * Direct PM dispatch pattern (Precedent #28), NOT y-codemirror.next. The RawMdxFallbackView's
  * selectionUpdate effect (Precedent #31) then forwards focus + caret into the nested CM.
  */
-import { RawMdxFallback as BaseRawMdxFallback } from '@inkeep/open-knowledge-core';
+import { RawMdxFallback as BaseRawMdxFallback } from '@inkeep/open-knowledge-core/extensions/raw-mdx-fallback';
 import type { Editor } from '@tiptap/core';
 import type { EditorState } from '@tiptap/pm/state';
 import { Selection } from '@tiptap/pm/state';

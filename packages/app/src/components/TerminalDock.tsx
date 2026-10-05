@@ -1,4 +1,4 @@
-import type { TerminalPlacement } from '@inkeep/open-knowledge-core';
+import type { TerminalPlacement } from '@inkeep/open-knowledge-core/terminal-layout';
 import { useTheme } from 'next-themes';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { usePanelRef } from 'react-resizable-panels';

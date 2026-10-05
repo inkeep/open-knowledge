@@ -1,4 +1,6 @@
-import { type ConfigBinding, humanFormat, normalizeGitHostname } from '@inkeep/open-knowledge-core';
+import type { ConfigBinding } from '@inkeep/open-knowledge-core/config/bind-config-doc';
+import { humanFormat } from '@inkeep/open-knowledge-core/config/errors';
+import { normalizeGitHostname } from '@inkeep/open-knowledge-core/constants/github';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Trash2 } from 'lucide-react';
 import { type SubmitEvent, useEffect, useId, useRef, useState } from 'react';

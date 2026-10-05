@@ -1,4 +1,4 @@
-import type { SkillScope } from '@inkeep/open-knowledge-core';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
 import { hashFromDocName, hashFromSkillPreview } from '@/lib/doc-hash';
 import { subscribeToSkillsChanged } from '@/lib/documents-events';
 import { skillEntryLiveDocName } from '@/lib/managed-artifact-doc-name';

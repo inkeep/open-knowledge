@@ -2,7 +2,7 @@ import {
   type LocalOpEmbeddingsTestResponse,
   LocalOpEmbeddingsTestResponseSchema,
   ProblemDetailsSchema,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/schemas/api';
 
 export interface EmbeddingsKeyTransport {
   setKey(key: string): Promise<{ ok: true } | { ok: false; error?: string }>;

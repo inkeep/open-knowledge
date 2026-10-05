@@ -1,4 +1,4 @@
-import { LOGGER_OWNED_FIELDS } from '@inkeep/open-knowledge-core';
+import { LOGGER_OWNED_FIELDS } from '@inkeep/open-knowledge-core/logging/renderer-log';
 
 export const MAX_BREADCRUMB_CHARS = 4096;
 

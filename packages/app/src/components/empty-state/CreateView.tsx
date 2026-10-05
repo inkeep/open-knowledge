@@ -1,4 +1,4 @@
-import type { TemplatesListEntry } from '@inkeep/open-knowledge-core';
+import type { TemplatesListEntry } from '@inkeep/open-knowledge-core/schemas/api';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowRightIcon, Plus } from 'lucide-react';
 import { CopyablePromptList } from '@/components/empty-state/CopyablePromptList';

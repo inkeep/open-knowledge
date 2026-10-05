@@ -1,13 +1,16 @@
-import * as actualCore from '@inkeep/open-knowledge-core';
+import * as actualHtmlToMdast from '@inkeep/open-knowledge-core/markdown/html-to-mdast';
 import * as actualSonner from 'sonner';
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createServedBindingLog } from '@/test-utils/served-binding.test-helper';
 
-vi.doMock('@inkeep/open-knowledge-core', () => {
-  return {
-    ...actualCore,
+const servedCore = createServedBindingLog();
+
+vi.doMock('@inkeep/open-knowledge-core/markdown/html-to-mdast', () => {
+  return servedCore.serve('@inkeep/open-knowledge-core/markdown/html-to-mdast', {
+    ...actualHtmlToMdast,
     htmlToMdast: vi.fn((_html: string) => ({ type: 'root', children: [] })),
     mdastToMarkdown: vi.fn((_tree: unknown) => '**bold**'),
-  };
+  });
 });
 
 vi.doMock('sonner', () => ({ ...actualSonner, toast: { error: vi.fn(() => {}) } }));
@@ -336,5 +339,30 @@ describe('WYSIWYG drop dispatcher — paste/drop parity on canonical inputs', ()
     expect(drop(view, evt)).toBe(true);
     expect(md.parse).not.toHaveBeenCalled();
     expect(view.state.tr.replaceSelectionWith).toHaveBeenCalled();
+  });
+});
+
+describe('WYSIWYG drop dispatcher — core replacement liveness', () => {
+  test('a generic HTML drop parses the markdown the html-to-mdast replacement serves', () => {
+    const since = servedCore.mark();
+    const md = fakeMdManager();
+    const drop = createHandleDrop({
+      // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
+      mdManager: md as any,
+    });
+    const evt = fakeDropEvent({
+      data: {
+        'text/plain': 'plain prose no signals',
+        'text/html': '<p>rich <b>html</b></p>',
+      },
+    });
+
+    expect(drop(fakeView(), evt)).toBe(true);
+    expect(md.parse).toHaveBeenCalledWith('**bold**');
+    for (const member of ['htmlToMdast', 'mdastToMarkdown']) {
+      expect(
+        servedCore.readersOf('@inkeep/open-knowledge-core/markdown/html-to-mdast', member, since),
+      ).toEqual(['editor/clipboard/handle-paste.ts']);
+    }
   });
 });

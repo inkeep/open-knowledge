@@ -1,4 +1,4 @@
-import { TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
+import { TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core/handoff';
 import { useLingui } from '@lingui/react/macro';
 import { Button } from '@/components/ui/button';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';

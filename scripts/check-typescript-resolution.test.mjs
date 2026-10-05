@@ -1675,6 +1675,7 @@ describe('the tsconfigs on disk', () => {
       ['packages/cli/tsconfig.build.json', []],
       ['packages/cli/tsconfig.check.json', []],
       ['packages/core/tsconfig.build.json', []],
+      ['packages/core/tsconfig.check.json', []],
       ['packages/server/tsconfig.build.json', []],
       ['tsconfig.json', [SOURCE_CONDITION]],
     ]);

@@ -1,9 +1,7 @@
-import {
-  EDITOR_LABELS,
-  type PluginBundleMetadata,
-  type SkillScope,
-  type SkillTargetEditor,
-} from '@inkeep/open-knowledge-core';
+import { EDITOR_LABELS } from '@inkeep/open-knowledge-core/constants/editors';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
+import type { SkillTargetEditor } from '@inkeep/open-knowledge-core/skill-targets/schema';
+import type { PluginBundleMetadata } from '@inkeep/open-knowledge-core/skills-catalog/schema';
 
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useId, useState } from 'react';

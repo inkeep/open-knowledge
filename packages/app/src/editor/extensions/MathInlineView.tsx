@@ -1,4 +1,4 @@
-import { incrementJsxRenderFailure } from '@inkeep/open-knowledge-core';
+import { incrementJsxRenderFailure } from '@inkeep/open-knowledge-core/metrics/parse-health';
 import { Trans } from '@lingui/react/macro';
 import type { NodeViewProps } from '@tiptap/core';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';

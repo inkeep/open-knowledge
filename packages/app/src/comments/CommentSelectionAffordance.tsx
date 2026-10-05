@@ -1,7 +1,7 @@
 // oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import { autoUpdate, computePosition, flip, offset, shift, size } from '@floating-ui/dom';
-import { commentQuoteText } from '@inkeep/open-knowledge-core';
+import { commentQuoteText } from '@inkeep/open-knowledge-core/comments/leaf-text';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { posToDOMRect } from '@tiptap/core';
 import type { Editor } from '@tiptap/react';

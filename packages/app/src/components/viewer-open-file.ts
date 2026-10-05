@@ -1,4 +1,5 @@
-import { ASSET_EXTENSIONS, toDesktopAssetHref } from '@inkeep/open-knowledge-core';
+import { ASSET_EXTENSIONS } from '@inkeep/open-knowledge-core/constants/upload';
+import { toDesktopAssetHref } from '@inkeep/open-knowledge-core/utils/asset-href';
 
 export interface ViewerOpenFileTarget {
   readonly projectRelPath: string;

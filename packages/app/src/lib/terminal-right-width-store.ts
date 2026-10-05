@@ -1,12 +1,12 @@
 import {
   normalizeTerminalRightWidth,
   PREFERRED_TERMINAL_RIGHT_WIDTH,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/terminal-layout';
 
 export {
   MIN_TERMINAL_RIGHT_WIDTH,
   PREFERRED_TERMINAL_RIGHT_WIDTH,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/terminal-layout';
 
 export const TERMINAL_RIGHT_WIDTH_KEY = 'ok-terminal-right-width-v1';
 

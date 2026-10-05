@@ -1,9 +1,9 @@
+import { openKnowledgeToolName } from '@inkeep/open-knowledge-core/acp/tool-call-input';
 import {
   OPEN_KNOWLEDGE_MCP_WRITE_TOOLS,
   SERVER_TIMEOUT_ERROR_PREFIX,
   SERVER_UNREACHABLE_ERROR_PREFIX,
-} from '@inkeep/open-knowledge-core';
-import { openKnowledgeToolName } from '@inkeep/open-knowledge-core/acp/tool-call-input';
+} from '@inkeep/open-knowledge-core/constants/mcp';
 import { t } from '@lingui/core/macro';
 import {
   type RenderedPermission,

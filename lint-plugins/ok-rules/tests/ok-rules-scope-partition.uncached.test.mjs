@@ -1,4 +1,6 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
@@ -6,7 +8,8 @@ import {
   readJsPluginSpecifiers,
 } from '../../../test-support/read-ok-rules-config.test-helper.ts';
 import plugin, { rules } from '../index.mjs';
-import { isInScope, RULE_SCOPES, UNSCOPED_RULES } from '../scope.mjs';
+import { noAppCoreBarrelImport } from '../rules/no-app-core-barrel-import.mjs';
+import { isInScope, RULE_SCOPES, scoped, UNSCOPED_RULES } from '../scope.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const TESTS_DIR = fileURLToPath(new URL('.', import.meta.url));
@@ -104,6 +107,49 @@ describe('ok-rules scope table', () => {
         expect(glob.replace(/^!/, '')).not.toMatch(/[?{}[\]()]/);
       }
     }
+  });
+});
+
+describe('scoped() through a symlinked repository path', () => {
+  const RULE = 'no-app-core-barrel-import';
+
+  function withLinkedRoot(run) {
+    const dir = mkdtempSync(join(tmpdir(), 'ok-rules-linked-root-'));
+    const link = join(dir, 'open-knowledge');
+    try {
+      symlinkSync(REPO_ROOT, link, 'dir');
+      run(link);
+    } finally {
+      rmSync(link, { force: true });
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  test.each([
+    ['the linted file path', (link) => ({ root: REPO_ROOT, files: link })],
+    ['the repository root', (link) => ({ root: link, files: REPO_ROOT })],
+    ['both the root and the file path', (link) => ({ root: link, files: link })],
+  ])('scopes a rule by its real location when the link is on %s', (_name, layout) => {
+    withLinkedRoot((link) => {
+      const { root, files } = layout(link);
+      const rule = scoped(RULE, noAppCoreBarrelImport, root);
+      const visitorsFor = (path) =>
+        Object.keys(
+          rule.create({
+            physicalFilename: join(files, path),
+            filename: join(files, path),
+            report() {},
+          }),
+        );
+      expect(visitorsFor('packages/app/src/server/hocuspocus-plugin.ts')).toContain(
+        'ImportDeclaration',
+      );
+      expect(visitorsFor('packages/app/src/a-directory-added-later/module.ts')).toContain(
+        'ImportDeclaration',
+      );
+      expect(visitorsFor('packages/app/src/components/HelpPopover.dom.test.tsx')).toEqual([]);
+      expect(visitorsFor('packages/server/src/lint/audit.ts')).toEqual([]);
+    });
   });
 });
 

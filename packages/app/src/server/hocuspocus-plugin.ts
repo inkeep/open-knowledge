@@ -4,7 +4,7 @@ import {
   ASSET_EXTENSIONS,
   EXECUTABLE_BLOCKLIST_EXTENSIONS,
   INLINE_RENDERABLE_EXTENSIONS,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/upload';
 import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import {
   AcpThreadManager,

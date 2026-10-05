@@ -1,5 +1,5 @@
-import type { HandoffTarget, InstallState, TerminalCli } from '@inkeep/open-knowledge-core';
-import { TERMINAL_CLI_IDS } from '@inkeep/open-knowledge-core';
+import type { HandoffTarget, InstallState, TerminalCli } from '@inkeep/open-knowledge-core/handoff';
+import { TERMINAL_CLI_IDS } from '@inkeep/open-knowledge-core/handoff';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { parseStickyCliId, parseStickyThreadAgent } from '../unified-agent-store';
 import {

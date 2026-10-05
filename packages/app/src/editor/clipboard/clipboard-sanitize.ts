@@ -1,4 +1,4 @@
-import { isRelativeUrl, SAFE_URL_SCHEME_RE } from '@inkeep/open-knowledge-core';
+import { isRelativeUrl, SAFE_URL_SCHEME_RE } from '@inkeep/open-knowledge-core/markdown/safe-url';
 import * as ipaddr from 'ipaddr.js';
 
 export const URL_SCHEME_ATTRS: ReadonlySet<string> = new Set([

@@ -1,15 +1,15 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
-  type AgentFlashEntry,
-  sharedExtensions as coreExtensions,
-  deriveIconColor,
   evictStaleEntries,
   FLASH_DEBOUNCE_MS,
   FLASH_DURATION_MS,
   hasNewEntries,
-  MarkdownManager,
-  randomUUID,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/activity';
+import { sharedExtensions as coreExtensions } from '@inkeep/open-knowledge-core/extensions/shared';
+import { MarkdownManager } from '@inkeep/open-knowledge-core/markdown';
+import type { AgentFlashEntry } from '@inkeep/open-knowledge-core/types/awareness';
+import { deriveIconColor } from '@inkeep/open-knowledge-core/utils/identity';
+import { randomUUID } from '@inkeep/open-knowledge-core/utils/random-uuid';
 import { t } from '@lingui/core/macro';
 import { type AnyExtension, Editor, type EditorOptions, Extension } from '@tiptap/core';
 import Collaboration from '@tiptap/extension-collaboration';

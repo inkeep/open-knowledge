@@ -2,7 +2,7 @@ import { ensureSyntaxTree } from '@codemirror/language';
 import { type Diagnostic, forceLinting, linter } from '@codemirror/lint';
 import { type EditorState, type Extension, StateEffect, type Text } from '@codemirror/state';
 import { ViewPlugin } from '@codemirror/view';
-import type { LintPosition, ValidationDocResult } from '@inkeep/open-knowledge-core';
+import type { LintPosition, ValidationDocResult } from '@inkeep/open-knowledge-core/markdown/lint';
 import {
   isLinkValidationVisible,
   subscribeToLinkValidationPolicy,

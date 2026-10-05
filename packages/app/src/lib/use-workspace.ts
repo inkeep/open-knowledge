@@ -1,4 +1,4 @@
-import { WorkspaceSuccessSchema } from '@inkeep/open-knowledge-core';
+import { WorkspaceSuccessSchema } from '@inkeep/open-knowledge-core/schemas/api';
 import { useEffect, useState } from 'react';
 import type { Workspace } from './workspace-paths';
 

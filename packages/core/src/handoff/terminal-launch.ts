@@ -54,7 +54,7 @@ function encodeUtf8Base64(value: string): string {
 
 const TERMINAL_LAUNCH_ENV_SLOT_PREFIX = 'OK_TERMINAL_LAUNCH_ENV_';
 
-export interface TerminalLaunchEnvSlot {
+interface TerminalLaunchEnvSlot {
   readonly name: string;
   readonly slot: string;
   readonly value: string;

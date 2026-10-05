@@ -1,4 +1,4 @@
-import type { ConfigBinding } from '@inkeep/open-knowledge-core';
+import type { ConfigBinding } from '@inkeep/open-knowledge-core/config/bind-config-doc';
 import { useLingui } from '@lingui/react/macro';
 import { useEffect } from 'react';
 import { useSavedThemes } from '@/lib/saved-themes-client';

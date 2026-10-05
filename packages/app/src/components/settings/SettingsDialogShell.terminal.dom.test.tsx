@@ -31,11 +31,6 @@ if (typeof HTMLElement.prototype.scrollIntoView !== 'function') {
   HTMLElement.prototype.scrollIntoView = () => {};
 }
 
-vi.doMock('@inkeep/open-knowledge-core', () => ({
-  SHOW_INSTALL_SKILL: false,
-  MARKDOWNLINT_RULE_CATALOG: [],
-}));
-
 const probeActiveIds: string[] = [];
 vi.doMock('@/components/settings/SettingsDialogBodyLazy', () => ({
   SettingsDialogBodyLazy: ({ activeId }: { activeId: string }) => {

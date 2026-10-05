@@ -1,17 +1,21 @@
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   bindConfigDoc,
+  type ConfigBinding,
+} from '@inkeep/open-knowledge-core/config/bind-config-doc';
+import {
   bindOkignoreDoc,
+  type OkignoreBinding,
+} from '@inkeep/open-knowledge-core/config/bind-okignore-doc';
+import type { WriteScope } from '@inkeep/open-knowledge-core/config/errors';
+import { mergeLayered } from '@inkeep/open-knowledge-core/config/merge-layered';
+import type { Config } from '@inkeep/open-knowledge-core/config/schema';
+import {
   CONFIG_DOC_NAME_OKIGNORE,
   CONFIG_DOC_NAME_PROJECT,
   CONFIG_DOC_NAME_PROJECT_LOCAL,
   CONFIG_DOC_NAME_USER,
-  type Config,
-  type ConfigBinding,
-  mergeLayered,
-  type OkignoreBinding,
-  type WriteScope,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/cc1';
 import { useTheme } from 'next-themes';
 import { type ReactNode, useEffect, useState } from 'react';
 import * as Y from 'yjs';

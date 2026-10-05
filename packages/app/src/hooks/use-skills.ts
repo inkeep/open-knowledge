@@ -1,4 +1,7 @@
-import { type SkillsListEntry, SkillsListSuccessSchema } from '@inkeep/open-knowledge-core';
+import {
+  type SkillsListEntry,
+  SkillsListSuccessSchema,
+} from '@inkeep/open-knowledge-core/schemas/api';
 import { t } from '@lingui/core/macro';
 import { useEffect, useState } from 'react';
 import {

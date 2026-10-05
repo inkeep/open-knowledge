@@ -1,4 +1,4 @@
-import type { HandoffTarget, InstallState } from '@inkeep/open-knowledge-core';
+import type { HandoffTarget, InstallState } from '@inkeep/open-knowledge-core/handoff';
 import { KNOWN_TARGETS } from './targets.ts';
 
 export const UNIQUE_SCHEMES: ReadonlyArray<string> = [

@@ -3,7 +3,7 @@ import {
   type SkillScope,
   type SkillTargetsGetSuccess,
   SkillTargetsGetSuccessSchema,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/schemas/api';
 import { t } from '@lingui/core/macro';
 import { useEffect, useState } from 'react';
 import { emitSkillsChanged } from '@/lib/documents-events';

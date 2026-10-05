@@ -2,7 +2,7 @@ import {
   collectFootnoteIdentifiers,
   findFootnoteDefinitionInsertPos,
   nextFootnoteIdentifier,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/extensions/footnote-reference';
 import { t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';
 import type { EditorState } from '@tiptap/pm/state';

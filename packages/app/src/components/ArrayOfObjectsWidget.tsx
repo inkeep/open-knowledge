@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { FrontmatterValue } from '@inkeep/open-knowledge-core';
+import type { FrontmatterValue } from '@inkeep/open-knowledge-core/frontmatter/schema';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ChevronRight, GripVertical, Plus, Trash2 } from 'lucide-react';
 import { type CSSProperties, useState } from 'react';

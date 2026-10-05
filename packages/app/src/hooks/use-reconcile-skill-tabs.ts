@@ -3,8 +3,8 @@ import {
   parseGlobalSkillBundleDoc,
   parseManagedArtifactName,
   parseProjectSkillBundleDoc,
-  type SkillsListEntry,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/cc1';
+import type { SkillsListEntry } from '@inkeep/open-knowledge-core/schemas/api';
 import { useEffect, useRef } from 'react';
 import { useManagedArtifactRetarget } from '@/components/ManagedArtifactProperties';
 import { useDocumentContext } from '@/editor/DocumentContext';

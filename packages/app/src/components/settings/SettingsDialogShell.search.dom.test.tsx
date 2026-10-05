@@ -2,6 +2,7 @@ import type { ConfigBinding, OkignoreBinding } from '@inkeep/open-knowledge-core
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createServedBindingLog } from '@/test-utils/served-binding.test-helper';
 
 type WindowGlobals = { MutationObserver?: typeof MutationObserver; NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
@@ -76,15 +77,16 @@ const SEMANTIC_STATUS_RESPONSE = {
   total: 0,
 };
 
-vi.doMock('@inkeep/open-knowledge-core', async () => ({
-  ...(await vi.importActual<typeof import('@inkeep/open-knowledge-core')>(
-    '@inkeep/open-knowledge-core',
-  )),
-  get SHOW_INSTALL_SKILL() {
-    return true;
-  },
-  MARKDOWNLINT_RULE_CATALOG: FAKE_RULE_CATALOG,
-}));
+const servedCore = createServedBindingLog();
+
+vi.doMock('@inkeep/open-knowledge-core/markdown/lint', async () =>
+  servedCore.serve('@inkeep/open-knowledge-core/markdown/lint', {
+    ...(await vi.importActual<typeof import('@inkeep/open-knowledge-core/markdown/lint')>(
+      '@inkeep/open-knowledge-core/markdown/lint',
+    )),
+    MARKDOWNLINT_RULE_CATALOG: FAKE_RULE_CATALOG,
+  }),
+);
 
 vi.doMock('@/components/settings/SettingsDialogBodyLazy', () => ({
   SettingsDialogBodyLazy: (props: BodyProps) => {
@@ -206,6 +208,30 @@ describe('settings dialog search', () => {
       expect(screen.getByTestId('settings-search-empty')).toBeDefined();
     });
     expect(screen.queryByTestId('settings-search-result-rule:MD013')).toBeNull();
+  });
+
+  test('rule search results come from the catalog the lint replacement serves', async () => {
+    const user = userEvent.setup();
+    const since = servedCore.mark();
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+    const input = screen.getByTestId('settings-search-input');
+
+    await user.type(input, 'MD001');
+    expect(await screen.findByTestId('settings-search-result-rule:MD001')).toBeTruthy();
+
+    await user.clear(input);
+    await user.type(input, 'MD009');
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-search-empty')).toBeDefined();
+    });
+    expect(screen.queryByTestId('settings-search-result-rule:MD009')).toBeNull();
+    expect(
+      servedCore.readersOf(
+        '@inkeep/open-knowledge-core/markdown/lint',
+        'MARKDOWNLINT_RULE_CATALOG',
+        since,
+      ),
+    ).toEqual(['components/settings/settings-search-index.ts']);
   });
 
   test('a no-match query renders the empty state', async () => {

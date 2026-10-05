@@ -31,7 +31,7 @@ function countLeadingIndent(text: string): number {
   return indent;
 }
 
-import { FM_FENCE_LINE_RE } from '@inkeep/open-knowledge-core';
+import { FM_FENCE_LINE_RE } from '@inkeep/open-knowledge-core/extensions/frontmatter';
 
 function frontmatterRange(state: EditorState): { from: number; to: number } | null {
   if (state.doc.lines < 2) return null;

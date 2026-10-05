@@ -1,9 +1,5 @@
-import {
-  type FrontmatterValue,
-  inferType,
-  readFmKeys,
-  readFmRegionWithError,
-} from '@inkeep/open-knowledge-core';
+import { readFmKeys, readFmRegionWithError } from '@inkeep/open-knowledge-core/bridge';
+import { type FrontmatterValue, inferType } from '@inkeep/open-knowledge-core/frontmatter/schema';
 import { Trans } from '@lingui/react/macro';
 import { PropertyDisclosure } from '@/components/PropertyDisclosure';
 import { PropertyDisplayRow } from '@/components/PropertyDisplayRow';

@@ -1,4 +1,4 @@
-import { isAllowedLinkUri } from '@inkeep/open-knowledge-core';
+import { isAllowedLinkUri } from '@inkeep/open-knowledge-core/extensions/link-fidelity';
 import { detectGfmLinkToken } from '../gfm-link-detector.ts';
 
 const EXPLICIT_SCHEME = /^[a-z][a-z0-9+.-]*:/i;

@@ -1,4 +1,4 @@
-import { isPresenceSentinelDocName } from '@inkeep/open-knowledge-core';
+import { isPresenceSentinelDocName } from '@inkeep/open-knowledge-core/types/awareness';
 import { AGENT_PRESENCE_STALE_MS, hasAgentPresenceShape } from '@/lib/agent-presence';
 import { sanitizeDocName } from './follow-file';
 

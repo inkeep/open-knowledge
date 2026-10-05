@@ -1,4 +1,4 @@
-import { DocumentListSuccessSchema } from '@inkeep/open-knowledge-core';
+import { DocumentListSuccessSchema } from '@inkeep/open-knowledge-core/schemas/api';
 import { parseServerResponse } from '@/lib/parse-server-response';
 import {
   consumeShowAllStream,

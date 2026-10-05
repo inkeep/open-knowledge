@@ -88,6 +88,726 @@
       "development": "./src/desktop-bridge.ts",
       "types": "./dist/desktop-bridge.d.mts",
       "default": "./dist/desktop-bridge.mjs"
+    },
+    "./agent-registry": {
+      "@inkeep/source": "./src/agent-registry/index.ts",
+      "development": "./src/agent-registry/index.ts",
+      "types": "./dist/agent-registry.d.mts",
+      "default": "./dist/agent-registry.mjs"
+    },
+    "./bridge": {
+      "@inkeep/source": "./src/bridge/index.ts",
+      "development": "./src/bridge/index.ts",
+      "types": "./dist/bridge.d.mts",
+      "default": "./dist/bridge.mjs"
+    },
+    "./bug-report-sidecar/note-content": {
+      "@inkeep/source": "./src/bug-report-sidecar/note-content.ts",
+      "development": "./src/bug-report-sidecar/note-content.ts",
+      "types": "./dist/bug-report-sidecar-note-content.d.mts",
+      "default": "./dist/bug-report-sidecar-note-content.mjs"
+    },
+    "./checkpoint-kinds": {
+      "@inkeep/source": "./src/checkpoint-kinds.ts",
+      "development": "./src/checkpoint-kinds.ts",
+      "types": "./dist/checkpoint-kinds.d.mts",
+      "default": "./dist/checkpoint-kinds.mjs"
+    },
+    "./client-version": {
+      "@inkeep/source": "./src/client-version.ts",
+      "development": "./src/client-version.ts",
+      "types": "./dist/client-version.d.mts",
+      "default": "./dist/client-version.mjs"
+    },
+    "./commands/command-identity": {
+      "@inkeep/source": "./src/commands/command-identity.ts",
+      "development": "./src/commands/command-identity.ts",
+      "types": "./dist/commands-command-identity.d.mts",
+      "default": "./dist/commands-command-identity.mjs"
+    },
+    "./comments/leaf-text": {
+      "@inkeep/source": "./src/comments/leaf-text.ts",
+      "development": "./src/comments/leaf-text.ts",
+      "types": "./dist/comments-leaf-text.d.mts",
+      "default": "./dist/comments-leaf-text.mjs"
+    },
+    "./comments/passage-match": {
+      "@inkeep/source": "./src/comments/passage-match.ts",
+      "development": "./src/comments/passage-match.ts",
+      "types": "./dist/comments-passage-match.d.mts",
+      "default": "./dist/comments-passage-match.mjs"
+    },
+    "./config/auto-sync-mode": {
+      "@inkeep/source": "./src/config/auto-sync-mode.ts",
+      "development": "./src/config/auto-sync-mode.ts",
+      "types": "./dist/config-auto-sync-mode.d.mts",
+      "default": "./dist/config-auto-sync-mode.mjs"
+    },
+    "./config/bind-config-doc": {
+      "@inkeep/source": "./src/config/bind-config-doc.ts",
+      "development": "./src/config/bind-config-doc.ts",
+      "types": "./dist/config-bind-config-doc.d.mts",
+      "default": "./dist/config-bind-config-doc.mjs"
+    },
+    "./config/bind-okignore-doc": {
+      "@inkeep/source": "./src/config/bind-okignore-doc.ts",
+      "development": "./src/config/bind-okignore-doc.ts",
+      "types": "./dist/config-bind-okignore-doc.d.mts",
+      "default": "./dist/config-bind-okignore-doc.mjs"
+    },
+    "./config/errors": {
+      "@inkeep/source": "./src/config/errors.ts",
+      "development": "./src/config/errors.ts",
+      "types": "./dist/config-errors.d.mts",
+      "default": "./dist/config-errors.mjs"
+    },
+    "./config/field-registry": {
+      "@inkeep/source": "./src/config/field-registry.ts",
+      "development": "./src/config/field-registry.ts",
+      "types": "./dist/config-field-registry.d.mts",
+      "default": "./dist/config-field-registry.mjs"
+    },
+    "./config/merge-layered": {
+      "@inkeep/source": "./src/config/merge-layered.ts",
+      "development": "./src/config/merge-layered.ts",
+      "types": "./dist/config-merge-layered.d.mts",
+      "default": "./dist/config-merge-layered.mjs"
+    },
+    "./config/schema": {
+      "@inkeep/source": "./src/config/schema.ts",
+      "development": "./src/config/schema.ts",
+      "types": "./dist/config-schema.d.mts",
+      "default": "./dist/config-schema.mjs"
+    },
+    "./config/schema-leaf": {
+      "@inkeep/source": "./src/config/schema-leaf.ts",
+      "development": "./src/config/schema-leaf.ts",
+      "types": "./dist/config-schema-leaf.d.mts",
+      "default": "./dist/config-schema-leaf.mjs"
+    },
+    "./constants/activity": {
+      "@inkeep/source": "./src/constants/activity.ts",
+      "development": "./src/constants/activity.ts",
+      "types": "./dist/constants-activity.d.mts",
+      "default": "./dist/constants-activity.mjs"
+    },
+    "./constants/cc1": {
+      "@inkeep/source": "./src/constants/cc1.ts",
+      "development": "./src/constants/cc1.ts",
+      "types": "./dist/constants-cc1.d.mts",
+      "default": "./dist/constants-cc1.mjs"
+    },
+    "./constants/chrome": {
+      "@inkeep/source": "./src/constants/chrome.ts",
+      "development": "./src/constants/chrome.ts",
+      "types": "./dist/constants-chrome.d.mts",
+      "default": "./dist/constants-chrome.mjs"
+    },
+    "./constants/code-languages": {
+      "@inkeep/source": "./src/constants/code-languages.ts",
+      "development": "./src/constants/code-languages.ts",
+      "types": "./dist/constants-code-languages.d.mts",
+      "default": "./dist/constants-code-languages.mjs"
+    },
+    "./constants/create-new-banner": {
+      "@inkeep/source": "./src/constants/create-new-banner.ts",
+      "development": "./src/constants/create-new-banner.ts",
+      "types": "./dist/constants-create-new-banner.d.mts",
+      "default": "./dist/constants-create-new-banner.mjs"
+    },
+    "./constants/create-new-project-reason": {
+      "@inkeep/source": "./src/constants/create-new-project-reason.ts",
+      "development": "./src/constants/create-new-project-reason.ts",
+      "types": "./dist/constants-create-new-project-reason.d.mts",
+      "default": "./dist/constants-create-new-project-reason.mjs"
+    },
+    "./constants/doc-lifecycle": {
+      "@inkeep/source": "./src/constants/doc-lifecycle.ts",
+      "development": "./src/constants/doc-lifecycle.ts",
+      "types": "./dist/constants-doc-lifecycle.d.mts",
+      "default": "./dist/constants-doc-lifecycle.mjs"
+    },
+    "./constants/document-open": {
+      "@inkeep/source": "./src/constants/document-open.ts",
+      "development": "./src/constants/document-open.ts",
+      "types": "./dist/constants-document-open.d.mts",
+      "default": "./dist/constants-document-open.mjs"
+    },
+    "./constants/editors": {
+      "@inkeep/source": "./src/constants/editors.ts",
+      "development": "./src/constants/editors.ts",
+      "types": "./dist/constants-editors.d.mts",
+      "default": "./dist/constants-editors.mjs"
+    },
+    "./constants/embedded-host": {
+      "@inkeep/source": "./src/constants/embedded-host.ts",
+      "development": "./src/constants/embedded-host.ts",
+      "types": "./dist/constants-embedded-host.d.mts",
+      "default": "./dist/constants-embedded-host.mjs"
+    },
+    "./constants/feature-flags": {
+      "@inkeep/source": "./src/constants/feature-flags.ts",
+      "development": "./src/constants/feature-flags.ts",
+      "types": "./dist/constants-feature-flags.d.mts",
+      "default": "./dist/constants-feature-flags.mjs"
+    },
+    "./constants/github": {
+      "@inkeep/source": "./src/constants/github.ts",
+      "development": "./src/constants/github.ts",
+      "types": "./dist/constants-github.d.mts",
+      "default": "./dist/constants-github.mjs"
+    },
+    "./constants/graph": {
+      "@inkeep/source": "./src/constants/graph.ts",
+      "development": "./src/constants/graph.ts",
+      "types": "./dist/constants-graph.d.mts",
+      "default": "./dist/constants-graph.mjs"
+    },
+    "./constants/manual-update-check": {
+      "@inkeep/source": "./src/constants/manual-update-check.ts",
+      "development": "./src/constants/manual-update-check.ts",
+      "types": "./dist/constants-manual-update-check.d.mts",
+      "default": "./dist/constants-manual-update-check.mjs"
+    },
+    "./constants/mcp": {
+      "@inkeep/source": "./src/constants/mcp.ts",
+      "development": "./src/constants/mcp.ts",
+      "types": "./dist/constants-mcp.d.mts",
+      "default": "./dist/constants-mcp.mjs"
+    },
+    "./constants/menu-labels": {
+      "@inkeep/source": "./src/constants/menu-labels.ts",
+      "development": "./src/constants/menu-labels.ts",
+      "types": "./dist/constants-menu-labels.d.mts",
+      "default": "./dist/constants-menu-labels.mjs"
+    },
+    "./constants/native-menu-labels": {
+      "@inkeep/source": "./src/constants/native-menu-labels.ts",
+      "development": "./src/constants/native-menu-labels.ts",
+      "types": "./dist/constants-native-menu-labels.d.mts",
+      "default": "./dist/constants-native-menu-labels.mjs"
+    },
+    "./constants/preview-embed-starters": {
+      "@inkeep/source": "./src/constants/preview-embed-starters.ts",
+      "development": "./src/constants/preview-embed-starters.ts",
+      "types": "./dist/constants-preview-embed-starters.d.mts",
+      "default": "./dist/constants-preview-embed-starters.mjs"
+    },
+    "./constants/preview-theme-tokens": {
+      "@inkeep/source": "./src/constants/preview-theme-tokens.ts",
+      "development": "./src/constants/preview-theme-tokens.ts",
+      "types": "./dist/constants-preview-theme-tokens.d.mts",
+      "default": "./dist/constants-preview-theme-tokens.mjs"
+    },
+    "./constants/product": {
+      "@inkeep/source": "./src/constants/product.ts",
+      "development": "./src/constants/product.ts",
+      "types": "./dist/constants-product.d.mts",
+      "default": "./dist/constants-product.mjs"
+    },
+    "./constants/skills": {
+      "@inkeep/source": "./src/constants/skills.ts",
+      "development": "./src/constants/skills.ts",
+      "types": "./dist/constants-skills.d.mts",
+      "default": "./dist/constants-skills.mjs"
+    },
+    "./constants/uninstall-feedback": {
+      "@inkeep/source": "./src/constants/uninstall-feedback.ts",
+      "development": "./src/constants/uninstall-feedback.ts",
+      "types": "./dist/constants-uninstall-feedback.d.mts",
+      "default": "./dist/constants-uninstall-feedback.mjs"
+    },
+    "./constants/upload": {
+      "@inkeep/source": "./src/constants/upload.ts",
+      "development": "./src/constants/upload.ts",
+      "types": "./dist/constants-upload.d.mts",
+      "default": "./dist/constants-upload.mjs"
+    },
+    "./extensions/code-block-fidelity": {
+      "@inkeep/source": "./src/extensions/code-block-fidelity.ts",
+      "development": "./src/extensions/code-block-fidelity.ts",
+      "types": "./dist/extensions-code-block-fidelity.d.mts",
+      "default": "./dist/extensions-code-block-fidelity.mjs"
+    },
+    "./extensions/footnote-reference": {
+      "@inkeep/source": "./src/extensions/footnote-reference.ts",
+      "development": "./src/extensions/footnote-reference.ts",
+      "types": "./dist/extensions-footnote-reference.d.mts",
+      "default": "./dist/extensions-footnote-reference.mjs"
+    },
+    "./extensions/frontmatter": {
+      "@inkeep/source": "./src/extensions/frontmatter.ts",
+      "development": "./src/extensions/frontmatter.ts",
+      "types": "./dist/extensions-frontmatter.d.mts",
+      "default": "./dist/extensions-frontmatter.mjs"
+    },
+    "./extensions/image-reference-fidelity": {
+      "@inkeep/source": "./src/extensions/image-reference-fidelity.ts",
+      "development": "./src/extensions/image-reference-fidelity.ts",
+      "types": "./dist/extensions-image-reference-fidelity.d.mts",
+      "default": "./dist/extensions-image-reference-fidelity.mjs"
+    },
+    "./extensions/image-src-fidelity": {
+      "@inkeep/source": "./src/extensions/image-src-fidelity.ts",
+      "development": "./src/extensions/image-src-fidelity.ts",
+      "types": "./dist/extensions-image-src-fidelity.d.mts",
+      "default": "./dist/extensions-image-src-fidelity.mjs"
+    },
+    "./extensions/jsx-component": {
+      "@inkeep/source": "./src/extensions/jsx-component.ts",
+      "development": "./src/extensions/jsx-component.ts",
+      "types": "./dist/extensions-jsx-component.d.mts",
+      "default": "./dist/extensions-jsx-component.mjs"
+    },
+    "./extensions/jsx-inline": {
+      "@inkeep/source": "./src/extensions/jsx-inline.ts",
+      "development": "./src/extensions/jsx-inline.ts",
+      "types": "./dist/extensions-jsx-inline.d.mts",
+      "default": "./dist/extensions-jsx-inline.mjs"
+    },
+    "./extensions/link-fidelity": {
+      "@inkeep/source": "./src/extensions/link-fidelity.ts",
+      "development": "./src/extensions/link-fidelity.ts",
+      "types": "./dist/extensions-link-fidelity.d.mts",
+      "default": "./dist/extensions-link-fidelity.mjs"
+    },
+    "./extensions/math-inline": {
+      "@inkeep/source": "./src/extensions/math-inline.ts",
+      "development": "./src/extensions/math-inline.ts",
+      "types": "./dist/extensions-math-inline.d.mts",
+      "default": "./dist/extensions-math-inline.mjs"
+    },
+    "./extensions/raw-mdx-fallback": {
+      "@inkeep/source": "./src/extensions/raw-mdx-fallback.ts",
+      "development": "./src/extensions/raw-mdx-fallback.ts",
+      "types": "./dist/extensions-raw-mdx-fallback.d.mts",
+      "default": "./dist/extensions-raw-mdx-fallback.mjs"
+    },
+    "./extensions/shared": {
+      "@inkeep/source": "./src/extensions/shared.ts",
+      "development": "./src/extensions/shared.ts",
+      "types": "./dist/extensions-shared.d.mts",
+      "default": "./dist/extensions-shared.mjs"
+    },
+    "./extensions/tag": {
+      "@inkeep/source": "./src/extensions/tag.ts",
+      "development": "./src/extensions/tag.ts",
+      "types": "./dist/extensions-tag.d.mts",
+      "default": "./dist/extensions-tag.mjs"
+    },
+    "./extensions/wiki-link": {
+      "@inkeep/source": "./src/extensions/wiki-link.ts",
+      "development": "./src/extensions/wiki-link.ts",
+      "types": "./dist/extensions-wiki-link.d.mts",
+      "default": "./dist/extensions-wiki-link.mjs"
+    },
+    "./extensions/wiki-link-embed": {
+      "@inkeep/source": "./src/extensions/wiki-link-embed.ts",
+      "development": "./src/extensions/wiki-link-embed.ts",
+      "types": "./dist/extensions-wiki-link-embed.d.mts",
+      "default": "./dist/extensions-wiki-link-embed.mjs"
+    },
+    "./frontmatter-diff": {
+      "@inkeep/source": "./src/frontmatter-diff.ts",
+      "development": "./src/frontmatter-diff.ts",
+      "types": "./dist/frontmatter-diff.d.mts",
+      "default": "./dist/frontmatter-diff.mjs"
+    },
+    "./frontmatter/errors": {
+      "@inkeep/source": "./src/frontmatter/errors.ts",
+      "development": "./src/frontmatter/errors.ts",
+      "types": "./dist/frontmatter-errors.d.mts",
+      "default": "./dist/frontmatter-errors.mjs"
+    },
+    "./frontmatter/schema": {
+      "@inkeep/source": "./src/frontmatter/schema.ts",
+      "development": "./src/frontmatter/schema.ts",
+      "types": "./dist/frontmatter-schema.d.mts",
+      "default": "./dist/frontmatter-schema.mjs"
+    },
+    "./frontmatter/tags": {
+      "@inkeep/source": "./src/frontmatter/tags.ts",
+      "development": "./src/frontmatter/tags.ts",
+      "types": "./dist/frontmatter-tags.d.mts",
+      "default": "./dist/frontmatter-tags.mjs"
+    },
+    "./git/worktree-inventory-model": {
+      "@inkeep/source": "./src/git/worktree-inventory-model.ts",
+      "development": "./src/git/worktree-inventory-model.ts",
+      "types": "./dist/git-worktree-inventory-model.d.mts",
+      "default": "./dist/git-worktree-inventory-model.mjs"
+    },
+    "./git/worktree-selector-model": {
+      "@inkeep/source": "./src/git/worktree-selector-model.ts",
+      "development": "./src/git/worktree-selector-model.ts",
+      "types": "./dist/git-worktree-selector-model.d.mts",
+      "default": "./dist/git-worktree-selector-model.mjs"
+    },
+    "./handoff": {
+      "@inkeep/source": "./src/handoff/index.ts",
+      "development": "./src/handoff/index.ts",
+      "types": "./dist/handoff.d.mts",
+      "default": "./dist/handoff.mjs"
+    },
+    "./i18n/browser-locale-provider": {
+      "@inkeep/source": "./src/i18n/browser-locale-provider.ts",
+      "development": "./src/i18n/browser-locale-provider.ts",
+      "types": "./dist/i18n-browser-locale-provider.d.mts",
+      "default": "./dist/i18n-browser-locale-provider.mjs"
+    },
+    "./i18n/direction": {
+      "@inkeep/source": "./src/i18n/direction.ts",
+      "development": "./src/i18n/direction.ts",
+      "types": "./dist/i18n-direction.d.mts",
+      "default": "./dist/i18n-direction.mjs"
+    },
+    "./i18n/locales": {
+      "@inkeep/source": "./src/i18n/locales.ts",
+      "development": "./src/i18n/locales.ts",
+      "types": "./dist/i18n-locales.d.mts",
+      "default": "./dist/i18n-locales.mjs"
+    },
+    "./i18n/resolve-locale": {
+      "@inkeep/source": "./src/i18n/resolve-locale.ts",
+      "development": "./src/i18n/resolve-locale.ts",
+      "types": "./dist/i18n-resolve-locale.d.mts",
+      "default": "./dist/i18n-resolve-locale.mjs"
+    },
+    "./logger-types": {
+      "@inkeep/source": "./src/logger-types.ts",
+      "development": "./src/logger-types.ts",
+      "types": "./dist/logger-types.d.mts",
+      "default": "./dist/logger-types.mjs"
+    },
+    "./logging/renderer-log": {
+      "@inkeep/source": "./src/logging/renderer-log.ts",
+      "development": "./src/logging/renderer-log.ts",
+      "types": "./dist/logging-renderer-log.d.mts",
+      "default": "./dist/logging-renderer-log.mjs"
+    },
+    "./logging/secret-scrub": {
+      "@inkeep/source": "./src/logging/secret-scrub.ts",
+      "development": "./src/logging/secret-scrub.ts",
+      "types": "./dist/logging-secret-scrub.d.mts",
+      "default": "./dist/logging-secret-scrub.mjs"
+    },
+    "./markdown": {
+      "@inkeep/source": "./src/markdown/index.ts",
+      "development": "./src/markdown/index.ts",
+      "types": "./dist/markdown.d.mts",
+      "default": "./dist/markdown.mjs"
+    },
+    "./markdown/code-fence": {
+      "@inkeep/source": "./src/markdown/code-fence.ts",
+      "development": "./src/markdown/code-fence.ts",
+      "types": "./dist/markdown-code-fence.d.mts",
+      "default": "./dist/markdown-code-fence.mjs"
+    },
+    "./markdown/html-to-mdast": {
+      "@inkeep/source": "./src/markdown/html-to-mdast.ts",
+      "development": "./src/markdown/html-to-mdast.ts",
+      "types": "./dist/markdown-html-to-mdast.d.mts",
+      "default": "./dist/markdown-html-to-mdast.mjs"
+    },
+    "./markdown/lint": {
+      "@inkeep/source": "./src/markdown/lint/index.ts",
+      "development": "./src/markdown/lint/index.ts",
+      "types": "./dist/markdown-lint.d.mts",
+      "default": "./dist/markdown-lint.mjs"
+    },
+    "./markdown/mdast-to-html": {
+      "@inkeep/source": "./src/markdown/mdast-to-html.ts",
+      "development": "./src/markdown/mdast-to-html.ts",
+      "types": "./dist/markdown-mdast-to-html.d.mts",
+      "default": "./dist/markdown-mdast-to-html.mjs"
+    },
+    "./markdown/plain-text": {
+      "@inkeep/source": "./src/markdown/plain-text.ts",
+      "development": "./src/markdown/plain-text.ts",
+      "types": "./dist/markdown-plain-text.d.mts",
+      "default": "./dist/markdown-plain-text.mjs"
+    },
+    "./markdown/reference-label": {
+      "@inkeep/source": "./src/markdown/reference-label.ts",
+      "development": "./src/markdown/reference-label.ts",
+      "types": "./dist/markdown-reference-label.d.mts",
+      "default": "./dist/markdown-reference-label.mjs"
+    },
+    "./markdown/resolve-image-url": {
+      "@inkeep/source": "./src/markdown/resolve-image-url.ts",
+      "development": "./src/markdown/resolve-image-url.ts",
+      "types": "./dist/markdown-resolve-image-url.d.mts",
+      "default": "./dist/markdown-resolve-image-url.mjs"
+    },
+    "./markdown/safe-url": {
+      "@inkeep/source": "./src/markdown/safe-url.ts",
+      "development": "./src/markdown/safe-url.ts",
+      "types": "./dist/markdown-safe-url.d.mts",
+      "default": "./dist/markdown-safe-url.mjs"
+    },
+    "./markdown/tag-promotion": {
+      "@inkeep/source": "./src/markdown/tag-promotion.ts",
+      "development": "./src/markdown/tag-promotion.ts",
+      "types": "./dist/markdown-tag-promotion.d.mts",
+      "default": "./dist/markdown-tag-promotion.mjs"
+    },
+    "./metrics/parse-health": {
+      "@inkeep/source": "./src/metrics/parse-health.ts",
+      "development": "./src/metrics/parse-health.ts",
+      "types": "./dist/metrics-parse-health.d.mts",
+      "default": "./dist/metrics-parse-health.mjs"
+    },
+    "./registry": {
+      "@inkeep/source": "./src/registry/index.ts",
+      "development": "./src/registry/index.ts",
+      "types": "./dist/registry.d.mts",
+      "default": "./dist/registry.mjs"
+    },
+    "./registry/types": {
+      "@inkeep/source": "./src/registry/types.ts",
+      "development": "./src/registry/types.ts",
+      "types": "./dist/registry-types.d.mts",
+      "default": "./dist/registry-types.mjs"
+    },
+    "./schemas/api": {
+      "@inkeep/source": "./src/schemas/api/index.ts",
+      "development": "./src/schemas/api/index.ts",
+      "types": "./dist/schemas-api.d.mts",
+      "default": "./dist/schemas-api.mjs"
+    },
+    "./schemas/cc1": {
+      "@inkeep/source": "./src/schemas/cc1.ts",
+      "development": "./src/schemas/cc1.ts",
+      "types": "./dist/schemas-cc1.d.mts",
+      "default": "./dist/schemas-cc1.mjs"
+    },
+    "./search/workspace-search": {
+      "@inkeep/source": "./src/search/workspace-search.ts",
+      "development": "./src/search/workspace-search.ts",
+      "types": "./dist/search-workspace-search.d.mts",
+      "default": "./dist/search-workspace-search.mjs"
+    },
+    "./seed-plan-work": {
+      "@inkeep/source": "./src/seed-plan-work.ts",
+      "development": "./src/seed-plan-work.ts",
+      "types": "./dist/seed-plan-work.d.mts",
+      "default": "./dist/seed-plan-work.mjs"
+    },
+    "./sharing": {
+      "@inkeep/source": "./src/sharing/index.ts",
+      "development": "./src/sharing/index.ts",
+      "types": "./dist/sharing.d.mts",
+      "default": "./dist/sharing.mjs"
+    },
+    "./skill-targets/schema": {
+      "@inkeep/source": "./src/skill-targets/schema.ts",
+      "development": "./src/skill-targets/schema.ts",
+      "types": "./dist/skill-targets-schema.d.mts",
+      "default": "./dist/skill-targets-schema.mjs"
+    },
+    "./skills-catalog/schema": {
+      "@inkeep/source": "./src/skills-catalog/schema.ts",
+      "development": "./src/skills-catalog/schema.ts",
+      "types": "./dist/skills-catalog-schema.d.mts",
+      "default": "./dist/skills-catalog-schema.mjs"
+    },
+    "./skills-catalog/scope": {
+      "@inkeep/source": "./src/skills-catalog/scope.ts",
+      "development": "./src/skills-catalog/scope.ts",
+      "types": "./dist/skills-catalog-scope.d.mts",
+      "default": "./dist/skills-catalog-scope.mjs"
+    },
+    "./skills-catalog/skill-cost": {
+      "@inkeep/source": "./src/skills-catalog/skill-cost.ts",
+      "development": "./src/skills-catalog/skill-cost.ts",
+      "types": "./dist/skills-catalog-skill-cost.d.mts",
+      "default": "./dist/skills-catalog-skill-cost.mjs"
+    },
+    "./skills-catalog/source-fields": {
+      "@inkeep/source": "./src/skills-catalog/source-fields.ts",
+      "development": "./src/skills-catalog/source-fields.ts",
+      "types": "./dist/skills-catalog-source-fields.d.mts",
+      "default": "./dist/skills-catalog-source-fields.mjs"
+    },
+    "./sync-paused-reason": {
+      "@inkeep/source": "./src/sync-paused-reason.ts",
+      "development": "./src/sync-paused-reason.ts",
+      "types": "./dist/sync-paused-reason.d.mts",
+      "default": "./dist/sync-paused-reason.mjs"
+    },
+    "./terminal-layout": {
+      "@inkeep/source": "./src/terminal-layout.ts",
+      "development": "./src/terminal-layout.ts",
+      "types": "./dist/terminal-layout.d.mts",
+      "default": "./dist/terminal-layout.mjs"
+    },
+    "./theme/base16": {
+      "@inkeep/source": "./src/theme/base16.ts",
+      "development": "./src/theme/base16.ts",
+      "types": "./dist/theme-base16.d.mts",
+      "default": "./dist/theme-base16.mjs"
+    },
+    "./theme/theme-plugins": {
+      "@inkeep/source": "./src/theme/theme-plugins.ts",
+      "development": "./src/theme/theme-plugins.ts",
+      "types": "./dist/theme-theme-plugins.d.mts",
+      "default": "./dist/theme-theme-plugins.mjs"
+    },
+    "./types/awareness": {
+      "@inkeep/source": "./src/types/awareness.ts",
+      "development": "./src/types/awareness.ts",
+      "types": "./dist/types-awareness.d.mts",
+      "default": "./dist/types-awareness.mjs"
+    },
+    "./types/identity": {
+      "@inkeep/source": "./src/types/identity.ts",
+      "development": "./src/types/identity.ts",
+      "types": "./dist/types-identity.d.mts",
+      "default": "./dist/types-identity.mjs"
+    },
+    "./types/principal": {
+      "@inkeep/source": "./src/types/principal.ts",
+      "development": "./src/types/principal.ts",
+      "types": "./dist/types-principal.d.mts",
+      "default": "./dist/types-principal.mjs"
+    },
+    "./types/timeline": {
+      "@inkeep/source": "./src/types/timeline.ts",
+      "development": "./src/types/timeline.ts",
+      "types": "./dist/types-timeline.d.mts",
+      "default": "./dist/types-timeline.mjs"
+    },
+    "./uninstall-bridge": {
+      "@inkeep/source": "./src/uninstall-bridge.ts",
+      "development": "./src/uninstall-bridge.ts",
+      "types": "./dist/uninstall-bridge.d.mts",
+      "default": "./dist/uninstall-bridge.mjs"
+    },
+    "./util/doc-name": {
+      "@inkeep/source": "./src/util/doc-name.ts",
+      "development": "./src/util/doc-name.ts",
+      "types": "./dist/util-doc-name.d.mts",
+      "default": "./dist/util-doc-name.mjs"
+    },
+    "./utils/asset-href": {
+      "@inkeep/source": "./src/utils/asset-href.ts",
+      "development": "./src/utils/asset-href.ts",
+      "types": "./dist/utils-asset-href.d.mts",
+      "default": "./dist/utils-asset-href.mjs"
+    },
+    "./utils/chunked-insert": {
+      "@inkeep/source": "./src/utils/chunked-insert.ts",
+      "development": "./src/utils/chunked-insert.ts",
+      "types": "./dist/utils-chunked-insert.d.mts",
+      "default": "./dist/utils-chunked-insert.mjs"
+    },
+    "./utils/code-fence-tracker": {
+      "@inkeep/source": "./src/utils/code-fence-tracker.ts",
+      "development": "./src/utils/code-fence-tracker.ts",
+      "types": "./dist/utils-code-fence-tracker.d.mts",
+      "default": "./dist/utils-code-fence-tracker.mjs"
+    },
+    "./utils/embed-url-rewrite": {
+      "@inkeep/source": "./src/utils/embed-url-rewrite.ts",
+      "development": "./src/utils/embed-url-rewrite.ts",
+      "types": "./dist/utils-embed-url-rewrite.d.mts",
+      "default": "./dist/utils-embed-url-rewrite.mjs"
+    },
+    "./utils/extension": {
+      "@inkeep/source": "./src/utils/extension.ts",
+      "development": "./src/utils/extension.ts",
+      "types": "./dist/utils-extension.d.mts",
+      "default": "./dist/utils-extension.mjs"
+    },
+    "./utils/file-size": {
+      "@inkeep/source": "./src/utils/file-size.ts",
+      "development": "./src/utils/file-size.ts",
+      "types": "./dist/utils-file-size.d.mts",
+      "default": "./dist/utils-file-size.mjs"
+    },
+    "./utils/github-stars": {
+      "@inkeep/source": "./src/utils/github-stars.ts",
+      "development": "./src/utils/github-stars.ts",
+      "types": "./dist/utils-github-stars.d.mts",
+      "default": "./dist/utils-github-stars.mjs"
+    },
+    "./utils/heading-scan": {
+      "@inkeep/source": "./src/utils/heading-scan.ts",
+      "development": "./src/utils/heading-scan.ts",
+      "types": "./dist/utils-heading-scan.d.mts",
+      "default": "./dist/utils-heading-scan.mjs"
+    },
+    "./utils/identity": {
+      "@inkeep/source": "./src/utils/identity.ts",
+      "development": "./src/utils/identity.ts",
+      "types": "./dist/utils-identity.d.mts",
+      "default": "./dist/utils-identity.mjs"
+    },
+    "./utils/link-targets": {
+      "@inkeep/source": "./src/utils/link-targets.ts",
+      "development": "./src/utils/link-targets.ts",
+      "types": "./dist/utils-link-targets.d.mts",
+      "default": "./dist/utils-link-targets.mjs"
+    },
+    "./utils/loom-embed": {
+      "@inkeep/source": "./src/utils/loom-embed.ts",
+      "development": "./src/utils/loom-embed.ts",
+      "types": "./dist/utils-loom-embed.d.mts",
+      "default": "./dist/utils-loom-embed.mjs"
+    },
+    "./utils/pdf-anchor": {
+      "@inkeep/source": "./src/utils/pdf-anchor.ts",
+      "development": "./src/utils/pdf-anchor.ts",
+      "types": "./dist/utils-pdf-anchor.d.mts",
+      "default": "./dist/utils-pdf-anchor.mjs"
+    },
+    "./utils/random-uuid": {
+      "@inkeep/source": "./src/utils/random-uuid.ts",
+      "development": "./src/utils/random-uuid.ts",
+      "types": "./dist/utils-random-uuid.d.mts",
+      "default": "./dist/utils-random-uuid.mjs"
+    },
+    "./utils/relative-time": {
+      "@inkeep/source": "./src/utils/relative-time.ts",
+      "development": "./src/utils/relative-time.ts",
+      "types": "./dist/utils-relative-time.d.mts",
+      "default": "./dist/utils-relative-time.mjs"
+    },
+    "./utils/resolve-internal-href": {
+      "@inkeep/source": "./src/utils/resolve-internal-href.ts",
+      "development": "./src/utils/resolve-internal-href.ts",
+      "types": "./dist/utils-resolve-internal-href.d.mts",
+      "default": "./dist/utils-resolve-internal-href.mjs"
+    },
+    "./utils/sanitize-folder-name": {
+      "@inkeep/source": "./src/utils/sanitize-folder-name.ts",
+      "development": "./src/utils/sanitize-folder-name.ts",
+      "types": "./dist/utils-sanitize-folder-name.d.mts",
+      "default": "./dist/utils-sanitize-folder-name.mjs"
+    },
+    "./utils/slug": {
+      "@inkeep/source": "./src/utils/slug.ts",
+      "development": "./src/utils/slug.ts",
+      "types": "./dist/utils-slug.d.mts",
+      "default": "./dist/utils-slug.mjs"
+    },
+    "./utils/vimeo-embed": {
+      "@inkeep/source": "./src/utils/vimeo-embed.ts",
+      "development": "./src/utils/vimeo-embed.ts",
+      "types": "./dist/utils-vimeo-embed.d.mts",
+      "default": "./dist/utils-vimeo-embed.mjs"
+    },
+    "./utils/wiki-link-resolve": {
+      "@inkeep/source": "./src/utils/wiki-link-resolve.ts",
+      "development": "./src/utils/wiki-link-resolve.ts",
+      "types": "./dist/utils-wiki-link-resolve.d.mts",
+      "default": "./dist/utils-wiki-link-resolve.mjs"
+    },
+    "./utils/youtube-embed": {
+      "@inkeep/source": "./src/utils/youtube-embed.ts",
+      "development": "./src/utils/youtube-embed.ts",
+      "types": "./dist/utils-youtube-embed.d.mts",
+      "default": "./dist/utils-youtube-embed.mjs"
     }
   },
   "files": [
@@ -158,7 +878,8 @@
   "scripts": {
     "build": "node scripts/build-output.mjs build",
     "verify:exports": "node scripts/verify-exports-targets.mjs",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.perf.json --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.perf.json --noEmit && tsc -p tests/contract/subpath-types/tsconfig.json --noEmit",
+    "check:dts": "tsc -p tsconfig.check.json --noEmit",
     "test": "vitest run src/ tests/contract/ scripts/",
     "test:perf:bench": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --expose-gc\" RUN_BENCH=1 vitest run tests/perf/markdown-bench.test.ts",
     "test:perf:regression:unit": "vitest run tests/perf/regression-gate.test.ts",

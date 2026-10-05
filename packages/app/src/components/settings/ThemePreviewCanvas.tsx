@@ -1,5 +1,5 @@
-import type { Base16Scheme, Base16Slot } from '@inkeep/open-knowledge-core';
-import { base16ToTokens } from '@inkeep/open-knowledge-core';
+import type { Base16Scheme, Base16Slot } from '@inkeep/open-knowledge-core/theme/base16';
+import { base16ToTokens } from '@inkeep/open-knowledge-core/theme/base16';
 import { useLingui } from '@lingui/react/macro';
 import { cn } from '@/lib/utils';
 

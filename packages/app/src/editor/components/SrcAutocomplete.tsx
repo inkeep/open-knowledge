@@ -3,7 +3,7 @@ import {
   createWorkspaceSearchDocument,
   searchWorkspaceCorpus,
   type WorkspaceSearchCorpus,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/search/workspace-search';
 import { useLingui } from '@lingui/react/macro';
 import type { ReactNode } from 'react';
 import { useEffect, useId, useRef, useState } from 'react';

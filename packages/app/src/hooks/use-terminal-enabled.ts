@@ -1,4 +1,4 @@
-import { humanFormat } from '@inkeep/open-knowledge-core';
+import { humanFormat } from '@inkeep/open-knowledge-core/config/errors';
 import { useConfigContext } from '@/lib/config-provider';
 import { recordShellConsentGranted } from '@/lib/terminal-telemetry';
 

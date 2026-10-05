@@ -1,5 +1,5 @@
-import type { SkillSearchResult } from '@inkeep/open-knowledge-core';
-import { OPENKNOWLEDGE_SKILLS_REPO } from '@inkeep/open-knowledge-core';
+import { OPENKNOWLEDGE_SKILLS_REPO } from '@inkeep/open-knowledge-core/constants/skills';
+import type { SkillSearchResult } from '@inkeep/open-knowledge-core/skills-catalog/schema';
 import { useQuery } from '@tanstack/react-query';
 import { discoverSkillsInSource, fetchPublisherSkills } from '@/lib/skills-api';
 

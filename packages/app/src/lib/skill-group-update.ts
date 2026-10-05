@@ -1,4 +1,4 @@
-import type { SkillsListEntry } from '@inkeep/open-knowledge-core';
+import type { SkillsListEntry } from '@inkeep/open-knowledge-core/schemas/api';
 import type { ProvenanceBucket } from '@/lib/skill-provenance-bucket';
 
 export function groupUpdatableSkills(input: {

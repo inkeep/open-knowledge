@@ -53,14 +53,19 @@ let publishDialogProps: Array<{ open: boolean }> = [];
 let claudeRefreshCalls = 0;
 let claudeSkillInstalled = false;
 
-const actualCore = await import('@inkeep/open-knowledge-core');
+const actualFeatureFlags = await import('@inkeep/open-knowledge-core/constants/feature-flags');
 
 import * as actualLinguiMacro from '@lingui/react/macro';
+import { createServedBindingLog } from '@/test-utils/served-binding.test-helper';
 
-vi.doMock('@inkeep/open-knowledge-core', () => ({
-  ...actualCore,
-  SHOW_INSTALL_SKILL: true,
-}));
+const servedCore = createServedBindingLog();
+
+vi.doMock('@inkeep/open-knowledge-core/constants/feature-flags', () =>
+  servedCore.serve('@inkeep/open-knowledge-core/constants/feature-flags', {
+    ...actualFeatureFlags,
+    SHOW_INSTALL_SKILL: true,
+  }),
+);
 
 vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
@@ -1010,6 +1015,21 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     expect(screen.getByTestId('settings-install-claude-desktop').textContent).toBe('Reinstall');
     expect(screen.getByTestId('install-claude-dialog').getAttribute('data-reinstall')).toBe('true');
   });
+  test('the Integrations section renders because the feature-flag replacement serves the install-skill flag on', async () => {
+    claudeSkillInstalled = false;
+    const since = servedCore.mark();
+    await renderBody({ activeId: 'claude-desktop' });
+
+    expect(screen.getByText('Install in Claude Desktop')).not.toBeNull();
+    expect(
+      servedCore.readersOf(
+        '@inkeep/open-knowledge-core/constants/feature-flags',
+        'SHOW_INSTALL_SKILL',
+        since,
+      ),
+    ).toEqual(['components/settings/IntegrationsSection.tsx']);
+  });
+
   test('dispatches every lint plugin id built by pluginSettingsSectionId', async () => {
     const { pluginSettingsSectionId } = await import('@/lib/use-settings-route');
     const { LINT_PLUGIN_META } = await import('./lint-plugin-meta');

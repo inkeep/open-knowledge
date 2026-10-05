@@ -1,4 +1,4 @@
-import { Tag as BaseTag } from '@inkeep/open-knowledge-core';
+import { Tag as BaseTag } from '@inkeep/open-knowledge-core/extensions/tag';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import { TagView } from '../components/TagView.tsx';
 import { configureTagSuggestion, tagSuggestionKey } from './tag-suggestion.ts';

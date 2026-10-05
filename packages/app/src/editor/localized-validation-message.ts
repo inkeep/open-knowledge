@@ -1,4 +1,4 @@
-import type { ValidationDocResult } from '@inkeep/open-knowledge-core';
+import type { ValidationDocResult } from '@inkeep/open-knowledge-core/markdown/lint';
 import { t } from '@lingui/core/macro';
 
 type Diagnostic = ValidationDocResult['diagnostics'][number];

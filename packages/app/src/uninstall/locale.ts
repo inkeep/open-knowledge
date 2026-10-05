@@ -1,9 +1,9 @@
+import { readBrowserLanguages } from '@inkeep/open-knowledge-core/i18n/browser-locale-provider';
 import {
   AUTO_DETECTABLE_LOCALES,
-  readBrowserLanguages,
-  resolveLocale,
   SUPPORTED_LOCALES,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/i18n/locales';
+import { resolveLocale } from '@inkeep/open-knowledge-core/i18n/resolve-locale';
 import { dynamicActivate } from '@/lib/activate-locale';
 import {
   applyLanguageToDom,

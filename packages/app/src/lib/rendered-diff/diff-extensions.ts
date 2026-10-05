@@ -1,4 +1,4 @@
-import { JsxComponent as CoreJsxComponent } from '@inkeep/open-knowledge-core';
+import { JsxComponent as CoreJsxComponent } from '@inkeep/open-knowledge-core/extensions/jsx-component';
 import type { Extensions } from '@tiptap/core';
 import { sharedExtensions } from '@/editor/extensions/shared';
 

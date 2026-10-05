@@ -1,4 +1,4 @@
-import type { SkillScope } from '@inkeep/open-knowledge-core';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
 import { Trans } from '@lingui/react/macro';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';

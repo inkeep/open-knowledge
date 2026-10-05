@@ -1,4 +1,5 @@
-import { MANAGED_ARTIFACT_SCOPES, type SkillScope } from '@inkeep/open-knowledge-core';
+import { MANAGED_ARTIFACT_SCOPES } from '@inkeep/open-knowledge-core/constants/cc1';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
 
 function isSkillScope(value: string): value is SkillScope {
   return (MANAGED_ARTIFACT_SCOPES as readonly string[]).includes(value);

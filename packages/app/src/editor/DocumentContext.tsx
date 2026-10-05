@@ -1,9 +1,7 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import type { Principal } from '@inkeep/open-knowledge-core';
-import {
-  mediaKindForSidebarAssetExtension,
-  PrincipalSuccessSchema,
-} from '@inkeep/open-knowledge-core';
+import { mediaKindForSidebarAssetExtension } from '@inkeep/open-knowledge-core/constants/upload';
+import { PrincipalSuccessSchema } from '@inkeep/open-knowledge-core/schemas/api';
+import type { Principal } from '@inkeep/open-knowledge-core/types/principal';
 import { createContext, type ReactNode, use, useEffect, useRef, useState } from 'react';
 import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
 import { docNameForNavigationTarget } from '@/components/navigation-targets';

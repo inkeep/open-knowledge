@@ -2,12 +2,12 @@ import { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   addsBlankLines,
   composeWithDerivedBody,
-  LINEAGE_EPOCH_KEY,
-  MarkdownManager,
   normalizeBridge,
-  randomUUID,
-  stripFrontmatter,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/bridge';
+import { LINEAGE_EPOCH_KEY } from '@inkeep/open-knowledge-core/constants/doc-lifecycle';
+import { stripFrontmatter } from '@inkeep/open-knowledge-core/extensions/frontmatter';
+import { MarkdownManager } from '@inkeep/open-knowledge-core/markdown';
+import { randomUUID } from '@inkeep/open-knowledge-core/utils/random-uuid';
 import type { HocuspocusAuthRejectionReason } from '@inkeep/open-knowledge-server';
 import { getSchema } from '@tiptap/core';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';

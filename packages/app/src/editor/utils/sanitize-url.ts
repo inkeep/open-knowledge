@@ -1,8 +1,5 @@
-import {
-  incrementJsxPropDropped,
-  isRelativeUrl,
-  SAFE_URL_SCHEMES,
-} from '@inkeep/open-knowledge-core';
+import { isRelativeUrl, SAFE_URL_SCHEMES } from '@inkeep/open-knowledge-core/markdown/safe-url';
+import { incrementJsxPropDropped } from '@inkeep/open-knowledge-core/metrics/parse-health';
 
 const URL_SCHEME_ALLOWLIST = new Set(SAFE_URL_SCHEMES.map((s) => `${s}:`));
 

@@ -1,3 +1,4 @@
+import type { AttachmentPart } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import {
   type AssembleHandoffPromptInput,
   assembleHandoffPrompt,
@@ -21,13 +22,12 @@ import {
   OK_TERMINAL_SURFACE_PREAMBLE,
   OK_THREAD_SURFACE_PREAMBLE,
   type PromptTransport,
-  type SkillScope,
   type TargetData,
   TERMINAL_CLIS,
   type TerminalCli,
   withSkillPointer,
-} from '@inkeep/open-knowledge-core';
-import type { AttachmentPart } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+} from '@inkeep/open-knowledge-core/handoff';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
 import { t } from '@lingui/core/macro';
 import { toast as sonnerToast } from 'sonner';
 import { useConfigContext } from '@/lib/config-context';

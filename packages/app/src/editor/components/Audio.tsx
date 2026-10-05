@@ -1,4 +1,4 @@
-import { toDesktopAssetHref } from '@inkeep/open-knowledge-core';
+import { toDesktopAssetHref } from '@inkeep/open-knowledge-core/utils/asset-href';
 
 interface AudioProps {
   src?: string;

@@ -2,7 +2,7 @@ import {
   ALWAYS_ON_TOKEN_BUDGET,
   ON_TRIGGER_TOKEN_BUDGET,
   type SkillCostTiers,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/skills-catalog/skill-cost';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';

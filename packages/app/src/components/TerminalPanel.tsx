@@ -1,6 +1,10 @@
 import '@xterm/xterm/css/xterm.css';
 
 import {
+  assertNeverPtyAdoptReason,
+  assertNeverPtyCreateReason,
+} from '@inkeep/open-knowledge-core/desktop-bridge';
+import {
   buildCliLaunchArgString,
   buildStartupInjectionBytes,
   buildWindowsCliLaunch,
@@ -10,11 +14,7 @@ import {
   type TerminalCli,
   type TerminalLaunchCommand,
   type WindowsShellFamily,
-} from '@inkeep/open-knowledge-core';
-import {
-  assertNeverPtyAdoptReason,
-  assertNeverPtyCreateReason,
-} from '@inkeep/open-knowledge-core/desktop-bridge';
+} from '@inkeep/open-knowledge-core/handoff';
 import { useLingui } from '@lingui/react/macro';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';

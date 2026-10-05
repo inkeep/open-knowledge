@@ -1,8 +1,5 @@
-import {
-  ACP_AGENT_HARNESS_CLI_MAP,
-  TERMINAL_CLI_IDS,
-  type TerminalCli,
-} from '@inkeep/open-knowledge-core';
+import { ACP_AGENT_HARNESS_CLI_MAP } from '@inkeep/open-knowledge-core/agent-registry';
+import { TERMINAL_CLI_IDS, type TerminalCli } from '@inkeep/open-knowledge-core/handoff';
 import { useInstalledClis } from '@/hooks/use-installed-clis';
 import { isNoteWindow } from '@/lib/note-window-mode';
 

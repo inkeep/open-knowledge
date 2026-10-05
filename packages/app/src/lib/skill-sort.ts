@@ -1,4 +1,4 @@
-import type { SkillScope } from '@inkeep/open-knowledge-core';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
 import type { FileTreeSortComparator } from '@pierre/trees';
 import { SKILL_SCOPE_ORDER } from '@/lib/skill-scope';
 

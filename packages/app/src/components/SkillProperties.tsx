@@ -1,5 +1,5 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import { SKILL_NAME_REGEX, type SkillScope } from '@inkeep/open-knowledge-core';
+import { SKILL_NAME_REGEX, type SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Gauge, Type } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';

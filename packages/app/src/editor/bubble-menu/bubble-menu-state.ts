@@ -1,4 +1,4 @@
-import { commentQuoteText } from '@inkeep/open-knowledge-core';
+import { commentQuoteText } from '@inkeep/open-knowledge-core/comments/leaf-text';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Editor } from '@tiptap/react';
 import { findMarkIdAt } from '../extensions/mark-identity';

@@ -1,4 +1,4 @@
-import type { SkillsListEntry } from '@inkeep/open-knowledge-core';
+import type { SkillsListEntry } from '@inkeep/open-knowledge-core/schemas/api';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useId, useState } from 'react';
 import { toast } from 'sonner';

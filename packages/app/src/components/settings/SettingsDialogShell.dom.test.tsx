@@ -1,7 +1,8 @@
 import type { ConfigBinding, OkignoreBinding } from '@inkeep/open-knowledge-core';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createServedBindingLog } from '@/test-utils/served-binding.test-helper';
 import {
   expectVisualClassTokens,
   expectVisualClassTokensAbsent,
@@ -64,12 +65,21 @@ let mockShowInstallSkill = true;
 let mockProjectConfig: unknown = { contentRules: { markdownlint: { enabled: true } } };
 let mockMerged: unknown = null;
 
-vi.doMock('@inkeep/open-knowledge-core', () => ({
-  get SHOW_INSTALL_SKILL() {
-    return mockShowInstallSkill;
-  },
-  MARKDOWNLINT_RULE_CATALOG: [],
-}));
+const servedCore = createServedBindingLog();
+
+vi.doMock('@inkeep/open-knowledge-core/constants/feature-flags', () =>
+  servedCore.serve('@inkeep/open-knowledge-core/constants/feature-flags', {
+    get SHOW_INSTALL_SKILL() {
+      return mockShowInstallSkill;
+    },
+  }),
+);
+
+vi.doMock('@inkeep/open-knowledge-core/markdown/lint', () =>
+  servedCore.serve('@inkeep/open-knowledge-core/markdown/lint', {
+    MARKDOWNLINT_RULE_CATALOG: [],
+  }),
+);
 
 vi.doMock('@/components/settings/SettingsDialogBodyLazy', () => ({
   SettingsDialogBodyLazy: (props: BodyProps) => {
@@ -366,5 +376,40 @@ describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  test('the Claude Desktop sidebar item appears because the feature-flag replacement serves the install-skill flag on', () => {
+    mockDesktopPresent = true;
+    const since = servedCore.mark();
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+
+    expect(screen.getByTestId('settings-sidebar-item-claude-desktop')).toBeTruthy();
+    expect(
+      servedCore.readersOf(
+        '@inkeep/open-knowledge-core/constants/feature-flags',
+        'SHOW_INSTALL_SKILL',
+        since,
+      ),
+    ).toEqual(['components/settings/SettingsDialogShell.tsx']);
+  });
+
+  test('settings search finds no markdownlint rule because the lint replacement serves an empty catalog', async () => {
+    const user = userEvent.setup();
+    const since = servedCore.mark();
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+    expect(screen.getByTestId('settings-sidebar-item-plugin:markdownlint')).toBeTruthy();
+
+    await user.type(screen.getByTestId('settings-search-input'), 'MD013');
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-search-empty')).toBeDefined();
+    });
+    expect(screen.queryByTestId('settings-search-result-rule:MD013')).toBeNull();
+    expect(
+      servedCore.readersOf(
+        '@inkeep/open-knowledge-core/markdown/lint',
+        'MARKDOWNLINT_RULE_CATALOG',
+        since,
+      ),
+    ).toEqual(['components/settings/settings-search-index.ts']);
   });
 });

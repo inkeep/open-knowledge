@@ -1,4 +1,4 @@
-import type { RuleOptionSpec } from '@inkeep/open-knowledge-core';
+import type { RuleOptionSpec } from '@inkeep/open-knowledge-core/markdown/lint';
 import { Trans } from '@lingui/react/macro';
 import { type ComponentType, type ReactNode, useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';

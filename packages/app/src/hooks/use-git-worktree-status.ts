@@ -1,4 +1,4 @@
-import type { GitWorktreeStatusSuccess } from '@inkeep/open-knowledge-core';
+import type { GitWorktreeStatusSuccess } from '@inkeep/open-knowledge-core/schemas/api';
 import { useEffect, useState } from 'react';
 import { subscribeToDocumentsChanged } from '@/lib/documents-events';
 import { triggerSync } from '@/lib/trigger-sync';

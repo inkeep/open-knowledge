@@ -1,4 +1,4 @@
-import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
+import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core/schemas/api';
 import { t } from '@lingui/core/macro';
 import { consumeAuthEventStream } from '@/components/auth-event-stream';
 import type { OkDesktopBridge, OkLocalOpAuthEvent } from '@/lib/desktop-bridge-types';

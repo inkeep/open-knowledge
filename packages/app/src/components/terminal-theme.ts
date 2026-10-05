@@ -1,4 +1,4 @@
-import type { AnsiSlotName } from '@inkeep/open-knowledge-core';
+import type { AnsiSlotName } from '@inkeep/open-knowledge-core/theme/base16';
 import type { ITheme } from '@xterm/xterm';
 import { cssColorToHex } from '@/lib/css-color-to-hex';
 

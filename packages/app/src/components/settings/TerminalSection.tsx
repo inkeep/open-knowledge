@@ -1,4 +1,4 @@
-import { humanFormat } from '@inkeep/open-knowledge-core';
+import { humanFormat } from '@inkeep/open-knowledge-core/config/errors';
 import { useLingui } from '@lingui/react/macro';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';

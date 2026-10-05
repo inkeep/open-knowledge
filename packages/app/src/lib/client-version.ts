@@ -3,7 +3,7 @@ import {
   type ClientVersionTokenFields,
   clientVersionHeaders,
   clientVersionTokenFields,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/client-version';
 
 const importMetaEnv = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
 

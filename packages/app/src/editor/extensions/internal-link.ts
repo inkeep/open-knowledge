@@ -1,11 +1,12 @@
 /** Schema unchanged (precedent #9 add-only). */
+
+import { LinkFidelity } from '@inkeep/open-knowledge-core/extensions/link-fidelity';
 import {
   assertNeverLinkTarget,
   classifyMarkdownHref,
   extractAssetExtension,
-  LinkFidelity,
   resolveAssetProjectPath,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/utils/link-targets';
 import { type Editor, mergeAttributes } from '@tiptap/core';
 import { createElement } from 'react';
 import { openExternalUrl } from '@/lib/external-link';

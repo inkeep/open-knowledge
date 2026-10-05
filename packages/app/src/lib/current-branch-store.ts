@@ -1,4 +1,4 @@
-import { ServerInfoSuccessSchema } from '@inkeep/open-knowledge-core';
+import { ServerInfoSuccessSchema } from '@inkeep/open-knowledge-core/schemas/api';
 import { subscribeToBranchChanged } from '@/lib/documents-events';
 
 export interface BranchStore {

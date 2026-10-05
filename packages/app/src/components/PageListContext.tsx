@@ -1,4 +1,4 @@
-import { toWikiLinkSlug } from '@inkeep/open-knowledge-core';
+import { toWikiLinkSlug } from '@inkeep/open-knowledge-core/utils/slug';
 import { t } from '@lingui/core/macro';
 import { createContext, type ReactNode, use, useEffect, useRef, useState } from 'react';
 import {

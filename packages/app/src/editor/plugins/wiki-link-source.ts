@@ -8,16 +8,16 @@ import {
   ViewPlugin,
   type ViewUpdate,
 } from '@codemirror/view';
+import type { HeadingEntry } from '@inkeep/open-knowledge-core/utils/slug';
 import {
   buildPagesByBasenameIndex,
   buildPagesBySlugIndex,
   buildWikiLinkAssetTargetKeys,
-  type HeadingEntry,
   isResolvedWikiLinkTarget,
   resolveWikiLinkTarget,
   resolveWikiLinkTargetDocName,
   type WikiLinkLookupIndex,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/utils/wiki-link-resolve';
 import { openExternalUrl } from '@/lib/external-link';
 import { hashFromAssetPath, hashFromDocName } from '../../lib/doc-hash';
 import { resolveWikiLinkAssetTarget, toWikiLinkSlug } from '../extensions/wiki-link-helpers';

@@ -3,7 +3,7 @@ import {
   type FrontmatterValue,
   inferType,
   isFrontmatterValueEmpty,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/frontmatter/schema';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ChevronRight, FolderCog, Plus } from 'lucide-react';
 import { useState } from 'react';

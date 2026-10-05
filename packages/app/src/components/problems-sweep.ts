@@ -1,4 +1,4 @@
-import type { ProblemType } from '@inkeep/open-knowledge-core';
+import type { ProblemType } from '@inkeep/open-knowledge-core/schemas/api';
 
 export const SWEEP_PROGRESS_CHUNK = 50;
 

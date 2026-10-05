@@ -1,4 +1,4 @@
-import type { HandoffTarget, InstallState } from '@inkeep/open-knowledge-core';
+import type { HandoffTarget, InstallState } from '@inkeep/open-knowledge-core/handoff';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import {
   loadStickyAgent,

@@ -1,9 +1,9 @@
-import {
-  EDITOR_LABELS,
-  type SkillInstallWarningCode,
-  type SkillScope,
-  type SkillsListEntry,
-} from '@inkeep/open-knowledge-core';
+import { EDITOR_LABELS } from '@inkeep/open-knowledge-core/constants/editors';
+import type {
+  SkillInstallWarningCode,
+  SkillScope,
+  SkillsListEntry,
+} from '@inkeep/open-knowledge-core/schemas/api';
 import { Trans, useLingui } from '@lingui/react/macro';
 import {
   ArrowLeftRight,

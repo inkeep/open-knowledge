@@ -1,12 +1,12 @@
 import {
-  type ClientLogEntry,
   parseStructuredConsoleMessage,
   RENDERER_LOG_MAX_BATCH_BYTES,
   RENDERER_LOG_MAX_ENTRIES,
   RENDERER_LOG_MAX_MESSAGE_BYTES,
-  scrubSecrets,
   truncateLogMessage,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/logging/renderer-log';
+import { scrubSecrets } from '@inkeep/open-knowledge-core/logging/secret-scrub';
+import type { ClientLogEntry } from '@inkeep/open-knowledge-core/schemas/api';
 
 const FORWARDER_MARKER = Symbol.for('ok.client.logForwarder');
 

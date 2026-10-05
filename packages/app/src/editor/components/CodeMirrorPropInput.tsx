@@ -15,7 +15,7 @@ import {
 import { stex } from '@codemirror/legacy-modes/mode/stex';
 import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers } from '@codemirror/view';
-import type { PropDefString } from '@inkeep/open-knowledge-core';
+import type { PropDefString } from '@inkeep/open-knowledge-core/registry/types';
 import { tags } from '@lezer/highlight';
 import { mermaid } from 'codemirror-lang-mermaid';
 import { useEffect, useRef } from 'react';

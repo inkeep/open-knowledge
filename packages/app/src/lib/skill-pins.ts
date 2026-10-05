@@ -1,4 +1,5 @@
-import type { Config, SkillScope } from '@inkeep/open-knowledge-core';
+import type { Config } from '@inkeep/open-knowledge-core/config/schema';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
 
 export const PIN_FIELD = { project: 'pinnedProjectSkills', global: 'pinnedGlobalSkills' } as const;
 

@@ -1,4 +1,4 @@
-import { FALLBACK_LOCALE } from '@inkeep/open-knowledge-core';
+import { FALLBACK_LOCALE } from '@inkeep/open-knowledge-core/i18n/resolve-locale';
 import type { Messages } from '@lingui/core';
 import { i18n } from '@lingui/core';
 import catalog from '@/locales/en/messages.json';

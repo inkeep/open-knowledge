@@ -1,4 +1,4 @@
-import { type ProblemDetails, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
+import { type ProblemDetails, ProblemDetailsSchema } from '@inkeep/open-knowledge-core/schemas/api';
 import { t } from '@lingui/core/macro';
 import { z } from 'zod';
 import type {

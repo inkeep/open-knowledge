@@ -1,12 +1,12 @@
+import type { FrontmatterDelta } from '@inkeep/open-knowledge-core/frontmatter-diff';
 import {
   type ActivityAgentHeader,
   type ActivityBurst,
   type ActivityFile,
   AgentActivitySuccessSchema,
   AgentBurstDiffSuccessSchema,
-  type FrontmatterDelta,
   ProblemDetailsSchema,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/schemas/api';
 import { useEffect, useRef, useState } from 'react';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { HttpResponseParseError } from '@/editor/http-client';

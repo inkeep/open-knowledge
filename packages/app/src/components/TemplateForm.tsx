@@ -1,4 +1,7 @@
-import { stripFrontmatter, unwrapFrontmatterFences } from '@inkeep/open-knowledge-core';
+import {
+  stripFrontmatter,
+  unwrapFrontmatterFences,
+} from '@inkeep/open-knowledge-core/extensions/frontmatter';
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { X } from 'lucide-react';

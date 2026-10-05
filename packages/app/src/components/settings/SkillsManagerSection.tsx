@@ -1,4 +1,4 @@
-import type { SkillScope } from '@inkeep/open-knowledge-core';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
 import { Trans } from '@lingui/react/macro';
 import { SkillTargetsPicker } from '@/components/settings/SkillTargetsPicker';
 import { BuiltInSkillsSection } from './BuiltInSkillsSection';

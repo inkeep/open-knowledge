@@ -1,10 +1,10 @@
 import {
   parseProjectSkillBundleDoc,
-  type SkillsListEntry,
   skillFileLiveDocName,
   skillLiveDocName,
   stripMdExt,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/cc1';
+import type { SkillsListEntry } from '@inkeep/open-knowledge-core/schemas/api';
 
 export { skillLiveDocName };
 

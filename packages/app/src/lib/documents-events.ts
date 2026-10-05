@@ -1,5 +1,5 @@
-import type { SkillScope } from '@inkeep/open-knowledge-core';
-import { DerivedViewChannelSchema } from '@inkeep/open-knowledge-core';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
+import { DerivedViewChannelSchema } from '@inkeep/open-knowledge-core/schemas/cc1';
 import type { DerivedViewChannel } from '@/lib/cc1';
 
 const DOCUMENTS_CHANGED_EVENT = 'open-knowledge:documents-changed';

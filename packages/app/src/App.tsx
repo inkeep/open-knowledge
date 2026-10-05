@@ -1,4 +1,5 @@
-import { mediaKindForSidebarAssetExtension, SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core';
+import { SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core/constants/feature-flags';
+import { mediaKindForSidebarAssetExtension } from '@inkeep/open-knowledge-core/constants/upload';
 import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { CommentQueueShortcut } from '@/comments/CommentQueueShortcut';

@@ -52,6 +52,7 @@ export default defineConfig({
     'ok/class-proof-registration-discipline': 'error',
     'ok/cst-pm-handler-todo-stub': 'error',
     'ok/microcopy-ellipsis': 'error',
+    'ok/no-app-core-barrel-import': 'error',
     'ok/no-blind-agent-host-fanout': 'error',
     'ok/no-demoted-dialog-confirm': 'error',
     'ok/no-hand-rolled-branch-validation': 'error',

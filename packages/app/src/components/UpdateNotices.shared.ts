@@ -1,4 +1,4 @@
-import { MANUAL_CHECK_NOTICE_EXPIRY_MS } from '@inkeep/open-knowledge-core';
+import { MANUAL_CHECK_NOTICE_EXPIRY_MS } from '@inkeep/open-knowledge-core/constants/manual-update-check';
 import { t } from '@lingui/core/macro';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 

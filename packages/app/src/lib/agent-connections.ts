@@ -1,9 +1,9 @@
-import {
-  AgentIntegrationsApplySuccessSchema,
-  type ApplyIntent,
-  type ApplyReport,
-  type HostSnapshot,
-} from '@inkeep/open-knowledge-core';
+import type {
+  ApplyIntent,
+  ApplyReport,
+  HostSnapshot,
+} from '@inkeep/open-knowledge-core/agent-registry';
+import { AgentIntegrationsApplySuccessSchema } from '@inkeep/open-knowledge-core/schemas/api';
 
 export interface ApplyAgentConnectionsResult {
   readonly ok: boolean;

@@ -1,4 +1,4 @@
-import type { JsxComponentMeta } from '@inkeep/open-knowledge-core';
+import type { JsxComponentMeta } from '@inkeep/open-knowledge-core/registry/types';
 
 interface JsxComponentDecoration {
   // biome-ignore lint/suspicious/noExplicitAny: Component props are heterogeneous across 18+ built-ins; no single prop type covers all

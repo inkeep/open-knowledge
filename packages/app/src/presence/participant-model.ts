@@ -1,4 +1,4 @@
-import type { AgentPresenceEntry } from '@inkeep/open-knowledge-core';
+import type { AgentPresenceEntry } from '@inkeep/open-knowledge-core/types/awareness';
 import type { AwarenessState, AwarenessUser } from './identity.ts';
 
 export interface HumanParticipant {

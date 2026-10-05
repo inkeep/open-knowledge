@@ -1,4 +1,4 @@
-import { detectEmbeddedHostFromBrowser } from '@inkeep/open-knowledge-core';
+import { detectEmbeddedHostFromBrowser } from '@inkeep/open-knowledge-core/constants/embedded-host';
 import { useLingui } from '@lingui/react/macro';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { PanelLeft, PanelLeftOpen } from 'lucide-react';

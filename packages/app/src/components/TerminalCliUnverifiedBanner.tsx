@@ -1,4 +1,4 @@
-import { TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
+import { TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core/handoff';
 import { useLingui } from '@lingui/react/macro';
 import { TerminalNoticeBanner } from './TerminalNoticeBanner';
 

@@ -1,8 +1,6 @@
 import {
-  type Base16Scheme,
   type ProblemDetails,
   ProblemDetailsSchema,
-  parseSavedThemeId,
   SavedThemeDeleteSuccessSchema,
   type SavedThemeListEntry,
   type SavedThemeSaveRequest,
@@ -13,7 +11,9 @@ import {
   SavedThemesListSuccessSchema,
   SavedThemeUpdateRequestSchema,
   SavedThemeUpdateSuccessSchema,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/schemas/api';
+import type { Base16Scheme } from '@inkeep/open-knowledge-core/theme/base16';
+import { parseSavedThemeId } from '@inkeep/open-knowledge-core/theme/theme-plugins';
 import {
   createContext,
   createElement,

@@ -1,4 +1,4 @@
-import type { LintPluginId } from '@inkeep/open-knowledge-core';
+import type { LintPluginId } from '@inkeep/open-knowledge-core/markdown/lint';
 
 export interface LintPluginMeta {
   id: LintPluginId;

@@ -4,7 +4,7 @@ import {
   type EditorId,
   RESERVED_PROJECT_SKILL_NAME,
   STABLE_EDITOR_PROJECT_CONFIG_PATH,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/editors';
 import { i18n } from '@lingui/core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useId } from 'react';

@@ -1,4 +1,4 @@
-import type { SkillScope } from '@inkeep/open-knowledge-core';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, RefreshCw, Undo2 } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';

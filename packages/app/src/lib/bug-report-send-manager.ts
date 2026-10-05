@@ -3,7 +3,7 @@ import type {
   OkBugReportSendMetadata,
   OkBugReportSendResult,
   ReportBundleSummary,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/logger-types';
 import {
   type BugReportSendSpan,
   beginBugReportSendSpan,

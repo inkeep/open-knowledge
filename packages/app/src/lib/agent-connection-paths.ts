@@ -1,11 +1,11 @@
+import { parsePathId } from '@inkeep/open-knowledge-core/agent-registry';
 import {
-  AGENTS_SKILLS_ROOT,
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_USER_SKILL_ROOT,
-  parsePathId,
   RESERVED_PROJECT_SKILL_NAME,
   STABLE_EDITOR_PROJECT_CONFIG_PATH,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/editors';
+import { AGENTS_SKILLS_ROOT } from '@inkeep/open-knowledge-core/constants/skills';
 
 export function connectionPathDisplay(pathId: string | undefined): string | null {
   if (pathId === undefined) return null;

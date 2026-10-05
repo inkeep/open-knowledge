@@ -1,9 +1,9 @@
+import { CC1_CONTRACT_VERSION, SYSTEM_DOC_NAME } from '@inkeep/open-knowledge-core/constants/cc1';
 import {
   CC1_CHANNEL_BRANCH_SWITCHED,
   CC1_CHANNEL_CONFIG_IGNORE_NESTED_ERROR,
   CC1_CHANNEL_CONFIG_VALIDATION_REJECTED,
   CC1_CHANNEL_DISK_ACK,
-  CC1_CONTRACT_VERSION,
   type CC1BranchSwitchedPayload,
   CC1BranchSwitchedPayloadSchema,
   type CC1ConfigIgnoreNestedErrorPayload,
@@ -16,8 +16,7 @@ import {
   type CC1ServerInfoPayload,
   CC1ServerInfoPayloadSchema,
   type DerivedViewChannel,
-  SYSTEM_DOC_NAME,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/schemas/cc1';
 import type { z } from 'zod';
 
 export {

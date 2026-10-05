@@ -1,4 +1,7 @@
-import type { RenamedAssetMapping, RenamedDocMapping } from '@inkeep/open-knowledge-core';
+import type {
+  RenamedAssetMapping,
+  RenamedDocMapping,
+} from '@inkeep/open-knowledge-core/schemas/api';
 import type { RenamedFolderMapping } from './editor-tabs';
 
 export interface LocalRenameReconciliation {

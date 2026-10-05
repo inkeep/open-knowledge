@@ -1,4 +1,4 @@
-import type { TerminalCli } from '@inkeep/open-knowledge-core';
+import type { TerminalCli } from '@inkeep/open-knowledge-core/handoff';
 import { useEffect, useState } from 'react';
 
 export function useInstalledClis(): Partial<Record<TerminalCli, boolean>> {

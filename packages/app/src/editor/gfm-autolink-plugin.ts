@@ -1,4 +1,4 @@
-import type { LinkStyle } from '@inkeep/open-knowledge-core';
+import type { LinkStyle } from '@inkeep/open-knowledge-core/extensions/link-fidelity';
 import {
   combineTransactionSteps,
   Extension,

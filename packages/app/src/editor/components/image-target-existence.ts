@@ -1,4 +1,4 @@
-import { resolveAssetProjectPath } from '@inkeep/open-knowledge-core';
+import { resolveAssetProjectPath } from '@inkeep/open-knowledge-core/utils/link-targets';
 import { useOptionalPageList } from '../../components/PageListContext';
 import { isResolvedAssetHref } from '../extensions/link-resolution';
 

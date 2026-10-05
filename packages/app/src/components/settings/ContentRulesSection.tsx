@@ -1,9 +1,9 @@
+import { humanFormat } from '@inkeep/open-knowledge-core/config/errors';
 import {
   DEFAULT_LINKS_VALIDATION,
   DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
-  humanFormat,
   type LinksValidationSetting,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/markdown/lint';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { toast } from 'sonner';
 import { Label } from '@/components/ui/label';

@@ -1,4 +1,4 @@
-import { SKILL_NAME_REGEX, type SkillsListEntry } from '@inkeep/open-knowledge-core';
+import { SKILL_NAME_REGEX, type SkillsListEntry } from '@inkeep/open-knowledge-core/schemas/api';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { MultiFileDiff } from '@pierre/diffs/react';
 import { useEffect, useId, useState } from 'react';

@@ -8,7 +8,7 @@ import {
   type ForwardLinksSuccess,
   ForwardLinksSuccessSchema,
   ProblemDetailsSchema,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/schemas/api';
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useQuery } from '@tanstack/react-query';

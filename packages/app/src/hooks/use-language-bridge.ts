@@ -1,4 +1,4 @@
-import type { LanguagePreference } from '@inkeep/open-knowledge-core';
+import type { LanguagePreference } from '@inkeep/open-knowledge-core/i18n/locales';
 import { useEffect } from 'react';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 

@@ -1,4 +1,4 @@
-import { MIN_TERMINAL_RIGHT_WIDTH } from '@inkeep/open-knowledge-core';
+import { MIN_TERMINAL_RIGHT_WIDTH } from '@inkeep/open-knowledge-core/terminal-layout';
 
 export const MIN_USABLE_RIGHT_TERMINAL_WIDTH_PX = MIN_TERMINAL_RIGHT_WIDTH;
 

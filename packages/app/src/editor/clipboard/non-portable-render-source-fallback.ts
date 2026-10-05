@@ -1,4 +1,4 @@
-import { selectFenceChar, widenFenceLength } from '@inkeep/open-knowledge-core';
+import { selectFenceChar, widenFenceLength } from '@inkeep/open-knowledge-core/markdown/code-fence';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { normalizeCodeLanguage } from '../extensions/code-block-languages.ts';
 import { shouldShowPreview } from '../extensions/code-block-meta.ts';

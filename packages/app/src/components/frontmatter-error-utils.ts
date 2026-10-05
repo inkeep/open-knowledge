@@ -1,4 +1,7 @@
-import { type FrontmatterValidationError, fieldErrorsFromError } from '@inkeep/open-knowledge-core';
+import {
+  type FrontmatterValidationError,
+  fieldErrorsFromError,
+} from '@inkeep/open-knowledge-core/frontmatter/errors';
 
 export function describeError(
   error: FrontmatterValidationError,

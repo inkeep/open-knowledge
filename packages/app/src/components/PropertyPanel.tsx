@@ -16,17 +16,19 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   bindFrontmatterDoc,
   type FrontmatterBinding,
-  type FrontmatterPatch,
   type FrontmatterSnapshot,
+  readFmKeys,
+  readFmRegionWithError,
+} from '@inkeep/open-knowledge-core/bridge';
+import { fieldErrorsFromError } from '@inkeep/open-knowledge-core/frontmatter/errors';
+import {
+  type FrontmatterPatch,
   type FrontmatterType,
   type FrontmatterValue,
-  fieldErrorsFromError,
   frontmatterValuesEqual,
   inferType,
   isFrontmatterValueEmpty,
-  readFmKeys,
-  readFmRegionWithError,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/frontmatter/schema';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle, Plus } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';

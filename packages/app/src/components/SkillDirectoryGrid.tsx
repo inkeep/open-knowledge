@@ -1,4 +1,5 @@
-import type { SkillScope, SkillSearchResult } from '@inkeep/open-knowledge-core';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
+import type { SkillSearchResult } from '@inkeep/open-knowledge-core/skills-catalog/schema';
 import type { ReactNode } from 'react';
 import { SkillDirectoryResult } from '@/components/SkillDirectoryResult';
 import { Skeleton } from '@/components/ui/skeleton';

@@ -3,7 +3,7 @@ import {
   TERMINAL_CLI_IDS,
   TERMINAL_CLIS,
   type TerminalCli,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/handoff';
 
 export const VISIBLE_CLIS: readonly TerminalCli[] = TERMINAL_CLI_IDS;
 

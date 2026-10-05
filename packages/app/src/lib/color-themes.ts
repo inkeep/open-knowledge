@@ -1,25 +1,26 @@
+import { CHROME_BG_DARK, CHROME_BG_LIGHT } from '@inkeep/open-knowledge-core/constants/chrome';
+import { PREVIEW_THEME_TOKENS } from '@inkeep/open-knowledge-core/constants/preview-theme-tokens';
 import {
   BASE16_SLOTS,
   type Base16Palette,
   type Base16Scheme,
   base16ToTokens,
-  CHROME_BG_DARK,
-  CHROME_BG_LIGHT,
+  isBase16Hex,
+  mixHex,
+  relativeLuminance,
+} from '@inkeep/open-knowledge-core/theme/base16';
+import {
   type ColorThemeSelection,
   type ColorThemeSelectionInput,
   generateColorThemesCss,
-  isBase16Hex,
   isDarkTheme,
-  mixHex,
-  PREVIEW_THEME_TOKENS,
-  relativeLuminance,
   renderThemeBlock,
   resolveColorThemeSelection,
   resolveModePreference,
   resolveThemePlugin,
   THEME_PLUGINS,
   type ThemePlugin,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/theme/theme-plugins';
 
 export type { Base16Scheme, ColorThemeSelection, ColorThemeSelectionInput };
 export {

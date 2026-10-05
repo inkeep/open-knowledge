@@ -1,5 +1,5 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import { TEMPLATE_NAME_REGEX } from '@inkeep/open-knowledge-core';
+import { TEMPLATE_NAME_REGEX } from '@inkeep/open-knowledge-core/schemas/api';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { FolderGit2, Type } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';

@@ -1,4 +1,5 @@
-import type { ConfigBinding, OkignoreBinding } from '@inkeep/open-knowledge-core';
+import type { ConfigBinding } from '@inkeep/open-knowledge-core/config/bind-config-doc';
+import type { OkignoreBinding } from '@inkeep/open-knowledge-core/config/bind-okignore-doc';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { type ComponentType, lazy } from 'react';
 import { lazyWithPreload } from '@/lib/lazy-with-preload';

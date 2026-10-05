@@ -1,4 +1,4 @@
-import type { AgentPresenceEntry } from '@inkeep/open-knowledge-core';
+import type { AgentPresenceEntry } from '@inkeep/open-knowledge-core/types/awareness';
 
 export const AGENT_PRESENCE_STALE_MS = 5_000;
 

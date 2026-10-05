@@ -1,4 +1,4 @@
-import { stripFrontmatter } from '@inkeep/open-knowledge-core';
+import { stripFrontmatter } from '@inkeep/open-knowledge-core/extensions/frontmatter';
 import { getSharedMarkdownManager } from '@/editor/utils/md-singleton';
 
 export interface DocumentStats {

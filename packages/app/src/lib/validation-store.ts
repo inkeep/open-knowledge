@@ -3,7 +3,7 @@ import {
   type ValidationDocCounts,
   type ValidationSourceCounts,
   type ValidationSourceKey,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/markdown/lint';
 import { filePathToDocName } from '@/lib/doc-hash';
 
 export type DocProblemCounts = ValidationSourceCounts;

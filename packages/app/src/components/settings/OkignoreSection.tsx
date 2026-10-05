@@ -18,13 +18,13 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import type { OkignoreBinding } from '@inkeep/open-knowledge-core/config/bind-okignore-doc';
 import {
-  CONFIG_DOC_NAME_OKIGNORE,
   type ConfigValidationError,
   humanFormat,
   isKnownConfigError,
-  type OkignoreBinding,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/config/errors';
+import { CONFIG_DOC_NAME_OKIGNORE } from '@inkeep/open-knowledge-core/constants/cc1';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle, Check, GripVertical, X } from 'lucide-react';
 import { type CSSProperties, useEffect, useRef, useState } from 'react';

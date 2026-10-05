@@ -1,4 +1,4 @@
-import type { OkBugReportListRow } from '@inkeep/open-knowledge-core';
+import type { OkBugReportListRow } from '@inkeep/open-knowledge-core/logger-types';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ChevronDownIcon, FolderOpenIcon, MailIcon, RotateCwIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';

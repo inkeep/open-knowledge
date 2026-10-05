@@ -1,4 +1,5 @@
-import { relative } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { basename, dirname, join, relative } from 'node:path';
 import { globToRegExp, normalizeRelativePath } from '../no-comments/scope.mjs';
 
 const CACHE = new Map();
@@ -23,6 +24,24 @@ export const UNSCOPED_RULES = new Set([
 ]);
 
 export const RULE_SCOPES = {
+  'no-app-core-barrel-import': [
+    'packages/app/src/**/*.ts',
+    'packages/app/src/**/*.tsx',
+    'packages/app/src/**/*.mts',
+    'packages/app/src/**/*.cts',
+    'packages/app/src/**/*.js',
+    'packages/app/src/**/*.jsx',
+    'packages/app/src/**/*.mjs',
+    'packages/app/src/**/*.cjs',
+    '!**/*.test.ts',
+    '!**/*.test.tsx',
+    '!**/*.test-helper.ts',
+    '!**/*.test-helper.tsx',
+    '!**/*.type-tests.ts',
+    '!**/*.type-tests.tsx',
+    '!**/*.e2e.ts',
+    'lint-plugins/ok-rules/__fixtures__/no-app-core-barrel-import.fixture.tsx',
+  ],
   'no-hand-rolled-test-file-suffix': [
     '**/*.ts',
     '**/*.tsx',
@@ -218,16 +237,28 @@ export function isInScope(ruleName, relPath, table = RULE_SCOPES) {
   return included;
 }
 
-function scopedFilename(context, repoRoot) {
-  const absolute = context.physicalFilename ?? context.filename;
-  return normalizeRelativePath(relative(repoRoot, absolute));
+function canonicalPath(path) {
+  try {
+    return realpathSync.native(path);
+  } catch (error) {
+    if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error;
+    const parent = dirname(path);
+    if (parent === path) return path;
+    return join(canonicalPath(parent), basename(path));
+  }
+}
+
+function scopedFilename(context, canonicalRoot) {
+  const absolute = canonicalPath(context.physicalFilename ?? context.filename);
+  return normalizeRelativePath(relative(canonicalRoot, absolute));
 }
 
 export function scoped(ruleName, rule, repoRoot, table = RULE_SCOPES) {
+  const canonicalRoot = canonicalPath(repoRoot);
   return {
     ...rule,
     create(context) {
-      if (!isInScope(ruleName, scopedFilename(context, repoRoot), table)) return {};
+      if (!isInScope(ruleName, scopedFilename(context, canonicalRoot), table)) return {};
       return rule.create(context);
     },
   };

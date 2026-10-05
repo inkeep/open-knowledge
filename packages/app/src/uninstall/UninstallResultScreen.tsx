@@ -1,4 +1,4 @@
-import type { UninstallNoticeScreen as UninstallNoticeSpec } from '@inkeep/open-knowledge-core';
+import type { UninstallNoticeScreen as UninstallNoticeSpec } from '@inkeep/open-knowledge-core/uninstall-bridge';
 import { useLingui } from '@lingui/react/macro';
 import { UninstallNoticeScreen } from './UninstallNoticeScreen';
 

@@ -8,7 +8,7 @@ import {
   LintFixResultSchema,
   type MarkdownlintRuleWriteValue,
   type SchemaParentPathSegment,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/markdown/lint';
 import { useEffect, useState } from 'react';
 
 const LINT_CONFIG_CHANGED_EVENT = 'open-knowledge:lint-config-changed';

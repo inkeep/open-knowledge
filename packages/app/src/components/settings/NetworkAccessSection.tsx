@@ -1,4 +1,5 @@
-import { DEFAULT_TUNNEL_PORT, humanFormat } from '@inkeep/open-knowledge-core';
+import { humanFormat } from '@inkeep/open-knowledge-core/config/errors';
+import { DEFAULT_TUNNEL_PORT } from '@inkeep/open-knowledge-core/config/schema';
 import { useLingui } from '@lingui/react/macro';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';

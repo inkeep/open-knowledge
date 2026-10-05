@@ -1,4 +1,4 @@
-import type { SkillSearchResult } from '@inkeep/open-knowledge-core';
+import type { SkillSearchResult } from '@inkeep/open-knowledge-core/skills-catalog/schema';
 import { useQuery } from '@tanstack/react-query';
 import { fetchPopularSkills } from '@/lib/skills-api';
 

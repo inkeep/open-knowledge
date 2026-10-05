@@ -5,7 +5,8 @@
  */
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import { bindFrontmatterDoc, type FrontmatterMap } from '@inkeep/open-knowledge-core';
+import { bindFrontmatterDoc } from '@inkeep/open-knowledge-core/bridge';
+import type { FrontmatterMap } from '@inkeep/open-knowledge-core/frontmatter/schema';
 import { useEffect, useState } from 'react';
 
 function isFlagEnabled(map: FrontmatterMap, key: string): boolean {

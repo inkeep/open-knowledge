@@ -1,11 +1,10 @@
+import { getHeadingSlug, toWikiLinkSlug } from '@inkeep/open-knowledge-core/utils/slug';
 import {
-  getHeadingSlug,
   getWikiLinkResolutionCandidates,
   isResolvedWikiLinkTarget,
   resolveWikiLinkAssetTarget,
   resolveWikiLinkTargetDocName,
-  toWikiLinkSlug,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/utils/wiki-link-resolve';
 
 export {
   getHeadingSlug,

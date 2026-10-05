@@ -1,4 +1,4 @@
-import { LINEAGE_EPOCH_KEY } from '@inkeep/open-knowledge-core';
+import { LINEAGE_EPOCH_KEY } from '@inkeep/open-knowledge-core/constants/doc-lifecycle';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import * as Y from 'yjs';
 import { mark } from '@/lib/perf';

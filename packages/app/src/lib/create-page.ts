@@ -1,4 +1,4 @@
-import { CreatePageSuccessSchema } from '@inkeep/open-knowledge-core';
+import { CreatePageSuccessSchema } from '@inkeep/open-knowledge-core/schemas/api';
 import { emitDocumentsChanged } from './documents-events';
 import { parseServerResponse, parseSuccessOrWarn } from './parse-server-response';
 

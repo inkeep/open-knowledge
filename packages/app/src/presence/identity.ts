@@ -1,9 +1,6 @@
-import {
-  type AwarenessState,
-  type AwarenessUser,
-  getIdentity,
-  type Identity,
-} from '@inkeep/open-knowledge-core';
+import type { AwarenessState, AwarenessUser } from '@inkeep/open-knowledge-core/types/awareness';
+import type { Identity } from '@inkeep/open-knowledge-core/types/identity';
+import { getIdentity } from '@inkeep/open-knowledge-core/utils/identity';
 import { useState } from 'react';
 
 export type { AwarenessState, AwarenessUser };

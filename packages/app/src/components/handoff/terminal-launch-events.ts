@@ -1,4 +1,4 @@
-import type { TerminalCli, TerminalLaunchCommand } from '@inkeep/open-knowledge-core';
+import type { TerminalCli, TerminalLaunchCommand } from '@inkeep/open-knowledge-core/handoff';
 import { routeNoteWindowActionToMain } from '@/lib/note-window-main-actions';
 
 const TERMINAL_LAUNCH_EVENT = 'open-knowledge:terminal-launch';

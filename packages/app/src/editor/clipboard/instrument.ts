@@ -1,4 +1,5 @@
-import { ChunkedInsertError, HtmlPayloadTooLargeError } from '@inkeep/open-knowledge-core';
+import { HtmlPayloadTooLargeError } from '@inkeep/open-knowledge-core/markdown/html-to-mdast';
+import { ChunkedInsertError } from '@inkeep/open-knowledge-core/utils/chunked-insert';
 import type { UrlPortabilityReason } from './clipboard-sanitize.ts';
 import type { ClipboardSource } from './detect-source.ts';
 

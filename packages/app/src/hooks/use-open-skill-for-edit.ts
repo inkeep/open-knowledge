@@ -1,4 +1,4 @@
-import { externalSkillFileLiveDocName } from '@inkeep/open-knowledge-core';
+import { externalSkillFileLiveDocName } from '@inkeep/open-knowledge-core/constants/cc1';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { hashFromDocName, replaceHashWithoutNavigation } from '@/lib/doc-hash';
 import { editExternalSkill } from '@/lib/skills-api';

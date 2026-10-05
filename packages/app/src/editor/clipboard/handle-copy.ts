@@ -1,4 +1,4 @@
-import type { MarkdownManager } from '@inkeep/open-knowledge-core';
+import type { MarkdownManager } from '@inkeep/open-knowledge-core/markdown';
 import { TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';

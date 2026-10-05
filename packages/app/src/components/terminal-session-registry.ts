@@ -1,4 +1,4 @@
-import type { TerminalCli } from '@inkeep/open-knowledge-core';
+import type { TerminalCli } from '@inkeep/open-knowledge-core/handoff';
 
 export const IDLE_QUIET_MS = 1200;
 

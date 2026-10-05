@@ -1,4 +1,4 @@
-import { JsxComponent as BaseJsxComponent } from '@inkeep/open-knowledge-core';
+import { JsxComponent as BaseJsxComponent } from '@inkeep/open-knowledge-core/extensions/jsx-component';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import { JsxComponentView } from './JsxComponentView';
 

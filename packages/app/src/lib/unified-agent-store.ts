@@ -4,7 +4,7 @@ import {
   type TargetData,
   TERMINAL_CLI_IDS,
   type TerminalCli,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/handoff';
 import { useSyncExternalStore } from 'react';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 

@@ -1,4 +1,4 @@
-import { resolveLeafSchema } from '@inkeep/open-knowledge-core';
+import { resolveLeafSchema } from '@inkeep/open-knowledge-core/config/schema-leaf';
 import type { z } from 'zod';
 
 export { resolveLeafSchema };

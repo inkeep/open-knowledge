@@ -1,4 +1,8 @@
-import { decodeHrefPath, isExternalHref, resolveInternalHref } from '@inkeep/open-knowledge-core';
+import { isExternalHref } from '@inkeep/open-knowledge-core/utils/link-targets';
+import {
+  decodeHrefPath,
+  resolveInternalHref,
+} from '@inkeep/open-knowledge-core/utils/resolve-internal-href';
 import { docNameFromAbsolutePath } from '@/components/acp/follow-file';
 import { hashFromDocName } from '@/lib/doc-hash';
 import type { Workspace } from '@/lib/workspace-paths';

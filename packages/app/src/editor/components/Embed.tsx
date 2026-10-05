@@ -1,4 +1,4 @@
-import { rewriteEmbedUrl } from '@inkeep/open-knowledge-core';
+import { rewriteEmbedUrl } from '@inkeep/open-knowledge-core/utils/embed-url-rewrite';
 import { useEffect, useRef } from 'react';
 import { useJsxComponentHost } from './jsx-host-context.tsx';
 import { ResizeHandles } from './ResizeHandles.tsx';

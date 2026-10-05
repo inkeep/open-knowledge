@@ -1,4 +1,4 @@
-import type { LinkPreviewMetadata } from '@inkeep/open-knowledge-core';
+import type { LinkPreviewMetadata } from '@inkeep/open-knowledge-core/schemas/api';
 
 export function ExternalLinkPreviewCard({ metadata }: { metadata: LinkPreviewMetadata }) {
   const faviconSrc = metadata.faviconDataUri?.startsWith('data:image/')

@@ -1,10 +1,10 @@
-import {
-  type PluginBundleMetadata,
-  type PluginSourceMetadata,
-  type SkillDetail,
-  type SkillScope,
-  skillsShSkillLinks,
-} from '@inkeep/open-knowledge-core';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
+import type {
+  PluginBundleMetadata,
+  PluginSourceMetadata,
+  SkillDetail,
+} from '@inkeep/open-knowledge-core/skills-catalog/schema';
+import { skillsShSkillLinks } from '@inkeep/open-knowledge-core/skills-catalog/source-fields';
 import { Trans } from '@lingui/react/macro';
 import { ArrowUpRightIcon, ChevronDown } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';

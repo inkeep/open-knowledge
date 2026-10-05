@@ -1,4 +1,4 @@
-import { desktopChannelLabel } from '@inkeep/open-knowledge-core';
+import { desktopChannelLabel } from '@inkeep/open-knowledge-core/constants/product';
 import { t } from '@lingui/core/macro';
 import type { OkDesktopBridge, OkServerRestartFailure } from '@/lib/desktop-bridge-types';
 

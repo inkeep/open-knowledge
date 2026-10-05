@@ -1,11 +1,8 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import {
-  isEditableTextDocFile,
-  type TerminalCli,
-  type TerminalLaunchCommand,
-  type TerminalPlacement,
-} from '@inkeep/open-knowledge-core';
 import type { AttachmentPart } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { isEditableTextDocFile } from '@inkeep/open-knowledge-core/constants/code-languages';
+import type { TerminalCli, TerminalLaunchCommand } from '@inkeep/open-knowledge-core/handoff';
+import type { TerminalPlacement } from '@inkeep/open-knowledge-core/terminal-layout';
 import {
   lazy,
   Suspense,

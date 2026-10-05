@@ -1,9 +1,9 @@
-import type { InlineAssetMediaKind } from '@inkeep/open-knowledge-core';
+import { isEditableTextDocFile } from '@inkeep/open-knowledge-core/constants/code-languages';
 import {
   isDocumentOverOpenByteLimit,
-  isEditableTextDocFile,
   TEXT_DOC_OPEN_BYTE_LIMIT,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/document-open';
+import type { InlineAssetMediaKind } from '@inkeep/open-knowledge-core/constants/upload';
 import { assetTabId, docTabId } from '@/editor/editor-tabs';
 import { hashFromAssetPath } from '@/lib/doc-hash';
 import {

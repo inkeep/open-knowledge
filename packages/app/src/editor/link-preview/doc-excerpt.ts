@@ -1,9 +1,6 @@
-import {
-  createCodeFenceTracker,
-  getHeadingSlug,
-  stripFrontmatter,
-  toWikiLinkSlug,
-} from '@inkeep/open-knowledge-core';
+import { stripFrontmatter } from '@inkeep/open-knowledge-core/extensions/frontmatter';
+import { createCodeFenceTracker } from '@inkeep/open-knowledge-core/utils/code-fence-tracker';
+import { getHeadingSlug, toWikiLinkSlug } from '@inkeep/open-knowledge-core/utils/slug';
 
 export interface DocExcerptOptions {
   anchor?: string | null;

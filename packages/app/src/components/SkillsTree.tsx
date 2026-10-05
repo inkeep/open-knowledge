@@ -1,9 +1,9 @@
 import type {
-  CatalogSkill,
   SkillMoveFailureOutcome,
   SkillScope,
   SkillsListEntry,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/schemas/api';
+import type { CatalogSkill } from '@inkeep/open-knowledge-core/skills-catalog/schema';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { FILE_TREE_TAG_NAME, type FileTreeSortComparator } from '@pierre/trees';
 import { useFileTree } from '@pierre/trees/react';

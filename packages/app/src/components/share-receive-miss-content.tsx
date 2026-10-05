@@ -1,4 +1,7 @@
-import type { PullOutcome, ShareTargetStatusResponse } from '@inkeep/open-knowledge-core';
+import type {
+  PullOutcome,
+  ShareTargetStatusResponse,
+} from '@inkeep/open-knowledge-core/schemas/api';
 import { Trans, useLingui } from '@lingui/react/macro';
 import {
   ArrowDownToLine,

@@ -1,4 +1,4 @@
-import type { GitWorktreeEntry } from '@inkeep/open-knowledge-core';
+import type { GitWorktreeEntry } from '@inkeep/open-knowledge-core/schemas/api';
 
 export const MAX_WORKTREE_GROUPS = 8;
 

@@ -1,4 +1,6 @@
-import { DESKTOP_PRODUCTS, EDITOR_LABELS, type GuidanceRef } from '@inkeep/open-knowledge-core';
+import type { GuidanceRef } from '@inkeep/open-knowledge-core/agent-registry';
+import { EDITOR_LABELS } from '@inkeep/open-knowledge-core/constants/editors';
+import { DESKTOP_PRODUCTS } from '@inkeep/open-knowledge-core/constants/product';
 import { t } from '@lingui/core/macro';
 
 function desktopMcpServerName(): string | null {

@@ -1,4 +1,4 @@
-import type { WorktreeCreateResult } from '@inkeep/open-knowledge-core';
+import type { WorktreeCreateResult } from '@inkeep/open-knowledge-core/git/worktree-selector-model';
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 

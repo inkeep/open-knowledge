@@ -1,27 +1,29 @@
 import type {
   SeedInstallPackSkillSuccess,
-  SkillDetail,
-  SkillDiscover,
   SkillFolderLinkPreview,
   SkillFrontmatter,
   SkillInstallWarningCode,
   SkillMoveFailureOutcome,
-  SkillPreview,
-  SkillRefResolution,
   SkillScope,
   SkillsImportBulkSuccess,
-  SkillsInstalledSuccess,
   SkillsListEntry,
   SkillsReimportBulkSuccess,
-  SkillsSearchSuccess,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/schemas/api';
 import {
   interpretSkillMoveFailure,
   isSkillMoveRetainedDestinationCode,
   normalizeApiWarnings,
   SkillFolderLinkPreviewSchema,
   SkillsListSuccessSchema,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/schemas/api';
+import type {
+  SkillDetail,
+  SkillDiscover,
+  SkillPreview,
+  SkillRefResolution,
+  SkillsInstalledSuccess,
+  SkillsSearchSuccess,
+} from '@inkeep/open-knowledge-core/skills-catalog/schema';
 import { t } from '@lingui/core/macro';
 import { toast } from 'sonner';
 import { emitSkillScopeMoved, emitSkillsChanged } from '@/lib/documents-events';

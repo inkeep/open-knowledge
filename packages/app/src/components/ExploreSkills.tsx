@@ -1,4 +1,5 @@
-import type { SkillScope, SkillSearchResult } from '@inkeep/open-knowledge-core';
+import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
+import type { SkillSearchResult } from '@inkeep/open-knowledge-core/skills-catalog/schema';
 import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Search } from 'lucide-react';

@@ -1,6 +1,6 @@
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { codeLanguageForExtension } from '@inkeep/open-knowledge-core';
+import { codeLanguageForExtension } from '@inkeep/open-knowledge-core/constants/code-languages';
 import { basicSetup } from 'codemirror';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef } from 'react';

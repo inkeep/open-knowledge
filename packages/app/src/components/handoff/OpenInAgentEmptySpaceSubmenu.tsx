@@ -6,7 +6,7 @@ import {
   type InstallState,
   TERMINAL_CLI_IDS,
   TERMINAL_CLIS,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/handoff';
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, SlidersHorizontal, Sparkles } from 'lucide-react';

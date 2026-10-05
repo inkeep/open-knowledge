@@ -1,4 +1,4 @@
-import type { NativeMenuLabelKey } from '@inkeep/open-knowledge-core';
+import type { NativeMenuLabelKey } from '@inkeep/open-knowledge-core/constants/native-menu-labels';
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 

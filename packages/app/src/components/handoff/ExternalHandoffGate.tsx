@@ -1,10 +1,9 @@
 import {
   type AgentId,
   agentIdForHandoffTarget,
-  type HandoffOutcome,
-  type HandoffTarget,
   KNOWN_HANDOFF_TARGETS,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/agent-registry';
+import type { HandoffOutcome, HandoffTarget } from '@inkeep/open-knowledge-core/handoff';
 import { useLingui } from '@lingui/react/macro';
 import { createContext, type ReactNode, use, useEffect, useRef, useState } from 'react';
 import {

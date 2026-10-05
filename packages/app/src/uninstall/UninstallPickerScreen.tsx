@@ -1,4 +1,4 @@
-import type { UninstallProjectRow } from '@inkeep/open-knowledge-core';
+import type { UninstallProjectRow } from '@inkeep/open-knowledge-core/uninstall-bridge';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useId, useState } from 'react';
 import { Badge } from '@/components/ui/badge';

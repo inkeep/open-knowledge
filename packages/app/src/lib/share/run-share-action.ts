@@ -3,8 +3,8 @@ import type {
   ShareConstructUrlRequest,
   ShareConstructUrlResponse,
   ShareFreshness,
-} from '@inkeep/open-knowledge-core';
-import { ShareConstructUrlResponseSchema } from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/schemas/api';
+import { ShareConstructUrlResponseSchema } from '@inkeep/open-knowledge-core/schemas/api';
 import { t } from '@lingui/core/macro';
 import { docNameToMarkdownPath } from '@/lib/doc-paths';
 

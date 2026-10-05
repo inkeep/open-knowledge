@@ -1,4 +1,7 @@
-import { ProblemDetailsSchema, UploadAssetSuccessSchema } from '@inkeep/open-knowledge-core';
+import {
+  ProblemDetailsSchema,
+  UploadAssetSuccessSchema,
+} from '@inkeep/open-knowledge-core/schemas/api';
 import { HttpResponseParseError } from '../http-client.ts';
 import { getCurrentDocName } from './current-doc-name.ts';
 import {

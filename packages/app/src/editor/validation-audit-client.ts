@@ -1,11 +1,11 @@
 import {
-  type BrokenLinkSuppression,
   type ValidationAuditCountsResponse,
   ValidationAuditCountsResponseSchema,
   type ValidationAuditResponse,
   ValidationAuditResponseSchema,
   type ValidationDocResult,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/markdown/lint';
+import type { BrokenLinkSuppression } from '@inkeep/open-knowledge-core/schemas/api';
 import { useEffect, useState } from 'react';
 import type { z } from 'zod';
 import { invalidatesLocalTargetAudit, subscribeToDocumentsChanged } from '@/lib/documents-events';

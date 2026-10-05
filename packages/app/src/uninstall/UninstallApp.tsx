@@ -1,7 +1,7 @@
 import {
   UNINSTALL_RESULT_WAIT_TIMEOUT_MS,
   type UninstallScreenSpec,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/uninstall-bridge';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useState } from 'react';
 import {

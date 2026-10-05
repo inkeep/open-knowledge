@@ -1,9 +1,6 @@
-import {
-  type CatalogSkill,
-  catalogRawScopeToOkScope,
-  type SkillScope,
-  type SkillsListEntry,
-} from '@inkeep/open-knowledge-core';
+import type { SkillScope, SkillsListEntry } from '@inkeep/open-knowledge-core/schemas/api';
+import type { CatalogSkill } from '@inkeep/open-knowledge-core/skills-catalog/schema';
+import { catalogRawScopeToOkScope } from '@inkeep/open-knowledge-core/skills-catalog/scope';
 import {
   bucketForDetected,
   bucketForSkill,

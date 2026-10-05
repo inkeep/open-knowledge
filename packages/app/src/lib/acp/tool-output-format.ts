@@ -1,4 +1,4 @@
-import { widenFenceLength } from '@inkeep/open-knowledge-core';
+import { widenFenceLength } from '@inkeep/open-knowledge-core/markdown/code-fence';
 
 const FENCE_LINE = /^\s{0,3}(?:`{3,}|~{3,})/;
 const HEADING = /^#{1,6}\s+\S/m;

@@ -1,4 +1,4 @@
-import { MARKDOWNLINT_RULE_CATALOG } from '@inkeep/open-knowledge-core';
+import { MARKDOWNLINT_RULE_CATALOG } from '@inkeep/open-knowledge-core/markdown/lint';
 import type { MessageDescriptor } from '@lingui/core';
 import { INDEXED_FIELD_GROUPS } from './settings-fields';
 import type { SidebarGroup } from './settings-sidebar-types';

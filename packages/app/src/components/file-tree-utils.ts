@@ -1,10 +1,10 @@
+import { isManagedArtifactDocName } from '@inkeep/open-knowledge-core/constants/cc1';
+import type { InlineAssetMediaKind } from '@inkeep/open-knowledge-core/constants/upload';
+import type { DocumentListEntry } from '@inkeep/open-knowledge-core/schemas/api';
 import {
-  type DocumentListEntry,
-  type InlineAssetMediaKind,
   isHiddenDocName,
-  isManagedArtifactDocName,
   isProjectSkillBundlePath,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/util/doc-name';
 
 export interface DocumentEntry {
   kind: 'document';

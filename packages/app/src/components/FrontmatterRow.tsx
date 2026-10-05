@@ -6,7 +6,7 @@ import {
   type FrontmatterType,
   type FrontmatterValue,
   isFrontmatterValueEmpty,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/frontmatter/schema';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle, GripVertical, Trash2, X } from 'lucide-react';
 import type { CSSProperties, ReactNode } from 'react';

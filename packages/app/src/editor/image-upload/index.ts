@@ -2,17 +2,19 @@ import {
   AUDIO_EXTENSIONS,
   DEFAULT_DEDUP_UI,
   DEFAULT_EMIT_FORMAT,
-  extensionOf,
   FILE_ATTACHMENT_EXTENSIONS,
-  formatFileSize,
   IMAGE_EXTENSIONS,
-  ProblemDetailsSchema,
-  randomUUID,
-  type UploadAssetSuccess,
-  UploadAssetSuccessSchema,
   VIDEO_EXTENSIONS,
   WIKI_EMBED_EXTENSIONS,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/upload';
+import {
+  ProblemDetailsSchema,
+  type UploadAssetSuccess,
+  UploadAssetSuccessSchema,
+} from '@inkeep/open-knowledge-core/schemas/api';
+import { extensionOf } from '@inkeep/open-knowledge-core/utils/extension';
+import { formatFileSize } from '@inkeep/open-knowledge-core/utils/file-size';
+import { randomUUID } from '@inkeep/open-knowledge-core/utils/random-uuid';
 import { t } from '@lingui/core/macro';
 import type { Editor } from '@tiptap/core';
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';

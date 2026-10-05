@@ -1,12 +1,14 @@
 import {
-  isEditableTextDocFile,
-  isExcalidrawDocFile,
   isManagedArtifactDocName,
+  parseTemplateContentDocName,
+} from '@inkeep/open-knowledge-core/constants/cc1';
+import { isEditableTextDocFile } from '@inkeep/open-knowledge-core/constants/code-languages';
+import {
+  isExcalidrawDocFile,
   isMarkdownDocFile,
   isMermaidDocFile,
-  parseTemplateContentDocName,
-  randomUUID,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/upload';
+import { randomUUID } from '@inkeep/open-knowledge-core/utils/random-uuid';
 import { t } from '@lingui/core/macro';
 import { RefreshCw } from 'lucide-react';
 import {

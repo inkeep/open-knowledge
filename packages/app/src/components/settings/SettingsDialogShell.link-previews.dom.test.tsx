@@ -8,11 +8,6 @@ vi.doMock('@/lib/file-protocol-page', () => ({
   isFileProtocolPage: () => fileProtocolPage,
 }));
 
-vi.doMock('@inkeep/open-knowledge-core', () => ({
-  SHOW_INSTALL_SKILL: false,
-  MARKDOWNLINT_RULE_CATALOG: [],
-}));
-
 vi.doMock('@/components/settings/SettingsDialogBodyLazy', () => ({
   SettingsDialogBodyLazy: () => <div data-testid="settings-body-probe" />,
 }));

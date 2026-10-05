@@ -1,8 +1,6 @@
-import {
-  type CatalogSkill,
-  parseSkillsShCatalogSource,
-  type SkillsListEntry,
-} from '@inkeep/open-knowledge-core';
+import type { SkillsListEntry } from '@inkeep/open-knowledge-core/schemas/api';
+import type { CatalogSkill } from '@inkeep/open-knowledge-core/skills-catalog/schema';
+import { parseSkillsShCatalogSource } from '@inkeep/open-knowledge-core/skills-catalog/source-fields';
 
 export interface ProvenanceBucket {
   readonly kind: 'source' | 'plugin';

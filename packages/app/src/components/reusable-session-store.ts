@@ -1,4 +1,4 @@
-import type { TerminalCli } from '@inkeep/open-knowledge-core';
+import type { TerminalCli } from '@inkeep/open-knowledge-core/handoff';
 import { useSyncExternalStore } from 'react';
 
 export type ReusableSession =

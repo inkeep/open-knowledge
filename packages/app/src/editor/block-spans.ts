@@ -1,4 +1,5 @@
-import { type MarkdownManager, stripFrontmatter } from '@inkeep/open-knowledge-core';
+import { stripFrontmatter } from '@inkeep/open-knowledge-core/extensions/frontmatter';
+import type { MarkdownManager } from '@inkeep/open-knowledge-core/markdown';
 import type { Node as PmNode } from '@tiptap/pm/model';
 
 export interface SourceBlockSpans {

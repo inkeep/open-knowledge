@@ -3,7 +3,7 @@ import {
   type TargetData,
   TERMINAL_CLIS,
   type TerminalCli,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/handoff';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, Check, ChevronDown, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { useRef, useState } from 'react';

@@ -6,12 +6,11 @@
 
 import type { Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
+import { htmlToMdast, mdastToMarkdown } from '@inkeep/open-knowledge-core/markdown/html-to-mdast';
 import {
   ChunkedInsertError,
   chunkedYTextInsert,
-  htmlToMdast,
-  mdastToMarkdown,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/utils/chunked-insert';
 import { t } from '@lingui/core/macro';
 import { toast } from 'sonner';
 import * as Y from 'yjs';

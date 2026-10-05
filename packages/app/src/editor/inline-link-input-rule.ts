@@ -1,4 +1,4 @@
-import { isAllowedLinkUri } from '@inkeep/open-knowledge-core';
+import { isAllowedLinkUri } from '@inkeep/open-knowledge-core/extensions/link-fidelity';
 import { Extension, InputRule } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
 import { dispatchAsOwnUndoStep } from './undo-isolation';

@@ -1,4 +1,7 @@
-import { resolveLocalAutoSyncMode, type SyncMode } from '@inkeep/open-knowledge-core';
+import {
+  resolveLocalAutoSyncMode,
+  type SyncMode,
+} from '@inkeep/open-knowledge-core/config/auto-sync-mode';
 import { Trans } from '@lingui/react/macro';
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';

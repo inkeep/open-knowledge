@@ -1,10 +1,10 @@
+import type { CreateNewBannerKind } from '@inkeep/open-knowledge-core/constants/create-new-banner';
 import {
   CREATE_NEW_PROJECT_FAILURE_REASONS,
-  type CreateNewBannerKind,
   type CreateNewProjectFailureReason,
-  receivesProjectIntegrationWrite,
-  sanitizeFolderName,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/create-new-project-reason';
+import { receivesProjectIntegrationWrite } from '@inkeep/open-knowledge-core/constants/editors';
+import { sanitizeFolderName } from '@inkeep/open-knowledge-core/utils/sanitize-folder-name';
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';

@@ -1,7 +1,11 @@
 import { type Action, type Diagnostic, linter, lintGutter } from '@codemirror/lint';
 import type { Extension, Text } from '@codemirror/state';
-import type { LintDiagnostic, LinterConfig, LintPosition } from '@inkeep/open-knowledge-core';
-import { lintDocument } from '@inkeep/open-knowledge-core';
+import type {
+  LintDiagnostic,
+  LinterConfig,
+  LintPosition,
+} from '@inkeep/open-knowledge-core/markdown/lint';
+import { lintDocument } from '@inkeep/open-knowledge-core/markdown/lint';
 
 export function createMarkdownLintExtension(config: LinterConfig, docName?: string): Extension {
   if (!config.enabled) return [];

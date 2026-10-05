@@ -1,12 +1,13 @@
 import {
-  AGENTS_SKILLS_ROOT,
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_USER_SKILL_ROOT,
+} from '@inkeep/open-knowledge-core/constants/editors';
+import {
+  AGENTS_SKILLS_ROOT,
   PACK_SKILL_PREFIX,
-  type SkillScope,
-  type SkillsListEntry,
-  SkillUserTargetEditorSchema,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/skills';
+import type { SkillScope, SkillsListEntry } from '@inkeep/open-knowledge-core/schemas/api';
+import { SkillUserTargetEditorSchema } from '@inkeep/open-knowledge-core/skill-targets/schema';
 import { useLingui } from '@lingui/react/macro';
 
 export function customPlacementRoot(placement: { path: string }): string {

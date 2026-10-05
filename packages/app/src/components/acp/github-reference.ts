@@ -1,7 +1,7 @@
 import {
   type GitHubReferencePreview,
   GitHubReferenceResponseSchema,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/schemas/api';
 import { useEffect, useState } from 'react';
 
 const REFERENCE_PATH =

@@ -1,14 +1,13 @@
 import {
-  isExcalidrawDocFile,
   isManagedArtifactDocName,
   MANAGED_ARTIFACT_SCOPES,
   parseExternalSkillDocName,
   parseManagedArtifactName,
   parseProjectSkillBundleDoc,
   parseTemplateContentDocName,
-  type RenamedAssetMapping,
-  type SkillScope,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/cc1';
+import { isExcalidrawDocFile } from '@inkeep/open-knowledge-core/constants/upload';
+import type { RenamedAssetMapping, SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
 import {
   decodeSkillPreviewSegments,
   encodeSkillPreviewSegments,

@@ -1,4 +1,4 @@
-import { INLINE_TAG_VALUE_RE } from '@inkeep/open-knowledge-core';
+import { INLINE_TAG_VALUE_RE } from '@inkeep/open-knowledge-core/markdown/tag-promotion';
 import { useLingui } from '@lingui/react/macro';
 import type { NodeViewProps } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';

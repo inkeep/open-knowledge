@@ -1,10 +1,9 @@
 import {
-  type Config,
-  ConfigSchema,
   type ConfigValidationError,
-  getFieldMeta,
   isKnownConfigError,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/config/errors';
+import { getFieldMeta } from '@inkeep/open-knowledge-core/config/field-registry';
+import { type Config, ConfigSchema } from '@inkeep/open-knowledge-core/config/schema';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Check, RotateCcw } from 'lucide-react';
 import { useTheme } from 'next-themes';

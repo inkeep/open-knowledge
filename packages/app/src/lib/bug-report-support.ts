@@ -2,7 +2,7 @@ import {
   clampToCodeUnits,
   mapControlCharactersToSpace,
   stripInvisibleCharacters,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/bug-report-sidecar/note-content';
 
 const SUPPORT_EMAIL = 'support@inkeep.com';
 

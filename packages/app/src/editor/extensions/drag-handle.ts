@@ -1,5 +1,5 @@
 import { offset } from '@floating-ui/dom';
-import { incrementBlockGripClickSelectFailed } from '@inkeep/open-knowledge-core';
+import { incrementBlockGripClickSelectFailed } from '@inkeep/open-knowledge-core/metrics/parse-health';
 import { t } from '@lingui/core/macro';
 import { type Editor, Extension } from '@tiptap/core';
 import { DragHandlePlugin, normalizeNestedOptions } from '@tiptap/extension-drag-handle';

@@ -1,7 +1,7 @@
 import {
   canonicalGitHubRemoteUrl as _canonicalGitHubRemoteUrl,
   type ExpectedShareRepo,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/sharing';
 import { t } from '@lingui/core/macro';
 import type {
   CheckTargetExistsResult,
@@ -14,7 +14,7 @@ export {
   type BranchMatchOutcome,
   canonicalGitHubRemoteUrl,
   type ExpectedShareRepo,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/sharing';
 
 export function buildCloneUrl(expected: ExpectedShareRepo): string {
   return _canonicalGitHubRemoteUrl(expected);

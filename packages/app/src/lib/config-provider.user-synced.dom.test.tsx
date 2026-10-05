@@ -1,6 +1,7 @@
 import type { ConfigBinding, OkignoreBinding, WriteScope } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createServedBindingLog } from '@/test-utils/served-binding.test-helper';
 import { dynamicActivate } from './activate-locale';
 import { i18n } from './i18n';
 import { __resetServerInstanceStoreForTests, setServerInstanceId } from './server-instance-store';
@@ -40,6 +41,7 @@ let useThemeBridgeCalls: Array<[unknown, string | undefined, string | undefined]
 let useLanguageBridgeCalls: Array<[unknown, unknown, boolean]> = [];
 let setThemeCalls: string[] = [];
 let systemTheme: 'light' | 'dark' = 'light';
+let browserLanguages: readonly string[] = [];
 const buildAuthTokenCalls: Array<readonly unknown[]> = [];
 const originalFetch = globalThis.fetch;
 
@@ -54,6 +56,7 @@ function resetCaptures() {
   useLanguageBridgeCalls = [];
   setThemeCalls = [];
   systemTheme = 'light';
+  browserLanguages = [];
   buildAuthTokenCalls.length = 0;
 }
 
@@ -150,71 +153,107 @@ vi.doMock('@/lib/auth-token', () => ({
   },
 }));
 
-vi.doMock('@inkeep/open-knowledge-core', () => ({
-  bindConfigDoc: (_provider: unknown, scope: WriteScope) =>
-    makeFakeConfigBinding(scope, scope === 'user' ? userHasSyncedSeed : false),
-  bindOkignoreDoc: () => makeFakeOkignoreBinding(),
-  CONFIG_DOC_NAME_USER: '__user__/config.yml',
-  CONFIG_DOC_NAME_PROJECT: '__config__/project',
-  CONFIG_DOC_NAME_PROJECT_LOCAL: '__local__/project',
-  CONFIG_DOC_NAME_OKIGNORE: '__config__/okignore',
-  mergeLayered: (user: unknown, project: unknown, projectLocal: unknown) => {
-    mergeLayeredCalls.push([user, project, projectLocal]);
-    return mergedConfig;
-  },
-  resolveLocale: ({ storedPreference }: { storedPreference?: string }) => ({
-    locale: storedPreference && storedPreference !== 'system' ? storedPreference : 'en',
-    source: storedPreference && storedPreference !== 'system' ? 'explicit' : 'fallback',
+const servedCore = createServedBindingLog();
+
+vi.doMock('@inkeep/open-knowledge-core/config/bind-config-doc', () =>
+  servedCore.serve('@inkeep/open-knowledge-core/config/bind-config-doc', {
+    bindConfigDoc: (_provider: unknown, scope: WriteScope) =>
+      makeFakeConfigBinding(scope, scope === 'user' ? userHasSyncedSeed : false),
   }),
-  readBrowserLanguages: () => [],
-  localeDirection: (locale: string) => (locale === 'ar' || locale === 'ur' ? 'rtl' : 'ltr'),
-  SUPPORTED_LOCALES: ['en', 'es'],
-  AUTO_DETECTABLE_LOCALES: ['en', 'es'],
-  colorThemeMode: (
-    id?: string,
-    themes?: readonly { id: string; kind: 'light' | 'dark' | 'system' }[],
-  ) => {
-    const kind = themes?.find((theme) => theme.id === id)?.kind;
-    if (kind) return kind === 'system' ? undefined : kind;
-    return id && id !== 'default' && id !== 'custom' ? 'dark' : undefined;
-  },
-  resolveColorThemeSelection: (
-    appearance?: { colorTheme?: string; colorThemeLight?: string; colorThemeDark?: string },
-    themes: readonly { id: string }[] = [],
-  ) => {
-    const ids = new Set(themes.map((theme) => theme.id));
-    const legacy = appearance?.colorTheme;
-    const fallback = legacy && ids.has(legacy) ? legacy : 'default';
-    const pick = (value: string | undefined) =>
-      value === undefined ? fallback : ids.has(value) ? value : 'default';
-    return {
-      light: pick(appearance?.colorThemeLight),
-      dark: pick(appearance?.colorThemeDark),
-    };
-  },
-  SavedThemesListSuccessSchema: {
-    safeParse: (value: unknown) => ({ success: true, data: value }),
-  },
-  base16ToTokens: () => ({}),
-  renderThemeBlock: () => '',
-  resolveModePreference: (preference?: string, prefersDark?: boolean) =>
-    preference === 'light' || preference === 'dark' ? preference : prefersDark ? 'dark' : 'light',
-  expandPalette: () => ({}),
-  generateColorThemesCss: () => '',
-  isDarkTheme: (id?: string) => Boolean(id) && id !== 'default' && id !== 'custom',
-  resolveThemePlugin: (id?: string) => ({ id: id ?? 'default', label: 'Default', kind: 'system' }),
-  THEME_PLUGINS: [],
-  CHROME_BG_LIGHT: '#fafafa',
-  CHROME_BG_DARK: '#171717',
-  PREVIEW_THEME_TOKENS: [
-    { name: '--background', light: '#ffffff', dark: '#0a0a0a' },
-    { name: '--primary', light: '#2563eb', dark: '#69a3ff' },
-    { name: '--border', light: '#e5e5e5', dark: '#2a2a2a' },
-    { name: '--chart-2', light: '#16a34a', dark: '#4ade80' },
-    { name: '--chart-3', light: '#ca8a04', dark: '#facc15' },
-    { name: '--chart-4', light: '#7c3aed', dark: '#a78bfa' },
-  ],
-}));
+);
+
+vi.doMock('@inkeep/open-knowledge-core/config/bind-okignore-doc', () =>
+  servedCore.serve('@inkeep/open-knowledge-core/config/bind-okignore-doc', {
+    bindOkignoreDoc: () => makeFakeOkignoreBinding(),
+  }),
+);
+
+vi.doMock('@inkeep/open-knowledge-core/constants/cc1', () =>
+  servedCore.serve('@inkeep/open-knowledge-core/constants/cc1', {
+    CONFIG_DOC_NAME_USER: '__user__/config.yml',
+    CONFIG_DOC_NAME_PROJECT: '__config__/project',
+    CONFIG_DOC_NAME_PROJECT_LOCAL: '__local__/project',
+    CONFIG_DOC_NAME_OKIGNORE: '__config__/okignore',
+  }),
+);
+
+vi.doMock('@inkeep/open-knowledge-core/config/merge-layered', () =>
+  servedCore.serve('@inkeep/open-knowledge-core/config/merge-layered', {
+    mergeLayered: (user: unknown, project: unknown, projectLocal: unknown) => {
+      mergeLayeredCalls.push([user, project, projectLocal]);
+      return mergedConfig;
+    },
+  }),
+);
+
+vi.doMock('@inkeep/open-knowledge-core/i18n/browser-locale-provider', () =>
+  servedCore.serve('@inkeep/open-knowledge-core/i18n/browser-locale-provider', {
+    readBrowserLanguages: () => browserLanguages,
+  }),
+);
+
+vi.doMock('@inkeep/open-knowledge-core/i18n/direction', () =>
+  servedCore.serve('@inkeep/open-knowledge-core/i18n/direction', {
+    localeDirection: (locale: string) => (locale === 'ar' || locale === 'ur' ? 'rtl' : 'ltr'),
+  }),
+);
+
+vi.doMock('@inkeep/open-knowledge-core/i18n/locales', () =>
+  servedCore.serve('@inkeep/open-knowledge-core/i18n/locales', {
+    SUPPORTED_LOCALES: ['en', 'es'],
+    AUTO_DETECTABLE_LOCALES: ['en', 'es'],
+  }),
+);
+
+vi.doMock('@inkeep/open-knowledge-core/theme/theme-plugins', () =>
+  servedCore.serve('@inkeep/open-knowledge-core/theme/theme-plugins', {
+    resolveColorThemeSelection: (
+      appearance?: { colorTheme?: string; colorThemeLight?: string; colorThemeDark?: string },
+      themes: readonly { id: string }[] = [],
+    ) => {
+      const ids = new Set(themes.map((theme) => theme.id));
+      const legacy = appearance?.colorTheme;
+      const fallback = legacy && ids.has(legacy) ? legacy : 'default';
+      const pick = (value: string | undefined) =>
+        value === undefined ? fallback : ids.has(value) ? value : 'default';
+      return {
+        light: pick(appearance?.colorThemeLight),
+        dark: pick(appearance?.colorThemeDark),
+      };
+    },
+    renderThemeBlock: (selector: string, variant: string, tokens: Record<string, string>) =>
+      `${selector}{color-scheme:${variant};${Object.entries(tokens)
+        .map(([name, value]) => `--${name}:${value}`)
+        .join(';')}}`,
+    resolveModePreference: (preference?: string, prefersDark?: boolean) =>
+      preference === 'light' || preference === 'dark' ? preference : prefersDark ? 'dark' : 'light',
+    generateColorThemesCss: () => '',
+    isDarkTheme: (id?: string) => Boolean(id) && id !== 'default' && id !== 'custom',
+    resolveThemePlugin: (id?: string) => ({
+      id: id ?? 'default',
+      label: 'Default',
+      kind: 'system',
+    }),
+    THEME_PLUGINS: [{ id: 'builtin-dusk', label: 'Dusk', kind: 'dark' }],
+  }),
+);
+
+vi.doMock('@inkeep/open-knowledge-core/schemas/api', () =>
+  servedCore.serve('@inkeep/open-knowledge-core/schemas/api', {
+    SavedThemesListSuccessSchema: {
+      safeParse: (value: unknown) => ({ success: true, data: value }),
+    },
+  }),
+);
+
+vi.doMock('@inkeep/open-knowledge-core/theme/base16', () =>
+  servedCore.serve('@inkeep/open-knowledge-core/theme/base16', {
+    base16ToTokens: (scheme: { palette: Record<string, string> }) => ({
+      background: scheme.palette.base00,
+      foreground: scheme.palette.base05,
+    }),
+  }),
+);
 
 let userHasSyncedSeed = false;
 
@@ -714,5 +753,209 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
     });
 
     consoleWarnSpy.mockRestore();
+  });
+
+  test('config bindings, CC1 doc names and the layer merge come from the core replacements', async () => {
+    const since = servedCore.mark();
+    const { unmount } = render(
+      <ConfigProvider collabUrl="ws://test.invalid">
+        <ConfigContextProbe />
+      </ConfigProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-project-local-binding').textContent).toBe('true');
+    });
+    expect(providerRecords.map((record) => record.name)).toEqual([
+      '__user__/config.yml',
+      '__config__/project',
+      '__local__/project',
+      '__config__/okignore',
+    ]);
+    expect([...captures.keys()]).toEqual(['user', 'project', 'project-local']);
+    expect(lastContext?.merged).toBe(mergedConfig);
+    unmount();
+    expect(okignoreDisposed).toBe(true);
+
+    for (const [specifier, member] of [
+      ['@inkeep/open-knowledge-core/config/bind-config-doc', 'bindConfigDoc'],
+      ['@inkeep/open-knowledge-core/config/bind-okignore-doc', 'bindOkignoreDoc'],
+      ['@inkeep/open-knowledge-core/config/merge-layered', 'mergeLayered'],
+      ['@inkeep/open-knowledge-core/constants/cc1', 'CONFIG_DOC_NAME_USER'],
+      ['@inkeep/open-knowledge-core/constants/cc1', 'CONFIG_DOC_NAME_PROJECT'],
+      ['@inkeep/open-knowledge-core/constants/cc1', 'CONFIG_DOC_NAME_PROJECT_LOCAL'],
+      ['@inkeep/open-knowledge-core/constants/cc1', 'CONFIG_DOC_NAME_OKIGNORE'],
+    ] as const) {
+      expect(servedCore.readersOf(specifier, member, since)).toEqual(['lib/config-provider.tsx']);
+    }
+  });
+
+  test('the interface language is resolved and applied through the core i18n replacements', async () => {
+    document.documentElement.removeAttribute('lang');
+    document.documentElement.removeAttribute('dir');
+    mergedConfig = { appearance: { language: 'es' } };
+    const since = servedCore.mark();
+    render(
+      <ConfigProvider collabUrl="ws://test.invalid">
+        <ConfigContextProbe />
+      </ConfigProvider>,
+    );
+
+    await waitFor(() => {
+      expect(mergeLayeredCalls.length).toBeGreaterThan(0);
+    });
+    act(() => {
+      captures.get('user')?.syncedListener?.();
+    });
+
+    expect(i18n.locale).toBe('es');
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe('es');
+    });
+    expect(document.documentElement.dir).toBe('ltr');
+    for (const [specifier, member] of [
+      ['@inkeep/open-knowledge-core/i18n/direction', 'localeDirection'],
+      ['@inkeep/open-knowledge-core/i18n/browser-locale-provider', 'readBrowserLanguages'],
+      ['@inkeep/open-knowledge-core/i18n/locales', 'SUPPORTED_LOCALES'],
+      ['@inkeep/open-knowledge-core/i18n/locales', 'AUTO_DETECTABLE_LOCALES'],
+    ] as const) {
+      expect(servedCore.readersOf(specifier, member, since)).toEqual([
+        'lib/use-apply-config-language.ts',
+      ]);
+    }
+  });
+
+  test('a saved color theme is listed, selected and painted through the core theme replacements', async () => {
+    systemTheme = 'dark';
+    const bridge = { nativeTheme: {} };
+    Object.defineProperty(window, 'okDesktop', { configurable: true, value: bridge });
+    const palette = Object.fromEntries(
+      Array.from({ length: 16 }, (_, index) => [
+        `base${index.toString(16).toUpperCase().padStart(2, '0')}`,
+        '#111111',
+      ]),
+    );
+    palette.base05 = '#eeeeee';
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        themes: [
+          {
+            ok: true,
+            id: 'saved-cross-kind',
+            filename: 'cross-kind.yaml',
+            scheme: { name: 'Cross kind', variant: 'dark', palette },
+          },
+        ],
+        truncated: false,
+      }),
+    );
+    mergedConfig = {
+      appearance: {
+        theme: 'light',
+        colorThemeLight: 'saved-cross-kind',
+        colorThemeDark: 'default',
+      },
+    };
+    const since = servedCore.mark();
+    render(
+      <ConfigProvider collabUrl="ws://test.invalid">
+        <ConfigContextProbe />
+      </ConfigProvider>,
+    );
+    syncAllConfigBindings();
+
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute('data-color-theme')).toBe('saved-cross-kind');
+    });
+    expect(setThemeCalls.at(-1)).toBe('dark');
+    expect(useThemeBridgeCalls.at(-1)?.slice(0, 2)).toEqual([bridge, 'light']);
+    expect(document.getElementById(SAVED_THEME_STYLE_ID)?.textContent).toBe(
+      'html[data-color-theme]{color-scheme:dark;--background:#111111;--foreground:#eeeeee}',
+    );
+
+    const readers = (specifier: string, member: string) =>
+      servedCore.readersOf(specifier, member, since);
+    expect(
+      readers('@inkeep/open-knowledge-core/schemas/api', 'SavedThemesListSuccessSchema'),
+    ).toEqual(['lib/saved-themes-client.ts']);
+    for (const member of [
+      'THEME_PLUGINS',
+      'resolveColorThemeSelection',
+      'resolveModePreference',
+      'resolveThemePlugin',
+    ]) {
+      expect(readers('@inkeep/open-knowledge-core/theme/theme-plugins', member)).toEqual([
+        'lib/color-themes.ts',
+      ]);
+    }
+    expect(readers('@inkeep/open-knowledge-core/theme/theme-plugins', 'renderThemeBlock')).toEqual([
+      'lib/use-apply-config-color-theme.ts',
+    ]);
+    expect(readers('@inkeep/open-knowledge-core/theme/base16', 'base16ToTokens')).toEqual([
+      'lib/color-themes.ts',
+    ]);
+  });
+
+  test('a system language preference follows the browser languages the core i18n replacements serve', async () => {
+    document.documentElement.removeAttribute('lang');
+    browserLanguages = ['es-MX'];
+    mergedConfig = { appearance: { language: 'system' } };
+    const since = servedCore.mark();
+    render(
+      <ConfigProvider collabUrl="ws://test.invalid">
+        <ConfigContextProbe />
+      </ConfigProvider>,
+    );
+
+    await waitFor(() => {
+      expect(mergeLayeredCalls.length).toBeGreaterThan(0);
+    });
+    act(() => {
+      captures.get('user')?.syncedListener?.();
+    });
+
+    expect(i18n.locale).toBe('es');
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe('es');
+    });
+    for (const [specifier, member] of [
+      ['@inkeep/open-knowledge-core/i18n/browser-locale-provider', 'readBrowserLanguages'],
+      ['@inkeep/open-knowledge-core/i18n/locales', 'AUTO_DETECTABLE_LOCALES'],
+    ] as const) {
+      expect(servedCore.readersOf(specifier, member, since)).toEqual([
+        'lib/use-apply-config-language.ts',
+      ]);
+    }
+  });
+
+  test('a built-in color theme from the core plugin replacement sets its own mode without a saved stylesheet', async () => {
+    globalThis.fetch = vi.fn(async () => Response.json({ themes: [], truncated: false }));
+    mergedConfig = {
+      appearance: {
+        theme: 'light',
+        colorThemeLight: 'builtin-dusk',
+        colorThemeDark: 'default',
+      },
+    };
+    const since = servedCore.mark();
+    render(
+      <ConfigProvider collabUrl="ws://test.invalid">
+        <ConfigContextProbe />
+      </ConfigProvider>,
+    );
+    syncAllConfigBindings();
+
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute('data-color-theme')).toBe('builtin-dusk');
+    });
+    expect(setThemeCalls.at(-1)).toBe('dark');
+    expect(document.getElementById(SAVED_THEME_STYLE_ID)).toBeNull();
+    expect(
+      servedCore.readersOf(
+        '@inkeep/open-knowledge-core/theme/theme-plugins',
+        'THEME_PLUGINS',
+        since,
+      ),
+    ).toEqual(['lib/color-themes.ts']);
   });
 });

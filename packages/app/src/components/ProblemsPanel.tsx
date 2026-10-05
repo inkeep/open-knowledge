@@ -1,13 +1,14 @@
 // oxlint-disable ok/no-raw-html-interactive-element -- matches sibling OutlinePanel — positional list of <button> rows awaiting a shared shadcn list primitive; tracked at https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-raw-html-interactive-element
 // oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
+
+import { isEditableTextDocFile } from '@inkeep/open-knowledge-core/constants/code-languages';
 import {
-  type BrokenLinkSuppression,
   type FrontmatterScope,
   isAuditEmptyScopeWarning,
-  isEditableTextDocFile,
   type ValidationAuditResponse,
   type ValidationDocResult,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/markdown/lint';
+import type { BrokenLinkSuppression } from '@inkeep/open-knowledge-core/schemas/api';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import {
   AlertCircle,

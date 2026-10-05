@@ -1,4 +1,5 @@
-import { type Config, normalizeGitHostname } from '@inkeep/open-knowledge-core';
+import type { Config } from '@inkeep/open-knowledge-core/config/schema';
+import { normalizeGitHostname } from '@inkeep/open-knowledge-core/constants/github';
 
 export type EnterpriseHostInputResult =
   | { ok: true; host: string }

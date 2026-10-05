@@ -1,4 +1,4 @@
-import type { OkBugReportScreenshot } from '@inkeep/open-knowledge-core';
+import type { OkBugReportScreenshot } from '@inkeep/open-knowledge-core/logger-types';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { getLastPointerPosition } from '@/lib/pointer-position';
 import type { ReportBugDialogProps } from './ReportBugDialogBody';

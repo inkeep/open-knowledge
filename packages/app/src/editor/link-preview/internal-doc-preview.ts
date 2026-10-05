@@ -1,10 +1,12 @@
 import {
-  BacklinkCountsSuccessSchema,
-  DocumentReadSuccessSchema,
-  extractFrontmatterTags,
   stripFrontmatter,
   unwrapFrontmatterFences,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/extensions/frontmatter';
+import { extractFrontmatterTags } from '@inkeep/open-knowledge-core/frontmatter/tags';
+import {
+  BacklinkCountsSuccessSchema,
+  DocumentReadSuccessSchema,
+} from '@inkeep/open-knowledge-core/schemas/api';
 import { extractDocExcerpt } from './doc-excerpt.ts';
 
 export interface InternalDocPreview {

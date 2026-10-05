@@ -1,10 +1,10 @@
+import { mediaKindForSidebarAssetExtension } from '@inkeep/open-knowledge-core/constants/upload';
 import {
   buildRelativeMarkdownHref,
   type ClassifiedLinkTarget,
   classifyMarkdownHref,
   type DocLinkTarget,
-  mediaKindForSidebarAssetExtension,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/utils/link-targets';
 import { hashFromAssetPath, hashFromDocName } from '../lib/doc-hash';
 import { openExternalUrl } from '../lib/external-link';
 import { dispatchAssetClick } from './asset-dispatch';

@@ -1,4 +1,4 @@
-import type { PropDef } from '@inkeep/open-knowledge-core';
+import type { PropDef } from '@inkeep/open-knowledge-core/registry/types';
 import { t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';
 import { ChevronDown, Upload } from 'lucide-react';

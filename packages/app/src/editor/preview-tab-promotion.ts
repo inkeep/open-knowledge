@@ -1,6 +1,6 @@
 import { Transaction as CMTransaction } from '@codemirror/state';
 import type { ViewUpdate } from '@codemirror/view';
-import type { FrontmatterBinding } from '@inkeep/open-knowledge-core';
+import type { FrontmatterBinding } from '@inkeep/open-knowledge-core/bridge';
 import type { Transaction as PMTransaction } from '@tiptap/pm/state';
 import { docTabId } from './editor-tabs';
 import { isUserIntentOrigin } from './extensions/autonomous-fragment-edit';

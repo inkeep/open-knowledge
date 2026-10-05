@@ -3,7 +3,7 @@
 import {
   FRONTMATTER_TAG_GRAMMAR_HINT,
   isValidFrontmatterTagValue,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/frontmatter/tags';
 import { useLingui } from '@lingui/react/macro';
 import { XIcon } from 'lucide-react';
 import { type Ref, useEffect, useId, useRef, useState } from 'react';

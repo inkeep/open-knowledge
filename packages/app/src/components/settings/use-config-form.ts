@@ -1,13 +1,14 @@
+import type {
+  ConfigBinding,
+  ConfigBindingPatchResult,
+} from '@inkeep/open-knowledge-core/config/bind-config-doc';
 import {
-  type Config,
-  type ConfigBinding,
-  type ConfigBindingPatchResult,
   type ConfigIssue,
-  type ConfigPatch,
   type ConfigValidationError,
   humanFormat,
   isKnownConfigError,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/config/errors';
+import type { Config, ConfigPatch } from '@inkeep/open-knowledge-core/config/schema';
 import { useEffect } from 'react';
 import { type FieldPath, type UseFormReturn, useForm } from 'react-hook-form';
 import { buildPatch } from './schema-walker';

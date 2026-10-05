@@ -1,4 +1,7 @@
-import { parseGlobalSkillBundleDoc, parseProjectSkillBundleDoc } from '@inkeep/open-knowledge-core';
+import {
+  parseGlobalSkillBundleDoc,
+  parseProjectSkillBundleDoc,
+} from '@inkeep/open-knowledge-core/constants/cc1';
 import { type GraphData, getGraphLinkEndpointId } from './graph-view-utils';
 
 export type GraphSkillVisibility = 'all' | 'hide-builtins' | 'none';

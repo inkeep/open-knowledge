@@ -1,4 +1,5 @@
-import { EDITOR_LABELS, type GuidanceRef } from '@inkeep/open-knowledge-core';
+import type { GuidanceRef } from '@inkeep/open-knowledge-core/agent-registry';
+import { EDITOR_LABELS } from '@inkeep/open-knowledge-core/constants/editors';
 import { t } from '@lingui/core/macro';
 
 export function followupHintText(ref: GuidanceRef | undefined): string | null {

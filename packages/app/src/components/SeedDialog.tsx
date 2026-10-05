@@ -1,4 +1,4 @@
-import { planHasOutstandingWork } from '@inkeep/open-knowledge-core';
+import { planHasOutstandingWork } from '@inkeep/open-knowledge-core/seed-plan-work';
 import { plural } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowLeft } from 'lucide-react';

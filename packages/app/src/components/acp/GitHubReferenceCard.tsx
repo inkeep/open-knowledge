@@ -1,4 +1,4 @@
-import type { GitHubReferencePreview } from '@inkeep/open-knowledge-core';
+import type { GitHubReferencePreview } from '@inkeep/open-knowledge-core/schemas/api';
 import { useLingui } from '@lingui/react/macro';
 import {
   CircleCheck,

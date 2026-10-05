@@ -3,4 +3,4 @@ export {
   FLASH_DEBOUNCE_MS,
   FLASH_DURATION_MS,
   hasNewEntries,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/activity';

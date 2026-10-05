@@ -1,7 +1,7 @@
 import {
   type InlineAssetMediaKind,
   mediaKindForSidebarAssetExtension,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/constants/upload';
 
 function mediaKindForMime(mime: string): InlineAssetMediaKind | null {
   const [type] = mime.split('/');

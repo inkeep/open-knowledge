@@ -1,4 +1,5 @@
-import { FALLBACK_LOCALE, type SupportedLocale } from '@inkeep/open-knowledge-core';
+import type { SupportedLocale } from '@inkeep/open-knowledge-core/i18n/locales';
+import { FALLBACK_LOCALE } from '@inkeep/open-knowledge-core/i18n/resolve-locale';
 import type { Messages } from '@lingui/core';
 import { i18n } from './i18n';
 

@@ -1,4 +1,4 @@
-import { SKILL_NAME_REGEX, type SkillsListEntry } from '@inkeep/open-knowledge-core';
+import { SKILL_NAME_REGEX, type SkillsListEntry } from '@inkeep/open-knowledge-core/schemas/api';
 import { Trans } from '@lingui/react/macro';
 import { useEffect, useId, useState } from 'react';
 import { useRenameSkill } from '@/components/ManagedArtifactProperties';

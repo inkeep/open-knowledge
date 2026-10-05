@@ -1,4 +1,4 @@
-import type { ConfigBinding } from '@inkeep/open-knowledge-core';
+import type { ConfigBinding } from '@inkeep/open-knowledge-core/config/bind-config-doc';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useRef, useState } from 'react';
 import { AuthModal } from '@/components/AuthModal';

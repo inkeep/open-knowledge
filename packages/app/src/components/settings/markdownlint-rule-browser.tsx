@@ -8,7 +8,7 @@ import {
   RULE_DISPLAY_CATEGORIES,
   type RuleCatalogEntry,
   type RuleDisplayCategory,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/markdown/lint';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, ChevronRight, Info, RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';

@@ -1,10 +1,13 @@
+import type { SkillsListEntry } from '@inkeep/open-knowledge-core/schemas/api';
 import type {
   SkillInstallTarget,
-  SkillsListEntry,
   SkillTargetEditor,
   SkillUserTargetEditor,
-} from '@inkeep/open-knowledge-core';
-import { SkillTargetEditorSchema, SkillUserTargetEditorSchema } from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/skill-targets/schema';
+import {
+  SkillTargetEditorSchema,
+  SkillUserTargetEditorSchema,
+} from '@inkeep/open-knowledge-core/skill-targets/schema';
 import { customPlacementRoot, pluginCoverageOf, skillHostRootDir } from '@/lib/skill-scope';
 
 export const INSTALL_EDITORS: readonly SkillTargetEditor[] = SkillTargetEditorSchema.options;

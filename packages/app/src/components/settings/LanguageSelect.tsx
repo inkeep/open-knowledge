@@ -2,7 +2,7 @@ import {
   PICKER_LOCALES,
   SUPPORTED_LOCALES,
   type SupportedLocale,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/i18n/locales';
 import { Trans } from '@lingui/react/macro';
 import type { Ref } from 'react';
 import {

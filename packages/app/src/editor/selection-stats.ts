@@ -1,5 +1,5 @@
 import type { EditorView } from '@codemirror/view';
-import { isEditableTextDocFile } from '@inkeep/open-knowledge-core';
+import { isEditableTextDocFile } from '@inkeep/open-knowledge-core/constants/code-languages';
 import type { Editor } from '@tiptap/core';
 import { computeSelectionStats, type DocumentStats } from '@/lib/document-stats';
 import type { EditorModeValue } from './use-editor-mode';

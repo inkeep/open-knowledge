@@ -1,4 +1,4 @@
-import { SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core';
+import { SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core/constants/feature-flags';
 import { Trans } from '@lingui/react/macro';
 import { useState } from 'react';
 import { InstallInClaudeDesktopDialog } from '@/components/InstallInClaudeDesktopDialog';

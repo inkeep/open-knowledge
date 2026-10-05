@@ -196,7 +196,7 @@ describe('M1 smoke', () => {
           offenders.push(`  [${pin.typeName}] ${label} still carries an inline literal union`);
         }
         const importsFromCore =
-          /from\s+['"]@inkeep\/open-knowledge-core(?:\/desktop-bridge)?['"]/.test(src) ||
+          /from\s+['"]@inkeep\/open-knowledge-core(?:\/[\w-]+)*['"]/.test(src) ||
           /from\s+['"]\.\/constants\/[\w-]+\.ts['"]/.test(src);
         if (!importsFromCore) {
           offenders.push(

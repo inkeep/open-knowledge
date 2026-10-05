@@ -1,4 +1,7 @@
-import { PREVIEW_EMBED_STARTERS, type PreviewEmbedStarter } from '@inkeep/open-knowledge-core';
+import {
+  PREVIEW_EMBED_STARTERS,
+  type PreviewEmbedStarter,
+} from '@inkeep/open-knowledge-core/constants/preview-embed-starters';
 import { t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';
 import { BarChart3, Code, LayoutGrid, Shapes, SlidersHorizontal } from 'lucide-react';

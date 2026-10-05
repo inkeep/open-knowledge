@@ -1,13 +1,13 @@
 import { autoUpdate, computePosition, flip, offset, shift, size } from '@floating-ui/dom';
+import { sharedExtensions as coreExtensions } from '@inkeep/open-knowledge-core/extensions/shared';
+import { MarkdownManager } from '@inkeep/open-knowledge-core/markdown';
 import {
-  sharedExtensions as coreExtensions,
   isFrontmatterScoped,
   type LintDiagnostic,
   type LinterConfig,
   type LintTextEdit,
   lintDocument,
-  MarkdownManager,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/markdown/lint';
 import { t } from '@lingui/core/macro';
 import { type Editor, Extension } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';

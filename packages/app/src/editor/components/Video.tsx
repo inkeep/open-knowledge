@@ -1,11 +1,10 @@
+import { toDesktopAssetHref } from '@inkeep/open-knowledge-core/utils/asset-href';
+import { isLoomUrl, parseLoomUrl } from '@inkeep/open-knowledge-core/utils/loom-embed';
+import { isVimeoUrl } from '@inkeep/open-knowledge-core/utils/vimeo-embed';
 import {
-  isLoomUrl,
-  isVimeoUrl,
   type ParsedYouTubeUrl,
-  parseLoomUrl,
   parseYouTubeUrl,
-  toDesktopAssetHref,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/utils/youtube-embed';
 import Vimeo from '@u-wave/react-vimeo';
 import { type CSSProperties, useEffect, useRef } from 'react';
 import LiteYouTubeEmbed from 'react-lite-youtube-embed';

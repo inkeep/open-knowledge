@@ -1,5 +1,5 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import { bindFrontmatterDoc } from '@inkeep/open-knowledge-core';
+import { bindFrontmatterDoc } from '@inkeep/open-knowledge-core/bridge';
 import { useEffect, useRef, useState } from 'react';
 import { withPreviewTabPromotion } from '@/editor/preview-tab-promotion';
 

@@ -1,18 +1,20 @@
 import {
   BacklinksSuccessSchema,
-  createWorkspaceSearchCorpus,
-  createWorkspaceSearchDocument,
   ForwardLinksSuccessSchema,
-  type HeadingEntry,
-  isHiddenDocName,
-  MAX_WORKSPACE_SEARCH_LIMIT,
   PageHeadingsSuccessSchema,
   PagesSuccessSchema,
   ProblemDetailsSchema,
+} from '@inkeep/open-knowledge-core/schemas/api';
+import {
+  createWorkspaceSearchCorpus,
+  createWorkspaceSearchDocument,
+  MAX_WORKSPACE_SEARCH_LIMIT,
   searchWorkspaceCorpus,
   type WorkspaceSearchCorpus,
   type WorkspaceSearchKind,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/search/workspace-search';
+import { isHiddenDocName } from '@inkeep/open-knowledge-core/util/doc-name';
+import type { HeadingEntry } from '@inkeep/open-knowledge-core/utils/slug';
 import type { Editor } from '@tiptap/core';
 import type { ResolvedPos } from '@tiptap/pm/model';
 import { PluginKey } from '@tiptap/pm/state';

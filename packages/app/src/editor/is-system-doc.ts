@@ -1,4 +1,4 @@
-import { CONFIG_DOC_NAMES, SYSTEM_DOC_NAME } from '@inkeep/open-knowledge-core';
+import { CONFIG_DOC_NAMES, SYSTEM_DOC_NAME } from '@inkeep/open-knowledge-core/constants/cc1';
 
 export function isSystemDoc(docName: string): boolean {
   return docName === SYSTEM_DOC_NAME;

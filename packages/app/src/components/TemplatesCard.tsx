@@ -1,4 +1,4 @@
-import { templateContentDocName } from '@inkeep/open-knowledge-core';
+import { templateContentDocName } from '@inkeep/open-knowledge-core/constants/cc1';
 import { Trans } from '@lingui/react/macro';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';

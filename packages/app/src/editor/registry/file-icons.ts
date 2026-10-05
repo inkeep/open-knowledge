@@ -1,4 +1,4 @@
-import type { InlineAssetMediaKind } from '@inkeep/open-knowledge-core';
+import type { InlineAssetMediaKind } from '@inkeep/open-knowledge-core/constants/upload';
 import { FileText, Film, FolderOpen, Image, type LucideIcon, Volume2 } from 'lucide-react';
 
 export interface FileIconDescriptor {

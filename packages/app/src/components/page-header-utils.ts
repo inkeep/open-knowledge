@@ -1,9 +1,7 @@
-import {
-  IMAGE_EXTENSIONS,
-  isSafeUrl,
-  parseWikiLink,
-  toDesktopAssetHref,
-} from '@inkeep/open-knowledge-core';
+import { IMAGE_EXTENSIONS } from '@inkeep/open-knowledge-core/constants/upload';
+import { parseWikiLink } from '@inkeep/open-knowledge-core/extensions/wiki-link';
+import { isSafeUrl } from '@inkeep/open-knowledge-core/markdown/safe-url';
+import { toDesktopAssetHref } from '@inkeep/open-knowledge-core/utils/asset-href';
 
 const MAX_VALUE_LENGTH = 2048;
 

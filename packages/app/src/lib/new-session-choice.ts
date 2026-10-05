@@ -1,4 +1,4 @@
-import type { TerminalCli } from '@inkeep/open-knowledge-core';
+import type { TerminalCli } from '@inkeep/open-knowledge-core/handoff';
 import type { RegisteredAgent } from '@/lib/acp/registered-agents';
 
 export type NewSessionChoice =

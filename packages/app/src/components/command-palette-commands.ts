@@ -3,9 +3,9 @@ import {
   type CommandContext,
   type CommandIdentity,
   evaluateCommandAvailability,
-  OPEN_KNOWLEDGE_GITHUB_URL,
-  SHOW_INSTALL_SKILL,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/commands/command-identity';
+import { SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core/constants/feature-flags';
+import { OPEN_KNOWLEDGE_GITHUB_URL } from '@inkeep/open-knowledge-core/constants/menu-labels';
 import type { MessageDescriptor } from '@lingui/core';
 import { msg, t } from '@lingui/core/macro';
 import {

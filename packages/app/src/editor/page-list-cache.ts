@@ -4,7 +4,10 @@
  * DEV-gated test-hook convention — precedent #20(b)).
  */
 
-import { buildPagesByBasenameIndex, buildPagesBySlugIndex } from '@inkeep/open-knowledge-core';
+import {
+  buildPagesByBasenameIndex,
+  buildPagesBySlugIndex,
+} from '@inkeep/open-knowledge-core/utils/wiki-link-resolve';
 
 export { buildPagesByBasenameIndex, buildPagesBySlugIndex };
 

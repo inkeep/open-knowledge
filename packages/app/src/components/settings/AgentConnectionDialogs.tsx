@@ -7,7 +7,6 @@ import {
   buildConnectionsView,
   CONNECTION_ROW_AGENT_IDS,
   type ConnectionCell,
-  EDITOR_LABELS,
   type GuidanceId,
   type HostSnapshot,
   type PlanConflict,
@@ -15,9 +14,10 @@ import {
   requiresExplicitConsent,
   type SatisfierId,
   type SurfaceState,
-  TERMINAL_CLI_IDS,
   VISIBLE_HANDOFF_TARGETS,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/agent-registry';
+import { EDITOR_LABELS } from '@inkeep/open-knowledge-core/constants/editors';
+import { TERMINAL_CLI_IDS } from '@inkeep/open-knowledge-core/handoff';
 import { plural } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Folder, Info, Monitor, Sparkles, TriangleAlert, X } from 'lucide-react';

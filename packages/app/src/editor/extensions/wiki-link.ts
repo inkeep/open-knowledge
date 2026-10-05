@@ -1,4 +1,5 @@
-import { WikiLink as BaseWikiLink, resolveWikiLinkTarget } from '@inkeep/open-knowledge-core';
+import { WikiLink as BaseWikiLink } from '@inkeep/open-knowledge-core/extensions/wiki-link';
+import { resolveWikiLinkTarget } from '@inkeep/open-knowledge-core/utils/wiki-link-resolve';
 import { createElement } from 'react';
 import { openExternalUrl } from '@/lib/external-link';
 import { resolveLinkTargetIntent } from '../../components/link-target-intent';

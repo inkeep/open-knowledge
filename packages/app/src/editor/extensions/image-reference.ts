@@ -1,4 +1,4 @@
-import { ImageReferenceFidelity } from '@inkeep/open-knowledge-core';
+import { ImageReferenceFidelity } from '@inkeep/open-knowledge-core/extensions/image-reference-fidelity';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import { ImageReferenceView } from './ImageReferenceView';
 

@@ -3,7 +3,7 @@
 import type {
   FrontmatterFieldConstraint,
   SchemaParentPathSegment,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/markdown/lint';
 import { Trans, useLingui } from '@lingui/react/macro';
 import {
   Braces,

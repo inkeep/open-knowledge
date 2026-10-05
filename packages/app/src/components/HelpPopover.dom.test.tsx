@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
+import { createServedBindingLog } from '@/test-utils/served-binding.test-helper';
 
 vi.doMock('@lingui/core/macro', () => ({ ...actualLinguiMacro, msg: renderLinguiTemplate }));
 
@@ -14,10 +15,14 @@ vi.doMock('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-vi.doMock('@inkeep/open-knowledge-core', async (importActual) => ({
-  ...(await importActual<typeof import('@inkeep/open-knowledge-core')>()),
-  getGitHubStars: async () => 1234,
-}));
+const servedCore = createServedBindingLog();
+
+vi.doMock('@inkeep/open-knowledge-core/utils/github-stars', async (importActual) =>
+  servedCore.serve('@inkeep/open-knowledge-core/utils/github-stars', {
+    ...(await importActual<typeof import('@inkeep/open-knowledge-core/utils/github-stars')>()),
+    getGitHubStars: async () => 1234,
+  }),
+);
 
 vi.doMock('@/lib/external-link', () => ({
   dispatchExternalLinkClick: () => {},
@@ -203,5 +208,23 @@ describe('HelpPopover with the desktop bridge present', () => {
     expect(screen.getByRole('link', { name: 'Download app' }).getAttribute('href')).toBe(
       'https://openknowledge.ai/download',
     );
+  });
+});
+
+describe('HelpPopover core replacement liveness', () => {
+  test('the star count HelpPopover renders is the one the github-stars replacement serves', async () => {
+    const since = servedCore.mark();
+    await renderOpenHelpPopover();
+
+    const nav = screen.getByRole('navigation', { name: 'Community' });
+    const githubLink = within(nav).getByRole('link', { name: /GitHub/ });
+    await waitFor(() => expect(within(githubLink).getByText('1.2k')).not.toBeNull());
+    expect(
+      servedCore.readersOf(
+        '@inkeep/open-knowledge-core/utils/github-stars',
+        'getGitHubStars',
+        since,
+      ),
+    ).toEqual(['components/HelpPopover.tsx']);
   });
 });

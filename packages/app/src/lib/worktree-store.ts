@@ -1,4 +1,4 @@
-import type { WorktreeSelectorModel } from '@inkeep/open-knowledge-core';
+import type { WorktreeSelectorModel } from '@inkeep/open-knowledge-core/git/worktree-selector-model';
 
 export interface WorktreeStore {
   getSnapshot(): WorktreeSelectorModel | null;

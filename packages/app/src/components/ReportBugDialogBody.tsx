@@ -2,14 +2,14 @@ import type {
   OkBugReportCrashDetectedEvent,
   OkBugReportScreenshot,
   ReportBundleSummary,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/logger-types';
 import {
   BUG_REPORT_SCREENSHOT_ZIP_ENTRY,
-  formatRelativeAge,
   isBugReportAgentChatEntry,
   isBugReportAttachmentEntry,
   isBugReportCrashDumpEntry,
-} from '@inkeep/open-knowledge-core';
+} from '@inkeep/open-knowledge-core/logger-types';
+import { formatRelativeAge } from '@inkeep/open-knowledge-core/utils/relative-time';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import {
   AlertCircleIcon,
