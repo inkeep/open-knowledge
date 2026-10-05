@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { parse } from 'yaml';
 import {
   alarmObservation,
   buildHistory,
@@ -572,5 +573,112 @@ describe('a remembered smoke failure stays visible to the alarm', () => {
       observed: true,
       incident: 'Smoke or dispatch',
     });
+  });
+});
+
+describe('a fast-tier dispatch that runs in its own job', () => {
+  const runs = [{ databaseId: 1, createdAt: daysAgo(1) }];
+  const smoked = {
+    name: "Smoke the fast-tier candidate's DMG",
+    status: 'completed',
+    conclusion: 'success',
+    steps: [
+      { name: "Download the candidate's DMG", conclusion: 'success' },
+      { name: 'Smoke the DMG', conclusion: 'success' },
+    ],
+  };
+  const dispatchJob = (conclusion, steps) => ({
+    name: 'Dispatch the smoke-proven fast-tier candidate',
+    status: 'completed',
+    conclusion,
+    steps,
+  });
+  const entryFor = (...jobs) => buildHistory({ runs, jobsForRun: () => jobs })[0];
+
+  test('a dispatch job whose dispatch and receipt succeeded is a pass', () => {
+    const jobs = [
+      smoked,
+      dispatchJob('success', [
+        { name: 'Dispatch promote-stable for the smoke-proven candidate', conclusion: 'success' },
+        { name: 'Record a successful fast-tier dispatch', conclusion: 'success' },
+      ]),
+    ];
+    expect(entryFor(...jobs)).toEqual({ at: daysAgo(1), qualified: true, verdict: 'pass', promoted: true, failureStage: null });
+  });
+
+  test('a dispatch job skipped after a non-pass smoke is a qualified non-pass at the smoke stage', () => {
+    expect(entryFor(smoked, dispatchJob('skipped', []))).toEqual({
+      at: daysAgo(1),
+      qualified: true,
+      verdict: 'non-pass',
+      promoted: false,
+      failureStage: 'Smoke or dispatch',
+    });
+  });
+
+  test('a dispatch the in-flight guard skipped did not qualify, as when the smoke job dispatched', () => {
+    const jobs = [
+      smoked,
+      dispatchJob('success', [
+        { name: 'Dispatch promote-stable for the smoke-proven candidate', conclusion: 'success' },
+        { name: 'Record a successful fast-tier dispatch', conclusion: 'skipped' },
+      ]),
+    ];
+    expect(entryFor(...jobs)).toMatchObject({ qualified: false, verdict: null, promoted: false });
+  });
+
+  test('a failed dispatch names the dispatch step as the failing stage', () => {
+    const jobs = [
+      smoked,
+      dispatchJob('failure', [
+        { name: 'Dispatch promote-stable for the smoke-proven candidate', conclusion: 'failure' },
+        { name: 'Record a successful fast-tier dispatch', conclusion: 'skipped' },
+      ]),
+    ];
+    expect(entryFor(...jobs)).toMatchObject({
+      qualified: true,
+      verdict: 'non-pass',
+      failureStage: 'Dispatch promote-stable for the smoke-proven candidate',
+    });
+  });
+
+  test('the step that reports a failed dispatch leaves the failing stage on the dispatch step', () => {
+    const jobs = [
+      smoked,
+      dispatchJob('failure', [
+        { name: 'Dispatch promote-stable for the smoke-proven candidate', conclusion: 'failure' },
+        { name: 'Record a successful fast-tier dispatch', conclusion: 'skipped' },
+        { name: 'Report a failed fast-tier dispatch', conclusion: 'success' },
+      ]),
+    ];
+    const entry = entryFor(...jobs);
+    expect(entry).toEqual({
+      at: daysAgo(1),
+      qualified: true,
+      verdict: 'non-pass',
+      promoted: false,
+      failureStage: 'Dispatch promote-stable for the smoke-proven candidate',
+    });
+    expect(alarmObservation({ history: [entry, entry, entry], nowMs: NOW, armed: true })).toMatchObject({
+      alarm: true,
+      incident: 'Dispatch promote-stable for the smoke-proven candidate',
+    });
+  });
+
+  test('the workflow puts the dispatch and its receipt in that job, gated on a passing smoke', () => {
+    const { jobs } = parse(
+      readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'workflows', 'select-beta-to-promote.yml'), 'utf8'),
+    );
+    const named = (name) => Object.values(jobs).filter((job) => job.name === name);
+    const [smoke] = named("Smoke the fast-tier candidate's DMG");
+    const [dispatch] = named('Dispatch the smoke-proven fast-tier candidate');
+    expect(named('Dispatch the smoke-proven fast-tier candidate')).toHaveLength(1);
+    expect(dispatch.if).toBe("needs.smoke-fast-tier-candidate.outputs.verdict == 'pass'");
+    const stepNames = (job) => job.steps.map((step) => step.name);
+    expect(stepNames(dispatch)).toEqual(
+      expect.arrayContaining(['Dispatch promote-stable for the smoke-proven candidate', 'Record a successful fast-tier dispatch']),
+    );
+    expect(stepNames(smoke)).not.toContain('Dispatch promote-stable for the smoke-proven candidate');
+    expect(stepNames(smoke)).not.toContain('Record a successful fast-tier dispatch');
   });
 });

@@ -1,15 +1,17 @@
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
-import { computeStablePromotion } from '../../scripts/compute-stable-version.mjs';
+import { computeStablePromotion, withBumpVerdicts } from '../../scripts/compute-stable-version.mjs';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
 import {
   evaluateFastTier,
   makeResolveChangesetPrUrl,
   makeResolveIssuesForUrl,
   parseBetaTags,
+  readUnshippedBumps,
   resolveTier,
   selectPromotion,
 } from './select-beta-to-promote.mjs';
@@ -740,5 +742,270 @@ describe('makeResolveIssuesForUrl (real HTTP handling)', () => {
     } finally {
       process.chdir(cwd);
     }
+  });
+});
+
+describe('readUnshippedBumps, run by the job that holds no credential', () => {
+  const SHAS = {
+    'v1.0.0': 'stable-sha',
+    'v1.2.0-beta.1': 'newest-sha',
+    'v1.1.1-beta.0': 'older-sha',
+    'v1.0.0-beta.3': 'shipped-sha',
+    'v0.9.9-beta.0': 'below-sha',
+  };
+  const BLOBS = {
+    'stable-sha': { old: 'blob-old' },
+    'newest-sha': { old: 'blob-old', fix: 'blob-fix', feat: 'blob-feat' },
+    'older-sha': { old: 'blob-old', fix: 'blob-fix-first-draft' },
+    'shipped-sha': { old: 'blob-old', ancient: 'blob-ancient' },
+    'below-sha': { old: 'blob-old', below: 'blob-below' },
+  };
+  const BETAS = ['v1.2.0-beta.1', 'v1.1.1-beta.0', 'v1.0.0-beta.3', 'v0.9.9-beta.0'];
+  const shipped = (tag) => tag === 'v1.0.0-beta.3';
+  const blobGit = ({ broken = '' } = {}) => {
+    const reads = [];
+    return {
+      reads,
+      revParse: (ref) => SHAS[ref],
+      newestStableTag: () => 'v1.0.0',
+      isAncestor: () => false,
+      changesetIds: (sha) => Object.keys(BLOBS[sha] ?? {}),
+      changesetBlobs: (sha) => new Map(Object.entries(BLOBS[sha] ?? {})),
+      bumpTypeOf: (sha, id) => {
+        reads.push(`${sha}:${id}`);
+        if (`${sha}:${id}` === broken) throw new Error('unparseable frontmatter');
+        return id === 'feat' ? 'minor' : 'patch';
+      },
+    };
+  };
+
+  test('reads the delta of every beta above the first shipped one, keyed by blob, and none below it', () => {
+    const git = blobGit();
+    const verdicts = readUnshippedBumps({ betaTags: BETAS, isAlreadyShipped: shipped, git });
+    expect(Object.fromEntries(verdicts)).toEqual({
+      'blob-fix': 'patch',
+      'blob-feat': 'minor',
+      'blob-fix-first-draft': 'patch',
+    });
+    expect(git.reads).toEqual(['newest-sha:fix', 'newest-sha:feat', 'older-sha:fix']);
+  });
+
+  test('a beta it cannot read is reported and skipped, and the other betas are still read', () => {
+    const git = blobGit({ broken: 'newest-sha:feat' });
+    const logged = [];
+    const verdicts = readUnshippedBumps({ betaTags: BETAS, isAlreadyShipped: shipped, git, log: (m) => logged.push(m) });
+    expect(logged).toEqual([expect.stringMatching(/^::warning::Could not read the changeset bumps of v1\.2\.0-beta\.1.*unparseable frontmatter/)]);
+    expect(verdicts.get('blob-fix-first-draft')).toBe('patch');
+    expect(verdicts.has('blob-feat')).toBe(false);
+  });
+
+  test('the selector answers a candidate from the verdicts alone, and a beta the reader skipped degrades to delta-error', async () => {
+    const reader = blobGit({ broken: 'newest-sha:feat' });
+    const verdicts = readUnshippedBumps({ betaTags: BETAS, isAlreadyShipped: shipped, git: reader });
+    const selector = withBumpVerdicts(
+      {
+        ...blobGit(),
+        bumpTypeOf: () => {
+          throw new Error('the Changesets reader is not installed in this job');
+        },
+      },
+      verdicts,
+    );
+    const tier = (candidate) =>
+      evaluateFastTier({
+        candidate,
+        computeDelta: (beta) => computeStablePromotion(beta, selector),
+        resolveChangesetPrUrl: () => 'https://github.com/inkeep/agents-private/pull/1',
+        resolveIssuesForUrl: async () => ({ issues: [{ identifier: 'PRD-1', labels: ['Bug'] }] }),
+      });
+    expect(await tier('v1.1.1-beta.0')).toMatchObject({ qualifies: true, bump: 'patch', deltaCount: 1 });
+    const degraded = await tier('v1.2.0-beta.1');
+    expect(degraded).toMatchObject({ qualifies: false, reason: 'delta-error' });
+    expect(degraded.warnings).toEqual([expect.stringMatching(/no bump verdict for \.changeset\/feat\.md/)]);
+  });
+});
+
+describe('the selector entry points the two jobs run', () => {
+  const SCRIPT = realpathSync(fileURLToPath(new URL('./select-beta-to-promote.mjs', import.meta.url)));
+  const OK_ROOT = join(dirname(SCRIPT), '..', '..');
+  const COPIED = [
+    '.github/scripts/select-beta-to-promote.mjs',
+    'scripts/compute-stable-version.mjs',
+    'scripts/compute-next-beta.mjs',
+    'scripts/git-clean-env.mjs',
+  ];
+  const dirs = [];
+  afterEach(() => {
+    while (dirs.length) rmSync(dirs.pop(), { recursive: true, force: true });
+  });
+  const scratch = (prefix) => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+    dirs.push(dir);
+    return dir;
+  };
+  const {
+    BUMP_VERDICTS: _verdicts,
+    LINEAR_API_KEY: _key,
+    LINK_REPO: _repo,
+    SOAK_SECONDS: _soak,
+    FAST_TIER_ARMED: _armed,
+    ...cleanEnv
+  } = gitCleanEnv();
+  const git = (cwd, ...args) =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], {
+      cwd,
+      encoding: 'utf8',
+      env: gitCleanEnv(),
+    }).trim();
+  const betaRepo = () => {
+    const root = scratch('select-beta-entry-');
+    const commit = (id, type, subject, tag) => {
+      mkdirSync(join(root, '.changeset'), { recursive: true });
+      writeFileSync(join(root, '.changeset', `${id}.md`), `---\n"@inkeep/open-knowledge": ${type}\n---\n\n${id}\n`);
+      git(root, 'add', '-A');
+      git(root, 'commit', '-q', '-m', subject);
+      git(root, 'tag', tag);
+    };
+    git(root, 'init', '-q', '-b', 'main');
+    commit('keep', 'patch', 'chore: the shipped change (#100)', 'v1.0.0');
+    commit('fix-crash', 'patch', 'fix: stop the crash (#201)', 'v1.0.1-beta.0');
+    commit('new-thing', 'minor', 'feat: a new thing (#202)', 'v1.1.0-beta.0');
+    return {
+      root,
+      blobs: {
+        fix: git(root, 'rev-parse', 'HEAD:.changeset/fix-crash.md'),
+        feat: git(root, 'rev-parse', 'HEAD:.changeset/new-thing.md'),
+      },
+    };
+  };
+  const ghBin = (script) => {
+    const bin = scratch('select-beta-gh-');
+    writeFileSync(join(bin, 'gh'), script, { mode: 0o755 });
+    return bin;
+  };
+  const releaseGh = () => {
+    const meta = (minutesAgo) =>
+      JSON.stringify({
+        isDraft: false,
+        publishedAt: new Date(Date.now() - minutesAgo * 60_000).toISOString(),
+        assets: [{ name: 'OpenKnowledge-Beta-universal.dmg' }, { name: 'beta-mac.yml' }],
+      });
+    return ghBin(
+      [
+        '#!/bin/sh',
+        'case "$3" in',
+        `  v1.1.0-beta.0) printf '%s' '${meta(10)}' ;;`,
+        `  v1.0.1-beta.0) printf '%s' '${meta(120)}' ;;`,
+        '  *) echo "release not found" >&2; exit 1 ;;',
+        'esac',
+        '',
+      ].join('\n'),
+    );
+  };
+  const isolatedScript = () => {
+    const dir = scratch('select-beta-no-node-modules-');
+    for (const file of COPIED) {
+      mkdirSync(dirname(join(dir, file)), { recursive: true });
+      copyFileSync(join(OK_ROOT, file), join(dir, file));
+    }
+    return join(dir, '.github', 'scripts', 'select-beta-to-promote.mjs');
+  };
+  const linearStub = () => {
+    const dir = scratch('select-beta-linear-');
+    const preload = join(dir, 'linear.mjs');
+    const calls = join(dir, 'calls');
+    writeFileSync(
+      preload,
+      [
+        "import { appendFileSync } from 'node:fs';",
+        'globalThis.fetch = async (url, init) => {',
+        '  appendFileSync(process.env.LINEAR_CALLS, `${JSON.stringify({ url: String(url), authorization: init.headers.authorization, body: JSON.parse(init.body) })}\\n`);',
+        "  return new Response(JSON.stringify({ data: { attachmentsForURL: { nodes: [{ issue: { identifier: 'PRD-1', labels: { nodes: [{ name: 'Bug' }] } } }] } } }), { status: 200 });",
+        '};',
+        '',
+      ].join('\n'),
+    );
+    writeFileSync(calls, '');
+    return { preload, calls, read: () => readFileSync(calls, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line)) };
+  };
+  const run = (script, cwd, { args = [], env = {}, bin, preload } = {}) => {
+    const output = join(scratch('select-beta-output-'), 'github-output');
+    writeFileSync(output, '');
+    const res = spawnSync(process.execPath, [...(preload ? ['--import', preload] : []), script, ...args], {
+      cwd,
+      encoding: 'utf8',
+      env: { ...cleanEnv, GITHUB_OUTPUT: output, ...(bin ? { PATH: `${bin}${delimiter}${cleanEnv.PATH}` } : {}), ...env },
+    });
+    return { ...res, output: readFileSync(output, 'utf8') };
+  };
+  const readBumps = (root) =>
+    run(SCRIPT, root, { args: ['--read-bumps'], bin: ghBin('#!/bin/sh\necho "the reader job must not call gh" >&2\nexit 97\n') });
+
+  test('--read-bumps writes the bump of every changeset an unshipped beta adds, keyed by blob id, without gh', () => {
+    const { root, blobs } = betaRepo();
+    const res = readBumps(root);
+    expect(res.status, res.stderr).toBe(0);
+    expect(res.output).toBe(`bump_verdicts={"${blobs.fix}":"patch","${blobs.feat}":"minor"}\n`);
+  });
+
+  test('with the reader job verdicts and no node_modules it makes the same Linear queries and writes the same outputs', () => {
+    const { root } = betaRepo();
+    const verdicts = readBumps(root).output.trim().slice('bump_verdicts='.length);
+    const env = { LINEAR_API_KEY: 'placeholder-linear-key', FAST_TIER_ARMED: 'true', SOAK_SECONDS: '86400' };
+    const bin = releaseGh();
+
+    const withReader = linearStub();
+    const reader = run(SCRIPT, root, { env: { ...env, LINEAR_CALLS: withReader.calls }, bin, preload: withReader.preload });
+    expect(reader.status, reader.stderr).toBe(0);
+
+    const withoutReader = linearStub();
+    const verdictMode = run(isolatedScript(), root, {
+      env: { ...env, LINEAR_CALLS: withoutReader.calls, BUMP_VERDICTS: verdicts },
+      bin,
+      preload: withoutReader.preload,
+    });
+    expect(verdictMode.status, verdictMode.stderr).toBe(0);
+
+    expect(verdictMode.output).toBe(
+      [
+        'target=',
+        'tier=',
+        'fast_tier_candidate=v1.0.1-beta.0',
+        'soak_tier=fast',
+        'fast_armed=true',
+        'fast_candidate=v1.0.1-beta.0',
+        'fast_qualifies=true',
+        'fast_reason=patch-only-and-bug-linked',
+        'fast_bump=patch',
+        'fast_delta_count=1',
+        'fast_bug_linked=true',
+        '',
+      ].join('\n'),
+    );
+    expect(verdictMode.output).toBe(reader.output);
+    expect(withoutReader.read()).toEqual([
+      {
+        url: 'https://api.linear.app/graphql',
+        authorization: 'placeholder-linear-key',
+        body: expect.objectContaining({ variables: { url: 'https://github.com/inkeep/agents-private/pull/201' } }),
+      },
+    ]);
+    expect(withoutReader.read()).toEqual(withReader.read());
+  });
+
+  test('without verdicts the same isolated copy degrades the fast tier because it cannot load the reader', () => {
+    const { root } = betaRepo();
+    const res = run(isolatedScript(), root, { env: { FAST_TIER_ARMED: 'true' }, bin: releaseGh() });
+    expect(res.status, res.stderr).toBe(0);
+    expect(res.output).toContain('fast_reason=delta-error\n');
+    expect(res.stdout).toMatch(/Soak-tier predicate degraded: delta-error v1\.0\.1-beta\.0: .*@changesets\/cli/);
+  });
+
+  test('an empty BUMP_VERDICTS stops the tick with an error naming the read-bumps output, and writes nothing', () => {
+    const { root } = betaRepo();
+    const res = run(isolatedScript(), root, { env: { BUMP_VERDICTS: '' }, bin: releaseGh() });
+    expect(res.status).toBe(1);
+    expect(res.stderr).toMatch(/BUMP_VERDICTS is empty: the read-bumps job wrote no bump_verdicts output/);
+    expect(res.output).toBe('');
   });
 });

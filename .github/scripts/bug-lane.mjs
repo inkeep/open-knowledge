@@ -1,7 +1,13 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { realGit } from '../../scripts/compute-stable-version.mjs';
+import {
+  parseBumpVerdicts,
+  realGit,
+  recordBumpVerdicts,
+  serializeBumpVerdicts,
+  withBumpVerdicts,
+} from '../../scripts/compute-stable-version.mjs';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
 import { makeResolveChangesetPrUrl, makeResolveIssuesForUrl } from './select-beta-to-promote.mjs';
 
@@ -152,12 +158,19 @@ export function makeIsInStable(stable, git = (args) => spawnSync('git', args, { 
   };
 }
 
-function realPendingChangesets() {
-  const ids = realGit.changesetIds('HEAD');
+export function readPendingBumps(git) {
+  const verdicts = new Map();
+  const reading = recordBumpVerdicts(git, verdicts);
+  for (const id of git.changesetIds('HEAD')) reading.bumpTypeOf('HEAD', id);
+  return verdicts;
+}
+
+function realPendingChangesets(git) {
+  const ids = git.changesetIds('HEAD');
 
   const entries = [];
   for (const id of ids) {
-    const bump = realGit.bumpTypeOf('HEAD', id);
+    const bump = git.bumpTypeOf('HEAD', id);
     const line = runGit([
       'log',
       '--diff-filter=A',
@@ -173,7 +186,24 @@ function realPendingChangesets() {
   return entries;
 }
 
+function readBumpsMain() {
+  const verdicts = readPendingBumps(realGit);
+  console.log(`bug-lane: read the bump of ${verdicts.size} pending changeset(s).`);
+  if (process.env.GITHUB_OUTPUT) {
+    appendFileSync(process.env.GITHUB_OUTPUT, `bump_verdicts=${serializeBumpVerdicts(verdicts)}\n`);
+  }
+}
+
 async function main() {
+  if (process.argv[2] === '--read-bumps') {
+    readBumpsMain();
+    return;
+  }
+
+  const git =
+    process.env.BUMP_VERDICTS === undefined
+      ? realGit
+      : withBumpVerdicts(realGit, parseBumpVerdicts(process.env.BUMP_VERDICTS));
   const stable = realNewestStableTag();
   if (!stable) {
     console.log('::notice::bug-lane: no stable tag exists yet; nothing to point-release over.');
@@ -182,7 +212,7 @@ async function main() {
   }
 
   const result = await evaluateBugLane({
-    pendingChangesets: realPendingChangesets(),
+    pendingChangesets: realPendingChangesets(git),
     isInStable: makeIsInStable(stable),
     resolveChangesetPrUrl: makeResolveChangesetPrUrl(process.env.LINK_REPO || DEFAULT_LINK_REPO),
     resolveIssuesForUrl: makeResolveIssuesForUrl(process.env.LINEAR_API_KEY),

@@ -73,8 +73,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  read-bumps:
+    name: Read changeset bumps (no credential)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      bump_verdicts: ${{ steps.bumps.outputs.bump_verdicts }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
+      - name: Install root dependencies for the Changesets reader
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile --filter=. --ignore-scripts
+
+      - name: Read the bump of every pending changeset
+        id: bumps
+        run: node .github/scripts/bug-lane.mjs --read-bumps
+
   bug-lane:
     name: Evaluate qualifying fixes
+    needs: read-bumps
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -89,12 +119,7 @@ jobs:
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
-
-      - name: Install root dependencies for the Changesets reader
-        run: |
-          set -euo pipefail
-          corepack enable
-          pnpm install --frozen-lockfile --filter=. --ignore-scripts
+          package-manager-cache: false
 
       - name: Evaluate qualifying fixes
         id: evaluate
@@ -102,6 +127,7 @@ jobs:
           # Optional, same posture as the soak tier: absent, every fix resolves
           # "not bug-linked" and the lane is inert rather than wrong.
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          BUMP_VERDICTS: ${{ needs.read-bumps.outputs.bump_verdicts }}
         # Writes fix_refs (comma-joined), stable and fix_tickets to
         # GITHUB_OUTPUT; per-commit verdicts land as notices. Logic + tests:
         # .github/scripts/bug-lane.{mjs,test.mjs}.

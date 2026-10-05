@@ -9,6 +9,7 @@ export const CONSECUTIVE_NON_PASS_THRESHOLD = 3;
 export const STALE_FAST_TIER_WINDOW_DAYS = 14;
 
 const SMOKE_JOB_NAME = "Smoke the fast-tier candidate's DMG";
+const DISPATCH_JOB_NAME = 'Dispatch the smoke-proven fast-tier candidate';
 const EVALUATE_JOB_NAME = 'Evaluate 24h soak + business-hours gate';
 const REMEMBERED_FAILURE_STEP_NAME =
   'Skip the fast-tier candidate whose DMG already failed the smoke';
@@ -74,8 +75,12 @@ export function buildHistory({ runs, jobsForRun }) {
     ) {
       return { at: run.createdAt, qualified: false, verdict: null, promoted: false };
     }
-    const dispatch = (smoke.steps ?? []).find((s) => s.name === DISPATCH_STEP_NAME);
-    const receipt = (smoke.steps ?? []).find((s) => s.name === DISPATCH_RECEIPT_STEP_NAME);
+    const steps = [
+      ...(smoke.steps ?? []),
+      ...(jobs.find((j) => j.name === DISPATCH_JOB_NAME)?.steps ?? []),
+    ];
+    const dispatch = steps.find((s) => s.name === DISPATCH_STEP_NAME);
+    const receipt = steps.find((s) => s.name === DISPATCH_RECEIPT_STEP_NAME);
     if (receipt?.conclusion === 'skipped' && dispatch?.conclusion === 'success') {
       return { at: run.createdAt, qualified: false, verdict: null, promoted: false };
     }
@@ -87,8 +92,7 @@ export function buildHistory({ runs, jobsForRun }) {
       promoted,
       failureStage: promoted
         ? null
-        : ((smoke.steps ?? []).find((s) => s.conclusion === 'failure')?.name ??
-          SMOKE_OR_DISPATCH_STAGE),
+        : (steps.find((s) => s.conclusion === 'failure')?.name ?? SMOKE_OR_DISPATCH_STAGE),
     };
   });
   return resolveRememberedSkips(history, runs);

@@ -1,7 +1,14 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { computeStablePromotion, realGit } from '../../scripts/compute-stable-version.mjs';
+import {
+  computeStablePromotion,
+  parseBumpVerdicts,
+  realGit,
+  recordBumpVerdicts,
+  serializeBumpVerdicts,
+  withBumpVerdicts,
+} from '../../scripts/compute-stable-version.mjs';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
 
 const BETA_TAG_RE = /^v\d+\.\d+\.\d+-beta\.\d+$/;
@@ -279,14 +286,55 @@ export function makeResolveIssuesForUrl(apiKey) {
   };
 }
 
+export function readUnshippedBumps({ betaTags, isAlreadyShipped, git, log = () => {} }) {
+  const verdicts = new Map();
+  const reading = recordBumpVerdicts(git, verdicts);
+  for (const beta of betaTags) {
+    if (isAlreadyShipped(beta)) break;
+    try {
+      computeStablePromotion(beta, reading);
+    } catch (err) {
+      log(`::warning::Could not read the changeset bumps of ${beta}; its fast-tier verdict will degrade: ${err.message}`);
+    }
+  }
+  return verdicts;
+}
+
+function realBetaTags() {
+  return parseBetaTags(
+    execFileSync('git', ['tag', '--list', 'v*-beta.*', '--sort=-version:refname'], {
+      encoding: 'utf8',
+      env: gitCleanEnv(),
+    }),
+  );
+}
+
+function readBumpsMain() {
+  const verdicts = readUnshippedBumps({
+    betaTags: realBetaTags(),
+    isAlreadyShipped: makeRealIsAlreadyShipped(resolveLatestStableSha()),
+    git: realGit,
+    log: console.log,
+  });
+  console.log(`Read the bump of ${verdicts.size} changeset(s) across the unshipped betas.`);
+  if (process.env.GITHUB_OUTPUT) {
+    appendFileSync(process.env.GITHUB_OUTPUT, `bump_verdicts=${serializeBumpVerdicts(verdicts)}\n`);
+  }
+}
+
 async function main() {
+  if (process.argv[2] === '--read-bumps') {
+    readBumpsMain();
+    return;
+  }
+
+  const git =
+    process.env.BUMP_VERDICTS === undefined
+      ? realGit
+      : withBumpVerdicts(realGit, parseBumpVerdicts(process.env.BUMP_VERDICTS));
   const soakSeconds = Number(process.env.SOAK_SECONDS || '86400');
   const armed = process.env.FAST_TIER_ARMED === 'true';
-  const rawTags = execFileSync('git', ['tag', '--list', 'v*-beta.*', '--sort=-version:refname'], {
-    encoding: 'utf8',
-    env: gitCleanEnv(),
-  });
-  const betaTags = parseBetaTags(rawTags);
+  const betaTags = realBetaTags();
   const latestStableSha = resolveLatestStableSha();
   const isAlreadyShipped = makeRealIsAlreadyShipped(latestStableSha);
 
@@ -338,7 +386,7 @@ async function main() {
     fastTarget = fastCandidate.kind === 'select' ? fastCandidate.target : '';
     verdict = await evaluateFastTier({
       candidate: fastTarget,
-      computeDelta: (betaTag) => computeStablePromotion(betaTag, realGit),
+      computeDelta: (betaTag) => computeStablePromotion(betaTag, git),
       resolveChangesetPrUrl: makeResolveChangesetPrUrl(process.env.LINK_REPO || DEFAULT_LINK_REPO),
       resolveIssuesForUrl: makeResolveIssuesForUrl(process.env.LINEAR_API_KEY),
     });
