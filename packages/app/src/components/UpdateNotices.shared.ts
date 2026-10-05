@@ -82,11 +82,13 @@ export function attachUpdateSubscribers(
   let manualCheckAutoDismissTimer: ReturnType<typeof setTimeout> | null = null;
 
   const downloadedNoticeId = 'update-downloaded';
+  const noLongerPendingNoticeId = 'update-no-longer-pending';
   const manualCheckNoticeId = 'update-checking';
 
   unsubscribers.push(
     bridge.onUpdateDownloaded(({ version }) => {
       const noticeId = downloadedNoticeId;
+      dismissNotice(noLongerPendingNoticeId);
 
       const armReadyNotice = () => {
         addNotice({
@@ -148,8 +150,28 @@ export function attachUpdateSubscribers(
   );
 
   unsubscribers.push(
-    bridge.onUpdateRelaunchFailed(({ version, message, downloadUrl, dismissPending }) => {
+    bridge.onUpdateRelaunchFailed(({ version, message, downloadUrl, dismissPending, reason }) => {
       if (dismissPending) dismissNotice(downloadedNoticeId);
+      if (reason === 'no-longer-pending') {
+        addNotice({
+          id: noLongerPendingNoticeId,
+          body: t`This update is no longer ready to install.`,
+          priority: PRIORITY_RELAUNCH_ERROR,
+          action: {
+            label: t`Check for updates`,
+            onClick: () => {
+              dismissNotice(noLongerPendingNoticeId);
+              bridge.update.checkNow().catch((err: unknown) => {
+                console.warn(
+                  '[update-notice] check-for-updates from no-longer-pending rejected',
+                  err,
+                );
+              });
+            },
+          },
+        });
+        return;
+      }
       if (downloadUrl) {
         const failedId = `install-failed-${version}`;
         const armFailedNotice = (): void => {

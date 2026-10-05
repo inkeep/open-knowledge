@@ -260,6 +260,7 @@ export interface OkUpdateRelaunchFailedInfo {
   readonly message?: string;
   readonly downloadUrl?: string;
   readonly dismissPending?: boolean;
+  readonly reason?: 'no-longer-pending';
 }
 
 export interface OkWhatsNewInfo {

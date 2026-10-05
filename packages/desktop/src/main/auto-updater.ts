@@ -90,6 +90,8 @@ export type DispatchKind =
   | 'relaunch-double-invoke-blocked'
   | 'check-now-already-pending'
   | 'check-now-watchdog-fired'
+  | 'check-now-relaunch-chosen'
+  | 'check-now-ready-reoffered'
   | 'toast-a-deferred-post-update-quiet'
   | 'toast-a-quiet-window-elapsed';
 
@@ -120,7 +122,7 @@ interface StartAutoUpdaterOpts {
     showManualInstallFallback: (ctx: LinuxManualInstallContext) => undefined | Promise<unknown>;
     stagedInstallerExists?: (path: string) => boolean;
   };
-  showCheckNowResult?: (result: CheckNowResult) => void;
+  showCheckNowResult?: (result: CheckNowResult) => undefined | Promise<CheckNowResultResponse>;
   clock?: Clock;
   now?: () => Date;
   random?: () => number;
@@ -128,9 +130,18 @@ interface StartAutoUpdaterOpts {
   logger?: Logger;
 }
 
+type CheckNowResultResponse = 'relaunch' | 'dismiss';
+
+type StagedRelaunch = 'available' | 'installing' | 'not-pending';
+
 type CheckNowResult =
   | { kind: 'available'; currentVersion: string; latestVersion: string }
-  | { kind: 'ready-to-install'; currentVersion: string; stagedVersion: string }
+  | {
+      kind: 'ready-to-install';
+      currentVersion: string;
+      stagedVersion: string;
+      relaunch: StagedRelaunch;
+    }
   | { kind: 'not-available'; currentVersion: string }
   | { kind: 'error'; message: string };
 
@@ -138,7 +149,7 @@ export interface StartAutoUpdaterHandle {
   destroy(): void;
   checkForUpdatesNow(): Promise<unknown>;
   getActiveWhatsNew(): { version: string; releaseUrl: string } | null;
-  isWithinPostUpdateQuietWindow(): boolean;
+  getPendingUpdate(): { version: string } | null;
   suppressAutoInstallOnQuit(): void;
   recordInstallHandoffOnQuit(): void;
 }
@@ -678,16 +689,57 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     clock.clearTimeout(menuCheck.watchdog);
     menuCheck = null;
     broadcastToAllWindows('ok:update:manual-check', { phase: 'settled' });
-    if (result !== null) {
-      try {
-        showCheckNowResult?.(result);
-      } catch (err) {
-        logger.error('showCheckNowResult threw, check-now result dialog not shown', {
-          err,
-          result,
-        });
-      }
+    if (result === null) return;
+    if (result.kind === 'ready-to-install') reofferStagedForMenuCheck(result.stagedVersion);
+    let response: ReturnType<NonNullable<typeof showCheckNowResult>>;
+    try {
+      response = showCheckNowResult?.(result);
+    } catch (err) {
+      logger.error('showCheckNowResult threw, check-now result dialog not shown', {
+        err,
+        result,
+      });
+      return;
     }
+    if (response === undefined) return;
+    void Promise.resolve(response).then(
+      (choice) => {
+        logger.info('check-now result dialog answered', { kind: result.kind, choice });
+        if (result.kind !== 'ready-to-install' || result.relaunch !== 'available') return;
+        if (choice !== 'relaunch' || destroyed) return;
+        onDispatch?.('check-now-relaunch-chosen');
+        return relaunchNow(result.stagedVersion).then(undefined, (err: unknown) => {
+          logger.error('check-now Update Ready dialog Quit and Restart failed', {
+            err,
+            stagedVersion: result.stagedVersion,
+          });
+        });
+      },
+      (err: unknown) => {
+        logger.error('check-now result dialog failed', { err, kind: result.kind });
+      },
+    );
+  };
+
+  const relaunchableVersion = (): string | null =>
+    installRequested ? null : readState().versionPendingInstall;
+
+  const stagedRelaunchFor = (version: string): StagedRelaunch => {
+    if (relaunchableVersion() === version) return 'available';
+    return installRequested ? 'installing' : 'not-pending';
+  };
+
+  const pendingToastA = (): { version: string } | null => {
+    if (withinPostUpdateQuietWindow()) return null;
+    const version = relaunchableVersion();
+    return version === null ? null : { version };
+  };
+
+  const reofferStagedForMenuCheck = (version: string): void => {
+    if (pendingToastA()?.version !== version) return;
+    broadcastToAllWindows('ok:update:downloaded', { version });
+    logger.info('check-now found the staged build ready — re-offered Toast A', { version });
+    onDispatch?.('check-now-ready-reoffered');
   };
 
   let relaunchInFlight: {
@@ -935,10 +987,19 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     }
     const armedVersion = declinedForStagedVersion(info.version);
     if (armedVersion !== null) {
+      const relaunch = stagedRelaunchFor(armedVersion);
+      if (relaunch !== 'available') {
+        logger.info('check-now found the staged build but withholds Quit and Restart', {
+          stagedVersion: armedVersion,
+          reason: relaunch,
+          pendingVersion: readState().versionPendingInstall,
+        });
+      }
       settleMenuCheck({
         kind: 'ready-to-install',
         currentVersion: getAppVersion(),
         stagedVersion: armedVersion,
+        relaunch,
       });
       return;
     }
@@ -1159,8 +1220,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     );
   };
 
-  const register = createHandler(ipcMain as IpcMain);
-  register('ok:update:relaunch-now', async (_event: IpcMainInvokeEvent): Promise<undefined> => {
+  const relaunchNow = async (requestedVersion?: string): Promise<undefined> => {
     if (installRequested) {
       logger.warn('relaunch-now invoked while an install is already committed — ignoring');
       onDispatch?.('relaunch-double-invoke-blocked');
@@ -1168,7 +1228,14 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     }
     const preRefresh = readState();
     if (!preRefresh.versionPendingInstall) {
-      logger.warn('relaunch-now invoked without versionPendingInstall — ignoring');
+      logger.warn('relaunch-now invoked without versionPendingInstall — ignoring', {
+        requestedVersion,
+      });
+      broadcastToAllWindows('ok:update:relaunch-failed', {
+        version: requestedVersion ?? stagedThisSession ?? '',
+        reason: 'no-longer-pending',
+        dismissPending: true,
+      });
       return undefined;
     }
     installRequested = true;
@@ -1182,7 +1249,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       installRequested = false;
       broadcastToAllWindows('ok:update:relaunch-failed', {
         version: preRefresh.versionPendingInstall,
-        message: 'the update stopped being available',
+        reason: 'no-longer-pending',
         dismissPending: true,
       });
       return undefined;
@@ -1280,7 +1347,13 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       throw err;
     }
     return undefined;
-  });
+  };
+
+  const register = createHandler(ipcMain as IpcMain);
+  register(
+    'ok:update:relaunch-now',
+    (_event: IpcMainInvokeEvent): Promise<undefined> => relaunchNow(),
+  );
 
   register('ok:update:check-now', (_event: IpcMainInvokeEvent): undefined => {
     void runMenuDrivenCheck();
@@ -1593,8 +1666,8 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       }
       return { version: activeWhatsNew.version, releaseUrl: activeWhatsNew.releaseUrl };
     },
-    isWithinPostUpdateQuietWindow(): boolean {
-      return withinPostUpdateQuietWindow();
+    getPendingUpdate(): { version: string } | null {
+      return pendingToastA();
     },
     suppressAutoInstallOnQuit(): void {
       updater.autoInstallOnAppQuit = false;

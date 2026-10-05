@@ -182,6 +182,7 @@ import { resolveEffectiveInstanceName } from './auto-instance.ts';
 import {
   bootAutoUpdater,
   installWasInFlightDuring,
+  STUCK_HINT_DOWNLOAD_URL,
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
 import { applyBackgroundThrottle } from './background-throttle.ts';
@@ -529,6 +530,10 @@ import {
   resolveUninstallEntryTarget,
   resolveUninstallWindowTheme,
 } from './uninstall-window.ts';
+import {
+  deliverUpdateNoticesToLoadedWindows,
+  replayUpdateNoticesOnEveryLoad,
+} from './update-notice-replay.ts';
 import {
   applyResetIncompatible,
   applyStateQuery,
@@ -1159,6 +1164,8 @@ const reducedTransparencyDeps: ReducedTransparencyDeps = {
   },
 };
 let autoUpdaterHandle: StartAutoUpdaterHandle | null = null;
+const updateNoticeSource = (): StartAutoUpdaterHandle | null =>
+  app.isPackaged || process.env.OK_UPDATER_FORCE_DEV === '1' ? autoUpdaterHandle : null;
 let bundleReplaceWatcherHandle: BundleReplaceWatcherHandle | null = null;
 let debugIpc: DebugIpcHandle | null = null;
 let mcpWiringHandle: RunMcpWiringHandle | null = null;
@@ -6428,17 +6435,7 @@ function bootPrimaryInstance(): void {
       startupWaterfall.mark('bootstrapDone');
 
       app.on('browser-window-created', (_event, win) => {
-        win.webContents.once('did-finish-load', () => {
-          if (!(app.isPackaged || process.env.OK_UPDATER_FORCE_DEV === '1')) return;
-          const pending = appState.versionPendingInstall;
-          if (pending && !autoUpdaterHandle?.isWithinPostUpdateQuietWindow()) {
-            sendToRenderer(win.webContents, 'ok:update:downloaded', { version: pending });
-          }
-          const whatsNew = autoUpdaterHandle?.getActiveWhatsNew();
-          if (whatsNew) {
-            sendToRenderer(win.webContents, 'ok:update:whats-new', whatsNew);
-          }
-        });
+        replayUpdateNoticesOnEveryLoad(win.webContents, updateNoticeSource);
       });
 
       mcpWiringHandle = armMcpWiring();
@@ -6763,14 +6760,45 @@ function bootPrimaryInstance(): void {
               detail: `OpenKnowledge ${result.currentVersion} is the most current version available.`,
             });
           } else if (result.kind === 'ready-to-install') {
-            void dialog.showMessageBox(target, {
-              type: 'info',
-              buttons: ['OK'],
-              defaultId: 0,
-              title: 'Update Ready',
-              message: `OpenKnowledge ${result.stagedVersion} is downloaded and ready.`,
-              detail: `It installs the next time you relaunch. Any newer build is offered after that.`,
-            });
+            switch (result.relaunch) {
+              case 'available':
+                return dialog
+                  .showMessageBox(target, {
+                    type: 'info',
+                    buttons: ['Quit and Restart', 'Later'],
+                    defaultId: 0,
+                    cancelId: 1,
+                    title: 'Update Ready',
+                    message: `OpenKnowledge ${result.stagedVersion} is downloaded and ready.`,
+                    detail:
+                      'Quit and restart now to install it, or it installs the next time you quit OpenKnowledge.',
+                  })
+                  .then(({ response }) => (response === 0 ? 'relaunch' : 'dismiss'));
+              case 'installing':
+                void dialog.showMessageBox(target, {
+                  type: 'info',
+                  buttons: ['OK'],
+                  defaultId: 0,
+                  title: 'Update Ready',
+                  message: `OpenKnowledge ${result.stagedVersion} is downloaded and ready.`,
+                  detail: 'OpenKnowledge is already restarting to install it.',
+                });
+                return undefined;
+              case 'not-pending':
+                void dialog.showMessageBox(target, {
+                  type: 'info',
+                  buttons: ['OK'],
+                  defaultId: 0,
+                  title: 'Update Downloaded',
+                  message: `OpenKnowledge ${result.stagedVersion} was downloaded.`,
+                  detail: `It may install the next time you quit OpenKnowledge. If it doesn't, download the latest build from ${STUCK_HINT_DOWNLOAD_URL}.`,
+                });
+                return undefined;
+              default: {
+                const _exhaustive: never = result.relaunch;
+                return _exhaustive;
+              }
+            }
           } else if (result.kind === 'available') {
             void dialog.showMessageBox(target, {
               type: 'info',
@@ -6792,6 +6820,10 @@ function bootPrimaryInstance(): void {
           }
         },
       });
+      deliverUpdateNoticesToLoadedWindows(
+        BrowserWindow.getAllWindows().map((win) => win.webContents),
+        updateNoticeSource(),
+      );
       refreshApplicationMenu();
 
       if (process.platform === 'darwin' && app.isPackaged) {

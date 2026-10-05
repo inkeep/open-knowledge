@@ -1,7 +1,13 @@
+import type { OkUpdateRelaunchFailedInfo } from '@inkeep/open-knowledge-core/desktop-bridge';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { NoticeCard } from './UpdateNotices';
-import { TOAST_A_PROGRESS_BODY, type UpdateNotice } from './UpdateNotices.shared';
+import {
+  attachUpdateSubscribers,
+  TOAST_A_PROGRESS_BODY,
+  type UpdateNotice,
+} from './UpdateNotices.shared';
 
 const DISMISS_NAME = 'Dismiss notice';
 
@@ -52,5 +58,43 @@ describe('NoticeCard — dismiss X visibility', () => {
     expect(screen.queryByRole('button', { name: DISMISS_NAME })).toBeNull();
     expect(screen.getByText('Continue')).toBeDefined();
     expect(screen.getByText('Stay')).toBeDefined();
+  });
+});
+
+describe('NoticeCard — update no longer pending', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  test('renders the not-ready copy with a Check for updates button that starts a check', () => {
+    let relaunchFailed: ((info: OkUpdateRelaunchFailedInfo) => void) | undefined;
+    const checkNow = vi.fn(() => Promise.resolve());
+    const noop = () => () => {};
+    const bridge = {
+      onUpdateDownloaded: noop,
+      onUpdateRelaunching: noop,
+      onUpdateFetchingLatest: noop,
+      onUpdateRelaunchFailed: (cb: (info: OkUpdateRelaunchFailedInfo) => void) => {
+        relaunchFailed = cb;
+        return () => {};
+      },
+      onWhatsNew: noop,
+      onWhatsNewDismissed: noop,
+      onUpdateStuckHint: noop,
+      onUpdateManualCheck: noop,
+      update: { relaunchNow: vi.fn(), checkNow, dismissWhatsNew: vi.fn() },
+    } as unknown as OkDesktopBridge;
+    const notices: UpdateNotice[] = [];
+    attachUpdateSubscribers(bridge, (n) => notices.push(n));
+
+    relaunchFailed?.({ version: '', reason: 'no-longer-pending', dismissPending: true });
+    const notice = notices.at(-1);
+    if (!notice) throw new Error('expected a notice');
+    render(<NoticeCard notice={notice} onDismiss={() => {}} />);
+
+    expect(screen.getByText('This update is no longer ready to install.')).toBeDefined();
+    expect(screen.queryByText(/restart manually/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }));
+    expect(checkNow).toHaveBeenCalledTimes(1);
   });
 });
