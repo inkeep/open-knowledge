@@ -587,7 +587,7 @@ export interface ContentFilterOptions {
   attachmentFolderPath?: string;
   inPlaceSkillDirs?: ReadonlySet<string>;
   skillRootPaths?: ReadonlySet<string>;
-  rescanInPlaceSkillDirs?: () => ReadonlySet<string>;
+  rescanInPlaceSkillDirs?: (priorAdmission: ReadonlySet<string>) => ReadonlySet<string>;
   onAfterRebuild?: () => void;
 }
 
@@ -964,7 +964,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
     refreshInPlaceSkillDirs(): void {
       if (!opts.rescanInPlaceSkillDirs) return;
       try {
-        inPlaceSkillDirs = opts.rescanInPlaceSkillDirs();
+        inPlaceSkillDirs = opts.rescanInPlaceSkillDirs(inPlaceSkillDirs);
       } catch (err) {
         log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
       }
@@ -977,7 +977,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
     peekFreshInPlaceSkillDirsFingerprint(): string {
       if (!opts.rescanInPlaceSkillDirs) return [...inPlaceSkillDirs].sort().join('\n');
       try {
-        return [...opts.rescanInPlaceSkillDirs()].sort().join('\n');
+        return [...opts.rescanInPlaceSkillDirs(inPlaceSkillDirs)].sort().join('\n');
       } catch {
         return [...inPlaceSkillDirs].sort().join('\n');
       }
@@ -994,7 +994,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
         descendantProjects.reset();
         if (opts.rescanInPlaceSkillDirs) {
           try {
-            inPlaceSkillDirs = opts.rescanInPlaceSkillDirs();
+            inPlaceSkillDirs = opts.rescanInPlaceSkillDirs(inPlaceSkillDirs);
           } catch (err) {
             log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
           }
@@ -1577,7 +1577,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     refreshInPlaceSkillDirs(): void {
       if (!opts.rescanInPlaceSkillDirs) return;
       try {
-        inPlaceSkillDirs = opts.rescanInPlaceSkillDirs();
+        inPlaceSkillDirs = opts.rescanInPlaceSkillDirs(inPlaceSkillDirs);
       } catch (err) {
         log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
       }
@@ -1590,7 +1590,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     peekFreshInPlaceSkillDirsFingerprint(): string {
       if (!opts.rescanInPlaceSkillDirs) return [...inPlaceSkillDirs].sort().join('\n');
       try {
-        return [...opts.rescanInPlaceSkillDirs()].sort().join('\n');
+        return [...opts.rescanInPlaceSkillDirs(inPlaceSkillDirs)].sort().join('\n');
       } catch {
         return [...inPlaceSkillDirs].sort().join('\n');
       }
@@ -1607,7 +1607,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
         descendantProjects.reset();
         if (opts.rescanInPlaceSkillDirs) {
           try {
-            inPlaceSkillDirs = opts.rescanInPlaceSkillDirs();
+            inPlaceSkillDirs = opts.rescanInPlaceSkillDirs(inPlaceSkillDirs);
           } catch (err) {
             log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
           }

@@ -1,6 +1,11 @@
 import { isAbsolute, relative } from 'node:path';
 import { stripDocExtension } from './doc-extensions.ts';
-import type { FileIndexEntry, FolderIndexEntry, WatcherHandle } from './file-watcher.ts';
+import {
+  type AllFileEntries,
+  type FolderIndexEntry,
+  fileIndexEntryMembers,
+  type WatcherHandle,
+} from './file-watcher.ts';
 import { toPosix } from './path-utils.ts';
 
 export interface WatcherLocalTargetInventory {
@@ -75,7 +80,7 @@ export function localTargetInventoryFromWatcher(
 }
 
 export function localTargetInventoryFromIndexes(
-  allFiles: ReadonlyMap<string, FileIndexEntry>,
+  allFiles: AllFileEntries,
   folderAliases: ReadonlyMap<string, string>,
   contentDir: string,
   folderIndex?: ReadonlyMap<string, FolderIndexEntry>,
@@ -85,8 +90,9 @@ export function localTargetInventoryFromIndexes(
   const folderTargets = new Set<string>(folderIndex?.keys() ?? []);
   for (const [indexedIdentity, entry] of allFiles) {
     const targets = entry.kind === 'markdown' ? documentTargets : fileTargets;
-    targets.add(indexedIdentity);
-    for (const alias of entry.aliases) targets.add(alias);
+    const { resolved, members } = fileIndexEntryMembers(contentDir, indexedIdentity, entry);
+    for (const member of members) targets.add(member.path);
+    if (resolved) continue;
 
     const canonicalPath = canonicalRelativePath(contentDir, entry.canonicalPath);
     if (canonicalPath) {

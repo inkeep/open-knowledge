@@ -1,10 +1,23 @@
-import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createContentFilter } from './content-filter.ts';
-import { handleRawEvents, lastKnownHash, startWatcher } from './file-watcher.ts';
+import { type AllFileEntries, lastKnownHash, startWatcher } from './file-watcher.ts';
+import {
+  forgetNativeSubscriptions,
+  nativeSubscriptionOn,
+} from './parcel-watcher-double.test-helper.ts';
+
+vi.mock('@parcel/watcher', async () => {
+  const { parcelWatcherModule } = await import('./parcel-watcher-double.test-helper.ts');
+  return parcelWatcherModule;
+});
+
+function indexedKinds(all: AllFileEntries, name: string) {
+  return [...all].filter(([indexedName]) => indexedName === name).map(([, entry]) => entry.kind);
+}
 
 describe('PRD-7117 US-001 — kind discriminator + all-files admission', () => {
   let tmpDir: string;
@@ -15,6 +28,7 @@ describe('PRD-7117 US-001 — kind discriminator + all-files admission', () => {
     contentDir = resolve(tmpDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     lastKnownHash.clear();
+    forgetNativeSubscriptions();
   });
 
   afterEach(async () => {
@@ -31,15 +45,10 @@ describe('PRD-7117 US-001 — kind discriminator + all-files admission', () => {
     const handle = await startWatcher(contentDir, async () => {});
     try {
       const all = handle.getAllFilesIndex();
-      expect(all.has('readme')).toBe(true);
-      expect(all.has('data.csv')).toBe(true);
-      expect(all.has('config.json')).toBe(true);
-      expect(all.has('src/index.ts')).toBe(true);
-
-      expect(all.get('readme')?.kind).toBe('markdown');
-      expect(all.get('data.csv')?.kind).toBe('file');
-      expect(all.get('config.json')?.kind).toBe('file');
-      expect(all.get('src/index.ts')?.kind).toBe('file');
+      expect(indexedKinds(all, 'readme')).toEqual(['markdown']);
+      expect(indexedKinds(all, 'data.csv')).toEqual(['file']);
+      expect(indexedKinds(all, 'config.json')).toEqual(['file']);
+      expect(indexedKinds(all, 'src/index.ts')).toEqual(['file']);
     } finally {
       await handle.unsubscribe();
     }
@@ -67,7 +76,7 @@ describe('PRD-7117 US-001 — kind discriminator + all-files admission', () => {
       });
       expect(collected).toEqual(['note']);
 
-      expect(handle.getAllFilesIndex().size).toBe(3);
+      expect([...handle.getAllFilesIndex()]).toHaveLength(3);
     } finally {
       await handle.unsubscribe();
     }
@@ -93,11 +102,10 @@ describe('PRD-7117 US-001 — kind discriminator + all-files admission', () => {
       expect(lastKnownHash.size).toBe(2);
 
       const all = handle.getAllFilesIndex();
-      expect(all.has('logo.svg')).toBe(true);
-      expect(all.has('data.csv')).toBe(true);
-      expect(all.has('binary.bin')).toBe(true);
-      expect(all.has('shell.sh')).toBe(true);
-      expect(all.get('logo.svg')?.kind).toBe('file');
+      expect(indexedKinds(all, 'logo.svg')).toEqual(['file']);
+      expect(indexedKinds(all, 'data.csv')).toEqual(['file']);
+      expect(indexedKinds(all, 'binary.bin')).toEqual(['file']);
+      expect(indexedKinds(all, 'shell.sh')).toEqual(['file']);
     } finally {
       await handle.unsubscribe();
     }
@@ -114,10 +122,9 @@ describe('PRD-7117 US-001 — kind discriminator + all-files admission', () => {
     const handle = await startWatcher(contentDir, async () => {}, filter);
     try {
       const all = handle.getAllFilesIndex();
-      expect(all.has('app.ts')).toBe(true);
-      expect(all.get('app.ts')?.kind).toBe('file');
-      expect(all.has('readme')).toBe(true);
-      expect(all.has('dist/bundle.js')).toBe(false);
+      expect(indexedKinds(all, 'app.ts')).toEqual(['file']);
+      expect(indexedKinds(all, 'readme')).toEqual(['markdown']);
+      expect(indexedKinds(all, 'dist/bundle.js')).toEqual([]);
     } finally {
       await handle.unsubscribe();
     }
@@ -129,20 +136,10 @@ describe('PRD-7117 US-001 — kind discriminator + all-files admission', () => {
     try {
       const newFile = resolve(contentDir, 'fresh.ts');
       writeFileSync(newFile, 'export const fresh = true;');
-      await handleRawEvents(
-        [{ type: 'create', path: newFile }],
-        contentDir,
-        undefined,
-        // biome-ignore lint/suspicious/noExplicitAny: test reaches the inner map for live admission verification
-        handle.getAllFilesIndex() as any,
-        // biome-ignore lint/suspicious/noExplicitAny: test reaches the inner map for live admission verification
-        handle.getFolderIndex() as any,
-        async () => {},
-      );
+      await nativeSubscriptionOn(contentDir).deliver([{ type: 'create', path: newFile }]);
 
       const all = handle.getAllFilesIndex();
-      expect(all.has('fresh.ts')).toBe(true);
-      expect(all.get('fresh.ts')?.kind).toBe('file');
+      expect(indexedKinds(all, 'fresh.ts')).toEqual(['file']);
       expect(lastKnownHash.has(newFile)).toBe(false);
     } finally {
       await handle.unsubscribe();
@@ -154,23 +151,16 @@ describe('PRD-7117 US-001 — kind discriminator + all-files admission', () => {
     writeFileSync(resolve(contentDir, 'old.txt'), 'old');
     const handle = await startWatcher(contentDir, async () => {});
     try {
-      expect(handle.getAllFilesIndex().has('old.txt')).toBe(true);
-      expect(handle.getAllFilesIndex().has('doc')).toBe(true);
+      expect(indexedKinds(handle.getAllFilesIndex(), 'old.txt')).toEqual(['file']);
+      expect(indexedKinds(handle.getAllFilesIndex(), 'doc')).toEqual(['markdown']);
 
-      await handleRawEvents(
-        [{ type: 'delete', path: resolve(contentDir, 'old.txt') }],
-        contentDir,
-        undefined,
-        // biome-ignore lint/suspicious/noExplicitAny: see above
-        handle.getAllFilesIndex() as any,
-        // biome-ignore lint/suspicious/noExplicitAny: see above
-        handle.getFolderIndex() as any,
-        async () => {},
-      );
+      unlinkSync(resolve(contentDir, 'old.txt'));
+      await nativeSubscriptionOn(contentDir).deliver([
+        { type: 'delete', path: resolve(contentDir, 'old.txt') },
+      ]);
 
-      expect(handle.getAllFilesIndex().has('old.txt')).toBe(false);
-      expect(handle.getAllFilesIndex().has('doc')).toBe(true);
-      expect(handle.getAllFilesIndex().get('doc')?.kind).toBe('markdown');
+      expect(indexedKinds(handle.getAllFilesIndex(), 'old.txt')).toEqual([]);
+      expect(indexedKinds(handle.getAllFilesIndex(), 'doc')).toEqual(['markdown']);
     } finally {
       await handle.unsubscribe();
     }
@@ -184,8 +174,8 @@ describe('PRD-7117 US-001 — kind discriminator + all-files admission', () => {
     const handle = await startWatcher(contentDir, async () => {});
     try {
       expect(handle.getFileIndex().has('doomed')).toBe(true);
-      expect(handle.getAllFilesIndex().has('doomed')).toBe(true);
-      expect(handle.getAllFilesIndex().has('doomed.txt')).toBe(true);
+      expect(indexedKinds(handle.getAllFilesIndex(), 'doomed')).toEqual(['markdown']);
+      expect(indexedKinds(handle.getAllFilesIndex(), 'doomed.txt')).toEqual(['file']);
 
       handle.mutateFileIndex({
         kind: 'delete',
@@ -198,8 +188,8 @@ describe('PRD-7117 US-001 — kind discriminator + all-files admission', () => {
         relativePath: 'doomed.txt',
       });
 
-      expect(handle.getAllFilesIndex().has('doomed')).toBe(false);
-      expect(handle.getAllFilesIndex().has('doomed.txt')).toBe(false);
+      expect(indexedKinds(handle.getAllFilesIndex(), 'doomed')).toEqual([]);
+      expect(indexedKinds(handle.getAllFilesIndex(), 'doomed.txt')).toEqual([]);
       expect(handle.getFileIndex().has('doomed')).toBe(false);
       expect(handle.getFileIndex().has('survives')).toBe(true);
     } finally {
@@ -237,12 +227,15 @@ describe('PRD-7117 US-001 — kind discriminator + all-files admission', () => {
 
     const handle = await startWatcher(contentDir, async () => {});
     try {
-      const all = handle.getAllFilesIndex();
-      const hasReal = all.has('real.csv');
-      const hasAlias = all.has('alias.csv');
-      expect(Number(hasReal) + Number(hasAlias)).toBe(1);
-      const present = hasReal ? all.get('real.csv') : all.get('alias.csv');
-      expect(present?.kind).toBe('file');
+      const all = [...handle.getAllFilesIndex()];
+      const files = all.filter(([, entry]) => entry.kind === 'file');
+      expect(files).toHaveLength(1);
+      expect(files[0]?.[0]).toBe('real.csv');
+      expect(files[0]?.[1]).toMatchObject({
+        kind: 'file',
+        canonicalPath: resolve(contentDir, 'real.csv'),
+        aliases: ['alias.csv'],
+      });
     } finally {
       await handle.unsubscribe();
     }

@@ -22,6 +22,8 @@ interface LegacyIndexOptions {
   tagIndex?: TagIndex | null;
 }
 
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
 type LegacySignalChannel = (
   channel: 'files' | 'backlinks' | 'graph' | 'tags' | 'lint-config' | 'comments',
 ) => void;
@@ -231,7 +233,7 @@ function createLegacyDerivedIndexPort(
 }
 
 export function createApiExtension(
-  options: Omit<
+  options: DistributiveOmit<
     ApiExtensionOptions,
     | 'durabilityState'
     | 'derivedDocumentIndex'

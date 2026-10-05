@@ -4,8 +4,8 @@ import type { AsyncSubscription, Event, Options, SubscribeCallback } from '@parc
 export interface NativeSubscriptionDouble {
   readonly dir: string;
   nativeReleases(): number;
-  deliver(events: Event[]): Promise<void>;
-  deliverWhileReleasing(events: Event[]): void;
+  deliver(events: Event[], error?: Error | null): Promise<void>;
+  deliverWhileReleasing(events: Event[], error?: Error | null): void;
 }
 
 interface Registration extends NativeSubscriptionDouble {
@@ -17,9 +17,9 @@ const registrations: Registration[] = [];
 
 function register(dir: string, callback: SubscribeCallback): Registration {
   let releases = 0;
-  const queuedForRelease: Event[][] = [];
-  const deliver = async (events: Event[]): Promise<void> => {
-    await callback(null, events);
+  const queuedForRelease: Array<{ events: Event[]; error: Error | null }> = [];
+  const deliver = async (events: Event[], error: Error | null = null): Promise<void> => {
+    await callback(error, events);
     await new Promise<void>((settle) => setImmediate(settle));
   };
   return {
@@ -27,12 +27,12 @@ function register(dir: string, callback: SubscribeCallback): Registration {
     callback,
     nativeReleases: () => releases,
     deliver,
-    deliverWhileReleasing: (events) => {
-      queuedForRelease.push(events);
+    deliverWhileReleasing: (events, error = null) => {
+      queuedForRelease.push({ events, error });
     },
     release: async () => {
       releases += 1;
-      for (const events of queuedForRelease.splice(0)) await deliver(events);
+      for (const { events, error } of queuedForRelease.splice(0)) await deliver(events, error);
     },
   };
 }

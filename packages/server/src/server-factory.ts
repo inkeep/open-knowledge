@@ -178,6 +178,7 @@ import type { GeneratedIndexSettingsStatus } from './http/workspace-tools-routes
 import {
   scanGlobalInPlaceSkills,
   scanInPlaceSkillDirs,
+  scanInPlaceSkills,
   skillRootPathsFor,
 } from './in-place-skills.ts';
 import {
@@ -1704,8 +1705,8 @@ export function createServer(options: ServerOptions): ServerInstance {
       contentDir,
       singleDocRelPath,
       attachmentFolderPath: initialAttachmentFolderPath,
-      inPlaceSkillDirs: scanInPlaceSkillDirs(contentDir),
-      rescanInPlaceSkillDirs: () => scanInPlaceSkillDirs(contentDir),
+      inPlaceSkillDirs: new Set(scanInPlaceSkills(contentDir).map((skill) => skill.dir)),
+      rescanInPlaceSkillDirs: (priorAdmission) => scanInPlaceSkillDirs(contentDir, priorAdmission),
       skillRootPaths: skillRootPathsFor(contentDir),
       onAfterRebuild: () => {
         void derivedDocumentIndex.refreshContentScope().catch((err) => {
@@ -3952,7 +3953,9 @@ export function createServer(options: ServerOptions): ServerInstance {
         }
         const seedWalkStartMono = performance.now();
         const HOST_SKILLS_EVENT_RE = /^\.(?!ok\/)[A-Za-z0-9_-]+\/skills\//;
-        let lastInPlaceDirs = contentFilter ? scanInPlaceSkillDirs(contentDir) : new Set<string>();
+        let lastInPlaceDirs: ReadonlySet<string> = contentFilter
+          ? new Set(scanInPlaceSkills(contentDir).map((skill) => skill.dir))
+          : new Set<string>();
         const onRawBatch = (absPaths: readonly string[]): void => {
           if (
             !absPaths.some((p) =>
@@ -3973,7 +3976,7 @@ export function createServer(options: ServerOptions): ServerInstance {
                   }
                 })
                 .catch((err) => log.warn({ err }, '[in-place-skills] copy re-sync failed'));
-              const next = scanInPlaceSkillDirs(contentDir);
+              const next = scanInPlaceSkillDirs(contentDir, lastInPlaceDirs);
               const changed =
                 next.size !== lastInPlaceDirs.size ||
                 [...next].some((d) => !lastInPlaceDirs.has(d));
@@ -4002,7 +4005,10 @@ export function createServer(options: ServerOptions): ServerInstance {
           }, IN_PLACE_RESCAN_DEBOUNCE_MS);
         };
         watcher = await withSpan('ok.boot.seed-walk', undefined, async () =>
-          startWatcher(contentDir, onDiskEvent, contentFilter, { onRawBatch }),
+          startWatcher(contentDir, onDiskEvent, contentFilter, {
+            onRawBatch,
+            onRecoveryComplete: () => derivedDocumentIndex.recordInventoryReconciled(),
+          }),
         );
         void resyncRecordedSkillCopies(projectDir, contentDir)
           .then((n) => {

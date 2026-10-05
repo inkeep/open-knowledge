@@ -2163,6 +2163,121 @@ describe('file operation API routes', () => {
     expect(assetPathsFromDocumentList(after)).toContain('docs/bar.png');
   });
 
+  test('cached canonical asset is excluded without a generation change', async () => {
+    const dir = setupTmpDir();
+    const a = join(dir, 'a.csv');
+    const b = join(dir, 'b.csv');
+    const linked = join(dir, 'linked.csv');
+    const source = join(dir, 'source.md');
+    const ignore = join(dir, '.okignore');
+    const sourceContent = '# Source\n\n[A](a.csv)\n\n[Linked](linked.csv)\n';
+    writeFileSync(a, 'a,admitted\n');
+    writeFileSync(b, 'b,admitted\n');
+    symlinkSync(b, linked);
+    writeFileSync(source, sourceContent);
+    writeFileSync(ignore, '');
+    const sourceStat = statSync(source);
+    const bStat = statSync(b);
+    const filter = createContentFilter({ projectDir: dir, contentDir: dir });
+    const fileIndex = new Map(buildFileIndex(dir));
+    const indexedSource = fileIndex.get('source');
+    expect(indexedSource).toBeDefined();
+    expect(fileIndex.has('b.csv')).toBe(false);
+    const api = await createTestApiExtension(dir, {
+      contentFilter: filter,
+      getFileIndex: () => fileIndex,
+    });
+
+    const before = await callApiExtension(api, '/api/documents', 'GET', undefined);
+    expect(before.status).toBe(200);
+    const listed = (response: CapturedResponse) =>
+      (
+        JSON.parse(response.body) as {
+          documents: Array<{
+            kind: string;
+            path?: string;
+            size?: number;
+            modified?: string;
+            referencedBy?: string[];
+          }>;
+        }
+      ).documents;
+    expect(listed(before).filter((row) => row.path === 'a.csv')).toEqual([
+      expect.objectContaining({ kind: 'asset', path: 'a.csv', referencedBy: ['source'] }),
+    ]);
+    expect(listed(before).filter((row) => row.path === 'b.csv')).toEqual([
+      expect.objectContaining({
+        kind: 'asset',
+        path: 'b.csv',
+        size: bStat.size,
+        modified: bStat.mtime.toISOString(),
+        referencedBy: ['source'],
+      }),
+    ]);
+
+    writeFileSync(ignore, 'b.csv\n');
+    expect((await filter.rebuildIgnorePatterns()).ok).toBe(true);
+    expect(filter.isPathIgnored('b.csv')).toBe(true);
+    expect(filter.isPathIgnored('linked.csv')).toBe(false);
+    expect(filter.isPathIgnored('a.csv')).toBe(false);
+    expect(fileIndex.get('source')).toBe(indexedSource);
+    const after = await callApiExtension(api, '/api/documents', 'GET', undefined);
+    expect(after.status).toBe(200);
+    expect.soft(listed(after).filter((row) => row.path === 'b.csv')).toEqual([]);
+    expect
+      .soft(listed(after).filter((row) => row.path === 'a.csv'))
+      .toEqual([
+        expect.objectContaining({ kind: 'asset', path: 'a.csv', referencedBy: ['source'] }),
+      ]);
+    expect(readFileSync(source, 'utf8')).toBe(sourceContent);
+    expect(statSync(source).size).toBe(sourceStat.size);
+    expect(statSync(source).mtimeMs).toBe(sourceStat.mtimeMs);
+    expect(readFileSync(a, 'utf8')).toBe('a,admitted\n');
+    expect(readFileSync(b, 'utf8')).toBe('b,admitted\n');
+    expect(readFileSync(linked, 'utf8')).toBe('b,admitted\n');
+    expect(statSync(linked).ino).toBe(statSync(b).ino);
+  });
+
+  test('configured filter retains explicit referenced-asset invalidation', async () => {
+    const dir = setupTmpDir();
+    const source = join(dir, 'source.md');
+    const foo = join(dir, 'foo.png');
+    const bar = join(dir, 'bar.png');
+    writeFileSync(source, '![foo](foo.png)\n');
+    writeFileSync(foo, 'foo bytes');
+    writeFileSync(bar, 'bar bytes');
+    writeFileSync(join(dir, '.okignore'), '');
+    const filter = createContentFilter({ projectDir: dir, contentDir: dir });
+    const fileIndex = new Map(buildFileIndex(dir));
+    const indexedSource = fileIndex.get('source');
+    let invalidate: (() => void) | null = null;
+    const api = await createTestApiExtension(dir, {
+      contentFilter: filter,
+      getFileIndex: () => fileIndex,
+      onReferencedAssetsCacheInvalidator: (registered) => {
+        invalidate = registered;
+      },
+    });
+
+    const before = await callApiExtension(api, '/api/documents', 'GET', undefined);
+    expect(before.status).toBe(200);
+    expect(assetPathsFromDocumentList(before)).toEqual(['foo.png']);
+    writeFileSync(source, '![bar](bar.png)\n');
+    expect(fileIndex.get('source')).toBe(indexedSource);
+    expect(filter.isPathIgnored('foo.png')).toBe(false);
+    expect(filter.isPathIgnored('bar.png')).toBe(false);
+    const stale = await callApiExtension(api, '/api/documents', 'GET', undefined);
+    expect(stale.status).toBe(200);
+    expect(assetPathsFromDocumentList(stale)).toEqual(['foo.png']);
+    expect(invalidate).not.toBeNull();
+    invalidate?.();
+    const after = await callApiExtension(api, '/api/documents', 'GET', undefined);
+    expect(after.status).toBe(200);
+    expect(assetPathsFromDocumentList(after)).toEqual(['bar.png']);
+    expect(readFileSync(foo, 'utf8')).toBe('foo bytes');
+    expect(readFileSync(bar, 'utf8')).toBe('bar bytes');
+  });
+
   test('asset trash cleanup invalidates the cached document list asset row', async () => {
     const dir = setupTmpDir();
     mkdirSync(join(dir, 'docs'), { recursive: true });

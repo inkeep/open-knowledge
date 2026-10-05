@@ -3,6 +3,7 @@ import {
   type GitRepository,
 } from '@inkeep/open-knowledge-core/git-repository';
 import { getLogger } from './logger.ts';
+import { classifyParcelNotification } from './parcel-recovery.ts';
 import { subscribeParcel } from './parcel-subscription.ts';
 
 const log = getLogger('head-watcher');
@@ -69,7 +70,8 @@ export function watchedGitFile(rawPath: string): string | null {
 
 async function tryStartParcelHeadWatcher(
   gitDir: string,
-  dispatch: HeadEventDispatch,
+  dispatch: (rawPath: string) => boolean,
+  recover: () => void,
   platform: NodeJS.Platform,
 ): Promise<(() => Promise<void>) | null> {
   let parcel: typeof import('@parcel/watcher');
@@ -87,11 +89,22 @@ async function tryStartParcelHeadWatcher(
       parcel,
       gitDir,
       (err, events) => {
-        if (err) {
-          log.warn({ err }, '[head-watcher] parcel subscription error');
+        const notification = classifyParcelNotification(err, events);
+        if (notification.kind === 'error') {
+          log.warn({ err: notification.error }, '[head-watcher] parcel subscription error');
           return;
         }
-        for (const event of events) dispatch(event.path);
+        if (notification.kind === 'rescan') {
+          log.warn(
+            { err: notification.error, eventCount: notification.events.length },
+            '[head-watcher] parcel recovery requested',
+          );
+        }
+        let hadWatchedRecord = false;
+        for (const event of notification.events) {
+          if (dispatch(event.path)) hadWatchedRecord = true;
+        }
+        if (notification.kind === 'rescan' && !hadWatchedRecord) recover();
       },
       undefined,
       platform,
@@ -149,6 +162,8 @@ export async function startHeadWatcher(
   let oldHead: string | null = null;
   let lastKnownBranch: string | null = null;
   let batchEndInFlight: Promise<void> | null = null;
+  let headWork = Promise.resolve();
+  let closed = false;
 
   async function emitBatchEnd(timeout: boolean): Promise<void> {
     if (beginInFlight) await beginInFlight;
@@ -245,9 +260,28 @@ export async function startHeadWatcher(
     resetQuietWindow();
   }
 
-  const dispatch: HeadEventDispatch = (rawPath) => {
+  const admitHeadEvent = (trigger: string): Promise<void> => {
+    const work = headWork.then(async () => {
+      try {
+        await handleGitEvent(trigger);
+      } catch (err) {
+        log.error({ err }, 'HEAD event handling failed');
+      }
+    });
+    headWork = work;
+    return work;
+  };
+
+  const dispatch = (rawPath: string): boolean => {
+    if (closed) return false;
     const fileName = watchedGitFile(rawPath);
-    if (fileName !== null) void handleGitEvent(fileName);
+    if (fileName === null) return false;
+    void admitHeadEvent(fileName);
+    return true;
+  };
+  const recover = (): void => {
+    if (closed) return;
+    void admitHeadEvent('rescan');
   };
 
   let resolvedUnsub: (() => Promise<void>) | null = null;
@@ -259,6 +293,7 @@ export async function startHeadWatcher(
     resolvedUnsub = await tryStartParcelHeadWatcher(
       gitDir,
       dispatch,
+      recover,
       opts.platform ?? process.platform,
     );
     if (resolvedUnsub) backend = 'parcel';
@@ -280,12 +315,15 @@ export async function startHeadWatcher(
 
   return {
     unsubscribe: async () => {
-      if (inBatch) {
-        await emitBatchEnd(false);
+      closed = true;
+      try {
+        await unsubscribeFn();
+      } finally {
+        await headWork;
+        if (inBatch) await emitBatchEnd(false);
+        if (quietTimer) clearTimeout(quietTimer);
+        if (timeoutTimer) clearTimeout(timeoutTimer);
       }
-      if (quietTimer) clearTimeout(quietTimer);
-      if (timeoutTimer) clearTimeout(timeoutTimer);
-      await unsubscribeFn();
     },
     getLastKnownBranch: () => lastKnownBranch,
   };

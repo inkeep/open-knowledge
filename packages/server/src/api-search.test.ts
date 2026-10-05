@@ -655,6 +655,72 @@ describe('GET /api/search — symlink alias handling (D16)', () => {
   });
 });
 
+test('a no-generation search cache follows only searchable member-name changes', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ok-search-members-'));
+  try {
+    const representative = join(dir, 'amberpilot.csv');
+    writeFileSync(representative, 'member bytes\n', 'utf-8');
+    const baseline = indexEntry(representative, 'file');
+    const rich = {
+      ...baseline,
+      aliases: [],
+      fileMembers: {
+        regularPaths: ['amberpilot.csv'],
+        symlinks: [{ path: 'linked-indigo.csv', targetPath: 'amberpilot.csv' }],
+      },
+    };
+    const index = new Map<string, FileIndexEntry>([['amberpilot.csv', rich]]);
+    const ext = createApiExtension({
+      hocuspocus: {} as unknown as Parameters<typeof createApiExtension>[0]['hocuspocus'],
+      sessionManager: {} as unknown as Parameters<typeof createApiExtension>[0]['sessionManager'],
+      contentDir: dir,
+      serverInstanceId: 'test-server',
+      getFileIndex: () => new Map<string, FileIndexEntry>(),
+      getAllFilesIndex: () => index,
+    });
+    const fileMatches = async (name: string) => {
+      const req = makeReq('GET', `/api/search?query=${name}&intent=omnibar`);
+      const { res, captured } = makeRes();
+      await (
+        ext as {
+          onRequest: (ctx: { request: IncomingMessage; response: ServerResponse }) => Promise<void>;
+        }
+      ).onRequest({ request: req, response: res });
+      expect(captured.status).toBe(200);
+      return (
+        JSON.parse(captured.body) as { results: Array<{ kind: string; path: string }> }
+      ).results
+        .filter((row) => row.kind === 'file')
+        .map(({ kind, path }) => ({ kind, path }));
+    };
+
+    expect(await fileMatches('amberpilot')).toEqual([{ kind: 'file', path: 'amberpilot.csv' }]);
+    expect(await fileMatches('beaconquartz')).toEqual([]);
+    expect
+      .soft(await fileMatches('linked-indigo'))
+      .toEqual([{ kind: 'file', path: 'amberpilot.csv' }]);
+
+    const withMember = {
+      ...rich,
+      fileMembers: {
+        ...rich.fileMembers,
+        regularPaths: ['amberpilot.csv', 'beaconquartz.csv'],
+      },
+    };
+    index.set('amberpilot.csv', withMember);
+    expect
+      .soft(await fileMatches('beaconquartz'))
+      .toEqual([{ kind: 'file', path: 'amberpilot.csv' }]);
+    expect(await fileMatches('amberpilot')).toEqual([{ kind: 'file', path: 'amberpilot.csv' }]);
+
+    index.set('amberpilot.csv', rich);
+    expect.soft(await fileMatches('beaconquartz')).toEqual([]);
+    expect(await fileMatches('amberpilot')).toEqual([{ kind: 'file', path: 'amberpilot.csv' }]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 describe('GET /api/search — operational budget (D15)', () => {
   test('a name-only file entry is searchable without its content being read (AC20)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-search-noread-'));

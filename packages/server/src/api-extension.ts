@@ -233,6 +233,7 @@ import {
 } from './external-change.ts';
 import { extractActorIdentity } from './extract-actor-identity.ts';
 import {
+  type AllFileEntries,
   contentHash,
   type DiskEvent,
   type FileIndexEntry,
@@ -1249,7 +1250,7 @@ export async function renameTrackedPathInGit(
   });
 }
 
-export interface ApiExtensionOptions {
+interface ApiExtensionBaseOptions {
   declaredGitHubHosts?: ReadonlySet<string>;
   ingressPolicy?: IngressPolicy;
   hocuspocus: Hocuspocus;
@@ -1262,9 +1263,7 @@ export interface ApiExtensionOptions {
   serverInstanceId: string;
   getFileIndex: () => ReadonlyMap<string, FileIndexEntry>;
   getAttachmentFolderPath?: () => string;
-  getAllFilesIndex?: () => ReadonlyMap<string, FileIndexEntry>;
   getFileIndexGeneration?: () => number;
-  mutateFileIndex?: (event: DiskEvent) => void;
   getFolderIndex?: () => ReadonlyMap<string, FolderIndexEntry>;
   onReferencedAssetsCacheInvalidator?: (invalidate: () => void) => void;
   getAliasMap?: () => ReadonlyMap<string, string>;
@@ -1322,6 +1321,18 @@ export interface ApiExtensionOptions {
   getProjectConfigEpoch: () => number;
 }
 
+export type ApiExtensionOptions = ApiExtensionBaseOptions &
+  (
+    | {
+        getAllFilesIndex?: () => ReadonlyMap<string, FileIndexEntry>;
+        mutateFileIndex?: (event: DiskEvent) => void;
+      }
+    | {
+        getAllFilesIndex: () => AllFileEntries;
+        mutateFileIndex: (event: DiskEvent) => void;
+      }
+  );
+
 export function extractHeadings(content: string): HeadingEntry[] {
   const { body } = stripFrontmatter(content);
 
@@ -1347,12 +1358,10 @@ export function isSafeDocName(docName: string): boolean {
 
 function applyDiskEventToLiveAllFilesIndex(
   event: DiskEvent,
-  getAllFilesIndex: () => ReadonlyMap<string, FileIndexEntry>,
+  getAllFilesIndex: () => AllFileEntries,
 ): void {
   const live = getAllFilesIndex();
-  if (live instanceof Map) {
-    updateFileIndex(event, live);
-  }
+  if (live instanceof Map) updateFileIndex(event, live);
 }
 
 export interface CommentDocHooks {
@@ -1523,6 +1532,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     resolveDocPath,
     extractHeadings,
     getFileIndex,
+    getFileIndexGeneration,
     log,
     ready,
     contentFilter,

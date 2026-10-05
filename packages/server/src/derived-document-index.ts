@@ -433,6 +433,13 @@ export class DerivedDocumentIndex
     });
   }
 
+  recordInventoryReconciled(): Promise<void> {
+    return this.runCommand(async () => {
+      this.reconcileLocalTargetInventory();
+      this.maybeSignalLocalTargets();
+    });
+  }
+
   recordFileTargetUpsert(relativePath: string): Promise<void> {
     return this.runCommand(async () => {
       const inventory = this.reconcileLocalTargetInventory();

@@ -2238,7 +2238,7 @@ describe('file index canonical path after a real rename', () => {
     const handle = await startWatcher(contentDir, async () => {});
     try {
       return {
-        fileIndex: new Map(handle.getAllFilesIndex()),
+        fileIndex: new Map(handle.getFileIndex()),
         folderIndex: new Map(handle.getFolderIndex()),
         aliasMap: new Map(handle.getAliasMap()),
       };

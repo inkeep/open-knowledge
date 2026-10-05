@@ -26,8 +26,8 @@ import {
 } from '@inkeep/open-knowledge-core/skills-catalog';
 import { isInternalBundleSkillName, isUserGlobalBundleSkillName } from './skill-bundles.ts';
 import {
+  observeSkillPlacementInputsForScan,
   readKnownSkillPlacementRoots as readPlacementRoots,
-  readSkillSourceHostPreferences as readSourceHostPrefs,
 } from './skill-placements-store.ts';
 
 function hostRoots(
@@ -65,6 +65,22 @@ interface ScanOccurrence extends LocatedSkillOccurrence {
   readonly pack?: string;
   readonly viaLink: boolean;
   readonly aliasRooted?: boolean;
+}
+
+type SkillScanFailure =
+  | { readonly scope: 'scan'; readonly error: unknown }
+  | { readonly scope: 'ledger-parse'; readonly error: unknown }
+  | { readonly scope: 'bundle'; readonly dir: string; readonly error: unknown };
+
+interface SkillScanObservation {
+  readonly skills: InPlaceSkill[];
+  readonly occurrences: readonly ScanOccurrence[];
+  readonly failures: readonly SkillScanFailure[];
+}
+
+function isAbsentPath(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === 'ENOENT' || code === 'ENOTDIR';
 }
 
 export function scanHostRootAliases(base: string, scope: SkillScope): Record<string, string> {
@@ -107,14 +123,16 @@ export function knownSkillRootsFor(
   base: string,
   scope: SkillScope,
 ): ReadonlyArray<{ editor: string; root: string }> {
+  return skillRootsWithCustom(scope, readPlacementRoots(base));
+}
+
+function skillRootsWithCustom(
+  scope: SkillScope,
+  customRoots: readonly string[],
+): ReadonlyArray<{ editor: string; root: string }> {
   const std = hostSkillRootsFor(scope);
   const seen = new Set(std.map((r) => r.root));
-  return [
-    ...std,
-    ...readPlacementRoots(base)
-      .filter((r) => !seen.has(r))
-      .map((r) => ({ editor: r, root: r })),
-  ];
+  return [...std, ...customRoots.filter((r) => !seen.has(r)).map((r) => ({ editor: r, root: r }))];
 }
 
 export function standardSkillRoots(scope: SkillScope): ReadonlySet<string> {
@@ -204,6 +222,12 @@ export function skillHomeCandidateFolders(scope: SkillScope): string[] {
 }
 
 function bundleStamp(absDir: string): string | null {
+  try {
+    if (!statSync(join(absDir, 'SKILL.md')).isFile()) return null;
+  } catch (error) {
+    if (isAbsentPath(error)) return null;
+    throw error;
+  }
   const parts: string[] = [];
   const walk = (dir: string, rel: string): void => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -216,11 +240,7 @@ function bundleStamp(absDir: string): string | null {
       }
     }
   };
-  try {
-    walk(absDir, '');
-  } catch {
-    return null;
-  }
+  walk(absDir, '');
   return parts.sort().join('|');
 }
 
@@ -250,34 +270,66 @@ function parseSkillDirCached(
   return entry;
 }
 
-function scanBase(base: string, scope: SkillScope): InPlaceSkill[] {
+function scanBase(base: string, scope: SkillScope): SkillScanObservation {
   const occurrences: ScanOccurrence[] = [];
-  const sourcePrefs = readSourceHostPrefs(base);
-  const allRoots = knownSkillRootsFor(base, scope);
+  const failures: SkillScanFailure[] = [];
+  const recordFailure = (error: unknown): void => {
+    failures.push({ scope: 'scan', error });
+  };
+  let sourcePrefs: Record<string, string> = {};
+  let customRoots: string[] = [];
+  try {
+    const inputs = observeSkillPlacementInputsForScan(base);
+    sourcePrefs = inputs.sources;
+    customRoots = inputs.roots;
+    if (inputs.kind === 'incomplete') recordFailure(inputs.error);
+    if (inputs.kind === 'unparsable') failures.push({ scope: 'ledger-parse', error: inputs.error });
+  } catch (error) {
+    recordFailure(error);
+  }
+  const allRoots = skillRootsWithCustom(scope, customRoots);
 
   let baseReal: string | null = null;
   try {
     baseReal = realpathSync(base);
-  } catch {
-    baseReal = null;
+  } catch (error) {
+    if (!isAbsentPath(error)) recordFailure(error);
   }
   for (const { editor, root } of allRoots) {
     const absRoot = join(base, root);
     let entries: string[];
     let rootAliased = false;
     try {
-      if (!existsSync(absRoot)) continue;
+      const rootStat = statSync(absRoot);
+      if (!rootStat.isDirectory()) continue;
+    } catch (error) {
+      if (!isAbsentPath(error)) recordFailure(error);
+      continue;
+    }
+    try {
       rootAliased = baseReal !== null && realpathSync(absRoot) !== join(baseReal, root);
       entries = readdirSync(absRoot);
-    } catch {
+    } catch (error) {
+      recordFailure(error);
       continue;
     }
     for (const entry of entries) {
       const absDir = join(absRoot, entry);
       try {
         if (!statSync(absDir).isDirectory()) continue;
-        const parsed = parseSkillDirCached(absDir);
-        if (!parsed) continue;
+      } catch (error) {
+        if (!isAbsentPath(error)) recordFailure(error);
+        continue;
+      }
+      let parsed: ReturnType<typeof parseSkillDirCached>;
+      try {
+        parsed = parseSkillDirCached(absDir);
+      } catch (error) {
+        failures.push({ scope: 'bundle', dir: `${root}/${entry}`, error });
+        continue;
+      }
+      if (!parsed) continue;
+      try {
         occurrences.push({
           name: entry,
           scope,
@@ -291,13 +343,15 @@ function scanBase(base: string, scope: SkillScope): InPlaceSkill[] {
           ...(rootAliased ? { aliasRooted: true } : {}),
           ...(sourcePrefs[entry] === editor ? { preferredSource: true } : {}),
         });
-      } catch {}
+      } catch (error) {
+        recordFailure(error);
+      }
     }
   }
 
   const { admittedDirs, canonicalDir } = buildSkillRegistry(occurrences);
   const byNameDefaults = new Set(canonicalDir.values());
-  return groupSkillsByIdentity(occurrences)
+  const skills = groupSkillsByIdentity(occurrences)
     .filter((g) => admittedDirs.has(g.canonical.dir))
     .filter((g) => byNameDefaults.has(g.canonical.dir) || !isInternalBundleSkillName(g.name))
     .sort(
@@ -342,14 +396,19 @@ function scanBase(base: string, scope: SkillScope): InPlaceSkill[] {
         ...(g.canonical.pack !== undefined ? { pack: g.canonical.pack } : {}),
       };
     });
+  return { skills, occurrences, failures };
+}
+
+function projectInPlaceSkills(skills: readonly InPlaceSkill[]): InPlaceSkill[] {
+  return skills.filter((skill) => !isUserGlobalBundleSkillName(skill.name));
 }
 
 export function scanInPlaceSkills(contentDir: string): InPlaceSkill[] {
-  return scanBase(contentDir, 'project').filter((s) => !isUserGlobalBundleSkillName(s.name));
+  return projectInPlaceSkills(scanBase(contentDir, 'project').skills);
 }
 
 export function scanGlobalInPlaceSkills(home: string): InPlaceSkill[] {
-  return scanBase(home, 'global');
+  return scanBase(home, 'global').skills;
 }
 
 const USER_ROOTS_BY_PRECEDENCE = [...USER_SKILL_ROOTS].sort((a, b) => {
@@ -374,6 +433,54 @@ export function skillRootPathsFor(contentDir: string): ReadonlySet<string> {
   return new Set(knownSkillRootsFor(contentDir, 'project').map((r) => r.root));
 }
 
-export function scanInPlaceSkillDirs(contentDir: string): ReadonlySet<string> {
-  return new Set(scanInPlaceSkills(contentDir).map((s) => s.dir));
+function skillNameOfDir(dir: string): string {
+  return dir.slice(dir.lastIndexOf('/') + 1);
+}
+
+function skillRootOfDir(dir: string): string {
+  return dir.slice(0, dir.lastIndexOf('/'));
+}
+
+function retainUndecidedAdmissions(
+  prior: ReadonlySet<string>,
+  observed: ReadonlySet<string>,
+  observation: SkillScanObservation,
+): ReadonlySet<string> {
+  const ledgerUnparsable = observation.failures.some((f) => f.scope === 'ledger-parse');
+  const failedBundles = new Set(
+    observation.failures.flatMap((f) => (f.scope === 'bundle' ? [f.dir] : [])),
+  );
+  const occurrenceDirs = new Set(observation.occurrences.map((o) => o.dir));
+  const occurrencesByName = new Map<string, number>();
+  for (const { name } of observation.occurrences) {
+    occurrencesByName.set(name, (occurrencesByName.get(name) ?? 0) + 1);
+  }
+  const standardRoots = standardSkillRoots('project');
+  const undecided = (dir: string): boolean =>
+    failedBundles.has(dir) ||
+    (ledgerUnparsable &&
+      (!standardRoots.has(skillRootOfDir(dir)) ||
+        (occurrenceDirs.has(dir) && (occurrencesByName.get(skillNameOfDir(dir)) ?? 0) >= 2)));
+  const retainedNames = new Set([...prior].filter(undecided).map(skillNameOfDir));
+  return new Set([
+    ...[...prior].filter(
+      (dir) =>
+        retainedNames.has(skillNameOfDir(dir)) && (undecided(dir) || occurrenceDirs.has(dir)),
+    ),
+    ...[...observed].filter((dir) => !retainedNames.has(skillNameOfDir(dir))),
+  ]);
+}
+
+export function scanInPlaceSkillDirs(
+  contentDir: string,
+  priorAdmission?: ReadonlySet<string>,
+): ReadonlySet<string> {
+  const observation = scanBase(contentDir, 'project');
+  const observed = new Set(projectInPlaceSkills(observation.skills).map((skill) => skill.dir));
+  const [firstFailure] = observation.failures;
+  if (firstFailure === undefined) return observed;
+  if (priorAdmission === undefined || observation.failures.some((f) => f.scope === 'scan')) {
+    throw firstFailure.error;
+  }
+  return retainUndecidedAdmissions(priorAdmission, observed, observation);
 }

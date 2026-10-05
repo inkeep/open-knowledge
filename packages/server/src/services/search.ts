@@ -27,7 +27,11 @@ import {
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
 import { recordSemanticQuery } from '../embeddings/embeddings-telemetry.ts';
 import { SEMANTIC_MIN_QUERY_LENGTH, type SemanticSearchService } from '../embeddings/index.ts';
-import type { FileIndexEntry } from '../file-watcher.ts';
+import {
+  type AllFileEntries,
+  type FileIndexEntry,
+  fileIndexEntryMembers,
+} from '../file-watcher.ts';
 import { scanInPlaceSkills } from '../in-place-skills.ts';
 import { getLogger } from '../logger.ts';
 import { extractPageTitle } from '../page-identity.ts';
@@ -125,8 +129,23 @@ function toSearchResultEntry(
   };
 }
 
-function entrySearchKey(entry: FileIndexEntry): string {
-  return `${entry.modified}\0${entry.size}\0${entry.canonicalPath}\0${entry.inode}\0${entry.aliases.join('\0')}`;
+function entrySearchKey(contentDir: string, name: string, entry: FileIndexEntry): string {
+  const { resolved, members } = fileIndexEntryMembers(contentDir, name, entry);
+  const symlinks = members
+    .filter((member) => member.role === 'symlink')
+    .map((member) => member.path)
+    .join('\0');
+  const memberPaths = resolved
+    ? members
+        .map((member) => member.path)
+        .toSorted()
+        .join('\0')
+    : '';
+  return `${entry.modified}\0${entry.size}\0${entry.canonicalPath}\0${entry.inode}\0${symlinks}\0${memberPaths}`;
+}
+
+function entrySearchAliases(contentDir: string, name: string, entry: FileIndexEntry): string[] {
+  return fileIndexEntryMembers(contentDir, name, entry).members.map((member) => member.path);
 }
 
 interface SemanticResolution {
@@ -140,7 +159,7 @@ interface SemanticResolution {
 export interface SearchServiceDeps {
   contentDir: string;
   projectDir?: string;
-  getAllFilesIndex: () => ReadonlyMap<string, FileIndexEntry>;
+  getAllFilesIndex: () => AllFileEntries;
   getFileIndexGeneration?: () => number;
   getSearchMaxEntries: () => number;
   semanticSearch?: SemanticSearchService;
@@ -330,13 +349,13 @@ export function createSearchService(deps: SearchServiceDeps): SearchService {
             kind: 'file',
             path: docName,
             modifiedTs: Date.parse(entry.modified),
-            aliases: entry.aliases,
+            aliases: entrySearchAliases(contentDir, docName, entry),
           }),
         );
         continue;
       }
       seenPages.add(docName);
-      const entryKey = entrySearchKey(entry);
+      const entryKey = entrySearchKey(contentDir, docName, entry);
       const cached = pageDocCache.get(docName);
       if (cached && cached.key === entryKey) {
         pages.push(cached.doc);
@@ -364,7 +383,7 @@ export function createSearchService(deps: SearchServiceDeps): SearchService {
         title,
         content,
         modifiedTs: Date.parse(entry.modified),
-        aliases: entry.aliases,
+        aliases: entrySearchAliases(contentDir, docName, entry),
       });
       if (!readFailed) pageDocCache.set(docName, { key: entryKey, doc });
       pages.push(doc);
@@ -416,7 +435,7 @@ export function createSearchService(deps: SearchServiceDeps): SearchService {
     return `${[...getAllFilesIndex()]
       .filter(([docName]) => !isSystemDoc(docName) && !isConfigDoc(docName))
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([docName, entry]) => `${docName}\0${entrySearchKey(entry)}`)
+      .map(([docName, entry]) => `${docName}\0${entrySearchKey(contentDir, docName, entry)}`)
       .join('')}|skills${skillStatFingerprint()}`;
   }
 

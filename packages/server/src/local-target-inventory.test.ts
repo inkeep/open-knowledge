@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import type { FileIndexEntry } from './file-watcher.ts';
+import type { AllFileEntries, FileIndexEntry, FolderIndexEntry } from './file-watcher.ts';
 import {
   localTargetInventoryFromIndexes,
   localTargetInventoryFromWatcher,
@@ -22,6 +22,53 @@ function entry(
 }
 
 describe('localTargetInventoryFromIndexes', () => {
+  test.each(['markdown-first', 'file-first'] as const)(
+    'keeps same-name document and file targets separate with %s input',
+    (order) => {
+      const contentDir = '/project/content';
+      const document: readonly [string, FileIndexEntry] = [
+        'canonical/real.csv',
+        entry('markdown', join(contentDir, 'canonical/real.csv.md'), ['document-link']),
+      ];
+      const file: readonly [string, FileIndexEntry] = [
+        'canonical/real.csv',
+        entry('file', join(contentDir, 'canonical/real.csv'), ['asset-link.csv']),
+      ];
+      const allFiles: AllFileEntries =
+        order === 'markdown-first' ? [document, file] : [file, document];
+      const folderAliases = new Map([['mirror', 'canonical']]);
+      const folderIndex = new Map<string, FolderIndexEntry>([
+        [
+          'canonical',
+          {
+            size: 0,
+            modified: '2026-01-01T00:00:00.000Z',
+            canonicalPath: join(contentDir, 'canonical'),
+            inode: 1,
+          },
+        ],
+      ]);
+
+      const inventory = localTargetInventoryFromIndexes(
+        allFiles,
+        folderAliases,
+        contentDir,
+        folderIndex,
+      );
+
+      expect(inventory.documentTargets.toSorted()).toEqual(
+        ['canonical/real.csv', 'document-link', 'mirror/real.csv'].toSorted(),
+      );
+      expect(inventory.fileTargets.toSorted()).toEqual(
+        ['asset-link.csv', 'canonical/real.csv', 'mirror/real.csv'].toSorted(),
+      );
+      expect(inventory.folderTargets.toSorted()).toEqual(['canonical', 'mirror']);
+      expect(
+        localTargetInventoryFromIndexes(allFiles, folderAliases, contentDir, folderIndex),
+      ).toEqual(inventory);
+    },
+  );
+
   test('includes indexed, canonical, direct-alias, and folder-alias identities by kind', () => {
     const contentDir = '/project/content';
     const allFiles = new Map<string, FileIndexEntry>([
@@ -97,5 +144,68 @@ describe('localTargetInventoryFromIndexes', () => {
 
     generation++;
     expect(localTargetInventoryFromWatcher(watcher, contentDir)).not.toBe(first);
+  });
+
+  test('projects every regular member and actual symlink through folder aliases as generation changes', () => {
+    const contentDir = '/project/content';
+    const rich = {
+      ...entry('file', join(contentDir, 'outside/atlas.csv')),
+      aliases: ['linked-atlas.csv', 'linked-beacon.csv'],
+      fileMembers: {
+        regularPaths: ['outside/atlas.csv', 'canonical/beacon.csv'],
+        symlinks: [
+          { path: 'linked-atlas.csv', targetPath: 'outside/atlas.csv' },
+          { path: 'linked-beacon.csv', targetPath: 'canonical/beacon.csv' },
+        ],
+      },
+    };
+    const allFiles = new Map<string, FileIndexEntry>([['outside/atlas.csv', rich]]);
+    let generation = 1;
+    const watcher = {
+      getAllFilesIndex: () => allFiles,
+      getFileIndexGeneration: () => generation,
+      getFolderAliasIndex: () => new Map([['mirror', 'canonical']]),
+    };
+
+    const first = localTargetInventoryFromWatcher(watcher, contentDir);
+    expect
+      .soft(first?.fileTargets.toSorted())
+      .toEqual(
+        [
+          'outside/atlas.csv',
+          'canonical/beacon.csv',
+          'mirror/beacon.csv',
+          'linked-atlas.csv',
+          'linked-beacon.csv',
+        ].toSorted(),
+      );
+    expect(localTargetInventoryFromWatcher(watcher, contentDir)).toBe(first);
+
+    const changedRich = {
+      ...rich,
+      fileMembers: {
+        ...rich.fileMembers,
+        regularPaths: ['outside/atlas.csv', 'canonical/beacon.csv', 'canonical/comet.csv'],
+      },
+    };
+    allFiles.set('outside/atlas.csv', changedRich);
+    expect(localTargetInventoryFromWatcher(watcher, contentDir)).toBe(first);
+    generation++;
+    const changed = localTargetInventoryFromWatcher(watcher, contentDir);
+    expect(changed).not.toBe(first);
+    expect
+      .soft(changed?.fileTargets.toSorted())
+      .toEqual(
+        [
+          'outside/atlas.csv',
+          'canonical/beacon.csv',
+          'canonical/comet.csv',
+          'mirror/beacon.csv',
+          'mirror/comet.csv',
+          'linked-atlas.csv',
+          'linked-beacon.csv',
+        ].toSorted(),
+      );
+    expect(changed?.documentTargets).toEqual([]);
   });
 });

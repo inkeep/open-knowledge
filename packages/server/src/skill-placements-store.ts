@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { LOCAL_DIR, OK_DIR, SKILL_PLACEMENTS_FILENAME } from '@inkeep/open-knowledge-core';
 import { atomicWriteFile } from '@inkeep/open-knowledge-core/server';
@@ -30,7 +30,37 @@ function skillPlacementsPath(base: string): string {
   return join(base, ...PLACEMENTS_REL);
 }
 
-export function resolveSkillPlacementPath(base: string, relPath: string): string | null {
+function findExistingAncestor(candidate: string): string | null {
+  let ancestor = candidate;
+  while (!existsSync(ancestor)) {
+    const parent = dirname(ancestor);
+    if (parent === ancestor) return null;
+    ancestor = parent;
+  }
+  return ancestor;
+}
+
+function findObservedAncestor(candidate: string): string | null {
+  let ancestor = candidate;
+  while (true) {
+    try {
+      statSync(ancestor);
+      return ancestor;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw err;
+      const parent = dirname(ancestor);
+      if (parent === ancestor) return null;
+      ancestor = parent;
+    }
+  }
+}
+
+function resolveSkillPlacementPathWithAncestor(
+  base: string,
+  relPath: string,
+  findAncestor: (candidate: string) => string | null,
+): string | null {
   if (
     relPath.length === 0 ||
     relPath.includes('\0') ||
@@ -43,37 +73,42 @@ export function resolveSkillPlacementPath(base: string, relPath: string): string
   const candidate = resolve(baseAbs, relPath);
   if (candidate === baseAbs || !candidate.startsWith(`${baseAbs}${sep}`)) return null;
 
-  let baseReal: string;
-  try {
-    baseReal = realpathSync(baseAbs);
-  } catch {
-    return null;
-  }
-  let ancestor = candidate;
-  while (!existsSync(ancestor)) {
-    const parent = dirname(ancestor);
-    if (parent === ancestor) return null;
-    ancestor = parent;
-  }
-  try {
-    const ancestorReal = realpathSync(ancestor);
-    if (ancestorReal !== baseReal && !ancestorReal.startsWith(`${baseReal}${sep}`)) return null;
-  } catch {
-    return null;
-  }
+  const baseReal = realpathSync(baseAbs);
+  const ancestor = findAncestor(candidate);
+  if (ancestor === null) return null;
+  const ancestorReal = realpathSync(ancestor);
+  if (ancestorReal !== baseReal && !ancestorReal.startsWith(`${baseReal}${sep}`)) return null;
   return candidate;
+}
+
+function resolveSkillPlacementPathChecked(base: string, relPath: string): string | null {
+  return resolveSkillPlacementPathWithAncestor(base, relPath, findObservedAncestor);
+}
+
+export function resolveSkillPlacementPath(base: string, relPath: string): string | null {
+  try {
+    return resolveSkillPlacementPathWithAncestor(base, relPath, findExistingAncestor);
+  } catch {
+    return null;
+  }
 }
 
 function emptyStore(): SkillPlacementsStore {
   return { schema: SCHEMA_VERSION, skills: {} };
 }
 
-function isPlacement(base: string, value: unknown): value is SkillPlacement {
+type PlacementResolver = (base: string, relPath: string) => string | null;
+
+function isPlacement(
+  base: string,
+  value: unknown,
+  resolvePath: PlacementResolver,
+): value is SkillPlacement {
   if (!value || typeof value !== 'object') return false;
   const placement = value as Partial<SkillPlacement>;
   return (
     typeof placement.path === 'string' &&
-    resolveSkillPlacementPath(base, placement.path) !== null &&
+    resolvePath(base, placement.path) !== null &&
     (placement.mode === 'copy' || placement.mode === 'link') &&
     (placement.hash === undefined || typeof placement.hash === 'string')
   );
@@ -95,15 +130,15 @@ function parseSources(value: unknown): Record<string, string> | undefined {
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
-function parseFolders(base: string, value: unknown): Record<string, FolderExpectation> | undefined {
+function parseFolders(
+  base: string,
+  value: unknown,
+  resolvePath: PlacementResolver,
+): Record<string, FolderExpectation> | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const entries: Array<[string, FolderExpectation]> = [];
   for (const [root, expectation] of Object.entries(value)) {
-    if (
-      resolveSkillPlacementPath(base, root) === null ||
-      !expectation ||
-      typeof expectation !== 'object'
-    ) {
+    if (resolvePath(base, root) === null || !expectation || typeof expectation !== 'object') {
       continue;
     }
     const candidate = expectation as Partial<FolderExpectation> & { target?: unknown };
@@ -112,7 +147,7 @@ function parseFolders(base: string, value: unknown): Record<string, FolderExpect
     } else if (
       candidate.expect === 'link' &&
       typeof candidate.target === 'string' &&
-      resolveSkillPlacementPath(base, candidate.target) !== null
+      resolvePath(base, candidate.target) !== null
     ) {
       entries.push([root, { expect: 'link', target: candidate.target }]);
     }
@@ -120,24 +155,27 @@ function parseFolders(base: string, value: unknown): Record<string, FolderExpect
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
-function normalizePlacements(base: string, parsed: Record<string, unknown>): SkillPlacementsStore {
+function normalizePlacements(
+  base: string,
+  parsed: Record<string, unknown>,
+  resolvePath: PlacementResolver = resolveSkillPlacementPath,
+): SkillPlacementsStore {
   const skills: Record<string, SkillPlacement[]> = {};
   if (parsed.skills && typeof parsed.skills === 'object') {
     for (const [name, list] of Object.entries(parsed.skills)) {
       if (!Array.isArray(list)) continue;
-      const valid = list.filter((placement) => isPlacement(base, placement));
+      const valid = list.filter((placement) => isPlacement(base, placement, resolvePath));
       if (valid.length > 0) skills[name] = valid;
     }
   }
   const roots = Array.isArray(parsed.roots)
     ? parsed.roots.filter(
-        (root): root is string =>
-          typeof root === 'string' && resolveSkillPlacementPath(base, root) !== null,
+        (root): root is string => typeof root === 'string' && resolvePath(base, root) !== null,
       )
     : [];
   const preferences = parsePreferences(parsed.preferences);
   const sources = parseSources(parsed.sources);
-  const folders = parseFolders(base, parsed.folders);
+  const folders = parseFolders(base, parsed.folders, resolvePath);
   return {
     schema: SCHEMA_VERSION,
     skills,
@@ -162,6 +200,37 @@ export function readSkillPlacementsStore(base: string): SkillPlacementsStore {
     );
     return emptyStore();
   }
+}
+
+type PlacementsScanRead =
+  | { kind: 'read'; store: SkillPlacementsStore }
+  | { kind: 'unparsable'; error: unknown };
+
+function readSkillPlacementsForScan(
+  base: string,
+  resolvePath: PlacementResolver,
+): PlacementsScanRead {
+  const path = skillPlacementsPath(base);
+  try {
+    statSync(path);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return { kind: 'read', store: emptyStore() };
+    throw err;
+  }
+  const raw = readFileSync(path, 'utf-8');
+  let parsed: Record<string, unknown> | null;
+  try {
+    parsed = JSON.parse(raw) as Record<string, unknown> | null;
+  } catch (error) {
+    getLogger('skill-placements').warn(
+      { err: error, path },
+      'skill-placements.json is not valid JSON; skill scans read no recorded roots or sources from it, and in-place skill refreshes keep the prior admission of the skills it decides',
+    );
+    return { kind: 'unparsable', error };
+  }
+  if (!parsed || typeof parsed !== 'object') return { kind: 'read', store: emptyStore() };
+  return { kind: 'read', store: normalizePlacements(base, parsed, resolvePath) };
 }
 
 type PlacementsRead =
@@ -235,16 +304,59 @@ async function writeSkillPlacementsStore(base: string, store: SkillPlacementsSto
   });
 }
 
-export function readKnownSkillPlacementRoots(base: string): string[] {
-  const store = readSkillPlacementsStore(base);
+function knownSkillPlacementRoots(
+  base: string,
+  store: SkillPlacementsStore,
+  resolvePath: PlacementResolver,
+): string[] {
   const roots = new Set(store.roots ?? []);
   for (const list of Object.values(store.skills)) {
     for (const placement of list) {
       const root = placement.path.split('/').slice(0, -1).join('/');
-      if (root !== '' && resolveSkillPlacementPath(base, root) !== null) roots.add(root);
+      if (root !== '' && resolvePath(base, root) !== null) roots.add(root);
     }
   }
   return [...roots].sort();
+}
+
+export function readKnownSkillPlacementRoots(base: string): string[] {
+  return knownSkillPlacementRoots(base, readSkillPlacementsStore(base), resolveSkillPlacementPath);
+}
+
+type SkillPlacementScanInputs =
+  | { kind: 'complete'; roots: string[]; sources: Record<string, string> }
+  | { kind: 'unparsable'; roots: string[]; sources: Record<string, string>; error: unknown }
+  | { kind: 'incomplete'; roots: string[]; sources: Record<string, string>; error: unknown };
+
+export function observeSkillPlacementInputsForScan(base: string): SkillPlacementScanInputs {
+  const errors: unknown[] = [];
+  const resolvePath: PlacementResolver = (pathBase, relPath) => {
+    try {
+      return resolveSkillPlacementPathChecked(pathBase, relPath);
+    } catch (error) {
+      errors.push(error);
+      return null;
+    }
+  };
+  let read: PlacementsScanRead;
+  try {
+    read = readSkillPlacementsForScan(base, resolvePath);
+  } catch (error) {
+    getLogger('skill-placements').warn(
+      { err: error, path: skillPlacementsPath(base) },
+      'skill-placements.json could not be read; skill scans read no recorded roots or sources from it, and in-place skill refreshes keep their prior admission',
+    );
+    return { kind: 'incomplete', roots: [], sources: {}, error };
+  }
+  if (read.kind === 'unparsable') {
+    return { kind: 'unparsable', roots: [], sources: {}, error: read.error };
+  }
+  const { store } = read;
+  const roots = knownSkillPlacementRoots(base, store, resolvePath);
+  const sources = store.sources ?? {};
+  return errors.length === 0
+    ? { kind: 'complete', roots, sources }
+    : { kind: 'incomplete', roots, sources, error: errors[0] };
 }
 
 export function readSkillSourceHostPreferences(base: string): Record<string, string> {
