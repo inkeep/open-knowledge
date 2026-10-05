@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   type DiscoverProjectOptions,
   type DiscoverProjectResult,
@@ -108,6 +108,24 @@ describe('validateFolderPick — /Volumes warnings', () => {
 });
 
 describe('validateFolderPick — drive-root warning (Windows shape)', () => {
+  test.each(['C:\\', 'C:', 'C:/'])(
+    'drive warnings for %s do not inherit the working directory',
+    (drivePath) => {
+      const workingDirectories = [resolve('/Users/test/project'), resolve('/Volumes/External')];
+      const cwd = vi.spyOn(process, 'cwd');
+      try {
+        for (const directory of workingDirectories) {
+          cwd.mockReturnValue(directory);
+          expect(validateFolderPick(drivePath, { homeDir: HOME }).warnings).toEqual([
+            { kind: 'drive-root' },
+          ]);
+        }
+      } finally {
+        cwd.mockRestore();
+      }
+    },
+  );
+
   test('C:\\ returns drive-root warning', () => {
     const result = validateFolderPick('C:\\', { homeDir: HOME });
     expect(result.warnings).toEqual([{ kind: 'drive-root' }]);

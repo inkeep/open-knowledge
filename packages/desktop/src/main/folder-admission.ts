@@ -35,6 +35,9 @@ export function validateFolderPick(
 
   if (/^[A-Za-z]:[\\/]?$/.test(absPath)) {
     warnings.push({ kind: 'drive-root' });
+    if (process.platform !== 'win32') {
+      return { warnings, blocked: false };
+    }
   }
 
   const resolved = resolve(absPath);
