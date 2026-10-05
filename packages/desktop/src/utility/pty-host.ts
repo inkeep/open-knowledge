@@ -201,129 +201,18 @@ export type PtyStartupSnapshotReason =
   | 'before-shutdown'
   | 'exit';
 
-export type PtyOsUnavailableReason =
-  | 'deadline'
-  | 'no-budget'
-  | 'unsupported-platform'
-  | 'query-start-failed'
-  | 'query-exited'
-  | 'invalid-json'
-  | 'invalid-shape'
-  | 'output-limit'
-  | 'owner-loss'
-  | 'process-absent'
-  | 'access-unavailable'
-  | 'identity-changed'
-  | 'worker-request-deadline'
-  | 'worker-unavailable'
-  | 'console-identity-unavailable';
-
-export type PtyOsSection<T> =
-  | { status: 'captured'; value: T }
-  | { status: 'unavailable'; reason: PtyOsUnavailableReason };
-
-export interface PtyOsThreadSample {
-  id: number;
-  state:
-    | 'initialized'
-    | 'ready'
-    | 'running'
-    | 'standby'
-    | 'terminated'
-    | 'wait'
-    | 'transition'
-    | 'unknown';
-  waitReason:
-    | 'executive'
-    | 'free-page'
-    | 'page-in'
-    | 'pool-allocation'
-    | 'execution-delay'
-    | 'suspended'
-    | 'user-request'
-    | 'event-pair-high'
-    | 'event-pair-low'
-    | 'lpc-receive'
-    | 'lpc-reply'
-    | 'virtual-memory'
-    | 'page-out'
-    | 'unknown'
-    | 'not-applicable';
-}
-
-export interface PtyOsProcessSample {
-  pid: number;
-  parentPid: number | null;
-  createdAtMs: number;
-  first: { userMs: number; kernelMs: number; threadCount: number };
-  second: { userMs: number; kernelMs: number; threadCount: number };
-  threads: PtyOsThreadSample[];
-  omittedThreads: number;
-}
-
-export interface PtyOsMachineSample {
-  atMs: number;
-  logicalCpus: number;
-  userMs: number;
-  systemMs: number;
-  idleMs: number;
-  irqMs: number;
-  niceMs: number;
-}
-
-export interface PtyOsObservation {
-  version: 1;
-  status: 'captured' | 'partial' | 'unavailable';
-  reason: PtyOsUnavailableReason | null;
-  requestedPid: number | null;
-  targets: Array<{ requestedPid: number; shell: PtyOsSection<PtyOsProcessSample> }>;
-  startedAtMs: number | null;
-  completedAtMs: number | null;
-  shell: PtyOsSection<PtyOsProcessSample>;
-  machine: PtyOsSection<{ first: PtyOsMachineSample; second: PtyOsMachineSample }>;
-  console: PtyOsSection<{
-    association: 'candidate-parent-relation';
-    candidateCount: number;
-    candidates: PtyOsProcessSample[];
-    unavailableCandidates: Array<{
-      reason: 'process-absent' | 'access-unavailable' | 'identity-changed';
-      count: number;
-    }>;
-    omittedCandidates: number;
-  }>;
-  worker: PtyOsSection<{
-    nodeThreadId: number;
-    requestedAtMs: number;
-    repliedAtMs: number;
-    userMs: number;
-    systemMs: number;
-  }>;
-  helper: {
-    requested: boolean;
-    reason: 'deadline' | 'output-limit' | 'owner-loss' | null;
-    delivery: 'not-attempted' | 'no-pid' | 'already-exited' | 'accepted' | 'rejected' | 'threw';
-    exit:
-      | 'not-observed'
-      | 'observed-before-request'
-      | 'observed-after-request'
-      | 'cooperative-deadline'
-      | 'cooperative-owner-loss';
-    exitCode: number | null;
-  };
-}
-
 export interface PtyStartupNativeSnapshot {
   shell: {
     pid: number | null;
     nativeExitObserved: boolean;
     exitCode: number | null;
-    osState: 'unobserved' | PtyOsObservation['shell'];
+    osState: 'unobserved';
   };
   console: {
     backend: PtyStartupBackend;
     connection: 'pending' | 'entered' | 'returned' | 'failed';
     outputConnectionDisposed: boolean;
-    osState: 'unobserved' | PtyOsObservation['console'];
+    osState: 'unobserved';
   };
   worker: {
     threadId: number;
@@ -332,7 +221,7 @@ export interface PtyStartupNativeSnapshot {
     errorObserved: boolean;
     writerError: boolean;
     exitCode: number | null;
-    osState: 'unobserved' | PtyOsObservation['worker'];
+    osState: 'unobserved';
   };
   transport: {
     capture: 'installed' | 'missing';
@@ -359,12 +248,7 @@ export type PtyStartupObservation =
   | { stage: 'native-connect-failed' }
   | { stage: 'native-shell-exit'; shellPid: number | null; exitCode: number }
   | { stage: 'worker-exit'; exitCode: number }
-  | { stage: 'observer-unavailable'; reason: 'unsupported-node-pty-shape' }
-  | {
-      stage: 'os-snapshot';
-      observation: PtyOsObservation;
-      transport: PtyStartupNativeSnapshot['transport'] | null;
-    };
+  | { stage: 'observer-unavailable'; reason: 'unsupported-node-pty-shape' };
 
 type PtyStartupHostObservation =
   | PtyStartupObservation
