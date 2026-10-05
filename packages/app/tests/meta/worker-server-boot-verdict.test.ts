@@ -11,7 +11,8 @@ import type {
   JSONReportTest,
   JSONReportTestResult,
 } from '@playwright/test/reporter';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
+import { createNestedPlaywrightEnv } from '../stress/_helpers/port-ownership/nested-playwright-env.test-helper.ts';
 
 const APP_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const CASES_DIR = fileURLToPath(new URL('../stress/_helpers/boot-verdict/', import.meta.url));
@@ -78,15 +79,14 @@ async function runVerdictCases(cases: string[], retries: number): Promise<Verdic
   runDirs.push(runDir);
   const childTmp = join(runDir, 'tmp');
   mkdirSync(childTmp);
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
+  const env = createNestedPlaywrightEnv({
     OK_BOOT_VERDICT_RUN_DIR: runDir,
     OK_BOOT_VERDICT_LIVENESS_BOUND_MS: String(PLAYWRIGHT_RUN_LIVENESS_BOUND_MS),
     NODE_OPTIONS: `--import=${REFUSE_PID_SIGNALS}`,
     TMPDIR: childTmp,
     PLAYWRIGHT_HTML_OUTPUT_DIR: join(runDir, 'html-report'),
     PLAYWRIGHT_HTML_OPEN: 'never',
-  };
+  });
   delete env.CI;
   delete env.GITHUB_ACTIONS;
 
@@ -289,6 +289,20 @@ function settledRun(settled: PromiseSettledResult<VerdictRun>): VerdictRun {
 }
 
 beforeAll(async () => {
+  const outerReportDir = mkdtempSync(join(tmpdir(), 'ok-boot-verdict-outer-'));
+  runDirs.push(outerReportDir);
+  vi.stubEnv(
+    'PLAYWRIGHT_JSON_OUTPUT_FILE',
+    process.env.PLAYWRIGHT_JSON_OUTPUT_FILE || join(outerReportDir, 'outer.json'),
+  );
+  vi.stubEnv(
+    'PLAYWRIGHT_JSON_OUTPUT_NAME',
+    process.env.PLAYWRIGHT_JSON_OUTPUT_NAME ?? 'outer-name.json',
+  );
+  vi.stubEnv(
+    'PLAYWRIGHT_JSON_OUTPUT_DIR',
+    process.env.PLAYWRIGHT_JSON_OUTPUT_DIR ?? outerReportDir,
+  );
   const [boot, assertion, retriedBoot, recovered] = await Promise.allSettled([
     runVerdictCases([BOOT_CASE, CONTROL_CASE], 0),
     runVerdictCases([ASSERTION_CASE], 0),
@@ -299,6 +313,9 @@ beforeAll(async () => {
   assertionRun = settledRun(assertion);
   retriedBootRun = settledRun(retriedBoot);
   recoveredRun = settledRun(recovered);
+}, VERDICT_RUNS_HOOK_TIMEOUT_MS);
+
+test('nested runs retain their own reports and setup outcomes', () => {
   for (const run of [bootRun, assertionRun, retriedBootRun, recoveredRun]) {
     requireCompletedRun(run);
   }
@@ -324,9 +341,10 @@ beforeAll(async () => {
     recoveredRun.bodiesRan,
     'the recovered case ran its body once its setup completed',
   ).toEqual([RECOVERED_CASE]);
-}, VERDICT_RUNS_HOOK_TIMEOUT_MS);
+});
 
 afterAll(() => {
+  vi.unstubAllEnvs();
   for (const child of liveChildren) {
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
   }

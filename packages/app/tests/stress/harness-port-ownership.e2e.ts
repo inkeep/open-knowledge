@@ -10,6 +10,28 @@ import {
 test.describe.configure({ retries: 0 });
 test.use({ trace: 'retain-on-failure' });
 
+const inheritedJsonOutput = {
+  PLAYWRIGHT_JSON_OUTPUT_FILE: process.env.PLAYWRIGHT_JSON_OUTPUT_FILE,
+  PLAYWRIGHT_JSON_OUTPUT_NAME: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME,
+  PLAYWRIGHT_JSON_OUTPUT_DIR: process.env.PLAYWRIGHT_JSON_OUTPUT_DIR,
+};
+
+test.beforeEach(() => {
+  process.env.PLAYWRIGHT_JSON_OUTPUT_FILE =
+    inheritedJsonOutput.PLAYWRIGHT_JSON_OUTPUT_FILE || test.info().outputPath('outer.json');
+  process.env.PLAYWRIGHT_JSON_OUTPUT_NAME =
+    inheritedJsonOutput.PLAYWRIGHT_JSON_OUTPUT_NAME ?? 'outer-name.json';
+  process.env.PLAYWRIGHT_JSON_OUTPUT_DIR =
+    inheritedJsonOutput.PLAYWRIGHT_JSON_OUTPUT_DIR ?? test.info().outputPath('outer-json');
+});
+
+test.afterEach(() => {
+  for (const [name, value] of Object.entries(inheritedJsonOutput)) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+});
+
 async function attachLifetimeRun(run: OwnershipRun): Promise<void> {
   const testInfo = test.info();
   const path = testInfo.outputPath('lifetime-run.json');

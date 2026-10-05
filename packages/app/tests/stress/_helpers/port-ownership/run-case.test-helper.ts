@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { JSONReport, JSONReportSpec, JSONReportSuite } from '@playwright/test/reporter';
+import { createNestedPlaywrightEnv } from './nested-playwright-env.test-helper.ts';
 
 const APP_ROOT = fileURLToPath(new URL('../../../..', import.meta.url));
 const SUBTREE_ROOT = fileURLToPath(new URL('../../../../../..', import.meta.url));
@@ -145,8 +146,7 @@ export async function runOwnershipCase(ownershipCase: OwnershipCase): Promise<Ow
     rmSync(runDir, { recursive: true, force: true });
     throw error;
   });
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
+  const env = createNestedPlaywrightEnv({
     NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require=${PRELOAD}`.trim(),
     OK_PORT_OWNERSHIP_CALLER: ownershipCase.caller,
     OK_PORT_OWNERSHIP_RECORDS: join(runDir, 'events.jsonl'),
@@ -159,7 +159,7 @@ export async function runOwnershipCase(ownershipCase: OwnershipCase): Promise<Ow
     TMPDIR: runtimeTmp,
     TURBO_CACHE_DIR: join(SUBTREE_ROOT, '.turbo', 'cache'),
     PLAYWRIGHT_HTML_OPEN: 'never',
-  };
+  });
 
   try {
     const child = spawn(
