@@ -152,6 +152,10 @@ test.describe('FileTree sidebar rename — content preservation', () => {
       timeout: 10_000,
     });
 
+    await expect(
+      sidebar(page).getByRole('treeitem', { name: 'hello.md', exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
+
     const fooRow = folderRow(page, 'foo');
     await expect(fooRow).toHaveAttribute('aria-expanded', 'false', { timeout: 10_000 });
     await fooRow.focus();
