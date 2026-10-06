@@ -4,6 +4,8 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -236,6 +238,54 @@ interface InstallRuntime {
   ) => Promise<{ stdout: string; stderr: string }>;
 }
 
+interface NpmContext {
+  cacheDir: string;
+  logsDir: string;
+}
+
+function createNpmContext(packDest: string): NpmContext {
+  const root = realpathSync(mkdtempSync(join(packDest, 'npm-')));
+  const cacheDir = join(root, 'cache');
+  const logsDir = join(root, 'logs');
+  mkdirSync(cacheDir);
+  mkdirSync(logsDir);
+  return {
+    cacheDir,
+    logsDir,
+  };
+}
+
+function npmDebugEvidence({ logsDir }: NpmContext): string {
+  let files: string[];
+  try {
+    files = readdirSync(logsDir)
+      .filter((name) => /-debug-\d+\.log$/.test(name))
+      .sort();
+  } catch (error) {
+    return `\nNpm debug logs unavailable at ${logsDir}: ${String(error)}\n`;
+  }
+  if (!files.length) return `\nNo npm debug logs available at ${logsDir}.\n`;
+  return files
+    .map((name) => {
+      const path = join(logsDir, name);
+      try {
+        return `\nNpm debug log ${path}:\n${readFileSync(path, 'utf8')}`;
+      } catch (error) {
+        return `\nNpm debug log unreadable at ${path}: ${String(error)}\n`;
+      }
+    })
+    .join('');
+}
+
+function attachNpmDebugEvidence(error: unknown, evidence: string): unknown {
+  if (error instanceof Error) {
+    try {
+      error.message += evidence;
+    } catch {}
+  }
+  return error;
+}
+
 async function prepareLockedConsumer(
   options: PackedInstallOptions,
   tarball: string,
@@ -318,17 +368,24 @@ export async function installPackedCli(
   { now, executeInstall }: InstallRuntime = { now: Date.now, executeInstall: execute },
 ) {
   const installPrefix = realpathSync(options.installPrefix);
-  const env = options.env ?? process.env;
+  const env = { ...(options.env ?? process.env) };
   const mode =
     options.mode ?? z.enum(['locked', 'fresh']).parse(env.OK_CLI_E2E_INSTALL_MODE ?? 'locked');
   const graphDir = join(options.packageDir, 'test-results');
   const graphPath = join(graphDir, 'cli-e2e-fresh-graph.json');
   if (mode === 'fresh') rmSync(graphPath, { force: true });
-  const packed = await execute('npm', ['pack', '--json', '--pack-destination', options.packDest], {
-    cwd: options.packageDir,
-    encoding: 'utf8',
-    env,
-  });
+  const npm = createNpmContext(options.packDest);
+  const npmArgs = ['--cache', npm.cacheDir, '--logs-dir', npm.logsDir];
+  let packed: { stdout: string; stderr: string };
+  try {
+    packed = await execute(
+      'npm',
+      ['pack', '--json', '--pack-destination', options.packDest, ...npmArgs],
+      { cwd: options.packageDir, encoding: 'utf8', env },
+    );
+  } catch (error) {
+    throw attachNpmDebugEvidence(error, npmDebugEvidence(npm));
+  }
   const [archive] = z
     .array(z.object({ filename: z.string(), integrity: z.string() }))
     .nonempty()
@@ -349,6 +406,7 @@ export async function installPackedCli(
           '--prefix',
           installPrefix,
           tarball,
+          ...npmArgs,
         ];
   const configuredFetchTimeout = z.coerce
     .number()
@@ -371,6 +429,7 @@ export async function installPackedCli(
     let stderr: string;
     let failed = false;
     let deadlineError: unknown;
+    let diagnostics = '';
     try {
       ({ stdout, stderr } = await executeInstall(
         command,
@@ -383,6 +442,7 @@ export async function installPackedCli(
         },
       ));
     } catch (error) {
+      if (mode === 'fresh') diagnostics = npmDebugEvidence(npm);
       const failure = z
         .object({
           stdout: z.string(),
@@ -392,7 +452,7 @@ export async function installPackedCli(
           code: z.union([z.string(), z.number(), z.null()]).optional(),
         })
         .safeParse(error);
-      if (!failure.success) throw error;
+      if (!failure.success) throw attachNpmDebugEvidence(error, diagnostics);
       ({ stdout, stderr } = failure.data);
       const ownDeadline =
         failure.data.killed === true &&
@@ -401,7 +461,7 @@ export async function installPackedCli(
         now() >= deadline;
       if (typeof failure.data.code === 'string' || (failure.data.signal && !ownDeadline)) {
         process.stderr.write(stdout + stderr);
-        throw error;
+        throw attachNpmDebugEvidence(error, diagnostics);
       }
       if (ownDeadline) deadlineError = error;
       failed = true;
@@ -468,11 +528,11 @@ export async function installPackedCli(
           TRANSPORT_CODES.has(failure.code) ||
           /^(?:E|ERR_PNPM_FETCH_)(?:408|429|5\d\d)$/.test(failure.code),
       );
-    const message = `Packed CLI ${command} installation failed.\n${refetched.map(({ packageId, verdict }) => `pnpm started fetching ${packageId} but never finished, and pnpm 12 skips a failed optional dependency without reporting why. Fetched again by the harness: ${verdict.code.startsWith('INCOMPLETE_FETCH') ? '' : `${verdict.code}: `}${verdict.reason}.\n`).join('')}${stdout}${stderr}`;
+    const message = `Packed CLI ${command} installation failed.\n${refetched.map(({ packageId, verdict }) => `pnpm started fetching ${packageId} but never finished, and pnpm 12 skips a failed optional dependency without reporting why. Fetched again by the harness: ${verdict.code.startsWith('INCOMPLETE_FETCH') ? '' : `${verdict.code}: `}${verdict.reason}.\n`).join('')}${stdout}${stderr}${diagnostics}`;
     if (!retryable) {
       if (deadlineError)
         throw new Error(
-          `Packed CLI ${command} acquisition deadline elapsed on attempt ${attempt} of ${INSTALL_ATTEMPTS}.`,
+          `Packed CLI ${command} acquisition deadline elapsed on attempt ${attempt} of ${INSTALL_ATTEMPTS}.${diagnostics}`,
           { cause: deadlineError },
         );
       throw new Error(unobserved ? `CLI fetch observer did not run.\n${message}` : message);

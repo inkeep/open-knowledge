@@ -56,15 +56,18 @@ test('reports unavailable registry acquisition after bounded attempts', async ()
           ...process.env,
           npm_config_registry: `http://127.0.0.1:${address.port}`,
           npm_config_fetch_retries: '0',
-          npm_config_cache: join(root, 'cache'),
           FORCE_COLOR: '1',
         },
       }),
     ).rejects.toMatchObject({ name: 'CliInstallUnavailableError', exitCode: 77 });
     expect(registryReached).toBe(true);
-    const logs = join(root, 'cache', '_logs');
-    const installs = readdirSync(logs).filter((name) =>
-      /\bverbose title npm install\b/.test(readFileSync(join(logs, name), 'utf8')),
+    const installs = readdirSync(root, { recursive: true, withFileTypes: true }).filter(
+      (entry) =>
+        entry.isFile() &&
+        entry.name.endsWith('-debug-0.log') &&
+        /\bverbose title npm install\b/.test(
+          readFileSync(join(entry.parentPath, entry.name), 'utf8'),
+        ),
     );
     expect(installs).toHaveLength(3);
   } finally {

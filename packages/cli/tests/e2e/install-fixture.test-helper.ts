@@ -53,7 +53,6 @@ export async function createInstallFixture(optionalParent = false) {
   const env = {
     ...process.env,
     npm_config_registry: registryUrl,
-    npm_config_cache: join(root, 'npm-cache'),
     npm_config_fetch_retries: '0',
     pnpm_config_registry: registryUrl,
     pnpm_config_cache_dir: join(root, 'pnpm-cache'),
