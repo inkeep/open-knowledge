@@ -951,6 +951,9 @@ jobs:
       - name: Smoke the packaged DMG (FR5b)
         id: dmg_smoke
         if: steps.channel.outputs.channel == 'latest'
+        # WARN: interim diagnostic bound behind the smoke driver's no-progress
+        #   watchdog; RELEASES.md "When the smoke stalls" derives it, so change both together.
+        timeout-minutes: 30
         env:
           RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
         run: |
