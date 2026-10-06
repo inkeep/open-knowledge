@@ -1,8 +1,6 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import {
-  constants,
-  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -20,6 +18,7 @@ import {
   SPAWN_STARTUP_DEADLINE_MS,
   SPAWN_WAIT_EXTENSION_FACTOR,
 } from '../src/shared/boot-narration.ts';
+import { preservePtyEvidence, readPtyPhaseRecords } from './pty-phase-evidence.mjs';
 import {
   describeDriverTimeoutBudget,
   PACKAGED_BOOT_ENVELOPE_MS,
@@ -160,21 +159,24 @@ function drainDriverBytecode() {
   return left;
 }
 
-function ptyEchoSnippet() {
+function ptyEchoSnippet(trace = false) {
   const extractor = [
-    'import importlib.util, sys, types',
+    'import contextlib, importlib.util, io, sys, types',
     "sys.modules['websocket'] = types.ModuleType('websocket')",
     `spec = importlib.util.spec_from_file_location('d', ${JSON.stringify(driverPath)})`,
     'm = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)',
     'seen = {}',
     'def fake(socket_url, expression, timeout=5):',
-    "    seen['e'] = expression",
+    "    if 'e' not in seen: seen['e'] = expression",
     "    return {'platform': 'win32'}",
     'm.evaluate_value = fake',
-    "m.evaluate_pty_echo('ws://stub')",
+    "with contextlib.redirect_stdout(io.StringIO()): m.evaluate_pty_echo('ws://stub')",
     "sys.stdout.write(seen['e'])",
   ].join('\n');
-  const run = runPython(['-c', extractor], { OK_SMOKE_ECHO_DEADLINE_MS: '10500' });
+  const run = runPython(['-c', extractor], {
+    OK_SMOKE_ECHO_DEADLINE_MS: '10500',
+    OK_PTY_PHASE_TRACE: trace ? '1' : '',
+  });
   if (run.code !== 0) throw new Error(`snippet extraction failed: ${run.output}`);
   return run.output;
 }
@@ -237,8 +239,8 @@ function stubRenderer({ duringStart = [] } = {}) {
   };
 }
 
-function runPtyEchoSnippet(window) {
-  return new Function('window', `return (\n${ptyEchoSnippet()}\n);`)(window);
+function runPtyEchoSnippet(window, trace = false) {
+  return new Function('window', `return (\n${ptyEchoSnippet(trace)}\n);`)(window);
 }
 
 function rejectionOf(pending) {
@@ -381,6 +383,7 @@ describe('packaged Windows terminal smoke driver', () => {
   test('requires the CDP driver to exercise its Windows branch', () => {
     expect(windowsPtyDriverEnv({ SENTINEL: 'preserved' })).toEqual({
       SENTINEL: 'preserved',
+      OK_PTY_PHASE_TRACE: '1',
       OK_SMOKE_EXPECT_PLATFORM: 'win32',
       OK_SMOKE_DISCOVERY_DEADLINE_MS: String(packagedDiscoveryDeadlineMs()),
       OK_SMOKE_ECHO_DEADLINE_MS: String(PACKAGED_PTY_ECHO_BUDGET_MS),
@@ -413,7 +416,9 @@ describe('packaged Windows terminal smoke driver', () => {
     });
 
     vi.resetModules();
-    for (const [key, value] of Object.entries(spawned)) vi.stubEnv(key, value);
+    for (const [key, value] of Object.entries(spawned)) {
+      if (key !== 'OK_DESKTOP_E2E_SMOKE') vi.stubEnv(key, value);
+    }
     try {
       const { getRootDesktopLogger } = await import('../src/main/desktop-logger.ts');
       const logger = getRootDesktopLogger();
@@ -1075,7 +1080,7 @@ describe('packaged Windows terminal smoke driver', () => {
     ).toContain(UNREADABLE_LOG);
   });
 
-  test('prints the terminal records this launch wrote, and none from before it, when the driver fails', () => {
+  test('prints the terminal records this launch wrote, and none from before it, when the driver fails', async () => {
     const earlierSession = JSON.stringify({
       time: BEFORE_LAUNCH,
       level: 40,
@@ -1093,10 +1098,17 @@ describe('packaged Windows terminal smoke driver', () => {
     const home = homeWithLogs([earlierSession, thisLaunch]);
     const packageDir = join(home, 'win-unpacked');
     mkdirSync(packageDir);
-    copyFileSync(
-      process.execPath,
-      join(packageDir, 'OpenKnowledge.exe'),
-      constants.COPYFILE_FICLONE,
+    writeFileSync(join(packageDir, 'OpenKnowledge.exe'), 'fixture');
+    vi.resetModules();
+    vi.doMock('node:child_process', async (importOriginal) => ({
+      ...(await importOriginal()),
+      spawn: () => ({ pid: undefined }),
+      spawnSync: () => ({
+        error: Object.assign(new Error('fixture python ENOENT'), { code: 'ENOENT' }),
+      }),
+    }));
+    const { runWindowsPackageTerminalSmoke: run } = await import(
+      './smoke-windows-terminal-package.mjs'
     );
 
     vi.stubEnv('HOME', home);
@@ -1106,8 +1118,9 @@ describe('packaged Windows terminal smoke driver', () => {
     const printed = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       expect(() =>
-        runWindowsPackageTerminalSmoke({
+        run({
           packageDir,
+          diagnosticsDir: join(home, 'evidence'),
           platform: 'win32',
           env: { ...process.env, ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
           python: join(home, 'no-python-here'),
@@ -1121,6 +1134,8 @@ describe('packaged Windows terminal smoke driver', () => {
         'the app shares one log file per day across every session on the host, so a record from before this launch printed beside its own reads to a triager as something this run did',
       ).not.toContain(earlierSession);
     } finally {
+      vi.doUnmock('node:child_process');
+      vi.resetModules();
       printed.mockRestore();
       vi.useRealTimers();
       vi.unstubAllEnvs();
@@ -1200,3 +1215,165 @@ describe('packaged Windows terminal smoke driver', () => {
     }
   });
 });
+
+test.each([false, true])(
+  'keeps the real renderer echo result while phase tracing is %s',
+  async (enabled) => {
+    const window = stubRenderer();
+    let deliver;
+    const subscribe = window.okDesktop.terminal.onData;
+    window.okDesktop.terminal.onData = (listener) => {
+      deliver = listener;
+      return subscribe(listener);
+    };
+    window.okDesktop.terminal.start = async () => {
+      deliver({ ptyId: STUB_PTY_ID, data: MARKER_LINE });
+      return { ok: true };
+    };
+    const result = await runPtyEchoSnippet(window, enabled);
+    expect(result.output).toBe(MARKER_LINE);
+    expect(result.platform).toBe('win32');
+    expect(window.subscriptionAudit().active).toEqual({ data: 0, exit: 0, notice: 0 });
+    if (!enabled) expect(Object.hasOwn(window, '__okPtyPhaseTrace')).toBe(false);
+    else {
+      const pairs = window.__okPtyPhaseTrace.map(({ phase, edge }) => `${phase}:${edge}`);
+      for (const phase of ['evaluation', 'create', 'start', 'cleanup']) {
+        expect(pairs).toContain(`${phase}:begin`);
+        expect(pairs).toContain(`${phase}:end`);
+      }
+      expect(pairs).toContain('first-data:point');
+      expect(window.__okPtyPhaseTrace.find((record) => record.phase === 'start')).toMatchObject({
+        ptyId: STUB_PTY_ID,
+      });
+    }
+  },
+);
+
+test('does not refresh the echo budget to collect a renderer trace or replace its failure', () => {
+  const result = runPython(
+    [
+      '-c',
+      [
+        'import importlib.util, sys, types',
+        'sys.stderr = sys.stdout',
+        "sys.modules['websocket'] = types.ModuleType('websocket')",
+        `spec = importlib.util.spec_from_file_location('d', ${JSON.stringify(driverPath)})`,
+        'm = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)',
+        'clock = iter([0, 31, 31])',
+        'm.time.monotonic = lambda: next(clock)',
+        'calls = []',
+        'def evaluate(*args, **kwargs):',
+        '    calls.append(args)',
+        "    raise RuntimeError('original echo failure')",
+        'm.evaluate_value = evaluate',
+        'try:',
+        "    m.evaluate_pty_echo('ws://stub')",
+        'except RuntimeError as error:',
+        "    print('ORIGINAL=' + str(error.__cause__))",
+        "print('CALLS=' + str(len(calls)))",
+      ].join('\n'),
+    ],
+    { OK_PTY_PHASE_TRACE: '1', OK_SMOKE_ECHO_DEADLINE_MS: '30000' },
+  );
+  expect(result.code).toBe(0);
+  expect(result.output).toContain('CALLS=1');
+  expect(result.output).toContain('ORIGINAL=original echo failure');
+  expect(result.output).toContain(
+    '{"event": "pty-phase-trace-unavailable", "errorType": "TimeoutError"',
+  );
+});
+
+test.each([
+  {
+    traceRead: 'answers',
+    replies: (echo, trace) => [echo, trace],
+    survivors: (trace) => trace,
+    rendererSpans: ['cleanup', 'create', 'evaluation', 'start'],
+    unavailable: false,
+  },
+  {
+    traceRead: 'fails',
+    replies: (echo) => [echo],
+    survivors: () => [],
+    rendererSpans: [],
+    unavailable: true,
+  },
+])(
+  'retains the renderer phase records the driver prints when its trace read $traceRead',
+  async ({ replies, survivors, rendererSpans, unavailable }) => {
+    const window = stubRenderer();
+    let deliver;
+    const subscribe = window.okDesktop.terminal.onData;
+    window.okDesktop.terminal.onData = (listener) => {
+      deliver = listener;
+      return subscribe(listener);
+    };
+    window.okDesktop.terminal.start = async () => {
+      deliver({ ptyId: STUB_PTY_ID, data: MARKER_LINE });
+      return { ok: true };
+    };
+    const echo = await runPtyEchoSnippet(window, true);
+    const trace = window.__okPtyPhaseTrace;
+    expect(trace.length).toBeGreaterThan(0);
+
+    const driver = spawnSync(
+      pythonBin,
+      [
+        '-c',
+        [
+          'import importlib.util, json, sys, types',
+          "sys.modules['websocket'] = types.ModuleType('websocket')",
+          `spec = importlib.util.spec_from_file_location('d', ${JSON.stringify(driverPath)})`,
+          'm = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)',
+          'replies = json.load(sys.stdin)',
+          'm.time.monotonic = lambda: 0.0',
+          "m.find_editor_websocket = lambda: 'ws://stub'",
+          'def evaluate(socket_url, expression, timeout=5):',
+          '    if not replies:',
+          "        raise RuntimeError('the renderer trace read failed')",
+          '    return replies.pop(0)',
+          'm.evaluate_value = evaluate',
+          'raise SystemExit(m.main())',
+        ].join('\n'),
+      ],
+      {
+        encoding: 'utf8',
+        env: windowsPtyDriverEnv({ ...process.env, PYTHONDONTWRITEBYTECODE: '1' }),
+        input: JSON.stringify(replies(echo, trace)),
+      },
+    );
+    expect(driver.error).toBeUndefined();
+    expect(driver.status, driver.stderr).toBe(0);
+
+    const root = mkdtempSync(join(tmpdir(), 'ok-renderer-envelope-'));
+    fixtures.push(root);
+    const logDir = join(root, 'logs');
+    const logPath = join(root, 'stdio.log');
+    mkdirSync(logDir);
+    writeFileSync(logPath, '');
+    const destination = preservePtyEvidence({
+      diagnosticsDir: join(root, 'retained'),
+      logPath,
+      logDir,
+      userDataDir: join(root, 'profile'),
+      launchedAt: 0,
+      appPid: process.pid,
+      driver,
+    });
+    const retained = readPtyPhaseRecords(
+      readFileSync(join(destination, 'phase-trace.jsonl'), 'utf8'),
+    );
+    const summary = JSON.parse(readFileSync(join(destination, 'phase-summary.json'), 'utf8'));
+    const manifest = JSON.parse(readFileSync(join(destination, 'manifest.json'), 'utf8'));
+
+    expect(retained.filter((record) => record.producer === 'renderer')).toEqual(survivors(trace));
+    expect(
+      summary.completed
+        .filter((span) => span.producer === 'renderer')
+        .map((span) => span.phase)
+        .sort(),
+    ).toEqual(rendererSpans);
+    expect(summary.missingProducers.includes('renderer')).toBe(unavailable);
+    expect(manifest.rendererCollectionUnavailable).toBe(unavailable);
+  },
+);

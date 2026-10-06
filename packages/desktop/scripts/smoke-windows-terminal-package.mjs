@@ -18,7 +18,8 @@ import {
   SPAWN_STARTUP_DEADLINE_MS,
   SPAWN_WAIT_EXTENSION_FACTOR,
 } from '../src/shared/boot-narration.ts';
-import { readBootLog } from '../tests/smoke/_helpers/launch-readiness.ts';
+import { bootLogDirFor, readBootLog } from '../tests/smoke/_helpers/launch-readiness.ts';
+import { preservePtyEvidence } from './pty-phase-evidence.mjs';
 
 export const PACKAGED_BOOT_ENVELOPE_MS = 10_000;
 export const PACKAGED_PTY_ECHO_BUDGET_MS = 30_000;
@@ -85,6 +86,7 @@ export function windowsPackageLaunchArgs(projectDir, userDataDir) {
 export function windowsPtyDriverEnv(env = process.env) {
   return {
     ...env,
+    OK_PTY_PHASE_TRACE: '1',
     OK_SMOKE_EXPECT_PLATFORM: 'win32',
     OK_SMOKE_DISCOVERY_DEADLINE_MS: String(packagedDiscoveryDeadlineMs()),
     OK_SMOKE_ECHO_DEADLINE_MS: String(PACKAGED_PTY_ECHO_BUDGET_MS),
@@ -92,7 +94,7 @@ export function windowsPtyDriverEnv(env = process.env) {
 }
 
 export function windowsPackageAppEnv(env = process.env) {
-  return { ...env, OK_DESKTOP_E2E_SMOKE: '1', OK_LOG_LEVEL: 'info' };
+  return { ...env, OK_DESKTOP_E2E_SMOKE: '1', OK_LOG_LEVEL: 'info', OK_PTY_PHASE_TRACE: '1' };
 }
 
 export function seedWindowsPtySmokeProject(rootDir, shellPath) {
@@ -156,6 +158,7 @@ export function readTerminalSubsystemLog(launchedAt, home = homedir()) {
 
 export function runWindowsPackageTerminalSmoke({
   packageDir = defaultPackageDir,
+  diagnosticsDir = resolve(scriptDir, '../windows-terminal-package-diagnostics'),
   platform = process.platform,
   env = process.env,
   python = env.OK_PYTHON ?? 'python',
@@ -176,6 +179,7 @@ export function runWindowsPackageTerminalSmoke({
   const logFd = openSync(logPath, 'w');
   const launchedAt = Date.now();
   let app = null;
+  let driver = null;
 
   try {
     app = spawn(executable, windowsPackageLaunchArgs(projectDir, userDataDir), {
@@ -185,11 +189,7 @@ export function runWindowsPackageTerminalSmoke({
       windowsHide: true,
     });
 
-    const driver = spawnSync(
-      python,
-      [cdpDriver],
-      packagedDriverSpawnOptions(resolvedPackageDir, env),
-    );
+    driver = spawnSync(python, [cdpDriver], packagedDriverSpawnOptions(resolvedPackageDir, env));
     if (driver.stdout) process.stdout.write(driver.stdout);
     if (driver.stderr) process.stderr.write(driver.stderr);
     if (driver.error?.code === 'ETIMEDOUT') {
@@ -214,6 +214,20 @@ export function runWindowsPackageTerminalSmoke({
     try {
       closeSync(logFd);
     } catch {}
+    try {
+      const evidence = preservePtyEvidence({
+        diagnosticsDir,
+        logPath,
+        logDir: bootLogDirFor(homedir()),
+        userDataDir,
+        launchedAt,
+        appPid: app?.pid,
+        driver,
+      });
+      console.log(`Packaged PTY diagnostics: ${evidence}`);
+    } catch (error) {
+      console.warn(`Could not preserve packaged PTY diagnostics: ${error.message}`);
+    }
     try {
       rmSync(smokeRoot, { recursive: true, force: true });
     } catch (error) {

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import pino from 'pino';
 
-function okLogsDir(): string {
+export function desktopLogDirectory(): string {
   return join(okUserHomeDir(), 'logs');
 }
 const MAX_AGE_DAYS = 7;
@@ -89,10 +89,10 @@ let rootDest: { flushSync: () => void } | undefined;
 function getRootLogger(): pino.Logger {
   if (rootLogger) return rootLogger;
 
-  mkdirSync(okLogsDir(), { recursive: true });
-  setTimeout(() => pruneLogsDir(okLogsDir()), 5000);
+  mkdirSync(desktopLogDirectory(), { recursive: true });
+  setTimeout(() => pruneLogsDir(desktopLogDirectory()), 5000);
 
-  const filePath = join(okLogsDir(), logFileName);
+  const filePath = join(desktopLogDirectory(), logFileName);
   const dest = pino.destination({ dest: filePath, append: true, sync: false });
   rootDest = dest as unknown as { flushSync: () => void };
 

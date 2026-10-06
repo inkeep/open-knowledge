@@ -231,6 +231,20 @@ def evaluate_pty_echo(socket_url: str) -> Dict[str, object]:
         }}
         const marker = {json.dumps(MARKER)};
         const startedAt = performance.now();
+        const phaseRecords = {json.dumps(os.environ.get("OK_PTY_PHASE_TRACE") == "1")} ? [] : null;
+        if (phaseRecords) window.__okPtyPhaseTrace = phaseRecords;
+        const markPhase = phaseRecords ? (phase, edge, ptyId = null) => {{
+          if (phaseRecords.length >= 256) return;
+          const sequence = phaseRecords.length + 1;
+          phaseRecords.push({{
+            event: 'pty-phase', producer: 'renderer', sequence,
+            phase: sequence === 256 ? 'trace-limit' : phase,
+            edge: sequence === 256 ? 'point' : edge,
+            ptyId, atMs: performance.now(), wallTimeMs: Date.now(),
+            timeOriginMs: performance.timeOrigin,
+          }});
+        }} : undefined;
+        markPhase?.('evaluation', 'begin');
         return await new Promise(async (resolve, reject) => {{
           let output = '';
           let ptyId = null;
@@ -250,14 +264,20 @@ def evaluate_pty_echo(socket_url: str) -> Dict[str, object]:
           const finish = async (error) => {{
             if (settled) return;
             settled = true;
+            markPhase?.('cleanup', 'begin', ptyId);
             clearTimeout(timeout);
             for (const release of releases) release();
             if (ptyId !== null) await bridge.terminal.kill(ptyId).catch(() => {{}});
+            markPhase?.('cleanup', 'end', ptyId);
+            markPhase?.('evaluation', error ? 'error' : 'end');
             if (error) reject(error);
             else resolve({{ output, platform: bridge.platform, timings: timings(), endings, notices }});
           }};
           const consume = (data, at) => {{
-            if (firstByteAt === null) firstByteAt = at;
+            if (firstByteAt === null) {{
+              firstByteAt = at;
+              markPhase?.('first-data', 'point', ptyId);
+            }}
             output += data;
             const plainOutput = output
               .replace(
@@ -279,12 +299,14 @@ def evaluate_pty_echo(socket_url: str) -> Dict[str, object]:
             }}
           }};
           const timeout = setTimeout(
-            () =>
+            () => {{
+              markPhase?.('echo-timer', 'point', ptyId);
               void finish(
                 new Error(
                   `PTY echo timed out; output=${{JSON.stringify(output)}}; timings=${{JSON.stringify(timings())}}; endings=${{JSON.stringify(endings)}}; notices=${{JSON.stringify(notices)}}`,
                 ),
-              ),
+              );
+            }},
             {renderer_echo_timeout_ms()},
           );
           try {{
@@ -293,9 +315,11 @@ def evaluate_pty_echo(socket_url: str) -> Dict[str, object]:
               consume(message.data, performance.now());
             }}));
             releases.push(bridge.terminal.onExit((message) => {{
+              if (endings.length === 0) markPhase?.('first-exit', 'point', message.ptyId);
               endings.push({{ ...message, atMs: sinceStart(performance.now()) }});
             }}));
             releases.push(bridge.terminal.onNotice((message) => {{
+              if (notices.length === 0) markPhase?.('first-notice', 'point', message.ptyId);
               notices.push({{ ...message, atMs: sinceStart(performance.now()) }});
             }}));
           }} catch (error) {{
@@ -303,7 +327,10 @@ def evaluate_pty_echo(socket_url: str) -> Dict[str, object]:
             return;
           }}
           const isWindows = bridge.platform === 'win32';
-          const created = await bridge.terminal.create({{
+          markPhase?.('create', 'begin');
+          let created;
+          try {{
+            created = await bridge.terminal.create({{
             cols: 80,
             rows: 24,
             ...(isWindows
@@ -315,13 +342,26 @@ def evaluate_pty_echo(socket_url: str) -> Dict[str, object]:
                 }}
               : {{}}),
           }});
+          }} catch (error) {{
+            markPhase?.('create', 'error');
+            throw error;
+          }}
+          markPhase?.('create', 'end');
           if (!created.ok) {{
             await finish(new Error(`PTY create failed: ${{created.reason}}`));
             return;
           }}
           createdAt = performance.now();
           ptyId = created.ptyId;
-          const attached = await bridge.terminal.start(ptyId);
+          markPhase?.('start', 'begin', ptyId);
+          let attached;
+          try {{
+            attached = await bridge.terminal.start(ptyId);
+          }} catch (error) {{
+            markPhase?.('start', 'error', ptyId);
+            throw error;
+          }}
+          markPhase?.('start', 'end', ptyId);
           if (!attached.ok) {{
             await finish(new Error(`PTY attach failed: ${{attached.reason}}`));
             return;
@@ -341,6 +381,25 @@ def evaluate_pty_echo(socket_url: str) -> Dict[str, object]:
             f"renderer_timer={renderer_echo_timeout_ms() / 1000:.0f}s; "
             f"error={type(error).__name__}: {error}"
         ) from error
+    finally:
+        if os.environ.get("OK_PTY_PHASE_TRACE") == "1":
+            try:
+                remaining = budget_ms / 1000 - (time.monotonic() - started)
+                if remaining <= 0:
+                    raise TimeoutError("the original echo budget is exhausted")
+                records = evaluate_value(socket_url, "window.__okPtyPhaseTrace ?? null", timeout=remaining)
+                print(json.dumps({"event": "pty-phase-trace", "socketUrl": socket_url, "records": records}))
+            except Exception as trace_error:
+                print(
+                    json.dumps(
+                        {
+                            "event": "pty-phase-trace-unavailable",
+                            "errorType": type(trace_error).__name__,
+                            "error": str(trace_error),
+                        }
+                    ),
+                    file=sys.stderr,
+                )
     if not isinstance(value, dict):
         raise RuntimeError(f"renderer returned no PTY smoke result: {value}")
     return value

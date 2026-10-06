@@ -158,6 +158,7 @@ import type {
 import type { EventChannels } from '../shared/ipc-events.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
 import { registerPendingDelivery, sendToRenderer } from '../shared/ipc-send.ts';
+import { createPtyPhaseTrace } from '../shared/pty-phase-trace.ts';
 import { UNINSTALL_PRELOAD_ARG } from '../shared/uninstall-preload-arg.ts';
 import { getWindowsEnvValue } from '../shared/windows-env.ts';
 import { resolveShell } from '../utility/pty-host.ts';
@@ -243,7 +244,12 @@ import {
   runCreateNew,
 } from './create-new-project.ts';
 import { createDebugIpc, type DebugIpcHandle } from './debug-ipc.ts';
-import { flushDesktopLogger, getLogger, getRootDesktopLogger } from './desktop-logger.ts';
+import {
+  desktopLogDirectory,
+  flushDesktopLogger,
+  getLogger,
+  getRootDesktopLogger,
+} from './desktop-logger.ts';
 import {
   createDesktopProcessObservability,
   type DesktopProcessObservability,
@@ -408,6 +414,7 @@ import {
   type ProjectMcpReclaimCliSurface,
 } from './project-mcp-reclaim.ts';
 import { createProjectSessionHandlers } from './project-session.ts';
+import { observePtyFork } from './pty-phase-observation.ts';
 import { readHeadBranch as readHeadBranchImpl } from './read-head-branch.ts';
 import {
   applyReducedTransparency,
@@ -3859,11 +3866,23 @@ function registerIpcHandlers() {
     }
   };
 
+  const phaseTrace = createPtyPhaseTrace(process.env, 'main', (record) => {
+    if (record.phase === 'paths') process.stderr.write(`${JSON.stringify(record)}\n`);
+    getLogger('terminal').info({ ...record }, 'PTY phase');
+  });
+  phaseTrace?.mark('paths', 'point', {
+    userDataDir: app.getPath('userData'),
+    logDir: desktopLogDirectory(),
+  });
+  let nextTraceRequest = 0;
+  let nextTraceFork = 0;
   const terminalManager = createTerminalManager({
     forkPtyHost: (windowId) =>
-      utilityProcess.fork(join(__dirname, 'utility/pty-host.js'), [], {
-        serviceName: `OpenKnowledge Terminal Host ${windowId}`,
-      }) as unknown as PtyUtilityLike,
+      observePtyFork(phaseTrace, windowId, phaseTrace ? ++nextTraceFork : 0, () =>
+        utilityProcess.fork(join(__dirname, 'utility/pty-host.js'), [], {
+          serviceName: `OpenKnowledge Terminal Host ${windowId}`,
+        }),
+      ) as unknown as PtyUtilityLike,
     sendData: (wc, payload) => sendToRenderer(wc, 'ok:pty:data', payload),
     sendExit: (wc, payload) => sendToRenderer(wc, 'ok:pty:exit', payload),
     sendNotice: (wc, payload) => sendToRenderer(wc, 'ok:pty:notice', payload),
@@ -3882,57 +3901,79 @@ function registerIpcHandlers() {
   terminalReaper = terminalManager;
 
   handle('ok:pty:create', async (event, opts) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    const editorCtx =
-      win && wm ? wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike) : null;
-    const projectPath = resolvePtyProjectRoot({
-      editorProjectPath: editorCtx?.projectPath ?? null,
-      terminalWindow: win ? getTerminalWindowContext(win.id) : undefined,
-      homedir: osHomedir(),
-    });
-    if (!win || !projectPath) {
-      logIpcError({
-        event: 'ipc.error',
-        channel: 'ok:pty:create',
-        reason: 'no-project',
-        handler: 'createPty',
+    const traceContext = phaseTrace
+      ? { scope: `request-${++nextTraceRequest}`, webContentsId: event.sender.id }
+      : undefined;
+    phaseTrace?.mark('ipc-create', 'begin', traceContext);
+    let traceFailed = false;
+    try {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const editorCtx =
+        win && wm ? wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike) : null;
+      const projectPath = resolvePtyProjectRoot({
+        editorProjectPath: editorCtx?.projectPath ?? null,
+        terminalWindow: win ? getTerminalWindowContext(win.id) : undefined,
+        homedir: osHomedir(),
       });
-      return { ok: false, reason: 'no-project' };
-    }
-    if (!isTerminalConsented(projectPath) && !(await isTerminalConsentedWithGrace(projectPath))) {
-      logIpcError({
-        event: 'ipc.error',
-        channel: 'ok:pty:create',
-        reason: 'not-consented',
-        handler: 'createPty',
-      });
-      return { ok: false, reason: 'not-consented' };
-    }
-    if (opts.launchCli !== undefined) {
-      await observeTerminalLaunch({
-        launchCli: opts.launchCli,
+      if (!win || !projectPath) {
+        logIpcError({
+          event: 'ipc.error',
+          channel: 'ok:pty:create',
+          reason: 'no-project',
+          handler: 'createPty',
+        });
+        return { ok: false, reason: 'no-project' };
+      }
+      if (!isTerminalConsented(projectPath) && !(await isTerminalConsentedWithGrace(projectPath))) {
+        logIpcError({
+          event: 'ipc.error',
+          channel: 'ok:pty:create',
+          reason: 'not-consented',
+          handler: 'createPty',
+        });
+        return { ok: false, reason: 'not-consented' };
+      }
+      if (opts.launchCli !== undefined) {
+        await observeTerminalLaunch({
+          launchCli: opts.launchCli,
+          projectRoot: projectPath,
+          log: getLogger('agent-gate'),
+          snapshot: (projectRoot) =>
+            collectDesktopHostSnapshot({
+              resolve: createCliProbeResolver({ cwd: projectRoot, home: osHomedir() }),
+            }),
+        });
+      }
+      phaseTrace?.mark('configured-shell', 'begin', traceContext);
+      const shellSetting =
+        process.platform === 'win32'
+          ? readTerminalShellSetting(projectPath)
+          : { kind: 'unset' as const };
+      phaseTrace?.mark('configured-shell', 'end', traceContext);
+      phaseTrace?.mark('reservation', 'begin', traceContext);
+      const result = terminalManager.create({
+        windowId: win.id,
+        webContents: win.webContents,
         projectRoot: projectPath,
-        log: getLogger('agent-gate'),
-        snapshot: (projectRoot) =>
-          collectDesktopHostSnapshot({
-            resolve: createCliProbeResolver({ cwd: projectRoot, home: osHomedir() }),
-          }),
+        cols: clampPtyDimension(opts.cols, DEFAULT_PTY_COLS),
+        rows: clampPtyDimension(opts.rows, DEFAULT_PTY_ROWS),
+        ...(shellSetting.kind === 'configured' ? { shell: shellSetting.shell } : {}),
+        ...(shellSetting.kind === 'invalid' ? { shellInvalidReason: shellSetting.reason } : {}),
+        launchCommand: opts.launchCommand,
       });
+      phaseTrace?.mark('reservation', 'end', {
+        ...traceContext,
+        windowId: win.id,
+        ...(result.ok ? { ptyId: result.ptyId } : {}),
+        ok: result.ok,
+      });
+      return result;
+    } catch (error) {
+      traceFailed = true;
+      throw error;
+    } finally {
+      phaseTrace?.mark('ipc-create', traceFailed ? 'error' : 'end', traceContext);
     }
-    const shellSetting =
-      process.platform === 'win32'
-        ? readTerminalShellSetting(projectPath)
-        : { kind: 'unset' as const };
-    return terminalManager.create({
-      windowId: win.id,
-      webContents: win.webContents,
-      projectRoot: projectPath,
-      cols: clampPtyDimension(opts.cols, DEFAULT_PTY_COLS),
-      rows: clampPtyDimension(opts.rows, DEFAULT_PTY_ROWS),
-      ...(shellSetting.kind === 'configured' ? { shell: shellSetting.shell } : {}),
-      ...(shellSetting.kind === 'invalid' ? { shellInvalidReason: shellSetting.reason } : {}),
-      launchCommand: opts.launchCommand,
-    });
   });
   handle('ok:pty:input', async (event, req) => {
     const win = BrowserWindow.fromWebContents(event.sender);
@@ -3966,31 +4007,49 @@ function registerIpcHandlers() {
     return win ? terminalManager.listSessions(win.id) : [];
   });
   handle('ok:pty:adopt', async (event, req) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win) {
-      logIpcError({
-        event: 'ipc.error',
-        channel: 'ok:pty:adopt',
-        reason: 'unknown-session',
-        handler: 'adoptPty',
+    const traceContext = phaseTrace
+      ? { scope: `request-${++nextTraceRequest}`, webContentsId: event.sender.id }
+      : undefined;
+    const tracePhase = req.start === true ? 'ipc-start' : 'ipc-adopt';
+    phaseTrace?.mark(tracePhase, 'begin', traceContext);
+    let traceFailed = false;
+    try {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) {
+        logIpcError({
+          event: 'ipc.error',
+          channel: 'ok:pty:adopt',
+          reason: 'unknown-session',
+          handler: 'adoptPty',
+        });
+        return { ok: false, reason: 'unknown-session' };
+      }
+      phaseTrace?.mark('message-received', 'point', {
+        ...traceContext,
+        windowId: win.id,
+        ptyId: req.ptyId,
       });
-      return { ok: false, reason: 'unknown-session' };
-    }
-    const outcome = terminalManager.adoptSession({
-      start: req.start,
-      windowId: win.id,
-      ptyId: req.ptyId,
-      webContents: win.webContents,
-    });
-    if (!outcome.ok) {
-      logIpcError({
-        event: 'ipc.error',
-        channel: 'ok:pty:adopt',
-        reason: outcome.reason,
-        handler: 'adoptPty',
+      const outcome = terminalManager.adoptSession({
+        start: req.start,
+        windowId: win.id,
+        ptyId: req.ptyId,
+        webContents: win.webContents,
       });
+      if (!outcome.ok) {
+        logIpcError({
+          event: 'ipc.error',
+          channel: 'ok:pty:adopt',
+          reason: outcome.reason,
+          handler: 'adoptPty',
+        });
+      }
+      return outcome;
+    } catch (error) {
+      traceFailed = true;
+      throw error;
+    } finally {
+      phaseTrace?.mark(tracePhase, traceFailed ? 'error' : 'end', traceContext);
     }
-    return outcome;
   });
   handle('ok:pty:set-meta', async (event, req) => {
     const win = BrowserWindow.fromWebContents(event.sender);
