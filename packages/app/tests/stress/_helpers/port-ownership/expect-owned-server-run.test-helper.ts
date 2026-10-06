@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { type OwnershipCase, runOwnershipCase } from './run-case.test-helper.ts';
 
 export async function expectOwnedServerRun(ownershipCase: OwnershipCase): Promise<void> {
-  const run = await runOwnershipCase(ownershipCase);
+  const { run, scratchReleased } = await runOwnershipCase(ownershipCase);
   const testInfo = test.info();
   expect(run.report, run.transcript).toBeDefined();
   const reportPath = testInfo.outputPath('inner-report.json');
@@ -46,4 +46,13 @@ export async function expectOwnedServerRun(ownershipCase: OwnershipCase): Promis
     `${run.transcript}\n${JSON.stringify(run.events)}`,
   ).toBe('passed');
   expect(run.exitCode, run.transcript).toBe(0);
+  await expectScratchReleased(scratchReleased);
+}
+
+export async function expectScratchReleased(
+  scratchReleased: Promise<Error | undefined>,
+): Promise<void> {
+  await test.step('scratch lease released', async () => {
+    expect(await scratchReleased).toBeUndefined();
+  });
 }

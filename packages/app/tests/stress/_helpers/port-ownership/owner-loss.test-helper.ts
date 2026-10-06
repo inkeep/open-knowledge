@@ -5,6 +5,7 @@ import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createCleanupOrder } from './cleanup-order.test-helper.ts';
 import {
   type OwnedEndpointRelease,
   probeOwnedEndpoint,
@@ -21,6 +22,11 @@ interface Receipt {
   pid: number;
 }
 
+interface OrderingEvent {
+  phase: string;
+  pid: number;
+}
+
 export interface OwnerLossRun extends OwnedEndpointRelease {
   driverPid: number | undefined;
   driverExit: number | null;
@@ -30,7 +36,23 @@ export interface OwnerLossRun extends OwnedEndpointRelease {
   scratchGone: boolean;
   events: unknown[];
   servingAfterOwnerExit: boolean;
+  ordering: { native: boolean; order: string[]; events: OrderingEvent[] };
   transcript: string;
+}
+
+const UNORDERED_PHASES = new Set(['runner', 'server', 'exit', 'yield', 'ack:yield']);
+
+function cleanupOrderFrom(events: OrderingEvent[], serverPid: number): string[] {
+  const roles = new Map<number, string>();
+  for (const { phase, pid } of events) {
+    if (phase === 'runner' || phase === 'server') roles.set(pid, phase);
+  }
+  let started = false;
+  return events.flatMap(({ phase, pid }) => {
+    if (phase === 'server' && pid === serverPid) started = true;
+    if (!started || UNORDERED_PHASES.has(phase)) return [];
+    return [`${roles.get(pid) ?? 'unregistered'}:${phase}`];
+  });
 }
 
 async function awaitReceipt(runDir: string, child: ChildProcess): Promise<Receipt> {
@@ -108,11 +130,12 @@ function watchScratchGone(runDir: string): { result: Promise<boolean>; stop: () 
   return { result, stop: () => finish(false) };
 }
 
-export async function runOwnerLossControl(): Promise<OwnerLossRun> {
+export async function runOwnerLossControl(outputDir: string): Promise<OwnerLossRun> {
+  const ordering = await createCleanupOrder(outputDir);
   const runDir = mkdtempSync(join(tmpdir(), 'ok-port-ownership-'));
   const child = spawn(process.execPath, ['--import', 'tsx', DRIVER, runDir], {
     cwd: APP_ROOT,
-    env: process.env,
+    env: { ...ordering.env, OK_PORT_OWNERSHIP_SCHEDULE_RUN_DIR: runDir },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'] as const,
   });
   let transcript = '';
@@ -124,6 +147,7 @@ export async function runOwnerLossControl(): Promise<OwnerLossRun> {
     transcript += chunk.toString('utf8');
   });
 
+  let failure: unknown;
   try {
     const receipt = await awaitReceipt(runDir, child);
     const witness = connect(receipt.port, '127.0.0.1');
@@ -131,6 +155,14 @@ export async function runOwnerLossControl(): Promise<OwnerLossRun> {
     scratchWatcher = watchScratchGone(runDir);
     const closed = once(witness, 'close');
     const exited = once(child, 'exit');
+    if (ordering.nativeOrdering) {
+      await Promise.race([
+        ordering.beforeOwnerExit(receipt.pid),
+        exited.then(() => {
+          throw new Error('owner exited before cleanup ordering was ready');
+        }),
+      ]);
+    }
     child.send('exit');
     const [driverExit, driverSignal] = (await exited) as [number | null, NodeJS.Signals | null];
     let closeBound: ReturnType<typeof setTimeout> | undefined;
@@ -142,6 +174,7 @@ export async function runOwnerLossControl(): Promise<OwnerLossRun> {
     ]).finally(() => clearTimeout(closeBound));
     if (!witnessClosed) witness.destroy();
     const scratchGone = await scratchWatcher.result;
+    const orderingEvents = [...ordering.events];
     const eventsPath = join(runDir, 'events.jsonl');
     const events = existsSync(eventsPath) ? readOwnershipRecords(eventsPath) : [];
     const servingAfterOwnerExit = await probeOwnedEndpoint(receipt);
@@ -156,8 +189,15 @@ export async function runOwnerLossControl(): Promise<OwnerLossRun> {
       events,
       servingAfterOwnerExit,
       ...release,
+      ordering: {
+        native: ordering.nativeOrdering,
+        order: cleanupOrderFrom(orderingEvents, receipt.pid),
+        events: orderingEvents,
+      },
       transcript,
     };
+  } catch (error) {
+    failure = error;
   } finally {
     scratchWatcher?.stop();
     if (child.exitCode === null && child.signalCode === null && child.connected) {
@@ -165,6 +205,9 @@ export async function runOwnerLossControl(): Promise<OwnerLossRun> {
       child.send('exit');
       await exited.catch(() => {});
     }
+    await ordering.close();
     if (existsSync(runDir)) rmSync(runDir, { recursive: true, force: true });
   }
+  const message = failure instanceof Error ? failure.message : String(failure);
+  throw new Error(`${message}\n--- owner-loss driver output\n${transcript}`, { cause: failure });
 }

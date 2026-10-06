@@ -1,9 +1,9 @@
+require('./owner-scratch-lease.cjs');
 const net = require('node:net');
 const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const http = require('node:http');
 const { syncBuiltinESMExports } = require('node:module');
-const path = require('node:path');
 const { createOwnerLossHandler } = require('./owner-lifetime.cjs');
 
 const createServer = net.createServer;
@@ -27,25 +27,7 @@ if (Number.isInteger(controlPort) && controlPort > 0) {
     exit: (code) => process.exit(code),
     schedule: (callback, ms) => setTimeout(callback, ms),
     record,
-    cleanup: () => {
-      const runDir = process.env.OK_PORT_OWNERSHIP_RUN_DIR;
-      if (!runDir || fs.existsSync(path.join(runDir, 'owner-release'))) return;
-      const tempRoot = fs.realpathSync(process.env.OK_PORT_OWNERSHIP_SYSTEM_TEMP_ROOT);
-      const resolved = fs.realpathSync(runDir);
-      if (
-        path.dirname(resolved) === tempRoot &&
-        path.basename(resolved).startsWith('ok-port-ownership-') &&
-        !fs.lstatSync(runDir).isSymbolicLink()
-      ) {
-        try {
-          fs.mkdirSync(path.join(runDir, '.owner-cleanup-lock'));
-        } catch (error) {
-          if (error?.code === 'EEXIST') return;
-          throw error;
-        }
-        fs.rmSync(runDir, { recursive: true, force: true });
-      }
-    },
+    cleanup: () => {},
   });
   control.once('error', leave);
   control.once('end', leave);
