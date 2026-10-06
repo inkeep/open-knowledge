@@ -491,6 +491,7 @@ describe('electron-builder wrapper execution', () => {
         readFileSync(join(fixture, '.variant-build/electron-builder.yml'), 'utf8'),
       );
       expect(generated.npmRebuild).toBe(target === '--linux' ? false : baseRebuild);
+      expect(generated.mac.notarize).toBe(false);
       if (target === '--mac') {
         const manifest = parseYaml(
           readFileSync(join(fixture, 'dist-desktop/latest-mac.yml'), 'utf8'),

@@ -324,12 +324,14 @@ mac:
     # stock Electron string, and misdescribes what is being granted.
     NSMicrophoneUsageDescription: >-
       A program running in OpenKnowledge's terminal wants to use the microphone.
-  # Notarization is invoked from `scripts/afterSign.mjs` per spec §8.9 (custom
-  # afterSign pipeline) — NOT electron-builder's built-in notarize. Setting
-  # `mac.notarize: true` would double-notarize. The afterSign script gates on
-  # env vars (APPLE_ID/APPLE_TEAM_ID/APPLE_APP_SPECIFIC_PASSWORD or
-  # APPLE_API_KEY triplet) and skips gracefully when absent — the unsigned
-  # smoke path for M2 scaffolding before cert procurement completes.
+  # Notarization runs in `scripts/afterSign.mjs` per spec §8.9 (custom afterSign
+  # pipeline). electron-builder's built-in notarize runs whenever this key is
+  # not `false` and APPLE_* credentials are set, so leaving it unset notarizes
+  # every signed build twice; `false` skips only the built-in step. afterSign
+  # takes one complete credential shape (Apple ID, API key, or keychain
+  # profile), skips notarize when none is set (the unsigned smoke path), and
+  # fails on a partial or mixed set.
+  notarize: false
   # Helper bundle for the detached server. Lands the Info.plist that
   # declares `LSUIElement=true` so macOS LaunchServices launches the
   # spawned server process without a Dock tile — without this, the
@@ -343,8 +345,9 @@ mac:
       to: Frameworks/OpenKnowledge Server.app/Contents/Info.plist
 
 dmg:
-  # `dmg.sign: true` is already the electron-builder default — kept explicit to
-  # document that we've thought about the unsigned path. `build:mac:unsigned`
+  # `dmg.sign` defaults to false in electron-builder 26 and dmg-builder signs
+  # only when it is exactly `true`, so this line is what signs the DMG. It is
+  # safe on the unsigned path: `build:mac:unsigned`
   # passes `-c.mac.identity=null`, which cascades: `dmg-builder/out/dmg.js:63-69`
   # reads `qualifier = packager.platformSpecificBuildOptions.identity` and
   # early-returns ("explicitly disabled if set to null") without attempting
