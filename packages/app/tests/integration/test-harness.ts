@@ -1198,6 +1198,8 @@ export async function createInspectableServer(
 }
 
 interface SystemDocSubscriberHandle {
+  provider: HocuspocusProvider;
+  whenRefreshed: () => Promise<void>;
   dispose: () => Promise<void>;
 }
 
@@ -1230,14 +1232,17 @@ export function attachSystemDocSubscriber(
     },
   });
 
+  let pendingRefresh = Promise.resolve();
   const onReconnectSynced = createSyncedReconnectGate(() => {
-    void refreshServerInfo(pool, baseUrl);
+    pendingRefresh = refreshServerInfo(pool, baseUrl);
   });
   provider.on('synced', () => {
     onReconnectSynced();
   });
 
   return {
+    provider,
+    whenRefreshed: () => pendingRefresh,
     dispose: async () => {
       provider.destroy();
       doc.destroy();
