@@ -31,6 +31,10 @@ interface NativeConptyFake {
   clear(...args: unknown[]): void;
 }
 
+interface ConptyTerminal extends IPty {
+  _agent: { inSocket: Socket; outSocket: Socket };
+}
+
 interface Scenario {
   backend: Backend;
   plan: AttachPlan;
@@ -43,7 +47,8 @@ interface Scenario {
   pseudoconsoles: number;
   connectCalls: number;
   nativeExit: ((exitCode: number) => void) | null;
-  terminals: IPty[];
+  terminals: ConptyTerminal[];
+  terminalSockets: Array<{ socket: Socket; closed: Promise<void> }>;
   nodePtyExit: { pid: number; exitCode: number | undefined } | null;
   onNativeConnect?: () => void;
 }
@@ -77,7 +82,11 @@ const { WindowsPtyAgent } = requireFromDesktop('node-pty/lib/windowsPtyAgent.js'
   WindowsPtyAgent: { prototype: { _getConsoleProcessList: () => Promise<number[]> } };
 };
 const { WindowsTerminal } = requireFromDesktop('node-pty/lib/windowsTerminal.js') as {
-  WindowsTerminal: new (file: string, args: string[] | string, options: PtySpawnOptions) => IPty;
+  WindowsTerminal: new (
+    file: string,
+    args: string[] | string,
+    options: PtySpawnOptions,
+  ) => ConptyTerminal;
 };
 const workerThreads = requireFromDesktop('node:worker_threads') as {
   Worker: typeof Worker;
@@ -178,11 +187,14 @@ async function openScenario(backend: Backend, plan: AttachPlan): Promise<Scenari
     connectCalls: 0,
     nativeExit: null,
     terminals: [],
+    terminalSockets: [],
     nodePtyExit: null,
   };
 }
 
 async function closeScenario(scenario: Scenario): Promise<void> {
+  for (const { socket } of scenario.terminalSockets) socket.destroy();
+  await Promise.all(scenario.terminalSockets.map(({ closed }) => closed));
   await Promise.all(spawnedWorkers.splice(0).map((worker) => worker.terminate()));
   for (const socket of scenario.conoutSockets) socket.destroy();
   await new Promise<void>((resolve) => scenario.conoutServer.close(() => resolve()));
@@ -204,6 +216,10 @@ function scenarioSpawn(scenario: Scenario): SpawnPty {
   return (file, args, options) => {
     const terminal = new WindowsTerminal(file, args, options);
     scenario.terminals.push(terminal);
+    for (const socket of [terminal._agent.inSocket, terminal._agent.outSocket]) {
+      const closed = new Promise<void>((resolve) => socket.once('close', () => resolve()));
+      scenario.terminalSockets.push({ socket, closed });
+    }
     terminal.onExit(({ exitCode }) => {
       scenario.nodePtyExit = { pid: terminal.pid, exitCode };
     });
@@ -521,6 +537,47 @@ describe.skipIf(process.platform === 'win32')(
           }),
         );
         expect(outcome.trace.map((entry) => entry.stage)).not.toContain('native-connect-failed');
+      });
+
+      test('finishes silent terminal output before stopping its worker', async () => {
+        await runTraced(backend, {
+          kind: 'attached-then-silent-exit',
+          shellPid: SILENT_SHELL_PID,
+          nativeExitCode: -1,
+        });
+        const current = activeScenario();
+        expect(current.nodePtyExit).toBeNull();
+        const exitsAtWorkerShutdown: Scenario['nodePtyExit'][] = [];
+        const observations = spawnedWorkers.map((worker) => {
+          const terminate = worker.terminate.bind(worker);
+          return vi.spyOn(worker, 'terminate').mockImplementation(() => {
+            exitsAtWorkerShutdown.push(current.nodePtyExit);
+            return terminate();
+          });
+        });
+        try {
+          await closeScenario(current);
+          scenario = null;
+        } finally {
+          for (const observation of observations) observation.mockRestore();
+        }
+        expect(exitsAtWorkerShutdown).toEqual([{ pid: SILENT_SHELL_PID, exitCode: undefined }]);
+      });
+
+      test('releases the silent terminal input when the scenario closes', async () => {
+        await runTraced(backend, {
+          kind: 'attached-then-silent-exit',
+          shellPid: SILENT_SHELL_PID,
+          nativeExitCode: -1,
+        });
+        const current = activeScenario();
+        const inputs = current.terminals.map((terminal) => terminal._agent.inSocket);
+        expect(inputs.map((input) => input.writable)).toEqual([true]);
+        const closedInputs = new Set<Socket>();
+        for (const input of inputs) input.once('close', () => closedInputs.add(input));
+        await closeScenario(current);
+        scenario = null;
+        expect(inputs.map((input) => closedInputs.has(input))).toEqual([true]);
       });
 
       test('startup diagnostics preserve a worker error observed before READY', async () => {
