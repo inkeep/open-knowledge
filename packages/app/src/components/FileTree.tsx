@@ -133,7 +133,6 @@ import {
   hasSupportedDocumentExtension,
   validateAndCoerceRenameDestination,
 } from '@/components/file-tree-rename-validation';
-import { revealActiveRow } from '@/components/file-tree-reveal';
 import {
   previewTabIdForTreePath,
   resolveFileTreeSelection,
@@ -1100,19 +1099,27 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     selectedFolderPath,
     navigationPath: activeNavigationPath,
   } = resolveFileTreeSelection(activeTarget, isNewTabActive ? null : activeDocName);
-  const baseActiveTreePath = selectedFilePath
-    ? docNameToTreePath(
-        selectedFilePath,
-        documents.find(
-          (d): d is DocumentEntry => isDocumentEntry(d) && d.docName === selectedFilePath,
-        )?.docExt,
-      )
+  const baseActiveTreeSelection: { treePath: string; selectionId: string } | null = selectedFilePath
+    ? {
+        treePath: docNameToTreePath(
+          selectedFilePath,
+          documents.find(
+            (d): d is DocumentEntry => isDocumentEntry(d) && d.docName === selectedFilePath,
+          )?.docExt,
+        ),
+        selectionId: docTabId(selectedFilePath),
+      }
     : selectedFolderPath
-      ? folderPathToTreeDirectoryPath(selectedFolderPath)
+      ? {
+          treePath: folderPathToTreeDirectoryPath(selectedFolderPath),
+          selectionId: folderTabId(selectedFolderPath),
+        }
       : activeTarget?.kind === 'asset'
-        ? activeTarget.assetPath
+        ? { treePath: activeTarget.assetPath, selectionId: assetTabId(activeTarget.assetPath) }
         : null;
+  const baseActiveTreePath = baseActiveTreeSelection?.treePath ?? null;
   const activeTreePath = creationDirCleared ? null : baseActiveTreePath;
+  const activeSelectionId = baseActiveTreeSelection?.selectionId ?? null;
 
   const handoffInstallStates = useInstalledAgents().states;
   const { dispatch: dispatchHandoff } = useHandoffDispatch();
@@ -1526,6 +1533,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     activeAncestorTreePathsSignature,
     suppressSelectionRef,
     treePathsSignature,
+    { activeSelectionId, ready: !loading },
   );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: setCreationDirCleared is a stable state setter; baseActiveTreePath is the sole trigger.
@@ -1537,12 +1545,6 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     creationDirClearedRef.current = creationDirCleared;
     for (const listener of handleListenersRef.current) listener();
   }, [creationDirCleared]);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: activeAncestorTreePathsSignature + treePathsSignature are re-run triggers — the row's visible index shifts when ancestors expand or the tree repopulates.
-  useEffect(() => {
-    if (loading || !activeTreePath) return;
-    revealActiveRow(model, activeTreePath);
-  }, [activeTreePath, activeAncestorTreePathsSignature, treePathsSignature, loading, model]);
 
   useEffect(() => {
     return model.subscribe(() => {

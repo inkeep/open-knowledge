@@ -1,10 +1,12 @@
 /** Exercises `render` + `userEvent` under the jsdom substrate (precedent #43). */
 
 import { FileTree } from '@pierre/trees';
-import { cleanup, render, screen } from '@testing-library/react';
+import { FileTree as PierreFileTree } from '@pierre/trees/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { Input } from '@/components/ui/input';
 import { revealActiveRow } from './file-tree-reveal';
 import { useSelectionMirror } from './use-selection-mirror';
 
@@ -20,12 +22,14 @@ interface StubItem {
   getFocusCount: () => number;
 }
 
-type ExpansionOnlyModel = Pick<StubModel, 'getItem' | 'getSelectedPaths' | 'getFocusedPath'>;
+type ExpansionOnlyModel = Omit<StubModel, 'addPath'>;
 
 interface StubModel {
   getItem: (path: string) => StubItem | null;
   getSelectedPaths: () => string[];
   getFocusedPath: () => string | null;
+  getFileTreeContainer: () => undefined;
+  scrollToPath: () => void;
   addPath: (path: string) => void;
 }
 
@@ -64,6 +68,8 @@ function makeStubModel(paths: string[]): StubModel {
         .filter(([, it]) => it.isSelected())
         .map(([p]) => p),
     getFocusedPath: () => focusedPath,
+    getFileTreeContainer: () => undefined,
+    scrollToPath: () => {},
     addPath,
   };
 }
@@ -86,6 +92,7 @@ function Harness({ initialPath, model }: { initialPath: string | null; model: Ha
     '',
     suppressSelectionRef,
     treePathsSignature,
+    { activeSelectionId: activeTreePath, ready: true },
   );
 
   return (
@@ -116,6 +123,45 @@ function Harness({ initialPath, model }: { initialPath: string | null; model: Ha
       <span data-testid="selected">{model.getSelectedPaths().join(',')}</span>
     </>
   );
+}
+
+function MountedMirror({
+  model,
+  activePath,
+  revision,
+  secondModel,
+}: {
+  model: FileTree;
+  activePath: string;
+  revision: string;
+  secondModel?: FileTree;
+}) {
+  const suppressSelectionRef = useRef(false);
+  useSelectionMirror(model, activePath, '', suppressSelectionRef, revision, {
+    activeSelectionId: activePath,
+    ready: true,
+  });
+  return (
+    <>
+      <Input aria-label="Editor control" />
+      <PierreFileTree model={model} />
+      {secondModel && <PierreFileTree model={secondModel} />}
+    </>
+  );
+}
+
+function mountedRow(model: FileTree, path: string): HTMLElement {
+  const row = model
+    .getFileTreeContainer()
+    ?.shadowRoot?.querySelector<HTMLElement>(`[role="treeitem"][data-item-path="${path}"]`);
+  if (!row) throw new Error(`Tree row is not mounted: ${path}`);
+  return row;
+}
+
+async function focusMountedRow(model: FileTree, path: string): Promise<void> {
+  await waitFor(() => mountedRow(model, path));
+  await act(async () => mountedRow(model, path).focus());
+  expect(model.getFileTreeContainer()?.shadowRoot?.activeElement).toBe(mountedRow(model, path));
 }
 
 describe('FileTree selection-mirror (Tier-3 mount)', () => {
@@ -221,6 +267,8 @@ describe('FileTree selection-mirror (Tier-3 mount)', () => {
           .filter(([, it]) => it.isSelected())
           .map(([p]) => p),
       getFocusedPath: () => null,
+      getFileTreeContainer: () => undefined,
+      scrollToPath: () => {},
     };
     function PartiallyHiddenHarness() {
       const suppressSelectionRef = useRef(false);
@@ -230,6 +278,8 @@ describe('FileTree selection-mirror (Tier-3 mount)', () => {
         'parent/.hidden-child.md',
         'parent/',
         suppressSelectionRef,
+        '',
+        { activeSelectionId: 'parent/child', ready: true },
       );
       return null;
     }
@@ -280,6 +330,8 @@ describe('FileTree selection-mirror (Tier-3 mount)', () => {
       getItem: (path: string) => items.get(path) ?? null,
       getSelectedPaths: () => [],
       getFocusedPath: () => null,
+      getFileTreeContainer: () => undefined,
+      scrollToPath: () => {},
     };
     function AncestorHarness() {
       const suppressSelectionRef = useRef(false);
@@ -289,6 +341,8 @@ describe('FileTree selection-mirror (Tier-3 mount)', () => {
         'parent/child.md',
         'parent/',
         suppressSelectionRef,
+        '',
+        { activeSelectionId: 'parent/child', ready: true },
       );
       return null;
     }
@@ -371,20 +425,109 @@ describe('FileTree selection-mirror (Tier-3 mount)', () => {
     expect(model.getSelectedPaths()).toEqual(['A.md']);
   });
 
-  test('an activation whose row appears only on a later repopulation claims keyboard focus', async () => {
-    const user = userEvent.setup();
-    const model = makeStubModel(['folder/', 'B.md']);
-    render(<Harness initialPath="A.md" model={model} />);
-
-    model.getItem('folder/')?.focus();
+  test('a late open row is selected without taking focus from the file tree', async () => {
+    const model = new FileTree({ paths: ['folder/', 'B.md'] });
+    const { rerender } = render(
+      <MountedMirror model={model} activePath="A.md" revision="before-arrival" />,
+    );
+    await focusMountedRow(model, 'folder/');
     expect(model.getFocusedPath()).toBe('folder/');
     expect(model.getSelectedPaths()).toEqual([]);
 
-    model.addPath('A.md');
-    await user.click(screen.getByTestId('repopulate'));
+    await act(async () => model.resetPaths(['folder/', 'A.md', 'B.md']));
+    rerender(<MountedMirror model={model} activePath="A.md" revision="after-arrival" />);
 
+    await waitFor(() => expect(model.getSelectedPaths()).toEqual(['A.md']));
+    expect(model.getFocusedPath()).toBe('folder/');
+    expect(model.getFileTreeContainer()?.shadowRoot?.activeElement).toBe(
+      mountedRow(model, 'folder/'),
+    );
+  });
+
+  test('a returning open row leaves keyboard focus on the file row in use', async () => {
+    const model = new FileTree({ paths: ['folder/', 'A.md', 'B.md'] });
+    const { rerender } = render(
+      <MountedMirror model={model} activePath="A.md" revision="initial" />,
+    );
+    await waitFor(() => expect(model.getSelectedPaths()).toEqual(['A.md']));
+    await act(async () => model.resetPaths(['folder/', 'B.md']));
+    rerender(<MountedMirror model={model} activePath="A.md" revision="missing" />);
+    await focusMountedRow(model, 'folder/');
+
+    await act(async () => model.resetPaths(['folder/', 'A.md', 'B.md']));
+    rerender(<MountedMirror model={model} activePath="A.md" revision="returned" />);
+
+    await waitFor(() => expect(model.getSelectedPaths()).toEqual(['A.md']));
+    expect(model.getFocusedPath()).toBe('folder/');
+    expect(model.getFileTreeContainer()?.shadowRoot?.activeElement).toBe(
+      mountedRow(model, 'folder/'),
+    );
+  });
+
+  test('a late open row becomes the entry point while editor focus stays outside', async () => {
+    const model = new FileTree({ paths: ['folder/', 'B.md'] });
+    const { rerender } = render(
+      <MountedMirror model={model} activePath="A.md" revision="before-arrival" />,
+    );
+    await focusMountedRow(model, 'folder/');
+    const editor = screen.getByRole('textbox', { name: 'Editor control' });
+    await act(async () => editor.focus());
+
+    await act(async () => model.resetPaths(['folder/', 'A.md', 'B.md']));
+    rerender(<MountedMirror model={model} activePath="A.md" revision="after-arrival" />);
+
+    await waitFor(() => expect(model.getSelectedPaths()).toEqual(['A.md']));
     expect(model.getFocusedPath()).toBe('A.md');
-    expect(model.getSelectedPaths()).toEqual(['A.md']);
+    expect(document.activeElement).toBe(editor);
+  });
+
+  test('a late open row leaves a second tree in control of DOM focus', async () => {
+    const model = new FileTree({ paths: ['folder/', 'B.md'] });
+    const secondModel = new FileTree({ paths: ['Project/skill.md'] });
+    const { rerender } = render(
+      <MountedMirror
+        model={model}
+        activePath="A.md"
+        revision="before-arrival"
+        secondModel={secondModel}
+      />,
+    );
+    await focusMountedRow(secondModel, 'Project/');
+
+    await act(async () => model.resetPaths(['folder/', 'A.md', 'B.md']));
+    rerender(
+      <MountedMirror
+        model={model}
+        activePath="A.md"
+        revision="after-arrival"
+        secondModel={secondModel}
+      />,
+    );
+
+    await waitFor(() => expect(model.getSelectedPaths()).toEqual(['A.md']));
+    expect(model.getFocusedPath()).toBe('A.md');
+    expect(document.activeElement).toBe(secondModel.getFileTreeContainer());
+    expect(secondModel.getFileTreeContainer()?.shadowRoot?.activeElement).toBe(
+      mountedRow(secondModel, 'Project/'),
+    );
+  });
+
+  test('a true activation focuses its row while the file tree owns DOM focus', async () => {
+    const model = new FileTree({ paths: ['folder/', 'A.md', 'B.md'] });
+    const { rerender } = render(
+      <MountedMirror model={model} activePath="A.md" revision="initial" />,
+    );
+    await focusMountedRow(model, 'folder/');
+
+    rerender(<MountedMirror model={model} activePath="B.md" revision="initial" />);
+
+    await waitFor(() => expect(model.getSelectedPaths()).toEqual(['B.md']));
+    expect(model.getFocusedPath()).toBe('B.md');
+    await waitFor(() =>
+      expect(model.getFileTreeContainer()?.shadowRoot?.activeElement).toBe(
+        mountedRow(model, 'B.md'),
+      ),
+    );
   });
 
   test('re-activating a document after the active path was cleared claims keyboard focus', async () => {
