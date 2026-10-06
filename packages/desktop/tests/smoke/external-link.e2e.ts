@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
@@ -72,6 +73,7 @@ test.describe('external-link safety-net delegation', () => {
     }).toPass({ timeout: 15_000 });
 
     if (!editorPage) throw new Error('unreachable');
+    await configureDesktopGitRepositories(editorPage, projectDir);
 
     await editorPage.evaluate(() => {
       window.open('https://github.com/inkeep/open-knowledge', '_blank', 'noopener,noreferrer');

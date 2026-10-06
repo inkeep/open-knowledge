@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, test } from 'vitest';
-import { createGitTriangle, type GitTriangle } from './git-fixture.test-helper.ts';
+import {
+  createGitTriangle,
+  type GitTriangle,
+} from '../../tests/support/git-fixture.test-helper.ts';
 import { computeShareTargetStatus } from './target-status.ts';
 
 const triangles: GitTriangle[] = [];

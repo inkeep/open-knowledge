@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig } from './composition-rig.test-helper.ts';
 import { getWatcherDecisionRingSnapshot } from './file-watcher.ts';
@@ -35,6 +36,7 @@ beforeEach(() => {
       GIT_CONFIG_NOSYSTEM: '1',
     },
   });
+  configureTestGitRepository(root);
 });
 
 afterEach(async () => {

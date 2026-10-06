@@ -11,6 +11,7 @@ import type { AddressInfo } from 'node:net';
 import { devNull } from 'node:os';
 import { join } from 'node:path';
 import type { Duplex } from 'node:stream';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 
 export const GITHUB_HOST = 'github.com';
 
@@ -324,6 +325,7 @@ export async function startGitHubStandIn(options: {
       execFileSync('git', ['init', '--quiet', '--bare', '--initial-branch=main', repository], {
         env: hermeticGitEnv(repositoriesRoot),
       });
+      configureTestGitRepository(repository);
     }
   }
   const certificates = throwawayGitHubCertificates([...hosts.keys()]);

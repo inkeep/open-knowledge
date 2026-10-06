@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { createTestConflictAuthority } from './conflict-authority.test-helper.ts';
 import { SyncEngine } from './sync-engine.ts';
 
@@ -48,6 +49,7 @@ beforeEach(async () => {
   mkdirSync(okDir, { recursive: true });
   const git = simpleGit(projectDir);
   await git.init(['--initial-branch=main']);
+  configureTestGitRepository(projectDir);
   await git.raw('config', 'user.name', 'Test');
   await git.raw('config', 'user.email', 'test@test.com');
 });

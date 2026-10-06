@@ -3,8 +3,11 @@ import type { AddressInfo, Socket } from 'node:net';
 import { join } from 'node:path';
 import { decodeShareUrl } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
+import {
+  createGitTriangle,
+  type GitTriangle,
+} from '../../tests/support/git-fixture.test-helper.ts';
 import { bootEndpointServer, type EndpointRig } from './endpoint-http.test-helper.ts';
-import { createGitTriangle, type GitTriangle } from './git-fixture.test-helper.ts';
 import { declareGitHubHosts, useIsolatedHome } from './git-host-declarations.test-helper.ts';
 import { computeShareTargetStatus } from './target-status.ts';
 

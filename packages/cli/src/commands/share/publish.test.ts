@@ -1,11 +1,24 @@
 import { execSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Octokit } from '@octokit/rest';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { classifyOctokitError, runPublishFlow, sharePublishCommand } from './publish.ts';
+import { configureTestGitRepository } from '../../../../../test-support/configure-git-fixture.test-helper.ts';
+import {
+  classifyOctokitError,
+  runPublishFlow as runPublishFlowProduct,
+  sharePublishCommand,
+} from './publish.ts';
+
+async function runPublishFlow(...args: Parameters<typeof runPublishFlowProduct>) {
+  const result = await runPublishFlowProduct(...args);
+  if (existsSync(join(args[0].projectDir, '.git', 'config'))) {
+    configureTestGitRepository(args[0].projectDir);
+  }
+  return result;
+}
 
 interface FakeOctokitOptions {
   authLogin?: string;
@@ -221,7 +234,9 @@ describe('runPublishFlow (error branches)', () => {
   test('idempotent retry: 422 + existing-repo-at-owner proceeds to push (e2e)', async () => {
     const bareRepo = mkdtempSync(join(tmpdir(), 'ok-share-publish-retry-bare-'));
     execSync('git init --bare', { cwd: bareRepo, stdio: 'ignore' });
+    configureTestGitRepository(bareRepo);
     execSync('git init', { cwd: tmpDir, stdio: 'ignore' });
+    configureTestGitRepository(tmpDir);
     execSync('git config user.name Test', { cwd: tmpDir });
     execSync('git config user.email test@example.com', { cwd: tmpDir });
     writeFileSync(join(tmpDir, 'README.md'), '# Hello\n', 'utf-8');
@@ -301,8 +316,10 @@ describe('runPublishFlow (e2e against bare repo)', () => {
     mkdirSync(projectDir, { recursive: true });
     mkdirSync(bareRepo, { recursive: true });
     execSync('git init --bare', { cwd: bareRepo, stdio: 'ignore' });
+    configureTestGitRepository(bareRepo);
     writeFileSync(join(projectDir, 'README.md'), '# Hello\n', 'utf-8');
     execSync('git init', { cwd: projectDir, stdio: 'ignore' });
+    configureTestGitRepository(projectDir);
     execSync('git config user.name Test', { cwd: projectDir });
     execSync('git config user.email test@example.com', { cwd: projectDir });
   });

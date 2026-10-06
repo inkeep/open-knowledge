@@ -5,10 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { type ElectronApplication, _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { PLATFORM_SKIP_REASON, PLATFORM_SUPPORTED, SMOKE_ENABLED } from './_helpers/platform-gate';
 import { waitForEditorSelection } from './_helpers/settings-surface';
-import { expect, test } from './_helpers/smoke-test';
+import { expect, type SmokeFixtures, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
 
@@ -300,7 +301,7 @@ async function executeRace(opts: {
 
 async function setupElectron(
   variantTag: string,
-  captureStderrFor: (app: ElectronApplication) => void,
+  captureStderrFor: SmokeFixtures['captureStderrFor'],
 ): Promise<{
   app: ElectronApplication;
   page: import('@playwright/test').Page;
@@ -338,7 +339,7 @@ async function setupElectron(
       timeout: 30_000,
     }),
   );
-  captureStderrFor(app);
+  captureStderrFor(app, { cleanupDirs: [contentDir, userDataDir] });
 
   const expectedHashSuffix = `#/${docName}`;
   let page: import('@playwright/test').Page | undefined;
@@ -357,6 +358,7 @@ async function setupElectron(
   await expect(
     page.locator('.ProseMirror[contenteditable="true"]:not(.composer-prosemirror)'),
   ).toContainText(AGENT_FIND, { timeout: 30_000 });
+  await configureDesktopGitRepositories(page, contentDir);
 
   const { port } = await detectApiPort(page);
 

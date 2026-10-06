@@ -16,6 +16,8 @@ import { shellSingleQuote } from '@inkeep/open-knowledge-core';
 import { UnsafeIncomingSymlinkError } from '@inkeep/open-knowledge-server';
 import simpleGit, { GitPluginError, type SimpleGitOptions } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
+import { startGitHubStandIn } from '../../tests/support/github-stand-in.test-helper.ts';
 import type { GhDetectResult } from '../auth/gh-detect.ts';
 import { FileBackend } from '../auth/token-store.ts';
 import {
@@ -25,9 +27,14 @@ import {
   buildCloneGitOptions,
   handleCloneFailure,
   resolveCloneAuth,
-  runClone,
+  runClone as runCloneProduct,
 } from './clone.ts';
-import { startGitHubStandIn } from './github-stand-in.test-helper.ts';
+
+async function runClone(...args: Parameters<typeof runCloneProduct>) {
+  const target = await runCloneProduct(...args);
+  configureTestGitRepository(target);
+  return target;
+}
 
 const relayTokenGh = (): GhDetectResult => ({ available: true, token: 'ghs_relay_probe' });
 
@@ -44,6 +51,7 @@ function seedBareRepo(bareDir: string, readme: string): void {
   mkdirSync(seedDir, { recursive: true });
   const git = (cwd: string, args: string[]) => execFileSync('git', args, { cwd, stdio: 'ignore' });
   git(seedDir, ['init', '--initial-branch=main']);
+  configureTestGitRepository(seedDir);
   writeFileSync(join(seedDir, 'README.md'), readme, 'utf-8');
   git(seedDir, ['add', 'README.md']);
   git(seedDir, [
@@ -58,6 +66,7 @@ function seedBareRepo(bareDir: string, readme: string): void {
     'seed',
   ]);
   git(dirname(bareDir), ['clone', '--bare', seedDir, bareDir]);
+  configureTestGitRepository(bareDir);
 }
 
 function writeCredentialHelper(helperPath: string, reply: string): string {
@@ -386,6 +395,7 @@ describe('ok clone checks symlinks before checking anything out', () => {
     const git = (args: string[], input?: string) =>
       execFileSync('git', args, { cwd: seedDir, input, encoding: 'utf-8' });
     git(['init', '--initial-branch=main']);
+    configureTestGitRepository(seedDir);
     writeFileSync(join(seedDir, 'README.md'), '# seeded\n', 'utf-8');
     git(['add', 'README.md']);
     for (const [path, target] of Object.entries(links)) {
@@ -407,6 +417,7 @@ describe('ok clone checks symlinks before checking anything out', () => {
       cwd: dirname(bareDir),
       stdio: 'ignore',
     });
+    configureTestGitRepository(bareDir);
   }
 
   beforeEach(() => {
@@ -498,6 +509,7 @@ describe('ok clone checks symlinks before checking anything out', () => {
       cwd: bareDir,
       stdio: 'ignore',
     });
+    configureTestGitRepository(bareDir);
 
     await expect(
       runClone(

@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { configureTestGitRepository } from '../../../../../test-support/configure-git-fixture.test-helper.ts';
 import { sharingShareCommand } from './share.ts';
 import { sharingStatusCommand } from './status.ts';
 import { sharingUnshareCommand } from './unshare.ts';
@@ -17,6 +18,7 @@ function initGitRepo(dir: string): void {
     cwd: dir,
     stdio: ['ignore', 'ignore', 'ignore'],
   });
+  configureTestGitRepository(dir);
   execFileSync('git', ['config', 'user.email', 't@e.com'], { cwd: dir });
   execFileSync('git', ['config', 'user.name', 'T'], { cwd: dir });
 }

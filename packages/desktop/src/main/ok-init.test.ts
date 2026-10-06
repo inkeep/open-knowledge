@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { runOkInit } from './ok-init.ts';
 
 const execFileAsync = promisify(execFile);
@@ -60,6 +61,7 @@ describe('runOkInit', () => {
   test('scaffolds .ok/ inside a main-checkout git directory', async () => {
     testRoot = realpathSync(mkdtempSync(join(tmpdir(), 'ok-init-main-')));
     await git(testRoot, 'init', '--initial-branch=main', '.');
+    configureTestGitRepository(testRoot);
     const result = await runOkInit(testRoot);
     expect(result.ok).toBe(true);
     if (result.ok === true) {
@@ -75,6 +77,7 @@ describe('runOkInit', () => {
     const mainRepo = join(testRoot, 'main');
     mkdirSync(mainRepo);
     await git(mainRepo, 'init', '--initial-branch=main', '.');
+    configureTestGitRepository(mainRepo);
     await git(mainRepo, 'config', 'user.email', 'test@example.com');
     await git(mainRepo, 'config', 'user.name', 'Test');
     writeFileSync(join(mainRepo, 'README.md'), '# main\n');
@@ -82,6 +85,7 @@ describe('runOkInit', () => {
     await git(mainRepo, 'commit', '-m', 'initial');
     const wt = join(testRoot, 'wt-feat');
     await git(mainRepo, 'worktree', 'add', '-b', 'feat', wt);
+    configureTestGitRepository(wt);
     const result = await runOkInit(wt);
     expect(result.ok).toBe(true);
     if (result.ok === true) {
@@ -93,6 +97,7 @@ describe('runOkInit', () => {
   test('idempotent on already-initialized projects (no rewrite)', async () => {
     testRoot = realpathSync(mkdtempSync(join(tmpdir(), 'ok-init-main-')));
     await git(testRoot, 'init', '--initial-branch=main', '.');
+    configureTestGitRepository(testRoot);
     const first = await runOkInit(testRoot);
     expect(first.ok).toBe(true);
     const configPath = join(testRoot, '.ok', 'config.yml');
@@ -107,6 +112,7 @@ describe('runOkInit', () => {
   test('coalesces concurrent calls on the same path', async () => {
     testRoot = realpathSync(mkdtempSync(join(tmpdir(), 'ok-init-main-')));
     await git(testRoot, 'init', '--initial-branch=main', '.');
+    configureTestGitRepository(testRoot);
     const [a, b, c] = await Promise.all([
       runOkInit(testRoot),
       runOkInit(testRoot),
@@ -121,6 +127,7 @@ describe('runOkInit', () => {
   test('returns canonical realpath in result', async () => {
     testRoot = realpathSync(mkdtempSync(join(tmpdir(), 'ok-init-main-')));
     await git(testRoot, 'init', '--initial-branch=main', '.');
+    configureTestGitRepository(testRoot);
     const result = await runOkInit(testRoot);
     expect(result.ok).toBe(true);
     if (result.ok === true) {

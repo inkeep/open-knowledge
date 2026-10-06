@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { removeTempDirBestEffort } from '../support/temp-dir-cleanup.test-helper';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { waitForWindowByMode } from './_helpers/launch-readiness';
@@ -173,6 +174,7 @@ test.describe('Terminal clickable links — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.projectDir);
     await stubOpenExternal(app);
     await openRunningTerminal(app, page);
 
@@ -193,6 +195,7 @@ test.describe('Terminal clickable links — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.projectDir);
     await openRunningTerminal(app, page);
 
     await runInTerminal(page, SHELL_COMMANDS.output('notes.md'), 'notes.md');

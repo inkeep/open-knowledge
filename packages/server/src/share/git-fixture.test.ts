@@ -1,7 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { afterEach, describe, expect, test } from 'vitest';
-import { createGitTriangle, type GitTriangle } from './git-fixture.test-helper.ts';
+import {
+  createGitTriangle,
+  type GitTriangle,
+} from '../../tests/support/git-fixture.test-helper.ts';
 
 const triangles: GitTriangle[] = [];
 

@@ -38,6 +38,7 @@ import {
 
 const PUBLISHED_CHAIN_ENTRY = { command: '/bin/sh', args: ['-l', '-c', CHAIN_V2] } as const;
 
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   createTomlConfigEngine,
   setTomlConfigEngineForTesting,
@@ -59,12 +60,20 @@ import {
   resolveMcpScope,
   resolveRequestedContentDir,
   resolveSharingMode,
-  runInit,
+  runInit as runInitProduct,
   writeEditorMcpConfig,
   writeUserMcpConfigs,
 } from './init.ts';
 
 const NATIVE_TOML_AVAILABLE = createTomlConfigEngine().backend === 'native';
+
+async function runInit(...args: Parameters<typeof runInitProduct>) {
+  const result = await runInitProduct(...args);
+  if (result.didGitInit || existsSync(join(result.projectRoot, '.git', 'config'))) {
+    configureTestGitRepository(result.projectRoot);
+  }
+  return result;
+}
 
 describe('runInit', () => {
   let testDir: string;
@@ -1672,6 +1681,7 @@ describe('runInit — projectRoot threading', () => {
     const sub = join(repo, 'sub');
     mkdirSync(sub, { recursive: true });
     Bun.spawnSync({ cmd: ['git', 'init', '-q', repo], stdout: 'ignore', stderr: 'ignore' });
+    configureTestGitRepository(repo);
     expect(existsSync(join(repo, '.git'))).toBe(true);
 
     const result = await runInit({
@@ -1695,6 +1705,7 @@ describe('runInit — projectRoot threading', () => {
     const repo = join(fakeHome, 'flat-repo');
     mkdirSync(repo, { recursive: true });
     Bun.spawnSync({ cmd: ['git', 'init', '-q', repo], stdout: 'ignore', stderr: 'ignore' });
+    configureTestGitRepository(repo);
 
     const result = await runInit({
       cwd: repo,
@@ -1716,6 +1727,7 @@ describe('runInit — projectRoot threading', () => {
     const sub = join(repo, 'subdir');
     mkdirSync(sub, { recursive: true });
     Bun.spawnSync({ cmd: ['git', 'init', '-q', repo], stdout: 'ignore', stderr: 'ignore' });
+    configureTestGitRepository(repo);
 
     const result = await runInit({
       cwd: sub,
@@ -1736,6 +1748,7 @@ describe('runInit — projectRoot threading', () => {
     const sub = join(repo, 'notes');
     mkdirSync(sub, { recursive: true });
     Bun.spawnSync({ cmd: ['git', 'init', '-q', repo], stdout: 'ignore', stderr: 'ignore' });
+    configureTestGitRepository(repo);
 
     const result = await runInit({
       cwd: sub,
@@ -1761,6 +1774,7 @@ describe('runInit — projectRoot threading', () => {
     const nested = join(repo, 'docs', 'guides');
     mkdirSync(nested, { recursive: true });
     Bun.spawnSync({ cmd: ['git', 'init', '-q', repo], stdout: 'ignore', stderr: 'ignore' });
+    configureTestGitRepository(repo);
 
     const result = await runInit({
       cwd: repo,
@@ -1780,6 +1794,7 @@ describe('runInit — projectRoot threading', () => {
     const repo = join(fakeHome, 'repo-cd-escape');
     mkdirSync(repo, { recursive: true });
     Bun.spawnSync({ cmd: ['git', 'init', '-q', repo], stdout: 'ignore', stderr: 'ignore' });
+    configureTestGitRepository(repo);
 
     await expect(
       runInit({
@@ -1798,6 +1813,7 @@ describe('runInit — projectRoot threading', () => {
     const sub = join(repo, 'notes');
     mkdirSync(sub, { recursive: true });
     Bun.spawnSync({ cmd: ['git', 'init', '-q', repo], stdout: 'ignore', stderr: 'ignore' });
+    configureTestGitRepository(repo);
 
     await runInit({
       cwd: repo,
@@ -1829,6 +1845,7 @@ describe('runInit — projectRoot threading', () => {
     const repo = join(fakeHome, 'repo-scaffold-fail');
     mkdirSync(repo, { recursive: true });
     Bun.spawnSync({ cmd: ['git', 'init', '-q', repo], stdout: 'ignore', stderr: 'ignore' });
+    configureTestGitRepository(repo);
     const base = await runInit({
       cwd: repo,
       home: fakeHome,
@@ -1858,6 +1875,7 @@ describe('runInit — projectRoot threading', () => {
     const sub = join(repo, 'notes');
     mkdirSync(sub, { recursive: true });
     Bun.spawnSync({ cmd: ['git', 'init', '-q', repo], stdout: 'ignore', stderr: 'ignore' });
+    configureTestGitRepository(repo);
 
     const result = await runInit({
       cwd: sub,
@@ -1883,6 +1901,7 @@ describe('runInit — projectRoot threading', () => {
     const repo = join(fakeHome, 'repo-json-previewerr');
     mkdirSync(repo, { recursive: true });
     Bun.spawnSync({ cmd: ['git', 'init', '-q', repo], stdout: 'ignore', stderr: 'ignore' });
+    configureTestGitRepository(repo);
     const base = await runInit({
       cwd: repo,
       home: fakeHome,
@@ -1902,6 +1921,7 @@ describe('runInit — projectRoot threading', () => {
     const repo = join(fakeHome, 'repo-json-flat');
     mkdirSync(repo, { recursive: true });
     Bun.spawnSync({ cmd: ['git', 'init', '-q', repo], stdout: 'ignore', stderr: 'ignore' });
+    configureTestGitRepository(repo);
 
     const result = await runInit({
       cwd: repo,

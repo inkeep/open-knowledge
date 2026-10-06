@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   formatContributorsFrom,
   recordContributor,
@@ -17,6 +18,7 @@ async function bootstrap(): Promise<string> {
   projectDir = mkdtempSync(join(tmpdir(), 'ok-summary-e2e-'));
   const git = simpleGit(projectDir);
   await git.init();
+  configureTestGitRepository(projectDir);
   await git.raw('config', 'user.name', 'Test');
   await git.raw('config', 'user.email', 't@t.test');
   const contentDir = resolve(projectDir, 'content');

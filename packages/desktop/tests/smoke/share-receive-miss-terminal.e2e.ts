@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } fro
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { PLATFORM_SKIP_REASON, PLATFORM_SUPPORTED } from './_helpers/platform-gate';
 import { expect, type SmokeFixtures, test } from './_helpers/smoke-test';
@@ -100,9 +101,11 @@ function setupDeletedTargetFixture(options: MissFixtureOptions = {}): MissFixtur
 
   mkdirSync(originDir);
   git(originDir, 'init', '--bare', '--initial-branch=main');
+  configureTestGitRepository(originDir);
 
   mkdirSync(seedDir);
   git(seedDir, 'init', '--initial-branch=main');
+  configureTestGitRepository(seedDir);
   git(seedDir, 'config', 'user.email', 'test@example.com');
   git(seedDir, 'config', 'user.name', 'Test');
   git(seedDir, 'remote', 'add', 'origin', originDir);
@@ -122,6 +125,7 @@ function setupDeletedTargetFixture(options: MissFixtureOptions = {}): MissFixtur
   git(seedDir, 'push', 'origin', 'main');
 
   git(root, 'clone', originDir, receiverDir);
+  configureTestGitRepository(receiverDir);
   return { root, receiver: realpathSync(receiverDir), docPath };
 }
 

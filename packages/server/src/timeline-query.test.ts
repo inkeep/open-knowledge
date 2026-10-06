@@ -7,6 +7,7 @@ import { templateContentDocName } from '@inkeep/open-knowledge-core';
 import { formatOkActor, type OkActorEntry } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { getLogger } from './logger.ts';
 import {
   appendRenameLogEntry,
@@ -110,6 +111,7 @@ async function setup() {
 
   const git = simpleGit(projectRoot);
   await git.init();
+  configureTestGitRepository(projectRoot);
   await git.raw('config', 'user.name', 'Test');
   await git.raw('config', 'user.email', 'test@test.com');
 

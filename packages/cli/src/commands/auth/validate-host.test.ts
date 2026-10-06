@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../../../test-support/configure-git-fixture.test-helper.ts';
 import { error as errorColor } from '../../ui/colors.ts';
 import { gitHubHostRejection, resolveAuthHost, validateGitHubHost } from './validate-host.ts';
 
@@ -119,6 +120,7 @@ describe('validateGitHubHost', () => {
 
 function seedOrigin(projectDir: string, url: string): void {
   execFileSync('git', ['init', '-q'], { cwd: projectDir });
+  configureTestGitRepository(projectDir);
   execFileSync('git', ['remote', 'add', 'origin', url], { cwd: projectDir });
 }
 
@@ -213,6 +215,7 @@ describe('resolveAuthHost', () => {
 
   test('no remote at all resolves to github.com so a local project can still publish', () => {
     execFileSync('git', ['init', '-q'], { cwd: projectDir });
+    configureTestGitRepository(projectDir);
     expect(resolveAuthHost(undefined, projectDir)).toBe('github.com');
   });
 

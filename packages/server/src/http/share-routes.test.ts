@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { makeCaptureRes, makeSyntheticReq } from '../composition-rig.test-helper.ts';
 import { loggerFactory } from '../logger.ts';
 import { useIsolatedHome } from '../share/git-host-declarations.test-helper.ts';
@@ -85,6 +86,7 @@ describe('createShareRoutes table', () => {
     const git = (...args: string[]) => execFileSync('git', args, { cwd: projectDir });
     try {
       git('init', '--initial-branch=main');
+      configureTestGitRepository(projectDir);
       git('remote', 'add', 'origin', 'https://ghes.example.com/team/kb.git');
       mkdirSync(join(home(), '.ok'));
       const config = join(home(), '.ok', 'global.yml');

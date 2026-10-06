@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { ElectronApplication, JSHandle, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { CHROME_BG } from '../../src/main/window-chrome.ts';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import {
   homeEnv,
@@ -127,6 +128,7 @@ test.describe('Windows/Linux window chrome smoke', () => {
     if (process.platform === 'win32') {
       expect(overlay.visible).toBe(true);
     }
+    await configureDesktopGitRepositories(editor, projectDir);
   });
 });
 
@@ -143,6 +145,7 @@ test.describe('Editor header drag-region smoke', () => {
     captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
 
     const editor = await findEditorWindow(app);
+    await configureDesktopGitRepositories(editor, projectDir);
     const filesToggle = editor
       .locator('[data-editor-header-leading-actions]')
       .locator('[data-sidebar="trigger"]');

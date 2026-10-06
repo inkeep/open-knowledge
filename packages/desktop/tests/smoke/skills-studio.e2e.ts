@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { expect, test } from './_helpers/smoke-test';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -55,6 +56,7 @@ test.describe('Skills Studio', () => {
       }
       throw new Error('project window never mounted from the argv deep-link');
     })();
+    await configureDesktopGitRepositories(page, projectDir);
 
     await page.getByTestId('header-settings-button').click();
 

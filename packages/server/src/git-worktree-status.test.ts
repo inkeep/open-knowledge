@@ -14,6 +14,7 @@ import { delimiter, join } from 'node:path';
 import type { GitWorktreeOpenTarget } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import type { PorcelainEntry } from './git-paths.ts';
 import { parsePorcelainEntries } from './git-paths.ts';
 import {
@@ -212,11 +213,13 @@ describe('readIncomingEntries', () => {
   async function projectBehindOrigin() {
     const bare = join(dir, 'bare.git');
     await simpleGit().init(true, [bare]);
+    configureTestGitRepository(bare);
     await simpleGit(bare).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
     const project = join(dir, 'project');
     const git = simpleGit();
     await git.clone(bare, project);
+    configureTestGitRepository(project);
     const pg = simpleGit(project);
     await pg.raw('config', 'user.name', 'Test');
     await pg.raw('config', 'user.email', 'test@test.com');
@@ -227,6 +230,7 @@ describe('readIncomingEntries', () => {
 
     const sister = join(dir, 'sister');
     await simpleGit().clone(bare, sister);
+    configureTestGitRepository(sister);
     const sg = simpleGit(sister);
     await sg.raw('config', 'user.name', 'Sister');
     await sg.raw('config', 'user.email', 'sister@test.com');
@@ -280,6 +284,7 @@ describe('readIncomingEntries', () => {
     const solo = join(dir, 'solo');
     const git = simpleGit();
     await git.init(false, [solo]);
+    configureTestGitRepository(solo);
     const sg = simpleGit(solo);
     await sg.raw('config', 'user.name', 'Test');
     await sg.raw('config', 'user.email', 'test@test.com');
@@ -337,6 +342,7 @@ describe('readWorktreeStatus open-target stamping', () => {
     const project = join(dir, 'project');
     const git = simpleGit();
     await git.init(false, [project]);
+    configureTestGitRepository(project);
     const pg = simpleGit(project);
     await pg.raw('config', 'user.name', 'Test');
     await pg.raw('config', 'user.email', 'test@test.com');
@@ -360,6 +366,7 @@ describe('readWorktreeStatus open-target stamping', () => {
   test('omits every open target when no mapper is supplied', async () => {
     const project = join(dir, 'project');
     await simpleGit().init(false, [project]);
+    configureTestGitRepository(project);
     const pg = simpleGit(project);
     await pg.raw('config', 'user.name', 'Test');
     await pg.raw('config', 'user.email', 'test@test.com');
@@ -395,6 +402,7 @@ describe('readWorktreeStatus — an unreadable tree is representable', () => {
   test('a real repo reports readable: true', async () => {
     const g = simpleGit(dir);
     await g.init(['--initial-branch=main']);
+    configureTestGitRepository(dir);
     await g.raw('config', 'user.email', 't@e.com');
     await g.raw('config', 'user.name', 'T');
     writeFileSync(join(dir, 'a.md'), 'x\n');
@@ -420,6 +428,7 @@ describe('readWorktreeStatus — the panel listing is trustworthy', () => {
     mkdirSync(project, { recursive: true });
     const g = simpleGit(project);
     await g.init(['--initial-branch=main']);
+    configureTestGitRepository(project);
     await g.raw('config', 'user.name', 'Test');
     await g.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(project, 'seed.md'), 'v1\n');
@@ -474,6 +483,7 @@ describe('readWorktreeStatus — the panel listing is trustworthy', () => {
     const bare = join(dir, 'bare.git');
     mkdirSync(bare, { recursive: true });
     await simpleGit(bare).init(true);
+    configureTestGitRepository(bare);
     await simpleGit(bare).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
     const g = simpleGit(project);
     await g.addRemote('origin', bare);
@@ -620,6 +630,7 @@ describe('readWorktreeStatus — the panel listing is trustworthy', () => {
     mkdirSync(project, { recursive: true });
     const g = simpleGit(project);
     await g.init(['--initial-branch=main']);
+    configureTestGitRepository(project);
     writeFileSync(join(project, 'a.md'), 'x\n');
     const logger = getLogger('git-worktree-status');
     const warned: Record<string, unknown>[] = [];

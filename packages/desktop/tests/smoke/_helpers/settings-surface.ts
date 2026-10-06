@@ -11,10 +11,12 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ElectronApplication, _electron as electron, type Page } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../../support/git-fixture.test-helper.ts';
 import { captureAppProcess, closeAppBounded } from './electron-cleanup';
 import { type DesktopTarget, desktopLaunchOptions, resolveDesktopTarget } from './launch-desktop';
 import { seedMcpConsentComplete } from './mcp-consent';
 import { homeEnv, userDataDirFor } from './platform-gate';
+import { findProjectEditorWindow } from './project-editor-window';
 import { expect } from './smoke-test';
 
 export interface SeededProjectProfile {
@@ -144,6 +146,7 @@ export async function openSpellingSettings(
 ): Promise<SpellingSettingsSession> {
   const app = await launchOnSeededProfile(profile, options);
   const editor = await findEditorWindow(app);
+  await configureDesktopGitRepositories(editor, profile.projectDir);
   await options.beforeSettings?.(app, editor);
   await openSettingsDialog(editor);
   await showUserPreferences(editor);
@@ -239,29 +242,18 @@ export async function findEditorWindowForProject(
   projectPath: string,
   timeoutMs = 45_000,
 ): Promise<Page> {
-  const readProject = (page: Page): Promise<string | undefined> =>
-    page
-      .evaluate(() =>
-        window.okDesktop?.config?.mode === 'editor'
-          ? window.okDesktop.config.projectPath
-          : undefined,
-      )
-      .catch(() => undefined);
   await expect
-    .poll(
-      async () => {
-        for (const page of app.windows()) {
-          if ((await readProject(page)) === projectPath) return true;
-        }
-        return false;
-      },
-      { timeout: timeoutMs, message: `no editor window opened on ${projectPath}` },
-    )
+    .poll(async () => (await findProjectEditorWindow(app, projectPath)) !== undefined, {
+      timeout: timeoutMs,
+      message: `no editor window opened on ${projectPath}`,
+    })
     .toBe(true);
-  for (const page of app.windows()) {
-    if ((await readProject(page)) === projectPath) return page;
+  const page = await findProjectEditorWindow(app, projectPath);
+  if (page === undefined) {
+    throw new Error(`the window on ${projectPath} vanished between poll resolution and read`);
   }
-  throw new Error(`the window on ${projectPath} vanished between poll resolution and read`);
+  await configureDesktopGitRepositories(page, projectPath);
+  return page;
 }
 
 export async function openProjectFromRecents(editor: Page, projectPath: string): Promise<void> {

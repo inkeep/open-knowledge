@@ -17,7 +17,7 @@ const GITHUB_REPOSITORY = 'https://github.com/inkeep/open-knowledge';
 process.env.LOG_LEVEL ??= 'silent';
 const [{ bootEndpointServer }, { createGitTriangle }] = await Promise.all([
   import('./src/share/endpoint-http.test-helper.ts'),
-  import('./src/share/git-fixture.test-helper.ts'),
+  import('./tests/support/git-fixture.test-helper.ts'),
 ]);
 
 async function constructShare(port: number, body: unknown): Promise<ShareSuccess> {

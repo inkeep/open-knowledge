@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   DEFAULT_CHECKPOINT_RETENTION,
   gcCheckpointRefs,
@@ -25,6 +26,7 @@ beforeEach(async () => {
   mkdirSync(resolve(projectRoot, 'content/docs'), { recursive: true });
   const git = simpleGit(projectRoot);
   await git.init();
+  configureTestGitRepository(projectRoot);
   await git.raw('config', 'user.name', 'Test');
   await git.raw('config', 'user.email', 'test@test.com');
   shadow = await initShadowRepo(projectRoot);

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { waitForWindowByMode } from './_helpers/launch-readiness';
 import { sumOfDeclaredBoundsMs } from './_helpers/parse-timeouts';
@@ -171,6 +172,7 @@ test.describe('Standalone terminal window — live Electron', () => {
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const editor = await findEditorWindow(app);
     await waitForRendererResponsive(editor);
+    await configureDesktopGitRepositories(editor, s.projectDir);
     const editorWindow = await app.browserWindow(editor);
     const editorWebContentsId = await editorWindow.evaluate(
       (win: unknown) => (win as { webContents: { id: number } }).webContents.id,
@@ -212,7 +214,9 @@ test.describe('Standalone terminal window — live Electron', () => {
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
-    await waitForRendererResponsive(await findEditorWindow(app));
+    const editor = await findEditorWindow(app);
+    await waitForRendererResponsive(editor);
+    await configureDesktopGitRepositories(editor, s.projectDir);
 
     expect(await clickNewTerminalWindow(app)).toBe(true);
     await findTerminalWindow(app);

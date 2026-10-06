@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { resolveDesktopTarget } from './_helpers/launch-desktop';
 import { PLATFORM_SKIP_REASON, PLATFORM_SUPPORTED, SMOKE_ENABLED } from './_helpers/platform-gate';
 import {
@@ -139,6 +140,7 @@ test.describe('Spelling settings — platform presentation and editor non-interf
       },
     });
     const editor = await findEditorWindow(app);
+    await configureDesktopGitRepositories(editor, profile.projectDir);
 
     await openProjectDocument(editor, SEEDED_DOC);
 

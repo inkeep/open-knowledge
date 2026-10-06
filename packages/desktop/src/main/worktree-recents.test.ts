@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   classifyRecentGit,
   classifyRecentGitAsync,
@@ -31,6 +32,7 @@ async function makeRepoWithWorktree(): Promise<Handle> {
   const mainRepo = join(root, 'main');
   mkdirSync(mainRepo);
   await git(mainRepo, 'init', '--initial-branch=main', '.');
+  configureTestGitRepository(mainRepo);
   await git(mainRepo, 'config', 'user.email', 'test@example.com');
   await git(mainRepo, 'config', 'user.name', 'Test');
   writeFileSync(join(mainRepo, 'README.md'), '# main\n');
@@ -39,6 +41,7 @@ async function makeRepoWithWorktree(): Promise<Handle> {
   const worktree = join(root, 'wt', 'feature');
   mkdirSync(join(root, 'wt'), { recursive: true });
   await git(mainRepo, 'worktree', 'add', '-b', 'feature', worktree);
+  configureTestGitRepository(worktree);
   return {
     root,
     mainRepo,

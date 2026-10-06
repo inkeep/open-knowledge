@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { homeEnv, userDataDirFor } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
@@ -73,6 +74,7 @@ test.describe('chrome-modernization theme-sync smoke', () => {
       throw new Error(`no window matches ${expectedHashSuffix} yet`);
     }).toPass({ timeout: 15_000 });
     if (!editorPage) throw new Error('unreachable');
+    await configureDesktopGitRepositories(editorPage, projectDir);
     const resolvedEditorPage = editorPage;
 
     const bridgeShape = await editorPage.evaluate(() => ({
@@ -146,6 +148,7 @@ test.describe('chrome-modernization theme-sync smoke', () => {
       throw new Error(`no window matches ${expectedHashSuffix} yet`);
     }).toPass({ timeout: 15_000 });
     if (!editorPage) throw new Error('unreachable');
+    await configureDesktopGitRepositories(editorPage, projectDir);
 
     await editorPage.evaluate(async () => {
       const bridge = window.okDesktop;
@@ -266,6 +269,7 @@ test.describe('chrome-modernization theme-sync smoke', () => {
       throw new Error(`no window matches ${expectedHashSuffix} yet`);
     }).toPass({ timeout: 15_000 });
     if (!editorPage) throw new Error('unreachable');
+    await configureDesktopGitRepositories(editorPage, projectDir);
 
     await app.evaluate(({ BrowserWindow }) => {
       const g = globalThis as unknown as Record<string, unknown>;

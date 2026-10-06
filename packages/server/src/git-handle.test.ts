@@ -8,6 +8,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { DESKTOP_PRODUCTS, resolveDesktopProductName } from '@inkeep/open-knowledge-core';
 import shellQuote from 'shell-quote';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   applyGitEnv,
   buildGitEnv,
@@ -128,6 +129,7 @@ describe('createGitInstance (credential.helper config)', () => {
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ok-git-handle-test-'));
     execSync('git init -q', { cwd: tmpDir });
+    configureTestGitRepository(tmpDir);
   });
 
   afterEach(() => {
@@ -200,6 +202,7 @@ describe('createGitInstance under a process environment carrying GIT_CONFIG_COUN
     vi.stubEnv('USERPROFILE', isolatedHome);
     vi.stubEnv('XDG_CONFIG_HOME', join(isolatedHome, '.config'));
     execSync('git init -q', { cwd: repoDir });
+    configureTestGitRepository(repoDir);
     vi.stubEnv('GIT_CONFIG_COUNT', '1');
     vi.stubEnv('GIT_CONFIG_KEY_0', 'credential.interactive');
     vi.stubEnv('GIT_CONFIG_VALUE_0', 'false');
@@ -230,6 +233,7 @@ describe.skipIf(process.platform === 'win32')(
       repoDir = mkdtempSync(join(tmpdir(), 'ok-sync-cred-repo-'));
       isolatedHome = mkdtempSync(join(tmpdir(), 'ok-sync-cred-home-'));
       execSync('git init -q', { cwd: repoDir });
+      configureTestGitRepository(repoDir);
     });
 
     afterEach(() => {

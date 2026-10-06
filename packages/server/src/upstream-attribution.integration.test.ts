@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import simpleGit, { type SimpleGit } from 'simple-git';
 import { afterEach, beforeEach, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { __resetContributorsForTests as resetContributorsForTest } from './contributor-tracker.ts';
 import { createServer, type ServerInstance } from './server-factory.ts';
 import { initShadowRepo, type ShadowHandle, shadowGit } from './shadow-repo.ts';
@@ -31,6 +32,7 @@ beforeEach(async () => {
   dir = mkdtempSync(resolve(tmpdir(), 'ok-upstream-attr-int-'));
   git = simpleGit(dir);
   await git.init(['-b', 'main']);
+  configureTestGitRepository(dir);
   await git.addConfig('user.name', 'Seed');
   await git.addConfig('user.email', 'seed@example.com');
   await commitAs('Seed', 'seed@example.com', 'bugs.md', '# Bugs\n\ninitial\n');

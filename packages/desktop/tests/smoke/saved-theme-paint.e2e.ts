@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { stringify } from 'yaml';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import {
   homeEnv,
@@ -187,6 +188,7 @@ test.describe('saved theme paint smoke', () => {
         themeId: 'saved-personal-dark',
         backgroundColor: 'rgb(16, 32, 48)',
       });
+    await configureDesktopGitRepositories(editor, projectDir);
   });
 
   test('palette assignments preserve the system slot and Default restores system appearance', async ({
@@ -200,6 +202,7 @@ test.describe('saved theme paint smoke', () => {
     const app = await launchApp(tmpHome);
     captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
     const editor = await findEditorWindow(app);
+    await configureDesktopGitRepositories(editor, projectDir);
     await editor.emulateMedia({ colorScheme: null });
     const systemDark = await app.evaluate(({ nativeTheme }) => nativeTheme.shouldUseDarkColors);
     const activeSlot = systemDark ? 'dark' : 'light';

@@ -7,6 +7,7 @@ import { afterEach, beforeAll, describe, expect, onTestFinished, test, vi } from
 import { createVitest, type TestProject } from 'vitest/node';
 import { gitCleanEnv } from '../scripts/git-clean-env.mjs';
 import tierConfig from '../vitest.uncached.config';
+import { configureTestGitRepository } from './configure-git-fixture.test-helper.ts';
 import { listUncachedTestFiles, uncachedTierProblems } from './uncached-tier-reconcile';
 
 const roots: string[] = [];
@@ -258,6 +259,7 @@ describe("the tier's discovery domain: what git lists, and what every project ex
       'packages/server/src/cached.test.ts': '',
     });
     git(root, ['init', '-q']);
+    configureTestGitRepository(root);
     git(root, ['add', '.gitignore', 'packages/server/src/tracked.uncached.test.ts']);
     git(root, ['commit', '-qm', 'base']);
     expect(listUncachedTestFiles(root).sort()).toEqual([
@@ -276,6 +278,7 @@ describe("the tier's discovery domain: what git lists, and what every project ex
       'vitest.uncached.config.ts': '',
     });
     git(root, ['init', '-q']);
+    configureTestGitRepository(root);
     expect(listUncachedTestFiles(root).sort()).toEqual([SERVER, TRANSPOSED].sort());
   });
 

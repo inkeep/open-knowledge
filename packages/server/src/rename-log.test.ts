@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { getLogger } from './logger.ts';
 import {
   appendRenameLogEntry,
@@ -514,6 +515,7 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -768,6 +770,7 @@ describe('batchCheckExistence timeout fallback (FR16 / D-T7)', () => {
     mkdirSync(projectRoot, { recursive: true });
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     shadow = await initShadowRepo(projectRoot);
@@ -1048,6 +1051,7 @@ describe('gcRenameLog (US-008 reachability + rebuild)', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -1521,6 +1525,7 @@ describe('buildSeeds — SeedsCache (Consider C2)', () => {
     mkdirSync(resolve(projectRoot, 'content'), { recursive: true });
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 't@t.com');
     shadow = await initShadowRepo(projectRoot);
@@ -1561,6 +1566,7 @@ describe('gcRenameLog concurrency dedup (Finding 4)', () => {
     mkdirSync(resolve(projectRoot, 'content'), { recursive: true });
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 't@t.com');
     shadow = await initShadowRepo(projectRoot);

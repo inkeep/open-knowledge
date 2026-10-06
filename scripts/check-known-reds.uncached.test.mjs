@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../test-support/configure-git-fixture.test-helper.ts';
 import { okVitestBase } from '../test-support/vitest.base.ts';
 import { gitCleanEnv } from './git-clean-env.mjs';
 import {
@@ -1268,6 +1269,7 @@ describe('known-reds through its real invocation', () => {
     windowsHide: true,
     encoding: 'utf8',
   });
+  if (init.status === 0) configureTestGitRepository(root);
 
   test('scans test files and helpers that can declare their tests', () => {
     expect(init.status).toBe(0);

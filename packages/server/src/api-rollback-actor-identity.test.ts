@@ -7,6 +7,7 @@ import type { Principal } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { createApiExtension } from './api-extension.test-helper.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import {
@@ -80,6 +81,7 @@ async function setupRollback(tmpDir: string): Promise<RollbackHarness> {
 
   const git = simpleGit(projectDir);
   await git.init();
+  configureTestGitRepository(projectDir);
   await git.addConfig('user.name', 'Test User');
   await git.addConfig('user.email', 'test@example.com');
   await git.add('.');

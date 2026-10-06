@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   ATOMIC_TEMP_GLOB,
   ATOMIC_TEMP_INFIX,
@@ -94,6 +95,7 @@ function globVerdicts(paths: readonly string[], ignoreCase: boolean): Map<string
 beforeAll(() => {
   repoDir = mkdtempSync(join(tmpdir(), 'ok-atomic-temp-glob-'));
   execFileSync('git', ['init', '-q'], { cwd: repoDir, stdio: 'pipe', env: gitEnv() });
+  configureTestGitRepository(repoDir);
   writeFileSync(join(repoDir, '.git', 'info', 'exclude'), `${ATOMIC_TEMP_GLOB}\n`);
 });
 

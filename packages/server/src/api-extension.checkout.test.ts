@@ -4,6 +4,7 @@ import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
 
 interface TestRig {
@@ -30,6 +31,7 @@ function commitAll(cwd: string, message: string): void {
 
 function initRepo(cwd: string): void {
   run(cwd, 'git init -q -b main');
+  configureTestGitRepository(cwd);
   run(cwd, 'git config user.email "test@example.com"');
   run(cwd, 'git config user.name "Test"');
   run(cwd, 'git config commit.gpgsign false');
@@ -162,6 +164,7 @@ describe('POST /api/git/checkout', () => {
       run(upstreamDir, 'git checkout -q main');
       rmSync(projectDir, { recursive: true, force: true });
       run(tmpRoot, `git clone -q ${upstreamDir} ${projectDir}`);
+      configureTestGitRepository(projectDir);
       run(projectDir, 'git config user.email "test@example.com"');
       run(projectDir, 'git config user.name "Test"');
       run(projectDir, 'git config commit.gpgsign false');
@@ -205,6 +208,7 @@ describe('POST /api/git/checkout', () => {
       commitAll(upstreamDir, 'init');
       rmSync(projectDir, { recursive: true, force: true });
       run(tmpRoot, `git clone -q ${upstreamDir} ${projectDir}`);
+      configureTestGitRepository(projectDir);
       run(projectDir, 'git config user.email "test@example.com"');
       run(projectDir, 'git config user.name "Test"');
       run(projectDir, 'git config commit.gpgsign false');
@@ -225,6 +229,7 @@ describe('POST /api/git/checkout', () => {
       commitAll(upstreamDir, 'init');
       rmSync(projectDir, { recursive: true, force: true });
       run(tmpRoot, `git clone -q ${upstreamDir} ${projectDir}`);
+      configureTestGitRepository(projectDir);
       run(projectDir, 'git config user.email "test@example.com"');
       run(projectDir, 'git config user.name "Test"');
       run(projectDir, 'git config commit.gpgsign false');

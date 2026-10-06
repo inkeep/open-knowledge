@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { pathspecArgs, stripPathspecMagic, toPathspec } from './git-pathspec.ts';
 
 const HOSTILE_NAMES = [':colon.md', ':!bang.md', 'star*.md'] as const;
@@ -17,6 +18,7 @@ function git(args: readonly string[], cwd = repo): string {
 beforeAll(() => {
   repo = mkdtempSync(join(tmpdir(), 'ok-git-pathspec-'));
   git(['init', '--initial-branch=main']);
+  configureTestGitRepository(repo);
   git(['config', 'user.email', 'test@example.com']);
   git(['config', 'user.name', 'Test']);
   for (const name of [...HOSTILE_NAMES, ...PLAIN_NAMES]) {

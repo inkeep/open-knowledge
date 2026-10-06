@@ -1,5 +1,12 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createNetServer, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -43,6 +50,7 @@ import {
 import { getSchema } from '@tiptap/core';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   ORIGIN_TEXT_TO_TREE,
   ORIGIN_TREE_TO_TEXT,
@@ -139,7 +147,10 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
       mkdirSync(join(contentDir, '.claude', 'skills'), { recursive: true });
     }
 
-    await ensureProjectGit(contentDir);
+    const gitSetup = await ensureProjectGit(contentDir);
+    if (gitSetup.didInit || existsSync(join(contentDir, '.git', 'config'))) {
+      configureTestGitRepository(contentDir);
+    }
   }
 
   const port = await getFreePort();
@@ -1060,6 +1071,7 @@ export async function createRestartableServer(
   }
 
   await ensureProjectGit(contentDir);
+  configureTestGitRepository(contentDir);
 
   const port = options.port ?? (await getFreePort());
   const srv = createServer({
@@ -1434,10 +1446,12 @@ export async function createSyncWiredTestServer(
 
   const originDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-sync-origin-')));
   await runGit(originDir, ['init', '--bare']);
+  configureTestGitRepository(originDir);
   await runGit(originDir, ['symbolic-ref', 'HEAD', 'refs/heads/main']);
 
   const authorDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-sync-author-')));
   await runGit(authorDir, ['init', '--initial-branch=main']);
+  configureTestGitRepository(authorDir);
   await runGit(authorDir, ['config', 'user.email', 'author@example.com']);
   await runGit(authorDir, ['config', 'user.name', 'Upstream Author']);
   await runGit(authorDir, ['remote', 'add', 'origin', originDir]);
@@ -1449,6 +1463,7 @@ export async function createSyncWiredTestServer(
   const cloneParent = realpathSync(mkdtempSync(join(tmpdir(), 'ok-sync-clone-')));
   const clonePath = join(cloneParent, 'content');
   await runGit(cloneParent, ['clone', originDir, clonePath]);
+  configureTestGitRepository(clonePath);
   const contentDir = realpathSync(clonePath);
   await runGit(contentDir, ['config', 'user.email', 'follower@example.com']);
   await runGit(contentDir, ['config', 'user.name', 'Follower']);

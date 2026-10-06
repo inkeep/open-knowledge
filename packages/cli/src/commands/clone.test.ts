@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { type Config, UnsafeIncomingSymlinkError } from '@inkeep/open-knowledge-server';
 import simpleGit, { type SimpleGitOptions } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, it, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import type { ExecFileSyncFn, GhDetectResult } from '../auth/gh-detect.ts';
 import { detectGh } from '../auth/gh-detect.ts';
 import { FileBackend, type TokenStore } from '../auth/token-store.ts';
@@ -770,6 +771,7 @@ describe('ensureOkExcludedFromGit', () => {
       cwd: mainRepoDir,
       stdio: ['ignore', 'ignore', 'ignore'],
     });
+    configureTestGitRepository(mainRepoDir);
     execFileSync('git', ['config', 'user.email', 't@e.com'], { cwd: mainRepoDir });
     execFileSync('git', ['config', 'user.name', 'T'], { cwd: mainRepoDir });
     writeFileSync(join(mainRepoDir, 'README.md'), '# r\n', 'utf-8');
@@ -782,6 +784,7 @@ describe('ensureOkExcludedFromGit', () => {
       cwd: mainRepoDir,
       stdio: ['ignore', 'ignore', 'ignore'],
     });
+    configureTestGitRepository(linkedDir);
     try {
       const dotGit = readFileSync(join(linkedDir, '.git'), 'utf-8');
       expect(dotGit.startsWith('gitdir:')).toBe(true);
@@ -1460,6 +1463,7 @@ describe('clone stores the remote URL verbatim, userinfo included', () => {
       const srcDir = join(base, 'seed');
       mkdirSync(srcDir);
       execFileSync('git', ['init', '--initial-branch=main'], { cwd: srcDir, stdio: 'ignore' });
+      configureTestGitRepository(srcDir);
       execFileSync('git', ['config', 'user.email', 't@e.com'], { cwd: srcDir });
       execFileSync('git', ['config', 'user.name', 'T'], { cwd: srcDir });
       writeFileSync(join(srcDir, 'README.md'), '# seed\n', 'utf-8');
@@ -1473,6 +1477,7 @@ describe('clone stores the remote URL verbatim, userinfo included', () => {
       const env = buildCloneAuthEnv({}, { PATH: process.env.PATH ?? '' });
       const git = simpleGit(buildCloneGitOptions(base, [redirect])).env(env);
       await git.clone(declaredUrl, targetDir, buildCloneArgs(null));
+      configureTestGitRepository(targetDir);
 
       const config = readFileSync(join(targetDir, '.git', 'config'), 'utf-8');
       expect(config).toContain(`url = ${declaredUrl}`);

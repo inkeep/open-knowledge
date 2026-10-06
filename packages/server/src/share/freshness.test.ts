@@ -2,8 +2,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import {
+  createGitTriangle,
+  type GitTriangle,
+} from '../../tests/support/git-fixture.test-helper.ts';
 import { computeShareFreshness } from './freshness.ts';
-import { createGitTriangle, type GitTriangle } from './git-fixture.test-helper.ts';
 
 const triangles: GitTriangle[] = [];
 const scratchDirs: string[] = [];

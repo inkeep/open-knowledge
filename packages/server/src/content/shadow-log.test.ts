@@ -6,6 +6,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { formatOkActor, type OkActorEntry } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   commitUpstreamImport,
   commitWip,
@@ -48,6 +49,7 @@ async function bootstrapProject(): Promise<string> {
   mkdirSync(project, { recursive: true });
   const git = simpleGit(project);
   await git.init();
+  configureTestGitRepository(project);
   await git.raw('config', 'user.name', 'Test');
   await git.raw('config', 'user.email', 't@t.test');
   writeFileSync(resolve(project, 'README.md'), '# root\n');

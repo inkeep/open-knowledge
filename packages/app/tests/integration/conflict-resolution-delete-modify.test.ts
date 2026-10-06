@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, pollUntil, type TestServer } from './test-harness';
 
@@ -83,6 +84,7 @@ async function createDUTestServer(): Promise<TestServer> {
   mkdirSync(join(dir, '.ok'), { recursive: true });
   writeFileSync(join(dir, '.ok', 'config.yml'), '', 'utf-8');
   await execFileAsync('git', ['init', '--initial-branch=main', dir]);
+  configureTestGitRepository(dir);
   await setupDUConflict(dir);
   await registerConflict(dir, 'foo.md');
   return createTestServer({ contentDir: dir, keepContentDir: false });
@@ -94,6 +96,7 @@ async function createUDTestServer(): Promise<TestServer> {
   mkdirSync(join(dir, '.ok'), { recursive: true });
   writeFileSync(join(dir, '.ok', 'config.yml'), '', 'utf-8');
   await execFileAsync('git', ['init', '--initial-branch=main', dir]);
+  configureTestGitRepository(dir);
   await setupUDConflict(dir);
   await registerConflict(dir, 'foo.md');
   return createTestServer({ contentDir: dir, keepContentDir: false });
@@ -255,6 +258,7 @@ describe('both-modified conflict — backward compatibility', () => {
     mkdirSync(join(contentDir, '.ok'), { recursive: true });
     writeFileSync(join(contentDir, '.ok', 'config.yml'), '', 'utf-8');
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    configureTestGitRepository(contentDir);
     const opts = { cwd: contentDir };
     await execFileAsync('git', ['config', 'user.email', 'test@example.com'], opts);
     await execFileAsync('git', ['config', 'user.name', 'Test'], opts);

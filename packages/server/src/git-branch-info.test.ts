@@ -1,12 +1,11 @@
 import { afterEach, describe, expect, test } from 'vitest';
-
+import { createGitTriangle, type GitTriangle } from '../tests/support/git-fixture.test-helper.ts';
 import {
   computeBranchInfo,
   isBranchResolutionError,
   isValidBranchInfoPath,
   isValidBranchName,
 } from './git-branch-info.ts';
-import { createGitTriangle, type GitTriangle } from './share/git-fixture.test-helper.ts';
 
 describe('isValidBranchName', () => {
   test('accepts a plain branch name', () => {

@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterAll, afterEach, beforeAll, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { createApiExtension } from './api-extension.test-helper.ts';
 import type { BootedServer } from './boot.ts';
 import {
@@ -50,6 +51,7 @@ function gitIgnored(base: string, path: string): boolean {
 beforeAll(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), 'ok-skill-tracking-')));
   const result = spawnSync('git', ['init', '-q', root]);
+  configureTestGitRepository(root);
   expect(result.status).toBe(0);
   writeSkill(root, '.agents/skills/open-knowledge', 'open-knowledge');
   writeSkill(root, '.claude/skills/hidden', 'hidden');

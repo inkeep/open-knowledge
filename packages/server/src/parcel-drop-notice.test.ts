@@ -20,6 +20,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { Event } from '@parcel/watcher';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { bootCompositionRig } from './composition-rig.test-helper.ts';
 import {
   type ContentFilter,
@@ -1373,6 +1374,7 @@ function prepareSkillServerProject(ledgerValue: unknown): { home: string; ledger
     cwd: contentDir,
     env: gitEnv,
   });
+  configureTestGitRepository(contentDir);
   return { home, ledger };
 }
 
@@ -1928,6 +1930,7 @@ test('server startup and raw skill refresh retain admission across an unreadable
     cwd: contentDir,
     env: gitEnv,
   });
+  configureTestGitRepository(contentDir);
 
   let server: ServerInstance | undefined;
   let connection:
@@ -2774,6 +2777,7 @@ test('notice recovery keeps file links exact beside a matching document stem', a
     cwd: contentDir,
     env: gitEnv,
   });
+  configureTestGitRepository(contentDir);
   const server = await bootCompositionRig(contentDir);
   try {
     await server.ready;
@@ -2824,6 +2828,7 @@ test('a delivered alias retarget preserves both real link targets', async () => 
     cwd: contentDir,
     env: gitEnv,
   });
+  configureTestGitRepository(contentDir);
   const server = await bootCompositionRig(contentDir);
   try {
     await server.ready;
@@ -2872,6 +2877,7 @@ test('a delivered general-file alias retains both link targets after recovery', 
     cwd: contentDir,
     env: gitEnv,
   });
+  configureTestGitRepository(contentDir);
   const server = await bootCompositionRig(contentDir);
   try {
     await server.ready;
@@ -2919,6 +2925,7 @@ test.each(['alias.csv', 'real.csv'])(
       cwd: contentDir,
       env: gitEnv,
     });
+    configureTestGitRepository(contentDir);
     const server = await bootCompositionRig(contentDir);
     try {
       await server.ready;
@@ -3484,6 +3491,7 @@ async function bootInventoryServer() {
     cwd: contentDir,
     env: gitEnv,
   });
+  configureTestGitRepository(contentDir);
   const server = await bootCompositionRig(contentDir);
   await server.ready;
   return server;
@@ -3821,6 +3829,7 @@ test('overlapping content and HEAD notices settle the owned Git branch and alias
   const git = (args: string[]) =>
     execFileSync('git', args, { cwd: contentDir, env: gitEnv, encoding: 'utf8' }).trim();
   git(['init', '--quiet', '--initial-branch=main']);
+  configureTestGitRepository(contentDir);
   git(['config', 'user.email', 'notice-test@example.com']);
   git(['config', 'user.name', 'Notice Test']);
   const canonical = join(contentDir, 'canonical');
@@ -4052,6 +4061,7 @@ test.each([
       cwd: contentDir,
       env: gitEnv,
     });
+    configureTestGitRepository(contentDir);
     const originalBytes = '# Original\n\nEarlier bytes.\n';
     const recreatedBytes =
       bytes === 'original' ? originalBytes : '# Recreated\n\nDifferent bytes now.\n';
@@ -4187,6 +4197,7 @@ test.each(['before', 'during'] as const)(
       cwd: contentDir,
       env: gitEnv,
     });
+    configureTestGitRepository(contentDir);
     const recreatedBytes = '# Recreated\n\nContent after the supplied deletes.\n';
     mkdirSync(join(contentDir, '.ok', 'templates'), { recursive: true });
     writeFileSync(join(contentDir, '.ok', 'templates', 'recreated.md'), recreatedBytes);
@@ -8089,6 +8100,7 @@ test('a completed within-branch notice remains exact after its buffered target e
   const git = (args: string[]) =>
     execFileSync('git', args, { cwd: contentDir, env: gitEnv, encoding: 'utf8' }).trim();
   git(['init', '--quiet', '--initial-branch=main']);
+  configureTestGitRepository(contentDir);
   git(['config', 'user.email', 'notice-test@example.com']);
   git(['config', 'user.name', 'Notice Test']);
   const a = writeDoc('a.csv', 'same,physical,bytes\n');

@@ -14,6 +14,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig } from './composition-rig.test-helper.ts';
 
@@ -55,6 +56,7 @@ function git(...args: string[]): string {
 
 test('startup preserves tracked dangling skill links without a legacy store', async () => {
   git('init', '--quiet', '--initial-branch=main');
+  configureTestGitRepository(root);
   writeFileSync(join(root, '.gitignore'), '.ok/\n');
   const target = '../../shared-skills/retired';
   const links = ['.agents/skills/retired', '.codex/skills/retired'];

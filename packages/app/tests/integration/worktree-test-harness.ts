@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 
 export interface LinkedWorktreeHandle {
   repoRoot: string;
@@ -22,6 +23,7 @@ export function createLinkedWorktree(opts: CreateLinkedWorktreeOptions = {}): Li
   const repoRoot = mkdtempSync(resolve(tmpdir(), `${prefix}-repo-`));
 
   execFileSync('git', ['init', '--initial-branch=main', repoRoot], { stdio: 'pipe' });
+  configureTestGitRepository(repoRoot);
   execFileSync('git', ['-C', repoRoot, 'config', 'user.email', 'test@example.com']);
   execFileSync('git', ['-C', repoRoot, 'config', 'user.name', 'Test']);
   writeFileSync(resolve(repoRoot, 'README.md'), '# test\n');
@@ -32,6 +34,7 @@ export function createLinkedWorktree(opts: CreateLinkedWorktreeOptions = {}): Li
   rmSync(worktreePath, { recursive: true, force: true });
   const branch = opts.branch ?? `feat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   execFileSync('git', ['-C', repoRoot, 'worktree', 'add', '-b', branch, worktreePath]);
+  configureTestGitRepository(worktreePath);
 
   const worktreesDir = resolve(repoRoot, '.git/worktrees');
   const adminEntries = readdirSync(worktreesDir);

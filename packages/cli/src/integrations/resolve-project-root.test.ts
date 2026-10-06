@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   isHomeDir,
   type ResolveProjectRootOptions,
@@ -276,6 +277,7 @@ describe('resolveProjectRoot — integration with real git', () => {
     const docs = resolve(repo, 'docs');
     mkdirSync(docs, { recursive: true });
     await execFileAsync('git', ['init', '--initial-branch=main', repo]);
+    configureTestGitRepository(repo);
 
     const opts: ResolveProjectRootOptions = { homeDir: fakeHome };
     const result = resolveProjectRoot(docs, opts);

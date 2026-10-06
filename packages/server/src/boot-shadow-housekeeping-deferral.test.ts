@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 
 function makeGate() {
   let release!: () => void;
@@ -88,6 +89,7 @@ describe('createServer() — boot shadow housekeeping is deferred past ready', (
     projectDir = await mkdtemp(join(tmpdir(), 'ok-boot-housekeeping-'));
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@example.com');
     await git.raw('commit', '--allow-empty', '-m', 'seed');

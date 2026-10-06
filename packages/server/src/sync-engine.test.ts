@@ -17,6 +17,7 @@ import { promisify } from 'node:util';
 import { LOCAL_DIR, type SyncMode, SyncStatusSchema } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { type Conflict, ConflictAuthority } from './conflict-authority.ts';
 import { createContentFilter } from './content-filter.ts';
 import { classifyGitError } from './error-classification.ts';
@@ -137,6 +138,7 @@ function makeEngine(
 async function initGitWithOrigin(originUrl = 'https://github.com/inkeep/open-knowledge.git') {
   const git = simpleGit(projectDir);
   await git.init(['--initial-branch=main']);
+  configureTestGitRepository(projectDir);
   await git.raw('config', 'user.name', 'Test');
   await git.raw('config', 'user.email', 'test@test.com');
   writeFileSync(join(projectDir, 'README.md'), 'seed\n', 'utf-8');
@@ -342,6 +344,7 @@ describe('SyncEngine state persistence round-trip', () => {
   async function setupRealMergeConflict(files: string[]): Promise<void> {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     for (const f of files) {
@@ -365,6 +368,7 @@ describe('SyncEngine state persistence round-trip', () => {
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await git.addRemote('origin', bareDir);
   }
 
@@ -408,6 +412,7 @@ describe('SyncEngine state persistence round-trip', () => {
   test('clears stale conflicts.json when MERGE_HEAD is gone (user resolved externally)', async () => {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'README.md'), '# Test\n');
@@ -416,6 +421,7 @@ describe('SyncEngine state persistence round-trip', () => {
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await git.addRemote('origin', bareDir);
 
     writeFileSync(
@@ -624,12 +630,14 @@ describe('SyncEngine ConflictStore admission (content-only)', () => {
     mkdirSync(bareDir, { recursive: true });
     const bare = simpleGit(bareDir);
     await bare.init(true);
+    configureTestGitRepository(bareDir);
     await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
     const sisterDir = join(tmpDir, 'sister');
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, '.mcp.json'), '{"a":1}\n', 'utf-8');
@@ -642,6 +650,7 @@ describe('SyncEngine ConflictStore admission (content-only)', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
     const project = simpleGit(projectDir);
     await project.raw('config', 'user.name', 'Project');
@@ -785,6 +794,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
     mkdirSync(sisterDir, { recursive: true });
     const bare = simpleGit(bareDir);
     await bare.init(true);
+    configureTestGitRepository(bareDir);
     await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
     const v1 = JSON.stringify({
@@ -796,6 +806,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
     const v2 = v1.replace('# ok-mcp-v1', '# ok-mcp-v2');
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, '.mcp.json'), `${v1}\n`, 'utf-8');
@@ -806,6 +817,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
     appendFileSync(join(projectDir, '.git', 'info', 'exclude'), '\n.ok/\n', 'utf-8');
 
@@ -845,6 +857,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
     mkdirSync(sisterDir, { recursive: true });
     const bare = simpleGit(bareDir);
     await bare.init(true);
+    configureTestGitRepository(bareDir);
     await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
     const config = (marker: string, theme: string) =>
@@ -860,6 +873,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
       })}\n`;
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, '.mcp.json'), config('# ok-mcp-v1', 'base'), 'utf8');
@@ -870,6 +884,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
 
     writeFileSync(join(sisterDir, '.mcp.json'), config('# ok-mcp-v2', 'incoming'), 'utf8');
@@ -907,6 +922,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
   test('full sync persists a newer winner in an entry-only generated commit', async () => {
     const project = simpleGit(projectDir);
     await project.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await project.raw('config', 'user.name', 'Project');
     await project.raw('config', 'user.email', 'project@test.com');
     const entry = (marker: string) => ({
@@ -970,6 +986,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
     mkdirSync(sisterDir, { recursive: true });
     const bare = simpleGit(bareDir);
     await bare.init(true);
+    configureTestGitRepository(bareDir);
     await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
     const config = (marker: string) =>
@@ -984,6 +1001,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
       })}\n`;
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, '.gitignore'), '/.ok/*\n', 'utf8');
@@ -996,6 +1014,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
     await simpleGit(projectDir).raw(['config', 'user.name', '']);
     await simpleGit(projectDir).raw(['config', 'user.email', '']);
@@ -1051,11 +1070,13 @@ describe('SyncEngine delete/modify dirty content conflicts', () => {
     mkdirSync(bareDir, { recursive: true });
     const bare = simpleGit(bareDir);
     await bare.init(true);
+    configureTestGitRepository(bareDir);
 
     const sisterDir = join(tmpDir, 'sister');
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, 'foo.md'), 'base\n', 'utf-8');
@@ -1067,6 +1088,7 @@ describe('SyncEngine delete/modify dirty content conflicts', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir, ['--branch', 'main']);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
 
     const project = simpleGit(projectDir);
@@ -1086,11 +1108,13 @@ describe('SyncEngine delete/modify dirty content conflicts', () => {
     mkdirSync(bareDir, { recursive: true });
     const bare = simpleGit(bareDir);
     await bare.init(true);
+    configureTestGitRepository(bareDir);
 
     const sisterDir = join(tmpDir, 'sister');
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, 'foo.md'), 'base\n', 'utf-8');
@@ -1102,6 +1126,7 @@ describe('SyncEngine delete/modify dirty content conflicts', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir, ['--branch', 'main']);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
 
     const project = simpleGit(projectDir);
@@ -1198,11 +1223,13 @@ describe('SyncEngine non-ASCII filename conflicts', () => {
     mkdirSync(bareDir, { recursive: true });
     const bare = simpleGit(bareDir);
     await bare.init(true);
+    configureTestGitRepository(bareDir);
 
     const sisterDir = join(tmpDir, 'sister');
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, fileName), 'base\n', 'utf-8');
@@ -1214,6 +1241,7 @@ describe('SyncEngine non-ASCII filename conflicts', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir, ['--branch', 'main']);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
 
     const project = simpleGit(projectDir);
@@ -1277,10 +1305,12 @@ describe('SyncEngine push gating — scheduled vs explicit', () => {
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'README.md'), '# seed\n');
@@ -1349,10 +1379,12 @@ describe('SyncEngine lastRunUtc — "Updated N ago"', () => {
     const bare = join(tmpDir, 'bare.git');
     mkdirSync(bare, { recursive: true });
     await simpleGit(bare).init(true);
+    configureTestGitRepository(bare);
     await simpleGit(bare).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'doc.md'), 'v1\n');
@@ -1421,6 +1453,7 @@ describe('SyncEngine lastRunUtc — "Updated N ago"', () => {
   test('a failed op does not stamp a run', async () => {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'doc.md'), 'v1\n');
@@ -1444,10 +1477,12 @@ describe('SyncEngine unified pull — B1 in every mode', () => {
     const bare = join(tmpDir, 'bare.git');
     mkdirSync(bare, { recursive: true });
     await simpleGit(bare).init(true);
+    configureTestGitRepository(bare);
     await simpleGit(bare).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(
@@ -1461,6 +1496,7 @@ describe('SyncEngine unified pull — B1 in every mode', () => {
 
     const sisterDir = join(tmpDir, 'sister');
     await simpleGit(tmpDir).clone(bare, sisterDir);
+    configureTestGitRepository(sisterDir);
     const sister = simpleGit(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
@@ -1647,10 +1683,12 @@ describe('SyncEngine fetchOnly() — the read-only op', () => {
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'doc.md'), 'v1\n');
@@ -1664,6 +1702,7 @@ describe('SyncEngine fetchOnly() — the read-only op', () => {
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.clone(bareDir, sisterDir);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, 'doc.md'), 'v1\nv2\n');
@@ -1688,6 +1727,7 @@ describe('SyncEngine fetchOnly() — the read-only op', () => {
   test('a failed fetch stays quiet — no error surfaced, no pause', async () => {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'doc.md'), 'v1\n');
@@ -1729,6 +1769,7 @@ describe('SyncEngine refreshRemote()', () => {
   test('is a no-op when hasRemote is already true', async () => {
     const git = simpleGit(projectDir);
     await git.init();
+    configureTestGitRepository(projectDir);
     await git.addRemote('origin', 'https://example.invalid/repo.git');
 
     const states: SyncState[] = [];
@@ -1746,6 +1787,7 @@ describe('SyncEngine refreshRemote()', () => {
   test('detects a newly-added remote and transitions dormant → disabled (syncEnabled=false)', async () => {
     const git = simpleGit(projectDir);
     await git.init();
+    configureTestGitRepository(projectDir);
 
     const states: SyncState[] = [];
     const engine = makeEngine({ syncEnabled: false, onStateChange: (s) => states.push(s) });
@@ -1765,6 +1807,7 @@ describe('SyncEngine refreshRemote()', () => {
   test('detects a newly-added remote and transitions dormant → idle (syncEnabled=true)', async () => {
     const git = simpleGit(projectDir);
     await git.init();
+    configureTestGitRepository(projectDir);
 
     const states: SyncState[] = [];
     const engine = makeEngine({ syncEnabled: true, onStateChange: (s) => states.push(s) });
@@ -1786,6 +1829,7 @@ describe('SyncEngine refreshRemote()', () => {
   test('stays dormant when no remote was added since boot', async () => {
     const git = simpleGit(projectDir);
     await git.init();
+    configureTestGitRepository(projectDir);
 
     const engine = makeEngine({ syncEnabled: false });
     await engine.start();
@@ -1809,6 +1853,7 @@ describe('SyncEngine setEnabled() — unconditional remote re-probe', () => {
   test('setEnabled(true) demotes to dormant when remote was removed since boot', async () => {
     const git = simpleGit(projectDir);
     await git.init();
+    configureTestGitRepository(projectDir);
     await git.addRemote('origin', 'https://example.invalid/repo.git');
 
     const engine = makeEngine({ syncEnabled: false });
@@ -1827,6 +1872,7 @@ describe('SyncEngine setEnabled() — unconditional remote re-probe', () => {
   test('setEnabled(true) transitions dormant → idle when remote was added since boot', async () => {
     const git = simpleGit(projectDir);
     await git.init();
+    configureTestGitRepository(projectDir);
 
     const engine = makeEngine({ syncEnabled: false });
     await engine.start();
@@ -2040,11 +2086,13 @@ describe('SyncEngine unborn-HEAD guard', () => {
   async function initRepoWithOrigin(withCommit: boolean) {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     const bareDir = join(tmpDir, 'unborn-bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
     await git.addRemote('origin', bareDir);
     if (withCommit) {
@@ -2730,6 +2778,7 @@ describe('SyncEngine push cycle pushes existing commits when local is ahead of o
   test('pushes existing HEAD when local is ahead of origin and tree is clean', async () => {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'README.md'), '# Test\n');
@@ -2739,6 +2788,7 @@ describe('SyncEngine push cycle pushes existing commits when local is ahead of o
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await git.addRemote('origin', bareDir);
     await git.push(['--set-upstream', 'origin', 'main']);
 
@@ -2766,6 +2816,7 @@ describe('SyncEngine push cycle pushes existing commits when local is ahead of o
   test('records lastSyncUtc when HEAD already matches origin and tree is clean', async () => {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'README.md'), '# Test\n');
@@ -2775,6 +2826,7 @@ describe('SyncEngine push cycle pushes existing commits when local is ahead of o
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await git.addRemote('origin', bareDir);
     await git.push(['--set-upstream', 'origin', 'main']);
 
@@ -2799,6 +2851,7 @@ describe('SyncEngine push cycle with non-ASCII filenames', () => {
   test('commits and pushes the deletion of a file with a non-ASCII name', async () => {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'README.md'), '# Test\n');
@@ -2809,6 +2862,7 @@ describe('SyncEngine push cycle with non-ASCII filenames', () => {
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await git.addRemote('origin', bareDir);
     await git.push(['--set-upstream', 'origin', 'main']);
 
@@ -2847,6 +2901,7 @@ describe('SyncEngine push cycle vs gitignored content (precedent #55 at the stag
   async function initRepoWithBareRemote() {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'README.md'), '# Test\n');
@@ -2856,6 +2911,7 @@ describe('SyncEngine push cycle vs gitignored content (precedent #55 at the stag
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await git.addRemote('origin', bareDir);
     await git.push(['--set-upstream', 'origin', 'main']);
     return git;
@@ -2973,6 +3029,7 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
   async function initSharedRepoWithBareRemote() {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
@@ -2984,6 +3041,7 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
     mkdirSync(bareDir, { recursive: true });
     const bare = simpleGit(bareDir);
     await bare.init(true);
+    configureTestGitRepository(bareDir);
     await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
     await git.addRemote('origin', bareDir);
     await git.push(['--set-upstream', 'origin', 'main']);
@@ -3003,6 +3061,7 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
   async function cloneAsTeammate(bareDir: string) {
     const sisterDir = join(tmpDir, 'sister');
     await simpleGit(tmpDir).clone(bareDir, sisterDir);
+    configureTestGitRepository(sisterDir);
     const sister = simpleGit(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
@@ -3909,6 +3968,7 @@ describe('SyncEngine per-operation error isolation', () => {
   test('a successful fetch does not clear a standing push error', async () => {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'README.md'), '# Test\n');
@@ -3918,6 +3978,7 @@ describe('SyncEngine per-operation error isolation', () => {
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await git.addRemote('origin', bareDir);
     await git.push(['--set-upstream', 'origin', 'main']);
 
@@ -3944,6 +4005,7 @@ describe('SyncEngine per-operation error isolation', () => {
   test('a successful push does not clear a standing pull error', async () => {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'README.md'), '# Test\n');
@@ -3953,6 +4015,7 @@ describe('SyncEngine per-operation error isolation', () => {
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await git.addRemote('origin', bareDir);
     await git.push(['--set-upstream', 'origin', 'main']);
     await git.raw('config', 'remote.origin.url', join(tmpDir, 'nonexistent-bare.git'));
@@ -4737,6 +4800,7 @@ describe('SyncEngine auth-error recovery', () => {
 
   test('a manual trigger clears the identity-ambiguous not-found park', async () => {
     await simpleGit(projectDir).init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     const engine = makeEngine({ syncEnabled: true });
     const internal = engine as unknown as InternalState;
     internal.state = 'auth-error';
@@ -4769,6 +4833,7 @@ describe('SyncEngine auth-error recovery', () => {
 
   test('a pull-side not-found park clears on manual trigger too', async () => {
     await simpleGit(projectDir).init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     const engine = makeEngine({ syncEnabled: true });
     const internal = engine as unknown as InternalState;
     internal.state = 'auth-error';
@@ -4787,6 +4852,7 @@ describe('SyncEngine auth-error recovery', () => {
   test('un-parking via trigger(push) revives the pull loop', async () => {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'README.md'), '# Test\n');
@@ -4795,6 +4861,7 @@ describe('SyncEngine auth-error recovery', () => {
     const bareDir = join(tmpDir, 'unpark-bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await git.addRemote('origin', bareDir);
     await git.push(['--set-upstream', 'origin', 'main']);
 
@@ -4894,6 +4961,7 @@ describe('SyncEngine gh-token credential relay', () => {
   test('threads the resolved gh token through git handles during a real push cycle', async () => {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'README.md'), '# Test\n');
@@ -4903,6 +4971,7 @@ describe('SyncEngine gh-token credential relay', () => {
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await git.addRemote('origin', bareDir);
     await git.push(['--set-upstream', 'origin', 'main']);
 
@@ -5262,6 +5331,7 @@ describe('SyncEngine pull-only mode', () => {
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
     return bareDir;
   }
@@ -5273,6 +5343,7 @@ describe('SyncEngine pull-only mode', () => {
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, 'doc.md'), 'v1\n', 'utf-8');
@@ -5283,6 +5354,7 @@ describe('SyncEngine pull-only mode', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
 
     writeFileSync(join(sisterDir, 'doc.md'), 'v1\nv2\n', 'utf-8');
@@ -5315,6 +5387,7 @@ describe('SyncEngine pull-only mode', () => {
   test('never pushes local commits on its own, but honors an explicit push', async () => {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'README.md'), '# seed\n');
@@ -5396,6 +5469,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
     return bareDir;
   }
@@ -5409,6 +5483,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     for (const [f, c] of Object.entries(opts.seed)) writeFileSync(join(sisterDir, f), c, 'utf-8');
@@ -5419,6 +5494,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
 
     for (const [f, c] of Object.entries(opts.advance)) {
@@ -5733,6 +5809,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, 'a.md'), 'A1\n', 'utf-8');
@@ -5743,6 +5820,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
 
     writeFileSync(join(projectDir, 'a.md'), 'A1\nLOCAL\n', 'utf-8');
@@ -5774,6 +5852,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, 'a.md'), 'A1\n', 'utf-8');
@@ -5786,6 +5865,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
 
     const escapeDir = join(tmpDir, 'escape-dir');
@@ -6263,6 +6343,7 @@ describe('SyncEngine pull-only mode transitions', () => {
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
     return bareDir;
   }
@@ -6278,6 +6359,7 @@ describe('SyncEngine pull-only mode transitions', () => {
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     for (const [f, c] of Object.entries(seed)) writeFileSync(join(sisterDir, f), c, 'utf-8');
@@ -6289,6 +6371,7 @@ describe('SyncEngine pull-only mode transitions', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
     const project = simpleGit(projectDir);
     await project.raw('config', 'user.name', 'Follower');
@@ -6527,6 +6610,7 @@ describe('classifyFastForwardRefusal (pinned against real git)', () => {
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
     return bareDir;
   }
@@ -6537,6 +6621,7 @@ describe('classifyFastForwardRefusal (pinned against real git)', () => {
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, 'a.md'), 'l1\nl2\n', 'utf-8');
@@ -6546,6 +6631,7 @@ describe('classifyFastForwardRefusal (pinned against real git)', () => {
     await sister.push('origin', 'main');
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
     writeFileSync(join(sisterDir, 'a.md'), advance, 'utf-8');
     await sister.add('.');
@@ -6581,6 +6667,7 @@ describe("SyncEngine one-shot pull (op 'pull')", () => {
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
     return bareDir;
   }
@@ -6594,6 +6681,7 @@ describe("SyncEngine one-shot pull (op 'pull')", () => {
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     for (const [f, c] of Object.entries(opts.seed)) writeFileSync(join(sisterDir, f), c, 'utf-8');
@@ -6604,6 +6692,7 @@ describe("SyncEngine one-shot pull (op 'pull')", () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
 
     if (opts.advance) {
@@ -6768,6 +6857,7 @@ describe("SyncEngine one-shot pull (op 'pull')", () => {
   test('refuses when there is no remote', async () => {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Solo');
     await git.raw('config', 'user.email', 'solo@test.com');
     writeFileSync(join(projectDir, 'doc.md'), 'v1\n', 'utf-8');
@@ -6790,6 +6880,7 @@ describe('SyncEngine telemetry', () => {
     const bareDir = join(tmpDir, 'bare.git');
     mkdirSync(bareDir, { recursive: true });
     await simpleGit(bareDir).init(true);
+    configureTestGitRepository(bareDir);
     await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
     return bareDir;
   }
@@ -6803,6 +6894,7 @@ describe('SyncEngine telemetry', () => {
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     for (const [f, c] of Object.entries(opts.seed)) writeFileSync(join(sisterDir, f), c, 'utf-8');
@@ -6813,6 +6905,7 @@ describe('SyncEngine telemetry', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
 
     if (opts.advance) {
@@ -6953,12 +7046,14 @@ describe('SyncEngine blocking-change resolution', () => {
     mkdirSync(bareDir, { recursive: true });
     const bare = simpleGit(bareDir);
     await bare.init(true);
+    configureTestGitRepository(bareDir);
     await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
     const sisterDir = join(tmpDir, 'sister');
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, 'settings.json'), '{"a":1}\n', 'utf-8');
@@ -6971,6 +7066,7 @@ describe('SyncEngine blocking-change resolution', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
     const project = simpleGit(projectDir);
     await project.raw('config', 'user.name', 'Project');
@@ -7163,12 +7259,14 @@ describe('SyncEngine split-leg backoff, end to end', () => {
     mkdirSync(bareDir, { recursive: true });
     const bare = simpleGit(bareDir);
     await bare.init(true);
+    configureTestGitRepository(bareDir);
     await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
     const sisterDir = join(tmpDir, 'sister');
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, 'foo.md'), 'base\n', 'utf-8');
@@ -7179,6 +7277,7 @@ describe('SyncEngine split-leg backoff, end to end', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
     const project = simpleGit(projectDir);
     await project.raw('config', 'user.name', 'Project');
@@ -7323,6 +7422,7 @@ describe('SyncEngine exclusive merge ownership', () => {
     mkdirSync(bareDir);
     const bare = simpleGit(bareDir);
     await bare.init(true);
+    configureTestGitRepository(bareDir);
     await bare.raw(['symbolic-ref', 'HEAD', 'refs/heads/main']);
     const git = await initGitWithOrigin(bareDir);
     writeFileSync(join(projectDir, '.git', 'info', 'exclude'), '.ok/\n');
@@ -7345,6 +7445,7 @@ describe('SyncEngine exclusive merge ownership', () => {
   async function diverge(bareDir: string) {
     const sisterDir = join(tmpDir, 'exclusive-sister');
     await simpleGit(tmpDir).clone(bareDir, sisterDir);
+    configureTestGitRepository(sisterDir);
     const sister = simpleGit(sisterDir);
     await sister.raw(['config', 'user.name', 'Sister']);
     await sister.raw(['config', 'user.email', 'sister@test.com']);

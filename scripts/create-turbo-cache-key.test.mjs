@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { CACHE_KEY_FILE, cacheKey, writeCacheKey } from './create-turbo-cache-key.mjs';
+import { configureTestGitRepository } from '../test-support/configure-git-fixture.test-helper.ts';
 import { withoutTurboAgentDetection } from '../test-support/turbo-agent-env.test-helper.mjs';
+import { CACHE_KEY_FILE, cacheKey, writeCacheKey } from './create-turbo-cache-key.mjs';
 import { gitCleanEnv } from './git-clean-env.mjs';
 
 const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -146,6 +147,7 @@ function fixture(globalDependencies) {
     )}\n`,
   );
   git(root, ['init', '-q']);
+  configureTestGitRepository(root);
   git(root, ['add', '-A']);
   git(root, ['commit', '-q', '-m', 'fixture']);
   return root;

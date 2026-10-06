@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   addOkPathsToGitExclude,
   formatTrackedRemediation,
@@ -42,6 +43,7 @@ function initGitRepo(dir: string): void {
     cwd: dir,
     stdio: ['ignore', 'ignore', 'ignore'],
   });
+  configureTestGitRepository(dir);
   execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir });
   execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: dir });
 }
@@ -317,6 +319,7 @@ describe('addOkPathsToGitExclude', () => {
       cwd: mainRepo,
       stdio: ['ignore', 'ignore', 'ignore'],
     });
+    configureTestGitRepository(linkedWorktree);
     try {
       const dotGitContent = readFileSync(join(linkedWorktree, '.git'), 'utf-8');
       expect(dotGitContent.startsWith('gitdir:')).toBe(true);

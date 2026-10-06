@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   __resetResolveOnPathCacheForTests,
   __seedResolveOnPathCacheForTests,
@@ -52,6 +53,7 @@ describe('ensureProjectGit', () => {
     expect(existsSync(resolve(projectRoot, '.git/ok/HEAD'))).toBe(true);
 
     const result = await ensureProjectGit(projectRoot);
+    configureTestGitRepository(projectRoot);
 
     expect(result.didInit).toBe(true);
     expect(result.repaired).toBe(true);
@@ -82,6 +84,7 @@ describe('ensureProjectGit', () => {
     const projectRoot = resolve(tmpDir, 'parent-repo');
     mkdirSync(projectRoot, { recursive: true });
     await execFileAsync('git', ['init', '--initial-branch=main', projectRoot]);
+    configureTestGitRepository(projectRoot);
 
     const subFolder = resolve(projectRoot, 'nested/child');
     mkdirSync(subFolder, { recursive: true });
@@ -97,6 +100,7 @@ describe('ensureProjectGit', () => {
     mkdirSync(projectRoot, { recursive: true });
 
     const result = await ensureProjectGit(projectRoot);
+    configureTestGitRepository(projectRoot);
 
     expect(result.didInit).toBe(true);
     expect(existsSync(resolve(projectRoot, '.git/HEAD'))).toBe(true);
@@ -117,6 +121,7 @@ describe('ensureProjectGit', () => {
     } finally {
       process.env.PATH = originalPath;
     }
+    configureTestGitRepository(projectRoot);
 
     expect(existsSync(resolve(projectRoot, '.git/HEAD'))).toBe(true);
   });
@@ -163,6 +168,7 @@ describe('ensureProjectGit — initial commit', () => {
     mkdirSync(projectRoot, { recursive: true });
 
     const result = await ensureProjectGit(projectRoot);
+    configureTestGitRepository(projectRoot);
 
     expect(result.didInit).toBe(true);
     await expect(headResolves(projectRoot)).resolves.toBe(true);
@@ -173,6 +179,7 @@ describe('ensureProjectGit — initial commit', () => {
     mkdirSync(projectRoot, { recursive: true });
 
     await ensureProjectGit(projectRoot);
+    configureTestGitRepository(projectRoot);
 
     const worktreePath = resolve(projectRoot, '.ok/worktrees/wt-1');
     await expect(
@@ -186,6 +193,7 @@ describe('ensureProjectGit — initial commit', () => {
     const projectRoot = resolve(tmpDir, 'stranded');
     mkdirSync(projectRoot, { recursive: true });
     await execFileAsync('git', ['init', '--initial-branch=main', projectRoot]);
+    configureTestGitRepository(projectRoot);
     await expect(headResolves(projectRoot)).resolves.toBe(false);
 
     const result = await ensureProjectGit(projectRoot);
@@ -198,6 +206,7 @@ describe('ensureProjectGit — initial commit', () => {
     const projectRoot = resolve(tmpDir, 'history-elsewhere');
     mkdirSync(projectRoot, { recursive: true });
     await execFileAsync('git', ['init', '--initial-branch=other', projectRoot]);
+    configureTestGitRepository(projectRoot);
     await execFileAsync(
       'git',
       ['-c', 'user.name=T', '-c', 'user.email=t@e.co', 'commit', '--allow-empty', '-m', 'existing'],
@@ -219,6 +228,7 @@ describe('ensureProjectGit — initial commit', () => {
     mkdirSync(resolve(projectRoot, '.git/ok'), { recursive: true });
 
     const result = await ensureProjectGit(projectRoot);
+    configureTestGitRepository(projectRoot);
 
     expect(result.repaired).toBe(true);
     await expect(headResolves(projectRoot)).resolves.toBe(true);
@@ -244,6 +254,7 @@ describe('ensureProjectGit — initial commit', () => {
       ).rejects.toBeDefined();
 
       await ensureProjectGit(projectRoot);
+      configureTestGitRepository(projectRoot);
       await expect(headResolves(projectRoot)).resolves.toBe(true);
 
       const author = await execFileAsync('git', ['log', '-1', '--format=%an <%ae>'], {
@@ -274,6 +285,7 @@ describe('ensureProjectGit — initial commit', () => {
     }
     try {
       await ensureProjectGit(projectRoot);
+      configureTestGitRepository(projectRoot);
       const author = await execFileAsync('git', ['log', '-1', '--format=%an <%ae>'], {
         cwd: projectRoot,
       });

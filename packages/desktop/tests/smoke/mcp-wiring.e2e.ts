@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import {
   homeEnv,
@@ -18,6 +19,7 @@ import {
   PLATFORM_SUPPORTED,
   SMOKE_ENABLED,
 } from './_helpers/platform-gate';
+import { findProjectEditorWindow } from './_helpers/project-editor-window';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
@@ -365,6 +367,9 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
 
       const marker = readMarker(tmpHome);
       expect(marker).toMatchObject({ configured: true });
+      const editor = await findProjectEditorWindow(app, projectDir);
+      if (!editor) throw new Error('expected project editor did not open');
+      await configureDesktopGitRepositories(editor, projectDir);
     } finally {
       forceRemove([], tmpHome);
     }

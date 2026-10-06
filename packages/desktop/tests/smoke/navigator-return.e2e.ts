@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import {
   homeEnv,
@@ -144,6 +145,7 @@ test.describe('Project Navigator return-affordance smoke', () => {
 
     const editor = await findEditorWindow(app);
     await expect.poll(() => countNavigatorWindows(app)).toBe(0);
+    await configureDesktopGitRepositories(editor, projectDir);
 
     await editor.evaluate(async () => {
       await window.okDesktop?.navigator.open();
@@ -180,6 +182,7 @@ test.describe('Project Navigator return-affordance smoke', () => {
 
     const editor = await findEditorWindow(app);
     await expect.poll(() => countEditorWindows(app)).toBe(1);
+    await configureDesktopGitRepositories(editor, projectDir);
 
     await editor.evaluate(async () => {
       await window.okDesktop?.navigator.open();

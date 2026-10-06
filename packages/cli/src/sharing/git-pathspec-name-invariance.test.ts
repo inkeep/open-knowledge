@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { probeTrackedOkPaths } from './git-exclude.ts';
 
 let projectRoot = '';
@@ -25,6 +26,7 @@ function writeSkillFile(name: string, body: string): string {
 beforeEach(() => {
   projectRoot = mkdtempSync(join(tmpdir(), 'ok-cli-pathspec-'));
   git(['init', '-q', '-b', 'main', '.']);
+  configureTestGitRepository(projectRoot);
   git(['config', 'user.name', 'Test']);
   git(['config', 'user.email', 'test@test.com']);
   writeFileSync(join(projectRoot, 'README.md'), '# seed\n', 'utf-8');

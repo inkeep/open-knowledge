@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../test-support/configure-git-fixture.test-helper.ts';
 import {
   findTranslationGaps,
   formatReport,
@@ -307,6 +308,7 @@ describe('invocation environment', () => {
     try {
       const decoy = join(scratch, 'decoy');
       gitAt(['init', '--quiet', decoy]);
+      configureTestGitRepository(decoy);
       gitAt(
         [
           '-c',

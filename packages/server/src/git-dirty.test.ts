@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { dirtyFilesOverlapWith } from './git-dirty.ts';
 
 let projectDir: string;
@@ -22,6 +23,7 @@ function commitAll(message: string): void {
 
 function initRepo(): void {
   run('git init -q -b main');
+  configureTestGitRepository(projectDir);
   run('git config user.email "test@example.com"');
   run('git config user.name "Test"');
   run('git config commit.gpgsign false');

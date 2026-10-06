@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { launchDesktopApp, waitForWindowByMode } from './_helpers/launch-readiness';
 import { sumOfDeclaredBoundsMs } from './_helpers/parse-timeouts';
@@ -199,6 +200,7 @@ test.describe('Terminal tabs — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.projectDir);
     const expectPrompt = async () => {
       await expect(visibleSection(page)).toBeVisible();
       await expect
@@ -220,6 +222,7 @@ test.describe('Terminal tabs — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.projectDir);
     await clickViewTerminalItem(app);
     await expect(visibleSection(page)).toBeVisible();
     await expect
@@ -282,6 +285,7 @@ test.describe('Terminal tabs — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.projectDir);
     await openTerminal(app, page);
 
     const marker1 = `TAB1_PID_${Date.now().toString(36)}`;
@@ -328,6 +332,7 @@ test.describe('Terminal tabs — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.projectDir);
     await openTerminal(app, page);
     await openBareTab(page);
     const [, survivingTabId] = await terminalTabIds(page);
@@ -352,6 +357,7 @@ test.describe('Terminal tabs — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.projectDir);
     await openTerminal(app, page);
 
     await typeInActive(page, `${SHELL_COMMANDS.oscTitle('PROGRAM_TITLE_ZZZ', 'OSC_FED_QQQ')}\r`);
@@ -394,6 +400,7 @@ test.describe('Terminal tabs — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.projectDir);
     await openTerminal(app, page);
 
     expect(
@@ -434,6 +441,7 @@ test.describe('Terminal tabs — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.projectDir);
     await openTerminal(app, page);
 
     await typeInActive(page, `${SHELL_COMMANDS.setEnvironment('OK_TABMARK', 'SURVIVED_888')}\r`);
@@ -482,6 +490,7 @@ test.describe('Terminal tabs — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.projectDir);
     await openTerminal(app, page);
 
     await typeInActive(
@@ -525,6 +534,7 @@ test.describe('Terminal tabs — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.projectDir);
     await openTerminal(app, page);
 
     await openBareTab(page);

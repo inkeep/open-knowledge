@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../../test-support/configure-git-fixture.test-helper.ts';
 import { SkillPreviewSchema } from '../schema.ts';
 import { fetchSource, parseSkillsShSource, parseSource, SkillFetchError } from './fetch.ts';
 import {
@@ -535,12 +536,14 @@ describe('fetchSource', () => {
         env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' },
       });
     git(['init', '-q']);
+    configureTestGitRepository(repo);
     git(['config', 'user.email', 't@t.t']);
     git(['config', 'user.name', 't']);
     git(['add', '-A']);
     git(['commit', '-q', '-m', 'init']);
 
     const f = await fetchSource({ kind: 'git', url: repo });
+    configureTestGitRepository(f.dir);
     try {
       expect(parseSkillDir(f.dir)?.name).toBe('cloned');
     } finally {
@@ -558,6 +561,7 @@ describe('fetchSource', () => {
         env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' },
       });
     git(['init', '-q']);
+    configureTestGitRepository(repo);
     git(['config', 'user.email', 't@t.t']);
     git(['config', 'user.name', 't']);
     git(['add', '-A']);

@@ -1,11 +1,20 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Octokit } from '@octokit/rest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { runPublishFlow } from './publish.ts';
+import { configureTestGitRepository } from '../../../../../test-support/configure-git-fixture.test-helper.ts';
+import { runPublishFlow as runPublishFlowProduct } from './publish.ts';
+
+async function runPublishFlow(...args: Parameters<typeof runPublishFlowProduct>) {
+  const result = await runPublishFlowProduct(...args);
+  if (existsSync(join(args[0].projectDir, '.git', 'config'))) {
+    configureTestGitRepository(args[0].projectDir);
+  }
+  return result;
+}
 
 function octokitCreatingRepoAt(cloneUrl: string): Octokit {
   return {
@@ -38,6 +47,7 @@ describe('share publish honours the environment command-scope git config (GIT_CO
     vi.stubEnv('GIT_COMMITTER_NAME', undefined);
     vi.stubEnv('GIT_COMMITTER_EMAIL', undefined);
     execFileSync('git', ['init', '--bare', bareRepo], { stdio: 'ignore' });
+    configureTestGitRepository(bareRepo);
     writeFileSync(join(projectDir, 'README.md'), '# Hello\n', 'utf-8');
   });
 

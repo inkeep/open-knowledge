@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { createServer } from './server-factory.ts';
 
 interface Fixture {
@@ -17,6 +18,7 @@ async function setupFixture(): Promise<Fixture> {
   const contentDir = tmpDir;
   const git = simpleGit({ baseDir: tmpDir });
   await git.init();
+  configureTestGitRepository(tmpDir);
   await git.addConfig('user.name', 'Test User');
   await git.addConfig('user.email', 'test@example.com');
   return {

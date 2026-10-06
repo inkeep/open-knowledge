@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { BridgeWorktreeEntry } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   classifyLocation,
   isAllowedInventoryAnchor,
@@ -48,6 +49,7 @@ async function makeFixture(): Promise<Fixture> {
   writeFileSync(join(repo, 'packages', 'docs', 'README.md'), 'docs\n');
   writeFileSync(join(repo, 'packages', 'notes', 'README.md'), 'notes\n');
   await git(repo, 'init', '-b', 'main');
+  configureTestGitRepository(repo);
   await git(repo, 'config', 'user.email', 'test@example.com');
   await git(repo, 'config', 'user.name', 'Test');
   await git(repo, 'add', '.');
@@ -56,7 +58,9 @@ async function makeFixture(): Promise<Fixture> {
   const external = join(root, 'repo-prefix-external');
   mkdirSync(join(repo, '.ok', 'worktrees'), { recursive: true });
   await git(repo, 'worktree', 'add', '-b', 'dev', internal);
+  configureTestGitRepository(internal);
   await git(repo, 'worktree', 'add', '-b', 'external', external);
+  configureTestGitRepository(external);
   return { root, repo, internal, external };
 }
 

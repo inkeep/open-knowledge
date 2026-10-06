@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import simpleGit from 'simple-git';
 import { afterAll, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { ConfigSchema } from '../config/schema.ts';
 import { buildExecResult } from '../mcp/tools/exec.ts';
 
@@ -18,6 +19,7 @@ async function corpus(): Promise<string> {
   created.push(root);
   const git = simpleGit(root);
   await git.init();
+  configureTestGitRepository(root);
   await git.raw('config', 'user.name', 'Test');
   await git.raw('config', 'user.email', 't@t.test');
   mkdirSync(join(root, 'specs'));

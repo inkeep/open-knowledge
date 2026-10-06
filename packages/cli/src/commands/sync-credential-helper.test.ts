@@ -16,6 +16,14 @@ import { pathToFileURL } from 'node:url';
 import { shellSingleQuote } from '@inkeep/open-knowledge-core';
 import { type Config, readServerLock, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
+import {
+  GITHUB_HOST,
+  type GitHubStandIn,
+  type PlainHttpInterceptor,
+  startGitHubStandIn,
+  startPlainHttpInterceptor,
+} from '../../tests/support/github-stand-in.test-helper.ts';
 import type { GhDetectResult } from '../auth/gh-detect.ts';
 import { FileBackend, type TokenStore } from '../auth/token-store.ts';
 import {
@@ -27,13 +35,6 @@ import {
   writeCliCredentialStandIn,
   writeRecordingCredentialHelper,
 } from './git-credential-fixtures.test-helper.ts';
-import {
-  GITHUB_HOST,
-  type GitHubStandIn,
-  type PlainHttpInterceptor,
-  startGitHubStandIn,
-  startPlainHttpInterceptor,
-} from './github-stand-in.test-helper.ts';
 import { runSync } from './sync.ts';
 
 const ORIGIN_URL = `https://${GITHUB_HOST}/alice/demo.git`;
@@ -290,6 +291,7 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
     const git = (...args: string[]) =>
       execFileSync('git', args, { cwd: projectDir, stdio: 'ignore' });
     git('init', '--initial-branch=main');
+    configureTestGitRepository(projectDir);
     git('commit', '--allow-empty', '-m', 'seed');
     (scenario.repository ?? originUpstreamOnGitHub)(git, started);
     git('commit', '--allow-empty', '-m', 'local work to push');
@@ -879,6 +881,7 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
         okStoreToken: OK_TOKEN,
         repository: (git) => {
           execFileSync('git', ['init', '--quiet', '--bare', '--initial-branch=main', localRemote]);
+          configureTestGitRepository(localRemote);
           git('remote', 'add', 'origin', urlOf(localRemote));
           git('push', localRemote, 'main:main');
           git('config', 'branch.main.remote', 'origin');
@@ -1254,6 +1257,7 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
       gitHubAccepts: GH_TOKEN,
       repository: (git, github) => {
         execFileSync('git', ['init', '--quiet', '--initial-branch=main', submoduleSource]);
+        configureTestGitRepository(submoduleSource);
         execFileSync('git', [
           '-C',
           submoduleSource,
@@ -1272,6 +1276,7 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
           submoduleSource,
           'sub',
         );
+        configureTestGitRepository(join(projectDir, 'sub'));
         git('-C', 'sub', 'remote', 'set-url', 'origin', `http://${GITHUB_HOST}/alice/sub.git`);
         git('commit', '--quiet', '-m', 'add the submodule');
         originUpstreamOnGitHub(git, github);
@@ -1293,6 +1298,7 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
           github.repositoryDir('alice/demo.git'),
           upstreamWork,
         ]);
+        configureTestGitRepository(upstreamWork);
         execFileSync('git', [
           '-C',
           upstreamWork,
@@ -1511,6 +1517,7 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
       repository: (git, github) => {
         const remote = github.repositoryDir(nestedRepository, ENTERPRISE_HOST);
         execFileSync('git', ['init', '--quiet', '--bare', '--initial-branch=main', remote]);
+        configureTestGitRepository(remote);
         git('remote', 'add', 'origin', `https://${ENTERPRISE_HOST}/${nestedRepository}`);
         git('push', remote, 'main:main');
         git('config', 'branch.main.remote', 'origin');

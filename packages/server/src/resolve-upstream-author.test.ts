@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import simpleGit, { type SimpleGit } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { resolveUpstreamChanges } from './server-factory.ts';
 
 describe('resolveUpstreamChanges', () => {
@@ -27,6 +28,7 @@ describe('resolveUpstreamChanges', () => {
     dir = mkdtempSync(resolve(tmpdir(), 'ok-upstream-changes-'));
     git = simpleGit(dir);
     await git.init(['-b', 'main']);
+    configureTestGitRepository(dir);
     await git.addConfig('user.name', 'Seed');
     await git.addConfig('user.email', 'seed@example.com');
   });

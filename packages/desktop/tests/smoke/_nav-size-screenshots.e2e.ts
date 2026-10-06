@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { ElectronApplication, JSHandle, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import {
   DESKTOP_ROOT,
   desktopLaunchOptions,
@@ -129,6 +130,7 @@ test.describe('Navigator size screenshots (dev-only)', () => {
       captureStderrFor(app, { home: tmpHome });
 
       const editor = await findWindow(app, 'editor');
+      await configureDesktopGitRepositories(editor, projectDir);
       await editor.evaluate(async () => {
         await window.okDesktop?.navigator.open();
       });

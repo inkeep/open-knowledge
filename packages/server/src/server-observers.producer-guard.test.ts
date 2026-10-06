@@ -8,6 +8,7 @@ import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-ti
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { getLogger } from './logger.ts';
 import { getMetrics } from './metrics.ts';
 import {
@@ -214,6 +215,7 @@ describe('Producer guard (FR6) — packaged posture logs + checkpoints, never th
     mkdirSync(resolve(projectRoot, 'content'), { recursive: true });
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     shadow = await initShadowRepo(projectRoot);
@@ -451,6 +453,7 @@ describe('Producer guard (FR6) — packaged posture logs + checkpoints, never th
     mkdirSync(resolve(brokenRoot, 'content'), { recursive: true });
     const brokenGit = simpleGit(brokenRoot);
     await brokenGit.init();
+    configureTestGitRepository(brokenRoot);
     await brokenGit.raw('config', 'user.name', 'Test');
     await brokenGit.raw('config', 'user.email', 'test@test.com');
     const brokenShadow = await initShadowRepo(brokenRoot);

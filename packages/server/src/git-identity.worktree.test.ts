@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 
 import { resolveGitIdentity, writeGitIdentity } from './git-identity.ts';
 
@@ -43,6 +44,7 @@ function setupRepo(): { tmp: string; main: string; linked: string } {
   const linked = join(tmp, 'wt');
 
   expect(run(tmp, 'init', '-b', 'main', 'repo').status).toBe(0);
+  configureTestGitRepository(main);
   expect(run(main, 'config', 'user.email', 'main@test.local').status).toBe(0);
   expect(run(main, 'config', 'user.name', 'Main Test').status).toBe(0);
   writeFileSync(join(main, 'a.txt'), 'hi\n');

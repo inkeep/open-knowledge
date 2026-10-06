@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import password from '@inquirer/password';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../../../test-support/configure-git-fixture.test-helper.ts';
 import { clearTokenFromAllBackends, FileBackend } from '../../auth/token-store.ts';
 import { shareNameCheckCommand } from '../share/name-check.ts';
 import { shareOwnersCommand } from '../share/owners.ts';
@@ -35,6 +36,7 @@ beforeEach(() => {
   vi.stubEnv('HOME', home);
   vi.stubEnv('USERPROFILE', home);
   execFileSync('git', ['init', '-q'], { cwd: projectDir });
+  configureTestGitRepository(projectDir);
   vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 });

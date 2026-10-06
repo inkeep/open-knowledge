@@ -2,6 +2,11 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
+import {
+  configureDesktopGitRepositories,
+  configureEphemeralGitRepositories,
+  findEphemeralTestProject,
+} from '../support/git-fixture.test-helper';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { readBootLogLines } from './_helpers/launch-readiness';
 import {
@@ -70,6 +75,10 @@ test.describe('unpackaged single-file open', () => {
     const editor = app.windows().find((window) => window !== navigator);
     if (editor === undefined) throw new Error('the single-file editor window vanished');
     await expect(editor.getByRole('heading', { name: 'Ephemeral file opened' })).toBeVisible();
+    const apiOrigin = await editor.evaluate(() => window.okDesktop?.config.apiOrigin);
+    if (!apiOrigin) throw new Error('the single-file editor has no server origin');
+    const projectDir = findEphemeralTestProject(tmpHome, apiOrigin);
+    await configureEphemeralGitRepositories(projectDir, apiOrigin);
     await app.evaluate(({ app: electronApp }) => {
       setImmediate(() => electronApp.quit());
     });
@@ -114,6 +123,10 @@ test.describe('unpackaged single-file open', () => {
         { timeout: 30_000, message: 'unpackaged project never logged a utility fork' },
       )
       .toBe(true);
+
+    const editor = app.windows().find((window) => window !== navigator);
+    if (editor === undefined) throw new Error('the project editor window vanished');
+    await configureDesktopGitRepositories(editor, projectDir);
 
     await app.evaluate(({ app: electronApp }) => {
       setImmediate(() => electronApp.quit());

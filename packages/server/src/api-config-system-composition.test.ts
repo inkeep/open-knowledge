@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import type { BootedServer } from './boot.ts';
 import { CC1Broadcaster } from './cc1-broadcast.ts';
 import {
@@ -543,6 +544,7 @@ describe('server-info branch reporting over the composed listener', () => {
     try {
       const server = await bootOn('repo-', (dir) => {
         execFileSync('git', ['init', '-q', '-b', 'feat/probe'], { cwd: dir });
+        configureTestGitRepository(dir);
       });
 
       expect(await currentBranchOf(server)).toBe('feat/probe');
@@ -559,6 +561,7 @@ describe('server-info branch reporting over the composed listener', () => {
     try {
       const server = await bootOn('watcher-failed-', (dir) => {
         execFileSync('git', ['init', '-q', '-b', 'feat/probe'], { cwd: dir });
+        configureTestGitRepository(dir);
       });
 
       expect(server.degraded).toContain('head-watcher');

@@ -20,6 +20,7 @@ import {
 } from '@inkeep/open-knowledge-server';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import * as Y from 'yjs';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { waitForSync } from './test-harness.ts';
 
@@ -33,6 +34,7 @@ let lockPath = '';
 beforeAll(async () => {
   contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-idle-multi-')));
   await ensureProjectGit(contentDir);
+  configureTestGitRepository(contentDir);
   const okDir = join(contentDir, OK_DIR);
   mkdirSync(okDir, { recursive: true });
   writeFileSync(join(okDir, 'config.yml'), '', 'utf-8');

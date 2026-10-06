@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import {
   homeEnv,
@@ -77,6 +78,7 @@ async function bootEditorWindow(
   await expect(
     page.getByTestId('sidebar-toolbar').getByRole('button', { name: 'New file' }),
   ).toBeVisible({ timeout: 30_000 });
+  await configureDesktopGitRepositories(page, projectDir);
 
   return { app, page, tmpHome };
 }

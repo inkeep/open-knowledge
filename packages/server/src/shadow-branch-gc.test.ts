@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { parseCheckpoint } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { gcShadowBranches } from './shadow-branch-gc';
 import { commitWip, initShadowRepo, shadowGit, type WriterIdentity } from './shadow-repo';
 
@@ -31,6 +32,7 @@ describe('gcShadowBranches', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -53,6 +55,7 @@ describe('gcShadowBranches', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -99,6 +102,7 @@ describe('gcShadowBranches', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -134,6 +138,7 @@ describe('gcShadowBranches', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -158,6 +163,7 @@ describe('gcShadowBranches', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -207,6 +213,7 @@ describe('per-writer 30-day TTL GC on active branches (US-019, D54, FR-18)', () 
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     await git.add('.');
@@ -253,6 +260,7 @@ describe('per-writer 30-day TTL GC on active branches (US-019, D54, FR-18)', () 
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     await git.add('.');
@@ -286,6 +294,7 @@ describe('per-writer 30-day TTL GC on active branches (US-019, D54, FR-18)', () 
     writeFileSync(resolve(projectRoot, 'content', 'readme.md'), '# readme\n');
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     await git.add('.');

@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
@@ -86,6 +87,7 @@ test.describe('sidebar search pill — Electron lockstep-fade smoke', () => {
     }).toPass({ timeout: 15_000 });
     if (!editorPage) throw new Error('unreachable');
     const page = editorPage;
+    await configureDesktopGitRepositories(page, projectDir);
 
     const isElectronHost = await page.evaluate(
       () => typeof window !== 'undefined' && window.okDesktop != null,

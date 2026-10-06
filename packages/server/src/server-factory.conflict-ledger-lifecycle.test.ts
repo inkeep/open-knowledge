@@ -7,6 +7,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { bootServer } from './boot.ts';
 import { ConfigSchema } from './config/schema.ts';
 
@@ -126,6 +127,7 @@ async function bootPlainProject(seed: (contentDir: string) => void): Promise<{
 }> {
   const contentDir = tmpDir;
   await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+  configureTestGitRepository(contentDir);
   seedOkScaffold(contentDir);
   seed(contentDir);
   const booted = await bootServer({
@@ -171,6 +173,7 @@ describe('conflict ledger boot prune runs independently of the sync engine', () 
     const reconcileFile = 'notes/local.md';
 
     await execFileAsync('git', ['init', '--initial-branch=main', tmpDir]);
+    configureTestGitRepository(tmpDir);
     seedOkScaffold(tmpDir);
     mkdirSync(resolve(tmpDir, 'notes'), { recursive: true });
     writeFileSync(resolve(tmpDir, DOC_FILE), 'line1\n', 'utf-8');

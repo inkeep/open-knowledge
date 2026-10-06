@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import simpleGit, { type SimpleGit } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { createTestConflictAuthority } from './conflict-authority.test-helper.ts';
 import { classifyGitError } from './error-classification.ts';
 import { runCheckoutFlow } from './git-checkout.ts';
@@ -44,11 +45,13 @@ beforeEach(async () => {
   const bareDir = join(tmpDir, 'bare.git');
   mkdirSync(bareDir, { recursive: true });
   await simpleGit(bareDir).init(true);
+  configureTestGitRepository(bareDir);
   await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
   mkdirSync(sisterDir, { recursive: true });
   sister = simpleGit(sisterDir);
   await sister.init(['--initial-branch=main']);
+  configureTestGitRepository(sisterDir);
   await sister.raw('config', 'user.name', 'Sister');
   await sister.raw('config', 'user.email', 'sister@test.com');
   mkdirSync(join(sisterDir, 'notes'), { recursive: true });
@@ -59,6 +62,7 @@ beforeEach(async () => {
   await sister.push('origin', 'main');
 
   await simpleGit(tmpDir).clone(bareDir, projectDir);
+  configureTestGitRepository(projectDir);
   mkdirSync(join(projectDir, '.ok', LOCAL_DIR), { recursive: true });
   writeFileSync(join(projectDir, '.ok', LOCAL_DIR, 'principal.json'), '{"secret":1}\n', 'utf-8');
   project = simpleGit(projectDir);

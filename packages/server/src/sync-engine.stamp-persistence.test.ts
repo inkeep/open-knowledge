@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { LOCAL_DIR, type SyncMode } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { createTestConflictAuthority } from './conflict-authority.test-helper.ts';
 import { getLogger } from './logger.ts';
 import { SyncEngine } from './sync-engine.ts';
@@ -54,10 +55,12 @@ async function projectWithBareOrigin() {
   const bare = join(tmpDir, 'bare.git');
   mkdirSync(bare, { recursive: true });
   await simpleGit(bare).init(true);
+  configureTestGitRepository(bare);
   await simpleGit(bare).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
   const git = simpleGit(projectDir);
   await git.init(['--initial-branch=main']);
+  configureTestGitRepository(projectDir);
   await git.raw('config', 'user.name', 'Test');
   await git.raw('config', 'user.email', 'test@test.com');
   writeFileSync(join(projectDir, 'doc.md'), 'v1\n', 'utf-8');

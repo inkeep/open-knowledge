@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { gitCleanEnv } from '../../../../scripts/git-clean-env.mjs';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 import { getRegisteredDescriptors } from '../../src/editor/registry/index.ts';
 
@@ -152,6 +153,7 @@ describe('substrate vocabulary drift — every test reference must resolve', () 
     const root = mkdtempSync(join(tmpdir(), 'ok-substrate-vocabulary-drift-'));
     try {
       runGit(root, ['init', '-q']);
+      configureTestGitRepository(root);
       const unregistered = `export const markup = '<div data-component-type="planted-unregistered-substrate"></div>';\n`;
       const plant = (path: string, content: string) => {
         mkdirSync(dirname(join(root, path)), { recursive: true });
@@ -187,6 +189,7 @@ describe('substrate vocabulary drift — every test reference must resolve', () 
     const root = mkdtempSync(join(tmpdir(), 'ok-substrate-vocabulary-drift-'));
     try {
       runGit(root, ['init', '-q']);
+      configureTestGitRepository(root);
       const dir = join(root, 'packages', 'a');
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, 'ignore-rules'), 'ignored/\n');
@@ -204,6 +207,7 @@ describe('substrate vocabulary drift — every test reference must resolve', () 
     const root = mkdtempSync(join(tmpdir(), 'ok-substrate-vocabulary-drift-'));
     try {
       runGit(root, ['init', '-q']);
+      configureTestGitRepository(root);
       const tests = join(root, 'packages', 'p', 'tests');
       mkdirSync(tests, { recursive: true });
       writeFileSync(join(tests, 'loop.test.ts'), '');

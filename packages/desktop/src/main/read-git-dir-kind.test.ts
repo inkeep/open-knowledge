@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, test } from 'vitest';
 import { runningAsRoot } from '../../../../test-support/capabilities.test-helper.ts';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { readGitDirKind } from './read-git-dir-kind.ts';
 
 const execFileAsync = promisify(execFile);
@@ -43,6 +44,7 @@ describe('readGitDirKind', () => {
   test('returns "directory" for a main checkout (.git is a directory)', async () => {
     testRoot = realpathSync(mkdtempSync(join(tmpdir(), 'gitdir-kind-')));
     await git(testRoot, 'init', '--initial-branch=main', '.');
+    configureTestGitRepository(testRoot);
     expect(readGitDirKind(testRoot)).toBe('directory');
   });
 
@@ -51,6 +53,7 @@ describe('readGitDirKind', () => {
     const mainRepo = join(testRoot, 'main');
     mkdirSync(mainRepo);
     await git(mainRepo, 'init', '--initial-branch=main', '.');
+    configureTestGitRepository(mainRepo);
     await git(mainRepo, 'config', 'user.email', 'test@example.com');
     await git(mainRepo, 'config', 'user.name', 'Test');
     writeFileSync(join(mainRepo, 'README.md'), '# main\n');
@@ -58,6 +61,7 @@ describe('readGitDirKind', () => {
     await git(mainRepo, 'commit', '-m', 'initial');
     const wt = join(testRoot, 'wt-feat');
     await git(mainRepo, 'worktree', 'add', '-b', 'feat', wt);
+    configureTestGitRepository(wt);
     expect(readGitDirKind(wt)).toBe('linked');
   });
 
@@ -76,6 +80,7 @@ describe('readGitDirKind', () => {
   test('returns "absent" for a plain subfolder of a real repo (the .git is the ancestor\'s)', async () => {
     testRoot = realpathSync(mkdtempSync(join(tmpdir(), 'gitdir-kind-')));
     await git(testRoot, 'init', '--initial-branch=main', '.');
+    configureTestGitRepository(testRoot);
     const sub = join(testRoot, 'subfolder');
     mkdirSync(sub);
     expect(readGitDirKind(sub)).toBe('absent');

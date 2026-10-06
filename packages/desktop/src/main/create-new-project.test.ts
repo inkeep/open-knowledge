@@ -14,12 +14,13 @@ import { join, resolve } from 'node:path';
 import { ALL_EDITOR_IDS } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { runningAsRoot } from '../../../../test-support/capabilities.test-helper.ts';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   CreateNewProjectError,
   folderState,
   type RunCreateNewDeps,
   resolveDefaultProjectsRoot,
-  runCreateNew,
+  runCreateNew as runCreateNewProduct,
   sanitizeFolderName,
 } from './create-new-project.ts';
 import {
@@ -27,6 +28,14 @@ import {
   type DiscoverProjectResult,
   discoverProject,
 } from './folder-admission.ts';
+
+async function runCreateNew(...args: Parameters<typeof runCreateNewProduct>) {
+  const result = await runCreateNewProduct(...args);
+  if (!result.gitRootPromoted || existsSync(join(result.projectDir, '.git', 'config'))) {
+    configureTestGitRepository(result.projectDir);
+  }
+  return result;
+}
 
 let tmpRoot: string;
 

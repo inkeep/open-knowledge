@@ -6,6 +6,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { resolveServerRuntimeConfig } from '@inkeep/open-knowledge-core';
 import { ConfigSchema } from '@inkeep/open-knowledge-server';
 import { beforeEach, describe, expect, type Mock, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { UTILITY_INIT_PHASES } from '../../src/shared/boot-narration.ts';
 import type { KeyringSmokeResult } from '../../src/utility/keyring-smoke.ts';
 import {
@@ -929,6 +930,7 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
       },
     });
     await handle.readyPromise;
+    configureTestGitRepository(tmpRoot);
 
     const headPath = resolve(tmpRoot, '.git/HEAD');
     const configPath = resolve(tmpRoot, '.ok/config.yml');
@@ -1201,6 +1203,7 @@ describe('setupUtility narrates its startup phases to main before it reports rea
           },
         });
         await handle.readyPromise;
+        if (!didEnsureGit) configureTestGitRepository(tmpRoot);
 
         const posted = postedToMain(env);
         const marks = posted.filter((message) => message.type === 'init-phase');

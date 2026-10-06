@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import { parse } from 'yaml';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   expect,
   openProjectPluginsPanel,
@@ -84,6 +85,7 @@ test('Escape decline restores focus, confirmation creates indexes, and disabling
   workerServer,
 }) => {
   execFileSync('git', ['init', '-q'], { cwd: workerServer.contentDir });
+  configureTestGitRepository(workerServer.contentDir);
   await api.seedDocs([
     {
       name: 'home',

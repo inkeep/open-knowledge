@@ -8,6 +8,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { createEphemeralProjectDir, isProcessAlive } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureProjectGitRepositories } from '../support/git-fixture.test-helper.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI_MJS_PATH = resolve(HERE, '../../../cli/dist/cli.mjs');
@@ -118,6 +119,8 @@ describe('ephemeral single-file lifecycle (real CLI)', () => {
     expect(res.status).toBe(200);
     const config = (await res.json()) as { singleFile?: boolean };
     expect(config.singleFile).toBe(true);
+
+    await configureProjectGitRepositories(tempProjectDir, `http://127.0.0.1:${lock.port}`);
 
     child.kill('SIGTERM');
     const releaseDeadline = Date.now() + LOCK_POLL_TIMEOUT_MS;

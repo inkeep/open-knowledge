@@ -1,3 +1,4 @@
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { resolveDesktopTarget } from './_helpers/launch-desktop';
 import { PLATFORM_SKIP_REASON, PLATFORM_SUPPORTED, SMOKE_ENABLED } from './_helpers/platform-gate';
 import {
@@ -61,6 +62,7 @@ test.describe('Spelling settings — real Electron surface', () => {
       },
     });
     const editor = await findEditorWindow(app);
+    await configureDesktopGitRepositories(editor, profile.projectDir);
 
     const initial = await readSessionSpellingTruth(app);
     if (SELECTOR_RENDERS) {

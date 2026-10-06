@@ -7,6 +7,7 @@ import { HocuspocusProvider } from '@hocuspocus/provider';
 import { ensureProjectGit } from '@inkeep/open-knowledge-server';
 import { afterEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { handleBranchSwitched } from '../../src/editor/branch-invalidation';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import { parseCC1BranchSwitched, SYSTEM_DOC_NAME } from '../../src/lib/cc1';
@@ -63,6 +64,7 @@ async function setupGitRepoWithBranches(
   contentB: string,
 ): Promise<void> {
   await ensureProjectGit(contentDir);
+  configureTestGitRepository(contentDir);
   git(contentDir, 'config user.name test');
   git(contentDir, 'config user.email test@test.local');
   writeFileSync(join(contentDir, `${docName}.md`), contentA, 'utf-8');

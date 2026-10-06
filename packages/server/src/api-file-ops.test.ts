@@ -17,6 +17,7 @@ import { Hocuspocus } from '@hocuspocus/server';
 import simpleGit from 'simple-git';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   createApiExtension,
   createDerivedDocumentIndexApiPortStub,
@@ -1080,6 +1081,7 @@ describe('file operation API routes', () => {
 
     const git = simpleGit(dir);
     await git.init();
+    configureTestGitRepository(dir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@example.com');
     await git.add('.');
@@ -1117,6 +1119,7 @@ describe('file operation API routes', () => {
 
     const git = simpleGit(dir);
     await git.init();
+    configureTestGitRepository(dir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@example.com');
     await git.add('.');
@@ -1161,6 +1164,7 @@ describe('file operation API routes', () => {
 
     const git = simpleGit(dir);
     await git.init();
+    configureTestGitRepository(dir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@example.com');
     await git.add('.');
@@ -1185,6 +1189,7 @@ describe('file operation API routes', () => {
 
     const git = simpleGit(dir);
     await git.init();
+    configureTestGitRepository(dir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@example.com');
     await git.add('.');

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { bootServer } from './boot.ts';
 import { ConfigSchema } from './config/schema.ts';
 import { getLogger } from './logger.ts';
@@ -115,6 +116,7 @@ async function withLoadedDocuments(
   const cleanupErrors: unknown[] = [];
   try {
     await ensureProjectGit(projectDir);
+    configureTestGitRepository(projectDir);
     await mkdir(join(projectDir, '.ok'), { recursive: true });
     await writeFile(join(projectDir, '.ok', 'config.yml'), '');
     for (const name of names) await writeFile(join(projectDir, `${name}.md`), `# ${name}\n`);

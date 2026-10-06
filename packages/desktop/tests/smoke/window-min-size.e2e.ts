@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { ElectronApplication, JSHandle, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { WINDOW_MIN_SIZE } from '../../src/main/window-min-size.ts';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import {
   homeEnv,
@@ -131,6 +132,7 @@ test.describe('BrowserWindow min-size smoke', () => {
       WINDOW_MIN_SIZE.EDITOR.width,
       WINDOW_MIN_SIZE.EDITOR.height,
     ]);
+    await configureDesktopGitRepositories(editor, projectDir);
 
     await editor.evaluate(async () => {
       await window.okDesktop?.navigator.open();

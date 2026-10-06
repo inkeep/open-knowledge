@@ -16,6 +16,7 @@ import { promisify } from 'node:util';
 import { addOkPathsToGitExclude, getOkArtifactPaths } from '@inkeep/open-knowledge';
 import { initContent } from '@inkeep/open-knowledge-server';
 import { afterEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { discoverProject } from './folder-admission.ts';
 import { clearRecentGitCache } from './worktree-recents.ts';
 import {
@@ -45,6 +46,7 @@ async function makeRepo(extraBranches: string[] = []): Promise<Handle> {
   const mainRepo = join(root, 'main');
   mkdirSync(mainRepo);
   await git(mainRepo, 'init', '--initial-branch=main', '.');
+  configureTestGitRepository(mainRepo);
   await git(mainRepo, 'config', 'user.email', 'test@example.com');
   await git(mainRepo, 'config', 'user.name', 'Test');
   mkdirSync(join(mainRepo, '.ok'));
@@ -59,6 +61,7 @@ async function makeRepo(extraBranches: string[] = []): Promise<Handle> {
 async function addBareRemote(mainRepo: string, pushBranches: string[]): Promise<string> {
   const bare = join(mainRepo, '..', 'origin.git');
   await git(mainRepo, 'init', '--bare', '--initial-branch=main', bare);
+  configureTestGitRepository(bare);
   await git(mainRepo, 'remote', 'add', 'origin', bare);
   for (const b of pushBranches) await git(mainRepo, 'push', 'origin', b);
   await git(mainRepo, 'fetch', 'origin');
@@ -198,6 +201,7 @@ describe('worktree-service', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'wt-svc-empty-')));
     try {
       await git(root, 'init', '--initial-branch=main', '.');
+      configureTestGitRepository(root);
       const res = await createWorktree({
         anchorPath: root,
         branch: 'wt-1',
@@ -230,6 +234,7 @@ describe('worktree-service', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'wt-svc-other-branch-')));
     try {
       await git(root, 'init', '--initial-branch=other', '.');
+      configureTestGitRepository(root);
       await git(root, 'config', 'user.email', 'test@example.com');
       await git(root, 'config', 'user.name', 'Test');
       await git(root, 'commit', '--allow-empty', '-m', 'real history');
@@ -427,6 +432,7 @@ describe('worktree-service', () => {
     await addBareRemote(handle.mainRepo, ['main', 'dev']);
     const scratch = join(handle.root, 'scratch');
     await git(handle.root, 'clone', join(handle.mainRepo, '..', 'origin.git'), scratch);
+    configureTestGitRepository(scratch);
     await git(scratch, 'config', 'user.email', 'test@example.com');
     await git(scratch, 'config', 'user.name', 'Test');
     writeFileSync(join(scratch, 'a.txt'), 'a\n');
@@ -451,6 +457,7 @@ describe('worktree-service', () => {
     await addBareRemote(handle.mainRepo, ['main']);
     const scratch = join(handle.root, 'scratch');
     await git(handle.root, 'clone', join(handle.mainRepo, '..', 'origin.git'), scratch);
+    configureTestGitRepository(scratch);
     await git(scratch, 'config', 'user.email', 'test@example.com');
     await git(scratch, 'config', 'user.name', 'Test');
     await git(scratch, 'checkout', '-b', 'feature-x');
@@ -489,6 +496,7 @@ describe('worktree-service', () => {
     await addBareRemote(handle.mainRepo, ['main']);
     const scratch = join(handle.root, 'scratch');
     await git(handle.root, 'clone', join(handle.mainRepo, '..', 'origin.git'), scratch);
+    configureTestGitRepository(scratch);
     await git(scratch, 'config', 'user.email', 'test@example.com');
     await git(scratch, 'config', 'user.name', 'Test');
     writeFileSync(join(scratch, 'fresh.txt'), 'fresh from origin\n');
@@ -599,6 +607,7 @@ describe('worktree-service — share-branch checkout', () => {
     await addBareRemote(handle.mainRepo, ['main']);
     const scratch = join(handle.root, 'scratch');
     await git(handle.root, 'clone', join(handle.mainRepo, '..', 'origin.git'), scratch);
+    configureTestGitRepository(scratch);
     await git(scratch, 'config', 'user.email', 'test@example.com');
     await git(scratch, 'config', 'user.name', 'Test');
     await git(scratch, 'checkout', '-b', 'never-fetched');
@@ -666,6 +675,7 @@ describe('worktree-service — share-branch checkout', () => {
   ): Promise<string> {
     const scratch = join(root, `scratch-${branch}`);
     await git(root, 'clone', join(root, 'origin.git'), scratch);
+    configureTestGitRepository(scratch);
     await git(scratch, 'config', 'user.email', 'test@example.com');
     await git(scratch, 'config', 'user.name', 'Test');
     await git(scratch, 'checkout', '-b', branch);
@@ -874,6 +884,7 @@ async function makeLocalOnlyRepo(): Promise<Handle> {
   const mainRepo = join(root, 'main');
   mkdirSync(mainRepo);
   await git(mainRepo, 'init', '--initial-branch=main', '.');
+  configureTestGitRepository(mainRepo);
   await git(mainRepo, 'config', 'user.email', 'test@example.com');
   await git(mainRepo, 'config', 'user.name', 'Test');
   writeFileSync(join(mainRepo, 'README.md'), '# main\n');
@@ -909,6 +920,7 @@ describe('worktree-service — inherited OK setup (no consent dialog)', () => {
       cwd: handle.mainRepo,
       env: GIT_ENV,
     });
+    configureTestGitRepository(wtPath);
     expect(existsSync(join(wtPath, '.ok', 'config.yml'))).toBe(false);
 
     const before = await discoverProject(wtPath, { homeDir: handle.root, dirSizeProbe: null });
@@ -931,6 +943,7 @@ describe('worktree-service — inherited OK setup (no consent dialog)', () => {
       cwd: handle.mainRepo,
       env: GIT_ENV,
     });
+    configureTestGitRepository(wtPath);
 
     seedWorktreeProjectSetup(wtPath, handle.mainRepo);
 

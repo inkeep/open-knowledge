@@ -12,6 +12,8 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { typeProjectName } from './_helpers/create-new-dialog';
 import { captureAppProcess, closeAppBounded } from './_helpers/electron-cleanup';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
@@ -22,6 +24,7 @@ import {
   PLATFORM_SUPPORTED,
   SMOKE_ENABLED,
 } from './_helpers/platform-gate';
+import { findProjectEditorWindow } from './_helpers/project-editor-window';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
@@ -123,6 +126,12 @@ async function countWindowsByMode(
   return n;
 }
 
+async function findProjectEditor(app: ElectronApplication, projectDir: string): Promise<Page> {
+  const editor = await findProjectEditorWindow(app, projectDir);
+  if (!editor) throw new Error(`editor window not found for ${projectDir}`);
+  return editor;
+}
+
 const cleanupTargets: string[] = [];
 function trackForCleanup(...paths: string[]): void {
   cleanupTargets.push(...paths);
@@ -199,6 +208,7 @@ test.describe('QA extended create-new-project', () => {
     expect(existsSync(join(expected, '.codex'))).toBe(false);
     expect(existsSync(join(expected, '.claude'))).toBe(false);
     expect(existsSync(join(expected, '.mcp.json'))).toBe(false);
+    await configureDesktopGitRepositories(await findProjectEditor(app, expected), expected);
   });
 
   test('QA-010 dialog UX — focus, location, checkboxes, ARIA', async ({ captureStderrFor }) => {
@@ -292,6 +302,10 @@ test.describe('QA extended create-new-project', () => {
       .toBe(true);
     expect(existsSync(join(firstProject, '.cursor'))).toBe(false);
     expect(existsSync(join(firstProject, '.mcp.json'))).toBe(false);
+    await configureDesktopGitRepositories(
+      await findProjectEditor(app1, firstProject),
+      firstProject,
+    );
 
     await closeAppBounded(app1Proc, { gracefulMs: 5_000 }).catch((error: unknown) => {
       throw new Error(
@@ -419,6 +433,8 @@ test.describe('QA extended create-new-project', () => {
     const editorCount = await countWindowsByMode(app, 'editor');
     expect(editorCount).toBe(1);
     expect(existsSync(join(parent, projectName, '.ok', 'config.yml'))).toBe(true);
+    const projectDir = join(parent, projectName);
+    await configureDesktopGitRepositories(await findProjectEditor(app, projectDir), projectDir);
   });
 
   test('QA-025 — banner ARIA roles per severity', async ({ captureStderrFor }) => {
@@ -459,6 +475,7 @@ test.describe('QA extended create-new-project', () => {
     const repoRoot = join(tmpHome, 'website');
     mkdirSync(repoRoot, { recursive: true });
     execSync('git init -q', { cwd: repoRoot });
+    configureTestGitRepository(repoRoot);
     const pickedParent = join(repoRoot, 'notes');
     mkdirSync(pickedParent, { recursive: true });
     const projectName = 'MyProj';
@@ -519,6 +536,8 @@ test.describe('QA extended create-new-project', () => {
       .poll(() => countWindowsByMode(app, 'editor'), { timeout: 30_000 })
       .toBeGreaterThanOrEqual(1);
     expect(existsSync(join(parent, projectName, '.ok', 'config.yml'))).toBe(true);
+    const projectDir = join(parent, projectName);
+    await configureDesktopGitRepositories(await findProjectEditor(app, projectDir), projectDir);
   });
 
   test('QA-002 — clicking Open <basename> dispatches openProject and closes dialog', async ({

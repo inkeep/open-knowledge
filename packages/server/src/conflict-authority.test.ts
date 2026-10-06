@@ -15,6 +15,7 @@ import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   bindConflictAuthority,
   ConflictAuthority,
@@ -974,6 +975,7 @@ describe('ConflictAuthority working-tree resolve against a real repo', () => {
   ): Promise<{ blobSha: string; headSha: string }> {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, file), remote, 'utf-8');
@@ -1124,6 +1126,7 @@ describe('ConflictAuthority resolve refuses markers on every strategy', () => {
   test("a working-tree 'theirs' whose pinned blob carries markers is refused before the write", async () => {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'a.md'), MARKERED, 'utf-8');

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { type BridgeRaceRig, createBridgeRaceRig } from './bridge-race-rig.test-helper.ts';
 import type { LossCaptureEventInput } from './loss-capture.ts';
 import { getMetrics } from './metrics.ts';
@@ -144,6 +145,7 @@ describe('QA-009: restore is NEVER automatic — checkpoint content stays out of
     mkdirSync(contentDir, { recursive: true });
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(resolve(contentDir, 'qa009.md'), '# Seed\n');

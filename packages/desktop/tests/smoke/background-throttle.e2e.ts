@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ElectronApplication, JSHandle, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import {
   homeEnv,
   PLATFORM_SKIP_REASON,
@@ -160,6 +161,7 @@ test.describe('background-throttle smoke', () => {
         message: 'baseline: expected the OS default (backgroundThrottling === true)',
       })
       .toBe(true);
+    await configureDesktopGitRepositories(editor, projectDir);
 
     await pushAndExpectThrottling(
       app,

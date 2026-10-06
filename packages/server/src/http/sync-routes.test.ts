@@ -6,6 +6,7 @@ import { Readable } from 'node:stream';
 import { Hocuspocus } from '@hocuspocus/server';
 import simpleGit from 'simple-git';
 import { afterAll, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { createTempDirFactory } from '../../../../test-support/temp-dir.test-helper.ts';
 import { makeCaptureRes, makeSyntheticReq } from '../composition-rig.test-helper.ts';
 import { createTestConflictAuthority } from '../conflict-authority.test-helper.ts';
@@ -372,6 +373,7 @@ describe('conflict-content dispatches per conflict kind', () => {
     try {
       const git = simpleGit(projectDir);
       await git.init(['--initial-branch=main']);
+      configureTestGitRepository(projectDir);
       await git.raw('config', 'user.name', 'Test');
       await git.raw('config', 'user.email', 'test@test.com');
       writeFileSync(join(projectDir, 'a.md'), 'tracked\n', 'utf-8');

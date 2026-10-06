@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { waitForAgentsDockPublish } from './_helpers/dock-state-ready';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { waitForWindowByMode } from './_helpers/launch-readiness';
@@ -55,6 +56,7 @@ test.describe('terminal dock-state IPC', () => {
     );
     captureStderrFor(app, { home: tmpHome, cleanupDirs: [testRoot] });
     const editorPage = await waitForWindowByMode(app, 'editor');
+    await configureDesktopGitRepositories(editorPage, projectDir);
 
     await waitForAgentsDockPublish(
       () => editorPage.evaluate(() => window.okDesktop?.terminal.getDockState()),

@@ -7,6 +7,7 @@ import { Hocuspocus } from '@hocuspocus/server';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { AgentSessionManager } from './agent-sessions.ts';
 import { createApiExtension } from './api-extension.test-helper.ts';
 import {
@@ -117,6 +118,7 @@ describe('PRD-6716: save-version + rollback do not mutate parent git', () => {
 
     const git = simpleGit(projectDir);
     await git.init();
+    configureTestGitRepository(projectDir);
     await git.addConfig('user.name', 'Test User');
     await git.addConfig('user.email', 'test@example.com');
     writeFileSync(join(projectDir, 'README.md'), '# project\n');
@@ -176,6 +178,7 @@ describe('PRD-6716: save-version + rollback do not mutate parent git', () => {
 
     const git = simpleGit(projectDir);
     await git.init();
+    configureTestGitRepository(projectDir);
     await git.addConfig('user.name', 'Test User');
     await git.addConfig('user.email', 'test@example.com');
     writeFileSync(join(projectDir, 'README.md'), '# project\n');
@@ -239,6 +242,7 @@ describe('PRD-6716: save-version + rollback do not mutate parent git', () => {
 
     const git = simpleGit(projectDir);
     await git.init();
+    configureTestGitRepository(projectDir);
     await git.addConfig('user.name', 'Test User');
     await git.addConfig('user.email', 'test@example.com');
     await git.add('.');
@@ -323,6 +327,7 @@ describe('PRD-6972 FR6: Save Version unification', () => {
     mkdirSync(contentDir, { recursive: true });
     const git = simpleGit(projectDir);
     await git.init();
+    configureTestGitRepository(projectDir);
     await git.addConfig('user.name', 'Test');
     await git.addConfig('user.email', 't@t.test');
     writeFileSync(join(projectDir, 'README.md'), '# project\n');

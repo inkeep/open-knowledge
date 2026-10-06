@@ -17,6 +17,7 @@ import {
   SkillsReimportBulkSuccessSchema,
 } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, rawRequest } from './composition-rig.test-helper.ts';
 import { ensureProjectGit } from './project-git.ts';
@@ -32,6 +33,7 @@ beforeAll(async () => {
   source = mkdtempSync(join(tmpdir(), 'ok-recovery-source-'));
   mkdirSync(join(root, '.claude'));
   await ensureProjectGit(root);
+  configureTestGitRepository(root);
   server = await bootCompositionRig(root, { gitEnabled: true });
   await server.ready;
 }, 60_000);

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import {
   homeEnv,
@@ -10,6 +11,7 @@ import {
   PLATFORM_SUPPORTED,
   SMOKE_ENABLED,
 } from './_helpers/platform-gate';
+import { findProjectEditorWindow } from './_helpers/project-editor-window';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
@@ -168,6 +170,8 @@ test.describe('Project Navigator close-on-project-open smoke', () => {
 
     expect(await countWindowsByMode(app, 'editor')).toBe(1);
     expect(await countWindowsByMode(app, 'navigator')).toBe(0);
+    const editor = await findFirstWindowByMode(app, 'editor');
+    await configureDesktopGitRepositories(editor, projectDir);
   });
 
   test('Switch-Project flow: Editor A summons Navigator, picks Project B, both editors persist', async ({
@@ -185,6 +189,7 @@ test.describe('Project Navigator close-on-project-open smoke', () => {
       .toBe(1);
     const editorA = await findFirstWindowByMode(app, 'editor');
     expect(await countWindowsByMode(app, 'navigator')).toBe(0);
+    await configureDesktopGitRepositories(editorA, projectAPath);
 
     await editorA.evaluate(async () => {
       await window.okDesktop?.navigator.open();
@@ -217,6 +222,9 @@ test.describe('Project Navigator close-on-project-open smoke', () => {
 
     expect(editorA.isClosed()).toBe(false);
     expect(await countWindowsByMode(app, 'editor')).toBe(2);
+    const editorB = await findProjectEditorWindow(app, projectBPath);
+    if (!editorB) throw new Error('Project B editor did not open');
+    await configureDesktopGitRepositories(editorB, projectBPath);
   });
 
   test('Navigator stays visible when project open fails', async ({ captureStderrFor }) => {

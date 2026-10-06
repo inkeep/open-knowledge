@@ -15,6 +15,7 @@ import {
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { applySkillWrite } from './content/skills-write.ts';
 import { getLogger } from './logger.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
@@ -73,6 +74,7 @@ describe('initShadowRepo', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -96,6 +98,7 @@ describe('initShadowRepo', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -115,6 +118,7 @@ describe('initShadowRepo', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -131,12 +135,14 @@ describe('initShadowRepo', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
     const legacyDir = resolve(projectRoot, '.git/openknowledge');
     mkdirSync(legacyDir, { recursive: true });
     await git.raw('init', '--bare', legacyDir);
+    configureTestGitRepository(legacyDir);
     const sg = simpleGit({ timeout: { block: 30_000 } }).env({ GIT_DIR: legacyDir });
     await sg.raw('config', '--unset', 'core.bare');
     await sg.raw('config', 'core.worktree', projectRoot);
@@ -156,6 +162,7 @@ describe('initShadowRepo', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -250,6 +257,7 @@ describe('buildWipTree persistent fan-out index', () => {
     mkdirSync(contentDir, { recursive: true });
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     shadow = await initShadowRepo(projectRoot);
   });
 
@@ -352,6 +360,7 @@ describe('commitWip', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -481,6 +490,7 @@ describe('commitUpstreamImport', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -561,6 +571,7 @@ describe('safetyCheckpoint', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -601,6 +612,7 @@ describe('parkBranch', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -743,6 +755,7 @@ describe('saveVersion', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -1001,6 +1014,7 @@ describe('saveInMemoryCheckpoint (bridge-correctness SPEC §6 R7a)', () => {
     mkdirSync(resolve(projectRoot, 'content/docs'), { recursive: true });
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     shadow = await initShadowRepo(projectRoot);
@@ -1235,6 +1249,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     mkdirSync(resolve(projectRoot, 'content/docs'), { recursive: true });
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     shadow = await initShadowRepo(projectRoot);
@@ -1688,6 +1703,7 @@ describe('checkpoint chain anchoring', () => {
     mkdirSync(resolve(projectRoot, 'content/docs'), { recursive: true });
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     shadow = await initShadowRepo(projectRoot);
@@ -1858,6 +1874,7 @@ describe('sweepLegacyShadowRefs (US-018, D35, NFR-6)', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
@@ -1953,6 +1970,7 @@ describe('shadow repo excludes OpenKnowledge machine-local state', () => {
 
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 

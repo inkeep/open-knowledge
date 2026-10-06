@@ -12,6 +12,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { typeProjectName } from './_helpers/create-new-dialog';
 import { reapDetachedServers } from './_helpers/electron-cleanup';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
@@ -23,6 +25,7 @@ import {
   PLATFORM_SUPPORTED,
   SMOKE_ENABLED,
 } from './_helpers/platform-gate';
+import { findProjectEditorWindow } from './_helpers/project-editor-window';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
@@ -187,6 +190,7 @@ test.describe('Create-new-project smoke', () => {
     if (!editor) throw new Error('editor window not found after create-new submit');
     const freshlyCreated = await editor.evaluate(() => window.okDesktop?.config?.freshlyCreated);
     expect(freshlyCreated).toBe(true);
+    await configureDesktopGitRepositories(editor, expectedTarget);
   });
 
   test('blocks creation when chosen Location is inside an existing OK project', async ({
@@ -232,6 +236,7 @@ test.describe('Create-new-project smoke', () => {
     const repoRoot = join(tmpHome, 'website');
     mkdirSync(repoRoot, { recursive: true });
     execSync('git init -q', { cwd: repoRoot });
+    configureTestGitRepository(repoRoot);
     const pickedParent = join(repoRoot, 'notes');
     mkdirSync(pickedParent, { recursive: true });
     const projectName = 'MyProj';
@@ -278,6 +283,9 @@ test.describe('Create-new-project smoke', () => {
     const cfg = readFileSync(join(repoRoot, '.ok', 'config.yml'), 'utf8');
     expect(cfg).not.toMatch(/^\s*dir:\s*notes\/MyProj/m);
     expect(cfg).toMatch(/^# content:/m);
+    const editor = await findProjectEditorWindow(app, repoRoot);
+    if (!editor) throw new Error('editor window not found after existing-repo promotion');
+    await configureDesktopGitRepositories(editor, repoRoot);
   });
 
   test('PRD-6649: cascade banner DOM node survives a verdict-content change of the same kind (no flicker, real Electron renderer)', async ({
@@ -383,6 +391,7 @@ test.describe('Create-new-project smoke', () => {
     const repoRoot = join(tmpHome, 'some-checkout');
     mkdirSync(repoRoot, { recursive: true });
     execSync('git init -q', { cwd: repoRoot });
+    configureTestGitRepository(repoRoot);
     const pickedParent = join(repoRoot, 'docs');
     mkdirSync(pickedParent, { recursive: true });
     trackForCleanup(tmpHome);

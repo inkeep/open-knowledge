@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { createTestConflictAuthority } from './conflict-authority.test-helper.ts';
 import type { GitHandle } from './git-handle.ts';
 import {
@@ -42,6 +43,7 @@ afterEach(() => {
 async function initGitWithOrigin(originUrl: string): Promise<void> {
   const git = simpleGit(projectDir);
   await git.init(['--initial-branch=main']);
+  configureTestGitRepository(projectDir);
   await git.raw('config', 'user.name', 'Test');
   await git.raw('config', 'user.email', 'test@test.com');
   writeFileSync(join(projectDir, 'README.md'), 'seed\n', 'utf-8');

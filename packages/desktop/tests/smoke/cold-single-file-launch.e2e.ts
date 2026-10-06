@@ -10,8 +10,13 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import {
+  configureEphemeralGitRepositories,
+  configureProjectGitRepositories,
+  readTestServerRepository,
+} from '../support/git-fixture.test-helper';
 import { resolveDesktopTarget } from './_helpers/launch-desktop';
 
 const TARGET = resolveDesktopTarget({ requirePackaged: true });
@@ -91,7 +96,10 @@ function readLogLinesSince(sinceMs: number): Array<Record<string, unknown>> {
     );
 }
 
-async function waitForBootDecision(sinceMs: number): Promise<BootRestoreDecisionLog> {
+async function waitForBootDecision(
+  sinceMs: number,
+  observeServer?: () => void,
+): Promise<BootRestoreDecisionLog> {
   let found: Record<string, unknown> | undefined;
   await expect(() => {
     found = readLogLinesSince(sinceMs).find((e) => e.msg === 'boot-restore decision');
@@ -99,8 +107,25 @@ async function waitForBootDecision(sinceMs: number): Promise<BootRestoreDecision
       found,
       `no boot-restore decision logged since ${new Date(sinceMs).toISOString()}`,
     ).toBeDefined();
+    observeServer?.();
   }).toPass({ timeout: 60_000, intervals: [500] });
   return found as unknown as BootRestoreDecisionLog;
+}
+
+function readEphemeralServerLog(sinceMs: number, file: string): { lockDir: string; port: number } {
+  const matches = readLogLinesSince(sinceMs).filter(
+    (entry) => entry.event === 'desktop-ephemeral-server-spawned' && entry.file === file,
+  );
+  const entry = matches[0];
+  if (
+    matches.length !== 1 ||
+    !entry ||
+    typeof entry.lockDir !== 'string' ||
+    typeof entry.port !== 'number'
+  ) {
+    throw new Error(`Expected one ephemeral server log for ${file}`);
+  }
+  return { lockDir: entry.lockDir, port: entry.port };
 }
 
 function launchViaLaunchServices(target: string): number {
@@ -112,7 +137,14 @@ function launchViaLaunchServices(target: string): number {
 async function establishRestoreSnapshot(projectFile: string): Promise<void> {
   quitAppCleanly();
   const since = launchViaLaunchServices(projectFile);
-  await waitForBootDecision(since);
+  const projectDir = dirname(projectFile);
+  const lockDir = join(projectDir, '.ok', 'local');
+  await waitForBootDecision(since, () => {
+    expect(readTestServerRepository(lockDir).projectDir).toBe(projectDir);
+  });
+  const server = readTestServerRepository(lockDir);
+  expect(server.projectDir).toBe(projectDir);
+  await configureProjectGitRepositories(projectDir, server.apiOrigin);
   execFileSync('sleep', ['6']);
   quitAppCleanly();
 }
@@ -136,7 +168,10 @@ test.describe('cold launch with an explicit target owns the initial window set',
       await establishRestoreSnapshot(project.file);
 
       const since = launchViaLaunchServices(loose.file);
-      const decision = await waitForBootDecision(since);
+      const decision = await waitForBootDecision(since, () => {
+        const spawned = readEphemeralServerLog(since, loose.file);
+        expect(readTestServerRepository(spawned.lockDir).port).toBe(spawned.port);
+      });
 
       expect(
         decision.snapshotWindowCount,
@@ -144,6 +179,11 @@ test.describe('cold launch with an explicit target owns the initial window set',
       ).toBeGreaterThanOrEqual(1);
       expect(decision.urlLaunch).toBe(true);
       expect(decision.action).toBe('none');
+
+      const spawned = readEphemeralServerLog(since, loose.file);
+      const server = readTestServerRepository(spawned.lockDir);
+      expect(server.port).toBe(spawned.port);
+      await configureEphemeralGitRepositories(server.projectDir, server.apiOrigin);
     } finally {
       quitAppCleanly();
       rmSync(project.dir, { recursive: true, force: true });

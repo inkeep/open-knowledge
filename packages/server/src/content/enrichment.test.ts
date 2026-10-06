@@ -6,6 +6,7 @@ import { okfAdvertisedSchemaMappings } from '@inkeep/open-knowledge-core';
 import { commitWip, initShadowRepo, type WriterIdentity } from '@inkeep/open-knowledge-server';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   computeGraphRole,
   enrichDirectory,
@@ -28,6 +29,7 @@ async function bootstrapProject(): Promise<string> {
   mkdirSync(project, { recursive: true });
   const git = simpleGit(project);
   await git.init();
+  configureTestGitRepository(project);
   await git.raw('config', 'user.name', 'Test');
   await git.raw('config', 'user.email', 't@t.test');
   writeFileSync(resolve(project, 'README.md'), '# root\n');

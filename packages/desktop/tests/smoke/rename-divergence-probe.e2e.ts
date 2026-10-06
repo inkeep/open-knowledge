@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { type ElectronApplication, _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { PLATFORM_SKIP_REASON, PLATFORM_SUPPORTED, SMOKE_ENABLED } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
@@ -77,6 +78,7 @@ async function runProbe(
     await expect(
       page.locator('.ProseMirror[contenteditable="true"]:not(.composer-prosemirror)'),
     ).toContainText(marker, { timeout: 30_000 });
+    await configureDesktopGitRepositories(page, contentDir);
 
     const apiOrigin = await page.evaluate(() => window.okDesktop?.config?.apiOrigin);
     if (!apiOrigin) {

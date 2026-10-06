@@ -14,6 +14,7 @@ import { join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { createApiExtension } from './api-extension.test-helper.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { swapContributors } from './contributor-tracker.ts';
@@ -83,6 +84,7 @@ beforeEach(async () => {
 
   const git = simpleGit(projectDir);
   await git.init();
+  configureTestGitRepository(projectDir);
   await git.addConfig('user.name', 'Test');
   await git.addConfig('user.email', 'test@example.com');
   writeFileSync(resolve(contentDir, 'a.md'), '# A original\n');

@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, test } from 'vitest';
-
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
+import { createGitTriangle, type GitTriangle } from '../tests/support/git-fixture.test-helper.ts';
 import {
   fastForwardBranchToOrigin,
   isBranchInOtherWorktreeError,
@@ -12,7 +13,6 @@ import {
   runCheckoutFlow,
 } from './git-checkout.ts';
 import { createGitInstance } from './git-handle.ts';
-import { createGitTriangle, type GitTriangle } from './share/git-fixture.test-helper.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -178,6 +178,7 @@ describe('runCheckoutFlow against real git', () => {
       const main = join(root, 'main');
       mkdirSync(main);
       await git(main, 'init', '--initial-branch=main', '.');
+      configureTestGitRepository(main);
       await git(main, 'config', 'user.email', 'test@example.com');
       await git(main, 'config', 'user.name', 'Test');
       writeFileSync(join(main, 'README.md'), '# main\n');
@@ -202,6 +203,7 @@ describe('runCheckoutFlow against real git', () => {
     try {
       const main = root;
       await git(main, 'init', '--initial-branch=main', '.');
+      configureTestGitRepository(main);
       await git(main, 'config', 'user.email', 'test@example.com');
       await git(main, 'config', 'user.name', 'Test');
       writeFileSync(join(main, 'README.md'), '# main\n');

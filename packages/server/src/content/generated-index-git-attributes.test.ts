@@ -9,6 +9,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { createTempDirFactory } from '../../../../test-support/temp-dir.test-helper.ts';
 import { getLogger } from '../logger.ts';
 import {
@@ -23,6 +24,7 @@ afterEach(() => vi.restoreAllMocks());
 function makeProject(contentSubdir = '.'): { projectDir: string; contentDir: string } {
   const projectDir = makeTempDir('ok-generated-index-attrs-');
   execFileSync('git', ['init', '-q'], { cwd: projectDir });
+  configureTestGitRepository(projectDir);
   if (contentSubdir !== '.') mkdirSync(join(projectDir, contentSubdir), { recursive: true });
   return {
     projectDir,

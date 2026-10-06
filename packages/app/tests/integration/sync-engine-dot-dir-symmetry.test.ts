@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createContentFilter } from '@inkeep/open-knowledge-server';
 import { afterEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { createTestConflictAuthority } from '../../../server/src/conflict-authority.test-helper.ts';
 import { SyncEngine } from '../../../server/src/sync-engine.ts';
 
@@ -19,6 +20,7 @@ function makeRepo(): { projectDir: string; originDir: string } {
   tmpRoots.push(projectDir, originDir);
 
   git(projectDir, ['init', '-b', 'main']);
+  configureTestGitRepository(projectDir);
   git(projectDir, ['config', 'user.name', 'Test User']);
   git(projectDir, ['config', 'user.email', 'test@example.com']);
   mkdirSync(join(projectDir, '.ok'), { recursive: true });
@@ -34,6 +36,7 @@ function makeRepo(): { projectDir: string; originDir: string } {
   git(projectDir, ['commit', '-m', 'seed dot-dir skill']);
 
   git(originDir, ['init', '--bare', '-b', 'main']);
+  configureTestGitRepository(originDir);
   git(projectDir, ['remote', 'add', 'origin', originDir]);
   git(projectDir, ['push', '--set-upstream', 'origin', 'main']);
   return { projectDir, originDir };

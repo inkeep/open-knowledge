@@ -13,6 +13,7 @@ import {
   createServerExitRecorder,
   type ServerExitRecord,
 } from '../../src/main/server-exit-record.ts';
+import { configureProjectGitRepositories } from '../support/git-fixture.test-helper.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI_MJS_PATH = resolve(HERE, '../../../cli/dist/cli.mjs');
@@ -110,6 +111,8 @@ describe('detached-server lifecycle integration', () => {
       if (pgid !== null && myPgid !== null) {
         expect(pgid).not.toBe(myPgid);
       }
+
+      await configureProjectGitRepositories(tmpDir, `http://127.0.0.1:${lock.port}`);
     } finally {
       child.kill('SIGKILL');
       await wait(200);

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { prependFrontmatter, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { __resetQuiescenceForTests } from './bridge-quiescence.ts';
 import { resetMetrics } from './metrics.ts';
 import { createServer } from './server-factory.ts';
@@ -33,6 +34,7 @@ async function setupFixture(): Promise<Fixture> {
   const contentDir = tmpDir;
   const git = simpleGit({ baseDir: tmpDir });
   await git.init();
+  configureTestGitRepository(tmpDir);
   await git.addConfig('user.name', 'A3 Test');
   await git.addConfig('user.email', 'a3@example.com');
   return {

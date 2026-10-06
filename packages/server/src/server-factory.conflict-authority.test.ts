@@ -12,6 +12,7 @@ import {
   SyncConflictsSuccessSchema,
 } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { bootServer } from './boot.ts';
 import { ConfigSchema } from './config/schema.ts';
 import * as headWatcher from './head-watcher.ts';
@@ -171,6 +172,7 @@ async function bootWithHeldConflictedDoc(options?: {
 }> {
   const contentDir = tmpDir;
   await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+  configureTestGitRepository(contentDir);
   seedOkScaffold(contentDir);
   for (const [file, body] of Object.entries(options?.extraFiles ?? {})) {
     const abs = resolve(contentDir, file);

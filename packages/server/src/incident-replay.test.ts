@@ -12,6 +12,7 @@ import {
 } from '@opentelemetry/sdk-metrics';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { createMaintenanceCoordinator } from './maintenance-coordinator.ts';
 import {
   __resetMaintenanceTelemetryForTesting,
@@ -162,6 +163,7 @@ describe('PRD-6972 incident replay — storyline from telemetry + diagnose reade
     mkdirSync(contentDir, { recursive: true });
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'T');
     await git.raw('config', 'user.email', 't@t');
     writeFileSync(resolve(contentDir, 'intro.md'), '# h\n');
@@ -246,6 +248,7 @@ describe('gc.log latch counter measures distinct episodes, not observations', ()
     mkdirSync(projectRoot, { recursive: true });
     const git = simpleGit(projectRoot);
     await git.init();
+    configureTestGitRepository(projectRoot);
     await git.raw('config', 'user.name', 'T');
     await git.raw('config', 'user.email', 't@t');
     writeFileSync(resolve(projectRoot, 'r.md'), '# h\n');

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { _resetDocExtensionsForTests, getDocExtension } from './doc-extensions.ts';
 import { createServer } from './server-factory.ts';
 
@@ -97,6 +98,7 @@ describe('agent-write-md explicit extension → disk (PRD-6836)', () => {
     contentDir = tmpDir;
     const git = simpleGit({ baseDir: tmpDir });
     await git.init();
+    configureTestGitRepository(tmpDir);
     await git.addConfig('user.name', 'Test User');
     await git.addConfig('user.email', 'test@example.com');
   });

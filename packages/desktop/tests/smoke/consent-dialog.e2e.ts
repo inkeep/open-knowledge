@@ -12,6 +12,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { reapDetachedServers } from './_helpers/electron-cleanup';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { launchDesktopApp, waitForWindowByMode } from './_helpers/launch-readiness';
@@ -59,6 +61,7 @@ function seedGitRepoWithSubFolder(
   const repoRoot = join(tmpHome, `ok-consent-${prefix}-git`);
   mkdirSync(repoRoot, { recursive: true });
   execSync('git init -q', { cwd: repoRoot });
+  configureTestGitRepository(repoRoot);
   const subFolder = join(repoRoot, 'docs');
   mkdirSync(subFolder, { recursive: true });
   return { repoRoot, subFolder };
@@ -146,10 +149,11 @@ test.describe('Consent-dialog smoke', () => {
     await contentDir.focus();
     await contentDir.press('Enter');
 
-    await findWindowByMode(app, 'editor');
+    const editor = await findWindowByMode(app, 'editor');
     await expect
       .poll(() => existsSync(join(projectDir, '.ok', 'config.yml')), { timeout: 15_000 })
       .toBe(true);
+    await configureDesktopGitRepositories(editor, projectDir);
   });
 
   test('Browse button populates content.dir with project-relative path', async ({
@@ -200,7 +204,7 @@ test.describe('Consent-dialog smoke', () => {
     const startBtn = navigator.locator('[data-testid="consent-start"]');
     await startBtn.click();
 
-    await findWindowByMode(app, 'editor');
+    const editor = await findWindowByMode(app, 'editor');
     await expect
       .poll(() => existsSync(join(repoRoot, '.ok', 'config.yml')), { timeout: 15_000 })
       .toBe(true);
@@ -209,5 +213,6 @@ test.describe('Consent-dialog smoke', () => {
     const cfg = readFileSync(join(repoRoot, '.ok', 'config.yml'), 'utf8');
     expect(cfg).not.toMatch(/^\s*dir:\s*docs/m);
     expect(cfg).toMatch(/^# content:/m);
+    await configureDesktopGitRepositories(editor, repoRoot);
   });
 });

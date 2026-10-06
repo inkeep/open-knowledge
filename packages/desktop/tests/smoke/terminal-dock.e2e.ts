@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import {
   armDockRevealProbe,
   DOCK_REVEAL_BUDGET_MS,
@@ -412,6 +413,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -426,6 +428,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
@@ -443,6 +446,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
 
     await revealTerminalSurface(app, page.getByRole('region', { name: 'Terminal disabled' }));
     await expect(page.getByRole('button', { name: 'Enable terminal' })).toBeVisible();
@@ -462,6 +466,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
 
     expect(await viewTerminalLabel(app)).toBe('Show Terminal');
     await revealTerminalSurface(app, terminalSection(page));
@@ -480,6 +485,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
 
     expect(await terminalPlacementLabel(app)).toBe('Move Terminal to right');
     await clickTerminalPlacementItem(app, page);
@@ -502,6 +508,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
 
     await widenEditorWindow(app, page, 1900, 900);
     await openTerminal(app, page);
@@ -541,6 +548,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
 
     await widenEditorWindow(app, page, 1900, 900);
     await openTerminal(app, page);
@@ -609,6 +617,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
 
     await widenEditorWindow(app, page, 1900, 900);
     await openTerminal(app, page);
@@ -685,6 +694,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
 
     await waitForRendererResponsive(page);
 
@@ -717,6 +727,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
@@ -740,6 +751,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
@@ -785,6 +797,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
     await expect(page.getByRole('button', { name: 'Collapse Terminal' })).toBeVisible({
@@ -803,6 +816,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
@@ -821,6 +835,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
@@ -839,6 +854,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
@@ -865,6 +881,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
@@ -895,6 +912,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
     await ensureBottomDock(page);
@@ -921,6 +939,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
     await ensureBottomDock(page);
@@ -980,6 +999,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
@@ -1008,6 +1028,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
@@ -1040,6 +1061,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true, connectionsAvailable: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
@@ -1119,6 +1141,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true, connectionsAvailable: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
     for (let index = 0; index < 2; index += 1) {
@@ -1199,6 +1222,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
@@ -1231,6 +1255,7 @@ test.describe('Docked terminal — live Electron', () => {
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.realProjectDir);
 
     await page.evaluate(() => {
       localStorage.setItem('ok-ask-ai-agent-v2', 'terminal-cli:claude');

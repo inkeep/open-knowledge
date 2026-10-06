@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { getLogger } from './logger.ts';
 import { ensureProjectGit } from './project-git.ts';
 import { createServer, type ServerInstance } from './server-factory.ts';
@@ -80,6 +81,7 @@ async function withRefusedStoreShutdown(
   try {
     await mkdir(contentDir, { recursive: true });
     await ensureProjectGit(projectDir);
+    configureTestGitRepository(projectDir);
     const shadowHandle = await initShadowRepo(projectDir);
     const refusedInitial = '# Refused shutdown doc\n\nPersisted paragraph.\n';
     writeFileSync(refusedPath, refusedInitial, 'utf-8');

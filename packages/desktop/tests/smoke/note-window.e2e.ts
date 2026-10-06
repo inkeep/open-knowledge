@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import {
   homeEnv,
@@ -176,6 +177,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const editor = await findWindowByMode(app, 'editor');
+    await configureDesktopGitRepositories(editor, s.projectDir);
     await openDocument(editor, 'start');
 
     await popOutFrom(app, editor);
@@ -229,6 +231,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const editor = await findWindowByMode(app, 'editor');
+    await configureDesktopGitRepositories(editor, s.projectDir);
     await openDocument(editor, 'start');
 
     await popOutFrom(app, editor);
@@ -290,6 +293,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const editor = await findWindowByMode(app, 'editor');
+    await configureDesktopGitRepositories(editor, s.projectDir);
     await openDocument(editor, 'start');
 
     await popOutFrom(app, editor);
@@ -313,6 +317,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const editor = await findWindowByMode(app, 'editor');
+    await configureDesktopGitRepositories(editor, s.projectDir);
     await openDocument(editor, 'start');
 
     await popOutFrom(app, editor);
@@ -331,6 +336,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const editor = await findWindowByMode(app, 'editor');
+    await configureDesktopGitRepositories(editor, s.projectDir);
     await openDocument(editor, 'start');
 
     await popOutFrom(app, editor);
@@ -369,6 +375,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const editor = await findWindowByMode(app, 'editor');
+    await configureDesktopGitRepositories(editor, s.projectDir);
     await openDocument(editor, 'start');
 
     await popOutFrom(app, editor);
@@ -394,6 +401,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const first = await launchApp(s);
     captureStderrFor(first, { home: s.tmpHome, cleanupDirs: [] });
     const editor = await findWindowByMode(first, 'editor');
+    await configureDesktopGitRepositories(editor, s.projectDir);
     await openDocument(editor, 'start');
     await popOutFrom(first, editor);
     await findWindowByMode(first, 'note');

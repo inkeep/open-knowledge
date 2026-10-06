@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { waitForWindowByMode } from './_helpers/launch-readiness';
 import { seedMcpConsentComplete } from './_helpers/mcp-consent';
@@ -199,6 +200,7 @@ test.describe('Docked terminal launch — composed argv', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.projectDir);
     await openTerminal(app, page);
 
     const written = await page.evaluate(async () => {

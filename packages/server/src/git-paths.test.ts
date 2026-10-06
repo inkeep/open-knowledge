@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   listNameStatus,
   listNames,
@@ -157,6 +158,7 @@ describe('path-listing wrappers (real git)', () => {
   beforeEach(() => {
     projectDir = mkdtempSync(join(tmpdir(), 'ok-git-paths-test-'));
     run('git init -q -b main');
+    configureTestGitRepository(projectDir);
     run('git config user.email "test@example.com"');
     run('git config user.name "Test"');
     run('git config commit.gpgsign false');

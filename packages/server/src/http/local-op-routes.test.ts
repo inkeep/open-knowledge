@@ -4,6 +4,7 @@ import { createServer, type Server as HttpServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { createConcurrencyGuard } from '../local-op-security.ts';
 import * as ghLogin from '../local-ops/gh-login.ts';
 import type { AuthEvent } from '../local-ops/types.ts';
@@ -230,6 +231,7 @@ describe('auth-login stream displacement (a second start orphans the first clien
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-local-op-non-github-'));
     try {
       execFileSync('git', ['init', '-q'], { cwd: projectDir });
+      configureTestGitRepository(projectDir);
       execFileSync('git', ['remote', 'add', 'origin', 'https://git.example.internal/team/kb.git'], {
         cwd: projectDir,
       });
@@ -272,6 +274,7 @@ describe('auth-login stream displacement (a second start orphans the first clien
     vi.stubEnv('USERPROFILE', home);
     try {
       execFileSync('git', ['init', '-q'], { cwd: projectDir });
+      configureTestGitRepository(projectDir);
       execFileSync('git', ['remote', 'add', 'origin', 'https://git.example.internal/team/kb.git'], {
         cwd: projectDir,
       });
@@ -378,6 +381,7 @@ describe('auth-login stream displacement (a second start orphans the first clien
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-unparseable-origin-'));
     try {
       execFileSync('git', ['init', '-q'], { cwd: projectDir });
+      configureTestGitRepository(projectDir);
       execFileSync('git', ['remote', 'add', 'origin', '../other-repository'], { cwd: projectDir });
       const baseUrl = await serveLocalOpGroup({ projectDir });
       const response = await postJson(baseUrl, '/api/local-op/auth/status', {});

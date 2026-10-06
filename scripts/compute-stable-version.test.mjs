@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../test-support/configure-git-fixture.test-helper.ts';
 import { loadChangesets, maxReleaseType } from './compute-next-beta.mjs';
 import {
   changesetIdsFromTreePaths,
@@ -372,6 +373,7 @@ function committedChangesets(files, { subtree = '' } = {}) {
     writeFileSync(target, body);
   }
   git(root, ['init', '-q', '-b', 'main']);
+  configureTestGitRepository(root);
   git(root, ['add', '-A']);
   git(root, ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', 'changesets']);
   return root;
@@ -496,6 +498,7 @@ describe('the promote job computes the stable version with no node_modules at al
       git(root, ['tag', tagName]);
     };
     git(root, ['init', '-q', '-b', 'main']);
+    configureTestGitRepository(root);
     commit('keep.md', bump(`"${OK}": patch`), 'v0.30.1');
     commit('new-thing.md', bump(`"${OK}": minor`), 'v0.30.2-beta.1');
     return root;

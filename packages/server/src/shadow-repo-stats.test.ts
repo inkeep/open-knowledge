@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import simpleGit from 'simple-git';
 import { afterAll, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { createTempDirFactory } from '../../../test-support/temp-dir.test-helper.ts';
 import { initShadowRepo, type ShadowHandle, shadowGit } from './shadow-repo.ts';
 import { countStaleAgentWipRefs } from './shadow-repo-stats.ts';
@@ -18,6 +19,7 @@ beforeEach(async () => {
   mkdirSync(contentDir, { recursive: true });
   const git = simpleGit(projectRoot);
   await git.init();
+  configureTestGitRepository(projectRoot);
   await git.raw('config', 'user.name', 'Test');
   await git.raw('config', 'user.email', 'test@test.com');
   writeFileSync(resolve(contentDir, 'intro.md'), '# Hello\n');

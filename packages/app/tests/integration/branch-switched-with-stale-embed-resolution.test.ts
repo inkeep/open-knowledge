@@ -6,6 +6,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { ensureProjectGit } from '@inkeep/open-knowledge-server';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import { afterEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import { createRestartableServer, getServerState, pollUntil, schema } from './test-harness';
 
@@ -66,6 +67,7 @@ describe('T17: branch switch with `![[photo.png]]` doc — reseed-before-reset',
     writeRel(contentDir, 'test-doc.md', DOC_BODY);
     writeRel(contentDir, 'photo.png', PNG_BYTES);
     await ensureProjectGit(contentDir);
+    configureTestGitRepository(contentDir);
     git(contentDir, 'config user.name test');
     git(contentDir, 'config user.email test@test.local');
     git(contentDir, 'add .');

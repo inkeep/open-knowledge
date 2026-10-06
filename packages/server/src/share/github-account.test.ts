@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   type CredentialUrlMatchReader,
   createCachedGitHubAccountResolver,
@@ -40,6 +41,7 @@ function initRepo(name: string, config?: string): string {
   mkdirSync(root, { recursive: true });
   spawnSync('git', ['init', '-q'], { cwd: root, encoding: 'utf-8' });
   if (config) writeFileSync(join(root, '.git', 'config'), config, 'utf-8');
+  configureTestGitRepository(root);
   return root;
 }
 

@@ -8,6 +8,7 @@ import {
   type SourceSpec,
 } from '@inkeep/open-knowledge-core/skills-catalog';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { clearSourceCache, fetchCachedSource } from './skill-source-cache.ts';
 
 interface SkillFixture {
@@ -38,6 +39,7 @@ function makeGitRepo(skills: SkillFixture[]): string {
   }
   const git = (args: string[]) => execFileSync('git', ['-C', repo, ...args], { stdio: 'pipe' });
   git(['init', '-q']);
+  configureTestGitRepository(repo);
   git(['config', 'user.email', 'test@example.com']);
   git(['config', 'user.name', 'Test']);
   git(['config', 'commit.gpgsign', 'false']);
@@ -73,6 +75,7 @@ describe('fetchCachedSource', () => {
       { dir: 'beta', name: 'beta', description: 'B' },
     ]);
     const first = await fetchCachedSource(gitSpec(src));
+    configureTestGitRepository(first.dir);
     const second = await fetchCachedSource(gitSpec(src));
     expect(second.dir).toBe(first.dir);
     expect(skillNames(first.dir)).toEqual(['alpha', 'beta']);
@@ -84,6 +87,7 @@ describe('fetchCachedSource', () => {
       fetchCachedSource(gitSpec(src)),
       fetchCachedSource(gitSpec(src)),
     ]);
+    for (const dir of new Set([a.dir, b.dir])) configureTestGitRepository(dir);
     expect(b.dir).toBe(a.dir);
   });
 
@@ -91,7 +95,9 @@ describe('fetchCachedSource', () => {
     const one = repo([{ dir: 'one', name: 'skill-one', description: 'One' }]);
     const two = repo([{ dir: 'two', name: 'skill-two', description: 'Two' }]);
     const a = await fetchCachedSource(gitSpec(one));
+    configureTestGitRepository(a.dir);
     const b = await fetchCachedSource(gitSpec(two));
+    configureTestGitRepository(b.dir);
     expect(a.dir).not.toBe(b.dir);
     expect(skillNames(a.dir)).toEqual(['skill-one']);
     expect(skillNames(b.dir)).toEqual(['skill-two']);
@@ -100,6 +106,7 @@ describe('fetchCachedSource', () => {
   test('the clone path resolves a real commit sha and clearing removes the clone', async () => {
     const src = repo([{ dir: 'alpha', name: 'alpha', description: 'A' }]);
     const fetched = await fetchCachedSource(gitSpec(src));
+    configureTestGitRepository(fetched.dir);
     expect(fetched.ref).toMatch(/^[0-9a-f]{40}$/);
     const clonedDir = fetched.dir;
     expect(existsSync(clonedDir)).toBe(true);
@@ -112,6 +119,7 @@ describe('fetchCachedSource', () => {
   test('an entry past the TTL is swept, its clone removed, and the next call re-clones', async () => {
     const src = repo([{ dir: 'alpha', name: 'alpha', description: 'A' }]);
     const first = await fetchCachedSource(gitSpec(src));
+    configureTestGitRepository(first.dir);
     const clonedDir = first.dir;
     expect(existsSync(clonedDir)).toBe(true);
 
@@ -120,6 +128,7 @@ describe('fetchCachedSource', () => {
     try {
       vi.setSystemTime(Date.now() + 31_000);
       second = await fetchCachedSource(gitSpec(src));
+      configureTestGitRepository(second.dir);
     } finally {
       vi.useRealTimers();
     }
@@ -144,6 +153,7 @@ describe('fetchCachedSource', () => {
     await expect(fetchCachedSource(gitSpec(missing))).rejects.toThrow();
     const src = repo([{ dir: 'alpha', name: 'alpha', description: 'A' }]);
     const ok = await fetchCachedSource(gitSpec(src));
+    configureTestGitRepository(ok.dir);
     expect(skillNames(ok.dir)).toEqual(['alpha']);
   });
 });

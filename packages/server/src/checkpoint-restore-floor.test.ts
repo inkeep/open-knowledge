@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { extensionlessDocTreePath } from './doc-extensions.ts';
 import {
   batchCheckExistence,
@@ -46,6 +47,7 @@ async function setup(): Promise<{ contentDir: string; shadow: ShadowHandle }> {
   mkdirSync(contentDir, { recursive: true });
   const git = simpleGit(projectRoot);
   await git.init();
+  configureTestGitRepository(projectRoot);
   await git.raw('config', 'user.name', 'Test');
   await git.raw('config', 'user.email', 'test@test.com');
   writeFileSync(resolve(contentDir, 'intro.md'), '# Hello\n');

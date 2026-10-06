@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   type DiscoverProjectOptions,
   type DiscoverProjectResult,
@@ -789,6 +790,7 @@ describe('discoverProject — integration with real git', () => {
     const docs = resolve(repo, 'docs');
     mkdirSync(docs, { recursive: true });
     await execFileAsync('git', ['init', '--initial-branch=main', repo]);
+    configureTestGitRepository(repo);
 
     const result = await discoverProject(docs, { homeDir: fakeHome, dirSizeProbe: null });
 
@@ -804,6 +806,7 @@ describe('discoverProject — integration with real git', () => {
     const repo = resolve(fakeHome, 'integration-root');
     mkdirSync(repo, { recursive: true });
     await execFileAsync('git', ['init', '--initial-branch=main', repo]);
+    configureTestGitRepository(repo);
 
     const result = await discoverProject(repo, { homeDir: fakeHome, dirSizeProbe: null });
 
@@ -832,6 +835,7 @@ describe('discoverProject — D12 linked-worktree carveout', () => {
     mkdirSync(parent, { recursive: true });
     writeOkConfig(parent);
     await execFileAsync('git', ['init', '--initial-branch=main', parent]);
+    configureTestGitRepository(parent);
     await execFileAsync('git', ['-C', parent, 'config', 'user.email', 'test@example.com']);
     await execFileAsync('git', ['-C', parent, 'config', 'user.name', 'Test']);
     writeFileSync(resolve(parent, 'README.md'), '# parent\n');
@@ -840,6 +844,7 @@ describe('discoverProject — D12 linked-worktree carveout', () => {
 
     const wt = resolve(parent, 'wt-feat');
     await execFileAsync('git', ['-C', parent, 'worktree', 'add', '-b', 'feat', wt]);
+    configureTestGitRepository(wt);
 
     const result = await discoverProject(wt, {
       homeDir: fakeHome,
@@ -876,6 +881,7 @@ describe('discoverProject — D12 linked-worktree carveout', () => {
     const repo = resolve(fakeHome, 'standalone-repo');
     mkdirSync(repo, { recursive: true });
     await execFileAsync('git', ['init', '--initial-branch=main', repo]);
+    configureTestGitRepository(repo);
     await execFileAsync('git', ['-C', repo, 'config', 'user.email', 'test@example.com']);
     await execFileAsync('git', ['-C', repo, 'config', 'user.name', 'Test']);
     writeFileSync(resolve(repo, 'README.md'), '# r\n');
@@ -883,6 +889,7 @@ describe('discoverProject — D12 linked-worktree carveout', () => {
     await execFileAsync('git', ['-C', repo, 'commit', '-m', 'initial']);
     const wt = resolve(repo, 'wt-standalone');
     await execFileAsync('git', ['-C', repo, 'worktree', 'add', '-b', 'standalone', wt]);
+    configureTestGitRepository(wt);
 
     const result = await discoverProject(wt, { homeDir: fakeHome, dirSizeProbe: null });
 
@@ -897,6 +904,7 @@ describe('discoverProject — D12 linked-worktree carveout', () => {
     mkdirSync(parent, { recursive: true });
     writeOkConfig(parent);
     await execFileAsync('git', ['init', '--initial-branch=main', parent]);
+    configureTestGitRepository(parent);
     await execFileAsync('git', ['-C', parent, 'config', 'user.email', 'test@example.com']);
     await execFileAsync('git', ['-C', parent, 'config', 'user.name', 'Test']);
     writeFileSync(resolve(parent, 'README.md'), '# parent\n');
@@ -905,6 +913,7 @@ describe('discoverProject — D12 linked-worktree carveout', () => {
 
     const wt = resolve(parent, 'wt-initialized');
     await execFileAsync('git', ['-C', parent, 'worktree', 'add', '-b', 'init-feat', wt]);
+    configureTestGitRepository(wt);
     writeOkConfig(wt);
 
     const result = await discoverProject(wt, { homeDir: fakeHome, dirSizeProbe: null });

@@ -12,6 +12,7 @@ import type { Server } from 'node:http';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
 
 interface TestConcurrencyGuard {
@@ -33,6 +34,7 @@ function run(cwd: string, cmd: string): string {
 
 function initRepo(cwd: string): void {
   run(cwd, 'git init -q -b main');
+  configureTestGitRepository(cwd);
   run(cwd, 'git config user.email "test@example.com"');
   run(cwd, 'git config user.name "Test"');
   run(cwd, 'git config commit.gpgsign false');

@@ -14,6 +14,7 @@ import {
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { bootServer } from './boot.ts';
 import { getBootTimings } from './boot-timings.ts';
 import { ConfigSchema } from './config/schema.ts';
@@ -45,6 +46,7 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
   test('rejects with kind=okdir when .ok/ directory is absent (State A)', async () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'state-a-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    configureTestGitRepository(contentDir);
 
     let caught: unknown;
     try {
@@ -73,6 +75,7 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
   test('rejects with kind=config when .ok/ exists but config.yml is missing (State B)', async () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'state-b-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    configureTestGitRepository(contentDir);
     const okDir = resolve(contentDir, '.ok');
     writeFileSync(resolve(contentDir, 'placeholder'), '');
     await execFileAsync('mkdir', [okDir]);
@@ -102,6 +105,7 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
   test('preflight checks projectDir/.ok/config.yml when projectDir != contentDir', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'projectdir-preflight-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
+    configureTestGitRepository(projectDir);
     seedOkScaffold(projectDir);
     const contentDir = resolve(projectDir, 'docs');
     mkdirSync(contentDir, { recursive: true });
@@ -128,6 +132,7 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
   test('rejects when projectDir/.ok/config.yml is missing even though contentDir/.ok/config.yml exists', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'projectdir-only-content-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
+    configureTestGitRepository(projectDir);
     const contentDir = resolve(projectDir, 'docs');
     mkdirSync(contentDir, { recursive: true });
     seedOkScaffold(contentDir);
@@ -157,6 +162,7 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
   test('proceeds and emits a one-time stderr warning when only .ok/.gitignore is missing (State C)', async () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'state-c-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    configureTestGitRepository(contentDir);
     const okDir = resolve(contentDir, '.ok');
     await execFileAsync('mkdir', [okDir]);
     writeFileSync(resolve(okDir, 'config.yml'), '', 'utf-8');
@@ -190,6 +196,7 @@ describe('bootServer — runtime state lives at projectDir, not contentDir', () 
   test('boot writes server.lock, principal.json, state.json under projectDir, not contentDir', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'fake-repo-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
+    configureTestGitRepository(projectDir);
     seedOkScaffold(projectDir);
     const contentDir = resolve(projectDir, 'template-projects');
     mkdirSync(contentDir, { recursive: true });
@@ -226,6 +233,7 @@ describe('bootServer — tolerance-telemetry writer wired through the real boot 
     process.env.OK_BRIDGE_TOLERANCE_TELEMETRY = '1';
     const projectDir = mkdtempSync(resolve(tmpDir, 'tolerance-telemetry-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
+    configureTestGitRepository(projectDir);
     seedOkScaffold(projectDir);
 
     const booted = await bootServer({
@@ -259,6 +267,7 @@ describe('bootServer — idle-shutdown runs full destroy', () => {
   test('after idle-shutdown fires with zero WS clients, httpServer is no longer listening', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'idle-full-destroy-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
+    configureTestGitRepository(projectDir);
     seedOkScaffold(projectDir);
 
     const booted = await bootServer({
@@ -289,6 +298,7 @@ describe('bootServer — reactShellDistDir + server.lock ui advertisement', () =
   test('server.lock advertises the ui capability when --react-shell-dist-dir is set', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'fake-repo-shell-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
+    configureTestGitRepository(projectDir);
     seedOkScaffold(projectDir);
 
     const shellDistDir = mkdtempSync(resolve(tmpDir, 'fake-shell-dist-'));
@@ -322,6 +332,7 @@ describe('bootServer — reactShellDistDir + server.lock ui advertisement', () =
   test('server.lock omits the ui capability when reactShellDistDir is absent (CLI default)', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'fake-repo-no-shell-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
+    configureTestGitRepository(projectDir);
     seedOkScaffold(projectDir);
 
     const booted = await bootServer({
@@ -350,6 +361,7 @@ describe('bootServer — reactShellDistDir end-to-end HTTP shape', () => {
   test('serves the React shell, bundled assets, content assets, and API on one port', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'shell-e2e-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
+    configureTestGitRepository(projectDir);
     seedOkScaffold(projectDir);
 
     const shellDistDir = mkdtempSync(resolve(tmpDir, 'shell-e2e-dist-'));
@@ -566,6 +578,7 @@ describe('bootServer — ok.boot OTel span attributes', () => {
   test('main worktree: ok.boot span has worktree.kind=main', async () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'span-main-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    configureTestGitRepository(contentDir);
     seedOkScaffold(contentDir);
 
     const booted = await bootServer({
@@ -593,6 +606,7 @@ describe('bootServer — ok.boot OTel span attributes', () => {
   test('linked worktree: ok.boot span has worktree.kind=linked', async () => {
     const repoRoot = mkdtempSync(resolve(tmpDir, 'span-linked-repo-'));
     await execFileAsync('git', ['init', '--initial-branch=main', repoRoot]);
+    configureTestGitRepository(repoRoot);
     await execFileAsync('git', ['-C', repoRoot, 'config', 'user.email', 'test@example.com']);
     await execFileAsync('git', ['-C', repoRoot, 'config', 'user.name', 'Test']);
     writeFileSync(resolve(repoRoot, 'README.md'), '# test\n');
@@ -637,6 +651,7 @@ describe('bootServer — ok.boot OTel span attributes', () => {
   test('boot failure (MissingOkConfigError): span still records the worktree kind', async () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'span-fail-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    configureTestGitRepository(contentDir);
 
     let caught: unknown;
     try {
@@ -663,6 +678,7 @@ describe('bootServer — ok.boot OTel span attributes', () => {
   test('cross-invocation: main first, linked second — kinds flip correctly with no state leakage', async () => {
     const mainDir = mkdtempSync(resolve(tmpDir, 'flip-main-'));
     await execFileAsync('git', ['init', '--initial-branch=main', mainDir]);
+    configureTestGitRepository(mainDir);
     seedOkScaffold(mainDir);
     const bootedMain = await bootServer({
       host: '127.0.0.1',
@@ -677,6 +693,7 @@ describe('bootServer — ok.boot OTel span attributes', () => {
 
     const repoRoot = mkdtempSync(resolve(tmpDir, 'flip-linked-repo-'));
     await execFileAsync('git', ['init', '--initial-branch=main', repoRoot]);
+    configureTestGitRepository(repoRoot);
     await execFileAsync('git', ['-C', repoRoot, 'config', 'user.email', 'test@example.com']);
     await execFileAsync('git', ['-C', repoRoot, 'config', 'user.name', 'Test']);
     writeFileSync(resolve(repoRoot, 'README.md'), '# test\n');
@@ -723,6 +740,7 @@ describe('bootServer — ok.boot OTel span attributes', () => {
     propagation.setGlobalPropagator(new W3CTraceContextPropagator());
     const contentDir = mkdtempSync(resolve(tmpDir, 'traceparent-valid-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    configureTestGitRepository(contentDir);
     seedOkScaffold(contentDir);
 
     let booted: Awaited<ReturnType<typeof bootServer>> | null = null;
@@ -751,6 +769,7 @@ describe('bootServer — ok.boot OTel span attributes', () => {
     process.env.OK_STARTUP_TRACEPARENT = 'not-a-valid-traceparent';
     const contentDir = mkdtempSync(resolve(tmpDir, 'traceparent-malformed-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    configureTestGitRepository(contentDir);
     seedOkScaffold(contentDir);
 
     let booted: Awaited<ReturnType<typeof bootServer>> | null = null;
@@ -780,6 +799,7 @@ describe('bootServer — boot timings recorded end-to-end', () => {
   test('a full boot populates httpListen / seedWalk / indexes / ready / fileCount', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'boot-timings-e2e-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
+    configureTestGitRepository(projectDir);
     seedOkScaffold(projectDir);
     writeFileSync(resolve(projectDir, 'note.md'), '# note\n', 'utf-8');
 
@@ -873,6 +893,7 @@ describe('bootServer — exposure consent interlock', () => {
   ): Promise<unknown> {
     const contentDir = mkdtempSync(resolve(tmpDir, 'interlock-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    configureTestGitRepository(contentDir);
     seedOkScaffold(contentDir);
     const config = ConfigSchema.parse({ server });
     try {
@@ -940,6 +961,7 @@ describe('bootServer — exposure consent interlock', () => {
   test('a non-loopback host with no bind/serverRuntime still trips the interlock (single-file shape)', async () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'interlock-host-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    configureTestGitRepository(contentDir);
     seedOkScaffold(contentDir);
     let err: unknown = null;
     try {
@@ -966,6 +988,7 @@ describe('bootServer — multi-address bind', () => {
   test('every bind address answers on the same port; teardown closes all listeners', async () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'multibind-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    configureTestGitRepository(contentDir);
     seedOkScaffold(contentDir);
     const booted = await bootServer({
       host: '127.0.0.1',
@@ -993,6 +1016,7 @@ describe('bootServer — multi-address bind', () => {
   test('the listen record names the bound port, pid and every address, and agrees with the lock', async () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'listenlog-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    configureTestGitRepository(contentDir);
     seedOkScaffold(contentDir);
     const entries: Array<{ fields: Record<string, unknown>; msg: string }> = [];
     const noop = (): void => {};
@@ -1041,6 +1065,7 @@ describe('bootServer — multi-address bind', () => {
   test('duplicate bind entries collapse instead of failing with EADDRINUSE', async () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'multibind-dup-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    configureTestGitRepository(contentDir);
     seedOkScaffold(contentDir);
     const booted = await bootServer({
       host: '127.0.0.1',

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { captureAppProcess, closeAppBounded } from './_helpers/electron-cleanup';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import {
@@ -135,6 +136,7 @@ test.describe('Slidev renderer readiness smoke', () => {
         .not.toBeUndefined();
       const editor = await findEditor(app);
       if (editor === undefined) throw new Error('editor window vanished after opening');
+      await configureDesktopGitRepositories(editor, projectDir);
 
       const openResult = editor.evaluate(async (path) => {
         const slides = window.okDesktop?.slides;
@@ -212,6 +214,7 @@ test.describe('Slidev renderer readiness smoke', () => {
         .not.toBeUndefined();
       const editor = await findEditor(app);
       if (editor === undefined) throw new Error('editor window vanished after opening');
+      await configureDesktopGitRepositories(editor, projectDir);
 
       const openResult = editor.evaluate(async (path) => {
         const slides = window.okDesktop?.slides;

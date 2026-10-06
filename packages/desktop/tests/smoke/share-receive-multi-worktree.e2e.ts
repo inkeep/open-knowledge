@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
@@ -35,6 +36,7 @@ function setupMultiWorktree(): MultiWorktreeFixture {
   const mainRepo = join(root, 'main');
   mkdirSync(mainRepo);
   gitSync(mainRepo, 'init', '--initial-branch=main', '.');
+  configureTestGitRepository(mainRepo);
   gitSync(mainRepo, 'config', 'user.email', 'test@example.com');
   gitSync(mainRepo, 'config', 'user.name', 'Test');
   gitSync(mainRepo, 'remote', 'add', 'origin', 'https://github.com/inkeep/open-knowledge.git');
@@ -50,6 +52,7 @@ function setupMultiWorktree(): MultiWorktreeFixture {
   const featBarWorktree = join(root, 'wt', 'feat-bar');
   mkdirSync(join(root, 'wt'), { recursive: true });
   gitSync(mainRepo, 'worktree', 'add', '-b', 'feat-bar', featBarWorktree);
+  configureTestGitRepository(featBarWorktree);
   mkdirSync(join(featBarWorktree, 'docs'), { recursive: true });
   writeFileSync(join(featBarWorktree, 'docs', 'x.md'), '# feat-bar/docs/x\n');
   gitSync(featBarWorktree, 'add', 'docs/x.md');

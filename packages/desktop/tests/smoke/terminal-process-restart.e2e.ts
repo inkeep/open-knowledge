@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import {
   type CrashDumpVerdict,
   type CrashDumpWatch,
@@ -254,6 +255,7 @@ test.describe('terminal process restart', () => {
     const firstProcess = firstApp.process();
     const firstDumps = await watchCrashDumps(firstApp);
     const firstPage = await findEditorWindow(firstApp);
+    await configureDesktopGitRepositories(firstPage, seed.projectDir);
     await setWindowSize(firstApp, firstPage, 1900, 900);
     await openTerminal(firstPage);
     const [firstTabId] = await terminalTabIds(firstPage);
@@ -307,6 +309,7 @@ test.describe('terminal process restart', () => {
       const dumps = await watchCrashDumps(app);
       // WARN: mirrors the first process of the restart test above
       const page = await findEditorWindow(app);
+      await configureDesktopGitRepositories(page, seed.projectDir);
       await setWindowSize(app, page, 1900, 900);
       await openTerminal(page);
       const [firstTabId] = await terminalTabIds(page);

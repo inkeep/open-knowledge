@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 
 import { resolveGitIdentity } from './git-identity.ts';
 
@@ -38,6 +39,7 @@ describe('resolveGitIdentity with included git config', () => {
     writeFileSync(identityFile, '[user]\n\tname = Included Dev\n\temail = included@example.com\n');
 
     expect(run(tmp, 'init', '-b', 'main', 'repo').status).toBe(0);
+    configureTestGitRepository(repo);
   });
 
   afterEach(() => {

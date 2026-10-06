@@ -18,6 +18,7 @@ import {
 } from '@inkeep/open-knowledge-server';
 import simpleGit, { type SimpleGit } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { FileBackend } from '../auth/token-store.ts';
 import { runSync, syncFailureMessage } from './sync.ts';
 
@@ -35,11 +36,13 @@ beforeEach(async () => {
   projectDir = join(tmpDir, 'project');
   mkdirSync(bareDir, { recursive: true });
   await simpleGit(bareDir).init(true);
+  configureTestGitRepository(bareDir);
   await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
   mkdirSync(join(sisterDir, 'notes'), { recursive: true });
   sister = simpleGit(sisterDir);
   await sister.init(['--initial-branch=main']);
+  configureTestGitRepository(sisterDir);
   await sister.raw('config', 'user.name', 'Sister');
   await sister.raw('config', 'user.email', 'sister@test.com');
   writeFileSync(join(sisterDir, 'notes', 'real.md'), '# real\n', 'utf-8');
@@ -49,6 +52,7 @@ beforeEach(async () => {
   await sister.push('origin', 'main');
 
   await simpleGit(tmpDir).clone(bareDir, projectDir);
+  configureTestGitRepository(projectDir);
   project = simpleGit(projectDir);
   await project.raw('config', 'user.name', 'Project');
   await project.raw('config', 'user.email', 'project@test.com');

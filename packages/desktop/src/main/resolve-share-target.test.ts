@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { RecentProjectEntry } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { filterShareEligibleRecents, resolveShareTarget } from './resolve-share-target.ts';
 import { annotateMissing, emptyState } from './state-store.ts';
 
@@ -29,6 +30,7 @@ async function makeRepoWithWorktrees(branches: readonly string[]): Promise<TempR
   const mainRepo = join(root, 'main');
   mkdirSync(mainRepo);
   await git(mainRepo, 'init', '--initial-branch=main', '.');
+  configureTestGitRepository(mainRepo);
   await git(mainRepo, 'config', 'user.email', 'test@example.com');
   await git(mainRepo, 'config', 'user.name', 'Test');
   writeFileSync(join(mainRepo, 'README.md'), '# main\n');
@@ -40,6 +42,7 @@ async function makeRepoWithWorktrees(branches: readonly string[]): Promise<TempR
     mkdirSync(join(root, 'wt'), { recursive: true });
     const wt = join(root, 'wt', branch.replace(/\//g, '-'));
     await git(mainRepo, 'worktree', 'add', '-b', branch, wt);
+    configureTestGitRepository(wt);
     worktrees.set(branch, wt);
   }
 

@@ -6,6 +6,8 @@ import { join, resolve } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
+import { createGitTriangle, type GitTriangle } from '../tests/support/git-fixture.test-helper.ts';
 import { renameTrackedPathInGit } from './api-extension.ts';
 import { ConflictAuthority } from './conflict-authority.ts';
 import { readProjectGitLog } from './content/project-log.ts';
@@ -20,7 +22,6 @@ import {
   type WriterIdentity,
 } from './shadow-repo.ts';
 import { computeShareFreshness } from './share/freshness.ts';
-import { createGitTriangle, type GitTriangle } from './share/git-fixture.test-helper.ts';
 import { computeShareTargetStatus } from './share/target-status.ts';
 import { restoreSkillVersion } from './skill-restore.ts';
 import { SyncEngine } from './sync-engine.ts';
@@ -101,10 +102,12 @@ async function initProjectWithBareRemote(): Promise<string> {
   const bareDir = join(tmpDir, 'bare.git');
   mkdirSync(bareDir, { recursive: true });
   await simpleGit(bareDir).init(true);
+  configureTestGitRepository(bareDir);
   await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
   const g = simpleGit(projectDir);
   await g.init(['--initial-branch=main']);
+  configureTestGitRepository(projectDir);
   await g.raw('config', 'user.name', 'Test');
   await g.raw('config', 'user.email', 'test@test.com');
   writeFileSync(join(projectDir, 'README.md'), '# seed\n', 'utf-8');
@@ -282,12 +285,14 @@ describe('pathspec name invariance — commitBlockingPaths (site 3)', () => {
     mkdirSync(bareDir, { recursive: true });
     const bare = simpleGit(bareDir);
     await bare.init(true);
+    configureTestGitRepository(bareDir);
     await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
     const sisterDir = join(tmpDir, 'sister');
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, BLOCKING_NAME), '{"a":1}\n', 'utf-8');
@@ -299,6 +304,7 @@ describe('pathspec name invariance — commitBlockingPaths (site 3)', () => {
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
     const project = simpleGit(projectDir);
     await project.raw('config', 'user.name', 'Project');
@@ -345,6 +351,7 @@ describe('pathspec name invariance — shadow-repo per-path history (sites 9, 10
   async function shadowWithBothDocs(): Promise<{ shadow: ShadowHandle; wipSha: string }> {
     const g = simpleGit(projectDir);
     await g.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await g.raw('config', 'user.name', 'Test');
     await g.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'README.md'), '# seed\n', 'utf-8');
@@ -426,12 +433,14 @@ describe('pathspec name invariance — non-content merge auto-resolve (site 5)',
     mkdirSync(bareDir, { recursive: true });
     const bare = simpleGit(bareDir);
     await bare.init(true);
+    configureTestGitRepository(bareDir);
     await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
     const sisterDir = join(tmpDir, 'sister');
     mkdirSync(sisterDir, { recursive: true });
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, fileName), '{"a":1}\n', 'utf-8');
@@ -443,6 +452,7 @@ describe('pathspec name invariance — non-content merge auto-resolve (site 5)',
 
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
+    configureTestGitRepository(projectDir);
     mkdirSync(okDir, { recursive: true });
     const project = simpleGit(projectDir);
     await project.raw('config', 'user.name', 'Project');
@@ -500,10 +510,12 @@ describe('pathspec name invariance — pull-only overlay restore (site 6)', () =
 
     const bare = simpleGit(bareDir);
     await bare.init(true);
+    configureTestGitRepository(bareDir);
     await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
 
     const sister = simpleGit(sisterDir);
     await sister.init(['--initial-branch=main']);
+    configureTestGitRepository(sisterDir);
     await sister.raw('config', 'user.name', 'Sister');
     await sister.raw('config', 'user.email', 'sister@test.com');
     writeFileSync(join(sisterDir, docName), 'v1\n', 'utf-8');
@@ -513,6 +525,7 @@ describe('pathspec name invariance — pull-only overlay restore (site 6)', () =
     await sister.push('origin', 'main');
 
     await simpleGit(root).clone(bareDir, cloneDir);
+    configureTestGitRepository(cloneDir);
     mkdirSync(join(cloneDir, '.ok', LOCAL_DIR), { recursive: true });
     const project = simpleGit(cloneDir);
     await project.raw('config', 'user.name', 'Project');
@@ -601,6 +614,7 @@ describe('pathspec argv sites with no product-producible hostile input today', (
   test('restoring a wildcard-named skill restores only its own files', async () => {
     const g = simpleGit(projectDir);
     await g.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
     await g.raw('config', 'user.name', 'Test');
     await g.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(projectDir, 'README.md'), '# seed\n', 'utf-8');

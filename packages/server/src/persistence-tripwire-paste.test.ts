@@ -15,6 +15,7 @@ import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-ti
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
 import {
   DocumentDurabilityState,
@@ -82,6 +83,7 @@ async function setupRig(prefix: string): Promise<Rig> {
   const tmpDir = await realpath(mkdtempSync(join(tmpdir(), prefix)));
   const git = simpleGit({ baseDir: tmpDir });
   await git.init();
+  configureTestGitRepository(tmpDir);
   await git.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
   await git.addConfig('user.name', 'Test User');
   await git.addConfig('user.email', 'test@example.com');

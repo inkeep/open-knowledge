@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 
 export interface GitTriangle {
   readonly senderDir: string;
@@ -56,7 +57,9 @@ export function createGitTriangle(opts: { branch?: string } = {}): GitTriangle {
   };
 
   git(originDir, ['init', '--bare', '-b', branch]);
+  configureTestGitRepository(originDir);
   git(senderDir, ['init', '-b', branch]);
+  configureTestGitRepository(senderDir);
   configure(senderDir);
   writeFile(senderDir, '.ok/config.yml', '');
   writeFile(senderDir, 'README.md', '# base\n');
@@ -147,6 +150,7 @@ export function createGitTriangle(opts: { branch?: string } = {}): GitTriangle {
       if (receiverDir) return receiverDir;
       const dir = mkdtempSync(join(tmpdir(), 'ok-share-receiver-'));
       git(dir, ['clone', originDir, '.']);
+      configureTestGitRepository(dir);
       configure(dir);
       receiverDir = dir;
       return dir;

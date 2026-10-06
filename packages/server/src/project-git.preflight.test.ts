@@ -2,6 +2,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import {
   __resetResolveOnPathCacheForTests,
   __seedResolveOnPathCacheForTests,
@@ -57,6 +58,7 @@ describe('ensureProjectGit — git-preflight at the project-setup boundary (#356
       await withBrokenBareGitOnly(async () => {
         outcome = await runEnsureProjectGit(project);
       });
+      if (outcome === 'succeeded') configureTestGitRepository(project);
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

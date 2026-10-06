@@ -2,7 +2,8 @@ import { execSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { _electron as electron } from '@playwright/test';
+import { _electron as electron, type Page } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
@@ -47,13 +48,19 @@ test.describe('deep-link warm-start smoke (M4 US-009 / AC7)', () => {
     const deepLink = `openknowledge://open?project=${encodeURIComponent(projectDir)}&doc=target`;
     execSync(`open -g "${deepLink}"`, { stdio: 'pipe' });
 
+    let editorPage: Page | undefined;
     await expect(async () => {
       for (const page of app.windows()) {
         const hash = await page.evaluate(() => window.location.hash).catch(() => '');
-        if (hash.endsWith('#/target')) return;
+        if (hash.endsWith('#/target')) {
+          editorPage = page;
+          return;
+        }
       }
       throw new Error('no window has hash matching the extension-less producer form yet');
     }).toPass({ timeout: 15_000 });
+    if (!editorPage) throw new Error('matching editor window vanished');
+    await configureDesktopGitRepositories(editorPage, projectDir);
   });
 
   test('open(1) shell-out with nested docName round-trips encoded slash', async ({
@@ -87,12 +94,18 @@ test.describe('deep-link warm-start smoke (M4 US-009 / AC7)', () => {
     const deepLink = `openknowledge://open?project=${encodeURIComponent(projectDir)}&doc=notes%2Fmeeting`;
     execSync(`open -g "${deepLink}"`, { stdio: 'pipe' });
 
+    let editorPage: Page | undefined;
     await expect(async () => {
       for (const page of app.windows()) {
         const hash = await page.evaluate(() => window.location.hash).catch(() => '');
-        if (hash === '#/notes%2Fmeeting' || hash === '#/notes/meeting') return;
+        if (hash === '#/notes%2Fmeeting' || hash === '#/notes/meeting') {
+          editorPage = page;
+          return;
+        }
       }
       throw new Error('no window has nested-doc hash yet');
     }).toPass({ timeout: 15_000 });
+    if (!editorPage) throw new Error('matching editor window vanished');
+    await configureDesktopGitRepositories(editorPage, projectDir);
   });
 });

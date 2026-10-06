@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 
 vi.mock('./incoming-symlink-guard.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./incoming-symlink-guard.ts')>();
@@ -41,7 +42,9 @@ describe('share-link branch switch when the symlink check cannot run', () => {
     const seedDir = join(tmpDir, 'seed');
     projectDir = join(tmpDir, 'project');
     git(tmpDir, 'init', '-q', '--bare', '--initial-branch=main', bareDir);
+    configureTestGitRepository(bareDir);
     git(tmpDir, 'init', '-q', '--initial-branch=main', seedDir);
+    configureTestGitRepository(seedDir);
     writeFileSync(join(seedDir, 'a.md'), '# A\n');
     git(seedDir, 'add', 'a.md');
     git(seedDir, 'commit', '-q', '-m', 'base');
@@ -53,6 +56,7 @@ describe('share-link branch switch when the symlink check cannot run', () => {
     git(seedDir, 'commit', '-q', '-m', 'shared');
     git(seedDir, 'push', '-q', 'origin', 'shared');
     git(tmpDir, 'clone', '-q', bareDir, projectDir);
+    configureTestGitRepository(projectDir);
   });
 
   afterEach(() => {

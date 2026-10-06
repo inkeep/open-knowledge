@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, ElementHandle, JSHandle, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { waitForWindowByMode } from './_helpers/launch-readiness';
 import { sumOfDeclaredBoundsMs } from './_helpers/parse-timeouts';
@@ -501,6 +502,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.projectDir);
     await widenEditorWindow(app, page, 1900, 900);
 
     await openTerminal(app, page);
@@ -590,6 +592,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.projectDir);
     await widenEditorWindow(app, page, 1900, 900);
 
     await openTerminal(app, page);
@@ -714,6 +717,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
+    await configureDesktopGitRepositories(page, s.projectDir);
 
     await openTerminal(app, page);
     await expect(page.locator('#terminal-dock-panel')).toBeVisible();

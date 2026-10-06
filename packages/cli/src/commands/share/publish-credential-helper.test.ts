@@ -1,10 +1,26 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { shellSingleQuote } from '@inkeep/open-knowledge-core';
 import type { Octokit } from '@octokit/rest';
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../../../test-support/configure-git-fixture.test-helper.ts';
+import {
+  GITHUB_HOST,
+  type GitHubStandIn,
+  type PlainHttpInterceptor,
+  startGitHubStandIn,
+  startPlainHttpInterceptor,
+} from '../../../tests/support/github-stand-in.test-helper.ts';
 import {
   type CliHelperCall,
   gitConfigParameter as configParameter,
@@ -15,14 +31,15 @@ import {
   writeCliEntryLauncher,
   writeRecordingCredentialHelper,
 } from '../git-credential-fixtures.test-helper.ts';
-import {
-  GITHUB_HOST,
-  type GitHubStandIn,
-  type PlainHttpInterceptor,
-  startGitHubStandIn,
-  startPlainHttpInterceptor,
-} from '../github-stand-in.test-helper.ts';
-import { type PublishResult, runPublishFlow } from './publish.ts';
+import { type PublishResult, runPublishFlow as runPublishFlowProduct } from './publish.ts';
+
+async function runPublishFlow(...args: Parameters<typeof runPublishFlowProduct>) {
+  const result = await runPublishFlowProduct(...args);
+  if (existsSync(join(args[0].projectDir, '.git', 'config'))) {
+    configureTestGitRepository(args[0].projectDir);
+  }
+  return result;
+}
 
 const CLONE_URL = `https://${GITHUB_HOST}/alice/demo.git`;
 const PUBLISH_TOKEN = 'ok-test-publish-token-the-stand-in-accepts';
@@ -249,11 +266,14 @@ describe("share publish authenticates its github.com push only through the CLI's
     const git = (...args: string[]) =>
       execFileSync('git', args, { cwd: projectDir, stdio: 'ignore' });
     execFileSync('git', ['init', '--quiet', '--initial-branch=main', submoduleSource]);
+    configureTestGitRepository(submoduleSource);
     execFileSync('git', ['-C', submoduleSource, 'commit', '--quiet', '--allow-empty', '-m', 'one']);
     git('init', '--quiet', '--initial-branch=main');
+    configureTestGitRepository(projectDir);
     git('add', 'README.md');
     git('commit', '--quiet', '-m', 'a project');
     git('-c', 'protocol.file.allow=always', 'submodule', 'add', '--quiet', submoduleSource, 'sub');
+    configureTestGitRepository(join(projectDir, 'sub'));
     git('-C', 'sub', 'remote', 'set-url', 'origin', `http://${GITHUB_HOST}/alice/sub.git`);
     git('-C', 'sub', 'commit', '--quiet', '--allow-empty', '-m', 'not yet pushed');
     git('add', '.');

@@ -5,6 +5,7 @@ import { updateYFragment } from '@tiptap/y-tiptap';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { expectStable } from './expect-stable.test-helper.ts';
 import { mdManager, schema } from './md-manager.ts';
 import { createServer } from './server-factory.ts';
@@ -27,6 +28,7 @@ async function setupFixture(): Promise<Fixture> {
   const contentDir = tmpDir;
   const git = simpleGit({ baseDir: tmpDir });
   await git.init();
+  configureTestGitRepository(tmpDir);
   await git.addConfig('user.name', 'Test User');
   await git.addConfig('user.email', 'test@example.com');
   return {

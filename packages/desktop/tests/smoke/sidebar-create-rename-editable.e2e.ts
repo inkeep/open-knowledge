@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { SMOKE_ENABLED } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
@@ -153,6 +154,7 @@ test.describe('Sidebar create and rename editability smoke', () => {
     captureStderrFor(app, { home: seed.tmpHome, cleanupDirs: [seed.tmpHome, seed.projectDir] });
 
     const page = await findEditorWindow(app, 'start');
+    await configureDesktopGitRepositories(page, seed.projectDir);
     await expect(
       page.locator('.ProseMirror[contenteditable="true"]:not(.composer-prosemirror)').first(),
     ).toBeVisible({

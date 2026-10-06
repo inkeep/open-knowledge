@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { ensureProjectGit } from '@inkeep/open-knowledge-server';
 import { afterEach, describe, expect, test } from 'vitest';
+import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { createRestartableServer, createTestClient, pollUntil } from './test-harness';
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -38,6 +39,7 @@ describe('branch switch with a document that became a link into private state', 
       const contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-branch-switch-private-')));
       cleanups.push(() => rmSync(contentDir, { recursive: true, force: true }));
       await ensureProjectGit(contentDir);
+      configureTestGitRepository(contentDir);
       git(contentDir, 'config user.name test');
       git(contentDir, 'config user.email test@test.local');
       mkdirSync(join(contentDir, '.ok', 'local'), { recursive: true });
