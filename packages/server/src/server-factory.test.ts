@@ -31,6 +31,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stringify as stringifyYaml } from 'yaml';
 import * as Y from 'yjs';
 import { runningAsRoot } from '../../../test-support/capabilities.test-helper.ts';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { MAX_AGENT_SESSIONS } from './agent-sessions.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { getBootTimings, resetBootTimingsForTest, startBootTimings } from './boot-timings.ts';
@@ -300,6 +301,10 @@ describe('createServer() — derived-index branch lifecycle', () => {
     projectDir = await mkdtemp(join(tmpdir(), 'ok-derived-branch-'));
     git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@example.com');
     writeFileSync(join(projectDir, 'main.md'), '# Main\n\n#main-branch\n', 'utf-8');
@@ -499,6 +504,10 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     const contentDir = join(tmpDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     await ensureProjectGit(projectDir);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     const shadowHandle = await initShadowRepo(projectDir);
 
     const server = createServer({
@@ -587,6 +596,10 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     const contentDir = join(tmpDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     await ensureProjectGit(projectDir);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     const shadowHandle = await initShadowRepo(projectDir);
 
     const server = createServer({
@@ -655,6 +668,10 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     const contentDir = join(tmpDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     await ensureProjectGit(projectDir);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     const shadowHandle = await initShadowRepo(projectDir);
 
     const docName = 'refused-store-doc';
@@ -737,6 +754,10 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     const contentDir = join(tmpDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     await ensureProjectGit(projectDir);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     const shadowHandle = await initShadowRepo(projectDir);
 
     const docName = 'runtime-refused-doc';
@@ -855,6 +876,10 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     const contentDir = join(tmpDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     await ensureProjectGit(projectDir);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     const shadowHandle = await initShadowRepo(projectDir);
 
     const docName = 'runtime-refused-refresh';
@@ -934,6 +959,10 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     const contentDir = join(tmpDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     await ensureProjectGit(projectDir);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     const shadowHandle = await initShadowRepo(projectDir);
 
     const docName = 'refused-rescue-lost-doc';
@@ -1040,6 +1069,10 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     const contentDir = join(tmpDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     await ensureProjectGit(projectDir);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     const shadowHandle = await initShadowRepo(projectDir);
 
     const docName = 'refused-unload-hangs-doc';
@@ -1136,6 +1169,10 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     const contentDir = join(tmpDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     await ensureProjectGit(projectDir);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     const shadowHandle = await initShadowRepo(projectDir);
 
     const firstDoc = 'refused-budget-hog-doc';
@@ -1225,6 +1262,10 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     const contentDir = join(tmpDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     await ensureProjectGit(projectDir);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     const shadowGitDir = join(projectDir, '.git');
     chmodSync(shadowGitDir, 0o500);
     writeFileSync(join(projectDir, '.okignore'), 'content/shadowless-flush-doc.md\n', 'utf-8');
@@ -2812,6 +2853,10 @@ describe('createServer() — onAuthenticate branch gate parks on readiness', () 
   test('a claim matching the real HEAD branch survives the boot window', async () => {
     const git = simpleGit(tmpDir);
     await git.init(['--initial-branch=master']);
+    configureTestGitRepository(tmpDir);
+    expect
+      .soft((await simpleGit(tmpDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     await git.addConfig('user.email', 'test@example.com');
     await git.addConfig('user.name', 'Test');
     writeFileSync(join(tmpDir, 'seed.md'), '# Seed\n');
@@ -2845,6 +2890,10 @@ describe('createServer() — onAuthenticate branch gate parks on readiness', () 
   test('a genuinely stale claim is still rejected after the branch resolves', async () => {
     const git = simpleGit(tmpDir);
     await git.init(['--initial-branch=master']);
+    configureTestGitRepository(tmpDir);
+    expect
+      .soft((await simpleGit(tmpDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     await git.addConfig('user.email', 'test@example.com');
     await git.addConfig('user.name', 'Test');
     writeFileSync(join(tmpDir, 'seed.md'), '# Seed\n');
@@ -2878,6 +2927,10 @@ describe('createServer() — onAuthenticate branch gate parks on readiness', () 
   test('admission settles before the rest of boot does', async () => {
     const git = simpleGit(tmpDir);
     await git.init(['--initial-branch=master']);
+    configureTestGitRepository(tmpDir);
+    expect
+      .soft((await simpleGit(tmpDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     await git.addConfig('user.email', 'test@example.com');
     await git.addConfig('user.name', 'Test');
     const noteCount = 120;
@@ -3953,6 +4006,10 @@ describe('createServer() — push-permission auth wiring', () => {
     tmpDir = await mkdtemp(join(tmpdir(), 'ok-auth-wiring-'));
     const git = simpleGit(tmpDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(tmpDir);
+    expect
+      .soft((await simpleGit(tmpDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
     writeFileSync(join(tmpDir, 'README.md'), 'seed\n', 'utf-8');
@@ -4088,6 +4145,10 @@ describe('createServer() — generated index wiring', () => {
 
   async function bootServer(): Promise<ServerInstance> {
     await ensureProjectGit(projectDir);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     await prepareGeneratedIndexGitAttributes();
     shadowHandle = await initShadowRepo(projectDir);
     server = createServer({
@@ -4109,6 +4170,10 @@ describe('createServer() — generated index wiring', () => {
     >,
   ): Promise<ServerInstance> {
     await ensureProjectGit(projectDir);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     await prepareGeneratedIndexGitAttributes();
     shadowHandle = await initShadowRepo(projectDir);
     server = createServer({
@@ -5312,6 +5377,10 @@ describe('createServer() — generated index wiring', () => {
 
   async function commitOldShapeAncestorUnderUnionMerge(): Promise<string> {
     fixtureGit('init', '-q', '--template=');
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
 
     const installed = await updateGeneratedIndexGitAttributes({
       projectDir,
@@ -5427,6 +5496,8 @@ async function setupReconcileRig(prefix: string): Promise<ReconcileRig> {
   const tmpDir = await realpath(mkdtempSync(join(tmpdir(), prefix)));
   const git = simpleGit({ baseDir: tmpDir });
   await git.init();
+  configureTestGitRepository(tmpDir);
+  expect.soft((await simpleGit(tmpDir).listConfig('local')).all['maintenance.auto']).toBe('false');
   await git.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
   await git.addConfig('user.name', 'Test User');
   await git.addConfig('user.email', 'test@example.com');
@@ -6100,6 +6171,10 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
     const projectDir = await realpath(mkdtempSync(join(tmpdir(), 'ok-reconcile-park-')));
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@example.com');
     const docName = 'park-roundtrip-target';
@@ -6168,6 +6243,10 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
     const projectDir = await realpath(mkdtempSync(join(tmpdir(), 'ok-reconcile-bs-rescue-')));
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@example.com');
     const docName = 'branch-switch-rescue-target';
@@ -6270,6 +6349,10 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
     const projectDir = await realpath(mkdtempSync(join(tmpdir(), 'ok-reconcile-firstvisit-')));
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@example.com');
     const docName = 'first-visit-settled';

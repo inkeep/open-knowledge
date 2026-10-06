@@ -3,7 +3,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { simpleGit } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { readProjectHeadState, startHeadWatcher, watchedGitFile } from './head-watcher';
 
 let tmpDir: string;
@@ -108,6 +110,10 @@ describe('startHeadWatcher chokidar fallback', () => {
     mkdirSync(projectRoot, { recursive: true });
     const git = (args: string) => execSync(`git ${args}`, { cwd: projectRoot, stdio: 'ignore' });
     git('init -q');
+    configureTestGitRepository(projectRoot);
+    expect
+      .soft((await simpleGit(projectRoot).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     git('config user.email t@t.co');
     git('config user.name t');
     writeFileSync(resolve(projectRoot, 'a.md'), 'hello\n');
@@ -137,6 +143,10 @@ describe('startHeadWatcher batch serialization', () => {
     mkdirSync(projectRoot, { recursive: true });
     const git = (args: string) => execSync(`git ${args}`, { cwd: projectRoot, stdio: 'ignore' });
     git('init -q');
+    configureTestGitRepository(projectRoot);
+    expect
+      .soft((await simpleGit(projectRoot).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     git('config user.email t@t.co');
     git('config user.name t');
     writeFileSync(resolve(projectRoot, 'a.md'), 'hello\n');

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { getCallSites } from 'node:util';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { createServer, type ServerInstance, SHADOW_FANOUT_WARMUP_MS } from './server-factory.ts';
 import { type ShadowOpGate, shadowOpGateFor } from './shadow-op-gate.ts';
 import { FANOUT_INDEX_NAME, initShadowRepo, type ShadowHandle } from './shadow-repo.ts';
@@ -53,6 +54,10 @@ describe('createServer() — shadow mutator drain on destroy', () => {
     projectDir = await mkdtemp(join(tmpdir(), 'ok-shadow-drain-'));
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
+    expect
+      .soft((await simpleGit(projectDir).listConfig('local')).all['maintenance.auto'])
+      .toBe('false');
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@example.com');
     await git.raw('commit', '--allow-empty', '-m', 'seed');
