@@ -96,23 +96,24 @@ childProcess.spawn = function (...args) {
   return child;
 };
 
-let bindTakeoverAttempted = false;
+let bindTakeoverComplete = false;
 http.Server.prototype.listen = function (...args) {
   const rawRequest = process.env.OK_TEST_VITE_START_REQUEST;
-  if (!rawRequest || bindTakeoverAttempted) return listenHttp.apply(this, args);
+  if (!rawRequest || bindTakeoverComplete) return listenHttp.apply(this, args);
   const request = JSON.parse(rawRequest);
   const port = args[0];
-  if (port !== request.candidatePort) return listenHttp.apply(this, args);
-  bindTakeoverAttempted = true;
+  if (typeof port !== 'number' || port < request.candidatePort) return listenHttp.apply(this, args);
+  record('vite-bind-attempt', { port, candidatePort: request.candidatePort, host: request.host });
   const occupant = createServer((socket) => socket.destroy());
   occupant.once('error', (error) => {
     record('vite-bind-takeover-error', { port, code: error.code });
-    listenHttp.apply(this, args);
+    this.emit('error', error);
   });
   occupant.listen(port, request.host, () => {
     occupants.set(port, occupant);
     occupant.unref();
     record('vite-bind-takeover', { port, host: request.host });
+    bindTakeoverComplete = true;
     listenHttp.apply(this, args);
   });
   return this;

@@ -104,3 +104,20 @@ test('automatically selected warm-cache server publishes a seed', async () => {
     caller: 'global-warm-cache.ts',
   });
 });
+
+for (const family of ['IPv4', 'IPv6']) {
+  for (const collision of [
+    'an unavailable candidate',
+    'a bind contender',
+    'a released bind contender',
+  ]) {
+    const name = `records ownership evidence after ${collision} on ${family}`;
+    test(name, async () => {
+      await expectOwnedServerRun({
+        file: 'tests/stress/_helpers/port-ownership/recording.ownership-case.ts',
+        name,
+        caller: 'vite-bind-interception',
+      });
+    });
+  }
+}
