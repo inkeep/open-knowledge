@@ -410,6 +410,9 @@
     "3zDeFb": ["Merenung…"],
     "3zyg_A": ["Pola abaikan"],
     "4-Phgi": ["Tampilkan atau sembunyikan agen"],
+    "40dUmM": [
+      "Gagal menonaktifkan pemeliharaan indeks karena bagian Open Knowledge di .gitattributes telah diedit atau tidak lengkap. Hapus bagian tersebut, lalu coba lagi."
+    ],
     "42QMZH": ["permintaan"],
     "438Fca": ["Berhasil dikloning, tetapi proyeknya tidak dapat dibuka."],
     "43qzxu": ["DevOps"],
@@ -2269,6 +2272,9 @@
     "OOIVJo": ["\"", ["0"], "\" dicopot dari ", ["1"]],
     "OOLsBh": [["0"], " berbagi folder ini."],
     "OPOiKn": ["Aturan konten"],
+    "OP_8go": [
+      "Gagal menonaktifkan pemeliharaan indeks karena Open Knowledge tidak dapat menjangkau server proyek. Coba lagi saat proyek tersambung kembali."
+    ],
     "OTF92M": ["Label <0>(teks tampilan opsional)</0>"],
     "OVjNeX": ["Terminal ", ["0"]],
     "OWs-8P": [
@@ -4448,6 +4454,9 @@
     "kj9pAE": ["Membuat halaman"],
     "kjlQ9D": ["menjadi tautan simbolik"],
     "kjrq_8": ["Informasi selengkapnya"],
+    "kkd4bu": [
+      "Gagal menonaktifkan pemeliharaan indeks karena Open Knowledge tidak dapat memperbarui aturan penggabungan Git. Periksa Git dan .gitattributes, lalu coba lagi."
+    ],
     "kknhfj": ["Tidak ada perubahan"],
     "kkux8f": [["0"], " tidak dapat dihapus. Coba lagi."],
     "klPS-L": ["Berkas asli — sebelum suntingan agen ini."],
@@ -5069,6 +5078,9 @@
     "rQAQus": ["Templat tidak bisa disimpan: ", ["error"]],
     "rQRrkB": ["kemarin"],
     "rSoi6g": [["displayName"], " (", ["bin"], ") belum terpasang atau tidak ada di PATH Anda."],
+    "rSsp-5": [
+      "Open Knowledge tidak dapat menjangkau server proyek untuk memeriksa pemeliharaan indeks. Status akan diperbarui saat proyek tersambung kembali."
+    ],
     "rUNOLA": [
       "Pencarian semantik tidak tersedia dengan penyiapan penyedia embedding saat ini. Periksa Pengaturan → Pencarian."
     ],
@@ -5416,6 +5428,9 @@
     "uQNW00": ["HEAD terlepas — ambil sebuah cabang untuk melanjutkan"],
     "uQewpR": [
       "Server tidak bisa dimulai ulang — ia berjalan di bawah akun lain. Mulai ulang komputer Anda untuk membersihkannya, lalu buka lagi proyek ini."
+    ],
+    "uQhfwT": [
+      "Gagal menonaktifkan pemeliharaan indeks karena pengaturan proyek tidak dapat disimpan. Periksa izin file proyek, lalu coba lagi."
     ],
     "uUCrBv": ["symlink"],
     "uVbUP8": ["Pengaturan…"],

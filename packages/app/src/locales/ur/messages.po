@@ -10248,6 +10248,10 @@ msgid "Open it there"
 msgstr "اسے وہیں کھولیں"
 
 #: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge could not reach the project server to check index maintenance. The status updates when the project reconnects."
+msgstr "Open Knowledge انڈیکس کی دیکھ بھال کی جانچ کے لیے پروجیکٹ سرور تک نہیں پہنچ سکا۔ جب پروجیکٹ دوبارہ جڑ جائے گا تو حالت اپ ڈیٹ ہو جائے گی۔"
+
+#: src/components/settings/LintingSection.tsx
 msgid "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
 msgstr "Open Knowledge ہر فولڈر میں index.md نامی نیویگیشن فائل بناتا اور برقرار رکھتا ہے جس میں Markdown ہوتا ہے۔"
 
@@ -15861,6 +15865,22 @@ msgstr "اسے آف کرنا"
 #: src/components/acp/working-status.ts
 msgid "Turning it over…"
 msgstr "ہر پہلو سے دیکھا جا رہا ہے…"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not reach the project server. Try again when the project reconnects."
+msgstr "انڈیکس کی دیکھ بھال بند نہیں ہو سکی کیونکہ Open Knowledge پروجیکٹ سرور تک نہیں پہنچ سکا۔ جب پروجیکٹ دوبارہ جڑ جائے تو دوبارہ کوشش کریں۔"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not update the Git merge rule. Check Git and .gitattributes, then try again."
+msgstr "انڈیکس کی دیکھ بھال بند نہیں ہو سکی کیونکہ Open Knowledge Git انضمام کے اصول کو اپ ڈیٹ نہیں کر سکا۔ Git اور .gitattributes کو چیک کریں، پھر دوبارہ کوشش کریں۔"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the Open Knowledge section of .gitattributes was edited or is incomplete. Remove that section, then try again."
+msgstr "انڈیکس کی دیکھ بھال بند نہیں ہو سکی کیونکہ .gitattributes میں Open Knowledge والا حصہ ترمیم شدہ یا نامکمل ہے۔ اس حصے کو ہٹا دیں، پھر دوبارہ کوشش کریں۔"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the project setting could not be saved. Check the project file permissions, then try again."
+msgstr "انڈیکس کی دیکھ بھال بند نہیں ہو سکی کیونکہ پروجیکٹ کی ترتیب کو محفوظ نہیں کیا جا سکا۔ پروجیکٹ فائل کی اجازتوں کو چیک کریں، پھر دوبارہ کوشش کریں۔"
 
 #. placeholder {0}: skill.name
 #: src/components/SkillForkDialog.tsx

@@ -20,6 +20,11 @@ export type GeneratedIndexSettingsIssue =
   | 'config-write'
   | 'connection';
 
+type GeneratedIndexSettingsFeedback = {
+  issue: GeneratedIndexSettingsIssue;
+  requestedEnabled: boolean | null;
+};
+
 async function requestStatus(init?: RequestInit): Promise<{
   status: GeneratedIndexSettingsStatus | null;
   issue: GeneratedIndexSettingsIssue | null;
@@ -49,13 +54,22 @@ async function requestStatus(init?: RequestInit): Promise<{
 
 export function useGeneratedIndexSettings() {
   const [status, setStatus] = useState<GeneratedIndexSettingsStatus | null>(null);
-  const [issue, setIssue] = useState<GeneratedIndexSettingsIssue | null>(null);
+  const [issue, setIssue] = useState<GeneratedIndexSettingsFeedback | null>(null);
+  const [rejectedUpdate, setRejectedUpdate] = useState<GeneratedIndexSettingsFeedback | null>(null);
   const [pending, setPending] = useState(false);
 
   function refresh(): void {
     void requestStatus().then((result) => {
-      if (result.status) setStatus(result.status);
-      setIssue(result.issue);
+      if (result.status) {
+        setStatus(result.status);
+        const { enabled } = result.status;
+        setRejectedUpdate((current) => (current?.requestedEnabled === enabled ? null : current));
+      }
+      setIssue((current) => {
+        if (result.issue === null) return null;
+        if (result.issue === 'connection' && current?.issue === 'connection') return current;
+        return { issue: result.issue, requestedEnabled: null };
+      });
     });
   }
 
@@ -75,9 +89,21 @@ export function useGeneratedIndexSettings() {
     });
     setPending(false);
     if (result.status) setStatus(result.status);
-    setIssue(result.issue);
+    setIssue(result.issue ? { issue: result.issue, requestedEnabled: enabled } : null);
+    if (result.status?.applied === true) setRejectedUpdate(null);
+    else if (result.status?.applied === false && result.status.reason) {
+      setRejectedUpdate({ issue: result.status.reason, requestedEnabled: enabled });
+    }
     return result.status?.applied === true;
   }
 
-  return { status, issue, pending, refresh, setEnabled };
+  const shown = issue ?? rejectedUpdate;
+  return {
+    status,
+    issue: shown?.issue ?? null,
+    requestedEnabled: shown?.requestedEnabled ?? null,
+    pending,
+    refresh,
+    setEnabled,
+  };
 }

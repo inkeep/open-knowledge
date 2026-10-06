@@ -10244,6 +10244,10 @@ msgid "Open it there"
 msgstr "Buka di sana"
 
 #: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge could not reach the project server to check index maintenance. The status updates when the project reconnects."
+msgstr "Open Knowledge tidak dapat menjangkau server proyek untuk memeriksa pemeliharaan indeks. Status akan diperbarui saat proyek tersambung kembali."
+
+#: src/components/settings/LintingSection.tsx
 msgid "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
 msgstr "Open Knowledge membuat dan memelihara file navigasi bernama index.md di setiap folder yang berisi Markdown."
 
@@ -15857,6 +15861,22 @@ msgstr "Mematikannya"
 #: src/components/acp/working-status.ts
 msgid "Turning it over…"
 msgstr "Membolak-balikkannya…"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not reach the project server. Try again when the project reconnects."
+msgstr "Gagal menonaktifkan pemeliharaan indeks karena Open Knowledge tidak dapat menjangkau server proyek. Coba lagi saat proyek tersambung kembali."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not update the Git merge rule. Check Git and .gitattributes, then try again."
+msgstr "Gagal menonaktifkan pemeliharaan indeks karena Open Knowledge tidak dapat memperbarui aturan penggabungan Git. Periksa Git dan .gitattributes, lalu coba lagi."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the Open Knowledge section of .gitattributes was edited or is incomplete. Remove that section, then try again."
+msgstr "Gagal menonaktifkan pemeliharaan indeks karena bagian Open Knowledge di .gitattributes telah diedit atau tidak lengkap. Hapus bagian tersebut, lalu coba lagi."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the project setting could not be saved. Check the project file permissions, then try again."
+msgstr "Gagal menonaktifkan pemeliharaan indeks karena pengaturan proyek tidak dapat disimpan. Periksa izin file proyek, lalu coba lagi."
 
 #. placeholder {0}: skill.name
 #: src/components/SkillForkDialog.tsx

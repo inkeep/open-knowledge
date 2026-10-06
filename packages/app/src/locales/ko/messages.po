@@ -10248,6 +10248,10 @@ msgid "Open it there"
 msgstr "그곳에서 열기"
 
 #: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge could not reach the project server to check index maintenance. The status updates when the project reconnects."
+msgstr "Open Knowledge가 프로젝트 서버에 연결할 수 없어 인덱스 유지 관리 상태를 확인하지 못했습니다. 프로젝트가 다시 연결되면 상태가 업데이트됩니다."
+
+#: src/components/settings/LintingSection.tsx
 msgid "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
 msgstr "Open Knowledge는 Markdown이 있는 모든 폴더에 index.md라는 탐색 파일을 만들고 유지합니다."
 
@@ -15861,6 +15865,22 @@ msgstr "끄는 중"
 #: src/components/acp/working-status.ts
 msgid "Turning it over…"
 msgstr "다시 생각 중…"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not reach the project server. Try again when the project reconnects."
+msgstr "Open Knowledge가 프로젝트 서버에 연결할 수 없어 인덱스 유지 관리를 끄지 못했습니다. 프로젝트가 다시 연결되면 다시 시도합니다."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not update the Git merge rule. Check Git and .gitattributes, then try again."
+msgstr "Open Knowledge가 Git 병합 규칙을 업데이트하지 못해 인덱스 유지 관리를 끄지 못했습니다. Git과 .gitattributes를 확인한 후 다시 시도합니다."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the Open Knowledge section of .gitattributes was edited or is incomplete. Remove that section, then try again."
+msgstr ".gitattributes의 Open Knowledge 섹션이 편집되었거나 불완전하여 인덱스 유지 관리를 끄지 못했습니다. 해당 섹션을 제거한 후 다시 시도합니다."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the project setting could not be saved. Check the project file permissions, then try again."
+msgstr "프로젝트 설정을 저장하지 못해 인덱스 유지 관리를 끄지 못했습니다. 프로젝트 파일 권한을 확인한 후 다시 시도합니다."
 
 #. placeholder {0}: skill.name
 #: src/components/SkillForkDialog.tsx

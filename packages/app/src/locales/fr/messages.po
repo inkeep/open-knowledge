@@ -10248,6 +10248,10 @@ msgid "Open it there"
 msgstr "L'ouvrir là-bas"
 
 #: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge could not reach the project server to check index maintenance. The status updates when the project reconnects."
+msgstr "Open Knowledge n'a pas pu atteindre le serveur du projet pour vérifier la maintenance de l'index. L'état sera mis à jour lorsque le projet se reconnectera."
+
+#: src/components/settings/LintingSection.tsx
 msgid "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
 msgstr "Open Knowledge crée et gère un fichier de navigation nommé index.md dans chaque dossier contenant Markdown."
 
@@ -15861,6 +15865,22 @@ msgstr "L'éteindre"
 #: src/components/acp/working-status.ts
 msgid "Turning it over…"
 msgstr "Rumination…"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not reach the project server. Try again when the project reconnects."
+msgstr "Impossible de désactiver la maintenance de l'index, car Open Knowledge n'a pas pu atteindre le serveur du projet. Réessayez lorsque le projet se reconnectera."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not update the Git merge rule. Check Git and .gitattributes, then try again."
+msgstr "Impossible de désactiver la maintenance de l'index, car Open Knowledge n'a pas pu mettre à jour la règle de fusion Git. Vérifiez Git et .gitattributes, puis réessayez."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the Open Knowledge section of .gitattributes was edited or is incomplete. Remove that section, then try again."
+msgstr "Impossible de désactiver la maintenance de l'index, car la section Open Knowledge de .gitattributes a été modifiée ou est incomplète. Supprimez cette section, puis réessayez."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the project setting could not be saved. Check the project file permissions, then try again."
+msgstr "Impossible de désactiver la maintenance de l'index, car les paramètres du projet n'ont pas pu être enregistrés. Vérifiez les autorisations du fichier de projet, puis réessayez."
 
 #. placeholder {0}: skill.name
 #: src/components/SkillForkDialog.tsx

@@ -498,6 +498,9 @@
     "3zDeFb": ["Rumination…"],
     "3zyg_A": ["Motifs d'exclusion"],
     "4-Phgi": ["Afficher ou masquer les agents"],
+    "40dUmM": [
+      "Impossible de désactiver la maintenance de l'index, car la section Open Knowledge de .gitattributes a été modifiée ou est incomplète. Supprimez cette section, puis réessayez."
+    ],
     "42QMZH": ["requêtes"],
     "438Fca": ["Clonage réussi, mais le projet n'a pas pu être ouvert."],
     "43qzxu": ["DevOps"],
@@ -2652,6 +2655,9 @@
     "OOIVJo": ["« ", ["0"], " » désinstallé de ", ["1"]],
     "OOLsBh": [["0"], " partagent ce dossier."],
     "OPOiKn": ["Règles de contenu"],
+    "OP_8go": [
+      "Impossible de désactiver la maintenance de l'index, car Open Knowledge n'a pas pu atteindre le serveur du projet. Réessayez lorsque le projet se reconnectera."
+    ],
     "OTF92M": ["Libellé <0>(texte affiché, facultatif)</0>"],
     "OVjNeX": ["Terminal ", ["0"]],
     "OWs-8P": [
@@ -5169,6 +5175,9 @@
     "kj9pAE": ["Création de la page"],
     "kjlQ9D": ["devient un lien symbolique"],
     "kjrq_8": ["Plus d'informations"],
+    "kkd4bu": [
+      "Impossible de désactiver la maintenance de l'index, car Open Knowledge n'a pas pu mettre à jour la règle de fusion Git. Vérifiez Git et .gitattributes, puis réessayez."
+    ],
     "kknhfj": ["Aucune modification"],
     "kkux8f": ["Impossible de supprimer ", ["0"], ". Réessayez."],
     "klPS-L": ["Fichier d'origine — avant les modifications de cet agent."],
@@ -5911,6 +5920,9 @@
     "rQAQus": ["Impossible d'enregistrer le modèle : ", ["error"]],
     "rQRrkB": ["hier"],
     "rSoi6g": [["displayName"], " (", ["bin"], ") n'est pas installé ni présent dans votre PATH."],
+    "rSsp-5": [
+      "Open Knowledge n'a pas pu atteindre le serveur du projet pour vérifier la maintenance de l'index. L'état sera mis à jour lorsque le projet se reconnectera."
+    ],
     "rUNOLA": [
       "La recherche sémantique n’est pas disponible avec la configuration actuelle du fournisseur d’embeddings. Consultez Paramètres → Recherche."
     ],
@@ -6280,6 +6292,9 @@
     "uQNW00": ["HEAD détachée — extrayez une branche pour reprendre"],
     "uQewpR": [
       "Impossible de redémarrer le serveur — il s'exécute sous un autre compte. Redémarrez votre ordinateur pour le libérer, puis rouvrez ce projet."
+    ],
+    "uQhfwT": [
+      "Impossible de désactiver la maintenance de l'index, car les paramètres du projet n'ont pas pu être enregistrés. Vérifiez les autorisations du fichier de projet, puis réessayez."
     ],
     "uUCrBv": ["lien symbolique"],
     "uVbUP8": ["Paramètres…"],

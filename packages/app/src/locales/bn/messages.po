@@ -10244,6 +10244,10 @@ msgid "Open it there"
 msgstr "সেটি সেখানেই খুলুন"
 
 #: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge could not reach the project server to check index maintenance. The status updates when the project reconnects."
+msgstr "সূচী রক্ষণাবেক্ষণ পরীক্ষা করতে Open Knowledge প্রকল্প সার্ভারে পৌঁছাতে পারেনি। প্রকল্প পুনরায় সংযুক্ত হলে অবস্থা আপডেট হবে।"
+
+#: src/components/settings/LintingSection.tsx
 msgid "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
 msgstr "Open Knowledge Markdown ধারণকারী প্রতিটি ফোল্ডারে index.md নামের একটি নেভিগেশন ফাইল তৈরি ও রক্ষণাবেক্ষণ করে।"
 
@@ -15857,6 +15861,22 @@ msgstr "এটা বন্ধ করা"
 #: src/components/acp/working-status.ts
 msgid "Turning it over…"
 msgstr "ভেবে দেখা হচ্ছে…"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not reach the project server. Try again when the project reconnects."
+msgstr "সূচী রক্ষণাবেক্ষণ বন্ধ করা যায়নি কারণ Open Knowledge প্রকল্প সার্ভারে পৌঁছাতে পারেনি। প্রকল্প পুনরায় সংযুক্ত হলে আবার চেষ্টা করুন।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not update the Git merge rule. Check Git and .gitattributes, then try again."
+msgstr "সূচী রক্ষণাবেক্ষণ বন্ধ করা যায়নি কারণ Open Knowledge Git মার্জ নিয়ম আপডেট করতে পারেনি। Git এবং .gitattributes চেক করুন, তারপর আবার চেষ্টা করুন।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the Open Knowledge section of .gitattributes was edited or is incomplete. Remove that section, then try again."
+msgstr "সূচী রক্ষণাবেক্ষণ বন্ধ করা যায়নি কারণ .gitattributes ফাইলের Open Knowledge অংশটি সম্পাদনা করা হয়েছে বা অসম্পূর্ণ। সেই অংশটি সরিয়ে দিন, তারপর আবার চেষ্টা করুন।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the project setting could not be saved. Check the project file permissions, then try again."
+msgstr "সূচী রক্ষণাবেক্ষণ বন্ধ করা যায়নি কারণ প্রকল্প সেটিং সংরক্ষণ করা যায়নি। প্রকল্প ফাইল অনুমতি পরীক্ষা করুন, তারপর আবার চেষ্টা করুন।"
 
 #. placeholder {0}: skill.name
 #: src/components/SkillForkDialog.tsx

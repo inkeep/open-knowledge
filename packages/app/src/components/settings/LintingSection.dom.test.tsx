@@ -520,6 +520,35 @@ describe('OkfPluginSection', () => {
     return toggle;
   }
 
+  function generatedIndexNoticeText(): string {
+    return screen.getByTestId('settings-okf-generate-index-status').textContent ?? '';
+  }
+
+  function generatedIndexSwitchState(): string | null {
+    return screen.getByTestId('settings-okf-generate-index').getAttribute('aria-checked');
+  }
+
+  const generatedIndexRefusals = [
+    {
+      reason: 'git-conflict',
+      gitState: 'conflict',
+      activeWhenEnabled: false,
+      remedy: '.gitattributes',
+    },
+    {
+      reason: 'git-unavailable',
+      gitState: 'unavailable',
+      activeWhenEnabled: false,
+      remedy: 'Check Git',
+    },
+    {
+      reason: 'config-write',
+      gitState: 'ready',
+      activeWhenEnabled: true,
+      remedy: 'file permissions',
+    },
+  ] as const;
+
   test('renders the okf plugin panel with its identity header and concise description', () => {
     const { binding } = makeBinding();
     mockProjectBinding = binding;
@@ -867,4 +896,89 @@ describe('OkfPluginSection', () => {
     expect(notice.textContent).toContain('could not confirm the required Git merge rule');
     expect(notice.textContent).not.toContain('another Git attribute');
   });
+
+  test.each(generatedIndexRefusals)(
+    'a refused disable with $reason says turning index maintenance off failed while the switch stays on',
+    async ({ reason, gitState, activeWhenEnabled, remedy }) => {
+      const user = userEvent.setup();
+      const { binding } = makeBinding();
+      mockProjectBinding = binding;
+      mockProjectConfig = configWith({ okf: { generate: { index: true } } });
+      mockGeneratedIndexGitState = gitState;
+      mockGeneratedIndexActive = activeWhenEnabled;
+      mockGeneratedIndexApplyResult = { applied: false, reason };
+      renderPanel();
+
+      await user.click(await generatedIndexToggle());
+
+      await waitFor(() =>
+        expect(generatedIndexNoticeText()).toContain('Turning off index maintenance failed'),
+      );
+      const text = generatedIndexNoticeText();
+      expect(text).toContain(remedy);
+      expect(text).not.toContain('stayed off');
+      expect(text).not.toContain('is paused');
+      expect(generatedIndexApiCalls).toEqual([false]);
+      expect(generatedIndexSwitchState()).toBe('true');
+    },
+  );
+
+  test('a disable that cannot reach the project server says turning index maintenance off failed', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    mockProjectConfig = configWith({ okf: { generate: { index: true } } });
+    renderPanel();
+
+    const toggle = await generatedIndexToggle();
+    expect(screen.queryByTestId('settings-okf-generate-index-status')).toBeNull();
+    mockGeneratedIndexFetchRejects = true;
+    await user.click(toggle);
+
+    await waitFor(() =>
+      expect(generatedIndexNoticeText()).toContain('Turning off index maintenance failed'),
+    );
+    const text = generatedIndexNoticeText();
+    expect(text).toContain('could not reach the project server');
+    expect(text).not.toContain('stayed off');
+    expect(text).not.toContain('is paused');
+    expect(generatedIndexSwitchState()).toBe('true');
+  });
+
+  test('an unreachable status check while generation is on does not claim index maintenance stayed off', async () => {
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    mockProjectConfig = configWith({ okf: { generate: { index: true } } });
+    mockGeneratedIndexFetchRejects = true;
+    renderPanel();
+
+    const notice = await screen.findByTestId('settings-okf-generate-index-status');
+    expect(notice.textContent).toContain('could not reach the project server');
+    expect(notice.textContent).not.toContain('stayed off');
+    expect(notice.textContent).not.toContain('Turning off index maintenance failed');
+    expect(generatedIndexSwitchState()).toBe('true');
+  });
+
+  test.each(generatedIndexRefusals)(
+    'a refused enable with $reason keeps its enable feedback',
+    async ({ reason, gitState, remedy }) => {
+      const user = userEvent.setup();
+      const { binding } = makeBinding();
+      mockProjectBinding = binding;
+      mockProjectConfig = configWith({ okf: {} });
+      mockGeneratedIndexGitState = gitState;
+      mockGeneratedIndexApplyResult = { applied: false, reason };
+      renderPanel();
+
+      await user.click(await generatedIndexToggle());
+      await screen.findByRole('dialog');
+      await user.click(screen.getByTestId('settings-okf-generate-index-confirm-accept'));
+
+      const notice = await screen.findByTestId('settings-okf-generate-index-status');
+      expect(notice.textContent).toContain(remedy);
+      expect(notice.textContent).not.toContain('Turning off index maintenance failed');
+      expect(generatedIndexApiCalls).toEqual([true]);
+      expect(generatedIndexSwitchState()).toBe('false');
+    },
+  );
 });

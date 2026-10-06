@@ -478,6 +478,9 @@
     "3zDeFb": ["Remoendo…"],
     "3zyg_A": ["Padrões de exclusão"],
     "4-Phgi": ["Mostrar ou ocultar os agentes"],
+    "40dUmM": [
+      "Falha ao desativar a manutenção do índice porque a seção do Open Knowledge em .gitattributes foi editada ou está incompleta. Remova essa seção e tente novamente."
+    ],
     "42QMZH": ["solicitações"],
     "438Fca": ["Clonado com sucesso, mas não foi possível abrir o projeto."],
     "43qzxu": ["DevOps"],
@@ -2577,6 +2580,9 @@
     "OOIVJo": ["\"", ["0"], "\" desinstalado de ", ["1"]],
     "OOLsBh": [["0"], " compartilham esta pasta."],
     "OPOiKn": ["Regras de conteúdo"],
+    "OP_8go": [
+      "Falha ao desativar a manutenção do índice porque Open Knowledge não conseguiu acessar o servidor do projeto. Tente novamente quando o projeto for reconectado."
+    ],
     "OTF92M": ["Rótulo <0>(texto exibido, opcional)</0>"],
     "OVjNeX": ["Terminal ", ["0"]],
     "OWs-8P": [
@@ -5027,6 +5033,9 @@
     "kj9pAE": ["Criando a página"],
     "kjlQ9D": ["vira um link simbólico"],
     "kjrq_8": ["Mais informações"],
+    "kkd4bu": [
+      "Falha ao desativar a manutenção do índice porque Open Knowledge não conseguiu atualizar a regra de mesclagem Git. Verifique Git e .gitattributes e tente novamente."
+    ],
     "kknhfj": ["Sem alterações"],
     "kkux8f": ["Não foi possível excluir ", ["0"], ". Tente novamente."],
     "klPS-L": ["Arquivo original — antes das edições deste agente."],
@@ -5723,6 +5732,9 @@
     "rQAQus": ["Não deu para salvar o modelo: ", ["error"]],
     "rQRrkB": ["ontem"],
     "rSoi6g": [["displayName"], " (", ["bin"], ") não está instalado nem no seu PATH."],
+    "rSsp-5": [
+      "Open Knowledge não conseguiu acessar o servidor do projeto para verificar a manutenção do índice. O status será atualizado quando o projeto for reconectado."
+    ],
     "rUNOLA": [
       "A busca semântica não está disponível com a configuração atual do provedor de embeddings. Confira Configurações → Busca."
     ],
@@ -6093,6 +6105,9 @@
     "uQNW00": ["HEAD desanexado — extraia um ramo para continuar"],
     "uQewpR": [
       "Não deu para reiniciar o servidor — ele está rodando em outra conta. Reinicie o computador para liberá-lo e abra este projeto de novo."
+    ],
+    "uQhfwT": [
+      "Falha ao desativar a manutenção do índice porque não foi possível salvar a configuração do projeto. Verifique as permissões do arquivo do projeto e tente novamente."
     ],
     "uUCrBv": ["link simbólico"],
     "uVbUP8": ["Configurações…"],

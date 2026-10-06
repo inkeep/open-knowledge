@@ -61,9 +61,11 @@ async function expectDisclosureContrast(page: Page, theme: 'light' | 'dark'): Pr
   }, theme);
 
   try {
-    await page.evaluate(async () => {
+    await page.getByTestId('settings-okf-generate-index-confirm').evaluate(async (dialog) => {
       await Promise.all(
-        document.documentElement.getAnimations().map((animation) => animation.finished),
+        [...document.documentElement.getAnimations(), ...dialog.getAnimations()].map(
+          (animation) => animation.finished,
+        ),
       );
     });
     const results = await new AxeBuilder({ page })

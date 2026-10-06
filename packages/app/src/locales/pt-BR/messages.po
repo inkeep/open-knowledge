@@ -10244,6 +10244,10 @@ msgid "Open it there"
 msgstr "Abrir por lá"
 
 #: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge could not reach the project server to check index maintenance. The status updates when the project reconnects."
+msgstr "Open Knowledge não conseguiu acessar o servidor do projeto para verificar a manutenção do índice. O status será atualizado quando o projeto for reconectado."
+
+#: src/components/settings/LintingSection.tsx
 msgid "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
 msgstr "Open Knowledge cria e mantém um arquivo de navegação denominado index.md em cada pasta que contém Markdown."
 
@@ -15857,6 +15861,22 @@ msgstr "Desligando"
 #: src/components/acp/working-status.ts
 msgid "Turning it over…"
 msgstr "Remoendo…"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not reach the project server. Try again when the project reconnects."
+msgstr "Falha ao desativar a manutenção do índice porque Open Knowledge não conseguiu acessar o servidor do projeto. Tente novamente quando o projeto for reconectado."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not update the Git merge rule. Check Git and .gitattributes, then try again."
+msgstr "Falha ao desativar a manutenção do índice porque Open Knowledge não conseguiu atualizar a regra de mesclagem Git. Verifique Git e .gitattributes e tente novamente."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the Open Knowledge section of .gitattributes was edited or is incomplete. Remove that section, then try again."
+msgstr "Falha ao desativar a manutenção do índice porque a seção do Open Knowledge em .gitattributes foi editada ou está incompleta. Remova essa seção e tente novamente."
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the project setting could not be saved. Check the project file permissions, then try again."
+msgstr "Falha ao desativar a manutenção do índice porque não foi possível salvar a configuração do projeto. Verifique as permissões do arquivo do projeto e tente novamente."
 
 #. placeholder {0}: skill.name
 #: src/components/SkillForkDialog.tsx

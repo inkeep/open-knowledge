@@ -10244,6 +10244,10 @@ msgid "Open it there"
 msgstr "इसे वहाँ खोलें"
 
 #: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge could not reach the project server to check index maintenance. The status updates when the project reconnects."
+msgstr "Open Knowledge सूचकांक रखरखाव की जाँच करने के लिए प्रोजेक्ट सर्वर तक नहीं पहुँच सका। प्रोजेक्ट के पुनः कनेक्ट होने पर स्थिति अपडेट हो जाएगी।"
+
+#: src/components/settings/LintingSection.tsx
 msgid "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
 msgstr "Open Knowledge प्रत्येक फ़ोल्डर में index.md नामक एक नेविगेशन फ़ाइल बनाता है और उसका रखरखाव करता है जिसमें Markdown होता है।"
 
@@ -15857,6 +15861,22 @@ msgstr "इसे बंद कर रहा हूँ"
 #: src/components/acp/working-status.ts
 msgid "Turning it over…"
 msgstr "सोचा जा रहा है…"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not reach the project server. Try again when the project reconnects."
+msgstr "सूचकांक रखरखाव बंद नहीं हो सका क्योंकि Open Knowledge प्रोजेक्ट सर्वर तक नहीं पहुँच सका। प्रोजेक्ट के पुनः कनेक्ट होने पर पुनः प्रयास करें।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not update the Git merge rule. Check Git and .gitattributes, then try again."
+msgstr "सूचकांक रखरखाव बंद नहीं हो सका क्योंकि Open Knowledge Git मर्ज नियम को अपडेट नहीं कर सका। Git और .gitattributes को जाँचें, फिर पुनः प्रयास करें।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the Open Knowledge section of .gitattributes was edited or is incomplete. Remove that section, then try again."
+msgstr "सूचकांक रखरखाव बंद नहीं हो सका क्योंकि .gitattributes में Open Knowledge वाला अनुभाग संपादित किया गया है या अधूरा है। उस अनुभाग को हटाएँ, फिर पुनः प्रयास करें।"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the project setting could not be saved. Check the project file permissions, then try again."
+msgstr "सूचकांक रखरखाव बंद नहीं हो सका क्योंकि प्रोजेक्ट सेटिंग सहेजी नहीं जा सकी। प्रोजेक्ट फ़ाइल अनुमतियाँ जाँचें, फिर पुनः प्रयास करें।"
 
 #. placeholder {0}: skill.name
 #: src/components/SkillForkDialog.tsx

@@ -482,6 +482,9 @@
     "3zDeFb": ["Rumiando…"],
     "3zyg_A": ["Patrones de exclusión"],
     "4-Phgi": ["Mostrar u ocultar los agentes"],
+    "40dUmM": [
+      "No se pudo desactivar el mantenimiento del índice porque la sección de Open Knowledge en .gitattributes se editó o está incompleta. Elimina esa sección y vuelve a intentarlo."
+    ],
     "42QMZH": ["solicitudes"],
     "438Fca": ["Se clonó correctamente, pero no se pudo abrir el proyecto."],
     "43qzxu": ["DevOps"],
@@ -2610,6 +2613,9 @@
     "OOIVJo": ["Se desinstaló \"", ["0"], "\" de ", ["1"]],
     "OOLsBh": [["0"], " comparten esta carpeta."],
     "OPOiKn": ["Reglas de contenido"],
+    "OP_8go": [
+      "No se pudo desactivar el mantenimiento del índice porque Open Knowledge no pudo comunicarse con el servidor del proyecto. Inténtalo de nuevo cuando el proyecto se vuelva a conectar."
+    ],
     "OTF92M": ["Etiqueta <0>(texto mostrado, opcional)</0>"],
     "OVjNeX": ["Terminal ", ["0"]],
     "OWs-8P": [
@@ -5126,6 +5132,9 @@
     "kj9pAE": ["Creando la página"],
     "kjlQ9D": ["pasa a ser un enlace simbólico"],
     "kjrq_8": ["Más información"],
+    "kkd4bu": [
+      "No se pudo desactivar el mantenimiento del índice porque Open Knowledge no pudo actualizar la regla de combinación de Git. Comprueba Git y .gitattributes y vuelve a intentarlo."
+    ],
     "kknhfj": ["Sin cambios"],
     "kkux8f": ["No se pudo eliminar ", ["0"], ". Inténtalo de nuevo."],
     "klPS-L": ["Archivo original, antes de las ediciones de este agente."],
@@ -5840,6 +5849,9 @@
     "rQAQus": ["No se pudo guardar la plantilla: ", ["error"]],
     "rQRrkB": ["ayer"],
     "rSoi6g": [["displayName"], " (", ["bin"], ") no está instalado ni en tu PATH."],
+    "rSsp-5": [
+      "Open Knowledge no pudo comunicarse con el servidor del proyecto para comprobar el mantenimiento del índice. El estado se actualizará cuando el proyecto se vuelva a conectar."
+    ],
     "rUNOLA": [
       "La búsqueda semántica no está disponible con la configuración actual del proveedor de embeddings. Consulta Configuración → Búsqueda."
     ],
@@ -6208,6 +6220,9 @@
     "uQNW00": ["HEAD desacoplado: extrae una rama para continuar"],
     "uQewpR": [
       "No se pudo reiniciar el servidor: se está ejecutando con otra cuenta. Reinicia el equipo para liberarlo y vuelve a abrir este proyecto."
+    ],
+    "uQhfwT": [
+      "No se pudo desactivar el mantenimiento del índice porque no fue posible guardar la configuración del proyecto. Comprueba los permisos del archivo del proyecto y vuelve a intentarlo."
     ],
     "uUCrBv": ["enlace simbólico"],
     "uVbUP8": ["Ajustes…"],

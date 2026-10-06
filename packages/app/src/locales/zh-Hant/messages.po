@@ -10248,6 +10248,10 @@ msgid "Open it there"
 msgstr "在那裡開啟"
 
 #: src/components/settings/LintingSection.tsx
+msgid "Open Knowledge could not reach the project server to check index maintenance. The status updates when the project reconnects."
+msgstr "Open Knowledge 無法連線到專案伺服器以檢查索引維護。專案重新連線後，狀態就會更新。"
+
+#: src/components/settings/LintingSection.tsx
 msgid "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
 msgstr "Open Knowledge 在包含 Markdown 的每個資料夾中建立並維護名為 index.md 的導覽檔案。"
 
@@ -15861,6 +15865,22 @@ msgstr "將其關閉"
 #: src/components/acp/working-status.ts
 msgid "Turning it over…"
 msgstr "反覆推敲中…"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not reach the project server. Try again when the project reconnects."
+msgstr "關閉索引維護失敗，因為 Open Knowledge 無法連線到專案伺服器。專案重新連線後再試一次。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because Open Knowledge could not update the Git merge rule. Check Git and .gitattributes, then try again."
+msgstr "關閉索引維護失敗，因為 Open Knowledge 無法更新 Git 合併規則。檢查 Git 和 .gitattributes，然後再試一次。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the Open Knowledge section of .gitattributes was edited or is incomplete. Remove that section, then try again."
+msgstr "關閉索引維護失敗，因為 .gitattributes 中的 Open Knowledge 區段已被編輯或不完整。移除該區段，然後再試一次。"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Turning off index maintenance failed because the project setting could not be saved. Check the project file permissions, then try again."
+msgstr "關閉索引維護失敗，因為無法儲存專案設定。檢查專案檔案權限，然後再試一次。"
 
 #. placeholder {0}: skill.name
 #: src/components/SkillForkDialog.tsx

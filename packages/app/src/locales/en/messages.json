@@ -419,6 +419,9 @@
     "3zDeFb": ["Ruminating…"],
     "3zyg_A": ["Ignore patterns"],
     "4-Phgi": ["Show or hide agents"],
+    "40dUmM": [
+      "Turning off index maintenance failed because the Open Knowledge section of .gitattributes was edited or is incomplete. Remove that section, then try again."
+    ],
     "42QMZH": ["requests"],
     "438Fca": ["Cloned successfully, but could not open the project."],
     "43qzxu": ["DevOps"],
@@ -2259,6 +2262,9 @@
     "OOIVJo": ["Uninstalled \"", ["0"], "\" from ", ["1"]],
     "OOLsBh": [["0"], " share this folder."],
     "OPOiKn": ["Content rules"],
+    "OP_8go": [
+      "Turning off index maintenance failed because Open Knowledge could not reach the project server. Try again when the project reconnects."
+    ],
     "OTF92M": ["Label <0>(optional display text)</0>"],
     "OVjNeX": ["Terminal ", ["0"]],
     "OWs-8P": [
@@ -4437,6 +4443,9 @@
     "kj9pAE": ["Creating page"],
     "kjlQ9D": ["becomes a symlink"],
     "kjrq_8": ["More information"],
+    "kkd4bu": [
+      "Turning off index maintenance failed because Open Knowledge could not update the Git merge rule. Check Git and .gitattributes, then try again."
+    ],
     "kknhfj": ["No changes"],
     "kkux8f": ["Couldn’t delete ", ["0"], ". Try again."],
     "klPS-L": ["Original file — before this agent's edits."],
@@ -5064,6 +5073,9 @@
     "rQAQus": ["Couldn't save template: ", ["error"]],
     "rQRrkB": ["yesterday"],
     "rSoi6g": [["displayName"], " (", ["bin"], ") isn't installed or on your PATH."],
+    "rSsp-5": [
+      "Open Knowledge could not reach the project server to check index maintenance. The status updates when the project reconnects."
+    ],
     "rUNOLA": [
       "Semantic search isn't available with the current embeddings provider setup. Check Settings → Search."
     ],
@@ -5404,6 +5416,9 @@
     "uQNW00": ["Detached HEAD — checkout a branch to resume"],
     "uQewpR": [
       "Couldn't restart the server — it's running under a different account. Restart your computer to clear it, then reopen this project."
+    ],
+    "uQhfwT": [
+      "Turning off index maintenance failed because the project setting could not be saved. Check the project file permissions, then try again."
     ],
     "uUCrBv": ["symlink"],
     "uVbUP8": ["Settings…"],

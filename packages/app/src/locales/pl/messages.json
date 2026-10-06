@@ -502,6 +502,9 @@
     "3zDeFb": ["Przetrawiam…"],
     "3zyg_A": ["Wzorce ignorowania"],
     "4-Phgi": ["Pokaż lub ukryj agentów"],
+    "40dUmM": [
+      "Nie udało się wyłączyć konserwacji indeksu, ponieważ sekcja Open Knowledge w pliku .gitattributes została zmieniona lub jest niekompletna. Usuń tę sekcję, a następnie spróbuj ponownie."
+    ],
     "42QMZH": ["żądania"],
     "438Fca": ["Sklonowano pomyślnie, ale nie udało się otworzyć projektu."],
     "43qzxu": ["DevOps"],
@@ -2662,6 +2665,9 @@
     "OOIVJo": ["Odinstalowano „", ["0"], "” z ", ["1"]],
     "OOLsBh": [["0"], " udostępniają ten folder."],
     "OPOiKn": ["Zasady treści"],
+    "OP_8go": [
+      "Nie udało się wyłączyć konserwacji indeksu, ponieważ Open Knowledge nie mogło połączyć się z serwerem projektu. Spróbuj ponownie, gdy projekt ponownie się połączy."
+    ],
     "OTF92M": ["Etykieta <0>(opcjonalny tekst wyświetlany)</0>"],
     "OVjNeX": ["Terminal ", ["0"]],
     "OWs-8P": [
@@ -5239,6 +5245,9 @@
     "kj9pAE": ["Tworzenie strony"],
     "kjlQ9D": ["staje się symlinkiem"],
     "kjrq_8": ["Więcej informacji"],
+    "kkd4bu": [
+      "Nie udało się wyłączyć konserwacji indeksu, ponieważ Open Knowledge nie mogło zaktualizować reguły scalania Git. Sprawdź Git i .gitattributes, a następnie spróbuj ponownie."
+    ],
     "kknhfj": ["Brak zmian"],
     "kkux8f": ["Nie udało się usunąć ", ["0"], ". Spróbuj ponownie."],
     "klPS-L": ["Oryginalny plik — przed edycjami tego agenta."],
@@ -5983,6 +5992,9 @@
       ["bin"],
       ") nie jest zainstalowany lub nie znajduje się w PATH."
     ],
+    "rSsp-5": [
+      "Open Knowledge nie mogło połączyć się z serwerem projektu, aby sprawdzić konserwację indeksu. Stan zaktualizuje się, gdy projekt ponownie się połączy."
+    ],
     "rUNOLA": [
       "Wyszukiwanie semantyczne jest niedostępne przy aktualnej konfiguracji dostawcy osadzania. Sprawdź Ustawienia → Wyszukiwanie."
     ],
@@ -6359,6 +6371,9 @@
     "uQNW00": ["Odłączony HEAD — przełącz na gałąź, aby wznowić"],
     "uQewpR": [
       "Nie udało się zrestartować serwera — działa na innym koncie. Uruchom ponownie komputer, aby go zamknąć, potem otwórz ten projekt ponownie."
+    ],
+    "uQhfwT": [
+      "Nie udało się wyłączyć konserwacji indeksu, ponieważ nie można było zapisać ustawienia projektu. Sprawdź uprawnienia plików projektu, a następnie spróbuj ponownie."
     ],
     "uUCrBv": ["symlink"],
     "uVbUP8": ["Ustawienia…"],
