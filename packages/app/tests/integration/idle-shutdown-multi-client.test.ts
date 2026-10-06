@@ -11,18 +11,26 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { HocuspocusProvider } from '@hocuspocus/provider';
-import { LOCAL_DIR, OK_DIR } from '@inkeep/open-knowledge-core';
+import { defaultScheduler, LOCAL_DIR, OK_DIR } from '@inkeep/open-knowledge-core';
 import {
   type BootedServer,
   bootServer,
   ConfigSchema,
   ensureProjectGit,
 } from '@inkeep/open-knowledge-server';
-import { afterAll, beforeAll, expect, test } from 'vitest';
+import { afterAll, beforeAll, expect, onTestFinished, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
+import * as idleShutdown from '../../../server/src/idle-shutdown.ts';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { waitForSync } from './test-harness.ts';
+
+const fixtureHome = vi.hoisted(() => ({ path: '' }));
+
+vi.mock('node:os', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:os')>()),
+  homedir: () => fixtureHome.path,
+}));
 
 const IDLE_SHUTDOWN_MS = 400;
 const WS_CLOSE_SETTLE_MS = 150;
@@ -30,8 +38,24 @@ const WS_CLOSE_SETTLE_MS = 150;
 let booted: BootedServer | null = null;
 let contentDir = '';
 let lockPath = '';
+let idleShutdownPromise: Promise<void> | undefined;
+const clientsSynced = Promise.withResolvers<void>();
 
 beforeAll(async () => {
+  fixtureHome.path = realpathSync(mkdtempSync(join(tmpdir(), 'ok-idle-home-')));
+  const attachIdleShutdown = idleShutdown.attachIdleShutdown;
+  const attachSpy = vi.spyOn(idleShutdown, 'attachIdleShutdown').mockImplementation((options) =>
+    attachIdleShutdown({
+      ...options,
+      scheduler: {
+        ...defaultScheduler,
+        setTimeout: (callback, ms) =>
+          defaultScheduler.setTimeout(() => {
+            void clientsSynced.promise.then(callback);
+          }, ms),
+      },
+    }),
+  );
   contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-idle-multi-')));
   await ensureProjectGit(contentDir);
   configureTestGitRepository(contentDir);
@@ -47,14 +71,26 @@ beforeAll(async () => {
     quiet: true,
     gitEnabled: false,
     skipAutoInit: true,
+    configHomedirOverride: fixtureHome.path,
     idleShutdownMs: IDLE_SHUTDOWN_MS,
+    idleShutdownHandler: (destroyServer) => () => {
+      idleShutdownPromise = destroyServer();
+      return idleShutdownPromise;
+    },
   });
+  expect(attachSpy).toHaveBeenCalledOnce();
   lockPath = resolve(contentDir, OK_DIR, LOCAL_DIR, 'server.lock');
 }, HARNESS_BOOT_TIMEOUT_MS);
 
 afterAll(async () => {
-  await booted?.destroy();
-  rmSync(contentDir, { recursive: true, force: true });
+  try {
+    await booted?.destroy();
+    await idleShutdownPromise;
+  } finally {
+    vi.restoreAllMocks();
+    rmSync(contentDir, { recursive: true, force: true });
+    rmSync(fixtureHome.path, { recursive: true, force: true });
+  }
 });
 
 test('closing spawning editor leaves sibling editor connected; idle-shutdown fires only when both disconnect', async () => {
@@ -72,17 +108,30 @@ test('closing spawning editor leaves sibling editor connected; idle-shutdown fir
     url: `ws://127.0.0.1:${port}/collab`,
     name: docA,
     document: yDocA,
-    connect: true,
+    autoConnect: true,
+  });
+  onTestFinished(() => {
+    if (!yDocA.isDestroyed) {
+      providerA.destroy();
+      yDocA.destroy();
+    }
   });
   const providerB = new HocuspocusProvider({
     url: `ws://127.0.0.1:${port}/collab`,
     name: docB,
     document: yDocB,
-    connect: true,
+    autoConnect: true,
+  });
+  onTestFinished(() => {
+    if (!yDocB.isDestroyed) {
+      providerB.destroy();
+      yDocB.destroy();
+    }
   });
 
-  await waitForSync(providerA);
-  await waitForSync(providerB);
+  await expect(waitForSync(providerA)).resolves.toBeUndefined();
+  await expect(waitForSync(providerB)).resolves.toBeUndefined();
+  clientsSynced.resolve();
 
   expect(existsSync(lockPath)).toBe(true);
 
