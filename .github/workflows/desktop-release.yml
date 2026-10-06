@@ -287,8 +287,11 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
+          package-manager-cache: false
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          cache: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -546,8 +549,11 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
+          package-manager-cache: false
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          cache: false
 
       - name: Install dependencies
         env:
@@ -1040,8 +1046,11 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
+          package-manager-cache: false
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          cache: false
 
       - name: Install dependencies
         env:
@@ -1332,6 +1341,7 @@ jobs:
     needs: prepare
     if: contains(needs.prepare.outputs.platforms, 'linux')
     runs-on: ${{ matrix.runner }}
+    cache-mode: none
     timeout-minutes: 45
     env:
       OK_DESKTOP_VARIANT: ${{ matrix.variant }}
@@ -1374,24 +1384,11 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
+          package-manager-cache: false
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      - name: Get pnpm store directory
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
-      - name: Hash the lockfile for the pnpm store key
-        id: lockfile
-        shell: bash
-        run: echo "hash=${{ hashFiles('pnpm-lock.yaml') }}" >> "$GITHUB_OUTPUT"
-      # `runner.arch` is part of the key: both Linux cells report
-      # `runner.os == 'Linux'`, and a store populated on x64 carries none of the
-      # arm64 prebuilds (and vice versa), so a shared key would thrash the cache
-      # between cells on every run.
-      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-${{ runner.arch }}-ok-pnpm-store-${{ steps.lockfile.outputs.hash }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-ok-pnpm-store-
+          cache: false
 
       - name: Install dependencies
         env:

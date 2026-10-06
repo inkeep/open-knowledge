@@ -44,12 +44,26 @@ const ACTIONS = {
   'pnpm/setup': (inputs) =>
     inputs.cache === undefined || isFalse(inputs.cache) ? [] : ['extract', 'save'],
   'astral-sh/setup-uv': (inputs) => (isFalse(inputs['enable-cache']) ? [] : ['incidental']),
-  'mlugg/setup-zig': (inputs) => (isFalse(inputs['use-cache']) ? [] : ['incidental']),
+  'mlugg/setup-zig': (inputs) => [
+    'extract',
+    'save',
+    ...(isFalse(inputs['use-cache']) ? [] : ['incidental']),
+  ],
   'actions/stale': () => ['incidental'],
 };
 
-function cacheOps(steps, root = OK_ROOT, seen = []) {
-  const ops = [];
+const OFF_SWITCHES = {
+  'actions/setup-node': 'package-manager-cache',
+  'pnpm/action-setup': 'cache',
+  'pnpm/setup': 'cache',
+  'astral-sh/setup-uv': 'enable-cache',
+  'mlugg/setup-zig': 'use-cache',
+};
+
+const actionName = (uses) => (uses.includes('@') ? uses.slice(0, uses.indexOf('@')) : undefined);
+
+function actionSteps(steps, root = OK_ROOT, seen = []) {
+  const found = [];
   for (const step of steps ?? []) {
     const uses = step.uses;
     if (uses === undefined) continue;
@@ -64,25 +78,29 @@ function cacheOps(steps, root = OK_ROOT, seen = []) {
           `local action ${uses} runs ${action.runs?.using}, not composite, so this sweep cannot see what cache it touches`,
         );
       }
-      ops.push(
-        ...cacheOps(action.runs.steps, root, [...seen, uses]).map((op) => ({
-          ...op,
-          via: [uses, ...op.via],
+      found.push(
+        ...actionSteps(action.runs.steps, root, [...seen, uses]).map((inner) => ({
+          ...inner,
+          via: [uses, ...inner.via],
         })),
       );
       continue;
     }
-    const at = uses.indexOf('@');
-    const classify = at === -1 ? undefined : ACTIONS[uses.slice(0, at)];
+    found.push({ step, via: [] });
+  }
+  return found;
+}
+
+function cacheOps(steps, root = OK_ROOT) {
+  return actionSteps(steps, root).flatMap(({ step, via }) => {
+    const classify = ACTIONS[actionName(step.uses)];
     if (classify === undefined) {
       throw new Error(
-        `${uses} is not classified for cache access; add it to ACTIONS in cache-mode-shape.test.mjs`,
+        `${step.uses} is not classified for cache access; add it to ACTIONS in cache-mode-shape.test.mjs`,
       );
     }
-    for (const kind of classify(step.with ?? {}))
-      ops.push({ kind, step: step.name ?? uses, via: [] });
-  }
-  return ops;
+    return classify(step.with ?? {}).map((kind) => ({ kind, step: step.name ?? step.uses, via }));
+  });
 }
 
 function narrowestMode(ops) {
@@ -117,6 +135,44 @@ function cacheModeProblems(workflow, job, root = OK_ROOT) {
     for (const op of ops.filter((candidate) => candidate.kind === 'incidental')) {
       problems.push(
         `cache-mode ${mode} lets ${[...op.via, op.step].join(' > ')} restore its own cache`,
+      );
+    }
+  }
+  return problems;
+}
+
+const SHIPS = [
+  'desktop-release.yml#build-linux',
+  'desktop-release.yml#build-macos',
+  'desktop-release.yml#build-windows',
+  'desktop-release.yml#prepare',
+  'native-config-prebuild.yml#build',
+  'native-config-prebuild.yml#combine',
+  'release.yml#build',
+];
+
+const QA_BUILDS = [
+  'desktop-build-win-linux.yml#build-linux',
+  'desktop-build-win-linux.yml#build-windows',
+  'desktop-build-win-linux.yml#prepare',
+  'desktop-build.yml#build-macos-dmg',
+];
+
+function restoresNothingProblems(workflow, job, root = OK_ROOT) {
+  if (job.uses !== undefined)
+    return [`calls the reusable workflow ${job.uses}, which this sweep does not trace`];
+  const problems = [];
+  const mode = effectiveMode(workflow, job);
+  if (mode === null) problems.push('declares no cache-mode, so the trigger default applies');
+  else if (mode !== 'none') problems.push(`declares cache-mode ${mode}, not none`);
+  for (const op of cacheOps(job.steps, root)) {
+    problems.push(`touches the cache (${op.kind}) at ${[...op.via, op.step].join(' > ')}`);
+  }
+  for (const { step, via } of actionSteps(job.steps, root)) {
+    const input = OFF_SWITCHES[actionName(step.uses)];
+    if (input !== undefined && !isFalse(step.with?.[input])) {
+      problems.push(
+        `does not set ${input}: false at ${[...via, step.name ?? step.uses].join(' > ')}`,
       );
     }
   }
@@ -207,6 +263,28 @@ describe('credentialed jobs in public/open-knowledge/.github/workflows declare t
       'select-beta-to-promote.yml#evaluate Look up an earlier smoke failure for the fast-tier candidate',
     ]);
   });
+});
+
+describe('jobs in public/open-knowledge/.github/workflows that build what ships restore nothing from the Actions cache', () => {
+  test.each(SHIPS)(
+    '%s declares cache-mode none, touches no cache and turns every setup cache off',
+    (label) => {
+      const entry = allJobs.find((candidate) => candidate.label === label);
+      expect(entry, `${label} is missing`).toBeDefined();
+      expect(restoresNothingProblems(entry.workflow, entry.job)).toEqual([]);
+    },
+  );
+});
+
+describe('QA desktop build jobs in public/open-knowledge/.github/workflows, which can produce production-signed installers, restore nothing from the Actions cache', () => {
+  test.each(QA_BUILDS)(
+    '%s declares cache-mode none, touches no cache and turns every setup cache off',
+    (label) => {
+      const entry = allJobs.find((candidate) => candidate.label === label);
+      expect(entry, `${label} is missing`).toBeDefined();
+      expect(restoresNothingProblems(entry.workflow, entry.job)).toEqual([]);
+    },
+  );
 });
 
 describe('cache-mode sweep self-tests', () => {
@@ -367,8 +445,16 @@ describe('cache-mode sweep self-tests', () => {
       'incidental',
     ]);
     expect(kinds({ uses: 'mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29' })).toEqual([
+      'extract',
+      'save',
       'incidental',
     ]);
+    expect(
+      kinds({
+        uses: 'mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29',
+        with: { 'use-cache': false },
+      }),
+    ).toEqual(['extract', 'save']);
     expect(kinds({ uses: 'actions/stale@b5d41d4e1d5dceea10e7104786b73624c18a190f' })).toEqual([
       'incidental',
     ]);
@@ -504,6 +590,218 @@ describe('cache-mode sweep self-tests', () => {
     for (const [form, [workflow, job, reason]] of Object.entries(refused)) {
       expect(cacheModeProblems(workflow, job).join('\n'), form).toMatch(reason);
     }
+  });
+
+  test('a job that must restore nothing is accepted only at none, touching no cache, with every setup cache off', () => {
+    const offNode = {
+      ...implicitNode,
+      with: { 'node-version': '24', 'package-manager-cache': false },
+    };
+    const actionSetup = { uses: 'pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86' };
+    const pnpmSetup = { uses: 'pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2' };
+    const uv = { uses: 'astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990' };
+    const zig = { uses: 'mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29' };
+    const checkout = { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' };
+    const buildJob = (mode, ...steps) => ({
+      permissions: { contents: 'read' },
+      ...(mode === undefined ? {} : { 'cache-mode': mode }),
+      steps: [checkout, { run: 'pnpm install --frozen-lockfile' }, ...steps],
+    });
+    const accepted = {
+      'none with setup-node and pnpm/action-setup off': [
+        {},
+        buildJob('none', offNode, { ...actionSetup, with: { cache: false } }),
+      ],
+      'none with pnpm/setup and setup-uv off, spelled as strings': [
+        {},
+        buildJob(
+          'none',
+          { ...pnpmSetup, with: { install: false, cache: 'false' } },
+          { ...uv, with: { 'enable-cache': 'FALSE' } },
+        ),
+      ],
+      'none inherited from the workflow': [{ 'cache-mode': 'none' }, buildJob(undefined, offNode)],
+      'none with no action that has a cache': [{}, buildJob('none')],
+    };
+    for (const [form, [workflow, job]] of Object.entries(accepted)) {
+      expect(restoresNothingProblems(workflow, job), form).toEqual([]);
+    }
+    const refused = {
+      'no mode, so the trigger default applies': [
+        {},
+        buildJob(undefined, offNode),
+        /declares no cache-mode/,
+      ],
+      write: [{}, buildJob('write', offNode), /declares cache-mode write, not none/],
+      read: [{}, buildJob('read', offNode), /declares cache-mode read, not none/],
+      'write-only': [
+        {},
+        buildJob('write-only', offNode),
+        /declares cache-mode write-only, not none/,
+      ],
+      'a workflow write the job inherits': [
+        { 'cache-mode': 'write' },
+        buildJob(undefined, offNode),
+        /declares cache-mode write, not none/,
+      ],
+      'a job mode overriding a workflow none': [
+        { 'cache-mode': 'none' },
+        buildJob('read', offNode),
+        /declares cache-mode read, not none/,
+      ],
+      'an extracting restore under none': [
+        {},
+        buildJob('none', restore),
+        /touches the cache \(extract\) at restore/,
+      ],
+      'a lookup-only restore under none': [
+        {},
+        buildJob('none', lookup),
+        /touches the cache \(lookup\) at lookup/,
+      ],
+      'a save under none': [{}, buildJob('none', save), /touches the cache \(save\) at save/],
+      'the combined cache action under none': [
+        {},
+        buildJob('none', { uses: `actions/cache@${sha}`, with: { path: 'p', key: 'k' } }),
+        /touches the cache \(extract\).*touches the cache \(save\)/s,
+      ],
+      'setup-node with its package-manager cache left to its default': [
+        {},
+        buildJob('none', implicitNode),
+        /touches the cache \(incidental\) at node.*does not set package-manager-cache: false at node/s,
+      ],
+      'setup-node with package-manager-cache set by an expression': [
+        {},
+        buildJob('none', {
+          ...implicitNode,
+          with: { 'package-manager-cache': '${{ inputs.package-manager-cache }}' },
+        }),
+        /does not set package-manager-cache: false/,
+      ],
+      'setup-node with a cache input beside package-manager-cache false': [
+        {},
+        buildJob('none', {
+          ...implicitNode,
+          with: { cache: 'pnpm', 'package-manager-cache': false },
+        }),
+        /touches the cache \(extract\) at node/,
+      ],
+      'pnpm/action-setup with its cache left to its default': [
+        {},
+        buildJob('none', offNode, actionSetup),
+        /does not set cache: false at pnpm\/action-setup/,
+      ],
+      'pnpm/setup with its cache on': [
+        {},
+        buildJob('none', offNode, { ...pnpmSetup, with: { cache: true } }),
+        /touches the cache \(extract\)/,
+      ],
+      'setup-zig, whose compiler tarball is cached whatever use-cache says': [
+        {},
+        buildJob('none', { ...zig, with: { 'use-cache': false } }),
+        /touches the cache \(extract\) at mlugg\/setup-zig/,
+      ],
+      'actions/stale, which has no off switch': [
+        {},
+        buildJob('none', { uses: 'actions/stale@b5d41d4e1d5dceea10e7104786b73624c18a190f' }),
+        /touches the cache \(incidental\)/,
+      ],
+      'a setup cache inside a local composite': [
+        {},
+        buildJob('none', { uses: './.github/composite-actions/share-contract-reader-gate' }),
+        /share-contract-reader-gate > Set up Node/,
+      ],
+      'a reusable workflow call': [
+        {},
+        {
+          permissions: { contents: 'read' },
+          'cache-mode': 'none',
+          uses: './.github/workflows/x.yml',
+        },
+        /reusable workflow/,
+      ],
+    };
+    for (const [form, [workflow, job, reason]] of Object.entries(refused)) {
+      expect(restoresNothingProblems(workflow, job).join('\n'), form).toMatch(reason);
+    }
+    expect(() =>
+      restoresNothingProblems({}, buildJob('none', { uses: 'someone/cache@v1' })),
+    ).toThrow(/not classified/);
+  });
+
+  test('the real ships jobs turn red when a cache comes back', () => {
+    const real = (label) => allJobs.find((candidate) => candidate.label === label);
+    const store = {
+      uses: `actions/cache@${sha}`,
+      with: { path: '${{ env.STORE_PATH }}', key: 'Linux-ok-pnpm-store-k' },
+    };
+    const release = real('release.yml#build');
+    expect(
+      restoresNothingProblems(release.workflow, {
+        ...release.job,
+        steps: [...release.job.steps, store],
+      }).join('\n'),
+    ).toMatch(/touches the cache \(extract\)/);
+    const linux = real('desktop-release.yml#build-linux');
+    expect(
+      restoresNothingProblems(linux.workflow, { ...linux.job, 'cache-mode': 'write' }).join('\n'),
+    ).toMatch(/declares cache-mode write, not none/);
+    const prebuild = real('native-config-prebuild.yml#build');
+    const withNode = (inputs) =>
+      prebuild.job.steps.map((step) =>
+        step.uses?.startsWith('actions/setup-node@') ? { ...step, with: inputs } : step,
+      );
+    expect(
+      restoresNothingProblems(prebuild.workflow, {
+        ...prebuild.job,
+        steps: withNode({ 'node-version': '24' }),
+      }).join('\n'),
+    ).toMatch(/does not set package-manager-cache: false at Setup Node/);
+    expect(
+      restoresNothingProblems(prebuild.workflow, {
+        ...prebuild.job,
+        steps: [
+          ...prebuild.job.steps,
+          {
+            uses: 'mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29',
+            with: { 'use-cache': false },
+          },
+        ],
+      }).join('\n'),
+    ).toMatch(/touches the cache \(extract\) at mlugg\/setup-zig/);
+    const combine = real('native-config-prebuild.yml#combine');
+    const { 'cache-mode': _mode, ...combineAtDefault } = combine.job;
+    expect(restoresNothingProblems(combine.workflow, combineAtDefault).join('\n')).toMatch(
+      /declares no cache-mode/,
+    );
+  });
+
+  test('the real QA desktop build jobs turn red when a cache comes back', () => {
+    const real = (label) => allJobs.find((candidate) => candidate.label === label);
+    const store = {
+      uses: `actions/cache@${sha}`,
+      with: { path: '${{ env.STORE_PATH }}', key: 'Linux-ok-pnpm-store-k' },
+    };
+    const prepare = real('desktop-build-win-linux.yml#prepare');
+    expect(
+      restoresNothingProblems(prepare.workflow, {
+        ...prepare.job,
+        steps: [...prepare.job.steps, store],
+      }).join('\n'),
+    ).toMatch(/touches the cache \(extract\)/);
+    const { 'cache-mode': _mode, ...prepareAtDefault } = prepare.job;
+    expect(restoresNothingProblems(prepare.workflow, prepareAtDefault).join('\n')).toMatch(
+      /declares no cache-mode/,
+    );
+    const windows = real('desktop-build-win-linux.yml#build-windows');
+    expect(
+      restoresNothingProblems(windows.workflow, {
+        ...windows.job,
+        steps: windows.job.steps.map((step) =>
+          step.uses?.startsWith('pnpm/setup@') ? { ...step, with: { install: false } } : step,
+        ),
+      }).join('\n'),
+    ).toMatch(/does not set cache: false at pnpm\/setup/);
   });
 
   test('the real signing jobs turn red at the default or at write', () => {

@@ -88,7 +88,7 @@ describe('release jobs install the pnpm version declared by the checked-out tag'
     expect(pnpmSteps, `${label} pnpm setup`).toHaveLength(1);
     expect(setup).toBeGreaterThan(checkout);
     expect(pnpmSteps[0].uses).toBe(tagCompatiblePnpmSetup);
-    expect(pnpmSteps[0].with).toBeUndefined();
+    expect(pnpmSteps[0].with).toEqual({ cache: false });
   });
 });
 
