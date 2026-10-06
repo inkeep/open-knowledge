@@ -54,7 +54,10 @@ import {
   restoreContributors,
   swapContributors,
 } from './contributor-tracker.ts';
-import type { DerivedDocumentIndexPersistencePort } from './derived-document-index.ts';
+import {
+  type DerivedDocumentIndexPersistencePort,
+  isDerivedDocumentIndexClosedError,
+} from './derived-document-index.ts';
 import { resolveDirectoryRoot, resolveNativePath } from './directory-root.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 import {
@@ -1880,14 +1883,19 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         durabilityState.clearStoreRefused(documentName);
         persistenceDeferCounts.delete(documentName);
 
-        try {
-          await derivedDocumentIndex?.recordDurableStore(documentName, markdown);
-        } catch (err) {
+        derivedDocumentIndex?.recordDurableStore(documentName, markdown).catch((err: unknown) => {
+          if (isDerivedDocumentIndexClosedError(err)) {
+            log.debug(
+              { err, documentName },
+              '[derived-index] coordinator closed; skipping durable-store projection',
+            );
+            return;
+          }
           log.warn(
             { err, documentName },
             '[derived-index] durable-store projection failed; disk write remains authoritative',
           );
-        }
+        });
 
         setActiveSpanAttributes({ 'persistence.bytes': markdown.length });
         scheduleGitCommit();

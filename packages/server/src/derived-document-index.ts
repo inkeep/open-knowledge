@@ -24,6 +24,7 @@ import { getLogger } from './logger.ts';
 import { TagIndex, type TagSummaryEntry } from './tag-index.ts';
 
 const log = getLogger('derived-document-index');
+const SLOW_STARTUP_LOG_THRESHOLD_MS = 10_000;
 
 const DERIVED_INDEX_SAVE_DEBOUNCE_MS = 2000;
 const LOCAL_TARGET_REBUILD_RETRY_BASE_MS = 1000;
@@ -96,6 +97,7 @@ export interface DerivedDocumentIndexApiPort {
     markdown: string,
   ): Promise<void>;
   recordLinkRewrite(documentName: string, markdown: string): Promise<void>;
+  isReady(): boolean;
   getBacklinks(documentName: string): Promise<BacklinkEntry[]>;
   getBacklinkCount(documentName: string): Promise<number>;
   getBacklinkCounts(documentNames: readonly string[]): Promise<Record<string, number>>;
@@ -199,7 +201,9 @@ export class DerivedDocumentIndex
   private saveTagsOnNextDebounce = false;
   private branchTransition: BranchTransition | null = null;
   private startupBegun = false;
+  private startupBegunAt = 0;
   private startupSettled = false;
+  private ready = false;
   private liveUpdateToken = 0;
   private lastSignaledLocalTargetGeneration = 0;
   private closed = false;
@@ -255,6 +259,7 @@ export class DerivedDocumentIndex
       throw new Error('Derived document index startup has already begun');
     }
     this.startupBegun = true;
+    this.startupBegunAt = performance.now();
     this.startupBranch = branch;
     this.backlinkIndex.switchBranch(branch);
 
@@ -298,7 +303,15 @@ export class DerivedDocumentIndex
         return { tagIndexDegraded };
       });
     } finally {
+      this.ready = true;
       this.readyBarrier.resolve();
+      const startupMs = Math.round(performance.now() - this.startupBegunAt);
+      const logSettled = startupMs >= SLOW_STARTUP_LOG_THRESHOLD_MS ? log.info : log.debug;
+      logSettled.call(
+        log,
+        { startupMs },
+        '[derived-index] startup settled; deferred link checks resume',
+      );
     }
   }
 
@@ -558,6 +571,10 @@ export class DerivedDocumentIndex
   announceReadyViews(): void {
     this.assertOpen();
     this.signalAllRelations();
+  }
+
+  isReady(): boolean {
+    return this.ready && !this.closed;
   }
 
   getBacklinks(documentName: string): Promise<BacklinkEntry[]> {

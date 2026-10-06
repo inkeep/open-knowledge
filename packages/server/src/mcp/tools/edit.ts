@@ -656,7 +656,7 @@ export function register(server: ServerInstance, deps: EditDeps): void {
           .object(documentResultBaseShape)
           .optional()
           .describe(
-            'Document edit result. Always present on a successful document edit (body or frontmatter) — it carries `brokenLinks` (possibly `[]`) plus any `brokenLinkSuppression`/`summary`/`warnings`. Read `brokenLinkSuppression` before concluding anything from an empty `brokenLinks`: when it is present, a project policy withheld findings and none of them is yours to repair. Absent only for folder/template edits.',
+            'Document edit result. Always present on a successful document edit (body or frontmatter) — it carries `brokenLinks` (possibly `[]`) plus any `brokenLinkSuppression`/`summary`/`warnings`. Read `brokenLinkSuppression` and `warnings` before concluding anything from an empty `brokenLinks`: a suppression means a project policy withheld findings that are not yours to repair; a `link-check-deferred` warning means links were not checked yet. Absent only for folder/template edits.',
           ),
         folder: z
           .object({

@@ -1377,6 +1377,8 @@ export {
   isWriteWarningKind,
   type LifecycleStatus,
   LifecycleStatusSchema,
+  type LinkCheckDeferredWarning,
+  LinkCheckDeferredWarningSchema,
   type LinkGraphDocNode,
   LinkGraphDocNodeSchema,
   type LinkGraphEdge,

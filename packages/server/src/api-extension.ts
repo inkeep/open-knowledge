@@ -303,7 +303,9 @@ import {
   isPeerAdmitted,
 } from './ingress-policy.ts';
 import {
+  deferredWriteLinkAdvisory,
   type LinkAdvisoryPolicy,
+  type PrepareWriteLinkAdvisory,
   projectWriteAdvisoryLinks,
   type WriteLinkAdvisoryProjection,
 } from './link-advisory-policy.ts';
@@ -1759,7 +1761,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
   async function computeOrphanHints(
     docName: string,
   ): Promise<Array<{ type: 'orphan'; parentCandidates: string[]; message: string }> | undefined> {
-    if (!derivedDocumentIndex) return undefined;
+    if (!derivedDocumentIndex?.isReady()) return undefined;
     try {
       const backlinks = await derivedDocumentIndex.getBacklinks(docName);
       if (backlinks.length > 0) return undefined;
@@ -1888,6 +1890,29 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     const relPath = docNameToRelativePath(docName);
     return contentFilter.isExcluded(relPath);
   }
+
+  function isDerivedIndexReady(): boolean {
+    return derivedDocumentIndex?.isReady() ?? true;
+  }
+
+  const prepareWriteLinkAdvisory: PrepareWriteLinkAdvisory = async (
+    writtenDocNames,
+    { resolveFolderLinks },
+  ) => {
+    if (!isDerivedIndexReady()) return deferredWriteLinkAdvisory;
+    const admitted = await collectAdmittedDocNames();
+    for (const docName of writtenDocNames) admitted.add(docName);
+    const linkedFileExists = createLinkedFileExists();
+    const linkedFolderExists = resolveFolderLinks ? createLinkedFolderExists() : undefined;
+    return (source, docName, suppressLogLinkAdvisories) => ({
+      links: projectWriteAdvisoryLinks(
+        computeWriteAdvisoryLinks(source, docName, admitted, linkedFileExists, linkedFolderExists),
+        docName,
+        suppressLogLinkAdvisories,
+      ),
+      warnings: [],
+    });
+  };
 
   async function collectAdmittedDocNames(): Promise<Set<string>> {
     const admitted = new Set<string>();
@@ -3842,12 +3867,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
               }
             }
 
-            const admittedForLinks = await collectAdmittedDocNames();
-            for (const p of pending) {
-              if (flushErrors.get(p.docName) === undefined) admittedForLinks.add(p.docName);
-            }
-            const linkedFileExists = createLinkedFileExists();
-            const linkedFolderExists = createLinkedFolderExists();
+            const linkAdvisor = await prepareWriteLinkAdvisory(
+              pending.filter((p) => flushErrors.get(p.docName) === undefined).map((p) => p.docName),
+              { resolveFolderLinks: true },
+            );
 
             let lastWrittenDoc: string | undefined;
             for (const p of pending) {
@@ -3858,22 +3881,18 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
               }
               const writtenSource = p.session.dc.document.getText('source').toString();
               registerWrittenDocInFileIndex(p.docName, writtenSource);
+              const linkAdvisory = linkAdvisor(
+                writtenSource,
+                p.docName,
+                linkPolicy.suppressLogLinkAdvisories,
+              );
+              const warnings = [...p.warnings, ...linkAdvisory.warnings];
               results[p.index] = {
                 status: 'written',
                 docName: p.docName,
                 ...(p.summaryResponse ? { summary: p.summaryResponse } : {}),
-                ...(p.warnings.length > 0 ? { warnings: p.warnings } : {}),
-                ...projectWriteAdvisoryLinks(
-                  computeWriteAdvisoryLinks(
-                    writtenSource,
-                    p.docName,
-                    admittedForLinks,
-                    linkedFileExists,
-                    linkedFolderExists,
-                  ),
-                  p.docName,
-                  linkPolicy.suppressLogLinkAdvisories,
-                ),
+                ...(warnings.length > 0 ? { warnings } : {}),
+                ...linkAdvisory.links,
               };
               lastWrittenDoc = p.docName;
             }
@@ -4741,7 +4760,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       const lintFindings = await lintDocument(source, effective, docName);
 
       let linkFindings: ValidationDiagnostic[] = [];
-      if (derivedDocumentIndex && linkPolicy.links !== 'off' && !isLinkIndexExcludedDoc(docName)) {
+      if (
+        derivedDocumentIndex?.isReady() &&
+        linkPolicy.links !== 'off' &&
+        !isLinkIndexExcludedDoc(docName)
+      ) {
         await recordDerivedLinkRewriteBestEffort(docName, source, 'lint-validation');
         const linksValidator = createProjectValidators({
           projectDir: projectDir ?? contentDir,
@@ -5276,9 +5299,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     onAgentWrite,
     computeOrphanHints,
     registerWrittenDocInFileIndex,
-    collectAdmittedDocNames,
-    createLinkedFileExists,
-    createLinkedFolderExists,
+    prepareWriteLinkAdvisory,
     buildReconcileWarning,
     computeLintViolations,
     log,

@@ -73,13 +73,12 @@ import {
   reconcileDiskBeforeAgentWrite,
 } from '../external-change.ts';
 import { extractActorIdentity } from '../extract-actor-identity.ts';
-import type { FileIndexEntry } from '../file-watcher.ts';
 import {
   FrontmatterMalformedError,
   respondFrontmatterMalformed,
 } from '../frontmatter-malformed-error.ts';
 import { recordFrontmatterEditSurface } from '../frontmatter-telemetry.ts';
-import { type LinkAdvisoryPolicy, projectWriteAdvisoryLinks } from '../link-advisory-policy.ts';
+import type { LinkAdvisoryPolicy, PrepareWriteLinkAdvisory } from '../link-advisory-policy.ts';
 import { getLogger } from '../logger.ts';
 import { validateMermaidFences } from '../mermaid-validator.ts';
 import { incrementAgentPatchFindMismatches, incrementAgentWriteCalls } from '../metrics.ts';
@@ -98,7 +97,6 @@ import {
   type WriterIdentity,
 } from '../shadow-repo.ts';
 import { getMeter, withSpanSync } from '../telemetry.ts';
-import { computeWriteAdvisoryLinks } from '../write-advisory-links.ts';
 import { type ApiRouteGroup, createApiRouteGroup } from './api-pipeline.ts';
 import { errorResponse } from './error-response.ts';
 import { getRequestId } from './request-id.ts';
@@ -201,11 +199,7 @@ export interface AgentWriteRouteDeps {
     docName: string,
   ) => Promise<Array<{ type: 'orphan'; parentCandidates: string[]; message: string }> | undefined>;
   registerWrittenDocInFileIndex: (docName: string, content: string) => void;
-  collectAdmittedDocNames: () => Promise<Set<string>>;
-  createLinkedFileExists: (
-    allFiles?: ReadonlyMap<string, FileIndexEntry>,
-  ) => (contentRootRelativePath: string) => boolean;
-  createLinkedFolderExists: () => (folderPath: string) => boolean;
+  prepareWriteLinkAdvisory: PrepareWriteLinkAdvisory;
   buildReconcileWarning: (
     reconcile: ReconcileBeforeWriteResult,
   ) => DiskEditReconciledWarning | undefined;
@@ -255,9 +249,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
     onAgentWrite,
     computeOrphanHints,
     registerWrittenDocInFileIndex,
-    collectAdmittedDocNames,
-    createLinkedFileExists,
-    createLinkedFolderExists,
+    prepareWriteLinkAdvisory,
     buildReconcileWarning,
     computeLintViolations,
     log,
@@ -272,6 +264,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
     stripDefaultPathTruncation,
     renameAttributionCounter,
   } = deps;
+
   const versionOpsService = createVersionOpsService({ getCurrentBranch, contentRoot });
 
   function getSubscriberCount(docName: string): number {
@@ -452,19 +445,9 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           const writtenSource = session.dc.document.getText('source').toString();
           registerWrittenDocInFileIndex(resolvedDocName, writtenSource);
           const renderWarnings = await validateMermaidFences(writtenSource, resolvedDocName);
-          const admittedForLinks = await collectAdmittedDocNames();
-          admittedForLinks.add(resolvedDocName);
-          const linkAdvisory = projectWriteAdvisoryLinks(
-            computeWriteAdvisoryLinks(
-              writtenSource,
-              resolvedDocName,
-              admittedForLinks,
-              createLinkedFileExists(),
-              createLinkedFolderExists(),
-            ),
-            resolvedDocName,
-            linkPolicy.suppressLogLinkAdvisories,
-          );
+          const linkAdvisory = (
+            await prepareWriteLinkAdvisory([resolvedDocName], { resolveFolderLinks: true })
+          )(writtenSource, resolvedDocName, linkPolicy.suppressLogLinkAdvisories);
           const subscriberCount = getSubscriberCount(resolvedDocName);
           const systemSubscriberCount = getSystemSubscriberCount();
           if (systemSubscriberCount === 0) {
@@ -485,6 +468,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
               resolvedDocName,
               linkPolicy,
             )),
+            ...linkAdvisory.warnings,
           ];
           successResponse(
             res,
@@ -497,7 +481,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
               ...(hints ? { hints } : {}),
               ...(summaryResponse ? { summary: summaryResponse } : {}),
               ...(writeMdAdvisories.length > 0 ? { warnings: writeMdAdvisories } : {}),
-              ...linkAdvisory,
+              ...linkAdvisory.links,
             },
             { handler: 'agent-write-md' },
           );
@@ -744,18 +728,14 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
             resolvedDocName,
             session.dc.document.getText('source').toString(),
           );
-          const admittedForLinks = await collectAdmittedDocNames();
-          admittedForLinks.add(resolvedDocName);
-          const linkAdvisory = projectWriteAdvisoryLinks(
-            computeWriteAdvisoryLinks(
-              session.dc.document.getText('source').toString(),
-              resolvedDocName,
-              admittedForLinks,
-              createLinkedFileExists(),
-            ),
+          const linkAdvisory = (
+            await prepareWriteLinkAdvisory([resolvedDocName], { resolveFolderLinks: false })
+          )(
+            session.dc.document.getText('source').toString(),
             resolvedDocName,
             linkPolicy.suppressLogLinkAdvisories,
           );
+          const fmAdvisories = [...(fmWarning ? [fmWarning] : []), ...linkAdvisory.warnings];
           successResponse(
             res,
             200,
@@ -766,8 +746,8 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
               systemSubscriberCount,
               appliedKeys,
               ...(summaryResponse ? { summary: summaryResponse } : {}),
-              ...(fmWarning ? { warnings: [fmWarning] } : {}),
-              ...linkAdvisory,
+              ...(fmAdvisories.length > 0 ? { warnings: fmAdvisories } : {}),
+              ...linkAdvisory.links,
             },
             { handler: 'frontmatter-patch' },
           );
@@ -1062,18 +1042,9 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           const patchedSource = session.dc.document.getText('source').toString();
           registerWrittenDocInFileIndex(docName, patchedSource);
           const renderWarnings = await validateMermaidFences(patchedSource, docName);
-          const admittedForLinks = await collectAdmittedDocNames();
-          admittedForLinks.add(docName);
-          const linkAdvisory = projectWriteAdvisoryLinks(
-            computeWriteAdvisoryLinks(
-              patchedSource,
-              docName,
-              admittedForLinks,
-              createLinkedFileExists(),
-            ),
-            docName,
-            linkPolicy.suppressLogLinkAdvisories,
-          );
+          const linkAdvisory = (
+            await prepareWriteLinkAdvisory([docName], { resolveFolderLinks: false })
+          )(patchedSource, docName, linkPolicy.suppressLogLinkAdvisories);
           const patchWarning = buildReconcileWarning(patchReconcile);
           const patchDivergenceEntry =
             patchDivergence !== undefined ? toContentDivergenceWarning(patchDivergence) : undefined;
@@ -1086,6 +1057,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
               docName,
               linkPolicy,
             )),
+            ...linkAdvisory.warnings,
           ];
           successResponse(
             res,
@@ -1097,7 +1069,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
               systemSubscriberCount,
               ...(summaryResponse ? { summary: summaryResponse } : {}),
               ...(patchAdvisories.length > 0 ? { warnings: patchAdvisories } : {}),
-              ...linkAdvisory,
+              ...linkAdvisory.links,
             },
             { handler: 'agent-patch' },
           );

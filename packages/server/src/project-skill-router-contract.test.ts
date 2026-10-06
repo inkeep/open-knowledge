@@ -143,7 +143,8 @@ const routingRules = [
     required: [
       'Every link must resolve to a doc that exists',
       'After every `write`/`edit`, read `brokenLinks`: fix reported `href`s',
-      '`brokenLinkSuppression` withheld reserved-log findings; those are not yours to repair',
+      '`brokenLinkSuppression` withheld reserved-log findings (not yours to repair)',
+      'a `link-check-deferred` warning says nothing was checked yet',
       '`audit` is authoritative',
     ],
   },

@@ -1,6 +1,7 @@
 import {
   type AdvisoryWarning,
   type BrokenLink,
+  type LinkCheckDeferredWarning,
   type LintViolationWarning,
   type RenderWarning,
   WRITE_WARNING_KINDS,
@@ -311,6 +312,24 @@ describe('content-rule (lint) violations', () => {
     const lines = formatAdvisoryLines([mermaidWarning(), lint()]);
     expect(lines.some((l) => l.toLowerCase().includes('mermaid'))).toBe(true);
     expect(lines.some((l) => l.includes('MD010'))).toBe(true);
+  });
+});
+
+describe('deferred link check', () => {
+  const deferred: LinkCheckDeferredWarning = {
+    kind: 'link-check-deferred',
+    message: 'Links in this document were not checked.',
+  };
+
+  test('parses and relays the server message instead of the unrecognized-kind fallback', () => {
+    expect(parseAdvisoryWarnings([deferred])).toEqual([deferred]);
+    expect(formatAdvisoryLines([deferred])).toEqual(['⚠ Links in this document were not checked.']);
+  });
+
+  test('formatAdvisoryBriefs emits one brief however many entries arrive', () => {
+    expect(formatAdvisoryBriefs([deferred, deferred])).toEqual([
+      '⚠ Links not checked yet: the link index is still building (see warnings).',
+    ]);
   });
 });
 

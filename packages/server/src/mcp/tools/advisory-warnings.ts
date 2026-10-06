@@ -7,6 +7,7 @@ import {
   type BrokenLinkSuppression,
   BrokenLinkSuppressionSchema,
   isWriteWarningKind,
+  type LinkCheckDeferredWarning,
   type LintViolationWarning,
   type RenderWarning,
   WRITE_WARNING_KINDS,
@@ -71,10 +72,15 @@ function lintEntries(warnings: AdvisoryWarning[]): LintViolationWarning[] {
   return warnings.filter((w): w is LintViolationWarning => w.kind === 'lint-violation');
 }
 
+function linkCheckDeferredEntries(warnings: AdvisoryWarning[]): LinkCheckDeferredWarning[] {
+  return warnings.filter((w): w is LinkCheckDeferredWarning => w.kind === 'link-check-deferred');
+}
+
 const RELAYED_KINDS: ReadonlySet<string> = new Set<string>([
   ...WRITE_WARNING_KINDS,
   'mermaid-parse-error',
   'lint-violation',
+  'link-check-deferred',
 ]);
 
 function unrecognizedEntries(warnings: AdvisoryWarning[]): AdvisoryWarning[] {
@@ -103,6 +109,7 @@ export function formatAdvisoryLines(warnings: AdvisoryWarning[]): string[] {
   const render = renderEntries(warnings);
   if (render.length > 0) lines.push(formatRenderWarningsLine(render));
   lines.push(...lintEntries(warnings).map(formatLintLine));
+  lines.push(...linkCheckDeferredEntries(warnings).map((d) => `⚠ ${d.message}`));
   lines.push(...unrecognizedEntries(warnings).map(formatUnrecognizedLine));
   return lines;
 }
@@ -112,6 +119,9 @@ export function formatAdvisoryBriefs(warnings: AdvisoryWarning[]): string[] {
   const render = renderEntries(warnings);
   if (render.length > 0) briefs.push(formatRenderWarningsBrief(render));
   briefs.push(...lintEntries(warnings).map(formatLintBrief));
+  if (linkCheckDeferredEntries(warnings).length > 0) {
+    briefs.push('⚠ Links not checked yet: the link index is still building (see warnings).');
+  }
   briefs.push(...unrecognizedEntries(warnings).map(formatUnrecognizedBrief));
   return briefs;
 }

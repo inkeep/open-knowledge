@@ -186,11 +186,20 @@ export const LintViolationWarningSchema = z
   .loose() satisfies StandardSchemaV1;
 export type LintViolationWarning = z.infer<typeof LintViolationWarningSchema>;
 
+export const LinkCheckDeferredWarningSchema = z
+  .object({
+    kind: z.literal('link-check-deferred'),
+    message: z.string(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LinkCheckDeferredWarning = z.infer<typeof LinkCheckDeferredWarningSchema>;
+
 export const AdvisoryWarningSchema = z.discriminatedUnion('kind', [
   ContentDivergenceWarningSchema,
   DiskEditReconciledWarningSchema,
   RenderWarningSchema,
   LintViolationWarningSchema,
+  LinkCheckDeferredWarningSchema,
 ]);
 export type AdvisoryWarning = z.infer<typeof AdvisoryWarningSchema>;
 

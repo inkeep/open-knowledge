@@ -223,7 +223,7 @@ export function createFileOpsService(deps: FileOpsDeps): FileOpsService {
       deps.invalidateReferencedAssetsCache();
 
       purgeFileIndex(deletedDocNames);
-      await deps.deleteDerivedDocumentsBestEffort(deletedDocNames, 'delete-path');
+      void deps.deleteDerivedDocumentsBestEffort(deletedDocNames, 'delete-path');
       deps.signalFiles();
       return { ok: true, deletedDocNames };
     },
@@ -254,7 +254,7 @@ export function createFileOpsService(deps: FileOpsDeps): FileOpsService {
       if (operationKind === 'folder') {
         deps.removeFolderIndexEntries(path);
       }
-      await deps.deleteDerivedDocumentsBestEffort(deletedDocNames, 'trash-cleanup');
+      void deps.deleteDerivedDocumentsBestEffort(deletedDocNames, 'trash-cleanup');
       deps.signalFiles();
       return { deletedDocNames };
     },
@@ -359,7 +359,7 @@ export function createFileOpsService(deps: FileOpsDeps): FileOpsService {
           deps.mutateFileIndexDelete?.({ path: destinationPath, docName: duplicatedPath });
           throw err;
         }
-        await deps.recordDerivedDocumentBestEffort(duplicatedPath, content, 'duplicate-path-file');
+        void deps.recordDerivedDocumentBestEffort(duplicatedPath, content, 'duplicate-path-file');
         return { ok: true, duplicatedPath, duplicatedDocNames: [duplicatedPath] };
       }
 
@@ -458,7 +458,7 @@ export function createFileOpsService(deps: FileOpsDeps): FileOpsService {
         }
         throw err;
       }
-      await deps.recordDerivedMutationsBestEffort(derivedMutations, 'duplicate-path-folder');
+      void deps.recordDerivedMutationsBestEffort(derivedMutations, 'duplicate-path-folder');
       return { ok: true, duplicatedPath, duplicatedDocNames };
     },
   };

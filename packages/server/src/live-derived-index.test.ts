@@ -189,6 +189,35 @@ describe('createLiveDerivedIndexExtension', () => {
     await conn.disconnect();
   });
 
+  test('beforeUnloadDocument resolves while the flushed update is still queued', async () => {
+    const recordLiveDocument = vi.fn(() => new Promise<void>(() => {}));
+    const extension = createLiveDerivedIndexExtension({
+      derivedDocumentIndex: createDerivedIndexPort(recordLiveDocument),
+      debounceMs: 20,
+    });
+    const conn = await hp.openDirectConnection('unload-queued-doc');
+    const doc = getDoc(conn);
+
+    applyExternalChange(durabilityState, hp, 'unload-queued-doc', '# Queued\n');
+    await extension.onChange?.(
+      makeOnChangePayload(hp, doc, 'unload-queued-doc', {
+        source: 'local',
+        context: { origin: 'agent-write' },
+      }),
+    );
+    const unload = extension.beforeUnloadDocument?.({
+      document: doc,
+      documentName: 'unload-queued-doc',
+      instance: hp,
+    });
+
+    await expect(
+      Promise.race([unload, wait(1_000).then(() => Promise.reject(new Error('unload blocked')))]),
+    ).resolves.toBeUndefined();
+    expect(recordLiveDocument).toHaveBeenCalledTimes(1);
+    await conn.disconnect();
+  });
+
   test('onDestroy clears pending timers across documents', async () => {
     const recordLiveDocument = vi.fn(async () => {});
     const extension = createLiveDerivedIndexExtension({
