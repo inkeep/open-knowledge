@@ -3,6 +3,7 @@ import {
   existsSync,
   lstatSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   type Stats,
   statSync,
@@ -257,11 +258,81 @@ export const writeTracker = new Map<string, Array<{ hash: string; timestamp: num
 const WRITE_TRACKER_TTL_MS = 10_000;
 const REMOVAL_TRACKER_TTL_MS = 30_000;
 
+interface OwnWriteObservation {
+  key: string;
+  hashes: Set<string>;
+  savedDuringObservation: boolean;
+}
+
+const activeOwnWrites = new Map<string, Set<OwnWriteObservation>>();
+
 export function registerWrite(filePath: string, hash: string): void {
   const key = declaredPathKey(filePath);
   const queue = writeTracker.get(key) ?? [];
   queue.push({ hash, timestamp: Date.now() });
   writeTracker.set(key, queue);
+  for (const observation of activeOwnWrites.get(key) ?? []) {
+    observation.savedDuringObservation = true;
+    observation.hashes.add(hash);
+  }
+}
+
+function beginOwnWriteObservation(
+  filePath: string,
+  observations: Map<string, OwnWriteObservation>,
+): void {
+  if (observations.has(filePath)) return;
+  const key = observedPathKey(filePath);
+  const observation = {
+    key,
+    hashes: new Set((writeTracker.get(key) ?? []).map(({ hash }) => hash)),
+    savedDuringObservation: false,
+  };
+  const live = activeOwnWrites.get(key) ?? new Set<OwnWriteObservation>();
+  live.add(observation);
+  activeOwnWrites.set(key, live);
+  observations.set(filePath, observation);
+}
+
+function releaseOwnWriteObservations(observations: Map<string, OwnWriteObservation>): void {
+  for (const observation of observations.values()) {
+    const live = activeOwnWrites.get(observation.key);
+    live?.delete(observation);
+    if (live?.size === 0) activeOwnWrites.delete(observation.key);
+  }
+}
+
+function discardSupersededOwnWrite(
+  filePath: string,
+  content: string,
+  observations: ReadonlyMap<string, OwnWriteObservation>,
+): boolean {
+  const observation = observations.get(filePath);
+  if (!observation || !isSupersededOwnWrite(filePath, content, observation)) return false;
+  consumeOwnWrite(observation.key, contentHash(content));
+  return true;
+}
+
+function isSupersededOwnWrite(
+  filePath: string,
+  content: string,
+  observation: OwnWriteObservation,
+): boolean {
+  if (!observation.savedDuringObservation || !observation.hashes.has(contentHash(content))) {
+    return false;
+  }
+  if (observedPathKey(filePath) !== observation.key) return false;
+  try {
+    return readFileSync(observation.key, 'utf-8') !== content;
+  } catch (e) {
+    if (errnoCode(e) !== 'ENOENT') {
+      log.warn(
+        { path: observation.key, eventPath: filePath, err: e },
+        `Supersession recheck failed to read ${observation.key}`,
+      );
+    }
+    return false;
+  }
 }
 
 export const removalTracker = new Map<string, number>();
@@ -355,6 +426,7 @@ type WatcherDropReason =
 type WatcherDecision =
   | 'dispatched'
   | 'self-write-skip'
+  | 'superseded-own-write-skip'
   | 'self-removal-skip'
   | `drop-${WatcherDropReason}`;
 
@@ -372,6 +444,7 @@ const watcherDecisionRing: WatcherDecisionRecord[] = [];
 const watcherDropCounts = new Map<WatcherDropReason, number>();
 let watcherDispatchedCount = 0;
 let watcherSelfWriteSkipCount = 0;
+let watcherSupersededOwnWriteSkipCount = 0;
 let watcherSelfRemovalSkipCount = 0;
 let watcherDropsSinceLastSummary = 0;
 
@@ -394,6 +467,10 @@ function recordWatcherDecision(decision: WatcherDecision, kind: string, rawPath:
     watcherSelfWriteSkipCount++;
     return;
   }
+  if (decision === 'superseded-own-write-skip') {
+    watcherSupersededOwnWriteSkipCount++;
+    return;
+  }
   if (decision === 'self-removal-skip') {
     watcherSelfRemovalSkipCount++;
     return;
@@ -402,6 +479,15 @@ function recordWatcherDecision(decision: WatcherDecision, kind: string, rawPath:
   watcherDropCounts.set(reason, (watcherDropCounts.get(reason) ?? 0) + 1);
   watcherDropsSinceLastSummary++;
   _fileWatcherDropsCounter().add(1, { 'disk.drop_reason': reason });
+}
+
+function recordSupersededOwnWriteSkip(kind: DiskEvent['kind'], filePath: string): void {
+  log.debug(
+    { kind, path: filePath, self: true, superseded: true },
+    `[file-watcher] Skipped superseded own write: ${kind}`,
+  );
+  _fileWatcherEventsCounter().add(1, { 'disk.kind': kind, self: true, 'disk.superseded': true });
+  recordWatcherDecision('superseded-own-write-skip', kind, filePath);
 }
 
 export function getWatcherDecisionRingSnapshot(): WatcherDecisionRecord[] {
@@ -424,6 +510,7 @@ export function logWatcherDropSummary(): void {
       dropTotals,
       dispatched: watcherDispatchedCount,
       selfWriteSkips: watcherSelfWriteSkipCount,
+      supersededOwnWriteSkips: watcherSupersededOwnWriteSkipCount,
       selfRemovalSkips: watcherSelfRemovalSkipCount,
     },
     `[file-watcher] drop summary: ${droppedSinceLastSummary} event(s) dropped since last summary`,
@@ -435,6 +522,7 @@ export function resetWatcherDecisionDiagnostics(): void {
   watcherDropCounts.clear();
   watcherDispatchedCount = 0;
   watcherSelfWriteSkipCount = 0;
+  watcherSupersededOwnWriteSkipCount = 0;
   watcherSelfRemovalSkipCount = 0;
   watcherDropsSinceLastSummary = 0;
 }
@@ -555,12 +643,24 @@ export async function classifyEvents(
   contentFilter?: ContentFilter,
   aliasMap?: Map<string, string>,
 ): Promise<MarkdownDiskEvent[]> {
-  return classifyEventsInternal(rawEvents, contentDir, contentFilter, aliasMap);
+  const observations = new Map<string, OwnWriteObservation>();
+  try {
+    return await classifyEventsInternal(
+      rawEvents,
+      contentDir,
+      observations,
+      contentFilter,
+      aliasMap,
+    );
+  } finally {
+    releaseOwnWriteObservations(observations);
+  }
 }
 
 async function classifyEventsInternal(
   rawEvents: RawFileEvent[],
   contentDir: string,
+  observations: Map<string, OwnWriteObservation>,
   contentFilter?: ContentFilter,
   aliasMap?: Map<string, string>,
   aliasContext?: {
@@ -619,6 +719,7 @@ async function classifyEventsInternal(
   const createContents = new Map<string, string>();
   const updateContents = new Map<string, string>();
   for (const event of creates) {
+    beginOwnWriteObservation(event.path, observations);
     try {
       createContents.set(event.path, await readFile(event.path, 'utf-8'));
     } catch (e) {
@@ -629,6 +730,7 @@ async function classifyEventsInternal(
     }
   }
   for (const event of updates) {
+    beginOwnWriteObservation(event.path, observations);
     try {
       updateContents.set(event.path, await readFile(event.path, 'utf-8'));
     } catch (e) {
@@ -636,6 +738,17 @@ async function classifyEventsInternal(
       if (errnoCode(e) !== 'ENOENT') {
         log.warn({ path: event.path, err: e }, `Failed to read ${event.path}`);
       }
+    }
+  }
+
+  for (const [contents, type] of [
+    [createContents, 'create'],
+    [updateContents, 'update'],
+  ] as const) {
+    for (const [filePath, content] of contents) {
+      if (!discardSupersededOwnWrite(filePath, content, observations)) continue;
+      contents.delete(filePath);
+      recordSupersededOwnWriteSkip(type, filePath);
     }
   }
 
@@ -801,15 +914,18 @@ function declaredDiskEvent(event: DiskEvent): DiskEvent {
 }
 
 export function isSelfWrite(filePath: string, hash: string): boolean {
-  const queue = writeTracker.get(filePath);
+  if (consumeOwnWrite(filePath, hash)) return true;
+  writeTracker.delete(filePath);
+  return false;
+}
+
+function consumeOwnWrite(key: string, hash: string): boolean {
+  const queue = writeTracker.get(key);
   if (!queue) return false;
   const idx = queue.findIndex((e) => e.hash === hash);
-  if (idx < 0) {
-    writeTracker.delete(filePath);
-    return false;
-  }
+  if (idx < 0) return false;
   queue.splice(0, idx + 1);
-  if (queue.length === 0) writeTracker.delete(filePath);
+  if (queue.length === 0) writeTracker.delete(key);
   return true;
 }
 
@@ -2399,127 +2515,141 @@ async function handleRawEventsInternal(
   }
 
   const canonicalAliasRecords = new Set<RawFileEvent>();
-  const diskEvents =
-    mdEvents.length > 0
-      ? await classifyEventsInternal(
-          mdEvents,
-          contentDir,
-          contentFilter,
-          aliasMap,
-          aliasPaths
-            ? { fileIndex, aliasPaths, canonicalRecords: canonicalAliasRecords }
-            : undefined,
-        )
-      : [];
-
+  const observations = new Map<string, OwnWriteObservation>();
   const admittedMarkdownPaths = new Set<string>();
-  for (const event of diskEvents) {
-    if (admitEvent && !admitEvent(event)) continue;
-    if (event.kind === 'rename') {
-      admittedMarkdownPaths.add(event.oldPath);
-      admittedMarkdownPaths.add(event.newPath);
-    } else {
-      admittedMarkdownPaths.add(event.path);
-    }
-    let isSelf = false;
-    let indexEvent = event;
+  try {
+    const diskEvents =
+      mdEvents.length > 0
+        ? await classifyEventsInternal(
+            mdEvents,
+            contentDir,
+            observations,
+            contentFilter,
+            aliasMap,
+            aliasPaths
+              ? { fileIndex, aliasPaths, canonicalRecords: canonicalAliasRecords }
+              : undefined,
+          )
+        : [];
 
-    const previousIndexedFields =
-      event.kind === 'update'
-        ? (() => {
-            const previous = fileIndex.get(event.docName);
-            if (previous?.kind !== 'markdown') return undefined;
-            return {
-              title: previous.title,
-              description: previous.description,
-              type: previous.type,
-            };
-          })()
-        : undefined;
-
-    if (event.kind !== 'delete' && event.kind !== 'rename') {
-      const hash = contentHash(event.content);
-      const checkPath = observedPathKey(event.path);
-      isSelf = isSelfWrite(checkPath, hash);
-      voidRemoval(event.path, declaredBeforeBatch);
-    } else if (event.kind === 'rename') {
-      const hash = contentHash(event.content);
-      const checkPath = observedPathKey(event.newPath);
-      isSelf = isSelfWrite(checkPath, hash);
-      indexEvent = { ...event, newPath: checkPath };
-      voidRemoval(event.oldPath, declaredBeforeBatch);
-      voidRemoval(event.newPath, declaredBeforeBatch);
-    } else {
-      isSelf = isSelfRemoval(event.path);
-    }
-
-    const dispatchedEvent =
-      event.kind === 'update' && previousIndexedFields !== undefined
-        ? { ...event, previousIndexedFields }
-        : event;
-
-    updateFileIndex(indexEvent, fileIndex);
-
-    if (contentFilter && !isSelf) {
-      switch (event.kind) {
-        case 'create':
-          contentFilter.incrementMdDir(dirname(event.docName));
-          break;
-        case 'delete':
-          contentFilter.decrementMdDir(dirname(event.docName));
-          break;
-        case 'rename':
-          contentFilter.decrementMdDir(dirname(event.oldDocName));
-          contentFilter.incrementMdDir(dirname(event.newDocName));
-          break;
-        case 'update':
-        case 'conflict':
-          break;
-        default:
-          assertNeverDiskEvent(event);
+    for (const event of diskEvents) {
+      if (
+        event.kind !== 'delete' &&
+        event.kind !== 'rename' &&
+        discardSupersededOwnWrite(event.path, event.content, observations)
+      ) {
+        recordSupersededOwnWriteSkip(event.kind, event.path);
+        continue;
       }
-    }
+      if (admitEvent && !admitEvent(event)) continue;
+      if (event.kind === 'rename') {
+        admittedMarkdownPaths.add(event.oldPath);
+        admittedMarkdownPaths.add(event.newPath);
+      } else {
+        admittedMarkdownPaths.add(event.path);
+      }
+      let isSelf = false;
+      let indexEvent = event;
 
-    if (isSelf) {
-      const selfKind = event.kind === 'delete' ? 'self-removal' : 'self-write';
+      const previousIndexedFields =
+        event.kind === 'update'
+          ? (() => {
+              const previous = fileIndex.get(event.docName);
+              if (previous?.kind !== 'markdown') return undefined;
+              return {
+                title: previous.title,
+                description: previous.description,
+                type: previous.type,
+              };
+            })()
+          : undefined;
+
+      if (event.kind !== 'delete' && event.kind !== 'rename') {
+        const hash = contentHash(event.content);
+        const checkPath = observedPathKey(event.path);
+        isSelf = isSelfWrite(checkPath, hash);
+        voidRemoval(event.path, declaredBeforeBatch);
+      } else if (event.kind === 'rename') {
+        const hash = contentHash(event.content);
+        const checkPath = observedPathKey(event.newPath);
+        isSelf = isSelfWrite(checkPath, hash);
+        indexEvent = { ...event, newPath: checkPath };
+        voidRemoval(event.oldPath, declaredBeforeBatch);
+        voidRemoval(event.newPath, declaredBeforeBatch);
+      } else {
+        isSelf = isSelfRemoval(event.path);
+      }
+
+      const dispatchedEvent =
+        event.kind === 'update' && previousIndexedFields !== undefined
+          ? { ...event, previousIndexedFields }
+          : event;
+
+      updateFileIndex(indexEvent, fileIndex);
+
+      if (contentFilter && !isSelf) {
+        switch (event.kind) {
+          case 'create':
+            contentFilter.incrementMdDir(dirname(event.docName));
+            break;
+          case 'delete':
+            contentFilter.decrementMdDir(dirname(event.docName));
+            break;
+          case 'rename':
+            contentFilter.decrementMdDir(dirname(event.oldDocName));
+            contentFilter.incrementMdDir(dirname(event.newDocName));
+            break;
+          case 'update':
+          case 'conflict':
+            break;
+          default:
+            assertNeverDiskEvent(event);
+        }
+      }
+
+      if (isSelf) {
+        const selfKind = event.kind === 'delete' ? 'self-removal' : 'self-write';
+        log.debug(
+          {
+            kind: event.kind,
+            path: event.kind === 'rename' ? event.newPath : event.path,
+            self: true,
+          },
+          `[file-watcher] Skipped ${selfKind}: ${event.kind}`,
+        );
+        _fileWatcherEventsCounter().add(1, { 'disk.kind': event.kind, self: true });
+        recordWatcherDecision(
+          `${selfKind}-skip`,
+          event.kind,
+          event.kind === 'rename' ? event.newPath : event.path,
+        );
+        continue;
+      }
+
       log.debug(
         {
           kind: event.kind,
           path: event.kind === 'rename' ? event.newPath : event.path,
-          self: true,
         },
-        `[file-watcher] Skipped ${selfKind}: ${event.kind}`,
+        `[file-watcher] Dispatching: ${event.kind}`,
       );
-      _fileWatcherEventsCounter().add(1, { 'disk.kind': event.kind, self: true });
-      recordWatcherDecision(
-        `${selfKind}-skip`,
-        event.kind,
-        event.kind === 'rename' ? event.newPath : event.path,
+      _fileWatcherEventsCounter().add(1, { 'disk.kind': event.kind, self: false });
+      const rawPath = event.kind === 'rename' ? event.newPath : event.path;
+      recordWatcherDecision('dispatched', event.kind, rawPath);
+      await withSpan(
+        'file_watcher.process_event',
+        {
+          attributes: {
+            'disk.kind': event.kind,
+            'disk.path': normalizeFsPath(rawPath),
+            'disk.path.role': classifyFsPath(rawPath),
+          },
+        },
+        async () => onDiskEvent(dispatchedEvent),
       );
-      continue;
     }
-
-    log.debug(
-      {
-        kind: event.kind,
-        path: event.kind === 'rename' ? event.newPath : event.path,
-      },
-      `[file-watcher] Dispatching: ${event.kind}`,
-    );
-    _fileWatcherEventsCounter().add(1, { 'disk.kind': event.kind, self: false });
-    const rawPath = event.kind === 'rename' ? event.newPath : event.path;
-    recordWatcherDecision('dispatched', event.kind, rawPath);
-    await withSpan(
-      'file_watcher.process_event',
-      {
-        attributes: {
-          'disk.kind': event.kind,
-          'disk.path': normalizeFsPath(rawPath),
-          'disk.path.role': classifyFsPath(rawPath),
-        },
-      },
-      async () => onDiskEvent(dispatchedEvent),
-    );
+  } finally {
+    releaseOwnWriteObservations(observations);
   }
 
   for (const event of folderEvents) {
