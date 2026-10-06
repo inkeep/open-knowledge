@@ -6030,6 +6030,18 @@ msgstr "Excalidraw बोर्ड लोड नहीं हो सका।"
 msgid "Excalidraw canvas"
 msgstr "Excalidraw कैनवास"
 
+#: src/components/LinksPanel.tsx
+msgid "Excluded"
+msgstr "बहिष्कृत"
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded file {identity}. Go to reference."
+msgstr "बहिष्कृत फ़ाइल {identity}। संदर्भ पर जाएँ।"
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded image {identity}. Go to reference."
+msgstr "बहिष्कृत चित्र {identity}। संदर्भ पर जाएँ।"
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "मौजूदा ब्रांच <0>{trimmed}</0> को <1>.ok/worktrees/</1> के अंतर्गत उसकी अपनी विंडो में चेक आउट किया जाएगा।"
@@ -7532,6 +7544,10 @@ msgstr "चित्र लक्ष्य \"{shown}\" को प्रोजे
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "चित्र लक्ष्य \"{shown}\" किसी मौजूदा फ़ाइल पर हल नहीं होता।"
 
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "चित्र लक्ष्य \"{shown}\" मौजूद है, लेकिन .gitignore या .okignore ने उसे बहिष्कृत किया है। उसे, या उसके फ़ोल्डर को, .okignore में \"!\" नियम से फिर से शामिल करें।"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "चित्रों की संवेदनशील जानकारी नहीं छिपाई जाती।"
@@ -8311,6 +8327,10 @@ msgstr "लिंक लक्ष्य \"{shown}\" किसी मौजूद
 #: src/editor/localized-validation-message.ts
 msgid "Link target \"{shown}\" does not resolve to an existing file."
 msgstr "लिंक लक्ष्य \"{shown}\" किसी मौजूदा फ़ाइल पर हल नहीं होता।"
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "लिंक लक्ष्य \"{shown}\" मौजूद है, लेकिन .gitignore या .okignore ने उसे बहिष्कृत किया है। उसे, या उसके फ़ोल्डर को, .okignore में \"!\" नियम से फिर से शामिल करें।"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."

@@ -77,8 +77,8 @@ interface EditMarkdownLinkDialogProps {
   open: boolean;
   href: string;
   text: string;
-  pages: Set<string>;
-  folderPaths: Set<string>;
+  pages: ReadonlySet<string>;
+  folderPaths: ReadonlySet<string>;
   loading: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (href: string, text: string, labelChanged: boolean) => void;

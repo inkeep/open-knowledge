@@ -450,6 +450,7 @@ function buildMdastToPmHandlers(
         alt: node.alt ?? null,
         title: node.title ?? null,
         sourceUrl: normalized !== orig ? orig : null,
+        sourceUrlForm: node.data?.sourceUrlForm ?? null,
       });
     };
     if (n.imageReference) {
@@ -731,6 +732,7 @@ function buildMdastToPmHandlers(
     const hasIdentifierAttr = !!linkDefNode.spec.attrs?.identifier;
     const hasSourceLayoutAttr = !!linkDefNode.spec.attrs?.sourceLayout;
     const hasSourceTitleMarkerAttr = !!linkDefNode.spec.attrs?.sourceTitleMarker;
+    const hasSourceUrlFormAttr = !!linkDefNode.spec.attrs?.sourceUrlForm;
     handlers.definition = (node: Definition) => {
       const attrs: Record<string, unknown> = {
         title: node.title ?? null,
@@ -745,6 +747,7 @@ function buildMdastToPmHandlers(
       else if (hasHrefAttr) attrs.href = node.url ?? '';
       if (hasSourceLayoutAttr) attrs.sourceLayout = node.data?.sourceLayout ?? null;
       if (hasSourceTitleMarkerAttr) attrs.sourceTitleMarker = node.data?.sourceTitleMarker ?? null;
+      if (hasSourceUrlFormAttr) attrs.sourceUrlForm = node.data?.sourceUrlForm ?? null;
       return linkDefNode.createAndFill(attrs);
     };
   }
@@ -1324,12 +1327,18 @@ function buildPmToMdastHandlers(
       buildCellNode(pmNode, state.all(pmNode));
 
   if (n.image) {
-    nodeHandlers.image = (pmNode: PmNode) => ({
-      type: 'image' as const,
-      url: (pmNode.attrs.sourceUrl as string | null) ?? pmNode.attrs.src,
-      alt: pmNode.attrs.alt,
-      title: pmNode.attrs.title,
-    });
+    nodeHandlers.image = (pmNode: PmNode) => {
+      const result: Image = {
+        type: 'image' as const,
+        url: (pmNode.attrs.sourceUrl as string | null) ?? pmNode.attrs.src,
+        alt: pmNode.attrs.alt,
+        title: pmNode.attrs.title,
+      };
+      if (pmNode.attrs.sourceUrlForm === 'angle-bracketed') {
+        result.data = { sourceUrlForm: 'angle-bracketed' };
+      }
+      return result;
+    };
   }
 
   if (n.imageReference) {
@@ -1366,6 +1375,9 @@ function buildPmToMdastHandlers(
       const marker = pmNode.attrs.sourceTitleMarker;
       if (marker === 'single' || marker === 'double' || marker === 'paren') {
         data.sourceTitleMarker = marker;
+      }
+      if (pmNode.attrs.sourceUrlForm === 'angle-bracketed') {
+        data.sourceUrlForm = 'angle-bracketed';
       }
       const result: Definition = {
         type: 'definition' as const,

@@ -6,6 +6,7 @@ import {
   forgetDocExtension,
   getDocExtension,
   isSupportedDocFile,
+  linkNamesDocumentFile,
   registerDocExtension,
   SUPPORTED_DOC_EXTENSIONS,
   stripDocExtension,
@@ -38,6 +39,16 @@ describe('isSupportedDocFile', () => {
     expect(isSupportedDocFile('foo.markdown')).toBe(false);
     expect(isSupportedDocFile('foo')).toBe(false);
     expect(isSupportedDocFile('foo.mdown')).toBe(false);
+  });
+});
+
+describe('linkNamesDocumentFile', () => {
+  test('judges the resolved project path, so a fragment or query does not hide the extension', () => {
+    expect(linkNamesDocumentFile('./Guide.md', 'notes/a')).toBe(true);
+    expect(linkNamesDocumentFile('./Guide.md#intro', 'notes/a')).toBe(true);
+    expect(linkNamesDocumentFile('./Help.mdx?v=1', 'notes/a')).toBe(true);
+    expect(linkNamesDocumentFile('../Makefile', 'notes/a')).toBe(false);
+    expect(linkNamesDocumentFile('./guide', 'notes/a')).toBe(false);
   });
 });
 

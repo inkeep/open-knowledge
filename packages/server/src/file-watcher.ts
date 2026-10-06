@@ -2673,7 +2673,7 @@ async function handleRawEventsInternal(
   for (const raw of assetEvents) {
     if (contentFilter) {
       const relPath = toPosix(relative(contentDir, raw.path));
-      if (contentFilter.isExcluded(relPath)) {
+      if (contentFilter.isPathIgnored(relPath)) {
         recordWatcherDecision('drop-filter-excluded', raw.type, raw.path);
         continue;
       }

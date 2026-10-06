@@ -480,7 +480,7 @@ export function applyPositionSliceToNode(
             while (cursor < slice.length && (slice[cursor] === ' ' || slice[cursor] === '\t')) {
               cursor++;
             }
-            if (slice[cursor] === '<') {
+            if (opensEnclosedDestination(slice, cursor, node.data)) {
               node.data.sourceUrlForm = 'angle-bracketed';
             }
             if (
@@ -509,9 +509,25 @@ export function applyPositionSliceToNode(
       break;
     }
 
+    case 'image': {
+      const slice = source.slice(startOff, endOff);
+      const closeBracketIdx = slice.lastIndexOf('](');
+      if (
+        closeBracketIdx !== -1 &&
+        destinationStartsWithAngle(slice, closeBracketIdx + 2, node.data)
+      ) {
+        node.data.sourceUrlForm = 'angle-bracketed';
+      }
+      break;
+    }
+
     case 'definition': {
       const slice = source.slice(startOff, endOff);
       node.data.sourceLayout = slice.includes('\n') ? 'multiline' : 'inline';
+      const labelCloseIdx = definitionLabelCloseIndex(slice);
+      if (labelCloseIdx !== -1 && destinationStartsWithAngle(slice, labelCloseIdx + 2, node.data)) {
+        node.data.sourceUrlForm = 'angle-bracketed';
+      }
       if (typeof node.title === 'string' && slice.length > 0) {
         const lastChar = slice[slice.length - 1];
         if (lastChar === '"') {
@@ -544,6 +560,40 @@ export function applyPositionSliceToNode(
       break;
     }
   }
+}
+
+interface DestinationSourceData {
+  sourceGuardedDestinationOpen?: true;
+}
+
+function destinationStartsWithAngle(
+  slice: string,
+  from: number,
+  data: DestinationSourceData,
+): boolean {
+  let cursor = from;
+  while (cursor < slice.length && /[ \t\r\n]/.test(slice[cursor])) cursor++;
+  return opensEnclosedDestination(slice, cursor, data);
+}
+
+function opensEnclosedDestination(
+  slice: string,
+  cursor: number,
+  data: DestinationSourceData,
+): boolean {
+  return slice[cursor] === '<' && data.sourceGuardedDestinationOpen !== true;
+}
+
+function definitionLabelCloseIndex(slice: string): number {
+  for (let i = 1; i < slice.length; i++) {
+    const ch = slice[i];
+    if (ch === '\\') {
+      i++;
+      continue;
+    }
+    if (ch === ']') return slice[i + 1] === ':' ? i : -1;
+  }
+  return -1;
 }
 
 export function positionSlicePlugin() {

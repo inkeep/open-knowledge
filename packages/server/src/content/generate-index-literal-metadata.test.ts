@@ -390,11 +390,11 @@ const LITERAL_SURFACE_CASES: LiteralSurfaceCase[] = [
       assert(guides);
       return {
         markdown: guides.markdown,
-        hrefs: [`./${encodeURIComponent(literal)}/index.md`],
+        hrefs: [`./${encodeURIComponent(literal.normalize('NFC'))}/index.md`],
       };
     },
     expected: (literal, pathLiteral) =>
-      `# Index\n\n## Subdirectories\n\n* [${literal}](./${encodeURIComponent(pathLiteral)}/index.md)\n`,
+      `# Index\n\n## Subdirectories\n\n* [${literal}](./${encodeURIComponent(pathLiteral.normalize('NFC'))}/index.md)\n`,
   },
 ];
 

@@ -60,9 +60,9 @@ interface EditWikiLinkDialogProps {
   target: string;
   alias: string | null;
   anchor: string | null;
-  pages: Set<string>;
-  assetPaths: Set<string>;
-  filePaths: Set<string>;
+  pages: ReadonlySet<string>;
+  assetPaths: ReadonlySet<string>;
+  filePaths: ReadonlySet<string>;
   loading: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (target: string, alias: string | null, anchor: string | null) => void;

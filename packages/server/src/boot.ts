@@ -455,6 +455,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
           assetExtensions: ASSET_EXTENSIONS,
           blocklistExtensions: EXECUTABLE_BLOCKLIST_EXTENSIONS,
           ingressPolicy,
+          resolveTrackedFile: serverInstance.resolveTrackedFile,
         })
       : undefined;
 

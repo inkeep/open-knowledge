@@ -6030,6 +6030,18 @@ msgstr ""
 msgid "Excalidraw canvas"
 msgstr ""
 
+#: src/components/LinksPanel.tsx
+msgid "Excluded"
+msgstr ""
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded file {identity}. Go to reference."
+msgstr ""
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded image {identity}. Go to reference."
+msgstr ""
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr ""
@@ -7532,6 +7544,10 @@ msgstr ""
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr ""
 
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr ""
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr ""
@@ -8310,6 +8326,10 @@ msgstr ""
 
 #: src/editor/localized-validation-message.ts
 msgid "Link target \"{shown}\" does not resolve to an existing file."
+msgstr ""
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts

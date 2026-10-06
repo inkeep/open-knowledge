@@ -1,11 +1,19 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { extname, relative, resolve } from 'node:path';
-import { SUPPORTED_DOC_EXTENSIONS } from '@inkeep/open-knowledge-core';
+import {
+  addDocumentFolders,
+  asTargetNamespace,
+  createTargetNamespace,
+  createWikiAssetResolver,
+  SUPPORTED_DOC_EXTENSIONS,
+} from '@inkeep/open-knowledge-core';
 import { BacklinkIndex } from '../backlink-index.ts';
 import { createContentFilter } from '../content-filter.ts';
 import { isWithinContentDir } from '../content-path.ts';
 import { isSupportedDocFile, stripDocExtension } from '../doc-extensions.ts';
 import { assessLocalTargets, createTolerantDocumentResolver } from '../local-target-assessment.ts';
+import { isExcludedFileOnDisk } from '../local-target-index.ts';
+import { createFileBasenameResolver } from '../local-target-inventory.ts';
 import { toPosix } from '../path-utils.ts';
 import { readScopeEntry } from './audit-scope.ts';
 import type { ValidationAuditDeps, ValidationScope } from './validation-audit.ts';
@@ -54,8 +62,19 @@ export function physicalScopeLinks(
     if (!isWithinContentDir(realpathSync(full), canonicalContent)) return false;
     return kind === 'file' ? stat.isFile() : stat.isDirectory();
   };
-  const hasFile = (path: string) => targetExists(path, 'file');
-  const hasFolder = (path: string) => targetExists(path, 'dir');
+  const documents = asTargetNamespace('document', admitted);
+  const tracked = deps.localTargetInventory?.() ?? null;
+  const files = tracked === null ? null : asTargetNamespace('file', tracked.fileTargets);
+  const folders =
+    tracked === null
+      ? null
+      : addDocumentFolders(createTargetNamespace('folder', tracked.folderTargets), documents);
+  const resolveFile = (path: string): string | undefined =>
+    files === null ? (targetExists(path, 'file') ? path : undefined) : files.resolve(path);
+  const resolveFolder = (path: string): string | undefined =>
+    folders === null ? (targetExists(path, 'dir') ? path : undefined) : folders.resolve(path);
+  const hasFile = (path: string) => resolveFile(path) !== undefined;
+  const hasFolder = (path: string) => resolveFolder(path) !== undefined;
   const graph = new BacklinkIndex({
     projectDir: deps.projectDir,
     contentDir: deps.contentDir,
@@ -63,11 +82,13 @@ export function physicalScopeLinks(
     getFileOracle: () => ({ hasFile }),
   });
   graph.updateDocumentFromMarkdown(source, markdown);
-  const documents = new Set(admitted);
   const assessments = assessLocalTargets(markdown, source, {
-    hasDocument: (name) => documents.has(name),
-    hasFile,
-    hasFolder,
+    resolveDocument: (name) => documents.resolve(name),
+    resolveFile,
+    resolveFileByBasename: files === null ? null : createFileBasenameResolver(files),
+    ...(files === null ? {} : { resolveWikiFile: createWikiAssetResolver(files) }),
+    resolveFolder,
+    isExcludedFile: (path) => isExcludedFileOnDisk(deps.contentDir, filter, path),
     resolveTolerantDocument: createTolerantDocumentResolver(documents),
   });
   return {

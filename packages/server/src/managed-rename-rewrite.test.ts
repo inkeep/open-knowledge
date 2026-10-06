@@ -6,6 +6,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
+  canonicalDocNameBeforeRename,
   createWikiRenameContext,
   rewriteAssetReferencesForRename,
   rewriteJsxSrcRefsForDocumentRename,
@@ -1211,5 +1212,46 @@ describe('rewriteWikiLinksForDocumentRename — escaped alias separators inside 
       rewrites: 1,
     });
     expect(dataRowCellCount(result.markdown)).toBe(1);
+  });
+});
+
+describe('rename rewrites across canonically equivalent spellings', () => {
+  const NFC = 'people/Ren\u00e9';
+  const NFD = 'people/Rene\u0301';
+
+  test('a markdown link spelled in NFC follows the NFD document it resolves to', () => {
+    const context = createWikiRenameContext(['notes', NFD], new Map([[NFD, 'archive/Rene\u0301']]));
+    const canonical = canonicalDocNameBeforeRename(context);
+    expect(
+      rewriteMarkdownLinksForDocumentRename(
+        `See [R](./${NFC}.md#bio) and [[${NFC}]].\n`,
+        'notes',
+        NFD,
+        'archive/Rene\u0301',
+        canonical,
+      ),
+    ).toEqual({
+      markdown: `See [R](./archive/Rene%CC%81.md#bio) and [[${NFC}]].\n`,
+      rewrites: 1,
+    });
+  });
+
+  test('without a before-rename lookup the comparison stays exact', () => {
+    expect(
+      rewriteMarkdownLinksForDocumentRename(`See [R](./${NFC}.md).\n`, 'notes', NFD, 'moved'),
+    ).toEqual({ markdown: `See [R](./${NFC}.md).\n`, rewrites: 0 });
+  });
+
+  test('a JSX src-ref spelled in NFC follows the NFD board it resolves to', () => {
+    const context = createWikiRenameContext(['notes', NFD], new Map([[NFD, 'archive/Rene\u0301']]));
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        `<Excalidraw src="/${NFC}" />\n`,
+        'notes',
+        NFD,
+        'archive/Rene\u0301',
+        canonicalDocNameBeforeRename(context),
+      ),
+    ).toEqual({ markdown: '<Excalidraw src="/archive/Rene\u0301" />\n', rewrites: 1 });
   });
 });

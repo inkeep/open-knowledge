@@ -313,6 +313,16 @@ describe('AgentWriteMdSuccessSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  test('parses an excluded brokenLink reason (the target exists but ignore rules exclude it)', () => {
+    const result = AgentWriteMdSuccessSchema.safeParse({
+      timestamp: '2026-04-30T00:00:00.000Z',
+      subscriberCount: 0,
+      systemSubscriberCount: 0,
+      brokenLinks: [{ href: 'ignored/ig.png', resolvedTo: 'ignored/ig.png', reason: 'excluded' }],
+    });
+    expect(result.success).toBe(true);
+  });
+
   test('round-trips a brokenLink carrying additive local-target evidence (image + reference)', () => {
     const brokenLinks = [
       {

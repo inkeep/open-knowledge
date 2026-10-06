@@ -6034,6 +6034,18 @@ msgstr "No se pudo cargar la pizarra de Excalidraw."
 msgid "Excalidraw canvas"
 msgstr "Lienzo de Excalidraw"
 
+#: src/components/LinksPanel.tsx
+msgid "Excluded"
+msgstr "Excluido"
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded file {identity}. Go to reference."
+msgstr "Archivo {identity} excluido. Ir a la referencia."
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded image {identity}. Go to reference."
+msgstr "Imagen {identity} excluida. Ir a la referencia."
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "La rama existente <0>{trimmed}</0> se extraerá en su propia ventana, dentro de <1>.ok/worktrees/</1>."
@@ -7536,6 +7548,10 @@ msgstr "El destino de la imagen «{shown}» no se pudo resolver como un archivo 
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "El destino de la imagen «{shown}» no corresponde a un archivo existente."
 
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "El destino de la imagen «{shown}» existe, pero .gitignore o .okignore lo excluye. Vuelve a incluirlo, o su carpeta, con una regla «!» en .okignore."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "Las imágenes no se censuran."
@@ -8315,6 +8331,10 @@ msgstr "El destino del enlace «{shown}» no corresponde a un documento existent
 #: src/editor/localized-validation-message.ts
 msgid "Link target \"{shown}\" does not resolve to an existing file."
 msgstr "El destino del enlace «{shown}» no corresponde a un archivo existente."
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "El destino del enlace «{shown}» existe, pero .gitignore o .okignore lo excluye. Vuelve a incluirlo, o su carpeta, con una regla «!» en .okignore."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."

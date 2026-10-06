@@ -1,9 +1,11 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, request as httpRequest, type Server } from 'node:http';
+import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   ASSET_EXTENSIONS,
+  createTargetNamespace,
   EXECUTABLE_BLOCKLIST_EXTENSIONS,
   INLINE_RENDERABLE_EXTENSIONS,
 } from '@inkeep/open-knowledge-core';
@@ -20,7 +22,10 @@ interface Harness {
   close: () => Promise<void>;
 }
 
-async function startHarness(contentDir: string): Promise<Harness> {
+async function startHarness(
+  contentDir: string,
+  resolveTrackedFile?: (relativePath: string) => string | undefined,
+): Promise<Harness> {
   const contentFilter = createContentFilter({
     projectDir: contentDir,
     contentDir,
@@ -33,6 +38,7 @@ async function startHarness(contentDir: string): Promise<Harness> {
     assetExtensions: ASSET_EXTENSIONS,
     blocklistExtensions: EXECUTABLE_BLOCKLIST_EXTENSIONS,
     ingressPolicy: buildIngressPolicy({}),
+    resolveTrackedFile,
   });
 
   const server: Server = createServer((req, res) => {
@@ -379,6 +385,161 @@ describe('asset-serve middleware (narrow integration)', () => {
         const res = await fetch(`${harness.baseURL}${path}`);
         expect(res.headers.get('x-content-type-options')).toBe('nosniff');
       }
+    });
+  });
+
+  describe('Raw request targets that only an HTTP client can send', () => {
+    const SECRET = 'ignored-secret-bytes';
+
+    function rawGet(target: string): Promise<{ statusLine: string; response: string }> {
+      const { hostname, port } = new URL(harness.baseURL);
+      return new Promise((resolve, reject) => {
+        let response = '';
+        const socket = connect({ host: hostname, port: Number(port) }, () => {
+          socket.write(
+            `GET ${target} HTTP/1.1\r\nHost: ${hostname}:${port}\r\nConnection: close\r\n\r\n`,
+          );
+        });
+        socket.setEncoding('utf8');
+        socket.on('data', (chunk: string) => {
+          response += chunk;
+        });
+        socket.on('end', () => resolve({ statusLine: response.split('\r\n')[0] ?? '', response }));
+        socket.on('error', reject);
+      });
+    }
+
+    test('a # in the request line never serves the ignored file its prefix names', async () => {
+      writeFileSync(join(contentDir, '.okignore'), '/docs/secret\n');
+      writeFileSync(join(contentDir, 'docs', 'secret'), SECRET);
+      writeFileSync(join(contentDir, '.env'), SECRET);
+      await harness.close();
+      harness = await startHarness(contentDir);
+
+      const answers: Array<[string, string, boolean]> = [];
+      for (const target of ['/docs/secret#.png', '/.env#.png']) {
+        const { statusLine, response } = await rawGet(target);
+        answers.push([target, statusLine, response.includes(SECRET)]);
+      }
+      expect(answers).toEqual([
+        ['/docs/secret#.png', 'HTTP/1.1 404 Not Found', false],
+        ['/.env#.png', 'HTTP/1.1 404 Not Found', false],
+      ]);
+    });
+
+    test('an encoded reserved character the gate and sirv decode differently is refused before sirv', async () => {
+      writeFileSync(join(contentDir, '.okignore'), 'x%2Fy.png\n');
+      writeFileSync(join(contentDir, 'docs', 'x%2Fy.png'), SECRET);
+      await harness.close();
+      harness = await startHarness(contentDir);
+
+      const { statusLine, response } = await rawGet('/docs/x%2Fy.png');
+      expect(statusLine).toBe('HTTP/1.1 404 Not Found');
+      expect(response).not.toContain(SECRET);
+    });
+
+    test('dot, empty and backslash segments never route around an anchored ignore rule', async () => {
+      function bodyOf(response: string): string {
+        if (response.includes(SECRET)) return 'secret';
+        if (response.includes('spa fallback sentinel')) return 'spa fallback';
+        return 'neither';
+      }
+      writeFileSync(join(contentDir, 'docs', 'secret.png'), SECRET);
+      const beforeTheRule = await rawGet('/docs/secret.png');
+      writeFileSync(join(contentDir, '.okignore'), '/docs/secret.png\n');
+      const backslashSpelling = 'x\\..\\docs\\secret.png';
+      writeFileSync(join(contentDir, backslashSpelling), SECRET);
+      await harness.close();
+      harness = await startHarness(contentDir);
+
+      const answers: Array<[string, string, string]> = [];
+      for (const target of [
+        '/docs/secret.png',
+        '/docs/./secret.png',
+        '/docs//secret.png',
+        '/x/../docs/secret.png',
+        `/${encodeURIComponent(backslashSpelling)}`,
+      ]) {
+        const { statusLine, response } = await rawGet(target);
+        answers.push([target, statusLine, bodyOf(response)]);
+      }
+      expect([beforeTheRule.statusLine, bodyOf(beforeTheRule.response)]).toEqual([
+        'HTTP/1.1 200 OK',
+        'secret',
+      ]);
+      expect(answers).toEqual([
+        ['/docs/secret.png', 'HTTP/1.1 200 OK', 'spa fallback'],
+        ['/docs/./secret.png', 'HTTP/1.1 404 Not Found', 'neither'],
+        ['/docs//secret.png', 'HTTP/1.1 404 Not Found', 'neither'],
+        ['/x/../docs/secret.png', 'HTTP/1.1 404 Not Found', 'neither'],
+        ['/x%5C..%5Cdocs%5Csecret.png', 'HTTP/1.1 404 Not Found', 'neither'],
+      ]);
+    });
+
+    test('a request line both decoders agree on is still served', async () => {
+      const { statusLine, response } = await rawGet('/docs/photo.png?v=1');
+      expect(statusLine).toBe('HTTP/1.1 200 OK');
+      expect(response).toContain('fake-png-bytes');
+    });
+  });
+
+  describe('Tracked-file fallback when the requested spelling misses on disk', () => {
+    const CAFE_NFD = 'docs/Café.png'.normalize('NFD');
+    const SECRET = 'machine-local-secret';
+
+    async function restartWithTracked(trackedFiles: readonly string[]): Promise<void> {
+      await harness.close();
+      const tracked = createTargetNamespace('file', trackedFiles);
+      harness = await startHarness(contentDir, (relativePath) => tracked.resolve(relativePath));
+    }
+
+    test('an NFC request serves the NFD-named file on every platform', async () => {
+      writeFileSync(join(contentDir, CAFE_NFD), 'nfd-bytes');
+      await restartWithTracked([CAFE_NFD]);
+      const nfc = encodeURI('/docs/Café.png'.normalize('NFC'));
+      const res = await fetch(`${harness.baseURL}${nfc}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toMatch(/^image\/png/);
+      expect(res.headers.get('content-disposition')).toBe('inline');
+      expect(await res.text()).toBe('nfd-bytes');
+    });
+
+    test('a leaf-case request serves the tracked file on every platform', async () => {
+      await restartWithTracked(['docs/photo.png']);
+      const res = await fetch(`${harness.baseURL}/docs/PHOTO.PNG`);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe('fake-png-bytes');
+    });
+
+    test('a tracked symlink into private state is still refused', async () => {
+      mkdirSync(join(contentDir, '.git'), { recursive: true });
+      writeFileSync(join(contentDir, '.git', 'config'), `[core]\n\t# ${SECRET}\n`);
+      symlinkSync('../.git/config', join(contentDir, 'docs', 'cfg.txt'));
+      await restartWithTracked(['docs/cfg.txt']);
+      const res = await fetch(`${harness.baseURL}/docs/CFG.TXT`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain(SECRET);
+    });
+
+    test('a tracked name holding ? never serves the ignored file its prefix names', async () => {
+      writeFileSync(join(contentDir, '.okignore'), '/docs/secret\n');
+      writeFileSync(join(contentDir, 'docs', 'secret'), SECRET);
+      await restartWithTracked(['docs/secret?.png']);
+      const res = await fetch(`${harness.baseURL}/docs/SECRET%3F.png`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain(SECRET);
+    });
+
+    test('a tracked name holding ? or # is never answered with the bytes of its prefix', async () => {
+      writeFileSync(join(contentDir, 'docs', 'chart'), 'chart-prefix-bytes');
+      writeFileSync(join(contentDir, 'docs', 'C'), 'c-prefix-bytes');
+      await restartWithTracked(['docs/chart?.png', 'docs/C#.png']);
+      const answers: string[] = [];
+      for (const path of ['/docs/CHART%3F.png', '/docs/c%23.png']) {
+        const res = await fetch(`${harness.baseURL}${path}`);
+        answers.push(`${path} ${res.status} ${await res.text()}`);
+      }
+      expect(answers).toEqual(['/docs/CHART%3F.png 404 ', '/docs/c%23.png 404 ']);
     });
   });
 });

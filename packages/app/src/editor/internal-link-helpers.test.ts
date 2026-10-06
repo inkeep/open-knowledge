@@ -117,6 +117,33 @@ describe('activateAssetLink', () => {
     expect(assign).toHaveBeenCalledWith('#/__asset__/docs/report.html');
   });
 
+  it.each([
+    ['a code file the server never streams raw', 'docs/script.py', 'py'],
+    ['an extensionless file', 'docs/Makefile', ''],
+  ])(
+    'Cmd/Ctrl/middle-click on %s hands the dispatcher the in-app asset route as its browser URL',
+    (_label, projectRelPath, ext) => {
+      const navigate = vi.fn((_assetPath: string) => {});
+      const dispatch = vi.fn(async () => {});
+      const title = projectRelPath.split('/').pop() ?? projectRelPath;
+
+      activateAssetLink(
+        { url: projectRelPath, projectRelPath, ext, title, newTab: true },
+        { navigate, dispatch },
+      );
+
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      expect(dispatch).toHaveBeenCalledWith({
+        url: `#/__asset__/${projectRelPath}`,
+        projectRelPath,
+        ext,
+        title,
+        forceOsDelegation: true,
+      });
+      expect(navigate).not.toHaveBeenCalled();
+    },
+  );
+
   it('Cmd/Ctrl/middle-click on an Excalidraw board opens the board in a new app tab, not the OS', () => {
     const open = vi.fn(() => null);
     Object.defineProperty(globalThis, 'window', {

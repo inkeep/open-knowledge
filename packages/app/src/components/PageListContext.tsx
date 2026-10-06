@@ -1,4 +1,8 @@
 import { toWikiLinkSlug } from '@inkeep/open-knowledge-core/utils/slug';
+import {
+  asTargetNamespace,
+  createTargetNamespace,
+} from '@inkeep/open-knowledge-core/utils/target-namespace';
 import { t } from '@lingui/core/macro';
 import { createContext, type ReactNode, use, useEffect, useRef, useState } from 'react';
 import {
@@ -28,14 +32,14 @@ export interface PageMeta {
 }
 
 interface PageListContextValue {
-  pages: Set<string>;
+  pages: ReadonlySet<string>;
   pagesBySlug: ReadonlyMap<string, string>;
   pagesByBasename: ReadonlyMap<string, string>;
   pageTitles: ReadonlyMap<string, string>;
   pageMeta: ReadonlyMap<string, PageMeta>;
-  folderPaths: Set<string>;
-  assetPaths: Set<string>;
-  filePaths: Set<string>;
+  folderPaths: ReadonlySet<string>;
+  assetPaths: ReadonlySet<string>;
+  filePaths: ReadonlySet<string>;
   loading: boolean;
   error: string | null;
   refetch: () => void;
@@ -272,12 +276,15 @@ export function PageListProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const pages = mergePageSets(serverPages, optimisticPages);
+  const pages = asTargetNamespace('document', mergePageSets(serverPages, optimisticPages));
   const pageTitles = mergePageTitles(serverPageTitles, optimisticPages);
   const pageMeta: ReadonlyMap<string, PageMeta> = serverPageMeta;
-  const assetPaths = serverAssetPaths;
-  const filePaths = serverFilePaths;
-  const folderPaths = new Set([...deriveKnownFolderPaths(pages), ...serverFolderPaths]);
+  const assetPaths = asTargetNamespace('file', serverAssetPaths);
+  const filePaths = asTargetNamespace('file', serverFilePaths);
+  const folderPaths = createTargetNamespace('folder', [
+    ...deriveKnownFolderPaths(pages),
+    ...serverFolderPaths,
+  ]);
   const pagesBySlug = buildPagesBySlugIndex(pages, toWikiLinkSlug);
   const pagesByBasename = buildPagesByBasenameIndex(pages, toWikiLinkSlug);
   const pageIcons = buildPageIconsIndex(serverPageMeta);

@@ -38,6 +38,7 @@ describe('audit routes with a missing content directory', () => {
         collectAdmittedDocNames: async () => new Set<string>(),
         unmatchedGlobProblems: () => [],
         readAuditGeneration: () => 'initial',
+        localTargetInventory: () => ({ documentTargets: [], fileTargets: [], folderTargets: [] }),
       });
       const dispatch = group.table.resolve(routePath)?.dispatch;
       if (dispatch === undefined) throw new Error(`${routePath} was not registered`);

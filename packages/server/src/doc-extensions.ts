@@ -5,6 +5,7 @@ import {
   isEditableTextDocFile,
   isExcalidrawDocFile,
   isMermaidDocFile,
+  resolveAssetProjectPath,
   SUPPORTED_DOC_EXTENSIONS,
 } from '@inkeep/open-knowledge-core';
 
@@ -15,6 +16,11 @@ const DEFAULT_EXTENSION: DocExtension = DEFAULT_DOC_EXTENSION;
 export function isSupportedDocFile(path: string): boolean {
   const ext = extname(path).toLowerCase();
   return (SUPPORTED_DOC_EXTENSIONS as readonly string[]).includes(ext);
+}
+
+export function linkNamesDocumentFile(href: string, sourceDocName: string): boolean {
+  const filePath = resolveAssetProjectPath(href, sourceDocName, { literal: false });
+  return filePath !== null && isSupportedDocFile(filePath);
 }
 
 export function isSupportedAssetFile(path: string, assetExtensions: ReadonlySet<string>): boolean {

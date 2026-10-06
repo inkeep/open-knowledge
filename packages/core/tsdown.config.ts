@@ -132,6 +132,8 @@ const entry = {
   'utils-resolve-internal-href': 'src/utils/resolve-internal-href.ts',
   'utils-sanitize-folder-name': 'src/utils/sanitize-folder-name.ts',
   'utils-slug': 'src/utils/slug.ts',
+  'utils-target-identity': 'src/utils/target-identity.ts',
+  'utils-target-namespace': 'src/utils/target-namespace.ts',
   'utils-vimeo-embed': 'src/utils/vimeo-embed.ts',
   'utils-wiki-link-resolve': 'src/utils/wiki-link-resolve.ts',
   'utils-youtube-embed': 'src/utils/youtube-embed.ts',

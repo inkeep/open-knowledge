@@ -1,3 +1,5 @@
+import { leafKey } from './target-identity.ts';
+
 export interface BasenameIndex {
   add(path: string): void;
   remove(path: string): void;
@@ -65,7 +67,7 @@ export function createBasenameIndex(): BasenameIndex {
     if (path === '') return;
     const base = basenameOf(path);
     if (base === '') return;
-    const key = base.toLowerCase();
+    const key = leafKey('file', base);
     const bucket = buckets.get(key);
     if (!bucket) {
       buckets.set(key, [path]);
@@ -76,7 +78,7 @@ export function createBasenameIndex(): BasenameIndex {
 
   function remove(rawPath: string): void {
     const path = normalizePath(rawPath);
-    const key = basenameOf(path).toLowerCase();
+    const key = leafKey('file', basenameOf(path));
     const bucket = buckets.get(key);
     if (!bucket) return;
     const idx = bucket.indexOf(path);
@@ -91,7 +93,7 @@ export function createBasenameIndex(): BasenameIndex {
   }
 
   function resolveEmbed(basename: string, sourcePath: string): string | null {
-    const key = basename.toLowerCase();
+    const key = leafKey('file', basename);
     const bucket = buckets.get(key);
     if (!bucket || bucket.length === 0) return null;
     if (bucket.length === 1) return bucket[0];

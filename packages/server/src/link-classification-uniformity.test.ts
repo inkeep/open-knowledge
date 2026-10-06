@@ -3,6 +3,7 @@
  * the equivalent pin for *classification*.
  */
 
+import { createTargetNamespace } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
   extractMarkdownLinksFromMarkdown,
@@ -14,6 +15,7 @@ import {
   type LocalTargetAssessment,
   type LocalTargetInventory,
 } from './local-target-assessment.ts';
+import { createFileBasenameResolver } from './local-target-inventory.ts';
 import {
   extractLocalTargetOccurrences,
   type LocalTargetOccurrence,
@@ -82,12 +84,13 @@ const DOCUMENTS = ['all-link-types', 'targets/existing-page', 'targets/Case Sens
 const FILES = ['assets/NOTICE', 'assets/existing.txt', 'assets/manual.pdf'] as const;
 
 function buildInventory(): LocalTargetInventory {
-  const documents = new Set<string>(DOCUMENTS);
-  const files = new Set<string>(FILES);
+  const documents = createTargetNamespace('document', DOCUMENTS);
+  const files = createTargetNamespace('file', FILES);
   const tolerant = createTolerantDocumentResolver(documents);
   return {
-    hasDocument: (docName) => documents.has(docName),
-    hasFile: (path) => files.has(path),
+    resolveDocument: (docName) => documents.resolve(docName),
+    resolveFile: (path) => files.resolve(path),
+    resolveFileByBasename: createFileBasenameResolver(files),
     resolveTolerantDocument: (docName) => tolerant(docName),
   };
 }

@@ -1,10 +1,20 @@
-import { type Dirent, existsSync } from 'node:fs';
+import { type Dirent, existsSync, statSync } from 'node:fs';
 import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import {
+  addDocumentFolders,
+  type BasenameIndex,
   classifyMarkdownHref,
+  createBasenameIndex,
+  createTargetNamespace,
+  createWikiAssetResolver,
+  type IdentityKey,
+  identityKey,
+  leafKey,
+  type MutableTargetNamespace,
   resolveAssetProjectPath,
   toWikiLinkSlug,
+  wikiAssetPathKey,
 } from '@inkeep/open-knowledge-core';
 import { isLinkIndexExcludedDoc } from './cc1-broadcast.ts';
 import type { ContentFilter } from './content-filter.ts';
@@ -17,16 +27,56 @@ import {
   isProjectableToLocalTargetSurfaces,
   type LocalTargetAssessment,
   type LocalTargetInventory,
+  wikiAssetName,
+  wikiFilePath,
 } from './local-target-assessment.ts';
 import { extractLocalTargetOccurrences } from './local-target-occurrences.ts';
-import { toPosix } from './path-utils.ts';
+import { isWithinDir, toPosix } from './path-utils.ts';
 
 function projectableAssessments(
   assessments: readonly LocalTargetAssessment[],
 ): LocalTargetAssessment[] {
-  return assessments.filter((assessment) =>
-    isProjectableToLocalTargetSurfaces(assessment.occurrence),
+  return assessments.filter((assessment) => isProjectableToLocalTargetSurfaces(assessment));
+}
+
+function maintainedAssessments(
+  assessments: readonly LocalTargetAssessment[],
+): LocalTargetAssessment[] {
+  return assessments.filter(
+    (assessment) =>
+      isProjectableToLocalTargetSurfaces(assessment) ||
+      wikiAssetName(assessment.occurrence) !== null,
   );
+}
+
+function basenameIndexOf(files: Iterable<string>): BasenameIndex {
+  const index = createBasenameIndex();
+  for (const file of files) index.add(file);
+  return index;
+}
+
+function fileBasenameDependencyKey(relativePath: string): string {
+  return `file-basename:${leafKey('file', relativePath.slice(relativePath.lastIndexOf('/') + 1))}`;
+}
+
+function wikiFileFoldDependencyKey(relativePath: string): string {
+  return `wiki-file:${wikiAssetPathKey(relativePath)}`;
+}
+
+function wikiAssetDependencyKeys(assessment: LocalTargetAssessment): string[] {
+  const name = wikiAssetName(assessment.occurrence);
+  if (name === null) return [];
+  const filePath = wikiFilePath(assessment.occurrence.href);
+  if (filePath === null) return [];
+  const keys = [
+    filePath.includes('/')
+      ? wikiFileFoldDependencyKey(filePath)
+      : fileBasenameDependencyKey(filePath),
+  ];
+  if (assessment.targetKind === 'file' && assessment.status === 'missing') {
+    keys.push(...tolerantDependencyKeys(name));
+  }
+  return keys;
 }
 
 export interface LocalTargetSourceAssessments {
@@ -59,6 +109,23 @@ export interface LocalTargetRebuildInventory {
   folderTargets?: Iterable<string>;
 }
 
+export function isExcludedFileOnDisk(
+  contentDir: string,
+  contentFilter: ContentFilter | undefined,
+  contentRootRelativePath: string,
+): boolean {
+  if (contentFilter === undefined) return false;
+  if (!contentFilter.isExcludedByIgnoreFiles(contentRootRelativePath)) return false;
+  if (contentFilter.isPathIgnored(contentRootRelativePath, { bypassFilters: true })) return false;
+  const candidate = resolve(contentDir, contentRootRelativePath);
+  if (!isWithinDir(candidate, contentDir)) return false;
+  try {
+    return statSync(candidate).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function assessmentTargetDeps(
   assessment: LocalTargetAssessment,
   sourceDocName: string,
@@ -86,7 +153,11 @@ function assessmentTargetDeps(
   return { docs, files };
 }
 
-function addReverseEdge(reverse: Map<string, Set<string>>, target: string, source: string): void {
+function addReverseEdge<K extends string>(
+  reverse: Map<K, Set<string>>,
+  target: K,
+  source: string,
+): void {
   let sources = reverse.get(target);
   if (!sources) {
     sources = new Set();
@@ -95,9 +166,9 @@ function addReverseEdge(reverse: Map<string, Set<string>>, target: string, sourc
   sources.add(source);
 }
 
-function removeReverseEdge(
-  reverse: Map<string, Set<string>>,
-  target: string,
+function removeReverseEdge<K extends string>(
+  reverse: Map<K, Set<string>>,
+  target: K,
   source: string,
 ): void {
   const sources = reverse.get(target);
@@ -111,8 +182,12 @@ function tolerantDependencyKeys(docName: string): string[] {
   const slug = toWikiLinkSlug(docName);
   if (slug) keys.push(`slug:${slug}`);
   if (!docName.includes('/') && slug) keys.push(`basename:${slug}`);
-  keys.push(`folder:${docName}`);
+  keys.push(folderDependencyKey(docName));
   return keys;
+}
+
+function folderDependencyKey(folderPath: string): string {
+  return `folder:${identityKey('folder', folderPath)}`;
 }
 
 function documentMutationKeys(docName: string): string[] {
@@ -124,10 +199,26 @@ function documentMutationKeys(docName: string): string[] {
   if (leafSlug) keys.push(`basename:${leafSlug}`);
   let slash = docName.indexOf('/');
   while (slash !== -1) {
-    keys.push(`folder:${docName.slice(0, slash)}`);
+    keys.push(folderDependencyKey(docName.slice(0, slash)));
     slash = docName.indexOf('/', slash + 1);
   }
   return keys;
+}
+
+function syncReverseEdges<K extends string>(
+  reverse: Map<K, Set<string>>,
+  previous: ReadonlySet<K> | undefined,
+  next: ReadonlySet<K>,
+  source: string,
+): void {
+  if (previous) {
+    for (const target of previous) {
+      if (!next.has(target)) removeReverseEdge(reverse, target, source);
+    }
+  }
+  for (const target of next) {
+    if (!previous?.has(target)) addReverseEdge(reverse, target, source);
+  }
 }
 
 function assessmentsEqual(
@@ -171,31 +262,42 @@ export class LocalTargetIndex {
   private readonly readDirectory: (dir: string) => Promise<Dirent[]>;
 
   private sourceAssessments = new Map<string, LocalTargetAssessment[]>();
-  private sourceDocDeps = new Map<string, Set<string>>();
+  private sourceDocKeys = new Map<string, Set<IdentityKey<'document'>>>();
   private sourceFileDeps = new Map<string, Set<string>>();
-  private reverseByDoc = new Map<string, Set<string>>();
-  private reverseByFile = new Map<string, Set<string>>();
+  private sourceFileKeys = new Map<string, Set<IdentityKey<'file'>>>();
+  private reverseByDoc = new Map<IdentityKey<'document'>, Set<string>>();
+  private reverseByFile = new Map<IdentityKey<'file'>, Set<string>>();
   private reverseByTolerant = new Map<string, Set<string>>();
   private sourceTolerantDeps = new Map<string, Set<string>>();
 
-  private documents = new Set<string>();
+  private documents: MutableTargetNamespace<'document'> = createTargetNamespace('document');
   private tolerantDocumentResolver: (docName: string) => string | null = () => null;
-  private files = new Set<string>();
+  private files: MutableTargetNamespace<'file'> = createTargetNamespace('file');
+  private fileBasenames: BasenameIndex = createBasenameIndex();
+  private wikiFileResolver: ((relativePath: string) => string | undefined) | null = null;
 
   private generationValue = 0;
   private freshnessEpoch = 0;
   private readyValue = false;
   private closed = false;
 
-  private folderPaths = new Set<string>();
-  private injectedFolderPaths = new Set<string>();
+  private folderPaths: MutableTargetNamespace<'folder'> = createTargetNamespace('folder');
+  private injectedFolderPaths: MutableTargetNamespace<'folder'> = createTargetNamespace('folder');
 
   private readonly inventory: LocalTargetInventory = {
-    hasDocument: (docName) => this.documents.has(docName),
-    hasFile: (relativePath) => this.files.has(relativePath),
+    resolveDocument: (docName) => this.documents.resolve(docName),
+    resolveFile: (relativePath) => this.files.resolve(relativePath),
+    resolveFileByBasename: (basename, sourceDocName) =>
+      this.fileBasenames.resolveEmbed(basename, sourceDocName) ?? undefined,
+    resolveWikiFile: (relativePath) => {
+      this.wikiFileResolver ??= createWikiAssetResolver(this.files);
+      return this.wikiFileResolver(relativePath);
+    },
+    isExcludedFile: (relativePath) =>
+      isExcludedFileOnDisk(this.contentDir, this.contentFilter, relativePath),
     resolveTolerantDocument: (docName) => this.tolerantDocumentResolver(docName),
-    hasFolder: (folderPath) =>
-      this.folderPaths.has(folderPath) || this.injectedFolderPaths.has(folderPath),
+    resolveFolder: (folderPath) =>
+      this.folderPaths.resolve(folderPath) ?? this.injectedFolderPaths.resolve(folderPath),
   };
 
   constructor(options: LocalTargetIndexOptions) {
@@ -227,21 +329,22 @@ export class LocalTargetIndex {
   }
 
   getAssessments(docName: string): readonly LocalTargetAssessment[] {
-    return this.sourceAssessments.get(docName) ?? [];
+    return projectableAssessments(this.sourceAssessments.get(docName) ?? []);
   }
 
   getAssessmentsForSources(sourceDocNames?: readonly string[]): LocalTargetSourceAssessments[] {
     const filter = sourceDocNames && sourceDocNames.length > 0 ? new Set(sourceDocNames) : null;
     const out: LocalTargetSourceAssessments[] = [];
-    for (const [source, assessments] of this.sourceAssessments) {
+    for (const [source, stored] of this.sourceAssessments) {
       if (filter && !filter.has(source)) continue;
-      out.push({ source, assessments });
+      const assessments = projectableAssessments(stored);
+      if (assessments.length > 0) out.push({ source, assessments });
     }
     return out;
   }
 
   getDocumentDependents(docName: string): string[] {
-    const sources = new Set(this.reverseByDoc.get(docName) ?? []);
+    const sources = new Set(this.reverseByDoc.get(identityKey('document', docName)) ?? []);
     for (const key of documentMutationKeys(docName)) {
       for (const source of this.reverseByTolerant.get(key) ?? []) sources.add(source);
     }
@@ -249,17 +352,32 @@ export class LocalTargetIndex {
   }
 
   getFileDependents(relativePath: string): string[] {
-    return [...(this.reverseByFile.get(relativePath) ?? [])].sort((a, b) => a.localeCompare(b));
+    return [...(this.reverseByFile.get(identityKey('file', relativePath)) ?? [])].sort((a, b) =>
+      a.localeCompare(b),
+    );
   }
 
   getStats(): LocalTargetIndexStats {
+    let sources = 0;
     let occurrences = 0;
-    for (const assessments of this.sourceAssessments.values()) occurrences += assessments.length;
+    const documentTargets = new Set<IdentityKey<'document'>>();
+    const fileTargets = new Set<IdentityKey<'file'>>();
+    for (const [source, stored] of this.sourceAssessments) {
+      const assessments = projectableAssessments(stored);
+      if (assessments.length === 0) continue;
+      sources++;
+      occurrences += assessments.length;
+      for (const assessment of assessments) {
+        const { docs, files } = assessmentTargetDeps(assessment, source);
+        for (const doc of docs) documentTargets.add(identityKey('document', doc));
+        for (const file of files) fileTargets.add(identityKey('file', file));
+      }
+    }
     return {
-      sources: this.sourceAssessments.size,
+      sources,
       occurrences,
-      documentTargets: this.reverseByDoc.size,
-      fileTargets: this.reverseByFile.size,
+      documentTargets: documentTargets.size,
+      fileTargets: fileTargets.size,
     };
   }
 
@@ -279,18 +397,21 @@ export class LocalTargetIndex {
         if (becameDocument) this.refreshTolerantDocumentIndexes();
 
         const occurrences = extractLocalTargetOccurrences(markdown);
-        const assessments = projectableAssessments(
+        const assessments = maintainedAssessments(
           assessLocalTargetOccurrences(occurrences, docName, this.inventory),
         );
-        const sourceChanged = !assessmentsEqual(previous, assessments);
-        if (sourceChanged) this.applySourceAssessments(docName, assessments);
+        if (!assessmentsEqual(previous, assessments)) {
+          this.applySourceAssessments(docName, assessments);
+        }
+        const projectable = projectableAssessments(assessments);
+        const sourceChanged = !assessmentsEqual(projectableAssessments(previous), projectable);
 
         const healed = becameDocument ? this.reassessDocumentDependents(docName) : 0;
         const changed = sourceChanged || healed > 0;
         if (changed) this.generationValue++;
         return {
           changed,
-          occurrences: assessments.length,
+          occurrences: projectable.length,
           affectedSources: healed + (sourceChanged ? 1 : 0),
         };
       },
@@ -308,7 +429,9 @@ export class LocalTargetIndex {
       'local-target',
       'document-target',
       () => {
-        const occurrences = this.sourceAssessments.get(docName)?.length ?? 0;
+        const occurrences = projectableAssessments(
+          this.sourceAssessments.get(docName) ?? [],
+        ).length;
         const hadOccurrences = occurrences > 0;
         const wasDocument = this.documents.delete(docName);
         if (wasDocument) this.refreshTolerantDocumentIndexes();
@@ -342,8 +465,14 @@ export class LocalTargetIndex {
       'local-target',
       'file-target',
       () => {
-        if (exists) this.files.add(relativePath);
-        else this.files.delete(relativePath);
+        if (exists) {
+          this.files.add(relativePath);
+          this.fileBasenames.add(relativePath);
+        } else {
+          this.files.delete(relativePath);
+          this.fileBasenames.remove(relativePath);
+        }
+        this.wikiFileResolver = null;
         const occurrences = this.countFileOccurrences(relativePath);
         const affected = this.reassessFileDependents(relativePath);
         if (affected > 0) this.generationValue++;
@@ -358,7 +487,7 @@ export class LocalTargetIndex {
   }
 
   reconcileDocumentTargets(documentTargets: Iterable<string>): number {
-    const next = new Set(documentTargets);
+    const next = createTargetNamespace('document', documentTargets);
     const changedIdentities = new Set<string>();
     for (const docName of this.documents) {
       if (!next.has(docName)) changedIdentities.add(docName);
@@ -370,7 +499,9 @@ export class LocalTargetIndex {
 
     const affected = new Set<string>();
     for (const docName of changedIdentities) {
-      for (const source of this.reverseByDoc.get(docName) ?? []) affected.add(source);
+      for (const source of this.reverseByDoc.get(identityKey('document', docName)) ?? []) {
+        affected.add(source);
+      }
       for (const key of documentMutationKeys(docName)) {
         for (const source of this.reverseByTolerant.get(key) ?? []) affected.add(source);
       }
@@ -386,7 +517,7 @@ export class LocalTargetIndex {
   }
 
   reconcileFolderTargets(folderTargets: Iterable<string>): number {
-    const next = new Set(folderTargets);
+    const next = createTargetNamespace('folder', folderTargets);
     const changedFolders = new Set<string>();
     for (const folderPath of this.injectedFolderPaths) {
       if (!next.has(folderPath)) changedFolders.add(folderPath);
@@ -398,7 +529,7 @@ export class LocalTargetIndex {
 
     const affected = new Set<string>();
     for (const folderPath of changedFolders) {
-      for (const source of this.reverseByTolerant.get(`folder:${folderPath}`) ?? []) {
+      for (const source of this.reverseByTolerant.get(folderDependencyKey(folderPath)) ?? []) {
         affected.add(source);
       }
     }
@@ -412,7 +543,7 @@ export class LocalTargetIndex {
   }
 
   reconcileFileTargets(fileTargets: Iterable<string>): number {
-    const next = new Set(fileTargets);
+    const next = createTargetNamespace('file', fileTargets);
     const changedIdentities = new Set<string>();
     for (const relativePath of this.files) {
       if (!next.has(relativePath)) changedIdentities.add(relativePath);
@@ -430,9 +561,11 @@ export class LocalTargetIndex {
         let occurrences = 0;
         for (const relativePath of changedIdentities) {
           occurrences += this.countFileOccurrences(relativePath);
-          for (const source of this.reverseByFile.get(relativePath) ?? []) affected.add(source);
+          for (const source of this.fileDependents(relativePath)) affected.add(source);
         }
         this.files = next;
+        this.fileBasenames = basenameIndexOf(next);
+        this.wikiFileResolver = null;
         let reassessed = 0;
         for (const source of affected) {
           if (this.reassessSource(source)) reassessed++;
@@ -450,7 +583,11 @@ export class LocalTargetIndex {
   async reconcileDependentFileTargetsFromDisk(
     onChange?: (relativePath: string, exists: boolean) => void,
   ): Promise<number> {
-    const targets = [...this.reverseByFile.keys()];
+    const requested = new Set<string>();
+    for (const paths of this.sourceFileDeps.values()) {
+      for (const relativePath of paths) requested.add(relativePath);
+    }
+    const targets = [...requested];
     const existence = await Promise.all(
       targets.map((relativePath) => this.isAdmittedFileOnDisk(relativePath)),
     );
@@ -484,12 +621,12 @@ export class LocalTargetIndex {
   }
 
   private countFileOccurrences(relativePath: string): number {
+    const key = identityKey('file', relativePath);
     let occurrences = 0;
-    for (const source of this.reverseByFile.get(relativePath) ?? []) {
-      for (const assessment of this.sourceAssessments.get(source) ?? []) {
-        if (assessmentTargetDeps(assessment, source).files.includes(relativePath)) {
-          occurrences++;
-        }
+    for (const source of this.reverseByFile.get(key) ?? []) {
+      for (const assessment of projectableAssessments(this.sourceAssessments.get(source) ?? [])) {
+        const { files } = assessmentTargetDeps(assessment, source);
+        if (files.some((file) => identityKey('file', file) === key)) occurrences++;
       }
     }
     return occurrences;
@@ -511,7 +648,7 @@ export class LocalTargetIndex {
   private async rebuildOnce(
     inventory: LocalTargetRebuildInventory,
   ): Promise<LocalTargetRebuildResult> {
-    const hadContent = this.sourceAssessments.size > 0;
+    const hadContent = this.hasProjectableRows();
     this.freshnessEpoch++;
     this.readyValue = false;
     const staged = new LocalTargetIndex({
@@ -523,8 +660,9 @@ export class LocalTargetIndex {
     const result = await staged.populateFromDisk(inventory);
 
     this.sourceAssessments = staged.sourceAssessments;
-    this.sourceDocDeps = staged.sourceDocDeps;
+    this.sourceDocKeys = staged.sourceDocKeys;
     this.sourceFileDeps = staged.sourceFileDeps;
+    this.sourceFileKeys = staged.sourceFileKeys;
     this.reverseByDoc = staged.reverseByDoc;
     this.reverseByFile = staged.reverseByFile;
     this.reverseByTolerant = staged.reverseByTolerant;
@@ -534,16 +672,28 @@ export class LocalTargetIndex {
     this.folderPaths = staged.folderPaths;
     this.injectedFolderPaths = staged.injectedFolderPaths;
     this.files = staged.files;
+    this.fileBasenames = staged.fileBasenames;
+    this.wikiFileResolver = null;
     this.readyValue = true;
-    if (hadContent || this.sourceAssessments.size > 0) this.generationValue++;
+    if (hadContent || this.hasProjectableRows()) this.generationValue++;
     return result;
+  }
+
+  private hasProjectableRows(): boolean {
+    for (const stored of this.sourceAssessments.values()) {
+      if (stored.some((assessment) => isProjectableToLocalTargetSurfaces(assessment))) return true;
+    }
+    return false;
   }
 
   private async populateFromDisk(
     inventory: LocalTargetRebuildInventory,
   ): Promise<LocalTargetRebuildResult> {
     for (const docName of inventory.documentTargets) this.documents.add(docName);
-    for (const relativePath of inventory.fileTargets) this.files.add(relativePath);
+    for (const relativePath of inventory.fileTargets) {
+      this.files.add(relativePath);
+      this.fileBasenames.add(relativePath);
+    }
     for (const folderPath of inventory.folderTargets ?? []) {
       this.injectedFolderPaths.add(folderPath);
     }
@@ -558,6 +708,7 @@ export class LocalTargetIndex {
     for (const { docName } of docs) this.documents.add(docName);
     this.refreshTolerantDocumentIndexes();
 
+    let sourceCount = 0;
     let occurrenceCount = 0;
     const BATCH_SIZE = 50;
     for (let i = 0; i < docs.length && !this.closed; i += BATCH_SIZE) {
@@ -571,26 +722,32 @@ export class LocalTargetIndex {
       for (const result of results) {
         if (isLinkIndexExcludedDoc(result.docName)) continue;
         const occurrences = extractLocalTargetOccurrences(result.markdown);
-        const assessments = projectableAssessments(
+        const assessments = maintainedAssessments(
           assessLocalTargetOccurrences(occurrences, result.docName, this.inventory),
         );
         this.applySourceAssessments(result.docName, assessments);
-        occurrenceCount += assessments.length;
+        const projectable = projectableAssessments(assessments).length;
+        if (projectable > 0) sourceCount++;
+        occurrenceCount += projectable;
       }
     }
 
     this.readyValue = true;
-    return { sources: this.sourceAssessments.size, occurrences: occurrenceCount };
+    return { sources: sourceCount, occurrences: occurrenceCount };
   }
 
   private applySourceAssessments(docName: string, assessments: LocalTargetAssessment[]): void {
-    const nextDocDeps = new Set<string>();
+    const nextDocKeys = new Set<IdentityKey<'document'>>();
     const nextFileDeps = new Set<string>();
+    const nextFileKeys = new Set<IdentityKey<'file'>>();
     const nextTolerantDeps = new Set<string>();
     for (const assessment of assessments) {
       const { docs, files } = assessmentTargetDeps(assessment, docName);
-      for (const doc of docs) nextDocDeps.add(doc);
-      for (const file of files) nextFileDeps.add(file);
+      for (const doc of docs) nextDocKeys.add(identityKey('document', doc));
+      for (const file of files) {
+        nextFileDeps.add(file);
+        nextFileKeys.add(identityKey('file', file));
+      }
       if (
         assessment.targetKind === 'document' &&
         assessment.resolvedTarget !== null &&
@@ -600,48 +757,30 @@ export class LocalTargetIndex {
           nextTolerantDeps.add(key);
         }
       }
+      for (const key of wikiAssetDependencyKeys(assessment)) nextTolerantDeps.add(key);
     }
 
-    const prevDocDeps = this.sourceDocDeps.get(docName);
-    if (prevDocDeps) {
-      for (const target of prevDocDeps) {
-        if (!nextDocDeps.has(target)) removeReverseEdge(this.reverseByDoc, target, docName);
-      }
-    }
-    for (const target of nextDocDeps) {
-      if (!prevDocDeps?.has(target)) addReverseEdge(this.reverseByDoc, target, docName);
-    }
-
-    const prevFileDeps = this.sourceFileDeps.get(docName);
-    if (prevFileDeps) {
-      for (const target of prevFileDeps) {
-        if (!nextFileDeps.has(target)) removeReverseEdge(this.reverseByFile, target, docName);
-      }
-    }
-    for (const target of nextFileDeps) {
-      if (!prevFileDeps?.has(target)) addReverseEdge(this.reverseByFile, target, docName);
-    }
-
-    const prevTolerantDeps = this.sourceTolerantDeps.get(docName);
-    if (prevTolerantDeps) {
-      for (const key of prevTolerantDeps) {
-        if (!nextTolerantDeps.has(key)) removeReverseEdge(this.reverseByTolerant, key, docName);
-      }
-    }
-    for (const key of nextTolerantDeps) {
-      if (!prevTolerantDeps?.has(key)) addReverseEdge(this.reverseByTolerant, key, docName);
-    }
+    syncReverseEdges(this.reverseByDoc, this.sourceDocKeys.get(docName), nextDocKeys, docName);
+    syncReverseEdges(this.reverseByFile, this.sourceFileKeys.get(docName), nextFileKeys, docName);
+    syncReverseEdges(
+      this.reverseByTolerant,
+      this.sourceTolerantDeps.get(docName),
+      nextTolerantDeps,
+      docName,
+    );
 
     if (assessments.length === 0) {
       this.sourceAssessments.delete(docName);
-      this.sourceDocDeps.delete(docName);
+      this.sourceDocKeys.delete(docName);
       this.sourceFileDeps.delete(docName);
+      this.sourceFileKeys.delete(docName);
       this.sourceTolerantDeps.delete(docName);
       return;
     }
     this.sourceAssessments.set(docName, assessments);
-    this.sourceDocDeps.set(docName, nextDocDeps);
+    this.sourceDocKeys.set(docName, nextDocKeys);
     this.sourceFileDeps.set(docName, nextFileDeps);
+    this.sourceFileKeys.set(docName, nextFileKeys);
     this.sourceTolerantDeps.set(docName, nextTolerantDeps);
   }
 
@@ -652,11 +791,11 @@ export class LocalTargetIndex {
     const next = assessLocalTargetOccurrences(occurrences, docName, this.inventory);
     if (assessmentsEqual(assessments, next)) return false;
     this.applySourceAssessments(docName, next);
-    return true;
+    return !assessmentsEqual(projectableAssessments(assessments), projectableAssessments(next));
   }
 
   private reassessDocumentDependents(docName: string): number {
-    const affected = new Set(this.reverseByDoc.get(docName) ?? []);
+    const affected = new Set(this.reverseByDoc.get(identityKey('document', docName)) ?? []);
     for (const key of documentMutationKeys(docName)) {
       for (const source of this.reverseByTolerant.get(key) ?? []) affected.add(source);
     }
@@ -667,10 +806,18 @@ export class LocalTargetIndex {
     return changed;
   }
 
+  private fileDependents(relativePath: string): Set<string> {
+    const sources = new Set(this.reverseByFile.get(identityKey('file', relativePath)) ?? []);
+    const byBasename = this.reverseByTolerant.get(fileBasenameDependencyKey(relativePath));
+    for (const source of byBasename ?? []) sources.add(source);
+    const byWikiFold = this.reverseByTolerant.get(wikiFileFoldDependencyKey(relativePath));
+    for (const source of byWikiFold ?? []) sources.add(source);
+    return sources;
+  }
+
   private reassessFileDependents(relativePath: string): number {
-    const affected = [...(this.reverseByFile.get(relativePath) ?? [])];
     let changed = 0;
-    for (const source of affected) {
+    for (const source of this.fileDependents(relativePath)) {
       if (this.reassessSource(source)) changed += 1;
     }
     return changed;
@@ -678,15 +825,7 @@ export class LocalTargetIndex {
 
   private refreshTolerantDocumentIndexes(): void {
     this.tolerantDocumentResolver = createTolerantDocumentResolver(this.documents);
-    const folderPaths = new Set<string>();
-    for (const docName of this.documents) {
-      let slash = docName.indexOf('/');
-      while (slash !== -1) {
-        folderPaths.add(docName.slice(0, slash));
-        slash = docName.indexOf('/', slash + 1);
-      }
-    }
-    this.folderPaths = folderPaths;
+    this.folderPaths = addDocumentFolders(createTargetNamespace('folder'), this.documents);
   }
 
   private async listDocsWithPaths(): Promise<Array<{ docName: string; filePath: string }>> {

@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'vitest';
 import { classifyWikiLinkTarget } from './link-targets.ts';
 import { toWikiLinkSlug } from './slug.ts';
+import { createTargetNamespace } from './target-namespace.ts';
 import {
   buildPagesByBasenameIndex,
   buildPagesBySlugIndex,
   buildWikiLinkAssetTargetKeys,
+  createWikiAssetResolver,
   isResolvedWikiLinkTarget,
   resolveWikiLinkAssetTarget,
   resolveWikiLinkTarget,
@@ -199,6 +201,7 @@ describe('indexed asset target keys', () => {
       ['cover.png', true],
       ['/images/cover.png?x#y', true],
       ['IMAGES/COVER.PNG', true],
+      ['images/COVER.PNG', true],
       ['guide.pdf#page=2', true],
       ['table.csv', true],
       ['data/table.csv', true],
@@ -495,4 +498,91 @@ describe('explicit Markdown suffix precedence', () => {
       }
     },
   );
+});
+
+describe('canonically equivalent spellings', () => {
+  const RENE_NFC = 'People/René';
+  const RENE_NFD = 'People/René';
+  const CAFE_NFC = 'assets/Café.png';
+  const CAFE_NFD = 'assets/Café.png';
+
+  function indexOver(pageNames: readonly string[]): WikiLinkLookupIndex {
+    const pages = createTargetNamespace('document', pageNames);
+    return {
+      pages,
+      pagesBySlug: buildPagesBySlugIndex(pages, toWikiLinkSlug),
+      pagesByBasename: buildPagesByBasenameIndex(pages, toWikiLinkSlug),
+    };
+  }
+
+  test('identity beats the slug bucket: an NFC target lands on the NFD page, not its accent-stripped sibling', () => {
+    const lookup = indexOver([RENE_NFD, 'People/Rene']);
+    expect(lookup.pagesBySlug.get(toWikiLinkSlug(RENE_NFC))).toBe('People/Rene');
+    expect(resolveWikiLinkTargetDocName(RENE_NFC, lookup)).toBe(RENE_NFD);
+    expect(resolveWikiLinkTargetDocName(`${RENE_NFC}.md`, lookup)).toBe(RENE_NFD);
+    expect(resolveWikiLinkTargetDocName(RENE_NFD, lookup)).toBe(RENE_NFD);
+    expect(resolveWikiLinkTargetDocName('People/Rene', lookup)).toBe('People/Rene');
+  });
+
+  test('an NFD target lands on the NFC page and folder notes resolve through identity too', () => {
+    expect(resolveWikiLinkTargetDocName(RENE_NFD, indexOver([RENE_NFC]))).toBe(RENE_NFC);
+    expect(resolveWikiLinkTargetDocName(RENE_NFC, indexOver([`${RENE_NFD}/index`]))).toBe(
+      `${RENE_NFD}/index`,
+    );
+  });
+
+  test('asset targets resolve by NFC and by case across the whole path, folders included', () => {
+    const assets = new Set([CAFE_NFD]);
+    expect(resolveWikiLinkAssetTarget(CAFE_NFC, assets)).toBe(CAFE_NFD);
+    expect(resolveWikiLinkAssetTarget('assets/CAFÉ.PNG', assets)).toBe(CAFE_NFD);
+    expect(resolveWikiLinkAssetTarget('/Café.png', assets)).toBe(CAFE_NFD);
+    expect(resolveWikiLinkAssetTarget('Assets/Café.png', assets)).toBe(CAFE_NFD);
+    expect(resolveWikiLinkAssetTarget('ASSETS/CAFÉ.PNG', assets)).toBe(CAFE_NFD);
+    expect(resolveWikiLinkAssetTarget('ﬁle.png', new Set(['file.png']))).toBeNull();
+    expect(resolveWikiLinkAssetTarget(CAFE_NFC, new Set(), assets)).toBe(CAFE_NFD);
+  });
+
+  test('indexed asset keys agree with the asset resolver', () => {
+    const lookup: WikiLinkLookupIndex = {
+      pages: new Set(),
+      pagesBySlug: new Map(),
+      assetTargetKeys: buildWikiLinkAssetTargetKeys([CAFE_NFD]),
+    };
+    expect(isResolvedWikiLinkTarget(CAFE_NFC, lookup)).toBe(true);
+    expect(isResolvedWikiLinkTarget('assets/CAFÉ.PNG', lookup)).toBe(true);
+    expect(isResolvedWikiLinkTarget('Café.png', lookup)).toBe(true);
+    expect(isResolvedWikiLinkTarget('Assets/Café.png', lookup)).toBe(true);
+    expect(isResolvedWikiLinkTarget('ASSETS/CAFÉ.PNG', lookup)).toBe(true);
+    expect(isResolvedWikiLinkTarget('Other/Café.png', lookup)).toBe(false);
+  });
+
+  test('the wiki asset resolver ignores input order and prefers the lowest folded twin', () => {
+    const paths = ['assets/a.png', 'Assets/a.png', CAFE_NFD, 'Pics/Deep/x.png', 'data/T.csv'];
+    const expected: Array<[string, string | undefined]> = [
+      ['assets/A.png', 'assets/a.png'],
+      ['ASSETS/a.png', 'Assets/a.png'],
+      [CAFE_NFC, CAFE_NFD],
+      ['ASSETS/CAFÉ.PNG', CAFE_NFD],
+      ['pics/deep/X.PNG', 'Pics/Deep/x.png'],
+      ['DATA/t.CSV', 'data/T.csv'],
+      ['pics/x.png', undefined],
+    ];
+    for (const order of [paths, [...paths].reverse()]) {
+      const resolver = createWikiAssetResolver(order);
+      for (const [target, want] of expected) {
+        expect(resolver(target), target).toBe(want);
+        expect(resolveWikiLinkAssetTarget(target, new Set(order)) ?? undefined, target).toBe(want);
+      }
+    }
+  });
+
+  test('an identity match beats a folder-case match, and folder-case twins pick one winner', () => {
+    const twins = ['assets/a.png', 'Assets/a.png'];
+    for (const order of [twins, [...twins].reverse()]) {
+      const assets = new Set(order);
+      expect(resolveWikiLinkAssetTarget('assets/A.png', assets)).toBe('assets/a.png');
+      expect(resolveWikiLinkAssetTarget('Assets/A.png', assets)).toBe('Assets/a.png');
+      expect(resolveWikiLinkAssetTarget('ASSETS/a.png', assets)).toBe('Assets/a.png');
+    }
+  });
 });

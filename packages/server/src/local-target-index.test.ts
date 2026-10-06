@@ -19,6 +19,7 @@ function createIndex(): LocalTargetIndex {
 
 function createDiskRig(
   overrides: Omit<LocalTargetIndexOptions, 'contentDir' | 'contentFilter'> = {},
+  projectFiles: Record<string, string> = {},
 ): {
   index: LocalTargetIndex;
   contentDir: string;
@@ -27,6 +28,8 @@ function createDiskRig(
   const projectDir = mkdtempSync(join(tmpdir(), 'ok-lti-'));
   const contentDir = join(projectDir, 'content');
   mkdirSync(contentDir, { recursive: true });
+  for (const [rel, text] of Object.entries(projectFiles))
+    writeFileSync(join(projectDir, rel), text);
   const contentFilter = createContentFilter({ projectDir, contentDir });
   const index = new LocalTargetIndex({ contentDir, contentFilter, ...overrides });
   cleanups.push(() => {
@@ -150,10 +153,16 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
     });
   });
 
-  test('wiki forms are not projected here, which is what fixes this index on the URI plane', () => {
+  test('wiki document links are not projected here; file-shaped wiki embeds are, by their literal spelling', () => {
     const index = createIndex();
     index.setSource('src', 'See [[100%20done]] and ![[100%20done.png]].\n');
-    expect(index.getAssessments('src')).toEqual([]);
+    expect(index.getAssessments('src')).toHaveLength(1);
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      targetKind: 'file',
+      status: 'missing',
+      resolvedTarget: '100%20done.png',
+    });
+    expect(index.getFileDependents('100%20done.png')).toEqual(['src']);
     expect(index.getFileDependents('100 done')).toEqual([]);
     expect(index.getDocumentDependents('100 done')).toEqual([]);
 
@@ -161,6 +170,77 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
     markdownIndex.setSource('src', 'See [progress](100%20done).\n');
     expect(markdownIndex.getFileDependents('100 done')).toEqual(['src']);
     expect(markdownIndex.getFileDependents('100%20done')).toEqual([]);
+  });
+
+  test('a basename wiki embed resolves vault-wide and heals as the file comes and goes', () => {
+    const index = createIndex();
+    index.setSource('notes/src', 'See ![[photo.png]].\n');
+    expect(index.getAssessments('notes/src')[0]).toMatchObject({
+      targetKind: 'file',
+      status: 'missing',
+      reason: 'no-such-file',
+      resolvedTarget: 'photo.png',
+    });
+
+    expect(index.setFileTarget('media/photo.png', true)).toBe(1);
+    expect(index.getAssessments('notes/src')[0]).toMatchObject({
+      status: 'exact',
+      reason: null,
+      resolvedTarget: 'media/photo.png',
+      resolutionMethod: 'basename',
+    });
+    expect(index.getFileDependents('media/photo.png')).toEqual(['notes/src']);
+
+    expect(index.setFileTarget('media/photo.png', false)).toBe(1);
+    expect(index.getAssessments('notes/src')[0]).toMatchObject({
+      status: 'missing',
+      reason: 'no-such-file',
+      resolvedTarget: 'photo.png',
+    });
+  });
+
+  test('a path-form wiki embed resolves across folder case and heals as the file comes and goes', () => {
+    const index = createIndex();
+    index.setSource('src', 'See ![[pics/deep/x.png]] and [[PICS/DEEP/X.PNG]].\n');
+    expect(statusOf(index, 'src')).toEqual(['missing', 'missing']);
+
+    expect(index.setFileTarget('Pics/Deep/x.png', true)).toBe(1);
+    expect(index.getAssessments('src').map((a) => [a.status, a.resolvedTarget])).toEqual([
+      ['exact', 'Pics/Deep/x.png'],
+      ['exact', 'Pics/Deep/x.png'],
+    ]);
+    expect(index.getFileDependents('Pics/Deep/x.png')).toEqual(['src']);
+
+    expect(index.setFileTarget('pics/deep/x.png', true)).toBe(1);
+    expect(index.getAssessments('src').map((a) => a.resolvedTarget)).toEqual([
+      'pics/deep/x.png',
+      'Pics/Deep/x.png',
+    ]);
+
+    expect(index.reconcileFileTargets([])).toBe(1);
+    expect(statusOf(index, 'src')).toEqual(['missing', 'missing']);
+  });
+
+  test('a markdown asset link keeps ancestor folder case significant', () => {
+    const index = createIndex();
+    index.setFileTarget('Pics/Deep/x.png', true);
+    index.setSource('src', '![x](pics/deep/x.png)\n');
+    expect(statusOf(index, 'src')).toEqual(['missing']);
+  });
+
+  test('a watcher inventory reconcile heals a basename wiki embed across spellings', () => {
+    const index = createIndex();
+    index.setSource('src', 'See ![[Café.png]].\n');
+    expect(statusOf(index, 'src')).toEqual(['missing']);
+
+    expect(index.reconcileFileTargets(['media/Café.png'])).toBe(1);
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      status: 'exact',
+      resolvedTarget: 'media/Café.png',
+    });
+
+    expect(index.reconcileFileTargets([])).toBe(1);
+    expect(statusOf(index, 'src')).toEqual(['missing']);
   });
 
   test('a content-only file-update event does not flip existence or bump the generation', () => {
@@ -537,5 +617,287 @@ describe('LocalTargetIndex disk lifecycle', () => {
       resolvedTarget: 'second',
       status: 'exact',
     });
+  });
+});
+
+describe('LocalTargetIndex across canonically equivalent spellings', () => {
+  const NFC = 'people/Ren\u00e9';
+  const NFD = 'people/Rene\u0301';
+
+  test.each([
+    ['NFC', 'NFD', NFC, NFD],
+    ['NFD', 'NFC', NFD, NFC],
+  ])('an %s link heals and breaks with its %s document', (_l, _d, linked, stored) => {
+    const index = createIndex();
+    index.setSource('src', `See [x](/${linked}).\n`);
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      status: 'missing',
+      resolvedTarget: linked,
+    });
+
+    index.setSource(stored, '# Target\n');
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      status: 'exact',
+      resolvedTarget: stored,
+      reason: null,
+    });
+    expect(index.getDocumentDependents(linked)).toEqual(['src']);
+    expect(index.getDocumentDependents(stored)).toEqual(['src']);
+
+    index.removeSource(stored);
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      status: 'missing',
+      resolvedTarget: linked,
+      reason: 'no-such-doc',
+    });
+  });
+
+  test('a file target reported in NFD heals an NFC link and is found by either spelling', () => {
+    const index = createIndex();
+    index.setSource('src', 'See [pdf](assets/Ren\u00e9.pdf).\n');
+
+    expect(index.setFileTarget('assets/Rene\u0301.pdf', true)).toBe(1);
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      targetKind: 'file',
+      status: 'exact',
+      resolvedTarget: 'assets/Rene\u0301.pdf',
+    });
+    expect(index.getFileDependents('assets/Ren\u00e9.pdf')).toEqual(['src']);
+    expect(index.getFileDependents('assets/Rene\u0301.pdf')).toEqual(['src']);
+
+    expect(index.setFileTarget('assets/Rene\u0301.pdf', false)).toBe(1);
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      status: 'missing',
+      reason: 'no-such-file',
+      resolvedTarget: 'assets/Ren\u00e9.pdf',
+    });
+  });
+
+  test('folder targets resolve across spellings from the watcher and from the docs beneath', () => {
+    const index = createIndex();
+    index.setSource('src', 'See [folder](Ren\u00e9).\n');
+
+    expect(index.reconcileFolderTargets(['Rene\u0301'])).toBe(1);
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      status: 'exact',
+      resolvedTarget: 'Rene\u0301',
+    });
+    expect(index.reconcileFolderTargets([])).toBe(1);
+    expect(index.getAssessments('src')[0]).toMatchObject({ status: 'missing' });
+
+    index.setSource('Rene\u0301/notes', '# Notes\n');
+    expect(index.getAssessments('src')[0]).toMatchObject({
+      status: 'exact',
+      resolvedTarget: 'Rene\u0301',
+    });
+    index.removeSource('Rene\u0301/notes');
+    expect(index.getAssessments('src')[0]).toMatchObject({ status: 'missing' });
+  });
+
+  test('a rebuild resolves NFC links against NFD inventory and a disk sweep stats the raw paths', async () => {
+    const rig = createDiskRig();
+    rig.write(
+      'source.md',
+      'See [doc](people/Ren\u00e9), [pdf](assets/Ren\u00e9.pdf) and [big](assets/Report.PDF).\n',
+    );
+    rig.write('people/Rene\u0301.md', '# Ren\u00e9\n');
+    rig.write('assets/Rene\u0301.pdf', '%PDF-1.4\n');
+    rig.write('assets/Report.PDF', '%PDF-1.4\n');
+    await rig.index.rebuildFromDisk({
+      documentTargets: ['source', 'people/Rene\u0301'],
+      fileTargets: ['assets/Rene\u0301.pdf', 'assets/Report.PDF'],
+    });
+    expect(
+      rig.index
+        .getAssessments('source')
+        .map(({ status, resolvedTarget }) => [status, resolvedTarget]),
+    ).toEqual([
+      ['exact', 'people/Rene\u0301'],
+      ['exact', 'assets/Rene\u0301.pdf'],
+      ['exact', 'assets/Report.PDF'],
+    ]);
+
+    expect(await rig.index.reconcileDependentFileTargetsFromDisk()).toBe(0);
+    expect(statusOf(rig.index, 'source')).toEqual(['exact', 'exact', 'exact']);
+
+    unlinkSync(join(rig.contentDir, 'assets/Rene\u0301.pdf'));
+    expect(await rig.index.reconcileDependentFileTargetsFromDisk()).toBe(1);
+    expect(rig.index.getAssessments('source')[1]).toMatchObject({
+      status: 'missing',
+      reason: 'no-such-file',
+    });
+  });
+});
+
+describe('dotted wiki names that a document can claim (PRD-8896)', () => {
+  const SOURCE_MD = 'See [[acp.daemon]], ![[ACP.Daemon]] and [[vault/acp.daemon]].\n';
+  const MISSING_ROWS = [
+    ['notes/source', 'acp.daemon', 'file', 'missing', 'no-such-file'],
+    ['notes/source', 'ACP.Daemon', 'file', 'missing', 'no-such-file'],
+    ['notes/source', 'vault/acp.daemon', 'file', 'missing', 'no-such-file'],
+  ];
+
+  function rowsOf(index: LocalTargetIndex): Array<Array<string | null>> {
+    return index
+      .getAssessmentsForSources()
+      .flatMap(({ source, assessments }) =>
+        assessments.map((a) => [source, a.occurrence.href, a.targetKind, a.status, a.reason]),
+      );
+  }
+
+  const documentMutations: Array<
+    [string, (index: LocalTargetIndex, docNames: string[], created: boolean) => void]
+  > = [
+    [
+      'a source event',
+      (index, _docNames, created) =>
+        created
+          ? index.setSource('vault/acp.daemon', '# ACP\n')
+          : index.removeSource('vault/acp.daemon'),
+    ],
+    ['a document reconcile', (index, docNames) => index.reconcileDocumentTargets(docNames)],
+  ];
+
+  for (const [label, mutate] of documentMutations) {
+    test(`creating the document after the link matches a rebuild: ${label}`, async () => {
+      const rig = createDiskRig();
+      rig.write('notes/source.md', SOURCE_MD);
+      await rig.index.rebuildFromDisk({ documentTargets: ['notes/source'], fileTargets: [] });
+      expect(rowsOf(rig.index)).toEqual(MISSING_ROWS);
+
+      rig.write('vault/acp.daemon.md', '# ACP\n');
+      const docNames = ['notes/source', 'vault/acp.daemon'];
+      mutate(rig.index, docNames, true);
+      const incremental = rowsOf(rig.index);
+      await rig.index.rebuildFromDisk({ documentTargets: docNames, fileTargets: [] });
+      expect(incremental).toEqual(rowsOf(rig.index));
+      expect(incremental).toEqual([]);
+    });
+
+    test(`deleting the document after the link matches a rebuild: ${label}`, async () => {
+      const rig = createDiskRig();
+      rig.write('notes/source.md', SOURCE_MD);
+      rig.write('vault/acp.daemon.md', '# ACP\n');
+      await rig.index.rebuildFromDisk({
+        documentTargets: ['notes/source', 'vault/acp.daemon'],
+        fileTargets: [],
+      });
+      expect(rowsOf(rig.index)).toEqual([]);
+
+      unlinkSync(join(rig.contentDir, 'vault/acp.daemon.md'));
+      const docNames = ['notes/source'];
+      mutate(rig.index, docNames, false);
+      const incremental = rowsOf(rig.index);
+      await rig.index.rebuildFromDisk({ documentTargets: docNames, fileTargets: [] });
+      expect(incremental).toEqual(rowsOf(rig.index));
+      expect(incremental).toEqual(MISSING_ROWS);
+    });
+  }
+});
+
+describe('rows the index keeps only to track dependencies (PRD-8896)', () => {
+  const HIDDEN_ONLY = 'See [[acp.daemon]].\n';
+
+  test('a change to hidden rows alone does not move the generation', () => {
+    const index = createIndex();
+    index.setSource('vault/acp.daemon', '# ACP\n');
+    index.setSource('notes/source', HIDDEN_ONLY);
+    expect(index.getAssessmentsForSources()).toEqual([]);
+    const generation = index.generation;
+
+    expect(index.setSource('acp.daemon', '# Root\n')).toBe(false);
+    expect(index.setSource('notes/source', 'See [[acp.daemon]] and [[acp.daemon]].\n')).toBe(false);
+    expect(index.removeSource('notes/source')).toBe(false);
+    expect(index.generation).toBe(generation);
+  });
+
+  test('a rebuild over hidden rows alone reports nothing and does not move the generation', async () => {
+    const rig = createDiskRig();
+    rig.write('vault/acp.daemon.md', '# ACP\n');
+    rig.write('notes/source.md', HIDDEN_ONLY);
+    const inventory = { documentTargets: [], fileTargets: [] };
+
+    expect(await rig.index.rebuildFromDisk(inventory)).toEqual({ sources: 0, occurrences: 0 });
+    expect(rig.index.getDocumentDependents('vault/acp.daemon')).toEqual(['notes/source']);
+    const generation = rig.index.generation;
+
+    expect(await rig.index.rebuildFromDisk(inventory)).toEqual({ sources: 0, occurrences: 0 });
+    expect(rig.index.generation).toBe(generation);
+  });
+
+  test('stats count only the rows the index returns', () => {
+    const withHidden = createIndex();
+    const withoutHidden = createIndex();
+    for (const index of [withHidden, withoutHidden]) index.setSource('vault/acp.daemon', '# ACP\n');
+    withHidden.setSource('notes/source', 'See [[acp.daemon]] and [x](target).\n');
+    withHidden.setSource('notes/other', HIDDEN_ONLY);
+    withoutHidden.setSource('notes/source', 'See [x](target).\n');
+
+    const returned = withHidden.getAssessmentsForSources();
+    expect(withHidden.getStats()).toEqual(withoutHidden.getStats());
+    expect(withHidden.getStats()).toMatchObject({
+      sources: returned.length,
+      occurrences: returned.flatMap(({ assessments }) => assessments).length,
+    });
+  });
+});
+
+describe('file targets that exist but are excluded by ignore rules (PRD-8896)', () => {
+  const IGNORED_SOURCE = [
+    '[d](ignored/ig.png)',
+    '![e](ignored/ig.png)',
+    '[m](ignored/missing.png)',
+    '[m2](media/missing.png)',
+  ].join('\n');
+
+  function reasonsOf(index: LocalTargetIndex): Array<[string | null, string, string | null]> {
+    return index.getAssessments('src').map((a) => [a.resolvedTarget, a.status, a.reason]);
+  }
+
+  test('a file on disk under a .gitignore rule reports excluded; missing files stay no-such-file', () => {
+    const rig = createDiskRig({}, { '.gitignore': 'ignored/\n' });
+    rig.write('ignored/ig.png', 'png');
+    rig.index.setSource('src', IGNORED_SOURCE);
+    expect(reasonsOf(rig.index)).toEqual([
+      ['ignored/ig.png', 'missing', 'excluded'],
+      ['ignored/ig.png', 'missing', 'excluded'],
+      ['ignored/missing.png', 'missing', 'no-such-file'],
+      ['media/missing.png', 'missing', 'no-such-file'],
+    ]);
+  });
+
+  test('a file on disk under a .okignore rule reports excluded', () => {
+    const rig = createDiskRig({}, { '.okignore': 'ignored/\n' });
+    rig.write('ignored/ig.png', 'png');
+    rig.index.setSource('src', '[d](ignored/ig.png)\n');
+    expect(reasonsOf(rig.index)).toEqual([['ignored/ig.png', 'missing', 'excluded']]);
+  });
+
+  test('without a content filter the probe is inert and the file stays no-such-file', () => {
+    const index = createIndex();
+    index.setSource('src', '[d](ignored/ig.png)\n');
+    expect(reasonsOf(index)).toEqual([['ignored/ig.png', 'missing', 'no-such-file']]);
+  });
+
+  test('a built-in exclusion a "!" rule cannot lift stays no-such-file (control)', () => {
+    const rig = createDiskRig();
+    rig.write('node_modules/pkg/logo.png', 'png');
+    rig.write('.env', 'SECRET=1');
+    rig.index.setSource('src', '[n](node_modules/pkg/logo.png)\n[s](.env)\n');
+    expect(reasonsOf(rig.index)).toEqual([
+      ['node_modules/pkg/logo.png', 'missing', 'no-such-file'],
+      ['.env', 'missing', 'no-such-file'],
+    ]);
+  });
+
+  test('a file under a built-in skip folder stays no-such-file even when an ignore file also matches it', () => {
+    const rig = createDiskRig({}, { '.okignore': 'build/\noutput/\n' });
+    rig.write('build/diagram.png', 'png');
+    rig.write('output/chart.png', 'png');
+    rig.index.setSource('src', '[b](build/diagram.png)\n[o](output/chart.png)\n');
+    expect(reasonsOf(rig.index)).toEqual([
+      ['build/diagram.png', 'missing', 'no-such-file'],
+      ['output/chart.png', 'missing', 'no-such-file'],
+    ]);
   });
 });

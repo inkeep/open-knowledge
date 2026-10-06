@@ -162,6 +162,27 @@ describe('LinksPanel Local files section', () => {
     ).toBeTruthy();
   });
 
+  test('an excluded file shows an Excluded status instead of Missing (PRD-8896)', async () => {
+    forwardLinksResult.body = forwardLinksBody({
+      localTargets: [
+        localTarget({
+          role: 'image',
+          href: 'ignored/ig.png',
+          resolvedTarget: 'ignored/ig.png',
+          status: 'missing',
+          reason: 'excluded',
+        }),
+      ],
+    });
+    render(<LinksPanel docName="notes" />);
+
+    expect(await screen.findByText('Excluded')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Excluded image ignored/ig.png. Go to reference.' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('Missing')).toBeNull();
+  });
+
   test('a missing row navigates to its authored occurrence and offers no recovery action', async () => {
     forwardLinksResult.body = forwardLinksBody({
       localTargets: [

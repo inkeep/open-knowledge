@@ -1,4 +1,4 @@
-import { DOCUMENT_OPEN_BYTE_LIMIT } from '@inkeep/open-knowledge-core';
+import { createTargetNamespace, DOCUMENT_OPEN_BYTE_LIMIT } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
   deriveKnownFolderPaths,
@@ -863,6 +863,51 @@ describe('markdown-extension normalization preserves document identity', () => {
     expect(resolveNavigationTarget('assets/flow.mmd', { pages: new Set<string>() })).toMatchObject({
       kind: 'doc',
       docName: 'assets/flow.mmd',
+    });
+  });
+});
+
+describe('resolveNavigationTarget across canonically equivalent spellings', () => {
+  const NFC = 'people/Ren\u00e9';
+  const NFD = 'people/Rene\u0301';
+
+  test('a document requested in NFC navigates to the stored NFD document', () => {
+    expect(
+      resolveNavigationTarget(NFC, { pages: createTargetNamespace('document', [NFD, 'notes']) }),
+    ).toEqual({ kind: 'doc', target: NFD, docName: NFD });
+  });
+
+  test('a folder-shaped target resolves its index note under the stored spelling', () => {
+    const pages = createTargetNamespace('document', [`${NFD}/index`, 'notes']);
+    expect(resolveNavigationTarget(`${NFC}/`, { pages })).toEqual({
+      kind: 'folder-index',
+      target: NFC,
+      folderPath: NFD,
+      docName: `${NFD}/index`,
+      noteKind: 'canonical-index',
+    });
+    expect(resolveNavigationTarget(NFC, { pages })).toEqual({
+      kind: 'folder-index',
+      target: NFC,
+      folderPath: NFD,
+      docName: `${NFD}/index`,
+      noteKind: 'canonical-index',
+    });
+  });
+
+  test('a folder requested in NFC resolves to the stored NFD folder path', () => {
+    expect(
+      resolveNavigationTarget(NFC, {
+        pages: createTargetNamespace('document', [`${NFD}/notes`]),
+        folderPaths: createTargetNamespace('folder', [NFD, 'people']),
+      }),
+    ).toEqual({ kind: 'folder', target: NFC, folderPath: NFD });
+  });
+
+  test('plain sets keep exact matching', () => {
+    expect(resolveNavigationTarget(NFC, { pages: new Set([NFD]) })).toEqual({
+      kind: 'missing',
+      target: NFC,
     });
   });
 });

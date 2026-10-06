@@ -1,5 +1,11 @@
 import type { Nodes, Root } from 'mdast';
 import { visit } from 'unist-util-visit';
+import {
+  angleDestinationEscapesBackslashBefore,
+  angleDestinationReproducesEscapeOf,
+  isAsciiPunctuation,
+} from './angle-destination-escapes.ts';
+import { BACKSLASH_ESCAPE_PUA_MARK } from './backslash-escape-guard.ts';
 import { findFencedRegions, findInlineCodeRegions, isInsideFence } from './fence-regions.ts';
 
 const GUARD_OPEN = '\uE000';
@@ -46,6 +52,7 @@ function countOpenersBefore(
   tag: string,
   offset: number,
   codeRegions: Array<[number, number]>,
+  destinations: AngleDestinationIndex,
 ): number {
   let count = 0;
   let from = 0;
@@ -54,6 +61,7 @@ function countOpenersBefore(
     const at = source.indexOf(needle, from);
     if (at === -1 || at >= offset) break;
     from = at + needle.length;
+    if (isReservedOpen(destinations, at)) continue;
     const after = source[at + needle.length];
     if (after !== undefined && after !== '>' && after !== '/' && !/\s/.test(after)) continue;
     if (isInsideFence(at, codeRegions)) continue;
@@ -77,11 +85,18 @@ function lowerBound(arr: number[], target: number): number {
   return lo;
 }
 
-function indexUppercaseCloseTagsByName(source: string): Map<string, number[]> {
+function indexUppercaseCloseTagsByName(
+  source: string,
+  destinations: AngleDestinationIndex,
+): Map<string, number[]> {
   const index = new Map<string, number[]>();
   const re = new RegExp(UPPERCASE_CLOSE_TAG_INDEX_RE.source, 'g');
   let m = re.exec(source);
   while (m !== null) {
+    if (isReservedOpen(destinations, m.index)) {
+      m = re.exec(source);
+      continue;
+    }
     const existing = index.get(m[1]);
     if (existing) existing.push(m.index);
     else index.set(m[1], [m.index]);
@@ -123,53 +138,285 @@ function indexLiteralDoubleNewlines(source: string): number[] {
 
 const ANGLE_DEST_SCAN_CAP = 1024;
 
-function isAngleBracketDestinationOpen(offset: number, result: string): boolean {
-  if (result[offset - 1] !== '(' || result[offset - 2] !== ']') return false;
-  const labelEnd = offset - 2;
+const DEFINITION_LABEL_SIZE_MAX = 999;
+
+const DEFINITION_LINE_START_RE = /(?<![^\n\r]) {0,3}\[/g;
+
+const TABLE_DELIMITER_ROW_RE = /^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
+
+interface AngleDestinationIndex {
+  readonly opens: ReadonlySet<number>;
+  readonly closes: ReadonlySet<number>;
+  readonly forced: ReadonlySet<number>;
+}
+
+function isReservedOpen(index: AngleDestinationIndex, offset: number): boolean {
+  return index.opens.has(offset) || index.forced.has(offset);
+}
+
+function isGuardSentinel(ch: string | undefined): boolean {
+  return (
+    ch === GUARD_OPEN ||
+    ch === GUARD_CLOSE ||
+    ch === GUARD_COLON ||
+    ch === GUARD_AT ||
+    ch === GUARD_OPEN_BRACE
+  );
+}
+
+function isSpaceOrTab(ch: string | undefined): boolean {
+  return ch === ' ' || ch === '\t';
+}
+
+function isLineEnding(ch: string | undefined): boolean {
+  return ch === '\n' || ch === '\r';
+}
+
+function skipSpacesAndTabs(offset: number, source: string): number {
+  let j = offset;
+  while (isSpaceOrTab(source[j])) j++;
+  return j;
+}
+
+function lineEndingEnd(offset: number, source: string): number {
+  return source[offset] === '\r' && source[offset + 1] === '\n' ? offset + 1 : offset;
+}
+
+function inlineLabelStart(labelEnd: number, result: string): number {
   let bs = 0;
   for (let j = labelEnd - 1; j >= 0 && result[j] === '\\'; j--) bs++;
-  if (bs % 2 === 1) return false;
+  if (bs % 2 === 1) return -1;
 
-  let foundLabelStart = false;
   const scanFloor = Math.max(0, labelEnd - ANGLE_DEST_SCAN_CAP);
   for (let j = labelEnd - 1; j >= scanFloor; j--) {
     const ch = result[j];
-    if (ch === '\n' || ch === '\r' || ch === '`') return false;
+    if (isLineEnding(ch) || ch === '`') return -1;
     if (ch !== '[' && ch !== ']') continue;
-    let k = 0;
-    for (let m = j - 1; m >= 0 && result[m] === '\\'; m--) k++;
-    if (k % 2 === 1) continue;
-    if (ch === ']') return false;
-    if (result[j + 1] === '^') return false;
-    if (result[j - 1] === ']') return false;
-    foundLabelStart = true;
-    break;
+    if (isBackslashEscaped(j, result)) continue;
+    if (ch === ']') return -1;
+    if (result[j + 1] === '^') return -1;
+    if (result[j - 1] === ']') return -1;
+    return j;
   }
-  if (!foundLabelStart) return false;
+  return -1;
+}
 
-  let sawWhitespace = false;
-  let destClose = -1;
+function isBackslashEscaped(offset: number, source: string): boolean {
+  let count = 0;
+  for (let j = offset - 1; j >= 0 && source[j] === '\\'; j--) count++;
+  return count % 2 === 1;
+}
+
+function hasUnescapedPipe(from: number, to: number, source: string): boolean {
+  for (let j = from; j < to; j++) {
+    if (source[j] === '|' && !isBackslashEscaped(j, source)) return true;
+  }
+  return false;
+}
+
+function isTableDelimiterRowAfter(offset: number, source: string): boolean {
+  let lineStart = offset;
+  while (lineStart < source.length && !isLineEnding(source[lineStart])) lineStart++;
+  if (lineStart >= source.length) return false;
+  lineStart = lineEndingEnd(lineStart, source) + 1;
+  let lineEnd = lineStart;
+  while (lineEnd < source.length && !isLineEnding(source[lineEnd])) lineEnd++;
+  const line = source.slice(lineStart, lineEnd);
+  return TABLE_DELIMITER_ROW_RE.test(line) && /[|:]/.test(line);
+}
+
+function isSerializableAfterEscapedBackslash(ch: string | undefined): boolean {
+  return ch === BACKSLASH_ESCAPE_PUA_MARK || angleDestinationEscapesBackslashBefore(ch);
+}
+
+function enclosedDestinationClose(offset: number, result: string, escapedOpens: number[]): number {
   const scanCeil = Math.min(result.length, offset + 1 + ANGLE_DEST_SCAN_CAP);
   for (let j = offset + 1; j < scanCeil; j++) {
     const ch = result[j];
-    if (ch === '>') {
-      destClose = j;
-      break;
+    if (ch === '>') return j;
+    if (ch === BACKSLASH_ESCAPE_PUA_MARK && result[j + 1] === '<') {
+      escapedOpens.push(j + 1);
+      j++;
+      continue;
     }
-    if (ch === '<' || ch === '\\' || ch === '\n' || ch === '\r') return false;
-    if (
-      ch === GUARD_OPEN ||
-      ch === GUARD_CLOSE ||
-      ch === GUARD_COLON ||
-      ch === GUARD_AT ||
-      ch === GUARD_OPEN_BRACE
-    ) {
-      return false;
+    if (ch === '<' || isLineEnding(ch) || isGuardSentinel(ch)) return -1;
+    if (ch === '\\') {
+      const next = result[j + 1];
+      if (next === '\\' && !isSerializableAfterEscapedBackslash(result[j + 2])) return -1;
+      if (angleDestinationReproducesEscapeOf(next)) j++;
+      else if (isAsciiPunctuation(next)) return -1;
     }
-    if (ch === ' ' || ch === '\t') sawWhitespace = true;
   }
-  if (destClose === -1 || !sawWhitespace) return false;
-  return result[destClose + 1] === ')';
+  return -1;
+}
+
+function titleEnd(offset: number, result: string): number {
+  const opener = result[offset];
+  const marker = opener === '(' ? ')' : opener === '"' || opener === "'" ? opener : null;
+  if (marker === null) return -1;
+  const scanCeil = Math.min(result.length, offset + 1 + ANGLE_DEST_SCAN_CAP);
+  for (let j = offset + 1; j < scanCeil; j++) {
+    const ch = result[j];
+    if (ch === marker) return j + 1;
+    if (isLineEnding(ch) || (marker === ')' && ch === '(')) return -1;
+    if (ch === '\\') {
+      const next = result[j + 1];
+      if (next === marker || next === '\\' || (marker === ')' && next === '(')) j++;
+    }
+  }
+  return -1;
+}
+
+function resourceEnd(offset: number, result: string): number {
+  if (result[offset] === ')') return offset;
+  const titleStart = skipSpacesAndTabs(offset, result);
+  if (titleStart === offset) return -1;
+  const afterTitle = titleEnd(titleStart, result);
+  return afterTitle !== -1 && result[afterTitle] === ')' ? afterTitle : -1;
+}
+
+function resourceAngleDestinationClose(
+  offset: number,
+  result: string,
+  escapedOpens: number[],
+): number {
+  const labelStart = inlineLabelStart(offset - 2, result);
+  if (labelStart === -1) return -1;
+  const destClose = enclosedDestinationClose(offset, result, escapedOpens);
+  if (destClose === -1) return -1;
+  const end = resourceEnd(destClose + 1, result);
+  if (end === -1 || hasUnescapedPipe(labelStart, end, result)) return -1;
+  return destClose;
+}
+
+function isBlankLineBefore(lineStart: number, source: string): boolean {
+  let j = lineStart - 2;
+  if (source[j] === '\r') j--;
+  for (; j >= 0 && source[j] !== '\n'; j--) {
+    if (!isSpaceOrTab(source[j])) return false;
+  }
+  return true;
+}
+
+function definitionLabelEnd(bracket: number, source: string): number {
+  if (source[bracket + 1] === '^') return -1;
+  let seenContent = false;
+  const scanCeil = Math.min(source.length, bracket + 2 + DEFINITION_LABEL_SIZE_MAX);
+  for (let j = bracket + 1; j < scanCeil; j++) {
+    const ch = source[j];
+    if (ch === ']') return seenContent ? j : -1;
+    if (ch === '[' || isLineEnding(ch)) return -1;
+    if (ch === '\\') {
+      const next = source[j + 1];
+      if (next === '[' || next === ']' || next === '\\') j++;
+      seenContent = true;
+      continue;
+    }
+    if (!isSpaceOrTab(ch)) seenContent = true;
+  }
+  return -1;
+}
+
+function definitionTitleLineEnd(lineEnd: number, source: string): number {
+  const titleStart = skipSpacesAndTabs(lineEnd + 1, source);
+  const afterTitle = titleEnd(titleStart, source);
+  if (afterTitle === -1) return lineEnd;
+  const j = skipSpacesAndTabs(afterTitle, source);
+  if (j >= source.length) return source.length;
+  return isLineEnding(source[j]) ? lineEndingEnd(j, source) : lineEnd;
+}
+
+function definitionEnd(offset: number, source: string): number {
+  let j = skipSpacesAndTabs(offset, source);
+  if (j >= source.length) return source.length;
+  if (isLineEnding(source[j])) return definitionTitleLineEnd(lineEndingEnd(j, source), source);
+  if (j === offset) return -1;
+  const afterTitle = titleEnd(j, source);
+  if (afterTitle === -1) return -1;
+  j = skipSpacesAndTabs(afterTitle, source);
+  if (j >= source.length) return source.length;
+  return isLineEnding(source[j]) ? lineEndingEnd(j, source) : -1;
+}
+
+function indexDefinitionAngleDestinations(
+  source: string,
+  opens: Set<number>,
+  closes: Set<number>,
+  forced: Set<number>,
+): void {
+  let lastDefinitionEnd = -1;
+  for (const m of source.matchAll(DEFINITION_LINE_START_RE)) {
+    const lineStart = m.index;
+    if (
+      lineStart !== 0 &&
+      lineStart !== lastDefinitionEnd + 1 &&
+      !isBlankLineBefore(lineStart, source)
+    ) {
+      continue;
+    }
+    const labelEnd = definitionLabelEnd(lineStart + m[0].length - 1, source);
+    if (labelEnd === -1 || source[labelEnd + 1] !== ':') continue;
+    const lt = skipSpacesAndTabs(labelEnd + 2, source);
+    if (source[lt] !== '<') continue;
+    const escapedOpens: number[] = [];
+    const gt = enclosedDestinationClose(lt, source, escapedOpens);
+    if (gt === -1) continue;
+    const end = definitionEnd(gt + 1, source);
+    if (end === -1 || isTableDelimiterRowAfter(gt, source)) continue;
+    opens.add(lt);
+    closes.add(gt);
+    for (const at of escapedOpens) forced.add(at);
+    lastDefinitionEnd = end;
+  }
+}
+
+function indexAngleDestinations(source: string): AngleDestinationIndex {
+  const opens = new Set<number>();
+  const closes = new Set<number>();
+  const forced = new Set<number>();
+  let at = source.indexOf('](<');
+  while (at !== -1) {
+    const escapedOpens: number[] = [];
+    const close = resourceAngleDestinationClose(at + 2, source, escapedOpens);
+    if (close !== -1) {
+      opens.add(at + 2);
+      closes.add(close);
+      for (const forcedAt of escapedOpens) forced.add(forcedAt);
+    }
+    at = source.indexOf('](<', at + 3);
+  }
+  indexDefinitionAngleDestinations(source, opens, closes, forced);
+  return { opens, closes, forced };
+}
+
+function hasLiveCloserAfter(
+  source: string,
+  tag: string,
+  offset: number,
+  destinations: AngleDestinationIndex,
+): boolean {
+  const needle = `</${tag}>`;
+  let at = source.indexOf(needle, offset);
+  while (at !== -1) {
+    if (!isReservedOpen(destinations, at)) return true;
+    at = source.indexOf(needle, at + 1);
+  }
+  return false;
+}
+
+function guardAngleBrackets(
+  match: string,
+  offset: number,
+  destinations: AngleDestinationIndex,
+): string {
+  let out = '';
+  for (let i = 0; i < match.length; i++) {
+    const ch = match[i];
+    if (ch === '<') out += destinations.opens.has(offset + i) ? ch : GUARD_OPEN;
+    else if (ch === '>') out += destinations.closes.has(offset + i) ? ch : GUARD_CLOSE;
+    else out += ch;
+  }
+  return out;
 }
 
 function isSelfClosingTagAt(
@@ -256,6 +503,7 @@ function isUppercaseJsxSelfClosingAt(
   scanStart: number,
   result: string,
   nextBlankLine: number,
+  destinations: AngleDestinationIndex,
 ): boolean {
   const scanEnd = Math.min(result.length, nextBlankLine);
   let inDoubleQuote = false;
@@ -280,7 +528,7 @@ function isUppercaseJsxSelfClosingAt(
       continue;
     }
     if (braceDepth > 0) continue;
-    if (ch === '>') {
+    if (ch === '>' && !destinations.closes.has(i)) {
       return i > 0 && result[i - 1] === '/';
     }
   }
@@ -374,7 +622,11 @@ export function protectFromMdx(source: string): string {
     return match.replace(/</g, GUARD_OPEN).replace(/>/g, GUARD_CLOSE);
   });
 
-  result = result.replace(AUTOLINK_RE, (_match, uri: string) => {
+  const angleDestinations = indexAngleDestinations(result);
+
+  result = result.replace(AUTOLINK_RE, (match, uri: string, offset: number) => {
+    if (angleDestinations.opens.has(offset)) return match;
+    if (angleDestinations.forced.has(offset)) return `${GUARD_OPEN}${match.slice(1)}`;
     const safe = uri.replaceAll(':', GUARD_COLON).replaceAll('@', GUARD_AT);
     return `${GUARD_OPEN}${safe}${GUARD_CLOSE}`;
   });
@@ -382,9 +634,11 @@ export function protectFromMdx(source: string): string {
   const exemptedClosers = new Map<string, number>();
   const codeRegions = [...findFencedRegions(result), ...findInlineCodeRegions(result)];
   result = result.replace(HTML_CLOSE_TAG_RE, (match, tag: string, offset: number) => {
+    if (angleDestinations.opens.has(offset)) return match;
+    if (angleDestinations.forced.has(offset)) return `${GUARD_OPEN}${match.slice(1)}`;
     if (LOWERCASE_PAIRED_JSX_TAGS.has(tag)) {
       const used = exemptedClosers.get(tag) ?? 0;
-      if (used < countOpenersBefore(result, tag, offset, codeRegions)) {
+      if (used < countOpenersBefore(result, tag, offset, codeRegions, angleDestinations)) {
         exemptedClosers.set(tag, used + 1);
         return match;
       }
@@ -392,28 +646,40 @@ export function protectFromMdx(source: string): string {
     return match.replace(/</g, GUARD_OPEN).replace(/>/g, GUARD_CLOSE);
   });
 
-  result = result.replace(LOWERCASE_HTML_TAG_RE, (match, tag: string) => {
-    if (LOWERCASE_JSX_CANONICAL_TAGS.has(tag) && match.endsWith('/>')) {
+  result = result.replace(
+    LOWERCASE_HTML_TAG_RE,
+    (match, tag: string, _attributes: string | undefined, offset: number) => {
+      if (angleDestinations.opens.has(offset)) return match;
+      if (angleDestinations.forced.has(offset)) {
+        return guardAngleBrackets(match, offset, angleDestinations);
+      }
+      if (LOWERCASE_JSX_CANONICAL_TAGS.has(tag) && match.endsWith('/>')) {
+        return match;
+      }
+      if (LOWERCASE_PAIRED_JSX_TAGS.has(tag)) {
+        return match;
+      }
+      if (tag[0] === tag[0].toLowerCase() && tag[0] !== tag[0].toUpperCase()) {
+        return guardAngleBrackets(match, offset, angleDestinations);
+      }
       return match;
-    }
-    if (LOWERCASE_PAIRED_JSX_TAGS.has(tag)) {
-      return match;
-    }
-    if (tag[0] === tag[0].toLowerCase() && tag[0] !== tag[0].toUpperCase()) {
-      return match.replace(/</g, GUARD_OPEN).replace(/>/g, GUARD_CLOSE);
-    }
-    return match;
-  });
+    },
+  );
 
-  result = result.replace(/<>/g, `${GUARD_OPEN}${GUARD_CLOSE}`);
+  result = result.replace(/<>/g, (match, offset: number) =>
+    angleDestinations.opens.has(offset)
+      ? match
+      : guardAngleBrackets(match, offset, angleDestinations),
+  );
 
-  const closeTagOffsets = indexUppercaseCloseTagsByName(result);
+  const closeTagOffsets = indexUppercaseCloseTagsByName(result, angleDestinations);
   const paragraphBreaks = indexParagraphBreaks(result);
   const greaterThanOffsets = indexGreaterThan(result);
   const uppercaseTagSpans = indexUppercaseTagSpans(result);
 
   result = result.replace(/</g, (match, offset) => {
-    if (isAngleBracketDestinationOpen(offset, result)) return match;
+    if (angleDestinations.opens.has(offset)) return match;
+    if (angleDestinations.forced.has(offset)) return GUARD_OPEN;
 
     if (isOffsetInsideAnyRegion(offset, uppercaseTagSpans)) return match;
 
@@ -439,7 +705,7 @@ export function protectFromMdx(source: string): string {
       if (lookahead.startsWith(`<${pairedTagName}/>`)) {
         return match;
       }
-      if (result.indexOf(`</${pairedTagName}>`, offset) !== -1) {
+      if (hasLiveCloserAfter(result, pairedTagName, offset, angleDestinations)) {
         return match;
       }
       return GUARD_OPEN;
@@ -456,7 +722,7 @@ export function protectFromMdx(source: string): string {
     const nextBlankLine = pbIdx < paragraphBreaks.length ? paragraphBreaks[pbIdx] : result.length;
 
     const scanStart = offset + 1 + tagName.length;
-    if (isUppercaseJsxSelfClosingAt(scanStart, result, nextBlankLine)) {
+    if (isUppercaseJsxSelfClosingAt(scanStart, result, nextBlankLine, angleDestinations)) {
       return match;
     }
 
@@ -498,6 +764,7 @@ export function restoreFromMdx() {
         rec.value = restoreString(rec.value);
       }
       if (typeof rec.url === 'string' && hasSentinels(rec.url)) {
+        if (rec.url.startsWith(GUARD_OPEN)) recordGuardedDestinationOpen(node);
         rec.url = restoreString(rec.url);
       }
       if (typeof rec.title === 'string' && hasSentinels(rec.title)) {
@@ -514,6 +781,12 @@ export function restoreFromMdx() {
       }
     });
   };
+}
+
+function recordGuardedDestinationOpen(node: Nodes): void {
+  if (node.type !== 'link' && node.type !== 'image' && node.type !== 'definition') return;
+  node.data ??= {};
+  node.data.sourceGuardedDestinationOpen = true;
 }
 
 function restoreString(s: string): string {

@@ -1,4 +1,4 @@
-import { toWikiLinkSlug } from '@inkeep/open-knowledge-core';
+import { createTargetNamespace, toWikiLinkSlug } from '@inkeep/open-knowledge-core';
 import { beforeEach, describe, expect, test } from 'vitest';
 import {
   resetLinkValidationPolicyForTest,
@@ -20,12 +20,14 @@ function makeCache(opts: {
   assetPaths?: Iterable<string>;
   filePaths?: Iterable<string>;
 }): PageListCacheSnapshot {
-  const pages = new Set(opts.pages ?? []);
+  const pages = createTargetNamespace('document', opts.pages ?? []);
   return {
     pages,
-    folderPaths: new Set(opts.folderPaths ?? []),
-    assetPaths: opts.assetPaths === undefined ? undefined : new Set(opts.assetPaths),
-    filePaths: opts.filePaths === undefined ? undefined : new Set(opts.filePaths),
+    folderPaths: createTargetNamespace('folder', opts.folderPaths ?? []),
+    assetPaths:
+      opts.assetPaths === undefined ? undefined : createTargetNamespace('file', opts.assetPaths),
+    filePaths:
+      opts.filePaths === undefined ? undefined : createTargetNamespace('file', opts.filePaths),
     pagesBySlug: buildPagesBySlugIndex(pages, toWikiLinkSlug),
   };
 }
@@ -109,9 +111,35 @@ describe('computeLinkResolutionState', () => {
     expect(computeLinkResolutionState('./test/he.png', 'README', cache)).toBe('asset');
   });
 
-  test('relative asset href matches asset index case-insensitively', () => {
+  test('relative asset href matches the asset file name case-insensitively', () => {
     const cache = makeCache({ pages: [], assetPaths: ['docs/Screenshot.PNG'] });
     expect(computeLinkResolutionState('./docs/screenshot.png', 'README', cache)).toBe('asset');
+  });
+
+  test('relative asset href does not match when a parent folder differs in case', () => {
+    const cache = makeCache({ pages: [], assetPaths: ['docs/Screenshot.PNG'] });
+    expect(computeLinkResolutionState('./Docs/screenshot.png', 'README', cache)).toBe('unresolved');
+  });
+
+  test('asset and file hrefs resolve across canonically equivalent spellings', () => {
+    const cache = makeCache({
+      pages: [],
+      assetPaths: ['images/Rene\u0301.png'],
+      filePaths: ['data/Zoe\u0308.csv'],
+    });
+    expect(computeLinkResolutionState('./images/Ren\u00e9.png', 'README', cache)).toBe('asset');
+    expect(computeLinkResolutionState('/data/Zo\u00eb.csv', 'README', cache)).toBe('asset');
+  });
+
+  test('a document href spelled in NFC resolves to the NFD page', () => {
+    const cache = makeCache({ pages: ['people/Rene\u0301'], folderPaths: ['people'] });
+    expect(computeLinkResolutionState('./people/Ren\u00e9.md', 'README', cache)).toBe('resolved');
+    expect(computeLinkResolutionState('./people/Ren\u00e9', 'README', cache)).toBe('resolved');
+  });
+
+  test('a folder href spelled in NFC resolves to the NFD folder', () => {
+    const cache = makeCache({ pages: ['Rene\u0301/notes'], folderPaths: ['Rene\u0301'] });
+    expect(computeLinkResolutionState('./Ren\u00e9', 'README', cache)).toBe('folder');
   });
 
   test('relative asset href with cache, asset missing → unresolved', () => {

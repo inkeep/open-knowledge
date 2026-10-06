@@ -1,4 +1,5 @@
 import {
+  asTargetNamespace,
   buildPagesByBasenameIndex,
   buildPagesBySlugIndex,
   parseGlobalSkillBundleDoc,
@@ -7,7 +8,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 
 export function buildProjectWikiLinkLookup(docNames: Iterable<string>): WikiLinkLookupIndex {
-  const pages = new Set(docNames);
+  const pages = asTargetNamespace('document', docNames);
   const projectPages = new Set([...pages].filter((page) => !parseGlobalSkillBundleDoc(page)));
   return {
     pages,

@@ -106,7 +106,7 @@ export async function seedBasenameIndex(opts: SeedOptions): Promise<void> {
         else if (
           realStat.isFile() &&
           isSupportedAssetFile(full, LINKABLE_ASSET_EXTENSIONS) &&
-          !opts.contentFilter?.isExcluded(rel)
+          !opts.contentFilter?.isPathIgnored(rel)
         ) {
           opts.basenameIndex.add(rel);
         }
@@ -122,7 +122,7 @@ export async function seedBasenameIndex(opts: SeedOptions): Promise<void> {
       if (
         entryStat.isFile() &&
         isSupportedAssetFile(full, LINKABLE_ASSET_EXTENSIONS) &&
-        !opts.contentFilter?.isExcluded(rel)
+        !opts.contentFilter?.isPathIgnored(rel)
       ) {
         opts.basenameIndex.add(rel);
       }

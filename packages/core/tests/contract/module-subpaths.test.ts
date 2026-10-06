@@ -117,6 +117,8 @@ import * as utilsRelativeTimeSubpath from '@inkeep/open-knowledge-core/utils/rel
 import * as utilsResolveInternalHrefSubpath from '@inkeep/open-knowledge-core/utils/resolve-internal-href';
 import * as utilsSanitizeFolderNameSubpath from '@inkeep/open-knowledge-core/utils/sanitize-folder-name';
 import * as utilsSlugSubpath from '@inkeep/open-knowledge-core/utils/slug';
+import * as utilsTargetIdentitySubpath from '@inkeep/open-knowledge-core/utils/target-identity';
+import * as utilsTargetNamespaceSubpath from '@inkeep/open-knowledge-core/utils/target-namespace';
 import * as utilsVimeoEmbedSubpath from '@inkeep/open-knowledge-core/utils/vimeo-embed';
 import * as utilsWikiLinkResolveSubpath from '@inkeep/open-knowledge-core/utils/wiki-link-resolve';
 import * as utilsYoutubeEmbedSubpath from '@inkeep/open-knowledge-core/utils/youtube-embed';
@@ -257,6 +259,8 @@ const MODULE_SUBPATHS: Record<string, object> = {
   './utils/resolve-internal-href': utilsResolveInternalHrefSubpath,
   './utils/sanitize-folder-name': utilsSanitizeFolderNameSubpath,
   './utils/slug': utilsSlugSubpath,
+  './utils/target-identity': utilsTargetIdentitySubpath,
+  './utils/target-namespace': utilsTargetNamespaceSubpath,
   './utils/vimeo-embed': utilsVimeoEmbedSubpath,
   './utils/wiki-link-resolve': utilsWikiLinkResolveSubpath,
   './utils/youtube-embed': utilsYoutubeEmbedSubpath,

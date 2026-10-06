@@ -269,6 +269,7 @@
     "1njn7W": ["Claro"],
     "1nke1r": ["Abrir ", ["0"], " no GitHub (abre em uma nova aba)"],
     "1oSHI0": ["Não deu para instalar ", ["skillName"], ": ", ["0"]],
+    "1ouiTz": ["A imagem ", ["identity"], " está ignorada. Ir para a referência."],
     "1pdLQw": ["Imagem não encontrada"],
     "1qpGKz": ["Não foi possível salvar as alterações. Tente editar uma cor novamente."],
     "1ruosn": ["OpenKnowledge"],
@@ -2115,6 +2116,7 @@
     "KIIamL": [
       "O OpenKnowledge vai criar commits e enviá-los ao seu remoto automaticamente. Se você não quer commits automáticos no seu histórico do git, não deve ativar a sincronização automática."
     ],
+    "KJ_eAL": ["Ignorado"],
     "KOZud0": [
       "Monte uma base de conhecimento sobre a concorrência. Comece com uma página geral e depois acrescente páginas interligadas para cada concorrente, seus produtos e preços, e as fontes por trás de cada afirmação."
     ],
@@ -4577,6 +4579,11 @@
     "gp3I7-": ["Antes de sincronizar, defina sua identidade para os commits do git:"],
     "gpbKxw": ["A validação de links não está disponível."],
     "gqk-3R": [["0"], " movido para ", ["destination"], "."],
+    "gssxm9": [
+      "O destino do link \"",
+      ["shown"],
+      "\" existe, mas é ignorado por .gitignore ou .okignore. Inclua-o de novo, ou a pasta dele, com uma regra \"!\" em .okignore."
+    ],
     "gtEbeW": ["Destaque"],
     "guidance.mcp.managed-file": [
       "Grava um pequeno arquivo de ponte que o ",
@@ -5558,6 +5565,7 @@
     ],
     "pha01Y": ["Páginas de todo o projeto sem arestas de entrada no grafo."],
     "pkAft1": ["A busca falhou."],
+    "pkC8Fi": ["O arquivo ", ["identity"], " está ignorado. Ir para a referência."],
     "pkmXTp": [["agentName"], " está pronto"],
     "pmUArF": ["Espaço de trabalho"],
     "poAsUN": ["nenhum agente — salvas, não instaladas em lugar algum"],
@@ -5597,6 +5605,11 @@
     "q63KUv": ["Adicionar MCP e habilidade"],
     "q7F5am": ["título"],
     "q8aCbb": ["Duas versões de \"", ["0"], "\" — a fonte contra ", ["editor"]],
+    "qAC6UE": [
+      "O destino da imagem \"",
+      ["shown"],
+      "\" existe, mas é ignorado por .gitignore ou .okignore. Inclua-o de novo, ou a pasta dele, com uma regra \"!\" em .okignore."
+    ],
     "qAQVSD": ["A resposta dos títulos da página não era JSON"],
     "qAhFeg": [
       ["userName"],

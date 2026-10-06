@@ -191,7 +191,12 @@ import {
 import type { LinkAdvisoryPolicy } from './link-advisory-policy.ts';
 import { ensureOkfSchemaFiles } from './lint/write-okf-schemas.ts';
 import { createLiveDerivedIndexExtension } from './live-derived-index.ts';
-import { localTargetInventoryFromWatcher } from './local-target-inventory.ts';
+import { wikiFilePath } from './local-target-assessment.ts';
+import {
+  createTrackedFileResolver,
+  createTrackedWikiFileResolver,
+  localTargetInventoryFromWatcher,
+} from './local-target-inventory.ts';
 import { getLogger } from './logger.ts';
 import { LossCaptureRing } from './loss-capture.ts';
 import {
@@ -377,6 +382,7 @@ export interface ServerInstance {
   readonly conflicts: ConflictAuthority;
   readonly getLinkPreviewsEnabled: () => boolean;
   readonly resolveEmbed: (basename: string, sourcePath: string) => string | null;
+  readonly resolveTrackedFile: (relativePath: string) => string | undefined;
   readonly acpRegistry: AcpRegistry;
   readonly acpPermissions: AcpPermissionStore;
 }
@@ -990,11 +996,23 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   const basenameIndex: BasenameIndex = createBasenameIndex();
 
-  const resolveEmbed = (basename: string, sourcePath: string): string | null =>
-    basenameIndex.resolveEmbed(basename, sourcePath);
+  const resolveTrackedFile = createTrackedFileResolver(() =>
+    localTargetInventoryFromWatcher(watcher, contentDir),
+  );
+  const resolveTrackedWikiFile = createTrackedWikiFileResolver(() =>
+    localTargetInventoryFromWatcher(watcher, contentDir),
+  );
+
+  const resolveEmbed = (target: string, sourcePath: string): string | null => {
+    const wikiPath = wikiFilePath(target);
+    if (wikiPath === null || !wikiPath.includes('/')) {
+      return basenameIndex.resolveEmbed(target, sourcePath);
+    }
+    return resolveTrackedWikiFile(wikiPath) ?? null;
+  };
 
   const resolveSize = (basename: string, sourcePath: string): number | null => {
-    let candidatePath: string | null = basenameIndex.resolveEmbed(basename, sourcePath);
+    let candidatePath: string | null = resolveEmbed(basename, sourcePath);
     if (!candidatePath && basename.includes('/')) {
       candidatePath = basename.replace(/^\.?\//, '');
     }
@@ -2179,6 +2197,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       getFolderIndex: () => (watcher ? watcher.getFolderIndex() : new Map()),
       getAliasMap: () => (watcher ? watcher.getAliasMap() : new Map()),
       getFolderAliasIndex: () => (watcher ? watcher.getFolderAliasIndex() : new Map()),
+      resolveTrackedFile,
       rescanFiles: () => watcher?.rescanFromDisk(),
       enableTestRoutes,
       shadowRef,
@@ -4626,6 +4645,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     conflicts,
     getLinkPreviewsEnabled: readLinkPreviewsEnabled,
     resolveEmbed,
+    resolveTrackedFile,
     acpRegistry,
     acpPermissions,
   };

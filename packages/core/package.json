@@ -791,6 +791,18 @@
       "types": "./dist/utils-slug.d.mts",
       "default": "./dist/utils-slug.mjs"
     },
+    "./utils/target-identity": {
+      "@inkeep/source": "./src/utils/target-identity.ts",
+      "development": "./src/utils/target-identity.ts",
+      "types": "./dist/utils-target-identity.d.mts",
+      "default": "./dist/utils-target-identity.mjs"
+    },
+    "./utils/target-namespace": {
+      "@inkeep/source": "./src/utils/target-namespace.ts",
+      "development": "./src/utils/target-namespace.ts",
+      "types": "./dist/utils-target-namespace.d.mts",
+      "default": "./dist/utils-target-namespace.mjs"
+    },
     "./utils/vimeo-embed": {
       "@inkeep/source": "./src/utils/vimeo-embed.ts",
       "development": "./src/utils/vimeo-embed.ts",

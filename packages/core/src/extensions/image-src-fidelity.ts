@@ -13,6 +13,7 @@ export const ImageSrcFidelity = Image.extend({
     return {
       ...this.parent?.(),
       sourceUrl: { default: null, rendered: false },
+      sourceUrlForm: { default: null, rendered: false },
     };
   },
 

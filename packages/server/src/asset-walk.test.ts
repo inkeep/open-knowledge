@@ -62,11 +62,12 @@ describe('seedBasenameIndex — initial walk (no filter)', () => {
   });
 });
 
-describe('seedBasenameIndex — initial walk (with ContentFilter sibling-asset admission)', () => {
-  test('admits assets only in markdown-neighbored directories', async () => {
+describe('seedBasenameIndex — initial walk (with ContentFilter)', () => {
+  test('admits assets in directories with no markdown document', async () => {
     write('docs/meeting.md');
     write('docs/photo.png');
     write('no-md-here/orphan.png');
+    write('no-md-here/deeper/nested.gif');
 
     const idx = createBasenameIndex();
     const contentFilter = createContentFilter({
@@ -77,7 +78,8 @@ describe('seedBasenameIndex — initial walk (with ContentFilter sibling-asset a
     await seedBasenameIndex({ contentDir, contentFilter, basenameIndex: idx });
 
     expect(idx.resolveEmbed('photo.png', 'docs/meeting.md')).toBe('docs/photo.png');
-    expect(idx.resolveEmbed('orphan.png', 'docs/meeting.md')).toBeNull();
+    expect(idx.resolveEmbed('orphan.png', 'docs/meeting.md')).toBe('no-md-here/orphan.png');
+    expect(idx.resolveEmbed('nested.gif', 'docs/meeting.md')).toBe('no-md-here/deeper/nested.gif');
   });
 
   test('respects .okignore exclusion patterns', async () => {

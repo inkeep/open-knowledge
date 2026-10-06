@@ -178,6 +178,7 @@ declare module 'mdast' {
     sourceStyle?: string;
     sourceRaw?: string;
     sourceUrlForm?: 'angle-bracketed';
+    sourceGuardedDestinationOpen?: true;
     sourceTitleMarker?: 'single' | 'double' | 'paren';
   }
   interface LinkReferenceData {
@@ -242,6 +243,12 @@ declare module 'mdast' {
   interface DefinitionData {
     sourceLayout?: 'multiline' | 'inline';
     sourceTitleMarker?: 'single' | 'double' | 'paren';
+    sourceUrlForm?: 'angle-bracketed';
+    sourceGuardedDestinationOpen?: true;
+  }
+  interface ImageData {
+    sourceUrlForm?: 'angle-bracketed';
+    sourceGuardedDestinationOpen?: true;
   }
   interface RootContentMap {
     wikiLink: WikiLinkMdast;

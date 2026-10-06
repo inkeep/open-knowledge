@@ -96,9 +96,11 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
     const destroyServer = vi.fn(async () => {
       teardownOrder.push('server');
     });
+    const resolveTrackedFile = (relativePath: string) => relativePath;
     const createServerSpy = vi.fn(() => ({
       lockDir: testContentDir,
       contentFilter: { isPathIgnored: () => false },
+      resolveTrackedFile,
       hocuspocus: {
         hooks: async () => {},
         getConnectionsCount: () => 0,
@@ -159,6 +161,9 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
     expect(result).toBeUndefined();
 
     expect(createAssetServeMiddlewareSpy).toHaveBeenCalledTimes(1);
+    expect(createAssetServeMiddlewareSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ resolveTrackedFile }),
+    );
     expect(createCollaborationHostSpy).toHaveBeenCalledTimes(1);
     expect(createCollaborationHostSpy).toHaveBeenCalledWith(
       expect.objectContaining({

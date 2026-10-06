@@ -8,6 +8,7 @@ import {
   rawSegmentOr,
   resolveAssetProjectPath,
   resolveInternalHref,
+  resolveName,
   resolveSkillBundleWikiTarget,
   resolveWikiLinkTargetDocName,
   type WikiLinkLookupIndex,
@@ -403,11 +404,16 @@ function recomputeRelativeMarkdownHref(
   return `${relativePath}${querySuffix}${hashSuffix}`;
 }
 
+export type CanonicalDocName = (docName: string) => string;
+
+const exactDocName: CanonicalDocName = (docName) => docName;
+
 function rewriteMarkdownLinksInLine(
   line: string,
   sourceDocName: string,
   oldDocName: string,
   newDocName: string,
+  canonical: CanonicalDocName,
 ): RenameRewriteResult {
   let rewritten = '';
   let rewrites = 0;
@@ -470,7 +476,7 @@ function rewriteMarkdownLinksInLine(
       const markdownLink = readMarkdownLink(line, idx);
       if (markdownLink) {
         const resolved = resolveInternalHref(markdownLink.href, sourceDocName);
-        if (resolved?.docName === oldDocName) {
+        if (resolved !== null && canonical(resolved.docName) === oldDocName) {
           const nextHref = recomputeRelativeMarkdownHref(
             markdownLink.href,
             sourceDocName,
@@ -685,8 +691,16 @@ function rewriteJsxSrcAttrValue(
   sourceDocName: string,
   oldDocName: string,
   newDocName: string,
+  canonical: CanonicalDocName,
 ): string | null {
-  const next = computeNextJsxSrcAttrValue(spec, value, sourceDocName, oldDocName, newDocName);
+  const next = computeNextJsxSrcAttrValue(
+    spec,
+    value,
+    sourceDocName,
+    oldDocName,
+    newDocName,
+    canonical,
+  );
   if (next !== null && /["'<>]/.test(next)) return null;
   return next;
 }
@@ -697,17 +711,19 @@ function computeNextJsxSrcAttrValue(
   sourceDocName: string,
   oldDocName: string,
   newDocName: string,
+  canonical: CanonicalDocName,
 ): string | null {
   if (spec.resolution === 'bare-doc-name') {
-    return value === oldDocName ? newDocName : null;
+    return canonical(value) === oldDocName ? newDocName : null;
   }
   const resolved = resolveJsxSrcRefTarget(spec, value, sourceDocName);
   if (resolved === null) return null;
+  const pointsAtRenamed = canonical(resolved) === oldDocName;
   const isContainingDocMove = sourceDocName === oldDocName && oldDocName !== newDocName;
-  if (resolved !== oldDocName && !isContainingDocMove) return null;
-  const target = resolved === oldDocName ? newDocName : resolved;
+  if (!pointsAtRenamed && !isContainingDocMove) return null;
+  const target = pointsAtRenamed ? newDocName : resolved;
   if (value.startsWith('/')) {
-    return resolved === oldDocName ? `/${target}` : null;
+    return pointsAtRenamed ? `/${target}` : null;
   }
   const anchorDocName = isContainingDocMove ? newDocName : sourceDocName;
   const candidate = relativeJsxSrcRef(anchorDocName, target, value);
@@ -721,6 +737,7 @@ function rewriteJsxSrcRefsInLine(
   sourceDocName: string,
   oldDocName: string,
   newDocName: string,
+  canonical: CanonicalDocName,
 ): RenameRewriteResult {
   let rewritten = '';
   let rewrites = 0;
@@ -753,6 +770,7 @@ function rewriteJsxSrcRefsInLine(
             sourceDocName,
             oldDocName,
             newDocName,
+            canonical,
           );
           if (nextValue === null) return whole;
           rewrites++;
@@ -776,6 +794,7 @@ export function rewriteJsxSrcRefsForDocumentRename(
   sourceDocName: string,
   oldDocName: string,
   newDocName: string,
+  canonical: CanonicalDocName = exactDocName,
 ): RenameRewriteResult {
   let fence: FenceState | null = null;
   let rewrites = 0;
@@ -795,7 +814,13 @@ export function rewriteJsxSrcRefsForDocumentRename(
         return `${line}${ending}`;
       }
 
-      const rewrittenLine = rewriteJsxSrcRefsInLine(line, sourceDocName, oldDocName, newDocName);
+      const rewrittenLine = rewriteJsxSrcRefsInLine(
+        line,
+        sourceDocName,
+        oldDocName,
+        newDocName,
+        canonical,
+      );
       rewrites += rewrittenLine.rewrites;
       return `${rewrittenLine.markdown}${ending}`;
     })
@@ -820,6 +845,10 @@ export function createWikiRenameContext(
     [...before.pages].map((page) => renames.get(page) ?? page),
   );
   return { before, after, renames };
+}
+
+export function canonicalDocNameBeforeRename(context: WikiRenameContext): CanonicalDocName {
+  return (docName) => resolveName(context.before.pages, docName) ?? docName;
 }
 
 function resolveRenameWikiTarget(
@@ -922,6 +951,7 @@ export function rewriteMarkdownLinksForDocumentRename(
   sourceDocName: string,
   oldDocName: string,
   newDocName: string,
+  canonical: CanonicalDocName = exactDocName,
 ): RenameRewriteResult {
   let fence: FenceState | null = null;
   let rewrites = 0;
@@ -941,7 +971,13 @@ export function rewriteMarkdownLinksForDocumentRename(
         return `${line}${ending}`;
       }
 
-      const rewrittenLine = rewriteMarkdownLinksInLine(line, sourceDocName, oldDocName, newDocName);
+      const rewrittenLine = rewriteMarkdownLinksInLine(
+        line,
+        sourceDocName,
+        oldDocName,
+        newDocName,
+        canonical,
+      );
       rewrites += rewrittenLine.rewrites;
       return `${rewrittenLine.markdown}${ending}`;
     })

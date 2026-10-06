@@ -235,6 +235,7 @@ export function hocuspocusPlugin(): Plugin {
         assetExtensions: ASSET_EXTENSIONS,
         blocklistExtensions: EXECUTABLE_BLOCKLIST_EXTENSIONS,
         ingressPolicy: buildIngressPolicy({}),
+        resolveTrackedFile: currentSrv.resolveTrackedFile,
       });
       server.middlewares.use((req, res, next) => {
         const url = req.url ?? '';

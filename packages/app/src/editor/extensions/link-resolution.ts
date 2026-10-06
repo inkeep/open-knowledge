@@ -2,6 +2,7 @@ import {
   classifyMarkdownHref,
   resolveAssetProjectPath,
 } from '@inkeep/open-knowledge-core/utils/link-targets';
+import { resolveName } from '@inkeep/open-knowledge-core/utils/target-namespace';
 import { resolveLinkTargetIntent } from '../../components/link-target-intent';
 import { isLinkValidationVisible } from '../link-validation-policy';
 import type { PageListCacheSnapshot } from '../page-list-cache';
@@ -16,13 +17,22 @@ type LinkResolutionState =
   | 'unresolved'
   | 'asset';
 
-function setHasPathCaseInsensitive(paths: ReadonlySet<string>, target: string): boolean {
-  if (paths.has(target)) return true;
-  const lowerTarget = target.toLowerCase();
-  for (const path of paths) {
-    if (path.toLowerCase() === lowerTarget) return true;
-  }
-  return false;
+export function resolveAssetHrefPath(
+  href: string,
+  sourceDocName: string,
+  assetPaths: ReadonlySet<string> | undefined,
+  filePaths: ReadonlySet<string> | undefined,
+  options: { literal: boolean },
+): string | null {
+  const projectRelPath = resolveAssetProjectPath(href, sourceDocName, {
+    literal: options.literal,
+  });
+  if (projectRelPath === null) return null;
+  return (
+    (assetPaths && resolveName(assetPaths, projectRelPath)) ??
+    (filePaths && resolveName(filePaths, projectRelPath)) ??
+    null
+  );
 }
 
 export function isResolvedAssetHref(
@@ -32,13 +42,7 @@ export function isResolvedAssetHref(
   filePaths: ReadonlySet<string> | undefined,
   options: { literal: boolean },
 ): boolean {
-  const projectRelPath = resolveAssetProjectPath(href, sourceDocName, {
-    literal: options.literal,
-  });
-  if (projectRelPath === null) return false;
-  if (assetPaths && setHasPathCaseInsensitive(assetPaths, projectRelPath)) return true;
-  if (filePaths && setHasPathCaseInsensitive(filePaths, projectRelPath)) return true;
-  return false;
+  return resolveAssetHrefPath(href, sourceDocName, assetPaths, filePaths, options) !== null;
 }
 
 export function computeLinkResolutionState(

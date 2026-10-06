@@ -46,9 +46,19 @@ export type LocalTargetKind = 'document' | 'file' | 'unknown';
 
 export type LocalTargetRole = 'link' | 'image';
 
-export type LocalTargetSourceForm = 'markdown-inline' | 'markdown-reference' | 'html-img';
+export type LocalTargetSourceForm =
+  | 'markdown-inline'
+  | 'markdown-reference'
+  | 'html-img'
+  | 'wiki-link'
+  | 'wiki-embed';
 
-export type LocalTargetResolutionMethod = 'source-relative' | 'root-relative' | 'tolerant' | 'none';
+export type LocalTargetResolutionMethod =
+  | 'source-relative'
+  | 'root-relative'
+  | 'tolerant'
+  | 'basename'
+  | 'none';
 
 export interface LocalTargetDiagnosticEvidence extends Record<string, unknown> {
   href: string;

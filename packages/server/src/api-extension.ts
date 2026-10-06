@@ -27,11 +27,13 @@ import {
   AgentWriteBatchSuccessSchema,
   AgentWriteRequestSchema,
   AgentWriteSuccessSchema,
+  asTargetNamespace,
   type BatchEntryError,
   type ConfigDiagnosticsReport,
   changedBlockRange,
   colorFromSeed,
   createCodeFenceTracker,
+  createWikiAssetResolver,
   DEFAULT_LINTER_CONFIG,
   type DiskEditReconciledWarning,
   type DocumentListEntry,
@@ -314,7 +316,13 @@ import {
   checkLocalOpSecurity as checkLocalOpSecurityBase,
   createConcurrencyGuard,
 } from './local-op-security.ts';
-import { localTargetInventoryFromIndexes } from './local-target-inventory.ts';
+import { isExcludedFileOnDisk } from './local-target-index.ts';
+import {
+  createFileBasenameResolver,
+  createFileExistsOracle,
+  localTargetInventoryFromIndexes,
+  type WatcherLocalTargetInventory,
+} from './local-target-inventory.ts';
 import { getLogger } from './logger.ts';
 import {
   managedArtifactAbsPath,
@@ -362,7 +370,7 @@ import { readSkillInstallModeRaw } from './skill-placements.ts';
 
 import type { SyncEngine } from './sync-engine.ts';
 import { getMeter, withSpan, withSpanSync } from './telemetry.ts';
-import { computeWriteAdvisoryLinks } from './write-advisory-links.ts';
+import { computeWriteAdvisoryLinks, type WriteAdvisoryTargets } from './write-advisory-links.ts';
 
 let _renameAttributionCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null =
   null;
@@ -1273,6 +1281,7 @@ interface ApiExtensionBaseOptions {
   onReferencedAssetsCacheInvalidator?: (invalidate: () => void) => void;
   getAliasMap?: () => ReadonlyMap<string, string>;
   getFolderAliasIndex?: () => ReadonlyMap<string, string>;
+  resolveTrackedFile?: (relativePath: string) => string | undefined;
   rescanFiles?: () => void | Promise<void>;
   localOpConcurrencyGuard?: ReturnType<typeof createConcurrencyGuard>;
   enableTestRoutes?: boolean;
@@ -1464,6 +1473,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     onReferencedAssetsCacheInvalidator,
     getAliasMap,
     getFolderAliasIndex,
+    resolveTrackedFile,
     rescanFiles,
     localOpConcurrencyGuard,
     enableTestRoutes = false,
@@ -1895,18 +1905,20 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     return derivedDocumentIndex?.isReady() ?? true;
   }
 
-  const prepareWriteLinkAdvisory: PrepareWriteLinkAdvisory = async (
-    writtenDocNames,
-    { resolveFolderLinks },
-  ) => {
+  const prepareWriteLinkAdvisory: PrepareWriteLinkAdvisory = async (writtenDocNames) => {
     if (!isDerivedIndexReady()) return deferredWriteLinkAdvisory;
     const admitted = await collectAdmittedDocNames();
     for (const docName of writtenDocNames) admitted.add(docName);
-    const linkedFileExists = createLinkedFileExists();
-    const linkedFolderExists = resolveFolderLinks ? createLinkedFolderExists() : undefined;
+    const targets: WriteAdvisoryTargets = {
+      fileExists: createLinkedFileExists(),
+      folderExists: createLinkedFolderExists(),
+      fileExcluded: createLinkedFileExcluded(),
+      resolveWikiFile: createLinkedWikiFileResolver(),
+      resolveFileByBasename: createLinkedFileBasenameResolver(),
+    };
     return (source, docName, suppressLogLinkAdvisories) => ({
       links: projectWriteAdvisoryLinks(
-        computeWriteAdvisoryLinks(source, docName, admitted, linkedFileExists, linkedFolderExists),
+        computeWriteAdvisoryLinks(source, docName, admitted, targets),
         docName,
         suppressLogLinkAdvisories,
       ),
@@ -2051,7 +2063,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
   function createLinkedFolderExists(): (folderPath: string) => boolean {
     const folderIndex = getFolderIndex?.();
     if (!folderIndex) return () => false;
-    return (folderPath) => folderIndex.has(folderPath);
+    const folders = asTargetNamespace('folder', folderIndex.keys());
+    return (folderPath) => folders.resolve(folderPath) !== undefined;
   }
 
   function createLinkedFileExists(
@@ -2062,26 +2075,42 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       getFolderAliasIndex?.() ?? new Map(),
       contentDir,
     );
-    const admittedFiles = new Set(inventory.fileTargets);
-    const canonicalContentDir = realpathSync(contentDir);
-    return (contentRootRelativePath) => {
-      if (admittedFiles.has(contentRootRelativePath)) return true;
-      if (contentFilter?.isPathIgnored(contentRootRelativePath)) return false;
+    return createFileExistsOracle(inventory.fileTargets, contentDir, contentFilter);
+  }
 
-      const candidate = resolve(contentDir, contentRootRelativePath);
-      if (!isWithinDir(candidate, contentDir) || !existsSync(candidate)) return false;
-      try {
-        return isWithinDir(realpathSync(candidate), canonicalContentDir);
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-          log.debug(
-            { err, candidate },
-            'linked-file existence fallback could not canonicalize; treating as absent',
-          );
-        }
-        return false;
-      }
+  function linkedLocalTargetInventory(): WatcherLocalTargetInventory {
+    return localTargetInventoryFromIndexes(
+      getAllFilesIndex(),
+      getFolderAliasIndex?.() ?? new Map(),
+      contentDir,
+      getFolderIndex?.(),
+    );
+  }
+
+  function createLinkedWikiFileResolver(): (contentRootRelativePath: string) => string | undefined {
+    let resolveWikiFile: ((contentRootRelativePath: string) => string | undefined) | undefined;
+    return (contentRootRelativePath) => {
+      resolveWikiFile ??= createWikiAssetResolver(linkedLocalTargetInventory().fileTargets);
+      return resolveWikiFile(contentRootRelativePath);
     };
+  }
+
+  function createLinkedFileBasenameResolver(): (
+    basename: string,
+    sourceDocName: string,
+  ) => string | undefined {
+    let resolveByBasename:
+      | ((basename: string, sourceDocName: string) => string | undefined)
+      | undefined;
+    return (basename, sourceDocName) => {
+      resolveByBasename ??= createFileBasenameResolver(linkedLocalTargetInventory().fileTargets);
+      return resolveByBasename(basename, sourceDocName);
+    };
+  }
+
+  function createLinkedFileExcluded(): (contentRootRelativePath: string) => boolean {
+    return (contentRootRelativePath) =>
+      isExcludedFileOnDisk(contentDir, contentFilter, contentRootRelativePath);
   }
 
   /**
@@ -3869,7 +3898,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
 
             const linkAdvisor = await prepareWriteLinkAdvisory(
               pending.filter((p) => flushErrors.get(p.docName) === undefined).map((p) => p.docName),
-              { resolveFolderLinks: true },
             );
 
             let lastWrittenDoc: string | undefined;
@@ -3949,6 +3977,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     contentDir,
     isPathIgnored: (relativePath) => contentFilter?.isPathIgnored(relativePath) ?? false,
     getAttachmentFolderPath,
+    resolveTrackedFile,
   });
   const fileOpsService = createFileOpsService({
     contentDir,
@@ -4774,6 +4803,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
           linkPolicy,
           admittedDocNames: collectAdmittedDocNames,
           docFilePathFor: (d) => resolveDocFilePath(contentDir, d),
+          localTargetInventory: linkedLocalTargetInventory,
         }).find((validator) => validator.id === 'links');
         if (linksValidator) {
           const run = await linksValidator.run({
@@ -4912,6 +4942,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     collectAdmittedDocNames,
     unmatchedGlobProblems,
     readAuditGeneration,
+    localTargetInventory: linkedLocalTargetInventory,
   });
   const lintWriteRoutes = createLintWriteRoutes({
     conflicts,

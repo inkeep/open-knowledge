@@ -10,6 +10,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { BacklinkIndex } from '../backlink-index.ts';
+import { createContentFilter } from '../content-filter.ts';
 import type { LinkAdvisoryPolicy } from '../link-advisory-policy.ts';
 import { LocalTargetIndex } from '../local-target-index.ts';
 import { resolveAuditScope } from './audit-scope.ts';
@@ -517,9 +518,81 @@ describe('local-target findings (files, images, reference-style)', () => {
     expect(ValidationAuditResponseSchema.parse(result)).toEqual(result);
   });
 
+  test('a file that exists but is excluded by ignore rules says so and names the .okignore remedy (PRD-8896)', async () => {
+    writeFileSync(join(root, '.gitignore'), 'ignored/\n');
+    mkdirSync(join(root, 'ignored'));
+    writeFileSync(join(root, 'ignored', 'ig.png'), 'png');
+    localTargets = new LocalTargetIndex({
+      contentDir: root,
+      contentFilter: createContentFilter({ projectDir: root, contentDir: root }),
+    });
+    seedDoc(
+      'doc',
+      '# Doc\n\n[d](./ignored/ig.png)\n\n![e](./ignored/ig.png)\n\n[m](./ignored/missing.png)\n',
+    );
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const diagnostics = result.files[0]?.diagnostics ?? [];
+    expect(diagnostics.map((d) => [d.message, d.localTarget?.reason])).toEqual([
+      [
+        'Link target "ignored/ig.png" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a "!" rule in .okignore.',
+        'excluded',
+      ],
+      [
+        'Image target "ignored/ig.png" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a "!" rule in .okignore.',
+        'excluded',
+      ],
+      ['Link target "ignored/missing.png" does not resolve to an existing file.', 'no-such-file'],
+    ]);
+    expect(diagnostics.every((d) => d.linkTarget === undefined)).toBe(true);
+    expect(ValidationAuditResponseSchema.parse(result)).toEqual(result);
+  });
+
   test('an existing file target produces no finding', async () => {
     seedDoc('doc', '# Doc\n\n[report](./report.pdf)\n');
     seedFile('report.pdf');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    expect(result.files).toEqual([]);
+    expect(result.warningCount).toBe(0);
+  });
+
+  test('a missing wiki asset target is a dead-link finding like a missing markdown file', async () => {
+    seedDoc('doc', '# Doc\n\n![[nothere.gif]] and [[media/nothere.png]]\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    expect(result.files.map((f) => f.file)).toEqual(['doc.md']);
+    const diagnostics = result.files[0]?.diagnostics ?? [];
+    expect(diagnostics.map((d) => [d.code, d.message])).toEqual([
+      ['dead-link', 'Image target "nothere.gif" does not resolve to an existing file.'],
+      ['dead-link', 'Link target "media/nothere.png" does not resolve to an existing file.'],
+    ]);
+    expect(diagnostics[0]?.localTarget).toEqual({
+      href: 'nothere.gif',
+      targetKind: 'file',
+      role: 'image',
+      sourceForm: 'wiki-embed',
+      resolvedTarget: 'nothere.gif',
+      reason: 'no-such-file',
+      resolutionMethod: 'root-relative',
+    });
+    expect(diagnostics[1]?.localTarget).toMatchObject({
+      role: 'link',
+      sourceForm: 'wiki-link',
+      resolvedTarget: 'media/nothere.png',
+      reason: 'no-such-file',
+    });
+    expect(diagnostics.every((d) => d.linkTarget === undefined)).toBe(true);
+    expect(ValidationAuditResponseSchema.parse(result)).toEqual(result);
+  });
+
+  test('an existing wiki asset target produces no finding by path, basename, or equivalent spelling', async () => {
+    seedFile('media/photo.png');
+    seedFile('media/Café.png');
+    seedDoc('doc', '# Doc\n\n![[photo.png]] [[media/photo.png]] ![[Café.png]] [[photo.png]]\n');
 
     const result = await runValidationAudit(createProjectValidators(deps()));
 
@@ -1291,6 +1364,151 @@ describe('selected physical scope with same-stem document siblings', () => {
     );
   });
 
+  test('file and folder targets resolve through the tracked inventory, as on the index path', async () => {
+    const links = [
+      '[nfc folder](Caf\u00e9/)',
+      '[exact file](assets/Cafe\u0301.png)',
+      '[nfc file](assets/Caf\u00e9.png)',
+      '[nfd file](assets/Zoe\u0308.png)',
+      '[leaf case](assets/CAF\u00c9.PNG)',
+      '[folder case](Assets/Caf\u00e9.png)',
+      '[folder case dir](CAF\u00c9/)',
+      '![[shared/pics/pic.png]]',
+    ].join('\n\n');
+    const fileTargets = ['Shared/Pics/pic.png'];
+    for (const dir of ['twin', 'single']) {
+      seedDoc(`${dir}/Cafe\u0301/note`, '# note\n');
+      fileTargets.push(`${dir}/assets/Cafe\u0301.png`, `${dir}/assets/Zo\u00eb.png`);
+      seedDoc(`${dir}/Probe`, `# Probe\n\n${links}\n`);
+    }
+    for (const file of fileTargets) {
+      mkdirSync(join(root, file, '..'), { recursive: true });
+      writeFileSync(join(root, file), 'png');
+      seedFile(file);
+    }
+    writeFileSync(join(root, 'twin/Probe.mdx'), '# Probe mdx\n');
+    const validators = createProjectValidators(
+      deps({
+        localTargetInventory: () => ({
+          documentTargets: [...admitted],
+          fileTargets,
+          folderTargets: ['Shared', 'Shared/Pics', 'single/Cafe\u0301', 'twin/Cafe\u0301'],
+        }),
+      }),
+    );
+    const findings = async (dir: string): Promise<string[]> => {
+      const resolution = resolveAuditScope(`${dir}/Probe.md`, root);
+      if (!resolution.ok) throw new Error(resolution.title);
+      const result = await runValidationAudit(validators, {
+        targetPath: `${dir}/Probe.md`,
+        resolvedScope: resolution.scope,
+      });
+      return result.files
+        .flatMap((file) => file.diagnostics)
+        .filter((diagnostic) => diagnostic.source === 'links')
+        .map((diagnostic) =>
+          (diagnostic.localTarget?.href ?? diagnostic.linkTarget ?? '').replace(`${dir}/`, ''),
+        )
+        .sort();
+    };
+    expect(await findings('single')).toEqual(['Assets/Caf\u00e9.png', 'CAF\u00c9/']);
+    expect(await findings('twin')).toEqual(await findings('single'));
+  });
+
+  test('a slash-free wiki asset embed gets the same verdict in the physical scope as on the index path', async () => {
+    const fileTargets = ['media/photo.png'];
+    mkdirSync(join(root, 'media'), { recursive: true });
+    writeFileSync(join(root, 'media/photo.png'), 'png');
+    seedFile('media/photo.png');
+    for (const dir of ['twin', 'single']) {
+      seedDoc(`${dir}/Probe`, '# Probe\n\n![[photo.png]] and ![[ghost.png]]\n');
+    }
+    writeFileSync(join(root, 'twin/Probe.mdx'), '# Probe mdx\n');
+    const validators = createProjectValidators(
+      deps({
+        localTargetInventory: () => ({
+          documentTargets: [...admitted],
+          fileTargets,
+          folderTargets: ['media'],
+        }),
+      }),
+    );
+    const findings = async (dir: string): Promise<string[]> => {
+      const resolution = resolveAuditScope(`${dir}/Probe.md`, root);
+      if (!resolution.ok) throw new Error(resolution.title);
+      const result = await runValidationAudit(validators, {
+        targetPath: `${dir}/Probe.md`,
+        resolvedScope: resolution.scope,
+      });
+      return result.files
+        .flatMap((file) => file.diagnostics)
+        .filter((diagnostic) => diagnostic.source === 'links')
+        .map((diagnostic) => diagnostic.localTarget?.href ?? diagnostic.linkTarget ?? '')
+        .sort();
+    };
+    expect(await findings('single')).toEqual(['ghost.png']);
+    expect(await findings('twin')).toEqual(['ghost.png']);
+  });
+
+  test('without a tracked inventory, a slash-free wiki asset embed in the physical scope gets no verdict', async () => {
+    mkdirSync(join(root, 'media'), { recursive: true });
+    writeFileSync(join(root, 'media/photo.png'), 'png');
+    seedDoc('twin/Probe', '# Probe\n\n![[photo.png]], ![[ghost.png]] and ![[media/gone.png]]\n');
+    writeFileSync(join(root, 'twin/Probe.mdx'), '# Probe mdx\n');
+    const validators = createProjectValidators(deps({ localTargetInventory: () => null }));
+    const resolution = resolveAuditScope('twin/Probe.md', root);
+    if (!resolution.ok) throw new Error(resolution.title);
+    const result = await runValidationAudit(validators, {
+      targetPath: 'twin/Probe.md',
+      resolvedScope: resolution.scope,
+    });
+    const findings = result.files
+      .flatMap((file) => file.diagnostics)
+      .filter((diagnostic) => diagnostic.source === 'links')
+      .map((diagnostic) => diagnostic.localTarget?.href ?? diagnostic.linkTarget ?? '')
+      .sort();
+    expect(findings).toEqual(['media/gone.png']);
+  });
+
+  test('an ignored file target is excluded in the physical scope, as on the index path', async () => {
+    writeFileSync(join(root, '.gitignore'), 'ignored/\n');
+    mkdirSync(join(root, 'ignored'));
+    writeFileSync(join(root, 'ignored', 'ig.png'), 'png');
+    localTargets = new LocalTargetIndex({
+      contentDir: root,
+      contentFilter: createContentFilter({ projectDir: root, contentDir: root }),
+    });
+    const body = '# Doc\n\n![e](../ignored/ig.png)\n\n[m](../ignored/missing.png)\n';
+    seedDoc('single/doc', body);
+    seedDoc('twin/doc', body);
+    writeFileSync(join(root, 'twin/doc.mdx'), '# Doc mdx\n');
+    const validators = createProjectValidators(
+      deps({
+        localTargetInventory: () => ({
+          documentTargets: [...admitted],
+          fileTargets: [],
+          folderTargets: [],
+        }),
+      }),
+    );
+    const reasons = async (dir: string): Promise<unknown[]> => {
+      const resolution = resolveAuditScope(`${dir}/doc.md`, root);
+      if (!resolution.ok) throw new Error(resolution.title);
+      const result = await runValidationAudit(validators, {
+        targetPath: `${dir}/doc.md`,
+        resolvedScope: resolution.scope,
+      });
+      return result.files
+        .flatMap((file) => file.diagnostics)
+        .map((d) => [d.localTarget?.resolvedTarget, d.localTarget?.reason]);
+    };
+    expect(await reasons('single')).toEqual([
+      ['ignored/ig.png', 'excluded'],
+      ['ignored/missing.png', 'no-such-file'],
+    ]);
+    expect(await reasons('twin')).toEqual(await reasons('single'));
+  });
+
   test('uses live source for the canonical sibling and disk source for the alternate sibling', async () => {
     seedDoc('dual', '# MD\n\n[[md-disk-ghost]]\n');
     writeFileSync(join(root, 'dual.mdx'), '# MDX\n\n[[mdx-disk-ghost]]\n');
@@ -1314,5 +1532,21 @@ describe('selected physical scope with same-stem document siblings', () => {
           .map((diagnostic) => diagnostic.linkTarget),
       ).toEqual([expected]);
     }
+  });
+});
+
+describe('canonically equivalent spellings', () => {
+  test('NFC links to NFD documents and files are not dead links on either plane', async () => {
+    seedDoc('people/Rene\u0301', '# Ren\u00e9\n');
+    seedFile('assets/Rene\u0301.png');
+    seedDoc(
+      'linker',
+      '# Linker\n\nSee [Ren\u00e9](people/Ren\u00e9.md), [[people/Ren\u00e9]] and ![pic](assets/Ren\u00e9.png).\n',
+    );
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    expect(result.files).toEqual([]);
+    expect(result.warningCount).toBe(0);
   });
 });

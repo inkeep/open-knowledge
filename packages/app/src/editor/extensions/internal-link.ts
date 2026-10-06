@@ -16,11 +16,11 @@ import {
   openInternalHashHrefInNewTab,
   toInternalHashHref,
 } from '../internal-link-helpers';
-import { getPageListCache } from '../page-list-cache';
+import { getPageListCache, type PageListCacheSnapshot } from '../page-list-cache';
 import { createAssetContextMenuPlugin } from '../plugins/asset-context-menu';
 import { isSafeNavigationUrl } from '../safe-navigation-url';
 import { InternalLinkPropPanel } from './InternalLinkPropPanel';
-import { isResolvedAssetHref, makeLinkResolutionAttrsComputer } from './link-resolution';
+import { makeLinkResolutionAttrsComputer, resolveAssetHrefPath } from './link-resolution';
 import { linkResolutionDecorationPlugin } from './link-resolution-decoration';
 import { createMarkInteractionBridgePlugin, getCurrentMarkInfo } from './mark-interaction-bridge';
 
@@ -51,6 +51,41 @@ export function resolveLinkMarkAssetActivation(params: {
   const projectRelPath = resolveAssetProjectPath(url, docName, { literal });
   if (!projectRelPath) return { kind: 'refused' };
   return { kind: 'asset', url, ext, literal, projectRelPath };
+}
+
+type AssetLinkActivationTarget = Omit<Parameters<typeof activateAssetLink>[0], 'newTab'>;
+
+function activationTarget(
+  url: string,
+  projectRelPath: string,
+  ext: string,
+): AssetLinkActivationTarget {
+  return { url, projectRelPath, ext, title: projectRelPath.split('/').pop() ?? url };
+}
+
+export function resolveStoredAssetActivation(
+  activation: { url: string; ext: string; literal: boolean; projectRelPath: string },
+  docName: string,
+  cache: PageListCacheSnapshot,
+): AssetLinkActivationTarget | null {
+  const { url, ext, literal, projectRelPath } = activation;
+  if (cache.assetPaths === undefined && cache.filePaths === undefined) {
+    return activationTarget(url, projectRelPath, ext);
+  }
+  const stored = resolveAssetHrefPath(url, docName, cache.assetPaths, cache.filePaths, { literal });
+  return stored === null ? null : activationTarget(url, stored, ext);
+}
+
+export function resolveTrackedFileActivation(
+  href: string,
+  docName: string,
+  cache: PageListCacheSnapshot | null,
+): AssetLinkActivationTarget | null {
+  if (cache === null) return null;
+  const stored = resolveAssetHrefPath(href, docName, cache.assetPaths, cache.filePaths, {
+    literal: false,
+  });
+  return stored === null ? null : activationTarget(href, stored, extractAssetExtension(href) ?? '');
 }
 
 export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
@@ -101,21 +136,11 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
       });
       if (activation.kind === 'refused') return false;
       if (activation.kind === 'asset') {
-        const { url, ext, literal, projectRelPath } = activation;
         const cache = getPageListCache();
         if (cache === null) return false;
-        if (cache.assetPaths !== undefined || cache.filePaths !== undefined) {
-          if (!isResolvedAssetHref(url, docName, cache.assetPaths, cache.filePaths, { literal })) {
-            return false;
-          }
-        }
-        activateAssetLink({
-          url,
-          projectRelPath,
-          ext,
-          title: projectRelPath.split('/').pop() ?? url,
-          newTab,
-        });
+        const stored = resolveStoredAssetActivation(activation, docName, cache);
+        if (stored === null) return false;
+        activateAssetLink({ ...stored, newTab });
         return true;
       }
 
@@ -130,7 +155,12 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
             pages: cache?.pages ?? new Set<string>(),
             folderPaths: cache?.folderPaths ?? new Set<string>(),
           });
-          if (intent.kind === 'create') return false;
+          if (intent.kind === 'create') {
+            const trackedFile = resolveTrackedFileActivation(href, docName, cache);
+            if (trackedFile === null) return false;
+            activateAssetLink({ ...trackedFile, newTab });
+            return true;
+          }
           if (newTab) {
             openInternalHashHrefInNewTab({ docName: target.docName, anchor: target.anchor });
           } else {

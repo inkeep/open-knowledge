@@ -18,6 +18,7 @@ import {
   mediaKindForSidebarAssetExtension,
 } from '@inkeep/open-knowledge-core/constants/upload';
 import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
+import { resolveName } from '@inkeep/open-knowledge-core/utils/target-namespace';
 import { resolveWikiLinkTargetDocName } from '@inkeep/open-knowledge-core/utils/wiki-link-resolve';
 import type { SkillPreviewFlavor } from '@/lib/doc-hash';
 import { normalizeDocNameInput } from '@/lib/doc-paths';
@@ -109,12 +110,16 @@ function extensionlessTargetPath(target: string): string {
   return normalizeDocNameInput(target).replace(/\/+$/g, '');
 }
 
+function folderOfDocName(docName: string): string {
+  return docName.slice(0, docName.lastIndexOf('/'));
+}
+
 const MARKDOWN_TARGET_EXTENSION = /\.(md|mdx)$/i;
 
 function managedArtifactNavigationTarget(target: string, pages: ReadonlySet<string>): string {
   const { normalizedTarget, expectsFolder } = normalizeTargetPath(target);
   if (expectsFolder || !MARKDOWN_TARGET_EXTENSION.test(normalizedTarget)) return target;
-  if (pages.has(normalizedTarget)) return target;
+  if (resolveName(pages, normalizedTarget) !== undefined) return target;
   return normalizedTarget.replace(MARKDOWN_TARGET_EXTENSION, '');
 }
 
@@ -140,7 +145,7 @@ export function okContentNavigationTarget(
 ): ResolvedContentTarget | null {
   if (!hasOkPathSegment(docName)) return null;
   if (parseTemplateContentDocName(docName)) return null;
-  if (options.pages.has(docName)) return null;
+  if (resolveName(options.pages, docName) !== undefined) return null;
   const assetPath = okReadOnlyAssetPath(docName, options.docExt);
   return {
     kind: 'asset',
@@ -208,33 +213,32 @@ export function resolveNavigationTarget(
     ? [extensionlessTarget]
     : [normalizedTarget, extensionlessTarget];
   for (const folderTarget of folderTargets) {
-    const canonicalIndexDocName = `${folderTarget}/index`;
+    const canonicalIndexDocName = resolveName(options.pages, `${folderTarget}/index`);
     if (
-      expectsFolder
-        ? options.pages.has(canonicalIndexDocName)
-        : resolvedDocName === canonicalIndexDocName
+      canonicalIndexDocName !== undefined &&
+      (expectsFolder || resolvedDocName === canonicalIndexDocName)
     ) {
       return {
         kind: 'folder-index',
         target: folderTarget,
-        folderPath: folderTarget,
+        folderPath: folderOfDocName(canonicalIndexDocName),
         docName: canonicalIndexDocName,
         noteKind: 'canonical-index',
       };
     }
 
     const leaf = folderTarget.split('/').pop();
-    const legacyFolderNoteDocName = leaf ? `${folderTarget}/${leaf}` : null;
+    const legacyFolderNoteDocName = leaf
+      ? resolveName(options.pages, `${folderTarget}/${leaf}`)
+      : undefined;
     if (
-      legacyFolderNoteDocName &&
-      (expectsFolder
-        ? options.pages.has(legacyFolderNoteDocName)
-        : resolvedDocName === legacyFolderNoteDocName)
+      legacyFolderNoteDocName !== undefined &&
+      (expectsFolder || resolvedDocName === legacyFolderNoteDocName)
     ) {
       return {
         kind: 'folder-index',
         target: folderTarget,
-        folderPath: folderTarget,
+        folderPath: folderOfDocName(legacyFolderNoteDocName),
         docName: legacyFolderNoteDocName,
         noteKind: 'legacy-folder-note',
       };
@@ -246,11 +250,12 @@ export function resolveNavigationTarget(
   }
 
   const knownFolderPaths = options.folderPaths ?? deriveKnownFolderPaths(options.pages);
-  if (knownFolderPaths.has(extensionlessTarget)) {
+  const folderPath = resolveName(knownFolderPaths, extensionlessTarget);
+  if (folderPath !== undefined) {
     return {
       kind: 'folder',
       target: extensionlessTarget,
-      folderPath: extensionlessTarget,
+      folderPath,
     };
   }
 

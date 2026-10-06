@@ -6034,6 +6034,18 @@ msgstr "تعذر تحميل لوحة Excalidraw."
 msgid "Excalidraw canvas"
 msgstr "لوحة Excalidraw"
 
+#: src/components/LinksPanel.tsx
+msgid "Excluded"
+msgstr "مستبعد"
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded file {identity}. Go to reference."
+msgstr "الملف {identity} مستبعد. انتقل إلى المرجع."
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded image {identity}. Go to reference."
+msgstr "الصورة {identity} مستبعدة. انتقل إلى المرجع."
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "سيُسحب الفرع الموجود <0>{trimmed}</0> إلى نافذته الخاصة، تحت <1>.ok/worktrees/</1>."
@@ -7536,6 +7548,10 @@ msgstr "تعذّر تحويل هدف الصورة \"{shown}\" إلى ملف مح
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "هدف الصورة \"{shown}\" لا يشير إلى ملف موجود."
 
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "هدف الصورة \"{shown}\" موجود، لكن .gitignore أو .okignore يستبعده. أعد تضمينه، أو مجلده، بقاعدة \"!\" في .okignore."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "لا تُحجب المعلومات الحساسة في الصور."
@@ -8315,6 +8331,10 @@ msgstr "هدف الرابط \"{shown}\" لا يشير إلى مستند موجو
 #: src/editor/localized-validation-message.ts
 msgid "Link target \"{shown}\" does not resolve to an existing file."
 msgstr "هدف الرابط \"{shown}\" لا يشير إلى ملف موجود."
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "هدف الرابط \"{shown}\" موجود، لكن .gitignore أو .okignore يستبعده. أعد تضمينه، أو مجلده، بقاعدة \"!\" في .okignore."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."

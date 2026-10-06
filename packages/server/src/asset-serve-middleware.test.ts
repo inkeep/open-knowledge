@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -92,20 +92,30 @@ const SERVABLE_FIXTURES = [
   'Notes.MD',
   'doc.mdx',
   'my file.m4v',
+  'payload.dmg',
 ];
 
 let fixtureDir: string;
+let outsideDir: string;
 
 beforeAll(() => {
   fixtureDir = mkdtempSync(join(tmpdir(), 'ok-asset-serve-unit-'));
+  outsideDir = mkdtempSync(join(tmpdir(), 'ok-asset-serve-outside-'));
   for (const name of SERVABLE_FIXTURES) writeFileSync(join(fixtureDir, name), 'fixture');
+  writeFileSync(join(outsideDir, 'secret.png'), 'outside');
+  symlinkSync(join(outsideDir, 'secret.png'), join(fixtureDir, 'escape.png'));
 });
 
 afterAll(() => {
   rmSync(fixtureDir, { recursive: true, force: true });
+  rmSync(outsideDir, { recursive: true, force: true });
 });
 
-function buildMiddleware(sirv: SirvLikeMiddleware, filter: AssetServeFilter = admitAll) {
+function buildMiddleware(
+  sirv: SirvLikeMiddleware,
+  filter: AssetServeFilter = admitAll,
+  resolveTrackedFile?: (relativePath: string) => string | undefined,
+) {
   return createAssetServeMiddleware({
     contentDir: fixtureDir,
     contentFilter: filter,
@@ -114,7 +124,20 @@ function buildMiddleware(sirv: SirvLikeMiddleware, filter: AssetServeFilter = ad
     assetExtensions: ASSETS,
     blocklistExtensions: BLOCKLIST,
     ingressPolicy: buildIngressPolicy({}),
+    resolveTrackedFile,
   });
+}
+
+function sirvRecording(urls: string[]): SirvLikeMiddleware {
+  return (req, res) => {
+    urls.push(req.url ?? '');
+    res.writeHead(200);
+    res.end();
+  };
+}
+
+function trackedAlias(alias: string, target: string) {
+  return (relativePath: string) => (relativePath === alias ? target : undefined);
 }
 
 describe('createAssetServeMiddleware', () => {
@@ -429,6 +452,150 @@ describe('createAssetServeMiddleware', () => {
       });
       expect(nextCalled).toBe(true);
       expect(captured.headers['Content-Disposition']).toBeUndefined();
+    });
+  });
+
+  describe('tracked-file fallback on an exact miss', () => {
+    test('serves the tracked file the resolver names and keeps the query string', () => {
+      const urls: string[] = [];
+      const middleware = buildMiddleware(
+        sirvRecording(urls),
+        admitAll,
+        trackedAlias('Alias/Photo.png', 'photo.png'),
+      );
+      const { res, captured } = makeRes();
+      let nextCalled = false;
+      middleware(makeReq('/Alias/Photo.png?v=2'), res, () => {
+        nextCalled = true;
+      });
+      expect(urls).toEqual(['/photo.png?v=2']);
+      expect(captured.status).toBe(200);
+      expect(captured.headers['Content-Disposition']).toBe('inline');
+      expect(nextCalled).toBe(false);
+    });
+
+    test('encodes the resolved spelling so the static server looks up its exact bytes', () => {
+      const urls: string[] = [];
+      const middleware = buildMiddleware(
+        sirvRecording(urls),
+        admitAll,
+        trackedAlias('alias.m4v', 'my file.m4v'),
+      );
+      const { res, captured } = makeRes();
+      middleware(makeReq('/alias.m4v'), res, () => {});
+      expect(urls).toEqual(['/my%20file.m4v']);
+      expect(captured.status).toBe(200);
+    });
+
+    test('disposition and CSP follow the resolved file rather than the requested spelling', () => {
+      const svg = buildMiddleware(sirvServes, admitAll, trackedAlias('alias.png', 'icon.svg'));
+      const svgRes = makeRes();
+      svg(makeReq('/alias.png'), svgRes.res, () => {});
+      expect(svgRes.captured.status).toBe(200);
+      expect(svgRes.captured.headers['Content-Security-Policy']).toBe(
+        "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+      );
+
+      const csv = buildMiddleware(sirvServes, admitAll, trackedAlias('alias.png', 'data.csv'));
+      const csvRes = makeRes();
+      csv(makeReq('/alias.png'), csvRes.res, () => {});
+      expect(csvRes.captured.status).toBe(200);
+      expect(csvRes.captured.headers['Content-Disposition']).toBe('attachment');
+    });
+
+    test('the resolver is not consulted when the requested spelling exists', () => {
+      const asked: string[] = [];
+      const middleware = buildMiddleware(sirvServes, admitAll, (relativePath) => {
+        asked.push(relativePath);
+        return undefined;
+      });
+      const { res, captured } = makeRes();
+      middleware(makeReq('/photo.png'), res, () => {});
+      expect(captured.status).toBe(200);
+      expect(asked).toEqual([]);
+    });
+
+    test('a resolved file the content filter ignores is not served', () => {
+      const urls: string[] = [];
+      const middleware = buildMiddleware(
+        sirvRecording(urls),
+        { isPathIgnored: (relativePath) => relativePath === 'photo.png' },
+        trackedAlias('alias.png', 'photo.png'),
+      );
+      const { res, captured } = makeRes();
+      middleware(makeReq('/alias.png'), res, () => {});
+      expect(urls).toEqual([]);
+      expect(captured.status).toBe(404);
+    });
+
+    test('a resolved file outside the servable asset extensions is not served', () => {
+      const urls: string[] = [];
+      const middleware = buildMiddleware(
+        sirvRecording(urls),
+        admitAll,
+        trackedAlias('alias.png', 'payload.dmg'),
+      );
+      const { res, captured } = makeRes();
+      middleware(makeReq('/alias.png'), res, () => {});
+      expect(urls).toEqual([]);
+      expect(captured.status).toBe(404);
+    });
+
+    test('a resolved symlink that escapes the content directory is not served', () => {
+      const urls: string[] = [];
+      const middleware = buildMiddleware(
+        sirvRecording(urls),
+        admitAll,
+        trackedAlias('link-alias.png', 'escape.png'),
+      );
+      const { res, captured } = makeRes();
+      middleware(makeReq('/link-alias.png'), res, () => {});
+      expect(urls).toEqual([]);
+      expect(captured.status).toBe(404);
+    });
+
+    test('a resolved name no URL can spell is refused rather than thrown on', () => {
+      const urls: string[] = [];
+      const middleware = buildMiddleware(
+        sirvRecording(urls),
+        admitAll,
+        trackedAlias('alias.png', '\uD800.png'),
+      );
+      const { res, captured } = makeRes();
+      middleware(makeReq('/alias.png'), res, () => {});
+      expect(urls).toEqual([]);
+      expect(captured.status).toBe(404);
+    });
+
+    test('a markdown request never falls back to a tracked file', () => {
+      const urls: string[] = [];
+      const middleware = buildMiddleware(
+        sirvRecording(urls),
+        admitAll,
+        trackedAlias('missing.md', 'notes.md'),
+      );
+      const { res } = makeRes();
+      let nextCalled = false;
+      middleware(makeReq('/missing.md'), res, () => {
+        nextCalled = true;
+      });
+      expect(urls).toEqual([]);
+      expect(nextCalled).toBe(true);
+    });
+
+    test('an html fall-through after a resolved hit restores the requested URL for the SPA shell', () => {
+      const middleware = buildMiddleware(
+        sirvFallThrough,
+        admitAll,
+        trackedAlias('Viewer.html', 'trip-viewer.html'),
+      );
+      const { res } = makeRes();
+      const req = makeReq('/Viewer.html');
+      let urlAtNext: string | undefined;
+      middleware(req, res, () => {
+        urlAtNext = req.url;
+      });
+      expect(urlAtNext).toBe('/Viewer.html');
     });
   });
 });

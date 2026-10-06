@@ -1,7 +1,11 @@
+import { createBasenameIndex, createTargetNamespace } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
   assessLocalTargetOccurrences,
   assessLocalTargets,
+  buildLocalTargetEvidence,
+  createTolerantDocumentResolver,
+  isProjectableToLocalTargetSurfaces,
   type LocalTargetInventory,
   toForwardLinkLocalTargets,
 } from './local-target-assessment.ts';
@@ -11,13 +15,20 @@ function inventory(opts?: {
   docs?: Iterable<string>;
   files?: Iterable<string>;
   tolerant?: Record<string, string>;
+  excluded?: Iterable<string>;
 }): LocalTargetInventory {
-  const docs = new Set(opts?.docs ?? []);
-  const files = new Set(opts?.files ?? []);
+  const docs = createTargetNamespace('document', opts?.docs ?? []);
+  const files = createTargetNamespace('file', opts?.files ?? []);
+  const basenames = createBasenameIndex();
+  for (const file of files) basenames.add(file);
   const tolerant = opts?.tolerant;
+  const excluded = opts?.excluded === undefined ? null : new Set(opts.excluded);
   const base: LocalTargetInventory = {
-    hasDocument: (docName) => docs.has(docName),
-    hasFile: (filePath) => files.has(filePath),
+    resolveDocument: (docName) => docs.resolve(docName),
+    resolveFile: (filePath) => files.resolve(filePath),
+    resolveFileByBasename: (basename, sourceDocName) =>
+      basenames.resolveEmbed(basename, sourceDocName) ?? undefined,
+    ...(excluded === null ? {} : { isExcludedFile: (filePath) => excluded.has(filePath) }),
   };
   if (!tolerant) return base;
   return { ...base, resolveTolerantDocument: (docName) => tolerant[docName] ?? null };
@@ -86,6 +97,14 @@ describe('document vs ordinary-file membership', () => {
       status: 'exact',
       reason: null,
     });
+  });
+
+  test('a missing document link with a .md path is never satisfied by a file of that path', () => {
+    const a = assessOne(
+      '[g](./Guide.md)',
+      inventory({ docs: ['notes/guide'], files: ['notes/Guide.md'] }),
+    );
+    expect(a).toMatchObject({ targetKind: 'document', status: 'missing', reason: 'no-such-doc' });
   });
 
   test('an exact document wins when both extension-less target kinds exist', () => {
@@ -219,11 +238,11 @@ describe('repeated occurrences share existence work while each keeps its range',
     const md = 'One [a](./x.md) two [b](./x.md) three [c](./y.md).';
     let docLookups = 0;
     const inv: LocalTargetInventory = {
-      hasDocument: (docName) => {
+      resolveDocument: (docName) => {
         docLookups += 1;
-        return docName === 'notes/x';
+        return docName === 'notes/x' ? docName : undefined;
       },
-      hasFile: () => false,
+      resolveFile: () => undefined,
     };
     const assessments = assessLocalTargetOccurrences(
       extractLocalTargetOccurrences(md),
@@ -265,13 +284,114 @@ describe('scope: classification is total across every recognized form', () => {
     });
   });
 
-  test('an extension-bearing wiki embed stays file-shaped', () => {
+  test('an extension-bearing wiki embed stays file-shaped and resolves by vault-wide basename', () => {
     const a = assessLocalTargets(
       '![[photo.png]]',
       SOURCE,
       inventory({ files: ['notes/photo.png'] }),
     )[0];
-    expect(a).toMatchObject({ targetKind: 'file', status: 'exact' });
+    expect(a).toMatchObject({
+      targetKind: 'file',
+      status: 'exact',
+      resolvedTarget: 'notes/photo.png',
+      reason: null,
+      resolutionMethod: 'basename',
+    });
+  });
+
+  test('a basename wiki embed prefers the candidate nearest the source, like the embed renderer', () => {
+    const a = assessLocalTargets(
+      '![[photo.png]]',
+      SOURCE,
+      inventory({ files: ['media/photo.png', 'notes/photo.png'] }),
+    )[0];
+    expect(a).toMatchObject({ status: 'exact', resolvedTarget: 'notes/photo.png' });
+  });
+
+  test('a basename wiki embed resolves across canonically equivalent spellings', () => {
+    const a = assessLocalTargets(
+      '![[Café.png]]',
+      SOURCE,
+      inventory({ files: ['media/Café.png'] }),
+    )[0];
+    expect(a).toMatchObject({
+      targetKind: 'file',
+      status: 'exact',
+      resolvedTarget: 'media/Café.png',
+    });
+  });
+
+  test('a wiki asset path resolves against the vault root, never the source folder', () => {
+    const atRoot = assessLocalTargets(
+      '[[assets/x.png]]',
+      SOURCE,
+      inventory({ files: ['assets/x.png'] }),
+    )[0];
+    expect(atRoot).toMatchObject({
+      targetKind: 'file',
+      status: 'exact',
+      resolvedTarget: 'assets/x.png',
+      resolutionMethod: 'root-relative',
+    });
+
+    const besideSource = assessLocalTargets(
+      '[[assets/x.png]]',
+      SOURCE,
+      inventory({ files: ['notes/assets/x.png'] }),
+    )[0];
+    expect(besideSource).toMatchObject({
+      targetKind: 'file',
+      status: 'missing',
+      reason: 'no-such-file',
+      resolvedTarget: 'assets/x.png',
+    });
+  });
+
+  test('a missing wiki asset target is a missing file, by basename or by path', () => {
+    const rows = assessLocalTargets(
+      '![[nothere.gif]] and [[media/nothere.png]]',
+      SOURCE,
+      inventory({ files: ['media/photo.png'] }),
+    );
+    expect(rows.map((r) => [r.occurrence.sourceForm, r.occurrence.role])).toEqual([
+      ['wiki-embed', 'image'],
+      ['wiki-link', 'link'],
+    ]);
+    expect(rows[0]).toMatchObject({
+      targetKind: 'file',
+      status: 'missing',
+      reason: 'no-such-file',
+      resolvedTarget: 'nothere.gif',
+    });
+    expect(rows[1]).toMatchObject({
+      targetKind: 'file',
+      status: 'missing',
+      reason: 'no-such-file',
+      resolvedTarget: 'media/nothere.png',
+    });
+  });
+
+  test('a dotted bare wiki name that names a document is assessed as a document link the surfaces leave to the graph', () => {
+    const docs = ['vault/acp.daemon'];
+    const resolveTolerant = createTolerantDocumentResolver(docs);
+    const rows = assessLocalTargets('[[acp.daemon]], ![[ACP.Daemon]] and [[gone.daemon]]', SOURCE, {
+      ...inventory({ docs }),
+      resolveTolerantDocument: (docName) => resolveTolerant(docName),
+    });
+    expect(
+      rows.map((r) => [
+        r.occurrence.href,
+        r.targetKind,
+        r.status,
+        r.reason,
+        r.fallbackTarget,
+        isProjectableToLocalTargetSurfaces(r),
+      ]),
+    ).toEqual([
+      ['acp.daemon', 'document', 'fallback', 'no-such-doc', 'vault/acp.daemon', false],
+      ['ACP.Daemon', 'document', 'fallback', 'no-such-doc', 'vault/acp.daemon', false],
+      ['gone.daemon', 'file', 'missing', 'no-such-file', null, true],
+    ]);
   });
 
   test('a wiki target resolves entirely against the vault root, fallback included', () => {
@@ -298,24 +418,47 @@ describe('scope: classification is total across every recognized form', () => {
 });
 
 describe('toForwardLinkLocalTargets — Links panel Local files projection', () => {
-  test('projects file and image references but excludes document graph edges and wiki forms', () => {
+  test('projects file and image references but excludes document graph edges and document-shaped wiki links', () => {
     const md = [
       '[report](./report.pdf)',
       '![logo](./logo.png)',
       '<img src="./pic.png">',
       '[other](./other.md)',
       '[[wiki]]',
+      '![[missing.png]]',
+      '[[docs/spec.pdf]]',
     ].join('\n');
     const rows = toForwardLinkLocalTargets(
       assessLocalTargets(
         md,
         SOURCE,
-        inventory({ docs: ['notes/other'], files: ['notes/logo.png'] }),
+        inventory({ docs: ['notes/other'], files: ['notes/logo.png', 'docs/spec.pdf'] }),
       ),
     );
 
-    expect(rows.map((r) => r.href).sort()).toEqual(['./logo.png', './pic.png', './report.pdf']);
+    expect(rows.map((r) => r.href).sort()).toEqual([
+      './logo.png',
+      './pic.png',
+      './report.pdf',
+      'docs/spec.pdf',
+      'missing.png',
+    ]);
     expect(rows.some((r) => r.targetKind === 'document')).toBe(false);
+    expect(rows.find((r) => r.href === 'missing.png')).toMatchObject({
+      role: 'image',
+      sourceForm: 'wiki-embed',
+      targetKind: 'file',
+      status: 'missing',
+      reason: 'no-such-file',
+      resolvedTarget: 'missing.png',
+    });
+    expect(rows.find((r) => r.href === 'docs/spec.pdf')).toMatchObject({
+      role: 'link',
+      sourceForm: 'wiki-link',
+      targetKind: 'file',
+      status: 'exact',
+      resolvedTarget: 'docs/spec.pdf',
+    });
 
     const report = rows.find((r) => r.href === './report.pdf');
     expect(report).toMatchObject({
@@ -384,6 +527,22 @@ describe('toForwardLinkLocalTargets — Links panel Local files projection', () 
     );
     expect(rows).toEqual([]);
   });
+
+  test('Problems evidence carries a file-shaped wiki occurrence and still drops a document-shaped one', () => {
+    const rows = assessLocalTargets('[[ghost]] and ![[ghost.png]]', SOURCE, inventory({}));
+    expect(rows).toHaveLength(2);
+    const [doc, file] = rows;
+    expect(doc && buildLocalTargetEvidence(doc, 'no-such-doc')).toBeNull();
+    expect(file && buildLocalTargetEvidence(file, 'no-such-file')).toEqual({
+      href: 'ghost.png',
+      targetKind: 'file',
+      role: 'image',
+      sourceForm: 'wiki-embed',
+      resolvedTarget: 'ghost.png',
+      reason: 'no-such-file',
+      resolutionMethod: 'root-relative',
+    });
+  });
 });
 
 describe('percent-encoded targets are assessed against the decoded document', () => {
@@ -421,5 +580,120 @@ describe('percent-encoded targets are assessed against the decoded document', ()
   test('a wiki asset embed does not resolve to the decoded neighbour', () => {
     const a = assessOne('![[100%20done.png]]', inventory({ files: ['notes/100 done.png'] }));
     expect(a).toMatchObject({ status: 'missing' });
+  });
+});
+
+describe('canonically equivalent spellings resolve to the existing raw name', () => {
+  const NFC = 'notes/Ren\u00e9';
+  const NFD = 'notes/Rene\u0301';
+
+  test.each([
+    ['NFC', 'NFD', NFC, NFD],
+    ['NFD', 'NFC', NFD, NFC],
+  ])(
+    'an %s href to an %s document is exact and names the stored spelling',
+    (_h, _d, linked, stored) => {
+      const a = assessOne(`[x](/${linked}.md)`, inventory({ docs: [stored] }));
+      expect(a).toMatchObject({
+        targetKind: 'document',
+        status: 'exact',
+        resolvedTarget: stored,
+        reason: null,
+        fallbackTarget: null,
+      });
+    },
+  );
+
+  test('a file href resolves across normalization and leaf case but not ancestor case', () => {
+    const stored = 'assets/Rene\u0301.PDF';
+    const inv = inventory({ files: [stored] });
+    expect(assessOne('[x](/assets/Ren\u00e9.pdf)', inv)).toMatchObject({
+      targetKind: 'file',
+      status: 'exact',
+      resolvedTarget: stored,
+    });
+    expect(assessOne('[x](/Assets/Ren\u00e9.pdf)', inv)).toMatchObject({
+      targetKind: 'file',
+      status: 'missing',
+      reason: 'no-such-file',
+    });
+  });
+
+  test('the tolerant folder-index tier resolves through an equivalent spelling', () => {
+    const resolve = createTolerantDocumentResolver(['guides/Rene\u0301/index']);
+    expect(resolve('guides/Ren\u00e9')).toBe('guides/Rene\u0301/index');
+  });
+});
+
+describe('file targets that exist but are excluded by ignore rules (PRD-8896)', () => {
+  const excluded = inventory({ excluded: ['notes/ignored/ig.png'] });
+
+  test('a link to an excluded file reports excluded, not no-such-file', () => {
+    const a = assessOne('[d](ignored/ig.png)', excluded);
+    expect(a).toMatchObject({
+      targetKind: 'file',
+      resolvedTarget: 'notes/ignored/ig.png',
+      status: 'missing',
+      reason: 'excluded',
+      resolutionMethod: 'source-relative',
+      fallbackTarget: null,
+    });
+    expect(a?.occurrence.role).toBe('link');
+  });
+
+  test('an image embed of an excluded file reports excluded', () => {
+    const a = assessOne('![e](ignored/ig.png)', excluded);
+    expect(a).toMatchObject({ targetKind: 'file', status: 'missing', reason: 'excluded' });
+    expect(a?.occurrence.role).toBe('image');
+  });
+
+  test('a wiki embed and a wiki link of an excluded file report excluded', () => {
+    for (const markdown of ['![[notes/ignored/ig.png]]', '[[notes/ignored/ig.png]]']) {
+      const a = assessOne(markdown, excluded);
+      expect(a).toMatchObject({
+        targetKind: 'file',
+        resolvedTarget: 'notes/ignored/ig.png',
+        status: 'missing',
+        reason: 'excluded',
+      });
+    }
+  });
+
+  test('a wiki embed of a file the probe does not know stays no-such-file (control)', () => {
+    const a = assessOne('![[notes/ignored/missing.png]]', excluded);
+    expect(a).toMatchObject({ targetKind: 'file', status: 'missing', reason: 'no-such-file' });
+  });
+
+  test('a file the probe does not know stays no-such-file (control)', () => {
+    const a = assessOne('[m](ignored/missing.png)', excluded);
+    expect(a).toMatchObject({ targetKind: 'file', status: 'missing', reason: 'no-such-file' });
+  });
+
+  test('an inventory without the probe keeps reporting no-such-file', () => {
+    const a = assessOne('[d](ignored/ig.png)', inventory());
+    expect(a).toMatchObject({ targetKind: 'file', status: 'missing', reason: 'no-such-file' });
+  });
+
+  test('an extensionless link that falls through to the file plane reports excluded', () => {
+    const a = assessOne(
+      '[mk](ignored/Makefile)',
+      inventory({ excluded: ['notes/ignored/Makefile'] }),
+    );
+    expect(a).toMatchObject({
+      targetKind: 'file',
+      resolvedTarget: 'notes/ignored/Makefile',
+      status: 'missing',
+      reason: 'excluded',
+    });
+  });
+
+  test('a Markdown link to an existing but ignored .md file reports excluded', () => {
+    const a = assessOne('[d](./drafts/plan.md)', inventory({ excluded: ['notes/drafts/plan.md'] }));
+    expect(a).toMatchObject({
+      targetKind: 'file',
+      resolvedTarget: 'notes/drafts/plan.md',
+      status: 'missing',
+      reason: 'excluded',
+    });
   });
 });

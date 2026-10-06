@@ -279,6 +279,7 @@
     "1njn7W": ["Clair"],
     "1nke1r": ["Ouvrir ", ["0"], " sur GitHub (s'ouvre dans un nouvel onglet)"],
     "1oSHI0": ["Impossible d'installer ", ["skillName"], " : ", ["0"]],
+    "1ouiTz": ["Image ", ["identity"], " exclue. Accéder à la référence."],
     "1pdLQw": ["Image introuvable"],
     "1qpGKz": [
       "Impossible d’enregistrer les modifications. Essayez à nouveau de modifier une couleur."
@@ -2180,6 +2181,7 @@
     "KIIamL": [
       "OpenKnowledge créera des commits et les poussera automatiquement vers votre dépôt distant. Si vous ne voulez pas de commits automatiques dans votre historique git, n'activez pas la synchronisation automatique."
     ],
+    "KJ_eAL": ["Exclu"],
     "KOZud0": [
       "Construis une base de connaissances d'étude concurrentielle. Commence par une page de synthèse, puis ajoute des pages liées entre elles pour chaque concurrent, leurs produits et leurs tarifs, ainsi que les sources derrière chaque affirmation."
     ],
@@ -4714,6 +4716,11 @@
     "gp3I7-": ["Avant de synchroniser, définissez votre identité pour les commits git :"],
     "gpbKxw": ["La validation des liens est indisponible."],
     "gqk-3R": [["0"], " déplacé vers ", ["destination"], "."],
+    "gssxm9": [
+      "La cible du lien « ",
+      ["shown"],
+      " » existe, mais .gitignore ou .okignore l’exclut. Réincluez-la, ou son dossier, avec une règle « ! » dans .okignore."
+    ],
     "gtEbeW": ["Surlignage"],
     "guidance.mcp.managed-file": [
       "Écrit un petit fichier passerelle que ",
@@ -5732,6 +5739,7 @@
     "phM8Kh": ["Dépôt trouvé, mais le projet n'a pas pu être ouvert. Veuillez réessayer."],
     "pha01Y": ["Pages du projet sans arête entrante dans le graphe."],
     "pkAft1": ["La recherche a échoué."],
+    "pkC8Fi": ["Fichier ", ["identity"], " exclu. Accéder à la référence."],
     "pkmXTp": [["agentName"], " est prêt"],
     "pmUArF": ["Espace de travail"],
     "poAsUN": ["aucun agent — enregistrées, installées nulle part"],
@@ -5775,6 +5783,11 @@
     "q63KUv": ["Ajouter MCP et la compétence"],
     "q7F5am": ["titre"],
     "q8aCbb": ["Deux versions de « ", ["0"], " » — source contre ", ["editor"]],
+    "qAC6UE": [
+      "La cible de l’image « ",
+      ["shown"],
+      " » existe, mais .gitignore ou .okignore l’exclut. Réincluez-la, ou son dossier, avec une règle « ! » dans .okignore."
+    ],
     "qAQVSD": ["La réponse des titres de page n'était pas du JSON"],
     "qAhFeg": [
       ["userName"],

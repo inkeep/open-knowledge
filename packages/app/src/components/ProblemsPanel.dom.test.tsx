@@ -419,6 +419,36 @@ describe('ProblemsPanel', () => {
     expect(screen.queryByText('opaque server fallback')).toBeNull();
   });
 
+  test('an excluded file target renders the ignore-rule message with the .okignore remedy (PRD-8896)', () => {
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[
+          diag({
+            source: 'links',
+            code: 'dead-link',
+            message: 'opaque server fallback',
+            localTarget: {
+              href: 'ignored/ig.png',
+              targetKind: 'file',
+              role: 'link',
+              sourceForm: 'markdown-inline',
+              resolvedTarget: 'ignored/ig.png',
+              reason: 'excluded',
+              resolutionMethod: 'source-relative',
+            },
+          }),
+        ]}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'Link target "ignored/ig.png" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a "!" rule in .okignore.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('opaque server fallback')).toBeNull();
+  });
+
   test('while the lint config has not loaded, the panel makes no plugin claim', () => {
     projectLintConfigData = null;
     render(<ProblemsPanel docName="notes" diagnostics={[]} />);

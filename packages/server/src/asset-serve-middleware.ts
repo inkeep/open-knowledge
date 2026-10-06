@@ -11,6 +11,7 @@ import {
   isHostAdmitted,
   isPeerAdmitted,
 } from './ingress-policy.ts';
+import { isValidRelativeContentPath } from './relative-content-path.ts';
 import { classifyAssetDisposition } from './services/asset-classification.ts';
 
 export interface AssetServeFilter {
@@ -31,6 +32,7 @@ interface AssetServeMiddlewareDeps {
   assetExtensions: ReadonlySet<string>;
   blocklistExtensions: ReadonlySet<string>;
   ingressPolicy: IngressPolicy;
+  resolveTrackedFile?: (relativePath: string) => string | undefined;
 }
 
 function sirvLookupPath(url: string): string {
@@ -47,6 +49,18 @@ function sirvLookupPath(url: string): string {
   } catch {
     return pathname;
   }
+}
+
+function urlLookingUpExactly(relativePath: string, requestUrl: string): string | null {
+  let encoded: string;
+  try {
+    encoded = encodeURI(relativePath);
+  } catch {
+    return null;
+  }
+  const query = requestUrl.indexOf('?');
+  const url = `/${encoded}${query === -1 ? '' : requestUrl.slice(query)}`;
+  return sirvLookupPath(url) === `/${relativePath}` ? url : null;
 }
 
 function isServableContentFile(contentDir: string, url: string): boolean {
@@ -81,18 +95,41 @@ export function createAssetServeMiddleware(
     assetExtensions,
     blocklistExtensions,
     ingressPolicy,
+    resolveTrackedFile,
   } = deps;
 
+  const extensionOf = (relativePath: string): string =>
+    extname(relativePath).slice(1).toLowerCase();
+
+  const servableTrackedFile = (
+    requested: string,
+    requestUrl: string,
+  ): { url: string; ext: string } | null => {
+    const tracked = resolveTrackedFile?.(requested);
+    if (tracked === undefined || tracked === requested) return null;
+    const ext = extensionOf(tracked);
+    if (contentFilter.isPathIgnored(tracked) || !assetExtensions.has(ext)) return null;
+    const url = urlLookingUpExactly(tracked, requestUrl);
+    return url !== null && isServableContentFile(contentDir, url) ? { url, ext } : null;
+  };
+
   return (req, res, next) => {
+    const requestUrl = req.url ?? '';
     let rel: string;
     try {
-      rel = decodeURIComponent(req.url?.split('?')[0]?.replace(/^\//, '') ?? '');
+      rel = decodeURIComponent(requestUrl.split('?')[0]?.replace(/^\//, '') ?? '');
     } catch {
       return next();
     }
-    const ext = extname(rel).slice(1).toLowerCase();
-    const isDocExt = ext === 'md' || ext === 'mdx';
-    if (!rel || contentFilter.isPathIgnored(rel) || (!isDocExt && !assetExtensions.has(ext)))
+    const sirvLooksUpRel =
+      sirvLookupPath(requestUrl) === `/${rel}` && isValidRelativeContentPath(rel);
+    const requestedExt = extensionOf(rel);
+    const isDocExt = requestedExt === 'md' || requestedExt === 'mdx';
+    if (
+      !rel ||
+      contentFilter.isPathIgnored(rel) ||
+      (!isDocExt && !assetExtensions.has(requestedExt))
+    )
       return next();
     const peerAddress = req.socket?.remoteAddress;
     if (peerAddress !== undefined && !isPeerAdmitted(peerAddress, ingressPolicy)) {
@@ -108,6 +145,10 @@ export function createAssetServeMiddleware(
       });
       return;
     }
+    const exactServable = sirvLooksUpRel && isServableContentFile(contentDir, requestUrl);
+    const tracked =
+      !sirvLooksUpRel || exactServable || isDocExt ? null : servableTrackedFile(rel, requestUrl);
+    const ext = tracked?.ext ?? requestedExt;
     res.setHeader('X-Content-Type-Options', 'nosniff');
     const classified = classifyAssetDisposition(ext, inlineExtensions);
     if (!isDocExt) {
@@ -121,6 +162,7 @@ export function createAssetServeMiddleware(
     }
     const notServed = () => {
       if (res.headersSent) return;
+      req.url = requestUrl;
       const isHtml = SANDBOXED_HTML_EXTENSIONS.has(ext);
       if (!isHtml && (assetExtensions.has(ext) || blocklistExtensions.has(ext))) {
         res.statusCode = 404;
@@ -135,10 +177,11 @@ export function createAssetServeMiddleware(
       }
       next();
     };
-    if (!isServableContentFile(contentDir, req.url ?? '')) {
+    if (!exactServable && tracked === null) {
       notServed();
       return;
     }
+    if (tracked !== null) req.url = tracked.url;
     contentSirv(req, res, notServed);
   };
 }

@@ -1272,6 +1272,37 @@ describe('file-watcher ContentFilter refcount hooks', () => {
     expect(filter.isExcluded('fresh/pic.png')).toBe(false);
   });
 
+  test('asset create in a directory with no markdown document dispatches asset-create', async () => {
+    const filter = createContentFilter({
+      projectDir: tmpDir,
+      contentDir,
+    });
+    const newDir = resolve(contentDir, 'media');
+    mkdirSync(newDir);
+    const assetPath = resolve(newDir, 'pic.png');
+    writeFileSync(assetPath, 'fake-png-bytes');
+    expect(filter.isExcluded('media/pic.png')).toBe(true);
+
+    const collected: DiskEvent[] = [];
+    await handleRawEvents(
+      [{ type: 'create', path: assetPath }],
+      contentDir,
+      filter,
+      new Map(),
+      new Map(),
+      async (e) => {
+        collected.push(e);
+      },
+    );
+
+    expect(collected.map((e) => e.kind).sort()).toEqual(['asset-create', 'file-create']);
+    const asset = collected.find((e) => e.kind === 'asset-create');
+    expect(asset?.kind).toBe('asset-create');
+    if (asset?.kind === 'asset-create') {
+      expect(asset.relativePath).toBe('media/pic.png');
+    }
+  });
+
   test('LINKABLE_ASSET_EXTENSIONS: .base file alongside .md dispatches asset-create event', async () => {
     const filter = createContentFilter({
       projectDir: tmpDir,

@@ -1,3 +1,4 @@
+import { createTargetNamespace } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { classifyImageTargetExistence } from './image-target-existence';
 
@@ -32,14 +33,21 @@ describe('classifyImageTargetExistence', () => {
     expect(state).toBe('missing');
   });
 
-  test('existence match is case-insensitive, mirroring link-chip resolution', () => {
-    const state = classifyImageTargetExistence(
-      '/Images/Cat.PNG',
-      '',
-      new Set(['images/cat.png']),
-      undefined,
+  test('existence matches by NFC and file-name case while parent folder case stays significant', () => {
+    const assets = createTargetNamespace('file', ['images/cat.png', 'images/Cafe\u0301.png']);
+    expect(classifyImageTargetExistence('/images/Cat.PNG', '', assets, undefined)).toBe('exists');
+    expect(classifyImageTargetExistence('/Images/cat.png', '', assets, undefined)).toBe('missing');
+    expect(classifyImageTargetExistence('/images/Caf\u00e9.png', '', assets, undefined)).toBe(
+      'exists',
     );
-    expect(state).toBe('exists');
+    expect(
+      classifyImageTargetExistence(
+        '/images/Cafe\u0301.png',
+        '',
+        createTargetNamespace('file', ['images/Caf\u00e9.png']),
+        undefined,
+      ),
+    ).toBe('exists');
   });
 
   test('external URL is unknown — absence from the inventory proves nothing', () => {

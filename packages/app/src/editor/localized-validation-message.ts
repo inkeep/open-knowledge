@@ -13,6 +13,11 @@ export function localizedValidationMessage(diagnostic: Diagnostic): string {
       ? t`Image target "${shown}" could not be resolved to a project-local file.`
       : t`Link target "${shown}" could not be resolved to a project-local target.`;
   }
+  if (evidence.reason === 'excluded') {
+    return evidence.role === 'image'
+      ? t`Image target "${shown}" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a "!" rule in .okignore.`
+      : t`Link target "${shown}" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a "!" rule in .okignore.`;
+  }
   if (evidence.targetKind === 'file') {
     return evidence.role === 'image'
       ? t`Image target "${shown}" does not resolve to an existing file.`

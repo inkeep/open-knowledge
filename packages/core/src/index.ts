@@ -2152,6 +2152,26 @@ export {
 } from './utils/slug.ts';
 export { expandTagToHierarchy, tagsMatchingPrefix } from './utils/tag-rollup.ts';
 export {
+  type DependencySlug,
+  dependencySlug,
+  type IdentityKey,
+  identityKey,
+  leafKey,
+  TARGET_IDENTITY,
+  type TargetKind,
+  wikiAssetPathKey,
+} from './utils/target-identity.ts';
+export {
+  addDocumentFolders,
+  asTargetNamespace,
+  createTargetNamespace,
+  isTargetNamespace,
+  type MutableTargetNamespace,
+  resolveName,
+  type TargetMatch,
+  type TargetNamespace,
+} from './utils/target-namespace.ts';
+export {
   hasUninstallFeedbackContent,
   type PostUninstallFeedbackOptions,
   postUninstallFeedback,
@@ -2165,6 +2185,7 @@ export {
   buildPagesByBasenameIndex,
   buildPagesBySlugIndex,
   buildWikiLinkAssetTargetKeys,
+  createWikiAssetResolver,
   getWikiLinkResolutionCandidates,
   isResolvedWikiLinkTarget,
   resolveWikiLinkAssetTarget,

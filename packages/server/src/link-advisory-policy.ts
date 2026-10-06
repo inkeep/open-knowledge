@@ -43,7 +43,6 @@ type WriteLinkAdvisor = (
 
 export type PrepareWriteLinkAdvisory = (
   writtenDocNames: Iterable<string>,
-  options: { resolveFolderLinks: boolean },
 ) => Promise<WriteLinkAdvisor>;
 
 export function deferredWriteLinkAdvisory(): WriteLinkAdvisory {

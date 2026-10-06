@@ -269,6 +269,7 @@
     "1njn7W": ["Claro"],
     "1nke1r": ["Abrir ", ["0"], " en GitHub (se abre en una pestaña nueva)"],
     "1oSHI0": ["No se pudo instalar ", ["skillName"], ": ", ["0"]],
+    "1ouiTz": ["Imagen ", ["identity"], " excluida. Ir a la referencia."],
     "1pdLQw": ["No se encontró la imagen"],
     "1qpGKz": ["No se pudieron guardar los cambios. Intenta editar un color de nuevo."],
     "1ruosn": ["OpenKnowledge"],
@@ -2142,6 +2143,7 @@
     "KIIamL": [
       "OpenKnowledge creará commits y los subirá a tu remoto automáticamente. Si no quieres commits automáticos en tu historial de git, no deberías activar la sincronización automática."
     ],
+    "KJ_eAL": ["Excluido"],
     "KOZud0": [
       "Crea una base de conocimiento de investigación de la competencia. Empieza con una página general y añade después páginas enlazadas entre sí para cada competidor, sus productos y precios, y las fuentes que respaldan cada afirmación."
     ],
@@ -4675,6 +4677,11 @@
     "gp3I7-": ["Antes de sincronizar, define tu identidad para los commits de git:"],
     "gpbKxw": ["La validación de enlaces no está disponible."],
     "gqk-3R": ["Se movió ", ["0"], " a ", ["destination"], "."],
+    "gssxm9": [
+      "El destino del enlace «",
+      ["shown"],
+      "» existe, pero .gitignore o .okignore lo excluye. Vuelve a incluirlo, o su carpeta, con una regla «!» en .okignore."
+    ],
     "gtEbeW": ["Resaltado"],
     "guidance.mcp.managed-file": [
       "Escribe un pequeño archivo puente que ",
@@ -5673,6 +5680,7 @@
     ],
     "pha01Y": ["Páginas de todo el proyecto sin aristas entrantes en el grafo."],
     "pkAft1": ["Falló la búsqueda."],
+    "pkC8Fi": ["Archivo ", ["identity"], " excluido. Ir a la referencia."],
     "pkmXTp": [["agentName"], " está listo"],
     "pmUArF": ["Espacio de trabajo"],
     "poAsUN": ["sin agentes — guardadas, no instaladas en ningún sitio"],
@@ -5712,6 +5720,11 @@
     "q63KUv": ["Añadir MCP y habilidad"],
     "q7F5am": ["título"],
     "q8aCbb": ["Dos versiones de \"", ["0"], "\": el origen frente a ", ["editor"]],
+    "qAC6UE": [
+      "El destino de la imagen «",
+      ["shown"],
+      "» existe, pero .gitignore o .okignore lo excluye. Vuelve a incluirlo, o su carpeta, con una regla «!» en .okignore."
+    ],
     "qAQVSD": ["La respuesta de los encabezados de página no era JSON"],
     "qAhFeg": [
       ["userName"],

@@ -235,6 +235,7 @@
     "1njn7W": ["Light"],
     "1nke1r": ["Open ", ["0"], " on GitHub (opens in a new tab)"],
     "1oSHI0": ["Couldn't install ", ["skillName"], ": ", ["0"]],
+    "1ouiTz": ["Excluded image ", ["identity"], ". Go to reference."],
     "1pdLQw": ["Image not found"],
     "1qpGKz": ["Couldn’t save changes. Try editing a color again."],
     "1ruosn": ["OpenKnowledge"],
@@ -1846,6 +1847,7 @@
     "KIIamL": [
       "OpenKnowledge will create commits and push them to your remote automatically. If you do not want automatic commits in your git history, you should not enable auto-sync."
     ],
+    "KJ_eAL": ["Excluded"],
     "KOZud0": [
       "Build a competitor research knowledge base. Start with an overview page, then add cross-linked pages for each competitor, their products and pricing, and the sources behind every claim."
     ],
@@ -4017,6 +4019,11 @@
     "gp3I7-": ["Before syncing, set your identity for git commits:"],
     "gpbKxw": ["Link validation is unavailable."],
     "gqk-3R": ["Moved ", ["0"], " to ", ["destination"], "."],
+    "gssxm9": [
+      "Link target \"",
+      ["shown"],
+      "\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+    ],
     "gtEbeW": ["Highlight"],
     "guidance.mcp.managed-file": [
       "Writes a small bridge file ",
@@ -4918,6 +4925,7 @@
     "phM8Kh": ["Found the repo but could not open the project. Please try again."],
     "pha01Y": ["Project-level pages with no incoming graph edges."],
     "pkAft1": ["Search failed."],
+    "pkC8Fi": ["Excluded file ", ["identity"], ". Go to reference."],
     "pkmXTp": [["agentName"], " is ready"],
     "pmUArF": ["Workspace"],
     "poAsUN": ["no agents — saved, not installed anywhere"],
@@ -4955,6 +4963,11 @@
     "q63KUv": ["Add MCP & skill"],
     "q7F5am": ["title"],
     "q8aCbb": ["Two versions of \"", ["0"], "\" — source vs ", ["editor"]],
+    "qAC6UE": [
+      "Image target \"",
+      ["shown"],
+      "\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+    ],
     "qAQVSD": ["Page headings response was not JSON"],
     "qAhFeg": [
       ["userName"],

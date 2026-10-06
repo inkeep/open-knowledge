@@ -6034,6 +6034,18 @@ msgstr "Excalidraw 보드를 불러오지 못했습니다."
 msgid "Excalidraw canvas"
 msgstr "Excalidraw 캔버스"
 
+#: src/components/LinksPanel.tsx
+msgid "Excluded"
+msgstr "제외됨"
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded file {identity}. Go to reference."
+msgstr "제외된 파일 {identity}. 참조로 이동합니다."
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded image {identity}. Go to reference."
+msgstr "제외된 이미지 {identity}. 참조로 이동합니다."
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "기존 브랜치 <0>{trimmed}</0>는 별도 창의 <1>.ok/worktrees/</1> 아래에 체크아웃됩니다."
@@ -7536,6 +7548,10 @@ msgstr "이미지 대상 \"{shown}\"을 프로젝트 로컬 파일로 확인할 
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "이미지 대상 \"{shown}\"이 존재하는 파일로 확인되지 않습니다."
 
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "이미지 대상 \"{shown}\"은 존재하지만 .gitignore 또는 .okignore에 의해 제외되어 있습니다. .okignore에 \"!\" 규칙을 추가해 해당 파일 또는 폴더를 다시 포함하세요."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "이미지는 민감 정보가 가려지지 않습니다."
@@ -8315,6 +8331,10 @@ msgstr "링크 대상 \"{shown}\"이 존재하는 문서로 확인되지 않습�
 #: src/editor/localized-validation-message.ts
 msgid "Link target \"{shown}\" does not resolve to an existing file."
 msgstr "링크 대상 \"{shown}\"이 존재하는 파일로 확인되지 않습니다."
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "링크 대상 \"{shown}\"은 존재하지만 .gitignore 또는 .okignore에 의해 제외되어 있습니다. .okignore에 \"!\" 규칙을 추가해 해당 파일 또는 폴더를 다시 포함하세요."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."

@@ -227,6 +227,10 @@
           "hasDefault": true,
           "default": null
         },
+        "sourceUrlForm": {
+          "hasDefault": true,
+          "default": null
+        },
         "src": {
           "hasDefault": true,
           "default": null
@@ -360,6 +364,10 @@
           "default": null
         },
         "sourceTitleMarker": {
+          "hasDefault": true,
+          "default": null
+        },
+        "sourceUrlForm": {
           "hasDefault": true,
           "default": null
         },

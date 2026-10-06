@@ -8,6 +8,7 @@ import {
 } from '@inkeep/open-knowledge-core/constants/cc1';
 import { isExcalidrawDocFile } from '@inkeep/open-knowledge-core/constants/upload';
 import type { RenamedAssetMapping, SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
+import { resolveName } from '@inkeep/open-knowledge-core/utils/target-namespace';
 import {
   decodeSkillPreviewSegments,
   encodeSkillPreviewSegments,
@@ -510,10 +511,16 @@ export function filterOpenTabsForKnownTargets(
   return normalizeOpenTabs(tabs, Number.MAX_SAFE_INTEGER).filter((tabId) => {
     const tab = parseEditorTabId(tabId);
     if (tab.kind === 'folder') {
-      return folderPaths.has(tab.folderPath) || keepFolderPaths.has(tab.folderPath);
+      return (
+        resolveName(folderPaths, tab.folderPath) !== undefined ||
+        keepFolderPaths.has(tab.folderPath)
+      );
     }
     if (tab.kind === 'asset') {
-      return assetPaths.has(tab.assetPath) || filePaths?.has(tab.assetPath) === true;
+      return (
+        resolveName(assetPaths, tab.assetPath) !== undefined ||
+        (filePaths !== undefined && resolveName(filePaths, tab.assetPath) !== undefined)
+      );
     }
     if (tab.kind === 'skill-file') return true;
     if (tab.kind === 'skill-preview') return true;

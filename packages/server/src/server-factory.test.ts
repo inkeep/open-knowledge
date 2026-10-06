@@ -292,6 +292,56 @@ describe('createServer() — agent-session cap passthrough', () => {
   });
 });
 
+describe('createServer() — wiki embed target resolution', () => {
+  let projectDir: string;
+  let server: ServerInstance | null;
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(resolve(tmpdir(), 'ok-wiki-embed-'));
+    server = null;
+  });
+
+  afterEach(async () => {
+    await server?.destroy();
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  test('a path-form image embed renders the tracked file it resolves to by wiki rules', async () => {
+    const contentDir = mkdtempSync(resolve(projectDir, 'content-'));
+    mkdirSync(join(contentDir, 'Pics', 'Deep'), { recursive: true });
+    writeFileSync(join(contentDir, 'Pics', 'Deep', 'x.png'), 'png');
+    mkdirSync(join(contentDir, 'assets'), { recursive: true });
+    writeFileSync(join(contentDir, 'assets', 'Cre\u0300me.png'), 'png');
+    writeFileSync(join(contentDir, 'wiki.md'), '# Wiki\n\n![[pics/deep/x.png]]\n');
+    server = createServer({ contentDir, projectDir, quiet: true });
+    await server.ready;
+
+    expect(server.resolveEmbed('pics/deep/x.png', 'wiki.md')).toBe('Pics/Deep/x.png');
+    expect(server.resolveEmbed('PICS/Deep/X.PNG', 'wiki.md')).toBe('Pics/Deep/x.png');
+    expect(server.resolveEmbed('assets/CR\u00c8ME.PNG', 'wiki.md')).toBe('assets/Cre\u0300me.png');
+    expect(server.resolveEmbed('pics/deep/nope.png', 'wiki.md')).toBeNull();
+
+    const conn = await server.hocuspocus.openDirectConnection('wiki');
+    try {
+      const embedSrc = (): unknown => {
+        const fragment = server?.hocuspocus.documents.get('wiki')?.getXmlFragment('default');
+        for (const node of fragment?.toArray() ?? []) {
+          if (!(node instanceof Y.XmlElement) || node.nodeName !== 'jsxComponent') continue;
+          const props = node.getAttribute('props') as unknown as
+            | Record<string, unknown>
+            | undefined;
+          return props?.src;
+        }
+        return undefined;
+      };
+      await vi.waitFor(() => expect(embedSrc()).not.toBeUndefined(), { timeout: 5_000 });
+      expect(embedSrc()).toBe('/Pics/Deep/x.png');
+    } finally {
+      conn.disconnect();
+    }
+  });
+});
+
 describe('createServer() — derived-index branch lifecycle', () => {
   let projectDir: string;
   let git: ReturnType<typeof simpleGit>;

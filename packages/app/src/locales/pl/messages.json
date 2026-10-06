@@ -288,6 +288,7 @@
     "1njn7W": ["Jasny"],
     "1nke1r": ["Otwórz ", ["0"], " na GitHubie (otwiera w nowej karcie)"],
     "1oSHI0": ["Nie udało się zainstalować ", ["skillName"], ": ", ["0"]],
+    "1ouiTz": ["Wykluczony obraz ", ["identity"], ". Przejdź do odnośnika."],
     "1pdLQw": ["Nie znaleziono obrazu"],
     "1qpGKz": ["Nie udało się zapisać zmian. Spróbuj ponownie edytować kolor."],
     "1ruosn": ["OpenKnowledge"],
@@ -2177,6 +2178,7 @@
     "KIIamL": [
       "OpenKnowledge będzie automatycznie tworzyć commity i wysyłać je do zdalnego repozytorium. Jeśli nie chcesz automatycznych commitów w historii git, nie włączaj synchronizacji automatycznej."
     ],
+    "KJ_eAL": ["Wykluczone"],
     "KOZud0": [
       "Zbuduj bazę wiedzy do badań konkurencji. Zacznij od strony przeglądu, a potem dodaj powiązane linkami strony dla każdej konkurencji, ich produktów i cen oraz źródeł stojących za każdym twierdzeniem."
     ],
@@ -4778,6 +4780,11 @@
     "gp3I7-": ["Przed synchronizacją ustaw swoją tożsamość dla commitów git:"],
     "gpbKxw": ["Walidacja linków jest niedostępna."],
     "gqk-3R": ["Przeniesiono ", ["0"], " do ", ["destination"], "."],
+    "gssxm9": [
+      "Cel linku „",
+      ["shown"],
+      "” istnieje, ale wyklucza go .gitignore lub .okignore. Dołącz go ponownie, lub jego folder, regułą „!” w .okignore."
+    ],
     "gtEbeW": ["Podświetlenie"],
     "guidance.mcp.managed-file": [
       "Zapisuje niewielki plik mostkowy, który ",
@@ -5805,6 +5812,7 @@
     "phM8Kh": ["Znaleziono repozytorium, ale nie udało się otworzyć projektu. Spróbuj ponownie."],
     "pha01Y": ["Strony projektu bez krawędzi przychodzących w grafie."],
     "pkAft1": ["Wyszukiwanie nie powiodło się."],
+    "pkC8Fi": ["Wykluczony plik ", ["identity"], ". Przejdź do odnośnika."],
     "pkmXTp": [["agentName"], " jest gotowy"],
     "pmUArF": ["Obszar roboczy"],
     "poAsUN": ["brak agentów — zapisano, nie zainstalowano nigdzie"],
@@ -5844,6 +5852,11 @@
     "q63KUv": ["Dodaj MCP i umiejętność"],
     "q7F5am": ["tytuł"],
     "q8aCbb": ["Dwie wersje „", ["0"], "” — źródło wobec ", ["editor"]],
+    "qAC6UE": [
+      "Cel obrazu „",
+      ["shown"],
+      "” istnieje, ale wyklucza go .gitignore lub .okignore. Dołącz go ponownie, lub jego folder, regułą „!” w .okignore."
+    ],
     "qAQVSD": ["Odpowiedź z nagłówkami strony nie była w formacie JSON"],
     "qAhFeg": [
       ["userName"],

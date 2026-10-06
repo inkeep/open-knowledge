@@ -6034,6 +6034,18 @@ msgstr "Le chargement du tableau Excalidraw a échoué."
 msgid "Excalidraw canvas"
 msgstr "Canevas Excalidraw"
 
+#: src/components/LinksPanel.tsx
+msgid "Excluded"
+msgstr "Exclu"
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded file {identity}. Go to reference."
+msgstr "Fichier {identity} exclu. Accéder à la référence."
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded image {identity}. Go to reference."
+msgstr "Image {identity} exclue. Accéder à la référence."
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "La branche existante <0>{trimmed}</0> sera extraite dans sa propre fenêtre, sous <1>.ok/worktrees/</1>."
@@ -7536,6 +7548,10 @@ msgstr "La cible de l’image « {shown} » n’a pas pu être résolue en tan
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "La cible de l’image « {shown} » ne correspond à aucun fichier existant."
 
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "La cible de l’image « {shown} » existe, mais .gitignore ou .okignore l’exclut. Réincluez-la, ou son dossier, avec une règle « ! » dans .okignore."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "Les images ne sont pas expurgées."
@@ -8315,6 +8331,10 @@ msgstr "La cible du lien « {shown} » ne correspond à aucun document existan
 #: src/editor/localized-validation-message.ts
 msgid "Link target \"{shown}\" does not resolve to an existing file."
 msgstr "La cible du lien « {shown} » ne correspond à aucun fichier existant."
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "La cible du lien « {shown} » existe, mais .gitignore ou .okignore l’exclut. Réincluez-la, ou son dossier, avec une règle « ! » dans .okignore."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."

@@ -343,6 +343,9 @@
         },
         "sourceTitleMarker": {
           "hasDefault": true
+        },
+        "sourceUrlForm": {
+          "hasDefault": true
         }
       },
       "content": "",
@@ -445,6 +448,9 @@
           "hasDefault": true
         },
         "sourceUrl": {
+          "hasDefault": true
+        },
+        "sourceUrlForm": {
           "hasDefault": true
         }
       },

@@ -1,8 +1,12 @@
-import type { Nodes, Parents } from 'mdast';
+import type { Definition, Image, Link, Nodes, Parents } from 'mdast';
 import type { MdxJsxAttribute, MdxJsxExpressionAttribute, MdxJsxFlowElement } from 'mdast-util-mdx';
 import type { Handle, Info, State } from 'mdast-util-to-markdown';
 import { classifyCharacter } from 'micromark-util-classify-character';
 import { isValidSourceLiteralRaw } from '../extensions/source-literal-mark.ts';
+import {
+  angleDestinationEscapesBackslashBefore,
+  angleDestinationEscapesBracket,
+} from './angle-destination-escapes.ts';
 import { scanBraceSpans } from './autolink-void-html-guard.ts';
 import { widenFenceLength } from './code-fence.ts';
 import { type RawMdxFallbackMdast, validateEscapeProvenance } from './mdast-augmentation.ts';
@@ -196,13 +200,7 @@ export const toMarkdownHandlers = {
     value += tracker.move('](');
     subexit();
 
-    const urlExit = state.enter('destinationRaw');
-    const urlRaw = String(node.url ?? '');
-    const wantAngles = node.data?.sourceUrlForm === 'angle-bracketed';
-    const alreadyAngled = urlRaw.startsWith('<') && urlRaw.endsWith('>');
-    const urlOut = wantAngles && !alreadyAngled ? `<${urlRaw}>` : formatLinkUrl(urlRaw);
-    value += tracker.move(urlOut);
-    urlExit();
+    value += emitDestination(state, tracker, node);
 
     if (node.title) {
       const marker = node.data?.sourceTitleMarker ?? 'double';
@@ -228,9 +226,7 @@ export const toMarkdownHandlers = {
     value += tracker.move('](');
     subexit();
 
-    const urlExit = state.enter('destinationRaw');
-    value += tracker.move(formatLinkUrl(String(node.url ?? '')));
-    urlExit();
+    value += emitDestination(state, tracker, node);
 
     if (node.title) {
       const titleExit = state.enter('titleQuote');
@@ -269,19 +265,7 @@ export const toMarkdownHandlers = {
     value += tracker.move(sep1);
 
     const urlRaw = String(node.url ?? '');
-    if (!urlRaw || /[\0- ]/.test(urlRaw)) {
-      const destExit = state.enter('destinationLiteral');
-      value += tracker.move('<');
-      value += tracker.move(
-        state.safe(urlRaw, { before: value, after: '>', ...tracker.current() }),
-      );
-      value += tracker.move('>');
-      destExit();
-    } else {
-      const destExit = state.enter('destinationRaw');
-      value += tracker.move(formatLinkUrl(urlRaw));
-      destExit();
-    }
+    value += emitDestination(state, tracker, node, !urlRaw || /[\0- ]/.test(urlRaw));
 
     if (node.title) {
       const titleSep = layout === 'multiline' ? '\n  ' : ' ';
@@ -859,6 +843,46 @@ function emitLinkTitle(
     return `${separator}(${title.replace(/[()]/g, '\\$&')})`;
   }
   return `${separator}"${title.replace(/"/g, '\\"')}"`;
+}
+
+function emitDestination(
+  state: State,
+  tracker: ReturnType<State['createTracker']>,
+  node: Link | Image | Definition,
+  forceAngles = false,
+): string {
+  const urlRaw = String(node.url ?? '');
+  const alreadyAngled = urlRaw.startsWith('<') && urlRaw.endsWith('>');
+  const wantAngles = node.data?.sourceUrlForm === 'angle-bracketed' && !alreadyAngled;
+  if (wantAngles || forceAngles) {
+    const destExit = state.enter('destinationLiteral');
+    const out = tracker.move(formatAngleDestination(urlRaw, state.stack.includes('tableCell')));
+    destExit();
+    return out;
+  }
+  const destExit = state.enter('destinationRaw');
+  const out = tracker.move(formatLinkUrl(urlRaw));
+  destExit();
+  return out;
+}
+
+export function formatAngleDestination(url: string, escapePipes = false): string {
+  let out = '<';
+  for (let i = 0; i < url.length; i++) {
+    const ch = url[i];
+    if (angleDestinationEscapesBracket(ch) || (escapePipes && ch === '|')) {
+      out += `\\${ch}`;
+    } else if (ch === '\n') {
+      out += '&#xA;';
+    } else if (ch === '\r') {
+      out += '&#xD;';
+    } else if (ch === '\\') {
+      out += angleDestinationEscapesBackslashBefore(url[i + 1]) ? '\\\\' : '\\';
+    } else {
+      out += ch;
+    }
+  }
+  return `${out}>`;
 }
 
 export function formatLinkUrl(url: string): string {

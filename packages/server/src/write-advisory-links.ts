@@ -1,40 +1,81 @@
-import type { LocalTargetDiagnosticEvidence } from '@inkeep/open-knowledge-core';
+import {
+  addDocumentFolders,
+  asTargetNamespace,
+  createTargetNamespace,
+  type LocalTargetDiagnosticEvidence,
+} from '@inkeep/open-knowledge-core';
 import { type BrokenOutboundLink, computeBrokenOutboundLinks } from './backlink-index.ts';
 import {
   assessLocalTargets,
   buildLocalTargetEvidence,
   createTolerantDocumentResolver,
+  isWikiForm,
+  type LocalTargetAssessment,
   type LocalTargetInventory,
+  wikiAssetName,
 } from './local-target-assessment.ts';
 
 export interface WriteAdvisoryLink extends BrokenOutboundLink {
   localTarget?: LocalTargetDiagnosticEvidence;
 }
 
+export interface WriteAdvisoryTargets {
+  fileExists: ((contentRootRelativePath: string) => boolean) | null;
+  folderExists: ((folderPath: string) => boolean) | null;
+  fileExcluded: ((contentRootRelativePath: string) => boolean) | null;
+  resolveWikiFile: ((contentRootRelativePath: string) => string | undefined) | null;
+  resolveFileByBasename: ((basename: string, sourceDocName: string) => string | undefined) | null;
+}
+
+interface VerdictSubject {
+  reason: WriteAdvisoryLink['reason'];
+  targetKind: LocalTargetAssessment['targetKind'] | null;
+  wikiAsset: boolean;
+  mayNameFile: boolean;
+}
+
+function hasVerdict(targets: WriteAdvisoryTargets, subject: VerdictSubject): boolean {
+  const { reason, targetKind } = subject;
+  const filesKnown = targets.fileExists !== null && targets.fileExcluded !== null;
+  switch (reason) {
+    case 'no-such-doc':
+      return targets.folderExists !== null && (!subject.mayNameFile || filesKnown);
+    case 'no-such-file':
+      return filesKnown && (!subject.wikiAsset || targets.resolveWikiFile !== null);
+    case 'excluded':
+      return filesKnown;
+    case 'unresolvable':
+      return targetKind !== 'file' || targets.fileExists !== null;
+    default: {
+      const unreachable: never = reason;
+      return unreachable;
+    }
+  }
+}
+
 export function computeWriteAdvisoryLinks(
   markdown: string,
   sourceDocName: string,
   admittedDocs: Iterable<string>,
-  fileExists?: (contentRootRelativePath: string) => boolean,
-  folderExists?: (folderPath: string) => boolean,
+  targets: WriteAdvisoryTargets,
 ): WriteAdvisoryLink[] {
-  const admitted = admittedDocs instanceof Set ? admittedDocs : new Set(admittedDocs);
+  const fileExists = targets.fileExists ?? undefined;
+  const fileExcluded = targets.fileExcluded ?? undefined;
+  const { folderExists, resolveWikiFile, resolveFileByBasename } = targets;
+  const documents = asTargetNamespace('document', admittedDocs);
 
-  const folderPaths = new Set<string>();
-  for (const docName of admitted) {
-    let slash = docName.indexOf('/');
-    while (slash !== -1) {
-      folderPaths.add(docName.slice(0, slash));
-      slash = docName.indexOf('/', slash + 1);
-    }
-  }
-  const hasFolder = (folderPath: string): boolean =>
-    folderPaths.has(folderPath) || folderExists?.(folderPath) === true;
+  const folders = addDocumentFolders(createTargetNamespace('folder'), documents);
+  const resolveFolder = (folderPath: string): string | undefined =>
+    folders.resolve(folderPath) ?? (folderExists?.(folderPath) === true ? folderPath : undefined);
+  const hasFolder = (folderPath: string): boolean => resolveFolder(folderPath) !== undefined;
   const inventory: LocalTargetInventory = {
-    hasDocument: (docName) => admitted.has(docName),
-    hasFile: (relPath) => (fileExists ? fileExists(relPath) : false),
-    resolveTolerantDocument: createTolerantDocumentResolver(admitted),
-    hasFolder,
+    resolveDocument: (docName) => documents.resolve(docName),
+    resolveFile: (relPath) => (fileExists?.(relPath) ? relPath : undefined),
+    resolveFileByBasename,
+    ...(fileExcluded ? { isExcludedFile: fileExcluded } : {}),
+    ...(resolveWikiFile ? { resolveWikiFile } : {}),
+    resolveTolerantDocument: createTolerantDocumentResolver(documents),
+    resolveFolder,
   };
   const assessments = assessLocalTargets(markdown, sourceDocName, inventory);
   const inlineLinkHrefs = new Set(
@@ -45,22 +86,37 @@ export function computeWriteAdvisoryLinks(
       )
       .map(({ occurrence }) => occurrence.href),
   );
-  const links: WriteAdvisoryLink[] = computeBrokenOutboundLinks(
+  const graphLinks = computeBrokenOutboundLinks(
     markdown,
     sourceDocName,
-    admitted,
+    documents,
     fileExists,
     hasFolder,
+    fileExcluded,
   ).filter(
     (link) =>
       link.sourceForm === 'jsx' || link.href.startsWith('[[') || inlineLinkHrefs.has(link.href),
   );
-  const graphHrefs = new Set(links.map((link) => link.href));
+  const graphHrefs = new Set(graphLinks.map((link) => link.href));
+  const links: WriteAdvisoryLink[] = graphLinks.filter((link) =>
+    hasVerdict(targets, {
+      reason: link.reason,
+      targetKind: null,
+      wikiAsset: false,
+      mayNameFile: link.sourceForm !== 'jsx' && !link.href.startsWith('[['),
+    }),
+  );
   const seenRepairSites = new Set<string>();
 
   for (const assessment of assessments) {
     if (assessment.reason === null) continue;
-    if (!fileExists && assessment.targetKind === 'file') continue;
+    const verdict = hasVerdict(targets, {
+      reason: assessment.reason,
+      targetKind: assessment.targetKind,
+      wikiAsset: wikiAssetName(assessment.occurrence) !== null,
+      mayNameFile: !isWikiForm(assessment.occurrence.sourceForm),
+    });
+    if (!verdict) continue;
     const { href, role, sourceForm, range, reference } = assessment.occurrence;
     if (role === 'link' && sourceForm === 'markdown-inline' && graphHrefs.has(href)) continue;
     const localTarget = buildLocalTargetEvidence(assessment, assessment.reason);

@@ -504,6 +504,26 @@ describe('buildIndexMarkdown', () => {
     expect(resolved.toSorted()).toEqual(names.map((name) => `blogs/drafts/${name}`).toSorted());
   });
 
+  test('a decomposed entry links in composed form unless a composed sibling owns that spelling', () => {
+    const nfd = 'people/Rene\u0301.md';
+    const nfc = 'people/Ren\u00e9.md';
+    const options = { warningScope: false as const, isRoot: false, directory: 'people' };
+
+    const alone = buildIndexMarkdown([entry({ path: nfd, title: 'Ren\u00e9' })], options);
+    expect(alone).toContain('](./Ren%C3%A9.md)');
+    expect(resolveInternalHref('./Ren%C3%A9.md', 'people/index')?.docName).toBe('people/Ren\u00e9');
+
+    const twins = buildIndexMarkdown(
+      [entry({ path: nfd, title: 'Decomposed' }), entry({ path: nfc, title: 'Composed' })],
+      options,
+    );
+    const hrefs = [...twins.matchAll(/\]\(([^)]+)\)/g)].map((match) => match[1] ?? '');
+    expect(hrefs.toSorted()).toEqual(['./Ren%C3%A9.md', './Rene%CC%81.md']);
+    expect(
+      hrefs.map((href) => resolveInternalHref(href, 'people/index')?.docName).toSorted(),
+    ).toEqual(['people/Ren\u00e9', 'people/Rene\u0301'].toSorted());
+  });
+
   test('no heading the generator owns collides with a section derived from a document type', () => {
     const reserved = generatorOwnedHeadings();
     expect(reserved.toSorted()).toEqual([...GENERATOR_OWNED_HEADINGS].toSorted());

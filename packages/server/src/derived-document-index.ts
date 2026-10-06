@@ -1,5 +1,9 @@
 import { readFile } from 'node:fs/promises';
-import type { DerivedViewChannel } from '@inkeep/open-knowledge-core';
+import {
+  createTargetNamespace,
+  type DerivedViewChannel,
+  type TargetNamespace,
+} from '@inkeep/open-knowledge-core';
 import {
   type BacklinkEntry,
   BacklinkIndex,
@@ -195,7 +199,7 @@ export class DerivedDocumentIndex
   private readonly localTargetFileExistenceTimer: ReturnType<typeof setInterval>;
   private localTargetRebuildRetryAttempt = 0;
   private graphFileTargetsSource: readonly string[] | null = null;
-  private graphFileTargets: Set<string> | null = null;
+  private graphFileTargets: TargetNamespace<'file'> | null = null;
   private startupBranch: string | null = null;
   private graphBuiltWithoutFileOracle = false;
   private saveTagsOnNextDebounce = false;
@@ -844,10 +848,10 @@ export class DerivedDocumentIndex
     }
     if (this.graphFileTargetsSource !== inventory.fileTargets) {
       this.graphFileTargetsSource = inventory.fileTargets;
-      this.graphFileTargets = new Set(inventory.fileTargets);
+      this.graphFileTargets = createTargetNamespace('file', inventory.fileTargets);
     }
     const files = this.graphFileTargets;
-    return files ? { hasFile: (path) => files.has(path) } : undefined;
+    return files ? { hasFile: (path) => files.resolve(path) !== undefined } : undefined;
   }
 
   private async reconcileGraphWithFileInventory(branch: string): Promise<void> {

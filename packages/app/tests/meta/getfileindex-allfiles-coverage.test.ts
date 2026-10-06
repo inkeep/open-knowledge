@@ -18,6 +18,7 @@ const ALLOWLISTED_SITES: ReadonlySet<string> = new Set<string>([
   'deriveFolderSearchDocuments',
   'handleDocumentList',
   'createLinkedFileExists',
+  'linkedLocalTargetInventory',
 ]);
 
 function findEnclosingFn(source: string, offset: number): string {

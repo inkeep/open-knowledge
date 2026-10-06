@@ -38,6 +38,32 @@ describe('createBasenameIndex — case-insensitive lookup, case-preserving stora
   });
 });
 
+describe('createBasenameIndex — canonically equivalent spellings', () => {
+  const NFC = 'Café.png';
+  const NFD = 'Café.png';
+
+  test('an NFC lookup finds an NFD-stored path', () => {
+    const idx = createBasenameIndex();
+    idx.add(`media/${NFD}`);
+    expect(idx.resolveEmbed(NFC, 'Wiki.md')).toBe(`media/${NFD}`);
+  });
+
+  test('an NFD lookup finds an NFC-stored path', () => {
+    const idx = createBasenameIndex();
+    idx.add(`media/${NFC}`);
+    expect(idx.resolveEmbed(NFD, 'Wiki.md')).toBe(`media/${NFC}`);
+  });
+
+  test('case folding and normalization compose into one bucket', () => {
+    const idx = createBasenameIndex();
+    idx.add(`media/CAFÉ.PNG`);
+    expect(idx.resolveEmbed(NFC.toLowerCase(), 'Wiki.md')).toBe('media/CAFÉ.PNG');
+    idx.remove(`media/CAFÉ.PNG`);
+    expect(idx.resolveEmbed(NFC, 'Wiki.md')).toBeNull();
+    expect(idx.size()).toBe(0);
+  });
+});
+
 describe('createBasenameIndex — path normalization', () => {
   test('./prefix stripped on add', () => {
     const idx = createBasenameIndex();

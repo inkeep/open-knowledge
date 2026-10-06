@@ -1,4 +1,7 @@
-import { mediaKindForSidebarAssetExtension } from '@inkeep/open-knowledge-core/constants/upload';
+import {
+  ASSET_EXTENSIONS,
+  mediaKindForSidebarAssetExtension,
+} from '@inkeep/open-knowledge-core/constants/upload';
 import {
   buildRelativeMarkdownHref,
   type ClassifiedLinkTarget,
@@ -75,7 +78,13 @@ export function activateAssetLink(
     if (mediaKindForSidebarAssetExtension(ext) === 'excalidraw') {
       openInternalHashHrefInNewTab({ docName: projectRelPath, anchor: null });
     } else {
-      void dispatch({ url, projectRelPath, ext, title, forceOsDelegation: true });
+      void dispatch({
+        url: ASSET_EXTENSIONS.has(ext) ? url : hashFromAssetPath(projectRelPath),
+        projectRelPath,
+        ext,
+        title,
+        forceOsDelegation: true,
+      });
     }
     return;
   }

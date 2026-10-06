@@ -6034,6 +6034,18 @@ msgstr "Nie udało się wczytać tablicy Excalidraw."
 msgid "Excalidraw canvas"
 msgstr "Płótno Excalidraw"
 
+#: src/components/LinksPanel.tsx
+msgid "Excluded"
+msgstr "Wykluczone"
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded file {identity}. Go to reference."
+msgstr "Wykluczony plik {identity}. Przejdź do odnośnika."
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded image {identity}. Go to reference."
+msgstr "Wykluczony obraz {identity}. Przejdź do odnośnika."
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "Istniejąca gałąź <0>{trimmed}</0> zostanie przełączona do własnego okna, w <1>.ok/worktrees/</1>."
@@ -7536,6 +7548,10 @@ msgstr "Nie udało się rozwiązać celu obrazu „{shown}” na plik lokalny dl
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "Cel obrazu „{shown}” nie wskazuje na istniejący plik."
 
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "Cel obrazu „{shown}” istnieje, ale wyklucza go .gitignore lub .okignore. Dołącz go ponownie, lub jego folder, regułą „!” w .okignore."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "Obrazy nie są anonimizowane."
@@ -8315,6 +8331,10 @@ msgstr "Cel linku „{shown}” nie wskazuje na istniejący dokument."
 #: src/editor/localized-validation-message.ts
 msgid "Link target \"{shown}\" does not resolve to an existing file."
 msgstr "Cel linku „{shown}” nie wskazuje na istniejący plik."
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "Cel linku „{shown}” istnieje, ale wyklucza go .gitignore lub .okignore. Dołącz go ponownie, lub jego folder, regułą „!” w .okignore."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."

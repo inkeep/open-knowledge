@@ -6030,6 +6030,18 @@ msgstr "Excalidraw বোর্ড লোড করা যায়নি।"
 msgid "Excalidraw canvas"
 msgstr "Excalidraw ক্যানভাস"
 
+#: src/components/LinksPanel.tsx
+msgid "Excluded"
+msgstr "বাদ দেওয়া"
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded file {identity}. Go to reference."
+msgstr "বাদ দেওয়া ফাইল {identity}। রেফারেন্সে যান।"
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded image {identity}. Go to reference."
+msgstr "বাদ দেওয়া ছবি {identity}। রেফারেন্সে যান।"
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "বিদ্যমান ব্রাঞ্চ <0>{trimmed}</0> <1>.ok/worktrees/</1>-এর নিচে নিজের জানালায় চেক আউট করা হবে।"
@@ -7532,6 +7544,10 @@ msgstr "ছবির লক্ষ্য \"{shown}\"-কে প্রকল্প
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "ছবির লক্ষ্য \"{shown}\" কোনো বিদ্যমান ফাইলকে নির্দেশ করে না।"
 
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "ছবির লক্ষ্য \"{shown}\" বিদ্যমান, কিন্তু .gitignore বা .okignore সেটিকে বাদ দিয়েছে। .okignore-এ একটি \"!\" নিয়ম দিয়ে সেটিকে, বা তার ফোল্ডারকে, আবার অন্তর্ভুক্ত করুন।"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "ছবির সংবেদনশীল তথ্য আড়াল করা হয় না।"
@@ -8311,6 +8327,10 @@ msgstr "লিংকের লক্ষ্য \"{shown}\" কোনো বিদ
 #: src/editor/localized-validation-message.ts
 msgid "Link target \"{shown}\" does not resolve to an existing file."
 msgstr "লিংকের লক্ষ্য \"{shown}\" কোনো বিদ্যমান ফাইলকে নির্দেশ করে না।"
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "লিংকের লক্ষ্য \"{shown}\" বিদ্যমান, কিন্তু .gitignore বা .okignore সেটিকে বাদ দিয়েছে। .okignore-এ একটি \"!\" নিয়ম দিয়ে সেটিকে, বা তার ফোল্ডারকে, আবার অন্তর্ভুক্ত করুন।"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."

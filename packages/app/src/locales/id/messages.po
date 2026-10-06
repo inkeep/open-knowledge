@@ -6030,6 +6030,18 @@ msgstr "Papan Excalidraw gagal dimuat."
 msgid "Excalidraw canvas"
 msgstr "Kanvas Excalidraw"
 
+#: src/components/LinksPanel.tsx
+msgid "Excluded"
+msgstr "Dikecualikan"
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded file {identity}. Go to reference."
+msgstr "File {identity} dikecualikan. Buka referensi."
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded image {identity}. Go to reference."
+msgstr "Gambar {identity} dikecualikan. Buka referensi."
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "Cabang yang sudah ada <0>{trimmed}</0> akan diambil ke jendelanya sendiri, di bawah <1>.ok/worktrees/</1>."
@@ -7532,6 +7544,10 @@ msgstr "Target gambar \"{shown}\" tidak dapat dicocokkan dengan file lokal proye
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "Target gambar \"{shown}\" tidak merujuk ke file yang ada."
 
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "Target gambar \"{shown}\" ada, tetapi dikecualikan oleh .gitignore atau .okignore. Sertakan kembali file itu, atau foldernya, dengan aturan \"!\" di .okignore."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "Gambar tidak disamarkan."
@@ -8311,6 +8327,10 @@ msgstr "Target tautan \"{shown}\" tidak merujuk ke dokumen yang ada."
 #: src/editor/localized-validation-message.ts
 msgid "Link target \"{shown}\" does not resolve to an existing file."
 msgstr "Target tautan \"{shown}\" tidak merujuk ke file yang ada."
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "Target tautan \"{shown}\" ada, tetapi dikecualikan oleh .gitignore atau .okignore. Sertakan kembali file itu, atau foldernya, dengan aturan \"!\" di .okignore."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."

@@ -6034,6 +6034,18 @@ msgstr "Excalidraw 画板加载失败。"
 msgid "Excalidraw canvas"
 msgstr "Excalidraw 画布"
 
+#: src/components/LinksPanel.tsx
+msgid "Excluded"
+msgstr "已排除"
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded file {identity}. Go to reference."
+msgstr "已排除的文件 {identity}。转到引用位置。"
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded image {identity}. Go to reference."
+msgstr "已排除的图片 {identity}。转到引用位置。"
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "已有分支 <0>{trimmed}</0> 会被检出到自己的窗口中，位于 <1>.ok/worktrees/</1> 下。"
@@ -7536,6 +7548,10 @@ msgstr "无法将图片目标“{shown}”解析为项目本地文件。"
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "图片目标“{shown}”未指向现有文件。"
 
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "图片目标“{shown}”存在，但被 .gitignore 或 .okignore 排除。请在 .okignore 中添加“!”规则，重新包含该文件或其文件夹。"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "图片不会进行脱敏处理。"
@@ -8315,6 +8331,10 @@ msgstr "链接目标“{shown}”未指向现有文档。"
 #: src/editor/localized-validation-message.ts
 msgid "Link target \"{shown}\" does not resolve to an existing file."
 msgstr "链接目标“{shown}”未指向现有文件。"
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "链接目标“{shown}”存在，但被 .gitignore 或 .okignore 排除。请在 .okignore 中添加“!”规则，重新包含该文件或其文件夹。"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."

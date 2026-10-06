@@ -231,6 +231,7 @@
     "1njn7W": ["Terang"],
     "1nke1r": ["Buka ", ["0"], " di GitHub (terbuka di tab baru)"],
     "1oSHI0": [["skillName"], " tidak bisa dipasang: ", ["0"]],
+    "1ouiTz": ["Gambar ", ["identity"], " dikecualikan. Buka referensi."],
     "1pdLQw": ["Gambar tidak ditemukan"],
     "1qpGKz": ["Perubahan tidak dapat disimpan. Coba sunting warna lagi."],
     "1ruosn": ["OpenKnowledge"],
@@ -1875,6 +1876,7 @@
     "KIIamL": [
       "OpenKnowledge akan membuat commit dan mengirimkannya ke remote Anda secara otomatis. Jika Anda tidak ingin commit otomatis di riwayat git Anda, sebaiknya jangan aktifkan sinkronisasi otomatis."
     ],
+    "KJ_eAL": ["Dikecualikan"],
     "KOZud0": [
       "Bangun basis pengetahuan riset pesaing. Mulai dengan halaman ikhtisar, lalu tambahkan halaman yang saling tertaut untuk tiap pesaing, produk dan harganya, serta sumber di balik setiap klaim."
     ],
@@ -4020,6 +4022,11 @@
     "gp3I7-": ["Sebelum menyinkronkan, setel identitas Anda untuk commit git:"],
     "gpbKxw": ["Validasi tautan tidak tersedia."],
     "gqk-3R": [["0"], " dipindahkan ke ", ["destination"], "."],
+    "gssxm9": [
+      "Target tautan \"",
+      ["shown"],
+      "\" ada, tetapi dikecualikan oleh .gitignore atau .okignore. Sertakan kembali file itu, atau foldernya, dengan aturan \"!\" di .okignore."
+    ],
     "gtEbeW": ["Sorotan"],
     "guidance.mcp.managed-file": [
       "Menulis berkas jembatan kecil yang dimuat ",
@@ -4934,6 +4941,7 @@
     "phM8Kh": ["Repo ditemukan tetapi proyeknya tidak dapat dibuka. Silakan coba lagi."],
     "pha01Y": ["Halaman tingkat proyek yang tidak punya sisi graf masuk."],
     "pkAft1": ["Pencarian gagal."],
+    "pkC8Fi": ["File ", ["identity"], " dikecualikan. Buka referensi."],
     "pkmXTp": [["agentName"], " siap"],
     "pmUArF": ["Ruang kerja"],
     "poAsUN": ["tanpa agen — disimpan, tidak dipasang di mana pun"],
@@ -4973,6 +4981,11 @@
     "q63KUv": ["Tambahkan MCP & keterampilan"],
     "q7F5am": ["judul"],
     "q8aCbb": ["Dua versi \"", ["0"], "\" — sumber melawan ", ["editor"]],
+    "qAC6UE": [
+      "Target gambar \"",
+      ["shown"],
+      "\" ada, tetapi dikecualikan oleh .gitignore atau .okignore. Sertakan kembali file itu, atau foldernya, dengan aturan \"!\" di .okignore."
+    ],
     "qAQVSD": ["Respons judul halaman bukan JSON"],
     "qAhFeg": [["userName"], " · ", ["tabCount", "plural", { "other": ["#", " tab"] }]],
     "qApCYm": ["Tidak disamarkan. Periksa gambar sebelum membagikannya."],

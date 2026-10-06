@@ -20,6 +20,7 @@ import {
   buildLocalTargetEvidence,
   type LocalTargetAssessment,
 } from '../local-target-assessment.ts';
+import type { WatcherLocalTargetInventory } from '../local-target-inventory.ts';
 import { getLogger } from '../logger.ts';
 import { toPosix } from '../path-utils.ts';
 import { AuditSupersededError, auditProject, auditScopeWarning, resolveScope } from './audit.ts';
@@ -141,6 +142,7 @@ export interface ValidationAuditDeps {
   docFilePathFor: (docName: string) => string | null;
   cache?: AuditCache;
   auditGeneration?: () => string;
+  localTargetInventory?: () => WatcherLocalTargetInventory | null;
 }
 
 export function createProjectValidators(deps: ValidationAuditDeps): ProjectValidator[] {
@@ -427,6 +429,11 @@ function localTargetMessage(assessment: LocalTargetAssessment, shown: string): s
     return isImage
       ? `Image target "${shown}" could not be resolved to a project-local file.`
       : `Link target "${shown}" could not be resolved to a project-local target.`;
+  }
+  if (assessment.reason === 'excluded') {
+    return isImage
+      ? `Image target "${shown}" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a "!" rule in .okignore.`
+      : `Link target "${shown}" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a "!" rule in .okignore.`;
   }
   if (assessment.targetKind === 'file') {
     return isImage

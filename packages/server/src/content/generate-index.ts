@@ -1,4 +1,9 @@
-import { encodeHrefPath, isMutatingParserReservation } from '@inkeep/open-knowledge-core';
+import {
+  createTargetNamespace,
+  encodeHrefPath,
+  isMutatingParserReservation,
+  type TargetNamespace,
+} from '@inkeep/open-knowledge-core';
 import { getLogger } from '../logger.ts';
 
 export interface IndexEntry {
@@ -248,16 +253,28 @@ function toHref(relativePath: string): string {
   return `./${encodeHrefPath(normalized)}`;
 }
 
-function renderLink(link: RenderableLink, directory: string): string {
-  const anchor = `* [${link.title.source}](${toHref(relativeTo(directory, link.path))})`;
+type SiblingPaths = TargetNamespace<'document'>;
+
+function hrefSpelling(relativePath: string, siblings: SiblingPaths): string {
+  const composed = relativePath.normalize('NFC');
+  return siblings.resolve(composed) === relativePath ? composed : relativePath;
+}
+
+function renderLink(link: RenderableLink, directory: string, siblings: SiblingPaths): string {
+  const relativePath = hrefSpelling(relativeTo(directory, link.path), siblings);
+  const anchor = `* [${link.title.source}](${toHref(relativePath)})`;
   return link.description?.source ? `${anchor} - ${link.description.source}` : anchor;
 }
 
-function renderBody(links: readonly RenderableLink[], directory: string): string {
+function renderBody(
+  links: readonly RenderableLink[],
+  directory: string,
+  siblings: SiblingPaths,
+): string {
   return links
     .slice()
     .sort(compareLinks)
-    .map((link) => renderLink(link, directory))
+    .map((link) => renderLink(link, directory, siblings))
     .join('\n');
 }
 
@@ -277,6 +294,7 @@ export function buildIndexMarkdown(
 
   const titleKey = literalMarkdownText(INDEX_TITLE, { kind: 'generator-owned' }).identity;
   const grouped = new Map<string, Bucket>();
+  const siblings = createTargetNamespace('document');
 
   const bucketFor = (heading: LiteralMarkdownText): RenderableLink[] => {
     const key = heading.identity;
@@ -300,20 +318,28 @@ export function buildIndexMarkdown(
     return existing.links;
   };
 
+  const sibling = (link: RenderableLink): RenderableLink => {
+    siblings.add(relativeTo(directory, link.path));
+    return link;
+  };
+
   for (const entry of entries) {
-    bucketFor(sectionOf(entry, warningScope)).push(renderableLink(entry, warningScope));
+    bucketFor(sectionOf(entry, warningScope)).push(sibling(renderableLink(entry, warningScope)));
   }
 
   if (subdirectories.length > 0) {
     bucketFor(literalMarkdownText(SUBDIRECTORY_SECTION, { kind: 'generator-owned' })).push(
-      ...subdirectories.map((entry) => renderableLink(entry, warningScope)),
+      ...subdirectories.map((entry) => sibling(renderableLink(entry, warningScope))),
     );
   }
 
   const blocks = [...grouped]
     .filter(([key]) => key !== titleKey)
     .sort(([, left], [, right]) => compareSections(left.heading.visible, right.heading.visible))
-    .map(([, { heading, links }]) => `## ${heading.source}\n\n${renderBody(links, directory)}`);
+    .map(
+      ([, { heading, links }]) =>
+        `## ${heading.source}\n\n${renderBody(links, directory, siblings)}`,
+    );
 
   const header = options.isRoot ? `---\nokf_version: "${GENERATED_OKF_VERSION}"\n---\n\n` : '';
 
@@ -321,7 +347,7 @@ export function buildIndexMarkdown(
   const title =
     titleLinks.length === 0
       ? `# ${INDEX_TITLE}`
-      : `# ${INDEX_TITLE}\n\n${renderBody(titleLinks, directory)}`;
+      : `# ${INDEX_TITLE}\n\n${renderBody(titleLinks, directory, siblings)}`;
 
   return `${header}${[title, ...blocks].join('\n\n')}\n`;
 }

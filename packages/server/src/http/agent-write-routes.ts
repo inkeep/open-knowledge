@@ -445,9 +445,11 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           const writtenSource = session.dc.document.getText('source').toString();
           registerWrittenDocInFileIndex(resolvedDocName, writtenSource);
           const renderWarnings = await validateMermaidFences(writtenSource, resolvedDocName);
-          const linkAdvisory = (
-            await prepareWriteLinkAdvisory([resolvedDocName], { resolveFolderLinks: true })
-          )(writtenSource, resolvedDocName, linkPolicy.suppressLogLinkAdvisories);
+          const linkAdvisory = (await prepareWriteLinkAdvisory([resolvedDocName]))(
+            writtenSource,
+            resolvedDocName,
+            linkPolicy.suppressLogLinkAdvisories,
+          );
           const subscriberCount = getSubscriberCount(resolvedDocName);
           const systemSubscriberCount = getSystemSubscriberCount();
           if (systemSubscriberCount === 0) {
@@ -728,9 +730,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
             resolvedDocName,
             session.dc.document.getText('source').toString(),
           );
-          const linkAdvisory = (
-            await prepareWriteLinkAdvisory([resolvedDocName], { resolveFolderLinks: false })
-          )(
+          const linkAdvisory = (await prepareWriteLinkAdvisory([resolvedDocName]))(
             session.dc.document.getText('source').toString(),
             resolvedDocName,
             linkPolicy.suppressLogLinkAdvisories,
@@ -1042,9 +1042,11 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           const patchedSource = session.dc.document.getText('source').toString();
           registerWrittenDocInFileIndex(docName, patchedSource);
           const renderWarnings = await validateMermaidFences(patchedSource, docName);
-          const linkAdvisory = (
-            await prepareWriteLinkAdvisory([docName], { resolveFolderLinks: false })
-          )(patchedSource, docName, linkPolicy.suppressLogLinkAdvisories);
+          const linkAdvisory = (await prepareWriteLinkAdvisory([docName]))(
+            patchedSource,
+            docName,
+            linkPolicy.suppressLogLinkAdvisories,
+          );
           const patchWarning = buildReconcileWarning(patchReconcile);
           const patchDivergenceEntry =
             patchDivergence !== undefined ? toContentDivergenceWarning(patchDivergence) : undefined;

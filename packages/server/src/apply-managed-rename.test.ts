@@ -410,3 +410,18 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
     expect(result.rewrites).toBe(1);
   });
 });
+
+describe('applyRenameMap across canonically equivalent spellings', () => {
+  test('an NFC markdown link to an NFD document is rewritten when that document is renamed', () => {
+    const nfd = 'people/Rene\u0301';
+    const result = rewriteInCorpus(
+      'See [R](./people/Ren\u00e9.md) and [[people/Ren\u00e9]].\n',
+      'notes',
+      new Map([[nfd, 'archive/Rene\u0301']]),
+    );
+    expect(result).toEqual({
+      markdown: 'See [R](./archive/Rene%CC%81.md) and [[archive/Rene\u0301|people/Ren\u00e9]].\n',
+      rewrites: 2,
+    });
+  });
+});

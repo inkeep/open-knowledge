@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { prependFrontmatter, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import {
+  type CanonicalDocName,
+  canonicalDocNameBeforeRename,
   rewriteJsxSrcRefsForDocumentRename,
   rewriteMarkdownLinksForDocumentRename,
   rewriteOutboundMarkdownLinksForSourceMove,
@@ -130,6 +132,7 @@ function rewriteSupportedLinksForRename(
   sourceDocName: string,
   oldDocName: string,
   newDocName: string,
+  canonical: CanonicalDocName,
 ): ManagedRenameRewriteSummary {
   const { frontmatter, body } = stripFrontmatter(markdown);
   const markdownRewrite = rewriteMarkdownLinksForDocumentRename(
@@ -137,12 +140,14 @@ function rewriteSupportedLinksForRename(
     sourceDocName,
     oldDocName,
     newDocName,
+    canonical,
   );
   const jsxRewrite = rewriteJsxSrcRefsForDocumentRename(
     markdownRewrite.markdown,
     sourceDocName,
     oldDocName,
     newDocName,
+    canonical,
   );
   return {
     markdown: prependFrontmatter(frontmatter, jsxRewrite.markdown),
@@ -157,6 +162,7 @@ export function applyRenameMap(
 ): ManagedRenameRewriteSummary {
   const { frontmatter, body } = stripFrontmatter(content);
   const wikiRewrite = rewriteWikiLinksForRenameMap(body, currentDocName, wikiContext);
+  const canonical = canonicalDocNameBeforeRename(wikiContext);
   let markdown = prependFrontmatter(frontmatter, wikiRewrite.markdown);
   let rewrites = wikiRewrite.rewrites;
 
@@ -177,6 +183,7 @@ export function applyRenameMap(
       currentDocName,
       currentDocName,
       selfRenamedTo,
+      canonical,
     );
     markdown = selfPass.markdown;
     rewrites += selfPass.rewrites;
@@ -201,6 +208,7 @@ export function applyRenameMap(
       resolutionSourceName,
       from,
       placeholder,
+      canonical,
     );
     if (phase1.rewrites > 0) {
       markdown = phase1.markdown;
@@ -210,7 +218,13 @@ export function applyRenameMap(
   }
 
   for (const [placeholder, to] of placeholderToFinal) {
-    const phase2 = rewriteSupportedLinksForRename(markdown, resolutionSourceName, placeholder, to);
+    const phase2 = rewriteSupportedLinksForRename(
+      markdown,
+      resolutionSourceName,
+      placeholder,
+      to,
+      canonical,
+    );
     markdown = phase2.markdown;
   }
 

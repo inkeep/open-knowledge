@@ -35,6 +35,7 @@ import {
   toValidationCountsPlane,
   type ValidationAuditResult,
 } from '../lint/validation-audit.ts';
+import type { WatcherLocalTargetInventory } from '../local-target-inventory.ts';
 import { createSingleFlight } from '../single-flight.ts';
 import type { ApiRouteTable } from './api-pipeline.ts';
 import { errorResponse } from './error-response.ts';
@@ -61,6 +62,7 @@ export interface LintRouteDeps {
   collectAdmittedDocNames: () => Promise<Set<string>>;
   unmatchedGlobProblems: (effective: LinterConfig) => string[];
   readAuditGeneration: () => string;
+  localTargetInventory: () => WatcherLocalTargetInventory;
 }
 
 export interface LintRoutes {
@@ -84,6 +86,7 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
     collectAdmittedDocNames,
     unmatchedGlobProblems,
     readAuditGeneration,
+    localTargetInventory,
   } = deps;
 
   const liveLintSourceFor = (docRelPath: string): string | null => {
@@ -375,6 +378,7 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
           docFilePathFor: (docName) => resolveDocFilePath(contentDir, docName),
           cache: auditCache,
           auditGeneration: readAuditGeneration,
+          localTargetInventory,
         });
         const result = await runCoalescedAudit(
           validators,

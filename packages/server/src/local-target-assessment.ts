@@ -1,5 +1,6 @@
 import {
   assertNeverLinkTarget,
+  asTargetNamespace,
   type BrokenLinkReason,
   classifyMarkdownHref,
   classifyWikiLinkTarget,
@@ -9,6 +10,7 @@ import {
   resolveAssetProjectPath,
   toWikiLinkSlug,
 } from '@inkeep/open-knowledge-core';
+import { linkNamesDocumentFile } from './doc-extensions.ts';
 import {
   extractLocalTargetOccurrences,
   type LocalTargetOccurrence,
@@ -19,21 +21,29 @@ type LocalTargetKind = 'document' | 'file' | 'unknown';
 
 type LocalTargetStatus = 'exact' | 'fallback' | 'missing' | 'unresolvable';
 
-type LocalTargetReason = 'no-such-doc' | 'no-such-file' | 'unresolvable';
+type LocalTargetReason = 'no-such-doc' | 'no-such-file' | 'unresolvable' | 'excluded';
 
-type LocalTargetResolutionMethod = 'source-relative' | 'root-relative' | 'tolerant' | 'none';
+type LocalTargetResolutionMethod =
+  | 'source-relative'
+  | 'root-relative'
+  | 'tolerant'
+  | 'basename'
+  | 'none';
 
 export interface LocalTargetInventory {
-  hasDocument(docName: string): boolean;
-  hasFile(contentRootRelativePath: string): boolean;
+  resolveDocument(docName: string): string | undefined;
+  resolveFile(contentRootRelativePath: string): string | undefined;
+  resolveFileByBasename: ((basename: string, sourceDocName: string) => string | undefined) | null;
+  resolveWikiFile?(contentRootRelativePath: string): string | undefined;
+  isExcludedFile?(contentRootRelativePath: string): boolean;
   resolveTolerantDocument?(docName: string, sourceDocName: string): string | null;
-  hasFolder?(folderPath: string): boolean;
+  resolveFolder?(folderPath: string): string | undefined;
 }
 
 export function createTolerantDocumentResolver(
   documentNames: Iterable<string>,
 ): (docName: string) => string | null {
-  const documents = new Set(documentNames);
+  const documents = asTargetNamespace('document', documentNames);
   const bySlug = new Map<string, string>();
   for (const docName of documents) {
     const slug = toWikiLinkSlug(docName);
@@ -49,11 +59,11 @@ export function createTolerantDocumentResolver(
     const slug = toWikiLinkSlug(docName);
     const slugMatch = slug ? bySlug.get(slug) : undefined;
     if (slugMatch) return slugMatch;
-    const canonicalIndex = `${docName}/index`;
-    if (documents.has(canonicalIndex)) return canonicalIndex;
+    const canonicalIndex = documents.resolve(`${docName}/index`);
+    if (canonicalIndex !== undefined) return canonicalIndex;
     const leaf = docName.slice(docName.lastIndexOf('/') + 1);
-    const legacyFolderNote = `${docName}/${leaf}`;
-    if (documents.has(legacyFolderNote)) return legacyFolderNote;
+    const legacyFolderNote = documents.resolve(`${docName}/${leaf}`);
+    if (legacyFolderNote !== undefined) return legacyFolderNote;
     if (!docName.includes('/') && slug) return byBasename.get(slug) ?? null;
     return null;
   };
@@ -89,22 +99,23 @@ function assessDocument(
   href: string,
   sourceDocName: string,
   inventory: LocalTargetInventory,
-  exactExists?: boolean,
+  existingDocument: string | undefined,
 ): SharedAssessment {
-  if (exactExists ?? inventory.hasDocument(docName)) {
+  if (existingDocument !== undefined) {
     return {
       targetKind: 'document',
-      resolvedTarget: docName,
+      resolvedTarget: existingDocument,
       status: 'exact',
       reason: null,
       resolutionMethod: methodForHref(href),
       fallbackTarget: null,
     };
   }
-  if (inventory.hasFolder?.(docName)) {
+  const existingFolder = inventory.resolveFolder?.(docName);
+  if (existingFolder !== undefined) {
     return {
       targetKind: 'document',
-      resolvedTarget: docName,
+      resolvedTarget: existingFolder,
       status: 'exact',
       reason: null,
       resolutionMethod: methodForHref(href),
@@ -143,10 +154,11 @@ function assessFile(
   if (filePath === null) {
     return { ...UNRESOLVABLE, targetKind: 'file' };
   }
-  if (inventory.hasFile(filePath)) {
+  const existingFile = inventory.resolveFile(filePath);
+  if (existingFile !== undefined) {
     return {
       targetKind: 'file',
-      resolvedTarget: filePath,
+      resolvedTarget: existingFile,
       status: 'exact',
       reason: null,
       resolutionMethod: methodForHref(href),
@@ -157,13 +169,76 @@ function assessFile(
     targetKind: 'file',
     resolvedTarget: filePath,
     status: 'missing',
-    reason: 'no-such-file',
+    reason: inventory.isExcludedFile?.(filePath) === true ? 'excluded' : 'no-such-file',
     resolutionMethod: methodForHref(href),
     fallbackTarget: null,
   };
 }
 
-function isWikiForm(sourceForm: OccurrenceSourceForm): boolean {
+function assessWikiFile(
+  assetUrl: string,
+  sourceDocName: string,
+  inventory: LocalTargetInventory,
+): SharedAssessment | null {
+  const filePath = resolveAssetProjectPath(assetUrl, '', { literal: true });
+  if (filePath === null) {
+    return { ...UNRESOLVABLE, targetKind: 'file' };
+  }
+  const existingFile = inventory.resolveFile(filePath) ?? inventory.resolveWikiFile?.(filePath);
+  if (existingFile !== undefined) {
+    return {
+      targetKind: 'file',
+      resolvedTarget: existingFile,
+      status: 'exact',
+      reason: null,
+      resolutionMethod: 'root-relative',
+      fallbackTarget: null,
+    };
+  }
+  if (!filePath.includes('/')) {
+    if (inventory.resolveFileByBasename === null) return null;
+    const byBasename = inventory.resolveFileByBasename(filePath, sourceDocName);
+    if (byBasename !== undefined) {
+      return {
+        targetKind: 'file',
+        resolvedTarget: byBasename,
+        status: 'exact',
+        reason: null,
+        resolutionMethod: 'basename',
+        fallbackTarget: null,
+      };
+    }
+  }
+  if (inventory.resolveTolerantDocument?.(assetUrl, sourceDocName) != null) {
+    return assessDocument(
+      assetUrl,
+      assetUrl,
+      sourceDocName,
+      inventory,
+      inventory.resolveDocument(assetUrl),
+    );
+  }
+  return {
+    targetKind: 'file',
+    resolvedTarget: filePath,
+    status: 'missing',
+    reason: inventory.isExcludedFile?.(filePath) === true ? 'excluded' : 'no-such-file',
+    resolutionMethod: 'root-relative',
+    fallbackTarget: null,
+  };
+}
+
+export function wikiFilePath(href: string): string | null {
+  return resolveAssetProjectPath(href, '', { literal: true });
+}
+
+export function wikiAssetName(occurrence: LocalTargetOccurrence): string | null {
+  if (!isWikiForm(occurrence.sourceForm)) return null;
+  const classified = classifyWikiLinkTarget(occurrence.href, null);
+  return classified?.kind === 'asset' ? classified.url : null;
+}
+
+export function isWikiForm(sourceForm: OccurrenceSourceForm): boolean {
   switch (sourceForm) {
     case 'wiki-link':
     case 'wiki-embed':
@@ -197,15 +272,18 @@ function assessHref(
       if (role === 'image' && !isWikiForm(sourceForm)) {
         return assessFile(href, href, sourceDocName, inventory, false);
       }
-      const documentExists = inventory.hasDocument(classified.docName);
-      if (!documentExists && !isWikiForm(sourceForm)) {
+      const existingDocument = inventory.resolveDocument(classified.docName);
+      if (existingDocument === undefined && !isWikiForm(sourceForm)) {
         const file = assessFile(href, href, sourceDocName, inventory, false);
-        if (file.status === 'exact') return file;
+        if (file.reason === 'excluded') return file;
+        if (file.status === 'exact' && !linkNamesDocumentFile(href, sourceDocName)) return file;
       }
-      return assessDocument(classified.docName, href, sourceDocName, inventory, documentExists);
+      return assessDocument(classified.docName, href, sourceDocName, inventory, existingDocument);
     }
     case 'asset':
-      return assessFile(classified.url, href, sourceDocName, inventory, classified.literal);
+      return isWikiForm(sourceForm)
+        ? assessWikiFile(classified.url, sourceDocName, inventory)
+        : assessFile(classified.url, href, sourceDocName, inventory, classified.literal);
     case 'external':
     case 'anchor':
       return null;
@@ -252,7 +330,10 @@ export function assessLocalTargets(
   );
 }
 
-function diagnosticSourceForm(form: OccurrenceSourceForm): LocalTargetSourceForm | null {
+type ProjectionSubject = Pick<LocalTargetAssessment, 'occurrence' | 'targetKind'>;
+
+function projectedSourceForm(assessment: ProjectionSubject): LocalTargetSourceForm | null {
+  const form = assessment.occurrence.sourceForm;
   switch (form) {
     case 'markdown-inline':
     case 'markdown-reference':
@@ -260,7 +341,7 @@ function diagnosticSourceForm(form: OccurrenceSourceForm): LocalTargetSourceForm
       return form;
     case 'wiki-link':
     case 'wiki-embed':
-      return null;
+      return assessment.targetKind === 'file' ? form : null;
     default: {
       const unreachable: never = form;
       return unreachable;
@@ -268,8 +349,8 @@ function diagnosticSourceForm(form: OccurrenceSourceForm): LocalTargetSourceForm
   }
 }
 
-export function isProjectableToLocalTargetSurfaces(occurrence: LocalTargetOccurrence): boolean {
-  return diagnosticSourceForm(occurrence.sourceForm) !== null;
+export function isProjectableToLocalTargetSurfaces(assessment: ProjectionSubject): boolean {
+  return projectedSourceForm(assessment) !== null;
 }
 
 export function buildLocalTargetEvidence(
@@ -277,7 +358,7 @@ export function buildLocalTargetEvidence(
   reason: BrokenLinkReason,
 ): LocalTargetDiagnosticEvidence | null {
   const { occurrence } = assessment;
-  const sourceForm = diagnosticSourceForm(occurrence.sourceForm);
+  const sourceForm = projectedSourceForm(assessment);
   if (sourceForm === null) return null;
   return {
     href: occurrence.href,
@@ -305,9 +386,8 @@ export function toForwardLinkLocalTargets(
   const rows: ForwardLinkLocalTarget[] = [];
   for (const assessment of assessments) {
     const { occurrence } = assessment;
-    if (!isProjectableToLocalTargetSurfaces(occurrence)) continue;
     if (assessment.targetKind !== 'file' && occurrence.role !== 'image') continue;
-    const sourceForm = diagnosticSourceForm(occurrence.sourceForm);
+    const sourceForm = projectedSourceForm(assessment);
     if (sourceForm === null) continue;
     rows.push({
       role: occurrence.role,

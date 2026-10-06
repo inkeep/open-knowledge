@@ -13,6 +13,7 @@ export const LinkRefDefFidelity = Node.create({
       title: { default: null },
       sourceLayout: { default: null },
       sourceTitleMarker: { default: null },
+      sourceUrlForm: { default: null },
     };
   },
 

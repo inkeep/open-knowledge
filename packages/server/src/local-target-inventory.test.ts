@@ -1,7 +1,11 @@
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import type { AllFileEntries, FileIndexEntry, FolderIndexEntry } from './file-watcher.ts';
 import {
+  createFileExistsOracle,
+  createTrackedFileResolver,
   localTargetInventoryFromIndexes,
   localTargetInventoryFromWatcher,
 } from './local-target-inventory.ts';
@@ -207,5 +211,111 @@ describe('localTargetInventoryFromIndexes', () => {
         ].toSorted(),
       );
     expect(changed?.documentTargets).toEqual([]);
+  });
+});
+
+describe('createTrackedFileResolver', () => {
+  const contentDir = '/project/content';
+  const CAFE_NFD = 'assets/Café.png'.normalize('NFD');
+  const CAFE_NFC = 'assets/Café.png'.normalize('NFC');
+
+  function watcherOver(allFiles: Map<string, FileIndexEntry>, generation: () => number) {
+    return {
+      getAllFilesIndex: () => allFiles,
+      getFileIndexGeneration: generation,
+      getFolderAliasIndex: () => new Map<string, string>(),
+    };
+  }
+
+  test('resolves a requested spelling to the tracked raw file under the file identity rule', () => {
+    const allFiles = new Map<string, FileIndexEntry>([
+      [CAFE_NFD, entry('file', join(contentDir, CAFE_NFD))],
+      ['Pics/Deep/x.png', entry('file', join(contentDir, 'Pics/Deep/x.png'))],
+      ['notes', entry('markdown', join(contentDir, 'notes.md'))],
+    ]);
+    const watcher = watcherOver(allFiles, () => 1);
+    const resolve = createTrackedFileResolver(() =>
+      localTargetInventoryFromWatcher(watcher, contentDir),
+    );
+
+    expect(resolve(CAFE_NFC)).toBe(CAFE_NFD);
+    expect(resolve(CAFE_NFD)).toBe(CAFE_NFD);
+    expect(resolve('assets/CAFÉ.PNG')).toBe(CAFE_NFD);
+    expect(resolve('Pics/Deep/X.PNG')).toBe('Pics/Deep/x.png');
+    expect(resolve('pics/deep/x.png')).toBeUndefined();
+    expect(resolve('notes.md')).toBeUndefined();
+    expect(resolve('missing.png')).toBeUndefined();
+  });
+
+  test('follows the watcher inventory as its generation changes', () => {
+    const allFiles = new Map<string, FileIndexEntry>();
+    let generation = 1;
+    const watcher = watcherOver(allFiles, () => generation);
+    const resolve = createTrackedFileResolver(() =>
+      localTargetInventoryFromWatcher(watcher, contentDir),
+    );
+    expect(resolve(CAFE_NFC)).toBeUndefined();
+
+    allFiles.set(CAFE_NFD, entry('file', join(contentDir, CAFE_NFD)));
+    generation++;
+    expect(resolve(CAFE_NFC)).toBe(CAFE_NFD);
+
+    allFiles.delete(CAFE_NFD);
+    generation++;
+    expect(resolve(CAFE_NFC)).toBeUndefined();
+  });
+
+  test('resolves nothing while the watcher inventory is unavailable', () => {
+    expect(createTrackedFileResolver(() => null)('assets/photo.png')).toBeUndefined();
+  });
+});
+
+describe('createFileExistsOracle', () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+
+  function project(): string {
+    const root = mkdtempSync(join(tmpdir(), 'ok-file-exists-'));
+    roots.push(root);
+    mkdirSync(join(root, 'Sub'));
+    writeFileSync(join(root, 'Sub', 'page.md'), '# Page\n');
+    writeFileSync(join(root, 'Makefile'), 'all:\n');
+    return root;
+  }
+
+  test('accepts a tracked file and an untracked regular file on disk', () => {
+    const exists = createFileExistsOracle(['assets/logo.png'], project(), undefined);
+    expect(exists('assets/logo.png')).toBe(true);
+    expect(exists('Makefile')).toBe(true);
+    expect(exists('missing.txt')).toBe(false);
+  });
+
+  test('never accepts a directory as an existing file', () => {
+    const exists = createFileExistsOracle([], project(), undefined);
+    expect(exists('Sub')).toBe(false);
+    expect(exists('Sub/')).toBe(false);
+  });
+
+  test('refuses an ignored path', () => {
+    const exists = createFileExistsOracle([], project(), {
+      isPathIgnored: (path) => path === 'Makefile',
+    });
+    expect(exists('Makefile')).toBe(false);
+  });
+
+  test('refuses an existing file outside the content root, directly or through a symlink', () => {
+    const outer = mkdtempSync(join(tmpdir(), 'ok-file-exists-outer-'));
+    roots.push(outer);
+    const root = join(outer, 'content');
+    mkdirSync(root);
+    writeFileSync(join(outer, 'outside.txt'), 'secret\n');
+    symlinkSync(join(outer, 'outside.txt'), join(root, 'escape.txt'));
+    const exists = createFileExistsOracle([], root, undefined);
+    expect(existsSync(join(root, '..', 'outside.txt'))).toBe(true);
+    expect(existsSync(join(root, 'escape.txt'))).toBe(true);
+    expect(exists('../outside.txt')).toBe(false);
+    expect(exists('escape.txt')).toBe(false);
   });
 });

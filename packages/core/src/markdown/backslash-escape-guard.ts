@@ -4,7 +4,7 @@ import { visit } from 'unist-util-visit';
 import { protectPattern } from './entity-ref-guard.ts';
 import type { EntityReferenceSpan, EscapeProvenanceEntry } from './mdast-augmentation.ts';
 
-const BACKSLASH_ESCAPE_PUA_MARK = '';
+export const BACKSLASH_ESCAPE_PUA_MARK = '';
 
 export const BACKSLASH_GUARD_SUBSTITUTIONS: ReadonlyArray<{ from: string; to: string }> = [
   { from: '\\', to: BACKSLASH_ESCAPE_PUA_MARK },

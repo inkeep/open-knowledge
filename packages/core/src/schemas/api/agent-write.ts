@@ -205,7 +205,12 @@ export type AdvisoryWarning = z.infer<typeof AdvisoryWarningSchema>;
 
 export const AdvisoryWarningsSchema = z.array(AdvisoryWarningSchema).min(1);
 
-export const BROKEN_LINK_REASONS = ['no-such-doc', 'no-such-file', 'unresolvable'] as const;
+export const BROKEN_LINK_REASONS = [
+  'no-such-doc',
+  'no-such-file',
+  'unresolvable',
+  'excluded',
+] as const;
 export type BrokenLinkReason = (typeof BROKEN_LINK_REASONS)[number];
 
 export const BrokenLinkSchema = z

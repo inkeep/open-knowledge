@@ -801,6 +801,24 @@ export type {
   toWikiLinkSlug,
   wikiLinkHref,
 } from '@inkeep/open-knowledge-core/utils/slug';
+export type {
+  DependencySlug,
+  dependencySlug,
+  IdentityKey,
+  identityKey,
+  leafKey,
+  TARGET_IDENTITY,
+  TargetKind,
+} from '@inkeep/open-knowledge-core/utils/target-identity';
+export type {
+  asTargetNamespace,
+  createTargetNamespace,
+  isTargetNamespace,
+  MutableTargetNamespace,
+  resolveName,
+  TargetMatch,
+  TargetNamespace,
+} from '@inkeep/open-knowledge-core/utils/target-namespace';
 export type { isVimeoUrl } from '@inkeep/open-knowledge-core/utils/vimeo-embed';
 export type {
   buildPagesByBasenameIndex,

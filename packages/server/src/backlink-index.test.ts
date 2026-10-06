@@ -9,7 +9,12 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LOCAL_DIR, skillLiveDocName } from '@inkeep/open-knowledge-core';
+import {
+  createTargetNamespace,
+  encodeHrefPath,
+  LOCAL_DIR,
+  skillLiveDocName,
+} from '@inkeep/open-knowledge-core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   BacklinkIndex,
@@ -1738,6 +1743,16 @@ describe('extractMarkdownLinksFromMarkdown', () => {
       { target: 'guide', anchor: null, snippet: 'Read the guide.', line: 4, column: 5 },
     ]);
   });
+
+  test('a .md link with a fragment or query keeps its document edge when a file oracle answers its path', () => {
+    const files = new Set(['notes/Guide.md', 'notes/Help.mdx']);
+    const md =
+      'See [g](./Guide.md#intro) and [h](./Help.mdx?v=1).\n\n[r][ref]\n\n[ref]: ./Guide.md#ref';
+    const edges = extractMarkdownLinksFromMarkdown(md, 'notes/a', 0, {
+      hasFile: (path) => files.has(path),
+    });
+    expect(edges.map((edge) => edge.target)).toEqual(['notes/Guide', 'notes/Help', 'notes/Guide']);
+  });
 });
 
 describe('BacklinkIndex with markdown links', () => {
@@ -2228,6 +2243,59 @@ describe('computeBrokenOutboundLinks', () => {
     ]);
   });
 
+  test('a Markdown link naming no document but an existing or ignored file is judged as that file', () => {
+    const md = 'See [make](../Makefile), [notice](../ignored/NOTICE) and [gone](../Nope).';
+    const excluded = new Set(['ignored/NOTICE']);
+    expect(
+      computeBrokenOutboundLinks(
+        md,
+        'notes/a',
+        new Set(),
+        fileOracle(['Makefile']),
+        () => false,
+        (path) => excluded.has(path),
+      ),
+    ).toEqual<BrokenOutboundLink[]>([
+      { href: '../ignored/NOTICE', resolvedTo: 'ignored/NOTICE', reason: 'excluded' },
+      { href: '../Nope', resolvedTo: 'Nope', reason: 'no-such-doc' },
+    ]);
+  });
+
+  test('a Markdown link to a missing document is never satisfied by a file check on its .md path', () => {
+    const md = 'See [g](./Guide.md) and [h](./Help.mdx).';
+    expect(
+      computeBrokenOutboundLinks(
+        md,
+        'notes/a',
+        new Set(['notes/guide', 'notes/help']),
+        fileOracle(['notes/Guide.md', 'notes/Help.mdx']),
+        () => false,
+        () => false,
+      ),
+    ).toEqual<BrokenOutboundLink[]>([
+      { href: './Guide.md', resolvedTo: 'notes/Guide', reason: 'no-such-doc' },
+      { href: './Help.mdx', resolvedTo: 'notes/Help', reason: 'no-such-doc' },
+    ]);
+  });
+
+  test('a Markdown link to an existing but ignored .md file reports excluded', () => {
+    const md = 'See [d](./drafts/plan.md) and [g](./Guide.md).';
+    const excluded = new Set(['notes/drafts/plan.md']);
+    expect(
+      computeBrokenOutboundLinks(
+        md,
+        'notes/a',
+        new Set(['notes/guide']),
+        fileOracle(['notes/Guide.md']),
+        () => false,
+        (path) => excluded.has(path),
+      ),
+    ).toEqual<BrokenOutboundLink[]>([
+      { href: './drafts/plan.md', resolvedTo: 'notes/drafts/plan.md', reason: 'excluded' },
+      { href: './Guide.md', resolvedTo: 'notes/Guide', reason: 'no-such-doc' },
+    ]);
+  });
+
   test('external URLs and wiki image embeds are not file-validated even with an oracle', () => {
     const md = [
       'Web [pdf](https://example.com/x.pdf).',
@@ -2469,5 +2537,249 @@ describe('computeBrokenOutboundLinks — JSX src refs', () => {
       '',
     ].join('\n');
     expect(computeBrokenOutboundLinks(md, 'notes/index', new Set(), fileOracle([]))).toEqual([]);
+  });
+});
+
+describe('link target identity across canonically equivalent spellings', () => {
+  const RENE_NFC = 'People/René';
+  const RENE_NFD = 'People/René';
+  const ZOE_NFC = 'People/Zoë';
+  const ZOE_NFD = 'People/Zoë';
+
+  function markdownLinkTo(docName: string): string {
+    return `[link](/${encodeHrefPath(docName)}.md)`;
+  }
+
+  function createInMemoryIndex(): BacklinkIndex {
+    return new BacklinkIndex({ projectDir: '/unused', contentDir: '/unused' });
+  }
+
+  test('an NFC markdown link to an NFD document is not dead and its backlink lands on the NFD node', () => {
+    const index = createInMemoryIndex();
+    index.updateDocumentFromMarkdown(RENE_NFD, '# René\n');
+    index.updateDocumentFromMarkdown('Probe', `See ${markdownLinkTo(RENE_NFC)}.\n`);
+
+    expect(index.getDeadLinks(['Probe', RENE_NFD])).toEqual([]);
+    expect(index.getBacklinks(RENE_NFD).map((entry) => entry.source)).toEqual(['Probe']);
+    expect(
+      index
+        .getLinkGraph()
+        .nodes.filter((node) => node.docName.normalize('NFC') === RENE_NFC)
+        .map((node) => node.docName),
+    ).toEqual([RENE_NFD]);
+  });
+
+  test('deleting the document makes the link dead again and re-adding it heals the link', () => {
+    const index = createInMemoryIndex();
+    index.updateDocumentFromMarkdown(RENE_NFD, '# René\n');
+    index.updateDocumentFromMarkdown('Probe', `See ${markdownLinkTo(RENE_NFC)}.\n`);
+    expect(index.getDeadLinks(['Probe', RENE_NFD])).toEqual([]);
+
+    index.deleteDocument(RENE_NFD);
+    expect(index.getDeadLinks(['Probe']).map((entry) => entry.target)).toEqual([RENE_NFC]);
+    expect(index.getBacklinks(RENE_NFD)).toEqual([]);
+
+    index.updateDocumentFromMarkdown(RENE_NFD, '# René again\n');
+    expect(index.getDeadLinks(['Probe', RENE_NFD])).toEqual([]);
+    expect(index.getBacklinks(RENE_NFD).map((entry) => entry.source)).toEqual(['Probe']);
+  });
+
+  test('an NFD markdown link to an NFC document resolves the same way', () => {
+    const index = createInMemoryIndex();
+    index.updateDocumentFromMarkdown(ZOE_NFC, '# Zoë\n');
+    index.updateDocumentFromMarkdown('Probe', `See ${markdownLinkTo(ZOE_NFD)}.\n`);
+
+    expect(index.getDeadLinks(['Probe', ZOE_NFC])).toEqual([]);
+    expect(index.getBacklinks(ZOE_NFC).map((entry) => entry.source)).toEqual(['Probe']);
+  });
+
+  test('backlinks requested under an equivalent spelling answer for the stored document', () => {
+    const index = createInMemoryIndex();
+    index.updateDocumentFromMarkdown(RENE_NFD, '# René\n');
+    index.updateDocumentFromMarkdown('Probe', `See ${markdownLinkTo(RENE_NFD)}.\n`);
+
+    expect(index.getBacklinks(RENE_NFC)).toEqual(index.getBacklinks(RENE_NFD));
+    expect(index.getBacklinks(RENE_NFC).map((entry) => entry.source)).toEqual(['Probe']);
+    expect(index.getBacklinkCount(RENE_NFC)).toBe(1);
+    expect(index.getBacklinks('People/Ghost')).toEqual([]);
+  });
+
+  test('a document that appears after the link was indexed heals the link', () => {
+    const index = createInMemoryIndex();
+    index.updateDocumentFromMarkdown('Probe', `See ${markdownLinkTo(RENE_NFC)}.\n`);
+    expect(index.getDeadLinks(['Probe']).map((entry) => entry.target)).toEqual([RENE_NFC]);
+
+    index.updateDocumentFromMarkdown(RENE_NFD, '# René\n');
+    expect(index.getDeadLinks(['Probe', RENE_NFD])).toEqual([]);
+    expect(index.getBacklinks(RENE_NFD).map((entry) => entry.source)).toEqual(['Probe']);
+  });
+
+  test.each([
+    [
+      'an NFC wiki link',
+      'an NFD folder index',
+      'Café'.normalize('NFC'),
+      `${'Café'.normalize('NFD')}/index`,
+    ],
+    [
+      'an NFD wiki link',
+      'an NFC folder index',
+      'Café'.normalize('NFD'),
+      `${'Café'.normalize('NFC')}/index`,
+    ],
+    [
+      'an NFC wiki link',
+      'an NFD folder note',
+      'Notes/Café'.normalize('NFC'),
+      `${'Notes/Café'.normalize('NFD')}/${'Café'.normalize('NFD')}`,
+    ],
+    [
+      'an NFC wiki link',
+      'a folder note whose leaf alone is NFD',
+      'Notes/Café'.normalize('NFC'),
+      `${'Notes/Café'.normalize('NFC')}/${'Café'.normalize('NFD')}`,
+    ],
+  ])(
+    '%s follows %s added and deleted after the link, without a rebuild',
+    (_link, _doc, target, docName) => {
+      const index = createInMemoryIndex();
+      index.updateDocumentFromMarkdown('Probe', `See [[${target}]].\n`);
+      expect(index.getDeadLinks(['Probe']).map((entry) => entry.target)).toEqual([target]);
+
+      index.updateDocumentFromMarkdown(docName, '# Café\n');
+      expect(index.getDeadLinks(['Probe', docName])).toEqual([]);
+      expect(index.getBacklinks(docName).map((entry) => entry.source)).toEqual(['Probe']);
+
+      index.deleteDocument(docName);
+      expect(index.getDeadLinks(['Probe']).map((entry) => entry.target)).toEqual([target]);
+      expect(index.getBacklinks(docName)).toEqual([]);
+    },
+  );
+
+  test('deleting an NFD folder index that an NFC wiki link already resolved to points the link back at its target', () => {
+    const target = 'Café'.normalize('NFC');
+    const docName = `${'Café'.normalize('NFD')}/index`;
+    const index = createInMemoryIndex();
+    index.updateDocumentFromMarkdown(docName, '# Café\n');
+    index.updateDocumentFromMarkdown('Probe', `See [[${target}]].\n`);
+    expect(index.getBacklinks(docName).map((entry) => entry.source)).toEqual(['Probe']);
+
+    index.deleteDocument(docName);
+    expect(index.getDeadLinks(['Probe']).map((entry) => entry.target)).toEqual([target]);
+    expect(index.getLinkGraph().links.map((link) => `${link.source} -> ${link.target}`)).toEqual([
+      `Probe -> ${target}`,
+    ]);
+  });
+
+  const DOC_ALPHABET = [
+    RENE_NFC,
+    RENE_NFD,
+    'People/rené',
+    ZOE_NFC,
+    ZOE_NFD,
+    'Notes/README',
+    'Notes/readme',
+    'a/b',
+    'a-b',
+    'Café'.normalize('NFC'),
+    `${'Café'.normalize('NFD')}/index`,
+    `${'Café'.normalize('NFC')}/${'Café'.normalize('NFD')}`,
+  ];
+
+  function seededRandom(seed: number): () => number {
+    let state = seed >>> 0;
+    return () => {
+      state = (state + 0x6d2b79f5) >>> 0;
+      let t = state;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function pick<T>(random: () => number, items: readonly T[]): T {
+    return items[Math.floor(random() * items.length)] as T;
+  }
+
+  function randomMarkdown(random: () => number): string {
+    const lines: string[] = ['# Doc', ''];
+    const linkCount = Math.floor(random() * 4);
+    for (let i = 0; i < linkCount; i++) {
+      const target = pick(random, DOC_ALPHABET);
+      lines.push(random() < 0.5 ? markdownLinkTo(target) : `[[${target}]]`);
+    }
+    return `${lines.join('\n')}\n`;
+  }
+
+  function graphSnapshot(index: BacklinkIndex, liveDocs: ReadonlyMap<string, string>): string {
+    const admitted = [...liveDocs.keys()].sort();
+    const graph = index.getLinkGraph();
+    return JSON.stringify({
+      deadLinks: index
+        .getDeadLinks(admitted)
+        .map((entry) => ({
+          target: entry.target,
+          sources: entry.sources
+            .map((source) => `${source.source}\0${source.sourceForm}\0${source.line}`)
+            .sort(),
+        }))
+        .sort((a, b) => (a.target < b.target ? -1 : a.target > b.target ? 1 : 0)),
+      nodes: graph.nodes.map((node) => node.id).sort(),
+      links: graph.links.map((link) => `${link.source} -> ${link.target}`).sort(),
+      backlinks: admitted.map((docName) => [
+        docName,
+        index
+          .getBacklinks(docName)
+          .map((entry) => entry.source)
+          .sort(),
+      ]),
+    });
+  }
+
+  test('an incrementally maintained graph equals a fresh rebuild over the same documents', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const random = seededRandom(seed);
+      const incremental = createInMemoryIndex();
+      const liveDocs = new Map<string, string>();
+      for (let step = 0; step < 12; step++) {
+        const docName = pick(random, DOC_ALPHABET);
+        if (liveDocs.has(docName) && random() < 0.4) {
+          liveDocs.delete(docName);
+          incremental.deleteDocument(docName);
+        } else {
+          const markdown = randomMarkdown(random);
+          liveDocs.set(docName, markdown);
+          incremental.updateDocumentFromMarkdown(docName, markdown);
+        }
+        const fresh = createInMemoryIndex();
+        for (const name of [...liveDocs.keys()].sort()) {
+          fresh.updateDocumentFromMarkdown(name, liveDocs.get(name) as string);
+        }
+        expect(graphSnapshot(incremental, liveDocs), `seed ${seed} step ${step}`).toBe(
+          graphSnapshot(fresh, liveDocs),
+        );
+      }
+    }
+  });
+});
+
+describe('computeBrokenOutboundLinks across canonically equivalent spellings', () => {
+  const RENE_NFC = 'People/René';
+  const RENE_NFD = 'People/René';
+
+  test('a markdown href in either normalization form names the admitted document', () => {
+    const toNfc = `[x](/${encodeHrefPath(RENE_NFC)}.md)\n`;
+    const toNfd = `[x](/${encodeHrefPath(RENE_NFD)}.md)\n`;
+    expect(computeBrokenOutboundLinks(toNfc, 'Probe', new Set([RENE_NFD]))).toEqual([]);
+    expect(computeBrokenOutboundLinks(toNfd, 'Probe', new Set([RENE_NFC]))).toEqual([]);
+    expect(
+      computeBrokenOutboundLinks(toNfc, 'Probe', createTargetNamespace('document', [RENE_NFD])),
+    ).toEqual([]);
+    expect(computeBrokenOutboundLinks(`[[${RENE_NFC}]]\n`, 'Probe', new Set([RENE_NFD]))).toEqual(
+      [],
+    );
+    expect(
+      computeBrokenOutboundLinks('[x](/People/Nope.md)\n', 'Probe', new Set([RENE_NFD])),
+    ).toEqual([{ href: '/People/Nope.md', resolvedTo: 'People/Nope', reason: 'no-such-doc' }]);
   });
 });

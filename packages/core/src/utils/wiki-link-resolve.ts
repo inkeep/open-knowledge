@@ -5,6 +5,8 @@ import {
   type ExternalLinkTarget,
 } from './link-targets.ts';
 import { toWikiLinkSlug } from './slug.ts';
+import { compareSpellings, leafKey, wikiAssetPathKey } from './target-identity.ts';
+import { asTargetNamespace, resolveName } from './target-namespace.ts';
 
 export interface WikiLinkLookupIndex {
   readonly pages: ReadonlySet<string>;
@@ -33,12 +35,6 @@ function getFilePathsSet(input: WikiLinkPagesInput, filePaths?: ReadonlySet<stri
   return isLookupIndex(input) ? (input.filePaths ?? new Set<string>()) : (filePaths ?? new Set());
 }
 
-function compareDocNames(a: string, b: string): number {
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
-}
-
 export function buildPagesBySlugIndex(
   pages: ReadonlySet<string>,
   slugFn: (text: string) => string,
@@ -47,7 +43,7 @@ export function buildPagesBySlugIndex(
   for (const page of pages) {
     const key = slugFn(page);
     const previous = index.get(key);
-    if (key && (previous === undefined || compareDocNames(page, previous) < 0)) {
+    if (key && (previous === undefined || compareSpellings(page, previous) < 0)) {
       index.set(key, page);
     }
   }
@@ -59,7 +55,7 @@ export function buildPagesByBasenameIndex(
   slugFn: (text: string) => string,
 ): ReadonlyMap<string, string> {
   const index = new Map<string, string>();
-  const sorted = [...pages].sort(compareDocNames);
+  const sorted = [...pages].sort(compareSpellings);
   for (const page of sorted) {
     const slash = page.lastIndexOf('/');
     const basename = slash === -1 ? page : page.slice(slash + 1);
@@ -78,7 +74,7 @@ function slugLookup(target: string, input: WikiLinkPagesInput): string | undefin
   let bestMatch: string | undefined;
   for (const page of input) {
     if (toWikiLinkSlug(page) !== targetSlug) continue;
-    if (bestMatch === undefined || compareDocNames(page, bestMatch) < 0) bestMatch = page;
+    if (bestMatch === undefined || compareSpellings(page, bestMatch) < 0) bestMatch = page;
   }
   return bestMatch;
 }
@@ -95,7 +91,7 @@ function basenameLookup(target: string, input: WikiLinkPagesInput): string | und
     const slash = page.lastIndexOf('/');
     const basename = slash === -1 ? page : page.slice(slash + 1);
     if (toWikiLinkSlug(basename) !== targetSlug) continue;
-    if (bestMatch === undefined || compareDocNames(page, bestMatch) < 0) bestMatch = page;
+    if (bestMatch === undefined || compareSpellings(page, bestMatch) < 0) bestMatch = page;
   }
   return bestMatch;
 }
@@ -114,7 +110,8 @@ export function resolveWikiLinkTargetDocName(
   const trimmed = target.trim();
   if (!trimmed) return undefined;
   const pages = getPagesSet(input);
-  if (pages.has(trimmed)) return trimmed;
+  const viaIdentity = resolveName(pages, trimmed);
+  if (viaIdentity !== undefined) return viaIdentity;
   const withoutMarkdownSuffix = trimmed.replace(/\.(md|mdx)$/i, '');
   if (withoutMarkdownSuffix !== trimmed) {
     const strippedMatch = resolveWikiLinkDocNameWithoutSuffixFallback(withoutMarkdownSuffix, input);
@@ -130,11 +127,13 @@ function resolveWikiLinkDocNameWithoutSuffixFallback(
   const trimmed = target.trim();
   if (!trimmed) return undefined;
   const pages = getPagesSet(input);
-  if (pages.has(trimmed)) return trimmed;
+  const viaIdentity = resolveName(pages, trimmed);
+  if (viaIdentity !== undefined) return viaIdentity;
   const viaSlug = slugLookup(trimmed, input);
   if (viaSlug) return viaSlug;
   for (const candidate of getWikiLinkResolutionCandidates(trimmed)) {
-    if (pages.has(candidate)) return candidate;
+    const viaCandidate = resolveName(pages, candidate);
+    if (viaCandidate !== undefined) return viaCandidate;
   }
   const folderIndexDocName = resolveFolderIndexDocName(trimmed, pages);
   if (folderIndexDocName) return folderIndexDocName;
@@ -142,13 +141,11 @@ function resolveWikiLinkDocNameWithoutSuffixFallback(
 }
 
 function resolveFolderIndexDocName(target: string, pages: ReadonlySet<string>): string | undefined {
-  const canonical = `${target}/index`;
-  if (pages.has(canonical)) return canonical;
+  const canonical = resolveName(pages, `${target}/index`);
+  if (canonical !== undefined) return canonical;
   const slashIndex = target.lastIndexOf('/');
   const leaf = slashIndex === -1 ? target : target.slice(slashIndex + 1);
-  const legacy = leaf ? `${target}/${leaf}` : null;
-  if (legacy && pages.has(legacy)) return legacy;
-  return undefined;
+  return leaf ? resolveName(pages, `${target}/${leaf}`) : undefined;
 }
 
 function normalizeAssetTarget(target: string): string {
@@ -156,6 +153,29 @@ function normalizeAssetTarget(target: string): string {
   const withoutHash = (trimmed.split('#')[0] ?? '').trim();
   const withoutQuery = (withoutHash.split('?')[0] ?? '').trim();
   return withoutQuery.startsWith('/') ? withoutQuery.slice(1) : withoutQuery;
+}
+
+function foldWikiAssetPaths(paths: Iterable<string>): Map<string, string> {
+  const folded = new Map<string, string>();
+  for (const path of paths) {
+    const key = wikiAssetPathKey(path);
+    const current = folded.get(key);
+    if (current === undefined || compareSpellings(path, current) < 0) folded.set(key, path);
+  }
+  return folded;
+}
+
+export function createWikiAssetResolver(
+  paths: Iterable<string>,
+): (spelling: string) => string | undefined {
+  const files = asTargetNamespace('file', paths);
+  let folded: Map<string, string> | undefined;
+  return (spelling) => {
+    const resolved = files.resolve(spelling);
+    if (resolved !== undefined) return resolved;
+    folded ??= foldWikiAssetPaths(files);
+    return folded.get(wikiAssetPathKey(spelling));
+  };
 }
 
 export function resolveWikiLinkAssetTarget(
@@ -166,29 +186,27 @@ export function resolveWikiLinkAssetTarget(
   const normalized = normalizeAssetTarget(target);
   if (!normalized) return null;
 
-  const lowerTarget = normalized.toLowerCase();
   const partitions: ReadonlyArray<ReadonlySet<string>> = filePaths
     ? [assetPaths, filePaths]
     : [assetPaths];
 
   for (const partition of partitions) {
-    if (partition.has(normalized)) return normalized;
-    for (const path of partition) {
-      if (path.toLowerCase() === lowerTarget) return path;
-    }
+    const resolved = createWikiAssetResolver(partition)(normalized);
+    if (resolved !== undefined) return resolved;
   }
 
   if (normalized.includes('/')) return null;
+  const targetLeaf = leafKey('file', normalized);
   const matches: string[] = [];
   for (const partition of partitions) {
     for (const path of partition) {
       const slash = path.lastIndexOf('/');
       const basename = slash === -1 ? path : path.slice(slash + 1);
-      if (basename.toLowerCase() === lowerTarget) matches.push(path);
+      if (leafKey('file', basename) === targetLeaf) matches.push(path);
     }
   }
   if (matches.length === 0) return null;
-  return matches.sort(compareDocNames)[0] ?? null;
+  return matches.sort(compareSpellings)[0] ?? null;
 }
 
 export function buildWikiLinkAssetTargetKeys(
@@ -197,9 +215,8 @@ export function buildWikiLinkAssetTargetKeys(
   const keys = new Set<string>();
   for (const partition of partitions) {
     for (const path of partition) {
-      const lower = path.toLowerCase();
-      keys.add(`path:${lower}`);
-      keys.add(`basename:${lower.slice(lower.lastIndexOf('/') + 1)}`);
+      keys.add(`path:${wikiAssetPathKey(path)}`);
+      keys.add(`basename:${leafKey('file', path.slice(path.lastIndexOf('/') + 1))}`);
     }
   }
   return keys;
@@ -213,12 +230,13 @@ export function isResolvedWikiLinkTarget(
 ): boolean {
   const trimmed = target.trim();
   if (!trimmed) return false;
-  const normalizedAsset = normalizeAssetTarget(trimmed).toLowerCase();
+  const normalizedAsset = normalizeAssetTarget(trimmed);
   const indexedAsset = isLookupIndex(pages) ? pages.assetTargetKeys : undefined;
   if (indexedAsset !== undefined) {
     if (
-      indexedAsset.has(`path:${normalizedAsset}`) ||
-      (!normalizedAsset.includes('/') && indexedAsset.has(`basename:${normalizedAsset}`))
+      indexedAsset.has(`path:${wikiAssetPathKey(normalizedAsset)}`) ||
+      (!normalizedAsset.includes('/') &&
+        indexedAsset.has(`basename:${leafKey('file', normalizedAsset)}`))
     )
       return true;
   } else if (

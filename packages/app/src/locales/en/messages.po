@@ -6034,6 +6034,18 @@ msgstr "Excalidraw board failed to load."
 msgid "Excalidraw canvas"
 msgstr "Excalidraw canvas"
 
+#: src/components/LinksPanel.tsx
+msgid "Excluded"
+msgstr "Excluded"
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded file {identity}. Go to reference."
+msgstr "Excluded file {identity}. Go to reference."
+
+#: src/components/LinksPanel.tsx
+msgid "Excluded image {identity}. Go to reference."
+msgstr "Excluded image {identity}. Go to reference."
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
@@ -7536,6 +7548,10 @@ msgstr "Image target \"{shown}\" could not be resolved to a project-local file."
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "Image target \"{shown}\" does not resolve to an existing file."
 
+#: src/editor/localized-validation-message.ts
+msgid "Image target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "Image target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "Images aren't redacted."
@@ -8315,6 +8331,10 @@ msgstr "Link target \"{shown}\" does not resolve to an existing document."
 #: src/editor/localized-validation-message.ts
 msgid "Link target \"{shown}\" does not resolve to an existing file."
 msgstr "Link target \"{shown}\" does not resolve to an existing file."
+
+#: src/editor/localized-validation-message.ts
+msgid "Link target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
+msgstr "Link target \"{shown}\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."

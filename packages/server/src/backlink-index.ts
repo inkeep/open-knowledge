@@ -2,22 +2,32 @@ import { type Dirent, existsSync, mkdirSync } from 'node:fs';
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import {
+  addDocumentFolders,
+  asTargetNamespace,
   type BrokenLinkReason,
   classifyMarkdownHref,
   classifyWikiLinkTarget,
+  createTargetNamespace,
+  type DependencySlug,
+  dependencySlug,
   extractSkillRefs,
   getWikiLinkText,
+  type IdentityKey,
+  identityKey,
   isExcalidrawDocFile,
   isExternalHref,
   isOrphanMode,
   type JsxSrcRefTagSpec,
+  leafKey,
   MANAGED_ARTIFACT_PREFIX_SKILL,
+  type MutableTargetNamespace,
   ORPHAN_MODES,
   type OrphanMode,
   parseGlobalSkillBundleDoc,
   parseProjectSkillBundleDoc,
   resolveAssetProjectPath,
   resolveInternalHref,
+  resolveName,
   resolveSkillBundleWikiTarget,
   resolveWikiLinkTarget,
   resolveWikiLinkTargetDocName,
@@ -29,7 +39,7 @@ import {
 import { isLinkIndexExcludedDoc } from './cc1-broadcast.ts';
 import { getLocalDir } from './config/paths.ts';
 import type { ContentFilter } from './content-filter.ts';
-import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
+import { isSupportedDocFile, linkNamesDocumentFile, stripDocExtension } from './doc-extensions.ts';
 import { instrumentIndexRebuild } from './index-telemetry.ts';
 import {
   createJsxSrcAttrRe,
@@ -62,7 +72,7 @@ function namesExistingFile(
   oracle: GraphFileOracle | undefined,
 ): boolean {
   if (!oracle) return false;
-  if (isSupportedDocFile(href)) return false;
+  if (linkNamesDocumentFile(href, sourceDocName)) return false;
   const filePath = resolveAssetProjectPath(href, sourceDocName, { literal: false });
   return filePath !== null && oracle.hasFile(filePath);
 }
@@ -207,18 +217,46 @@ interface ResolvedGraphState {
   forward: Map<string, Set<string>>;
   backward: Map<string, Map<string, BackwardLinkMeta>>;
   sortedBacklinks: Map<string, BacklinkEntry[]>;
-  wikiSourcesByPathSlug: Map<string, Set<string>>;
-  wikiSourcesByBasenameSlug: Map<string, Set<string>>;
-  wikiSourcesByFolder: Map<string, Set<string>>;
-  wikiKeysBySource: Map<
-    string,
-    { paths: Set<string>; basenames: Set<string>; folders: Set<string> }
-  >;
+  sourcesByPathSlug: Map<DependencySlug, Set<string>>;
+  wikiSourcesByBasenameSlug: Map<DependencySlug, Set<string>>;
+  wikiSourcesByFolder: Map<IdentityKey<'folder'>, Set<string>>;
+  keysBySource: Map<string, SourceDependencyKeys>;
+}
+
+interface SourceDependencyKeys {
+  paths: Set<DependencySlug>;
+  basenames: Set<DependencySlug>;
+  folders: Set<IdentityKey<'folder'>>;
+}
+
+function registerSourceKeys<K extends string>(
+  index: Map<K, Set<string>>,
+  keys: ReadonlySet<K>,
+  source: string,
+): void {
+  for (const key of keys) {
+    const sources = index.get(key) ?? new Set<string>();
+    sources.add(source);
+    index.set(key, sources);
+  }
+}
+
+function unregisterSourceKeys<K extends string>(
+  index: Map<K, Set<string>>,
+  keys: ReadonlySet<K>,
+  source: string,
+): void {
+  for (const key of keys) {
+    const sources = index.get(key);
+    sources?.delete(source);
+    if (sources?.size === 0) index.delete(key);
+  }
 }
 
 interface CachedDocumentLookup {
   epoch: number;
   lookup: WikiLinkLookupIndex;
+  pages: MutableTargetNamespace<'document'>;
   slugBuckets: Map<string, Set<string>>;
   basenameBuckets: Map<string, Set<string>>;
 }
@@ -881,8 +919,11 @@ export function computeBrokenOutboundLinks(
   admittedDocs: Iterable<string>,
   fileExists?: (contentRootRelativePath: string) => boolean,
   folderExists?: (folderPath: string) => boolean,
+  fileExcluded?: (contentRootRelativePath: string) => boolean,
 ): BrokenOutboundLink[] {
-  const admitted = admittedDocs instanceof Set ? admittedDocs : new Set(admittedDocs);
+  const documents = asTargetNamespace('document', admittedDocs);
+  const missingFileReason = (filePath: string): BrokenLinkReason =>
+    fileExcluded?.(filePath) === true ? 'excluded' : 'no-such-file';
 
   let body: string;
   try {
@@ -923,7 +964,20 @@ export function computeBrokenOutboundLinks(
       return;
     }
     if (classified.kind === 'doc') {
-      if (!admitted.has(classified.docName) && folderExists?.(classified.docName) !== true) {
+      if (documents.resolve(classified.docName) !== undefined) return;
+      const filePath = resolveAssetProjectPath(trimmed, sourceDocName, { literal: false });
+      if (
+        filePath !== null &&
+        !linkNamesDocumentFile(trimmed, sourceDocName) &&
+        fileExists?.(filePath) === true
+      ) {
+        return;
+      }
+      if (filePath !== null && fileExcluded?.(filePath) === true) {
+        record(trimmed, filePath, 'excluded');
+        return;
+      }
+      if (folderExists?.(classified.docName) !== true) {
         record(trimmed, classified.docName, 'no-such-doc');
       }
       return;
@@ -938,7 +992,7 @@ export function computeBrokenOutboundLinks(
         return;
       }
       if (!fileExists(filePath)) {
-        record(trimmed, filePath, 'no-such-file');
+        record(trimmed, filePath, missingFileReason(filePath));
       }
       return;
     }
@@ -957,10 +1011,10 @@ export function computeBrokenOutboundLinks(
     }
     if (isExcalidrawDocFile(resolved)) {
       if (!fileExists) return;
-      if (!fileExists(resolved)) record(value, resolved, 'no-such-file', 'jsx');
+      if (!fileExists(resolved)) record(value, resolved, missingFileReason(resolved), 'jsx');
       return;
     }
-    if (!admitted.has(resolved) && folderExists?.(resolved) !== true) {
+    if (documents.resolve(resolved) === undefined && folderExists?.(resolved) !== true) {
       record(value, resolved, 'no-such-doc', 'jsx');
     }
   };
@@ -968,7 +1022,7 @@ export function computeBrokenOutboundLinks(
   let wikiLookup: WikiLinkLookupIndex | undefined;
 
   const recordWikiLink = (target: string, anchor: string | null): void => {
-    wikiLookup ??= buildProjectWikiLinkLookup(admitted);
+    wikiLookup ??= buildProjectWikiLinkLookup(documents);
     const resolved = resolveWikiLinkTarget(target, anchor, wikiLookup);
     if (resolved?.kind !== 'doc') return;
     if (
@@ -1174,18 +1228,6 @@ function deserializeState(data: SerializedBranchGraphState): BranchGraphState {
     ),
     inventoryEpoch: 0,
   };
-}
-
-function deriveFolderPathsFromDocNames(docNames: Iterable<string>): Set<string> {
-  const folderPaths = new Set<string>();
-  for (const docName of docNames) {
-    let slash = docName.indexOf('/');
-    while (slash !== -1) {
-      folderPaths.add(docName.slice(0, slash));
-      slash = docName.indexOf('/', slash + 1);
-    }
-  }
-  return folderPaths;
 }
 
 export class BacklinkIndex {
@@ -1500,7 +1542,8 @@ export class BacklinkIndex {
     this.updateDocumentFromMarkdown(newDocName, markdown, branch);
   }
 
-  getBacklinks(target: string, branch = this.activeBranch): BacklinkEntry[] {
+  getBacklinks(requested: string, branch = this.activeBranch): BacklinkEntry[] {
+    const target = this.canonicalDocName(requested, branch);
     const resolved = this.resolvedState(branch);
     const sources = resolved.backward.get(target);
     const structural = this.bundleNeighbors(target, branch);
@@ -1520,7 +1563,8 @@ export class BacklinkIndex {
     return [...entries.values()].sort((a, b) => a.source.localeCompare(b.source));
   }
 
-  getBacklinkCount(target: string, branch = this.activeBranch): number {
+  getBacklinkCount(requested: string, branch = this.activeBranch): number {
+    const target = this.canonicalDocName(requested, branch);
     const authored = this.resolvedBackward(branch).get(target);
     const structural = this.bundleNeighbors(target, branch);
     if (structural.size === 0) return authored?.size ?? 0;
@@ -1620,18 +1664,18 @@ export class BacklinkIndex {
     knownFolderPaths?: Iterable<string>,
   ): DeadLinkEntry[] {
     const state = this.resolvedGraph(branch);
-    const admittedDocSet = new Set(admittedDocs);
+    const documents = createTargetNamespace('document', admittedDocs);
+    for (const indexed of state.forward.keys()) documents.add(indexed);
     const sourceDocSet = sourceDocNames?.length ? new Set(sourceDocNames) : null;
-    const folderPathSet = deriveFolderPathsFromDocNames([
-      ...admittedDocSet,
-      ...state.forward.keys(),
-    ]);
-    for (const folderPath of knownFolderPaths ?? []) folderPathSet.add(folderPath);
+    const folders = addDocumentFolders(
+      createTargetNamespace('folder', knownFolderPaths ?? []),
+      documents,
+    );
 
     return [...state.backward.entries()]
       .filter(([target, sources]) => {
-        if (admittedDocSet.has(target) || state.forward.has(target)) return false;
-        if (folderPathSet.has(target.replace(/\/+$/, ''))) return false;
+        if (documents.resolve(target) !== undefined) return false;
+        if (folders.resolve(target.replace(/\/+$/, '')) !== undefined) return false;
         if (!sourceDocSet) return sources.size > 0;
         for (const source of sources.keys()) {
           if (sourceDocSet.has(source)) return true;
@@ -1671,6 +1715,10 @@ export class BacklinkIndex {
       );
   }
 
+  private canonicalDocName(requested: string, branch: string): string {
+    return resolveName(this.documentLookup(branch).pages, requested) ?? requested;
+  }
+
   private documentLookup(branch = this.activeBranch): WikiLinkLookupIndex {
     const state = this.getState(branch);
     const cached = this.documentLookups.get(state);
@@ -1693,14 +1741,16 @@ export class BacklinkIndex {
         basenameBuckets.set(basenameSlug, bucket);
       }
     }
+    const pages = createTargetNamespace('document', lookup.pages);
     const mutableLookup: WikiLinkLookupIndex = {
-      pages: new Set(lookup.pages),
+      pages,
       pagesBySlug: new Map(lookup.pagesBySlug),
       pagesByBasename: new Map(lookup.pagesByBasename),
     };
     this.documentLookups.set(state, {
       epoch: state.inventoryEpoch,
       lookup: mutableLookup,
+      pages,
       slugBuckets,
       basenameBuckets,
     });
@@ -1712,7 +1762,7 @@ export class BacklinkIndex {
     if (!cached || cached.epoch !== state.inventoryEpoch - 1) return;
     cached.epoch = state.inventoryEpoch;
     if (!added && this.fixedDocumentNames.has(docName)) return;
-    const pages = cached.lookup.pages as Set<string>;
+    const pages = cached.pages;
     if (added ? pages.has(docName) : !pages.has(docName)) return;
     if (added) pages.add(docName);
     else pages.delete(docName);
@@ -1745,18 +1795,20 @@ export class BacklinkIndex {
     const resolved = this.resolvedGraphs.get(state);
     if (!resolved || resolved.inventoryEpoch !== state.inventoryEpoch - 1) return;
     resolved.inventoryEpoch = state.inventoryEpoch;
-    const pathSlug = toWikiLinkSlug(docName) || docName;
-    const basenameSlug = toWikiLinkSlug(docName.slice(docName.lastIndexOf('/') + 1));
+    const pathSlug = dependencySlug(docName);
+    const basenameSlug = dependencySlug(docName.slice(docName.lastIndexOf('/') + 1));
     const affected = new Set<string>([
-      ...(resolved.wikiSourcesByPathSlug.get(pathSlug) ?? []),
+      ...(resolved.sourcesByPathSlug.get(pathSlug) ?? []),
       ...(resolved.wikiSourcesByBasenameSlug.get(basenameSlug) ?? []),
     ]);
     const slash = docName.lastIndexOf('/');
     if (slash !== -1) {
       const parent = docName.slice(0, slash);
-      const leaf = docName.slice(slash + 1);
-      if (leaf === 'index' || leaf === parent.slice(parent.lastIndexOf('/') + 1)) {
-        for (const source of resolved.wikiSourcesByFolder.get(parent) ?? []) affected.add(source);
+      const leaf = leafKey('document', docName.slice(slash + 1));
+      const parentLeaf = leafKey('document', parent.slice(parent.lastIndexOf('/') + 1));
+      if (leaf === leafKey('document', 'index') || leaf === parentLeaf) {
+        for (const source of resolved.wikiSourcesByFolder.get(identityKey('folder', parent)) ?? [])
+          affected.add(source);
       }
     }
     affected.add(docName);
@@ -1783,19 +1835,11 @@ export class BacklinkIndex {
     source: string,
     lookup: WikiLinkLookupIndex,
   ): Set<string> {
-    const priorKeys = resolved.wikiKeysBySource.get(source);
+    const priorKeys = resolved.keysBySource.get(source);
     if (priorKeys) {
-      for (const [keys, index] of [
-        [priorKeys.paths, resolved.wikiSourcesByPathSlug],
-        [priorKeys.basenames, resolved.wikiSourcesByBasenameSlug],
-        [priorKeys.folders, resolved.wikiSourcesByFolder],
-      ] as const) {
-        for (const key of keys) {
-          const sources = index.get(key);
-          sources?.delete(source);
-          if (sources?.size === 0) index.delete(key);
-        }
-      }
+      unregisterSourceKeys(resolved.sourcesByPathSlug, priorKeys.paths, source);
+      unregisterSourceKeys(resolved.wikiSourcesByBasenameSlug, priorKeys.basenames, source);
+      unregisterSourceKeys(resolved.wikiSourcesByFolder, priorKeys.folders, source);
     }
     const changedTargets = new Set(resolved.forward.get(source) ?? []);
     for (const target of changedTargets) {
@@ -1806,27 +1850,30 @@ export class BacklinkIndex {
     const targets = new Set<string>();
     if (state.forward.has(source)) resolved.forward.set(source, targets);
     else resolved.forward.delete(source);
-    const wikiKeys = {
-      paths: new Set<string>(),
-      basenames: new Set<string>(),
-      folders: new Set<string>(),
+    const keys: SourceDependencyKeys = {
+      paths: new Set(),
+      basenames: new Set(),
+      folders: new Set(),
     };
     const sourceLinks = state.forward.has(source) ? requireSourceLinks(state, source) : [];
     for (const meta of sourceLinks) {
       const rawTarget = meta.target;
       if (!rawTarget) continue;
-      let target = rawTarget;
+      let target: string;
       if (meta.sourceForm === 'wiki' || meta.sourceForm === undefined) {
         const trimmed = rawTarget.trim();
         for (const form of [trimmed, trimmed.replace(/\.(md|mdx)$/i, '')]) {
-          const slug = toWikiLinkSlug(form) || form;
-          wikiKeys.paths.add(slug);
-          if (!form.includes('/')) wikiKeys.basenames.add(slug);
-          wikiKeys.folders.add(form);
+          const slug = dependencySlug(form);
+          keys.paths.add(slug);
+          if (!form.includes('/')) keys.basenames.add(slug);
+          keys.folders.add(identityKey('folder', form));
         }
         const canonical = resolveWikiLinkTargetDocName(rawTarget, lookup);
         if (meta.rawWikiTarget === true && canonical === undefined) continue;
         target = canonical ?? rawTarget;
+      } else {
+        keys.paths.add(dependencySlug(rawTarget));
+        target = resolveName(lookup.pages, rawTarget) ?? rawTarget;
       }
       targets.add(target);
       changedTargets.add(target);
@@ -1838,20 +1885,12 @@ export class BacklinkIndex {
       sources.set(source, mergeLinkMeta(sources.get(source), meta));
     }
     if (state.forward.has(source)) {
-      resolved.wikiKeysBySource.set(source, wikiKeys);
-      for (const [keys, index] of [
-        [wikiKeys.paths, resolved.wikiSourcesByPathSlug],
-        [wikiKeys.basenames, resolved.wikiSourcesByBasenameSlug],
-        [wikiKeys.folders, resolved.wikiSourcesByFolder],
-      ] as const) {
-        for (const key of keys) {
-          const sources = index.get(key) ?? new Set<string>();
-          sources.add(source);
-          index.set(key, sources);
-        }
-      }
+      resolved.keysBySource.set(source, keys);
+      registerSourceKeys(resolved.sourcesByPathSlug, keys.paths, source);
+      registerSourceKeys(resolved.wikiSourcesByBasenameSlug, keys.basenames, source);
+      registerSourceKeys(resolved.wikiSourcesByFolder, keys.folders, source);
     } else {
-      resolved.wikiKeysBySource.delete(source);
+      resolved.keysBySource.delete(source);
     }
     return changedTargets;
   }
@@ -1920,10 +1959,10 @@ export class BacklinkIndex {
         forward: new Map(),
         backward: new Map(),
         sortedBacklinks: new Map(),
-        wikiSourcesByPathSlug: new Map(),
+        sourcesByPathSlug: new Map(),
         wikiSourcesByBasenameSlug: new Map(),
         wikiSourcesByFolder: new Map(),
-        wikiKeysBySource: new Map(),
+        keysBySource: new Map(),
       };
       const lookup = this.documentLookup(branch);
       for (const source of state.forward.keys())

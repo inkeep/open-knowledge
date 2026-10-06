@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -293,5 +293,120 @@ describe('write-time broken-link advisories under the reserved-log policy', () =
     const body = JSON.parse(captured.body) as LinkAdvisoryBody;
     expect(body.brokenLinks).toHaveLength(2);
     expect(body.brokenLinkSuppression).toBeUndefined();
+  });
+});
+
+describe('write-time advisories for links to folders that hold no document', () => {
+  const CAFE_NFC = 'Café'.normalize('NFC');
+  const CAFE_NFD = 'Café'.normalize('NFD');
+
+  async function postWithFolders(
+    url: string,
+    body: Record<string, unknown>,
+    folders: string[],
+  ): Promise<LinkAdvisoryBody> {
+    const ext = createApiExtension({
+      hocuspocus,
+      sessionManager,
+      contentDir,
+      getFileIndex: () => new Map(),
+      getFolderIndex: () =>
+        new Map(
+          folders.map((folder) => [
+            folder,
+            { size: 0 as const, modified: '', canonicalPath: join(contentDir, folder), inode: 0 },
+          ]),
+        ),
+    });
+    const req = makeJsonPostReq(url, { ...body, agentId: 'claude-1', agentName: 'Claude' });
+    const { res, captured } = makeRes();
+    await (
+      ext as {
+        onRequest: (ctx: { request: IncomingMessage; response: ServerResponse }) => Promise<void>;
+      }
+    ).onRequest({ request: req, response: res });
+    expect(captured.status).toBe(200);
+    return JSON.parse(captured.body) as LinkAdvisoryBody;
+  }
+
+  test('a link spelled in the other normalization form names the existing folder', async () => {
+    const body = await postWithFolders(
+      '/api/agent-write-md',
+      {
+        docName: 'Probe',
+        markdown: `See [dir](${CAFE_NFD}) and [[${CAFE_NFD}]] and [[Nope]].\n`,
+        position: 'replace',
+      },
+      [CAFE_NFC],
+    );
+    expect((body.brokenLinks ?? []).map((link) => link.href)).toEqual(['[[Nope]]']);
+  });
+
+  const LINKS_TO_AN_ASSET_FOLDER = '# Probe\n\nSee [dir](assets) and [[assets]] and [[Nope]].\n';
+
+  test('a frontmatter patch resolves a link to a folder that holds only assets', async () => {
+    await seed('Probe', LINKS_TO_AN_ASSET_FOLDER);
+    const body = await postWithFolders(
+      '/api/frontmatter-patch',
+      { docName: 'Probe', patch: { title: 'Probe' } },
+      ['assets'],
+    );
+    expect((body.brokenLinks ?? []).map((link) => link.href)).toEqual(['[[Nope]]']);
+  });
+
+  test('an agent patch resolves a link to a folder that holds only assets', async () => {
+    await seed('Probe', LINKS_TO_AN_ASSET_FOLDER);
+    const body = await postWithFolders(
+      '/api/agent-patch',
+      { docName: 'Probe', find: 'See', replace: 'Still see' },
+      ['assets'],
+    );
+    expect((body.brokenLinks ?? []).map((link) => link.href)).toEqual(['[[Nope]]']);
+  });
+});
+
+describe('write-time advisories for slash-free wiki asset embeds', () => {
+  test('a basename that names no tracked file is reported, one that names a tracked file is not', async () => {
+    mkdirSync(join(contentDir, 'media'), { recursive: true });
+    writeFileSync(join(contentDir, 'media', 'photo.png'), 'png');
+    const ext = createApiExtension({
+      hocuspocus,
+      sessionManager,
+      contentDir,
+      getFileIndex: () => new Map(),
+      getAllFilesIndex: () =>
+        new Map([
+          [
+            'media/photo.png',
+            {
+              size: 3,
+              modified: '',
+              canonicalPath: join(contentDir, 'media', 'photo.png'),
+              inode: 0,
+              aliases: [],
+              kind: 'file' as const,
+            },
+          ],
+        ]),
+    });
+    const req = makeJsonPostReq('/api/agent-write-md', {
+      docName: 'notes/Probe',
+      markdown: 'See ![[photo.png]], ![[PHOTO.png]], ![[ghost.png]] and ![[media/gone.png]].\n',
+      position: 'replace',
+      agentId: 'claude-1',
+      agentName: 'Claude',
+    });
+    const { res, captured } = makeRes();
+    await (
+      ext as {
+        onRequest: (ctx: { request: IncomingMessage; response: ServerResponse }) => Promise<void>;
+      }
+    ).onRequest({ request: req, response: res });
+    expect(captured.status).toBe(200);
+    const body = JSON.parse(captured.body) as LinkAdvisoryBody;
+    expect((body.brokenLinks ?? []).map((link) => link.href).sort()).toEqual([
+      'ghost.png',
+      'media/gone.png',
+    ]);
   });
 });

@@ -632,6 +632,7 @@ export interface ContentFilter {
   isExcluded(relativePath: string, opts?: ContentFilterReadOpts): boolean;
   isDirExcluded(relativePath: string, opts?: ContentFilterReadOpts): boolean;
   isPathIgnored(relativePath: string, opts?: ContentFilterPathReadOpts): boolean;
+  isExcludedByIgnoreFiles(relativePath: string): boolean;
   getWatcherIgnoreGlobs(): string[];
   incrementMdDir(dir: string): void;
   decrementMdDir(dir: string): void;
@@ -922,6 +923,12 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       if (isAlwaysSkipFile(relativePath)) return true;
       if (opts?.bypassFilters) return false;
       return isRejectedByConfigurableRules(relativePath);
+    },
+
+    isExcludedByIgnoreFiles(relativePath: string): boolean {
+      if (relativePath.split('/').some(isBuiltinSkipDirName)) return false;
+      if (contentOutsideProject) return false;
+      return isIgnored(relativePath);
     },
 
     getWatcherIgnoreGlobs(): string[] {
@@ -1535,6 +1542,12 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       if (isAlwaysSkipFile(relativePath)) return true;
       if (opts?.bypassFilters) return false;
       return isRejectedByConfigurableRules(relativePath);
+    },
+
+    isExcludedByIgnoreFiles(relativePath: string): boolean {
+      if (relativePath.split('/').some(isBuiltinSkipDirName)) return false;
+      if (contentOutsideProject) return false;
+      return isIgnored(relativePath);
     },
 
     getWatcherIgnoreGlobs(): string[] {

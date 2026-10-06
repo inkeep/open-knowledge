@@ -781,6 +781,23 @@ describe('DerivedDocumentIndex', () => {
     expect(await rig.index.getBacklinks('assets/NOTICE')).toEqual([]);
   });
 
+  test('the graph file oracle recognises a file under an equivalent spelling', async () => {
+    const stored = 'assets/NOTICE\u0301';
+    const linked = 'assets/NOTIC\u00c9';
+    let inventory: WatcherLocalTargetInventory | null = null;
+    const rig = createRig(() => inventory);
+    writeDoc(rig, 'src.md', `See [notice](${linked}).\n`);
+    writeDoc(rig, stored, 'plain text\n');
+
+    const startup = rig.index.beginStartup('main');
+    await startup.backlinksReady;
+    inventory = { documentTargets: ['src'], fileTargets: [stored] };
+    await rig.index.settleStartupAfterWatcherSeed();
+
+    expect(await rig.index.getBacklinks(linked)).toEqual([]);
+    expect(await rig.index.getDeadLinks(['src'])).toEqual([]);
+  });
+
   test('startup settlement re-derives a warm graph cache against the watcher inventory', async () => {
     let inventory: WatcherLocalTargetInventory | null = null;
     const rig = createRig(() => inventory);
