@@ -1,12 +1,15 @@
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -924,6 +927,31 @@ describe('ConflictAuthority resolve', () => {
     expect(existsSync(join(projectDir, 'a.md'))).toBe(false);
     expect(rig.io.declaredDeletes).toEqual([join(projectDir, 'a.md')]);
     expect(rig.authority.count()).toBe(0);
+  });
+
+  test("a reconcile 'delete' of an in-tree symlink removes the alias and keeps its target's bytes", async () => {
+    const realProjectDir = realpathSync(projectDir);
+    const target = join(realProjectDir, 'target.md');
+    const alias = join(realProjectDir, 'alias.md');
+    writeFileSync(target, 'TARGET\n', 'utf-8');
+    symlinkSync('target.md', alias);
+    const authority = new ConflictAuthority({
+      projectDir: realProjectDir,
+      contentDir: realProjectDir,
+      branch: 'main',
+      io: makeIo(),
+    });
+    authority.raise({
+      kind: 'reconcile',
+      file: 'alias.md',
+      reason: 'disk-markers',
+      stages: { base: 'B', ours: 'O', theirs: 'T' },
+    });
+
+    await authority.resolve('alias.md', 'delete');
+    expect(lstatSync(alias, { throwIfNoEntry: false })).toBeUndefined();
+    expect(readFileSync(target, 'utf-8')).toBe('TARGET\n');
+    expect(authority.count()).toBe(0);
   });
 
   test('a host failure leaves the entry in place so the gate stays up', async () => {

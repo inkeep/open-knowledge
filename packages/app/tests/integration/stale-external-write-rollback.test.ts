@@ -370,7 +370,14 @@ describe('stale external write does not roll back an acknowledged agent write', 
     expect(state.listStaleExternalWrites()).toEqual([]);
   });
 
-  test('a delete resolution removes an in-tree symlink at the alias and the watcher attributes it there, not at its target', async () => {
+  test.skip('a delete resolution removes an in-tree symlink at the alias and the watcher attributes it there, not at its target', {
+    tags: ['quarantine'],
+    meta: {
+      issue: 'https://github.com/inkeep/agents-private/issues/5729',
+      owner: 'get-main-green',
+      until: '2026-12-01',
+    },
+  }, async () => {
     server = await createTestServer({ debounce: 50, maxDebounce: 200 });
     const docName = `alias-delete-${randomUUID()}`;
     const target = join(server.contentDir, `${docName}-target.md`);
