@@ -1149,6 +1149,32 @@ describe('every release-pipeline post prefers the releases webhook', () => {
   });
 });
 
+const macPackagingJobs = [
+  {
+    label: 'desktop-release.yml#build-macos',
+    steps: parse(desktopRelease).jobs['build-macos'].steps,
+    bundle: 'Build desktop main/preload/renderer',
+    packager: 'Build + sign + notarize DMG/ZIP',
+  },
+  {
+    label: 'desktop-build.yml#build-macos-dmg',
+    steps: parse(read('desktop-build.yml')).jobs['build-macos-dmg'].steps,
+    bundle: 'Build electron-vite bundles',
+    packager: 'Package DMG (${{ steps.signmode.outputs.mode }})',
+  },
+];
+const macStepIndex = (job, name) => {
+  const at = job.steps.findIndex((step) => step.name === name);
+  if (at === -1) throw new Error(`${job.label} has no step named ${name}`);
+  return at;
+};
+const macStepsBeforeSigning = (job) => [
+  'Force-install darwin keyring prebuilds for universal merge',
+  'Stage @parcel/watcher for the bundled CLI',
+  job.bundle,
+  'Validate variant provisioning profile',
+];
+
 describe('macOS signing stays on the workflow-staged keychain', () => {
   const desktopBuild = read('desktop-build.yml');
   const PREPARE = 'Prepare signing keychain (CSC_KEYCHAIN)';
@@ -1189,14 +1215,18 @@ describe('macOS signing stays on the workflow-staged keychain', () => {
     }
   });
 
-  test('the staging step runs before the packager in both workflows', () => {
-    for (const [source, packager] of [
-      [desktopRelease, 'Build + sign + notarize DMG/ZIP'],
-      [desktopBuild, 'Package DMG ('],
-    ]) {
-      const names = stepNames(source);
-      expect(indexOfStep(names, PREPARE)).toBeGreaterThan(-1);
-      expect(indexOfStep(names, PREPARE)).toBeLessThan(indexOfStep(names, packager));
+  test('the staging step runs after the unsigned build steps, just before the packager, in both workflows', () => {
+    for (const job of macPackagingJobs) {
+      const prepare = macStepIndex(job, PREPARE);
+      for (const name of macStepsBeforeSigning(job)) {
+        expect(prepare, `${job.label}: ${PREPARE} must follow ${name}`).toBeGreaterThan(
+          macStepIndex(job, name),
+        );
+      }
+      expect(
+        job.steps.slice(prepare + 1, macStepIndex(job, job.packager)).map((step) => step.name),
+        `${job.label}: only the key materialization may sit between ${PREPARE} and the packager`,
+      ).toEqual(['Materialize App Store Connect API key']);
     }
   });
 
@@ -1212,6 +1242,59 @@ describe('macOS signing stays on the workflow-staged keychain', () => {
     const teardown = indexOfStep(names, 'Remove signing keychain');
     expect(teardown).toBeGreaterThan(indexOfStep(names, 'Build + sign + notarize DMG/ZIP'));
     expect(teardown).toBeLessThan(indexOfStep(names, 'Smoke the packaged DMG'));
+  });
+
+  test('both jobs tear the keychain down right after the key removal, even on failure', () => {
+    for (const job of macPackagingJobs) {
+      const teardown = macStepIndex(job, 'Remove signing keychain');
+      expect(
+        teardown,
+        `${job.label}: the keychain teardown must directly follow the key removal`,
+      ).toBe(macStepIndex(job, 'Remove App Store Connect API key') + 1);
+      expect(job.steps[teardown].if).toBe('always()');
+    }
+  });
+});
+
+describe('the App Store Connect key exists on disk only for packaging', () => {
+  const MATERIALIZE = 'Materialize App Store Connect API key';
+  const REMOVE = 'Remove App Store Connect API key';
+  const keyPath = (job) => {
+    const match = /^\s*KEY_PATH="([^"]+)"$/m.exec(job.steps[macStepIndex(job, MATERIALIZE)].run);
+    if (!match) throw new Error(`${job.label}: ${MATERIALIZE} no longer assigns KEY_PATH`);
+    return match[1];
+  };
+
+  test('the key is materialized after the unsigned build steps, immediately before the packager', () => {
+    for (const job of macPackagingJobs) {
+      const materialize = macStepIndex(job, MATERIALIZE);
+      for (const name of macStepsBeforeSigning(job)) {
+        expect(materialize, `${job.label}: ${MATERIALIZE} must follow ${name}`).toBeGreaterThan(
+          macStepIndex(job, name),
+        );
+      }
+      expect(materialize, `${job.label}: ${MATERIALIZE} must directly precede the packager`).toBe(
+        macStepIndex(job, job.packager) - 1,
+      );
+    }
+  });
+
+  test('the step right after the packager removes the key at the path it was materialized to, even on failure', () => {
+    for (const job of macPackagingJobs) {
+      const remove = macStepIndex(job, REMOVE);
+      expect(remove, `${job.label}: ${REMOVE} must directly follow the packager`).toBe(
+        macStepIndex(job, job.packager) + 1,
+      );
+      expect(job.steps[remove].run).toContain(`rm -f "${keyPath(job)}"`);
+      expect(job.steps[remove].if).toBe('always()');
+    }
+  });
+
+  test('the release job removes the key before the smoke gate launches the packaged app', () => {
+    const [release] = macPackagingJobs;
+    expect(macStepIndex(release, REMOVE)).toBeLessThan(
+      macStepIndex(release, 'Smoke the packaged DMG (FR5b)'),
+    );
   });
 });
 

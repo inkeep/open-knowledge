@@ -611,6 +611,41 @@ jobs:
             exit 1
           fi
 
+      # Force-install both darwin-arm64 and darwin-x64 prebuilt binaries for
+      # @napi-rs/keyring before electron-builder's universal merge runs. pnpm
+      # under workspace conditions only installs the host-arch optionalDependency
+      # (cpu constraint), so the darwin-x64 binary is missing on an arm64
+      # runner. @electron/universal's lipo merge then either errors or hangs
+      # waiting for x64 inputs that don't exist.
+      - name: Force-install darwin keyring prebuilds for universal merge
+        working-directory: packages/desktop
+        run: node scripts/prepare-universal.mjs
+
+      # Stage @parcel/watcher onto the bundled CLI's module path. This workflow
+      # invokes electron-builder directly (not the build:mac npm script, which
+      # DOES run this), so the step must be explicit here or the published DMG
+      # ships without @parcel/watcher on the CLI path and the server degrades to
+      # chokidar (#760).
+      - name: Stage @parcel/watcher for the bundled CLI
+        working-directory: packages/desktop
+        run: node scripts/stage-parcel-watcher.mjs
+
+      - name: Build desktop main/preload/renderer
+        working-directory: packages/desktop
+        run: pnpm run build:desktop
+
+      - name: Validate variant provisioning profile
+        if: steps.channel.outputs.variant == 'beta'
+        working-directory: packages/desktop
+        run: |
+          set -euo pipefail
+          PROFILE_PATH="build/embedded.${OK_DESKTOP_VARIANT}.provisionprofile"
+          if [[ ! -f "$PROFILE_PATH" ]]; then
+            echo "::error::The committed ${OK_DESKTOP_VARIANT} Developer ID provisioning profile is missing."
+            exit 1
+          fi
+          security cms -D -i "$PROFILE_PATH" >/dev/null
+
       # Stage the Developer ID cert in a keychain this job owns and hand it to
       # electron-builder via CSC_KEYCHAIN, instead of letting electron-builder
       # build one from CSC_LINK. electron-builder <= 26.16.0 authenticates its
@@ -751,41 +786,6 @@ jobs:
           echo "APPLE_API_KEY=$KEY_PATH" >> "$GITHUB_ENV"
           echo "::notice::APPLE_API_KEY materialized to $KEY_PATH"
 
-      # Force-install both darwin-arm64 and darwin-x64 prebuilt binaries for
-      # @napi-rs/keyring before electron-builder's universal merge runs. pnpm
-      # under workspace conditions only installs the host-arch optionalDependency
-      # (cpu constraint), so the darwin-x64 binary is missing on an arm64
-      # runner. @electron/universal's lipo merge then either errors or hangs
-      # waiting for x64 inputs that don't exist.
-      - name: Force-install darwin keyring prebuilds for universal merge
-        working-directory: packages/desktop
-        run: node scripts/prepare-universal.mjs
-
-      # Stage @parcel/watcher onto the bundled CLI's module path. This workflow
-      # invokes electron-builder directly (not the build:mac npm script, which
-      # DOES run this), so the step must be explicit here or the published DMG
-      # ships without @parcel/watcher on the CLI path and the server degrades to
-      # chokidar (#760).
-      - name: Stage @parcel/watcher for the bundled CLI
-        working-directory: packages/desktop
-        run: node scripts/stage-parcel-watcher.mjs
-
-      - name: Build desktop main/preload/renderer
-        working-directory: packages/desktop
-        run: pnpm run build:desktop
-
-      - name: Validate variant provisioning profile
-        if: steps.channel.outputs.variant == 'beta'
-        working-directory: packages/desktop
-        run: |
-          set -euo pipefail
-          PROFILE_PATH="build/embedded.${OK_DESKTOP_VARIANT}.provisionprofile"
-          if [[ ! -f "$PROFILE_PATH" ]]; then
-            echo "::error::The committed ${OK_DESKTOP_VARIANT} Developer ID provisioning profile is missing."
-            exit 1
-          fi
-          security cms -D -i "$PROFILE_PATH" >/dev/null
-
       - name: Build + sign + notarize DMG/ZIP
         # electron-builder signs with the identity in CSC_KEYCHAIN (pushed
         # into $GITHUB_ENV by the "Prepare signing keychain" step). CSC_LINK
@@ -866,8 +866,12 @@ jobs:
           echo "::notice::Retry wrapper materialized from workflow SHA ${GITHUB_WORKFLOW_SHA}."
           node "$WRAPPER" --label "electron-builder (macOS)" --max-attempts 3 --deadline-epoch-ms "$PACKAGING_DEADLINE_EPOCH_MS" --attempt-timeout "30m" --retry-warning "A macOS packaging retry can create a duplicate Apple notarization submission; up to 3 attempts bound this to at most 2 duplicates." --shell -- "$PKG_CMD"
 
-      # Placed HERE, not at the end of the job (where desktop-build.yml keeps
-      # its twin): release-cascade-shape.test.mjs forbids `if: always()` on any
+      - name: Remove App Store Connect API key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
+
+      # Placed HERE, not at the end of the job:
+      # release-cascade-shape.test.mjs forbids `if: always()` on any
       # step from the DMG smoke gate onward, and nothing after packaging needs
       # the key (notarize + staple run inside afterSign.mjs). Tearing down
       # before the smoke also keeps the private key out of reach of the
