@@ -297,13 +297,37 @@ async function waitForFloatingSurfaceSettled(page: Page, selector: string): Prom
 }
 
 async function repositionViaPluginPath(page: Page): Promise<PluginWrite> {
-  await page.evaluate((barId) => {
-    const bar = document.querySelector(`[data-testid="${barId}"]`);
-    if (!(bar instanceof HTMLElement)) throw new Error('repositionViaPluginPath: no bubble bar');
-    bar.style.top = '';
-    bar.style.visibility = '';
-    bar.style.width = `${bar.getBoundingClientRect().width}px`;
-  }, BUBBLE_BAR);
+  await page.evaluate((pluginKey) => {
+    const editor = window.__activeEditor;
+    if (!editor) throw new Error('repositionViaPluginPath: window.__activeEditor not set');
+    const registered = editor.state.plugins.some((plugin) =>
+      plugin.key.startsWith(`${pluginKey}$`),
+    );
+    if (!registered) throw new Error('repositionViaPluginPath: bubble-menu plugin not registered');
+    editor.view.dispatch(editor.state.tr.setMeta(pluginKey, 'hide'));
+  }, EDITOR_BUBBLE_MENU_KEY);
+
+  await nextLayoutFrame(page);
+
+  await page.evaluate(
+    ({ barId, pluginKey }) => {
+      const editor = window.__activeEditor;
+      if (!editor) throw new Error('repositionViaPluginPath: window.__activeEditor not set');
+      editor.view.dispatch(
+        editor.state.tr.setMeta(pluginKey, {
+          type: 'updateOptions',
+          options: { options: { onShow: undefined } },
+        }),
+      );
+      editor.view.dispatch(editor.state.tr.setMeta(pluginKey, 'show'));
+      const bar = document.querySelector(`[data-testid="${barId}"]`);
+      if (!(bar instanceof HTMLElement)) throw new Error('repositionViaPluginPath: no bubble bar');
+      bar.style.top = '';
+      bar.style.visibility = '';
+      bar.style.width = `${bar.getBoundingClientRect().width}px`;
+    },
+    { barId: BUBBLE_BAR, pluginKey: EDITOR_BUBBLE_MENU_KEY },
+  );
 
   await nextLayoutFrame(page);
   expect(
@@ -318,10 +342,6 @@ async function repositionViaPluginPath(page: Page): Promise<PluginWrite> {
   await page.evaluate((pluginKey) => {
     const editor = window.__activeEditor;
     if (!editor) throw new Error('repositionViaPluginPath: window.__activeEditor not set');
-    const registered = editor.state.plugins.some((plugin) =>
-      plugin.key.startsWith(`${pluginKey}$`),
-    );
-    if (!registered) throw new Error('repositionViaPluginPath: bubble-menu plugin not registered');
     editor.view.dispatch(editor.state.tr.setMeta(pluginKey, 'updatePosition'));
   }, EDITOR_BUBBLE_MENU_KEY);
 
