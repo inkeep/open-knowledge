@@ -1,6 +1,6 @@
 {
   "name": "@inkeep/open-knowledge-docs",
-  "version": "0.0.247",
+  "version": "0.0.248",
   "license": "GPL-3.0-or-later",
   "private": true,
   "packageManager": "pnpm@12.8.1",
