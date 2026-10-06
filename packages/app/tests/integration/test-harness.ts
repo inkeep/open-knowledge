@@ -51,6 +51,7 @@ import { getSchema } from '@tiptap/core';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
 import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
+import { testAuthorityRegistryPath } from '../../../../test-support/server-authority-registry.test-helper.ts';
 import {
   ORIGIN_TEXT_TO_TREE,
   ORIGIN_TREE_TO_TEXT,
@@ -82,6 +83,7 @@ export interface TestServer {
 }
 
 export interface CreateTestServerOptions {
+  authorityRegistryPath?: string;
   ingressPolicy?: ServerOptions['ingressPolicy'];
   debounce?: ServerOptions['debounce'];
   maxDebounce?: ServerOptions['maxDebounce'];
@@ -155,6 +157,7 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
 
   const port = await getFreePort();
   const srv = createServer({
+    authorityRegistryPath: options.authorityRegistryPath ?? testAuthorityRegistryPath,
     contentDir,
     projectDir,
     ingressPolicy: options.ingressPolicy,
@@ -257,6 +260,7 @@ export interface TestClient {
 export interface CreateTestClientOptions {
   skipInvariantWatcher?: boolean;
   syncControl?: boolean;
+  resetOnCleanup?: boolean;
 }
 
 export async function createTestClient(
@@ -325,9 +329,11 @@ export async function createTestClient(
     cleanup: async () => {
       watcherDetach?.();
       observerCleanup();
-      try {
-        await testReset(port, resolvedDocName);
-      } catch {}
+      if (options?.resetOnCleanup !== false) {
+        try {
+          await testReset(port, resolvedDocName);
+        } catch {}
+      }
       provider.destroy();
       doc.destroy();
     },
@@ -1018,20 +1024,21 @@ export async function assertAllConverged(
   throw new ClientConvergenceError(details);
 }
 
-export interface RestartableServer {
+export type { RestartableServer } from './restartable-server.test-helper.ts';
+export { createRestartableServer } from './restartable-server.test-helper.ts';
+
+export interface InspectableServer {
   port: number;
   contentDir: string;
   instance: ServerInstance;
   killNetwork(): void;
   shutdown(): Promise<void>;
-  killAndRestartOnSamePort(opts: { downtimeMs: number }): Promise<RestartableServer>;
 }
 
-export interface CreateRestartableServerOptions extends CreateTestServerOptions {
+export interface CreateInspectableServerOptions extends CreateTestServerOptions {
   port?: number;
   gitEnabled?: boolean;
   commitDebounceMs?: number;
-  _retired?: RestartableServer[];
 }
 
 export async function waitForPortFree(port: number, timeoutMs = 2500): Promise<void> {
@@ -1058,9 +1065,9 @@ export async function waitForPortFree(port: number, timeoutMs = 2500): Promise<v
   );
 }
 
-export async function createRestartableServer(
-  options: CreateRestartableServerOptions = {},
-): Promise<RestartableServer> {
+export async function createInspectableServer(
+  options: CreateInspectableServerOptions = {},
+): Promise<InspectableServer> {
   const contentDir =
     options.contentDir !== undefined
       ? realpathSync(options.contentDir)
@@ -1075,6 +1082,7 @@ export async function createRestartableServer(
 
   const port = options.port ?? (await getFreePort());
   const srv = createServer({
+    authorityRegistryPath: options.authorityRegistryPath ?? testAuthorityRegistryPath,
     contentDir,
     quiet: true,
     debounce: options.debounce ?? 200,
@@ -1141,7 +1149,6 @@ export async function createRestartableServer(
   };
   await listenWithRetry();
 
-  const retired: RestartableServer[] = [...(options._retired ?? [])];
   let networkKilled = false;
 
   const killNetwork = (): void => {
@@ -1174,34 +1181,17 @@ export async function createRestartableServer(
     } catch (err) {
       console.warn('[restartable-server] srv.destroy() failed:', err);
     }
-    for (const prev of retired) {
-      try {
-        await prev.shutdown();
-      } catch {}
-    }
     if (!options.keepContentDir) {
       removeAllStrictDuringTeardown(contentDir);
     }
   };
 
-  const handle: RestartableServer = {
+  const handle: InspectableServer = {
     port,
     contentDir,
     instance: srv,
     killNetwork,
     shutdown,
-    killAndRestartOnSamePort: async ({ downtimeMs }) => {
-      killNetwork();
-      await wait(downtimeMs);
-      await waitForPortFree(port, Math.max(2500, downtimeMs + 500));
-      return createRestartableServer({
-        ...options,
-        port,
-        contentDir,
-        keepContentDir: true,
-        _retired: [handle, ...retired],
-      });
-    },
   };
 
   return handle;
@@ -1319,7 +1309,7 @@ export interface MultiClientContext {
 }
 
 export async function createMultiClientContext(opts: {
-  server: RestartableServer;
+  server: { port: number };
   docName: string;
   clientCount: number;
   recycleDebounceMs?: number;

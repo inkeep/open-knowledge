@@ -318,7 +318,7 @@ describe('delete durability — across server restart with a stale client', () =
       }
 
       const restarting = rs.killAndRestartOnSamePort({ downtimeMs: 900 });
-      await wait(250);
+      await rs.exited;
       unlinkSync(filePath);
       rs = await restarting;
 

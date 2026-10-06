@@ -11,9 +11,10 @@ import { atomicWriteFile } from '@inkeep/open-knowledge-core/server';
 import type * as Y from 'yjs';
 import { docNameToRelativePath } from './doc-extensions.ts';
 import { assertNoSymlinkEscape } from './fs-safety.ts';
-import { tracedAtomicFs, tracedMkdir } from './fs-traced.ts';
+import { tracedMkdir } from './fs-traced.ts';
 import { getLogger } from './logger.ts';
 import { isWithinDir } from './path-utils.ts';
+import { contentScopedAtomicFs } from './server-content-policy.ts';
 
 const log = getLogger('mermaid-persistence');
 
@@ -25,6 +26,7 @@ export const MERMAID_SOURCE_ORIGIN = {
 
 export interface MermaidPersistenceCtx {
   contentDir: string;
+  assertContentPath?: (path: string) => void;
   lkgCache: Map<string, string>;
 }
 
@@ -61,6 +63,7 @@ export function loadMermaidDoc(
   if (ytext.length > 0) return;
 
   const filePath = mermaidAbsPath(documentName, ctx.contentDir);
+  ctx.assertContentPath?.(filePath);
   if (!existsSync(filePath)) return;
 
   let raw: string;
@@ -91,6 +94,7 @@ export async function storeMermaidDoc(
   const filePath = mermaidAbsPath(documentName, ctx.contentDir);
   try {
     assertNoSymlinkEscape(filePath, ctx.contentDir);
+    ctx.assertContentPath?.(filePath);
     await tracedMkdir(resolve(filePath, '..'), { recursive: true });
 
     if (existsSync(filePath)) {
@@ -113,7 +117,12 @@ export async function storeMermaidDoc(
       }
     }
 
-    await atomicWriteFile(filePath, content, { fs: tracedAtomicFs });
+    await atomicWriteFile(filePath, content, {
+      fs: contentScopedAtomicFs((path) => {
+        assertNoSymlinkEscape(path, ctx.contentDir);
+        ctx.assertContentPath?.(path);
+      }),
+    });
     ctx.lkgCache.set(documentName, content);
     return 'persisted';
   } catch (e) {

@@ -508,6 +508,7 @@ export {
   type StarterPackInfo,
 } from './seed/index.ts';
 export { serializeError } from './serialize-error.ts';
+export { ServerAuthorityCollisionError, ServerAuthorityRegistryError } from './server-authority.ts';
 export { createServer, type ServerInstance, type ServerOptions } from './server-factory.ts';
 export {
   acquireServerLock,

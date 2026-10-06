@@ -51,7 +51,9 @@ async function withRefusedStoreShutdown(
     pid: number | undefined;
     signal: string | number | undefined;
   }> = [];
+  const probe = process.kill.bind(process);
   vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+    if (signal === 0) return probe(pid, signal);
     blockedSignalRequests.push({ pid, signal });
     throw new Error('Test signal seam refuses delivery');
   });

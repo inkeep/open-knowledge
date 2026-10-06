@@ -13,7 +13,7 @@ import { ProviderPool } from '../../src/editor/provider-pool';
 import { parseCC1BranchSwitched, SYSTEM_DOC_NAME } from '../../src/lib/cc1';
 import {
   clientIdsInDoc,
-  createRestartableServer,
+  createInspectableServer,
   pollDiskContentStable,
   pollUntil,
   seedPoolServerInstanceId,
@@ -82,7 +82,7 @@ describe('T5: Branch switch while tab open', () => {
     const contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-branch-switch-')));
     await setupGitRepoWithBranches(contentDir, 'test-doc', CONTENT_A, CONTENT_B);
 
-    const server = await createRestartableServer({
+    const server = await createInspectableServer({
       contentDir,
       keepContentDir: false,
       gitEnabled: true,

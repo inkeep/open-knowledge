@@ -54,15 +54,16 @@ describe('durable replay outbox across server-instance-mismatch', () => {
     const marker = 'DURABLE-OUTBOX-MARKER-7b21';
     const firstProvider = pool.getActive()?.provider;
     if (!firstProvider) throw new Error('expected active provider');
+    server.killNetwork();
+    expect(await server.exited).toEqual({ code: null, signal: 'SIGKILL' });
+    await pollUntil(() => pool.getActive()?.syncState === 'disconnected', 5_000, 25);
     const paragraph = new Y.XmlElement('paragraph');
     const xmlText = new Y.XmlText();
     xmlText.applyDelta([{ insert: marker }]);
     paragraph.insert(0, [xmlText]);
     firstProvider.document.getXmlFragment('default').push([paragraph]);
 
-    await pollUntil(() => firstProvider.unsyncedChanges === 0, 180, 10);
-    server.killNetwork();
-    await pollUntil(() => pool.getActive()?.syncState === 'disconnected', 5_000, 25);
+    expect(firstProvider.unsyncedChanges).toBeGreaterThan(0);
 
     server = await server.killAndRestartOnSamePort({ downtimeMs: 400 });
     cleanups.unshift(() => server.shutdown());

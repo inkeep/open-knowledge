@@ -2482,7 +2482,7 @@ describe('createServer() server-lock integration (V0-1)', () => {
     );
 
     expect(() => createServer({ contentDir: tmpDir, projectDir: tmpDir, quiet: true })).toThrow(
-      /already running at port 9999/,
+      /content ownership is already held/,
     );
 
     writeFileSync(

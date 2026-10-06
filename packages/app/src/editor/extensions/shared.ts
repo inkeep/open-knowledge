@@ -4,7 +4,7 @@ import FileHandler from '@tiptap/extension-file-handler';
 import { KeyboardNav } from '../block-ux/keyboard-nav';
 import { TiptapFindReplace } from '../find-replace/tiptap-find-replace-extension';
 import { GfmAutolink } from '../gfm-autolink-plugin';
-import { uploadAndInsert } from '../image-upload/index.ts';
+import { admitAssetUpload, uploadAndInsert } from '../image-upload/index.ts';
 import { InlineLinkInputRule } from '../inline-link-input-rule';
 import { MathInputRule } from '../math-input-rule';
 import { LandingFlash } from '../plugins/landing-flash-wysiwyg';
@@ -82,11 +82,13 @@ export const sharedExtensions = [
   TabFocusTrap,
   FileHandler.configure({
     onDrop(editor, files, pos) {
+      if (!admitAssetUpload(editor)) return;
       for (const file of files) {
         uploadAndInsert(file, editor, pos);
       }
     },
     onPaste(editor, files, _html) {
+      if (!admitAssetUpload(editor)) return;
       for (const file of files) {
         uploadAndInsert(file, editor, editor.state.selection.from);
       }

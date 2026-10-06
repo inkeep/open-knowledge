@@ -6,7 +6,9 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import {
   assertNoClientIdDrift,
+  createInspectableServer,
   createRestartableServer,
+  createTestClient,
   pollDiskContentStable,
   pollUntil,
   type RestartableServer,
@@ -81,7 +83,7 @@ async function seedAndSyncSingleClient(
 
 describe('ProviderPool reconnects', () => {
   test('browser reload against same server keeps server Y.Doc loaded and avoids IDB duplication', async () => {
-    const server = await createRestartableServer();
+    const server = await createInspectableServer();
     cleanups.push(() => server.shutdown());
 
     const docName = 'reload-doc';
@@ -269,8 +271,8 @@ describe('ProviderPool reconnects', () => {
     expect(afterHeadings).toBe(baselineHeadings);
     expect(afterAsdfLinks).toBe(baselineAsdfLinks);
 
-    const serverDoc = server.instance.hocuspocus.documents.get('test-doc');
-    if (!serverDoc) throw new Error('server doc missing post-restart');
+    const serverPeer = await createTestClient(server.port, 'test-doc');
+    cleanups.push(() => serverPeer.cleanup());
     const activeEntry = pool.getActive();
     if (!activeEntry) throw new Error('pool has no active entry after reconnect');
     assertNoClientIdDrift(
@@ -288,12 +290,12 @@ describe('ProviderPool reconnects', () => {
         },
         cleanup: async () => {},
       },
-      serverDoc,
+      serverPeer.doc,
       'post fast-restart',
     );
   }, 30_000);
 
-  test('REPRO: unsynced local changes during restart preserve edit and avoid duplication', async () => {
+  test('acknowledged local changes survive graceful restart without duplication', async () => {
     let server = await createRestartableServer();
     cleanups.push(() => server.shutdown());
 
@@ -313,12 +315,11 @@ describe('ProviderPool reconnects', () => {
     doc.getXmlFragment('default').push([paragraph]);
 
     await pollUntil(() => firstProvider.unsyncedChanges === 0, 180, 10);
-    server.killNetwork();
-    await wait(100);
-
-    expect(pool.getActive()?.syncState).toBe('disconnected');
-
-    server = await server.killAndRestartOnSamePort({ downtimeMs: 400 });
+    const previousServer = server;
+    server = await server.shutdownAndRestartOnSamePort({ downtimeMs: 400 });
+    expect(await previousServer.exited).toEqual({ code: 0, signal: null });
+    expect(server.pid).not.toBe(previousServer.pid);
+    expect(server.serverInstanceId).not.toBe(previousServer.serverInstanceId);
     cleanups.unshift(() => server.shutdown());
 
     await pollUntil(() => pool.getActive()?.provider.isSynced === true, 10_000, 50);

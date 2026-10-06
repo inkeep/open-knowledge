@@ -74,6 +74,7 @@ export interface ConflictIo {
 export interface ConflictAuthorityOptions {
   projectDir: string;
   contentDir: string;
+  assertResolutionPath?: (path: string) => void;
   branch?: string;
   signal?: Pick<CC1Broadcaster, 'signal'> | null;
   io: ConflictIo;
@@ -225,6 +226,7 @@ function migrateLedgerEntry(raw: LegacyLedgerEntry, currentBranch: string): Conf
 }
 
 export class ConflictAuthority implements ConflictReader {
+  private readonly assertResolutionPath?: (path: string) => void;
   private readonly storePath: string;
   private readonly projectDir: string;
   private readonly contentDir: string;
@@ -236,6 +238,7 @@ export class ConflictAuthority implements ConflictReader {
   private branch: string;
 
   constructor(options: ConflictAuthorityOptions) {
+    this.assertResolutionPath = options.assertResolutionPath;
     this.projectDir = options.projectDir;
     this.contentDir = options.contentDir;
     this.io = options.io;
@@ -529,6 +532,7 @@ export class ConflictAuthority implements ConflictReader {
   async resolve(file: string, strategy: ResolveStrategy, content?: string): Promise<void> {
     const entry = this.byFile.get(file);
     if (entry === undefined) throw new NoConflictTrackedError({ file });
+    this.assertResolutionPath?.(resolve(this.projectDir, file));
 
     if (strategy === 'content') requireConflictResolutionContent(file, content);
 

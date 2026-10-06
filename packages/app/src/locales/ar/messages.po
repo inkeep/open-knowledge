@@ -3329,6 +3329,10 @@ msgstr "إغلاق الطرفية"
 msgid "Close this chat's tab to delete it"
 msgstr "أغلق علامة تبويب هذه المحادثة لحذفها"
 
+#: src/editor/image-upload/upload-admission.ts
+msgid "Close this preview, then open the folder to upload files"
+msgstr "أغلق هذه المعاينة، ثم افتح المجلد لرفع الملفات"
+
 #: src/components/NoteWindowDeletedState.tsx
 msgid "Close window"
 msgstr "إغلاق النافذة"

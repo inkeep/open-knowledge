@@ -45,9 +45,7 @@ describe('WYSIWYG &#x20; literal after close + cold reopen (the reported bug)', 
 
       const client = await createTestClient(server.port, docName);
       try {
-        await pollUntil(() => serverFragment(server, docName) !== undefined, 10_000, 50);
-        const fragment = serverFragment(server, docName);
-        if (!fragment) throw new Error('doc not loaded on server after cold restart');
+        const fragment = client.fragment;
 
         const shown = fragmentVisibleText(fragment);
         expect(shown).not.toContain('&#x20;');

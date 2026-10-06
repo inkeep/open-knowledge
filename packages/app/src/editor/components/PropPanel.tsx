@@ -34,6 +34,7 @@ import {
   mediaUrlValidationMessage,
   validateMediaUrl,
 } from '@/editor/utils/validate-media-url.ts';
+import { useSingleFileMode } from '@/lib/single-file-mode';
 import { CodeMirrorPropInput } from './CodeMirrorPropInput.tsx';
 
 function advancedOpenStateKey(descriptorName: string): string {
@@ -73,9 +74,10 @@ async function runUpload(
   file: File,
   accept: readonly string[],
   onUploaded: (url: string) => void,
+  singleFile: boolean,
 ): Promise<void> {
   try {
-    const { url } = await uploadFile(file, accept);
+    const { url } = await uploadFile(file, accept, { singleFile });
     onUploaded(url);
   } catch (err) {
     if (err instanceof UploadFailedError) {
@@ -473,6 +475,7 @@ function PropUploadButton({
   accept: readonly string[];
   onUploaded: (url: string) => void;
 }) {
+  const singleFile = useSingleFileMode();
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   return (
@@ -488,7 +491,7 @@ function PropUploadButton({
           if (!file) return;
           setUploading(true);
           try {
-            await runUpload(file, accept, onUploaded);
+            await runUpload(file, accept, onUploaded, singleFile);
           } catch {}
           setUploading(false);
           if (inputRef.current) inputRef.current.value = '';

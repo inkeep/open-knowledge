@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { docNameToRelativePath } from './doc-extensions.ts';
 import { isWithinDir } from './path-utils.ts';
+import { assertProjectContentScope } from './project-content-scope.ts';
 
 export function safeContentPath(documentName: string, contentDir: string): string {
   if (documentName.includes('\x00')) {
@@ -11,6 +12,7 @@ export function safeContentPath(documentName: string, contentDir: string): strin
   if (!isWithinDir(filePath, contentDir)) {
     throw new Error(`Invalid document name: ${documentName}`);
   }
+  assertProjectContentScope(filePath, contentDir);
   return filePath;
 }
 

@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterEach, describe, expect, test } from 'vitest';
-import { createMultiClientContext, createRestartableServer, pollUntil } from './test-harness';
+import { createInspectableServer, createMultiClientContext, pollUntil } from './test-harness';
 
 const SOURCE_CONTENT = `# Source Doc
 
@@ -28,7 +28,7 @@ afterEach(async () => {
 
 describe('T8: Managed-rename with populated target', () => {
   test('API refuses rename when destination exists; no Y.Doc mutation occurs', async () => {
-    const server = await createRestartableServer();
+    const server = await createInspectableServer();
     cleanups.push(() => server.shutdown());
 
     writeFileSync(join(server.contentDir, 'source-doc.md'), SOURCE_CONTENT, 'utf-8');

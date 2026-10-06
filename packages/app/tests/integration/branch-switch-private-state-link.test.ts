@@ -6,7 +6,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { ensureProjectGit } from '@inkeep/open-knowledge-server';
 import { afterEach, describe, expect, test } from 'vitest';
 import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
-import { createRestartableServer, createTestClient, pollUntil } from './test-harness';
+import { createInspectableServer, createTestClient, pollUntil } from './test-harness';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -56,7 +56,7 @@ describe('branch switch with a document that became a link into private state', 
       git(contentDir, 'commit -m feature');
       git(contentDir, 'checkout main');
 
-      const server = await createRestartableServer({
+      const server = await createInspectableServer({
         contentDir,
         keepContentDir: true,
         gitEnabled: true,

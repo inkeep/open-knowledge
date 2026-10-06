@@ -15,6 +15,7 @@ import {
 } from '../fs-traced.ts';
 import { errnoCode } from '../http/handler-utils.ts';
 import { getLogger } from '../logger.ts';
+import { assertProjectContentSubtree } from '../project-content-scope.ts';
 
 export class DuplicateNameExhaustedError extends Error {
   readonly sourcePath: string;
@@ -47,6 +48,7 @@ type DuplicatePathOutcome =
 
 export interface FileOpsDeps {
   contentDir: string;
+  assertContentSubtree?: (path: string) => void;
   resolveContentEntryPath: (contentDir: string, kind: 'file' | 'folder', path: string) => string;
   docNameForPath: (relPath: string) => string;
   docNameToRelativePath: (docName: string) => string;
@@ -197,6 +199,11 @@ export function createFileOpsService(deps: FileOpsDeps): FileOpsService {
         return { ok: false, kind: 'type-mismatch' };
       }
 
+      if (operationKind === 'folder') {
+        assertProjectContentSubtree(targetPath, contentDir);
+        deps.assertContentSubtree?.(targetPath);
+      }
+
       const deletedDocNames =
         operationKind === 'asset'
           ? []
@@ -280,6 +287,11 @@ export function createFileOpsService(deps: FileOpsDeps): FileOpsService {
         (kind === 'folder' && !sourceStat.isDirectory())
       ) {
         return { ok: false, kind: 'type-mismatch' };
+      }
+
+      if (kind === 'folder') {
+        assertProjectContentSubtree(sourcePath, contentDir);
+        deps.assertContentSubtree?.(sourcePath);
       }
 
       const sourceDocNames =

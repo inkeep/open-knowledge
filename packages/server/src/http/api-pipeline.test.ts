@@ -37,6 +37,7 @@ async function bootNativeRig(opts: { ephemeral?: boolean } = {}): Promise<Native
     resolve(pathname) {
       if (
         pathname === '/api/native-ping' ||
+        pathname === '/api/agent-write-md' ||
         pathname === '/api/native-mutating' ||
         pathname === '/api/native-upload'
       ) {
@@ -62,11 +63,13 @@ async function bootNativeRig(opts: { ephemeral?: boolean } = {}): Promise<Native
       }
       return null;
     },
-    isMutating: (pathname) => pathname === '/api/native-mutating',
+    isMutating: (pathname) =>
+      pathname === '/api/native-mutating' || pathname === '/api/agent-write-md',
   };
   const nativeApi: NativeApiHandle = {
     paths: [
       '/api/native-ping',
+      '/api/agent-write-md',
       '/api/native-mutating',
       '/api/native-upload',
       '/api/native-throw',
@@ -284,6 +287,24 @@ describe('natively-mounted /api routes run the shared admission pipeline', () =>
         headers: { Host: 'localhost' },
       });
       expect(allowed.status).toBe(200);
+    } finally {
+      await rig.close();
+    }
+  });
+
+  test('previews reject project mutations while retaining document edits and reads', async () => {
+    const rig = await bootNativeRig({ ephemeral: true });
+    try {
+      const blocked = await rawRequest(rig.port, '/api/native-mutating', { method: 'POST' });
+      expect(blocked.status).toBe(403);
+      expect(parseProblem(blocked.body).title).toBe(
+        'Single-file previews cannot manage project files.',
+      );
+      const edit = await rawRequest(rig.port, '/api/agent-write-md', { method: 'POST' });
+      expect(edit.status).toBe(200);
+      const read = await rawRequest(rig.port, '/api/native-ping');
+      expect(read.status).toBe(200);
+      expect(rig.dispatched).toEqual(['POST /api/agent-write-md', 'GET /api/native-ping']);
     } finally {
       await rig.close();
     }

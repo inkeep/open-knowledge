@@ -52,7 +52,7 @@ describe('PRD-6881: config-doc server-instance recovery', () => {
     cleanups.push(() => server.shutdown());
     writeFileSync(join(server.contentDir, '.okignore'), 'foo\n', 'utf-8');
 
-    const instanceA = server.instance.serverInstanceId;
+    const instanceA = server.serverInstanceId;
     const doc = new Y.Doc();
     const provider = new HocuspocusProvider({
       url: `ws://127.0.0.1:${server.port}/collab`,

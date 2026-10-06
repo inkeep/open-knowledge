@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
+import { testAuthorityRegistryPath } from '../../../test-support/server-authority-registry.test-helper.ts';
 import { type BootedServer, type BootServerOptions, bootServer } from './boot.ts';
 import { ConfigSchema } from './config/schema.ts';
 
@@ -42,6 +43,7 @@ export async function bootCompositionRig(
     quiet: true,
     gitEnabled: false,
     idleShutdownMs: null,
+    authorityRegistryPath: testAuthorityRegistryPath,
     ...overrides,
     configHomedirOverride: ownedHome,
   });

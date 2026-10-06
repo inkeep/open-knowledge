@@ -21,8 +21,10 @@ import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { toast } from 'sonner';
 import { getEditorDocName } from '../extensions/doc-context.ts';
+import { getEditorSingleFileMode } from '../extensions/editor-mode-context.ts';
 import { buildUnresolvedWikiLinkAttrs } from '../extensions/wiki-link-helpers.ts';
 import { HttpResponseParseError } from '../http-client.ts';
+import { singleFileUploadMessage } from './upload-admission.ts';
 import { reportUploadFailure, type UploadFailureReport } from './upload-failure.ts';
 
 const uploadPluginKey = new PluginKey<UploadPluginState>('imageUpload');
@@ -209,11 +211,18 @@ export function pickInsertShape(filename: string): InsertShape {
   return { kind: 'markdown-link', ext };
 }
 
+export function admitAssetUpload(editor: Editor): boolean {
+  if (!getEditorSingleFileMode(editor)) return true;
+  toast.error(singleFileUploadMessage());
+  return false;
+}
+
 export async function uploadAndInsert(
   file: File,
   editor: Editor,
   insertPos: number,
 ): Promise<void> {
+  if (!admitAssetUpload(editor)) return;
   const docName = docNameFromEditor(editor);
   const parentDocName = docName ? `${docName}.md` : '';
   if (!parentDocName) {

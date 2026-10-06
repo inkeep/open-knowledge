@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { UploadFailedError } from '@/editor/image-upload/upload-failure';
 import { uploadFile } from '@/editor/image-upload/upload-file';
+import { useSingleFileMode } from '@/lib/single-file-mode';
 import { cn } from '@/lib/utils';
 
 export function PageIconWidget({ keyName, value, onCommit }: CommonWidgetProps<string>) {
@@ -92,6 +93,7 @@ export function PageIconWidget({ keyName, value, onCommit }: CommonWidgetProps<s
 
 export function PageCoverWidget({ keyName, value, onCommit }: CommonWidgetProps<string>) {
   const { t } = useLingui();
+  const singleFile = useSingleFileMode();
   const [draft, setDraft] = useState(value);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -116,7 +118,7 @@ export function PageCoverWidget({ keyName, value, onCommit }: CommonWidgetProps<
     setUploadError(null);
     setUploading(true);
     try {
-      const result = await uploadFile(file, ALLOWED_IMAGE_MIME_TYPES);
+      const result = await uploadFile(file, ALLOWED_IMAGE_MIME_TYPES, { singleFile });
       if (!mountedRef.current) return;
       setDraft(result.url);
       onCommit(result.url);

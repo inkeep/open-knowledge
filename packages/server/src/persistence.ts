@@ -123,6 +123,7 @@ import {
 } from './metrics.ts';
 import { toPosix } from './path-utils.ts';
 import { classifyDuplication } from './persistence-tripwire.ts';
+import { assertProjectContentScope, NestedProjectScopeError } from './project-content-scope.ts';
 import { backfillRenameLogCommitSha, getOrLoadRenameLogIndex } from './rename-log.ts';
 import { getConvergedFragmentWitness, OBSERVER_SYNC_ORIGIN } from './server-observers.ts';
 import type { ShadowRef, WriterIdentity } from './shadow-repo.ts';
@@ -267,6 +268,7 @@ export function classifyDeferredStoreError(err: unknown): DeferredStoreErrorClas
 
 export interface PersistenceOptions {
   contentDir: string;
+  assertContentPath?: (path: string) => void;
   projectDir: string;
   durabilityState?: DocumentDurabilityState;
   conflicts?: Pick<ConflictAuthority, 'dissolveReconcile' | 'fileOf' | 'raise'>;
@@ -448,6 +450,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
   const mermaidLkgCache = new Map<string, string>();
   const mermaidPersistenceCtx: MermaidPersistenceCtx = {
+    assertContentPath: options?.assertContentPath,
     contentDir,
     lkgCache: mermaidLkgCache,
   };
@@ -1589,7 +1592,18 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         inFlightFlushValue = normalizeBridge(markdown);
         durabilityState.beginInFlightFlush(documentName, inFlightFlushValue);
 
-        const requestedPath = safeContentPath(documentName, contentDir);
+        let requestedPath: string;
+        try {
+          requestedPath = safeContentPath(documentName, contentDir);
+          options?.assertContentPath?.(requestedPath);
+        } catch (error) {
+          if (error instanceof NestedProjectScopeError && markdown === currentBase) {
+            persistenceDeferCounts.delete(documentName);
+            return;
+          }
+          recordPathFault(documentName, error, agentTriggeredStore);
+          throw error;
+        }
         if (
           documentHadFileOnDisk(documentName, currentBase) &&
           resolveStorePathPresence(
@@ -1802,6 +1816,8 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             return;
           }
           const outcome = durabilityState.tryPublishStore(storeAttempt, () => {
+            assertProjectContentScope(canonicalPath, contentDir);
+            options?.assertContentPath?.(canonicalPath);
             tracedRenameSync(tmpPath, canonicalPath);
           });
           if (outcome !== 'published') {
@@ -2020,6 +2036,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         loadManagedArtifactDoc(document, documentName, managedArtifactCtx);
         return;
       }
+      options?.assertContentPath?.(safeContentPath(documentName, contentDir));
       if (
         isMermaidDoc(documentName) ||
         isExcalidrawDoc(documentName) ||
@@ -2039,6 +2056,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             `[persistence] onLoadDocument called for ${documentName} (connections: ${document.getConnectionsCount?.() ?? '?'})`,
           );
           const filePath = safeContentPath(documentName, contentDir);
+          options?.assertContentPath?.(filePath);
           if (!existsSync(filePath)) return;
           docsWithFileObservedOnDisk.add(documentName);
 
@@ -2215,6 +2233,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         isExcalidrawDoc(documentName) ||
         isEditableTextDoc(documentName)
       ) {
+        options?.assertContentPath?.(safeContentPath(documentName, contentDir));
         await storeMermaidDoc(document, documentName, lastTransactionOrigin, mermaidPersistenceCtx);
         return;
       }

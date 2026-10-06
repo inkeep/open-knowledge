@@ -9,7 +9,13 @@ import {
   stripPathspecMagic,
 } from '@inkeep/open-knowledge-core';
 import type { Counter } from '@opentelemetry/api';
+import { PrivateStateSymlinkError, SymlinkEscapeError } from '../fs-safety.ts';
 import { getLogger } from '../logger.ts';
+import { NestedProjectScopeError } from '../project-content-scope.ts';
+import {
+  ContentScopeAdmissionError,
+  ServerMutationShuttingDownError,
+} from '../server-content-policy.ts';
 import { getMeter, setActiveSpanAttributes } from '../telemetry.ts';
 import { getRequestId } from './request-id.ts';
 
@@ -68,6 +74,30 @@ export function errorResponse(
   title: string,
   options: ErrorResponseOptions = {},
 ): void {
+  if (
+    status === 500 &&
+    options.cause instanceof SymlinkEscapeError &&
+    !(options.cause instanceof PrivateStateSymlinkError)
+  ) {
+    status = 400;
+    type = 'urn:ok:error:path-escape';
+    title = 'Path resolves outside the content directory or contains a symlink cycle.';
+    options = { ...options, detail: undefined };
+  }
+  if (options.cause instanceof ServerMutationShuttingDownError) {
+    status = 503;
+    type = options.cause.problemType;
+    title = options.cause.message;
+  }
+  if (
+    options.cause instanceof NestedProjectScopeError ||
+    options.cause instanceof ContentScopeAdmissionError
+  ) {
+    status = 403;
+    type = 'urn:ok:error:path-escape';
+    title = 'Path is outside this server’s content scope.';
+    options = { ...options, detail: options.cause.message };
+  }
   const instance = options.instance ?? `urn:uuid:${randomUUID()}`;
   setActiveSpanAttributes({ 'ok.error.instance': instance });
 

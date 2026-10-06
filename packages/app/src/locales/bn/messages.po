@@ -3325,6 +3325,10 @@ msgstr "টার্মিনাল বন্ধ করুন"
 msgid "Close this chat's tab to delete it"
 msgstr "এটি মুছতে এই চ্যাটের ট্যাব বন্ধ করুন"
 
+#: src/editor/image-upload/upload-admission.ts
+msgid "Close this preview, then open the folder to upload files"
+msgstr "এই পূর্বরূপ বন্ধ করুন, তারপর ফাইল আপলোড করতে ফোল্ডারটি খুলুন"
+
 #: src/components/NoteWindowDeletedState.tsx
 msgid "Close window"
 msgstr "উইন্ডো বন্ধ করুন"

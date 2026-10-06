@@ -4,6 +4,8 @@ import { SKILLS_LOCK_REL } from '../skills-catalog/acquire/lockfile.ts';
 import { LOCAL_DIR, OK_DIR } from './ok-dir.ts';
 import {
   MACHINE_ID_FILENAME,
+  SERVER_AUTHORITY_LEASES_DIRNAME,
+  SERVER_AUTHORITY_REGISTRY_FILENAME,
   SHARED_OK_ENTRIES,
   SKILL_MOVE_RETAINED_FILENAME,
   SKILL_PLACEMENTS_FILENAME,
@@ -24,6 +26,9 @@ describe('SHARED_OK_ENTRIES', () => {
       'local/installed-skills.json',
       'local/skill-placements.json',
       'local/skill-move-retained.json',
+      'local/server-authority.sqlite',
+      'local/server-authority.sqlite-journal',
+      'local/server-authority-leases',
     ]);
     expect(SHARED_OK_ENTRIES).toEqual([
       MACHINE_ID_FILENAME,
@@ -32,6 +37,9 @@ describe('SHARED_OK_ENTRIES', () => {
       okRelative(INSTALLED_SKILLS_REL),
       `${LOCAL_DIR}/${SKILL_PLACEMENTS_FILENAME}`,
       `${LOCAL_DIR}/${SKILL_MOVE_RETAINED_FILENAME}`,
+      `${LOCAL_DIR}/${SERVER_AUTHORITY_REGISTRY_FILENAME}`,
+      `${LOCAL_DIR}/${SERVER_AUTHORITY_REGISTRY_FILENAME}-journal`,
+      `${LOCAL_DIR}/${SERVER_AUTHORITY_LEASES_DIRNAME}`,
     ]);
   });
 });

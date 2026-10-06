@@ -1353,7 +1353,7 @@ describe('uninstall owns only its own channel', () => {
       expect(globalOp).toMatchObject({
         path: join(home, '.ok'),
         label:
-          'Remove ~/.ok (keeping ~/.ok/machine-id, ~/.ok/skills, ~/.ok/skills-lock.json, ~/.ok/local/installed-skills.json, ~/.ok/local/skill-placements.json, ~/.ok/local/skill-move-retained.json, shared by every channel)',
+          'Remove ~/.ok (keeping ~/.ok/machine-id, ~/.ok/skills, ~/.ok/skills-lock.json, ~/.ok/local/installed-skills.json, ~/.ok/local/skill-placements.json, ~/.ok/local/skill-move-retained.json, ~/.ok/local/server-authority.sqlite, ~/.ok/local/server-authority.sqlite-journal, ~/.ok/local/server-authority-leases, shared by every channel)',
       });
       const paths = planPaths(plan.ops);
       expect(paths).toContain(join(home, 'Library', 'Application Support', 'OpenKnowledge'));
@@ -1443,6 +1443,9 @@ describe('uninstall owns only its own channel', () => {
     ['local', 'installed-skills.json'],
     ['local', 'skill-placements.json'],
     ['local', 'skill-move-retained.json'],
+    ['local', 'server-authority.sqlite'],
+    ['local', 'server-authority.sqlite-journal'],
+    ['local', 'server-authority-leases', 'holder.sqlite'],
   ];
 
   test.each([false, true])(

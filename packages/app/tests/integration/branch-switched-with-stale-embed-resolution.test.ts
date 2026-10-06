@@ -8,7 +8,7 @@ import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import { afterEach, describe, expect, test } from 'vitest';
 import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { ProviderPool } from '../../src/editor/provider-pool';
-import { createRestartableServer, getServerState, pollUntil, schema } from './test-harness';
+import { createInspectableServer, getServerState, pollUntil, schema } from './test-harness';
 
 interface PmJsonNode {
   type?: string;
@@ -81,7 +81,7 @@ describe('T17: branch switch with `![[photo.png]]` doc — reseed-before-reset',
     git(contentDir, 'commit -m feature-state');
     git(contentDir, 'checkout main');
 
-    const server = await createRestartableServer({
+    const server = await createInspectableServer({
       contentDir,
       keepContentDir: false,
       gitEnabled: true,

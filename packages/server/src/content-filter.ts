@@ -394,6 +394,7 @@ function createDescendantProjectGate(
   projectDir: string,
   contentDir: string,
   singleDocRelPath: string | undefined,
+  isContentScopeExcluded?: (absolutePath: string) => boolean,
 ): {
   isInside: (relativePath: string, syncScope?: { pathBase: 'content' | 'project' }) => boolean;
   reset: () => void;
@@ -418,6 +419,7 @@ function createDescendantProjectGate(
     isInside(relativePath: string, syncScope?: { pathBase: 'content' | 'project' }): boolean {
       if (!enabled || relativePath === '') return false;
       const base = syncScope?.pathBase === 'project' ? projectDir : contentDir;
+      if (isContentScopeExcluded?.(resolve(base, relativePath))) return true;
       let prefix = base;
       for (const segment of relativePath.split('/')) {
         prefix = join(prefix, segment);
@@ -583,6 +585,7 @@ async function appendExcludeFileIfExistsAsync(
 export interface ContentFilterOptions {
   projectDir: string;
   contentDir: string;
+  isContentScopeExcluded?: (absolutePath: string) => boolean;
   singleDocRelPath?: string;
   attachmentFolderPath?: string;
   inPlaceSkillDirs?: ReadonlySet<string>;
@@ -652,7 +655,12 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
     opts.attachmentFolderPath ?? DEFAULT_ATTACHMENT_FOLDER_PATH,
   );
   const skillRootPaths: ReadonlySet<string> = opts.skillRootPaths ?? new Set();
-  const descendantProjects = createDescendantProjectGate(projectDir, contentDir, singleDocRelPath);
+  const descendantProjects = createDescendantProjectGate(
+    projectDir,
+    contentDir,
+    singleDocRelPath,
+    opts.isContentScopeExcluded,
+  );
 
   const contentRelPrefix = toPosix(relative(projectDir, contentDir));
   const contentOutsideProject = contentRelPrefix.startsWith('..');
@@ -1309,7 +1317,12 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     opts.attachmentFolderPath ?? DEFAULT_ATTACHMENT_FOLDER_PATH,
   );
   const skillRootPaths: ReadonlySet<string> = opts.skillRootPaths ?? new Set();
-  const descendantProjects = createDescendantProjectGate(projectDir, contentDir, singleDocRelPath);
+  const descendantProjects = createDescendantProjectGate(
+    projectDir,
+    contentDir,
+    singleDocRelPath,
+    opts.isContentScopeExcluded,
+  );
 
   const contentRelPrefix = toPosix(relative(projectDir, contentDir));
   const contentOutsideProject = contentRelPrefix.startsWith('..');

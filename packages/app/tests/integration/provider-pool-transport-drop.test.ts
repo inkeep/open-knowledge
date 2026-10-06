@@ -5,9 +5,9 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { afterEach, describe, expect, test } from 'vitest';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import {
-  createRestartableServer,
+  createInspectableServer,
+  type InspectableServer,
   pollUntil,
-  type RestartableServer,
   seedPoolServerInstanceId,
 } from './test-harness';
 
@@ -24,7 +24,7 @@ afterEach(async () => {
   }
 }, 30_000);
 
-async function openSynced(server: RestartableServer, pool: ProviderPool, docName: string) {
+async function openSynced(server: InspectableServer, pool: ProviderPool, docName: string) {
   writeFileSync(join(server.contentDir, `${docName}.md`), FIXTURE, 'utf-8');
   pool.open(docName);
   pool.setActive(docName);
@@ -33,7 +33,7 @@ async function openSynced(server: RestartableServer, pool: ProviderPool, docName
   await wait(150);
 }
 
-function dropTransport(server: RestartableServer, docName: string): number {
+function dropTransport(server: InspectableServer, docName: string): number {
   const document = server.instance.hocuspocus.documents.get(docName);
   if (!document) return 0;
   let dropped = 0;
@@ -48,7 +48,7 @@ function dropTransport(server: RestartableServer, docName: string): number {
 
 describe('ProviderPool transport drop recovery', () => {
   test('a synced doc re-syncs after an abrupt transport drop, and later server changes land', async () => {
-    const server = await createRestartableServer();
+    const server = await createInspectableServer();
     cleanups.push(() => server.shutdown());
     const docName = `test-${crypto.randomUUID()}`;
 
@@ -77,7 +77,7 @@ describe('ProviderPool transport drop recovery', () => {
   }, 60_000);
 
   test('a drop landing mid-churn (many concurrent disk writes) still recovers', async () => {
-    const server = await createRestartableServer();
+    const server = await createInspectableServer();
     cleanups.push(() => server.shutdown());
     const docName = `test-${crypto.randomUUID()}`;
 
@@ -114,7 +114,7 @@ describe('ProviderPool transport drop recovery', () => {
   }, 60_000);
 
   test('two consecutive drops in quick succession still recover', async () => {
-    const server = await createRestartableServer();
+    const server = await createInspectableServer();
     cleanups.push(() => server.shutdown());
     const docName = `test-${crypto.randomUUID()}`;
 

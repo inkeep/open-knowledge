@@ -95,6 +95,7 @@ export interface AssetService {
 
 export interface AssetServiceDeps {
   contentDir: string;
+  assertContentPath?: (path: string) => void;
   isPathIgnored?: (relativePath: string) => boolean;
   getAttachmentFolderPath?: () => string;
   resolveTrackedFile?: (relativePath: string) => string | undefined;
@@ -213,6 +214,7 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
     let canonicalPath: string;
     try {
       canonicalPath = realpathSync(requestedPath);
+      deps.assertContentPath?.(canonicalPath);
     } catch (err) {
       return { ok: false, reason: 'not-found', cause: err };
     }
@@ -281,6 +283,7 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
     }
     try {
       assertNoSymlinkEscape(destDir, resolvedContentDir);
+      deps.assertContentPath?.(destDir);
     } catch (err) {
       cleanupTempfile();
       if (isContainmentRejection(err)) {
@@ -309,6 +312,7 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
 
     try {
       const realDestDir = realpathSync(destDir);
+      deps.assertContentPath?.(realDestDir);
       let realContentDir: string;
       try {
         realContentDir = realpathSync(resolvedContentDir);
@@ -355,6 +359,12 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
     if (DEFAULT_DEDUP_MODE === 'same-dir') {
       const existing = await findDuplicateAsset(destDir, sha, byteLength);
       if (existing) {
+        try {
+          deps.assertContentPath?.(resolve(destDir, existing));
+        } catch (cause) {
+          cleanupTempfile();
+          return { ok: false, kind: 'dest-validation-error', cause, destDir };
+        }
         cleanupTempfile();
         const relPath = toPosix(relative(deps.contentDir, resolve(destDir, existing)));
         return {
@@ -384,6 +394,7 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
     }
 
     try {
+      deps.assertContentPath?.(resolve(destDir, finalFilename));
       const destFilename = linkTempToFinalWithCollisionRetry(tempPath, destDir, finalFilename);
       const relPath = toPosix(relative(deps.contentDir, resolve(destDir, destFilename)));
       return {
@@ -394,6 +405,7 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
         mime: detectedMime ?? null,
       };
     } catch (e) {
+      cleanupTempfile();
       const reason: UploadWriteReason =
         e instanceof UploadWriteError ? e.reason : 'urn:ok:error:storage-error';
       return { ok: false, kind: 'write-failed', reason, cause: e, filename: finalFilename };

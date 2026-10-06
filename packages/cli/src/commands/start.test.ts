@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -280,21 +281,49 @@ describe('withIdleShutdownProcessExit (idle-path zombie prevention)', () => {
 });
 
 describe('isServerLockCollision (D1/C3 gate)', () => {
+  test('same-project authority refusal is reusable before its discovery record appears', async () => {
+    const mod = await import('@inkeep/open-knowledge-server');
+    const fixture = mkdtempSync(join(tmpdir(), 'ok-reuse-authority-'));
+    const cwd = join(fixture, 'project');
+    const other = join(fixture, 'other-project');
+    const alias = join(fixture, 'alias');
+    mkdirSync(cwd);
+    mkdirSync(other);
+    symlinkSync(cwd, alias, 'junction');
+    const err = new mod.ServerAuthorityCollisionError({
+      projectDir: realpathSync.native(cwd),
+      scope: { kind: 'tree', path: cwd, excluded: [] },
+      pid: process.pid,
+      serverInstanceId: 'starting-holder',
+    });
+    try {
+      expect(isServerLockCollision(err, mod, cwd)).toBe(true);
+      expect(isServerLockCollision(err, mod, alias)).toBe(true);
+      expect(isServerLockCollision(err, mod, other)).toBe(false);
+      const preview = new mod.ServerAuthorityCollisionError({
+        ...err.existing,
+        scope: { kind: 'file', path: join(cwd, 'note.md') },
+      });
+      expect(isServerLockCollision(preview, mod, cwd)).toBe(false);
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
   class FakeServerLockErr extends Error {}
   const fakeModule = {
     ServerLockCollisionError: FakeServerLockErr,
   } as unknown as typeof import('@inkeep/open-knowledge-server');
 
   test('true for a ServerLockCollisionError instance', () => {
-    expect(isServerLockCollision(new FakeServerLockErr('held'), fakeModule)).toBe(true);
+    expect(isServerLockCollision(new FakeServerLockErr('held'), fakeModule, tmpdir())).toBe(true);
   });
   test('false for any other error', () => {
-    expect(isServerLockCollision(new Error('boom'), fakeModule)).toBe(false);
-    expect(isServerLockCollision('not-an-error', fakeModule)).toBe(false);
+    expect(isServerLockCollision(new Error('boom'), fakeModule, tmpdir())).toBe(false);
+    expect(isServerLockCollision('not-an-error', fakeModule, tmpdir())).toBe(false);
   });
   test('false (never throws) when the module lacks the class export', () => {
     const empty = {} as unknown as typeof import('@inkeep/open-knowledge-server');
-    expect(isServerLockCollision(new Error('boom'), empty)).toBe(false);
+    expect(isServerLockCollision(new Error('boom'), empty, tmpdir())).toBe(false);
   });
 });
 
@@ -1269,6 +1298,17 @@ describe('startCommand — --mode flag wiring', () => {
 });
 
 describe('tryDescribeLockCollision', () => {
+  test('overlapping content ownership has an actionable message without a stack', async () => {
+    const serverModule = await import('@inkeep/open-knowledge-server');
+    const err = new serverModule.ServerAuthorityCollisionError({
+      projectDir: '/holder',
+      scope: { kind: 'tree', path: '/content', excluded: [] },
+      pid: process.pid,
+      serverInstanceId: 'holder-instance',
+    });
+    expect(tryDescribeLockCollision(err, '/other', serverModule)).toBe(err.message);
+    expect(err.message).toContain('Close that session');
+  });
   function fakeServerModule(opts: {
     meta?: { kind?: string; pid?: number; port?: number; hostname?: string } | null;
     throwOnRead?: boolean;

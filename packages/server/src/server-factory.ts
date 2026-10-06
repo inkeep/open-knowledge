@@ -18,6 +18,7 @@ import {
   DEFAULT_ATTACHMENT_FOLDER_PATH,
   DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
+  DEFAULT_SIGTERM_GRACE_MS,
   DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
   DOCUMENT_OPEN_BYTE_LIMIT,
   humanFormat,
@@ -103,7 +104,11 @@ import {
   planDirectoryIndexRegenerations,
   ROOT_INDEX_DOC_NAME,
 } from './content/regenerate-index.ts';
-import { type ContentFilter, createContentFilter } from './content-filter.ts';
+import {
+  type ContentFilter,
+  createContentFilter,
+  isShareableOkArtifact,
+} from './content-filter.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { dropPendingDocs, recordContributor } from './contributor-tracker.ts';
 import {
@@ -117,6 +122,7 @@ import {
   docNameToRelativePath,
   getDocExtension,
   isRegisteredMarkdownDocName,
+  stripDocExtension,
 } from './doc-extensions.ts';
 import { runDocLineageGuard } from './doc-lineage-guard.ts';
 import {
@@ -154,10 +160,9 @@ import {
   startWatcher,
   type WatcherHandle,
 } from './file-watcher.ts';
-import { canonicalContentPathIsRefused } from './fs-safety.ts';
+import { canonicalContentPathIsRefused, SymlinkEscapeError } from './fs-safety.ts';
 import {
   normalizeFsPath,
-  tracedAtomicFs,
   tracedMkdirSync,
   tracedUnlinkSync,
   tracedWriteFileSync,
@@ -250,7 +255,28 @@ import {
   setRenameLogIndex,
   sweepLazyPopOrphans,
 } from './rename-log.ts';
-import { acquireServerLock, markServerLockDraining, releaseServerLock } from './server-lock.ts';
+import {
+  acquireServerAuthority,
+  contentScopeContainsPath,
+  ServerAuthorityCollisionError,
+} from './server-authority.ts';
+import {
+  assertCapturedServerContentPath,
+  assertServerContentPath,
+  assertServerContentSubtree,
+  ContentScopeAdmissionError,
+  canonicalContentPath,
+  contentScopedAtomicFs,
+  ServerMutationShuttingDownError,
+  snapshotServerContentScope,
+} from './server-content-policy.ts';
+import {
+  acquireServerLock,
+  markServerLockDraining,
+  readServerLock,
+  releaseServerLock,
+  ServerLockCollisionError,
+} from './server-lock.ts';
 import { createServerObserverExtension } from './server-observer-extension.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
 import {
@@ -286,6 +312,7 @@ import {
 import { resyncRecordedSkillCopies } from './skill-placements.ts';
 import { skillStateYamlPath } from './skill-state.ts';
 import { assertCompatibleStateManifest } from './state-manifest.ts';
+import { assertRealpathWithinDir } from './symlink-guard.ts';
 import { SyncEngine } from './sync-engine.ts';
 import { createSyncHandshakeSpanExtension } from './sync-handshake-span-extension.ts';
 import { initTelemetry, shutdownTelemetry, withSpan } from './telemetry.ts';
@@ -317,6 +344,7 @@ export interface ServerOptions {
   shadowRepo?: ShadowHandle;
   contentRoot?: string;
   destroyTimeoutMs?: number;
+  authorityRegistryPath?: string;
   onAgentWrite?: () => void;
   localOpCliArgs?: string[];
   authStreamHeartbeatMs?: number;
@@ -579,14 +607,22 @@ export function createServer(options: ServerOptions): ServerInstance {
   const conflicts = new ConflictAuthority({
     projectDir,
     contentDir,
+    assertResolutionPath: assertConflictContentPath,
     branch: initialBranch,
     signal: { signal: (channel) => cc1Broadcaster?.signal(channel) },
     io: {
       gitRaw: async (args) =>
         createGitInstance(projectDir, { credentialConfig: [], timeoutMs: 30_000 }).git.raw(args),
-      writeProjectFileUntracked: (absPath, bytes) => tracedWriteFileSync(absPath, bytes, 'utf-8'),
-      unlinkProjectFileUndeclared: (absPath) => tracedUnlinkSync(absPath),
+      writeProjectFileUntracked: (absPath, bytes) => {
+        assertConflictContentPath(absPath);
+        tracedWriteFileSync(absPath, bytes, 'utf-8');
+      },
+      unlinkProjectFileUndeclared: (absPath) => {
+        assertConflictContentPath(absPath);
+        tracedUnlinkSync(absPath);
+      },
       deleteResolvedContent: (docName, absPath) => {
+        assertContentPath(absPath);
         const declaration = registerRemoval(absPath);
         try {
           tracedUnlinkSync(absPath);
@@ -597,9 +633,10 @@ export function createServer(options: ServerOptions): ServerInstance {
         contentFilter.decrementMdDir(dirname(docName));
       },
       applyResolvedContent: async (docName, absPath, bytes) => {
+        assertContentPath(absPath);
         const absent = !existsSync(absPath);
         registerWrite(absPath, contentHash(bytes));
-        await atomicWriteFile(absPath, bytes, { fs: tracedAtomicFs });
+        await atomicWriteFile(absPath, bytes, { fs: scopedAtomicFs });
         if (absent) contentFilter.incrementMdDir(dirname(docName));
         if (hocuspocus.documents.get(docName)) applyToDoc(docName, bytes);
         setReconciledBase(docName, bytes);
@@ -965,6 +1002,33 @@ export function createServer(options: ServerOptions): ServerInstance {
   initTelemetry();
 
   const serverInstanceId = randomUUID();
+  let authorityRetired = false;
+  let documentAdmissionClosed = false;
+  let authorityScope = snapshotServerContentScope(contentDir, singleDocRelPath);
+  const assertContentPath = (path: string): void => {
+    if (authorityRetired) throw new ServerMutationShuttingDownError(false);
+    assertServerContentPath(authorityScope, path);
+  };
+  const assertContentSubtree = (path: string): void => {
+    assertContentPath(path);
+    assertServerContentSubtree(authorityScope, path);
+  };
+  const scopedAtomicFs = contentScopedAtomicFs(assertContentPath);
+  function assertConflictContentPath(path: string): void {
+    assertRealpathWithinDir(path, projectDir, { allowShareableOkArtifact: isShareableOkArtifact });
+    const canonical = canonicalContentPath(path);
+    const projectPath = toPosix(relative(canonicalContentPath(projectDir), canonical));
+    if (
+      authorityScope.kind === 'tree' &&
+      !contentScopeContainsPath(
+        { kind: 'tree', path: authorityScope.path, excluded: [] },
+        canonical,
+      ) &&
+      isShareableOkArtifact(projectPath)
+    )
+      return;
+    assertContentPath(canonical);
+  }
 
   const lockDir = getLocalDir(projectDir);
 
@@ -975,23 +1039,50 @@ export function createServer(options: ServerOptions): ServerInstance {
   });
   const acpPermissions = new AcpPermissionStore(lockDir, getLogger('acp-permissions'));
 
-  acquireServerLock(lockDir, {
-    port: 0,
-    worktreeRoot: projectDir,
-    kind: options.lockKind ?? 'interactive',
-    capabilities: options.capabilities ?? ['http', 'ws'],
-  });
-
-  if (!skipStateManifestCheck) {
-    try {
+  let authority: ReturnType<typeof acquireServerAuthority>;
+  try {
+    authority = acquireServerAuthority({
+      scope: authorityScope,
+      projectDir: canonicalContentPath(projectDir),
+      serverInstanceId,
+      registryPath: options.authorityRegistryPath,
+    });
+  } catch (error) {
+    if (
+      error instanceof ServerAuthorityCollisionError &&
+      error.existing.projectDir === canonicalContentPath(projectDir)
+    ) {
+      const existing = readServerLock(lockDir);
+      if (existing?.pid === error.existing.pid) {
+        throw new ServerLockCollisionError(existing, join(lockDir, 'server.lock'));
+      }
+    }
+    throw error;
+  }
+  authorityScope = authority.scope;
+  let primaryLockAcquired = false;
+  try {
+    acquireServerLock(lockDir, {
+      port: 0,
+      worktreeRoot: projectDir,
+      kind: options.lockKind ?? 'interactive',
+      capabilities: options.capabilities ?? ['http', 'ws'],
+    });
+    primaryLockAcquired = true;
+    if (!skipStateManifestCheck) {
       assertCompatibleStateManifest({
         lockDir,
         shadowRepoDir: resolveShadowDir(projectDir),
       });
-    } catch (err) {
-      releaseServerLock(lockDir);
-      throw err;
     }
+  } catch (error) {
+    if (primaryLockAcquired) releaseServerLock(lockDir);
+    try {
+      authority.release();
+    } catch (cleanupError) {
+      log.error({ err: cleanupError }, '[server] startup authority release failed');
+    }
+    throw error;
   }
 
   const basenameIndex: BasenameIndex = createBasenameIndex();
@@ -1086,6 +1177,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     resolveReady = res;
     rejectReady = rej;
   });
+  const offlineRemovalsReconciled = Promise.withResolvers<void>();
 
   let resolveBranchScopeAligned!: () => void;
   const branchScopeAligned = new Promise<void>((res) => {
@@ -1417,8 +1509,9 @@ export function createServer(options: ServerOptions): ServerInstance {
     isConflict: (docName) => conflicts.has(docName),
     getDocument: (docName) => hocuspocus.documents.get(docName),
     writeDisk: async (absPath, markdown) => {
+      assertContentPath(absPath);
       tracedMkdirSync(dirname(absPath), { recursive: true });
-      await atomicWriteFile(absPath, markdown, { fs: tracedAtomicFs });
+      await atomicWriteFile(absPath, markdown, { fs: scopedAtomicFs });
     },
     registerWrite: (absPath, markdown) => registerWrite(absPath, contentHash(markdown)),
     noteFileIndex: (event) =>
@@ -1589,6 +1682,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
           const docName = indexDocNameFor(directory);
           const absPath = resolve(contentDir, `${docName}.md`);
+          assertContentPath(absPath);
           let currentMarkdown: string | null;
           try {
             currentMarkdown = readFileSync(absPath, 'utf-8');
@@ -1731,6 +1825,24 @@ export function createServer(options: ServerOptions): ServerInstance {
     contentFilter = createContentFilter({
       projectDir,
       contentDir,
+      isContentScopeExcluded: (path) => {
+        if (authorityScope.kind !== 'tree') return false;
+        try {
+          const target = canonicalContentPath(path);
+          return authorityScope.excluded.some((root) =>
+            contentScopeContainsPath({ kind: 'tree', path: root, excluded: [] }, target),
+          );
+        } catch (err) {
+          const code = errnoCode(err);
+          if (!(err instanceof SymlinkEscapeError) && code !== 'EACCES' && code !== 'EPERM')
+            throw err;
+          log.warn(
+            { path: normalizeFsPath(path), code },
+            '[content-filter] scope path could not be inspected',
+          );
+          return true;
+        }
+      },
       singleDocRelPath,
       attachmentFolderPath: initialAttachmentFolderPath,
       inPlaceSkillDirs: new Set(scanInPlaceSkills(contentDir).map((skill) => skill.dir)),
@@ -1816,6 +1928,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     let globalCopyResyncTimer: ReturnType<typeof setTimeout> | null = null;
     const persistenceOpts: PersistenceOptions = {
       contentDir,
+      assertContentPath,
       projectDir,
       conflicts,
       lifecycleOf: (document, docName) => conflicts.lifecycleOf(document, docName),
@@ -1879,11 +1992,31 @@ export function createServer(options: ServerOptions): ServerInstance {
     });
 
     const openDirect = hocuspocus.openDirectConnection.bind(hocuspocus);
-    hocuspocus.openDirectConnection = ((documentName: string, context?: unknown) =>
-      openDirect(
-        canonicalDocName(documentName),
-        context,
-      )) as typeof hocuspocus.openDirectConnection;
+    function assertDocumentProjectScope(documentName: string): void {
+      if (documentAdmissionClosed) throw new ServerMutationShuttingDownError(false);
+      if (isReservedForUserTree(documentName)) {
+        if (
+          singleDocRelPath !== undefined &&
+          documentName !== SYSTEM_DOC_NAME &&
+          !isConfigDoc(documentName)
+        )
+          throw new ContentScopeAdmissionError();
+        return;
+      }
+      if (
+        singleDocRelPath !== undefined &&
+        canonicalDocName(documentName) !== canonicalDocName(stripDocExtension(singleDocRelPath))
+      )
+        throw new ContentScopeAdmissionError();
+      if (authorityRetired) throw new ServerMutationShuttingDownError(false);
+      assertCapturedServerContentPath(authorityScope, safeContentPath(documentName, contentDir));
+    }
+
+    hocuspocus.openDirectConnection = (async (documentName: string, context?: unknown) => {
+      const canonicalName = canonicalDocName(documentName);
+      assertDocumentProjectScope(canonicalName);
+      return openDirect(canonicalName, context);
+    }) as typeof hocuspocus.openDirectConnection;
 
     const hp = hocuspocus;
     unregisterWorkloadProviders.push(
@@ -1980,7 +2113,10 @@ export function createServer(options: ServerOptions): ServerInstance {
     agentFocusBroadcaster = new AgentFocusBroadcaster(hocuspocus);
     agentPresenceBroadcaster = new AgentPresenceBroadcaster(hocuspocus);
 
-    sessionManager = new AgentSessionManager(hocuspocus, options.agentSessionOptions);
+    sessionManager = new AgentSessionManager(hocuspocus, {
+      ...options.agentSessionOptions,
+      assertDocumentScope: assertDocumentProjectScope,
+    });
     const sm = sessionManager;
     unregisterWorkloadProviders.push(
       registerAgentSessionCountsProvider(() => ({
@@ -2005,7 +2141,11 @@ export function createServer(options: ServerOptions): ServerInstance {
 
     const principalAuthExtension: Extension & { __kind: 'principal-auth' } = {
       __kind: 'principal-auth',
+      async beforeHandleMessage(payload) {
+        assertDocumentProjectScope(payload.documentName);
+      },
       async onAuthenticate(payload) {
+        assertDocumentProjectScope(payload.documentName);
         const tokenStr = payload.token;
         const parsed = parseHocuspocusAuthToken(tokenStr);
 
@@ -2106,6 +2246,20 @@ export function createServer(options: ServerOptions): ServerInstance {
     const removalRedirectGuard: Extension & { __kind: 'removal-redirect-guard' } = {
       __kind: 'removal-redirect-guard',
       async onAuthenticate(payload) {
+        if (!isReservedForUserTree(payload.documentName)) {
+          const path = resolveDocFilePath(payload.documentName);
+          if (path !== null && !existsSync(path)) {
+            try {
+              await Promise.race([offlineRemovalsReconciled.promise, ready]);
+            } catch (err) {
+              log.error(
+                { err, docName: payload.documentName },
+                '[removal-guard] missing-document admission refused after startup failure',
+              );
+              throw err;
+            }
+          }
+        }
         await runRemovalRedirectGuard(payload.documentName, {
           recentlyRemovedDocs,
           resolveFilePath: resolveDocFilePath,
@@ -2151,6 +2305,8 @@ export function createServer(options: ServerOptions): ServerInstance {
       sessionManager,
       commentDocHooksRef,
       contentDir,
+      assertContentPath,
+      assertContentSubtree,
       getGeneratedIndexSettingsStatus,
       setGeneratedIndexEnabled,
       contentFilter,
@@ -2309,7 +2465,13 @@ export function createServer(options: ServerOptions): ServerInstance {
     }
     void stalenessWatchdog?.dispose();
     stalenessWatchdog = null;
+    authorityRetired = true;
     releaseServerLock(lockDir);
+    try {
+      authority.release();
+    } catch (cleanupError) {
+      log.error({ err: cleanupError }, '[server] construction authority release failed');
+    }
     throw err;
   }
 
@@ -2349,9 +2511,11 @@ export function createServer(options: ServerOptions): ServerInstance {
       bridgeLossReporter,
     );
 
-  const rerenderDocsReferencingAssetBasename = (assetBasename: string): void => {
-    if (!assetBasename) return;
-    const needle = `[[${assetBasename}]]`;
+  const refreshLoadedEmbeds = (
+    needle: string,
+    context: { reason: 'startup' } | { reason: 'asset-event'; assetBasename: string },
+  ): number => {
+    let refreshed = 0;
     for (const [docName] of hocuspocus.documents) {
       if (isReservedForUserTree(docName)) continue;
       const document = hocuspocus.documents.get(docName);
@@ -2362,12 +2526,30 @@ export function createServer(options: ServerOptions): ServerInstance {
         document.transact(() => {
           applyDiskContentToDoc(document, source, resolveEmbed, docName);
         }, FILE_WATCHER_ORIGIN);
+        refreshed++;
       } catch (err) {
         log.error(
-          { originalError: redactedErrorSummary(err), docName, assetBasename },
-          `[asset-event] failed to re-render ${docName} for asset basename ${assetBasename}`,
+          { originalError: redactedErrorSummary(err), docName, ...context },
+          context.reason === 'asset-event'
+            ? `[asset-event] failed to re-render ${docName} for asset basename ${context.assetBasename}`
+            : `[basename-index] failed to refresh loaded startup embeds in ${docName}`,
         );
       }
+    }
+    return refreshed;
+  };
+
+  const rerenderDocsReferencingAssetBasename = (assetBasename: string): void => {
+    if (!assetBasename) return;
+    refreshLoadedEmbeds(`[[${assetBasename}]]`, { reason: 'asset-event', assetBasename });
+  };
+
+  const refreshStartupEmbeds = (): void => {
+    try {
+      const documentCount = refreshLoadedEmbeds('![[', { reason: 'startup' });
+      log.debug({ documentCount }, '[basename-index] refreshed loaded startup embeds');
+    } catch (err) {
+      log.warn({ err }, '[basename-index] loaded startup embed refresh failed');
     }
   };
 
@@ -3235,12 +3417,37 @@ export function createServer(options: ServerOptions): ServerInstance {
     inflightDestroy = (async () => {
       const t0 = Date.now();
       const phaseErrors: Array<{ phase: string; error: string }> = [];
+      const preludeDeadline = Date.now() + Math.min(destroyTimeoutMs, DEFAULT_SIGTERM_GRACE_MS / 5);
+      const preludeRemaining = () => Math.max(1, preludeDeadline - Date.now());
+      const joinPrelude = async <T>(operation: Promise<T>, phase: string): Promise<T> => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          return await Promise.race([
+            operation,
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () => reject(new Error(`${phase} did not retire before the pre-flush deadline`)),
+                preludeRemaining(),
+              );
+            }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
+      };
       shutdownAllowsUnload = true;
       const authShutdown = Promise.allSettled([shutdownLocalOps()]);
       let authResult: PromiseSettledResult<void> | undefined;
+      try {
+        [authResult] = await joinPrelude(authShutdown, 'mutation-drain');
+      } catch (err) {
+        phaseErrors.push({ phase: 'mutation-drain', error: String(err) });
+        log.error({ err }, '[server] shutdown mutation drain failed');
+      }
+      documentAdmissionClosed = true;
 
       try {
-        await closeIndexRegeneration();
+        await joinPrelude(closeIndexRegeneration(), 'generated-index');
       } catch (err) {
         log.warn({ err }, '[index] generated index shutdown drain failed');
         phaseErrors.push({ phase: 'generated-index-drain', error: String(err) });
@@ -3250,9 +3457,10 @@ export function createServer(options: ServerOptions): ServerInstance {
         unregister();
       }
       try {
-        await stalenessWatchdog?.dispose();
+        await joinPrelude(Promise.resolve(stalenessWatchdog?.dispose()), 'staleness-watchdog');
       } catch (err) {
         log.warn({ err }, '[server] staleness watchdog drain failed during destroy');
+        phaseErrors.push({ phase: 'staleness-watchdog-drain', error: String(err) });
       }
       stalenessWatchdog = null;
 
@@ -3265,7 +3473,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       maintenanceCoordinator?.destroy();
 
       try {
-        await closeShadowHousekeeping();
+        await joinPrelude(closeShadowHousekeeping(), 'shadow-housekeeping');
       } catch (err) {
         log.warn({ err }, '[shadow-housekeeping] shutdown drain failed');
         phaseErrors.push({ phase: 'shadow-housekeeping-drain', error: String(err) });
@@ -3297,12 +3505,34 @@ export function createServer(options: ServerOptions): ServerInstance {
           },
         ),
         new Promise<'timeout'>((r) => {
-          initTimeoutId = setTimeout(() => r('timeout'), 5_000);
+          initTimeoutId = setTimeout(() => r('timeout'), preludeRemaining());
         }),
       ]);
       if (initTimeoutId !== undefined) clearTimeout(initTimeoutId);
       if (initSettled === 'timeout') {
-        log.warn({}, '[server] init did not complete within 5s during shutdown');
+        log.warn({}, '[server] init did not complete before the pre-flush deadline');
+        phaseErrors.push({
+          phase: 'initialization-drain',
+          error: 'Initialization remains pending',
+        });
+      }
+
+      let loadDrainTimer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          Promise.allSettled(hocuspocus.loadingDocuments.values()),
+          new Promise<never>((_, reject) => {
+            loadDrainTimer = setTimeout(
+              () => reject(new Error('Pending document loads did not retire')),
+              preludeRemaining(),
+            );
+          }),
+        ]);
+      } catch (err) {
+        phaseErrors.push({ phase: 'document-load-drain', error: String(err) });
+        log.error({ err }, '[server] shutdown document load drain failed');
+      } finally {
+        clearTimeout(loadDrainTimer);
       }
 
       const documentCount = hocuspocus.documents.size;
@@ -3484,8 +3714,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             }
           }
 
-          [authResult] = await authShutdown;
-          if (authResult.status === 'rejected') {
+          if (authResult?.status === 'rejected') {
             const reason: unknown = authResult.reason;
             const failures = reason instanceof AggregateError ? reason.errors : [reason];
             phaseErrors.push({
@@ -3498,6 +3727,13 @@ export function createServer(options: ServerOptions): ServerInstance {
           }
           const durationMs = Date.now() - t0;
           if (phaseErrors.length === 0) {
+            authorityRetired = true;
+            try {
+              authority.release();
+            } catch (err) {
+              phaseErrors.push({ phase: 'authority-release', error: String(err) });
+              log.error({ err }, '[server] shutdown authority release failed');
+            }
             log.info(
               { documentCount, durationMs },
               `[server] shutdown flushed ${documentCount} documents in ${durationMs}ms`,
@@ -3966,8 +4202,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     const indexesStartMono = performance.now();
     try {
       await withSpan('ok.boot.indexes', undefined, async () => {
-        const { deletedDocNames, backlinkIndexDegraded } = await derivedIndexStartup.backlinksReady;
-        if (backlinkIndexDegraded) degraded.push('backlink-index');
+        const deletedDocNames = await derivedIndexStartup.offlineDeletionsReady;
         let tombstonedOffline = 0;
         for (const deletedDocName of deletedDocNames) {
           if (isReservedForUserTree(deletedDocName)) continue;
@@ -3981,6 +4216,9 @@ export function createServer(options: ServerOptions): ServerInstance {
             '[removal-guard] tombstoned docs deleted while the server was down',
           );
         }
+        offlineRemovalsReconciled.resolve();
+        const { backlinkIndexDegraded } = await derivedIndexStartup.backlinksReady;
+        if (backlinkIndexDegraded) degraded.push('backlink-index');
         const seedWalkStartMono = performance.now();
         const HOST_SKILLS_EVENT_RE = /^\.(?!ok\/)[A-Za-z0-9_-]+\/skills\//;
         let lastInPlaceDirs: ReadonlySet<string> = contentFilter
@@ -4130,6 +4368,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     } finally {
       recordBootPhase('indexesMs', Math.round(performance.now() - indexesStartMono));
       if (watcher) setBootField('fileCount', watcher.getFileIndex().size);
+      refreshStartupEmbeds();
     }
 
     try {

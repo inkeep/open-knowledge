@@ -136,6 +136,7 @@ export interface BootServerOptions
     | 'commitDebounceMs'
     | 'wipRef'
     | 'destroyTimeoutMs'
+    | 'authorityRegistryPath'
     | 'localOpCliArgs'
     | 'authStreamHeartbeatMs'
     | 'onAgentWrite'
@@ -377,6 +378,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   let collabClientCounter: CollabClientCounter | null = null;
 
   const serverInstance = createServer({
+    authorityRegistryPath: opts.authorityRegistryPath,
     getCollabClientCount: () => collabClientCounter?.getCount() ?? 0,
     acpRegistryFetchImpl: opts.acpRegistryFetchImpl,
     contentDir: opts.contentDir,

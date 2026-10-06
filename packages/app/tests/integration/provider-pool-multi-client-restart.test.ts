@@ -8,6 +8,7 @@ import {
   clientIdsInDoc,
   createMultiClientContext,
   createRestartableServer,
+  createTestClient,
   pollDiskContentStable,
   pollUntil,
 } from './test-harness';
@@ -115,8 +116,8 @@ describe('T2: Multi-client fast restart', () => {
     expect(afterSectionB).toBe(baselineSectionB);
     expect(afterSibling).toBe(baselineSibling);
 
-    const serverDoc = server.instance.hocuspocus.documents.get(docName);
-    if (!serverDoc) throw new Error('server doc missing post-restart');
+    const serverPeer = await createTestClient(server.port, docName);
+    cleanups.push(() => serverPeer.cleanup());
     for (let i = 0; i < ctx.pools.length; i++) {
       const entry = ctx.pools[i].getActive();
       if (!entry) throw new Error(`pool[${i}] has no active entry during post-restart assertion`);
@@ -136,7 +137,7 @@ describe('T2: Multi-client fast restart', () => {
           },
           cleanup: async () => {},
         },
-        serverDoc,
+        serverPeer.doc,
         `client ${i}`,
       );
     }

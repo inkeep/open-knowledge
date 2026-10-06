@@ -567,6 +567,7 @@ export class AgentSessionManager {
   private readonly maxSessions: number;
   private readonly minEvictableIdleMs: number;
   private bridgeLossReporter?: BridgeDeriveLossReporter;
+  private readonly assertDocumentScope?: (docName: string) => void;
   private evictions = 0;
 
   constructor(
@@ -575,12 +576,14 @@ export class AgentSessionManager {
       maxSessions?: number;
       minEvictableIdleMs?: number;
       bridgeLossReporter?: BridgeDeriveLossReporter;
+      assertDocumentScope?: (docName: string) => void;
     } = {},
   ) {
     this.hocuspocus = hocuspocus;
     this.maxSessions = options.maxSessions ?? MAX_AGENT_SESSIONS;
     this.minEvictableIdleMs = options.minEvictableIdleMs ?? MIN_EVICTABLE_IDLE_MS;
     this.bridgeLossReporter = options.bridgeLossReporter;
+    this.assertDocumentScope = options.assertDocumentScope;
   }
 
   public attachBridgeLossReporter(reporter: BridgeDeriveLossReporter): void {
@@ -617,6 +620,7 @@ export class AgentSessionManager {
   }
 
   public getLiveSession(docName: string, agentId: string): SessionRecord | undefined {
+    this.assertDocumentScope?.(docName);
     const key = this.sessionKey(docName, agentId);
     const session = this.sessions.get(key);
     if (session) this.touchSession(key, session);
@@ -668,6 +672,7 @@ export class AgentSessionManager {
     if (isSystemDoc(docName) || isConfigDoc(docName)) {
       throw new Error(`Cannot create agent session for reserved doc: ${docName}`);
     }
+    this.assertDocumentScope?.(docName);
     const key = this.sessionKey(docName, agentId);
 
     const existing = this.sessions.get(key);

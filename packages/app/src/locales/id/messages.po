@@ -3325,6 +3325,10 @@ msgstr "Tutup terminal"
 msgid "Close this chat's tab to delete it"
 msgstr "Tutup tab obrolan ini untuk menghapusnya"
 
+#: src/editor/image-upload/upload-admission.ts
+msgid "Close this preview, then open the folder to upload files"
+msgstr "Tutup pratinjau ini, lalu buka folder untuk mengunggah file"
+
 #: src/components/NoteWindowDeletedState.tsx
 msgid "Close window"
 msgstr "Tutup jendela"

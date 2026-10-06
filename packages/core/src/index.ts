@@ -560,6 +560,8 @@ export { isReservedLogDoc } from './constants/reserved-docs.ts';
 export { DEFAULT_SERVER_HOST } from './constants/server.ts';
 export {
   MACHINE_ID_FILENAME,
+  SERVER_AUTHORITY_LEASES_DIRNAME,
+  SERVER_AUTHORITY_REGISTRY_FILENAME,
   SHARED_OK_ENTRIES,
   SKILL_MOVE_RETAINED_FILENAME,
   SKILL_PLACEMENTS_FILENAME,

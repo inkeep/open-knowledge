@@ -234,6 +234,27 @@ describe('port pinning + EADDRINUSE fallback', () => {
   });
 });
 
+describe('ownership startup errors', () => {
+  test.each([
+    ['ServerAuthorityCollisionError', 'content-ownership'],
+    ['ServerAuthorityCollisionError', 'content-ownership-unverified'],
+    ['ServerAuthorityRegistryError', 'authority-registry'],
+  ])('reports %s without offering an unowned process takeover', async (name, kind) => {
+    const error = new Error('Close the preview before opening this folder');
+    error.name = name;
+    if (kind === 'content-ownership-unverified') Object.assign(error, { verifiedLease: false });
+    const { posted, bootPorts, readyErr } = await driveInit({
+      requestedPort: 24550,
+      boot: () => Promise.reject(error),
+    });
+    expect(readyErr).toBe(error);
+    expect(bootPorts).toEqual([24550]);
+    const message = posted.find((item) => item.type === 'error');
+    expect(message).toMatchObject({ kind, message: error.message });
+    expect(message).not.toHaveProperty('existingLock');
+  });
+});
+
 describe('shutdown exit reason', () => {
   async function drive() {
     return driveInit({

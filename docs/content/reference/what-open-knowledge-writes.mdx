@@ -25,6 +25,7 @@ Writes fall into two buckets, and each table's **Scope** column tells you which:
 Every `~/.ok/` path on this page belongs to Stable, except the shared entries listed below. OpenKnowledge Beta, and the `ok-beta` CLI, write the other files under `~/.ok-beta/` instead, and keep credentials in the OS credential store under the service `open-knowledge-beta` rather than `open-knowledge`. These entries stay under `~/.ok/` for both products:
 
 - `~/.ok/machine-id`, a random id that identifies this machine to project server locks.
+- `~/.ok/local/server-authority.sqlite`, its SQLite rollback journal `~/.ok/local/server-authority.sqlite-journal`, and `~/.ok/local/server-authority-leases/`, created when a server starts to prevent overlapping projects or previews from writing the same content. The registry and lease files are owner-only (`0600`); Stable and Beta share them. A lease is held while its server owns the content and removed on successful shutdown or crash recovery. Uninstall keeps these shared coordination files. Never delete them while a server is running; see [Ownership registry recovery](./cli.mdx#ownership-registry-recovery).
 - `~/.ok/skills/`, the user skills store.
 - `~/.ok/skills-lock.json`, provenance for skills imported at Global scope.
 - `~/.ok/local/installed-skills.json`, `~/.ok/local/skill-placements.json`, and `~/.ok/local/skill-move-retained.json`, the install markers, placement records (where each copy of a skill was written, and whether as a copy or a link), and unfinished-scope-move bookkeeping for Global-scope skills.

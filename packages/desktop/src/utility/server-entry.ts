@@ -5,6 +5,7 @@ import type {
   BootedServer,
   BootServerOptions,
   Config,
+  ServerAuthorityCollisionError,
   ServerExitReason,
 } from '@inkeep/open-knowledge-server';
 import type { UtilityInitCounters, UtilityInitPhase } from '../shared/boot-narration.ts';
@@ -51,7 +52,13 @@ export interface UtilityErrorMessage {
   type: 'error';
   message: string;
   stack?: string;
-  kind?: 'lock-collision' | 'mcp-server-stuck' | 'mcp-server-killed';
+  kind?:
+    | 'lock-collision'
+    | 'mcp-server-stuck'
+    | 'mcp-server-killed'
+    | 'content-ownership'
+    | 'content-ownership-unverified'
+    | 'authority-registry';
   existingLock?: {
     pid: number;
     hostname: string;
@@ -316,6 +323,13 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
           errMsg.kind = 'lock-collision';
           errMsg.existingLock = existing;
         }
+      } else if (errName === 'ServerAuthorityCollisionError') {
+        errMsg.kind =
+          (err as ServerAuthorityCollisionError).verifiedLease === false
+            ? 'content-ownership-unverified'
+            : 'content-ownership';
+      } else if (errName === 'ServerAuthorityRegistryError') {
+        errMsg.kind = 'authority-registry';
       }
       const isGitPreflightFailure =
         errName === 'GitNotAvailableError' || errName === 'GitTooOldError';

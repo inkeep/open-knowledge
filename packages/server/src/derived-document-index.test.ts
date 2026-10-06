@@ -717,8 +717,8 @@ describe('DerivedDocumentIndex', () => {
 
     const startup = index.beginStartup('main');
 
+    await expect(startup.offlineDeletionsReady).resolves.toEqual(['stale']);
     await expect(startup.backlinksReady).resolves.toEqual({
-      deletedDocNames: ['stale'],
       backlinkIndexDegraded: false,
     });
     await index.settleStartupAfterWatcherSeed();
@@ -734,8 +734,8 @@ describe('DerivedDocumentIndex', () => {
       new Error('broken tag cache'),
     );
     const startup = rig.index.beginStartup('main');
+    await expect(startup.offlineDeletionsReady).resolves.toEqual([]);
     await expect(startup.backlinksReady).resolves.toEqual({
-      deletedDocNames: [],
       backlinkIndexDegraded: true,
     });
     vi.spyOn(TagIndex.prototype, 'reconcileWithDisk').mockRejectedValueOnce(

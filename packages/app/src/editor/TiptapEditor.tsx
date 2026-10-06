@@ -48,6 +48,7 @@ import { anchorFromHash } from '@/lib/doc-hash';
 import { claimNoteWindowInitialFocus } from '@/lib/note-window-focus';
 import { mark } from '@/lib/perf';
 import { wrapExtensionsWithTiming } from '@/lib/perf/cold-mount-instrumentation';
+import { useSingleFileMode } from '@/lib/single-file-mode';
 import { useIdentity } from '../presence/identity';
 import { registerEditor, unregisterEditor } from './active-editor';
 import { changedRangeIsOnScreen } from './agent-follow-scroll';
@@ -67,7 +68,7 @@ import { useDocumentContext } from './DocumentContext';
 import { isUserIntentOrigin } from './extensions/autonomous-fragment-edit.ts';
 import { createBareHtmlImageDecoration } from './extensions/bare-html-image-decoration';
 import { setEditorDocName } from './extensions/doc-context.ts';
-import { setEditorSourceMode } from './extensions/editor-mode-context.ts';
+import { setEditorSingleFileMode, setEditorSourceMode } from './extensions/editor-mode-context.ts';
 import { FrozenTableHeaders } from './extensions/frozen-table-headers.ts';
 import { MarkdownLintDecorations } from './extensions/markdown-lint-decorations.ts';
 import { sharedExtensions } from './extensions/shared.ts';
@@ -493,6 +494,7 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
   portalTarget,
 }) => {
   const portalSlotRef = useRef<HTMLDivElement | null>(null);
+  const singleFile = useSingleFileMode();
   const [editorContentRevision, setEditorContentRevision] = useState(0);
   useLayoutEffect(() => {
     const slot = portalSlotRef.current;
@@ -1173,6 +1175,11 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       setEditorSourceMode(editor, false);
     };
   }, [editor, isSourceMode]);
+
+  useLayoutEffect(() => {
+    setEditorSingleFileMode(editor, singleFile);
+    return () => setEditorSingleFileMode(editor, false);
+  }, [editor, singleFile]);
 
   return (
     <div

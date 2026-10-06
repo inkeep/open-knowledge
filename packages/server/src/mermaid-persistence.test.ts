@@ -1,15 +1,17 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { LINEAGE_EPOCH_KEY } from '@inkeep/open-knowledge-core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
+import { tracedAtomicFs } from './fs-traced.ts';
 import {
   loadMermaidDoc,
   MERMAID_SOURCE_ORIGIN,
   type MermaidPersistenceCtx,
   storeMermaidDoc,
 } from './mermaid-persistence.ts';
+import { assertServerContentPath, snapshotServerContentScope } from './server-content-policy.ts';
 
 let contentDir: string;
 
@@ -34,6 +36,33 @@ afterEach(() => {
 });
 
 describe('storeMermaidDoc', () => {
+  test('refuses a nested project created between staging and publishing verbatim content', async () => {
+    writeMmd(SRC);
+    const ctx = makeCtx();
+    const scope = snapshotServerContentScope(contentDir);
+    ctx.assertContentPath = (path) => assertServerContentPath(scope, path);
+    ctx.lkgCache.set(DOC, SRC);
+    const doc = new Y.Doc();
+    doc.getText('source').insert(0, 'graph TD; After-->Change;\n');
+    const write = tracedAtomicFs.writeFile;
+    const staged = vi.spyOn(tracedAtomicFs, 'writeFile').mockImplementation(async (...args) => {
+      await write(...args);
+      mkdirSync(join(contentDir, 'assets', '.ok'));
+      writeFileSync(join(contentDir, 'assets', '.ok', 'config.yml'), '');
+    });
+    try {
+      expect(await storeMermaidDoc(doc, DOC, 'agent', ctx)).toBe('write-failed');
+      expect(readFileSync(ABS(), 'utf8')).toBe(SRC);
+      expect(ctx.lkgCache.get(DOC)).toBe(SRC);
+      expect(
+        readdirSync(join(contentDir, 'assets')).filter((name) => name.endsWith('.tmp')),
+      ).toEqual([]);
+    } finally {
+      staged.mockRestore();
+      doc.destroy();
+    }
+  });
+
   test('persists Y.Text("source") verbatim to the .mmd file', async () => {
     const ctx = makeCtx();
     const doc = new Y.Doc();

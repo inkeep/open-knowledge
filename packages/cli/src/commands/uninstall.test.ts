@@ -582,7 +582,7 @@ describe('uninstallCommand', () => {
     const command = uninstallCommand();
     expect(command.description()).toContain('~/.ok (~/.ok-beta on Beta)');
     const kept =
-      '~/.ok/machine-id, ~/.ok/skills-lock.json, ~/.ok/local/installed-skills.json, ~/.ok/local/skill-placements.json, ~/.ok/local/skill-move-retained.json';
+      '~/.ok/machine-id, ~/.ok/skills-lock.json, ~/.ok/local/installed-skills.json, ~/.ok/local/skill-placements.json, ~/.ok/local/skill-move-retained.json, ~/.ok/local/server-authority.sqlite, ~/.ok/local/server-authority.sqlite-journal, ~/.ok/local/server-authority-leases';
     expect(command.description()).toContain(`always keeps ${kept}, shared by every channel.`);
     expect(command.options.find((o) => o.long === '--purge-content')?.description).toBe(
       `Also remove user-authored content (~/.ok/skills, shared by every channel); still keeps ${kept}`,

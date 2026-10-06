@@ -1,6 +1,17 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { UploadFailedError } from './upload-failure.ts';
 import { uploadFile } from './upload-file.ts';
+
+test('shared cover/property upload admission refuses a preview before network', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>();
+  const pending = uploadFile(new File(['asset'], 'photo.png'), [], {
+    docName: 'note.md',
+    fetch,
+    singleFile: true,
+  });
+  await expect(pending).rejects.toMatchObject({ kind: 'single-file-mode' });
+  expect(fetch).not.toHaveBeenCalled();
+});
 
 interface FetchCall {
   url: string;

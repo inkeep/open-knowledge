@@ -4,7 +4,7 @@ import { ConfigSchema } from '@inkeep/open-knowledge-server';
 import { afterEach, describe, expect, test } from 'vitest';
 import { register as registerMove } from '../../../server/src/mcp/tools/move';
 import type { ServerInstance } from '../../../server/src/mcp/tools/shared';
-import { awaitFileWatcherIndexed, createRestartableServer } from './test-harness';
+import { awaitFileWatcherIndexed, createInspectableServer } from './test-harness';
 
 interface ToolResult {
   content: Array<{ type: 'text'; text: string }>;
@@ -49,7 +49,7 @@ afterEach(async () => {
 
 describe('MCP move tool — real roundtrip against live OK server (QA-004 / QA-005)', () => {
   test('QA-004: move (folder) posts to live /api/rename-path → folder + backlinks rewrite on disk', async () => {
-    const server = await createRestartableServer();
+    const server = await createInspectableServer();
     cleanups.push(() => server.shutdown());
 
     mkdirSync(join(server.contentDir, 'articles'), { recursive: true });
@@ -108,7 +108,7 @@ describe('MCP move tool — real roundtrip against live OK server (QA-004 / QA-0
   }, 60_000);
 
   test('QA-005: move (document) posts to live /api/rename-path with kind:file → backlinks rewrite', async () => {
-    const server = await createRestartableServer();
+    const server = await createInspectableServer();
     cleanups.push(() => server.shutdown());
 
     writeFileSync(join(server.contentDir, 'auth.md'), '# Auth\n', 'utf-8');

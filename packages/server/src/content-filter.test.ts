@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { context, metrics, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import {
@@ -39,6 +39,31 @@ describe('ContentFilter', () => {
     await rm(projectDir, { recursive: true, force: true });
     await rm(xdgDir, { recursive: true, force: true });
   });
+
+  test.each([
+    ['sync', createContentFilter],
+    ['async', createContentFilterAsync],
+  ] as const)(
+    '%s filtering preserves captured exclusions after a nested marker is removed',
+    async (_name, create) => {
+      const child = join(projectDir, 'child');
+      mkdirSync(join(child, '.ok'), { recursive: true });
+      writeFileSync(join(child, '.ok', 'config.yml'), '');
+      writeFileSync(join(child, 'note.md'), '# Child\n');
+      const filter = await create({
+        projectDir,
+        contentDir: projectDir,
+        isContentScopeExcluded: (path) => path === child || path.startsWith(`${child}${sep}`),
+      });
+      unlinkSync(join(child, '.ok', 'config.yml'));
+      await filter.rebuildIgnorePatterns();
+      expect(filter.isExcluded('child/note.md')).toBe(true);
+      expect(filter.isDirExcluded('child')).toBe(true);
+      expect(filter.isExcluded('child/note.md', { bypassFilters: true, showOk: true })).toBe(true);
+      expect(filter.isDirExcluded('child', { syncScope: { pathBase: 'project' } })).toBe(true);
+      expect(filter.isExcluded('own.md')).toBe(false);
+    },
+  );
 
   describe('sync-popover open-target admission', () => {
     const openable = (filter: ContentFilter, relPath: string): boolean =>

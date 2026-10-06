@@ -24,11 +24,13 @@ import {
 } from './derived-document-index.ts';
 import { DocumentDurabilityState } from './document-durability-state.ts';
 import { contentHash, isSelfWrite, registerWrite } from './file-watcher';
+import * as tracedFs from './fs-traced.ts';
 import {
   captureDocSnapshotForPersistence,
   createPersistenceExtension,
   resolveWriterFromOrigin,
 } from './persistence';
+import { ContentScopeAdmissionError } from './server-content-policy.ts';
 import { FILE_SYSTEM_WRITER, GIT_UPSTREAM_WRITER, SERVICE_WRITER } from './shadow-repo';
 
 describe('safeContentPath', () => {
@@ -183,7 +185,7 @@ describe('symlink-safe atomic write', () => {
     symlinkSync(aPath, bPath);
 
     await expect(simulateWrite('cycle-a', '# Content', contentDir)).rejects.toThrow(
-      'Symlink cycle detected',
+      /symlink cycle/i,
     );
   });
 
@@ -261,6 +263,38 @@ describe('persistence refuses links into private repository state', () => {
     });
   }
 
+  test('a staged store rechecks captured ownership before publishing', async () => {
+    const path = join(contentDir, 'note.md');
+    writeFileSync(path, '# Before\n');
+    let owned = true;
+    const persistence = createPersistenceExtension({
+      contentDir,
+      projectDir: contentDir,
+      gitEnabled: false,
+      assertContentPath: () => {
+        if (!owned) throw new ContentScopeAdmissionError();
+      },
+    });
+    const document = new Y.Doc();
+    document.getText('source').insert(0, '# Candidate\n');
+    const write = tracedFs.tracedWriteFile;
+    const staged = vi.spyOn(tracedFs, 'tracedWriteFile').mockImplementation(async (...args) => {
+      await write(...args);
+      owned = false;
+    });
+    try {
+      await expect(persistence.forceStore(document, 'note')).rejects.toThrow(
+        ContentScopeAdmissionError,
+      );
+      expect(staged).toHaveBeenCalledOnce();
+      expect(readFileSync(path, 'utf8')).toBe('# Before\n');
+      expect(readdirSync(contentDir).filter((name) => name.includes('.tmp'))).toEqual([]);
+    } finally {
+      staged.mockRestore();
+      document.destroy();
+    }
+  });
+
   async function storeDocument(
     persistence: ReturnType<typeof createPersistenceExtension>,
     document: Y.Doc,
@@ -322,6 +356,34 @@ describe('persistence refuses links into private repository state', () => {
 
     expect(existsSync(join(contentDir, '.git', 'planted.md'))).toBe(false);
     document.destroy();
+  });
+
+  test('a project marker arriving during staging prevents the atomic publish', async () => {
+    const docName = 'notes/race';
+    const before = '# Before\n';
+    const docPath = join(contentDir, 'notes', 'race.md');
+    writeFileSync(docPath, before);
+    const durabilityState = new DocumentDurabilityState();
+    durabilityState.setReconciledBase(docName, before);
+    const persistence = createPersistence(durabilityState);
+    const document = new Y.Doc();
+    composeAndWriteRawBody(document, '# After\n', 'test');
+    const write = tracedFs.tracedWriteFile;
+    const staging = vi.spyOn(tracedFs, 'tracedWriteFile').mockImplementation(async (...args) => {
+      await write(...args);
+      mkdirSync(join(contentDir, 'notes', '.ok'), { recursive: true });
+      writeFileSync(join(contentDir, 'notes', '.ok', 'config.yml'), '');
+    });
+    try {
+      await expect(storeDocument(persistence, document, docName)).rejects.toThrow(
+        /nested project/i,
+      );
+      expect(readFileSync(docPath, 'utf8')).toBe(before);
+      expect(readdirSync(join(contentDir, 'notes')).sort()).toEqual(['.ok', 'race.md']);
+    } finally {
+      staging.mockRestore();
+      document.destroy();
+    }
   });
 
   test('load leaves a Mermaid doc linked to the git config empty', async () => {

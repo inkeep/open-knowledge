@@ -3329,6 +3329,10 @@ msgstr "터미널 닫기"
 msgid "Close this chat's tab to delete it"
 msgstr "삭제할 채팅 탭 닫기"
 
+#: src/editor/image-upload/upload-admission.ts
+msgid "Close this preview, then open the folder to upload files"
+msgstr "이 미리보기를 닫고 폴더를 열어 파일을 업로드하세요"
+
 #: src/components/NoteWindowDeletedState.tsx
 msgid "Close window"
 msgstr "창 닫기"

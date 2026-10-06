@@ -89,6 +89,25 @@ afterEach(async () => {
 });
 
 describe('getSession — composite key (docName + agentId)', () => {
+  test('rechecks scope admission before returning cached sessions and burst reads', async () => {
+    let admitted = true;
+    manager = new AgentSessionManager(mockHocuspocus as never, {
+      assertDocumentScope: () => {
+        if (!admitted) throw new Error('Scope no longer admitted');
+      },
+    });
+    await manager.getSession('doc.md', 'agent-alice');
+    expect(manager.getLiveSession('doc.md', 'agent-alice')).toBeDefined();
+    admitted = false;
+    await expect(manager.getSession('doc.md', 'agent-alice')).rejects.toThrow(
+      'Scope no longer admitted',
+    );
+    expect(() => manager.getLiveSession('doc.md', 'agent-alice')).toThrow(
+      'Scope no longer admitted',
+    );
+    expect(mockHocuspocus.openedDocs).toEqual(['doc.md']);
+  });
+
   test('creates a session on first call', async () => {
     await manager.getSession('doc.md', 'agent-alice');
     expect(manager.hasSession('doc.md', 'agent-alice')).toBe(true);

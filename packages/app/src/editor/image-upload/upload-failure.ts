@@ -1,6 +1,7 @@
 import { t } from '@lingui/core/macro';
+import { singleFileUploadMessage } from './upload-admission.ts';
 
-export type UploadFailureKind = 'file-unreadable' | 'network';
+export type UploadFailureKind = 'file-unreadable' | 'network' | 'single-file-mode';
 
 const PROBE_TIMEOUT_MS = 1000;
 
@@ -57,6 +58,7 @@ export function classifyUploadFailure(probe: FileReadProbe): UploadFailureKind {
 }
 
 export function uploadFailureMessage(kind: UploadFailureKind, fileName: string): string {
+  if (kind === 'single-file-mode') return singleFileUploadMessage();
   return kind === 'file-unreadable'
     ? t`Couldn't read ${fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again.`
     : t`Couldn't reach the Open Knowledge server to upload ${fileName}.`;

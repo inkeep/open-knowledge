@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import {
   createRestartableServer,
-  getServerState,
+  createTestClient,
   pollUntil,
   schema,
   seedPoolServerInstanceId,
@@ -57,8 +57,7 @@ describe('restart-with-embed-doc: server restart preserves single PM image with 
     await pollUntil(() => pool.getActive()?.provider.isSynced === true, 10_000, 50);
     await pollUntil(() => pool.getActive()?.provider.unsyncedChanges === 0, 10_000, 50);
 
-    const preState = getServerState(server, 'test-doc');
-    if (!preState) throw new Error('server has no test-doc loaded pre-restart');
+    const preState = await createTestClient(server.port, 'test-doc', { resetOnCleanup: false });
     const preJson = yXmlFragmentToProseMirrorRootNode(
       preState.fragment,
       schema,
@@ -70,12 +69,53 @@ describe('restart-with-embed-doc: server restart preserves single PM image with 
     const prePropsRecord = preEmbeds[0]?.attrs?.props as Record<string, unknown> | undefined;
     expect(prePropsRecord?.src).toBe('/photo.png');
     expect(prePropsRecord?.target).toBe('photo.png');
+    await preState.cleanup();
 
     await wait(500);
+    const previousProvider = pool.getActive()?.provider;
 
     server = await server.killAndRestartOnSamePort({ downtimeMs: 400 });
     cleanups.unshift(() => server.shutdown());
-    await pollUntil(() => pool.getActive()?.provider.isSynced === true, 15_000, 50);
+    await pollUntil(() => pool.getActive()?.provider !== previousProvider, 15_000, 50);
+    try {
+      await pollUntil(
+        () => {
+          const active = pool.getActive();
+          if (active?.provider.isSynced !== true) return false;
+          const json = yXmlFragmentToProseMirrorRootNode(
+            active.provider.document.getXmlFragment('default'),
+            schema,
+          ).toJSON() as PmJsonNode;
+          const embeds = collectNodes(json, 'jsxComponent').filter(
+            (node) => node.attrs?.componentName === 'WikiEmbedImage',
+          );
+          const props = embeds[0]?.attrs?.props as Record<string, unknown> | undefined;
+          return embeds.length === 1 && props?.src === '/photo.png';
+        },
+        15_000,
+        50,
+      );
+    } catch (cause) {
+      const active = pool.getActive();
+      throw new Error(
+        `Restarted embed failed to settle: ${JSON.stringify({
+          disk: readFileSync(join(contentDir, 'test-doc.md'), 'utf8'),
+          source: pool.getActive()?.provider.document.getText('source').toString(),
+          fragment: pool.getActive()?.provider.document.getXmlFragment('default').toJSON(),
+          isSynced: pool.getActive()?.provider.isSynced,
+          freshProvider: pool.getActive()?.provider !== previousProvider,
+          epoch: server.serverInstanceId,
+          pm:
+            active === undefined
+              ? null
+              : yXmlFragmentToProseMirrorRootNode(
+                  active.provider.document.getXmlFragment('default'),
+                  schema,
+                ).toJSON(),
+        })}`,
+        { cause },
+      );
+    }
     await pollUntil(() => pool.getActive()?.provider.unsyncedChanges === 0, 15_000, 50);
 
     const entry = pool.getActive();
@@ -95,8 +135,8 @@ describe('restart-with-embed-doc: server restart preserves single PM image with 
     const clientSource = entry.provider.document.getText('source').toString();
     expect((clientSource.match(/!\[\[photo\.png\]\]/g) ?? []).length).toBe(1);
 
-    const postState = getServerState(server, 'test-doc');
-    if (!postState) throw new Error('server has no test-doc loaded post-restart');
+    const postState = await createTestClient(server.port, 'test-doc');
+    cleanups.push(() => postState.cleanup());
     const postJson = yXmlFragmentToProseMirrorRootNode(
       postState.fragment,
       schema,

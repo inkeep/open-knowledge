@@ -1,6 +1,9 @@
 import { ALLOWED_IMAGE_MIME_TYPES, type PropDef } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render } from '@testing-library/react';
+import { toast } from 'sonner';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { PageCoverWidget } from '@/components/PageHeaderWidgets';
+import { SingleFileModeProvider } from '@/lib/single-file-mode';
 import type { JsxComponentDescriptor } from '../registry/types.ts';
 
 type GlobalShims = typeof globalThis & {
@@ -65,6 +68,64 @@ function makeDescriptor(props: PropDef[]): JsxComponentDescriptor {
     reactNodePropNames: new Set(),
   };
 }
+
+test.each(['cover', 'property'] as const)(
+  'the %s picker uses preview mode from the shared provider before uploading',
+  async (surface) => {
+    const bridge = window.okDesktop;
+    const hash = window.location.hash;
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          src: 'photo.png',
+          path: 'photo.png',
+          deduped: false,
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const error = vi.spyOn(toast, 'error');
+    const onChange = vi.fn();
+    (window as { okDesktop?: unknown }).okDesktop = { config: { singleFile: true } };
+    window.location.hash = '#/preview';
+    try {
+      const view = render(
+        <SingleFileModeProvider>
+          {surface === 'cover' ? (
+            <PageCoverWidget keyName="cover" value="" onCommit={onChange} />
+          ) : (
+            <PropPanel
+              descriptor={makeDescriptor([
+                { name: 'src', type: 'string', required: true, accept: ALLOWED_IMAGE_MIME_TYPES },
+              ])}
+              values={{ src: '' }}
+              onChange={onChange}
+            />
+          )}
+        </SingleFileModeProvider>,
+      );
+      const input = view.container.querySelector('input[type="file"]');
+      if (input === null) throw new Error('Upload picker absent');
+      fireEvent.change(input, {
+        target: { files: [new File(['asset'], 'photo.png', { type: 'image/png' })] },
+      });
+      const message = 'Close this preview, then open the folder to upload files';
+      await vi.waitFor(() => {
+        if (surface === 'cover') expect(view.getByText(message)).toBeDefined();
+        else expect(error).toHaveBeenCalledWith(message);
+      });
+      expect(fetch).not.toHaveBeenCalled();
+      expect(onChange).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+      window.okDesktop = bridge;
+      window.location.hash = hash;
+      fetch.mockRestore();
+      error.mockRestore();
+    }
+  },
+);
 
 describe('PropPanel — Enter on a single-line string input dismisses', () => {
   test('Enter on a plain string Input (no autocomplete) calls onDismiss', () => {

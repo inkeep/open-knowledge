@@ -53,7 +53,6 @@ export function isDerivedOrphanMode(value: unknown): value is DerivedOrphanMode 
 }
 
 export interface DerivedIndexStartupBacklinksResult {
-  deletedDocNames: readonly string[];
   backlinkIndexDegraded: boolean;
 }
 
@@ -257,7 +256,10 @@ export class DerivedDocumentIndex
     this.localTargetFileExistenceTimer.unref?.();
   }
 
-  beginStartup(branch: string): { backlinksReady: Promise<DerivedIndexStartupBacklinksResult> } {
+  beginStartup(branch: string): {
+    backlinksReady: Promise<DerivedIndexStartupBacklinksResult>;
+    offlineDeletionsReady: Promise<readonly string[]>;
+  } {
     this.assertOpen();
     if (this.startupBegun) {
       throw new Error('Derived document index startup has already begun');
@@ -267,11 +269,12 @@ export class DerivedDocumentIndex
     this.startupBranch = branch;
     this.backlinkIndex.switchBranch(branch);
 
-    const backlinksReady = this.initializeBacklinks(branch);
+    const offlineDeletions = Promise.withResolvers<readonly string[]>();
+    const backlinksReady = this.initializeBacklinks(branch, offlineDeletions.resolve);
     const tagsWarm = this.warmTags();
     this.tail = Promise.all([backlinksReady.then(() => undefined), tagsWarm]).then(() => undefined);
     this.startupAdmission.resolve();
-    return { backlinksReady };
+    return { backlinksReady, offlineDeletionsReady: offlineDeletions.promise };
   }
 
   async settleStartupAfterWatcherSeed(): Promise<DerivedIndexStartupSettlement> {
@@ -727,13 +730,15 @@ export class DerivedDocumentIndex
     });
   }
 
-  private async initializeBacklinks(branch: string): Promise<DerivedIndexStartupBacklinksResult> {
+  private async initializeBacklinks(
+    branch: string,
+    resolveOfflineDeletions: (deletedDocNames: readonly string[]) => void,
+  ): Promise<DerivedIndexStartupBacklinksResult> {
     try {
-      let deletedDocNames: readonly string[] = [];
       this.graphFileOracle();
       if (await this.backlinkIndex.loadFromDisk(branch)) {
         const diff = await this.backlinkIndex.reconcileWithDisk(branch);
-        deletedDocNames = diff.deletedDocNames;
+        resolveOfflineDeletions(diff.deletedDocNames);
         if (diff.added > 0 || diff.updated > 0 || diff.deleted > 0) {
           log.info(
             {
@@ -745,17 +750,19 @@ export class DerivedDocumentIndex
           );
         }
       } else {
+        resolveOfflineDeletions([]);
         await this.backlinkIndex.rebuildFromDisk(branch);
       }
       await this.ingestGlobalSkillNodesLogOnly(branch, 'startup');
       await this.saveBacklinksLogOnly('startup', branch);
-      return { deletedDocNames, backlinkIndexDegraded: false };
+      return { backlinkIndexDegraded: false };
     } catch (err) {
+      resolveOfflineDeletions([]);
       log.error(
         { err, branch },
         '[backlinks] startup init failed; index will populate incrementally via watcher',
       );
-      return { deletedDocNames: [], backlinkIndexDegraded: true };
+      return { backlinkIndexDegraded: true };
     }
   }
 

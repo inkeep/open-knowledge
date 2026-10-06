@@ -346,12 +346,14 @@ import {
   incrementSummariesTruncated,
 } from './metrics.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
+import { assertProjectContentSubtree } from './project-content-scope.ts';
 import { isValidRelativeContentPath } from './relative-content-path.ts';
 import {
   appendRenameLogEntry,
   getOrLoadRenameLogIndex,
   type RenameLogEntry,
 } from './rename-log.ts';
+import { ServerMutationShuttingDownError } from './server-content-policy.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
 import { createAssetService } from './services/assets.ts';
 import { createFileOpsService, DuplicateNameExhaustedError } from './services/file-ops.ts';
@@ -974,7 +976,11 @@ function requireNonEmptyDocName(
   return null;
 }
 
-function resolveContentEntryPath(contentDir: string, kind: ContentEntryKind, path: string): string {
+function resolveUncheckedContentEntryPath(
+  contentDir: string,
+  kind: ContentEntryKind,
+  path: string,
+): string {
   if (!isValidRelativeContentPath(path)) {
     throw new PathContainmentError('path must be a relative content path');
   }
@@ -1074,7 +1080,7 @@ function nextAvailableDuplicateFolderPath(
   const { parent, basename } = splitContentPath(sourceFolderPath);
   for (let attempt = 1; attempt <= 10_000; attempt += 1) {
     const candidate = joinContentPath(parent, duplicateBasename(basename, attempt));
-    const fullPath = resolveContentEntryPath(contentDir, 'folder', candidate);
+    const fullPath = resolveUncheckedContentEntryPath(contentDir, 'folder', candidate);
     if (!existsSync(fullPath)) return { folderPath: candidate, attempt };
   }
   throw new DuplicateNameExhaustedError(sourceFolderPath);
@@ -1084,7 +1090,7 @@ function collectMarkdownCopies(
   contentDir: string,
   folderPath: string,
 ): Array<{ docName: string; fullPath: string; content: string }> {
-  const folderAbs = resolveContentEntryPath(contentDir, 'folder', folderPath);
+  const folderAbs = resolveUncheckedContentEntryPath(contentDir, 'folder', folderPath);
   const docs: Array<{ docName: string; fullPath: string; content: string }> = [];
 
   function walk(absDir: string, relDir: string): void {
@@ -1110,7 +1116,7 @@ function collectMarkdownCopies(
 }
 
 function collectFolderPaths(contentDir: string, folderPath: string): string[] {
-  const folderAbs = resolveContentEntryPath(contentDir, 'folder', folderPath);
+  const folderAbs = resolveUncheckedContentEntryPath(contentDir, 'folder', folderPath);
   const folders: string[] = [folderPath];
 
   function walk(absDir: string, relDir: string): void {
@@ -1270,6 +1276,8 @@ interface ApiExtensionBaseOptions {
   durabilityState: DocumentDurabilityState;
   sessionManager: AgentSessionManager;
   contentDir: string;
+  assertContentPath?: (path: string) => void;
+  assertContentSubtree?: (path: string) => void;
   getGeneratedIndexSettingsStatus?: () => GeneratedIndexSettingsStatus;
   setGeneratedIndexEnabled?: (enabled: boolean) => Promise<GeneratedIndexSettingsStatus>;
   ephemeral?: boolean;
@@ -1446,6 +1454,20 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
   shutdownLocalOps(): Promise<void>;
 } {
   const { durabilityState } = options;
+  let closingMutations = false;
+  const pendingMutations = new Set<Promise<void>>();
+  async function dispatchMutation(operation: () => Promise<void>, pathname: string): Promise<void> {
+    if (closingMutations)
+      throw new ServerMutationShuttingDownError(pathname.startsWith('/api/local-op/'));
+    const task = operation();
+    pendingMutations.add(task);
+    try {
+      await task;
+    } finally {
+      pendingMutations.delete(task);
+    }
+  }
+  const assertContentSubtree = options.assertContentSubtree;
   const ingressPolicy = options.ingressPolicy ?? buildIngressPolicy({});
   const checkLocalOpSecurity = (
     req: IncomingMessage,
@@ -1535,6 +1557,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       localOpCliArgs,
       declaredGitHubHosts,
     });
+  function resolveContentEntryPath(dir: string, kind: ContentEntryKind, path: string): string {
+    const resolved = resolveUncheckedContentEntryPath(dir, kind, path);
+    options.assertContentPath?.(resolved);
+    return resolved;
+  }
   const catalogCache = createSkillsCatalogCache({ homeDirOverride, log });
   const { bumpSkillsCatalogGen, enumerateInstalledSkillsCached, pluginSkillsByName } = catalogCache;
   const signalChannel: typeof rawSignalChannel = rawSignalChannel
@@ -2780,6 +2807,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
           ) {
             throw new ManagedRenameSourceTypeMismatchError(kind);
           }
+          if (kind === 'folder') {
+            assertProjectContentSubtree(sourcePathRoot, contentDir);
+            assertContentSubtree?.(sourcePathRoot);
+          }
           const renamedAssets =
             kind === 'folder'
               ? listRenamedAssetsForFolderMove(sourcePathRoot, fromPath, toPath)
@@ -3975,11 +4006,13 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
 
   const assetService = createAssetService({
     contentDir,
+    assertContentPath: options.assertContentPath,
     isPathIgnored: (relativePath) => contentFilter?.isPathIgnored(relativePath) ?? false,
     getAttachmentFolderPath,
     resolveTrackedFile,
   });
   const fileOpsService = createFileOpsService({
+    assertContentSubtree,
     contentDir,
     resolveContentEntryPath,
     docNameForPath: (relPath) => docNameForFileOperationPath(contentDir, relPath),
@@ -4006,8 +4039,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       nextAvailableDuplicateDocName(contentDir, sourceDocName),
     nextAvailableDuplicateFolderPath: (sourceFolderPath) =>
       nextAvailableDuplicateFolderPath(contentDir, sourceFolderPath),
-    resolveDuplicateDocPath: (docName, extension) =>
-      resolveDuplicateDocPath(contentDir, docName, extension),
+    resolveDuplicateDocPath: (docName, extension) => {
+      const path = resolveDuplicateDocPath(contentDir, docName, extension);
+      options.assertContentPath?.(path);
+      return path;
+    },
     collectMarkdownCopies: (folderPath) => collectMarkdownCopies(contentDir, folderPath),
     collectFolderPaths: (folderPath) => collectFolderPaths(contentDir, folderPath),
     contentFilter: contentFilter ?? undefined,
@@ -4881,6 +4917,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     policy: ingressPolicy,
     ephemeral,
     table: apiRouteTable,
+    dispatchMutation,
   });
 
   const linkGraphRoutes = createLinkGraphRoutes({
@@ -5402,6 +5439,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       policy: ingressPolicy,
       ephemeral,
       table: group.table,
+      dispatchMutation,
     }),
   );
   const nativeApi: NativeApiHandle = {
@@ -5433,7 +5471,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
   const resolveLocalApiNativeDispatch = (pathname: string) => {
     for (const table of localApiNativeTables) {
       const dispatch = table.resolve(pathname)?.dispatch;
-      if (dispatch !== undefined) return dispatch;
+      if (dispatch !== undefined) {
+        return table.isMutating(pathname)
+          ? (req: IncomingMessage, res: ServerResponse) =>
+              dispatchMutation(() => dispatch(req, res), pathname)
+          : dispatch;
+      }
     }
     return undefined;
   };
@@ -5446,7 +5489,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     resolve: (pathname) => {
       if (!MCP_LOCAL_API_PATHS.has(pathname)) return undefined;
       const legacy = routes[pathname];
-      if (legacy !== undefined) return legacy;
+      if (legacy !== undefined) {
+        return apiRouteTable.isMutating(pathname)
+          ? (req, res) => dispatchMutation(() => legacy(req, res), pathname)
+          : legacy;
+      }
       return resolveLocalApiNativeDispatch(pathname);
     },
   });
@@ -5458,6 +5505,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     },
     nativeApi,
     localApi,
-    shutdownLocalOps: localOpRoutes.shutdown,
+    shutdownLocalOps: async () => {
+      closingMutations = true;
+      const results = await Promise.allSettled([...pendingMutations, localOpRoutes.shutdown()]);
+      const localOps = results.at(-1);
+      if (localOps?.status === 'rejected') throw localOps.reason;
+    },
   };
 }

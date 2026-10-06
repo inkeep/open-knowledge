@@ -3329,6 +3329,10 @@ msgstr "關閉終端機"
 msgid "Close this chat's tab to delete it"
 msgstr "關閉此對話的分頁後才能刪除"
 
+#: src/editor/image-upload/upload-admission.ts
+msgid "Close this preview, then open the folder to upload files"
+msgstr "關閉此預覽，然後開啟資料夾以上傳檔案"
+
 #: src/components/NoteWindowDeletedState.tsx
 msgid "Close window"
 msgstr "關閉視窗"

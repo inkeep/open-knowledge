@@ -175,6 +175,7 @@ export function createDocumentRoutes(deps: DocumentRouteDeps): DocumentRoutes {
           return;
         }
 
+        const filePath = resolveContentEntryPath(contentDir, 'file', docName);
         const existing = hocuspocus.documents.get(docName);
         if (existing) {
           successResponse(
@@ -191,7 +192,6 @@ export function createDocumentRoutes(deps: DocumentRouteDeps): DocumentRoutes {
           return;
         }
 
-        const filePath = resolveContentEntryPath(contentDir, 'file', docName);
         if (!existsSync(filePath)) {
           errorResponse(res, 404, 'urn:ok:error:doc-not-found', `Document not found: ${docName}.`, {
             handler: 'document-read',

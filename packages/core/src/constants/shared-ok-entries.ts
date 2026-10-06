@@ -10,6 +10,10 @@ export const SKILL_PLACEMENTS_FILENAME = 'skill-placements.json';
 
 export const SKILL_MOVE_RETAINED_FILENAME = 'skill-move-retained.json';
 
+export const SERVER_AUTHORITY_REGISTRY_FILENAME = 'server-authority.sqlite';
+
+export const SERVER_AUTHORITY_LEASES_DIRNAME = 'server-authority-leases';
+
 export const SHARED_OK_ENTRIES: readonly string[] = [
   MACHINE_ID_FILENAME,
   SKILLS_STORE_DIRNAME,
@@ -17,4 +21,7 @@ export const SHARED_OK_ENTRIES: readonly string[] = [
   `${LOCAL_DIR}/${INSTALLED_SKILLS_FILENAME}`,
   `${LOCAL_DIR}/${SKILL_PLACEMENTS_FILENAME}`,
   `${LOCAL_DIR}/${SKILL_MOVE_RETAINED_FILENAME}`,
+  `${LOCAL_DIR}/${SERVER_AUTHORITY_REGISTRY_FILENAME}`,
+  `${LOCAL_DIR}/${SERVER_AUTHORITY_REGISTRY_FILENAME}-journal`,
+  `${LOCAL_DIR}/${SERVER_AUTHORITY_LEASES_DIRNAME}`,
 ];

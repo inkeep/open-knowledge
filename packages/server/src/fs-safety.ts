@@ -5,6 +5,7 @@ import { normalizeFsPath } from './fs-traced.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import { symlinkReachesPrivateState } from './incoming-symlink-guard.ts';
 import type { PinoLogger } from './logger.ts';
+import { assertProjectContentScope } from './project-content-scope.ts';
 
 export class SymlinkEscapeError extends Error {
   constructor(message: string) {
@@ -92,6 +93,7 @@ export function assertNoSymlinkEscape(fullPath: string, resolvedContentDir: stri
       ) {
         throw new PrivateStateSymlinkError();
       }
+      assertProjectContentScope(fullPath, resolvedContentDir);
       return;
     } catch (err) {
       const code = errnoCode(err);

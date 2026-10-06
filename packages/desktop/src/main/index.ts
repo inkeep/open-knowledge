@@ -2150,6 +2150,15 @@ async function openProjectOrFallbackToNavigator(
     } else if (kind === 'lock-collision') {
       dialogTitle = 'OpenKnowledge is already running for this project';
       dialogBody = `${projectPath}\n\n${errorMessage}`;
+    } else if (kind === 'content-ownership') {
+      dialogTitle = 'This content is already open';
+      dialogBody = `${projectPath}\n\n${errorMessage}`;
+    } else if (kind === 'content-ownership-unverified') {
+      dialogTitle = 'OpenKnowledge cannot safely open this content';
+      dialogBody = `${projectPath}\n\n${errorMessage}`;
+    } else if (kind === 'authority-registry') {
+      dialogTitle = 'OpenKnowledge cannot safely open this folder';
+      dialogBody = `${projectPath}\n\n${errorMessage}`;
     } else if (kind === 'stale-lock-holder') {
       dialogTitle =
         staleLockReason === 'lock-not-attachable'

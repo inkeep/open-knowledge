@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resolveDirectoryRoot } from './directory-root.ts';
+import { resolveDirectoryRoot, resolveExistingNativeAncestor } from './directory-root.ts';
 import { getLogger } from './logger.ts';
 
 describe('resolveDirectoryRoot', () => {
@@ -35,6 +35,23 @@ describe('resolveDirectoryRoot', () => {
 
     expect(resolved).toBe(realpathSync.native(target));
     expect(diagnostics()).toEqual([]);
+  });
+
+  it('resolves the existing ancestor through an alias while retaining the absent tail separately', () => {
+    const target = join(scratch, 'target');
+    mkdirSync(target);
+    const alias = join(scratch, 'alias');
+    symlinkSync(target, alias, 'junction');
+    expect(resolveExistingNativeAncestor(join(alias, 'new', 'note.md'))).toEqual({
+      ancestor: realpathSync.native(target),
+      missingSegments: ['new', 'note.md'],
+    });
+  });
+
+  it('propagates cycles so membership and authoritative callers can apply their own error contracts', () => {
+    const loop = join(scratch, 'loop');
+    symlinkSync(loop, loop, 'dir');
+    expect(() => resolveExistingNativeAncestor(join(loop, 'note.md'))).toThrow();
   });
 
   it('keeps the given path and records which root stayed unresolved, with the errno, when native resolution fails', () => {

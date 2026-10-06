@@ -29,6 +29,24 @@ interface ApiRouteResolution {
   dispatch?: ((req: IncomingMessage, res: ServerResponse) => Promise<void>) | undefined;
 }
 
+const PREVIEW_DOCUMENT_MUTATIONS = new Set([
+  '/api/agent-write',
+  '/api/agent-write-md',
+  '/api/agent-patch',
+  '/api/agent-undo',
+  '/api/agent-write-batch',
+  '/api/comments',
+  '/api/comment',
+  '/api/client-logs',
+  '/api/frontmatter-patch',
+  '/api/save-version',
+  '/api/rollback',
+  '/api/lint/fix',
+  '/api/folder-config',
+  '/api/template',
+  '/api/agent-integrations/apply',
+]);
+
 export interface ApiRouteTable {
   resolve(pathname: string): ApiRouteResolution | null;
   isMutating(pathname: string): boolean;
@@ -113,6 +131,7 @@ export interface ApiPipelineOptions {
   policy?: IngressPolicy;
   ephemeral?: boolean;
   table: ApiRouteTable;
+  dispatchMutation?: (operation: () => Promise<void>, pathname: string) => Promise<void>;
 }
 
 export type ApiRequestPipeline = (req: IncomingMessage, res: ServerResponse) => Promise<boolean>;
@@ -233,6 +252,23 @@ export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPi
     }
 
     if (table.isMutating(url)) {
+      if (
+        ephemeral &&
+        resolution.dispatch !== undefined &&
+        (method === 'POST' || method === 'PUT' || method === 'DELETE') &&
+        !PREVIEW_DOCUMENT_MUTATIONS.has(url)
+      ) {
+        errorResponse(
+          response,
+          403,
+          'urn:ok:error:single-file-mode',
+          'Single-file previews cannot manage project files.',
+          {
+            handler: 'api-preview-content-scope',
+          },
+        );
+        return true;
+      }
       const peerAddress = request.socket?.remoteAddress;
       if (peerAddress !== undefined && !isPeerAdmitted(peerAddress, policy)) {
         errorResponse(response, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
@@ -291,7 +327,11 @@ export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPi
           try {
             const dispatch = resolution.dispatch;
             if (dispatch !== undefined) {
-              await dispatch(request, response);
+              if (table.isMutating(url) && opts.dispatchMutation !== undefined) {
+                await opts.dispatchMutation(() => dispatch(request, response), url);
+              } else {
+                await dispatch(request, response);
+              }
             } else {
               errorResponse(response, 404, 'urn:ok:error:not-found', 'API endpoint not found.', {
                 handler: 'api-dispatch',

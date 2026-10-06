@@ -3325,6 +3325,10 @@ msgstr "Fechar terminal"
 msgid "Close this chat's tab to delete it"
 msgstr "Feche a aba deste chat para excluí-lo"
 
+#: src/editor/image-upload/upload-admission.ts
+msgid "Close this preview, then open the folder to upload files"
+msgstr "Feche esta prévia e abra a pasta para enviar arquivos"
+
 #: src/components/NoteWindowDeletedState.tsx
 msgid "Close window"
 msgstr "Fechar janela"

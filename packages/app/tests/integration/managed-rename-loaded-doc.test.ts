@@ -8,7 +8,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterEach, describe, expect, test } from 'vitest';
-import { createMultiClientContext, createRestartableServer, pollUntil } from './test-harness';
+import { createInspectableServer, createMultiClientContext, pollUntil } from './test-harness';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -20,7 +20,7 @@ afterEach(async () => {
 
 describe('Managed rename — loaded-Y.Doc rewrite path (QA-040 / QA-008)', () => {
   test('open editor on doc with [[old]] link → file rename → Y.Text observably becomes [[new]]', async () => {
-    const server = await createRestartableServer();
+    const server = await createInspectableServer();
     cleanups.push(() => server.shutdown());
 
     writeFileSync(join(server.contentDir, 'old.md'), '# Old doc\n', 'utf-8');

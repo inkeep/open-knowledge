@@ -748,7 +748,7 @@ export async function runStartCommand(configArg: Config, opts: StartCommandOptio
       process.exit(1);
     }
 
-    if (isServerLockCollision(err, serverModule)) {
+    if (isServerLockCollision(err, serverModule, cwd)) {
       const lockDir = serverModule.resolveLockDir(cwd);
       let reuse: ServerReuseInfo | null = null;
       try {
@@ -927,9 +927,19 @@ export function formatServerReuseNotice(info: ServerReuseInfo): string[] {
 export function isServerLockCollision(
   err: unknown,
   serverModule: typeof import('@inkeep/open-knowledge-server'),
+  cwd: string,
 ): boolean {
   const lockErr = serverModule.ServerLockCollisionError;
-  return lockErr !== undefined && err instanceof lockErr;
+  if (lockErr !== undefined && err instanceof lockErr) return true;
+  const authorityErr = serverModule.ServerAuthorityCollisionError;
+  if (authorityErr === undefined || !(err instanceof authorityErr)) return false;
+  try {
+    return (
+      err.existing.scope.kind === 'tree' && realpathSync.native(cwd) === err.existing.projectDir
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function tryDescribeLockCollision(
@@ -937,6 +947,10 @@ export function tryDescribeLockCollision(
   cwd: string,
   serverModule: typeof import('@inkeep/open-knowledge-server'),
 ): string | null {
+  const authorityErr = serverModule.ServerAuthorityCollisionError;
+  if (authorityErr !== undefined && err instanceof authorityErr) return err.message;
+  const registryErr = serverModule.ServerAuthorityRegistryError;
+  if (registryErr !== undefined && err instanceof registryErr) return err.message;
   const lockErr = serverModule.ServerLockCollisionError;
   if (lockErr === undefined || !(err instanceof lockErr)) return null;
 
