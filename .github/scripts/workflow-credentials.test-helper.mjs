@@ -23,7 +23,7 @@ export function credentialReasons(workflow, job) {
     }
   }
   for (const expr of [...expressionsIn(job), ...expressionsIn(workflow.env ?? {})]) {
-    if (/\bsecrets\b/.test(expr.replace(/\bsecrets\.GITHUB_TOKEN\b/g, ''))) {
+    if (/\bsecrets\b/i.test(expr.replace(/\bsecrets\.GITHUB_TOKEN\b/gi, ''))) {
       reasons.push(`secret: ${expr}`);
     }
   }

@@ -1,8 +1,9 @@
 name: Desktop build
 
 # M2 per specs/2026-04-11-electron-desktop-app/SPEC.md §14:
-# Produces a Universal DMG (arm64 + x64 merged). When Apple Developer cert
-# + notary credentials are configured as repo secrets, the DMG is signed with
+# Produces a Universal DMG (arm64 + x64 merged). When the run is on main and
+# the release-signing environment holds the Apple Developer cert + notary
+# credentials, the DMG is signed with
 # Developer ID, notarized via xcrun notarytool, stapled, and fuse-verified
 # (D17 paranoid post-sign check). When secrets are absent, the workflow runs
 # `build:mac:unsigned` explicitly and uploads the artifact under a name that
@@ -15,7 +16,7 @@ name: Desktop build
 # ~10× more expensive than ubuntu — PR-triggering only makes sense after
 # M2 is closing the DOD loop.
 #
-# Required secrets (when ready to sign — wire via Settings → Secrets):
+# Required secrets, held in the release-signing environment (main only):
 #   CSC_LINK                    Base64-encoded .p12 containing the Developer
 #                               ID Application cert + private key. Generate:
 #                                 base64 -i developer-id.p12 | pbcopy
@@ -81,6 +82,7 @@ jobs:
     # ships with Xcode 26+.
     runs-on: macos-26
     cache-mode: none
+    environment: ${{ github.ref == 'refs/heads/main' && 'release-signing' || '' }}
     # 45 min budget. Local `pnpm run build:mac:unsigned` baseline on M3 Max
     # is ~3-4 min wall-clock; CI runners are ~2× slower; signing +
     # notarization adds 2-5 min of Apple round-trip on top. 45 min leaves

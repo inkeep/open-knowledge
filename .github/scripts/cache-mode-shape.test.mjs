@@ -338,6 +338,10 @@ describe('cache-mode sweep self-tests', () => {
         { permissions: {}, steps: [{ run: '${{ toJSON(secrets) }}' }] },
       ],
       'an indexed secret': [{}, { permissions: {}, steps: [{ run: "${{ secrets['PAT'] }}" }] }],
+      'the secrets context in another casing': [
+        {},
+        { permissions: {}, steps: [{ run: '${{ SECRETS.pat }}' }] },
+      ],
       'a secret in a bare if': [
         {},
         { permissions: {}, steps: [{ if: "secrets.PAT != ''", run: 'true' }] },
@@ -370,6 +374,13 @@ describe('cache-mode sweep self-tests', () => {
         {
           permissions: { contents: 'read' },
           steps: [{ env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' } }],
+        },
+      ],
+      'GITHUB_TOKEN in another casing': [
+        {},
+        {
+          permissions: { contents: 'read' },
+          steps: [{ env: { GH_TOKEN: '${{ Secrets.github_token }}' } }],
         },
       ],
       'github.token': [

@@ -43,7 +43,7 @@ name: Desktop release
 #     GITHUB_TOKEN-authored release events. repository_dispatch is the
 #     documented exemption.
 #     See https://docs.github.com/en/actions/concepts/security/github_token.
-# Required secrets:
+# Required secrets, held in the release-signing environment (main only):
 #   macOS (identical shape to desktop-build.yml):
 #     CSC_LINK / CSC_KEY_PASSWORD
 #     APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID
@@ -488,6 +488,7 @@ jobs:
     # `actool`, which only ships with Xcode 26+.
     runs-on: macos-26
     cache-mode: none
+    environment: release-signing
     timeout-minutes: 75
     permissions:
       # Explicit so a future step needing more fails at review, not with a
@@ -1024,6 +1025,7 @@ jobs:
         variant: ${{ fromJSON(contains(github.event.client_payload.release_tag || inputs.release_tag, '-beta.') && '["legacy-beta","beta"]' || '["stable"]') }}
     runs-on: windows-latest
     cache-mode: none
+    environment: release-signing
     timeout-minutes: 45
     env:
       OK_DESKTOP_VARIANT: ${{ matrix.variant }}
@@ -1153,7 +1155,7 @@ jobs:
           [[ -n "${AZURE_SIGNING_PROFILE:-}" ]] || missing+=(AZURE_SIGNING_PROFILE)
           [[ -n "${AZURE_SIGNING_PUBLISHER:-}" ]] || missing+=(AZURE_SIGNING_PUBLISHER)
           if [[ ${#missing[@]} -gt 0 ]]; then
-            echo "::error::Cannot publish unsigned Windows installers — missing Azure Trusted Signing config: ${missing[*]}. Set the AZURE_* secrets + AZURE_SIGNING_* repo variables (see the workflow header), or use desktop-build-win-linux.yml for unsigned internal-QA builds."
+            echo "::error::Cannot publish unsigned Windows installers — missing Azure Trusted Signing config: ${missing[*]}. Set the AZURE_* secrets in the release-signing environment and the AZURE_SIGNING_* repo variables (see the workflow header), or use desktop-build-win-linux.yml for unsigned internal-QA builds."
             exit 1
           fi
           echo "::notice::Azure Trusted Signing credentials present — building SIGNED installers."

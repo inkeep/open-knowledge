@@ -24,8 +24,9 @@ name: Desktop build (manual, Windows/Linux)
 # way.
 #
 # Windows signing (D3, Azure Artifact Signing): OPTIONAL here. When the
-# three AZURE_* secrets + four AZURE_SIGNING_* repo variables are
-# configured, the Windows job passes win.azureSignOptions to
+# run is on main, the release-signing environment holds the three AZURE_*
+# secrets, and the four AZURE_SIGNING_* repo variables are configured, the
+# Windows job passes win.azureSignOptions to
 # electron-builder; when absent it builds unsigned (acceptable for
 # internal QA only — unsigned Windows builds are never published, and
 # this workflow cannot publish by construction).
@@ -182,6 +183,7 @@ jobs:
     needs: prepare
     runs-on: windows-latest
     cache-mode: none
+    environment: ${{ github.ref == 'refs/heads/main' && 'release-signing' || '' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
