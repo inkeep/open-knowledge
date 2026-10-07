@@ -73,6 +73,7 @@
       ]
     },
     "//#test:uncached": {
+      "dependsOn": ["@inkeep/open-knowledge-core#build"],
       "cache": false,
       "inputs": []
     },
