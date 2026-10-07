@@ -119,6 +119,8 @@ Most users never set these — the schema settings above cover the common cases.
 | `HOST` | Server bind host. The `--bind` flag wins over this. |
 | `PORT` | Server bind port. The `--port` flag wins over this. |
 | `OK_MCP_AUTOSTART` | Set to `0` to stop MCP tool calls from auto-starting the project's OpenKnowledge server; tools error until you run `ok start` |
+| `OK_FORCE_BROWSER` | Set to `1` so bare `ok` runs the browser server instead of opening the installed desktop app. `ok start` without `--mode app` runs the browser server either way, and `ok start --mode app` refuses to run while it is set. |
+| `OK_FORCE_DESKTOP` | Set to `1` so bare `ok` and `ok start --mode app` open the installed desktop app even when output is not an interactive terminal, over SSH, or on Linux without a display. `OK_FORCE_BROWSER=1` takes precedence. |
 | `OK_LOG_LEVEL` | Log verbosity (`info`, `debug`, `trace`). Falls back to `LOG_LEVEL` if unset. |
 
 **Advanced / operator:**

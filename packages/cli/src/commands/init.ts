@@ -649,6 +649,8 @@ interface InitCommandResult {
   legacyProjectConfigs: ProjectConfigResult[];
   projectSkills: ProjectSkillResult[];
   skillInstall?: InstallUserSkillResult | 'declined';
+  skillBundles?: readonly { bundleId: BundleId; result: InstallUserSkillResult }[];
+  skillsRequested?: string | boolean;
   skillHosts?: readonly string[];
   preview?: PreviewResult;
   didGitInit: boolean;
@@ -1319,11 +1321,13 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
   let anyFailed = false;
   let anySkipped = false;
   let anyNoHosts = false;
+  const skillBundles: { bundleId: BundleId; result: InstallUserSkillResult }[] = [];
   for (const id of USER_GLOBAL_BUNDLE_IDS) {
     if (!enabledBundles.has(id)) continue;
     await writeBundleDecision(skillHome, BUNDLE_SKILL_NAME[id], true).catch(() => {});
     anyEnabled = true;
     const result = await installSkill({ home: options.home, bundleId: id, force: true });
+    skillBundles.push({ bundleId: id, result });
     if (result === 'installed') anyInstalled = true;
     else if (result === 'failed') anyFailed = true;
     else if (result === 'no-hosts') anyNoHosts = true;
@@ -1369,6 +1373,8 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
     projectSkills: projectSkillResults,
     legacyProjectConfigs,
     skillInstall,
+    skillBundles,
+    skillsRequested: options.skills,
     skillHosts,
     didGitInit: gitResult.didInit,
     rootGitignoreCreated,
@@ -1655,44 +1661,63 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
     );
   }
 
-  if (result.skillInstall) {
+  if (result.skillInstall === 'declined') {
     lines.push('');
-    lines.push(accent('User-global skill:'));
-    switch (result.skillInstall) {
-      case 'installed': {
-        const hostLabels = (result.skillHosts ?? []).map(
-          (id) => EDITOR_LABELS[id as EditorId] ?? id,
-        );
-        const target = hostLabels.length > 0 ? hostLabels.join(', ') : 'the shared ~/.agents store';
-        lines.push(`  open-knowledge  ${success(`installed for ${target}`)}`);
-        lines.push(
-          `  ${dim('Counted on skills.sh (skill name + source repo, once per machine).')}`,
-        );
-        lines.push(`  ${dim('Opt out: DO_NOT_TRACK=1, or Settings → User → Preferences.')}`);
-        break;
+    lines.push(accent('User-global skills:'));
+    if (typeof result.skillsRequested === 'string') {
+      lines.push(
+        `  ${dim(`none installed — --skills "${result.skillsRequested}" names no known skill bundle (known: ${USER_GLOBAL_BUNDLE_IDS.join(', ')})`)}`,
+      );
+      lines.push(`  ${dim('No user-global skill was installed or removed.')}`);
+    } else {
+      lines.push(`  ${dim('none installed — skipped for this run (--no-skills)')}`);
+      lines.push(`  ${dim('No user-global skill was installed or removed; any already on this')}`);
+      lines.push(`  ${dim('machine are untouched. Run init without the flag to install them:')}`);
+      lines.push(`  ${dim('  ok init')}`);
+      lines.push(
+        `  ${dim('--no-skills covers user-global skills only, not project-local skills.')}`,
+      );
+    }
+  } else if (result.skillInstall) {
+    lines.push('');
+    lines.push(accent('User-global skills:'));
+    const bundles = result.skillBundles ?? [];
+    const nameWidth = Math.max(0, ...bundles.map((b) => BUNDLE_SKILL_NAME[b.bundleId].length));
+    for (const bundle of bundles) {
+      const name = BUNDLE_SKILL_NAME[bundle.bundleId].padEnd(nameWidth);
+      switch (bundle.result) {
+        case 'installed': {
+          const hostLabels = (result.skillHosts ?? []).map(
+            (id) => EDITOR_LABELS[id as EditorId] ?? id,
+          );
+          const target =
+            hostLabels.length > 0 ? hostLabels.join(', ') : 'the shared ~/.agents store';
+          lines.push(`  ${name}  ${success(`installed for ${target}`)}`);
+          break;
+        }
+        case 'skip-current':
+          lines.push(`  ${name}  ${success('already installed at current version')}`);
+          break;
+        case 'no-hosts':
+          lines.push(
+            `  ${name}  ${dim('skipped — no supported agent host detected in your home directory')}`,
+          );
+          break;
+        case 'failed':
+          lines.push(`  ${warning(`${name}  install failed`)}`);
+          break;
+        default: {
+          const _exhaustive: never = bundle.result;
+          void _exhaustive;
+        }
       }
-      case 'skip-current':
-        lines.push(`  open-knowledge  ${success('already installed at current version')}`);
-        break;
-      case 'declined':
-        lines.push(`  open-knowledge  ${dim('skipped for this run (--no-skills)')}`);
-        lines.push(
-          `  ${dim('Nothing was installed or removed. Any built-in skills already on this')}`,
-        );
-        lines.push(`  ${dim('machine are untouched. Run init without the flag to install them:')}`);
-        lines.push(`  ${dim('  ok init')}`);
-        break;
-      case 'no-hosts':
-        lines.push(
-          `  open-knowledge  ${dim('skipped — no supported agent host detected in your home directory')}`,
-        );
-        break;
-      case 'failed':
-        lines.push(
-          `  ${warning('open-knowledge  install failed — MCP still configured; retry with:')}`,
-        );
-        lines.push(`  ${warning('  ok repair-skills')}`);
-        break;
+    }
+    if (bundles.some((b) => b.result === 'installed')) {
+      lines.push(`  ${dim('Counted on skills.sh (skill name + source repo, once per machine).')}`);
+      lines.push(`  ${dim('Opt out: DO_NOT_TRACK=1, or Settings → User → Preferences.')}`);
+    }
+    if (bundles.some((b) => b.result === 'failed')) {
+      lines.push(`  ${warning('Retry with: ok repair-skills')}`);
     }
   }
 
@@ -1743,6 +1768,10 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
   lines.push('');
   lines.push(...formatSharingOutcome(result.sharing, cwd));
 
+  const seedLines = (indent: string): string[] => [
+    `${indent}- ${info('ok seed --list-packs')}   — browse the starter packs`,
+    `${indent}- ${info('ok seed')}                — scaffold an empty repo`,
+  ];
   if (anyWritten) {
     const seen = new Set<EditorId>();
     const configuredLabels = result.editors
@@ -1754,11 +1783,21 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
     lines.push(`${success('✓')} ${accent('Next steps:')}`);
     lines.push(`  1. Open your editor (${info(configuredLabels.join(' / '))})`);
     lines.push('  2. Approve the MCP server when prompted');
-    lines.push('  3. (Optional) scaffold the starter knowledge-base structure:');
-    lines.push(`     - ${info('ok seed --list-packs')}   — browse the starter packs`);
-    lines.push(`     - ${info('ok seed')}                — scaffold an empty repo`);
-    lines.push('  4. Ask your agent to capture a source, research a topic, or build a wiki —');
+    let step = 3;
+    if (!result.contentScaffoldFailed) {
+      lines.push(`  ${step++}. (Optional) scaffold the starter knowledge-base structure:`);
+      lines.push(...seedLines('     '));
+    }
+    lines.push(
+      `  ${step}. Ask your agent to capture a source, research a topic, or build a wiki —`,
+    );
     lines.push('     the procedures ship as skills alongside the MCP tools.');
+  } else if (!result.contentScaffoldFailed) {
+    lines.push('');
+    lines.push(
+      `${accent('Next steps:')} (optional) scaffold the starter knowledge-base structure:`,
+    );
+    lines.push(...seedLines('  '));
   }
 
   return lines.join('\n');

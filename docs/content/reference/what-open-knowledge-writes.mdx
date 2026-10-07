@@ -273,9 +273,9 @@ On Windows, Claude Desktop and OpenCode configs live under `%APPDATA%\Claude\` a
 `ok init` also installs `open-knowledge-discovery` (the same skill first launch sets up — pass `--skills discovery,write-skill` to add the authoring skill too), honoring any prior consent choice, and, for a project it is setting up for the first time, adds the OpenKnowledge paths to `.git/info/exclude` so `.ok/` stays off your remote. Pass `--shared` to commit it instead. Re-running `ok init` on a project you already set up keeps that project's current choice. Switch modes later with `ok config-sharing share` / `unshare` (`unshare` refuses if an OK config file is already tracked); `ok config-sharing status` prints the current mode and the excluded paths.
 
 <Callout type="info" title="Controlling it">
-  - `--no-mcp` — scaffold `.ok/` only; register nothing with any editor.
+  - `--no-mcp` — register nothing in any editor's MCP config. `ok init` still scaffolds `.ok/` and writes the project-local `open-knowledge` skill; GitHub Copilot's copy is written only when Copilot already has an OpenKnowledge MCP entry.
   - `--scope user | project | both` — where the MCP entry is written. In an interactive terminal, `ok init` prompts for this; scripted/CI runs default to `both`, so pass the flag to constrain them.
-  - `--no-skills` — install no user-global skills on this run; `--skills discovery,write-skill` — install only the named bundles. **Default installs `discovery` only**, matching what the desktop's first launch sets up; `write-skill` is opt-in here and in **Settings → Skills Studio**. Installing is recorded and honored by the desktop app too; skipping is not recorded, so it never affects another project.
+  - `--no-skills` — install no user-global skills on this run; `--skills discovery,write-skill` — install only the named bundles. **Default installs `discovery` only**, matching what the desktop's first launch sets up; `write-skill` is opt-in here and in **Settings → Skills Studio**. Installing is recorded and honored by the desktop app too; skipping is not recorded, so it never affects another project. Neither flag affects the project-local `open-knowledge` skill, which is still written.
   - `--shared` (vs `--local-only`) — commit `.ok/` rather than keeping it out of git.
 </Callout>
 
@@ -383,6 +383,8 @@ Bridge setup requires a project directory it can resolve and access, and refuses
 | The `postinstall` skill install (CLI) | `npm install --ignore-scripts` |
 | The shell-config `PATH` block (macOS and Linux app) | Uncheck "Add the `ok` command to your terminal" in the first-launch dialog |
 | All editor MCP registration in `ok init` | `ok init --no-mcp` |
+| User-global skills in `ok init` | `ok init --no-skills` |
+| The project-local `open-knowledge` skill | Not skippable at `ok init`, even with `--no-mcp` or `--no-skills`; `ok deinit` removes it |
 | User-level (vs project) MCP writes | `ok init --scope project` |
 | Committing `.ok/` to git | Off by default for a new project; `ok init --shared` commits it instead |
 | The repair sweeps and the desktop app's shell / `PATH` changes | `OK_RECLAIM_DISABLE=1` (also delete the managed block from your shell config to remove the `PATH` entry) |

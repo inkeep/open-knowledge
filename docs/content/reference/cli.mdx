@@ -52,6 +52,8 @@ One server on one port serves everything — the editor, the API, the MCP endpoi
 
 `ok start` also takes `-p/--port` and `--bind` to pick the address, `--idle-shutdown` (`off` or a duration like `30m`) to control when an unused server exits, `--only server` to run without the editor UI, and `--mode app` to hand off to the desktop app instead of running a server in the terminal (with the desktop app installed).
 
+The browser needs no flag: `ok start` always runs the browser server unless you pass `--mode app`. Bare `ok`, with no subcommand, opens the desktop app when it is installed and otherwise runs the same browser server; it also runs the browser server when its output is not an interactive terminal, over SSH, or on Linux without `DISPLAY` or `WAYLAND_DISPLAY`, unless `OK_FORCE_DESKTOP=1` is set. Set `OK_FORCE_BROWSER=1` to make bare `ok` always run the browser server.
+
 Idle shutdown is on by default at 30 minutes — a server with no connected clients exits so it doesn't linger. If you keep a session open for a long time without interacting, pass `--idle-shutdown off` (or a longer duration) to keep it running.
 
 For a complete list of every file OpenKnowledge creates or changes — during install, at runtime, and in the desktop app — see [What OpenKnowledge writes to your system](/docs/reference/what-open-knowledge-writes).

@@ -955,7 +955,8 @@ describe('runInit', () => {
       });
       expect(result.skillInstall).toBe('installed');
       const output = formatInitResult(result, testDir);
-      expect(output).toContain('User-global skill:');
+      expect(output).toContain('User-global skills:');
+      expect(output).toContain('open-knowledge-discovery');
       expect(output).toContain('installed for');
       expect(output).not.toContain('detected agent hosts');
     });
@@ -985,7 +986,7 @@ describe('runInit', () => {
       });
       expect(result.skillInstall).toBe('skip-current');
       const output = formatInitResult(result, testDir);
-      expect(output).toContain('User-global skill:');
+      expect(output).toContain('User-global skills:');
       expect(output).toContain('already installed at current version');
     });
 
@@ -1108,6 +1109,70 @@ describe('runInit', () => {
       expect(result.skillInstall).toBe('failed');
       const output = formatInitResult(result, testDir);
       expect(output).toContain('install failed');
+    });
+
+    const userGlobalSection = (output: string): string => {
+      const start = output.indexOf('User-global skills:');
+      expect(start).toBeGreaterThanOrEqual(0);
+      const rest = output.slice(start);
+      const end = rest.indexOf('\n\n');
+      return end === -1 ? rest : rest.slice(0, end);
+    };
+
+    it('--no-skills never names the project skill as the user-global skill it skipped', async () => {
+      const result = await runInitForTest({
+        skills: false,
+        editors: ['cursor'],
+        installUserSkill: async () => 'installed',
+      });
+      const output = formatInitResult(result, testDir);
+      expect(output).toContain('.cursor/skills/open-knowledge/SKILL.md');
+      const section = userGlobalSection(output);
+      expect(section).toContain('--no-skills');
+      expect(section).not.toMatch(/\bopen-knowledge\b(?!-)/);
+      expect(section).toContain('project-local');
+    });
+
+    it('an unrecognized --skills id is reported as such, not as --no-skills', async () => {
+      const result = await runInitForTest({
+        skills: 'discovry',
+        installUserSkill: async () => 'installed',
+      });
+      expect(result.skillInstall).toBe('declined');
+      const section = userGlobalSection(formatInitResult(result, testDir));
+      expect(section).not.toContain('--no-skills');
+      expect(section).toContain('discovry');
+      expect(section).toContain('discovery, write-skill');
+    });
+
+    it('reports each bundle by its own name and outcome when outcomes differ', async () => {
+      const result = await runInitForTest({
+        skills: 'discovery,write-skill',
+        installUserSkill: async (opts) =>
+          opts?.bundleId === 'discovery' ? 'skip-current' : 'installed',
+      });
+      const section = userGlobalSection(formatInitResult(result, testDir));
+      const lines = section.split('\n');
+      const discovery = lines.find((l) => l.includes('open-knowledge-discovery'));
+      const writeSkill = lines.find((l) => l.includes('open-knowledge-write-skill'));
+      expect(discovery).toContain('already installed at current version');
+      expect(discovery).not.toContain('installed for');
+      expect(writeSkill).toContain('installed for');
+      expect(discovery?.indexOf('already installed')).toBe(writeSkill?.indexOf('installed for'));
+      expect(section).not.toMatch(/\bopen-knowledge\b(?!-)/);
+    });
+
+    it('names only the failing bundle as failed', async () => {
+      const result = await runInitForTest({
+        skills: 'discovery,write-skill',
+        installUserSkill: async (opts) =>
+          opts?.bundleId === 'write-skill' ? 'failed' : 'installed',
+      });
+      const lines = userGlobalSection(formatInitResult(result, testDir)).split('\n');
+      expect(lines.find((l) => l.includes('open-knowledge-discovery'))).not.toContain('failed');
+      expect(lines.find((l) => l.includes('open-knowledge-write-skill'))).toContain(
+        'install failed',
+      );
     });
   });
 
@@ -1566,6 +1631,34 @@ describe('runInit', () => {
       expect(nextStepsLine).toBeDefined();
       const matches = nextStepsLine?.match(/Claude/g);
       expect(matches).toHaveLength(1);
+    });
+
+    it('--no-mcp still shows how to add starter content, without the editor steps', async () => {
+      const result = await runInitForTest({ mcp: false });
+      const output = formatInitResult(result, testDir);
+      expect(output).toContain('ok seed --list-packs');
+      expect(output).toContain('scaffold an empty repo');
+      expect(output).not.toContain('Open your editor');
+      expect(output).not.toContain('Approve the MCP server');
+    });
+
+    it('does not suggest ok seed when content scaffolding failed', async () => {
+      writeFileSync(join(testDir, '.ok'), 'not a directory\n', 'utf-8');
+      const result = await runInitForTest({ editors: ['claude'] });
+      expect(result.contentScaffoldFailed).toBe(true);
+      const output = formatInitResult(result, testDir);
+      expect(output).toContain('Content scaffolding failed');
+      expect(output).not.toContain('ok seed');
+      expect(output).not.toMatch(/\n\n$/);
+    });
+
+    it('keeps the editor next steps when content scaffolding failed', async () => {
+      const result = await runInitForTest({ editors: ['claude'] });
+      const output = formatInitResult({ ...result, contentScaffoldFailed: true }, testDir);
+      expect(output).toContain('Open your editor');
+      expect(output).toContain('Approve the MCP server');
+      expect(output).toContain('  3. Ask your agent');
+      expect(output).not.toContain('ok seed');
     });
 
     const allocOutsideTestDir = (suffix: string): string =>
