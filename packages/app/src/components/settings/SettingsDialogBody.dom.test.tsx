@@ -186,6 +186,22 @@ describe('SettingsDialogBody preferences runtime', () => {
     );
   });
 
+  test('lists Count skill installs publicly, off on an untouched profile, and writes an opt-in', async () => {
+    const user = userEvent.setup();
+    const { binding, patches } = makeBinding();
+    const { container } = await renderPreferences(binding);
+
+    const field = container.querySelector('[data-field="telemetry.skillInstallReports.enabled"]');
+    expect(field).toBeTruthy();
+    const countSwitch = screen.getByRole('switch', { name: 'Count skill installs publicly' });
+    expect(countSwitch.getAttribute('aria-checked')).toBe('false');
+    await user.click(countSwitch);
+
+    await waitFor(() => {
+      expect(patches).toEqual([{ telemetry: { skillInstallReports: { enabled: true } } }]);
+    });
+  });
+
   test('places the spelling rows after the interface Language row, keeping the CLI row', async () => {
     Object.defineProperty(window, 'okDesktop', {
       value: {

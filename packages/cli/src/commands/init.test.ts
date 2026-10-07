@@ -16,6 +16,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { resolveBundleEnabled } from '@inkeep/open-knowledge-core';
+import { resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import { readBundleDecision } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
@@ -959,6 +960,48 @@ describe('runInit', () => {
       expect(output).toContain('open-knowledge-discovery');
       expect(output).toContain('installed for');
       expect(output).not.toContain('detected agent hosts');
+    });
+
+    it('does not claim a skills.sh count when install counting was never turned on', async () => {
+      vi.stubEnv('DO_NOT_TRACK', '');
+      vi.stubEnv('DISABLE_TELEMETRY', '');
+      try {
+        const result = await runInitForTest({ installUserSkill: async () => 'installed' });
+        const output = formatInitResult(result, testDir);
+        expect(output).toContain('installed for');
+        expect(output).not.toContain('Counted on skills.sh');
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it('says the install is counted on skills.sh when the user opted in', async () => {
+      const configPath = resolveConfigPath('user', fakeHome, fakeHome);
+      mkdirSync(dirname(configPath), { recursive: true });
+      writeFileSync(configPath, 'telemetry:\n  skillInstallReports:\n    enabled: true\n', 'utf-8');
+      vi.stubEnv('DO_NOT_TRACK', '');
+      vi.stubEnv('DISABLE_TELEMETRY', '');
+      try {
+        const result = await runInitForTest({ installUserSkill: async () => 'installed' });
+        expect(formatInitResult(result, testDir)).toContain('Counted on skills.sh');
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it('does not claim a skills.sh count when DO_NOT_TRACK overrides an opt-in', async () => {
+      const configPath = resolveConfigPath('user', fakeHome, fakeHome);
+      mkdirSync(dirname(configPath), { recursive: true });
+      writeFileSync(configPath, 'telemetry:\n  skillInstallReports:\n    enabled: true\n', 'utf-8');
+      vi.stubEnv('DO_NOT_TRACK', '1');
+      try {
+        const result = await runInitForTest({ installUserSkill: async () => 'installed' });
+        const output = formatInitResult(result, testDir);
+        expect(output).toContain('installed for');
+        expect(output).not.toContain('Counted on skills.sh');
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
 
     it('reports the hosts actually written, never an unverified claim (issue #820)', async () => {

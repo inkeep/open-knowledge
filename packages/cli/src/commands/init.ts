@@ -22,6 +22,7 @@ import {
   HomeProjectRootError,
   initContent,
   installUserSkill,
+  isSkillInstallReportEnvOptOut,
   ONBOARDING_BUNDLE_IDS,
   ProjectGitInitError,
   removeProjectSkillGitignoreBlock,
@@ -652,6 +653,7 @@ interface InitCommandResult {
   skillBundles?: readonly { bundleId: BundleId; result: InstallUserSkillResult }[];
   skillsRequested?: string | boolean;
   skillHosts?: readonly string[];
+  skillInstallsCounted?: boolean;
   preview?: PreviewResult;
   didGitInit: boolean;
   rootGitignoreCreated: boolean;
@@ -1343,6 +1345,8 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
           ? 'no-hosts'
           : 'declined';
   const skillHosts = anyInstalled ? detectUserSkillHosts(skillHome).map((h) => h.editorId) : [];
+  const skillInstallsCounted =
+    resolveSkillInstallReportSettings(skillHome).enabled && !isSkillInstallReportEnvOptOut();
 
   const defaultAction: EditorMcpResult['action'] = skipMcp ? 'skipped-flag' : 'skipped-missing';
   const primary = editorResults.find((r) => r.editorId === 'claude') ??
@@ -1376,6 +1380,7 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
     skillBundles,
     skillsRequested: options.skills,
     skillHosts,
+    skillInstallsCounted,
     didGitInit: gitResult.didInit,
     rootGitignoreCreated,
     gitRootPromoted: resolution.gitRootPromoted,
@@ -1712,7 +1717,7 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
         }
       }
     }
-    if (bundles.some((b) => b.result === 'installed')) {
+    if (result.skillInstallsCounted && bundles.some((b) => b.result === 'installed')) {
       lines.push(`  ${dim('Counted on skills.sh (skill name + source repo, once per machine).')}`);
       lines.push(`  ${dim('Opt out: DO_NOT_TRACK=1, or Settings → User → Preferences.')}`);
     }

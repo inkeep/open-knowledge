@@ -60,7 +60,7 @@ export interface ReportSkillInstallDeps {
   env?: NodeJS.ProcessEnv;
 }
 
-function envOptOut(env: NodeJS.ProcessEnv): boolean {
+export function isSkillInstallReportEnvOptOut(env: NodeJS.ProcessEnv = process.env): boolean {
   return Boolean(env.DISABLE_TELEMETRY || env.DO_NOT_TRACK);
 }
 
@@ -69,7 +69,7 @@ export async function reportSkillInstall(
   deps: ReportSkillInstallDeps,
 ): Promise<readonly string[]> {
   const env = deps.env ?? process.env;
-  if (!deps.enabled || envOptOut(env)) return [];
+  if (!deps.enabled || isSkillInstallReportEnvOptOut(env)) return [];
   if (!isPublicRepoSource(report.source.trim())) return [];
 
   const alreadyReported = await readInstallReported(deps.home).catch((err: unknown) => {

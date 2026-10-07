@@ -639,7 +639,11 @@ export {
   writeBundleDecision,
   writeTargetVersion,
 } from './skill-state.ts';
-export { reportSkillInstall, type SkillInstallReport } from './skills-sh-install-report.ts';
+export {
+  isSkillInstallReportEnvOptOut,
+  reportSkillInstall,
+  type SkillInstallReport,
+} from './skills-sh-install-report.ts';
 export {
   CURSOR_BUNDLE_PATHS_BY_PLATFORM,
   type HandleSpawnCursorDeps,

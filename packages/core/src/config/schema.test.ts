@@ -594,3 +594,21 @@ describe('git.hosts.<host>.provider (declared GitHub Enterprise Server hosts)', 
     });
   });
 });
+
+describe('telemetry.skillInstallReports.enabled', () => {
+  test('defaults to off at every nesting level', () => {
+    expect(ConfigSchema.parse({}).telemetry.skillInstallReports.enabled).toBe(false);
+    expect(ConfigSchema.parse({ telemetry: {} }).telemetry.skillInstallReports.enabled).toBe(false);
+    expect(
+      ConfigSchema.parse({ telemetry: { skillInstallReports: {} } }).telemetry.skillInstallReports
+        .enabled,
+    ).toBe(false);
+  });
+
+  test('an explicit opt-in is kept', () => {
+    expect(
+      ConfigSchema.parse({ telemetry: { skillInstallReports: { enabled: true } } }).telemetry
+        .skillInstallReports.enabled,
+    ).toBe(true);
+  });
+});

@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { resolveConfigPath } from '@inkeep/open-knowledge-core/server';
-import { afterAll, describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test, vi } from 'vitest';
 import { createTempDirFactory } from '../../../test-support/temp-dir.test-helper.ts';
 import { resolveSkillInstallReportSettings } from './skill-install-report-config.ts';
 
@@ -19,14 +19,45 @@ function writeUserConfig(home: string, yaml: string): string {
 }
 
 describe('resolveSkillInstallReportSettings', () => {
-  test('no user config at all → the schema default (on)', () => {
-    expect(resolveSkillInstallReportSettings(freshHome()).enabled).toBe(true);
+  test('no user config at all → the schema default (off)', () => {
+    expect(resolveSkillInstallReportSettings(freshHome()).enabled).toBe(false);
   });
 
-  test('config present but silent on the key → the schema default (on)', () => {
+  test('config present but silent on the key → the schema default (off)', () => {
     const home = freshHome();
     writeUserConfig(home, 'appearance:\n  theme: dark\n');
-    expect(resolveSkillInstallReportSettings(home).enabled).toBe(true);
+    expect(resolveSkillInstallReportSettings(home).enabled).toBe(false);
+  });
+
+  test('a skillInstallReports block without the enabled leaf → the schema default (off)', () => {
+    const home = freshHome();
+    writeUserConfig(home, 'telemetry:\n  skillInstallReports: {}\n');
+    expect(resolveSkillInstallReportSettings(home).enabled).toBe(false);
+  });
+
+  test('the fallback follows the schema default rather than a literal of its own', async () => {
+    vi.resetModules();
+    vi.doMock('@inkeep/open-knowledge-core', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@inkeep/open-knowledge-core')>();
+      return {
+        ...actual,
+        ConfigSchema: {
+          parse: () => ({ telemetry: { skillInstallReports: { enabled: true } } }),
+        },
+      };
+    });
+    try {
+      const { resolveSkillInstallReportSettings: resolveWithFlippedDefault } = await import(
+        './skill-install-report-config.ts'
+      );
+      expect(resolveWithFlippedDefault(freshHome()).enabled).toBe(true);
+      const home = freshHome();
+      writeUserConfig(home, 'appearance:\n  theme: dark\n');
+      expect(resolveWithFlippedDefault(home).enabled).toBe(true);
+    } finally {
+      vi.doUnmock('@inkeep/open-knowledge-core');
+      vi.resetModules();
+    }
   });
 
   test('explicit false is honored', () => {

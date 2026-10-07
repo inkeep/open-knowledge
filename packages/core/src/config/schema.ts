@@ -631,11 +631,11 @@ export const ConfigSchema = z.looseObject({
               reload: 'live',
               defaultScope: 'user',
               description:
-                'Report skill installs to skills.sh so a published skill shows an accurate install count. Sends the skill name, its source repo, and which agent tools it was installed for — never file contents, and never for a private or local source. One report per skill per machine. Default on; the DO_NOT_TRACK and DISABLE_TELEMETRY environment variables also turn it off.',
+                'Report skill installs to skills.sh so a published skill shows an accurate install count. Sends the skill name, its source repo, and which agent tools it was installed for — never file contents, and never for a private or local source. One report per skill per machine. Default off; when it is on, the DO_NOT_TRACK and DISABLE_TELEMETRY environment variables still turn it off.',
             })
-            .default(true),
+            .default(false),
         })
-        .default({ enabled: true }),
+        .default({ enabled: false }),
     })
     .default({
       localSink: {
@@ -644,7 +644,7 @@ export const ConfigSchema = z.looseObject({
         logs: { maxBytes: DEFAULT_LOGS_MAX_BYTES },
         attributeDenylist: [...DEFAULT_TELEMETRY_ATTRIBUTE_DENYLIST],
       },
-      skillInstallReports: { enabled: true },
+      skillInstallReports: { enabled: false },
     }),
   lossCapture: z
     .looseObject({
