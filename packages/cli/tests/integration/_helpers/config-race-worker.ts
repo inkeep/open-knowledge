@@ -1,38 +1,40 @@
-#!/usr/bin/env -S npx tsx
-
-import { EDITOR_TARGETS } from '../../../src/commands/editors.ts';
-import { writeEditorMcpConfig } from '../../../src/commands/init.ts';
-
 const [, , configPath, serverKey] = process.argv;
-if (!configPath || !serverKey) {
-  process.stderr.write('config-race-worker: usage: <configPath> <serverKey>\n');
+if (!configPath || !serverKey || !process.send || !process.connected) {
+  process.stderr.write('config-race-worker: requires IPC and <configPath> <serverKey>\n');
   process.exit(64);
 }
 
-const baseTarget = EDITOR_TARGETS.cursor;
-const target = {
-  ...baseTarget,
-  configPath: () => configPath,
-  serverName: () => serverKey,
-};
+const report = process.send.bind(process);
+report('started');
 
 try {
-  const result = await writeEditorMcpConfig(
-    target,
-    '',
-    { mode: 'published', skipAvailabilityCheck: true },
-    undefined,
-  );
+  const [{ EDITOR_TARGETS }, { writeEditorMcpConfig }] = await Promise.all([
+    import('../../../src/commands/editors.ts'),
+    import('../../../src/commands/init.ts'),
+  ]);
+  const target = {
+    ...EDITOR_TARGETS.cursor,
+    configPath: () => configPath,
+    serverName: () => serverKey,
+  };
+  report('ready');
+  const result = writeEditorMcpConfig(target, '', {
+    mode: 'published',
+    skipAvailabilityCheck: true,
+  });
   if (result.action === 'failed') {
     process.stderr.write(
       `config-race-worker(${process.pid}): writeEditorMcpConfig action=failed error=${result.error}\n`,
     );
-    process.exit(1);
+    process.exitCode = 1;
+  } else {
+    report('written');
+    process.exitCode = 0;
   }
-  process.exit(0);
 } catch (err) {
   process.stderr.write(
     `config-race-worker(${process.pid}): unexpected throw: ${err instanceof Error ? err.message : String(err)}\n`,
   );
-  process.exit(1);
+  process.exitCode = 1;
 }
+process.exit();

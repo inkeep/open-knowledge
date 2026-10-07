@@ -1,4 +1,3 @@
-import { spawn as nativeSpawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -6,54 +5,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { arrangeExpiredFileLock } from '../../../core/src/util/file-lock-deadline.test-helper.ts';
 import { EDITOR_TARGETS } from '../../src/commands/editors.ts';
 import { writeEditorMcpConfig } from '../../src/commands/init.ts';
+import { runConfigWriters } from './_helpers/config-race.test-helper.ts';
 
 vi.mock('node:fs', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs')>();
   return { ...fs, openSync: vi.fn(fs.openSync) };
 });
 
-const WORKER_PATH = resolve(__dirname, '_helpers', 'config-race-worker.ts');
-const WORKER_TIMEOUT_MS = 30_000;
-
-interface WorkerOutcome {
-  serverKey: string;
-  exitCode: number | null;
-  stderr: string;
-}
-
-function spawnConfigWriter(configPath: string, serverKey: string): Promise<WorkerOutcome> {
-  return new Promise((resolveSpawn, rejectSpawn) => {
-    const proc = nativeSpawn('node', ['--import', 'tsx', WORKER_PATH, configPath, serverKey], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let stderr = '';
-    proc.stderr?.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf-8');
-    });
-    const timeoutHandle = setTimeout(() => {
-      try {
-        proc.kill('SIGKILL');
-      } catch {}
-      rejectSpawn(
-        new Error(`config-race-worker(${serverKey}) timed out after ${WORKER_TIMEOUT_MS}ms`),
-      );
-    }, WORKER_TIMEOUT_MS);
-    proc.once('exit', (code) => {
-      clearTimeout(timeoutHandle);
-      resolveSpawn({ serverKey, exitCode: code, stderr });
-    });
-    proc.once('error', (err) => {
-      clearTimeout(timeoutHandle);
-      rejectSpawn(err);
-    });
-  });
-}
-
 describe('mcp host config — concurrent-write race', () => {
   let testRoot: string;
   let configPath: string;
+  let controller: AbortController;
+  let writers: ReturnType<typeof runConfigWriters> | undefined;
 
   beforeEach(() => {
+    controller = new AbortController();
+    writers = undefined;
     testRoot = resolve(
       tmpdir(),
       `mcp-host-config-race-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -76,7 +43,9 @@ describe('mcp host config — concurrent-write race', () => {
     );
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    controller.abort();
+    await Promise.allSettled(writers ? [writers] : []);
     vi.restoreAllMocks();
     vi.resetAllMocks();
     rmSync(testRoot, { recursive: true, force: true });
@@ -104,18 +73,25 @@ describe('mcp host config — concurrent-write race', () => {
     },
   );
 
-  it('N=20 concurrent writers all add their entries; no lost updates, no corruption, no destruction of pre-existing servers', async () => {
+  it('N=20 concurrent writers all add their entries; no lost updates, no corruption, no destruction of pre-existing servers', {
+    timeout: 0,
+  }, async ({ signal }) => {
     const N = 20;
     const expectedKeys = Array.from({ length: N }, (_, i) => `ok-writer-${i}`);
 
-    const writers = expectedKeys.map((key) => spawnConfigWriter(configPath, key));
-    const outcomes = await Promise.all(writers);
+    writers = runConfigWriters(configPath, expectedKeys, {
+      signal: AbortSignal.any([signal, controller.signal]),
+    });
+    const outcomes = await writers;
 
     const workerFailures = outcomes.filter((o) => o.exitCode !== 0);
     if (workerFailures.length > 0) {
       throw new Error(
         `${workerFailures.length} / ${N} workers failed:\n${workerFailures
-          .map((f) => `  ${f.serverKey}: exit=${f.exitCode} stderr=${f.stderr.trim()}`)
+          .map(
+            (f) =>
+              `  ${f.serverKey}: exit=${f.exitCode} signal=${f.signal} phase=${f.phase} stderr=${f.stderr.trim()}`,
+          )
           .join('\n')}`,
       );
     }
