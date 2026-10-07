@@ -1,5 +1,6 @@
 import type { ConfigPatch } from '@inkeep/open-knowledge-core/config/schema';
 import type {
+  OkAboutInfo,
   OkMenuRendererSnapshot,
   OkUserConfigPatchResult,
   OkUserConfigSnapshot,
@@ -44,6 +45,14 @@ if (globalWithDomShims.ResizeObserver === undefined) {
 
 const ASYNC_TIMEOUT_MS = 4000;
 
+const NAVIGATOR_ABOUT: OkAboutInfo = {
+  productName: 'OpenKnowledge',
+  version: '1.2.3',
+  releasesUrl: 'https://github.com/inkeep/open-knowledge/releases',
+  releaseNotesUrl: 'https://github.com/inkeep/open-knowledge/releases/tag/v1.2.3',
+  updateChecks: 'available',
+};
+
 function mergePatch(target: Record<string, unknown>, patch: Record<string, unknown>) {
   for (const [key, value] of Object.entries(patch)) {
     const existing = target[key];
@@ -77,6 +86,8 @@ function makeNavigatorBridge(
   let diskText = initialText;
   const setThemeSource = vi.fn(async () => ({ ok: true as const }));
   const setLanguagePreference = vi.fn(async () => ({ ok: true as const }));
+  const openExternal = vi.fn(async (_url: string) => undefined);
+  const checkNow = vi.fn(async () => undefined);
   const menuDispatch = vi.fn(async (request: { kind: string }) =>
     request.kind === 'query'
       ? ({
@@ -101,12 +112,20 @@ function makeNavigatorBridge(
     platform: 'darwin',
     ...(options.integrationsMenuItem === undefined ? {} : { menu: { dispatch: menuDispatch } }),
     onMenuAction: () => () => {},
-    state: { query: async () => ({ channel: 'latest' }) },
+    state: {
+      query: async () => ({
+        channel: 'latest',
+        schemaIncompatibility: null,
+        about: NAVIGATOR_ABOUT,
+      }),
+    },
+    update: { checkNow },
+    onUpdateManualCheck: () => () => {},
     onRecentRemovedMissing: () => () => {},
     setThemeSource,
     setLanguagePreference,
     signalThemeApplied: () => {},
-    shell: { openExternal: async () => undefined },
+    shell: { openExternal },
     project: {
       listRecent: async () => [],
       removeRecent: async () => undefined,
@@ -133,6 +152,8 @@ function makeNavigatorBridge(
     bridge,
     patches,
     menuDispatch,
+    openExternal,
+    checkNow,
     setThemeSource,
     setLanguagePreference,
     emitChange: (text: string) => {
@@ -198,7 +219,7 @@ describe('NavigatorApp settings', () => {
     const dialog = await screen.findByTestId('settings-dialog', {}, { timeout: ASYNC_TIMEOUT_MS });
     expect(within(dialog).queryByText('Customize your OpenKnowledge experience.')).toBeNull();
 
-    for (const id of ['preferences', 'hotkeys']) {
+    for (const id of ['preferences', 'hotkeys', 'about']) {
       expect(sidebarItem(id).disabled).toBe(false);
     }
     await waitFor(
@@ -261,6 +282,50 @@ describe('NavigatorApp settings', () => {
     );
     expect(wordWrap.getAttribute('aria-checked')).toBe('false');
     expect(screen.queryByTestId('settings-user-config-unavailable')).toBeNull();
+  });
+
+  test('About & updates is listed, enabled and opens without a project', async () => {
+    const user = userEvent.setup();
+    const stub = makeNavigatorBridge('');
+    renderNavigator(stub.bridge, { asWindowBridge: true });
+    await screen.findByTestId('settings-dialog', {}, { timeout: ASYNC_TIMEOUT_MS });
+
+    const about = sidebarItem('about');
+    expect(about.textContent).toBe('About & updates');
+    expect(about.disabled).toBe(false);
+    expect(about.getAttribute('aria-disabled')).toBeNull();
+    await user.click(about);
+
+    const section = await screen.findByTestId('settings-about', {}, { timeout: ASYNC_TIMEOUT_MS });
+    expect(sidebarItem('about').getAttribute('aria-current')).toBe('page');
+    expect(within(section).getByTestId('settings-about-version').textContent).toBe('v1.2.3');
+
+    await user.click(await within(section).findByRole('button', { name: 'Release notes' }));
+    expect(stub.openExternal).toHaveBeenCalledWith(NAVIGATOR_ABOUT.releaseNotesUrl);
+
+    await user.click(within(section).getByRole('button', { name: 'Check for updates' }));
+    expect(stub.checkNow).toHaveBeenCalledTimes(1);
+  });
+
+  test('settings search and the version link both reach About & updates', async () => {
+    const user = userEvent.setup();
+    const stub = makeNavigatorBridge('');
+    renderNavigator(stub.bridge, { asWindowBridge: true });
+    await screen.findByTestId('settings-dialog', {}, { timeout: ASYNC_TIMEOUT_MS });
+
+    await user.type(screen.getByTestId('settings-search-input'), 'updates');
+    await user.click(await screen.findByTestId('settings-search-result-section:about'));
+    expect(
+      await screen.findByTestId('settings-about', {}, { timeout: ASYNC_TIMEOUT_MS }),
+    ).not.toBeNull();
+
+    await user.click(sidebarItem('hotkeys'));
+    expect(screen.queryByTestId('settings-about')).toBeNull();
+
+    await user.click(screen.getByTestId('settings-sidebar-version'));
+    expect(
+      await screen.findByTestId('settings-about', {}, { timeout: ASYNC_TIMEOUT_MS }),
+    ).not.toBeNull();
   });
 
   test('settings search skips panes that need a project', async () => {

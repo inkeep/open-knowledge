@@ -563,6 +563,7 @@
     "5ZbJFS": ["Your current version is saved first, so this is reversible."],
     "5_j-DA": ["Kill Terminal"],
     "5aahsI": ["nothing (", ["0"], " is not a valid pattern)"],
+    "5afD3A": ["About & updates"],
     "5b3WD-": ["OpenKnowledge saved a checkpoint"],
     "5e1Dri": ["The menu label agents pick this template by (required)."],
     "5ecEGe": [
@@ -810,6 +811,7 @@
       " — that folder is not this skill. Rename or delete one of the two to resolve."
     ],
     "8HxtjY": ["That language isn't available for spell checking."],
+    "8I3MkQ": ["version"],
     "8Jm2EP": ["Toggle heading levels 1 through 6."],
     "8L0EPw": ["or paste a token"],
     "8OGgNM": ["Open or close visual-editor find."],
@@ -1971,6 +1973,7 @@
       ]
     ],
     "LKOLNn": ["No AI agents installed"],
+    "LMUw1U": ["App"],
     "LMVNT6": [["agentName"], " needs you to sign in."],
     "LPAv9E": [["days"], "d ago"],
     "LPLWpO": ["The board's content is not a valid Excalidraw scene."],
@@ -2469,6 +2472,7 @@
       " with ",
       ["childCount", "plural", { "one": ["#", " item"], "other": ["#", " items"] }]
     ],
+    "Qe6_xF": ["about"],
     "QeREu8": ["Renamed"],
     "QfFBdJ": ["The template's filename (without `.md`)."],
     "Qft6eW": ["Move ", ["0"], " to Global"],
@@ -4639,6 +4643,7 @@
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Writes an entry to"],
     "m6YGpY": ["Active panel content for the selected tab shows here."],
+    "m6znp-": ["update"],
     "mAzs2H": ["Disable ", ["file"]],
     "mBK8zm": ["/", ["0"], " isn't a command this agent offers — it will be sent as plain text"],
     "mBltnd": ["Path suggestions"],
@@ -4909,6 +4914,7 @@
       ["0"],
       " — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins."
     ],
+    "p5kgYT": ["Automatic updates are not available right now."],
     "p7Utw8": ["Not a base16 theme"],
     "p98xmP": ["Applies to"],
     "p9sdCy": ["New ignore pattern"],

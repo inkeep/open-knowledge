@@ -4,12 +4,12 @@
 
 import { SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core/constants/feature-flags';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
-import { ArrowUpRight } from 'lucide-react';
 import { Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { matchesCommandQuery, splitTextByQueryMatches } from '@/components/command-palette-search';
 import { SettingsDialogBodyLazy } from '@/components/settings/SettingsDialogBodyLazy';
 import { SettingsDialogErrorBoundary } from '@/components/settings/SettingsDialogErrorBoundary';
 import { UPDATE_CHECKING_NOTICE_ID } from '@/components/UpdateNotices.shared';
+import { Button } from '@/components/ui/button';
 import {
   Command,
   CommandEmpty,
@@ -21,6 +21,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { electronDragBandClearance } from '@/components/ui/electron-drag-strip';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import type { ConfigContextValue } from '@/lib/config-context';
 import { useConfigContext } from '@/lib/config-provider';
@@ -43,10 +44,6 @@ import {
 import { buildSettingsSearchIndex, type SettingsSearchEntry } from './settings-search-index';
 import { AGENT_CONNECTIONS_SECTION_LABEL } from './settings-section-labels';
 import type { SidebarGroup, SidebarItem, SidebarSubsection } from './settings-sidebar-types';
-
-function releaseNotesUrl(version: string): string {
-  return `https://github.com/inkeep/open-knowledge/releases/tag/v${encodeURIComponent(version)}`;
-}
 
 const LEGACY_SECTION_ALIASES: Record<string, { sectionId: string; anchor: string }> = {
   'ai-tools': { sectionId: 'agent-connections', anchor: 'section:agent-connections' },
@@ -422,6 +419,29 @@ function SettingsDialogFrame({
           ? [{ id: 'claude-desktop', label: t`Claude Desktop` }]
           : [],
     },
+    ...(isOkDesktopHost
+      ? ([
+          {
+            id: 'app',
+            label: t`App`,
+            enabled: true,
+            items: [
+              {
+                id: 'about',
+                label: t`About & updates`,
+                userScope: true,
+                keywords: [
+                  t({ message: 'update', context: 'settings search keyword' }),
+                  t({ message: 'version', context: 'settings search keyword' }),
+                  t({ message: 'about', context: 'settings search keyword' }),
+                  t`Release notes`,
+                  t`Check for updates`,
+                ],
+              },
+            ],
+          },
+        ] satisfies SidebarGroup[])
+      : []),
   ];
 
   const groups = scopeSettingsGroupsForHost(declaredGroups, host);
@@ -613,7 +633,7 @@ function SettingsSidebar({
               />
             ))
           : null}
-        <SettingsSidebarVersion />
+        <SettingsSidebarVersion onSelect={onSelect} />
       </div>
     </nav>
   );
@@ -656,23 +676,35 @@ function SettingsSearchResultItem({
   );
 }
 
-function SettingsSidebarVersion() {
+function SettingsSidebarVersion({ onSelect }: { onSelect: (id: string) => void }) {
   const { t } = useLingui();
   const notices = useSyncExternalStore(subscribeToNotices, getNoticesSnapshot, getNoticesSnapshot);
-  const bridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
-  const version = bridge?.appVersion;
-  if (!bridge || !version) return null;
+  const version = typeof window !== 'undefined' ? window.okDesktop?.appVersion : undefined;
+  if (!version) return null;
   const checkingForUpdates = notices.some((notice) => notice.id === UPDATE_CHECKING_NOTICE_ID);
 
-  const url = releaseNotesUrl(version);
   return (
     <div className="ml-auto shrink-0 px-2 sm:ml-0 sm:mt-auto sm:pt-3">
-      <p
-        className="whitespace-nowrap font-mono text-xs text-muted-foreground/70"
-        data-testid="settings-sidebar-version"
-      >
-        v{version}
-      </p>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="link"
+              onClick={() => onSelect('about')}
+              data-testid="settings-sidebar-version"
+              className="h-auto whitespace-nowrap p-0 font-mono text-xs font-normal text-muted-foreground/70 hover:text-foreground"
+            >
+              v{version}{' '}
+              <span className="sr-only">
+                <Trans>About & updates</Trans>
+              </span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <Trans>About & updates</Trans>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <p
         role="status"
         className="whitespace-nowrap text-xs text-muted-foreground"
@@ -680,20 +712,6 @@ function SettingsSidebarVersion() {
       >
         {checkingForUpdates ? t`Checking for updates…` : null}
       </p>
-      <button
-        type="button"
-        onClick={() => {
-          void bridge.shell.openExternal(url);
-        }}
-        data-testid="settings-sidebar-release-notes"
-        className={cn(
-          'mt-0.5 inline-flex items-center gap-1 whitespace-nowrap rounded text-xs text-muted-foreground transition-colors hover:text-foreground',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        )}
-      >
-        <Trans>Release notes</Trans>
-        <ArrowUpRight className="size-3" aria-hidden="true" />
-      </button>
     </div>
   );
 }

@@ -1573,6 +1573,11 @@ msgstr "Un dossier de worktree pour {shareBranch} existe déjà."
 msgid "A worktree folder for that branch already exists."
 msgstr "Un dossier de worktree pour cette branche existe déjà."
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "about"
+msgstr "à propos"
+
 #: src/lib/native-menu-catalog.ts
 #: src/lib/platform-labels.ts
 msgid "About"
@@ -1582,6 +1587,12 @@ msgstr "À propos"
 #: src/lib/platform-labels.ts
 msgid "About {appName}"
 msgstr "À propos de {appName}"
+
+#: src/components/HelpPopover.tsx
+#: src/components/settings/AboutSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "About & updates"
+msgstr "À propos et mises à jour"
 
 #: src/editor/slash-command/items.tsx
 msgid "Above"
@@ -2151,6 +2162,10 @@ msgstr "Vous souhaitez ajouter quelque chose ? (facultatif)"
 msgid "API key set"
 msgstr "Clé API définie"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "App"
+msgstr "Application"
+
 #: src/components/InstanceBadge.tsx
 msgid "App instance: {label}"
 msgstr "Instance de l’application : {label}"
@@ -2487,6 +2502,10 @@ msgstr "Automatique"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
 msgstr "Le mode automatique choisit un port libre à chaque démarrage. Choisissez un port fixe pour conserver la même adresse d'un redémarrage à l'autre."
+
+#: src/components/settings/AboutSection.tsx
+msgid "Automatic updates are not available right now."
+msgstr "Les mises à jour automatiques ne sont pas disponibles pour le moment."
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Available"
@@ -2936,6 +2955,9 @@ msgid "Chat name"
 msgstr "Nom du chat"
 
 #: src/components/command-palette-commands.ts
+#: src/components/HelpPopover.tsx
+#: src/components/settings/AboutSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/UpdateNotices.shared.ts
 msgid "Check for updates"
 msgstr "Rechercher les mises à jour"
@@ -2988,6 +3010,7 @@ msgstr "Recherche d'agents"
 msgid "Checking for Slidev"
 msgstr "Recherche de Slidev"
 
+#: src/components/settings/AboutSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Checking for updates"
 msgstr "Recherche de mises à jour"
@@ -11886,6 +11909,7 @@ msgstr "Chemin relatif"
 msgid "Relaunching to install the update…"
 msgstr "Redémarrage pour installer la mise à jour…"
 
+#: src/components/settings/AboutSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SubscribeCard.tsx
 msgid "Release notes"
@@ -16244,6 +16268,11 @@ msgstr "Non suivi"
 msgid "Up to date"
 msgstr "À jour"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "update"
+msgstr "mise à jour"
+
 #: src/components/SkillOriginInline.tsx
 #: src/components/SkillPreviewTab.tsx
 msgid "Update"
@@ -16511,6 +16540,11 @@ msgstr "Une valeur est obligatoire"
 #: src/components/FrontmatterRow.tsx
 msgid "Values for {keyName}"
 msgstr "Valeurs de {keyName}"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "version"
+msgstr "version"
 
 #: src/components/CommandPalette.tsx
 msgid "via {viaTags}"

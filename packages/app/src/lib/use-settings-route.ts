@@ -40,6 +40,12 @@ export function openAgentSettings(): void {
   openSettingsSection(AGENT_SETTINGS_SECTION);
 }
 
+const ABOUT_SECTION = 'about';
+
+export function openAboutSettings(): void {
+  openSettingsSection(ABOUT_SECTION);
+}
+
 const ACCOUNT_SECTION = 'account';
 
 export function openAccountSettings(): void {

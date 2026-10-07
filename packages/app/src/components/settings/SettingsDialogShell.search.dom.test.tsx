@@ -205,6 +205,63 @@ describe('settings dialog search', () => {
     expect(latestProbe()?.activeId).toBe('account');
   });
 
+  describe('in the desktop app', () => {
+    beforeEach(() => {
+      (window as unknown as { okDesktop?: unknown }).okDesktop = {
+        platform: 'linux',
+        appVersion: '0.81.5-cloud.1343',
+        config: { ptyAvailable: false },
+      };
+    });
+
+    afterEach(() => {
+      (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
+    });
+
+    test('About & updates is findable as "update" and as "about"', async () => {
+      const user = userEvent.setup();
+      render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+      const input = screen.getByTestId('settings-search-input');
+
+      for (const query of ['update', 'about', 'version', 'release notes']) {
+        await user.clear(input);
+        await user.type(input, query);
+        expect(await screen.findByTestId('settings-search-result-section:about')).toBeTruthy();
+      }
+
+      await user.click(screen.getByTestId('settings-search-result-section:about'));
+      expect(latestProbe()?.activeId).toBe('about');
+    });
+
+    test('About & updates is the last sidebar entry, under App', () => {
+      render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+
+      const items = screen.getAllByTestId(/^settings-sidebar-item-/);
+      expect(items.at(-1)?.getAttribute('data-testid')).toBe('settings-sidebar-item-about');
+      expect(screen.getByRole('heading', { name: 'App' })).toBeTruthy();
+    });
+
+    test('the sidebar version label opens About & updates in place', async () => {
+      const user = userEvent.setup();
+      render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+
+      await user.click(screen.getByRole('button', { name: 'v0.81.5-cloud.1343 About & updates' }));
+
+      expect(latestProbe()?.activeId).toBe('about');
+    });
+  });
+
+  test('the web host has no About & updates section', async () => {
+    const user = userEvent.setup();
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+
+    await user.type(screen.getByTestId('settings-search-input'), 'update');
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-search-empty')).toBeDefined();
+    });
+    expect(screen.queryByTestId('settings-search-result-section:about')).toBeNull();
+  });
+
   test('a markdownlint rule is searchable when the plugin is enabled', async () => {
     const user = userEvent.setup();
     render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);

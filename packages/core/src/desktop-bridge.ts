@@ -279,6 +279,14 @@ export interface OkUpdateManualCheckInfo {
   readonly phase: 'started' | 'settled';
 }
 
+export interface OkAboutInfo {
+  readonly productName: string;
+  readonly version: string;
+  readonly releasesUrl: string;
+  readonly releaseNotesUrl: string;
+  readonly updateChecks: 'available' | 'unavailable';
+}
+
 export type ShareTarget =
   | { readonly kind: 'doc'; readonly docPath: string }
   | { readonly kind: 'folder'; readonly folderPath: string };
@@ -353,6 +361,7 @@ export interface OkStateSnapshot {
     readonly persistedSchemaVersion: number;
     readonly maxSupported: number;
   } | null;
+  readonly about?: OkAboutInfo;
 }
 
 export type OkMcpWiringEditorId = EditorId;

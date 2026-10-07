@@ -682,6 +682,7 @@
     "5ZbJFS": ["Twoja bieżąca wersja jest najpierw zapisywana, więc tę operację można cofnąć."],
     "5_j-DA": ["Zakończ terminal"],
     "5aahsI": ["nic (", ["0"], " nie jest prawidłowym wzorcem)"],
+    "5afD3A": ["O programie i aktualizacje"],
     "5b3WD-": ["OpenKnowledge zapisało punkt kontrolny"],
     "5e1Dri": ["Etykieta w menu, po której agenty wybierają ten szablon (wymagana)."],
     "5ecEGe": [
@@ -985,6 +986,7 @@
       " znajduje się INNA umiejętność o takiej samej nazwie — ten folder nie jest tą umiejętnością. Zmień nazwę jednej z nich lub usuń ją, aby rozwiązać problem."
     ],
     "8HxtjY": ["Język ten nie jest dostępny do sprawdzania pisowni."],
+    "8I3MkQ": ["wersja"],
     "8Jm2EP": ["Przełącz poziomy nagłówków od 1 do 6."],
     "8L0EPw": ["lub wklej token"],
     "8OGgNM": ["Otwórz lub zamknij wyszukiwanie w edytorze wizualnym."],
@@ -2321,6 +2323,7 @@
       ]
     ],
     "LKOLNn": ["Nie zainstalowano agentów AI"],
+    "LMUw1U": ["Aplikacja"],
     "LMVNT6": [["agentName"], " wymaga zalogowania."],
     "LPAv9E": [["days"], " dni temu"],
     "LPLWpO": ["Zawartość tablicy nie jest poprawną sceną Excalidraw."],
@@ -2889,6 +2892,7 @@
         }
       ]
     ],
+    "Qe6_xF": ["o programie"],
     "QeREu8": ["Zmieniono nazwę"],
     "QfFBdJ": ["Nazwa pliku szablonu (bez `.md`)."],
     "Qft6eW": ["Przenieś ", ["0"], " do globalnych"],
@@ -5461,6 +5465,7 @@
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Zapisuje wpis w"],
     "m6YGpY": ["Zawartość aktywnego panelu dla wybranej karty wyświetla się tutaj."],
+    "m6znp-": ["aktualizacja"],
     "mAzs2H": ["Wyłącz ", ["file"]],
     "mBK8zm": [
       "/",
@@ -5762,6 +5767,7 @@
       ["0"],
       " — coś poza OK to od tego czasu zmieniło. Pokazany stan to stan z dysku; twój następny Symlink/Unlink wygra."
     ],
+    "p5kgYT": ["Automatyczne aktualizacje są teraz niedostępne."],
     "p7Utw8": ["To nie jest motyw base16"],
     "p98xmP": ["Dotyczy"],
     "p9sdCy": ["Nowy wzorzec ignorowania"],

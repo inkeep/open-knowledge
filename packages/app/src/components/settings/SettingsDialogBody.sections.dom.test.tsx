@@ -455,6 +455,21 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     expect(screen.getByTestId('settings-scope-badge-user')).not.toBeNull();
   });
 
+  test('the About & updates page shows the installed version', async () => {
+    const w = window as unknown as { okDesktop?: unknown };
+    w.okDesktop = {
+      appVersion: '1.2.3',
+      state: { query: async () => ({ channel: 'latest', schemaIncompatibility: null }) },
+      onUpdateManualCheck: () => () => {},
+    };
+    try {
+      await renderBody({ activeId: 'about' });
+      expect((await screen.findByTestId('settings-about-version')).textContent).toBe('v1.2.3');
+    } finally {
+      w.okDesktop = undefined;
+    }
+  });
+
   test('the Account page mounts the Enterprise hosts card from the user binding', async () => {
     const { bindConfigDoc } = await import('@inkeep/open-knowledge-core');
     const { Doc } = await import('yjs');

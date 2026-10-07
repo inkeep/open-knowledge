@@ -4,6 +4,7 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type { EventChannels } from '../shared/ipc-events.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
 import { type SendableWebContents, sendToRenderer } from '../shared/ipc-send.ts';
+import { PUBLIC_RELEASES_URL, releaseUrlFor } from '../shared/release-links.ts';
 import {
   classifyInstallFailure,
   type LinuxManualInstallContext,
@@ -197,7 +198,7 @@ const INSTALL_IN_FLIGHT_GRACE_MS = 30 * 60 * 1000;
 
 const INSTALL_DEFER_MAX_BOOTS = 3;
 
-export const STUCK_HINT_DOWNLOAD_URL = 'https://github.com/inkeep/open-knowledge/releases';
+export const STUCK_HINT_DOWNLOAD_URL = PUBLIC_RELEASES_URL;
 
 export const UPDATE_CHECK_FAILED_MESSAGE = 'The update check failed. Try again in a moment.';
 
@@ -213,9 +214,7 @@ export const POST_UPDATE_QUIET_MS = 10 * 60 * 1000;
 
 const WHATS_NEW_LIVE_WINDOW_MS = 60_000;
 
-export function releaseUrlFor(version: string): string {
-  return `https://github.com/inkeep/open-knowledge/releases/tag/v${encodeURIComponent(version)}`;
-}
+export { releaseUrlFor };
 
 function errorCode(err: unknown): string | undefined {
   if (!(err instanceof Error) || !('code' in err)) return undefined;

@@ -575,6 +575,7 @@
     "5ZbJFS": ["Versi Anda saat ini disimpan lebih dulu, jadi ini bisa dikembalikan."],
     "5_j-DA": ["Matikan Terminal"],
     "5aahsI": ["tidak apa pun (", ["0"], " bukan pola yang valid)"],
+    "5afD3A": ["Tentang & pembaruan"],
     "5b3WD-": ["OpenKnowledge menyimpan titik pemeriksaan"],
     "5e1Dri": ["Label menu yang dipakai agen untuk memilih templat ini (wajib)."],
     "5ecEGe": [
@@ -819,6 +820,7 @@
       " — folder itu bukan keterampilan ini. Ganti nama atau hapus salah satu dari keduanya untuk menyelesaikannya."
     ],
     "8HxtjY": ["Bahasa itu tidak tersedia untuk pemeriksaan ejaan."],
+    "8I3MkQ": ["versi"],
     "8Jm2EP": ["Menyalakan atau mematikan tingkat judul 1 sampai 6."],
     "8L0EPw": ["atau tempelkan sebuah token"],
     "8OGgNM": ["Membuka atau menutup pencarian penyunting visual."],
@@ -2003,6 +2005,7 @@
       ]
     ],
     "LKOLNn": ["Tidak ada agen AI yang terpasang"],
+    "LMUw1U": ["Aplikasi"],
     "LMVNT6": [["agentName"], " memerlukan Anda untuk masuk."],
     "LPAv9E": [["days"], " hr lalu"],
     "LPLWpO": ["Konten papan bukan scene Excalidraw yang valid."],
@@ -2485,6 +2488,7 @@
       " dengan ",
       ["childCount", "plural", { "other": ["#", " item"] }]
     ],
+    "Qe6_xF": ["tentang"],
     "QeREu8": ["Diganti nama"],
     "QfFBdJ": ["Nama berkas templatnya (tanpa `.md`)."],
     "Qft6eW": ["Pindahkan ", ["0"], " ke Global"],
@@ -4641,6 +4645,7 @@
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Menulis entri ke"],
     "m6YGpY": ["Isi panel aktif untuk tab yang dipilih muncul di sini."],
+    "m6znp-": ["pembaruan"],
     "mAzs2H": ["Nonaktifkan ", ["file"]],
     "mBK8zm": [
       "/",
@@ -4909,6 +4914,7 @@
       ["0"],
       " — sesuatu di luar OK mengubahnya sejak itu. Keadaan yang ditampilkan adalah apa yang ada di disk sekarang; Symlink/Lepas tautan Anda berikutnya yang menang."
     ],
+    "p5kgYT": ["Pembaruan otomatis saat ini tidak tersedia."],
     "p7Utw8": ["Bukan tema base16"],
     "p98xmP": ["Berlaku untuk"],
     "p9sdCy": ["Pola abaikan baru"],

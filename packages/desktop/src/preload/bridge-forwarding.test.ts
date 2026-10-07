@@ -20,6 +20,7 @@ vi.mock('electron', () => ({
 
 type BridgeProbe = {
   mcpServerName: string | null;
+  state: { query(): Promise<unknown> };
   config: {
     languagePreference?: string;
     themePreference?: string;
@@ -116,6 +117,26 @@ describe('preload argv config', () => {
     const bridge = await loadBridge();
 
     expect(bridge.mcpServerName).toBe('open-knowledge-beta');
+  });
+});
+
+describe('preload state query marshalling', () => {
+  it('state.query forwards to ok:state:query and passes the snapshot through', async () => {
+    const about = {
+      productName: 'OpenKnowledge',
+      version: '0.82.3',
+      releasesUrl: 'https://example.test/releases',
+      releaseNotesUrl: 'https://example.test/releases/tag/v0.82.3',
+      updateChecks: 'available',
+    };
+    const bridge = await loadBridge();
+    const snapshot = { channel: 'latest', schemaIncompatibility: null, about };
+    invokeMock.mockResolvedValueOnce(snapshot as never);
+
+    const result = await bridge.state.query();
+
+    expect(invokeMock.mock.calls.map((c) => c[0])).toEqual(['ok:state:query']);
+    expect(result).toEqual(snapshot);
   });
 });
 

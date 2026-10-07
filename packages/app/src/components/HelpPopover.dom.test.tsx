@@ -1,5 +1,5 @@
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -170,7 +170,9 @@ describe('HelpPopover runtime behavior', () => {
 
 describe('HelpPopover with the desktop bridge present', () => {
   beforeEach(() => {
-    (window as unknown as { okDesktop?: unknown }).okDesktop = {};
+    (window as unknown as { okDesktop?: unknown }).okDesktop = {
+      state: { query: async () => ({ channel: 'latest', schemaIncompatibility: null }) },
+    };
   });
 
   afterEach(() => {
@@ -208,6 +210,144 @@ describe('HelpPopover with the desktop bridge present', () => {
     expect(screen.getByRole('link', { name: 'Download app' }).getAttribute('href')).toBe(
       'https://openknowledge.ai/download',
     );
+  });
+});
+
+describe('HelpPopover version and updates on the desktop app', () => {
+  function aboutInfo(updateChecks: 'available' | 'unavailable') {
+    return {
+      productName: 'OpenKnowledge Beta',
+      version: '0.83.0-beta.8',
+      releasesUrl: 'https://example.test/releases',
+      releaseNotesUrl: 'https://example.test/releases/tag/v0.83.0-beta.8',
+      updateChecks,
+    };
+  }
+
+  function installBridge(updateChecks: 'available' | 'unavailable' | null) {
+    const checkNow = vi.fn(async () => {});
+    const snapshot = (checks: 'available' | 'unavailable' | null) => ({
+      channel: 'latest' as const,
+      schemaIncompatibility: null,
+      ...(checks ? { about: aboutInfo(checks) } : {}),
+    });
+    const query = vi.fn(async () => snapshot(updateChecks));
+    (window as unknown as { okDesktop?: unknown }).okDesktop = {
+      appVersion: '0.83.0-beta.8',
+      update: { checkNow },
+      state: { query },
+    };
+    return { checkNow, query, snapshot };
+  }
+
+  async function waitForAboutData() {
+    const nav = screen.getByRole('navigation', { name: 'Product updates' });
+    await waitFor(() =>
+      expect(within(nav).getByRole('link', { name: "What's new" }).getAttribute('href')).toBe(
+        'https://example.test/releases',
+      ),
+    );
+  }
+
+  afterEach(() => {
+    (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
+    window.location.hash = '';
+  });
+
+  test('the version row opens Settings at About & updates', async () => {
+    installBridge('available');
+    await renderOpenHelpPopover();
+
+    await userEvent.click(screen.getByRole('button', { name: 'v0.83.0-beta.8 About & updates' }));
+
+    expect(window.location.hash).toBe('#settings/about');
+  });
+
+  test('Check for updates starts a check when the updater is running', async () => {
+    const { checkNow } = installBridge('available');
+    await renderOpenHelpPopover();
+
+    const nav = screen.getByRole('navigation', { name: 'Product updates' });
+    await userEvent.click(await within(nav).findByRole('button', { name: 'Check for updates' }));
+
+    expect(checkNow).toHaveBeenCalledTimes(1);
+  });
+
+  test('What’s new follows the release page the installed build names', async () => {
+    installBridge('available');
+    await renderOpenHelpPopover();
+
+    await waitForAboutData();
+  });
+
+  test('Check for updates is absent when the updater did not start', async () => {
+    installBridge('unavailable');
+    await renderOpenHelpPopover();
+
+    await waitForAboutData();
+    expect(screen.getByRole('button', { name: 'v0.83.0-beta.8 About & updates' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Check for updates' })).toBeNull();
+  });
+
+  test('reopening the popover picks up an updater that finished booting', async () => {
+    const { query, snapshot } = installBridge('unavailable');
+    await renderOpenHelpPopover();
+    await waitForAboutData();
+    expect(screen.queryByRole('button', { name: 'Check for updates' })).toBeNull();
+
+    query.mockResolvedValue(snapshot('available'));
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Resources' }));
+
+    const nav = screen.getByRole('navigation', { name: 'Product updates' });
+    expect(await within(nav).findByRole('button', { name: 'Check for updates' })).not.toBeNull();
+  });
+
+  test('a failed About read or check leaves a renderer log entry', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { query, checkNow } = installBridge('available');
+      const queryError = new Error('state query gone');
+      query.mockRejectedValueOnce(queryError);
+      await renderOpenHelpPopover();
+      await waitFor(() =>
+        expect(warn).toHaveBeenCalledWith('[help-popover] bridge.state.query() failed', queryError),
+      );
+
+      const checkError = new Error('check-now handler removed');
+      checkNow.mockRejectedValueOnce(checkError);
+      await userEvent.keyboard('{Escape}');
+      await userEvent.click(screen.getByRole('button', { name: 'Resources' }));
+      const nav = screen.getByRole('navigation', { name: 'Product updates' });
+      await userEvent.click(await within(nav).findByRole('button', { name: 'Check for updates' }));
+      await waitFor(() =>
+        expect(warn).toHaveBeenCalledWith(
+          '[help-popover] bridge.update.checkNow() failed',
+          checkError,
+        ),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test('an older desktop build without About data keeps the version row only', async () => {
+    installBridge(null);
+    await renderOpenHelpPopover();
+    await act(async () => {});
+
+    expect(screen.getByRole('button', { name: 'v0.83.0-beta.8 About & updates' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Check for updates' })).toBeNull();
+    expect(screen.getByRole('link', { name: "What's new" }).getAttribute('href')).toBe(
+      'https://github.com/inkeep/open-knowledge/releases',
+    );
+  });
+
+  test('the web host shows no version row', async () => {
+    await renderOpenHelpPopover();
+
+    expect(screen.queryByRole('button', { name: /^v\d/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Check for updates' })).toBeNull();
   });
 });
 

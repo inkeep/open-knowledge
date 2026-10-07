@@ -662,6 +662,7 @@
     "5ZbJFS": ["Tu versión actual se guarda primero, así que esto es reversible."],
     "5_j-DA": ["Matar la terminal"],
     "5aahsI": ["nada (", ["0"], " no es un patrón válido)"],
+    "5afD3A": ["Información y actualizaciones"],
     "5b3WD-": ["OpenKnowledge guardó un punto de control"],
     "5e1Dri": ["La etiqueta de menú con la que los agentes eligen esta plantilla (obligatoria)."],
     "5ecEGe": [
@@ -946,6 +947,7 @@
       " vive una habilidad DISTINTA con un nombre parecido a esta; esa carpeta no es esta habilidad. Cambia el nombre o elimina una de las dos para resolverlo."
     ],
     "8HxtjY": ["Ese idioma no está disponible para la corrección ortográfica."],
+    "8I3MkQ": ["versión"],
     "8Jm2EP": ["Activa o desactiva los niveles de encabezado del 1 al 6."],
     "8L0EPw": ["o pega un token"],
     "8OGgNM": ["Abre o cierra la búsqueda del editor visual."],
@@ -2284,6 +2286,7 @@
       ]
     ],
     "LKOLNn": ["No hay agentes de IA instalados"],
+    "LMUw1U": ["Aplicación"],
     "LMVNT6": [["agentName"], " necesita que inicies sesión."],
     "LPAv9E": ["hace ", ["days"], " d"],
     "LPLWpO": ["El contenido de la pizarra no es una escena de Excalidraw válida."],
@@ -2838,6 +2841,7 @@
         { "one": ["#", " elemento"], "many": ["#", " elementos"], "other": ["#", " elementos"] }
       ]
     ],
+    "Qe6_xF": ["acerca de"],
     "QeREu8": ["Renombrado"],
     "QfFBdJ": ["El nombre de archivo de la plantilla (sin `.md`)."],
     "Qft6eW": ["Mover ", ["0"], " a Global"],
@@ -5350,6 +5354,7 @@
     "m2T1Xj": ["Etiqueta #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Escribe una entrada en"],
     "m6YGpY": ["Aquí se muestra el contenido del panel activo de la pestaña seleccionada."],
+    "m6znp-": ["actualización"],
     "mAzs2H": ["Desactivar ", ["file"]],
     "mBK8zm": [
       "/",
@@ -5646,6 +5651,7 @@
       ["0"],
       "; algo ajeno a OK lo ha cambiado desde entonces. El estado que se muestra es el que hay ahora en el disco; tu próximo Enlazar/Desenlazar manda."
     ],
+    "p5kgYT": ["Las actualizaciones automáticas no están disponibles en este momento."],
     "p7Utw8": ["No es un tema base16"],
     "p98xmP": ["Se aplica a"],
     "p9sdCy": ["Patrón de exclusión nuevo"],

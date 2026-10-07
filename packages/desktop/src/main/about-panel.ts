@@ -1,9 +1,9 @@
-import { PRODUCT_NAME } from '@inkeep/open-knowledge-core';
 import type { AboutPanelOptionsOptions } from 'electron';
+import { DESKTOP_VARIANT } from '../shared/desktop-variant.ts';
 
 export function buildAboutPanelOptions(version: string): AboutPanelOptionsOptions {
   return {
-    applicationName: PRODUCT_NAME,
+    applicationName: DESKTOP_VARIANT.productName,
     applicationVersion: version,
     copyright: [
       'Copyright (C) 2026 Inkeep, Inc.',

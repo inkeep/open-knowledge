@@ -15,7 +15,7 @@ export interface SidebarItem {
 }
 
 export interface SidebarGroup {
-  id: 'agents' | 'user' | 'project' | 'plugins' | 'integrations';
+  id: 'agents' | 'user' | 'project' | 'plugins' | 'integrations' | 'app';
   label: string;
   enabled: boolean;
   items: SidebarItem[];

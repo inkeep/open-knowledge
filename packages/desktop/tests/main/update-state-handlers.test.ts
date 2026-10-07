@@ -10,6 +10,7 @@ import {
   applyStateQuery,
   type UpdateStateHandlerDeps,
 } from '../../src/main/update-state-handlers.ts';
+import { DESKTOP_VARIANTS } from '../../src/shared/desktop-variant.ts';
 
 interface Rig {
   state: AppState;
@@ -18,6 +19,7 @@ interface Rig {
   saveResult: boolean;
   buildChannel: UpdateChannel;
   clearPendingCalls: number;
+  updaterRunning: boolean;
   deps: UpdateStateHandlerDeps;
 }
 
@@ -26,6 +28,7 @@ function makeRig(overrides?: {
   pending?: SchemaIncompatibilityDiagnostic | null;
   saveResult?: boolean;
   buildChannel?: UpdateChannel;
+  updaterRunning?: boolean;
 }): Rig {
   const rig: Rig = {
     state: overrides?.state ?? emptyState(),
@@ -34,6 +37,7 @@ function makeRig(overrides?: {
     saveResult: overrides?.saveResult ?? true,
     buildChannel: overrides?.buildChannel ?? 'latest',
     clearPendingCalls: 0,
+    updaterRunning: overrides?.updaterRunning ?? true,
     deps: undefined as unknown as UpdateStateHandlerDeps,
   };
   rig.deps = {
@@ -51,6 +55,9 @@ function makeRig(overrides?: {
       rig.clearPendingCalls++;
       rig.pending = null;
     },
+    getAppVersion: () => '0.83.0-beta.8',
+    variant: DESKTOP_VARIANTS.beta,
+    isUpdaterRunning: () => rig.updaterRunning,
   };
   return rig;
 }
@@ -88,7 +95,7 @@ describe('applyStateQuery', () => {
   test('returns the build channel + null when no pending diagnostic', async () => {
     const rig = makeRig({ buildChannel: 'beta' });
     const snapshot = await applyStateQuery(rig.deps);
-    expect(snapshot).toEqual({ channel: 'beta', schemaIncompatibility: null });
+    expect(snapshot).toMatchObject({ channel: 'beta', schemaIncompatibility: null });
   });
 
   test('reports `latest` for a stable build', async () => {
@@ -110,5 +117,29 @@ describe('applyStateQuery', () => {
       persistedSchemaVersion: 999,
       maxSupported: 1,
     });
+  });
+});
+
+describe('applyStateQuery about info', () => {
+  test('describes the installed build with its variant product name and release notes', async () => {
+    const snapshot = await applyStateQuery(makeRig().deps);
+    expect(snapshot.about).toEqual({
+      productName: 'OpenKnowledge Beta',
+      version: '0.83.0-beta.8',
+      releasesUrl: 'https://github.com/inkeep/open-knowledge/releases',
+      releaseNotesUrl: 'https://github.com/inkeep/open-knowledge/releases/tag/v0.83.0-beta.8',
+      updateChecks: 'available',
+    });
+  });
+
+  test('reports update checks unavailable until the updater has booted, then available', async () => {
+    const rig = makeRig({ updaterRunning: false });
+
+    const before = await applyStateQuery(rig.deps);
+    rig.updaterRunning = true;
+    const after = await applyStateQuery(rig.deps);
+
+    expect(before.about.updateChecks).toBe('unavailable');
+    expect(after.about.updateChecks).toBe('available');
   });
 });

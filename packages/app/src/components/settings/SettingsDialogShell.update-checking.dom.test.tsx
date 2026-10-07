@@ -108,7 +108,9 @@ describe('SettingsDialogShell sidebar update-check status', () => {
 
   test('shows Checking for updates while a manual check runs and clears it when the check settles', () => {
     render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
-    expect(screen.getByTestId('settings-sidebar-version').textContent).toBe('v1.2.3');
+    expect(screen.getByTestId('settings-sidebar-version').textContent).toBe(
+      'v1.2.3 About & updates',
+    );
     const status = screen.getByTestId('settings-sidebar-update-checking');
     expect(status.getAttribute('role')).toBe('status');
     expect(status.textContent).toBe('');

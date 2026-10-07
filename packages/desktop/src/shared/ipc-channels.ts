@@ -62,11 +62,11 @@ import type {
   OkSharingStatusResult,
   OkSlidesOpenResult,
   OkSlidesStatusResult,
+  OkStateSnapshot,
   OkTerminalDockState,
   OkTerminalDockStateUpdate,
   OkTerminalDockStateWriteResult,
   OkThemeSource,
-  OkUpdateChannel,
   OkUserConfigPatchResult,
   OkUserConfigSnapshot,
   OkSeedApplyOptions as SeedApplyOptions,
@@ -556,17 +556,7 @@ export interface RequestChannels {
   'ok:update:relaunch-now': { args: []; result: undefined };
   'ok:update:check-now': { args: []; result: undefined };
   'ok:update:whats-new-dismiss': { args: [{ version: string }]; result: undefined };
-  'ok:state:query': {
-    args: [];
-    result: {
-      channel: OkUpdateChannel;
-      schemaIncompatibility: {
-        currentBuild: string;
-        persistedSchemaVersion: number;
-        maxSupported: number;
-      } | null;
-    };
-  };
+  'ok:state:query': { args: []; result: Required<OkStateSnapshot> };
   'ok:state:reset-incompatible': { args: []; result: undefined };
   'ok:theme:set-source': { args: [params: { source: OkThemeSource }]; result: { ok: true } };
   'ok:user-config:dispatch': {

@@ -1573,6 +1573,11 @@ msgstr "{shareBranch} 的 worktree 文件夹已存在。"
 msgid "A worktree folder for that branch already exists."
 msgstr "该分支的 worktree 文件夹已存在。"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "about"
+msgstr "关于"
+
 #: src/lib/native-menu-catalog.ts
 #: src/lib/platform-labels.ts
 msgid "About"
@@ -1582,6 +1587,12 @@ msgstr "关于"
 #: src/lib/platform-labels.ts
 msgid "About {appName}"
 msgstr "关于 {appName}"
+
+#: src/components/HelpPopover.tsx
+#: src/components/settings/AboutSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "About & updates"
+msgstr "关于和更新"
 
 #: src/editor/slash-command/items.tsx
 msgid "Above"
@@ -2151,6 +2162,10 @@ msgstr "还有什么想补充的吗？（可选）"
 msgid "API key set"
 msgstr "API 密钥已设置"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "App"
+msgstr "应用"
+
 #: src/components/InstanceBadge.tsx
 msgid "App instance: {label}"
 msgstr "应用实例：{label}"
@@ -2487,6 +2502,10 @@ msgstr "自动"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
 msgstr "自动模式会在每次启动时选择一个空闲端口。选择固定端口可在重启后保持相同地址。"
+
+#: src/components/settings/AboutSection.tsx
+msgid "Automatic updates are not available right now."
+msgstr "目前无法自动更新。"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Available"
@@ -2936,6 +2955,9 @@ msgid "Chat name"
 msgstr "对话名称"
 
 #: src/components/command-palette-commands.ts
+#: src/components/HelpPopover.tsx
+#: src/components/settings/AboutSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/UpdateNotices.shared.ts
 msgid "Check for updates"
 msgstr "检查更新"
@@ -2988,6 +3010,7 @@ msgstr "正在查找智能体"
 msgid "Checking for Slidev"
 msgstr "正在检查 Slidev"
 
+#: src/components/settings/AboutSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Checking for updates"
 msgstr "正在检查更新"
@@ -11886,6 +11909,7 @@ msgstr "相对路径"
 msgid "Relaunching to install the update…"
 msgstr "正在重新启动以安装更新…"
 
+#: src/components/settings/AboutSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SubscribeCard.tsx
 msgid "Release notes"
@@ -16244,6 +16268,11 @@ msgstr "未跟踪"
 msgid "Up to date"
 msgstr "已是最新"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "update"
+msgstr "更新"
+
 #: src/components/SkillOriginInline.tsx
 #: src/components/SkillPreviewTab.tsx
 msgid "Update"
@@ -16511,6 +16540,11 @@ msgstr "此项必填"
 #: src/components/FrontmatterRow.tsx
 msgid "Values for {keyName}"
 msgstr "{keyName} 的值"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "version"
+msgstr "版本"
 
 #: src/components/CommandPalette.tsx
 msgid "via {viaTags}"

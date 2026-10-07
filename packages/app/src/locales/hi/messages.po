@@ -1569,6 +1569,11 @@ msgstr "{shareBranch} के लिए एक वर्कट्री फ़ो
 msgid "A worktree folder for that branch already exists."
 msgstr "उस ब्रांच के लिए एक वर्कट्री फ़ोल्डर पहले से मौजूद है।"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "about"
+msgstr "परिचय"
+
 #: src/lib/native-menu-catalog.ts
 #: src/lib/platform-labels.ts
 msgid "About"
@@ -1578,6 +1583,12 @@ msgstr "परिचय"
 #: src/lib/platform-labels.ts
 msgid "About {appName}"
 msgstr "{appName} के बारे में"
+
+#: src/components/HelpPopover.tsx
+#: src/components/settings/AboutSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "About & updates"
+msgstr "परिचय और अपडेट"
 
 #: src/editor/slash-command/items.tsx
 msgid "Above"
@@ -2147,6 +2158,10 @@ msgstr "कुछ और जोड़ना चाहेंगे? (वैकल
 msgid "API key set"
 msgstr "API कुंजी सेट है"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "App"
+msgstr "ऐप"
+
 #: src/components/InstanceBadge.tsx
 msgid "App instance: {label}"
 msgstr "ऐप इंस्टेंस: {label}"
@@ -2483,6 +2498,10 @@ msgstr "स्वचालित"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
 msgstr "स्वचालित हर बार प्रारंभ पर एक मुक्त port चुनता है। पुनः प्रारंभ के बीच समान पता बनाए रखने के लिए एक निश्चित port चुनें।"
+
+#: src/components/settings/AboutSection.tsx
+msgid "Automatic updates are not available right now."
+msgstr "स्वचालित अपडेट अभी उपलब्ध नहीं हैं।"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Available"
@@ -2932,6 +2951,9 @@ msgid "Chat name"
 msgstr "चैट का नाम"
 
 #: src/components/command-palette-commands.ts
+#: src/components/HelpPopover.tsx
+#: src/components/settings/AboutSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/UpdateNotices.shared.ts
 msgid "Check for updates"
 msgstr "अपडेट देखें"
@@ -2984,6 +3006,7 @@ msgstr "एजेंट खोजे जा रहे हैं"
 msgid "Checking for Slidev"
 msgstr "Slidev खोजा जा रहा है"
 
+#: src/components/settings/AboutSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Checking for updates"
 msgstr "अपडेट देखे जा रहे हैं"
@@ -11882,6 +11905,7 @@ msgstr "सापेक्ष पथ"
 msgid "Relaunching to install the update…"
 msgstr "अपडेट इंस्टॉल करने के लिए फिर से शुरू किया जा रहा है…"
 
+#: src/components/settings/AboutSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SubscribeCard.tsx
 msgid "Release notes"
@@ -16240,6 +16264,11 @@ msgstr "ट्रैक नहीं किया गया"
 msgid "Up to date"
 msgstr "अद्यतित"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "update"
+msgstr "अपडेट"
+
 #: src/components/SkillOriginInline.tsx
 #: src/components/SkillPreviewTab.tsx
 msgid "Update"
@@ -16507,6 +16536,11 @@ msgstr "मान आवश्यक है"
 #: src/components/FrontmatterRow.tsx
 msgid "Values for {keyName}"
 msgstr "{keyName} के मान"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "version"
+msgstr "संस्करण"
 
 #: src/components/CommandPalette.tsx
 msgid "via {viaTags}"

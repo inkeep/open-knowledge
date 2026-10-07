@@ -13,6 +13,7 @@ function lazySection<Props>(load: () => Promise<ComponentType<Props>>) {
   return lazy(async () => ({ default: await load() }));
 }
 
+const AboutSection = lazySection(async () => (await import('./AboutSection')).AboutSection);
 const SharingSection = lazySection(async () => (await import('./SharingSection')).SharingSection);
 const AccountSection = lazySection(async () => (await import('./AccountSection')).AccountSection);
 const AgentConnectionsSection = lazySection(
@@ -257,6 +258,9 @@ export function SettingsDialogBody({
   }
   if (activeId === 'claude-desktop') {
     return <IntegrationsSection />;
+  }
+  if (activeId === 'about') {
+    return <AboutSection />;
   }
   return null;
 }

@@ -5424,6 +5424,9 @@ function registerIpcHandlers() {
     getBuildChannel: () => DESKTOP_VARIANT.updateChannel,
     getPendingSchemaIncompatibility,
     clearPendingSchemaIncompatibility,
+    getAppVersion: () => app.getVersion(),
+    variant: DESKTOP_VARIANT,
+    isUpdaterRunning: () => autoUpdaterHandle != null,
   });
   handle('ok:state:reset-incompatible', async () => applyResetIncompatible(updateStateDeps()));
   handle('ok:state:query', async () => applyStateQuery(updateStateDeps()));

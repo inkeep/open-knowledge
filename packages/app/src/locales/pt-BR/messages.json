@@ -656,6 +656,7 @@
     "5ZbJFS": ["Sua versão atual é salva antes, então isto é reversível."],
     "5_j-DA": ["Encerrar o terminal"],
     "5aahsI": ["nada (", ["0"], " não é um padrão válido)"],
+    "5afD3A": ["Sobre e atualizações"],
     "5b3WD-": ["OpenKnowledge salvou um ponto de verificação"],
     "5e1Dri": ["O rótulo de menu pelo qual os agentes escolhem este modelo (obrigatório)."],
     "5ecEGe": [
@@ -936,6 +937,7 @@
       " — essa pasta não é esta habilidade. Renomeie ou exclua uma das duas para resolver."
     ],
     "8HxtjY": ["Esse idioma não está disponível para a verificação ortográfica."],
+    "8I3MkQ": ["versão"],
     "8Jm2EP": ["Liga ou desliga os níveis de título de 1 a 6."],
     "8L0EPw": ["ou cole um token"],
     "8OGgNM": ["Abre ou fecha a busca do editor visual."],
@@ -2253,6 +2255,7 @@
       ]
     ],
     "LKOLNn": ["Nenhum agente de IA instalado"],
+    "LMUw1U": ["Aplicativo"],
     "LMVNT6": [["agentName"], " precisa que você faça login."],
     "LPAv9E": ["há ", ["days"], " d"],
     "LPLWpO": ["O conteúdo do quadro não é uma cena válida do Excalidraw."],
@@ -2799,6 +2802,7 @@
         { "one": ["#", " item"], "many": ["#", " itens"], "other": ["#", " itens"] }
       ]
     ],
+    "Qe6_xF": ["sobre"],
     "QeREu8": ["Renomeado"],
     "QfFBdJ": ["O nome do arquivo do modelo (sem `.md`)."],
     "Qft6eW": ["Mover ", ["0"], " para Global"],
@@ -5243,6 +5247,7 @@
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Grava uma entrada em"],
     "m6YGpY": ["O conteúdo do painel ativo da aba selecionada aparece aqui."],
+    "m6znp-": ["atualização"],
     "mAzs2H": ["Desativar ", ["file"]],
     "mBK8zm": [
       "/",
@@ -5535,6 +5540,7 @@
       ["0"],
       " — algo fora do OK mudou isso desde então. O estado exibido é o que está no disco agora; o seu próximo Vincular/Desvincular prevalece."
     ],
+    "p5kgYT": ["As atualizações automáticas não estão disponíveis no momento."],
     "p7Utw8": ["Não é um tema base16"],
     "p98xmP": ["Aplica-se a"],
     "p9sdCy": ["Novo padrão de exclusão"],
