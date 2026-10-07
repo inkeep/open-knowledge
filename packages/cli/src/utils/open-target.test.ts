@@ -44,6 +44,22 @@ describe('openTarget', () => {
     expect(capture.args).toEqual(['-a', desktopBundlePath, target]);
   });
 
+  test('macOS hands a Beta deep link to the verified Beta bundle', async () => {
+    const capture: SpawnCapture = {};
+    const target = 'openknowledge-beta://open?file=%2FUsers%2Fme%2Fnotes%2Ftodo.md';
+    const desktopBundlePath = '/Applications/OpenKnowledge Beta.app';
+
+    const outcome = await openTarget(target, {
+      platform: 'darwin',
+      desktopBundlePath,
+      spawn: makeSpawn(capture, { type: 'spawn' }),
+    });
+
+    expect(outcome).toEqual({ ok: true });
+    expect(capture.command).toBe('/usr/bin/open');
+    expect(capture.args).toEqual(['-a', desktopBundlePath, target]);
+  });
+
   test('macOS falls back to plain scheme resolution when no bundle path is given', async () => {
     const capture: SpawnCapture = {};
     const target = 'openknowledge://open?project=%2FUsers%2Fme%2Fnotes&doc=specs%2Flaunch';

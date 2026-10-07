@@ -1,4 +1,5 @@
 import type { spawn as NativeSpawn } from 'node:child_process';
+import { DESKTOP_PRODUCTS } from '@inkeep/open-knowledge-core';
 import {
   type SpawnDetachedScrubbedOutcome,
   spawnDetachedScrubbedAndWait,
@@ -17,13 +18,19 @@ interface OpenInvocation {
   args: readonly string[];
 }
 
+function isDesktopDeepLink(target: string): boolean {
+  return Object.values(DESKTOP_PRODUCTS).some(({ protocolScheme }) =>
+    target.startsWith(`${protocolScheme}://`),
+  );
+}
+
 function resolveOpenInvocation(
   target: string,
   platform: NodeJS.Platform,
   desktopBundlePath?: string,
 ): OpenInvocation {
   if (platform === 'darwin') {
-    if (desktopBundlePath && target.startsWith('openknowledge://')) {
+    if (desktopBundlePath && isDesktopDeepLink(target)) {
       return { command: '/usr/bin/open', args: ['-a', desktopBundlePath, target] };
     }
     return { command: '/usr/bin/open', args: [target] };

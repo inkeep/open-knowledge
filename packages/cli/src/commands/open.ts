@@ -16,7 +16,13 @@ import {
   openTargetFailureMessage,
   openTarget as openTargetReal,
 } from '../utils/open-target.ts';
-import { createRealDetectDeps, type DetectResult, detectDesktop } from './desktop-dispatch.ts';
+import {
+  createRealDetectDeps,
+  type DesktopAppTarget,
+  type DetectResult,
+  desktopAppTarget,
+  detectDesktop,
+} from './desktop-dispatch.ts';
 
 export interface OpenOptions {
   skill?: boolean;
@@ -25,7 +31,7 @@ export interface OpenOptions {
 }
 
 export interface OpenDeps {
-  detectBundlePath: () => string | null;
+  detectDesktopApp: () => DesktopAppTarget | null;
   resolveBaseUrl: (projectDir: string) => string | null;
   classifyName: (projectDir: string, name: string) => 'doc' | 'folder';
   openTarget: (
@@ -43,7 +49,7 @@ export function createRealOpenDeps(
   detect: () => DetectResult = () => detectDesktop(createRealDetectDeps()),
 ): OpenDeps {
   return {
-    detectBundlePath: () => detect().bundlePath ?? null,
+    detectDesktopApp: () => desktopAppTarget(detect()),
     resolveBaseUrl: (projectDir) => resolveUiInfo({ lockDir: resolveLockDir(projectDir) }).baseUrl,
     classifyName: (projectDir, name) => {
       const abs = join(projectDir, name);
@@ -146,9 +152,9 @@ export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps
       );
       return 1;
     }
-    const bundlePath = deps.detectBundlePath();
-    if (bundlePath) {
-      const deepLink = `openknowledge://open?project=${encodeURIComponent(
+    const desktopApp = deps.detectDesktopApp();
+    if (desktopApp) {
+      const deepLink = `${desktopApp.protocolScheme}://open?project=${encodeURIComponent(
         projectDir,
       )}&doc=${encodeURIComponent(`__skill__/${scope}/${cleanName}`)}`;
       return openAndReport(
@@ -157,7 +163,7 @@ export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps
         projectDir,
         isProject,
         deps,
-        bundlePath,
+        desktopApp.bundlePath,
       );
     }
     const baseUrl = deps.resolveBaseUrl(projectDir);
@@ -176,10 +182,10 @@ export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps
 
   const isFolder = /\/+$/.test(name) || deps.classifyName(projectDir, cleanName) === 'folder';
 
-  const bundlePath = deps.detectBundlePath();
+  const desktopApp = deps.detectDesktopApp();
   if (isFolder) {
-    if (bundlePath) {
-      const deepLink = `openknowledge://open?project=${encodeURIComponent(
+    if (desktopApp) {
+      const deepLink = `${desktopApp.protocolScheme}://open?project=${encodeURIComponent(
         projectDir,
       )}&folder=${encodeURIComponent(cleanName)}`;
       return openAndReport(
@@ -188,7 +194,7 @@ export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps
         projectDir,
         isProject,
         deps,
-        bundlePath,
+        desktopApp.bundlePath,
       );
     }
     const baseUrl = deps.resolveBaseUrl(projectDir);
@@ -205,8 +211,8 @@ export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps
     return noTargetError(deps);
   }
 
-  if (bundlePath) {
-    const deepLink = `openknowledge://open?project=${encodeURIComponent(
+  if (desktopApp) {
+    const deepLink = `${desktopApp.protocolScheme}://open?project=${encodeURIComponent(
       projectDir,
     )}&doc=${encodeURIComponent(cleanName)}`;
     return openAndReport(
@@ -215,7 +221,7 @@ export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps
       projectDir,
       isProject,
       deps,
-      bundlePath,
+      desktopApp.bundlePath,
     );
   }
   const baseUrl = deps.resolveBaseUrl(projectDir);

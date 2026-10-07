@@ -1,3 +1,4 @@
+import { DESKTOP_PRODUCTS } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
   DESKTOP_VARIANTS,
@@ -32,6 +33,12 @@ describe('desktop variant identities', () => {
       expect(new Set(identities.map((identity) => identity[key])).size).toBe(identities.length);
     }
     expect(new Set(identities.flatMap((identity) => identity.cliCommandNames)).size).toBe(4);
+  });
+
+  test('takes each product deep-link scheme from the shared desktop product', () => {
+    expect(DESKTOP_VARIANTS.stable.protocolScheme).toBe(DESKTOP_PRODUCTS.stable.protocolScheme);
+    expect(DESKTOP_VARIANTS.beta.protocolScheme).toBe(DESKTOP_PRODUCTS.beta.protocolScheme);
+    expect(DESKTOP_VARIANTS.beta.protocolScheme).toBe('openknowledge-beta');
   });
 
   test('keeps legacy Beta on the original identity and manifest contract', () => {

@@ -7,7 +7,17 @@ import {
 } from '@inkeep/open-knowledge-server';
 import { describe, expect, test } from 'vitest';
 import type { OpenTargetOptions } from '../utils/open-target.ts';
-import { runSingleFileOpen, type SingleFileOpenDeps } from './single-file-open.ts';
+import { type DesktopAppTarget, detectDesktop } from './desktop-dispatch.ts';
+import {
+  createRealSingleFileOpenDeps,
+  runSingleFileOpen,
+  type SingleFileOpenDeps,
+} from './single-file-open.ts';
+
+const STABLE_APP: DesktopAppTarget = {
+  bundlePath: '/Applications/OpenKnowledge.app',
+  protocolScheme: 'openknowledge',
+};
 
 interface Recorder {
   prepareOptions: Array<PrepareSingleFileOpenOptions | undefined>;
@@ -38,7 +48,7 @@ function makeDeps(
       if (!overrides.plan) throw new Error('no plan configured');
       return overrides.plan;
     },
-    detectBundlePath: overrides.detectBundlePath ?? (() => null),
+    detectDesktopApp: overrides.detectDesktopApp ?? (() => null),
     openTarget:
       overrides.openTarget ??
       (async (t, options) => {
@@ -90,7 +100,7 @@ describe('runSingleFileOpen', () => {
   test('ephemeral mode with a desktop bundle deep-links the file to the app', async () => {
     const { deps, rec } = makeDeps({
       plan: ephemeralPlan,
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
     });
     const code = await runSingleFileOpen('/Users/me/notes/todo.md', deps);
     expect(code).toBe(0);
@@ -103,10 +113,34 @@ describe('runSingleFileOpen', () => {
     expect(rec.browserOpens).toHaveLength(0);
   });
 
+  test('ephemeral mode with the bundled Beta CLI on Linux deep-links into the Beta app', async () => {
+    const execPath = '/opt/OpenKnowledge Beta/openknowledge-beta';
+    const real = createRealSingleFileOpenDeps(() =>
+      detectDesktop({
+        platform: 'linux',
+        env: { ELECTRON_RUN_AS_NODE: '1', DISPLAY: ':0' },
+        execPath,
+        isTTY: true,
+        statSync: () => null,
+      }),
+    );
+    const { deps, rec } = makeDeps({
+      plan: ephemeralPlan,
+      detectDesktopApp: real.detectDesktopApp,
+    });
+    const code = await runSingleFileOpen('/Users/me/notes/todo.md', deps);
+    expect(code).toBe(0);
+    expect(rec.openTargets).toEqual([
+      `openknowledge-beta://open?file=${encodeURIComponent('/Users/me/notes/todo.md')}`,
+    ]);
+    expect(rec.openTargetOptions).toEqual([{ desktopBundlePath: execPath }]);
+    expect(rec.browserOpens).toHaveLength(0);
+  });
+
   test('ephemeral mode reports launcher failures as exit code 1', async () => {
     const { deps, rec } = makeDeps({
       plan: ephemeralPlan,
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
       openTarget: async () => ({ ok: false, reason: 'not-installed' }),
     });
 
@@ -119,7 +153,7 @@ describe('runSingleFileOpen', () => {
   });
 
   test('ephemeral mode with no desktop bundle falls back to the browser session', async () => {
-    const { deps, rec } = makeDeps({ plan: ephemeralPlan, detectBundlePath: () => null });
+    const { deps, rec } = makeDeps({ plan: ephemeralPlan, detectDesktopApp: () => null });
     await runSingleFileOpen('/Users/me/notes/todo.md', deps);
     expect(rec.browserOpens).toEqual([ephemeralPlan]);
     expect(rec.openTargets).toHaveLength(0);

@@ -49,6 +49,17 @@ describe('resolveDesktopProductName', () => {
     expect(DESKTOP_PRODUCTS.stable.userHomeDirName).toBe('.ok');
     expect(DESKTOP_PRODUCTS.stable.keyringService).toBe('open-knowledge');
   });
+
+  it('gives every channel its own deep-link scheme, keeping Stable on openknowledge', () => {
+    expect(
+      Object.fromEntries(
+        Object.entries(DESKTOP_PRODUCTS).map(([name, p]) => [name, p.protocolScheme]),
+      ),
+    ).toEqual({
+      stable: 'openknowledge',
+      beta: 'openknowledge-beta',
+    });
+  });
 });
 
 describe('desktopChannelLabel', () => {

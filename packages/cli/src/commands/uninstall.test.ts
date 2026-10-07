@@ -63,6 +63,30 @@ describe('detectInstallMethods', () => {
     ]);
   });
 
+  test('a Beta CLI lists the same Stable and Beta apps as a Stable CLI', () => {
+    const home = '/Users/jane';
+    const installed = new Set([
+      '/Applications/OpenKnowledge.app',
+      '/Applications/OpenKnowledge Beta.app',
+    ]);
+    const labels = (execPath: string) =>
+      detectInstallMethods(
+        home,
+        undefined,
+        () => null,
+        (path) => installed.has(path),
+        { platform: 'darwin', env: {}, execPath },
+      ).map((method) => method.label);
+    const expected = [
+      'OpenKnowledge (/Applications/OpenKnowledge.app)',
+      'OpenKnowledge Beta (/Applications/OpenKnowledge Beta.app)',
+    ];
+    expect(labels('/usr/local/bin/node')).toEqual(expected);
+    expect(
+      labels('/Applications/OpenKnowledge Beta.app/Contents/MacOS/OpenKnowledge Beta'),
+    ).toEqual(expected);
+  });
+
   test('detects the Windows NSIS install and points at Settings → Apps', () => {
     const localAppData = 'C:\\Users\\Jane\\AppData\\Local';
     const exe = join(
@@ -296,6 +320,38 @@ describe('runUninstall', () => {
       expect(existsSync(join(cwd, '.pi', 'extensions', 'open-knowledge.ts'))).toBe(false);
       expect(JSON.parse(readFileSync(trustPath, 'utf8'))).toEqual({ [unrelated]: true });
       expect(readFileSync(defaultTrustPath, 'utf8')).toBe(defaultTrust);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    ['/usr/local/bin/node', 'The openknowledge:// URL scheme'],
+    ['/opt/OpenKnowledge Beta/openknowledge-beta', 'The openknowledge-beta:// URL scheme'],
+  ])('names the URL scheme of the CLI that ran (%s)', async (execPath, note) => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-uninstall-scheme-'));
+    try {
+      const result = await runUninstall({
+        home,
+        cwd: home,
+        env: {},
+        execPath,
+        platform: 'darwin',
+        yes: true,
+        deps: {
+          discoverLockDirs: async () => [],
+          resolveRecentProjects: async () => [],
+          detectInstallMethods: () => [],
+          probeClients: async () => null,
+          runRemovalDeps: {
+            clearToken: async () => ({ touched: [] }),
+            clearEmbeddingsKey: async () => ({ touched: [] }),
+            stopServer: async () => ({ stopped: 0, failed: [] }),
+          },
+        },
+      });
+      expect(result.status).toBe('done');
+      expect(result.message).toContain(note);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

@@ -4,6 +4,7 @@ export const DESKTOP_PRODUCTS = {
     productName: 'OpenKnowledge',
     packageName: '@inkeep/open-knowledge-desktop',
     linuxExecutableName: 'openknowledge',
+    protocolScheme: 'openknowledge',
     linuxPackageNames: {
       deb: 'openknowledge',
       rpm: 'OpenKnowledge',
@@ -20,6 +21,7 @@ export const DESKTOP_PRODUCTS = {
     productName: 'OpenKnowledge Beta',
     packageName: 'openknowledge-beta-desktop',
     linuxExecutableName: 'openknowledge-beta',
+    protocolScheme: 'openknowledge-beta',
     linuxPackageNames: {
       deb: 'openknowledge-beta-desktop',
       rpm: 'openknowledge-beta-desktop',

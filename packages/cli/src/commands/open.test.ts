@@ -1,6 +1,22 @@
 import { describe, expect, test } from 'vitest';
 import type { OpenTargetOptions } from '../utils/open-target.ts';
+import {
+  type DesktopAppTarget,
+  type DetectDeps,
+  type DetectResult,
+  detectDesktop,
+} from './desktop-dispatch.ts';
 import { createRealOpenDeps, type OpenDeps, runOpen } from './open.ts';
+
+const STABLE_APP: DesktopAppTarget = {
+  bundlePath: '/Applications/OpenKnowledge.app',
+  protocolScheme: 'openknowledge',
+};
+
+const BETA_APP: DesktopAppTarget = {
+  bundlePath: '/Applications/OpenKnowledge Beta.app',
+  protocolScheme: 'openknowledge-beta',
+};
 
 function makeDeps(overrides: Partial<OpenDeps> = {}): {
   deps: OpenDeps;
@@ -14,7 +30,7 @@ function makeDeps(overrides: Partial<OpenDeps> = {}): {
   const logs: string[] = [];
   const errors: string[] = [];
   const deps: OpenDeps = {
-    detectBundlePath: () => null,
+    detectDesktopApp: () => null,
     resolveBaseUrl: () => null,
     classifyName: () => 'doc',
     openTarget: async (t, options) => {
@@ -35,7 +51,7 @@ function makeDeps(overrides: Partial<OpenDeps> = {}): {
 describe('runOpen', () => {
   test('doc with a desktop bundle → openknowledge:// deep link, exit 0', async () => {
     const { deps, opened } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
     });
     const code = await runOpen('bim-brain/log', { project: '/abs/proj' }, deps);
     expect(code).toBe(0);
@@ -44,7 +60,7 @@ describe('runOpen', () => {
 
   test('doc with a desktop bundle threads the verified bundle path to openTarget', async () => {
     const { deps, openedOptions } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
     });
     await runOpen('bim-brain/log', { project: '/abs/proj' }, deps);
     expect(openedOptions).toEqual([{ desktopBundlePath: '/Applications/OpenKnowledge.app' }]);
@@ -52,7 +68,7 @@ describe('runOpen', () => {
 
   test('doc, no bundle but UI running → browser route, exit 0', async () => {
     const { deps, opened } = makeDeps({
-      detectBundlePath: () => null,
+      detectDesktopApp: () => null,
       resolveBaseUrl: () => 'http://localhost:5173',
     });
     const code = await runOpen('specs/foo/SPEC', { project: '/p' }, deps);
@@ -62,7 +78,7 @@ describe('runOpen', () => {
 
   test('launcher failure returns exit 1 without printing a success message', async () => {
     const { deps, logs, errors } = makeDeps({
-      detectBundlePath: () => null,
+      detectDesktopApp: () => null,
       resolveBaseUrl: () => 'http://localhost:5173',
       openTarget: async () => ({ ok: false, reason: 'not-installed' }),
     });
@@ -87,7 +103,7 @@ describe('runOpen', () => {
 
   test('folder with a desktop bundle → folder= deep link, exit 0', async () => {
     const { deps, opened, openedOptions } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
     });
     const code = await runOpen('specs/foo/', { project: '/p' }, deps);
     expect(code).toBe(0);
@@ -97,7 +113,7 @@ describe('runOpen', () => {
 
   test('folder, no bundle but UI running → browser folder route, exit 0', async () => {
     const { deps, opened } = makeDeps({
-      detectBundlePath: () => null,
+      detectDesktopApp: () => null,
       resolveBaseUrl: () => 'http://localhost:5173',
     });
     const code = await runOpen('specs/foo/', { project: '/p' }, deps);
@@ -107,7 +123,7 @@ describe('runOpen', () => {
 
   test('auto-detects a folder from disk (no trailing slash needed)', async () => {
     const { deps, opened } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
       classifyName: () => 'folder',
     });
     const code = await runOpen('specs/foo', { project: '/p' }, deps);
@@ -127,7 +143,7 @@ describe('runOpen', () => {
 
   test('skill with a desktop bundle → rides doc=__skill__/<scope>/<name> deep link', async () => {
     const { deps, opened, openedOptions } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
     });
     const code = await runOpen('trip-log', { skill: true, project: '/p' }, deps);
     expect(code).toBe(0);
@@ -146,7 +162,7 @@ describe('runOpen', () => {
 
   test('skill with an invalid --scope → error, exit 1', async () => {
     const { deps, errors } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
     });
     const code = await runOpen('trip-log', { skill: true, scope: 'nonsense', project: '/p' }, deps);
     expect(code).toBe(1);
@@ -163,7 +179,7 @@ describe('runOpen', () => {
 
   test('skill name with a traversal/unsafe segment → error before any open', async () => {
     const { deps, opened, errors } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
     });
     for (const bad of ['../../etc', '/abs', 'a\\b']) {
       const code = await runOpen(bad, { skill: true, project: '/p' }, deps);
@@ -196,7 +212,7 @@ describe('runOpen', () => {
     'rejects names the desktop parser would drop (%s) instead of false success',
     async (_label, name) => {
       const { deps, opened, errors } = makeDeps({
-        detectBundlePath: () => '/Applications/OpenKnowledge.app',
+        detectDesktopApp: () => STABLE_APP,
       });
       const code = await runOpen(name, { project: '/p' }, deps);
       expect(code).toBe(1);
@@ -215,7 +231,7 @@ describe('runOpen', () => {
 
   test('doc deep link encodes the whole name including the slash (%2F)', async () => {
     const { deps, opened } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
     });
     const code = await runOpen('notes/My Doc#1', { project: '/p' }, deps);
     expect(code).toBe(0);
@@ -231,34 +247,109 @@ describe('runOpen', () => {
 });
 
 describe('createRealOpenDeps wiring', () => {
-  test('detectBundlePath collapses a bundlePath-absent DetectResult to null (the force-browser/no-bundle contract)', () => {
-    const deps = createRealOpenDeps(() => ({ available: false, reason: 'force-browser' }));
-    expect(deps.detectBundlePath()).toBeNull();
+  test('detectDesktopApp collapses a bundlePath-absent DetectResult to null (the force-browser/no-bundle contract)', () => {
+    const deps = createRealOpenDeps(() => ({
+      available: false,
+      reason: 'force-browser',
+      cliProduct: 'stable',
+    }));
+    expect(deps.detectDesktopApp()).toBeNull();
   });
 
-  test('detectBundlePath returns the bundle path when detect reports one', () => {
+  test('detectDesktopApp returns the bundle path and Stable scheme when detect reports a Stable bundle', () => {
     const deps = createRealOpenDeps(() => ({
       available: true,
       reason: 'available',
       bundlePath: '/Applications/OpenKnowledge.app',
+      product: 'stable',
+      cliProduct: 'stable',
     }));
-    expect(deps.detectBundlePath()).toBe('/Applications/OpenKnowledge.app');
+    expect(deps.detectDesktopApp()).toEqual(STABLE_APP);
   });
 
-  test('detectBundlePath returns the bundle path when available:false but bundlePath is set', () => {
+  test('detectDesktopApp returns the bundle path when available:false but bundlePath is set', () => {
     const deps = createRealOpenDeps(() => ({
       available: false,
       reason: 'headless',
       bundlePath: '/Applications/OpenKnowledge.app',
+      product: 'stable',
+      cliProduct: 'stable',
     }));
-    expect(deps.detectBundlePath()).toBe('/Applications/OpenKnowledge.app');
+    expect(deps.detectDesktopApp()).toEqual(STABLE_APP);
+  });
+
+  test('detectDesktopApp carries the Beta scheme for a Beta bundle', () => {
+    const deps = createRealOpenDeps(() => ({
+      available: true,
+      reason: 'available',
+      bundlePath: '/Applications/OpenKnowledge Beta.app',
+      product: 'beta',
+      cliProduct: 'beta',
+    }));
+    expect(deps.detectDesktopApp()).toEqual(BETA_APP);
+  });
+});
+
+describe('Beta desktop app', () => {
+  const macBetaCli: DetectDeps = {
+    platform: 'darwin',
+    env: { ELECTRON_RUN_AS_NODE: '1' },
+    execPath: '/Applications/OpenKnowledge Beta.app/Contents/MacOS/OpenKnowledge Beta',
+    isTTY: true,
+    statSync: () => null,
+  };
+
+  function withRealDetection(detect: () => DetectResult): ReturnType<typeof makeDeps> {
+    const recorder = makeDeps();
+    const { detectDesktopApp: _stubbed, ...stubs } = recorder.deps;
+    return { ...recorder, deps: { ...createRealOpenDeps(detect), ...stubs } };
+  }
+
+  test('a doc deep link uses the Beta scheme so it reaches the Beta app', async () => {
+    const { deps, opened, openedOptions } = makeDeps({ detectDesktopApp: () => BETA_APP });
+    const code = await runOpen('notes/plan', { project: '/p' }, deps);
+    expect(code).toBe(0);
+    expect(opened).toEqual(['openknowledge-beta://open?project=%2Fp&doc=notes%2Fplan']);
+    expect(openedOptions).toEqual([{ desktopBundlePath: BETA_APP.bundlePath }]);
+  });
+
+  test('folder and skill deep links use the Beta scheme', async () => {
+    const { deps, opened } = makeDeps({
+      detectDesktopApp: () => BETA_APP,
+      classifyName: () => 'folder',
+    });
+    await runOpen('specs', { project: '/p' }, deps);
+    await runOpen('trip-log', { project: '/p', skill: true }, deps);
+    expect(opened).toEqual([
+      'openknowledge-beta://open?project=%2Fp&folder=specs',
+      'openknowledge-beta://open?project=%2Fp&doc=__skill__%2Fproject%2Ftrip-log',
+    ]);
+  });
+
+  test('the bundled Beta CLI on macOS deep-links into the Beta app, not Stable', async () => {
+    const { deps, opened, openedOptions } = withRealDetection(() => detectDesktop(macBetaCli));
+    const code = await runOpen('notes/plan', { project: '/p' }, deps);
+    expect(code).toBe(0);
+    expect(opened).toEqual(['openknowledge-beta://open?project=%2Fp&doc=notes%2Fplan']);
+    expect(openedOptions).toEqual([{ desktopBundlePath: BETA_APP.bundlePath }]);
+  });
+
+  test('the bundled Stable CLI keeps the Stable scheme', async () => {
+    const { deps, opened } = withRealDetection(() =>
+      detectDesktop({
+        ...macBetaCli,
+        execPath: '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge',
+      }),
+    );
+    await runOpen('notes/plan', { project: '/p' }, deps);
+    expect(opened).toEqual(['openknowledge://open?project=%2Fp&doc=notes%2Fplan']);
   });
 });
 
 describe('resolved-project disclosure', () => {
   test('doc open names the absolute project root', async () => {
     const { deps, logs } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
     });
     const code = await runOpen('specs/foo/SPEC', { project: '/abs/proj' }, deps);
     expect(code).toBe(0);
@@ -267,7 +358,7 @@ describe('resolved-project disclosure', () => {
 
   test('folder open names the absolute project root', async () => {
     const { deps, logs } = makeDeps({
-      detectBundlePath: () => null,
+      detectDesktopApp: () => null,
       resolveBaseUrl: () => 'http://localhost:5173',
       classifyName: () => 'folder',
     });
@@ -278,7 +369,7 @@ describe('resolved-project disclosure', () => {
 
   test('skill open names the absolute project root', async () => {
     const { deps, logs } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
     });
     const code = await runOpen('my-skill', { skill: true, project: '/abs/proj' }, deps);
     expect(code).toBe(0);
@@ -287,7 +378,7 @@ describe('resolved-project disclosure', () => {
 
   test('a failed open discloses nothing (no false project claim)', async () => {
     const { deps, logs } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
       openTarget: async () => ({ ok: false, reason: 'not-installed' }),
     });
     const code = await runOpen('doc', { project: '/abs/proj' }, deps);
@@ -297,7 +388,7 @@ describe('resolved-project disclosure', () => {
 
   test('a nested project root names BOTH roots, once', async () => {
     const { deps, logs } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
       findAncestorProject: () => '/abs',
     });
     const code = await runOpen('doc', { project: '/abs/nested' }, deps);
@@ -310,7 +401,7 @@ describe('resolved-project disclosure', () => {
 
   test('a non-nested project root says nothing extra', async () => {
     const { deps, logs } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
       findAncestorProject: () => null,
     });
     await runOpen('doc', { project: '/abs/proj' }, deps);
@@ -321,7 +412,7 @@ describe('resolved-project disclosure', () => {
 describe('explicit --project validation', () => {
   test('refuses an override that does not name a project, without opening anything', async () => {
     const { deps, opened, errors } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
       isProjectRoot: () => false,
     });
     const code = await runOpen('README', { project: '/tmp/not-a-project' }, deps);
@@ -332,7 +423,7 @@ describe('explicit --project validation', () => {
 
   test('honors an override that does name a project', async () => {
     const { deps, opened } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
       isProjectRoot: () => true,
     });
     const code = await runOpen('README', { project: '/tmp/real-project' }, deps);
@@ -343,7 +434,7 @@ describe('explicit --project validation', () => {
   test('an absent override keeps the cwd default and is never validated', async () => {
     let consulted = false;
     const { deps, logs } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
       isProjectRoot: () => {
         consulted = true;
         return false;
@@ -360,7 +451,7 @@ describe('explicit --project validation', () => {
 describe('running outside any project', () => {
   test('does not call the cwd fallback a project', async () => {
     const { deps, logs } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
       enclosingProject: () => null,
     });
     const code = await runOpen('notes', {}, deps);
@@ -371,7 +462,7 @@ describe('running outside any project', () => {
 
   test('does not derive a nested-project note from a non-project directory', async () => {
     const { deps, logs } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
       enclosingProject: () => null,
       findAncestorProject: () => '/repo/root',
     });
@@ -383,7 +474,7 @@ describe('running outside any project', () => {
 describe('running from a subdirectory of a project', () => {
   test('acts on the enclosing project, not the subdirectory it was run from', async () => {
     const { deps, opened, logs } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
       enclosingProject: () => '/repo/root',
       findAncestorProject: () => null,
     });
@@ -395,7 +486,7 @@ describe('running from a subdirectory of a project', () => {
 
   test('does not claim a nested topology just because it ran below the root', async () => {
     const { deps, logs } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
       enclosingProject: () => '/repo/root',
       findAncestorProject: () => null,
     });
@@ -406,7 +497,7 @@ describe('running from a subdirectory of a project', () => {
   test('an explicit --project is never overridden by the cwd lookup', async () => {
     let consulted = false;
     const { deps, opened } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      detectDesktopApp: () => STABLE_APP,
       enclosingProject: () => {
         consulted = true;
         return '/repo/root';

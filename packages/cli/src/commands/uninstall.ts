@@ -16,6 +16,7 @@ import { readPathInstallMarker } from '../integrations/path-shim.ts';
 import { accent, dim, error as errorColor, info, success, warning } from '../ui/colors.ts';
 import { confirmDestructive } from '../ui/confirm.ts';
 import { discoverLockDirs } from '../utils/process-scan.ts';
+import { desktopProductsVisibleTo, runningDesktopProduct } from './desktop-dispatch.ts';
 import {
   buildUninstallPlan,
   describeAttachedClients,
@@ -37,21 +38,22 @@ export interface InstallMethod {
   instruction: string;
 }
 
-const DESKTOP_PRODUCT_LIST = [DESKTOP_PRODUCTS.stable, DESKTOP_PRODUCTS.beta] as const;
-
 export function detectInstallMethods(
   home: string,
   argv1: string | undefined,
   runNpmLs: (args: string[]) => string | null = defaultNpmLs,
   exists: (path: string) => boolean = existsSync,
-  opts: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv } = {},
+  opts: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv; execPath?: string } = {},
 ): InstallMethod[] {
   const methods: InstallMethod[] = [];
   const platform = opts.platform ?? process.platform;
   const env = opts.env ?? process.env;
+  const desktopProducts = desktopProductsVisibleTo(
+    runningDesktopProduct(env, opts.execPath ?? process.execPath),
+  ).map((name) => DESKTOP_PRODUCTS[name]);
 
   if (platform === 'darwin') {
-    for (const product of DESKTOP_PRODUCT_LIST) {
+    for (const product of desktopProducts) {
       for (const applicationsDir of ['/Applications', join(home, 'Applications')]) {
         const app = join(applicationsDir, `${product.productName}.app`);
         if (exists(app)) {
@@ -66,7 +68,7 @@ export function detectInstallMethods(
   } else if (platform === 'win32') {
     const localAppData = env.LOCALAPPDATA;
     if (localAppData) {
-      for (const product of DESKTOP_PRODUCT_LIST) {
+      for (const product of desktopProducts) {
         for (const dirName of desktopWindowsInstallDirNames(product)) {
           const exe = join(
             localAppData,
@@ -86,7 +88,7 @@ export function detectInstallMethods(
       }
     }
   } else if (platform === 'linux') {
-    for (const product of DESKTOP_PRODUCT_LIST) {
+    for (const product of desktopProducts) {
       const installDir = `/opt/${product.productName}`;
       if (exists(join(installDir, product.linuxExecutableName))) {
         const { deb: debPackageName, rpm: rpmPackageName } = product.linuxPackageNames;
@@ -275,6 +277,7 @@ export interface UninstallOptions {
   isTTY?: boolean;
   isStdinTTY?: boolean;
   argv1?: string;
+  execPath?: string;
   confirmStream?: NodeJS.ReadableStream;
   deps?: UninstallDeps;
 }
@@ -286,14 +289,18 @@ export interface UninstallResult {
   runFeedbackAfterReport?: () => Promise<void>;
 }
 
-const URL_SCHEME_NOTE = dim(
-  'The openknowledge:// URL scheme deregisters itself once the app is removed — no action needed.',
-);
+function urlSchemeNote(env: NodeJS.ProcessEnv, execPath: string): string {
+  const { protocolScheme } = DESKTOP_PRODUCTS[runningDesktopProduct(env, execPath)];
+  return dim(
+    `The ${protocolScheme}:// URL scheme deregisters itself once the app is removed — no action needed.`,
+  );
+}
 
 export async function runUninstall(opts: UninstallOptions = {}): Promise<UninstallResult> {
   const home = opts.home ?? homedir();
   const platform = opts.platform ?? process.platform;
   const env = opts.env ?? process.env;
+  const execPath = opts.execPath ?? process.execPath;
   const cwd = resolve(opts.cwd ?? process.cwd());
   const host = opts.host ?? 'github.com';
   const purgeContent = opts.purgeContent ?? false;
@@ -337,7 +344,11 @@ export async function runUninstall(opts: UninstallOptions = {}): Promise<Uninsta
   );
   const binaryBlock = (): string =>
     formatInstallInstructions(
-      detectInstall(home, opts.argv1 ?? process.argv[1], undefined, undefined, { platform, env }),
+      detectInstall(home, opts.argv1 ?? process.argv[1], undefined, undefined, {
+        platform,
+        env,
+        execPath,
+      }),
       platform,
     );
 
@@ -411,7 +422,7 @@ export async function runUninstall(opts: UninstallOptions = {}): Promise<Uninsta
       : formatRemovalOutcome(outcome),
   ];
   if (!opts.json) {
-    parts.push('', fallbackNote, URL_SCHEME_NOTE);
+    parts.push('', fallbackNote, urlSchemeNote(env, execPath));
     if (outcome.failed.length === 0) {
       parts.push('', success("OpenKnowledge's files have been removed from this machine."));
     }

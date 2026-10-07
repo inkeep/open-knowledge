@@ -1,5 +1,6 @@
 import type { SpawnOptions } from 'node:child_process';
-import { describe, expect, test } from 'vitest';
+import { OK_CHANNEL_ENV } from '@inkeep/open-knowledge-core';
+import { describe, expect, test, vi } from 'vitest';
 import {
   DESKTOP_BUNDLE_ID,
   type DetectDeps,
@@ -35,17 +36,21 @@ describe('detectDesktop — platform gate (FR10)', () => {
     const result = detectDesktop(
       baseDeps({ platform: 'freebsd' as NodeJS.Platform, statSync: statForFile(APP_EXEC) }),
     );
-    expect(result).toEqual({ available: false, reason: 'unsupported-platform' });
+    expect(result).toEqual({
+      available: false,
+      reason: 'unsupported-platform',
+      cliProduct: 'stable',
+    });
   });
 
   test('linux with no install → no-bundle (falls back to browser mode)', () => {
     const result = detectDesktop(baseDeps({ platform: 'linux', statSync: statForFile(APP_EXEC) }));
-    expect(result).toEqual({ available: false, reason: 'no-bundle' });
+    expect(result).toEqual({ available: false, reason: 'no-bundle', cliProduct: 'stable' });
   });
 
   test('win32 with no install → no-bundle (falls back to browser mode)', () => {
     const result = detectDesktop(baseDeps({ platform: 'win32', statSync: statForFile(APP_EXEC) }));
-    expect(result).toEqual({ available: false, reason: 'no-bundle' });
+    expect(result).toEqual({ available: false, reason: 'no-bundle', cliProduct: 'stable' });
   });
 });
 
@@ -65,7 +70,13 @@ describe('detectDesktop — Windows/Linux install resolution', () => {
         statSync: statForFile(WIN_EXE),
       }),
     );
-    expect(result).toEqual({ available: true, reason: 'available', bundlePath: WIN_EXE });
+    expect(result).toEqual({
+      available: true,
+      reason: 'available',
+      bundlePath: WIN_EXE,
+      product: 'stable',
+      cliProduct: 'stable',
+    });
   });
 
   test('win32: bundled-CLI introspection (ok.cmd wrapper) → the running exe', () => {
@@ -77,7 +88,31 @@ describe('detectDesktop — Windows/Linux install resolution', () => {
         statSync: () => null,
       }),
     );
-    expect(result).toEqual({ available: true, reason: 'available', bundlePath: WIN_EXE });
+    expect(result).toEqual({
+      available: true,
+      reason: 'available',
+      bundlePath: WIN_EXE,
+      product: 'stable',
+      cliProduct: 'stable',
+    });
+  });
+
+  test('win32: bundled-CLI introspection reports the Beta product for the Beta exe', () => {
+    const result = detectDesktop(
+      baseDeps({
+        platform: 'win32',
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+        execPath: BETA_WIN_EXE,
+        statSync: () => null,
+      }),
+    );
+    expect(result).toEqual({
+      available: true,
+      reason: 'available',
+      bundlePath: BETA_WIN_EXE,
+      product: 'beta',
+      cliProduct: 'beta',
+    });
   });
 
   test('win32: Beta per-user install → available', () => {
@@ -88,7 +123,13 @@ describe('detectDesktop — Windows/Linux install resolution', () => {
         statSync: statForFile(BETA_WIN_EXE),
       }),
     );
-    expect(result).toEqual({ available: true, reason: 'available', bundlePath: BETA_WIN_EXE });
+    expect(result).toEqual({
+      available: true,
+      reason: 'available',
+      bundlePath: BETA_WIN_EXE,
+      product: 'beta',
+      cliProduct: 'stable',
+    });
   });
 
   test('linux: deb install at /opt → available (with a display)', () => {
@@ -99,14 +140,26 @@ describe('detectDesktop — Windows/Linux install resolution', () => {
         statSync: statForFile(DEB_EXE),
       }),
     );
-    expect(result).toEqual({ available: true, reason: 'available', bundlePath: DEB_EXE });
+    expect(result).toEqual({
+      available: true,
+      reason: 'available',
+      bundlePath: DEB_EXE,
+      product: 'stable',
+      cliProduct: 'stable',
+    });
   });
 
   test('linux: no DISPLAY/WAYLAND_DISPLAY → headless even on a TTY', () => {
     const result = detectDesktop(
       baseDeps({ platform: 'linux', env: {}, statSync: statForFile(DEB_EXE) }),
     );
-    expect(result).toEqual({ available: false, reason: 'headless', bundlePath: DEB_EXE });
+    expect(result).toEqual({
+      available: false,
+      reason: 'headless',
+      bundlePath: DEB_EXE,
+      product: 'stable',
+      cliProduct: 'stable',
+    });
   });
 
   test('linux: Beta deb install at /opt → available', () => {
@@ -117,7 +170,13 @@ describe('detectDesktop — Windows/Linux install resolution', () => {
         statSync: statForFile(BETA_DEB_EXE),
       }),
     );
-    expect(result).toEqual({ available: true, reason: 'available', bundlePath: BETA_DEB_EXE });
+    expect(result).toEqual({
+      available: true,
+      reason: 'available',
+      bundlePath: BETA_DEB_EXE,
+      product: 'beta',
+      cliProduct: 'stable',
+    });
   });
 });
 
@@ -141,6 +200,8 @@ describe('detectDesktop — bundle resolution (FR10 D2 a/b/c)', () => {
       available: true,
       reason: 'available',
       bundlePath: '/Applications/OpenKnowledge Beta.app',
+      product: 'beta',
+      cliProduct: 'stable',
     });
   });
 
@@ -154,7 +215,7 @@ describe('detectDesktop — bundle resolution (FR10 D2 a/b/c)', () => {
 
   test('darwin + no bundle → no-bundle', () => {
     const result = detectDesktop(baseDeps());
-    expect(result).toEqual({ available: false, reason: 'no-bundle' });
+    expect(result).toEqual({ available: false, reason: 'no-bundle', cliProduct: 'stable' });
   });
 
   test('bundled-CLI introspection (FR10 D2 path a) — ELECTRON_RUN_AS_NODE + execPath in .app', () => {
@@ -167,6 +228,18 @@ describe('detectDesktop — bundle resolution (FR10 D2 a/b/c)', () => {
     );
     expect(result.available).toBe(true);
     expect(result.bundlePath).toBe('/Applications/OpenKnowledge.app');
+  });
+
+  test('bundled-CLI introspection reports the Beta product for the Beta bundle', () => {
+    const result = detectDesktop(
+      baseDeps({
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+        execPath: BETA_APP_EXEC,
+        statSync: () => null,
+      }),
+    );
+    expect(result.bundlePath).toBe('/Applications/OpenKnowledge Beta.app');
+    expect(result.product).toBe('beta');
   });
 
   test('bundled-CLI introspection — execPath outside .app falls through to stat probes', () => {
@@ -189,7 +262,7 @@ describe('detectDesktop — bundle resolution (FR10 D2 a/b/c)', () => {
         },
       }),
     );
-    expect(result).toEqual({ available: false, reason: 'no-bundle' });
+    expect(result).toEqual({ available: false, reason: 'no-bundle', cliProduct: 'stable' });
   });
 });
 
@@ -201,7 +274,7 @@ describe('detectDesktop — env overrides (FR8)', () => {
         statSync: statForFile(APP_EXEC),
       }),
     );
-    expect(result).toEqual({ available: false, reason: 'force-browser' });
+    expect(result).toEqual({ available: false, reason: 'force-browser', cliProduct: 'stable' });
   });
 
   test('OK_FORCE_BROWSER=1 with darwin + bundle still returns false', () => {
@@ -239,6 +312,55 @@ describe('detectDesktop — env overrides (FR8)', () => {
   });
 });
 
+describe('detectDesktop — unsupported channel override', () => {
+  test('an unsupported channel falls back to the npm CLI product and warns once', () => {
+    const warn = vi.fn();
+    const result = detectDesktop(
+      baseDeps({ env: { [OK_CHANNEL_ENV]: 'nightly' }, statSync: statForFile(APP_EXEC), warn }),
+    );
+    expect(result).toEqual({
+      available: true,
+      reason: 'available',
+      bundlePath: '/Applications/OpenKnowledge.app',
+      product: 'stable',
+      cliProduct: 'stable',
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      `Treating this CLI as OpenKnowledge (Stable) for this command: Unsupported ${OK_CHANNEL_ENV}="nightly". Expected stable or beta.`,
+    );
+  });
+
+  test('an unsupported channel falls back to the bundled Beta executable, not Stable', () => {
+    const warn = vi.fn();
+    const result = detectDesktop(
+      baseDeps({
+        platform: 'linux',
+        env: { [OK_CHANNEL_ENV]: 'nightly', ELECTRON_RUN_AS_NODE: '1', DISPLAY: ':0' },
+        execPath: '/opt/OpenKnowledge Beta/openknowledge-beta',
+        warn,
+      }),
+    );
+    expect(result).toEqual({
+      available: true,
+      reason: 'available',
+      bundlePath: '/opt/OpenKnowledge Beta/openknowledge-beta',
+      product: 'beta',
+      cliProduct: 'beta',
+    });
+    expect(warn).toHaveBeenCalledWith(
+      `Treating this CLI as OpenKnowledge Beta for this command: Unsupported ${OK_CHANNEL_ENV}="nightly". Expected stable or beta.`,
+    );
+  });
+
+  test('a supported channel override does not warn', () => {
+    const warn = vi.fn();
+    const result = detectDesktop(baseDeps({ env: { [OK_CHANNEL_ENV]: 'beta' }, warn }));
+    expect(result.cliProduct).toBe('beta');
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
 describe('detectDesktop — headless gate (FR9 — CI is intentionally NOT a trigger)', () => {
   const WIN_EXE =
     'C:\\Users\\u\\AppData\\Local\\Programs\\@inkeepopen-knowledge-desktop\\OpenKnowledge.exe';
@@ -264,7 +386,13 @@ describe('detectDesktop — headless gate (FR9 — CI is intentionally NOT a tri
         statSync: statForFile(WIN_EXE),
       }),
     );
-    expect(result).toEqual({ available: true, reason: 'available', bundlePath: WIN_EXE });
+    expect(result).toEqual({
+      available: true,
+      reason: 'available',
+      bundlePath: WIN_EXE,
+      product: 'stable',
+      cliProduct: 'stable',
+    });
   });
 
   test('win32: isTTY=undefined + CI env → headless', () => {
@@ -365,17 +493,69 @@ describe('launchDesktop — spawn shape (FR11)', () => {
     let logged = '';
     launchDesktop(
       { spawn: fakeSpawn, log: (m) => (logged = m), platform: 'darwin' },
-      { available: true, reason: 'available', bundlePath: '/Applications/OpenKnowledge Beta.app' },
+      {
+        available: true,
+        reason: 'available',
+        bundlePath: '/Applications/OpenKnowledge.app',
+        product: 'stable',
+        cliProduct: 'stable',
+      },
     );
 
     expect(captured.command).toBe('open');
-    expect(captured.args).toEqual(['-a', '/Applications/OpenKnowledge Beta.app']);
+    expect(captured.args).toEqual(['-a', '/Applications/OpenKnowledge.app']);
     expect(captured.opts?.detached).toBe(true);
     expect(captured.opts?.stdio).toBe('ignore');
     expect(unrefCalled).toBe(true);
     expect(logged).toContain('Launching OpenKnowledge desktop');
     expect(logged).toContain('OK_FORCE_BROWSER=1');
     expect(logged).toContain('ok start');
+  });
+
+  test('a Stable CLI opening a Beta-only install names the Beta app but its own start command', () => {
+    let spawnedArgs: readonly string[] | undefined;
+    const fakeSpawn = ((_command: string, args: readonly string[]) => {
+      spawnedArgs = args;
+      return { unref: () => {} };
+    }) as unknown as Parameters<typeof launchDesktop>[0]['spawn'];
+    const detection = detectDesktop(baseDeps({ statSync: statForFile(BETA_APP_EXEC) }));
+    let logged = '';
+    launchDesktop({ spawn: fakeSpawn, log: (m) => (logged = m), platform: 'darwin' }, detection);
+
+    expect(spawnedArgs).toEqual(['-a', '/Applications/OpenKnowledge Beta.app']);
+    expect(logged).toContain('Launching OpenKnowledge Beta desktop');
+    expect(logged).toContain('`ok start`');
+    expect(logged).not.toContain('ok-beta');
+  });
+
+  test('a Beta CLI that falls back to the Stable app still names its own start command', () => {
+    const fakeSpawn = (() => ({ unref: () => {} })) as unknown as Parameters<
+      typeof launchDesktop
+    >[0]['spawn'];
+    const detection = detectDesktop(
+      baseDeps({ env: { OK_CHANNEL: 'beta' }, statSync: statForFile(APP_EXEC) }),
+    );
+    let logged = '';
+    launchDesktop({ spawn: fakeSpawn, log: (m) => (logged = m), platform: 'darwin' }, detection);
+
+    expect(detection).toMatchObject({ product: 'stable', cliProduct: 'beta' });
+    expect(logged).toContain('Launching OpenKnowledge desktop');
+    expect(logged).toContain('`ok-beta start`');
+  });
+
+  test('skips the spawn when the detection carries no executable', () => {
+    let spawned = false;
+    const fakeSpawn = (() => {
+      spawned = true;
+      return { unref: () => {} };
+    }) as unknown as Parameters<typeof launchDesktop>[0]['spawn'];
+    const logs: string[] = [];
+    launchDesktop(
+      { spawn: fakeSpawn, log: (m) => logs.push(m), platform: 'darwin' },
+      { available: false, reason: 'no-bundle', cliProduct: 'stable' },
+    );
+    expect(spawned).toBe(false);
+    expect(logs).toEqual(['Desktop launch skipped: no resolved desktop executable (caller bug).']);
   });
 
   for (const platform of ['win32', 'linux'] as const) {
@@ -397,7 +577,13 @@ describe('launchDesktop — spawn shape (FR11)', () => {
           : '/opt/OpenKnowledge/openknowledge';
       launchDesktop(
         { spawn: fakeSpawn, log: () => {}, platform },
-        { available: true, reason: 'available', bundlePath: exe },
+        {
+          available: true,
+          reason: 'available',
+          bundlePath: exe,
+          product: 'stable',
+          cliProduct: 'stable',
+        },
       );
 
       expect(captured.command).toBe(exe);
@@ -420,7 +606,13 @@ describe('launchDesktop — spawn shape (FR11)', () => {
 
       launchDesktop(
         { spawn: fakeSpawn, log: () => {}, platform: 'darwin' },
-        { available: true, reason: 'available', bundlePath: '/Applications/OpenKnowledge.app' },
+        {
+          available: true,
+          reason: 'available',
+          bundlePath: '/Applications/OpenKnowledge.app',
+          product: 'stable',
+          cliProduct: 'stable',
+        },
       );
 
       expect(captured.opts?.env).toBeDefined();

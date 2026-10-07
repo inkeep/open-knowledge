@@ -15,14 +15,20 @@ import {
   openTargetFailureMessage,
   openTarget as openTargetReal,
 } from '../utils/open-target.ts';
-import { createRealDetectDeps, type DetectResult, detectDesktop } from './desktop-dispatch.ts';
+import {
+  createRealDetectDeps,
+  type DesktopAppTarget,
+  type DetectResult,
+  desktopAppTarget,
+  detectDesktop,
+} from './desktop-dispatch.ts';
 import { createRealOpenDeps, runOpen } from './open.ts';
 
 const EPHEMERAL_IDLE_SHUTDOWN_MS = 10 * 60 * 1000;
 
 export interface SingleFileOpenDeps {
   prepare: (filePath: string, options?: PrepareSingleFileOpenOptions) => SingleFileOpenPlan;
-  detectBundlePath: () => string | null;
+  detectDesktopApp: () => DesktopAppTarget | null;
   openTarget: (
     target: string,
     options?: Pick<OpenTargetOptions, 'desktopBundlePath'>,
@@ -38,7 +44,7 @@ export function createRealSingleFileOpenDeps(
 ): SingleFileOpenDeps {
   return {
     prepare: prepareSingleFileOpen,
-    detectBundlePath: () => detect().bundlePath ?? null,
+    detectDesktopApp: () => desktopAppTarget(detect()),
     openTarget: openTargetReal,
     runProjectOpen: (docName, projectRoot) =>
       runOpen(docName, { project: projectRoot }, createRealOpenDeps()),
@@ -77,10 +83,10 @@ export async function runSingleFileOpen(
     return await deps.runProjectOpen(plan.docName, plan.projectRoot);
   }
 
-  const bundlePath = deps.detectBundlePath();
-  if (bundlePath) {
-    const deepLink = `openknowledge://open?file=${encodeURIComponent(plan.canonicalFilePath)}`;
-    const outcome = await deps.openTarget(deepLink, { desktopBundlePath: bundlePath });
+  const desktopApp = deps.detectDesktopApp();
+  if (desktopApp) {
+    const deepLink = `${desktopApp.protocolScheme}://open?file=${encodeURIComponent(plan.canonicalFilePath)}`;
+    const outcome = await deps.openTarget(deepLink, { desktopBundlePath: desktopApp.bundlePath });
     if (!outcome.ok) {
       deps.error(
         `Could not open the OpenKnowledge desktop app: ${openTargetFailureMessage(
