@@ -424,6 +424,7 @@ interface ProtocolHandlerDeps {
   getFocusedWindow?(): BrowserWindowHandle | null;
   getAnyReadyWindow(): BrowserWindowHandle | null;
   getInitialArgv?: () => readonly string[];
+  onRelaunchWithoutTarget?(): void;
   setTimeout?: (cb: () => void, ms: number) => unknown;
   platform?: NodeJS.Platform;
   protocolScheme?: string;
@@ -889,7 +890,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
     enqueueOrRoute(webpageURL);
   });
 
-  const ingestArgv = (argv: readonly string[]): void => {
+  const ingestArgv = (argv: readonly string[]): number => {
     let urlArguments = 0;
     let fileArguments = 0;
     let unencodableArguments = 0;
@@ -915,10 +916,11 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
       { argvLength: argv.length, urlArguments, fileArguments, unencodableArguments },
       '[receive] action=argv-scan',
     );
+    return urlArguments + fileArguments;
   };
 
   deps.app.on('second-instance', (_event, argv) => {
-    ingestArgv(argv);
+    if (ingestArgv(argv) === 0) deps.onRelaunchWithoutTarget?.();
   });
 
   ingestArgv(deps.getInitialArgv?.() ?? []);

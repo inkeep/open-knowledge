@@ -14,6 +14,7 @@ import {
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
+const DARWIN = process.platform === 'darwin';
 
 interface SeededHome {
   tmpHome: string;
@@ -208,5 +209,43 @@ test.describe('Project Navigator return-affordance smoke', () => {
       .evaluate(() => window.okDesktop?.config?.mode)
       .catch(() => null);
     expect(stillEditorMode).toBe('editor');
+  });
+
+  test.describe('on Windows and Linux', () => {
+    test.skip(DARWIN, 'macOS keeps running with no windows; the Dock reopens the Navigator.');
+
+    test('closing the last project window opens the Navigator, and closing the Navigator then quits', async ({
+      captureStderrFor,
+    }) => {
+      const { tmpHome, projectDir } = seedHomeWithLastOpenedProject('last-window');
+      const app = await launchApp(tmpHome);
+      captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
+      const appProcess = app.process();
+      const appExited = () => appProcess.exitCode !== null || appProcess.signalCode !== null;
+
+      const editor = await findEditorWindow(app);
+      await expect.poll(() => countEditorWindows(app)).toBe(1);
+      await expect.poll(() => countNavigatorWindows(app)).toBe(0);
+
+      await editor.close();
+
+      const navigatorPage = await findNavigatorWindow(app);
+      await expect
+        .poll(() => countEditorWindows(app), {
+          timeout: 5_000,
+          message: 'editor window did not close',
+        })
+        .toBe(0);
+      expect(appExited()).toBe(false);
+
+      await navigatorPage.close();
+
+      await expect
+        .poll(appExited, {
+          timeout: 30_000,
+          message: 'app kept running after its last window, the Navigator, closed',
+        })
+        .toBe(true);
+    });
   });
 });

@@ -18,6 +18,7 @@ function makeHandler(
   const openProject = vi.fn(async (_projectPath: string) => null);
   const sendDeepLink = vi.fn();
   const infoLog = vi.fn();
+  const onRelaunchWithoutTarget = vi.fn();
   const scheduled: Array<() => void> = [];
   const control = registerProtocolHandler({
     app: {
@@ -33,6 +34,7 @@ function makeHandler(
     sendDeepLink,
     getAnyReadyWindow: () => null,
     getInitialArgv: () => argv,
+    onRelaunchWithoutTarget,
     platform: options.platform ?? 'win32',
     log: { info: infoLog, warn: vi.fn(), error: vi.fn() },
     setTimeout: (cb) => scheduled.push(cb),
@@ -43,6 +45,7 @@ function makeHandler(
     openProject,
     sendDeepLink,
     infoLog,
+    onRelaunchWithoutTarget,
     ready: ready.resolve,
     secondInstance: (args: readonly string[]) => events.emit('second-instance', {}, args),
     runScheduled: () => {
@@ -237,4 +240,42 @@ describe('Windows file-association argv delivery', () => {
       expect(h.openEphemeralFile).toHaveBeenCalledExactlyOnceWith(file);
     },
   );
+});
+
+describe('relaunch without a target', () => {
+  test.each<NodeJS.Platform>(['win32', 'linux', 'darwin'])(
+    'asks for an existing window when a second launch on %s names nothing to open',
+    (platform) => {
+      const h = makeHandler(undefined, { platform });
+      h.control.drainQueuedUrls();
+      h.secondInstance(['--original-process-start-time=123', executable, '--inspect=9229']);
+      expect(h.onRelaunchWithoutTarget).toHaveBeenCalledOnce();
+      expect(h.openProject).not.toHaveBeenCalled();
+      expect(h.openEphemeralFile).not.toHaveBeenCalled();
+    },
+  );
+
+  test('routes a second launch that carries a link without asking for a window', () => {
+    const file = documentPath('url-note.md');
+    const h = makeHandler();
+    h.control.drainQueuedUrls();
+    h.secondInstance([executable, `openknowledge://open?file=${encodeURIComponent(file)}`]);
+    expect(h.openEphemeralFile).toHaveBeenCalledExactlyOnceWith(file);
+    expect(h.onRelaunchWithoutTarget).not.toHaveBeenCalled();
+  });
+
+  test('routes a second launch that carries a Windows document without asking for a window', () => {
+    const file = documentPath('notes.md');
+    const h = makeHandler();
+    h.control.drainQueuedUrls();
+    h.secondInstance([executable, file]);
+    expect(h.openEphemeralFile).toHaveBeenCalledExactlyOnceWith(file);
+    expect(h.onRelaunchWithoutTarget).not.toHaveBeenCalled();
+  });
+
+  test('leaves the first launch to boot restore', () => {
+    const h = makeHandler([executable, '--inspect=9229']);
+    h.control.drainQueuedUrls();
+    expect(h.onRelaunchWithoutTarget).not.toHaveBeenCalled();
+  });
 });

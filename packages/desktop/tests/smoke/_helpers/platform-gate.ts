@@ -35,7 +35,7 @@ export const SPEC_PLATFORM_GATES = {
   'liveness-watchdog.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'mcp-wiring.e2e.ts': ['!PLATFORM_SUPPORTED', 'WINDOWS', "WINDOWS || TARGET.mode === 'packaged'"],
   'navigator-close-on-open.e2e.ts': ['!PLATFORM_SUPPORTED'],
-  'navigator-return.e2e.ts': ['!PLATFORM_SUPPORTED'],
+  'navigator-return.e2e.ts': ['!PLATFORM_SUPPORTED', 'DARWIN'],
   'note-window.e2e.ts': ['!PLATFORM_SUPPORTED', '!DARWIN'],
   'okf-rule-toggle.e2e.ts': ['!DARWIN'],
   'qa-create-new-extended.e2e.ts': ['!PLATFORM_SUPPORTED'],

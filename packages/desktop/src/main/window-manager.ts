@@ -444,6 +444,25 @@ export function signalStopOwnedUtilityForks(
   }
 }
 
+export function bringWindowToFront(
+  win: BrowserWindowLike,
+  activateApp: () => void,
+  opts?: { activate?: boolean },
+): void {
+  const activate = opts?.activate ?? true;
+  if (win.isMinimized?.()) win.restore?.();
+  if (activate) {
+    win.show?.();
+  } else if (win.isVisible?.() !== true) {
+    if (win.showInactive !== undefined) win.showInactive();
+    else win.show?.();
+  }
+  const alreadyFrontmost = win.isFocused?.() === true;
+  win.moveTop?.();
+  win.focus();
+  if (activate && !alreadyFrontmost) activateApp();
+}
+
 export class WindowManager {
   private readonly windowsByPath = new Map<string, ProjectContext>();
 
@@ -493,18 +512,7 @@ export class WindowManager {
   }
 
   private bringToFront(win: BrowserWindowLike, opts?: { activate?: boolean }): void {
-    const activate = opts?.activate ?? true;
-    if (win.isMinimized?.()) win.restore?.();
-    if (activate) {
-      win.show?.();
-    } else if (win.isVisible?.() !== true) {
-      if (win.showInactive !== undefined) win.showInactive();
-      else win.show?.();
-    }
-    const alreadyFrontmost = win.isFocused?.() === true;
-    win.moveTop?.();
-    win.focus();
-    if (activate && !alreadyFrontmost) this.deps.activateApp?.();
+    bringWindowToFront(win, () => this.deps.activateApp?.(), opts);
   }
 
   getContextForBrowserWindow(win: BrowserWindowLike): ProjectContext | undefined {

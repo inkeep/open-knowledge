@@ -342,6 +342,7 @@ import {
 } from './ipc-handlers.ts';
 import { logIpcError, withIpcErrorLogging } from './ipc-log.ts';
 import { createDesktopKeepaliveFactory, toKeepaliveLogger } from './keepalive.ts';
+import { decideAllWindowsClosed, decideRelaunchReveal } from './last-window-policy.ts';
 import { getBootAmbientCapsFacts, logAmbientCapsPosture } from './linux-ambient-caps.ts';
 import {
   detectGraphicalAuthCommand,
@@ -560,6 +561,7 @@ import { buildViewMenuStateDeps, EditorViewMenuStateRegistry } from './view-menu
 import { applyThemeToWindow, buildNonDarwinChromeOpts } from './window-chrome.ts';
 import {
   type BrowserWindowLike,
+  bringWindowToFront,
   collabUrlFromApiOrigin,
   setWindowInstanceLabel,
   type UtilityProcessLike,
@@ -996,6 +998,8 @@ function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
   });
 }
 let navigatorWindow: BrowserWindowLike | null = null;
+let lastClosedWasNavigator = false;
+let lastFocusedWindow: BrowserWindow | null = null;
 let wm: WindowManager;
 let terminalReaper: TerminalReaper | null = null;
 let announcedShutdownCause: AppShutdownCause = 'quit';
@@ -1182,6 +1186,7 @@ let rendererRecovery: RendererRecovery | null = null;
 let desktopProcessObservability: DesktopProcessObservability | null = null;
 let crashSentinelHeartbeat: NodeJS.Timeout | null = null;
 let osShutdownNoted = false;
+let sessionEnding = false;
 
 let serverExitRecorder: ServerExitRecorder | null = null;
 function getServerExitRecorder(): ServerExitRecorder {
@@ -1500,14 +1505,7 @@ function ensureWindowManager() {
         });
       return win as unknown as BrowserWindowLike;
     },
-    /*
-     * UPSTREAM(electron/electron#19920): a BrowserWindow.focus() on a
-     * backgrounded app reorders within the app without foregrounding it, so
-     * bring-to-front needs this app-level activation as well.
-     */
-    activateApp: () => {
-      if (process.platform === 'darwin') app.focus({ steal: true });
-    },
+    activateApp: activateAppForBringToFront,
     forkUtility: (entry, args, opts) => {
       startupWaterfall.mark('serverSpawned');
       const child = utilityProcess.fork(entry, args, {
@@ -1650,6 +1648,32 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
     setInterval: (cb, ms) => setInterval(cb, ms).unref(),
     clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
   });
+}
+
+/*
+ * UPSTREAM(electron/electron#19920): a BrowserWindow.focus() on a
+ * backgrounded app reorders within the app without foregrounding it, so
+ * bring-to-front needs this app-level activation as well.
+ */
+function activateAppForBringToFront(): void {
+  if (process.platform === 'darwin') app.focus({ steal: true });
+}
+
+function revealWindowForRelaunch(): void {
+  const decision = decideRelaunchReveal({
+    lastFocusedWindow,
+    windows: BrowserWindow.getAllWindows(),
+    firstWindowShown,
+  });
+  getLogger('lifecycle').info(
+    { event: 'lifecycle.relaunch-reveal', action: decision.action },
+    'relaunch without a target',
+  );
+  if (decision.action === 'reveal') {
+    bringWindowToFront(decision.window as unknown as BrowserWindowLike, activateAppForBringToFront);
+    return;
+  }
+  if (decision.action === 'open-navigator') openNavigator();
 }
 
 function logAiIntegrationOutcomes(result: ProjectAiIntegrationsResult): number {
@@ -6208,12 +6232,23 @@ function bootPrimaryInstance(): void {
     SENTINEL_HEARTBEAT_INTERVAL_MS,
   );
   crashSentinelHeartbeat.unref();
-  powerMonitor.on('shutdown', () => crashDetection?.noteOsShutdown());
+  powerMonitor.on('shutdown', () => {
+    sessionEnding = true;
+    crashDetection?.noteOsShutdown();
+  });
   powerMonitor.on('suspend', () => crashDetection?.noteSuspend());
   powerMonitor.on('resume', () => crashDetection?.noteResume());
+  app.on('browser-window-focus', (_event, win) => {
+    lastFocusedWindow = win;
+  });
   app.on('browser-window-created', (_event, win) => {
     desktopProcessObservability?.observeWindow(win);
+    win.prependListener('closed', () => {
+      lastClosedWasNavigator = win === navigatorWindow;
+      if (lastFocusedWindow === win) lastFocusedWindow = null;
+    });
     win.on('session-end', (event) => {
+      sessionEnding = true;
       if (crashDetection === null || osShutdownNoted) return;
       osShutdownNoted = true;
       crashDetection.noteOsShutdown(event.reasons);
@@ -6424,6 +6459,7 @@ function bootPrimaryInstance(): void {
       return first ? (first as unknown as object) : null;
     },
     getInitialArgv: () => process.argv,
+    onRelaunchWithoutTarget: revealWindowForRelaunch,
     log: {
       warn: (obj, msg) => getLogger('url-scheme').warn(obj, msg),
       info: (obj, msg) => getLogger('url-scheme').info(obj, msg),
@@ -6984,8 +7020,29 @@ function bootPrimaryInstance(): void {
   });
 
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
+    const action = decideAllWindowsClosed({
+      platform: process.platform,
+      lastClosedWasNavigator,
+      sessionEnding,
+    });
+    getLogger('lifecycle').info(
+      { event: 'lifecycle.all-windows-closed', action, lastClosedWasNavigator, sessionEnding },
+      'every window closed',
+    );
+    if (action === 'quit') {
       app.quit();
+      return;
+    }
+    if (action === 'open-navigator') {
+      try {
+        openNavigator();
+      } catch (err) {
+        getLogger('lifecycle').error(
+          { event: 'lifecycle.all-windows-closed.navigator-failed', err },
+          'could not open the Project Navigator after the last window closed; quitting',
+        );
+        app.quit();
+      }
     }
   });
 
