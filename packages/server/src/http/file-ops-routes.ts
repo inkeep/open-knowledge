@@ -270,7 +270,7 @@ export interface FileOpsRouteDeps {
   contentFilter: ContentFilter | undefined;
   signalChannel: ((channel: 'files' | 'lint-config' | 'comments') => void) | undefined;
   conflicts: ConflictAuthority;
-  flushContributors: (() => Promise<void>) | undefined;
+  commitOkArtifactWrite: (context: string) => Promise<unknown>;
   fileOpsService: FileOpsService;
   assetService: AssetService;
   extractAgentIdentity: (body: Record<string, unknown>) => {
@@ -353,7 +353,7 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
     contentFilter,
     signalChannel,
     conflicts,
-    flushContributors,
+    commitOkArtifactWrite,
     fileOpsService,
     assetService,
     extractAgentIdentity,
@@ -1035,16 +1035,7 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
             attribution_kind: actor.kind,
           });
 
-          if (flushContributors) {
-            try {
-              await flushContributors();
-            } catch (flushErr) {
-              log.warn(
-                { err: flushErr },
-                '[rename-path] flushContributors failed after asset rename (commitSha backfill may be deferred)',
-              );
-            }
-          }
+          void commitOkArtifactWrite('rename-path');
 
           successResponse(
             res,
@@ -1185,16 +1176,7 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
           attribution_kind: actor.kind,
         });
 
-        if (flushContributors) {
-          try {
-            await flushContributors();
-          } catch (flushErr) {
-            log.warn(
-              { err: flushErr },
-              '[rename-path] flushContributors failed (commitSha backfill may be deferred)',
-            );
-          }
-        }
+        void commitOkArtifactWrite('rename-path');
 
         successResponse(
           res,

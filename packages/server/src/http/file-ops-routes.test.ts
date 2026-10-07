@@ -24,7 +24,7 @@ function buildGroup(overrides: Partial<Deps> = {}) {
     contentFilter: undefined,
     signalChannel: undefined,
     conflicts: createTestConflictAuthority(makeTempDir('file-ops-routes-authority-')),
-    flushContributors: undefined,
+    commitOkArtifactWrite: () => Promise.resolve(),
     fileOpsService: {} as FileOpsService,
     assetService: {} as AssetService,
     extractAgentIdentity: () => {
@@ -159,5 +159,46 @@ describe('create-page path-resolution error classification', () => {
     expect((JSON.parse(captured.body) as { type?: string }).type).toBe(
       'urn:ok:error:internal-server-error',
     );
+  });
+});
+
+describe('rename-path history commit', () => {
+  function buildRenameGroup() {
+    const commits: string[] = [];
+    const group = buildGroup({
+      docNameForFileOperationPath: (_contentDir, path) => path.replace(/\.md$/, ''),
+      isValidRelativeContentPath: () => true,
+      renameAttributionCounter: () =>
+        ({ add: () => {} }) as unknown as ReturnType<Deps['renameAttributionCounter']>,
+      commitOkArtifactWrite: (context) => {
+        commits.push(context);
+        return new Promise<never>(() => {});
+      },
+      _performManagedRenameForDocs: () =>
+        Promise.resolve({
+          renamed: [{ fromDocName: 'a', toDocName: 'b' }],
+          renamedAssets: [],
+          rewrittenDocs: [],
+        }),
+      _performAssetRename: () =>
+        Promise.resolve({
+          renamedAssets: [{ fromPath: 'a.png', toPath: 'b.png' }],
+          rewrittenDocs: [],
+        }),
+    });
+    const resolved = group.table.resolve('/api/rename-path');
+    if (!resolved?.dispatch) throw new Error('rename-path did not resolve to a dispatch handler');
+    return { dispatch: resolved.dispatch, commits };
+  }
+
+  test.each([
+    { kind: 'file', fromPath: 'a.md', toPath: 'b.md' },
+    { kind: 'asset', fromPath: 'a.png', toPath: 'b.png' },
+  ])('$kind rename responds while its history commit is still running', async (body) => {
+    const { dispatch, commits } = buildRenameGroup();
+    const { res, captured } = makeRes();
+    await dispatch(makeReq('/api/rename-path', body), res);
+    expect(captured.status).toBe(200);
+    expect(commits).toEqual(['rename-path']);
   });
 });

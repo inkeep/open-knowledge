@@ -210,6 +210,7 @@ export interface AgentWriteRouteDeps {
   ) => Promise<LintViolationWarning[]>;
   log: import('../logger.ts').PinoLogger;
   flushDocToGit: (docName: string, label: string) => void;
+  commitOkArtifactWrite: (context: string) => Promise<unknown>;
   isSafeDocName: (docName: string) => boolean;
   shadowRef: ShadowRef | undefined;
   getPrincipal: (() => Principal | null) | undefined;
@@ -254,6 +255,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
     computeLintViolations,
     log,
     flushDocToGit,
+    commitOkArtifactWrite,
     isSafeDocName,
     shadowRef,
     getPrincipal,
@@ -1499,6 +1501,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
       const sg = shadowGit(shadow);
       const t0 = Date.now();
       try {
+        await commitOkArtifactWrite('rollback-read');
         const renameLogIndex = getOrLoadRenameLogIndex(shadow.gitDir);
         const ancestorCache = createAncestorShaSetCache();
         const branch = getCurrentBranch?.() ?? 'main';

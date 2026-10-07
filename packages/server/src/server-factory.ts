@@ -2789,6 +2789,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
         case 'update': {
           const { docName, content: theirs } = event;
+          onUpstreamAdd(docName);
           if (indexedMetadataChanged(event.previousIndexedFields, theirs, docName)) {
             scheduleIndexRegeneration(docName);
           }

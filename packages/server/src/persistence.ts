@@ -124,7 +124,11 @@ import {
 import { toPosix } from './path-utils.ts';
 import { classifyDuplication } from './persistence-tripwire.ts';
 import { assertProjectContentScope, NestedProjectScopeError } from './project-content-scope.ts';
-import { backfillRenameLogCommitSha, getOrLoadRenameLogIndex } from './rename-log.ts';
+import {
+  backfillRenameLogCommitSha,
+  getOrLoadRenameLogIndex,
+  pendingRenameLogEntries,
+} from './rename-log.ts';
 import { getConvergedFragmentWitness, OBSERVER_SYNC_ORIGIN } from './server-observers.ts';
 import type { ShadowRef, WriterIdentity } from './shadow-repo.ts';
 import {
@@ -498,6 +502,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     const shadow = shadowRef?.current;
     if (shadow) {
       const snapshot = swapContributors();
+      const claimableRenames = pendingRenameLogEntries(getOrLoadRenameLogIndex(shadow.gitDir));
       const branch = getCurrentBranch?.() ?? 'main';
 
       if (snapshot.size === 0) {
@@ -528,6 +533,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
               SERVICE_WRITER.id,
               sha,
               getOrLoadRenameLogIndex(shadow.gitDir),
+              claimableRenames,
             );
           } catch (err) {
             log.warn({ err }, '[rename-log] service-writer backfill failed');
@@ -611,6 +617,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
               writerId,
               sha,
               getOrLoadRenameLogIndex(shadow.gitDir),
+              claimableRenames,
             );
           } catch (err) {
             log.warn({ err }, '[rename-log] backfill failed; will retry next commit');

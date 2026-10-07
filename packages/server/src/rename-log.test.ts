@@ -19,6 +19,7 @@ import {
   gcRenameLog,
   loadRenameLogIndex,
   MAX_PREDECESSOR_CHAIN_DEPTH,
+  pendingRenameLogEntries,
   RENAME_LOG_HARD_CAP_BYTES,
   type RenameLogEntry,
   renameLogPath,
@@ -832,7 +833,13 @@ describe('backfillRenameLogCommitSha (US-007)', () => {
     });
     appendRenameLogEntry(shadowDir, e, index);
 
-    const result = backfillRenameLogCommitSha(shadowDir, 'agent-claude-1', sha, index);
+    const result = backfillRenameLogCommitSha(
+      shadowDir,
+      'agent-claude-1',
+      sha,
+      index,
+      pendingRenameLogEntries(index),
+    );
     expect(result.updated).toBe(1);
     expect(index.byTo.get('b')?.commitSha).toBe(sha);
 
@@ -848,9 +855,30 @@ describe('backfillRenameLogCommitSha (US-007)', () => {
     });
     appendRenameLogEntry(shadowDir, e, index);
 
-    const result = backfillRenameLogCommitSha(shadowDir, 'agent-claude-1', 'c'.repeat(40), index);
+    const result = backfillRenameLogCommitSha(
+      shadowDir,
+      'agent-claude-1',
+      'c'.repeat(40),
+      index,
+      pendingRenameLogEntries(index),
+    );
     expect(result.updated).toBe(0);
     expect(index.byTo.get('essays/auth')?.commitSha).toBe('b'.repeat(40));
+  });
+
+  test('leaves entries appended after the claimable snapshot pending', () => {
+    const index = createEmptyIndex();
+    const actor = { writerId: 'agent-1', displayName: 'A' };
+    appendRenameLogEntry(shadowDir, entry({ from: 'a', to: 'b', commitSha: '', actor }), index);
+    const claimable = pendingRenameLogEntries(index);
+    appendRenameLogEntry(shadowDir, entry({ from: 'c', to: 'd', commitSha: '', actor }), index);
+
+    const sha = 'e'.repeat(40);
+    const result = backfillRenameLogCommitSha(shadowDir, 'agent-1', sha, index, claimable);
+    expect(result.updated).toBe(1);
+    const reloaded = loadRenameLogIndex(shadowDir);
+    expect(reloaded.byTo.get('b')?.commitSha).toBe(sha);
+    expect(reloaded.byTo.get('d')?.commitSha).toBe('');
   });
 
   test('does not update entries with mismatched writerId', () => {
@@ -863,7 +891,13 @@ describe('backfillRenameLogCommitSha (US-007)', () => {
     });
     appendRenameLogEntry(shadowDir, e, index);
 
-    const result = backfillRenameLogCommitSha(shadowDir, 'agent-claude-1', 'c'.repeat(40), index);
+    const result = backfillRenameLogCommitSha(
+      shadowDir,
+      'agent-claude-1',
+      'c'.repeat(40),
+      index,
+      pendingRenameLogEntries(index),
+    );
     expect(result.updated).toBe(0);
     expect(index.byTo.get('b')?.commitSha).toBe('');
   });
@@ -918,7 +952,13 @@ describe('backfillRenameLogCommitSha (US-007)', () => {
     );
 
     const sha = 'f'.repeat(40);
-    const result = backfillRenameLogCommitSha(shadowDir, 'agent-1', sha, index);
+    const result = backfillRenameLogCommitSha(
+      shadowDir,
+      'agent-1',
+      sha,
+      index,
+      pendingRenameLogEntries(index),
+    );
     expect(result.updated).toBe(3);
     for (const to of ['b/x', 'b/y', 'b/z']) {
       expect(index.byTo.get(to)?.commitSha).toBe(sha);
@@ -937,8 +977,14 @@ describe('backfillRenameLogCommitSha (US-007)', () => {
       index,
     );
     const sha = 'a'.repeat(40);
-    backfillRenameLogCommitSha(shadowDir, 'agent-1', sha, index);
-    const second = backfillRenameLogCommitSha(shadowDir, 'agent-1', sha, index);
+    backfillRenameLogCommitSha(shadowDir, 'agent-1', sha, index, pendingRenameLogEntries(index));
+    const second = backfillRenameLogCommitSha(
+      shadowDir,
+      'agent-1',
+      sha,
+      index,
+      pendingRenameLogEntries(index),
+    );
     expect(second.updated).toBe(0);
   });
 
@@ -959,7 +1005,13 @@ describe('backfillRenameLogCommitSha (US-007)', () => {
     expect(pre.chain).toEqual([{ path: 'b', renameCommit: null }]);
     expect(pre.skipped).toBe(1);
 
-    backfillRenameLogCommitSha(shadowDir, 'agent-1', 'a'.repeat(40), index);
+    backfillRenameLogCommitSha(
+      shadowDir,
+      'agent-1',
+      'a'.repeat(40),
+      index,
+      pendingRenameLogEntries(index),
+    );
 
     const post = expandPredecessors('b', 'main', index);
     expect(post.chain).toEqual([
@@ -1467,7 +1519,13 @@ describe('backfillRenameLogCommitSha SHA validation', () => {
         if (msg.includes('rejected invalid commitSha')) warned = true;
       });
     try {
-      const result = backfillRenameLogCommitSha(shadowDir, 'agent-x', '', index);
+      const result = backfillRenameLogCommitSha(
+        shadowDir,
+        'agent-x',
+        '',
+        index,
+        pendingRenameLogEntries(index),
+      );
       expect(result.updated).toBe(0);
       expect(index.byTo.get('essays/auth')?.commitSha).toBe('');
     } finally {
@@ -1485,7 +1543,13 @@ describe('backfillRenameLogCommitSha SHA validation', () => {
     );
     const warnSpy = vi.spyOn(getLogger('rename-log'), 'warn').mockImplementation(() => {});
     try {
-      const result = backfillRenameLogCommitSha(shadowDir, 'agent-x', 'abc123', index);
+      const result = backfillRenameLogCommitSha(
+        shadowDir,
+        'agent-x',
+        'abc123',
+        index,
+        pendingRenameLogEntries(index),
+      );
       expect(result.updated).toBe(0);
     } finally {
       warnSpy.mockRestore();
@@ -1502,7 +1566,13 @@ describe('backfillRenameLogCommitSha SHA validation', () => {
     );
     const warnSpy = vi.spyOn(getLogger('rename-log'), 'warn').mockImplementation(() => {});
     try {
-      const result = backfillRenameLogCommitSha(shadowDir, 'agent-x', 'g'.repeat(40), index);
+      const result = backfillRenameLogCommitSha(
+        shadowDir,
+        'agent-x',
+        'g'.repeat(40),
+        index,
+        pendingRenameLogEntries(index),
+      );
       expect(result.updated).toBe(0);
     } finally {
       warnSpy.mockRestore();

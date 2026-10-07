@@ -9,6 +9,7 @@ import { getLogger, type PinoLogger } from '../logger.ts';
 import {
   createAncestorShaSetCache,
   getOrLoadRenameLogIndex,
+  pendingRenameLogEntries,
   resolveDocPathAtCommit,
 } from '../rename-log.ts';
 import { type ShadowRef, shadowGit } from '../shadow-repo.ts';
@@ -229,6 +230,9 @@ export function createHistoryRoutes(deps: HistoryRouteDeps): HistoryRoutes {
     }
 
     try {
+      if (pendingRenameLogEntries(getOrLoadRenameLogIndex(shadow.gitDir)).size > 0) {
+        await commitOkArtifactWrite('history-version-read');
+      }
       const renameLogIndex = getOrLoadRenameLogIndex(shadow.gitDir);
       const ancestorCache = createAncestorShaSetCache();
       const historicalPath = await resolveDocPathAtCommit(

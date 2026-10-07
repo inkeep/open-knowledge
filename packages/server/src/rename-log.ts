@@ -750,11 +750,20 @@ function rewriteJsonlAtomically(shadowDir: string, index: RenameLogIndex): void 
   }
 }
 
+export function pendingRenameLogEntries(index: RenameLogIndex): ReadonlySet<RenameLogEntry> {
+  const pending = new Set<RenameLogEntry>();
+  for (const entry of index.byTo.values()) {
+    if (entry.commitSha === '') pending.add(entry);
+  }
+  return pending;
+}
+
 export function backfillRenameLogCommitSha(
   shadowDir: string,
   writerId: string,
   commitSha: string,
   index: RenameLogIndex,
+  claimable: ReadonlySet<RenameLogEntry>,
 ): { updated: number } {
   if (!/^[0-9a-f]{40}$/.test(commitSha)) {
     log.warn(
@@ -764,9 +773,10 @@ export function backfillRenameLogCommitSha(
     return { updated: 0 };
   }
   let updated = 0;
-  for (const entry of index.byTo.values()) {
+  for (const entry of claimable) {
     if (entry.commitSha !== '') continue;
     if (entry.actor.writerId !== writerId) continue;
+    if (index.byTo.get(entry.to) !== entry) continue;
     entry.commitSha = commitSha;
     updated += 1;
   }

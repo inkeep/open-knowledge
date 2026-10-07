@@ -1,8 +1,16 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { isValidBranchName } from '@inkeep/open-knowledge-core';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import { makeCaptureRes, makeSyntheticReq } from '../composition-rig.test-helper.ts';
 import { loggerFactory } from '../logger.ts';
-import type { ShadowHandle, ShadowRef } from '../shadow-repo.ts';
+import {
+  appendRenameLogEntry,
+  getOrLoadRenameLogIndex,
+  resetRenameLogIndexCache,
+} from '../rename-log.ts';
+import { initShadowRepo, type ShadowHandle, type ShadowRef } from '../shadow-repo.ts';
 import { createHistoryRoutes } from './history-routes.ts';
 
 type Deps = Parameters<typeof createHistoryRoutes>[0];
@@ -187,4 +195,58 @@ describe('GET /api/history branch admission — names git rejects that the contr
       expect(outcome.title).toBe(ADMITTED);
     },
   );
+});
+
+describe('GET /api/history/:sha settles pending history only for a pending rename', () => {
+  const tmpDirs: string[] = [];
+
+  afterEach(() => {
+    resetRenameLogIndexCache();
+    for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  test.each([
+    { log: 'an empty rename log', commitSha: undefined, settles: 0 },
+    { log: 'only a committed rename', commitSha: 'b'.repeat(40), settles: 0 },
+    { log: 'a rename awaiting its commit', commitSha: '', settles: 1 },
+  ])('with $log, the read settles $settles time(s)', async ({ commitSha, settles }) => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-history-version-'));
+    tmpDirs.push(projectDir);
+    resetRenameLogIndexCache();
+    const shadow = await initShadowRepo(projectDir);
+    if (commitSha !== undefined) {
+      appendRenameLogEntry(
+        shadow.gitDir,
+        {
+          v: 1,
+          from: 'alpha',
+          to: 'beta',
+          at: new Date().toISOString(),
+          commitSha,
+          branch: 'main',
+          groupId: 'alpha-beta',
+          kind: 'file',
+          actor: { writerId: 'agent-mover', displayName: 'Mover' },
+        },
+        getOrLoadRenameLogIndex(shadow.gitDir),
+        shadow,
+      );
+    }
+    const contexts: string[] = [];
+    const { table } = buildGroup({
+      shadowRef: { current: shadow },
+      safeDocPath: (docName) => ({ path: `${docName}.md` }),
+      commitOkArtifactWrite: (context) => {
+        contexts.push(context);
+        return Promise.resolve();
+      },
+    });
+    const path = `/api/history/${'a'.repeat(40)}`;
+    const dispatch = table.resolve(path)?.dispatch;
+    if (!dispatch) throw new Error(`${path} did not resolve to a dispatch handler`);
+    const { res } = makeCaptureRes();
+    await dispatch(makeSyntheticReq({ url: `${path}?docName=beta` }), res);
+
+    expect(contexts).toEqual(Array(settles).fill('history-version-read'));
+  });
 });

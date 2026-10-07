@@ -11,6 +11,7 @@ import {
 import {
   agentWriteMd,
   createRestartableServer,
+  createTestClient,
   pollUntil,
   type RestartableServer,
   wait,
@@ -461,7 +462,7 @@ describe('Timeline rename-history mitigation — integration', () => {
     expect(bHistory.entries.map((e) => e.sha)).not.toContain(newAWipSha);
   }, 90_000);
 
-  test('rename → full chain visible immediately on /api/history (spine drains contributors before response)', async () => {
+  test('rename → full chain visible on the first /api/history read after the rename', async () => {
     const server = await bootServer();
 
     await agentWriteMdAndAwaitWip(server, '# A v1\n', {
@@ -479,11 +480,6 @@ describe('Timeline rename-history mitigation — integration', () => {
       (await renamePath(server.port, { kind: 'file', fromPath: 'a.md', toPath: 'b.md', ...AGENT }))
         .status,
     ).toBe(200);
-
-    const entries = readRenameLogEntries(server);
-    const entry = entries.find((e) => e.from === 'a' && e.to === 'b');
-    expect(entry).toBeDefined();
-    expect(entry?.commitSha).toMatch(/^[0-9a-f]{40}$/);
 
     const fullQuery = await getHistory(server.port, 'b');
     expect(fullQuery.entries.map((e) => e.sha)).toContain(preWipSha);
@@ -610,7 +606,10 @@ describe('Timeline rename-history mitigation — integration', () => {
     expect(renameRes.status).toBe(200);
     expect(renameRes.body.renamed).toHaveLength(3);
 
-    const entries = readRenameLogEntries(server);
+    const entries = await pollForBackfill(
+      server,
+      ['a', 'b', 'c'].map((name) => ({ from: `src-folder/${name}`, to: `dst-folder/${name}` })),
+    );
     const folderEntries = entries.filter(
       (e) => e.from.startsWith('src-folder/') && e.to.startsWith('dst-folder/'),
     );
@@ -652,7 +651,7 @@ describe('Timeline rename-history mitigation — integration', () => {
     });
     expect(renameRes.status).toBe(200);
 
-    const entries = readRenameLogEntries(server);
+    const entries = await pollForBackfill(server, [{ from: 'summary-a', to: 'summary-b' }]);
     const entry = entries.find((e) => e.from === 'summary-a' && e.to === 'summary-b');
     expect(entry?.commitSha).toMatch(/^[0-9a-f]{40}$/);
     const renameSha = entry?.commitSha ?? '';
@@ -713,8 +712,12 @@ describe('Timeline rename-history mitigation — integration', () => {
     expect(versionRes.body.content).toContain('original body');
   }, 60_000);
 
-  test('pure rename without subsequent edit → commitSha backfilled before /api/rename-path response returns', async () => {
-    const server = await bootServer();
+  test('pure rename with no later request → commitSha backfilled without waiting for the commit debounce', async () => {
+    const server = await createRestartableServer({
+      gitEnabled: true,
+      commitDebounceMs: 600_000,
+    });
+    cleanups.push(() => server.shutdown());
     writeFileSync(join(server.contentDir, 'pure-a.md'), '# Pure A\n', 'utf-8');
     await pollUntil(async () => {
       const res = await fetch(`http://127.0.0.1:${server.port}/api/documents`);
@@ -731,6 +734,7 @@ describe('Timeline rename-history mitigation — integration', () => {
     });
     expect(renameRes.status).toBe(200);
 
+    await pollForBackfill(server, [{ from: 'pure-a', to: 'pure-b' }]);
     const jsonlPath = renameLogPath(resolveShadowDir(server.contentDir));
     const raw = readFileSync(jsonlPath, 'utf-8');
     const lines = raw.split('\n').filter((l) => l.length > 0);
@@ -739,6 +743,76 @@ describe('Timeline rename-history mitigation — integration', () => {
       .filter((e) => e.from === 'pure-a' && e.to === 'pure-b');
     expect(matching).toHaveLength(1);
     expect(matching[0].commitSha).toMatch(/^[0-9a-f]{40}$/);
+  }, 60_000);
+
+  test('rename followed at once by a graceful restart keeps the pre-rename history', async () => {
+    const first = await createRestartableServer({
+      gitEnabled: true,
+      commitDebounceMs: 600_000,
+    });
+    cleanups.push(() => first.shutdown());
+    await agentWriteMdAndAwaitWip(first, '# Restart v1\n', {
+      docName: 'restart-a',
+      position: 'replace',
+      ...AGENT,
+    });
+    const preRenameShas = await getWipShas(first, 'restart-a');
+    expect(preRenameShas.size).toBeGreaterThan(0);
+    await crossSecondBoundary();
+
+    expect(
+      (
+        await renamePath(first.port, {
+          kind: 'file',
+          fromPath: 'restart-a.md',
+          toPath: 'restart-b.md',
+          ...AGENT,
+        })
+      ).status,
+    ).toBe(200);
+
+    const second = await first.shutdownAndRestartOnSamePort({ downtimeMs: 0 });
+    cleanups.push(() => second.shutdown());
+
+    const postRestartShas = await getWipShas(second, 'restart-b');
+    expect([...postRestartShas]).toEqual(expect.arrayContaining([...preRenameShas]));
+  }, 90_000);
+
+  test('POST /api/rollback right after a rename restores a pre-rename commit under the new name', async () => {
+    const server = await bootServer();
+    await agentWriteMdAndAwaitWip(server, '# Poem v1\n\nfirst stanza\n', {
+      docName: 'poem',
+      position: 'replace',
+      ...AGENT,
+    });
+    const [preRenameSha] = await getWipShas(server, 'poem');
+    expect(preRenameSha).toMatch(/^[0-9a-f]{40}$/);
+    if (!preRenameSha) throw new Error('preRenameSha unset');
+    await agentWriteMdAndAwaitWip(server, '\nsecond stanza\n', {
+      docName: 'poem',
+      position: 'append',
+      ...AGENT,
+    });
+    await crossSecondBoundary();
+
+    expect(
+      (
+        await renamePath(server.port, {
+          kind: 'file',
+          fromPath: 'poem.md',
+          toPath: 'verse.md',
+          ...AGENT,
+        })
+      ).status,
+    ).toBe(200);
+
+    const verseClient = await createTestClient(server.port, 'verse');
+    cleanups.push(() => verseClient.cleanup());
+    const rb = await rollback(server.port, { docName: 'verse', commitSha: preRenameSha, ...AGENT });
+    expect(rb.status).toBe(200);
+    const versePath = join(server.contentDir, 'verse.md');
+    await pollUntil(() => !readFileSync(versePath, 'utf-8').includes('second stanza'), 10_000, 25);
+    expect(readFileSync(versePath, 'utf-8')).toContain('first stanza');
   }, 60_000);
 
   test('1000-doc folder rename completes within budget; jsonl size stays under hard cap', async () => {
