@@ -206,7 +206,10 @@ describe('createLintWriteRoutes lint-fix refusal responses', () => {
       expect(JSON.parse(response.body)).toMatchObject({
         status: 503,
         type: 'urn:ok:error:too-many-agent-sessions',
+        committed: false,
+        retryAfterSeconds: 10,
       });
+      expect(readFileSync(join(contentDir, 'note.md'), 'utf-8')).toBe('# Heading  \n');
     } finally {
       await sessionManager.closeAll();
     }

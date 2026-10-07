@@ -328,7 +328,7 @@ describe('deferred link check', () => {
 
   test('formatAdvisoryBriefs emits one brief however many entries arrive', () => {
     expect(formatAdvisoryBriefs([deferred, deferred])).toEqual([
-      '⚠ Links not checked yet: the link index is still building (see warnings).',
+      '⚠ Links not checked yet: the link index is still building or busy (see warnings).',
     ]);
   });
 });

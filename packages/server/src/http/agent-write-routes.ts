@@ -97,6 +97,7 @@ import {
   type WriterIdentity,
 } from '../shadow-repo.ts';
 import { getMeter, withSpanSync } from '../telemetry.ts';
+import { respondAgentSessionCapacity } from './agent-session-capacity.ts';
 import { type ApiRouteGroup, createApiRouteGroup } from './api-pipeline.ts';
 import { errorResponse } from './error-response.ts';
 import { getRequestId } from './request-id.ts';
@@ -509,13 +510,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           return;
         }
         if (e instanceof AgentSessionCapacityError) {
-          errorResponse(
-            res,
-            503,
-            'urn:ok:error:too-many-agent-sessions',
-            'Too many agent sessions.',
-            { handler: 'agent-write-md', cause: e, extraHeaders: { 'Retry-After': '10' } },
-          );
+          respondAgentSessionCapacity(res, e, 'agent-write-md');
           return;
         }
         log.error({ err: e, requestId: getRequestId(_req) }, '[agent-write-md] handler failed');
@@ -756,13 +751,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
         });
       } catch (e) {
         if (e instanceof AgentSessionCapacityError) {
-          errorResponse(
-            res,
-            503,
-            'urn:ok:error:too-many-agent-sessions',
-            'Too many agent sessions.',
-            { handler: 'frontmatter-patch', cause: e, extraHeaders: { 'Retry-After': '10' } },
-          );
+          respondAgentSessionCapacity(res, e, 'frontmatter-patch');
           return;
         }
         log.error({ err: e, requestId: getRequestId(_req) }, '[frontmatter-patch] handler failed');
@@ -1093,13 +1082,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           return;
         }
         if (e instanceof AgentSessionCapacityError) {
-          errorResponse(
-            res,
-            503,
-            'urn:ok:error:too-many-agent-sessions',
-            'Too many agent sessions.',
-            { handler: 'agent-patch', cause: e, extraHeaders: { 'Retry-After': '10' } },
-          );
+          respondAgentSessionCapacity(res, e, 'agent-patch');
           return;
         }
         log.error({ err: e, requestId: getRequestId(_req) }, '[agent-patch] handler failed');

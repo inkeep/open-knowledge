@@ -17,6 +17,7 @@ import {
   capAuditWarnings,
   countSummary,
   degradationBlock,
+  errorTextWithDetail,
   formatDiagnosticLine,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpGet,
@@ -224,7 +225,7 @@ async function fixLintDoc(
     docName: normalized.docName,
     ...agentIdentityFields(identity),
   });
-  if (!result.ok) return textResult(`Error: ${String(result.error)}`, true);
+  if (!result.ok) return textResult(errorTextWithDetail(result), true);
   const { ok: _ok, ...rest } = result;
   const data = rest as LintFixPayload;
   const file = data.file ?? normalized.docName;

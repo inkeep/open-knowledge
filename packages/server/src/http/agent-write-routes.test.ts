@@ -106,28 +106,34 @@ describe('agent-write session capacity responses', () => {
     ['/api/agent-write-md', { docName: 'note', markdown: '# Note', position: 'replace' }],
     ['/api/frontmatter-patch', { docName: 'note', patch: { title: 'Note' } }],
     ['/api/agent-patch', { docName: 'note', find: 'old', replace: 'new' }],
-  ])('%s returns the retryable problem when the session limit is full', async (path, body) => {
-    const hocuspocus = new Hocuspocus({ quiet: true });
-    const sessionManager = new AgentSessionManager(hocuspocus, {
-      maxSessions: 1,
-      minEvictableIdleMs: Number.POSITIVE_INFINITY,
-    });
-    try {
-      await sessionManager.getSession('occupied', 'agent-occupant');
-      const group = buildGroup({ hocuspocus, sessionManager });
-      const route = group.table.resolve(path);
-      if (!route?.dispatch) throw new Error(`${path} did not resolve to a dispatch handler`);
-      const { res, captured } = makeCaptureRes();
-      await route.dispatch(makeReq(path, body), res);
-      expect(captured.status).toBe(503);
-      expect(captured.headers['content-type']).toContain('application/problem+json');
-      expect(captured.headers['retry-after']).toBe('10');
-      expect(JSON.parse(captured.body)).toMatchObject({
-        status: 503,
-        type: 'urn:ok:error:too-many-agent-sessions',
+  ])(
+    '%s refuses before writing and says nothing was committed when the session limit is full',
+    async (path, body) => {
+      const hocuspocus = new Hocuspocus({ quiet: true });
+      const sessionManager = new AgentSessionManager(hocuspocus, {
+        maxSessions: 1,
+        minEvictableIdleMs: Number.POSITIVE_INFINITY,
       });
-    } finally {
-      await sessionManager.closeAll();
-    }
-  });
+      try {
+        await sessionManager.getSession('occupied', 'agent-occupant');
+        const group = buildGroup({ hocuspocus, sessionManager });
+        const route = group.table.resolve(path);
+        if (!route?.dispatch) throw new Error(`${path} did not resolve to a dispatch handler`);
+        const { res, captured } = makeCaptureRes();
+        await route.dispatch(makeReq(path, body), res);
+        expect(captured.status).toBe(503);
+        expect(captured.headers['content-type']).toContain('application/problem+json');
+        expect(captured.headers['retry-after']).toBe('10');
+        expect(JSON.parse(captured.body)).toMatchObject({
+          status: 503,
+          type: 'urn:ok:error:too-many-agent-sessions',
+          committed: false,
+          retryAfterSeconds: 10,
+        });
+        expect(hocuspocus.documents.has('note')).toBe(false);
+      } finally {
+        await sessionManager.closeAll();
+      }
+    },
+  );
 });

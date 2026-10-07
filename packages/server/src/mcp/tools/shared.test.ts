@@ -16,6 +16,7 @@ import {
   AUDIT_WARNING_CAP,
   alignWarningCodes,
   capAuditWarnings,
+  errorTextWithDetail,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpGet,
   httpPost,
@@ -24,6 +25,7 @@ import {
   okReservedPathRedirect,
   outputSchemaWithText,
   parseRenameCollidingPairs,
+  requestFailureText,
   resolveProjectConfigContext,
   resolveProjectServerContext,
   TEXT_CHANNEL_FIELD,
@@ -63,6 +65,33 @@ describe('capAuditWarnings', () => {
 });
 
 const TEST_CONFIG: Config = ConfigSchema.parse({ content: { dir: 'content' } });
+
+describe('requestFailureText', () => {
+  test('renders the error, its detail and the retry bound', () => {
+    expect(
+      requestFailureText({
+        ok: false,
+        error: 'Too many agent sessions.',
+        detail: 'Nothing was applied.',
+        retryAfterSeconds: 10,
+      }),
+    ).toBe('Too many agent sessions. (Nothing was applied.) Retry after 10s.');
+  });
+
+  test('omits an empty or missing detail and a missing retry bound', () => {
+    expect(requestFailureText({ ok: false, error: 'Refused.', detail: '' })).toBe('Refused.');
+    expect(requestFailureText({ ok: false, error: 'Refused.' })).toBe('Refused.');
+  });
+
+  test('falls back when the error is not a string', () => {
+    expect(requestFailureText({ ok: false, detail: 'why' })).toBe('request failed (why)');
+  });
+
+  test('errorTextWithDetail prefixes the same text', () => {
+    const result = { ok: false, error: 'Refused.', detail: 'why', retryAfterSeconds: 3 };
+    expect(errorTextWithDetail(result)).toBe(`Error: ${requestFailureText(result)}`);
+  });
+});
 
 describe('textResult', () => {
   test('wraps text in MCP content array', () => {

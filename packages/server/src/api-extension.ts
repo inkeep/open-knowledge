@@ -254,6 +254,13 @@ import {
 } from './fs-traced.ts';
 import { withParentLock } from './git-handle.ts';
 import { isPathTrackedInGit } from './git-tracked-paths.ts';
+import {
+  AGENT_SESSION_CAPACITY_DETAIL,
+  AGENT_SESSION_CAPACITY_EXTENSIONS,
+  AGENT_SESSION_CAPACITY_TITLE,
+  AGENT_SESSION_CAPACITY_TYPE,
+  respondAgentSessionCapacity,
+} from './http/agent-session-capacity.ts';
 import { type ApiRouteTable, createApiRequestPipeline } from './http/api-pipeline.ts';
 import { createAssetRoutes } from './http/asset-routes.ts';
 import { createCommentRoutes } from './http/comment-routes.ts';
@@ -306,6 +313,7 @@ import {
   isPeerAdmitted,
 } from './ingress-policy.ts';
 import {
+  busyWriteLinkAdvisory,
   deferredWriteLinkAdvisory,
   type LinkAdvisoryPolicy,
   type PrepareWriteLinkAdvisory,
@@ -373,6 +381,7 @@ import { readSkillInstallModeRaw } from './skill-placements.ts';
 
 import type { SyncEngine } from './sync-engine.ts';
 import { getMeter, withSpan, withSpanSync } from './telemetry.ts';
+import { createWriteAdvisoryGate } from './write-advisory-gate.ts';
 import { computeWriteAdvisoryLinks, type WriteAdvisoryTargets } from './write-advisory-links.ts';
 
 let _renameAttributionCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null =
@@ -1799,12 +1808,19 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     return readFrontmatterMetadataForDocName(docName);
   }
 
+  const writeAdvisoryGate = createWriteAdvisoryGate();
+
   async function computeOrphanHints(
     docName: string,
   ): Promise<Array<{ type: 'orphan'; parentCandidates: string[]; message: string }> | undefined> {
     if (!derivedDocumentIndex?.isReady()) return undefined;
     try {
-      const backlinks = await derivedDocumentIndex.getBacklinks(docName);
+      const backlinks = await writeAdvisoryGate.run(
+        'orphan-hints',
+        () => derivedDocumentIndex.getBacklinks(docName),
+        () => undefined,
+      );
+      if (backlinks === undefined) return undefined;
       if (backlinks.length > 0) return undefined;
       const start = performance.now();
       const candidates = findHubCandidates(docName, getFileIndex());
@@ -1938,7 +1954,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
 
   const prepareWriteLinkAdvisory: PrepareWriteLinkAdvisory = async (writtenDocNames) => {
     if (!isDerivedIndexReady()) return deferredWriteLinkAdvisory;
-    const admitted = await collectAdmittedDocNames();
+    let admitted: Set<string> | null;
+    try {
+      admitted = await writeAdvisoryGate.run('link-check', collectAdmittedDocNames, () => null);
+    } catch (err) {
+      log.warn({ err }, '[link-check] write link advisory failed post-write; skipping link checks');
+      return busyWriteLinkAdvisory;
+    }
+    if (admitted === null) return busyWriteLinkAdvisory;
     for (const docName of writtenDocNames) admitted.add(docName);
     const targets: WriteAdvisoryTargets = {
       fileExists: createLinkedFileExists(),
@@ -3634,13 +3657,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
           return;
         }
         if (e instanceof AgentSessionCapacityError) {
-          errorResponse(
-            res,
-            503,
-            'urn:ok:error:too-many-agent-sessions',
-            'Too many agent sessions.',
-            { handler: 'agent-write', cause: e, extraHeaders: { 'Retry-After': '10' } },
-          );
+          respondAgentSessionCapacity(res, e, 'agent-write');
           return;
         }
         log.error({ err: e, requestId: getRequestId(_req) }, '[agent-write] handler failed');
@@ -3738,8 +3755,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
           if (e instanceof AgentSessionCapacityError) {
             return entryError(
               docName,
-              'urn:ok:error:too-many-agent-sessions',
-              'Too many agent sessions.',
+              AGENT_SESSION_CAPACITY_TYPE,
+              AGENT_SESSION_CAPACITY_TITLE,
+              AGENT_SESSION_CAPACITY_DETAIL,
+              AGENT_SESSION_CAPACITY_EXTENSIONS,
             );
           }
           log.error(
@@ -4834,23 +4853,29 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
         linkPolicy.links !== 'off' &&
         !isLinkIndexExcludedDoc(docName)
       ) {
-        await recordDerivedLinkRewriteBestEffort(docName, source, 'lint-validation');
-        const linksValidator = createProjectValidators({
-          projectDir: projectDir ?? contentDir,
-          contentDir,
-          baseConfig: base,
-          derivedDocumentIndex,
-          linkPolicy,
-          admittedDocNames: collectAdmittedDocNames,
-          docFilePathFor: (d) => resolveDocFilePath(contentDir, d),
-          localTargetInventory: linkedLocalTargetInventory,
-        }).find((validator) => validator.id === 'links');
-        if (linksValidator) {
-          const run = await linksValidator.run({
-            targetPath: resolveDocFilePath(contentDir, docName) ?? `${docName}.md`,
-          });
-          linkFindings = run.files.flatMap((file) => file.diagnostics);
-        }
+        const index = derivedDocumentIndex;
+        linkFindings = await writeAdvisoryGate.run(
+          'lint-links',
+          async () => {
+            await recordDerivedLinkRewriteBestEffort(docName, source, 'lint-validation');
+            const linksValidator = createProjectValidators({
+              projectDir: projectDir ?? contentDir,
+              contentDir,
+              baseConfig: base,
+              derivedDocumentIndex: index,
+              linkPolicy,
+              admittedDocNames: collectAdmittedDocNames,
+              docFilePathFor: (d) => resolveDocFilePath(contentDir, d),
+              localTargetInventory: linkedLocalTargetInventory,
+            }).find((validator) => validator.id === 'links');
+            if (!linksValidator) return [];
+            const run = await linksValidator.run({
+              targetPath: resolveDocFilePath(contentDir, docName) ?? `${docName}.md`,
+            });
+            return run.files.flatMap((file) => file.diagnostics);
+          },
+          () => [],
+        );
       }
 
       return [...lintFindings, ...linkFindings]

@@ -25,6 +25,12 @@ const LINK_CHECK_DEFERRED_WARNING: LinkCheckDeferredWarning = {
     'Link checks were skipped because the link index is still building after server start, so an empty `brokenLinks` does not mean every link resolves. Links in this document are checked again only when it is written or edited after startup finishes, or by an `audit`, which waits for startup and can time out until then.',
 };
 
+const LINK_CHECK_BUSY_WARNING: LinkCheckDeferredWarning = {
+  kind: 'link-check-deferred',
+  message:
+    'Link checks were skipped because the link index did not answer, usually because it is busy with other writes, so an empty `brokenLinks` does not mean every link resolves. The write landed. Check this document later with `audit`, or read `brokenLinks` on your next write or edit of it.',
+};
+
 export interface WriteLinkAdvisoryProjection {
   brokenLinks: WriteAdvisoryLink[];
   brokenLinkSuppression?: BrokenLinkSuppression;
@@ -47,6 +53,10 @@ export type PrepareWriteLinkAdvisory = (
 
 export function deferredWriteLinkAdvisory(): WriteLinkAdvisory {
   return { links: { brokenLinks: [] }, warnings: [LINK_CHECK_DEFERRED_WARNING] };
+}
+
+export function busyWriteLinkAdvisory(): WriteLinkAdvisory {
+  return { links: { brokenLinks: [] }, warnings: [LINK_CHECK_BUSY_WARNING] };
 }
 
 export function projectWriteAdvisoryLinks(

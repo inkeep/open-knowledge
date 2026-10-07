@@ -54,6 +54,7 @@ import {
   resolveNativeConfigForDoc,
 } from '../lint/resolve-config.ts';
 import type { PinoLogger } from '../logger.ts';
+import { respondAgentSessionCapacity } from './agent-session-capacity.ts';
 import { type ApiRouteGroup, createApiRouteGroup } from './api-pipeline.ts';
 import { errorResponse } from './error-response.ts';
 import { withValidation } from './request-validation.ts';
@@ -499,13 +500,7 @@ export function createLintWriteRoutes(deps: LintWriteRouteDeps): ApiRouteGroup {
           return;
         }
         if (e instanceof AgentSessionCapacityError) {
-          errorResponse(
-            res,
-            503,
-            'urn:ok:error:too-many-agent-sessions',
-            'Too many agent sessions.',
-            { handler: 'lint-fix', cause: e, extraHeaders: { 'Retry-After': '10' } },
-          );
+          respondAgentSessionCapacity(res, e, 'lint-fix');
           return;
         }
         log.error({ err: e }, '[lint-fix] handler failed');

@@ -341,6 +341,27 @@ describe('DerivedDocumentIndex', () => {
     expect(rig.signals).toEqual(['backlinks', 'graph']);
   });
 
+  test('link rewrites debounce their backlink cache save instead of saving before returning', async () => {
+    vi.useFakeTimers();
+    const backlinkSave = vi.spyOn(BacklinkIndex.prototype, 'saveToDisk');
+    const tagSave = vi.spyOn(TagIndex.prototype, 'saveToDisk');
+    const rig = createRig();
+    await settleStartup(rig);
+    backlinkSave.mockClear();
+    tagSave.mockClear();
+
+    await rig.index.recordLinkRewrite('source', 'See [[first]].\n');
+    await rig.index.recordLinkRewrite('source', 'See [[second]].\n');
+
+    expect(await rig.index.getBacklinks('second')).toHaveLength(1);
+    expect(backlinkSave).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(2000);
+
+    expect(backlinkSave).toHaveBeenCalledTimes(1);
+    expect(tagSave).not.toHaveBeenCalled();
+  });
+
   test('direct rename moves link and tag membership atomically', async () => {
     const rig = createRig();
     await settleStartup(rig);

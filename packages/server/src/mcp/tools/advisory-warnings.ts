@@ -120,7 +120,9 @@ export function formatAdvisoryBriefs(warnings: AdvisoryWarning[]): string[] {
   if (render.length > 0) briefs.push(formatRenderWarningsBrief(render));
   briefs.push(...lintEntries(warnings).map(formatLintBrief));
   if (linkCheckDeferredEntries(warnings).length > 0) {
-    briefs.push('⚠ Links not checked yet: the link index is still building (see warnings).');
+    briefs.push(
+      '⚠ Links not checked yet: the link index is still building or busy (see warnings).',
+    );
   }
   briefs.push(...unrecognizedEntries(warnings).map(formatUnrecognizedBrief));
   return briefs;

@@ -499,7 +499,11 @@ export class DerivedDocumentIndex
   }
 
   recordLinkRewrite(documentName: string, markdown: string): Promise<void> {
-    return this.recordDirectMutations([{ kind: 'link-rewrite', documentName, markdown }]);
+    return this.runCommand(async () => {
+      this.updateBacklinks(documentName, markdown);
+      this.scheduleSave(false);
+      this.signalBacklinks();
+    });
   }
 
   recordDirectMutations(mutations: readonly DerivedDocumentIndexMutation[]): Promise<void> {

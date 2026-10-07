@@ -94,7 +94,7 @@ export const previewAttachWarningField = z
 const brokenLinksOutputField = z
   .array(BrokenLinkSchema)
   .describe(
-    'Outbound internal links in the just-written doc that do not resolve. Always present — `[]` means every link resolves UNLESS `brokenLinkSuppression` is also present, in which case a project policy withheld findings, or `warnings` carries `link-check-deferred`, in which case the links were not checked because the server is still starting. A withholding that arrives in a shape this build cannot validate is dropped rather than relayed, so `brokenLinkSuppression` stays absent even though findings were withheld. The `audit` tool is the surface that discloses that case, through its `warnings`. Each: `{ href (as written), resolvedTo (the docName or content-root file path it pointed at, or null), reason: "no-such-doc" | "no-such-file" | "unresolvable" | "excluded" }`. `excluded` means the file exists on disk but a .gitignore or .okignore rule keeps it out of the project; a `!` rule in .okignore re-includes it or its folder. Report-only — the write landed regardless; fix in a follow-up edit.',
+    'Outbound internal links in the just-written doc that do not resolve. Always present — `[]` means every link resolves UNLESS `brokenLinkSuppression` is also present, in which case a project policy withheld findings, or `warnings` carries `link-check-deferred`, in which case the links were not checked because the server is still starting or busy with other writes. A withholding that arrives in a shape this build cannot validate is dropped rather than relayed, so `brokenLinkSuppression` stays absent even though findings were withheld. The `audit` tool is the surface that discloses that case, through its `warnings`. Each: `{ href (as written), resolvedTo (the docName or content-root file path it pointed at, or null), reason: "no-such-doc" | "no-such-file" | "unresolvable" | "excluded" }`. `excluded` means the file exists on disk but a .gitignore or .okignore rule keeps it out of the project; a `!` rule in .okignore re-includes it or its folder. Report-only — the write landed regardless; fix in a follow-up edit.',
   );
 
 const brokenLinkSuppressionOutputField = BrokenLinkSuppressionSchema.optional().describe(
@@ -119,7 +119,7 @@ export const documentResultBaseShape = {
     .min(1)
     .optional()
     .describe(
-      "Advisory entries discriminated by `kind`. Write-integrity kinds — `content-divergence` (converged Y.Text didn't byte-match what you composed) and `disk-edit-reconciled` (an out-of-band disk edit was folded in before your write) — mean re-read the doc. The renderability kind `mermaid-parse-error` means the write landed but that fence will not render — fix it and re-edit. `link-check-deferred` means links were not checked because the server is still starting — that doc is re-checked only by a later write or edit of it, or an `audit`, which can time out until startup finishes.",
+      "Advisory entries discriminated by `kind`. Write-integrity kinds — `content-divergence` (converged Y.Text didn't byte-match what you composed) and `disk-edit-reconciled` (an out-of-band disk edit was folded in before your write) — mean re-read the doc. The renderability kind `mermaid-parse-error` means the write landed but that fence will not render — fix it and re-edit. `link-check-deferred` means links were not checked because the server is still starting or busy with other writes — that doc is re-checked only by a later write or edit of it, or an `audit`, which can time out until startup finishes.",
     ),
   brokenLinks: brokenLinksOutputField,
   brokenLinkSuppression: brokenLinkSuppressionOutputField,
@@ -147,10 +147,19 @@ export function nestDocResult(
   return structured;
 }
 
-export function errorTextWithDetail(result: { [key: string]: unknown }): string {
-  const detail = typeof result.detail === 'string' ? ` (${result.detail})` : '';
+export function requestFailureText(result: { [key: string]: unknown }): string {
   const title = typeof result.error === 'string' ? result.error : 'request failed';
-  return `Error: ${title}${detail}`;
+  const detail =
+    typeof result.detail === 'string' && result.detail.length > 0 ? ` (${result.detail})` : '';
+  const retryAfter =
+    typeof result.retryAfterSeconds === 'number'
+      ? ` Retry after ${result.retryAfterSeconds}s.`
+      : '';
+  return `${title}${detail}${retryAfter}`;
+}
+
+export function errorTextWithDetail(result: { [key: string]: unknown }): string {
+  return `Error: ${requestFailureText(result)}`;
 }
 
 export function textResult(text: string, isError?: boolean) {

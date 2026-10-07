@@ -6,6 +6,7 @@ import {
   type FrontmatterPatch,
   instantiateDoc,
   normalizeBridge,
+  type ProblemType,
   parseFrontmatterYaml,
   SKILL_AUTHORING_WARNING_CODES,
   serializeFrontmatterMap,
@@ -57,6 +58,7 @@ import {
   previewUrlOutputField,
   previewUrlSourceField,
   ROUTED_CWD_DESCRIPTION,
+  requestFailureText,
   resolveProjectServerContext,
   serverRequestFailure,
   summaryArgSchema,
@@ -186,6 +188,15 @@ export function composeWithFrontmatter(
   return { ok: true, markdown: withFences(yamlBody) + cleanBody };
 }
 
+const FRONTMATTER_PATCH_REJECTED_BEFORE_APPLY: ReadonlySet<unknown> = new Set<ProblemType>([
+  'urn:ok:error:invalid-request',
+  'urn:ok:error:invalid-frontmatter-patch',
+]);
+
+function frontmatterPatchAppliedNothing(result: { [key: string]: unknown }): boolean {
+  return result.committed === false || FRONTMATTER_PATCH_REJECTED_BEFORE_APPLY.has(result.type);
+}
+
 async function writeOneDoc(
   spec: DocSpec,
   cwd: string,
@@ -310,21 +321,11 @@ async function writeOneDoc(
     ...agentIdentityFields(identity),
   });
   if (!result.ok) {
-    const detail =
-      typeof result.detail === 'string' && result.detail.length > 0 ? result.detail : '';
-    const retryAfter =
-      typeof result.retryAfterSeconds === 'number'
-        ? ` Retry after ${result.retryAfterSeconds}s.`
-        : '';
     const recovery =
       result.type === CONCURRENT_OVERWRITE_REFUSED_TYPE
         ? ' Wait and retry, or use edit for a targeted change.'
         : '';
-    return {
-      docName,
-      ok: false,
-      error: `${detail ? `${String(result.error)} (${detail})` : String(result.error)}${retryAfter}${recovery}`,
-    };
+    return { docName, ok: false, error: `${requestFailureText(result)}${recovery}` };
   }
 
   if (spec.template !== undefined && hasFrontmatter) {
@@ -337,7 +338,9 @@ async function writeOneDoc(
       return {
         docName,
         ok: false,
-        error: `document created from template but frontmatter failed: ${String(fmResult.error)}`,
+        error: frontmatterPatchAppliedNothing(fmResult)
+          ? `document created from template "${spec.template}", but its frontmatter patch was refused, so the document exists without that frontmatter: ${requestFailureText(fmResult)} Apply the frontmatter alone with edit({ document: { path: "${docName}", frontmatter } }); do not repeat the templated write.`
+          : `document created from template "${spec.template}", but its frontmatter patch failed, and this response does not show whether the frontmatter was applied: ${requestFailureText(fmResult)} Re-read the document before changing it; do not repeat the templated write.`,
       };
     }
   }
@@ -999,7 +1002,7 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
         documents: looseObjectArray
           .optional()
           .describe(
-            'Batch write: per-doc result `{ docName, ok, position?, previewUrl?, warnings?, brokenLinks, brokenLinkSuppression?, error? }`. `brokenLinks` (possibly `[]`) is present on each successful entry, same as a single-doc write — and, same as a single-doc write, an empty list means every link resolves only on entries carrying no `brokenLinkSuppression` and no `link-check-deferred` warning (links not checked yet because the server is still starting).',
+            'Batch write: per-doc result `{ docName, ok, position?, previewUrl?, warnings?, brokenLinks, brokenLinkSuppression?, error? }`. `brokenLinks` (possibly `[]`) is present on each successful entry, same as a single-doc write — and, same as a single-doc write, an empty list means every link resolves only on entries carrying no `brokenLinkSuppression` and no `link-check-deferred` warning (links not checked yet because the server is still starting or busy).',
           ),
         previewUrl: previewUrlOutputField.optional(),
         previewUrlSource: previewUrlSourceField,
