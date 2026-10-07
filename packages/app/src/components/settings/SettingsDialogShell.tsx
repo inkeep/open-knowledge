@@ -5,10 +5,11 @@
 import { SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core/constants/feature-flags';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight } from 'lucide-react';
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { matchesCommandQuery, splitTextByQueryMatches } from '@/components/command-palette-search';
 import { SettingsDialogBodyLazy } from '@/components/settings/SettingsDialogBodyLazy';
 import { SettingsDialogErrorBoundary } from '@/components/settings/SettingsDialogErrorBoundary';
+import { UPDATE_CHECKING_NOTICE_ID } from '@/components/UpdateNotices.shared';
 import {
   Command,
   CommandEmpty,
@@ -24,6 +25,7 @@ import { useDocumentContext } from '@/editor/DocumentContext';
 import { useConfigContext } from '@/lib/config-provider';
 import { isFileProtocolPage } from '@/lib/file-protocol-page';
 import { useClaudeDesktopIntegration } from '@/lib/handoff/use-claude-desktop-integration';
+import { getNoticesSnapshot, subscribeToNotices } from '@/lib/update-notices-store';
 import { subscribeToSettingsSection } from '@/lib/use-settings-route';
 import { cn } from '@/lib/utils';
 import { LINT_PLUGIN_META } from './lint-plugin-meta';
@@ -551,9 +553,12 @@ function SettingsSearchResultItem({
 }
 
 function SettingsSidebarVersion() {
+  const { t } = useLingui();
+  const notices = useSyncExternalStore(subscribeToNotices, getNoticesSnapshot, getNoticesSnapshot);
   const bridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   const version = bridge?.appVersion;
   if (!bridge || !version) return null;
+  const checkingForUpdates = notices.some((notice) => notice.id === UPDATE_CHECKING_NOTICE_ID);
 
   const url = releaseNotesUrl(version);
   return (
@@ -563,6 +568,13 @@ function SettingsSidebarVersion() {
         data-testid="settings-sidebar-version"
       >
         v{version}
+      </p>
+      <p
+        role="status"
+        className="whitespace-nowrap text-xs text-muted-foreground"
+        data-testid="settings-sidebar-update-checking"
+      >
+        {checkingForUpdates ? t`Checking for updates…` : null}
       </p>
       <button
         type="button"

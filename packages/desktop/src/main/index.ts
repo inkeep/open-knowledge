@@ -6875,7 +6875,16 @@ function bootPrimaryInstance(): void {
               message: "This copy of OpenKnowledge can't update itself.",
               detail: `Development builds don't receive automatic updates. To update, pull the latest source or download the newest release from ${STUCK_HINT_DOWNLOAD_URL}.`,
             });
-          } else {
+          } else if (result.kind === 'download-failed') {
+            void dialog.showMessageBox(target, {
+              type: 'warning',
+              buttons: ['OK'],
+              defaultId: 0,
+              title: "Couldn't Download the Update",
+              message: `OpenKnowledge ${result.latestVersion} couldn't be downloaded.`,
+              detail: result.message,
+            });
+          } else if (result.kind === 'error') {
             void dialog.showMessageBox(target, {
               type: 'warning',
               buttons: ['OK'],
@@ -6884,6 +6893,9 @@ function bootPrimaryInstance(): void {
               message: "OpenKnowledge couldn't check for updates right now.",
               detail: result.message,
             });
+          } else {
+            const _exhaustive: never = result;
+            return _exhaustive;
           }
         },
       });

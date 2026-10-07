@@ -2977,6 +2977,7 @@ msgstr "업데이트 확인 중"
 msgid "Checking for updates on GitHub"
 msgstr "GitHub에서 업데이트 확인 중"
 
+#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/UpdateNotices.shared.ts
 msgid "Checking for updates…"
 msgstr "업데이트 확인 중…"

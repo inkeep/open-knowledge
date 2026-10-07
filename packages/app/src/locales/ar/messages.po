@@ -2977,6 +2977,7 @@ msgstr "يجري التحقق من التحديثات"
 msgid "Checking for updates on GitHub"
 msgstr "يجري التحقق من التحديثات على GitHub"
 
+#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/UpdateNotices.shared.ts
 msgid "Checking for updates…"
 msgstr "يجري التحقق من التحديثات…"

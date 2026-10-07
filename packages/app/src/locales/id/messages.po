@@ -2973,6 +2973,7 @@ msgstr "Memeriksa pembaruan"
 msgid "Checking for updates on GitHub"
 msgstr "Memeriksa pembaruan di GitHub"
 
+#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/UpdateNotices.shared.ts
 msgid "Checking for updates…"
 msgstr "Memeriksa pembaruan…"

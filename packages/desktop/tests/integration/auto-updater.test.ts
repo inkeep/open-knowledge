@@ -29,6 +29,7 @@ import {
   UPDATE_CHECK_INTERVAL_MS,
   UPDATE_CHECK_JITTER_MS,
   UPDATE_CHECK_WEDGED_MESSAGE,
+  UPDATE_DOWNLOAD_FAILED_MESSAGE,
   type UpdaterLike,
   versionAtLeast,
 } from '../../src/main/auto-updater.ts';
@@ -4366,6 +4367,238 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
       kind: 'not-available',
       currentVersion: '0.5.0-beta.21',
     });
+  });
+});
+
+describe('a download that fails after the menu check said "available"', () => {
+  const offered = { kind: 'available', currentVersion: '0.4.0', latestVersion: '0.5.0' } as const;
+  const downloadFailed = {
+    kind: 'download-failed',
+    latestVersion: '0.5.0',
+    message: UPDATE_DOWNLOAD_FAILED_MESSAGE,
+  } as const;
+
+  function assetMissing(): Error {
+    return Object.assign(new Error('Cannot find OpenKnowledge-amd64.deb in the latest release'), {
+      code: 'ERR_UPDATER_ASSET_NOT_FOUND',
+    });
+  }
+
+  test.each(['error-then-reject', 'reject-only'] as const)(
+    'shows a download-failed dialog after the available dialog (%s)',
+    async (failure) => {
+      const showCheckNowResult = vi.fn(() => {});
+      const { rig } = makeRig({
+        appVersion: '0.4.0',
+        platform: 'linux',
+        proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+        showCheckNowResult,
+      });
+      await Promise.resolve();
+      rig.updater.downloadUpdate.mockImplementation(() =>
+        failure === 'error-then-reject'
+          ? rejectAfterErrorEvent(rig.updater, assetMissing())
+          : Promise.reject(assetMissing()),
+      );
+      rig.ipc.invoke('ok:update:check-now');
+      rig.updater.emit('update-available', { version: '0.5.0' });
+      expect(showCheckNowResult).toHaveBeenCalledExactlyOnceWith(offered);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(showCheckNowResult.mock.calls).toEqual([[offered], [downloadFailed]]);
+      expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+      expect(rig.dispatches).toContain('check-now-download-failed-shown');
+    },
+  );
+
+  test('a synchronous asset-not-found throw from downloadUpdate reports only the download failure', async () => {
+    const showCheckNowResult = vi.fn(() => {});
+    const { rig } = makeRig({
+      appVersion: '0.4.0',
+      platform: 'linux',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      showCheckNowResult,
+    });
+    await Promise.resolve();
+    rig.updater.downloadUpdate.mockImplementation(() => {
+      throw assetMissing();
+    });
+    rig.ipc.invoke('ok:update:check-now');
+    expect(() => rig.updater.emit('update-available', { version: '0.5.0' })).not.toThrow();
+    expect(showCheckNowResult).toHaveBeenCalledExactlyOnceWith(downloadFailed);
+    expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(showCheckNowResult.mock.calls).toEqual([[downloadFailed]]);
+    expect(rig.dispatches.filter((kind) => kind === 'check-now-download-failed-shown')).toEqual([
+      'check-now-download-failed-shown',
+    ]);
+  });
+
+  test('two menu checks sharing one in-flight download report its failure once', async () => {
+    const showCheckNowResult = vi.fn(() => {});
+    const download = Promise.withResolvers<never>();
+    const { rig } = makeRig({
+      appVersion: '0.4.0',
+      platform: 'linux',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      showCheckNowResult,
+      updaterSetup: (updater) => {
+        updater.downloadUpdate = vi.fn(() => download.promise);
+      },
+    });
+    await Promise.resolve();
+    rig.ipc.invoke('ok:update:check-now');
+    rig.updater.emit('update-available', { version: '0.5.0' });
+    rig.ipc.invoke('ok:update:check-now');
+    rig.updater.emit('update-available', { version: '0.5.0' });
+    download.reject(assetMissing());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(showCheckNowResult.mock.calls).toEqual([[offered], [offered], [downloadFailed]]);
+  });
+
+  test('a menu check that joins a background download in flight reports its failure once', async () => {
+    const showCheckNowResult = vi.fn(() => {});
+    const download = Promise.withResolvers<never>();
+    const { rig } = makeRig({
+      appVersion: '0.4.0',
+      platform: 'linux',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      showCheckNowResult,
+      updaterSetup: (updater) => {
+        updater.downloadUpdate = vi.fn(() => download.promise);
+      },
+    });
+    await Promise.resolve();
+    rig.updater.emit('update-available', { version: '0.5.0' });
+    rig.ipc.invoke('ok:update:check-now');
+    rig.updater.emit('update-available', { version: '0.5.0' });
+    expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(2);
+    download.reject(assetMissing());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(showCheckNowResult.mock.calls).toEqual([[offered], [downloadFailed]]);
+  });
+
+  test('a launch or periodic download failure stays log-only', async () => {
+    const showCheckNowResult = vi.fn(() => {});
+    const { rig } = makeRig({
+      appVersion: '0.4.0',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      showCheckNowResult,
+    });
+    await Promise.resolve();
+    rig.updater.downloadUpdate.mockImplementation(() =>
+      rejectAfterErrorEvent(rig.updater, assetMissing()),
+    );
+    rig.updater.emit('update-available', { version: '0.5.0' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(showCheckNowResult).not.toHaveBeenCalled();
+    expect(rig.dispatches).not.toContain('check-now-download-failed-shown');
+  });
+
+  test('a failed download never arms the ready card or a pending install', async () => {
+    const showCheckNowResult = vi.fn(() => {});
+    const { rig } = makeRig({
+      appVersion: '0.4.0',
+      platform: 'linux',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      showCheckNowResult,
+    });
+    await Promise.resolve();
+    rig.updater.downloadUpdate.mockImplementation(() =>
+      rejectAfterErrorEvent(rig.updater, assetMissing()),
+    );
+    rig.ipc.invoke('ok:update:check-now');
+    rig.updater.emit('update-available', { version: '0.5.0' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rig.ipc.invoke('ok:update:check-now');
+    rig.updater.emit('update-available', { version: '0.5.0' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(rig.captured.filter((entry) => entry.channel === 'ok:update:downloaded')).toEqual([]);
+    expect(rig.state.versionPendingInstall).toBeNull();
+    expect(rig.state.attemptedInstall).toBeNull();
+    expect(showCheckNowResult.mock.calls).toEqual([
+      [offered],
+      [downloadFailed],
+      [offered],
+      [downloadFailed],
+    ]);
+  });
+
+  test.each([
+    { retry: 'downloads', dialogs: [[offered]] },
+    { retry: 'not-available', dialogs: [[offered], [downloadFailed]] },
+    { retry: 'download-fails', dialogs: [[offered], [downloadFailed]] },
+    { retry: 'check-fails', dialogs: [[offered], [downloadFailed]] },
+  ] as const)(
+    'a proxy download failure waits for the GitHub retry before reporting (retry $retry)',
+    async ({ retry, dialogs }) => {
+      const showCheckNowResult = vi.fn(() => {});
+      const { rig } = makeRig({
+        appVersion: '0.4.0',
+        proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+        showCheckNowResult,
+      });
+      await Promise.resolve();
+      const proxyDownloadError = Object.assign(new Error('proxy unavailable'), {
+        code: 'HTTP_ERROR_503',
+      });
+      rig.updater.checkForUpdates.mockImplementation(() => {
+        const feed = rig.updater.setFeedURL.mock.calls.at(-1)?.[0];
+        if (typeof feed !== 'object' || feed.provider !== 'github') {
+          return Promise.resolve(undefined);
+        }
+        if (retry === 'check-fails') {
+          return rejectAfterErrorEvent(
+            rig.updater,
+            Object.assign(new Error('GitHub unavailable'), { code: 'HTTP_ERROR_503' }),
+          );
+        }
+        return new Promise<undefined>((resolve) => setTimeout(resolve, 0)).then(() => {
+          rig.updater.emit(
+            retry === 'not-available' ? 'update-not-available' : 'update-available',
+            { version: '0.5.0' },
+          );
+          return undefined;
+        });
+      });
+      rig.updater.downloadUpdate.mockImplementation(() => {
+        if (rig.updater.downloadUpdate.mock.calls.length === 1) {
+          return rejectAfterErrorEvent(rig.updater, proxyDownloadError);
+        }
+        if (retry === 'download-fails') {
+          return rejectAfterErrorEvent(rig.updater, assetMissing());
+        }
+        rig.updater.emit('update-downloaded', { version: '0.5.0' });
+        return Promise.resolve([]);
+      });
+      rig.ipc.invoke('ok:update:check-now');
+      rig.updater.emit('update-available', { version: '0.5.0' });
+      for (let tick = 0; tick < 4; tick++) await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(rig.updater.setFeedURL).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: 'github' }),
+      );
+      expect(showCheckNowResult.mock.calls).toEqual(dialogs);
+      expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+    },
+  );
+
+  test('destroy before the download fails shows no dialog', async () => {
+    const showCheckNowResult = vi.fn(() => {});
+    const download = Promise.withResolvers<never>();
+    const { rig, handle } = makeRig({
+      appVersion: '0.4.0',
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+      showCheckNowResult,
+      updaterSetup: (updater) => {
+        updater.downloadUpdate = vi.fn(() => download.promise);
+      },
+    });
+    rig.ipc.invoke('ok:update:check-now');
+    rig.updater.emit('update-available', { version: '0.5.0' });
+    handle.destroy();
+    download.reject(assetMissing());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(showCheckNowResult.mock.calls).toEqual([[offered]]);
   });
 });
 

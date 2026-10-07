@@ -2977,6 +2977,7 @@ msgstr "اپ ڈیٹس دیکھے جا رہے ہیں"
 msgid "Checking for updates on GitHub"
 msgstr "GitHub پر اپ ڈیٹس دیکھے جا رہے ہیں"
 
+#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/UpdateNotices.shared.ts
 msgid "Checking for updates…"
 msgstr "اپ ڈیٹس دیکھے جا رہے ہیں…"

@@ -660,7 +660,7 @@ describe('Notice A — ok:update:downloaded', () => {
     expect(notice.id).toBe('update-downloaded');
     expect(notice.action?.label).toBe(TOAST_A_ACTION);
     expect(notice.variant).toBeUndefined();
-    expect(notice.priority).toBe(2);
+    expect(notice.priority).toBe(4);
     expect(notice.dismissible).toBeUndefined();
   });
 
@@ -822,7 +822,7 @@ describe('Notice B — ok:update:whats-new', () => {
     expect(notice.id).toBe('whats-new-0.3.1');
     expect(notice.action?.label).toBe(TOAST_B_ACTION);
     expect(notice.variant).toBe('success');
-    expect(notice.priority).toBe(4);
+    expect(notice.priority).toBe(5);
     notice.action?.onClick();
     expect(bridge.shell.openExternal).toHaveBeenCalledWith(releaseUrl);
   });
@@ -1072,9 +1072,9 @@ describe('Notice E — schema-incompatibility refuse-downgrade', () => {
 });
 
 describe('pickActiveNotice', () => {
-  const a: UpdateNotice = { id: 'a', body: 'A', priority: 2 };
+  const a: UpdateNotice = { id: 'a', body: 'A', priority: 4 };
   const checking: UpdateNotice = { id: 'update-checking', body: 'Checking', priority: 3 };
-  const b: UpdateNotice = { id: 'b', body: 'B', priority: 4 };
+  const b: UpdateNotice = { id: 'b', body: 'B', priority: 5 };
   const c: UpdateNotice = { id: 'c', body: 'C', priority: 0 };
   const err: UpdateNotice = { id: 'err', body: 'Err', priority: 1, variant: 'error' };
 
@@ -1094,14 +1094,60 @@ describe('pickActiveNotice', () => {
     expect(pickActiveNotice([b, a])).toBe(a);
   });
 
-  test('checking ranks below update notices and above whats-new', () => {
+  test('checking outranks the ready card and whats-new but not errors, stuck hint or schema', () => {
     expect(pickActiveNotice([b, checking])).toBe(checking);
-    expect(pickActiveNotice([b, checking, a])).toBe(a);
+    expect(pickActiveNotice([b, checking, a])).toBe(checking);
     expect(pickActiveNotice([b, checking, err])).toBe(err);
     expect(pickActiveNotice([b, checking, c])).toBe(c);
   });
 
-  test('relaunch-error (1) wins over A (2) and B (4) but not C (0)', () => {
+  test('an in-flight manual check shows over the ready card and gives it back when it settles', () => {
+    const bridge = makeFakeBridge();
+    let notices: UpdateNotice[] = [];
+    attachUpdateSubscribers(
+      castBridge(bridge),
+      (notice) => {
+        notices = [...notices.filter((n) => n.id !== notice.id), notice];
+      },
+      (id) => {
+        notices = notices.filter((n) => n.id !== id);
+      },
+    );
+
+    bridge._downloaded?.({ version: '0.1.1' });
+    bridge._manualCheck?.({ phase: 'started' });
+    expect(pickActiveNotice(notices)?.id).toBe('update-checking');
+
+    bridge._manualCheck?.({ phase: 'settled' });
+    expect(pickActiveNotice(notices)?.id).toBe('update-downloaded');
+  });
+
+  test.each(['relaunching', 'fetching-latest'] as const)(
+    'a manual check started during a relaunch (%s) keeps the relaunch progress on top',
+    (stage) => {
+      const bridge = makeFakeBridge();
+      let notices: UpdateNotice[] = [];
+      attachUpdateSubscribers(
+        castBridge(bridge),
+        (notice) => {
+          notices = [...notices.filter((n) => n.id !== notice.id), notice];
+        },
+        (id) => {
+          notices = notices.filter((n) => n.id !== id);
+        },
+      );
+
+      bridge._downloaded?.({ version: '0.1.1' });
+      if (stage === 'relaunching') bridge._relaunching?.({ version: '0.1.1' });
+      else bridge._fetchingLatest?.({ version: '0.1.1' });
+      bridge._manualCheck?.({ phase: 'started' });
+      expect(pickActiveNotice(notices)?.body).toBe(
+        stage === 'relaunching' ? TOAST_A_PROGRESS_BODY : TOAST_A_FETCHING_LATEST_BODY,
+      );
+    },
+  );
+
+  test('relaunch-error (1) wins over A (4) and B (5) but not C (0)', () => {
     expect(pickActiveNotice([a, b, err])).toBe(err);
     expect(pickActiveNotice([a, b, err, c])).toBe(c);
   });

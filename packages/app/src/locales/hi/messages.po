@@ -2973,6 +2973,7 @@ msgstr "अपडेट देखे जा रहे हैं"
 msgid "Checking for updates on GitHub"
 msgstr "GitHub पर अपडेट देखे जा रहे हैं"
 
+#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/UpdateNotices.shared.ts
 msgid "Checking for updates…"
 msgstr "अपडेट देखे जा रहे हैं…"
