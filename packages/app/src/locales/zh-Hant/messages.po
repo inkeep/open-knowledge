@@ -8094,8 +8094,20 @@ msgid "Invalid YAML"
 msgstr "無效的 YAML"
 
 #: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the crash and hang records Windows logged for OpenKnowledge in the past week, without file paths, and the times of every shutdown, restart, power loss, and low-memory warning on this computer in that week, whatever caused them."
+msgstr "它還會加入 Windows 在過去一週內為 OpenKnowledge 記錄的當機與沒有回應記錄（不含檔案路徑），以及這台電腦在那一週內每次關機、重新啟動、斷電和記憶體不足警告的時間，無論原因為何。"
+
+#: src/components/ReportBugDialogBody.tsx
 msgid "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, never another app's report, though ours do name the processes they were running alongside. Each one carries machine details macOS puts in every report: your account uid, the Mac model, and the name of the process that launched the app. On a managed machine, that launching process can be internal tooling. The identifiers that would link the bug reports you file to each other are replaced first, so a collected report is not byte-identical to the one macOS wrote."
 msgstr "還會加入 macOS 為 OpenKnowledge 及其輔助處理程序記錄的當機報告，絕不包含其他應用程式的報告，不過我們自己的報告會列出與之同時執行的處理程序。每份報告都含有 macOS 寫入所有報告的機器資訊：你的帳戶 uid、Mac 機型，以及啟動該應用程式的處理程序名稱。在受管理的裝置上，該啟動處理程序可能是內部工具。會先替換掉可能將你提交的多份問題報告相互關聯的識別碼，因此收集到的報告與 macOS 寫入的原文並非逐位元組相同。"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the low-memory reports macOS wrote in the past week that list OpenKnowledge's processes, with each one's memory use and whether macOS ended it."
+msgstr "它還會加入 macOS 在過去一週內寫下、列出 OpenKnowledge 處理程序的記憶體不足報告，包括每個處理程序的記憶體用量以及 macOS 是否結束了它。"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the out-of-memory kills of OpenKnowledge that the system journal recorded in the past week, without the machine name, account id, or folder paths."
+msgstr "它還會加入系統日誌在過去一週內記錄的 OpenKnowledge 因記憶體耗盡被終止的事件，不含電腦名稱、帳戶 ID 或資料夾路徑。"
 
 #. placeholder {0}: prompt.cwd
 #. placeholder {1}: prompt.agentName

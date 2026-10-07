@@ -20,6 +20,11 @@ import {
   prepareDiagnosticReportText,
   renderDiagnosticReportsStatus,
 } from '../diagnose/diagnostic-reports.ts';
+import {
+  OS_TERMINATION_EVIDENCE_PATH,
+  type OsTerminationEvidence,
+  renderOsTerminationEvidence,
+} from '../diagnose/os-termination-evidence.ts';
 import type { LanguageMetadata } from '../report-language.ts';
 import { redactContent, SECRET_PATTERN_NAMES } from './bug-report-redact.ts';
 import { DESKTOP_BUNDLE_ID } from './desktop-dispatch.ts';
@@ -66,6 +71,7 @@ export interface CollectStandardBundleOptions {
   shipItLogFiles?: string[];
   bugReportLedgerFiles?: string[];
   diagnosticReports?: DiagnosticReportCollection;
+  osTerminationEvidence?: OsTerminationEvidence;
   note?: string;
   extraFiles?: BundleExtraFile[];
   desktop?: DesktopMetadata | null;
@@ -489,6 +495,15 @@ export async function collectStandardBundle(
     'state/diagnostic-reports-status.txt',
   );
   bundleFiles.push('state/diagnostic-reports-status.txt');
+  addTextEntry({
+    zipfile,
+    name: OS_TERMINATION_EVIDENCE_PATH,
+    content: renderOsTerminationEvidence(opts.osTerminationEvidence),
+    redact,
+    revealDocNames: true,
+    bundleFiles,
+    redactions,
+  });
 
   const sysinfoJson = JSON.stringify(sysinfo, null, 2);
   zipfile.addBuffer(Buffer.from(sysinfoJson, 'utf8'), 'sysinfo.json');
@@ -588,6 +603,21 @@ export async function collectStandardBundle(
           "app's own reports are collected, never another application's, though",
           'a report of ours still names the processes it ran alongside:',
           ...diagnosticReportEntries.map((f) => `- ${f}`),
+          '',
+        ]
+      : []),
+    ...((opts.osTerminationEvidence?.events.length ?? 0) > 0
+      ? [
+          'Termination records: read from the operating system rather than written',
+          'by OpenKnowledge, covering the last 7 days, to explain an exit the app',
+          'could not record itself. On macOS: the memory-pressure (jetsam) reports',
+          "that list processes of this app, with each one's memory use and whether",
+          'it was killed. On Linux: kernel and systemd-oomd out-of-memory kills of',
+          'this app, as structured fields with the machine name, cgroup paths and',
+          'user id left out. On Windows: crash and hang records for this app with',
+          'file paths left out, plus the time of every shutdown, restart, power',
+          'loss and low-memory warning on the machine, whatever caused it:',
+          `- ${OS_TERMINATION_EVIDENCE_PATH}`,
           '',
         ]
       : []),

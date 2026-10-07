@@ -1256,6 +1256,9 @@
     "DLIljL": ["Some saved themes aren’t shown because the theme folder exceeds the scan limit."],
     "DMLE5q": ["MCP auto-repair failed"],
     "DMeaxi": ["Downloading ", ["0"], " ", ["1"], "…"],
+    "DMwy6X": [
+      "It also adds the out-of-memory kills of OpenKnowledge that the system journal recorded in the past week, without the machine name, account id, or folder paths."
+    ],
     "DNkveC": ["Column options"],
     "DPfwMq": ["Done"],
     "DTI-fp": [
@@ -1930,6 +1933,9 @@
       "Present a document as a slide deck in its own window. Add <0>slides: true</0> to a document's frontmatter, then open it with the Slidev action. Rendering is handled by the Slidev CLI, which OpenKnowledge does not bundle."
     ],
     "L4Cdd9": ["or create a new file <0/>"],
+    "L5wak0": [
+      "It also adds the crash and hang records Windows logged for OpenKnowledge in the past week, without file paths, and the times of every shutdown, restart, power loss, and low-memory warning on this computer in that week, whatever caused them."
+    ],
     "L6Hhh6": ["(root)"],
     "L6Ud-t": ["Couldn't load conflicts — reload to retry."],
     "L7NFTZ": ["Enter a number of seconds between ", ["minimum"], " and ", ["maximum"], "."],
@@ -5093,6 +5099,9 @@
     "r51jLC": ["File saved & Claude Desktop App opened"],
     "r57GiQ": [["agentName"], " stopped unexpectedly."],
     "r6ncaO": ["Close tab"],
+    "r6riWv": [
+      "It also adds the low-memory reports macOS wrote in the past week that list OpenKnowledge's processes, with each one's memory use and whether macOS ended it."
+    ],
     "r6y-jM": ["Warning"],
     "r7IaYp": ["Open Knowledge Format guidance"],
     "r7tQuq": ["Your report is saved on this computer, so nothing was lost."],

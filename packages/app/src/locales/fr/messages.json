@@ -1498,6 +1498,9 @@
     ],
     "DMLE5q": ["La réparation automatique de MCP a échoué"],
     "DMeaxi": ["Téléchargement de ", ["0"], " ", ["1"], "…"],
+    "DMwy6X": [
+      "Il ajoute aussi les arrêts d'OpenKnowledge pour manque de mémoire consignés dans le journal système la semaine dernière, sans le nom de la machine, l'identifiant du compte ni les chemins de dossiers."
+    ],
     "DNkveC": ["Options de colonne"],
     "DPfwMq": ["Terminé"],
     "DTI-fp": [
@@ -2278,6 +2281,9 @@
       "Présentez un document sous forme de diaporama dans sa propre fenêtre. Ajoutez <0>slides: true</0> au frontmatter d'un document, puis ouvrez-le avec l'action Slidev. Le rendu est assuré par la CLI Slidev, qu'OpenKnowledge ne fournit pas."
     ],
     "L4Cdd9": ["ou créez un nouveau fichier <0/>"],
+    "L5wak0": [
+      "Il ajoute aussi les plantages et blocages qu'a consignés Windows pour OpenKnowledge la semaine dernière, sans chemins de fichiers, ainsi que les heures de chaque arrêt, redémarrage, coupure de courant et alerte de mémoire insuffisante de cet ordinateur pendant cette semaine, quelle qu'en soit la cause."
+    ],
     "L6Hhh6": ["(racine)"],
     "L6Ud-t": ["Impossible de charger les conflits. Rechargez pour réessayer."],
     "L7NFTZ": [
@@ -5942,6 +5948,9 @@
     "r51jLC": ["Fichier enregistré et application Claude Desktop ouverte"],
     "r57GiQ": [["agentName"], " s'est arrêté de manière inattendue."],
     "r6ncaO": ["Fermer l'onglet"],
+    "r6riWv": [
+      "Il ajoute aussi les rapports de mémoire insuffisante écrits par macOS la semaine dernière qui citent des processus d'OpenKnowledge, avec la mémoire utilisée par chacun et l'indication que macOS l'a arrêté ou non."
+    ],
     "r6y-jM": ["Avertissement"],
     "r7IaYp": ["Open Knowledge Format conseils"],
     "r7tQuq": ["Votre rapport est enregistré sur cet ordinateur, rien n'a donc été perdu."],

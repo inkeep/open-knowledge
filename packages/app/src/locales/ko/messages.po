@@ -8094,8 +8094,20 @@ msgid "Invalid YAML"
 msgstr "잘못된 YAML"
 
 #: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the crash and hang records Windows logged for OpenKnowledge in the past week, without file paths, and the times of every shutdown, restart, power loss, and low-memory warning on this computer in that week, whatever caused them."
+msgstr "또한 지난 한 주 동안 Windows가 OpenKnowledge에 대해 기록한 충돌 및 응답 없음 기록을 파일 경로 없이 추가하고, 그 주에 이 컴퓨터에서 발생한 모든 종료, 다시 시작, 전원 손실, 메모리 부족 경고의 시각을 원인과 관계없이 추가합니다."
+
+#: src/components/ReportBugDialogBody.tsx
 msgid "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, never another app's report, though ours do name the processes they were running alongside. Each one carries machine details macOS puts in every report: your account uid, the Mac model, and the name of the process that launched the app. On a managed machine, that launching process can be internal tooling. The identifiers that would link the bug reports you file to each other are replaced first, so a collected report is not byte-identical to the one macOS wrote."
 msgstr "macOS가 OpenKnowledge와 그 보조 프로세스에 대해 기록한 충돌 보고서도 추가합니다. 다른 앱의 보고서는 절대 포함하지 않지만, 우리 보고서에는 함께 실행 중이던 프로세스의 이름이 담깁니다. 각 보고서에는 macOS가 모든 보고서에 기록하는 머신 정보가 담깁니다: 계정 uid, Mac 모델, 앱을 실행한 프로세스 이름입니다. 관리되는 기기에서는 그 실행 프로세스가 내부 도구일 수 있습니다. 사용자가 보내는 버그 신고들을 서로 연결할 수 있는 식별자는 먼저 대체되므로, 수집된 보고서는 macOS가 작성한 것과 바이트 단위로 동일하지 않습니다."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the low-memory reports macOS wrote in the past week that list OpenKnowledge's processes, with each one's memory use and whether macOS ended it."
+msgstr "또한 지난 한 주 동안 macOS가 작성한 메모리 부족 보고서 중 OpenKnowledge 프로세스가 포함된 보고서를 각 프로세스의 메모리 사용량 및 macOS가 종료했는지 여부와 함께 추가합니다."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the out-of-memory kills of OpenKnowledge that the system journal recorded in the past week, without the machine name, account id, or folder paths."
+msgstr "또한 지난 한 주 동안 시스템 저널에 기록된 메모리 부족으로 인한 OpenKnowledge 강제 종료를 컴퓨터 이름, 계정 ID, 폴더 경로 없이 추가합니다."
 
 #. placeholder {0}: prompt.cwd
 #. placeholder {1}: prompt.agentName

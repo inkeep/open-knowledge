@@ -8094,8 +8094,20 @@ msgid "Invalid YAML"
 msgstr "Nieprawidłowy YAML"
 
 #: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the crash and hang records Windows logged for OpenKnowledge in the past week, without file paths, and the times of every shutdown, restart, power loss, and low-memory warning on this computer in that week, whatever caused them."
+msgstr "Dodaje też zapisane przez Windows w ostatnim tygodniu awarie i zawieszenia OpenKnowledge, bez ścieżek plików, a także godziny każdego wyłączenia, ponownego uruchomienia, utraty zasilania i ostrzeżenia o małej ilości pamięci na tym komputerze w tym tygodniu, niezależnie od przyczyny."
+
+#: src/components/ReportBugDialogBody.tsx
 msgid "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, never another app's report, though ours do name the processes they were running alongside. Each one carries machine details macOS puts in every report: your account uid, the Mac model, and the name of the process that launched the app. On a managed machine, that launching process can be internal tooling. The identifiers that would link the bug reports you file to each other are replaced first, so a collected report is not byte-identical to the one macOS wrote."
 msgstr "Dodaje także raporty awaryjne zapisane przez macOS dla OpenKnowledge i jego procesów pomocniczych, nigdy raportu innej aplikacji — choć nasze zawierają nazwy procesów, obok których działały. Każdy zawiera dane komputera, które macOS umieszcza w każdym raporcie: uid Twojego konta, model Maca i nazwę procesu, który uruchomił aplikację. Na komputerze zarządzanym tym procesem uruchamiającym może być narzędzie wewnętrzne. Identyfikatory, które łączyłyby Twoje zgłoszenia błędów ze sobą, są najpierw zastępowane, dlatego zebrany raport nie jest bajt w bajt identyczny z tym, który zapisał macOS."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the low-memory reports macOS wrote in the past week that list OpenKnowledge's processes, with each one's memory use and whether macOS ended it."
+msgstr "Dodaje też raporty o małej ilości pamięci zapisane przez macOS w ostatnim tygodniu, w których występują procesy OpenKnowledge, z użyciem pamięci każdego z nich i informacją, czy macOS go zakończył."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the out-of-memory kills of OpenKnowledge that the system journal recorded in the past week, without the machine name, account id, or folder paths."
+msgstr "Dodaje też zapisane w dzienniku systemowym w ostatnim tygodniu zakończenia OpenKnowledge z powodu braku pamięci, bez nazwy komputera, identyfikatora konta ani ścieżek folderów."
 
 #. placeholder {0}: prompt.cwd
 #. placeholder {1}: prompt.agentName

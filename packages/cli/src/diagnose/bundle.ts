@@ -43,6 +43,11 @@ import {
   prepareDiagnosticReportText,
   renderDiagnosticReportsStatus,
 } from './diagnostic-reports.ts';
+import {
+  OS_TERMINATION_EVIDENCE_PATH,
+  type OsTerminationEvidence,
+  renderOsTerminationEvidence,
+} from './os-termination-evidence.ts';
 
 type BundleSchemaVersion = 2;
 
@@ -111,6 +116,7 @@ export interface CollectBundleOpts {
   userLogFiles?: string[];
   userStateFiles?: string[];
   diagnosticReports?: DiagnosticReportCollection;
+  osTerminationEvidence?: OsTerminationEvidence;
   deps?: CollectBundleDeps;
 }
 
@@ -624,6 +630,10 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
     writeFileSync(
       join(stagingDir, 'state', 'diagnostic-reports-status.txt'),
       `${diagnosticReportsStatus}\n`,
+    );
+    writeFileSync(
+      join(stagingDir, OS_TERMINATION_EVIDENCE_PATH),
+      renderOsTerminationEvidence(opts.osTerminationEvidence),
     );
 
     if (opts.processDir && existsSync(opts.processDir)) {

@@ -1252,6 +1252,9 @@
     ],
     "DMLE5q": ["Perbaikan otomatis MCP gagal"],
     "DMeaxi": ["Mengunduh ", ["0"], " ", ["1"], "…"],
+    "DMwy6X": [
+      "Ini juga menambahkan penghentian OpenKnowledge karena kehabisan memori yang dicatat jurnal sistem dalam seminggu terakhir, tanpa nama mesin, ID akun, atau jalur folder."
+    ],
     "DNkveC": ["Opsi kolom"],
     "DPfwMq": ["Selesai"],
     "DTI-fp": [
@@ -1961,6 +1964,9 @@
       "Tampilkan dokumen sebagai dek slide di jendela tersendiri. Tambahkan <0>slides: true</0> ke frontmatter dokumen, lalu buka dengan aksi Slidev. Perenderan ditangani oleh CLI Slidev, yang tidak disertakan OpenKnowledge."
     ],
     "L4Cdd9": ["atau buat berkas baru <0/>"],
+    "L5wak0": [
+      "Ini juga menambahkan catatan crash dan macet yang dicatat Windows untuk OpenKnowledge dalam seminggu terakhir, tanpa jalur file, serta waktu setiap pematian, mulai ulang, listrik padam, dan peringatan memori rendah di komputer ini selama minggu itu, apa pun penyebabnya."
+    ],
     "L6Hhh6": ["(akar)"],
     "L6Ud-t": ["Tidak dapat memuat konflik. Muat ulang untuk mencoba lagi."],
     "L7NFTZ": ["Masukkan jumlah detik antara ", ["minimum"], " dan ", ["maximum"], "."],
@@ -5084,6 +5090,9 @@
     "r51jLC": ["Berkas tersimpan & aplikasi Claude Desktop terbuka"],
     "r57GiQ": [["agentName"], " berhenti secara tak terduga."],
     "r6ncaO": ["Tutup tab"],
+    "r6riWv": [
+      "Ini juga menambahkan laporan memori rendah yang ditulis macOS dalam seminggu terakhir yang mencantumkan proses OpenKnowledge, beserta penggunaan memori masing-masing dan apakah macOS menghentikannya."
+    ],
     "r6y-jM": ["Peringatan"],
     "r7IaYp": ["Open Knowledge Format bimbingan"],
     "r7tQuq": ["Laporan Anda tersimpan di komputer ini, jadi tidak ada yang hilang."],

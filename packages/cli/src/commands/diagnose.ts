@@ -18,6 +18,12 @@ import {
   renderDiagnosticReportsStatus,
 } from '../diagnose/diagnostic-reports.ts';
 import {
+  collectOsTerminationEvidence,
+  describeOsTerminationEvidence,
+  type OsTerminationEvidence,
+  type OsTerminationEvidenceDeps,
+} from '../diagnose/os-termination-evidence.ts';
+import {
   discoverLockDirs,
   type ProcessUsage,
   processCommand,
@@ -444,6 +450,7 @@ export interface RunDiagnoseBundleDeps {
   runProcessDiagnose?: (pid: number) => Promise<string>;
   collectDeps?: CollectBundleDeps;
   diagnosticReportsDir?: string;
+  osTerminationEvidenceDeps?: OsTerminationEvidenceDeps;
   now?: () => Date;
 }
 
@@ -505,6 +512,7 @@ function printSummary(
   collected: CollectedBundle,
   outputPath: string,
   diagnosticReports: DiagnosticReportCollection,
+  osTerminationEvidence: OsTerminationEvidence,
 ): void {
   const { summary, manifest } = collected;
   log('');
@@ -533,6 +541,7 @@ function printSummary(
     log('                       regardless of --no-redact. A report of ours still names the');
     log('                       processes it was running alongside.');
   }
+  log(`  OS termination log:  ${describeOsTerminationEvidence(osTerminationEvidence)}`);
   log(`  Output:              ${outputPath}`);
   log('');
 }
@@ -573,6 +582,7 @@ export async function runDiagnoseBundle(
     deps.diagnosticReportsDir ?? join(homedir(), 'Library', 'Logs', 'DiagnosticReports'),
     now(),
   );
+  const osTerminationEvidence = await collectOsTerminationEvidence(deps.osTerminationEvidenceDeps);
   const collected = await collectBundle({
     contentDir: opts.contentDir,
     projectDir: opts.projectDir,
@@ -580,6 +590,7 @@ export async function runDiagnoseBundle(
     redact,
     scrubSecrets: redact,
     diagnosticReports,
+    osTerminationEvidence,
     deps: deps.collectDeps,
   });
 
@@ -587,7 +598,7 @@ export async function runDiagnoseBundle(
     if (collected.manifest.serverStatus === 'not-running') {
       log(pc.yellow('  server not running — live state unavailable'));
     }
-    printSummary(log, collected, outputPath, diagnosticReports);
+    printSummary(log, collected, outputPath, diagnosticReports, osTerminationEvidence);
 
     if (opts.yes !== true) {
       const answer = await prompt('Write bundle? [y/N]: ');

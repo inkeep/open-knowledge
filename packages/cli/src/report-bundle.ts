@@ -27,6 +27,11 @@ import {
   collectDiagnosticReports,
   type DiagnosticReportCollection,
 } from './diagnose/diagnostic-reports.ts';
+import {
+  collectOsTerminationEvidence,
+  type OsTerminationEvidence,
+  type OsTerminationEvidenceDeps,
+} from './diagnose/os-termination-evidence.ts';
 import { defaultReadLanguage, type LanguageMetadata } from './report-language.ts';
 import { isObject } from './utils/is-object.ts';
 
@@ -43,6 +48,7 @@ export interface CollectReportBundleOptions {
   userLogsDir?: string;
   cachesDir?: string;
   diagnosticReportsDir?: string;
+  osTerminationEvidenceDeps?: OsTerminationEvidenceDeps;
   bugReportsDir?: string;
   logger?: BundleLogger;
   readDesktopEnv?: () => DesktopMetadata | null;
@@ -80,6 +86,7 @@ async function collectFullBundle(
   readDesktopEnv: () => DesktopMetadata | null,
   readLanguage: () => LanguageMetadata,
   diagnosticReports: DiagnosticReportCollection,
+  osTerminationEvidence: OsTerminationEvidence,
 ): Promise<ReportBundleResult> {
   const projectSlug = resolveProjectSlug(projectDir, opts.logger);
   const collected = await collectBundle({
@@ -95,6 +102,7 @@ async function collectFullBundle(
     ],
     userStateFiles: collectBugReportLedgerFiles(opts.bugReportsDir ?? okBugReportsDir()),
     diagnosticReports,
+    osTerminationEvidence,
     deps: { readDesktopEnv, readLanguage, logger: opts.logger },
   });
   try {
@@ -136,6 +144,7 @@ export async function collectReportBundle(
       readDesktopEnv,
       readLanguage,
       resolveDiagnosticReports(),
+      await collectOsTerminationEvidence(opts.osTerminationEvidenceDeps),
     );
   }
   const { zipPath, summary } = await collectStandardBundle({
@@ -147,6 +156,10 @@ export async function collectReportBundle(
     shipItLogFiles: collectShipItLogFiles(opts.cachesDir ?? join(homedir(), 'Library', 'Caches')),
     bugReportLedgerFiles: collectBugReportLedgerFiles(opts.bugReportsDir ?? okBugReportsDir()),
     diagnosticReports: opts.level === 'full' ? resolveDiagnosticReports() : undefined,
+    osTerminationEvidence:
+      opts.level === 'full'
+        ? await collectOsTerminationEvidence(opts.osTerminationEvidenceDeps)
+        : undefined,
     logger: opts.logger,
     note: opts.note,
     extraFiles: opts.extraFiles,

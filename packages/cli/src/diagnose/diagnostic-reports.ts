@@ -2,7 +2,7 @@ import { closeSync, type Dirent, openSync, readdirSync, readSync, statSync } fro
 import { join } from 'node:path';
 import { DESKTOP_PRODUCT_NAME } from '../integrations/desktop-state.ts';
 
-const DIAGNOSTIC_REPORT_WINDOW_DAYS = 7;
+export const DIAGNOSTIC_REPORT_WINDOW_DAYS = 7;
 const DIAGNOSTIC_REPORT_WINDOW_MS = DIAGNOSTIC_REPORT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
 const MAX_BUNDLED_DIAGNOSTIC_REPORTS = 25;
@@ -78,7 +78,7 @@ type ReportHeader =
 
 const HEADER_TIMESTAMP = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})(\.\d+)? ([+-]\d{2})(\d{2})$/;
 
-function parseHeaderTimestamp(value: unknown): number | null {
+export function parseHeaderTimestamp(value: unknown): number | null {
   if (typeof value !== 'string') return null;
   const match = HEADER_TIMESTAMP.exec(value.trim());
   if (match === null) return null;
@@ -129,7 +129,7 @@ function readReportHeader(filePath: string): ReportHeader {
   }
 }
 
-function isOwnedProcessName(name: string): boolean {
+export function isOwnedProcessName(name: string): boolean {
   return name === DESKTOP_PRODUCT_NAME || name.startsWith(`${DESKTOP_PRODUCT_NAME} `);
 }
 

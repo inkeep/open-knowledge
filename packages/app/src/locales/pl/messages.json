@@ -1498,6 +1498,9 @@
     ],
     "DMLE5q": ["Automatyczna naprawa MCP nie powiodła się"],
     "DMeaxi": ["Pobieranie ", ["0"], " ", ["1"], "…"],
+    "DMwy6X": [
+      "Dodaje też zapisane w dzienniku systemowym w ostatnim tygodniu zakończenia OpenKnowledge z powodu braku pamięci, bez nazwy komputera, identyfikatora konta ani ścieżek folderów."
+    ],
     "DNkveC": ["Opcje kolumny"],
     "DPfwMq": ["Gotowe"],
     "DTI-fp": [
@@ -2274,6 +2277,9 @@
       "Wyświetl dokument jako prezentację w osobnym oknie. Dodaj <0>slides: true</0> do frontmatter dokumentu, a następnie otwórz go akcją Slidev. Renderowanie obsługuje Slidev CLI, którego OpenKnowledge nie dołącza."
     ],
     "L4Cdd9": ["lub utwórz nowy plik <0/>"],
+    "L5wak0": [
+      "Dodaje też zapisane przez Windows w ostatnim tygodniu awarie i zawieszenia OpenKnowledge, bez ścieżek plików, a także godziny każdego wyłączenia, ponownego uruchomienia, utraty zasilania i ostrzeżenia o małej ilości pamięci na tym komputerze w tym tygodniu, niezależnie od przyczyny."
+    ],
     "L6Hhh6": ["(katalog główny)"],
     "L6Ud-t": ["Nie udało się wczytać konfliktów — odśwież, aby spróbować ponownie."],
     "L7NFTZ": ["Wpisz liczbę sekund z zakresu od ", ["minimum"], " do ", ["maximum"], "."],
@@ -6015,6 +6021,9 @@
     "r51jLC": ["Plik zapisany i otwarto aplikację Claude Desktop"],
     "r57GiQ": [["agentName"], " nieoczekiwanie się zatrzymał."],
     "r6ncaO": ["Zamknij kartę"],
+    "r6riWv": [
+      "Dodaje też raporty o małej ilości pamięci zapisane przez macOS w ostatnim tygodniu, w których występują procesy OpenKnowledge, z użyciem pamięci każdego z nich i informacją, czy macOS go zakończył."
+    ],
     "r6y-jM": ["Ostrzeżenie"],
     "r7IaYp": ["Wskazówki formatu Open Knowledge"],
     "r7tQuq": ["Twoje zgłoszenie jest zapisane na tym komputerze, więc nic nie zostało utracone."],

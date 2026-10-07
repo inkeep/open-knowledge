@@ -171,8 +171,8 @@ function ReportBugDialog({
   agentChat,
 }: ReportBugDialogProps) {
   const { t } = useLingui();
-  const isMacOS =
-    (typeof window !== 'undefined' ? window.okDesktop?.platform : undefined) === 'darwin';
+  const desktopPlatform = typeof window !== 'undefined' ? window.okDesktop?.platform : undefined;
+  const isMacOS = desktopPlatform === 'darwin';
   const [phase, setPhase] = useState<Phase>(COMPOSE_IDLE);
   const [note, setNote] = useState('');
   const [detailed, setDetailed] = useState(crashContext !== undefined || crashInvite !== undefined);
@@ -541,6 +541,28 @@ function ReportBugDialog({
                             Credentials are always removed; document names, if included, appear in
                             cleartext (not redacted).
                           </Trans>{' '}
+                          {isMacOS && (
+                            <Trans>
+                              It also adds the low-memory reports macOS wrote in the past week that
+                              list OpenKnowledge's processes, with each one's memory use and whether
+                              macOS ended it.
+                            </Trans>
+                          )}
+                          {desktopPlatform === 'linux' && (
+                            <Trans>
+                              It also adds the out-of-memory kills of OpenKnowledge that the system
+                              journal recorded in the past week, without the machine name, account
+                              id, or folder paths.
+                            </Trans>
+                          )}
+                          {desktopPlatform === 'win32' && (
+                            <Trans>
+                              It also adds the crash and hang records Windows logged for
+                              OpenKnowledge in the past week, without file paths, and the times of
+                              every shutdown, restart, power loss, and low-memory warning on this
+                              computer in that week, whatever caused them.
+                            </Trans>
+                          )}{' '}
                           {isMacOS && (
                             <Trans>
                               It also adds the crash reports macOS recorded for OpenKnowledge and

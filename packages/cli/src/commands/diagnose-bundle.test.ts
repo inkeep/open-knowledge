@@ -2,8 +2,18 @@ import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { OsTerminationEvidenceDeps } from '../diagnose/os-termination-evidence.ts';
 import { type RunDiagnoseBundleDeps, runDiagnoseBundle } from './diagnose.ts';
+
+vi.mock('../diagnose/os-termination-evidence.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../diagnose/os-termination-evidence.ts')>();
+  return {
+    ...actual,
+    collectOsTerminationEvidence: (deps?: OsTerminationEvidenceDeps) =>
+      actual.collectOsTerminationEvidence(deps ?? { platform: 'aix' }),
+  };
+});
 
 const tmpDirs: string[] = [];
 
@@ -61,6 +71,12 @@ function makeRunnerDeps(over: Partial<RunDiagnoseBundleDeps> = {}): {
   return { captured, deps };
 }
 
+function readZipEntry(zipPath: string, entry: string): string {
+  return execSync(`unzip -p ${JSON.stringify(zipPath)} ${JSON.stringify(entry)}`, {
+    encoding: 'utf-8',
+  });
+}
+
 function readZipEntries(zipPath: string): string[] {
   const out = execSync(`unzip -Z1 ${JSON.stringify(zipPath)}`, { encoding: 'utf-8' });
   return out
@@ -110,6 +126,30 @@ describe('runDiagnoseBundle — macOS crash reports', () => {
     expect(allLogs).toContain('processes it was running alongside');
   });
 
+  test('collects OS termination evidence and names its outcome in the summary', async () => {
+    const contentDir = makeTmpDir();
+    const { deps, captured } = makeRunnerDeps();
+    deps.osTerminationEvidenceDeps = {
+      platform: 'linux',
+      runCommand: async () => ({
+        status: 0,
+        stdout:
+          '2026-10-04T18:49:10.000000+00:00 host kernel: Out of memory: Killed process 12 (openknowledge) total-vm:1kB\n',
+        stderr: '',
+      }),
+    };
+
+    const result = await runDiagnoseBundle({ contentDir, yes: true }, deps);
+
+    const evidence = JSON.parse(
+      readZipEntry(result.outputPath ?? '', 'state/os-termination-evidence.json'),
+    );
+    expect(evidence).toMatchObject({ source: 'linux-journal', outcome: 'collected' });
+    expect(captured.logs.find((l) => l.includes('OS termination log:'))).toContain(
+      'collected from system journal (7d; 1 kept; 0 other-process record(s) ignored; 0 unparseable)',
+    );
+  });
+
   test('reports an empty sweep rather than staying silent', async () => {
     const contentDir = makeTmpDir();
     const { deps, captured } = makeRunnerDeps();
@@ -137,6 +177,11 @@ describe('runDiagnoseBundle — macOS crash reports', () => {
     expect(allLogs).toContain('machine details macOS puts in every report');
     expect(allLogs).toContain('bundles to each other replaced');
     expect(allLogs).toContain('processes it was running alongside');
+    const crashRow = allLogs.indexOf('macOS crash reports:');
+    const crashCaveat = allLogs.indexOf('processes it was running alongside');
+    const osRow = allLogs.indexOf('OS termination log:');
+    expect(crashRow).toBeLessThan(crashCaveat);
+    expect(crashCaveat).toBeLessThan(osRow);
   });
 
   test('--no-redact promises no exception when no report was staged', async () => {

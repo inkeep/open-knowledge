@@ -326,6 +326,26 @@ describe('ReportBugDialog', () => {
     expect(screen.queryByText(/crash reports macOS recorded/)).toBeNull();
   });
 
+  test.each([
+    ['darwin', /low-memory reports macOS wrote/],
+    ['linux', /out-of-memory kills of OpenKnowledge that the system journal recorded/],
+    ['win32', /crash and hang records Windows logged/],
+  ])('shows only the %s operating-system records sentence', async (platform, own) => {
+    installBridge({ platform });
+    await renderDialog();
+    await userEvent.click(screen.getByRole('button', { name: "What's included" }));
+
+    const sentences = [
+      /low-memory reports macOS wrote/,
+      /out-of-memory kills of OpenKnowledge that the system journal recorded/,
+      /crash and hang records Windows logged/,
+    ];
+    for (const sentence of sentences) {
+      if (sentence.source === own.source) expect(screen.getByText(sentence)).not.toBeNull();
+      else expect(screen.queryByText(sentence)).toBeNull();
+    }
+  });
+
   test('a system-wide report says up front that no project logs are included', async () => {
     installBridge();
     await renderDialog({ systemWide: true });

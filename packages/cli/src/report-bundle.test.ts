@@ -3,10 +3,20 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { SERVER_CRASH_LOG } from '@inkeep/open-knowledge-core';
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
+import type { OsTerminationEvidenceDeps } from './diagnose/os-termination-evidence.ts';
 import { collectReportBundle as collectReportBundleFromIndex } from './index.ts';
 import { collectReportBundle } from './report-bundle.ts';
 import type { LanguageMetadata } from './report-language.ts';
+
+vi.mock('./diagnose/os-termination-evidence.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./diagnose/os-termination-evidence.ts')>();
+  return {
+    ...actual,
+    collectOsTerminationEvidence: (deps?: OsTerminationEvidenceDeps) =>
+      actual.collectOsTerminationEvidence(deps ?? { platform: 'aix' }),
+  };
+});
 
 const tmpDirs: string[] = [];
 
@@ -593,6 +603,111 @@ describe('collectReportBundle — full level', () => {
       expect(readZipEntry(zipPath, 'state/diagnostic-reports-status.txt')).toBe(
         'not-collected (no collection attempted)\n',
       );
+    });
+
+    test('carries the OS termination evidence at full level', async () => {
+      const outputPath = join(makeTmpDir(), 'report.zip');
+
+      const { zipPath } = await collectReportBundle({
+        level: 'full',
+        projectDir: makeFullProjectDir(),
+        redact: true,
+        outputPath,
+        userLogsDir: makeTmpDir(),
+        diagnosticReportsDir: makeTmpDir(),
+        osTerminationEvidenceDeps: {
+          platform: 'linux',
+          runCommand: async () => ({
+            status: 0,
+            stdout:
+              '2026-10-04T18:49:10.000000+0000 host kernel: Out of memory: Killed process 12 (openknowledge)\n',
+            stderr: '',
+          }),
+        },
+      });
+
+      expect(JSON.parse(readZipEntry(zipPath, 'state/os-termination-evidence.json'))).toMatchObject(
+        {
+          source: 'linux-journal',
+          outcome: 'collected',
+          events: [{ origin: 'kernel', action: 'oom-kill', pid: 12, processName: 'openknowledge' }],
+        },
+      );
+    });
+
+    test('discloses collected OS termination records in a system-wide bundle README', async () => {
+      const outputPath = join(makeTmpDir(), 'report.zip');
+
+      const { zipPath } = await collectReportBundle({
+        level: 'full',
+        redact: true,
+        outputPath,
+        userLogsDir: makeTmpDir(),
+        diagnosticReportsDir: makeTmpDir(),
+        osTerminationEvidenceDeps: {
+          platform: 'linux',
+          runCommand: async () => ({
+            status: 0,
+            stdout:
+              '2026-10-04T18:49:10.000000+00:00 host kernel: Out of memory: Killed process 12 (openknowledge)\n',
+            stderr: '',
+          }),
+        },
+      });
+
+      expect(listZipEntries(zipPath)).toContain('state/os-termination-evidence.json');
+      expect(readZipEntry(zipPath, 'README.md')).toContain(
+        'Termination records: read from the operating system',
+      );
+    });
+
+    test('discloses kept records in the README even when one Windows log failed', async () => {
+      const outputPath = join(makeTmpDir(), 'report.zip');
+
+      const { zipPath } = await collectReportBundle({
+        level: 'full',
+        redact: true,
+        outputPath,
+        userLogsDir: makeTmpDir(),
+        diagnosticReportsDir: makeTmpDir(),
+        osTerminationEvidenceDeps: {
+          platform: 'win32',
+          systemRoot: 'C:\\Windows',
+          runCommand: async (_command, args) =>
+            args[1] === 'System'
+              ? {
+                  status: 0,
+                  stdout:
+                    "<Event><System><Provider Name='EventLog'/><EventID>6008</EventID><TimeCreated SystemTime='2026-10-04T11:00:00Z'/></System></Event>",
+                  stderr: '',
+                }
+              : { status: 5, stdout: '', stderr: 'Access is denied.' },
+        },
+      });
+
+      expect(JSON.parse(readZipEntry(zipPath, 'state/os-termination-evidence.json'))).toMatchObject(
+        { outcome: 'partial', events: [{ log: 'System', eventId: 6008 }] },
+      );
+      expect(readZipEntry(zipPath, 'README.md')).toContain(
+        'Termination records: read from the operating system',
+      );
+    });
+
+    test('marks the OS termination evidence as not collected at standard level', async () => {
+      const outputPath = join(makeTmpDir(), 'report.zip');
+
+      const { zipPath } = await collectReportBundle({
+        level: 'standard',
+        projectDir: makeFullProjectDir(),
+        redact: true,
+        outputPath,
+        userLogsDir: makeTmpDir(),
+      });
+
+      expect(JSON.parse(readZipEntry(zipPath, 'state/os-termination-evidence.json'))).toEqual({
+        schemaVersion: 1,
+        outcome: 'not-collected',
+      });
     });
 
     test('records an empty window rather than staying silent', async () => {
