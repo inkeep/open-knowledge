@@ -70,7 +70,8 @@ function recoveryGuidance() {
     'With no newer stable release, `transient-exhausted`, `deadline`, or `signal` can re-fire the same tag; investigate a recurring deadline.',
     '`unknown-exhausted` requires manual log review. `terminal` requires fixing the cause in `reason=`.',
     '`reason=rule:download-integrity` is the terminal exception: re-fire once on a fresh runner, then stop and investigate upstream if the same artifact fails again.',
-    '`cleanup-failure` reports its runner/tooling cause in `cleanup=`; `spawn-failure`, `attempt-timeout`, and `child-signal` are also runner/tooling failures. Confirm the runner/tooling failure is absent before re-firing.',
+    '`cleanup-failure` reports its runner/tooling cause in `cleanup=`; `spawn-failure` and `child-signal` are also runner/tooling failures. Confirm the runner/tooling failure is absent before re-firing.',
+    "`attempt-timeout` and a mid-attempt `deadline` list the processes still running under the stop line: a long `notarytool` wait is Apple's queue and can re-fire; a long `codesign`, or a `took no process snapshot` line, needs that failure confirmed absent first.",
     'Never re-fire a tag once a newer stable release has shipped; cut a new release from `main` instead.',
   ].join('\n');
 }

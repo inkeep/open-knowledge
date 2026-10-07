@@ -20,6 +20,7 @@ import {
   DEFAULT_MAX_ATTEMPTS,
   FailureEvidence,
   parseArgs,
+  processesInGroup,
   RETRY_ON_STOP_OUTCOMES,
   runWithRetry,
   STOP_OUTCOMES,
@@ -1222,9 +1223,64 @@ describe('deadlines and cancellation', () => {
     expect(result).toMatchObject({ ok: false, reason: 'deadline', attempts: 1 });
     expect(result.log).toContain('reason=control:deadline outcome=deadline');
     expect(result.log).toContain('phase=mid-attempt');
+    if (process.platform !== 'win32') {
+      expect(result.log).toContain('processes still running at deadline');
+      expect(result.log).toContain(`pid=${readFileSync(pidFile, 'utf8')} elapsed=`);
+    }
     live.assertSpawnedAsProductionAsked();
     await assertChildRanThenDied(ctx, pidFile);
   });
+
+  test('a tree controller that cannot list processes leaves a line saying so', async (ctx) => {
+    const pidFile = join(scratch, 'no-describe-child-pid');
+    const live = await spawnLiveChild(pidFile);
+    const owned = createOwnedTreeController();
+    const result = await run({
+      spawnFn: live.spawnFn,
+      attemptTimeoutMs: 1,
+      deadlineEpochMs: Date.now() + 5_000,
+      treeController: { cleanup: (...args) => owned.cleanup(...args) },
+    });
+    expect(result).toMatchObject({ ok: false, reason: 'attempt-timeout', attempts: 1 });
+    expect(result.log).toContain(
+      `took no process snapshot at attempt-timeout: process listing is not supported on ${process.platform}`,
+    );
+    await assertChildRanThenDied(ctx, pidFile);
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'an attempt timeout names the processes it found still running before stopping them',
+    async (ctx) => {
+      const pidFile = join(scratch, 'timeout-snapshot-child-pid');
+      const live = await spawnLiveChild(pidFile);
+      const result = await run({
+        label: 'electron-builder (macOS)',
+        spawnFn: live.spawnFn,
+        attemptTimeoutMs: 1,
+        deadlineEpochMs: Date.now() + 5_000,
+      });
+      expect(result).toMatchObject({ ok: false, reason: 'attempt-timeout', attempts: 1 });
+      const pid = readFileSync(pidFile, 'utf8');
+      const start = result.lines.indexOf(
+        '::group::electron-builder (macOS) processes still running at attempt-timeout',
+      );
+      expect(
+        start,
+        'a hung attempt must say what was still running when it was stopped, so the release alert can tell a codesign hang from a notarization wait',
+      ).toBeGreaterThan(
+        result.lines.findIndex((line) => line.includes('reason=control:attempt-timeout')),
+      );
+      const snapshot = result.lines.slice(start, result.lines.indexOf('::endgroup::', start));
+      expect(snapshot).toContainEqual(
+        expect.stringMatching(new RegExp(`^\\| pid=${pid} elapsed=\\S+ \\S`)),
+      );
+      expect(
+        result.log,
+        'the snapshot reads only executable names, never argv, because notarytool carries Apple credentials on its command line',
+      ).not.toContain('const fs=');
+      await assertChildRanThenDied(ctx, pidFile);
+    },
+  );
 
   test('a one-millisecond attempt timeout still stops a child that reached user code', async (ctx) => {
     const pidFile = join(scratch, 'short-timeout-live-child-pid');
@@ -1527,6 +1583,74 @@ describe('deadlines and cancellation', () => {
 });
 
 const heldLeader = () => ({ pid: 4321, exitCode: null, signalCode: null });
+
+describe('process-group snapshot', () => {
+  const table = [
+    '  700   700   30:01 /bin/bash',
+    '  700   812   29:58 /Applications/Xcode.app/Contents/Developer/usr/bin/notarytool',
+    '  700   813   29:58 /Volumes/Build Disk/bin/codesign',
+    '  701   900    1:00 /usr/bin/unrelated',
+    'garbage line',
+    '',
+  ].join('\n');
+
+  test('keeps only the members of the requested process group, by program name', () => {
+    expect(processesInGroup({ table }, 700)).toEqual({
+      processes: [
+        { pid: 700, elapsed: '30:01', program: 'bash' },
+        { pid: 812, elapsed: '29:58', program: 'notarytool' },
+        { pid: 813, elapsed: '29:58', program: 'codesign' },
+      ],
+    });
+    expect(processesInGroup({ table }, 999)).toEqual({ processes: [] });
+    expect(processesInGroup({ unavailable: 'ps exited 1' }, 700)).toEqual({
+      unavailable: 'ps exited 1',
+    });
+  });
+
+  test('a stop prints each process by program name', async () => {
+    const result = await run({
+      label: 'electron-builder (macOS)',
+      attemptRunner: async () => ({
+        code: null,
+        closeSignal: 'SIGTERM',
+        cancellationSignal: null,
+        cancelled: false,
+        timedOut: true,
+        deadlineExpired: false,
+        spawnError: null,
+        cleanup: { ok: true, reason: 'clean' },
+        evidence: new FailureEvidence(),
+        liveProcesses: createOwnedTreeController({
+          platform: 'darwin',
+          listProcessesFn: () => ({ table }),
+        }).describe({ pid: 700 }),
+      }),
+    });
+    expect(result.log).toContain('| pid=812 elapsed=29:58 notarytool');
+    expect(result.log).toContain('| pid=813 elapsed=29:58 codesign');
+  });
+
+  test('a stop whose process listing failed says why', async () => {
+    const why = 'ps exited 1';
+    const result = await run({
+      attemptRunner: async () => ({
+        code: null,
+        closeSignal: 'SIGTERM',
+        cancellationSignal: null,
+        cancelled: false,
+        timedOut: true,
+        deadlineExpired: false,
+        spawnError: null,
+        cleanup: { ok: true, reason: 'clean' },
+        evidence: new FailureEvidence(),
+        liveProcesses: processesInGroup({ unavailable: why }, 700),
+      }),
+    });
+    expect(result).toMatchObject({ ok: false, reason: 'attempt-timeout' });
+    expect(result.log).toContain(`took no process snapshot at attempt-timeout: ${why}`);
+  });
+});
 
 describe('POSIX owned-tree cleanup reasons', () => {
   const options = { graceMs: 1, cleanupReserveMs: 1, waitForClose: async () => false };

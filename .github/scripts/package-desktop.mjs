@@ -1,10 +1,23 @@
 /* biome-ignore-all lint/suspicious/noUndeclaredEnvVars: GitHub Actions supplies the packaging context. */
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export function packagingInvocation({ cwd, args, variant }) {
+export const SINGLE_NOTARIZER_ARG = '--config.mac.notarize=false';
+
+function afterSignNotarizes(cwd) {
+  const afterSign = join(cwd, 'scripts', 'afterSign.mjs');
+  return existsSync(afterSign) && readFileSync(afterSign, 'utf8').includes('@electron/notarize');
+}
+
+function withSingleNotarizer(cwd, args) {
+  if (!args.includes('--mac') || args.includes(SINGLE_NOTARIZER_ARG)) return args;
+  return afterSignNotarizes(cwd) ? [...args, SINGLE_NOTARIZER_ARG] : args;
+}
+
+export function packagingInvocation({ cwd, args: requestedArgs, variant }) {
+  const args = withSingleNotarizer(cwd, requestedArgs);
   const launcher = join(cwd, 'scripts', 'run-electron-builder.mjs');
   if (existsSync(launcher)) return [launcher, ...args];
   if (variant !== 'stable')

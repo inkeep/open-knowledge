@@ -79,6 +79,11 @@ describe('alert content', () => {
     expect(body).toContain('stop and investigate upstream');
     expect(body).toContain('`cleanup-failure` reports its runner/tooling cause in `cleanup=`');
     expect(body).toContain('Confirm the runner/tooling failure is absent before re-firing');
+    expect(body).toContain('`attempt-timeout` and a mid-attempt `deadline` list the processes');
+    expect(body).toContain(
+      'a `took no process snapshot` line, needs that failure confirmed absent',
+    );
+    expect(body).toContain("a long `notarytool` wait is Apple's queue and can re-fire");
     expect(body).toContain('Never re-fire a tag once a newer stable release has shipped');
     expect(body).not.toContain('re-firing alone repairs nothing');
     expect(body).not.toContain('no manual repair needed');
