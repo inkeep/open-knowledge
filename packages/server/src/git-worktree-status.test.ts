@@ -28,6 +28,7 @@ import { getLogger } from './logger.ts';
 
 const gitInstanceTimeouts = vi.hoisted(() => [] as (number | undefined)[]);
 const gitInstanceAbortSignals = vi.hoisted(() => [] as (AbortSignal | undefined)[]);
+const gitProcessReady = vi.hoisted((): { resolve?: () => void } => ({}));
 const rawFailure = vi.hoisted(() => ({
   matches: null as ((args: string[]) => boolean) | null,
   error: new Error('simulated git crash'),
@@ -44,6 +45,12 @@ vi.mock('./git-handle.ts', async (importOriginal) => {
       gitInstanceTimeouts.push(options.timeoutMs);
       gitInstanceAbortSignals.push(options.abortSignal);
       const handle = actual.createGitInstance(projectDir, options);
+      const ready = gitProcessReady.resolve;
+      if (ready) {
+        handle.git.outputHandler((_command, stdout) => {
+          stdout.once('data', ready);
+        });
+      }
       const realRaw = handle.git.raw.bind(handle.git);
       handle.git.raw = ((...args: unknown[]) => {
         const first = args[0];
@@ -652,64 +659,72 @@ describe('readWorktreeStatus — the panel listing is trustworthy', () => {
 
   test.skipIf(process.platform === 'win32')(
     'aborting a read that is already spawned kills the git process and stays out of the support grep',
-    async () => {
+    async ({ onTestFinished }) => {
       const project = await seededRepo();
       const shimDir = join(dir, 'abort-shim');
       mkdirSync(shimDir, { recursive: true });
       const pidFile = join(shimDir, 'pids');
-      writeFileSync(join(shimDir, 'git'), `#!/bin/sh\necho $$ >> "${pidFile}"\nexec sleep 10\n`);
+      writeFileSync(
+        join(shimDir, 'git'),
+        `#!/bin/sh\necho $$ >> "${pidFile}"\necho ready\nexec sleep 10\n`,
+      );
       chmodSync(join(shimDir, 'git'), 0o755);
       const realPath = process.env.PATH;
       process.env.PATH = `${shimDir}${delimiter}${realPath ?? ''}`;
 
       const logger = getLogger('git-worktree-status');
-      const reported: string[] = [];
+      const reported: Record<string, unknown>[] = [];
       const errorSpy = vi.spyOn(logger, 'error').mockImplementation(((data: unknown) => {
-        reported.push(String((data as Record<string, unknown>)?.event ?? ''));
+        reported.push((data ?? {}) as Record<string, unknown>);
       }) as never);
       const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(((data: unknown) => {
-        reported.push(String((data as Record<string, unknown>)?.event ?? ''));
+        reported.push((data ?? {}) as Record<string, unknown>);
       }) as never);
       gitInstanceAbortSignals.length = 0;
       const controller = new AbortController();
-      let spawnedPids: number[] = [];
+      const started = Promise.withResolvers<void>();
+      gitProcessReady.resolve = started.resolve;
+      const pending = readWorktreeStatus(project, () => true, undefined, {
+        timeoutMs: 30_000,
+        abortSignal: controller.signal,
+      }).then(
+        (value) => ({ ok: true as const, value }),
+        (err: unknown) => ({ ok: false as const, err }),
+      );
 
-      try {
-        const pending = readWorktreeStatus(project, () => true, undefined, {
-          timeoutMs: 30_000,
-          abortSignal: controller.signal,
-        }).then(
-          (value) => ({ ok: true as const, value }),
-          (err: unknown) => ({ ok: false as const, err }),
-        );
-
-        await vi.waitFor(() => {
-          spawnedPids = readSpawnedPids(pidFile);
-          expect(spawnedPids.length).toBeGreaterThan(0);
-        });
-        expect(spawnedPids.every(isProcessAlive)).toBe(true);
-        expect(controller.signal.aborted).toBe(false);
-
+      onTestFinished(async () => {
         controller.abort();
-        const settled = await Promise.race([
-          pending,
-          new Promise<'still-running'>((resolve) =>
-            setTimeout(() => resolve('still-running'), 4000),
-          ),
-        ]);
-
-        expect(settled).not.toBe('still-running');
-        expect(settled).toMatchObject({ ok: true, value: { readable: false } });
-        expect(gitInstanceAbortSignals.some((s) => s?.aborted === true)).toBe(true);
-        expect(reported).toEqual([]);
-        await vi.waitFor(() => {
-          expect(readSpawnedPids(pidFile).filter(isProcessAlive)).toEqual([]);
-        });
-      } finally {
+        await pending;
+        gitProcessReady.resolve = undefined;
         process.env.PATH = realPath;
         errorSpy.mockRestore();
         warnSpy.mockRestore();
-      }
+      });
+
+      await Promise.race([
+        started.promise,
+        pending.then((outcome) => {
+          throw new Error('Git read finished before helper readiness', {
+            cause: { outcome, reported },
+          });
+        }),
+      ]);
+      const spawnedPids = readSpawnedPids(pidFile);
+      expect(spawnedPids.length).toBeGreaterThan(0);
+      expect(spawnedPids.every(isProcessAlive)).toBe(true);
+      expect(controller.signal.aborted).toBe(false);
+
+      controller.abort();
+      const settled = await Promise.race([
+        pending,
+        new Promise<'still-running'>((resolve) => setTimeout(() => resolve('still-running'), 4000)),
+      ]);
+
+      expect(settled).not.toBe('still-running');
+      expect(settled).toMatchObject({ ok: true, value: { readable: false } });
+      expect(gitInstanceAbortSignals.some((s) => s?.aborted === true)).toBe(true);
+      expect(reported).toEqual([]);
+      expect(readSpawnedPids(pidFile).filter(isProcessAlive)).toEqual([]);
     },
     20_000,
   );
