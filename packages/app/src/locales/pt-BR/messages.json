@@ -1281,6 +1281,9 @@
       "Desfaz, refaz ou percorre as mudanças de seleção no painel Editar código ou em um campo de propriedade em formato de código."
     ],
     "BlLxpG": ["Buscar habilidades"],
+    "BmHzMW": [
+      "Alguns modelos podem não aparecer na lista porque esta base de conhecimento tem pastas demais para serem verificadas. Para ver os modelos de uma pasta, abra o menu dela na árvore de arquivos e escolha \"Novo a partir de um modelo\"."
+    ],
     "BowKyI": ["Mostrar detalhes"],
     "Bv5a9_": ["Estatísticas da seleção"],
     "BwKH4d": ["Aplicativos externos"],
@@ -3399,7 +3402,6 @@
     "X3MMeA": ["Nenhum destes problemas tem correção automática."],
     "X59Fx2": ["Não foi possível abrir este documento no Slidev."],
     "X7ShnN": ["Abrir o painel de agentes"],
-    "X7u0xR": [["0"], " modelos disponíveis"],
     "X8kjQX": ["Autenticar de novo no GitHub"],
     "X9VpsP": ["Carregando o conteúdo da pasta"],
     "XAnapw": ["Git regra de mesclagem"],
@@ -4240,6 +4242,17 @@
     "dw_dUJ": ["Falha ao duplicar o caminho"],
     "dx-TwN": ["Rodando a auditoria do projeto"],
     "dyfMJN": ["Código copiado"],
+    "e-SEoZ": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["Pelo menos ", "#", " modelo encontrado"],
+          "many": ["Pelo menos ", "#", " modelos encontrados"],
+          "other": ["Pelo menos ", "#", " modelos encontrados"]
+        }
+      ]
+    ],
     "e-pP6g": ["Esta lista pode estar desatualizada — última leitura ", ["staleRelative"], "."],
     "e0NrBM": ["Projeto"],
     "e1Rn_k": ["Abrir a pasta que o contém"],
@@ -4479,6 +4492,17 @@
             "#",
             " arquivos/pastas a seguir e seu conteúdo?"
           ]
+        }
+      ]
+    ],
+    "g3ouZB": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["#", " modelo disponível"],
+          "many": ["#", " modelos disponíveis"],
+          "other": ["#", " modelos disponíveis"]
         }
       ]
     ],

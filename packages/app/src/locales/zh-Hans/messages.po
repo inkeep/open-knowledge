@@ -216,6 +216,11 @@ msgstr "{0, plural, other {预览的安全策略拦截了 # 个请求}}"
 msgid "{0, plural, one {# result} other {# results}}"
 msgstr "{0, plural, other {# 条结果}}"
 
+#. placeholder {0}: templates.length
+#: src/components/empty-state/CreateView.tsx
+msgid "{0, plural, one {# template available} other {# templates available}}"
+msgstr "{0, plural, other {有 # 个模板可用}}"
+
 #. placeholder {0}: folder.templateCount
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {# template} other {# templates}}"
@@ -230,6 +235,11 @@ msgstr "{0, plural, other {# 次使用}}"
 #: src/components/ProblemsPanel.tsx
 msgid "{0, plural, one {# warning} other {# warnings}}"
 msgstr "{0, plural, other {# 条警告}}"
+
+#. placeholder {0}: templates.length
+#: src/components/empty-state/CreateView.tsx
+msgid "{0, plural, one {At least # template found} other {At least # templates found}}"
+msgstr "{0, plural, other {至少找到 # 个模板}}"
 
 #. placeholder {0}: deleteTargets.length
 #: src/components/FileTree.tsx
@@ -453,11 +463,6 @@ msgstr "{0} 共用此文件夹。"
 #: src/components/SkillsTree.tsx
 msgid "{0} skills selected"
 msgstr "已选择 {0} 个技能"
-
-#. placeholder {0}: templates.length
-#: src/components/empty-state/CreateView.tsx
-msgid "{0} templates available"
-msgstr "有 {0} 个模板可用"
 
 #. placeholder {0}: formatBundleSize(operation.zipSizeBytes)
 #: src/components/BugReportSendToast.tsx
@@ -13798,6 +13803,10 @@ msgstr "因为主题文件夹超出扫描限制，部分已保存的主题未显
 #: src/components/SkillBulkDeleteDialog.tsx
 msgid "Some skills were deleted with a warning"
 msgstr "部分技能删除时带有警告"
+
+#: src/components/empty-state/CreateView.tsx
+msgid "Some templates may not be listed because this knowledge base has too many folders to scan. To see a folder's templates, open its menu in the file tree and choose New from template."
+msgstr "部分模板可能未列出，因为此知识库的文件夹太多，无法全部扫描。要查看某个文件夹的模板，请在文件树中打开该文件夹的菜单，然后选择「从模板新建」。"
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."

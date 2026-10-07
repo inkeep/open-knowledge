@@ -1112,6 +1112,9 @@
       "Membatalkan, mengulangi, atau menelusuri perubahan pilihan di panel Sunting sumber atau bidang properti berbentuk kode."
     ],
     "BlLxpG": ["Cari keterampilan"],
+    "BmHzMW": [
+      "Beberapa templat mungkin tidak tercantum karena basis pengetahuan ini memiliki terlalu banyak folder untuk dipindai. Untuk melihat templat sebuah folder, buka menunya di pohon berkas lalu pilih \"Baru dari templat\"."
+    ],
     "BowKyI": ["Tampilkan detail"],
     "Bv5a9_": ["Statistik pilihan"],
     "BwKH4d": ["Aplikasi eksternal"],
@@ -2995,7 +2998,6 @@
     "X3MMeA": ["Tidak satu pun masalah ini punya perbaikan otomatis."],
     "X59Fx2": ["Tidak dapat membuka dokumen ini di Slidev."],
     "X7ShnN": ["Buka panel agen"],
-    "X7u0xR": [["0"], " templat tersedia"],
     "X8kjQX": ["Autentikasi ulang dengan GitHub"],
     "X9VpsP": ["Memuat isi folder"],
     "XAnapw": ["Git aturan penggabungan"],
@@ -3744,6 +3746,7 @@
     "dw_dUJ": ["Gagal menggandakan jalur"],
     "dx-TwN": ["Menjalankan audit proyek"],
     "dyfMJN": ["Kode disalin"],
+    "e-SEoZ": [["0", "plural", { "other": ["Setidaknya ", "#", " templat ditemukan"] }]],
     "e-pP6g": ["Daftar ini mungkin tidak mutakhir — terakhir dibaca ", ["staleRelative"], "."],
     "e0NrBM": ["Proyek"],
     "e1Rn_k": ["Buka folder induknya"],
@@ -3933,6 +3936,7 @@
         { "other": ["Yakin ingin menghapus ", "#", " berkas/folder berikut beserta isinya?"] }
       ]
     ],
+    "g3ouZB": [["0", "plural", { "other": ["#", " templat tersedia"] }]],
     "g4XBm0": ["Judul bagian kecil."],
     "g4e0hS": ["Tanya ", ["agentName"]],
     "g58Kwy": [

@@ -1,7 +1,7 @@
-import type { TemplatesListEntry } from '@inkeep/open-knowledge-core';
+import type { TemplatesListEntry, TemplatesListSuccess } from '@inkeep/open-knowledge-core';
 import { DocumentListSuccessSchema } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AsyncState } from '@/hooks/use-folder-config';
@@ -44,7 +44,7 @@ vi.doMock('@/lib/documents-events', () => ({
 }));
 const fetchDocumentListShared = vi.fn<() => Promise<DocumentListFetchResult>>();
 vi.doMock('@/lib/documents-fetch', () => ({ fetchDocumentListShared }));
-const useAllTemplates = vi.fn<() => AsyncState<readonly TemplatesListEntry[]>>();
+const useAllTemplates = vi.fn<() => AsyncState<TemplatesListSuccess>>();
 vi.doMock('@/hooks/use-folder-config', () => ({ useAllTemplates }));
 
 const templateFixture: TemplatesListEntry = {
@@ -53,6 +53,15 @@ const templateFixture: TemplatesListEntry = {
   path: 'meetings/meeting-notes.md',
   source_folder: 'meetings',
 };
+
+function readyTemplates(
+  templates: readonly TemplatesListEntry[],
+  truncated = false,
+): AsyncState<TemplatesListSuccess> {
+  return { status: 'ready', data: { templates: [...templates], truncated } };
+}
+
+const truncatedNoticeText = /Some templates may not be listed.*choose New from template/;
 
 const templateRowName =
   'New file from template "Meeting Notes" (meeting-notes.md) in meetings/' as const;
@@ -76,7 +85,7 @@ function documentListResult(docNames: readonly string[]): DocumentListFetchResul
 beforeEach(() => {
   fetchDocumentListShared.mockResolvedValue(documentListResult(['welcome']));
   useAllTemplates.mockReset();
-  useAllTemplates.mockReturnValue({ status: 'ready', data: [templateFixture] });
+  useAllTemplates.mockReturnValue(readyTemplates([templateFixture]));
 });
 
 afterEach(cleanup);
@@ -214,12 +223,12 @@ describe('EmptyEditorState file creation with session panels', () => {
     const onUnmount = vi.fn();
     let finishLoading: () => void = () => {};
     useAllTemplates.mockImplementation(function useTemplatesState() {
-      const [state, setState] = useState<AsyncState<readonly TemplatesListEntry[]>>({
+      const [state, setState] = useState<AsyncState<TemplatesListSuccess>>({
         status: 'loading',
       });
       useEffect(() => {
         onMount();
-        finishLoading = () => setState({ status: 'ready', data: [templateFixture] });
+        finishLoading = () => setState(readyTemplates([templateFixture]));
         return onUnmount;
       }, []);
       return state;
@@ -242,11 +251,11 @@ describe('EmptyEditorState file creation with session panels', () => {
     expect(fetchDocumentListShared).toHaveBeenCalledTimes(1);
   });
 
-  test.each<AsyncState<readonly TemplatesListEntry[]>>([
+  test.each<AsyncState<TemplatesListSuccess>>([
     { status: 'idle' },
     { status: 'loading' },
     { status: 'error', message: 'boom' },
-    { status: 'ready', data: [] },
+    readyTemplates([]),
   ])('blank-file action remains available with templates %j', async (templatesState) => {
     useAllTemplates.mockReturnValue(templatesState);
     render(<EmptyEditorState agentsOpen />);
@@ -254,7 +263,7 @@ describe('EmptyEditorState file creation with session panels', () => {
   });
 
   test('the action row drops its negative margin when no template section renders', async () => {
-    useAllTemplates.mockReturnValue({ status: 'ready', data: [] });
+    useAllTemplates.mockReturnValue(readyTemplates([]));
     render(<EmptyEditorState agentsOpen />);
     const row = await screen.findByTestId('file-creation-action-row');
     expect(screen.queryByRole('region', { name: 'From template' })).toBeNull();
@@ -266,5 +275,59 @@ describe('EmptyEditorState file creation with session panels', () => {
     const row = await screen.findByTestId('file-creation-action-row');
     expect(screen.getByRole('region', { name: 'From template' })).toBeTruthy();
     expect(row.classList.contains('-mt-6')).toBe(true);
+  });
+
+  describe.each([
+    { name: 'closed panels', props: {} },
+    { name: 'agents open', props: { agentsOpen: true } },
+  ])('template scan truncation with $name', ({ props }) => {
+    test('a truncated scan tells the user the template list may be incomplete', async () => {
+      useAllTemplates.mockReturnValue(readyTemplates([templateFixture], true));
+      render(<EmptyEditorState {...props} />);
+      const section = await screen.findByRole('region', { name: 'From template' });
+      const notice = within(section).getByRole('note');
+      expect(notice.textContent).toMatch(truncatedNoticeText);
+      expect(within(section).getByRole('button', { name: templateRowName })).toBeTruthy();
+    });
+
+    test('a truncated scan shows the template count as a lower bound', async () => {
+      useAllTemplates.mockReturnValue(readyTemplates([templateFixture], true));
+      render(<EmptyEditorState {...props} />);
+      const section = await screen.findByRole('region', { name: 'From template' });
+      const wording = within(section).getByText('At least 1 template found');
+      expect(wording.closest('[aria-hidden="true"]')).toBeNull();
+      const visibleCount = within(section).getByText('1+');
+      expect(visibleCount.getAttribute('aria-hidden')).toBe('true');
+      expect(within(section).queryByText(/templates? available/)).toBeNull();
+    });
+
+    test('a complete scan shows no truncation notice and an exact count', async () => {
+      render(<EmptyEditorState {...props} />);
+      await screen.findByRole('button', { name: templateRowName });
+      expect(screen.queryByRole('note')).toBeNull();
+      expect(screen.queryByText(truncatedNoticeText)).toBeNull();
+      const section = screen.getByRole('region', { name: 'From template' });
+      const wording = within(section).getByText('1 template available');
+      expect(wording.closest('[aria-hidden="true"]')).toBeNull();
+      expect(within(section).getByText('1').getAttribute('aria-hidden')).toBe('true');
+      expect(within(section).queryByText(/^At least/)).toBeNull();
+    });
+
+    test('a truncated scan that found no templates still shows the notice', async () => {
+      useAllTemplates.mockReturnValue(readyTemplates([], true));
+      render(<EmptyEditorState {...props} />);
+      const section = await screen.findByRole('region', { name: 'From template' });
+      expect(within(section).getByRole('note').textContent).toMatch(truncatedNoticeText);
+      expect(within(section).queryByRole('region', { name: 'Template list' })).toBeNull();
+    });
+
+    test('a truncated scan that found no templates shows no count', async () => {
+      useAllTemplates.mockReturnValue(readyTemplates([], true));
+      render(<EmptyEditorState {...props} />);
+      const section = await screen.findByRole('region', { name: 'From template' });
+      expect(within(section).queryByText(/templates? (available|found)/)).toBeNull();
+      expect(within(section).queryByText('0')).toBeNull();
+      expect(within(section).queryByText('0+')).toBeNull();
+    });
   });
 });

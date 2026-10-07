@@ -1332,6 +1332,9 @@
       "Cofaj, przywracaj lub przechodź po zmianach zaznaczenia w panelu „Edytuj źródło” lub w polu właściwości o kształcie kodu."
     ],
     "BlLxpG": ["Szukaj umiejętności"],
+    "BmHzMW": [
+      "Niektóre szablony mogą nie być widoczne na liście, ponieważ ta baza wiedzy ma zbyt wiele folderów, aby przeskanować je wszystkie. Aby zobaczyć szablony folderu, otwórz jego menu w drzewie plików i wybierz „Nowe z szablonu”."
+    ],
     "BowKyI": ["Pokaż szczegóły"],
     "Bv5a9_": ["Statystyki zaznaczenia"],
     "BwKH4d": ["Aplikacje zewnętrzne"],
@@ -3527,7 +3530,6 @@
     "X3MMeA": ["Żaden z tych problemów nie ma automatycznej poprawki."],
     "X59Fx2": ["Nie można otworzyć tego dokumentu w Slidev."],
     "X7ShnN": ["Otwórz panel agentów"],
-    "X7u0xR": ["Dostępne szablony: ", ["0"]],
     "X8kjQX": ["Uwierzytelnij się ponownie z GitHub"],
     "X9VpsP": ["Ładowanie zawartości folderu"],
     "XAnapw": ["Reguła scalania Gita"],
@@ -4423,6 +4425,18 @@
     "dw_dUJ": ["Nie udało się zduplikować ścieżki"],
     "dx-TwN": ["Audyt projektu w toku"],
     "dyfMJN": ["Kod skopiowany"],
+    "e-SEoZ": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["Znaleziono co najmniej ", "#", " szablon"],
+          "few": ["Znaleziono co najmniej ", "#", " szablony"],
+          "many": ["Znaleziono co najmniej ", "#", " szablonów"],
+          "other": ["Znaleziono co najmniej ", "#", " szablonu"]
+        }
+      ]
+    ],
     "e-pP6g": ["Ta lista może być nieaktualna — ostatni odczyt: ", ["staleRelative"], "."],
     "e0NrBM": ["Projekt"],
     "e1Rn_k": ["Otwórz folder zawierający"],
@@ -4667,6 +4681,18 @@
             "#",
             " poniższego pliku/katalogu i jego zawartość?"
           ]
+        }
+      ]
+    ],
+    "g3ouZB": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["#", " dostępny szablon"],
+          "few": ["#", " dostępne szablony"],
+          "many": ["#", " dostępnych szablonów"],
+          "other": ["#", " dostępnego szablonu"]
         }
       ]
     ],

@@ -216,6 +216,11 @@ msgstr "{0, plural, one {पूर्वावलोकन की सुरक�
 msgid "{0, plural, one {# result} other {# results}}"
 msgstr "{0, plural, one {# परिणाम} other {# परिणाम}}"
 
+#. placeholder {0}: templates.length
+#: src/components/empty-state/CreateView.tsx
+msgid "{0, plural, one {# template available} other {# templates available}}"
+msgstr "{0, plural, one {# टेम्पलेट उपलब्ध} other {# टेम्पलेट उपलब्ध}}"
+
 #. placeholder {0}: folder.templateCount
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {# template} other {# templates}}"
@@ -230,6 +235,11 @@ msgstr "{0, plural, one {# उपयोग} other {# उपयोग}}"
 #: src/components/ProblemsPanel.tsx
 msgid "{0, plural, one {# warning} other {# warnings}}"
 msgstr "{0, plural, one {# चेतावनी} other {# चेतावनियाँ}}"
+
+#. placeholder {0}: templates.length
+#: src/components/empty-state/CreateView.tsx
+msgid "{0, plural, one {At least # template found} other {At least # templates found}}"
+msgstr "{0, plural, one {कम से कम # टेम्पलेट मिला} other {कम से कम # टेम्पलेट मिले}}"
 
 #. placeholder {0}: deleteTargets.length
 #: src/components/FileTree.tsx
@@ -453,11 +463,6 @@ msgstr "{0} इस फ़ोल्डर को साझा करते है
 #: src/components/SkillsTree.tsx
 msgid "{0} skills selected"
 msgstr "{0} स्किलें चुनी गईं"
-
-#. placeholder {0}: templates.length
-#: src/components/empty-state/CreateView.tsx
-msgid "{0} templates available"
-msgstr "{0} टेम्पलेट उपलब्ध"
 
 #. placeholder {0}: formatBundleSize(operation.zipSizeBytes)
 #: src/components/BugReportSendToast.tsx
@@ -13794,6 +13799,10 @@ msgstr "कुछ सहेजी गई थीम नहीं दिखाई 
 #: src/components/SkillBulkDeleteDialog.tsx
 msgid "Some skills were deleted with a warning"
 msgstr "कुछ स्किलें चेतावनी के साथ हटाई गईं"
+
+#: src/components/empty-state/CreateView.tsx
+msgid "Some templates may not be listed because this knowledge base has too many folders to scan. To see a folder's templates, open its menu in the file tree and choose New from template."
+msgstr "कुछ टेम्पलेट सूची में शायद न दिखें, क्योंकि इस ज्ञान आधार में स्कैन करने के लिए बहुत अधिक फ़ोल्डर हैं। किसी फ़ोल्डर के टेम्पलेट देखने के लिए, फ़ाइल ट्री में उसका मेनू खोलें और \"टेम्पलेट से नया\" चुनें।"
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."

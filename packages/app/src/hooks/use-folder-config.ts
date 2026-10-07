@@ -1,6 +1,6 @@
 import {
   type FolderConfigWarningCode,
-  type TemplatesListEntry,
+  type TemplatesListSuccess,
   TemplatesListSuccessSchema,
 } from '@inkeep/open-knowledge-core/schemas/api';
 import { t } from '@lingui/core/macro';
@@ -113,8 +113,8 @@ export function useFolderConfig(folderPath: string | null): FolderConfigHandle {
   };
 }
 
-export function useAllTemplates(): AsyncState<readonly TemplatesListEntry[]> {
-  const [state, setState] = useState<AsyncState<readonly TemplatesListEntry[]>>({ status: 'idle' });
+export function useAllTemplates(): AsyncState<TemplatesListSuccess> {
+  const [state, setState] = useState<AsyncState<TemplatesListSuccess>>({ status: 'idle' });
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -149,7 +149,7 @@ export function useAllTemplates(): AsyncState<readonly TemplatesListEntry[]> {
           });
           return;
         }
-        setState({ status: 'ready', data: parsed.data.templates });
+        setState({ status: 'ready', data: parsed.data });
       })
       .catch((err: unknown) => {
         if (cancelled) return;

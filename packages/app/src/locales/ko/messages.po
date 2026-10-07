@@ -216,6 +216,11 @@ msgstr "{0, plural, other {미리보기 보안 정책으로 요청 #개가 차�
 msgid "{0, plural, one {# result} other {# results}}"
 msgstr "{0, plural, other {#개 결과}}"
 
+#. placeholder {0}: templates.length
+#: src/components/empty-state/CreateView.tsx
+msgid "{0, plural, one {# template available} other {# templates available}}"
+msgstr "{0, plural, other {템플릿 #개 사용 가능}}"
+
 #. placeholder {0}: folder.templateCount
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {# template} other {# templates}}"
@@ -230,6 +235,11 @@ msgstr "{0, plural, other {#회 사용}}"
 #: src/components/ProblemsPanel.tsx
 msgid "{0, plural, one {# warning} other {# warnings}}"
 msgstr "{0, plural, other {경고 #개}}"
+
+#. placeholder {0}: templates.length
+#: src/components/empty-state/CreateView.tsx
+msgid "{0, plural, one {At least # template found} other {At least # templates found}}"
+msgstr "{0, plural, other {템플릿 최소 #개 찾음}}"
 
 #. placeholder {0}: deleteTargets.length
 #: src/components/FileTree.tsx
@@ -453,11 +463,6 @@ msgstr "{0}이(가) 이 폴더를 공유합니다."
 #: src/components/SkillsTree.tsx
 msgid "{0} skills selected"
 msgstr "스킬 {0}개 선택됨"
-
-#. placeholder {0}: templates.length
-#: src/components/empty-state/CreateView.tsx
-msgid "{0} templates available"
-msgstr "템플릿 {0}개 사용 가능"
 
 #. placeholder {0}: formatBundleSize(operation.zipSizeBytes)
 #: src/components/BugReportSendToast.tsx
@@ -13798,6 +13803,10 @@ msgstr "테마 폴더가 스캔 한도를 초과해 일부 저장된 테마가 �
 #: src/components/SkillBulkDeleteDialog.tsx
 msgid "Some skills were deleted with a warning"
 msgstr "일부 스킬이 경고와 함께 삭제되었습니다"
+
+#: src/components/empty-state/CreateView.tsx
+msgid "Some templates may not be listed because this knowledge base has too many folders to scan. To see a folder's templates, open its menu in the file tree and choose New from template."
+msgstr "이 지식 베이스에는 폴더가 너무 많아 모두 스캔할 수 없으므로 일부 템플릿이 목록에 표시되지 않을 수 있습니다. 폴더의 템플릿을 보려면 파일 트리에서 해당 폴더의 메뉴를 열고 \"템플릿에서 새로 만들기\"를 선택하세요."
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."

@@ -216,6 +216,11 @@ msgstr "{0, plural, one {# requête bloquée par la politique de sécurité de l
 msgid "{0, plural, one {# result} other {# results}}"
 msgstr "{0, plural, one {# résultat} many {# résultats} other {# résultats}}"
 
+#. placeholder {0}: templates.length
+#: src/components/empty-state/CreateView.tsx
+msgid "{0, plural, one {# template available} other {# templates available}}"
+msgstr "{0, plural, one {# modèle disponible} many {# modèles disponibles} other {# modèles disponibles}}"
+
 #. placeholder {0}: folder.templateCount
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {# template} other {# templates}}"
@@ -230,6 +235,11 @@ msgstr "{0, plural, one {# utilisation} many {# utilisations} other {# utilisati
 #: src/components/ProblemsPanel.tsx
 msgid "{0, plural, one {# warning} other {# warnings}}"
 msgstr "{0, plural, one {# avertissement} many {# avertissements} other {# avertissements}}"
+
+#. placeholder {0}: templates.length
+#: src/components/empty-state/CreateView.tsx
+msgid "{0, plural, one {At least # template found} other {At least # templates found}}"
+msgstr "{0, plural, one {Au moins # modèle trouvé} many {Au moins # modèles trouvés} other {Au moins # modèles trouvés}}"
 
 #. placeholder {0}: deleteTargets.length
 #: src/components/FileTree.tsx
@@ -453,11 +463,6 @@ msgstr "{0} partagent ce dossier."
 #: src/components/SkillsTree.tsx
 msgid "{0} skills selected"
 msgstr "{0} compétences sélectionnées"
-
-#. placeholder {0}: templates.length
-#: src/components/empty-state/CreateView.tsx
-msgid "{0} templates available"
-msgstr "{0} modèles disponibles"
 
 #. placeholder {0}: formatBundleSize(operation.zipSizeBytes)
 #: src/components/BugReportSendToast.tsx
@@ -13798,6 +13803,10 @@ msgstr "Certains thèmes enregistrés ne sont pas affichés car le dossier des t
 #: src/components/SkillBulkDeleteDialog.tsx
 msgid "Some skills were deleted with a warning"
 msgstr "Certaines compétences ont été supprimées avec un avertissement"
+
+#: src/components/empty-state/CreateView.tsx
+msgid "Some templates may not be listed because this knowledge base has too many folders to scan. To see a folder's templates, open its menu in the file tree and choose New from template."
+msgstr "Certains modèles peuvent ne pas apparaître, car cette base de connaissances contient trop de dossiers pour être entièrement parcourue. Pour voir les modèles d'un dossier, ouvrez son menu dans l'arborescence et choisissez « Nouveau à partir d'un modèle »."
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."

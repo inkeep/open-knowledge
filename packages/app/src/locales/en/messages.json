@@ -1118,6 +1118,9 @@
       "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
     ],
     "BlLxpG": ["Search skills"],
+    "BmHzMW": [
+      "Some templates may not be listed because this knowledge base has too many folders to scan. To see a folder's templates, open its menu in the file tree and choose New from template."
+    ],
     "BowKyI": ["Show details"],
     "Bv5a9_": ["Selection statistics"],
     "BwKH4d": ["External apps"],
@@ -2973,7 +2976,6 @@
     "X3MMeA": ["None of these problems have an automatic fix."],
     "X59Fx2": ["Couldn't open this document in Slidev."],
     "X7ShnN": ["Open agents panel"],
-    "X7u0xR": [["0"], " templates available"],
     "X8kjQX": ["Re-authenticate with GitHub"],
     "X9VpsP": ["Loading folder contents"],
     "XAnapw": ["Git merge rule"],
@@ -3741,6 +3743,16 @@
     "dw_dUJ": ["Failed to duplicate path"],
     "dx-TwN": ["Running project audit"],
     "dyfMJN": ["Code copied"],
+    "e-SEoZ": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["At least ", "#", " template found"],
+          "other": ["At least ", "#", " templates found"]
+        }
+      ]
+    ],
     "e-pP6g": ["This list may be out of date — last read ", ["staleRelative"], "."],
     "e0NrBM": ["Project"],
     "e1Rn_k": ["Open containing folder"],
@@ -3933,6 +3945,13 @@
             " files/directories and their contents?"
           ]
         }
+      ]
+    ],
+    "g3ouZB": [
+      [
+        "0",
+        "plural",
+        { "one": ["#", " template available"], "other": ["#", " templates available"] }
       ]
     ],
     "g4XBm0": ["Small section heading."],

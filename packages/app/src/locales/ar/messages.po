@@ -216,6 +216,11 @@ msgstr "{0, plural, zero {# طلب محظور بسياسة أمان المعاي
 msgid "{0, plural, one {# result} other {# results}}"
 msgstr "{0, plural, zero {# نتيجة} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجةً} other {# نتيجة}}"
 
+#. placeholder {0}: templates.length
+#: src/components/empty-state/CreateView.tsx
+msgid "{0, plural, one {# template available} other {# templates available}}"
+msgstr "{0, plural, zero {لا توجد قوالب متاحة} one {قالب واحد متاح} two {قالبان متاحان} few {# قوالب متاحة} many {# قالبًا متاحًا} other {# قالب متاح}}"
+
 #. placeholder {0}: folder.templateCount
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {# template} other {# templates}}"
@@ -230,6 +235,11 @@ msgstr "{0, plural, zero {# استخدام} one {استخدام واحد} two {�
 #: src/components/ProblemsPanel.tsx
 msgid "{0, plural, one {# warning} other {# warnings}}"
 msgstr "{0, plural, zero {# تحذير} one {تحذير واحد} two {تحذيران} few {# تحذيرات} many {# تحذيرًا} other {# تحذير}}"
+
+#. placeholder {0}: templates.length
+#: src/components/empty-state/CreateView.tsx
+msgid "{0, plural, one {At least # template found} other {At least # templates found}}"
+msgstr "{0, plural, zero {تم العثور على # قالب على الأقل} one {تم العثور على قالب واحد على الأقل} two {تم العثور على قالبين على الأقل} few {تم العثور على # قوالب على الأقل} many {تم العثور على # قالبًا على الأقل} other {تم العثور على # قالب على الأقل}}"
 
 #. placeholder {0}: deleteTargets.length
 #: src/components/FileTree.tsx
@@ -453,11 +463,6 @@ msgstr "{0} تشترك في هذا المجلد."
 #: src/components/SkillsTree.tsx
 msgid "{0} skills selected"
 msgstr "تم تحديد {0} مهارات"
-
-#. placeholder {0}: templates.length
-#: src/components/empty-state/CreateView.tsx
-msgid "{0} templates available"
-msgstr "{0} قالب متاح"
 
 #. placeholder {0}: formatBundleSize(operation.zipSizeBytes)
 #: src/components/BugReportSendToast.tsx
@@ -13798,6 +13803,10 @@ msgstr "لا تظهر بعض السمات المحفوظة لأن مجلد ال�
 #: src/components/SkillBulkDeleteDialog.tsx
 msgid "Some skills were deleted with a warning"
 msgstr "تم حذف بعض المهارات مع تحذير"
+
+#: src/components/empty-state/CreateView.tsx
+msgid "Some templates may not be listed because this knowledge base has too many folders to scan. To see a folder's templates, open its menu in the file tree and choose New from template."
+msgstr "قد لا تظهر بعض القوالب في القائمة لأن قاعدة المعرفة هذه تحتوي على عدد كبير جدًا من المجلدات يتعذر فحصها كلها. لعرض قوالب مجلد، افتح قائمته في شجرة الملفات واختر «جديد من قالب»."
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."

@@ -1299,6 +1299,9 @@
       "Deshaz, rehaz o recorre los cambios de selección en el panel Editar código o en un campo de propiedad con forma de código."
     ],
     "BlLxpG": ["Buscar habilidades"],
+    "BmHzMW": [
+      "Es posible que falten algunas plantillas en la lista porque esta base de conocimiento tiene demasiadas carpetas para explorarlas todas. Para ver las plantillas de una carpeta, abre su menú en el árbol de archivos y elige \"Nuevo desde plantilla\"."
+    ],
     "BowKyI": ["Mostrar detalles"],
     "Bv5a9_": ["Estadísticas de la selección"],
     "BwKH4d": ["Aplicaciones externas"],
@@ -3446,7 +3449,6 @@
     "X3MMeA": ["Ninguno de estos problemas tiene arreglo automático."],
     "X59Fx2": ["No se pudo abrir este documento en Slidev."],
     "X7ShnN": ["Abrir el panel de agentes"],
-    "X7u0xR": [["0"], " plantillas disponibles"],
     "X8kjQX": ["Volver a autenticarse con GitHub"],
     "X9VpsP": ["Cargando el contenido de la carpeta"],
     "XAnapw": ["Regla de combinación de Git"],
@@ -4325,6 +4327,17 @@
     "dw_dUJ": ["No se pudo duplicar la ruta"],
     "dx-TwN": ["Ejecutando la auditoría del proyecto"],
     "dyfMJN": ["Código copiado"],
+    "e-SEoZ": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["Se encontró al menos ", "#", " plantilla"],
+          "many": ["Se encontraron al menos ", "#", " plantillas"],
+          "other": ["Se encontraron al menos ", "#", " plantillas"]
+        }
+      ]
+    ],
     "e-pP6g": [
       "Puede que esta lista esté desactualizada; última lectura: ",
       ["staleRelative"],
@@ -4573,6 +4586,17 @@
             "#",
             " archivos/carpetas y su contenido?"
           ]
+        }
+      ]
+    ],
+    "g3ouZB": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["#", " plantilla disponible"],
+          "many": ["#", " plantillas disponibles"],
+          "other": ["#", " plantillas disponibles"]
         }
       ]
     ],

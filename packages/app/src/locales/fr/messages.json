@@ -1328,6 +1328,9 @@
       "Annulez, rétablissez, ou parcourez les changements de sélection dans le volet Modifier la source ou dans un champ de propriété de type code."
     ],
     "BlLxpG": ["Rechercher des compétences"],
+    "BmHzMW": [
+      "Certains modèles peuvent ne pas apparaître, car cette base de connaissances contient trop de dossiers pour être entièrement parcourue. Pour voir les modèles d'un dossier, ouvrez son menu dans l'arborescence et choisissez « Nouveau à partir d'un modèle »."
+    ],
     "BowKyI": ["Afficher les détails"],
     "Bv5a9_": ["Statistiques de la sélection"],
     "BwKH4d": ["Applications externes"],
@@ -3498,7 +3501,6 @@
     "X3MMeA": ["Aucun de ces problèmes n'a de correction automatique."],
     "X59Fx2": ["Impossible d'ouvrir ce document dans Slidev."],
     "X7ShnN": ["Ouvrir le panneau des agents"],
-    "X7u0xR": [["0"], " modèles disponibles"],
     "X8kjQX": ["Se réauthentifier auprès de GitHub"],
     "X9VpsP": ["Chargement du contenu du dossier"],
     "XAnapw": ["Règle de fusion Git"],
@@ -4378,6 +4380,17 @@
     "dw_dUJ": ["Échec de la duplication du chemin"],
     "dx-TwN": ["Audit du projet en cours"],
     "dyfMJN": ["Code copié"],
+    "e-SEoZ": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["Au moins ", "#", " modèle trouvé"],
+          "many": ["Au moins ", "#", " modèles trouvés"],
+          "other": ["Au moins ", "#", " modèles trouvés"]
+        }
+      ]
+    ],
     "e-pP6g": [
       "Cette liste n'est peut-être pas à jour — dernière lecture ",
       ["staleRelative"],
@@ -4614,6 +4627,17 @@
             "#",
             " fichiers/dossiers suivants et leur contenu ?"
           ]
+        }
+      ]
+    ],
+    "g3ouZB": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["#", " modèle disponible"],
+          "many": ["#", " modèles disponibles"],
+          "other": ["#", " modèles disponibles"]
         }
       ]
     ],

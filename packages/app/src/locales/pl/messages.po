@@ -216,6 +216,11 @@ msgstr "{0, plural, one {# żądanie zablokowane przez politykę bezpieczeństwa
 msgid "{0, plural, one {# result} other {# results}}"
 msgstr "{0, plural, one {# wynik} few {# wyniki} many {# wyników} other {# wyniku}}"
 
+#. placeholder {0}: templates.length
+#: src/components/empty-state/CreateView.tsx
+msgid "{0, plural, one {# template available} other {# templates available}}"
+msgstr "{0, plural, one {# dostępny szablon} few {# dostępne szablony} many {# dostępnych szablonów} other {# dostępnego szablonu}}"
+
 #. placeholder {0}: folder.templateCount
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {# template} other {# templates}}"
@@ -230,6 +235,11 @@ msgstr "{0, plural, one {# użycie} few {# użycia} many {# użyć} other {# uż
 #: src/components/ProblemsPanel.tsx
 msgid "{0, plural, one {# warning} other {# warnings}}"
 msgstr "{0, plural, one {# ostrzeżenie} few {# ostrzeżenia} many {# ostrzeżeń} other {# ostrzeżenia}}"
+
+#. placeholder {0}: templates.length
+#: src/components/empty-state/CreateView.tsx
+msgid "{0, plural, one {At least # template found} other {At least # templates found}}"
+msgstr "{0, plural, one {Znaleziono co najmniej # szablon} few {Znaleziono co najmniej # szablony} many {Znaleziono co najmniej # szablonów} other {Znaleziono co najmniej # szablonu}}"
 
 #. placeholder {0}: deleteTargets.length
 #: src/components/FileTree.tsx
@@ -453,11 +463,6 @@ msgstr "{0} udostępniają ten folder."
 #: src/components/SkillsTree.tsx
 msgid "{0} skills selected"
 msgstr "Wybrano {0} umiejętności"
-
-#. placeholder {0}: templates.length
-#: src/components/empty-state/CreateView.tsx
-msgid "{0} templates available"
-msgstr "Dostępne szablony: {0}"
 
 #. placeholder {0}: formatBundleSize(operation.zipSizeBytes)
 #: src/components/BugReportSendToast.tsx
@@ -13798,6 +13803,10 @@ msgstr "Niektóre zapisane motywy nie są wyświetlane, ponieważ folder motywó
 #: src/components/SkillBulkDeleteDialog.tsx
 msgid "Some skills were deleted with a warning"
 msgstr "Niektóre umiejętności zostały usunięte z ostrzeżeniem"
+
+#: src/components/empty-state/CreateView.tsx
+msgid "Some templates may not be listed because this knowledge base has too many folders to scan. To see a folder's templates, open its menu in the file tree and choose New from template."
+msgstr "Niektóre szablony mogą nie być widoczne na liście, ponieważ ta baza wiedzy ma zbyt wiele folderów, aby przeskanować je wszystkie. Aby zobaczyć szablony folderu, otwórz jego menu w drzewie plików i wybierz „Nowe z szablonu”."
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."

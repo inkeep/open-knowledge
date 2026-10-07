@@ -1,10 +1,15 @@
-import type { TemplatesListEntry } from '@inkeep/open-knowledge-core/schemas/api';
+import type {
+  TemplatesListEntry,
+  TemplatesListSuccess,
+} from '@inkeep/open-knowledge-core/schemas/api';
+import { plural } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { ArrowRightIcon, Plus } from 'lucide-react';
+import { ArrowRightIcon, Info, Plus } from 'lucide-react';
 import { CopyablePromptList } from '@/components/empty-state/CopyablePromptList';
 import { CreatePromptComposer } from '@/components/empty-state/CreatePromptComposer';
 import { EmptyStateHeader } from '@/components/empty-state/EmptyStateHeader';
 import { getEmptyStateCopy } from '@/components/empty-state/empty-state-copy';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { AsyncState } from '@/hooks/use-folder-config';
@@ -13,7 +18,7 @@ import { emitCreateTopLevelFile } from '@/lib/create-file-events';
 import { cn } from '@/lib/utils';
 
 interface CreateViewProps {
-  readonly templatesState: AsyncState<readonly TemplatesListEntry[]>;
+  readonly templatesState: AsyncState<TemplatesListSuccess>;
   readonly celebrateSignal: number;
   readonly onAddStarterPack: () => void;
   readonly onRageStreak?: () => void;
@@ -51,7 +56,7 @@ export function CreateView({
 }
 
 interface FileCreationActionsProps {
-  readonly templatesState: AsyncState<readonly TemplatesListEntry[]>;
+  readonly templatesState: AsyncState<TemplatesListSuccess>;
   readonly compact?: boolean;
   readonly onAddStarterPack?: () => void;
 }
@@ -63,10 +68,12 @@ export function FileCreationActions({
 }: FileCreationActionsProps) {
   const initialDir = '';
 
-  const templates = templatesState.status === 'ready' ? templatesState.data : [];
+  const templates = templatesState.status === 'ready' ? templatesState.data.templates : [];
+  const templatesTruncated = templatesState.status === 'ready' && templatesState.data.truncated;
   const templatesLoading = templatesState.status === 'loading' || templatesState.status === 'idle';
   const templatesError = templatesState.status === 'error';
-  const templatesSectionVisible = templatesLoading || templatesError || templates.length > 0;
+  const templatesSectionVisible =
+    templatesLoading || templatesError || templatesTruncated || templates.length > 0;
 
   return (
     <div className="flex w-full flex-col gap-8">
@@ -76,6 +83,7 @@ export function FileCreationActions({
           templates={templates}
           loading={templatesLoading}
           error={templatesError}
+          truncated={templatesTruncated}
           onSelect={(folder, name) => emitCreateTopLevelFile({ template: { folder, name } })}
         />
       ) : null}
@@ -119,62 +127,93 @@ interface TemplatesSectionProps {
   readonly templates: readonly TemplatesListEntry[];
   readonly loading: boolean;
   readonly error: boolean;
+  readonly truncated: boolean;
   readonly onSelect: (folder: string, name: string) => void;
 }
 
-function TemplatesSection({ compact, templates, loading, error, onSelect }: TemplatesSectionProps) {
+function TemplatesSection({
+  compact,
+  templates,
+  loading,
+  error,
+  truncated,
+  onSelect,
+}: TemplatesSectionProps) {
   const { t } = useLingui();
+  const listVisible = loading || error || templates.length > 0;
+  const countVisible = !loading && !error && (!truncated || templates.length > 0);
   return (
     <section aria-label={t`From template`} className="flex w-full flex-col gap-3">
       <header className="flex items-center gap-2 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
         <span>
           <Trans>From template</Trans>
         </span>
-        {loading || error ? null : (
-          <Badge
-            className="text-2xs"
-            variant="gray"
-            aria-label={t`${templates.length} templates available`}
-          >
-            {templates.length}
+        {countVisible ? (
+          <Badge className="text-2xs" variant="gray">
+            <span aria-hidden="true">{truncated ? `${templates.length}+` : templates.length}</span>
+            <span className="sr-only">
+              {truncated
+                ? t`${plural(templates.length, {
+                    one: 'At least # template found',
+                    other: 'At least # templates found',
+                  })}`
+                : t`${plural(templates.length, {
+                    one: '# template available',
+                    other: '# templates available',
+                  })}`}
+            </span>
           </Badge>
-        )}
+        ) : null}
       </header>
       {}
-      <div className="w-full overflow-hidden rounded-xl border border-border/60 bg-card">
-        <section
-          aria-busy={loading}
-          aria-label={t`Template list`}
-          // biome-ignore lint/a11y/noNoninteractiveTabindex: focusable scroll region per WCAG 2.1.1 (keyboard-operable)
-          tabIndex={0}
-          className={cn(
-            'subtle-scrollbar scroll-fade-mask flex max-h-[260px] w-full flex-col overflow-y-auto focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
-            !compact && 'overscroll-contain',
-          )}
-        >
-          {loading ? (
-            <p className="p-4 text-1sm text-muted-foreground">
-              <Trans>Loading templates</Trans>
-            </p>
-          ) : error ? (
-            <p role="alert" className="p-4 text-1sm text-destructive">
-              <Trans>Could not load templates. Try again later.</Trans>
-            </p>
-          ) : (
-            templates.map((tpl) => {
-              const targetLabel = tpl.source_folder === '' ? '/' : `${tpl.source_folder}/`;
-              return (
-                <TemplateRow
-                  key={`${tpl.source_folder}/${tpl.name}`}
-                  template={tpl}
-                  targetLabel={targetLabel}
-                  onClick={() => onSelect(tpl.source_folder, tpl.name)}
-                />
-              );
-            })
-          )}
-        </section>
-      </div>
+      {listVisible ? (
+        <div className="w-full overflow-hidden rounded-xl border border-border/60 bg-card">
+          <section
+            aria-busy={loading}
+            aria-label={t`Template list`}
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: focusable scroll region per WCAG 2.1.1 (keyboard-operable)
+            tabIndex={0}
+            className={cn(
+              'subtle-scrollbar scroll-fade-mask flex max-h-[260px] w-full flex-col overflow-y-auto focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+              !compact && 'overscroll-contain',
+            )}
+          >
+            {loading ? (
+              <p className="p-4 text-1sm text-muted-foreground">
+                <Trans>Loading templates</Trans>
+              </p>
+            ) : error ? (
+              <p role="alert" className="p-4 text-1sm text-destructive">
+                <Trans>Could not load templates. Try again later.</Trans>
+              </p>
+            ) : (
+              templates.map((tpl) => {
+                const targetLabel = tpl.source_folder === '' ? '/' : `${tpl.source_folder}/`;
+                return (
+                  <TemplateRow
+                    key={`${tpl.source_folder}/${tpl.name}`}
+                    template={tpl}
+                    targetLabel={targetLabel}
+                    onClick={() => onSelect(tpl.source_folder, tpl.name)}
+                  />
+                );
+              })
+            )}
+          </section>
+        </div>
+      ) : null}
+      {truncated ? (
+        <Alert role="note" className="bg-muted/40 text-start">
+          <Info aria-hidden />
+          <AlertDescription>
+            <Trans>
+              Some templates may not be listed because this knowledge base has too many folders to
+              scan. To see a folder's templates, open its menu in the file tree and choose New from
+              template.
+            </Trans>
+          </AlertDescription>
+        </Alert>
+      ) : null}
     </section>
   );
 }
