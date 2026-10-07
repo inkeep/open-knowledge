@@ -184,6 +184,19 @@
         "../md-conformance/corpora/typed-view-scripts.json"
       ]
     },
+    "test:browser": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "passThroughEnv": [
+        "VITEST_CHROMIUM_GC_DISK_THRESHOLD_GB",
+        "VITEST_CHROMIUM_GC_FORCE",
+        "DEBUG"
+      ]
+    },
+    "test:node": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
     "test:integration": {
       "dependsOn": ["^build"],
       "cache": true,

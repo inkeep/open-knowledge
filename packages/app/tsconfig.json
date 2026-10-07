@@ -84,6 +84,7 @@
   "include": [
     "src",
     "*.ts",
+    "tests/foundation",
     "tests/stress/fixtures",
     "tests/half-open-forced-close.test-helper.ts",
     "tests/integration/audit-barrier.test-helper.ts",

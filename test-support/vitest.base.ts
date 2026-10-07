@@ -61,6 +61,8 @@ export const okVitestBase = {
       '**/*.spec.*',
       '**/*.e2e.*',
       '**/*.dom.test.ts?(x)',
+      '**/*.browser.test.ts?(x)',
+      '**/*.node.test.ts?(x)',
       ...UNCACHED_TEST_GLOBS,
       '**/dist/**',
       '**/.next/**',

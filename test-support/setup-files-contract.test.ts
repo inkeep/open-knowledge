@@ -14,10 +14,15 @@ const TEST_CONFIG_FILENAME = /(?:^|\.)vitest[\w.-]*\.config\.m?[jt]s$/;
 const KNOWN_TEST_PROJECTS = [
   'docs/vitest.config.ts',
   'docs/vitest.real-source.config.mts',
+  'packages/app/tests/foundation/fixtures/vitest.browser-fixture.config.ts',
+  'packages/app/tests/foundation/fixtures/vitest.node-fixture.config.ts',
+  'packages/app/tests/foundation/vitest.browser-reverse.config.ts',
+  'packages/app/vitest.browser.config.ts',
   'packages/app/vitest.config.ts',
   'packages/app/vitest.dom.config.ts',
   'packages/app/vitest.fidelity.config.ts',
   'packages/app/vitest.integration.config.ts',
+  'packages/app/vitest.node.config.ts',
   'packages/cli/vitest.config.ts',
   'packages/cli/vitest.e2e.config.ts',
   'packages/core/vitest.config.ts',
@@ -38,6 +43,15 @@ const KNOWN_BUILD_CONFIGS = [
 ];
 
 const REQUIRED_BASE_SETUP_FILES = ['bun-global-shim.ts', 'no-net-connect.ts'];
+
+const BROWSER_PROJECT_SETUP_FILES: Readonly<Record<string, readonly string[]>> = {
+  'packages/app/tests/foundation/fixtures/vitest.browser-fixture.config.ts': ['browser-setup.ts'],
+  'packages/app/tests/foundation/vitest.browser-reverse.config.ts': ['browser-setup.ts'],
+  'packages/app/vitest.browser.config.ts': ['browser-setup.ts'],
+};
+
+const isBrowserProject = (relPath: string): boolean =>
+  Object.hasOwn(BROWSER_PROJECT_SETUP_FILES, relPath);
 
 const isTestConfig = (relPath: string): boolean => TEST_CONFIG_FILENAME.test(basename(relPath));
 
@@ -120,7 +134,13 @@ describe('vitest setupFiles contract', () => {
     );
   });
 
-  test.each(configs.filter(isTestConfig))(
+  test('every browser project is a tracked vitest project', () => {
+    expect(
+      Object.keys(BROWSER_PROJECT_SETUP_FILES).filter((relPath) => !configs.includes(relPath)),
+    ).toEqual([]);
+  });
+
+  test.each(configs.filter((relPath) => isTestConfig(relPath) && !isBrowserProject(relPath)))(
     '%s resolves setupFiles containing every entry the shared base installs',
     async (relPath) => {
       for (const { project, setupFiles } of await resolveSetupFiles(relPath)) {
@@ -130,6 +150,23 @@ describe('vitest setupFiles contract', () => {
           `${project} omits ${missing.length} shared setup file(s); it resolves ` +
             `[${setupFiles.join(', ')}]. Build it from okVitestBase.test.setupFiles ` +
             'rather than listing entries by hand.',
+        ).toEqual([]);
+      }
+    },
+  );
+
+  test.each(Object.entries(BROWSER_PROJECT_SETUP_FILES))(
+    '%s resolves its browser setup files and none of the Node-only setup files the shared base installs',
+    async (relPath, required) => {
+      for (const { project, setupFiles } of await resolveSetupFiles(relPath)) {
+        const names = setupFiles.map((entry) => basename(entry));
+        expect(
+          required.filter((name) => !names.includes(name)),
+          `${project} resolves [${setupFiles.join(', ')}] without its browser setup.`,
+        ).toEqual([]);
+        expect(
+          setupFiles.filter((entry) => okVitestBase.test.setupFiles.includes(entry)),
+          `${project} loads a Node-only shared setup file into the browser.`,
         ).toEqual([]);
       }
     },
