@@ -317,6 +317,24 @@ describe('parse cache (bundle stamp invalidation)', () => {
     const second = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
     expect(second?.contentHash).not.toBe(first?.contentHash);
   });
+
+  test('files the content hash ignores never invalidate the cache', () => {
+    writeSkill(contentDir, '.claude/skills/foo', '# body one');
+    utimesSync(skillMdOf('foo'), PINNED, PINNED);
+    const first = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
+
+    const swapped = readFileSync(skillMdOf('foo'), 'utf8').replace('# body one', '# body two');
+    writeFileSync(skillMdOf('foo'), swapped);
+    utimesSync(skillMdOf('foo'), PINNED, PINNED);
+    for (const ignored of ['node_modules/dep', '.git/objects']) {
+      const dir = join(contentDir, '.claude/skills/foo', ignored);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'file'), 'not part of the bundle\n');
+    }
+
+    const second = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
+    expect(second?.contentHash).toBe(first?.contentHash);
+  });
 });
 
 describe('global tier (R12): scanGlobalInPlaceSkills + resolveGlobalNativeSkillDir', () => {

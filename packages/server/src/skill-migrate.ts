@@ -119,11 +119,15 @@ export function genuineInPlaceNames(
 export async function migrateStoreSkillsInPlace(opts: {
   projectDir: string;
   skillsRoot: string;
-  inPlaceNames?: ReadonlySet<string>;
+  inPlaceNames?: () => Promise<ReadonlySet<string>>;
   hostRoots?: ReadonlyArray<{ host: SkillHostId; root: string }>;
 }): Promise<StoreMigrationResult> {
   const { projectDir, skillsRoot } = opts;
-  const inPlaceNames = opts.inPlaceNames ?? new Set<string>();
+  let inPlaceNames: Promise<ReadonlySet<string>> | undefined;
+  const isInPlaceName = async (name: string): Promise<boolean> => {
+    inPlaceNames ??= opts.inPlaceNames?.() ?? Promise.resolve(new Set<string>());
+    return (await inPlaceNames).has(name);
+  };
   const hostRootsByPrecedence = opts.hostRoots ?? HOST_ROOTS_BY_PRECEDENCE;
   const result: StoreMigrationResult = { migrated: [], skipped: [] };
   if (!existsSync(skillsRoot)) return result;
@@ -147,7 +151,7 @@ export async function migrateStoreSkillsInPlace(opts: {
   for (const name of entries) {
     try {
       if (!SKILL_NAME_REGEX.test(name) || INTERNAL_BUNDLE_SKILL_NAMES.has(name)) continue;
-      if (inPlaceNames.has(name)) {
+      if (await isInPlaceName(name)) {
         result.skipped.push({ name, reason: 'placement-of-in-place' });
         continue;
       }

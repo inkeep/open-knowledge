@@ -1,9 +1,9 @@
 import {
   enumerateInstalledSkills,
   type PluginUpstream,
-  parseSkillDir,
   pluginUpstreamsByName,
 } from '@inkeep/open-knowledge-core/skills-catalog';
+import { cachedSkillContentHash } from './in-place-skills.ts';
 import type { PinoLogger } from './logger.ts';
 
 export type SkillsCatalogCache = ReturnType<typeof createSkillsCatalogCache>;
@@ -41,7 +41,7 @@ export function createSkillsCatalogCache({
     ) {
       return { freshBuild: false, key, value: installedCatalogCache.value };
     }
-    const value = enumerateInstalledSkills(opts);
+    const value = enumerateInstalledSkills({ ...opts, hashOf: cachedSkillContentHash });
     installedCatalogCache = { at: Date.now(), gen: skillsCatalogGen, key, value };
     return { freshBuild: true, key, value };
   }
@@ -96,10 +96,7 @@ export function createSkillsCatalogCache({
           ? { home: homeDirOverride, projectDir: identity }
           : { projectDir: identity },
       );
-      byName = pluginUpstreamsByName(
-        catalogLookup.value.skills,
-        (home) => parseSkillDir(home)?.contentHash,
-      );
+      byName = pluginUpstreamsByName(catalogLookup.value.skills, cachedSkillContentHash);
     } catch (err) {
       log.warn({ err }, 'plugin upstream index failed; origins will be omitted');
     }

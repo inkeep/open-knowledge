@@ -127,7 +127,7 @@ test('plugin content refreshes only on identity change or its independent thirty
   clock.mockReturnValue(130_000);
   const expired = c.pluginSkillsByName('project-a');
   expect(expired.get('alpha')?.contentHash).not.toBe(hash);
-  installPlugin('third');
+  installPlugin('third revision');
   c.bumpSkillsCatalogGen();
   const changedIdentity = c.pluginSkillsByName('project-b');
   expect(changedIdentity.get('alpha')?.contentHash).not.toBe(expired.get('alpha')?.contentHash);

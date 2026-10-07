@@ -13,6 +13,7 @@ import { catalogRawScopeToOkScope, isDetectedSkillInProject } from './scope.ts';
 export interface EnumerateOptions {
   home?: string;
   projectDir?: string;
+  hashOf?: (skillDir: string) => string | undefined;
 }
 
 const OK_OWNED_SKILL_PREFIX = 'open-knowledge';
@@ -51,20 +52,27 @@ function toInstalledSkill(winner: RawSkill, harnesses: string[]): CatalogSkill {
   };
 }
 
-function contentIdentity(s: RawSkill): string {
+function parsedContentHash(skillDir: string): string | undefined {
+  return parseSkillDir(skillDir)?.contentHash;
+}
+
+function contentIdentity(s: RawSkill, hashOf: (skillDir: string) => string | undefined): string {
   try {
-    return parseSkillDir(s.home)?.contentHash ?? `unreadable:${s.home}`;
+    return hashOf(s.home) ?? `unreadable:${s.home}`;
   } catch {
     return `unreadable:${s.home}`;
   }
 }
 
-function dedupeSkills(raw: RawSkill[]): CatalogSkill[] {
+function dedupeSkills(
+  raw: RawSkill[],
+  hashOf: (skillDir: string) => string | undefined,
+): CatalogSkill[] {
   const byIdentity = new Map<string, { winner: RawSkill; harnesses: Set<string> }>();
   for (const s of raw) {
     const scope = catalogRawScopeToOkScope(s.provenance.scope);
     const projectPath = scope === 'project' ? (s.provenance.projectPath ?? '') : '';
-    const key = `${scope}\0${projectPath}\0${s.name}\0${contentIdentity(s)}`;
+    const key = `${scope}\0${projectPath}\0${s.name}\0${contentIdentity(s, hashOf)}`;
     const cur = byIdentity.get(key);
     if (!cur) {
       byIdentity.set(key, { winner: s, harnesses: new Set([s.harness]) });
@@ -164,7 +172,10 @@ export function enumerateInstalledSkills(opts: EnumerateOptions = {}): Installed
           }))
           .filter((bundle) => bundle.skills.length > 0);
   const raw = localBundles.flatMap((b) => b.skills);
-  return { skills: dedupeSkills(raw), packs: toPacks(localBundles) };
+  return {
+    skills: dedupeSkills(raw, opts.hashOf ?? parsedContentHash),
+    packs: toPacks(localBundles),
+  };
 }
 
 function enumerateProjectHarnessSkills(projectDir: string): SkillBundle[] {

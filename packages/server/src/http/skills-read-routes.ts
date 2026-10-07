@@ -14,7 +14,7 @@ import { resolveProjectIdentity } from '@inkeep/open-knowledge-core/shadow-repo-
 import type { enumerateInstalledSkills } from '@inkeep/open-knowledge-core/skills-catalog';
 import type { CommentService } from '../comments/comment-service.ts';
 import { resolveProjectTemplates } from '../content/templates-resolver.ts';
-import { scanGlobalInPlaceSkills, scanInPlaceSkills } from '../in-place-skills.ts';
+import { scanGlobalInPlaceSkillsAsync, scanInPlaceSkills } from '../in-place-skills.ts';
 import { readSkillInstallStateSnapshot } from '../skill-state.ts';
 import type { ApiRouteTable } from './api-pipeline.ts';
 import { catchErrors } from './catch-errors.ts';
@@ -62,12 +62,13 @@ export function createSkillsReadRoutes(deps: SkillsReadRouteDeps): SkillsReadRou
       try {
         const projectIdentity = resolveProjectIdentity(projectDir ?? contentDir);
         const physicalProjectDir = resolve(projectDir ?? contentDir);
+        const globalInPlaceSkills = await scanGlobalInPlaceSkillsAsync(skillsHome);
         const catalog = enumerateInstalledSkillsCached({
           projectDir: projectIdentity,
           ...(homeDirOverride !== undefined ? { home: homeDirOverride } : {}),
         });
         const inPlaceNames = new Set(scanInPlaceSkills(contentDir).map((s) => s.name));
-        const globalInPlaceNames = new Set(scanGlobalInPlaceSkills(skillsHome).map((s) => s.name));
+        const globalInPlaceNames = new Set(globalInPlaceSkills.map((s) => s.name));
         const result = {
           ...catalog,
           skills: catalog.skills

@@ -1,4 +1,5 @@
 import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { readdir, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import {
   AGENTS_SKILLS_ROOT,
@@ -16,14 +17,18 @@ import {
   skillRootActivationPath,
 } from '@inkeep/open-knowledge-core';
 import {
+  type AcquiredSkill,
+  BUNDLE_WALK_IGNORE,
   buildSkillRegistry,
   groupSkillsByIdentity,
   type LocatedSkillOccurrence,
   packMarkerOf,
   parseSkillDir,
+  parseSkillDirAsync,
   SKILL_CANONICAL_PRECEDENCE,
   type SkillHostId,
 } from '@inkeep/open-knowledge-core/skills-catalog';
+import { getLogger } from './logger.ts';
 import { isInternalBundleSkillName, isUserGlobalBundleSkillName } from './skill-bundles.ts';
 import {
   observeSkillPlacementInputsForScan,
@@ -233,8 +238,9 @@ function bundleStamp(absDir: string): string | null {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
       const p = join(dir, e.name);
       const r = rel === '' ? e.name : `${rel}/${e.name}`;
-      if (e.isDirectory()) walk(p, r);
-      else if (e.isFile()) {
+      if (e.isDirectory()) {
+        if (!BUNDLE_WALK_IGNORE.has(e.name)) walk(p, r);
+      } else if (e.isFile()) {
         const st = statSync(p);
         parts.push(`${r}:${st.size}:${st.mtimeMs}`);
       }
@@ -244,50 +250,144 @@ function bundleStamp(absDir: string): string | null {
   return parts.sort().join('|');
 }
 
-const parseCache = new Map<
-  string,
-  { stamp: string; contentHash: string; description: string; size: SkillCostTiers }
->();
+async function bundleStampAsync(absDir: string): Promise<string | null> {
+  try {
+    if (!(await stat(join(absDir, 'SKILL.md'))).isFile()) return null;
+  } catch (error) {
+    if (isAbsentPath(error)) return null;
+    throw error;
+  }
+  const parts: string[] = [];
+  const walk = async (dir: string, rel: string): Promise<void> => {
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      const r = rel === '' ? e.name : `${rel}/${e.name}`;
+      if (e.isDirectory()) {
+        if (!BUNDLE_WALK_IGNORE.has(e.name)) await walk(p, r);
+      } else if (e.isFile()) {
+        const st = await stat(p);
+        parts.push(`${r}:${st.size}:${st.mtimeMs}`);
+      }
+    }
+  };
+  await walk(absDir, '');
+  return parts.sort().join('|');
+}
 
-function parseSkillDirCached(
-  absDir: string,
-): { contentHash: string; description: string; size: SkillCostTiers; pack?: string } | null {
-  const stamp = bundleStamp(absDir);
-  if (stamp === null) return null;
-  const hit = parseCache.get(absDir);
-  if (hit !== undefined && hit.stamp === stamp) return hit;
-  const parsed = parseSkillDir(absDir);
-  if (!parsed) return null;
+interface ParseCacheEntry {
+  stamp: string;
+  contentHash: string;
+  description: string;
+  size: SkillCostTiers;
+  pack?: string;
+}
+
+const parseCache = new Map<string, ParseCacheEntry>();
+
+function parseCacheEntry(stamp: string, parsed: AcquiredSkill): ParseCacheEntry {
   const pack = packMarkerOf(parseFrontmatterRecord(parsed.skillMd) ?? {});
-  const entry = {
+  return {
     stamp,
     contentHash: parsed.contentHash,
     description: parsed.description,
     size: estimateSkillCost(parsed),
     ...(pack !== undefined ? { pack } : {}),
   };
+}
+
+function parseSkillDirCached(absDir: string): ParseCacheEntry | null {
+  const stamp = bundleStamp(absDir);
+  if (stamp === null) return null;
+  const hit = parseCache.get(absDir);
+  if (hit !== undefined && hit.stamp === stamp) return hit;
+  const parsed = parseSkillDir(absDir);
+  if (!parsed) return null;
+  const entry = parseCacheEntry(stamp, parsed);
   parseCache.set(absDir, entry);
   return entry;
 }
 
-function scanBase(base: string, scope: SkillScope): SkillScanObservation {
-  const occurrences: ScanOccurrence[] = [];
+export function cachedSkillContentHash(skillDir: string): string | undefined {
+  return parseSkillDirCached(skillDir)?.contentHash;
+}
+
+const parseCacheWarming = new Map<string, Promise<void>>();
+const parseCacheAwaitingSkillMd = new Map<string, boolean>();
+
+function warmParseCache(absDir: string, root: string): Promise<void> {
+  const inFlight = parseCacheWarming.get(absDir);
+  if (inFlight !== undefined) return inFlight;
+  const warming = (async () => {
+    const stamp = await bundleStampAsync(absDir);
+    if (stamp === null) return true;
+    if (parseCache.get(absDir)?.stamp === stamp) return false;
+    const parsed = await parseSkillDirAsync(absDir);
+    if (parsed) parseCache.set(absDir, parseCacheEntry(stamp, parsed));
+    return false;
+  })()
+    .catch((error) => {
+      logWarmFailure(root, error);
+      return false;
+    })
+    .then((awaitingSkillMd) => {
+      parseCacheAwaitingSkillMd.set(absDir, awaitingSkillMd);
+    })
+    .finally(() => parseCacheWarming.delete(absDir));
+  parseCacheWarming.set(absDir, warming);
+  return warming;
+}
+
+function logWarmFailure(root: string, error: unknown): void {
+  if (isAbsentPath(error)) return;
+  getLogger('in-place-skills').warn(
+    { root, err: error },
+    '[in-place-skills] skills not read ahead of the scan; the scan reads them synchronously',
+  );
+}
+
+async function warmGlobalScanCache(home: string): Promise<void> {
+  for (const { root } of observeScanInputs(home, 'global').roots) {
+    const absRoot = join(home, root);
+    let entries: string[];
+    try {
+      entries = await readdir(absRoot);
+    } catch (error) {
+      logWarmFailure(root, error);
+      continue;
+    }
+    for (const entry of entries) await warmParseCache(join(absRoot, entry), root);
+  }
+}
+
+function observeScanInputs(
+  base: string,
+  scope: SkillScope,
+): {
+  sourcePrefs: Record<string, string>;
+  roots: ReturnType<typeof skillRootsWithCustom>;
+  failures: SkillScanFailure[];
+} {
   const failures: SkillScanFailure[] = [];
-  const recordFailure = (error: unknown): void => {
-    failures.push({ scope: 'scan', error });
-  };
   let sourcePrefs: Record<string, string> = {};
   let customRoots: string[] = [];
   try {
     const inputs = observeSkillPlacementInputsForScan(base);
     sourcePrefs = inputs.sources;
     customRoots = inputs.roots;
-    if (inputs.kind === 'incomplete') recordFailure(inputs.error);
+    if (inputs.kind === 'incomplete') failures.push({ scope: 'scan', error: inputs.error });
     if (inputs.kind === 'unparsable') failures.push({ scope: 'ledger-parse', error: inputs.error });
   } catch (error) {
-    recordFailure(error);
+    failures.push({ scope: 'scan', error });
   }
-  const allRoots = skillRootsWithCustom(scope, customRoots);
+  return { sourcePrefs, roots: skillRootsWithCustom(scope, customRoots), failures };
+}
+
+function scanBase(base: string, scope: SkillScope): SkillScanObservation {
+  const occurrences: ScanOccurrence[] = [];
+  const { sourcePrefs, roots: allRoots, failures } = observeScanInputs(base, scope);
+  const recordFailure = (error: unknown): void => {
+    failures.push({ scope: 'scan', error });
+  };
 
   let baseReal: string | null = null;
   try {
@@ -409,6 +509,36 @@ export function scanInPlaceSkills(contentDir: string): InPlaceSkill[] {
 
 export function scanGlobalInPlaceSkills(home: string): InPlaceSkill[] {
   return scanBase(home, 'global').skills;
+}
+
+export async function scanGlobalInPlaceSkillsAsync(home: string): Promise<InPlaceSkill[]> {
+  if (globalScanHasUnwarmedDir(home)) await warmGlobalScanCache(home);
+  return scanGlobalInPlaceSkills(home);
+}
+
+function needsWarm(absDir: string): boolean {
+  const awaitingSkillMd = parseCacheAwaitingSkillMd.get(absDir);
+  if (awaitingSkillMd === undefined) return true;
+  if (!awaitingSkillMd) return false;
+  try {
+    return statSync(join(absDir, 'SKILL.md')).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function globalScanHasUnwarmedDir(home: string): boolean {
+  for (const { root } of observeScanInputs(home, 'global').roots) {
+    const absRoot = join(home, root);
+    let entries: string[];
+    try {
+      entries = readdirSync(absRoot);
+    } catch {
+      continue;
+    }
+    if (entries.some((entry) => needsWarm(join(absRoot, entry)))) return true;
+  }
+  return false;
 }
 
 const USER_ROOTS_BY_PRECEDENCE = [...USER_SKILL_ROOTS].sort((a, b) => {

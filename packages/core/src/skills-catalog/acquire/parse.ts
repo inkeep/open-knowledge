@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { type Dirent, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdir, readFile } from 'node:fs/promises';
 import { basename, join, relative } from 'node:path';
 import {
   SKILL_IMPORT_MAX_BUNDLE_FILES,
@@ -8,7 +9,7 @@ import {
 } from '../import-limits.ts';
 import { readSkillManifestMeta } from '../manifest-meta.ts';
 
-const BUNDLE_WALK_IGNORE: ReadonlySet<string> = new Set(['.git', 'node_modules']);
+export const BUNDLE_WALK_IGNORE: ReadonlySet<string> = new Set(['.git', 'node_modules']);
 
 const DISCOVER_WALK_IGNORE: ReadonlySet<string> = new Set([
   ...BUNDLE_WALK_IGNORE,
@@ -30,6 +31,21 @@ export interface AcquiredSkill {
   readonly contentHash: string;
 }
 
+function acquiredFile(relPath: string, buf: Buffer): AcquiredFile {
+  return buf.includes(0)
+    ? { relPath, content: null, bytes: new Uint8Array(buf) }
+    : { relPath, content: buf.toString('utf-8') };
+}
+
+function bundleRelPath(dir: string, abs: string): string | null {
+  const relPath = relative(dir, abs).split('\\').join('/');
+  return relPath === 'SKILL.md' ? null : relPath;
+}
+
+function byRelPath(a: AcquiredFile, b: AcquiredFile): number {
+  return a.relPath.localeCompare(b.relPath);
+}
+
 function readBundleFiles(dir: string): AcquiredFile[] {
   const out: AcquiredFile[] = [];
   const walk = (d: string): void => {
@@ -40,18 +56,30 @@ function readBundleFiles(dir: string): AcquiredFile[] {
         continue;
       }
       if (!e.isFile()) continue;
-      const relPath = relative(dir, abs).split('\\').join('/');
-      if (relPath === 'SKILL.md') continue;
-      const buf = readFileSync(abs);
-      out.push(
-        buf.includes(0)
-          ? { relPath, content: null, bytes: new Uint8Array(buf) }
-          : { relPath, content: buf.toString('utf-8') },
-      );
+      const relPath = bundleRelPath(dir, abs);
+      if (relPath !== null) out.push(acquiredFile(relPath, readFileSync(abs)));
     }
   };
   walk(dir);
-  return out.sort((a, b) => a.relPath.localeCompare(b.relPath));
+  return out.sort(byRelPath);
+}
+
+async function readBundleFilesAsync(dir: string): Promise<AcquiredFile[]> {
+  const out: AcquiredFile[] = [];
+  const walk = async (d: string): Promise<void> => {
+    for (const e of await readdir(d, { withFileTypes: true })) {
+      const abs = join(d, e.name);
+      if (e.isDirectory()) {
+        if (!BUNDLE_WALK_IGNORE.has(e.name)) await walk(abs);
+        continue;
+      }
+      if (!e.isFile()) continue;
+      const relPath = bundleRelPath(dir, abs);
+      if (relPath !== null) out.push(acquiredFile(relPath, await readFile(abs)));
+    }
+  };
+  await walk(dir);
+  return out.sort(byRelPath);
 }
 
 export function readSkillDirMeta(dir: string): { name: string; description: string } | null {
@@ -133,10 +161,23 @@ export function parseSkillDir(dir: string): AcquiredSkill | null {
   const skillMdPath = join(dir, 'SKILL.md');
   if (!existsSync(skillMdPath)) return null;
   const skillMd = readFileSync(skillMdPath, 'utf-8');
+  return acquiredSkill(dir, skillMd, readBundleFiles(dir));
+}
 
+export async function parseSkillDirAsync(dir: string): Promise<AcquiredSkill | null> {
+  let skillMd: string;
+  try {
+    skillMd = await readFile(join(dir, 'SKILL.md'), 'utf-8');
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null;
+    throw err;
+  }
+  return acquiredSkill(dir, skillMd, await readBundleFilesAsync(dir));
+}
+
+function acquiredSkill(dir: string, skillMd: string, files: AcquiredFile[]): AcquiredSkill {
   const { name, description } = readSkillManifestMeta(skillMd, basename(dir));
-
-  const files = readBundleFiles(dir);
 
   const hash = createHash('sha256');
   hash.update(`SKILL.md\n${skillMd}\n`);

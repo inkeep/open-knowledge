@@ -19,7 +19,7 @@ import {
   aliasedSourceRoots,
   isActivatedSkillRoot,
   resolveGlobalNativeSkillDir,
-  scanGlobalInPlaceSkills,
+  scanGlobalInPlaceSkillsAsync,
   scanHostRootAliases,
   scanInPlaceSkills,
   standardSkillRoots,
@@ -143,6 +143,7 @@ export function createSkillsListRoutes(deps: SkillsListRouteDeps): ApiRouteGroup
     EmptyRequestSchema,
     catchErrors(
       async (_req, res) => {
+        const globalInPlaceSkills = await scanGlobalInPlaceSkillsAsync(skillsHome);
         const inPlaceFp =
           (contentFilter?.peekFreshInPlaceSkillDirsFingerprint() ?? '') +
           '\u0001' +
@@ -152,7 +153,7 @@ export function createSkillsListRoutes(deps: SkillsListRouteDeps): ApiRouteGroup
             .map((h) => h.editorId)
             .join(',') +
           '\u0001' +
-          scanGlobalInPlaceSkills(skillsHome)
+          globalInPlaceSkills
             .map((s) => s.dir)
             .sort()
             .join(',');
@@ -342,10 +343,10 @@ export function createSkillsListRoutes(deps: SkillsListRouteDeps): ApiRouteGroup
         const globalLock = readSkillsLock(join(skillsHome, ...SKILLS_LOCK_REL));
         const globalAliases = scanHostRootAliases(skillsHome, 'global');
         const globalAliasRoots = aliasedSourceRoots(globalAliases, 'global');
-        const globalInPlaceNames = new Set(scanGlobalInPlaceSkills(skillsHome).map((s) => s.name));
+        const globalInPlaceNames = new Set(globalInPlaceSkills.map((s) => s.name));
         globalSkills.skills = globalSkills.skills.filter((s) => !globalInPlaceNames.has(s.name));
         const globalNameSeen = new Set<string>();
-        const globalInPlace = scanGlobalInPlaceSkills(skillsHome).map((s) => {
+        const globalInPlace = globalInPlaceSkills.map((s) => {
           const tracked = !globalNameSeen.has(s.name);
           globalNameSeen.add(s.name);
           const placementsForRow = tracked ? globalPlacements[s.name] : undefined;

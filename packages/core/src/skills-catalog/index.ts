@@ -27,8 +27,10 @@ export {
   type AcquiredFile,
   type AcquiredSkill,
   acquiredBundleTooLarge,
+  BUNDLE_WALK_IGNORE,
   discoverSkillDirs,
   parseSkillDir,
+  parseSkillDirAsync,
   readSkillDirMeta,
 } from './acquire/parse.ts';
 export {

@@ -182,7 +182,7 @@ import type { NativeApiHandle } from './http/http-app.ts';
 import type { LocalApiDispatch } from './http/local-api-dispatch.ts';
 import type { GeneratedIndexSettingsStatus } from './http/workspace-tools-routes.ts';
 import {
-  scanGlobalInPlaceSkills,
+  scanGlobalInPlaceSkillsAsync,
   scanInPlaceSkillDirs,
   scanInPlaceSkills,
   skillRootPathsFor,
@@ -1969,7 +1969,8 @@ export function createServer(options: ServerOptions): ServerInstance {
         globalCopyResyncTimer = setTimeout(() => {
           globalCopyResyncTimer = null;
           const home = configHomedirOverride ?? homedir();
-          void resyncRecordedSkillCopies(home, home, scanGlobalInPlaceSkills(home))
+          void scanGlobalInPlaceSkillsAsync(home)
+            .then((inPlace) => resyncRecordedSkillCopies(home, home, inPlace))
             .then((n) => {
               if (n > 0) log.info({ refreshed: n }, '[in-place-skills] post-edit copy re-sync');
             })
@@ -4286,7 +4287,8 @@ export function createServer(options: ServerOptions): ServerInstance {
           .catch((err) => log.warn({ err }, '[in-place-skills] boot copy re-sync failed'));
         {
           const home = configHomedirOverride ?? homedir();
-          void resyncRecordedSkillCopies(home, home, scanGlobalInPlaceSkills(home))
+          void scanGlobalInPlaceSkillsAsync(home)
+            .then((inPlace) => resyncRecordedSkillCopies(home, home, inPlace))
             .then((n) => {
               if (n > 0) log.info({ refreshed: n }, '[in-place-skills] global boot copy re-sync');
             })

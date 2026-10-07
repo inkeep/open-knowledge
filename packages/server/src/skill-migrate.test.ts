@@ -205,7 +205,7 @@ describe('migrateStoreSkillsInPlace', () => {
     const r = await migrateStoreSkillsInPlace({
       projectDir: root,
       skillsRoot,
-      inPlaceNames: new Set(['placed']),
+      inPlaceNames: async () => new Set(['placed']),
     });
     expect(r.migrated).toEqual([]);
     expect(existsSync(join(skillsRoot, 'placed', 'SKILL.md'))).toBe(true);
@@ -215,6 +215,41 @@ describe('migrateStoreSkillsInPlace', () => {
     const r = await migrateStoreSkillsInPlace({ projectDir: root, skillsRoot });
     expect(r.migrated).toEqual([]);
     expect(r.skipped).toEqual([]);
+  });
+
+  test('scans in-place skills only when the store holds a skill to classify', async () => {
+    let scans = 0;
+    const inPlaceNames = async () => {
+      scans += 1;
+      return new Set<string>(['placed']);
+    };
+    await migrateStoreSkillsInPlace({ projectDir: root, skillsRoot, inPlaceNames });
+    rmSync(skillsRoot, { recursive: true, force: true });
+    await migrateStoreSkillsInPlace({ projectDir: root, skillsRoot, inPlaceNames });
+    expect(scans).toBe(0);
+
+    makeStore('placed', '# P');
+    makeStore('other', '# O');
+    const r = await migrateStoreSkillsInPlace({ projectDir: root, skillsRoot, inPlaceNames });
+    expect(scans).toBe(1);
+    expect(r.skipped).toContainEqual({ name: 'placed', reason: 'placement-of-in-place' });
+  });
+
+  test('a failed in-place scan migrates nothing', async () => {
+    makeStore('placed', '# P');
+    makeStore('other', '# O');
+    mkdirSync(join(root, '.claude', 'skills'), { recursive: true });
+    const r = await migrateStoreSkillsInPlace({
+      projectDir: root,
+      skillsRoot,
+      inPlaceNames: async () => {
+        throw new Error('scan failed');
+      },
+    });
+    expect(r.migrated).toEqual([]);
+    expect(r.skipped.map((s) => s.reason)).toEqual(['error', 'error']);
+    expect(existsSync(join(skillsRoot, 'placed', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(skillsRoot, 'other', 'SKILL.md'))).toBe(true);
   });
 });
 

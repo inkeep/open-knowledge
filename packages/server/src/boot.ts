@@ -46,7 +46,7 @@ import {
   type CollabClientCounter,
   type IdleShutdownHandle,
 } from './idle-shutdown.ts';
-import { scanGlobalInPlaceSkills, scanInPlaceSkills } from './in-place-skills.ts';
+import { scanGlobalInPlaceSkillsAsync, scanInPlaceSkills } from './in-place-skills.ts';
 import { buildIngressPolicy, ExposureConsentError } from './ingress-policy.ts';
 import { resolveLocalSinkConfig } from './local-sink-resolver.ts';
 import { getLogger, loggerFactory, type PinoLogger } from './logger.ts';
@@ -786,7 +786,8 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     const m = await migrateStoreSkillsInPlace({
       projectDir,
       skillsRoot: resolve(opts.contentDir, OK_DIR, SKILLS_STORE_DIRNAME),
-      inPlaceNames: genuineInPlaceNames(opts.contentDir, scanInPlaceSkills(opts.contentDir)),
+      inPlaceNames: async () =>
+        genuineInPlaceNames(opts.contentDir, scanInPlaceSkills(opts.contentDir)),
     });
     if (m.migrated.length + m.skipped.length > 0) {
       log.info?.(
@@ -811,7 +812,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
       projectDir: home,
       skillsRoot: resolve(home, OK_DIR, SKILLS_STORE_DIRNAME),
       hostRoots: USER_HOST_ROOTS_BY_PRECEDENCE,
-      inPlaceNames: genuineInPlaceNames(home, scanGlobalInPlaceSkills(home)),
+      inPlaceNames: async () => genuineInPlaceNames(home, await scanGlobalInPlaceSkillsAsync(home)),
     });
     if (gm.migrated.length + gm.skipped.length > 0) {
       log.info?.(
