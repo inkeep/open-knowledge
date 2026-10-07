@@ -10,6 +10,8 @@ export interface SidebarItem {
   label: string;
   subsections?: SidebarSubsection[];
   keywords?: string[];
+  userScope?: boolean;
+  disabled?: boolean;
 }
 
 export interface SidebarGroup {
@@ -17,4 +19,7 @@ export interface SidebarGroup {
   label: string;
   enabled: boolean;
   items: SidebarItem[];
+  userScope?: boolean;
+  hideOutsideProject?: boolean;
+  disabledHint?: string;
 }

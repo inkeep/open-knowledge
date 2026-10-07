@@ -10657,6 +10657,10 @@ msgstr "تم إعداد OpenKnowledge في جذر المستودع هنا، لذ
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "يستخدم OpenKnowledge حساب GitHub هذا."
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "OpenKnowledge keeps retrying and shows them as soon as the file can be read."
+msgstr "يواصل OpenKnowledge إعادة المحاولة وسيعرضها بمجرد أن تصبح قراءة الملف ممكنة."
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge left this file alone because it could not parse it safely. Fix the file by hand, then try again."
 msgstr "لم يغيّر OpenKnowledge هذا الملف لأنه لم يتمكن من تحليله بأمان. أصلح الملف يدويًا ثم أعد المحاولة."
@@ -15741,6 +15745,10 @@ msgstr "العنوان"
 msgid "Title"
 msgstr "العنوان"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "To connect AI tools without a project, use File > Set up OpenKnowledge integrations…"
+msgstr "لتوصيل أدوات الذكاء الاصطناعي بدون مشروع، استخدم ملف > إعداد تكاملات OpenKnowledge…"
+
 #: src/editor/slash-command/items.tsx
 msgid "To do"
 msgstr "للقيام به"
@@ -17116,6 +17124,10 @@ msgstr "تُرسل استعلامات بحثك والنص الكامل للصف�
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your share link is ready below."
 msgstr "رابط المشاركة الخاص بك جاهز أدناه."
+
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Your user settings could not be read"
+msgstr "تعذّرت قراءة إعدادات المستخدم الخاصة بك"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Zip file"

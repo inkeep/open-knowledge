@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 
 import {
+  deliverNavigatorSettings,
   openSettingsSurface,
   resolveSettingsSurface,
   resolveSettingsWindowKind,
@@ -176,19 +177,19 @@ describe('openSettingsSurface', () => {
     return {
       ...depsFor(focused, all),
       showEditor: vi.fn(),
-      showNavigator: vi.fn(() => true),
+      showNavigatorSettings: vi.fn(),
       openNavigator: vi.fn(),
       onEditorRequired: vi.fn(),
     };
   }
 
-  test('opens customization in the focused navigator while a project is open', () => {
+  test('opens navigator settings in the focused navigator while a project is open', () => {
     const navigator = win(1, 'navigator');
     const deps = harness(navigator, [win(2, 'editor'), navigator]);
 
     openSettingsSurface(null, deps);
 
-    expect(deps.showNavigator).toHaveBeenCalledExactlyOnceWith(navigator);
+    expect(deps.showNavigatorSettings).toHaveBeenCalledExactlyOnceWith(navigator);
     expect(deps.showEditor).not.toHaveBeenCalled();
     expect(deps.openNavigator).not.toHaveBeenCalled();
   });
@@ -201,29 +202,25 @@ describe('openSettingsSurface', () => {
     openSettingsSurface(editor, deps);
 
     expect(deps.showEditor).toHaveBeenCalledExactlyOnceWith(editor, undefined);
-    expect(deps.showNavigator).not.toHaveBeenCalled();
+    expect(deps.showNavigatorSettings).not.toHaveBeenCalled();
   });
 
-  test('arms customization before creating the first navigator', () => {
+  test('with no window open, asks for navigator settings in a new navigator', () => {
     const deps = harness(null, []);
-    deps.openNavigator.mockImplementation(() => {
-      expect(deps.showNavigator).toHaveBeenCalledExactlyOnceWith(null);
-    });
 
     openSettingsSurface(null, deps);
 
-    expect(deps.openNavigator).toHaveBeenCalledOnce();
+    expect(deps.showNavigatorSettings).toHaveBeenCalledExactlyOnceWith(null);
     expect(deps.showEditor).not.toHaveBeenCalled();
   });
 
-  test('a terminal-only session creates a navigator to host customization', () => {
+  test('a terminal-only session opens navigator settings in a new navigator', () => {
     const terminal = win(1, 'terminal');
     const deps = harness(terminal, [terminal]);
 
     openSettingsSurface(terminal, deps);
 
-    expect(deps.showNavigator).toHaveBeenCalledExactlyOnceWith(null);
-    expect(deps.openNavigator).toHaveBeenCalledOnce();
+    expect(deps.showNavigatorSettings).toHaveBeenCalledExactlyOnceWith(null);
   });
 
   test('account settings target an editor even when the navigator is focused', () => {
@@ -234,7 +231,7 @@ describe('openSettingsSurface', () => {
     openSettingsSurface(navigator, deps, { editorOnly: true, section: 'account' });
 
     expect(deps.showEditor).toHaveBeenCalledExactlyOnceWith(editor, 'account');
-    expect(deps.showNavigator).not.toHaveBeenCalled();
+    expect(deps.showNavigatorSettings).not.toHaveBeenCalled();
   });
 
   test('account settings without an editor open the project picker', () => {
@@ -244,7 +241,7 @@ describe('openSettingsSurface', () => {
 
     expect(deps.openNavigator).toHaveBeenCalledOnce();
     expect(deps.showEditor).not.toHaveBeenCalled();
-    expect(deps.showNavigator).not.toHaveBeenCalled();
+    expect(deps.showNavigatorSettings).not.toHaveBeenCalled();
     expect(deps.onEditorRequired).toHaveBeenCalledExactlyOnceWith(null);
   });
 
@@ -258,20 +255,10 @@ describe('openSettingsSurface', () => {
 
       expect(deps.openNavigator).toHaveBeenCalledOnce();
       expect(deps.onEditorRequired).toHaveBeenCalledExactlyOnceWith(focused);
-      expect(deps.showNavigator).not.toHaveBeenCalled();
+      expect(deps.showNavigatorSettings).not.toHaveBeenCalled();
       expect(deps.showEditor).not.toHaveBeenCalled();
     },
   );
-
-  test('does not create an empty navigator when customization cannot be armed', () => {
-    const deps = harness(null, []);
-    deps.showNavigator.mockReturnValue(false);
-
-    openSettingsSurface(null, deps);
-
-    expect(deps.showNavigator).toHaveBeenCalledExactlyOnceWith(null);
-    expect(deps.openNavigator).not.toHaveBeenCalled();
-  });
 
   test.each([null, win(1, 'navigator'), win(2, 'terminal')] as const)(
     'a deep link with %j focused opens the navigator without forcing consent',
@@ -281,7 +268,7 @@ describe('openSettingsSurface', () => {
       openSettingsSurface(focused, deps, { origin: 'deep-link' });
 
       expect(deps.openNavigator).toHaveBeenCalledOnce();
-      expect(deps.showNavigator).not.toHaveBeenCalled();
+      expect(deps.showNavigatorSettings).not.toHaveBeenCalled();
       expect(deps.onEditorRequired).not.toHaveBeenCalled();
     },
   );
@@ -293,8 +280,76 @@ describe('openSettingsSurface', () => {
     openSettingsSurface(editor, deps, { origin: 'deep-link' });
 
     expect(deps.showEditor).toHaveBeenCalledExactlyOnceWith(editor, undefined);
-    expect(deps.showNavigator).not.toHaveBeenCalled();
+    expect(deps.showNavigatorSettings).not.toHaveBeenCalled();
     expect(deps.openNavigator).not.toHaveBeenCalled();
+  });
+});
+
+function navigatorWindow(opts: { loading?: boolean; minimized?: boolean } = {}) {
+  let loadListener: (() => void) | null = null;
+  const executeJavaScript = vi.fn(async (_code: string) => undefined);
+  const target = {
+    isMinimized: vi.fn(() => opts.minimized === true),
+    restore: vi.fn(),
+    focus: vi.fn(),
+    webContents: {
+      isLoading: () => opts.loading === true,
+      once: vi.fn((_event: 'did-finish-load', listener: () => void) => {
+        loadListener = listener;
+      }),
+      executeJavaScript,
+    },
+  };
+  return { target, executeJavaScript, finishLoad: () => loadListener?.() };
+}
+
+describe('deliverNavigatorSettings', () => {
+  test('a loaded navigator is focused and routed to settings at once', () => {
+    const nav = navigatorWindow();
+
+    deliverNavigatorSettings(nav.target, { onError: () => {} });
+
+    expect(nav.target.focus).toHaveBeenCalledOnce();
+    expect(nav.executeJavaScript).toHaveBeenCalledExactlyOnceWith(settingsHashScript());
+  });
+
+  test('a minimized navigator is restored first', () => {
+    const nav = navigatorWindow({ minimized: true });
+
+    deliverNavigatorSettings(nav.target, { onError: () => {} });
+
+    expect(nav.target.restore).toHaveBeenCalledOnce();
+  });
+
+  test('a navigator that is still loading is routed once it finishes loading', () => {
+    const nav = navigatorWindow({ loading: true });
+
+    deliverNavigatorSettings(nav.target, { onError: () => {} });
+    expect(nav.executeJavaScript).not.toHaveBeenCalled();
+
+    nav.finishLoad();
+    expect(nav.executeJavaScript).toHaveBeenCalledExactlyOnceWith(settingsHashScript());
+  });
+
+  test('a freshly created navigator waits for its first load even before it reports loading', () => {
+    const nav = navigatorWindow({ loading: false });
+
+    deliverNavigatorSettings(nav.target, { onError: () => {}, awaitLoad: true });
+    expect(nav.executeJavaScript).not.toHaveBeenCalled();
+
+    nav.finishLoad();
+    expect(nav.executeJavaScript).toHaveBeenCalledOnce();
+  });
+
+  test('a failed route is reported', async () => {
+    const nav = navigatorWindow();
+    const err = new Error('renderer gone');
+    nav.executeJavaScript.mockRejectedValueOnce(err);
+    const onError = vi.fn();
+
+    deliverNavigatorSettings(nav.target, { onError });
+
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(err));
   });
 });
 

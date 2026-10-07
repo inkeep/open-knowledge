@@ -27,6 +27,7 @@ export function buildSettingsSearchIndex(input: {
   for (const group of groups) {
     if (!group.enabled) continue;
     for (const item of group.items) {
+      if (item.disabled === true) continue;
       visibleSectionIds.add(item.id);
       entries.push({
         id: `section:${item.id}`,

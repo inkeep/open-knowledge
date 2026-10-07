@@ -41,4 +41,31 @@ describe('useSettingsRoute runtime routing', () => {
     expect(startTransitionMock).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('settings-open').textContent).toBe('open');
   });
+
+  test('a hash set after the first render but before the route subscribes still opens settings', async () => {
+    window.history.replaceState(null, '', '/');
+    const { useSettingsRoute } = await import('./use-settings-route');
+    let hashSet = false;
+
+    function Probe() {
+      const route = useSettingsRoute();
+      return <output data-testid="settings-open">{route.open ? 'open' : 'closed'}</output>;
+    }
+    function SetHashDuringRender() {
+      if (!hashSet) {
+        hashSet = true;
+        window.history.replaceState(null, '', '#settings');
+      }
+      return null;
+    }
+
+    render(
+      <>
+        <Probe />
+        <SetHashDuringRender />
+      </>,
+    );
+
+    expect(await screen.findByText('open')).toBeTruthy();
+  });
 });

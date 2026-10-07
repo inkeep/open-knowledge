@@ -3,6 +3,7 @@ import type {
   OkDeepLinkPayload,
   OkNoteWindowMainAction,
   OkOnboardingToastPayload,
+  OkUserConfigSnapshot,
 } from '@inkeep/open-knowledge-core/desktop-bridge';
 import type {
   OkDesktopConfig,
@@ -74,4 +75,5 @@ export interface EventChannels {
   'ok:pty:notice': { payload: OkPtyNotice };
   'ok:accessibility:changed': { payload: { screenReaderActive: boolean } };
   'ok:bug-report:crash-detected': { payload: OkBugReportCrashDetectedEvent };
+  'ok:user-config:changed': { payload: OkUserConfigSnapshot };
 }

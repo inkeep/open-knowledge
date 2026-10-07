@@ -1,7 +1,9 @@
 import type { ConfigBinding } from '@inkeep/open-knowledge-core/config/bind-config-doc';
 import type { OkignoreBinding } from '@inkeep/open-knowledge-core/config/bind-okignore-doc';
 import { Trans, useLingui } from '@lingui/react/macro';
+import { TriangleAlert } from 'lucide-react';
 import { type ComponentType, lazy } from 'react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { lazyWithPreload } from '@/lib/lazy-with-preload';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 import { FIELDS_USER_PREFERENCES } from './settings-fields';
@@ -109,9 +111,25 @@ const PreferencesSection = lazyWithPreload(async () => {
 
 export const preloadPreferencesSection = PreferencesSection.preload;
 
+function UserConfigPending({ loadFailed }: { loadFailed: boolean }) {
+  if (!loadFailed) return <SectionSkeleton />;
+  return (
+    <Alert data-testid="settings-user-config-unavailable">
+      <TriangleAlert aria-hidden="true" />
+      <AlertTitle>
+        <Trans>Your user settings could not be read</Trans>
+      </AlertTitle>
+      <AlertDescription>
+        <Trans>OpenKnowledge keeps retrying and shows them as soon as the file can be read.</Trans>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 interface SettingsDialogBodyProps {
   activeId: string;
   userBinding: ConfigBinding | null;
+  userLoadFailed?: boolean;
   okignoreBinding: OkignoreBinding | null;
   okignoreSynced: boolean;
   markdownlintRuleQuery?: { query: string; nonce: number } | null;
@@ -120,6 +138,7 @@ interface SettingsDialogBodyProps {
 export function SettingsDialogBody({
   activeId,
   userBinding,
+  userLoadFailed = false,
   okignoreBinding,
   okignoreSynced,
   markdownlintRuleQuery,
@@ -133,7 +152,7 @@ export function SettingsDialogBody({
         binding={userBinding}
       />
     ) : (
-      <SectionSkeleton />
+      <UserConfigPending loadFailed={userLoadFailed} />
     );
   }
   if (activeId === 'project-preferences') {
@@ -166,7 +185,11 @@ export function SettingsDialogBody({
     return <HotkeysSection />;
   }
   if (activeId === 'account') {
-    return userBinding ? <AccountSection userBinding={userBinding} /> : <SectionSkeleton />;
+    return userBinding ? (
+      <AccountSection userBinding={userBinding} />
+    ) : (
+      <UserConfigPending loadFailed={userLoadFailed} />
+    );
   }
   if (activeId === 'sync') {
     return (
@@ -202,7 +225,11 @@ export function SettingsDialogBody({
     return <UserPluginsManageSection userBinding={userBinding} />;
   }
   if (activeId === 'plugin:theme') {
-    return userBinding ? <ThemePluginSection userBinding={userBinding} /> : <SectionSkeleton />;
+    return userBinding ? (
+      <ThemePluginSection userBinding={userBinding} />
+    ) : (
+      <UserConfigPending loadFailed={userLoadFailed} />
+    );
   }
   if (activeId === 'plugin:slides') {
     return <SlidesPluginSection />;

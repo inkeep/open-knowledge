@@ -22,6 +22,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { electronDragBandClearance } from '@/components/ui/electron-drag-strip';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDocumentContext } from '@/editor/DocumentContext';
+import type { ConfigContextValue } from '@/lib/config-context';
 import { useConfigContext } from '@/lib/config-provider';
 import { isFileProtocolPage } from '@/lib/file-protocol-page';
 import { useClaudeDesktopIntegration } from '@/lib/handoff/use-claude-desktop-integration';
@@ -34,6 +35,11 @@ import {
   isSpellcheckLanguageSelectionAvailable,
   isTerminalSettingsAvailable,
 } from './settings-host-gates';
+import {
+  isSidebarItemSelectable,
+  type SettingsHost,
+  scopeSettingsGroupsForHost,
+} from './settings-host-scope';
 import { buildSettingsSearchIndex, type SettingsSearchEntry } from './settings-search-index';
 import { AGENT_CONNECTIONS_SECTION_LABEL } from './settings-section-labels';
 import type { SidebarGroup, SidebarItem, SidebarSubsection } from './settings-sidebar-types';
@@ -64,18 +70,99 @@ interface SettingsDialogShellProps {
   open: boolean;
   initialSection?: string | null;
   onOpenChange: (open: boolean) => void;
+  host?: SettingsHost;
 }
 
-export function SettingsDialogShell({
+export function SettingsDialogShell({ host = 'project', ...props }: SettingsDialogShellProps) {
+  return host === 'navigator' ? (
+    <NavigatorSettingsDialogShell {...props} />
+  ) : (
+    <ProjectSettingsDialogShell {...props} />
+  );
+}
+
+type SettingsDialogHostProps = Omit<SettingsDialogShellProps, 'host'>;
+
+function ProjectSettingsDialogShell(props: SettingsDialogHostProps) {
+  const { collabUrl } = useDocumentContext();
+  const config = useConfigContext();
+  const { desktopPresent } = useClaudeDesktopIntegration();
+  return (
+    <SettingsDialogFrame
+      {...props}
+      host="project"
+      hasProject={collabUrl !== null}
+      config={config}
+      desktopPresent={desktopPresent}
+      integrationsMenuAvailable={false}
+    />
+  );
+}
+
+function NavigatorSettingsDialogShell(props: SettingsDialogHostProps) {
+  const config = useConfigContext();
+  const integrationsMenuAvailable = useIntegrationsMenuAvailable();
+  return (
+    <SettingsDialogFrame
+      {...props}
+      host="navigator"
+      hasProject={false}
+      config={config}
+      desktopPresent={false}
+      integrationsMenuAvailable={integrationsMenuAvailable}
+    />
+  );
+}
+
+function useIntegrationsMenuAvailable(): boolean {
+  const [available, setAvailable] = useState(false);
+  useEffect(() => {
+    const menu = window.okDesktop?.menu;
+    if (!menu) return;
+    let cancelled = false;
+    menu
+      .dispatch({ kind: 'query' })
+      .then((snapshot) => {
+        if (!cancelled) setAvailable(snapshot?.canReconfigureMcpWiring === true);
+      })
+      .catch((error: unknown) => {
+        console.warn('[SettingsDialogShell] Could not read the desktop menu state', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return available;
+}
+
+interface SettingsDialogFrameProps extends SettingsDialogHostProps {
+  host: SettingsHost;
+  hasProject: boolean;
+  config: ConfigContextValue;
+  desktopPresent: boolean;
+  integrationsMenuAvailable: boolean;
+}
+
+function SettingsDialogFrame({
   open,
   initialSection = null,
   onOpenChange,
-}: SettingsDialogShellProps) {
+  host,
+  hasProject,
+  config,
+  desktopPresent,
+  integrationsMenuAvailable,
+}: SettingsDialogFrameProps) {
   const { t } = useLingui();
-  const { collabUrl } = useDocumentContext();
-  const { userBinding, userSynced, okignoreBinding, okignoreSynced, projectConfig, merged } =
-    useConfigContext();
-  const { desktopPresent } = useClaudeDesktopIntegration();
+  const {
+    userBinding,
+    userSynced,
+    userLoadFailed,
+    okignoreBinding,
+    okignoreSynced,
+    projectConfig,
+    merged,
+  } = config;
 
   const [activeId, setActiveId] = useState(resolveSectionId(initialSection ?? 'preferences'));
   const [searchQuery, setSearchQuery] = useState('');
@@ -158,8 +245,6 @@ export function SettingsDialogShell({
     };
   }, [fieldFlash]);
 
-  const hasProject = collabUrl !== null;
-
   const isOkDesktopHost = isOkDesktopHostGate();
   const terminalSettingsAvailable = isTerminalSettingsAvailable();
   const spellcheckLanguagesAvailable = isSpellcheckLanguageSelectionAvailable();
@@ -174,11 +259,16 @@ export function SettingsDialogShell({
 
   const isFileProtocolRenderer = isFileProtocolPage();
 
-  const groups: SidebarGroup[] = [
+  const declaredGroups: SidebarGroup[] = [
     {
       id: 'agents',
       label: t`Agents`,
       enabled: true,
+      ...(integrationsMenuAvailable
+        ? {
+            disabledHint: t`To connect AI tools without a project, use File > Set up OpenKnowledge integrations…`,
+          }
+        : {}),
       items: [
         {
           id: 'agent-connections',
@@ -195,6 +285,7 @@ export function SettingsDialogShell({
         {
           id: 'preferences',
           label: t`Preferences`,
+          userScope: true,
           subsections: [
             ...(isOkDesktopHost
               ? [
@@ -218,7 +309,7 @@ export function SettingsDialogShell({
               : []),
           ] satisfies SidebarSubsection[],
         },
-        { id: 'hotkeys', label: t`Hotkeys` },
+        { id: 'hotkeys', label: t`Hotkeys`, userScope: true },
         {
           id: 'account',
           label: t`Git`,
@@ -314,6 +405,7 @@ export function SettingsDialogShell({
       id: 'plugins',
       label: t`Plugins`,
       enabled: true,
+      hideOutsideProject: true,
       items: [
         ...(hasProject ? enabledPluginItems : []),
         ...(themeEnabled ? [{ id: 'plugin:theme', label: t`Themes` }] : []),
@@ -324,12 +416,22 @@ export function SettingsDialogShell({
       id: 'integrations',
       label: t`Integrations`,
       enabled: true,
+      hideOutsideProject: true,
       items:
         desktopPresent && SHOW_INSTALL_SKILL
           ? [{ id: 'claude-desktop', label: t`Claude Desktop` }]
           : [],
     },
   ];
+
+  const groups = scopeSettingsGroupsForHost(declaredGroups, host);
+  const shownId =
+    host === 'navigator' &&
+    !groups.some((group) =>
+      group.items.some((item) => item.id === activeId && isSidebarItemSelectable(group, item)),
+    )
+      ? 'preferences'
+      : activeId;
 
   const searchEntries = buildSettingsSearchIndex({ groups, translate: t });
 
@@ -370,7 +472,7 @@ export function SettingsDialogShell({
         </DialogDescription>
         <SettingsSidebar
           groups={groups}
-          activeId={activeId}
+          activeId={shownId}
           onSelect={setActiveId}
           entries={searchEntries}
           searchQuery={searchQuery}
@@ -384,11 +486,12 @@ export function SettingsDialogShell({
           // biome-ignore lint/a11y/noNoninteractiveTabindex: this scrollable content section must be focusable so keyboard users can scroll long settings pages.
           tabIndex={0}
         >
-          <SettingsDialogErrorBoundary key={activeId}>
+          <SettingsDialogErrorBoundary key={shownId}>
             <Suspense fallback={<SettingsContentSkeleton />}>
               <SettingsDialogBodyLazy
-                activeId={activeId}
+                activeId={shownId}
                 userBinding={userSynced ? userBinding : null}
+                userLoadFailed={userLoadFailed === true}
                 okignoreBinding={okignoreBinding}
                 okignoreSynced={okignoreSynced}
                 markdownlintRuleQuery={ruleQuery}
@@ -607,11 +710,26 @@ function SettingsSidebarGroup({
   if (group.items.length === 0) return null;
   const headerId = `settings-group-${group.id}`;
   const captionId = `${headerId}-caption`;
+  const hintId = `${headerId}-hint`;
+  const describedById = group.disabledHint ? `${captionId} ${hintId}` : captionId;
+  const someItemsDisabled = group.enabled && group.items.some((item) => item.disabled === true);
+  const caption = (
+    <>
+      <p id={captionId} className="px-2 text-xs italic text-muted-foreground sm:mb-1">
+        <Trans>Open a project to edit.</Trans>
+      </p>
+      {group.disabledHint ? (
+        <p id={hintId} className="px-2 text-xs text-muted-foreground sm:mb-1">
+          {group.disabledHint}
+        </p>
+      ) : null}
+    </>
+  );
   return (
     <div className="flex shrink-0 items-center gap-2 sm:mb-4 sm:block">
       <h3
         id={headerId}
-        aria-describedby={group.enabled ? undefined : captionId}
+        aria-describedby={group.enabled ? undefined : describedById}
         className={cn(
           'shrink-0 whitespace-nowrap px-2 text-xs font-semibold uppercase tracking-wide font-mono sm:mb-1',
           group.enabled ? 'text-muted-foreground/80' : 'text-muted-foreground/50',
@@ -619,37 +737,37 @@ function SettingsSidebarGroup({
       >
         {group.label}
       </h3>
-      {!group.enabled ? (
-        <p id={captionId} className="px-2 text-xs italic text-muted-foreground/60 sm:mb-1">
-          <Trans>Open a project to edit.</Trans>
-        </p>
-      ) : null}
+      {!group.enabled ? caption : null}
       <ul aria-labelledby={headerId} className="flex gap-1 sm:block sm:space-y-0.5">
-        {group.items.map((item) => (
-          <li key={item.id}>
-            <button
-              type="button"
-              aria-current={activeId === item.id ? 'page' : undefined}
-              aria-disabled={group.enabled ? undefined : true}
-              aria-describedby={group.enabled ? undefined : captionId}
-              tabIndex={group.enabled ? 0 : -1}
-              disabled={!group.enabled}
-              onClick={() => group.enabled && onSelect(item.id)}
-              data-testid={`settings-sidebar-item-${item.id}`}
-              className={cn(
-                'w-auto whitespace-nowrap rounded px-2 py-1.5 text-left text-sm transition-colors sm:w-full',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                'disabled:cursor-not-allowed disabled:opacity-50',
-                activeId === item.id && group.enabled
-                  ? 'bg-accent text-accent-foreground'
-                  : 'hover:bg-accent/50',
-              )}
-            >
-              {item.label}
-            </button>
-          </li>
-        ))}
+        {group.items.map((item) => {
+          const selectable = isSidebarItemSelectable(group, item);
+          return (
+            <li key={item.id}>
+              <button
+                type="button"
+                aria-current={activeId === item.id ? 'page' : undefined}
+                aria-disabled={selectable ? undefined : true}
+                aria-describedby={selectable ? undefined : describedById}
+                tabIndex={selectable ? 0 : -1}
+                disabled={!selectable}
+                onClick={() => selectable && onSelect(item.id)}
+                data-testid={`settings-sidebar-item-${item.id}`}
+                className={cn(
+                  'w-auto whitespace-nowrap rounded px-2 py-1.5 text-left text-sm transition-colors sm:w-full',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'disabled:cursor-not-allowed disabled:opacity-50',
+                  activeId === item.id && selectable
+                    ? 'bg-accent text-accent-foreground'
+                    : 'hover:bg-accent/50',
+                )}
+              >
+                {item.label}
+              </button>
+            </li>
+          );
+        })}
       </ul>
+      {someItemsDisabled ? caption : null}
     </div>
   );
 }

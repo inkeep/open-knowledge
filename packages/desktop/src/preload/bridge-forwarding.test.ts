@@ -48,6 +48,9 @@ type BridgeProbe = {
       terminalSnapshot: { tabs: []; activeOrdinal: null };
     }): Promise<{ ok: true } | { ok: false; reason: string }>;
   };
+  userConfig: {
+    onChanged(cb: (snapshot: { text: string }) => void): () => void;
+  };
   editor: {
     notifyViewMenuStateChanged(state: {
       terminalVisible?: boolean;
@@ -290,5 +293,35 @@ describe('preload terminal dock-state marshalling', () => {
         terminalSnapshot: { tabs: [], activeOrdinal: null },
       }),
     ).resolves.toEqual({ ok: false, reason: 'ipc-unavailable' });
+  });
+});
+
+describe('preload userConfig subscription', () => {
+  function userConfigRequests(): unknown[] {
+    return invokeMock.mock.calls
+      .filter((c) => c[0] === 'ok:user-config:dispatch')
+      .map((c) => c[1] as unknown);
+  }
+
+  it('subscribes on listen and unsubscribes when the listener is disposed', async () => {
+    const bridge = await loadBridge();
+
+    const dispose = bridge.userConfig.onChanged(() => {});
+    expect(userConfigRequests()).toEqual([{ kind: 'subscribe' }]);
+
+    dispose();
+    expect(userConfigRequests()).toEqual([{ kind: 'subscribe' }, { kind: 'unsubscribe' }]);
+  });
+
+  it('does not hand the subscribe reply to the listener as a change', async () => {
+    invokeMock.mockResolvedValueOnce({ text: 'appearance:\n  theme: dark\n' } as never);
+    const bridge = await loadBridge();
+    const cb = vi.fn();
+
+    bridge.userConfig.onChanged(cb);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(cb).not.toHaveBeenCalled();
   });
 });

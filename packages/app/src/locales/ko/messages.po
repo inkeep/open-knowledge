@@ -10657,6 +10657,10 @@ msgstr "OpenKnowledge는 여기 리포지토리 루트에 설정되어 있으므
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge가 이 GitHub 계정을 사용 중입니다."
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "OpenKnowledge keeps retrying and shows them as soon as the file can be read."
+msgstr "OpenKnowledge가 계속 다시 시도하며, 파일을 읽을 수 있게 되면 바로 표시합니다."
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge left this file alone because it could not parse it safely. Fix the file by hand, then try again."
 msgstr "OpenKnowledge가 이 파일을 안전하게 파싱할 수 없어 파일을 변경하지 않았습니다. 파일을 직접 수정한 뒤 다시 시도하세요."
@@ -15741,6 +15745,10 @@ msgstr "제목"
 msgid "Title"
 msgstr "제목"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "To connect AI tools without a project, use File > Set up OpenKnowledge integrations…"
+msgstr "프로젝트 없이 AI 도구를 연결하려면 파일 > OpenKnowledge 통합 설정…을 사용하세요."
+
 #: src/editor/slash-command/items.tsx
 msgid "To do"
 msgstr "할 일"
@@ -17116,6 +17124,10 @@ msgstr "검색어와 일치하는 페이지의 전체 텍스트가 임베딩 제
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your share link is ready below."
 msgstr "공유 링크가 아래에 준비되어 있습니다."
+
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Your user settings could not be read"
+msgstr "사용자 설정을 읽을 수 없습니다"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Zip file"

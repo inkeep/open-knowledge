@@ -6,7 +6,9 @@ import { type ComponentType, lazy, Suspense, useEffect, useState } from 'react';
 import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useLanguageBridge } from '@/hooks/use-language-bridge';
 import { useThemeBridge } from '@/hooks/use-theme-bridge';
+import { ConfigContext } from '@/lib/config-context';
 import type {
   OkDesktopBridge,
   OkLocalOpAuthStatusResponse,
@@ -32,6 +34,12 @@ import {
   readCachedLanguagePreference,
   useApplyConfigLanguage,
 } from '@/lib/use-apply-config-language';
+import { narrowThemePreference, useApplyConfigTheme } from '@/lib/use-apply-config-theme';
+import {
+  navigatorConfigContextValue,
+  useNavigatorUserConfig,
+} from '@/lib/use-navigator-user-config';
+import { useSettingsRoute } from '@/lib/use-settings-route';
 import { AuthModal } from './AuthModal';
 import { BetaBadge } from './BetaBadge';
 import { CloneDialog } from './CloneDialog';
@@ -45,6 +53,7 @@ import { iconForPack } from './PackCardGrid';
 import { basenameOf } from './project-switcher-recents';
 import { ReportBugDialog } from './ReportBugDialog';
 import { RecentItemContextMenu } from './recent-remove-controls';
+import { SettingsDialogShell } from './settings/SettingsDialogShell';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 
@@ -62,6 +71,20 @@ export const runWithErrorStatePure = (
 ) => runWithErrorStatePureBase(fn, fallback, setError, 'NavigatorApp');
 
 type RecentProject = RecentProjectEntry;
+
+function NavigatorSettings() {
+  const route = useSettingsRoute();
+  return (
+    <SettingsDialogShell
+      host="navigator"
+      open={route.open}
+      initialSection={route.section}
+      onOpenChange={(next) => {
+        if (!next) route.close();
+      }}
+    />
+  );
+}
 
 export function removeRecentFromList(
   recents: readonly RecentProjectEntry[],
@@ -92,14 +115,26 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   const [authInitialStep, setAuthInitialStep] = useState<'auth' | 'identity'>('auth');
   const { t } = useLingui();
 
+  const userConfig = useNavigatorUserConfig(bridge);
+  const configuredTheme = userConfig.synced
+    ? narrowThemePreference(userConfig.config?.appearance?.theme)
+    : undefined;
+  const configuredLanguage = userConfig.synced
+    ? (narrowLanguagePreference(userConfig.config?.appearance?.language) ?? 'system')
+    : undefined;
+
   useThemeColorTransitions(true);
-  useThemeBridge(bridge, bridge.config.themePreference ?? 'system');
+  useApplyConfigTheme(configuredTheme);
+  useThemeBridge(bridge, configuredTheme ?? bridge.config.themePreference ?? 'system');
 
   useApplyConfigLanguage({
     preference:
-      narrowLanguagePreference(bridge.config.languagePreference) ?? readCachedLanguagePreference(),
+      configuredLanguage ??
+      narrowLanguagePreference(bridge.config.languagePreference) ??
+      readCachedLanguagePreference(),
     userConfigSynced: true,
   });
+  useLanguageBridge(bridge, configuredLanguage, userConfig.synced);
 
   useEffect(() => {
     let cancelled = false;
@@ -344,6 +379,10 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
           ) : null}
         </div>
       </div>
+
+      <ConfigContext value={navigatorConfigContextValue(userConfig)}>
+        <NavigatorSettings />
+      </ConfigContext>
 
       {}
       <McpConsentDialog />

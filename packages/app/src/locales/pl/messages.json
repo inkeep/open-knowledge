@@ -1317,6 +1317,9 @@
     ],
     "BQKHuL": ["Uruchom ponownie terminal"],
     "BQu9Pg": ["Symlink"],
+    "BRtKwG": [
+      "Aby połączyć narzędzia AI bez projektu, użyj Plik > Konfiguruj integracje OpenKnowledge…"
+    ],
     "BUyQnq": ["Nie udało się zrestartować serwera. Spróbuj `ok start` w tym folderze."],
     "BVkqD9": [
       "Konserwacja indeksu jest wstrzymana, ponieważ inny atrybut Git kontroluje index.md. Zaktualizuj .gitattributes, aby ścieżki index.md objęte zakresem używały merge=union, a następnie spróbuj ponownie."
@@ -2774,6 +2777,7 @@
     "PWh9Ii": ["Zastosuj zmiany"],
     "PWqtgd": ["Ładowanie czatu"],
     "PXaT32": ["Serwer zwrócił niepełną odpowiedź dla celów umiejętności."],
+    "PXg8xK": ["Nie udało się odczytać Twoich ustawień użytkownika"],
     "PYmp-0": ["Importuj jako szablon"],
     "PZKdTd": ["Raport bez tytułu"],
     "PZn2LP": ["Zachowaj źródło"],
@@ -6039,6 +6043,7 @@
     "rENNI6": ["Nieprawidłowy adres URL udostępniania."],
     "rFL-yb": ["Edytuj kopię"],
     "rFTdVq": ["Pokaż w Eksploratorze"],
+    "rFbQzX": ["OpenKnowledge ponawia próby i wyświetli je, gdy tylko plik będzie można odczytać."],
     "rFmBG3": ["Motyw kolorystyczny"],
     "rFskYz": [
       "Dotyczy wszystkich projektów na tym komputerze, w czatach Claude Code i Codex w panelu Agentów uruchomionych po włączeniu tej opcji. Agent może otwierać strony, klikać, pisać i robić zrzuty ekranu w własnym oknie Google Chrome z świeżym profilem. Wymaga zainstalowanych Google Chrome i Node.js. Każde działanie w przeglądarce pyta o Twoją zgodę, bez opcji „zawsze zezwalaj”, chyba że tryb agenta lub ustawienia uprawnień pomijają pytania."

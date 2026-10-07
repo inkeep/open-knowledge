@@ -31,7 +31,7 @@ export type SettingsSurfaceOptions =
 
 export interface OpenSettingsSurfaceDeps<TWindow> extends SettingsSurfaceDeps<TWindow> {
   showEditor: (win: TWindow, section?: SettingsSection) => void;
-  showNavigator: (win: TWindow | null) => boolean;
+  showNavigatorSettings: (win: TWindow | null) => void;
   openNavigator: () => void;
   onEditorRequired: (win: TWindow | null) => void;
 }
@@ -79,12 +79,39 @@ export function openSettingsSurface<TWindow>(
   } else if (options.origin === 'deep-link') {
     deps.openNavigator();
   } else if (target.kind === 'navigator') {
-    deps.showNavigator(target.window);
+    deps.showNavigatorSettings(target.window);
   } else if (options.editorOnly) {
     deps.openNavigator();
     deps.onEditorRequired(explicit ?? deps.getFocusedWindow());
-  } else if (deps.showNavigator(null)) {
-    deps.openNavigator();
+  } else {
+    deps.showNavigatorSettings(null);
+  }
+}
+
+export interface NavigatorSettingsWindow {
+  isMinimized(): boolean;
+  restore(): void;
+  focus(): void;
+  webContents: {
+    isLoading(): boolean;
+    once(event: 'did-finish-load', listener: () => void): void;
+    executeJavaScript(code: string): Promise<unknown>;
+  };
+}
+
+export function deliverNavigatorSettings(
+  win: NavigatorSettingsWindow,
+  opts: { onError: (err: unknown) => void; awaitLoad?: boolean },
+): void {
+  if (win.isMinimized()) win.restore();
+  win.focus();
+  const route = () => {
+    win.webContents.executeJavaScript(settingsHashScript()).catch(opts.onError);
+  };
+  if (opts.awaitLoad === true || win.webContents.isLoading()) {
+    win.webContents.once('did-finish-load', route);
+  } else {
+    route();
   }
 }
 

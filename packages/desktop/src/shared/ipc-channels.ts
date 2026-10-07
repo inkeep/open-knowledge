@@ -2,6 +2,7 @@ import type {
   ApplyReport,
   BranchInfoResponse,
   CheckoutResponse,
+  ConfigPatch,
   CreateNewBannerKind,
   EditorId,
   HandoffFailureReason,
@@ -66,6 +67,8 @@ import type {
   OkTerminalDockStateWriteResult,
   OkThemeSource,
   OkUpdateChannel,
+  OkUserConfigPatchResult,
+  OkUserConfigSnapshot,
   OkSeedApplyOptions as SeedApplyOptions,
   OkSeedPlanOptions as SeedPlanOptions,
   SlidevOpenFailureReason,
@@ -366,6 +369,13 @@ interface DialogOpenFolderOpts {
   readonly defaultPath?: string;
 }
 
+export type UserConfigDispatchRequest =
+  | { kind: 'set-language-preference'; preference: LanguagePreference }
+  | { kind: 'read' }
+  | { kind: 'subscribe' }
+  | { kind: 'unsubscribe' }
+  | { kind: 'patch'; patch: ConfigPatch };
+
 export const TYPED_IPC_MIGRATION_CHANNEL_CAP = 95;
 
 export interface RequestChannels {
@@ -559,9 +569,9 @@ export interface RequestChannels {
   };
   'ok:state:reset-incompatible': { args: []; result: undefined };
   'ok:theme:set-source': { args: [params: { source: OkThemeSource }]; result: { ok: true } };
-  'ok:locale:set-preference': {
-    args: [params: { preference: LanguagePreference }];
-    result: { ok: true };
+  'ok:user-config:dispatch': {
+    args: [request: UserConfigDispatchRequest];
+    result: { ok: true } | OkUserConfigSnapshot | OkUserConfigPatchResult;
   };
   'ok:theme:applied': {
     args: [opts?: { reducedTransparency?: boolean; chrome?: OkChromeColors }];

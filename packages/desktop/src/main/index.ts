@@ -443,6 +443,7 @@ import { attachServerExitObserver } from './server-exit-observer.ts';
 import { createServerExitRecorder, type ServerExitRecorder } from './server-exit-record.ts';
 import { breakServerLockHeldBy } from './server-lock-break.ts';
 import {
+  deliverNavigatorSettings,
   openSettingsSurface,
   resolveSettingsWindowKind,
   type SettingsSurfaceOptions,
@@ -556,6 +557,7 @@ import {
   type ShareDeepLinkBranchSwitchPayload,
   type ShareNavigatorPayload,
 } from './url-scheme.ts';
+import { createUserConfigDispatch, createUserConfigStore } from './user-config-ipc.ts';
 import { migrateLegacyUserDataDir } from './userdata-migration.ts';
 import { buildUtilityForkEnv } from './utility-fork-env.ts';
 import { computeFirstLaunchAfterUpgrade } from './version-drift.ts';
@@ -2499,12 +2501,11 @@ async function runApplicationMenuRefresh(): Promise<void> {
     openExternalUrl: (url: string) => {
       void shell.openExternal(url);
     },
-    reconfigureMcpWiring:
-      app.isPackaged && supportedPackagedInstall()
-        ? () => {
-            reconfigureMcpWiringNow(pickLoadedRendererForMcpDialog());
-          }
-        : undefined,
+    reconfigureMcpWiring: canReconfigureMcpWiring()
+      ? () => {
+          reconfigureMcpWiringNow(pickLoadedRendererForMcpDialog());
+        }
+      : undefined,
     openInstallSkillDialog: () => {
       const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
       if (!target) return;
@@ -2571,6 +2572,10 @@ async function runApplicationMenuRefresh(): Promise<void> {
 
 function supportedPackagedInstall(): boolean {
   return isSupportedInstallShape(process.platform, app.getPath('exe'), process.env);
+}
+
+function canReconfigureMcpWiring(): boolean {
+  return app.isPackaged && supportedPackagedInstall();
 }
 
 function desktopSelfUninstallAvailable(): boolean {
@@ -3602,29 +3607,16 @@ function openSettings(
           getLogger('settings').warn({ err }, 'failed to open editor settings');
         });
       },
-      showNavigator: (win) => {
-        if (win?.isMinimized()) win.restore();
-        win?.focus();
-        if (!(app.isPackaged && supportedPackagedInstall())) {
-          getLogger('settings').warn(
-            { packaged: app.isPackaged, supported: supportedPackagedInstall() },
-            'navigator settings unavailable on this install',
-          );
-          const options: MessageBoxOptions = {
-            type: 'info',
-            buttons: ['OK'],
-            defaultId: 0,
-            cancelId: 0,
-            title: 'Settings unavailable',
-            message:
-              'Settings from the navigator is unavailable in this build. Open Settings from a project window instead.',
-          };
-          void (win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options));
-          return false;
-        }
-        return reconfigureMcpWiringNow(
-          win && !win.webContents.isLoading() ? win.webContents : undefined,
-        );
+      showNavigatorSettings: (win) => {
+        const created = win === null && navigatorWindow === null;
+        if (win === null) openNavigator();
+        const target = win ?? (navigatorWindow as unknown as BrowserWindow | null);
+        if (!target || target.isDestroyed()) return;
+        deliverNavigatorSettings(target, {
+          awaitLoad: created,
+          onError: (err) =>
+            getLogger('settings').warn({ err }, 'failed to open navigator settings'),
+        });
       },
       openNavigator,
       onEditorRequired: (win) => {
@@ -3647,7 +3639,7 @@ function openSettings(
 }
 
 function reconfigureMcpWiringNow(target: McpWiringDispatchTarget | undefined): boolean {
-  if (!(app.isPackaged && supportedPackagedInstall())) return false;
+  if (!canReconfigureMcpWiring()) return false;
   mcpWiringHandle?.destroy();
   mcpWiringHandle = null;
   try {
@@ -4501,13 +4493,16 @@ function registerIpcHandlers() {
     return result;
   });
 
-  handle('ok:locale:set-preference', async (_event, { preference }) => {
-    pushedLanguagePreference = preference;
-    menuTranslator = null;
-    getLogger('menu-locale').info({ preference }, 'language preference pushed; rebuilding menu');
-    refreshApplicationMenu();
-    return { ok: true };
+  const userConfigDispatch = createUserConfigDispatch({
+    store: createUserConfigStore({ homedir: osHomedir() }),
+    setLanguagePreference: (preference) => {
+      pushedLanguagePreference = preference;
+      menuTranslator = null;
+      getLogger('menu-locale').info({ preference }, 'language preference pushed; rebuilding menu');
+      refreshApplicationMenu();
+    },
   });
+  handle('ok:user-config:dispatch', (event, request) => userConfigDispatch(event.sender, request));
 
   handle('ok:theme:set-source', async (event, { source }) => {
     return applyThemeSource(
@@ -4551,7 +4546,7 @@ function registerIpcHandlers() {
           spellCheckEnabled: appState.spellCheckEnabled,
           showDevToolsMenu: !app.isPackaged || DESKTOP_VARIANT.name !== 'stable',
           canCheckForUpdates: autoUpdaterHandle != null,
-          canReconfigureMcpWiring: app.isPackaged && supportedPackagedInstall(),
+          canReconfigureMcpWiring: canReconfigureMcpWiring(),
           activeTarget: currentActiveTarget(),
           viewMenuState: (() => {
             const win = BrowserWindow.fromWebContents(event.sender);

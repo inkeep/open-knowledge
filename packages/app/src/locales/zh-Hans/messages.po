@@ -10657,6 +10657,10 @@ msgstr "这里的 OpenKnowledge 设置在仓库根目录，因此入门包会放
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge 正在使用这个 GitHub 账户。"
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "OpenKnowledge keeps retrying and shows them as soon as the file can be read."
+msgstr "OpenKnowledge 会持续重试，并在文件可以读取后立即显示这些设置。"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge left this file alone because it could not parse it safely. Fix the file by hand, then try again."
 msgstr "OpenKnowledge 未修改此文件，因为无法安全地解析它。请手动修复该文件，然后重试。"
@@ -15741,6 +15745,10 @@ msgstr "标题"
 msgid "Title"
 msgstr "标题"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "To connect AI tools without a project, use File > Set up OpenKnowledge integrations…"
+msgstr "若要在没有项目的情况下连接 AI 工具，请使用“文件 > 设置 OpenKnowledge 集成…”。"
+
 #: src/editor/slash-command/items.tsx
 msgid "To do"
 msgstr "待办"
@@ -17116,6 +17124,10 @@ msgstr "你的搜索查询和匹配页面的全文会发送到你的嵌入服务
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your share link is ready below."
 msgstr "你的共享链接已在下方生成。"
+
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Your user settings could not be read"
+msgstr "无法读取你的用户设置"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Zip file"

@@ -1266,6 +1266,9 @@
     ],
     "BQKHuL": ["Reiniciar o terminal"],
     "BQu9Pg": ["Link simbólico"],
+    "BRtKwG": [
+      "Para conectar ferramentas de IA sem um projeto, use Arquivo > Configurar as integrações do OpenKnowledge…"
+    ],
     "BUyQnq": ["Não deu para reiniciar o servidor. Tente `ok start` nesta pasta."],
     "BVkqD9": [
       "A manutenção do índice está pausada porque outro atributo Git controla index.md. Atualize .gitattributes para que os caminhos index.md com escopo usem merge=union e tente novamente."
@@ -2687,6 +2690,7 @@
     "PWh9Ii": ["Aplicar alterações"],
     "PWqtgd": ["Carregando o chat"],
     "PXaT32": ["O servidor retornou uma resposta de destinos de habilidades incompleta."],
+    "PXg8xK": ["Não foi possível ler suas configurações de usuário"],
     "PYmp-0": ["Importar como modelo"],
     "PZKdTd": ["Relatório sem título"],
     "PZn2LP": ["Manter a fonte"],
@@ -5782,6 +5786,9 @@
     "rENNI6": ["URL de compartilhamento inválida."],
     "rFL-yb": ["Editar uma cópia"],
     "rFTdVq": ["Mostrar no Explorador"],
+    "rFbQzX": [
+      "O OpenKnowledge continua tentando e vai mostrá-las assim que o arquivo puder ser lido."
+    ],
     "rFmBG3": ["Tema de cores"],
     "rFskYz": [
       "Vale para todos os projetos desta máquina, nos chats do Claude Code e do Codex no painel de agentes iniciados depois que você ativar. O agente pode abrir páginas, clicar, digitar e fazer capturas de tela na própria janela do Google Chrome, com um perfil novo. Requer o Google Chrome e o Node.js instalados. Cada ação do navegador pede sua aprovação, sem opção de permitir sempre, a menos que o próprio modo do agente ou as configurações de permissão dele pulem as aprovações."

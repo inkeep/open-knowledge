@@ -1311,6 +1311,9 @@
     ],
     "BQKHuL": ["Redémarrer le terminal"],
     "BQu9Pg": ["Lien symbolique"],
+    "BRtKwG": [
+      "Pour connecter des outils IA sans projet, utilisez Fichier > Configurer les intégrations OpenKnowledge…"
+    ],
     "BUyQnq": ["Impossible de redémarrer le serveur. Essayez `ok start` dans ce dossier."],
     "BVkqD9": [
       "La maintenance de l'index est suspendue car un autre attribut Git contrôle index.md. Mettez à jour .gitattributes pour que les chemins index.md définis utilisent merge=union, puis réessayez."
@@ -2766,6 +2769,7 @@
     "PWh9Ii": ["Appliquer les modifications"],
     "PWqtgd": ["Chargement du chat"],
     "PXaT32": ["Le serveur a renvoyé une réponse de cibles de compétences incomplète."],
+    "PXg8xK": ["Impossible de lire vos paramètres utilisateur"],
     "PYmp-0": ["Importer comme modèle"],
     "PZKdTd": ["Rapport sans titre"],
     "PZn2LP": ["Conserver la source"],
@@ -5966,6 +5970,9 @@
     "rENNI6": ["URL de partage non valide."],
     "rFL-yb": ["Modifier une copie"],
     "rFTdVq": ["Afficher dans l'Explorateur"],
+    "rFbQzX": [
+      "OpenKnowledge continue de réessayer et les affichera dès que le fichier pourra être lu."
+    ],
     "rFmBG3": ["Thème de couleurs"],
     "rFskYz": [
       "S'applique à tous les projets de cette machine, dans les chats Claude Code et Codex du panneau Agents démarrés après l'activation. L'agent peut ouvrir des pages, cliquer, saisir du texte et prendre des captures d'écran dans sa propre fenêtre Google Chrome avec un profil vierge. Nécessite que Google Chrome et Node.js soient installés. Chaque action du navigateur demande votre approbation, sans option pour toujours l'autoriser, sauf si le mode de l'agent lui-même ou ses paramètres d'autorisation ignorent les approbations."

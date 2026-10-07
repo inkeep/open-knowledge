@@ -1,6 +1,8 @@
 import type { ApplyReport } from './agent-registry/apply.ts';
 import type { HandoffHostPlatform } from './agent-registry/schema.ts';
 import type { HostSnapshot } from './agent-registry/snapshot.ts';
+import type { ConfigValidationError } from './config/errors.ts';
+import type { ConfigPatch } from './config/schema.ts';
 import type { CreateNewBannerKind } from './constants/create-new-banner.ts';
 import type { EditorId } from './constants/editors.ts';
 import type { OkFolderState } from './constants/folder-state.ts';
@@ -324,6 +326,20 @@ export type ShareFolderValidationResult =
 export type OkUpdateChannel = 'latest' | 'beta';
 
 export type OkThemeSource = 'system' | 'light' | 'dark';
+
+export interface OkUserConfigSnapshot {
+  readonly text: string;
+}
+
+export type OkUserConfigPatchResult =
+  | { readonly ok: true; readonly text: string }
+  | { readonly ok: false; readonly error: ConfigValidationError };
+
+export interface OkUserConfigBridge {
+  read(): Promise<OkUserConfigSnapshot>;
+  patch(patch: ConfigPatch): Promise<OkUserConfigPatchResult>;
+  onChanged(cb: (snapshot: OkUserConfigSnapshot) => void): OkUnsubscribe;
+}
 
 export interface OkChromeColors {
   bg: string;
@@ -1098,6 +1114,8 @@ export interface OkDesktopBridge {
   setThemeSource(source: OkThemeSource): Promise<{ ok: true }>;
 
   setLanguagePreference(preference: LanguagePreference): Promise<{ ok: true }>;
+
+  userConfig?: OkUserConfigBridge;
 
   signalThemeApplied(opts?: { reducedTransparency?: boolean; chrome?: OkChromeColors }): void;
 

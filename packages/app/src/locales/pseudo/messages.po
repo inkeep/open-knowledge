@@ -10653,6 +10653,10 @@ msgstr ""
 msgid "OpenKnowledge is using this GitHub account."
 msgstr ""
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "OpenKnowledge keeps retrying and shows them as soon as the file can be read."
+msgstr ""
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge left this file alone because it could not parse it safely. Fix the file by hand, then try again."
 msgstr ""
@@ -15737,6 +15741,10 @@ msgstr ""
 msgid "Title"
 msgstr ""
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "To connect AI tools without a project, use File > Set up OpenKnowledge integrations…"
+msgstr ""
+
 #: src/editor/slash-command/items.tsx
 msgid "To do"
 msgstr ""
@@ -17111,6 +17119,10 @@ msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your share link is ready below."
+msgstr ""
+
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Your user settings could not be read"
 msgstr ""
 
 #: src/components/ImportSkillForm.tsx

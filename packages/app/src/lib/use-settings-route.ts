@@ -105,10 +105,9 @@ function readCurrentHash(): string {
 }
 
 export function useSettingsRoute(): SettingsRouteState {
-  const [open, setOpen] = useState<boolean>(() => isSettingsHashOpen(readCurrentHash()));
-  const [section, setSection] = useState<string | null>(() =>
-    settingsHashSection(readCurrentHash()),
-  );
+  const [mountHash] = useState(readCurrentHash);
+  const [open, setOpen] = useState<boolean>(() => isSettingsHashOpen(mountHash));
+  const [section, setSection] = useState<string | null>(() => settingsHashSection(mountHash));
 
   useEffect(() => {
     const onHashChange = () => {
@@ -119,8 +118,9 @@ export function useSettingsRoute(): SettingsRouteState {
       });
     };
     window.addEventListener('hashchange', onHashChange);
+    if (readCurrentHash() !== mountHash) onHashChange();
     return () => window.removeEventListener('hashchange', onHashChange);
-  }, []);
+  }, [mountHash]);
 
   const close = () => {
     if (typeof window === 'undefined') return;

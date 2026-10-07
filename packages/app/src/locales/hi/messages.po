@@ -10653,6 +10653,10 @@ msgstr "यहाँ OpenKnowledge रिपॉज़िटरी रूट प�
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge यही GitHub खाता उपयोग कर रहा है।"
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "OpenKnowledge keeps retrying and shows them as soon as the file can be read."
+msgstr "OpenKnowledge फिर से कोशिश करता रहता है और फ़ाइल पढ़ी जा सकते ही उन्हें दिखा देगा।"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge left this file alone because it could not parse it safely. Fix the file by hand, then try again."
 msgstr "OpenKnowledge ने इस फ़ाइल को नहीं बदला क्योंकि वह इसे सुरक्षित रूप से पार्स नहीं कर सका। फ़ाइल को हाथ से ठीक करें, फिर दोबारा कोशिश करें।"
@@ -15737,6 +15741,10 @@ msgstr "शीर्षक"
 msgid "Title"
 msgstr "शीर्षक"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "To connect AI tools without a project, use File > Set up OpenKnowledge integrations…"
+msgstr "किसी प्रोजेक्ट के बिना AI टूल कनेक्ट करने के लिए, फ़ाइल > OpenKnowledge एकीकरण सेट अप करें… का उपयोग करें।"
+
 #: src/editor/slash-command/items.tsx
 msgid "To do"
 msgstr "करना है"
@@ -17112,6 +17120,10 @@ msgstr "आपकी खोज क्वेरी और मेल खाते 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your share link is ready below."
 msgstr "आपका साझा लिंक नीचे तैयार है।"
+
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Your user settings could not be read"
+msgstr "आपकी उपयोगकर्ता सेटिंग पढ़ी नहीं जा सकीं"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Zip file"

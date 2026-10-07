@@ -1095,6 +1095,9 @@
     ],
     "BQKHuL": ["Mulai ulang terminal"],
     "BQu9Pg": ["Symlink"],
+    "BRtKwG": [
+      "Untuk menghubungkan alat AI tanpa proyek, gunakan Berkas > Siapkan integrasi OpenKnowledge…"
+    ],
     "BUyQnq": ["Server tidak bisa dimulai ulang. Coba `ok start` di folder ini."],
     "BVkqD9": [
       "Pemeliharaan indeks dihentikan sementara karena atribut Git lainnya mengontrol index.md. Perbarui .gitattributes sehingga jalur index.md yang dicakup menggunakan merge=union, lalu coba lagi."
@@ -2379,6 +2382,7 @@
     "PWh9Ii": ["Terapkan perubahan"],
     "PWqtgd": ["Memuat obrolan"],
     "PXaT32": ["Server mengembalikan respons target skill yang tidak lengkap."],
+    "PXg8xK": ["Pengaturan pengguna Anda tidak dapat dibaca"],
     "PYmp-0": ["Impor sebagai templat"],
     "PZKdTd": ["Laporan tanpa judul"],
     "PZn2LP": ["Simpan sumbernya"],
@@ -5108,6 +5112,9 @@
     "rENNI6": ["URL berbagi tidak valid."],
     "rFL-yb": ["Sunting salinan"],
     "rFTdVq": ["Tampilkan di Explorer"],
+    "rFbQzX": [
+      "OpenKnowledge terus mencoba lagi dan akan menampilkannya segera setelah berkas dapat dibaca."
+    ],
     "rFmBG3": ["Tema warna"],
     "rFskYz": [
       "Berlaku untuk semua proyek di mesin ini, pada obrolan Claude Code dan Codex di panel Agen yang dimulai setelah Anda mengaktifkannya. Agen dapat membuka halaman, mengeklik, mengetik, dan mengambil tangkapan layar di jendela Google Chrome miliknya dengan profil baru. Memerlukan Google Chrome dan Node.js yang terpasang. Setiap tindakan browser meminta persetujuan Anda, tanpa opsi untuk selalu mengizinkannya, kecuali mode agen itu sendiri atau pengaturan izinnya melewati persetujuan."

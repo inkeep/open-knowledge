@@ -24,7 +24,11 @@ import {
   lintDocument,
   REMOVED_KEYS,
 } from '@inkeep/open-knowledge-core';
-import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
+import {
+  readConfigSafely,
+  resolveConfigPath,
+  writeConfigPatch,
+} from '@inkeep/open-knowledge-core/server';
 import { parseCheckpoint } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -1883,6 +1887,38 @@ describe('createServer() — config file watcher (US-007)', () => {
     writeFileSync(configPath, newContent, 'utf-8');
 
     const fired = await waitFor(() => ytext.toString() === newContent);
+    expect(fired).toBe(true);
+
+    await srv.destroy();
+  });
+
+  test('a key-level patch to the user config from outside the server reaches __user__/config.yml', async () => {
+    const contentDir = mkdtempSync(resolve(testProjectDir, 'content-'));
+    const srv = createServer({
+      contentDir,
+      projectDir: testProjectDir,
+      quiet: true,
+      configHomedirOverride: testHomedir,
+    });
+    await srv.ready;
+
+    const userDoc = srv.hocuspocus.documents.get('__user__/config.yml');
+    expect(userDoc).toBeDefined();
+    if (!userDoc) {
+      await srv.destroy();
+      return;
+    }
+    const ytext = userDoc.getText('source');
+
+    const written = await writeConfigPatch({
+      cwd: testHomedir,
+      scope: 'user',
+      patch: { editor: { wordWrap: false } },
+      homedirOverride: testHomedir,
+    });
+    expect(written.ok).toBe(true);
+
+    const fired = await waitFor(() => ytext.toString().includes('wordWrap: false'));
     expect(fired).toBe(true);
 
     await srv.destroy();

@@ -7,6 +7,7 @@ import { createContext, use } from 'react';
 export interface ConfigContextValue {
   userBinding: ConfigBinding | null;
   userSynced: boolean;
+  userLoadFailed?: boolean;
   projectBinding: ConfigBinding | null;
   projectLocalBinding: ConfigBinding | null;
   okignoreBinding: OkignoreBinding | null;

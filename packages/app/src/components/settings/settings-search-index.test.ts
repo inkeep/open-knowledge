@@ -50,6 +50,25 @@ function groupsFixture(opts: {
 }
 
 describe('buildSettingsSearchIndex', () => {
+  test('skips a disabled item inside an enabled group', () => {
+    const entries = buildSettingsSearchIndex({
+      groups: [
+        {
+          id: 'user',
+          label: 'User',
+          enabled: true,
+          items: [
+            { id: 'preferences', label: 'Preferences' },
+            { id: 'account', label: 'Git', disabled: true },
+          ],
+        },
+      ],
+      translate,
+    });
+    expect(entries.some((e) => e.sectionId === 'preferences')).toBe(true);
+    expect(entries.some((e) => e.sectionId === 'account')).toBe(false);
+  });
+
   test('emits a section entry per item of an ENABLED group only', () => {
     const enabled = buildSettingsSearchIndex({
       groups: groupsFixture({ projectEnabled: true }),

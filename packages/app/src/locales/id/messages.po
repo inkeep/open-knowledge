@@ -10653,6 +10653,10 @@ msgstr "Di sini OpenKnowledge disiapkan di root repositori, jadi paket ditempatk
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge memakai akun GitHub ini."
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "OpenKnowledge keeps retrying and shows them as soon as the file can be read."
+msgstr "OpenKnowledge terus mencoba lagi dan akan menampilkannya segera setelah berkas dapat dibaca."
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge left this file alone because it could not parse it safely. Fix the file by hand, then try again."
 msgstr "OpenKnowledge tidak mengubah file ini karena tidak dapat mengurainya dengan aman. Perbaiki file secara manual, lalu coba lagi."
@@ -15737,6 +15741,10 @@ msgstr "judul"
 msgid "Title"
 msgstr "Judul"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "To connect AI tools without a project, use File > Set up OpenKnowledge integrations…"
+msgstr "Untuk menghubungkan alat AI tanpa proyek, gunakan Berkas > Siapkan integrasi OpenKnowledge…"
+
 #: src/editor/slash-command/items.tsx
 msgid "To do"
 msgstr "Akan dikerjakan"
@@ -17112,6 +17120,10 @@ msgstr "Kueri pencarian Anda dan teks lengkap halaman yang cocok dikirim ke peny
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your share link is ready below."
 msgstr "Tautan berbagi Anda sudah siap di bawah."
+
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Your user settings could not be read"
+msgstr "Pengaturan pengguna Anda tidak dapat dibaca"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Zip file"
