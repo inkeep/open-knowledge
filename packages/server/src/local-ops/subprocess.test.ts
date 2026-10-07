@@ -1,4 +1,5 @@
 import { delimiter as PATH_DELIMITER } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { buildOverlaidEnv, runSubprocess } from './subprocess.ts';
 
@@ -452,7 +453,7 @@ describe('runSubprocess — synchronous spawn failure', () => {
     async () => {
       const proc = runSubprocess({
         cliArgs: fixtureCli('process.exit(0)'),
-        cwd: new URL(import.meta.url).pathname,
+        cwd: fileURLToPath(import.meta.url),
         trailingArgs: [],
         timeoutMs: 5000,
         onLine: () => {},

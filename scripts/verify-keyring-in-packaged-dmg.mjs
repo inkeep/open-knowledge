@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { cp, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const STDERR_TAIL_LINES = 40;
@@ -266,6 +267,6 @@ async function defaultListAppsInMount(mountPath) {
   return entries.filter((e) => e.toLowerCase().endsWith('.app'));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   runDriver(process.argv).then((code) => process.exit(code));
 }

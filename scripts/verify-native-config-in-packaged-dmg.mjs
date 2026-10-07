@@ -6,6 +6,7 @@ import { cp, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const DIR_CANDIDATES = ['.', 'native', 'dist/native', 'cli/dist/native'];
 
@@ -177,6 +178,6 @@ async function defaultListAppsInMount(mountPath) {
   return entries.filter((e) => e.toLowerCase().endsWith('.app'));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   runDriver(process.argv).then((code) => process.exit(code));
 }

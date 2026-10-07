@@ -2,6 +2,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { MarkdownManager, OK_DIR, sharedExtensions } from '@inkeep/open-knowledge-core';
 
 const TARGET_BYTES = 50_000;
@@ -174,7 +175,7 @@ export function generateFixture(targetViews: number, outDir: string): ConvergeRe
 }
 
 function defaultOutDir(targetViews: number): string {
-  const base = dirname(new URL(import.meta.url).pathname);
+  const base = dirname(fileURLToPath(import.meta.url));
   return resolve(base, `${FIXTURE_DIR_PREFIX}${targetViews}`);
 }
 

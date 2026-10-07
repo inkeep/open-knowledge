@@ -1,7 +1,8 @@
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
 const NODE = Bun.which('node');
-const HARNESS = new URL('./pty-flood.harness.ts', import.meta.url).pathname;
+const HARNESS = fileURLToPath(new URL('./pty-flood.harness.ts', import.meta.url));
 
 describe.skipIf(process.platform === 'win32')(
   'PTY flood — backpressure + UTF-8 integrity (Node runtime)',

@@ -1,9 +1,10 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../../../test-support/test-only-source-file.mjs';
 
-const SRC_DIR = new URL('../..', import.meta.url).pathname;
+const SRC_DIR = fileURLToPath(new URL('../..', import.meta.url));
 
 const ALLOWLISTED_SUBPATHS = ['lib/handoff', 'components/handoff'] as const;
 

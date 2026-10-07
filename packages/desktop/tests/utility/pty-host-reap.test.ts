@@ -1,11 +1,12 @@
 import { spawn as nodeSpawn } from 'node:child_process';
 import { once } from 'node:events';
 import { Readable } from 'node:stream';
+import { fileURLToPath } from 'node:url';
 import { isProcessAlive } from '@inkeep/open-knowledge-server';
 import { describe, expect, test } from 'vitest';
 import { pid1Reaps } from '../../../../test-support/capabilities.test-helper.ts';
 
-const HARNESS = new URL('./pty-host.reap-harness.ts', import.meta.url).pathname;
+const HARNESS = fileURLToPath(new URL('./pty-host.reap-harness.ts', import.meta.url));
 
 async function readShellPid(
   stream: ReadableStream<Uint8Array>,
