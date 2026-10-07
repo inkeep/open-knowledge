@@ -3,12 +3,9 @@ import type { BigIntStats } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
+import { isRacyStat, sampleWallClockNs, statSignature } from './stat-signature.ts';
 
 const POLL_INTERVAL_MS = 200;
-
-const TIMESTAMP_GRANULARITY_BOUND_NS = 3_000_000_000n;
-
-const NS_PER_MS = 1_000_000n;
 
 type PathEvent = 'add' | 'change' | 'unlink';
 
@@ -29,14 +26,6 @@ const readsAsAbsent = (err: unknown): boolean => {
   const code = errnoCode(err);
   return code === 'ENOENT' || code === 'ENOTDIR';
 };
-
-const signatureOf = (stats: BigIntStats): string =>
-  `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeNs}:${stats.ctimeNs}`;
-
-const isRacy = (stats: BigIntStats, sampledAtNs: bigint): boolean =>
-  stats.ctimeNs + TIMESTAMP_GRANULARITY_BOUND_NS > sampledAtNs ||
-  (stats.mtimeNs + TIMESTAMP_GRANULARITY_BOUND_NS > sampledAtNs &&
-    stats.mtimeNs <= sampledAtNs + TIMESTAMP_GRANULARITY_BOUND_NS);
 
 const unchanged = (known: Observation, observed: Observation): boolean =>
   known.signature === observed.signature && (!known.racy || known.digest === observed.digest);
@@ -71,11 +60,11 @@ async function observe(
   known: Observation | undefined,
   isClosed: () => boolean,
 ): Promise<Observation | undefined> {
-  const sampledAtNs = BigInt(Date.now()) * NS_PER_MS;
+  const sampledAtNs = sampleWallClockNs();
   const first = await fileStats(path);
   if (first === undefined) return undefined;
-  if (!known?.racy && !isRacy(first, sampledAtNs)) {
-    return { size: first.size, signature: signatureOf(first), racy: false, digest: undefined };
+  if (!known?.racy && !isRacyStat(first, sampledAtNs)) {
+    return { size: first.size, signature: statSignature(first), racy: false, digest: undefined };
   }
   if (isClosed()) return undefined;
   const digest = await contentDigest(path);
@@ -84,8 +73,8 @@ async function observe(
   if (second === undefined) return undefined;
   return {
     size: second.size,
-    signature: signatureOf(second),
-    racy: isRacy(second, sampledAtNs),
+    signature: statSignature(second),
+    racy: isRacyStat(second, sampledAtNs),
     digest,
   };
 }

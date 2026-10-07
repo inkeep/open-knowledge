@@ -253,6 +253,7 @@ import {
   tracedWriteFileSync,
 } from './fs-traced.ts';
 import { withParentLock } from './git-handle.ts';
+import { isPathTrackedInGit } from './git-tracked-paths.ts';
 import { type ApiRouteTable, createApiRequestPipeline } from './http/api-pipeline.ts';
 import { createAssetRoutes } from './http/asset-routes.ts';
 import { createCommentRoutes } from './http/comment-routes.ts';
@@ -1227,11 +1228,14 @@ export async function renameTrackedPathInGit(
 
   return await withParentLock(async () => {
     const pg = simpleGit({ baseDir: projectDir, timeout: { block: 15_000 } });
-    let tracked = '';
+    let tracked: boolean;
     try {
-      tracked = (await pg.raw('ls-files', ...pathspecArgs([sourceRel]))).trim();
+      tracked = await isPathTrackedInGit(pg, projectDir, sourceRel);
     } catch (err) {
-      log.warn({ err }, '[renameTrackedPathInGit] git ls-files failed, falling back to fs rename');
+      log.warn(
+        { err, projectDir, path: sourceRel },
+        '[renameTrackedPathInGit] tracked-path lookup failed, falling back to fs rename',
+      );
       return false;
     }
     if (!tracked) return false;

@@ -1,4 +1,3 @@
-
 import type { Nodes, Paragraph, PhrasingContent, Root, RootContent, Text } from 'mdast';
 import { SKIP, visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
