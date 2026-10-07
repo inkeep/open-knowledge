@@ -6912,6 +6912,15 @@ function bootPrimaryInstance(): void {
               message: `OpenKnowledge ${result.latestVersion} is available.`,
               detail: `It's downloading in the background. You'll be prompted to relaunch when the install is ready.`,
             });
+          } else if (result.kind === 'updater-inactive') {
+            void dialog.showMessageBox(target, {
+              type: 'info',
+              buttons: ['OK'],
+              defaultId: 0,
+              title: "Updates Aren't Available",
+              message: "This copy of OpenKnowledge can't update itself.",
+              detail: `Development builds don't receive automatic updates. To update, pull the latest source or download the newest release from ${STUCK_HINT_DOWNLOAD_URL}.`,
+            });
           } else {
             void dialog.showMessageBox(target, {
               type: 'warning',

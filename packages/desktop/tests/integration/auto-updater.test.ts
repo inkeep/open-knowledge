@@ -4123,7 +4123,10 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(rig.clock.clearTimeout).toHaveBeenCalledWith(watchdogHandle);
       expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
-      expect(showCheckNowResult).toHaveBeenCalledTimes(outcome === 'resolve' ? 0 : 1);
+      expect(showCheckNowResult).toHaveBeenCalledTimes(1);
+      if (outcome === 'resolve') {
+        expect(showCheckNowResult).toHaveBeenCalledWith({ kind: 'updater-inactive' });
+      }
       showCheckNowResult.mockClear();
       watchdog.cb();
       expect(showCheckNowResult).not.toHaveBeenCalled();
@@ -4164,11 +4167,41 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
     );
   });
 
+  test('an inactive updater shows the updater-inactive result and allows another manual check', async () => {
+    const showCheckNowResult = vi.fn(() => {});
+    const { rig } = makeRig({ showCheckNowResult });
+    await Promise.resolve();
+    let phasesAtDialog: Array<'started' | 'settled'> = [];
+    showCheckNowResult.mockImplementation(() => {
+      phasesAtDialog = manualCheckPhases(rig);
+    });
+    rig.updater.checkForUpdates = vi.fn(() => Promise.resolve(null));
+
+    rig.ipc.invoke('ok:update:check-now');
+    const [watchdogHandle, watchdog] = liveTimerFor(rig.clock, MANUAL_CHECK_WATCHDOG_MS);
+    expect(manualCheckPhases(rig)).toEqual(['started']);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(phasesAtDialog).toEqual(['started', 'settled']);
+    expect(showCheckNowResult).toHaveBeenCalledTimes(1);
+    expect(showCheckNowResult).toHaveBeenCalledWith({ kind: 'updater-inactive' });
+    expect(rig.clock.clearTimeout).toHaveBeenCalledWith(watchdogHandle);
+    watchdog.cb();
+    expect(showCheckNowResult).toHaveBeenCalledTimes(1);
+
+    rig.ipc.invoke('ok:update:check-now');
+    expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
+    expect(manualCheckPhases(rig)).toEqual(['started', 'settled', 'started']);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(manualCheckPhases(rig)).toEqual(['started', 'settled', 'started', 'settled']);
+    expect(showCheckNowResult).toHaveBeenCalledTimes(2);
+    expect(showCheckNowResult).toHaveBeenLastCalledWith({ kind: 'updater-inactive' });
+  });
+
   test('a verdict-less check settles silently and allows another manual check', async () => {
     const showCheckNowResult = vi.fn(() => {});
     const { rig } = makeRig({ showCheckNowResult });
     await Promise.resolve();
-    rig.updater.checkForUpdates = vi.fn(() => Promise.resolve(null));
+    rig.updater.checkForUpdates = vi.fn(() => Promise.resolve(undefined));
 
     rig.ipc.invoke('ok:update:check-now');
     expect(manualCheckPhases(rig)).toEqual(['started']);

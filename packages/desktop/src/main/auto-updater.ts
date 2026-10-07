@@ -143,6 +143,7 @@ type CheckNowResult =
       relaunch: StagedRelaunch;
     }
   | { kind: 'not-available'; currentVersion: string }
+  | { kind: 'updater-inactive' }
   | { kind: 'error'; message: string };
 
 export interface StartAutoUpdaterHandle {
@@ -890,12 +891,16 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     };
     const checkPromise = checkForUpdatesFromConfiguredFeed();
     void checkPromise
-      .then(() => {
-        // UPSTREAM(electron-updater@6.8.4): checkForUpdates emits its verdict event before its promise resolves, so a check still pending at resolve time produced no verdict; an inactive dev updater resolves the same way.
-        if (menuCheck !== null) {
-          logger.info('check-now resolved without a verdict');
-          settleMenuCheck(null);
+      .then((result) => {
+        // UPSTREAM(electron-updater@6.8.4): checkForUpdates emits its verdict event before its promise resolves, and resolves null without any event only when the updater is inactive.
+        if (menuCheck === null) return;
+        if (result === null) {
+          logger.info('check-now resolved null, updater inactive');
+          settleMenuCheck({ kind: 'updater-inactive' });
+          return;
         }
+        logger.info('check-now resolved without a verdict');
+        settleMenuCheck(null);
       })
       .catch((err: unknown) => {
         const retrying = revertToGithubFeed(err);
