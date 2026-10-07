@@ -120,6 +120,8 @@ interface UseSyncModeSelectionResult {
   setConfirmOpen: (open: boolean) => void;
   pendingMode: ConfirmableMode | null;
   onModeSelect: (next: SyncMode) => void;
+  onTurnOff: () => boolean;
+  onKeepCurrent: () => boolean;
   onConfirm: () => void;
 }
 
@@ -160,6 +162,14 @@ export function useSyncModeSelection(
     setConfirmOpen(true);
   }
 
+  function onTurnOff(): boolean {
+    return applyMode('off');
+  }
+
+  function onKeepCurrent(): boolean {
+    return applyMode(currentMode);
+  }
+
   function onConfirm() {
     if (pendingMode === null) return;
     if (applyMode(pendingMode)) {
@@ -167,7 +177,15 @@ export function useSyncModeSelection(
     }
   }
 
-  return { confirmOpen, setConfirmOpen, pendingMode, onModeSelect, onConfirm };
+  return {
+    confirmOpen,
+    setConfirmOpen,
+    pendingMode,
+    onModeSelect,
+    onTurnOff,
+    onKeepCurrent,
+    onConfirm,
+  };
 }
 
 type AutoSyncPatch = { mode?: SyncMode; enabled?: null; resumeMode?: SyncActiveMode | null };
@@ -200,6 +218,7 @@ export function useBadgeSyncControls(
         resumeMode?: StoredSyncActiveMode | null;
       }
     | undefined,
+  engineMode: SyncMode,
   aheadCount: number,
 ): UseBadgeSyncControlsResult {
   const { t } = useLingui();
@@ -207,7 +226,7 @@ export function useBadgeSyncControls(
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingMode, setPendingMode] = useState<ConfirmableMode | null>(null);
 
-  const mode = resolveLocalAutoSyncMode(autoSync) ?? 'off';
+  const mode = resolveLocalAutoSyncMode(autoSync) ?? engineMode;
 
   function apply(patch: AutoSyncPatch): boolean {
     if (writer === null) {

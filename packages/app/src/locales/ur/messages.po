@@ -2427,6 +2427,10 @@ msgid "Auto-save"
 msgstr "خودکار محفوظ"
 
 #: src/components/settings/SyncSection.tsx
+msgid "Auto-sync is on, but there's no remote to sync with yet. It starts as soon as a remote is connected."
+msgstr "خودکار مطابقت پذیری آن ہے، لیکن ابھی مطابقت کے لیے کوئی ریموٹ نہیں ہے۔ ریموٹ منسلک ہوتے ہی یہ شروع ہو جائے گی۔"
+
+#: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — sign in to resume."
 msgstr "خودکار مطابقت پذیری روکی گئی ہے — جاری رکھنے کے لیے سائن اِن کریں۔"
 
@@ -3097,8 +3101,8 @@ msgid "Choose where to send this message"
 msgstr "منتخب کریں کہ یہ پیغام کہاں بھیجنا ہے"
 
 #: src/components/settings/SharingSection.tsx
-msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
-msgstr "منتخب کریں کہ اس پروجیکٹ کا OpenKnowledge سیٹ اپ، بشمول اس کے AI ٹول کنکشنز، پروجیکٹ کے ساتھ محفوظ ہو تاکہ ساتھیوں کو بھی مل جائے، یا صرف آپ کے کمپیوٹر پر رہے۔"
+msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections and the Shared default sync mode, is saved with the project so teammates get it too, or kept only on your computer."
+msgstr "منتخب کریں کہ اس پروجیکٹ کا OpenKnowledge سیٹ اپ، بشمول اس کے AI ٹول کنکشنز اور مشترکہ طے شدہ مطابقت پذیری موڈ، پروجیکٹ کے ساتھ محفوظ ہو تاکہ ساتھیوں کو بھی مل جائے، یا صرف آپ کے کمپیوٹر پر رہے۔"
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Choose which agents appear in agent menus across the app, and set them up to read and update your documents."
@@ -4455,6 +4459,10 @@ msgstr "اینڈ پوائنٹ تک رسائی نہیں ہو سکی۔ URL دیک�
 #: src/editor/image-upload/upload-failure.ts
 msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "{fileName} اپ لوڈ کرنے کے لیے Open Knowledge سرور تک رسائی نہیں ہو سکی۔"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Couldn't reach the OpenKnowledge server, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "OpenKnowledge سرور تک رسائی نہیں ہو سکی، اس لیے مطابقت پذیری کے اختیارات چھپا دیے گئے ہیں۔ مطابقت پذیری کی حالت لوڈ ہوتے ہی وہ یہاں ظاہر ہوں گے؛ ترتیبات بند کر کے پھر سے کھولنے سے بھی دوبارہ کوشش ہوتی ہے۔"
 
 #: src/components/acp/ThreadView.tsx
 #: src/editor/use-composer-attachments.ts
@@ -8556,6 +8564,10 @@ msgstr "مہارتیں لوڈ ہو رہی ہیں"
 #: src/components/PackCardGrid.tsx
 msgid "Loading starter packs"
 msgstr "ابتدائی پیکس لوڈ ہو رہے ہیں"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Loading sync status"
+msgstr "مطابقت پذیری کی حالت لوڈ ہو رہی ہے"
 
 #: src/components/CommandPalette.tsx
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
@@ -13216,10 +13228,6 @@ msgstr "شناخت مقرر کریں"
 msgid "Set it up on its own page under Plugins."
 msgstr "اسے پلگ اِنز کے تحت اس کے اپنے صفحے پر ترتیب دیں۔"
 
-#: src/components/settings/SyncSection.tsx
-msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
-msgstr "ان صارفین کے لیے طے شدہ مطابقت پذیری مقرر کریں جو یہ پروجیکٹ پہلی بار کھولتے ہیں۔ یہ ترتیب آپ کی ریپازٹری میں کمٹ ہوتی ہے۔"
-
 #: src/components/command-palette-commands.ts
 msgid "Set up OpenKnowledge integrations"
 msgstr "OpenKnowledge کے انضمامات ترتیب دیں"
@@ -14284,6 +14292,10 @@ msgstr "اس ورک ٹری کی مطابقت پذیری «دستی» پر سیٹ
 msgid "Sync is taking longer than usual — your changes are safe on this device."
 msgstr "ہم آہنگی معمول سے زیادہ وقت لے رہی ہے — آپ کی تبدیلیاں اس ڈیوائس پر محفوظ ہیں۔"
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Sync keeps this computer's copy up to date with your Git remote. The shared settings below decide what teammates get when they open the project."
+msgstr "مطابقت پذیری اس کمپیوٹر کی کاپی کو آپ کے Git ریموٹ کے ساتھ تازہ رکھتی ہے۔ نیچے دی گئی مشترکہ ترتیبات طے کرتی ہیں کہ پروجیکٹ کھولنے پر ساتھیوں کو کیا ملے گا۔"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
 msgstr "مطابقت پذیری کا موڈ"
@@ -14908,6 +14920,10 @@ msgstr "Open Knowledge ٹولز فعال کرنے کی درخواست کا وق�
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "اسکیما فائل موجود نہیں یا لوڈ نہیں ہو سکی — فیلڈ شامل کرنے سے یہ بن جاتی ہے۔"
 
+#: src/components/settings/SyncSection.tsx
+msgid "The server couldn't read this project's sync status, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "سرور اس پروجیکٹ کی مطابقت پذیری کی حالت نہیں پڑھ سکا، اس لیے مطابقت پذیری کے اختیارات چھپا دیے گئے ہیں۔ مطابقت پذیری کی حالت لوڈ ہوتے ہی وہ یہاں ظاہر ہوں گے؛ ترتیبات بند کر کے پھر سے کھولنے سے بھی دوبارہ کوشش ہوتی ہے۔"
+
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "سرور نے جواب دیا مگر server.lock میں ابھی کوئی پورٹ نہیں"
@@ -14952,6 +14968,10 @@ msgstr "ماخذ فولڈر خود نہیں ہلتا۔"
 #: src/components/SyncStatusBadge.tsx
 msgid "The stored token is missing the permissions this host needs to push."
 msgstr "محفوظ ٹوکن میں وہ اجازتیں نہیں ہیں جو اس ہوسٹ کو پُش کرنے کے لیے درکار ہیں۔"
+
+#: src/components/settings/SyncSection.tsx
+msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
+msgstr "وہ مطابقت پذیری موڈ جس سے ساتھی اس پروجیکٹ کو پہلی بار کھولنے پر شروع کرتے ہیں۔ یہ پروجیکٹ کی OpenKnowledge ترتیبات میں محفوظ ہوتا ہے، اس لیے یہ ان تک صرف تب پہنچتا ہے جب نیچے کنفیگ کا اشتراک مشترک پر سیٹ ہو۔"
 
 #: src/components/TemplateProperties.tsx
 msgid "The template's filename (without `.md`)."
@@ -15429,6 +15449,10 @@ msgstr "یہ مشین"
 msgid "This may take a moment. Your markdown content is kept."
 msgstr "اس میں تھوڑا وقت لگ سکتا ہے۔ آپ کا Markdown مواد محفوظ رہتا ہے۔"
 
+#: src/components/settings/SyncSection.tsx
+msgid "This mode comes from the project's Shared default below. Pick a mode to choose your own for this computer."
+msgstr "یہ موڈ نیچے دیے گئے پروجیکٹ کے مشترکہ طے شدہ سے آتا ہے۔ اس کمپیوٹر کے لیے اپنا موڈ منتخب کرنے کے لیے کوئی موڈ چنیں۔"
+
 #. placeholder {0}: scopeLabels[scope]
 #. placeholder {1}: scopeLabels[toScope]
 #. placeholder {2}: scopeLabels[toScope]
@@ -15890,6 +15914,10 @@ msgstr "{display} کو دوبارہ ایک حقیقی ڈائریکٹری بنا 
 #: src/components/CreatedItemsList.tsx
 msgid "Turn it off any time in Settings."
 msgstr "اسے کسی بھی وقت ترتیبات میں بند کریں۔"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Turn off auto-sync"
+msgstr "خودکار مطابقت پذیری بند کریں"
 
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Turn off Only markdown files"

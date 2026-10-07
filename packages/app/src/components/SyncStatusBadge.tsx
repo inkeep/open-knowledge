@@ -37,6 +37,7 @@ import type { GitWorktreeStatus } from '@/hooks/use-git-worktree-status';
 import { useGitWorktreeStatus } from '@/hooks/use-git-worktree-status';
 import { useConfigContext } from '@/lib/config-provider';
 import { hashFromAssetPath, hashFromDocName, isSameHash } from '@/lib/doc-hash';
+import { engineSyncMode } from '@/lib/engine-sync-mode';
 import { triggerSync } from '@/lib/trigger-sync';
 import { openAccountSettings, openSyncSettings } from '@/lib/use-settings-route';
 import { EnableSyncConfirmDialog } from './EnableSyncConfirmDialog';
@@ -1059,7 +1060,7 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
     strandedCommitCount,
     onModeSelect,
     onConfirm,
-  } = useBadgeSyncControls(autoSync, status.ahead);
+  } = useBadgeSyncControls(autoSync, engineSyncMode(status), status.ahead);
   const {
     status: worktree,
     loading: worktreeLoading,

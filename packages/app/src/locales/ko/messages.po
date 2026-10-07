@@ -2427,6 +2427,10 @@ msgid "Auto-save"
 msgstr "자동 저장"
 
 #: src/components/settings/SyncSection.tsx
+msgid "Auto-sync is on, but there's no remote to sync with yet. It starts as soon as a remote is connected."
+msgstr "자동 동기화가 켜져 있지만 아직 동기화할 원격이 없습니다. 원격이 연결되면 바로 시작됩니다."
+
+#: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — sign in to resume."
 msgstr "자동 동기화가 일시 중지되었습니다. 계속하려면 로그인합니다."
 
@@ -3097,8 +3101,8 @@ msgid "Choose where to send this message"
 msgstr "이 메시지를 보낼 곳 선택"
 
 #: src/components/settings/SharingSection.tsx
-msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
-msgstr "이 프로젝트의 OpenKnowledge 설정과 AI 도구 연결을 프로젝트와 함께 저장해 팀원도 사용하게 할지, 아니면 이 컴퓨터에만 보관할지 선택합니다."
+msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections and the Shared default sync mode, is saved with the project so teammates get it too, or kept only on your computer."
+msgstr "이 프로젝트의 OpenKnowledge 설정과 AI 도구 연결, 공유 기본값 동기화 모드를 프로젝트와 함께 저장해 팀원도 사용하게 할지, 아니면 이 컴퓨터에만 보관할지 선택합니다."
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Choose which agents appear in agent menus across the app, and set them up to read and update your documents."
@@ -4455,6 +4459,10 @@ msgstr "엔드포인트에 연결하지 못했습니다. URL과 서버 실행 �
 #: src/editor/image-upload/upload-failure.ts
 msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "{fileName} 파일을 업로드하려고 Open Knowledge 서버에 연결할 수 없습니다."
+
+#: src/components/settings/SyncSection.tsx
+msgid "Couldn't reach the OpenKnowledge server, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "OpenKnowledge 서버에 연결할 수 없어 동기화 옵션을 숨겼습니다. 동기화 상태를 불러오는 즉시 여기에 표시되며, 설정을 닫았다가 다시 열어도 다시 시도합니다."
 
 #: src/components/acp/ThreadView.tsx
 #: src/editor/use-composer-attachments.ts
@@ -8556,6 +8564,10 @@ msgstr "스킬 불러오는 중"
 #: src/components/PackCardGrid.tsx
 msgid "Loading starter packs"
 msgstr "스타터 팩 불러오는 중"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Loading sync status"
+msgstr "동기화 상태 로드 중"
 
 #: src/components/CommandPalette.tsx
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
@@ -13216,10 +13228,6 @@ msgstr "사용자 정보 설정"
 msgid "Set it up on its own page under Plugins."
 msgstr "플러그인 아래의 자체 페이지에서 설정합니다."
 
-#: src/components/settings/SyncSection.tsx
-msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
-msgstr "이 프로젝트를 처음 여는 사용자의 동기화 기본값을 설정합니다. 이 설정은 저장소에 커밋됩니다."
-
 #: src/components/command-palette-commands.ts
 msgid "Set up OpenKnowledge integrations"
 msgstr "OpenKnowledge 통합 설정"
@@ -14284,6 +14292,10 @@ msgstr "이 워크트리의 동기화가 수동으로 설정되어 있습니다.
 msgid "Sync is taking longer than usual — your changes are safe on this device."
 msgstr "동기화가 평소보다 오래 걸리고 있습니다. 변경 내용은 이 기기에 안전하게 보관됩니다."
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Sync keeps this computer's copy up to date with your Git remote. The shared settings below decide what teammates get when they open the project."
+msgstr "동기화는 이 컴퓨터의 사본을 Git 원격과 최신 상태로 유지합니다. 아래 공유 설정은 팀원이 프로젝트를 열 때 무엇을 받을지 결정합니다."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
 msgstr "동기화 모드"
@@ -14908,6 +14920,10 @@ msgstr "Open Knowledge 도구 사용 설정 요청 시간이 초과되었습니�
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "스키마 파일이 없거나 불러오지 못했습니다. 필드를 추가하면 파일이 생성됩니다."
 
+#: src/components/settings/SyncSection.tsx
+msgid "The server couldn't read this project's sync status, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "서버가 이 프로젝트의 동기화 상태를 읽을 수 없어 동기화 옵션을 숨겼습니다. 동기화 상태를 불러오는 즉시 여기에 표시되며, 설정을 닫았다가 다시 열어도 다시 시도합니다."
+
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "서버 응답 완료. server.lock에 포트 없음"
@@ -14952,6 +14968,10 @@ msgstr "소스 폴더 자체는 이동하지 않습니다."
 #: src/components/SyncStatusBadge.tsx
 msgid "The stored token is missing the permissions this host needs to push."
 msgstr "저장된 토큰에 이 호스트가 푸시하는 데 필요한 권한이 없습니다."
+
+#: src/components/settings/SyncSection.tsx
+msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
+msgstr "팀원이 이 프로젝트를 처음 열 때 시작하는 동기화 모드입니다. 프로젝트의 OpenKnowledge 설정에 저장되므로 아래 설정 공유가 공유됨으로 설정된 경우에만 팀원에게 전달됩니다."
 
 #: src/components/TemplateProperties.tsx
 msgid "The template's filename (without `.md`)."
@@ -15429,6 +15449,10 @@ msgstr "이 컴퓨터"
 msgid "This may take a moment. Your markdown content is kept."
 msgstr "잠시 시간이 걸릴 수 있습니다. markdown 콘텐츠는 유지됩니다."
 
+#: src/components/settings/SyncSection.tsx
+msgid "This mode comes from the project's Shared default below. Pick a mode to choose your own for this computer."
+msgstr "이 모드는 아래 프로젝트의 공유 기본값에서 가져온 것입니다. 이 컴퓨터에서 사용할 모드를 직접 고르려면 모드를 선택하세요."
+
 #. placeholder {0}: scopeLabels[scope]
 #. placeholder {1}: scopeLabels[toScope]
 #. placeholder {2}: scopeLabels[toScope]
@@ -15890,6 +15914,10 @@ msgstr "{display}을 현재 감지하는 각 스킬의 스킬별 심볼릭 링�
 #: src/components/CreatedItemsList.tsx
 msgid "Turn it off any time in Settings."
 msgstr "설정에서 언제든지 끌 수 있습니다."
+
+#: src/components/settings/SyncSection.tsx
+msgid "Turn off auto-sync"
+msgstr "자동 동기화 끄기"
 
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Turn off Only markdown files"

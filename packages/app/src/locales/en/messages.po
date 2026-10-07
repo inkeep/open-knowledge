@@ -2427,6 +2427,10 @@ msgid "Auto-save"
 msgstr "Auto-save"
 
 #: src/components/settings/SyncSection.tsx
+msgid "Auto-sync is on, but there's no remote to sync with yet. It starts as soon as a remote is connected."
+msgstr "Auto-sync is on, but there's no remote to sync with yet. It starts as soon as a remote is connected."
+
+#: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — sign in to resume."
 msgstr "Auto-sync is paused — sign in to resume."
 
@@ -3097,8 +3101,8 @@ msgid "Choose where to send this message"
 msgstr "Choose where to send this message"
 
 #: src/components/settings/SharingSection.tsx
-msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
-msgstr "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
+msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections and the Shared default sync mode, is saved with the project so teammates get it too, or kept only on your computer."
+msgstr "Choose whether this project's OpenKnowledge setup, including its AI-tool connections and the Shared default sync mode, is saved with the project so teammates get it too, or kept only on your computer."
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Choose which agents appear in agent menus across the app, and set them up to read and update your documents."
@@ -4455,6 +4459,10 @@ msgstr "Couldn't reach the endpoint. Check the URL and that the server is up."
 #: src/editor/image-upload/upload-failure.ts
 msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "Couldn't reach the Open Knowledge server to upload {fileName}."
+
+#: src/components/settings/SyncSection.tsx
+msgid "Couldn't reach the OpenKnowledge server, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "Couldn't reach the OpenKnowledge server, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
 
 #: src/components/acp/ThreadView.tsx
 #: src/editor/use-composer-attachments.ts
@@ -8556,6 +8564,10 @@ msgstr "Loading skills"
 #: src/components/PackCardGrid.tsx
 msgid "Loading starter packs"
 msgstr "Loading starter packs"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Loading sync status"
+msgstr "Loading sync status"
 
 #: src/components/CommandPalette.tsx
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
@@ -13216,10 +13228,6 @@ msgstr "Set identity"
 msgid "Set it up on its own page under Plugins."
 msgstr "Set it up on its own page under Plugins."
 
-#: src/components/settings/SyncSection.tsx
-msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
-msgstr "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
-
 #: src/components/command-palette-commands.ts
 msgid "Set up OpenKnowledge integrations"
 msgstr "Set up OpenKnowledge integrations"
@@ -14284,6 +14292,10 @@ msgstr "Sync is set to Manual for this worktree, inherited from {project}. Chang
 msgid "Sync is taking longer than usual — your changes are safe on this device."
 msgstr "Sync is taking longer than usual — your changes are safe on this device."
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Sync keeps this computer's copy up to date with your Git remote. The shared settings below decide what teammates get when they open the project."
+msgstr "Sync keeps this computer's copy up to date with your Git remote. The shared settings below decide what teammates get when they open the project."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
 msgstr "Sync mode"
@@ -14908,6 +14920,10 @@ msgstr "The request to enable Open Knowledge tools timed out. This thread runs w
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "The schema file does not exist or failed to load — adding a field creates it."
 
+#: src/components/settings/SyncSection.tsx
+msgid "The server couldn't read this project's sync status, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "The server couldn't read this project's sync status, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "the server responded but server.lock has no port yet"
@@ -14952,6 +14968,10 @@ msgstr "The source folder itself does not move."
 #: src/components/SyncStatusBadge.tsx
 msgid "The stored token is missing the permissions this host needs to push."
 msgstr "The stored token is missing the permissions this host needs to push."
+
+#: src/components/settings/SyncSection.tsx
+msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
+msgstr "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
 
 #: src/components/TemplateProperties.tsx
 msgid "The template's filename (without `.md`)."
@@ -15429,6 +15449,10 @@ msgstr "This machine"
 msgid "This may take a moment. Your markdown content is kept."
 msgstr "This may take a moment. Your markdown content is kept."
 
+#: src/components/settings/SyncSection.tsx
+msgid "This mode comes from the project's Shared default below. Pick a mode to choose your own for this computer."
+msgstr "This mode comes from the project's Shared default below. Pick a mode to choose your own for this computer."
+
 #. placeholder {0}: scopeLabels[scope]
 #. placeholder {1}: scopeLabels[toScope]
 #. placeholder {2}: scopeLabels[toScope]
@@ -15890,6 +15914,10 @@ msgstr "Turn {display} back into a real directory holding a per-skill symlink fo
 #: src/components/CreatedItemsList.tsx
 msgid "Turn it off any time in Settings."
 msgstr "Turn it off any time in Settings."
+
+#: src/components/settings/SyncSection.tsx
+msgid "Turn off auto-sync"
+msgstr "Turn off auto-sync"
 
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Turn off Only markdown files"

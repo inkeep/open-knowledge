@@ -602,6 +602,9 @@
     "5-FeN2": ["URL de partage"],
     "5-o4kO": ["Fichiers markdown uniquement"],
     "50ORFs": ["Réinitialiser ", ["0"], " à la valeur par défaut"],
+    "50gx7V": [
+      "Choisissez si la configuration OpenKnowledge de ce projet, y compris ses connexions aux outils IA et le mode de synchronisation de la Valeur par défaut partagée, est enregistrée avec le projet pour que vos coéquipiers l'obtiennent aussi, ou conservée uniquement sur votre ordinateur."
+    ],
     "54Y6Fg": ["Impossible de charger les modèles. Réessayez plus tard."],
     "56WWtu": ["Impossible de charger les packs de démarrage : ", ["error"]],
     "56xUL1": ["Nom de la propriété"],
@@ -1075,6 +1078,9 @@
       "Aucune étiquette ne correspond à « ",
       ["trimmed"],
       " ». Continuez à saisir pour en créer une."
+    ],
+    "9U-7Xv": [
+      "La synchronisation automatique est activée, mais il n'y a pas encore de dépôt distant avec lequel synchroniser. Elle démarrera dès qu'un dépôt distant sera connecté."
     ],
     "9UQ730": ["Cloner"],
     "9V0W-R": [
@@ -1931,6 +1937,9 @@
       ["peers"],
       ", et OpenKnowledge ne peut pas la modifier d'ici. Dissociez d'abord le dossier dans Skills Studio."
     ],
+    "HADdBA": [
+      "La synchronisation maintient la copie de cet ordinateur à jour avec votre dépôt distant Git. Les paramètres partagés ci-dessous déterminent ce que reçoivent vos coéquipiers lorsqu'ils ouvrent le projet."
+    ],
     "HAkEqR": ["Fichiers récents"],
     "HAvHev": ["Mise à jour automatique désactivée pour « ", ["name"], " »"],
     "HAvRAI": [
@@ -2511,9 +2520,6 @@
     "N2eHWq": ["Bloc de code"],
     "N3_ozB": ["Pivots"],
     "N40H-G": ["Tout"],
-    "N55YNr": [
-      "Choisissez si la configuration OpenKnowledge de ce projet, y compris ses connexions aux outils IA, est enregistrée avec le projet pour que vos coéquipiers l'obtiennent aussi, ou conservée uniquement sur votre ordinateur."
-    ],
     "N5rzKJ": ["Supprimer ", ["0"], " compétences"],
     "N6j2JH": ["Modifier ", ["0"]],
     "N7Lau6": ["Valider et synchroniser"],
@@ -2678,6 +2684,7 @@
     "OdmsFg": ["Échec de la suppression de l'élément"],
     "OeAl1e": ["par ex. assets/uploads"],
     "OfhWJH": ["Réinitialiser"],
+    "OgvwrM": ["Chargement de l'état de synchronisation"],
     "Ohpzub": ["Commenter ce bloc de code ou interroger l’IA à son sujet"],
     "Oi56Cu": ["Journal de nettoyage"],
     "OiHJdA": [
@@ -3808,6 +3815,9 @@
     ],
     "ZvzbDF": ["Ajoutez-le directement à ce projet."],
     "ZwpggY": ["OpenKnowledge a lu les paramètres du projet"],
+    "Zysl7r": [
+      "Le mode de synchronisation avec lequel vos coéquipiers démarrent la première fois qu'ils ouvrent ce projet. Il est enregistré dans les paramètres OpenKnowledge du projet ; il ne leur parvient donc que si le Partage de la configuration ci-dessous est réglé sur Partagé."
+    ],
     "_0JUKX": ["Le signalement de bugs nécessite l'application de bureau OpenKnowledge."],
     "_2cM9E": ["récent"],
     "_3S4Ql": [
@@ -4489,6 +4499,9 @@
     "emgiet": ["Contenu faisant autorité ; reproduit tel quel partout où il est référencé."],
     "enPTnx": ["ligne ", ["displayLine"]],
     "eolhcI": ["Lecture de l'arbre de travail"],
+    "epGMvx": [
+      "Impossible de joindre le serveur OpenKnowledge, les options de synchronisation sont donc masquées. Elles apparaîtront ici dès que l'état de synchronisation sera chargé ; fermer puis rouvrir les Paramètres relance aussi la tentative."
+    ],
     "eps54V": ["Supprimé"],
     "epuNYK": [
       "Marque un bloc comme source de vérité. Les miroirs situés ailleurs se mettent à jour en direct pendant que vous le modifiez."
@@ -5478,9 +5491,6 @@
       "Les dépôts que vous avez déjà clonés peuvent continuer à se synchroniser via les identifiants enregistrés par git, même après votre déconnexion."
     ],
     "msqUNq": ["Des dossiers et des modèles prêts à l'emploi pour démarrer rapidement."],
-    "msuDyW": [
-      "Définissez la synchronisation par défaut pour les utilisateurs qui ouvrent ce projet pour la première fois. Ce réglage est validé dans votre dépôt."
-    ],
     "mwMF9u": ["Ouvre la recherche CodeMirror en mode éditeur de source."],
     "mxGJVE": ["Changer de worktree…"],
     "mxY24F": [
@@ -6324,6 +6334,9 @@
     "uL_Wx8": ["Le terminal s'est arrêté de façon inattendue."],
     "uM6jnS": ["Échec de la restauration"],
     "uNGmQn": ["Impossible d'exécuter le test. Vérifiez qu'OpenKnowledge fonctionne toujours."],
+    "uNkJ8H": [
+      "Ce mode provient de la Valeur par défaut partagée du projet, ci-dessous. Choisissez un mode pour définir le vôtre sur cet ordinateur."
+    ],
     "uO9WLl": ["Pousser"],
     "uOKoBM": [
       "Remplace l'entrée ",
@@ -6408,6 +6421,7 @@
     "v2ZW0K": ["Activer le terminal"],
     "v2a04T": ["Règles markdownlint"],
     "v41fCm": ["Fichier introuvable"],
+    "v6Glry": ["Désactiver la synchronisation automatique"],
     "v75Em9": [
       [
         "uploadedCount",
@@ -6567,6 +6581,9 @@
     "wJijgU": ["Emplacement"],
     "wJo9oS": ["Fermer la recherche"],
     "wKJo7h": ["Le projet OpenKnowledge est absent à cet emplacement de checkout."],
+    "wLRCZ8": [
+      "Le serveur n'a pas pu lire l'état de synchronisation de ce projet, les options de synchronisation sont donc masquées. Elles apparaîtront ici dès que l'état de synchronisation sera chargé ; fermer puis rouvrir les Paramètres relance aussi la tentative."
+    ],
     "wQp1V3": ["Miroir de <0>", ["src"], "</0>"],
     "wQvvZY": ["Nouveau fichier de compétence"],
     "wRni1Z": ["Désactiver Slidev"],

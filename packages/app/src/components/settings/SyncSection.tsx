@@ -8,7 +8,7 @@ import {
 } from '@inkeep/open-knowledge-core/config/auto-sync-mode';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, ChevronRight } from 'lucide-react';
-import { type Ref, useEffect, useRef, useState } from 'react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AuthModal } from '@/components/AuthModal';
 import { EnableSyncConfirmDialog } from '@/components/EnableSyncConfirmDialog';
@@ -33,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -41,8 +42,9 @@ import {
   useSyncModeSelection,
   useSyncModeWriter,
 } from '@/hooks/use-enable-sync-with-confirm';
-import { useGitSyncStatus } from '@/hooks/use-git-sync-status';
+import { useGitSyncStatusDetailed } from '@/hooks/use-git-sync-status';
 import { useConfigContext } from '@/lib/config-provider';
+import { engineSyncMode } from '@/lib/engine-sync-mode';
 import { consumeSyncAdvancedIntent } from '@/lib/use-settings-route';
 import { ScopeBadge } from './ScopeBadge';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
@@ -80,10 +82,10 @@ function SyncSectionContent({
   setUpSyncingRef,
 }: {
   onPublish: () => void;
-  setUpSyncingRef: Ref<HTMLButtonElement>;
+  setUpSyncingRef: RefObject<HTMLButtonElement | null>;
 }) {
   const { t } = useLingui();
-  const status = useGitSyncStatus();
+  const { status, fetchError } = useGitSyncStatusDetailed();
   const { projectConfig, projectLocalConfig, projectLocalSynced, projectSynced } =
     useConfigContext();
   const modeWriter = useSyncModeWriter();
@@ -95,12 +97,71 @@ function SyncSectionContent({
   }, []);
   const intervals = resolveAutoSyncIntervals(projectLocalConfig?.autoSync);
   const pushOutpacesPull = intervals.pushIntervalSeconds < intervals.pullIntervalSeconds;
-  const localMode = resolveLocalAutoSyncMode(projectLocalConfig?.autoSync) ?? 'off';
-  const { confirmOpen, setConfirmOpen, pendingMode, onModeSelect, onConfirm } =
-    useSyncModeSelection(modeWriter, localMode);
+  const localChoice = resolveLocalAutoSyncMode(projectLocalConfig?.autoSync);
+  const committedDefaultMode = modeFromCommittedDefault(projectConfig?.autoSync?.default);
+  const mode: SyncMode = localChoice ?? (status === null ? 'off' : engineSyncMode(status));
+  const followsSharedDefault =
+    projectLocalSynced && localChoice === null && committedDefaultMode !== null;
+  const {
+    confirmOpen,
+    setConfirmOpen,
+    pendingMode,
+    onModeSelect,
+    onTurnOff,
+    onKeepCurrent,
+    onConfirm,
+  } = useSyncModeSelection(modeWriter, mode);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const modeControlDisabled = !projectLocalSynced;
 
-  if (status && !status.hasRemote && status.state === 'dormant') {
+  if (status === null) {
+    const unavailable = fetchError !== null;
+    return (
+      <div
+        className="space-y-3"
+        data-testid={unavailable ? 'settings-sync-unavailable' : 'settings-sync-loading'}
+      >
+        <SettingsSectionHeader
+          titleId="settings-sync-title"
+          title={<Trans>Sync</Trans>}
+          scope="project-local"
+          level="block"
+        />
+        <div role="status" aria-live="polite" aria-busy={!unavailable}>
+          {unavailable ? (
+            <p className="text-sm text-muted-foreground">
+              {fetchError === 'network' ? (
+                <Trans>
+                  Couldn't reach the OpenKnowledge server, so sync options are hidden. They appear
+                  here as soon as the sync status loads; closing and reopening Settings also
+                  retries.
+                </Trans>
+              ) : (
+                <Trans>
+                  The server couldn't read this project's sync status, so sync options are hidden.
+                  They appear here as soon as the sync status loads; closing and reopening Settings
+                  also retries.
+                </Trans>
+              )}
+            </p>
+          ) : (
+            <>
+              <span className="sr-only">
+                <Trans>Loading sync status</Trans>
+              </span>
+              <Skeleton className="h-24" />
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (!status.hasRemote) {
+    const autoSyncOn = mode !== 'off';
+    const turnOffAutoSync = () => {
+      if (onTurnOff()) setUpSyncingRef.current?.focus();
+    };
     return (
       <div className="space-y-4" data-testid="settings-sync-empty">
         <SettingsSectionHeader
@@ -148,39 +209,65 @@ function SyncSectionContent({
             </Trans>
           </CollapsibleContent>
         </Collapsible>
+        {autoSyncOn ? (
+          <div
+            className="flex items-start gap-2 rounded-md border p-3"
+            data-testid="settings-sync-no-remote-auto-on"
+          >
+            <p className="text-1sm text-muted-foreground flex-1 min-w-0">
+              <Trans>
+                Auto-sync is on, but there's no remote to sync with yet. It starts as soon as a
+                remote is connected.
+              </Trans>
+            </p>
+            <Button
+              variant="outline"
+              size="xs"
+              className="self-start"
+              onClick={turnOffAutoSync}
+              disabled={modeControlDisabled}
+              data-testid="settings-sync-no-remote-turn-off"
+            >
+              <Trans>Turn off auto-sync</Trans>
+            </Button>
+          </div>
+        ) : null}
       </div>
     );
   }
 
-  const modeControlDisabled = !projectLocalSynced;
   const isPushDenied =
-    status?.pushPermission?.checkStatus === 'denied' ||
-    status?.pausedReason === 'no-push-permission';
-  const offerReconnect = shouldOfferReconnect(status?.pushPermission);
-  const notFoundAsIdentity = status !== null && hasNotFoundAsIdentityError(status);
-  const showReconnect = localMode === 'full' && isPushDenied && offerReconnect;
+    status.pushPermission?.checkStatus === 'denied' || status.pausedReason === 'no-push-permission';
+  const offerReconnect = shouldOfferReconnect(status.pushPermission);
+  const notFoundAsIdentity = hasNotFoundAsIdentityError(status);
+  const showReconnect = mode === 'full' && isPushDenied && offerReconnect;
   const showSwitchToPullOnly =
-    localMode === 'full' && isPushDenied && !offerReconnect && !notFoundAsIdentity;
+    mode === 'full' && isPushDenied && !offerReconnect && !notFoundAsIdentity;
   const showDeniedHint =
     !showSwitchToPullOnly && !showReconnect && isPushDenied && !notFoundAsIdentity;
   const genuineReadOnlyDenied =
-    status?.pushPermission?.checkStatus === 'denied' &&
+    status.pushPermission?.checkStatus === 'denied' &&
     status.pushPermission.deniedReason !== 'not-authenticated' &&
     !notFoundAsIdentity;
   const parkedOnNotFound = isParkedOnNotFoundAsIdentity(status);
-  const pushDenialCoversPause = isPushDenied && status?.pausedReason !== 'unsafe-incoming-symlinks';
-  const pausedNotice = !status?.pausedReason ? null : parkedOnNotFound ? (
-    formatSyncFailureCode('auth-not-found-as-identity', isGitHubRemote(status?.remote))
+  const pushDenialCoversPause = isPushDenied && status.pausedReason !== 'unsafe-incoming-symlinks';
+  const pausedNotice = !status.pausedReason ? null : parkedOnNotFound ? (
+    formatSyncFailureCode('auth-not-found-as-identity', isGitHubRemote(status.remote))
   ) : pushDenialCoversPause ? null : (
     <PausedReasonNotice reason={status.pausedReason} />
   );
 
   function onModeChange(next: string) {
-    if (!isSyncMode(next)) return;
-    onModeSelect(next);
+    const picked = next === '' ? mode : next;
+    if (!isSyncMode(picked)) return;
+    if (picked === mode) {
+      if (followsSharedDefault) onKeepCurrent();
+      return;
+    }
+    onModeSelect(picked);
   }
 
-  const committedDefaultValue = modeFromCommittedDefault(projectConfig?.autoSync?.default) ?? 'ask';
+  const committedDefaultValue = committedDefaultMode ?? 'ask';
   function onCommittedDefaultChange(next: string) {
     if (next !== 'ask' && !isSyncMode(next)) return;
     if (defaultWriter === null) {
@@ -270,15 +357,27 @@ function SyncSectionContent({
               <Trans>Git sync</Trans>
             </div>
             <p className="text-muted-foreground text-1sm" data-testid="settings-sync-body">
-              {localMode === 'full' ? (
+              {mode === 'full' ? (
                 <Trans>Your edits are committed and pushed to your remote automatically.</Trans>
-              ) : localMode === 'follow' ? (
+              ) : mode === 'follow' ? (
                 <Trans>Updates flow in from your remote; your edits stay on this computer.</Trans>
               ) : (
                 <Trans>Nothing moves until you ask — pull and push from the sync menu.</Trans>
               )}
             </p>
-            {status?.remote ? (
+            {followsSharedDefault ? (
+              <p
+                id="settings-sync-mode-default-note"
+                className="text-muted-foreground text-1sm"
+                data-testid="settings-sync-mode-from-default"
+              >
+                <Trans>
+                  This mode comes from the project's Shared default below. Pick a mode to choose
+                  your own for this computer.
+                </Trans>
+              </p>
+            ) : null}
+            {status.remote ? (
               <p
                 className="text-muted-foreground text-1sm truncate"
                 data-testid="settings-sync-remote"
@@ -311,10 +410,11 @@ function SyncSectionContent({
             type="single"
             variant="outline"
             spacing={2}
-            value={localMode}
+            value={mode}
             onValueChange={onModeChange}
             disabled={modeControlDisabled}
             aria-labelledby="settings-sync-mode-label"
+            aria-describedby={followsSharedDefault ? 'settings-sync-mode-default-note' : undefined}
             data-testid="settings-sync-mode-toggle"
           >
             <ToggleGroupItem
@@ -404,7 +504,7 @@ function SyncSectionContent({
             className="text-1sm text-muted-foreground mt-2"
             data-testid="settings-sync-denied-hint"
           >
-            {localMode === 'follow' ? (
+            {mode === 'follow' ? (
               <Trans>You don't have permission to push to this repo.</Trans>
             ) : (
               <Trans>
@@ -419,13 +519,13 @@ function SyncSectionContent({
             {pausedNotice}
           </p>
         )}
-        {pausedNotice !== null && (status?.refusedSymlinkPaths?.length ?? 0) > 0 && (
+        {pausedNotice !== null && (status.refusedSymlinkPaths?.length ?? 0) > 0 && (
           <div className="mt-2">
-            <SyncRefusedSymlinks paths={status?.refusedSymlinkPaths} />
+            <SyncRefusedSymlinks paths={status.refusedSymlinkPaths} />
           </div>
         )}
         {}
-        {status?.pushPermission?.checkStatus === 'denied' &&
+        {status.pushPermission?.checkStatus === 'denied' &&
         (parkedOnNotFound || showSwitchToPullOnly || showDeniedHint) ? (
           <div className="mt-2 space-y-1" data-testid="settings-sync-identity">
             {formatDeniedIdentitySentences(status.pushPermission).map((sentence) => (
@@ -435,7 +535,7 @@ function SyncSectionContent({
             ))}
           </div>
         ) : null}
-        {shouldOfferSignInAgain(status?.pushPermission) && (
+        {shouldOfferSignInAgain(status.pushPermission) && (
           <div className="mt-2 flex items-start gap-2" data-testid="settings-sync-signin-again">
             <p className="text-1sm text-muted-foreground flex-1 min-w-0">
               <Trans>Your GitHub session expired — sign in again to verify push access.</Trans>
@@ -452,7 +552,7 @@ function SyncSectionContent({
         )}
       </div>
       {}
-      {localMode !== 'off' && (
+      {mode !== 'off' && (
         <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
           <CollapsibleTrigger asChild>
             <Button
@@ -501,7 +601,7 @@ function SyncSectionContent({
                   </SelectContent>
                 </Select>
               </div>
-              {localMode === 'full' && (
+              {mode === 'full' && (
                 <div className="flex items-start justify-between gap-4 border-t pt-3">
                   <div className="min-w-0 flex-1">
                     <div id="settings-sync-push-interval-label" className="text-sm font-medium">
@@ -534,7 +634,7 @@ function SyncSectionContent({
                   </Select>
                 </div>
               )}
-              {localMode === 'full' && pushOutpacesPull && (
+              {mode === 'full' && pushOutpacesPull && (
                 <p
                   className="text-1sm text-muted-foreground"
                   data-testid="settings-sync-push-outpaces-pull-hint"
@@ -560,8 +660,9 @@ function SyncSectionContent({
           </div>
           <p className="text-muted-foreground text-1sm">
             <Trans>
-              Set the sync default for users opening this project for the first time. This setting
-              is committed to your repository.
+              The sync mode teammates start with the first time they open this project. It's saved
+              in the project's OpenKnowledge settings, so it only reaches them when Config sharing
+              below is set to Shared.
             </Trans>
           </p>
         </div>
@@ -610,7 +711,7 @@ function SyncSectionContent({
         onOpenChange={setConfirmOpen}
         onConfirm={onConfirm}
         variant={pendingMode ?? 'full'}
-        strandedCommitCount={pendingMode === 'follow' ? (status?.ahead ?? 0) : 0}
+        strandedCommitCount={pendingMode === 'follow' ? (status.ahead ?? 0) : 0}
       />
       <AuthModal
         open={authModalOpen}

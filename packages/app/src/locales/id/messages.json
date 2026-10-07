@@ -506,6 +506,9 @@
     "5-FeN2": ["URL berbagi"],
     "5-o4kO": ["Hanya berkas markdown"],
     "50ORFs": ["Setel ulang ", ["0"], " ke bawaan"],
+    "50gx7V": [
+      "Pilih apakah penyiapan OpenKnowledge proyek ini, termasuk koneksi alat AI-nya dan mode sinkronisasi Bawaan bersama, disimpan bersama proyek agar rekan tim juga mendapatkannya, atau disimpan hanya di komputer Anda."
+    ],
     "54Y6Fg": ["Templat tidak dapat dimuat. Coba lagi nanti."],
     "56WWtu": ["Paket awal tidak bisa dimuat: ", ["error"]],
     "56xUL1": ["Nama properti"],
@@ -917,6 +920,9 @@
       "Tidak ada tag yang cocok dengan \"",
       ["trimmed"],
       "\". Lanjutkan mengetik untuk membuat satu."
+    ],
+    "9U-7Xv": [
+      "Sinkronisasi otomatis aktif, tetapi belum ada remote untuk disinkronkan. Sinkronisasi akan dimulai begitu remote terhubung."
     ],
     "9UQ730": ["Kloning"],
     "9V0W-R": [
@@ -1655,6 +1661,9 @@
       ["peers"],
       ", dan OpenKnowledge tidak dapat mengubahnya dari sini. Lepaskan tautan folder di Skills Studio terlebih dahulu."
     ],
+    "HADdBA": [
+      "Sinkronisasi menjaga salinan di komputer ini tetap mutakhir dengan remote Git Anda. Pengaturan bersama di bawah menentukan apa yang didapat rekan tim saat mereka membuka proyek."
+    ],
     "HAkEqR": ["Berkas terbaru"],
     "HAvHev": ["Pembaruan otomatis mati untuk \"", ["name"], "\""],
     "HAvRAI": [["skillCount", "plural", { "other": ["keterampilan"] }]],
@@ -2140,9 +2149,6 @@
     "N2eHWq": ["Blok Kode"],
     "N3_ozB": ["Pusat"],
     "N40H-G": ["Semua"],
-    "N55YNr": [
-      "Pilih apakah penyiapan OpenKnowledge proyek ini, termasuk koneksi alat AI-nya, disimpan bersama proyek agar rekan tim juga mendapatkannya, atau disimpan hanya di komputer Anda."
-    ],
     "N5rzKJ": ["Hapus ", ["0"], " keterampilan"],
     "N6j2JH": ["Sunting ", ["0"]],
     "N7Lau6": ["Commit dan sinkronkan"],
@@ -2295,6 +2301,7 @@
     "OdmsFg": ["Gagal menghapus item"],
     "OeAl1e": ["mis. assets/uploads"],
     "OfhWJH": ["Setel ulang"],
+    "OgvwrM": ["Memuat status sinkronisasi"],
     "Ohpzub": ["Beri komentar atau tanya AI tentang blok kode ini"],
     "Oi56Cu": ["Log pembersihan"],
     "OiHJdA": [
@@ -3263,6 +3270,9 @@
     "Zue_jx": ["Token GitHub Anda kehilangan cakupan yang wajib. Coba masuk lagi."],
     "ZvzbDF": ["Tambahkan langsung ke proyek ini."],
     "ZwpggY": ["OpenKnowledge membaca pengaturan proyek"],
+    "Zysl7r": [
+      "Mode sinkronisasi yang digunakan rekan tim saat pertama kali membuka proyek ini. Mode ini disimpan di pengaturan OpenKnowledge proyek, jadi hanya sampai ke mereka jika Berbagi konfigurasi di bawah diatur ke Dibagikan."
+    ],
     "_0JUKX": ["Pelaporan bug memerlukan aplikasi desktop OpenKnowledge."],
     "_2cM9E": ["terbaru"],
     "_3S4Ql": [
@@ -3827,6 +3837,9 @@
     "emgiet": ["Konten otoritatif; dicerminkan apa adanya di mana pun ia dirujuk."],
     "enPTnx": ["baris ", ["displayLine"]],
     "eolhcI": ["Membaca working tree"],
+    "epGMvx": [
+      "Tidak dapat menghubungi server OpenKnowledge, jadi opsi sinkronisasi disembunyikan. Opsi akan muncul di sini begitu status sinkronisasi dimuat; menutup lalu membuka kembali Pengaturan juga akan mencoba lagi."
+    ],
     "eps54V": ["Dihapus"],
     "epuNYK": [
       "Menandai sebuah blok sebagai sumber kebenaran. Cermin di tempat lain diperbarui langsung saat Anda menyuntingnya."
@@ -4704,9 +4717,6 @@
       "Repositori yang sudah Anda kloning mungkin tetap tersinkron lewat kredensial yang disimpan git sendiri, bahkan setelah Anda memutus koneksi."
     ],
     "msqUNq": ["Folder dan templat siap pakai agar Anda cepat memulai."],
-    "msuDyW": [
-      "Setel sinkronisasi bawaan untuk pengguna yang membuka proyek ini pertama kali. Pengaturan ini disimpan di repositori Anda."
-    ],
     "mwMF9u": ["Membuka pencarian CodeMirror di mode penyunting sumber."],
     "mxGJVE": ["Ganti worktree…"],
     "mxY24F": [
@@ -5440,6 +5450,9 @@
     "uL_Wx8": ["Terminal berhenti tak terduga."],
     "uM6jnS": ["Gagal memulihkan"],
     "uNGmQn": ["Pengujiannya tidak bisa dijalankan. Pastikan OpenKnowledge masih berjalan."],
+    "uNkJ8H": [
+      "Mode ini berasal dari Bawaan bersama proyek di bawah. Pilih mode untuk menentukan pilihan Anda sendiri di komputer ini."
+    ],
     "uO9WLl": ["Push"],
     "uOKoBM": [
       "Mengganti entri ",
@@ -5502,6 +5515,7 @@
     "v2ZW0K": ["Aktifkan terminal"],
     "v2a04T": ["Aturan markdownlint"],
     "v41fCm": ["Berkas tidak ditemukan"],
+    "v6Glry": ["Matikan sinkronisasi otomatis"],
     "v75Em9": [["uploadedCount", "plural", { "other": [["uploadedCount"], " berkas diunggah"] }]],
     "v77jrg": ["Pilihan penyunting visual"],
     "v7lbnC": ["Cari kecocokan berikutnya"],
@@ -5625,6 +5639,9 @@
     "wJijgU": ["Lokasi"],
     "wJo9oS": ["Tutup pencarian"],
     "wKJo7h": ["Proyek OpenKnowledge tidak ada di jalur checkout ini."],
+    "wLRCZ8": [
+      "Server tidak dapat membaca status sinkronisasi proyek ini, jadi opsi sinkronisasi disembunyikan. Opsi akan muncul di sini begitu status sinkronisasi dimuat; menutup lalu membuka kembali Pengaturan juga akan mencoba lagi."
+    ],
     "wQp1V3": ["Cermin dari <0>", ["src"], "</0>"],
     "wQvvZY": ["Berkas keterampilan baru"],
     "wRni1Z": ["Nonaktifkan Slidev"],

@@ -2427,6 +2427,10 @@ msgid "Auto-save"
 msgstr "Enregistrement automatique"
 
 #: src/components/settings/SyncSection.tsx
+msgid "Auto-sync is on, but there's no remote to sync with yet. It starts as soon as a remote is connected."
+msgstr "La synchronisation automatique est activée, mais il n'y a pas encore de dépôt distant avec lequel synchroniser. Elle démarrera dès qu'un dépôt distant sera connecté."
+
+#: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — sign in to resume."
 msgstr "La synchronisation automatique est en pause — connectez-vous pour la reprendre."
 
@@ -3097,8 +3101,8 @@ msgid "Choose where to send this message"
 msgstr "Choisir où envoyer ce message"
 
 #: src/components/settings/SharingSection.tsx
-msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
-msgstr "Choisissez si la configuration OpenKnowledge de ce projet, y compris ses connexions aux outils IA, est enregistrée avec le projet pour que vos coéquipiers l'obtiennent aussi, ou conservée uniquement sur votre ordinateur."
+msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections and the Shared default sync mode, is saved with the project so teammates get it too, or kept only on your computer."
+msgstr "Choisissez si la configuration OpenKnowledge de ce projet, y compris ses connexions aux outils IA et le mode de synchronisation de la Valeur par défaut partagée, est enregistrée avec le projet pour que vos coéquipiers l'obtiennent aussi, ou conservée uniquement sur votre ordinateur."
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Choose which agents appear in agent menus across the app, and set them up to read and update your documents."
@@ -4455,6 +4459,10 @@ msgstr "Impossible de joindre le point de terminaison. Vérifiez l'URL et que le
 #: src/editor/image-upload/upload-failure.ts
 msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "Impossible de joindre le serveur Open Knowledge pour envoyer {fileName}."
+
+#: src/components/settings/SyncSection.tsx
+msgid "Couldn't reach the OpenKnowledge server, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "Impossible de joindre le serveur OpenKnowledge, les options de synchronisation sont donc masquées. Elles apparaîtront ici dès que l'état de synchronisation sera chargé ; fermer puis rouvrir les Paramètres relance aussi la tentative."
 
 #: src/components/acp/ThreadView.tsx
 #: src/editor/use-composer-attachments.ts
@@ -8556,6 +8564,10 @@ msgstr "Chargement des compétences"
 #: src/components/PackCardGrid.tsx
 msgid "Loading starter packs"
 msgstr "Chargement des packs de démarrage"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Loading sync status"
+msgstr "Chargement de l'état de synchronisation"
 
 #: src/components/CommandPalette.tsx
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
@@ -13216,10 +13228,6 @@ msgstr "Définir l'identité"
 msgid "Set it up on its own page under Plugins."
 msgstr "Configurez-le sur sa propre page sous Plugins."
 
-#: src/components/settings/SyncSection.tsx
-msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
-msgstr "Définissez la synchronisation par défaut pour les utilisateurs qui ouvrent ce projet pour la première fois. Ce réglage est validé dans votre dépôt."
-
 #: src/components/command-palette-commands.ts
 msgid "Set up OpenKnowledge integrations"
 msgstr "Configurer les intégrations OpenKnowledge"
@@ -14284,6 +14292,10 @@ msgstr "La synchronisation de ce worktree est réglée sur Manuel, héritée de 
 msgid "Sync is taking longer than usual — your changes are safe on this device."
 msgstr "La synchronisation prend plus de temps que d'habitude — vos modifications sont en sécurité sur cet appareil."
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Sync keeps this computer's copy up to date with your Git remote. The shared settings below decide what teammates get when they open the project."
+msgstr "La synchronisation maintient la copie de cet ordinateur à jour avec votre dépôt distant Git. Les paramètres partagés ci-dessous déterminent ce que reçoivent vos coéquipiers lorsqu'ils ouvrent le projet."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
 msgstr "Mode de synchronisation"
@@ -14908,6 +14920,10 @@ msgstr "La demande d'activation des outils Open Knowledge a expiré. Ce fil fonc
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "Le fichier de schéma n'existe pas ou n'a pas pu être chargé — ajouter un champ le crée."
 
+#: src/components/settings/SyncSection.tsx
+msgid "The server couldn't read this project's sync status, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "Le serveur n'a pas pu lire l'état de synchronisation de ce projet, les options de synchronisation sont donc masquées. Elles apparaîtront ici dès que l'état de synchronisation sera chargé ; fermer puis rouvrir les Paramètres relance aussi la tentative."
+
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "le serveur a répondu mais server.lock n'a pas encore de port"
@@ -14952,6 +14968,10 @@ msgstr "Le dossier source lui-même ne bouge pas."
 #: src/components/SyncStatusBadge.tsx
 msgid "The stored token is missing the permissions this host needs to push."
 msgstr "Il manque au jeton enregistré les permissions dont cet hôte a besoin pour pousser."
+
+#: src/components/settings/SyncSection.tsx
+msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
+msgstr "Le mode de synchronisation avec lequel vos coéquipiers démarrent la première fois qu'ils ouvrent ce projet. Il est enregistré dans les paramètres OpenKnowledge du projet ; il ne leur parvient donc que si le Partage de la configuration ci-dessous est réglé sur Partagé."
 
 #: src/components/TemplateProperties.tsx
 msgid "The template's filename (without `.md`)."
@@ -15429,6 +15449,10 @@ msgstr "Cette machine"
 msgid "This may take a moment. Your markdown content is kept."
 msgstr "Cela peut prendre un moment. Votre contenu markdown est conservé."
 
+#: src/components/settings/SyncSection.tsx
+msgid "This mode comes from the project's Shared default below. Pick a mode to choose your own for this computer."
+msgstr "Ce mode provient de la Valeur par défaut partagée du projet, ci-dessous. Choisissez un mode pour définir le vôtre sur cet ordinateur."
+
 #. placeholder {0}: scopeLabels[scope]
 #. placeholder {1}: scopeLabels[toScope]
 #. placeholder {2}: scopeLabels[toScope]
@@ -15890,6 +15914,10 @@ msgstr "Retransformez {display} en un vrai répertoire contenant un lien symboli
 #: src/components/CreatedItemsList.tsx
 msgid "Turn it off any time in Settings."
 msgstr "Désactivez-le à tout moment dans Paramètres."
+
+#: src/components/settings/SyncSection.tsx
+msgid "Turn off auto-sync"
+msgstr "Désactiver la synchronisation automatique"
 
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Turn off Only markdown files"

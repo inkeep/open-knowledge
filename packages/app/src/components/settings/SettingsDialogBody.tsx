@@ -178,7 +178,12 @@ export function SettingsDialogBody({
         <SettingsSectionHeader
           titleId="settings-sync-sharing-title"
           title={<Trans>Sync & sharing</Trans>}
-        />
+        >
+          <Trans>
+            Sync keeps this computer's copy up to date with your Git remote. The shared settings
+            below decide what teammates get when they open the project.
+          </Trans>
+        </SettingsSectionHeader>
         <SyncSection />
         <SharingSection />
       </section>

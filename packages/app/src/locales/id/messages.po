@@ -2423,6 +2423,10 @@ msgid "Auto-save"
 msgstr "Simpan otomatis"
 
 #: src/components/settings/SyncSection.tsx
+msgid "Auto-sync is on, but there's no remote to sync with yet. It starts as soon as a remote is connected."
+msgstr "Sinkronisasi otomatis aktif, tetapi belum ada remote untuk disinkronkan. Sinkronisasi akan dimulai begitu remote terhubung."
+
+#: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — sign in to resume."
 msgstr "Sinkronisasi otomatis dijeda — masuk untuk melanjutkan."
 
@@ -3093,8 +3097,8 @@ msgid "Choose where to send this message"
 msgstr "Pilih ke mana pesan ini dikirim"
 
 #: src/components/settings/SharingSection.tsx
-msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
-msgstr "Pilih apakah penyiapan OpenKnowledge proyek ini, termasuk koneksi alat AI-nya, disimpan bersama proyek agar rekan tim juga mendapatkannya, atau disimpan hanya di komputer Anda."
+msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections and the Shared default sync mode, is saved with the project so teammates get it too, or kept only on your computer."
+msgstr "Pilih apakah penyiapan OpenKnowledge proyek ini, termasuk koneksi alat AI-nya dan mode sinkronisasi Bawaan bersama, disimpan bersama proyek agar rekan tim juga mendapatkannya, atau disimpan hanya di komputer Anda."
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Choose which agents appear in agent menus across the app, and set them up to read and update your documents."
@@ -4451,6 +4455,10 @@ msgstr "Endpoint tidak bisa dihubungi. Periksa URL-nya dan pastikan servernya me
 #: src/editor/image-upload/upload-failure.ts
 msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "Server Open Knowledge tidak bisa dihubungi untuk mengunggah {fileName}."
+
+#: src/components/settings/SyncSection.tsx
+msgid "Couldn't reach the OpenKnowledge server, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "Tidak dapat menghubungi server OpenKnowledge, jadi opsi sinkronisasi disembunyikan. Opsi akan muncul di sini begitu status sinkronisasi dimuat; menutup lalu membuka kembali Pengaturan juga akan mencoba lagi."
 
 #: src/components/acp/ThreadView.tsx
 #: src/editor/use-composer-attachments.ts
@@ -8552,6 +8560,10 @@ msgstr "Memuat keterampilan"
 #: src/components/PackCardGrid.tsx
 msgid "Loading starter packs"
 msgstr "Memuat paket awal"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Loading sync status"
+msgstr "Memuat status sinkronisasi"
 
 #: src/components/CommandPalette.tsx
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
@@ -13212,10 +13224,6 @@ msgstr "Setel identitas"
 msgid "Set it up on its own page under Plugins."
 msgstr "Siapkan di halamannya sendiri di bawah Plugin."
 
-#: src/components/settings/SyncSection.tsx
-msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
-msgstr "Setel sinkronisasi bawaan untuk pengguna yang membuka proyek ini pertama kali. Pengaturan ini disimpan di repositori Anda."
-
 #: src/components/command-palette-commands.ts
 msgid "Set up OpenKnowledge integrations"
 msgstr "Siapkan integrasi OpenKnowledge"
@@ -14280,6 +14288,10 @@ msgstr "Sinkronisasi worktree ini disetel ke Manual, diwarisi dari {project}. Ub
 msgid "Sync is taking longer than usual — your changes are safe on this device."
 msgstr "Sinkronisasi memakan waktu lebih lama dari biasanya — perubahan Anda aman di perangkat ini."
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Sync keeps this computer's copy up to date with your Git remote. The shared settings below decide what teammates get when they open the project."
+msgstr "Sinkronisasi menjaga salinan di komputer ini tetap mutakhir dengan remote Git Anda. Pengaturan bersama di bawah menentukan apa yang didapat rekan tim saat mereka membuka proyek."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
 msgstr "Mode sinkronisasi"
@@ -14904,6 +14916,10 @@ msgstr "Permintaan untuk mengaktifkan alat Open Knowledge kedaluwarsa. Utas ini 
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "Berkas skemanya tidak ada atau gagal dimuat — menambahkan sebuah bidang akan membuatnya."
 
+#: src/components/settings/SyncSection.tsx
+msgid "The server couldn't read this project's sync status, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "Server tidak dapat membaca status sinkronisasi proyek ini, jadi opsi sinkronisasi disembunyikan. Opsi akan muncul di sini begitu status sinkronisasi dimuat; menutup lalu membuka kembali Pengaturan juga akan mencoba lagi."
+
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "server merespons tetapi server.lock belum memiliki port"
@@ -14948,6 +14964,10 @@ msgstr "Folder sumbernya sendiri tidak berpindah."
 #: src/components/SyncStatusBadge.tsx
 msgid "The stored token is missing the permissions this host needs to push."
 msgstr "Token yang tersimpan tidak memiliki izin yang dibutuhkan host ini untuk melakukan push."
+
+#: src/components/settings/SyncSection.tsx
+msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
+msgstr "Mode sinkronisasi yang digunakan rekan tim saat pertama kali membuka proyek ini. Mode ini disimpan di pengaturan OpenKnowledge proyek, jadi hanya sampai ke mereka jika Berbagi konfigurasi di bawah diatur ke Dibagikan."
 
 #: src/components/TemplateProperties.tsx
 msgid "The template's filename (without `.md`)."
@@ -15425,6 +15445,10 @@ msgstr "Mesin ini"
 msgid "This may take a moment. Your markdown content is kept."
 msgstr "Ini mungkin makan waktu sebentar. Konten markdown Anda dipertahankan."
 
+#: src/components/settings/SyncSection.tsx
+msgid "This mode comes from the project's Shared default below. Pick a mode to choose your own for this computer."
+msgstr "Mode ini berasal dari Bawaan bersama proyek di bawah. Pilih mode untuk menentukan pilihan Anda sendiri di komputer ini."
+
 #. placeholder {0}: scopeLabels[scope]
 #. placeholder {1}: scopeLabels[toScope]
 #. placeholder {2}: scopeLabels[toScope]
@@ -15886,6 +15910,10 @@ msgstr "Mengubah {display} kembali menjadi direktori nyata yang memuat satu syml
 #: src/components/CreatedItemsList.tsx
 msgid "Turn it off any time in Settings."
 msgstr "Matikan kapan saja di Pengaturan."
+
+#: src/components/settings/SyncSection.tsx
+msgid "Turn off auto-sync"
+msgstr "Matikan sinkronisasi otomatis"
 
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Turn off Only markdown files"

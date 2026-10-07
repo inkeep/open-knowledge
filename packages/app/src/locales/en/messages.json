@@ -507,6 +507,9 @@
     "5-FeN2": ["Share URL"],
     "5-o4kO": ["Only markdown files"],
     "50ORFs": ["Reset ", ["0"], " to default"],
+    "50gx7V": [
+      "Choose whether this project's OpenKnowledge setup, including its AI-tool connections and the Shared default sync mode, is saved with the project so teammates get it too, or kept only on your computer."
+    ],
     "54Y6Fg": ["Could not load templates. Try again later."],
     "56WWtu": ["Couldn't load starter packs: ", ["error"]],
     "56xUL1": ["Property name"],
@@ -901,6 +904,9 @@
     "9OPs7U": ["This agent hasn't announced its commands yet"],
     "9PQysm": ["Hide advanced"],
     "9R7pRC": ["No tags match \"", ["trimmed"], "\". Continue typing to create one."],
+    "9U-7Xv": [
+      "Auto-sync is on, but there's no remote to sync with yet. It starts as soon as a remote is connected."
+    ],
     "9UQ730": ["Clone"],
     "9V0W-R": [
       "Adds the OpenKnowledge skill to the <0>Claude Desktop App</0> so it's available in Chat and Cowork sessions."
@@ -1641,6 +1647,9 @@
       ["peers"],
       ", and OpenKnowledge cannot change it from here. Unlink the folder in Skills Studio first."
     ],
+    "HADdBA": [
+      "Sync keeps this computer's copy up to date with your Git remote. The shared settings below decide what teammates get when they open the project."
+    ],
     "HAkEqR": ["Recent files"],
     "HAvHev": ["Auto-update off for \"", ["name"], "\""],
     "HAvRAI": [["skillCount", "plural", { "one": ["skill"], "other": ["skills"] }]],
@@ -2126,9 +2135,6 @@
     "N2eHWq": ["Code Block"],
     "N3_ozB": ["Hubs"],
     "N40H-G": ["All"],
-    "N55YNr": [
-      "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
-    ],
     "N5rzKJ": ["Delete ", ["0"], " skills"],
     "N6j2JH": ["Edit ", ["0"]],
     "N7Lau6": ["Commit and sync"],
@@ -2285,6 +2291,7 @@
     "OdmsFg": ["Failed to delete item"],
     "OeAl1e": ["e.g. assets/uploads"],
     "OfhWJH": ["Reset"],
+    "OgvwrM": ["Loading sync status"],
     "Ohpzub": ["Comment or ask AI about this code block"],
     "Oi56Cu": ["Cleanup log"],
     "OiHJdA": [
@@ -3249,6 +3256,9 @@
     "Zue_jx": ["Your GitHub token is missing required scopes. Try signing in again."],
     "ZvzbDF": ["Add it directly to this project."],
     "ZwpggY": ["OpenKnowledge read the project settings"],
+    "Zysl7r": [
+      "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
+    ],
     "_0JUKX": ["Bug reporting needs the OpenKnowledge desktop app."],
     "_2cM9E": ["recent"],
     "_3S4Ql": [
@@ -3827,6 +3837,9 @@
     "emgiet": ["Authoritative content; mirrored verbatim everywhere it's referenced."],
     "enPTnx": ["line ", ["displayLine"]],
     "eolhcI": ["Reading working tree"],
+    "epGMvx": [
+      "Couldn't reach the OpenKnowledge server, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+    ],
     "eps54V": ["Removed"],
     "epuNYK": [
       "Mark a block as the source of truth. Mirrors elsewhere update live as you edit it."
@@ -4702,9 +4715,6 @@
       "Repositories you've already cloned may keep syncing through git's own saved credentials, even after you disconnect."
     ],
     "msqUNq": ["Ready-made folders and templates to get you started quickly."],
-    "msuDyW": [
-      "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
-    ],
     "mwMF9u": ["Open CodeMirror search in source editor mode."],
     "mxGJVE": ["Switch worktree…"],
     "mxY24F": ["Duplicate the focused file-tree item when focus is in the Files sidebar."],
@@ -5443,6 +5453,9 @@
     "uL_Wx8": ["The terminal stopped unexpectedly."],
     "uM6jnS": ["Restore failed"],
     "uNGmQn": ["Couldn't run the test. Check that OpenKnowledge is still running."],
+    "uNkJ8H": [
+      "This mode comes from the project's Shared default below. Pick a mode to choose your own for this computer."
+    ],
     "uO9WLl": ["Push"],
     "uOKoBM": [
       "Replaces the existing ",
@@ -5516,6 +5529,7 @@
     "v2ZW0K": ["Enable terminal"],
     "v2a04T": ["markdownlint rules"],
     "v41fCm": ["File not found"],
+    "v6Glry": ["Turn off auto-sync"],
     "v75Em9": [
       [
         "uploadedCount",
@@ -5636,6 +5650,9 @@
     "wJijgU": ["Location"],
     "wJo9oS": ["Close find"],
     "wKJo7h": ["The OpenKnowledge project is missing at this checkout path."],
+    "wLRCZ8": [
+      "The server couldn't read this project's sync status, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+    ],
     "wQp1V3": ["Mirror of <0>", ["src"], "</0>"],
     "wQvvZY": ["New skill file"],
     "wRni1Z": ["Disable Slidev"],

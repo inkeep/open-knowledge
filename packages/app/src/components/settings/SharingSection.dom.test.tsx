@@ -65,6 +65,13 @@ describe('SharingSection', () => {
     expect(labelTextFor(shared)).toContain('Shared');
   });
 
+  test('the help text says the Shared default sync mode travels with the setup', async () => {
+    renderSection({ ...SHARED_STATUS, mode: 'local-only' });
+
+    const section = await screen.findByTestId('settings-sharing');
+    expect(section.textContent ?? '').toContain('the Shared default sync mode');
+  });
+
   test('clicking "Only me" sends local-only to the bridge', async () => {
     const { setModeCalls } = renderSection();
 

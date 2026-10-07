@@ -23,6 +23,7 @@ type SyncStatus = {
 } | null;
 
 let syncStatus: SyncStatus = null;
+let syncFetchError: 'network' | 'server' | null = null;
 let projectLocalConfig: {
   autoSync?: {
     enabled?: boolean;
@@ -156,7 +157,9 @@ vi.doMock('@/components/ui/select', () => ({
   },
 }));
 
-const ToggleGroupHandlerCtx = createContext<((value: string) => void) | undefined>(undefined);
+const ToggleGroupHandlerCtx = createContext<
+  { onValueChange?: (value: string) => void; value?: string } | undefined
+>(undefined);
 vi.doMock('@/components/ui/toggle-group', () => ({
   ToggleGroup: ({
     children,
@@ -171,7 +174,7 @@ vi.doMock('@/components/ui/toggle-group', () => ({
     disabled?: boolean;
     [key: string]: unknown;
   }) => (
-    <ToggleGroupHandlerCtx.Provider value={onValueChange}>
+    <ToggleGroupHandlerCtx.Provider value={{ onValueChange, value }}>
       <div data-value={value} data-disabled={String(Boolean(disabled))} {...props}>
         {children}
       </div>
@@ -186,9 +189,10 @@ vi.doMock('@/components/ui/toggle-group', () => ({
     value?: string;
     [key: string]: unknown;
   }) => {
-    const onValueChange = use(ToggleGroupHandlerCtx);
+    const ctx = use(ToggleGroupHandlerCtx);
+    const emitted = ctx?.value === value ? '' : (value as string);
     return (
-      <button type="button" onClick={() => onValueChange?.(value as string)} {...props}>
+      <button type="button" onClick={() => ctx?.onValueChange?.(emitted)} {...props}>
         {children}
       </button>
     );
@@ -207,7 +211,7 @@ vi.doMock('./ProjectTemplatesSection', () => ({ ProjectTemplatesSection: () => n
 
 vi.doMock('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatus: () => syncStatus,
-  useGitSyncStatusDetailed: () => ({ status: syncStatus, fetchError: null }),
+  useGitSyncStatusDetailed: () => ({ status: syncStatus, fetchError: syncFetchError }),
 }));
 
 vi.doMock('@/lib/config-provider', () => ({
@@ -700,5 +704,329 @@ describe('Settings Sync section — publish-to-GitHub reachability', () => {
     await renderSyncSection();
 
     expect(screen.queryByTestId('settings-sync-setup')).toBeNull();
+  });
+});
+
+describe('Settings Sync section: unknown or missing remote never offers auto sync', () => {
+  beforeEach(() => {
+    cleanup();
+    syncFetchError = null;
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    projectConfig = { autoSync: { default: null }, content: { attachmentFolderPath: './' } };
+    projectLocalSynced = true;
+    projectSynced = true;
+    localPatchCalls = [];
+    toastErrors.length = 0;
+  });
+
+  function expectNoModeControls() {
+    expect(screen.queryByTestId('settings-sync-mode-toggle')).toBeNull();
+    expect(screen.queryByTestId('settings-sync-mode-follow')).toBeNull();
+    expect(screen.queryByTestId('settings-sync-mode-full')).toBeNull();
+    expect(screen.queryByTestId('settings-sync-default')).toBeNull();
+  }
+
+  test('a status that is still loading offers no auto mode and no shared default', async () => {
+    syncStatus = null;
+
+    await renderSyncSection();
+
+    expectNoModeControls();
+    const loading = screen.getByTestId('settings-sync-loading');
+    expect(within(loading).getByRole('status').textContent ?? '').toContain('Loading sync status');
+  });
+
+  test('a failed status fetch hides the sync controls and announces why', async () => {
+    syncStatus = null;
+    syncFetchError = 'server';
+
+    await renderSyncSection();
+
+    expectNoModeControls();
+    expect(screen.queryByTestId('settings-sync-loading')).toBeNull();
+    const unavailable = screen.getByTestId('settings-sync-unavailable');
+    const message = within(unavailable).getByRole('status').textContent ?? '';
+    expect(message).toContain("The server couldn't read this project's sync status");
+    expect(message).toContain('They appear here as soon as the sync status loads');
+  });
+
+  test('an unreachable server is named as the reason the sync controls are hidden', async () => {
+    syncStatus = null;
+    syncFetchError = 'network';
+
+    await renderSyncSection();
+
+    expectNoModeControls();
+    const unavailable = screen.getByTestId('settings-sync-unavailable');
+    expect(within(unavailable).getByRole('status').textContent ?? '').toContain(
+      "Couldn't reach the OpenKnowledge server",
+    );
+  });
+
+  test('no remote shows the setup screen even when the engine is not dormant', async () => {
+    syncStatus = { state: 'idle', hasRemote: false, syncEnabled: false, ahead: 0 };
+
+    await renderSyncSection();
+
+    expectNoModeControls();
+    expect(screen.getByTestId('settings-sync-empty')).not.toBeNull();
+  });
+
+  test('no remote with auto sync off shows no auto sync warning', async () => {
+    syncStatus = { state: 'dormant', hasRemote: false, syncEnabled: false, ahead: 0 };
+
+    await renderSyncSection();
+
+    expect(screen.getByTestId('settings-sync-empty')).not.toBeNull();
+    expect(screen.queryByTestId('settings-sync-no-remote-auto-on')).toBeNull();
+  });
+
+  test('no remote, no local choice and the engine off shows the setup screen without a warning', async () => {
+    syncStatus = {
+      state: 'dormant',
+      hasRemote: false,
+      syncEnabled: false,
+      syncMode: 'off',
+      ahead: 0,
+    };
+    projectLocalConfig = {};
+
+    await renderSyncSection();
+
+    expect(screen.getByTestId('settings-sync-setup')).not.toBeNull();
+    expect(screen.queryByTestId('settings-sync-no-remote-auto-on')).toBeNull();
+  });
+
+  test('no remote with auto sync already on warns and turns it off without a confirm', async () => {
+    syncStatus = {
+      state: 'dormant',
+      hasRemote: false,
+      syncEnabled: true,
+      syncMode: 'follow',
+      ahead: 0,
+    };
+    projectLocalConfig = { autoSync: { mode: 'follow' } };
+
+    await renderSyncSection();
+
+    expectNoModeControls();
+    expect(screen.getByTestId('settings-sync-no-remote-auto-on').textContent ?? '').toContain(
+      "there's no remote to sync with yet",
+    );
+
+    fireEvent.click(screen.getByTestId('settings-sync-no-remote-turn-off'));
+
+    expect(localPatchCalls).toEqual([{ autoSync: { mode: 'off', enabled: null } }]);
+  });
+
+  test('turning auto-sync off moves focus to the setup button that stays on screen', async () => {
+    syncStatus = {
+      state: 'dormant',
+      hasRemote: false,
+      syncEnabled: true,
+      syncMode: 'follow',
+      ahead: 0,
+    };
+    projectLocalConfig = { autoSync: { mode: 'follow' } };
+    const user = userEvent.setup();
+
+    await renderSyncSection();
+
+    await user.click(screen.getByTestId('settings-sync-no-remote-turn-off'));
+
+    expect(localPatchCalls).toEqual([{ autoSync: { mode: 'off', enabled: null } }]);
+    expect(document.activeElement).toBe(screen.getByTestId('settings-sync-setup'));
+  });
+
+  test('no remote with auto sync on from the shared default warns and turns it off locally', async () => {
+    syncStatus = {
+      state: 'dormant',
+      hasRemote: false,
+      syncEnabled: true,
+      syncMode: 'full',
+      ahead: 0,
+    };
+    projectLocalConfig = {};
+    projectConfig = { autoSync: { default: 'full' }, content: { attachmentFolderPath: './' } };
+
+    await renderSyncSection();
+
+    expectNoModeControls();
+    expect(screen.getByTestId('settings-sync-no-remote-auto-on').textContent ?? '').toContain(
+      "there's no remote to sync with yet",
+    );
+
+    fireEvent.click(screen.getByTestId('settings-sync-no-remote-turn-off'));
+
+    expect(localPatchCalls).toEqual([{ autoSync: { mode: 'off', enabled: null } }]);
+  });
+
+  test('a local Manual choice hides the warning before the engine reports the change', async () => {
+    syncStatus = {
+      state: 'dormant',
+      hasRemote: false,
+      syncEnabled: true,
+      syncMode: 'full',
+      ahead: 0,
+    };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    projectConfig = { autoSync: { default: 'full' }, content: { attachmentFolderPath: './' } };
+
+    await renderSyncSection();
+
+    expect(screen.getByTestId('settings-sync-empty')).not.toBeNull();
+    expect(screen.queryByTestId('settings-sync-no-remote-auto-on')).toBeNull();
+  });
+
+  test('the turn-off action waits for project settings to load', async () => {
+    syncStatus = {
+      state: 'dormant',
+      hasRemote: false,
+      syncEnabled: true,
+      syncMode: 'full',
+      ahead: 0,
+    };
+    projectLocalConfig = { autoSync: { mode: 'full' } };
+    projectLocalSynced = false;
+
+    await renderSyncSection();
+
+    expect(
+      (screen.getByTestId('settings-sync-no-remote-turn-off') as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+});
+
+describe('Settings Sync section: a remote with no local choice shows the mode the engine runs', () => {
+  beforeEach(() => {
+    cleanup();
+    syncFetchError = null;
+    syncStatus = {
+      state: 'idle',
+      hasRemote: true,
+      syncEnabled: true,
+      syncMode: 'full',
+      ahead: 0,
+      remote: {
+        label: 'inkeep/open-knowledge',
+        webUrl: 'https://github.com/inkeep/open-knowledge',
+      },
+    };
+    projectLocalConfig = {};
+    projectConfig = { autoSync: { default: 'full' }, content: { attachmentFolderPath: './' } };
+    projectLocalSynced = true;
+    projectSynced = true;
+    localPatchCalls = [];
+    toastErrors.length = 0;
+  });
+
+  test('the mode control shows the shared default the engine runs and says where it comes from', async () => {
+    await renderSyncSection();
+
+    const toggle = screen.getByTestId('settings-sync-mode-toggle');
+    expect(toggle.getAttribute('data-value')).toBe('full');
+    expect(screen.getByTestId('settings-sync-body').textContent ?? '').toContain(
+      'pushed to your remote automatically',
+    );
+    const note = screen.getByTestId('settings-sync-mode-from-default');
+    expect(note.textContent ?? '').toContain("comes from the project's Shared default");
+    expect(toggle.getAttribute('aria-describedby')).toBe(note.id);
+    expect(localPatchCalls).toEqual([]);
+  });
+
+  test('a local choice wins over the engine report and drops the shared default note', async () => {
+    projectLocalConfig = { autoSync: { mode: 'follow' } };
+
+    await renderSyncSection();
+
+    expect(screen.getByTestId('settings-sync-mode-toggle').getAttribute('data-value')).toBe(
+      'follow',
+    );
+    expect(screen.queryByTestId('settings-sync-mode-from-default')).toBeNull();
+  });
+
+  test('picking Manual over the shared default writes a local choice without a confirm', async () => {
+    await renderSyncSection();
+
+    fireEvent.click(screen.getByTestId('settings-sync-mode-off'));
+
+    expect(localPatchCalls).toEqual([{ autoSync: { mode: 'off', enabled: null } }]);
+  });
+
+  test("picking the mode the shared default already runs records it as this computer's choice", async () => {
+    await renderSyncSection();
+
+    fireEvent.click(screen.getByTestId('settings-sync-mode-full'));
+
+    expect(screen.queryByRole('button', { name: 'Enable Auto (Pull and Push)' })).toBeNull();
+    expect(localPatchCalls).toEqual([{ autoSync: { mode: 'full', enabled: null } }]);
+  });
+
+  test('re-picking a mode this computer already chose writes nothing', async () => {
+    projectLocalConfig = { autoSync: { mode: 'full' } };
+
+    await renderSyncSection();
+
+    fireEvent.click(screen.getByTestId('settings-sync-mode-full'));
+
+    expect(screen.getByTestId('settings-sync-mode-toggle').getAttribute('data-value')).toBe('full');
+    expect(localPatchCalls).toEqual([]);
+  });
+
+  test('the shared default Auto mode offers the cadence controls for both legs', async () => {
+    await renderSyncSection();
+
+    expect(screen.getByTestId('settings-sync-advanced-trigger')).not.toBeNull();
+    expect(screen.getByTestId('settings-sync-pull-interval')).not.toBeNull();
+    expect(screen.getByTestId('settings-sync-push-interval')).not.toBeNull();
+  });
+
+  test('a push denial under the shared default Auto mode offers the pull-only switch', async () => {
+    syncStatus = {
+      ...syncStatus,
+      state: 'disabled',
+      pausedReason: 'no-push-permission',
+      pushPermission: { checkStatus: 'denied', deniedReason: 'no-collaborator' },
+    } as SyncStatus;
+
+    await renderSyncSection();
+
+    expect(screen.getByTestId('settings-sync-mode-toggle').getAttribute('data-value')).toBe('full');
+    expect(screen.getByTestId('settings-sync-switch-follow')).not.toBeNull();
+  });
+
+  test('the shared default note waits until the local choice is known', async () => {
+    projectLocalConfig = null;
+    projectLocalSynced = false;
+    syncStatus = { ...syncStatus, syncEnabled: false, syncMode: 'off' } as SyncStatus;
+
+    await renderSyncSection();
+
+    const toggle = screen.getByTestId('settings-sync-mode-toggle');
+    expect(toggle.getAttribute('data-value')).toBe('off');
+    expect(screen.queryByTestId('settings-sync-mode-from-default')).toBeNull();
+    expect(toggle.getAttribute('aria-describedby')).toBeNull();
+  });
+
+  test('with no shared default the control shows Manual and no shared default note', async () => {
+    projectConfig = { autoSync: { default: null }, content: { attachmentFolderPath: './' } };
+    syncStatus = { ...syncStatus, syncEnabled: false, syncMode: 'off' } as SyncStatus;
+
+    await renderSyncSection();
+
+    expect(screen.getByTestId('settings-sync-mode-toggle').getAttribute('data-value')).toBe('off');
+    expect(screen.queryByTestId('settings-sync-mode-from-default')).toBeNull();
+  });
+
+  test('with no shared default, pressing the shown Manual mode writes nothing', async () => {
+    projectConfig = { autoSync: { default: null }, content: { attachmentFolderPath: './' } };
+    syncStatus = { ...syncStatus, syncEnabled: false, syncMode: 'off' } as SyncStatus;
+
+    await renderSyncSection();
+
+    fireEvent.click(screen.getByTestId('settings-sync-mode-off'));
+
+    expect(screen.getByTestId('settings-sync-mode-toggle').getAttribute('data-value')).toBe('off');
+    expect(localPatchCalls).toEqual([]);
   });
 });

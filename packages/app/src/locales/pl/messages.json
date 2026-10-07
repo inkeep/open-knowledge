@@ -600,6 +600,9 @@
     "5-FeN2": ["Udostępnij adres URL"],
     "5-o4kO": ["Tylko pliki markdown"],
     "50ORFs": ["Zresetuj ", ["0"], " do wartości domyślnej"],
+    "50gx7V": [
+      "Wybierz, czy konfiguracja OpenKnowledge tego projektu, w tym połączenia z narzędziami AI i tryb synchronizacji z ustawienia Domyślnie współdzielone, ma być zapisywana razem z projektem, aby zespół również ją otrzymał, czy przechowywana tylko na Twoim komputerze."
+    ],
     "54Y6Fg": ["Nie udało się wczytać szablonów. Spróbuj ponownie później."],
     "56WWtu": ["Nie udało się wczytać pakietów startowych: ", ["error"]],
     "56xUL1": ["Nazwa właściwości"],
@@ -1085,6 +1088,9 @@
       "Żaden tag nie pasuje do \"",
       ["trimmed"],
       "\". Kontynuuj pisanie, aby utworzyć tag."
+    ],
+    "9U-7Xv": [
+      "Synchronizacja automatyczna jest włączona, ale nie ma jeszcze zdalnego repozytorium do synchronizacji. Rozpocznie się, gdy tylko zostanie połączone zdalne repozytorium."
     ],
     "9UQ730": ["Sklonuj"],
     "9V0W-R": [
@@ -1923,6 +1929,9 @@
       ["peers"],
       ", więc OpenKnowledge nie może jej zmienić stąd. Najpierw odłącz folder w Skills Studio."
     ],
+    "HADdBA": [
+      "Synchronizacja utrzymuje kopię na tym komputerze w zgodzie ze zdalnym repozytorium Git. Współdzielone ustawienia poniżej decydują, co otrzyma zespół po otwarciu projektu."
+    ],
     "HAkEqR": ["Ostatnie pliki"],
     "HAvHev": ["Automatyczna aktualizacja wyłączona dla \"", ["name"], "\""],
     "HAvRAI": [
@@ -2515,9 +2524,6 @@
     "N2eHWq": ["Blok kodu"],
     "N3_ozB": ["Huby"],
     "N40H-G": ["Wszystko"],
-    "N55YNr": [
-      "Wybierz, czy konfiguracja OpenKnowledge tego projektu, w tym połączenia z narzędziami AI, ma być zapisywana razem z projektem, aby zespół również ją otrzymał, czy przechowywana tylko na Twoim komputerze."
-    ],
     "N5rzKJ": ["Usuń ", ["0"], " umiejętności"],
     "N6j2JH": ["Edytuj ", ["0"]],
     "N7Lau6": ["Zatwierdź i synchronizuj"],
@@ -2688,6 +2694,7 @@
     "OdmsFg": ["Nie udało się usunąć elementu"],
     "OeAl1e": ["np. assets/uploads"],
     "OfhWJH": ["Resetuj"],
+    "OgvwrM": ["Ładowanie stanu synchronizacji"],
     "Ohpzub": ["Skomentuj to lub zapytaj AI o ten blok kodu"],
     "Oi56Cu": ["Log czyszczenia"],
     "OiHJdA": [
@@ -3843,6 +3850,9 @@
     ],
     "ZvzbDF": ["Dodaj go bezpośrednio do tego projektu."],
     "ZwpggY": ["OpenKnowledge odczytało ustawienia projektu"],
+    "Zysl7r": [
+      "Tryb synchronizacji, od którego członkowie zespołu zaczynają przy pierwszym otwarciu tego projektu. Jest zapisywany w ustawieniach OpenKnowledge projektu, więc trafia do nich tylko wtedy, gdy Udostępnianie konfiguracji poniżej jest ustawione na Współdzielone."
+    ],
     "_0JUKX": ["Zgłaszanie błędów wymaga aplikacji desktopowej OpenKnowledge."],
     "_2cM9E": ["ostatnie"],
     "_3S4Ql": [
@@ -4539,6 +4549,9 @@
     "emgiet": ["Treść nadrzędna; kopiowana dosłownie wszędzie, gdzie jest przywoływana."],
     "enPTnx": ["wiersz ", ["displayLine"]],
     "eolhcI": ["Odczytywanie drzewa pracy"],
+    "epGMvx": [
+      "Nie udało się połączyć z serwerem OpenKnowledge, więc opcje synchronizacji są ukryte. Pojawią się tutaj, gdy tylko wczyta się stan synchronizacji; zamknięcie i ponowne otwarcie Ustawień także ponawia próbę."
+    ],
     "eps54V": ["Usunięto"],
     "epuNYK": [
       "Oznacz blok jako źródło prawdy. Lustra w innych miejscach aktualizują się na bieżąco podczas jego edycji."
@@ -5550,9 +5563,6 @@
       "Już sklonowane repozytoria mogą być nadal synchronizowane przy użyciu zapisanych danych uwierzytelniania samego git, nawet po rozłączeniu."
     ],
     "msqUNq": ["Gotowe foldery i szablony, dzięki którym szybko zaczniesz."],
-    "msuDyW": [
-      "Ustaw domyślny tryb synchronizacji dla użytkowników otwierających ten projekt po raz pierwszy. To ustawienie jest zapisywane w repozytorium."
-    ],
     "mwMF9u": ["Otwórz wyszukiwanie CodeMirror w trybie edycji kodu źródłowego."],
     "mxGJVE": ["Przełącz worktree…"],
     "mxY24F": ["Duplikuje aktywny element drzewa plików, gdy fokus jest w pasku bocznym Pliki."],
@@ -6405,6 +6415,9 @@
     "uL_Wx8": ["Terminal zatrzymał się nieoczekiwanie."],
     "uM6jnS": ["Przywracanie nie powiodło się"],
     "uNGmQn": ["Nie udało się uruchomić testu. Sprawdź, czy OpenKnowledge nadal działa."],
+    "uNkJ8H": [
+      "Ten tryb pochodzi z ustawienia Domyślnie współdzielone projektu poniżej. Wybierz tryb, aby ustawić własny na tym komputerze."
+    ],
     "uO9WLl": ["Wyślij"],
     "uOKoBM": [
       "Zastępuje istniejący wpis ",
@@ -6502,6 +6515,7 @@
     "v2ZW0K": ["Włącz terminal"],
     "v2a04T": ["Reguły markdownlint"],
     "v41fCm": ["Nie znaleziono pliku"],
+    "v6Glry": ["Wyłącz synchronizację automatyczną"],
     "v75Em9": [
       [
         "uploadedCount",
@@ -6670,6 +6684,9 @@
     "wJijgU": ["Lokalizacja"],
     "wJo9oS": ["Zamknij wyszukiwanie"],
     "wKJo7h": ["Projekt OpenKnowledge nie istnieje pod tą ścieżką checkoutu."],
+    "wLRCZ8": [
+      "Serwer nie mógł odczytać stanu synchronizacji tego projektu, więc opcje synchronizacji są ukryte. Pojawią się tutaj, gdy tylko wczyta się stan synchronizacji; zamknięcie i ponowne otwarcie Ustawień także ponawia próbę."
+    ],
     "wQp1V3": ["Lustro dla <0>", ["src"], "</0>"],
     "wQvvZY": ["Nowy plik umiejętności"],
     "wRni1Z": ["Wyłącz Slidev"],

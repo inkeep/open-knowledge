@@ -2423,6 +2423,10 @@ msgid "Auto-save"
 msgstr "স্বয়ংক্রিয় সংরক্ষণ"
 
 #: src/components/settings/SyncSection.tsx
+msgid "Auto-sync is on, but there's no remote to sync with yet. It starts as soon as a remote is connected."
+msgstr "স্বয়ংক্রিয় সিঙ্ক চালু আছে, কিন্তু সিঙ্ক করার মতো কোনো রিমোট এখনো নেই। রিমোট যুক্ত হলেই এটি শুরু হবে।"
+
+#: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — sign in to resume."
 msgstr "স্বয়ংক্রিয় সিঙ্ক থেমে আছে — আবার শুরু করতে সাইন ইন করুন।"
 
@@ -3093,8 +3097,8 @@ msgid "Choose where to send this message"
 msgstr "এই বার্তাটি কোথায় পাঠাবেন তা বেছে নিন"
 
 #: src/components/settings/SharingSection.tsx
-msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
-msgstr "বাছুন এই প্রকল্পের OpenKnowledge সেটআপ, তার AI-টুল সংযোগসহ, প্রকল্পের সঙ্গে সংরক্ষিত হবে যাতে সহকর্মীরাও তা পান, নাকি শুধু আপনার কম্পিউটারেই রাখা হবে।"
+msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections and the Shared default sync mode, is saved with the project so teammates get it too, or kept only on your computer."
+msgstr "বাছুন এই প্রকল্পের OpenKnowledge সেটআপ, তার AI-টুল সংযোগ ও ভাগ করা ডিফল্ট সিঙ্ক মোডসহ, প্রকল্পের সঙ্গে সংরক্ষিত হবে যাতে সহকর্মীরাও তা পান, নাকি শুধু আপনার কম্পিউটারেই রাখা হবে।"
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Choose which agents appear in agent menus across the app, and set them up to read and update your documents."
@@ -4451,6 +4455,10 @@ msgstr "এন্ডপয়েন্টের নাগাল পাওয়�
 #: src/editor/image-upload/upload-failure.ts
 msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "{fileName} আপলোড করতে Open Knowledge সার্ভারের নাগাল পাওয়া যায়নি।"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Couldn't reach the OpenKnowledge server, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "OpenKnowledge সার্ভারের নাগাল পাওয়া যায়নি, তাই সিঙ্কের বিকল্পগুলো লুকানো আছে। সিঙ্কের অবস্থা লোড হওয়ামাত্র সেগুলো এখানে দেখা যাবে; সেটিং বন্ধ করে আবার খুললেও আবার চেষ্টা হয়।"
 
 #: src/components/acp/ThreadView.tsx
 #: src/editor/use-composer-attachments.ts
@@ -8552,6 +8560,10 @@ msgstr "স্কিল লোড হচ্ছে"
 #: src/components/PackCardGrid.tsx
 msgid "Loading starter packs"
 msgstr "স্টার্টার প্যাক লোড হচ্ছে"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Loading sync status"
+msgstr "সিঙ্ক অবস্থা লোড হচ্ছে"
 
 #: src/components/CommandPalette.tsx
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
@@ -13212,10 +13224,6 @@ msgstr "পরিচয় নির্ধারণ করুন"
 msgid "Set it up on its own page under Plugins."
 msgstr "Plugins-এর নিচে এর নিজের পাতায় এটি সাজান।"
 
-#: src/components/settings/SyncSection.tsx
-msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
-msgstr "যাঁরা এই প্রকল্পটি প্রথমবার খুলবেন তাঁদের জন্য সিঙ্কের ডিফল্ট নির্ধারণ করুন। এই সেটিং আপনার রিপোজিটরিতে কমিট হয়।"
-
 #: src/components/command-palette-commands.ts
 msgid "Set up OpenKnowledge integrations"
 msgstr "OpenKnowledge সংযুক্তি সেট আপ করুন"
@@ -14280,6 +14288,10 @@ msgstr "এই ওয়ার্কট্রির সিঙ্ক “ম্য
 msgid "Sync is taking longer than usual — your changes are safe on this device."
 msgstr "সিঙ্ক হতে স্বাভাবিকের চেয়ে বেশি সময় লাগছে — আপনার পরিবর্তনগুলি এই ডিভাইসে নিরাপদে সংরক্ষিত আছে।"
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Sync keeps this computer's copy up to date with your Git remote. The shared settings below decide what teammates get when they open the project."
+msgstr "সিঙ্ক এই কম্পিউটারের কপিটি আপনার Git রিমোটের সঙ্গে হালনাগাদ রাখে। নিচের ভাগ করা সেটিংগুলো ঠিক করে প্রকল্প খুললে সহকর্মীরা কী পাবেন।"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
 msgstr "সিঙ্ক মোড"
@@ -14904,6 +14916,10 @@ msgstr "Open Knowledge টুল সক্ষম করার অনুরোধ
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "স্কিমা ফাইলটি নেই বা লোড করা যায়নি — একটি ফিল্ড যোগ করলে সেটি তৈরি হয়।"
 
+#: src/components/settings/SyncSection.tsx
+msgid "The server couldn't read this project's sync status, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "সার্ভার এই প্রকল্পের সিঙ্ক অবস্থা পড়তে পারেনি, তাই সিঙ্কের বিকল্পগুলো লুকানো আছে। সিঙ্কের অবস্থা লোড হওয়ামাত্র সেগুলো এখানে দেখা যাবে; সেটিং বন্ধ করে আবার খুললেও আবার চেষ্টা হয়।"
+
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "সার্ভার সাড়া দিয়েছে কিন্তু server.lock-এ এখনো কোনো পোর্ট নেই"
@@ -14948,6 +14964,10 @@ msgstr "উৎস ফোল্ডারটি নিজে সরে না।"
 #: src/components/SyncStatusBadge.tsx
 msgid "The stored token is missing the permissions this host needs to push."
 msgstr "সংরক্ষিত টোকেনে সেই অনুমতিগুলো নেই যা পুশ করতে এই হোস্টের দরকার।"
+
+#: src/components/settings/SyncSection.tsx
+msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
+msgstr "সহকর্মীরা প্রথমবার এই প্রকল্প খুললে যে সিঙ্ক মোড দিয়ে শুরু করেন। এটি প্রকল্পের OpenKnowledge সেটিংয়ে সংরক্ষিত থাকে, তাই নিচের কনফিগ ভাগাভাগি ভাগ করা-তে সেট থাকলেই কেবল এটি তাঁদের কাছে পৌঁছায়।"
 
 #: src/components/TemplateProperties.tsx
 msgid "The template's filename (without `.md`)."
@@ -15425,6 +15445,10 @@ msgstr "এই যন্ত্র"
 msgid "This may take a moment. Your markdown content is kept."
 msgstr "এতে একটু সময় লাগতে পারে। আপনার markdown বিষয়বস্তু রক্ষা করা হয়।"
 
+#: src/components/settings/SyncSection.tsx
+msgid "This mode comes from the project's Shared default below. Pick a mode to choose your own for this computer."
+msgstr "এই মোডটি নিচের প্রকল্পের ভাগ করা ডিফল্ট থেকে এসেছে। এই কম্পিউটারের জন্য নিজের মোড বেছে নিতে একটি মোড বাছুন।"
+
 #. placeholder {0}: scopeLabels[scope]
 #. placeholder {1}: scopeLabels[toScope]
 #. placeholder {2}: scopeLabels[toScope]
@@ -15886,6 +15910,10 @@ msgstr "{display}-কে আবার একটি সত্যিকারে�
 #: src/components/CreatedItemsList.tsx
 msgid "Turn it off any time in Settings."
 msgstr "সেটিংস থেকে যেকোনো সময় এটি বন্ধ করুন।"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Turn off auto-sync"
+msgstr "স্বয়ংক্রিয় সিঙ্ক বন্ধ করুন"
 
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Turn off Only markdown files"

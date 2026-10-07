@@ -18,7 +18,9 @@ It helps you:
 
 When you open a project for the first time, you will be prompted to enable sync. If you have push access to the repository, you will be prompted to enable **Auto (Pull and Push)**. If you have read-only access, you will be prompted to enable **Auto (Pull only)**. You can change the sync mode from the sync popover (the <Cloud role="img" aria-label="Sync" className="inline size-4 align-text-bottom" /> icon) or from **Settings → Sync** at any time.
 
-If you want to set a default sync setting for future collaborators, go to the project settings page and navigate to the **Sync** → **Shared default** section. This writes [`autoSync.default`](/docs/reference/configuration) — one of `off` (Manual), `follow` (Auto, pull only), or `full` (Auto, pull and push) — to the project's committed `.ok/config.yml`, pre-answering the enable-sync prompt for everyone who clones the repo. Users can always override this default with their own local auto-sync choice.
+If you want to set a default sync setting for future collaborators, go to the project settings page and navigate to the **Sync** → **Shared default** section. This writes [`autoSync.default`](/docs/reference/configuration), which is one of `off` (Manual), `follow` (Auto, pull only), or `full` (Auto, pull and push), to the project's `.ok/config.yml`, pre-answering the enable-sync prompt for everyone who clones the repo. That file is only committed when **Config sharing**, in **Settings → Sync & sharing** (or `ok config-sharing share` from the CLI), is set to **Shared**; with **Only me**, the whole `.ok/` folder stays on your computer and teammates never receive the default. [What OpenKnowledge writes](/docs/reference/what-open-knowledge-writes#ok-init) lists what sharing commits. Users can always override this default with their own local auto-sync choice.
+
+Sync needs a Git remote. Until the project has one, **Settings → Sync** shows how to connect the project to GitHub or add an existing remote instead of the sync modes. If auto-sync was already turned on, the page says so and offers **Turn off auto-sync**.
 
 ## Sync modes
 

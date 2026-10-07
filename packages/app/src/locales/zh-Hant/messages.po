@@ -2427,6 +2427,10 @@ msgid "Auto-save"
 msgstr "自動儲存"
 
 #: src/components/settings/SyncSection.tsx
+msgid "Auto-sync is on, but there's no remote to sync with yet. It starts as soon as a remote is connected."
+msgstr "自動同步已開啟，但還沒有可同步的遠端儲存庫。連接遠端儲存庫後就會開始同步。"
+
+#: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — sign in to resume."
 msgstr "自動同步已暫停——請登入以繼續。"
 
@@ -3097,8 +3101,8 @@ msgid "Choose where to send this message"
 msgstr "選擇要將這則訊息傳送到哪裡"
 
 #: src/components/settings/SharingSection.tsx
-msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
-msgstr "選擇這個專案的 OpenKnowledge 設定（包括它和 AI 工具的連接）要隨專案一起保存、讓隊友也能拿到，還是只留在你的電腦上。"
+msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections and the Shared default sync mode, is saved with the project so teammates get it too, or kept only on your computer."
+msgstr "選擇這個專案的 OpenKnowledge 設定（包括它和 AI 工具的連接以及分享的預設值同步模式）要隨專案一起保存、讓隊友也能拿到，還是只留在你的電腦上。"
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Choose which agents appear in agent menus across the app, and set them up to read and update your documents."
@@ -4455,6 +4459,10 @@ msgstr "無法連上這個端點。請檢查 URL，並確認伺服器已啟動�
 #: src/editor/image-upload/upload-failure.ts
 msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "無法連上 Open Knowledge 伺服器來上傳 {fileName}。"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Couldn't reach the OpenKnowledge server, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "無法連線到 OpenKnowledge 伺服器，因此已隱藏同步選項。同步狀態一載入完成，選項就會顯示在這裡；關閉並重新開啟設定也會重試。"
 
 #: src/components/acp/ThreadView.tsx
 #: src/editor/use-composer-attachments.ts
@@ -8556,6 +8564,10 @@ msgstr "正在載入技能"
 #: src/components/PackCardGrid.tsx
 msgid "Loading starter packs"
 msgstr "正在載入入門套件"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Loading sync status"
+msgstr "正在載入同步狀態"
 
 #: src/components/CommandPalette.tsx
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
@@ -13216,10 +13228,6 @@ msgstr "設定身分"
 msgid "Set it up on its own page under Plugins."
 msgstr "在「外掛」底下它自己的頁面中設定。"
 
-#: src/components/settings/SyncSection.tsx
-msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
-msgstr "為第一次開啟這個專案的使用者設定同步預設值。這項設定會提交到你的儲存庫。"
-
 #: src/components/command-palette-commands.ts
 msgid "Set up OpenKnowledge integrations"
 msgstr "設定 OpenKnowledge 整合"
@@ -14284,6 +14292,10 @@ msgstr "這個 worktree 的同步已設為「手動」，繼承自 {project}。�
 msgid "Sync is taking longer than usual — your changes are safe on this device."
 msgstr "同步花費的時間比平常更久——你的變更已安全儲存在此裝置上。"
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Sync keeps this computer's copy up to date with your Git remote. The shared settings below decide what teammates get when they open the project."
+msgstr "同步會讓這台電腦上的副本與你的 Git 遠端儲存庫保持一致。下方的分享設定決定隊友開啟專案時會拿到什麼。"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
 msgstr "同步模式"
@@ -14908,6 +14920,10 @@ msgstr "啟用 Open Knowledge 工具的請求已逾時。此執行緒將在沒�
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "結構描述檔案不存在或載入失敗——新增欄位就會建立它。"
 
+#: src/components/settings/SyncSection.tsx
+msgid "The server couldn't read this project's sync status, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "伺服器無法讀取此專案的同步狀態，因此已隱藏同步選項。同步狀態一載入完成，選項就會顯示在這裡；關閉並重新開啟設定也會重試。"
+
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "伺服器有回應，但 server.lock 裡還沒有連接埠"
@@ -14952,6 +14968,10 @@ msgstr "來源資料夾本身不會移動。"
 #: src/components/SyncStatusBadge.tsx
 msgid "The stored token is missing the permissions this host needs to push."
 msgstr "儲存的權杖缺少這個主機推送所需的權限。"
+
+#: src/components/settings/SyncSection.tsx
+msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
+msgstr "隊友第一次開啟此專案時採用的同步模式。它保存在專案的 OpenKnowledge 設定中，因此只有當下方的設定分享設為已分享時才會傳給他們。"
 
 #: src/components/TemplateProperties.tsx
 msgid "The template's filename (without `.md`)."
@@ -15429,6 +15449,10 @@ msgstr "這台機器"
 msgid "This may take a moment. Your markdown content is kept."
 msgstr "這可能要花一點時間。你的 markdown 內容會保留。"
 
+#: src/components/settings/SyncSection.tsx
+msgid "This mode comes from the project's Shared default below. Pick a mode to choose your own for this computer."
+msgstr "此模式來自下方專案的分享的預設值。選擇一個模式即可為這台電腦設定你自己的模式。"
+
 #. placeholder {0}: scopeLabels[scope]
 #. placeholder {1}: scopeLabels[toScope]
 #. placeholder {2}: scopeLabels[toScope]
@@ -15890,6 +15914,10 @@ msgstr "把 {display} 變回一個真正的目錄，裡面為它目前看得到�
 #: src/components/CreatedItemsList.tsx
 msgid "Turn it off any time in Settings."
 msgstr "隨時在“設定”中將其關閉。"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Turn off auto-sync"
+msgstr "關閉自動同步"
 
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Turn off Only markdown files"

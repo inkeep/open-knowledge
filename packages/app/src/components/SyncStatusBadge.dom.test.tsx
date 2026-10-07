@@ -795,6 +795,39 @@ describe('SyncStatusBadge runtime behavior', () => {
     );
   });
 
+  test('with no local choice the selector shows the mode the engine runs', async () => {
+    status = { ...baseStatus, state: 'idle', syncEnabled: true, syncMode: 'follow' };
+    projectLocalConfig = { autoSync: {} };
+    await renderBadge();
+    await openPopover();
+
+    expect(selectedMode()).toContain('Auto (Pull only)');
+    expect(screen.getByTestId('sync-popover-mode-line').textContent).toContain(
+      'Updates flow in from your remote',
+    );
+  });
+
+  test('with no local choice an engine that reports only syncEnabled shows Pull and Push', async () => {
+    status = { ...baseStatus, state: 'idle', syncEnabled: true };
+    projectLocalConfig = { autoSync: {} };
+    await renderBadge();
+    await openPopover();
+
+    expect(selectedMode()).toContain('Auto (Pull and Push)');
+  });
+
+  test('picking Manual over an engine-run default writes a local Manual choice', async () => {
+    status = { ...baseStatus, state: 'idle', syncEnabled: true, syncMode: 'full' };
+    projectLocalConfig = { autoSync: {} };
+    await renderBadge();
+    await openPopover();
+
+    await userEvent.click(screen.getByTestId('sync-mode-select'));
+    await userEvent.click(screen.getByRole('option', { name: 'Manual' }));
+
+    expect(patches).toEqual([{ autoSync: { mode: 'off', enabled: null, resumeMode: null } }]);
+  });
+
   test('mode selector is disabled until the project-local config has synced', async () => {
     status = { ...baseStatus, state: 'idle', syncEnabled: false };
     projectLocalConfig = { autoSync: { enabled: false } };

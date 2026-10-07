@@ -555,6 +555,27 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     expect(screen.getByTestId('settings-scope-badge-project').textContent).toBe('Project');
   });
 
+  test('sync page says what stays on this computer and what teammates get', async () => {
+    syncStatus = {
+      state: 'idle',
+      hasRemote: true,
+      syncEnabled: false,
+      remote: {
+        label: 'inkeep/open-knowledge',
+        webUrl: 'https://github.com/inkeep/open-knowledge',
+      },
+    };
+
+    await renderBody({ activeId: 'sync' });
+
+    expect(screen.getByTestId('settings-sync-sharing').textContent ?? '').toContain(
+      'The shared settings below decide what teammates get when they open the project.',
+    );
+    expect(screen.getByTestId('settings-sync-default').textContent ?? '').toContain(
+      'it only reaches them when Config sharing below is set to Shared',
+    );
+  });
+
   test('project preferences includes attachments controls mapped to content.attachmentFolderPath', async () => {
     projectConfig = {
       autoSync: { default: null },

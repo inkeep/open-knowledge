@@ -139,6 +139,7 @@ type ModeSelectionState = {
   confirmOpen: boolean;
   pendingMode: 'follow' | 'full' | null;
   onModeSelect: (next: SyncMode) => void;
+  onTurnOff: () => boolean;
   onConfirm: () => void;
 };
 let latestModeSelection: ModeSelectionState | null = null;
@@ -172,7 +173,7 @@ let latestBadgeControls: BadgeControlsState | null = null;
 
 function BadgeControlsProbe({ mode }: { mode: SyncMode }) {
   if (!hooks) throw new Error('hooks not loaded');
-  latestBadgeControls = hooks.useBadgeSyncControls({ mode }, 0);
+  latestBadgeControls = hooks.useBadgeSyncControls({ mode }, 'off', 0);
   return null;
 }
 
@@ -656,6 +657,41 @@ describe('useSyncModeSelection runtime behavior', () => {
 
     expect(writes).toEqual(['off']);
     expect(screen.getByTestId('mode-selection').textContent).toBe('false:null');
+  });
+
+  test('turning off writes an explicit off even when the current mode already reads off', async () => {
+    await loadHooks();
+    const writes: SyncMode[] = [];
+    const writer: ModeWriter = (mode) => {
+      writes.push(mode);
+      return { ok: true };
+    };
+    render(<ModeSelectionProbe writer={writer} currentMode="off" />);
+
+    await act(async () => {
+      latestModeSelection?.onTurnOff();
+    });
+
+    expect(writes).toEqual(['off']);
+    expect(screen.getByTestId('mode-selection').textContent).toBe('false:null');
+  });
+
+  test('turning off reports whether the write landed', async () => {
+    await loadHooks();
+    let accept = true;
+    const writer: ModeWriter = () =>
+      accept ? { ok: true } : { ok: false, error: 'branch is protected' };
+    render(<ModeSelectionProbe writer={writer} currentMode="full" />);
+
+    const results: boolean[] = [];
+    await act(async () => {
+      results.push(latestModeSelection?.onTurnOff() ?? true);
+      accept = false;
+      results.push(latestModeSelection?.onTurnOff() ?? true);
+    });
+
+    expect(results).toEqual([true, false]);
+    expect(toastErrors).toEqual(['Failed to update sync mode — branch is protected']);
   });
 
   test('selecting pull opens the confirmation and writes only after confirm', async () => {

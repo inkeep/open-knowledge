@@ -2427,6 +2427,10 @@ msgid "Auto-save"
 msgstr "الحفظ التلقائي"
 
 #: src/components/settings/SyncSection.tsx
+msgid "Auto-sync is on, but there's no remote to sync with yet. It starts as soon as a remote is connected."
+msgstr "المزامنة التلقائية مفعّلة، لكن لا يوجد بعد مستودع بعيد للمزامنة معه. ستبدأ بمجرد ربط مستودع بعيد."
+
+#: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — sign in to resume."
 msgstr "المزامنة التلقائية موقوفة مؤقتًا — سجّل الدخول للمتابعة."
 
@@ -3097,8 +3101,8 @@ msgid "Choose where to send this message"
 msgstr "اختيار وجهة إرسال هذه الرسالة"
 
 #: src/components/settings/SharingSection.tsx
-msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
-msgstr "اختر ما إذا كان إعداد OpenKnowledge لهذا المشروع، بما فيه اتصالات أدوات الذكاء الاصطناعي، يُحفظ مع المشروع ليحصل عليه زملاؤك أيضًا، أم يبقى على جهازك وحده."
+msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections and the Shared default sync mode, is saved with the project so teammates get it too, or kept only on your computer."
+msgstr "اختر ما إذا كان إعداد OpenKnowledge لهذا المشروع، بما فيه اتصالات أدوات الذكاء الاصطناعي ووضع المزامنة في الافتراضي المشترك، يُحفظ مع المشروع ليحصل عليه زملاؤك أيضًا، أم يبقى على جهازك وحده."
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Choose which agents appear in agent menus across the app, and set them up to read and update your documents."
@@ -4455,6 +4459,10 @@ msgstr "تعذّر الوصول إلى نقطة النهاية. تحقق من ا
 #: src/editor/image-upload/upload-failure.ts
 msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "تعذّر الوصول إلى خادم Open Knowledge لرفع {fileName}."
+
+#: src/components/settings/SyncSection.tsx
+msgid "Couldn't reach the OpenKnowledge server, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "تعذّر الوصول إلى خادم OpenKnowledge، لذا أُخفيت خيارات المزامنة. ستظهر هنا فور تحميل حالة المزامنة؛ كما يؤدي إغلاق الإعدادات وفتحها مجددًا إلى إعادة المحاولة."
 
 #: src/components/acp/ThreadView.tsx
 #: src/editor/use-composer-attachments.ts
@@ -8556,6 +8564,10 @@ msgstr "يجري تحميل المهارات"
 #: src/components/PackCardGrid.tsx
 msgid "Loading starter packs"
 msgstr "يجري تحميل حزم البداية"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Loading sync status"
+msgstr "جارٍ تحميل حالة المزامنة"
 
 #: src/components/CommandPalette.tsx
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
@@ -13216,10 +13228,6 @@ msgstr "ضبط الهوية"
 msgid "Set it up on its own page under Plugins."
 msgstr "أعدّه في صفحته الخاصة تحت «الإضافات»."
 
-#: src/components/settings/SyncSection.tsx
-msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
-msgstr "اضبط المزامنة الافتراضية للمستخدمين الذين يفتحون هذا المشروع للمرة الأولى. يُودَع هذا الإعداد في مستودعك."
-
 #: src/components/command-palette-commands.ts
 msgid "Set up OpenKnowledge integrations"
 msgstr "إعداد تكاملات OpenKnowledge"
@@ -14284,6 +14292,10 @@ msgstr "المزامنة لشجرة العمل هذه مضبوطة على «يد
 msgid "Sync is taking longer than usual — your changes are safe on this device."
 msgstr "المزامنة تستغرق وقتًا أطول من المعتاد — تغييراتك محفوظة بأمان على هذا الجهاز."
 
+#: src/components/settings/SettingsDialogBody.tsx
+msgid "Sync keeps this computer's copy up to date with your Git remote. The shared settings below decide what teammates get when they open the project."
+msgstr "تُبقي المزامنة نسخة هذا الجهاز محدّثة مع مستودع Git البعيد. تحدد الإعدادات المشتركة أدناه ما يحصل عليه زملاؤك عند فتح المشروع."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
 msgstr "وضع المزامنة"
@@ -14908,6 +14920,10 @@ msgstr "انتهت مهلة طلب تفعيل أدوات Open Knowledge. تعم�
 msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr "ملف المخطط غير موجود أو فشل تحميله — إضافة حقل تنشئه."
 
+#: src/components/settings/SyncSection.tsx
+msgid "The server couldn't read this project's sync status, so sync options are hidden. They appear here as soon as the sync status loads; closing and reopening Settings also retries."
+msgstr "تعذّر على الخادم قراءة حالة المزامنة لهذا المشروع، لذا أُخفيت خيارات المزامنة. ستظهر هنا فور تحميل حالة المزامنة؛ كما يؤدي إغلاق الإعدادات وفتحها مجددًا إلى إعادة المحاولة."
+
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "استجاب الخادم لكن server.lock لا يحتوي على منفذ بعد"
@@ -14952,6 +14968,10 @@ msgstr "لا يتحرك مجلد المصدر نفسه."
 #: src/components/SyncStatusBadge.tsx
 msgid "The stored token is missing the permissions this host needs to push."
 msgstr "ينقص الرمز المخزّن الصلاحيات التي يحتاجها هذا المضيف للدفع."
+
+#: src/components/settings/SyncSection.tsx
+msgid "The sync mode teammates start with the first time they open this project. It's saved in the project's OpenKnowledge settings, so it only reaches them when Config sharing below is set to Shared."
+msgstr "وضع المزامنة الذي يبدأ به زملاؤك عند فتح هذا المشروع لأول مرة. يُحفظ في إعدادات OpenKnowledge الخاصة بالمشروع، لذا لا يصل إليهم إلا عندما تكون مشاركة الإعدادات أدناه مضبوطة على مشترك."
 
 #: src/components/TemplateProperties.tsx
 msgid "The template's filename (without `.md`)."
@@ -15429,6 +15449,10 @@ msgstr "هذا الجهاز"
 msgid "This may take a moment. Your markdown content is kept."
 msgstr "قد يستغرق هذا لحظة. يُحتفظ بمحتوى Markdown لديك."
 
+#: src/components/settings/SyncSection.tsx
+msgid "This mode comes from the project's Shared default below. Pick a mode to choose your own for this computer."
+msgstr "يأتي هذا الوضع من الافتراضي المشترك للمشروع أدناه. اختر وضعًا لتحديد وضعك الخاص على هذا الكمبيوتر."
+
 #. placeholder {0}: scopeLabels[scope]
 #. placeholder {1}: scopeLabels[toScope]
 #. placeholder {2}: scopeLabels[toScope]
@@ -15890,6 +15914,10 @@ msgstr "أعِد {display} إلى مجلد حقيقي يحوي رابطًا رم
 #: src/components/CreatedItemsList.tsx
 msgid "Turn it off any time in Settings."
 msgstr "قم بإيقاف تشغيله في أي وقت في الإعدادات."
+
+#: src/components/settings/SyncSection.tsx
+msgid "Turn off auto-sync"
+msgstr "إيقاف المزامنة التلقائية"
 
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Turn off Only markdown files"
