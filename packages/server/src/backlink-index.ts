@@ -1,5 +1,5 @@
-import { type Dirent, existsSync, mkdirSync } from 'node:fs';
-import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { type Dirent, existsSync } from 'node:fs';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import {
   addDocumentFolders,
@@ -36,10 +36,12 @@ import {
   toWikiLinkSlug,
   type WikiLinkLookupIndex,
 } from '@inkeep/open-knowledge-core';
+import { atomicWriteFile } from '@inkeep/open-knowledge-core/server';
 import { isLinkIndexExcludedDoc } from './cc1-broadcast.ts';
 import { getLocalDir } from './config/paths.ts';
 import type { ContentFilter } from './content-filter.ts';
 import { isSupportedDocFile, linkNamesDocumentFile, stripDocExtension } from './doc-extensions.ts';
+import { tracedAtomicFs, tracedMkdir, tracedRm } from './fs-traced.ts';
 import { instrumentIndexRebuild } from './index-telemetry.ts';
 import {
   createJsxSrcAttrRe,
@@ -2148,7 +2150,7 @@ export class BacklinkIndex {
 
   async saveToDisk(branch = this.activeBranch): Promise<void> {
     const filePath = this.cachePath(branch);
-    mkdirSync(dirname(filePath), { recursive: true });
+    await tracedMkdir(dirname(filePath), { recursive: true });
     const state = this.getState(branch);
     const mtimes = this.mtimesByBranch.get(branch);
     const data: SerializedBranchGraphState = {
@@ -2156,14 +2158,20 @@ export class BacklinkIndex {
       ...serializeState(state),
       ...(mtimes ? { mtimes: Object.fromEntries(mtimes) } : {}),
     };
-    await writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    await atomicWriteFile(filePath, JSON.stringify(data, null, 2), { fs: tracedAtomicFs });
   }
 
   async loadFromDisk(branch = this.activeBranch): Promise<boolean> {
     const filePath = this.cachePath(branch);
     if (!existsSync(filePath)) return false;
+    let raw: string;
     try {
-      const raw = await readFile(filePath, 'utf-8');
+      raw = await readFile(filePath, 'utf-8');
+    } catch (err) {
+      log.warn({ branch, err }, `Failed to load cache for ${branch}`);
+      return false;
+    }
+    try {
       const parsed = JSON.parse(raw) as SerializedBranchGraphState;
       if (parsed.version !== SNAPSHOT_VERSION) return false;
       if (
@@ -2177,6 +2185,7 @@ export class BacklinkIndex {
           { branch },
           `Incomplete backlink cache snapshot for ${branch}; rebuilding from disk`,
         );
+        await this.discardCorruptSnapshot(filePath, branch, 'incomplete');
         return false;
       }
       this.states.set(branch, deserializeState(parsed));
@@ -2187,8 +2196,24 @@ export class BacklinkIndex {
       }
       return true;
     } catch (err) {
-      log.warn({ branch, err }, `Failed to load cache for ${branch}`);
+      log.warn(
+        { branch, err },
+        `Corrupt backlink cache snapshot for ${branch}; rebuilding from disk`,
+      );
+      await this.discardCorruptSnapshot(filePath, branch, 'malformed');
       return false;
+    }
+  }
+
+  private async discardCorruptSnapshot(
+    filePath: string,
+    branch: string,
+    reason: 'incomplete' | 'malformed',
+  ): Promise<void> {
+    try {
+      await tracedRm(filePath, { force: true });
+    } catch (err) {
+      log.warn({ branch, reason, err }, 'Failed to discard corrupt backlink cache snapshot');
     }
   }
 

@@ -511,7 +511,7 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
 
   afterEach(async () => {
     loggerFactory.reset();
-    await rm(tmpDir, { recursive: true, force: true });
+    await rm(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   test('flushes L1 markdown writes before destroy() resolves + emits shutdown log', async () => {

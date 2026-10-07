@@ -9,11 +9,12 @@ import {
   tagsMatchingPrefix,
   unwrapFrontmatterFences,
 } from '@inkeep/open-knowledge-core';
+import { atomicWriteFile } from '@inkeep/open-knowledge-core/server';
 import { isLinkIndexExcludedDoc } from './cc1-broadcast.ts';
 import { getLocalDir } from './config/paths.ts';
 import type { ContentFilter } from './content-filter.ts';
 import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
-import { tracedMkdir, tracedWriteFile } from './fs-traced.ts';
+import { tracedAtomicFs, tracedMkdir, tracedRm } from './fs-traced.ts';
 import { instrumentIndexRebuild } from './index-telemetry.ts';
 import { getLogger } from './logger.ts';
 import { toPosix } from './path-utils.ts';
@@ -46,6 +47,12 @@ interface SerializedTagIndexSnapshot {
 }
 
 const SNAPSHOT_VERSION = 1;
+
+function isOtherSnapshotVersion(data: unknown): boolean {
+  if (typeof data !== 'object' || data === null) return false;
+  const { version } = data as Record<string, unknown>;
+  return typeof version === 'number' && version !== SNAPSHOT_VERSION;
+}
 
 function isValidSnapshot(data: unknown): data is SerializedTagIndexSnapshot {
   if (typeof data !== 'object' || data === null) return false;
@@ -297,15 +304,25 @@ export class TagIndex {
     if (this.closed) return false;
     const filePath = this.snapshotPath();
     if (!filePath || !existsSync(filePath)) return false;
-    let parsed: unknown;
+    let raw: string;
     try {
-      parsed = JSON.parse(await readFile(filePath, 'utf-8'));
+      raw = await readFile(filePath, 'utf-8');
     } catch (err) {
-      log.warn({ err }, 'Failed to load tag snapshot; falling back to full rebuild');
+      log.warn({ err }, 'Failed to read tag snapshot; falling back to full rebuild');
       return false;
     }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      log.warn({ err }, 'Corrupt tag snapshot; rebuilding from disk');
+      await this.discardCorruptSnapshot(filePath, 'malformed');
+      return false;
+    }
+    if (isOtherSnapshotVersion(parsed)) return false;
     if (!isValidSnapshot(parsed)) {
-      log.warn({}, 'Tag snapshot failed validation; falling back to full rebuild');
+      log.warn({}, 'Incomplete tag snapshot; rebuilding from disk');
+      await this.discardCorruptSnapshot(filePath, 'incomplete');
       return false;
     }
     this.state = createEmptyState();
@@ -322,6 +339,17 @@ export class TagIndex {
       this.applyDocSnapshot(docName, authoredTags, expanded);
     }
     return true;
+  }
+
+  private async discardCorruptSnapshot(
+    filePath: string,
+    reason: 'malformed' | 'incomplete',
+  ): Promise<void> {
+    try {
+      await tracedRm(filePath, { force: true });
+    } catch (err) {
+      log.warn({ reason, err }, 'Failed to discard corrupt tag snapshot');
+    }
   }
 
   saveToDisk(): Promise<void> {
@@ -343,7 +371,7 @@ export class TagIndex {
       files: Object.fromEntries(this.fileMeta),
     };
     await tracedMkdir(dirname(filePath), { recursive: true });
-    await tracedWriteFile(filePath, JSON.stringify(snapshot, null, 2), 'utf-8');
+    await atomicWriteFile(filePath, JSON.stringify(snapshot, null, 2), { fs: tracedAtomicFs });
   }
 
   reconcileWithDisk(): Promise<{ added: number; updated: number; deleted: number }> {

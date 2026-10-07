@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -900,13 +901,14 @@ describe('BacklinkIndex', () => {
   });
 
   test.each([
-    { version: 3, sourceLinks: undefined, expectedWarnings: [] },
+    { version: 3, sourceLinks: undefined, expectedWarnings: [], kept: true },
     {
       version: 4,
       sourceLinks: {},
       expectedWarnings: [
         [{ branch: 'main' }, 'Incomplete backlink cache snapshot for main; rebuilding from disk'],
       ],
+      kept: false,
     },
     {
       version: 4,
@@ -914,6 +916,7 @@ describe('BacklinkIndex', () => {
       expectedWarnings: [
         [{ branch: 'main' }, 'Incomplete backlink cache snapshot for main; rebuilding from disk'],
       ],
+      kept: false,
     },
   ])('rejects incomplete source-link snapshots and rebuilds from disk: $version', async (cache) => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-source-links-guard-'));
@@ -939,6 +942,7 @@ describe('BacklinkIndex', () => {
       try {
         expect(await index.loadFromDisk()).toBe(false);
         expect(warn.mock.calls).toEqual(cache.expectedWarnings);
+        expect(existsSync(join(cacheDir, 'backlinks.json'))).toBe(cache.kept);
       } finally {
         warn.mockRestore();
       }
@@ -951,6 +955,43 @@ describe('BacklinkIndex', () => {
       rmSync(projectDir, { recursive: true, force: true });
     }
   });
+
+  test.each([
+    {
+      label: 'truncated JSON',
+      corrupt: (good: string) => good.slice(0, Math.floor(good.length / 2)),
+    },
+    { label: 'NUL-padded file', corrupt: (good: string) => '\0'.repeat(good.length) },
+  ])(
+    'a torn cache snapshot ($label) is discarded once and replaced on the next save',
+    async ({ corrupt }) => {
+      const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-torn-cache-'));
+      const contentDir = join(projectDir, 'content');
+      const cachePath = join(projectDir, '.ok', LOCAL_DIR, 'cache', 'main', 'backlinks.json');
+      mkdirSync(contentDir, { recursive: true });
+      try {
+        writeFileSync(join(contentDir, 'alpha.md'), 'See [[beta]].\n');
+        writeFileSync(join(contentDir, 'beta.md'), '# Beta\n');
+        const first = new BacklinkIndex({ projectDir, contentDir });
+        await first.rebuildFromDisk();
+        await first.saveToDisk();
+        writeFileSync(cachePath, corrupt(readFileSync(cachePath, 'utf-8')));
+
+        const second = new BacklinkIndex({ projectDir, contentDir });
+        expect(await second.loadFromDisk()).toBe(false);
+        expect(existsSync(cachePath)).toBe(false);
+        await second.rebuildFromDisk();
+        expect(second.getBacklinks('beta').map((link) => link.source)).toEqual(['alpha']);
+        await second.saveToDisk();
+
+        const third = new BacklinkIndex({ projectDir, contentDir });
+        expect(await third.loadFromDisk()).toBe(true);
+        expect(third.getBacklinks('beta').map((link) => link.source)).toEqual(['alpha']);
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   test('a versionless pre-upgrade cache is rejected so boot cold-rebuilds instead of serving stale keys', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-version-guard-'));

@@ -169,21 +169,54 @@ describe('TagIndex persistence', () => {
     }
   });
 
-  test('off-shape snapshot (valid JSON, wrong structure) also reports a miss', async () => {
+  test.each([
+    {
+      label: 'truncated JSON',
+      corrupt: (good: string) => good.slice(0, Math.floor(good.length / 2)),
+    },
+    { label: 'NUL-padded file', corrupt: (good: string) => '\0'.repeat(good.length) },
+  ])(
+    'a torn snapshot ($label) is discarded once and replaced on the next save',
+    async ({ corrupt }) => {
+      const rig = tempRig();
+      try {
+        writeDoc(rig.contentDir, 'alpha.md', 'Tag #survivor.\n', 1_000);
+        const first = newIndex(rig);
+        await first.init();
+        await first.saveToDisk();
+        writeFileSync(rig.snapshotPath, corrupt(await readFile(rig.snapshotPath, 'utf-8')));
+
+        const second = newIndex(rig);
+        expect(await second.loadFromDisk()).toBe(false);
+        expect(existsSync(rig.snapshotPath)).toBe(false);
+        await second.init();
+        expect(second.getDocsForTag('survivor')).toEqual(['alpha']);
+        await second.saveToDisk();
+
+        const third = newIndex(rig);
+        expect(await third.loadFromDisk()).toBe(true);
+        expect(third.getDocsForTag('survivor')).toEqual(['alpha']);
+        expect(await third.reconcileWithDisk()).toEqual({ added: 0, updated: 0, deleted: 0 });
+      } finally {
+        rig.cleanup();
+      }
+    },
+  );
+
+  test.each([
+    { snapshot: '[]', kept: false },
+    { snapshot: '{"version":1,"docs":{"a":"not-an-array"},"files":{}}', kept: false },
+    { snapshot: '{"version":1,"docs":{"a":[""]},"files":{}}', kept: false },
+    { snapshot: '{"version":1,"docs":{},"files":{"a":{"mtimeMs":"nan","size":1}}}', kept: false },
+    { snapshot: '{"version":2,"docs":{},"files":{}}', kept: true },
+  ])('off-shape snapshot $snapshot reports a miss (kept: $kept)', async ({ snapshot, kept }) => {
     const rig = tempRig();
     try {
       mkdirSync(join(rig.projectDir, '.ok', 'local', 'cache'), { recursive: true });
-      for (const bad of [
-        '[]',
-        '{"version":2,"docs":{},"files":{}}',
-        '{"version":1,"docs":{"a":"not-an-array"},"files":{}}',
-        '{"version":1,"docs":{"a":[""]},"files":{}}',
-        '{"version":1,"docs":{},"files":{"a":{"mtimeMs":"nan","size":1}}}',
-      ]) {
-        writeFileSync(rig.snapshotPath, bad);
-        const idx = newIndex(rig);
-        expect(await idx.loadFromDisk()).toBe(false);
-      }
+      writeFileSync(rig.snapshotPath, snapshot);
+      const idx = newIndex(rig);
+      expect(await idx.loadFromDisk()).toBe(false);
+      expect(existsSync(rig.snapshotPath)).toBe(kept);
     } finally {
       rig.cleanup();
     }
