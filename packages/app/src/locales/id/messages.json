@@ -799,7 +799,6 @@
     ],
     "80c4-P": ["Kode disalin ke papan klip"],
     "81H_23": ["Tambahkan properti"],
-    "851WA-": ["Ini bisa diatur di Pengaturan > Alat AI & CLI"],
     "87GMKe": ["Ekspos proyek ini ke jaringan?"],
     "881Uwh": ["Hapus tabel terpilih"],
     "89SLQ-": ["Pratinjau tautan eksternal dan kartu referensi GitHub"],
@@ -1605,9 +1604,6 @@
     "GesfyX": [["shown"], " dan ", ["more"], " lagi"],
     "Gfr4fu": ["Server tidak bisa membuka dokumen"],
     "GhjUB_": ["Tersambung kembali"],
-    "Gi8Akx": [
-      "Belum ada agen yang disiapkan — untuk melampirkan berkas, tambahkan agen dalam aplikasi lewat Koneksi agen."
-    ],
     "GidGkh": ["Perbarui dari sumber"],
     "GifIjR": [
       "Skill “",
@@ -2224,6 +2220,11 @@
     "NuH1jp": ["Repositori publik"],
     "Nv3mUj": ["Tampilkan opsi lanjutan"],
     "NvOvTi": ["Buat di <0>", ["dirDisplay"], "</0>"],
+    "NwHa_3": [
+      "Belum ada agen yang disiapkan — untuk melampirkan berkas, tambahkan agen dalam aplikasi lewat ",
+      ["agentConnectionsLabel"],
+      "."
+    ],
     "Nwbs0q": ["Jangan tampilkan"],
     "NxW-md": ["Ubah ukuran ", ["handleKey"]],
     "NzFvyK": ["Sesi berakhir — pembatalan tidak tersedia"],
@@ -3113,6 +3114,7 @@
     "Y5la_5": ["Pasang ke"],
     "Y6PKd1": ["Hapus ", ["name"], " dari proyek terbaru"],
     "Y6SK9K": ["Tampilkan sumber"],
+    "Y7DcwM": ["Ini bisa diatur di Pengaturan > ", ["agentConnectionsLabel"]],
     "Y8ViJx": ["Versi yang lebih baru mungkin sudah dirilis sejak tab ini dibuka."],
     "Y9c_nf": ["0/0"],
     "YBt9YP": ["Beta"],
@@ -3539,6 +3541,11 @@
     "bwil08": ["Membangun <0>openknowledge.skill</0> dan membuka aplikasi Claude Desktop"],
     "bwoxGI": ["Anda perlu masuk"],
     "bwy8Y7": ["Pada <0>", ["address"], "</0>"],
+    "bzjcwc": [
+      "Belum ada alat AI yang terdeteksi. Setelah Anda memasang satu, hubungkan dari Pengaturan > ",
+      ["agentConnectionsLabel"],
+      "."
+    ],
     "bzsK8N": ["Membaca palet penulisan agar dokumen baru mengikuti gaya proyek"],
     "c0dKr4": [
       "Di chat agen, mengarahkan kursor ke tautan pull request atau issue GitHub meminta statusnya dari GitHub, dengan login GitHub Anda jika OpenKnowledge dapat menggunakannya."
@@ -3947,6 +3954,7 @@
         { "other": ["Yakin ingin menghapus ", "#", " berkas/folder berikut beserta isinya?"] }
       ]
     ],
+    "g2E_It": ["Sudah terhubung ke: ", ["replacingToolList"]],
     "g3ouZB": [["0", "plural", { "other": ["#", " templat tersedia"] }]],
     "g4XBm0": ["Judul bagian kecil."],
     "g4e0hS": ["Tanya ", ["agentName"]],
@@ -5296,9 +5304,6 @@
     "tHKQ6j": ["Mengganti nama"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge menulis sebuah dokumen"],
-    "tLd2qa": [
-      "Belum ada alat AI yang terdeteksi. Setelah Anda memasang satu, hubungkan dari Pengaturan > Alat AI & CLI."
-    ],
     "tM5uzl": [
       "Keluarga asal, kepercayaan, dan siklus hidup: sources, generated, verified, status, dan stale_after. Setiap bidang bersifat opsional, dan ketidakhadiran tidak pernah merupakan kesalahan."
     ],

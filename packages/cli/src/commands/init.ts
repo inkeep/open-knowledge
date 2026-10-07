@@ -6,6 +6,8 @@ import {
   currentMcpServerName,
   type McpLauncherDeclineReason,
   OPENKNOWLEDGE_SKILLS_REPO,
+  okUserHomeDisplayPath,
+  SKILL_STATE_FILENAME,
 } from '@inkeep/open-knowledge-core';
 import { atomicWriteFileSync, withFileLockSync } from '@inkeep/open-knowledge-core/server';
 import type {
@@ -27,6 +29,7 @@ import {
   isSkillInstallReportEnvOptOut,
   ONBOARDING_BUNDLE_IDS,
   ProjectGitInitError,
+  readBundleDecision,
   removeProjectSkillGitignoreBlock,
   reportSkillInstall,
   resolveSkillInstallReportSettings,
@@ -643,6 +646,8 @@ function safeRealpath(p: string): string {
   }
 }
 
+type InitSkillBundleResult = InstallUserSkillResult | 'opted-out' | 'decision-read-failed';
+
 interface InitCommandResult {
   projectRoot: string;
   contentCreated: string[];
@@ -651,8 +656,8 @@ interface InitCommandResult {
   editors: EditorMcpResult[];
   legacyProjectConfigs: ProjectConfigResult[];
   projectSkills: ProjectSkillResult[];
-  skillInstall?: InstallUserSkillResult | 'declined';
-  skillBundles?: readonly { bundleId: BundleId; result: InstallUserSkillResult }[];
+  skillInstall?: InitSkillBundleResult | 'declined';
+  skillBundles?: readonly { bundleId: BundleId; result: InitSkillBundleResult }[];
   skillsRequested?: string | boolean;
   skillHosts?: readonly string[];
   skillInstallsCounted?: boolean;
@@ -1323,16 +1328,35 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
   const installSkill = options.installUserSkill ?? installUserSkill;
   const skillHome = options.home ?? homedir();
   const enabledBundles = resolveInitSkillEnablement(options.skills);
+  const honorsRecordedOptOut = typeof options.skills !== 'string';
   let anyEnabled = false;
   let anyInstalled = false;
   let anyFailed = false;
   let anySkipped = false;
   let anyNoHosts = false;
-  const skillBundles: { bundleId: BundleId; result: InstallUserSkillResult }[] = [];
+  let anyOptedOut = false;
+  let anyDecisionReadFailed = false;
+  const skillBundles: { bundleId: BundleId; result: InitSkillBundleResult }[] = [];
   for (const id of USER_GLOBAL_BUNDLE_IDS) {
     if (!enabledBundles.has(id)) continue;
-    await writeBundleDecision(skillHome, BUNDLE_SKILL_NAME[id], true).catch(() => {});
     anyEnabled = true;
+    if (honorsRecordedOptOut) {
+      const decision = await readBundleDecision(skillHome, BUNDLE_SKILL_NAME[id]).then(
+        (value) => ({ ok: true as const, value }),
+        () => ({ ok: false as const }),
+      );
+      if (!decision.ok) {
+        skillBundles.push({ bundleId: id, result: 'decision-read-failed' });
+        anyDecisionReadFailed = true;
+        continue;
+      }
+      if (decision.value === false) {
+        skillBundles.push({ bundleId: id, result: 'opted-out' });
+        anyOptedOut = true;
+        continue;
+      }
+    }
+    await writeBundleDecision(skillHome, BUNDLE_SKILL_NAME[id], true).catch(() => {});
     const result = await installSkill({ home: options.home, bundleId: id, force: true });
     skillBundles.push({ bundleId: id, result });
     if (result === 'installed') anyInstalled = true;
@@ -1340,15 +1364,19 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
     else if (result === 'no-hosts') anyNoHosts = true;
     else anySkipped = true;
   }
-  const skillInstall: InstallUserSkillResult | 'declined' = anyFailed
+  const skillInstall: InitSkillBundleResult | 'declined' = anyFailed
     ? 'failed'
-    : anyInstalled
-      ? 'installed'
-      : anyEnabled && anySkipped
-        ? 'skip-current'
-        : anyEnabled && anyNoHosts
-          ? 'no-hosts'
-          : 'declined';
+    : anyDecisionReadFailed
+      ? 'decision-read-failed'
+      : anyInstalled
+        ? 'installed'
+        : anyEnabled && anySkipped
+          ? 'skip-current'
+          : anyEnabled && anyNoHosts
+            ? 'no-hosts'
+            : anyOptedOut
+              ? 'opted-out'
+              : 'declined';
   const skillHosts = anyInstalled ? detectUserSkillHosts(skillHome).map((h) => h.editorId) : [];
   const skillInstallsCounted =
     resolveSkillInstallReportSettings(skillHome).enabled && !isSkillInstallReportEnvOptOut();
@@ -1715,6 +1743,16 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
           break;
         case 'failed':
           lines.push(`  ${warning(`${name}  install failed`)}`);
+          break;
+        case 'opted-out':
+          lines.push(
+            `  ${name}  ${dim(`not installed — turned off on this machine; reinstall with ok init --skills ${bundle.bundleId} or Settings → Skills Studio`)}`,
+          );
+          break;
+        case 'decision-read-failed':
+          lines.push(
+            `  ${warning(`${name}  not installed — could not read whether it is turned off on this machine; rerun ok init once ${okUserHomeDisplayPath(SKILL_STATE_FILENAME)} is readable`)}`,
+          );
           break;
         default: {
           const _exhaustive: never = bundle.result;

@@ -965,7 +965,6 @@
     ],
     "80c4-P": ["Kod skopiowany do schowka"],
     "81H_23": ["Dodaj właściwości"],
-    "851WA-": ["Można to skonfigurować w Ustawieniach > AI tools & CLI"],
     "87GMKe": ["Udostępnić ten projekt w sieci?"],
     "881Uwh": ["Usuń zaznaczoną tabelę"],
     "89SLQ-": ["Podglądy linków zewnętrznych i karty odwołań GitHub"],
@@ -1875,9 +1874,6 @@
     "GesfyX": [["shown"], " i ", ["more"], " więcej"],
     "Gfr4fu": ["Serwer nie może otworzyć dokumentów"],
     "GhjUB_": ["Połączono ponownie"],
-    "Gi8Akx": [
-      "Żaden agent nie jest jeszcze skonfigurowany — dodaj agenta w aplikacji w Połączeniach agentów, aby dołączać pliki."
-    ],
     "GidGkh": ["Zaktualizuj ze źródła"],
     "GifIjR": [
       "Umiejętność \"",
@@ -2617,6 +2613,11 @@
     "NuH1jp": ["Repozytorium publiczne"],
     "Nv3mUj": ["Pokaż zaawansowane"],
     "NvOvTi": ["Utwórz w <0>", ["dirDisplay"], "</0>"],
+    "NwHa_3": [
+      "Żaden agent nie jest jeszcze skonfigurowany — dodaj agenta w aplikacji w sekcji ",
+      ["agentConnectionsLabel"],
+      ", aby dołączać pliki."
+    ],
     "Nwbs0q": ["Nie pokazuj"],
     "NxW-md": ["Zmień rozmiar ", ["handleKey"]],
     "NzFvyK": ["Sesja zakończona — cofanie niedostępne"],
@@ -3673,6 +3674,7 @@
     "Y5la_5": ["Zainstaluj w"],
     "Y6PKd1": ["Usuń ", ["name"], " z ostatnich projektów"],
     "Y6SK9K": ["Pokaż źródło"],
+    "Y7DcwM": ["Można to skonfigurować w Ustawieniach > ", ["agentConnectionsLabel"]],
     "Y8ViJx": ["Od otwarcia tej karty mogła zostać wdrożona nowsza wersja."],
     "Y9c_nf": ["0/0"],
     "YBt9YP": ["Beta"],
@@ -4133,6 +4135,11 @@
     "bwil08": ["Budowanie <0>openknowledge.skill</0> i otwieranie Claude Desktop App"],
     "bwoxGI": ["Wymaga zalogowania"],
     "bwy8Y7": ["Na <0>", ["address"], "</0>"],
+    "bzjcwc": [
+      "Nie wykryto jeszcze narzędzi AI. Po zainstalowaniu połącz je w Ustawieniach > ",
+      ["agentConnectionsLabel"],
+      "."
+    ],
     "bzsK8N": ["Odczytuje paletę redakcyjną, aby nowe dokumenty odpowiadały stylowi projektu"],
     "c0dKr4": [
       "W czacie z agentem najechanie na link do pull requesta lub zgłoszenia GitHub powoduje zapytanie GitHub o jego status, uwierzytelniając jako Ty, gdy OpenKnowledge może korzystać z Twojego logowania do GitHub."
@@ -4695,6 +4702,7 @@
         }
       ]
     ],
+    "g2E_It": ["Już połączono z: ", ["replacingToolList"]],
     "g3ouZB": [
       [
         "0",
@@ -6249,9 +6257,6 @@
     "tHKQ6j": ["Zmiana nazwy"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge zapisało dokument"],
-    "tLd2qa": [
-      "Nie wykryto jeszcze narzędzi AI. Po zainstalowaniu połącz je w Ustawieniach > Narzędzia AI i CLI."
-    ],
     "tM5uzl": [
       "Rodziny pochodzenia, zaufania i cyklu życia: sources, generated, verified, status oraz stale_after. Każde pole jest opcjonalne, a jego brak nigdy nie jest błędem."
     ],

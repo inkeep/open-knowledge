@@ -35,14 +35,14 @@ import { reloadEnabledAgentsFromStorage } from '@/lib/acp/enabled-agents';
 import { registerAgent, reloadRegisteredAgentsFromStorage } from '@/lib/acp/registered-agents';
 import { OK_SIDEBAR_DRAG_MIME } from '@/lib/sidebar-drag';
 import { saveStickyAgent, terminalCliId } from '@/lib/unified-agent-store';
+import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
     i18n,
-    t: (strings: TemplateStringsArray, ...values: unknown[]) =>
-      strings.reduce((acc, part, index) => `${acc}${part}${values[index] ?? ''}`, ''),
+    t: renderLinguiTemplate,
   }),
 }));
 
@@ -419,7 +419,9 @@ describe('attachments with no agent configured at all', () => {
     dropImageOn(getInput());
 
     await waitFor(() => {
-      expect(dropRefusalText()).toContain('No agents are set up yet');
+      expect(dropRefusalText()).toContain(
+        'No agents are set up yet — add an in-app agent in Agent connections to attach files.',
+      );
     });
     expect(attachmentChipEvidence(DROPPED_FILE_NAME)).toBeNull();
   });

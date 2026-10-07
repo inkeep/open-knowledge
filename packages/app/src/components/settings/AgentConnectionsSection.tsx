@@ -91,6 +91,7 @@ import {
 import { type RowAction, rowActionFor, rowHasResidualFiles } from './agent-row-action';
 import { groupHeadingFor } from './group-heading';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
+import { AGENT_CONNECTIONS_SECTION_LABEL } from './settings-section-labels';
 
 function AgentRow({
   icon,
@@ -1116,7 +1117,7 @@ export function AgentConnectionsSection({
       data-field="section:agent-connections"
       data-testid="settings-configure-agents"
     >
-      <SettingsSectionHeader titleId={titleId} title={t`Agent connections`}>
+      <SettingsSectionHeader titleId={titleId} title={t(AGENT_CONNECTIONS_SECTION_LABEL)}>
         {t`Choose which agents appear in agent menus across the app, and set them up to read and update your documents.`}
       </SettingsSectionHeader>
 

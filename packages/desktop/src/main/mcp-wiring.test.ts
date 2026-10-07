@@ -1147,6 +1147,46 @@ describe('runMcpWiringOnFirstLaunch — PATH consent leg', () => {
     expect(readMcpStatusMarker('/home/u', fs)).toMatchObject({ configured: true });
   });
 
+  test('a reconfigure Finish with nothing ticked writes no MCP entry and records no PATH or skill decision', async () => {
+    const ipcMain = stubIpcMain();
+    const wc = fakeWebContents(11);
+    const fs = memoryFs();
+    const { cli, writes } = buildFirstLaunchCli();
+    const pathInstall = stubPathInstall({
+      computeDescriptor: () => ({ ...STUB_PATH_DESCRIPTOR, alreadyInstalled: true }),
+    });
+    const skills = stubSkills([
+      {
+        id: 'discovery',
+        name: 'open-knowledge-discovery',
+        paths: ['~/.claude/skills/open-knowledge-discovery'],
+      },
+    ]);
+    runMcpWiringOnFirstLaunch(
+      buildWiringOpts({
+        ipcMain,
+        cli,
+        fs,
+        pathInstall,
+        skills,
+        forceShow: true,
+        immediateDispatchTarget: wc,
+      }),
+    );
+    expect(wc.sent[0]?.payload).toMatchObject({ origin: 'reconfigure' });
+
+    const confirm = ipcMain.handlers.get('ok:mcp-wiring:confirm');
+    const result = await confirm?.(
+      { sender: { id: 11 } },
+      { editorIds: [], pathInstall: undefined, skills: undefined },
+    );
+    expect(result).toEqual({ ok: true });
+    expect(writes).toEqual([[]]);
+    expect(pathInstall.consentCalls).toEqual([]);
+    expect(skills.consentCalls).toEqual([]);
+    expect(readMcpStatusMarker('/home/u', fs)).toMatchObject({ configured: true });
+  });
+
   test('confirm without pathInstall leaves the PATH surface untouched (no decision solicited)', async () => {
     const ipcMain = stubIpcMain();
     const wc = fakeWebContents(11);

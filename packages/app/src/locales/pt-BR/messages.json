@@ -916,7 +916,6 @@
     ],
     "80c4-P": ["Código copiado para a área de transferência"],
     "81H_23": ["Adicionar propriedades"],
-    "851WA-": ["Isto pode ser configurado em Configurações > Ferramentas de IA e CLI"],
     "87GMKe": ["Expor este projeto à rede?"],
     "881Uwh": ["Excluir a tabela selecionada"],
     "89SLQ-": ["Pré-visualização de links externos e cartões de referências do GitHub"],
@@ -1821,9 +1820,6 @@
     "GesfyX": [["shown"], " e mais ", ["more"]],
     "Gfr4fu": ["O servidor não consegue abrir documentos"],
     "GhjUB_": ["Reconectado"],
-    "Gi8Akx": [
-      "Nenhum agente foi configurado ainda — para anexar arquivos, adicione um agente integrado ao app em Conexões de agentes."
-    ],
     "GidGkh": ["Atualizar pela fonte"],
     "GifIjR": [
       "A skill “",
@@ -2532,6 +2528,11 @@
     "NuH1jp": ["Repositório público"],
     "Nv3mUj": ["Mostrar as opções avançadas"],
     "NvOvTi": ["Criar em <0>", ["dirDisplay"], "</0>"],
+    "NwHa_3": [
+      "Nenhum agente foi configurado ainda — para anexar arquivos, adicione um agente integrado ao app em ",
+      ["agentConnectionsLabel"],
+      "."
+    ],
     "Nwbs0q": ["Não mostrar"],
     "NxW-md": ["Redimensionar ", ["handleKey"]],
     "NzFvyK": ["A sessão terminou — não é possível desfazer"],
@@ -3532,6 +3533,7 @@
     "Y5la_5": ["Instalar em"],
     "Y6PKd1": ["Remover ", ["name"], " dos projetos recentes"],
     "Y6SK9K": ["Mostrar o código"],
+    "Y7DcwM": ["Isto pode ser configurado em Configurações > ", ["agentConnectionsLabel"]],
     "Y8ViJx": ["Pode ter sido publicada uma versão mais recente desde que esta aba foi aberta."],
     "Y9c_nf": ["0/0"],
     "YBt9YP": ["Beta"],
@@ -3981,6 +3983,11 @@
     "bwil08": ["Compilando <0>openknowledge.skill</0> e abrindo o app Claude Desktop"],
     "bwoxGI": ["Você precisa fazer login"],
     "bwy8Y7": ["Em <0>", ["address"], "</0>"],
+    "bzjcwc": [
+      "Nenhuma ferramenta de IA detectada ainda. Depois de instalar uma, conecte-a em Configurações > ",
+      ["agentConnectionsLabel"],
+      "."
+    ],
     "bzsK8N": ["Lê a paleta de autoria para que novos documentos sigam o estilo do projeto"],
     "c0dKr4": [
       "Em um chat com um agente, passar o cursor sobre um link para uma pull request ou issue do GitHub pede ao GitHub o status dela, com o seu login do GitHub quando o OpenKnowledge pode usá-lo."
@@ -4506,6 +4513,7 @@
         }
       ]
     ],
+    "g2E_It": ["Já conectado a: ", ["replacingToolList"]],
     "g3ouZB": [
       [
         "0",
@@ -5983,9 +5991,6 @@
     "tHKQ6j": ["Renomeando"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge escreveu um documento"],
-    "tLd2qa": [
-      "Nenhuma ferramenta de IA detectada ainda. Depois de instalar uma, conecte-a em Configurações > Ferramentas de IA e CLI."
-    ],
     "tM5uzl": [
       "As famílias de origem, confiança e ciclo de vida: sources, generated, verified, status e stale_after. Cada campo é opcional e a ausência nunca é um erro."
     ],

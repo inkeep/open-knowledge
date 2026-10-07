@@ -955,7 +955,6 @@
     ],
     "80c4-P": ["Code copié dans le presse-papiers"],
     "81H_23": ["Ajouter des propriétés"],
-    "851WA-": ["Cela se configure dans Paramètres > Outils IA et CLI"],
     "87GMKe": ["Exposer ce projet au réseau ?"],
     "881Uwh": ["Supprimer le tableau sélectionné"],
     "89SLQ-": ["Aperçus de liens externes et cartes de références GitHub"],
@@ -1879,9 +1878,6 @@
     "GesfyX": [["shown"], " et ", ["more"], " de plus"],
     "Gfr4fu": ["Le serveur ne peut pas ouvrir de documents"],
     "GhjUB_": ["Reconnecté"],
-    "Gi8Akx": [
-      "Aucun agent n'est encore configuré — pour joindre des fichiers, ajoutez un agent intégré à l'app dans Connexions des agents."
-    ],
     "GidGkh": ["Mettre à jour depuis la source"],
     "GifIjR": [
       "La compétence « ",
@@ -2607,6 +2603,11 @@
     "NuH1jp": ["Dépôt public"],
     "Nv3mUj": ["Afficher les options avancées"],
     "NvOvTi": ["Créer dans <0>", ["dirDisplay"], "</0>"],
+    "NwHa_3": [
+      "Aucun agent n'est encore configuré — pour joindre des fichiers, ajoutez un agent intégré à l'app dans ",
+      ["agentConnectionsLabel"],
+      "."
+    ],
     "Nwbs0q": ["Ne pas afficher"],
     "NxW-md": ["Redimensionner ", ["handleKey"]],
     "NzFvyK": ["Session terminée — annulation impossible"],
@@ -3630,6 +3631,7 @@
     "Y5la_5": ["Installer dans"],
     "Y6PKd1": ["Retirer ", ["name"], " des projets récents"],
     "Y6SK9K": ["Afficher la source"],
+    "Y7DcwM": ["Cela se configure dans Paramètres > ", ["agentConnectionsLabel"]],
     "Y8ViJx": [
       "Une version plus récente a peut-être été déployée depuis l'ouverture de cet onglet."
     ],
@@ -4111,6 +4113,11 @@
     ],
     "bwoxGI": ["Vous devez vous connecter"],
     "bwy8Y7": ["Sur <0>", ["address"], "</0>"],
+    "bzjcwc": [
+      "Aucun outil IA détecté pour l'instant. Une fois que vous en installez un, connectez-le depuis Paramètres > ",
+      ["agentConnectionsLabel"],
+      "."
+    ],
     "bzsK8N": [
       "Lit la palette de rédaction pour que les nouveaux documents suivent le style du projet"
     ],
@@ -4641,6 +4648,7 @@
         }
       ]
     ],
+    "g2E_It": ["Déjà connecté à : ", ["replacingToolList"]],
     "g3ouZB": [
       [
         "0",
@@ -6171,9 +6179,6 @@
     "tHKQ6j": ["Renommage"],
     "tKlWWY": ["Émoji"],
     "tLX6LY": ["OpenKnowledge a écrit un document"],
-    "tLd2qa": [
-      "Aucun outil IA détecté pour l'instant. Une fois que vous en installez un, connectez-le depuis Paramètres > Outils IA et CLI."
-    ],
     "tM5uzl": [
       "Les familles de provenance, de confiance et de cycle de vie : sources, generated, verified, status et stale_after. Chaque champ est facultatif et l'absence n'est jamais une erreur."
     ],

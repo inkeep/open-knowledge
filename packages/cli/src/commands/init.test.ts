@@ -9,15 +9,16 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { resolveBundleEnabled } from '@inkeep/open-knowledge-core';
-import { resolveConfigPath } from '@inkeep/open-knowledge-core/server';
-import { readBundleDecision } from '@inkeep/open-knowledge-server';
+import { resolveBundleEnabled, SKILL_STATE_FILENAME } from '@inkeep/open-knowledge-core';
+import { okUserHomeDir, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
+import { readBundleDecision, writeBundleDecision } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import { loadConfig } from '../config/loader.ts';
@@ -65,6 +66,11 @@ import {
   writeEditorMcpConfig,
   writeUserMcpConfigs,
 } from './init.ts';
+
+vi.mock('@inkeep/open-knowledge-server', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@inkeep/open-knowledge-server')>();
+  return { ...actual, readBundleDecision: vi.fn(actual.readBundleDecision) };
+});
 
 const NATIVE_TOML_AVAILABLE = createTomlConfigEngine().backend === 'native';
 
@@ -981,10 +987,17 @@ describe('runInit', () => {
       writeFileSync(configPath, 'telemetry:\n  skillInstallReports:\n    enabled: true\n', 'utf-8');
       vi.stubEnv('DO_NOT_TRACK', '');
       vi.stubEnv('DISABLE_TELEMETRY', '');
+      const reportFetch = vi.fn(async (_url: string | URL | Request) => new Response(null));
+      vi.stubGlobal('fetch', reportFetch);
       try {
         const result = await runInitForTest({ installUserSkill: async () => 'installed' });
         expect(formatInitResult(result, testDir)).toContain('Counted on skills.sh');
+        await vi.waitFor(() => expect(reportFetch).toHaveBeenCalled());
+        expect(new URL(String(reportFetch.mock.calls[0]?.[0])).hostname).toBe(
+          'add-skill.vercel.sh',
+        );
       } finally {
+        vi.unstubAllGlobals();
         vi.unstubAllEnvs();
       }
     });
@@ -1115,6 +1128,79 @@ describe('runInit', () => {
       expect(installed).toEqual(['discovery']);
       expect(await readBundleDecision(fakeHome, 'open-knowledge-discovery')).toBe(true);
       expect(await readBundleDecision(fakeHome, 'open-knowledge-write-skill')).toBeNull();
+    });
+
+    it('a default run honors a recorded machine-wide opt-out instead of overwriting it', async () => {
+      await writeBundleDecision(fakeHome, 'open-knowledge-discovery', false);
+      const installed: (string | undefined)[] = [];
+      const result = await runInitForTest({
+        skills: undefined,
+        installUserSkill: async (opts) => {
+          installed.push(opts?.bundleId);
+          return 'installed';
+        },
+      });
+      expect(installed).toEqual([]);
+      expect(await readBundleDecision(fakeHome, 'open-knowledge-discovery')).toBe(false);
+      expect(result.skillInstall).toBe('opted-out');
+      const section = userGlobalSection(formatInitResult(result, testDir));
+      expect(section).toContain('open-knowledge-discovery');
+      expect(section).toContain('turned off on this machine');
+      expect(section).toContain('ok init --skills discovery');
+      expect(section).not.toContain('--no-skills');
+    });
+
+    it('a default run that cannot read the recorded decision installs nothing and reports the failed read', async () => {
+      const statePath = join(okUserHomeDir(fakeHome), SKILL_STATE_FILENAME);
+      mkdirSync(statePath, { recursive: true });
+      const installed: (string | undefined)[] = [];
+      const result = await runInitForTest({
+        skills: undefined,
+        installUserSkill: async (opts) => {
+          installed.push(opts?.bundleId);
+          return 'installed';
+        },
+      });
+      expect(installed).toEqual([]);
+      expect(statSync(statePath).isDirectory()).toBe(true);
+      expect(result.skillInstall).toBe('decision-read-failed');
+      expect(result.skillBundles).toEqual([
+        { bundleId: 'discovery', result: 'decision-read-failed' },
+      ]);
+      const section = userGlobalSection(formatInitResult(result, testDir));
+      expect(section).toContain('open-knowledge-discovery');
+      expect(section).toContain('could not read whether it is turned off');
+      expect(section).not.toContain('installed for');
+    });
+
+    it('a default run whose decision read fails leaves a recorded opt-out unchanged', async () => {
+      await writeBundleDecision(fakeHome, 'open-knowledge-discovery', false);
+      vi.mocked(readBundleDecision).mockRejectedValueOnce(new Error('EIO: decision read failed'));
+      const installed: (string | undefined)[] = [];
+      const result = await runInitForTest({
+        skills: undefined,
+        installUserSkill: async (opts) => {
+          installed.push(opts?.bundleId);
+          return 'installed';
+        },
+      });
+      expect(result.skillInstall).toBe('decision-read-failed');
+      expect(installed).toEqual([]);
+      expect(await readBundleDecision(fakeHome, 'open-knowledge-discovery')).toBe(false);
+    });
+
+    it('naming a bundle with --skills installs it over a recorded opt-out', async () => {
+      await writeBundleDecision(fakeHome, 'open-knowledge-discovery', false);
+      const installed: (string | undefined)[] = [];
+      await runInitForTest({
+        skills: 'discovery',
+        installUserSkill: async (opts) => {
+          installed.push(opts?.bundleId);
+          return 'installed';
+        },
+      });
+      expect(installed).toEqual(['discovery']);
+      expect(await readBundleDecision(fakeHome, 'open-knowledge-discovery')).toBe(true);
     });
 
     it('installs every enabled bundle with force so the shared cli-hosts version key cannot skip the second', async () => {

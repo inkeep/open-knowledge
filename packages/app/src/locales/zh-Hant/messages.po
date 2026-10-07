@@ -1941,8 +1941,7 @@ msgstr "智慧代理對話"
 msgid "Agent configuration file"
 msgstr "代理設定檔"
 
-#: src/components/settings/AgentConnectionsSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/settings-section-labels.ts
 msgid "Agent connections"
 msgstr "智慧代理連線"
 
@@ -2047,6 +2046,11 @@ msgstr "即將完成。以下是已完成和尚待完成的事項。"
 #: src/editor/image-upload/index.ts
 msgid "Already at {assetContentPath} — reusing."
 msgstr "已經在 {assetContentPath} 了——直接重複使用。"
+
+#. Status under the unticked AI-tools checkbox; replacingToolList names the tools that already have an OpenKnowledge MCP entry, which stay as they are while the box is unticked
+#: src/components/McpConsentDialogBody.tsx
+msgid "Already connected to {replacingToolList}"
+msgstr "已連接到：{replacingToolList}"
 
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "Already covered by a picked parent folder"
@@ -9468,10 +9472,12 @@ msgstr "還沒有設定任何代理——請從傳送選單中挑一個。"
 msgid "no agents — saved, not installed anywhere"
 msgstr "未選擇代理 — 僅保存，不安裝到任何位置"
 
+#. Composer hint when no agent is set up; agentConnectionsLabel is the Settings sidebar pane name
+#. Composer hint when no agent is set up; agentConnectionsLabel is the Settings sidebar pane name
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
-msgid "No agents are set up yet — add an in-app agent in Agent connections to attach files."
-msgstr "還沒有設定任何代理——要附加檔案，請在「智慧代理連線」中新增應用程式內的智慧代理。"
+msgid "No agents are set up yet — add an in-app agent in {agentConnectionsLabel} to attach files."
+msgstr "還沒有設定任何代理——要附加檔案，請在「{agentConnectionsLabel}」中新增應用程式內的智慧代理。"
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents available."
@@ -9494,10 +9500,10 @@ msgstr "沒有代理符合你的搜尋。"
 msgid "No AI agents installed"
 msgstr "沒有安裝任何 AI 代理"
 
-#. Shown in place of the AI-tools checkbox when no AI tool was detected
+#. Shown in place of the AI-tools checkbox when no AI tool was detected; agentConnectionsLabel is the Settings sidebar pane name
 #: src/components/McpConsentDialogBody.tsx
-msgid "No AI tools detected yet. Once you install one, connect it from Settings > AI tools & CLI."
-msgstr "尚未偵測到 AI 工具。安裝之後，可在「設定 > AI 工具與 CLI」中連接。"
+msgid "No AI tools detected yet. Once you install one, connect it from Settings > {agentConnectionsLabel}."
+msgstr "尚未偵測到 AI 工具。安裝之後，可在「設定 > {agentConnectionsLabel}」中連接。"
 
 #: src/components/ProjectAiToolsField.tsx
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > This project."
@@ -15249,9 +15255,10 @@ msgstr "這個分支已在以下位置簽出："
 msgid "This branch redirects an OpenKnowledge setup path outside the worktree. The worktree was created but not opened."
 msgstr "此分支將 OpenKnowledge 設定路徑重新導向到工作樹之外。工作樹已建立，但未開啟。"
 
+#. Toast after first-launch setup ends without connecting AI tools; agentConnectionsLabel is the Settings sidebar pane name
 #: src/components/McpConsentDialogBody.tsx
-msgid "This can be configured in Settings > AI tools & CLI"
-msgstr "這可以在「設定 > AI 工具與 CLI」中設定"
+msgid "This can be configured in Settings > {agentConnectionsLabel}"
+msgstr "這可以在「設定 > {agentConnectionsLabel}」中設定"
 
 #: src/components/RecentProjectsMenu.tsx
 msgid "This checkout path cannot be read."

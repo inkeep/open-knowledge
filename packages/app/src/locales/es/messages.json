@@ -926,7 +926,6 @@
     ],
     "80c4-P": ["Código copiado al portapapeles"],
     "81H_23": ["Añadir propiedades"],
-    "851WA-": ["Esto se puede configurar en Ajustes > Herramientas de IA y CLI"],
     "87GMKe": ["¿Exponer este proyecto a la red?"],
     "881Uwh": ["Eliminar la tabla seleccionada"],
     "89SLQ-": ["Vista previa de enlaces externos y tarjetas de referencias de GitHub"],
@@ -1839,9 +1838,6 @@
     "GesfyX": [["shown"], " y ", ["more"], " más"],
     "Gfr4fu": ["El servidor no puede abrir documentos"],
     "GhjUB_": ["Reconectado"],
-    "Gi8Akx": [
-      "Todavía no hay ningún agente configurado: para adjuntar archivos, añade un agente integrado en la app desde Conexiones de agentes."
-    ],
     "GidGkh": ["Actualizar desde el origen"],
     "GifIjR": [
       "No se instaló la skill «",
@@ -2565,6 +2561,11 @@
     "NuH1jp": ["Repositorio público"],
     "Nv3mUj": ["Mostrar las opciones avanzadas"],
     "NvOvTi": ["Crear en <0>", ["dirDisplay"], "</0>"],
+    "NwHa_3": [
+      "Todavía no hay ningún agente configurado: para adjuntar archivos, añade un agente integrado en la app desde ",
+      ["agentConnectionsLabel"],
+      "."
+    ],
     "Nwbs0q": ["No mostrar"],
     "NxW-md": ["Redimensionar ", ["handleKey"]],
     "NzFvyK": ["La sesión terminó: no se puede deshacer"],
@@ -3585,6 +3586,7 @@
     "Y5la_5": ["Instalar en"],
     "Y6PKd1": ["Quitar ", ["name"], " de los proyectos recientes"],
     "Y6SK9K": ["Mostrar el código"],
+    "Y7DcwM": ["Esto se puede configurar en Ajustes > ", ["agentConnectionsLabel"]],
     "Y8ViJx": [
       "Puede que se haya desplegado una versión más reciente desde que se abrió esta pestaña."
     ],
@@ -4058,6 +4060,11 @@
     "bwil08": ["Compilando <0>openknowledge.skill</0> y abriendo la aplicación Claude Desktop"],
     "bwoxGI": ["Tienes que iniciar sesión"],
     "bwy8Y7": ["En <0>", ["address"], "</0>"],
+    "bzjcwc": [
+      "Todavía no se ha detectado ninguna herramienta de IA. Cuando instales una, conéctala desde Ajustes > ",
+      ["agentConnectionsLabel"],
+      "."
+    ],
     "bzsK8N": [
       "Lee la paleta de autoría para que los documentos nuevos sigan el estilo del proyecto"
     ],
@@ -4600,6 +4607,7 @@
         }
       ]
     ],
+    "g2E_It": ["Ya está conectado a: ", ["replacingToolList"]],
     "g3ouZB": [
       [
         "0",
@@ -6101,9 +6109,6 @@
     "tHKQ6j": ["Renombrando"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge escribió un documento"],
-    "tLd2qa": [
-      "Todavía no se ha detectado ninguna herramienta de IA. Cuando instales una, conéctala desde Ajustes > Herramientas de IA y CLI."
-    ],
     "tM5uzl": [
       "Las familias de procedencia, confianza y ciclo de vida: sources, generated, verified, status y stale_after. Cada campo es opcional y la ausencia nunca es un error."
     ],

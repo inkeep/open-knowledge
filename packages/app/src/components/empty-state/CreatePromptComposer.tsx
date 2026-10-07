@@ -38,6 +38,7 @@ import {
   useHandoffDispatch,
 } from '@/components/handoff/useHandoffDispatch';
 import { useInstalledAgents } from '@/components/handoff/useInstalledAgents';
+import { AGENT_CONNECTIONS_SECTION_LABEL } from '@/components/settings/settings-section-labels';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import {
@@ -160,8 +161,14 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
           : t`This composer doesn't accept attachments.`;
       case 'terminal':
         return t`This composer doesn't accept attachments.`;
-      case 'none':
-        return t`No agents are set up yet — add an in-app agent in Agent connections to attach files.`;
+      case 'none': {
+        const agentConnectionsLabel = t(AGENT_CONNECTIONS_SECTION_LABEL);
+        return t({
+          message: `No agents are set up yet — add an in-app agent in ${agentConnectionsLabel} to attach files.`,
+          comment:
+            'Composer hint when no agent is set up; agentConnectionsLabel is the Settings sidebar pane name',
+        });
+      }
       default: {
         const _exhaustive: never = selection;
         throw new Error(`Unhandled launcher selection: ${String(_exhaustive)}`);

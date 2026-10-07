@@ -790,7 +790,6 @@
     ],
     "80c4-P": ["Code copied to clipboard"],
     "81H_23": ["Add properties"],
-    "851WA-": ["This can be configured in Settings > AI tools & CLI"],
     "87GMKe": ["Expose this project to the network?"],
     "881Uwh": ["Delete selected table"],
     "89SLQ-": ["External link previews and GitHub reference cards"],
@@ -1593,9 +1592,6 @@
     "GesfyX": [["shown"], " and ", ["more"], " more"],
     "Gfr4fu": ["Server can't open documents"],
     "GhjUB_": ["Reconnected"],
-    "Gi8Akx": [
-      "No agents are set up yet — add an in-app agent in Agent connections to attach files."
-    ],
     "GidGkh": ["Update from source"],
     "GifIjR": [
       "Skill \"",
@@ -2216,6 +2212,11 @@
     "NuH1jp": ["Public repository"],
     "Nv3mUj": ["Show advanced"],
     "NvOvTi": ["Create in <0>", ["dirDisplay"], "</0>"],
+    "NwHa_3": [
+      "No agents are set up yet — add an in-app agent in ",
+      ["agentConnectionsLabel"],
+      " to attach files."
+    ],
     "Nwbs0q": ["Don't show"],
     "NxW-md": ["Resize ", ["handleKey"]],
     "NzFvyK": ["Session ended — undo unavailable"],
@@ -3095,6 +3096,7 @@
     "Y5la_5": ["Install into"],
     "Y6PKd1": ["Remove ", ["name"], " from recent projects"],
     "Y6SK9K": ["Show source"],
+    "Y7DcwM": ["This can be configured in Settings > ", ["agentConnectionsLabel"]],
     "Y8ViJx": ["A newer version may have been deployed since this tab opened."],
     "Y9c_nf": ["0/0"],
     "YBt9YP": ["Beta"],
@@ -3512,6 +3514,11 @@
     "bwil08": ["Building <0>openknowledge.skill</0> and opening the Claude Desktop App"],
     "bwoxGI": ["Needs you to sign in"],
     "bwy8Y7": ["On <0>", ["address"], "</0>"],
+    "bzjcwc": [
+      "No AI tools detected yet. Once you install one, connect it from Settings > ",
+      ["agentConnectionsLabel"],
+      "."
+    ],
     "bzsK8N": ["Reads the authoring palette so new documents match the project's style"],
     "c0dKr4": [
       "In an agent chat, hovering a link to a GitHub pull request or issue asks GitHub for its status, signed in as you when OpenKnowledge can use your GitHub sign-in."
@@ -3957,6 +3964,7 @@
         }
       ]
     ],
+    "g2E_It": ["Already connected to ", ["replacingToolList"]],
     "g3ouZB": [
       [
         "0",
@@ -5300,9 +5308,6 @@
     "tHKQ6j": ["Renaming"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge wrote a document"],
-    "tLd2qa": [
-      "No AI tools detected yet. Once you install one, connect it from Settings > AI tools & CLI."
-    ],
     "tM5uzl": [
       "The provenance, trust, and lifecycle families: sources, generated, verified, status, and stale_after. Every field is optional, and absence is never an error."
     ],

@@ -35,6 +35,7 @@ import {
   isTerminalSettingsAvailable,
 } from './settings-host-gates';
 import { buildSettingsSearchIndex, type SettingsSearchEntry } from './settings-search-index';
+import { AGENT_CONNECTIONS_SECTION_LABEL } from './settings-section-labels';
 import type { SidebarGroup, SidebarItem, SidebarSubsection } from './settings-sidebar-types';
 
 function releaseNotesUrl(version: string): string {
@@ -181,7 +182,7 @@ export function SettingsDialogShell({
       items: [
         {
           id: 'agent-connections',
-          label: t`Agent connections`,
+          label: t(AGENT_CONNECTIONS_SECTION_LABEL),
           keywords: [t`AI tools`, t`Configure agents`],
         },
       ],

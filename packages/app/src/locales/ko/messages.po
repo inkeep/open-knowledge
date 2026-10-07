@@ -1941,8 +1941,7 @@ msgstr "에이전트 채팅"
 msgid "Agent configuration file"
 msgstr "에이전트 설정 파일"
 
-#: src/components/settings/AgentConnectionsSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/settings-section-labels.ts
 msgid "Agent connections"
 msgstr "에이전트 연결"
 
@@ -2047,6 +2046,11 @@ msgstr "거의 완료되었습니다. 완료된 작업과 남은 작업을 확�
 #: src/editor/image-upload/index.ts
 msgid "Already at {assetContentPath} — reusing."
 msgstr "이미 {assetContentPath}에 있으므로 재사용합니다."
+
+#. Status under the unticked AI-tools checkbox; replacingToolList names the tools that already have an OpenKnowledge MCP entry, which stay as they are while the box is unticked
+#: src/components/McpConsentDialogBody.tsx
+msgid "Already connected to {replacingToolList}"
+msgstr "이미 연결됨: {replacingToolList}"
 
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "Already covered by a picked parent folder"
@@ -9468,10 +9472,12 @@ msgstr "아직 설정된 에이전트 없음. 전송 메뉴에서 선택하세�
 msgid "no agents — saved, not installed anywhere"
 msgstr "에이전트 없음 — 저장만 되고 어디에도 설치되지 않음"
 
+#. Composer hint when no agent is set up; agentConnectionsLabel is the Settings sidebar pane name
+#. Composer hint when no agent is set up; agentConnectionsLabel is the Settings sidebar pane name
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
-msgid "No agents are set up yet — add an in-app agent in Agent connections to attach files."
-msgstr "아직 설정된 에이전트가 없습니다. 파일을 첨부하려면 에이전트 연결에서 앱 내 에이전트를 추가하세요."
+msgid "No agents are set up yet — add an in-app agent in {agentConnectionsLabel} to attach files."
+msgstr "아직 설정된 에이전트가 없습니다. 파일을 첨부하려면 {agentConnectionsLabel}에서 앱 내 에이전트를 추가하세요."
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents available."
@@ -9494,10 +9500,10 @@ msgstr "검색과 일치하는 에이전트 없음."
 msgid "No AI agents installed"
 msgstr "설치된 AI 에이전트 없음"
 
-#. Shown in place of the AI-tools checkbox when no AI tool was detected
+#. Shown in place of the AI-tools checkbox when no AI tool was detected; agentConnectionsLabel is the Settings sidebar pane name
 #: src/components/McpConsentDialogBody.tsx
-msgid "No AI tools detected yet. Once you install one, connect it from Settings > AI tools & CLI."
-msgstr "아직 감지된 AI 도구가 없습니다. 설치한 후 Settings > AI tools & CLI에서 연결하세요."
+msgid "No AI tools detected yet. Once you install one, connect it from Settings > {agentConnectionsLabel}."
+msgstr "아직 감지된 AI 도구가 없습니다. 설치한 후 설정 > {agentConnectionsLabel}에서 연결하세요."
 
 #: src/components/ProjectAiToolsField.tsx
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > This project."
@@ -15249,9 +15255,10 @@ msgstr "이 브랜치의 체크아웃 위치:"
 msgid "This branch redirects an OpenKnowledge setup path outside the worktree. The worktree was created but not opened."
 msgstr "이 브랜치가 OpenKnowledge 설정 경로를 워크트리 밖으로 리디렉션합니다. 워크트리는 생성되었지만 열리지 않았습니다."
 
+#. Toast after first-launch setup ends without connecting AI tools; agentConnectionsLabel is the Settings sidebar pane name
 #: src/components/McpConsentDialogBody.tsx
-msgid "This can be configured in Settings > AI tools & CLI"
-msgstr "Settings > AI tools & CLI에서 설정 가능"
+msgid "This can be configured in Settings > {agentConnectionsLabel}"
+msgstr "설정 > {agentConnectionsLabel}에서 구성할 수 있습니다"
 
 #: src/components/RecentProjectsMenu.tsx
 msgid "This checkout path cannot be read."

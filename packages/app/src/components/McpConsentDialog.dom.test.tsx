@@ -165,6 +165,12 @@ function allReplacingHarness() {
   });
 }
 
+async function tick(testId: string) {
+  await userEvent.click(screen.getByTestId(testId));
+}
+
+const SETTINGS_POINTER = 'This can be configured in Settings > Agent connections';
+
 async function renderDialog(harness = makeHarness()) {
   const { McpConsentDialogBody } = await import('./McpConsentDialogBody');
   const { TooltipProvider } = await import('@/components/ui/tooltip');
@@ -207,20 +213,24 @@ describe('McpConsentDialog AI-tools decision', () => {
     expect(text).not.toContain('Codex');
   });
 
-  test('both AI-tool rows start checked', async () => {
+  test('every global write starts unchecked on first run', async () => {
     await renderDialog();
 
     expect(screen.getByRole('alertdialog', { name: /Let's get set up/ })).toBeTruthy();
-    expect(screen.getByTestId('mcp-consent-connect-checkbox').getAttribute('aria-checked')).toBe(
-      'true',
-    );
-    expect(screen.getByTestId('mcp-consent-skill-checkbox').getAttribute('aria-checked')).toBe(
-      'true',
-    );
+    for (const id of [
+      'mcp-consent-connect-checkbox',
+      'mcp-consent-skill-checkbox',
+      'mcp-consent-path-checkbox',
+    ]) {
+      expect(screen.getByTestId(id).getAttribute('aria-checked')).toBe('false');
+    }
+    expect(screen.queryByTestId('mcp-consent-connect-replace-warning')).toBeNull();
+    expect(screen.queryByTestId('mcp-consent-path-warning')).toBeNull();
   });
 
-  test('consent integrity: the overwrite warning shows without expanding anything', async () => {
+  test('consent integrity: ticking the row shows the overwrite warning without expanding anything', async () => {
     await renderDialog();
+    await tick('mcp-consent-connect-checkbox');
 
     expect(screen.queryByTestId('mcp-consent-connect-details')).toBeNull();
     const warning = screen.getByTestId('mcp-consent-connect-replace-warning').textContent ?? '';
@@ -230,6 +240,7 @@ describe('McpConsentDialog AI-tools decision', () => {
 
   test('when every tool is a replacement, the warning does not repeat the list', async () => {
     await renderDialog(allReplacingHarness());
+    await tick('mcp-consent-connect-checkbox');
 
     const warning = screen.getByTestId('mcp-consent-connect-replace-warning').textContent ?? '';
     expect(warning).not.toContain('Claude');
@@ -240,6 +251,7 @@ describe('McpConsentDialog AI-tools decision', () => {
 
   test('a partial replacement still names its subset', async () => {
     await renderDialog();
+    await tick('mcp-consent-connect-checkbox');
 
     const warning = screen.getByTestId('mcp-consent-connect-replace-warning').textContent ?? '';
     expect(warning).toContain('Claude');
@@ -256,10 +268,11 @@ describe('McpConsentDialog AI-tools decision', () => {
 
     const before = subtextOf(row());
     expect(before).toBeTruthy();
-
-    await userEvent.click(screen.getByTestId('mcp-consent-connect-checkbox'));
-
     expect(screen.queryByTestId('mcp-consent-connect-replace-warning')).toBeNull();
+
+    await tick('mcp-consent-connect-checkbox');
+
+    expect(screen.getByTestId('mcp-consent-connect-replace-warning')).toBeTruthy();
     expect(subtextOf(row())).toBe(before);
   });
 
@@ -272,7 +285,23 @@ describe('McpConsentDialog AI-tools decision', () => {
         },
       }),
     );
+    expect(screen.queryByTestId('mcp-consent-connect-existing')).toBeNull();
+    await tick('mcp-consent-connect-checkbox');
     expect(screen.queryByTestId('mcp-consent-connect-replace-warning')).toBeNull();
+  });
+
+  test('an unticked row names the tools already connected; ticking it swaps that for the overwrite warning', async () => {
+    await renderDialog();
+
+    const existing = screen.getByTestId('mcp-consent-connect-existing').textContent ?? '';
+    expect(existing).toContain('Claude');
+    expect(existing).not.toContain('Cursor');
+    expect(screen.queryByTestId('mcp-consent-connect-replace-warning')).toBeNull();
+
+    await tick('mcp-consent-connect-checkbox');
+
+    expect(screen.queryByTestId('mcp-consent-connect-existing')).toBeNull();
+    expect(screen.getByTestId('mcp-consent-connect-replace-warning')).toBeTruthy();
   });
 
   test("each row's disclosure names the exact files that row writes", async () => {
@@ -302,7 +331,7 @@ describe('McpConsentDialog AI-tools decision', () => {
     await userEvent.click(screen.getByTestId('mcp-consent-connect-info'));
 
     expect(screen.getByTestId('mcp-consent-connect-checkbox').getAttribute('aria-checked')).toBe(
-      'true',
+      'false',
     );
   });
 
@@ -331,10 +360,13 @@ describe('McpConsentDialog AI-tools decision', () => {
     expect(details.textContent).toContain('unavailable on this platform');
   });
 
-  test('Continue sends every detected tool plus the offered skill bundles', async () => {
+  test('ticking every row sends every detected tool, the offered skill bundles and the PATH grant', async () => {
     const harness = await renderDialog();
 
-    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await tick('mcp-consent-connect-checkbox');
+    await tick('mcp-consent-skill-checkbox');
+    await tick('mcp-consent-path-checkbox');
+    await tick('mcp-consent-add');
     await waitFor(() => {
       expect(harness.confirmCalls).toEqual([
         { editorIds: ['claude', 'cursor'], pathInstall: true, skills: ['discovery'] },
@@ -342,24 +374,23 @@ describe('McpConsentDialog AI-tools decision', () => {
     });
   });
 
-  test('unchecking sends no editors AND no skill decision — declining never removes', async () => {
+  test('Finish with the defaults connects nothing, installs no skill, declines PATH and points at Settings', async () => {
     const harness = await renderDialog();
 
-    await userEvent.click(screen.getByTestId('mcp-consent-connect-checkbox'));
-    await userEvent.click(screen.getByTestId('mcp-consent-skill-checkbox'));
-    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await tick('mcp-consent-add');
 
     await waitFor(() => {
       expect(harness.confirmCalls).toEqual([
-        { editorIds: [], pathInstall: true, skills: undefined },
+        { editorIds: [], pathInstall: false, skills: undefined },
       ]);
     });
-    expect(harness.toastMessages).toEqual(['This can be configured in Settings > AI tools & CLI']);
+    expect(harness.toastMessages).toEqual([SETTINGS_POINTER]);
   });
 
   test('connecting does not fire the Settings pointer toast', async () => {
     const harness = await renderDialog();
-    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await tick('mcp-consent-connect-checkbox');
+    await tick('mcp-consent-add');
     await waitFor(() => {
       expect(harness.confirmCalls.length).toBe(1);
     });
@@ -371,18 +402,20 @@ describe('McpConsentDialog AI-tools decision', () => {
 
     expect(screen.queryByTestId('mcp-consent-skill-checkbox')).toBeNull();
 
-    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await tick('mcp-consent-connect-checkbox');
+    await tick('mcp-consent-add');
     await waitFor(() => {
       expect(harness.confirmCalls).toEqual([
-        { editorIds: ['claude', 'cursor'], pathInstall: true, skills: undefined },
+        { editorIds: ['claude', 'cursor'], pathInstall: false, skills: undefined },
       ]);
     });
   });
 
-  test('the overwrite warning disappears when the box is unchecked', async () => {
+  test('the overwrite warning disappears when the box is unchecked again', async () => {
     await renderDialog();
+    await tick('mcp-consent-connect-checkbox');
     expect(screen.getByTestId('mcp-consent-connect-replace-warning')).toBeTruthy();
-    await userEvent.click(screen.getByTestId('mcp-consent-connect-checkbox'));
+    await tick('mcp-consent-connect-checkbox');
     expect(screen.queryByTestId('mcp-consent-connect-replace-warning')).toBeNull();
   });
 
@@ -399,7 +432,7 @@ describe('McpConsentDialog AI-tools decision', () => {
     await userEvent.click(add);
     await waitFor(() => {
       expect(harness.confirmCalls).toEqual([
-        { editorIds: [], pathInstall: true, skills: undefined },
+        { editorIds: [], pathInstall: false, skills: undefined },
       ]);
     });
   });
@@ -418,9 +451,36 @@ describe('McpConsentDialog AI-tools decision', () => {
 
     expect(screen.queryByTestId('mcp-consent-connect-checkbox')).toBeNull();
     expect(screen.getByTestId('mcp-consent-skill-checkbox')).toBeTruthy();
-    expect(screen.getByTestId('mcp-consent-no-tools').textContent).toContain(
-      'No AI tools detected',
+    const note = screen.getByTestId('mcp-consent-no-tools').textContent ?? '';
+    expect(note).toContain('No AI tools detected');
+    expect(note).toContain('Settings > Agent connections.');
+    expect(note).not.toContain('AI tools & CLI');
+  });
+
+  test('ticking only the skill row sends the skill without connecting any tool', async () => {
+    const harness = await renderDialog();
+
+    await tick('mcp-consent-skill-checkbox');
+    await tick('mcp-consent-add');
+    await waitFor(() => {
+      expect(harness.confirmCalls).toEqual([
+        { editorIds: [], pathInstall: false, skills: ['discovery'] },
+      ]);
+    });
+  });
+
+  test('a destination but no detected tool: ticking the skill row sends the skill', async () => {
+    const harness = await renderDialog(
+      makeHarness({ snapshot: { ...noneDetectedPayload, globalSkills: [DISCOVERY_SKILL] } }),
     );
+
+    await tick('mcp-consent-skill-checkbox');
+    await tick('mcp-consent-add');
+    await waitFor(() => {
+      expect(harness.confirmCalls).toEqual([
+        { editorIds: [], pathInstall: false, skills: ['discovery'] },
+      ]);
+    });
   });
 
   test('neither tools nor skills: the section is absent, and confirm is empty', async () => {
@@ -432,19 +492,19 @@ describe('McpConsentDialog AI-tools decision', () => {
     expect(screen.queryByTestId('mcp-consent-skill-checkbox')).toBeNull();
     expect(screen.queryByTestId('mcp-consent-no-tools')).toBeNull();
 
-    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await tick('mcp-consent-add');
     await waitFor(() => {
       expect(harness.confirmCalls).toEqual([
-        { editorIds: [], pathInstall: true, skills: undefined },
+        { editorIds: [], pathInstall: false, skills: undefined },
       ]);
     });
   });
 
-  test('Continue stays enabled with nothing selected — it always records a decision', async () => {
+  test('Finish setup stays enabled with nothing selected, since it always records a decision', async () => {
     await renderDialog();
-    await userEvent.click(screen.getByTestId('mcp-consent-connect-checkbox'));
-    await userEvent.click(screen.getByTestId('mcp-consent-path-checkbox'));
-    expect((screen.getByTestId('mcp-consent-add') as HTMLButtonElement).disabled).toBe(false);
+    const add = screen.getByTestId('mcp-consent-add') as HTMLButtonElement;
+    expect(add.disabled).toBe(false);
+    expect(add.textContent).toBe('Finish setup');
   });
 
   test('failed Continue resets busy state, reports the error, and allows retry', async () => {
@@ -484,11 +544,11 @@ describe('McpConsentDialog PATH consent row', () => {
     (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
   });
 
-  test('renders pre-checked with the rc-file disclosure; warning appears only when unchecked', async () => {
+  test('starts unchecked with no warning; the warning appears only after the user unchecks it', async () => {
     await renderDialog();
 
     const checkbox = screen.getByTestId('mcp-consent-path-checkbox');
-    expect(checkbox.getAttribute('aria-checked')).toBe('true');
+    expect(checkbox.getAttribute('aria-checked')).toBe('false');
     expect(checkbox.hasAttribute('disabled')).toBe(false);
     expect(screen.queryByTestId('mcp-consent-path-status')).toBeNull();
     await userEvent.click(screen.getByTestId('mcp-consent-path-info'));
@@ -496,6 +556,10 @@ describe('McpConsentDialog PATH consent row', () => {
     const text = status.textContent ?? '';
     expect(text).toContain('~/.zshrc');
     expect(text).toContain('~/.config/fish/conf.d/open-knowledge.fish');
+    expect(screen.queryByTestId('mcp-consent-path-warning')).toBeNull();
+
+    await userEvent.click(checkbox);
+    expect(checkbox.getAttribute('aria-checked')).toBe('true');
     expect(screen.queryByTestId('mcp-consent-path-warning')).toBeNull();
 
     await userEvent.click(checkbox);
@@ -514,21 +578,22 @@ describe('McpConsentDialog PATH consent row', () => {
     };
     await renderDialog();
 
-    await userEvent.click(screen.getByTestId('mcp-consent-path-checkbox'));
+    await tick('mcp-consent-path-checkbox');
+    await tick('mcp-consent-path-checkbox');
     expect(screen.getByTestId('mcp-consent-path-warning').textContent).toContain(
       'built-in terminal',
     );
   });
 
-  test('unchecking the toggle sends pathInstall:false on Continue', async () => {
+  test('checking the toggle sends pathInstall:true on Finish', async () => {
     const harness = await renderDialog();
 
-    await userEvent.click(screen.getByTestId('mcp-consent-path-checkbox'));
-    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await tick('mcp-consent-path-checkbox');
+    await tick('mcp-consent-add');
 
     await waitFor(() => {
       expect(harness.confirmCalls).toEqual([
-        { editorIds: ['claude', 'cursor'], pathInstall: false, skills: ['discovery'] },
+        { editorIds: [], pathInstall: true, skills: undefined },
       ]);
     });
   });
@@ -550,10 +615,10 @@ describe('McpConsentDialog PATH consent row', () => {
       'Already set up — ok is available in your terminal',
     );
 
-    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await tick('mcp-consent-add');
     await waitFor(() => {
       expect(harness.confirmCalls).toEqual([
-        { editorIds: ['claude', 'cursor'], pathInstall: undefined, skills: ['discovery'] },
+        { editorIds: [], pathInstall: undefined, skills: undefined },
       ]);
     });
   });
@@ -570,10 +635,10 @@ describe('McpConsentDialog PATH consent row', () => {
 
     expect(screen.queryByTestId('mcp-consent-path-checkbox')).toBeNull();
 
-    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await tick('mcp-consent-add');
     await waitFor(() => {
       expect(harness.confirmCalls).toEqual([
-        { editorIds: ['claude', 'cursor'], pathInstall: undefined, skills: ['discovery'] },
+        { editorIds: [], pathInstall: undefined, skills: undefined },
       ]);
     });
   });
@@ -591,7 +656,7 @@ describe('McpConsentDialog dismissal', () => {
       expect(harness.skipCalls).toEqual(['skip']);
     });
     expect(harness.confirmCalls).toEqual([]);
-    expect(harness.toastMessages).toEqual(['This can be configured in Settings > AI tools & CLI']);
+    expect(harness.toastMessages).toEqual([SETTINGS_POINTER]);
   });
 
   test('failed skip resets busy state and reports the error', async () => {
@@ -629,16 +694,21 @@ describe('McpConsentDialog dismissal', () => {
       expect(harness.skipCalls).toEqual(['skip']);
     });
     expect(harness.confirmCalls).toEqual([]);
-    expect(harness.toastMessages).toEqual(['This can be configured in Settings > AI tools & CLI']);
+    expect(harness.toastMessages).toEqual([SETTINGS_POINTER]);
   });
 
-  test('Finish with everything unchecked still records the declines', async () => {
+  test('Finish after ticking and unticking every row still records the declines', async () => {
     const harness = await renderDialog();
 
-    await userEvent.click(screen.getByTestId('mcp-consent-connect-checkbox'));
-    await userEvent.click(screen.getByTestId('mcp-consent-skill-checkbox'));
-    await userEvent.click(screen.getByTestId('mcp-consent-path-checkbox'));
-    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    for (const id of [
+      'mcp-consent-connect-checkbox',
+      'mcp-consent-skill-checkbox',
+      'mcp-consent-path-checkbox',
+    ]) {
+      await tick(id);
+      await tick(id);
+    }
+    await tick('mcp-consent-add');
 
     await waitFor(() => {
       expect(harness.confirmCalls).toHaveLength(1);
@@ -812,6 +882,40 @@ describe('McpConsentDialog surface by origin', () => {
     expect(document.getElementById(descriptionId ?? '')?.textContent).toBe(
       'Customize your OpenKnowledge experience.',
     );
+  });
+
+  test('a user-opened one starts unchecked too, and Finish with nothing ticked leaves existing wiring untouched', async () => {
+    const harness = await renderDialog(
+      makeHarness({
+        snapshot: {
+          ...payload,
+          origin: 'reconfigure',
+          detectedEditors: payload.detectedEditors.map((e) => ({ ...e, willReplace: e.detected })),
+          pathInstall: { ...payload.pathInstall, alreadyInstalled: true },
+        },
+      }),
+    );
+
+    expect(screen.getByTestId('mcp-consent-connect-checkbox').getAttribute('aria-checked')).toBe(
+      'false',
+    );
+    expect(screen.getByTestId('mcp-consent-skill-checkbox').getAttribute('aria-checked')).toBe(
+      'false',
+    );
+    expect(screen.queryByTestId('mcp-consent-connect-replace-warning')).toBeNull();
+    const existing = screen.getByTestId('mcp-consent-connect-existing').textContent ?? '';
+    expect(existing).toContain('Claude');
+    expect(existing).toContain('Cursor');
+
+    await tick('mcp-consent-add');
+
+    await waitFor(() => {
+      expect(harness.confirmCalls).toEqual([
+        { editorIds: [], pathInstall: undefined, skills: undefined },
+      ]);
+    });
+    expect(harness.dismissCalls).toEqual([]);
+    expect(harness.toastMessages).toEqual([SETTINGS_POINTER]);
   });
 
   test('a user-opened one still offers Finish setup', async () => {

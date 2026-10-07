@@ -7,6 +7,7 @@ import { type ComponentType, type ReactNode, useId, useState, useSyncExternalSto
 import { toast as sonnerToast } from 'sonner';
 import { OkIcon } from '@/components/icons/ok';
 import { RowDisclosure } from '@/components/RowDisclosure';
+import { AGENT_CONNECTIONS_SECTION_LABEL } from '@/components/settings/settings-section-labels';
 import { narrowThemePreference, ThemePicker, type ThemePreference } from '@/components/ThemePicker';
 import {
   AlertDialog,
@@ -149,9 +150,16 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
     editors.map((e) => e.label),
     i18n.locale,
   );
-  const [connectChecked, setConnectChecked] = useState(true);
-  const [skillsChecked, setSkillsChecked] = useState(true);
-  const [pathChecked, setPathChecked] = useState(true);
+  const [connectChecked, setConnectChecked] = useState(false);
+  const [skillsChecked, setSkillsChecked] = useState(false);
+  const [pathChecked, setPathChecked] = useState(false);
+  const [pathTouched, setPathTouched] = useState(false);
+  const agentConnectionsLabel = t(AGENT_CONNECTIONS_SECTION_LABEL);
+  const settingsPointer = t({
+    message: `This can be configured in Settings > ${agentConnectionsLabel}`,
+    comment:
+      'Toast after first-launch setup ends without connecting AI tools; agentConnectionsLabel is the Settings sidebar pane name',
+  });
   const { theme, setTheme } = useTheme();
   const themePreference = narrowThemePreference(theme);
   const configContext = useConfigContextOptional();
@@ -177,6 +185,11 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
   const themePendingReasonId = `${idPrefix}-theme-pending`;
   const settingsLoadingReason = useSettingsLoadingReason();
   const showReplaceWarning = connectChecked && replacing.length > 0;
+  const showExistingStatus = !connectChecked && replacing.length > 0;
+  const replacingToolList = formatToolList(
+    replacing.map((e) => e.label),
+    i18n.locale,
+  );
 
   async function onContinue() {
     setBusy(true);
@@ -192,7 +205,7 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
       return;
     }
     if (!connecting) {
-      toast.message(t`This can be configured in Settings > AI tools & CLI`);
+      toast.message(settingsPointer);
     }
   }
 
@@ -207,7 +220,7 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
     setBusy(true);
     const result = await store.skip();
     if (result.ok) {
-      toast.message(t`This can be configured in Settings > AI tools & CLI`);
+      toast.message(settingsPointer);
     } else {
       toast.error(result.error);
       setBusy(false);
@@ -287,7 +300,10 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                       id={`${idPrefix}-path`}
                       checked={pathActionable ? pathChecked : true}
                       disabled={busy || !pathActionable}
-                      onCheckedChange={() => setPathChecked((prev) => !prev)}
+                      onCheckedChange={() => {
+                        setPathTouched(true);
+                        setPathChecked((prev) => !prev);
+                      }}
                       data-testid="mcp-consent-path-checkbox"
                     />
                     <span className="flex min-w-0 flex-1 items-center gap-1.5 pe-28 text-sm font-medium text-foreground">
@@ -311,7 +327,7 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                       {t`Already set up — ok is available in your terminal`}
                     </span>
                   )}
-                  {pathActionable && !pathChecked && (
+                  {pathActionable && pathTouched && !pathChecked && (
                     <span className={ROW_WARNING} data-testid="mcp-consent-path-warning">
                       {ptyAvailable ? (
                         <Trans comment="Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal">
@@ -397,6 +413,15 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                           </Trans>
                         </span>
                         {}
+                        {showExistingStatus && (
+                          <span className={ROW_SUBTEXT} data-testid="mcp-consent-connect-existing">
+                            {t({
+                              message: `Already connected to ${replacingToolList}`,
+                              comment:
+                                'Status under the unticked AI-tools checkbox; replacingToolList names the tools that already have an OpenKnowledge MCP entry, which stay as they are while the box is unticked',
+                            })}
+                          </span>
+                        )}
                         {showReplaceWarning && (
                           <span
                             className={ROW_WARNING}
@@ -491,9 +516,9 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                   {}
                   {!hasEditors && (
                     <p className={SECTION_SUBTEXT} data-testid="mcp-consent-no-tools">
-                      <Trans comment="Shown in place of the AI-tools checkbox when no AI tool was detected">
+                      <Trans comment="Shown in place of the AI-tools checkbox when no AI tool was detected; agentConnectionsLabel is the Settings sidebar pane name">
                         No AI tools detected yet. Once you install one, connect it from Settings
-                        &gt; AI tools & CLI.
+                        &gt; {agentConnectionsLabel}.
                       </Trans>
                     </p>
                   )}

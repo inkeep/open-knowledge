@@ -1937,8 +1937,7 @@ msgstr "एजेंट चैट"
 msgid "Agent configuration file"
 msgstr "एजेंट कॉन्फ़िगरेशन फ़ाइल"
 
-#: src/components/settings/AgentConnectionsSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/settings-section-labels.ts
 msgid "Agent connections"
 msgstr "एजेंट कनेक्शन"
 
@@ -2043,6 +2042,11 @@ msgstr "लगभग पूरा हो गया। देखें कि क
 #: src/editor/image-upload/index.ts
 msgid "Already at {assetContentPath} — reusing."
 msgstr "पहले से ही {assetContentPath} पर — पुन: उपयोग किया जा रहा है।"
+
+#. Status under the unticked AI-tools checkbox; replacingToolList names the tools that already have an OpenKnowledge MCP entry, which stay as they are while the box is unticked
+#: src/components/McpConsentDialogBody.tsx
+msgid "Already connected to {replacingToolList}"
+msgstr "पहले से जुड़ा हुआ: {replacingToolList}"
 
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "Already covered by a picked parent folder"
@@ -9464,10 +9468,12 @@ msgstr "अभी कोई एजेंट सेट अप नहीं है
 msgid "no agents — saved, not installed anywhere"
 msgstr "कोई एजेंट नहीं — सहेजी गईं, कहीं इंस्टॉल नहीं"
 
+#. Composer hint when no agent is set up; agentConnectionsLabel is the Settings sidebar pane name
+#. Composer hint when no agent is set up; agentConnectionsLabel is the Settings sidebar pane name
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
-msgid "No agents are set up yet — add an in-app agent in Agent connections to attach files."
-msgstr "अभी कोई एजेंट सेट अप नहीं है — फ़ाइलें संलग्न करने के लिए एजेंट कनेक्शन में ऐप के भीतर का एजेंट जोड़ें।"
+msgid "No agents are set up yet — add an in-app agent in {agentConnectionsLabel} to attach files."
+msgstr "अभी कोई एजेंट सेट अप नहीं है — फ़ाइलें संलग्न करने के लिए {agentConnectionsLabel} में ऐप के भीतर का एजेंट जोड़ें।"
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents available."
@@ -9490,10 +9496,10 @@ msgstr "आपकी खोज से कोई एजेंट मेल नह
 msgid "No AI agents installed"
 msgstr "कोई AI एजेंट इंस्टॉल नहीं है"
 
-#. Shown in place of the AI-tools checkbox when no AI tool was detected
+#. Shown in place of the AI-tools checkbox when no AI tool was detected; agentConnectionsLabel is the Settings sidebar pane name
 #: src/components/McpConsentDialogBody.tsx
-msgid "No AI tools detected yet. Once you install one, connect it from Settings > AI tools & CLI."
-msgstr "अभी तक कोई AI टूल नहीं मिला। एक इंस्टॉल करने के बाद उसे Settings > AI tools & CLI से जोड़ें।"
+msgid "No AI tools detected yet. Once you install one, connect it from Settings > {agentConnectionsLabel}."
+msgstr "अभी तक कोई AI टूल नहीं मिला। एक इंस्टॉल करने के बाद उसे सेटिंग > {agentConnectionsLabel} से जोड़ें।"
 
 #: src/components/ProjectAiToolsField.tsx
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > This project."
@@ -15245,9 +15251,10 @@ msgstr "यह ब्रांच यहाँ चेक आउट है:"
 msgid "This branch redirects an OpenKnowledge setup path outside the worktree. The worktree was created but not opened."
 msgstr "यह ब्रांच OpenKnowledge सेटअप पथ को वर्कट्री से बाहर भेजती है। वर्कट्री बनाई गई, लेकिन खोली नहीं गई।"
 
+#. Toast after first-launch setup ends without connecting AI tools; agentConnectionsLabel is the Settings sidebar pane name
 #: src/components/McpConsentDialogBody.tsx
-msgid "This can be configured in Settings > AI tools & CLI"
-msgstr "इसे Settings > AI tools & CLI में कॉन्फ़िगर किया जा सकता है"
+msgid "This can be configured in Settings > {agentConnectionsLabel}"
+msgstr "इसे सेटिंग > {agentConnectionsLabel} में कॉन्फ़िगर किया जा सकता है"
 
 #: src/components/RecentProjectsMenu.tsx
 msgid "This checkout path cannot be read."

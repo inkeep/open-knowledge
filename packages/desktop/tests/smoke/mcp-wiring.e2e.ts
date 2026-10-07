@@ -114,6 +114,12 @@ async function waitForConsentDialog(app: ElectronApplication, timeoutMs = 20_000
     });
 }
 
+async function tickConnectRow(window: Page): Promise<void> {
+  const checkbox = window.getByTestId('mcp-consent-connect-checkbox');
+  await checkbox.click();
+  await expect(checkbox).toHaveAttribute('aria-checked', 'true');
+}
+
 function forceRemove(pathsToRestore: readonly string[], dir: string): void {
   for (const p of pathsToRestore) {
     try {
@@ -134,7 +140,7 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
 
   test.skip('AC2.6 (fresh-Mac P1 E2E with signed DMG) — creds-gated on Apple notarization', () => {});
 
-  test('happy-path — Add writes marker + Claude config with resilient chain MCP entry', async ({
+  test('happy-path — ticking the AI-tools row then Add writes marker + Claude config with resilient chain MCP entry', async ({
     captureStderrFor,
   }) => {
     const tmpHome = createTmpHome('happy');
@@ -143,6 +149,7 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       const app = await launchApp({ tmpHome });
       captureStderrFor(app, { home: tmpHome });
       const window = await waitForConsentDialog(app);
+      await tickConnectRow(window);
       await window.getByTestId('mcp-consent-add').click();
 
       await expect
@@ -173,6 +180,35 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       const chainBody = okEntry?.args?.[EXPECTED_CHAIN.prefixArgs.length];
       expect(typeof chainBody).toBe('string');
       expect(chainBody).toContain(EXPECTED_CHAIN.sentinel);
+    } finally {
+      forceRemove([], tmpHome);
+    }
+  });
+
+  test('defaults: Add without ticking anything writes the marker but no editor config', async ({
+    captureStderrFor,
+  }) => {
+    const tmpHome = createTmpHome('defaults');
+    seedEditorDetectionDirs(tmpHome, ['.claude']);
+    try {
+      const app = await launchApp({ tmpHome });
+      captureStderrFor(app, { home: tmpHome });
+      const window = await waitForConsentDialog(app);
+      await expect(window.getByTestId('mcp-consent-connect-checkbox')).toHaveAttribute(
+        'aria-checked',
+        'false',
+      );
+      await window.getByTestId('mcp-consent-add').click();
+
+      await expect
+        .poll(() => readMarker(tmpHome), {
+          timeout: 15_000,
+          message: 'marker not written within 15s of Add click with nothing ticked',
+        })
+        .not.toBeNull();
+
+      expect(readMarker(tmpHome)).toMatchObject({ configured: true, editors: [] });
+      expect(existsSync(join(tmpHome, '.claude.json'))).toBe(false);
     } finally {
       forceRemove([], tmpHome);
     }
@@ -296,6 +332,7 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       const app = await launchApp({ tmpHome });
       captureStderrFor(app, { home: tmpHome });
       const window = await waitForConsentDialog(app);
+      await tickConnectRow(window);
       await window.getByTestId('mcp-consent-add').click();
 
       await expect
