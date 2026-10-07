@@ -969,6 +969,14 @@ msgstr "{label} ({0})"
 msgid "{label} already loads \"{0}\" from the {1} plugin. Installing here puts a copy at {2} that {label} uses instead of the plugin's — it stops tracking plugin updates."
 msgstr "{label} पहले से \"{0}\" को {1} प्लगइन से लोड करता है। यहाँ इंस्टॉल करने पर {2} पर एक प्रति बनती है जिसे {label} प्लगइन की जगह इस्तेमाल करता है — यह प्लगइन के अपडेट लेना बंद कर देती है।"
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} build, v{version}. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr "{label} बिल्ड, v{version}। इसकी सेटिंग्स और डेटा अन्य OpenKnowledge ऐप्स से अलग रखे जाते हैं।"
+
+#: src/components/InstanceBadge.tsx
+msgid "{label} build. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr "{label} बिल्ड। इसकी सेटिंग्स और डेटा अन्य OpenKnowledge ऐप्स से अलग रखे जाते हैं।"
+
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "{label} enabled"
 msgstr "{label} सक्षम"
@@ -976,10 +984,6 @@ msgstr "{label} सक्षम"
 #: src/components/file-tree-problem-indicators.ts
 msgid "{label} problems"
 msgstr "{label} समस्याएँ"
-
-#: src/components/InstanceBadge.tsx
-msgid "{label} uses isolated app data"
-msgstr "{label} अलग ऐप डेटा का उपयोग करता है"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
@@ -2138,6 +2142,10 @@ msgstr "API कुंजी सेट है"
 #: src/components/InstanceBadge.tsx
 msgid "App instance: {label}"
 msgstr "ऐप इंस्टेंस: {label}"
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}, v{version}"
+msgstr "ऐप इंस्टेंस: {label}, v{version}"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -9860,6 +9868,10 @@ msgstr "इनमें से किसी भी समस्या का क
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Not a base16 theme"
 msgstr "यह base16 थीम नहीं है"
+
+#: src/components/SkillConsentRow.tsx
+msgid "Not added to any AI tool yet."
+msgstr "अभी तक किसी AI टूल में नहीं जोड़ा गया।"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"

@@ -3851,6 +3851,11 @@
       "</1>."
     ],
     "_9rYSZ": ["intégration MCP de ", ["names"], " réparée"],
+    "_BOsQt": [
+      "Version ",
+      ["label"],
+      ". Ses paramètres et ses données sont conservés à part des autres applications OpenKnowledge."
+    ],
     "_Bix3-": ["Occurrences de ", ["localizedFirstMessage"]],
     "_CWM2I": ["Sélectionner un élément de liste"],
     "_DwR-n": ["Création…"],
@@ -4849,7 +4854,6 @@
     "hFmYGU": ["Les fichiers de thème liés ne sont pas pris en charge"],
     "hGmuTc": ["Documents étiquetés #", ["tagDocsName"]],
     "hHMv6l": ["Supprimer le bloc"],
-    "hHQHPX": [["label"], " utilise des données d’application isolées"],
     "hIQkLb": ["Nouvelle discussion"],
     "hItdtk": ["Parcourir le dossier"],
     "hLKfZe": ["Utiliser plutôt un jeton"],
@@ -4984,6 +4988,7 @@
     "iTylMl": ["Modèles"],
     "iUwpZI": ["Pas d'espaces — utilisez <0>-</0> à la place."],
     "iXTp5j": ["Portée : "],
+    "iXYzwf": ["Instance de l’application : ", ["label"], ", v", ["version"]],
     "iXs0kt": ["La liste de compétences ne correspond pas à son schéma."],
     "iYUTsI": ["Cette source regroupe plusieurs compétences — choisissez-en une, puis importez."],
     "iZCZmF": [
@@ -6790,6 +6795,13 @@
       "Il manque au jeton enregistré les permissions dont cet hôte a besoin pour pousser."
     ],
     "yMgL_E": ["Navigation dans le champ de recherche"],
+    "yNpyg4": [
+      "Version ",
+      ["label"],
+      ", v",
+      ["version"],
+      ". Ses paramètres et ses données sont conservés à part des autres applications OpenKnowledge."
+    ],
     "yOjRUV": ["Aucun outil IA détecté. Installez-en un pour utiliser cette compétence."],
     "yQE2r9": ["Chargement"],
     "yQyglE": ["Aucun document correspondant"],
@@ -6913,6 +6925,7 @@
     "zLGXna": ["Aucun pack de démarrage disponible."],
     "zLak8b": ["Activer le nouvel onglet"],
     "zMmwh4": ["Choisissez un thème ou créez le vôtre."],
+    "zP6U1P": ["Pas encore ajoutée à un outil IA."],
     "zWZBPx": ["Type modifié"],
     "zXZJoN": ["Ajouter le jeton"],
     "zXj1rA": ["Rechercher par le sens"],

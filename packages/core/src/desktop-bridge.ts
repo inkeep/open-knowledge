@@ -1,4 +1,5 @@
 import type { ApplyReport } from './agent-registry/apply.ts';
+import type { HandoffHostPlatform } from './agent-registry/schema.ts';
 import type { HostSnapshot } from './agent-registry/snapshot.ts';
 import type { CreateNewBannerKind } from './constants/create-new-banner.ts';
 import type { EditorId } from './constants/editors.ts';
@@ -1431,7 +1432,7 @@ export interface OkDesktopBridge {
     onScreenReaderChanged(cb: (active: boolean) => void): OkUnsubscribe;
   };
 
-  readonly platform: 'darwin' | 'win32' | 'linux';
+  readonly platform: HandoffHostPlatform;
   readonly appVersion: string;
   readonly instanceLabel: string | null;
   readonly mcpServerName: string | null;

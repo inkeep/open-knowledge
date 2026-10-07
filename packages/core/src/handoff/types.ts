@@ -1,3 +1,5 @@
+import type { HandoffHostPlatform } from '../agent-registry/schema.ts';
+
 export type HandoffTarget =
   | 'claude-cowork'
   | 'claude-code'
@@ -54,5 +56,6 @@ export interface TargetData {
   readonly appBrandName?: string;
   readonly schemes: ReadonlyArray<string>;
   readonly installUrl: string;
+  readonly platforms: ReadonlyArray<HandoffHostPlatform>;
   readonly tagline?: string;
 }

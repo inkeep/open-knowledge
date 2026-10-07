@@ -108,6 +108,17 @@ describe('ProjectSkillSection', () => {
     expect(block).toContain('everyone who opens the project');
   });
 
+  test('a project skill added to no AI tool says so rather than claiming none was detected', async () => {
+    skillsState = { status: 'ready', data: [authored, { ...projectSkill, hosts: [] }] };
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByTestId('skill-consent-row-no-hosts')).toBeTruthy();
+    });
+    const copy = screen.getByTestId('skill-consent-row-no-hosts').textContent ?? '';
+    expect(copy).toContain('Not added to any AI tool yet.');
+    expect(copy).not.toContain('No AI tools detected');
+  });
+
   test('no project open → renders nothing, leaving the folders block below', async () => {
     skillsState = { status: 'ready', data: [authored] };
     const { container } = renderSection();

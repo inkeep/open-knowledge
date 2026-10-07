@@ -969,6 +969,14 @@ msgstr "{label} ({0})"
 msgid "{label} already loads \"{0}\" from the {1} plugin. Installing here puts a copy at {2} that {label} uses instead of the plugin's — it stops tracking plugin updates."
 msgstr "{label} sudah memuat \"{0}\" dari plugin {1}. Memasang di sini membuat salinan di {2} yang dipakai {label} alih-alih milik plugin — salinan itu berhenti mengikuti pembaruan plugin."
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} build, v{version}. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr "Versi {label}, v{version}. Pengaturan dan datanya disimpan terpisah dari aplikasi OpenKnowledge lainnya."
+
+#: src/components/InstanceBadge.tsx
+msgid "{label} build. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr "Versi {label}. Pengaturan dan datanya disimpan terpisah dari aplikasi OpenKnowledge lainnya."
+
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "{label} enabled"
 msgstr "{label} diaktifkan"
@@ -976,10 +984,6 @@ msgstr "{label} diaktifkan"
 #: src/components/file-tree-problem-indicators.ts
 msgid "{label} problems"
 msgstr "{label} masalah"
-
-#: src/components/InstanceBadge.tsx
-msgid "{label} uses isolated app data"
-msgstr "{label} menggunakan data aplikasi terisolasi"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
@@ -2138,6 +2142,10 @@ msgstr "Kunci API disetel"
 #: src/components/InstanceBadge.tsx
 msgid "App instance: {label}"
 msgstr "Instans aplikasi: {label}"
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}, v{version}"
+msgstr "Instans aplikasi: {label}, v{version}"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -9860,6 +9868,10 @@ msgstr "Tidak satu pun masalah ini punya perbaikan otomatis. Coba Perbaiki semua
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Not a base16 theme"
 msgstr "Bukan tema base16"
+
+#: src/components/SkillConsentRow.tsx
+msgid "Not added to any AI tool yet."
+msgstr "Belum ditambahkan ke alat AI mana pun."
 
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"

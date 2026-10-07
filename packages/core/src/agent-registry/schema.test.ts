@@ -3,6 +3,7 @@ import { satisfierId } from './ids.ts';
 import {
   AgentRecordSchema,
   AttestationSchema,
+  ExternalFacetSchema,
   ProbeDeclarationSchema,
   SatisfierRecordSchema,
 } from './schema.ts';
@@ -185,5 +186,30 @@ describe('agent records', () => {
       },
     });
     expect(parsed.modes.acp?.requirements[0]?.satisfiedByAny).toEqual([]);
+  });
+});
+
+describe('ExternalFacetSchema', () => {
+  const facet = {
+    targetId: 'cursor',
+    knownOrder: 0,
+    visible: true,
+    displayName: 'Cursor',
+    schemes: ['cursor:'],
+    installUrl: 'https://cursor.com/',
+  };
+
+  it('rejects a facet that names no host platforms', () => {
+    expect(ExternalFacetSchema.safeParse(facet).success).toBe(false);
+  });
+
+  it('keeps the host platforms a facet names', () => {
+    expect(ExternalFacetSchema.parse({ ...facet, platforms: ['darwin'] }).platforms).toEqual([
+      'darwin',
+    ]);
+  });
+
+  it('rejects a facet available on no host platform', () => {
+    expect(ExternalFacetSchema.safeParse({ ...facet, platforms: [] }).success).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { HandoffHostPlatform } from '@inkeep/open-knowledge-core/agent-registry';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -6,6 +7,10 @@ import {
   subscribeLocalMenuAction,
 } from '@/lib/local-menu-action-bus';
 import { __resetViewMenuStateForTests, setViewMenuState } from '@/lib/view-menu-state-store';
+import {
+  restrictHandoffTargetPlatforms,
+  withRestrictableHandoffPlatforms,
+} from '@/test-utils/handoff-platforms.test-helper';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 const toastError = vi.fn((_message: string) => {});
@@ -208,6 +213,12 @@ vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => workspaceValue,
 }));
 
+vi.doMock('@inkeep/open-knowledge-core/agent-registry', async (importOriginal) =>
+  withRestrictableHandoffPlatforms(
+    await importOriginal<typeof import('@inkeep/open-knowledge-core/agent-registry')>(),
+  ),
+);
+
 vi.doMock('./handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({
     states: installedAgentStates,
@@ -302,7 +313,7 @@ async function renderPalette({
   bridge = createBridge(),
   docName = 'docs/active',
 }: {
-  bridge?: ReturnType<typeof createBridge> | null;
+  bridge?: (ReturnType<typeof createBridge> & { platform?: HandoffHostPlatform }) | null;
   docName?: string | null;
 } = {}) {
   activeDocName = docName;
@@ -1579,5 +1590,61 @@ describe('CommandPalette ⌘K — overlay gate', () => {
 
     expect(cmdP.defaultPrevented || ctrlP.defaultPrevented).toBe(true);
     expect(onOpenChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('CommandPalette Open with AI on the host OS', () => {
+  beforeEach(() => {
+    cleanup();
+    restrictHandoffTargetPlatforms({ codex: ['darwin', 'win32'] });
+  });
+
+  afterEach(() => {
+    restrictHandoffTargetPlatforms({});
+  });
+
+  test('leaves out an app the host OS has no build for', async () => {
+    await renderPalette({ bridge: { ...createBridge(), platform: 'linux' } });
+    expect(screen.getByTestId('command-palette-open-in-cursor')).toBeTruthy();
+    expect(screen.queryByTestId('command-palette-open-in-codex')).toBeNull();
+  });
+
+  test('lists the same app on a host OS it supports', async () => {
+    await renderPalette({ bridge: { ...createBridge(), platform: 'darwin' } });
+    expect(screen.getByTestId('command-palette-open-in-codex')).toBeTruthy();
+  });
+
+  test('keeps an app detected on the host listed and enabled even without an official build', async () => {
+    installedAgentStates.codex = { installed: true };
+    try {
+      await renderPalette({ bridge: { ...createBridge(), platform: 'linux' } });
+      const item = screen.getByTestId('command-palette-open-in-codex') as HTMLButtonElement;
+      expect(item.disabled).toBe(false);
+    } finally {
+      installedAgentStates.codex = { installed: false };
+    }
+  });
+
+  test('shows the Open with AI heading over the apps when the host OS has a build of them', async () => {
+    restrictHandoffTargetPlatforms({
+      'claude-code': ['darwin', 'win32'],
+      codex: ['darwin', 'win32'],
+      cursor: ['darwin', 'win32'],
+    });
+    await renderPalette({ bridge: { ...createBridge(), platform: 'darwin' } });
+    const agentGroup = screen.getByRole('region', { name: 'Open with AI' });
+    expect(within(agentGroup).getByRole('heading', { name: 'Open with AI' })).toBeTruthy();
+    expect(within(agentGroup).getByTestId('command-palette-open-in-codex')).toBeTruthy();
+  });
+
+  test('shows no Open with AI heading when the host OS has a build of none of the apps', async () => {
+    restrictHandoffTargetPlatforms({
+      'claude-code': ['darwin', 'win32'],
+      codex: ['darwin', 'win32'],
+      cursor: ['darwin', 'win32'],
+    });
+    await renderPalette({ bridge: { ...createBridge(), platform: 'linux' } });
+    expect(screen.queryByRole('region', { name: 'Open with AI' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Open with AI' })).toBeNull();
   });
 });

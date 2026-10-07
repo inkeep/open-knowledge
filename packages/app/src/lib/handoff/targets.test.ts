@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { KNOWN_TARGETS, VISIBLE_TARGETS } from './targets.ts';
+import { isTargetOfferedOnHost, KNOWN_TARGETS, VISIBLE_TARGETS } from './targets.ts';
 
 describe('KNOWN_TARGETS', () => {
   test('has exactly ten targets (four GUI + terminal-only Copilot, OpenCode, Pi, Antigravity, OpenClaw, Hermes)', () => {
@@ -88,5 +88,30 @@ describe('VISIBLE_TARGETS (UI render allow-list)', () => {
       expect(KNOWN_TARGETS).toContain(target);
     }
     expect(VISIBLE_TARGETS.length).toBeLessThan(KNOWN_TARGETS.length);
+  });
+});
+
+describe('isTargetOfferedOnHost', () => {
+  const macAndWindowsOnly = { platforms: ['darwin', 'win32'] as const };
+
+  test('withholds an app the host OS has no build for', () => {
+    expect(isTargetOfferedOnHost(macAndWindowsOnly, { platform: 'linux', installed: false })).toBe(
+      false,
+    );
+    expect(isTargetOfferedOnHost(macAndWindowsOnly, { platform: 'linux', installed: null })).toBe(
+      false,
+    );
+  });
+
+  test('offers an app detected on the host whatever its declared platforms', () => {
+    expect(isTargetOfferedOnHost(macAndWindowsOnly, { platform: 'linux', installed: true })).toBe(
+      true,
+    );
+  });
+
+  test('offers every app when the host OS is unknown', () => {
+    expect(
+      isTargetOfferedOnHost(macAndWindowsOnly, { platform: undefined, installed: false }),
+    ).toBe(true);
   });
 });

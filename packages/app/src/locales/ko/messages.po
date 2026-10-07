@@ -969,6 +969,14 @@ msgstr "{label} ({0})"
 msgid "{label} already loads \"{0}\" from the {1} plugin. Installing here puts a copy at {2} that {label} uses instead of the plugin's — it stops tracking plugin updates."
 msgstr "{label}은(는) 이미 {1} 플러그인에서 \"{0}\"을(를) 불러옵니다. 여기에 설치하면 {2}에 복사본이 만들어지고 {label}이(가) 플러그인 대신 그 복사본을 사용합니다. 복사본은 플러그인 업데이트를 더 이상 따르지 않습니다."
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} build, v{version}. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr "{label} 빌드, v{version}. 설정과 데이터는 다른 OpenKnowledge 앱과 분리되어 보관됩니다."
+
+#: src/components/InstanceBadge.tsx
+msgid "{label} build. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr "{label} 빌드. 설정과 데이터는 다른 OpenKnowledge 앱과 분리되어 보관됩니다."
+
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "{label} enabled"
 msgstr "{label} 활성화됨"
@@ -976,10 +984,6 @@ msgstr "{label} 활성화됨"
 #: src/components/file-tree-problem-indicators.ts
 msgid "{label} problems"
 msgstr "문제 {label}개"
-
-#: src/components/InstanceBadge.tsx
-msgid "{label} uses isolated app data"
-msgstr "{label}에서는 격리된 앱 데이터를 사용합니다"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
@@ -2142,6 +2146,10 @@ msgstr "API 키 설정됨"
 #: src/components/InstanceBadge.tsx
 msgid "App instance: {label}"
 msgstr "앱 인스턴스: {label}"
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}, v{version}"
+msgstr "앱 인스턴스: {label}, v{version}"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -9864,6 +9872,10 @@ msgstr "이 문제들에는 자동 수정이 없습니다. AI로 모두 수정�
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Not a base16 theme"
 msgstr "base16 테마가 아님"
+
+#: src/components/SkillConsentRow.tsx
+msgid "Not added to any AI tool yet."
+msgstr "아직 어떤 AI 도구에도 추가되지 않았습니다."
 
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"

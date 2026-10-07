@@ -3735,6 +3735,11 @@
       "</1>."
     ],
     "_9rYSZ": ["integração MCP de ", ["names"], " reparada"],
+    "_BOsQt": [
+      "Versão ",
+      ["label"],
+      ". As configurações e os dados dela ficam separados dos outros aplicativos OpenKnowledge."
+    ],
     "_Bix3-": ["Ocorrências de ", ["localizedFirstMessage"]],
     "_CWM2I": ["Selecionar item da lista"],
     "_DwR-n": ["Criando…"],
@@ -4713,7 +4718,6 @@
     "hFmYGU": ["Arquivos de tema vinculados não são compatíveis"],
     "hGmuTc": ["Documentos com a tag #", ["tagDocsName"]],
     "hHMv6l": ["Excluir o bloco"],
-    "hHQHPX": [["label"], " usa dados isolados do aplicativo"],
     "hIQkLb": ["Novo chat"],
     "hItdtk": ["Escolher pasta"],
     "hLKfZe": ["Usar um token em vez disso"],
@@ -4846,6 +4850,7 @@
     "iTylMl": ["Modelos"],
     "iUwpZI": ["Sem espaços — use <0>-</0> no lugar."],
     "iXTp5j": ["Escopo: "],
+    "iXYzwf": ["Instância do aplicativo: ", ["label"], ", v", ["version"]],
     "iXs0kt": ["A lista de habilidades não corresponde ao seu esquema."],
     "iYUTsI": ["Esta fonte traz várias habilidades — escolha uma e depois Importar."],
     "iZCZmF": [
@@ -6579,6 +6584,13 @@
     ],
     "yLyiQV": ["Faltam ao token guardado as permissões de que este host precisa para fazer push."],
     "yMgL_E": ["Navegação do campo de busca"],
+    "yNpyg4": [
+      "Versão ",
+      ["label"],
+      ", v",
+      ["version"],
+      ". As configurações e os dados dela ficam separados dos outros aplicativos OpenKnowledge."
+    ],
     "yOjRUV": ["Nenhuma ferramenta de IA detectada. Instale uma para usar esta habilidade."],
     "yQE2r9": ["Carregando"],
     "yQyglE": ["Nenhum documento corresponde"],
@@ -6688,6 +6700,7 @@
     "zLGXna": ["Nenhum pacote inicial disponível."],
     "zLak8b": ["Ativar nova aba"],
     "zMmwh4": ["Escolha um tema ou crie o seu."],
+    "zP6U1P": ["Ainda não adicionada a nenhuma ferramenta de IA."],
     "zWZBPx": ["Tipo alterado"],
     "zXZJoN": ["Adicionar token"],
     "zXj1rA": ["Buscar por significado"],

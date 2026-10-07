@@ -290,14 +290,14 @@ describe('BuiltInSkillsSection', () => {
     expect(window.location.hash.startsWith('#/__skill-preview__/')).toBe(true);
   });
 
-  test('a skill installed nowhere still states the reason on the row', async () => {
+  test('a skill installed nowhere says it is not added yet, not that no AI tool was detected', async () => {
     renderSection();
     await waitFor(() => {
       expect(screen.getByTestId('skill-consent-row-no-hosts')).toBeTruthy();
     });
-    expect(screen.getByTestId('skill-consent-row-no-hosts').textContent).toContain(
-      'No AI tools detected',
-    );
+    const copy = screen.getByTestId('skill-consent-row-no-hosts').textContent ?? '';
+    expect(copy).toContain('Not added to any AI tool yet.');
+    expect(copy).not.toContain('No AI tools detected');
   });
 
   test('a failed list keeps the heading and says what could not be read', async () => {
@@ -347,6 +347,24 @@ describe('BuiltInSkillsSection', () => {
           { component: { kind: 'skill', id: 'write-skill' }, enabled: true },
         ]);
       });
+    });
+
+    test('an offer that would reach no AI tool says none was detected', async () => {
+      introSeen = false;
+      installBridge({
+        status: {
+          ...baseStatus,
+          skills: baseStatus.skills.map((s) =>
+            s.id === 'write-skill' ? { ...s, resolvedHosts: [] } : s,
+          ),
+        },
+      });
+      renderSection();
+
+      const dialog = await screen.findByTestId('skills-studio-intro');
+      expect(within(dialog).getByTestId('skill-consent-row-no-hosts').textContent).toContain(
+        'No AI tools detected',
+      );
     });
 
     test('a bundle setup already asked about is never re-offered, even uninstalled', async () => {

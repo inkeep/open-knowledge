@@ -969,6 +969,14 @@ msgstr "{label} ({0})"
 msgid "{label} already loads \"{0}\" from the {1} plugin. Installing here puts a copy at {2} that {label} uses instead of the plugin's — it stops tracking plugin updates."
 msgstr "{label} ya carga \"{0}\" desde el plugin {1}. Instalar aquí crea una copia en {2} que {label} usa en lugar de la del plugin; deja de seguir las actualizaciones del plugin."
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} build, v{version}. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr "Versión {label}, v{version}. Sus ajustes y sus datos se guardan aparte de otras aplicaciones de OpenKnowledge."
+
+#: src/components/InstanceBadge.tsx
+msgid "{label} build. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr "Versión {label}. Sus ajustes y sus datos se guardan aparte de otras aplicaciones de OpenKnowledge."
+
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "{label} enabled"
 msgstr "{label} activado"
@@ -976,10 +984,6 @@ msgstr "{label} activado"
 #: src/components/file-tree-problem-indicators.ts
 msgid "{label} problems"
 msgstr "{label} problemas"
-
-#: src/components/InstanceBadge.tsx
-msgid "{label} uses isolated app data"
-msgstr "{label} usa datos de aplicación aislados"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
@@ -2142,6 +2146,10 @@ msgstr "Clave de API definida"
 #: src/components/InstanceBadge.tsx
 msgid "App instance: {label}"
 msgstr "Instancia de la aplicación: {label}"
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}, v{version}"
+msgstr "Instancia de la aplicación: {label}, v{version}"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -9864,6 +9872,10 @@ msgstr "Ninguno de estos problemas tiene arreglo automático. Prueba Arreglarlo 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Not a base16 theme"
 msgstr "No es un tema base16"
+
+#: src/components/SkillConsentRow.tsx
+msgid "Not added to any AI tool yet."
+msgstr "Aún no se ha añadido a ninguna herramienta de IA."
 
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"

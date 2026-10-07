@@ -3800,6 +3800,11 @@
       "</1>."
     ],
     "_9rYSZ": ["se reparó la integración MCP de ", ["names"]],
+    "_BOsQt": [
+      "Versión ",
+      ["label"],
+      ". Sus ajustes y sus datos se guardan aparte de otras aplicaciones de OpenKnowledge."
+    ],
     "_Bix3-": ["Apariciones de ", ["localizedFirstMessage"]],
     "_CWM2I": ["Seleccionar elemento de lista"],
     "_DwR-n": ["Creando…"],
@@ -4810,7 +4815,6 @@
     "hFmYGU": ["No se admiten archivos de tema vinculados"],
     "hGmuTc": ["Documentos etiquetados con #", ["tagDocsName"]],
     "hHMv6l": ["Eliminar el bloque"],
-    "hHQHPX": [["label"], " usa datos de aplicación aislados"],
     "hIQkLb": ["Nuevo chat"],
     "hItdtk": ["Elegir carpeta"],
     "hLKfZe": ["Usar un token en su lugar"],
@@ -4943,6 +4947,7 @@
     "iTylMl": ["Plantillas"],
     "iUwpZI": ["Sin espacios: usa <0>-</0> en su lugar."],
     "iXTp5j": ["Alcance: "],
+    "iXYzwf": ["Instancia de la aplicación: ", ["label"], ", v", ["version"]],
     "iXs0kt": ["La lista de habilidades no coincide con su esquema."],
     "iYUTsI": ["Este origen incluye varias habilidades: elige una y luego pulsa Importar."],
     "iZCZmF": [
@@ -6706,6 +6711,13 @@
     ],
     "yLyiQV": ["Al token guardado le faltan los permisos que este host necesita para hacer push."],
     "yMgL_E": ["Navegación del campo de búsqueda"],
+    "yNpyg4": [
+      "Versión ",
+      ["label"],
+      ", v",
+      ["version"],
+      ". Sus ajustes y sus datos se guardan aparte de otras aplicaciones de OpenKnowledge."
+    ],
     "yOjRUV": ["No se detectaron herramientas de IA. Instala una para usar esta habilidad."],
     "yQE2r9": ["Cargando"],
     "yQyglE": ["Ningún documento coincide"],
@@ -6827,6 +6839,7 @@
     "zLGXna": ["No hay paquetes iniciales disponibles."],
     "zLak8b": ["Activar pestaña nueva"],
     "zMmwh4": ["Elige un tema o crea el tuyo."],
+    "zP6U1P": ["Aún no se ha añadido a ninguna herramienta de IA."],
     "zWZBPx": ["Tipo cambiado"],
     "zXZJoN": ["Añadir token"],
     "zXj1rA": ["Buscar por significado"],

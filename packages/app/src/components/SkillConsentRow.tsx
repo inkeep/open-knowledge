@@ -7,6 +7,7 @@ export interface SkillConsentRowProps {
   name: string;
   description: string;
   hosts: readonly string[];
+  emptyHosts: 'not-added' | 'none-detected';
   onActivate?: () => void;
   ariaExpanded?: boolean;
   control?: ReactNode;
@@ -16,6 +17,7 @@ export function SkillConsentRow({
   name,
   description,
   hosts,
+  emptyHosts,
   onActivate,
   ariaExpanded,
   control,
@@ -52,7 +54,11 @@ export function SkillConsentRow({
               className="text-xs text-muted-foreground"
               data-testid="skill-consent-row-no-hosts"
             >
-              <Trans>No AI tools detected. Install one to use this skill.</Trans>
+              {emptyHosts === 'not-added' ? (
+                <Trans>Not added to any AI tool yet.</Trans>
+              ) : (
+                <Trans>No AI tools detected. Install one to use this skill.</Trans>
+              )}
             </span>
           )}
         </span>

@@ -969,6 +969,14 @@ msgstr "{label}（{0}）"
 msgid "{label} already loads \"{0}\" from the {1} plugin. Installing here puts a copy at {2} that {label} uses instead of the plugin's — it stops tracking plugin updates."
 msgstr "{label} 已经通过 {1} 插件加载 \"{0}\"。在此安装会在 {2} 创建一个副本，{label} 将使用该副本而不是插件的版本——副本不再跟随插件更新。"
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} build, v{version}. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr "{label} 版本，v{version}。其设置和数据与其他 OpenKnowledge 应用分开保存。"
+
+#: src/components/InstanceBadge.tsx
+msgid "{label} build. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr "{label} 版本。其设置和数据与其他 OpenKnowledge 应用分开保存。"
+
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "{label} enabled"
 msgstr "已启用 {label}"
@@ -976,10 +984,6 @@ msgstr "已启用 {label}"
 #: src/components/file-tree-problem-indicators.ts
 msgid "{label} problems"
 msgstr "{label} 个问题"
-
-#: src/components/InstanceBadge.tsx
-msgid "{label} uses isolated app data"
-msgstr "{label} 使用隔离的应用数据"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
@@ -2142,6 +2146,10 @@ msgstr "API 密钥已设置"
 #: src/components/InstanceBadge.tsx
 msgid "App instance: {label}"
 msgstr "应用实例：{label}"
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}, v{version}"
+msgstr "应用实例：{label}，v{version}"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -9864,6 +9872,10 @@ msgstr "这些问题都没有自动修复方案。可以试试「用 AI 全部�
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Not a base16 theme"
 msgstr "不是 base16 主题"
+
+#: src/components/SkillConsentRow.tsx
+msgid "Not added to any AI tool yet."
+msgstr "尚未添加到任何 AI 工具。"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"

@@ -65,6 +65,7 @@ export function SkillsStudioIntroDialog({
                 name={offer.name}
                 description={blurbFor(offer.id) ?? offer.description}
                 hosts={offer.resolvedHosts.map((h) => h.editor)}
+                emptyHosts="none-detected"
               />
             </div>
             {canInstall && (

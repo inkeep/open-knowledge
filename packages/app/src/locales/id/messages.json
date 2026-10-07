@@ -3305,6 +3305,11 @@
       "</1>."
     ],
     "_9rYSZ": ["integrasi MCP ", ["names"], " diperbaiki"],
+    "_BOsQt": [
+      "Versi ",
+      ["label"],
+      ". Pengaturan dan datanya disimpan terpisah dari aplikasi OpenKnowledge lainnya."
+    ],
     "_Bix3-": ["Kemunculan ", ["localizedFirstMessage"]],
     "_CWM2I": ["Pilih item daftar"],
     "_DwR-n": ["Membuat…"],
@@ -4135,7 +4140,6 @@
     "hFmYGU": ["Berkas tema tertaut tidak didukung"],
     "hGmuTc": ["Dokumen bertag #", ["tagDocsName"]],
     "hHMv6l": ["Hapus blok"],
-    "hHQHPX": [["label"], " menggunakan data aplikasi terisolasi"],
     "hIQkLb": ["Obrolan baru"],
     "hItdtk": ["Pilih folder"],
     "hLKfZe": ["Pakai token saja"],
@@ -4261,6 +4265,7 @@
     "iTylMl": ["Templat"],
     "iUwpZI": ["Tanpa spasi — gunakan <0>-</0> saja."],
     "iXTp5j": ["Cakupan: "],
+    "iXYzwf": ["Instans aplikasi: ", ["label"], ", v", ["version"]],
     "iXs0kt": ["Daftar skill tidak cocok dengan skemanya."],
     "iYUTsI": ["Sumber ini memuat beberapa keterampilan — pilih satu, lalu Impor."],
     "iZCZmF": [["instanceCount", "plural", { "other": ["#", " instans"] }]],
@@ -5820,6 +5825,13 @@
       "Token yang tersimpan tidak memiliki izin yang dibutuhkan host ini untuk melakukan push."
     ],
     "yMgL_E": ["Navigasi bidang pencarian"],
+    "yNpyg4": [
+      "Versi ",
+      ["label"],
+      ", v",
+      ["version"],
+      ". Pengaturan dan datanya disimpan terpisah dari aplikasi OpenKnowledge lainnya."
+    ],
     "yOjRUV": ["Tidak ada alat AI yang terdeteksi. Pasang satu untuk memakai keterampilan ini."],
     "yQE2r9": ["Memuat"],
     "yQyglE": ["Tidak ada dokumen yang cocok"],
@@ -5915,6 +5927,7 @@
     "zLGXna": ["Tidak ada paket awal yang tersedia."],
     "zLak8b": ["Aktifkan tab baru"],
     "zMmwh4": ["Pilih tema atau buat tema Anda sendiri."],
+    "zP6U1P": ["Belum ditambahkan ke alat AI mana pun."],
     "zWZBPx": ["Tipe berubah"],
     "zXZJoN": ["Tambah token"],
     "zXj1rA": ["Cari berdasarkan makna"],

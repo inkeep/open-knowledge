@@ -969,6 +969,14 @@ msgstr ""
 msgid "{label} already loads \"{0}\" from the {1} plugin. Installing here puts a copy at {2} that {label} uses instead of the plugin's — it stops tracking plugin updates."
 msgstr ""
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} build, v{version}. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr ""
+
+#: src/components/InstanceBadge.tsx
+msgid "{label} build. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr ""
+
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "{label} enabled"
 msgstr ""
@@ -976,10 +984,6 @@ msgstr ""
 #: src/components/file-tree-problem-indicators.ts
 msgid "{label} problems"
 msgstr ""
-
-#: src/components/InstanceBadge.tsx
-msgid "{label} uses isolated app data"
-msgstr "{label} ûsês îsõlãtêd ãpp dãtã"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
@@ -2138,6 +2142,10 @@ msgstr ""
 #: src/components/InstanceBadge.tsx
 msgid "App instance: {label}"
 msgstr "Ãpp înstãncê: {label}"
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}, v{version}"
+msgstr ""
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -9859,6 +9867,10 @@ msgstr ""
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Not a base16 theme"
+msgstr ""
+
+#: src/components/SkillConsentRow.tsx
+msgid "Not added to any AI tool yet."
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx

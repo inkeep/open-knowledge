@@ -140,6 +140,7 @@ export function ProjectSkillSection() {
             name={skill.name}
             description={rowDescription}
             hosts={skillClusterHosts(skill)}
+            emptyHosts="not-added"
             onActivate={openPreview}
             control={
               openPreview ? (

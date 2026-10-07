@@ -9,6 +9,7 @@ import {
   type InstallState,
   type SatisfierId,
   TERMINAL_CLI_IDS,
+  TERMINAL_CLIS,
   VISIBLE_HANDOFF_TARGETS,
 } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
@@ -29,6 +30,10 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import type { AgentCatalog } from '@/lib/acp/catalog';
 import type { ApplyAgentConnectionsResult } from '@/lib/agent-connections';
 import { scopedStorageKey } from '@/lib/storage-scope';
+import {
+  restrictHandoffTargetPlatforms,
+  withRestrictableHandoffPlatforms,
+} from '@/test-utils/handoff-platforms.test-helper';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 const backing = new Map<string, string>();
@@ -121,6 +126,12 @@ vi.doMock('@/lib/use-workspace', () => ({
 vi.doMock('@/components/handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states, refresh: () => Promise.resolve() }),
 }));
+
+vi.doMock('@inkeep/open-knowledge-core/agent-registry', async (importOriginal) =>
+  withRestrictableHandoffPlatforms(
+    await importOriginal<typeof import('@inkeep/open-knowledge-core/agent-registry')>(),
+  ),
+);
 
 let terminalLaunchValue: { installedClis: Record<string, boolean> } | null = null;
 vi.doMock('@/components/handoff/TerminalLaunchContext', () => ({
@@ -877,6 +888,75 @@ describe('AgentConnectionsSection', () => {
       target: { value: 'zzzznope' },
     });
     await waitFor(() => expect(screen.getByTestId('configure-agents-no-results')).toBeTruthy());
+  });
+});
+
+describe('AgentConnectionsSection: external apps on the host OS', () => {
+  function setHostPlatform(platform: 'darwin' | 'win32' | 'linux' | undefined): void {
+    (window as { okDesktop?: unknown }).okDesktop =
+      platform === undefined ? undefined : { platform };
+  }
+
+  function renderAllAbsent() {
+    const snapshot = { ...snapshotWith(), detection: { detected: [], probed: true } };
+    renderSection(async () => result(snapshot));
+  }
+
+  beforeEach(() => {
+    restrictHandoffTargetPlatforms({ codex: ['darwin', 'win32'] });
+    states = {
+      'claude-code': { installed: false },
+      codex: { installed: false },
+      cursor: { installed: false },
+    } as Record<string, InstallState>;
+  });
+
+  afterEach(() => {
+    restrictHandoffTargetPlatforms({});
+    terminalLaunchValue = null;
+    setHostPlatform(undefined);
+  });
+
+  test('an app with no build for the host OS gets no row and no Install offer', async () => {
+    setHostPlatform('linux');
+    renderAllAbsent();
+    await screen.findByTestId('configure-agents-desktop-cursor');
+    expect(screen.getByTestId('configure-agents-desktop-claude-code')).toBeTruthy();
+    expect(screen.queryByTestId('configure-agents-desktop-codex')).toBeNull();
+    expect(screen.queryByLabelText('Install ChatGPT Desktop')).toBeNull();
+    expect(screen.getByLabelText('Install Cursor Desktop')).toBeTruthy();
+  });
+
+  test('an app detected on the host keeps its row even without an official build', async () => {
+    setHostPlatform('linux');
+    states = { ...states, codex: { installed: true } };
+    renderAllAbsent();
+    expect(await screen.findByTestId('configure-agents-desktop-codex')).toBeTruthy();
+  });
+
+  test('the same app is offered for install on a host OS it supports', async () => {
+    setHostPlatform('darwin');
+    renderAllAbsent();
+    await screen.findByTestId('configure-agents-desktop-codex');
+    expect(screen.getByLabelText('Install ChatGPT Desktop')).toBeTruthy();
+  });
+
+  test('the sibling CLI row links to the CLI docs, not a desktop download the host cannot run', async () => {
+    terminalLaunchValue = { installedClis: { claude: true, codex: false } };
+    setHostPlatform('linux');
+    renderAllAbsent();
+    fireEvent.click(await screen.findByTestId('configure-agents-terminal-show-more'));
+    const link = await screen.findByRole('link', { name: 'Install Codex CLI' });
+    expect(link.getAttribute('href')).toBe(TERMINAL_CLIS.codex.docsUrl);
+  });
+
+  test('the sibling CLI row keeps the registry download on a host OS the app supports', async () => {
+    terminalLaunchValue = { installedClis: { claude: true, codex: false } };
+    setHostPlatform('darwin');
+    renderAllAbsent();
+    fireEvent.click(await screen.findByTestId('configure-agents-terminal-show-more'));
+    const link = await screen.findByRole('link', { name: 'Install Codex CLI' });
+    expect(link.getAttribute('href')).toBe(AGENT_REGISTRY.codex.external?.installUrl);
   });
 });
 

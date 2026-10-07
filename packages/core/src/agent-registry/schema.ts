@@ -147,6 +147,10 @@ export const TerminalFacetSchema = z.object({
 });
 export type TerminalFacet = z.infer<typeof TerminalFacetSchema>;
 
+export const HANDOFF_HOST_PLATFORMS = ['darwin', 'win32', 'linux'] as const;
+export const HandoffHostPlatformSchema = z.enum(HANDOFF_HOST_PLATFORMS);
+export type HandoffHostPlatform = z.infer<typeof HandoffHostPlatformSchema>;
+
 export const ExternalFacetSchema = z.object({
   targetId: HandoffTargetIdSchema,
   knownOrder: z.number().int().nonnegative(),
@@ -155,6 +159,7 @@ export const ExternalFacetSchema = z.object({
   appBrandName: z.string().min(1).optional(),
   schemes: z.array(z.string().min(1)),
   installUrl: z.string().min(1),
+  platforms: z.array(HandoffHostPlatformSchema).min(1),
   tagline: z.string().min(1).optional(),
 });
 export type ExternalFacet = z.infer<typeof ExternalFacetSchema>;

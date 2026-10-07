@@ -2,7 +2,13 @@ import { ALL_EDITOR_IDS, type EditorId } from '../constants/editors.ts';
 import type { HandoffTarget, TargetData } from '../handoff/types.ts';
 import { AGENT_REGISTRY } from './agents.ts';
 import type { AcpHarnessCliId, AgentId } from './ids.ts';
-import type { AcpFacet, AgentRecord, ExternalFacet, VerifiedPosture } from './schema.ts';
+import type {
+  AcpFacet,
+  AgentRecord,
+  ExternalFacet,
+  HandoffHostPlatform,
+  VerifiedPosture,
+} from './schema.ts';
 import type { ConsentClass } from './vocabulary.ts';
 
 type AcpAgent = { record: AgentRecord; acp: AcpFacet };
@@ -54,15 +60,23 @@ const EXTERNAL_FACETS: readonly ExternalFacet[] = Object.values(AGENT_REGISTRY)
   .sort((a, b) => a.knownOrder - b.knownOrder);
 
 export const KNOWN_HANDOFF_TARGETS: ReadonlyArray<TargetData> = EXTERNAL_FACETS.map(
-  ({ targetId, displayName, appBrandName, schemes, installUrl, tagline }) => ({
+  ({ targetId, displayName, appBrandName, schemes, installUrl, platforms, tagline }) => ({
     id: targetId,
     displayName,
     ...(appBrandName === undefined ? {} : { appBrandName }),
     schemes,
     installUrl,
+    platforms,
     ...(tagline === undefined ? {} : { tagline }),
   }),
 );
+
+export function isHandoffTargetSupportedOn(
+  target: Pick<TargetData, 'platforms'>,
+  platform: HandoffHostPlatform | null | undefined,
+): boolean {
+  return platform == null || target.platforms.includes(platform);
+}
 
 const VISIBLE_TARGET_IDS = new Set(
   EXTERNAL_FACETS.filter((facet) => facet.visible).map((facet) => facet.targetId),

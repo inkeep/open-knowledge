@@ -144,6 +144,7 @@ export function BuiltInSkillsSection() {
                 name={skill.name}
                 description={blurbFor(skill.name) ?? skill.description ?? ''}
                 hosts={skillClusterHosts(skill)}
+                emptyHosts="not-added"
                 onActivate={
                   source
                     ? () => {

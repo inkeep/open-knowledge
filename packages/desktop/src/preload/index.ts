@@ -1,4 +1,5 @@
 import type {
+  HandoffHostPlatform,
   LanguagePreference,
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
@@ -898,7 +899,7 @@ const bridge: OkDesktopBridge = {
     },
   },
 
-  platform: process.platform as 'darwin' | 'win32' | 'linux',
+  platform: process.platform as HandoffHostPlatform,
   appVersion: parseArg('app-version') ?? '0.0.0',
   instanceLabel: parseArg('instance-label') ?? null,
   mcpServerName: parseArg(MCP_SERVER_NAME_ARG_NAME) ?? null,

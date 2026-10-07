@@ -3292,6 +3292,10 @@
       "</1>."
     ],
     "_9rYSZ": ["repaired MCP integration for ", ["names"]],
+    "_BOsQt": [
+      ["label"],
+      " build. Its settings and data are kept separate from other OpenKnowledge apps."
+    ],
     "_Bix3-": ["Occurrences of ", ["localizedFirstMessage"]],
     "_CWM2I": ["Select list item"],
     "_DwR-n": ["Creating…"],
@@ -4145,7 +4149,6 @@
     "hFmYGU": ["Linked theme files aren’t supported"],
     "hGmuTc": ["Docs tagged #", ["tagDocsName"]],
     "hHMv6l": ["Delete block"],
-    "hHQHPX": [["label"], " uses isolated app data"],
     "hIQkLb": ["New chat"],
     "hItdtk": ["Browse folder"],
     "hLKfZe": ["Use a token instead"],
@@ -4264,6 +4267,7 @@
     "iTylMl": ["Templates"],
     "iUwpZI": ["No spaces — use <0>-</0> instead."],
     "iXTp5j": ["Scope: "],
+    "iXYzwf": ["App instance: ", ["label"], ", v", ["version"]],
     "iXs0kt": ["The skills list did not match its schema."],
     "iYUTsI": ["This source bundles several skills — choose one, then Import."],
     "iZCZmF": [
@@ -5840,6 +5844,12 @@
     ],
     "yLyiQV": ["The stored token is missing the permissions this host needs to push."],
     "yMgL_E": ["Find field navigation"],
+    "yNpyg4": [
+      ["label"],
+      " build, v",
+      ["version"],
+      ". Its settings and data are kept separate from other OpenKnowledge apps."
+    ],
     "yOjRUV": ["No AI tools detected. Install one to use this skill."],
     "yQE2r9": ["Loading"],
     "yQyglE": ["No matching docs"],
@@ -5925,6 +5935,7 @@
     "zLGXna": ["No starter packs available."],
     "zLak8b": ["Activate new tab"],
     "zMmwh4": ["Pick a theme or create your own."],
+    "zP6U1P": ["Not added to any AI tool yet."],
     "zWZBPx": ["Type changed"],
     "zXZJoN": ["Add token"],
     "zXj1rA": ["Search by meaning"],

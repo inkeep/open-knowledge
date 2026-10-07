@@ -118,7 +118,9 @@ vi.doMock('./HelpPopover', () => ({
 }));
 
 vi.doMock('./InstanceBadge', () => ({
-  InstanceBadge: () => null,
+  InstanceBadge: ({ className }: { className?: string }) => (
+    <span data-testid="instance-badge" className={className} />
+  ),
 }));
 
 function setElectronHost(enabled: boolean) {
@@ -326,6 +328,25 @@ describe('EditorHeader runtime behavior', () => {
     expect(
       tabHost.compareDocumentPosition(rightZone) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  test('Electron host keeps the build label hoverable inside the draggable trailing rail', async () => {
+    setElectronHost(true);
+    const header = await renderHeader();
+    const rightZone = header.querySelector('[data-editor-header-actions]') as HTMLElement;
+    const badge = screen.getByTestId('instance-badge');
+
+    expect(rightZone.contains(badge)).toBe(true);
+    expectVisualClassTokens(rightZone.className, ['[-webkit-app-region:drag]']);
+    expectVisualClassTokens(badge.className, ['[-webkit-app-region:no-drag]']);
+  });
+
+  test('web host leaves the build label without Electron drag treatment', async () => {
+    setElectronHost(false);
+    await renderHeader();
+    expectVisualClassTokensAbsent(screen.getByTestId('instance-badge').className, [
+      '[-webkit-app-region:no-drag]',
+    ]);
   });
 
   test('Electron expanded sidebar keeps drag region but does not reserve traffic-light space', async () => {

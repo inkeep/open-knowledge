@@ -14,6 +14,7 @@ function renderRow(props: Partial<Parameters<typeof SkillConsentRow>[0]> = {}) {
         name="open-knowledge-discovery"
         description="Helps your agent recognize OpenKnowledge projects."
         hosts={['claude', 'cursor']}
+        emptyHosts="not-added"
         {...props}
       />
     </TooltipProvider>,
@@ -47,6 +48,20 @@ describe('SkillConsentRow', () => {
     renderRow({ hosts: [] });
     expect(screen.getByTestId('skill-consent-row-no-hosts')).toBeTruthy();
     expect(screen.queryByLabelText('Claude')).toBeNull();
+  });
+
+  test('a skill added to no AI tool says so rather than claiming none was detected', () => {
+    renderRow({ hosts: [], emptyHosts: 'not-added' });
+    const copy = screen.getByTestId('skill-consent-row-no-hosts').textContent ?? '';
+    expect(copy).toContain('Not added to any AI tool yet.');
+    expect(copy).not.toContain('No AI tools detected');
+  });
+
+  test('an install that would reach no AI tool says none was detected', () => {
+    renderRow({ hosts: [], emptyHosts: 'none-detected' });
+    expect(screen.getByTestId('skill-consent-row-no-hosts').textContent).toContain(
+      'No AI tools detected',
+    );
   });
 
   test('never renders a token-cost line', () => {

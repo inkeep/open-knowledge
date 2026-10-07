@@ -969,6 +969,14 @@ msgstr "{label} ({0})"
 msgid "{label} already loads \"{0}\" from the {1} plugin. Installing here puts a copy at {2} that {label} uses instead of the plugin's — it stops tracking plugin updates."
 msgstr "{label} يحمّل \"{0}\" بالفعل من الإضافة {1}. التثبيت هنا ينشئ نسخة في {2} يستخدمها {label} بدلاً من نسخة الإضافة — وتتوقف عن متابعة تحديثات الإضافة."
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} build, v{version}. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr "إصدار {label}، v{version}. تُحفظ إعداداته وبياناته منفصلة عن تطبيقات OpenKnowledge الأخرى."
+
+#: src/components/InstanceBadge.tsx
+msgid "{label} build. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr "إصدار {label}. تُحفظ إعداداته وبياناته منفصلة عن تطبيقات OpenKnowledge الأخرى."
+
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "{label} enabled"
 msgstr "{label} مفعَّل"
@@ -976,10 +984,6 @@ msgstr "{label} مفعَّل"
 #: src/components/file-tree-problem-indicators.ts
 msgid "{label} problems"
 msgstr "{label} مشكلة"
-
-#: src/components/InstanceBadge.tsx
-msgid "{label} uses isolated app data"
-msgstr "يستخدم {label} بيانات تطبيق معزولة"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
@@ -2142,6 +2146,10 @@ msgstr "تم ضبط مفتاح API"
 #: src/components/InstanceBadge.tsx
 msgid "App instance: {label}"
 msgstr "مثيل التطبيق: {label}"
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}, v{version}"
+msgstr "مثيل التطبيق: {label}، v{version}"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -9864,6 +9872,10 @@ msgstr "لا يوجد لأي من هذه المشكلات إصلاح تلقائ�
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Not a base16 theme"
 msgstr "ليست سمة base16"
+
+#: src/components/SkillConsentRow.tsx
+msgid "Not added to any AI tool yet."
+msgstr "لم تتم إضافته إلى أي أداة ذكاء اصطناعي بعد."
 
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"

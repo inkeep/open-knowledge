@@ -3886,6 +3886,11 @@
       "</1>."
     ],
     "_9rYSZ": ["naprawiono integrację MCP dla ", ["names"]],
+    "_BOsQt": [
+      "Wersja ",
+      ["label"],
+      ". Jej ustawienia i dane są przechowywane oddzielnie od innych aplikacji OpenKnowledge."
+    ],
     "_Bix3-": ["Wystąpienia: ", ["localizedFirstMessage"]],
     "_CWM2I": ["Zaznacz element listy"],
     "_DwR-n": ["Tworzenie…"],
@@ -4915,7 +4920,6 @@
     "hFmYGU": ["Powiązane pliki motywów nie są obsługiwane"],
     "hGmuTc": ["Dokumenty oznaczone #", ["tagDocsName"]],
     "hHMv6l": ["Usuń blok"],
-    "hHQHPX": [["label"], " używa odizolowanych danych aplikacji"],
     "hIQkLb": ["Nowy czat"],
     "hItdtk": ["Przeglądaj folder"],
     "hLKfZe": ["Zamiast tego użyj tokenu"],
@@ -5052,6 +5056,7 @@
     "iTylMl": ["Szablony"],
     "iUwpZI": ["Bez spacji — użyj zamiast tego <0>-</0>."],
     "iXTp5j": ["Zakres: "],
+    "iXYzwf": ["Instancja aplikacji: ", ["label"], ", v", ["version"]],
     "iXs0kt": ["Lista umiejętności nie jest zgodna ze swoim schematem."],
     "iYUTsI": [
       "To źródło zawiera kilka umiejętności — wybierz jedną, a następnie kliknij Importuj."
@@ -6911,6 +6916,13 @@
     ],
     "yLyiQV": ["Zapisany token nie ma uprawnień, których ten host wymaga do wypychania zmian."],
     "yMgL_E": ["Nawigacja w polu wyszukiwania"],
+    "yNpyg4": [
+      "Wersja ",
+      ["label"],
+      ", v",
+      ["version"],
+      ". Jej ustawienia i dane są przechowywane oddzielnie od innych aplikacji OpenKnowledge."
+    ],
     "yOjRUV": ["Nie wykryto narzędzi AI. Zainstaluj jedno, aby używać tej umiejętności."],
     "yQE2r9": ["Ładowanie"],
     "yQyglE": ["Brak pasujących dokumentów"],
@@ -7036,6 +7048,7 @@
     "zLGXna": ["Brak dostępnych pakietów startowych."],
     "zLak8b": ["Aktywuj nową kartę"],
     "zMmwh4": ["Wybierz motyw lub stwórz własny."],
+    "zP6U1P": ["Jeszcze nie dodano do żadnego narzędzia AI."],
     "zWZBPx": ["Typ się zmienił"],
     "zXZJoN": ["Dodaj token"],
     "zXj1rA": ["Szukaj według znaczenia"],

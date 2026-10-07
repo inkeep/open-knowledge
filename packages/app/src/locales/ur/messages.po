@@ -969,6 +969,14 @@ msgstr "{label} ({0})"
 msgid "{label} already loads \"{0}\" from the {1} plugin. Installing here puts a copy at {2} that {label} uses instead of the plugin's — it stops tracking plugin updates."
 msgstr "{label} پہلے ہی \"{0}\" کو {1} پلگ اِن سے لوڈ کرتا ہے۔ یہاں انسٹال کرنے پر {2} میں ایک نقل بنتی ہے جسے {label} پلگ اِن کی بجائے استعمال کرتا ہے — وہ نقل پلگ اِن کی تازہ کاریوں کی پیروی چھوڑ دیتی ہے۔"
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} build, v{version}. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr "{label} بلڈ، v{version}۔ اس کی ترتیبات اور ڈیٹا دوسری OpenKnowledge ایپس سے الگ رکھے جاتے ہیں۔"
+
+#: src/components/InstanceBadge.tsx
+msgid "{label} build. Its settings and data are kept separate from other OpenKnowledge apps."
+msgstr "{label} بلڈ۔ اس کی ترتیبات اور ڈیٹا دوسری OpenKnowledge ایپس سے الگ رکھے جاتے ہیں۔"
+
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "{label} enabled"
 msgstr "{label} فعال"
@@ -976,10 +984,6 @@ msgstr "{label} فعال"
 #: src/components/file-tree-problem-indicators.ts
 msgid "{label} problems"
 msgstr "{label} مسائل"
-
-#: src/components/InstanceBadge.tsx
-msgid "{label} uses isolated app data"
-msgstr "{label} علیحدہ ایپ ڈیٹا استعمال کرتا ہے"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
@@ -2142,6 +2146,10 @@ msgstr "API کلید مقرر ہے"
 #: src/components/InstanceBadge.tsx
 msgid "App instance: {label}"
 msgstr "ایپ انسٹینس: {label}"
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}, v{version}"
+msgstr "ایپ انسٹینس: {label}، v{version}"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -9864,6 +9872,10 @@ msgstr "ان میں سے کسی مسئلے کا خودکار حل نہیں ہے�
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Not a base16 theme"
 msgstr "یہ base16 تھیم نہیں ہے"
+
+#: src/components/SkillConsentRow.tsx
+msgid "Not added to any AI tool yet."
+msgstr "ابھی تک کسی AI ٹول میں شامل نہیں کیا گیا۔"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Not answered"

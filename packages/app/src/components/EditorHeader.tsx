@@ -214,7 +214,7 @@ export function EditorHeader({
       {!noteWindow && <SyncStatusBadge onSignIn={onSignIn} onSetIdentity={onSetIdentity} />}
       <PresenceBar />
       <Separator orientation="vertical" className="h-4 shrink-0 data-vertical:self-center" />
-      <InstanceBadge />
+      <InstanceBadge className={cn(isElectronHost && '[-webkit-app-region:no-drag]')} />
       <BetaBadge />
       {}
       {!reducedChrome && <SettingsButton />}

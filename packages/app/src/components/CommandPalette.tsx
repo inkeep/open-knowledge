@@ -96,7 +96,7 @@ import type {
 import { hashFromDocName } from '@/lib/doc-hash';
 import { runWithToast as runWithToastBase } from '@/lib/error-state';
 import { openExternalUrl as openExternalUrlViaHost } from '@/lib/external-link';
-import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
+import { isTargetOfferedOnHost, VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import {
   formatShortcut,
   formatShortcutLabel,
@@ -666,12 +666,18 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   );
   const showWorktrees = !inExclusiveMode && bridge !== null && matchedWorktrees.length > 0;
   const isEmbedded = useIsEmbedded();
+  const hostAgentTargets = VISIBLE_TARGETS.filter((target) =>
+    isTargetOfferedOnHost(target, {
+      platform: bridge?.platform,
+      installed: installStates[target.id]?.installed,
+    }),
+  );
   const showAgentGroup =
     !inExclusiveMode &&
     !isEmbedded &&
     handoffInput !== null &&
-    (trimmedDeferredQuery === '' ||
-      VISIBLE_TARGETS.some((target) => {
+    ((trimmedDeferredQuery === '' && hostAgentTargets.length > 0) ||
+      hostAgentTargets.some((target) => {
         const displayName = target.displayName;
         return matchesCommandQuery(t`Open with AI ${displayName} Desktop`, deferredQuery, [
           target.id,
@@ -1274,51 +1280,53 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
 
           {showAgentGroup ? (
             <CommandGroup heading={t`Open with AI`}>
-              {VISIBLE_TARGETS.filter((target) => {
-                const displayName = target.displayName;
-                return matchesCommandQuery(t`Open with AI ${displayName} Desktop`, deferredQuery, [
-                  target.id,
-                  'agent handoff',
-                  'open in',
-                ]);
-              }).map((target) => {
-                const installState = installStates[target.id];
-                const enabled = installState.installed === true && handoffInput !== null;
-                const displayName = target.displayName;
-                const hint =
-                  installState.installed === null
-                    ? t`Detecting`
-                    : installState.installed === false
-                      ? t`Not installed`
-                      : null;
-                const accessibleLabel = hint
-                  ? t`Open with AI ${displayName} Desktop, ${hint}`
-                  : t`Open with AI ${displayName} Desktop`;
+              {hostAgentTargets
+                .filter((target) => {
+                  const displayName = target.displayName;
+                  return matchesCommandQuery(
+                    t`Open with AI ${displayName} Desktop`,
+                    deferredQuery,
+                    [target.id, 'agent handoff', 'open in'],
+                  );
+                })
+                .map((target) => {
+                  const installState = installStates[target.id];
+                  const enabled = installState.installed === true && handoffInput !== null;
+                  const displayName = target.displayName;
+                  const hint =
+                    installState.installed === null
+                      ? t`Detecting`
+                      : installState.installed === false
+                        ? t`Not installed`
+                        : null;
+                  const accessibleLabel = hint
+                    ? t`Open with AI ${displayName} Desktop, ${hint}`
+                    : t`Open with AI ${displayName} Desktop`;
 
-                return (
-                  <CommandItem
-                    key={target.id}
-                    value={`send to ai ${target.displayName} desktop ${target.id} agent open in`}
-                    disabled={!enabled}
-                    onSelect={() => {
-                      if (!enabled || !handoffInput) return;
-                      onOpenChange(false);
-                      void dispatchHandoff(target.id, handoffInput, { installState });
-                    }}
-                    data-testid={`command-palette-open-in-${target.id}`}
-                    aria-label={accessibleLabel}
-                  >
-                    <span className="flex-1">
-                      <Trans>Open with AI {displayName} Desktop</Trans>
-                    </span>
-                    {hint ? (
-                      <span aria-hidden="true" className="ml-auto text-muted-foreground text-xs">
-                        {hint}
+                  return (
+                    <CommandItem
+                      key={target.id}
+                      value={`send to ai ${target.displayName} desktop ${target.id} agent open in`}
+                      disabled={!enabled}
+                      onSelect={() => {
+                        if (!enabled || !handoffInput) return;
+                        onOpenChange(false);
+                        void dispatchHandoff(target.id, handoffInput, { installState });
+                      }}
+                      data-testid={`command-palette-open-in-${target.id}`}
+                      aria-label={accessibleLabel}
+                    >
+                      <span className="flex-1">
+                        <Trans>Open with AI {displayName} Desktop</Trans>
                       </span>
-                    ) : null}
-                  </CommandItem>
-                );
-              })}
+                      {hint ? (
+                        <span aria-hidden="true" className="ml-auto text-muted-foreground text-xs">
+                          {hint}
+                        </span>
+                      ) : null}
+                    </CommandItem>
+                  );
+                })}
             </CommandGroup>
           ) : null}
 

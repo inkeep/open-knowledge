@@ -29,6 +29,7 @@ import type {
   VERIFIED_POSTURES,
   VerifiedAgainst,
 } from './schema.ts';
+import { HANDOFF_HOST_PLATFORMS, type HandoffHostPlatform } from './schema.ts';
 import {
   type ConsentClass,
   FOLLOWUP_CONSENT_CLASSES,
@@ -206,11 +207,13 @@ function externalFacet(input: {
   appBrandName?: string;
   schemes: string[];
   installUrl: string;
+  platforms?: readonly HandoffHostPlatform[];
   tagline?: string;
 }): ExternalFacet {
-  const { appBrandName, tagline, ...rest } = input;
+  const { appBrandName, tagline, platforms = HANDOFF_HOST_PLATFORMS, ...rest } = input;
   return {
     ...rest,
+    platforms: [...platforms],
     ...(appBrandName === undefined ? {} : { appBrandName }),
     ...(tagline === undefined ? {} : { tagline }),
   };
