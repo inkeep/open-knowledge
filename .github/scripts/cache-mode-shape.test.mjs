@@ -205,6 +205,7 @@ describe('credentialed jobs in public/open-knowledge/.github/workflows declare t
       'bug-lane.yml#bug-lane': 'none',
       'desktop-build-win-linux.yml#build-windows': 'none',
       'desktop-build.yml#build-macos-dmg': 'none',
+      'desktop-release-auto-retry.yml#rerun': 'none',
       'desktop-release-draft-janitor.yml#sweep': 'none',
       'desktop-release.yml#prepare': 'none',
       'desktop-release.yml#build-macos': 'none',

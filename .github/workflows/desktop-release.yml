@@ -1813,6 +1813,27 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Refuse to promote a superseded stable on a re-run
+        if: success() && needs.prepare.outputs.channel == 'latest' && github.run_attempt != '1' && github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! LATEST="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>"$RUNNER_TEMP/latest.err")"; then
+            if grep -q 'HTTP 404' "$RUNNER_TEMP/latest.err"; then
+              LATEST=""
+            else
+              cat "$RUNNER_TEMP/latest.err" >&2
+              echo "::error::Could not read the latest stable release, so ${RELEASE_TAG} is not promoted on re-run attempt ${GITHUB_RUN_ATTEMPT}."
+              exit 1
+            fi
+          fi
+          if [[ -n "$LATEST" && "$LATEST" != "$RELEASE_TAG" ]] \
+            && [[ "$(printf '%s\n%s\n' "$RELEASE_TAG" "$LATEST" | sort -V | tail -n1)" == "$LATEST" ]]; then
+            echo "::error::Refusing to promote ${RELEASE_TAG} on re-run attempt ${GITHUB_RUN_ATTEMPT}: the newer stable ${LATEST} has already shipped. Cut a new release from main instead."
+            exit 1
+          fi
+
       # Marker-delimited (`<!-- ok-downloads:start/end -->`) so re-renders are
       # idempotent and the rest of the body — the changelog and the beta
       # cadence's hidden consumed-set marker, which compute-next-beta.mjs
@@ -2119,8 +2140,9 @@ jobs:
     cache-mode: none
     timeout-minutes: 10
     permissions:
-      # Reads scripts from the checkout, posts to a webhook — nothing more.
       contents: read
+      actions: read
+      checks: read
     defaults:
       run:
         shell: bash
@@ -2130,6 +2152,28 @@ jobs:
     steps:
       # $GITHUB_SHA — CI tooling, not release content (see finalize's header).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Decide on one automatic re-run
+        id: retry
+        if: needs.prepare.outputs.channel == 'latest'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SMOKE_VERDICT: ${{ needs.build-macos.outputs.smoke_verdict }}
+          DECISION_PATH: ${{ runner.temp }}/release-auto-retry/decision.json
+          REQUIRED_PLATFORMS: ${{ needs.prepare.outputs.required }}
+        run: node .github/scripts/decide-release-retry.mjs
+
+      - name: Hand the re-run to the follower workflow
+        id: handoff
+        if: steps.retry.outputs.action == 'retry'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-auto-retry
+          path: ${{ runner.temp }}/release-auto-retry/decision.json
+          retention-days: 1
+          if-no-files-found: error
 
       # FR5c — page the release channel when the gate refuses a stable
       # release. Without this a blocked release is silent: the Release simply
@@ -2151,8 +2195,12 @@ jobs:
       # .github/scripts/build-smoke-alert-payload.mjs. Ratcheted by
       # build-smoke-alert-payload.test.mjs so this cannot drift back.
       - name: Alert on a blocked release (FR5c)
-        if: needs.prepare.outputs.channel == 'latest'
+        if: needs.prepare.outputs.channel == 'latest' && (steps.retry.outputs.action != 'retry' || steps.handoff.outcome != 'success')
         env:
+          RETRY_OUTCOME: ${{ steps.retry.outcome }}
+          RETRY_ACTION: ${{ steps.retry.outputs.action }}
+          RETRY_REASON: ${{ steps.retry.outputs.reason }}
+          HANDOFF_OUTCOME: ${{ steps.handoff.outcome }}
           SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           SMOKE_VERDICT: ${{ needs.build-macos.outputs.smoke_verdict }}
@@ -2194,13 +2242,13 @@ jobs:
           is_required() { case ",${REQUIRED}," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
           blocked=()
           [[ "${RESULT_PREPARE}" == "failure" ]] && blocked+=("release preparation")
-          if [[ "${RESULT_MACOS}" == "failure" ]] && is_required mac; then
+          if [[ "${RESULT_MACOS}" == "failure" || "${RESULT_MACOS}" == "cancelled" ]] && is_required mac; then
             blocked+=("macOS packaging")
           fi
-          if [[ "${RESULT_WINDOWS}" == "failure" ]] && is_required windows; then
+          if [[ "${RESULT_WINDOWS}" == "failure" || "${RESULT_WINDOWS}" == "cancelled" ]] && is_required windows; then
             blocked+=("Windows packaging")
           fi
-          if [[ "${RESULT_LINUX}" == "failure" ]] && is_required linux; then
+          if [[ "${RESULT_LINUX}" == "failure" || "${RESULT_LINUX}" == "cancelled" ]] && is_required linux; then
             blocked+=("Linux packaging")
           fi
           [[ "${RESULT_PUBLISH}" == "failure" ]] && blocked+=("asset publication")
@@ -2214,6 +2262,13 @@ jobs:
             BLOCKED_BY="${BLOCKED_BY:+${BLOCKED_BY}, }${b}"
           done
           REASON="${SMOKE_REASON:-the release pipeline failed before completing — see the run}"
+          if [[ "${RETRY_OUTCOME:-}" == "failure" ]]; then
+            REASON="${REASON}. Not re-run automatically: the re-run decision failed, see the run"
+          elif [[ "${RETRY_ACTION:-}" == "retry" && "${HANDOFF_OUTCOME:-}" != "success" ]]; then
+            REASON="${REASON}. Not re-run automatically: handing the re-run to the follower workflow failed"
+          elif [[ -n "${RETRY_REASON:-}" ]]; then
+            REASON="${REASON}. Not re-run automatically: ${RETRY_REASON}"
+          fi
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           post() {
             local webhook="$1" label="$2"

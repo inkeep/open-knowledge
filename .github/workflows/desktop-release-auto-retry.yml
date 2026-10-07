@@ -1,0 +1,59 @@
+name: Desktop release auto-retry
+
+on:
+  workflow_run:
+    workflows: [Desktop release]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  rerun:
+    if: >-
+      github.event.workflow_run.conclusion != 'success' &&
+      github.event.workflow_run.run_attempt == 1 &&
+      github.event.workflow_run.path == '.github/workflows/desktop-release.yml' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      contains(fromJSON('["repository_dispatch", "workflow_dispatch"]'), github.event.workflow_run.event)
+    runs-on: ubuntu-latest
+    cache-mode: none
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+    steps:
+      - name: Re-run the failed release jobs once
+        run: |
+          set -euo pipefail
+          handoff="$(timeout 60 gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts?name=release-auto-retry" --jq '.total_count')"
+          if [[ "$handoff" == "0" ]]; then
+            echo "Run ${RUN_ID} handed over no automatic re-run."
+            exit 0
+          fi
+          echo "Re-running the failed jobs of run ${RUN_ID}."
+          timeout 60 gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/rerun-failed-jobs"
+
+      - name: Alert when the automatic re-run could not start
+        if: failure() || cancelled()
+        env:
+          SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}
+        run: |
+          set -uo pipefail
+          TEXT="🚨 RELEASE BLOCKED: the automatic re-run of ${RUN_URL} could not start — nothing shipped. Re-run its failed jobs by hand: gh run rerun ${RUN_ID} --failed -R ${GITHUB_REPOSITORY}"
+          echo "::error::${TEXT}"
+          webhook="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"
+          if [[ -z "$webhook" ]]; then
+            echo "::notice::Slack webhook not set — skipping the auto-retry alert."
+            exit 0
+          fi
+          if ! curl -sS --fail --max-time 30 -X POST -H 'Content-type: application/json' \
+            --data "$(jq -nc --arg t "$TEXT" '{text: $t}')" "$webhook"; then
+            echo "::warning::The auto-retry alert failed to POST; the release is still blocked."
+          fi
