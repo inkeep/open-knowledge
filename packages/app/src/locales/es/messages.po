@@ -3697,7 +3697,6 @@ msgid "Connected — this endpoint returns {0}-dimension vectors."
 msgstr "Conectado: este endpoint devuelve vectores de {0} dimensiones."
 
 #: src/components/AuthModal.tsx
-#: src/components/settings/AccountSection.tsx
 msgid "Connected as @{login}"
 msgstr "Conectado como @{login}"
 
@@ -3708,6 +3707,10 @@ msgstr "Conectado como <0>@{signedInLogin}</0>"
 #: src/components/settings/SyncSection.tsx
 msgid "Connected to"
 msgstr "Conectado a"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Connected to {host} as @{login}"
+msgstr "Conectado a {host} como @{login}"
 
 #: src/components/AuthModal.tsx
 msgid "Connected to GitHub"
@@ -6935,6 +6938,11 @@ msgstr "Obtiene el enlace que abre este proyecto o un documento en la app"
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgctxt "settings search keyword"
+msgid "gh"
+msgstr "gh"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
 msgid "GHES"
 msgstr "GHES"
 
@@ -6993,9 +7001,19 @@ msgstr "Sincronización con git"
 msgid "Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync."
 msgstr "La sincronización de Git está en pausa porque una operación de Git o conflictos sin resolver requieren atención. Tus cambios se siguen guardando localmente. Finaliza la operación o resuelve los conflictos en tu terminal y vuelve a intentar la sincronización."
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "GitHub"
+msgstr "GitHub"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."
 msgstr "Falló la autenticación con GitHub. Prueba a iniciar sesión de nuevo."
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GitHub CLI"
+msgstr "GitHub CLI"
 
 #: src/lib/share/publish-wizard.ts
 msgid "GitHub connection expired. Connect again to continue."
@@ -10584,10 +10602,6 @@ msgid "OpenKnowledge is set up at the repository root here, so the pack goes ins
 msgstr "Aquí OpenKnowledge se configura en la raíz del repositorio, así que el paquete va dentro de <0>{sanitized}</0> en lugar de en la parte superior del repositorio."
 
 #: src/components/settings/AccountSection.tsx
-msgid "OpenKnowledge is using a GitHub account provided by the gh CLI. There's no separate OpenKnowledge credential to disconnect."
-msgstr "OpenKnowledge está usando una cuenta de GitHub proporcionada por la CLI de gh. No hay ninguna credencial propia de OpenKnowledge que desconectar."
-
-#: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge está usando esta cuenta de GitHub."
 
@@ -11413,6 +11427,10 @@ msgstr "Valor de la propiedad"
 #: src/components/SyncStatusBadge.tsx
 msgid "Protected branch — cannot push"
 msgstr "Rama protegida: no se puede hacer push"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Provided by the GitHub CLI (<0>gh</0>) on this computer. To switch accounts or sign out, run <1>gh auth</1> in a terminal."
+msgstr "Lo proporciona la CLI de GitHub (<0>gh</0>) en este equipo. Para cambiar de cuenta o cerrar sesión, ejecuta <1>gh auth</1> en una terminal."
 
 #: src/components/TemplateForm.tsx
 msgid "provisional"

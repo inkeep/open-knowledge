@@ -3697,7 +3697,6 @@ msgid "Connected — this endpoint returns {0}-dimension vectors."
 msgstr "已連線——這個端點傳回 {0} 維向量。"
 
 #: src/components/AuthModal.tsx
-#: src/components/settings/AccountSection.tsx
 msgid "Connected as @{login}"
 msgstr "已以 @{login} 的身分連接"
 
@@ -3708,6 +3707,10 @@ msgstr "已以 <0>@{signedInLogin}</0> 的身分連接"
 #: src/components/settings/SyncSection.tsx
 msgid "Connected to"
 msgstr "已連接到"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Connected to {host} as @{login}"
+msgstr "已以 @{login} 的身分連接到 {host}"
 
 #: src/components/AuthModal.tsx
 msgid "Connected to GitHub"
@@ -6935,6 +6938,11 @@ msgstr "取得在應用程式中開啟此專案或文件的連結"
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgctxt "settings search keyword"
+msgid "gh"
+msgstr "gh"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
 msgid "GHES"
 msgstr "GHES"
 
@@ -6993,9 +7001,19 @@ msgstr "Git 同步"
 msgid "Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync."
 msgstr "Git 同步已暫停，因為有 Git 操作或尚未解決的衝突需要處理。你的編輯仍會儲存在本機。請在終端機中完成該操作或解決衝突，然後重試同步。"
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "GitHub"
+msgstr "GitHub"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."
 msgstr "GitHub 驗證失敗。請試著重新登入。"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GitHub CLI"
+msgstr "GitHub CLI"
 
 #: src/lib/share/publish-wizard.ts
 msgid "GitHub connection expired. Connect again to continue."
@@ -10584,10 +10602,6 @@ msgid "OpenKnowledge is set up at the repository root here, so the pack goes ins
 msgstr "這裡的 OpenKnowledge 設定在存放庫根目錄，因此入門套件會放進 <0>{sanitized}</0>，而不是存放庫頂層。"
 
 #: src/components/settings/AccountSection.tsx
-msgid "OpenKnowledge is using a GitHub account provided by the gh CLI. There's no separate OpenKnowledge credential to disconnect."
-msgstr "OpenKnowledge 正在使用 gh CLI 提供的 GitHub 帳戶。沒有另外的 OpenKnowledge 憑證需要中斷。"
-
-#: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge 正在使用這個 GitHub 帳戶。"
 
@@ -11413,6 +11427,10 @@ msgstr "屬性值"
 #: src/components/SyncStatusBadge.tsx
 msgid "Protected branch — cannot push"
 msgstr "受保護的分支——無法推送"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Provided by the GitHub CLI (<0>gh</0>) on this computer. To switch accounts or sign out, run <1>gh auth</1> in a terminal."
+msgstr "由這台電腦上的 GitHub CLI（<0>gh</0>）提供。若要切換帳戶或登出，請在終端機中執行 <1>gh auth</1>。"
 
 #: src/components/TemplateForm.tsx
 msgid "provisional"

@@ -118,10 +118,10 @@ describe('AccountSection', () => {
     for (const binding of bindings.splice(0)) binding.dispose();
   });
 
-  test('shows "Connected as @<login>" and a Disconnect control when authenticated', async () => {
+  test('shows "Connected to <host> as @<login>" and a Disconnect control when authenticated', async () => {
     renderSection(makeQueryTransport({ status: async () => CONNECTED }));
 
-    expect(await screen.findByText('Connected as @octocat')).toBeDefined();
+    expect(await screen.findByText('Connected to github.com as @octocat')).toBeDefined();
     expect(screen.getByTestId('settings-account-disconnect')).toBeDefined();
     expect(screen.queryByTestId('settings-account-connect')).toBeNull();
   });
@@ -212,7 +212,7 @@ describe('AccountSection', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Try again' }));
 
-    expect(await screen.findByText('Connected as @octocat')).toBeDefined();
+    expect(await screen.findByText('Connected to github.com as @octocat')).toBeDefined();
   });
 
   test('Disconnect clears the token and repaints to "Not connected"', async () => {
@@ -231,7 +231,7 @@ describe('AccountSection', () => {
     await user.click(await screen.findByTestId('settings-account-disconnect'));
 
     expect(await screen.findByText('Not connected')).toBeDefined();
-    expect(screen.queryByText('Connected as @octocat')).toBeNull();
+    expect(screen.queryByText('Connected to github.com as @octocat')).toBeNull();
   });
 
   test('a failed disconnect surfaces an error and stays Connected', async () => {
@@ -246,7 +246,7 @@ describe('AccountSection', () => {
     await user.click(await screen.findByTestId('settings-account-disconnect'));
 
     expect(await screen.findByText('Auth signout failed.')).toBeDefined();
-    expect(screen.getByText('Connected as @octocat')).toBeDefined();
+    expect(screen.getByText('Connected to github.com as @octocat')).toBeDefined();
     expect(getLastKnownSignedIn()).toBe(true);
   });
 
@@ -264,7 +264,7 @@ describe('AccountSection', () => {
     await user.click(await screen.findByTestId('settings-account-disconnect'));
 
     expect(await screen.findByText("Couldn't disconnect — please try again.")).toBeDefined();
-    expect(screen.getByText('Connected as @octocat')).toBeDefined();
+    expect(screen.getByText('Connected to github.com as @octocat')).toBeDefined();
   });
 
   test('double-clicking Disconnect spawns only one relay signout', async () => {
@@ -311,7 +311,7 @@ describe('AccountSection', () => {
       }),
     );
 
-    expect(await screen.findByText('Connected as @octocat')).toBeDefined();
+    expect(await screen.findByText('Connected to github.com as @octocat')).toBeDefined();
     expect(getLastKnownSignedIn()).toBe(true);
 
     await user.click(screen.getByTestId('settings-account-disconnect'));
@@ -320,13 +320,66 @@ describe('AccountSection', () => {
     expect(getLastKnownSignedIn()).toBe(false);
   });
 
-  test('gh-CLI tier shows honest copy and no inert Disconnect control', async () => {
+  test('gh-CLI tier names the host and the GitHub CLI, and no inert Disconnect control', async () => {
     renderSection(makeQueryTransport({ status: async () => CONNECTED_GH_CLI }));
 
     const ghRow = await screen.findByTestId('settings-account-gh-cli');
-    expect(within(ghRow).getByText('Connected as @octocat')).toBeDefined();
-    expect(ghRow.textContent).toContain('no separate OpenKnowledge credential to disconnect');
+    expect(within(ghRow).getByText('Connected to github.com as @octocat')).toBeDefined();
+    expect(ghRow.textContent).toContain(
+      'Provided by the GitHub CLI (gh) on this computer. To switch accounts or sign out, run gh auth in a terminal.',
+    );
+    expect(ghRow.textContent).not.toContain('OpenKnowledge credential');
     expect(screen.queryByTestId('settings-account-disconnect')).toBeNull();
+  });
+
+  test('a GitHub Enterprise Server connection names that host', async () => {
+    renderSection(
+      makeQueryTransport({ status: async () => ({ ...CONNECTED, host: 'ghe.example.com' }) }),
+    );
+
+    const row = await screen.findByTestId('settings-account-connected');
+    expect(within(row).getByText('Connected to ghe.example.com as @octocat')).toBeDefined();
+  });
+
+  test('a gh-CLI connection to a GitHub Enterprise Server names that host', async () => {
+    renderSection(
+      makeQueryTransport({
+        status: async () => ({ ...CONNECTED_GH_CLI, host: 'ghe.example.com' }),
+      }),
+    );
+
+    const ghRow = await screen.findByTestId('settings-account-gh-cli');
+    expect(within(ghRow).getByText('Connected to ghe.example.com as @octocat')).toBeDefined();
+  });
+
+  test.each([
+    ['an OK-stored token', CONNECTED, 'settings-account-connected'],
+    ['a gh-CLI login', CONNECTED_GH_CLI, 'settings-account-gh-cli'],
+    ['no connection', NOT_CONNECTED, 'settings-account-disconnected'],
+  ] as const)(
+    'the GitHub account status for %s sits under a GitHub heading',
+    async (_label, result, testId) => {
+      renderSection(makeQueryTransport({ status: async () => result }));
+
+      const region = await screen.findByRole('region', { name: 'GitHub' });
+      expect(within(region).getByTestId(testId)).toBeDefined();
+      expect(region.getAttribute('data-field')).toBe('section:github-account');
+    },
+  );
+
+  test('a project on a host that is not GitHub shows no empty GitHub heading', async () => {
+    renderSection(
+      makeQueryTransport({
+        status: async () => ({
+          authenticated: false as const,
+          host: 'gitea.acme.test',
+          unsupportedOrigin: { host: 'gitea.acme.test' },
+        }),
+      }),
+    );
+
+    await waitFor(() => expect(screen.queryByTestId('settings-account-loading')).toBeNull());
+    expect(screen.queryByRole('region', { name: 'GitHub' })).toBeNull();
   });
 
   test('an OK-token connection shows the git-credential caveat described by the Disconnect button', async () => {

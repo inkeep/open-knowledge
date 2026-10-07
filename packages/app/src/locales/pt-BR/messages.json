@@ -870,6 +870,7 @@
     "7YRrJ9": [
       "Disponível no app de desktop do OpenKnowledge. Em um terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
+    "7ZpNC-": ["gh"],
     "7_bFEL": ["Arraste ", ["patternText"], " para reordenar"],
     "7a0YcF": ["Pressione <0>Espaço</0> ou toque no blob para começar"],
     "7aNk5D": ["OpenKnowledge editou ", ["subject"]],
@@ -1065,6 +1066,7 @@
     "9bG48P": ["Enviando"],
     "9clcD5": ["Abrir os documentos com a tag #", ["chip"]],
     "9djC8C": ["Conecte uma conta do GitHub para explorar e publicar repositórios do GitHub."],
+    "9eQiRf": ["GitHub CLI"],
     "9euN0m": [
       [
         "count",
@@ -2920,6 +2922,7 @@
       "</0> para gerar os embeddings do seu conteúdo. Guardada só neste computador (em <1>~/.ok/secrets.yml</1>), nunca no projeto."
     ],
     "Rj01Fz": ["Links"],
+    "RkXlPZ": ["GitHub"],
     "RlCInP": ["Comandos de barra"],
     "RmBY0A": ["Sem remoto do git"],
     "RnrnTe": ["Já configurado — ok está disponível no seu terminal"],
@@ -3151,6 +3154,9 @@
       " foi adicionado ao ramo <0>",
       ["shareBranch"],
       "</0> há pouco. Troque e atualize para abrir."
+    ],
+    "UcTm1A": [
+      "Fornecido pela CLI do GitHub (<0>gh</0>) neste computador. Para trocar de conta ou sair, execute <1>gh auth</1> em um terminal."
     ],
     "UceXfW": [
       ["boldName"],
@@ -3906,6 +3912,7 @@
       ["templateCount", "plural", { "one": ["modelo"], "many": ["modelos"], "other": ["modelos"] }]
     ],
     "bbJ-VR": ["Afastar"],
+    "bc7aCh": ["Conectado a ", ["host"], " como @", ["login"]],
     "bcDHUM": [["descriptorLabel"], " — erro de renderização, código editável abaixo"],
     "bcjYUA": ["Dobrar ou desdobrar o código"],
     "bcm0pR": ["o agente aberto"],
@@ -5400,9 +5407,6 @@
     ],
     "nwtY4N": ["Algo deu errado"],
     "nxlOpL": ["O OpenKnowledge está usando esta conta do GitHub."],
-    "ny6vNn": [
-      "O OpenKnowledge está usando uma conta do GitHub fornecida pela CLI gh. Não há credencial própria do OpenKnowledge para desconectar."
-    ],
     "nzHlj8": ["Fechar ", ["0"]],
     "nzaV6Q": ["Miniaturas das páginas"],
     "o-XJ9D": ["Alterar"],

@@ -3697,7 +3697,6 @@ msgid "Connected — this endpoint returns {0}-dimension vectors."
 msgstr "منسلک — یہ اینڈ پوائنٹ {0} ابعاد والے ویکٹرز لوٹاتا ہے۔"
 
 #: src/components/AuthModal.tsx
-#: src/components/settings/AccountSection.tsx
 msgid "Connected as @{login}"
 msgstr "@{login} کے طور پر منسلک"
 
@@ -3708,6 +3707,10 @@ msgstr "<0>@{signedInLogin}</0> کے طور پر منسلک"
 #: src/components/settings/SyncSection.tsx
 msgid "Connected to"
 msgstr "منسلک ہے"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Connected to {host} as @{login}"
+msgstr "{host} سے @{login} کے طور پر منسلک"
 
 #: src/components/AuthModal.tsx
 msgid "Connected to GitHub"
@@ -6935,6 +6938,11 @@ msgstr "وہ لنک لاتا ہے جو اس پروجیکٹ یا کسی دستا�
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgctxt "settings search keyword"
+msgid "gh"
+msgstr "gh"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
 msgid "GHES"
 msgstr "GHES"
 
@@ -6993,9 +7001,19 @@ msgstr "Git مطابقت پذیری"
 msgid "Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync."
 msgstr "Git کی کسی کارروائی یا حل طلب تضادات پر توجہ درکار ہے، اس لیے Git کی مطابقت پذیری رکی ہوئی ہے۔ آپ کی تبدیلیاں اب بھی مقامی طور پر محفوظ ہوتی ہیں۔ اپنے ٹرمینل میں کارروائی مکمل کریں یا تضادات حل کریں، پھر مطابقت پذیری دوبارہ آزمائیں۔"
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "GitHub"
+msgstr "GitHub"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."
 msgstr "GitHub کی توثیق ناکام رہی۔ دوبارہ سائن اِن کر کے دیکھیں۔"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GitHub CLI"
+msgstr "GitHub CLI"
 
 #: src/lib/share/publish-wizard.ts
 msgid "GitHub connection expired. Connect again to continue."
@@ -10584,10 +10602,6 @@ msgid "OpenKnowledge is set up at the repository root here, so the pack goes ins
 msgstr "یہاں OpenKnowledge ریپوزٹری کی جڑ میں سیٹ ہوتا ہے، اس لیے پیک ریپوزٹری کے اوپر کے بجائے <0>{sanitized}</0> کے اندر جاتا ہے۔"
 
 #: src/components/settings/AccountSection.tsx
-msgid "OpenKnowledge is using a GitHub account provided by the gh CLI. There's no separate OpenKnowledge credential to disconnect."
-msgstr "OpenKnowledge وہ GitHub اکاؤنٹ استعمال کر رہا ہے جو gh CLI فراہم کرتا ہے۔ منقطع کرنے کے لیے OpenKnowledge کی کوئی الگ سند نہیں ہے۔"
-
-#: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge یہی GitHub اکاؤنٹ استعمال کر رہا ہے۔"
 
@@ -11413,6 +11427,10 @@ msgstr "خصوصیت کی قدر"
 #: src/components/SyncStatusBadge.tsx
 msgid "Protected branch — cannot push"
 msgstr "محفوظ برانچ — پُش نہیں ہو سکتا"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Provided by the GitHub CLI (<0>gh</0>) on this computer. To switch accounts or sign out, run <1>gh auth</1> in a terminal."
+msgstr "اس کمپیوٹر پر GitHub CLI (<0>gh</0>) کی طرف سے فراہم کردہ۔ اکاؤنٹ بدلنے یا سائن آؤٹ کرنے کے لیے ٹرمینل میں <1>gh auth</1> چلائیں۔"
 
 #: src/components/TemplateForm.tsx
 msgid "provisional"

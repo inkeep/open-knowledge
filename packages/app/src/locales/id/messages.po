@@ -3693,7 +3693,6 @@ msgid "Connected — this endpoint returns {0}-dimension vectors."
 msgstr "Terhubung — endpoint ini mengembalikan vektor berdimensi {0}."
 
 #: src/components/AuthModal.tsx
-#: src/components/settings/AccountSection.tsx
 msgid "Connected as @{login}"
 msgstr "Terhubung sebagai @{login}"
 
@@ -3704,6 +3703,10 @@ msgstr "Terhubung sebagai <0>@{signedInLogin}</0>"
 #: src/components/settings/SyncSection.tsx
 msgid "Connected to"
 msgstr "Terhubung ke"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Connected to {host} as @{login}"
+msgstr "Terhubung ke {host} sebagai @{login}"
 
 #: src/components/AuthModal.tsx
 msgid "Connected to GitHub"
@@ -6931,6 +6934,11 @@ msgstr "Mengambil tautan yang membuka proyek ini atau sebuah dokumen di aplikasi
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgctxt "settings search keyword"
+msgid "gh"
+msgstr "gh"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
 msgid "GHES"
 msgstr "GHES"
 
@@ -6989,9 +6997,19 @@ msgstr "Sinkronisasi git"
 msgid "Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync."
 msgstr "Sinkronisasi Git dijeda karena ada operasi Git atau konflik yang belum terselesaikan yang perlu ditangani. Perubahan Anda tetap disimpan secara lokal. Selesaikan operasi atau konflik tersebut di terminal, lalu coba sinkronkan lagi."
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "GitHub"
+msgstr "GitHub"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."
 msgstr "Autentikasi GitHub gagal. Coba masuk lagi."
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GitHub CLI"
+msgstr "GitHub CLI"
 
 #: src/lib/share/publish-wizard.ts
 msgid "GitHub connection expired. Connect again to continue."
@@ -10580,10 +10598,6 @@ msgid "OpenKnowledge is set up at the repository root here, so the pack goes ins
 msgstr "Di sini OpenKnowledge disiapkan di root repositori, jadi paket ditempatkan di dalam <0>{sanitized}</0> alih-alih di puncak repositori."
 
 #: src/components/settings/AccountSection.tsx
-msgid "OpenKnowledge is using a GitHub account provided by the gh CLI. There's no separate OpenKnowledge credential to disconnect."
-msgstr "OpenKnowledge memakai akun GitHub yang disediakan CLI gh. Tidak ada kredensial OpenKnowledge terpisah yang perlu diputus."
-
-#: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge memakai akun GitHub ini."
 
@@ -11409,6 +11423,10 @@ msgstr "Nilai properti"
 #: src/components/SyncStatusBadge.tsx
 msgid "Protected branch — cannot push"
 msgstr "Cabang terlindungi — tidak bisa push"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Provided by the GitHub CLI (<0>gh</0>) on this computer. To switch accounts or sign out, run <1>gh auth</1> in a terminal."
+msgstr "Disediakan oleh GitHub CLI (<0>gh</0>) di komputer ini. Untuk berganti akun atau keluar, jalankan <1>gh auth</1> di terminal."
 
 #: src/components/TemplateForm.tsx
 msgid "provisional"

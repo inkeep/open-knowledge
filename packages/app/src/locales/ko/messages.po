@@ -3697,7 +3697,6 @@ msgid "Connected — this endpoint returns {0}-dimension vectors."
 msgstr "연결됨. 이 엔드포인트가 {0}차원 벡터를 반환합니다."
 
 #: src/components/AuthModal.tsx
-#: src/components/settings/AccountSection.tsx
 msgid "Connected as @{login}"
 msgstr "계정 @{login}으로 연결됨"
 
@@ -3708,6 +3707,10 @@ msgstr "계정 <0>@{signedInLogin}</0>으로 연결됨"
 #: src/components/settings/SyncSection.tsx
 msgid "Connected to"
 msgstr "연결 대상"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Connected to {host} as @{login}"
+msgstr "{host}에 계정 @{login}(으)로 연결됨"
 
 #: src/components/AuthModal.tsx
 msgid "Connected to GitHub"
@@ -6935,6 +6938,11 @@ msgstr "이 프로젝트나 문서를 앱에서 여는 링크를 가져옵니다
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgctxt "settings search keyword"
+msgid "gh"
+msgstr "gh"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
 msgid "GHES"
 msgstr "GHES"
 
@@ -6993,9 +7001,19 @@ msgstr "Git 동기화"
 msgid "Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync."
 msgstr "Git 작업이나 해결되지 않은 충돌을 처리해야 하므로 Git 동기화가 일시 중지되었습니다. 편집 내용은 계속 로컬에 저장됩니다. 터미널에서 작업을 완료하거나 충돌을 해결한 후 동기화를 다시 시도하세요."
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "GitHub"
+msgstr "GitHub"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."
 msgstr "GitHub 인증에 실패했습니다. 다시 로그인하세요."
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GitHub CLI"
+msgstr "GitHub CLI"
 
 #: src/lib/share/publish-wizard.ts
 msgid "GitHub connection expired. Connect again to continue."
@@ -10584,10 +10602,6 @@ msgid "OpenKnowledge is set up at the repository root here, so the pack goes ins
 msgstr "OpenKnowledge는 여기 리포지토리 루트에 설정되어 있으므로 팩은 리포지토리 최상위가 아니라 <0>{sanitized}</0> 안에 들어갑니다."
 
 #: src/components/settings/AccountSection.tsx
-msgid "OpenKnowledge is using a GitHub account provided by the gh CLI. There's no separate OpenKnowledge credential to disconnect."
-msgstr "OpenKnowledge는 gh CLI가 제공하는 GitHub 계정을 사용 중입니다. 연결을 해제할 별도 OpenKnowledge 자격 증명은 없습니다."
-
-#: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge가 이 GitHub 계정을 사용 중입니다."
 
@@ -11413,6 +11427,10 @@ msgstr "속성 값"
 #: src/components/SyncStatusBadge.tsx
 msgid "Protected branch — cannot push"
 msgstr "보호된 브랜치. 푸시할 수 없음"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Provided by the GitHub CLI (<0>gh</0>) on this computer. To switch accounts or sign out, run <1>gh auth</1> in a terminal."
+msgstr "이 컴퓨터의 GitHub CLI(<0>gh</0>)가 제공합니다. 계정을 전환하거나 로그아웃하려면 터미널에서 <1>gh auth</1>를 실행하세요."
 
 #: src/components/TemplateForm.tsx
 msgid "provisional"

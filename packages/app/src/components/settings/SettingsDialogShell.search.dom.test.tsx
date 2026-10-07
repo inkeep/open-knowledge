@@ -186,6 +186,25 @@ describe('settings dialog search', () => {
     }
   });
 
+  test('the GitHub account block is findable by the GitHub CLI names', async () => {
+    const user = userEvent.setup();
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+    const input = screen.getByTestId('settings-search-input');
+
+    for (const query of ['GitHub CLI', 'gh']) {
+      await user.clear(input);
+      await user.type(input, query);
+      expect(
+        await screen.findByTestId('settings-search-result-subsection:account:github-account'),
+      ).toBeTruthy();
+    }
+
+    await user.click(
+      screen.getByTestId('settings-search-result-subsection:account:github-account'),
+    );
+    expect(latestProbe()?.activeId).toBe('account');
+  });
+
   test('a markdownlint rule is searchable when the plugin is enabled', async () => {
     const user = userEvent.setup();
     render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);

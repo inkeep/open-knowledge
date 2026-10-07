@@ -744,6 +744,7 @@
     "7YRrJ9": [
       "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
+    "7ZpNC-": ["gh"],
     "7_bFEL": ["Drag ", ["patternText"], " to reorder"],
     "7a0YcF": ["Press <0>Space</0> or tap the blob to start"],
     "7aNk5D": ["OpenKnowledge edited ", ["subject"]],
@@ -923,6 +924,7 @@
     "9bG48P": ["Sending"],
     "9clcD5": ["Open documents tagged #", ["chip"]],
     "9djC8C": ["Connect a GitHub account to browse and publish GitHub repositories."],
+    "9eQiRf": ["GitHub CLI"],
     "9euN0m": [
       [
         "count",
@@ -2579,6 +2581,7 @@
       "</0> to embed your content. Stored on this machine only (in <1>~/.ok/secrets.yml</1>), never in the project."
     ],
     "Rj01Fz": ["Links"],
+    "RkXlPZ": ["GitHub"],
     "RlCInP": ["Slash commands"],
     "RmBY0A": ["No git remote"],
     "RnrnTe": ["Already set up — ok is available in your terminal"],
@@ -2776,6 +2779,9 @@
       " was added to branch <0>",
       ["shareBranch"],
       "</0> recently. Switch and update to open it."
+    ],
+    "UcTm1A": [
+      "Provided by the GitHub CLI (<0>gh</0>) on this computer. To switch accounts or sign out, run <1>gh auth</1> in a terminal."
     ],
     "UceXfW": [
       ["boldName"],
@@ -3450,6 +3456,7 @@
     "bZinKv": ["Start a new chat (", ["0"], ")"],
     "ba3vIW": [["templateCount", "plural", { "one": ["template"], "other": ["templates"] }]],
     "bbJ-VR": ["Zoom Out"],
+    "bc7aCh": ["Connected to ", ["host"], " as @", ["login"]],
     "bcDHUM": [["descriptorLabel"], " — render error, source editable below"],
     "bcjYUA": ["Fold or unfold source"],
     "bcm0pR": ["the open agent"],
@@ -4778,9 +4785,6 @@
     ],
     "nwtY4N": ["Something went wrong"],
     "nxlOpL": ["OpenKnowledge is using this GitHub account."],
-    "ny6vNn": [
-      "OpenKnowledge is using a GitHub account provided by the gh CLI. There's no separate OpenKnowledge credential to disconnect."
-    ],
     "nzHlj8": ["Close ", ["0"]],
     "nzaV6Q": ["Page thumbnails"],
     "o-XJ9D": ["Change"],

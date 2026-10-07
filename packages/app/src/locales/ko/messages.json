@@ -724,6 +724,7 @@
     "7YRrJ9": [
       "OpenKnowledge 데스크톱 앱에서 사용할 수 있습니다. 터미널에서 <0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>를 사용합니다."
     ],
+    "7ZpNC-": ["gh"],
     "7_bFEL": [["patternText"], " 드래그로 순서를 변경합니다."],
     "7a0YcF": ["<0>스페이스</0>를 누르거나 블롭을 탭하여 시작"],
     "7aNk5D": ["OpenKnowledge에서 ", ["subject"], " 편집"],
@@ -902,6 +903,7 @@
     "9bG48P": ["보내는 중"],
     "9clcD5": ["#", ["chip"], " 태그가 있는 문서 열기"],
     "9djC8C": ["GitHub 저장소를 찾아보고 게시하려면 GitHub 계정을 연결하세요."],
+    "9eQiRf": ["GitHub CLI"],
     "9euN0m": [["count", "plural", { "other": ["다른 문서 참여자 ", "#", "명 더"] }]],
     "9fhQRL": ["베타 채널"],
     "9fvog2": ["미리보기를 사용할 수 없음: ", ["errorDetail"]],
@@ -2469,6 +2471,7 @@
       "</0>로 전송합니다. 이 컴퓨터에만 저장하며(<1>~/.ok/secrets.yml</1>), 프로젝트에는 저장하지 않습니다."
     ],
     "Rj01Fz": ["링크"],
+    "RkXlPZ": ["GitHub"],
     "RlCInP": ["슬래시 명령"],
     "RmBY0A": ["git 원격 없음"],
     "RnrnTe": ["이미 설정됨. 터미널에서 ok 사용 가능"],
@@ -2662,6 +2665,9 @@
       "</0> 브랜치에 최근 추가된 ",
       ["targetNoun"],
       "입니다. 열려면 전환 후 업데이트하세요."
+    ],
+    "UcTm1A": [
+      "이 컴퓨터의 GitHub CLI(<0>gh</0>)가 제공합니다. 계정을 전환하거나 로그아웃하려면 터미널에서 <1>gh auth</1>를 실행하세요."
     ],
     "UceXfW": [
       ["boldName"],
@@ -3324,6 +3330,7 @@
     "bZinKv": ["새 채팅 시작 (", ["0"], ")"],
     "ba3vIW": [["templateCount", "plural", { "other": ["템플릿"] }]],
     "bbJ-VR": ["축소"],
+    "bc7aCh": [["host"], "에 계정 @", ["login"], "(으)로 연결됨"],
     "bcDHUM": [["descriptorLabel"], ", 렌더링 오류, 아래에서 소스를 편집할 수 있습니다"],
     "bcjYUA": ["소스 접기 또는 펼치기"],
     "bcm0pR": ["열린 에이전트"],
@@ -4588,9 +4595,6 @@
     ],
     "nwtY4N": ["문제가 발생했습니다"],
     "nxlOpL": ["OpenKnowledge가 이 GitHub 계정을 사용 중입니다."],
-    "ny6vNn": [
-      "OpenKnowledge는 gh CLI가 제공하는 GitHub 계정을 사용 중입니다. 연결을 해제할 별도 OpenKnowledge 자격 증명은 없습니다."
-    ],
     "nzHlj8": [["0"], " 닫기"],
     "nzaV6Q": ["페이지 썸네일"],
     "o-XJ9D": ["변경"],

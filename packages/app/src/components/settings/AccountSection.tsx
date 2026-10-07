@@ -100,45 +100,24 @@ export function AccountSection({
       </SettingsSectionHeader>
 
       <div className="space-y-8">
-        {status.phase === 'loading' ? (
-          <div
-            role="status"
-            aria-live="polite"
-            aria-busy="true"
-            className="space-y-2 rounded-md border p-3"
-            data-testid="settings-account-loading"
+        {status.phase === 'loaded' && status.result.unsupportedOrigin !== undefined ? null : (
+          <section
+            aria-labelledby="settings-github-account-title"
+            className="space-y-4"
+            data-field="section:github-account"
           >
-            <span className="sr-only">
-              <Trans>Checking your GitHub connection</Trans>
-            </span>
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-8 w-32" />
-          </div>
-        ) : status.phase === 'check-failed' ? (
-          <div
-            className="space-y-2 rounded-md border p-3"
-            data-testid="settings-account-check-failed"
-          >
-            <p role="status" className="text-sm text-muted-foreground">
-              <Trans>We couldn't check your GitHub connection.</Trans>
-            </p>
-            <Button variant="outline" size="sm" onClick={() => void loadStatus()}>
-              <Trans>Try again</Trans>
-            </Button>
-          </div>
-        ) : status.result.authenticated ? (
-          status.result.tier === 'A' ? (
-            <GhCliRow login={status.result.login} />
-          ) : (
-            <ConnectedRow
-              login={status.result.login}
+            <h4 id="settings-github-account-title" className="text-sm font-medium">
+              <Trans>GitHub</Trans>
+            </h4>
+            <GitHubAccountStatus
+              status={status}
               disconnecting={disconnecting}
-              error={disconnectError}
+              disconnectError={disconnectError}
+              onRetry={() => void loadStatus()}
+              onConnect={() => setAuthModalOpen(true)}
               onDisconnect={() => void handleDisconnect()}
             />
-          )
-        ) : status.result.unsupportedOrigin !== undefined ? null : (
-          <DisconnectedRow onConnect={() => setAuthModalOpen(true)} />
+          </section>
         )}
 
         <EnterpriseHostsSection binding={userBinding} />
@@ -160,6 +139,61 @@ export function AccountSection({
         }}
       />
     </section>
+  );
+}
+
+function GitHubAccountStatus({
+  status,
+  disconnecting,
+  disconnectError,
+  onRetry,
+  onConnect,
+  onDisconnect,
+}: {
+  status: StatusState;
+  disconnecting: boolean;
+  disconnectError: string | null;
+  onRetry: () => void;
+  onConnect: () => void;
+  onDisconnect: () => void;
+}) {
+  return status.phase === 'loading' ? (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      className="space-y-2 rounded-md border p-3"
+      data-testid="settings-account-loading"
+    >
+      <span className="sr-only">
+        <Trans>Checking your GitHub connection</Trans>
+      </span>
+      <Skeleton className="h-4 w-40" />
+      <Skeleton className="h-8 w-32" />
+    </div>
+  ) : status.phase === 'check-failed' ? (
+    <div className="space-y-2 rounded-md border p-3" data-testid="settings-account-check-failed">
+      <p role="status" className="text-sm text-muted-foreground">
+        <Trans>We couldn't check your GitHub connection.</Trans>
+      </p>
+      <Button variant="outline" size="sm" onClick={onRetry}>
+        <Trans>Try again</Trans>
+      </Button>
+    </div>
+  ) : status.result.authenticated ? (
+    status.result.tier === 'A' ? (
+      <GhCliRow login={status.result.login} host={status.result.host} />
+    ) : (
+      <ConnectedRow
+        login={status.result.login}
+        host={status.result.host}
+        disconnecting={disconnecting}
+        error={disconnectError}
+        onDisconnect={onDisconnect}
+      />
+    )
+  ) : (
+    <DisconnectedRow onConnect={onConnect} />
   );
 }
 
@@ -399,11 +433,13 @@ function HostTokenForm({
 
 function ConnectedRow({
   login,
+  host,
   disconnecting,
   error,
   onDisconnect,
 }: {
   login: string;
+  host: string;
   disconnecting: boolean;
   error: string | null;
   onDisconnect: () => void;
@@ -413,7 +449,9 @@ function ConnectedRow({
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-medium">
-            <Trans>Connected as @{login}</Trans>
+            <Trans>
+              Connected to {host} as @{login}
+            </Trans>
           </div>
           <p className="text-muted-foreground text-1sm">
             <Trans>OpenKnowledge is using this GitHub account.</Trans>
@@ -452,17 +490,19 @@ function ConnectedRow({
   );
 }
 
-function GhCliRow({ login }: { login: string }) {
+function GhCliRow({ login, host }: { login: string; host: string }) {
   return (
     <div className="rounded-md border p-3" data-testid="settings-account-gh-cli">
       <div className="min-w-0 space-y-1">
         <div className="text-sm font-medium">
-          <Trans>Connected as @{login}</Trans>
+          <Trans>
+            Connected to {host} as @{login}
+          </Trans>
         </div>
         <p className="text-muted-foreground text-1sm">
           <Trans>
-            OpenKnowledge is using a GitHub account provided by the gh CLI. There's no separate
-            OpenKnowledge credential to disconnect.
+            Provided by the GitHub CLI (<code translate="no">gh</code>) on this computer. To switch
+            accounts or sign out, run <code translate="no">gh auth</code> in a terminal.
           </Trans>
         </p>
       </div>

@@ -874,6 +874,7 @@
     "7YRrJ9": [
       "Disponible en la aplicación de escritorio de OpenKnowledge. Desde una terminal, usa<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
+    "7ZpNC-": ["gh"],
     "7_bFEL": ["Arrastra ", ["patternText"], " para reordenar"],
     "7a0YcF": ["Pulsa <0>Espacio</0> o toca el blob para empezar"],
     "7aNk5D": ["OpenKnowledge editó ", ["subject"]],
@@ -1077,6 +1078,7 @@
     "9bG48P": ["Enviando"],
     "9clcD5": ["Abrir los documentos etiquetados con #", ["chip"]],
     "9djC8C": ["Conecta una cuenta de GitHub para explorar y publicar repositorios de GitHub."],
+    "9eQiRf": ["GitHub CLI"],
     "9euN0m": [
       [
         "count",
@@ -2959,6 +2961,7 @@
       "</0> para generar los embeddings de tu contenido. Se guarda solo en este equipo (en <1>~/.ok/secrets.yml</1>), nunca en el proyecto."
     ],
     "Rj01Fz": ["Enlaces"],
+    "RkXlPZ": ["GitHub"],
     "RlCInP": ["Comandos de barra"],
     "RmBY0A": ["No hay remoto de git"],
     "RnrnTe": ["Ya está configurado: ok está disponible en tu terminal"],
@@ -3190,6 +3193,9 @@
       " se añadió hace poco a la rama <0>",
       ["shareBranch"],
       "</0>. Cambia y actualiza para abrirlo."
+    ],
+    "UcTm1A": [
+      "Lo proporciona la CLI de GitHub (<0>gh</0>) en este equipo. Para cambiar de cuenta o cerrar sesión, ejecuta <1>gh auth</1> en una terminal."
     ],
     "UceXfW": [
       ["boldName"],
@@ -3983,6 +3989,7 @@
       ]
     ],
     "bbJ-VR": ["Alejar"],
+    "bc7aCh": ["Conectado a ", ["host"], " como @", ["login"]],
     "bcDHUM": [["descriptorLabel"], " — error de renderizado, el código se puede editar abajo"],
     "bcjYUA": ["Plegar o desplegar el código"],
     "bcm0pR": ["el agente abierto"],
@@ -5507,9 +5514,6 @@
     ],
     "nwtY4N": ["Algo salió mal"],
     "nxlOpL": ["OpenKnowledge está usando esta cuenta de GitHub."],
-    "ny6vNn": [
-      "OpenKnowledge está usando una cuenta de GitHub proporcionada por la CLI de gh. No hay ninguna credencial propia de OpenKnowledge que desconectar."
-    ],
     "nzHlj8": ["Cerrar ", ["0"]],
     "nzaV6Q": ["Miniaturas de página"],
     "o-XJ9D": ["Cambiar"],

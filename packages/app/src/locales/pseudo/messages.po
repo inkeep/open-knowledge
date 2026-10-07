@@ -3693,7 +3693,6 @@ msgid "Connected — this endpoint returns {0}-dimension vectors."
 msgstr ""
 
 #: src/components/AuthModal.tsx
-#: src/components/settings/AccountSection.tsx
 msgid "Connected as @{login}"
 msgstr ""
 
@@ -3703,6 +3702,10 @@ msgstr ""
 
 #: src/components/settings/SyncSection.tsx
 msgid "Connected to"
+msgstr ""
+
+#: src/components/settings/AccountSection.tsx
+msgid "Connected to {host} as @{login}"
 msgstr ""
 
 #: src/components/AuthModal.tsx
@@ -6931,6 +6934,11 @@ msgstr ""
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgctxt "settings search keyword"
+msgid "gh"
+msgstr ""
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
 msgid "GHES"
 msgstr ""
 
@@ -6989,8 +6997,18 @@ msgstr ""
 msgid "Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync."
 msgstr ""
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "GitHub"
+msgstr ""
+
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."
+msgstr ""
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GitHub CLI"
 msgstr ""
 
 #: src/lib/share/publish-wizard.ts
@@ -10580,10 +10598,6 @@ msgid "OpenKnowledge is set up at the repository root here, so the pack goes ins
 msgstr ""
 
 #: src/components/settings/AccountSection.tsx
-msgid "OpenKnowledge is using a GitHub account provided by the gh CLI. There's no separate OpenKnowledge credential to disconnect."
-msgstr ""
-
-#: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using this GitHub account."
 msgstr ""
 
@@ -11408,6 +11422,10 @@ msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Protected branch — cannot push"
+msgstr ""
+
+#: src/components/settings/AccountSection.tsx
+msgid "Provided by the GitHub CLI (<0>gh</0>) on this computer. To switch accounts or sign out, run <1>gh auth</1> in a terminal."
 msgstr ""
 
 #: src/components/TemplateForm.tsx

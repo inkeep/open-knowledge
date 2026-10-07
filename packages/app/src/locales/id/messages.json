@@ -753,6 +753,7 @@
     "7YRrJ9": [
       "Tersedia di aplikasi desktop OpenKnowledge. Dari terminal, gunakan<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
+    "7ZpNC-": ["gh"],
     "7_bFEL": ["Seret ", ["patternText"], " untuk menata ulang"],
     "7a0YcF": ["Tekan <0>Spasi</0> atau ketuk blob untuk mulai"],
     "7aNk5D": ["OpenKnowledge menyunting ", ["subject"]],
@@ -938,6 +939,7 @@
     "9bG48P": ["Mengirim"],
     "9clcD5": ["Buka dokumen bertag #", ["chip"]],
     "9djC8C": ["Hubungkan akun GitHub untuk menjelajahi dan menerbitkan repositori GitHub."],
+    "9eQiRf": ["GitHub CLI"],
     "9euN0m": [["count", "plural", { "other": ["#", " peserta lagi dari dokumen lain"] }]],
     "9fhQRL": ["Kanal beta"],
     "9fvog2": ["Pratinjau tidak tersedia: ", ["errorDetail"]],
@@ -2586,6 +2588,7 @@
       "</0> untuk meng-embed konten Anda. Disimpan hanya di komputer ini (di <1>~/.ok/secrets.yml</1>), tidak pernah di proyek."
     ],
     "Rj01Fz": ["Tautan"],
+    "RkXlPZ": ["GitHub"],
     "RlCInP": ["Perintah garis miring"],
     "RmBY0A": ["Tidak ada remote git"],
     "RnrnTe": ["Sudah disiapkan — ok tersedia di terminal Anda"],
@@ -2780,6 +2783,9 @@
       " ini baru saja ditambahkan ke cabang <0>",
       ["shareBranch"],
       "</0>. Ganti cabang dan perbarui untuk membukanya."
+    ],
+    "UcTm1A": [
+      "Disediakan oleh GitHub CLI (<0>gh</0>) di komputer ini. Untuk berganti akun atau keluar, jalankan <1>gh auth</1> di terminal."
     ],
     "UceXfW": [
       ["boldName"],
@@ -3472,6 +3478,7 @@
     "bZinKv": ["Mulai obrolan baru (", ["0"], ")"],
     "ba3vIW": [["templateCount", "plural", { "other": ["templat"] }]],
     "bbJ-VR": ["Perkecil"],
+    "bc7aCh": ["Terhubung ke ", ["host"], " sebagai @", ["login"]],
     "bcDHUM": [["descriptorLabel"], " — galat render, sumber bisa disunting di bawah"],
     "bcjYUA": ["Lipat atau buka lipatan sumber"],
     "bcm0pR": ["agen yang terbuka"],
@@ -4792,9 +4799,6 @@
     ],
     "nwtY4N": ["Ada yang tidak beres"],
     "nxlOpL": ["OpenKnowledge memakai akun GitHub ini."],
-    "ny6vNn": [
-      "OpenKnowledge memakai akun GitHub yang disediakan CLI gh. Tidak ada kredensial OpenKnowledge terpisah yang perlu diputus."
-    ],
     "nzHlj8": ["Tutup ", ["0"]],
     "nzaV6Q": ["Gambar mini halaman"],
     "o-XJ9D": ["Ubah"],

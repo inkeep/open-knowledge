@@ -654,6 +654,7 @@
     "7YRrJ9": [
       "在 OpenKnowledge 桌面应用中可用。在终端里可使用<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>。"
     ],
+    "7ZpNC-": ["gh"],
     "7_bFEL": ["拖动 ", ["patternText"], " 以重新排序"],
     "7a0YcF": ["按<0>空格</0>或点击 blob 开始"],
     "7aNk5D": ["OpenKnowledge 编辑了 ", ["subject"]],
@@ -816,6 +817,7 @@
     "9bG48P": ["正在发送"],
     "9clcD5": ["打开带 #", ["chip"], " 标签的文档"],
     "9djC8C": ["连接一个 GitHub 账户，以浏览和发布 GitHub 仓库。"],
+    "9eQiRf": ["GitHub CLI"],
     "9euN0m": [["count", "plural", { "other": ["另有 ", "#", " 位跨文档参与者"] }]],
     "9fhQRL": ["Beta 通道"],
     "9fvog2": ["无法预览：", ["errorDetail"]],
@@ -2239,6 +2241,7 @@
       "</0> 以生成你内容的嵌入向量。仅保存在这台电脑上（位于 <1>~/.ok/secrets.yml</1>），绝不保存在项目中。"
     ],
     "Rj01Fz": ["链接"],
+    "RkXlPZ": ["GitHub"],
     "RlCInP": ["斜杠命令"],
     "RmBY0A": ["没有 git 远程"],
     "RnrnTe": ["已配置完成——ok 现在可以在你的终端中使用"],
@@ -2416,6 +2419,9 @@
       "最近才被添加到 <0>",
       ["shareBranch"],
       "</0> 分支。切换并更新后即可打开。"
+    ],
+    "UcTm1A": [
+      "由这台电脑上的 GitHub CLI（<0>gh</0>）提供。要切换账户或退出登录，请在终端中运行 <1>gh auth</1>。"
     ],
     "UceXfW": [
       ["boldName"],
@@ -3029,6 +3035,7 @@
     "bZinKv": ["开始新对话（", ["0"], "）"],
     "ba3vIW": [["templateCount", "plural", { "other": ["模板"] }]],
     "bbJ-VR": ["缩小"],
+    "bc7aCh": ["已以 @", ["login"], " 身份连接到 ", ["host"]],
     "bcDHUM": [["descriptorLabel"], " — 渲染出错，可在下方编辑源码"],
     "bcjYUA": ["折叠或展开源码"],
     "bcm0pR": ["已打开的智能体"],
@@ -4158,9 +4165,6 @@
     "nta97o": ["为智能体提供处理你文档的说明，并保留其编辑的归属记录。"],
     "nwtY4N": ["出了点问题"],
     "nxlOpL": ["OpenKnowledge 正在使用这个 GitHub 账户。"],
-    "ny6vNn": [
-      "OpenKnowledge 正在使用 gh CLI 提供的 GitHub 账户。没有单独的 OpenKnowledge 凭据需要断开。"
-    ],
     "nzHlj8": ["关闭 ", ["0"]],
     "nzaV6Q": ["页面缩略图"],
     "o-XJ9D": ["更改"],

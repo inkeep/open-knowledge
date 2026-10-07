@@ -221,6 +221,15 @@ export function SettingsDialogShell({
           label: t`Git`,
           subsections: [
             {
+              id: 'github-account',
+              label: t`GitHub`,
+              anchor: 'section:github-account',
+              keywords: [
+                t({ message: 'gh', context: 'settings search keyword' }),
+                t({ message: 'GitHub CLI', context: 'settings search keyword' }),
+              ],
+            },
+            {
               id: 'enterprise-hosts',
               label: t`GitHub Enterprise Server hosts`,
               anchor: 'section:enterprise-hosts',

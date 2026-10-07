@@ -3693,7 +3693,6 @@ msgid "Connected — this endpoint returns {0}-dimension vectors."
 msgstr "যুক্ত হয়েছে — এই এন্ডপয়েন্ট {0}-মাত্রার ভেক্টর ফেরায়।"
 
 #: src/components/AuthModal.tsx
-#: src/components/settings/AccountSection.tsx
 msgid "Connected as @{login}"
 msgstr "@{login} হিসেবে যুক্ত"
 
@@ -3704,6 +3703,10 @@ msgstr "<0>@{signedInLogin}</0> হিসেবে যুক্ত"
 #: src/components/settings/SyncSection.tsx
 msgid "Connected to"
 msgstr "যার সঙ্গে যুক্ত"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Connected to {host} as @{login}"
+msgstr "{host}-এ @{login} হিসেবে যুক্ত"
 
 #: src/components/AuthModal.tsx
 msgid "Connected to GitHub"
@@ -6931,6 +6934,11 @@ msgstr "অ্যাপে এই প্রকল্প বা একটি ন�
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgctxt "settings search keyword"
+msgid "gh"
+msgstr "gh"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
 msgid "GHES"
 msgstr "GHES"
 
@@ -6989,9 +6997,19 @@ msgstr "Git সিঙ্ক"
 msgid "Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync."
 msgstr "Git-এর একটি কাজ বা অমীমাংসিত দ্বন্দ্বের সমাধান প্রয়োজন হওয়ায় Git সিঙ্ক বিরতি দেওয়া হয়েছে। আপনার সম্পাদনাগুলো এখনও স্থানীয়ভাবে সংরক্ষিত হচ্ছে। টার্মিনালে কাজটি শেষ করুন বা দ্বন্দ্বগুলো মেটান, তারপর আবার সিঙ্ক করার চেষ্টা করুন।"
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "GitHub"
+msgstr "GitHub"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."
 msgstr "GitHub প্রমাণীকরণ ব্যর্থ। আবার সাইন ইন করে দেখুন।"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GitHub CLI"
+msgstr "GitHub CLI"
 
 #: src/lib/share/publish-wizard.ts
 msgid "GitHub connection expired. Connect again to continue."
@@ -10580,10 +10598,6 @@ msgid "OpenKnowledge is set up at the repository root here, so the pack goes ins
 msgstr "এখানে OpenKnowledge সংগ্রহস্থলের মূলে সেট আপ করা হয়েছে, তাই প্যাকটি সংগ্রহস্থলের শীর্ষে না গিয়ে <0>{sanitized}</0>-এর ভিতরে যায়।"
 
 #: src/components/settings/AccountSection.tsx
-msgid "OpenKnowledge is using a GitHub account provided by the gh CLI. There's no separate OpenKnowledge credential to disconnect."
-msgstr "OpenKnowledge gh CLI-র দেওয়া একটি GitHub অ্যাকাউন্ট ব্যবহার করছে। বিচ্ছিন্ন করার মতো আলাদা কোনো OpenKnowledge ক্রেডেনশিয়াল নেই।"
-
-#: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge এই GitHub অ্যাকাউন্টটি ব্যবহার করছে।"
 
@@ -11409,6 +11423,10 @@ msgstr "প্রপার্টির মান"
 #: src/components/SyncStatusBadge.tsx
 msgid "Protected branch — cannot push"
 msgstr "সুরক্ষিত ব্রাঞ্চ — পাঠানো যায় না"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Provided by the GitHub CLI (<0>gh</0>) on this computer. To switch accounts or sign out, run <1>gh auth</1> in a terminal."
+msgstr "এই কম্পিউটারের GitHub CLI (<0>gh</0>) এটি দিচ্ছে। অ্যাকাউন্ট বদলাতে বা সাইন আউট করতে টার্মিনালে <1>gh auth</1> চালান।"
 
 #: src/components/TemplateForm.tsx
 msgid "provisional"

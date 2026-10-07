@@ -3697,7 +3697,6 @@ msgid "Connected — this endpoint returns {0}-dimension vectors."
 msgstr "متصل — تُرجع نقطة النهاية هذه متجهات بـ {0} بُعدًا."
 
 #: src/components/AuthModal.tsx
-#: src/components/settings/AccountSection.tsx
 msgid "Connected as @{login}"
 msgstr "متصل باسم @{login}"
 
@@ -3708,6 +3707,10 @@ msgstr "متصل باسم <0>@{signedInLogin}</0>"
 #: src/components/settings/SyncSection.tsx
 msgid "Connected to"
 msgstr "متصل بـ"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Connected to {host} as @{login}"
+msgstr "متصل بـ {host} باسم @{login}"
 
 #: src/components/AuthModal.tsx
 msgid "Connected to GitHub"
@@ -6935,6 +6938,11 @@ msgstr "يحصل على الرابط الذي يفتح هذا المشروع أ�
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgctxt "settings search keyword"
+msgid "gh"
+msgstr "gh"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
 msgid "GHES"
 msgstr "GHES"
 
@@ -6993,9 +7001,19 @@ msgstr "مزامنة Git"
 msgid "Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync."
 msgstr "مزامنة Git متوقفة مؤقتًا لأن هناك عملية Git أو تعارضات لم تُحل تحتاج إلى معالجة. ما زالت تعديلاتك تُحفظ محليًا. أكمل العملية أو حل التعارضات في الطرفية، ثم أعد محاولة المزامنة."
 
+#: src/components/settings/AccountSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "GitHub"
+msgstr "GitHub"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."
 msgstr "فشلت مصادقة GitHub. حاول تسجيل الدخول مرة أخرى."
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GitHub CLI"
+msgstr "GitHub CLI"
 
 #: src/lib/share/publish-wizard.ts
 msgid "GitHub connection expired. Connect again to continue."
@@ -10584,10 +10602,6 @@ msgid "OpenKnowledge is set up at the repository root here, so the pack goes ins
 msgstr "تم إعداد OpenKnowledge في جذر المستودع هنا، لذا تُوضع الحزمة داخل <0>{sanitized}</0> بدلاً من أعلى المستودع."
 
 #: src/components/settings/AccountSection.tsx
-msgid "OpenKnowledge is using a GitHub account provided by the gh CLI. There's no separate OpenKnowledge credential to disconnect."
-msgstr "يستخدم OpenKnowledge حساب GitHub الذي توفره واجهة gh السطرية. لا توجد بيانات اعتماد منفصلة لـ OpenKnowledge لقطع اتصالها."
-
-#: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "يستخدم OpenKnowledge حساب GitHub هذا."
 
@@ -11413,6 +11427,10 @@ msgstr "قيمة الخاصية"
 #: src/components/SyncStatusBadge.tsx
 msgid "Protected branch — cannot push"
 msgstr "فرع محمي — لا يمكن الدفع"
+
+#: src/components/settings/AccountSection.tsx
+msgid "Provided by the GitHub CLI (<0>gh</0>) on this computer. To switch accounts or sign out, run <1>gh auth</1> in a terminal."
+msgstr "توفّره واجهة GitHub CLI (<0>gh</0>) على هذا الجهاز. لتبديل الحساب أو تسجيل الخروج، شغّل <1>gh auth</1> في الطرفية."
 
 #: src/components/TemplateForm.tsx
 msgid "provisional"

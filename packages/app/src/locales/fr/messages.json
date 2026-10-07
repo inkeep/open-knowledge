@@ -903,6 +903,7 @@
     "7YRrJ9": [
       "Disponible dans l'application de bureau OpenKnowledge. Depuis un terminal, utilisez<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
+    "7ZpNC-": ["gh"],
     "7_bFEL": ["Faites glisser ", ["patternText"], " pour réorganiser"],
     "7a0YcF": ["Appuyez sur <0>Espace</0> ou touchez le blob pour commencer"],
     "7aNk5D": ["OpenKnowledge a modifié ", ["subject"]],
@@ -1106,6 +1107,7 @@
     "9bG48P": ["Envoi en cours"],
     "9clcD5": ["Ouvrir les documents étiquetés #", ["chip"]],
     "9djC8C": ["Connectez un compte GitHub pour parcourir et publier des dépôts GitHub."],
+    "9eQiRf": ["GitHub CLI"],
     "9euN0m": [
       [
         "count",
@@ -3005,6 +3007,7 @@
       "</0> pour calculer les embeddings de votre contenu. Stockée uniquement sur cette machine (dans <1>~/.ok/secrets.yml</1>), jamais dans le projet."
     ],
     "Rj01Fz": ["Liens"],
+    "RkXlPZ": ["GitHub"],
     "RlCInP": ["Commandes slash"],
     "RmBY0A": ["Aucun dépôt distant git"],
     "RnrnTe": ["Déjà configuré — ok est disponible dans votre terminal"],
@@ -3236,6 +3239,9 @@
       " a été ajouté récemment à la branche <0>",
       ["shareBranch"],
       "</0>. Changez de branche et mettez à jour pour l'ouvrir."
+    ],
+    "UcTm1A": [
+      "Fourni par la CLI GitHub (<0>gh</0>) sur cet ordinateur. Pour changer de compte ou vous déconnecter, exécutez <1>gh auth</1> dans un terminal."
     ],
     "UceXfW": [
       ["boldName"],
@@ -4032,6 +4038,7 @@
       ["templateCount", "plural", { "one": ["modèle"], "many": ["modèles"], "other": ["modèles"] }]
     ],
     "bbJ-VR": ["Zoom arrière"],
+    "bc7aCh": ["Connecté à ", ["host"], " en tant que @", ["login"]],
     "bcDHUM": [["descriptorLabel"], " — erreur de rendu, source modifiable ci-dessous"],
     "bcjYUA": ["Replier ou déplier la source"],
     "bcm0pR": ["l'agent ouvert"],
@@ -5554,9 +5561,6 @@
     ],
     "nwtY4N": ["Une erreur s'est produite"],
     "nxlOpL": ["OpenKnowledge utilise ce compte GitHub."],
-    "ny6vNn": [
-      "OpenKnowledge utilise un compte GitHub fourni par la CLI gh. Il n'y a pas d'identifiant OpenKnowledge distinct à déconnecter."
-    ],
     "nzHlj8": ["Fermer ", ["0"]],
     "nzaV6Q": ["Miniatures des pages"],
     "o-XJ9D": ["Modifier"],
