@@ -324,7 +324,7 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     shortcutDesktopOnly: true,
     availability: { host: 'desktop' },
     palette: { group: 'project', visibility: 'always' },
-    menu: [{ section: 'help-links', order: 1, ellipsis: true, accelerator: 'CmdOrCtrl+Shift+D' }],
+    menu: [{ section: 'help-links', order: 3, ellipsis: true, accelerator: 'CmdOrCtrl+Shift+D' }],
   },
   {
     id: 'bug-report-history',
@@ -340,7 +340,7 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     keywords: ['feedback', 'suggestion', 'idea', 'rate', 'survey', 'contact', 'give'],
     availability: {},
     palette: { group: 'project', visibility: 'always' },
-    menu: [{ section: 'help-links', order: 2, ellipsis: true }],
+    menu: [{ section: 'help-links', order: 4, ellipsis: true }],
   },
   {
     id: 'new-from-template',
@@ -654,6 +654,22 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     availability: {},
     palette: { group: 'app', visibility: 'search-only' },
     menu: [{ section: 'help-links', order: 0 }],
+  },
+  {
+    id: 'open-docs',
+    labelKey: 'openDocs',
+    keywords: ['docs', 'documentation', 'help', 'guide', 'manual'],
+    availability: {},
+    palette: { group: 'app', visibility: 'search-only' },
+    menu: [{ section: 'help-links', order: 1 }],
+  },
+  {
+    id: 'open-discord',
+    labelKey: 'joinDiscord',
+    keywords: ['discord', 'community', 'chat', 'support', 'join'],
+    availability: {},
+    palette: { group: 'app', visibility: 'search-only' },
+    menu: [{ section: 'help-links', order: 2 }],
   },
   {
     id: 'uninstall',

@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@inkeep/open-knowledge-core/constants/product';
 import { t } from '@lingui/core/macro';
 
 export function revealInFileManagerLabel(platform: string | null | undefined): string {
@@ -12,4 +13,10 @@ export function moveToTrashLabel(platform: string | null | undefined): string {
 
 export function trashNounLabel(platform: string | null | undefined): string {
   return platform === 'win32' ? t`Recycle Bin` : t`Trash`;
+}
+
+export function aboutAppLabel(platform: string | null | undefined): string {
+  if (platform === 'linux') return t`About`;
+  const appName = PRODUCT_NAME;
+  return t`About ${appName}`;
 }

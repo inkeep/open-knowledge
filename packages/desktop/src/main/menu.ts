@@ -9,6 +9,8 @@ import {
   type MenuSection,
   menuLabelForPlatform,
   NATIVE_MENU_LABELS,
+  OPEN_KNOWLEDGE_DISCORD_URL,
+  OPEN_KNOWLEDGE_DOCS_URL,
   OPEN_KNOWLEDGE_GITHUB_URL,
   SHOW_INSTALL_SKILL,
   type TerminalPlacement,
@@ -324,6 +326,8 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
     enabled: (d) => d.onCollapseAll !== undefined,
   },
   'open-github': { click: (d) => () => d.openExternalUrl(OPEN_KNOWLEDGE_GITHUB_URL) },
+  'open-docs': { click: (d) => () => d.openExternalUrl(OPEN_KNOWLEDGE_DOCS_URL) },
+  'open-discord': { click: (d) => () => d.openExternalUrl(OPEN_KNOWLEDGE_DISCORD_URL) },
   'report-bug': { click: (d) => () => d.onReportBug?.() },
   'send-feedback': { click: (d) => () => d.onSendFeedback?.() },
   'install-claude-desktop': {
@@ -619,6 +623,7 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
         ...withTrailingSep(leafOf('help-install')),
         ...leafOf('help-links'),
         ...withLeadingSep(leafOf('help-updates')),
+        ...(isMac ? [] : [{ type: 'separator' as const }, roleItem('about')]),
       ],
     },
   ];

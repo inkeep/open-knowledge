@@ -30,6 +30,8 @@ export const MENU_LABELS = {
   killTerminal: 'Kill Terminal',
   checkSpelling: 'Check spelling while typing',
   openOnGithub: 'OpenKnowledge on GitHub',
+  openDocs: 'Documentation',
+  joinDiscord: 'Join us on Discord',
   reportBug: 'Report a bug',
   bugReportHistory: 'Bug report history',
   sendFeedback: 'Send feedback',
@@ -78,3 +80,5 @@ export function menuLabelForPlatform(key: MenuLabelKey, platform: string): strin
 }
 
 export const OPEN_KNOWLEDGE_GITHUB_URL = 'https://github.com/inkeep/open-knowledge';
+export const OPEN_KNOWLEDGE_DOCS_URL = 'https://openknowledge.ai/docs';
+export const OPEN_KNOWLEDGE_DISCORD_URL = 'https://discord.gg/VRKk2EaGHN';

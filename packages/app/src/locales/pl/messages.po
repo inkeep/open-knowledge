@@ -1561,10 +1561,12 @@ msgid "A worktree folder for that branch already exists."
 msgstr "Folder worktree dla tej gałęzi już istnieje."
 
 #: src/lib/native-menu-catalog.ts
+#: src/lib/platform-labels.ts
 msgid "About"
 msgstr "O programie"
 
 #: src/lib/native-menu-catalog.ts
+#: src/lib/platform-labels.ts
 msgid "About {appName}"
 msgstr "O programie {appName}"
 
@@ -5355,6 +5357,8 @@ msgstr "Struktura dokumentu"
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "Opisz architekturę tego repozytorium: utwórz stronę przeglądową prowadzącą do osobnej strony każdego głównego modułu, opisującą jego obowiązki i punkty wejścia."
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Documentation"
 msgstr "Dokumentacja"
@@ -8076,6 +8080,8 @@ msgstr "Kursywa"
 msgid "Item {0}"
 msgstr "Element {0}"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/SubscribeCard.tsx
 msgid "Join us on Discord"
 msgstr "Dołącz do nas na Discordzie"

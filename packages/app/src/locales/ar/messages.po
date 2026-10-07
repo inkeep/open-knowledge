@@ -1561,10 +1561,12 @@ msgid "A worktree folder for that branch already exists."
 msgstr "يوجد بالفعل مجلد شجرة عمل لذلك الفرع."
 
 #: src/lib/native-menu-catalog.ts
+#: src/lib/platform-labels.ts
 msgid "About"
 msgstr "حول"
 
 #: src/lib/native-menu-catalog.ts
+#: src/lib/platform-labels.ts
 msgid "About {appName}"
 msgstr "حول {appName}"
 
@@ -5355,6 +5357,8 @@ msgstr "هيكل الوثيقة"
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "وثّق بنية هذا المستودع: أنشئ صفحة نظرة عامة ترتبط بصفحة لكل وحدة رئيسية تصف مسؤولياتها ونقاط دخولها."
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Documentation"
 msgstr "التوثيق"
@@ -8076,6 +8080,8 @@ msgstr "مائل"
 msgid "Item {0}"
 msgstr "العنصر {0}"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/SubscribeCard.tsx
 msgid "Join us on Discord"
 msgstr "انضم إلينا على Discord"

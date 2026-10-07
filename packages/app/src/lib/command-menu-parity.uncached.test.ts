@@ -91,6 +91,8 @@ const PALETTE_COMMAND_LABELS = new Set<string>([
   'New Terminal',
   'Kill Terminal',
   'OpenKnowledge on GitHub',
+  'Documentation',
+  'Join us on Discord',
   'Report a bug',
   'Send feedback',
   'Install for Claude Chat & Cowork (desktop app)',
@@ -522,6 +524,8 @@ describe('command identity registry (Phase 2b)', () => {
       'set-up-integrations',
       'toggle-spell-check',
       'open-github',
+      'open-docs',
+      'open-discord',
     ]);
     const missing = COMMAND_IDENTITIES.flatMap((cmd) =>
       cmd.palette && !OVERRIDES.has(cmd.id) && cmd.menuActionId === undefined ? [cmd.id] : [],

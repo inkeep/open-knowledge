@@ -748,7 +748,8 @@ export type OkMenuDispatchRole =
   | 'toggleFullScreen'
   | 'minimize'
   | 'close'
-  | 'quit';
+  | 'quit'
+  | 'about';
 
 export type OkMenuDispatchCommand =
   | 'open-navigator'
@@ -758,6 +759,8 @@ export type OkMenuDispatchCommand =
   | 'check-for-updates'
   | 'reconfigure-mcp-wiring'
   | 'open-github'
+  | 'open-docs'
+  | 'open-discord'
   | 'toggle-spell-check';
 
 export type OkMenuDispatchRequest =

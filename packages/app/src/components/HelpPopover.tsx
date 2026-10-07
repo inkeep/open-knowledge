@@ -23,7 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { feedbackNudgeStore } from '@/lib/feedback-nudge-store';
-import { DISCORD_INVITE_URL, GITHUB_REPO_URL, X_PROFILE_URL } from '@/lib/social-links';
+import { DISCORD_INVITE_URL, DOCS_URL, GITHUB_REPO_URL, X_PROFILE_URL } from '@/lib/social-links';
 import { subscribeCardStore } from '@/lib/subscribe-card-store';
 import { cn } from '@/lib/utils';
 import { FeedbackFormDialog } from './FeedbackFormDialog';
@@ -48,7 +48,7 @@ const sections: ResourceSection[] = [
     key: 'resources',
     heading: msg`Resources`,
     links: [
-      { label: msg`Docs`, href: 'https://openknowledge.ai/docs', icon: BookOpen },
+      { label: msg`Docs`, href: DOCS_URL, icon: BookOpen },
       { label: msg`Download app`, href: 'https://openknowledge.ai/download', icon: Download },
     ],
   },

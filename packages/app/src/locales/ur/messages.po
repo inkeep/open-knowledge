@@ -1561,10 +1561,12 @@ msgid "A worktree folder for that branch already exists."
 msgstr "اس برانچ کے لیے ورک ٹری فولڈر پہلے سے موجود ہے۔"
 
 #: src/lib/native-menu-catalog.ts
+#: src/lib/platform-labels.ts
 msgid "About"
 msgstr "تعارف"
 
 #: src/lib/native-menu-catalog.ts
+#: src/lib/platform-labels.ts
 msgid "About {appName}"
 msgstr "{appName} کے بارے میں"
 
@@ -5355,6 +5357,8 @@ msgstr "دستاویز کا ڈھانچہ"
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "اس ریپو کے ڈھانچے کی دستاویز بنائیں: ایک جائزہ صفحہ بنائیں جو ہر بڑے ماڈیول کے صفحے سے جڑا ہو اور اس کی ذمہ داریاں اور داخلی نقاط بیان کرے۔"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Documentation"
 msgstr "دستاویزات"
@@ -8076,6 +8080,8 @@ msgstr "ترچھا"
 msgid "Item {0}"
 msgstr "آئٹم {0}"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/SubscribeCard.tsx
 msgid "Join us on Discord"
 msgstr "Discord پر ہمارے ساتھ شامل ہوں"

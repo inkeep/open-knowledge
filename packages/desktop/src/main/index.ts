@@ -151,7 +151,6 @@ import { type EntryPoint, isEntryPoint } from '../shared/entry-point.ts';
 import type {
   EditorActiveTargetSnapshot,
   MenuDispatchCommand,
-  MenuDispatchRole,
   OnboardingShowPayload,
   RecentProject,
 } from '../shared/ipc-channels.ts';
@@ -367,6 +366,8 @@ import {
   originForMenuDispatch,
   resolveMenuActionTarget,
 } from './menu-action-target.ts';
+import { menuDispatchHelpLinkUrl } from './menu-dispatch-help-link.ts';
+import { applyMenuDispatchRole } from './menu-dispatch-role.ts';
 import type { MenuTranslator } from './menu-translator.ts';
 import { beginNavigatorHandoff, createNavigatorWindow } from './navigator-window.ts';
 import {
@@ -2459,70 +2460,17 @@ async function runMenuDispatchCommand(
       reconfigureMcpWiringNow(pickLoadedRendererForMcpDialog());
       return;
     case 'open-github':
-      void shell.openExternal('https://github.com/inkeep/open-knowledge');
+    case 'open-docs':
+    case 'open-discord':
+      void shell.openExternal(menuDispatchHelpLinkUrl(command));
       return;
     case 'toggle-spell-check':
       setSpellCheckEnabledAppWide(!appState.spellCheckEnabled);
       return;
-  }
-}
-
-function applyMenuDispatchRole(role: MenuDispatchRole, sender: Electron.WebContents): void {
-  if (role === 'quit') {
-    app.quit();
-    return;
-  }
-  const win = BrowserWindow.fromWebContents(sender) ?? BrowserWindow.getFocusedWindow();
-  if (!win || win.isDestroyed()) return;
-  const wc = win.webContents;
-  switch (role) {
-    case 'undo':
-      wc.undo();
-      return;
-    case 'redo':
-      wc.redo();
-      return;
-    case 'cut':
-      wc.cut();
-      return;
-    case 'copy':
-      wc.copy();
-      return;
-    case 'paste':
-      wc.paste();
-      return;
-    case 'selectAll':
-      wc.selectAll();
-      return;
-    case 'reload':
-      wc.reload();
-      return;
-    case 'forceReload':
-      wc.reloadIgnoringCache();
-      return;
-    case 'toggleDevTools':
-      if (!app.isPackaged || DESKTOP_VARIANT.name !== 'stable') {
-        wc.toggleDevTools();
-      }
-      return;
-    case 'resetZoom':
-      wc.setZoomLevel(0);
-      return;
-    case 'zoomIn':
-      wc.setZoomLevel(wc.getZoomLevel() + 0.5);
-      return;
-    case 'zoomOut':
-      wc.setZoomLevel(wc.getZoomLevel() - 0.5);
-      return;
-    case 'toggleFullScreen':
-      win.setFullScreen(!win.isFullScreen());
-      return;
-    case 'minimize':
-      win.minimize();
-      return;
-    case 'close':
-      win.close();
-      return;
+    default: {
+      const _exhaustive: never = command;
+      return _exhaustive;
+    }
   }
 }
 
@@ -4625,7 +4573,13 @@ function registerIpcHandlers() {
         await runMenuDispatchCommand(request.command, event.sender);
         return undefined;
       case 'role':
-        applyMenuDispatchRole(request.role, event.sender);
+        applyMenuDispatchRole(request.role, event.sender, {
+          quit: () => app.quit(),
+          showAboutPanel: () => app.showAboutPanel(),
+          resolveWindow: (sender) =>
+            BrowserWindow.fromWebContents(sender) ?? BrowserWindow.getFocusedWindow(),
+          devToolsAllowed: !app.isPackaged || DESKTOP_VARIANT.name !== 'stable',
+        });
         return undefined;
       case 'spelling-languages-query':
         return querySpellingLanguages(spellcheckLanguagesDeps);

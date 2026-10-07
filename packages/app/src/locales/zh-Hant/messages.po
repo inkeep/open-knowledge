@@ -1561,10 +1561,12 @@ msgid "A worktree folder for that branch already exists."
 msgstr "該分支的 worktree 資料夾已存在。"
 
 #: src/lib/native-menu-catalog.ts
+#: src/lib/platform-labels.ts
 msgid "About"
 msgstr "關於"
 
 #: src/lib/native-menu-catalog.ts
+#: src/lib/platform-labels.ts
 msgid "About {appName}"
 msgstr "關於 {appName}"
 
@@ -5355,6 +5357,8 @@ msgstr "文件結構"
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "記錄這個儲存庫的架構：建立一頁總覽，連到每個主要模組的頁面，說明各自的職責和進入點。"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Documentation"
 msgstr "說明文件"
@@ -8076,6 +8080,8 @@ msgstr "斜體"
 msgid "Item {0}"
 msgstr "項目 {0}"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/SubscribeCard.tsx
 msgid "Join us on Discord"
 msgstr "來 Discord 加入我們"

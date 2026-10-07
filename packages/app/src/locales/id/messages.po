@@ -1557,10 +1557,12 @@ msgid "A worktree folder for that branch already exists."
 msgstr "Folder worktree untuk cabang itu sudah ada."
 
 #: src/lib/native-menu-catalog.ts
+#: src/lib/platform-labels.ts
 msgid "About"
 msgstr "Tentang"
 
 #: src/lib/native-menu-catalog.ts
+#: src/lib/platform-labels.ts
 msgid "About {appName}"
 msgstr "Tentang {appName}"
 
@@ -5351,6 +5353,8 @@ msgstr "Struktur dokumen"
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "Dokumentasikan arsitektur repo ini: buat halaman ikhtisar yang menaut ke satu halaman per modul utama yang menjelaskan tanggung jawab dan titik masuknya."
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Documentation"
 msgstr "Dokumentasi"
@@ -8072,6 +8076,8 @@ msgstr "Miring"
 msgid "Item {0}"
 msgstr "Item {0}"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/SubscribeCard.tsx
 msgid "Join us on Discord"
 msgstr "Gabung dengan kami di Discord"

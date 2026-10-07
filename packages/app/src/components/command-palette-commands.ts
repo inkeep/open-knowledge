@@ -5,11 +5,16 @@ import {
   evaluateCommandAvailability,
 } from '@inkeep/open-knowledge-core/commands/command-identity';
 import { SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core/constants/feature-flags';
-import { OPEN_KNOWLEDGE_GITHUB_URL } from '@inkeep/open-knowledge-core/constants/menu-labels';
+import {
+  OPEN_KNOWLEDGE_DISCORD_URL,
+  OPEN_KNOWLEDGE_DOCS_URL,
+  OPEN_KNOWLEDGE_GITHUB_URL,
+} from '@inkeep/open-knowledge-core/constants/menu-labels';
 import type { MessageDescriptor } from '@lingui/core';
 import { msg, t } from '@lingui/core/macro';
 import {
   Blocks,
+  BookOpen,
   Bug,
   ChevronLeft,
   ChevronRight,
@@ -45,6 +50,7 @@ import {
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 import { requestDocPanelTab } from '@/components/doc-panel-events';
+import { DiscordIcon } from '@/components/icons/discord';
 import { GithubIcon } from '@/components/icons/github';
 import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
 import { requestSkillsDockExpanded } from '@/components/skills-dock-expanded-store';
@@ -168,6 +174,8 @@ const PALETTE_COMMAND_LABELS = {
   setUpIntegrations: msg`Set up OpenKnowledge integrations`,
   checkSpelling: msg`Check spelling while typing`,
   openOnGithub: msg`OpenKnowledge on GitHub`,
+  openDocs: msg`Documentation`,
+  joinDiscord: msg`Join us on Discord`,
 } as const satisfies Record<string, MessageDescriptor>;
 
 export type PaletteLabelKey = keyof typeof PALETTE_COMMAND_LABELS;
@@ -247,6 +255,8 @@ const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'set-up-integrations': Blocks,
   'toggle-spell-check': SpellCheck,
   'open-github': GithubIcon,
+  'open-docs': BookOpen,
+  'open-discord': DiscordIcon,
 };
 
 const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
@@ -337,6 +347,8 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
       await ctx.bridge?.spellcheck.toggle();
     }),
   'open-github': (ctx) => ctx.openExternalUrl(OPEN_KNOWLEDGE_GITHUB_URL),
+  'open-docs': (ctx) => ctx.openExternalUrl(OPEN_KNOWLEDGE_DOCS_URL),
+  'open-discord': (ctx) => ctx.openExternalUrl(OPEN_KNOWLEDGE_DISCORD_URL),
 };
 
 function paletteCoreContext(ctx: PaletteCommandContext): CommandContext {

@@ -1557,10 +1557,12 @@ msgid "A worktree folder for that branch already exists."
 msgstr "ওই ব্রাঞ্চের জন্য একটি ওয়ার্কট্রি ফোল্ডার আগে থেকেই আছে।"
 
 #: src/lib/native-menu-catalog.ts
+#: src/lib/platform-labels.ts
 msgid "About"
 msgstr "সম্পর্কে"
 
 #: src/lib/native-menu-catalog.ts
+#: src/lib/platform-labels.ts
 msgid "About {appName}"
 msgstr "{appName} সম্পর্কে"
 
@@ -5351,6 +5353,8 @@ msgstr "নথি কাঠামো"
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "এই রিপোজিটরির স্থাপত্য নথিভুক্ত করুন: একটি সংক্ষিপ্তসার পাতা তৈরি করুন যা প্রতিটি প্রধান মডিউলের পাতার সঙ্গে যুক্ত থাকে এবং তার দায়িত্ব ও প্রবেশবিন্দু বর্ণনা করে।"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Documentation"
 msgstr "নথিপত্র"
@@ -8072,6 +8076,8 @@ msgstr "তির্যক"
 msgid "Item {0}"
 msgstr "আইটেম {0}"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/SubscribeCard.tsx
 msgid "Join us on Discord"
 msgstr "Discord-এ আমাদের সঙ্গে যোগ দিন"

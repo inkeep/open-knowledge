@@ -19,7 +19,7 @@ import type {
   OkMenuRendererSnapshot,
   OkMenuUiDispatchRequest,
 } from '@/lib/desktop-bridge-types';
-import { moveToTrashLabel, revealInFileManagerLabel } from '@/lib/platform-labels';
+import { aboutAppLabel, moveToTrashLabel, revealInFileManagerLabel } from '@/lib/platform-labels';
 
 export function AppMenubar() {
   const { t } = useLingui();
@@ -347,6 +347,12 @@ export function AppMenubar() {
           <MenubarItem onSelect={() => dispatch({ kind: 'command', command: 'open-github' })}>
             {t`OpenKnowledge on GitHub`}
           </MenubarItem>
+          <MenubarItem onSelect={() => dispatch({ kind: 'command', command: 'open-docs' })}>
+            {t`Documentation`}
+          </MenubarItem>
+          <MenubarItem onSelect={() => dispatch({ kind: 'command', command: 'open-discord' })}>
+            {t`Join us on Discord`}
+          </MenubarItem>
           <MenubarItem onSelect={() => dispatch({ kind: 'menu-action', action: 'report-bug' })}>
             {t`Report a bug…`}
             <MenubarShortcut>Ctrl+Shift+D</MenubarShortcut>
@@ -364,6 +370,10 @@ export function AppMenubar() {
               </MenubarItem>
             </>
           )}
+          <MenubarSeparator />
+          <MenubarItem onSelect={() => dispatch({ kind: 'role', role: 'about' })}>
+            {aboutAppLabel(bridge.platform)}
+          </MenubarItem>
         </MenubarContent>
       </MenubarMenu>
     </Menubar>

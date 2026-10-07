@@ -96,6 +96,47 @@ describe('AppMenubar Help menu', () => {
     expect(screen.getByRole('menuitem', { name: 'Send feedback…' })).not.toBeNull();
     expect(screen.getByRole('menuitem', { name: 'OpenKnowledge on GitHub' })).not.toBeNull();
   });
+
+  test('lists the resource links after GitHub and ends with About', async () => {
+    installBridge('win32');
+    await openHelpMenu();
+
+    const labels = within(screen.getByRole('menu'))
+      .getAllByRole('menuitem')
+      .map((item) => item.textContent);
+    expect(labels).toEqual([
+      'OpenKnowledge on GitHub',
+      'Documentation',
+      'Join us on Discord',
+      'Report a bug…Ctrl+Shift+D',
+      'Send feedback…',
+      'About OpenKnowledge',
+    ]);
+  });
+
+  test.each([
+    ['Documentation', 'open-docs'],
+    ['Join us on Discord', 'open-discord'],
+  ] as const)('%s dispatches the %s command', async (name, command) => {
+    const dispatch = installBridge('win32');
+    await openHelpMenu();
+
+    await userEvent.click(screen.getByRole('menuitem', { name }));
+
+    expect(dispatch).toHaveBeenCalledWith({ kind: 'command', command });
+  });
+
+  test.each([
+    ['win32', 'About OpenKnowledge'],
+    ['linux', 'About'],
+  ] as const)('About on %s reads "%s" and dispatches the about role', async (platform, name) => {
+    const dispatch = installBridge(platform);
+    await openHelpMenu();
+
+    await userEvent.click(screen.getByRole('menuitem', { name }));
+
+    expect(dispatch).toHaveBeenCalledWith({ kind: 'role', role: 'about' });
+  });
 });
 
 describe('AppMenubar View navigation history', () => {

@@ -1561,10 +1561,12 @@ msgid "A worktree folder for that branch already exists."
 msgstr "해당 브랜치용 워크트리 폴더가 이미 있습니다."
 
 #: src/lib/native-menu-catalog.ts
+#: src/lib/platform-labels.ts
 msgid "About"
 msgstr "정보"
 
 #: src/lib/native-menu-catalog.ts
+#: src/lib/platform-labels.ts
 msgid "About {appName}"
 msgstr "{appName} 정보"
 
@@ -5355,6 +5357,8 @@ msgstr "문서 구조"
 msgid "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
 msgstr "이 리포지토리의 아키텍처를 문서화합니다. 개요 페이지를 만들고 각 주요 모듈의 책임과 진입점을 설명하는 페이지로 연결합니다."
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Documentation"
 msgstr "문서"
@@ -8076,6 +8080,8 @@ msgstr "기울임꼴"
 msgid "Item {0}"
 msgstr "항목 {0}"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
 #: src/components/SubscribeCard.tsx
 msgid "Join us on Discord"
 msgstr "Discord에서 함께하기"
