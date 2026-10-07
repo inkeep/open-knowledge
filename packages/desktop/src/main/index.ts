@@ -4838,6 +4838,11 @@ function registerIpcHandlers() {
             foreignSkipped: 0,
             unknownSkipped: 0,
           },
+        minidumpForCrashEvent: (eventId) =>
+          crashDetection?.minidumpForCrashEvent(eventId) ?? {
+            status: 'omitted',
+            reason: 'invitation-unbound',
+          },
         screenshotPngBytes: () => bugReportScreenshots.get(event.sender.id)?.png ?? null,
         onScreenshotStaged: (reportId, png) => {
           const composedBy = event.sender.id;

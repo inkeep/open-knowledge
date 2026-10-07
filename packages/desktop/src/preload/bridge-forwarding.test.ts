@@ -197,6 +197,7 @@ describe('preload bugReport.create marshalling', () => {
       includeCrashDump: true,
       includeScreenshot: true,
       attachments: [{ contentType: 'image/png', bytes: new Uint8Array([1, 2, 3]) }],
+      crashEventId: 'boot:dump:1751871600000',
     };
 
     await bridge.bugReport.create(request);

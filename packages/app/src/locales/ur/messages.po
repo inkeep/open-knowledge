@@ -14741,6 +14741,10 @@ msgstr "گفتگو اس رپورٹ میں شامل نہیں کی جا سکی۔"
 msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
 msgstr "{scopeLabel} میں رکھی گئی “{name}” کی کاپی ایک غیر ضروری نقل ہے: جانچ میں اصل غیر تبدیل شدہ پایا گیا۔ وہ کاپی حذف کریں، پھر منتقلی دوبارہ آزمائیں۔"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "The crash dump couldn't be added to this report."
+msgstr "کریش ڈمپ اس رپورٹ میں شامل نہیں کیا جا سکا۔"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "The default branch is protected — pushes need a pull request."
 msgstr "طے شدہ برانچ محفوظ ہے — پُش کے لیے پُل ریکویسٹ درکار ہے۔"

@@ -14737,6 +14737,10 @@ msgstr "Percakapan tidak dapat ditambahkan ke laporan ini."
 msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
 msgstr "Salinan “{name}” yang disimpan di {scopeLabel} adalah duplikat yang tidak diperlukan: aslinya sudah diverifikasi tidak berubah. Hapus salinan itu, lalu coba pemindahan lagi."
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "The crash dump couldn't be added to this report."
+msgstr "Crash dump tidak dapat ditambahkan ke laporan ini."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "The default branch is protected — pushes need a pull request."
 msgstr "Cabang bawaannya terlindungi — push memerlukan pull request."

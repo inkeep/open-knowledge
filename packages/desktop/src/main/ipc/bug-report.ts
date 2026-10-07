@@ -42,7 +42,11 @@ import {
   stageAgentChatTranscript,
 } from '../bug-report-agent-chat.ts';
 import { type BugReportSendTrace, beginSendTrace } from '../bug-report-trace.ts';
-import type { MinidumpReportLookup } from '../crash-detection.ts';
+import type {
+  BoundMinidumpOmission,
+  CrashEventMinidumpLookup,
+  MinidumpReportLookup,
+} from '../crash-detection.ts';
 import { logIpcError } from '../ipc-log.ts';
 import {
   readMinidumpAccessibilityMode,
@@ -59,6 +63,7 @@ export interface OkBugReportCreateRequest {
   includeScreenshot?: boolean;
   attachments?: OkBugReportAttachmentInput[];
   agentChatThreadId?: string;
+  crashEventId?: string;
 }
 
 interface OkBugReportCaptureScreenshotRequest {
@@ -115,6 +120,7 @@ export interface BugReportCreateDeps {
   outputPath?: string;
   userLogsDir?: string;
   newestMinidumpForReport?: () => MinidumpReportLookup;
+  minidumpForCrashEvent?: (eventId: string) => CrashEventMinidumpLookup;
   screenshotPngBytes?: () => Buffer | null;
   logger?: BundleLogger;
   flushLogger?: () => void;
@@ -131,6 +137,12 @@ export interface StagedAttachment {
 }
 
 const MAX_NOTE_LENGTH = 32_768;
+
+const MAX_CRASH_EVENT_ID_LENGTH = 256;
+
+function isCrashEventId(value: unknown): value is string {
+  return typeof value === 'string' && value !== '' && value.length <= MAX_CRASH_EVENT_ID_LENGTH;
+}
 
 function isValidNote(note: unknown): boolean {
   return note === undefined || (typeof note === 'string' && note.length <= MAX_NOTE_LENGTH);
@@ -177,7 +189,8 @@ function isCreateRequest(request: unknown): request is OkBugReportCreateRequest 
     (r.includeCrashDump === undefined || typeof r.includeCrashDump === 'boolean') &&
     (r.includeScreenshot === undefined || typeof r.includeScreenshot === 'boolean') &&
     isValidAttachments(r.attachments) &&
-    (r.agentChatThreadId === undefined || isAgentChatThreadId(r.agentChatThreadId))
+    (r.agentChatThreadId === undefined || isAgentChatThreadId(r.agentChatThreadId)) &&
+    (r.crashEventId === undefined || isCrashEventId(r.crashEventId))
   );
 }
 
@@ -186,7 +199,8 @@ type MinidumpAttachReason =
   | 'declined'
   | 'not-offered'
   | 'none-available'
-  | 'stage-failed';
+  | 'stage-failed'
+  | BoundMinidumpOmission;
 
 const NO_MINIDUMP_LOOKUP: MinidumpReportLookup = {
   path: null,
@@ -206,10 +220,11 @@ export type MinidumpIntent =
 export function resolveMinidumpIntent(input: {
   requested: boolean | undefined;
   minidumpPath: string | null;
+  unavailableReason?: BoundMinidumpOmission;
 }): MinidumpIntent {
   if (input.requested === undefined) return { reason: 'not-offered' };
   if (input.requested === false) return { reason: 'declined' };
-  if (input.minidumpPath === null) return { reason: 'none-available' };
+  if (input.minidumpPath === null) return { reason: input.unavailableReason ?? 'none-available' };
   return { reason: 'staging', zipEntry: `extra/${basename(input.minidumpPath)}` };
 }
 
@@ -219,6 +234,55 @@ export function resolveMinidumpAttachment(
 ): { attached: true; reason: 'attached' } | { attached: false; reason: 'stage-failed' } {
   if (bundledFiles.includes(intent.zipEntry)) return { attached: true, reason: 'attached' };
   return { attached: false, reason: 'stage-failed' };
+}
+
+type MinidumpSelectionFacts =
+  | { dumpSelection: 'crash-event'; crashEventId: string }
+  | { dumpSelection: 'newest'; foreignDumpsIgnored: number; unreadableDumpsSkipped: number };
+
+type MinidumpSelection =
+  | { status: 'not-requested' }
+  | { status: 'selected'; path: string; facts: MinidumpSelectionFacts }
+  | { status: 'unavailable'; reason?: BoundMinidumpOmission; facts: MinidumpSelectionFacts };
+
+function selectMinidump(
+  deps: BugReportCreateDeps,
+  request: OkBugReportCreateRequest,
+): MinidumpSelection {
+  if (request.includeCrashDump !== true) return { status: 'not-requested' };
+  if (request.crashEventId !== undefined) {
+    const facts: MinidumpSelectionFacts = {
+      dumpSelection: 'crash-event',
+      crashEventId: request.crashEventId,
+    };
+    const bound: CrashEventMinidumpLookup = deps.minidumpForCrashEvent?.(request.crashEventId) ?? {
+      status: 'omitted',
+      reason: 'invitation-unbound',
+    };
+    switch (bound.status) {
+      case 'bound':
+        return { status: 'selected', path: bound.path, facts };
+      case 'none-bound':
+        return { status: 'unavailable', facts };
+      case 'omitted':
+        return { status: 'unavailable', reason: bound.reason, facts };
+      default:
+        return assertNeverCrashEventMinidumpLookup(bound);
+    }
+  }
+  const lookup = deps.newestMinidumpForReport?.() ?? NO_MINIDUMP_LOOKUP;
+  const facts: MinidumpSelectionFacts = {
+    dumpSelection: 'newest',
+    foreignDumpsIgnored: lookup.foreignSkipped,
+    unreadableDumpsSkipped: lookup.unknownSkipped,
+  };
+  return lookup.path === null
+    ? { status: 'unavailable', facts }
+    : { status: 'selected', path: lookup.path, facts };
+}
+
+function assertNeverCrashEventMinidumpLookup(value: never): never {
+  throw new Error(`unhandled crash-event minidump lookup: ${JSON.stringify(value)}`);
 }
 
 function recordMinidumpDecision(
@@ -334,14 +398,13 @@ export async function handleBugReportCreate(
     });
     return { ok: false, error: 'invalid-request' };
   }
-  const minidumpLookup =
-    request.includeCrashDump === true
-      ? (deps.newestMinidumpForReport?.() ?? NO_MINIDUMP_LOOKUP)
-      : NO_MINIDUMP_LOOKUP;
-  const minidumpPath = minidumpLookup.path;
+  const selection = selectMinidump(deps, request);
+  const minidumpPath = selection.status === 'selected' ? selection.path : null;
+  const unavailableReason = selection.status === 'unavailable' ? selection.reason : undefined;
   const intent = resolveMinidumpIntent({
     requested: request.includeCrashDump,
     minidumpPath,
+    ...(unavailableReason !== undefined ? { unavailableReason } : {}),
   });
   const screenshotBytes =
     request.includeScreenshot === true ? (deps.screenshotPngBytes?.() ?? null) : null;
@@ -360,15 +423,10 @@ export async function handleBugReportCreate(
   const dumpDisplayLock = minidumpPath === null ? null : readMinidumpDisplayLockState(minidumpPath);
 
   const decisionFacts = {
+    ...(selection.status === 'not-requested' ? {} : selection.facts),
     event: 'bug-report.minidump-decision',
-    requested: request.includeCrashDump === true,
-    ...(request.includeCrashDump === true
-      ? {
-          minidumpAvailable: minidumpPath !== null,
-          foreignDumpsIgnored: minidumpLookup.foreignSkipped,
-          unreadableDumpsSkipped: minidumpLookup.unknownSkipped,
-        }
-      : {}),
+    requested: selection.status !== 'not-requested',
+    ...(selection.status === 'not-requested' ? {} : { minidumpAvailable: minidumpPath !== null }),
     ...(dumpSizeBytes !== undefined ? { sizeBytes: dumpSizeBytes } : {}),
     ...(dumpAccessibilityMode === null
       ? {}
@@ -384,11 +442,14 @@ export async function handleBugReportCreate(
         }),
   };
 
+  const boundDumpOmitted = unavailableReason !== undefined;
   recordMinidumpDecision(
     deps.logger,
-    'info',
+    boundDumpOmitted ? 'warn' : 'info',
     { ...decisionFacts, phase: 'intent', reason: intent.reason },
-    'bug-report: crash-dump decision recorded before collection',
+    boundDumpOmitted
+      ? 'bug-report: the crash dump this report was invited for is no longer attachable; the report goes without it'
+      : 'bug-report: crash-dump decision recorded before collection',
   );
   try {
     deps.flushLogger?.();
@@ -1361,7 +1422,7 @@ export interface BugReportCrashAckDeps {
 function isCrashAckRequest(request: unknown): request is OkBugReportCrashAckRequest {
   if (typeof request !== 'object' || request === null) return false;
   const r = request as Record<string, unknown>;
-  return r.kind === 'crash-ack' && typeof r.eventId === 'string' && r.eventId !== '';
+  return r.kind === 'crash-ack' && isCrashEventId(r.eventId);
 }
 
 export function handleBugReportCrashAck(

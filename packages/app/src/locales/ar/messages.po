@@ -14741,6 +14741,10 @@ msgstr "تعذّرت إضافة المحادثة إلى هذا التقرير."
 msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
 msgstr "النسخة من “{name}” المحفوظة في {scopeLabel} هي نسخة مكررة زائدة: تم التحقق من أن الأصل لم يتغير. احذف تلك النسخة ثم أعد محاولة النقل."
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "The crash dump couldn't be added to this report."
+msgstr "تعذّرت إضافة تفريغ الأعطال إلى هذا التقرير."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "The default branch is protected — pushes need a pull request."
 msgstr "الفرع الافتراضي محمي — يتطلب الدفع طلب سحب."

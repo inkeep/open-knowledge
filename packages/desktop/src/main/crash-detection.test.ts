@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
@@ -60,6 +61,8 @@ interface Rig {
   ownDumpWithAxMode(version: string, mode: string): Buffer;
   ownDumpWithProcessType(processType: string, version?: string): Buffer;
   ownDumpSimulated: Buffer;
+  ownDumpCrashed: Buffer;
+  ownSizedForeignDump: Buffer;
   setRendererAvailable(available: boolean): void;
   setBootSessionUuid(uuid: string | null): void;
   setInstallInFlight(inFlight: InstallInFlight | null): void;
@@ -108,6 +111,12 @@ function makeRig(): Rig {
     infos,
     ownDump: buildMinidump(ownModules),
     ownDumpSimulated: buildMinidump(ownModules, { exceptionCode: 0x4350_7378 }),
+    ownDumpCrashed: buildMinidump(ownModules, { exceptionCode: 0xc000_0005 }),
+    ownSizedForeignDump: buildMinidump(
+      ownModules.map((modulePath) =>
+        modulePath.replace(appBundleRoot, join(dir, 'Applicationz', 'OpenKnowledge.app')),
+      ),
+    ),
     ownDumpStamped: (version: string) =>
       buildMinidump(ownModules, {
         annotations: { _productName: 'OpenKnowledge', _version: version, prod: 'Electron' },
@@ -1154,7 +1163,7 @@ describe('crash-dump ownership filtering', () => {
 
     expect(
       warnLines.find((line) => line.event === 'crash-detection.render-process-gone')
-        ?.foreignDumpsIgnored,
+        ?.deathWindowForeignSkipped,
     ).toBe(1);
   });
 
@@ -1173,8 +1182,8 @@ describe('crash-dump ownership filtering', () => {
     detection.handleRenderProcessGone({ reason: 'crashed' });
 
     const line = warnLines.find((l) => l.event === 'crash-detection.render-process-gone');
-    expect(line?.unreadableDumpsSkipped).toBe(1);
-    expect(line?.foreignDumpsIgnored).toBe(0);
+    expect(line?.deathWindowUnreadableSkipped).toBe(1);
+    expect(line?.deathWindowForeignSkipped).toBe(0);
     expect(rig.emitted[0]?.minidumpAvailable).toBe(false);
   });
 
@@ -1193,7 +1202,7 @@ describe('crash-dump ownership filtering', () => {
     detection.handleChildProcessGone({ type: 'Utility', reason: 'crashed' });
 
     const line = warnLines.find((l) => l.event === 'crash-detection.child-process-gone');
-    expect(line?.foreignDumpsIgnored).toBe(0);
+    expect(line?.deathWindowForeignSkipped).toBe(0);
     expect(rig.emitted[0]?.minidumpAvailable).toBe(true);
   });
 
@@ -1736,9 +1745,9 @@ describe('non-crash minidumps', () => {
     detection.handleRenderProcessGone({ reason: 'crashed', exitCode: 5 });
 
     const logged = rig.warnings.at(-1);
-    expect(logged?.nonCrashDumpsSkipped).toBe(1);
-    expect(logged?.foreignDumpsIgnored).toBe(0);
-    expect(logged?.unreadableDumpsSkipped).toBe(0);
+    expect(logged?.deathWindowSnapshotSkipped).toBe(1);
+    expect(logged?.deathWindowForeignSkipped).toBe(0);
+    expect(logged?.deathWindowUnreadableSkipped).toBe(0);
   });
 });
 
@@ -3513,5 +3522,561 @@ describe('how the previous main process exited', () => {
     expect(parseMainExitRecord('null')).toBeNull();
     expect(parseMainExitRecord('[]')).toBeNull();
     expect(parseMainExitRecord('{"schemaVersion":1')).toBeNull();
+  });
+});
+
+describe('the dump a report invitation is bound to', () => {
+  function afterCleanQuit(rig: Rig): void {
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.markCleanQuit();
+  }
+
+  function overwriteKeepingStamp(path: string, bytes: Buffer): void {
+    const { mtime } = statSync(path);
+    writeFileSync(path, bytes);
+    utimesSync(path, mtime, mtime);
+  }
+
+  test('a boot invitation binds the dump that armed it, not one written after detection', () => {
+    const rig = makeRig();
+    afterCleanQuit(rig);
+    const armingPath = seedMinidump(rig, 'pending/first-crash.dmp', rig.tick());
+
+    const session = createCrashDetection(rig.deps);
+    const armed = bootInvite(session.detectBootCrash());
+    seedMinidump(rig, 'pending/second-crash.dmp', rig.tick());
+
+    expect(session.newestMinidumpForReport().path).not.toBe(armingPath);
+    expect(session.minidumpForCrashEvent(armed.eventId)).toEqual({
+      status: 'bound',
+      path: armingPath,
+    });
+  });
+
+  test('Crashpad moving the bound dump between its database folders keeps the binding', () => {
+    const rig = makeRig();
+    afterCleanQuit(rig);
+    const at = rig.tick();
+    const pendingPath = seedMinidump(rig, 'pending/moved.dmp', at);
+
+    const session = createCrashDetection(rig.deps);
+    const armed = bootInvite(session.detectBootCrash());
+    const completedPath = seedMinidump(rig, 'completed/moved.dmp', at);
+    rmSync(pendingPath);
+
+    expect(session.minidumpForCrashEvent(armed.eventId)).toEqual({
+      status: 'bound',
+      path: completedPath,
+    });
+  });
+
+  test('a bound dump Crashpad rotated away is reported missing, never substituted', () => {
+    const rig = makeRig();
+    afterCleanQuit(rig);
+    const armingPath = seedMinidump(rig, 'pending/rotated.dmp', rig.tick());
+
+    const session = createCrashDetection(rig.deps);
+    const armed = bootInvite(session.detectBootCrash());
+    seedMinidump(rig, 'pending/later.dmp', rig.tick());
+    rmSync(armingPath);
+
+    expect(session.minidumpForCrashEvent(armed.eventId)).toEqual({
+      status: 'omitted',
+      reason: 'bound-dump-missing',
+    });
+  });
+
+  test('a bound dump whose bytes changed size is reported changed', () => {
+    const rig = makeRig();
+    afterCleanQuit(rig);
+    const armingPath = seedMinidump(rig, 'pending/rewritten.dmp', rig.tick());
+
+    const session = createCrashDetection(rig.deps);
+    const armed = bootInvite(session.detectBootCrash());
+    overwriteKeepingStamp(armingPath, Buffer.concat([rig.ownDump, Buffer.from([0])]));
+
+    expect(session.minidumpForCrashEvent(armed.eventId)).toEqual({
+      status: 'omitted',
+      reason: 'bound-dump-changed',
+    });
+  });
+
+  test('two files answering to the bound dump are reported ambiguous', () => {
+    const rig = makeRig();
+    afterCleanQuit(rig);
+    const at = rig.tick();
+    seedMinidump(rig, 'pending/twin.dmp', at);
+
+    const session = createCrashDetection(rig.deps);
+    const armed = bootInvite(session.detectBootCrash());
+    seedMinidump(rig, 'completed/twin.dmp', at);
+
+    expect(session.minidumpForCrashEvent(armed.eventId)).toEqual({
+      status: 'omitted',
+      reason: 'bound-dump-ambiguous',
+    });
+  });
+
+  test('a bound dump that now names another application is re-checked and refused as not ours', () => {
+    const rig = makeRig();
+    afterCleanQuit(rig);
+    const armingPath = seedMinidump(rig, 'pending/claimed.dmp', rig.tick());
+
+    const session = createCrashDetection(rig.deps);
+    const armed = bootInvite(session.detectBootCrash());
+    expect(rig.ownSizedForeignDump.length).toBe(rig.ownDump.length);
+    overwriteKeepingStamp(armingPath, rig.ownSizedForeignDump);
+
+    expect(session.minidumpForCrashEvent(armed.eventId)).toEqual({
+      status: 'omitted',
+      reason: 'bound-dump-not-owned',
+    });
+  });
+
+  test('a bound dump that can no longer be read is reported unreadable, not as foreign', () => {
+    const rig = makeRig();
+    afterCleanQuit(rig);
+    const armingPath = seedMinidump(rig, 'pending/torn.dmp', rig.tick());
+
+    const session = createCrashDetection(rig.deps);
+    const armed = bootInvite(session.detectBootCrash());
+    overwriteKeepingStamp(armingPath, Buffer.alloc(rig.ownDump.length, 0x41));
+
+    expect(session.minidumpForCrashEvent(armed.eventId)).toEqual({
+      status: 'omitted',
+      reason: 'bound-dump-unreadable',
+    });
+  });
+
+  test('a bound dump that now reads as a snapshot is re-checked and refused', () => {
+    const rig = makeRig();
+    afterCleanQuit(rig);
+    const armingPath = seedMinidump(rig, 'pending/crashed.dmp', rig.tick(), rig.ownDumpCrashed);
+
+    const session = createCrashDetection(rig.deps);
+    const armed = bootInvite(session.detectBootCrash());
+    expect(rig.ownDumpSimulated.length).toBe(rig.ownDumpCrashed.length);
+    overwriteKeepingStamp(armingPath, rig.ownDumpSimulated);
+
+    expect(session.minidumpForCrashEvent(armed.eventId)).toEqual({
+      status: 'omitted',
+      reason: 'bound-dump-non-crash',
+    });
+  });
+
+  test('a dirty shutdown with no dump binds none, even once a dump appears', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const session = createCrashDetection(rig.deps);
+    const armed = bootInvite(session.detectBootCrash());
+    expect(armed.minidumpAvailable).toBe(false);
+    seedMinidump(rig, 'pending/after-recovery.dmp', rig.tick());
+
+    expect(session.newestMinidumpForReport().path).not.toBeNull();
+    expect(session.minidumpForCrashEvent(armed.eventId)).toEqual({ status: 'none-bound' });
+  });
+
+  test('an event this process never armed is unbound, whatever is on disk', () => {
+    const rig = makeRig();
+    afterCleanQuit(rig);
+    const session = createCrashDetection(rig.deps);
+    expect(session.detectBootCrash()).toBeNull();
+    seedMinidump(rig, 'pending/unrelated.dmp', rig.tick());
+
+    expect(session.minidumpForCrashEvent('boot:dump:1')).toEqual({
+      status: 'omitted',
+      reason: 'invitation-unbound',
+    });
+  });
+
+  test('a renderer crash binds the dump on disk when it died; a later crash stays silent and unbound', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+    const firstPath = seedMinidump(rig, 'completed/renderer-a.dmp', rig.tick());
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+    const first = rig.emitted[0];
+    if (first === undefined) throw new Error('expected a renderer invitation');
+
+    seedMinidump(rig, 'completed/renderer-b.dmp', rig.tick());
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+
+    expect(rig.emitted).toHaveLength(1);
+    expect(detection.minidumpForCrashEvent(first.eventId)).toEqual({
+      status: 'bound',
+      path: firstPath,
+    });
+  });
+
+  test('a child-process crash binds its own dump on disk, past a newer foreign dump and a later crash', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+    const ownPath = seedMinidump(rig, 'completed/utility.dmp', rig.tick());
+    seedMinidump(rig, 'completed/foreign.dmp', rig.tick(), FOREIGN_DUMP);
+    detection.handleChildProcessGone({ type: 'Utility', reason: 'crashed' });
+    const invite = rig.emitted[0];
+    if (invite === undefined) throw new Error('expected a child-process invitation');
+    expect(invite.kind).toBe('child-process-gone');
+
+    const laterPath = seedMinidump(rig, 'completed/later.dmp', rig.tick());
+
+    expect(detection.newestMinidumpForReport().path).toBe(laterPath);
+    expect(detection.minidumpForCrashEvent(invite.eventId)).toEqual({
+      status: 'bound',
+      path: ownPath,
+    });
+  });
+
+  function sessionOnStoppedClock(rig: Rig) {
+    rig.deps.now = () => new Date(rig.nowMs());
+    const detection = createCrashDetection(rig.deps);
+    rig.advance(60_000);
+    return detection;
+  }
+
+  function deathLine(rig: Rig, eventId: string): Record<string, unknown> | undefined {
+    return rig.warnings.find((line) => line.eventId === eventId);
+  }
+
+  test('a renderer dump that lands after the death is offered and bound to that death', () => {
+    const rig = makeRig();
+    const detection = sessionOnStoppedClock(rig);
+    rig.setRendererAvailable(false);
+    const diedAtMs = rig.nowMs();
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+    rig.advance(2_000);
+    const dumpPath = seedMinidump(
+      rig,
+      'pending/renderer.dmp',
+      new Date(diedAtMs + 2_000),
+      rig.ownDumpWithProcessType('renderer'),
+    );
+    rig.advance(3_000);
+
+    rig.setRendererAvailable(true);
+    detection.notifyRendererReady();
+    const invite = rig.emitted[0];
+    if (invite === undefined) throw new Error('expected a renderer invitation');
+    expect(invite.eventId).toBe(`crash:render:${diedAtMs}:0`);
+    expect(deathLine(rig, invite.eventId)?.deathWindowOutcome).toBe('no-dump-near-death');
+    expect(
+      rig.infos.find(
+        (line) => line.event === 'crash-detection.invitation-dump-availability-changed',
+      ),
+    ).toMatchObject({ eventId: invite.eventId, minidumpAvailable: true });
+    expect(
+      rig.infos.find((line) => line.event === 'crash-detection.invitation-dump-bound'),
+    ).toMatchObject({ eventId: invite.eventId, deathWindowDump: 'renderer.dmp' });
+    expect(rig.infos.some((line) => line.event === 'crash-detection.invitation-dump-rebound')).toBe(
+      false,
+    );
+
+    expect(invite.minidumpAvailable).toBe(true);
+    rig.advance(60_000);
+    expect(detection.minidumpForCrashEvent(invite.eventId)).toEqual({
+      status: 'bound',
+      path: dumpPath,
+    });
+    expect(
+      rig.infos.find((line) => line.event === 'crash-detection.invitation-dump-settled'),
+    ).toMatchObject({ eventId: invite.eventId, settledDump: 'renderer.dmp', settledFrom: 'scan' });
+  });
+
+  test('a dump Crashpad was still writing when the renderer died binds in its finished form', () => {
+    const rig = makeRig();
+    const detection = sessionOnStoppedClock(rig);
+    const diedAtMs = rig.nowMs();
+    const writingPath = seedMinidump(rig, 'new/renderer.dmp', new Date(diedAtMs - 1_000));
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+    const invite = rig.emitted[0];
+    if (invite === undefined) throw new Error('expected a renderer invitation');
+    expect(invite.eventId).toBe(`crash:render:${diedAtMs}:0`);
+    expect(invite.minidumpAvailable).toBe(true);
+
+    expect(rig.ownDumpCrashed.length).not.toBe(rig.ownDump.length);
+    rig.advance(1_000);
+    rmSync(writingPath);
+    const finishedPath = seedMinidump(
+      rig,
+      'pending/renderer.dmp',
+      new Date(diedAtMs + 1_000),
+      rig.ownDumpCrashed,
+    );
+    rig.advance(60_000);
+
+    expect(detection.minidumpForCrashEvent(invite.eventId)).toEqual({
+      status: 'bound',
+      path: finishedPath,
+    });
+  });
+
+  test('the death log names the dump the death-window scan bound, and no path', () => {
+    const rig = makeRig();
+    const detection = sessionOnStoppedClock(rig);
+    seedMinidump(rig, 'completed/foreign.dmp', new Date(rig.nowMs() - 500), FOREIGN_DUMP);
+    seedMinidump(rig, 'completed/renderer.dmp', new Date(rig.nowMs() - 1_000));
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+    const invite = rig.emitted[0];
+    if (invite === undefined) throw new Error('expected a renderer invitation');
+
+    const line = deathLine(rig, invite.eventId);
+    expect(line).toMatchObject({
+      event: 'crash-detection.render-process-gone',
+      deathWindowOutcome: 'bound',
+      deathWindowDump: 'renderer.dmp',
+      deathWindowDumpCount: 2,
+      deathWindowForeignSkipped: 1,
+      deathWindowAcknowledgedSkipped: 0,
+    });
+    expect(JSON.stringify(line)).not.toContain(rig.dir);
+  });
+
+  test('a crash after the user dismissed the last one never binds the dismissed dump', () => {
+    const rig = makeRig();
+    const detection = sessionOnStoppedClock(rig);
+    seedMinidump(rig, 'completed/first.dmp', new Date(rig.nowMs() - 1_000));
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+    const first = rig.emitted[0];
+    if (first === undefined) throw new Error('expected the first renderer invitation');
+    expect(first.minidumpAvailable).toBe(true);
+    rig.advance(5_000);
+    detection.ack(first.eventId);
+    rig.advance(5_000);
+
+    const secondDiedAtMs = rig.nowMs();
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+    const second = rig.emitted[1];
+    if (second === undefined) throw new Error('expected the second renderer invitation');
+
+    expect(second.minidumpAvailable).toBe(false);
+    expect(deathLine(rig, second.eventId)).toMatchObject({
+      deathWindowOutcome: 'none-attachable',
+      deathWindowDump: null,
+      deathWindowAcknowledgedSkipped: 1,
+    });
+    rig.advance(15_000);
+    const ownPath = seedMinidump(rig, 'completed/second.dmp', new Date(secondDiedAtMs + 15_000));
+    rig.advance(60_000);
+    expect(detection.minidumpForCrashEvent(second.eventId)).toEqual({
+      status: 'bound',
+      path: ownPath,
+    });
+  });
+
+  test('once the death window has closed, a vanished bound dump is reported missing, not replaced', () => {
+    const rig = makeRig();
+    const detection = sessionOnStoppedClock(rig);
+    const diedAtMs = rig.nowMs();
+    const boundPath = seedMinidump(rig, 'completed/bound.dmp', new Date(diedAtMs - 1_000));
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+    const invite = rig.emitted[0];
+    if (invite === undefined) throw new Error('expected a renderer invitation');
+    expect(invite.minidumpAvailable).toBe(true);
+
+    rig.advance(60_000);
+    rmSync(boundPath);
+    seedMinidump(rig, 'completed/other.dmp', new Date(diedAtMs + 5_000));
+
+    expect(detection.minidumpForCrashEvent(invite.eventId)).toEqual({
+      status: 'omitted',
+      reason: 'bound-dump-missing',
+    });
+    expect(
+      rig.infos.find((line) => line.event === 'crash-detection.invitation-dump-settled'),
+    ).toMatchObject({
+      eventId: invite.eventId,
+      settledDump: 'bound.dmp',
+      settledFrom: 'held-missing',
+      heldDumpVanished: true,
+    });
+  });
+
+  test('a held dump the settling scan now skips settles as held, and staging says why it is left out', () => {
+    const rig = makeRig();
+    const detection = sessionOnStoppedClock(rig);
+    const diedAtMs = rig.nowMs();
+    const boundPath = seedMinidump(rig, 'completed/bound.dmp', new Date(diedAtMs - 1_000));
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+    const invite = rig.emitted[0];
+    if (invite === undefined) throw new Error('expected a renderer invitation');
+    expect(invite.minidumpAvailable).toBe(true);
+
+    rig.advance(2_000);
+    expect(UNPARSEABLE_DUMP.length).not.toBe(rig.ownDump.length);
+    seedMinidump(rig, 'completed/bound.dmp', new Date(diedAtMs + 2_000), UNPARSEABLE_DUMP);
+    expect(statSync(boundPath).size).toBe(UNPARSEABLE_DUMP.length);
+    rig.advance(60_000);
+
+    expect(detection.minidumpForCrashEvent(invite.eventId)).toEqual({
+      status: 'omitted',
+      reason: 'bound-dump-unreadable',
+    });
+    expect(
+      rig.infos.find((line) => line.event === 'crash-detection.invitation-dump-settled'),
+    ).toMatchObject({
+      eventId: invite.eventId,
+      settledDump: 'bound.dmp',
+      settledFrom: 'held',
+      heldDumpVanished: false,
+      deathWindowOutcome: 'none-attachable',
+      deathWindowUnreadableSkipped: 1,
+    });
+  });
+
+  function heldOlderDumpThenOwnDump(rig: Rig) {
+    const detection = sessionOnStoppedClock(rig);
+    const diedAtMs = rig.nowMs();
+    seedMinidump(rig, 'completed/older.dmp', new Date(diedAtMs - 20_000));
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+    const invite = rig.emitted[0];
+    if (invite === undefined) throw new Error('expected a renderer invitation');
+    expect(invite.minidumpAvailable).toBe(true);
+    rig.advance(1_000);
+    const ownPath = seedMinidump(rig, 'completed/own.dmp', new Date(diedAtMs + 1_000));
+    return { detection, invite, ownPath };
+  }
+
+  test('a closer dump of the death replaces an older held dump on a read inside the window', () => {
+    const rig = makeRig();
+    const { detection, invite, ownPath } = heldOlderDumpThenOwnDump(rig);
+
+    rig.advance(1_000);
+    expect(detection.minidumpForCrashEvent(invite.eventId)).toEqual({
+      status: 'bound',
+      path: ownPath,
+    });
+    expect(
+      rig.infos.find((line) => line.event === 'crash-detection.invitation-dump-rebound'),
+    ).toMatchObject({
+      eventId: invite.eventId,
+      previousDump: 'older.dmp',
+      deathWindowDump: 'own.dmp',
+    });
+    rig.advance(60_000);
+    expect(detection.minidumpForCrashEvent(invite.eventId)).toEqual({
+      status: 'bound',
+      path: ownPath,
+    });
+  });
+
+  test('a held binding first read after the window settles by the same rule as one read inside it', () => {
+    const rig = makeRig();
+    const { detection, invite, ownPath } = heldOlderDumpThenOwnDump(rig);
+
+    rig.advance(60_000);
+    expect(detection.minidumpForCrashEvent(invite.eventId)).toEqual({
+      status: 'bound',
+      path: ownPath,
+    });
+  });
+
+  test('a binding that settles with no dump records why nothing near the death qualified', () => {
+    const rig = makeRig();
+    const detection = sessionOnStoppedClock(rig);
+    const diedAtMs = rig.nowMs();
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+    const invite = rig.emitted[0];
+    if (invite === undefined) throw new Error('expected a renderer invitation');
+    rig.advance(2_000);
+    seedMinidump(rig, 'completed/torn.dmp', new Date(diedAtMs + 2_000), UNPARSEABLE_DUMP);
+    rig.advance(60_000);
+
+    expect(detection.minidumpForCrashEvent(invite.eventId)).toEqual({ status: 'none-bound' });
+    expect(
+      rig.infos.find((line) => line.event === 'crash-detection.invitation-dump-settled'),
+    ).toMatchObject({
+      eventId: invite.eventId,
+      settledDump: null,
+      settledFrom: 'none',
+      heldDumpVanished: false,
+      deathWindowOutcome: 'none-attachable',
+      deathWindowDumpCount: 1,
+      deathWindowUnreadableSkipped: 1,
+    });
+  });
+
+  test('an owned crash dump just outside 30 s of the death is never bound to it', () => {
+    const rig = makeRig();
+    const detection = sessionOnStoppedClock(rig);
+    seedMinidump(rig, 'completed/earlier.dmp', new Date(rig.nowMs() - 30_001));
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+    const invite = rig.emitted[0];
+    if (invite === undefined) throw new Error('expected a renderer invitation');
+
+    expect(invite.minidumpAvailable).toBe(false);
+    expect(deathLine(rig, invite.eventId)?.deathWindowOutcome).toBe('no-dump-near-death');
+    rig.advance(60_000);
+    expect(detection.minidumpForCrashEvent(invite.eventId)).toEqual({ status: 'none-bound' });
+
+    const edgeRig = makeRig();
+    const edge = sessionOnStoppedClock(edgeRig);
+    const edgePath = seedMinidump(
+      edgeRig,
+      'completed/edge.dmp',
+      new Date(edgeRig.nowMs() - 30_000),
+    );
+    edge.handleRenderProcessGone({ reason: 'crashed' });
+    const edgeInvite = edgeRig.emitted[0];
+    if (edgeInvite === undefined) throw new Error('expected a renderer invitation');
+    expect(edgeInvite.minidumpAvailable).toBe(true);
+    edgeRig.advance(60_000);
+    expect(edge.minidumpForCrashEvent(edgeInvite.eventId)).toEqual({
+      status: 'bound',
+      path: edgePath,
+    });
+  });
+
+  test('a declined GPU death leaves a dump that is never bound to a later renderer invitation', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+    detection.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    expect(rig.emitted).toHaveLength(0);
+    seedMinidump(
+      rig,
+      'completed/gpu.dmp',
+      new Date(rig.nowMs()),
+      rig.ownDumpWithProcessType('gpu-process'),
+    );
+    rig.setRendererAvailable(false);
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+
+    rig.setRendererAvailable(true);
+    detection.notifyRendererReady();
+    const invite = rig.emitted[0];
+    if (invite === undefined) throw new Error('expected a renderer invitation');
+    rig.advance(60_000);
+
+    expect(invite.minidumpAvailable).toBe(false);
+    expect(detection.minidumpForCrashEvent(invite.eventId)).toEqual({ status: 'none-bound' });
+  });
+
+  test('a boot invitation prefers the dump that armed it over a newer dump of a declined death', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    expect(sessionA.detectBootCrash()).toBeNull();
+    const rendererPath = seedMinidump(
+      rig,
+      'completed/renderer.dmp',
+      rig.tick(),
+      rig.ownDumpWithProcessType('renderer'),
+    );
+    sessionA.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    seedMinidump(
+      rig,
+      'completed/gpu.dmp',
+      new Date(rig.nowMs() + 5_000),
+      rig.ownDumpWithProcessType('gpu-process'),
+    );
+    sessionA.markCleanQuit();
+
+    const sessionB = createCrashDetection(rig.deps);
+    const armed = bootInvite(sessionB.detectBootCrash());
+
+    expect(armed.minidumpAvailable).toBe(true);
+    expect(sessionB.minidumpForCrashEvent(armed.eventId)).toEqual({
+      status: 'bound',
+      path: rendererPath,
+    });
   });
 });

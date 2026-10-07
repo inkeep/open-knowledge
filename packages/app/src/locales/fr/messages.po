@@ -14741,6 +14741,10 @@ msgstr "Impossible d'ajouter la conversation à ce rapport."
 msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
 msgstr "La copie de « {name} » conservée dans {scopeLabel} est un doublon redondant : l'original a été vérifié comme inchangé. Supprimez cette copie, puis réessayez le déplacement."
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "The crash dump couldn't be added to this report."
+msgstr "Impossible d'ajouter le vidage de plantage à ce rapport."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "The default branch is protected — pushes need a pull request."
 msgstr "La branche par défaut est protégée — les push nécessitent une pull request."

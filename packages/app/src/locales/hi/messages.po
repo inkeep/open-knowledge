@@ -14737,6 +14737,10 @@ msgstr "बातचीत को इस रिपोर्ट में नह�
 msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
 msgstr "{scopeLabel} में रखी गई “{name}” की कॉपी एक ग़ैरज़रूरी नक़ल है: जाँच में मूल अपरिवर्तित मिला। उस कॉपी को हटाएँ, फिर मूव दोबारा आज़माएँ।"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "The crash dump couldn't be added to this report."
+msgstr "क्रैश डंप को इस रिपोर्ट में नहीं जोड़ा जा सका।"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "The default branch is protected — pushes need a pull request."
 msgstr "डिफ़ॉल्ट ब्रांच सुरक्षित है — भेजने के लिए एक पुल रिक्वेस्ट चाहिए।"

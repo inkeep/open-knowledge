@@ -14741,6 +14741,10 @@ msgstr "无法将对话添加到此报告中。"
 msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
 msgstr "保留在{scopeLabel}中的“{name}”副本是多余的重复：原件已核实未被改动。请删除该副本，然后重试移动。"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "The crash dump couldn't be added to this report."
+msgstr "无法将崩溃转储添加到此报告中。"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "The default branch is protected — pushes need a pull request."
 msgstr "默认分支受保护——推送需要通过 pull request。"

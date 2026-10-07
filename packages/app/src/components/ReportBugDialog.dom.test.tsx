@@ -76,6 +76,7 @@ type CreateRequest = {
   includeScreenshot?: boolean;
   attachments?: { contentType: string; bytes: Uint8Array }[];
   agentChatThreadId?: string;
+  crashEventId?: string;
 };
 type SendRequest = OkBugReportSendInput;
 
@@ -652,6 +653,7 @@ describe('ReportBugDialog', () => {
         level: 'full',
         note: 'Crash source: previous session ended without a clean quit\nCrash event: boot:1751871600000',
         includeCrashDump: true,
+        crashEventId: 'boot:1751871600000',
       },
     ]);
   });
@@ -766,6 +768,37 @@ describe('ReportBugDialog', () => {
     expect(screen.queryByText("The conversation couldn't be added to this report.")).toBeNull();
   });
 
+  test('the review step says so when the crash dump could not be added', async () => {
+    installBridge();
+    await renderDialog({ crashInvite: BOOT_INVITE });
+    await createReport();
+
+    expect(screen.getByText("The crash dump couldn't be added to this report.")).not.toBeNull();
+  });
+
+  test('a crash dump that made it into the report is not reported as missing', async () => {
+    installBridge({
+      create: () =>
+        Promise.resolve({
+          ...CREATE_OK,
+          summary: { ...SUMMARY, files: [...SUMMARY.files, 'extra/renderer.dmp'] },
+        }),
+    });
+    await renderDialog({ crashInvite: BOOT_INVITE });
+    await createReport();
+
+    expect(screen.queryByText("The crash dump couldn't be added to this report.")).toBeNull();
+  });
+
+  test('an unchecked crash dump is not reported as missing from the review', async () => {
+    installBridge();
+    await renderDialog({ crashInvite: BOOT_INVITE });
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Crash dump' }));
+    await createReport();
+
+    expect(screen.queryByText("The crash dump couldn't be added to this report.")).toBeNull();
+  });
+
   test('unchecking Crash dump excludes the minidump from create', async () => {
     const log = installBridge();
     await renderDialog({ crashInvite: BOOT_INVITE });
@@ -795,6 +828,7 @@ describe('ReportBugDialog', () => {
     await screen.findByRole('heading', { name: 'Review your report' });
 
     expect(log.createCalls[0]).not.toHaveProperty('includeCrashDump');
+    expect(log.createCalls[0]).not.toHaveProperty('crashEventId');
   });
 
   test('a crash invite that names the crashed version folds it in last', async () => {
@@ -809,6 +843,7 @@ describe('ReportBugDialog', () => {
         level: 'full',
         note: 'Crash source: previous session ended without a clean quit\nCrash event: boot:1751871600000\nCrashed app version: 0.41.0',
         includeCrashDump: true,
+        crashEventId: 'boot:1751871600000',
       },
     ]);
   });
@@ -869,6 +904,7 @@ describe('ReportBugDialog', () => {
     await userEvent.click(dumpBox);
     await createReport();
     expect(log.createCalls[0]?.includeCrashDump).toBe(true);
+    expect(log.createCalls[0]).not.toHaveProperty('crashEventId');
   });
 
   test('a manually-opened report left untouched declines the dump rather than omitting the flag', async () => {

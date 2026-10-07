@@ -14741,6 +14741,10 @@ msgstr "Nie udało się dodać rozmowy do tego zgłoszenia."
 msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
 msgstr "Kopia „{name}” przechowywana w {scopeLabel} jest zbędnym duplikatem: oryginał został zweryfikowany jako niezmieniony. Usuń tę kopię, a następnie ponów przenoszenie."
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "The crash dump couldn't be added to this report."
+msgstr "Nie udało się dodać zrzutu awarii do tego zgłoszenia."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "The default branch is protected — pushes need a pull request."
 msgstr "Gałąź domyślna jest chroniona — push wymaga pull requesta."

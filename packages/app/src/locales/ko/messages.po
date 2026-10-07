@@ -14741,6 +14741,10 @@ msgstr "대화를 이 보고서에 추가하지 못했습니다."
 msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
 msgstr "{scopeLabel}에 남아 있는 “{name}” 사본은 불필요한 중복입니다. 원본이 변경되지 않았음을 확인했습니다. 그 사본을 삭제한 뒤 이동을 다시 시도하세요."
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "The crash dump couldn't be added to this report."
+msgstr "크래시 덤프를 이 보고서에 추가하지 못했습니다."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "The default branch is protected — pushes need a pull request."
 msgstr "기본 브랜치가 보호되어 푸시하려면 풀 리퀘스트가 필요합니다."

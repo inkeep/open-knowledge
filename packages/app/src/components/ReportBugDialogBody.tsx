@@ -121,7 +121,12 @@ function crashInviteLines(invite: OkBugReportCrashDetectedEvent): string[] {
 
 type Phase =
   | { step: 'compose'; creating: boolean; createError: string | null }
-  | { step: 'review'; report: CreatedReport; conversationMissing: boolean };
+  | {
+      step: 'review';
+      report: CreatedReport;
+      conversationMissing: boolean;
+      crashDumpMissing: boolean;
+    };
 
 const COMPOSE_IDLE: Phase = { step: 'compose', creating: false, createError: null };
 
@@ -245,10 +250,14 @@ function ReportBugDialog({
     const attachmentInputs = await toAttachmentInputs(attachments);
     if (opSeqRef.current !== seq) return;
     const conversationRequested = agentChat !== undefined && includeChat;
+    const crashDumpRequested = crashDumpAvailable && includeDump;
     const result = await bugReport.create({
       level: detailed ? 'full' : 'standard',
       note: composeNote(note, noteContextLines),
       ...(crashDumpAvailable ? { includeCrashDump: includeDump } : {}),
+      ...(crashDumpAvailable && crashInvite !== undefined
+        ? { crashEventId: crashInvite.eventId }
+        : {}),
       ...(screenshot !== null ? { includeScreenshot } : {}),
       ...(attachmentInputs.length > 0 ? { attachments: attachmentInputs } : {}),
       ...(conversationRequested ? { agentChatThreadId: agentChat.threadId } : {}),
@@ -265,6 +274,8 @@ function ReportBugDialog({
         },
         conversationMissing:
           conversationRequested && !result.summary.files.some(isBugReportAgentChatEntry),
+        crashDumpMissing:
+          crashDumpRequested && !result.summary.files.some(isBugReportCrashDumpEntry),
       });
     } else {
       setPhase({ step: 'compose', creating: false, createError: result.error });
@@ -683,6 +694,11 @@ function ReportBugDialog({
               {phase.conversationMissing ? (
                 <p className="text-xs text-muted-foreground">
                   <Trans>The conversation couldn't be added to this report.</Trans>
+                </p>
+              ) : null}
+              {phase.crashDumpMissing ? (
+                <p className="text-xs text-muted-foreground">
+                  <Trans>The crash dump couldn't be added to this report.</Trans>
                 </p>
               ) : null}
               <div className="flex items-start gap-2 rounded-md border bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">

@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -2323,6 +2324,24 @@ describe('resolveMinidumpIntent', () => {
       input: { requested: true, minidumpPath: '/dumps/a.dmp' },
       expected: { reason: 'staging', zipEntry: 'extra/a.dmp' },
     },
+    {
+      name: 'opted in, but the dump the invitation was bound to is gone',
+      input: {
+        requested: true,
+        minidumpPath: null,
+        unavailableReason: 'bound-dump-missing',
+      },
+      expected: { reason: 'bound-dump-missing' },
+    },
+    {
+      name: 'declining wins over a bound dump that is gone',
+      input: {
+        requested: false,
+        minidumpPath: null,
+        unavailableReason: 'bound-dump-missing',
+      },
+      expected: { reason: 'declined' },
+    },
   ];
 
   for (const { name, input, expected } of cases) {
@@ -2647,6 +2666,7 @@ describe('handleBugReportCrashAck', () => {
       { kind: 'crash-ack' },
       { kind: 'crash-ack', eventId: '' },
       { kind: 'crash-ack', eventId: 42 },
+      { kind: 'crash-ack', eventId: 'x'.repeat(257) },
       { kind: 'ack', eventId: 'crash:render:1:0' },
       null,
     ];
@@ -3435,5 +3455,302 @@ describe('createBugReportScreenshotHold — attachments', () => {
     hold.remember('r3', Buffer.from([0x03]), 1);
     expect(evicted).toEqual(['r1']);
     expect(hold.read('r1')).toBeNull();
+  });
+});
+
+describe('handleBugReportCreate — the crash dump that armed the invitation', () => {
+  const FIRST_DUMP = '4f1b2c3d-0000-4000-8000-00000000000a.dmp';
+  const SECOND_DUMP = '4f1b2c3d-0000-4000-8000-00000000000b.dmp';
+
+  function makeBindingRig() {
+    const dir = makeTmpDir('ok-bugreport-binding-');
+    let clockMs = Date.parse('2026-07-10T00:00:00.000Z');
+    const appBundleRoot = join(dir, 'OpenKnowledge.app');
+    const mainModule = join(appBundleRoot, 'Contents', 'MacOS', 'OpenKnowledge');
+    const detectionDeps = {
+      sentinelPath: join(dir, 'sentinel.json'),
+      mainExitPath: join(dir, 'main-exit.json'),
+      ackStorePath: join(dir, 'crash-acks.json'),
+      crashDumpsDir: join(dir, 'dumps'),
+      appBundleRoot,
+      appVersion: '0.9.9',
+      platform: 'darwin' as const,
+      emit: () => true,
+      now: () => {
+        clockMs += 10_000;
+        return new Date(clockMs);
+      },
+      currentBootSessionUuid: () => 'boot-epoch-test',
+      mainThreadWatchdog: {
+        readPrevious: () => ({ kind: 'absent' }) as const,
+        readPreviousStall: () => ({ kind: 'absent' }) as const,
+        start: () => ({ stop: () => {} }),
+      },
+      logger: { info: () => {}, warn: () => {} },
+    };
+    const crashDump = (stamp: number) =>
+      buildMinidump([mainModule], { exceptionCode: 0xc000_0005, timeDateStamp: stamp });
+    const seed = (relPath: string, bytes: Buffer): string => {
+      const dumpPath = join(detectionDeps.crashDumpsDir, relPath);
+      mkdirSync(dirname(dumpPath), { recursive: true });
+      writeFileSync(dumpPath, bytes);
+      clockMs += 10_000;
+      const at = new Date(clockMs);
+      utimesSync(dumpPath, at, at);
+      return dumpPath;
+    };
+    const reportDeps = (
+      detection: ReturnType<typeof createCrashDetection>,
+      logger: BugReportCreateDeps['logger'],
+    ) =>
+      makeDeps({
+        newestMinidumpForReport: () => detection.newestMinidumpForReport(),
+        minidumpForCrashEvent: (eventId) => detection.minidumpForCrashEvent(eventId),
+        logger,
+      });
+    return {
+      detectionDeps,
+      crashDump,
+      foreignDump: buildMinidump(['/Applications/LibreOffice.app/Contents/MacOS/soffice']),
+      snapshotDump: buildMinidump([mainModule], { exceptionCode: 0x4350_7378 }),
+      seed,
+      reportDeps,
+    };
+  }
+
+  function crashedSessionThenReboot(rig: ReturnType<typeof makeBindingRig>, firstBytes: Buffer) {
+    createCrashDetection(rig.detectionDeps).detectBootCrash();
+    const firstPath = rig.seed(`pending/${FIRST_DUMP}`, firstBytes);
+    const session = createCrashDetection(rig.detectionDeps);
+    const invite = session.detectBootCrash();
+    if (invite === null) throw new Error('expected a boot invitation for the crashed session');
+    expect(invite.minidumpAvailable).toBe(true);
+    return { session, invite, firstPath };
+  }
+
+  function extraEntries(zipPath: string): string[] {
+    return listZipEntries(zipPath).filter((e) => e.startsWith('extra/'));
+  }
+
+  test('a report for the first crash attaches its dump even after a second crash wrote a newer one', async () => {
+    const rig = makeBindingRig();
+    const firstBytes = rig.crashDump(1);
+    const { session, invite } = crashedSessionThenReboot(rig, firstBytes);
+    rig.seed(`pending/${SECOND_DUMP}`, rig.crashDump(2));
+    session.handleRenderProcessGone({ reason: 'crashed' });
+    const recorder = makeLogRecorder();
+
+    const result = await handleBugReportCreate(rig.reportDeps(session, recorder.logger), {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+      crashEventId: invite.eventId,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(extraEntries(result.zipPath)).toEqual([`extra/${FIRST_DUMP}`]);
+    expect(readZipEntryBytes(result.zipPath, `extra/${FIRST_DUMP}`).equals(firstBytes)).toBe(true);
+    expect(recorder.intent()?.payload).toMatchObject({
+      reason: 'staging',
+      dumpSelection: 'crash-event',
+      crashEventId: invite.eventId,
+    });
+    expect(recorder.outcome()?.payload).toMatchObject({ attached: true, reason: 'attached' });
+  });
+
+  test('later foreign and snapshot dumps, and Crashpad filing the dump away, change nothing', async () => {
+    const rig = makeBindingRig();
+    const firstBytes = rig.crashDump(1);
+    const { session, invite, firstPath } = crashedSessionThenReboot(rig, firstBytes);
+    rig.seed('pending/soffice.dmp', rig.foreignDump);
+    rig.seed('pending/snapshot.dmp', rig.snapshotDump);
+    const filedPath = join(dirname(dirname(firstPath)), 'completed', FIRST_DUMP);
+    mkdirSync(dirname(filedPath), { recursive: true });
+    renameSync(firstPath, filedPath);
+
+    const result = await handleBugReportCreate(rig.reportDeps(session, undefined), {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+      crashEventId: invite.eventId,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(extraEntries(result.zipPath)).toEqual([`extra/${FIRST_DUMP}`]);
+    expect(readZipEntryBytes(result.zipPath, `extra/${FIRST_DUMP}`).equals(firstBytes)).toBe(true);
+  });
+
+  test('a bound dump Crashpad rotated away is omitted with its reason, never swapped for a newer one', async () => {
+    const rig = makeBindingRig();
+    const { session, invite, firstPath } = crashedSessionThenReboot(rig, rig.crashDump(1));
+    rig.seed(`pending/${SECOND_DUMP}`, rig.crashDump(2));
+    rmSync(firstPath);
+    const recorder = makeLogRecorder();
+
+    const result = await handleBugReportCreate(rig.reportDeps(session, recorder.logger), {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+      crashEventId: invite.eventId,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(extraEntries(result.zipPath)).toEqual([]);
+    const intent = recorder.intent();
+    expect(intent?.level).toBe('warn');
+    expect(intent?.payload).toMatchObject({
+      requested: true,
+      minidumpAvailable: false,
+      reason: 'bound-dump-missing',
+      dumpSelection: 'crash-event',
+      crashEventId: invite.eventId,
+    });
+    expect(recorder.outcome()).toBeUndefined();
+    const serialized = `${JSON.stringify(intent?.payload)} ${intent?.message}`;
+    expect(serialized).not.toContain(FIRST_DUMP);
+    expect(serialized).not.toContain(SECOND_DUMP);
+  });
+
+  test('a bound dump that can no longer be read is omitted as unreadable, not as foreign', async () => {
+    const rig = makeBindingRig();
+    const firstBytes = rig.crashDump(1);
+    const { session, invite, firstPath } = crashedSessionThenReboot(rig, firstBytes);
+    const { mtime } = statSync(firstPath);
+    writeFileSync(firstPath, Buffer.alloc(firstBytes.length, 0x41));
+    utimesSync(firstPath, mtime, mtime);
+    const recorder = makeLogRecorder();
+
+    const result = await handleBugReportCreate(rig.reportDeps(session, recorder.logger), {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+      crashEventId: invite.eventId,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(extraEntries(result.zipPath)).toEqual([]);
+    const intent = recorder.intent();
+    expect(intent?.level).toBe('warn');
+    expect(intent?.payload).toMatchObject({
+      requested: true,
+      minidumpAvailable: false,
+      reason: 'bound-dump-unreadable',
+      dumpSelection: 'crash-event',
+      crashEventId: invite.eventId,
+    });
+    expect(intent?.payload).not.toHaveProperty('foreignDumpsIgnored');
+    expect(intent?.payload).not.toHaveProperty('unreadableDumpsSkipped');
+  });
+
+  test('the omission reason is inside the bundle it explains', async () => {
+    const rig = makeBindingRig();
+    const { session, invite, firstPath } = crashedSessionThenReboot(rig, rig.crashDump(1));
+    rmSync(firstPath);
+    const userLogsDir = makeTmpDir();
+    const logPath = join(userLogsDir, 'desktop.2026-01-01.log');
+    const write = (level: 'info' | 'warn') => (payload: object, message: string) => {
+      appendFileSync(logPath, `${JSON.stringify({ level, ...payload, msg: message })}\n`);
+    };
+    const deps = {
+      ...rig.reportDeps(session, { info: write('info'), warn: write('warn') }),
+      userLogsDir,
+    };
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+      crashEventId: invite.eventId,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    const decisions = readZipEntry(result.zipPath, 'logs/desktop.2026-01-01.log')
+      .split('\n')
+      .filter((l) => l.includes('bug-report.minidump-decision'))
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(decisions).toEqual([
+      expect.objectContaining({ phase: 'intent', reason: 'bound-dump-missing', level: 'warn' }),
+    ]);
+  });
+
+  test('a clean quit arms nothing, and a report naming an unknown crash attaches nothing', async () => {
+    const rig = makeBindingRig();
+    const sessionA = createCrashDetection(rig.detectionDeps);
+    sessionA.detectBootCrash();
+    sessionA.markCleanQuit();
+    const session = createCrashDetection(rig.detectionDeps);
+    expect(session.detectBootCrash()).toBeNull();
+    rig.seed(`pending/${SECOND_DUMP}`, rig.crashDump(2));
+    const recorder = makeLogRecorder();
+
+    const result = await handleBugReportCreate(rig.reportDeps(session, recorder.logger), {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+      crashEventId: 'boot:dump:1751871600000',
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(extraEntries(result.zipPath)).toEqual([]);
+    expect(recorder.intent()?.payload.reason).toBe('invitation-unbound');
+  });
+
+  test('a report the user opened themselves still takes the newest dump this app owns', async () => {
+    const rig = makeBindingRig();
+    const { session } = crashedSessionThenReboot(rig, rig.crashDump(1));
+    const secondBytes = rig.crashDump(2);
+    rig.seed(`pending/${SECOND_DUMP}`, secondBytes);
+    const recorder = makeLogRecorder();
+
+    const result = await handleBugReportCreate(rig.reportDeps(session, recorder.logger), {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(extraEntries(result.zipPath)).toEqual([`extra/${SECOND_DUMP}`]);
+    expect(readZipEntryBytes(result.zipPath, `extra/${SECOND_DUMP}`).equals(secondBytes)).toBe(
+      true,
+    );
+    expect(recorder.intent()?.payload).toMatchObject({ dumpSelection: 'newest' });
+  });
+
+  test('a recovery with no dump offers none, and a dump written afterwards is not attached', async () => {
+    const rig = makeBindingRig();
+    createCrashDetection(rig.detectionDeps).detectBootCrash();
+    const session = createCrashDetection(rig.detectionDeps);
+    const invite = session.detectBootCrash();
+    if (invite === null) throw new Error('expected a dirty-shutdown invitation');
+    expect(invite.minidumpAvailable).toBe(false);
+    rig.seed(`pending/${SECOND_DUMP}`, rig.crashDump(2));
+    const recorder = makeLogRecorder();
+
+    const result = await handleBugReportCreate(rig.reportDeps(session, recorder.logger), {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+      crashEventId: invite.eventId,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(extraEntries(result.zipPath)).toEqual([]);
+    expect(recorder.intent()?.payload).toMatchObject({
+      reason: 'none-available',
+      dumpSelection: 'crash-event',
+    });
+  });
+
+  test('a malformed crash event id is refused as invalid-request', async () => {
+    for (const crashEventId of ['', 42, 'x'.repeat(257)]) {
+      const result = await handleBugReportCreate(makeDeps(), {
+        kind: 'create',
+        level: 'standard',
+        includeCrashDump: true,
+        crashEventId,
+      } as unknown as OkBugReportCreateRequest);
+
+      expect(result).toEqual({ ok: false, error: 'invalid-request' });
+    }
   });
 });
