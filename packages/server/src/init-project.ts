@@ -15,7 +15,7 @@ import {
   tracedRmSync,
   tracedWriteFileSync,
 } from './fs-traced.ts';
-import { assertNotHomeProjectRoot } from './home-project-root.ts';
+import { assertSafeProjectRoot } from './home-project-root.ts';
 
 export const CONFIG_FILENAME = 'config.yml';
 
@@ -272,7 +272,7 @@ export interface InitContentResult {
 }
 
 export function initContent(projectDir: string, options?: InitContentOptions): InitContentResult {
-  assertNotHomeProjectRoot(projectDir);
+  assertSafeProjectRoot(projectDir);
   const okDir = resolve(projectDir, OK_DIR);
   const created: string[] = [];
   const updated: string[] = [];

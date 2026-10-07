@@ -12,6 +12,8 @@ import {
   type FolderPickValidation,
   type GitState,
   isExactManagedProject,
+  isSystemDirectory,
+  REJECTION_REASON_COPY,
   type RejectionReason,
   type SensitivePathWarning,
   type ValidateFolderPickOptions,
@@ -19,6 +21,16 @@ import {
 } from './folder-admission.ts';
 
 const execFileAsync = promisify(execFile);
+
+const simulatedFilesystemRoots = vi.hoisted(() => new Set<string>());
+vi.mock('@inkeep/open-knowledge-server', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@inkeep/open-knowledge-server')>();
+  return {
+    ...actual,
+    isFilesystemRoot: (dir: string, platform?: NodeJS.Platform) =>
+      simulatedFilesystemRoots.has(dir) || actual.isFilesystemRoot(dir, platform),
+  };
+});
 
 const HOME = '/Users/test';
 
@@ -37,29 +49,13 @@ describe('validateFolderPick — happy path (no warnings)', () => {
   });
 
   test('blocked is always false even when warnings fire', () => {
-    const result = validateFolderPick('/', { homeDir: HOME });
+    const result = validateFolderPick(join(HOME, 'Documents'), { homeDir: HOME });
+    expect(result.warnings).not.toEqual([]);
     expect(result.blocked).toBe(false);
   });
 });
 
-describe('validateFolderPick — root warning', () => {
-  test('exact "/" returns root warning', () => {
-    const result = validateFolderPick('/', { homeDir: HOME });
-    expect(result.warnings).toEqual([{ kind: 'root' }]);
-  });
-
-  test('"/foo" does NOT trigger root warning', () => {
-    const result = validateFolderPick('/foo', { homeDir: HOME });
-    expect(result.warnings).toEqual([]);
-  });
-});
-
 describe('validateFolderPick — home warnings', () => {
-  test('exact home path returns home warning', () => {
-    const result = validateFolderPick(HOME, { homeDir: HOME });
-    expect(result.warnings).toEqual([{ kind: 'home' }]);
-  });
-
   test('home/Documents returns home-documents warning', () => {
     const result = validateFolderPick(join(HOME, 'Documents'), { homeDir: HOME });
     expect(result.warnings).toEqual([{ kind: 'home-documents' }]);
@@ -97,9 +93,9 @@ describe('validateFolderPick — /Volumes warnings', () => {
     expect(result.warnings).toEqual([{ kind: 'volumes-mount' }]);
   });
 
-  test('exact /Volumes returns volumes-mount warning', () => {
+  test('exact /Volumes carries no warning, since admission refuses it as a system folder', () => {
     const result = validateFolderPick('/Volumes', { homeDir: HOME });
-    expect(result.warnings).toEqual([{ kind: 'volumes-mount' }]);
+    expect(result.warnings).toEqual([]);
   });
 
   test('/Volumes-likeprefix does NOT trigger (must be /Volumes/ separator)', () => {
@@ -108,45 +104,10 @@ describe('validateFolderPick — /Volumes warnings', () => {
   });
 });
 
-describe('validateFolderPick — drive-root warning (Windows shape)', () => {
-  test.each(['C:\\', 'C:', 'C:/'])(
-    'drive warnings for %s do not inherit the working directory',
-    (drivePath) => {
-      const workingDirectories = [resolve('/Users/test/project'), resolve('/Volumes/External')];
-      const cwd = vi.spyOn(process, 'cwd');
-      try {
-        for (const directory of workingDirectories) {
-          cwd.mockReturnValue(directory);
-          expect(validateFolderPick(drivePath, { homeDir: HOME }).warnings).toEqual([
-            { kind: 'drive-root' },
-          ]);
-        }
-      } finally {
-        cwd.mockRestore();
-      }
-    },
-  );
-
-  test('C:\\ returns drive-root warning', () => {
-    const result = validateFolderPick('C:\\', { homeDir: HOME });
-    expect(result.warnings).toEqual([{ kind: 'drive-root' }]);
-  });
-
-  test('C: returns drive-root warning', () => {
-    const result = validateFolderPick('C:', { homeDir: HOME });
-    expect(result.warnings).toEqual([{ kind: 'drive-root' }]);
-  });
-
-  test('C:/ returns drive-root warning', () => {
-    const result = validateFolderPick('C:/', { homeDir: HOME });
-    expect(result.warnings).toEqual([{ kind: 'drive-root' }]);
-  });
-});
-
 describe('validateFolderPick — purity + path normalization', () => {
   test('trailing slash normalized away (path.resolve canonicalizes)', () => {
-    const result = validateFolderPick(`${HOME}/`, { homeDir: HOME });
-    expect(result.warnings).toEqual([{ kind: 'home' }]);
+    const result = validateFolderPick(`${HOME}/Documents/`, { homeDir: HOME });
+    expect(result.warnings).toEqual([{ kind: 'home-documents' }]);
   });
 
   test('embedded ".." resolved before comparison', () => {
@@ -168,13 +129,10 @@ describe('validateFolderPick — purity + path normalization', () => {
 
   test('warning kind type is exhaustively narrowed (compile-time + runtime)', () => {
     const allKinds: readonly SensitivePathWarning['kind'][] = [
-      'root',
-      'home',
       'home-documents',
       'home-desktop',
       'home-downloads',
       'volumes-mount',
-      'drive-root',
     ];
     for (const kind of allKinds) {
       const w: SensitivePathWarning = { kind };
@@ -195,6 +153,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  simulatedFilesystemRoots.clear();
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
@@ -263,6 +222,166 @@ describe('discoverProject — the home directory is never a project', () => {
     });
 
     expect(result.kind).toBe('fresh');
+  });
+});
+
+describe('discoverProject refuses filesystem roots and system folders', () => {
+  test('rejects the filesystem root instead of classifying it fresh', async () => {
+    const result = await discoverProject('/', {
+      homeDir: fakeHome,
+      gitTopLevel: stubGitTopLevel({}),
+      dirSizeProbe: null,
+    });
+
+    expect(result).toEqual({ kind: 'rejected', reason: 'filesystem-root' });
+  });
+
+  test('rejects the folder that holds every user profile', async () => {
+    const result = await discoverProject(tmpReal, {
+      homeDir: fakeHome,
+      gitTopLevel: stubGitTopLevel({}),
+      dirSizeProbe: null,
+    });
+
+    expect(result).toEqual({ kind: 'rejected', reason: 'system-directory' });
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'rejects /bin whether it is a real folder or a merged-usr link into /usr',
+    async () => {
+      const result = await discoverProject('/bin', {
+        homeDir: fakeHome,
+        gitTopLevel: stubGitTopLevel({}),
+        dirSizeProbe: null,
+      });
+
+      expect(result).toEqual({ kind: 'rejected', reason: 'system-directory' });
+    },
+  );
+
+  test.skipIf(process.platform !== 'darwin')(
+    'rejects a system folder spelled in a different letter case',
+    async () => {
+      const result = await discoverProject('/LIBRARY', {
+        homeDir: fakeHome,
+        gitTopLevel: stubGitTopLevel({}),
+        dirSizeProbe: null,
+      });
+
+      expect(result).toEqual({ kind: 'rejected', reason: 'system-directory' });
+    },
+  );
+
+  test('an existing project at the top of a drive never captures a pick below it', async () => {
+    const drive = resolve(tmpReal, 'drive');
+    const pick = resolve(drive, 'work', 'notes');
+    mkdirSync(pick, { recursive: true });
+    writeOkConfig(drive);
+    simulatedFilesystemRoots.add(drive);
+
+    for (const dirSizeProbe of [null, async () => ({ exceedsCap: true })]) {
+      const result = await discoverProject(pick, {
+        homeDir: fakeHome,
+        gitTopLevel: stubGitTopLevel({}),
+        dirSizeProbe,
+      });
+
+      expect(result).toMatchObject({ kind: 'fresh', projectDir: pick });
+    }
+  });
+
+  test('an existing project in a system folder never captures a pick below it', async () => {
+    const pick = resolve(tmpReal, 'shared', 'notes');
+    mkdirSync(pick, { recursive: true });
+    writeOkConfig(tmpReal);
+
+    const result = await discoverProject(pick, {
+      homeDir: fakeHome,
+      gitTopLevel: stubGitTopLevel({}),
+      dirSizeProbe: null,
+    });
+
+    expect(result).toMatchObject({ kind: 'fresh', projectDir: pick });
+  });
+
+  test('a sibling of the home folder is unaffected', async () => {
+    const project = resolve(tmpReal, 'shared-notes');
+    mkdirSync(project, { recursive: true });
+
+    const result = await discoverProject(project, {
+      homeDir: fakeHome,
+      gitTopLevel: stubGitTopLevel({}),
+      dirSizeProbe: null,
+    });
+
+    expect(result.kind).toBe('fresh');
+  });
+});
+
+describe('isSystemDirectory', () => {
+  test.each([
+    '/usr',
+    '/etc',
+    '/private/etc',
+    '/var',
+    '/System',
+    '/Library',
+    '/Applications',
+    '/Volumes',
+    '/usr/',
+    '/usr/bin',
+    '/usr/sbin',
+    '/usr/lib',
+    '/usr/lib64',
+  ])('true for the OS-owned folder %s', (dir) => {
+    expect(isSystemDirectory(dir, HOME, 'linux', {})).toBe(true);
+  });
+
+  test('true for the folder that holds every user profile', () => {
+    expect(isSystemDirectory('/Users', HOME, 'darwin', {})).toBe(true);
+    expect(isSystemDirectory('/home', '/home/test', 'linux', {})).toBe(true);
+  });
+
+  test.each([
+    '/usr/local/notes',
+    '/opt',
+    '/opt/notes',
+    '/srv',
+    '/tmp',
+    '/mnt',
+    '/Volumes/SSD',
+    '/Volumes/SSD/notes',
+    '/Users/test/notes',
+    '/usr-notes',
+  ])('false for %s, matching folders exactly and never their contents', (dir) => {
+    expect(isSystemDirectory(dir, HOME, 'linux', {})).toBe(false);
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'true for a link that resolves to a system folder',
+    () => {
+      const link = resolve(tmpReal, 'usr-link');
+      symlinkSync('/usr', link);
+      expect(isSystemDirectory(link, HOME)).toBe(true);
+    },
+  );
+
+  test('Windows system folders match case-insensitively from the environment', () => {
+    const env = {
+      SystemRoot: 'C:\\Windows',
+      ProgramFiles: 'C:\\Program Files',
+      'ProgramFiles(x86)': 'C:\\Program Files (x86)',
+      ProgramData: 'C:\\ProgramData',
+    };
+    const winHome = 'C:\\Users\\test';
+    expect(isSystemDirectory('c:\\windows', winHome, 'win32', env)).toBe(true);
+    expect(isSystemDirectory('C:\\Program Files\\', winHome, 'win32', env)).toBe(true);
+    expect(isSystemDirectory('C:\\Program Files (x86)', winHome, 'win32', env)).toBe(true);
+    expect(isSystemDirectory('C:\\ProgramData', winHome, 'win32', env)).toBe(true);
+    expect(isSystemDirectory('C:\\Users', winHome, 'win32', env)).toBe(true);
+    expect(isSystemDirectory('C:\\Windows\\notes', winHome, 'win32', env)).toBe(false);
+    expect(isSystemDirectory('C:\\Users\\test\\notes', winHome, 'win32', env)).toBe(false);
+    expect(isSystemDirectory('D:\\notes', winHome, 'win32', env)).toBe(false);
   });
 });
 
@@ -348,6 +467,24 @@ describe('discoverProject — managed kind (ancestor walk)', () => {
 
     const result = await discoverProject(sub, {
       homeDir: fakeHome,
+      gitTopLevel: stubGitTopLevel({}),
+      dirSizeProbe: null,
+    });
+
+    expect(result.kind).toBe('fresh');
+    if (result.kind !== 'fresh') return;
+    expect(result.projectDir).toBe(sub);
+  });
+
+  test('walk excludes home when home is given by a symlinked spelling', async () => {
+    writeOkConfig(fakeHome);
+    const sub = resolve(fakeHome, 'sub');
+    mkdirSync(sub, { recursive: true });
+    const homeLink = resolve(tmpReal, 'home-link');
+    symlinkSync(fakeHome, homeLink);
+
+    const result = await discoverProject(sub, {
+      homeDir: homeLink,
       gitTopLevel: stubGitTopLevel({}),
       dirSizeProbe: null,
     });
@@ -667,8 +804,11 @@ describe('discoverProject — type surface', () => {
       'symlink-escape',
       'unreadable',
       'home-directory',
+      'filesystem-root',
+      'system-directory',
     ];
     for (const r of allReasons) expect(typeof r).toBe('string');
+    expect(Object.keys(REJECTION_REASON_COPY).sort()).toEqual([...allReasons].sort());
   });
 
   test('DiscoverProjectOptions and DiscoverProjectResult are import-able', () => {

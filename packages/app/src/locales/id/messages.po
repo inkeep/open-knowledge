@@ -755,6 +755,10 @@ msgstr "{count, plural, other {Yakin ingin menghapus # berkas berikut?}}"
 msgid "{count, plural, one {Are you sure you want to delete the following # file/directory and its contents?} other {Are you sure you want to delete the following # files/directories and their contents?}}"
 msgstr "{count, plural, other {Yakin ingin menghapus # berkas/folder berikut beserta isinya?}}"
 
+#: src/components/ConsentDialogBody.tsx
+msgid "{count, plural, one {Found {formattedCount} markdown file} other {Found {formattedCount} markdown files}}"
+msgstr "{count, plural, other {Ditemukan {formattedCount} berkas markdown}}"
+
 #: src/components/ProblemsPanel.tsx
 msgid "{count, plural, one {Hands the # problem to your AI agent, including what has no automatic fix.} other {Hands all # problems to your AI agent, including what has no automatic fix.}}"
 msgstr "{count, plural, other {Menyerahkan # masalah ke agen AI Anda, termasuk yang tidak punya perbaikan otomatis.}}"
@@ -11380,6 +11384,10 @@ msgstr "Detail proyek"
 msgid "Project folder created, but git init failed. Try again."
 msgstr "Folder proyek dibuat, tetapi git init gagal. Coba lagi."
 
+#: src/components/ConsentDialogBody.tsx
+msgid "Project folder: <0>{projectDir}</0>"
+msgstr "Folder proyek: <0>{projectDir}</0>"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Project MCP server"
 msgstr "Server MCP proyek"
@@ -15447,10 +15455,6 @@ msgstr "Daftar ini mungkin tidak mutakhir — terakhir dibaca {staleRelative}."
 msgid "This list may be out of date."
 msgstr "Daftar ini mungkin tidak mutakhir."
 
-#: src/components/ConsentDialogBody.tsx
-msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
-msgstr "Ini tampak seperti akar sebuah drive (mis. C:\\). Menyusun proyek di sini akan memindai seluruh drive."
-
 #: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillScopeSegment.tsx
@@ -16968,14 +16972,6 @@ msgstr "Anda memilih ~/Documents. OpenKnowledge akan mengindeks setiap berkas ma
 #: src/components/ConsentDialogBody.tsx
 msgid "You picked ~/Downloads. Files there are usually transient — consider a stable folder instead."
 msgstr "Anda memilih ~/Downloads. Berkas di sana biasanya sementara — pertimbangkan folder yang lebih tetap."
-
-#: src/components/ConsentDialogBody.tsx
-msgid "You picked the filesystem root (/). Scaffolding here will scan every file on this machine — make sure that's what you want."
-msgstr "Anda memilih akar sistem berkas (/). Menyusun proyek di sini akan memindai setiap berkas di komputer ini — pastikan itu memang yang Anda mau."
-
-#: src/components/ConsentDialogBody.tsx
-msgid "You picked your home directory. OpenKnowledge will index everything in your home tree — large and may surface personal files."
-msgstr "Anda memilih direktori beranda Anda. OpenKnowledge akan mengindeks semua yang ada di pohon beranda Anda — besar dan bisa memunculkan berkas pribadi."
 
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"

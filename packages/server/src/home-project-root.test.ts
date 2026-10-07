@@ -1,8 +1,14 @@
 import { existsSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { assertNotHomeProjectRoot, HomeProjectRootError, isHomeDir } from './home-project-root.ts';
+import {
+  assertSafeProjectRoot,
+  FilesystemRootProjectError,
+  HomeProjectRootError,
+  isFilesystemRoot,
+  isHomeDir,
+} from './home-project-root.ts';
 import { initContent } from './init-project.ts';
 import { ensureProjectGit } from './project-git.ts';
 
@@ -38,10 +44,10 @@ describe('isHomeDir', () => {
   });
 });
 
-describe('assertNotHomeProjectRoot', () => {
+describe('assertSafeProjectRoot', () => {
   test('throws for home, carrying the resolved path', () => {
     try {
-      assertNotHomeProjectRoot(home, home);
+      assertSafeProjectRoot(home, home);
       throw new Error('expected a throw');
     } catch (err) {
       expect(err).toBeInstanceOf(HomeProjectRootError);
@@ -49,8 +55,58 @@ describe('assertNotHomeProjectRoot', () => {
     }
   });
 
+  test('throws for the filesystem root, carrying the resolved path', () => {
+    try {
+      assertSafeProjectRoot('/', home);
+      throw new Error('expected a throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(FilesystemRootProjectError);
+      expect((err as FilesystemRootProjectError).projectRoot).toBe(resolve('/'));
+      expect((err as FilesystemRootProjectError).message).toContain('top of a drive');
+    }
+  });
+
   test('is silent for any other directory', () => {
-    expect(() => assertNotHomeProjectRoot(join(home, 'notes'), home)).not.toThrow();
+    expect(() => assertSafeProjectRoot(join(home, 'notes'), home)).not.toThrow();
+    expect(() => assertSafeProjectRoot(home, join(home, 'other-home'))).not.toThrow();
+  });
+});
+
+describe('isFilesystemRoot', () => {
+  test('true for the host root and for a relative spelling of it', () => {
+    expect(isFilesystemRoot('/')).toBe(true);
+    expect(isFilesystemRoot(join(home, ...home.split(sep).map(() => '..')))).toBe(true);
+  });
+
+  test('false for ordinary directories, including top-level ones', () => {
+    expect(isFilesystemRoot(home)).toBe(false);
+    expect(isFilesystemRoot(tmpdir())).toBe(false);
+    expect(isFilesystemRoot('/opt', 'linux')).toBe(false);
+  });
+
+  test.each(['C:\\', 'C:/', 'd:\\'])('true for the Windows drive root %s', (dir) => {
+    expect(isFilesystemRoot(dir, 'win32')).toBe(true);
+  });
+
+  test.skipIf(process.platform === 'win32').each(['\\\\server\\share', '\\\\server\\share\\'])(
+    'true for the Windows share root %s',
+    (dir) => {
+      expect(isFilesystemRoot(dir, 'win32')).toBe(true);
+    },
+  );
+
+  test.each(['C:\\Users', 'C:\\notes'])('false for the Windows folder %s', (dir) => {
+    expect(isFilesystemRoot(dir, 'win32')).toBe(false);
+  });
+
+  test.skipIf(process.platform === 'win32')('false for a folder inside a Windows share', () => {
+    expect(isFilesystemRoot('\\\\server\\share\\notes', 'win32')).toBe(false);
+  });
+
+  test('the macOS data volume counts as a root on darwin only', () => {
+    expect(isFilesystemRoot('/System/Volumes/Data', 'darwin')).toBe(true);
+    expect(isFilesystemRoot('/System/Volumes/Data/notes', 'darwin')).toBe(false);
+    expect(isFilesystemRoot('/System/Volumes/Data', 'linux')).toBe(false);
   });
 });
 

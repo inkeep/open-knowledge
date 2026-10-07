@@ -1541,6 +1541,7 @@
     "DqyItq": [
       "Journaux OpenKnowledge de plusieurs projets. Aucun projet n’est ouvert ; les journaux du serveur de projet ne sont donc pas inclus."
     ],
+    "DrKYv7": ["Dossier du projet : <0>", ["projectDir"], "</0>"],
     "DsDwR-": [
       [
         "0",
@@ -2412,9 +2413,6 @@
     "LzM_ga": ["Filtrer les compétences"],
     "M0jOcG": ["Voir dans la source markdown"],
     "M1OfV9": ["Diagnostic de source suivant"],
-    "M3ytY_": [
-      "Cela ressemble à la racine d'un disque (par ex. C:\\). Créer un projet ici analysera tout le disque."
-    ],
     "M5_9s2": ["Envoi du rapport"],
     "M5mfAe": ["Ajouter une étiquette"],
     "M6mvVi": ["Copier le chemin relatif"],
@@ -3767,9 +3765,6 @@
     "ZW2yR_": ["Ajouter un chemin personnalisé"],
     "ZW3mlR": ["Mode de rendu des différences"],
     "ZWgr0b": ["Dans un sous-dossier"],
-    "ZWolSV": [
-      "Vous avez choisi la racine du système de fichiers (/). Créer un projet ici analysera chaque fichier de cette machine — assurez-vous que c'est bien ce que vous voulez."
-    ],
     "ZWwYwM": ["Branche de base"],
     "ZWxfrc": ["propriétés du dossier effacées"],
     "ZWyHmq": ["Ce projet"],
@@ -3884,9 +3879,6 @@
     "_Pmhxt": ["… sortie antérieure tronquée"],
     "_PnPuw": [["0"], " pris depuis ", ["1"], "."],
     "_QwkMu": ["Aucun chemin correspondant"],
-    "_RcqUM": [
-      "Vous avez choisi votre répertoire personnel. OpenKnowledge indexera tout ce qu'il contient — c'est volumineux et cela peut faire remonter des fichiers personnels."
-    ],
     "_SDGzH": ["Continuer dans le navigateur"],
     "_SkqfM": ["Accepter l’entrant"],
     "_TDESN": [
@@ -6935,6 +6927,17 @@
     "zZ_I5K": ["Ouvrir le menu du projet"],
     "z_4xza": [
       "Échec du chargement des documents. Appuyez sur <0>Échap</0> puis rouvrez pour réessayer."
+    ],
+    "z_wa6u": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [["formattedCount"], " fichier markdown trouvé"],
+          "many": [["formattedCount"], " fichiers markdown trouvés"],
+          "other": [["formattedCount"], " fichiers markdown trouvés"]
+        }
+      ]
     ],
     "zaXlhf": [
       "Le bloc de propriétés en haut de ce document contient une erreur de mise en forme. Passez en mode source pour la corriger."

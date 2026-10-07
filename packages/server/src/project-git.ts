@@ -10,7 +10,7 @@ import {
   GitTooOldError,
 } from './git-preflight.ts';
 import { emitPreflightFailureSpan } from './git-preflight-telemetry.ts';
-import { assertNotHomeProjectRoot } from './home-project-root.ts';
+import { assertSafeProjectRoot } from './home-project-root.ts';
 import { getLogger } from './logger.ts';
 
 const execFileAsync = promisify(execFile);
@@ -140,7 +140,7 @@ async function isInsideExistingWorkTree(gitBin: string, cwd: string): Promise<bo
 
 export async function ensureProjectGit(projectRoot: string): Promise<EnsureProjectGitResult> {
   const abs = resolve(projectRoot);
-  assertNotHomeProjectRoot(abs);
+  assertSafeProjectRoot(abs);
   const gitPath = resolve(abs, '.git');
   const headPath = resolve(gitPath, 'HEAD');
 

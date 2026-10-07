@@ -755,6 +755,10 @@ msgstr "{count, plural, one {Tem certeza de que deseja excluir o # arquivo a seg
 msgid "{count, plural, one {Are you sure you want to delete the following # file/directory and its contents?} other {Are you sure you want to delete the following # files/directories and their contents?}}"
 msgstr "{count, plural, one {Tem certeza de que deseja excluir o # arquivo/pasta a seguir e seu conteúdo?} many {Tem certeza de que deseja excluir os # arquivos/pastas a seguir e seu conteúdo?} other {Tem certeza de que deseja excluir os # arquivos/pastas a seguir e seu conteúdo?}}"
 
+#: src/components/ConsentDialogBody.tsx
+msgid "{count, plural, one {Found {formattedCount} markdown file} other {Found {formattedCount} markdown files}}"
+msgstr "{count, plural, one {{formattedCount} arquivo markdown encontrado} many {{formattedCount} arquivos markdown encontrados} other {{formattedCount} arquivos markdown encontrados}}"
+
 #: src/components/ProblemsPanel.tsx
 msgid "{count, plural, one {Hands the # problem to your AI agent, including what has no automatic fix.} other {Hands all # problems to your AI agent, including what has no automatic fix.}}"
 msgstr "{count, plural, one {Entrega o # problema ao seu agente de IA, incluindo o que não tem correção automática.} many {Entrega os # problemas ao seu agente de IA, incluindo o que não tem correção automática.} other {Entrega os # problemas ao seu agente de IA, incluindo o que não tem correção automática.}}"
@@ -11380,6 +11384,10 @@ msgstr "Detalhes do projeto"
 msgid "Project folder created, but git init failed. Try again."
 msgstr "A pasta do projeto foi criada, mas o git init falhou. Tente de novo."
 
+#: src/components/ConsentDialogBody.tsx
+msgid "Project folder: <0>{projectDir}</0>"
+msgstr "Pasta do projeto: <0>{projectDir}</0>"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Project MCP server"
 msgstr "Servidor MCP do projeto"
@@ -15447,10 +15455,6 @@ msgstr "Esta lista pode estar desatualizada — última leitura {staleRelative}.
 msgid "This list may be out of date."
 msgstr "Esta lista pode estar desatualizada."
 
-#: src/components/ConsentDialogBody.tsx
-msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
-msgstr "Isto parece a raiz de uma unidade (ex.: C:\\). Preparar o projeto aqui vai varrer uma unidade inteira."
-
 #: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillScopeSegment.tsx
@@ -16968,14 +16972,6 @@ msgstr "Você escolheu ~/Documents. O OpenKnowledge vai indexar todos os arquivo
 #: src/components/ConsentDialogBody.tsx
 msgid "You picked ~/Downloads. Files there are usually transient — consider a stable folder instead."
 msgstr "Você escolheu ~/Downloads. Os arquivos de lá costumam ser passageiros — pense em uma pasta mais estável."
-
-#: src/components/ConsentDialogBody.tsx
-msgid "You picked the filesystem root (/). Scaffolding here will scan every file on this machine — make sure that's what you want."
-msgstr "Você escolheu a raiz do sistema de arquivos (/). Preparar o projeto aqui vai varrer todos os arquivos deste computador — confira se é isso mesmo que você quer."
-
-#: src/components/ConsentDialogBody.tsx
-msgid "You picked your home directory. OpenKnowledge will index everything in your home tree — large and may surface personal files."
-msgstr "Você escolheu sua pasta pessoal. O OpenKnowledge vai indexar toda a sua árvore pessoal — é grande e pode trazer à tona arquivos pessoais."
 
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"

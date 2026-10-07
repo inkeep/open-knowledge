@@ -289,6 +289,7 @@ import {
   defaultGitTopLevel,
   discoverProject,
   isExactManagedProject,
+  REJECTION_REASON_COPY,
   validateFolderPick,
 } from './folder-admission.ts';
 import { createBootBudgetDirSizeProbe } from './fs-walk-budget.ts';
@@ -1775,13 +1776,7 @@ async function openProject(
   if (discovery.kind === 'rejected') {
     dialog.showErrorBox(
       'Cannot open this folder',
-      `${projectPath}\n\nReason: ${
-        discovery.reason === 'symlink-escape'
-          ? 'Symlink resolves outside its parent directory.'
-          : discovery.reason === 'home-directory'
-            ? "This is your home directory, not a project. ~/.ok is OpenKnowledge's own user-global folder (settings, skills), and opening a project here would set up git in your home directory and write project config into your editors' global folders. Make a folder for your notes and open that instead."
-            : 'Folder is unreadable or does not exist.'
-      }`,
+      `${projectPath}\n\nReason: ${REJECTION_REASON_COPY[discovery.reason]}`,
     );
     openNavigator();
     return false;

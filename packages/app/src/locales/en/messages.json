@@ -1295,6 +1295,7 @@
     "DqyItq": [
       "OpenKnowledge logs across projects. No project is open, so project server logs are not included."
     ],
+    "DrKYv7": ["Project folder: <0>", ["projectDir"], "</0>"],
     "DsDwR-": [["0", "plural", { "one": ["#", " error"], "other": ["#", " errors"] }]],
     "DskIkK": ["Sign-in stream ended without confirmation — please try again"],
     "DuCPiG": [
@@ -2036,9 +2037,6 @@
     "LzM_ga": ["Filter skills"],
     "M0jOcG": ["View in source markdown"],
     "M1OfV9": ["Next source diagnostic"],
-    "M3ytY_": [
-      "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
-    ],
     "M5_9s2": ["Sending report"],
     "M5mfAe": ["Add tag"],
     "M6mvVi": ["Copy relative path"],
@@ -3215,9 +3213,6 @@
     "ZW2yR_": ["Add custom path"],
     "ZW3mlR": ["Diff render mode"],
     "ZWgr0b": ["In a subfolder"],
-    "ZWolSV": [
-      "You picked the filesystem root (/). Scaffolding here will scan every file on this machine — make sure that's what you want."
-    ],
     "ZWwYwM": ["Base branch"],
     "ZWxfrc": ["cleared folder properties"],
     "ZWyHmq": ["This project"],
@@ -3324,9 +3319,6 @@
     "_Pmhxt": ["… earlier output trimmed"],
     "_PnPuw": ["Picked up ", ["0"], " from ", ["1"], "."],
     "_QwkMu": ["No matching paths"],
-    "_RcqUM": [
-      "You picked your home directory. OpenKnowledge will index everything in your home tree — large and may surface personal files."
-    ],
     "_SDGzH": ["Continue in browser"],
     "_SkqfM": ["Accept incoming"],
     "_TDESN": ["Network error - ", ["kind"], " \"", ["createdPath"], "\" still exists on disk"],
@@ -5944,6 +5936,16 @@
     ],
     "zZ_I5K": ["Open project menu"],
     "z_4xza": ["Failed to load docs. Press <0>Esc</0> and re-open to retry."],
+    "z_wa6u": [
+      [
+        "count",
+        "plural",
+        {
+          "one": ["Found ", ["formattedCount"], " markdown file"],
+          "other": ["Found ", ["formattedCount"], " markdown files"]
+        }
+      ]
+    ],
     "zaXlhf": [
       "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
     ],

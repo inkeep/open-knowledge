@@ -126,6 +126,21 @@ describe('buildMenuTemplate', () => {
     expect(openProject).toHaveBeenCalledWith('/tmp/picked', 'pick-existing');
   });
 
+  test('File → Open folder reports a picker that closes without a folder', async () => {
+    const openProject = vi.fn(() => Promise.resolve());
+    const showOpenDialog = vi.fn(() => Promise.resolve({ canceled: false, filePaths: [] }));
+    const showErrorBox = vi.fn();
+    const deps = makeDeps({
+      openProject,
+      dialog: { showOpenDialog, showErrorBox } as unknown as MenuDeps['dialog'],
+    });
+    const template = buildMenuTemplate(deps);
+    const openFolder = findByLabel(template, 'Open folder…');
+    await (openFolder?.click as (() => Promise<void>) | undefined)?.();
+    expect(showErrorBox).toHaveBeenCalledTimes(1);
+    expect(openProject).not.toHaveBeenCalled();
+  });
+
   test('Clear menu click dispatches deps.clearRecentProjects()', () => {
     const clearRecentProjects = vi.fn(() => {});
     const deps = makeDeps({

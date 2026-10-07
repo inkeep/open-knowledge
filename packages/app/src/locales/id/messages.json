@@ -1292,6 +1292,7 @@
     "DqyItq": [
       "Log OpenKnowledge lintas proyek. Tidak ada proyek yang terbuka, jadi log server proyek tidak disertakan."
     ],
+    "DrKYv7": ["Folder proyek: <0>", ["projectDir"], "</0>"],
     "DsDwR-": [["0", "plural", { "other": ["#", " galat"] }]],
     "DskIkK": ["Aliran proses masuk berakhir tanpa konfirmasi — silakan coba lagi"],
     "DuCPiG": [
@@ -2063,9 +2064,6 @@
     "LzM_ga": ["Saring keterampilan"],
     "M0jOcG": ["Lihat di markdown sumber"],
     "M1OfV9": ["Diagnostik sumber berikutnya"],
-    "M3ytY_": [
-      "Ini tampak seperti akar sebuah drive (mis. C:\\). Menyusun proyek di sini akan memindai seluruh drive."
-    ],
     "M5_9s2": ["Mengirim laporan"],
     "M5mfAe": ["Tambahkan tag"],
     "M6mvVi": ["Salin jalur relatif"],
@@ -3236,9 +3234,6 @@
     "ZW2yR_": ["Tambahkan jalur khusus"],
     "ZW3mlR": ["Mode render perbedaan"],
     "ZWgr0b": ["Di subfolder"],
-    "ZWolSV": [
-      "Anda memilih akar sistem berkas (/). Menyusun proyek di sini akan memindai setiap berkas di komputer ini — pastikan itu memang yang Anda mau."
-    ],
     "ZWwYwM": ["Cabang dasar"],
     "ZWxfrc": ["properti folder dibersihkan"],
     "ZWyHmq": ["Proyek ini"],
@@ -3338,9 +3333,6 @@
     "_Pmhxt": ["… keluaran sebelumnya dipangkas"],
     "_PnPuw": [["0"], " diambil dari ", ["1"], "."],
     "_QwkMu": ["Tidak ada jalur yang cocok"],
-    "_RcqUM": [
-      "Anda memilih direktori beranda Anda. OpenKnowledge akan mengindeks semua yang ada di pohon beranda Anda — besar dan bisa memunculkan berkas pribadi."
-    ],
     "_SDGzH": ["Lanjutkan di peramban"],
     "_SkqfM": ["Terima yang masuk"],
     "_TDESN": ["Galat jaringan - ", ["kind"], " \"", ["createdPath"], "\" masih ada di disk"],
@@ -5936,6 +5928,9 @@
     ],
     "zZ_I5K": ["Buka menu proyek"],
     "z_4xza": ["Gagal memuat dokumen. Tekan <0>Esc</0> lalu buka lagi untuk mencoba ulang."],
+    "z_wa6u": [
+      ["count", "plural", { "other": ["Ditemukan ", ["formattedCount"], " berkas markdown"] }]
+    ],
     "zaXlhf": [
       "Blok properti di bagian atas dokumen ini punya galat format. Beralihlah ke mode sumber untuk memperbaikinya."
     ],

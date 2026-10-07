@@ -2,8 +2,10 @@ import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
+  FilesystemRootProjectError,
   HomeProjectRootError,
   initContent,
+  isFilesystemRoot,
   isHomeDir,
   withHiddenWindowsConsole,
 } from '@inkeep/open-knowledge-server';
@@ -321,6 +323,11 @@ async function runSharePublish(opts: PublishOptions, tokenStore: TokenStore): Pr
   validateGitHubHost(host);
   if (isHomeDir(projectDir)) {
     process.stderr.write(`${new HomeProjectRootError(resolve(projectDir)).message}\n`);
+    process.exitCode = 64;
+    return;
+  }
+  if (isFilesystemRoot(projectDir)) {
+    process.stderr.write(`${new FilesystemRootProjectError(resolve(projectDir)).message}\n`);
     process.exitCode = 64;
     return;
   }

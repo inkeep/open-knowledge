@@ -755,6 +755,10 @@ msgstr "{count, plural, other {确定要删除以下 # 个文件吗？}}"
 msgid "{count, plural, one {Are you sure you want to delete the following # file/directory and its contents?} other {Are you sure you want to delete the following # files/directories and their contents?}}"
 msgstr "{count, plural, other {确定要删除以下 # 个文件/文件夹及其内容吗？}}"
 
+#: src/components/ConsentDialogBody.tsx
+msgid "{count, plural, one {Found {formattedCount} markdown file} other {Found {formattedCount} markdown files}}"
+msgstr "{count, plural, other {找到 {formattedCount} 个 markdown 文件}}"
+
 #: src/components/ProblemsPanel.tsx
 msgid "{count, plural, one {Hands the # problem to your AI agent, including what has no automatic fix.} other {Hands all # problems to your AI agent, including what has no automatic fix.}}"
 msgstr "{count, plural, other {把这 # 个问题交给你的 AI 智能体，包括没有自动修复方案的部分。}}"
@@ -11384,6 +11388,10 @@ msgstr "项目详情"
 msgid "Project folder created, but git init failed. Try again."
 msgstr "项目文件夹已创建，但 git init 失败。请重试。"
 
+#: src/components/ConsentDialogBody.tsx
+msgid "Project folder: <0>{projectDir}</0>"
+msgstr "项目文件夹：<0>{projectDir}</0>"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Project MCP server"
 msgstr "项目 MCP 服务器"
@@ -15451,10 +15459,6 @@ msgstr "此列表可能不是最新的——上次读取：{staleRelative}。"
 msgid "This list may be out of date."
 msgstr "此列表可能不是最新的。"
 
-#: src/components/ConsentDialogBody.tsx
-msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
-msgstr "这看起来像是驱动器根目录（例如 C:\\）。在这里搭建项目会扫描整个驱动器。"
-
 #: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillScopeSegment.tsx
@@ -16972,14 +16976,6 @@ msgstr "你选择了 ~/Documents。OpenKnowledge 会索引它下面的每个 mar
 #: src/components/ConsentDialogBody.tsx
 msgid "You picked ~/Downloads. Files there are usually transient — consider a stable folder instead."
 msgstr "你选择了 ~/Downloads。那里的文件通常是临时的——建议改用一个稳定的文件夹。"
-
-#: src/components/ConsentDialogBody.tsx
-msgid "You picked the filesystem root (/). Scaffolding here will scan every file on this machine — make sure that's what you want."
-msgstr "你选择了文件系统根目录（/）。在这里搭建项目会扫描这台电脑上的每个文件——请确认这确实是你想要的。"
-
-#: src/components/ConsentDialogBody.tsx
-msgid "You picked your home directory. OpenKnowledge will index everything in your home tree — large and may surface personal files."
-msgstr "你选择了主目录。OpenKnowledge 会索引整个主目录树——数量庞大，而且可能暴露个人文件。"
 
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"

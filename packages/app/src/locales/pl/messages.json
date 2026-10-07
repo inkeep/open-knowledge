@@ -1545,6 +1545,7 @@
     "DqyItq": [
       "Logi OpenKnowledge ze wszystkich projektów. Żaden projekt nie jest otwarty, więc logi serwera projektu nie są dołączone."
     ],
+    "DrKYv7": ["Folder projektu: <0>", ["projectDir"], "</0>"],
     "DsDwR-": [
       [
         "0",
@@ -2416,9 +2417,6 @@
     "LzM_ga": ["Filtruj umiejętności"],
     "M0jOcG": ["Zobacz w źródle markdown"],
     "M1OfV9": ["Następny komunikat źródłowy"],
-    "M3ytY_": [
-      "To wygląda na katalog główny dysku (np. C:\\). Tworzenie szkieletu tutaj przeskanuje cały dysk."
-    ],
     "M5_9s2": ["Wysyłanie zgłoszenia"],
     "M5mfAe": ["Dodaj tag"],
     "M6mvVi": ["Kopiuj ścieżkę względną"],
@@ -3801,9 +3799,6 @@
     "ZW2yR_": ["Dodaj własną ścieżkę"],
     "ZW3mlR": ["Tryb renderowania diffu"],
     "ZWgr0b": ["W podfolderze"],
-    "ZWolSV": [
-      "Wybrałeś katalog główny systemu plików (/). Inicjalizacja tutaj zeskanuje każdy plik na tym komputerze — upewnij się, że tego chcesz."
-    ],
     "ZWwYwM": ["Gałąź bazowa"],
     "ZWxfrc": ["wyczyszczono właściwości folderu"],
     "ZWyHmq": ["Ten projekt"],
@@ -3919,9 +3914,6 @@
     "_Pmhxt": ["… wcześniejsze wyjście obcięte"],
     "_PnPuw": ["Przejęto ", ["0"], " z ", ["1"], "."],
     "_QwkMu": ["Brak pasujących ścieżek"],
-    "_RcqUM": [
-      "Wybrałeś katalog domowy. OpenKnowledge zaindeksuje wszystko w Twoim katalogu domowym — jest duży i mogą pojawić się w nim pliki osobiste."
-    ],
     "_SDGzH": ["Kontynuuj w przeglądarce"],
     "_SkqfM": ["Akceptuj przychodzącą"],
     "_TDESN": ["Błąd sieci - ", ["kind"], " \"", ["createdPath"], "\" nadal istnieje na dysku"],
@@ -7058,6 +7050,18 @@
     "zZ_I5K": ["Otwórz menu projektu"],
     "z_4xza": [
       "Nie udało się wczytać dokumentów. Naciśnij <0>Esc</0> i otwórz ponownie, aby spróbować jeszcze raz."
+    ],
+    "z_wa6u": [
+      [
+        "count",
+        "plural",
+        {
+          "one": ["Znaleziono ", ["formattedCount"], " plik Markdown"],
+          "few": ["Znaleziono ", ["formattedCount"], " pliki Markdown"],
+          "many": ["Znaleziono ", ["formattedCount"], " plików Markdown"],
+          "other": ["Znaleziono ", ["formattedCount"], " pliku Markdown"]
+        }
+      ]
     ],
     "zaXlhf": [
       "Blok właściwości na górze tego dokumentu zawiera błąd formatowania. Przełącz się w tryb źródłowy, aby go poprawić."

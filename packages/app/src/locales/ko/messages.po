@@ -755,6 +755,10 @@ msgstr "{count, plural, other {다음 파일 #개를 삭제하시겠습니까?}}
 msgid "{count, plural, one {Are you sure you want to delete the following # file/directory and its contents?} other {Are you sure you want to delete the following # files/directories and their contents?}}"
 msgstr "{count, plural, other {다음 파일 또는 폴더 #개와 그 내용을 삭제하시겠습니까?}}"
 
+#: src/components/ConsentDialogBody.tsx
+msgid "{count, plural, one {Found {formattedCount} markdown file} other {Found {formattedCount} markdown files}}"
+msgstr "{count, plural, other {{formattedCount}개의 markdown 파일을 찾았습니다}}"
+
 #: src/components/ProblemsPanel.tsx
 msgid "{count, plural, one {Hands the # problem to your AI agent, including what has no automatic fix.} other {Hands all # problems to your AI agent, including what has no automatic fix.}}"
 msgstr "{count, plural, other {AI 에이전트에 문제 #개를 전달합니다. 자동 수정이 없는 문제도 포함됩니다.}}"
@@ -11384,6 +11388,10 @@ msgstr "프로젝트 세부 정보"
 msgid "Project folder created, but git init failed. Try again."
 msgstr "프로젝트 폴더는 생성되었지만 git init에 실패했습니다. 다시 시도하세요."
 
+#: src/components/ConsentDialogBody.tsx
+msgid "Project folder: <0>{projectDir}</0>"
+msgstr "프로젝트 폴더: <0>{projectDir}</0>"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Project MCP server"
 msgstr "프로젝트 MCP 서버"
@@ -15451,10 +15459,6 @@ msgstr "이 목록은 최신 상태가 아닐 수 있습니다. 마지막으로 
 msgid "This list may be out of date."
 msgstr "이 목록은 최신 상태가 아닐 수 있습니다."
 
-#: src/components/ConsentDialogBody.tsx
-msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
-msgstr "드라이브 루트처럼 보입니다(예: Windows 드라이브 루트). 여기서 뼈대를 만들면 드라이브 전체를 검사합니다."
-
 #: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillScopeSegment.tsx
@@ -16972,14 +16976,6 @@ msgstr "~/Documents를 선택했습니다. OpenKnowledge가 그 아래의 모든
 #: src/components/ConsentDialogBody.tsx
 msgid "You picked ~/Downloads. Files there are usually transient — consider a stable folder instead."
 msgstr "~/Downloads를 선택했습니다. 여기의 파일은 대개 일시적이므로 안정적인 폴더를 대신 선택하는 것이 좋습니다."
-
-#: src/components/ConsentDialogBody.tsx
-msgid "You picked the filesystem root (/). Scaffolding here will scan every file on this machine — make sure that's what you want."
-msgstr "파일 시스템 루트(/)를 선택했습니다. 여기서 뼈대를 만들면 이 컴퓨터의 모든 파일을 검사합니다. 원하는 동작인지 확인하세요."
-
-#: src/components/ConsentDialogBody.tsx
-msgid "You picked your home directory. OpenKnowledge will index everything in your home tree — large and may surface personal files."
-msgstr "홈 디렉터리를 선택했습니다. OpenKnowledge가 홈 트리의 모든 항목을 색인합니다. 범위가 크고 개인 파일이 표시될 수 있습니다."
 
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"

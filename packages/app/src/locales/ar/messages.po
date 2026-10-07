@@ -755,6 +755,10 @@ msgstr "{count, plural, zero {هل تريد بالتأكيد حذف الملفا
 msgid "{count, plural, one {Are you sure you want to delete the following # file/directory and its contents?} other {Are you sure you want to delete the following # files/directories and their contents?}}"
 msgstr "{count, plural, zero {هل تريد بالتأكيد حذف الملفات/المجلدات التالية ومحتوياتها؟} one {هل تريد بالتأكيد حذف الملف/المجلد التالي ومحتوياته؟} two {هل تريد بالتأكيد حذف العنصرين التاليين ومحتوياتهما؟} few {هل تريد بالتأكيد حذف العناصر # التالية ومحتوياتها؟} many {هل تريد بالتأكيد حذف # عنصرًا من الملفات/المجلدات التالية ومحتوياتها؟} other {هل تريد بالتأكيد حذف # عنصر من الملفات/المجلدات التالية ومحتوياتها؟}}"
 
+#: src/components/ConsentDialogBody.tsx
+msgid "{count, plural, one {Found {formattedCount} markdown file} other {Found {formattedCount} markdown files}}"
+msgstr "{count, plural, zero {عُثر على {formattedCount} ملف Markdown} one {عُثر على {formattedCount} ملف Markdown} two {عُثر على {formattedCount} ملفَّي Markdown} few {عُثر على {formattedCount} ملفات Markdown} many {عُثر على {formattedCount} ملف Markdown} other {عُثر على {formattedCount} ملف Markdown}}"
+
 #: src/components/ProblemsPanel.tsx
 msgid "{count, plural, one {Hands the # problem to your AI agent, including what has no automatic fix.} other {Hands all # problems to your AI agent, including what has no automatic fix.}}"
 msgstr "{count, plural, zero {يسلّم المشكلات # إلى وكيل الذكاء الاصطناعي لديك، بما في ذلك ما لا إصلاح تلقائي له.} one {يسلّم المشكلة الواحدة إلى وكيل الذكاء الاصطناعي لديك، بما في ذلك ما لا إصلاح تلقائي له.} two {يسلّم المشكلتين إلى وكيل الذكاء الاصطناعي لديك، بما في ذلك ما لا إصلاح تلقائي له.} few {يسلّم كل المشكلات # إلى وكيل الذكاء الاصطناعي لديك، بما في ذلك ما لا إصلاح تلقائي له.} many {يسلّم كل المشكلات # إلى وكيل الذكاء الاصطناعي لديك، بما في ذلك ما لا إصلاح تلقائي له.} other {يسلّم كل المشكلات # إلى وكيل الذكاء الاصطناعي لديك، بما في ذلك ما لا إصلاح تلقائي له.}}"
@@ -11384,6 +11388,10 @@ msgstr "تفاصيل المشروع"
 msgid "Project folder created, but git init failed. Try again."
 msgstr "أُنشئ مجلد المشروع، لكن فشل git init. أعد المحاولة."
 
+#: src/components/ConsentDialogBody.tsx
+msgid "Project folder: <0>{projectDir}</0>"
+msgstr "مجلد المشروع: <0>{projectDir}</0>"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Project MCP server"
 msgstr "خادم MCP للمشروع"
@@ -15451,10 +15459,6 @@ msgstr "قد تكون هذه القائمة قديمة — آخر قراءة {st
 msgid "This list may be out of date."
 msgstr "قد تكون هذه القائمة قديمة."
 
-#: src/components/ConsentDialogBody.tsx
-msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
-msgstr "يبدو هذا جذر قرص (مثل C:\\). سيفحص البناء هنا قرصًا كاملًا."
-
 #: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillScopeSegment.tsx
@@ -16972,14 +16976,6 @@ msgstr "اخترت ~/Documents. سيفهرس OpenKnowledge كل ملف Markdown 
 #: src/components/ConsentDialogBody.tsx
 msgid "You picked ~/Downloads. Files there are usually transient — consider a stable folder instead."
 msgstr "اخترت ~/Downloads. الملفات هناك عابرة عادةً — ففكّر في مجلد ثابت بدلًا من ذلك."
-
-#: src/components/ConsentDialogBody.tsx
-msgid "You picked the filesystem root (/). Scaffolding here will scan every file on this machine — make sure that's what you want."
-msgstr "اخترت جذر نظام الملفات (/). سيفحص البناء هنا كل ملف على هذا الجهاز — تأكد أن هذا ما تريده."
-
-#: src/components/ConsentDialogBody.tsx
-msgid "You picked your home directory. OpenKnowledge will index everything in your home tree — large and may surface personal files."
-msgstr "اخترت مجلدك الرئيسي. سيفهرس OpenKnowledge كل ما في شجرة مجلدك الرئيسي — وهو كبير وقد يُظهر ملفات شخصية."
 
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"

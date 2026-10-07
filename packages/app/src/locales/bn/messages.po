@@ -755,6 +755,10 @@ msgstr "{count, plural, one {আপনি কি নিশ্চিতভাব�
 msgid "{count, plural, one {Are you sure you want to delete the following # file/directory and its contents?} other {Are you sure you want to delete the following # files/directories and their contents?}}"
 msgstr "{count, plural, one {আপনি কি নিশ্চিতভাবে নিচের # ফাইল/ফোল্ডার এবং তার বিষয়বস্তু মুছতে চান?} other {আপনি কি নিশ্চিতভাবে নিচের # ফাইল/ফোল্ডার এবং সেগুলির বিষয়বস্তু মুছতে চান?}}"
 
+#: src/components/ConsentDialogBody.tsx
+msgid "{count, plural, one {Found {formattedCount} markdown file} other {Found {formattedCount} markdown files}}"
+msgstr "{count, plural, one {{formattedCount}টি markdown ফাইল পাওয়া গেছে} other {{formattedCount}টি markdown ফাইল পাওয়া গেছে}}"
+
 #: src/components/ProblemsPanel.tsx
 msgid "{count, plural, one {Hands the # problem to your AI agent, including what has no automatic fix.} other {Hands all # problems to your AI agent, including what has no automatic fix.}}"
 msgstr "{count, plural, one {# সমস্যাটি আপনার AI এজেন্টের হাতে তুলে দেয়, যার কোনো স্বয়ংক্রিয় সমাধান নেই সেটিসহ।} other {সব # সমস্যা আপনার AI এজেন্টের হাতে তুলে দেয়, যেগুলোর কোনো স্বয়ংক্রিয় সমাধান নেই সেগুলোসহ।}}"
@@ -11380,6 +11384,10 @@ msgstr "প্রকল্পের বিবরণ"
 msgid "Project folder created, but git init failed. Try again."
 msgstr "প্রকল্পের ফোল্ডার তৈরি হয়েছে, কিন্তু git init ব্যর্থ হয়েছে। আবার চেষ্টা করুন।"
 
+#: src/components/ConsentDialogBody.tsx
+msgid "Project folder: <0>{projectDir}</0>"
+msgstr "প্রকল্পের ফোল্ডার: <0>{projectDir}</0>"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Project MCP server"
 msgstr "প্রকল্প MCP সার্ভার"
@@ -15447,10 +15455,6 @@ msgstr "এই তালিকা পুরোনো হতে পারে — 
 msgid "This list may be out of date."
 msgstr "এই তালিকা পুরোনো হতে পারে।"
 
-#: src/components/ConsentDialogBody.tsx
-msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
-msgstr "এটি একটি ড্রাইভের রুট মনে হচ্ছে (যেমন C:\\)। এখানে কাঠামো গড়লে পুরো ড্রাইভ স্ক্যান হবে।"
-
 #: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillScopeSegment.tsx
@@ -16968,14 +16972,6 @@ msgstr "আপনি ~/Documents বেছেছেন। OpenKnowledge এর �
 #: src/components/ConsentDialogBody.tsx
 msgid "You picked ~/Downloads. Files there are usually transient — consider a stable folder instead."
 msgstr "আপনি ~/Downloads বেছেছেন। সেখানকার ফাইল সাধারণত ক্ষণস্থায়ী — বদলে একটি স্থায়ী ফোল্ডার বিবেচনা করুন।"
-
-#: src/components/ConsentDialogBody.tsx
-msgid "You picked the filesystem root (/). Scaffolding here will scan every file on this machine — make sure that's what you want."
-msgstr "আপনি ফাইল সিস্টেমের রুট (/) বেছেছেন। এখানে কাঠামো গড়লে এই মেশিনের প্রতিটি ফাইল স্ক্যান হবে — নিশ্চিত হয়ে নিন আপনি সেটাই চান।"
-
-#: src/components/ConsentDialogBody.tsx
-msgid "You picked your home directory. OpenKnowledge will index everything in your home tree — large and may surface personal files."
-msgstr "আপনি আপনার হোম ডিরেক্টরি বেছেছেন। OpenKnowledge আপনার পুরো হোম বৃক্ষের সবকিছু সূচিভুক্ত করবে — এটি বড় এবং এতে ব্যক্তিগত ফাইল সামনে আসতে পারে।"
 
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"

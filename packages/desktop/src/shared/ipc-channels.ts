@@ -177,14 +177,7 @@ export interface HandoffStatsLine {
 
 export type McpWiringEditorId = EditorId;
 
-type OnboardingWarningKind =
-  | 'root'
-  | 'home'
-  | 'home-documents'
-  | 'home-desktop'
-  | 'home-downloads'
-  | 'volumes-mount'
-  | 'drive-root';
+type OnboardingWarningKind = 'home-documents' | 'home-desktop' | 'home-downloads' | 'volumes-mount';
 
 type OnboardingGitState = 'present' | 'absent' | 'shell-only';
 

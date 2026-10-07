@@ -1486,6 +1486,7 @@
     "DqyItq": [
       "Logs do OpenKnowledge de vários projetos. Nenhum projeto está aberto, por isso os logs do servidor do projeto não são incluídos."
     ],
+    "DrKYv7": ["Pasta do projeto: <0>", ["projectDir"], "</0>"],
     "DsDwR-": [
       ["0", "plural", { "one": ["#", " erro"], "many": ["#", " erros"], "other": ["#", " erros"] }]
     ],
@@ -2335,9 +2336,6 @@
     "LzM_ga": ["Filtrar habilidades"],
     "M0jOcG": ["Ver no markdown de origem"],
     "M1OfV9": ["Próximo diagnóstico do código"],
-    "M3ytY_": [
-      "Isto parece a raiz de uma unidade (ex.: C:\\). Preparar o projeto aqui vai varrer uma unidade inteira."
-    ],
     "M5_9s2": ["Enviando o relatório"],
     "M5mfAe": ["Adicionar tag"],
     "M6mvVi": ["Copiar caminho relativo"],
@@ -3656,9 +3654,6 @@
     "ZW2yR_": ["Adicionar caminho personalizado"],
     "ZW3mlR": ["Modo de exibição das diferenças"],
     "ZWgr0b": ["Em uma subpasta"],
-    "ZWolSV": [
-      "Você escolheu a raiz do sistema de arquivos (/). Preparar o projeto aqui vai varrer todos os arquivos deste computador — confira se é isso mesmo que você quer."
-    ],
     "ZWwYwM": ["Ramo base"],
     "ZWxfrc": ["propriedades da pasta limpas"],
     "ZWyHmq": ["Este projeto"],
@@ -3768,9 +3763,6 @@
     "_Pmhxt": ["… saída anterior cortada"],
     "_PnPuw": [["0"], " pego de ", ["1"], "."],
     "_QwkMu": ["Nenhum caminho corresponde"],
-    "_RcqUM": [
-      "Você escolheu sua pasta pessoal. O OpenKnowledge vai indexar toda a sua árvore pessoal — é grande e pode trazer à tona arquivos pessoais."
-    ],
     "_SDGzH": ["Continuar no navegador"],
     "_SkqfM": ["Aceitar recebido"],
     "_TDESN": ["Erro de rede - ", ["kind"], " \"", ["createdPath"], "\" ainda existe no disco"],
@@ -6710,6 +6702,17 @@
     "zZ_I5K": ["Abrir o menu do projeto"],
     "z_4xza": [
       "Falha ao carregar os documentos. Pressione <0>Esc</0> e abra de novo para tentar outra vez."
+    ],
+    "z_wa6u": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [["formattedCount"], " arquivo markdown encontrado"],
+          "many": [["formattedCount"], " arquivos markdown encontrados"],
+          "other": [["formattedCount"], " arquivos markdown encontrados"]
+        }
+      ]
     ],
     "zaXlhf": [
       "O bloco de propriedades no topo deste documento tem um erro de formatação. Mude para o modo código para corrigir."

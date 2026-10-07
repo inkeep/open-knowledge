@@ -38,6 +38,8 @@ ok init
 
 In a sub-folder of a git repo, `ok init` sets the project up at the git root — one `.ok/` per repo — and the whole repo becomes the content scope. Pass `--content-dir <dir>` to limit content to one folder (`ok init --content-dir .` scopes it to the folder you run in); the choice is saved as `content.dir` in `.ok/config.yml`. For scripts, `--json` prints a structured JSON summary. `ok init` also installs the user-global `open-knowledge-discovery` skill, the same one the desktop's first launch sets up; `--skills discovery,write-skill` adds the authoring skill, and `--no-skills` installs none on that run. `open-knowledge-write-skill` is otherwise one click away in **Settings → Skills Studio**.
 
+`ok init` refuses to set up a project in your home directory or at the top of a drive (`/`, `C:\`, a network share root) and exits with status 64. Make a folder for the project and run it there. The desktop app's **Open folder** refuses the same folders, plus system folders such as `/usr` or `C:\Windows`.
+
 <Callout type="info" title="If an editor shows “left unchanged”">
   OpenKnowledge prints `left unchanged (<reason>)` when it cannot safely read or update an editor's config. This can mean a permission problem, a path that is not a regular file, invalid JSON/TOML/YAML, duplicate MCP server blocks, or an unusually large file. The config stays **byte-for-byte untouched**. Follow the printed reason and then re-run `ok init`. Correct permissions or the path for an access failure, or repair syntax for a parse failure. For `no format-preserving writer available`, reinstall OpenKnowledge to restore its TOML writer, or add the MCP entry manually as described in the [Codex integration guide](/docs/integrations/codex#verify).
 </Callout>

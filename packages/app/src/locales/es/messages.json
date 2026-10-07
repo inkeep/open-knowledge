@@ -1508,6 +1508,7 @@
     "DqyItq": [
       "Registros de OpenKnowledge de varios proyectos. No hay ningún proyecto abierto, por lo que no se incluyen registros del servidor del proyecto."
     ],
+    "DrKYv7": ["Carpeta del proyecto: <0>", ["projectDir"], "</0>"],
     "DsDwR-": [
       [
         "0",
@@ -2368,9 +2369,6 @@
     "LzM_ga": ["Filtrar habilidades"],
     "M0jOcG": ["Ver en el markdown de origen"],
     "M1OfV9": ["Diagnóstico de código siguiente"],
-    "M3ytY_": [
-      "Esto parece la raíz de una unidad (p. ej. C:\\). Preparar el proyecto aquí analizará una unidad entera."
-    ],
     "M5_9s2": ["Enviando el informe"],
     "M5mfAe": ["Añadir etiqueta"],
     "M6mvVi": ["Copiar ruta relativa"],
@@ -3718,9 +3716,6 @@
     "ZW2yR_": ["Añadir ruta personalizada"],
     "ZW3mlR": ["Modo de renderizado de diferencias"],
     "ZWgr0b": ["En una subcarpeta"],
-    "ZWolSV": [
-      "Elegiste la raíz del sistema de archivos (/). Preparar el proyecto aquí analizará todos los archivos de este equipo; asegúrate de que es lo que quieres."
-    ],
     "ZWwYwM": ["Rama base"],
     "ZWxfrc": ["se borraron las propiedades de la carpeta"],
     "ZWyHmq": ["Este proyecto"],
@@ -3833,9 +3828,6 @@
     "_Pmhxt": ["… se recortó la salida anterior"],
     "_PnPuw": ["Se tomó ", ["0"], " de ", ["1"], "."],
     "_QwkMu": ["Ninguna ruta coincide"],
-    "_RcqUM": [
-      "Elegiste tu carpeta personal. OpenKnowledge indexará todo tu árbol personal: es grande y puede sacar a la luz archivos personales."
-    ],
     "_SDGzH": ["Continuar en el navegador"],
     "_SkqfM": ["Aceptar entrante"],
     "_TDESN": [
@@ -6849,6 +6841,17 @@
     "zZ_I5K": ["Abrir el menú del proyecto"],
     "z_4xza": [
       "No se pudieron cargar los documentos. Pulsa <0>Esc</0> y vuelve a abrirlo para reintentarlo."
+    ],
+    "z_wa6u": [
+      [
+        "count",
+        "plural",
+        {
+          "one": ["Se encontró ", ["formattedCount"], " archivo markdown"],
+          "many": ["Se encontraron ", ["formattedCount"], " archivos markdown"],
+          "other": ["Se encontraron ", ["formattedCount"], " archivos markdown"]
+        }
+      ]
     ],
     "zaXlhf": [
       "El bloque de propiedades del principio de este documento tiene un error de formato. Cambia al modo código para arreglarlo."

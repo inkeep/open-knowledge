@@ -4,7 +4,7 @@
 
 import { receivesProjectIntegrationWrite } from '@inkeep/open-knowledge-core/constants/editors';
 import type { MessageDescriptor } from '@lingui/core';
-import { msg } from '@lingui/core/macro';
+import { msg, plural } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ChevronRight } from 'lucide-react';
 import type React from 'react';
@@ -56,13 +56,10 @@ const PROBE_THROTTLE_MS = 750;
 const DETECTION_GRACE_MS = 8_000;
 
 const WARNING_COPY: Record<OkOnboardingWarningKind, MessageDescriptor> = {
-  root: msg`You picked the filesystem root (/). Scaffolding here will scan every file on this machine — make sure that's what you want.`,
-  home: msg`You picked your home directory. OpenKnowledge will index everything in your home tree — large and may surface personal files.`,
   'home-documents': msg`You picked ~/Documents. OpenKnowledge will index every markdown file under it. If you only want to manage a sub-folder, choose a smaller scope.`,
   'home-desktop': msg`You picked ~/Desktop. OpenKnowledge will index everything on your desktop.`,
   'home-downloads': msg`You picked ~/Downloads. Files there are usually transient — consider a stable folder instead.`,
   'volumes-mount': msg`This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects.`,
-  'drive-root': msg`This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive.`,
 };
 
 interface ConsentDialogBodyProps {
@@ -307,13 +304,22 @@ function ConsentDialogForm({ payload, store, toast, detectionGraceMs }: ConsentD
           {payload.gitRootPromoted ? (
             <p className="text-1sm text-muted-foreground">
               <Trans>
-                OpenKnowledge initializes at <code>{projectDir}</code> — the parent of{' '}
-                <code>{pickedRelative}</code> because it contains a <code>.git</code> folder (one
-                .ok/ per git repo). <code>Content directory</code> defaults to <code>.</code> (the
-                whole repo); type a sub-folder to narrow it.
+                OpenKnowledge initializes at <code dir="ltr">{projectDir}</code> — the parent of{' '}
+                <code dir="ltr">{pickedRelative}</code> because it contains a <code>.git</code>{' '}
+                folder (one .ok/ per git repo). <code>Content directory</code> defaults to{' '}
+                <code>.</code> (the whole repo); type a sub-folder to narrow it.
               </Trans>
             </p>
-          ) : null}
+          ) : (
+            <p
+              className="text-1sm text-muted-foreground break-all"
+              data-testid="consent-project-dir"
+            >
+              <Trans>
+                Project folder: <code dir="ltr">{projectDir}</code>
+              </Trans>
+            </p>
+          )}
 
           {payload.warnings.length > 0 ? (
             <div
@@ -489,7 +495,13 @@ function ProbePreview({ probe }: { probe: OkOnboardingProbeContentResult | null 
   const numberFormat = new Intl.NumberFormat(i18n.locale);
   const formattedCount = numberFormat.format(probe.count);
   const countDisplay = probe.truncated ? `≥ ${formattedCount}` : formattedCount;
-  const countLine = t`Found ${countDisplay} markdown files`;
+  const count = probe.count;
+  const countLine = probe.truncated
+    ? t`Found ${countDisplay} markdown files`
+    : t`${plural(count, {
+        one: `Found ${formattedCount} markdown file`,
+        other: `Found ${formattedCount} markdown files`,
+      })}`;
   if (probe.sample.length === 0) {
     return (
       <p className="text-1sm text-muted-foreground" data-testid="consent-preview">

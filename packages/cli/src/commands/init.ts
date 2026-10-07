@@ -17,11 +17,13 @@ import {
   BUNDLE_SKILL_NAME,
   detectUserSkillHosts,
   ensureProjectGit,
+  FilesystemRootProjectError,
   GitNotAvailableError,
   GitTooOldError,
   HomeProjectRootError,
   initContent,
   installUserSkill,
+  isFilesystemRoot,
   isSkillInstallReportEnvOptOut,
   ONBOARDING_BUNDLE_IDS,
   ProjectGitInitError,
@@ -589,7 +591,7 @@ export class ContentDirError extends Error {
   }
 }
 
-export { HomeProjectRootError };
+export { FilesystemRootProjectError, HomeProjectRootError };
 
 export function resolveInitSkillEnablement(skills: string | boolean | undefined): Set<BundleId> {
   if (skills === undefined || skills === true) return new Set<BundleId>(ONBOARDING_BUNDLE_IDS);
@@ -1137,6 +1139,9 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
   const projectRoot = resolution.projectRoot;
   if (isHomeDir(projectRoot, options.home ?? homedir())) {
     throw new HomeProjectRootError(projectRoot);
+  }
+  if (isFilesystemRoot(projectRoot)) {
+    throw new FilesystemRootProjectError(projectRoot);
   }
   const willScaffold = !existsSync(join(projectRoot, OK_DIR));
   const promotedFromDir = resolution.gitRootPromoted ? relative(projectRoot, cwd) : undefined;
@@ -1952,7 +1957,11 @@ export function initCommand(): Command {
               skills: opts.skills,
             });
           } catch (err) {
-            if (err instanceof ContentDirError || err instanceof HomeProjectRootError) {
+            if (
+              err instanceof ContentDirError ||
+              err instanceof HomeProjectRootError ||
+              err instanceof FilesystemRootProjectError
+            ) {
               process.stderr.write(`${err.message}\n`);
               process.exitCode = 64;
               return;

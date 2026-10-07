@@ -260,9 +260,11 @@ export {
 } from './handoff-api.ts';
 export { type ProjectHeadState, readProjectHeadState } from './head-watcher.ts';
 export {
-  assertNotHomeProjectRoot,
+  assertSafeProjectRoot,
   canonicalizeForCompare,
+  FilesystemRootProjectError,
   HomeProjectRootError,
+  isFilesystemRoot,
   isHomeDir,
 } from './home-project-root.ts';
 export {

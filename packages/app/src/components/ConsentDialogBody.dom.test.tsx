@@ -159,6 +159,55 @@ describe('ConsentDialogBody runtime form behavior', () => {
   );
 
   test.each([
+    { count: 0, expected: 'Found 0 markdown files' },
+    { count: 1, expected: 'Found 1 markdown file' },
+    { count: 2, expected: 'Found 2 markdown files' },
+  ])('pluralizes the count line for $count files', async ({ count, expected }) => {
+    setBridge({
+      ...statusBridge([]),
+      onboarding: {
+        probeContent: async () => ({ ok: true, count, sample: [], truncated: false }),
+      },
+    });
+    renderConsentDialog();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('consent-preview').textContent).toBe(expected);
+    });
+  });
+
+  test('always shows the absolute project folder', () => {
+    const harness = makeStore();
+    render(
+      <ConsentDialogBody
+        payload={{ ...payload, pickedPath: '/Users/test/notes', projectDir: '/Users/test/notes' }}
+        store={harness.store}
+      />,
+    );
+
+    expect(screen.getByTestId('consent-project-dir').textContent).toContain('/Users/test/notes');
+    expect(screen.getByText('/Users/test/notes').getAttribute('dir')).toBe('ltr');
+  });
+
+  test('names the project folder once when it was promoted to the git root', () => {
+    const harness = makeStore();
+    render(
+      <ConsentDialogBody
+        payload={{
+          ...payload,
+          pickedPath: '/Users/test/repo/docs',
+          projectDir: '/Users/test/repo',
+          gitRootPromoted: true,
+        }}
+        store={harness.store}
+      />,
+    );
+
+    expect(screen.getAllByText('/Users/test/repo')).toHaveLength(1);
+    expect(screen.getByText('/Users/test/repo').getAttribute('dir')).toBe('ltr');
+  });
+
+  test.each([
     { locale: 'en', headline: '5,000', remaining: '4,999' },
     { locale: 'fr', headline: '5\u202f000', remaining: '4\u202f999' },
   ])('formats the expanded remaining count in $locale', async ({ locale, headline, remaining }) => {

@@ -1,3 +1,8 @@
+import { isAbsolute } from 'node:path';
+import { getLogger } from './desktop-logger.ts';
+
+type OpenDialogOptions = Parameters<DialogLike['showOpenDialog']>[0];
+
 interface DialogLike {
   showOpenDialog(opts: {
     properties: (
@@ -10,6 +15,56 @@ interface DialogLike {
     defaultPath?: string;
     filters?: { name: string; extensions: string[] }[];
   }): Promise<{ canceled: boolean; filePaths: string[] }>;
+  showErrorBox(title: string, content: string): void;
+}
+
+const NO_SELECTION_COPY = {
+  folder: {
+    title: 'Couldn\u2019t open that folder',
+    body: 'The folder picker closed without choosing a folder. Try again, and select the folder in the list instead of typing its path.',
+  },
+  file: {
+    title: 'Couldn\u2019t open that file',
+    body: 'The file picker closed without choosing a file. Try again, and select the file in the list instead of typing its path.',
+  },
+} as const;
+
+function unusablePickShape(picked: string | undefined): 'none' | 'empty' | 'relative' | null {
+  if (picked === undefined) return 'none';
+  if (picked.length === 0) return 'empty';
+  if (!isAbsolute(picked)) return 'relative';
+  return null;
+}
+
+async function runPicker(
+  dialogModule: DialogLike,
+  target: keyof typeof NO_SELECTION_COPY,
+  options: OpenDialogOptions,
+): Promise<string | null> {
+  const log = getLogger('dialog');
+  let result: Awaited<ReturnType<DialogLike['showOpenDialog']>>;
+  try {
+    result = await dialogModule.showOpenDialog(options);
+  } catch (err) {
+    log.error({ outcome: 'failed', target, err }, 'picker failed to open');
+    throw err;
+  }
+  if (result.canceled) {
+    log.info({ outcome: 'canceled', target }, 'picker closed');
+    return null;
+  }
+  const picked = result.filePaths[0];
+  const unusable = unusablePickShape(picked);
+  if (unusable !== null) {
+    log.warn(
+      { outcome: 'no-selection', target, shape: unusable, count: result.filePaths.length },
+      'picker returned no usable path',
+    );
+    const copy = NO_SELECTION_COPY[target];
+    dialogModule.showErrorBox(copy.title, copy.body);
+    return null;
+  }
+  return picked;
 }
 
 interface PromptForPickerOpts {
@@ -41,12 +96,10 @@ export async function promptForExistingFolder(
 ): Promise<string | null> {
   const testSeam = readTestPickedPath();
   if (testSeam !== null) return testSeam;
-  const result = await dialogModule.showOpenDialog({
+  return runPicker(dialogModule, 'folder', {
     properties: ['openDirectory', 'createDirectory', 'showHiddenFiles'],
     ...(opts.defaultPath !== undefined ? { defaultPath: opts.defaultPath } : {}),
   });
-  if (result.canceled) return null;
-  return result.filePaths[0] ?? null;
 }
 
 export async function promptForExistingMarkdownFile(
@@ -55,11 +108,9 @@ export async function promptForExistingMarkdownFile(
 ): Promise<string | null> {
   const testSeam = readTestPickedPath();
   if (testSeam !== null) return testSeam;
-  const result = await dialogModule.showOpenDialog({
+  return runPicker(dialogModule, 'file', {
     properties: ['openFile'],
     filters: [{ name: 'Markdown', extensions: ['md', 'mdx'] }],
     ...(opts.defaultPath !== undefined ? { defaultPath: opts.defaultPath } : {}),
   });
-  if (result.canceled) return null;
-  return result.filePaths[0] ?? null;
 }

@@ -755,6 +755,10 @@ msgstr "{count, plural, other {確定要刪除以下 # 個檔案嗎？}}"
 msgid "{count, plural, one {Are you sure you want to delete the following # file/directory and its contents?} other {Are you sure you want to delete the following # files/directories and their contents?}}"
 msgstr "{count, plural, other {確定要刪除以下 # 個檔案/資料夾及其內容嗎？}}"
 
+#: src/components/ConsentDialogBody.tsx
+msgid "{count, plural, one {Found {formattedCount} markdown file} other {Found {formattedCount} markdown files}}"
+msgstr "{count, plural, other {找到 {formattedCount} 個 markdown 檔案}}"
+
 #: src/components/ProblemsPanel.tsx
 msgid "{count, plural, one {Hands the # problem to your AI agent, including what has no automatic fix.} other {Hands all # problems to your AI agent, including what has no automatic fix.}}"
 msgstr "{count, plural, other {把這 # 個問題交給你的 AI 代理，包括沒有自動修正方式的部分。}}"
@@ -11384,6 +11388,10 @@ msgstr "專案詳細資料"
 msgid "Project folder created, but git init failed. Try again."
 msgstr "專案資料夾已建立，但 git init 失敗。請再試一次。"
 
+#: src/components/ConsentDialogBody.tsx
+msgid "Project folder: <0>{projectDir}</0>"
+msgstr "專案資料夾：<0>{projectDir}</0>"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Project MCP server"
 msgstr "專案 MCP 伺服器"
@@ -15451,10 +15459,6 @@ msgstr "這份清單可能不是最新的——上次讀取：{staleRelative}。
 msgid "This list may be out of date."
 msgstr "這份清單可能不是最新的。"
 
-#: src/components/ConsentDialogBody.tsx
-msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
-msgstr "這看起來像是磁碟機根目錄（例如 C:\\）。在這裡建立專案骨架會掃描整個磁碟機。"
-
 #: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillScopeSegment.tsx
@@ -16972,14 +16976,6 @@ msgstr "你選了 ~/Documents。OpenKnowledge 會把它底下的每個 markdown 
 #: src/components/ConsentDialogBody.tsx
 msgid "You picked ~/Downloads. Files there are usually transient — consider a stable folder instead."
 msgstr "你選了 ~/Downloads。那裡的檔案通常是暫時的——建議改用一個穩定的資料夾。"
-
-#: src/components/ConsentDialogBody.tsx
-msgid "You picked the filesystem root (/). Scaffolding here will scan every file on this machine — make sure that's what you want."
-msgstr "你選了檔案系統根目錄（/）。在這裡建立專案骨架會掃描這台電腦上的每個檔案——請確認這真的是你要的。"
-
-#: src/components/ConsentDialogBody.tsx
-msgid "You picked your home directory. OpenKnowledge will index everything in your home tree — large and may surface personal files."
-msgstr "你選了家目錄。OpenKnowledge 會把整個家目錄樹都建立索引——數量龐大，而且可能把個人檔案帶出來。"
 
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"

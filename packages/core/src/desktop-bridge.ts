@@ -476,13 +476,10 @@ export type OkAgentIntegrationsApplyResult =
     };
 
 export type OkOnboardingWarningKind =
-  | 'root'
-  | 'home'
   | 'home-documents'
   | 'home-desktop'
   | 'home-downloads'
-  | 'volumes-mount'
-  | 'drive-root';
+  | 'volumes-mount';
 
 export type OkOnboardingGitState = 'present' | 'absent' | 'shell-only';
 
