@@ -278,7 +278,7 @@ export function createDocumentRoutes(deps: DocumentRouteDeps): DocumentRoutes {
             'Content-Type': 'application/x-ndjson',
             'Transfer-Encoding': 'chunked',
             'X-Content-Type-Options': 'nosniff',
-            'Cache-Control': 'no-cache',
+            'Cache-Control': 'no-store',
           });
           const writeStreamError = createStreamingErrorWriter(res, 'document-list');
 

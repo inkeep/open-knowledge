@@ -28,6 +28,32 @@ describe('document-list envelope (RFC 9457)', () => {
     expect((body as Record<string, unknown>).ok).toBeUndefined();
   });
 
+  test('every listing shape is no-store, so a browser never writes it to its disk cache', async () => {
+    const base = `http://127.0.0.1:${server.port}/api/documents`;
+    const listing = await fetch(base);
+    expect(listing.status).toBe(200);
+    expect(listing.headers.get('cache-control')).toBe('no-store');
+    await listing.body?.cancel();
+
+    const showAll = await fetch(`${base}?showAll=true&dir=&depth=1`);
+    expect(showAll.status).toBe(200);
+    expect(showAll.headers.get('cache-control')).toBe('no-store');
+    await showAll.body?.cancel();
+
+    const streamed = await fetch(`${base}?showAll=true&dir=&depth=1`, {
+      headers: { Accept: 'application/x-ndjson' },
+    });
+    expect(streamed.status).toBe(200);
+    expect(streamed.headers.get('content-type')).toBe('application/x-ndjson');
+    expect(streamed.headers.get('cache-control')).toBe('no-store');
+    await streamed.body?.cancel();
+
+    const pages = await fetch(`http://127.0.0.1:${server.port}/api/pages`);
+    expect(pages.status).toBe(200);
+    expect(pages.headers.get('cache-control')).toBe('no-store');
+    await pages.body?.cancel();
+  });
+
   test('directory traversal attempt emits urn:ok:error:invalid-request', async () => {
     const res = await fetch(
       `http://127.0.0.1:${server.port}/api/documents?dir=${encodeURIComponent('../etc')}`,

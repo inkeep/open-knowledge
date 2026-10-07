@@ -42,7 +42,7 @@ import { ACTIVE_MDAST_PLUGINS } from '../src/markdown/pipeline.ts';
 
 const SCRIPT_URL = import.meta.url;
 const SCRIPT_PATH = fileURLToPath(SCRIPT_URL);
-const DEFAULT_OUT = new URL('../schema-snapshot.json', SCRIPT_URL).pathname;
+const DEFAULT_OUT = fileURLToPath(new URL('../schema-snapshot.json', SCRIPT_URL));
 
 interface AttrSnapshot {
   hasDefault: boolean;

@@ -50,6 +50,15 @@ async function bootNativeRig(opts: { ephemeral?: boolean } = {}): Promise<Native
           },
         };
       }
+      if (pathname === '/api/native-revalidated') {
+        return {
+          template: pathname,
+          dispatch: async (_req, res) => {
+            res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+            res.end('{}');
+          },
+        };
+      }
       if (pathname === '/api/native-throw') {
         return {
           template: pathname,
@@ -72,6 +81,7 @@ async function bootNativeRig(opts: { ephemeral?: boolean } = {}): Promise<Native
       '/api/agent-write-md',
       '/api/native-mutating',
       '/api/native-upload',
+      '/api/native-revalidated',
       '/api/native-throw',
       '/api/native-empty',
       '/api/native-declined',
@@ -177,6 +187,34 @@ describe('natively-mounted /api routes run the shared admission pipeline', () =>
         headers: { 'x-request-id': 'caller-chosen.id-42' },
       });
       expect(echoed.headers.get('x-request-id')).toBe('caller-chosen.id-42');
+    } finally {
+      await rig.close();
+    }
+  });
+
+  test('API answers default to Cache-Control: no-store, refusals included', async () => {
+    const rig = await bootNativeRig();
+    try {
+      const served = await fetch(`${rig.baseUrl}/api/native-ping`);
+      expect(served.status).toBe(200);
+      expect(served.headers.get('cache-control')).toBe('no-store');
+
+      const refused = await fetch(`${rig.baseUrl}/api/native-ping`, {
+        headers: { Origin: 'https://evil.example' },
+      });
+      expect(refused.status).toBe(403);
+      expect(refused.headers.get('cache-control')).toBe('no-store');
+    } finally {
+      await rig.close();
+    }
+  });
+
+  test('a route that names its own Cache-Control keeps it over the default', async () => {
+    const rig = await bootNativeRig();
+    try {
+      const res = await fetch(`${rig.baseUrl}/api/native-revalidated`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('cache-control')).toBe('no-cache');
     } finally {
       await rig.close();
     }

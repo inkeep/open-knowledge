@@ -13,6 +13,7 @@
  * mark coverage from the snapshot the next time someone regenerates.
  */
 import { writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { getSchema } from '@tiptap/core';
 import { sharedExtensions } from '../src/extensions/shared.ts';
 
@@ -82,6 +83,6 @@ const extensionOrder = sharedExtensions.map((ext) => {
 });
 
 const snap: SchemaSnapshot = { nodes, marks, extensionOrder };
-const out = new URL('../src/schema-snapshot.json', import.meta.url).pathname;
+const out = fileURLToPath(new URL('../src/schema-snapshot.json', import.meta.url));
 writeFileSync(out, `${JSON.stringify(snap, null, 2)}\n`);
 console.log(`Wrote ${out}`);

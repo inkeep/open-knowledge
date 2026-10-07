@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { getSchema, resolveExtensions } from '@tiptap/core';
 import type { ContentMatch, NodeType } from '@tiptap/pm/model';
 import { describe, expect, test } from 'vitest';
@@ -76,7 +77,7 @@ function captureSchemaShape(): SchemaSnapshot {
   return { nodes, marks, extensionOrder };
 }
 
-const SNAPSHOT_PATH = new URL('./schema-snapshot.json', import.meta.url).pathname;
+const SNAPSHOT_PATH = fileURLToPath(new URL('./schema-snapshot.json', import.meta.url));
 
 function loadSnapshot(): SchemaSnapshot | null {
   if (!existsSync(SNAPSHOT_PATH)) return null;

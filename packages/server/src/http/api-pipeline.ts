@@ -219,6 +219,9 @@ export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPi
     }
 
     if (url.startsWith('/api/')) {
+      if (typeof response.setHeader === 'function') {
+        response.setHeader('Cache-Control', 'no-store');
+      }
       const origin = request.headers.origin;
       const admission = admitRequestOrigin(origin, method, policy);
       if (!admission.admitted) {
