@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { uptime } from 'node:os';
 
 export function readBootSessionUuid(platform: NodeJS.Platform = process.platform): string | null {
   try {
@@ -15,6 +16,19 @@ export function readBootSessionUuid(platform: NodeJS.Platform = process.platform
       return normalize(readFileSync('/proc/sys/kernel/random/boot_id', 'utf8'));
     }
     return null;
+  } catch {
+    return null;
+  }
+}
+
+export function readBootStartedAtMs(
+  nowMs: number = Date.now(),
+  readUptimeSeconds: () => number = uptime,
+): number | null {
+  try {
+    const uptimeSeconds = readUptimeSeconds();
+    if (!Number.isFinite(uptimeSeconds) || uptimeSeconds <= 0) return null;
+    return nowMs - Math.round(uptimeSeconds * 1000);
   } catch {
     return null;
   }

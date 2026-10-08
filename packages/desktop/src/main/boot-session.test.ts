@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { readBootSessionUuid } from './boot-session.ts';
+import { readBootSessionUuid, readBootStartedAtMs } from './boot-session.ts';
 
 const onDarwin = process.platform === 'darwin' ? test : test.skip;
 const onLinux = process.platform === 'linux' ? test : test.skip;
@@ -26,5 +26,28 @@ describe('readBootSessionUuid', () => {
     const crossPlatformProbe =
       process.platform === 'linux' ? readBootSessionUuid('darwin') : readBootSessionUuid('linux');
     expect(crossPlatformProbe).toBeNull();
+  });
+});
+
+describe('readBootStartedAtMs', () => {
+  test('dates the boot by subtracting uptime from now', () => {
+    expect(readBootStartedAtMs(1_000_000_000, () => 120.4)).toBe(1_000_000_000 - 120_400);
+  });
+
+  test('an unusable uptime fails open to null rather than throwing', () => {
+    expect(readBootStartedAtMs(1_000_000_000, () => 0)).toBeNull();
+    expect(readBootStartedAtMs(1_000_000_000, () => Number.NaN)).toBeNull();
+    expect(
+      readBootStartedAtMs(1_000_000_000, () => {
+        throw new Error('uptime unavailable');
+      }),
+    ).toBeNull();
+  });
+
+  test('the live boot instant precedes now', () => {
+    const now = Date.now();
+    const bootStartedAtMs = readBootStartedAtMs(now);
+    expect(bootStartedAtMs).not.toBeNull();
+    expect(bootStartedAtMs).toBeLessThan(now);
   });
 });

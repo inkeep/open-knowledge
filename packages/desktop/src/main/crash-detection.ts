@@ -168,6 +168,7 @@ export interface CrashDetectionDeps {
   emit(event: OkBugReportCrashDetectedEvent): boolean;
   now(): Date;
   currentBootSessionUuid(): string | null;
+  currentBootStartedAtMs?(): number | null;
   installInFlight?(span: { deathFromMs: number; deathToMs: number }): InstallInFlight | null;
   mainThreadWatchdog: Pick<MainThreadWatchdog, 'readPrevious' | 'readPreviousStall' | 'start'>;
   logger: CrashLogger;
@@ -731,7 +732,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       ) {
         deps.logger.warn(
           { event: 'crash-detection.boot-session-unavailable', platform: process.platform },
-          'kernel boot-session identity unavailable — reboot suppression is disabled this launch',
+          'kernel boot-session identity unavailable — reboot detection falls back to the OS boot instant this launch',
         );
       }
 
@@ -904,13 +905,24 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       );
       const boundDump = (attachableDumps.find(arming) ?? attachableDumps[0])?.entry ?? null;
 
-      const rebootedBetweenSessions =
-        prevBootSessionUuid !== null &&
-        bootSessionUuid !== null &&
-        prevBootSessionUuid !== bootSessionUuid;
-      const machineLevelDeath =
-        sentinelPresent &&
-        (rebootedBetweenSessions || prevPendingOsShutdownAt !== null || prevSuspendedAt !== null);
+      const bootSessionsComparable = prevBootSessionUuid !== null && bootSessionUuid !== null;
+      const bootStartedAtMs = bootSessionsComparable
+        ? null
+        : (deps.currentBootStartedAtMs?.() ?? null);
+      const rebootedBetweenSessions = bootSessionsComparable
+        ? prevBootSessionUuid !== bootSessionUuid
+        : bootStartedAtMs !== null && lastAliveMs !== null && bootStartedAtMs > lastAliveMs;
+      const sentinelUnflushed = sentinelRaw?.includes('\u0000') ?? false;
+      const machineCause = rebootedBetweenSessions
+        ? 'system-reboot'
+        : prevPendingOsShutdownAt !== null
+          ? 'os-shutdown'
+          : prevSuspendedAt !== null
+            ? 'suspended'
+            : sentinelUnflushed
+              ? 'unflushed-sentinel'
+              : null;
+      const machineLevelDeath = sentinelPresent && machineCause !== null;
 
       const updateInstallDeath = sentinelPresent && installInFlight !== null;
       const suppressibleDeath = machineLevelDeath || updateInstallDeath;
@@ -934,15 +946,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
 
       let armed: OkBugReportCrashDetectedEvent | null = null;
       if (machineSuppressed || crashTooOld) {
-        const reason = !machineSuppressed
-          ? 'stale-crash'
-          : rebootedBetweenSessions
-            ? 'system-reboot'
-            : prevPendingOsShutdownAt !== null
-              ? 'os-shutdown'
-              : prevSuspendedAt !== null
-                ? 'suspended'
-                : 'update-install';
+        const reason = machineSuppressed ? (machineCause ?? 'update-install') : 'stale-crash';
         const breadcrumb = {
           event: 'crash-detection.machine-level-death',
           reason,
@@ -957,6 +961,8 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           prevBootId,
           prevBootSessionUuid,
           currentBootSessionUuid: bootSessionUuid,
+          currentBootStartedAt:
+            bootStartedAtMs === null ? null : new Date(bootStartedAtMs).toISOString(),
           lastAliveAt: prevLastAliveAt,
           sentinelAgeMs,
           deathAgeMs,
@@ -964,13 +970,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           deathAtSource,
           staleAfterMs: STALE_CRASH_AFTER_MS,
           class: machineSuppressed ? 'external' : 'stale',
-          machineCause: rebootedBetweenSessions
-            ? 'system-reboot'
-            : prevPendingOsShutdownAt !== null
-              ? 'os-shutdown'
-              : prevSuspendedAt !== null
-                ? 'suspended'
-                : null,
+          machineCause,
           suspendedAt: prevSuspendedAt,
           pendingOsShutdownAt: prevPendingOsShutdownAt,
           osShutdownReasons: prevOsShutdownReasons,
@@ -988,9 +988,11 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
               ? 'previous session was killed by a system reboot — suppressing the report prompt'
               : reason === 'suspended'
                 ? 'previous session died asleep without resuming — suppressing the report prompt'
-                : reason === 'stale-crash'
-                  ? 'previous session died too long ago to report usefully — suppressing the report prompt'
-                  : 'previous session was killed by an update install — suppressing the report prompt',
+                : reason === 'unflushed-sentinel'
+                  ? 'previous session left a sentinel the OS never flushed, so the machine stopped under it — suppressing the report prompt'
+                  : reason === 'stale-crash'
+                    ? 'previous session died too long ago to report usefully — suppressing the report prompt'
+                    : 'previous session was killed by an update install — suppressing the report prompt',
           );
         }
       } else if (somethingToReport) {
@@ -1033,6 +1035,10 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
                 lastAliveAt: prevLastAliveAt,
                 suspendedAt: prevSuspendedAt,
                 pendingOsShutdownAt: prevPendingOsShutdownAt,
+                bootSessionsComparable,
+                currentBootStartedAt:
+                  bootStartedAtMs === null ? null : new Date(bootStartedAtMs).toISOString(),
+                sentinelUnflushed,
                 attemptedInstall: installInFlight?.attemptedVersion ?? null,
                 crashedAppVersion,
                 crashedAppVersionParseFailed: dumpVersion?.parseFailed ?? false,

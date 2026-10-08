@@ -65,6 +65,7 @@ interface Rig {
   ownSizedForeignDump: Buffer;
   setRendererAvailable(available: boolean): void;
   setBootSessionUuid(uuid: string | null): void;
+  setBootStartedAtMs(ms: number | null): void;
   setInstallInFlight(inFlight: InstallInFlight | null): void;
   setAppVersion(version: string): void;
   setWatchdogRead(read: WatchdogRead): void;
@@ -85,6 +86,7 @@ function makeRig(): Rig {
   const infos: Record<string, unknown>[] = [];
   let rendererAvailable = true;
   let bootSessionUuid: string | null = 'boot-epoch-a';
+  let bootStartedAtMs: number | null = null;
   let installInFlight: InstallInFlight | null = null;
   let watchdogRead: WatchdogRead = { kind: 'absent' };
   let stallRead: StallRead = { kind: 'absent' };
@@ -137,6 +139,9 @@ function makeRig(): Rig {
     setBootSessionUuid(uuid: string | null) {
       bootSessionUuid = uuid;
     },
+    setBootStartedAtMs(ms: number | null) {
+      bootStartedAtMs = ms;
+    },
     setInstallInFlight(inFlight: InstallInFlight | null) {
       installInFlight = inFlight;
     },
@@ -179,6 +184,7 @@ function makeRig(): Rig {
         return new Date(clockMs);
       },
       currentBootSessionUuid: () => bootSessionUuid,
+      currentBootStartedAtMs: () => bootStartedAtMs,
       installInFlight: () => installInFlight,
       mainThreadWatchdog: {
         readPrevious: () => watchdogRead,
@@ -4078,5 +4084,125 @@ describe('the dump a report invitation is bound to', () => {
       status: 'bound',
       path: rendererPath,
     });
+  });
+});
+
+describe('machine stops the kernel boot session cannot name', () => {
+  function machineDeathLine(rig: Rig): Record<string, unknown> | undefined {
+    return rig.infos.find((line) => line.event === 'crash-detection.machine-level-death');
+  }
+
+  function windowsRig(): Rig {
+    const rig = makeRig();
+    rig.deps.platform = 'win32';
+    rig.setBootSessionUuid(null);
+    return rig;
+  }
+
+  test('a machine that booted after the session was last alive never prompts', () => {
+    const rig = windowsRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    const lastAliveAt = readSentinel(rig).lastAliveAt;
+
+    rig.advance(2 * 60 * 60_000);
+    const bootStartedAtMs = rig.nowMs() - 60_000;
+    rig.setBootStartedAtMs(bootStartedAtMs);
+    const sessionB = createCrashDetection(rig.deps);
+    expect(sessionB.detectBootCrash()).toBeNull();
+    sessionB.notifyRendererReady();
+    expect(rig.emitted).toHaveLength(0);
+
+    const breadcrumb = machineDeathLine(rig);
+    expect(breadcrumb?.reason).toBe('system-reboot');
+    expect(breadcrumb?.machineCause).toBe('system-reboot');
+    expect(breadcrumb?.lastAliveAt).toBe(lastAliveAt);
+    expect(breadcrumb?.currentBootStartedAt).toBe(new Date(bootStartedAtMs).toISOString());
+  });
+
+  test('a session that died while the machine kept running still prompts', () => {
+    const rig = windowsRig();
+    rig.setBootStartedAtMs(rig.nowMs() - 60 * 60_000);
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    rig.advance(2 * 60 * 60_000);
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+    expect(machineDeathLine(rig)).toBeUndefined();
+  });
+
+  test('without a boot instant the dirty shutdown still prompts', () => {
+    const rig = windowsRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    rig.advance(2 * 60 * 60_000);
+    expect(bootInvite(createCrashDetection(rig.deps).detectBootCrash()).context.dirtyShutdown).toBe(
+      true,
+    );
+  });
+
+  test('a matching kernel boot session outranks a boot instant that disagrees', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    rig.advance(2 * 60 * 60_000);
+    rig.setBootStartedAtMs(rig.nowMs() - 60_000);
+    expect(bootInvite(createCrashDetection(rig.deps).detectBootCrash()).context.dirtyShutdown).toBe(
+      true,
+    );
+  });
+
+  test('a zero-filled sentinel the OS never flushed never prompts', () => {
+    const rig = windowsRig();
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    writeFileSync(rig.deps.sentinelPath, Buffer.alloc(160));
+
+    const sessionB = createCrashDetection(rig.deps);
+    expect(sessionB.detectBootCrash()).toBeNull();
+    sessionB.notifyRendererReady();
+    expect(rig.emitted).toHaveLength(0);
+
+    expect(rig.warnings.map((w) => w.event)).toContain('crash-detection.sentinel-parse-failed');
+    const breadcrumb = machineDeathLine(rig);
+    expect(breadcrumb?.reason).toBe('unflushed-sentinel');
+    expect(breadcrumb?.class).toBe('external');
+    expect(readSentinel(rig).bootId).toBe(rig.watchdogStarts.at(-1));
+  });
+
+  test('a sentinel torn by NUL bytes past its valid prefix never prompts', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    const valid = readFileSync(rig.deps.sentinelPath);
+    writeFileSync(rig.deps.sentinelPath, Buffer.concat([valid.subarray(0, 40), Buffer.alloc(64)]));
+
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+    expect(machineDeathLine(rig)?.reason).toBe('unflushed-sentinel');
+  });
+
+  test('an unparseable sentinel without NUL bytes still prompts, and says what it compared', () => {
+    const rig = windowsRig();
+    const bootStartedAtMs = rig.nowMs() - 60_000;
+    rig.setBootStartedAtMs(bootStartedAtMs);
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    writeFileSync(rig.deps.sentinelPath, '{"bootId":"17');
+
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+    expect(armed.eventId.startsWith('boot:unreadable:')).toBe(true);
+    const boot = rig.infos.find((line) => line.event === 'crash-detection.boot');
+    expect(boot?.bootSessionsComparable).toBe(false);
+    expect(boot?.currentBootStartedAt).toBe(new Date(bootStartedAtMs).toISOString());
+    expect(boot?.sentinelUnflushed).toBe(false);
+    expect(boot?.lastAliveAt).toBeNull();
+  });
+
+  test('a fresh crash dump beside a zero-filled sentinel still prompts from the dump', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    writeFileSync(rig.deps.sentinelPath, Buffer.alloc(160));
+    seedMinidump(rig, 'pending/native-crash.dmp', rig.tick());
+
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+    expect(armed.eventId.startsWith('boot:dump:')).toBe(true);
+    expect(armed.context.dirtyShutdown).toBe(false);
   });
 });
