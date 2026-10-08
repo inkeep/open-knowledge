@@ -306,7 +306,7 @@ export const HelpPopover: FC = () => {
                 variant="ghost"
                 className={cn(
                   rowClassName,
-                  'h-auto w-full justify-start font-mono text-xs font-normal',
+                  'h-auto w-full flex-wrap justify-between gap-y-0.5 text-start font-mono text-xs font-normal whitespace-normal',
                 )}
                 onClick={() => {
                   setPopoverOpen(false);
@@ -314,8 +314,8 @@ export const HelpPopover: FC = () => {
                 }}
                 data-testid="help-popover-version"
               >
-                <span>v{appVersion}</span>{' '}
-                <span className="ml-auto font-sans text-muted-foreground">
+                <span className="min-w-0 max-w-full truncate">v{appVersion}</span>{' '}
+                <span className="font-sans text-muted-foreground">
                   <Trans>About & updates</Trans>
                 </span>
               </Button>

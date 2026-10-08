@@ -1,4 +1,3 @@
-
 import { setTimeout as wait } from 'node:timers/promises';
 import { normalizeBridge } from '@inkeep/open-knowledge-core';
 import { updateYFragment } from '@tiptap/y-tiptap';
