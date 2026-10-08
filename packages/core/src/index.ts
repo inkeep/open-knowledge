@@ -2100,6 +2100,7 @@ export {
   isValidDocName,
   validateDocName,
 } from './util/doc-name.ts';
+export { isMarkdownSkillFilePath, skillFilePathSegments } from './util/skill-file-path.ts';
 export { applyByPrefixSuffix } from './utils/apply-by-prefix-suffix.ts';
 export { toDesktopAssetHref } from './utils/asset-href.ts';
 export { ChunkedInsertError, chunkedYTextInsert } from './utils/chunked-insert.ts';

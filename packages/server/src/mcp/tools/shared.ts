@@ -158,8 +158,17 @@ export function requestFailureText(result: { [key: string]: unknown }): string {
   return `${title}${detail}${retryAfter}`;
 }
 
-export function errorTextWithDetail(result: { [key: string]: unknown }): string {
-  return `Error: ${requestFailureText(result)}`;
+export function errorTextWithDetail(
+  result: { [key: string]: unknown },
+  invalidRequestAdvice?: string,
+): string {
+  const advice =
+    result.type === 'urn:ok:error:invalid-request' &&
+    result.contentControlAdmission === true &&
+    invalidRequestAdvice
+      ? ` ${invalidRequestAdvice}`
+      : '';
+  return `Error: ${requestFailureText(result)}${advice}`;
 }
 
 export function textResult(text: string, isError?: boolean) {

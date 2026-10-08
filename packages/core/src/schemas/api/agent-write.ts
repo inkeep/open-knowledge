@@ -10,6 +10,7 @@ import { SUPPORTED_DOC_EXTENSIONS } from '../../constants/doc-extensions.ts';
 import { FRONTMATTER_TYPES, FrontmatterValueSchema } from '../../frontmatter/schema.ts';
 import { ProblemTypeSchema } from './_envelope.ts';
 import {
+  agentContentField,
   agentIdentityFields,
   requiredSafeDocNameField,
   safeDocNameField,
@@ -20,7 +21,7 @@ export const AgentWriteRequestSchema = z
   .object({
     docName: safeDocNameField,
     summary: summaryField,
-    content: z.string().optional(),
+    content: agentContentField.optional(),
     ...agentIdentityFields,
   })
   .loose() satisfies StandardSchemaV1;
@@ -30,7 +31,7 @@ export const AgentWriteMdRequestSchema = z
   .object({
     docName: safeDocNameField,
     summary: summaryField,
-    markdown: z.string(),
+    markdown: agentContentField,
     position: z.enum(['append', 'prepend', 'replace']).optional(),
     extension: z.enum(SUPPORTED_DOC_EXTENSIONS).optional(),
     ...agentIdentityFields,
@@ -43,7 +44,7 @@ export const AgentPatchRequestSchema = z
     docName: safeDocNameField,
     summary: summaryField,
     find: z.string().min(1),
-    replace: z.string(),
+    replace: agentContentField,
     offset: z.number().int().nonnegative().optional(),
     ...agentIdentityFields,
   })
@@ -286,7 +287,7 @@ export const AGENT_WRITE_BATCH_MAX_DOCS = 100;
 export const AgentWriteBatchEntrySchema = z
   .object({
     docName: requiredSafeDocNameField,
-    markdown: z.string(),
+    markdown: agentContentField,
     position: z.enum(['append', 'prepend', 'replace']).optional(),
     extension: z.enum(SUPPORTED_DOC_EXTENSIONS).optional(),
     summary: summaryField,

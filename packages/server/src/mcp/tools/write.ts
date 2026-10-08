@@ -46,6 +46,7 @@ import {
   CANONICAL_COMPONENT_GUIDANCE,
   docExtensionOnDisk,
   documentResultBaseShape,
+  errorTextWithDetail,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpPost,
   httpPut,
@@ -321,11 +322,23 @@ async function writeOneDoc(
     ...agentIdentityFields(identity),
   });
   if (!result.ok) {
+    const offsetBasis =
+      result.type === 'urn:ok:error:invalid-request' && result.contentControlAdmission === true
+        ? spec.template !== undefined
+          ? ' Any markdown offset refers to generated template Markdown after substitution.'
+          : hasFrontmatter
+            ? ' Any markdown offset refers to composed Markdown including frontmatter.'
+            : ' Any markdown offset refers to document.content as forwarded.'
+        : '';
     const recovery =
       result.type === CONCURRENT_OVERWRITE_REFUSED_TYPE
         ? ' Wait and retry, or use edit for a targeted change.'
         : '';
-    return { docName, ok: false, error: `${requestFailureText(result)}${recovery}` };
+    return {
+      docName,
+      ok: false,
+      error: `${requestFailureText(result)}${offsetBasis}${recovery}`,
+    };
   }
 
   if (spec.template !== undefined && hasFrontmatter) {
@@ -436,7 +449,10 @@ async function handleTemplate(
     ...agentIdentityFields(deps.identityRef?.current),
   });
   if (!result.ok) {
-    return textResult(`Error: ${result.error}`, true);
+    return textResult(
+      errorTextWithDetail(result, 'Any body offset refers to the full submitted template.content.'),
+      true,
+    );
   }
   const created = result.created === true;
   const path = typeof result.path === 'string' ? result.path : undefined;
@@ -588,9 +604,11 @@ async function handleSkillWrite(
       true,
     );
   }
+  const normalizedFiles: typeof files = [];
   for (const f of files) {
     const resolved = resolveSkillFilePath(f.path);
     if (!resolved.ok) return textResult(`Error: ${resolved.error}`, true);
+    normalizedFiles.push({ ...f, path: resolved.path });
   }
 
   const fileResults: Array<{
@@ -615,7 +633,7 @@ async function handleSkillWrite(
     if (skillMdResult.isError) return skillMdResult;
   }
 
-  for (const f of files) {
+  for (const f of normalizedFiles) {
     const r = await writeSkillFile(url, {
       name: skill.name,
       scope: skill.scope,
@@ -813,7 +831,9 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
     content: z
       .string()
       .optional()
-      .describe('The full Markdown body. Mutually exclusive with `template`.'),
+      .describe(
+        'The full Markdown body. C0 controls allow only TAB, LF and CR; remove others or use printable escapes. Mutually exclusive with `template`.',
+      ),
     extension: DocExtensionArg.optional(),
     template: z
       .string()
@@ -853,7 +873,11 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
         template: z
           .object({
             path: z.string().describe(TEMPLATE_PATH_DESCRIBE),
-            content: z.string().describe(TEMPLATE_CONTENT_DESCRIBE),
+            content: z
+              .string()
+              .describe(
+                `${TEMPLATE_CONTENT_DESCRIBE} C0 controls allow only TAB, LF and CR; remove others or use printable escapes.`,
+              ),
             frontmatter: z
               .object({
                 title: z
@@ -883,7 +907,12 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
               .describe(
                 `${SKILL_DESCRIPTION_DESCRIBE} Optional when writing ONLY \`files\` into an existing skill (omit to leave SKILL.md untouched).`,
               ),
-            body: z.string().optional().describe(SKILL_BODY_DESCRIBE),
+            body: z
+              .string()
+              .optional()
+              .describe(
+                `${SKILL_BODY_DESCRIBE} C0 controls allow only TAB, LF and CR; remove others or use printable escapes.`,
+              ),
             files: z
               .array(
                 z.object({
@@ -892,7 +921,11 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
                     .describe(
                       'Skill-relative path, e.g. "references/tiers.md" or "assets/logo.svg". Must stay inside the skill dir.',
                     ),
-                  content: z.string().describe('Full text of the bundle file.'),
+                  content: z
+                    .string()
+                    .describe(
+                      'Full text of the bundle file, including any frontmatter. For .md/.mdx paths, C0 controls allow only TAB, LF and CR; remove others or use printable escapes.',
+                    ),
                 }),
               )
               .optional()

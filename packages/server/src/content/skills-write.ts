@@ -8,6 +8,7 @@ import {
   SKILL_NAME_REGEX,
   type SkillAuthoringWarningCode,
   type SkillFrontmatter,
+  skillFilePathSegments,
 } from '@inkeep/open-knowledge-core';
 import { ATOMIC_TEMP_INFIX, atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import { stringify as stringifyYaml } from 'yaml';
@@ -244,10 +245,7 @@ function resolveBundleFileAbs(
   if (typeof relPath !== 'string' || relPath.length === 0 || relPath.includes('\x00')) {
     return { ok: false, error: { code: 'BAD_FILE_PATH', message: 'Invalid skill file path.' } };
   }
-  const segments = relPath
-    .replace(/\\/g, '/')
-    .split('/')
-    .filter((s) => s !== '' && s !== '.');
+  const segments = skillFilePathSegments(relPath);
   if (segments.length === 0 || segments.some((s) => s === '..')) {
     return {
       ok: false,

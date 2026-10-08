@@ -5425,7 +5425,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     contentFilter,
     bumpSkillsCatalogGen,
     signalChannel,
-    flushGitCommit,
+    flushGitCommit: async () => {
+      await okArtifactFlushChain;
+      await flushGitCommit?.();
+    },
     rescanFiles,
   });
   const nativeGroups = [

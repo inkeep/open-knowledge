@@ -8,9 +8,9 @@ interface TemplateFrontmatterFields {
   description?: string;
 }
 
-async function readErrorBody(res: Response): Promise<string> {
+async function readErrorBody(res: Response, includeDetail = false): Promise<string> {
   const body = (await res.json().catch(() => null)) as unknown;
-  return parseApiError(body) ?? `HTTP ${res.status}`;
+  return parseApiError(body, includeDetail) ?? `HTTP ${res.status}`;
 }
 
 export async function saveFolderConfig(
@@ -45,7 +45,7 @@ export async function saveTemplate(input: {
       body: JSON.stringify(input),
     });
     if (!res.ok) {
-      return { ok: false, error: await readErrorBody(res) };
+      return { ok: false, error: await readErrorBody(res, true) };
     }
     const payload = (await res.json().catch(() => null)) as {
       created?: boolean;
@@ -95,7 +95,7 @@ export async function moveTemplate(input: {
       body: JSON.stringify(input),
     });
     if (!res.ok) {
-      return { ok: false, error: await readErrorBody(res) };
+      return { ok: false, error: await readErrorBody(res, true) };
     }
     const payload = (await res.json().catch(() => null)) as { committed?: boolean } | null;
     emitTemplatesChanged();

@@ -12,6 +12,7 @@ import {
   SkillFilePutSuccessSchema,
   SkillFileRenameRequestSchema,
   SkillFileRenameSuccessSchema,
+  skillFilePathSegments,
 } from '@inkeep/open-knowledge-core';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { composeAndWriteRawBody } from '../bridge-intake.ts';
@@ -208,10 +209,7 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
   } = deps;
   function classifySkillFilePath(rel: string): 'reference' | 'script' | 'file' | null {
     if (rel.includes('\x00')) return null;
-    const segments = rel
-      .replace(/\\/g, '/')
-      .split('/')
-      .filter((s) => s !== '' && s !== '.');
+    const segments = skillFilePathSegments(rel);
     if (segments.length < 1 || segments.some((s) => s === '..')) return null;
     if (segments.length === 1 && (segments[0] as string).toLowerCase() === 'skill.md') return null;
     if (segments[0] === 'references' && segments.length >= 2) return 'reference';

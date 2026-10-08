@@ -123,12 +123,19 @@ export function validateBody<T>(
   if (parseResult.success) {
     return { ok: true, value: parseResult.data };
   }
-  const detail = parseResult.error.issues
+  const contentControlAdmission = parseResult.error.issues.some(
+    (issue) => issue.code === 'custom' && issue.params?.contentControlAdmission === true,
+  );
+  const issues = parseResult.error.issues
     .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
     .join('; ');
+  const detail = contentControlAdmission
+    ? `${issues} Offsets count the full submitted field after caller composition, including any frontmatter.`
+    : issues;
   errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Request body is invalid.', {
     handler: options.handler,
     detail,
+    ...(contentControlAdmission ? { extensions: { contentControlAdmission: true } } : {}),
   });
   return { ok: false };
 }

@@ -3,6 +3,7 @@ import {
   FrontmatterValueSchema,
   MANAGED_ARTIFACT_SCOPES,
   SKILL_NAME_REGEX,
+  skillFilePathSegments,
   TEMPLATE_NAME_REGEX,
 } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
@@ -90,6 +91,16 @@ export const SKILL_DESCRIPTION_DESCRIBE =
   'One-line description (≤1024 chars) — the PRIMARY triggering surface telling an agent WHEN to use this skill. No XML tags (`<...>`), which break the skill loader.';
 export const SKILL_BODY_DESCRIBE =
   'SKILL.md body (markdown guidance). Authored WITHOUT frontmatter — `name` + `description` are passed separately and composed server-side. Keep under ~500 lines; move depth into one-level-deep `references/`.';
+export const TEMPLATE_EDIT_CONTROL_ADVICE =
+  'Any body offset refers to the full stored template body resubmitted by this edit, including any supplied replace. Clean controls in replace, or, if stored controls remain, use a clean full replacement through write({ template: ... }).';
+export const TEMPLATE_METADATA_CONTROL_ADVICE =
+  'Any body offset refers to the full stored template body resubmitted by this edit. Remove stored controls through a clean full replacement using write({ template: ... }).';
+export const SKILL_EDIT_CONTROL_ADVICE =
+  'Any body offset refers to the full stored skill body resubmitted by this edit, including any supplied replace. Clean controls in replace, or, if stored controls remain, use a clean full replacement through write({ skill: ... }).';
+export const SKILL_METADATA_CONTROL_ADVICE =
+  'Any body offset refers to the full stored skill body resubmitted by this edit. Remove stored controls through a clean full replacement using write({ skill: ... }).';
+export const SKILL_FILE_EDIT_CONTROL_ADVICE =
+  'Any content offset refers to the full stored file content resubmitted by this edit, including frontmatter and any supplied replace. Clean controls in replace, or, if stored controls remain, use a clean full replacement through write({ skill: { files: ... } }).';
 const SKILL_SCOPE_DESCRIBE =
   'Level: "project" (default — a Project skill: lives in this KB wherever its folder is, shared with teammates via git) or "global" (a Global skill: lives under your user home, available in every project on this machine — not shared, not version-tracked). Pass the literal value "global" for a Global skill.';
 
@@ -138,10 +149,7 @@ export function resolveSkillFilePath(
       error: `a skill file \`path\` must be skill-relative, not absolute — "${path}" is rejected. e.g. { path: "references/tiers.md" }.`,
     };
   }
-  const segments = path
-    .replace(/\\/g, '/')
-    .split('/')
-    .filter((s) => s !== '' && s !== '.');
+  const segments = skillFilePathSegments(path);
   if (segments.some((s) => s === '..')) {
     return {
       ok: false,

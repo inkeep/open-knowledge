@@ -6,7 +6,13 @@ import {
   SkillUserTargetEditorSchema,
 } from '../../skill-targets/schema.ts';
 import { SkillCostTiersSchema } from '../../skills-catalog/skill-cost.ts';
-import { agentIdentityFields, summaryField } from './_shared.ts';
+import { isMarkdownSkillFilePath } from '../../util/skill-file-path.ts';
+import {
+  agentContentField,
+  agentIdentityFields,
+  checkAgentContent,
+  summaryField,
+} from './_shared.ts';
 
 export const TagSummaryEntrySchema = z
   .object({
@@ -129,7 +135,7 @@ export const TemplatePutRequestSchema = z
   .object({
     folder: z.string(),
     name: z.string(),
-    body: z.string().optional(),
+    body: agentContentField.optional(),
     frontmatter: TemplateFrontmatterSchema.optional(),
     ...agentIdentityFields,
     summary: summaryField,
@@ -182,7 +188,7 @@ export const TemplateMoveRequestSchema = z
     fromName: z.string(),
     toFolder: z.string(),
     toName: z.string(),
-    body: z.string().optional(),
+    body: agentContentField.optional(),
     frontmatter: TemplateFrontmatterSchema.optional(),
     ...agentIdentityFields,
     summary: summaryField,
@@ -347,7 +353,7 @@ export const SkillPutRequestSchema = z
   .object({
     scope: SkillScopeSchema.default('project'),
     name: z.string().meta({ description: 'Managed skill name to create or update.' }),
-    body: z.string().optional(),
+    body: agentContentField.optional(),
     frontmatter: SkillFrontmatterSchema,
     ...agentIdentityFields,
     summary: summaryField,
@@ -443,7 +449,7 @@ export const SkillMoveRequestSchema = z
     scope: SkillScopeSchema.default('project'),
     fromName: z.string(),
     toName: z.string(),
-    body: z.string().optional(),
+    body: agentContentField.optional(),
     frontmatter: SkillFrontmatterSchema.optional(),
     ...agentIdentityFields,
     summary: summaryField,
@@ -652,7 +658,12 @@ export const SkillFilePutRequestSchema = z
     ...agentIdentityFields,
     summary: summaryField,
   })
-  .strict() satisfies StandardSchemaV1;
+  .strict()
+  .superRefine((value, context) => {
+    if (isMarkdownSkillFilePath(value.path)) {
+      checkAgentContent(value.content, context, ['content']);
+    }
+  }) satisfies StandardSchemaV1;
 export type SkillFilePutRequest = z.infer<typeof SkillFilePutRequestSchema>;
 
 export const SkillFilePutSuccessSchema = z

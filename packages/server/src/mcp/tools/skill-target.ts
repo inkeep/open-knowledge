@@ -5,6 +5,7 @@ import {
   type EditorId,
   HUB_READER_EDITORS,
   interpretSkillMoveFailure,
+  isMarkdownSkillFilePath,
   normalizeApiWarnings,
   SKILL_AUTHORING_WARNING_CODES,
   type SkillMoveFailureOutcome,
@@ -24,7 +25,12 @@ import {
   textPlusStructured,
   textResult,
 } from './shared.ts';
-import { resolveSkillName } from './verb-schemas.ts';
+import {
+  resolveSkillName,
+  SKILL_EDIT_CONTROL_ADVICE,
+  SKILL_FILE_EDIT_CONTROL_ADVICE,
+  SKILL_METADATA_CONTROL_ADVICE,
+} from './verb-schemas.ts';
 
 export type { SkillScope };
 
@@ -48,6 +54,7 @@ export async function writeSkill(
     name: string;
     description: string;
     body?: string;
+    resubmitted?: 'body-edit' | 'metadata-edit';
     lockDir?: string;
   } & SkillIdentity,
 ) {
@@ -62,7 +69,18 @@ export async function writeSkill(
     ...(input.summary !== undefined ? { summary: input.summary } : {}),
     ...agentIdentityFields(input.identity),
   });
-  if (!result.ok) return textResult(`Error: ${result.error}`, true);
+  if (!result.ok)
+    return textResult(
+      errorTextWithDetail(
+        result,
+        input.resubmitted
+          ? input.resubmitted === 'metadata-edit'
+            ? SKILL_METADATA_CONTROL_ADVICE
+            : SKILL_EDIT_CONTROL_ADVICE
+          : 'Any body offset refers to the full submitted skill body.',
+      ),
+      true,
+    );
   const created = result.created === true;
   const path = typeof result.path === 'string' ? result.path : undefined;
   const aligned = alignWarningCodes(
@@ -118,7 +136,13 @@ export async function fetchSkill(
 
 export async function writeSkillFile(
   url: string | undefined,
-  input: { scope?: SkillScope; name: string; path: string; content: string } & SkillIdentity,
+  input: {
+    scope?: SkillScope;
+    name: string;
+    path: string;
+    content: string;
+    resubmitted?: true;
+  } & SkillIdentity,
 ) {
   const resolved = resolveSkillName(input.name);
   if (!resolved.ok) return textResult(`Error: ${resolved.error}`, true);
@@ -131,7 +155,18 @@ export async function writeSkillFile(
     ...(input.summary !== undefined ? { summary: input.summary } : {}),
     ...agentIdentityFields(input.identity),
   });
-  if (!result.ok) return textResult(`Error: ${result.error}`, true);
+  if (!result.ok)
+    return textResult(
+      errorTextWithDetail(
+        result,
+        isMarkdownSkillFilePath(input.path)
+          ? input.resubmitted
+            ? SKILL_FILE_EDIT_CONTROL_ADVICE
+            : 'Any content offset refers to the whole submitted file content, including frontmatter.'
+          : undefined,
+      ),
+      true,
+    );
   const created = result.created === true;
   const path = typeof result.path === 'string' ? result.path : input.path;
   const kind = result.kind === 'script' ? 'script' : 'reference';

@@ -64,6 +64,8 @@ import {
   SKILL_FILE_DESCRIBE,
   SKILL_NAME_DESCRIBE,
   SkillScopeArg,
+  TEMPLATE_EDIT_CONTROL_ADVICE,
+  TEMPLATE_METADATA_CONTROL_ADVICE,
   TEMPLATE_PATH_DESCRIBE,
 } from './verb-schemas.ts';
 
@@ -365,7 +367,8 @@ async function handleTemplate(
       ...(summary !== undefined ? { summary } : {}),
       ...agentIdentityFields(deps.identityRef?.current),
     });
-    if (!result.ok) return textResult(`Error: ${result.error}`, true);
+    if (!result.ok)
+      return textResult(errorTextWithDetail(result, TEMPLATE_METADATA_CONTROL_ADVICE), true);
     const path = typeof result.path === 'string' ? result.path : undefined;
     return textPlusStructured(
       `Patched template "${name}" frontmatter${path ? ` (${path})` : ''}.`,
@@ -395,7 +398,8 @@ async function handleTemplate(
     ...(summary !== undefined ? { summary } : {}),
     ...agentIdentityFields(deps.identityRef?.current),
   });
-  if (!result.ok) return textResult(`Error: ${result.error}`, true);
+  if (!result.ok)
+    return textResult(errorTextWithDetail(result, TEMPLATE_EDIT_CONTROL_ADVICE), true);
   const path = typeof result.path === 'string' ? result.path : undefined;
   return textPlusStructured(`Edited template "${name}"${path ? ` (${path})` : ''}.`, {
     template: { ok: true, path },
@@ -457,6 +461,7 @@ async function handleSkillFileEdit(
     scope,
     path: pathCheck.path,
     content: newText,
+    resubmitted: true,
     summary,
     identity,
   });
@@ -544,6 +549,7 @@ async function handleSkill(
     name: skill.name,
     description: newDescription,
     body: newBody,
+    resubmitted: hasDesc ? 'metadata-edit' : 'body-edit',
     summary,
     identity: deps.identityRef?.current,
     lockDir,
@@ -581,7 +587,12 @@ export function register(server: ServerInstance, deps: EditDeps): void {
       .describe(
         'Exact BODY text to find. Use WITH `replace`. For metadata, use `frontmatter` instead — not this.',
       ),
-    replace: z.string().optional().describe('Replacement for the `find` match.'),
+    replace: z
+      .string()
+      .optional()
+      .describe(
+        'Replacement for the `find` match. Markdown C0 controls allow only TAB, LF and CR; remove others or use printable escapes.',
+      ),
     occurrence: z
       .number()
       .int()
@@ -626,21 +637,30 @@ export function register(server: ServerInstance, deps: EditDeps): void {
           .object({
             path: z.string().describe(TEMPLATE_PATH_DESCRIBE),
             ...bodyFields,
-            frontmatter: FrontmatterArg.optional().describe('Template metadata merge-patch.'),
+            frontmatter: FrontmatterArg.optional().describe(
+              'Template metadata merge-patch. Resubmits the full existing body; unsupported C0 controls anywhere in that body refuse the edit.',
+            ),
           })
           .optional()
-          .describe('Edit a TEMPLATE: body (find+replace) or frontmatter (patch).'),
+          .describe(
+            'Edit a TEMPLATE: body (find+replace) or frontmatter (patch). Edits resubmit the full stored template body, including any supplied replace; unsupported C0 controls anywhere in that body refuse the edit. Remove controls from replace or clean the full body through write({ template: ... }).',
+          ),
         skill: z
           .object({
             name: z.string().describe(SKILL_NAME_DESCRIBE),
             file: z.string().optional().describe(SKILL_FILE_DESCRIBE),
             ...bodyFields,
-            description: z.string().optional().describe(SKILL_DESCRIPTION_DESCRIBE),
+            description: z
+              .string()
+              .optional()
+              .describe(
+                `${SKILL_DESCRIPTION_DESCRIBE} Resubmits the full existing body; unsupported C0 controls anywhere in that body refuse the edit.`,
+              ),
             scope: SkillScopeArg.optional(),
           })
           .optional()
           .describe(
-            'Edit a SKILL: SKILL.md body (find+replace) OR its `description`; or pass `file` to find/replace inside ONE bundle file.',
+            'Edit a SKILL: SKILL.md body (find+replace) OR its `description`; or pass `file` to find/replace inside ONE bundle file. Without file, edits resubmit the full stored skill body, including any supplied replace; unsupported C0 controls anywhere in that body refuse the edit. With file, edits resubmit the full file content, including frontmatter and replace; Markdown files must be wholly clean. Remove controls from replace or clean the full body/file through write({ skill: ... }).',
           ),
         summary: summaryArgSchema,
         cwd: z.string().optional().describe(ROUTED_CWD_DESCRIPTION),
