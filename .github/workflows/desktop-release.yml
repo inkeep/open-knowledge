@@ -867,7 +867,7 @@ jobs:
             exit 1
           fi
           echo "::notice::Retry wrapper materialized from workflow SHA ${GITHUB_WORKFLOW_SHA}."
-          node "$WRAPPER" --label "electron-builder (macOS)" --max-attempts 3 --deadline-epoch-ms "$PACKAGING_DEADLINE_EPOCH_MS" --attempt-timeout "30m" --retry-warning "A macOS packaging retry can create a duplicate Apple notarization submission; up to 3 attempts bound this to at most 2 duplicates." --shell -- "$PKG_CMD"
+          node "$WRAPPER" --label "electron-builder (macOS)" --max-attempts 3 --deadline-epoch-ms "$PACKAGING_DEADLINE_EPOCH_MS" --retry-warning "A macOS packaging retry can create a duplicate Apple notarization submission; up to 3 attempts bound this to at most 2 duplicates." --shell -- "$PKG_CMD"
 
       - name: Remove App Store Connect API key
         if: always()
@@ -1197,7 +1197,7 @@ jobs:
             exit 1
           fi
           echo "::notice::Retry wrapper materialized from workflow SHA ${GITHUB_WORKFLOW_SHA}."
-          node "$WRAPPER" --label "electron-builder (Windows)" --max-attempts 3 --deadline-epoch-ms "$PACKAGING_DEADLINE_EPOCH_MS" --attempt-timeout "15m" --shell -- "$PKG_CMD"
+          node "$WRAPPER" --label "electron-builder (Windows)" --max-attempts 3 --deadline-epoch-ms "$PACKAGING_DEADLINE_EPOCH_MS" --shell -- "$PKG_CMD"
 
       # This workflow always executes main's YAML (repository_dispatch), while
       # the checkout above follows `client_payload[ref]` — typically a tag
@@ -1499,7 +1499,7 @@ jobs:
             exit 1
           fi
           echo "::notice::Retry wrapper materialized from workflow SHA ${GITHUB_WORKFLOW_SHA}."
-          node "$WRAPPER" --label "electron-builder (Linux ${LINUX_TARGETS})" --max-attempts 3 --deadline-epoch-ms "$PACKAGING_DEADLINE_EPOCH_MS" --attempt-timeout "15m" --shell -- "$PKG_CMD"
+          node "$WRAPPER" --label "electron-builder (Linux ${LINUX_TARGETS})" --max-attempts 3 --deadline-epoch-ms "$PACKAGING_DEADLINE_EPOCH_MS" --shell -- "$PKG_CMD"
 
       - name: Install the packaged deb's runtime dependencies
         working-directory: packages/desktop

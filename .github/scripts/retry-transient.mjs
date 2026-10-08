@@ -21,7 +21,6 @@ export const RETRY_ON_STOP_OUTCOMES = Object.freeze(['ineligible']);
 
 const MAX_CAPTURE_BYTES = 16_384;
 const MIN_PROJECTED_ATTEMPT_MS = 1_000;
-const DEFAULT_ATTEMPT_TIMEOUT_MS = 15 * 60 * 1000;
 const DEFAULT_CLEANUP_GRACE_MS = 5_000;
 const DEFAULT_CLEANUP_RESERVE_MS = 15_000;
 const DEFAULT_POLL_INTERVAL_MS = 25;
@@ -352,10 +351,8 @@ function emitLiveProcesses(log, label, reason, snapshot) {
 }
 
 function projectedAttemptMs(durationMs, attemptTimeoutMs) {
-  return Math.min(
-    attemptTimeoutMs,
-    Math.max(MIN_PROJECTED_ATTEMPT_MS, Math.ceil(durationMs * 1.25)),
-  );
+  const projected = Math.max(MIN_PROJECTED_ATTEMPT_MS, Math.ceil(durationMs * 1.25));
+  return attemptTimeoutMs === undefined ? projected : Math.min(attemptTimeoutMs, projected);
 }
 
 function logDecision({
@@ -662,9 +659,14 @@ async function runAttempt({
   let timeoutId;
   let deadlineId;
   let cancelListener;
-  const timeoutPromise = new Promise((resolve) => {
-    timeoutId = setTimeout(() => resolve({ kind: 'attempt-timeout' }), attemptTimeoutMs);
-  });
+  const timeoutPromises =
+    attemptTimeoutMs === undefined
+      ? []
+      : [
+          new Promise((resolve) => {
+            timeoutId = setTimeout(() => resolve({ kind: 'attempt-timeout' }), attemptTimeoutMs);
+          }),
+        ];
   const remainingToDeadline = Math.max(0, deadlineEpochMs - cleanupReserveMs - nowFn());
   const deadlinePromise = new Promise((resolve) => {
     deadlineId = setTimeout(() => resolve({ kind: 'deadline' }), remainingToDeadline);
@@ -678,7 +680,7 @@ async function runAttempt({
 
   const outcome = await Promise.race([
     closePromise,
-    timeoutPromise,
+    ...timeoutPromises,
     deadlinePromise,
     cancellationPromise,
   ]);
@@ -780,7 +782,7 @@ export async function runWithRetry({
   shell = false,
   maxAttempts = DEFAULT_MAX_ATTEMPTS,
   deadlineEpochMs = Date.now() + 60 * 60 * 1000,
-  attemptTimeoutMs = DEFAULT_ATTEMPT_TIMEOUT_MS,
+  attemptTimeoutMs,
   cleanupReserveMs = DEFAULT_CLEANUP_RESERVE_MS,
   cleanupGraceMs = DEFAULT_CLEANUP_GRACE_MS,
   pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
@@ -1135,15 +1137,14 @@ export function parseArgs(argv) {
   if (!Number.isSafeInteger(deadlineEpochMs) || deadlineEpochMs <= 0) {
     throw new Error('--deadline-epoch-ms must be a positive integer');
   }
-  const attemptTimeoutMs = parseDuration(
-    flagValue(flags, '--attempt-timeout', true),
-    '--attempt-timeout',
-  );
+  const attemptTimeout = flagValue(flags, '--attempt-timeout');
   const parsed = {
     label: flagValue(flags, '--label') ?? 'command',
     maxAttempts,
     deadlineEpochMs,
-    attemptTimeoutMs,
+    ...(attemptTimeout === undefined
+      ? {}
+      : { attemptTimeoutMs: parseDuration(attemptTimeout, '--attempt-timeout') }),
     retryWarning: flagValue(flags, '--retry-warning') ?? '',
     shell,
     command,

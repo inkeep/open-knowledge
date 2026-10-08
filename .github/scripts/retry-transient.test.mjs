@@ -41,9 +41,9 @@ const desktopRelease = readFileSync(
   'utf8',
 );
 const WORKFLOW_JOBS = [
-  ['build-macos', '65', '30m', 'Build + sign + notarize DMG/ZIP'],
-  ['build-windows', '35', '15m', 'Package NSIS installers (x64 + arm64, signed)'],
-  ['build-linux', '35', '15m', 'Package $' + '{{ matrix.targets }}'],
+  ['build-macos', '65', 'Build + sign + notarize DMG/ZIP'],
+  ['build-windows', '35', 'Package NSIS installers (x64 + arm64, signed)'],
+  ['build-linux', '35', 'Package $' + '{{ matrix.targets }}'],
 ];
 const workflowJob = (name) => {
   const start = desktopRelease.indexOf(`\n  ${name}:`);
@@ -61,14 +61,33 @@ const workflowStep = (body, name) => {
   );
   return ends.length === 0 ? rest : rest.slice(0, Math.min(...ends));
 };
-const workflowTiming = ([jobName, , , packageName]) => {
+const workflowTiming = ([jobName]) => {
   const body = workflowJob(jobName);
   const budget = /PACKAGING_BUDGET_MINUTES: "(\d+)"/.exec(
     workflowStep(body, 'Start packaging deadline'),
   )?.[1];
-  const timeout = /--attempt-timeout "(\d+)m"/.exec(workflowStep(body, packageName))?.[1];
-  if (!budget || !timeout) throw new Error(`missing workflow timing for ${jobName}`);
-  return { budgetMs: Number(budget) * 60_000, attemptTimeoutMs: Number(timeout) * 60_000 };
+  if (!budget) throw new Error(`missing workflow timing for ${jobName}`);
+  return { budgetMs: Number(budget) * 60_000 };
+};
+const wrapperInvocation = (packageStep) => {
+  const line = packageStep.split('\n').find((candidate) => /^\s*node "\$WRAPPER" /.test(candidate));
+  if (!line) throw new Error('packaging step has no wrapper invocation');
+  return line.trim();
+};
+const expandInvocation = (invocation, env) => {
+  const expanded = spawnSync(
+    'bash',
+    [
+      '--noprofile',
+      '--norc',
+      '-c',
+      `set -euo pipefail\nnode() { printf '%s\\0' "$@"; }\n${invocation}`,
+    ],
+    { encoding: 'utf8', env: { ...process.env, ...env } },
+  );
+  if (expanded.status !== 0)
+    throw new Error(`bash could not expand ${invocation}: ${expanded.stderr}`);
+  return expanded.stdout.split('\0').slice(0, -1);
 };
 const scratch = mkdtempSync(join(tmpdir(), 'retry-transient-'));
 
@@ -965,6 +984,46 @@ describe('the result file', () => {
     );
   });
 
+  test('runs a slow attempt that keeps advancing to completion when no attempt timeout is given', () => {
+    const progress = join(scratch, 'advancing-child.js');
+    writeFileSync(
+      progress,
+      "let n=0;const t=setInterval(()=>{n+=1;console.log('progress '+n);if(n===40){clearInterval(t);process.exit(0);}},100);",
+    );
+    const probe = (...bound) =>
+      spawnSync(
+        process.execPath,
+        [
+          SCRIPT,
+          '--label',
+          'advancing probe',
+          '--deadline-epoch-ms',
+          String(Date.now() + 60_000),
+          ...bound,
+          '--',
+          process.execPath,
+          progress,
+        ],
+        { encoding: 'utf8' },
+      );
+    const unbounded = probe();
+    expect(unbounded.status, unbounded.stderr).toBe(0);
+    expect(unbounded.stdout).toContain('progress 40');
+    expect(unbounded.stdout).toContain('advancing probe succeeded on attempt 1.');
+    const control = probe('--attempt-timeout', '2000ms');
+    expect(control.status).toBe(1);
+    const stop = control.stdout.indexOf('decision=stop reason=control:attempt-timeout');
+    expect(
+      stop,
+      'the control must show an elapsed attempt bound stopping this same child, or the run above proves nothing about running without one',
+    ).toBeGreaterThan(-1);
+    expect(
+      control.stdout.slice(0, stop),
+      'the child was still printing progress when the elapsed bound stopped it',
+    ).toContain('progress 1\n');
+    expect(control.stdout).not.toContain('progress 40');
+  });
+
   test('writes nothing unless asked', () => {
     const empty = mkdtempSync(join(scratch, 'no-result-'));
     const result = spawnSync(
@@ -1144,7 +1203,7 @@ describe('deadlines and cancellation', () => {
     let attempt = 0;
     const result = await run({
       deadlineEpochMs: timing.budgetMs,
-      attemptTimeoutMs: timing.attemptTimeoutMs,
+      attemptTimeoutMs: undefined,
       cleanupReserveMs: 15_000,
       nowFn: () => clock,
       sleepFn: async (ms) => {
@@ -1170,7 +1229,7 @@ describe('deadlines and cancellation', () => {
       let clock = 19 * minute;
       return run({
         deadlineEpochMs: windowsTiming.budgetMs,
-        attemptTimeoutMs: windowsTiming.attemptTimeoutMs,
+        attemptTimeoutMs: undefined,
         cleanupReserveMs: 15_000,
         nowFn: () => clock,
         attemptRunner: async () => {
@@ -1198,7 +1257,7 @@ describe('deadlines and cancellation', () => {
     let clock = 0;
     const result = await run({
       deadlineEpochMs: timing.budgetMs,
-      attemptTimeoutMs: timing.attemptTimeoutMs,
+      attemptTimeoutMs: undefined,
       nowFn: () => clock,
       attemptRunner: async () => {
         clock += 1_000;
@@ -1209,6 +1268,54 @@ describe('deadlines and cancellation', () => {
     expect(result.log).toContain('reason=control:deadline outcome=deadline');
     expect(result.log).toContain('retry-after-ms=3600000');
     expect(result.log).toContain('projected-attempt-ms=1250');
+  });
+
+  test('an attempt carries no bound of its own unless the caller sets one', async () => {
+    const handed = [];
+    for (const attemptTimeoutMs of [undefined, 5_000]) {
+      await run({
+        attemptTimeoutMs,
+        attemptRunner: async (options) => {
+          handed.push(options.attemptTimeoutMs);
+          return completedAttempt('', 0);
+        },
+      });
+    }
+    expect(
+      handed,
+      'with no attempt timeout the deadline alone may stop an attempt; a default bound would end a slow attempt that is still advancing',
+    ).toEqual([undefined, 5_000]);
+  });
+
+  test('without an attempt bound, retry admission projects from the last attempt alone', async () => {
+    const minute = 60_000;
+    const timing = workflowTiming(WORKFLOW_JOBS[1]);
+    const execute = async (attemptMinutes) => {
+      let clock = 4 * minute;
+      let attempts = 0;
+      const result = await run({
+        deadlineEpochMs: timing.budgetMs,
+        attemptTimeoutMs: undefined,
+        cleanupReserveMs: 15_000,
+        nowFn: () => clock,
+        sleepFn: async (ms) => {
+          clock += ms;
+        },
+        attemptRunner: async () => {
+          attempts += 1;
+          clock += attemptMinutes * minute;
+          return attempts === 1
+            ? completedAttempt('socket hang up', 1, { nowFn: () => clock })
+            : completedAttempt('', 0);
+        },
+      });
+      return { ...result, started: attempts };
+    };
+    expect(await execute(12)).toMatchObject({ ok: true, attempts: 2, started: 2 });
+    const refused = await execute(14);
+    expect(refused).toMatchObject({ ok: false, reason: 'deadline', attempts: 1, started: 1 });
+    expect(refused.log).toContain('phase=before-backoff');
+    expect(refused.log).toContain('projected-attempt-ms=1050000');
   });
 
   test('absolute deadline stops and cleans a live child', async (ctx) => {
@@ -1864,11 +1971,19 @@ describe('parseArgs', () => {
     });
   });
 
+  test('takes the attempt timeout as optional, so the deadline alone can bound an attempt', () => {
+    const parsed = parseArgs(argv('--deadline-epoch-ms', '2000000000000', '--', 'true'));
+    expect(parsed).toMatchObject({ deadlineEpochMs: 2_000_000_000_000, command: ['true'] });
+    expect(parsed).not.toHaveProperty('attemptTimeoutMs');
+    expect(() =>
+      parseArgs(
+        argv('--deadline-epoch-ms', '2000000000000', '--attempt-timeout', '0m', '--', 'true'),
+      ),
+    ).toThrow(/attempt-timeout must be a positive duration/);
+  });
+
   test('rejects missing budgets, excess attempts, and malformed shell commands', () => {
     expect(() => parseArgs(argv('--', 'true'))).toThrow(/deadline/);
-    expect(() => parseArgs(argv('--deadline-epoch-ms', '2000000000000', '--', 'true'))).toThrow(
-      /attempt-timeout/,
-    );
     expect(() =>
       parseArgs(
         argv(
@@ -2042,7 +2157,7 @@ describe('workflow wiring', () => {
     const end = packageStep.indexOf('\n', notice);
     return packageStep.slice(start, end);
   };
-  const packageSteps = () => jobs.map((row) => step(job(row[0]), row[3]));
+  const packageSteps = () => jobs.map((row) => step(job(row[0]), row[2]));
   const runMaterialization = ({
     fetchFailures = 0,
     showFailure = false,
@@ -2104,7 +2219,7 @@ describe('workflow wiring', () => {
 
   test.each(jobs)(
     '%s always materializes workflow-SHA tooling into RUNNER_TEMP',
-    (name, _budget, _timeout, packageName) => {
+    (name, _budget, packageName) => {
       const packageStep = step(job(name), packageName);
       expect(packageStep).toContain('GITHUB_WORKFLOW_SHA: $' + '{{ github.workflow_sha }}');
       expect(packageStep).toContain('WRAPPER="$' + '{RUNNER_TEMP}/retry-transient.mjs"');
@@ -2173,14 +2288,14 @@ describe('workflow wiring', () => {
 
   test.each(jobs)(
     '%s compiles once outside retry and passes exact budgets',
-    (name, _budget, timeout, packageName) => {
+    (name, _budget, packageName) => {
       const body = job(name);
       expect(body.indexOf('- name: Build desktop main/preload/renderer')).toBeLessThan(
         body.indexOf(`- name: ${packageName}`),
       );
       const packageStep = step(body, packageName);
       expect(packageStep).not.toContain('pnpm run build:desktop');
-      expect(packageStep).toContain(`--attempt-timeout "${timeout}"`);
+      expect(packageStep).not.toContain('--attempt-timeout');
       expect(packageStep).toContain('--deadline-epoch-ms "$PACKAGING_DEADLINE_EPOCH_MS"');
       const command = packageStep.split('\n').find((line) => /^\s*PKG_CMD:/.test(line));
       expect(command).toContain(
@@ -2189,6 +2304,88 @@ describe('workflow wiring', () => {
       expect(command).toContain('--publish never');
     },
   );
+
+  test.each(jobs)(
+    '%s packaging, as bash expands it and the wrapper parses it, stops an attempt only at the packaging deadline',
+    (name, _budget, packageName) => {
+      const deadline = String(Date.now() + 60_000);
+      const argv = expandInvocation(wrapperInvocation(step(job(name), packageName)), {
+        WRAPPER: SCRIPT,
+        PACKAGING_DEADLINE_EPOCH_MS: deadline,
+        PKG_CMD: 'package-command',
+        LINUX_TARGETS: 'deb:x64 rpm:x64',
+      });
+      const options = parseArgs(['node', ...argv]);
+      expect(options).toMatchObject({
+        deadlineEpochMs: Number(deadline),
+        shell: true,
+        command: ['package-command'],
+      });
+      expect(
+        options,
+        'an attempt bound tighter than the packaging deadline can only stop a slow attempt that is still advancing, and a stopped attempt is never retried',
+      ).not.toHaveProperty('attemptTimeoutMs');
+    },
+  );
+
+  test('a macOS packaging attempt that stops advancing ends at the packaging deadline and names what was running', async () => {
+    const dir = mkdtempSync(join(scratch, 'stalled-package-'));
+    const pidFile = join(dir, 'pid');
+    const fake = join(dir, 'stalled-package.js');
+    writeFileSync(
+      fake,
+      `const fs=require('fs');fs.writeFileSync(${JSON.stringify(`${pidFile}.pending`)},String(process.pid));fs.renameSync(${JSON.stringify(`${pidFile}.pending`)},${JSON.stringify(pidFile)});console.log('  • signing         file=OpenKnowledge.app');setTimeout(()=>{},${childSelfExitMs});`,
+    );
+    const invocation = wrapperInvocation(
+      step(job('build-macos'), 'Build + sign + notarize DMG/ZIP'),
+    );
+    const result = spawnSync(
+      'bash',
+      [
+        '--noprofile',
+        '--norc',
+        '-c',
+        `set -euo pipefail\nnode() { "$NODE_BIN" "$@"; }\n${invocation}`,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          NODE_BIN: process.execPath,
+          WRAPPER: SCRIPT,
+          PACKAGING_DEADLINE_EPOCH_MS: String(Date.now() + 19_000),
+          PKG_CMD: `${JSON.stringify(process.execPath)} ${JSON.stringify(fake)}`,
+        },
+      },
+    );
+    expect(
+      existsSync(pidFile),
+      `the stand-in package command never started, so this run proved nothing about stopping one:\n${result.stdout}\n${result.stderr}`,
+    ).toBe(true);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toMatch(
+      /electron-builder \(macOS\) decision=stop reason=control:deadline outcome=deadline attempt=1\/3 .*phase=mid-attempt/,
+    );
+    expect(result.stdout).not.toContain('attempt-timeout');
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    if (process.platform !== 'win32') {
+      const at = result.stdout.indexOf(
+        '::group::electron-builder (macOS) processes still running at deadline',
+      );
+      expect(at, 'a stop at the deadline must say what was still running').toBeGreaterThan(-1);
+      expect(result.stdout.slice(at, result.stdout.indexOf('::endgroup::', at))).toMatch(
+        new RegExp(`^\\| pid=${pid} elapsed=\\S+ \\S`, 'm'),
+      );
+    }
+    await vi.waitFor(
+      () =>
+        expect(
+          () => process.kill(pid, 0),
+          `the stand-in package command ${pid} outlived the deadline stop`,
+        ).toThrow(),
+      { timeout: 2_000, interval: 10 },
+    );
+  });
 
   test('logs duplicate Apple submissions and keeps strict downstream gates outside retry', () => {
     const macPackage = step(job('build-macos'), 'Build + sign + notarize DMG/ZIP');
