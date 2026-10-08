@@ -29,9 +29,32 @@ directories:
 # Core-assert: the CLI's build:assets step produces packages/cli/dist/public/
 # (Vite build of packages/app/, copied by `cp -r ../app/dist dist/public`).
 # We consume that output directly — no separate renderer build for the app.
+#
+# STOP: win.files and linux.files replace this list for files outside
+#       node_modules, so each repeats the three anchored patterns.
 files:
-  - "out/**/*"
-  - "!**/*.map"
+  - &app-out "out/**/*"
+  - &no-renderer "!out/renderer/**"
+  - &no-maps "!**/*.map"
+  - "!**/node_modules/@inkeep/*/src/**"
+  - "!**/node_modules/**/*.{ts,mts,cts,tsx}"
+  - "!**/node_modules/@inkeep/open-knowledge/dist/public/**"
+  - "!**/node_modules/@inkeep/open-knowledge-native-config/**"
+  - "!**/node_modules/mermaid/dist/mermaid{.js,.min.js,.esm.mjs,.esm.min.mjs}"
+  - "!**/node_modules/mermaid/dist/chunks/mermaid.esm{,.min}/**"
+  - "!**/node_modules/@mermaid-js/parser/dist/mermaid-parser.esm{,.min}.mjs"
+  - "!**/node_modules/@mermaid-js/parser/dist/chunks/mermaid-parser.esm{,.min}/**"
+  - "!**/node_modules/cytoscape-fcose/demo/**"
+  - "!**/node_modules/sql.js/dist/*-debug*"
+  - "!**/node_modules/sql.js/dist/*-asm*"
+  - "!**/node_modules/sql.js/dist/*-browser*"
+  - "!**/node_modules/sql.js/dist/worker.*"
+  - "!**/node_modules/just-bash/vendor/cpython-emscripten/**"
+  - "!**/node_modules/just-bash/dist/bin/**"
+  - "!**/node_modules/just-bash/dist/bundle/browser.js"
+  - "!**/node_modules/quickjs-emscripten/**"
+  - "!**/node_modules/quickjs-emscripten-core/**"
+  - "!**/node_modules/@jitl/**"
 
 extraResources:
   - from: "../cli/dist/public"
@@ -49,23 +72,18 @@ extraResources:
     to: "locales"
     filter: ["**/messages.json"]
   # M6a: ship the CLI bundle + wrapper so the packaged .app can host
-  # `ok` on PATH via ELECTRON_RUN_AS_NODE=1. Filter keeps cli/dist/public/**
-  # intact — `ok ui` from the wrapper reads it via $APP_PATH/Contents/
-  # Resources/cli/dist/public/ (distinct consumer from the React bundle
-  # copy above that the BrowserWindow loads from Contents/Resources/app/).
-  # Two copies, deliberately — see SPEC §5 AC1.11 and OQ-22.
+  # `ok` on PATH via ELECTRON_RUN_AS_NODE=1.
   # Ships the whole bundled CLI, INCLUDING `cli/dist/native/` — the prebuilt
   # native-config loader + `.node` the CLI build copies there (Option 3: bundle
   # the addon into the CLI; reports/native-addon-npm-distribution/REPORT.md). The
-  # spawned `ok` subprocess resolves the addon dist-relative from there, so this
-  # one rule covers the bundled-CLI consumer; the per-package `cli/node_modules`
-  # copy + asarUnpack below stay for the desktop MAIN process's in-process load.
+  # spawned `ok` subprocess resolves the addon dist-relative from there.
   # The filter must not exclude `.node`/`.js`/`package.json` — guarded by
   # tests/unit/electron-builder-cli-native-deps.test.ts.
   - from: "../cli/dist"
     to: "cli/dist"
     filter:
       - "**/*"
+      - "!public/**"
       - "!**/*.map"
       # Post-review Minor #21: tsdown emits `.d.mts` + `.d.mts.map` for
       # every source module. TypeScript declarations have no runtime
@@ -180,12 +198,6 @@ asarUnpack:
   - "**/detect-libc/**"
   - "**/@napi-rs/keyring/**"
   - "**/@napi-rs/keyring-*/**"
-  # The desktop main process loads the addon in-process (the MCP repair sweep's
-  # Codex TOML write). Keep its napi loader and the `.node` it requires
-  # relatively co-located on the real filesystem — a loader left inside
-  # app.asar resolving `require('./native-config.<platform>.node')` against an
-  # unpacked sibling is the fragile path; unpack the whole package dir instead.
-  - "**/@inkeep/open-knowledge-native-config/**"
   - "**/simple-git/**"
   # node-pty ships its native pty.node addon AND an extensionless `spawn-helper`
   # binary under prebuilds/<platform>-<arch>/. The `**/*.node` rule above unpacks
@@ -402,7 +414,7 @@ win:
   # never published (internal QA only).
   #
   # node-pty ships in the Windows package: the terminal runs on ConPTY via the
-  # win32 prebuilds. `files` merges with the top-level list. The prune mirrors
+  # win32 prebuilds. The prune mirrors
   # the Linux block (no foreign-platform prebuilds, no ~10 MB/arch .pdb debug
   # symbols), and BOTH win32 arch prebuilds stay in BOTH per-arch installers —
   # the addon picks prebuilds/win32-<process.arch> at runtime, which keeps
@@ -414,18 +426,15 @@ win:
   # ship builder-host binaries. Pruning build/** makes the per-arch prebuild
   # the only loadable addon. third_party/ is ConPTY C++ source weight with no
   # runtime role.
-  #
-  # native-config's cargo `target/` tree is darwin build intermediates that
-  # the blanket asarUnpack rule would otherwise drag in. Beyond dead weight,
-  # its `.fingerprint` paths nest past MAX_PATH under the install dir and
-  # the x86 NSIS uninstaller cannot delete them (VM-verified residue).
   files:
+    - *app-out
+    - *no-renderer
+    - *no-maps
     - "!**/node_modules/node-pty/prebuilds/**/*.pdb"
     - "!**/node_modules/node-pty/prebuilds/darwin-*/**"
     - "!**/node_modules/node-pty/prebuilds/linux-*/**"
     - "!**/node_modules/node-pty/build/**"
     - "!**/node_modules/node-pty/third_party/**"
-    - "!**/node_modules/@inkeep/open-knowledge-native-config/target/**"
   # conpty.dll + OpenConsole.exe (under prebuilds/win32-*/conpty/) ship with
   # Microsoft's Authenticode signatures and must keep them — re-signing would
   # replace Microsoft's signature with ours and split the pair's provenance.
@@ -542,13 +551,14 @@ linux:
   # node-pty publishes every platform prebuild in one package. Drop
   # foreign-platform binaries and Windows debug symbols, but keep both Linux
   # prebuilds so each installer carries the correct ELF regardless of builder
-  # architecture. native-config's darwin cargo `target/` tree stays excluded
-  # (see win.files for the rationale).
+  # architecture.
   files:
+    - *app-out
+    - *no-renderer
+    - *no-maps
     - "!**/node_modules/node-pty/prebuilds/**/*.pdb"
     - "!**/node_modules/node-pty/prebuilds/darwin-*/**"
     - "!**/node_modules/node-pty/prebuilds/win32-*/**"
-    - "!**/node_modules/@inkeep/open-knowledge-native-config/target/**"
   extraResources:
     # Linux-layout wrapper ships under the same canonical destination as
     # the mac one so path-install + the deb postinst agree on one path.

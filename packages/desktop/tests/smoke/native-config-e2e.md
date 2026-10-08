@@ -9,9 +9,9 @@
 | Bundle is produced + loadable + round-trips (parse / upsert / symlink) from `packages/cli/dist/native/` | Real (runs in `pnpm check`) | `packages/desktop/tests/unit/verify-native-config-driver.test.mjs` (end-to-end test) |
 | Driver maps `.dmg`/`.app`/dir inputs + exit codes | Real (unit) | same test file |
 | Loads from a packaged `.app`/`.dmg` shipped layout | Real, but needs a built artifact | this runbook, Step 2 (`verify-native-config-in-packaged-dmg.mjs`) |
-| Loads **in the Electron main process** (hardened runtime + asar) | Deferred to signed-DMG QA | this runbook, Step 3 |
+| Loads **in the Electron main process** (hardened runtime + asar) | Quick check on any built `.app`; Codex round-trip deferred to signed-DMG QA | this runbook, Step 3 |
 
-The addon is pure computation over a napi N-API surface that is ABI-stable across Node and Electron, so the Node-load checks (Steps 1–2) are a faithful proof of the bundle + layout + loadability. Step 3 (the in-Electron-process confirmation) is the only part that genuinely needs a packaged runtime, and it is gated on a built DMG.
+The addon is pure computation over a napi N-API surface that is ABI-stable across Node and Electron, so the Node-load checks (Steps 1–2) are a faithful proof of the bundle + layout + loadability. Step 3 (the in-Electron-process confirmation) is the only part that genuinely needs a packaged runtime: its quick check runs on any built `.app`, and only its Codex round-trip waits for a signed DMG.
 
 ---
 
@@ -44,15 +44,23 @@ The driver mounts the DMG read-only, copies the first `.app`, detaches, and load
 
 ---
 
-## Step 3 — In-Electron-process confirmation (deferred — needs a built DMG)
+## Step 3 — In-Electron-process confirmation (quick check on any built `.app`; Codex round-trip deferred to signed-DMG QA)
 
 The Node-load checks above do not exercise the Electron main process's own resolution path. To confirm the addon loads in-process inside the packaged app:
 
 1. Launch the packaged app from `/Applications/`.
 2. Open a project so the MCP repair sweep runs (it loads the addon in-process via `writeUserMcpConfigs -> getTomlConfigEngine`).
-3. Register OK into a Codex `~/.codex/config.toml` containing a comment + a 64-bit integer; confirm the comment + value survive (format-preserving write = the native engine ran). If the comment is stripped/reflowed, the desktop main fell back to the JS path — investigate `app.asar.unpacked/node_modules/@inkeep/open-knowledge-native-config` and the `dist/native` bundle.
+3. Register OK into a Codex `~/.codex/config.toml` containing a comment + a 64-bit integer; confirm the comment + value survive (format-preserving write = the native engine ran). If the comment is stripped/reflowed, the desktop main fell back to the JS path — investigate `app.asar.unpacked/node_modules/@inkeep/open-knowledge/dist/native/`, the main process's copy of the loader and `.node`. The native-config package itself is intentionally absent from the asar; the afterPack guard (`scripts/assert-packaged-bundle.mjs`) fails the build if it appears or if that loader or `.node` is missing.
 
-This step needs a built (ideally signed) DMG and a real Codex install, so it runs at release/QA time, not in the per-PR gate. The non-destructive fallback (D11) keeps a missing/failed addon safe — Codex registration simply degrades, never corrupts — so a Step-3 miss is a fidelity regression, not a data-loss one.
+A quicker in-Electron check needs only a built `.app`, no Codex install and no signing. Run the packaged binary as Node and load the main process's library copy. Any output other than `native` means the main process fell back to the JS engine:
+
+```bash
+R="/Applications/OpenKnowledge.app/Contents/Resources"
+ELECTRON_RUN_AS_NODE=1 "$R/../MacOS/OpenKnowledge" -e "import('$R/app.asar/node_modules/@inkeep/open-knowledge/dist/index.mjs').then((m) => console.log(m.getNativeTomlMcpEditor()?.backend))"
+# Expect: native
+```
+
+The Codex round-trip in item 3 needs a built (ideally signed) DMG and a real Codex install, so it runs at release/QA time, not in the per-PR gate. The non-destructive fallback (D11) keeps a missing/failed addon safe — Codex registration simply degrades, never corrupts — so a Step-3 miss is a fidelity regression, not a data-loss one.
 
 ---
 
