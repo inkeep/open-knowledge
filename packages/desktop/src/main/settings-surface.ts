@@ -121,5 +121,8 @@ export function settingsHash(section?: SettingsSection): string {
 }
 
 export function settingsHashScript(section?: SettingsSection): string {
-  return `window.location.hash = ${JSON.stringify(settingsHash(section))}; undefined`;
+  const target = JSON.stringify(settingsHash(section));
+  const openSettings = `if (!/^#settings(\\/.+)?$/.test(window.location.hash)) { window.location.hash = ${target}; }`;
+  if (section === undefined) return `${openSettings} undefined`;
+  return `${openSettings} else { window.history.replaceState(null, '', ${target}); window.dispatchEvent(new CustomEvent('open-knowledge:settings-section-intent', { detail: ${JSON.stringify(section)} })); } undefined`;
 }

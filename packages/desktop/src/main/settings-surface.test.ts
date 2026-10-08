@@ -356,13 +356,77 @@ describe('deliverNavigatorSettings', () => {
 describe('settingsHash', () => {
   test('defaults to the bare settings hash', () => {
     expect(settingsHash()).toBe('#settings');
-    expect(settingsHashScript()).toBe('window.location.hash = "#settings"; undefined');
   });
 
   test('appends a section id', () => {
     expect(settingsHash('account')).toBe('#settings/account');
-    expect(settingsHashScript('account')).toBe(
-      'window.location.hash = "#settings/account"; undefined',
-    );
+  });
+});
+
+describe('settingsHashScript', () => {
+  function runInRenderer(script: string, startHash: string) {
+    const entries = [startHash];
+    const hashChanges: string[] = [];
+    const sectionIntents: unknown[] = [];
+    const location = {
+      get hash() {
+        return entries[entries.length - 1] ?? '';
+      },
+      set hash(next: string) {
+        if (next === location.hash) return;
+        entries.push(next);
+        hashChanges.push(next);
+      },
+    };
+    const renderer = {
+      location,
+      history: {
+        replaceState: (_state: unknown, _unused: string, url: string) => {
+          entries[entries.length - 1] = url;
+        },
+      },
+      dispatchEvent: (event: Event) => {
+        if (event.type === 'open-knowledge:settings-section-intent') {
+          sectionIntents.push((event as CustomEvent).detail);
+        }
+        return true;
+      },
+    };
+    new Function('window', script)(renderer);
+    return { entries, hashChanges, sectionIntents };
+  }
+
+  test('opens Settings as a new history entry when it is closed', () => {
+    expect(runInRenderer(settingsHashScript(), '#/note')).toEqual({
+      entries: ['#/note', '#settings'],
+      hashChanges: ['#settings'],
+      sectionIntents: [],
+    });
+    expect(runInRenderer(settingsHashScript('account'), '#/note')).toEqual({
+      entries: ['#/note', '#settings/account'],
+      hashChanges: ['#settings/account'],
+      sectionIntents: [],
+    });
+  });
+
+  test('leaves an open Settings page alone instead of stacking a second entry', () => {
+    expect(runInRenderer(settingsHashScript(), '#settings/about')).toEqual({
+      entries: ['#settings/about'],
+      hashChanges: [],
+      sectionIntents: [],
+    });
+  });
+
+  test('brings an open Settings to the requested section in place', () => {
+    expect(runInRenderer(settingsHashScript('account'), '#settings/about')).toEqual({
+      entries: ['#settings/account'],
+      hashChanges: [],
+      sectionIntents: ['account'],
+    });
+    expect(runInRenderer(settingsHashScript('account'), '#settings/account')).toEqual({
+      entries: ['#settings/account'],
+      hashChanges: [],
+      sectionIntents: ['account'],
+    });
   });
 });
