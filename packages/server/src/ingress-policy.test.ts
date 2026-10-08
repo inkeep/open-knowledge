@@ -301,8 +301,22 @@ describe('ingress request context', () => {
       headers: {},
     } as unknown as import('node:http').IncomingMessage;
     const context = stampIngressContext(req, { requestId: 'r-1' });
-    expect(context).toEqual({ requestId: 'r-1', peerClass: 'external', actor: undefined });
+    expect(context).toStrictEqual({
+      requestId: 'r-1',
+      peerClass: 'external',
+      clientSurface: undefined,
+      actor: undefined,
+    });
     expect(getIngressContext(req)).toBe(context);
+  });
+
+  test('carries the client surface the pipeline read for the request', () => {
+    const req = {
+      socket: { remoteAddress: '127.0.0.1' },
+      headers: {},
+    } as unknown as import('node:http').IncomingMessage;
+    stampIngressContext(req, { requestId: 'r-2', clientSurface: 'embedded:codex' });
+    expect(getIngressContext(req)?.clientSurface).toBe('embedded:codex');
   });
 });
 

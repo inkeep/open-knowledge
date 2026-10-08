@@ -1,5 +1,5 @@
 import type { IncomingMessage } from 'node:http';
-import type { ServerRuntimeConfig } from '@inkeep/open-knowledge-core';
+import type { ClientSurfaceReading, ServerRuntimeConfig } from '@inkeep/open-knowledge-core';
 import { isAllowedApiOrigin, isOpaqueOrigin, isSafeMethod } from './api-origin.ts';
 import type { PinoLogger } from './logger.ts';
 import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
@@ -186,6 +186,7 @@ export function warnForwardedHeaderRefusalOnce(
 export interface IngressRequestContext {
   requestId: string | undefined;
   peerClass: 'loopback' | 'external' | 'unknown';
+  clientSurface: ClientSurfaceReading;
   actor: undefined;
 }
 
@@ -193,12 +194,13 @@ const ingressContexts = new WeakMap<IncomingMessage, IngressRequestContext>();
 
 export function stampIngressContext(
   req: IncomingMessage,
-  input: { requestId?: string | undefined },
+  input: { requestId?: string | undefined; clientSurface?: ClientSurfaceReading },
 ): IngressRequestContext {
   const peer = req.socket?.remoteAddress;
   const context: IngressRequestContext = {
     requestId: input.requestId,
     peerClass: peer === undefined ? 'unknown' : isLoopbackAddress(peer) ? 'loopback' : 'external',
+    clientSurface: input.clientSurface,
     actor: undefined,
   };
   ingressContexts.set(req, context);

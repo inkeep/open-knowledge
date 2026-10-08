@@ -50,7 +50,7 @@ function resolveApiTarget(input: RequestInfo | URL, apiOrigin: string | undefine
     }
     const parsed = tryParseUrl(input);
     if (parsed && isLocalApiUrl(parsed, apiOrigin)) {
-      return { isApi: true, url: input };
+      return { isApi: true, url: rewriteToApiOrigin(parsed, input, apiOrigin) };
     }
     return { isApi: false, url: input };
   }
@@ -58,12 +58,16 @@ function resolveApiTarget(input: RequestInfo | URL, apiOrigin: string | undefine
   const parsed = input instanceof URL ? input : tryParseUrl(input.url, window.location.origin);
   if (parsed && isLocalApiUrl(parsed, apiOrigin)) {
     const original = input instanceof URL ? input.href : input.url;
-    if (apiOrigin && (parsed.origin === window.location.origin || parsed.protocol === 'file:')) {
-      return { isApi: true, url: apiOrigin + parsed.pathname + parsed.search + parsed.hash };
-    }
-    return { isApi: true, url: original };
+    return { isApi: true, url: rewriteToApiOrigin(parsed, original, apiOrigin) };
   }
   return { isApi: false, url: input instanceof URL ? input.href : input.url };
+}
+
+function rewriteToApiOrigin(parsed: URL, original: string, apiOrigin: string | undefined): string {
+  if (apiOrigin && (parsed.origin === window.location.origin || parsed.protocol === 'file:')) {
+    return apiOrigin + parsed.pathname + parsed.search + parsed.hash;
+  }
+  return original;
 }
 
 function tryParseUrl(url: string, base?: string): URL | null {

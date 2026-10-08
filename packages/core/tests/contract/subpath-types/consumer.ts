@@ -49,9 +49,14 @@ export type {
 export type { isSurfacedCheckpointKind } from '@inkeep/open-knowledge-core/checkpoint-kinds';
 export type {
   CLIENT_RUNTIME_VERSION_FALLBACK,
+  CLIENT_SURFACE_ATTRIBUTE,
+  ClientSurface,
+  ClientSurfaceReading,
   ClientVersionTokenFields,
   clientVersionHeaders,
   clientVersionTokenFields,
+  deriveClientSurface,
+  readClientSurface,
 } from '@inkeep/open-knowledge-core/client-version';
 export type {
   COMMAND_IDENTITIES,

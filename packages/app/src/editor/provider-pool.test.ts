@@ -812,7 +812,7 @@ describe('buildAuthToken (MECHANISM-ONLY — CRDT restart recovery + client vers
     if (!parsed) throw new Error('expected valid token');
     expect(parsed.clientProtocolVersion).toBe(PROTOCOL_VERSION);
     expect(typeof parsed.clientRuntimeVersion).toBe('string');
-    expect(parsed.clientKind).toBe('web');
+    expect(parsed.clientKind).toBe('browser');
     expect(parsed.principalId).toBeUndefined();
     expect(parsed.expectedServerInstanceId).toBeUndefined();
   });
@@ -824,7 +824,7 @@ describe('buildAuthToken (MECHANISM-ONLY — CRDT restart recovery + client vers
     expect(parsed.principalId).toBe('p-1');
     expect(parsed.tabSessionId).toBe('s-1');
     expect(parsed.expectedServerInstanceId).toBe('server-instance-abc');
-    expect(parsed.clientKind).toBe('web');
+    expect(parsed.clientKind).toBe('browser');
   });
 
   test('omits expectedServerInstanceId when the cache is null', () => {

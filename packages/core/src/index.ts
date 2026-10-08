@@ -161,12 +161,17 @@ export {
 } from './checkpoint-kinds.ts';
 export {
   CLIENT_RUNTIME_VERSION_FALLBACK,
+  CLIENT_SURFACE_ATTRIBUTE,
   CLIENT_VERSION_HEADER,
   type ClientKind,
+  type ClientSurface,
+  type ClientSurfaceReading,
   type ClientVersionInput,
   type ClientVersionTokenFields,
   clientVersionHeaders,
   clientVersionTokenFields,
+  deriveClientSurface,
+  readClientSurface,
 } from './client-version.ts';
 export {
   COMMAND_IDENTITIES,

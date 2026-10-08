@@ -6,6 +6,7 @@ import {
   type HocuspocusAuthRejectionReason,
   isHocuspocusAuthRejectionReason,
   parseAuthRejectionWire,
+  parseHocuspocusAuthToken,
 } from './auth-token-schema.ts';
 
 describe('HOCUSPOCUS_AUTH_REJECTION_REASONS', () => {
@@ -191,5 +192,35 @@ describe('HocuspocusAuthRejection', () => {
     const kind: HocuspocusAuthRejectionReason | undefined = caught?.kind;
     expect(kind).toBe('rename-redirect');
     expect(caught?.reason).toBe('rename-redirect:target');
+  });
+});
+
+describe('parseHocuspocusAuthToken client kind skew', () => {
+  it("an older client's kind=web token still parses", () => {
+    const parsed = parseHocuspocusAuthToken(
+      JSON.stringify({
+        clientProtocolVersion: 2,
+        clientRuntimeVersion: '0.84.0',
+        clientKind: 'web',
+      }),
+    );
+    expect(parsed?.clientKind).toBe('web');
+  });
+
+  it('a token carrying a client surface parses', () => {
+    const parsed = parseHocuspocusAuthToken(
+      JSON.stringify({
+        clientProtocolVersion: 2,
+        clientRuntimeVersion: '0.85.0',
+        clientKind: 'embedded:claude-desktop',
+      }),
+    );
+    expect(parsed?.clientKind).toBe('embedded:claude-desktop');
+  });
+
+  it('a token without a client kind parses', () => {
+    const parsed = parseHocuspocusAuthToken(JSON.stringify({ tabSessionId: 's-1' }));
+    expect(parsed).toBeDefined();
+    expect(parsed?.clientKind).toBeUndefined();
   });
 });

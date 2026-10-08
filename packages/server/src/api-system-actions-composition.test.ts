@@ -2,9 +2,10 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
+import { loggerFactory } from './logger.ts';
 
 let tmpRoot: string;
 let server: BootedServer;
@@ -65,6 +66,33 @@ describe('system-actions group over the composed listener — served natively', 
     });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { accepted?: number }).accepted).toBe(1);
+  });
+
+  test('client-logs stamps the sending client surface on forwarded entries', async () => {
+    const infoSpy = vi.spyOn(loggerFactory.getLogger('renderer'), 'info');
+    try {
+      const post = (headers: Record<string, string>, message: string) =>
+        fetch(`http://127.0.0.1:${server.port}/api/client-logs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ entries: [{ level: 'info', message }] }),
+        });
+      expect((await post({ 'x-ok-client-kind': 'embedded:cursor' }, 'from-cursor')).status).toBe(
+        200,
+      );
+      expect((await post({ 'x-ok-client-kind': 'web' }, 'from-older-client')).status).toBe(200);
+      expect((await post({}, 'from-no-kind')).status).toBe(200);
+      const fieldsOf = (message: string) => {
+        const call = infoSpy.mock.calls.find((c) => c[1] === message);
+        if (call === undefined) throw new Error(`no renderer log line for ${message}`);
+        return call[0];
+      };
+      expect(fieldsOf('from-cursor')).toMatchObject({ clientSurface: 'embedded:cursor' });
+      expect(fieldsOf('from-older-client')).toMatchObject({ clientSurface: 'unknown' });
+      expect(fieldsOf('from-no-kind')).not.toHaveProperty('clientSurface');
+    } finally {
+      infoSpy.mockRestore();
+    }
   });
 
   test('client-logs refuses a rebound Host before the verb check (403, no Allow leak)', async () => {

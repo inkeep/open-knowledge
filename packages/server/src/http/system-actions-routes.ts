@@ -4,6 +4,7 @@ import type { AgentRegistryHostSeam } from '../agent-registry-apply.ts';
 import { collectServerHostSnapshot } from '../agent-registry-probes.ts';
 import type { createInstalledAgentsProbe } from '../handoff-api.ts';
 import { handleHandoffDispatch } from '../handoff-dispatch-api.ts';
+import { getIngressContext } from '../ingress-policy.ts';
 import { getLogger, type PinoLogger } from '../logger.ts';
 import { handleSpawnCursor } from '../spawn-cursor-api.ts';
 import { type ApiRouteGroup, createApiRouteGroup } from './api-pipeline.ts';
@@ -71,14 +72,17 @@ export function createSystemActionsRoutes(deps: SystemActionsRouteDeps): ApiRout
 
   const handleClientLogs = withValidation(
     ClientLogsRequestSchema,
-    async (_req, res, body) => {
+    async (req, res, body) => {
       try {
         const logger = getLogger('renderer');
+        const clientSurface = getIngressContext(req)?.clientSurface;
+        const surfaceField = clientSurface === undefined ? {} : { clientSurface };
         if (body.droppedSinceLastFlush !== undefined && body.droppedSinceLastFlush > 0) {
           logger.warn(
             {
               source: 'renderer-console',
               transport: 'web',
+              ...surfaceField,
               event: 'client-log-entries-dropped',
               droppedSinceLastFlush: body.droppedSinceLastFlush,
             },
@@ -92,6 +96,7 @@ export function createSystemActionsRoutes(deps: SystemActionsRouteDeps): ApiRout
                 ...entry.fields,
                 source: 'renderer-console',
                 transport: 'web',
+                ...surfaceField,
                 ...(entry.sourceId ? { sourceId: entry.sourceId } : {}),
                 ...(entry.lineNumber !== undefined ? { lineNumber: entry.lineNumber } : {}),
                 ...(entry.ts !== undefined ? { clientTs: entry.ts } : {}),

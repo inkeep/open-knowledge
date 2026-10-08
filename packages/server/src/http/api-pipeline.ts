@@ -1,5 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { CLIENT_VERSION_HEADER } from '@inkeep/open-knowledge-core';
+import {
+  CLIENT_SURFACE_ATTRIBUTE,
+  CLIENT_VERSION_HEADER,
+  readClientSurface,
+} from '@inkeep/open-knowledge-core';
 import { context, propagation, SpanKind, SpanStatusCode } from '@opentelemetry/api';
 import {
   ATTR_HTTP_REQUEST_METHOD,
@@ -186,9 +190,10 @@ export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPi
 
     const method = request.method ?? 'GET';
     const routeTemplate = resolution.template;
+    const clientSurface = readClientSurface(headerString(CLIENT_VERSION_HEADER.kind));
 
     const requestId = url.startsWith('/api/') ? resolveRequestId(request) : undefined;
-    stampIngressContext(request, { requestId });
+    stampIngressContext(request, { requestId, clientSurface });
     if (requestId !== undefined) {
       rememberRequestId(request, requestId);
       if (typeof response.setHeader === 'function') {
@@ -208,6 +213,7 @@ export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPi
               route: routeTemplate,
               status: response.statusCode,
               durationMs: Date.now() - accessStarted,
+              ...(clientSurface === undefined ? {} : { clientSurface }),
               ...(response.writableFinished ? {} : { aborted: true }),
             },
             `${method} ${routeTemplate} ${response.statusCode}`,
@@ -324,6 +330,7 @@ export function createApiRequestPipeline(opts: ApiPipelineOptions): ApiRequestPi
             [ATTR_URL_SCHEME]: 'http',
             [ATTR_USER_AGENT_ORIGINAL]: request.headers['user-agent'] ?? '',
             'ok.request.id': requestId,
+            [CLIENT_SURFACE_ATTRIBUTE]: clientSurface,
           },
         },
         async (span) => {

@@ -167,6 +167,73 @@ describe('onRequest request identity + access log', () => {
     expect((accessCalls[0]?.[0] as { route: string } | undefined)?.route).toBe('/api/*');
   });
 
+  async function accessLineFor(headers: Record<string, string>) {
+    const log = loggerFactory.getLogger('api');
+    const infoSpy = vi.spyOn(log, 'info');
+    await callRoute('/api/history/', headers);
+    const accessCalls = infoSpy.mock.calls.filter(
+      (c) => (c[0] as { event?: string })?.event === 'api.access',
+    );
+    expect(accessCalls).toHaveLength(1);
+    infoSpy.mockRestore();
+    return accessCalls[0]?.[0] as { clientSurface?: string };
+  }
+
+  test('the access line carries the client surface the app sends on x-ok-client-kind', async () => {
+    for (const surface of [
+      'desktop',
+      'browser',
+      'embedded:cursor',
+      'embedded:codex',
+      'embedded:claude-desktop',
+    ]) {
+      const line = await accessLineFor({ 'x-ok-client-kind': surface });
+      expect(line.clientSurface).toBe(surface);
+    }
+  });
+
+  test("an older client's kind=web is logged as an unknown surface", async () => {
+    const line = await accessLineFor({ 'x-ok-client-kind': 'web' });
+    expect(line.clientSurface).toBe('unknown');
+  });
+
+  test('requests without an app kind log no surface', async () => {
+    expect((await accessLineFor({})).clientSurface).toBeUndefined();
+    expect((await accessLineFor({ 'x-ok-client-kind': 'mcp' })).clientSurface).toBeUndefined();
+    expect((await accessLineFor({ 'x-ok-client-kind': 'cli' })).clientSurface).toBeUndefined();
+    expect(
+      (await accessLineFor({ 'x-ok-client-kind': 'desktop-main' })).clientSurface,
+    ).toBeUndefined();
+  });
+
+  test('the HTTP server span carries ok.client.surface', async () => {
+    const { context: apiContext, trace } = await import('@opentelemetry/api');
+    const { AsyncLocalStorageContextManager } = await import('@opentelemetry/context-async-hooks');
+    const { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } = await import(
+      '@opentelemetry/sdk-trace-base'
+    );
+    const exporter = new InMemorySpanExporter();
+    const provider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
+    trace.setGlobalTracerProvider(provider);
+    apiContext.setGlobalContextManager(new AsyncLocalStorageContextManager());
+    try {
+      await callRoute('/api/history/', { 'x-ok-client-kind': 'embedded:codex' });
+      await callRoute('/api/history/', { 'x-ok-client-kind': 'web' });
+      await callRoute('/api/history/');
+      const surfaces = exporter
+        .getFinishedSpans()
+        .filter((span) => span.name.startsWith('HTTP '))
+        .map((span) => span.attributes['ok.client.surface']);
+      expect(surfaces).toEqual(['embedded:codex', 'unknown', undefined]);
+    } finally {
+      await provider.shutdown();
+      trace.disable();
+      apiContext.disable();
+    }
+  });
+
   test('non-API requests get no x-request-id echo and no access line', async () => {
     const log = loggerFactory.getLogger('api');
     const infoSpy = vi.spyOn(log, 'info');

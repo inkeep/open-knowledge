@@ -1,3 +1,4 @@
+import { CLIENT_SURFACE_ATTRIBUTE } from '@inkeep/open-knowledge-core/client-version';
 import { trace } from '@opentelemetry/api';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
@@ -8,6 +9,7 @@ import { resourceFromAttributes } from '@opentelemetry/resources';
 import { BatchSpanProcessor, WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { ATTR_DEPLOYMENT_ENVIRONMENT_NAME } from '@opentelemetry/semantic-conventions/incubating';
+import { CLIENT_SURFACE } from '@/lib/client-version';
 
 const TRACER_NAME = 'open-knowledge-app';
 
@@ -32,6 +34,7 @@ export function install(): void {
         [ATTR_SERVICE_NAME]: 'open-knowledge-app',
         [ATTR_SERVICE_VERSION]: env?.VITE_APP_VERSION ?? 'dev',
         [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: env?.MODE ?? 'dev',
+        [CLIENT_SURFACE_ATTRIBUTE]: CLIENT_SURFACE,
       }),
       spanProcessors: [
         new BatchSpanProcessor(new OTLPTraceExporter({ url: `${baseUrl}/v1/traces` }), {
