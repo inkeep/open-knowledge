@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -7,6 +7,7 @@ import {
   collectOsTerminationEvidence,
   createRunCommand,
   describeOsTerminationEvidence,
+  findJetsamKillSync,
   LINUX_JOURNAL_GREP,
   parseJetsamReport,
   renderOsTerminationEvidence,
@@ -154,6 +155,209 @@ describe('macOS jetsam collection', () => {
     });
 
     expect(evidence).toMatchObject({ outcome: 'unavailable', unavailableReason: 'ENOENT' });
+  });
+});
+
+describe('the jetsam kill of one process', () => {
+  const LAST_ALIVE_MS = Date.parse('2026-10-05T00:14:00.000Z');
+  const DETECTED_MS = Date.parse('2026-10-05T00:15:30.000Z');
+  const QUERY = { pid: 4406, fromMs: LAST_ALIVE_MS, toMs: DETECTED_MS };
+
+  function writeAt(dir: string, name: string, content: string, atMs: number): void {
+    const path = join(dir, name);
+    writeFileSync(path, content);
+    utimesSync(path, new Date(atMs), new Date(atMs));
+  }
+
+  const MAIN_KILLED = { name: 'OpenKnowledge', pid: 4406, rpages: 900, reason: 'vm-pageshortage' };
+  const NOTHING_MISSED = { unreadable: 0, unparseable: 0, skippedNewerOverCap: 0 };
+
+  test('names the reason jetsam killed the queried pid and who held the most memory', () => {
+    const dir = makeTmpDir();
+    writeAt(dir, 'JetsamEvent-a.ips', jetsamReport([MAIN_KILLED], 'Xcode'), LAST_ALIVE_MS + 40_000);
+
+    expect(findJetsamKillSync(QUERY, dir)).toEqual({
+      outcome: 'killed',
+      source: 'macos-jetsam',
+      at: '2026-10-05T00:14:39.000Z',
+      killReason: 'vm-pageshortage',
+      victimChosenByPriority: true,
+      largestProcessOwned: false,
+      residentBytes: 900 * 16384,
+      reportsRead: 1,
+    });
+  });
+
+  test.each([
+    [
+      'a compressor-space kill, which macOS aims at the largest compressed-memory holder',
+      'vm-compressor-space-shortage',
+    ],
+    ['a kill for the process’s own memory limit', 'per-process-limit'],
+  ])('does not call %s a priority-order kill', (_case, reason) => {
+    const dir = makeTmpDir();
+    writeAt(
+      dir,
+      'JetsamEvent-a.ips',
+      jetsamReport([{ ...MAIN_KILLED, reason }], 'Xcode'),
+      LAST_ALIVE_MS + 40_000,
+    );
+
+    expect(findJetsamKillSync(QUERY, dir)).toMatchObject({
+      outcome: 'killed',
+      killReason: reason,
+      victimChosenByPriority: false,
+    });
+  });
+
+  test('leaves the largest process unknown when the report names none', () => {
+    const dir = makeTmpDir();
+    const header = { bug_type: '298', timestamp: '2026-10-04 17:14:39.00 -0700' };
+    const body = { memoryStatus: { pageSize: 16384 }, processes: [MAIN_KILLED] };
+    writeAt(
+      dir,
+      'JetsamEvent-a.ips',
+      `${JSON.stringify(header)}\n${JSON.stringify(body)}`,
+      LAST_ALIVE_MS + 40_000,
+    );
+
+    expect(findJetsamKillSync(QUERY, dir)).toMatchObject({
+      outcome: 'killed',
+      largestProcessOwned: null,
+    });
+  });
+
+  test('does not attribute a report that names the pid alive, another pid, or predates the session’s last heartbeat', () => {
+    const dir = makeTmpDir();
+    writeAt(
+      dir,
+      'JetsamEvent-alive.ips',
+      jetsamReport([{ name: 'OpenKnowledge', pid: 4406, rpages: 900 }]),
+      LAST_ALIVE_MS + 40_000,
+    );
+    writeAt(
+      dir,
+      'JetsamEvent-other.ips',
+      jetsamReport([{ ...MAIN_KILLED, pid: 4410 }]),
+      LAST_ALIVE_MS + 41_000,
+    );
+    writeAt(dir, 'JetsamEvent-stale.ips', jetsamReport([MAIN_KILLED]), LAST_ALIVE_MS - 60_000);
+
+    expect(findJetsamKillSync(QUERY, dir)).toEqual({
+      outcome: 'not-killed',
+      reportsRead: 2,
+      ...NOTHING_MISSED,
+    });
+  });
+
+  test('dates a report by the kill it records, not by when the file was written', () => {
+    const dir = makeTmpDir();
+    writeAt(dir, 'JetsamEvent-a.ips', jetsamReport([MAIN_KILLED]), LAST_ALIVE_MS + 60_000);
+
+    const afterTheKill = { ...QUERY, fromMs: Date.parse('2026-10-05T00:14:45.000Z') };
+    expect(findJetsamKillSync(afterTheKill, dir)).toEqual({
+      outcome: 'not-killed',
+      reportsRead: 1,
+      ...NOTHING_MISSED,
+    });
+  });
+
+  test('is inconclusive, not a miss, when the kill sits past the boot cap', () => {
+    const dir = makeTmpDir();
+    for (let i = 0; i < 5; i += 1) {
+      writeAt(
+        dir,
+        `JetsamEvent-${i}.ips`,
+        jetsamReport([{ name: 'Slack', pid: 77 }]),
+        LAST_ALIVE_MS + i * 1_000,
+      );
+    }
+    writeAt(dir, 'JetsamEvent-5.ips', jetsamReport([MAIN_KILLED]), LAST_ALIVE_MS + 40_000);
+
+    expect(findJetsamKillSync(QUERY, dir)).toEqual({
+      outcome: 'inconclusive',
+      reportsRead: 5,
+      ...NOTHING_MISSED,
+      skippedNewerOverCap: 1,
+    });
+  });
+
+  test('is inconclusive when a report in the window would not parse', () => {
+    const dir = makeTmpDir();
+    writeAt(dir, 'JetsamEvent-garbage.ips', 'garbage', LAST_ALIVE_MS + 40_000);
+
+    expect(findJetsamKillSync(QUERY, dir)).toEqual({
+      outcome: 'inconclusive',
+      reportsRead: 1,
+      ...NOTHING_MISSED,
+      unparseable: 1,
+    });
+  });
+
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'is inconclusive beside an unreadable report, and unavailable when none could be read',
+    () => {
+      const dir = makeTmpDir();
+      writeAt(dir, 'JetsamEvent-locked.ips', jetsamReport([MAIN_KILLED]), LAST_ALIVE_MS + 40_000);
+      chmodSync(join(dir, 'JetsamEvent-locked.ips'), 0o000);
+      expect(findJetsamKillSync(QUERY, dir)).toEqual({
+        outcome: 'unavailable',
+        unavailableReason: 'EACCES',
+      });
+
+      writeAt(
+        dir,
+        'JetsamEvent-open.ips',
+        jetsamReport([{ name: 'Slack', pid: 77 }]),
+        LAST_ALIVE_MS + 41_000,
+      );
+      expect(findJetsamKillSync(QUERY, dir)).toEqual({
+        outcome: 'inconclusive',
+        reportsRead: 1,
+        ...NOTHING_MISSED,
+        unreadable: 1,
+      });
+    },
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'counts a report it could not stat as unreadable, and is unavailable only when nothing could be statted',
+    () => {
+      const dir = makeTmpDir();
+      symlinkSync(join(dir, 'gone.ips'), join(dir, 'JetsamEvent-dangling.ips'));
+      expect(findJetsamKillSync(QUERY, dir)).toEqual({
+        outcome: 'unavailable',
+        unavailableReason: 'ENOENT',
+      });
+
+      writeAt(dir, 'JetsamEvent-old.ips', jetsamReport([MAIN_KILLED]), LAST_ALIVE_MS - 60_000);
+      expect(findJetsamKillSync(QUERY, dir)).toEqual({
+        outcome: 'inconclusive',
+        reportsRead: 0,
+        ...NOTHING_MISSED,
+        unreadable: 1,
+      });
+
+      writeAt(
+        dir,
+        'JetsamEvent-open.ips',
+        jetsamReport([{ name: 'Slack', pid: 77 }]),
+        LAST_ALIVE_MS + 41_000,
+      );
+      expect(findJetsamKillSync(QUERY, dir)).toEqual({
+        outcome: 'inconclusive',
+        reportsRead: 1,
+        ...NOTHING_MISSED,
+        unreadable: 1,
+      });
+    },
+  );
+
+  test('reports an unreadable directory as unavailable rather than as no kill', () => {
+    expect(findJetsamKillSync(QUERY, join(makeTmpDir(), 'missing'))).toEqual({
+      outcome: 'unavailable',
+      unavailableReason: 'ENOENT',
+    });
   });
 });
 

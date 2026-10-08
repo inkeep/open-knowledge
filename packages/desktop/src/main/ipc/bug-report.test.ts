@@ -153,6 +153,7 @@ function makeDeps(overrides: Partial<BugReportCreateDeps> = {}): BugReportCreate
     desktopMeta: DESKTOP_META,
     outputPath: join(makeTmpDir(), 'report.zip'),
     userLogsDir: makeTmpDir(),
+    cachesDir: makeTmpDir(),
     ...overrides,
   };
 }
@@ -3474,6 +3475,7 @@ describe('handleBugReportCreate — the crash dump that armed the invitation', (
       crashDumpsDir: join(dir, 'dumps'),
       appBundleRoot,
       appVersion: '0.9.9',
+      processId: 4242,
       platform: 'darwin' as const,
       emit: () => true,
       now: () => {

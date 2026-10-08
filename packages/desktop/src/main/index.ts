@@ -24,6 +24,7 @@ import {
   EDITOR_TARGETS,
   editorConfigPathDisplay,
   editorEntryLocator,
+  findJetsamKillSync,
   getOkArtifactPaths,
   isEntryUpToDate,
   isOwnManagedEntry,
@@ -6142,6 +6143,7 @@ function bootPrimaryInstance(): void {
     crashDumpsDir: app.getPath('crashDumps'),
     appBundleRoot: appBundleRootFromExecutable(app.getPath('exe')),
     appVersion: app.getVersion(),
+    processId: process.pid,
     emit: (event) => {
       const focused = BrowserWindow.getFocusedWindow();
       const candidates = focused
@@ -6164,6 +6166,9 @@ function bootPrimaryInstance(): void {
         span,
         bootStateSnapshot.versionPendingInstallStagedAt,
       ),
+    ...(process.platform === 'darwin'
+      ? { processTermination: (query) => findJetsamKillSync(query) }
+      : {}),
     mainThreadWatchdog: createMainThreadWatchdog({
       path: join(app.getPath('userData'), 'bug-report-main-thread-liveness.json'),
       stallPath: join(app.getPath('userData'), 'bug-report-main-thread-stall.json'),

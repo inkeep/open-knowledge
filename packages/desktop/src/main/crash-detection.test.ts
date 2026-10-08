@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import type { ProcessTerminationLookup, ProcessTerminationQuery } from '@inkeep/open-knowledge';
 import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { installWasInFlightDuring } from './auto-updater.ts';
@@ -67,6 +68,8 @@ interface Rig {
   setBootSessionUuid(uuid: string | null): void;
   setBootStartedAtMs(ms: number | null): void;
   setInstallInFlight(inFlight: InstallInFlight | null): void;
+  setProcessTermination(lookup: ProcessTerminationLookup): void;
+  processTerminationQueries: ProcessTerminationQuery[];
   setAppVersion(version: string): void;
   setWatchdogRead(read: WatchdogRead): void;
   setStallRead(read: StallRead): void;
@@ -88,6 +91,14 @@ function makeRig(): Rig {
   let bootSessionUuid: string | null = 'boot-epoch-a';
   let bootStartedAtMs: number | null = null;
   let installInFlight: InstallInFlight | null = null;
+  let processTermination: ProcessTerminationLookup = {
+    outcome: 'not-killed',
+    reportsRead: 0,
+    unreadable: 0,
+    unparseable: 0,
+    skippedNewerOverCap: 0,
+  };
+  const processTerminationQueries: ProcessTerminationQuery[] = [];
   let watchdogRead: WatchdogRead = { kind: 'absent' };
   let stallRead: StallRead = { kind: 'absent' };
   const watchdogStarts: string[] = [];
@@ -145,6 +156,10 @@ function makeRig(): Rig {
     setInstallInFlight(inFlight: InstallInFlight | null) {
       installInFlight = inFlight;
     },
+    setProcessTermination(lookup: ProcessTerminationLookup) {
+      processTermination = lookup;
+    },
+    processTerminationQueries,
     setAppVersion(version: string) {
       rig.deps.appVersion = version;
     },
@@ -173,6 +188,7 @@ function makeRig(): Rig {
       crashDumpsDir: join(dir, 'crash-dumps'),
       appBundleRoot,
       appVersion: CRASHED_VERSION,
+      processId: 20480,
       platform: 'darwin',
       emit(event) {
         if (!rendererAvailable) return false;
@@ -186,6 +202,10 @@ function makeRig(): Rig {
       currentBootSessionUuid: () => bootSessionUuid,
       currentBootStartedAtMs: () => bootStartedAtMs,
       installInFlight: () => installInFlight,
+      processTermination: (query) => {
+        processTerminationQueries.push(query);
+        return processTermination;
+      },
       mainThreadWatchdog: {
         readPrevious: () => watchdogRead,
         readPreviousStall: () => stallRead,
@@ -4204,5 +4224,123 @@ describe('machine stops the kernel boot session cannot name', () => {
     const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
     expect(armed.eventId.startsWith('boot:dump:')).toBe(true);
     expect(armed.context.dirtyShutdown).toBe(false);
+  });
+});
+
+describe('a session the OS ended to relieve memory pressure', () => {
+  const JETSAM_KILL: ProcessTerminationLookup = {
+    outcome: 'killed',
+    source: 'macos-jetsam',
+    at: '2026-07-10T00:00:30.000Z',
+    killReason: 'vm-pageshortage',
+    victimChosenByPriority: true,
+    largestProcessOwned: false,
+    residentBytes: 62_914_560,
+    reportsRead: 1,
+  };
+
+  function bootLine(rig: Rig): Record<string, unknown> | undefined {
+    return rig.infos.find((line) => line.event === 'crash-detection.boot');
+  }
+
+  function machineDeathLine(rig: Rig): Record<string, unknown> | undefined {
+    return rig.infos.find((line) => line.event === 'crash-detection.machine-level-death');
+  }
+
+  test('the sentinel names the main process it watches', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    expect(JSON.parse(readFileSync(rig.deps.sentinelPath, 'utf8')).pid).toBe(20480);
+  });
+
+  test('a priority-order jetsam kill while another process held the most memory never prompts', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    const lastAliveAt = readSentinel(rig).lastAliveAt ?? '';
+
+    rig.setProcessTermination(JETSAM_KILL);
+    rig.deps.processId = 30111;
+    const sessionB = createCrashDetection(rig.deps);
+    expect(sessionB.detectBootCrash()).toBeNull();
+    sessionB.notifyRendererReady();
+    expect(rig.emitted).toHaveLength(0);
+
+    expect(rig.processTerminationQueries).toEqual([
+      { pid: 20480, fromMs: Date.parse(lastAliveAt), toMs: rig.nowMs() },
+    ]);
+    expect(machineDeathLine(rig)).toMatchObject({
+      reason: 'os-memory-pressure',
+      class: 'external',
+      machineCause: 'os-memory-pressure',
+      previousPid: 20480,
+      processTermination: JETSAM_KILL,
+    });
+    expect(JSON.parse(readFileSync(rig.deps.sentinelPath, 'utf8')).pid).toBe(30111);
+  });
+
+  test.each([
+    ['this app held the most memory', { largestProcessOwned: true }],
+    ['the report named no largest process', { largestProcessOwned: null }],
+    [
+      'the kill targeted the largest compressed-memory holder',
+      { killReason: 'vm-compressor-space-shortage', victimChosenByPriority: false },
+    ],
+    [
+      'the kill was for the process’s own memory limit',
+      { killReason: 'per-process-limit', victimChosenByPriority: false },
+    ],
+  ])('a jetsam kill still prompts when %s, and the invitation records it', (_case, overrides) => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const kill: ProcessTerminationLookup = { ...JETSAM_KILL, ...overrides };
+    rig.setProcessTermination(kill);
+    expect(bootInvite(createCrashDetection(rig.deps).detectBootCrash()).context.dirtyShutdown).toBe(
+      true,
+    );
+    expect(bootLine(rig)).toMatchObject({ previousPid: 20480, processTermination: kill });
+    expect(machineDeathLine(rig)).toBeUndefined();
+  });
+
+  test('a death the OS has no record of still prompts, and says the OS was asked', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+    expect(bootLine(rig)).toMatchObject({
+      previousPid: 20480,
+      processTermination: {
+        outcome: 'not-killed',
+        reportsRead: 0,
+        unreadable: 0,
+        unparseable: 0,
+        skippedNewerOverCap: 0,
+      },
+    });
+  });
+
+  test('the OS is not asked when a reboot, a fresh crash dump or a pid-less sentinel decides first', () => {
+    const rebooted = makeRig();
+    createCrashDetection(rebooted.deps).detectBootCrash();
+    rebooted.setBootSessionUuid('boot-epoch-b');
+    expect(createCrashDetection(rebooted.deps).detectBootCrash()).toBeNull();
+    expect(rebooted.processTerminationQueries).toEqual([]);
+
+    const dumped = makeRig();
+    createCrashDetection(dumped.deps).detectBootCrash();
+    seedMinidump(dumped, 'pending/native-crash.dmp', dumped.tick());
+    dumped.setProcessTermination(JETSAM_KILL);
+    bootInvite(createCrashDetection(dumped.deps).detectBootCrash());
+    expect(dumped.processTerminationQueries).toEqual([]);
+
+    const older = makeRig();
+    createCrashDetection(older.deps).detectBootCrash();
+    const { pid: _pid, ...withoutPid } = JSON.parse(readFileSync(older.deps.sentinelPath, 'utf8'));
+    writeFileSync(older.deps.sentinelPath, `${JSON.stringify(withoutPid)}\n`);
+    older.setProcessTermination(JETSAM_KILL);
+    bootInvite(createCrashDetection(older.deps).detectBootCrash());
+    expect(older.processTerminationQueries).toEqual([]);
+    expect(bootLine(older)).toMatchObject({ previousPid: null, processTermination: null });
   });
 });

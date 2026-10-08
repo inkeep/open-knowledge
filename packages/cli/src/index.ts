@@ -76,6 +76,11 @@ export { runStop } from './commands/stop.ts';
 export { type LoadConfigResult, loadConfig } from './config/loader.ts';
 export { type PreviewResult, previewContent } from './content/preview.ts';
 export {
+  findJetsamKillSync,
+  type ProcessTerminationLookup,
+  type ProcessTerminationQuery,
+} from './diagnose/os-termination-evidence.ts';
+export {
   type ExpectedShareRepo,
   type ShareFolderValidationResult,
   validateLocalFolderForShare,

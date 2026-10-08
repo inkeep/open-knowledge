@@ -1,4 +1,5 @@
 import { type ExecFileException, execFile } from 'node:child_process';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, win32 } from 'node:path';
 import { DESKTOP_PRODUCTS, desktopWindowsExecutableName } from '@inkeep/open-knowledge-core';
@@ -37,7 +38,7 @@ interface JetsamEvidenceEvent {
   at: string | null;
   file: string;
   pageSize: number | null;
-  largestProcessOwned: boolean;
+  largestProcessOwned: boolean | null;
   ownedProcesses: JetsamProcess[];
 }
 
@@ -222,8 +223,40 @@ export function parseJetsamReport(file: string, content: string): JetsamEvidence
     file,
     pageSize: finiteOrNull(asRecord(body.memoryStatus)?.pageSize),
     largestProcessOwned:
-      typeof body.largestProcess === 'string' && isOwnedProcessName(body.largestProcess),
+      typeof body.largestProcess === 'string' ? isOwnedProcessName(body.largestProcess) : null,
     ownedProcesses,
+  };
+}
+
+const JETSAM_REPORT_NAME = /^JetsamEvent-.*\.ips$/;
+
+interface JetsamReportStat {
+  file: string;
+  mtimeMs: number | null;
+}
+
+interface JetsamSelection {
+  files: string[];
+  statFailed: number;
+  droppedOverCap: number;
+}
+
+function selectJetsamReports(
+  stats: JetsamReportStat[],
+  sinceMs: number,
+  cap: number,
+  order: 'newest-first' | 'oldest-first',
+): JetsamSelection {
+  const inWindow = stats.flatMap(({ file, mtimeMs }) =>
+    mtimeMs !== null && mtimeMs >= sinceMs ? [{ file, mtimeMs }] : [],
+  );
+  inWindow.sort((a, b) =>
+    order === 'newest-first' ? b.mtimeMs - a.mtimeMs : a.mtimeMs - b.mtimeMs,
+  );
+  return {
+    files: inWindow.slice(0, cap).map(({ file }) => file),
+    statFailed: stats.filter(({ mtimeMs }) => mtimeMs === null).length,
+    droppedOverCap: Math.max(0, inWindow.length - cap),
   };
 }
 
@@ -235,20 +268,26 @@ async function collectMacosJetsam(dir: string, now: Date): Promise<OsTermination
   } catch (err) {
     return unavailable(evidence, (err as NodeJS.ErrnoException).code ?? 'unknown');
   }
-  const cutoff = now.getTime() - WINDOW_MS;
-  const candidates: { file: string; mtimeMs: number }[] = [];
-  for (const file of names) {
-    if (!/^JetsamEvent-.*\.ips$/.test(file)) continue;
-    try {
-      const { mtimeMs } = await stat(join(dir, file));
-      if (mtimeMs >= cutoff) candidates.push({ file, mtimeMs });
-    } catch {
-      evidence.unparseable += 1;
-    }
-  }
-  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
-  evidence.droppedOverCap = Math.max(0, candidates.length - MAX_JETSAM_FILES);
-  for (const { file } of candidates.slice(0, MAX_JETSAM_FILES)) {
+  const stats = await Promise.all(
+    names
+      .filter((file) => JETSAM_REPORT_NAME.test(file))
+      .map(async (file): Promise<JetsamReportStat> => {
+        try {
+          return { file, mtimeMs: (await stat(join(dir, file))).mtimeMs };
+        } catch {
+          return { file, mtimeMs: null };
+        }
+      }),
+  );
+  const selection = selectJetsamReports(
+    stats,
+    now.getTime() - WINDOW_MS,
+    MAX_JETSAM_FILES,
+    'newest-first',
+  );
+  evidence.unparseable += selection.statFailed;
+  evidence.droppedOverCap = selection.droppedOverCap;
+  for (const file of selection.files) {
     let parsed: JetsamEvidenceEvent | null = null;
     try {
       parsed = parseJetsamReport(file, await readFile(join(dir, file), 'utf8'));
@@ -262,6 +301,138 @@ async function collectMacosJetsam(dir: string, now: Date): Promise<OsTermination
     }
   }
   return settle(evidence);
+}
+
+const MAX_JETSAM_FILES_AT_BOOT = 5;
+
+const JETSAM_TIMESTAMP_SLACK_MS = 1_000;
+
+const PRIORITY_ORDER_KILL_REASONS = new Set([
+  'vm-pageshortage',
+  'vm-compressor-thrashing',
+  'vm-pageout-starvation',
+  'low-swap',
+  'sustained-memory-pressure',
+]);
+
+export interface ProcessTerminationQuery {
+  pid: number;
+  fromMs: number;
+  toMs: number;
+}
+
+export type ProcessTerminationLookup =
+  | {
+      outcome: 'killed';
+      source: Extract<OsTerminationSource, 'macos-jetsam'>;
+      at: string | null;
+      killReason: string;
+      victimChosenByPriority: boolean;
+      largestProcessOwned: boolean | null;
+      residentBytes: number | null;
+      reportsRead: number;
+    }
+  | {
+      outcome: 'not-killed';
+      reportsRead: number;
+      unreadable: 0;
+      unparseable: 0;
+      skippedNewerOverCap: 0;
+    }
+  | {
+      outcome: 'inconclusive';
+      reportsRead: number;
+      unreadable: number;
+      unparseable: number;
+      skippedNewerOverCap: number;
+    }
+  | { outcome: 'unavailable'; unavailableReason: string };
+
+export function findJetsamKillSync(
+  query: ProcessTerminationQuery,
+  dir: string = MACOS_SYSTEM_DIAGNOSTIC_REPORTS_DIR,
+): ProcessTerminationLookup {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch (err) {
+    return {
+      outcome: 'unavailable',
+      unavailableReason: (err as NodeJS.ErrnoException).code ?? 'unknown',
+    };
+  }
+  const earliestMs = query.fromMs - JETSAM_TIMESTAMP_SLACK_MS;
+  let statError: string | null = null;
+  const stats = names
+    .filter((file) => JETSAM_REPORT_NAME.test(file))
+    .map((file): JetsamReportStat => {
+      try {
+        return { file, mtimeMs: statSync(join(dir, file)).mtimeMs };
+      } catch (err) {
+        statError ??= (err as NodeJS.ErrnoException).code ?? 'unknown';
+        return { file, mtimeMs: null };
+      }
+    });
+  const selection = selectJetsamReports(
+    stats,
+    earliestMs,
+    MAX_JETSAM_FILES_AT_BOOT,
+    'oldest-first',
+  );
+  let reportsRead = 0;
+  let unreadable = selection.statFailed;
+  let unparseable = 0;
+  let readError: string | null = null;
+  for (const file of selection.files) {
+    let content: string;
+    try {
+      content = readFileSync(join(dir, file), 'utf8');
+    } catch (err) {
+      unreadable += 1;
+      readError ??= (err as NodeJS.ErrnoException).code ?? 'unknown';
+      continue;
+    }
+    reportsRead += 1;
+    const parsed = parseJetsamReport(file, content);
+    if (parsed === null) {
+      unparseable += 1;
+      continue;
+    }
+    const atMs = parsed.at === null ? null : Date.parse(parsed.at);
+    if (atMs !== null && (atMs < earliestMs || atMs > query.toMs)) continue;
+    const killed = parsed.ownedProcesses.find((p) => p.pid === query.pid && p.killReason !== null);
+    if (killed === undefined || killed.killReason === null) continue;
+    return {
+      outcome: 'killed',
+      source: 'macos-jetsam',
+      at: parsed.at,
+      killReason: killed.killReason,
+      victimChosenByPriority: PRIORITY_ORDER_KILL_REASONS.has(killed.killReason),
+      largestProcessOwned: parsed.largestProcessOwned,
+      residentBytes:
+        killed.residentPages === null || parsed.pageSize === null
+          ? null
+          : killed.residentPages * parsed.pageSize,
+      reportsRead,
+    };
+  }
+  if (statError !== null && selection.statFailed === stats.length) {
+    return { outcome: 'unavailable', unavailableReason: statError };
+  }
+  if (reportsRead === 0 && readError !== null) {
+    return { outcome: 'unavailable', unavailableReason: readError };
+  }
+  const skippedNewerOverCap = selection.droppedOverCap;
+  if (unreadable === 0 && unparseable === 0 && skippedNewerOverCap === 0) {
+    return {
+      outcome: 'not-killed',
+      reportsRead,
+      unreadable: 0,
+      unparseable: 0,
+      skippedNewerOverCap: 0,
+    };
+  }
+  return { outcome: 'inconclusive', reportsRead, unreadable, unparseable, skippedNewerOverCap };
 }
 
 export const LINUX_JOURNAL_GREP = 'Out of memory|oom-kill|Killed process|Killed /|memory pressure';

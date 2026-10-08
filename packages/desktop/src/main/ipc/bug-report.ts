@@ -119,6 +119,7 @@ export interface BugReportCreateDeps {
   readLanguage?: () => LanguageMetadata;
   outputPath?: string;
   userLogsDir?: string;
+  cachesDir?: string;
   newestMinidumpForReport?: () => MinidumpReportLookup;
   minidumpForCrashEvent?: (eventId: string) => CrashEventMinidumpLookup;
   screenshotPngBytes?: () => Buffer | null;
@@ -497,6 +498,7 @@ export async function handleBugReportCreate(
       outputPath,
       bugReportsDir: dirname(outputPath),
       userLogsDir: deps.userLogsDir,
+      cachesDir: deps.cachesDir,
       extraFiles: extraFiles.length === 0 ? undefined : extraFiles,
       logger: deps.logger,
       readDesktopEnv: () => ({
