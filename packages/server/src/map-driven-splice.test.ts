@@ -211,6 +211,59 @@ describe('computeMapDrivenBodySplice', () => {
   });
 });
 
+describe('CRLF bodies keep their line endings through the splice (PRD-9139)', () => {
+  const crlf = (lf: string): string => lf.replaceAll('\n', '\r\n');
+
+  test('a uniformly CRLF body stays uniformly CRLF', () => {
+    const oldBody = crlf('# Heading\n\nFirst paragraph.\n\n## Second\n\n+ un\n+ deux\n');
+    const newPm = pmFromMd('# Heading\n\nFirst paragraph.\n\n## XSecond\n\n+ un\n+ deux\n');
+
+    const splice = computeMapDrivenBodySplice(oldBody, newPm, mdManager);
+    expect(splice).not.toBeNull();
+    if (!splice) return;
+
+    expect(applySplice(oldBody, splice)).toBe(
+      crlf('# Heading\n\nFirst paragraph.\n\n## XSecond\n\n+ un\n+ deux\n'),
+    );
+    expect(oldBody.slice(0, splice.spliceStart)).not.toContain('Second');
+  });
+
+  test('a mixed body keeps every byte outside the splice and spells the slice in its majority ending', () => {
+    const oldBody = 'Alpha.\r\n\r\nBeta.\r\n\r\nGamma.\n';
+    const splice = computeMapDrivenBodySplice(
+      oldBody,
+      pmFromMd('Alpha.\n\nBeta edited.\n\nGamma.\n'),
+      mdManager,
+    );
+    expect(splice).not.toBeNull();
+    if (!splice) return;
+
+    expect(applySplice(oldBody, splice)).toBe('Alpha.\r\n\r\nBeta edited.\r\n\r\nGamma.\n');
+  });
+
+  test('consecutive CRLF keystrokes still parse each body once', () => {
+    const { manager: counted, parses } = createCountingManager();
+    const memo = createEditorMdastMemo();
+    const bodyA = crlf('# H\n\nalpha\n');
+
+    const first = computeMapDrivenBodySplice(bodyA, counted.parse('# H\n\nalphaX\n'), counted, {
+      memo,
+    });
+    expect(first).not.toBeNull();
+    if (!first) return;
+    const bodyB = applySplice(bodyA, first);
+    expect(bodyB).toBe(crlf('# H\n\nalphaX\n'));
+    const afterFirst = parses();
+
+    const second = computeMapDrivenBodySplice(bodyB, counted.parse('# H\n\nalphaXY\n'), counted, {
+      memo,
+    });
+
+    expect(parses() - afterFirst).toBe(1);
+    expect(second && applySplice(bodyB, second)).toBe(crlf('# H\n\nalphaXY\n'));
+  });
+});
+
 describe('editor-mdast parse memo (PRD-8273)', () => {
   test('a repeated body is parsed once, not once per call', () => {
     const { manager: counted, parses } = createCountingManager();

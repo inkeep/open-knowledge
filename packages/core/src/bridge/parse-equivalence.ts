@@ -1,10 +1,15 @@
 import { stripFrontmatter } from '../extensions/frontmatter.ts';
+import { spellLineEndings } from './line-endings.ts';
 import type { BridgeToleranceClass } from './normalize.ts';
 import { isSubsequence } from './subsequence.ts';
 
 export const PARSE_EQUIVALENCE_TOLERANCE = 'parse-equivalence' as const;
 
 export type BridgeToleranceSignal = BridgeToleranceClass | typeof PARSE_EQUIVALENCE_TOLERANCE;
+
+function comparableBody(body: string): string {
+  return stripDocBoundary(stripTrailingLineWhitespace(spellLineEndings(body, '\n')));
+}
 
 function stripDocBoundary(body: string): string {
   return body.replace(/^\n+/, '').replace(/\n+$/, '');
@@ -55,11 +60,6 @@ export function isParseEquivalentBridge(
     }
     return false;
   }
-  if (
-    stripDocBoundary(stripTrailingLineWhitespace(canonicalLeftBody)) !==
-    stripDocBoundary(stripTrailingLineWhitespace(rightSplit.body))
-  ) {
-    return false;
-  }
+  if (comparableBody(canonicalLeftBody) !== comparableBody(rightSplit.body)) return false;
   return isSubsequence(contentSkeleton(leftSplit.body), contentSkeleton(canonicalLeftBody));
 }

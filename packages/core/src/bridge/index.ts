@@ -72,6 +72,14 @@ export {
   pendingContentLines,
 } from './intraline-predicate.ts';
 export {
+  documentBodyLineEnding,
+  dominantLineEnding,
+  type LfProjection,
+  type LineEnding,
+  projectToLf,
+  spellLineEndings,
+} from './line-endings.ts';
+export {
   assertContentPreservation,
   BridgeMergeContentLossError,
   type BridgeMergeContentLossInfo,

@@ -1,4 +1,4 @@
-import type { MarkdownManager } from '@inkeep/open-knowledge-core';
+import type { LineEnding, MarkdownManager } from '@inkeep/open-knowledge-core';
 import type { JSONContent } from '@tiptap/core';
 import type * as Y from 'yjs';
 import { ContentString } from 'yjs';
@@ -147,6 +147,7 @@ export interface DiscriminatePreDrainInput {
   readonly fmPrefixLen: number;
   readonly op: PreDrainOp;
   readonly mdManager: MarkdownManager;
+  readonly lineEnding: LineEnding;
 }
 
 export type PreDrainOpInput =
@@ -180,7 +181,9 @@ export function planPreDrain(input: DiscriminatePreDrainInput): PreDrainPlan {
       : extractComposeTargetSpan(input.body, input.op.writeKind);
   if (targetSpan === null) return decline('checkpoint-no-target');
 
-  const splice = computeMapDrivenBodySplice(input.body, input.fragmentPmJson, input.mdManager);
+  const splice = computeMapDrivenBodySplice(input.body, input.fragmentPmJson, input.mdManager, {
+    lineEnding: input.lineEnding,
+  });
   if (splice === null) return decline('checkpoint-null-splice');
 
   if (splice.newSlice === input.body.slice(splice.spliceStart, splice.spliceEnd)) {

@@ -1,5 +1,6 @@
 import type { Document } from '@hocuspocus/server';
 import {
+  documentBodyLineEnding,
   type MarkdownManager,
   sharedExtensions,
   stripFrontmatter,
@@ -128,6 +129,7 @@ export async function createDiscriminatorRig(baseMd: string): Promise<Discrimina
         fmPrefixLen,
         op: { kind: 'agent-undo', ytext, stackItem },
         mdManager: productionMdManager,
+        lineEnding: documentBodyLineEnding(ytext.toString()),
       }).verdict;
     },
     undoInputs: () => {
@@ -151,6 +153,7 @@ export async function createDiscriminatorRig(baseMd: string): Promise<Discrimina
         fmPrefixLen,
         op: { kind: 'agent-write', writeKind: position },
         mdManager: productionMdManager,
+        lineEnding: documentBodyLineEnding(ytext.toString()),
       }).verdict;
     },
     cleanup: () => manager.closeAll(),

@@ -22,6 +22,7 @@ import {
   createMergeBoundarySpace,
   DUPLICATION_GATE_MIN_LINE_LENGTH,
   docEdgeRunsDiffer,
+  documentBodyLineEnding,
   findDroppedSourceContentInRange,
   fnv1aDigest,
   fragmentHoldsPendingContent,
@@ -31,6 +32,7 @@ import {
   overMultipliedBodyLines,
   pendingContentLines,
   prependFrontmatter,
+  spellLineEndings,
   splitFmBoundarySlot,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
@@ -280,6 +282,7 @@ function tryComputeMapDrivenSplice(
     },
     memo: mdastMemo,
     serializedNewPm,
+    lineEnding: documentBodyLineEnding(currentText),
   });
   if (!splice) return null;
 
@@ -882,6 +885,10 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     return composeWithDerivedBody(frontmatter, slot + derivedBody);
   };
 
+  const spellDerivedBody = (composition: BridgeComposition, currentText: string): string =>
+    composition.frontmatter +
+    spellLineEndings(composition.body, documentBodyLineEnding(currentText));
+
   const observerParseOpts =
     opts.resolveEmbed && opts.docName
       ? {
@@ -1203,7 +1210,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         if (mapDrivenSplice) {
           applyMapDrivenSplice(ytext, mapDrivenSplice);
         } else if (ytextInSync && !residualMergeEligible) {
-          applyIncrementalDiff(ytext, currentText, md);
+          applyIncrementalDiff(ytext, currentText, spellDerivedBody(composition, currentText));
         } else {
           const mergeBase = ytextInSync ? lastSyncedCanonicalMd : preMergeBaseline;
           const boundarySpace = createMergeBoundarySpace(body);
@@ -1600,6 +1607,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
           fragmentPmJson: json,
           witnessMatched: fullMd === lastSyncedYTextBytes,
           fmPrefixLen,
+          lineEnding: documentBodyLineEnding(fullMd),
           op:
             op.kind === 'agent-undo'
               ? { kind: 'agent-undo', ytext, stackItem: op.stackItem }

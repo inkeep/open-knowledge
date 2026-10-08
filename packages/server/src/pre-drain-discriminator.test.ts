@@ -238,6 +238,7 @@ describe('cost gate: cheap fail-closed guards short-circuit before the localizer
     fragmentPmJson: {},
     fmPrefixLen: 0,
     mdManager: throwingMdManager,
+    lineEnding: '\n',
     op: { kind: 'agent-write', composedBody: 'x', writeKind: 'prepend' } as const,
   };
 
@@ -266,6 +267,50 @@ describe('cost gate: cheap fail-closed guards short-circuit before the localizer
       witnessMatched: true,
     });
     expect(verdict).toEqual({ preDrain: false, reason: 'checkpoint-no-target' });
+  });
+
+  it('flushes a pending keystroke into a CRLF body in CRLF (PRD-9139)', () => {
+    const body = 'para one\r\n\r\npara two\r\n\r\npara three\r\n';
+    const plan = planPreDrain({
+      pendingDirty: true,
+      witnessMatched: true,
+      body,
+      fragmentPmJson: mdManager.parse('para one!\n\npara two\n\npara three\n'),
+      fmPrefixLen: 0,
+      mdManager,
+      lineEnding: '\r\n',
+      op: { kind: 'agent-write', writeKind: 'append' },
+    });
+
+    expect(plan.preDrain).toBe(true);
+    if (!plan.preDrain) return;
+    expect(
+      body.slice(0, plan.splice.spliceStart) +
+        plan.splice.newSlice +
+        body.slice(plan.splice.spliceEnd),
+    ).toBe('para one!\r\n\r\npara two\r\n\r\npara three\r\n');
+  });
+
+  it('flushes added lines into a body with no line ending in the ending it is given (PRD-9139)', () => {
+    const body = 'Alpha.';
+    const plan = planPreDrain({
+      pendingDirty: true,
+      witnessMatched: true,
+      body,
+      fragmentPmJson: mdManager.parse('Alpha.\n\nBeta.\n'),
+      fmPrefixLen: '---\r\ntitle: t\r\n---\r\n'.length,
+      mdManager,
+      lineEnding: '\r\n',
+      op: { kind: 'agent-write', writeKind: 'append' },
+    });
+
+    expect(plan.preDrain).toBe(true);
+    if (!plan.preDrain) return;
+    expect(
+      body.slice(0, plan.splice.spliceStart) +
+        plan.splice.newSlice +
+        body.slice(plan.splice.spliceEnd),
+    ).toBe('Alpha.\r\n\r\nBeta.\r\n');
   });
 });
 
@@ -387,6 +432,7 @@ describe('full-body-overwrite positions are structurally inert', () => {
         fmPrefixLen: 0,
         op: { kind: 'agent-write', writeKind: position },
         mdManager,
+        lineEnding: '\n',
       });
       expect(plan.verdict.preDrain).toBe(false);
       expect(plan.verdict.reason).toBe('checkpoint-full-overwrite');
@@ -403,6 +449,7 @@ describe('full-body-overwrite positions are structurally inert', () => {
       fmPrefixLen: 0,
       op: { kind: 'agent-write', writeKind: 'append' },
       mdManager,
+      lineEnding: '\n',
     });
     expect(plan.verdict.preDrain).toBe(true);
     expect(plan.splice).not.toBeNull();

@@ -1515,4 +1515,164 @@ describe('Observer A routing — Path B fires iff Y.Text holds unabsorbed change
   });
 
   test.todo('each of several sequential remote writes refreshes the baseline');
+
+  describe('CRLF documents keep their line endings through fragment edits (PRD-9139)', () => {
+    const MISSION_LINES = [
+      '# Mission',
+      '',
+      'Notre __mission__ est simple.',
+      '',
+      '## Objectifs',
+      '',
+      '+ un',
+      '+ deux',
+      '',
+    ];
+
+    const FRONTMATTER_LINES = ['---', 'title: Mission', '---', ''];
+
+    type Eol = '\n' | '\r\n';
+    const source = (eol: Eol, withFrontmatter: boolean): string =>
+      [...(withFrontmatter ? FRONTMATTER_LINES : []), ...MISSION_LINES].join(eol);
+
+    function editTwice(eol: Eol, withFrontmatter: boolean, docName: string) {
+      __resetBridgeWatchdogForTests();
+      resetMetrics();
+      const raw = source(eol, withFrontmatter);
+      const { doc, xmlFragment, ytext, cleanup } = seedThenAttach(raw, docName);
+      expect(ytext.toString()).toBe(raw);
+
+      const events = capturePathBEvents(() => {
+        populateFragment(
+          doc,
+          xmlFragment,
+          serializeFragmentBody(xmlFragment).replace('## Objectifs', '## XObjectifs'),
+        );
+        populateFragment(
+          doc,
+          xmlFragment,
+          serializeFragmentBody(xmlFragment).replace('est simple.', 'est simple!'),
+        );
+      });
+      const metrics = getMetrics();
+      const outcome = {
+        text: ytext.toString(),
+        routes: {
+          pathBEvents: events.length,
+          pathBFires: totalPathBFires(),
+          residualMergeRuns: metrics.observerAResidualMergeRuns,
+          splicesApplied: metrics.mapDrivenSpliceApplied,
+        },
+      };
+      cleanup();
+      return outcome;
+    }
+
+    const edited = (eol: Eol, withFrontmatter: boolean): string =>
+      source(eol, withFrontmatter)
+        .replace('## Objectifs', '## XObjectifs')
+        .replace('est simple.', 'est simple!');
+
+    describe.each([
+      { label: 'without frontmatter', withFrontmatter: false },
+      { label: 'with frontmatter', withFrontmatter: true },
+    ])('$label', ({ withFrontmatter }) => {
+      test('keystrokes in a uniformly CRLF document leave every line CRLF', () => {
+        expect(editTwice('\r\n', withFrontmatter, 'routing-crlf-keystrokes').text).toBe(
+          edited('\r\n', withFrontmatter),
+        );
+      });
+
+      test('an LF document is byte-identical, and a CRLF one takes the same routes with no Path B or residual merge', () => {
+        const lf = editTwice('\n', withFrontmatter, 'routing-lf-keystrokes-control');
+        expect(lf.text).toBe(edited('\n', withFrontmatter));
+        const crlf = editTwice('\r\n', withFrontmatter, 'routing-crlf-keystrokes-routes');
+        expect(crlf.routes).toEqual(lf.routes);
+        expect(lf.routes).toEqual({
+          pathBEvents: 0,
+          pathBFires: 0,
+          residualMergeRuns: 0,
+          splicesApplied: 2,
+        });
+      });
+    });
+
+    test('the incremental-diff fallback keeps a CRLF document CRLF', () => {
+      __resetBridgeWatchdogForTests();
+      resetMetrics();
+      const raw = '<!-- note -->\r\n\r\nOriginal.\r\n';
+      const { doc, xmlFragment, ytext, cleanup } = seedThenAttach(raw, 'routing-crlf-fallback');
+      expect(ytext.toString()).toBe(raw);
+
+      populateFragment(doc, xmlFragment, `${serializeFragmentBody(xmlFragment)}\nAdded.\n`);
+
+      expect(getMetrics().mapDrivenSpliceApplied).toBe(0);
+      expect(ytext.toString()).toBe('<!-- note -->\r\n\r\nOriginal.\r\n\r\nAdded.\r\n');
+      cleanup();
+    });
+
+    test.each([
+      {
+        label: 'an empty body, splice route',
+        raw: '---\r\ntitle: t\r\n---\r\n',
+        fragment: 'First.\n\nSecond.\n\nThird.\n',
+        expectedBody: 'First.\r\n\r\nSecond.\r\n\r\nThird.\r\n',
+        splicesApplied: 1,
+      },
+      {
+        label: 'one unterminated line, splice route',
+        raw: '---\r\ntitle: t\r\n---\r\nFirst.',
+        fragment: 'First.\n\nSecond.\n\nThird.\n',
+        expectedBody: 'First.\r\n\r\nSecond.\r\n\r\nThird.\r\n',
+        splicesApplied: 1,
+      },
+      {
+        label: 'one unterminated line, incremental-diff fallback',
+        raw: '---\r\ntitle: t\r\n---\r\n<!-- note -->',
+        fragment: '<!-- note -->\n\nSecond.\n\nThird.\n',
+        expectedBody: '<!-- note -->\r\n\r\nSecond.\r\n\r\nThird.\r\n',
+        splicesApplied: 0,
+      },
+    ])(
+      'a CRLF document whose body has no line ending yet stays CRLF when it gains lines ($label)',
+      ({ raw, fragment, expectedBody, splicesApplied }) => {
+        __resetBridgeWatchdogForTests();
+        resetMetrics();
+        const { doc, xmlFragment, ytext, cleanup } = seedThenAttach(
+          raw,
+          'routing-crlf-no-body-eol',
+        );
+        expect(ytext.toString()).toBe(raw);
+
+        populateFragment(doc, xmlFragment, fragment);
+
+        expect(getMetrics().mapDrivenSpliceApplied).toBe(splicesApplied);
+        expect(ytext.toString()).toBe(`---\r\ntitle: t\r\n---\r\n${expectedBody}`);
+        cleanup();
+      },
+    );
+
+    test.each([
+      { frontmatter: '---\ntitle: t\n---\n', bodyEol: '\r\n' },
+      { frontmatter: '---\r\ntitle: t\r\n---\r\n', bodyEol: '\n' },
+    ] as const)(
+      'the incremental-diff fallback leaves frontmatter bytes alone and spells the body in its own ending (frontmatter $frontmatter)',
+      ({ frontmatter, bodyEol }) => {
+        __resetBridgeWatchdogForTests();
+        resetMetrics();
+        const body = (lines: string[]): string => lines.join(bodyEol);
+        const raw = frontmatter + body(['', '<!-- note -->', '', 'Original.', '']);
+        const { doc, xmlFragment, ytext, cleanup } = seedThenAttach(raw, 'routing-fm-eol-fallback');
+        expect(ytext.toString()).toBe(raw);
+
+        populateFragment(doc, xmlFragment, `${serializeFragmentBody(xmlFragment)}\nAdded.\n`);
+
+        expect(getMetrics().mapDrivenSpliceApplied).toBe(0);
+        expect(ytext.toString()).toBe(
+          frontmatter + body(['', '<!-- note -->', '', 'Original.', '', 'Added.', '']),
+        );
+        cleanup();
+      },
+    );
+  });
 });

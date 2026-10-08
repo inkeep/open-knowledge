@@ -1,4 +1,11 @@
-import type { MarkdownManager, SerializeCallOptions } from '@inkeep/open-knowledge-core';
+import {
+  type LfProjection,
+  type LineEnding,
+  type MarkdownManager,
+  projectToLf,
+  type SerializeCallOptions,
+  spellLineEndings,
+} from '@inkeep/open-knowledge-core';
 import type { JSONContent } from '@tiptap/core';
 import type { RootContent } from 'mdast';
 import type { MapDrivenSpliceMemoSkipReason } from './metrics.ts';
@@ -39,6 +46,7 @@ export interface MapDrivenSpliceOptions {
   readonly onMemoSkip?: (reason: MapDrivenSpliceMemoSkipReason, err?: unknown) => void;
   readonly memo?: EditorMdastMemo;
   readonly serializedNewPm?: SerializedEditorBody;
+  readonly lineEnding?: LineEnding;
 }
 
 export interface EditorMdastMemo {
@@ -65,10 +73,34 @@ function editorMdastChildren(
 }
 
 export function computeMapDrivenBodySplice(
-  oldBody: string,
+  rawOldBody: string,
   newPmJson: JSONContent,
   mdManager: MarkdownManager,
   options: MapDrivenSpliceOptions = {},
+): MapDrivenSplice | null {
+  const projection = projectToLf(rawOldBody);
+  const splice = computeLfBodySplice(projection.text, newPmJson, mdManager, options);
+  if (splice === null) return null;
+  return toRawSplice(splice, projection, options.lineEnding ?? projection.lineEnding);
+}
+
+function toRawSplice(
+  splice: MapDrivenSplice,
+  projection: LfProjection,
+  lineEnding: LineEnding,
+): MapDrivenSplice {
+  return {
+    spliceStart: projection.toRawOffset(splice.spliceStart),
+    spliceEnd: projection.toRawOffset(splice.spliceEnd),
+    newSlice: spellLineEndings(splice.newSlice, lineEnding),
+  };
+}
+
+function computeLfBodySplice(
+  oldBody: string,
+  newPmJson: JSONContent,
+  mdManager: MarkdownManager,
+  options: MapDrivenSpliceOptions,
 ): MapDrivenSplice | null {
   const { onFallback, onMemoHit, onMemoSkip, memo, serializedNewPm } = options;
   let oldChildren: readonly RootContent[];
