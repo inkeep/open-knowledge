@@ -88,6 +88,10 @@ msgstr "\"{docName}\" 문서가 존재하지 않습니다."
 msgid "\"{docName}\" took too long. Check your connection."
 msgstr "\"{docName}\" 문서를 여는 데 너무 오래 걸렸습니다. 연결을 확인하세요."
 
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "\"{name}\""
+msgstr "\"{name}\""
+
 #: src/hooks/use-skill-origin.ts
 msgid "\"{name}\" is already up to date"
 msgstr "\"{name}\"은 이미 최신 상태입니다"
@@ -1047,6 +1051,7 @@ msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, one {워크트리} other {워크트리}}"
 
 #: src/lib/acp/image-attachment.ts
+#: src/lib/install-stale-tab-reload-prompt.ts
 msgid "{others, plural, one {# other} other {# others}}"
 msgstr "{others, plural, other {다른 파일 #개}}"
 
@@ -9979,6 +9984,7 @@ msgstr "아직 이 프로젝트에 설치되지 않았습니다."
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/lib/install-server-drift-listener.ts
+#: src/lib/install-stale-tab-reload-prompt.ts
 msgid "Not now"
 msgstr "나중에"
 
@@ -10724,6 +10730,14 @@ msgstr "OpenKnowledge에서 문서 이동"
 #: src/components/command-palette-commands.ts
 msgid "OpenKnowledge on GitHub"
 msgstr "GitHub에서 OpenKnowledge 열기"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "OpenKnowledge on this computer changed to a different build, but this tab is still running the old one."
+msgstr "이 컴퓨터의 OpenKnowledge가 다른 빌드로 바뀌었지만 이 탭은 아직 이전 빌드를 실행하고 있습니다."
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "OpenKnowledge on this computer is now v{serverVersion}, but this tab is still running v{tabVersion}."
+msgstr "이 컴퓨터의 OpenKnowledge는 이제 v{serverVersion}이지만 이 탭은 아직 v{tabVersion}을 실행하고 있습니다."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge opened the live preview"
@@ -11929,10 +11943,15 @@ msgstr "관련성"
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
 #: src/components/TerminalStartingNotice.tsx
+#: src/lib/install-stale-tab-reload-prompt.ts
 #: src/lib/locale-load-failure-notice.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
 msgstr "새로 고침"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Reload this tab to bring it up to date. Your edits are saved before it reloads."
+msgstr "이 탭을 새로 고쳐 최신 상태로 맞추세요. 새로 고치기 전에 편집 내용이 저장됩니다."
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "remote"
@@ -12774,6 +12793,10 @@ msgstr "저장 중"
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Saving changes…"
 msgstr "변경사항 저장 중…"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Saving your edits before reloading…"
+msgstr "새로 고치기 전에 편집 내용을 저장하는 중…"
 
 #: src/components/settings/LintingSection.tsx
 msgid "schema {deleteTarget}"
@@ -13862,6 +13885,14 @@ msgstr "일부 검사가 실패했지만 병합할 수 있음"
 #: src/components/TerminalPanel.tsx
 msgid "Some dropped files could not be inserted safely."
 msgstr "놓은 파일 중 일부를 안전하게 삽입할 수 없습니다."
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Some edits haven't reached the server yet, so the tab didn't reload. Open {docs} to save them, then reload."
+msgstr "일부 편집 내용이 아직 서버에 도달하지 않아 탭을 새로 고치지 않았습니다. {docs} 문서를 열어 저장한 다음 새로 고치세요."
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Some edits haven't reached the server yet, so the tab didn't reload. Your edits are still here."
+msgstr "일부 편집 내용이 아직 서버에 도달하지 않아 탭을 새로 고치지 않았습니다. 편집 내용은 그대로 있습니다."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
@@ -15704,6 +15735,14 @@ msgstr "이 소스에는 여러 스킬이 들어 있습니다. 하나를 선택�
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose the one to import."
 msgstr "이 소스에는 여러 스킬이 들어 있습니다. 가져올 항목을 선택하세요."
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "This tab couldn't confirm that your edits are saved, so it didn't reload. Your edits are still here."
+msgstr "이 탭에서 편집 내용이 저장되었는지 확인하지 못해 새로 고치지 않았습니다. 편집 내용은 그대로 있습니다."
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "This tab is still reconnecting to OpenKnowledge, so it didn't reload. Try again in a moment."
+msgstr "이 탭이 아직 OpenKnowledge에 다시 연결하는 중이라 새로 고치지 않았습니다. 잠시 후 다시 시도하세요."
 
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."

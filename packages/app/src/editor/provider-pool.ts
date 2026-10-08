@@ -226,6 +226,7 @@ export class ProviderPool {
   private readonly clearDataTimeoutMs: number;
   private flushOnHideEnabled = true;
   private readonly unsyncedWorkListeners = new Set<() => void>();
+  private replaysInFlight = 0;
   private onChange: PoolChangeCallback | null = null;
   private tabIdentity: { principalId: string; tabSessionId: string } | null = null;
   private serverRestartRecoveryState: ServerRestartRecoveryState = IDLE_SERVER_RESTART_RECOVERY;
@@ -1348,14 +1349,20 @@ export class ProviderPool {
     };
     const onSyncedReplay = (): void => {
       provider.off('synced', onSyncedReplay);
-      void runReplay().catch((err: unknown) => {
-        this.emitStructuredClientRecoveryEvent({
-          event: 'ok-buffer-replay-unexpected-error',
-          ...this.recoveryTelemetryBase(docName),
-          errorName: err instanceof Error ? err.name : 'non-error-throw',
-          errorMessage: err instanceof Error ? err.message : String(err),
+      this.replaysInFlight += 1;
+      void runReplay()
+        .catch((err: unknown) => {
+          this.emitStructuredClientRecoveryEvent({
+            event: 'ok-buffer-replay-unexpected-error',
+            ...this.recoveryTelemetryBase(docName),
+            errorName: err instanceof Error ? err.name : 'non-error-throw',
+            errorMessage: err instanceof Error ? err.message : String(err),
+          });
+        })
+        .finally(() => {
+          this.replaysInFlight -= 1;
+          this.emitUnsyncedWork();
         });
-      });
     };
     provider.on('synced', onSyncedReplay);
 
@@ -1842,7 +1849,9 @@ export class ProviderPool {
   private discardBufferedUpdate(docName: string): void {
     const buffered = this.bufferedUpdates.get(docName);
     this.bufferedUpdates.delete(docName);
-    if (buffered === undefined || !buffered.durable) return;
+    if (buffered === undefined) return;
+    this.emitUnsyncedWork();
+    if (!buffered.durable) return;
     void consumeReplayOutboxEntry({
       branch: buffered.branch,
       docName,
@@ -1950,6 +1959,26 @@ export class ProviderPool {
       if (entry.kind === 'active' && entry.provider.unsyncedChanges > 0) return true;
     }
     return false;
+  }
+
+  hasUnsavedWork(): boolean {
+    return this.hasAnyUnsyncedWork() || this.hasPendingReplay();
+  }
+
+  hasPendingReplay(): boolean {
+    if (this.replaysInFlight > 0) return true;
+    for (const buffered of this.bufferedUpdates.values()) {
+      if (!buffered.durable) return true;
+    }
+    return false;
+  }
+
+  docNamesToOpenForReplay(): string[] {
+    const docNames: string[] = [];
+    for (const [docName, buffered] of this.bufferedUpdates) {
+      if (!buffered.durable && !this.entries.has(docName)) docNames.push(docName);
+    }
+    return docNames;
   }
 
   addUnsyncedWorkListener(cb: () => void): () => void {

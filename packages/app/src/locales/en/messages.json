@@ -31,6 +31,9 @@
     ],
     "-bFGPF": ["Next change"],
     "-dNlfM": ["Undid the last edit on ", ["docName"]],
+    "-eFr9g": [
+      "OpenKnowledge on this computer changed to a different build, but this tab is still running the old one."
+    ],
     "-g6KIS": ["Unrecognized link"],
     "-kKdCC": ["Installed ", ["imported"], " skills from ", ["0"]],
     "-kbIAr": ["Links & images"],
@@ -971,6 +974,7 @@
     "9x-lMu": ["In this repo — collaborators get copies via git."],
     "9xCnv8": ["Hide Terminal"],
     "9zb2WA": ["Connecting"],
+    "A1JMsI": ["Reload this tab to bring it up to date. Your edits are saved before it reloads."],
     "A1taO8": ["Search"],
     "A50vr3": ["Use lowercase letters, digits, and <0>-</0> only."],
     "A5CYnd": ["Broken link"],
@@ -2581,6 +2585,7 @@
     "RXYvxn": ["This option cannot be changed automatically."],
     "RY6Bq1": ["Open shared ", ["targetNoun"]],
     "RZXTlY": ["Auto-fix (", ["count"], ")"],
+    "R_U8x8": ["\"", ["name"], "\""],
     "R_U_A4": ["Add file or folder pattern, e.g. guides/**/*"],
     "RaPMZv": ["Keyboard shortcuts available in the editor and workspace."],
     "RaUKLu": ["Remote control"],
@@ -2866,6 +2871,9 @@
     ],
     "VFQXPl": [
       "External link previews show a card with the site name, page title, and description when you hover a link."
+    ],
+    "VIrNh0": [
+      "Some edits haven't reached the server yet, so the tab didn't reload. Your edits are still here."
     ],
     "VJaBca": ["Choose a skill folder"],
     "VL6VsE": ["Accept current"],
@@ -3208,6 +3216,9 @@
     "Z8KDox": ["Enter a folder name (e.g. brain)."],
     "Z8lGw6": ["Share"],
     "Z8nach": ["Upload failed: ", ["0"]],
+    "Z9s6k8": [
+      "This tab is still reconnecting to OpenKnowledge, so it didn't reload. Try again in a moment."
+    ],
     "ZBF9fn": ["Manage skill folders"],
     "ZBZEkP": ["Captured before this dialog, with the pointer marked."],
     "ZBxvV3": ["New Terminal"],
@@ -3813,6 +3824,7 @@
       ["names"],
       ". Each original was verified unchanged, so remove those copies and retry the move."
     ],
+    "eJR1Ns": ["Saving your edits before reloading…"],
     "eJitUk": ["Upload from computer"],
     "eKGK4A": ["Search chat history"],
     "eKThTQ": ["Failed to reorder"],
@@ -4548,6 +4560,11 @@
     "l3zD7w": ["Starting the agent…"],
     "l46MqT": ["Next tab"],
     "l5J_HM": ["Type a query, then press <0>↵</0> to search your pages by meaning."],
+    "l60gJd": [
+      "Some edits haven't reached the server yet, so the tab didn't reload. Open ",
+      ["docs"],
+      " to save them, then reload."
+    ],
     "l6GfXr": ["Starting"],
     "l6kpzR": [
       "This ",
@@ -5815,6 +5832,13 @@
     "xnWySt": ["Cleanup may still be running."],
     "xrVr_k": ["Couldn't create skill: ", ["0"]],
     "xsZhu-": ["Page number"],
+    "xsqOtX": [
+      "OpenKnowledge on this computer is now v",
+      ["serverVersion"],
+      ", but this tab is still running v",
+      ["tabVersion"],
+      "."
+    ],
     "xtJgSe": ["This source bundles several skills — choose the one to import."],
     "xvv5gL": ["Screenshot preview"],
     "xxRpzT": ["Slidev found on your system."],
@@ -5980,6 +6004,9 @@
     "zkkEFa": ["Enter a whole number between ", ["minimum"], " and ", ["maximum"], "."],
     "zkz0Fg": ["Set up syncing"],
     "zlErBl": ["Page headings error response did not match RFC 9457"],
+    "zmQdP2": [
+      "This tab couldn't confirm that your edits are saved, so it didn't reload. Your edits are still here."
+    ],
     "zo3Dl7": ["Toggle thumbnails"],
     "zpfN9p": ["No comments yet. Select text in the document to add one."],
     "zq2eBA": ["View in source"],

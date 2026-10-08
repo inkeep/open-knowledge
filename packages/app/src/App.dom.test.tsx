@@ -175,6 +175,9 @@ vi.doMock('@/editor/EditorLifecycleFlush', () => ({
 vi.doMock('@/editor/BackgroundThrottleReporter', () => ({
   BackgroundThrottleReporter: () => null,
 }));
+vi.doMock('@/editor/StaleTabReloadPrompt', () => ({
+  StaleTabReloadPrompt: () => null,
+}));
 
 vi.doMock('@/components/McpConsentDialog', () => ({
   McpConsentDialog: () => <div data-testid="mcp-consent-dialog" />,

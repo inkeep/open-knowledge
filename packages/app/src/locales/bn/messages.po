@@ -88,6 +88,10 @@ msgstr "\"{docName}\" নেই।"
 msgid "\"{docName}\" took too long. Check your connection."
 msgstr "\"{docName}\" খুব বেশি সময় নিয়েছে। আপনার সংযোগ দেখুন।"
 
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "\"{name}\""
+msgstr "\"{name}\""
+
 #: src/hooks/use-skill-origin.ts
 msgid "\"{name}\" is already up to date"
 msgstr "\"{name}\" ইতিমধ্যেই হালনাগাদ"
@@ -1047,6 +1051,7 @@ msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, one {ওয়ার্কট্রি} other {ওয়ার্কট্রি}}"
 
 #: src/lib/acp/image-attachment.ts
+#: src/lib/install-stale-tab-reload-prompt.ts
 msgid "{others, plural, one {# other} other {# others}}"
 msgstr "{others, plural, one {আরও #টি} other {আরও #টি}}"
 
@@ -9975,6 +9980,7 @@ msgstr "এই প্রকল্পে এখনো ইনস্টল হয�
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/lib/install-server-drift-listener.ts
+#: src/lib/install-stale-tab-reload-prompt.ts
 msgid "Not now"
 msgstr "এখন নয়"
 
@@ -10720,6 +10726,14 @@ msgstr "OpenKnowledge একটি নথি সরিয়েছে"
 #: src/components/command-palette-commands.ts
 msgid "OpenKnowledge on GitHub"
 msgstr "GitHub-এ OpenKnowledge"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "OpenKnowledge on this computer changed to a different build, but this tab is still running the old one."
+msgstr "এই কম্পিউটারে OpenKnowledge অন্য একটি বিল্ডে বদলে গেছে, কিন্তু এই ট্যাব এখনও পুরোনো বিল্ড চালাচ্ছে।"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "OpenKnowledge on this computer is now v{serverVersion}, but this tab is still running v{tabVersion}."
+msgstr "এই কম্পিউটারে OpenKnowledge এখন v{serverVersion}, কিন্তু এই ট্যাব এখনও v{tabVersion} চালাচ্ছে।"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge opened the live preview"
@@ -11925,10 +11939,15 @@ msgstr "প্রাসঙ্গিকতা"
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
 #: src/components/TerminalStartingNotice.tsx
+#: src/lib/install-stale-tab-reload-prompt.ts
 #: src/lib/locale-load-failure-notice.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
 msgstr "আবার লোড করুন"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Reload this tab to bring it up to date. Your edits are saved before it reloads."
+msgstr "হালনাগাদ করতে এই ট্যাবটি আবার লোড করুন। আবার লোড হওয়ার আগে আপনার সম্পাদনা সংরক্ষিত হয়।"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "remote"
@@ -12770,6 +12789,10 @@ msgstr "সংরক্ষণ করা হচ্ছে"
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Saving changes…"
 msgstr "পরিবর্তনগুলি সংরক্ষণ করা হচ্ছে…"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Saving your edits before reloading…"
+msgstr "আবার লোড করার আগে আপনার সম্পাদনা সংরক্ষণ করা হচ্ছে…"
 
 #: src/components/settings/LintingSection.tsx
 msgid "schema {deleteTarget}"
@@ -13858,6 +13881,14 @@ msgstr "কিছু চেক ব্যর্থ হয়েছে, তবে 
 #: src/components/TerminalPanel.tsx
 msgid "Some dropped files could not be inserted safely."
 msgstr "ফেলে দেওয়া কিছু ফাইল নিরাপদে সন্নিবেশ করা যায়নি।"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Some edits haven't reached the server yet, so the tab didn't reload. Open {docs} to save them, then reload."
+msgstr "কিছু সম্পাদনা এখনও সার্ভারে পৌঁছায়নি, তাই ট্যাবটি আবার লোড হয়নি। সেগুলো সংরক্ষণ করতে {docs} খুলুন, তারপর ট্যাবটি আবার লোড করুন।"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Some edits haven't reached the server yet, so the tab didn't reload. Your edits are still here."
+msgstr "কিছু সম্পাদনা এখনও সার্ভারে পৌঁছায়নি, তাই ট্যাবটি আবার লোড হয়নি। আপনার সম্পাদনা এখনও এখানেই আছে।"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
@@ -15700,6 +15731,14 @@ msgstr "এই উৎসে কয়েকটি স্কিল আছে — 
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose the one to import."
 msgstr "এই উৎসে কয়েকটি স্কিল আছে — আমদানি করার জন্য একটি বাছুন।"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "This tab couldn't confirm that your edits are saved, so it didn't reload. Your edits are still here."
+msgstr "এই ট্যাবটি নিশ্চিত করতে পারেনি যে আপনার সম্পাদনা সংরক্ষিত হয়েছে, তাই আবার লোড হয়নি। আপনার সম্পাদনা এখনও এখানেই আছে।"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "This tab is still reconnecting to OpenKnowledge, so it didn't reload. Try again in a moment."
+msgstr "এই ট্যাবটি এখনও OpenKnowledge-এর সঙ্গে আবার সংযোগ করছে, তাই আবার লোড হয়নি। একটু পরে আবার চেষ্টা করুন।"
 
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."

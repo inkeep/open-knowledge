@@ -88,6 +88,10 @@ msgstr ""
 msgid "\"{docName}\" took too long. Check your connection."
 msgstr ""
 
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "\"{name}\""
+msgstr ""
+
 #: src/hooks/use-skill-origin.ts
 msgid "\"{name}\" is already up to date"
 msgstr ""
@@ -1047,6 +1051,7 @@ msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr ""
 
 #: src/lib/acp/image-attachment.ts
+#: src/lib/install-stale-tab-reload-prompt.ts
 msgid "{others, plural, one {# other} other {# others}}"
 msgstr ""
 
@@ -9975,6 +9980,7 @@ msgstr ""
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/lib/install-server-drift-listener.ts
+#: src/lib/install-stale-tab-reload-prompt.ts
 msgid "Not now"
 msgstr ""
 
@@ -10719,6 +10725,14 @@ msgstr ""
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "OpenKnowledge on GitHub"
+msgstr ""
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "OpenKnowledge on this computer changed to a different build, but this tab is still running the old one."
+msgstr ""
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "OpenKnowledge on this computer is now v{serverVersion}, but this tab is still running v{tabVersion}."
 msgstr ""
 
 #: src/lib/acp/tool-call-display.ts
@@ -11925,9 +11939,14 @@ msgstr ""
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
 #: src/components/TerminalStartingNotice.tsx
+#: src/lib/install-stale-tab-reload-prompt.ts
 #: src/lib/locale-load-failure-notice.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
+msgstr ""
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Reload this tab to bring it up to date. Your edits are saved before it reloads."
 msgstr ""
 
 #: src/components/NewWorktreeDialog.tsx
@@ -12769,6 +12788,10 @@ msgstr ""
 
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Saving changes…"
+msgstr ""
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Saving your edits before reloading…"
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -13857,6 +13880,14 @@ msgstr ""
 
 #: src/components/TerminalPanel.tsx
 msgid "Some dropped files could not be inserted safely."
+msgstr ""
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Some edits haven't reached the server yet, so the tab didn't reload. Open {docs} to save them, then reload."
+msgstr ""
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Some edits haven't reached the server yet, so the tab didn't reload. Your edits are still here."
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -15699,6 +15730,14 @@ msgstr ""
 
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose the one to import."
+msgstr ""
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "This tab couldn't confirm that your edits are saved, so it didn't reload. Your edits are still here."
+msgstr ""
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "This tab is still reconnecting to OpenKnowledge, so it didn't reload. Try again in a moment."
 msgstr ""
 
 #: src/components/TemplateDeleteDialog.tsx

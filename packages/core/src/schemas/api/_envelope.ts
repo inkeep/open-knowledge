@@ -21,6 +21,8 @@ export const ServerInfoSuccessSchema = z
     currentDiskAckSVs: z.record(z.string().min(1), z.string().min(1)).optional(),
     boot: ServerInfoBootSchema.optional(),
     collabClients: z.number().int().nonnegative().optional(),
+    runtimeVersion: z.string().min(1).optional(),
+    protocolVersion: z.number().int().positive().optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type ServerInfoSuccess = z.infer<typeof ServerInfoSuccessSchema>;

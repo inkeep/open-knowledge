@@ -3,6 +3,7 @@ import {
   ServerInfoBootSchema,
   ServerInfoSuccessSchema,
 } from '@inkeep/open-knowledge-core';
+import { PROTOCOL_VERSION, RUNTIME_VERSION } from '@inkeep/open-knowledge-server';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
 import { createTestServer, type TestServer } from '../test-harness';
@@ -30,6 +31,16 @@ describe('server-info envelope (RFC 9457)', () => {
       expect(parsed.data.serverInstanceId.length).toBeGreaterThan(0);
     }
     expect((body as Record<string, unknown>).ok).toBeUndefined();
+  });
+
+  test('reports the runtime and protocol version a stale tab compares against', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/server-info`);
+    const parsed = ServerInfoSuccessSchema.safeParse(await res.json());
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.runtimeVersion).toBe(RUNTIME_VERSION);
+      expect(parsed.data.protocolVersion).toBe(PROTOCOL_VERSION);
+    }
   });
 
   test('optional boot timings block round-trips through the success schema', () => {

@@ -160,7 +160,7 @@ describe('installServerDriftListener', () => {
   });
 
   type DriftNode = {
-    props: { body: string; warning: string; onRestart: () => void; onDismiss: () => void };
+    props: { body: string; detail: string; onAction: () => void; onDismiss: () => void };
   };
   function fireDriftAndRender(h: ReturnType<typeof makeBridge>, id = 'toast-1'): DriftNode {
     h.fireDrift(olderInfo);
@@ -176,8 +176,8 @@ describe('installServerDriftListener', () => {
     expect(toastCustom).toHaveBeenCalledTimes(1);
     expect(toastCustom.mock.calls[0]?.[1]).toMatchObject({ duration: Number.POSITIVE_INFINITY });
     expect(node.props.body).toBe(driftToastBody(olderInfo));
-    expect(node.props.warning).toBe(restartDisruptionWarning());
-    expect(typeof node.props.onRestart).toBe('function');
+    expect(node.props.detail).toBe(restartDisruptionWarning());
+    expect(typeof node.props.onAction).toBe('function');
     expect(typeof node.props.onDismiss).toBe('function');
   });
 
@@ -187,7 +187,7 @@ describe('installServerDriftListener', () => {
     toastDismiss.mockClear();
     const h = makeBridge({ restartOutcome: { ok: false, reason: 'eperm' } });
     installServerDriftListener({ bridge: h.bridge });
-    fireDriftAndRender(h).props.onRestart();
+    fireDriftAndRender(h).props.onAction();
     await flush();
     expect(toastDismiss).toHaveBeenCalledWith('toast-1');
     expect(h.restartServer).toHaveBeenCalledWith('/tmp/proj');
@@ -202,7 +202,7 @@ describe('installServerDriftListener', () => {
     toastError.mockClear();
     const h = makeBridge({ restartReject: true });
     installServerDriftListener({ bridge: h.bridge });
-    fireDriftAndRender(h).props.onRestart();
+    fireDriftAndRender(h).props.onAction();
     await flush();
     expect(toastError).not.toHaveBeenCalled();
   });
@@ -213,7 +213,7 @@ describe('installServerDriftListener', () => {
     toastError.mockClear();
     const h = makeBridge({ restartOutcome: { ok: true } });
     installServerDriftListener({ bridge: h.bridge });
-    fireDriftAndRender(h).props.onRestart();
+    fireDriftAndRender(h).props.onAction();
     await flush();
     expect(toastDismiss).toHaveBeenCalledWith('loading-id');
     expect(toastError).not.toHaveBeenCalled();

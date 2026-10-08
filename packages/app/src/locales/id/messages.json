@@ -25,6 +25,9 @@
     ],
     "-bFGPF": ["Perubahan berikutnya"],
     "-dNlfM": ["Suntingan terakhir pada ", ["docName"], " dibatalkan"],
+    "-eFr9g": [
+      "OpenKnowledge di komputer ini berganti ke build lain, tetapi tab ini masih menjalankan yang lama."
+    ],
     "-g6KIS": ["Tautan tidak dikenali"],
     "-kKdCC": [["imported"], " keterampilan dipasang dari ", ["0"]],
     "-kbIAr": ["Tautan & gambar"],
@@ -977,6 +980,9 @@
     "9x-lMu": ["Di repositori ini — kolaborator mendapat salinan lewat git."],
     "9xCnv8": ["Sembunyikan Terminal"],
     "9zb2WA": ["Menghubungkan"],
+    "A1JMsI": [
+      "Muat ulang tab ini untuk memperbaruinya. Suntingan Anda disimpan sebelum tab dimuat ulang."
+    ],
     "A1taO8": ["Cari"],
     "A50vr3": ["Pakai hanya huruf kecil, angka, dan <0>-</0>."],
     "A5CYnd": ["Tautan rusak"],
@@ -2584,6 +2590,7 @@
     "RXYvxn": ["Opsi ini tidak dapat diubah secara otomatis."],
     "RY6Bq1": ["Buka ", ["targetNoun"], " yang dibagikan"],
     "RZXTlY": ["Perbaikan otomatis (", ["count"], ")"],
+    "R_U8x8": ["\"", ["name"], "\""],
     "R_U_A4": ["Tambahkan pola berkas atau folder, mis. guides/**/*"],
     "RaPMZv": ["Pintasan papan ketik yang tersedia di penyunting dan ruang kerja."],
     "RaUKLu": ["Kontrol jarak jauh"],
@@ -2871,6 +2878,9 @@
     ],
     "VFQXPl": [
       "Pratinjau tautan eksternal menampilkan kartu berisi nama situs, judul halaman, dan deskripsi saat Anda mengarahkan kursor ke sebuah tautan."
+    ],
+    "VIrNh0": [
+      "Beberapa suntingan belum sampai ke server, jadi tab tidak dimuat ulang. Suntingan Anda masih ada di sini."
     ],
     "VJaBca": ["Pilih folder keterampilan"],
     "VL6VsE": ["Terima yang sekarang"],
@@ -3229,6 +3239,9 @@
     "Z8KDox": ["Masukkan nama folder (mis. otak)."],
     "Z8lGw6": ["Bagikan"],
     "Z8nach": ["Unggahan gagal: ", ["0"]],
+    "Z9s6k8": [
+      "Tab ini masih menyambung ulang ke OpenKnowledge, jadi tidak dimuat ulang. Coba lagi sebentar lagi."
+    ],
     "ZBF9fn": ["Kelola folder keterampilan"],
     "ZBZEkP": ["Diambil sebelum dialog ini, dengan penunjuk ditandai."],
     "ZBxvV3": ["Terminal Baru"],
@@ -3808,6 +3821,7 @@
       ["names"],
       ". Setiap aslinya sudah diverifikasi tidak berubah, jadi hapus salinan itu lalu coba pemindahan lagi."
     ],
+    "eJR1Ns": ["Menyimpan suntingan Anda sebelum memuat ulang…"],
     "eJitUk": ["Unggah dari komputer"],
     "eKGK4A": ["Cari riwayat percakapan"],
     "eKThTQ": ["Gagal menata ulang"],
@@ -4548,6 +4562,11 @@
     "l46MqT": ["Tab berikutnya"],
     "l5J_HM": [
       "Ketik sebuah kueri, lalu tekan <0>↵</0> untuk mencari di halaman Anda berdasarkan makna."
+    ],
+    "l60gJd": [
+      "Beberapa suntingan belum sampai ke server, jadi tab tidak dimuat ulang. Buka ",
+      ["docs"],
+      " untuk menyimpannya, lalu muat ulang."
     ],
     "l6GfXr": ["Memulai"],
     "l6kpzR": [
@@ -5801,6 +5820,13 @@
     "xnWySt": ["Pembersihan mungkin masih berlangsung."],
     "xrVr_k": ["Keterampilan tidak bisa dibuat: ", ["0"]],
     "xsZhu-": ["Nomor halaman"],
+    "xsqOtX": [
+      "OpenKnowledge di komputer ini sekarang v",
+      ["serverVersion"],
+      ", tetapi tab ini masih menjalankan v",
+      ["tabVersion"],
+      "."
+    ],
     "xtJgSe": ["Sumber ini memuat beberapa keterampilan — pilih yang akan diimpor."],
     "xvv5gL": ["Pratinjau tangkapan layar"],
     "xxRpzT": ["Slidev ditemukan di sistem Anda."],
@@ -5967,6 +5993,9 @@
     "zkkEFa": ["Masukkan bilangan bulat antara ", ["minimum"], " dan ", ["maximum"], "."],
     "zkz0Fg": ["Siapkan sinkronisasi"],
     "zlErBl": ["Respons galat judul halaman tidak sesuai RFC 9457"],
+    "zmQdP2": [
+      "Tab ini tidak dapat memastikan suntingan Anda sudah tersimpan, jadi tidak dimuat ulang. Suntingan Anda masih ada di sini."
+    ],
     "zo3Dl7": ["Tampilkan atau sembunyikan gambar mini"],
     "zpfN9p": ["Belum ada komentar. Pilih teks di dokumen untuk menambahkan satu."],
     "zq2eBA": ["Lihat di sumber"],

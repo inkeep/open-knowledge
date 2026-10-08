@@ -3,6 +3,7 @@ import { handleBranchSwitched } from '../editor/branch-invalidation';
 import type { ProviderPool } from '../editor/provider-pool';
 import { emitBranchChanged } from './documents-events';
 import { setServerInstanceId } from './server-instance-store';
+import { observeServerVersion } from './server-version-store';
 
 export function createSyncedReconnectGate(onReconnect: () => void): () => void {
   let hadFirstSynced = false;
@@ -50,6 +51,10 @@ export async function refreshServerInfo(pool: ProviderPool, baseUrl = ''): Promi
 
   pool.setExpectedServerInstanceId(result.data.serverInstanceId);
   setServerInstanceId(result.data.serverInstanceId);
+  observeServerVersion({
+    runtimeVersion: result.data.runtimeVersion ?? null,
+    protocolVersion: result.data.protocolVersion ?? null,
+  });
 
   if (result.data.currentBranch !== undefined) {
     if (pool.compareAndUpdateObservedBranch(result.data.currentBranch)) {

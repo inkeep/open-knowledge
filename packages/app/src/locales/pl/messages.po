@@ -88,6 +88,10 @@ msgstr "\"{docName}\" nie istnieje."
 msgid "\"{docName}\" took too long. Check your connection."
 msgstr "\"{docName}\" zajął zbyt dużo czasu. Sprawdź połączenie."
 
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "\"{name}\""
+msgstr "\"{name}\""
+
 #: src/hooks/use-skill-origin.ts
 msgid "\"{name}\" is already up to date"
 msgstr "\"{name}\" jest już aktualne"
@@ -1047,6 +1051,7 @@ msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, one {worktree} few {worktree} many {worktree} other {worktree}}"
 
 #: src/lib/acp/image-attachment.ts
+#: src/lib/install-stale-tab-reload-prompt.ts
 msgid "{others, plural, one {# other} other {# others}}"
 msgstr "{others, plural, one {# inny} few {# inne} many {# innych} other {# innego}}"
 
@@ -9979,6 +9984,7 @@ msgstr "Jeszcze nie zainstalowano w tym projekcie."
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/lib/install-server-drift-listener.ts
+#: src/lib/install-stale-tab-reload-prompt.ts
 msgid "Not now"
 msgstr "Nie teraz"
 
@@ -10724,6 +10730,14 @@ msgstr "OpenKnowledge przeniosło dokument"
 #: src/components/command-palette-commands.ts
 msgid "OpenKnowledge on GitHub"
 msgstr "OpenKnowledge na GitHub"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "OpenKnowledge on this computer changed to a different build, but this tab is still running the old one."
+msgstr "OpenKnowledge na tym komputerze zmienił się na inną kompilację, ale ta karta nadal działa w starej."
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "OpenKnowledge on this computer is now v{serverVersion}, but this tab is still running v{tabVersion}."
+msgstr "OpenKnowledge na tym komputerze ma teraz wersję v{serverVersion}, ale ta karta nadal działa w wersji v{tabVersion}."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge opened the live preview"
@@ -11929,10 +11943,15 @@ msgstr "Trafność"
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
 #: src/components/TerminalStartingNotice.tsx
+#: src/lib/install-stale-tab-reload-prompt.ts
 #: src/lib/locale-load-failure-notice.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
 msgstr "Wczytaj ponownie"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Reload this tab to bring it up to date. Your edits are saved before it reloads."
+msgstr "Wczytaj tę kartę ponownie, aby ją zaktualizować. Twoje edycje zostaną zapisane przed ponownym wczytaniem."
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "remote"
@@ -12774,6 +12793,10 @@ msgstr "Zapisywanie"
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Saving changes…"
 msgstr "Zapisywanie zmian…"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Saving your edits before reloading…"
+msgstr "Zapisywanie Twoich edycji przed ponownym wczytaniem…"
 
 #: src/components/settings/LintingSection.tsx
 msgid "schema {deleteTarget}"
@@ -13862,6 +13885,14 @@ msgstr "Część testów nie przeszła, ale nadal można to scalić"
 #: src/components/TerminalPanel.tsx
 msgid "Some dropped files could not be inserted safely."
 msgstr "Niektórych upuszczonych plików nie udało się wstawić bezpiecznie."
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Some edits haven't reached the server yet, so the tab didn't reload. Open {docs} to save them, then reload."
+msgstr "Niektóre edycje nie dotarły jeszcze do serwera, więc karta nie została wczytana ponownie. Otwórz {docs}, aby je zapisać, a potem wczytaj kartę ponownie."
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Some edits haven't reached the server yet, so the tab didn't reload. Your edits are still here."
+msgstr "Niektóre edycje nie dotarły jeszcze do serwera, więc karta nie została wczytana ponownie. Twoje edycje nadal tu są."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
@@ -15704,6 +15735,14 @@ msgstr "To źródło zawiera kilka umiejętności — wybierz jedną, a następn
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose the one to import."
 msgstr "To źródło zawiera kilka umiejętności — wybierz tę do zaimportowania."
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "This tab couldn't confirm that your edits are saved, so it didn't reload. Your edits are still here."
+msgstr "Ta karta nie mogła potwierdzić, że Twoje edycje są zapisane, więc nie została wczytana ponownie. Twoje edycje nadal tu są."
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "This tab is still reconnecting to OpenKnowledge, so it didn't reload. Try again in a moment."
+msgstr "Ta karta wciąż ponownie łączy się z OpenKnowledge, więc nie została wczytana ponownie. Spróbuj ponownie za chwilę."
 
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."

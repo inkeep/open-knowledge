@@ -67,10 +67,10 @@ export function installServerDriftListener(opts: {
       (id) =>
         createElement(ServerDriftToast, {
           body: driftToastBody(info),
-          warning: restartDisruptionWarning(),
-          restartLabel: t`Restart with this app's version`,
-          cancelLabel: t`Not now`,
-          onRestart: () => {
+          detail: restartDisruptionWarning(),
+          actionLabel: t`Restart with this app's version`,
+          dismissLabel: t`Not now`,
+          onAction: () => {
             toast.dismiss(id);
             void runRestart(bridge);
           },

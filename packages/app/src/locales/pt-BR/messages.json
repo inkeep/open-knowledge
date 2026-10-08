@@ -41,6 +41,9 @@
     ],
     "-bFGPF": ["Próxima alteração"],
     "-dNlfM": ["A última edição em ", ["docName"], " foi desfeita"],
+    "-eFr9g": [
+      "O OpenKnowledge neste computador mudou para outra versão, mas esta aba ainda está executando a antiga."
+    ],
     "-g6KIS": ["Link não reconhecido"],
     "-kKdCC": [["imported"], " habilidades instaladas a partir de ", ["0"]],
     "-kbIAr": ["Links e imagens"],
@@ -1118,6 +1121,9 @@
     "9x-lMu": ["Neste repositório — colaboradores recebem cópias via git."],
     "9xCnv8": ["Ocultar o Terminal"],
     "9zb2WA": ["Conectando"],
+    "A1JMsI": [
+      "Recarregue esta aba para atualizá-la. Suas edições são salvas antes de recarregar."
+    ],
     "A1taO8": ["Buscar"],
     "A50vr3": ["Use apenas letras minúsculas, dígitos e <0>-</0>."],
     "A5CYnd": ["Link quebrado"],
@@ -2918,6 +2924,7 @@
     "RXYvxn": ["Esta opção não pode ser alterada automaticamente."],
     "RY6Bq1": ["Abrir ", ["targetNoun"], " compartilhado"],
     "RZXTlY": ["Correção automática (", ["count"], ")"],
+    "R_U8x8": ["\"", ["name"], "\""],
     "R_U_A4": ["Adicione um padrão de arquivo ou pasta, ex.: guides/**/*"],
     "RaPMZv": ["Atalhos de teclado disponíveis no editor e no espaço de trabalho."],
     "RaUKLu": ["Controle remoto"],
@@ -3253,6 +3260,9 @@
     ],
     "VFQXPl": [
       "A pré-visualização de links externos mostra um cartão com o nome do site, o título da página e a descrição quando você passa o cursor sobre um link."
+    ],
+    "VIrNh0": [
+      "Algumas edições ainda não chegaram ao servidor, então a aba não foi recarregada. Suas edições continuam aqui."
     ],
     "VJaBca": ["Escolha uma pasta de habilidade"],
     "VL6VsE": ["Aceitar atual"],
@@ -3649,6 +3659,9 @@
     "Z8KDox": ["Digite um nome de pasta (ex.: cerebro)."],
     "Z8lGw6": ["Compartilhar"],
     "Z8nach": ["Falha no envio: ", ["0"]],
+    "Z9s6k8": [
+      "Esta aba ainda está se reconectando ao OpenKnowledge, então não foi recarregada. Tente novamente em instantes."
+    ],
     "ZBF9fn": ["Gerenciar as pastas de habilidades"],
     "ZBZEkP": ["Capturada antes desta caixa de diálogo, com o ponteiro marcado."],
     "ZBxvV3": ["Novo terminal"],
@@ -4320,6 +4333,7 @@
       ["names"],
       ". Cada original foi verificado e está inalterado, então remova essas cópias e tente a movimentação de novo."
     ],
+    "eJR1Ns": ["Salvando suas edições antes de recarregar…"],
     "eJitUk": ["Enviar do computador"],
     "eKGK4A": ["Pesquisar no histórico de conversas"],
     "eKThTQ": ["Falha ao reordenar"],
@@ -5147,6 +5161,11 @@
     "l46MqT": ["Próxima aba"],
     "l5J_HM": [
       "Digite uma consulta e pressione <0>↵</0> para buscar nas suas páginas por significado."
+    ],
+    "l60gJd": [
+      "Algumas edições ainda não chegaram ao servidor, então a aba não foi recarregada. Abra ",
+      ["docs"],
+      " para salvá-las e depois recarregue."
     ],
     "l6GfXr": ["Iniciando"],
     "l6kpzR": [
@@ -6554,6 +6573,13 @@
     "xnWySt": ["A limpeza pode ainda estar em andamento."],
     "xrVr_k": ["Não deu para criar a habilidade: ", ["0"]],
     "xsZhu-": ["Número da página"],
+    "xsqOtX": [
+      "O OpenKnowledge neste computador agora está na v",
+      ["serverVersion"],
+      ", mas esta aba ainda está executando a v",
+      ["tabVersion"],
+      "."
+    ],
     "xtJgSe": ["Esta fonte traz várias habilidades — escolha qual importar."],
     "xvv5gL": ["Prévia da captura de tela"],
     "xxRpzT": ["Slidev encontrado no seu sistema."],
@@ -6750,6 +6776,9 @@
     "zkkEFa": ["Insira um número inteiro entre ", ["minimum"], " e ", ["maximum"], "."],
     "zkz0Fg": ["Configurar a sincronização"],
     "zlErBl": ["A resposta de erro dos títulos da página não seguiu a RFC 9457"],
+    "zmQdP2": [
+      "Esta aba não conseguiu confirmar que suas edições estão salvas, então não foi recarregada. Suas edições continuam aqui."
+    ],
     "zo3Dl7": ["Mostrar ou ocultar as miniaturas"],
     "zpfN9p": ["Ainda não há comentários. Selecione um texto no documento para adicionar um."],
     "zq2eBA": ["Ver no código"],

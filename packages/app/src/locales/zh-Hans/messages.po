@@ -88,6 +88,10 @@ msgstr "“{docName}”不存在。"
 msgid "\"{docName}\" took too long. Check your connection."
 msgstr "“{docName}”耗时过长。请检查你的网络连接。"
 
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "\"{name}\""
+msgstr "“{name}”"
+
 #: src/hooks/use-skill-origin.ts
 msgid "\"{name}\" is already up to date"
 msgstr "“{name}”已是最新"
@@ -1047,6 +1051,7 @@ msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, one {worktree} other {worktree}}"
 
 #: src/lib/acp/image-attachment.ts
+#: src/lib/install-stale-tab-reload-prompt.ts
 msgid "{others, plural, one {# other} other {# others}}"
 msgstr "{others, plural, other {其他 # 个文件}}"
 
@@ -9979,6 +9984,7 @@ msgstr "尚未安装到此项目。"
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/lib/install-server-drift-listener.ts
+#: src/lib/install-stale-tab-reload-prompt.ts
 msgid "Not now"
 msgstr "暂时不用"
 
@@ -10724,6 +10730,14 @@ msgstr "OpenKnowledge 移动了一个文档"
 #: src/components/command-palette-commands.ts
 msgid "OpenKnowledge on GitHub"
 msgstr "GitHub 上的 OpenKnowledge"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "OpenKnowledge on this computer changed to a different build, but this tab is still running the old one."
+msgstr "这台电脑上的 OpenKnowledge 已换成另一个构建，但这个标签页仍在运行旧的构建。"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "OpenKnowledge on this computer is now v{serverVersion}, but this tab is still running v{tabVersion}."
+msgstr "这台电脑上的 OpenKnowledge 现在是 v{serverVersion}，但这个标签页仍在运行 v{tabVersion}。"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge opened the live preview"
@@ -11929,10 +11943,15 @@ msgstr "相关度"
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
 #: src/components/TerminalStartingNotice.tsx
+#: src/lib/install-stale-tab-reload-prompt.ts
 #: src/lib/locale-load-failure-notice.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
 msgstr "重新加载"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Reload this tab to bring it up to date. Your edits are saved before it reloads."
+msgstr "重新加载这个标签页即可更新到最新。重新加载前会先保存你的编辑。"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "remote"
@@ -12774,6 +12793,10 @@ msgstr "正在保存"
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Saving changes…"
 msgstr "正在保存更改…"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Saving your edits before reloading…"
+msgstr "正在保存你的编辑，然后重新加载…"
 
 #: src/components/settings/LintingSection.tsx
 msgid "schema {deleteTarget}"
@@ -13862,6 +13885,14 @@ msgstr "部分检查失败，但仍可合并"
 #: src/components/TerminalPanel.tsx
 msgid "Some dropped files could not be inserted safely."
 msgstr "部分拖放的文件无法安全插入。"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Some edits haven't reached the server yet, so the tab didn't reload. Open {docs} to save them, then reload."
+msgstr "部分编辑尚未到达服务器，因此没有重新加载标签页。请打开 {docs} 以保存这些编辑，然后重新加载。"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "Some edits haven't reached the server yet, so the tab didn't reload. Your edits are still here."
+msgstr "部分编辑尚未到达服务器，因此没有重新加载标签页。你的编辑仍然保留在这里。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
@@ -15704,6 +15735,14 @@ msgstr "这个来源包含多个技能——请先选择一个，然后导入。
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose the one to import."
 msgstr "这个来源包含多个技能——请选择要导入的那一个。"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "This tab couldn't confirm that your edits are saved, so it didn't reload. Your edits are still here."
+msgstr "此标签页无法确认你的编辑已保存，因此没有重新加载。你的编辑仍然保留在这里。"
+
+#: src/lib/install-stale-tab-reload-prompt.ts
+msgid "This tab is still reconnecting to OpenKnowledge, so it didn't reload. Try again in a moment."
+msgstr "此标签页仍在重新连接 OpenKnowledge，因此没有重新加载。请稍后重试。"
 
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."

@@ -43,6 +43,9 @@
     ],
     "-bFGPF": ["Modification suivante"],
     "-dNlfM": ["Dernière modification annulée sur ", ["docName"]],
+    "-eFr9g": [
+      "OpenKnowledge sur cet ordinateur est passé à une autre version, mais cet onglet exécute toujours l'ancienne."
+    ],
     "-g6KIS": ["Lien non reconnu"],
     "-kKdCC": [["imported"], " compétences installées depuis ", ["0"]],
     "-kbIAr": ["Liens et images"],
@@ -1161,6 +1164,9 @@
     "9x-lMu": ["Dans ce dépôt — les collaborateurs reçoivent les copies via git."],
     "9xCnv8": ["Masquer Terminal"],
     "9zb2WA": ["Connexion"],
+    "A1JMsI": [
+      "Rechargez cet onglet pour le mettre à jour. Vos modifications sont enregistrées avant le rechargement."
+    ],
     "A1taO8": ["Rechercher"],
     "A50vr3": ["Utilisez uniquement des lettres minuscules, des chiffres et <0>-</0>."],
     "A5CYnd": ["Lien cassé"],
@@ -3003,6 +3009,7 @@
     "RXYvxn": ["Cette option ne peut pas être modifiée automatiquement."],
     "RY6Bq1": ["Ouvrir ", ["targetNoun"], " partagé"],
     "RZXTlY": ["Correction automatique (", ["count"], ")"],
+    "R_U8x8": ["« ", ["name"], " »"],
     "R_U_A4": ["Ajoutez un motif de fichier ou de dossier, par ex. guides/**/*"],
     "RaPMZv": ["Raccourcis clavier disponibles dans l'éditeur et l'espace de travail."],
     "RaUKLu": ["Contrôle à distance"],
@@ -3342,6 +3349,9 @@
     ],
     "VFQXPl": [
       "Les aperçus de liens externes affichent une carte avec le nom du site, le titre de la page et sa description au survol d'un lien."
+    ],
+    "VIrNh0": [
+      "Certaines modifications ne sont pas encore parvenues au serveur, l'onglet n'a donc pas été rechargé. Vos modifications sont toujours là."
     ],
     "VJaBca": ["Choisir un dossier de compétence"],
     "VL6VsE": ["Accepter l’actuel"],
@@ -3760,6 +3770,9 @@
     "Z8KDox": ["Saisissez un nom de dossier (par ex. brain)."],
     "Z8lGw6": ["Partager"],
     "Z8nach": ["Échec de l'envoi : ", ["0"]],
+    "Z9s6k8": [
+      "Cet onglet est encore en train de se reconnecter à OpenKnowledge, il n'a donc pas été rechargé. Réessayez dans un instant."
+    ],
     "ZBF9fn": ["Gérer les dossiers de compétences"],
     "ZBZEkP": ["Capture prise avant cette boîte de dialogue, avec le pointeur marqué."],
     "ZBxvV3": ["Nouveau terminal"],
@@ -4464,6 +4477,7 @@
       ["names"],
       ". Chaque original a été vérifié comme inchangé : supprimez ces copies, puis réessayez le déplacement."
     ],
+    "eJR1Ns": ["Enregistrement de vos modifications avant le rechargement…"],
     "eJitUk": ["Envoyer depuis l'ordinateur"],
     "eKGK4A": ["Rechercher dans l’historique des chats"],
     "eKThTQ": ["Échec de la réorganisation"],
@@ -5289,6 +5303,11 @@
     "l46MqT": ["Onglet suivant"],
     "l5J_HM": [
       "Saisissez une requête, puis appuyez sur <0>↵</0> pour chercher dans vos pages par le sens."
+    ],
+    "l60gJd": [
+      "Certaines modifications ne sont pas encore parvenues au serveur, l'onglet n'a donc pas été rechargé. Ouvrez ",
+      ["docs"],
+      " pour les enregistrer, puis rechargez."
     ],
     "l6GfXr": ["Démarrage"],
     "l6kpzR": [
@@ -6761,6 +6780,13 @@
     "xnWySt": ["Le nettoyage est peut-être encore en cours."],
     "xrVr_k": ["Impossible de créer la compétence : ", ["0"]],
     "xsZhu-": ["Numéro de page"],
+    "xsqOtX": [
+      "OpenKnowledge sur cet ordinateur est désormais en v",
+      ["serverVersion"],
+      ", mais cet onglet exécute toujours la v",
+      ["tabVersion"],
+      "."
+    ],
     "xtJgSe": ["Cette source regroupe plusieurs compétences — choisissez celle à importer."],
     "xvv5gL": ["Aperçu de la capture d’écran"],
     "xxRpzT": ["Slidev trouvé sur votre système."],
@@ -6975,6 +7001,9 @@
     "zkkEFa": ["Saisissez un nombre entier compris entre ", ["minimum"], " et ", ["maximum"], "."],
     "zkz0Fg": ["Configurer la synchronisation"],
     "zlErBl": ["La réponse d'erreur des titres de page ne respecte pas la RFC 9457"],
+    "zmQdP2": [
+      "Cet onglet n'a pas pu confirmer que vos modifications sont enregistrées, il n'a donc pas été rechargé. Vos modifications sont toujours là."
+    ],
     "zo3Dl7": ["Basculer les miniatures"],
     "zpfN9p": [
       "Pas encore de commentaires. Sélectionnez du texte dans le document pour en ajouter un."

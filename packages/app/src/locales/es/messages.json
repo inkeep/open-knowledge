@@ -41,6 +41,9 @@
     ],
     "-bFGPF": ["Cambio siguiente"],
     "-dNlfM": ["Se deshizo la última edición en ", ["docName"]],
+    "-eFr9g": [
+      "OpenKnowledge en este equipo cambió a otra compilación, pero esta pestaña sigue ejecutando la anterior."
+    ],
     "-g6KIS": ["Enlace no reconocido"],
     "-kKdCC": ["Se instalaron ", ["imported"], " habilidades desde ", ["0"]],
     "-kbIAr": ["Enlaces e imágenes"],
@@ -1132,6 +1135,9 @@
     "9x-lMu": ["En este repositorio: los colaboradores reciben copias mediante git."],
     "9xCnv8": ["Ocultar Terminal"],
     "9zb2WA": ["Conectando"],
+    "A1JMsI": [
+      "Recarga esta pestaña para actualizarla. Tus ediciones se guardan antes de recargar."
+    ],
     "A1taO8": ["Buscar"],
     "A50vr3": ["Usa solo letras minúsculas, dígitos y <0>-</0>."],
     "A5CYnd": ["Enlace roto"],
@@ -2957,6 +2963,7 @@
     "RXYvxn": ["Esta opción no se puede cambiar automáticamente."],
     "RY6Bq1": ["Abrir ", ["targetNoun"], " compartido"],
     "RZXTlY": ["Arreglo automático (", ["count"], ")"],
+    "R_U8x8": ["\"", ["name"], "\""],
     "R_U_A4": ["Añade un patrón de archivo o carpeta, p. ej. guides/**/*"],
     "RaPMZv": ["Atajos de teclado disponibles en el editor y en el espacio de trabajo."],
     "RaUKLu": ["Control remoto"],
@@ -3292,6 +3299,9 @@
     ],
     "VFQXPl": [
       "La vista previa de enlaces externos muestra una tarjeta con el nombre del sitio, el título de la página y la descripción al pasar el cursor por un enlace."
+    ],
+    "VIrNh0": [
+      "Algunas ediciones aún no han llegado al servidor, así que la pestaña no se recargó. Tus ediciones siguen aquí."
     ],
     "VJaBca": ["Elige una carpeta de habilidad"],
     "VL6VsE": ["Aceptar actual"],
@@ -3711,6 +3721,9 @@
     "Z8KDox": ["Escribe un nombre de carpeta (p. ej. cerebro)."],
     "Z8lGw6": ["Compartir"],
     "Z8nach": ["Falló la subida: ", ["0"]],
+    "Z9s6k8": [
+      "Esta pestaña aún se está reconectando a OpenKnowledge, así que no se recargó. Vuelve a intentarlo en un momento."
+    ],
     "ZBF9fn": ["Gestionar las carpetas de habilidades"],
     "ZBZEkP": ["Capturada antes de este diálogo, con el puntero marcado."],
     "ZBxvV3": ["Terminal nueva"],
@@ -4411,6 +4424,7 @@
       ["names"],
       ". Se verificó que cada original no cambió, así que elimina esas copias y vuelve a intentar el movimiento."
     ],
+    "eJR1Ns": ["Guardando tus ediciones antes de recargar…"],
     "eJitUk": ["Subir desde el equipo"],
     "eKGK4A": ["Buscar en el historial de chats"],
     "eKThTQ": ["No se pudo reordenar"],
@@ -5245,6 +5259,11 @@
     "l3zD7w": ["Iniciando el agente…"],
     "l46MqT": ["Pestaña siguiente"],
     "l5J_HM": ["Escribe una consulta y pulsa <0>↵</0> para buscar en tus páginas por significado."],
+    "l60gJd": [
+      "Algunas ediciones aún no han llegado al servidor, así que la pestaña no se recargó. Abre ",
+      ["docs"],
+      " para guardarlas y luego recarga."
+    ],
     "l6GfXr": ["Iniciando"],
     "l6kpzR": [
       "Este ",
@@ -6679,6 +6698,13 @@
     "xnWySt": ["Puede que la limpieza siga en curso."],
     "xrVr_k": ["No se pudo crear la habilidad: ", ["0"]],
     "xsZhu-": ["Número de página"],
+    "xsqOtX": [
+      "OpenKnowledge en este equipo ahora es la v",
+      ["serverVersion"],
+      ", pero esta pestaña sigue ejecutando la v",
+      ["tabVersion"],
+      "."
+    ],
     "xtJgSe": ["Este origen incluye varias habilidades: elige cuál importar."],
     "xvv5gL": ["Vista previa de la captura"],
     "xxRpzT": ["Slidev encontrado en tu sistema."],
@@ -6889,6 +6915,9 @@
     "zkkEFa": ["Introduce un número entero entre ", ["minimum"], " y ", ["maximum"], "."],
     "zkz0Fg": ["Configurar la sincronización"],
     "zlErBl": ["La respuesta de error de los encabezados de página no cumple RFC 9457"],
+    "zmQdP2": [
+      "Esta pestaña no pudo confirmar que tus ediciones estén guardadas, así que no se recargó. Tus ediciones siguen aquí."
+    ],
     "zo3Dl7": ["Mostrar u ocultar las miniaturas"],
     "zpfN9p": ["Todavía no hay comentarios. Selecciona texto en el documento para añadir uno."],
     "zq2eBA": ["Ver en el código"],

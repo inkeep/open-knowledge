@@ -54,6 +54,7 @@ import type { PinoLogger } from '../logger.ts';
 import { isWithinDir } from '../path-utils.ts';
 import { readServerLock } from '../server-lock.ts';
 import { listRescueCheckpoints, type ShadowRef, type TimelineRescueEntry } from '../shadow-repo.ts';
+import { PROTOCOL_VERSION, RUNTIME_VERSION } from '../version-constants.ts';
 import type { ApiRouteTable } from './api-pipeline.ts';
 import { errorResponse } from './error-response.ts';
 import { errnoCode } from './handler-utils.ts';
@@ -151,6 +152,8 @@ export function createConfigSystemRoutes(deps: ConfigSystemRouteDeps): ConfigSys
             ...(currentDiskAckSVs !== undefined ? { currentDiskAckSVs } : {}),
             ...(boot !== undefined ? { boot } : {}),
             ...(collabClients !== undefined ? { collabClients } : {}),
+            runtimeVersion: RUNTIME_VERSION,
+            protocolVersion: PROTOCOL_VERSION,
           },
           {
             handler: 'server-info',

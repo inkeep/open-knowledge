@@ -43,6 +43,7 @@ import {
 import { EditorLifecycleFlush } from '@/editor/EditorLifecycleFlush';
 import { parseEditorTabId, tabIdForNavigationTarget } from '@/editor/editor-tabs';
 import { previewOpenDisposition } from '@/editor/preview-open-disposition';
+import { StaleTabReloadPrompt } from '@/editor/StaleTabReloadPrompt';
 import { ConflictsProvider } from '@/hooks/use-conflicts';
 import { useFolderConfig } from '@/hooks/use-folder-config';
 import { useInstalledClis } from '@/hooks/use-installed-clis';
@@ -526,6 +527,7 @@ function ConfigProviderHost({ children }: { children: ReactNode }) {
     <ConfigProvider collabUrl={collabUrl} collabTerminal={collabTerminal}>
       <EditorLifecycleFlush />
       <BackgroundThrottleReporter />
+      <StaleTabReloadPrompt />
       <ExternalHandoffGateProvider>{children}</ExternalHandoffGateProvider>
     </ConfigProvider>
   );

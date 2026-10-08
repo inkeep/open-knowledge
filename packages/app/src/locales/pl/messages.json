@@ -47,6 +47,9 @@
     ],
     "-bFGPF": ["Następna zmiana"],
     "-dNlfM": ["Cofnięto ostatnią edycję w ", ["docName"]],
+    "-eFr9g": [
+      "OpenKnowledge na tym komputerze zmienił się na inną kompilację, ale ta karta nadal działa w starej."
+    ],
     "-g6KIS": ["Nierozpoznany link"],
     "-kKdCC": ["Zainstalowano ", ["imported"], " umiejętności z ", ["0"]],
     "-kbIAr": ["Linki i obrazy"],
@@ -1169,6 +1172,9 @@
     "9x-lMu": ["W tym repozytorium — współpracownicy otrzymują kopie przez gita."],
     "9xCnv8": ["Ukryj terminal"],
     "9zb2WA": ["Łączenie"],
+    "A1JMsI": [
+      "Wczytaj tę kartę ponownie, aby ją zaktualizować. Twoje edycje zostaną zapisane przed ponownym wczytaniem."
+    ],
     "A1taO8": ["Szukaj"],
     "A50vr3": ["Używaj wyłącznie małych liter, cyfr oraz <0>-</0>."],
     "A5CYnd": ["Zerwany link"],
@@ -3015,6 +3021,7 @@
     "RXYvxn": ["Tej opcji nie można zmienić automatycznie."],
     "RY6Bq1": ["Otwórz udostępniony ", ["targetNoun"]],
     "RZXTlY": ["Napraw automatycznie (", ["count"], ")"],
+    "R_U8x8": ["\"", ["name"], "\""],
     "R_U_A4": ["Dodaj wzorzec pliku lub folderu, np. guides/**/*"],
     "RaPMZv": ["Skróty klawiszowe dostępne w edytorze i obszarze roboczym."],
     "RaUKLu": ["Zdalne sterowanie"],
@@ -3368,6 +3375,9 @@
     ],
     "VFQXPl": [
       "Podglądy linków zewnętrznych pokazują kartę z nazwą strony, tytułem i opisem po najechaniu na link."
+    ],
+    "VIrNh0": [
+      "Niektóre edycje nie dotarły jeszcze do serwera, więc karta nie została wczytana ponownie. Twoje edycje nadal tu są."
     ],
     "VJaBca": ["Wybierz folder umiejętności"],
     "VL6VsE": ["Akceptuj bieżącą"],
@@ -3790,6 +3800,9 @@
     "Z8KDox": ["Wpisz nazwę folderu (np. brain)."],
     "Z8lGw6": ["Udostępnij"],
     "Z8nach": ["Przesyłanie nie powiodło się: ", ["0"]],
+    "Z9s6k8": [
+      "Ta karta wciąż ponownie łączy się z OpenKnowledge, więc nie została wczytana ponownie. Spróbuj ponownie za chwilę."
+    ],
     "ZBF9fn": ["Zarządzaj folderami umiejętności"],
     "ZBZEkP": ["Przechwycone przed tym oknem, ze zaznaczonym wskaźnikiem."],
     "ZBxvV3": ["Nowy terminal"],
@@ -4509,6 +4522,7 @@
       ["names"],
       ". Każdy oryginał został zweryfikowany jako niezmieniony, więc usuń te kopie i spróbuj przenieść ponownie."
     ],
+    "eJR1Ns": ["Zapisywanie Twoich edycji przed ponownym wczytaniem…"],
     "eJitUk": ["Prześlij z komputera"],
     "eKGK4A": ["Przeszukaj historię czatu"],
     "eKThTQ": ["Nie udało się zmienić kolejności"],
@@ -5361,6 +5375,11 @@
     "l46MqT": ["Następna karta"],
     "l5J_HM": [
       "Wpisz zapytanie, a następnie naciśnij <0>↵</0>, aby przeszukać strony według znaczenia."
+    ],
+    "l60gJd": [
+      "Niektóre edycje nie dotarły jeszcze do serwera, więc karta nie została wczytana ponownie. Otwórz ",
+      ["docs"],
+      ", aby je zapisać, a potem wczytaj kartę ponownie."
     ],
     "l6GfXr": ["Uruchamianie"],
     "l6kpzR": [
@@ -6872,6 +6891,13 @@
     "xnWySt": ["Czyszczenie może nadal być uruchomione."],
     "xrVr_k": ["Nie udało się utworzyć umiejętności: ", ["0"]],
     "xsZhu-": ["Numer strony"],
+    "xsqOtX": [
+      "OpenKnowledge na tym komputerze ma teraz wersję v",
+      ["serverVersion"],
+      ", ale ta karta nadal działa w wersji v",
+      ["tabVersion"],
+      "."
+    ],
     "xtJgSe": ["To źródło zawiera kilka umiejętności — wybierz tę do zaimportowania."],
     "xvv5gL": ["Podgląd zrzutu ekranu"],
     "xxRpzT": ["Znaleziono Slidev w Twoim systemie."],
@@ -7097,6 +7123,9 @@
     "zkkEFa": ["Wpisz liczbę całkowitą z zakresu od ", ["minimum"], " do ", ["maximum"], "."],
     "zkz0Fg": ["Skonfiguruj synchronizację"],
     "zlErBl": ["Odpowiedź błędu dla nagłówków strony nie była zgodna z RFC 9457"],
+    "zmQdP2": [
+      "Ta karta nie mogła potwierdzić, że Twoje edycje są zapisane, więc nie została wczytana ponownie. Twoje edycje nadal tu są."
+    ],
     "zo3Dl7": ["Przełącz miniatury"],
     "zpfN9p": ["Brak komentarzy. Zaznacz tekst w dokumencie, aby dodać komentarz."],
     "zq2eBA": ["Zobacz w źródle"],

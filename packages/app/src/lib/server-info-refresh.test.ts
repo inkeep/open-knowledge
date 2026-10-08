@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ProviderPool } from '../editor/provider-pool';
 import { createSyncedReconnectGate, refreshServerInfo } from './server-info-refresh';
+import { observeServerVersion } from './server-version-store';
 
 vi.mock('../editor/branch-invalidation', () => ({
   handleBranchSwitched: vi.fn(() => Promise.resolve()),
@@ -11,6 +12,9 @@ vi.mock('./documents-events', () => ({
 }));
 vi.mock('./server-instance-store', () => ({
   setServerInstanceId: vi.fn(),
+}));
+vi.mock('./server-version-store', () => ({
+  observeServerVersion: vi.fn(),
 }));
 
 describe('createSyncedReconnectGate', () => {
@@ -133,5 +137,40 @@ describe('refreshServerInfo — branch adoption', () => {
     await refreshServerInfo(pool);
 
     expect(observed).toEqual([]);
+  });
+
+  test('hands the server version to the stale tab check', async () => {
+    stubServerInfo({ serverInstanceId: 'srv-1', runtimeVersion: '0.83.2', protocolVersion: 2 });
+    const { pool } = createPoolStub();
+
+    await refreshServerInfo(pool);
+
+    expect(observeServerVersion).toHaveBeenCalledWith({
+      runtimeVersion: '0.83.2',
+      protocolVersion: 2,
+    });
+  });
+
+  test('a server that does not report its version is observed as unversioned', async () => {
+    stubServerInfo({ serverInstanceId: 'srv-1' });
+    const { pool } = createPoolStub();
+
+    await refreshServerInfo(pool);
+
+    expect(observeServerVersion).toHaveBeenCalledWith({
+      runtimeVersion: null,
+      protocolVersion: null,
+    });
+  });
+
+  test('an unreachable server is not observed', async () => {
+    globalThis.fetch = vi.fn(() =>
+      Promise.reject(new Error('network down')),
+    ) as unknown as typeof globalThis.fetch;
+    const { pool } = createPoolStub();
+
+    await refreshServerInfo(pool);
+
+    expect(observeServerVersion).not.toHaveBeenCalled();
   });
 });

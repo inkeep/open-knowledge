@@ -189,6 +189,7 @@ vi.doMock('@/editor/EditorLifecycleFlush', () => ({ EditorLifecycleFlush: () => 
 vi.doMock('@/editor/BackgroundThrottleReporter', () => ({
   BackgroundThrottleReporter: () => null,
 }));
+vi.doMock('@/editor/StaleTabReloadPrompt', () => ({ StaleTabReloadPrompt: () => null }));
 vi.doMock('@/components/McpConsentDialog', () => ({ McpConsentDialog: () => null }));
 vi.doMock('@/components/CommandPalette', () => ({ CommandPalette: () => null }));
 vi.doMock('@/components/AuthModal', () => ({ AuthModal: () => null }));
