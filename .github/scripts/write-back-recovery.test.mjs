@@ -6,6 +6,7 @@ import {
   runWriteBack,
   unavailableNotificationVersions,
 } from './write-back.mjs';
+import { planIssueClose } from './write-back-gate.mjs';
 
 const origin = 'https://github.com/inkeep/open-knowledge/issues/1428';
 const pull = 'https://github.com/inkeep/agents-private/pull/4879';
@@ -41,6 +42,8 @@ function recoveryHarness(overrides = {}) {
       marked.push(marker);
     },
     postReply: async (target, text) => posts.push({ target, text }),
+    readIssueClosure: async () => planIssueClose({ issueState: 'closed' }),
+    closeIssue: async () => {},
     log: (line) => logs.push(line),
     ...overrides,
   };

@@ -7,6 +7,7 @@ import {
   highestVersion,
   isOriginRepliableFrom,
   partitionAttachments,
+  planIssueClose,
 } from './write-back-gate.mjs';
 
 const GH_ISSUE = 'https://github.com/inkeep/open-knowledge/issues/769';
@@ -250,6 +251,79 @@ describe('fan-in gate', () => {
   test('a missing ticket or resolver is a wiring error and throws rather than deciding', () => {
     expect(() => evaluateFanIn({ ticket: null, resolveVersion: () => null })).toThrow(/identifier/);
     expect(() => evaluateFanIn({ ticket: { identifier: 'PRD-1' } })).toThrow(/resolveVersion/);
+  });
+});
+
+describe('issue close decision', () => {
+  const carrier = (identifier, stateType) => ({ identifier, stateType });
+
+  test('an open issue closes when the canonical shipped and its synced ticket is a duplicate', () => {
+    expect(
+      planIssueClose({
+        issueState: 'open',
+        carriers: [carrier('PRD-8204', 'completed'), carrier('PRD-8646', 'duplicate')],
+      }),
+    ).toEqual({ close: true, reason: null, open: [] });
+  });
+
+  test('a canceled carrier is resolved, like the canceled descendant the fan-in gate passes over', () => {
+    expect(
+      planIssueClose({
+        issueState: 'open',
+        carriers: [carrier('PRD-1', 'completed'), carrier('PRD-2', 'canceled')],
+      }).close,
+    ).toBe(true);
+  });
+
+  test('any carrier still carrying work keeps the issue open and is named', () => {
+    expect(
+      planIssueClose({
+        issueState: 'open',
+        carriers: [
+          carrier('PRD-3', 'triage'),
+          carrier('PRD-1', 'completed'),
+          carrier('PRD-2', 'started'),
+        ],
+      }),
+    ).toEqual({ close: false, reason: 'open-carrier', open: ['PRD-2', 'PRD-3'] });
+  });
+
+  test('a carrier whose state could not be read keeps the issue open', () => {
+    expect(
+      planIssueClose({
+        issueState: 'open',
+        carriers: [carrier('PRD-1', 'completed'), { identifier: undefined, stateType: undefined }],
+      }),
+    ).toMatchObject({ close: false, reason: 'open-carrier', open: ['an unreadable ticket'] });
+  });
+
+  test('an issue that is already closed is never closed again, whatever its carriers say', () => {
+    expect(
+      planIssueClose({ issueState: 'closed', carriers: [carrier('PRD-1', 'completed')] }),
+    ).toMatchObject({ close: false, reason: 'already-closed' });
+  });
+
+  test('anything but an open issue, such as a pull request, is never closed', () => {
+    expect(
+      planIssueClose({ issueState: 'pull-request', carriers: [carrier('PRD-1', 'completed')] }),
+    ).toMatchObject({ close: false, reason: 'not-an-open-issue' });
+  });
+
+  test('no carrier at all is a lookup that missed, not permission to close', () => {
+    expect(planIssueClose({ issueState: 'open', carriers: [] })).toMatchObject({
+      close: false,
+      reason: 'no-carrier',
+    });
+  });
+
+  test('a carrier list known to be partial never closes', () => {
+    expect(
+      planIssueClose({
+        issueState: 'open',
+        carriers: [carrier('PRD-1', 'completed')],
+        carriersComplete: false,
+      }),
+    ).toMatchObject({ close: false, reason: 'carriers-truncated' });
   });
 });
 

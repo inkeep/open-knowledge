@@ -24,6 +24,7 @@ import {
   isOriginRepliableFrom,
   markerSuffixFor,
   partitionAttachments,
+  planIssueClose,
 } from './write-back-gate.mjs';
 import writeBackPolicy from './write-back-policy.json' with { type: 'json' };
 
@@ -64,6 +65,15 @@ export const CHILDREN_QUERY = `
         labels { nodes { name } }
         attachments { nodes { url } }
       }
+    }
+  }
+`;
+
+export const ISSUE_CARRIERS_QUERY = `
+  query WriteBackIssueCarriers($url: String!) {
+    attachmentsForURL(url: $url, first: ${PAGE_SIZE}) {
+      pageInfo { hasNextPage }
+      nodes { issue { identifier state { type } } }
     }
   }
 `;
@@ -282,6 +292,16 @@ export function createVersionFor(deps) {
     });
 }
 
+const KEPT_OPEN_HINTS = {
+  'open-carrier': 'close it by hand once every ticket on it is resolved',
+  'no-carrier':
+    'no ticket was found under the canonical issue URL, so check which tickets carry it ' +
+    'and close it by hand if none is still open',
+  'carriers-truncated':
+    'the carrier list came back cut off, so check which tickets carry it ' +
+    'and close it by hand if none is still open',
+};
+
 export class NeedsHumanError extends Error {
   constructor(message) {
     super(message);
@@ -319,6 +339,8 @@ export async function runWriteBack({
   readChangesetProse,
   postReply,
   recordNotification,
+  readIssueClosure,
+  closeIssue,
   classifyRelease,
   channel = 'stable',
   selfRepo = process.env.GITHUB_REPOSITORY,
@@ -330,6 +352,12 @@ export async function runWriteBack({
   }
   if (channel !== 'stable' && channel !== 'beta') {
     throw new Error(`runWriteBack requires channel 'stable' or 'beta', got '${channel}'`);
+  }
+  if (
+    channel === 'stable' &&
+    (typeof readIssueClosure !== 'function' || typeof closeIssue !== 'function')
+  ) {
+    throw new Error('Stable reconciliation requires readIssueClosure and closeIssue');
   }
   if (typeof isPublishedVersion !== 'function') {
     throw new Error('runWriteBack requires published release availability');
@@ -498,6 +526,15 @@ export async function runWriteBack({
         continue;
       }
 
+      const closure =
+        channel === 'stable' && origin.channel === 'github-issue'
+          ? await readIssueClosure(origin)
+          : null;
+      const keptOpen =
+        closure && !closure.close
+          ? `${origin.url} (${closure.open.length ? `${closure.reason}: ${closure.open.join(', ')}` : closure.reason})`
+          : null;
+
       if (!live) {
         log(
           `::notice::write-back: [dry run] would reply to ${origin.url} for ${candidate.identifier} ` +
@@ -506,11 +543,17 @@ export async function runWriteBack({
         log(
           `::notice::write-back: [dry run] ${recoveryFrom.length ? 'recovery correction' : 'release announcement'}: ${text.replaceAll('\n', ' ')}`,
         );
+        if (closure) {
+          log(
+            `::notice::write-back: [dry run] ${closure.close ? `would close ${origin.url} as completed` : `would not close ${keptOpen}`}.`,
+          );
+        }
         posted.push({
           identifier: candidate.identifier,
           origin: origin.url,
           version: gate.version,
           dryRun: true,
+          closed: closure?.close === true,
         });
         continue;
       }
@@ -528,19 +571,43 @@ export async function runWriteBack({
       } catch (err) {
         throw new NeedsHumanError(
           `marker for ${origin.url} was written but the reply did NOT send (${err.message}). ` +
-            'No future run will retry it; post the reply by hand.',
+            `No future run will retry it; post the reply by hand${closure?.close ? ', then close the issue' : ''}.`,
         );
       }
       log(
         `::notice::write-back: replied to ${origin.url} for ${candidate.identifier} ` +
           `(v${gate.version}).`,
       );
-      posted.push({
+      const entry = {
         identifier: candidate.identifier,
         origin: origin.url,
         version: gate.version,
         dryRun: false,
-      });
+        closed: false,
+      };
+      posted.push(entry);
+      if (!closure) continue;
+      if (!closure.close) {
+        const hint = KEPT_OPEN_HINTS[closure.reason];
+        log(
+          hint
+            ? `::warning::write-back: did not close ${keptOpen}. No later run revisits it; ${hint}.`
+            : `::notice::write-back: did not close ${keptOpen}.`,
+        );
+        continue;
+      }
+      try {
+        await closeIssue(origin);
+      } catch (err) {
+        throw new NeedsHumanError(
+          `the reply to ${origin.url} was sent but the issue did NOT close (${err.message}). ` +
+            'No future run will retry it; close it by hand.',
+        );
+      }
+      entry.closed = true;
+      log(
+        `::notice::write-back: closed ${origin.url} for ${candidate.identifier} (v${gate.version}).`,
+      );
     }
   };
 
@@ -598,8 +665,8 @@ export function runFailureMessage({ errored = [], deferred } = {}) {
   }
   return (
     `${head}. ACTION REQUIRED: ${needsHuman.map((e) => e.identifier).join(', ')} ` +
-    `${needsHuman.length === 1 ? 'was' : 'were'} marked as notified but the reply never sent; ` +
-    'no future run will retry, so post it by hand.'
+    `${needsHuman.length === 1 ? 'was' : 'were'} marked as notified before a write failed; ` +
+    'no future run will retry, so finish what each message above names by hand.'
   );
 }
 
@@ -843,12 +910,13 @@ export function selectGhToken({ owner, repo, env }) {
   return `${owner}/${repo}`.toLowerCase() === self ? null : crossRepo;
 }
 
-function gh(args, target) {
+function gh(args, target, { timeout } = {}) {
   const token = target ? selectGhToken({ ...target, env: process.env }) : null;
   return execFileSync('gh', args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     env: token ? { ...process.env, GH_TOKEN: token } : process.env,
+    timeout,
   });
 }
 
@@ -983,6 +1051,67 @@ async function realPostReply(origin, text) {
   throw new Error(`no reply transport for origin channel '${origin.channel}'`);
 }
 
+export function createIssueClosureReader({ readIssueState, queryCarriers }) {
+  return async (origin) => {
+    const issueState = await readIssueState(origin);
+    if (issueState !== 'open') return planIssueClose({ issueState });
+    const data = await queryCarriers(
+      `https://github.com/${origin.owner}/${origin.repo}/issues/${origin.number}`,
+    );
+    const connection = data?.attachmentsForURL;
+    if (!connection) {
+      throw new Error(
+        `Linear returned no attachments connection for ${origin.url}; refusing to treat that as no carriers.`,
+      );
+    }
+    return planIssueClose({
+      issueState,
+      carriers: connection.nodes.map((node) => ({
+        identifier: node.issue?.identifier,
+        stateType: node.issue?.state?.type,
+      })),
+      carriersComplete: connection.pageInfo?.hasNextPage === false,
+    });
+  };
+}
+
+export function readIssueStateWith(runGh, origin) {
+  try {
+    return runGh(
+      [
+        'api',
+        `repos/${origin.owner}/${origin.repo}/issues/${origin.number}`,
+        '--jq',
+        'if .pull_request then "pull-request" else .state end',
+      ],
+      origin,
+      { timeout: REQUEST_TIMEOUT_MS },
+    ).trim();
+  } catch (err) {
+    if (/\(HTTP (?:404|410)\)/.test(String(err?.stderr ?? ''))) return 'gone';
+    throw new Error(
+      `gh api issues/${origin.number} failed: ${String(err?.stderr || err?.message || '').trim()}`,
+    );
+  }
+}
+
+function realCloseIssue(origin) {
+  gh(
+    [
+      'api',
+      '--method',
+      'PATCH',
+      `repos/${origin.owner}/${origin.repo}/issues/${origin.number}`,
+      '-f',
+      'state=closed',
+      '-f',
+      'state_reason=completed',
+    ],
+    origin,
+    { timeout: REQUEST_TIMEOUT_MS },
+  );
+}
+
 async function main() {
   const log = (message) => console.log(message);
   const apiKey = (process.env.LINEAR_API_KEY ?? '').trim();
@@ -1051,6 +1180,12 @@ async function main() {
     channel,
     readChangesetProse: (candidate, ctx) => realReadChangesetProse(candidate, ctx),
     postReply: realPostReply,
+    readIssueClosure: createIssueClosureReader({
+      readIssueState: (origin) => readIssueStateWith(gh, origin),
+      queryCarriers: (url) =>
+        linearGraphql({ apiKey, query: ISSUE_CARRIERS_QUERY, variables: { url }, log, fetchImpl }),
+    }),
+    closeIssue: realCloseIssue,
     recordNotification: async ({ issueId, url, title }) => {
       const data = await linearGraphql({
         fetchImpl,
@@ -1074,6 +1209,7 @@ async function main() {
       linearRequests,
       deferred: result.deferred,
       posted: result.posted.length,
+      closed: result.posted.filter((entry) => entry.closed).length,
       skipped: result.skipped,
       errored: result.errored,
     }),

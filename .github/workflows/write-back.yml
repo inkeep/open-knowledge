@@ -60,7 +60,8 @@ on:
 
 permissions:
   contents: read
-  # Posting the reply onto a GitHub issue origin in this repo.
+  # Posting the reply onto a GitHub issue origin in this repo, and closing that
+  # issue with the stable reply once every Linear ticket carrying it is resolved.
   issues: write
 
 jobs:

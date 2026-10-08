@@ -205,6 +205,21 @@ export function evaluateFanIn({ ticket, descendants = [], resolveVersion, log = 
   };
 }
 
+const RESOLVED_STATE_TYPES = new Set(['completed', 'canceled', 'duplicate']);
+
+export function planIssueClose({ issueState, carriers = [], carriersComplete = true }) {
+  if (issueState === 'closed') return { close: false, reason: 'already-closed', open: [] };
+  if (issueState !== 'open') return { close: false, reason: 'not-an-open-issue', open: [] };
+  if (!carriersComplete) return { close: false, reason: 'carriers-truncated', open: [] };
+  if (carriers.length === 0) return { close: false, reason: 'no-carrier', open: [] };
+  const open = carriers
+    .filter((carrier) => !RESOLVED_STATE_TYPES.has(carrier.stateType))
+    .map((carrier) => carrier.identifier ?? 'an unreadable ticket')
+    .sort();
+  if (open.length > 0) return { close: false, reason: 'open-carrier', open };
+  return { close: true, reason: null, open: [] };
+}
+
 export function composeReply({
   changeset = {},
   version,

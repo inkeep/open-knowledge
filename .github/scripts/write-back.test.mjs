@@ -8,6 +8,7 @@ import { deriveChannel } from './published-release-tags.mjs';
 import {
   CANDIDATE_QUERY,
   changesetDirFor,
+  createIssueClosureReader,
   deriveVersionForFixRefs,
   findChangesetPath,
   isFixRepoInRemit,
@@ -24,13 +25,14 @@ import {
   parseChangeset,
   parseMergeShaOutput,
   parseRetryAfterSeconds,
+  readIssueStateWith,
   retryDelayMs,
   runFailureMessage,
   runWriteBack,
   selectGhToken,
   toNode,
 } from './write-back.mjs';
-import { composeReply } from './write-back-gate.mjs';
+import { composeReply, planIssueClose } from './write-back-gate.mjs';
 
 const GH_ISSUE = 'https://github.com/inkeep/open-knowledge/issues/769';
 const GH_PULL = 'https://github.com/inkeep/agents-private/pull/2844';
@@ -66,6 +68,8 @@ function harness(overrides = {}) {
     readChangesetProse: async () => CHANGESET,
     postReply: async (origin, text) => writes.push({ kind: 'post', origin: origin.url, text }),
     recordNotification: async (marker) => writes.push({ kind: 'mark', url: marker.url }),
+    readIssueClosure: async () => planIssueClose({ issueState: 'closed' }),
+    closeIssue: async (origin) => writes.push({ kind: 'close', origin: origin.url }),
     classifyRelease: makeReleaseWindow({ releaseTag: 'v0.36.0', minimumVersion: '0.35.0' }),
     selfRepo: 'inkeep/open-knowledge',
     log: (m) => logs.push(m),
@@ -1786,6 +1790,340 @@ describe('the beta leg', () => {
     expect(forDiscord.text).toContain(
       '<https://github.com/inkeep/open-knowledge/releases/tag/v0.36.0>',
     );
+  });
+});
+
+describe('closing the GitHub issue the stable reply answers', () => {
+  const resolvedCarriers = [
+    { identifier: 'PRD-7539', stateType: 'completed' },
+    { identifier: 'PRD-8646', stateType: 'duplicate' },
+  ];
+  const closable = async () => planIssueClose({ issueState: 'open', carriers: resolvedCarriers });
+  const counting = () => {
+    const reads = [];
+    return {
+      reads,
+      readIssueClosure: async (origin) => {
+        reads.push(origin.url);
+        return closable();
+      },
+    };
+  };
+
+  test('an open issue whose synced ticket was marked duplicate is closed after the reply', async () => {
+    const h = harness({ live: true, readIssueClosure: closable });
+    const result = await h.run();
+    expect(h.writes.map((w) => w.kind)).toEqual(['mark', 'post', 'close']);
+    expect(h.writes.find((w) => w.kind === 'close').origin).toBe(GH_ISSUE);
+    expect(result.posted).toMatchObject([{ identifier: 'PRD-7539', closed: true }]);
+    expect(h.logs.some((m) => m.includes(`closed ${GH_ISSUE} for PRD-7539`))).toBe(true);
+  });
+
+  test('a ticket still open on the issue keeps it open and is named in the log', async () => {
+    const h = harness({
+      live: true,
+      readIssueClosure: async () =>
+        planIssueClose({
+          issueState: 'open',
+          carriers: [
+            ...resolvedCarriers,
+            { identifier: 'PRD-9002', stateType: 'triage' },
+            { identifier: 'PRD-9001', stateType: 'started' },
+          ],
+        }),
+    });
+    const result = await h.run();
+    expect(h.writes.map((w) => w.kind)).toEqual(['mark', 'post']);
+    expect(result.posted).toMatchObject([{ closed: false }]);
+    expect(
+      h.logs.some(
+        (m) =>
+          m.startsWith('::warning::') &&
+          m.includes(`did not close ${GH_ISSUE} (open-carrier: PRD-9001, PRD-9002)`) &&
+          m.includes('once every ticket on it is resolved'),
+      ),
+    ).toBe(true);
+  });
+
+  test('a carrier lookup that found nothing is reported as a lookup to check, not a ticket to wait on', async () => {
+    const h = harness({
+      live: true,
+      readIssueClosure: async () => planIssueClose({ issueState: 'open', carriers: [] }),
+    });
+    await h.run();
+    const line = h.logs.find((m) => m.includes(`did not close ${GH_ISSUE} (no-carrier)`));
+    expect(line).toMatch(/^::warning::/);
+    expect(line).toContain('no ticket was found under the canonical issue URL');
+    expect(line).not.toContain('once every ticket on it is resolved');
+  });
+
+  test('a pull request behind an issue url is a notice, not advice to close it by hand', async () => {
+    const h = harness({
+      live: true,
+      readIssueClosure: async () => planIssueClose({ issueState: 'pull-request' }),
+    });
+    await h.run();
+    expect(h.writes.map((w) => w.kind)).toEqual(['mark', 'post']);
+    const line = h.logs.find((m) => m.includes(`did not close ${GH_ISSUE}`));
+    expect(line).toMatch(/^::notice::/);
+    expect(line).not.toContain('by hand');
+  });
+
+  test('a gone issue is not closed, and its failed reply needs a person once', async () => {
+    const h = harness({
+      live: true,
+      readIssueClosure: async () => planIssueClose({ issueState: 'gone' }),
+      postReply: async () => {
+        throw new Error('gh: Not Found (HTTP 404)');
+      },
+    });
+    const result = await h.run();
+    expect(h.writes.map((w) => w.kind)).toEqual(['mark']);
+    expect(result.errored[0].disposition).toBe('needs-human');
+  });
+
+  test('a lost reply that was going to close the issue says the close is owed too', async () => {
+    const h = harness({
+      live: true,
+      readIssueClosure: closable,
+      postReply: async () => {
+        throw new Error('HTTP 502');
+      },
+    });
+    const result = await h.run();
+    expect(h.writes.map((w) => w.kind)).toEqual(['mark']);
+    expect(result.errored[0].message).toContain('post the reply by hand, then close the issue');
+  });
+
+  test('a Linear throttle while reading the close stops the scan before any marker', async () => {
+    const h = harness({
+      live: true,
+      listCandidates: async () => [candidate(), candidate({ id: 'uuid-2', identifier: 'PRD-2' })],
+      readIssueClosure: async () => {
+        throw new LinearRateLimitError(new Headers());
+      },
+    });
+    const result = await h.run();
+    expect(h.writes).toEqual([]);
+    expect(result.errored).toHaveLength(1);
+    expect(result.errored[0].disposition).toBe('retried-next-run');
+    expect(result.deferred).toBe(1);
+  });
+
+  test('an issue Linear already closed from its own synced ticket is left alone', async () => {
+    const h = harness({ live: true });
+    await h.run();
+    expect(h.writes.map((w) => w.kind)).toEqual(['mark', 'post']);
+  });
+
+  test('the beta reply promises a follow-up, so it never inspects or closes the issue', async () => {
+    const spy = counting();
+    const h = harness({
+      live: true,
+      channel: 'beta',
+      versionFor: async () => '0.37.0-beta.0',
+      classifyRelease: makeReleaseWindow({
+        releaseTag: 'v0.37.0-beta.1',
+        minimumVersion: '0.37.0-beta.0',
+      }),
+      readIssueClosure: spy.readIssueClosure,
+    });
+    await h.run();
+    expect(h.writes.map((w) => w.kind)).toEqual(['mark', 'post']);
+    expect(spy.reads).toEqual([]);
+  });
+
+  test('a Discord thread is answered but has nothing to close', async () => {
+    const spy = counting();
+    const h = harness({
+      live: true,
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, DISCORD_THREAD] })],
+      readIssueClosure: spy.readIssueClosure,
+    });
+    await h.run();
+    expect(h.writes.map((w) => w.kind)).toEqual(['mark', 'post']);
+    expect(spy.reads).toEqual([]);
+  });
+
+  test('an origin already told about this release is neither replied to nor closed', async () => {
+    const marker = notificationMarkerUrl({ version: '0.36.0', originUrl: GH_ISSUE });
+    const spy = counting();
+    const h = harness({
+      live: true,
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, GH_ISSUE, marker] })],
+      readIssueClosure: spy.readIssueClosure,
+    });
+    const result = await h.run();
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'already-notified' }]);
+    expect(h.writes).toEqual([]);
+    expect(spy.reads).toEqual([]);
+  });
+
+  test('a close lost after the reply was sent needs a person, because no run will retry it', async () => {
+    const h = harness({
+      live: true,
+      readIssueClosure: closable,
+      closeIssue: async () => {
+        throw new Error('HTTP 403: Resource not accessible by integration');
+      },
+    });
+    const result = await h.run();
+    expect(h.writes.map((w) => w.kind)).toEqual(['mark', 'post']);
+    expect(result.posted).toMatchObject([{ closed: false }]);
+    const [failure] = result.errored;
+    expect(failure.disposition).toBe('needs-human');
+    expect(failure.message).toContain('was sent but the issue did NOT close');
+    expect(failure.message).toContain('close it by hand');
+    const verdict = runFailureMessage(result);
+    expect(verdict).toContain('ACTION REQUIRED: PRD-7539');
+    expect(verdict).not.toContain('reply never sent');
+  });
+
+  test('a failed closure read stops before the marker, so the next run tries again', async () => {
+    const h = harness({
+      live: true,
+      readIssueClosure: async () => {
+        throw new Error('gh api issues/769 failed: HTTP 502');
+      },
+    });
+    const result = await h.run();
+    expect(h.writes).toEqual([]);
+    expect(result.errored[0].disposition).toBe('retried-next-run');
+  });
+
+  test('a dry run reports the close it would make and makes none', async () => {
+    const h = harness({ readIssueClosure: closable });
+    const result = await h.run();
+    expect(h.writes).toEqual([]);
+    expect(result.posted).toMatchObject([{ dryRun: true, closed: true }]);
+    expect(h.logs.some((m) => m.includes(`[dry run] would close ${GH_ISSUE} as completed`))).toBe(
+      true,
+    );
+  });
+
+  test('stable reconciliation refuses to run without a way to close what it answers', async () => {
+    await expect(harness({ readIssueClosure: undefined }).run()).rejects.toThrow(
+      /readIssueClosure/,
+    );
+    await expect(harness({ closeIssue: undefined }).run()).rejects.toThrow(/closeIssue/);
+  });
+});
+
+describe('reading whether an answered issue may close', () => {
+  const origin = {
+    channel: 'github-issue',
+    url: GH_ISSUE,
+    owner: 'inkeep',
+    repo: 'open-knowledge',
+    number: 769,
+  };
+  const carriers = (nodes, hasNextPage = false) => ({
+    attachmentsForURL: { pageInfo: { hasNextPage }, nodes },
+  });
+  const carrier = (identifier, type) => ({ issue: { identifier, state: { type } } });
+
+  test('an issue that is already closed costs no Linear request', async () => {
+    const queried = [];
+    const read = createIssueClosureReader({
+      readIssueState: async () => 'closed',
+      queryCarriers: async (url) => {
+        queried.push(url);
+        return carriers([]);
+      },
+    });
+    expect(await read(origin)).toMatchObject({ close: false, reason: 'already-closed' });
+    expect(queried).toEqual([]);
+  });
+
+  test('the carriers are looked up under the issue url the sync uses and judged by state type', async () => {
+    const queried = [];
+    const read = createIssueClosureReader({
+      readIssueState: async () => 'open',
+      queryCarriers: async (url) => {
+        queried.push(url);
+        return carriers([carrier('PRD-8204', 'completed'), carrier('PRD-8646', 'duplicate')]);
+      },
+    });
+    expect(await read({ ...origin, url: `${GH_ISSUE}#issuecomment-1` })).toMatchObject({
+      close: true,
+    });
+    expect(queried).toEqual([GH_ISSUE]);
+  });
+
+  test('a pull request reached through an issue url is never closed', async () => {
+    const read = createIssueClosureReader({
+      readIssueState: async () => 'pull-request',
+      queryCarriers: async () => carriers([carrier('PRD-8204', 'completed')]),
+    });
+    expect(await read(origin)).toMatchObject({ close: false, reason: 'not-an-open-issue' });
+  });
+
+  test('a carrier list cut off by paging is not mistaken for the whole list', async () => {
+    const read = createIssueClosureReader({
+      readIssueState: async () => 'open',
+      queryCarriers: async () => carriers([carrier('PRD-8204', 'completed')], true),
+    });
+    expect(await read(origin)).toMatchObject({ close: false, reason: 'carriers-truncated' });
+  });
+
+  test('the state read asks GitHub for the issue, bounded, and tells a pull request apart', () => {
+    const calls = [];
+    const state = readIssueStateWith((args, target, options) => {
+      calls.push({ args, target, options });
+      return 'pull-request\n';
+    }, origin);
+    expect(state).toBe('pull-request');
+    expect(calls).toEqual([
+      {
+        args: [
+          'api',
+          'repos/inkeep/open-knowledge/issues/769',
+          '--jq',
+          'if .pull_request then "pull-request" else .state end',
+        ],
+        target: origin,
+        options: { timeout: expect.any(Number) },
+      },
+    ]);
+  });
+
+  test('a missing or deleted issue reads as gone, so it settles instead of retrying every run', () => {
+    const failing = (stderr) => () => {
+      throw Object.assign(new Error('Command failed: gh api'), { stderr });
+    };
+    expect(readIssueStateWith(failing('gh: Not Found (HTTP 404)\n'), origin)).toBe('gone');
+    expect(readIssueStateWith(failing('gh: This issue was deleted (HTTP 410)\n'), origin)).toBe(
+      'gone',
+    );
+  });
+
+  test('any other failed state read throws, so the next run retries it before any marker', () => {
+    const failing = (error) => () => {
+      throw error;
+    };
+    expect(() =>
+      readIssueStateWith(
+        failing(Object.assign(new Error('gh'), { stderr: 'gh: Bad Gateway (HTTP 502)\n' })),
+        origin,
+      ),
+    ).toThrow(/issues\/769 failed: gh: Bad Gateway \(HTTP 502\)/);
+    expect(() =>
+      readIssueStateWith(
+        failing(Object.assign(new Error('gh'), { stderr: 'gh: Forbidden (HTTP 403)\n' })),
+        origin,
+      ),
+    ).toThrow(/HTTP 403/);
+    expect(() => readIssueStateWith(failing(new Error('spawnSync gh ETIMEDOUT')), origin)).toThrow(
+      /ETIMEDOUT/,
+    );
+  });
+
+  test('a reply with no attachments connection throws rather than reading as no carriers', async () => {
+    const read = createIssueClosureReader({
+      readIssueState: async () => 'open',
+      queryCarriers: async () => ({}),
+    });
+    await expect(read(origin)).rejects.toThrow(/no attachments connection/);
   });
 });
 
