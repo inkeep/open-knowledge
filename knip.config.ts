@@ -40,6 +40,7 @@ export default {
     'xdg-mime', // Linux default-app query — desktop ipc-handlers.ts
     'ssh-keygen', // ephemeral VM keypair — lume-qa lume-orchestrator.ts
     'zsh', // the executor's `.private.` test also runs the printed Biome fix under zsh -c
+    'rustup',
   ],
   ignoreIssues: {
     'test-support/vitest.base.ts': ['exports'],
@@ -147,11 +148,15 @@ export default {
     'packages/server': {
       entry: ['src/**/*.test.ts', 'src/parse-worker.ts'],
       project: 'src/**',
-      ignoreDependencies: ['@types/shell-quote'],
+      ignoreDependencies: [
+        '@types/shell-quote',
+      ],
     },
     'packages/cli': {
       entry: ['src/**/*.test.ts', 'scripts/*.ts', 'tests/**/*.ts', 'src/parse-worker.ts'],
-      ignoreDependencies: ['yjs'],
+      ignoreDependencies: [
+        'yjs',
+      ],
     },
     'packages/desktop': {
       entry: [

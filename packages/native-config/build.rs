@@ -1,4 +1,7 @@
+mod toolchain_guard;
+
 fn main() {
+    toolchain_guard::require_declared_rustc();
     napi_build::setup();
 
     // `napi_build::setup()` only applies `-undefined dynamic_lookup` to the

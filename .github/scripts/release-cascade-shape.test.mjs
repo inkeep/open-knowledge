@@ -1376,6 +1376,126 @@ describe('the macOS artifact is attested signed before it can ship', () => {
       expect(step).toContain('No .app found under dist-desktop to attest');
     }
   });
+
+  const HELPER_CHECK = 'assert-packaged-helper-runs-as-node.mjs';
+  const SHIPS_THE_APP = {
+    'desktop-release.yml#build-macos': [
+      'Verify a historical app can update in place',
+      'Smoke the packaged DMG (FR5b)',
+      'Upload macOS release assets for the fan-in publisher',
+    ],
+    'desktop-build.yml#build-macos-dmg': ['Upload DMG artifact'],
+  };
+  const runsHelperCheck = (step) => step.run?.includes(HELPER_CHECK) ?? false;
+  const helperCheckProblems = (job) => {
+    const checks = job.steps.filter(runsHelperCheck);
+    if (checks.length === 0) return [`${job.label} has no step that runs ${HELPER_CHECK}`];
+    const attest = macStepIndex(job, ATTEST);
+    return checks.flatMap((check) => {
+      const at = job.steps.indexOf(check);
+      const placed = `${job.label}: the packaged-helper check`;
+      return [
+        ...(at > attest ? [] : [`${placed} runs before ${ATTEST}`]),
+        ...SHIPS_THE_APP[job.label]
+          .filter((name) => at > macStepIndex(job, name))
+          .map((name) => `${placed} runs after ${name}`),
+        ...(check.if === undefined ? [] : [`${placed} runs only if ${check.if}`]),
+        ...(check['continue-on-error'] === undefined ? [] : [`${placed} sets continue-on-error`]),
+      ];
+    });
+  };
+  const planted = (job, plant) => ({ ...job, steps: plant(job.steps) });
+  const moveHelperCheck = (steps, place) => {
+    const rest = steps.filter((step) => !runsHelperCheck(step));
+    const at = place(rest);
+    return [...rest.slice(0, at), ...steps.filter(runsHelperCheck), ...rest.slice(at)];
+  };
+
+  test('both workflows check the packaged helper of the attested app before it is smoked or uploaded', () => {
+    expect(macPackagingJobs.map((job) => job.label)).toEqual(Object.keys(SHIPS_THE_APP));
+    for (const job of macPackagingJobs) {
+      expect(helperCheckProblems(job), job.label).toEqual([]);
+    }
+  });
+
+  test.each([
+    [
+      'removed',
+      (steps) => steps.filter((step) => !runsHelperCheck(step)),
+      {
+        'desktop-release.yml#build-macos': [
+          'desktop-release.yml#build-macos has no step that runs assert-packaged-helper-runs-as-node.mjs',
+        ],
+        'desktop-build.yml#build-macos-dmg': [
+          'desktop-build.yml#build-macos-dmg has no step that runs assert-packaged-helper-runs-as-node.mjs',
+        ],
+      },
+    ],
+    [
+      'given an if:',
+      (steps) =>
+        steps.map((step) =>
+          runsHelperCheck(step) ? { ...step, if: "steps.signmode.outputs.mode == 'signed'" } : step,
+        ),
+      {
+        'desktop-release.yml#build-macos': [
+          "desktop-release.yml#build-macos: the packaged-helper check runs only if steps.signmode.outputs.mode == 'signed'",
+        ],
+        'desktop-build.yml#build-macos-dmg': [
+          "desktop-build.yml#build-macos-dmg: the packaged-helper check runs only if steps.signmode.outputs.mode == 'signed'",
+        ],
+      },
+    ],
+    [
+      'allowed to fail',
+      (steps) =>
+        steps.map((step) =>
+          runsHelperCheck(step) ? { ...step, 'continue-on-error': true } : step,
+        ),
+      {
+        'desktop-release.yml#build-macos': [
+          'desktop-release.yml#build-macos: the packaged-helper check sets continue-on-error',
+        ],
+        'desktop-build.yml#build-macos-dmg': [
+          'desktop-build.yml#build-macos-dmg: the packaged-helper check sets continue-on-error',
+        ],
+      },
+    ],
+    [
+      'moved after the upload',
+      (steps) =>
+        moveHelperCheck(
+          steps,
+          (rest) => rest.findIndex((step) => step.uses?.startsWith('actions/upload-artifact@')) + 1,
+        ),
+      {
+        'desktop-release.yml#build-macos': [
+          'desktop-release.yml#build-macos: the packaged-helper check runs after Verify a historical app can update in place',
+          'desktop-release.yml#build-macos: the packaged-helper check runs after Smoke the packaged DMG (FR5b)',
+          'desktop-release.yml#build-macos: the packaged-helper check runs after Upload macOS release assets for the fan-in publisher',
+        ],
+        'desktop-build.yml#build-macos-dmg': [
+          'desktop-build.yml#build-macos-dmg: the packaged-helper check runs after Upload DMG artifact',
+        ],
+      },
+    ],
+    [
+      'moved ahead of the attestation',
+      (steps) => moveHelperCheck(steps, (rest) => rest.findIndex((step) => step.name === ATTEST)),
+      {
+        'desktop-release.yml#build-macos': [
+          'desktop-release.yml#build-macos: the packaged-helper check runs before Attest the signed macOS app',
+        ],
+        'desktop-build.yml#build-macos-dmg': [
+          'desktop-build.yml#build-macos-dmg: the packaged-helper check runs before Attest the signed macOS app',
+        ],
+      },
+    ],
+  ])('the helper check placement reds when the step is %s', (_case, plant, expected) => {
+    for (const job of macPackagingJobs) {
+      expect(helperCheckProblems(planted(job, plant)), job.label).toEqual(expected[job.label]);
+    }
+  });
 });
 
 describe('every job that reads changesets installs the Changesets reader first', () => {

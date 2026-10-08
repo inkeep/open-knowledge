@@ -27,7 +27,7 @@
   "scripts": {
     "build": "node scripts/build.mjs --release",
     "build:debug": "node scripts/build.mjs",
-    "test": "cargo test && node --test scripts/build.test.mjs"
+    "test": "cargo test && node --test scripts/build.test.mjs && node --test scripts/toolchain-guard.test.mjs"
   },
   "devDependencies": {
     "@napi-rs/cli": "^3.7.2"

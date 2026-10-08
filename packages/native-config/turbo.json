@@ -6,15 +6,17 @@
         "Cargo.toml",
         "Cargo.lock",
         "build.rs",
+        "toolchain_guard.rs",
         "src/**/*.rs",
         "package.json",
-        "scripts/build.mjs"
+        "scripts/build.mjs",
+        "$TURBO_ROOT$/rust-toolchain.toml"
       ],
       "outputs": ["index.js", "index.d.ts", "*.node"]
     },
     "test": {
-      "dependsOn": [],
-      "inputs": ["$TURBO_DEFAULT$", "!README.md"],
+      "dependsOn": ["build"],
+      "inputs": ["$TURBO_DEFAULT$", "!README.md", "$TURBO_ROOT$/rust-toolchain.toml"],
       "outputs": []
     }
   }

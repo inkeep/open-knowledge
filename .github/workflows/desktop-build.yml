@@ -91,12 +91,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Node 24 matches the existing ci.yml / release.yml pattern —
-      # turbo's `^build` pulls in the app via workspace deps that resolve
-      # to `.ts` sources; Node 22.6+ strips TypeScript types natively.
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "24"
+          node-version-file: .node-version
           package-manager-cache: false
 
       - uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
@@ -111,6 +108,11 @@ jobs:
         env:
           ELECTRON_SKIP_REBUILD: "0"
         run: pnpm install --frozen-lockfile
+
+      - name: Install the declared Rust toolchain
+        run: |
+          rustup toolchain install --no-self-update
+          rustc -vV
 
       - name: Build workspace (produces packages/cli/dist/public for extraResources)
         run: |
@@ -390,6 +392,10 @@ jobs:
             exit 1
           fi
           echo "Attested $FOUND signed, notarized, stapled app bundle(s)."
+
+      - name: Assert the packaged server helper runs as Node
+        working-directory: packages/desktop
+        run: node scripts/assert-packaged-helper-runs-as-node.mjs dist-desktop "desktop-build (macOS .app)"
 
       # Gate on success() — on build failure, there is no DMG, so running
       # the upload step would stack a second "no files found" error on top

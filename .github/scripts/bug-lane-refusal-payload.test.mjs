@@ -1,8 +1,21 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: shell and GitHub expression fixtures must remain literal.
-import { readdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { execFile, execFileSync } from 'node:child_process';
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { parse } from 'yaml';
+import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
 
 import {
   actionLine,
@@ -243,6 +256,22 @@ describe('reasonPhrase and buildHeadline', () => {
     expect(retried).toMatch(/retries this batch automatically/);
     expect(soaked).toMatch(/rides its cycle's stable/);
     expect(retried).not.toMatch(/rides its cycle's stable/);
+  });
+
+  test('a failed toolchain install names the install as the reason, not a timeout', () => {
+    const install = reasonPhrase({ verdict: 'could-not-verify', refs: [], cause: 'toolchain' });
+    expect(install.split(/\s+/).length).toBeLessThanOrEqual(3);
+    expect(install).toMatch(/toolchain/);
+    expect(install).not.toBe(reasonPhrase({ verdict: 'could-not-verify', refs: [] }));
+    const headline = buildHeadline({
+      verdict: 'could-not-verify',
+      refs: [],
+      stable: 'v1',
+      cause: 'toolchain',
+    });
+    expect(headline).toContain(install);
+    expect(headline).toMatch(/retries this batch automatically/);
+    expect(headline).not.toMatch(/timeout/);
   });
 });
 
@@ -487,6 +516,12 @@ describe('parseArgs', () => {
   test('defaults a missing refs array rather than throwing', () => {
     expect(parseArgs(['node', 'x', '--input', '{"verdict":"fail"}']).refs).toEqual([]);
   });
+
+  test('carries the cause the verify step recorded, and none when it recorded none', () => {
+    const input = (fields) => parseArgs(['node', 'x', '--input', JSON.stringify(fields)]);
+    expect(input({ verdict: 'could-not-verify', cause: 'toolchain' }).cause).toBe('toolchain');
+    expect(input({ verdict: 'could-not-verify' }).cause).toBe('');
+  });
 });
 
 describe('workflow wiring', () => {
@@ -693,5 +728,234 @@ describe('workflow wiring', () => {
     expect(bodies[0]).toContain('third');
     expect(bodies[0]).not.toContain('- name: two');
     expect(bodies[1]).toBe('echo inline');
+  });
+});
+
+describe('the page a failed toolchain install sends', () => {
+  const TIMEOUT_CAUSE = /timeout|time budget|ran out of|did not finish within|clock/i;
+  const workflow = parse(bugLaneVerify);
+  const job = workflow.jobs['bug-lane-verify'];
+
+  const stepNamed = (prefix) => {
+    const found = job.steps.filter((step) => step.name?.startsWith(prefix));
+    if (found.length !== 1) {
+      throw new Error(`bug-lane-verify.yml has ${found.length} steps named ${prefix}`);
+    }
+    return found[0];
+  };
+
+  const runnerBashArgs = (step) => {
+    const shell = step.shell ?? job.defaults?.run?.shell ?? workflow.defaults?.run?.shell;
+    if (shell === undefined) return ['-e'];
+    if (shell === 'bash') return ['--noprofile', '--norc', '-eo', 'pipefail'];
+    throw new Error(`no runner argument format for the shell ${shell}`);
+  };
+
+  const resolveEnv = (env, context) =>
+    Object.fromEntries(
+      Object.entries(env ?? {}).map(([name, value]) => {
+        const text = String(value);
+        const expression = /^\$\{\{\s*([\w.-]+)\s*\}\}$/.exec(text);
+        if (!expression) {
+          if (text.includes('${{')) throw new Error(`${name}: cannot evaluate ${text}`);
+          return [name, text];
+        }
+        const [root, ...path] = expression[1].split('.');
+        if (!(root in context)) throw new Error(`${name}: no ${root} context for ${text}`);
+        const resolved = path.reduce((node, key) => node?.[key], context[root]);
+        return [name, resolved == null ? '' : String(resolved)];
+      }),
+    );
+
+  const readOutputs = (file) => {
+    const lines = readFileSync(file, 'utf8').split('\n');
+    const outputs = {};
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (line === '') continue;
+      const equals = line.indexOf('=');
+      const heredoc = line.indexOf('<<');
+      if (heredoc !== -1 && (equals === -1 || heredoc < equals)) {
+        const end = lines.indexOf(line.slice(heredoc + 2), i + 1);
+        if (end === -1) throw new Error(`GITHUB_OUTPUT never closes ${line}`);
+        outputs[line.slice(0, heredoc)] = lines.slice(i + 1, end).join('\n');
+        i = end;
+      } else if (equals !== -1) {
+        outputs[line.slice(0, equals)] = line.slice(equals + 1);
+      } else {
+        throw new Error(`GITHUB_OUTPUT has an unreadable line: ${line}`);
+      }
+    }
+    return outputs;
+  };
+
+  let scratch;
+  let server;
+  let webhook;
+  const received = [];
+  beforeAll(async () => {
+    scratch = mkdtempSync(join(tmpdir(), 'bug-lane-install-page-'));
+    server = createServer(async (request, response) => {
+      let body = '';
+      for await (const chunk of request) body += chunk;
+      received.push(body);
+      response.end('ok');
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    webhook = `http://127.0.0.1:${server.address().port}/slack`;
+  });
+  afterAll(async () => {
+    rmSync(scratch, { recursive: true, force: true });
+    server.closeAllConnections();
+    await new Promise((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+
+  const runnerEnv = (dir, bin) => {
+    const {
+      SLACK_RELEASES_WEBHOOK_URL: _r,
+      SLACK_WEBHOOK_URL: _s,
+      GITHUB_OUTPUT: _o,
+      GITHUB_STEP_SUMMARY: _m,
+      NODE_OPTIONS: _n,
+      BASH_ENV: _b,
+      ...base
+    } = gitCleanEnv();
+    const home = join(dir, 'home');
+    const runnerTemp = join(dir, 'runner-temp');
+    mkdirSync(home, { recursive: true });
+    mkdirSync(runnerTemp, { recursive: true });
+    return {
+      ...base,
+      HOME: home,
+      GIT_CONFIG_NOSYSTEM: '1',
+      PATH: [bin, dirname(process.execPath), base.PATH].join(delimiter),
+      RUNNER_TEMP: runnerTemp,
+      GITHUB_STEP_SUMMARY: join(dir, 'step-summary'),
+    };
+  };
+
+  const stableWithAFix = (dir, env) => {
+    const repo = join(dir, 'repo');
+    mkdirSync(repo);
+    const git = (...args) =>
+      execFileSync(
+        'git',
+        ['-c', 'user.name=bug-lane test', '-c', 'user.email=bug-lane@example.invalid', ...args],
+        { cwd: repo, env, encoding: 'utf8' },
+      ).trim();
+    git('init', '-q');
+    writeFileSync(join(repo, 'stable.txt'), 'stable\n');
+    git('add', '-A');
+    git('commit', '-qm', 'stable');
+    const stable = git('rev-parse', 'HEAD');
+    for (const path of ['.github/scripts', 'scripts']) {
+      cpSync(join(REPO_ROOT, path), join(repo, path), { recursive: true });
+    }
+    git('add', '-A');
+    git('commit', '-qm', 'lane scripts');
+    const lane = git('rev-parse', 'HEAD');
+    git('checkout', '-q', '--detach', stable);
+    writeFileSync(join(repo, 'fix.txt'), 'fix\n');
+    git('add', '-A');
+    git('commit', '-qm', 'fix');
+    const fix = git('rev-parse', 'HEAD');
+    git('checkout', '-q', '--detach', stable);
+    return { repo, lane, fix };
+  };
+
+  const commandStubs = (dir, exits) => {
+    const bin = join(dir, 'bin');
+    mkdirSync(bin);
+    const stub = (name, body) =>
+      writeFileSync(join(bin, name), ['#!/bin/sh', ...body, ''].join('\n'), { mode: 0o755 });
+    stub('pnpm', [
+      'if [ "$*" = "install --frozen-lockfile" ]; then exit 0; fi',
+      'echo "pnpm stub: only install --frozen-lockfile is expected, got: pnpm $*" >&2',
+      'exit 1',
+    ]);
+    stub('rustup', ['echo "rustup stub: $*" >&2', `exit ${exits.rustup}`]);
+    stub('rustc', ['echo "rustc stub: $*" >&2', `exit ${exits.rustc}`]);
+    return bin;
+  };
+
+  const runStep = (step, dir, { cwd, env }) => {
+    const script = join(dir, `${step.id}.sh`);
+    writeFileSync(script, step.run);
+    return new Promise((resolve) => {
+      execFile('bash', [...runnerBashArgs(step), script], { cwd, env }, (error, stdout, stderr) =>
+        resolve({ status: error ? (error.code ?? error.signal) : 0, stdout, stderr }),
+      );
+    });
+  };
+
+  test.each([
+    ['rustup cannot install the declared toolchain', { rustup: 1, rustc: 0 }],
+    ['the installed rustc does not run', { rustup: 0, rustc: 1 }],
+  ])('when %s, it names the toolchain and no timeout', async (_label, exits) => {
+    received.length = 0;
+    const dir = mkdtempSync(join(scratch, 'run-'));
+    const bin = commandStubs(dir, exits);
+    const env = runnerEnv(dir, bin);
+    const { repo, lane, fix } = stableWithAFix(dir, env);
+    const inputs = { fix_refs: fix, stable: 'v0.63.6', fix_tickets: '' };
+
+    const verifyStep = stepNamed('Verify the synthetic tree');
+    const verifyOutput = join(dir, 'verify-output');
+    writeFileSync(verifyOutput, '');
+    const verify = await runStep(verifyStep, dir, {
+      cwd: repo,
+      env: {
+        ...env,
+        ...resolveEnv(workflow.env, {}),
+        ...resolveEnv(verifyStep.env, { inputs, steps: {} }),
+        GITHUB_OUTPUT: verifyOutput,
+      },
+    });
+    expect(verify.status, verify.stderr).toBe(0);
+    const outputs = readOutputs(verifyOutput);
+    expect(outputs.verdict, 'a failed install leaves the batch unverified').toBe(
+      'could-not-verify',
+    );
+
+    const admitted = [
+      ...stepNamed('Refusal signature').if.matchAll(
+        /steps\.verify\.outputs\.verdict == '([a-z-]+)'/g,
+      ),
+    ].map((m) => m[1]);
+    expect(admitted, 'the refusal pager does not admit the verdict this tick minted').toContain(
+      outputs.verdict,
+    );
+
+    const pageStep = stepNamed('Page on a refusal');
+    const pageOutput = join(dir, 'page-output');
+    writeFileSync(pageOutput, '');
+    const page = await runStep(pageStep, dir, {
+      cwd: repo,
+      env: {
+        ...env,
+        ...resolveEnv(workflow.env, {}),
+        ...resolveEnv(pageStep.env, {
+          inputs,
+          secrets: { SLACK_RELEASES_WEBHOOK_URL: webhook },
+          steps: { verify: { outputs } },
+        }),
+        GITHUB_OUTPUT: pageOutput,
+        GITHUB_SHA: lane,
+        GITHUB_SERVER_URL: 'https://github.com',
+        GITHUB_REPOSITORY: 'inkeep/open-knowledge',
+        GITHUB_RUN_ID: '1',
+      },
+    });
+    expect(page.status, page.stderr).toBe(0);
+    expect(received, page.stdout).toHaveLength(1);
+
+    const payload = JSON.parse(received[0]);
+    expect(payload, 'the page fell back to the plain-text message').toHaveProperty('blocks');
+    const whole = JSON.stringify(payload);
+    expect(whole).toMatch(/toolchain|\brust/i);
+    expect(payload.text).not.toMatch(TIMEOUT_CAUSE);
+    expect(whole).not.toMatch(TIMEOUT_CAUSE);
   });
 });

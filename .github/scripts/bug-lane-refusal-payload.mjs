@@ -91,8 +91,10 @@ export function classifyRefs(refs, gitShow) {
 
 const classifiedWithNoPaths = (r) => Array.isArray(r.files) && r.files.length === 0;
 
-export function reasonPhrase({ verdict, refs }) {
-  if (verdict === 'could-not-verify') return 'verification timeout';
+export function reasonPhrase({ verdict, refs, cause }) {
+  if (verdict === 'could-not-verify') {
+    return cause === 'toolchain' ? 'toolchain install failure' : 'verification timeout';
+  }
   if (verdict === 'fail') return 'red verification';
   if (refs.length > 0 && refs.every((r) => r.inert)) return 'config drift';
   if (refs.length > 0 && refs.every(classifiedWithNoPaths)) return 'unclear pick failure';
@@ -121,9 +123,9 @@ function headlineSubject({ verdict, refs }) {
   return rest.length > 0 ? `${label} and ${rest.length} more` : label;
 }
 
-export function buildHeadline({ verdict, refs, stable }) {
+export function buildHeadline({ verdict, refs, stable, cause }) {
   return [
-    `Bug lane: ${headlineSubject({ verdict, refs })} did not ship in the fast lane due to ${reasonPhrase({ verdict, refs })}.`,
+    `Bug lane: ${headlineSubject({ verdict, refs })} did not ship in the fast lane due to ${reasonPhrase({ verdict, refs, cause })}.`,
     `Latest stable remains \`${stable}\`.`,
     noActionSentence(verdict),
   ].join(' ');
@@ -190,8 +192,8 @@ export function actionLine({ verdict, refs }) {
   return 'If it must ship sooner, the answer is a smaller self-contained commit, not a forced pick — see RELEASES.md, "When a guard refuses".';
 }
 
-export function buildSlackPayload({ verdict, stable, refs, runUrl, failures = [] }) {
-  const headline = buildHeadline({ verdict, refs, stable });
+export function buildSlackPayload({ verdict, stable, refs, runUrl, failures = [], cause }) {
+  const headline = buildHeadline({ verdict, refs, stable, cause });
   const body = [
     headline,
     '',
@@ -236,6 +238,7 @@ export function parseArgs(argv) {
       ? parsed.failures.filter((entry) => typeof entry === 'string' && entry.trim() !== '')
       : [],
     runUrl: parsed.runUrl || '',
+    cause: parsed.cause || '',
   };
 }
 

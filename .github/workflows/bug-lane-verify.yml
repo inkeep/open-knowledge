@@ -136,7 +136,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "24"
+          node-version-file: .node-version
           package-manager-cache: false
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -275,6 +275,17 @@ jobs:
           if ! pnpm install --frozen-lockfile; then
             echo "verdict=fail" >> "$GITHUB_OUTPUT"
             echo "::warning::bug-lane: pnpm install --frozen-lockfile failed on the synthetic tree (${STABLE} + ${SURVIVING_REFS}); treated as a red verification."
+            exit 0
+          fi
+          if ! { rustup toolchain install --no-self-update && rustc -vV; }; then
+            {
+              echo "verdict=could-not-verify"
+              echo "cause=toolchain"
+              echo "failures<<FAILURES_EOF"
+              echo '["the declared Rust toolchain could not be installed"]'
+              echo "FAILURES_EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "::warning::bug-lane: the declared Rust toolchain could not be installed for ${STABLE} + ${SURVIVING_REFS}. COULD NOT VERIFY, which is not a verdict on the batch."
             exit 0
           fi
           # ONE flake retry, matching the stance the PR tier already applies to
@@ -606,7 +617,7 @@ jobs:
       # one skips all of it: a bad stable ref, a checkout or setup step dying,
       # or the job's own ceiling reached while the cherry-pick loop or install
       # runs, none of which are inside the tiers' budget. (A failed install is
-      # NOT one of these -- the guard above mints `fail` for it explicitly.)
+      # NOT one of these -- the guards above mint a verdict for it explicitly.)
       # The tier wrapper closes the commonest door. This leaves a trace for the
       # rest of the class -- but only in the run log, and this workflow's whole
       # argument for a `could-not-verify` VERDICT is that the run log is not a
@@ -623,10 +634,10 @@ jobs:
           echo "::warning::bug-lane: verify produced no verdict for ${STABLE} — COULD NOT VERIFY. Nothing here is evidence about the queued fixes; read the run log for where it stopped."
 
       # `could-not-verify` is enrolled here too, and it is the one verdict that
-      # is NOT a standing answer: it is a fact about one runner's clock. The
-      # trade is deliberate and bounded -- the batch churns as new fixes
-      # qualify, so the signature moves and the lane re-pages -- and the page
-      # itself tells the reader to check recent runs rather than wait.
+      # is NOT a standing answer. The trade is deliberate and bounded -- the
+      # batch churns as new fixes qualify, so the signature moves and the lane
+      # re-pages -- and the page itself tells the reader to check recent runs
+      # rather than wait.
       #
       - name: Refusal signature
         id: refusal
@@ -671,7 +682,7 @@ jobs:
           {
             echo "### Bug lane — refusal still standing, page suppressed"
             echo "Verdict \`${VERDICT}\`, signature \`${SIG}\`, already paged on an earlier tick."
-            echo "For named verification failures, grouping is per stable and failing suite for the UTC day. Conflicts, timeouts and unnamed failures use verdict and batch identity. Batch details remain in each run."
+            echo "For named verification failures, grouping is per stable and failing suite for the UTC day. Conflicts, could-not-verify ticks and unnamed failures use verdict and batch identity. Batch details remain in each run."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::notice::bug-lane: refusal ${SIG} already paged; suppressing the duplicate page."
 
@@ -687,6 +698,7 @@ jobs:
           FAILURES: ${{ steps.verify.outputs.failures }}
           STABLE: ${{ inputs.stable }}
           VERDICT: ${{ steps.verify.outputs.verdict }}
+          CAUSE: ${{ steps.verify.outputs.cause }}
         run: |
           set -uo pipefail
           # `delivered` is the ONLY thing the marker may key on. The step's own
@@ -728,12 +740,13 @@ jobs:
             # page names the bug rather than only a SHA.
             INPUT="$(jq -nc \
               --arg verdict "$VERDICT" \
+              --arg cause "${CAUSE:-}" \
               --arg stable "$STABLE" \
               --arg runUrl "$RUN_URL" \
               --argjson conflicts "$CONFLICTS_JSON" \
               --argjson failures "$FAILURES_JSON" \
               --argjson tickets "$TICKETS_JSON" \
-              '{verdict: $verdict, stable: $stable, runUrl: $runUrl, failures: $failures,
+              '{verdict: $verdict, cause: $cause, stable: $stable, runUrl: $runUrl, failures: $failures,
                 refs: [$conflicts[] | . + {tickets: ($tickets[.ref] // [])}]}')"
             # A page that cannot be composed must not become silence: fall back
             # to the bare facts rather than skipping the POST, and leave the
