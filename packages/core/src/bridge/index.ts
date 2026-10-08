@@ -79,6 +79,7 @@ export {
   type BridgeMergeContentLossSide,
   type BridgeMergeContentLossWhich,
   findDroppedContent,
+  findDroppedSourceContentInRange,
   mergeThreeWay,
   tryLineLevelCombine,
 } from './merge-three-way.ts';

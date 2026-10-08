@@ -67,6 +67,7 @@ export {
   type FrontmatterDocProvider,
   type FrontmatterSnapshot,
   findDroppedContent,
+  findDroppedSourceContentInRange,
   findFirstDivergenceIndex,
   fnv1aDigest,
   fragmentHoldsPendingContent,

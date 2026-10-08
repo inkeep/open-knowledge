@@ -6,6 +6,12 @@ export type MapDrivenSpliceFallbackReason =
   | 'parse-error'
   | 'missing-position';
 
+export type ResidualMergeSpliceUnavailableReason =
+  | MapDrivenSpliceFallbackReason
+  | 'composition-adjusted'
+  | 'doc-edge-runs'
+  | 'not-settled';
+
 export type MapDrivenSpliceMemoSkipReason =
   | 'narrowed'
   | 'empty-children'
@@ -74,6 +80,11 @@ export interface ReconciliationMetrics {
   mapDrivenSpliceMemoHits: number;
   mapDrivenSpliceMemoSkips: Partial<Record<MapDrivenSpliceMemoSkipReason, number>>;
   observerAResidualMergeRuns: number;
+  observerAResidualMergeSpliceLanded: number;
+  observerAResidualMergeSpliceBlockedLossy: number;
+  observerAResidualMergeSpliceUnavailable: Partial<
+    Record<ResidualMergeSpliceUnavailableReason, number>
+  >;
   /**
    * Count of Observer A duplication-gate recoveries: a substantive body line materialized more times
    * in the fragment than clean Y.Text justified, provenance-confirmed as a server-versus-client
@@ -189,6 +200,9 @@ const counters: ReconciliationMetrics = {
   mapDrivenSpliceMemoSkips: {},
   mapDrivenSpliceFallback: {},
   observerAResidualMergeRuns: 0,
+  observerAResidualMergeSpliceLanded: 0,
+  observerAResidualMergeSpliceBlockedLossy: 0,
+  observerAResidualMergeSpliceUnavailable: {},
   observerADuplicationRederives: 0,
   observerADuplicationCheckpointCreated: 0,
   observerAApplyLoss: 0,
@@ -428,6 +442,21 @@ export function incrementObserverAResidualMergeRuns(): void {
   counters.observerAResidualMergeRuns++;
 }
 
+export function incrementObserverAResidualMergeSpliceLanded(): void {
+  counters.observerAResidualMergeSpliceLanded++;
+}
+
+export function incrementObserverAResidualMergeSpliceBlockedLossy(): void {
+  counters.observerAResidualMergeSpliceBlockedLossy++;
+}
+
+export function incrementObserverAResidualMergeSpliceUnavailable(
+  reason: ResidualMergeSpliceUnavailableReason,
+): void {
+  counters.observerAResidualMergeSpliceUnavailable[reason] =
+    (counters.observerAResidualMergeSpliceUnavailable[reason] ?? 0) + 1;
+}
+
 export function incrementObserverADuplicationRederives(): void {
   counters.observerADuplicationRederives++;
 }
@@ -652,6 +681,9 @@ export function getMetrics(): ReconciliationMetrics {
     bridgeToleranceApplied: { ...counters.bridgeToleranceApplied },
     mapDrivenSpliceFallback: { ...counters.mapDrivenSpliceFallback },
     mapDrivenSpliceMemoSkips: { ...counters.mapDrivenSpliceMemoSkips },
+    observerAResidualMergeSpliceUnavailable: {
+      ...counters.observerAResidualMergeSpliceUnavailable,
+    },
   };
 }
 
@@ -716,6 +748,9 @@ export function resetMetrics(): void {
   counters.mapDrivenSpliceMemoHits = 0;
   counters.mapDrivenSpliceMemoSkips = {};
   counters.observerAResidualMergeRuns = 0;
+  counters.observerAResidualMergeSpliceLanded = 0;
+  counters.observerAResidualMergeSpliceBlockedLossy = 0;
+  counters.observerAResidualMergeSpliceUnavailable = {};
   counters.observerADuplicationRederives = 0;
   counters.observerADuplicationCheckpointCreated = 0;
   counters.observerAApplyLoss = 0;

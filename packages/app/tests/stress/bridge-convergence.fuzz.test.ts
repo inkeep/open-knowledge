@@ -573,12 +573,17 @@ describe('bridge-convergence fuzzer (FR-17)', () => {
         }
 
         const convergence = await driveToConvergence(clients, 60000);
-        if (convergence.outcome === 'stalled') {
-          const states = snapshotClients(clients);
-          throw new Error(
-            `Convergence failed after 60s (${convergence.detail}).\n${states.map((s, i) => `  Client ${i}: ytext=${s.ytext.length}ch frag=${s.fragmentMd.length}ch`).join('\n')}`,
-          );
-        }
+        expect(
+          convergence.outcome,
+          convergence.outcome === 'stalled'
+            ? `Convergence failed after 60s (${convergence.detail}).\n${snapshotClients(clients)
+                .map(
+                  (s, i) =>
+                    `  Client ${i}: ytext=${s.ytext.length}ch frag=${s.fragmentMd.length}ch`,
+                )
+                .join('\n')}`
+            : undefined,
+        ).not.toBe('stalled');
         if (convergence.outcome === 'converged-late') {
           fuzzConvergedLate.push(seed);
           console.log(`[fuzz] converged-late seed=${seed} (final state within tolerance)`);

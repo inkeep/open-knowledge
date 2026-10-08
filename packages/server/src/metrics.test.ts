@@ -160,7 +160,8 @@ describe('reconciliation metrics', () => {
         key === 'cc1LastSeq' ||
         key === 'bridgeToleranceApplied' ||
         key === 'mapDrivenSpliceFallback' ||
-        key === 'mapDrivenSpliceMemoSkips'
+        key === 'mapDrivenSpliceMemoSkips' ||
+        key === 'observerAResidualMergeSpliceUnavailable'
       ) {
         expect(value).toEqual({});
       } else {

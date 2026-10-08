@@ -249,6 +249,49 @@ export function findDroppedContent(candidate: string, baseline: string, applied:
   return atRisk.filter((seg) => !applied.includes(seg));
 }
 
+function withoutWhitespace(text: string): { chars: string; offsets: number[] } {
+  let chars = '';
+  const offsets: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (/\s/.test(text[i])) continue;
+    chars += text[i];
+    offsets.push(i);
+  }
+  return { chars, offsets };
+}
+
+export function findDroppedSourceContentInRange(
+  canonical: string,
+  source: string,
+  range: { start: number; end: number },
+  replacement: string,
+): string[] {
+  const stripped = withoutWhitespace(source);
+  const diffs = dmp.diff_main(withoutWhitespace(canonical).chars, stripped.chars);
+  dmp.diff_cleanupSemantic(diffs);
+  const replacementChars = withoutWhitespace(replacement).chars;
+  const dropped: string[] = [];
+  let cursor = 0;
+  for (const [op, data] of diffs) {
+    if (op === -1) continue;
+    if (op === 1) {
+      let run = '';
+      for (let i = 0; i < data.length; i++) {
+        const offset = stripped.offsets[cursor + i];
+        if (offset >= range.start && offset < range.end) {
+          run += data[i];
+        } else if (run !== '') {
+          dropped.push(run);
+          run = '';
+        }
+      }
+      if (run !== '') dropped.push(run);
+    }
+    cursor += data.length;
+  }
+  return dropped.filter((run) => !replacementChars.includes(run));
+}
+
 function mergeConflictRegion(base: string, user: string, agent: string): string {
   if (user === '') return agent;
   if (agent === '') return user;

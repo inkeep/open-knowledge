@@ -22,6 +22,7 @@ import {
   createMergeBoundarySpace,
   DUPLICATION_GATE_MIN_LINE_LENGTH,
   docEdgeRunsDiffer,
+  findDroppedSourceContentInRange,
   fnv1aDigest,
   fragmentHoldsPendingContent,
   isParseEquivalentBridge,
@@ -79,12 +80,17 @@ import {
   incrementObserverADuplicationRederives,
   incrementObserverAPathBFires,
   incrementObserverAResidualMergeRuns,
+  incrementObserverAResidualMergeSpliceBlockedLossy,
+  incrementObserverAResidualMergeSpliceLanded,
+  incrementObserverAResidualMergeSpliceUnavailable,
   incrementProducerGuardCheckpointCreated,
   incrementProducerGuardFires,
   incrementProducerGuardFiresSuppressed,
   incrementReDeriveBackstopTripped,
   incrementServerObserverError,
   incrementServerObserverFire,
+  type MapDrivenSpliceFallbackReason,
+  type ResidualMergeSpliceUnavailableReason,
 } from './metrics.ts';
 import {
   type PreDrainController,
@@ -198,6 +204,7 @@ interface TryComputeMapDrivenSpliceArgs {
   readonly docName: string | undefined;
   readonly mdastMemo: EditorMdastMemo;
   readonly serializedNewPm: SerializedEditorBody;
+  readonly onResidualFallback?: (reason: MapDrivenSpliceFallbackReason) => void;
 }
 
 let mapDrivenParseErrorWarned = false;
@@ -233,14 +240,27 @@ function warnOnceMemoComposeFailure(docName: string | undefined, err: unknown): 
 function tryComputeMapDrivenSplice(
   args: TryComputeMapDrivenSpliceArgs,
 ): YTextMapDrivenSplice | null {
-  const { currentText, lastSyncedXmlMd, mdManager, docName, mdastMemo, serializedNewPm } = args;
+  const {
+    currentText,
+    lastSyncedXmlMd,
+    mdManager,
+    docName,
+    mdastMemo,
+    serializedNewPm,
+    onResidualFallback,
+  } = args;
+  const countsSpliceMetrics = onResidualFallback === undefined;
+  const countFallback = (reason: MapDrivenSpliceFallbackReason): void => {
+    if (onResidualFallback) onResidualFallback(reason);
+    else incrementMapDrivenSpliceFallback(reason);
+  };
   const newPmJson = serializedNewPm.json;
   if (currentText !== lastSyncedXmlMd) {
-    incrementMapDrivenSpliceFallback('text-mismatch');
+    countFallback('text-mismatch');
     return null;
   }
   if (docName !== undefined && (isSystemDoc(docName) || isConfigDoc(docName))) {
-    incrementMapDrivenSpliceFallback('synthetic-doc');
+    countFallback('synthetic-doc');
     return null;
   }
 
@@ -248,12 +268,14 @@ function tryComputeMapDrivenSplice(
   const bodyOffset = currentText.length - oldBody.length;
   const splice = computeMapDrivenBodySplice(oldBody, newPmJson, mdManager, {
     onFallback: (reason, err) => {
-      incrementMapDrivenSpliceFallback(reason);
+      countFallback(reason);
       if (reason === 'parse-error') warnOnceMapDrivenParseError(docName, err);
     },
-    onMemoHit: incrementMapDrivenSpliceMemoHit,
+    onMemoHit: () => {
+      if (countsSpliceMetrics) incrementMapDrivenSpliceMemoHit();
+    },
     onMemoSkip: (reason, err) => {
-      incrementMapDrivenSpliceMemoSkip(reason);
+      if (countsSpliceMetrics) incrementMapDrivenSpliceMemoSkip(reason);
       if (reason === 'compose-failed') warnOnceMemoComposeFailure(docName, err);
     },
     memo: mdastMemo,
@@ -1109,20 +1131,67 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       });
       const pathBState: { mergedText: string | null } = { mergedText: null };
 
-      const spliceComputeStart = performance.now();
-      const mapDrivenSplice =
-        (ytextInSync && residualMergeEligible) ||
-        composition.adjusted !== 'none' ||
-        docEdgeRunsDiffer(currentText, md)
-          ? null
-          : tryComputeMapDrivenSplice({
+      const computeSplice = (
+        onResidualFallback?: (reason: ResidualMergeSpliceUnavailableReason) => void,
+      ): YTextMapDrivenSplice | null => {
+        if (composition.adjusted !== 'none') {
+          onResidualFallback?.('composition-adjusted');
+          return null;
+        }
+        if (docEdgeRunsDiffer(currentText, md)) {
+          onResidualFallback?.('doc-edge-runs');
+          return null;
+        }
+        return tryComputeMapDrivenSplice({
+          currentText,
+          lastSyncedXmlMd: lastSyncedYTextBytes,
+          mdManager,
+          docName: opts.docName,
+          mdastMemo,
+          serializedNewPm,
+          onResidualFallback,
+        });
+      };
+      const landResidualMerge = (merged: string): string => {
+        if (!residualMergeEligible || !settlesSplitBrainChecked(merged, md, normMd)) return merged;
+        let unavailable: ResidualMergeSpliceUnavailableReason = 'not-settled';
+        const splice = computeSplice((reason) => {
+          unavailable = reason;
+        });
+        if (splice !== null) {
+          const spliced =
+            currentText.slice(0, splice.spliceStart) +
+            splice.newSlice +
+            currentText.slice(splice.spliceEnd);
+          if (!settlesSplitBrainChecked(spliced, md, normMd)) {
+            const droppedSourceContent = findDroppedSourceContentInRange(
+              lastSyncedCanonicalMd,
               currentText,
-              lastSyncedXmlMd: lastSyncedYTextBytes,
-              mdManager,
-              docName: opts.docName,
-              mdastMemo,
-              serializedNewPm,
-            });
+              { start: splice.spliceStart, end: splice.spliceEnd },
+              splice.newSlice,
+            );
+            if (droppedSourceContent.length > 0) {
+              incrementObserverAResidualMergeSpliceBlockedLossy();
+              setActiveSpanAttributes({
+                'observer.a.residual_merge_fallback': 'splice-blocked-lossy',
+              });
+              return merged;
+            }
+            incrementObserverAResidualMergeSpliceLanded();
+            setActiveSpanAttributes({ 'observer.a.residual_merge_fallback': 'map-driven-splice' });
+            return spliced;
+          }
+        }
+        incrementObserverAResidualMergeSpliceUnavailable(unavailable);
+        setActiveSpanAttributes({
+          'observer.a.residual_merge_fallback': 'splice-unavailable',
+          'observer.a.residual_merge_fallback_reason': unavailable,
+        });
+        return merged;
+      };
+
+      const spliceComputeStart = performance.now();
+      const mapDrivenSplice = residualMergeEligible ? null : computeSplice();
       if (mapDrivenSplice) {
         setActiveSpanAttributes({
           'observer.a.path': 'map-driven-splice',
@@ -1142,11 +1211,13 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
             boundarySpace.unproject(merged, currentText);
           const mergeThreeWayFn = opts.mergeThreeWay ?? mergeThreeWay;
           try {
-            const mergedText = projectMerged(
-              mergeThreeWayFn(
-                boundarySpace.project(mergeBase),
-                boundarySpace.project(md),
-                boundarySpace.project(currentText),
+            const mergedText = landResidualMerge(
+              projectMerged(
+                mergeThreeWayFn(
+                  boundarySpace.project(mergeBase),
+                  boundarySpace.project(md),
+                  boundarySpace.project(currentText),
+                ),
               ),
             );
             applyFastDiff(ytext, currentText, mergedText);
