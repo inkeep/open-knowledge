@@ -11,8 +11,7 @@ import { defineConfig } from 'tsdown';
 const jsoncParserEsmEntry = createRequire(import.meta.url).resolve('jsonc-parser/lib/esm/main.js');
 
 // Native addons stay external in EVERY build — they ship .node binaries
-// resolved at runtime and the desktop bundle places them under
-// app.asar.unpacked/node_modules/.
+// resolved at runtime.
 const nativeAddonNeverBundle = [
   '@parcel/watcher',
   '@napi-rs/keyring',

@@ -88,15 +88,6 @@ function readExtraResources(platform?: 'mac' | 'win' | 'linux'): ExtraResourceRu
   }
 }
 
-function readAsarUnpack(): string[] {
-  try {
-    const cfg = parse(readFileSync(builderYml, 'utf8')) as { asarUnpack?: string[] };
-    return cfg.asarUnpack ?? [];
-  } catch {
-    return [];
-  }
-}
-
 function asFilterList(filter: string[] | string | undefined): string[] {
   if (Array.isArray(filter)) return filter;
   return filter ? [filter] : [];
@@ -195,10 +186,6 @@ describe('@inkeep/open-knowledge-native-config ships its napi loader + platform 
       `The ${NATIVE_CONFIG} extraResources filter must include '*.node' — without the ` +
         "platform binary the loader is shipped but require('./<binary>.node') throws.",
     ).toBe(true);
-  });
-
-  test('asarUnpack unpacks the addon for the in-process desktop main consumer', () => {
-    expect(readAsarUnpack()).toContain(`**/${NATIVE_CONFIG}/**`);
   });
 
   test('the addon source dir exists at the extraResources `from` path', () => {

@@ -12,7 +12,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
-import { MAX_ASAR_HEADER_BYTES, readAsarHeader } from '../../scripts/lib/asar-header.mjs';
+import {
+  listAsarHeaderPaths,
+  MAX_ASAR_HEADER_BYTES,
+  readAsarHeader,
+} from '../../scripts/lib/asar-header.mjs';
+import { writeSyntheticAsar } from '../support/synthetic-asar.test-helper.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(__dirname, '../..');
@@ -68,33 +73,6 @@ function walkFiles(root: string): string[] {
   return found.sort();
 }
 
-type AsarDirNode = { files?: Record<string, unknown> };
-
-function asarEntryPaths(header: AsarDirNode): string[] {
-  const paths: string[] = [];
-  const visit = (node: AsarDirNode, prefix: string): void => {
-    for (const [name, entry] of Object.entries(node.files ?? {})) {
-      const path = prefix === '' ? name : `${prefix}/${name}`;
-      paths.push(path);
-      if (typeof entry === 'object' && entry !== null && 'files' in entry) {
-        visit(entry as AsarDirNode, path);
-      }
-    }
-  };
-  visit(header, '');
-  return paths.sort();
-}
-
-function writeSyntheticAsar(path: string, header: object): void {
-  const json = Buffer.from(JSON.stringify(header), 'utf8');
-  const prefix = Buffer.alloc(16);
-  prefix.writeUInt32LE(4, 0);
-  prefix.writeUInt32LE(json.length + 8, 4);
-  prefix.writeUInt32LE(json.length + 4, 8);
-  prefix.writeUInt32LE(json.length, 12);
-  writeFileSync(path, Buffer.concat([prefix, json]));
-}
-
 const fixtureDirs: string[] = [];
 afterEach(() => {
   for (const dir of fixtureDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -142,7 +120,7 @@ describe('Windows package native guard helpers', () => {
         },
       },
     });
-    expect(asarEntryPaths(readAsarHeader(asar) as AsarDirNode)).toEqual([
+    expect(listAsarHeaderPaths(readAsarHeader(asar))).toEqual([
       'node_modules',
       'node_modules/node-pty',
       'node_modules/node-pty/package.json',
@@ -225,7 +203,7 @@ describe.skipIf(packageDir === null)('packaged Windows node-pty payload', () => 
   });
 
   test('app.asar carries node-pty but none of the pruned trees', () => {
-    const entries = asarEntryPaths(readAsarHeader(appAsarPath));
+    const entries = listAsarHeaderPaths(readAsarHeader(appAsarPath));
     const nodePtyEntries = entries.filter((entry) => entry.startsWith('node_modules/node-pty/'));
     expect(nodePtyEntries.length, 'node-pty absent from app.asar').toBeGreaterThan(0);
     const offenders = nodePtyEntries.filter(

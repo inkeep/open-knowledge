@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { FuseV1Options, FuseVersion, flipFuses } from '@electron/fuses';
+import { assertPackagedBundle } from './assert-packaged-bundle.mjs';
 import { ensureNodePtySpawnHelperExecutable } from './ensure-node-pty-exec.mjs';
 import { createFuseFailure } from './packaging-diagnostics.mjs';
 import { resolveElectronBinary } from './resolve-electron-binary.mjs';
@@ -79,6 +80,12 @@ export default async function afterPack(context) {
         `Expected electron-builder to have packed the app before afterPack ran.`,
     );
   }
+
+  assertPackagedBundle(
+    electronPlatformName === 'darwin'
+      ? join(appOutDir, `${appName}.app`, 'Contents', 'Resources')
+      : join(appOutDir, 'resources'),
+  );
 
   if (electronPlatformName !== 'darwin') {
     await flipElectronFuses(electronBinary, electronPlatformName);

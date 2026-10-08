@@ -24,3 +24,16 @@ export function readAsarHeader(asarPath) {
     closeSync(fd);
   }
 }
+
+export function listAsarHeaderPaths(header) {
+  const paths = [];
+  const visit = (node, prefix) => {
+    for (const [name, entry] of Object.entries(node.files ?? {})) {
+      const path = prefix === '' ? name : `${prefix}/${name}`;
+      paths.push(path);
+      if (typeof entry === 'object' && entry !== null && 'files' in entry) visit(entry, path);
+    }
+  };
+  visit(header, '');
+  return paths.sort();
+}

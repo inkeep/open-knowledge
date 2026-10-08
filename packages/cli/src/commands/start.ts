@@ -66,13 +66,17 @@ export function parseOnlyModule(value: string): OnlyModule {
 
 export function resolveBundledReactShellDir(
   existsFn: (path: string) => boolean = fsExistsSync,
+  cliDir: string = import.meta.dirname ?? new URL('.', import.meta.url).pathname,
 ): string | undefined {
-  const cliDir = import.meta.dirname ?? new URL('.', import.meta.url).pathname;
-  return [
+  const candidates = [
     pathResolve(cliDir, 'public'),
     pathResolve(cliDir, '../../app/dist'),
     pathResolve(cliDir, '../../../app/dist'),
-  ].find((p) => existsFn(p));
+  ];
+  if (existsFn(pathResolve(cliDir, '../../app.asar'))) {
+    candidates.push(pathResolve(cliDir, '../../app'));
+  }
+  return candidates.find((p) => existsFn(p));
 }
 
 export function resolveStartShellDir(input: {

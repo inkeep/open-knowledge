@@ -1546,6 +1546,23 @@ describe('resolveBundledReactShellDir (candidate-path probe)', () => {
   test('returns undefined when no candidate exists (→ API/MCP-only degrade)', () => {
     expect(resolveBundledReactShellDir(() => false)).toBeUndefined();
   });
+
+  test('inside a packaged desktop app, serves the app window bundle beside app.asar', () => {
+    const present = new Set([
+      '/OK.app/Contents/Resources/app.asar',
+      '/OK.app/Contents/Resources/app',
+    ]);
+    expect(
+      resolveBundledReactShellDir((p) => present.has(p), '/OK.app/Contents/Resources/cli/dist'),
+    ).toBe('/OK.app/Contents/Resources/app');
+  });
+
+  test('outside a packaged desktop app, never serves a sibling app source dir', () => {
+    const present = new Set(['/repo/packages/app']);
+    expect(
+      resolveBundledReactShellDir((p) => present.has(p), '/repo/packages/cli/dist'),
+    ).toBeUndefined();
+  });
 });
 
 describe('resolveStartShellDir (the Wave 3 default-flip decision)', () => {
