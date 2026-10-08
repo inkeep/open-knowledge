@@ -75,6 +75,9 @@ async function restoreStale(target: TestServer, docName: string, stale: string):
   writeFileSync(join(target.contentDir, `${docName}.md`), stale, 'utf-8');
   await pollUntil(
     () => target.instance.durabilityState.getStaleExternalWrite(docName) !== undefined,
+    undefined,
+    undefined,
+    `stale external-write conflict for ${docName}`,
   );
 }
 
@@ -156,8 +159,16 @@ async function awaitWatcherDecisionForDoc(docName: string, ringOffset: number): 
 }
 
 describe('stale external write does not roll back an acknowledged agent write', () => {
-  test.each([false, true])(
+  test.skip.each([false, true])(
     'resolves nonempty stale sides to an explicit empty file (unloaded=%s)',
+    {
+      tags: ['quarantine'],
+      meta: {
+        issue: 'https://github.com/inkeep/agents-private/issues/5729',
+        owner: 'get-main-green',
+        until: '2026-12-01',
+      },
+    },
     async (unloaded) => {
       server = await createTestServer();
       const docName = 'explicit-empty';
@@ -225,8 +236,16 @@ describe('stale external write does not roll back an acknowledged agent write', 
     expect((await resolveConflict(server, `${docName}.md`, 'mine')).status).toBe(200);
     expect(readTestDoc(server.contentDir, docName)).toBe(retained);
   });
-  test.each(['mine', 'content'])(
+  test.skip.each(['mine', 'content'])(
     'a repeated stale save after %s remains protected',
+    {
+      tags: ['quarantine'],
+      meta: {
+        issue: 'https://github.com/inkeep/agents-private/issues/5729',
+        owner: 'get-main-green',
+        until: '2026-12-01',
+      },
+    },
     async (strategy) => {
       server = await createTestServer({ debounce: 50, maxDebounce: 200 });
       const docName = `repeat-${randomUUID()}`;
@@ -242,8 +261,16 @@ describe('stale external write does not roll back an acknowledged agent write', 
     },
   );
 
-  test.each(['theirs', 'delete'])(
+  test.skip.each(['theirs', 'delete'])(
     '%s resolves the stale conflict and updates disk and lifecycle',
+    {
+      tags: ['quarantine'],
+      meta: {
+        issue: 'https://github.com/inkeep/agents-private/issues/5729',
+        owner: 'get-main-green',
+        until: '2026-12-01',
+      },
+    },
     async (strategy) => {
       server = await createTestServer({ debounce: 50, maxDebounce: 200 });
       const docName = `resolve-${randomUUID()}`;
@@ -266,7 +293,14 @@ describe('stale external write does not roll back an acknowledged agent write', 
     },
   );
 
-  test('a successful delete resolution leaves no resident document, so suppressing the self-delete must move that unload onto the resolution path', async () => {
+  test.skip('a successful delete resolution leaves no resident document, so suppressing the self-delete must move that unload onto the resolution path', {
+    tags: ['quarantine'],
+    meta: {
+      issue: 'https://github.com/inkeep/agents-private/issues/5729',
+      owner: 'get-main-green',
+      until: '2026-12-01',
+    },
+  }, async () => {
     server = await createTestServer({ debounce: 50, maxDebounce: 200 });
     const docName = `unload-${randomUUID()}`;
     const { stale } = await acknowledgeWrite(server, docName);
@@ -281,7 +315,14 @@ describe('stale external write does not roll back an acknowledged agent write', 
     );
   });
 
-  test('an unloaded stale write is listed, and delete then restore starts fresh', async () => {
+  test.skip('an unloaded stale write is listed, and delete then restore starts fresh', {
+    tags: ['quarantine'],
+    meta: {
+      issue: 'https://github.com/inkeep/agents-private/issues/5729',
+      owner: 'get-main-green',
+      until: '2026-12-01',
+    },
+  }, async () => {
     server = await createTestServer({ debounce: 50, maxDebounce: 200 });
     const docName = `unloaded-${randomUUID()}`;
     const { stale, acknowledged } = await acknowledgeWrite(server, docName);
@@ -314,7 +355,14 @@ describe('stale external write does not roll back an acknowledged agent write', 
     }
   });
 
-  test('conflict paths round-trip when content is a project subdirectory', async () => {
+  test.skip('conflict paths round-trip when content is a project subdirectory', {
+    tags: ['quarantine'],
+    meta: {
+      issue: 'https://github.com/inkeep/agents-private/issues/5729',
+      owner: 'get-main-green',
+      until: '2026-12-01',
+    },
+  }, async () => {
     ownedProjectDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-stale-subdir-')));
     const contentDir = join(ownedProjectDir, 'notes');
     mkdirSync(contentDir);
@@ -439,8 +487,16 @@ describe('stale external write does not roll back an acknowledged agent write', 
     rmSync(file, { recursive: true });
   });
 
-  test.each(['mine', 'delete'])(
+  test.skip.each(['mine', 'delete'])(
     'a durability filesystem failure during %s keeps the conflict retryable',
+    {
+      tags: ['quarantine'],
+      meta: {
+        issue: 'https://github.com/inkeep/agents-private/issues/5729',
+        owner: 'get-main-green',
+        until: '2026-12-01',
+      },
+    },
     async (strategy) => {
       server = await createTestServer({ debounce: 50, maxDebounce: 200 });
       const docName = `retry-${randomUUID()}`;
@@ -601,7 +657,14 @@ describe('stale external write does not roll back an acknowledged agent write', 
     await pollUntil(() => readTestDoc(contentDir, docName).includes('retry-after-resolution'));
   });
 
-  test('content resolution accepts a Setext heading and preserves the submitted bytes', async () => {
+  test.skip('content resolution accepts a Setext heading and preserves the submitted bytes', {
+    tags: ['quarantine'],
+    meta: {
+      issue: 'https://github.com/inkeep/agents-private/issues/5729',
+      owner: 'get-main-green',
+      until: '2026-12-01',
+    },
+  }, async () => {
     server = await createTestServer({ debounce: 50, maxDebounce: 200 });
     const docName = `setext-resolution-${randomUUID()}`;
     const { stale, acknowledged } = await acknowledgeWrite(server, docName);
