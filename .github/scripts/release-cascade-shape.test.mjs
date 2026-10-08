@@ -2347,6 +2347,33 @@ describe('the release App credential never shares a job with installed packages'
       for (const job of ['release', 'publish']) expect(releaseWorkflow.jobs[job].if).toBe(RUN_IF);
     });
 
+    test('the build job builds what it packs after both version overrides, and checks the baked browser version before packing', () => {
+      const { build } = releaseWorkflow.jobs;
+      const names = steps(build).map((step) => step.name);
+      const at = (name) => {
+        expect(names, name).toContain(name);
+        return names.indexOf(name);
+      };
+      const turboBuilds = steps(build).filter((step) => /\bturbo\s+run\s+build\b/.test(commands(step)));
+      expect(turboBuilds.map((step) => commands(step).trim())).toEqual([
+        'pnpm exec turbo run build --filter=@inkeep/open-knowledge --cache=local:,remote:',
+      ]);
+      const built = at(turboBuilds[0].name);
+      expect(at('Override fixed-group versions to X.Y.Z-beta.N')).toBeLessThan(built);
+      expect(at('Validate stable_version + override package.json (publish-stable)')).toBeLessThan(built);
+      const prepublish = "Run the cli's prepublishOnly against the overridden versions";
+      const check = stepNamed(build, 'Assert the browser bundle bakes the version being published');
+      expect(built).toBeLessThan(at(prepublish));
+      expect(at(prepublish)).toBeLessThan(at(check.name));
+      expect(at(check.name)).toBeLessThan(at('Pack the cli tarball'));
+      expect(check.if).toBe(PACK_IF);
+      expect(check['continue-on-error']).toBeUndefined();
+      expect(commands(check)).toContain(
+        'git show "$GITHUB_SHA:packages/cli/scripts/assert-bundle-version.mjs" > "$RUNNER_TEMP/assert-bundle-version.mjs"',
+      );
+      expect(commands(check)).toContain('node "$RUNNER_TEMP/assert-bundle-version.mjs" packages/cli');
+    });
+
     test('the credential jobs take from the build job only what needs package code to compute', () => {
       const reads = (id) => {
         const job = releaseWorkflow.jobs[id];

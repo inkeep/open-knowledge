@@ -306,19 +306,6 @@ jobs:
           rustup toolchain install --no-self-update
           rustc -vV
 
-      - name: Build packages
-        run: |
-          pnpm exec turbo run build --cache=local:,remote:
-
-      - name: Assert the native-config binary set
-        env:
-          NATIVE_SET_PLATFORMS: ${{ steps.stage.outputs.platforms }}
-        run: |
-          set -euo pipefail
-          git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
-          git show "$GITHUB_SHA:.github/scripts/assert-native-set.mjs" > "$RUNNER_TEMP/assert-native-set.mjs"
-          node "$RUNNER_TEMP/assert-native-set.mjs" platforms "$NATIVE_SET_PLATFORMS"
-
       # --- BETA PATH (push + workflow_dispatch) ---
 
       # Compute baseVersion + maxBumpType + rendered release notes locally
@@ -510,10 +497,31 @@ jobs:
           done
           echo "All fixed-group package.json files + both skill bundles' metadata.version now at ${STABLE_VERSION} (in-memory only)."
 
+      - name: Build the cli and its workspace dependencies at the overridden versions
+        run: |
+          pnpm exec turbo run build --filter=@inkeep/open-knowledge --cache=local:,remote:
+
+      - name: Assert the native-config binary set
+        env:
+          NATIVE_SET_PLATFORMS: ${{ steps.stage.outputs.platforms }}
+        run: |
+          set -euo pipefail
+          git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git show "$GITHUB_SHA:.github/scripts/assert-native-set.mjs" > "$RUNNER_TEMP/assert-native-set.mjs"
+          node "$RUNNER_TEMP/assert-native-set.mjs" platforms "$NATIVE_SET_PLATFORMS"
+
       - name: Run the cli's prepublishOnly against the overridden versions
         if: github.event.action == 'publish-stable' || steps.compute-beta.outputs.run_beta == 'true'
         working-directory: packages/cli
         run: pnpm run prepublishOnly
+
+      - name: Assert the browser bundle bakes the version being published
+        if: github.event.action == 'publish-stable' || steps.compute-beta.outputs.run_beta == 'true'
+        run: |
+          set -euo pipefail
+          git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git show "$GITHUB_SHA:packages/cli/scripts/assert-bundle-version.mjs" > "$RUNNER_TEMP/assert-bundle-version.mjs"
+          node "$RUNNER_TEMP/assert-bundle-version.mjs" packages/cli
 
       - name: Pack the cli tarball
         if: github.event.action == 'publish-stable' || steps.compute-beta.outputs.run_beta == 'true'
