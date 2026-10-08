@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
@@ -6,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { Reporter, TestModule } from 'vitest/node';
 import tierConfig from '../vitest.uncached.config';
+import { type ChildRun, runChildWithSilenceBound } from './child-silence-bound.test-helper';
 import { uncachedTierFloor } from './uncached-tier-floor';
 
 const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -14,8 +14,9 @@ const VITEST_CLI = resolve(
   'vitest.mjs',
 );
 const FLOOR_MODULE = fileURLToPath(new URL('./uncached-tier-floor.ts', import.meta.url));
-const CHILD_BUDGET_MS = 50_000;
-const TEST_BUDGET_MS = 60_000;
+const CHILD_SILENCE_BOUND_MS = 300_000;
+const CHILD_OUTPUT_LIMIT_BYTES = 64 * 1024 * 1024;
+const BOUNDED_BY_CHILD_SILENCE = 0;
 
 const AUTHOR_RULE =
   'A tier test must execute wherever the tier runs; if its subject is absent from the public mirror, name the file <name>.private.uncached.test.ts; never skip a test, or condition its definition or body, on a presence probe.';
@@ -25,32 +26,27 @@ const REFUSAL_HEAD = 'vitest.uncached.config.ts: the tier fails this run because
 const AUTHOR_SKIP_PART = /^(\d+ skipped|\d+ todo|skipped suite ".*" holds no test)$/;
 const AUTHOR_SKIPS_IN_HEAD = /; [1-9]\d* skipped, \d+ todo, \d+ unfinished;/;
 
-type ChildRun = { status: number | null; signal: NodeJS.Signals | null; output: string };
-
-function runVitest(cwd: string, config: string, args: string[]): Promise<ChildRun> {
-  return new Promise((resolveRun) => {
-    execFile(
-      process.execPath,
-      [VITEST_CLI, 'run', '--config', config, ...args],
-      {
-        cwd,
-        env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
-        timeout: CHILD_BUDGET_MS,
-        maxBuffer: 64 * 1024 * 1024,
-      },
-      (error, stdout, stderr) => {
-        resolveRun({
-          status: error === null ? 0 : typeof error.code === 'number' ? error.code : null,
-          signal: error?.signal ?? null,
-          output: `${stdout}\n${stderr}`,
-        });
-      },
-    );
-  });
+function runVitest(
+  signal: AbortSignal,
+  cwd: string,
+  config: string,
+  args: string[],
+): Promise<ChildRun> {
+  return runChildWithSilenceBound(
+    process.execPath,
+    [VITEST_CLI, 'run', '--config', config, '--reporter=default', ...args],
+    {
+      cwd,
+      env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
+      signal,
+      silenceBoundMs: CHILD_SILENCE_BOUND_MS,
+      outputLimitBytes: CHILD_OUTPUT_LIMIT_BYTES,
+    },
+  );
 }
 
-function runRealTier(args: string[]): Promise<ChildRun> {
-  return runVitest(OK_ROOT, 'vitest.uncached.config.ts', args);
+function runRealTier(signal: AbortSignal, args: string[]): Promise<ChildRun> {
+  return runVitest(signal, OK_ROOT, 'vitest.uncached.config.ts', args);
 }
 
 function refusedCounts(run: ChildRun): { executed: number; collected: number } {
@@ -92,8 +88,8 @@ function authorAttributions(
 describe('the real uncached tier fails a run in which a collected test did not execute', () => {
   test(
     'a name filter that matches no test skips every test, and the run fails with the counts and the rule',
-    async () => {
-      const run = await runRealTier(['-t', 'no uncached tier test is named this']);
+    async ({ signal }) => {
+      const run = await runRealTier(signal, ['-t', 'no uncached tier test is named this']);
       expect(run.signal).toBeNull();
       expect(run.status, run.output).toBe(1);
       const { executed, collected } = refusedCounts(run);
@@ -101,13 +97,13 @@ describe('the real uncached tier fails a run in which a collected test did not e
       expect(collected).toBeGreaterThan(0);
       expect(run.output).toContain(AUTHOR_RULE);
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a name filter that runs some tests and skips the rest fails for the ones it skipped',
-    async () => {
-      const run = await runRealTier(['-t', 'rule is registered']);
+    async ({ signal }) => {
+      const run = await runRealTier(signal, ['-t', 'rule is registered']);
       expect(run.signal).toBeNull();
       expect(run.status, run.output).toBe(1);
       const { executed, collected } = refusedCounts(run);
@@ -118,20 +114,23 @@ describe('the real uncached tier fails a run in which a collected test did not e
       expect(executed).toBeLessThan(collected);
       expect(run.output).toMatch(/-t "rule is registered" skipped tests by name/);
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a run that selects no file fails, even when the caller passes --passWithNoTests',
-    async () => {
-      const run = await runRealTier(['--passWithNoTests', 'no-uncached-tier-file-is-named-this']);
+    async ({ signal }) => {
+      const run = await runRealTier(signal, [
+        '--passWithNoTests',
+        'no-uncached-tier-file-is-named-this',
+      ]);
       expect(run.signal).toBeNull();
       expect(run.status, run.output).toBe(1);
       expect(run.output).toContain(
         'vitest.uncached.config.ts: the tier fails this run because it ran no test file',
       );
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test('every project of the real tier config carries the floor', () => {
@@ -167,8 +166,8 @@ function fixtureTier(files: Record<string, string>): string {
   return root;
 }
 
-function runFixtureTier(root: string, args: string[] = []): Promise<ChildRun> {
-  return runVitest(root, join(root, 'vitest.config.mjs'), args);
+function runFixtureTier(signal: AbortSignal, root: string, args: string[] = []): Promise<ChildRun> {
+  return runVitest(signal, root, join(root, 'vitest.config.mjs'), args);
 }
 
 const CONTROL = "test('control executes', () => { expect(1).toBe(1); });\n";
@@ -182,31 +181,51 @@ const PRESENCE_PROBE = [
 
 describe('the floor, run by Vitest itself over fixture files', () => {
   test(
+    'a tier child reports each file it finishes even where Vitest detects an agent, so the silence bound sees its progress',
+    async ({ signal }) => {
+      const root = fixtureTier({
+        'control.fixture.test.mjs': CONTROL,
+        'second.fixture.test.mjs': CONTROL,
+      });
+      vi.stubEnv('AI_AGENT', 'uncached-tier-floor-test');
+      try {
+        const run = await runFixtureTier(signal, root);
+        expect(run.status, run.output).toBe(0);
+        expect(run.output).toContain('control.fixture.test.mjs');
+        expect(run.output).toContain('second.fixture.test.mjs');
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+    BOUNDED_BY_CHILD_SILENCE,
+  );
+
+  test(
     'a clean run passes and prints what it executed',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'control.fixture.test.mjs': CONTROL,
         'second.fixture.test.mjs':
           "describe('suite', () => { test('a', () => { expect(1).toBe(1); }); test('b', () => { expect(2).toBe(2); }); });\n",
       });
-      const run = await runFixtureTier(root);
+      const run = await runFixtureTier(signal, root);
       expect(run.status, run.output).toBe(0);
       expect(run.output).toContain(
         'uncached tier: every collected test executed (3 of 3; 3 passed, 0 failed; 2 files).',
       );
       expect(run.output).not.toContain('the tier fails this run');
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a file holding only an empty skipped suite fails the run beside a passing control, though no leaf test skipped',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'control.fixture.test.mjs': CONTROL,
         'empty-suite.fixture.test.mjs': "describe.skip('empty reader corpus', () => {});\n",
       });
-      const run = await runFixtureTier(root);
+      const run = await runFixtureTier(signal, root);
       expect(run.status, run.output).toBe(1);
       expect(refusedCounts(run)).toEqual({ executed: 1, collected: 1 });
       expect(run.output).toContain(
@@ -214,12 +233,12 @@ describe('the floor, run by Vitest itself over fixture files', () => {
       );
       expect(run.output).not.toMatch(/control\.fixture\.test\.mjs: /);
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a presence-probe skip, a todo, a runtime skip and a focused sibling each fail the run, and the control does not',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'control.fixture.test.mjs': CONTROL,
         'probe.fixture.test.mjs': PRESENCE_PROBE,
@@ -230,7 +249,7 @@ describe('the floor, run by Vitest itself over fixture files', () => {
         'focused.fixture.test.mjs':
           "test.only('focused', () => { expect(1).toBe(1); });\ntest('silently skipped sibling', () => { expect(1).toBe(2); });\n",
       });
-      const run = await runFixtureTier(root, ['--allowOnly']);
+      const run = await runFixtureTier(signal, root, ['--allowOnly']);
       expect(run.status, run.output).toBe(1);
       expect(run.output).toContain('probe.fixture.test.mjs: no test executed; 1 skipped');
       expect(run.output).toContain('todo.fixture.test.mjs: 1 todo');
@@ -239,29 +258,29 @@ describe('the floor, run by Vitest itself over fixture files', () => {
       expect(run.output).not.toMatch(/control\.fixture\.test\.mjs: /);
       expect(run.output).toContain(AUTHOR_RULE);
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a --reporter flag cannot drop the floor, because the floor is not a configured reporter',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({ 'probe.fixture.test.mjs': PRESENCE_PROBE });
-      const run = await runFixtureTier(root, ['--reporter=dot']);
+      const run = await runFixtureTier(signal, root, ['--reporter=dot']);
       expect(run.status, run.output).toBe(1);
       expect(refusedCounts(run)).toEqual({ executed: 0, collected: 1 });
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a real failure still fails the run, and the floor reports it as executed rather than skipped',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'control.fixture.test.mjs': CONTROL,
         'failing.fixture.test.mjs':
           "test('asserts something false', () => { expect(1).toBe(2); });\n",
       });
-      const run = await runFixtureTier(root);
+      const run = await runFixtureTier(signal, root);
       expect(run.status, run.output).toBe(1);
       expect(run.output).toContain(
         'uncached tier: every collected test executed (2 of 2; 1 passed, 1 failed; 2 files).',
@@ -269,12 +288,12 @@ describe('the floor, run by Vitest itself over fixture files', () => {
       expect(run.output).not.toContain('the tier fails this run');
       expect(run.output).toContain('AssertionError');
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a file that fails to load and a suite whose beforeAll throws are refused as those failures, not as author skips and not with the author rule',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'control.fixture.test.mjs': CONTROL,
         'broken.fixture.test.mjs': [
@@ -291,7 +310,7 @@ describe('the floor, run by Vitest itself over fixture files', () => {
           '',
         ].join('\n'),
       });
-      const run = await runFixtureTier(root);
+      const run = await runFixtureTier(signal, root);
       expect(run.signal).toBeNull();
       expect(run.status, run.output).toBe(1);
       expect(run.output).not.toContain('uncached tier: every collected test executed');
@@ -306,12 +325,12 @@ describe('the floor, run by Vitest itself over fixture files', () => {
       expect(refusal).not.toMatch(/control\.fixture\.test\.mjs: /);
       expect(run.output).not.toContain(AUTHOR_RULE);
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a describe body that throws, a module-scope beforeAll that throws, and suites under a failed beforeAll are refused as those failures, not as author skips',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'control.fixture.test.mjs': CONTROL,
         'describe-body.fixture.test.mjs': [
@@ -347,7 +366,7 @@ describe('the floor, run by Vitest itself over fixture files', () => {
           '',
         ].join('\n'),
       });
-      const run = await runFixtureTier(root);
+      const run = await runFixtureTier(signal, root);
       expect(run.signal).toBeNull();
       expect(run.status, run.output).toBe(1);
       expect(run.output).not.toContain('uncached tier: every collected test executed');
@@ -368,12 +387,12 @@ describe('the floor, run by Vitest itself over fixture files', () => {
       expect(refusal).not.toMatch(AUTHOR_SKIPS_IN_HEAD);
       expect(run.output).not.toContain(AUTHOR_RULE);
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a test.skip beside a suite whose beforeAll throws is the one author skip in its file, and the run still ends with the author rule',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'control.fixture.test.mjs': CONTROL,
         'mixed.fixture.test.mjs': [
@@ -385,19 +404,19 @@ describe('the floor, run by Vitest itself over fixture files', () => {
           '',
         ].join('\n'),
       });
-      const run = await runFixtureTier(root);
+      const run = await runFixtureTier(signal, root);
       expect(run.status, run.output).toBe(1);
       expect(run.output).toContain(AUTHOR_RULE);
       expect(authorAttributions(floorRefusal(run), ['mixed.fixture.test.mjs'])).toEqual({
         'mixed.fixture.test.mjs': ['1 skipped'],
       });
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'author skips beside a failing test stay author skips, and the run ends with the author rule',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'control.fixture.test.mjs': CONTROL,
         'fail-and-skip.fixture.test.mjs': [
@@ -407,26 +426,26 @@ describe('the floor, run by Vitest itself over fixture files', () => {
           '',
         ].join('\n'),
       });
-      const run = await runFixtureTier(root);
+      const run = await runFixtureTier(signal, root);
       expect(run.status, run.output).toBe(1);
       expect(run.output).toContain(AUTHOR_RULE);
       expect(authorAttributions(floorRefusal(run), ['fail-and-skip.fixture.test.mjs'])).toEqual({
         'fail-and-skip.fixture.test.mjs': ['2 skipped'],
       });
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a file that registers no test stays an author miss with the author rule when, as in the tier, no --passWithNoTests is set',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'control.fixture.test.mjs': CONTROL,
         'silent.fixture.test.mjs':
           "const SUBJECT = null;\nif (SUBJECT !== null) { test('reads the subject', () => { expect(SUBJECT).toBe(1); }); }\n",
         'empty-suite.fixture.test.mjs': "describe('empty reader corpus', () => {});\n",
       });
-      const run = await runFixtureTier(root);
+      const run = await runFixtureTier(signal, root);
       expect(run.status, run.output).toBe(1);
       expect(run.output).toContain(AUTHOR_RULE);
       expect(
@@ -439,12 +458,12 @@ describe('the floor, run by Vitest itself over fixture files', () => {
         'empty-suite.fixture.test.mjs': ['no test executed'],
       });
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a runtime ctx.skip() stays an author skip with the author rule, even when a hook in its suite or module fails',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'control.fixture.test.mjs': CONTROL,
         'probe-in-before-each.fixture.test.mjs': [
@@ -479,7 +498,7 @@ describe('the floor, run by Vitest itself over fixture files', () => {
           '',
         ].join('\n'),
       });
-      const run = await runFixtureTier(root);
+      const run = await runFixtureTier(signal, root);
       expect(run.status, run.output).toBe(1);
       expect(run.output).toContain(AUTHOR_RULE);
       expect(
@@ -496,12 +515,12 @@ describe('the floor, run by Vitest itself over fixture files', () => {
         'runtime-skip-module-after-all-throws.fixture.test.mjs': ['1 skipped'],
       });
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a test.skip or an empty describe.skip under a beforeAll that throws stays an author skip, and the run ends with the author rule',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'control.fixture.test.mjs': CONTROL,
         'skip-inside.fixture.test.mjs': [
@@ -521,7 +540,7 @@ describe('the floor, run by Vitest itself over fixture files', () => {
           '',
         ].join('\n'),
       });
-      const run = await runFixtureTier(root);
+      const run = await runFixtureTier(signal, root);
       expect(run.status, run.output).toBe(1);
       expect(run.output).toContain(AUTHOR_RULE);
       expect(
@@ -536,12 +555,12 @@ describe('the floor, run by Vitest itself over fixture files', () => {
         ],
       });
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a captured ctx.skip() called in a beforeAll stays an author skip with the author rule, whether nothing failed or only a test beside it',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'control.fixture.test.mjs': CONTROL,
         'captured.fixture.test.mjs': [
@@ -564,7 +583,7 @@ describe('the floor, run by Vitest itself over fixture files', () => {
           '',
         ].join('\n'),
       });
-      const run = await runFixtureTier(root);
+      const run = await runFixtureTier(signal, root);
       expect(run.status, run.output).toBe(1);
       expect(run.output).toContain(AUTHOR_RULE);
       expect(
@@ -577,12 +596,12 @@ describe('the floor, run by Vitest itself over fixture files', () => {
         'captured-beside-failure.fixture.test.mjs': ['1 skipped'],
       });
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'an empty suite a failed beforeAll stopped fails the run on its own, as that failure and without the author rule',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'control.fixture.test.mjs': CONTROL,
         'only-empty-stopped.fixture.test.mjs': [
@@ -594,7 +613,7 @@ describe('the floor, run by Vitest itself over fixture files', () => {
           '',
         ].join('\n'),
       });
-      const run = await runFixtureTier(root);
+      const run = await runFixtureTier(signal, root);
       expect(run.status, run.output).toBe(1);
       expect(run.output).not.toContain('uncached tier: every collected test executed');
       expect(floorRefusal(run)).toContain(
@@ -602,12 +621,12 @@ describe('the floor, run by Vitest itself over fixture files', () => {
       );
       expect(run.output).not.toContain(AUTHOR_RULE);
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a file that registers no test keeps the author rule when all it holds is an empty suite a failed beforeAll stopped',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'control.fixture.test.mjs': CONTROL,
         'stopped-suite-only.fixture.test.mjs': [
@@ -618,26 +637,26 @@ describe('the floor, run by Vitest itself over fixture files', () => {
           '',
         ].join('\n'),
       });
-      const run = await runFixtureTier(root);
+      const run = await runFixtureTier(signal, root);
       expect(run.status, run.output).toBe(1);
       expect(floorRefusal(run)).toContain(
         'stopped-suite-only.fixture.test.mjs: no test executed; stopped suite "outer > empty inner" holds no test',
       );
       expect(run.output).toContain(AUTHOR_RULE);
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a file that registers no test fails the run beside a passing control, even under --passWithNoTests',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'control.fixture.test.mjs': CONTROL,
         'silent.fixture.test.mjs':
           "const SUBJECT = null;\nif (SUBJECT !== null) { test('reads the subject', () => { expect(SUBJECT).toBe(1); }); }\n",
         'empty-suite.fixture.test.mjs': "describe('empty reader corpus', () => {});\n",
       });
-      const run = await runFixtureTier(root, ['--passWithNoTests']);
+      const run = await runFixtureTier(signal, root, ['--passWithNoTests']);
       expect(run.status, run.output).toBe(1);
       expect(refusedCounts(run)).toEqual({ executed: 1, collected: 1 });
       expect(run.output).toContain('silent.fixture.test.mjs: no test executed');
@@ -645,12 +664,12 @@ describe('the floor, run by Vitest itself over fixture files', () => {
       expect(run.output).not.toContain('uncached tier: every collected test executed');
       expect(run.output).not.toMatch(/control\.fixture\.test\.mjs: /);
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 
   test(
     'a run Vitest interrupted fails without blaming the tests it cancelled on the author',
-    async () => {
+    async ({ signal }) => {
       const root = fixtureTier({
         'bail.fixture.test.mjs': [
           "test('fails first', () => { expect(1).toBe(2); });",
@@ -659,7 +678,7 @@ describe('the floor, run by Vitest itself over fixture files', () => {
           '',
         ].join('\n'),
       });
-      const run = await runFixtureTier(root, ['--bail=1', '--no-file-parallelism']);
+      const run = await runFixtureTier(signal, root, ['--bail=1', '--no-file-parallelism']);
       expect(run.status, run.output).toBe(1);
       expect(run.output).toContain(
         'vitest.uncached.config.ts: the tier fails this run because Vitest interrupted it before it finished',
@@ -667,7 +686,7 @@ describe('the floor, run by Vitest itself over fixture files', () => {
       expect(run.output).not.toContain(AUTHOR_RULE);
       expect(run.output).not.toContain('uncached tier: every collected test executed');
     },
-    TEST_BUDGET_MS,
+    BOUNDED_BY_CHILD_SILENCE,
   );
 });
 
