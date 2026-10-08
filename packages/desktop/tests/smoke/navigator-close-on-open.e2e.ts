@@ -1,6 +1,7 @@
+import { once } from 'node:events';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, parse } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
@@ -15,6 +16,7 @@ import { findProjectEditorWindow } from './_helpers/project-editor-window';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
+const WINDOWS = process.platform === 'win32';
 
 interface SeededHome {
   tmpHome: string;
@@ -126,6 +128,68 @@ async function findFirstWindowByMode(
     if (observed === mode) return page;
   }
   throw new Error(`${mode} window vanished between poll resolution and read`);
+}
+
+interface RecordedErrorDialog {
+  title: string | undefined;
+  parentWindowId: number | null;
+  parentVisible: boolean | null;
+}
+
+async function recordErrorDialogs(
+  app: ElectronApplication,
+  { acknowledge }: { acknowledge: boolean } = { acknowledge: true },
+): Promise<void> {
+  await app.evaluate(({ BrowserWindow, dialog }, acknowledgeDialogs) => {
+    const recorded: RecordedErrorDialog[] = [];
+    Reflect.set(globalThis, '__okRecordedErrorDialogs', recorded);
+    const original = dialog.showMessageBox.bind(dialog);
+    const recording = (
+      ...args: [Electron.MessageBoxOptions] | [Electron.BrowserWindow, Electron.MessageBoxOptions]
+    ) => {
+      const [first, second] = args;
+      const parent = first instanceof BrowserWindow ? first : null;
+      const options = (parent === null ? first : second) as Electron.MessageBoxOptions;
+      if (options.type !== 'error') {
+        return parent === null ? original(options) : original(parent, options);
+      }
+      recorded.push({
+        title: options.title,
+        parentWindowId: parent?.id ?? null,
+        parentVisible: parent?.isVisible() ?? null,
+      });
+      return acknowledgeDialogs
+        ? Promise.resolve({ response: 0, checkboxChecked: false })
+        : new Promise<Electron.MessageBoxReturnValue>(() => {});
+    };
+    dialog.showMessageBox = recording as typeof dialog.showMessageBox;
+  }, acknowledge);
+}
+
+async function readRecordedErrorDialogs(app: ElectronApplication): Promise<RecordedErrorDialog[]> {
+  return app.evaluate(
+    () => (Reflect.get(globalThis, '__okRecordedErrorDialogs') ?? []) as RecordedErrorDialog[],
+  );
+}
+
+async function windowIds(app: ElectronApplication): Promise<number[]> {
+  return app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((w) => w.id));
+}
+
+async function onlyWindowId(app: ElectronApplication): Promise<number> {
+  const ids = await windowIds(app);
+  expect(ids).toHaveLength(1);
+  return ids[0] as number;
+}
+
+async function openFromNavigator(navigator: Page, path: string): Promise<void> {
+  await navigator.evaluate(async (target) => {
+    await window.okDesktop?.project.open({
+      path: target,
+      target: 'new-window',
+      entryPoint: 'pick-existing',
+    });
+  }, path);
 }
 
 test.describe('Project Navigator close-on-project-open smoke', () => {
@@ -241,19 +305,7 @@ test.describe('Project Navigator close-on-project-open smoke', () => {
       .toBe(1);
     const navigator = await findFirstWindowByMode(app, 'navigator');
 
-    await app.evaluate(({ dialog }) => {
-      const wrapped = dialog as unknown as {
-        __showErrorBoxCalls?: number;
-        __lastErrorTitle?: string;
-        showErrorBox: (t: string, c: string) => void;
-      };
-      wrapped.__showErrorBoxCalls = 0;
-      wrapped.__lastErrorTitle = undefined;
-      wrapped.showErrorBox = (title) => {
-        wrapped.__showErrorBoxCalls = (wrapped.__showErrorBoxCalls ?? 0) + 1;
-        wrapped.__lastErrorTitle = title;
-      };
-    });
+    await recordErrorDialogs(app);
 
     await navigator.evaluate(async (path) => {
       await window.okDesktop?.project.open({
@@ -271,17 +323,138 @@ test.describe('Project Navigator close-on-project-open smoke', () => {
       .toBe(0);
     expect(await countWindowsByMode(app, 'navigator')).toBe(1);
 
-    const dialogState = await app.evaluate(({ dialog }) => {
-      const wrapped = dialog as unknown as {
-        __showErrorBoxCalls?: number;
-        __lastErrorTitle?: string;
-      };
-      return {
-        calls: wrapped.__showErrorBoxCalls ?? 0,
-        title: wrapped.__lastErrorTitle,
-      };
+    const navigatorWindowId = await onlyWindowId(app);
+    expect(await readRecordedErrorDialogs(app)).toContainEqual({
+      title: 'Cannot open this folder',
+      parentWindowId: navigatorWindowId,
+      parentVisible: true,
     });
-    expect(dialogState.calls).toBeGreaterThan(0);
-    expect(dialogState.title).toBe('Cannot open this folder');
+  });
+
+  test('A refusal sent from an editor attaches its dialog to the Navigator once it is visible', async ({
+    captureStderrFor,
+  }) => {
+    const { tmpHome, projectAPath, projectBPath } =
+      seedHomeWithLastOpenedProjectAndExtra('refused-editor');
+    const app = await launchApp(tmpHome);
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectAPath, projectBPath] });
+
+    await expect
+      .poll(() => countWindowsByMode(app, 'editor'), {
+        timeout: 30_000,
+        message: 'Editor A did not appear from lastOpenedProject',
+      })
+      .toBe(1);
+    const editor = await findFirstWindowByMode(app, 'editor');
+    expect(await countWindowsByMode(app, 'navigator')).toBe(0);
+    await configureDesktopGitRepositories(editor, projectAPath);
+    const editorWindowIds = await windowIds(app);
+    await recordErrorDialogs(app);
+
+    await editor.evaluate(async (target) => {
+      await window.okDesktop?.project.open({
+        path: target,
+        target: 'new-window',
+        entryPoint: 'pick-existing',
+      });
+    }, tmpHome);
+
+    await expect
+      .poll(() => countWindowsByMode(app, 'navigator'), {
+        timeout: 15_000,
+        message: 'the refusal did not open the Navigator',
+      })
+      .toBe(1);
+    const navigatorWindowIds = (await windowIds(app)).filter((id) => !editorWindowIds.includes(id));
+    expect(navigatorWindowIds).toHaveLength(1);
+    await expect
+      .poll(() => readRecordedErrorDialogs(app), {
+        timeout: 15_000,
+        message: 'the refusal dialog was not shown over the Navigator',
+      })
+      .toEqual([
+        {
+          title: 'Cannot open this folder',
+          parentWindowId: navigatorWindowIds[0],
+          parentVisible: true,
+        },
+      ]);
+    expect(editor.isClosed()).toBe(false);
+  });
+
+  test('Refusing the home directory or a drive root leaves the Navigator usable', async ({
+    captureStderrFor,
+  }) => {
+    const { tmpHome, projectDir } = seedHomeWithoutLastOpenedProject('refused');
+    const app = await launchApp(tmpHome);
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
+
+    await expect
+      .poll(() => countWindowsByMode(app, 'navigator'), {
+        timeout: 20_000,
+        message: 'navigator window did not appear at cold boot',
+      })
+      .toBe(1);
+    const navigator = await findFirstWindowByMode(app, 'navigator');
+    const navigatorWindowId = await onlyWindowId(app);
+    await recordErrorDialogs(app);
+
+    await openFromNavigator(navigator, tmpHome);
+    await openFromNavigator(navigator, parse(tmpHome).root);
+
+    expect(await countWindowsByMode(app, 'editor')).toBe(0);
+    const refusal = {
+      title: 'Cannot open this folder',
+      parentWindowId: navigatorWindowId,
+      parentVisible: true,
+    };
+    expect(await readRecordedErrorDialogs(app)).toEqual([refusal, refusal]);
+
+    await openFromNavigator(navigator, projectDir);
+    await expect
+      .poll(() => countWindowsByMode(app, 'editor'), {
+        timeout: 30_000,
+        message: 'a valid project did not open after the refusals',
+      })
+      .toBe(1);
+    const editor = await findProjectEditorWindow(app, projectDir);
+    if (!editor) throw new Error('project editor did not open');
+    await configureDesktopGitRepositories(editor, projectDir);
+  });
+
+  test('The app quits on SIGTERM while the home-directory refusal is still open', async ({
+    captureStderrFor,
+  }) => {
+    test.skip(
+      WINDOWS,
+      'Windows has no SIGTERM: ChildProcess.kill terminates the process whatever the app does.',
+    );
+    const { tmpHome, projectDir } = seedHomeWithoutLastOpenedProject('refused-sigterm');
+    const app = await launchApp(tmpHome);
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
+
+    await expect
+      .poll(() => countWindowsByMode(app, 'navigator'), {
+        timeout: 20_000,
+        message: 'navigator window did not appear at cold boot',
+      })
+      .toBe(1);
+    const navigator = await findFirstWindowByMode(app, 'navigator');
+    await recordErrorDialogs(app, { acknowledge: false });
+    await openFromNavigator(navigator, tmpHome);
+    expect(await readRecordedErrorDialogs(app)).toHaveLength(1);
+
+    const main = app.process();
+    const exited = once(main, 'exit');
+    main.kill('SIGTERM');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const outcome = await Promise.race([
+      exited.then(() => 'exited'),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve('still running'), 20_000);
+      }),
+    ]);
+    clearTimeout(timer);
+    expect(outcome).toBe('exited');
   });
 });

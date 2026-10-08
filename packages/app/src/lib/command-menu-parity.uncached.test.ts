@@ -109,6 +109,7 @@ function makeFullDeps(): MenuDeps {
     appName: 'OpenKnowledge',
     showDevToolsMenu: true,
     dialog: {} as MenuDeps['dialog'],
+    errorDialogParent: () => null,
     openNavigator: noop,
     openProject: () => Promise.resolve(),
     openEphemeralFile: () => Promise.resolve(),

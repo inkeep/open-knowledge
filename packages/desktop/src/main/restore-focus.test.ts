@@ -37,25 +37,28 @@ function makeTimers(timeoutMs = 8_000): {
 
 interface FakeWindow extends RevealableWindow {
   emitShow: () => void;
+  emitRestore: () => void;
   destroy: () => void;
 }
 
 function makeWindow(opts: { visible?: boolean; destroyed?: boolean } = {}): FakeWindow {
   let visible = opts.visible ?? false;
   let destroyed = opts.destroyed ?? false;
-  const showListeners: Array<() => void> = [];
+  const listeners = { show: [] as Array<() => void>, restore: [] as Array<() => void> };
+  const emit = (event: 'show' | 'restore') => {
+    visible = true;
+    const snapshot = [...listeners[event]];
+    listeners[event].length = 0;
+    for (const l of snapshot) l();
+  };
   return {
     isDestroyed: () => destroyed,
     isVisible: () => visible,
-    once: (_event, listener) => {
-      showListeners.push(listener);
+    once: (event, listener) => {
+      listeners[event].push(listener);
     },
-    emitShow: () => {
-      visible = true;
-      const snapshot = [...showListeners];
-      showListeners.length = 0;
-      for (const l of snapshot) l();
-    },
+    emitShow: () => emit('show'),
+    emitRestore: () => emit('restore'),
     destroy: () => {
       destroyed = true;
     },
@@ -114,6 +117,21 @@ describe('whenWindowRevealed', () => {
     });
     expect(pending()).toBe(1);
     win.emitShow();
+    await p;
+    expect(resolved).toBe(true);
+    expect(pending()).toBe(0);
+  });
+
+  test('resolves when a minimized window is restored, and clears the safety timer', async () => {
+    const { deps, pending } = makeTimers();
+    const win = makeWindow();
+    let resolved = false;
+    const p = whenWindowRevealed(win, deps).then(() => {
+      resolved = true;
+    });
+    await flush();
+    expect(resolved).toBe(false);
+    win.emitRestore();
     await p;
     expect(resolved).toBe(true);
     expect(pending()).toBe(0);

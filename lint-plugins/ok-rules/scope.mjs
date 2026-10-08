@@ -89,6 +89,12 @@ export const RULE_SCOPES = {
     '!packages/md-conformance/src/class-proofs/proofs/**',
     'lint-plugins/ok-rules/__fixtures__/class-proof-registration-discipline.fixture.tsx',
   ],
+  'no-blocking-error-box': [
+    'packages/desktop/src/**/*.ts',
+    '!**/*.test.ts',
+    '!**/*.test-helper.ts',
+    'lint-plugins/ok-rules/__fixtures__/no-blocking-error-box.fixture.tsx',
+  ],
   'require-windowshide-on-spawn': [
     'packages/server/src/**/*.ts',
     'packages/cli/src/**/*.ts',

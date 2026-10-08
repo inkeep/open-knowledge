@@ -11,6 +11,7 @@ function makeDeps(overrides: Partial<MenuDeps> = {}): MenuDeps {
     showDevToolsMenu: true,
     terminalCapable: true,
     dialog: {} as Dialog,
+    errorDialogParent: () => null,
     openNavigator: vi.fn(),
     openProject: vi.fn(async () => {}),
     getRecentProjects: () => [],

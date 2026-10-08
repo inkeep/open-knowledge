@@ -54,6 +54,7 @@ export default defineConfig({
     'ok/microcopy-ellipsis': 'error',
     'ok/no-app-core-barrel-import': 'error',
     'ok/no-blind-agent-host-fanout': 'error',
+    'ok/no-blocking-error-box': 'error',
     'ok/no-demoted-dialog-confirm': 'error',
     'ok/no-hand-rolled-branch-validation': 'error',
     'ok/no-hand-rolled-test-file-suffix': 'error',

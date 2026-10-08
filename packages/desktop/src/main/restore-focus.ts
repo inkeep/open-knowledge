@@ -9,7 +9,7 @@ export function shouldRevealInactiveNow(state: {
 export interface RevealableWindow {
   isDestroyed?(): boolean;
   isVisible?(): boolean;
-  once(event: 'show', listener: () => void): void;
+  once(event: 'show' | 'restore', listener: () => void): void;
 }
 
 export interface RestoreFocusDeps {
@@ -35,6 +35,7 @@ export function whenWindowRevealed(win: RevealableWindow, deps: RestoreFocusDeps
     };
     const handle = deps.setTimeout(finish, deps.timeoutMs);
     win.once('show', finish);
+    win.once('restore', finish);
   });
 }
 

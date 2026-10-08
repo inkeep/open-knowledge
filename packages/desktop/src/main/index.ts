@@ -285,6 +285,7 @@ import {
   runDriverBootSmoke,
 } from './driver-boot-smoke.ts';
 import { EMBED_HOST_PATTERNS, rewriteEmbedRequestHeaders } from './embed-referer.ts';
+import { showErrorDialog, showErrorDialogOnceVisible } from './error-dialog.ts';
 import {
   defaultGitTopLevel,
   discoverProject,
@@ -1776,11 +1777,10 @@ async function openProject(
   );
 
   if (discovery.kind === 'rejected') {
-    dialog.showErrorBox(
+    showErrorOverNavigator(
       'Cannot open this folder',
       `${projectPath}\n\nReason: ${REJECTION_REASON_COPY[discovery.reason]}`,
     );
-    openNavigator();
     return false;
   }
 
@@ -1843,7 +1843,7 @@ async function openProject(
       { projectName, resolvedPickedName },
       'project admission confirmation requested',
     );
-    const { response } = await dialog.showMessageBox({
+    const { response } = await showMessageBoxAttached({
       type: 'question',
       buttons: ['Cancel', `Open ${projectName}`],
       cancelId: 0,
@@ -1885,7 +1885,7 @@ async function openProject(
       openNavigator();
       navigator = navigatorWindow;
       if (!navigator) {
-        dialog.showErrorBox(
+        showErrorOnFocusedWindow(
           'Cannot open this folder',
           `${projectPath}\n\nFailed to open the Project Navigator.`,
         );
@@ -2208,7 +2208,7 @@ async function openProjectOrFallbackToNavigator(
         holderIsOwnChild,
       },
       {
-        showMessageBox: (options) => dialog.showMessageBox(options),
+        showMessageBox: (options) => showMessageBoxAttached(options),
         forceStop: (expectedHolder) => {
           ensureWindowManager();
           return wm.forceStopConflictingServer(projectPath, expectedHolder);
@@ -2236,11 +2236,10 @@ async function openProjectOrFallbackToNavigator(
               '[main] openProject retry after stopping the conflicting server failed',
             );
             flushDesktopLogger();
-            dialog.showErrorBox(
+            showErrorOverNavigator(
               'Unable to open project',
               `${projectPath}\n\n${(retryErr as Error).message}`,
             );
-            openNavigator();
             return false;
           }
         },
@@ -2261,7 +2260,7 @@ async function openProjectOrFallbackToNavigator(
     if (prompt.kind !== 'not-offered') {
       if (prompt.kind === 'stop-failed') {
         flushDesktopLogger();
-        dialog.showErrorBox(
+        showErrorOverNavigator(
           'Unable to open project',
           `${projectPath}\n\n` +
             (prompt.reason === 'eperm'
@@ -2281,7 +2280,7 @@ async function openProjectOrFallbackToNavigator(
         if (isStaleLockHolder && otherChannelHolder === null) {
           const stopCommandTarget = quoteStopCommandPath(projectPath, process.platform);
           flushDesktopLogger();
-          dialog.showErrorBox(
+          showErrorOverNavigator(
             dialogTitle,
             `${dialogBody}\n\n` +
               (holderIsOwnChild
@@ -2302,8 +2301,7 @@ async function openProjectOrFallbackToNavigator(
       openNavigator();
       return false;
     }
-    dialog.showErrorBox(dialogTitle, dialogBody);
-    openNavigator();
+    showErrorOverNavigator(dialogTitle, dialogBody);
     return false;
   }
 }
@@ -2317,13 +2315,10 @@ async function openEphemeralFile(filePath: string): Promise<void> {
     plan = prepareSingleFileOpen(filePath);
   } catch (err) {
     getLogger('project').warn({ file: filePath, err }, 'single-file open could not be prepared');
-    dialog.showErrorBox(
+    showErrorOnFocusedWindowOrNavigator(
       'Cannot open this file',
       `${filePath}\n\n${err instanceof Error ? err.message : String(err)}`,
     );
-    if (BrowserWindow.getAllWindows().length === 0) {
-      openNavigator();
-    }
     return;
   }
 
@@ -2362,13 +2357,10 @@ async function openEphemeralFile(filePath: string): Promise<void> {
       { file: plan.canonicalFilePath, err },
       'ephemeral single-file open failed',
     );
-    dialog.showErrorBox(
+    showErrorOnFocusedWindowOrNavigator(
       'Could not open file',
       `${filePath}\n\n${err instanceof Error ? err.message : String(err)}`,
     );
-    if (BrowserWindow.getAllWindows().length === 0) {
-      openNavigator();
-    }
   }
 }
 
@@ -2433,7 +2425,7 @@ async function runMenuDispatchCommand(
       openNavigator();
       return;
     case 'open-folder-dialog': {
-      const picked = await promptForExistingFolder(dialog);
+      const picked = await promptForExistingFolder(dialog, { errorParent: dialogParentWindow });
       if (picked) await openProjectOrFallbackToNavigator(picked, 'pick-existing');
       return;
     }
@@ -2481,6 +2473,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
     showDevToolsMenu: !app.isPackaged || DESKTOP_VARIANT.name !== 'stable',
     terminalCapable: isTerminalAvailable(),
     dialog,
+    errorDialogParent: dialogParentWindow,
     openNavigator,
     openProject: async (path, entryPoint) => {
       await openProjectOrFallbackToNavigator(path, entryPoint);
@@ -2584,8 +2577,49 @@ function desktopSelfUninstallAvailable(): boolean {
   return appBundlePath !== null && isSupportedApplicationsBundle(appBundlePath, osHomedir());
 }
 
+function dialogParentWindow(): BrowserWindow | null {
+  return (
+    BrowserWindow.getFocusedWindow() ??
+    BrowserWindow.getAllWindows().find((w) => !w.isDestroyed()) ??
+    null
+  );
+}
+
+function showErrorOnFocusedWindow(title: string, body: string): void {
+  void showErrorDialog(dialog, dialogParentWindow(), title, body);
+}
+
+function showErrorOverNavigator(title: string, body: string): void {
+  try {
+    openNavigator();
+  } catch (err) {
+    getLogger('navigator').error({ err, title }, 'navigator failed to open to report an error');
+    showErrorOnFocusedWindow(title, body);
+    return;
+  }
+  void showErrorDialogOnceVisible(
+    dialog,
+    navigatorWindow as unknown as BrowserWindow | null,
+    title,
+    body,
+    {
+      setTimeout: (cb, ms) => setTimeout(cb, ms),
+      clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+      timeoutMs: RESTORE_REVEAL_TIMEOUT_MS,
+    },
+  );
+}
+
+function showErrorOnFocusedWindowOrNavigator(title: string, body: string): void {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    showErrorOverNavigator(title, body);
+  } else {
+    showErrorOnFocusedWindow(title, body);
+  }
+}
+
 async function showMessageBoxAttached(options: MessageBoxOptions) {
-  const target = BrowserWindow.getFocusedWindow();
+  const target = dialogParentWindow();
   return target ? dialog.showMessageBox(target, options) : dialog.showMessageBox(options);
 }
 
@@ -3651,7 +3685,7 @@ function reconfigureMcpWiringNow(target: McpWiringDispatchTarget | undefined): b
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[main] reconfigureMcpWiring failed', { err: message });
-    dialog.showErrorBox(
+    showErrorOnFocusedWindow(
       'Set up OpenKnowledge integrations failed',
       `OpenKnowledge couldn't re-arm the MCP consent dialog:\n\n${message}`,
     );
@@ -4125,11 +4159,13 @@ function registerIpcHandlers() {
   });
 
   handle('ok:dialog:open-folder', async (_event, opts) => {
-    return promptForExistingFolder(dialog, opts);
+    return promptForExistingFolder(dialog, { ...opts, errorParent: dialogParentWindow });
   });
 
   handle('ok:project:open-file-picker', async () => {
-    const picked = await promptForExistingMarkdownFile(dialog);
+    const picked = await promptForExistingMarkdownFile(dialog, {
+      errorParent: dialogParentWindow,
+    });
     if (picked) await openEphemeralFile(picked);
     return undefined;
   });

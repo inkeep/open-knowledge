@@ -13,6 +13,7 @@ function makeDeps(overrides: Partial<MenuDeps> = {}): MenuDeps {
     showDevToolsMenu: true,
     terminalCapable: true,
     dialog: {} as MenuDeps['dialog'],
+    errorDialogParent: () => null,
     openNavigator: vi.fn(() => {}),
     openProject: vi.fn(() => Promise.resolve()),
     getRecentProjects: vi.fn(() => []),
@@ -129,15 +130,15 @@ describe('buildMenuTemplate', () => {
   test('File → Open folder reports a picker that closes without a folder', async () => {
     const openProject = vi.fn(() => Promise.resolve());
     const showOpenDialog = vi.fn(() => Promise.resolve({ canceled: false, filePaths: [] }));
-    const showErrorBox = vi.fn();
+    const showMessageBox = vi.fn(() => Promise.resolve({ response: 0, checkboxChecked: false }));
     const deps = makeDeps({
       openProject,
-      dialog: { showOpenDialog, showErrorBox } as unknown as MenuDeps['dialog'],
+      dialog: { showOpenDialog, showMessageBox } as unknown as MenuDeps['dialog'],
     });
     const template = buildMenuTemplate(deps);
     const openFolder = findByLabel(template, 'Open folder…');
     await (openFolder?.click as (() => Promise<void>) | undefined)?.();
-    expect(showErrorBox).toHaveBeenCalledTimes(1);
+    expect(showMessageBox).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
     expect(openProject).not.toHaveBeenCalled();
   });
 

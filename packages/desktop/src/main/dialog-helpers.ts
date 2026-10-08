@@ -1,9 +1,11 @@
 import { isAbsolute } from 'node:path';
+import type { BrowserWindow } from 'electron';
 import { getLogger } from './desktop-logger.ts';
+import { type ErrorDialogHost, showErrorDialog } from './error-dialog.ts';
 
 type OpenDialogOptions = Parameters<DialogLike['showOpenDialog']>[0];
 
-interface DialogLike {
+interface DialogLike extends ErrorDialogHost {
   showOpenDialog(opts: {
     properties: (
       | 'openDirectory'
@@ -15,7 +17,6 @@ interface DialogLike {
     defaultPath?: string;
     filters?: { name: string; extensions: string[] }[];
   }): Promise<{ canceled: boolean; filePaths: string[] }>;
-  showErrorBox(title: string, content: string): void;
 }
 
 const NO_SELECTION_COPY = {
@@ -40,6 +41,7 @@ async function runPicker(
   dialogModule: DialogLike,
   target: keyof typeof NO_SELECTION_COPY,
   options: OpenDialogOptions,
+  errorParent: () => BrowserWindow | null,
 ): Promise<string | null> {
   const log = getLogger('dialog');
   let result: Awaited<ReturnType<DialogLike['showOpenDialog']>>;
@@ -61,7 +63,7 @@ async function runPicker(
       'picker returned no usable path',
     );
     const copy = NO_SELECTION_COPY[target];
-    dialogModule.showErrorBox(copy.title, copy.body);
+    void showErrorDialog(dialogModule, errorParent(), copy.title, copy.body);
     return null;
   }
   return picked;
@@ -69,6 +71,7 @@ async function runPicker(
 
 interface PromptForPickerOpts {
   defaultPath?: string;
+  errorParent: () => BrowserWindow | null;
 }
 
 export function resolvePickedPathForIndex(raw: string, callIndex: number): string | null {
@@ -92,25 +95,35 @@ function readTestPickedPath(): string | null {
 
 export async function promptForExistingFolder(
   dialogModule: DialogLike,
-  opts: PromptForPickerOpts = {},
+  opts: PromptForPickerOpts,
 ): Promise<string | null> {
   const testSeam = readTestPickedPath();
   if (testSeam !== null) return testSeam;
-  return runPicker(dialogModule, 'folder', {
-    properties: ['openDirectory', 'createDirectory', 'showHiddenFiles'],
-    ...(opts.defaultPath !== undefined ? { defaultPath: opts.defaultPath } : {}),
-  });
+  return runPicker(
+    dialogModule,
+    'folder',
+    {
+      properties: ['openDirectory', 'createDirectory', 'showHiddenFiles'],
+      ...(opts.defaultPath !== undefined ? { defaultPath: opts.defaultPath } : {}),
+    },
+    opts.errorParent,
+  );
 }
 
 export async function promptForExistingMarkdownFile(
   dialogModule: DialogLike,
-  opts: PromptForPickerOpts = {},
+  opts: PromptForPickerOpts,
 ): Promise<string | null> {
   const testSeam = readTestPickedPath();
   if (testSeam !== null) return testSeam;
-  return runPicker(dialogModule, 'file', {
-    properties: ['openFile'],
-    filters: [{ name: 'Markdown', extensions: ['md', 'mdx'] }],
-    ...(opts.defaultPath !== undefined ? { defaultPath: opts.defaultPath } : {}),
-  });
+  return runPicker(
+    dialogModule,
+    'file',
+    {
+      properties: ['openFile'],
+      filters: [{ name: 'Markdown', extensions: ['md', 'mdx'] }],
+      ...(opts.defaultPath !== undefined ? { defaultPath: opts.defaultPath } : {}),
+    },
+    opts.errorParent,
+  );
 }

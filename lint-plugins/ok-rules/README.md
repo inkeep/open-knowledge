@@ -625,6 +625,20 @@ Included: `packages/app/src/**/*.tsx`, `packages/desktop/src/**/*.tsx`, `package
 
 Rule: [`lint-plugins/ok-rules/rules/no-demoted-dialog-confirm.mjs`](rules/no-demoted-dialog-confirm.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-demoted-dialog-confirm.fixture.tsx`](__fixtures__/no-demoted-dialog-confirm.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-demoted-dialog-confirm.uncached.test.mjs`](tests/no-demoted-dialog-confirm.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
+### `no-blocking-error-box`
+
+Desktop error reporting. No code under `packages/desktop/src` calls `showErrorBox` on Electron's `dialog`, or on anything shaped like it. Errors are shown with `showErrorDialog` from [`packages/desktop/src/main/error-dialog.ts`](../../packages/desktop/src/main/error-dialog.ts), an async `showMessageBox` attached to a parent window.
+
+**Why.** `dialog.showErrorBox` is synchronous and takes no parent window. On Linux it runs `gtk_dialog_run`, which holds the main thread in a nested GTK loop until someone presses its button. With no parent, the window manager can stack the dialog behind the window it is reporting on, and the dialog has no taskbar entry, so nothing on screen shows it is still open. In PRD-9099 that left the Project Navigator on "Opening <folder>…" indefinitely: the `ok:project:open` reply could not leave the main process. SIGTERM was ignored as well, because both Chromium's shutdown task and the app's Node signal handler wait for the main loop. `showMessageBox` with a parent stays above that window, and the main loop keeps running while it is open.
+
+**Scoped** (see the rule's `RULE_SCOPES` entry in [`scope.mjs`](scope.mjs)) to `packages/desktop/src/**/*.ts`, the only package that runs in Electron's main process. `**/*.test.ts` and `**/*.test-helper.ts` are excluded, because tests stub the method by name.
+
+The rule matches a call of a non-computed `.showErrorBox` member, whatever the receiver: `dialog`, `electron.dialog`, or an injected dialog host. It does NOT catch a bare `showErrorBox(...)` identifier, a computed `dialog['showErrorBox'](...)`, or a reference taken without calling it (`const f = dialog.showErrorBox`). Those shapes have no realistic occurrence.
+
+**Opting out.** There is no sanctioned use after `app` is ready. Before `ready`, Electron prints the error box to stderr on Linux instead of showing it, so even an early-boot error needs a different reporting path.
+
+Rule: [`lint-plugins/ok-rules/rules/no-blocking-error-box.mjs`](rules/no-blocking-error-box.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-blocking-error-box.fixture.tsx`](__fixtures__/no-blocking-error-box.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-blocking-error-box.uncached.test.mjs`](tests/no-blocking-error-box.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+
 ### `no-unconverted-git-pathspec`
 
 Git pathspec discipline. Fires on a hand-written `'--'` string literal in an array literal, or as a direct argument of a `.raw(...)` varargs call, anywhere under `packages/{core,server,cli,desktop}/src/**` — unless the argv's leading non-flag token is one of the five verbs whose `--` operands are not pathspecs. The array branch consults no git token of any kind; see the over-catch note below. The tail after the separator is built with `pathspecArgs(paths)` from [`packages/core/src/git-pathspec.ts`](../../packages/core/src/git-pathspec.ts), which emits the separator and the `:(literal)` conversion together.
