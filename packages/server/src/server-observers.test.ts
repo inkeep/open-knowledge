@@ -1377,6 +1377,66 @@ describe('Observer A routing — Path B fires iff Y.Text holds unabsorbed change
     cleanup();
   });
 
+  test('residual merge on a CRLF doc applies the edit once and keeps CRLF instead of duplicating the body (PRD-8491)', () => {
+    __resetBridgeWatchdogForTests();
+    resetMetrics();
+
+    const crlfRaw = [
+      '# Mission',
+      '',
+      'Notre __mission__ est simple.',
+      '',
+      '-\tobjectif un',
+      '-\tobjectif deux',
+      '',
+      'Fin.',
+      '',
+    ].join('\r\n');
+    expect(normalizeBridge(canonicalOf(crlfRaw))).not.toBe(normalizeBridge(crlfRaw));
+
+    const { doc, xmlFragment, ytext, cleanup } = seedThenAttach(crlfRaw, 'routing-crlf-residual');
+    expect(ytext.toString()).toBe(crlfRaw);
+
+    populateFragment(doc, xmlFragment, serializeFragmentBody(xmlFragment).replace('Fin.', 'Fin.!'));
+    expect(getMetrics().observerAResidualMergeRuns).toBe(1);
+    expect(ytext.toString()).toBe(crlfRaw.replace('Fin.', 'Fin.!'));
+
+    populateFragment(
+      doc,
+      xmlFragment,
+      serializeFragmentBody(xmlFragment).replace('Fin.!', 'Fin.!?'),
+    );
+    expect(ytext.toString()).toBe(crlfRaw.replace('Fin.', 'Fin.!?'));
+
+    cleanup();
+  });
+
+  test('Path B on a diverged CRLF doc merges the source edit and the fragment edit once each and keeps CRLF (PRD-8491)', () => {
+    __resetBridgeWatchdogForTests();
+    resetMetrics();
+
+    const crlfRaw = '# Hello\r\n\r\nBody text stays.\r\n\r\nLast line.\r\n';
+    const { doc, xmlFragment, ytext, cleanup } = seedThenAttach(crlfRaw, 'routing-crlf-path-b');
+
+    const spaceAt = crlfRaw.indexOf('# Hello') + '# Hello'.length;
+    const editedBody = serializeFragmentBody(xmlFragment).replace(
+      'Last line.',
+      'Last line, edited.',
+    );
+    const firesBefore = totalPathBFires();
+    doc.transact(() => {
+      ytext.insert(spaceAt, ' world');
+      populateFragment(doc, xmlFragment, editedBody);
+    });
+
+    expect(totalPathBFires()).toBeGreaterThan(firesBefore);
+    expect(ytext.toString()).toBe(
+      '# Hello world\r\n\r\nBody text stays.\r\n\r\nLast line, edited.\r\n',
+    );
+
+    cleanup();
+  });
+
   test('paired write on a beyond-tolerance doc clears coherence: the next in-sync fragment edit takes the Path-A fallback, not the residual merge', () => {
     __resetBridgeWatchdogForTests();
     resetMetrics();

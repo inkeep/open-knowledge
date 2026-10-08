@@ -16,9 +16,23 @@ export interface MergeBoundarySpace {
 export function createMergeBoundarySpace(fragmentBody: string): MergeBoundarySpace {
   const carriesDocStartRun = fragmentCarriesDocStartRun(fragmentBody);
   return {
-    project: (text) => projectMergeBoundarySpace(text, carriesDocStartRun),
-    unproject: (merged, raw) => unprojectMergeBoundarySpace(merged, raw, carriesDocStartRun),
+    project: (text) => projectMergeBoundarySpace(projectLineEndings(text), carriesDocStartRun),
+    unproject: (merged, raw) =>
+      restoreLineEndings(
+        unprojectMergeBoundarySpace(merged, projectLineEndings(raw), carriesDocStartRun),
+        raw,
+      ),
   };
+}
+
+function projectLineEndings(text: string): string {
+  return text.replaceAll('\r\n', '\n');
+}
+
+function restoreLineEndings(merged: string, raw: string): string {
+  const crlfCount = raw.split('\r\n').length - 1;
+  const lfCount = raw.split('\n').length - 1 - crlfCount;
+  return crlfCount > lfCount ? merged.replaceAll('\n', '\r\n') : merged;
 }
 
 export interface DocBoundarySplit {
