@@ -3,7 +3,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 
 function canonicalPathIfPresent(path: string): string | undefined {
   try {
-    return realpathSync(path);
+    return realpathSync.native(path);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     throw error;
@@ -14,7 +14,7 @@ export async function findProjectEditorWindow(
   app: ElectronApplication,
   projectDir: string,
 ): Promise<Page | undefined> {
-  const canonicalProjectDir = realpathSync(projectDir);
+  const canonicalProjectDir = realpathSync.native(projectDir);
   for (const page of app.windows()) {
     const editorProjectPath = await page
       .evaluate(() =>
