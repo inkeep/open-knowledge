@@ -17,15 +17,18 @@ import {
 } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
 import { DEV_GATED_WINDOW_WRITERS } from './dev-gate-allowlist';
+import {
+  APP_SOURCE_EXCLUDED_SUFFIXES,
+  APP_SOURCE_EXTENSIONS,
+  APP_SOURCE_ROOT,
+  APP_STYLESHEET,
+  E2E_SCAN_ROOTS,
+} from './e2e-stop-rules.reads';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
-const E2E_DIRS = [
-  join(__dirname, '..', 'stress'),
-  join(__dirname, '..', 'visual'),
-  join(__dirname, '..', 'a11y'),
-];
-const APP_SRC_DIR = join(__dirname, '..', '..', 'src');
+const E2E_DIRS = E2E_SCAN_ROOTS.map((root) => join(REPO_ROOT, root));
+const APP_SRC_DIR = join(REPO_ROOT, APP_SOURCE_ROOT);
 
 interface FileLines {
   path: string;
@@ -78,9 +81,8 @@ function listAppSrcTsFiles(): FileLines[] {
         continue;
       }
       if (!name.isFile()) continue;
-      if (!name.name.endsWith('.ts') && !name.name.endsWith('.tsx')) continue;
-      if (isTestOnlySourceFile(name.name)) continue;
-      if (name.name.endsWith('.spec.ts') || name.name.endsWith('.spec.tsx')) continue;
+      if (!APP_SOURCE_EXTENSIONS.some((extension) => name.name.endsWith(extension))) continue;
+      if (APP_SOURCE_EXCLUDED_SUFFIXES.some((suffix) => name.name.endsWith(suffix))) continue;
       const source = readFileSync(abs, 'utf-8');
       out.push({
         path: relative(REPO_ROOT, abs),
@@ -461,7 +463,7 @@ function requirePinnedSpawnFile(files: FileLines[], path: string): FileLines {
   const file = files.find((candidate) => candidate.path === path);
   if (file === undefined) {
     throw new Error(
-      `${path} is pinned in DEV_SERVER_SPAWN_SITES but is not under the scanned e2e directories — it moved or was renamed, so its dev-server spawn stopped being checked. Point the path literal in DEV_SERVER_SPAWN_SITES at where the file lives now, and add its new parent to E2E_DIRS if the move left the scanned tree.`,
+      `${path} is pinned in DEV_SERVER_SPAWN_SITES but is not under the scanned e2e directories — it moved or was renamed, so its dev-server spawn stopped being checked. Point the path literal in DEV_SERVER_SPAWN_SITES at where the file lives now, and add its new parent to E2E_SCAN_ROOTS in e2e-stop-rules.reads.ts if the move left the scanned tree.`,
     );
   }
   return file;
@@ -721,7 +723,7 @@ describe('E2E STOP rule — zero allowlist', () => {
   test('the spawn-isolation rule resolves a dev-server spawn in exactly the pinned sites', () => {
     expect(
       mirroredFilesWithDevServerSpawns(e2eTsFiles),
-      'the files in which the guard resolves a dev-server spawn are no longer exactly the pinned dev-server spawn sites. Four causes, four different edits. (1) A pinned file moved or was renamed: update its path literal in DEV_SERVER_SPAWN_SITES, and add its new parent to E2E_DIRS if the move left the scanned tree — editing the call-shape recogniser will not bring it back. (2) The recogniser rotted against a call the corpus really has: it selects a `spawn`/`spawnSync` CallExpression whose command or argv array carries the literal argv token, so re-anchor SPAWN_CALLEE_NAMES and DEV_SERVER_ARGV_TOKEN on that shape. (3) A file listed in NON_DEV_SERVER_SPAWN_SITES now boots a dev server: move it to DEV_SERVER_SPAWN_SITES and give its spawn both isolation env keys. (4) A pinned file stopped parsing under the ts-morph program this guard runs, which is separate from the repo compiler: a file it cannot parse resolves no spawn call at all, and the isolation rule above reports that syntax error for the same file on the same run, so fix the syntax rather than either list. A site that drops out of this set carries no enforced isolation contract however its spawn env changes',
+      'the files in which the guard resolves a dev-server spawn are no longer exactly the pinned dev-server spawn sites. Four causes, four different edits. (1) A pinned file moved or was renamed: update its path literal in DEV_SERVER_SPAWN_SITES, and add its new parent to E2E_SCAN_ROOTS in e2e-stop-rules.reads.ts if the move left the scanned tree — editing the call-shape recogniser will not bring it back. (2) The recogniser rotted against a call the corpus really has: it selects a `spawn`/`spawnSync` CallExpression whose command or argv array carries the literal argv token, so re-anchor SPAWN_CALLEE_NAMES and DEV_SERVER_ARGV_TOKEN on that shape. (3) A file listed in NON_DEV_SERVER_SPAWN_SITES now boots a dev server: move it to DEV_SERVER_SPAWN_SITES and give its spawn both isolation env keys. (4) A pinned file stopped parsing under the ts-morph program this guard runs, which is separate from the repo compiler: a file it cannot parse resolves no spawn call at all, and the isolation rule above reports that syntax error for the same file on the same run, so fix the syntax rather than either list. A site that drops out of this set carries no enforced isolation contract however its spawn env changes',
     ).toEqual([...DEV_SERVER_SPAWN_SITES].sort());
   });
 
@@ -1192,7 +1194,7 @@ describe('E2E STOP rule — zero allowlist', () => {
   });
 
   test('selection-halo CSS rules use plugin-state propagation, not `:has()` (Precedent #34)', () => {
-    const cssPath = join(APP_SRC_DIR, 'globals.css');
+    const cssPath = join(REPO_ROOT, APP_STYLESHEET);
     const css = readFileSync(cssPath, 'utf-8');
     const lines = css.split('\n');
 
@@ -1210,7 +1212,7 @@ describe('E2E STOP rule — zero allowlist', () => {
       const selectorContext = lines.slice(windowStart, windowEnd).join('\n');
 
       if (selectionMarker.test(selectorContext)) {
-        violations.push(`  packages/app/src/globals.css:${i + 1}    ${line.trim()}`);
+        violations.push(`  ${APP_STYLESHEET}:${i + 1}    ${line.trim()}`);
       }
     }
 
@@ -1221,7 +1223,7 @@ describe('E2E STOP rule — zero allowlist', () => {
   });
 
   test('selection-halo transition uses `var(--ease-out-strong)`, not bare `ease-out` (round-2 review fix)', () => {
-    const cssPath = join(APP_SRC_DIR, 'globals.css');
+    const cssPath = join(REPO_ROOT, APP_STYLESHEET);
     const css = readFileSync(cssPath, 'utf-8');
     const lines = css.split('\n');
 
@@ -1246,7 +1248,7 @@ describe('E2E STOP rule — zero allowlist', () => {
       if (!line.includes('transition')) continue;
       const stripped = line.replace(/var\([^)]*\)/g, '');
       if (/\bease-out\b/.test(stripped)) {
-        violations.push(`  packages/app/src/globals.css:${i + 1}    ${line.trim()}`);
+        violations.push(`  ${APP_STYLESHEET}:${i + 1}    ${line.trim()}`);
       }
     }
 

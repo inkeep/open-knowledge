@@ -4,9 +4,15 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type ParseError, parse as parseJsonc, printParseErrorCode } from 'jsonc-parser';
 import { describe, expect, onTestFinished, test } from 'vitest';
+import {
+  CALLER_SUFFIX,
+  HELPER_SUFFIX,
+  SERVER_DIR,
+  CALLERS_TSCONFIG as TSCONFIG,
+} from './test-helper-caller-typecheck-coverage.reads.ts';
 
-const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const TSCONFIG = 'tsconfig.test-helper-callers.json';
+const OK_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const PACKAGE_ROOT = resolve(OK_ROOT, SERVER_DIR);
 const TYPECHECK_SCRIPT = 'typecheck:test-helper-callers';
 
 const HELPERS = [
@@ -46,14 +52,14 @@ function filesUnder(dir: string, suffix: string): string[] {
 }
 
 function callersOnDisk(): string[] {
-  return filesUnder(PACKAGE_ROOT, '.test.ts')
+  return filesUnder(PACKAGE_ROOT, CALLER_SUFFIX)
     .filter((path) => importsAHelper(readFileSync(path, 'utf8')))
     .map((path) => relative(PACKAGE_ROOT, path).replaceAll('\\', '/'))
     .sort();
 }
 
 function helpersOnDisk(root: string = PACKAGE_ROOT): string[] {
-  return filesUnder(root, '.test-helper.ts').map((path) => basename(path));
+  return filesUnder(root, HELPER_SUFFIX).map((path) => basename(path));
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -167,7 +173,7 @@ describe('every caller of a shared test-only helper sits inside a typecheck prog
     plant('.ok-skill-publish-kept-a1b2c3/staged.test.ts');
 
     expect(
-      filesUnder(root, '.test.ts').map((path) => relative(root, path).replaceAll('\\', '/')),
+      filesUnder(root, CALLER_SUFFIX).map((path) => relative(root, path).replaceAll('\\', '/')),
       'a staging root is gitignored and written by the server build, so it sits outside the ' +
         "cache key of the test task this walk runs in, and entering it reads the build's output",
     ).toEqual(['src/source.test.ts']);

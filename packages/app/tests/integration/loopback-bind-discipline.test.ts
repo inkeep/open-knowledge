@@ -3,10 +3,12 @@ import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
+import { LOOPBACK_SCAN_ROOTS } from './loopback-bind-discipline.reads';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, '..', '..');
-const SCAN_ROOTS = [__dirname, join(PACKAGE_ROOT, 'tests', 'stress')];
+const OK_ROOT = join(PACKAGE_ROOT, '..', '..');
+const SCAN_ROOTS = LOOPBACK_SCAN_ROOTS.map((root) => join(OK_ROOT, root));
 
 const SELF_BASENAME = basename(fileURLToPath(import.meta.url));
 

@@ -72,6 +72,7 @@ export default {
     '.{agents,codex}/skills/**': ['files'],
     'lint-plugins/no-comments/__fixtures__/**': ['files'],
     'lint-plugins/ok-rules/__fixtures__/**': ['files'],
+    '**/*.reads.{ts,mjs}': ['files', 'exports'],
     'scripts/compute-next-beta.mjs': ['files'],
     'scripts/build-slack-release-payload.mjs': ['files'],
     'scripts/assert-smoke-not-vacuous.mjs': ['files'],
@@ -148,11 +149,15 @@ export default {
     'packages/server': {
       entry: ['src/**/*.test.ts', 'src/parse-worker.ts'],
       project: 'src/**',
-      ignoreDependencies: ['@types/shell-quote'],
+      ignoreDependencies: [
+        '@types/shell-quote',
+      ],
     },
     'packages/cli': {
       entry: ['src/**/*.test.ts', 'scripts/*.ts', 'tests/**/*.ts', 'src/parse-worker.ts'],
-      ignoreDependencies: ['yjs'],
+      ignoreDependencies: [
+        'yjs',
+      ],
     },
     'packages/desktop': {
       entry: [

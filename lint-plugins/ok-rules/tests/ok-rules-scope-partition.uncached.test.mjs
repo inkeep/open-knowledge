@@ -10,13 +10,12 @@ import {
 import plugin, { rules } from '../index.mjs';
 import { noAppCoreBarrelImport } from '../rules/no-app-core-barrel-import.mjs';
 import { isInScope, RULE_SCOPES, scoped, UNSCOPED_RULES } from '../scope.mjs';
+import { OK_RULES_FIXTURES_DIR, OK_RULES_TESTS_DIR } from './ok-rules-scope-partition.reads.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
-const TESTS_DIR = fileURLToPath(new URL('.', import.meta.url));
-const FIXTURES_DIR = fileURLToPath(new URL('../__fixtures__/', import.meta.url));
-const FIXTURE_CONFIG = fileURLToPath(
-  new URL('../__fixtures__/oxlint.fixtures.json', import.meta.url),
-);
+const TESTS_DIR = join(REPO_ROOT, OK_RULES_TESTS_DIR);
+const FIXTURES_DIR = join(REPO_ROOT, OK_RULES_FIXTURES_DIR);
+const FIXTURE_CONFIG = join(FIXTURES_DIR, 'oxlint.fixtures.json');
 const TIER_TEST = /\.uncached\.test\.mjs$/;
 const CODE_FILE = /\.[cm]?[jt]sx?$/;
 const META_TESTS = ['ok-rules-scope-partition', 'ok-rules-vocabulary'];
@@ -85,7 +84,7 @@ describe('ok-rules scope table', () => {
     let checked = 0;
     const outOfScope = [];
     for (const name of fixtures) {
-      const fixture = `lint-plugins/ok-rules/__fixtures__/${name}`;
+      const fixture = `${OK_RULES_FIXTURES_DIR}/${name}`;
       for (const fire of lintOkRulesFixture(fixture)) {
         const rule = /^ok\((.+)\)$/.exec(fire.code)?.[1];
         if (rule === undefined) continue;
@@ -154,9 +153,13 @@ describe('scoped() through a symlinked repository path', () => {
 });
 
 describe('ok-rules fixture tests', () => {
-  test('every file in the tests directory runs in the uncached tier or is a helper', () => {
+  test('every file in the tests directory runs in the uncached tier, or is a helper or a read declaration', () => {
     const misplaced = readdirSync(TESTS_DIR).filter(
-      (name) => CODE_FILE.test(name) && !TIER_TEST.test(name) && !name.endsWith('.test-helper.mjs'),
+      (name) =>
+        CODE_FILE.test(name) &&
+        !TIER_TEST.test(name) &&
+        !name.endsWith('.test-helper.mjs') &&
+        !name.endsWith('.reads.mjs'),
     );
     expect(
       misplaced,

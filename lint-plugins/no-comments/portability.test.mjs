@@ -9,7 +9,7 @@ import { isInScope, scopeForRoot, subjectScope } from './scope.mjs';
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 
 const predicateModules = readdirSync(MODULE_DIR)
-  .filter((name) => name.endsWith('.mjs') && !name.includes('.test.'))
+  .filter((name) => name.endsWith('.mjs') && !name.includes('.test.') && !name.includes('.reads.'))
   .sort();
 
 const config = subjectScope().config;
