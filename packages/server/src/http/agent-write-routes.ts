@@ -154,6 +154,7 @@ export interface AgentWriteRouteDeps {
     label: string | undefined;
   };
   docNameExistsWithAnySupportedExtension: (contentDir: string, docName: string) => boolean;
+  findMissingDocCandidates: (docName: string) => string[];
   contentDir: string;
   summaryResponseFields: (normalized: NormalizedSummary) => {
     response?: SummaryResponse;
@@ -232,6 +233,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
     resolveAlias,
     extractAgentIdentity,
     docNameExistsWithAnySupportedExtension,
+    findMissingDocCandidates,
     contentDir,
     summaryResponseFields,
     sessionManager,
@@ -277,6 +279,28 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
     } catch {
       return 0;
     }
+  }
+
+  function respondIfDocumentMissing(
+    res: ServerResponse,
+    docName: string,
+    handler: 'agent-patch' | 'frontmatter-patch',
+  ): boolean {
+    if (docNameExistsWithAnySupportedExtension(contentDir, docName)) return false;
+    if ((hocuspocus.documents.get(docName)?.getText('source').length ?? 0) > 0) return false;
+    const candidates = findMissingDocCandidates(docName);
+    const nextStep =
+      candidates.length === 0
+        ? 'edit only changes an existing document; use write({ document: { path, content } }) to create one.'
+        : `Did you mean ${candidates.map((c) => `"${c}"`).join(' or ')}? Retry the edit at that path.`;
+    errorResponse(
+      res,
+      404,
+      'urn:ok:error:doc-not-found',
+      `No document at "${docName}" (paths are relative to the content root). ${nextStep}`,
+      { handler, extensions: { candidates, committed: false } },
+    );
+    return true;
   }
 
   function getSystemSubscriberCount(): number {
@@ -543,6 +567,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           );
           return;
         }
+        if (respondIfDocumentMissing(res, resolvedDocName, 'frontmatter-patch')) return;
         const patch = body.patch ?? {};
         const patchKeys = Object.keys(patch);
         const normalizedSummary = normalizeSummary(body.summary);
@@ -792,6 +817,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           );
           return;
         }
+        if (respondIfDocumentMissing(res, docName, 'agent-patch')) return;
         const normalizedSummary = normalizeSummary(body.summary);
         await sessionManager.withSessions(async (getSession) => {
           const session = await getSession(docName, agentId, {

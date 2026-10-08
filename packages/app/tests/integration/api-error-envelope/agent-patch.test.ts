@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { AgentPatchSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -59,6 +61,30 @@ describe('agent-patch envelope (RFC 9457)', () => {
       expect(parsed.data.instance).toBeDefined();
       if (parsed.data.instance) expect(parsed.data.instance).toMatch(UUID_RE);
     }
+  });
+
+  test('a path with no document emits 404 urn:ok:error:doc-not-found naming the near match', async () => {
+    const bundle = `bundle-${crypto.randomUUID().slice(0, 8)}`;
+    await agentWriteMd(server.port, '# Ops\n\nthe text that is here\n', {
+      docName: `${bundle}/system/ops`,
+      position: 'replace',
+    });
+
+    const res = await postPatch({
+      docName: 'system/ops',
+      find: 'the text that is here',
+      replace: 'x',
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    const parsed = ProblemDetailsSchema.safeParse(body);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.type).toBe('urn:ok:error:doc-not-found');
+      expect(parsed.data.title).toContain('No document at "system/ops"');
+      expect(parsed.data.title).toContain(`"${bundle}/system/ops"`);
+    }
+    expect(existsSync(join(server.contentDir, 'system/ops.md'))).toBe(false);
   });
 
   test('stale-target emits 409 urn:ok:error:stale-target when explicit offset misses', async () => {

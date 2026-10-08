@@ -142,7 +142,7 @@ import { createSkillsInstallRoutes } from './http/skills-install-routes.ts';
 import { createSkillsListRoutes } from './http/skills-list-routes.ts';
 import { createSkillsRecoveryRoutes } from './http/skills-recovery-routes.ts';
 import { createSkillsTrackingRoutes } from './http/skills-tracking-routes.ts';
-import { findHubCandidates } from './hub-candidates.ts';
+import { findHubCandidates, findMissingDocCandidates } from './hub-candidates.ts';
 import { recordSkillInstall, removeSkillInstall } from './installed-skills-marker.ts';
 import { collectDocFiles } from './lint/audit.ts';
 import { composeAuditGeneration } from './lint/audit-generation.ts';
@@ -1809,6 +1809,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
   }
 
   const writeAdvisoryGate = createWriteAdvisoryGate();
+
+  function findMissingDocCandidatesInIndex(docName: string): string[] {
+    return findMissingDocCandidates(docName, getFileIndex());
+  }
 
   async function computeOrphanHints(
     docName: string,
@@ -5377,6 +5381,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     resolveAlias,
     extractAgentIdentity,
     docNameExistsWithAnySupportedExtension,
+    findMissingDocCandidates: findMissingDocCandidatesInIndex,
     contentDir,
     summaryResponseFields,
     sessionManager,

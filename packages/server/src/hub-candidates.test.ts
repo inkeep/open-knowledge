@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { findHubCandidates } from './hub-candidates.ts';
+import { findHubCandidates, findMissingDocCandidates } from './hub-candidates.ts';
 
 function makeIndex(docNames: string[]): ReadonlyMap<string, unknown> {
   return new Map(docNames.map((name) => [name, { mtime: 0 }]));
@@ -74,5 +74,48 @@ describe('findHubCandidates', () => {
   test('no folder-name-match at content root (empty folder has no basename)', () => {
     const index = makeIndex(['foo', 'bar']);
     expect(findHubCandidates('foo', index)).toEqual([]);
+  });
+});
+
+describe('findMissingDocCandidates', () => {
+  test('suggests the hub doc when the missing name is a folder', () => {
+    const index = makeIndex(['reports/foo/REPORT', 'reports/foo/evidence']);
+    expect(findMissingDocCandidates('reports/foo', index)).toEqual(['reports/foo/REPORT']);
+  });
+
+  test('suggests a folder-name-match hub', () => {
+    const index = makeIndex(['guides/setup/setup', 'guides/setup/extra']);
+    expect(findMissingDocCandidates('guides/setup', index)).toEqual(['guides/setup/setup']);
+  });
+
+  test('suggests documents whose trailing segments match a bundle-relative path', () => {
+    const index = makeIndex([
+      'kb/system/ways-of-working/operations',
+      'archive/kb/system/ways-of-working/operations',
+      'kb/system/ways-of-working/other',
+    ]);
+    expect(findMissingDocCandidates('system/ways-of-working/operations', index)).toEqual([
+      'kb/system/ways-of-working/operations',
+      'archive/kb/system/ways-of-working/operations',
+    ]);
+  });
+
+  test('matches trailing segments whole, not as a substring of a segment', () => {
+    const index = makeIndex(['wiki/my-operations', 'wiki/operations']);
+    expect(findMissingDocCandidates('operations', index)).toEqual(['wiki/operations']);
+  });
+
+  test('lists hubs before trailing-segment matches and caps at 3', () => {
+    const index = makeIndex(['notes/INDEX', 'notes/README', 'a/notes', 'b/notes']);
+    expect(findMissingDocCandidates('notes', index)).toEqual([
+      'notes/INDEX',
+      'notes/README',
+      'a/notes',
+    ]);
+  });
+
+  test('returns empty when nothing resembles the missing name', () => {
+    const index = makeIndex(['wiki/real']);
+    expect(findMissingDocCandidates('wiki/zz-probe', index)).toEqual([]);
   });
 });

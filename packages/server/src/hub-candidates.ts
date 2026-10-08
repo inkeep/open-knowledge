@@ -35,6 +35,29 @@ export function findHubCandidates(
   return candidates;
 }
 
+export function findMissingDocCandidates(
+  missingDocName: string,
+  fileIndex: ReadonlyMap<string, unknown>,
+): string[] {
+  const candidates: string[] = [];
+  const lowerIndex = buildLowerDocNameIndex(fileIndex);
+  const folderBase = basename(missingDocName);
+  for (const base of [...FIXED_HUB_BASENAMES, folderBase]) {
+    const hub = lookup(fileIndex, lowerIndex, joinDocName(missingDocName, base));
+    if (hub && !candidates.includes(hub)) candidates.push(hub);
+    if (candidates.length >= MAX_CANDIDATES) return candidates;
+  }
+  const suffix = `/${missingDocName.toLowerCase()}`;
+  const suffixMatches = [...fileIndex.keys()]
+    .filter((docName) => docName.toLowerCase().endsWith(suffix))
+    .sort((a, b) => a.length - b.length || a.localeCompare(b));
+  for (const docName of suffixMatches) {
+    if (!candidates.includes(docName)) candidates.push(docName);
+    if (candidates.length >= MAX_CANDIDATES) break;
+  }
+  return candidates;
+}
+
 function lookup(
   fileIndex: ReadonlyMap<string, unknown>,
   lowerIndex: ReadonlyMap<string, string>,

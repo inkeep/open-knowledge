@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stripFrontmatter } from '@inkeep/open-knowledge-core';
@@ -303,6 +303,87 @@ describe('write({ document }) relaying a concurrent-overwrite refusal', () => {
     expect(result.content[0]?.text).toContain('or use edit');
   });
 });
+describe('write({ document }) appending or prepending to a path with no document', () => {
+  interface ToolResult {
+    content: Array<{ type: 'text'; text: string }>;
+    isError?: true;
+  }
+  type Handler = (args: Record<string, unknown>) => Promise<ToolResult>;
+
+  let testServer: FetchTestServer;
+  let cwd: string;
+  let handler: Handler;
+
+  beforeAll(async () => {
+    testServer = await startFetchTestServer({
+      hostname: '127.0.0.1',
+      fetch(request) {
+        const { pathname } = new URL(request.url);
+        if (pathname === '/api/agent-write-md') {
+          return Response.json({ timestamp: new Date().toISOString(), subscriberCount: 0 });
+        }
+        return Response.json({ error: `unexpected route ${pathname}` }, { status: 500 });
+      },
+    });
+    cwd = mkdtempSync(join(tmpdir(), 'ok-write-created-by-position-'));
+    mkdirSync(join(cwd, '.ok'), { recursive: true });
+    mkdirSync(join(cwd, 'notes'), { recursive: true });
+    writeFileSync(join(cwd, 'notes', 'existing.md'), '# Existing\n');
+
+    let captured: Handler | null = null;
+    const server = {
+      registerTool(_name: string, _cfg: unknown, toolHandler: Handler) {
+        captured = toolHandler;
+      },
+    } as unknown as ServerInstance;
+    registerWrite(server, {
+      serverUrl: `http://127.0.0.1:${testServer.port}`,
+      config: ConfigSchema.parse({}),
+      resolveCwd: async () => cwd,
+    });
+    if (captured === null) throw new Error('write tool did not register');
+    handler = captured;
+  });
+
+  afterAll(() => {
+    testServer.stop();
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it('says the append created a new document instead of reporting a plain success', async () => {
+    const result = await handler({
+      document: { path: 'system/ops', content: 'appended line\n', position: 'append' },
+    });
+
+    expect(result.isError).toBeUndefined();
+    const text = result.content[0]?.text ?? '';
+    expect(text.split('\n')[0]).toContain('Created new document "system/ops"');
+    expect(text).not.toContain('Written successfully');
+  });
+
+  it('keeps the plain success line when the appended-to document exists', async () => {
+    const result = await handler({
+      document: { path: 'notes/existing', content: 'more\n', position: 'append' },
+    });
+
+    expect(result.content[0]?.text.split('\n')[0]).toBe('Written successfully (append).');
+  });
+
+  it('names the created document in a batch entry', async () => {
+    const result = await handler({
+      documents: [
+        { path: 'notes/existing', content: 'more\n', position: 'prepend' },
+        { path: 'system/ops', content: 'prepended line\n', position: 'prepend' },
+      ],
+    });
+
+    const text = result.content[0]?.text ?? '';
+    expect(text).toContain('Wrote notes/existing (prepend).');
+    expect(text).toContain('Created new document "system/ops"');
+    expect(text).not.toContain('Wrote system/ops');
+  });
+});
+
 describe('write — an asset upload whose request to the server fails', () => {
   type AssetHandler = (args: Record<string, unknown>) => Promise<{
     isError?: boolean;

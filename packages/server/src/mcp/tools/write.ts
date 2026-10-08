@@ -125,6 +125,7 @@ type WriteOneResult =
       position: string;
       fromTemplate?: string;
       extensionNote?: string;
+      createdByPosition?: 'append' | 'prepend';
       templateHint?: readonly { name: string; description?: string }[];
       raw: WriteApiResult;
     }
@@ -141,6 +142,10 @@ export function frontmatterIgnoredNote(
     return `Note: a \`---\` frontmatter block in this \`${position}\` payload was ignored — frontmatter is written only with \`position: "replace"\`. To change frontmatter, use \`edit({ document: { path, frontmatter } })\` (patch) or \`write({ document: { path, content, position: "replace" } })\` (full rewrite).`;
   }
   return `Note: this \`${position}\` payload opens with a \`---\` fence pair, but what is between the fences is not a YAML mapping, so it was written as BODY text (fence lines included) rather than treated as frontmatter. If you meant a thematic break, that is the correct outcome — \`***\` or \`___\` avoids the ambiguity. If you meant to set frontmatter, the YAML did not parse: use \`edit({ document: { path, frontmatter } })\` (patch) or \`write({ document: { path, content, position: "replace" } })\` (full rewrite).`;
+}
+
+function createdByPositionNote(docName: string, position: 'append' | 'prepend'): string {
+  return `Created new document "${docName}" — no document existed at this path, so \`${position}\` started a new one. If you meant to add to an existing document, the path is wrong (paths are relative to the content root): remove this one with \`delete({ document: "${docName}" })\` and retry at the intended path.`;
 }
 
 function emptyAppendNoOpNote(position: string, markdown: string | undefined): string | null {
@@ -359,10 +364,15 @@ async function writeOneDoc(
   }
 
   const extensionNote = extensionIgnoredNote(requestedExt, existingExt, docName);
+  const createdByPosition =
+    !docExists && (effectivePosition === 'append' || effectivePosition === 'prepend')
+      ? effectivePosition
+      : undefined;
   return {
     docName,
     ok: true,
     position: effectivePosition,
+    ...(createdByPosition ? { createdByPosition } : {}),
     ...(spec.template !== undefined ? { fromTemplate: spec.template } : {}),
     ...(extensionNote ? { extensionNote } : {}),
     ...(templateHint ? { templateHint } : {}),
@@ -720,7 +730,11 @@ async function handleBatch(
       return `No change to ${spec.path} — empty ${r.position}, document unchanged.`;
     }
     const d = docOut[i];
-    const baseParts = [`Wrote ${spec.path} (${r.position}).`];
+    const baseParts = [
+      r.createdByPosition
+        ? createdByPositionNote(r.docName, r.createdByPosition)
+        : `Wrote ${spec.path} (${r.position}).`,
+    ];
     if (d?.ok && d.warnings) {
       baseParts.push(...formatAdvisoryBriefs(d.warnings));
     }
@@ -784,7 +798,8 @@ async function handleSingleDoc(
 
   const noOpNote = emptyAppendNoOpNote(w.position, spec.content);
   const lines: string[] = [
-    noOpNote ??
+    (w.createdByPosition ? createdByPositionNote(w.docName, w.createdByPosition) : null) ??
+      noOpNote ??
       (w.fromTemplate !== undefined
         ? `Written successfully (instantiated from template "${w.fromTemplate}").`
         : `Written successfully (${w.position}).`),

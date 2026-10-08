@@ -166,7 +166,7 @@ async function handleDocBody(
     }
     if (full === null) {
       return textResult(
-        `Error: cannot resolve occurrence ${occurrence} — "${normalized.docName}" is not on disk yet. Retry with the first match (omit \`occurrence\`).`,
+        `Error: No document at "${normalized.docName}" on disk (paths are relative to the content root), so occurrence ${occurrence} cannot be resolved. If the path is wrong, fix it; edit only changes an existing document. If the document was just created and is not saved yet, retry with the first match (omit \`occurrence\`).`,
         true,
       );
     }
