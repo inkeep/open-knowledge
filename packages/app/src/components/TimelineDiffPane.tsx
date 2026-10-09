@@ -417,7 +417,7 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
         )}
         {result.status === 'ready' &&
           (renderMode === 'rendered' && rendered?.ok ? (
-            <RenderedDiffView diff={rendered} />
+            <RenderedDiffView diff={rendered} docName={docName} />
           ) : result.diff === '' ? (
             <>
               <p className="border-b border-border px-4 py-2 text-xs text-muted-foreground italic">

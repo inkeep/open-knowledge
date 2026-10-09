@@ -71,7 +71,7 @@ import { setEditorDocName } from './extensions/doc-context.ts';
 import { setEditorSingleFileMode, setEditorSourceMode } from './extensions/editor-mode-context.ts';
 import { FrozenTableHeaders } from './extensions/frozen-table-headers.ts';
 import { MarkdownLintDecorations } from './extensions/markdown-lint-decorations.ts';
-import { sharedExtensions } from './extensions/shared.ts';
+import { scopeExtensionsToDocument, sharedExtensions } from './extensions/shared.ts';
 import { SkillPathLinks } from './extensions/skill-path-links';
 import { uploadDecorationPlugin } from './image-upload/index.ts';
 import type { LandingHandle } from './landing-controller';
@@ -251,18 +251,7 @@ export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[]
   const { provider, placeholder, prebuiltMapping, onWedged } = args;
   const { collaboration, guard } = buildPrewarmBoundCollaboration(provider, prebuiltMapping);
   return [
-    ...sharedExtensions.map((ext) => {
-      if (
-        ext.name === 'link' ||
-        ext.name === 'wikiLink' ||
-        ext.name === 'jsxComponent' ||
-        ext.name === 'jsxInline' ||
-        ext.name === 'imageReference'
-      ) {
-        return ext.configure({ docName: provider.configuration.name ?? '' });
-      }
-      return ext;
-    }),
+    ...scopeExtensionsToDocument(sharedExtensions, provider.configuration.name ?? ''),
     createBareHtmlImageDecoration(provider.configuration.name ?? ''),
     Placeholder.configure({
       placeholder: () => placeholder ?? t`Type '/' for commands`,

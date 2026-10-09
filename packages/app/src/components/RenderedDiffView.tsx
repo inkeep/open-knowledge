@@ -4,6 +4,8 @@ import { DecorationSet } from '@tiptap/pm/view';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { setEditorDocName } from '@/editor/extensions/doc-context';
+import { scopeExtensionsToDocument } from '@/editor/extensions/shared';
 import { getSharedMarkdownManager } from '@/editor/utils/md-singleton';
 import {
   buildRenderedDiff,
@@ -35,7 +37,7 @@ const DiffDecorations = Extension.create<{ decorations: DecorationSet }>({
   },
 });
 
-export function RenderedDiffView({ diff }: { diff: RenderedDiff }) {
+export function RenderedDiffView({ diff, docName }: { diff: RenderedDiff; docName: string }) {
   const decorations = buildDiffDecorations(
     diff.afterDoc,
     diff.beforeDoc,
@@ -47,13 +49,17 @@ export function RenderedDiffView({ diff }: { diff: RenderedDiff }) {
   const editor = useEditor(
     {
       editable: false,
-      extensions: [...diffExtensions, DiffDecorations.configure({ decorations })],
+      extensions: [
+        ...scopeExtensionsToDocument(diffExtensions, docName),
+        DiffDecorations.configure({ decorations }),
+      ],
       content: diff.afterDoc.toJSON(),
+      onBeforeCreate: ({ editor }) => setEditorDocName(editor, docName),
       editorProps: {
         attributes: { class: 'pt-4' },
       },
     },
-    [diff],
+    [diff, docName],
   );
 
   const [portalTarget] = useState(() => {

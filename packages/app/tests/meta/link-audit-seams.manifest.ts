@@ -242,6 +242,14 @@ export const LINK_AUDIT_COMPOSITION_ROOTS: readonly LinkAuditCompositionRoot[] =
   },
   {
     path: 'packages/app/src/editor/TiptapEditor.tsx',
-    requiredText: "ext.name === 'imageReference'",
+    requiredText: 'scopeExtensionsToDocument(sharedExtensions,',
+  },
+  {
+    path: 'packages/app/src/components/RenderedDiffView.tsx',
+    requiredText: 'scopeExtensionsToDocument(diffExtensions, docName)',
+  },
+  {
+    path: 'packages/app/src/editor/extensions/shared.ts',
+    requiredText: "  'imageReference',",
   },
 ];

@@ -1,5 +1,5 @@
 import { sharedExtensions as coreExtensions } from '@inkeep/open-knowledge-core/extensions/shared';
-import { Extension } from '@tiptap/core';
+import { type AnyExtension, Extension } from '@tiptap/core';
 import FileHandler from '@tiptap/extension-file-handler';
 import { KeyboardNav } from '../block-ux/keyboard-nav';
 import { TiptapFindReplace } from '../find-replace/tiptap-find-replace-extension';
@@ -118,3 +118,20 @@ export const sharedExtensions = [
     },
   }),
 ];
+
+const DOCUMENT_SCOPED_EXTENSION_NAMES: ReadonlySet<string> = new Set([
+  'link',
+  'wikiLink',
+  'jsxComponent',
+  'jsxInline',
+  'imageReference',
+]);
+
+export function scopeExtensionsToDocument(
+  extensions: readonly AnyExtension[],
+  docName: string,
+): AnyExtension[] {
+  return extensions.map((ext) =>
+    DOCUMENT_SCOPED_EXTENSION_NAMES.has(ext.name) ? ext.configure({ docName }) : ext,
+  );
+}

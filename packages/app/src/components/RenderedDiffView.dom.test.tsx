@@ -1,5 +1,6 @@
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
+import { __resetPageListCacheForTests, setPageListCache } from '@/editor/page-list-cache';
 import {
   countRenderedDiffAnchors,
   RENDERED_DIFF_CHANGE_SELECTOR,
@@ -8,12 +9,13 @@ import { computeRenderedDiff, RenderedDiffView } from './RenderedDiffView';
 
 afterEach(() => {
   cleanup();
+  __resetPageListCacheForTests();
 });
 
-async function mountDiff(before: string, after: string): Promise<HTMLElement> {
+async function mountDiff(before: string, after: string, docName = 'notes'): Promise<HTMLElement> {
   const diff = computeRenderedDiff(before, after);
   if (!diff.ok) throw new Error(`engine returned not-ok: ${diff.reason}`);
-  render(<RenderedDiffView diff={diff} />);
+  render(<RenderedDiffView diff={diff} docName={docName} />);
   const pane = await waitFor(() => {
     const el = document.querySelector<HTMLElement>('[data-testid="rendered-diff-view"]');
     if (!el?.querySelector('.ProseMirror')) throw new Error('editor not mounted yet');
@@ -65,6 +67,38 @@ describe('RenderedDiffView', () => {
     expect(marked).not.toContain('Spec');
   });
 
+  test('a relative link resolves against the changed document, not the project root', async () => {
+    setPageListCache({
+      pages: new Set(['projects/ok-cloud/log', 'projects/ok-cloud/launch-scope', 'launch-dev']),
+      folderPaths: new Set(['projects', 'projects/ok-cloud']),
+      pagesBySlug: new Map(),
+    });
+    const pane = await mountDiff(
+      'Intro.',
+      'Intro.\n\nSee [scope](launch-scope.md) and [dev](launch-dev.md).',
+      'projects/ok-cloud/log',
+    );
+
+    const stateOf = (text: string) =>
+      Array.from(pane.querySelectorAll<HTMLElement>('[data-resolution-state]'))
+        .find((el) => el.textContent === text)
+        ?.getAttribute('data-resolution-state');
+    await waitFor(() => expect(stateOf('scope')).toBe('resolved'));
+    expect(stateOf('dev')).toBe('unresolved');
+  });
+
+  test('a relative inline image resolves against the changed document folder', async () => {
+    const pane = await mountDiff(
+      'Intro.',
+      'Intro.\n\nSee ![diagram](diagram.png) here.',
+      'projects/ok-cloud/log',
+    );
+
+    await waitFor(() =>
+      expect(pane.querySelector('img')?.getAttribute('src')).toBe('/projects/ok-cloud/diagram.png'),
+    );
+  });
+
   test('a formatting-only change (bold removed) renders without content churn', async () => {
     const pane = await mountDiff('one **two three** four', 'one two three four');
     expect(pane.querySelector('.ProseMirror')).toBeTruthy();
@@ -80,7 +114,7 @@ describe('RenderedDiffView', () => {
       const diff = computeRenderedDiff(before, after);
       if (!diff.ok) throw new Error(`engine not-ok: ${diff.reason}`);
       cleanup();
-      render(<RenderedDiffView diff={diff} />);
+      render(<RenderedDiffView diff={diff} docName="notes" />);
       const pane = await waitFor(() => {
         const el = document.querySelector<HTMLElement>('[data-testid="rendered-diff-view"]');
         if (!el?.querySelector('.ProseMirror')) throw new Error('not mounted');
