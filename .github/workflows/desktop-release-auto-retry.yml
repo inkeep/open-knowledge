@@ -15,7 +15,7 @@ jobs:
       github.event.workflow_run.path == '.github/workflows/desktop-release.yml' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       contains(fromJSON('["repository_dispatch", "workflow_dispatch"]'), github.event.workflow_run.event)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 5
     permissions:

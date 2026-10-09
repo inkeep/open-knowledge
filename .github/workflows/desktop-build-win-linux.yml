@@ -13,7 +13,7 @@ name: Desktop build (manual, Windows/Linux)
 # jobs from redundantly rebuilding identical platform-neutral JS), then
 # per-OS jobs do only the platform-specific half: electron-vite build +
 # electron-builder against the prebuilt cli/dist. The Linux job is a
-# two-cell matrix — x64 on `ubuntu-latest`, arm64 on the native
+# two-cell matrix — x64 on `ubuntu-24.04`, arm64 on the native
 # `ubuntu-24.04-arm` runner — so each `.deb` carries prebuilt natives for
 # the arch it targets.
 #
@@ -70,7 +70,7 @@ env:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 30
     steps:
@@ -424,7 +424,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-24.04
             arch: x64
             targets: deb:x64 rpm:x64
             unpacked_dir: linux-unpacked

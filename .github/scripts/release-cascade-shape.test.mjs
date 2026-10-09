@@ -1083,7 +1083,7 @@ describe('every release-pipeline post prefers the releases webhook', () => {
         throw new Error(`select-beta-to-promote.yml job ${job} has no step named ${name}`);
       return found;
     };
-    expect(jobs.evaluate['runs-on']).toBe('ubuntu-latest');
+    expect(jobs.evaluate['runs-on']).toBe('ubuntu-24.04');
     expect(jobs.evaluate.outputs.fast_tier_candidate).toBe(
       '${{ steps.nominate.outputs.fast_tier_candidate }}',
     );
@@ -1128,7 +1128,7 @@ describe('every release-pipeline post prefers the releases webhook', () => {
       '${{ steps.smoke.outputs.verdict }}',
     );
     const remember = jobs['remember-smoke-failure'];
-    expect(remember['runs-on']).toBe('ubuntu-latest');
+    expect(remember['runs-on']).toBe('ubuntu-24.04');
     expect(remember.needs).toEqual(['evaluate', 'smoke-fast-tier-candidate']);
     expect(remember.if).toBe(
       "always() && needs.smoke-fast-tier-candidate.outputs.verdict == 'fail'",

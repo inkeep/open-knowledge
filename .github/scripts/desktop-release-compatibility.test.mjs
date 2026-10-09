@@ -96,6 +96,6 @@ describe('legacy desktop release compatibility', () => {
     expect(new Set(matrices.map((matrix) => matrix.variant)).size).toBe(1);
     expect(matrices[0].variant).toContain('["legacy-beta","beta"]');
     expect(matrices[0].variant).toContain('["stable"]');
-    expect(matrices[2].runner).toEqual(['ubuntu-latest', 'ubuntu-24.04-arm']);
+    expect(matrices[2].runner).toEqual(['ubuntu-24.04', 'ubuntu-24.04-arm']);
   });
 });

@@ -75,7 +75,7 @@ concurrency:
 jobs:
   read-bumps:
     name: Read changeset bumps (no credential)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -105,7 +105,7 @@ jobs:
   bug-lane:
     name: Evaluate qualifying fixes
     needs: read-bumps
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 10
     steps:

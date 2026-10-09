@@ -106,7 +106,7 @@ env:
 jobs:
   read-releases:
     name: Read the previous beta Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 5
     permissions:
@@ -157,7 +157,7 @@ jobs:
   build:
     name: Build + pack (${{ github.event.action || github.event_name }})
     needs: read-releases
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 20
     permissions:
@@ -548,7 +548,7 @@ jobs:
     name: Tag + release (${{ github.event.action || github.event_name }})
     needs: build
     if: github.event.action == 'publish-stable' || needs.build.outputs.run_beta == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 10
     permissions:
@@ -707,7 +707,7 @@ jobs:
     name: Publish to npm (${{ github.event.action || github.event_name }})
     needs: [build, release]
     if: github.event.action == 'publish-stable' || needs.build.outputs.run_beta == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 10
     permissions:

@@ -122,7 +122,7 @@ jobs:
   # self-contained build is the proven signed-DMG path and stays byte-for-byte
   # as it was; unifying it onto the bundle is a separate, QA-able change.)
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 30
     permissions:
@@ -1374,9 +1374,9 @@ jobs:
       fail-fast: false
       matrix:
         variant: ${{ fromJSON(contains(github.event.client_payload.release_tag || inputs.release_tag, '-beta.') && '["legacy-beta","beta"]' || '["stable"]') }}
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-24.04
             arch: x64
             targets: deb:x64 rpm:x64
             unpacked_dir: linux-unpacked
@@ -1603,7 +1603,7 @@ jobs:
       needs.build-macos.result == 'success' &&
       (needs.build-windows.result == 'success' || !contains(needs.prepare.outputs.required, 'windows')) &&
       (needs.build-linux.result == 'success' || !contains(needs.prepare.outputs.required, 'linux'))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     # Sized to the upload retry envelope: 3 bounded 300s attempts + backoffs
     # (see the upload step) plus download/verify overhead.
@@ -1797,7 +1797,7 @@ jobs:
       !cancelled() &&
       needs.publish-assets.result == 'success' &&
       needs.build-macos.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 15
     permissions:
@@ -2095,7 +2095,7 @@ jobs:
   release-consumers:
     needs: finalize
     if: ${{ !cancelled() && needs.finalize.outputs.published == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 5
     permissions:
@@ -2142,7 +2142,7 @@ jobs:
     # before channel detection leaves the channel output empty; the steps
     # below treat that as "not stable" (FR5c skips, STUCK-DRAFT still logs).
     if: ${{ !cancelled() && needs.finalize.result != 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 10
     permissions:

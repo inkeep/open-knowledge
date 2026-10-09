@@ -56,7 +56,7 @@ jobs:
     # repository it lives in.
     if: github.event.pull_request.head.repo.full_name != github.repository
     name: Relay the pull request number to agents-private
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 5
     steps:

@@ -29,7 +29,7 @@ jobs:
       && github.event.action == 'opened'
       && (github.event.pull_request.head.repo.full_name != github.repository
       || github.event.pull_request.head.ref != 'copybara/sync')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 5
     steps:
@@ -61,7 +61,7 @@ jobs:
       && (github.event.pull_request.head.repo.full_name != github.repository
       || github.event.pull_request.head.ref != 'copybara/sync')
     environment: inkeep-oss-sync
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 15
     steps:
@@ -138,7 +138,7 @@ jobs:
       && github.event.action == 'closed'
       && (github.event.pull_request.head.repo.full_name != github.repository
       || github.event.pull_request.head.ref != 'copybara/sync')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 15
     steps:
@@ -177,7 +177,7 @@ jobs:
       contents: read
       pull-requests: read
       statuses: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 15
     steps:

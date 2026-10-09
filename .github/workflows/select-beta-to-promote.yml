@@ -152,7 +152,7 @@ env:
 jobs:
   read-bumps:
     name: Read changeset bumps (no credential)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -183,7 +183,7 @@ jobs:
   evaluate:
     name: Evaluate 24h soak + business-hours gate
     needs: read-bumps
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: read
     timeout-minutes: 10
     outputs:
@@ -435,7 +435,7 @@ jobs:
     name: Dispatch the smoke-proven fast-tier candidate
     needs: [evaluate, smoke-fast-tier-candidate]
     if: needs.smoke-fast-tier-candidate.outputs.verdict == 'pass'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 10
     steps:
@@ -477,7 +477,7 @@ jobs:
     name: Remember the candidate's failed smoke
     needs: [evaluate, smoke-fast-tier-candidate]
     if: always() && needs.smoke-fast-tier-candidate.outputs.verdict == 'fail'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
     steps:
@@ -505,7 +505,7 @@ jobs:
   aggregate-smoke-alarm:
     name: Aggregate DMG-smoke alarm
     if: github.event_name == 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -541,7 +541,7 @@ jobs:
     name: Read the smoke incident acknowledgement (no credential)
     needs: aggregate-smoke-alarm
     if: needs.aggregate-smoke-alarm.outputs.observed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
     outputs:
@@ -576,7 +576,7 @@ jobs:
     name: Page the release channel about the fast-tier gate
     needs: [aggregate-smoke-alarm, read-smoke-incident]
     if: needs.aggregate-smoke-alarm.outputs.observed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: write-only
     timeout-minutes: 10
     permissions:

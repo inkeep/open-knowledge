@@ -64,17 +64,17 @@ jobs:
             napiFlags: ""
           # --use-napi-cross pulls the zig-backed cross toolchain napi-rs ships
           # for glibc Linux targets, so an x64 ubuntu host builds both arches.
-          - host: ubuntu-latest
+          - host: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             napiFlags: "--use-napi-cross"
-          - host: ubuntu-latest
+          - host: ubuntu-24.04
             target: aarch64-unknown-linux-gnu
             napiFlags: "--use-napi-cross"
           # -x routes the build through cargo-zigbuild for musl (Alpine) targets.
-          - host: ubuntu-latest
+          - host: ubuntu-24.04
             target: x86_64-unknown-linux-musl
             napiFlags: "-x"
-          - host: ubuntu-latest
+          - host: ubuntu-24.04
             target: aarch64-unknown-linux-musl
             napiFlags: "-x"
           - host: windows-latest
@@ -185,7 +185,7 @@ jobs:
   combine:
     name: combine + verify all targets present
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 10
     steps:
