@@ -324,11 +324,16 @@ test.describe('Project Navigator close-on-project-open smoke', () => {
     expect(await countWindowsByMode(app, 'navigator')).toBe(1);
 
     const navigatorWindowId = await onlyWindowId(app);
-    expect(await readRecordedErrorDialogs(app)).toContainEqual({
-      title: 'Cannot open this folder',
-      parentWindowId: navigatorWindowId,
-      parentVisible: true,
-    });
+    await expect
+      .poll(() => readRecordedErrorDialogs(app), {
+        timeout: 15_000,
+        message: 'the open-failure dialog was not shown over the Navigator',
+      })
+      .toContainEqual({
+        title: 'Cannot open this folder',
+        parentWindowId: navigatorWindowId,
+        parentVisible: true,
+      });
   });
 
   test('A refusal sent from an editor attaches its dialog to the Navigator once it is visible', async ({
@@ -408,7 +413,12 @@ test.describe('Project Navigator close-on-project-open smoke', () => {
       parentWindowId: navigatorWindowId,
       parentVisible: true,
     };
-    expect(await readRecordedErrorDialogs(app)).toEqual([refusal, refusal]);
+    await expect
+      .poll(() => readRecordedErrorDialogs(app), {
+        timeout: 15_000,
+        message: 'both refusal dialogs were not shown over the Navigator',
+      })
+      .toEqual([refusal, refusal]);
 
     await openFromNavigator(navigator, projectDir);
     await expect
@@ -442,7 +452,12 @@ test.describe('Project Navigator close-on-project-open smoke', () => {
     const navigator = await findFirstWindowByMode(app, 'navigator');
     await recordErrorDialogs(app, { acknowledge: false });
     await openFromNavigator(navigator, tmpHome);
-    expect(await readRecordedErrorDialogs(app)).toHaveLength(1);
+    await expect
+      .poll(() => readRecordedErrorDialogs(app), {
+        timeout: 15_000,
+        message: 'the home-directory refusal was not shown',
+      })
+      .toHaveLength(1);
 
     const main = app.process();
     const exited = once(main, 'exit');
