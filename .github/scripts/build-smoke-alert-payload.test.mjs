@@ -85,6 +85,9 @@ describe('alert content', () => {
     );
     expect(body).toContain("a long `notarytool` wait is Apple's queue and can re-fire");
     expect(body).toContain('Never re-fire a tag once a newer stable release has shipped');
+    expect(body).toContain(
+      'Before any re-fire, run the shipped-fix check on the tag from a full clone: `node .github/scripts/shipped-fix-containment.mjs --candidate v1.2.3`. Never re-fire a tag it refuses',
+    );
     expect(body).not.toContain('re-firing alone repairs nothing');
     expect(body).not.toContain('no manual repair needed');
   });

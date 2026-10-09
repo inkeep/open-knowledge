@@ -20,6 +20,12 @@ import {
   makeTreeAt,
   selectPrebuildRun,
 } from './select-native-config-prebuild.mjs';
+import {
+  createShippedFixCheck,
+  describeVerdict,
+  refusalHeadline,
+  unpublishedBaseReason,
+} from './shipped-fix-containment.mjs';
 import { parseChangeset } from './write-back.mjs';
 
 function refuse(code, message) {
@@ -303,6 +309,24 @@ export function verifyWorkspaceMatchesLockfile({ resolved, readWorktreeFile }) {
   return `agrees with the lockfile on ${notes.join(' and ')}.`;
 }
 
+export function guardBasePublished({ latestStableTag, publishedTags }) {
+  const reason = unpublishedBaseReason({ latestStableTag, publishedTags });
+  if (reason !== null) return refuse('base-unpublished', reason);
+  return pass(`The newest stable tag ${latestStableTag} is published, so the point release builds on it.`);
+}
+
+export function guardShipsPublishedFixes({ verdict, latestStableTag }) {
+  const label = `${latestStableTag} plus the applied fixes`;
+  if (verdict.ok) return pass(describeVerdict(verdict, label)[0]);
+  return refuse(
+    'drops-shipped-fix',
+    [
+      `${refusalHeadline(verdict, label)} Add those fixes to fix_refs, or ship through a promotion whose beta contains them.`,
+      ...describeVerdict(verdict, label).slice(1),
+    ].join('\n'),
+  );
+}
+
 export function guardRefsOnMain({ fixRefs, isOnMain }) {
   const offenders = fixRefs.filter((ref) => !isOnMain(ref));
   if (offenders.length > 0) {
@@ -469,6 +493,10 @@ export function runPointRelease(opts, io) {
   }
   const latestStableSha = io.git.revParse(latestStableTag);
 
+  checkGuard(
+    guards,
+    guardBasePublished({ latestStableTag, publishedTags: io.containment.publishedStableTags() }),
+  );
   checkGuard(guards, guardAnchor({ anchorVersion: io.readAnchorVersion(), latestStableTag }));
   checkGuard(guards, guardRefsOnMain({ fixRefs, isOnMain: io.git.isOnMain }));
   checkGuard(guards, guardResolvePathsAllowlisted({ resolvePaths }));
@@ -511,6 +539,12 @@ export function runPointRelease(opts, io) {
       selection: io.gh.selectNativeConfigPrebuild(syntheticSha),
     }),
   );
+  checkGuard(
+    guards,
+    guardShipsPublishedFixes({ verdict: io.containment.evaluate(syntheticSha), latestStableTag }),
+  );
+
+  if (mode === 'revert') warnings.push(revertFollowUpWarning(version.removedIds));
 
   const mainReset = decideMainReset({ anchorDeltaIds, addedIds: version.addedIds, bridgeConfigured, guards, warnings });
 
@@ -666,6 +700,24 @@ function changesetsIntroducedBy(resolvedRefs, io) {
   return introduced;
 }
 
+function revertFollowUpWarning(removedIds) {
+  if (removedIds.length > 0) {
+    return (
+      `This revert deletes ${removedIds.map((id) => `.changeset/${id}.md`).join(', ')}. ` +
+      'If main-reset has already consumed these files on main, an ordinary code-only revert there cannot ' +
+      'reproduce the shipped patch. The shipped-fix check will refuse that later main promotion even when ' +
+      'the rollback code is correct; putting its changeset in a separate PR does not resolve this mismatch. ' +
+      'Unless the revert cannot wait for main, land it on main and ship it in cherry-pick mode instead, ' +
+      'provided it picks cleanly; otherwise use the normal promotion path.'
+    );
+  }
+  return (
+    'A revert has no PR number of its own, so the shipped-fix check will refuse every later promotion until ' +
+    'main holds a commit with exactly the patch this release ships. Land the revert on main in a PR that ' +
+    'changes nothing else, and put its changeset in a separate PR.'
+  );
+}
+
 function decideMainReset({ anchorDeltaIds, addedIds, bridgeConfigured, guards, warnings }) {
   const named = String(anchorDeltaIds ?? '').trim() !== '';
   const deltaIds = named ? parseDeltaIds(anchorDeltaIds) : addedIds;
@@ -719,6 +771,7 @@ export function formatReleaseNotes(plan) {
 export function realIo() {
   return {
     readAnchorVersion,
+    containment: createShippedFixCheck(),
     fs: {
       readWorktreeFile: (path) => readFileSync(path, 'utf8'),
       writeWorktreeFile: (path, content) => writeFileSync(path, content),

@@ -64,7 +64,7 @@ function summaryLine(tag, verdict, blockedBy) {
   return `🚨 ${ALERT_HEADLINE}: ${tag} ${subject} — nothing shipped`;
 }
 
-function recoveryGuidance() {
+function recoveryGuidance(tag) {
   return [
     "*Recovery guidance:* Inspect the failed packaging job's final `outcome=`.",
     'With no newer stable release, `transient-exhausted`, `deadline`, or `signal` can re-fire the same tag; investigate a recurring deadline.',
@@ -73,6 +73,7 @@ function recoveryGuidance() {
     '`cleanup-failure` reports its runner/tooling cause in `cleanup=`; `spawn-failure` and `child-signal` are also runner/tooling failures. Confirm the runner/tooling failure is absent before re-firing.',
     "`attempt-timeout` and a mid-attempt `deadline` list the processes still running under the stop line: a long `notarytool` wait is Apple's queue and can re-fire; a long `codesign`, or a `took no process snapshot` line, needs that failure confirmed absent first.",
     'Never re-fire a tag once a newer stable release has shipped; cut a new release from `main` instead.',
+    `Before any re-fire, run the shipped-fix check on the tag from a full clone: \`node .github/scripts/shipped-fix-containment.mjs --candidate ${tag}\`. Never re-fire a tag it refuses; the re-fired run refuses it too.`,
   ].join('\n');
 }
 
@@ -88,7 +89,7 @@ function bodyLines({ tag, verdict, reason, runUrl, repo, blockedBy }) {
         : `*Why:* ${other} failed (${reason}).`
       : `*Why:* ${reason}`,
     '*State:* the GitHub Release is still a DRAFT and npm `latest` has NOT moved.',
-    recoveryGuidance(),
+    recoveryGuidance(tag),
     `*Recovery command:*\n\`${recoveryCommand(tag, repo)}\``,
     `*Run:* ${runUrl}`,
   ];

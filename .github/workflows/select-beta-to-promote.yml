@@ -259,6 +259,7 @@ jobs:
           # expected steady state until an operator provisions the secret.
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           BUMP_VERDICTS: ${{ needs.read-bumps.outputs.bump_verdicts }}
+          DISPATCH_WINDOW_OPEN: ${{ steps.hours.outputs.open }}
         # Writes target=, tier=, soak_tier= (plus the predicate inputs) to
         # GITHUB_OUTPUT; an empty target => no-op. Exits non-zero (fails the job)
         # on any non-404 gh/git infra error — a fail-loud retry-next-tick, never
