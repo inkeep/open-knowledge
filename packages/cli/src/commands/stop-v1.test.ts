@@ -5,6 +5,7 @@ import { describe, expect, test, vi } from 'vitest';
 import type { LockState } from './lock-state.ts';
 import { runStop } from './stop.ts';
 import { buildStopV1 } from './stop-v1.ts';
+import { v1ExitCode } from './supervision-json-v1.ts';
 
 const first = '/tmp/ok-stop-v1-a/.ok/local';
 const second = '/tmp/ok-stop-v1-b/.ok/local';
@@ -171,5 +172,104 @@ describe('stop v1 numeric selection', () => {
     });
     expect(document.result.code).toBe('ambiguous-target');
     expect(stop).not.toHaveBeenCalled();
+  });
+});
+
+describe('stop v1 channel policy', () => {
+  function channelLock(dir: string, channel: 'stable' | 'beta'): LockState {
+    const state = alive(dir, dir === first ? 101 : 102, 4242);
+    if (state.status !== 'alive') throw new Error('Expected a live lock.');
+    return { ...state, lock: { ...state.lock, channel } };
+  }
+
+  test.each([undefined, '/tmp/ok-stop-v1-a', '4242'])(
+    'reports a channel refusal for selector %s without probing or signalling',
+    async (target) => {
+      const kill = vi.fn();
+      const probeClients = vi.fn(async () => 2);
+      const document = await buildStopV1({
+        target,
+        force: false,
+        projectRoot: '/tmp/ok-stop-v1-a',
+        discover: async () => [first],
+        inspect: (dir) => channelLock(dir, 'stable'),
+        confirm: async () => null,
+        stop: (deps) => runStop({ ...deps, selfChannel: 'beta', kill, probeClients }),
+      });
+      expect(document.result).toMatchObject({ kind: 'refused', code: 'channel-mismatch' });
+      expect(v1ExitCode(document.result.kind)).toBe(1);
+      expect(document.targets).toHaveLength(1);
+      expect(document.targets[0]?.code).toBe('channel-mismatch');
+      expect(document.targets[0]?.detail).toContain('--force');
+      expect(kill).not.toHaveBeenCalled();
+      expect(probeClients).not.toHaveBeenCalled();
+    },
+  );
+
+  test('force bypasses both channel and connected-client guards', async () => {
+    const kill = vi.fn();
+    const probeClients = vi.fn(async () => 2);
+    const document = await buildStopV1({
+      target: undefined,
+      force: true,
+      projectRoot: '/tmp/ok-stop-v1-a',
+      inspect: (dir) => channelLock(dir, 'stable'),
+      stop: (deps) => runStop({ ...deps, selfChannel: 'beta', kill, probeClients }),
+    });
+    expect(document.result).toMatchObject({ kind: 'success', code: 'signalled' });
+    expect(document.force).toBe(true);
+    expect(kill).toHaveBeenCalledExactlyOnceWith(101, 'SIGTERM');
+    expect(probeClients).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    {
+      channels: ['stable', 'stable'],
+      codes: ['channel-mismatch', 'channel-mismatch'],
+      code: 'channel-mismatch',
+      kind: 'refused',
+    },
+    {
+      channels: ['beta', 'stable'],
+      codes: ['signalled', 'channel-mismatch'],
+      code: 'partially-signalled',
+      kind: 'partial',
+    },
+    {
+      channels: ['stable', 'beta'],
+      codes: ['channel-mismatch', 'clients-connected'],
+      code: 'channel-mismatch',
+      kind: 'refused',
+    },
+    {
+      channels: ['beta', 'stable'],
+      codes: ['signal-failed', 'channel-mismatch'],
+      code: 'signal-failed',
+      kind: 'error',
+    },
+  ] as const)('all aggregates $codes as $code', async ({ channels, codes, code, kind }) => {
+    const kill = vi.fn(() => {
+      if (code === 'signal-failed') throw new Error('Permission denied.');
+    });
+    const document = await buildStopV1({
+      target: 'all',
+      force: false,
+      projectRoot: null,
+      discover: async () => [second, first],
+      inspect: (dir) => channelLock(dir, channels[dir === first ? 0 : 1]),
+      stop: (deps) =>
+        runStop({
+          ...deps,
+          selfChannel: 'beta',
+          kill,
+          probeClients: async () => (codes.some((item) => item === 'clients-connected') ? 2 : 0),
+        }),
+    });
+    expect(document.result).toMatchObject({ kind, code });
+    expect(document.targets.map((item) => item.code)).toEqual(codes);
+    expect(v1ExitCode(document.result.kind)).toBe(1);
+    if (kind === 'partial' || kind === 'error')
+      expect(kill).toHaveBeenCalledExactlyOnceWith(101, 'SIGTERM');
+    else expect(kill).not.toHaveBeenCalled();
   });
 });

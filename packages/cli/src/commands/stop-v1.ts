@@ -236,12 +236,14 @@ export async function buildStopV1(deps: StopV1Deps): Promise<V1StopDocument> {
         ? 'partially-signalled'
         : codes.includes('signal-failed')
           ? 'signal-failed'
-          : codes.includes('clients-connected')
-            ? 'clients-connected'
-            : codes.includes('ownership-unverified')
-              ? 'ownership-unverified'
-              : codes.includes('signalled')
-                ? 'signalled'
-                : 'already-stopped';
+          : codes.includes('channel-mismatch')
+            ? 'channel-mismatch'
+            : codes.includes('clients-connected')
+              ? 'clients-connected'
+              : codes.includes('ownership-unverified')
+                ? 'ownership-unverified'
+                : codes.includes('signalled')
+                  ? 'signalled'
+                  : 'already-stopped';
   return document(target, deps.force, targets, code);
 }

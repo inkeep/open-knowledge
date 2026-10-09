@@ -25,6 +25,7 @@ describe('v1 result contract', () => {
         'already-stopped': ['no-op', 0],
         'target-not-found': ['no-op', 0],
         'clients-connected': ['refused', 1],
+        'channel-mismatch': ['refused', 1],
         'ownership-unverified': ['refused', 1],
         'signal-failed': ['error', 1],
         'partially-signalled': ['partial', 1],

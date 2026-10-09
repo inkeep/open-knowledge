@@ -75,7 +75,7 @@ export function stopCommand(
         .argument('[target...]', 'port number, directory path (spaces OK), or "all"')
         .option(
           '--force',
-          'Stop even when editor windows or agents are still connected to the server',
+          'Stop even when the server belongs to another OpenKnowledge app (Stable or Beta) or editor windows or agents are still connected to it',
         ),
     )
     .action(async (parts: string[], options: { force?: boolean; format?: string }) => {

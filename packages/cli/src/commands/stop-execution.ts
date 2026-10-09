@@ -1,3 +1,4 @@
+import { desktopChannelLabel, resolveDesktopProductName } from '@inkeep/open-knowledge-core';
 import { isProcessAlive, lockBaseUrl } from '@inkeep/open-knowledge-server';
 import type { Logger as PinoLoggerInstance } from 'pino';
 import { getCliLogger } from '../cli-logger.ts';
@@ -81,22 +82,36 @@ interface RunStopDeps {
   error?: (msg: string) => void;
   probeClients?: (lockDir: string, logger?: PinoLoggerInstance) => Promise<number | null>;
   logger?: PinoLoggerInstance;
+  selfChannel?: 'stable' | 'beta';
 }
 
 export interface StopOutcome {
   stopped: StopTargetPlan[];
   failed: Array<{ target: StopTargetPlan; error: string }>;
   hadTargets: boolean;
-  declined?: { clients: number };
+  declined?: { clients: number } | { otherChannel: string };
   decision: {
     code:
       | 'signalled'
       | 'already-stopped'
       | 'clients-connected'
+      | 'channel-mismatch'
       | 'ownership-unverified'
       | 'signal-failed';
     detail: string | null;
   };
+}
+
+function currentChannel(logger: PinoLoggerInstance | undefined): RunStopDeps['selfChannel'] {
+  try {
+    return resolveDesktopProductName();
+  } catch (err) {
+    logger?.warn(
+      { err },
+      `stop channel check skipped: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return undefined;
+  }
 }
 
 export async function runStop(deps: RunStopDeps): Promise<StopOutcome> {
@@ -128,6 +143,39 @@ export async function runStop(deps: RunStopDeps): Promise<StopOutcome> {
             : null,
       },
     };
+  }
+
+  const holder =
+    serverState.status === 'alive' || serverState.status === 'foreign-host'
+      ? serverState.lock.channel
+      : undefined;
+  if (deps.force !== true && typeof holder === 'string' && holder.length > 0) {
+    const self = deps.selfChannel ?? currentChannel(logger);
+    if (self !== undefined && holder !== self) {
+      error(
+        `Not stopping: the server at ${deps.lockDir} belongs to ${desktopChannelLabel(holder)}. ` +
+          'Stop it from that app or its CLI, or re-run with --force to terminate anyway.',
+      );
+      logger?.warn(
+        {
+          lockDir: deps.lockDir,
+          holderChannel: holder,
+          selfChannel: self,
+          pids: plan.targets.map((t) => t.pid),
+        },
+        'stop declined: server belongs to another channel',
+      );
+      return {
+        stopped: [],
+        failed: [],
+        hadTargets: true,
+        declined: { otherChannel: holder },
+        decision: {
+          code: 'channel-mismatch',
+          detail: `The server belongs to ${desktopChannelLabel(holder)}. Stop it from that app or its CLI, or re-run with --force to terminate anyway.`,
+        },
+      };
+    }
   }
 
   if (deps.force !== true) {

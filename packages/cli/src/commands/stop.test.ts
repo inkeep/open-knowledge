@@ -242,10 +242,22 @@ describe('runStop channel guard', () => {
 
   test("refuses to stop another channel's server", async () => {
     const { outcome, killed, errors } = run('stable');
-    expect((await outcome).declined).toEqual({ otherChannel: 'stable' });
+    const result = await outcome;
+    expect(result.declined).toEqual({ otherChannel: 'stable' });
+    expect(result.decision).toMatchObject({ code: 'channel-mismatch' });
+    expect(result.decision.detail).toContain('OpenKnowledge (Stable)');
+    expect(result.decision.detail).toContain('--force');
     expect(killed).toEqual([]);
     expect(errors[0]).toContain('OpenKnowledge (Stable)');
     expect(errors[0]).toContain('--force');
+  });
+
+  test('channel refusal precedes the connected-client probe', async () => {
+    const probeClients = vi.fn(async () => 2);
+    const { outcome, killed } = run('stable', { probeClients });
+    expect((await outcome).decision.code).toBe('channel-mismatch');
+    expect(probeClients).not.toHaveBeenCalled();
+    expect(killed).toEqual([]);
   });
 
   test("--force stops another channel's server", async () => {
