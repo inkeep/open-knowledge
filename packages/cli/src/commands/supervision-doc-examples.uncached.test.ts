@@ -13,12 +13,13 @@ const examples = [...source.matchAll(/```json\n([\s\S]*?)\n```/g)].map((match) =
 );
 
 describe('published supervision JSON examples', () => {
-  test('contains five complete, parseable examples with the implemented envelope', () => {
-    expect(examples).toHaveLength(5);
+  test('contains six complete, parseable examples with the implemented envelope', () => {
+    expect(examples).toHaveLength(6);
     expect(examples.map((example) => example.command)).toEqual([
       'status',
       'status',
       'ps',
+      'stop',
       'stop',
       'clean',
     ]);
@@ -100,10 +101,12 @@ describe('published supervision JSON examples', () => {
       'projectRoot',
       'serverInstanceId',
     ]);
-    expect(Object.keys(examples[4].project).sort()).toEqual(['resolution', 'root']);
-    expect(Object.keys(examples[4].targets[0]).sort()).toEqual(['code', 'detail', 'lockPath']);
+    expect(Object.keys(examples[5].project).sort()).toEqual(['resolution', 'root']);
+    expect(Object.keys(examples[5].targets[0]).sort()).toEqual(['code', 'detail', 'lockPath']);
+    expect(examples[3].result).toMatchObject({ kind: 'refused', code: 'channel-mismatch' });
     expect(examples[3].targets[0].code).toBe(examples[3].result.code);
-    expect(examples[4].targets[0].code).toBe(examples[4].result.code);
+    expect(examples[4].result.code).toBe('clients-connected');
+    expect(examples[5].targets[0].code).toBe(examples[5].result.code);
   });
 
   test.each(Object.entries(V1_CODES))('documents every %s result code', (command, codes) => {

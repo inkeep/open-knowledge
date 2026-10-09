@@ -154,7 +154,24 @@ When nonnull, `runtime` is `{source, revision, effectiveSince, port, bind, idleS
 
 For a numeric target, v1 resolves all matching discovered stoppable locks before mutation. Repeated discovery of one normalized lock path collapses. Distinct paths collapse only when server inspection confirms the same instance ID, PID, and canonical project root for both. If more than one candidate remains, `ambiguous-target` refuses without a signal, client probe, or lock mutation. Use a reported validated `projectRoot` to retry with `ok stop <directory>`. Copied lock metadata, a matching port/PID, or an older or unreachable inspection endpoint never proves two paths identify one server. Legacy text invocations retain their first-match lookup.
 
-`--force` bypasses only the connected-client refusal. An unverified owner is never signalled. A foreign-host lock with a locally live PID retains the existing stoppable behavior. When the connected-client probe fails or is unavailable, stop proceeds under its existing fail-open policy. `signalled` means SIGTERM was sent; it does not mean process exit was observed. There is no termination-wait or termination-timeout result. `all` keeps a record for each considered lock; a mix of successful signals and refusal or failure is `partially-signalled`.
+`--force` bypasses the channel-mismatch and connected-client refusals. A server whose lock names another release channel (Stable or Beta) is refused before the connected-client probe. Use that channel’s app or CLI, or pass `--force` to explicitly override both guards. The CLI channel comes from `OK_CHANNEL`, the executable name, or a Stable default. Locks without channel metadata retain the existing behavior; an unsupported `OK_CHANNEL` warns and skips the channel check. An unverified owner is never signalled. A foreign-host lock with a locally live PID retains the existing stoppable behavior. When the connected-client probe fails or is unavailable, stop proceeds under its existing fail-open policy. `signalled` means SIGTERM was sent; it does not mean process exit was observed. There is no termination-wait or termination-timeout result. `all` keeps a record for each considered lock; a mix of successful signals and refusal or failure is `partially-signalled`. When no target is signalled, failures take precedence over refusals; channel mismatch takes precedence over connected-client and ownership refusals in the aggregate result. Each target retains its own code and detail.
+
+### Another release channel refuses stop
+
+A Beta CLI targeting a Stable server without `--force` returns:
+
+```json
+{
+  "schemaVersion": 1,
+  "command": "stop",
+  "result": { "kind": "refused", "code": "channel-mismatch", "detail": "The server belongs to OpenKnowledge (Stable). Stop it from that app or its CLI, or re-run with --force to terminate anyway." },
+  "target": { "kind": "project", "value": null, "projectRoot": "/projects/wiki" },
+  "force": false,
+  "targets": [
+    { "lockPath": "/projects/wiki/.ok/local/server.lock", "projectRoot": "/projects/wiki", "serverInstanceId": null, "pid": 1234, "port": 4242, "code": "channel-mismatch", "detail": "The server belongs to OpenKnowledge (Stable). Stop it from that app or its CLI, or re-run with --force to terminate anyway." }
+  ]
+}
+```
 
 ### Connected clients refuse stop
 
@@ -177,6 +194,7 @@ For a numeric target, v1 resolves all matching discovered stoppable locks before
 | `already-stopped` | no-op | 0 | No stoppable selected project/path process, or no stoppable `all` candidate. |
 | `target-not-found` | no-op | 0 | No discovered stoppable lock matched the numeric selector. |
 | `clients-connected` | refused | 1 | A positive client count blocked an unforced stop. |
+| `channel-mismatch` | refused | 1 | The server belongs to another release channel; use its app or CLI, or explicitly pass `--force`. |
 | `ownership-unverified` | refused | 1 | Ownership could not be safely verified. |
 | `ambiguous-target` | refused | 1 | More than one distinct numeric candidate remains. |
 | `signal-failed` | error | 1 | Sending SIGTERM failed. |
