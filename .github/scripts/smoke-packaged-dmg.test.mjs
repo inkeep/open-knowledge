@@ -665,6 +665,7 @@ describe('the progress reporter against the installed Playwright', () => {
         [
           "import { createRequire } from 'node:module';",
           `const { test } = createRequire(${JSON.stringify(join(DESKTOP_DIR, 'package.json'))})('@playwright/test');`,
+          `if (process.env.TEST_WORKER_INDEX !== undefined) await new Promise((resolve) => setTimeout(resolve, ${2 * SCALED_WATCHDOG.stallWindowMs}));`,
           "test('advances', async () => { await test.step('a step that finishes', async () => {}); });",
           "test('hangs', async () => { await test.step('a step that hangs', async () => { await new Promise(() => {}); }); });",
           '',
@@ -672,12 +673,25 @@ describe('the progress reporter against the installed Playwright', () => {
       );
       const logs = [];
       const sent = [];
+      let progressFile = null;
+      const clock = clockPausedUntil(
+        () =>
+          readProgressEvents(progressFile).some(
+            (event) => event.kind === 'step-begin' && event.step === 'a step that hangs',
+          ),
+        60_000,
+      );
       const result = await runWatchedPlaywright({
         command: process.execPath,
         args: [cli, 'test', '--config', config],
         cwd: dir,
         env: { ...process.env },
-        watchdog: { ...SCALED_WATCHDOG, stallWindowMs: 6_000 },
+        watchdog: SCALED_WATCHDOG,
+        now: clock,
+        spawnImpl: (command, args, options) => {
+          progressFile = options.env[PROGRESS_FILE_ENV];
+          return spawn(command, args, options);
+        },
         out: () => {},
         err: () => {},
         log: (line) => logs.push(line),
@@ -703,8 +717,28 @@ describe('the progress reporter against the installed Playwright', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, 90_000);
 });
+
+function clockPausedUntil(started, maxPauseMs) {
+  const pausedAt = Date.now();
+  let resumedAt = null;
+  return () => {
+    if (resumedAt === null) {
+      if (!started() && Date.now() - pausedAt < maxPauseMs) return pausedAt;
+      resumedAt = Date.now();
+    }
+    return pausedAt + (Date.now() - resumedAt);
+  };
+}
+
+function readProgressEvents(progressFile) {
+  if (progressFile === null || !existsSync(progressFile)) return [];
+  return readFileSync(progressFile, 'utf8')
+    .split('\n')
+    .slice(0, -1)
+    .map((line) => JSON.parse(line));
+}
 
 async function runReporterInChild(progressFile) {
   const plan = { tests: 3, testMs: 0, finish: 'exit', exitCode: 0 };
