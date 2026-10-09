@@ -2,15 +2,19 @@ import { realpathSync, statSync } from 'node:fs';
 import * as pathPosix from 'node:path/posix';
 import * as pathWin32 from 'node:path/win32';
 import { EXECUTABLE_BLOCKLIST_EXTENSIONS } from '@inkeep/open-knowledge-core';
+import {
+  assetOpenRefusalRevealsInstead,
+  type OkAssetOpenResult,
+} from '@inkeep/open-knowledge-core/desktop-bridge';
 import { isPathWithinProject } from './ipc-handlers.ts';
 
-export type AssetOpenResult =
-  | { ok: true }
-  | { ok: false; reason: 'extension-blocked' | 'path-escape' | 'not-found' | 'resolve-error' };
+export type AssetOpenResult = OkAssetOpenResult;
 
 type AssetRevealResult =
   | { ok: true }
   | { ok: false; reason: 'path-escape' | 'not-found' | 'resolve-error' };
+
+type StatKind = 'file' | 'other' | 'missing';
 
 export function extractPathExtension(path: string): string {
   const lastSep = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
@@ -25,7 +29,7 @@ interface OpenAssetDeps {
   readonly platform: NodeJS.Platform;
   readonly openPath: (canonical: string) => Promise<string>;
   readonly resolveCanonical?: (path: string) => string;
-  readonly statExists?: (path: string) => boolean;
+  readonly statKind?: (path: string) => StatKind;
 }
 
 interface RevealAssetDeps {
@@ -33,7 +37,7 @@ interface RevealAssetDeps {
   readonly platform: NodeJS.Platform;
   readonly showItemInFolder: (canonical: string) => void;
   readonly resolveCanonical?: (path: string) => string;
-  readonly statExists?: (path: string) => boolean;
+  readonly statKind?: (path: string) => StatKind;
 }
 
 function resolveAndContain(
@@ -41,9 +45,9 @@ function resolveAndContain(
   projectPath: string,
   platform: NodeJS.Platform,
   resolveCanonical: (path: string) => string,
-  statExists: (path: string) => boolean,
+  statKind: (path: string) => StatKind,
 ):
-  | { ok: true; canonical: string }
+  | { ok: true; canonical: string; kind: 'file' | 'other' }
   | { ok: false; reason: 'path-escape' | 'not-found' | 'resolve-error' } {
   const p = platform === 'win32' ? pathWin32 : pathPosix;
   if (p.isAbsolute(relPath)) {
@@ -65,23 +69,23 @@ function resolveAndContain(
     return { ok: false, reason: 'path-escape' };
   }
 
-  if (!statExists(canonical)) {
+  const kind = statKind(canonical);
+  if (kind === 'missing') {
     return { ok: false, reason: 'not-found' };
   }
 
-  return { ok: true, canonical };
+  return { ok: true, canonical, kind };
 }
 
 function defaultResolveCanonical(path: string): string {
   return realpathSync(path);
 }
 
-function defaultStatExists(path: string): boolean {
+function defaultStatKind(path: string): StatKind {
   try {
-    statSync(path);
-    return true;
+    return statSync(path).isFile() ? 'file' : 'other';
   } catch {
-    return false;
+    return 'missing';
   }
 }
 
@@ -90,19 +94,27 @@ export async function openAssetSafely(
   relPath: string,
 ): Promise<AssetOpenResult> {
   const resolveCanonical = deps.resolveCanonical ?? defaultResolveCanonical;
-  const statExists = deps.statExists ?? defaultStatExists;
+  const statKind = deps.statKind ?? defaultStatKind;
 
   const contained = resolveAndContain(
     relPath,
     deps.projectPath,
     deps.platform,
     resolveCanonical,
-    statExists,
+    statKind,
   );
   if (!contained.ok) return contained;
 
+  if (contained.kind !== 'file') {
+    return { ok: false, reason: 'not-a-file' };
+  }
+
   const ext = extractPathExtension(contained.canonical);
-  if (EXECUTABLE_BLOCKLIST_EXTENSIONS.has(ext)) {
+  if (
+    ext === '' ||
+    ext !== extractPathExtension(relPath) ||
+    EXECUTABLE_BLOCKLIST_EXTENSIONS.has(ext)
+  ) {
     return { ok: false, reason: 'extension-blocked' };
   }
 
@@ -118,17 +130,27 @@ export async function revealAssetSafely(
   relPath: string,
 ): Promise<AssetRevealResult> {
   const resolveCanonical = deps.resolveCanonical ?? defaultResolveCanonical;
-  const statExists = deps.statExists ?? defaultStatExists;
+  const statKind = deps.statKind ?? defaultStatKind;
 
   const contained = resolveAndContain(
     relPath,
     deps.projectPath,
     deps.platform,
     resolveCanonical,
-    statExists,
+    statKind,
   );
   if (!contained.ok) return contained;
 
   deps.showItemInFolder(contained.canonical);
   return { ok: true };
+}
+
+export async function openAssetOrReveal(
+  deps: OpenAssetDeps & Pick<RevealAssetDeps, 'showItemInFolder'>,
+  relPath: string,
+): Promise<AssetOpenResult> {
+  const opened = await openAssetSafely(deps, relPath);
+  if (opened.ok || !assetOpenRefusalRevealsInstead(opened.reason)) return opened;
+  await revealAssetSafely(deps, relPath);
+  return opened;
 }

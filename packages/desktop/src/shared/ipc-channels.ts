@@ -39,6 +39,7 @@ import type {
   CopyImageRequest,
   CopyImageResult,
   OkHeadBranchInfo as HeadBranchInfo,
+  OkAssetOpenResult,
   OkAssetUploadResult,
   OkChromeColors,
   OkDesktopConfig,
@@ -393,9 +394,7 @@ export interface RequestChannels {
   'ok:shell:record-handoff': { args: [line: HandoffStatsLine]; result: undefined };
   'ok:shell:open-asset': {
     args: [relPath: string];
-    result:
-      | { ok: true }
-      | { ok: false; reason: 'extension-blocked' | 'path-escape' | 'not-found' | 'resolve-error' };
+    result: OkAssetOpenResult;
   };
   'ok:shell:reveal-asset': {
     args: [relPath: string];

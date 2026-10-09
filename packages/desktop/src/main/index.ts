@@ -176,7 +176,7 @@ import {
 import { collectDesktopHostSnapshot, withoutProjectScope } from './agent-registry-probes.ts';
 import { appendOkIgnoreSync } from './append-okignore.ts';
 import { registerAppImageDeepLinks } from './appimage-integration.ts';
-import { openAssetSafely, revealAssetSafely } from './asset-allowlist.ts';
+import { openAssetOrReveal, openAssetSafely, revealAssetSafely } from './asset-allowlist.ts';
 import { popAssetMenu, revealMenuLabel } from './asset-menu.ts';
 import { attachAssetSafetyNet } from './asset-safety-net.ts';
 import { resolveEffectiveInstanceName } from './auto-instance.ts';
@@ -4327,14 +4327,23 @@ function registerIpcHandlers() {
             );
           },
           openInDefault: async () => {
-            await openAssetSafely(
+            const outcome = await openAssetOrReveal(
               {
                 projectPath,
                 platform: process.platform,
                 openPath: (canonical) => shell.openPath(canonical),
+                showItemInFolder: (canonical) => shell.showItemInFolder(canonical),
               },
               params.relPath,
             );
+            if (!outcome.ok) {
+              logIpcError({
+                event: 'ipc.error',
+                channel: 'ok:shell:show-asset-menu',
+                reason: outcome.reason,
+                handler: 'openInDefault',
+              });
+            }
           },
           copyLink: () => clipboard.writeText(params.relPath),
         },

@@ -115,6 +115,43 @@ describe('dispatchAssetClick', () => {
     expect(openUrl).not.toHaveBeenCalled();
   });
 
+  test('not-a-file refusal (a directory or app bundle) reveals it instead of opening', async () => {
+    const openAsset = vi.fn(async (_: string) => ({ ok: false, reason: 'not-a-file' }) as const);
+    const revealAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openUrl = vi.fn((_: string) => {});
+    const desktopBridge = {
+      shell: { openAsset, revealAsset },
+    } as unknown as NonNullable<typeof window.okDesktop>;
+
+    await dispatchAssetClick(ctx({ ext: 'app', projectRelPath: 'tools/Calculator.app' }), {
+      desktopBridge,
+      openUrl,
+    });
+
+    expect(revealAsset).toHaveBeenCalledWith('tools/Calculator.app');
+    expect(openUrl).not.toHaveBeenCalled();
+  });
+
+  test('a refusal reason unknown to this renderer is logged, not thrown', async () => {
+    const openAsset = vi.fn(async (_: string) => ({ ok: false, reason: 'quarantined' }) as const);
+    const revealAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const desktopBridge = {
+      shell: { openAsset, revealAsset },
+    } as unknown as NonNullable<typeof window.okDesktop>;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await dispatchAssetClick(ctx(), { desktopBridge });
+      expect(revealAsset).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(
+        '[asset-dispatch] openAsset refused:',
+        'quarantined',
+        expect.objectContaining({ projectRelPath: 'notes/meeting.pdf' }),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   test('non-blocked refusal (resolve-error) is logged, does not reveal or fall through to web', async () => {
     const openAsset = vi.fn(async (_: string) => ({ ok: false, reason: 'resolve-error' }) as const);
     const revealAsset = vi.fn(async (_: string) => ({ ok: true }) as const);

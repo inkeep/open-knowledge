@@ -1,3 +1,4 @@
+import { assetOpenRefusalRevealsInstead } from '@inkeep/open-knowledge-core/desktop-bridge';
 import { type AssetViewerRegistry, assetViewerRegistry } from './registry.ts';
 import type { AssetClickContext } from './types.ts';
 
@@ -30,7 +31,7 @@ export async function dispatchAssetClick(
   if (desktopBridge) {
     const result = await desktopBridge.shell.openAsset(ctx.projectRelPath);
     if (!result.ok) {
-      if (result.reason === 'extension-blocked') {
+      if (assetOpenRefusalRevealsInstead(result.reason)) {
         const revealed = await desktopBridge.shell.revealAsset(ctx.projectRelPath);
         if (!revealed.ok) {
           console.warn('[asset-dispatch] revealAsset failed:', revealed.reason, {
