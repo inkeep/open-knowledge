@@ -135,9 +135,12 @@ describe('parsePackagePatterns / expandPackagePattern', () => {
     const listedEntries = afterHeader
       .slice(0, blockEnd === -1 ? afterHeader.length : blockEnd)
       .filter((line) => line.trim().startsWith('-'));
+    const nestedMembersOnDisk = ['packages/md-conformance/md-audit'].filter((member) =>
+      fs.existsSync(path.join(root, member, 'package.json')),
+    );
 
     expect(unparsed).toEqual([]);
-    expect(patterns).toEqual(['packages/*', 'docs', 'packages/md-conformance/md-audit']);
+    expect(patterns).toEqual(['packages/*', 'docs', ...nestedMembersOnDisk]);
     expect(patterns).toHaveLength(listedEntries.length);
     expect(expandPackagePattern(root, 'packages/*')?.length).toBe(
       fs.readdirSync(path.join(root, 'packages')).length,

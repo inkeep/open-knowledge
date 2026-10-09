@@ -505,6 +505,86 @@ function collectMatches(
   return violations;
 }
 
+type DevGateFinding =
+  | { kind: 'unlisted-write'; path: string; line: number; global: string; excerpt: string }
+  | { kind: 'stale-entry'; path: string; global: string }
+  | { kind: 'empty-entry'; path: string };
+
+interface DevGateScan {
+  scannedFiles: number;
+  writerFiles: number;
+  writes: number;
+  findings: DevGateFinding[];
+}
+
+const ASSIGNED_WINDOW_GLOBAL = /(?<=window\.)__[A-Za-z_][A-Za-z0-9_]*(?=\s*=)/g;
+const COMPARED_WINDOW_GLOBAL = /window\.__[A-Za-z_][A-Za-z0-9_]*\s*===?/;
+const DEFINED_WINDOW_GLOBAL =
+  /(?<=Object\.defineProperty\s*\(\s*window\s*,\s*['"])__[A-Za-z_][A-Za-z0-9_]*(?=['"])/g;
+
+function windowGlobalsWrittenOn(line: string): string[] {
+  const assigned = COMPARED_WINDOW_GLOBAL.test(line)
+    ? []
+    : (line.match(ASSIGNED_WINDOW_GLOBAL) ?? []);
+  return [...assigned, ...(line.match(DEFINED_WINDOW_GLOBAL) ?? [])];
+}
+
+function scanDevGatedWrites(
+  files: ReadonlyArray<Pick<FileLines, 'path' | 'lines'>>,
+  allowlist: Readonly<Record<string, readonly string[]>>,
+): DevGateScan {
+  const listed = new Map(
+    Object.entries(allowlist).map(([path, globals]) => [path, new Set(globals)]),
+  );
+  const written = new Map<string, Set<string>>();
+  const findings: DevGateFinding[] = [];
+  let writes = 0;
+  for (const file of files) {
+    file.lines.forEach((line, index) => {
+      for (const global of windowGlobalsWrittenOn(line)) {
+        writes += 1;
+        const globalsWritten = written.get(file.path) ?? new Set<string>();
+        globalsWritten.add(global);
+        written.set(file.path, globalsWritten);
+        if (listed.get(file.path)?.has(global) === true) continue;
+        findings.push({
+          kind: 'unlisted-write',
+          path: file.path,
+          line: index + 1,
+          global,
+          excerpt: line.trim(),
+        });
+      }
+    });
+  }
+  for (const [path, globals] of listed) {
+    if (globals.size === 0) findings.push({ kind: 'empty-entry', path });
+    for (const global of globals) {
+      if (written.get(path)?.has(global) !== true) {
+        findings.push({ kind: 'stale-entry', path, global });
+      }
+    }
+  }
+  return { scannedFiles: files.length, writerFiles: written.size, writes, findings };
+}
+
+function assertNeverDevGateFinding(finding: never): never {
+  throw new Error(`Unhandled DevGateFinding kind: ${JSON.stringify(finding)}`);
+}
+
+function describeDevGateFinding(finding: DevGateFinding): string {
+  switch (finding.kind) {
+    case 'unlisted-write':
+      return `  ${finding.path}:${finding.line}    ${finding.global} is not listed for this file    ${finding.excerpt}`;
+    case 'stale-entry':
+      return `  ${finding.path}    lists ${finding.global}, which this file does not write`;
+    case 'empty-entry':
+      return `  ${finding.path}    lists no global`;
+    default:
+      return assertNeverDevGateFinding(finding);
+  }
+}
+
 describe('E2E STOP rule — zero allowlist', () => {
   const e2eTsFiles = listE2eTsFiles();
   const e2eFiles = e2eTsFiles.filter((file) => isTestOnlySourceFile(file.path, 'playwright'));
@@ -592,28 +672,104 @@ describe('E2E STOP rule — zero allowlist', () => {
     ).toEqual([]);
   });
 
-  test('no ungated window.__ writes outside dev-gate allowlist (US-006/US-026)', () => {
-    const srcFiles = listAppSrcTsFiles();
-    const writePattern = /window\.__[A-Za-z_][A-Za-z0-9_]*\s*=/;
-    const equalityPattern = /window\.__[A-Za-z_][A-Za-z0-9_]*\s*===?/;
-    const definePropertyPattern =
-      /Object\.defineProperty\s*\(\s*window\s*,\s*['"]__[A-Za-z_][A-Za-z0-9_]*['"]/;
+  test('every window.__ write in app source is listed for its own file, and every listed global is written', () => {
+    const scan = scanDevGatedWrites(listAppSrcTsFiles(), DEV_GATED_WINDOW_WRITERS);
+    console.info(
+      `dev-gate allowlist: ${scan.writes} window.__ writes in ${scan.writerFiles} files, ${scan.findings.length} findings, ${scan.scannedFiles} source files scanned`,
+    );
 
-    const violations: string[] = [];
-    for (const file of srcFiles) {
-      if (DEV_GATED_WINDOW_WRITERS.includes(file.path)) continue;
-      for (let i = 0; i < file.lines.length; i++) {
-        const line = file.lines[i] ?? '';
-        const isAssignWrite = writePattern.test(line) && !equalityPattern.test(line);
-        const isDefinePropertyWrite = definePropertyPattern.test(line);
-        if (!isAssignWrite && !isDefinePropertyWrite) continue;
-        violations.push(`  ${file.path}:${i + 1}    ${line.trim()}`);
-      }
-    }
+    expect(scan.scannedFiles).toBeGreaterThan(0);
     expect(
-      violations,
-      `Ungated window.__ write outside the dev-gate allowlist — wrap in if (import.meta.env.DEV) and add to dev-gate-allowlist.ts:\n${violations.join('\n')}`,
+      scan.findings,
+      `window.__ writes disagree with dev-gate-allowlist.ts — wrap a new write in if (import.meta.env.DEV) and list its global under its file; delete an entry whose write is gone:\n${scan.findings.map(describeDevGateFinding).join('\n')}`,
     ).toEqual([]);
+  });
+
+  test('dev-gate rule reports a global its file is not listed for, and not the adjacent negatives', () => {
+    const listed = 'packages/app/src/editor/Listed.tsx';
+    const unlisted = 'packages/app/src/components/Unlisted.tsx';
+    const scan = scanDevGatedWrites(
+      [
+        {
+          path: listed,
+          lines: [
+            'if (import.meta.env.DEV) {',
+            '  window.__listedHook = hook;',
+            "  Object.defineProperty(window, '__listedGetter', { get: () => hook });",
+            '  window.__unlistedHook = other;',
+            '  Object.defineProperty(window, "__unlistedGetter", { get: () => other });',
+            '  window.__listedHook = window.__chainedHook = both;',
+            '}',
+          ],
+        },
+        {
+          path: unlisted,
+          lines: [
+            'window.__strayHook = hook;',
+            'if (window.__strayHook === hook) cleanup();',
+            'delete window.__strayHook;',
+            'const read = window.__readHook;',
+            'window.okDesktop = bridge;',
+            "Object.defineProperty(window, 'okDesktop', { value: bridge });",
+          ],
+        },
+      ],
+      { [listed]: ['__listedGetter', '__listedHook'] },
+    );
+
+    expect(scan.findings).toEqual([
+      {
+        kind: 'unlisted-write',
+        path: listed,
+        line: 4,
+        global: '__unlistedHook',
+        excerpt: 'window.__unlistedHook = other;',
+      },
+      {
+        kind: 'unlisted-write',
+        path: listed,
+        line: 5,
+        global: '__unlistedGetter',
+        excerpt: 'Object.defineProperty(window, "__unlistedGetter", { get: () => other });',
+      },
+      {
+        kind: 'unlisted-write',
+        path: listed,
+        line: 6,
+        global: '__chainedHook',
+        excerpt: 'window.__listedHook = window.__chainedHook = both;',
+      },
+      {
+        kind: 'unlisted-write',
+        path: unlisted,
+        line: 1,
+        global: '__strayHook',
+        excerpt: 'window.__strayHook = hook;',
+      },
+    ]);
+    expect({ writes: scan.writes, writerFiles: scan.writerFiles }).toEqual({
+      writes: 7,
+      writerFiles: 2,
+    });
+  });
+
+  test('dev-gate rule reports an allowlist entry that matches no write', () => {
+    const writer = 'packages/app/src/editor/Writer.tsx';
+    const quiet = 'packages/app/src/components/Quiet.tsx';
+    const writerFile = { path: writer, lines: ['  window.__keptHook = hook;'] };
+
+    expect(
+      scanDevGatedWrites([writerFile, { path: quiet, lines: ['  render(window.__keptHook);'] }], {
+        [writer]: ['__keptHook', '__removedHook'],
+        [quiet]: [],
+        'packages/app/src/lib/Deleted.ts': ['__goneHook'],
+      }).findings,
+    ).toEqual([
+      { kind: 'stale-entry', path: writer, global: '__removedHook' },
+      { kind: 'empty-entry', path: quiet },
+      { kind: 'stale-entry', path: 'packages/app/src/lib/Deleted.ts', global: '__goneHook' },
+    ]);
+    expect(scanDevGatedWrites([writerFile], { [writer]: ['__keptHook'] }).findings).toEqual([]);
   });
 
   test('no static value import of the DEV ACP thread harness', () => {
