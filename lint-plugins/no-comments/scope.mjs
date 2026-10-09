@@ -14,6 +14,7 @@ import { GRAMMAR_EXTRACTORS } from './extractors.mjs';
 import { isFresh, sourceDigest } from './freshness.mjs';
 
 const REGEX_METACHARACTERS = /[.+^${}()|[\]\\]/g;
+const INDEXED_GIT_CONFIG_ENTRY = /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/;
 
 export function globToRegExp(glob) {
   if (UNSUPPORTED_GLOB_SYNTAX.test(glob)) {
@@ -52,9 +53,14 @@ export function gitEnvironment(base = process.env) {
     GIT_PREFIX: _gitPrefix,
     GIT_CEILING_DIRECTORIES: _gitCeilingDirectories,
     GIT_DISCOVERY_ACROSS_FILESYSTEM: _gitDiscoveryAcrossFilesystem,
+    GIT_CONFIG_PARAMETERS: _gitConfigParameters,
+    GIT_CONFIG_COUNT: _gitConfigCount,
     ...env
   } = base;
-  return { ...env, LC_ALL: 'C' };
+  return {
+    ...Object.fromEntries(Object.entries(env).filter(([name]) => !INDEXED_GIT_CONFIG_ENTRY.test(name))),
+    LC_ALL: 'C',
+  };
 }
 
 function runGit(repoRoot, args, input) {

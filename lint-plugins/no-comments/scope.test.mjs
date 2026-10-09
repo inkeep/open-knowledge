@@ -448,7 +448,11 @@ describe('gitignored output is outside discovery', () => {
     const canonicalReads = keysReadBy(gitCleanEnv);
     const localReads = keysReadBy(gitEnvironment);
     expect(localReads).toStrictEqual(canonicalReads);
-    const redirectKeys = [...canonicalReads].filter((key) => key.startsWith('GIT_'));
+    const redirectKeys = [
+      ...[...canonicalReads].filter((key) => key.startsWith('GIT_')),
+      'GIT_CONFIG_KEY_0',
+      'GIT_CONFIG_VALUE_0',
+    ];
     const base = {
       KEEP: 'yes',
       LC_ALL: 'caller',
