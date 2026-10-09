@@ -1,3 +1,5 @@
+const INDEXED_CONFIG_ENTRY = /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/;
+
 export function gitCleanEnv(base = process.env) {
   const {
     GIT_DIR: _d,
@@ -10,7 +12,9 @@ export function gitCleanEnv(base = process.env) {
     GIT_PREFIX: _p,
     GIT_CEILING_DIRECTORIES: _cdirs,
     GIT_DISCOVERY_ACROSS_FILESYSTEM: _dafs,
+    GIT_CONFIG_PARAMETERS: _cparams,
+    GIT_CONFIG_COUNT: _ccount,
     ...env
   } = base;
-  return env;
+  return Object.fromEntries(Object.entries(env).filter(([name]) => !INDEXED_CONFIG_ENTRY.test(name)));
 }

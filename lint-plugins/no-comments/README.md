@@ -551,8 +551,8 @@ The Git environment scrub mirrors `scripts/git-clean-env.mjs`. The hook import-c
 above prevents importing that helper into this module, so a parity test keeps the local scrub
 aligned with the canonical helper; the local copy additionally fixes `LC_ALL=C` for diagnostic
 classification. Repository redirection and upward-discovery controls are removed before Git runs.
-The baseline scrub removes GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR, GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY, GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_NAMESPACE, and GIT_PREFIX. The discovery controls add GIT_CEILING_DIRECTORIES and GIT_DISCOVERY_ACROSS_FILESYSTEM for this scope; they do not redefine every Git helper's contract. Git configuration, including configured ignore files,
-remains an input: this scrub is not isolation from all Git configuration.
+The baseline scrub removes GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR, GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY, GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_NAMESPACE, and GIT_PREFIX. The discovery controls add GIT_CEILING_DIRECTORIES and GIT_DISCOVERY_ACROSS_FILESYSTEM for this scope; they do not redefine every Git helper's contract. Caller command-scope configuration is also removed: GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT and the indexed GIT_CONFIG_KEY_<n>/GIT_CONFIG_VALUE_<n> entries. Git configuration files, including configured ignore files,
+remain an input: this scrub is not isolation from all Git configuration.
 
 Static `exclude` rules and Git ignore rules serve different boundaries. Static exclusions also
 work for non-Git adopters and can prune directories before filesystem traversal. Git filtering
