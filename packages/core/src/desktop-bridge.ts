@@ -955,6 +955,33 @@ export type OkServerRestartOutcome = { readonly ok: true } | OkServerRestartFail
 
 export type OkPtyCreateReason = 'no-project' | 'not-consented';
 
+export type OkAssetOpenRefusalReason =
+  | 'extension-blocked'
+  | 'not-a-file'
+  | 'path-escape'
+  | 'not-found'
+  | 'resolve-error';
+
+export type OkAssetOpenResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: OkAssetOpenRefusalReason };
+
+export function assetOpenRefusalRevealsInstead(reason: OkAssetOpenRefusalReason): boolean {
+  switch (reason) {
+    case 'extension-blocked':
+    case 'not-a-file':
+      return true;
+    case 'path-escape':
+    case 'not-found':
+    case 'resolve-error':
+      return false;
+    default: {
+      const _unknownFromNewerDesktop: never = reason;
+      return false;
+    }
+  }
+}
+
 export function assertNeverPtyCreateReason(value: never): never {
   throw new Error(`unhandled pty create reason: ${String(value)}`);
 }
@@ -1150,12 +1177,7 @@ export interface OkDesktopBridge {
       readonly scope?: HandoffScope;
     }): Promise<void>;
 
-    openAsset(
-      relPath: string,
-    ): Promise<
-      | { ok: true }
-      | { ok: false; reason: 'extension-blocked' | 'path-escape' | 'not-found' | 'resolve-error' }
-    >;
+    openAsset(relPath: string): Promise<OkAssetOpenResult>;
 
     revealAsset(
       relPath: string,
