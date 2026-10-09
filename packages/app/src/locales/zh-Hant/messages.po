@@ -2508,6 +2508,10 @@ msgstr "自動"
 msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
 msgstr "自動模式會在每次啟動時挑選一個空閒的連接埠。選擇固定連接埠可在重新啟動後維持相同位址。"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Automatic updates"
+msgstr "自動更新"
+
 #: src/components/settings/AboutSection.tsx
 msgid "Automatic updates are not available right now."
 msgstr "目前無法自動更新。"
@@ -4657,6 +4661,10 @@ msgstr "無法儲存金鑰——請再試一次。"
 msgid "Couldn't save the resolution for {filePath}."
 msgstr "無法儲存 {filePath} 的解決結果。"
 
+#: src/components/settings/AboutSection.tsx
+msgid "Couldn't save this setting. Try again."
+msgstr "無法儲存此設定。請再試一次。"
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr "無法儲存你的主題偏好。"
@@ -5479,6 +5487,10 @@ msgstr "按兩下即可編輯"
 #: src/components/acp/ThreadView.tsx
 msgid "Download {0}"
 msgstr "下載 {0}"
+
+#: src/components/settings/AboutSection.tsx
+msgid "Download and install updates automatically"
+msgstr "自動下載並安裝更新"
 
 #: src/components/HelpPopover.tsx
 msgid "Download app"
@@ -10590,6 +10602,10 @@ msgstr "OpenKnowledge 檢查了 {subject}"
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge 檢查了專案"
 
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge checks for and downloads updates in the background."
+msgstr "OpenKnowledge 會在背景檢查並下載更新。"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge 未在此裝置上找到該代理程式。"
@@ -10637,6 +10653,10 @@ msgstr "OpenKnowledge 無法辨識此項目，且無法在此檔案格式中安�
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge does not recognize this entry. Turning it on replaces it."
 msgstr "OpenKnowledge 無法辨識此項目。啟用後將取代它。"
+
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge doesn't check for or download updates on its own. Check for updates still works when you want a newer version."
+msgstr "OpenKnowledge 不會自行檢查或下載更新。需要新版本時，仍可使用「檢查更新」。"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge edited {subject}"

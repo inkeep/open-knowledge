@@ -2508,6 +2508,10 @@ msgstr "Automatycznie"
 msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
 msgstr "Tryb automatyczny przy każdym uruchomieniu wybiera wolny port. Wybierz stały port, żeby adres był taki sam po restartach."
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Automatic updates"
+msgstr "Automatyczne aktualizacje"
+
 #: src/components/settings/AboutSection.tsx
 msgid "Automatic updates are not available right now."
 msgstr "Automatyczne aktualizacje są teraz niedostępne."
@@ -4657,6 +4661,10 @@ msgstr "Nie udało się zapisać klucza — spróbuj ponownie."
 msgid "Couldn't save the resolution for {filePath}."
 msgstr "Nie udało się zapisać rozwiązania dla {filePath}."
 
+#: src/components/settings/AboutSection.tsx
+msgid "Couldn't save this setting. Try again."
+msgstr "Nie udało się zapisać tego ustawienia. Spróbuj ponownie."
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr "Nie udało się zapisać preferencji motywu."
@@ -5479,6 +5487,10 @@ msgstr "Kliknij dwukrotnie, aby edytować"
 #: src/components/acp/ThreadView.tsx
 msgid "Download {0}"
 msgstr "Pobierz {0}"
+
+#: src/components/settings/AboutSection.tsx
+msgid "Download and install updates automatically"
+msgstr "Pobieraj i instaluj aktualizacje automatycznie"
 
 #: src/components/HelpPopover.tsx
 msgid "Download app"
@@ -10590,6 +10602,10 @@ msgstr "OpenKnowledge sprawdziło {subject}"
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge sprawdziło projekt"
 
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge checks for and downloads updates in the background."
+msgstr "OpenKnowledge sprawdza i pobiera aktualizacje w tle."
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge nie znalazło tego agenta na tym komputerze."
@@ -10637,6 +10653,10 @@ msgstr "OpenKnowledge nie rozpoznaje tego wpisu i nie może go bezpiecznie zast�
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge does not recognize this entry. Turning it on replaces it."
 msgstr "OpenKnowledge nie rozpoznaje tego wpisu. Włączenie go spowoduje jego zastąpienie."
+
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge doesn't check for or download updates on its own. Check for updates still works when you want a newer version."
+msgstr "OpenKnowledge nie sprawdza ani nie pobiera aktualizacji samodzielnie. Przycisk Sprawdź aktualizacje nadal działa, gdy chcesz nowszą wersję."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge edited {subject}"

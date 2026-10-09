@@ -91,6 +91,10 @@ export function attachUpdateSubscribers(
   unsubscribers.push(
     bridge.onUpdateDownloaded(({ version }) => {
       const noticeId = downloadedNoticeId;
+      if (version === null) {
+        dismissNotice(noticeId);
+        return;
+      }
       dismissNotice(noLongerPendingNoticeId);
 
       const armReadyNotice = () => {
@@ -98,6 +102,11 @@ export function attachUpdateSubscribers(
           id: noticeId,
           body: toastABody(version),
           priority: PRIORITY_UPDATE_DOWNLOADED,
+          onDismiss: () => {
+            bridge.update.dismissDownloaded(version).catch((err: unknown) => {
+              console.warn('[update-notice] dismissing the ready-to-install card failed', err);
+            });
+          },
           action: {
             label: TOAST_A_ACTION,
             onClick: () => {

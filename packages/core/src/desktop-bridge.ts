@@ -247,7 +247,7 @@ export interface OkHeadBranchInfo {
 }
 
 export interface OkUpdateDownloadedInfo {
-  readonly version: string;
+  readonly version: string | null;
 }
 
 export interface OkUpdateRelaunchingInfo {
@@ -333,6 +333,8 @@ export type ShareFolderValidationResult =
 
 export type OkUpdateChannel = 'latest' | 'beta';
 
+export type OkUpdateMode = 'auto' | 'off';
+
 export type OkThemeSource = 'system' | 'light' | 'dark';
 
 export interface OkUserConfigSnapshot {
@@ -362,6 +364,7 @@ export interface OkStateSnapshot {
     readonly maxSupported: number;
   } | null;
   readonly about?: OkAboutInfo;
+  readonly updateMode?: OkUpdateMode;
 }
 
 export type OkMcpWiringEditorId = EditorId;
@@ -1354,6 +1357,8 @@ export interface OkDesktopBridge {
     relaunchNow(): Promise<void>;
     checkNow(): Promise<void>;
     dismissWhatsNew(version: string): Promise<void>;
+    dismissDownloaded(version: string): Promise<void>;
+    setMode(mode: OkUpdateMode): Promise<void>;
   };
 
   state: {

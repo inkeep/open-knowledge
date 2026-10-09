@@ -68,6 +68,7 @@ import type {
   OkTerminalDockStateUpdate,
   OkTerminalDockStateWriteResult,
   OkThemeSource,
+  OkUpdateMode,
   OkUserConfigPatchResult,
   OkUserConfigSnapshot,
   OkSeedApplyOptions as SeedApplyOptions,
@@ -370,6 +371,24 @@ interface DialogOpenFolderOpts {
   readonly defaultPath?: string;
 }
 
+export type OkUpdateDispatchRequest =
+  | { readonly kind: 'relaunch-now' }
+  | { readonly kind: 'check-now' }
+  | { readonly kind: 'whats-new-dismiss'; readonly version: string }
+  | { readonly kind: 'downloaded-dismiss'; readonly version: string }
+  | { readonly kind: 'set-mode'; readonly mode: OkUpdateMode };
+
+export type OkUpdateSetModeFailure = 'unrecognized-mode' | 'persist-failed';
+
+export type OkUpdateDispatchResult =
+  | { readonly kind: 'relaunch-now' }
+  | { readonly kind: 'check-now' }
+  | { readonly kind: 'whats-new-dismiss' }
+  | { readonly kind: 'downloaded-dismiss' }
+  | { readonly kind: 'set-mode'; readonly ok: true; readonly mode: OkUpdateMode }
+  | { readonly kind: 'set-mode'; readonly ok: false; readonly reason: OkUpdateSetModeFailure }
+  | { readonly kind: 'unknown'; readonly ok: false; readonly reason: 'unrecognized-kind' };
+
 export type UserConfigDispatchRequest =
   | { kind: 'set-language-preference'; preference: LanguagePreference }
   | { kind: 'read' }
@@ -552,9 +571,10 @@ export interface RequestChannels {
       | { ok: false; reason: 'no-project' | 'invalid-request' }
       | OkNoteWindowMainActionResult;
   };
-  'ok:update:relaunch-now': { args: []; result: undefined };
-  'ok:update:check-now': { args: []; result: undefined };
-  'ok:update:whats-new-dismiss': { args: [{ version: string }]; result: undefined };
+  'ok:update:dispatch': {
+    args: [request: OkUpdateDispatchRequest];
+    result: OkUpdateDispatchResult;
+  };
   'ok:state:query': { args: []; result: Required<OkStateSnapshot> };
   'ok:state:reset-incompatible': { args: []; result: undefined };
   'ok:theme:set-source': { args: [params: { source: OkThemeSource }]; result: { ok: true } };

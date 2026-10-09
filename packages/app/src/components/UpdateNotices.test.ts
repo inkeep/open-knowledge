@@ -24,7 +24,7 @@ import {
   WHATS_NEW_AUTO_DISMISS_MS,
 } from './UpdateNotices';
 
-type UpdateDownloadedCb = (info: { version: string }) => void;
+type UpdateDownloadedCb = (info: { version: string | null }) => void;
 type RelaunchingCb = (info: { version: string }) => void;
 type FetchingLatestCb = (info: { version: string }) => void;
 type RelaunchFailedCb = (info: {
@@ -52,6 +52,8 @@ interface FakeBridge {
     relaunchNow: ReturnType<typeof vi.fn>;
     checkNow: ReturnType<typeof vi.fn>;
     dismissWhatsNew: ReturnType<typeof vi.fn>;
+    dismissDownloaded: ReturnType<typeof vi.fn>;
+    setMode: ReturnType<typeof vi.fn>;
   };
   state: {
     query: ReturnType<typeof vi.fn>;
@@ -98,6 +100,8 @@ function makeFakeBridge(): FakeBridge {
       relaunchNow: vi.fn(() => Promise.resolve(undefined)),
       checkNow: vi.fn(() => Promise.resolve(undefined)),
       dismissWhatsNew: vi.fn(() => Promise.resolve(undefined)),
+      dismissDownloaded: vi.fn(() => Promise.resolve(undefined)),
+      setMode: vi.fn(() => Promise.resolve(undefined)),
     },
     state: {
       query: vi.fn(() => Promise.resolve({ channel: 'latest', schemaIncompatibility: null })),
@@ -1167,5 +1171,29 @@ describe('unsubscribe semantics', () => {
     expect(bridge._whatsNewDismissedUnsub).toHaveBeenCalledTimes(1);
     expect(bridge._stuckHintUnsub).toHaveBeenCalledTimes(1);
     expect(bridge._manualCheckUnsub).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Notice A dismissal and stand-down', () => {
+  test('dismissing the ready-to-install card records the dismissal in main', () => {
+    const bridge = makeFakeBridge();
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    attachUpdateSubscribers(castBridge(bridge), addNotice);
+
+    bridge._downloaded?.({ version: '0.1.1' });
+    const card = addNotice.mock.calls[0]?.[0] as UpdateNotice;
+    card.onDismiss?.();
+    expect(bridge.update.dismissDownloaded).toHaveBeenCalledWith('0.1.1');
+  });
+
+  test('a null-version downloaded event retracts the card without arming a new one', () => {
+    const bridge = makeFakeBridge();
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
+    attachUpdateSubscribers(castBridge(bridge), addNotice, dismissNotice);
+
+    bridge._downloaded?.({ version: null });
+    expect(addNotice).not.toHaveBeenCalled();
+    expect(dismissNotice).toHaveBeenCalledWith('update-downloaded');
   });
 });

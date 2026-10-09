@@ -849,6 +849,9 @@
     "7C9JcA": [
       "La ruta del proyecto de OpenKnowledge en esta rama sale del worktree. El worktree se creó, pero no se abrió."
     ],
+    "7Crqsa": [
+      "OpenKnowledge no busca ni descarga actualizaciones por sí solo. Buscar actualizaciones sigue funcionando cuando quieras una versión más reciente."
+    ],
     "7FA2iI": ["No se pudieron leer los comentarios pendientes de envío; no se envió nada."],
     "7FamGZ": ["Ir a la línea"],
     "7Fkcej": ["+ Añadir ", ["addChildName"]],
@@ -914,6 +917,7 @@
     "7l15X4": ["falló"],
     "7lFX_h": ["Redirigir ahora"],
     "7m3Ade": ["instalaciones:"],
+    "7mxVbK": ["Descargar e instalar actualizaciones automáticamente"],
     "7qRHf0": ["Instalar para Claude Chat y Cowork"],
     "7sNhEz": ["Nombre de usuario"],
     "7uBlRT": ["Copia el elemento enfocado del árbol de archivos para que Pegar pueda duplicarlo."],
@@ -3482,6 +3486,7 @@
     "X7ShnN": ["Abrir el panel de agentes"],
     "X8kjQX": ["Volver a autenticarse con GitHub"],
     "X9VpsP": ["Cargando el contenido de la carpeta"],
+    "XA9uvc": ["OpenKnowledge busca y descarga actualizaciones en segundo plano."],
     "XAnapw": ["Regla de combinación de Git"],
     "XAyxsa": ["Extraer rama remota"],
     "XBBZnv": ["El destino del enlace «", ["shown"], "» no corresponde a un documento existente."],
@@ -3494,6 +3499,7 @@
     "XJOV1Y": ["Actividad"],
     "XK5cbh": ["Avanza por el historial de navegación de OpenKnowledge."],
     "XNBGZw": ["No se envió el mensaje: ", ["0"]],
+    "XN_sSd": ["Actualizaciones automáticas"],
     "XNdXMR": [
       ["dependent"],
       " necesita ",
@@ -4117,6 +4123,7 @@
       " cargará todas las extensiones que haya en ella, no solo la de Open Knowledge, y ambas permanecen hasta que quites Open Knowledge de este proyecto."
     ],
     "c9-Pi9": [["source"], " · fuente de skills.sh"],
+    "c9C7DQ": ["No se pudo guardar este ajuste. Inténtalo de nuevo."],
     "cCd8Bs": ["Cortar"],
     "cD3aew": [
       "Los embeddings se recalculan a medida que se hacen búsquedas, así que la cobertura empieza de cero y se vuelve a llenar."

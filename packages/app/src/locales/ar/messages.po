@@ -2508,6 +2508,10 @@ msgstr "تلقائي"
 msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
 msgstr "يختار الوضع التلقائي منفذًا متاحًا في كل بدء تشغيل. اختر منفذًا ثابتًا للاحتفاظ بالعنوان نفسه عبر عمليات إعادة التشغيل."
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Automatic updates"
+msgstr "التحديثات التلقائية"
+
 #: src/components/settings/AboutSection.tsx
 msgid "Automatic updates are not available right now."
 msgstr "التحديثات التلقائية غير متاحة حاليًا."
@@ -4657,6 +4661,10 @@ msgstr "تعذّر حفظ المفتاح — يرجى المحاولة مرة أ
 msgid "Couldn't save the resolution for {filePath}."
 msgstr "تعذّر حفظ الحل لـ {filePath}."
 
+#: src/components/settings/AboutSection.tsx
+msgid "Couldn't save this setting. Try again."
+msgstr "تعذّر حفظ هذا الإعداد. حاول مرة أخرى."
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr "تعذّر حفظ تفضيل السمة لديك."
@@ -5479,6 +5487,10 @@ msgstr "انقر نقرًا مزدوجًا للتحرير"
 #: src/components/acp/ThreadView.tsx
 msgid "Download {0}"
 msgstr "تنزيل {0}"
+
+#: src/components/settings/AboutSection.tsx
+msgid "Download and install updates automatically"
+msgstr "تنزيل التحديثات وتثبيتها تلقائيًا"
 
 #: src/components/HelpPopover.tsx
 msgid "Download app"
@@ -10590,6 +10602,10 @@ msgstr "تحقق OpenKnowledge من {subject}"
 msgid "OpenKnowledge checked the project"
 msgstr "تحقق OpenKnowledge من المشروع"
 
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge checks for and downloads updates in the background."
+msgstr "يتحقق OpenKnowledge من وجود تحديثات وينزّلها في الخلفية."
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "لم يتمكن OpenKnowledge من العثور على هذا الوكيل على هذا الجهاز."
@@ -10637,6 +10653,10 @@ msgstr "لا يتعرّف OpenKnowledge على هذا الإدخال، ولا ي
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge does not recognize this entry. Turning it on replaces it."
 msgstr "لا يتعرّف OpenKnowledge على هذا الإدخال. تشغيله سيستبدله."
+
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge doesn't check for or download updates on its own. Check for updates still works when you want a newer version."
+msgstr "لا يتحقق OpenKnowledge من وجود تحديثات ولا ينزّلها من تلقاء نفسه. يظل زر «التحقق من التحديثات» متاحًا عندما تريد إصدارًا أحدث."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge edited {subject}"

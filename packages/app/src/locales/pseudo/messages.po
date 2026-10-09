@@ -2504,6 +2504,10 @@ msgstr ""
 msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
 msgstr ""
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Automatic updates"
+msgstr ""
+
 #: src/components/settings/AboutSection.tsx
 msgid "Automatic updates are not available right now."
 msgstr ""
@@ -4653,6 +4657,10 @@ msgstr ""
 msgid "Couldn't save the resolution for {filePath}."
 msgstr ""
 
+#: src/components/settings/AboutSection.tsx
+msgid "Couldn't save this setting. Try again."
+msgstr ""
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr ""
@@ -5474,6 +5482,10 @@ msgstr ""
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx
 msgid "Download {0}"
+msgstr ""
+
+#: src/components/settings/AboutSection.tsx
+msgid "Download and install updates automatically"
 msgstr ""
 
 #: src/components/HelpPopover.tsx
@@ -10586,6 +10598,10 @@ msgstr ""
 msgid "OpenKnowledge checked the project"
 msgstr ""
 
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge checks for and downloads updates in the background."
+msgstr ""
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr ""
@@ -10632,6 +10648,10 @@ msgstr ""
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge does not recognize this entry. Turning it on replaces it."
+msgstr ""
+
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge doesn't check for or download updates on its own. Check for updates still works when you want a newer version."
 msgstr ""
 
 #: src/lib/acp/tool-call-display.ts

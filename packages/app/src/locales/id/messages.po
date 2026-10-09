@@ -2504,6 +2504,10 @@ msgstr "Otomatis"
 msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
 msgstr "Otomatis memilih port bebas setiap kali dimulai. Pilih port tetap untuk mempertahankan alamat yang sama di seluruh mulai ulang."
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Automatic updates"
+msgstr "Pembaruan otomatis"
+
 #: src/components/settings/AboutSection.tsx
 msgid "Automatic updates are not available right now."
 msgstr "Pembaruan otomatis saat ini tidak tersedia."
@@ -4653,6 +4657,10 @@ msgstr "Kuncinya tidak bisa disimpan — silakan coba lagi."
 msgid "Couldn't save the resolution for {filePath}."
 msgstr "Penyelesaian untuk {filePath} tidak bisa disimpan."
 
+#: src/components/settings/AboutSection.tsx
+msgid "Couldn't save this setting. Try again."
+msgstr "Pengaturan ini tidak dapat disimpan. Coba lagi."
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr "Tidak dapat menyimpan preferensi tema Anda."
@@ -5475,6 +5483,10 @@ msgstr "Klik dua kali untuk menyunting"
 #: src/components/acp/ThreadView.tsx
 msgid "Download {0}"
 msgstr "Unduh {0}"
+
+#: src/components/settings/AboutSection.tsx
+msgid "Download and install updates automatically"
+msgstr "Unduh dan pasang pembaruan secara otomatis"
 
 #: src/components/HelpPopover.tsx
 msgid "Download app"
@@ -10586,6 +10598,10 @@ msgstr "OpenKnowledge memeriksa {subject}"
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge memeriksa proyek"
 
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge checks for and downloads updates in the background."
+msgstr "OpenKnowledge memeriksa dan mengunduh pembaruan di latar belakang."
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge tidak menemukan agen ini di mesin ini."
@@ -10633,6 +10649,10 @@ msgstr "OpenKnowledge tidak mengenali entri ini, dan tidak dapat menggantinya de
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge does not recognize this entry. Turning it on replaces it."
 msgstr "OpenKnowledge tidak mengenali entri ini. Mengaktifkannya akan menggantinya."
+
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge doesn't check for or download updates on its own. Check for updates still works when you want a newer version."
+msgstr "OpenKnowledge tidak memeriksa atau mengunduh pembaruan dengan sendirinya. Periksa pembaruan tetap berfungsi saat Anda menginginkan versi yang lebih baru."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge edited {subject}"

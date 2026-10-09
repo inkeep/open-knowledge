@@ -68,6 +68,8 @@ import type {
   AgentIntegrationsApplyResult,
   IntegrationsSetResult,
   IntegrationsStatus,
+  OkUpdateDispatchRequest,
+  OkUpdateDispatchResult,
   ProjectIntegrationsSetResult,
   ProjectIntegrationsStatus,
 } from '../shared/ipc-channels.ts';
@@ -90,6 +92,14 @@ import { createSlidesBridge } from './slides-bridge.ts';
 import { createUninstallBridge } from './uninstall.ts';
 
 const invoke = createInvoker(ipcRenderer);
+
+async function dispatchUpdate(request: OkUpdateDispatchRequest): Promise<OkUpdateDispatchResult> {
+  const result = await invoke('ok:update:dispatch', request);
+  if (result.kind !== request.kind) {
+    throw new Error(`ok:update:dispatch: expected ${request.kind}, got ${result.kind}`);
+  }
+  return result;
+}
 
 function isDockStateIpcTeardown(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -698,9 +708,24 @@ const bridge: OkDesktopBridge = {
   },
 
   update: {
-    relaunchNow: () => invoke('ok:update:relaunch-now'),
-    checkNow: () => invoke('ok:update:check-now'),
-    dismissWhatsNew: (version: string) => invoke('ok:update:whats-new-dismiss', { version }),
+    relaunchNow: async () => {
+      await dispatchUpdate({ kind: 'relaunch-now' });
+    },
+    checkNow: async () => {
+      await dispatchUpdate({ kind: 'check-now' });
+    },
+    dismissWhatsNew: async (version: string) => {
+      await dispatchUpdate({ kind: 'whats-new-dismiss', version });
+    },
+    dismissDownloaded: async (version: string) => {
+      await dispatchUpdate({ kind: 'downloaded-dismiss', version });
+    },
+    setMode: async (mode) => {
+      const result = await dispatchUpdate({ kind: 'set-mode', mode });
+      if (result.kind === 'set-mode' && !result.ok) {
+        throw new Error(`ok:update:dispatch: set-mode refused (${result.reason})`);
+      }
+    },
   },
 
   state: {

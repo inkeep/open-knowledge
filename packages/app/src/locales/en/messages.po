@@ -2508,6 +2508,10 @@ msgstr "Automatic"
 msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
 msgstr "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Automatic updates"
+msgstr "Automatic updates"
+
 #: src/components/settings/AboutSection.tsx
 msgid "Automatic updates are not available right now."
 msgstr "Automatic updates are not available right now."
@@ -4657,6 +4661,10 @@ msgstr "Couldn't save the key — please try again."
 msgid "Couldn't save the resolution for {filePath}."
 msgstr "Couldn't save the resolution for {filePath}."
 
+#: src/components/settings/AboutSection.tsx
+msgid "Couldn't save this setting. Try again."
+msgstr "Couldn't save this setting. Try again."
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr "Couldn't save your theme preference."
@@ -5479,6 +5487,10 @@ msgstr "Double-click to edit"
 #: src/components/acp/ThreadView.tsx
 msgid "Download {0}"
 msgstr "Download {0}"
+
+#: src/components/settings/AboutSection.tsx
+msgid "Download and install updates automatically"
+msgstr "Download and install updates automatically"
 
 #: src/components/HelpPopover.tsx
 msgid "Download app"
@@ -10590,6 +10602,10 @@ msgstr "OpenKnowledge checked {subject}"
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge checked the project"
 
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge checks for and downloads updates in the background."
+msgstr "OpenKnowledge checks for and downloads updates in the background."
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge could not find this agent on this machine."
@@ -10637,6 +10653,10 @@ msgstr "OpenKnowledge does not recognize this entry, and cannot safely replace i
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge does not recognize this entry. Turning it on replaces it."
 msgstr "OpenKnowledge does not recognize this entry. Turning it on replaces it."
+
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge doesn't check for or download updates on its own. Check for updates still works when you want a newer version."
+msgstr "OpenKnowledge doesn't check for or download updates on its own. Check for updates still works when you want a newer version."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge edited {subject}"

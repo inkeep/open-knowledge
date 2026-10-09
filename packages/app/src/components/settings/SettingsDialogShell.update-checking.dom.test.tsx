@@ -86,6 +86,8 @@ const unsubscribe = () => () => {};
     relaunchNow: () => Promise.resolve(),
     checkNow: () => Promise.resolve(),
     dismissWhatsNew: () => Promise.resolve(),
+    dismissDownloaded: () => Promise.resolve(),
+    setMode: () => Promise.resolve(),
   },
   state: {
     query: () => Promise.resolve({ channel: 'latest', schemaIncompatibility: null }),

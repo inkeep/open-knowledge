@@ -2508,6 +2508,10 @@ msgstr "자동"
 msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
 msgstr "자동을 선택하면 시작할 때마다 사용 가능한 포트를 고릅니다. 재시작해도 같은 주소를 유지하려면 고정 포트를 선택하세요."
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Automatic updates"
+msgstr "자동 업데이트"
+
 #: src/components/settings/AboutSection.tsx
 msgid "Automatic updates are not available right now."
 msgstr "지금은 자동 업데이트를 사용할 수 없습니다."
@@ -4657,6 +4661,10 @@ msgstr "키를 저장하지 못했습니다. 다시 시도합니다."
 msgid "Couldn't save the resolution for {filePath}."
 msgstr "{filePath}의 해결 결과를 저장하지 못했습니다."
 
+#: src/components/settings/AboutSection.tsx
+msgid "Couldn't save this setting. Try again."
+msgstr "이 설정을 저장하지 못했습니다. 다시 시도하세요."
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr "테마 설정을 저장하지 못했습니다."
@@ -5479,6 +5487,10 @@ msgstr "편집하려면 두 번 클릭"
 #: src/components/acp/ThreadView.tsx
 msgid "Download {0}"
 msgstr "{0} 다운로드"
+
+#: src/components/settings/AboutSection.tsx
+msgid "Download and install updates automatically"
+msgstr "업데이트를 자동으로 다운로드하고 설치"
 
 #: src/components/HelpPopover.tsx
 msgid "Download app"
@@ -10590,6 +10602,10 @@ msgstr "OpenKnowledge에서 {subject} 확인"
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge에서 프로젝트 확인"
 
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge checks for and downloads updates in the background."
+msgstr "OpenKnowledge가 백그라운드에서 업데이트를 확인하고 다운로드합니다."
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge가 이 컴퓨터에서 이 에이전트를 찾지 못했습니다."
@@ -10637,6 +10653,10 @@ msgstr "OpenKnowledge가 이 항목을 인식하지 못하며, 이 파일 형식
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge does not recognize this entry. Turning it on replaces it."
 msgstr "OpenKnowledge가 이 항목을 인식하지 못합니다. 켜면 이 항목을 대체합니다."
+
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge doesn't check for or download updates on its own. Check for updates still works when you want a newer version."
+msgstr "OpenKnowledge가 스스로 업데이트를 확인하거나 다운로드하지 않습니다. 새 버전이 필요하면 업데이트 확인을 계속 사용할 수 있습니다."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge edited {subject}"

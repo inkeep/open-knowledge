@@ -436,6 +436,7 @@ function SettingsDialogFrame({
                   t({ message: 'about', context: 'settings search keyword' }),
                   t`Release notes`,
                   t`Check for updates`,
+                  t`Automatic updates`,
                 ],
               },
             ],

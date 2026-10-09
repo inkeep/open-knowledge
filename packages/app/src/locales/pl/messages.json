@@ -886,6 +886,9 @@
     "7C9JcA": [
       "Ścieżka projektu OpenKnowledge na tej gałęzi prowadzi poza worktree. Worktree został utworzony, ale nie otwarty."
     ],
+    "7Crqsa": [
+      "OpenKnowledge nie sprawdza ani nie pobiera aktualizacji samodzielnie. Przycisk Sprawdź aktualizacje nadal działa, gdy chcesz nowszą wersję."
+    ],
     "7FA2iI": [
       "Nie udało się odczytać komentarzy oczekujących na wysłanie — nic nie zostało wysłane."
     ],
@@ -953,6 +956,7 @@
     "7l15X4": ["nieudane"],
     "7lFX_h": ["Skieruj teraz"],
     "7m3Ade": ["instalacje:"],
+    "7mxVbK": ["Pobieraj i instaluj aktualizacje automatycznie"],
     "7qRHf0": ["Zainstaluj dla Claude Chat i Cowork"],
     "7sNhEz": ["Nazwa użytkownika"],
     "7uBlRT": ["Skopiuj zaznaczony element drzewa plików, aby dało się go potem wkleić."],
@@ -3563,6 +3567,7 @@
     "X7ShnN": ["Otwórz panel agentów"],
     "X8kjQX": ["Uwierzytelnij się ponownie z GitHub"],
     "X9VpsP": ["Ładowanie zawartości folderu"],
+    "XA9uvc": ["OpenKnowledge sprawdza i pobiera aktualizacje w tle."],
     "XAnapw": ["Reguła scalania Gita"],
     "XAyxsa": ["Przełącz zdalną gałąź"],
     "XBBZnv": ["Cel linku „", ["shown"], "” nie wskazuje na istniejący dokument."],
@@ -3575,6 +3580,7 @@
     "XJOV1Y": ["Aktywność"],
     "XK5cbh": ["Przechodź do przodu po historii nawigacji OpenKnowledge."],
     "XNBGZw": ["Wiadomość nie wysłana: ", ["0"]],
+    "XN_sSd": ["Automatyczne aktualizacje"],
     "XNdXMR": [
       ["dependent"],
       " wymaga ",
@@ -4190,6 +4196,7 @@
       " wczyta wszystkie rozszerzenia w nim, nie tylko rozszerzenia Open Knowledge — i oba pozostają, dopóki nie usuniesz Open Knowledge z tego projektu."
     ],
     "c9-Pi9": [["source"], " · źródło skills.sh"],
+    "c9C7DQ": ["Nie udało się zapisać tego ustawienia. Spróbuj ponownie."],
     "cCd8Bs": ["Wytnij"],
     "cD3aew": [
       "Ponowne osadzanie odbywa się podczas wyszukiwania, więc pokrycie zaczyna się od zera i stopniowo się uzupełnia."

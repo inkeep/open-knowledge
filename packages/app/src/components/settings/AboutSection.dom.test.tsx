@@ -358,3 +358,116 @@ describe('AboutSection', () => {
     expect(checkNow).not.toHaveBeenCalled();
   });
 });
+
+function installModeBridge(
+  updateMode: 'auto' | 'off',
+  setMode: (mode: 'auto' | 'off') => Promise<void> = async () => {},
+  about: OkAboutInfo = CLOUD_ABOUT,
+) {
+  const setModeSpy = vi.fn(setMode);
+  Object.defineProperty(window, 'okDesktop', {
+    value: {
+      appVersion: about.version,
+      shell: { openExternal: vi.fn(async () => {}) },
+      update: { checkNow: vi.fn(async () => {}), setMode: setModeSpy },
+      state: {
+        query: vi.fn(async () => ({
+          channel: 'latest' as const,
+          schemaIncompatibility: null,
+          about,
+          updateMode,
+        })),
+      },
+      onUpdateManualCheck: () => () => {},
+    },
+    configurable: true,
+    writable: true,
+  });
+  return { setMode: setModeSpy };
+}
+
+describe('AboutSection automatic updates switch', () => {
+  test('reflects the persisted mode and turns automatic updates off', async () => {
+    const { setMode } = installModeBridge('auto');
+    render(<AboutSection />);
+
+    const toggle = await screen.findByRole('switch', {
+      name: 'Download and install updates automatically',
+    });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+
+    await userEvent.click(toggle);
+
+    expect(setMode).toHaveBeenCalledWith('off');
+    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'));
+    expect(screen.getByText(/check for or download updates on its own/)).not.toBeNull();
+  });
+
+  test('turns automatic updates back on from off', async () => {
+    const { setMode } = installModeBridge('off');
+    render(<AboutSection />);
+
+    const toggle = await screen.findByRole('switch', {
+      name: 'Download and install updates automatically',
+    });
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    await userEvent.click(toggle);
+    expect(setMode).toHaveBeenCalledWith('auto');
+  });
+
+  test('a refused write reverts the switch and reports the failure', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    installModeBridge('auto', async () => {
+      throw new Error('ok:update:dispatch: set-mode refused (persist-failed)');
+    });
+    render(<AboutSection />);
+
+    const toggle = await screen.findByRole('switch', {
+      name: 'Download and install updates automatically',
+    });
+    await userEvent.click(toggle);
+
+    expect(await screen.findByRole('alert')).not.toBeNull();
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    warn.mockRestore();
+  });
+
+  test('a state read started before the click does not undo the new setting', async () => {
+    installModeBridge('auto');
+    const bridge = window.okDesktop as unknown as {
+      state: { query: ReturnType<typeof vi.fn> };
+    };
+    render(<AboutSection />);
+    const toggle = await screen.findByRole('switch', {
+      name: 'Download and install updates automatically',
+    });
+
+    let resolveStaleRead: (value: unknown) => void = () => {};
+    bridge.state.query.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveStaleRead = resolve;
+        }),
+    );
+    window.dispatchEvent(new Event('focus'));
+    await userEvent.click(toggle);
+    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'));
+
+    resolveStaleRead({
+      channel: 'latest',
+      schemaIncompatibility: null,
+      about: CLOUD_ABOUT,
+      updateMode: 'auto',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+  });
+
+  test('is hidden when this build cannot update itself', async () => {
+    installModeBridge('auto', async () => {}, { ...CLOUD_ABOUT, updateChecks: 'unavailable' });
+    render(<AboutSection />);
+
+    expect(await screen.findByText('OpenKnowledge Cloud')).not.toBeNull();
+    expect(screen.queryByRole('switch')).toBeNull();
+  });
+});

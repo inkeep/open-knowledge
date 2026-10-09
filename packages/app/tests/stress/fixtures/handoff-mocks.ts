@@ -395,6 +395,8 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           relaunchNow: async () => {},
           checkNow: async () => {},
           dismissWhatsNew: async () => {},
+          dismissDownloaded: async () => {},
+          setMode: async () => {},
         },
         state: {
           query: async () => ({
