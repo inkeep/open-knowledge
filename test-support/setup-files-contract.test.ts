@@ -27,14 +27,17 @@ const KNOWN_TEST_PROJECTS = [
   'packages/cli/vitest.e2e.config.ts',
   'packages/core/vitest.config.ts',
   'packages/desktop/vitest.config.ts',
-  'packages/md-conformance/md-audit/vitest.config.ts',
-  'packages/md-conformance/vitest.config.ts',
   'packages/server/vitest.config.ts',
   'packages/server/vitest.network.config.ts',
   'test-support/fixtures/no-net-connect/vitest.no-net-connect-fixture.config.ts',
-  'vitest.config.ts',
   'vitest.scripts.config.ts',
   'vitest.uncached.config.ts',
+];
+
+const TEST_PROJECTS_OUTSIDE_THE_PUBLIC_TREE = [
+  'packages/md-conformance/md-audit/vitest.config.ts',
+  'packages/md-conformance/vitest.config.ts',
+  'vitest.config.ts',
 ];
 
 const KNOWN_BUILD_CONFIGS = [
@@ -55,20 +58,27 @@ const isBrowserProject = (relPath: string): boolean =>
 
 const isTestConfig = (relPath: string): boolean => TEST_CONFIG_FILENAME.test(basename(relPath));
 
-function findConfigs(): string[] {
-  return execFileSync(
-    'git',
-    ['ls-files', '-z', '--', '*.config.ts', '*.config.mts', '*.config.js', '*.config.mjs'],
-    {
-      cwd: REPO_ROOT,
-      env: gitCleanEnv(),
-      encoding: 'utf8',
-    },
-  )
+function trackedFiles(pathspecs: readonly string[]): string[] {
+  return execFileSync('git', ['ls-files', '-z', '--', ...pathspecs], {
+    cwd: REPO_ROOT,
+    env: gitCleanEnv(),
+    encoding: 'utf8',
+  })
     .split('\0')
-    .filter((relPath) => relPath !== '' && CONFIG_FILENAME.test(basename(relPath)))
+    .filter((relPath) => relPath !== '');
+}
+
+function findConfigs(): string[] {
+  return trackedFiles(['*.config.ts', '*.config.mts', '*.config.js', '*.config.mjs'])
+    .filter((relPath) => CONFIG_FILENAME.test(basename(relPath)))
     .sort();
 }
+
+const tracksFilesThePublicTreeOmits = trackedFiles(['*.private.*']).length > 0;
+
+const EXPECTED_TEST_PROJECTS = tracksFilesThePublicTreeOmits
+  ? [...KNOWN_TEST_PROJECTS, ...TEST_PROJECTS_OUTSIDE_THE_PUBLIC_TREE]
+  : KNOWN_TEST_PROJECTS;
 
 type TestOptions = { name?: unknown; setupFiles?: unknown; projects?: unknown };
 
@@ -125,7 +135,7 @@ describe('vitest setupFiles contract', () => {
       configs.filter(isTestConfig).sort(),
       'A vitest project appeared or disappeared. Confirm the new one is covered, then update ' +
         'this list; a lower bound would have let a disappearing project pass silently.',
-    ).toEqual([...KNOWN_TEST_PROJECTS].sort());
+    ).toEqual([...EXPECTED_TEST_PROJECTS].sort());
   });
 
   test('every non-vitest config in the sweep is a known build config', () => {

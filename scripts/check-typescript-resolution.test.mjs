@@ -320,11 +320,11 @@ describe('collectViolations', () => {
 
 describe('memberDirs', () => {
   const root = path.resolve(import.meta.dirname, '..');
-  const collect = (yaml) => {
+  const collect = (yaml, walkRoot = root) => {
     const unparsed = [];
     const empty = [];
     const dirs = memberDirs(
-      root,
+      walkRoot,
       yaml,
       (line) => unparsed.push(line),
       (pattern) => empty.push(pattern),
@@ -339,21 +339,31 @@ describe('memberDirs', () => {
     expect(unparsed).toEqual([]);
     expect(empty).toEqual([]);
     const names = dirs.map((dir) => path.relative(root, dir));
+    const nestedMembersOnDisk = [path.join('packages', 'md-conformance', 'md-audit')].filter(
+      (member) => fs.existsSync(path.join(root, member, 'package.json')),
+    );
     expect(names).toContain('docs');
-    expect(names).toContain(path.join('packages', 'md-conformance', 'md-audit'));
+    expect(names).toEqual(expect.arrayContaining(nestedMembersOnDisk));
     expect(names).toContain(path.join('packages', 'core'));
     expect(dirs.length).toBeGreaterThanOrEqual(8);
   });
 
   it('keeps enumerating past a comment interleaved in the packages list', () => {
-    const withComment = collect(
-      "packages:\n  - 'docs'\n  # a nested package needs its own entry\n\n  - 'packages/md-conformance/md-audit'\n",
+    withTree(
+      { 'docs/package.json': {}, 'packages/md-conformance/md-audit/package.json': {} },
+      (fixture) => {
+        const withComment = collect(
+          "packages:\n  - 'docs'\n  # a nested package needs its own entry\n\n  - 'packages/md-conformance/md-audit'\n",
+          fixture,
+        );
+        const withoutComment = collect(
+          "packages:\n  - 'docs'\n  - 'packages/md-conformance/md-audit'\n",
+          fixture,
+        );
+        expect(withComment.dirs).toEqual(withoutComment.dirs);
+        expect(withComment.dirs).toHaveLength(2);
+      },
     );
-    const withoutComment = collect(
-      "packages:\n  - 'docs'\n  - 'packages/md-conformance/md-audit'\n",
-    );
-    expect(withComment.dirs).toEqual(withoutComment.dirs);
-    expect(withComment.dirs).toHaveLength(2);
   });
 
   it('stops at the next top-level key instead of swallowing a later list', () => {
