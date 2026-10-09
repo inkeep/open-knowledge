@@ -5,7 +5,7 @@ import { inspectLock, type LockState } from './lock-state.ts';
 
 const PROBE_DEADLINE_MS = 2_000;
 
-export interface AppliedSupervisionRuntime {
+interface AppliedSupervisionRuntime {
   source: 'server';
   revision: number;
   effectiveSince: string;
@@ -15,7 +15,7 @@ export interface AppliedSupervisionRuntime {
   externalUrl: string | null;
 }
 
-export interface StatusReadiness {
+interface StatusReadiness {
   status: 'ready' | 'pending' | 'failed' | 'draining' | 'unreachable' | 'not-running' | 'unknown';
   checkedAt: string | null;
   degraded: string[];

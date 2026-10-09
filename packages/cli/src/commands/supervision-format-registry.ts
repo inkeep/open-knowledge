@@ -1,7 +1,7 @@
 import { type Command, Option } from 'commander';
 import { type JsonWriterDeps, writeJsonDocument } from './supervision-json-output.ts';
 
-export const SUPERVISION_COMMANDS = ['status', 'ps', 'stop', 'clean'] as const;
+const SUPERVISION_COMMANDS = ['status', 'ps', 'stop', 'clean'] as const;
 
 export type SupervisionCommand = (typeof SUPERVISION_COMMANDS)[number];
 
@@ -30,7 +30,7 @@ export interface SupervisionFormatStrategy {
   execute(request: SupervisionRequest): Promise<SupervisionResult>;
 }
 
-export function isSupervisionCommand(value: string): value is SupervisionCommand {
+function isSupervisionCommand(value: string): value is SupervisionCommand {
   return SUPERVISION_COMMANDS.some((command) => command === value);
 }
 

@@ -123,13 +123,13 @@ type V1ReadinessStatus =
   | 'not-running'
   | 'unknown';
 
-export interface V1Readiness {
+interface V1Readiness {
   status: V1ReadinessStatus;
   checkedAt: string | null;
   degraded: string[];
 }
 
-export interface V1Runtime {
+interface V1Runtime {
   source: 'server';
   revision: number;
   effectiveSince: string;
