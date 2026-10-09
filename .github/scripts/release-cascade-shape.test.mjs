@@ -554,8 +554,15 @@ describe('a deliberately broken DMG never reads as a pass', () => {
   test('a file that is named .dmg but is not one yields a non-pass verdict', async () => {
     const fake = join(scratch, 'NotReallyOpenKnowledge.dmg');
     writeFileSync(fake, 'this is not a disk image\n');
+    const commands = [];
 
     const result = await smokePackagedDmg(fake, {
+      runCommand: async (cmd, args) => {
+        commands.push([cmd, args[0], args.at(-1)]);
+        if (args[0] === 'attach') {
+          throw new Error(`${cmd} exited 1: hdiutil: attach failed - image not recognized`);
+        }
+      },
       runPlaywright: async () => {
         throw new Error('the Playwright runner must not be reached for a broken DMG');
       },
@@ -564,6 +571,12 @@ describe('a deliberately broken DMG never reads as a pass', () => {
     expect(result.verdict).not.toBe(VERDICT.pass);
     expect(result.verdict).toBe(VERDICT.error);
     expect(result.reason).toContain('could not prepare the DMG');
+    expect(result.reason).toContain('image not recognized');
+    expect(commands.map(([cmd, verb]) => [cmd, verb])).toEqual([
+      ['hdiutil', 'attach'],
+      ['hdiutil', 'detach'],
+    ]);
+    expect(commands[0][2]).toBe(fake);
   });
 });
 
