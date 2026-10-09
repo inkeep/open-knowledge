@@ -1154,3 +1154,178 @@ describe('the outer a test derives from its parsed charge', () => {
     );
   });
 });
+
+describe('a helper whose return type is written in braces is still charged', () => {
+  for (const [returnType, spelled] of [
+    ['{ dir: string; file: string }', 'an object type'],
+    [
+      "Promise<{ app: import('@playwright/test').ElectronApplication; home: string }>",
+      'a promised object type',
+    ],
+    ['{ page: Page } | { page: null; reason: string }', 'a union of object types'],
+    ['Promise<void>', 'a plain promise'],
+    ['(page: Page) => { width: number }', 'a function type returning an object'],
+    [`'idle;busy' | \`\${number}ms\``, 'string and template literal types'],
+  ] as const) {
+    test(`returning ${spelled}`, () => {
+      const src = [
+        `async function launchFixture(prefix: string): ${returnType} {`,
+        `  await expect(page).toBeVisible({ timeout: ${STEP_TIMEOUT_MS} });`,
+        '}',
+        "test('launches the fixture', async () => {",
+        "  await launchFixture('x');",
+        '});',
+      ].join('\n');
+      const helpers = extractHelperBudgets(src);
+      expect(helpers).toEqual([{ name: 'launchFixture', maxTimeoutMs: STEP_TIMEOUT_MS }]);
+      expect(extractTestEntries(src, helpers)[0]?.cumulativeMs).toBe(STEP_TIMEOUT_MS);
+    });
+  }
+
+  test('an overload signature is not mistaken for the body of the implementation after it', () => {
+    const src = [
+      'function settle(page: Page): { width: number };',
+      'function settle(page: Page, timeoutMs = 20_000): { width: number } {',
+      `  await expect(page).toBeVisible({ timeout: ${STEP_TIMEOUT_MS} });`,
+      '}',
+    ].join('\n');
+    expect(extractHelperBudgets(src)).toEqual([{ name: 'settle', maxTimeoutMs: 20_000 }]);
+  });
+
+  test('a return type the guard cannot see past is refused, naming the helper', () => {
+    const lines = [
+      `const PAD = ${STEP_TIMEOUT_MS};`,
+      'async function settleLayout(page: Page): Promise<{ width: number }>',
+    ];
+    const file = writeFixture('.e2e.ts', lines);
+    expect(() => parseTestFile(file)).toThrow(
+      `settleLayout at ${file}:${lineHolding(lines, 'settleLayout')}`,
+    );
+  });
+});
+
+describe('a timeout spelled as a declared constant is charged its value', () => {
+  const settleModule = writeFixture('.ts', [
+    'export const LAYOUT_SETTLE_MS = 10_000;',
+    'export const MOUNT_MS = 2 * LAYOUT_SETTLE_MS;',
+  ]);
+  const settleSpecifier = `./${basename(settleModule, '.ts')}`;
+
+  test('a same-file constant, alone and in arithmetic', () => {
+    const src = [
+      `const STEP_MS = ${STEP_TIMEOUT_MS};`,
+      "test('waits on constants', async () => {",
+      '  const mountMs = 5_000;',
+      '  await expect(page).toBeVisible({ timeout: STEP_MS });',
+      '  await expect.poll(read, { timeout: mountMs * 2 });',
+      '});',
+    ].join('\n');
+    expect(extractTestEntries(src, [])[0]?.directTimeoutsMs).toEqual([STEP_TIMEOUT_MS, 10_000]);
+  });
+
+  test("a helper's constant default and body timeouts", () => {
+    const src = [
+      'const WAIT_MS = 30_000;',
+      'const POLL_MS = 25_000;',
+      'async function waitForX(app: unknown, timeoutMs = WAIT_MS) {',
+      '  await expect.poll(fn, { timeout: POLL_MS });',
+      '}',
+    ].join('\n');
+    expect(extractHelperBudgets(src)).toEqual([{ name: 'waitForX', maxTimeoutMs: 30_000 }]);
+  });
+
+  test('a constant imported by name from a relative module, renamed or not', () => {
+    const lines = [
+      `import { LAYOUT_SETTLE_MS, MOUNT_MS as MOUNT } from '${settleSpecifier}';`,
+      "test('waits on imported constants', async () => {",
+      '  test.setTimeout(sumOfDeclaredBoundsMs(test.info()));',
+      '  await expect(column).toBeVisible({ timeout: LAYOUT_SETTLE_MS });',
+      '  await expect(terminal).toBeVisible({ timeout: MOUNT });',
+      '});',
+    ];
+    const file = writeFixture('.e2e.ts', lines);
+    const line = lineHolding(lines, "test('waits on imported");
+    expect(entryDeclaredAt(parseTestFile(file), line).directTimeoutsMs).toEqual([10_000, 20_000]);
+    expect(sumOfDeclaredBoundsMs({ file, line }, 'fork')).toBe(30_000);
+  });
+
+  test('a toPass budget spelled as a constant is read for the minimum-budget check', () => {
+    const src = [
+      'const ROUNDTRIP_MS = 5_000;',
+      "test('round-trips', async () => {",
+      '  await expect(async () => {}).toPass({ timeout: ROUNDTRIP_MS });',
+      '});',
+    ].join('\n');
+    expect(extractTestEntries(src, [])[0]?.toPassBudgetsMs).toEqual([5_000]);
+  });
+
+  test('a name declared more than once is charged its largest value, never the first or last', () => {
+    const src = ['1_000', '60_000', '1_000']
+      .flatMap((waitMs, at) => [
+        `test('waits ${at}', async () => {`,
+        `  const waitMs = ${waitMs};`,
+        '  await expect(page).toBeVisible({ timeout: waitMs });',
+        '});',
+      ])
+      .join('\n');
+    expect(extractTestEntries(src, [])[1]?.directTimeoutsMs).toEqual([60_000]);
+  });
+
+  for (const parameter of [
+    'timeoutMs: number',
+    '{ app, timeoutMs }: { app: unknown; timeoutMs: number }',
+    '[timeoutMs]: number[]',
+    '{ budget: { timeoutMs } }: Opts',
+    '{ WAIT_MS: timeoutMs }: Opts',
+    '{ timeoutMs = 1_000 }: Opts',
+    '{ timeoutMs = slow ? LONG_MS : SHORT_MS }: Opts',
+    '{ budget: { timeoutMs } = { timeoutMs: 1_000 } }: Opts',
+  ]) {
+    test(`a helper's parameter ${parameter} is not charged a same-named constant declared elsewhere`, () => {
+      const src = [
+        `async function waitOn(${parameter}) {`,
+        `  await expect(page).toBeVisible({ timeout: ${STEP_TIMEOUT_MS} });`,
+        '  await expect.poll(fn, { timeout: timeoutMs });',
+        '}',
+        "test('declares its own budget', async () => {",
+        '  const timeoutMs = 90_000;',
+        '});',
+      ].join('\n');
+      expect(extractHelperBudgets(src)).toEqual([
+        { name: 'waitOn', maxTimeoutMs: STEP_TIMEOUT_MS },
+      ]);
+    });
+  }
+
+  for (const parameter of ['{ WAIT_MS: waitMs }: Opts', '{ waitMs = WAIT_MS }: Opts']) {
+    test(`a constant named only as a key or default in ${parameter} still resolves in the body`, () => {
+      const src = [
+        'const WAIT_MS = 20_000;',
+        `async function waitOn(${parameter}) {`,
+        '  await expect.poll(fn, { timeout: WAIT_MS });',
+        '}',
+      ].join('\n');
+      expect(extractHelperBudgets(src)).toEqual([{ name: 'waitOn', maxTimeoutMs: 20_000 }]);
+    });
+  }
+
+  test('a literal narrowed with satisfies is charged the literal', () => {
+    const src = [
+      'const LAYOUT_MS = 10_000;',
+      "test('settles', async () => {",
+      '  await expect(column).toBeVisible({ timeout: 10_000 satisfies typeof LAYOUT_MS });',
+      '});',
+    ].join('\n');
+    expect(extractTestEntries(src, [])[0]?.directTimeoutsMs).toEqual([10_000]);
+  });
+
+  test('a value the guard cannot resolve stays uncharged rather than guessed', () => {
+    const src = [
+      "test('waits on a remainder', async () => {",
+      '  await expect(column).toBeVisible({ timeout: settle.remainingMs() });',
+      '  await expect(column).toBeVisible({ timeout: callerBudgetMs });',
+      '});',
+    ].join('\n');
+    expect(extractTestEntries(src, [])[0]?.directTimeoutsMs).toEqual([]);
+  });
+});

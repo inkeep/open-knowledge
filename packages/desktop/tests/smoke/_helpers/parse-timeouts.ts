@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import {
   DEFAULT_LAUNCH_TIMEOUT_MS,
   ONE_LAUNCH_AND_ITS_READINESS_VERDICT_MS,
@@ -6,25 +7,40 @@ import {
 } from './launch-desktop';
 import { type ReadinessPath, readinessGiveUpBoundMs, readinessPathOf } from './launch-readiness';
 
-const TIMEOUT_LITERAL_RE = /\btimeout:\s*(\d+(?:_\d+)*)/g;
+const TIMEOUT_VALUE_RE = /\btimeout:\s*/g;
 const LAUNCH_HELPER_CALL_RE = /\bdesktopLaunchOptions\(/;
 
 const READINESS_HELPER_CALL_RE = /\bwaitForWindowByMode\s*\(/g;
 
 const READINESS_OPTION_PROPERTY_RE = /^([A-Za-z_$][\w$]*)\s*:\s*([\s\S]+)$/;
 const NUMERIC_LITERAL_RE = /^(\d+(?:_\d+)*)$/;
-const TOPASS_TIMEOUT_RE = /\.toPass\(\s*\{[^}]*timeout:\s*(\d+(?:_\d+)*)/g;
-const DEFAULT_TIMEOUT_ARG_RE = /\btimeoutMs\s*=\s*(\d+(?:_\d+)*)/g;
+const TOPASS_TIMEOUT_RE = /\.toPass\(\s*\{[^}]*timeout:\s*/g;
+const DEFAULT_TIMEOUT_ARG_RE = /\btimeoutMs\s*=\s*/g;
+const LEADING_NUMERIC_LITERAL_RE = /^\d+(?:_\d+)*/;
+const CONST_DECLARATION_RE = /\bconst\s+([A-Za-z_$][\w$]*)\s*(?::\s*number\s*)?=\s*/g;
+const NAMED_IMPORT_RE = /\bimport\s*\{([^}]*)\}\s*from\s*['"](\.{1,2}\/[^'"]+)['"]/g;
+const TYPE_WORD_RE = /[\w$]+/y;
+const TYPE_OPERATOR_WORDS: ReadonlySet<string> = new Set([
+  'keyof',
+  'typeof',
+  'extends',
+  'is',
+  'readonly',
+  'infer',
+  'unique',
+]);
 const FUNCTION_HEADER_RE = /(?:^|\n)(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(/g;
 const TEST_HEADER_RE =
   /(?:^|\n)\s*test(?:\.only|\.fail(?:\.only)?)?\(\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
 const TEST_SET_TIMEOUT_RE = /\btest\.setTimeout\(/g;
 const DERIVED_OUTER_RE = /^sumOfDeclaredBoundsMs\(\s*test\.info\(\s*\)\s*\)$/;
-const ARITHMETIC_TOKEN_RE = /\d+(?:_\d+)*|[()+*]|\S/g;
+const ARITHMETIC_TOKEN_RE = /\d+(?:_\d+)*|[A-Za-z_$][\w$]*|[()+*]|\S/g;
 
 export interface ChargeTier {
   path: ReadinessPath;
 }
+
+type DeclaredConstants = ReadonlyMap<string, number>;
 
 const UNPACKAGED_CHARGE_TIER: ChargeTier = { path: readinessPathOf('unpackaged') };
 
@@ -222,6 +238,141 @@ function topLevelParts(text: string): string[] {
   return parts.map((part) => part.trim()).filter((part) => part.length > 0);
 }
 
+function expressionAt(text: string, start: number): string {
+  let depth = 0;
+  let end = start;
+  for (; end < text.length; end += 1) {
+    const c = text[end];
+    if (c === '(' || c === '[' || c === '{') depth += 1;
+    else if (c === ')' || c === ']' || c === '}') {
+      if (depth === 0) break;
+      depth -= 1;
+    } else if (depth === 0 && (c === ',' || c === ';' || c === '\n')) break;
+  }
+  return text.slice(start, end).trim();
+}
+
+function chargesAfter(text: string, prefix: RegExp, constants: DeclaredConstants): number[] {
+  const charges: number[] = [];
+  for (const m of text.matchAll(prefix)) {
+    const expression = expressionAt(text, (m.index ?? 0) + m[0].length);
+    const leading = expression.match(LEADING_NUMERIC_LITERAL_RE);
+    const valueMs =
+      evaluateArithmetic(expression, constants) ??
+      (leading === null ? undefined : parseNumericLiteral(leading[0]));
+    if (valueMs !== undefined) charges.push(valueMs);
+  }
+  return charges;
+}
+
+function moduleFileOf(specifierPath: string): string | undefined {
+  return [specifierPath, `${specifierPath}.ts`].find(
+    (candidate) => statSync(candidate, { throwIfNoEntry: false })?.isFile() === true,
+  );
+}
+
+function importedConstantsOf(src: string, filePath: string): Map<string, number> {
+  const constants = new Map<string, number>();
+  for (const m of src.matchAll(NAMED_IMPORT_RE)) {
+    const modulePath = moduleFileOf(resolve(dirname(filePath), m[2]));
+    if (modulePath === undefined) continue;
+    const exported = declaredConstantsOf(readFileSync(modulePath, 'utf8'));
+    for (const specifier of m[1].split(',')) {
+      const [imported, local = imported] = specifier.trim().split(/\s+as\s+/);
+      const valueMs = exported.get(imported);
+      if (valueMs !== undefined) constants.set(local, valueMs);
+    }
+  }
+  return constants;
+}
+
+function declaredConstantsOf(src: string, filePath?: string): DeclaredConstants {
+  const constants =
+    filePath === undefined ? new Map<string, number>() : importedConstantsOf(src, filePath);
+  const stripped = stripCommentsAndStrings(src);
+  for (const m of stripped.matchAll(CONST_DECLARATION_RE)) {
+    const expression = expressionAt(stripped, (m.index ?? 0) + m[0].length);
+    const valueMs = evaluateArithmetic(expression, constants);
+    if (valueMs !== undefined) constants.set(m[1], Math.max(valueMs, constants.get(m[1]) ?? 0));
+  }
+  return constants;
+}
+
+function functionBodyOpenAfter(src: string, paramsEnd: number): number | undefined {
+  let i = paramsEnd;
+  while (i < src.length && /\s/.test(src[i])) i += 1;
+  if (src[i] !== ':') return src.indexOf('{', paramsEnd);
+  let depth = 0;
+  let expectsType = true;
+  for (i += 1; i < src.length; i += 1) {
+    const c = src[i];
+    if (/\s/.test(c)) continue;
+    if (c === ';') return -1;
+    if (c === '{') {
+      if (depth === 0 && !expectsType) return i;
+      i = findMatchingClose(src, i);
+      if (i === -1) return undefined;
+      expectsType = false;
+      continue;
+    }
+    if (c === '=' && src[i + 1] === '>') {
+      i += 1;
+      expectsType = true;
+      continue;
+    }
+    TYPE_WORD_RE.lastIndex = i;
+    const word = TYPE_WORD_RE.exec(src)?.[0];
+    if (word !== undefined) {
+      i += word.length - 1;
+      expectsType = TYPE_OPERATOR_WORDS.has(word);
+      continue;
+    }
+    if (c === '<' || c === '(' || c === '[') depth += 1;
+    else if (c === '>' || c === ')' || c === ']') depth -= 1;
+    expectsType = '<([|&,:?'.includes(c);
+  }
+  return undefined;
+}
+
+function cutAt(text: string, stops: string): [string, string | undefined] {
+  let depth = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === '{' || c === '[' || c === '(') depth += 1;
+    else if (c === '}' || c === ']' || c === ')') depth -= 1;
+    else if (depth === 0 && stops.includes(c)) return [text.slice(0, i), text.slice(i + 1)];
+  }
+  return [text, undefined];
+}
+
+function addBoundNames(binding: string, names: Set<string>): void {
+  const target = binding
+    .trim()
+    .replace(/^\.\.\./, '')
+    .trim();
+  const isObject = target.startsWith('{');
+  if (!isObject && !target.startsWith('[')) {
+    const name = target.match(/^[A-Za-z_$][\w$]*/)?.[0];
+    if (name !== undefined) names.add(name);
+    return;
+  }
+  for (const element of topLevelParts(target.slice(1, -1))) {
+    const [binding] = cutAt(element, '=');
+    const [key, local] = isObject ? cutAt(binding, ':') : [binding, undefined];
+    addBoundNames(local ?? key, names);
+  }
+}
+
+function parameterNamesOf(argsBlock: string): Set<string> {
+  const names = new Set<string>();
+  for (const part of topLevelParts(argsBlock)) addBoundNames(cutAt(part, ':=?')[0], names);
+  return names;
+}
+
+function withoutNames(constants: DeclaredConstants, names: ReadonlySet<string>): DeclaredConstants {
+  return new Map([...constants].filter(([name]) => !names.has(name)));
+}
+
 function unreadableReadinessOptions(callText: string, where: string): Error {
   return new Error(
     `extractReadinessBudgets: cannot read the options of ${callText} at ${where}; the third ` +
@@ -292,7 +443,13 @@ export function extractHelperBudgets(
   src: string,
   tier: ChargeTier = UNPACKAGED_CHARGE_TIER,
 ): HelperBudget[] {
-  return helperBudgetsIn(src, tier, src.matchAll(FUNCTION_HEADER_RE), locatorFor(undefined));
+  return helperBudgetsIn(
+    src,
+    tier,
+    src.matchAll(FUNCTION_HEADER_RE),
+    locatorFor(undefined),
+    declaredConstantsOf(src),
+  );
 }
 
 function helperBudgetsIn(
@@ -300,8 +457,10 @@ function helperBudgetsIn(
   tier: ChargeTier,
   headers: Iterable<RegExpMatchArray>,
   locate: (line: number) => string,
+  constants: DeclaredConstants,
 ): HelperBudget[] {
   const helpers: HelperBudget[] = [];
+  const code = stripCommentsAndStrings(src);
   for (const m of headers) {
     const name = m[1];
     if (name === 'test' || name === 'describe') continue;
@@ -317,20 +476,23 @@ function helperBudgetsIn(
       argEnd += 1;
     }
     if (argDepth !== 0) continue;
-    const argsBlock = src.slice(parenOpenIdx + 1, argEnd - 1);
-    const bodyOpenIdx = src.indexOf('{', argEnd);
+    const argsBlock = code.slice(parenOpenIdx + 1, argEnd - 1);
+    const bodyOpenIdx = functionBodyOpenAfter(code, argEnd);
+    if (bodyOpenIdx === undefined) {
+      throw new Error(
+        `extractHelperBudgets: cannot find where the body of ${name} at ` +
+          `${locate(lineNumberAt(src, parenOpenIdx))} begins after its return type`,
+      );
+    }
     if (bodyOpenIdx === -1) continue;
     const bodyCloseIdx = findMatchingClose(src, bodyOpenIdx);
     if (bodyCloseIdx === -1) continue;
     const body = stripCommentsAndStrings(src.slice(bodyOpenIdx + 1, bodyCloseIdx));
 
-    const budgets: number[] = [];
-    for (const dm of stripCommentsAndStrings(argsBlock).matchAll(DEFAULT_TIMEOUT_ARG_RE)) {
-      budgets.push(parseNumericLiteral(dm[1]));
-    }
-    for (const tm of body.matchAll(TIMEOUT_LITERAL_RE)) {
-      budgets.push(parseNumericLiteral(tm[1]));
-    }
+    const budgets = [
+      ...chargesAfter(argsBlock, DEFAULT_TIMEOUT_ARG_RE, constants),
+      ...chargesAfter(body, TIMEOUT_VALUE_RE, withoutNames(constants, parameterNamesOf(argsBlock))),
+    ];
     if (LAUNCH_HELPER_CALL_RE.test(body)) {
       budgets.push(DEFAULT_LAUNCH_TIMEOUT_MS);
     }
@@ -345,7 +507,10 @@ function helperBudgetsIn(
   return helpers;
 }
 
-function evaluateArithmetic(text: string): number | undefined {
+function evaluateArithmetic(
+  text: string,
+  constants: DeclaredConstants = new Map(),
+): number | undefined {
   const tokens = text.match(ARITHMETIC_TOKEN_RE) ?? [];
   let at = 0;
   function factor(): number | undefined {
@@ -357,9 +522,12 @@ function evaluateArithmetic(text: string): number | undefined {
       at += 1;
       return value;
     }
-    if (token === undefined || !NUMERIC_LITERAL_RE.test(token)) return undefined;
-    at += 1;
-    return parseNumericLiteral(token);
+    if (token === undefined) return undefined;
+    const value = NUMERIC_LITERAL_RE.test(token)
+      ? parseNumericLiteral(token)
+      : constants.get(token);
+    if (value !== undefined) at += 1;
+    return value;
   }
   function product(): number | undefined {
     let value = factor();
@@ -394,6 +562,7 @@ export function extractTestEntries(
     () => helpers,
     tier,
     locatorFor(undefined),
+    declaredConstantsOf(src),
   );
 }
 
@@ -411,6 +580,7 @@ function testEntriesOf(
   helpersCalledIn: (body: string) => readonly HelperBudget[],
   tier: ChargeTier,
   locate: (line: number) => string,
+  constants: DeclaredConstants,
 ): TestEntry[] {
   const entries: TestEntry[] = [];
   for (const m of headers) {
@@ -426,19 +596,13 @@ function testEntriesOf(
     const body = src.slice(bodyOpenIdx + 1, bodyCloseIdx);
 
     const strippedForTimeouts = stripCommentsAndStrings(body);
-    const directTimeoutsMs: number[] = [];
-    for (const tm of strippedForTimeouts.matchAll(TIMEOUT_LITERAL_RE)) {
-      directTimeoutsMs.push(parseNumericLiteral(tm[1]));
-    }
+    const directTimeoutsMs = chargesAfter(strippedForTimeouts, TIMEOUT_VALUE_RE, constants);
     directTimeoutsMs.push(
       ...readinessBudgetsIn(strippedForTimeouts, tier, (at) =>
         locate(lineNumberAt(src, bodyOpenIdx + 1 + at)),
       ),
     );
-    const toPassBudgetsMs: number[] = [];
-    for (const tm of strippedForTimeouts.matchAll(TOPASS_TIMEOUT_RE)) {
-      toPassBudgetsMs.push(parseNumericLiteral(tm[1]));
-    }
+    const toPassBudgetsMs = chargesAfter(strippedForTimeouts, TOPASS_TIMEOUT_RE, constants);
     const literalOutersMs: number[] = [];
     const derivedOuterLines: number[] = [];
     for (const sm of strippedForTimeouts.matchAll(TEST_SET_TIMEOUT_RE)) {
@@ -514,8 +678,16 @@ export function parseTestFile(
 ): FileAnalysis {
   const src = readFileSync(filePath, 'utf8');
   const locate = locatorFor(filePath);
-  const helpers = helperBudgetsIn(src, tier, src.matchAll(FUNCTION_HEADER_RE), locate);
-  const tests = testEntriesOf(src, src.matchAll(TEST_HEADER_RE), () => helpers, tier, locate);
+  const constants = declaredConstantsOf(src, filePath);
+  const helpers = helperBudgetsIn(src, tier, src.matchAll(FUNCTION_HEADER_RE), locate, constants);
+  const tests = testEntriesOf(
+    src,
+    src.matchAll(TEST_HEADER_RE),
+    () => helpers,
+    tier,
+    locate,
+    constants,
+  );
   return { filePath, helpers, tests, looseSetTimeoutLines: findLooseSetTimeouts(src, tests) };
 }
 
@@ -572,6 +744,7 @@ export function sumOfDeclaredBoundsMs(
   const src = readFileSync(test.file, 'utf8');
   const tier: ChargeTier = { path };
   const locate = locatorFor(test.file);
+  const constants = declaredConstantsOf(src, test.file);
   const entry = testEntriesOf(
     src,
     [...src.matchAll(TEST_HEADER_RE)].filter(
@@ -583,9 +756,11 @@ export function sumOfDeclaredBoundsMs(
         tier,
         [...src.matchAll(FUNCTION_HEADER_RE)].filter((header) => callsTo(header[1]).test(body)),
         locate,
+        constants,
       ),
     tier,
     locate,
+    constants,
   ).at(0);
   if (entry === undefined) {
     throw new Error(`sumOfDeclaredBoundsMs: no test is declared at ${test.file}:${test.line}`);
