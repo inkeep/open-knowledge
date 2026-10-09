@@ -2504,6 +2504,10 @@ msgstr "स्वचालित"
 msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
 msgstr "स्वचालित हर बार प्रारंभ पर एक मुक्त port चुनता है। पुनः प्रारंभ के बीच समान पता बनाए रखने के लिए एक निश्चित port चुनें।"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Automatic updates"
+msgstr "स्वचालित अपडेट"
+
 #: src/components/settings/AboutSection.tsx
 msgid "Automatic updates are not available right now."
 msgstr "स्वचालित अपडेट अभी उपलब्ध नहीं हैं।"
@@ -4653,6 +4657,10 @@ msgstr "कुंजी नहीं सहेजी जा सकी — कृ
 msgid "Couldn't save the resolution for {filePath}."
 msgstr "{filePath} का समाधान नहीं सहेजा जा सका।"
 
+#: src/components/settings/AboutSection.tsx
+msgid "Couldn't save this setting. Try again."
+msgstr "यह सेटिंग सहेजी नहीं जा सकी। फिर से कोशिश करें।"
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr "आपकी थीम प्राथमिकता सहेजी नहीं जा सकी।"
@@ -5475,6 +5483,10 @@ msgstr "संपादित करने के लिए डबल-क्ल�
 #: src/components/acp/ThreadView.tsx
 msgid "Download {0}"
 msgstr "{0} डाउनलोड करें"
+
+#: src/components/settings/AboutSection.tsx
+msgid "Download and install updates automatically"
+msgstr "अपडेट अपने-आप डाउनलोड और इंस्टॉल करें"
 
 #: src/components/HelpPopover.tsx
 msgid "Download app"
@@ -10586,6 +10598,10 @@ msgstr "OpenKnowledge ने {subject} की जाँच की"
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge ने प्रोजेक्ट की जाँच की"
 
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge checks for and downloads updates in the background."
+msgstr "OpenKnowledge पृष्ठभूमि में अपडेट देखता और डाउनलोड करता है।"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge को इस मशीन पर यह एजेंट नहीं मिला।"
@@ -10633,6 +10649,10 @@ msgstr "OpenKnowledge इस प्रविष्टि को नहीं प
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge does not recognize this entry. Turning it on replaces it."
 msgstr "OpenKnowledge इस प्रविष्टि को नहीं पहचानता। इसे चालू करने पर यह बदल दी जाएगी।"
+
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge doesn't check for or download updates on its own. Check for updates still works when you want a newer version."
+msgstr "OpenKnowledge अपने आप अपडेट नहीं देखता या डाउनलोड नहीं करता। नया संस्करण चाहिए तो \"अपडेट देखें\" अब भी काम करता है।"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge edited {subject}"

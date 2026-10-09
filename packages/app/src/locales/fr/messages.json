@@ -878,6 +878,9 @@
     "7C9JcA": [
       "Le chemin du projet OpenKnowledge de cette branche sort du worktree. Le worktree a été créé, mais pas ouvert."
     ],
+    "7Crqsa": [
+      "OpenKnowledge ne recherche ni ne télécharge les mises à jour de lui-même. Rechercher les mises à jour reste disponible lorsque vous voulez une version plus récente."
+    ],
     "7FA2iI": ["Impossible de lire les commentaires en attente d'envoi — rien n'a été envoyé."],
     "7FamGZ": ["Aller à la ligne"],
     "7Fkcej": ["+ Ajouter ", ["addChildName"]],
@@ -945,6 +948,7 @@
     "7l15X4": ["échec"],
     "7lFX_h": ["Réorienter maintenant"],
     "7m3Ade": ["installations :"],
+    "7mxVbK": ["Télécharger et installer les mises à jour automatiquement"],
     "7qRHf0": ["Installer pour Claude Chat et Cowork"],
     "7sNhEz": ["Nom d'utilisateur"],
     "7uBlRT": [
@@ -3534,6 +3538,7 @@
     "X7ShnN": ["Ouvrir le panneau des agents"],
     "X8kjQX": ["Se réauthentifier auprès de GitHub"],
     "X9VpsP": ["Chargement du contenu du dossier"],
+    "XA9uvc": ["OpenKnowledge recherche et télécharge les mises à jour en arrière-plan."],
     "XAnapw": ["Règle de fusion Git"],
     "XAyxsa": ["Extraire une branche distante"],
     "XBBZnv": ["La cible du lien « ", ["shown"], " » ne correspond à aucun document existant."],
@@ -3546,6 +3551,7 @@
     "XJOV1Y": ["Activité"],
     "XK5cbh": ["Avance dans l'historique de navigation d'OpenKnowledge."],
     "XNBGZw": ["Message non envoyé : ", ["0"]],
+    "XN_sSd": ["Mises à jour automatiques"],
     "XNdXMR": [
       ["dependent"],
       " a besoin de ",
@@ -4174,6 +4180,7 @@
       " chargera chaque extension qui s'y trouve, pas seulement celle d'Open Knowledge, et les deux subsistent jusqu'à ce que vous retiriez Open Knowledge de ce projet."
     ],
     "c9-Pi9": [["source"], " · source skills.sh"],
+    "c9C7DQ": ["Impossible d'enregistrer ce paramètre. Réessayez."],
     "cCd8Bs": ["Couper"],
     "cD3aew": [
       "Le recalcul des embeddings se fait au fil des recherches, donc la couverture repart de zéro et se remplit peu à peu."

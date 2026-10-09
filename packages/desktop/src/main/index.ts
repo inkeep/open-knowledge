@@ -159,6 +159,7 @@ import type { EventChannels } from '../shared/ipc-events.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
 import { registerPendingDelivery, sendToRenderer } from '../shared/ipc-send.ts';
 import { createPtyPhaseTrace } from '../shared/pty-phase-trace.ts';
+import { releasesPageUrl } from '../shared/release-links.ts';
 import { UNINSTALL_PRELOAD_ARG } from '../shared/uninstall-preload-arg.ts';
 import { getWindowsEnvValue } from '../shared/windows-env.ts';
 import { resolveShell } from '../utility/pty-host.ts';
@@ -496,6 +497,7 @@ import {
   setProjectWindowBounds,
   setSpellCheckEnabled as setSpellCheckEnabledState,
   type UpdateChannel,
+  unrecognizedUpdateModeIn,
   windowRestoreKey,
 } from './state-store.ts';
 import { quoteStopCommandPath } from './stop-command.ts';
@@ -926,6 +928,13 @@ function loadAppState(): AppState {
   if (!parsed) {
     quarantineCorruptState(statePath, 'schema-invalid');
     return emptyState();
+  }
+  const unrecognizedUpdateMode = unrecognizedUpdateModeIn(raw);
+  if (unrecognizedUpdateMode !== null) {
+    getRootDesktopLogger().warn(
+      { persisted: unrecognizedUpdateMode },
+      'persisted update mode unrecognized, automatic updates stay on',
+    );
   }
   return parsed;
 }
@@ -6907,6 +6916,24 @@ function bootPrimaryInstance(): void {
               }
             }
           } else if (result.kind === 'available') {
+            if (result.download === 'manual') {
+              const releasesUrl = releasesPageUrl(DESKTOP_VARIANT);
+              return dialog
+                .showMessageBox(target, {
+                  type: 'info',
+                  buttons: ['Download Manually', 'OK'],
+                  defaultId: 0,
+                  cancelId: 1,
+                  title: 'Update Available',
+                  message: `OpenKnowledge ${result.latestVersion} is available.`,
+                  detail:
+                    'Automatic updates are turned off, so OpenKnowledge will not download it. Download it from the releases page, or turn on "Download and install updates automatically" in Settings > About & updates.',
+                })
+                .then(async ({ response }) => {
+                  if (response === 0) await shell.openExternal(releasesUrl);
+                  return 'dismiss' as const;
+                });
+            }
             void dialog.showMessageBox(target, {
               type: 'info',
               buttons: ['OK'],

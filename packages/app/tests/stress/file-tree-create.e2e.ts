@@ -270,6 +270,8 @@ async function installDelayedDesktopSessionBridge(
           relaunchNow: async () => {},
           checkNow: async () => {},
           dismissWhatsNew: async () => {},
+          dismissDownloaded: async () => {},
+          setMode: async () => {},
         },
         state: {
           query: async () => ({ channel: 'latest', schemaIncompatibility: null }),

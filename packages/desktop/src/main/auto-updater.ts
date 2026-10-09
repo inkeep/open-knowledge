@@ -1,6 +1,11 @@
 import type { OutgoingHttpHeaders } from 'node:http';
 import { MANUAL_CHECK_WATCHDOG_MS } from '@inkeep/open-knowledge-core';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
+import type {
+  OkUpdateDispatchRequest,
+  OkUpdateDispatchResult,
+  OkUpdateSetModeFailure,
+} from '../shared/ipc-channels.ts';
 import type { EventChannels } from '../shared/ipc-events.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
 import { type SendableWebContents, sendToRenderer } from '../shared/ipc-send.ts';
@@ -10,7 +15,12 @@ import {
   type LinuxManualInstallContext,
   manualInstallPlanFor,
 } from './linux-install-fallback.ts';
-import type { AppState, UpdateChannel } from './state-store.ts';
+import {
+  type AppState,
+  type OkUpdateMode,
+  resolveUpdateMode,
+  type UpdateChannel,
+} from './state-store.ts';
 import type { WindowsUpdateSurvivorSweepResult } from './windows-update-survivor-sweep.ts';
 
 const GITHUB_OWNER = 'inkeep';
@@ -83,6 +93,8 @@ export type DispatchKind =
   | 'linux-manual-fallback-no-auth'
   | 'linux-manual-fallback-after-error'
   | 'download-skipped-already-staged'
+  | 'update-downloaded-install-committed'
+  | 'staged-install-rebind'
   | 'download-skipped-install-armed'
   | 'relaunch-refresh-found-newer'
   | 'relaunch-refresh-up-to-date'
@@ -95,7 +107,16 @@ export type DispatchKind =
   | 'check-now-ready-reoffered'
   | 'check-now-download-failed-shown'
   | 'toast-a-deferred-post-update-quiet'
-  | 'toast-a-quiet-window-elapsed';
+  | 'toast-a-quiet-window-elapsed'
+  | 'skipped-updates-off'
+  | 'download-skipped-updates-off'
+  | 'update-downloaded-quiet'
+  | 'install-giveup-reconciled'
+  | 'install-failed-after-giveup'
+  | 'install-failed-notice-skipped-updates-off'
+  | 'stuck-hint-skipped-updates-off'
+  | 'downloaded-dismiss-recorded'
+  | 'update-mode-changed';
 
 interface StartAutoUpdaterOpts {
   updater: UpdaterLike;
@@ -137,7 +158,12 @@ type CheckNowResultResponse = 'relaunch' | 'dismiss';
 type StagedRelaunch = 'available' | 'installing' | 'not-pending';
 
 type CheckNowResult =
-  | { kind: 'available'; currentVersion: string; latestVersion: string }
+  | {
+      kind: 'available';
+      currentVersion: string;
+      latestVersion: string;
+      download: 'background' | 'manual';
+    }
   | {
       kind: 'ready-to-install';
       currentVersion: string;
@@ -416,8 +442,15 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     logger = DEFAULT_LOGGER,
   } = opts;
 
+  const readUpdateMode = (): OkUpdateMode => resolveUpdateMode(readState().updateMode).mode;
+  const updatesOff = (): boolean => readUpdateMode() === 'off';
+  let autoInstallSuppressed = false;
+  const applyAutoInstallOnQuit = (): void => {
+    updater.autoInstallOnAppQuit = !autoInstallSuppressed && platform !== 'linux' && !updatesOff();
+  };
+
   updater.autoDownload = false;
-  updater.autoInstallOnAppQuit = platform !== 'linux';
+  applyAutoInstallOnQuit();
   const appVersion = getAppVersion();
   const buildChannel = configuredBuildChannel ?? channelFromVersion(appVersion);
   applyChannelSettings(updater, buildChannel);
@@ -649,6 +682,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   const maybeFireStuckHint = (): void => {
     const state = readState();
     if (state.stuckHintShown) return;
+    if (updatesOff()) {
+      onDispatch?.('stuck-hint-skipped-updates-off');
+      return;
+    }
     if (!state.lastSuccessfulCheckAt) return;
     const last = Date.parse(state.lastSuccessfulCheckAt);
     if (Number.isNaN(last)) return;
@@ -670,6 +707,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   };
 
   const markCheckSucceeded = (): void => {
+    if (updatesOff()) return;
     const state = readState();
     if (
       !persistSafely(
@@ -732,18 +770,31 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     );
   };
 
-  const relaunchableVersion = (): string | null =>
-    installRequested ? null : readState().versionPendingInstall;
+  const relaunchableVersion = (): string | null => {
+    if (installRequested) return null;
+    const pending = readState().versionPendingInstall;
+    if (pending !== null && pending === unboundStagedVersion && !updatesOff()) return null;
+    return pending;
+  };
 
   const stagedRelaunchFor = (version: string): StagedRelaunch => {
     if (relaunchableVersion() === version) return 'available';
     return installRequested ? 'installing' : 'not-pending';
   };
 
+  const toastASilencedFor = (version: string): 'updates-off' | 'dismissed' | 'gave-up' | null => {
+    if (updatesOff()) return 'updates-off';
+    const state = readState();
+    if (state.gaveUpOnVersion === version) return 'gave-up';
+    if (state.dismissedUpdateVersion === version) return 'dismissed';
+    return null;
+  };
+
   const pendingToastA = (): { version: string } | null => {
     if (withinPostUpdateQuietWindow()) return null;
     const version = relaunchableVersion();
-    return version === null ? null : { version };
+    if (version === null || toastASilencedFor(version) !== null) return null;
+    return { version };
   };
 
   const reofferStagedForMenuCheck = (version: string): void => {
@@ -775,6 +826,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   };
 
   let stagedThisSession: string | null = null;
+  let unboundStagedVersion: string | null = null;
 
   const declinedForStagedVersion = (offeredVersion: string | undefined): string | null => {
     if (stagedThisSession === null) return null;
@@ -895,8 +947,19 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
 
   let activeWhatsNew: { version: string; releaseUrl: string; firedAt: number } | null = null;
 
+  const clearDismissalOnManualCheck = (): void => {
+    const state = readState();
+    if (state.dismissedUpdateVersion === null) return;
+    const cleared = state.dismissedUpdateVersion;
+    if (!persistSafely({ ...state, dismissedUpdateVersion: null }, 'manual-check-dismissal')) {
+      return;
+    }
+    logger.info('manual check cleared the recorded card dismissal', { cleared });
+  };
+
   const runMenuDrivenCheck = (): Promise<unknown> => {
     if (destroyed) return Promise.resolve(undefined);
+    clearDismissalOnManualCheck();
     broadcastToAllWindows('ok:update:manual-check', { phase: 'started' });
     if (menuCheck !== null) {
       logger.info('check-now already pending, re-acknowledged');
@@ -995,6 +1058,14 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       onDispatch?.(reOffer ? 'download-skipped-already-staged' : 'download-skipped-install-armed');
       return;
     }
+    if (updatesOff()) {
+      logger.info('update-available while updates are off — not downloading', {
+        version: offeredVersion,
+      });
+      settleCheckWaiters('settled');
+      onDispatch?.('download-skipped-updates-off');
+      return;
+    }
     if (usingProxyFeed && offeredVersion) {
       updater.requestHeaders = {
         ...updater.requestHeaders,
@@ -1068,6 +1139,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       kind: 'available',
       currentVersion: getAppVersion(),
       latestVersion: typeof info.version === 'string' ? info.version : 'unknown',
+      download: updatesOff() ? 'manual' : 'background',
     });
   };
 
@@ -1103,12 +1175,49 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     }
     stagedThisSession = version;
     const state = readState();
+    const installCommittedAtDownload = platform !== 'linux' && updater.autoInstallOnAppQuit;
+    const installCommitment = {
+      attemptedInstall: version,
+      attemptedInstallSurfacedCount:
+        state.attemptedInstall === version ? state.attemptedInstallSurfacedCount : 0,
+      attemptedInstallDeferredBoots:
+        state.attemptedInstall === version ? state.attemptedInstallDeferredBoots : 0,
+    };
+    const rebound = unboundStagedVersion === version && installCommittedAtDownload;
+    unboundStagedVersion = platform !== 'linux' && !installCommittedAtDownload ? version : null;
     if (state.versionPendingInstall === version) {
+      if (
+        installCommittedAtDownload &&
+        state.attemptedInstall !== version &&
+        state.gaveUpOnVersion !== version &&
+        persistSafely(
+          {
+            ...state,
+            ...installCommitment,
+            attemptedInstallStagingAgeMs: null,
+            attemptedInstallHandoffAt: null,
+          },
+          'update-downloaded-install-committed',
+        )
+      ) {
+        logger.info('staged build is now installable on quit — recording the install commitment', {
+          version,
+        });
+        onDispatch?.('update-downloaded-install-committed');
+      }
+      if (rebound) {
+        const staged = pendingToastA();
+        if (staged) broadcastToAllWindows('ok:update:downloaded', staged);
+      }
       logger.info('update-downloaded re-fired for same pending version — deduped', { version });
       onDispatch?.('update-downloaded-deduped');
       return;
     }
-    const installCommittedAtDownload = platform !== 'linux';
+    if (state.gaveUpOnVersion === version) {
+      logger.info('update-downloaded for a given-up version — staying quiet', { version });
+      onDispatch?.('update-downloaded-quiet');
+      return;
+    }
     if (
       !persistSafely(
         {
@@ -1118,21 +1227,21 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
           versionPendingInstallStagedAt: now().getTime(),
           attemptedInstallStagingAgeMs: null,
           attemptedInstallHandoffAt: null,
-          ...(installCommittedAtDownload
-            ? {
-                attemptedInstall: version,
-                attemptedInstallSurfacedCount:
-                  state.attemptedInstall === version ? state.attemptedInstallSurfacedCount : 0,
-                attemptedInstallDeferredBoots:
-                  state.attemptedInstall === version ? state.attemptedInstallDeferredBoots : 0,
-              }
-            : {}),
+          gaveUpOnVersion: null,
+          dismissedUpdateVersion: null,
+          ...(installCommittedAtDownload ? installCommitment : {}),
         },
         'update-downloaded',
       )
     )
       return;
     const fireToastA = () => {
+      const silenced = toastASilencedFor(version);
+      if (silenced !== null) {
+        logger.info('update-downloaded staged without Toast A', { version, reason: silenced });
+        onDispatch?.('update-downloaded-quiet');
+        return;
+      }
       broadcastToAllWindows('ok:update:downloaded', { version });
       logger.info('update-downloaded dispatched Toast A (all windows)', { version });
       onDispatch?.('update-downloaded-toast-a');
@@ -1233,6 +1342,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     });
 
   const refreshBeforeInstall = async (): Promise<void> => {
+    if (updatesOff()) return;
     if (stagingInFlight) {
       logger.info('relaunch-now waiting on in-flight staging before install', {
         version: stagingInFlight.version,
@@ -1338,19 +1448,11 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
           versionPendingInstall: null,
           attemptedInstallStagingAgeMs: stagingAgeMs,
           attemptedInstallHandoffAt: now().getTime(),
-          ...(platform === 'linux'
-            ? {
-                attemptedInstall: pending,
-                attemptedInstallSurfacedCount:
-                  snapshot.attemptedInstall === pending
-                    ? snapshot.attemptedInstallSurfacedCount
-                    : 0,
-                attemptedInstallDeferredBoots:
-                  snapshot.attemptedInstall === pending
-                    ? snapshot.attemptedInstallDeferredBoots
-                    : 0,
-              }
-            : {}),
+          attemptedInstall: pending,
+          attemptedInstallSurfacedCount:
+            snapshot.attemptedInstall === pending ? snapshot.attemptedInstallSurfacedCount : 0,
+          attemptedInstallDeferredBoots:
+            snapshot.attemptedInstall === pending ? snapshot.attemptedInstallDeferredBoots : 0,
         },
         'relaunch-now',
       )
@@ -1410,28 +1512,120 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     return undefined;
   };
 
+  const dismissWhatsNew = (version: string): void => {
+    if (activeWhatsNew && activeWhatsNew.version === version) {
+      activeWhatsNew = null;
+    }
+    broadcastToAllWindows('ok:update:whats-new-dismissed', { version });
+    onDispatch?.('whats-new-dismiss-broadcast');
+  };
+
+  const dismissDownloaded = (version: string): void => {
+    if (version === '') return;
+    const state = readState();
+    if (state.dismissedUpdateVersion === version) return;
+    if (!persistSafely({ ...state, dismissedUpdateVersion: version }, 'downloaded-dismiss')) return;
+    logger.info('recorded dismissal of the ready-to-install card', { version });
+    if (state.versionPendingInstall === version) {
+      broadcastToAllWindows('ok:update:downloaded', { version: null });
+    }
+    onDispatch?.('downloaded-dismiss-recorded');
+  };
+
+  let timerHandle: ReturnType<typeof setTimeout> | null = null;
+
+  const cancelPeriodicChecks = (): void => {
+    if (timerHandle === null) return;
+    clock.clearTimeout(timerHandle);
+    timerHandle = null;
+  };
+
+  const runBackgroundCheck = (): void => {
+    void checkForUpdatesFromConfiguredFeed().catch((err: unknown) => {
+      revertToGithubFeed(err);
+      logger.debug('checkForUpdates rejected', {
+        err,
+      });
+    });
+  };
+
+  const setUpdateMode = (
+    requested: unknown,
+  ): { ok: true; mode: OkUpdateMode } | { ok: false; reason: OkUpdateSetModeFailure } => {
+    if (requested !== 'auto' && requested !== 'off') {
+      logger.warn('set-mode refused an unrecognized mode', { requested });
+      return { ok: false, reason: 'unrecognized-mode' };
+    }
+    const state = readState();
+    const previous = readUpdateMode();
+    const next: AppState =
+      requested === 'off'
+        ? { ...state, updateMode: requested, lastSuccessfulCheckAt: null, stuckHintShown: false }
+        : { ...state, updateMode: requested };
+    if (!persistSafely(next, 'set-update-mode')) {
+      return { ok: false, reason: 'persist-failed' };
+    }
+    applyAutoInstallOnQuit();
+    logger.info('update mode changed', { from: previous, to: requested });
+    onDispatch?.('update-mode-changed');
+    if (requested === 'off') {
+      cancelPeriodicChecks();
+      broadcastToAllWindows('ok:update:downloaded', { version: null });
+      return { ok: true, mode: requested };
+    }
+    if (previous === 'off' && updatesEnabled && !destroyed) {
+      const rebind =
+        unboundStagedVersion !== null && unboundStagedVersion === next.versionPendingInstall;
+      if (rebind) {
+        stagedThisSession = null;
+        logger.info('staged build has no install hook — re-staging it before offering it', {
+          version: unboundStagedVersion,
+        });
+        onDispatch?.('staged-install-rebind');
+      }
+      startPeriodicChecks();
+      runBackgroundCheck();
+      const staged = pendingToastA();
+      if (staged) broadcastToAllWindows('ok:update:downloaded', staged);
+    }
+    return { ok: true, mode: requested };
+  };
+
+  const dispatchUpdate = async (
+    request: OkUpdateDispatchRequest,
+  ): Promise<OkUpdateDispatchResult> => {
+    switch (request?.kind) {
+      case 'relaunch-now':
+        await relaunchNow();
+        return { kind: 'relaunch-now' };
+      case 'check-now':
+        void runMenuDrivenCheck();
+        return { kind: 'check-now' };
+      case 'whats-new-dismiss':
+        dismissWhatsNew(typeof request.version === 'string' ? request.version : '');
+        return { kind: 'whats-new-dismiss' };
+      case 'downloaded-dismiss':
+        dismissDownloaded(typeof request.version === 'string' ? request.version : '');
+        return { kind: 'downloaded-dismiss' };
+      case 'set-mode':
+        return { kind: 'set-mode', ...setUpdateMode(request.mode) };
+      default: {
+        const unhandled: never = request;
+        logger.warn('ok:update:dispatch received an unrecognized kind', {
+          kind: (unhandled as { kind?: unknown } | null)?.kind,
+        });
+        return { kind: 'unknown', ok: false, reason: 'unrecognized-kind' };
+      }
+    }
+  };
+
   const register = createHandler(ipcMain as IpcMain);
   register(
-    'ok:update:relaunch-now',
-    (_event: IpcMainInvokeEvent): Promise<undefined> => relaunchNow(),
-  );
-
-  register('ok:update:check-now', (_event: IpcMainInvokeEvent): undefined => {
-    void runMenuDrivenCheck();
-    return undefined;
-  });
-
-  register(
-    'ok:update:whats-new-dismiss',
-    (_event: IpcMainInvokeEvent, payload: { version: string }): undefined => {
-      const version = typeof payload?.version === 'string' ? payload.version : '';
-      if (activeWhatsNew && activeWhatsNew.version === version) {
-        activeWhatsNew = null;
-      }
-      broadcastToAllWindows('ok:update:whats-new-dismissed', { version });
-      onDispatch?.('whats-new-dismiss-broadcast');
-      return undefined;
-    },
+    'ok:update:dispatch',
+    (
+      _event: IpcMainInvokeEvent,
+      request: OkUpdateDispatchRequest,
+    ): Promise<OkUpdateDispatchResult> => dispatchUpdate(request),
   );
 
   const currentVersion = getAppVersion();
@@ -1454,6 +1648,19 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         running: currentVersion,
       });
       onDispatch?.('stale-pending-cleared');
+    }
+  }
+
+  if (state.gaveUpOnVersion && installReached(currentVersion, state.gaveUpOnVersion)) {
+    const cleared = state.gaveUpOnVersion;
+    const next = { ...state, gaveUpOnVersion: null };
+    if (persistSafely(next, 'install-giveup-reconciled')) {
+      state = next;
+      logger.info('cleared give-up tombstone — running reached the version', {
+        cleared,
+        running: currentVersion,
+      });
+      onDispatch?.('install-giveup-reconciled');
     }
   }
 
@@ -1498,6 +1705,25 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         });
         onDispatch?.('attempted-install-cross-channel');
       }
+    } else if (state.gaveUpOnVersion === attempted) {
+      const next = {
+        ...state,
+        versionPendingInstall: attempted,
+        attemptedInstall: null,
+        attemptedInstallSurfacedCount: 0,
+        attemptedInstallStagingAgeMs: null,
+        attemptedInstallHandoffAt: null,
+        attemptedInstallDeferredBoots: 0,
+      };
+      if (persistSafely(next, 'install-failed-after-giveup')) {
+        state = next;
+        installGaveUpThisBoot = true;
+        logger.warn('given-up version failed to install again — staying quiet', {
+          attempted,
+          running: currentVersion,
+        });
+        onDispatch?.('install-failed-after-giveup');
+      }
     } else if (updatesEnabled) {
       const reconciledAtMs = now().getTime();
       const handoffStampedAt = state.attemptedInstallHandoffAt;
@@ -1540,6 +1766,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
             stagedAgeMs: installHandoffAgeMs(attemptStagedAt, reconciledAtMs),
           });
           const fireReoffer = (): void => {
+            if (toastASilencedFor(attempted) !== null) return;
             broadcastToAllWindows('ok:update:downloaded', { version: attempted });
           };
           if (whenRendererReady) whenRendererReady(fireReoffer);
@@ -1554,11 +1781,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       } else if (state.attemptedInstallSurfacedCount >= INSTALL_FAILURE_MAX_SURFACES) {
         const next = {
           ...state,
+          gaveUpOnVersion: attempted,
+          versionPendingInstall: attempted,
           attemptedInstall: null,
           attemptedInstallSurfacedCount: 0,
-          versionPendingInstall: null,
-          stagedInstallerPath: null,
-          versionPendingInstallStagedAt: null,
           attemptedInstallStagingAgeMs: null,
           attemptedInstallHandoffAt: null,
           attemptedInstallDeferredBoots: 0,
@@ -1566,7 +1792,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         if (persistSafely(next, 'install-failed-giveup')) {
           state = next;
           installGaveUpThisBoot = true;
-          logger.warn('attempted install exhausted its retry budget — clearing record', {
+          logger.warn('attempted install exhausted its retry budget — tombstoning version', {
             attempted,
             running: currentVersion,
             surfaced: INSTALL_FAILURE_MAX_SURFACES,
@@ -1591,6 +1817,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
             handoffAgeMs,
           });
           const fireInstallFailed = (): void => {
+            if (updatesOff()) {
+              onDispatch?.('install-failed-notice-skipped-updates-off');
+              return;
+            }
             broadcastToAllWindows('ok:update:relaunch-failed', {
               version: attempted,
               downloadUrl: STUCK_HINT_DOWNLOAD_URL,
@@ -1663,8 +1893,6 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     }
   }
 
-  let timerHandle: ReturnType<typeof setTimeout> | null = null;
-
   const nextCheckDelayMs = (): number =>
     UPDATE_CHECK_INTERVAL_MS + Math.floor(random() * UPDATE_CHECK_JITTER_MS);
 
@@ -1672,23 +1900,24 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     const delayMs = nextCheckDelayMs();
     timerHandle = clock.setTimeout(() => {
       timerHandle = null;
-      void checkForUpdatesFromConfiguredFeed().catch((err: unknown) => {
-        revertToGithubFeed(err);
-        logger.debug('checkForUpdates rejected', {
-          err,
-        });
-      });
+      if (updatesOff()) return;
+      runBackgroundCheck();
       scheduleNextCheck();
     }, delayMs);
     logger.debug('next update check scheduled', { delayMs });
   };
 
   const startPeriodicChecks = (): void => {
-    if (destroyed || !updatesEnabled || timerHandle) return;
+    if (destroyed || !updatesEnabled || timerHandle || updatesOff()) return;
     scheduleNextCheck();
   };
 
   const runLaunchCheck = (): void => {
+    if (updatesOff()) {
+      logger.info('skipping checkForUpdates — updates are turned off');
+      onDispatch?.('skipped-updates-off');
+      return;
+    }
     void checkForUpdatesFromConfiguredFeed()
       .then(() => {
         startPeriodicChecks();
@@ -1701,6 +1930,9 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         startPeriodicChecks();
       });
   };
+
+  const bootMode = resolveUpdateMode(state.updateMode);
+  logger.info('update mode resolved', { mode: bootMode.mode, source: bootMode.source });
 
   if (updatesEnabled) {
     if (reclaimSettled) {
@@ -1731,7 +1963,8 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       return pendingToastA();
     },
     suppressAutoInstallOnQuit(): void {
-      updater.autoInstallOnAppQuit = false;
+      autoInstallSuppressed = true;
+      applyAutoInstallOnQuit();
       logger.info('autoInstallOnAppQuit suppressed for uninstall');
     },
     recordInstallHandoffOnQuit(): void {
@@ -1818,9 +2051,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
           });
         }
       };
-      removeHandlerSafely('ok:update:relaunch-now');
-      removeHandlerSafely('ok:update:check-now');
-      removeHandlerSafely('ok:update:whats-new-dismiss');
+      removeHandlerSafely('ok:update:dispatch');
       logger.info('destroyed');
     },
   };

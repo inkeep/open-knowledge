@@ -730,6 +730,9 @@
     "7C9JcA": [
       "Jalur proyek OpenKnowledge pada branch ini keluar dari worktree. Worktree dibuat, tetapi tidak dibuka."
     ],
+    "7Crqsa": [
+      "OpenKnowledge tidak memeriksa atau mengunduh pembaruan dengan sendirinya. Periksa pembaruan tetap berfungsi saat Anda menginginkan versi yang lebih baru."
+    ],
     "7FA2iI": ["Komentar yang menunggu dikirim tidak bisa dibaca — tidak ada yang dikirim."],
     "7FamGZ": ["Ke baris"],
     "7Fkcej": ["+ Tambah ", ["addChildName"]],
@@ -793,6 +796,7 @@
     "7l15X4": ["gagal"],
     "7lFX_h": ["Alihkan sekarang"],
     "7m3Ade": ["pemasangan:"],
+    "7mxVbK": ["Unduh dan pasang pembaruan secara otomatis"],
     "7qRHf0": ["Pasang untuk Claude Chat & Cowork"],
     "7sNhEz": ["Nama pengguna"],
     "7uBlRT": ["Menyalin item pohon berkas yang sedang difokus agar Tempel bisa menggandakannya."],
@@ -3031,6 +3035,7 @@
     "X7ShnN": ["Buka panel agen"],
     "X8kjQX": ["Autentikasi ulang dengan GitHub"],
     "X9VpsP": ["Memuat isi folder"],
+    "XA9uvc": ["OpenKnowledge memeriksa dan mengunduh pembaruan di latar belakang."],
     "XAnapw": ["Git aturan penggabungan"],
     "XAyxsa": ["Ambil cabang remote"],
     "XBBZnv": ["Target tautan \"", ["shown"], "\" tidak merujuk ke dokumen yang ada."],
@@ -3043,6 +3048,7 @@
     "XJOV1Y": ["Aktivitas"],
     "XK5cbh": ["Menyusuri riwayat navigasi OpenKnowledge ke depan."],
     "XNBGZw": ["Pesan tidak terkirim: ", ["0"]],
+    "XN_sSd": ["Pembaruan otomatis"],
     "XNdXMR": [
       ["dependent"],
       " memerlukan ",
@@ -3596,6 +3602,7 @@
       " akan memuat setiap ekstensi di dalamnya, bukan hanya milik Open Knowledge, dan keduanya tetap ada sampai Anda menghapus Open Knowledge dari proyek ini."
     ],
     "c9-Pi9": [["source"], " · sumber skills.sh"],
+    "c9C7DQ": ["Pengaturan ini tidak dapat disimpan. Coba lagi."],
     "cCd8Bs": ["Potong"],
     "cD3aew": [
       "Embedding dihitung ulang seiring pencarian berjalan, jadi cakupannya dimulai lagi dari nol lalu terisi kembali."

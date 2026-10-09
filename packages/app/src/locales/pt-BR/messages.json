@@ -845,6 +845,9 @@
     "7C9JcA": [
       "O caminho do projeto do OpenKnowledge neste branch sai do worktree. O worktree foi criado, mas não foi aberto."
     ],
+    "7Crqsa": [
+      "O OpenKnowledge não busca nem baixa atualizações por conta própria. Buscar atualizações continua funcionando quando você quiser uma versão mais recente."
+    ],
     "7FA2iI": ["Não deu para ler os comentários que aguardam envio — nada foi enviado."],
     "7FamGZ": ["Ir para a linha"],
     "7Fkcej": ["+ Adicionar ", ["addChildName"]],
@@ -910,6 +913,7 @@
     "7l15X4": ["falhou"],
     "7lFX_h": ["Redirecionar agora"],
     "7m3Ade": ["instalações:"],
+    "7mxVbK": ["Baixar e instalar atualizações automaticamente"],
     "7qRHf0": ["Instalar para o Claude Chat e Cowork"],
     "7sNhEz": ["Nome de usuário"],
     "7uBlRT": ["Copia o item em foco na árvore de arquivos para que Colar possa duplicá-lo."],
@@ -3435,6 +3439,7 @@
     "X7ShnN": ["Abrir o painel de agentes"],
     "X8kjQX": ["Autenticar de novo no GitHub"],
     "X9VpsP": ["Carregando o conteúdo da pasta"],
+    "XA9uvc": ["O OpenKnowledge busca e baixa atualizações em segundo plano."],
     "XAnapw": ["Git regra de mesclagem"],
     "XAyxsa": ["Extrair ramo remoto"],
     "XBBZnv": ["O destino do link \"", ["shown"], "\" não corresponde a um documento existente."],
@@ -3447,6 +3452,7 @@
     "XJOV1Y": ["Atividade"],
     "XK5cbh": ["Avança pelo histórico de navegação do OpenKnowledge."],
     "XNBGZw": ["Mensagem não enviada: ", ["0"]],
+    "XN_sSd": ["Atualizações automáticas"],
     "XNdXMR": [
       ["dependent"],
       " precisa de ",
@@ -4038,6 +4044,7 @@
       " carregará todas as extensões que houver nela, não apenas a do Open Knowledge, e ambas permanecem até você remover o Open Knowledge deste projeto."
     ],
     "c9-Pi9": [["source"], " · fonte do skills.sh"],
+    "c9C7DQ": ["Não foi possível salvar esta configuração. Tente novamente."],
     "cCd8Bs": ["Recortar"],
     "cD3aew": [
       "Os embeddings são recalculados à medida que as buscas rodam, então a cobertura recomeça do zero e vai enchendo."

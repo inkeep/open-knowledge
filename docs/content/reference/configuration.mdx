@@ -109,6 +109,19 @@ Path exclusions live in a project-root `.okignore` file using gitignore syntax. 
 
 CLI flags (when running the bundled `ok` CLI) > environment variables > project-local config > project config > user config > defaults. Leaf values at higher levels override the same leaf below; arrays replace, they don't concatenate.
 
+## Desktop updates
+
+Automatic updates have no `config.yml` key, because they describe the machine rather than the person: `config.yml` can follow you between machines, and this preference does not. Set it in **Settings → About & updates**.
+
+| **Download and install updates automatically** | What happens |
+| --- | --- |
+| On (default) | OpenKnowledge checks at launch and every hour and downloads new versions in the background. On macOS and Windows it installs them when you quit; on Linux it asks you to authorize each install. |
+| Off | OpenKnowledge never contacts the update server on its own: no check at launch or on the hourly schedule, no new downloads, nothing installed when you quit, and no update notices. |
+
+Turn it off on a machine whose software you don't control, such as a work laptop under IT policy. **Check for updates** still works while it is off; if it finds a newer version, it offers to open the releases page instead of downloading. Turning it back on checks right away.
+
+A download already in progress when you turn it off still finishes, but it is not installed when you quit. On macOS, an update whose download had already finished before you turned it off may still be applied at the next launch, because macOS takes over a completed download.
+
 ## Environment variables
 
 Most users never set these — the schema settings above cover the common cases. These have no `config.yml` key or Settings toggle; they are environment-only.

@@ -1,9 +1,11 @@
 import { Trans } from '@lingui/react/macro';
 import { ArrowUpRight } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import type { OkAboutInfo } from '@/lib/desktop-bridge-types';
+import { Switch } from '@/components/ui/switch';
+import type { OkAboutInfo, OkUpdateMode } from '@/lib/desktop-bridge-types';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 const UNAVAILABLE_REREAD_INTERVAL_MS = 3000;
@@ -12,7 +14,11 @@ const UNAVAILABLE_REREAD_LIMIT = 20;
 export function AboutSection() {
   const bridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   const [about, setAbout] = useState<OkAboutInfo | null>(null);
+  const [updateMode, setUpdateMode] = useState<OkUpdateMode | null>(null);
+  const [savingMode, setSavingMode] = useState(false);
+  const [modeError, setModeError] = useState(false);
   const [checking, setChecking] = useState(false);
+  const modeWrites = useRef(0);
 
   useEffect(() => {
     if (!bridge) return;
@@ -32,11 +38,13 @@ export function AboutSection() {
       reads.timer = undefined;
       const read = reads.latest + 1;
       reads.latest = read;
+      const modeWritesAtRead = modeWrites.current;
       bridge.state
         .query()
         .then((snapshot) => {
           if (cancelled || read !== reads.latest || !snapshot.about) return;
           setAbout(snapshot.about);
+          if (modeWrites.current === modeWritesAtRead) setUpdateMode(snapshot.updateMode ?? null);
           if (snapshot.about.updateChecks === 'unavailable') scheduleReread();
         })
         .catch((err: unknown) => {
@@ -67,6 +75,24 @@ export function AboutSection() {
   if (!bridge) return null;
   const version = about?.version ?? bridge.appVersion;
   const updatesUnavailable = about?.updateChecks === 'unavailable';
+  const changeUpdateMode = (next: OkUpdateMode) => {
+    if (savingMode) return;
+    const previous = updateMode;
+    modeWrites.current += 1;
+    setSavingMode(true);
+    setModeError(false);
+    setUpdateMode(next);
+    bridge.update
+      .setMode(next)
+      .catch((err: unknown) => {
+        console.warn('[about-section] bridge.update.setMode() failed', err);
+        setUpdateMode(previous);
+        setModeError(true);
+      })
+      .finally(() => {
+        setSavingMode(false);
+      });
+  };
 
   return (
     <section
@@ -130,6 +156,41 @@ export function AboutSection() {
           <p className="text-1sm text-muted-foreground">
             <Trans>Automatic updates are not available right now.</Trans>
           </p>
+        ) : null}
+        {about && updateMode && !updatesUnavailable ? (
+          <div className="flex items-start justify-between gap-3 border-t pt-3">
+            <div className="space-y-1">
+              <Label htmlFor="settings-about-auto-update">
+                <Trans>Download and install updates automatically</Trans>
+              </Label>
+              <p
+                id="settings-about-auto-update-description"
+                className="text-1sm text-muted-foreground"
+              >
+                {updateMode === 'off' ? (
+                  <Trans>
+                    OpenKnowledge doesn't check for or download updates on its own. Check for
+                    updates still works when you want a newer version.
+                  </Trans>
+                ) : (
+                  <Trans>OpenKnowledge checks for and downloads updates in the background.</Trans>
+                )}
+              </p>
+              {modeError ? (
+                <p role="alert" className="text-1sm text-destructive">
+                  <Trans>Couldn't save this setting. Try again.</Trans>
+                </p>
+              ) : null}
+            </div>
+            <Switch
+              id="settings-about-auto-update"
+              aria-describedby="settings-about-auto-update-description"
+              checked={updateMode === 'auto'}
+              disabled={savingMode}
+              onCheckedChange={(checked) => changeUpdateMode(checked ? 'auto' : 'off')}
+              data-testid="settings-about-auto-update"
+            />
+          </div>
         ) : null}
       </div>
     </section>

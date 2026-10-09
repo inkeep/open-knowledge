@@ -2508,6 +2508,10 @@ msgstr "自动"
 msgid "Automatic picks a free port each start. Choose a fixed port to keep the same address across restarts."
 msgstr "自动模式会在每次启动时选择一个空闲端口。选择固定端口可在重启后保持相同地址。"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Automatic updates"
+msgstr "自动更新"
+
 #: src/components/settings/AboutSection.tsx
 msgid "Automatic updates are not available right now."
 msgstr "目前无法自动更新。"
@@ -4657,6 +4661,10 @@ msgstr "无法保存密钥——请重试。"
 msgid "Couldn't save the resolution for {filePath}."
 msgstr "无法保存 {filePath} 的解决结果。"
 
+#: src/components/settings/AboutSection.tsx
+msgid "Couldn't save this setting. Try again."
+msgstr "无法保存此设置。请重试。"
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr "无法保存你的主题偏好。"
@@ -5479,6 +5487,10 @@ msgstr "双击进行编辑"
 #: src/components/acp/ThreadView.tsx
 msgid "Download {0}"
 msgstr "下载 {0}"
+
+#: src/components/settings/AboutSection.tsx
+msgid "Download and install updates automatically"
+msgstr "自动下载并安装更新"
 
 #: src/components/HelpPopover.tsx
 msgid "Download app"
@@ -10590,6 +10602,10 @@ msgstr "OpenKnowledge 检查了 {subject}"
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge 检查了项目"
 
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge checks for and downloads updates in the background."
+msgstr "OpenKnowledge 会在后台检查并下载更新。"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge 未在此设备上找到该智能体。"
@@ -10637,6 +10653,10 @@ msgstr "OpenKnowledge 无法识别此条目，且无法在此文件格式中安�
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge does not recognize this entry. Turning it on replaces it."
 msgstr "OpenKnowledge 无法识别此条目。启用后将替换它。"
+
+#: src/components/settings/AboutSection.tsx
+msgid "OpenKnowledge doesn't check for or download updates on its own. Check for updates still works when you want a newer version."
+msgstr "OpenKnowledge 不会自行检查或下载更新。需要新版本时，仍可使用“检查更新”。"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge edited {subject}"

@@ -719,6 +719,9 @@
     "7C9JcA": [
       "The OpenKnowledge project path on this branch leaves the worktree. The worktree was created but not opened."
     ],
+    "7Crqsa": [
+      "OpenKnowledge doesn't check for or download updates on its own. Check for updates still works when you want a newer version."
+    ],
     "7FA2iI": ["Couldn't read the comments waiting to send — nothing was sent."],
     "7FamGZ": ["Go to line"],
     "7Fkcej": ["+ Add ", ["addChildName"]],
@@ -784,6 +787,7 @@
     "7l15X4": ["failed"],
     "7lFX_h": ["Steer now"],
     "7m3Ade": ["installs:"],
+    "7mxVbK": ["Download and install updates automatically"],
     "7qRHf0": ["Install for Claude Chat & Cowork"],
     "7sNhEz": ["Username"],
     "7uBlRT": ["Copy the focused file-tree item so Paste can duplicate it."],
@@ -3007,6 +3011,7 @@
     "X7ShnN": ["Open agents panel"],
     "X8kjQX": ["Re-authenticate with GitHub"],
     "X9VpsP": ["Loading folder contents"],
+    "XA9uvc": ["OpenKnowledge checks for and downloads updates in the background."],
     "XAnapw": ["Git merge rule"],
     "XAyxsa": ["Check out remote branch"],
     "XBBZnv": ["Link target \"", ["shown"], "\" does not resolve to an existing document."],
@@ -3019,6 +3024,7 @@
     "XJOV1Y": ["Activity"],
     "XK5cbh": ["Traverse OpenKnowledge navigation history forward."],
     "XNBGZw": ["Message not sent: ", ["0"]],
+    "XN_sSd": ["Automatic updates"],
     "XNdXMR": [
       ["dependent"],
       " needs ",
@@ -3567,6 +3573,7 @@
       " will load every extension in it, not only Open Knowledge's — and both stay until you remove Open Knowledge from this project."
     ],
     "c9-Pi9": [["source"], " · skills.sh source"],
+    "c9C7DQ": ["Couldn't save this setting. Try again."],
     "cCd8Bs": ["Cut"],
     "cD3aew": ["Re-embedding happens as searches run, so coverage restarts at zero and refills."],
     "cEoyWz": ["Add item to ", ["keyName"]],

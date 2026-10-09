@@ -32,7 +32,7 @@ export interface EventChannels {
   'ok:project:recent-removed-missing': { payload: OkRecentRemovedMissingInfo };
   'ok:menu-action': { payload: OkMenuActionDispatch };
   'ok:note-window:main-action': { payload: OkNoteWindowMainAction };
-  'ok:update:downloaded': { payload: { version: string } };
+  'ok:update:downloaded': { payload: { version: string | null } };
   'ok:update:relaunching': { payload: { version: string } };
   'ok:update:fetching-latest': { payload: { version: string } };
   'ok:update:relaunch-failed': { payload: OkUpdateRelaunchFailedInfo };

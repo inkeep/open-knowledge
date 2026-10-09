@@ -3,6 +3,7 @@ import { buildAboutInfo } from './about-info.ts';
 import {
   type AppState,
   emptyState,
+  resolveUpdateMode,
   type SchemaIncompatibilityDiagnostic,
   type UpdateChannel,
 } from './state-store.ts';
@@ -43,5 +44,6 @@ export async function applyStateQuery(
       variant: deps.variant,
       updateChecksAvailable: deps.isUpdaterRunning(),
     }),
+    updateMode: resolveUpdateMode(deps.getAppState().updateMode).mode,
   };
 }

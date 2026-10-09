@@ -143,3 +143,17 @@ describe('applyStateQuery about info', () => {
     expect(after.about.updateChecks).toBe('available');
   });
 });
+
+describe('applyStateQuery update mode', () => {
+  test('reports auto when no preference was ever chosen', async () => {
+    const snapshot = await applyStateQuery(makeRig().deps);
+    expect(snapshot.updateMode).toBe('auto');
+  });
+
+  test('reports the persisted choice', async () => {
+    const snapshot = await applyStateQuery(
+      makeRig({ state: { ...emptyState(), updateMode: 'off' } }).deps,
+    );
+    expect(snapshot.updateMode).toBe('off');
+  });
+});

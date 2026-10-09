@@ -21,6 +21,13 @@ vi.mock('electron', () => ({
 type BridgeProbe = {
   mcpServerName: string | null;
   state: { query(): Promise<unknown> };
+  update: {
+    relaunchNow(): Promise<void>;
+    checkNow(): Promise<void>;
+    dismissWhatsNew(version: string): Promise<void>;
+    dismissDownloaded(version: string): Promise<void>;
+    setMode(mode: 'auto' | 'off'): Promise<void>;
+  };
   config: {
     languagePreference?: string;
     themePreference?: string;
@@ -344,5 +351,51 @@ describe('preload userConfig subscription', () => {
     await Promise.resolve();
 
     expect(cb).not.toHaveBeenCalled();
+  });
+});
+
+describe('preload update dispatch marshalling', () => {
+  const echoKind = (_channel: unknown, request: unknown) =>
+    Promise.resolve({ kind: (request as { kind: string }).kind, ok: true, mode: 'off' });
+
+  it('sends each update method as its own dispatch kind', async () => {
+    const bridge = await loadBridge();
+    for (let i = 0; i < 5; i++) invokeMock.mockImplementationOnce(echoKind as never);
+
+    await bridge.update.relaunchNow();
+    await bridge.update.checkNow();
+    await bridge.update.dismissWhatsNew('0.3.1');
+    await bridge.update.dismissDownloaded('0.3.2');
+    await bridge.update.setMode('off');
+
+    expect(invokeMock.mock.calls).toEqual([
+      ['ok:update:dispatch', { kind: 'relaunch-now' }],
+      ['ok:update:dispatch', { kind: 'check-now' }],
+      ['ok:update:dispatch', { kind: 'whats-new-dismiss', version: '0.3.1' }],
+      ['ok:update:dispatch', { kind: 'downloaded-dismiss', version: '0.3.2' }],
+      ['ok:update:dispatch', { kind: 'set-mode', mode: 'off' }],
+    ]);
+  });
+
+  it('rejects a reply whose kind does not match the request', async () => {
+    const bridge = await loadBridge();
+    invokeMock.mockResolvedValueOnce({ kind: 'check-now' } as never);
+
+    await expect(bridge.update.relaunchNow()).rejects.toThrow(
+      'ok:update:dispatch: expected relaunch-now, got check-now',
+    );
+  });
+
+  it('turns a refused set-mode into a rejection that names the reason', async () => {
+    const bridge = await loadBridge();
+    invokeMock.mockResolvedValueOnce({
+      kind: 'set-mode',
+      ok: false,
+      reason: 'persist-failed',
+    } as never);
+
+    await expect(bridge.update.setMode('off')).rejects.toThrow(
+      'ok:update:dispatch: set-mode refused (persist-failed)',
+    );
   });
 });
