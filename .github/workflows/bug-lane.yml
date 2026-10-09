@@ -129,6 +129,7 @@ jobs:
           # "not bug-linked" and the lane is inert rather than wrong.
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           BUMP_VERDICTS: ${{ needs.read-bumps.outputs.bump_verdicts }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # Writes fix_refs (comma-joined), stable and fix_tickets to
         # GITHUB_OUTPUT; per-commit verdicts land as notices. Logic + tests:
         # .github/scripts/bug-lane.{mjs,test.mjs}.

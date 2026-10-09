@@ -10,9 +10,11 @@ import {
   evaluateFastTier,
   makeResolveChangesetPrUrl,
   makeResolveIssuesForUrl,
+  memoizeVerdicts,
   parseBetaTags,
   readUnshippedBumps,
   resolveTier,
+  screenShippedFixes,
   selectPromotion,
 } from './select-beta-to-promote.mjs';
 
@@ -593,6 +595,120 @@ function makeRepoWithChangesets(commits) {
   return dir;
 }
 
+describe('screenShippedFixes (no dispatch promote-stable would refuse)', () => {
+  const refused = (candidate) => ({
+    ok: false,
+    candidate,
+    uncovered: [{ sha: 'a'.repeat(40), subject: 'fix: shipped on stable (#300)', pr: '300', stables: ['v1.0.1'] }],
+  });
+  const admitted = (candidate) => ({ ok: true, candidate, uncovered: [] });
+  const recorder = (verdicts) => {
+    const asked = [];
+    return {
+      asked,
+      evaluate: (tag) => {
+        asked.push(tag);
+        const verdict = verdicts[tag];
+        if (verdict instanceof Error) throw verdict;
+        return verdict(tag);
+      },
+    };
+  };
+
+  test('inside the window a refused 24h selection is not dispatched, and the warning names the fix', () => {
+    const check = recorder({ 'v1.0.1-beta.0': refused });
+    const lines = [];
+    const result = screenShippedFixes({
+      target: 'v1.0.1-beta.0',
+      fastTierCandidate: '',
+      dispatchWindowOpen: true,
+      evaluate: check.evaluate,
+      log: (line) => lines.push(line),
+    });
+    expect(result).toEqual({ target: '', fastTierCandidate: '' });
+    expect(lines).toEqual([
+      expect.stringMatching(
+        /^::warning::Not dispatching v1\.0\.1-beta\.0: v1\.0\.1-beta\.0 lacks 1 fix that a published stable already shipped: #300 \(v1\.0\.1\)\. /,
+      ),
+    ]);
+  });
+
+  test('outside the window the 24h selection is left alone and costs no check', () => {
+    const check = recorder({});
+    const result = screenShippedFixes({
+      target: 'v1.0.1-beta.0',
+      fastTierCandidate: '',
+      dispatchWindowOpen: false,
+      evaluate: check.evaluate,
+    });
+    expect(result.target).toBe('v1.0.1-beta.0');
+    expect(check.asked).toEqual([]);
+  });
+
+  test('an admitted selection and candidate pass through unchanged', () => {
+    const check = recorder({ 'v1.0.1-beta.0': admitted, 'v1.1.0-beta.0': admitted });
+    expect(
+      screenShippedFixes({
+        target: 'v1.0.1-beta.0',
+        fastTierCandidate: 'v1.1.0-beta.0',
+        dispatchWindowOpen: true,
+        evaluate: check.evaluate,
+      }),
+    ).toEqual({ target: 'v1.0.1-beta.0', fastTierCandidate: 'v1.1.0-beta.0' });
+  });
+
+  test('a refused fast-tier candidate is not nominated for the smoke', () => {
+    const check = recorder({ 'v1.1.0-beta.0': refused });
+    const lines = [];
+    const result = screenShippedFixes({
+      target: '',
+      fastTierCandidate: 'v1.1.0-beta.0',
+      dispatchWindowOpen: false,
+      evaluate: check.evaluate,
+      log: (line) => lines.push(line),
+    });
+    expect(result.fastTierCandidate).toBe('');
+    expect(lines[0]).toMatch(/^::warning::Fast tier REFUSED for v1\.1\.0-beta\.0: .*#300 \(v1\.0\.1\)/);
+  });
+
+  test('a check that cannot decide fails the 24h selection loudly and declines the fast tier', () => {
+    const broken = new Error('listing the releases of inkeep/open-knowledge failed: HTTP 502');
+    expect(() =>
+      screenShippedFixes({
+        target: 'v1.0.1-beta.0',
+        fastTierCandidate: '',
+        dispatchWindowOpen: true,
+        evaluate: recorder({ 'v1.0.1-beta.0': broken }).evaluate,
+      }),
+    ).toThrow(/HTTP 502/);
+    const lines = [];
+    const result = screenShippedFixes({
+      target: 'v1.0.1-beta.0',
+      fastTierCandidate: 'v1.1.0-beta.0',
+      dispatchWindowOpen: false,
+      evaluate: recorder({ 'v1.1.0-beta.0': broken }).evaluate,
+      log: (line) => lines.push(line),
+    });
+    expect(result).toEqual({ target: 'v1.0.1-beta.0', fastTierCandidate: '' });
+    expect(lines[0]).toMatch(/could not decide \(listing the releases .*HTTP 502\)\. Falling back to the 24h tier\./);
+  });
+
+  test('a beta that is both the selection and the candidate is checked once', () => {
+    let calls = 0;
+    const evaluate = memoizeVerdicts((tag) => {
+      calls += 1;
+      return admitted(tag);
+    });
+    screenShippedFixes({
+      target: 'v1.0.1-beta.0',
+      fastTierCandidate: 'v1.0.1-beta.0',
+      dispatchWindowOpen: true,
+      evaluate,
+    });
+    expect(calls).toBe(1);
+  });
+});
+
 describe('makeResolveChangesetPrUrl (real git)', () => {
   test('resolves a changeset to the pull request named by its adding commit', () => {
     const dir = makeRepoWithChangesets([
@@ -830,6 +946,7 @@ describe('the selector entry points the two jobs run', () => {
   const OK_ROOT = join(dirname(SCRIPT), '..', '..');
   const COPIED = [
     '.github/scripts/select-beta-to-promote.mjs',
+    '.github/scripts/shipped-fix-containment.mjs',
     'scripts/compute-stable-version.mjs',
     'scripts/compute-next-beta.mjs',
     'scripts/git-clean-env.mjs',
@@ -883,19 +1000,23 @@ describe('the selector entry points the two jobs run', () => {
     writeFileSync(join(bin, 'gh'), script, { mode: 0o755 });
     return bin;
   };
-  const releaseGh = () => {
+  const releaseGh = ({
+    listing = [{ tag_name: 'v1.0.0', draft: false, body: '' }],
+    ages = { 'v1.1.0-beta.0': 10, 'v1.0.1-beta.0': 120 },
+  } = {}) => {
     const meta = (minutesAgo) =>
       JSON.stringify({
         isDraft: false,
         publishedAt: new Date(Date.now() - minutesAgo * 60_000).toISOString(),
         assets: [{ name: 'OpenKnowledge-Beta-universal.dmg' }, { name: 'beta-mac.yml' }],
       });
+    const listed = listing.map((release) => `'${JSON.stringify(release)}'`).join(' ');
     return ghBin(
       [
         '#!/bin/sh',
+        `if [ "$1" = api ]; then printf '%s\\n' ${listed}; exit 0; fi`,
         'case "$3" in',
-        `  v1.1.0-beta.0) printf '%s' '${meta(10)}' ;;`,
-        `  v1.0.1-beta.0) printf '%s' '${meta(120)}' ;;`,
+        ...Object.entries(ages).map(([tag, minutes]) => `  ${tag}) printf '%s' '${meta(minutes)}' ;;`),
         '  *) echo "release not found" >&2; exit 1 ;;',
         'esac',
         '',
@@ -1007,5 +1128,36 @@ describe('the selector entry points the two jobs run', () => {
     expect(res.status).toBe(1);
     expect(res.stderr).toMatch(/BUMP_VERDICTS is empty: the read-bumps job wrote no bump_verdicts output/);
     expect(res.output).toBe('');
+  });
+
+  test('inside the window it does not dispatch a soaked beta that lacks a fix a published stable shipped', () => {
+    const { root } = betaRepo();
+    git(root, 'switch', '-q', '--detach', 'v1.0.0');
+    writeFileSync(join(root, 'hotfix.txt'), 'shipped only on the stable line\n');
+    git(root, 'add', '-A');
+    git(root, 'commit', '-q', '-m', 'fix: ship the hotfix on the stable line (#300)');
+    git(root, 'tag', 'v1.0.1');
+    git(root, 'switch', '-q', 'main');
+    const verdicts = readBumps(root).output.trim().slice('bump_verdicts='.length);
+    const bin = releaseGh({
+      listing: [
+        { tag_name: 'v1.0.0', draft: false, body: '' },
+        { tag_name: 'v1.0.1', draft: false, body: '' },
+      ],
+      ages: { 'v1.1.0-beta.0': 10, 'v1.0.1-beta.0': 60 * 25 },
+    });
+    const env = { BUMP_VERDICTS: verdicts, SOAK_SECONDS: '86400', FAST_TIER_ARMED: 'false' };
+
+    const open = run(isolatedScript(), root, { env: { ...env, DISPATCH_WINDOW_OPEN: 'true' }, bin });
+    expect(open.status, open.stderr).toBe(0);
+    expect(open.output).toContain('target=\ntier=\n');
+    expect(open.stdout).toContain(
+      '::warning::Not dispatching v1.0.1-beta.0: v1.0.1-beta.0 lacks 1 fix that a published stable already shipped: #300 (v1.0.1).',
+    );
+
+    const closed = run(isolatedScript(), root, { env: { ...env, DISPATCH_WINDOW_OPEN: 'false' }, bin });
+    expect(closed.status, closed.stderr).toBe(0);
+    expect(closed.output).toContain('target=v1.0.1-beta.0\ntier=soak\n');
+    expect(closed.stdout).not.toContain('Not dispatching');
   });
 });

@@ -1,11 +1,11 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
-import { evaluateBugLane, makeIsInStable, readPendingBumps } from './bug-lane.mjs';
+import { evaluateBugLane, holdBugLaneBatch, makeIsInStable, readPendingBumps } from './bug-lane.mjs';
 
 const FIX_A = 'a'.repeat(40);
 const FIX_B = 'b'.repeat(40);
@@ -133,6 +133,54 @@ describe('evaluateBugLane', () => {
   });
 });
 
+describe('holdBugLaneBatch (no batch a point release would refuse)', () => {
+  const check = ({ published = ['v0.32.0'], verdict = { ok: true, uncovered: [] } } = {}) => {
+    const asked = [];
+    return {
+      asked,
+      publishedStableTags: () => {
+        if (published instanceof Error) throw published;
+        return published;
+      },
+      evaluate: (candidate) => {
+        asked.push(candidate);
+        return verdict;
+      },
+    };
+  };
+
+  test('lets the batch through when the newest stable is published and keeps every shipped fix', () => {
+    const fake = check();
+    expect(holdBugLaneBatch({ stable: 'v0.32.0', check: fake })).toBeNull();
+    expect(fake.asked).toEqual(['refs/tags/v0.32.0']);
+  });
+
+  test('holds it while the newest stable tag has no published Release, without evaluating it', () => {
+    const fake = check({ published: ['v0.31.9'] });
+    expect(holdBugLaneBatch({ stable: 'v0.32.0', check: fake })).toMatch(
+      /^The newest stable tag v0\.32\.0 has no published Release \(the newest published stable is v0\.31\.9\)/,
+    );
+    expect(fake.asked).toEqual([]);
+  });
+
+  test('holds it while the newest stable lacks a fix a published stable shipped', () => {
+    const verdict = {
+      ok: false,
+      uncovered: [{ sha: 'a'.repeat(40), subject: 'fix: the notice (#5610)', pr: '5610', stables: ['v0.31.4'] }],
+    };
+    expect(holdBugLaneBatch({ stable: 'v0.32.0', check: check({ verdict }) })).toBe(
+      'v0.32.0 lacks 1 fix that a published stable already shipped: #5610 (v0.31.4). ' +
+        'point-release.yml refuses a point release over v0.32.0 unless its batch also carries those fixes.',
+    );
+  });
+
+  test('an unreadable listing fails the tick rather than reading as nothing shipped', () => {
+    expect(() =>
+      holdBugLaneBatch({ stable: 'v0.32.0', check: check({ published: new Error('HTTP 502') }) }),
+    ).toThrow('HTTP 502');
+  });
+});
+
 describe('makeIsInStable', () => {
   let dir;
   let fixOnMain;
@@ -238,6 +286,7 @@ describe('the bug-lane entry points the two jobs run', () => {
   const COPIED = [
     '.github/scripts/bug-lane.mjs',
     '.github/scripts/select-beta-to-promote.mjs',
+    '.github/scripts/shipped-fix-containment.mjs',
     'scripts/compute-stable-version.mjs',
     'scripts/compute-next-beta.mjs',
     'scripts/git-clean-env.mjs',
@@ -310,13 +359,23 @@ describe('the bug-lane entry points the two jobs run', () => {
     writeFileSync(calls, '');
     return { preload, calls, read: () => readFileSync(calls, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line)) };
   };
-  const run = (script, cwd, { args = [], env = {}, preload } = {}) => {
+  const releasesGh = (listing = [{ tag_name: 'v1.0.0', draft: false, body: '' }]) => {
+    const bin = scratch('bug-lane-gh-');
+    const listed = listing.map((release) => `'${JSON.stringify(release)}'`).join(' ');
+    writeFileSync(
+      join(bin, 'gh'),
+      `#!/bin/sh\nif [ "$1" = api ]; then printf '%s\\n' ${listed}; exit 0; fi\necho "unexpected gh call: $*" >&2\nexit 97\n`,
+      { mode: 0o755 },
+    );
+    return bin;
+  };
+  const run = (script, cwd, { args = [], env = {}, preload, bin = releasesGh() } = {}) => {
     const output = join(scratch('bug-lane-output-'), 'github-output');
     writeFileSync(output, '');
     const res = spawnSync(process.execPath, [...(preload ? ['--import', preload] : []), script, ...args], {
       cwd,
       encoding: 'utf8',
-      env: { ...cleanEnv, GITHUB_OUTPUT: output, ...env },
+      env: { ...cleanEnv, GITHUB_OUTPUT: output, PATH: `${bin}${delimiter}${cleanEnv.PATH}`, ...env },
     });
     return { ...res, output: readFileSync(output, 'utf8') };
   };
@@ -390,5 +449,21 @@ describe('the bug-lane entry points the two jobs run', () => {
     expect(res.status).toBe(1);
     expect(res.stderr).toMatch(/BUMP_VERDICTS is empty: the read-bumps job wrote no bump_verdicts output/);
     expect(res.output).toBe('');
+  });
+
+  test('holds a qualifying batch, handing nothing to verify, while the newest stable has no published Release', () => {
+    const { root } = pendingRepo();
+    const verdicts = run(SCRIPT, root, { args: ['--read-bumps'] }).output.trim().slice('bump_verdicts='.length);
+    const linear = linearStub();
+    const res = run(isolatedScript(), root, {
+      env: { LINEAR_API_KEY: 'placeholder-linear-key', LINEAR_CALLS: linear.calls, BUMP_VERDICTS: verdicts },
+      preload: linear.preload,
+      bin: releasesGh([{ tag_name: 'v1.0.0', draft: true, body: '' }]),
+    });
+    expect(res.status, res.stderr).toBe(0);
+    expect(res.output).toBe('fix_refs=\nstable=v1.0.0\nfix_tickets={}\n');
+    expect(res.stdout).toContain(
+      '::notice::bug-lane: holding 1 qualifying fix(es) this tick, so no point release is attempted. The newest stable tag v1.0.0 has no published Release',
+    );
   });
 });

@@ -289,6 +289,24 @@ jobs:
           node-version-file: .node-version
           package-manager-cache: false
 
+      - name: Refuse a stable that lacks a fix a published stable shipped
+        if: steps.channel.outputs.channel == 'latest'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null || git fetch --no-tags origin "$GITHUB_SHA"
+          guard="$RUNNER_TEMP/shipped-fix-containment"
+          rm -rf "$guard"
+          mkdir -p "$guard"
+          git archive "$GITHUB_SHA" .github/scripts/shipped-fix-containment.mjs scripts/git-clean-env.mjs | tar -x -C "$guard"
+          args=(--candidate "refs/tags/${RELEASE_TAG}" --label "$RELEASE_TAG")
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            args+=(--allow-published-repair "$RELEASE_TAG")
+          fi
+          node "$guard/.github/scripts/shipped-fix-containment.mjs" "${args[@]}"
+
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           cache: false
@@ -1818,6 +1836,8 @@ jobs:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Refuse to promote a superseded stable on a re-run
         if: success() && needs.prepare.outputs.channel == 'latest' && github.run_attempt != '1' && github.event_name != 'workflow_dispatch'
@@ -1872,6 +1892,18 @@ jobs:
           else
             echo "::warning::render-release-downloads.mjs failed for ${RELEASE_TAG}; the release keeps its previous body."
           fi
+
+      - name: Refuse a stable that lacks a fix a published stable shipped
+        if: success() && needs.prepare.outputs.channel == 'latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          args=(--candidate "refs/tags/${RELEASE_TAG}" --label "$RELEASE_TAG")
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            args+=(--allow-published-repair "$RELEASE_TAG")
+          fi
+          node .github/scripts/shipped-fix-containment.mjs "${args[@]}"
 
       # Closes the publish-window race: release.yml / promote-stable.yml
       # create the GitHub Release as --draft so it stays out of the .atom
@@ -2323,7 +2355,7 @@ jobs:
           # (--draft=false [--latest]) — empirically atomic per GitHub's
           # post-state evaluation of make_latest.
           if [[ "$CHANNEL" == "latest" ]]; then
-            RECOVERY="gh release edit ${RELEASE_TAG} --draft=false --latest"
+            RECOVERY="gh release edit ${RELEASE_TAG} --draft=false --latest (never for a tag the shipped-fix check refused)"
           else
             RECOVERY="gh release edit ${RELEASE_TAG} --draft=false"
           fi

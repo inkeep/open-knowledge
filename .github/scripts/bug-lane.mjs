@@ -10,6 +10,11 @@ import {
 } from '../../scripts/compute-stable-version.mjs';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
 import { makeResolveChangesetPrUrl, makeResolveIssuesForUrl } from './select-beta-to-promote.mjs';
+import {
+  createShippedFixCheck,
+  refusalHeadline,
+  unpublishedBaseReason,
+} from './shipped-fix-containment.mjs';
 
 const STABLE_TAG_RE = /^v\d+\.\d+\.\d+$/;
 const DEFAULT_LINK_REPO = 'inkeep/agents-private';
@@ -119,6 +124,17 @@ export async function evaluateBugLane({
     warnings,
     reason: fixRefs.length > 0 ? 'candidates' : 'no-qualifying-fixes',
   };
+}
+
+export function holdBugLaneBatch({ stable, check }) {
+  const unpublished = unpublishedBaseReason({
+    latestStableTag: stable,
+    publishedTags: check.publishedStableTags(),
+  });
+  if (unpublished !== null) return unpublished;
+  const verdict = check.evaluate(`refs/tags/${stable}`);
+  if (verdict.ok) return null;
+  return `${refusalHeadline(verdict, stable)} point-release.yml refuses a point release over ${stable} unless its batch also carries those fixes.`;
 }
 
 export function ticketsByRef(result) {
@@ -231,13 +247,21 @@ async function main() {
       : `::notice::bug-lane: no qualifying fixes this tick (${result.reason}).`,
   );
 
+  const held =
+    result.fixRefs.length > 0 ? holdBugLaneBatch({ stable, check: createShippedFixCheck() }) : null;
+  if (held !== null) {
+    console.log(
+      `::notice::bug-lane: holding ${result.fixRefs.length} qualifying fix(es) this tick, so no point release is attempted. ${held}`,
+    );
+  }
+
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(
       process.env.GITHUB_OUTPUT,
       [
-        `fix_refs=${result.fixRefs.join(',')}`,
+        `fix_refs=${held === null ? result.fixRefs.join(',') : ''}`,
         `stable=${stable}`,
-        `fix_tickets=${JSON.stringify(ticketsByRef(result))}`,
+        `fix_tickets=${held === null ? JSON.stringify(ticketsByRef(result)) : '{}'}`,
         '',
       ].join('\n'),
     );
