@@ -2920,6 +2920,10 @@ describe('TerminalPanel', () => {
       openAsset.mockResolvedValueOnce({ ok: false, reason: 'extension-blocked' });
       link?.activate({} as MouseEvent, link.text);
       await waitFor(() => expect(revealAsset).toHaveBeenCalledWith('data/x.csv'));
+
+      openAsset.mockResolvedValueOnce({ ok: false, reason: 'not-a-file' });
+      link?.activate({} as MouseEvent, link.text);
+      await waitFor(() => expect(revealAsset).toHaveBeenCalledTimes(2));
     });
 
     test('clicking an out-of-project absolute path routes the reveal-external dialog', async () => {

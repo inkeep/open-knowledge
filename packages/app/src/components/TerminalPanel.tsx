@@ -3,6 +3,7 @@ import '@xterm/xterm/css/xterm.css';
 import {
   assertNeverPtyAdoptReason,
   assertNeverPtyCreateReason,
+  assetOpenRefusalRevealsInstead,
 } from '@inkeep/open-knowledge-core/desktop-bridge';
 import {
   buildCliLaunchArgString,
@@ -283,7 +284,7 @@ function TerminalSession({
             .openAsset(target.relPath)
             .then((result) => {
               if (result.ok) return;
-              if (result.reason === 'extension-blocked') {
+              if (assetOpenRefusalRevealsInstead(result.reason)) {
                 void bridge.shell
                   .revealAsset(target.relPath)
                   .catch((err) => console.warn('[terminal] revealAsset failed:', err));
