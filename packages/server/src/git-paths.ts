@@ -1,4 +1,18 @@
+import { realpathSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { SimpleGit } from 'simple-git';
+
+export function realpathOrResolved(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+export function escapeGitPatternSegment(segment: string): string {
+  return segment.replace(/[\\!?*[\]]/g, (character) => `\\${character}`);
+}
 
 export const PORCELAIN_STATUS_ARGS = ['status', '--porcelain', '-uall'];
 
