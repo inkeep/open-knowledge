@@ -294,6 +294,7 @@ interface BootStartServerOptions {
   port?: number;
   skipAutoInit?: boolean;
   idleThresholdMs?: number | null;
+  idleShutdownValue?: string;
   serverRuntime?: ServerRuntimeConfig;
   bind?: readonly string[];
   idleExit?: (code: number) => void;
@@ -498,6 +499,7 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
         };
       })(),
       idleShutdownMs: idleThresholdMs,
+      idleShutdownValue: opts.idleShutdownValue,
       ...(opts.serverRuntime !== undefined ? { serverRuntime: opts.serverRuntime } : {}),
       ...(opts.bind !== undefined ? { bind: opts.bind } : {}),
       skipAutoInit: true,
@@ -706,6 +708,7 @@ export async function runStartCommand(configArg: Config, opts: StartCommandOptio
         : {}),
       ...(reactShellDistDir ? { reactShellDistDir } : {}),
       idleThresholdMs: idleShutdownToMs(opts.idleShutdown ?? runtime.idleShutdown),
+      idleShutdownValue: opts.idleShutdown ?? runtime.idleShutdown,
       serverRuntime: runtime,
       ...(opts.singleFile ? { singleFile: opts.singleFile } : {}),
       ...(opts.projectDir ? { projectDir: opts.projectDir } : {}),
