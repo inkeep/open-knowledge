@@ -543,10 +543,6 @@ jobs:
           key: bug-lane-drop-${{ steps.drop.outputs.sig }}
           lookup-only: true
 
-      # Same reason the refusal notes its suppression: a tick that goes quiet
-      # otherwise finishes green with no trace, leaving an operator asking "is
-      # that drop still standing?" with only an invisible cache hit to infer it
-      # from. The run summary costs no notification and answers it in place.
       - name: Note a suppressed drop
         if: steps.drop_paged_before.outputs.cache-hit == 'true'
         env:
@@ -667,11 +663,6 @@ jobs:
           key: bug-lane-refusal-${{ steps.refusal.outputs.sig }}
           lookup-only: true
 
-      # Suppression has to be visible SOMEWHERE. Silencing the channel is the
-      # point, but a tick that suppresses otherwise finishes green with no
-      # trace, so an operator asking "is that conflict still standing?" has
-      # only an invisible cache hit to infer it from. The run summary costs no
-      # notification and answers that question in place.
       - name: Note a suppressed refusal
         if: steps.paged_before.outputs.cache-hit == 'true'
         env:
@@ -778,3 +769,16 @@ jobs:
         with:
           path: ${{ steps.refusal.outputs.marker }}
           key: bug-lane-refusal-${{ steps.refusal.outputs.sig }}
+
+      - name: Fail the run on a refusing verdict
+        if: always()
+        env:
+          VERDICT: ${{ steps.verify.outputs.verdict }}
+        run: |
+          set -euo pipefail
+          case "$VERDICT" in
+            conflict|fail|could-not-verify)
+              echo "::error::bug-lane: verdict ${VERDICT} refuses this batch, so the run concludes failure."
+              exit 1
+              ;;
+          esac
