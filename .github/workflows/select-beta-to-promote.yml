@@ -432,6 +432,16 @@ jobs:
           echo "::notice::Fast tier refused for ${CANDIDATE} (verdict=${VERDICT:-unknown}). The 24h tier is unaffected; this beta promotes normally once it has soaked."
           echo "Fast tier refused for ${CANDIDATE}; verdict=${VERDICT:-unknown}. The aggregate incident reporter owns Slack notifications." >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Upload per-test results
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ok-per-test-results-select-beta-to-promote-attempt${{ github.run_attempt }}
+          path: packages/desktop/test-results/desktop-smoke-packaged-results.json
+          retention-days: 14
+          if-no-files-found: warn
+
   dispatch-fast-tier-candidate:
     name: Dispatch the smoke-proven fast-tier candidate
     needs: [evaluate, smoke-fast-tier-candidate]

@@ -62,7 +62,7 @@ function verdictSnippet() {
 function verdictFor(firstStatus, retryOutcome = 1) {
   const snippet = verdictSnippet();
   const chain = snippet.replace(
-    /if timeout[\s\S]*?--output-logs=errors-only 2>&1/,
+    /if timeout[\s\S]*?--output-logs=errors-only --log-prefix=none 2>&1/,
     `if (exit ${retryOutcome})`,
   );
   if (chain === snippet) {
