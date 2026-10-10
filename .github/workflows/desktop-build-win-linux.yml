@@ -400,6 +400,16 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+      - name: Upload per-test results
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ok-per-test-results-desktop-build-windows-attempt${{ github.run_attempt }}
+          path: packages/desktop/test-results/vitest-*.json
+          retention-days: 14
+          if-no-files-found: warn
+
   # Two cells, each on a NATIVE runner for its arch. Cross-compiling the arm64
   # native deps from an x64 host is impractical (pnpm installs only the
   # host-matching `@parcel/watcher-*` prebuild, and the generated Linux config
@@ -572,6 +582,16 @@ jobs:
           path: packages/desktop/dist-desktop/*aarch64.rpm
           retention-days: 14
           if-no-files-found: error
+
+      - name: Upload per-test results
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ok-per-test-results-desktop-build-linux-${{ matrix.arch }}-attempt${{ github.run_attempt }}
+          path: packages/desktop/test-results/vitest-*.json
+          retention-days: 14
+          if-no-files-found: warn
 
       # No Linux update-metadata upload: these are unsigned QA artifacts,
       # never published, so their `latest-linux*.yml` files have no consumer.

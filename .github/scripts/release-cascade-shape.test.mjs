@@ -130,6 +130,16 @@ function stepLevelIfConditions(source) {
   return out;
 }
 
+const STEP_OR_JOB = /(?=^ {6}- |^ {2}\S)/m;
+const isContainedUpload = (block) =>
+  /^ {8}uses: actions\/upload-artifact@/m.test(block) &&
+  /^ {8}continue-on-error: true$/m.test(block);
+const shippingSteps = (source) =>
+  source
+    .split(STEP_OR_JOB)
+    .filter((block) => !isContainedUpload(block))
+    .join('');
+
 describe('the stable gate is upstream of everything that ships', () => {
   const names = stepNames(desktopRelease);
 
@@ -160,11 +170,52 @@ describe('the stable gate is upstream of everything that ships', () => {
     expect(smoke).toBeLessThan(indexOfStep(names, 'Announce stable release to Discord'));
   });
 
+  test('a contained artifact upload after the smoke gate ships nothing, and an uncontained one is a shipping step', () => {
+    const gate = desktopRelease.indexOf('- name: Smoke the packaged DMG');
+    expect(gate, 'the packaged DMG smoke step').toBeGreaterThan(-1);
+    const afterGate = desktopRelease.slice(gate);
+    const consumers = afterGate.indexOf('  release-consumers:');
+    expect(consumers, 'the release-consumers job after the smoke gate').toBeGreaterThan(-1);
+    const span = afterGate.slice(0, consumers);
+    const contained = span.split(STEP_OR_JOB).filter(isContainedUpload);
+    expect(contained.length).toBeGreaterThan(0);
+    const [first] = contained;
+    const condition = stepLevelIfConditions(first)[0];
+    expect(stepLevelIfConditions(shippingSteps(span))).not.toContain(condition);
+    const uncontained = span.replace(first, () =>
+      first.replace(/^ {8}continue-on-error: true\n/m, ''),
+    );
+    expect(uncontained).not.toBe(span);
+    expect(stepLevelIfConditions(shippingSteps(uncontained))).toContain(condition);
+  });
+
+  test('a step after the smoke gate that keeps continue-on-error but downloads an artifact is a shipping step', () => {
+    const gate = desktopRelease.indexOf('- name: Smoke the packaged DMG');
+    expect(gate, 'the packaged DMG smoke step').toBeGreaterThan(-1);
+    const afterGate = desktopRelease.slice(gate);
+    const consumers = afterGate.indexOf('  release-consumers:');
+    expect(consumers, 'the release-consumers job after the smoke gate').toBeGreaterThan(-1);
+    const span = afterGate.slice(0, consumers);
+    const [first] = span.split(STEP_OR_JOB).filter(isContainedUpload);
+    expect(first, 'a contained artifact upload after the smoke gate').toBeDefined();
+    const condition = stepLevelIfConditions(first)[0];
+    expect(condition, 'the contained upload carries a step-level if:').toBeTypeOf('string');
+    expect(stepLevelIfConditions(shippingSteps(span))).not.toContain(condition);
+    const downloaded = first.replace(
+      /^ {8}uses: actions\/upload-artifact@/m,
+      '        uses: actions/download-artifact@',
+    );
+    expect(downloaded).not.toBe(first);
+    expect(downloaded).toMatch(/^ {8}continue-on-error: true$/m);
+    const download = span.replace(first, () => downloaded);
+    expect(stepLevelIfConditions(shippingSteps(download))).toContain(condition);
+  });
+
   test('no shipping STEP opts out of the implicit success() guard', () => {
     const afterGate = desktopRelease.slice(
       desktopRelease.indexOf('- name: Smoke the packaged DMG'),
     );
-    const shipping = afterGate.slice(0, afterGate.indexOf('  release-consumers:'));
+    const shipping = shippingSteps(afterGate.slice(0, afterGate.indexOf('  release-consumers:')));
     const stepIfs = stepLevelIfConditions(shipping);
     expect(stepIfs.length).toBeGreaterThan(0);
     for (const condition of stepIfs) {
@@ -181,7 +232,7 @@ describe('the stable gate is upstream of everything that ships', () => {
     const afterGate = desktopRelease.slice(
       desktopRelease.indexOf('- name: Smoke the packaged DMG'),
     );
-    const shipping = afterGate.slice(0, afterGate.indexOf('  release-consumers:'));
+    const shipping = shippingSteps(afterGate.slice(0, afterGate.indexOf('  release-consumers:')));
     const conditions = stepLevelIfConditions(shipping);
     const shippingConditions = conditions.filter(
       (c) => c !== "steps.channel.outputs.channel == 'latest'",

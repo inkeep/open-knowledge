@@ -1,15 +1,22 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { basename, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { describe, expect, test } from 'vitest';
-import { gitCleanEnv } from '../scripts/git-clean-env.mjs';
+import { existsSync, writeFileSync } from 'node:fs';
+import { basename, join, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterAll, describe, expect, test } from 'vitest';
+import { createTempDirFactory } from './temp-dir.test-helper';
 import { okVitestBase } from './vitest.base';
+import {
+  isTestConfig,
+  type ProjectReading,
+  readConfigProjects,
+  trackedConfigs,
+  trackedFiles,
+} from './vitest-configs.test-helper';
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
-const CONFIG_FILENAME = /(?:^|\.)vite(st)?[\w.-]*\.config\.m?[jt]s$/;
-const TEST_CONFIG_FILENAME = /(?:^|\.)vitest[\w.-]*\.config\.m?[jt]s$/;
+const BASE_MODULE = fileURLToPath(new URL('./vitest.base.ts', import.meta.url))
+  .split(sep)
+  .join('/');
 
 const KNOWN_TEST_PROJECTS = [
   'docs/vitest.config.ts',
@@ -56,58 +63,67 @@ const BROWSER_PROJECT_SETUP_FILES: Readonly<Record<string, readonly string[]>> =
 const isBrowserProject = (relPath: string): boolean =>
   Object.hasOwn(BROWSER_PROJECT_SETUP_FILES, relPath);
 
-const isTestConfig = (relPath: string): boolean => TEST_CONFIG_FILENAME.test(basename(relPath));
-
-function trackedFiles(pathspecs: readonly string[]): string[] {
-  return execFileSync('git', ['ls-files', '-z', '--', ...pathspecs], {
-    cwd: REPO_ROOT,
-    env: gitCleanEnv(),
-    encoding: 'utf8',
-  })
-    .split('\0')
-    .filter((relPath) => relPath !== '');
-}
-
-function findConfigs(): string[] {
-  return trackedFiles(['*.config.ts', '*.config.mts', '*.config.js', '*.config.mjs'])
-    .filter((relPath) => CONFIG_FILENAME.test(basename(relPath)))
-    .sort();
-}
-
-const tracksFilesThePublicTreeOmits = trackedFiles(['*.private.*']).length > 0;
+const tracksFilesThePublicTreeOmits = trackedFiles(REPO_ROOT, ['*.private.*']).length > 0;
 
 const EXPECTED_TEST_PROJECTS = tracksFilesThePublicTreeOmits
   ? [...KNOWN_TEST_PROJECTS, ...TEST_PROJECTS_OUTSIDE_THE_PUBLIC_TREE]
   : KNOWN_TEST_PROJECTS;
-
-type TestOptions = { name?: unknown; setupFiles?: unknown; projects?: unknown };
 
 function setupFileList(setupFiles: unknown): string[] {
   if (setupFiles === undefined) return [];
   return (Array.isArray(setupFiles) ? setupFiles : [setupFiles]).map(String);
 }
 
-async function resolveSetupFiles(
-  relPath: string,
-): Promise<Array<{ project: string; setupFiles: string[] }>> {
-  const loaded: unknown = await import(pathToFileURL(join(REPO_ROOT, relPath)).href);
-  const exported = (loaded as { default?: unknown }).default ?? loaded;
-  const config =
-    typeof exported === 'function' ? await exported({ command: 'serve', mode: 'test' }) : exported;
-  const test = (config as { test?: TestOptions }).test;
-  if (!Array.isArray(test?.projects)) {
-    return [{ project: relPath, setupFiles: setupFileList(test?.setupFiles) }];
-  }
-  return test.projects.map((project: unknown, index: number) => {
-    const inline = (project as { test?: TestOptions } | null)?.test;
-    return {
-      project: `${relPath} project ${String(inline?.name ?? index)}`,
-      setupFiles: setupFileList(inline?.setupFiles),
-    };
-  });
+const readSetupFiles = (root: string, relPath: string): Promise<Array<ProjectReading<string>>> =>
+  readConfigProjects(root, relPath, (options) => setupFileList(options.test?.setupFiles));
+
+const unresolvedProblem = (project: string, reference: string): string =>
+  `${project} is resolved from ${reference}, which this check does not follow; declare the project inline.`;
+
+function sharedSetupProblems(reading: ProjectReading<string>): string[] {
+  if (reading.kind === 'unresolved') return [unresolvedProblem(reading.project, reading.reference)];
+  const missing = okVitestBase.test.setupFiles.filter((entry) => !reading.values.includes(entry));
+  if (missing.length === 0) return [];
+  return [
+    `${reading.project} omits [${missing.join(', ')}], which the shared base installs; it resolves ` +
+      `[${reading.values.join(', ')}]. Build it from okVitestBase.test.setupFiles rather than listing entries by hand.`,
+  ];
 }
 
-const configs = findConfigs();
+function browserSetupProblems(
+  reading: ProjectReading<string>,
+  required: readonly string[],
+): string[] {
+  if (reading.kind === 'unresolved') return [unresolvedProblem(reading.project, reading.reference)];
+  const names = reading.values.map((entry) => basename(entry));
+  const absent = required.filter((name) => !names.includes(name));
+  const nodeOnly = reading.values.filter((entry) => okVitestBase.test.setupFiles.includes(entry));
+  return [
+    ...(absent.length === 0
+      ? []
+      : [
+          `${reading.project} resolves [${reading.values.join(', ')}] without its browser setup [${absent.join(', ')}].`,
+        ]),
+    ...(nodeOnly.length === 0
+      ? []
+      : [
+          `${reading.project} loads the Node-only shared setup file(s) [${nodeOnly.join(', ')}] into the browser.`,
+        ]),
+  ];
+}
+
+const makeTempDir = createTempDirFactory(afterAll);
+
+function plantConfig(name: string, body: readonly string[]): string {
+  const root = makeTempDir('ok-setup-files-contract-');
+  writeFileSync(
+    join(root, name),
+    [`import { okVitestBase } from ${JSON.stringify(BASE_MODULE)};`, ...body, ''].join('\n'),
+  );
+  return root;
+}
+
+const configs = trackedConfigs(REPO_ROOT);
 
 describe('vitest setupFiles contract', () => {
   test('every tracked config is present in the working tree', () => {
@@ -153,32 +169,110 @@ describe('vitest setupFiles contract', () => {
   test.each(configs.filter((relPath) => isTestConfig(relPath) && !isBrowserProject(relPath)))(
     '%s resolves setupFiles containing every entry the shared base installs',
     async (relPath) => {
-      for (const { project, setupFiles } of await resolveSetupFiles(relPath)) {
-        const missing = okVitestBase.test.setupFiles.filter((entry) => !setupFiles.includes(entry));
-        expect(
-          missing,
-          `${project} omits ${missing.length} shared setup file(s); it resolves ` +
-            `[${setupFiles.join(', ')}]. Build it from okVitestBase.test.setupFiles ` +
-            'rather than listing entries by hand.',
-        ).toEqual([]);
-      }
+      const readings = await readSetupFiles(REPO_ROOT, relPath);
+      expect(readings.length, `${relPath} resolved no project`).toBeGreaterThan(0);
+      expect(readings.flatMap(sharedSetupProblems)).toEqual([]);
     },
   );
 
   test.each(Object.entries(BROWSER_PROJECT_SETUP_FILES))(
     '%s resolves its browser setup files and none of the Node-only setup files the shared base installs',
     async (relPath, required) => {
-      for (const { project, setupFiles } of await resolveSetupFiles(relPath)) {
-        const names = setupFiles.map((entry) => basename(entry));
-        expect(
-          required.filter((name) => !names.includes(name)),
-          `${project} resolves [${setupFiles.join(', ')}] without its browser setup.`,
-        ).toEqual([]);
-        expect(
-          setupFiles.filter((entry) => okVitestBase.test.setupFiles.includes(entry)),
-          `${project} loads a Node-only shared setup file into the browser.`,
-        ).toEqual([]);
-      }
+      const readings = await readSetupFiles(REPO_ROOT, relPath);
+      expect(readings.length, `${relPath} resolved no project`).toBeGreaterThan(0);
+      expect(readings.flatMap((reading) => browserSetupProblems(reading, required))).toEqual([]);
     },
   );
+});
+
+describe('a projects config is judged by the setup files Vitest gives each project', () => {
+  test('a project inherits the setup files of the config that declares it, before its own, and one that sets extends: false does not', async () => {
+    const config = 'vitest.projects.config.mjs';
+    const root = plantConfig(config, [
+      'export default {',
+      '  test: {',
+      '    setupFiles: okVitestBase.test.setupFiles,',
+      '    projects: [',
+      "      { test: { name: 'inherits', setupFiles: ['./project-setup.ts'] } },",
+      "      { extends: false, test: { name: 'extends-false', setupFiles: ['./project-setup.ts'] } },",
+      '    ],',
+      '  },',
+      '};',
+    ]);
+    const readings = await readSetupFiles(root, config);
+    expect(readings).toEqual([
+      {
+        kind: 'resolved',
+        project: `${config} project inherits`,
+        values: [...okVitestBase.test.setupFiles, './project-setup.ts'],
+      },
+      {
+        kind: 'resolved',
+        project: `${config} project extends-false`,
+        values: ['./project-setup.ts'],
+      },
+    ]);
+    expect(readings.map(sharedSetupProblems)).toEqual([
+      [],
+      [
+        expect.stringContaining(
+          `${config} project extends-false omits [${okVitestBase.test.setupFiles.join(', ')}]`,
+        ),
+      ],
+    ]);
+  });
+
+  test('a project named by a path, or one that extends another config file, is reported as unresolved rather than judged', async () => {
+    const config = 'vitest.by-reference.config.mjs';
+    const root = plantConfig(config, [
+      'export default {',
+      '  test: {',
+      '    setupFiles: okVitestBase.test.setupFiles,',
+      '    projects: [',
+      "      './vitest.other.config.mjs',",
+      "      { extends: './vitest.other.config.mjs', test: { name: 'extends-file' } },",
+      '    ],',
+      '  },',
+      '};',
+    ]);
+    const readings = await readSetupFiles(root, config);
+    const unresolved = [
+      `${config} project 0 is resolved from ./vitest.other.config.mjs`,
+      `${config} project extends-file is resolved from ./vitest.other.config.mjs`,
+    ].map((problem) => [expect.stringContaining(problem)]);
+    expect(readings.map(sharedSetupProblems)).toEqual(unresolved);
+    expect(readings.map((reading) => browserSetupProblems(reading, ['browser-setup.ts']))).toEqual(
+      unresolved,
+    );
+  });
+
+  test('a browser project is reported when it lacks its browser setup or resolves a Node-only shared setup file', async () => {
+    const config = 'vitest.browser.config.mjs';
+    const root = plantConfig(config, [
+      'export default {',
+      '  test: {',
+      '    setupFiles: okVitestBase.test.setupFiles,',
+      '    projects: [',
+      "      { extends: false, test: { name: 'browser-only', setupFiles: ['./browser-setup.ts'] } },",
+      "      { test: { name: 'inherits-node-only', setupFiles: ['./browser-setup.ts'] } },",
+      "      { extends: false, test: { name: 'no-browser-setup', setupFiles: ['./other-setup.ts'] } },",
+      '    ],',
+      '  },',
+      '};',
+    ]);
+    const readings = await readSetupFiles(root, config);
+    expect(readings.map((reading) => browserSetupProblems(reading, ['browser-setup.ts']))).toEqual([
+      [],
+      [
+        expect.stringContaining(
+          `${config} project inherits-node-only loads the Node-only shared setup file(s) [${okVitestBase.test.setupFiles.join(', ')}]`,
+        ),
+      ],
+      [
+        expect.stringContaining(
+          `${config} project no-browser-setup resolves [./other-setup.ts] without its browser setup [browser-setup.ts]`,
+        ),
+      ],
+    ]);
+  });
 });

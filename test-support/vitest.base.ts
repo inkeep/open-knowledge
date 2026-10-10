@@ -2,6 +2,7 @@ import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { configDefaults, type Plugin, type ViteUserConfig } from 'vitest/config';
 import { UNCACHED_TEST_GLOBS } from './uncached-tier';
+import { vitestRunEvidence } from './vitest-run-evidence';
 
 const cpuCount = availableParallelism();
 const boundedMaxForks =
@@ -25,7 +26,7 @@ const bunGlobalShimPath = fileURLToPath(new URL('./bun-global-shim.ts', import.m
 const noNetConnectPath = fileURLToPath(new URL('./no-net-connect.ts', import.meta.url));
 
 export const okVitestBase = {
-  plugins: [importMetaDirPlugin],
+  plugins: [importMetaDirPlugin, vitestRunEvidence()],
   resolve: {
     conditions: ['development'],
   },

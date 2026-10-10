@@ -27,7 +27,7 @@
   "scripts": {
     "build": "node scripts/build.mjs --release",
     "build:debug": "node scripts/build.mjs",
-    "test": "cargo test && node --test scripts/build.test.mjs && node --test scripts/toolchain-guard.test.mjs"
+    "test": "cargo test && node scripts/make-test-results-dir.mjs && node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=test-results/node-test-build.xml scripts/build.test.mjs && node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=test-results/node-test-toolchain-guard.xml scripts/toolchain-guard.test.mjs"
   },
   "devDependencies": {
     "@napi-rs/cli": "^3.7.2"

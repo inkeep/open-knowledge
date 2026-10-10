@@ -1043,6 +1043,16 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+      - name: Upload per-test results
+        if: ${{ !cancelled() && steps.dmg_smoke.outcome != 'skipped' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ok-per-test-results-desktop-release-macos-${{ matrix.variant }}-attempt${{ github.run_attempt }}
+          path: packages/desktop/test-results/desktop-smoke-packaged-results.json
+          retention-days: 14
+          if-no-files-found: warn
+
   build-windows:
     needs: prepare
     if: contains(needs.prepare.outputs.platforms, 'windows')
@@ -1364,6 +1374,16 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+      - name: Upload per-test results
+        if: ${{ !cancelled() && steps.winterm.outputs.ships == 'true' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ok-per-test-results-desktop-release-windows-${{ matrix.variant }}-attempt${{ github.run_attempt }}
+          path: packages/desktop/test-results/vitest-*.json
+          retention-days: 14
+          if-no-files-found: warn
+
   # Two cells, each on a NATIVE runner for its arch. Cross-compiling the arm64
   # native deps from an x64 host is impractical (pnpm installs only the
   # host-matching `@parcel/watcher-*` prebuild, and the generated Linux config
@@ -1599,6 +1619,16 @@ jobs:
             packages/desktop/dist-desktop/${{ env.UPDATER_CHANNEL }}-linux*.yml
           retention-days: 14
           if-no-files-found: error
+
+      - name: Upload per-test results
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ok-per-test-results-desktop-release-linux-${{ matrix.arch }}-${{ matrix.variant }}-attempt${{ github.run_attempt }}
+          path: packages/desktop/test-results/vitest-*.json
+          retention-days: 14
+          if-no-files-found: warn
 
   # The single publication point: nothing above this job touches the GitHub
   # Release. Downloads every platform's staged assets, asserts the complete
