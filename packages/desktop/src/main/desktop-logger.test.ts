@@ -1,10 +1,55 @@
+import { spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import pino from 'pino';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { flushDesktopLogger, getLogger, getRootDesktopLogger } from './desktop-logger.ts';
+
+describe('a process that exits in the same tick it first logs', () => {
+  test('exits cleanly and the line reaches the log file', () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-desktop-logs-exit-'));
+    const loggerUrl = pathToFileURL(join(import.meta.dirname, 'desktop-logger.ts')).href;
+    const { OK_CHANNEL: _channel, ...inheritedEnv } = process.env;
+    try {
+      const child = spawnSync(
+        process.execPath,
+        [
+          '--conditions=development',
+          '--input-type=module',
+          '-e',
+          `const { getLogger } = await import(${JSON.stringify(loggerUrl)});
+           getLogger('exit-probe').info({}, 'logged before exit');
+           process.exit(0);`,
+        ],
+        {
+          encoding: 'utf-8',
+          timeout: 20_000,
+          env: {
+            ...inheritedEnv,
+            HOME: home,
+            USERPROFILE: home,
+            NODE_ENV: 'production',
+            OK_LOG_LEVEL: 'info',
+          },
+        },
+      );
+      expect(child.stderr).not.toContain('sonic boom is not ready yet');
+      expect(child.status, `signal=${child.signal}\n${child.stderr}`).toBe(0);
+      const logFiles = readdirSync(home, { recursive: true, encoding: 'utf-8' }).filter((f) =>
+        /desktop\.\d{4}-\d{2}-\d{2}\.log$/.test(f),
+      );
+      expect(logFiles).toHaveLength(1);
+      expect(readFileSync(join(home, logFiles[0] as string), 'utf-8')).toContain(
+        'logged before exit',
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('flushDesktopLogger', () => {
   test('does not throw when called before any logging has initialized the destination', () => {

@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { mkdirSync, openSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import pino from 'pino';
@@ -93,7 +93,7 @@ function getRootLogger(): pino.Logger {
   setTimeout(() => pruneLogsDir(desktopLogDirectory()), 5000);
 
   const filePath = join(desktopLogDirectory(), logFileName);
-  const dest = pino.destination({ dest: filePath, append: true, sync: false });
+  const dest = pino.destination({ dest: openSync(filePath, 'a'), sync: false });
   rootDest = dest as unknown as { flushSync: () => void };
 
   rootLogger = pino(
