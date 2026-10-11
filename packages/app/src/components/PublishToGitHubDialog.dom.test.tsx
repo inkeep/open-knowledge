@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { act } from 'react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { PublishErrorPresentation } from '@/lib/share/publish-wizard';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
@@ -180,6 +180,14 @@ async function waitForAvailableNameCheck() {
 }
 
 describe('PublishToGitHubDialog runtime behavior', () => {
+  beforeEach(() => {
+    windowOpenCalls = [];
+    window.open = ((url: string) => {
+      windowOpenCalls.push(url);
+      return null;
+    }) as typeof window.open;
+  });
+
   afterEach(() => {
     cleanup();
     ownersQueue = [];
@@ -189,7 +197,6 @@ describe('PublishToGitHubDialog runtime behavior', () => {
     activeDocName = 'docs/intro';
     submitCalls = [];
     openExternalCalls = [];
-    windowOpenCalls = [];
     shareConstructUrlResponse = {
       ok: true,
       shareUrl: 'https://openknowledge.ai/d/Published123',
@@ -209,10 +216,6 @@ describe('PublishToGitHubDialog runtime behavior', () => {
     toastMock.error.mockClear();
     toastMock.success.mockClear();
     setDesktopBridge(undefined);
-    window.open = ((url: string) => {
-      windowOpenCalls.push(url);
-      return null;
-    }) as typeof window.open;
   });
 
   test('renders the dialog frame, fields, default private visibility, and live name-check preview', async () => {
