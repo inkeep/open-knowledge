@@ -72,6 +72,28 @@ const OS_SHUTDOWN_MARKER_TTL_MS = 120_000;
 
 export const SENTINEL_HEARTBEAT_INTERVAL_MS = 60_000;
 
+export const REINSTALL_KILL_WINDOW_MS = 5 * 60_000;
+
+export type InstalledAppChange =
+  | { kind: 'read'; changedAtMs: number }
+  | { kind: 'unreadable'; error: string };
+
+export function readInstalledAppChangeSync(
+  exePath: string,
+  stat: (path: string) => { birthtimeMs: number; ctimeMs: number } = statSync,
+): InstalledAppChange {
+  try {
+    const { birthtimeMs, ctimeMs } = stat(exePath);
+    const changedAtMs = Math.max(birthtimeMs, ctimeMs);
+    return Number.isFinite(changedAtMs) && changedAtMs > 0
+      ? { kind: 'read', changedAtMs }
+      : { kind: 'unreadable', error: 'invalid-time' };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | null)?.code;
+    return { kind: 'unreadable', error: typeof code === 'string' ? code : 'unknown' };
+  }
+}
+
 interface CrashLogger {
   info(payload: Record<string, unknown>, msg: string): void;
   warn(payload: Record<string, unknown>, msg: string): void;
@@ -174,6 +196,7 @@ export interface CrashDetectionDeps {
   currentBootStartedAtMs?(): number | null;
   installInFlight?(span: { deathFromMs: number; deathToMs: number }): InstallInFlight | null;
   processTermination?(query: ProcessTerminationQuery): ProcessTerminationLookup;
+  installedAppChange?(): InstalledAppChange;
   mainThreadWatchdog: Pick<MainThreadWatchdog, 'readPrevious' | 'readPreviousStall' | 'start'>;
   logger: CrashLogger;
 }
@@ -930,11 +953,14 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
             : sentinelUnflushed
               ? 'unflushed-sentinel'
               : null;
-      const processTermination =
+      const unexplainedDirtyEnd =
         sentinelPresent &&
         announcedMachineCause === null &&
         installInFlight === null &&
         newDumps.length === 0 &&
+        lastAliveMs !== null;
+      const processTermination =
+        unexplainedDirtyEnd &&
         prevPid !== null &&
         lastAliveMs !== null &&
         deps.processTermination !== undefined
@@ -944,10 +970,35 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         processTermination?.outcome === 'killed' &&
         processTermination.victimChosenByPriority &&
         processTermination.largestProcessOwned === false;
+      const installedAppChange =
+        unexplainedDirtyEnd && deps.installedAppChange !== undefined
+          ? deps.installedAppChange()
+          : null;
+      const installedAppChangedAtMs =
+        installedAppChange?.kind === 'read' ? installedAppChange.changedAtMs : null;
+      const reinstalledOverSession =
+        liveness.kind !== 'blocked' &&
+        installedAppChangedAtMs !== null &&
+        lastAliveMs !== null &&
+        installedAppChangedAtMs > lastAliveMs &&
+        installedAppChangedAtMs <= detectedAtMs &&
+        installedAppChangedAtMs - lastAliveMs <= REINSTALL_KILL_WINDOW_MS;
       const machineCause =
-        announcedMachineCause ?? (killedByPriorityUnderOthersMemory ? 'os-memory-pressure' : null);
+        announcedMachineCause ??
+        (killedByPriorityUnderOthersMemory
+          ? 'os-memory-pressure'
+          : reinstalledOverSession
+            ? 'app-reinstalled'
+            : null);
       const machineLevelDeath = sentinelPresent && machineCause !== null;
-      const terminationFields = { previousPid: prevPid, processTermination };
+      const terminationFields = {
+        previousPid: prevPid,
+        processTermination,
+        installedAppChangedAt:
+          installedAppChangedAtMs === null ? null : new Date(installedAppChangedAtMs).toISOString(),
+        installedAppChangeError:
+          installedAppChange?.kind === 'unreadable' ? installedAppChange.error : null,
+      };
 
       const updateInstallDeath = sentinelPresent && installInFlight !== null;
       const suppressibleDeath = machineLevelDeath || updateInstallDeath;
@@ -1016,11 +1067,13 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
                 ? 'previous session died asleep without resuming — suppressing the report prompt'
                 : reason === 'os-memory-pressure'
                   ? 'previous session was ended by the OS to relieve memory pressure another process caused — suppressing the report prompt'
-                  : reason === 'unflushed-sentinel'
-                    ? 'previous session left a sentinel the OS never flushed, so the machine stopped under it — suppressing the report prompt'
-                    : reason === 'stale-crash'
-                      ? 'previous session died too long ago to report usefully — suppressing the report prompt'
-                      : 'previous session was killed by an update install — suppressing the report prompt',
+                  : reason === 'app-reinstalled'
+                    ? 'previous session was closed by an installer replacing the app — suppressing the report prompt'
+                    : reason === 'unflushed-sentinel'
+                      ? 'previous session left a sentinel the OS never flushed, so the machine stopped under it — suppressing the report prompt'
+                      : reason === 'stale-crash'
+                        ? 'previous session died too long ago to report usefully — suppressing the report prompt'
+                        : 'previous session was killed by an update install — suppressing the report prompt',
           );
         }
       } else if (somethingToReport) {

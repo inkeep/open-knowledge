@@ -235,6 +235,7 @@ import {
   type CrashDetection,
   createCrashDetection,
   isProcessCrashReason,
+  readInstalledAppChangeSync,
   SENTINEL_HEARTBEAT_INTERVAL_MS,
   startLocalCrashReporter,
 } from './crash-detection.ts';
@@ -6186,6 +6187,9 @@ function bootPrimaryInstance(): void {
       ),
     ...(process.platform === 'darwin'
       ? { processTermination: (query) => findJetsamKillSync(query) }
+      : {}),
+    ...(process.platform === 'win32'
+      ? { installedAppChange: () => readInstalledAppChangeSync(app.getPath('exe')) }
       : {}),
     mainThreadWatchdog: createMainThreadWatchdog({
       path: join(app.getPath('userData'), 'bug-report-main-thread-liveness.json'),

@@ -21,10 +21,13 @@ import {
   GPU_CRASH_WINDOW_MS,
   HANDOFF_TEARDOWN_WINDOW_MS,
   INVITE_EXPIRE_AFTER_MS,
+  type InstalledAppChange,
   type InstallInFlight,
   MAX_DECLINED_DEATHS,
   type MainExitRecord,
   parseMainExitRecord,
+  REINSTALL_KILL_WINDOW_MS,
+  readInstalledAppChangeSync,
   SENTINEL_HEARTBEAT_INTERVAL_MS,
   STALE_CRASH_AFTER_MS,
   startLocalCrashReporter,
@@ -70,6 +73,9 @@ interface Rig {
   setInstallInFlight(inFlight: InstallInFlight | null): void;
   setProcessTermination(lookup: ProcessTerminationLookup): void;
   processTerminationQueries: ProcessTerminationQuery[];
+  setInstalledAppChange(change: InstalledAppChange): void;
+  setInstalledAppChangedAtMs(ms: number): void;
+  installedAppQueries(): number;
   setAppVersion(version: string): void;
   setWatchdogRead(read: WatchdogRead): void;
   setStallRead(read: StallRead): void;
@@ -99,6 +105,8 @@ function makeRig(): Rig {
     skippedNewerOverCap: 0,
   };
   const processTerminationQueries: ProcessTerminationQuery[] = [];
+  let installedAppChange: InstalledAppChange = { kind: 'unreadable', error: 'ENOENT' };
+  let installedAppQueries = 0;
   let watchdogRead: WatchdogRead = { kind: 'absent' };
   let stallRead: StallRead = { kind: 'absent' };
   const watchdogStarts: string[] = [];
@@ -160,6 +168,13 @@ function makeRig(): Rig {
       processTermination = lookup;
     },
     processTerminationQueries,
+    setInstalledAppChange(change: InstalledAppChange) {
+      installedAppChange = change;
+    },
+    setInstalledAppChangedAtMs(ms: number) {
+      installedAppChange = { kind: 'read', changedAtMs: ms };
+    },
+    installedAppQueries: () => installedAppQueries,
     setAppVersion(version: string) {
       rig.deps.appVersion = version;
     },
@@ -205,6 +220,10 @@ function makeRig(): Rig {
       processTermination: (query) => {
         processTerminationQueries.push(query);
         return processTermination;
+      },
+      installedAppChange: () => {
+        installedAppQueries += 1;
+        return installedAppChange;
       },
       mainThreadWatchdog: {
         readPrevious: () => watchdogRead,
@@ -4342,5 +4361,221 @@ describe('a session the OS ended to relieve memory pressure', () => {
     bootInvite(createCrashDetection(older.deps).detectBootCrash());
     expect(older.processTerminationQueries).toEqual([]);
     expect(bootLine(older)).toMatchObject({ previousPid: null, processTermination: null });
+  });
+});
+
+describe('a session an installer closed to replace the app', () => {
+  function bootLine(rig: Rig): Record<string, unknown> | undefined {
+    return rig.infos.find((line) => line.event === 'crash-detection.boot');
+  }
+
+  function machineDeathLine(rig: Rig): Record<string, unknown> | undefined {
+    return rig.infos.find((line) => line.event === 'crash-detection.machine-level-death');
+  }
+
+  function windowsRig(): Rig {
+    const rig = makeRig();
+    rig.deps.platform = 'win32';
+    rig.setBootSessionUuid(null);
+    return rig;
+  }
+
+  test('an app replaced on disk minutes after the session was last alive never prompts', () => {
+    const rig = windowsRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    const lastAliveAt = readSentinel(rig).lastAliveAt ?? '';
+
+    rig.advance(90_000);
+    const replacedAtMs = rig.nowMs();
+    rig.setInstalledAppChangedAtMs(replacedAtMs);
+    rig.advance(30_000);
+    const sessionB = createCrashDetection(rig.deps);
+    expect(sessionB.detectBootCrash()).toBeNull();
+    sessionB.notifyRendererReady();
+    expect(rig.emitted).toHaveLength(0);
+
+    expect(machineDeathLine(rig)).toMatchObject({
+      reason: 'app-reinstalled',
+      class: 'external',
+      machineCause: 'app-reinstalled',
+      lastAliveAt,
+      attemptedInstall: null,
+      previousPid: 20480,
+      installedAppChangedAt: new Date(replacedAtMs).toISOString(),
+    });
+  });
+
+  test.each([
+    ['before the session was last alive', -30_000],
+    ['longer after the session was last alive than an install takes', REINSTALL_KILL_WINDOW_MS + 1],
+  ])('an app replaced %s still prompts, and the invitation records when', (_case, offsetMs) => {
+    const rig = windowsRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    const lastAliveMs = Date.parse(readSentinel(rig).lastAliveAt ?? '');
+
+    rig.advance(REINSTALL_KILL_WINDOW_MS + 60_000);
+    rig.setInstalledAppChangedAtMs(lastAliveMs + offsetMs);
+    expect(bootInvite(createCrashDetection(rig.deps).detectBootCrash()).context.dirtyShutdown).toBe(
+      true,
+    );
+    expect(bootLine(rig)).toMatchObject({
+      installedAppChangedAt: new Date(lastAliveMs + offsetMs).toISOString(),
+    });
+    expect(machineDeathLine(rig)).toBeUndefined();
+  });
+
+  test('a session whose main thread had hung still prompts when an installer then replaced the app', () => {
+    const rig = windowsRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    const bootId = readSentinel(rig).bootId ?? '';
+
+    rig.advance(30_000);
+    rig.setWatchdogRead({
+      kind: 'record',
+      record: {
+        schemaVersion: 1,
+        bootId,
+        writtenAt: new Date(rig.nowMs()).toISOString(),
+        tickMs: 5_000,
+        blockedForMs: 25_000,
+        mainTicksObserved: 4,
+      },
+    });
+    rig.advance(60_000);
+    const replacedAtMs = rig.nowMs();
+    rig.setInstalledAppChangedAtMs(replacedAtMs);
+    rig.advance(30_000);
+
+    expect(bootInvite(createCrashDetection(rig.deps).detectBootCrash()).context.dirtyShutdown).toBe(
+      true,
+    );
+    expect(bootLine(rig)).toMatchObject({
+      livenessVerdict: 'blocked',
+      installedAppChangedAt: new Date(replacedAtMs).toISOString(),
+    });
+    expect(machineDeathLine(rig)).toBeUndefined();
+  });
+
+  test('an install time the disk cannot give still prompts, and says why it is missing', () => {
+    const rig = windowsRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    rig.advance(60_000);
+    rig.setInstalledAppChange({ kind: 'unreadable', error: 'EPERM' });
+    bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+    expect(rig.installedAppQueries()).toBe(1);
+    expect(bootLine(rig)).toMatchObject({
+      installedAppChangedAt: null,
+      installedAppChangeError: 'EPERM',
+    });
+  });
+
+  test('a reinstall over a sentinel from a build that recorded no pid never prompts', () => {
+    const rig = windowsRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    const { pid: _pid, ...withoutPid } = JSON.parse(readFileSync(rig.deps.sentinelPath, 'utf8'));
+    writeFileSync(rig.deps.sentinelPath, `${JSON.stringify(withoutPid)}\n`);
+
+    rig.advance(90_000);
+    const replacedAtMs = rig.nowMs();
+    rig.setInstalledAppChangedAtMs(replacedAtMs);
+    rig.advance(30_000);
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+    expect(machineDeathLine(rig)).toMatchObject({
+      reason: 'app-reinstalled',
+      class: 'external',
+      previousPid: null,
+      installedAppChangedAt: new Date(replacedAtMs).toISOString(),
+      installedAppChangeError: null,
+    });
+  });
+
+  test('the install time is not read when a reboot, a fresh crash dump or an update install decides first', () => {
+    const rebooted = windowsRig();
+    createCrashDetection(rebooted.deps).detectBootCrash();
+    rebooted.advance(60_000);
+    rebooted.setBootStartedAtMs(rebooted.nowMs());
+    rebooted.setInstalledAppChangedAtMs(rebooted.nowMs());
+    expect(createCrashDetection(rebooted.deps).detectBootCrash()).toBeNull();
+    expect(machineDeathLine(rebooted)?.reason).toBe('system-reboot');
+    expect(rebooted.installedAppQueries()).toBe(0);
+    expect(machineDeathLine(rebooted)).toMatchObject({
+      installedAppChangedAt: null,
+      installedAppChangeError: null,
+    });
+
+    const dumped = windowsRig();
+    createCrashDetection(dumped.deps).detectBootCrash();
+    seedMinidump(dumped, 'pending/native-crash.dmp', dumped.tick());
+    dumped.setInstalledAppChangedAtMs(dumped.nowMs());
+    bootInvite(createCrashDetection(dumped.deps).detectBootCrash());
+    expect(dumped.installedAppQueries()).toBe(0);
+
+    const updated = windowsRig();
+    createCrashDetection(updated.deps).detectBootCrash();
+    updated.setInstallInFlight({
+      attemptedVersion: DETECTING_VERSION,
+      handoffAt: updated.nowMs(),
+      recordedHandoff: true,
+    });
+    updated.setInstalledAppChangedAtMs(updated.nowMs());
+    expect(createCrashDetection(updated.deps).detectBootCrash()).toBeNull();
+    expect(machineDeathLine(updated)?.reason).toBe('update-install');
+    expect(updated.installedAppQueries()).toBe(0);
+  });
+
+  test('a clean quit is never second-guessed by the install time', () => {
+    const rig = windowsRig();
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.markCleanQuit();
+
+    rig.advance(60_000);
+    rig.setInstalledAppChangedAtMs(rig.nowMs());
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+    expect(rig.installedAppQueries()).toBe(0);
+    expect(machineDeathLine(rig)).toBeUndefined();
+  });
+});
+
+describe('when the installed app last changed on disk', () => {
+  test('a file just written reads as changed now', () => {
+    const dir = mkdtempSync(resolve(tmpdir(), 'ok-installed-app-'));
+    tmpDirs.push(dir);
+    const exePath = join(dir, 'OpenKnowledge.exe');
+    const beforeMs = Date.now() - 1_000;
+    writeFileSync(exePath, 'MZ');
+
+    const change = readInstalledAppChangeSync(exePath);
+    if (change.kind !== 'read') throw new Error(`expected a read, got ${change.error}`);
+    expect(change.changedAtMs).toBeGreaterThanOrEqual(beforeMs);
+    expect(change.changedAtMs).toBeLessThanOrEqual(Date.now() + 1_000);
+  });
+
+  test('the later of creation and metadata change wins, so restored file times do not hide a reinstall', () => {
+    expect(
+      readInstalledAppChangeSync('OpenKnowledge.exe', () => ({
+        birthtimeMs: 1_000,
+        ctimeMs: 5_000,
+      })),
+    ).toEqual({ kind: 'read', changedAtMs: 5_000 });
+    expect(
+      readInstalledAppChangeSync('OpenKnowledge.exe', () => ({
+        birthtimeMs: 7_000,
+        ctimeMs: 5_000,
+      })),
+    ).toEqual({ kind: 'read', changedAtMs: 7_000 });
+    expect(
+      readInstalledAppChangeSync('OpenKnowledge.exe', () => ({ birthtimeMs: 0, ctimeMs: 0 })),
+    ).toEqual({ kind: 'unreadable', error: 'invalid-time' });
+  });
+
+  test('a missing executable reads as unreadable with its error code', () => {
+    const dir = mkdtempSync(resolve(tmpdir(), 'ok-installed-app-'));
+    tmpDirs.push(dir);
+    expect(readInstalledAppChangeSync(join(dir, 'missing.exe'))).toEqual({
+      kind: 'unreadable',
+      error: 'ENOENT',
+    });
   });
 });
