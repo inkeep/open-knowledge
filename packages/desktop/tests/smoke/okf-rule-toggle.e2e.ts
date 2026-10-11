@@ -2,8 +2,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { _electron as electron } from '@playwright/test';
 import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
+import { expectCaptureHomeMatchesProcess } from './_helpers/capture-home.test-helper';
+import { launchDesktopInHome } from './_helpers/launch-in-home';
 import { expect, test } from './_helpers/smoke-test';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -38,11 +39,12 @@ test.describe('okf per-rule toggle round-trip', () => {
     mkdirSync(userDataDir, { recursive: true });
     const deepLink = `openknowledge://open?project=${encodeURIComponent(projectDir)}&doc=note`;
 
-    const app = await electron.launch({
+    const app = await launchDesktopInHome(tmpHome, {
       args: [MAIN_ENTRY, deepLink, `--user-data-dir=${userDataDir}`],
       timeout: 30_000,
     });
-    captureStderrFor(app, { home: tmpHome, cleanupDirs: [projectDir, tmpHome] });
+    captureStderrFor(app, { cleanupDirs: [projectDir, tmpHome] });
+    await expectCaptureHomeMatchesProcess(app);
     await app.firstWindow({ timeout: 15_000 });
 
     const settingsPage = await (async () => {

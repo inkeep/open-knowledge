@@ -1,8 +1,10 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { _electron as electron, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expectCaptureHomeMatchesProcess } from './_helpers/capture-home.test-helper';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { launchDesktopInHome } from './_helpers/launch-in-home';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
@@ -43,7 +45,8 @@ async function launchNoticePreview(
   prefix: string,
 ): Promise<{ app: import('@playwright/test').ElectronApplication; home: string }> {
   const home = mkdtempSync(join(tmpdir(), prefix));
-  const app = await electron.launch(
+  const app = await launchDesktopInHome(
+    home,
     desktopLaunchOptions({
       target: TARGET,
       args: [`--user-data-dir=${join(home, 'electron-userdata')}`],
@@ -61,7 +64,8 @@ test.describe('uninstall notice smoke', () => {
 
   test('pressing each notice through carries the answer to main', async ({ captureStderrFor }) => {
     const { app, home } = await launchNoticePreview('ok-uninstall-notice-');
-    captureStderrFor(app, { home, cleanupDirs: [home] });
+    captureStderrFor(app, { cleanupDirs: [home] });
+    await expectCaptureHomeMatchesProcess(app);
 
     await app.firstWindow({ timeout: 20_000 });
 
@@ -88,7 +92,8 @@ test.describe('uninstall notice smoke', () => {
     captureStderrFor,
   }) => {
     const { app, home } = await launchNoticePreview('ok-uninstall-notice-close-');
-    captureStderrFor(app, { home, cleanupDirs: [home] });
+    captureStderrFor(app, { cleanupDirs: [home] });
+    await expectCaptureHomeMatchesProcess(app);
 
     await app.firstWindow({ timeout: 20_000 });
 

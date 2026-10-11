@@ -1,8 +1,10 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { _electron as electron, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expectCaptureHomeMatchesProcess } from './_helpers/capture-home.test-helper';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { launchDesktopInHome } from './_helpers/launch-in-home';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
@@ -41,7 +43,8 @@ test.describe('uninstall project picker smoke', () => {
   }) => {
     const home = mkdtempSync(join(tmpdir(), 'ok-uninstall-picker-'));
 
-    const app = await electron.launch(
+    const app = await launchDesktopInHome(
+      home,
       desktopLaunchOptions({
         target: TARGET,
         args: [`--user-data-dir=${join(home, 'electron-userdata')}`],
@@ -49,7 +52,8 @@ test.describe('uninstall project picker smoke', () => {
         timeout: 30_000,
       }),
     );
-    captureStderrFor(app, { home, cleanupDirs: [home] });
+    captureStderrFor(app, { cleanupDirs: [home] });
+    await expectCaptureHomeMatchesProcess(app);
 
     await app.firstWindow({ timeout: 20_000 });
     const picker = await findWindowByPath(app, '/uninstall.html');
@@ -90,7 +94,8 @@ test.describe('uninstall project picker smoke', () => {
   test('closing the picker window cancels rather than proceeding', async ({ captureStderrFor }) => {
     const home = mkdtempSync(join(tmpdir(), 'ok-uninstall-picker-close-'));
 
-    const app = await electron.launch(
+    const app = await launchDesktopInHome(
+      home,
       desktopLaunchOptions({
         target: TARGET,
         args: [`--user-data-dir=${join(home, 'electron-userdata')}`],
@@ -98,7 +103,8 @@ test.describe('uninstall project picker smoke', () => {
         timeout: 30_000,
       }),
     );
-    captureStderrFor(app, { home, cleanupDirs: [home] });
+    captureStderrFor(app, { cleanupDirs: [home] });
+    await expectCaptureHomeMatchesProcess(app);
 
     await app.firstWindow({ timeout: 20_000 });
     const picker = await findWindowByPath(app, '/uninstall.html');

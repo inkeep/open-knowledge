@@ -2,9 +2,10 @@ import { execSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { _electron as electron } from '@playwright/test';
 import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
+import { expectCaptureHomeMatchesProcess } from './_helpers/capture-home.test-helper';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { launchDesktopInHome } from './_helpers/launch-in-home';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
@@ -105,7 +106,8 @@ test.describe('share-receive multi-worktree smoke (US-014 / J1 silent dispatch)'
     };
     writeFileSync(join(userData, 'Electron', 'state.json'), JSON.stringify(recentsState, null, 2));
 
-    const app = await electron.launch(
+    const app = await launchDesktopInHome(
+      tmpHome,
       desktopLaunchOptions({
         target: TARGET,
         args: [`--user-data-dir=${userData}`],
@@ -113,9 +115,9 @@ test.describe('share-receive multi-worktree smoke (US-014 / J1 silent dispatch)'
       }),
     );
     captureStderrFor(app, {
-      home: tmpHome,
       cleanupDirs: [fixture.root, tmpHome],
     });
+    await expectCaptureHomeMatchesProcess(app);
 
     const firstWindow = await app.firstWindow({ timeout: 15_000 });
     expect(firstWindow).toBeDefined();

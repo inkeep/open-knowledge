@@ -1,8 +1,10 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { _electron as electron, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expectCaptureHomeMatchesProcess } from './_helpers/capture-home.test-helper';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { launchDesktopInHome } from './_helpers/launch-in-home';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
@@ -33,7 +35,8 @@ async function launchSurveyPreview(
   prefix: string,
 ): Promise<{ app: import('@playwright/test').ElectronApplication; home: string }> {
   const home = mkdtempSync(join(tmpdir(), prefix));
-  const app = await electron.launch(
+  const app = await launchDesktopInHome(
+    home,
     desktopLaunchOptions({
       target: TARGET,
       args: [`--user-data-dir=${join(home, 'electron-userdata')}`],
@@ -51,7 +54,8 @@ test.describe('uninstall churn survey smoke', () => {
 
   test('carries a filled-in survey back to main as answers', async ({ captureStderrFor }) => {
     const { app, home } = await launchSurveyPreview('ok-uninstall-survey-');
-    captureStderrFor(app, { home, cleanupDirs: [home] });
+    captureStderrFor(app, { cleanupDirs: [home] });
+    await expectCaptureHomeMatchesProcess(app);
 
     await app.firstWindow({ timeout: 20_000 });
     const survey = await findWindowByPath(app, '/uninstall.html');
@@ -85,7 +89,8 @@ test.describe('uninstall churn survey smoke', () => {
     captureStderrFor,
   }) => {
     const { app, home } = await launchSurveyPreview('ok-uninstall-survey-close-');
-    captureStderrFor(app, { home, cleanupDirs: [home] });
+    captureStderrFor(app, { cleanupDirs: [home] });
+    await expectCaptureHomeMatchesProcess(app);
 
     await app.firstWindow({ timeout: 20_000 });
     const survey = await findWindowByPath(app, '/uninstall.html');
@@ -103,7 +108,8 @@ test.describe('uninstall churn survey smoke', () => {
 
   test('skipping continues with nothing filed', async ({ captureStderrFor }) => {
     const { app, home } = await launchSurveyPreview('ok-uninstall-survey-skip-');
-    captureStderrFor(app, { home, cleanupDirs: [home] });
+    captureStderrFor(app, { cleanupDirs: [home] });
+    await expectCaptureHomeMatchesProcess(app);
 
     await app.firstWindow({ timeout: 20_000 });
     const survey = await findWindowByPath(app, '/uninstall.html');
