@@ -23,7 +23,7 @@
     "i18n:compile": "lingui compile --namespace json && biome format --write src/locales/*/messages.json",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test": "vitest run --config vitest.config.ts src/",
+    "test": "vitest run --config vitest.config.ts src/ tests/free-port.test.ts tests/temp-dir.test.ts tests/perf/fixtures/ tests/perf/lib/ tests/perf/profile.test.ts tests/perf/scenarios/sweep-cache-regime.smoke.test.ts tests/perf/scenarios/sweep-convention-cap-graduation.smoke.test.ts tests/stress/oracle-e-expectations.test.ts",
     "test:dom": "vitest run --config vitest.dom.config.ts",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:node": "vitest run --config vitest.node.config.ts",

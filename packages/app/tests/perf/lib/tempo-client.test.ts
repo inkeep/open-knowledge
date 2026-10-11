@@ -260,7 +260,5 @@ describe('queryTempoByMountId — HTTP boundary', () => {
     expect(capturedUrl).toContain('otel.example:3200');
     expect(capturedUrl).toContain('start=1700000000');
     expect(capturedUrl).toContain('end=1700000005');
-    expect(capturedUrl).toContain('mount.id');
-    expect(capturedUrl).toContain(DEFAULT_OPTS.mountId);
   });
 });

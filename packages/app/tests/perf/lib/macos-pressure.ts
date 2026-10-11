@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process';
+
 const SYSCTL_BIN = '/usr/sbin/sysctl';
 const SYSCTL_KEY = 'kern.memorystatus_vm_pressure_level';
 
@@ -27,6 +29,22 @@ export interface SamplePressureResult<T> {
   readonly maxLevel: PressureLevel;
 }
 
+function runSysctl(): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(SYSCTL_BIN, ['-n', SYSCTL_KEY], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
+      stderr += chunk;
+    });
+    child.once('error', reject);
+    child.once('close', (exitCode) => resolve({ exitCode, stdout, stderr }));
+  });
+}
+
 export async function readPressureLevel(): Promise<PressureLevel> {
   const sample = await readPressureSample();
   return sample.level;
@@ -44,17 +62,14 @@ export async function readPressureSample(): Promise<PressureSample> {
     };
   }
 
-  let exitCode: number;
+  let exitCode: number | null;
   let stdout: string;
   let stderr: string;
   try {
-    const proc = Bun.spawn([SYSCTL_BIN, '-n', SYSCTL_KEY], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    exitCode = await proc.exited;
-    stdout = (await new Response(proc.stdout).text()).trim();
-    stderr = (await new Response(proc.stderr).text()).trim();
+    const finished = await runSysctl();
+    exitCode = finished.exitCode;
+    stdout = finished.stdout.trim();
+    stderr = finished.stderr.trim();
   } catch (err) {
     return {
       level: 1,
@@ -74,7 +89,7 @@ export async function readPressureSample(): Promise<PressureSample> {
       capturedAt,
       error: {
         code: 'non-zero-exit',
-        exitCode,
+        ...(exitCode === null ? {} : { exitCode }),
         stderr,
         rawStdout: stdout,
       },

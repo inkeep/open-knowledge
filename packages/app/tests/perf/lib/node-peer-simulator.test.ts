@@ -125,9 +125,11 @@ describe('createNodePeerSimulator — stop() teardown', () => {
     active.start();
     await wait(60);
     await active.stop();
-    const t0 = Date.now();
-    await active.stop();
-    expect(Date.now() - t0).toBeLessThan(50);
+    const nextMacrotask = new Promise<'macrotask'>((resolve) =>
+      setImmediate(() => resolve('macrotask')),
+    );
+    const settled = await Promise.race([active.stop().then(() => 'stop' as const), nextMacrotask]);
+    expect(settled).toBe('stop');
   });
 
   test('stop() before start() is safe (no timers to cancel)', async () => {

@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -38,15 +39,10 @@ function writeBaseline(filename: string, body: Baseline): string {
 
 async function runScript(
   args: string[],
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn(['bash', SCRIPT, ...args], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  const exitCode = await proc.exited;
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
-  return { exitCode, stdout, stderr };
+): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
+  const finished = spawnSync('bash', [SCRIPT, ...args], { encoding: 'utf8' });
+  if (finished.error) throw finished.error;
+  return { exitCode: finished.status, stdout: finished.stdout, stderr: finished.stderr };
 }
 
 describe('perf-compare.sh — argument validation', () => {

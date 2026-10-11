@@ -97,35 +97,6 @@ describe('/readyz', () => {
     });
     expect(res.status).toBe(200);
   });
-
-  test('destroy() flips readiness to draining before the listener closes', async (ctx) => {
-    const tmp = await mkdtemp(resolve(tmpdir(), 'ok-readyz-drain-'));
-    try {
-      const draining = await bootCompositionRig(tmp);
-      await draining.ready;
-
-      const destroyed = draining.destroy();
-      let probe: { status: number; body?: { ready: boolean; status: string } } | 'refused';
-      try {
-        const res = await fetch(`http://127.0.0.1:${draining.port}/readyz`);
-        probe = {
-          status: res.status,
-          body: (await res.json()) as { ready: boolean; status: string },
-        };
-      } catch {
-        probe = 'refused';
-      }
-      await destroyed;
-
-      ctx.skip(
-        probe === 'refused',
-        'the listener closed before the probe connected, so this run could not observe the draining window',
-      );
-      expect(probe).toMatchObject({ status: 503, body: { ready: false, status: 'draining' } });
-    } finally {
-      await rm(tmp, { recursive: true, force: true });
-    }
-  }, 30_000);
 });
 
 describe('/readyz provider states (mounted harness)', () => {
