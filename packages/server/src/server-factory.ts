@@ -74,6 +74,7 @@ import {
   CC1Broadcaster,
   isConfigDoc,
   isManagedArtifactDoc,
+  isPersistenceExcludedDoc,
   isReservedForUserTree,
   SYSTEM_DOC_NAME,
 } from './cc1-broadcast.ts';
@@ -2327,6 +2328,9 @@ export function createServer(options: ServerOptions): ServerInstance {
             }
             break;
           case 'create':
+            restoreRenamedDocumentOnCreate(event.docName, event.content);
+            scheduleIndexRegeneration(event.docName);
+            break;
           case 'conflict':
             scheduleIndexRegeneration(event.docName);
             break;
@@ -2499,6 +2503,22 @@ export function createServer(options: ServerOptions): ServerInstance {
     const document = hocuspocus.documents.get(docName);
     if (!document) return null;
     return serializeYDocSource(document);
+  }
+
+  function restoreRenamedDocumentOnCreate(docName: string, content: string): void {
+    if (isPersistenceExcludedDoc(docName)) return;
+    const document = hocuspocus.documents.get(docName);
+    if (!document) return;
+    const lifecycle = document.getMap('lifecycle');
+    if (lifecycle.get('status') !== 'renamed') return;
+
+    document.transact(() => {
+      applyDiskContentToDoc(document, content, resolveEmbed, docName, resolveSize);
+      lifecycle.delete('status');
+      lifecycle.delete('newPath');
+    }, FILE_WATCHER_ORIGIN);
+    setReconciledBase(docName, content);
+    log.info({ docName }, `[reconcile] create: cleared stale renamed lifecycle on ${docName}`);
   }
 
   const applyToDoc = (docName: string, content: string): void =>
@@ -2781,6 +2801,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       switch (event.kind) {
         case 'create': {
           log.info({ docName: event.docName }, `[reconcile] create: ${event.docName}`);
+          restoreRenamedDocumentOnCreate(event.docName, event.content);
           await derivedDocumentIndex.recordDiskUpsert(event.docName, event.content);
           signalChannel('files');
           scheduleIndexRegeneration(event.docName);
