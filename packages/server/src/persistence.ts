@@ -43,7 +43,12 @@ import {
 } from './cc1-broadcast.ts';
 import { type ConfigPersistenceCtx, loadConfigDoc, storeConfigDoc } from './config-persistence.ts';
 import type { ConflictAuthority } from './conflict-authority.ts';
-import type { FreezingLifecycleStatus, LifecycleView } from './conflict-kinds.ts';
+import {
+  type FreezingLifecycleStatus,
+  isRemovalLifecycleStatus,
+  type LifecycleView,
+  type RemovalLifecycleStatus,
+} from './conflict-kinds.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import type { ContributorEntry } from './contributor-tracker.ts';
 import {
@@ -67,6 +72,7 @@ import {
   OK_PATH_UNRESOLVABLE,
   OK_STORE_REFUSED,
   type StoreFailure,
+  type StoreFailureRemoval,
 } from './document-durability-state.ts';
 import { refuseStaleExternalWrite } from './external-change.ts';
 import { contentHash, registerWrite } from './file-watcher.ts';
@@ -426,7 +432,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     const view = options?.lifecycleOf?.(document, documentName);
     if (view === undefined) {
       const status = document.getMap('lifecycle').get('status');
-      return status === 'deleted-upstream' || status === 'renamed' ? status : null;
+      return isRemovalLifecycleStatus(status) ? status : null;
     }
     return view === null ? null : view.status;
   };
@@ -467,6 +473,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
   const QUIESCENCE_MAX_DEFER = 8;
   const persistenceDeferCounts = new Map<string, number>();
+  const frozenStoreBaselines = new Map<string, string>();
 
   const gitEnabled = options?.gitEnabled ?? true;
   const commitDebounceMs = options?.commitDebounceMs ?? 15_000;
@@ -1257,24 +1264,62 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     base: string | undefined,
     candidate: string,
     callerAwaitingFlush: boolean,
+    frozen?: { status: RemovalLifecycleStatus; removal: StoreFailureRemoval | undefined },
   ): void {
     incrementPersistenceStoreRemovedDoc();
     console.warn(
       JSON.stringify({
         event: 'persistence-store-removed-doc',
         'doc.name': documentName,
-        reason: options?.isRecentlyRemoved?.(documentName) ? 'recently-removed' : 'file-absent',
+        reason:
+          frozen?.status ??
+          (options?.isRecentlyRemoved?.(documentName) ? 'recently-removed' : 'file-absent'),
         baseBytes: base?.length ?? null,
         candidateBytes: candidate.length,
       }),
     );
     if (callerAwaitingFlush) {
-      durabilityState.recordStoreFailure(documentName, {
-        code: OK_DOC_REMOVED,
-        message: `${documentName} is no longer on disk, so the store was refused rather than recreating the removed file`,
-      });
+      durabilityState.recordStoreFailure(
+        documentName,
+        frozen?.removal?.kind === 'path-occupied'
+          ? {
+              code: OK_DOC_REMOVED,
+              message: `${documentName} was ${frozen.status === 'renamed' ? 'renamed' : 'deleted'} on disk and the file now at its path has not been loaded into it, so the store was refused rather than overwriting that file`,
+              removal: frozen.removal,
+            }
+          : frozen?.removal?.kind === 'renamed'
+            ? {
+                code: OK_DOC_REMOVED,
+                message: `${documentName} was renamed to ${frozen.removal.renamedTo} on disk, so the store was refused rather than recreating the file under its old name`,
+                removal: frozen.removal,
+              }
+            : {
+                code: OK_DOC_REMOVED,
+                message: `${documentName} is no longer on disk, so the store was refused rather than recreating the removed file`,
+              },
+      );
     }
     persistenceDeferCounts.delete(documentName);
+  }
+
+  function frozenPathOccupied(documentName: string): boolean {
+    try {
+      return existsSync(safeContentPath(documentName, contentDir));
+    } catch {
+      return false;
+    }
+  }
+
+  function frozenRemovalOf(
+    document: Y.Doc,
+    documentName: string,
+    status: RemovalLifecycleStatus,
+  ): StoreFailureRemoval | undefined {
+    if (frozenPathOccupied(documentName)) return { kind: 'path-occupied' };
+    const newPath = document.getMap('lifecycle').get('newPath');
+    return status === 'renamed' && typeof newPath === 'string' && newPath !== ''
+      ? { kind: 'renamed', renamedTo: newPath }
+      : undefined;
   }
 
   function documentHadFileOnDisk(documentName: string, base: string | undefined): boolean {
@@ -1319,11 +1364,25 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       { attributes: { 'doc.name': documentName } },
       async () => {
         const lifecycleStatus = frozenStatusOf(document, documentName);
+        if (!isRemovalLifecycleStatus(lifecycleStatus)) frozenStoreBaselines.delete(documentName);
         if (lifecycleStatus !== null) {
           log.info(
             { documentName, lifecycleStatus },
             `[persistence] Skipped store for ${documentName}: lifecycle=${lifecycleStatus}`,
           );
+          if (isRemovalLifecycleStatus(lifecycleStatus)) {
+            const callerAwaitingFlush = durabilityState.consumeAgentWriteStore(documentName);
+            const base = durabilityState.getReconciledBase(documentName);
+            const candidate = document.getText('source').toString();
+            const baseline = base ?? frozenStoreBaselines.get(documentName);
+            if (baseline === undefined) frozenStoreBaselines.set(documentName, candidate);
+            if (callerAwaitingFlush || (baseline !== undefined && candidate !== baseline)) {
+              refuseRemovedDocPublish(documentName, base, candidate, callerAwaitingFlush, {
+                status: lifecycleStatus,
+                removal: frozenRemovalOf(document, documentName, lifecycleStatus),
+              });
+            }
+          }
           persistenceDeferCounts.delete(documentName);
           tripwireResetFailedDocs.delete(documentName);
           return;
@@ -2034,6 +2093,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     async onLoadDocument({ document, documentName, context: _context }) {
       docsWithSettledWrite.delete(documentName);
       docsWithFileObservedOnDisk.delete(documentName);
+      frozenStoreBaselines.delete(documentName);
       if (isSystemDoc(documentName)) return;
       if (isConfigDoc(documentName)) {
         loadConfigDoc(document, documentName, configPersistenceCtx);

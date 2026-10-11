@@ -14,7 +14,12 @@ import { contentHash } from './version-hash.ts';
 export interface StoreFailure {
   code?: string;
   message: string;
+  removal?: StoreFailureRemoval;
 }
+
+export type StoreFailureRemoval =
+  | { kind: 'renamed'; renamedTo: string }
+  | { kind: 'path-occupied' };
 
 export interface StoreAttemptToken {
   readonly docName: string;

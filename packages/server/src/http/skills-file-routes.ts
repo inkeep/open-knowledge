@@ -16,6 +16,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { composeAndWriteRawBody } from '../bridge-intake.ts';
+import type { RemovalLifecycleStatus } from '../conflict-kinds.ts';
 import {
   applySkillBundleFileDelete,
   applySkillBundleFileRename,
@@ -113,7 +114,7 @@ export interface SkillsFileRouteDeps {
   ) => ReturnType<typeof extractActorIdentity>;
   captureAndCloseDocuments: (
     docNames: string[],
-    lifecycleStatus: 'deleted-upstream' | 'renamed',
+    lifecycleStatus: RemovalLifecycleStatus,
   ) => Promise<Map<string, string>>;
   log: PinoLogger;
   commitOkArtifactWrite: (context: string) => Promise<unknown>;

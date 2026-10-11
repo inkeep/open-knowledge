@@ -32,6 +32,7 @@ import { composeAndWriteRawBody } from '../bridge-intake.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
 import type { ConflictAuthority } from '../conflict-authority.ts';
 import { DocInConflictError, respondDocInConflict } from '../conflict-errors.ts';
+import type { RemovalLifecycleStatus } from '../conflict-kinds.ts';
 import { enrichDirectory } from '../content/enrichment.ts';
 import {
   applyFolderFrontmatterPatch,
@@ -115,7 +116,7 @@ export interface FolderTemplateRouteDeps {
   registerWrittenDocInFileIndex: (docName: string, content: string) => void;
   captureAndCloseDocuments: (
     docNames: string[],
-    lifecycleStatus: 'deleted-upstream' | 'renamed',
+    lifecycleStatus: RemovalLifecycleStatus,
   ) => Promise<Map<string, string>>;
   renameTrackedPathInGit: (
     projectDir: string | undefined,

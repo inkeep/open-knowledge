@@ -74,7 +74,6 @@ import {
   CC1Broadcaster,
   isConfigDoc,
   isManagedArtifactDoc,
-  isPersistenceExcludedDoc,
   isReservedForUserTree,
   SYSTEM_DOC_NAME,
 } from './cc1-broadcast.ts';
@@ -144,8 +143,10 @@ import {
 import {
   applyExternalChange,
   FILE_WATCHER_ORIGIN,
+  type FrozenResidentRevival,
   redactedErrorSummary,
   refuseStaleExternalWrite,
+  reviveFrozenResidentDoc,
   serializeYDocSource,
   wireReasonForRefusal,
 } from './external-change.ts';
@@ -2328,7 +2329,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             }
             break;
           case 'create':
-            restoreRenamedDocumentOnCreate(event.docName, event.content);
+            reviveFrozenResident(event.docName, event.content);
             scheduleIndexRegeneration(event.docName);
             break;
           case 'conflict':
@@ -2505,24 +2506,19 @@ export function createServer(options: ServerOptions): ServerInstance {
     return serializeYDocSource(document);
   }
 
-  function restoreRenamedDocumentOnCreate(docName: string, content: string): void {
-    if (isPersistenceExcludedDoc(docName)) return;
-    const document = hocuspocus.documents.get(docName);
-    if (!document) return;
-    const lifecycle = document.getMap('lifecycle');
-    if (lifecycle.get('status') !== 'renamed') return;
-
-    document.transact(() => {
-      applyDiskContentToDoc(document, content, resolveEmbed, docName, resolveSize);
-      lifecycle.delete('status');
-      lifecycle.delete('newPath');
-    }, FILE_WATCHER_ORIGIN);
-    setReconciledBase(docName, content);
-    log.info({ docName }, `[reconcile] create: cleared stale renamed lifecycle on ${docName}`);
-  }
-
   const applyToDoc = (docName: string, content: string): void =>
     applyExternalChange(
+      durabilityState,
+      hocuspocus,
+      docName,
+      content,
+      resolveEmbed,
+      resolveSize,
+      bridgeLossReporter,
+    );
+
+  const reviveFrozenResident = (docName: string, content: string): FrozenResidentRevival =>
+    reviveFrozenResidentDoc(
       durabilityState,
       hocuspocus,
       docName,
@@ -2801,7 +2797,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       switch (event.kind) {
         case 'create': {
           log.info({ docName: event.docName }, `[reconcile] create: ${event.docName}`);
-          restoreRenamedDocumentOnCreate(event.docName, event.content);
+          reviveFrozenResident(event.docName, event.content);
           await derivedDocumentIndex.recordDiskUpsert(event.docName, event.content);
           signalChannel('files');
           scheduleIndexRegeneration(event.docName);
@@ -2826,6 +2822,10 @@ export function createServer(options: ServerOptions): ServerInstance {
           const document = hocuspocus.documents.get(docName);
           if (!document) {
             refuseStaleExternalWrite(durabilityState, undefined, docName, theirs, conflicts);
+            await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
+            return;
+          }
+          if (reviveFrozenResident(docName, theirs) !== 'not-frozen') {
             await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
             return;
           }
@@ -3063,17 +3063,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           const document = hocuspocus.documents.get(oldDocName);
           if (document && document !== loadedBeforeIndex) freezeAsRenamed(document);
 
-          const resident = hocuspocus.documents.get(newDocName);
-          if (resident && resident.getMap('lifecycle').get('status') === 'renamed') {
-            const residentLifecycle = resident.getMap('lifecycle');
-            residentLifecycle.delete('status');
-            residentLifecycle.delete('newPath');
-            applyToDoc(newDocName, content);
-            log.info(
-              { newDocName },
-              `[reconcile] rename: cleared stale renamed lifecycle on ${newDocName}`,
-            );
-          }
+          reviveFrozenResident(newDocName, content);
 
           await sessionManager.closeAllForDoc(oldDocName);
           const closedConnections = document?.getConnectionsCount() ?? 0;
@@ -4574,7 +4564,15 @@ export function createServer(options: ServerOptions): ServerInstance {
                       rescueUnflushedEditsBeforeTeardown(docName, newBranch, 'branch-switch', true);
                     }
                   }
-                  applyToDoc(docName, diskContent);
+                  const revival = reviveFrozenResident(docName, diskContent);
+                  if (revival === 'failed') {
+                    log.error(
+                      { docName },
+                      `[branch-switch] failed to reset ${docName}: it stays frozen`,
+                    );
+                    continue;
+                  }
+                  if (revival === 'not-frozen') applyToDoc(docName, diskContent);
                   setReconciledBase(docName, diskContent);
                   log.info({ docName }, `[branch-switch] reset: ${docName}`);
                 } catch (e) {

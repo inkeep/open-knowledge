@@ -37,6 +37,7 @@ import {
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { composeAndWriteRawBody } from '../bridge-intake.ts';
 import { isLinkIndexExcludedDoc } from '../cc1-broadcast.ts';
+import type { RemovalLifecycleStatus } from '../conflict-kinds.ts';
 import {
   applySkillDelete,
   applySkillDirNameSync,
@@ -179,7 +180,7 @@ export interface SkillsDocumentRouteDeps {
   ) => ReturnType<typeof extractActorIdentity>;
   captureAndCloseDocuments: (
     docNames: string[],
-    lifecycleStatus: 'deleted-upstream' | 'renamed',
+    lifecycleStatus: RemovalLifecycleStatus,
   ) => Promise<Map<string, string>>;
   log: PinoLogger;
   commitOkArtifactWrite: (context: string) => Promise<unknown>;

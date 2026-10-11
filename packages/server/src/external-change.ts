@@ -22,10 +22,11 @@ import {
   isEditableTextDoc,
   isExcalidrawDoc,
   isMermaidDoc,
+  isPersistenceExcludedDoc,
   isSystemDoc,
 } from './cc1-broadcast.ts';
 import { type ConflictAuthority, isDocInConflict } from './conflict-authority.ts';
-import type { ReconcileReason } from './conflict-kinds.ts';
+import { isRemovalLifecycleStatus, type ReconcileReason } from './conflict-kinds.ts';
 import { safeContentPath } from './content-path.ts';
 import { recordContributor } from './contributor-tracker.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
@@ -140,6 +141,50 @@ export function applyExternalChange(
   }
 
   durabilityState.setReconciledBase(docName, content);
+}
+
+export type FrozenResidentRevival = 'not-frozen' | 'revived' | 'failed';
+
+export function reviveFrozenResidentDoc(
+  durabilityState: DocumentDurabilityState,
+  hocuspocus: Hocuspocus,
+  docName: string,
+  content: string,
+  resolveEmbed?: (basename: string, sourcePath: string) => string | null,
+  resolveSize?: (basename: string, sourcePath: string) => number | null,
+  bridgeLossReporter?: BridgeDeriveLossReporter,
+): FrozenResidentRevival {
+  if (isPersistenceExcludedDoc(docName)) return 'not-frozen';
+  const resident = hocuspocus.documents.get(docName);
+  if (!resident) return 'not-frozen';
+  const lifecycle = resident.getMap('lifecycle');
+  const status = lifecycle.get('status');
+  if (!isRemovalLifecycleStatus(status)) return 'not-frozen';
+  const replacedInMemoryContent = resident.getText('source').toString() !== content;
+  try {
+    applyExternalChange(
+      durabilityState,
+      hocuspocus,
+      docName,
+      content,
+      resolveEmbed,
+      resolveSize,
+      bridgeLossReporter,
+    );
+  } catch (err) {
+    getLogger('reconcile').error(
+      { err: redactedErrorSummary(err), docName, status },
+      `[reconcile] could not revive ${docName}: it stays ${status} and keeps refusing stores until the server reloads it`,
+    );
+    return 'failed';
+  }
+  lifecycle.delete('status');
+  lifecycle.delete('newPath');
+  getLogger('reconcile').info(
+    { docName, status, replacedInMemoryContent },
+    `[reconcile] revived ${docName}: its name is occupied on disk again, so the ${status} freeze no longer applies`,
+  );
+  return 'revived';
 }
 
 export function createExternalChangeHandler(

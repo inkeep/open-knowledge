@@ -66,6 +66,26 @@ type _ExhaustiveFreezingLifecycleStatus =
       ];
 const _exhaustiveFreezingLifecycleStatus: _ExhaustiveFreezingLifecycleStatus = true;
 
+const REMOVAL_LIFECYCLE_STATUSES = [
+  'deleted-upstream',
+  'renamed',
+] as const satisfies readonly FreezingLifecycleStatus[];
+
+export type RemovalLifecycleStatus = (typeof REMOVAL_LIFECYCLE_STATUSES)[number];
+
+type _ExhaustiveRemovalLifecycleStatus =
+  Exclude<FreezingLifecycleStatus, RemovalLifecycleStatus | 'conflict'> extends never
+    ? true
+    : [
+        'A freezing lifecycle status is neither a conflict nor a removal:',
+        Exclude<FreezingLifecycleStatus, RemovalLifecycleStatus | 'conflict'>,
+      ];
+const _exhaustiveRemovalLifecycleStatus: _ExhaustiveRemovalLifecycleStatus = true;
+
+export function isRemovalLifecycleStatus(value: unknown): value is RemovalLifecycleStatus {
+  return (REMOVAL_LIFECYCLE_STATUSES as readonly unknown[]).includes(value);
+}
+
 export function isConflictKind(value: unknown): value is ConflictKind {
   return (CONFLICT_KINDS as readonly unknown[]).includes(value);
 }

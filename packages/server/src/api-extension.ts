@@ -201,6 +201,7 @@ import {
   isPersistenceExcludedDoc,
   isSystemDoc,
 } from './cc1-broadcast.ts';
+import type { RemovalLifecycleStatus } from './conflict-kinds.ts';
 import {
   isReservedProjectStatePath,
   listManagedDocNamesUnderFolder,
@@ -232,6 +233,7 @@ import {
 import {
   type ReconcileBeforeWriteResult,
   reconcileDiskBeforeAgentWrite,
+  reviveFrozenResidentDoc,
 } from './external-change.ts';
 import { extractActorIdentity } from './extract-actor-identity.ts';
 import {
@@ -1406,11 +1408,28 @@ export interface CommentDocHooks {
 }
 
 function removedDocProblem(failure: StoreFailure) {
-  return {
-    type: 'urn:ok:error:doc-removed' as const,
-    title: 'Edit applied in memory; disk write refused because the document is no longer on disk.',
-    detail: `${failure.message}. Retrying will not help: re-create the document before writing this content again.`,
-  } satisfies BatchEntryError;
+  switch (failure.removal?.kind) {
+    case 'path-occupied':
+      return {
+        type: 'urn:ok:error:doc-removed' as const,
+        title:
+          'Edit applied in memory; disk write refused because the file now at this path is not loaded into the document.',
+        detail: `${failure.message}. Retrying will not help until the server reloads this document from disk, for example after Open Knowledge restarts; tell the user instead of retrying.`,
+      } satisfies BatchEntryError;
+    case 'renamed':
+      return {
+        type: 'urn:ok:error:doc-removed' as const,
+        title: 'Edit applied in memory; disk write refused because the document was renamed.',
+        detail: `${failure.message}. Retrying will not help: re-read the document at ${failure.removal.renamedTo} and re-apply your change there.`,
+      } satisfies BatchEntryError;
+    case undefined:
+      return {
+        type: 'urn:ok:error:doc-removed' as const,
+        title:
+          'Edit applied in memory; disk write refused because the document is no longer on disk.',
+        detail: `${failure.message}. Retrying will not help: re-create the document before writing this content again.`,
+      } satisfies BatchEntryError;
+  }
 }
 
 function pathFaultProblem(failure: StoreFailure) {
@@ -2270,7 +2289,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
 
   async function captureAndCloseDocuments(
     docNames: string[],
-    lifecycleStatus: 'deleted-upstream' | 'renamed',
+    lifecycleStatus: RemovalLifecycleStatus,
   ): Promise<Map<string, string>> {
     const liveContents = new Map<string, string>();
 
@@ -2305,6 +2324,18 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     return liveContents;
   }
 
+  function reviveFrozenResident(docName: string, content: string): void {
+    reviveFrozenResidentDoc(
+      durabilityState,
+      hocuspocus,
+      docName,
+      content,
+      options.resolveEmbed,
+      undefined,
+      getBridgeLossReporter?.(),
+    );
+  }
+
   function syncRenamedDocsToDisk(
     renamed: RenamedDocMapping[],
     liveContents: ReadonlyMap<string, string>,
@@ -2325,6 +2356,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
 
       if (typeof finalContent === 'string') {
         registerWrite(filePath, contentHash(finalContent));
+        reviveFrozenResident(toDocName, finalContent);
       }
     }
   }

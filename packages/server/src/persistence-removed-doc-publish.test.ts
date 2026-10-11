@@ -425,4 +425,119 @@ describe('persistence publish guard — a removed document is never republished'
 
     expect(readFileSync(docPath, 'utf-8')).toContain('pending edit');
   });
+
+  describe('a document frozen as deleted or renamed', () => {
+    function freeze(status: 'deleted-upstream' | 'renamed', newPath?: string): void {
+      document.transact(() => {
+        const lifecycle = document.getMap('lifecycle');
+        lifecycle.set('status', status);
+        if (newPath !== undefined) lifecycle.set('newPath', newPath);
+      });
+    }
+
+    test('stays quiet when a skipped store drops nothing', async () => {
+      writeFileSync(docPath, SEEDED, 'utf-8');
+      const persistence = persistenceWith();
+      await loadFromDisk(persistence);
+      rmSync(docPath);
+      freeze('deleted-upstream');
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      await store(persistence);
+
+      expect(refusalEvents(warn)).toEqual([]);
+      expect(existsSync(docPath)).toBe(false);
+    });
+
+    test('counts and warns an editor edit dropped on a deleted document', async () => {
+      writeFileSync(docPath, SEEDED, 'utf-8');
+      const persistence = persistenceWith();
+      await loadFromDisk(persistence);
+      rmSync(docPath);
+      freeze('deleted-upstream');
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const before = getMetrics().persistenceStoreRemovedDocCount;
+
+      document.transact(() => appendUnflushedEdit(document), BROWSER_ORIGIN);
+      await store(persistence);
+
+      expect(existsSync(docPath)).toBe(false);
+      expect(getMetrics().persistenceStoreRemovedDocCount).toBe(before + 1);
+      expect(refusalEvents(warn).at(-1)?.reason).toBe('deleted-upstream');
+      expect(durabilityState.takeStoreFailure(docName)).toBeNull();
+    });
+
+    test('counts and warns an editor edit dropped on a renamed document that lost its base', async () => {
+      writeFileSync(docPath, SEEDED, 'utf-8');
+      const persistence = persistenceWith();
+      await loadFromDisk(persistence);
+      renameSync(docPath, join(tmpDir, 'renamed-doc.md'));
+      freeze('renamed', 'renamed-doc');
+      durabilityState.deleteReconciledBase(docName);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      await store(persistence);
+      expect(refusalEvents(warn)).toEqual([]);
+
+      document.transact(() => appendUnflushedEdit(document), BROWSER_ORIGIN);
+      await store(persistence);
+
+      expect(refusalEvents(warn).at(-1)?.reason).toBe('renamed');
+      expect(existsSync(docPath)).toBe(false);
+    });
+
+    test('tells an agent write on a deleted document that the file is gone', async () => {
+      writeFileSync(docPath, SEEDED, 'utf-8');
+      const persistence = persistenceWith();
+      await loadFromDisk(persistence);
+      rmSync(docPath);
+      freeze('deleted-upstream');
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      document.transact(() => appendUnflushedEdit(document), BROWSER_ORIGIN);
+      durabilityState.markAgentWriteStore(docName);
+      await store(persistence);
+
+      const failure = durabilityState.takeStoreFailure(docName);
+      expect(failure?.code).toBe('OK_DOC_REMOVED');
+      expect(failure?.message).toContain('is no longer on disk');
+      expect(failure?.removal).toBeUndefined();
+    });
+
+    test('tells an agent write on a renamed document where it moved', async () => {
+      writeFileSync(docPath, SEEDED, 'utf-8');
+      const persistence = persistenceWith();
+      await loadFromDisk(persistence);
+      renameSync(docPath, join(tmpDir, 'renamed-doc.md'));
+      freeze('renamed', 'renamed-doc');
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      document.transact(() => appendUnflushedEdit(document), BROWSER_ORIGIN);
+      durabilityState.markAgentWriteStore(docName);
+      await store(persistence);
+
+      const failure = durabilityState.takeStoreFailure(docName);
+      expect(failure?.code).toBe('OK_DOC_REMOVED');
+      expect(failure?.removal).toEqual({ kind: 'renamed', renamedTo: 'renamed-doc' });
+    });
+
+    test('never points an agent at the moved file when a new file already sits at the old path', async () => {
+      writeFileSync(docPath, SEEDED, 'utf-8');
+      const persistence = persistenceWith();
+      await loadFromDisk(persistence);
+      renameSync(docPath, join(tmpDir, 'renamed-doc.md'));
+      writeFileSync(docPath, 'a new file\n', 'utf-8');
+      freeze('renamed', 'renamed-doc');
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      document.transact(() => appendUnflushedEdit(document), BROWSER_ORIGIN);
+      durabilityState.markAgentWriteStore(docName);
+      await store(persistence);
+
+      const failure = durabilityState.takeStoreFailure(docName);
+      expect(failure?.code).toBe('OK_DOC_REMOVED');
+      expect(failure?.removal).toEqual({ kind: 'path-occupied' });
+      expect(readFileSync(docPath, 'utf-8')).toBe('a new file\n');
+    });
+  });
 });

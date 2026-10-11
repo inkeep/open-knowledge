@@ -13,6 +13,7 @@ import {
   holdsMarkersOnDisk,
   isConflictKind,
   isReconcileReason,
+  isRemovalLifecycleStatus,
   type LifecycleView,
   type ReconcileReason,
   type ResolveStrategy,
@@ -667,10 +668,10 @@ export class ConflictAuthority implements ConflictReader {
   lifecycleOf(document: Y.Doc, docName: string): LifecycleView | null {
     const map = document.getMap('lifecycle');
     const status = map.get('status');
-    if (status === 'deleted-upstream') return { status: 'deleted-upstream' };
-    if (status === 'renamed') {
+    if (isRemovalLifecycleStatus(status)) {
+      if (status === 'deleted-upstream') return { status };
       const newPath = map.get('newPath');
-      return { status: 'renamed', newPath: typeof newPath === 'string' ? newPath : '' };
+      return { status, newPath: typeof newPath === 'string' ? newPath : '' };
     }
     const entry = this.byDocName.get(docName);
     if (entry === undefined) return null;
