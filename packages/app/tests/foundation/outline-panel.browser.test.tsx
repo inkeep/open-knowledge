@@ -5,7 +5,6 @@ import { OutlinePanel } from '@/components/OutlinePanel';
 import { PageListProvider } from '@/components/PageListContext';
 import { __resetPageListCacheForTests, getPageListCache } from '@/editor/page-list-cache';
 import { emitDocumentsChanged } from '@/lib/documents-events';
-import { expectKnownBug } from '../../../../test-support/known-bug.vitest.test-helper';
 import { stubApiRoutes } from './api-routes.test-helper';
 import { renderWithI18n } from './render-with-i18n.test-helper';
 
@@ -76,14 +75,7 @@ describe('OutlinePanel under the production compiler', () => {
     expect(headingCount(view)).toBe('3');
   });
 
-  test('a document that leaves the page list after a successful load stops serving its headings and says it moved', {
-    tags: ['known-bug'],
-    meta: {
-      issue: 'https://github.com/inkeep/agents-private/issues/5611',
-      owner: 'get-main-green',
-      until: '2026-12-31',
-    },
-  }, async () => {
+  test('a document that leaves the page list after a successful load stops serving its headings and says it moved', async () => {
     const view = renderOutline();
     await view.findByRole('button', { name: 'Liveblocks' });
 
@@ -96,14 +88,9 @@ describe('OutlinePanel under the production compiler', () => {
       { timeout: 5_000 },
     );
 
-    await expectKnownBug(/expected undefined to be 'This page is no longer at this path\.'/, () => {
-      expect(view.queryByRole('status')?.textContent).toBe('This page is no longer at this path.');
-    });
-    await expectKnownBug(
-      /expected \[ 'Liveblocks', 'What is it', …\(1\) \] to deeply equal \[\]/,
-      () => {
-        expect(outlineHeadings(view)).toEqual([]);
-      },
-    );
+    expect
+      .soft(view.queryByRole('status')?.textContent)
+      .toBe('This page is no longer at this path.');
+    expect.soft(outlineHeadings(view)).toEqual([]);
   });
 });

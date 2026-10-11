@@ -9,7 +9,7 @@ import type { HeadingEntry } from '@inkeep/open-knowledge-core/utils/slug';
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { usePageList } from '@/components/PageListContext';
 import { isKnownPageDocName } from '@/components/page-membership';
 import {
@@ -110,8 +110,12 @@ function OutlinePanelInner({
   const queryClient = useQueryClient();
   const { activeProvider, activeDocName } = useDocumentContext();
   const isKnownPage = isKnownPageDocName(pages, docName);
-  const hadResult = queryClient.getQueryState(['page-headings', docName]) !== undefined;
-  const isUnresolvable = !loading && pageListError === null && !isKnownPage && hadResult;
+  const queryCache = queryClient.getQueryCache();
+  const hasHeadingsQuery = useSyncExternalStore(
+    queryCache.subscribe,
+    () => queryClient.getQueryState(['page-headings', docName]) !== undefined,
+  );
+  const isUnresolvable = !loading && pageListError === null && !isKnownPage && hasHeadingsQuery;
   const {
     data: headings = [],
     isLoading,
