@@ -3885,6 +3885,7 @@ function registerIpcHandlers() {
       observePtyFork(phaseTrace, windowId, phaseTrace ? ++nextTraceFork : 0, () =>
         utilityProcess.fork(join(__dirname, 'utility/pty-host.js'), [], {
           serviceName: `OpenKnowledge Terminal Host ${windowId}`,
+          ...(phaseTrace ? { stdio: ['ignore', 'inherit', 'pipe'] } : {}),
         }),
       ) as unknown as PtyUtilityLike,
     sendData: (wc, payload) => sendToRenderer(wc, 'ok:pty:data', payload),

@@ -19,7 +19,8 @@ import {
   SPAWN_WAIT_EXTENSION_FACTOR,
 } from '../src/shared/boot-narration.ts';
 import { bootLogDirFor, readBootLog } from '../tests/smoke/_helpers/launch-readiness.ts';
-import { preservePtyEvidence } from './pty-phase-evidence.mjs';
+import { assertPackagedPtyPhaseEvidence } from './packaged-pty-phase-acceptance.test-helper.mjs';
+import { preservePtyEvidence, readPtyPhaseRecords } from './pty-phase-evidence.mjs';
 
 export const PACKAGED_BOOT_ENVELOPE_MS = 10_000;
 export const PACKAGED_PTY_ECHO_BUDGET_MS = 30_000;
@@ -180,6 +181,7 @@ export function runWindowsPackageTerminalSmoke({
   const launchedAt = Date.now();
   let app = null;
   let driver = null;
+  let evidence;
 
   try {
     app = spawn(executable, windowsPackageLaunchArgs(projectDir, userDataDir), {
@@ -215,7 +217,7 @@ export function runWindowsPackageTerminalSmoke({
       closeSync(logFd);
     } catch {}
     try {
-      const evidence = preservePtyEvidence({
+      evidence = preservePtyEvidence({
         diagnosticsDir,
         logPath,
         logDir: bootLogDirFor(homedir()),
@@ -234,6 +236,20 @@ export function runWindowsPackageTerminalSmoke({
       console.warn(`Could not remove packaged PTY smoke fixture ${smokeRoot}: ${error.message}`);
     }
   }
+  const uncheckedRendererSession = assertPackagedPtyPhaseEvidence(evidence, driver.stderr);
+  if (uncheckedRendererSession) console.warn(uncheckedRendererSession);
+  console.log(
+    JSON.stringify({
+      event: 'pty-phase-trace',
+      records: readPtyPhaseRecords(readFileSync(join(evidence, 'phase-trace.jsonl'), 'utf8')),
+    }),
+  );
+  console.log(
+    JSON.stringify({
+      event: 'pty-phase-summary',
+      summary: JSON.parse(readFileSync(join(evidence, 'phase-summary.json'), 'utf8')),
+    }),
+  );
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : '';
