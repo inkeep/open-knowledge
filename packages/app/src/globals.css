@@ -2421,12 +2421,17 @@
   background-color: var(--background);
 }
 
-/* The header row stacks above body rows at every scroll position. The freeze
-   translates it with a compositor-driven animation; a stacking flip at the
-   freeze boundary would land on the main thread, frames behind the transform,
-   leaving body rows painted over the moving header during a fast scroll. */
-.ProseMirror .tableWrapper > table > tbody > tr:first-child > th {
+/* A first row holding any th is the row the freeze translates, every cell of
+   it, so it stacks above body rows at every scroll position. The freeze moves
+   it with a compositor-driven animation; a stacking flip at the freeze boundary
+   would land on the main thread, frames behind the transform, leaving body rows
+   painted over the moving row during a fast scroll. */
+.ProseMirror .tableWrapper > table > tbody > tr:first-child:has(> th) > :is(th, td) {
   z-index: 2;
+}
+
+.ProseMirror .tableWrapper > table > tbody > tr:first-child:has(> th) > td {
+  background-color: var(--background);
 }
 
 /* First-column header cells in body rows (header-column tables) sit above the
@@ -2436,20 +2441,20 @@
   z-index: 3;
 }
 
-/* A header cell's resize handle overhangs its right border; raise the cell
-   holding it so the next header cell does not cover the overhang. */
+/* A frozen-row cell's resize handle overhangs its right border; raise the cell
+   holding it so the next cell in that row does not cover the overhang. */
 .ProseMirror
   .tableWrapper
   > table
   > tbody
-  > tr:first-child
-  > th:not(:first-child):has(> .column-resize-handle) {
+  > tr:first-child:has(> th)
+  > :is(th, td):not(:first-child):has(> .column-resize-handle) {
   z-index: 3;
 }
 
-/* Corner cell (first column + header row) clears the header row, a raised
+/* Corner cell (first column + frozen row) clears the frozen row, a raised
    resize-handle cell and the sticky column, frozen or not. */
-.ProseMirror .tableWrapper > table > tbody > tr:first-child > th:first-child {
+.ProseMirror .tableWrapper > table > tbody > tr:first-child:has(> th) > :is(th, td):first-child {
   z-index: 4;
 }
 
@@ -2464,7 +2469,7 @@
    ±1px horizontal overlap closes the seams over collapsed cell borders.
    height must stay >= TOOLBAR_HEIGHT (56px, frozen-table-headers.ts) so the
    block spans the whole toolbar-fade slot; 80px adds margin. */
-.ProseMirror .tableWrapper > table > tbody > tr:first-child > th::before {
+.ProseMirror .tableWrapper > table > tbody > tr:first-child:has(> th) > :is(th, td)::before {
   content: "";
   position: absolute;
   left: -1px;
@@ -2481,12 +2486,15 @@
    header mid-table; !important author declarations override animation
    effects in the cascade, so these win over the fills. */
 @media print {
-  .ProseMirror .tableWrapper > table > tbody > tr:first-child > th {
-    transform: none;
-    box-shadow: none;
+  .ProseMirror .tableWrapper > table > tbody > tr:first-child:has(> th) > :is(th, td) {
+    /* biome-ignore lint/complexity/noImportantStyles: the freeze holds transform in a WAAPI fill, which outranks every normal author declaration. */
+    transform: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: same WAAPI fill override as `transform` above. */
+    box-shadow: none !important;
   }
-  .ProseMirror .tableWrapper > table > tbody > tr:first-child > th::before {
-    opacity: 0;
+  .ProseMirror .tableWrapper > table > tbody > tr:first-child:has(> th) > :is(th, td)::before {
+    /* biome-ignore lint/complexity/noImportantStyles: the occluder's opacity is held in a WAAPI fill on ::before. */
+    opacity: 0 !important;
   }
 }
 

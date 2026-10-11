@@ -337,6 +337,42 @@ test('no freeze before the table reaches the toolbar', async ({
     };
   });
   expect(resizeStacking).toEqual({ handleInHovered: true, hoveredZ: '3', nextZ: '2' });
+  const mixedRowStacking = await page.evaluate(() => {
+    const host = document.createElement('div');
+    host.className = 'ProseMirror';
+    host.innerHTML =
+      '<div class="tableWrapper"><table><tbody>' +
+      '<tr><th>a</th><td>b<div class="column-resize-handle"></div></td><td>c</td></tr>' +
+      '<tr><th>d</th><td>e</td><td>f</td></tr>' +
+      '</tbody></table></div>' +
+      '<div class="tableWrapper"><table><tbody>' +
+      '<tr><td>g</td><td>h</td></tr><tr><td>i</td><td>j</td></tr>' +
+      '</tbody></table></div>';
+    document.body.append(host);
+    const z = (el: Element | null | undefined) => (el ? getComputedStyle(el).zIndex : 'missing');
+    const [mixed, plain] = Array.from(host.querySelectorAll('table'));
+    const result = {
+      mixedCorner: z(mixed.rows[0].cells[0]),
+      mixedHandleCell: z(mixed.rows[0].cells[1]),
+      mixedFrozenTd: z(mixed.rows[0].cells[2]),
+      mixedBodyTd: z(mixed.rows[1].cells[2]),
+      mixedFrozenTdOccluder: getComputedStyle(mixed.rows[0].cells[2], '::before').content,
+      mixedFrozenTdBackground: getComputedStyle(mixed.rows[0].cells[2]).backgroundColor,
+      plainFirstRowTd: z(plain.rows[0].cells[1]),
+    };
+    host.remove();
+    return result;
+  });
+  const { mixedFrozenTdBackground, ...mixedStacking } = mixedRowStacking;
+  expect(mixedStacking).toEqual({
+    mixedCorner: '4',
+    mixedHandleCell: '3',
+    mixedFrozenTd: '2',
+    mixedBodyTd: 'auto',
+    mixedFrozenTdOccluder: '""',
+    plainFirstRowTd: 'auto',
+  });
+  expect(mixedFrozenTdBackground).not.toBe('rgba(0, 0, 0, 0)');
   await page.screenshot({ path: testInfo.outputPath('unscrolled.png') });
 });
 
@@ -364,6 +400,18 @@ test('header row pins below the toolbar on mid-table scroll', async ({
   expect(occluder.opacity).toBe('1');
   expect(occluder.height).toBeGreaterThanOrEqual(56);
   expect(await scanSlotPixels(page)).toBeLessThan(10);
+  await page.emulateMedia({ media: 'print' });
+  const printed = await page.evaluate(() => {
+    const cell = (
+      document.querySelector('.ProseMirror .tableWrapper > table > tbody tr') as HTMLTableRowElement
+    ).cells[0];
+    return {
+      transform: getComputedStyle(cell).transform,
+      occluderOpacity: getComputedStyle(cell, '::before').opacity,
+    };
+  });
+  await page.emulateMedia({ media: 'screen' });
+  expect(printed).toEqual({ transform: 'none', occluderOpacity: '0' });
   await page.screenshot({ path: testInfo.outputPath('frozen-mid.png') });
 });
 
