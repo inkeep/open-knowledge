@@ -367,6 +367,8 @@ Inside an AI editor's embedded view, the **Open with AI** menus, the bottom Ask 
 
 The OpenKnowledge desktop app keeps its menu bar in sync with the active editor target: File menu items enable / disable based on whether a doc, folder, or nothing is currently selected. On macOS this is the system menu bar; on Windows and Linux the same menus live in the app window's title bar, with `Ctrl` in place of `Cmd`.
 
+On Windows and Linux, an open dialog such as Settings blocks the title-bar menus until you close it, the way a dialog blocks its window's menus in other Windows and Linux apps. Pressing `Ctrl+,` while Settings is open keeps it open on the page you were viewing; close it with the X button or `Esc`.
+
 ### File menu
 
 Alongside the project items (Recent project, New project…, Switch Project… `Cmd+Shift+P`, Open Folder… `Cmd+O`), the worktree pair (New worktree…, Switch worktree…), **Set up OpenKnowledge integrations…** (re-runs the first-launch integrations setup), and Close tab, the File menu surfaces the most-used sidebar affordances so they're reachable from the keyboard:

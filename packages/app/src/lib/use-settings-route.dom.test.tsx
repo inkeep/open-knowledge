@@ -68,4 +68,29 @@ describe('useSettingsRoute runtime routing', () => {
 
     expect(await screen.findByText('open')).toBeTruthy();
   });
+
+  test('opening Settings while it is already open on a section keeps it open on that section', async () => {
+    window.history.replaceState(null, '', '/');
+    await renderProbe();
+    window.location.hash = '#settings/about';
+    fireEvent(window, new Event('hashchange'));
+    expect(screen.getByTestId('settings-open').textContent).toBe('open');
+    const { openSettings } = await import('./use-settings-route');
+    const historyLength = window.history.length;
+
+    for (let attempt = 0; attempt < 10; attempt += 1) openSettings();
+
+    expect(window.location.hash).toBe('#settings/about');
+    expect(window.history.length).toBe(historyLength);
+    expect(screen.getByTestId('settings-open').textContent).toBe('open');
+  });
+
+  test('opening Settings from a closed state routes to the Settings hash', async () => {
+    window.history.replaceState(null, '', '/');
+    const { openSettings } = await import('./use-settings-route');
+
+    openSettings();
+
+    expect(window.location.hash).toBe('#settings');
+  });
 });

@@ -58,7 +58,7 @@ import type { OkDesktopBridge, OkMenuAction } from '@/lib/desktop-bridge-types';
 import { i18n } from '@/lib/i18n';
 import type { KeyboardShortcutId } from '@/lib/keyboard-shortcuts';
 import { openDocInNoteWindow } from '@/lib/open-note-window';
-import { SETTINGS_OPEN_HASH } from '@/lib/use-settings-route';
+import { openSettings } from '@/lib/use-settings-route';
 import type { ViewMenuState } from '@/lib/view-menu-state-store';
 
 export type ContextualTargetKind = 'doc' | 'folder' | 'asset' | 'none';
@@ -314,9 +314,7 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
   },
   settings: (ctx) => {
     ctx.closePalette();
-    if (window.location.hash !== SETTINGS_OPEN_HASH) {
-      window.location.hash = SETTINGS_OPEN_HASH;
-    }
+    openSettings();
   },
   'install-claude-desktop': (ctx) => {
     ctx.closePalette();

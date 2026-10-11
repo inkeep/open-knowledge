@@ -98,6 +98,52 @@ test.describe('Settings close button', () => {
     await closeWithX(page);
   });
 
+  const reopenEntryPoints: ReadonlyArray<{
+    name: string;
+    open: (page: Page) => Promise<void>;
+    hash: RegExp;
+  }> = [
+    {
+      name: 'header gear',
+      open: (page) => page.getByTestId('header-settings-button').click(),
+      hash: /#settings$/,
+    },
+    {
+      name: 'keyboard shortcut',
+      open: (page) => page.locator('body').press('ControlOrMeta+,'),
+      hash: /#settings$/,
+    },
+    {
+      name: 'About & updates page',
+      open: async (page) => {
+        await page.evaluate(() => {
+          window.location.hash = '#settings/about';
+        });
+      },
+      hash: /#settings\/about$/,
+    },
+  ];
+
+  for (const entry of reopenEntryPoints) {
+    test(`repeated Settings requests over Settings opened from the ${entry.name} keep it open`, async ({
+      page,
+    }) => {
+      await openApp(page);
+      await entry.open(page);
+      await expectSettingsOpen(page);
+      await expect(page).toHaveURL(entry.hash);
+
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        await page.keyboard.press('ControlOrMeta+,');
+        await page.evaluate(settingsHashScript());
+        await expectSettingsOpen(page);
+        await expect(page).toHaveURL(entry.hash);
+      }
+
+      await closeWithX(page);
+    });
+  }
+
   test('a native-menu section request over open Settings switches page without stacking history', async ({
     page,
   }) => {

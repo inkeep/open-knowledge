@@ -69,11 +69,7 @@ import { mark, ProfilerBoundary } from '@/lib/perf';
 import { SingleFileModeProvider, useSingleFileMode } from '@/lib/single-file-mode';
 import { consumeHashNavigationSuppression } from '@/lib/tab-session-restore-suppression';
 import { useServerKeepalive } from '@/lib/use-server-keepalive';
-import {
-  isSettingsHashOpen,
-  isSettingsShortcut,
-  SETTINGS_OPEN_HASH,
-} from '@/lib/use-settings-route';
+import { isSettingsHashOpen, isSettingsShortcut, openSettings } from '@/lib/use-settings-route';
 
 const ShareBranchSwitchDialog = lazy(() =>
   import('@/components/ShareBranchSwitchDialog').then((m) => ({
@@ -405,9 +401,7 @@ function SettingsShortcutHandler() {
         })
       ) {
         e.preventDefault();
-        if (window.location.hash !== SETTINGS_OPEN_HASH) {
-          window.location.hash = SETTINGS_OPEN_HASH;
-        }
+        openSettings();
       }
     }
 

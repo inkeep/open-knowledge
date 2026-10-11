@@ -34,6 +34,11 @@ function openSettingsSection(sectionId: string): void {
   if (window.location.hash !== target) window.location.hash = target;
 }
 
+export function openSettings(): void {
+  if (typeof window === 'undefined') return;
+  if (!isSettingsHashOpen(window.location.hash)) window.location.hash = SETTINGS_OPEN_HASH;
+}
+
 const AGENT_SETTINGS_SECTION = 'agent-connections';
 
 export function openAgentSettings(): void {
