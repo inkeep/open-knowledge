@@ -3346,6 +3346,8 @@ button:active:not(:disabled) {
 }
 
 :root {
+  color-scheme: light;
+
   /* Sidebar inset variant applies m-2 (8px top + 8px bottom) to SidebarInset — offset its height accordingly */
   --layout-inset-offset: 16px;
 
@@ -3501,6 +3503,8 @@ button:active:not(:disabled) {
 }
 
 .dark {
+  color-scheme: dark;
+
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);

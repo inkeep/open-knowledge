@@ -17,6 +17,7 @@ import {
   browserNodeSubstitutes,
   NODE_MODULES,
 } from './tests/foundation/browser-node-compat';
+import { buildAppStylesheet } from './tests/foundation/build-app-stylesheet';
 import { chromiumGcLaunchEnvGuard } from './tests/foundation/chromium-gc-launch-env';
 import { RENDERER_DEDUPE } from './vite.dedupe';
 import { RENDERER_BABEL_OPTIONS } from './vite.react-babel';
@@ -78,7 +79,12 @@ export const appBrowserVitestConfig = {
       headless: true,
       screenshotFailures: false,
       instances: [{ browser: 'chromium' }],
-      commands: { runBrowserFixture, installNetworkGuard, takeBlockedNetworkRequests },
+      commands: {
+        runBrowserFixture,
+        installNetworkGuard,
+        takeBlockedNetworkRequests,
+        buildAppStylesheet,
+      },
     },
   },
 } satisfies ViteUserConfig;
