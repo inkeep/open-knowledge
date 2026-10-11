@@ -2421,11 +2421,36 @@
   background-color: var(--background);
 }
 
-/* Corner cell (first column + header row) must clear both frozen row layer and
-   sticky column layer when both are active simultaneously. */
+/* The header row stacks above body rows at every scroll position. The freeze
+   translates it with a compositor-driven animation; a stacking flip at the
+   freeze boundary would land on the main thread, frames behind the transform,
+   leaving body rows painted over the moving header during a fast scroll. */
+.ProseMirror .tableWrapper > table > tbody > tr:first-child > th {
+  z-index: 2;
+}
+
+/* First-column header cells in body rows (header-column tables) sit above the
+   sticky body column. */
 .ProseMirror .tableWrapper > table > tbody > tr > th:first-child {
   background-color: var(--muted);
   z-index: 3;
+}
+
+/* A header cell's resize handle overhangs its right border; raise the cell
+   holding it so the next header cell does not cover the overhang. */
+.ProseMirror
+  .tableWrapper
+  > table
+  > tbody
+  > tr:first-child
+  > th:not(:first-child):has(> .column-resize-handle) {
+  z-index: 3;
+}
+
+/* Corner cell (first column + header row) clears the header row, a raised
+   resize-handle cell and the sticky column, frozen or not. */
+.ProseMirror .tableWrapper > table > tbody > tr:first-child > th:first-child {
+  z-index: 4;
 }
 
 /* Occluder above the frozen header (frozen-table-headers.ts): scrolled-past

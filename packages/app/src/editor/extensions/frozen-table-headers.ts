@@ -60,8 +60,6 @@ function resetHeaderCells(firstRow: HTMLTableRowElement): void {
   }
 }
 
-const cellZIndex = (cell: HTMLTableCellElement): string => (cell.cellIndex === 0 ? '3' : '2');
-
 export function buildShiftKeyframes(range: FreezeRange, scrollMax: number): Keyframe[] {
   return buildFreezeKeyframes(range, scrollMax, (shift) => ({
     transform: `translateY(${shift}px)`,
@@ -126,12 +124,12 @@ function buildBoundaryFlipKeyframes(
   ];
 }
 
-function buildChromeKeyframes(range: FreezeRange, scrollMax: number, zIndex: string): Keyframe[] {
+function buildChromeKeyframes(range: FreezeRange, scrollMax: number): Keyframe[] {
   return buildBoundaryFlipKeyframes(
     range,
     scrollMax,
-    { zIndex: 'auto', boxShadow: 'none' },
-    { zIndex, boxShadow: FROZEN_SHADOW },
+    { boxShadow: 'none' },
+    { boxShadow: FROZEN_SHADOW },
   );
 }
 
@@ -145,15 +143,14 @@ export function applyScrollDrivenFreeze(
   range: FreezeRange,
   scrollMax: number,
 ): void {
-  const zIndex = cellZIndex(cell);
-  const key = `sd|${range.startOffset}|${range.maxShift}|${scrollMax}|${zIndex}`;
+  const key = `sd|${range.startOffset}|${range.maxShift}|${scrollMax}`;
   const prev = appliedFreezes.get(cell);
   if (prev?.key === key) return;
   if (prev) for (const animation of prev.animations) animation.cancel();
 
   const base: ScrollDrivenAnimationOptions = { timeline, fill: 'both', easing: 'linear' };
   const transformAnimation = cell.animate(buildShiftKeyframes(range, scrollMax), base);
-  const chromeAnimation = cell.animate(buildChromeKeyframes(range, scrollMax, zIndex), base);
+  const chromeAnimation = cell.animate(buildChromeKeyframes(range, scrollMax), base);
   const occluderAnimation = cell.animate(buildOccluderKeyframes(range, scrollMax), {
     ...base,
     pseudoElement: '::before',
@@ -180,13 +177,12 @@ export function anchorScrollDrivenStartTime(animation: Animation): void {
 }
 
 function applyInstantFreeze(cell: HTMLTableCellElement, shift: number): void {
-  const zIndex = cellZIndex(cell);
-  const key = `in|${shift}|${zIndex}`;
+  const key = `in|${shift}`;
   const prev = appliedFreezes.get(cell);
   if (prev?.key === key) return;
   if (prev) for (const animation of prev.animations) animation.cancel();
   const animation = cell.animate(
-    [{ transform: `translateY(${shift}px)`, zIndex, boxShadow: FROZEN_SHADOW }],
+    [{ transform: `translateY(${shift}px)`, boxShadow: FROZEN_SHADOW }],
     { duration: 0, fill: 'forwards' },
   );
   const occluderAnimation = cell.animate([{ opacity: '1' }], {

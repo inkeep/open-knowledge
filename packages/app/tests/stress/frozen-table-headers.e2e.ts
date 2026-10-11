@@ -84,6 +84,24 @@ ${Array.from({ length: 28 }, (_, i) => `Appendix paragraph ${i + 1} below the ta
 const SCROLL_SELECTOR = '[data-testid="editor-scroll-container"]';
 const TOOLBAR_HEIGHT = 56;
 
+async function hoverHeaderBorder(
+  page: Parameters<typeof test>[1]['page'],
+  colIndex: number,
+): Promise<{ x: number; y: number }> {
+  const border = await page.evaluate((idx) => {
+    const row = document
+      .querySelector('.ProseMirror .tableWrapper > table > tbody')
+      ?.querySelector('tr') as HTMLTableRowElement | null;
+    const r = row?.cells[idx]?.getBoundingClientRect();
+    return r ? { x: r.right - 1, y: r.top + r.height / 2 } : null;
+  }, colIndex);
+  if (!border) throw new Error(`no header cell at index ${colIndex}`);
+  await page.mouse.move(border.x, border.y);
+  await page.mouse.move(border.x, border.y);
+  await page.locator('.column-resize-handle').first().waitFor({ state: 'attached' });
+  return border;
+}
+
 async function scanSlotPixels(page: Parameters<typeof test>[1]['page']): Promise<number> {
   const band = await page.evaluate(() => {
     const table = document.querySelector('.ProseMirror .tableWrapper > table') as HTMLElement;
@@ -296,6 +314,29 @@ test('no freeze before the table reaches the toolbar', async ({
     return cell ? getComputedStyle(cell, '::before').opacity : '';
   });
   expect(occluderOpacity).toBe('0');
+  const unfrozenStacking = await page.evaluate(() => {
+    const row = document.querySelector(
+      '.ProseMirror .tableWrapper > table > tbody > tr',
+    ) as HTMLTableRowElement | null;
+    if (!row) return null;
+    return {
+      cornerZ: getComputedStyle(row.cells[0]).zIndex,
+      headerZ: getComputedStyle(row.cells[1]).zIndex,
+    };
+  });
+  expect(unfrozenStacking).toEqual({ cornerZ: '4', headerZ: '2' });
+  await hoverHeaderBorder(page, 1);
+  const resizeStacking = await page.evaluate(() => {
+    const row = document.querySelector(
+      '.ProseMirror .tableWrapper > table > tbody > tr',
+    ) as HTMLTableRowElement;
+    return {
+      handleInHovered: row.cells[1].querySelector(':scope > .column-resize-handle') !== null,
+      hoveredZ: getComputedStyle(row.cells[1]).zIndex,
+      nextZ: getComputedStyle(row.cells[2]).zIndex,
+    };
+  });
+  expect(resizeStacking).toEqual({ handleInHovered: true, hoveredZ: '3', nextZ: '2' });
   await page.screenshot({ path: testInfo.outputPath('unscrolled.png') });
 });
 
@@ -375,19 +416,7 @@ test('first column stays pinned during horizontal scroll after column resize', a
   await waitForQuiescence(page, SCROLL_SELECTOR);
 
   for (const colIndex of [5, 4, 3, 2, 1, 0]) {
-    const border = await page.evaluate((idx) => {
-      const row = document
-        .querySelector('.ProseMirror .tableWrapper > table > tbody')
-        ?.querySelector('tr') as HTMLTableRowElement | null;
-      const cell = row?.cells[idx];
-      if (!cell) return null;
-      const r = cell.getBoundingClientRect();
-      return { x: r.right - 1, y: r.top + r.height / 2 };
-    }, colIndex);
-    if (!border) throw new Error(`no header cell at index ${colIndex}`);
-    await page.mouse.move(border.x, border.y);
-    await page.mouse.move(border.x, border.y);
-    await page.locator('.column-resize-handle').first().waitFor({ state: 'attached' });
+    const border = await hoverHeaderBorder(page, colIndex);
     await page.mouse.down();
     await page.mouse.move(border.x + 70, border.y, { steps: 6 });
     await page.mouse.up();
@@ -469,19 +498,7 @@ test('virtualized long doc: both freezes hold on a 200-row table', async ({
   await twoFrames(page);
   await twoFrames(page);
   for (const colIndex of [4, 3, 2, 1, 0]) {
-    const border = await page.evaluate((idx) => {
-      const row = document
-        .querySelector('.ProseMirror .tableWrapper > table > tbody')
-        ?.querySelector('tr') as HTMLTableRowElement | null;
-      const cell = row?.cells[idx];
-      if (!cell) return null;
-      const r = cell.getBoundingClientRect();
-      return { x: r.right - 1, y: r.top + r.height / 2 };
-    }, colIndex);
-    if (!border) throw new Error(`no header cell at index ${colIndex}`);
-    await page.mouse.move(border.x, border.y);
-    await page.mouse.move(border.x, border.y);
-    await page.locator('.column-resize-handle').first().waitFor({ state: 'attached' });
+    const border = await hoverHeaderBorder(page, colIndex);
     await page.mouse.down();
     await page.mouse.move(border.x + 80, border.y, { steps: 6 });
     await page.mouse.up();
@@ -516,7 +533,7 @@ test('virtualized long doc: both freezes hold on a 200-row table', async ({
   expect(combined?.overflow ?? 0).toBeGreaterThan(100);
   expect(combined?.stickyDriftPx ?? 99).toBeLessThan(2);
   expect(combined?.neighborShiftPx ?? 0).toBeGreaterThan(100);
-  expect(combined?.cornerZ).toBe('3');
+  expect(combined?.cornerZ).toBe('4');
   expect(combined?.headerZ).toBe('2');
   await twoFrames(page);
   await page.screenshot({ path: testInfo.outputPath('virtualized-combined.png') });
