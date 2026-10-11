@@ -144,6 +144,7 @@ function OutlinePanelInner({
       }, OUTLINE_INVALIDATE_DEBOUNCE_MS);
     };
     doc.on('update', onUpdate);
+    void queryClient.invalidateQueries({ queryKey: ['page-headings', docName] });
     return () => {
       doc.off('update', onUpdate);
       if (debounceTimer !== null) clearTimeout(debounceTimer);
