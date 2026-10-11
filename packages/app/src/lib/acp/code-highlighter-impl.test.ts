@@ -1,11 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const createHighlighterCore = vi.fn();
-vi.mock('shiki/core', () => ({ createHighlighterCore }));
-vi.mock('shiki/engine/javascript', () => ({ createJavaScriptRegexEngine: () => ({}) }));
-
-const { tokenize } = await import('./code-highlighter-impl');
-
 const TOKENS = { tokens: [], fg: '#000', bg: '#fff' };
 
 const highlighter = {
@@ -13,12 +7,19 @@ const highlighter = {
   codeToTokens: vi.fn(() => TOKENS),
 };
 
+const createHighlighterCore = vi.fn(async () => highlighter);
+vi.mock('shiki/core', () => ({ createHighlighterCore }));
+vi.mock('shiki/engine/javascript', () => ({ createJavaScriptRegexEngine: () => ({}) }));
+
 beforeEach(() => {
+  vi.resetModules();
+  createHighlighterCore.mockReset();
   highlighter.codeToTokens.mockClear();
 });
 
 describe('tokenize', () => {
   test('a rejected highlighter init is retried on the next call, not cached forever', async () => {
+    const { tokenize } = await import('./code-highlighter-impl');
     createHighlighterCore
       .mockRejectedValueOnce(new Error('transient init failure'))
       .mockResolvedValue(highlighter);
@@ -29,6 +30,8 @@ describe('tokenize', () => {
   });
 
   test('reuses the singleton across calls once created', async () => {
+    const { tokenize } = await import('./code-highlighter-impl');
+    await tokenize('const a = 1;', 'tsx');
     createHighlighterCore.mockClear();
     await expect(tokenize('{}', 'json')).resolves.toEqual(TOKENS);
     expect(createHighlighterCore).not.toHaveBeenCalled();
@@ -39,6 +42,7 @@ describe('tokenize', () => {
   });
 
   test('an unloaded language falls back to plain text', async () => {
+    const { tokenize } = await import('./code-highlighter-impl');
     await tokenize('body {}', 'not-loaded');
     expect(highlighter.codeToTokens).toHaveBeenCalledWith('body {}', {
       lang: 'text',
