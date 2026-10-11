@@ -353,6 +353,7 @@ interface ThreadRecord {
   sessionId: string | null;
   sessionBeforeRestart: {
     sessionId: string | null;
+    resumable: ThreadInfo['resumable'];
     contextWindow: ThreadInfo['contextWindow'];
   } | null;
   agentSessionId: string;
@@ -2453,7 +2454,11 @@ export class AcpThreadManager {
     t.launchSettings = { ...t.launchSettings, contextWindow: Math.floor(tokens) };
     t.resumeInFlight = true;
     let applied = false;
-    t.sessionBeforeRestart = { sessionId: t.sessionId, contextWindow: t.info.contextWindow };
+    t.sessionBeforeRestart = {
+      sessionId: t.sessionId,
+      resumable: t.info.resumable,
+      contextWindow: t.info.contextWindow,
+    };
     try {
       const { custom } = await this.resolveAgentInfo(t.agentRef);
       await this.teardownFailedAgent(t);
@@ -2511,7 +2516,11 @@ export class AcpThreadManager {
       throw new ThreadOpError('not-ready', 'a retry is already in progress');
     }
     t.resumeInFlight = true;
-    t.sessionBeforeRestart = { sessionId: t.sessionId, contextWindow: t.info.contextWindow };
+    t.sessionBeforeRestart = {
+      sessionId: t.sessionId,
+      resumable: t.info.resumable,
+      contextWindow: t.info.contextWindow,
+    };
     try {
       resetSharedLoginShellPathProvider();
       this.healthyInterpreters.clear();
@@ -3855,6 +3864,7 @@ export class AcpThreadManager {
 
   private async teardownFailedAgent(t: ThreadRecord): Promise<void> {
     t.sessionId = null;
+    t.info.resumable = false;
     t.info.contextWindow = null;
     await this.stopFailedAgent(t);
   }
@@ -3865,6 +3875,7 @@ export class AcpThreadManager {
     if (previous === null || t.sessionId !== null) return false;
     if (isThreadClosed(t)) {
       t.sessionId = previous.sessionId;
+      t.info.resumable = previous.resumable;
       t.info.contextWindow = previous.contextWindow;
     }
     return true;
@@ -3910,10 +3921,11 @@ export class AcpThreadManager {
       chatGrants: _chatGrants,
       ...info
     } = t.info;
+    const restarting = t.sessionId === null ? t.sessionBeforeRestart : null;
     return {
       version: 1,
-      info,
-      sessionId: t.sessionId ?? t.sessionBeforeRestart?.sessionId ?? null,
+      info: restarting === null ? info : { ...info, resumable: restarting.resumable },
+      sessionId: t.sessionId ?? restarting?.sessionId ?? null,
       cwd: t.cwd,
       agentRef: t.agentRef,
       docName: t.docName,

@@ -5732,6 +5732,60 @@ describe('AcpThreadManager resumability signal', () => {
     expect(rehydrated?.resumable).toBe(true);
   }, 45_000);
 
+  test('a failed retry discards the session, so the thread stops offering resume', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'resume-agent', { FAKE_CAPS: 'resume', FAIL_PROMPT: '1' });
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'resume-agent' } });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    manager.sendPrompt(info.threadId, 'fail this prompt');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'error',
+      5000,
+      'prompt failure',
+    );
+    expect(manager.getInfo(info.threadId)?.resumable).toBe(true);
+
+    writeMarkerGatedAgentEntry(localDir, 'resume-agent', join(tmp(), 'never-written'));
+    await expect(manager.retryThread(info.threadId)).rejects.toThrow(/harness not installed/);
+    expect(internals(manager).sessionId(info.threadId)).toBeNull();
+    expect(manager.getInfo(info.threadId)?.resumable).toBe(false);
+
+    await manager.closeThread(info.threadId);
+    expect(manager.getInfo(info.threadId)?.archived).toBe(true);
+    expect(manager.getInfo(info.threadId)?.resumable).toBe(false);
+    await expect(manager.resumeThread(info.threadId)).rejects.toMatchObject({
+      code: 'resume-unsupported',
+    });
+  }, 45_000);
+
+  test('a context window change that fails to start discards the session, so the thread stops offering resume', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'codex-acp', { FAKE_CAPS: 'resume' });
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'codex-acp' },
+      settings: { contextWindow: 272_000 },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    expect(manager.getInfo(info.threadId)?.resumable).toBe(true);
+
+    writeMarkerGatedAgentEntry(localDir, 'codex-acp', join(tmp(), 'never-written'));
+    await expect(manager.setContextWindow(info.threadId, 872_000)).rejects.toMatchObject({
+      code: 'spawn-failed',
+    });
+    expect(internals(manager).sessionId(info.threadId)).toBeNull();
+    expect(manager.getInfo(info.threadId)?.resumable).toBe(false);
+
+    await manager.closeThread(info.threadId);
+    expect(manager.getInfo(info.threadId)?.archived).toBe(true);
+    expect(manager.getInfo(info.threadId)?.resumable).toBe(false);
+  }, 45_000);
+
   test('an agent that only loads sessions counts as resumable too', async () => {
     const contentDir = tmp();
     const localDir = tmp();
