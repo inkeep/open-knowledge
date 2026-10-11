@@ -76,6 +76,33 @@ describe('parseTempoTimings — pure extraction', () => {
     }
   });
 
+  test("takes every timing from the queried mount's spans when another mount's spans of the same names share the window", () => {
+    const response = buildTempoResponse([
+      { name: 'ok.cold-mount', durationMs: 900, mountId: 'mid-other' },
+      { name: 'ok.provider-pool.open', durationMs: 90, mountId: 'mid-other' },
+      { name: 'ok.mount-promise', durationMs: 400, mountId: 'mid-other' },
+      { name: 'ok.sync-promise', durationMs: 800, mountId: 'mid-other' },
+      { name: 'sync.handshake', durationMs: 70, mountId: 'mid-other' },
+      { name: 'persistence.onLoadDocument', durationMs: 60, mountId: 'mid-other' },
+      { name: 'ok.cold-mount', durationMs: 250, mountId: 'mid-a' },
+      { name: 'ok.provider-pool.open', durationMs: 5, mountId: 'mid-a' },
+      { name: 'ok.mount-promise', durationMs: 40, mountId: 'mid-a' },
+      { name: 'ok.sync-promise', durationMs: 240, mountId: 'mid-a' },
+      { name: 'sync.handshake', durationMs: 12, mountId: 'mid-a' },
+      { name: 'persistence.onLoadDocument', durationMs: 8, mountId: 'mid-a' },
+    ]);
+    expect(parseTempoTimings(response, 'mid-a')).toEqual({
+      kind: 'success',
+      clientSpanTimings: {
+        coldMountMs: 250,
+        providerPoolOpenMs: 5,
+        mountPromiseMs: 40,
+        syncPromiseMs: 240,
+      },
+      serverSpanTimings: { syncHandshakeMs: 12, persistenceLoadMs: 8 },
+    });
+  });
+
   test('returns empty when the response has no traces', () => {
     const result = parseTempoTimings({ traces: [] }, 'mid-a');
     expect(result.kind).toBe('empty');

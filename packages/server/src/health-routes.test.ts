@@ -6,7 +6,12 @@ import { resolve } from 'node:path';
 import type { Hocuspocus } from '@hocuspocus/server';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
-import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
+import {
+  bootCompositionRig,
+  parseProblem,
+  type RawResponse,
+  rawRequest,
+} from './composition-rig.test-helper.ts';
 import { getFreeLoopbackPort } from './loopback-rig-test-helpers.ts';
 import { mountMcpAndApi } from './mcp-mount.ts';
 
@@ -85,6 +90,38 @@ describe('/readyz', () => {
         expect(settled.status).toBe(200);
       } finally {
         await racing.destroy();
+      }
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test('destroy() flips readiness to draining before the listener closes', async () => {
+    const tmp = await mkdtemp(resolve(tmpdir(), 'ok-readyz-drain-'));
+    try {
+      const draining = await bootCompositionRig(tmp);
+      try {
+        await draining.ready;
+        const { httpServer } = draining;
+        const closeListener = httpServer.close.bind(httpServer);
+        let probeBeforeClose: Promise<RawResponse> | undefined;
+        httpServer.close = ((callback?: (err?: Error) => void) => {
+          probeBeforeClose = rawRequest(draining.port, '/readyz');
+          const close = () => {
+            closeListener(callback);
+          };
+          void probeBeforeClose.then(close, close);
+          return httpServer;
+        }) as typeof httpServer.close;
+
+        await draining.destroy();
+
+        expect(probeBeforeClose).toBeDefined();
+        const probe = await probeBeforeClose;
+        expect(probe?.status).toBe(503);
+        expect(JSON.parse(probe?.body ?? '')).toMatchObject({ ready: false, status: 'draining' });
+      } finally {
+        await draining.destroy();
       }
     } finally {
       await rm(tmp, { recursive: true, force: true });
