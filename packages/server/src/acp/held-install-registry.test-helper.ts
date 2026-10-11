@@ -137,7 +137,10 @@ function packument(
 
 export async function withHeldInstallRegistry(
   run: (registry: HeldInstallRegistry) => Promise<void>,
-  { dependencyPublished = PUBLISHED }: { dependencyPublished?: string } = {},
+  {
+    dependencyPublished = PUBLISHED,
+    dependencyDeprecated,
+  }: { dependencyPublished?: string; dependencyDeprecated?: string } = {},
 ): Promise<void> {
   await withAcquisitionHome(async (home) => {
     const sources = join(home, 'held-install-sources');
@@ -229,7 +232,15 @@ export async function withHeldInstallRegistry(
         );
       } else if (path === `/${DEPENDENCY_NAME}`) {
         send(
-          Buffer.from(packument(host, DEPENDENCY_NAME, dependencyTarball, {}, dependencyPublished)),
+          Buffer.from(
+            packument(
+              host,
+              DEPENDENCY_NAME,
+              dependencyTarball,
+              dependencyDeprecated === undefined ? {} : { deprecated: dependencyDeprecated },
+              dependencyPublished,
+            ),
+          ),
           'application/json',
         );
       } else if (path === `/${AGENT_NAME}/-/${AGENT_NAME}-${VERSION}.tgz`) {

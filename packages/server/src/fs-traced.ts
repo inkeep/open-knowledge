@@ -5,6 +5,7 @@ import {
   cpSync,
   linkSync,
   mkdirSync,
+  openSync,
   renameSync,
   rmdirSync,
   rmSync,
@@ -174,6 +175,12 @@ export function tracedCpSync(
     () => {
       cpSync(from, to, options);
     },
+  );
+}
+
+export function tracedOpenSync(path: string, flags: string, mode: number): number {
+  return withSpanSync('fs.openSync', { attributes: buildAttrs('openSync', path) }, () =>
+    openSync(path, flags, mode),
   );
 }
 

@@ -1,7 +1,15 @@
 import { once } from 'node:events';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { describe, expect, test } from 'vitest';
 import {
   executableFacts,
@@ -293,6 +301,83 @@ describe('hermetic package acquisition and native dispatch', () => {
       });
     });
   });
+
+  test.skipIf(process.platform === 'win32')(
+    'an install reports the output it wrote without leaving an output file in its working directory',
+    async () => {
+      await withAcquisitionHome(async (home) => {
+        const bin = join(home, 'bin');
+        mkdirSync(bin);
+        installNodeFixture(bin);
+        const listing = join(home, 'npx-cwd-listing.json');
+        writeExecutable(
+          join(bin, 'npx'),
+          `const fs = require('node:fs');
+          fs.writeFileSync(${JSON.stringify(listing)}, JSON.stringify(fs.readdirSync(process.cwd())));
+          process.stderr.write('npm error fixture install output\\n');
+          process.exit(1);`,
+        );
+        writeExecutable(
+          join(bin, 'npm'),
+          `process.stdout.write(${JSON.stringify(JSON.stringify([{ name: 'is-number', version: '7.0.0' }]))});`,
+        );
+        await expect(
+          resolveRegistryLaunch(
+            registryPackage('is-number@7.0.0', 'npx', { PATH: bin }),
+            null,
+            log,
+            undefined,
+            async (launch) => launch,
+            { install: true },
+          ),
+        ).rejects.toMatchObject({
+          code: 'install-failed',
+          message: 'Could not install is-number@7.0.0.',
+          machineDetail: 'npm error fixture install output',
+        });
+        expect(JSON.parse(readFileSync(listing, 'utf8'))).toEqual(['package.json']);
+        expect(readdirSync(join(okUserHomeDir(home), 'acp-npx-cwd'))).toEqual(['package.json']);
+      });
+    },
+  );
+
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'an install whose working directory refuses its output file fails as an install naming the cause',
+    async () => {
+      await withAcquisitionHome(async (home) => {
+        const bin = join(home, 'bin');
+        mkdirSync(bin);
+        installNodeFixture(bin);
+        writeExecutable(join(bin, 'npx'), 'process.exit(0);');
+        writeExecutable(
+          join(bin, 'npm'),
+          `process.stdout.write(${JSON.stringify(JSON.stringify([{ name: 'is-number', version: '7.0.0' }]))});`,
+        );
+        const npxCwd = join(okUserHomeDir(home), 'acp-npx-cwd');
+        mkdirSync(npxCwd, { recursive: true });
+        writeFileSync(join(npxCwd, 'package.json'), '{}\n');
+        chmodSync(npxCwd, 0o500);
+        try {
+          const result = await resolveRegistryLaunch(
+            registryPackage('is-number@7.0.0', 'npx', { PATH: bin }),
+            null,
+            log,
+            undefined,
+            async (launch) => launch,
+            { install: true },
+          ).catch((error: unknown) => error);
+          expect(result).toBeInstanceOf(AgentLaunchError);
+          expect(result).toMatchObject({
+            code: 'install-failed',
+            message: 'Could not install is-number@7.0.0.',
+            machineDetail: expect.stringContaining('EACCES'),
+          });
+        } finally {
+          chmodSync(npxCwd, 0o700);
+        }
+      });
+    },
+  );
 
   test.each(['malformed', 'overflow', 'timeout'] as const)(
     'native npm %s output fails acquisition and releases the owned process',

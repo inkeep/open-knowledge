@@ -1,5 +1,6 @@
-import { type ChildProcess, spawn } from 'node:child_process';
-import { constants, existsSync, statSync } from 'node:fs';
+import { type ChildProcess, type StdioOptions, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { closeSync, constants, createReadStream, existsSync, statSync } from 'node:fs';
 import { access, chmod, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
@@ -9,7 +10,9 @@ import { z } from 'zod';
 import {
   tracedMkdir,
   tracedMkdirSync,
+  tracedOpenSync,
   tracedRm,
+  tracedUnlinkSync,
   tracedWriteFile,
   tracedWriteFileSync,
 } from '../fs-traced.ts';
@@ -441,17 +444,13 @@ async function installNpmPackage(
   log: PinoLogger,
 ): Promise<void> {
   const startedAt = Date.now();
-  const child = spawnAcpAgent({
+  const installLaunch = {
     ...launch,
-    kind: 'npx',
+    kind: 'npx' as const,
     args: ['--yes', `--package=${acquired}`, '--call=exit 0'],
-  });
+  };
   let stderr = '';
   let rawStderr = '';
-  let spawnFailure: string | undefined;
-  child.stdin?.end();
-  child.stdout?.resume();
-  child.stderr?.setEncoding('utf8');
   const stderrCapture = createDiagnosticStderrCapture(
     (line) => {
       stderr = `${stderr}${line}\n`.slice(-ACQUISITION_DETAIL_MAX_CHARS);
@@ -460,14 +459,10 @@ async function installNpmPackage(
       rawStderr = `${rawStderr}${rawLine}\n`.slice(-ACQUISITION_DETAIL_MAX_CHARS);
     },
   );
-  child.stderr?.on('data', stderrCapture.write);
-  child.stderr?.on('end', stderrCapture.end);
-  child.once('error', (err) => {
-    spawnFailure = err.message;
-  });
-  const [code, signal] = await new Promise<[number | null, NodeJS.Signals | null]>(
-    (resolvePromise) => child.once('close', (...exit) => resolvePromise(exit)),
-  );
+  const { code, signal, spawnFailure } =
+    process.platform === 'win32'
+      ? await runPipedInstall(installLaunch, acquired, stderrCapture, log)
+      : await runFileBackedInstall(installLaunch, acquired, stderrCapture, log);
   if (spawnFailure === undefined && code === 0) {
     log.info(
       { package: acquired, elapsedMs: Date.now() - startedAt },
@@ -485,6 +480,108 @@ async function installNpmPackage(
     machineDetail: detail,
     npxCacheEntry,
   });
+}
+
+interface InstallExit {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  spawnFailure: string | undefined;
+}
+
+type DiagnosticStderrCapture = ReturnType<typeof createDiagnosticStderrCapture>;
+
+function awaitInstallExit(
+  child: ChildProcess,
+  acquired: string,
+  log: PinoLogger,
+): Promise<InstallExit> {
+  let spawnFailure: string | undefined;
+  child.once('spawn', () => {
+    log.info({ package: acquired, installPid: child.pid }, '[acp-launch] installing agent package');
+  });
+  child.once('error', (err) => {
+    spawnFailure = err.message;
+  });
+  return new Promise((resolvePromise) =>
+    child.once('close', (code, signal) => resolvePromise({ code, signal, spawnFailure })),
+  );
+}
+
+async function runFileBackedInstall(
+  launch: ResolvedLaunch & { kind: 'npx' },
+  acquired: string,
+  capture: DiagnosticStderrCapture,
+  log: PinoLogger,
+): Promise<InstallExit> {
+  const stderrPath = join(acpNpxIsolatedCwd(), `.install-stderr-${process.pid}-${randomUUID()}`);
+  let fd: number;
+  try {
+    fd = openUnlinkedFile(stderrPath);
+  } catch (err) {
+    return {
+      code: null,
+      signal: null,
+      spawnFailure: err instanceof Error ? err.message : String(err),
+    };
+  }
+  try {
+    return await awaitInstallExit(
+      spawnLaunch(launch, undefined, ['ignore', 'ignore', fd]),
+      acquired,
+      log,
+    );
+  } finally {
+    await replayInstallStderr(fd, capture).catch((err: unknown) => {
+      log.warn(
+        { err, package: acquired },
+        '[acp-launch] could not read the agent package install output',
+      );
+    });
+  }
+}
+
+function openUnlinkedFile(path: string): number {
+  const fd = tracedOpenSync(path, 'wx+', 0o600);
+  try {
+    tracedUnlinkSync(path);
+    return fd;
+  } catch (err) {
+    closeSync(fd);
+    throw err;
+  }
+}
+
+async function replayInstallStderr(fd: number, capture: DiagnosticStderrCapture): Promise<void> {
+  try {
+    for await (const chunk of createReadStream('', {
+      fd,
+      start: 0,
+      encoding: 'utf8',
+      autoClose: false,
+    })) {
+      capture.write(chunk);
+    }
+  } finally {
+    capture.end();
+    closeSync(fd);
+  }
+}
+
+/* UPSTREAM(libuv/libuv#1659, microsoft/terminal#12464): an inherited stdio descriptor drops
+   CREATE_NO_WINDOW and Windows Terminal may show the console cmd.exe then opens. */
+function runPipedInstall(
+  launch: ResolvedLaunch & { kind: 'npx' },
+  acquired: string,
+  capture: DiagnosticStderrCapture,
+  log: PinoLogger,
+): Promise<InstallExit> {
+  const child = spawnAcpAgent(launch);
+  child.stdin?.end();
+  child.stdout?.resume();
+  child.stderr?.setEncoding('utf8');
+  child.stderr?.on('data', capture.write);
+  child.stderr?.on('end', capture.end);
+  return awaitInstallExit(child, acquired, log);
 }
 
 function heldNpmPackage(entry: AcquiredNpmPackage | undefined): HeldNpmPackage | null {
@@ -1178,6 +1275,14 @@ export function spawnAcpAgent(
   projectCwd: string,
 ): ChildProcess;
 export function spawnAcpAgent(launch: ResolvedLaunch, projectCwd?: string): ChildProcess {
+  return spawnLaunch(launch, projectCwd, ['pipe', 'pipe', 'pipe']);
+}
+
+function spawnLaunch(
+  launch: ResolvedLaunch,
+  projectCwd: string | undefined,
+  stdio: StdioOptions,
+): ChildProcess {
   if (launch.kind === 'npx' && projectCwd !== undefined) {
     throw new Error('spawnAcpAgent does not accept a project cwd for npx launches.');
   }
@@ -1194,7 +1299,7 @@ export function spawnAcpAgent(launch: ResolvedLaunch, projectCwd?: string): Chil
   return spawn(cmd, args, {
     cwd,
     env: withHostedAgentMarker(launch.env),
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdio,
     shell: false,
     detached: !win,
     windowsHide: true,
