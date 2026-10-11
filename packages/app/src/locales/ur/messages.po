@@ -12222,6 +12222,7 @@ msgid "Renaming changes the file on disk and the id agents use to pick this temp
 msgstr "نام بدلنے سے ڈسک پر فائل اور وہ شناخت بدل جاتی ہے جو ایجنٹس یہ ٹیمپلیٹ منتخب کرنے کے لیے استعمال کرتے ہیں۔"
 
 #: src/editor/utils/severity.ts
+#: src/lib/rendered-diff/diff-jsx-block.tsx
 msgid "render error"
 msgstr "رینڈر کی خرابی"
 
@@ -16246,6 +16247,7 @@ msgid "Unknown component: {componentName} — source editable below"
 msgstr "نامعلوم جزو: {componentName} — سورس نیچے قابلِ ترمیم ہے"
 
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
+#: src/lib/rendered-diff/diff-jsx-block.tsx
 msgid "Unknown component: {unregisteredComponentName}"
 msgstr "نامعلوم جزو: {unregisteredComponentName}"
 

@@ -12222,6 +12222,7 @@ msgid "Renaming changes the file on disk and the id agents use to pick this temp
 msgstr "Renombrarlo cambia el archivo en el disco y el id con el que los agentes eligen esta plantilla."
 
 #: src/editor/utils/severity.ts
+#: src/lib/rendered-diff/diff-jsx-block.tsx
 msgid "render error"
 msgstr "error de renderizado"
 
@@ -16246,6 +16247,7 @@ msgid "Unknown component: {componentName} — source editable below"
 msgstr "Componente desconocido: {componentName}; el código se puede editar abajo"
 
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
+#: src/lib/rendered-diff/diff-jsx-block.tsx
 msgid "Unknown component: {unregisteredComponentName}"
 msgstr "Componente desconocido: {unregisteredComponentName}"
 

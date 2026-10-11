@@ -1,5 +1,5 @@
 import { HocuspocusProvider } from '@hocuspocus/provider';
-import { useEffect, useState } from 'react';
+import { createContext, use, useEffect, useState } from 'react';
 import * as Y from 'yjs';
 import { useCollabUrl } from '@/lib/use-collab-url';
 import { isConfigDoc, isSystemDoc } from '../is-system-doc';
@@ -29,7 +29,17 @@ export const LIVE_DOC_SYNC_WATCHDOG_MS = 10_000;
 
 export type AcquireLiveDocResult =
   | { ok: true; entry: LiveDocPoolEntry }
-  | { ok: false; reason: 'inadmissible' | 'at-capacity' };
+  | { ok: false; reason: 'inadmissible' | 'at-capacity' | 'refused' };
+
+export const LiveDocAccessContext = createContext(true);
+
+function refuseLiveDoc(): AcquireLiveDocResult {
+  return { ok: false, reason: 'refused' };
+}
+
+export function useLiveDocAcquirer(): (collabUrl: string, docName: string) => AcquireLiveDocResult {
+  return use(LiveDocAccessContext) ? acquireLiveDocProvider : refuseLiveDoc;
+}
 
 export function acquireLiveDocProvider(collabUrl: string, docName: string): AcquireLiveDocResult {
   if (isSystemDoc(docName) || isConfigDoc(docName)) return { ok: false, reason: 'inadmissible' };
@@ -124,8 +134,24 @@ function reuseIfSame(prev: LiveDocTextStatus, next: LiveDocTextStatus): LiveDocT
   return prev;
 }
 
+function refusedLiveDocTextStatus(
+  docName: string,
+  reason: Extract<AcquireLiveDocResult, { ok: false }>['reason'],
+): LiveDocTextStatus {
+  switch (reason) {
+    case 'at-capacity':
+      return { kind: 'at-capacity' };
+    case 'inadmissible':
+      return { kind: 'unreachable' };
+    case 'refused':
+      console.warn('[LiveDoc] live-document access is off here; refused', { docName });
+      return { kind: 'loading' };
+  }
+}
+
 export function useLiveDocText(docName: string | null, retryToken = 0): LiveDocTextStatus {
   const { collabUrl } = useCollabUrl();
+  const acquireLiveDoc = useLiveDocAcquirer();
   const [status, setStatus] = useState<LiveDocTextStatus>({ kind: 'loading' });
 
   useEffect(() => {
@@ -140,9 +166,9 @@ export function useLiveDocText(docName: string | null, retryToken = 0): LiveDocT
     }
     setStatus((prev) => reuseIfSame(prev, { kind: 'loading' }));
 
-    const acquired = acquireLiveDocProvider(collabUrl, docName);
+    const acquired = acquireLiveDoc(collabUrl, docName);
     if (!acquired.ok) {
-      setStatus({ kind: acquired.reason === 'at-capacity' ? 'at-capacity' : 'unreachable' });
+      setStatus(refusedLiveDocTextStatus(docName, acquired.reason));
       return;
     }
     const { entry } = acquired;
@@ -200,7 +226,7 @@ export function useLiveDocText(docName: string | null, retryToken = 0): LiveDocT
       clearTimeout(watchdog);
       releaseOnce();
     };
-  }, [collabUrl, docName, retryToken]);
+  }, [collabUrl, docName, retryToken, acquireLiveDoc]);
 
   return status;
 }

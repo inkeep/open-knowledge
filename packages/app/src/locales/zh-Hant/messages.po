@@ -12222,6 +12222,7 @@ msgid "Renaming changes the file on disk and the id agents use to pick this temp
 msgstr "重新命名會改變磁碟上的檔案，以及代理挑選這個範本時使用的 id。"
 
 #: src/editor/utils/severity.ts
+#: src/lib/rendered-diff/diff-jsx-block.tsx
 msgid "render error"
 msgstr "算繪錯誤"
 
@@ -16246,6 +16247,7 @@ msgid "Unknown component: {componentName} — source editable below"
 msgstr "未知的元件：{componentName}——可在下方編輯原始碼"
 
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
+#: src/lib/rendered-diff/diff-jsx-block.tsx
 msgid "Unknown component: {unregisteredComponentName}"
 msgstr "未知的元件：{unregisteredComponentName}"
 

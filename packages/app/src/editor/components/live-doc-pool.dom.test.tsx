@@ -42,6 +42,7 @@ const {
   LIVE_DOC_OBSERVE_DEBOUNCE_MS,
   LIVE_DOC_POOL_MAX,
   LIVE_DOC_SYNC_WATCHDOG_MS,
+  LiveDocAccessContext,
   releaseLiveDocProvider,
   useLiveDocText,
 } = await import('./live-doc-pool.ts');
@@ -69,6 +70,17 @@ describe('useLiveDocText', () => {
     cleanup();
     disposeLiveDocPool();
     vi.useRealTimers();
+  });
+
+  test('refuses to open a provider where live-document access is off', () => {
+    const { result } = renderHook(() => useLiveDocText('tests/board.excalidraw'), {
+      wrapper: ({ children }) => (
+        <LiveDocAccessContext value={false}>{children}</LiveDocAccessContext>
+      ),
+    });
+    expect(result.current).toEqual({ kind: 'loading' });
+    expect(FakeProvider.instances).toHaveLength(0);
+    expect(__liveDocPoolSize()).toBe(0);
   });
 
   test('maps sync-with-content to ready, and debounces live updates', async () => {

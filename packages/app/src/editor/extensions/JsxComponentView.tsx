@@ -13,7 +13,6 @@ import {
   incrementJsxKeyboardDeleteFailed,
   incrementJsxMoveFailed,
   incrementJsxPopoverCloseRestoreFailed,
-  incrementJsxRenderFailure,
   incrementJsxStuckCopyFailed,
   incrementJsxStuckDeleteFailed,
   type JsxNodeAction,
@@ -48,12 +47,10 @@ import {
 import { OPT_OUT_ATTR } from '../clipboard/index.ts';
 import { CodePreviewEditModal } from '../components/CodePreviewEditModal';
 import { DescriptorPlaceholder } from '../components/DescriptorPlaceholder.tsx';
-import { boardDocNameFromSrc } from '../components/ExcalidrawEmbed.tsx';
+import { isLiveBoardSrc } from '../components/ExcalidrawEmbed.tsx';
 import { JsxComponentHostProvider } from '../components/jsx-host-context.tsx';
 import { MermaidLightbox } from '../components/Mermaid';
 import { PropPanel } from '../components/PropPanel.tsx';
-import { getEditorDocName } from '../extensions/doc-context.ts';
-import { normalizeDocRelativeMediaRenderProps } from '../extensions/media-render-props.ts';
 import { getWrapperBridgeId } from '../extensions/selection-state-plugin.ts';
 import { useBlockSelection } from '../hooks/use-block-selection.ts';
 import { markUserTyping } from '../observers.ts';
@@ -68,16 +65,23 @@ import {
   createChildNode,
   focusInsertedComponent,
 } from '../slash-command/component-items.tsx';
-import { ALIGNABLE_DESCRIPTOR_NAMES } from '../utils/alignable-descriptors.ts';
 import { formatContainerAriaLabel } from '../utils/editor-strings.ts';
 import { getEditorView } from '../utils/get-editor-view.ts';
 import { reconstructSource } from '../utils/reconstruct-source.ts';
-import { sanitizeComponentProps } from '../utils/sanitize-url.ts';
 import {
   autonomousFragmentEditAllowed,
   markAutonomousFragmentEdit,
 } from './autonomous-fragment-edit.ts';
 import { isSameJsxElement, resolveJsxNodeTarget } from './jsx-node-target.ts';
+import {
+  extractPrimitiveProps,
+  JSX_WRAPPER_CLASS,
+  jsxChildrenClassName,
+  jsxWrapperDataAttributes,
+  reportJsxRenderFailure,
+  resolveJsxRenderProps,
+  resolveJsxSourceDocName,
+} from './jsx-render-contract.ts';
 
 interface ComponentErrorBoundaryProps {
   children: ReactNode;
@@ -97,18 +101,7 @@ function ComponentErrorBoundary(props: ComponentErrorBoundaryProps) {
     <ErrorBoundary
       resetKeys={[resetKey]}
       onError={(error, info) => {
-        const err = error instanceof Error ? error : new Error(String(error));
-        console.warn(
-          JSON.stringify({
-            event: 'jsx-render-failure',
-            component: descriptorName,
-            rawComponentName: String(rawComponentName ?? '').slice(0, 200),
-            error: String(err),
-            stack: info.componentStack,
-          }),
-        );
-        incrementJsxRenderFailure(descriptorName);
-        onError(err);
+        onError(reportJsxRenderFailure(descriptorName, rawComponentName, error, info));
       }}
       fallbackRender={(fbProps) => (
         <ComponentErrorFallback {...fbProps}>{children}</ComponentErrorFallback>
@@ -129,19 +122,6 @@ export function stableHash(value: unknown): string {
   const entries = Object.entries(value as Record<string, unknown>);
   entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableHash(v)}`).join(',')}}`;
-}
-
-export function extractPrimitiveProps(
-  attrs: Record<string, unknown>,
-  reactNodeNames: ReadonlySet<string>,
-): Record<string, unknown> {
-  const propsObj = (attrs.props ?? {}) as Record<string, unknown>;
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(propsObj)) {
-    if (reactNodeNames.has(key)) continue;
-    result[key] = value;
-  }
-  return sanitizeComponentProps(result);
 }
 
 interface ElementJsxAttrs extends Record<string, unknown> {
@@ -218,8 +198,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
 
   const isSelfClosingLeaf = !descriptor.hasChildren || !!descriptor.isSelfClosing;
 
-  const isAlignable = ALIGNABLE_DESCRIPTOR_NAMES.has(descriptor.name);
-
   const editableSource: { propName: string; language: 'mermaid' | 'latex' } | null =
     descriptor.name === 'MermaidFence'
       ? { propName: 'chart', language: 'mermaid' }
@@ -258,17 +236,10 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
   }, [selected, hasEditableProps, isSourceBearing, pos]);
 
   const primitiveProps = extractPrimitiveProps(node.attrs, descriptor.reactNodePropNames);
-  const translatedProps =
-    descriptor.surface === 'compat' ? descriptor.translateProps(primitiveProps) : primitiveProps;
-  const configuredDocName = (extension.options as { docName?: unknown }).docName;
-  const sourceDocName =
-    typeof configuredDocName === 'string' && configuredDocName
-      ? configuredDocName
-      : getEditorDocName(editor);
-  const renderProps = normalizeDocRelativeMediaRenderProps(
-    descriptor.name,
-    translatedProps,
-    sourceDocName,
+  const renderProps = resolveJsxRenderProps(
+    descriptor,
+    primitiveProps,
+    resolveJsxSourceDocName(extension.options, editor),
   );
   const lightboxRenderChart =
     descriptor.name === 'MermaidFence' && typeof renderProps.chart === 'string'
@@ -280,10 +251,7 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
   useEffect(() => {
     if (!diagramExpandable) setDiagramLightboxOpen(false);
   }, [diagramExpandable]);
-  const boardExpandable =
-    descriptor.name === 'Excalidraw' &&
-    typeof renderProps.src === 'string' &&
-    boardDocNameFromSrc(renderProps.src) !== null;
+  const boardExpandable = descriptor.name === 'Excalidraw' && isLiveBoardSrc(renderProps.src);
   useEffect(() => {
     if (!boardExpandable) setBoardLightboxOpen(false);
   }, [boardExpandable]);
@@ -620,19 +588,8 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
   return (
     <Popover open={popoverOpen} onOpenChange={handleOpenChange}>
       <NodeViewWrapper
-        className="jsx-component-wrapper my-2"
-        data-jsx-component=""
-        data-component-type={descriptor.name.toLowerCase()}
-        data-align={(() => {
-          const rawAlign = currentProps.align;
-          if (rawAlign === 'left' || rawAlign === 'right' || rawAlign === 'center') {
-            return rawAlign;
-          }
-          if (isAlignable) {
-            return 'center';
-          }
-          return undefined;
-        })()}
+        className={JSX_WRAPPER_CLASS}
+        {...jsxWrapperDataAttributes(descriptor, currentProps)}
         data-selected={isInnermostSelected ? 'true' : undefined}
         data-has-child-selected={hasChildSelected ? 'true' : undefined}
         data-range-selected={isRangeEncompassed ? 'true' : undefined}
@@ -645,7 +602,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
         {...(!isChildOfComponent
           ? { 'data-drag-handle': '', draggable: 'true' }
           : { draggable: 'false', onDragStart: (e: React.DragEvent) => e.preventDefault() })}
-        data-component-name={descriptor.name}
         onClick={handleBodyClick}
         onKeyDown={handleKeyDown}
       >
@@ -978,9 +934,7 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
                   : {})}
               >
                 <NodeViewContent
-                  className={`component-children ${
-                    !descriptor.hasChildren && node.childCount === 0 ? 'min-h-0 m-0 p-0' : ''
-                  }`}
+                  className={jsxChildrenClassName(descriptor, node)}
                   {...(!descriptor.hasChildren || descriptor.isSelfClosing
                     ? { contentEditable: false }
                     : {})}

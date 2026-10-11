@@ -6525,6 +6525,27 @@ html.electron-mode [data-slot="sidebar-inner"] {
   cursor: default;
 }
 
+.ok-rendered-diff .tabs-strip {
+  display: none;
+}
+
+.ok-rendered-diff
+  .tabs-content
+  > .component-children
+  > [data-node-view-content-react]
+  > .react-renderer {
+  display: block;
+}
+
+.ok-rendered-diff .tab-panel[data-tab-label]::before {
+  content: attr(data-tab-label);
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
 /* Mermaid WYSIWYG canvas (`mermaid-wysiwyg` package). The package injects its
    own `<style data-mw>` at runtime with `--mw-*` custom-property hooks for all
    interaction chrome (selection glow, popovers, in-place editors, plus-menus).

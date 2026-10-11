@@ -12222,6 +12222,7 @@ msgid "Renaming changes the file on disk and the id agents use to pick this temp
 msgstr "Renommer modifie le fichier sur le disque ainsi que l'id que les agents utilisent pour choisir ce modèle."
 
 #: src/editor/utils/severity.ts
+#: src/lib/rendered-diff/diff-jsx-block.tsx
 msgid "render error"
 msgstr "erreur de rendu"
 
@@ -16246,6 +16247,7 @@ msgid "Unknown component: {componentName} — source editable below"
 msgstr "Composant inconnu : {componentName} — source modifiable ci-dessous"
 
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
+#: src/lib/rendered-diff/diff-jsx-block.tsx
 msgid "Unknown component: {unregisteredComponentName}"
 msgstr "Composant inconnu : {unregisteredComponentName}"
 

@@ -9,8 +9,8 @@ import { Button } from '../../components/ui/button.tsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
 import { PropPanel } from '../components/PropPanel.tsx';
 import { getDescriptor } from '../registry/index.ts';
-import { getEditorDocName } from './doc-context.ts';
-import { extractPrimitiveProps, stableHash } from './JsxComponentView.tsx';
+import { stableHash } from './JsxComponentView.tsx';
+import { extractPrimitiveProps, resolveJsxSourceDocName } from './jsx-render-contract.ts';
 import { normalizeDocRelativeMediaRenderProps } from './media-render-props.ts';
 
 export function JsxInlineView(viewProps: NodeViewProps) {
@@ -46,15 +46,10 @@ function RegisteredInlineView({
   if (typeof bodyText === 'string' && bodyText !== '') {
     (primitiveProps as Record<string, unknown>).children = bodyText;
   }
-  const configuredDocName = (extension.options as { docName?: unknown }).docName;
-  const sourceDocName =
-    typeof configuredDocName === 'string' && configuredDocName
-      ? configuredDocName
-      : getEditorDocName(editor);
   const renderProps = normalizeDocRelativeMediaRenderProps(
     descriptor.name,
     primitiveProps,
-    sourceDocName,
+    resolveJsxSourceDocName(extension.options, editor),
   );
   const resetKey = `${descriptor.name}::${stableHash(primitiveProps)}`;
 

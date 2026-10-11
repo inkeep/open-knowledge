@@ -1,6 +1,9 @@
 import { DOMSerializer, type Fragment, type Node as PMNode, type Schema } from '@tiptap/pm/model';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { MarkChange, SpanChange } from './build-rendered-diff';
+import type { RenderedJsxBlock } from './diff-jsx-block';
+
+export type JsxBlockRenderer = (node: PMNode) => RenderedJsxBlock;
 
 export const RENDERED_DIFF_CHANGE_SELECTOR =
   '.ok-diff-ins, .ok-diff-ins-block, [data-diff-deleted]';
@@ -48,26 +51,71 @@ function buildDeletedWidget(
   return host;
 }
 
+const widgetCleanups = new WeakMap<Node, Array<() => void>>();
+
+function widgetSerializer(
+  schema: Schema,
+  renderJsxBlock: JsxBlockRenderer,
+  cleanups: Array<() => void>,
+): DOMSerializer {
+  const base = DOMSerializer.fromSchema(schema);
+  return new DOMSerializer(
+    {
+      ...base.nodes,
+      jsxComponent: (node) => {
+        const block = renderJsxBlock(node);
+        cleanups.push(block.destroy);
+        return { dom: block.dom, contentDOM: block.contentDOM };
+      },
+    },
+    base.marks,
+  );
+}
+
+function deletedWidget(
+  pos: number,
+  content: Fragment,
+  schema: Schema,
+  renderJsxBlock: JsxBlockRenderer,
+): Decoration {
+  const isBlock = fragmentHasBlock(content);
+  return Decoration.widget(
+    pos,
+    () => {
+      const cleanups: Array<() => void> = [];
+      const dom = buildDeletedWidget(
+        widgetSerializer(schema, renderJsxBlock, cleanups),
+        content,
+        isBlock,
+      );
+      widgetCleanups.set(dom, cleanups);
+      return dom;
+    },
+    {
+      side: -1,
+      ignoreSelection: true,
+      marks: [],
+      destroy: (dom) => {
+        for (const cleanup of widgetCleanups.get(dom) ?? []) cleanup();
+        widgetCleanups.delete(dom);
+      },
+    },
+  );
+}
+
 export function buildDiffDecorations(
   afterDoc: PMNode,
   beforeDoc: PMNode,
   changes: readonly SpanChange[],
   markChanges: readonly MarkChange[],
   schema: Schema,
+  renderJsxBlock: JsxBlockRenderer,
 ): DecorationSet {
-  const serializer = DOMSerializer.fromSchema(schema);
   const decorations: Decoration[] = [];
 
   for (const mark of markChanges) {
     const slice = beforeDoc.slice(mark.fromA, mark.toA);
-    const isBlock = fragmentHasBlock(slice.content);
-    decorations.push(
-      Decoration.widget(mark.fromB, () => buildDeletedWidget(serializer, slice.content, isBlock), {
-        side: -1,
-        ignoreSelection: true,
-        marks: [],
-      }),
-    );
+    decorations.push(deletedWidget(mark.fromB, slice.content, schema, renderJsxBlock));
     decorations.push(
       Decoration.inline(mark.fromB, mark.toB, { class: 'ok-diff-ins' }, { inclusiveEnd: true }),
     );
@@ -79,14 +127,7 @@ export function buildDiffDecorations(
     }
     if (change.toA > change.fromA) {
       const slice = beforeDoc.slice(change.fromA, change.toA);
-      const isBlock = fragmentHasBlock(slice.content);
-      decorations.push(
-        Decoration.widget(
-          change.fromB,
-          () => buildDeletedWidget(serializer, slice.content, isBlock),
-          { side: -1, ignoreSelection: true, marks: [] },
-        ),
-      );
+      decorations.push(deletedWidget(change.fromB, slice.content, schema, renderJsxBlock));
     }
   }
 

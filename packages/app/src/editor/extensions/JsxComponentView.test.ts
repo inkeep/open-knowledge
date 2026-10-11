@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
-import { extractPrimitiveProps, getElementJsxAttrs, stableHash } from './JsxComponentView.tsx';
+import { getElementJsxAttrs, stableHash } from './JsxComponentView.tsx';
+import { extractPrimitiveProps } from './jsx-render-contract.ts';
 
 function reactNodes(...names: string[]): ReadonlySet<string> {
   return new Set(names);

@@ -99,6 +99,174 @@ describe('RenderedDiffView', () => {
     );
   });
 
+  test('an inserted standalone image renders the image inside the highlighted block', async () => {
+    const pane = await mountDiff(
+      'Intro.',
+      'Intro.\n\n![diagram](diagram.png)',
+      'projects/ok-cloud/log',
+    );
+
+    await waitFor(() =>
+      expect(
+        pane
+          .querySelector('.ok-diff-ins-block [data-component-name="CommonMarkImage"] img')
+          ?.getAttribute('src'),
+      ).toBe('/projects/ok-cloud/diagram.png'),
+    );
+  });
+
+  test('a deleted standalone image renders the image inside the struck widget', async () => {
+    const pane = await mountDiff(
+      'Intro.\n\n![diagram](diagram.png)',
+      'Intro.',
+      'projects/ok-cloud/log',
+    );
+
+    await waitFor(() =>
+      expect(pane.querySelector('[data-diff-deleted] img')?.getAttribute('src')).toBe(
+        '/projects/ok-cloud/diagram.png',
+      ),
+    );
+  });
+
+  test('an inserted Callout renders its callout box around the changed text', async () => {
+    const pane = await mountDiff(
+      'Intro.',
+      'Intro.\n\n<Callout type="warning">\n\nMind the gap.\n\n</Callout>',
+    );
+
+    const callout = await waitFor(() => {
+      const el = pane.querySelector('.ok-diff-ins-block .callout');
+      if (!el) throw new Error('callout not rendered');
+      return el;
+    });
+    expect(callout.getAttribute('data-callout-type')).toBe('warning');
+    expect(callout.textContent).toContain('Mind the gap.');
+  });
+
+  test('a deleted Callout renders its callout box inside the struck widget', async () => {
+    const pane = await mountDiff(
+      'Intro.\n\n<Callout type="warning">\n\nMind the gap.\n\n</Callout>',
+      'Intro.',
+    );
+
+    const callout = await waitFor(() => {
+      const el = pane.querySelector('[data-diff-deleted] .callout');
+      if (!el) throw new Error('callout not rendered');
+      return el;
+    });
+    expect(callout.textContent).toContain('Mind the gap.');
+  });
+
+  test('a Mirror renders as a static reference to its source, not a live embed', async () => {
+    const pane = await mountDiff(
+      'Intro.',
+      'Intro.\n\n<Mirror src="specs/shared-intro" anchor="overview" />',
+    );
+
+    const reference = await waitFor(() => {
+      const el = pane.querySelector('.ok-diff-ins-block [data-diff-jsx-reference]');
+      if (!el) throw new Error('reference not rendered');
+      return el;
+    });
+    expect(reference.textContent).toContain('specs/shared-intro#overview');
+  });
+
+  test('an unregistered component renders its source', async () => {
+    const pane = await mountDiff('Intro.', 'Intro.\n\n<Widget size="2" />');
+
+    const source = await waitFor(() => {
+      const el = pane.querySelector('.ok-diff-ins-block [data-diff-jsx-source]');
+      if (!el) throw new Error('source not rendered');
+      return el;
+    });
+    expect(source.textContent).toContain('Unknown component: Widget');
+    expect(source.querySelector('code')?.textContent).toBe('<Widget size="2" />');
+  });
+
+  test('an edit inside an unregistered wrapper renders its children in the changed blocks', async () => {
+    const before = '<Widget tone="calm">\n\nOld wrapped text.\n\n</Widget>';
+    const after = '<Widget tone="loud">\n\nNew wrapped text.\n\n</Widget>';
+    const pane = await mountDiff(before, after);
+
+    await waitFor(() =>
+      expect(pane.querySelector('.ok-diff-ins-block [data-diff-jsx-source] p')?.textContent).toBe(
+        'New wrapped text.',
+      ),
+    );
+    await waitFor(() =>
+      expect(pane.querySelector('[data-diff-deleted] [data-diff-jsx-source] p')?.textContent).toBe(
+        'Old wrapped text.',
+      ),
+    );
+    expect(pane.querySelector('.ok-diff-ins-block [data-diff-jsx-source] code')?.textContent).toBe(
+      '<Widget tone="loud">',
+    );
+    expect(pane.querySelector('[data-diff-deleted] [data-diff-jsx-source] code')?.textContent).toBe(
+      '<Widget tone="calm">',
+    );
+    const diff = computeRenderedDiff(before, after);
+    if (!diff.ok) throw new Error(`engine not-ok: ${diff.reason}`);
+    expect(pane.querySelectorAll(RENDERED_DIFF_CHANGE_SELECTOR).length).toBe(
+      countRenderedDiffAnchors(diff),
+    );
+  });
+
+  test('a deleted Tabs keeps its labelled tabs', async () => {
+    const tabs =
+      '<Tabs>\n\n<Tab label="One">\n\nFirst panel.\n\n</Tab>\n\n<Tab label="Two">\n\nSecond panel.\n\n</Tab>\n\n</Tabs>';
+    const pane = await mountDiff(`Intro.\n\n${tabs}`, 'Intro.');
+
+    await waitFor(() =>
+      expect(
+        Array.from(pane.querySelectorAll('[data-diff-deleted] [role="tab"]')).map(
+          (tab) => tab.textContent,
+        ),
+      ).toEqual(['One', 'Two']),
+    );
+    expect(pane.querySelector('[data-diff-deleted]')?.textContent).toContain('Second panel.');
+  });
+
+  test('a collapsible block renders open so its changed content is visible', async () => {
+    const pane = await mountDiff(
+      'Intro.',
+      'Intro.\n\n<Accordion title="Details">\n\nHidden detail.\n\n</Accordion>',
+    );
+
+    const details = await waitFor(() => {
+      const el = pane.querySelector<HTMLDetailsElement>('.ok-diff-ins-block details.accordion');
+      if (!el) throw new Error('accordion not rendered');
+      return el;
+    });
+    expect(details.open).toBe(true);
+  });
+
+  test('a video in a diff never autoplays or loops and always shows controls', async () => {
+    const pane = await mountDiff(
+      'Intro.',
+      'Intro.\n\n<video src="clip.mp4" autoplay loop controls={false} />',
+    );
+
+    const video = await waitFor(() => {
+      const el = pane.querySelector<HTMLVideoElement>('.ok-diff-ins-block video');
+      if (!el) throw new Error('video not rendered');
+      return el;
+    });
+    expect(video.autoplay).toBe(false);
+    expect(video.loop).toBe(false);
+    expect(video.controls).toBe(true);
+  });
+
+  test('a diff carries no editing chrome on its components', async () => {
+    const pane = await mountDiff(
+      'Intro.',
+      'Intro.\n\n<Callout type="warning">\n\nMind the gap.\n\n</Callout>',
+    );
+
+    await waitFor(() => expect(pane.querySelector('.callout')).toBeTruthy());
+    expect(pane.querySelector('.jsx-component-chrome')).toBeNull();
+  });
+
   test('a formatting-only change (bold removed) renders without content churn', async () => {
     const pane = await mountDiff('one **two three** four', 'one two three four');
     expect(pane.querySelector('.ProseMirror')).toBeTruthy();

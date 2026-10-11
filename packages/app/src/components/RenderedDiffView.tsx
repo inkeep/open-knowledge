@@ -14,6 +14,7 @@ import {
 } from '@/lib/rendered-diff/build-rendered-diff';
 import { buildDiffDecorations } from '@/lib/rendered-diff/diff-decorations';
 import { diffExtensions } from '@/lib/rendered-diff/diff-extensions';
+import { renderDeletedJsxBlock } from '@/lib/rendered-diff/diff-jsx-block';
 
 const diffSchema = getSchema(diffExtensions);
 
@@ -21,13 +22,24 @@ export function computeRenderedDiff(before: string, after: string): RenderedDiff
   return buildRenderedDiff(before, after, diffSchema, getSharedMarkdownManager());
 }
 
-const DiffDecorations = Extension.create<{ decorations: DecorationSet }>({
+const DiffDecorations = Extension.create<{ diff: RenderedDiff | null }>({
   name: 'renderedDiffDecorations',
   addOptions() {
-    return { decorations: DecorationSet.empty };
+    return { diff: null };
   },
   addProseMirrorPlugins() {
-    const decorations = this.options.decorations;
+    const { diff } = this.options;
+    const editor = this.editor;
+    const decorations = diff
+      ? buildDiffDecorations(
+          diff.afterDoc,
+          diff.beforeDoc,
+          diff.changes,
+          diff.markChanges,
+          diffSchema,
+          (node) => renderDeletedJsxBlock(editor, node),
+        )
+      : DecorationSet.empty;
     return [
       new Plugin({
         key: new PluginKey('renderedDiffDecorations'),
@@ -38,20 +50,12 @@ const DiffDecorations = Extension.create<{ decorations: DecorationSet }>({
 });
 
 export function RenderedDiffView({ diff, docName }: { diff: RenderedDiff; docName: string }) {
-  const decorations = buildDiffDecorations(
-    diff.afterDoc,
-    diff.beforeDoc,
-    diff.changes,
-    diff.markChanges,
-    diffSchema,
-  );
-
   const editor = useEditor(
     {
       editable: false,
       extensions: [
         ...scopeExtensionsToDocument(diffExtensions, docName),
-        DiffDecorations.configure({ decorations }),
+        DiffDecorations.configure({ diff }),
       ],
       content: diff.afterDoc.toJSON(),
       onBeforeCreate: ({ editor }) => setEditorDocName(editor, docName),
@@ -78,7 +82,10 @@ export function RenderedDiffView({ diff, docName }: { diff: RenderedDiff; docNam
   }, [portalTarget]);
 
   return (
-    <div className="editor-doc-scroll min-h-0 flex-1" data-testid="rendered-diff-view">
+    <div
+      className="ok-rendered-diff editor-doc-scroll min-h-0 flex-1"
+      data-testid="rendered-diff-view"
+    >
       <div className="tiptap-editor">
         <div ref={portalSlotRef} style={{ display: 'contents' }} />
       </div>

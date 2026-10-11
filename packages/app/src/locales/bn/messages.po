@@ -12218,6 +12218,7 @@ msgid "Renaming changes the file on disk and the id agents use to pick this temp
 msgstr "নাম বদলালে ডিস্কের ফাইল এবং এজেন্টরা এই টেমপ্লেটটি বাছতে যে id ব্যবহার করে দুটোই বদলে যায়।"
 
 #: src/editor/utils/severity.ts
+#: src/lib/rendered-diff/diff-jsx-block.tsx
 msgid "render error"
 msgstr "রেন্ডার ত্রুটি"
 
@@ -16242,6 +16243,7 @@ msgid "Unknown component: {componentName} — source editable below"
 msgstr "অজানা কম্পোনেন্ট: {componentName} — সোর্স নিচে সম্পাদনাযোগ্য"
 
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
+#: src/lib/rendered-diff/diff-jsx-block.tsx
 msgid "Unknown component: {unregisteredComponentName}"
 msgstr "অজানা কম্পোনেন্ট: {unregisteredComponentName}"
 

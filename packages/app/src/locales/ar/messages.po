@@ -12222,6 +12222,7 @@ msgid "Renaming changes the file on disk and the id agents use to pick this temp
 msgstr "تغيّر إعادة التسمية الملف على القرص والمعرّف الذي يستخدمه الوكلاء لاختيار هذا القالب."
 
 #: src/editor/utils/severity.ts
+#: src/lib/rendered-diff/diff-jsx-block.tsx
 msgid "render error"
 msgstr "خطأ في العرض"
 
@@ -16246,6 +16247,7 @@ msgid "Unknown component: {componentName} — source editable below"
 msgstr "مكوّن غير معروف: {componentName} — يمكن تحرير المصدر أدناه"
 
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
+#: src/lib/rendered-diff/diff-jsx-block.tsx
 msgid "Unknown component: {unregisteredComponentName}"
 msgstr "مكوّن غير معروف: {unregisteredComponentName}"
 

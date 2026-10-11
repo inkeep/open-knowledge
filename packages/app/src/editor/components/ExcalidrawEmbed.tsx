@@ -57,6 +57,10 @@ export function boardDocNameFromSrc(
   }
 }
 
+export function isLiveBoardSrc(src: unknown): boolean {
+  return typeof src === 'string' && boardDocNameFromSrc(src) !== null;
+}
+
 interface ExcalidrawEmbedProps {
   src?: string;
   title?: string;

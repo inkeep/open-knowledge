@@ -3,10 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useCollabUrl } from '@/lib/use-collab-url';
 import { getSharedMarkdownManager } from '../utils/md-singleton.ts';
 import {
-  acquireLiveDocProvider,
+  type AcquireLiveDocResult,
   LIVE_DOC_OBSERVE_DEBOUNCE_MS,
   LIVE_DOC_SYNC_WATCHDOG_MS,
   releaseLiveDocProvider,
+  useLiveDocAcquirer,
 } from './live-doc-pool.ts';
 
 interface MdxJsxAttrLike {
@@ -76,8 +77,22 @@ export function renderMirrorSubtree(node: MdxJsxFlowElementLike): string {
   return mdastToHtml(synthRoot as any);
 }
 
+function refusedMirrorStatus(
+  reason: Extract<AcquireLiveDocResult, { ok: false }>['reason'],
+): MirrorSourceStatus {
+  switch (reason) {
+    case 'at-capacity':
+      return { kind: 'at-capacity' };
+    case 'inadmissible':
+      return { kind: 'source-removed' };
+    case 'refused':
+      return { kind: 'loading' };
+  }
+}
+
 export function useMirrorSource(src: string, anchor: string): MirrorSourceStatus {
   const { collabUrl } = useCollabUrl();
+  const acquireLiveDoc = useLiveDocAcquirer();
   const [status, setStatus] = useState<MirrorSourceStatus>({ kind: 'loading' });
   const anchorRef = useRef(anchor);
   const recomputeRef = useRef<(() => void) | null>(null);
@@ -92,15 +107,13 @@ export function useMirrorSource(src: string, anchor: string): MirrorSourceStatus
       return;
     }
 
-    const acquired = acquireLiveDocProvider(collabUrl, src);
+    const acquired = acquireLiveDoc(collabUrl, src);
     if (!acquired.ok) {
       console.warn('[Mirror] live-doc pool refused subscription', {
         src,
         reason: acquired.reason,
       });
-      setStatus(
-        acquired.reason === 'at-capacity' ? { kind: 'at-capacity' } : { kind: 'source-removed' },
-      );
+      setStatus(refusedMirrorStatus(acquired.reason));
       return;
     }
     const { entry } = acquired;
@@ -179,7 +192,7 @@ export function useMirrorSource(src: string, anchor: string): MirrorSourceStatus
       recomputeRef.current = null;
       releaseLiveDocProvider(collabUrl, src);
     };
-  }, [collabUrl, src]);
+  }, [collabUrl, src, acquireLiveDoc]);
 
   useEffect(() => {
     anchorRef.current = anchor;
