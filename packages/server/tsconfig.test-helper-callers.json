@@ -2,6 +2,7 @@
   "extends": "./tsconfig.json",
   "include": [],
   "files": [
+    "src/acp/browser-install-teardown.integration.test.ts",
     "src/acp/npx-install-server-exit.integration.test.ts",
     "src/config-file-watcher-readiness.test.ts",
     "src/expect-stable.test.ts",

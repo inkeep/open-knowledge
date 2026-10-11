@@ -18,12 +18,14 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { resolveOnPath } from '../git-preflight.ts';
 import {
   AGENT_BROWSER_MCP_PACKAGE,
+  agentBrowserInstallLaunch,
   agentBrowserMcpServer,
   agentGetsBrowser,
   type BrowserCallEvidence,
   browserNpxRunnable,
   identifyBrowserCall,
   needsReportedToolCall,
+  npmCacheOf,
   prepareAgentBrowserFolders,
   removeAgentBrowserFolders,
   resolveBrowserNpx,
@@ -310,7 +312,7 @@ describe('agentBrowserMcpServer', () => {
         '/opt/node/bin/npx',
         '--prefix',
         FOLDERS.npm,
-        '-y',
+        '--yes=false',
         AGENT_BROWSER_MCP_PACKAGE,
         '--isolated',
         '--no-webmcp',
@@ -319,7 +321,10 @@ describe('agentBrowserMcpServer', () => {
         '--file-paths',
         'absolute',
       ],
-      env: [{ name: 'PATH', value: '/opt/node/bin:/usr/bin' }],
+      env: [
+        { name: 'PATH', value: '/opt/node/bin:/usr/bin' },
+        { name: 'npm_config_prefer_offline', value: 'true' },
+      ],
     });
     expect(
       agentBrowserMcpServer({
@@ -330,6 +335,22 @@ describe('agentBrowserMcpServer', () => {
         exists: () => false,
       }),
     ).toBeNull();
+  });
+
+  test("reads npm's cache from the agent's own npm cache setting", () => {
+    const server = agentBrowserMcpServer({
+      npx: NPX,
+      folders: FOLDERS,
+      npmCache: '/runtime/npm-cache',
+      platform: 'darwin',
+      env: {},
+      exists: () => true,
+    });
+    expect(server?.env).toEqual([
+      { name: 'PATH', value: '/opt/node/bin:/usr/bin' },
+      { name: 'npm_config_prefer_offline', value: 'true' },
+      { name: 'npm_config_cache', value: '/runtime/npm-cache' },
+    ]);
   });
 
   test('runs headless only on Linux with no display', () => {
@@ -356,21 +377,24 @@ describe('agentBrowserMcpServer', () => {
         env: processEnv,
         exists: () => true,
       })?.env;
-    const path = { name: 'PATH', value: NPX.path };
+    const npm = [
+      { name: 'PATH', value: NPX.path },
+      { name: 'npm_config_prefer_offline', value: 'true' },
+    ];
     expect(env('linux', { DISPLAY: ':0', XAUTHORITY: '/home/me/.Xauthority', HOME: '/h' })).toEqual(
       [
-        path,
+        ...npm,
         { name: 'DISPLAY', value: ':0' },
         { name: 'XAUTHORITY', value: '/home/me/.Xauthority' },
       ],
     );
     expect(env('linux', { WAYLAND_DISPLAY: 'wayland-0', XDG_RUNTIME_DIR: '/run/user/1' })).toEqual([
-      path,
+      ...npm,
       { name: 'WAYLAND_DISPLAY', value: 'wayland-0' },
       { name: 'XDG_RUNTIME_DIR', value: '/run/user/1' },
     ]);
-    expect(env('linux', { XAUTHORITY: '/home/me/.Xauthority' })).toEqual([path]);
-    expect(env('darwin', { DISPLAY: ':0' })).toEqual([path]);
+    expect(env('linux', { XAUTHORITY: '/home/me/.Xauthority' })).toEqual(npm);
+    expect(env('darwin', { DISPLAY: ':0' })).toEqual(npm);
   });
 
   test('on Windows runs npm through the node that ships beside npx, or not at all', () => {
@@ -393,7 +417,7 @@ describe('agentBrowserMcpServer', () => {
       npxCli,
       '--prefix',
       FOLDERS.npm,
-      '-y',
+      '--yes=false',
       AGENT_BROWSER_MCP_PACKAGE,
     ]);
     expect(
@@ -810,6 +834,43 @@ describe.skipIf(process.platform === 'win32')('the browser server launch, run fo
       `isolated --isolated --no-webmcp --output-dir ${files} --file-paths absolute\n`,
     );
   }, 90_000);
+});
+
+describe('agentBrowserInstallLaunch', () => {
+  test("installs through the browser's npx and PATH, into the cache the browser reads", () => {
+    const base = {
+      Path: '/elsewhere',
+      NPM_CONFIG_CACHE: '/server/cache',
+      NPM_CONFIG_PREFER_OFFLINE: 'false',
+      HOME: '/home/me',
+    };
+    expect(agentBrowserInstallLaunch(NPX, '/runtime/npm-cache', 'cached', base)).toEqual({
+      cmd: '/opt/node/bin/npx',
+      args: [],
+      env: {
+        HOME: '/home/me',
+        PATH: NPX.path,
+        npm_config_prefer_offline: 'true',
+        npm_config_cache: '/runtime/npm-cache',
+      },
+      kind: 'npx',
+      pathFromOverlay: true,
+    });
+    expect(agentBrowserInstallLaunch(NPX, null, 'fresh', base).env).toEqual({
+      NPM_CONFIG_CACHE: '/server/cache',
+      HOME: '/home/me',
+      PATH: NPX.path,
+      npm_config_prefer_offline: 'false',
+    });
+  });
+});
+
+describe('npmCacheOf', () => {
+  test('reads the npm cache setting in any spelling and ignores an empty one', () => {
+    expect(npmCacheOf({ NPM_CONFIG_CACHE: '/a' })).toBe('/a');
+    expect(npmCacheOf({ npm_config_cache: '' })).toBeNull();
+    expect(npmCacheOf({ PATH: '/bin' })).toBeNull();
+  });
 });
 
 describe('resolveBrowserNpx', () => {

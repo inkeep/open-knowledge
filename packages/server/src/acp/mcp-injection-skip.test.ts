@@ -7,7 +7,7 @@ import type { AgentSessionManager } from '../agent-sessions.ts';
 import { resolveOnPath } from '../git-preflight.ts';
 import { getLogger } from '../logger.ts';
 import { MCP_HOSTED_AGENT_HEADER } from '../mcp/agent-identity.ts';
-import { resolveBrowserNpx } from './browser-mcp.ts';
+import { AGENT_BROWSER_MCP_PACKAGE, resolveBrowserNpx } from './browser-mcp.ts';
 import { agentSpawnPath } from './launch.ts';
 import { AcpPermissionStore, readAgentBrowserTools } from './permissions.ts';
 import { AcpRegistry } from './registry.ts';
@@ -47,8 +47,10 @@ type BuildMcpServersSeam = {
       agentRef: { source: 'registry' | 'custom'; id: string };
       cwd: string;
       info: { threadId: string };
+      agentNpmCache?: string | null;
     },
     init: { agentCapabilities?: { mcpCapabilities?: { http?: boolean } } },
+    consentBudgetMs?: number,
   ) => Promise<{
     servers: Array<{
       name: string;
@@ -74,6 +76,8 @@ function makeManager(
   browser?: {
     enabled: AcpThreadManagerOptions['agentBrowserTools'];
     resolveNpx?: AcpThreadManagerOptions['resolveBrowserNpx'];
+    ensurePackage?: AcpThreadManagerOptions['ensureBrowserPackage'];
+    installWaitMs?: number;
     localDir?: string;
     globalDir?: string | null;
   },
@@ -102,6 +106,8 @@ function makeManager(
     probeHarnessManagedMcpEntry: probe,
     agentBrowserTools: browser?.enabled,
     resolveBrowserNpx: browser?.resolveNpx,
+    ensureBrowserPackage: browser?.ensurePackage ?? (async () => {}),
+    browserInstallWaitMs: browser?.installWaitMs,
     log,
     resolveLoginShellPath: async () => null,
   });
@@ -301,7 +307,10 @@ describe.skipIf(process.platform === 'win32')('buildMcpServers × agentBrowserTo
     expect(browser.args).toContain('--no-webmcp');
     expect(browser.args?.join(' ')).toContain(`--output-dir ${join(chat, 'files')}`);
     expect(browser.args?.join(' ')).not.toContain(localDir);
-    expect(browser.env).toEqual([{ name: 'PATH', value: npx.path }]);
+    expect(browser.env).toEqual([
+      { name: 'PATH', value: npx.path },
+      { name: 'npm_config_prefer_offline', value: 'true' },
+    ]);
     expect(seen[0]?.at(-1)).toBe(agentSpawnPath());
   });
 
@@ -349,6 +358,96 @@ describe.skipIf(process.platform === 'win32')('buildMcpServers × agentBrowserTo
     expect(await unavailable(makeManager())).toBeNull();
     expect(await unavailable(noNpx)).toBe('no-node');
     expect(await unavailable(noGlobalDir)).toBe('failed');
+  });
+
+  test('leaves the browser out when installing its package fails from cached and from fresh package data', async () => {
+    const npx = fakeNpx();
+    const installs: Array<{
+      cmd: string;
+      path: string | undefined;
+      acquired: string;
+      reacquire: boolean | undefined;
+      preferOffline: string | undefined;
+    }> = [];
+    const m = makeManager(undefined, undefined, undefined, {
+      enabled: () => true,
+      resolveNpx: () => npx,
+      ensurePackage: async (launch, acquired, _log, acquisition) => {
+        installs.push({
+          cmd: launch.cmd,
+          path: launch.env.PATH,
+          acquired,
+          reacquire: acquisition.reacquire,
+          preferOffline: launch.env.npm_config_prefer_offline,
+        });
+        throw new Error('npm install failed');
+      },
+    });
+    const { servers, browserUnavailable } = await m.buildMcpServers(
+      record('registry', 'claude-acp'),
+      HTTP_INIT,
+    );
+    expect(servers.map((s) => s.name)).toEqual(['open-knowledge']);
+    expect(browserUnavailable).toBe('failed');
+    expect(installs).toEqual(
+      ['true', 'false'].map((preferOffline) => ({
+        cmd: npx.npx,
+        path: npx.path,
+        acquired: AGENT_BROWSER_MCP_PACKAGE,
+        reacquire: true,
+        preferOffline,
+      })),
+    );
+  });
+
+  test("installs and starts the browser from the npm cache the chat's agent runs with", async () => {
+    const npx = fakeNpx();
+    const installCaches: Array<string | undefined> = [];
+    const m = makeManager(undefined, undefined, undefined, {
+      enabled: () => true,
+      resolveNpx: () => npx,
+      ensurePackage: async (launch) => {
+        installCaches.push(launch.env.npm_config_cache);
+      },
+    });
+    const { servers } = await m.buildMcpServers(
+      { ...record('registry', 'codex-acp'), agentNpmCache: '/runtime/npm-cache' },
+      HTTP_INIT,
+    );
+    const browser = servers.find((s) => s.name === 'ok-browser');
+    expect(browser?.env).toContainEqual({ name: 'npm_config_cache', value: '/runtime/npm-cache' });
+    expect(installCaches).toEqual(['/runtime/npm-cache']);
+  });
+
+  test('starts the chat without the browser when installing it outlasts the wait', async () => {
+    const npx = fakeNpx();
+    const m = makeManager(undefined, undefined, undefined, {
+      enabled: () => true,
+      resolveNpx: () => npx,
+      ensurePackage: () => new Promise<void>(() => {}),
+      installWaitMs: 20,
+    });
+    const { servers, browserUnavailable } = await m.buildMcpServers(
+      record('registry', 'claude-acp'),
+      HTTP_INIT,
+    );
+    expect(servers.map((s) => s.name)).toEqual(['open-knowledge']);
+    expect(browserUnavailable).toBe('failed');
+  });
+
+  test('waits on the browser install no longer than the budget of a resume or retry', async () => {
+    const npx = fakeNpx();
+    const m = makeManager(undefined, undefined, undefined, {
+      enabled: () => true,
+      resolveNpx: () => npx,
+      ensurePackage: () => new Promise<void>(() => {}),
+    });
+    const { browserUnavailable } = await m.buildMcpServers(
+      record('registry', 'claude-acp'),
+      HTTP_INIT,
+      20,
+    );
+    expect(browserUnavailable).toBe('failed');
   });
 
   test('gives the browser only to Claude Code and Codex chats, whose adapters name the tool each call runs', async () => {

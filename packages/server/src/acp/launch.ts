@@ -409,7 +409,7 @@ function acquisitionKey(launch: ResolvedLaunch, name: string, ceiling: string): 
   return JSON.stringify([launch.cmd, sortedLaunchEnv(launch), name, ceiling]);
 }
 
-function ensureNpmPackageInstalled(
+export function ensureNpmPackageInstalled(
   launch: ResolvedLaunch,
   acquired: string,
   log: PinoLogger,

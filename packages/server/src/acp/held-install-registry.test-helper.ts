@@ -5,10 +5,16 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { ZipFile } from 'yazl';
+import { AGENT_BROWSER_MCP_PACKAGE } from './browser-mcp.ts';
 import { withAcquisitionHome } from './package-acquisition.test-helper.ts';
 import type { RegistryBinaryTarget } from './registry.ts';
 
-type HeldArtifact = 'npm-package' | 'npm-dependency' | 'wheel' | 'binary-archive';
+type HeldArtifact =
+  | 'npm-package'
+  | 'npm-dependency'
+  | 'browser-dependency'
+  | 'wheel'
+  | 'binary-archive';
 
 export type HeldInstallRegistry = {
   home: string;
@@ -19,15 +25,20 @@ export type HeldInstallRegistry = {
   release: (artifact: HeldArtifact) => void;
   rearm: (artifact: HeldArtifact) => void;
   answerNotFound: (artifact: HeldArtifact) => void;
+  publishBrowser: (published: boolean) => void;
 };
 
 const AGENT_NAME = 'ok-held-install-agent';
 const DEPENDENCY_NAME = 'ok-held-install-dependency';
+const BROWSER_DEPENDENCY_NAME = 'ok-held-install-browser-dependency';
 const VERSION = '1.0.0';
+const UNPINNED_BROWSER_VERSION = '0.0.1';
 const PUBLISHED = '2020-01-01T00:00:00.000Z';
 const WHEEL_FILE = `ok_held_install_agent-${VERSION}-py3-none-any.whl`;
 
 const NODE_ACP_AGENT = `
+const { spawn } = require('node:child_process');
+const mcpServers = [];
 const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
 let buffer = '';
 process.stdin.setEncoding('utf8');
@@ -43,6 +54,12 @@ process.stdin.on('data', (chunk) => {
     if (msg.method === 'initialize') {
       write({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: 1, agentCapabilities: {} } });
     } else if (msg.method === 'session/new') {
+      for (const server of msg.params.mcpServers ?? []) {
+        if (typeof server.command !== 'string') continue;
+        const env = { ...process.env };
+        for (const entry of server.env ?? []) env[entry.name] = entry.value;
+        mcpServers.push(spawn(server.command, server.args ?? [], { env, stdio: ['pipe', 'ignore', 'ignore'] }));
+      }
       write({ jsonrpc: '2.0', id: msg.id, result: { sessionId: 'held-install-session' } });
     } else if (msg.id !== undefined && msg.method !== undefined) {
       write({ jsonrpc: '2.0', id: msg.id, result: {} });
@@ -109,29 +126,34 @@ async function wheel(): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+function tarballPath(name: string, version: string): string {
+  return `/${name}/-/${name.slice(name.lastIndexOf('/') + 1)}-${version}.tgz`;
+}
+
 function packument(
   host: string,
   name: string,
   bytes: Buffer,
   manifest: Record<string, unknown>,
   published: string,
+  version: string = VERSION,
 ): string {
   return JSON.stringify({
     name,
-    'dist-tags': { latest: VERSION },
+    'dist-tags': { latest: version },
     versions: {
-      [VERSION]: {
+      [version]: {
         name,
-        version: VERSION,
+        version,
         ...manifest,
         dist: {
-          tarball: `http://${host}/${name}/-/${name}-${VERSION}.tgz`,
+          tarball: `http://${host}${tarballPath(name, version)}`,
           shasum: createHash('sha1').update(bytes).digest('hex'),
           integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}`,
         },
       },
     },
-    time: { [VERSION]: published },
+    time: { [version]: published },
   });
 }
 
@@ -166,6 +188,37 @@ export async function withHeldInstallRegistry(
       },
       'package',
     );
+    const browserAt = AGENT_BROWSER_MCP_PACKAGE.lastIndexOf('@');
+    const browserName = AGENT_BROWSER_MCP_PACKAGE.slice(0, browserAt);
+    const browserVersion = AGENT_BROWSER_MCP_PACKAGE.slice(browserAt + 1);
+    let browserPublished = true;
+    const browserManifest = {
+      bin: { [browserName.slice(browserName.lastIndexOf('/') + 1)]: 'browser.js' },
+      dependencies: { [BROWSER_DEPENDENCY_NAME]: VERSION },
+    };
+    const browserTarball = tarball(
+      sources,
+      'npm-browser',
+      {
+        'package.json': JSON.stringify({
+          name: browserName,
+          version: browserVersion,
+          ...browserManifest,
+        }),
+        'browser.js':
+          "#!/usr/bin/env node\nrequire('node:fs').writeFileSync(require('node:path').join(__dirname, 'started'), '');\nprocess.stdin.resume();\n",
+      },
+      'package',
+    );
+    const browserDependencyTarball = tarball(
+      sources,
+      'npm-browser-dependency',
+      {
+        'package.json': JSON.stringify({ name: BROWSER_DEPENDENCY_NAME, version: VERSION }),
+        'index.js': 'module.exports = 1;\n',
+      },
+      'package',
+    );
     const binaryArchive = tarball(
       sources,
       'binary',
@@ -193,7 +246,13 @@ export async function withHeldInstallRegistry(
         opened: Promise<void>;
       }
     >();
-    for (const artifact of ['npm-package', 'npm-dependency', 'wheel', 'binary-archive'] as const) {
+    for (const artifact of [
+      'npm-package',
+      'npm-dependency',
+      'browser-dependency',
+      'wheel',
+      'binary-archive',
+    ] as const) {
       holds.set(artifact, { count: 0, released: false, notFound: false, ...gate() });
     }
     const heldEntry = (artifact: HeldArtifact) => {
@@ -243,6 +302,31 @@ export async function withHeldInstallRegistry(
           ),
           'application/json',
         );
+      } else if (path === `/${browserName}`) {
+        send(
+          Buffer.from(
+            packument(
+              host,
+              browserName,
+              browserTarball,
+              browserManifest,
+              PUBLISHED,
+              browserPublished ? browserVersion : UNPINNED_BROWSER_VERSION,
+            ),
+          ),
+          'application/json',
+        );
+      } else if (path === `/${BROWSER_DEPENDENCY_NAME}`) {
+        send(
+          Buffer.from(
+            packument(host, BROWSER_DEPENDENCY_NAME, browserDependencyTarball, {}, PUBLISHED),
+          ),
+          'application/json',
+        );
+      } else if (path === tarballPath(browserName, browserVersion)) {
+        send(browserTarball, 'application/octet-stream');
+      } else if (path === tarballPath(BROWSER_DEPENDENCY_NAME, VERSION)) {
+        sendHeld('browser-dependency', browserDependencyTarball, 'application/octet-stream');
       } else if (path === `/${AGENT_NAME}/-/${AGENT_NAME}-${VERSION}.tgz`) {
         sendHeld('npm-package', agentTarball, 'application/octet-stream');
       } else if (path === `/${DEPENDENCY_NAME}/-/${DEPENDENCY_NAME}-${VERSION}.tgz`) {
@@ -306,6 +390,9 @@ export async function withHeldInstallRegistry(
         },
         answerNotFound: (artifact) => {
           heldEntry(artifact).notFound = true;
+        },
+        publishBrowser: (published) => {
+          browserPublished = published;
         },
       });
     } finally {

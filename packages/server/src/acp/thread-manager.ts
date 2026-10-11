@@ -87,13 +87,18 @@ import { RUNTIME_VERSION } from '../version-constants.ts';
 import { isWithin } from './archive.ts';
 import { buildPromptBlocks } from './attachment-blocks.ts';
 import {
+  AGENT_BROWSER_MCP_PACKAGE,
+  agentBrowserInstallLaunch,
   agentBrowserMcpServer,
   agentGetsBrowser,
   type BrowserCallEvidence,
+  type BrowserPackageData,
   browserNpxRunnable,
   identifyBrowserCall,
   needsReportedToolCall,
+  npmCacheOf,
   prepareAgentBrowserFolders,
+  type ResolvedBrowserNpx,
   removeAgentBrowserFolders,
   resolveBrowserNpx,
 } from './browser-mcp.ts';
@@ -109,6 +114,7 @@ import {
   agentSpawnPath,
   brokenInterpreterHint,
   declinedRepairHint,
+  ensureNpmPackageInstalled,
   envPath,
   expiredFallbackHint,
   expiredIncompatibleNodeHint,
@@ -197,6 +203,7 @@ const DEFAULT_UNWATCHED_TURN_KILL_MS = 20 * 60 * 1000;
 const DEFAULT_STEER_STALL_MS = 10_000;
 const DEFAULT_TURN_STALL_MS = 3 * 60 * 1000;
 const DEFAULT_AUTHENTICATE_TIMEOUT_MS = 5 * 60 * 1000;
+const DEFAULT_BROWSER_INSTALL_WAIT_MS = 2 * 60 * 1000;
 const STDERR_TAIL_LINES = 40;
 const CRASH_REPORT_STATUSES: ReadonlySet<ThreadStatus> = new Set([
   'ready',
@@ -340,6 +347,7 @@ interface ThreadRecord {
   lastInit: InitializeResponse | null;
   terminalAuthBase: TerminalAuthBase | null;
   agentLaunchPath?: string;
+  agentNpmCache?: string | null;
   sessionId: string | null;
   agentSessionId: string;
   events: ThreadEvent[];
@@ -469,6 +477,8 @@ export interface AcpThreadManagerOptions {
   autoApproveOkTools?: () => boolean;
   agentBrowserTools?: () => boolean;
   resolveBrowserNpx?: typeof resolveBrowserNpx;
+  ensureBrowserPackage?: typeof ensureNpmPackageInstalled;
+  browserInstallWaitMs?: number;
 }
 
 export function buildOkMcpStdioCommand(
@@ -514,6 +524,7 @@ export class AcpThreadManager {
   private readonly unwatchedTurnCancelMs: number;
   private readonly unwatchedTurnKillMs: number;
   private readonly turnStallMs: number;
+  private readonly browserInstallWaitMs: number;
   private readonly persistence: ThreadPersistenceStore;
   private readonly npxCacheClears = new Map<string, number>();
   private readonly resolveLoginShellPath: () => Promise<string | null>;
@@ -533,6 +544,7 @@ export class AcpThreadManager {
     this.unwatchedTurnCancelMs = opts.unwatchedTurnCancelMs ?? DEFAULT_UNWATCHED_TURN_CANCEL_MS;
     this.unwatchedTurnKillMs = opts.unwatchedTurnKillMs ?? DEFAULT_UNWATCHED_TURN_KILL_MS;
     this.turnStallMs = opts.turnStallMs ?? DEFAULT_TURN_STALL_MS;
+    this.browserInstallWaitMs = opts.browserInstallWaitMs ?? DEFAULT_BROWSER_INSTALL_WAIT_MS;
     const [primaryDir, legacyDir = null] = acpThreadStoreRoots(opts.globalDir, opts.localDir);
     this.persistence = new ThreadPersistenceStore({
       primaryDir,
@@ -893,6 +905,7 @@ export class AcpThreadManager {
 
     record.terminalAuthBase = terminalAuthBaseFor(launch);
     record.agentLaunchPath = envPath(launch.env);
+    record.agentNpmCache = npmCacheOf(launch.env);
     launch = applyLaunchContextWindow(
       launch,
       record.agentRef.id,
@@ -1181,14 +1194,25 @@ export class AcpThreadManager {
       agentId: record.info.agent.id,
       npxCacheEntry: redactDiagnostic(entryDir),
     };
+    const outcome = await this.removeStaleNpxCacheEntry(entryDir, logContext);
+    if (outcome === 'kept') return false;
+    this.opts.log.warn(
+      logContext,
+      outcome === 'recently-removed'
+        ? '[acp-threads] npx cache entry was cleared by another launch moments ago; relaunching without clearing it again'
+        : '[acp-threads] cleared a stale npx cache entry; relaunching the agent',
+    );
+    await this.discardFailedLaunch(record);
+    return !isThreadClosed(record);
+  }
+
+  private async removeStaleNpxCacheEntry(
+    entryDir: NpxCacheEntry,
+    logContext: Record<string, unknown>,
+  ): Promise<'removed' | 'recently-removed' | 'kept'> {
     const clearedAt = this.npxCacheClears.get(entryDir);
     if (clearedAt !== undefined && Date.now() - clearedAt < NPX_CACHE_CLEAR_COOLDOWN_MS) {
-      this.opts.log.warn(
-        logContext,
-        '[acp-threads] npx cache entry was cleared by another launch moments ago; relaunching without clearing it again',
-      );
-      await this.discardFailedLaunch(record);
-      return !isThreadClosed(record);
+      return 'recently-removed';
     }
     const claimedAt = Date.now();
     this.npxCacheClears.set(entryDir, claimedAt);
@@ -1206,7 +1230,7 @@ export class AcpThreadManager {
           '[acp-threads] leaving an npx cache entry alone',
         );
         releaseClaim();
-        return false;
+        return 'kept';
       }
     }
     try {
@@ -1217,14 +1241,9 @@ export class AcpThreadManager {
         '[acp-threads] stale npx cache entry could not be cleared',
       );
       releaseClaim();
-      return false;
+      return 'kept';
     }
-    this.opts.log.warn(
-      logContext,
-      '[acp-threads] cleared a stale npx cache entry; relaunching the agent',
-    );
-    await this.discardFailedLaunch(record);
-    return !isThreadClosed(record);
+    return 'removed';
   }
 
   private async discardFailedLaunch(t: ThreadRecord): Promise<void> {
@@ -1663,7 +1682,7 @@ export class AcpThreadManager {
     record.browserInjected = false;
     if (this.opts.agentBrowserTools?.() === true) {
       if (agentGetsBrowser(record.agentRef)) {
-        const browser = await this.agentBrowserServer(record);
+        const browser = await this.agentBrowserServer(record, consentBudgetMs);
         if (typeof browser === 'string') {
           browserUnavailable = browser;
         } else {
@@ -1706,6 +1725,7 @@ export class AcpThreadManager {
 
   private async agentBrowserServer(
     record: ThreadRecord,
+    waitBudgetMs: number,
   ): Promise<McpServerStdio | BrowserUnavailableReason> {
     const context = { threadId: record.info.threadId, agentId: record.agentRef.id };
     const browserRoot = this.opts.globalDir;
@@ -1736,11 +1756,13 @@ export class AcpThreadManager {
       );
       return 'no-node';
     }
+    const npmCache = record.agentNpmCache ?? null;
     let server: McpServerStdio | null;
     try {
       server = agentBrowserMcpServer({
         npx,
         folders: await prepareAgentBrowserFolders(browserRoot, record.info.threadId),
+        npmCache,
       });
     } catch (err) {
       this.opts.log.warn(
@@ -1756,11 +1778,74 @@ export class AcpThreadManager {
       );
       return 'no-node';
     }
+    const waitMs = Math.min(this.browserInstallWaitMs, waitBudgetMs);
+    let waitTimer: ReturnType<typeof setTimeout> | undefined;
+    const installed = await Promise.race([
+      this.installBrowserPackage(record, npx, npmCache),
+      new Promise<'still-installing'>((resolve) => {
+        waitTimer = setTimeout(() => resolve('still-installing'), waitMs);
+        waitTimer.unref?.();
+      }),
+    ]).finally(() => clearTimeout(waitTimer));
+    if (installed === 'still-installing') {
+      this.opts.log.warn(
+        { ...context, waitedMs: waitMs },
+        '[acp-threads] installing the browser is taking too long — the chat starts without a browser',
+      );
+      return 'failed';
+    }
+    if (!installed) return 'failed';
     this.opts.log.info(
       { ...context, command: server.command, npx: npx.npx },
       '[acp-threads] browser MCP injected',
     );
     return server;
+  }
+
+  private async installBrowserPackage(
+    record: ThreadRecord,
+    npx: ResolvedBrowserNpx,
+    npmCache: string | null,
+    packageData: BrowserPackageData = 'cached',
+    npxCacheRecovery: NpxCacheRecovery = 'available',
+  ): Promise<boolean> {
+    const context = { threadId: record.info.threadId, agentId: record.agentRef.id };
+    const ensure = this.opts.ensureBrowserPackage ?? ensureNpmPackageInstalled;
+    const launch = agentBrowserInstallLaunch(npx, npmCache, packageData);
+    try {
+      await ensure(launch, AGENT_BROWSER_MCP_PACKAGE, this.opts.log, { reacquire: true });
+      return true;
+    } catch (err) {
+      if (
+        err instanceof AgentLaunchError &&
+        err.npxCacheEntry !== undefined &&
+        npxCacheRecovery === 'available'
+      ) {
+        const logContext = { ...context, npxCacheEntry: redactDiagnostic(err.npxCacheEntry) };
+        const removal = await this.removeStaleNpxCacheEntry(err.npxCacheEntry, logContext);
+        if (removal !== 'kept') {
+          this.opts.log.warn(
+            logContext,
+            removal === 'removed'
+              ? '[acp-threads] cleared a stale browser npx cache entry; reinstalling the browser'
+              : '[acp-threads] browser npx cache entry was cleared by another launch moments ago; reinstalling the browser without clearing it again',
+          );
+          return this.installBrowserPackage(record, npx, npmCache, packageData, 'spent');
+        }
+      }
+      if (packageData === 'cached') {
+        this.opts.log.info(
+          { ...context, err },
+          "[acp-threads] installing the browser from npm's cached package data failed; installing it again with fresh package data",
+        );
+        return this.installBrowserPackage(record, npx, npmCache, 'fresh', npxCacheRecovery);
+      }
+      this.opts.log.warn(
+        { ...context, err },
+        '[acp-threads] installing the browser failed — the chat starts without a browser',
+      );
+      return false;
+    }
   }
 
   private async harnessAlreadyHasOkMcp(
@@ -2078,6 +2163,7 @@ export class AcpThreadManager {
       init,
       consentBudgetMs,
     );
+    if (isThreadClosed(record)) return false;
     this.noteBrowserUnavailable(record, browserUnavailable);
     try {
       const session = await conn.agent.request(acpMethods.agent.session.new, {
@@ -2205,6 +2291,9 @@ export class AcpThreadManager {
           init,
           BLOCKING_CONSENT_TIMEOUT_MS,
         );
+        if (isThreadClosed(t)) {
+          throw new ThreadOpError('not-ready', 'thread closed during resume');
+        }
         this.noteBrowserUnavailable(t, browserUnavailable);
         const caps = init.agentCapabilities;
         const viaResume = caps?.sessionCapabilities?.resume != null;

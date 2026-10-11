@@ -5,6 +5,7 @@ import { asRecord, stringField } from '@inkeep/open-knowledge-core/acp/tool-call
 import { tracedMkdir, tracedRm, tracedWriteFile } from '../fs-traced.ts';
 import { resolveOnPath } from '../git-preflight.ts';
 import { runBrowserRelay } from './browser-relay.ts';
+import { mergedEnv, type ResolvedLaunch } from './launch.ts';
 import { isMintedThreadId } from './thread-persistence.ts';
 
 export const AGENT_BROWSER_MCP_PACKAGE = '@playwright/mcp@0.0.82';
@@ -28,6 +29,9 @@ const CODEX_TOOL_TITLE = /^Tool: ([^/\s]+)\/(\S+)$/;
 const DISPLAY_ENV = ['DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'XDG_RUNTIME_DIR'] as const;
 
 const AGENT_BROWSER_DIR = 'agent-browser';
+
+const NPM_CACHE_KEY = 'npm_config_cache';
+const NPM_PREFER_OFFLINE_KEY = 'npm_config_prefer_offline';
 
 export function agentGetsBrowser(agentRef: {
   readonly source: 'registry' | 'custom';
@@ -149,6 +153,34 @@ export function resolveBrowserNpx(
   return null;
 }
 
+export function npmCacheOf(env: Readonly<Record<string, string>>): string | null {
+  for (const [key, value] of Object.entries(env)) {
+    if (key.toLowerCase() === NPM_CACHE_KEY && value !== '') return value;
+  }
+  return null;
+}
+
+export type BrowserPackageData = 'cached' | 'fresh';
+
+export function agentBrowserInstallLaunch(
+  npx: ResolvedBrowserNpx,
+  npmCache: string | null,
+  packageData: BrowserPackageData,
+  baseEnv: Readonly<Record<string, string>> = mergedEnv(),
+): ResolvedLaunch & { kind: 'npx' } {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(baseEnv)) {
+    const lower = key.toLowerCase();
+    if (lower === 'path' || lower === NPM_PREFER_OFFLINE_KEY) continue;
+    if (npmCache !== null && lower === NPM_CACHE_KEY) continue;
+    env[key] = value;
+  }
+  env.PATH = npx.path;
+  env[NPM_PREFER_OFFLINE_KEY] = packageData === 'cached' ? 'true' : 'false';
+  if (npmCache !== null) env[NPM_CACHE_KEY] = npmCache;
+  return { cmd: npx.npx, args: [], env, kind: 'npx', pathFromOverlay: true };
+}
+
 function isFile(path: string): boolean {
   try {
     return statSync(path).isFile();
@@ -194,6 +226,7 @@ export interface AgentBrowserFolders {
 export function agentBrowserMcpServer(opts: {
   npx: ResolvedBrowserNpx;
   folders: AgentBrowserFolders;
+  npmCache?: string | null;
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
   exists?: (path: string) => boolean;
@@ -222,7 +255,7 @@ export function agentBrowserMcpServer(opts: {
       ...runtime.npx,
       '--prefix',
       opts.folders.npm,
-      '-y',
+      '--yes=false',
       AGENT_BROWSER_MCP_PACKAGE,
       '--isolated',
       '--no-webmcp',
@@ -232,7 +265,12 @@ export function agentBrowserMcpServer(opts: {
       'absolute',
       ...(noDisplay ? ['--headless'] : []),
     ],
-    env: [{ name: 'PATH', value: opts.npx.path }, ...displayEnv],
+    env: [
+      { name: 'PATH', value: opts.npx.path },
+      { name: NPM_PREFER_OFFLINE_KEY, value: 'true' },
+      ...(opts.npmCache == null ? [] : [{ name: NPM_CACHE_KEY, value: opts.npmCache }]),
+      ...displayEnv,
+    ],
   };
 }
 
