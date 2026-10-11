@@ -1,4 +1,3 @@
-import { autoUpdate, computePosition } from '@floating-ui/dom';
 import type { Editor } from '@tiptap/core';
 import { Extension } from '@tiptap/core';
 import type { EditorState } from '@tiptap/pm/state';
@@ -26,6 +25,9 @@ function createBar(orientation: 'column' | 'row', label: string): HTMLButtonElem
 
 interface TableOverlay {
   container: HTMLElement;
+  colBar: HTMLButtonElement;
+  rowBar: HTMLButtonElement;
+  placement: string;
   cleanup: () => void;
 }
 
@@ -35,12 +37,17 @@ class TableInsertControlsView {
   private lastEditable: boolean;
   private readonly view: EditorView;
   private readonly editor: Editor;
+  private readonly resizeObserver: ResizeObserver | null;
+  private positionFrame: number | null = null;
 
   constructor(view: EditorView, editor: Editor) {
     this.view = view;
     this.editor = editor;
     this.mount = view.dom.parentElement ?? view.dom;
     this.lastEditable = editor.isEditable;
+    this.resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.positionAll());
+    this.resizeObserver?.observe(view.dom);
     this.reconcile();
   }
 
@@ -49,15 +56,52 @@ class TableInsertControlsView {
     this.lastEditable = this.editor.isEditable;
     if (!editableChanged && prevState.doc.eq(this.view.state.doc)) return;
     this.reconcile();
+    this.schedulePositionAll();
   }
 
   destroy(): void {
-    for (const wrapper of this.overlays.keys()) this.removeOverlay(wrapper);
+    this.removeAllOverlays();
+    this.resizeObserver?.disconnect();
+    if (this.positionFrame != null) cancelAnimationFrame(this.positionFrame);
+    this.positionFrame = null;
+  }
+
+  private schedulePositionAll(): void {
+    if (this.positionFrame != null || this.overlays.size === 0) return;
+    this.positionFrame = requestAnimationFrame(() => {
+      this.positionFrame = null;
+      this.positionAll();
+    });
+  }
+
+  private positionAll(): void {
+    const placements = Array.from(this.overlays, ([wrapper, overlay]) => {
+      const table = wrapper.getBoundingClientRect();
+      const origin = overlay.container.getBoundingClientRect();
+      const left = table.left - origin.left;
+      const top = table.top - origin.top;
+      return { overlay, left, top, width: table.width, height: table.height };
+    });
+    for (const { overlay, left, top, width, height } of placements) {
+      const placement = `${left}|${top}|${width}|${height}`;
+      if (overlay.placement === placement) continue;
+      overlay.placement = placement;
+      Object.assign(overlay.colBar.style, {
+        left: `${left + width}px`,
+        top: `${top}px`,
+        height: `${height}px`,
+      });
+      Object.assign(overlay.rowBar.style, {
+        left: `${left}px`,
+        top: `${top + height}px`,
+        width: `${width}px`,
+      });
+    }
   }
 
   private reconcile(): void {
     if (!this.editor.isEditable) {
-      this.destroy();
+      this.removeAllOverlays();
       return;
     }
     const live = new Set(this.view.dom.querySelectorAll<HTMLElement>('.tableWrapper'));
@@ -81,32 +125,6 @@ class TableInsertControlsView {
     container.append(colBar, rowBar);
     this.mount.appendChild(container);
 
-    const reposition = (): void => {
-      const { width, height } = wrapper.getBoundingClientRect();
-      void computePosition(wrapper, colBar, {
-        strategy: 'absolute',
-        placement: 'right-start',
-      })
-        .then(({ x, y }) => {
-          colBar.style.left = `${x}px`;
-          colBar.style.top = `${y}px`;
-          colBar.style.height = `${height}px`;
-        })
-        .catch(() => {});
-      void computePosition(wrapper, rowBar, {
-        strategy: 'absolute',
-        placement: 'bottom-start',
-      })
-        .then(({ x, y }) => {
-          rowBar.style.left = `${x}px`;
-          rowBar.style.top = `${y}px`;
-          rowBar.style.width = `${width}px`;
-        })
-        .catch(() => {});
-    };
-
-    const stopAutoUpdate = autoUpdate(wrapper, container, reposition);
-
     const onPointerOver = (event: PointerEvent): void => {
       const cell =
         event.target instanceof Element ? event.target.closest<HTMLElement>('td, th') : null;
@@ -121,15 +139,23 @@ class TableInsertControlsView {
     wrapper.addEventListener('pointerover', onPointerOver);
     wrapper.addEventListener('pointerleave', onPointerLeave);
 
+    this.resizeObserver?.observe(wrapper);
     this.overlays.set(wrapper, {
       container,
+      colBar,
+      rowBar,
+      placement: '',
       cleanup: () => {
-        stopAutoUpdate();
+        this.resizeObserver?.unobserve(wrapper);
         wrapper.removeEventListener('pointerover', onPointerOver);
         wrapper.removeEventListener('pointerleave', onPointerLeave);
         container.remove();
       },
     });
+  }
+
+  private removeAllOverlays(): void {
+    for (const wrapper of this.overlays.keys()) this.removeOverlay(wrapper);
   }
 
   private removeOverlay(wrapper: HTMLElement): void {

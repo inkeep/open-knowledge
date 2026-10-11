@@ -47,6 +47,8 @@ interface AppliedFreeze {
 
 const appliedFreezes = new WeakMap<HTMLTableCellElement, AppliedFreeze>();
 
+const skippedChunks = new WeakSet<Element>();
+
 function cancelFreeze(cell: HTMLTableCellElement): void {
   const prev = appliedFreezes.get(cell);
   if (!prev) return;
@@ -193,33 +195,42 @@ function applyInstantFreeze(cell: HTMLTableCellElement, shift: number): void {
   appliedFreezes.set(cell, { key, animations: [animation, occluderAnimation] });
 }
 
+interface MeasuredHeader {
+  firstRow: HTMLTableRowElement;
+  tableRect: DOMRect;
+  headerHeight: number;
+}
+
 function computeAndApplyFrozenHeaders(
   scrollEl: HTMLElement,
   editorDom: HTMLElement,
   timeline: AnimationTimeline | null,
-  onTableWrapper?: (wrapper: HTMLElement) => void,
+  isRenderingSkipped: (table: HTMLTableElement) => boolean,
 ): void {
   const containerTop = scrollEl.getBoundingClientRect().top;
   const scrollTop = scrollEl.scrollTop;
   const scrollMax = scrollEl.scrollHeight - scrollEl.clientHeight;
-  const wrappers = editorDom.querySelectorAll<HTMLElement>('.tableWrapper');
-  for (const wrapper of wrappers) {
-    onTableWrapper?.(wrapper);
-    const table = wrapper.querySelector('table');
-    if (!table) continue;
+  const measured: MeasuredHeader[] = [];
+  for (const table of editorDom.querySelectorAll<HTMLTableElement>('.tableWrapper > table')) {
     const firstRow = table.querySelector('tbody')?.rows[0];
     if (!firstRow || !Array.from(firstRow.cells).some((c) => c.tagName === 'TH')) {
       continue;
     }
+    if (isRenderingSkipped(table)) continue;
+    measured.push({
+      firstRow,
+      tableRect: table.getBoundingClientRect(),
+      headerHeight: firstRow.getBoundingClientRect().height,
+    });
+  }
 
-    const tableRect = table.getBoundingClientRect();
-    const headerRect = firstRow.getBoundingClientRect();
+  for (const { firstRow, tableRect, headerHeight } of measured) {
     const range = computeFreezeRange(
       scrollTop,
       containerTop,
       tableRect.top,
       tableRect.height,
-      headerRect.height,
+      headerHeight,
     );
 
     if (!range) {
@@ -264,16 +275,18 @@ export const FrozenTableHeaders = Extension.create({
           let driftTimer: ReturnType<typeof setTimeout> | null = null;
           let resizeObserver: ResizeObserver | null = null;
           let destroyed = false;
-          const cvWired = new Set<HTMLElement>();
+          const editorDom = editorView.dom as HTMLElement;
+
+          const isRenderingSkipped = (table: HTMLTableElement): boolean => {
+            for (let el = table.parentElement; el && el !== editorDom; el = el.parentElement) {
+              if (skippedChunks.has(el)) return true;
+            }
+            return false;
+          };
 
           const run = (): void => {
             if (destroyed || !scrollEl) return;
-            computeAndApplyFrozenHeaders(
-              scrollEl,
-              editorView.dom as HTMLElement,
-              timeline,
-              wireChunkVisibility,
-            );
+            computeAndApplyFrozenHeaders(scrollEl, editorDom, timeline, isRenderingSkipped);
           };
 
           const scheduleRun = (): void => {
@@ -284,11 +297,19 @@ export const FrozenTableHeaders = Extension.create({
             });
           };
 
-          function wireChunkVisibility(wrapper: HTMLElement): void {
-            if (cvWired.has(wrapper)) return;
-            cvWired.add(wrapper);
-            wrapper.addEventListener('contentvisibilityautostatechange', scheduleRun);
-          }
+          const onChunkVisibilityChange = (event: Event): void => {
+            const chunk = event.target;
+            if (!(chunk instanceof Element)) return;
+            if ((event as ContentVisibilityAutoStateChangeEvent).skipped) {
+              skippedChunks.add(chunk);
+              return;
+            }
+            skippedChunks.delete(chunk);
+            if (chunk.querySelector('table')) scheduleRun();
+          };
+          editorDom.addEventListener('contentvisibilityautostatechange', onChunkVisibilityChange, {
+            capture: true,
+          });
 
           const onScroll = (): void => {
             if (timeline) {
@@ -305,9 +326,7 @@ export const FrozenTableHeaders = Extension.create({
 
           requestAnimationFrame(() => {
             if (destroyed) return;
-            scrollEl = (editorView.dom as HTMLElement).closest<HTMLElement>(
-              '[data-testid="editor-scroll-container"]',
-            );
+            scrollEl = editorDom.closest<HTMLElement>('[data-testid="editor-scroll-container"]');
             if (!scrollEl && import.meta.env.DEV) {
               console.warn(
                 '[frozen-table-headers] editor-scroll-container not found; table headers will not freeze',
@@ -324,7 +343,7 @@ export const FrozenTableHeaders = Extension.create({
             if (scrollEl && typeof ResizeObserver !== 'undefined') {
               resizeObserver = new ResizeObserver(scheduleRun);
               resizeObserver.observe(scrollEl);
-              resizeObserver.observe(editorView.dom as HTMLElement);
+              resizeObserver.observe(editorDom);
             }
             run();
           });
@@ -340,13 +359,12 @@ export const FrozenTableHeaders = Extension.create({
               resizeObserver?.disconnect();
               if (rafId != null) cancelAnimationFrame(rafId);
               if (driftTimer != null) clearTimeout(driftTimer);
-              for (const wrapper of cvWired) {
-                wrapper.removeEventListener('contentvisibilityautostatechange', scheduleRun);
-              }
-              cvWired.clear();
-              for (const row of (
-                editorView.dom as HTMLElement
-              ).querySelectorAll<HTMLTableRowElement>(
+              editorDom.removeEventListener(
+                'contentvisibilityautostatechange',
+                onChunkVisibilityChange,
+                { capture: true },
+              );
+              for (const row of editorDom.querySelectorAll<HTMLTableRowElement>(
                 '.tableWrapper > table > tbody > tr:first-child',
               )) {
                 resetHeaderCells(row);

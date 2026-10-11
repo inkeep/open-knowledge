@@ -567,3 +567,96 @@ test('slot above pinned header stays clean in a prose-heavy doc (pixel-verified)
   }
   await page.screenshot({ path: testInfo.outputPath('prose-above-frozen.png') });
 });
+
+const MANY_TABLES_MARKDOWN = `# Quarterly Review
+
+${Array.from(
+  { length: 15 },
+  (_, t) => `## Region ${t + 1}
+
+${Array.from({ length: 3 }, (_, p) => `Region ${t + 1} summary paragraph ${p + 1}, long enough to wrap at a narrower editor width and push the next table down.`).join('\n\n')}
+
+| Metric | One | Two | Three | Four |
+|--------|-----|-----|-------|------|
+${Array.from({ length: 10 }, (_, r) => `| Row-${t + 1}-${r + 1} | ${r} | ${r * 2} | ${r * 3} | ${r * 4} |`).join('\n')}`,
+).join('\n\n')}
+`;
+
+test('an editor width change lays out once, not once per table in a skipped chunk', async ({
+  page,
+  api,
+  workerServer,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await api.seedDocs([{ name: 'frozen-hdr-many', markdown: MANY_TABLES_MARKDOWN }]);
+  await page.goto(`${workerServer.baseURL}/#/frozen-hdr-many`);
+  await waitForActiveProviderSynced(page);
+  await page.locator('table').first().waitFor({ state: 'attached' });
+  await waitForQuiescence(page, SCROLL_SELECTOR);
+  await twoFrames(page);
+
+  const skippedTables = await page.evaluate(
+    () =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>('.ProseMirror .tableWrapper > table'),
+      ).filter((table) => !table.checkVisibility({ contentVisibilityAuto: true })).length,
+  );
+  expect(skippedTables).toBeGreaterThanOrEqual(10);
+
+  await page.evaluate(() => {
+    const editor = window.__activeEditor;
+    if (!editor) throw new Error('window.__activeEditor not set');
+    const PluginCtor = editor.state.plugins[0].constructor as new (spec: object) => never;
+    editor.registerPlugin(new PluginCtor({}));
+  });
+  await twoFrames(page);
+
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Performance.enable');
+  const layoutCount = async (): Promise<number> => {
+    const { metrics } = await cdp.send('Performance.getMetrics');
+    return metrics.find((m) => m.name === 'LayoutCount')?.value ?? Number.NaN;
+  };
+
+  const before = await layoutCount();
+  await page.evaluate(
+    (sel) =>
+      new Promise<void>((resolve) => {
+        const scrollEl = document.querySelector(sel) as HTMLElement;
+        scrollEl.style.width = `${scrollEl.clientWidth - 240}px`;
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+      }),
+    SCROLL_SELECTOR,
+  );
+  const layouts = (await layoutCount()) - before;
+  await cdp.detach();
+  expect(layouts, `one width change ran ${layouts} layouts`).toBeLessThan(skippedTables / 2);
+
+  const misplacedBars = await page.evaluate(() =>
+    Array.from(document.querySelectorAll<HTMLElement>('.ProseMirror .tableWrapper')).flatMap(
+      (wrapper, index) => {
+        const controls = Array.from(
+          document.querySelectorAll<HTMLElement>('.ok-table-insert-controls'),
+        )[index];
+        const table = wrapper.getBoundingClientRect();
+        const column = controls?.querySelector('.ok-table-insert-column')?.getBoundingClientRect();
+        const row = controls?.querySelector('.ok-table-insert-row')?.getBoundingClientRect();
+        if (!column || !row) return [`table ${index}: no insert bars`];
+        const errors = {
+          columnLeft: column.left - table.right,
+          columnTop: column.top - table.top,
+          columnHeight: column.height - table.height,
+          rowLeft: row.left - table.left,
+          rowTop: row.top - table.bottom,
+          rowWidth: row.width - table.width,
+        };
+        return Object.entries(errors)
+          .filter(([, delta]) => Math.abs(delta) > 1)
+          .map(([edge, delta]) => `table ${index}: ${edge} off by ${delta}px`);
+      },
+    ),
+  );
+  expect(misplacedBars).toEqual([]);
+});

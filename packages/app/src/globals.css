@@ -2774,8 +2774,7 @@ body[data-editor-tab-dragging] * {
 
 /* Table edge "+" bars — Notion-style append-column / append-row affordance.
    The TableInsertControls extension mounts one container per table on
-   `editor.view.dom.parentElement` and floating-ui sets each bar's `left`/`top`
-   plus the stretched cross-axis size inline. Each bar is a persistent but
+   `editor.view.dom.parentElement`. Each bar is a persistent but
    transparent hit zone at the table edge; hovering it (the mouse landing inside
    the bar) reveals the "+", so reveal is pure CSS — no JS hover tracking. */
 .ok-table-insert-controls {
@@ -2803,7 +2802,7 @@ body[data-editor-tab-dragging] * {
      strip, so it's hoverable. */
   color: transparent;
   background: transparent;
-  /* The bar sits flush against the table edge (no floating-ui offset). The
+  /* The bar sits flush against the table edge. The
      gutter toward the table is transparent padding — `content-box` keeps the
      visible highlight off it, preserving the visual gap while making the gutter
      itself part of the (hoverable) button, so there's no dead zone between the
