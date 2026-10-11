@@ -67,6 +67,8 @@ import { resolveDirectoryRoot, resolveNativePath } from './directory-root.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 import {
   assertNeverStorePublishOutcome,
+  type DeferredStoreOutcome,
+  type DeferredStoreSettlement,
   DocumentDurabilityState,
   OK_DOC_REMOVED,
   OK_PATH_UNRESOLVABLE,
@@ -491,6 +493,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       branch: string;
       document: Y.Doc;
       lastTransactionOrigin: unknown;
+      settlement: DeferredStoreSettlement;
     }
   >();
 
@@ -2003,10 +2006,19 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       branch: durabilityState.getActiveBranch(),
       document,
       lastTransactionOrigin,
+      settlement:
+        deferredStores.get(documentName)?.settlement ??
+        durabilityState.openDeferredStore(documentName),
     });
   }
 
+  function discardDeferredStores(): void {
+    for (const entry of deferredStores.values()) entry.settlement.settle({ kind: 'discarded' });
+    deferredStores.clear();
+  }
+
   async function flushDeferredStores(mode: 'within-branch' | 'discard-stale' = 'within-branch') {
+    if (mode === 'discard-stale') discardDeferredStores();
     if (deferredStoreDrainInFlight) {
       pendingDeferredStoreFlushMode =
         pendingDeferredStoreFlushMode === 'discard-stale' || mode === 'discard-stale'
@@ -2018,12 +2030,17 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     deferredStoreDrainInFlight = (async () => {
       let drainMode = mode;
       while (true) {
+        if (drainMode === 'discard-stale') discardDeferredStores();
         const entries = [...deferredStores.entries()];
         deferredStores.clear();
 
         if (drainMode !== 'discard-stale') {
           for (const [documentName, entry] of entries) {
-            if (entry.branch !== durabilityState.getActiveBranch()) continue;
+            if (entry.branch !== durabilityState.getActiveBranch()) {
+              entry.settlement.settle({ kind: 'discarded' });
+              continue;
+            }
+            let outcome: DeferredStoreOutcome = { kind: 'completed' };
             try {
               await storeDocumentNow({
                 document: entry.document,
@@ -2031,6 +2048,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                 lastTransactionOrigin: entry.lastTransactionOrigin,
               });
             } catch (err) {
+              outcome = { kind: 'failed', failure: toStoreFailure(err) };
               const verbose = process.env.OK_TELEMETRY_VERBOSE === '1';
               let rawMessage = '';
               try {
@@ -2073,6 +2091,8 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                 { err, documentName },
                 `[persistence] Deferred store failed for ${documentName}`,
               );
+            } finally {
+              entry.settlement.settle(outcome);
             }
           }
         }

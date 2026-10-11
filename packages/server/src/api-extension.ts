@@ -224,9 +224,11 @@ import {
   stripDocExtension,
 } from './doc-extensions.ts';
 import {
+  assertNeverDeferredStoreWait,
   type DocumentDurabilityState,
   OK_DOC_REMOVED,
   OK_PATH_UNRESOLVABLE,
+  OK_STORE_DISCARDED,
   OK_STORE_REFUSED,
   type StoreFailure,
 } from './document-durability-state.ts';
@@ -1441,6 +1443,14 @@ function pathFaultProblem(failure: StoreFailure) {
   } satisfies BatchEntryError;
 }
 
+function discardedStoreProblem(failure: StoreFailure) {
+  return {
+    type: 'urn:ok:error:branch-switched' as const,
+    title: 'Edit not saved: the Git branch changed before it reached disk.',
+    detail: `${failure.message}. The document now shows the checked-out branch. Re-read it, then repeat the edit if it is still needed.`,
+  } satisfies BatchEntryError;
+}
+
 function refusedStoreProblem(failure: StoreFailure) {
   return {
     type: 'urn:ok:error:store-refused' as const,
@@ -1462,6 +1472,11 @@ export function respondPersistenceFailure(
   }
   if (failure.code === OK_DOC_REMOVED) {
     const { type, title, detail } = removedDocProblem(failure);
+    errorResponse(res, 409, type, title, { handler, detail });
+    return;
+  }
+  if (failure.code === OK_STORE_DISCARDED) {
+    const { type, title, detail } = discardedStoreProblem(failure);
     errorResponse(res, 409, type, title, { handler, detail });
     return;
   }
@@ -1491,7 +1506,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
   async function dispatchMutation(operation: () => Promise<void>, pathname: string): Promise<void> {
     if (closingMutations)
       throw new ServerMutationShuttingDownError(pathname.startsWith('/api/local-op/'));
-    const task = operation();
+    const task = durabilityState.runWithinWriteWaitBudget(operation);
     pendingMutations.add(task);
     try {
       await task;
@@ -1898,6 +1913,44 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     if (hocuspocus.debouncer.isDebounced(debounceId)) {
       durabilityState.markAgentWriteStore(docName);
       await hocuspocus.debouncer.executeNow(debounceId);
+    }
+    const deferredWaitStarted = Date.now();
+    const deferredWait = await durabilityState.awaitDeferredStoreOutcome(docName);
+    switch (deferredWait?.kind) {
+      case undefined:
+      case 'completed':
+        break;
+      case 'discarded':
+        return {
+          kind: 'failure',
+          failure: {
+            code: OK_STORE_DISCARDED,
+            message: `A Git branch switch discarded the pending save of ${docName}`,
+          },
+        };
+      case 'failed':
+        return {
+          kind: 'failure',
+          failure: durabilityState.takeStoreFailure(docName) ?? deferredWait.failure,
+        };
+      case 'unsettled': {
+        const waitedMs = Date.now() - deferredWaitStarted;
+        console.warn(
+          JSON.stringify({
+            event: 'agent-write-deferred-store-unsettled',
+            'doc.name': docName,
+            waitedMs,
+            timestamp: new Date().toISOString(),
+          }),
+        );
+        log.warn(
+          { docName, waitedMs },
+          '[agent-write] deferred store still pending after the wait; acknowledging before it reaches disk',
+        );
+        break;
+      }
+      default:
+        assertNeverDeferredStoreWait(deferredWait);
     }
     const failure = durabilityState.takeStoreFailure(docName);
     if (failure) return { kind: 'failure', failure };
@@ -3959,6 +4012,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
                   flushErrors.set(p.docName, pathFaultProblem(flushOutcome.failure));
                 } else if (flushOutcome.failure.code === OK_STORE_REFUSED) {
                   flushErrors.set(p.docName, refusedStoreProblem(flushOutcome.failure));
+                } else if (flushOutcome.failure.code === OK_STORE_DISCARDED) {
+                  flushErrors.set(p.docName, discardedStoreProblem(flushOutcome.failure));
                 } else {
                   const reason = classifyUploadErrno({
                     code: flushOutcome.failure.code,

@@ -568,6 +568,7 @@ export class AgentSessionManager {
   private readonly minEvictableIdleMs: number;
   private bridgeLossReporter?: BridgeDeriveLossReporter;
   private readonly assertDocumentScope?: (docName: string) => void;
+  private readonly awaitWriteAdmission?: () => Promise<boolean>;
   private evictions = 0;
 
   constructor(
@@ -577,6 +578,7 @@ export class AgentSessionManager {
       minEvictableIdleMs?: number;
       bridgeLossReporter?: BridgeDeriveLossReporter;
       assertDocumentScope?: (docName: string) => void;
+      awaitWriteAdmission?: () => Promise<boolean>;
     } = {},
   ) {
     this.hocuspocus = hocuspocus;
@@ -584,6 +586,7 @@ export class AgentSessionManager {
     this.minEvictableIdleMs = options.minEvictableIdleMs ?? MIN_EVICTABLE_IDLE_MS;
     this.bridgeLossReporter = options.bridgeLossReporter;
     this.assertDocumentScope = options.assertDocumentScope;
+    this.awaitWriteAdmission = options.awaitWriteAdmission;
   }
 
   public attachBridgeLossReporter(reporter: BridgeDeriveLossReporter): void {
@@ -673,6 +676,15 @@ export class AgentSessionManager {
       throw new Error(`Cannot create agent session for reserved doc: ${docName}`);
     }
     this.assertDocumentScope?.(docName);
+    if (this.awaitWriteAdmission) {
+      const waitStarted = Date.now();
+      if (!(await this.awaitWriteAdmission())) {
+        log.warn(
+          { docName, waitedMs: Date.now() - waitStarted },
+          '[agent-session] git batch still in progress after the admission wait; admitting the write',
+        );
+      }
+    }
     const key = this.sessionKey(docName, agentId);
 
     const existing = this.sessions.get(key);

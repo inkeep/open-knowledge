@@ -12,6 +12,7 @@ import {
   SyncConflictsSuccessSchema,
 } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import * as Y from 'yjs';
 import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
 import { bootServer } from './boot.ts';
 import { ConfigSchema } from './config/schema.ts';
@@ -493,7 +494,23 @@ describe('PRD-8318: a merge-native conflict resolved with raw git unfreezes the 
       });
 
       held.serverInstance.durabilityState.setBatchInProgress(true);
-      expect(await writeDocProbe(held.port, SCRATCH_DOC, `# ${DEFERRED_MARKER}\n`)).toBe(200);
+      const scratch = await held.serverInstance.hocuspocus.openDirectConnection(SCRATCH_DOC);
+      try {
+        await scratch.transact((doc) => {
+          const paragraph = new Y.XmlElement('paragraph');
+          paragraph.insert(0, [new Y.XmlText(DEFERRED_MARKER)]);
+          doc.getXmlFragment('default').push([paragraph]);
+        });
+        const debounceId = `onStoreDocument-${SCRATCH_DOC}`;
+        await pollUntil(
+          () => held.serverInstance.hocuspocus.debouncer.isDebounced(debounceId),
+          15_000,
+          'the edit to schedule a store',
+        );
+        await held.serverInstance.hocuspocus.debouncer.executeNow(debounceId);
+      } finally {
+        await scratch.disconnect();
+      }
       expect(readScratch()).toContain(CONTROL_MARKER);
       expect(readScratch()).not.toContain(DEFERRED_MARKER);
 

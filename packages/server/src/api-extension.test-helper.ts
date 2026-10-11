@@ -255,6 +255,7 @@ export function createApiExtension(
   > &
     LegacyIndexOptions & {
       conflicts?: ApiExtensionOptions['conflicts'];
+      durabilityState?: DocumentDurabilityState;
       derivedDocumentIndex?: DerivedDocumentIndexApiPort;
       signalChannel?: LegacySignalChannel;
       getProjectConfigEpoch?: () => number;
@@ -265,6 +266,7 @@ export function createApiExtension(
     backlinkIndex,
     tagIndex,
     derivedDocumentIndex,
+    durabilityState = new DocumentDurabilityState(),
     getProjectConfigEpoch = () => 0,
     getLinkAdvisoryPolicy = () => ({
       links: DEFAULT_LINKS_VALIDATION,
@@ -280,7 +282,7 @@ export function createApiExtension(
     conflicts:
       options.conflicts ??
       createTestConflictAuthority(options.projectDir ?? options.contentDir, options.contentDir),
-    durabilityState: new DocumentDurabilityState(),
+    durabilityState,
     derivedDocumentIndex:
       derivedDocumentIndex ??
       createLegacyDerivedIndexPort(

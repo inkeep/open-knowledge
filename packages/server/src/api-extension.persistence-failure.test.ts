@@ -1,7 +1,11 @@
 import type { ServerResponse } from 'node:http';
 import { describe, expect, test } from 'vitest';
 import { respondPersistenceFailure } from './api-extension.ts';
-import { OK_STORE_REFUSED, type StoreFailure } from './document-durability-state.ts';
+import {
+  OK_STORE_DISCARDED,
+  OK_STORE_REFUSED,
+  type StoreFailure,
+} from './document-durability-state.ts';
 
 function makeMockRes() {
   const writeHeadCalls: Array<{ status: number; headers: Record<string, string> }> = [];
@@ -58,5 +62,23 @@ describe('respondPersistenceFailure — store-refused', () => {
     expect(writeHeadCalls[0]?.status).not.toBe(503);
     const body = JSON.parse(endCalls[0] ?? '{}') as Record<string, unknown>;
     expect(body.type).not.toBe('urn:ok:error:store-refused');
+  });
+});
+
+describe('respondPersistenceFailure: store discarded by a branch switch', () => {
+  test('an OK_STORE_DISCARDED failure renders a 409 telling the agent the edit was not saved', () => {
+    const { res, writeHeadCalls, endCalls } = makeMockRes();
+    const failure: StoreFailure = {
+      code: OK_STORE_DISCARDED,
+      message: 'A Git branch switch discarded the pending save of notes',
+    };
+
+    respondPersistenceFailure(res, failure, 'agent-patch');
+
+    expect(writeHeadCalls[0]?.status).toBe(409);
+    const body = JSON.parse(endCalls[0] ?? '{}') as Record<string, unknown>;
+    expect(body.type).toBe('urn:ok:error:branch-switched');
+    expect(String(body.title)).toContain('not saved');
+    expect(String(body.detail)).toContain('Re-read');
   });
 });

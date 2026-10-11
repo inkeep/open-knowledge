@@ -25,6 +25,7 @@ import {
   DocumentDurabilityState,
   DocumentDurabilityStateError,
   type StorePublishOutcome,
+  WRITE_WAIT_BUDGET_MS,
 } from './document-durability-state.ts';
 import * as tracedFs from './fs-traced.ts';
 import { getLogger } from './logger.ts';
@@ -67,7 +68,7 @@ describe('DocumentDurabilityState', () => {
     expect(state.getReconciledBase('doc')).toBe('feature bytes');
   });
 
-  test('isolates every owned coordination channel between instances', () => {
+  test('isolates every owned coordination channel between instances', async () => {
     const first = new DocumentDurabilityState();
     const second = new DocumentDurabilityState();
     first.setReconciledBase('doc', 'first');
@@ -76,6 +77,7 @@ describe('DocumentDurabilityState', () => {
     first.markAgentWriteStore('doc');
     first.recordStoreFailure('doc', { code: 'ENOSPC', message: 'full' });
     first.recordStoreDivergence('doc');
+    first.openDeferredStore('doc');
 
     expect(second.getReconciledBase('doc')).toBeUndefined();
     expect(second.isBatchInProgress()).toBe(false);
@@ -83,6 +85,155 @@ describe('DocumentDurabilityState', () => {
     expect(second.consumeAgentWriteStore('doc')).toBe(false);
     expect(second.takeStoreFailure('doc')).toBeNull();
     expect(second.takeStoreDivergence('doc')).toBe(false);
+    await expect(second.awaitDeferredStoreOutcome('doc')).resolves.toBeUndefined();
+  });
+
+  test('holds writes until every admission hold is released', async () => {
+    const state = new DocumentDurabilityState();
+    await expect(state.whenWriteAdmitted()).resolves.toBe(true);
+
+    state.setBatchInProgress(true);
+    await expect(state.whenWriteAdmitted()).resolves.toBe(true);
+
+    const releaseBranchSwitch = state.holdWriteAdmission();
+    const releaseOverlapping = state.holdWriteAdmission();
+    let settled = false;
+    const waiting = state.whenWriteAdmitted().then((result) => {
+      settled = true;
+      return result;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+
+    releaseOverlapping();
+    releaseOverlapping();
+    state.setBatchInProgress(false);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+
+    releaseBranchSwitch();
+    await expect(waiting).resolves.toBe(true);
+    expect(state.isWriteAdmissionHeld()).toBe(false);
+  });
+
+  test('stops waiting for admission once the bound elapses', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = new DocumentDurabilityState();
+      state.holdWriteAdmission();
+      let result: boolean | undefined;
+      const waiting = state.whenWriteAdmitted().then((admitted) => {
+        result = admitted;
+      });
+
+      await vi.advanceTimersByTimeAsync(WRITE_WAIT_BUDGET_MS - 1);
+      expect(result).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      await waiting;
+
+      expect(result).toBe(false);
+      expect(state.isWriteAdmissionHeld()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('bounds every wait inside one write budget by that budget together', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = new DocumentDurabilityState();
+      state.holdWriteAdmission();
+      state.openDeferredStore('doc');
+      let finishedAt: number | undefined;
+      const started = Date.now();
+      const waits = state.runWithinWriteWaitBudget(async () => {
+        const admitted = await state.whenWriteAdmitted();
+        const outcome = await state.awaitDeferredStoreOutcome('doc');
+        const admittedAgain = await state.whenWriteAdmitted();
+        finishedAt = Date.now();
+        return { admitted, outcome, admittedAgain };
+      });
+
+      await vi.advanceTimersByTimeAsync(WRITE_WAIT_BUDGET_MS - 1);
+      expect(finishedAt).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+
+      await expect(waits).resolves.toEqual({
+        admitted: false,
+        outcome: { kind: 'unsettled' },
+        admittedAgain: false,
+      });
+      expect(finishedAt).toBe(started + WRITE_WAIT_BUDGET_MS);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('does not wait for a deferred store while no admission hold is active', async () => {
+    const state = new DocumentDurabilityState();
+    state.setBatchInProgress(true);
+    state.openDeferredStore('doc');
+    await expect(state.awaitDeferredStoreOutcome('doc')).resolves.toBeUndefined();
+  });
+
+  test('reports the outcome of the latest deferred store for a document', async () => {
+    const state = new DocumentDurabilityState();
+    state.holdWriteAdmission();
+    await expect(state.awaitDeferredStoreOutcome('doc')).resolves.toBeUndefined();
+
+    const earlier = state.openDeferredStore('doc');
+    const earlierOutcome = state.awaitDeferredStoreOutcome('doc');
+    const later = state.openDeferredStore('doc');
+    const laterOutcome = state.awaitDeferredStoreOutcome('doc');
+
+    earlier.settle({ kind: 'completed' });
+    await expect(earlierOutcome).resolves.toEqual({ kind: 'completed' });
+    const stillPending = state.awaitDeferredStoreOutcome('doc');
+
+    later.settle({ kind: 'discarded' });
+    await expect(laterOutcome).resolves.toEqual({ kind: 'discarded' });
+    await expect(stillPending).resolves.toEqual({ kind: 'discarded' });
+    await expect(state.awaitDeferredStoreOutcome('doc')).resolves.toBeUndefined();
+  });
+
+  test('reports a deferred store that has not settled within the bound as unsettled', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = new DocumentDurabilityState();
+      state.holdWriteAdmission();
+      state.openDeferredStore('doc');
+      let result: unknown;
+      const waiting = state.awaitDeferredStoreOutcome('doc').then((outcome) => {
+        result = outcome;
+      });
+
+      await vi.advanceTimersByTimeAsync(WRITE_WAIT_BUDGET_MS - 1);
+      expect(result).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      await waiting;
+
+      expect(result).toEqual({ kind: 'unsettled' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('reports a discard that lands within the bound', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = new DocumentDurabilityState();
+      state.holdWriteAdmission();
+      const deferral = state.openDeferredStore('doc');
+      const waiting = state.awaitDeferredStoreOutcome('doc');
+
+      await vi.advanceTimersByTimeAsync(WRITE_WAIT_BUDGET_MS - 1);
+      deferral.settle({ kind: 'discarded' });
+
+      await expect(waiting).resolves.toEqual({ kind: 'discarded' });
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('does not let an older flush clear a newer in-flight snapshot', () => {

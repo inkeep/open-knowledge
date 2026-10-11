@@ -2119,6 +2119,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     sessionManager = new AgentSessionManager(hocuspocus, {
       ...options.agentSessionOptions,
       assertDocumentScope: assertDocumentProjectScope,
+      awaitWriteAdmission: () => durabilityState.whenWriteAdmitted(),
     });
     const sm = sessionManager;
     unregisterWorkloadProviders.push(
@@ -4385,6 +4386,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       refreshStartupEmbeds();
     }
 
+    let releaseHeadBatchAdmission = () => {};
     try {
       headWatcher = await startHeadWatcher(
         projectDir,
@@ -4395,6 +4397,8 @@ export function createServer(options: ServerOptions): ServerInstance {
           await persistence.flushPendingGitCommit();
 
           setBatchInProgress(true);
+          releaseHeadBatchAdmission();
+          releaseHeadBatchAdmission = durabilityState.holdWriteAdmission();
 
           if (shadowRef.current) {
             const currentBranch = getActiveBranch();
@@ -4459,30 +4463,37 @@ export function createServer(options: ServerOptions): ServerInstance {
 
           if (info.batchKind === 'within-branch') {
             setBatchInProgress(false);
-            await drainEventBuffer();
+            try {
+              await drainEventBuffer();
 
-            if (info.headMoved && info.newHead) {
-              const changes = resolveUpstreamChanges(
-                projectDir,
-                resolve(contentDir),
-                info.oldHead,
-                info.newHead,
-              );
-              if (changes.size > 0) {
-                dropPendingDocs(changes.keys());
-                for (const [docName, author] of changes) {
-                  recordContributor(
-                    docName,
-                    gitAuthorWriterId(author.email),
-                    author.name,
-                    author.email,
-                    formatReconcileSubject(docName),
-                  );
+              if (info.headMoved && info.newHead) {
+                const changes = resolveUpstreamChanges(
+                  projectDir,
+                  resolve(contentDir),
+                  info.oldHead,
+                  info.newHead,
+                );
+                if (changes.size > 0) {
+                  dropPendingDocs(changes.keys());
+                  for (const [docName, author] of changes) {
+                    recordContributor(
+                      docName,
+                      gitAuthorWriterId(author.email),
+                      author.name,
+                      author.email,
+                      formatReconcileSubject(docName),
+                    );
+                  }
+                  await persistence.flushContributors();
                 }
-                await persistence.flushContributors();
+              }
+            } finally {
+              try {
+                await persistence.flushDeferredStores('within-branch');
+              } finally {
+                releaseHeadBatchAdmission();
               }
             }
-            await persistence.flushDeferredStores('within-branch');
             try {
               await conflicts.pruneMergeNativeAgainstGit();
             } catch (err) {
@@ -4715,10 +4726,14 @@ export function createServer(options: ServerOptions): ServerInstance {
               deferredStoresFlushed = true;
               cc1Broadcaster?.emitBranchSwitched(newBranch);
             } finally {
-              derivedDocumentIndex.abortBranchSwitch(branchTransition);
-              if (!deferredStoresFlushed) {
-                setBatchInProgress(false);
-                await persistence.flushDeferredStores('discard-stale');
+              try {
+                derivedDocumentIndex.abortBranchSwitch(branchTransition);
+                if (!deferredStoresFlushed) {
+                  setBatchInProgress(false);
+                  await persistence.flushDeferredStores('discard-stale');
+                }
+              } finally {
+                releaseHeadBatchAdmission();
               }
             }
           }

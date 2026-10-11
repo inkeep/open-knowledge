@@ -24,7 +24,9 @@ import { ConcurrentOverwriteRefusedError } from './concurrent-overwrite-refused-
 import { bindConflictAuthority } from './conflict-authority.ts';
 import { DocInConflictError } from './conflict-errors.ts';
 import { _resetDocExtensionsForTests, registerDocExtension } from './doc-extensions.ts';
+import { DocumentDurabilityState, WRITE_WAIT_BUDGET_MS } from './document-durability-state.ts';
 import { __resetFrontmatterTelemetryForTests } from './frontmatter-telemetry.ts';
+import { getLogger } from './logger.ts';
 
 function createMockHocuspocus() {
   const openedDocs: string[] = [];
@@ -85,6 +87,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   await manager.closeAll();
 });
 
@@ -106,6 +109,76 @@ describe('getSession — composite key (docName + agentId)', () => {
       'Scope no longer admitted',
     );
     expect(mockHocuspocus.openedDocs).toEqual(['doc.md']);
+  });
+
+  test('holds new and cached sessions until write admission opens', async () => {
+    let admissions = 0;
+    let open: () => void = () => {};
+    let gate = Promise.resolve(true);
+    manager = new AgentSessionManager(mockHocuspocus as never, {
+      awaitWriteAdmission: () => {
+        admissions++;
+        return gate;
+      },
+    });
+    const first = await manager.getSession('doc.md', 'agent-alice');
+    gate = new Promise<boolean>((resolve) => {
+      open = () => resolve(true);
+    });
+
+    const settled: string[] = [];
+    const cached = manager.getSession('doc.md', 'agent-alice').then((session) => {
+      settled.push('cached');
+      return session;
+    });
+    const fresh = manager.getSession('other.md', 'agent-alice').then(() => {
+      settled.push('fresh');
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toEqual([]);
+    expect(mockHocuspocus.openedDocs).toEqual(['doc.md']);
+
+    open();
+    expect(await cached).toBe(first);
+    await fresh;
+    expect(settled.sort()).toEqual(['cached', 'fresh']);
+    expect(mockHocuspocus.openedDocs).toEqual(['doc.md', 'other.md']);
+    expect(admissions).toBe(3);
+  });
+
+  test('admits the write once the bound elapses while admission is still held, with a warning', async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(getLogger('agent-sessions'), 'warn');
+    try {
+      const durabilityState = new DocumentDurabilityState();
+      durabilityState.holdWriteAdmission();
+      manager = new AgentSessionManager(mockHocuspocus as never, {
+        awaitWriteAdmission: () => durabilityState.whenWriteAdmitted(),
+      });
+
+      let opened = false;
+      const pending = manager.getSession('doc.md', 'agent-alice').then((session) => {
+        opened = true;
+        return session;
+      });
+      await vi.advanceTimersByTimeAsync(WRITE_WAIT_BUDGET_MS - 1);
+      expect(opened).toBe(false);
+      expect(mockHocuspocus.openedDocs).toEqual([]);
+
+      await vi.advanceTimersByTimeAsync(1);
+      const session = await pending;
+
+      expect(session.docName).toBe('doc.md');
+      expect(mockHocuspocus.openedDocs).toEqual(['doc.md']);
+      expect(durabilityState.isWriteAdmissionHeld()).toBe(true);
+      expect(warn).toHaveBeenCalledWith(
+        { docName: 'doc.md', waitedMs: WRITE_WAIT_BUDGET_MS },
+        expect.stringContaining('admission wait'),
+      );
+    } finally {
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
   });
 
   test('creates a session on first call', async () => {

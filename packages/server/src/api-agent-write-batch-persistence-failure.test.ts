@@ -19,6 +19,7 @@ import { createApiExtension } from './api-extension.ts';
 import {
   DocumentDurabilityState,
   OK_DOC_REMOVED,
+  OK_STORE_DISCARDED,
   OK_STORE_REFUSED,
 } from './document-durability-state.ts';
 
@@ -156,5 +157,27 @@ describe('agent-write-batch — store-refused flush failure rendering', () => {
     };
     expect(results[0]?.status).toBe('error');
     expect(results[0]?.error?.type).toBe('urn:ok:error:doc-removed');
+  });
+
+  test('a store discarded by a branch switch reports branch-switched on the batch endpoint', async () => {
+    const docName = 'batch-branch-switched';
+    durabilityState.recordStoreFailure(docName, {
+      code: OK_STORE_DISCARDED,
+      message: `A Git branch switch discarded the pending save of ${docName}`,
+    });
+
+    const response = await postBatch({
+      docs: [{ docName, markdown: '# Batch branch switched\n\nBody.\n', position: 'replace' }],
+      agentId: 'claude-1',
+      agentName: 'Claude',
+    });
+
+    expect(response.status).toBe(200);
+    const { results } = JSON.parse(response.body) as {
+      results: Array<{ status: string; error?: { type: string; detail?: string } }>;
+    };
+    expect(results[0]?.status).toBe('error');
+    expect(results[0]?.error?.type).toBe('urn:ok:error:branch-switched');
+    expect(results[0]?.error?.detail).toContain('Re-read');
   });
 });
