@@ -18,6 +18,8 @@ export const ROUND_READS = {
     ...APP_SOURCE_EXTENSIONS.map((extension) => `${APP_SOURCE_ROOT}/**/*${extension}`),
     APP_STYLESHEET,
     'packages/app/package.json',
+    'packages/app/tests/integration/dev-gate-allowlist.ts',
+    'test-support/test-only-source-file.mjs',
   ],
   exclude: APP_SOURCE_EXCLUDED_SUFFIXES.map((suffix) => `${APP_SOURCE_ROOT}/**/*${suffix}`),
 };

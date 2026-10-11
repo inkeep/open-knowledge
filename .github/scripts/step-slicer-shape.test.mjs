@@ -2,11 +2,13 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { STEP_SLICER_SCAN_ROOTS } from './step-slicer-shape.reads.mjs';
 
 const SELF_PATH = fileURLToPath(import.meta.url);
 const HERE = dirname(SELF_PATH);
+const OK_ROOT = join(HERE, '..', '..');
 
-const ROOTS = [HERE, join(HERE, '..', '..', 'scripts')];
+const ROOTS = STEP_SLICER_SCAN_ROOTS.map((root) => join(OK_ROOT, root));
 
 const NESTED_SLICE = /\.slice\(\s*[A-Za-z_$][\w$]*(?:\.[\w$]+)*\.(?:indexOf|lastIndexOf)\(/g;
 
