@@ -30,7 +30,14 @@ interface ObservedWebContents {
   isLoading(): boolean;
 }
 
-type WindowLifecycleEvent = 'closed' | 'show' | 'hide' | 'minimize' | 'restore';
+type WindowLifecycleEvent =
+  | 'closed'
+  | 'show'
+  | 'hide'
+  | 'minimize'
+  | 'restore'
+  | 'unresponsive'
+  | 'responsive';
 
 export interface ObservedBrowserWindow {
   readonly id: number;
@@ -248,7 +255,9 @@ export function createDesktopProcessObservability<IntervalHandle>(
     }
   };
 
-  const sample = (trigger: 'startup' | 'interval' | 'renderer-ready'): void => {
+  const sample = (
+    trigger: 'startup' | 'interval' | 'renderer-ready' | 'renderer-unresponsive',
+  ): void => {
     const captured = capture();
     if (captured === null) return;
     lastSample = captured;
@@ -260,7 +269,15 @@ export function createDesktopProcessObservability<IntervalHandle>(
 
   const lifecycle = (
     window: ObservedBrowserWindow,
-    action: 'created' | 'shown' | 'hidden' | 'minimized' | 'restored' | 'closed',
+    action:
+      | 'created'
+      | 'shown'
+      | 'hidden'
+      | 'minimized'
+      | 'restored'
+      | 'closed'
+      | 'unresponsive'
+      | 'responsive',
     identity: WindowIdentity,
   ): void => {
     const details = inspectTrackedWindow(window, identity);
@@ -276,7 +293,7 @@ export function createDesktopProcessObservability<IntervalHandle>(
         'desktop live-window count failed',
       );
     }
-    deps.logger.info(
+    deps.logger[action === 'unresponsive' ? 'warn' : 'info'](
       {
         event: 'desktop-process-observability.window-lifecycle',
         action,
@@ -309,6 +326,11 @@ export function createDesktopProcessObservability<IntervalHandle>(
       window.on('minimize', () => lifecycle(window, 'minimized', identity));
       window.on('restore', () => lifecycle(window, 'restored', identity));
       window.on('closed', () => lifecycle(window, 'closed', identity));
+      window.on('unresponsive', () => {
+        lifecycle(window, 'unresponsive', identity);
+        sample('renderer-unresponsive');
+      });
+      window.on('responsive', () => lifecycle(window, 'responsive', identity));
     },
     snapshotForCrash(affectedRenderer) {
       const now = deps.now();

@@ -4652,6 +4652,9 @@
     "lond3p": ["Shows above the code body. Round-trips as `title=\"...\"` in markdown."],
     "lrhetp": ["+ ", ["overflow"], " more"],
     "lwCV5v": ["Couldn't open ", ["0"], " for editing: ", ["1"]],
+    "lwvkBP": [
+      "It also adds any display-connection errors OpenKnowledge wrote to your user journal in the past week, each message cut to 200 characters."
+    ],
     "lyWa43": ["Project-level disconnected pages"],
     "lzmtKp": ["Failed to load folder properties: ", ["message"]],
     "lzsa2d": ["Copy error"],

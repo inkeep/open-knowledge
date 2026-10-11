@@ -5258,6 +5258,9 @@
     "lond3p": ["Aparece acima do corpo do código. No markdown, vai e volta como `title=\"...\"`."],
     "lrhetp": ["+ mais ", ["overflow"]],
     "lwCV5v": ["Não deu para abrir ", ["0"], " para edição: ", ["1"]],
+    "lwvkBP": [
+      "Também adiciona os erros de conexão com a tela que o OpenKnowledge gravou no seu diário de usuário na última semana, com cada mensagem cortada em 200 caracteres."
+    ],
     "lyWa43": ["Páginas desconectadas em todo o projeto"],
     "lzmtKp": ["Falha ao carregar as propriedades da pasta: ", ["message"]],
     "lzsa2d": ["Copiar o erro"],

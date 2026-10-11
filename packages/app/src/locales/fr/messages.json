@@ -5412,6 +5412,9 @@
     ],
     "lrhetp": ["+ ", ["overflow"], " de plus"],
     "lwCV5v": ["Impossible d'ouvrir ", ["0"], " pour modification : ", ["1"]],
+    "lwvkBP": [
+      "Il ajoute aussi les erreurs de connexion à l'affichage qu'OpenKnowledge a écrites dans votre journal utilisateur la semaine dernière, chaque message étant tronqué à 200 caractères."
+    ],
     "lyWa43": ["Pages isolées au niveau du projet"],
     "lzmtKp": ["Échec du chargement des propriétés du dossier : ", ["message"]],
     "lzsa2d": ["Copier l'erreur"],

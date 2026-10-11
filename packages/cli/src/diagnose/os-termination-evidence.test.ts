@@ -8,6 +8,7 @@ import {
   createRunCommand,
   describeOsTerminationEvidence,
   findJetsamKillSync,
+  LINUX_DISPLAY_FATAL_GREP,
   LINUX_JOURNAL_GREP,
   parseJetsamReport,
   renderOsTerminationEvidence,
@@ -371,7 +372,11 @@ function runner(results: Record<string, CommandResult>) {
     maxInFlight = Math.max(maxInFlight, inFlight);
     await new Promise((r) => setTimeout(r, 5));
     inFlight -= 1;
-    const key = command.endsWith('wevtutil.exe') ? `wevtutil:${args[1]}` : command;
+    const key = command.endsWith('wevtutil.exe')
+      ? `wevtutil:${args[1]}`
+      : args[0] === '--user'
+        ? `${command} --user`
+        : command;
     const result = results[key];
     if (result === undefined) throw new Error(`unexpected command ${key}`);
     return result;
@@ -393,10 +398,10 @@ describe('Linux journal collection', () => {
   const FOREIGN =
     '2026-10-04T18:30:00.000000+00:00 host-a kernel: Out of memory: Killed process 99 (chrome) total-vm:1kB';
 
-  test('queries kernel and systemd-oomd lines for the last week with a pinned filter', async () => {
-    const { run, calls } = runner({
-      journalctl: { status: 1, stdout: '-- No entries --\n', stderr: '' },
-    });
+  const NO_ENTRIES: CommandResult = { status: 1, stdout: '-- No entries --\n', stderr: '' };
+
+  test('queries kernel, systemd-oomd and this user’s own display-loss lines for the last week', async () => {
+    const { run, calls } = runner({ journalctl: NO_ENTRIES, 'journalctl --user': NO_ENTRIES });
 
     await collectOsTerminationEvidence({ platform: 'linux', runCommand: run });
 
@@ -411,6 +416,16 @@ describe('Linux journal collection', () => {
           '_TRANSPORT=kernel',
           '+',
           '_SYSTEMD_UNIT=systemd-oomd.service',
+        ],
+      },
+      {
+        command: 'journalctl',
+        args: [
+          '--user',
+          '--no-pager',
+          '--output=short-iso-precise',
+          '--since=-7d',
+          '--grep=Fatal Wayland communication error|Wayland protocol error|X IO error|Missing X server',
         ],
       },
     ]);
@@ -430,6 +445,7 @@ describe('Linux journal collection', () => {
         stdout: `-- Boot 44962998fa1849c29d4807eefb892418 --\n${FOREIGN}\n${OOMD_PRESSURE}\n${OOMD_SWAP}\n${KERNEL_INVOKED}\n${KERNEL_TASK}\n${KERNEL_KILLED}\n`,
         stderr: '',
       },
+      'journalctl --user': NO_ENTRIES,
     });
 
     const evidence = await collectOsTerminationEvidence({ platform: 'linux', runCommand: run });
@@ -503,6 +519,7 @@ describe('Linux journal collection', () => {
         stderr:
           "Hint: You are currently not seeing messages from other users and the system.\n      Users in groups 'adm', 'systemd-journal' can see all messages.\n",
       },
+      'journalctl --user': NO_ENTRIES,
     });
 
     const evidence = await collectOsTerminationEvidence({ platform: 'linux', runCommand: run });
@@ -511,48 +528,260 @@ describe('Linux journal collection', () => {
   });
 
   test('counts an exit-1 window as empty only when journalctl printed its no-entries marker', async () => {
-    const empty = runner({
-      journalctl: {
-        status: 1,
-        stdout: '-- Boot 44962998fa1849c29d4807eefb892418 --\n-- No entries --\n',
-        stderr: '',
-      },
+    const both = (result: CommandResult) =>
+      runner({ journalctl: result, 'journalctl --user': result }).run;
+    const empty = both({
+      status: 1,
+      stdout: '-- Boot 44962998fa1849c29d4807eefb892418 --\n-- No entries --\n',
+      stderr: '',
     });
-    const rejected = runner({
-      journalctl: {
-        status: 1,
-        stdout: '',
-        stderr: "journalctl: unrecognized option '--grep=Out of memory'\n",
-      },
+    const rejected = both({
+      status: 1,
+      stdout: '',
+      stderr: "journalctl: unrecognized option '--grep=Out of memory'\n",
     });
-    const missing = runner({
-      journalctl: { status: null, stdout: '', stderr: '', errorCode: 'ENOENT' },
+    const missing = both({ status: null, stdout: '', stderr: '', errorCode: 'ENOENT' });
+    const corrupt = both({
+      status: 1,
+      stdout: '',
+      stderr:
+        'Journal file /var/log/journal/0123456789abcdef0123456789abcdef/system.journal is truncated, ignoring file.\n',
     });
 
     expect(
-      (await collectOsTerminationEvidence({ platform: 'linux', runCommand: empty.run })).outcome,
+      (await collectOsTerminationEvidence({ platform: 'linux', runCommand: empty })).outcome,
     ).toBe('none-in-window');
     expect(
-      await collectOsTerminationEvidence({ platform: 'linux', runCommand: rejected.run }),
+      await collectOsTerminationEvidence({ platform: 'linux', runCommand: rejected }),
     ).toMatchObject({
       outcome: 'unavailable',
-      unavailableReason: "exit 1: journalctl: unrecognized option '--grep=Out of memory'",
+      unavailableReason:
+        "system journal: exit 1: journalctl: unrecognized option '--grep=Out of memory'; user journal: exit 1: journalctl: unrecognized option '--grep=Out of memory'",
     });
     expect(
-      await collectOsTerminationEvidence({ platform: 'linux', runCommand: missing.run }),
-    ).toMatchObject({ outcome: 'unavailable', unavailableReason: 'ENOENT' });
-    const corrupt = runner({
-      journalctl: {
-        status: 1,
-        stdout: '',
-        stderr:
-          'Journal file /var/log/journal/0123456789abcdef0123456789abcdef/system.journal is truncated, ignoring file.\n',
-      },
-    });
-    expect(
-      await collectOsTerminationEvidence({ platform: 'linux', runCommand: corrupt.run }),
+      await collectOsTerminationEvidence({ platform: 'linux', runCommand: missing }),
     ).toMatchObject({
-      unavailableReason: 'exit 1: Journal file <journal path> is truncated, ignoring file.',
+      outcome: 'unavailable',
+      unavailableReason: 'system journal: ENOENT; user journal: ENOENT',
+    });
+    expect(
+      await collectOsTerminationEvidence({ platform: 'linux', runCommand: corrupt }),
+    ).toMatchObject({
+      unavailableReason:
+        'system journal: exit 1: Journal file <journal path> is truncated, ignoring file.; user journal: exit 1: Journal file <journal path> is truncated, ignoring file.',
+    });
+  });
+
+  test('keeps what one journal holds when the other cannot be read', async () => {
+    const { run } = runner({
+      journalctl: { status: 0, stdout: `${KERNEL_KILLED}\n`, stderr: '' },
+      'journalctl --user': { status: 1, stdout: '', stderr: 'No journal files were found.\n' },
+    });
+
+    const evidence = await collectOsTerminationEvidence({ platform: 'linux', runCommand: run });
+
+    expect(evidence).toMatchObject({
+      outcome: 'partial',
+      unavailableReason: 'user journal: exit 1: No journal files were found.',
+    });
+    expect(evidence.events).toHaveLength(1);
+  });
+
+  describe('display-server connection loss', () => {
+    const OWNED_PID = 2544264;
+    const OWNED_FATAL = `2026-10-04T23:46:38.123456+00:00 host-a Hyprland[1200]: [${OWNED_PID}:1004/234638.123456:ERROR:ui/events/platform/wayland/wayland_event_watcher.cc:78] Fatal Wayland communication error: Broken pipe.`;
+    const OWNED_PROTOCOL = `2026-10-04T23:46:38.120000+00:00 host-a openknowledge[${OWNED_PID}]: [${OWNED_PID}:${OWNED_PID}:1004/234638.120000:ERROR:wayland_event_watcher.cc(42)] Wayland protocol error: zwp_text_input_v3@44: error 0: text input already enabled`;
+    const OWNED_X11 = `2026-10-03T08:00:00.000000+00:00 host-a gnome-shell[900]: [${OWNED_PID}:1003/080000.000000:ERROR:x11_util.cc(85)] X IO error received (X server probably went away)`;
+    const FOREIGN_CHROMIUM =
+      '2026-10-04T22:00:00.000000+00:00 host-a Hyprland[1200]: [4242:1004/220000.000000:ERROR:wayland_event_watcher.cc(42)] Fatal Wayland communication error: Connection reset by peer.';
+    const FOREIGN_GTK =
+      '2026-10-04T22:00:01.000000+00:00 host-a firefox[50]: Gdk-Message: 22:00:01.000: Error 71 (Protocol error) dispatching to Wayland display.';
+    const RETIRED_PID =
+      '2026-09-25T10:00:00.000000+00:00 host-a Hyprland[1200]: [777:0925/100000.000000:ERROR:wayland_event_watcher.cc(42)] Fatal Wayland communication error: Broken pipe.';
+
+    function desktopLogs(): string {
+      const dir = makeTmpDir();
+      writeAged(
+        dir,
+        'desktop.2026-10-04.log',
+        [
+          `{"level":30,"pid":${OWNED_PID},"runtime":"desktop","event":"desktop.boot","msg":"desktop main process starting"}`,
+          `{"level":30,"pid":4242,"runtime":"desktop","subsystem":"updater","msg":"checking-for-update"}`,
+        ].join('\n'),
+        1,
+      );
+      writeAged(
+        dir,
+        'desktop.2026-09-25.log',
+        '{"level":30,"pid":777,"runtime":"desktop","event":"desktop.boot","msg":"desktop main process starting"}',
+        9,
+      );
+      writeAged(dir, 'server.2026-10-04.log', '{"level":30,"pid":4242,"event":"desktop.boot"}', 1);
+      return dir;
+    }
+
+    test('the user-journal filter selects every fatal display wording Chromium prints', () => {
+      const filter = new RegExp(LINUX_DISPLAY_FATAL_GREP);
+      for (const line of [OWNED_FATAL, OWNED_PROTOCOL, OWNED_X11, FOREIGN_CHROMIUM]) {
+        expect(filter.test(line)).toBe(true);
+      }
+      expect(filter.test(FOREIGN_GTK)).toBe(false);
+    });
+
+    test('keeps only lines a desktop main process of this app wrote, matched by its pid', async () => {
+      const { run } = runner({
+        journalctl: NO_ENTRIES,
+        'journalctl --user': {
+          status: 0,
+          stdout: `${RETIRED_PID}\n${OWNED_X11}\n${FOREIGN_CHROMIUM}\n${FOREIGN_GTK}\n${OWNED_PROTOCOL}\n${OWNED_FATAL}\n`,
+          stderr: '',
+        },
+      });
+
+      const evidence = await collectOsTerminationEvidence({
+        platform: 'linux',
+        now: () => NOW,
+        desktopLogsDir: desktopLogs(),
+        runCommand: run,
+      });
+
+      expect(evidence).toMatchObject({ outcome: 'collected', foreignIgnored: 3, unparseable: 0 });
+      expect(evidence.events).toEqual([
+        {
+          kind: 'journal',
+          at: '2026-10-03T08:00:00.000000+00:00',
+          origin: 'chromium',
+          action: 'display-connection-lost',
+          pid: OWNED_PID,
+          processName: null,
+          unit: null,
+          trigger: 'x11',
+          detail: 'X IO error received (X server probably went away)',
+        },
+        {
+          kind: 'journal',
+          at: '2026-10-04T23:46:38.120000+00:00',
+          origin: 'chromium',
+          action: 'display-connection-lost',
+          pid: OWNED_PID,
+          processName: null,
+          unit: null,
+          trigger: 'wayland',
+          detail:
+            'Wayland protocol error: zwp_text_input_v3@44: error 0: text input already enabled',
+        },
+        {
+          kind: 'journal',
+          at: '2026-10-04T23:46:38.123456+00:00',
+          origin: 'chromium',
+          action: 'display-connection-lost',
+          pid: OWNED_PID,
+          processName: null,
+          unit: null,
+          trigger: 'wayland',
+          detail: 'Fatal Wayland communication error: Broken pipe.',
+        },
+      ]);
+      expect(JSON.stringify(evidence.events)).not.toContain('host-a');
+    });
+
+    test('reports Chromium lines it could not attribute instead of calling them foreign', async () => {
+      const { run } = runner({
+        journalctl: NO_ENTRIES,
+        'journalctl --user': { status: 0, stdout: `${OWNED_FATAL}\n${FOREIGN_GTK}\n`, stderr: '' },
+      });
+      const noBootLine = makeTmpDir();
+      writeAged(noBootLine, 'desktop.2026-10-04.log', '{"pid":1,"msg":"x"}', 1);
+
+      const missing = await collectOsTerminationEvidence({
+        platform: 'linux',
+        now: () => NOW,
+        desktopLogsDir: join(makeTmpDir(), 'missing'),
+        runCommand: run,
+      });
+      const pruned = await collectOsTerminationEvidence({
+        platform: 'linux',
+        now: () => NOW,
+        desktopLogsDir: noBootLine,
+        runCommand: run,
+      });
+
+      expect(missing).toMatchObject({
+        outcome: 'partial',
+        unavailableReason:
+          'user journal: 1 Chromium display line(s) not attributed, desktop logs unreadable',
+        foreignIgnored: 1,
+        events: [],
+      });
+      expect(pruned).toMatchObject({
+        outcome: 'partial',
+        unavailableReason:
+          'user journal: 1 Chromium display line(s) not attributed, no desktop.boot pid in desktop logs',
+      });
+    });
+
+    test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+      'keeps attributed lines but will not call the rest foreign when a desktop log was unreadable',
+      async () => {
+        const dir = desktopLogs();
+        const unreadable = join(dir, 'desktop.2026-10-03.log');
+        writeAged(dir, 'desktop.2026-10-03.log', '{"pid":4242,"event":"desktop.boot"}', 1);
+        chmodSync(unreadable, 0o000);
+        const { run } = runner({
+          journalctl: NO_ENTRIES,
+          'journalctl --user': {
+            status: 0,
+            stdout: `${OWNED_FATAL}\n${FOREIGN_CHROMIUM}\n`,
+            stderr: '',
+          },
+        });
+
+        const evidence = await collectOsTerminationEvidence({
+          platform: 'linux',
+          now: () => NOW,
+          desktopLogsDir: dir,
+          runCommand: run,
+        });
+        chmodSync(unreadable, 0o644);
+
+        expect(evidence).toMatchObject({
+          outcome: 'partial',
+          unavailableReason:
+            'user journal: 1 Chromium display line(s) not attributed, desktop logs unreadable',
+          foreignIgnored: 0,
+        });
+        expect(evidence.events.map((e) => (e.kind === 'journal' ? e.pid : null))).toEqual([
+          2544264,
+        ]);
+      },
+    );
+
+    test('caps Chromium’s message and counts overflow from both journals', async () => {
+      const long = `${OWNED_FATAL.replace('Broken pipe.', 'x'.repeat(400))}`;
+      const { run } = runner({
+        journalctl: {
+          status: 0,
+          stdout: `${Array.from({ length: 52 }, () => KERNEL_KILLED).join('\n')}\n`,
+          stderr: '',
+        },
+        'journalctl --user': {
+          status: 0,
+          stdout: `${Array.from({ length: 51 }, () => long).join('\n')}\n`,
+          stderr: '',
+        },
+      });
+
+      const evidence = await collectOsTerminationEvidence({
+        platform: 'linux',
+        now: () => NOW,
+        desktopLogsDir: desktopLogs(),
+        runCommand: run,
+      });
+
+      expect(evidence.events).toHaveLength(100);
+      expect(evidence.droppedOverCap).toBe(3);
+      const display = evidence.events.find((e) => e.kind === 'journal' && e.origin === 'chromium');
+      expect(display?.kind === 'journal' ? display.detail : null).toHaveLength(200);
     });
   });
 });

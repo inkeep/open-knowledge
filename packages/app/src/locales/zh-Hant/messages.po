@@ -8134,6 +8134,10 @@ msgid "Invalid YAML"
 msgstr "無效的 YAML"
 
 #: src/components/ReportBugDialogBody.tsx
+msgid "It also adds any display-connection errors OpenKnowledge wrote to your user journal in the past week, each message cut to 200 characters."
+msgstr "它還會加入 OpenKnowledge 在過去一週內寫入你的使用者日誌的顯示連線錯誤，每則訊息截斷為 200 個字元。"
+
+#: src/components/ReportBugDialogBody.tsx
 msgid "It also adds the crash and hang records Windows logged for OpenKnowledge in the past week, without file paths, and the times of every shutdown, restart, power loss, and low-memory warning on this computer in that week, whatever caused them."
 msgstr "它還會加入 Windows 在過去一週內為 OpenKnowledge 記錄的當機與沒有回應記錄（不含檔案路徑），以及這台電腦在那一週內每次關機、重新啟動、斷電和記憶體不足警告的時間，無論原因為何。"
 

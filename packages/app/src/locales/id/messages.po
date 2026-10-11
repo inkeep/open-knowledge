@@ -8130,6 +8130,10 @@ msgid "Invalid YAML"
 msgstr "YAML tidak valid"
 
 #: src/components/ReportBugDialogBody.tsx
+msgid "It also adds any display-connection errors OpenKnowledge wrote to your user journal in the past week, each message cut to 200 characters."
+msgstr "Ini juga menambahkan galat koneksi layar yang ditulis OpenKnowledge ke jurnal pengguna Anda dalam seminggu terakhir, dengan setiap pesan dipotong menjadi 200 karakter."
+
+#: src/components/ReportBugDialogBody.tsx
 msgid "It also adds the crash and hang records Windows logged for OpenKnowledge in the past week, without file paths, and the times of every shutdown, restart, power loss, and low-memory warning on this computer in that week, whatever caused them."
 msgstr "Ini juga menambahkan catatan crash dan macet yang dicatat Windows untuk OpenKnowledge dalam seminggu terakhir, tanpa jalur file, serta waktu setiap pematian, mulai ulang, listrik padam, dan peringatan memori rendah di komputer ini selama minggu itu, apa pun penyebabnya."
 

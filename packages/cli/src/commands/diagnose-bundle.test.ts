@@ -131,12 +131,15 @@ describe('runDiagnoseBundle — macOS crash reports', () => {
     const { deps, captured } = makeRunnerDeps();
     deps.osTerminationEvidenceDeps = {
       platform: 'linux',
-      runCommand: async () => ({
-        status: 0,
-        stdout:
-          '2026-10-04T18:49:10.000000+00:00 host kernel: Out of memory: Killed process 12 (openknowledge) total-vm:1kB\n',
-        stderr: '',
-      }),
+      runCommand: async (_command, args) =>
+        args[0] === '--user'
+          ? { status: 1, stdout: '-- No entries --\n', stderr: '' }
+          : {
+              status: 0,
+              stdout:
+                '2026-10-04T18:49:10.000000+00:00 host kernel: Out of memory: Killed process 12 (openknowledge) total-vm:1kB\n',
+              stderr: '',
+            },
     };
 
     const result = await runDiagnoseBundle({ contentDir, yes: true }, deps);
@@ -146,7 +149,7 @@ describe('runDiagnoseBundle — macOS crash reports', () => {
     );
     expect(evidence).toMatchObject({ source: 'linux-journal', outcome: 'collected' });
     expect(captured.logs.find((l) => l.includes('OS termination log:'))).toContain(
-      'collected from system journal (7d; 1 kept; 0 other-process record(s) ignored; 0 unparseable)',
+      'collected from system and user journals (7d; 1 kept; 0 other-process record(s) ignored; 0 unparseable)',
     );
   });
 

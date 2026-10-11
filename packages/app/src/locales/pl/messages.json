@@ -5476,6 +5476,9 @@
     "lond3p": ["Wyświetlane nad treścią kodu. Zapisywane jako `title=\"...\"` w markdownie."],
     "lrhetp": ["+ ", ["overflow"], " więcej"],
     "lwCV5v": ["Nie udało się otworzyć ", ["0"], " do edycji: ", ["1"]],
+    "lwvkBP": [
+      "Dodaje też błędy połączenia z ekranem, które OpenKnowledge zapisało w ostatnim tygodniu w Twoim dzienniku użytkownika, przycinając każdy komunikat do 200 znaków."
+    ],
     "lyWa43": ["Strony projektu bez powiązań"],
     "lzmtKp": ["Nie udało się wczytać właściwości folderu: ", ["message"]],
     "lzsa2d": ["Kopiuj błąd"],

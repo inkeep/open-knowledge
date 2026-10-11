@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, win32 } from 'node:path';
 import { DESKTOP_PRODUCTS, desktopWindowsExecutableName } from '@inkeep/open-knowledge-core';
+import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import {
   DIAGNOSTIC_REPORT_WINDOW_DAYS,
   isOwnedProcessName,
@@ -45,12 +46,13 @@ interface JetsamEvidenceEvent {
 interface JournalEvidenceEvent {
   kind: 'journal';
   at: string;
-  origin: 'kernel' | 'systemd-oomd';
-  action: 'oom-invoked' | 'oom-kill' | 'oomd-kill';
+  origin: 'kernel' | 'systemd-oomd' | 'chromium';
+  action: 'oom-invoked' | 'oom-kill' | 'oomd-kill' | 'display-connection-lost';
   pid: number | null;
   processName: string | null;
   unit: string | null;
-  trigger: 'memory-pressure' | 'swap' | null;
+  trigger: 'memory-pressure' | 'swap' | 'wayland' | 'x11' | null;
+  detail?: string;
 }
 
 interface WindowsEvidenceEvent {
@@ -102,6 +104,7 @@ export interface OsTerminationEvidenceDeps {
   now?: () => Date;
   macosReportsDir?: string;
   systemRoot?: string;
+  desktopLogsDir?: string;
   runCommand?: RunCommand;
 }
 
@@ -447,7 +450,55 @@ const LINUX_JOURNAL_ARGS: readonly string[] = [
   '_SYSTEMD_UNIT=systemd-oomd.service',
 ];
 
+export const LINUX_DISPLAY_FATAL_GREP =
+  'Fatal Wayland communication error|Wayland protocol error|X IO error|Missing X server';
+
+const LINUX_USER_JOURNAL_ARGS: readonly string[] = [
+  '--user',
+  '--no-pager',
+  '--output=short-iso-precise',
+  '--since=-7d',
+  `--grep=${LINUX_DISPLAY_FATAL_GREP}`,
+];
+
 const JOURNAL_LINE = /^(\S+) \S+ ([^:\s[]+)(?:\[\d+\])?: (.*)$/;
+
+const CHROMIUM_LOG_LINE = /\[(\d+)(?::\d+)?:\d{4}\/\d{6}\.\d+:[A-Z0-9]+:[^\]]*\]\s*(.*)$/;
+
+const MAX_DETAIL_LENGTH = 200;
+
+const DESKTOP_LOG_FILE = /^desktop\.\d{4}-\d{2}-\d{2}\.log$/;
+
+const DESKTOP_BOOT_LINE = '"event":"desktop.boot"';
+
+async function readDesktopMainPids(
+  logsDir: string,
+  now: Date,
+): Promise<{ pids: Set<number>; unreadable: boolean }> {
+  const pids = new Set<number>();
+  let names: string[];
+  try {
+    names = await readdir(logsDir);
+  } catch {
+    return { pids, unreadable: true };
+  }
+  let unreadable = false;
+  for (const name of names) {
+    if (!DESKTOP_LOG_FILE.test(name)) continue;
+    const path = join(logsDir, name);
+    try {
+      if (now.getTime() - (await stat(path)).mtimeMs > WINDOW_MS) continue;
+      for (const line of (await readFile(path, 'utf8')).split('\n')) {
+        if (!line.includes(DESKTOP_BOOT_LINE)) continue;
+        const pid = /"pid":(\d+)/.exec(line)?.[1];
+        if (pid !== undefined) pids.add(Number(pid));
+      }
+    } catch {
+      unreadable = true;
+    }
+  }
+  return { pids, unreadable };
+}
 
 function parseJournalMessage(
   origin: string,
@@ -537,18 +588,137 @@ function parseJournalOutput(stdout: string): {
   return { events, foreignIgnored, unparseable };
 }
 
-async function collectLinuxJournal(run: RunCommand): Promise<OsTerminationEvidence> {
-  const evidence = base('linux', 'linux-journal', [`journalctl ${LINUX_JOURNAL_ARGS.join(' ')}`]);
-  const result = await run('journalctl', [...LINUX_JOURNAL_ARGS]);
-  const emptyWindow = result.status === 1 && /^-- No entries --$/m.test(result.stdout);
-  if (result.status !== 0 && !emptyWindow) return unavailable(evidence, describeFailure(result));
-  const parsed = parseJournalOutput(result.stdout);
-  evidence.droppedOverCap = Math.max(0, parsed.events.length - MAX_EVENTS);
-  evidence.events.push(...parsed.events.slice(-MAX_EVENTS));
-  evidence.foreignIgnored = parsed.foreignIgnored;
-  evidence.unparseable = parsed.unparseable;
-  if (/not seeing messages from other users/i.test(`${result.stdout}\n${result.stderr}`)) {
-    evidence.restrictedToCurrentUser = true;
+interface DisplayFatalLine {
+  at: string;
+  pid: number;
+  detail: string;
+}
+
+function parseDisplayFatalOutput(stdout: string): {
+  lines: DisplayFatalLine[];
+  foreignIgnored: number;
+  unparseable: number;
+} {
+  const lines: DisplayFatalLine[] = [];
+  let foreignIgnored = 0;
+  let unparseable = 0;
+  for (const line of stdout.split('\n')) {
+    if (line.trim() === '' || line.startsWith('-- ')) continue;
+    const match = JOURNAL_LINE.exec(line);
+    if (match === null) {
+      unparseable += 1;
+      continue;
+    }
+    const [, at = '', , message = ''] = match;
+    const chromium = CHROMIUM_LOG_LINE.exec(message);
+    if (chromium === null) {
+      foreignIgnored += 1;
+      continue;
+    }
+    lines.push({
+      at,
+      pid: Number(chromium[1]),
+      detail: (chromium[2] ?? '').slice(0, MAX_DETAIL_LENGTH),
+    });
+  }
+  return { lines, foreignIgnored, unparseable };
+}
+
+async function attributeDisplayFatalLines(
+  stdout: string,
+  desktopLogsDir: string,
+  now: Date,
+): Promise<{
+  events: JournalEvidenceEvent[];
+  foreignIgnored: number;
+  unparseable: number;
+  unattributed: string | null;
+}> {
+  const parsed = parseDisplayFatalOutput(stdout);
+  if (parsed.lines.length === 0) return { ...parsed, events: [], unattributed: null };
+  const owned = await readDesktopMainPids(desktopLogsDir, now);
+  const events: JournalEvidenceEvent[] = [];
+  let unmatched = 0;
+  for (const line of parsed.lines) {
+    if (!owned.pids.has(line.pid)) {
+      unmatched += 1;
+      continue;
+    }
+    events.push({
+      kind: 'journal',
+      at: line.at,
+      origin: 'chromium',
+      action: 'display-connection-lost',
+      pid: line.pid,
+      processName: null,
+      unit: null,
+      trigger: /Wayland/.test(line.detail) ? 'wayland' : 'x11',
+      detail: line.detail,
+    });
+  }
+  const ownershipProvable = owned.pids.size > 0 && !owned.unreadable;
+  if (unmatched > 0 && !ownershipProvable) {
+    const why = owned.unreadable
+      ? 'desktop logs unreadable'
+      : 'no desktop.boot pid in desktop logs';
+    return {
+      events,
+      foreignIgnored: parsed.foreignIgnored,
+      unparseable: parsed.unparseable,
+      unattributed: `${unmatched} Chromium display line(s) not attributed, ${why}`,
+    };
+  }
+  return {
+    events,
+    foreignIgnored: parsed.foreignIgnored + unmatched,
+    unparseable: parsed.unparseable,
+    unattributed: null,
+  };
+}
+
+function journalRead(result: CommandResult): boolean {
+  return result.status === 0 || (result.status === 1 && /^-- No entries --$/m.test(result.stdout));
+}
+
+async function collectLinuxJournal(
+  run: RunCommand,
+  now: Date,
+  desktopLogsDir: string,
+): Promise<OsTerminationEvidence> {
+  const evidence = base('linux', 'linux-journal', [
+    `journalctl ${LINUX_JOURNAL_ARGS.join(' ')}`,
+    `journalctl ${LINUX_USER_JOURNAL_ARGS.join(' ')}`,
+  ]);
+  const [system, user] = await Promise.all([
+    run('journalctl', [...LINUX_JOURNAL_ARGS]),
+    run('journalctl', [...LINUX_USER_JOURNAL_ARGS]),
+  ]);
+  const failures: string[] = [];
+  if (journalRead(system)) {
+    const parsed = parseJournalOutput(system.stdout);
+    evidence.droppedOverCap += Math.max(0, parsed.events.length - MAX_EVENTS);
+    evidence.events.push(...parsed.events.slice(-MAX_EVENTS));
+    evidence.foreignIgnored += parsed.foreignIgnored;
+    evidence.unparseable += parsed.unparseable;
+    if (/not seeing messages from other users/i.test(`${system.stdout}\n${system.stderr}`)) {
+      evidence.restrictedToCurrentUser = true;
+    }
+  } else {
+    failures.push(`system journal: ${describeFailure(system)}`);
+  }
+  if (journalRead(user)) {
+    const parsed = await attributeDisplayFatalLines(user.stdout, desktopLogsDir, now);
+    evidence.droppedOverCap += Math.max(0, parsed.events.length - MAX_EVENTS);
+    evidence.events.push(...parsed.events.slice(-MAX_EVENTS));
+    evidence.foreignIgnored += parsed.foreignIgnored;
+    evidence.unparseable += parsed.unparseable;
+    if (parsed.unattributed !== null) failures.push(`user journal: ${parsed.unattributed}`);
+  } else {
+    failures.push(`user journal: ${describeFailure(user)}`);
+  }
+  if (failures.length === 2) return unavailable(evidence, failures.join('; '));
+  if (failures.length === 1) {
+    return { ...evidence, outcome: 'partial', unavailableReason: failures.join('; ') };
   }
   return settle(evidence);
 }
@@ -691,7 +861,7 @@ export async function collectOsTerminationEvidence(
     case 'darwin':
       return collectMacosJetsam(deps.macosReportsDir ?? MACOS_SYSTEM_DIAGNOSTIC_REPORTS_DIR, now);
     case 'linux':
-      return collectLinuxJournal(run);
+      return collectLinuxJournal(run, now, deps.desktopLogsDir ?? join(okUserHomeDir(), 'logs'));
     case 'win32':
       return collectWindowsEventLog(run, deps.systemRoot ?? process.env.SystemRoot);
     default:
@@ -708,7 +878,7 @@ export function renderOsTerminationEvidence(evidence: OsTerminationEvidence | un
 
 const SOURCE_NAMES: Record<OsTerminationSource, string> = {
   'macos-jetsam': 'macOS low-memory reports',
-  'linux-journal': 'system journal',
+  'linux-journal': 'system and user journals',
   'windows-event-log': 'Windows event logs',
 };
 

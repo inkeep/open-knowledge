@@ -348,6 +348,7 @@ import { logIpcError, withIpcErrorLogging } from './ipc-log.ts';
 import { createDesktopKeepaliveFactory, toKeepaliveLogger } from './keepalive.ts';
 import { decideAllWindowsClosed, decideRelaunchReveal } from './last-window-policy.ts';
 import { getBootAmbientCapsFacts, logAmbientCapsPosture } from './linux-ambient-caps.ts';
+import { describeLinuxDisplaySession } from './linux-display-session.ts';
 import {
   detectGraphicalAuthCommand,
   runManualInstallFallbackDialog,
@@ -6032,6 +6033,15 @@ applyDevShmPosture({
   log: (level, facts) =>
     getRootDesktopLogger()[level](facts, 'linux shared-memory posture for chromium'),
 });
+
+const linuxDisplaySession = describeLinuxDisplaySession({
+  platform: process.platform,
+  env: process.env,
+  getSwitchValue: (name) => app.commandLine.getSwitchValue(name),
+});
+if (linuxDisplaySession) {
+  getRootDesktopLogger().info(linuxDisplaySession, 'linux display session');
+}
 
 const bootAmbientCapsFacts = getBootAmbientCapsFacts();
 if (bootAmbientCapsFacts) {

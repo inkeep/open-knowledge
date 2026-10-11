@@ -554,6 +554,12 @@ function ReportBugDialog({
                               journal recorded in the past week, without the machine name, account
                               id, or folder paths.
                             </Trans>
+                          )}{' '}
+                          {desktopPlatform === 'linux' && (
+                            <Trans>
+                              It also adds any display-connection errors OpenKnowledge wrote to your
+                              user journal in the past week, each message cut to 200 characters.
+                            </Trans>
                           )}
                           {desktopPlatform === 'win32' && (
                             <Trans>

@@ -5365,6 +5365,9 @@
     ],
     "lrhetp": ["+ ", ["overflow"], " más"],
     "lwCV5v": ["No se pudo abrir ", ["0"], " para editarlo: ", ["1"]],
+    "lwvkBP": [
+      "También añade los errores de conexión con la pantalla que OpenKnowledge escribió en tu registro de usuario durante la última semana, con cada mensaje recortado a 200 caracteres."
+    ],
     "lyWa43": ["Páginas desconectadas de todo el proyecto"],
     "lzmtKp": ["No se pudieron cargar las propiedades de la carpeta: ", ["message"]],
     "lzsa2d": ["Copiar el error"],

@@ -9,7 +9,9 @@ import {
 } from './desktop-process-observability.ts';
 
 interface TestWindow extends ObservedBrowserWindow {
-  emit(event: 'closed' | 'show' | 'hide' | 'minimize' | 'restore'): void;
+  emit(
+    event: 'closed' | 'show' | 'hide' | 'minimize' | 'restore' | 'unresponsive' | 'responsive',
+  ): void;
   setState(
     state: Partial<{
       destroyed: boolean;
@@ -263,6 +265,35 @@ describe('desktop process observability', () => {
       liveWindowCount: 1,
     });
     expect(lifecycle.at(-1)).toMatchObject({ liveWindowCount: 0, state: 'destroyed' });
+  });
+
+  test('records a renderer hang and its recovery with the processes at the moment it hung', () => {
+    const rig = harness();
+    const window = rig.windows[0];
+    if (!window) throw new Error('missing test window');
+
+    rig.observability.observeWindow(window);
+    window.emit('unresponsive');
+    window.emit('responsive');
+
+    const hung = rig.warn.find(
+      (line) =>
+        line.event === 'desktop-process-observability.window-lifecycle' &&
+        line.action === 'unresponsive',
+    );
+    expect(hung).toMatchObject({ windowId: 7, contentsId: 11, rendererPid: 200, state: 'alive' });
+    expect(rig.info).toContainEqual(
+      expect.objectContaining({
+        event: 'desktop-process-observability.sample',
+        trigger: 'renderer-unresponsive',
+        processes: expect.arrayContaining([expect.objectContaining({ pid: 200 })]),
+      }),
+    );
+    expect(
+      rig.info
+        .filter((line) => line.event === 'desktop-process-observability.window-lifecycle')
+        .map((line) => line.action),
+    ).toEqual(['created', 'responsive']);
   });
 
   test('keeps crash handling alive when Electron refuses a process sample', () => {
