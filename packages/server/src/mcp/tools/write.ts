@@ -798,11 +798,12 @@ async function handleSingleDoc(
 
   const noOpNote = emptyAppendNoOpNote(w.position, spec.content);
   const lines: string[] = [
-    (w.createdByPosition ? createdByPositionNote(w.docName, w.createdByPosition) : null) ??
-      noOpNote ??
-      (w.fromTemplate !== undefined
-        ? `Written successfully (instantiated from template "${w.fromTemplate}").`
-        : `Written successfully (${w.position}).`),
+    w.createdByPosition
+      ? createdByPositionNote(w.docName, w.createdByPosition)
+      : (noOpNote ??
+        (w.fromTemplate !== undefined
+          ? `Written successfully (instantiated from template "${w.fromTemplate}").`
+          : `Written successfully (${w.position}).`)),
   ];
   const fmNote = frontmatterIgnoredNote(w.position, spec.content);
   if (fmNote) lines.push(fmNote);

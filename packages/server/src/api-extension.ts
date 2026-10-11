@@ -1810,10 +1810,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
 
   const writeAdvisoryGate = createWriteAdvisoryGate();
 
-  function findMissingDocCandidatesInIndex(docName: string): string[] {
-    return findMissingDocCandidates(docName, getFileIndex());
-  }
-
   async function computeOrphanHints(
     docName: string,
   ): Promise<Array<{ type: 'orphan'; parentCandidates: string[]; message: string }> | undefined> {
@@ -5381,7 +5377,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     resolveAlias,
     extractAgentIdentity,
     docNameExistsWithAnySupportedExtension,
-    findMissingDocCandidates: findMissingDocCandidatesInIndex,
+    findMissingDocCandidates: (docName) => findMissingDocCandidates(docName, getFileIndex()),
     contentDir,
     summaryResponseFields,
     sessionManager,

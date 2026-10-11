@@ -960,10 +960,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         newDumps.length === 0 &&
         lastAliveMs !== null;
       const processTermination =
-        unexplainedDirtyEnd &&
-        prevPid !== null &&
-        lastAliveMs !== null &&
-        deps.processTermination !== undefined
+        unexplainedDirtyEnd && prevPid !== null && deps.processTermination !== undefined
           ? deps.processTermination({ pid: prevPid, fromMs: lastAliveMs, toMs: detectedAtMs })
           : null;
       const killedByPriorityUnderOthersMemory =

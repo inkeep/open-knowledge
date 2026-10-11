@@ -264,6 +264,8 @@ export function evaluateShippedFixContainment({ candidate, published, git }) {
 const shortSha = (sha) => sha.slice(0, 12);
 const prLabel = (commit) => (commit.pr === null ? 'no PR number' : `PR #${commit.pr}`);
 const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+const uncoveredLine = (commit) =>
+  `  ${shortSha(commit.sha)} ${commit.subject} [${prLabel(commit)}; shipped in ${commit.stables.join(', ')}]`;
 const shippedIn = (commit) =>
   commit.stables.length === 1
     ? commit.stables[0]
@@ -297,10 +299,7 @@ export function describeVerdict(verdict, label = verdict.candidate) {
   }
   return [
     `${where} lacks ${plural(verdict.uncovered.length, 'fix', 'fixes')} that published stables already shipped. ${tally}`,
-    ...verdict.uncovered.map(
-      (commit) =>
-        `  ${shortSha(commit.sha)} ${commit.subject} [${prLabel(commit)}; shipped in ${commit.stables.join(', ')}]`,
-    ),
+    ...verdict.uncovered.map(uncoveredLine),
     'A stable must contain every commit a published stable shipped: the same patch, the origin the ' +
       "point release's notes record as Applied, or a commit with the same terminal PR number. Release " +
       'from a commit that contains these, or ship them together with it.',
@@ -498,11 +497,7 @@ function matrixReport({ rows, mismatches, totals }) {
   for (const { candidate, verdict } of rows) {
     if (verdict.ok) continue;
     out.push('', `${candidate} uncovered:`);
-    for (const commit of verdict.uncovered) {
-      out.push(
-        `  ${shortSha(commit.sha)} ${commit.subject} [${prLabel(commit)}; shipped in ${commit.stables.join(', ')}]`,
-      );
-    }
+    out.push(...verdict.uncovered.map(uncoveredLine));
   }
   out.push(
     '',

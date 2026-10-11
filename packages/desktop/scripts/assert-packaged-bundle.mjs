@@ -77,7 +77,7 @@ function walk(dir, root, out) {
   return out;
 }
 
-export function listBundlePaths(resourcesDir) {
+function listBundlePaths(resourcesDir) {
   const asarPath = join(resourcesDir, 'app.asar');
   const onDisk = walk(resourcesDir, resourcesDir, []).filter((p) => p !== 'app.asar');
   const inAsar = existsSync(asarPath)
