@@ -4,6 +4,7 @@ import { closeSync, constants, createReadStream, existsSync, statSync } from 'no
 import { access, chmod, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import { augmentAgentSpawnPath, OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
 import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { z } from 'zod';
@@ -38,6 +39,8 @@ export type ResolvedLaunch = {
 export type NpxCacheEntry = string & { readonly __brand: 'NpxCacheEntry' };
 
 export const MINIMUM_NPX_NODE_MAJOR = 22;
+
+const NPX_REFUSE_INSTALL = ['--yes=false', '--loglevel=error'] as const;
 
 export class AgentLaunchError extends Error {
   readonly machineDetail?: string;
@@ -171,15 +174,16 @@ export async function resolveRegistryLaunch(
         dist.npx.package,
       );
     if (pin?.groups === undefined) return launch;
-    const { acquired, outcome } = await acquireNpmPackage(
+    const acquired = await acquireNpmPackage(
       launch,
       pin.groups.name,
       pin.groups.version,
       log,
       reporting,
     );
-    if (acquisition?.install === true && outcome !== 'forwarded') {
+    if (acquisition?.install === true) {
       await ensureNpmPackageInstalled(launch, acquired, log, reporting);
+      return { ...launch, args: [...NPX_REFUSE_INSTALL, acquired, ...(dist.npx.args ?? [])] };
     }
     return { ...launch, args: ['-y', acquired, ...(dist.npx.args ?? [])] };
   }
@@ -296,6 +300,24 @@ export function staleNpxCacheEntry(detail: string): NpxCacheEntry | null {
     if (entry !== undefined && !PARENT_SEGMENT.test(entry)) return entry as NpxCacheEntry;
   }
   return null;
+}
+
+export function npxInstallRefused(detail: string): boolean {
+  return /^npm (?:error|ERR!) npx canceled due to missing packages and no YES option: /m.test(
+    stripVTControlCharacters(detail),
+  );
+}
+
+function refusesNpxInstall(args: readonly string[]): boolean {
+  return NPX_REFUSE_INSTALL.every((flag, index) => args[index] === flag);
+}
+
+export function allowNpxInstall(args: readonly string[]): string[] {
+  return refusesNpxInstall(args) ? ['-y', ...args.slice(NPX_REFUSE_INSTALL.length)] : [...args];
+}
+
+export function refusedNpxPackage(args: readonly string[]): string | undefined {
+  return refusesNpxInstall(args) ? args[NPX_REFUSE_INSTALL.length] : undefined;
 }
 
 async function npmCommand(launch: ResolvedLaunch): Promise<string | null> {
@@ -602,7 +624,7 @@ function acquireNpmPackage(
   ceiling: string,
   log: PinoLogger,
   acquisition?: RegistryAcquisitionOptions,
-): Promise<{ acquired: string; outcome: NpmPackageResolution['outcome'] }> {
+): Promise<string> {
   const key = acquisitionKey(launch, name, ceiling);
   const cached = acquiredNpmPackages.get(key);
   const held = heldNpmPackage(cached);
@@ -613,7 +635,7 @@ function acquireNpmPackage(
       source: 'memo',
       elapsedMs: 0,
     });
-    return Promise.resolve({ acquired: held.acquired, outcome: held.outcome });
+    return Promise.resolve(held.acquired);
   }
   const joined = openNpmProbe(cached);
   if (joined !== null) acquisition?.onAcquiring?.();
@@ -621,7 +643,7 @@ function acquireNpmPackage(
   const source: 'probe' | 'joined' = joined === null ? 'probe' : 'joined';
   return probe.then((resolved) => {
     acquisition?.onResolved?.({ ...resolved, source });
-    return { acquired: resolved.acquired, outcome: resolved.outcome };
+    return resolved.acquired;
   });
 }
 

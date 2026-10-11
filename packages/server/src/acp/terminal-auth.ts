@@ -5,7 +5,7 @@ import type {
   ThreadAuthMethod,
   ThreadAuthTerminalLaunch,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-import type { ResolvedLaunch } from './launch.ts';
+import { allowNpxInstall, type ResolvedLaunch } from './launch.ts';
 
 export type TerminalAuthBase = ThreadAuthTerminalLaunch;
 
@@ -24,7 +24,7 @@ export function terminalAuthBaseFor(
   }
   return {
     executable: launch.cmd,
-    args: [...launch.args],
+    args: launch.kind === 'npx' ? allowNpxInstall(launch.args) : [...launch.args],
     env,
     pathPrepend: managedRuntime ? [dirname(launch.cmd)] : [],
   };

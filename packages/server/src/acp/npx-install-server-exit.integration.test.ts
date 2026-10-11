@@ -1,14 +1,20 @@
-import { type ChildProcess, execFileSync, fork } from 'node:child_process';
+import { type ChildProcess, fork } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
-import { readProcessState } from '../process-scan.ts';
 import { waitWithinTestBudget } from '../wait-within-test-budget.test-helper.ts';
 import {
   type HeldInstallRegistry,
   withHeldInstallRegistry,
 } from './held-install-registry.test-helper.ts';
+import {
+  descendantsOf,
+  entryOutcome,
+  hasManifest,
+  npxEntries,
+  processEnded,
+} from './npx-cache-entry.test-helper.ts';
 import type { RegistryAgent } from './registry.ts';
 
 const SERVER_PROCESS = fileURLToPath(
@@ -63,44 +69,6 @@ function startServerProcess(held: HeldInstallRegistry): ServerProcess {
   };
 }
 
-function descendantsOf(root: number): number[] {
-  const table = execFileSync('ps', ['-A', '-o', 'pid=,ppid='], { encoding: 'utf8' });
-  const children = new Map<number, number[]>();
-  for (const line of table.split('\n')) {
-    const [pid, ppid] = line.trim().split(/\s+/).map(Number);
-    if (pid === undefined || ppid === undefined || !Number.isInteger(pid)) continue;
-    children.set(ppid, [...(children.get(ppid) ?? []), pid]);
-  }
-  const found: number[] = [];
-  const queue = [root];
-  for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-    for (const kid of children.get(next) ?? []) {
-      found.push(kid);
-      queue.push(kid);
-    }
-  }
-  return found;
-}
-
-function processEnded(pid: number): boolean {
-  const state = readProcessState(pid, {
-    onProbeFailure: ({ reason }) => {
-      throw new Error(`could not read the state of process ${pid}: ${reason}`);
-    },
-  });
-  return state.status === 'gone' || state.status === 'defunct';
-}
-
-function npxEntries(home: string): string[] {
-  const npxCache = join(home, 'npm-cache', '_npx');
-  return existsSync(npxCache) ? readdirSync(npxCache).map((name) => join(npxCache, name)) : [];
-}
-
-function installedPackages(entry: string): string[] {
-  const modules = join(entry, 'node_modules');
-  return existsSync(modules) ? readdirSync(modules).filter((name) => !name.startsWith('.')) : [];
-}
-
 function npmDebugLogs(home: string): string {
   const logs = join(home, 'npm-cache', '_logs');
   return existsSync(logs)
@@ -109,40 +77,6 @@ function npmDebugLogs(home: string): string {
         .map((name) => readFileSync(join(logs, name), 'utf8'))
         .join('\n')
     : '';
-}
-
-function hasManifest(dir: string): boolean {
-  return existsSync(join(dir, 'package.json'));
-}
-
-function entryOutcome(entry: string, agentName: string) {
-  const packages = installedPackages(entry);
-  const modules = join(entry, 'node_modules');
-  const agentDir = join(modules, agentName);
-  const agentDependencies = hasManifest(agentDir)
-    ? Object.keys(
-        (
-          JSON.parse(readFileSync(join(agentDir, 'package.json'), 'utf8')) as {
-            dependencies?: Record<string, string>;
-          }
-        ).dependencies ?? {},
-      )
-    : [];
-  const snapshot = {
-    rootManifest: hasManifest(entry),
-    lock: existsSync(join(entry, 'concurrency.lock')),
-    packages,
-    withoutManifest: packages.filter((name) => !hasManifest(join(modules, name))),
-  };
-  const complete =
-    snapshot.rootManifest &&
-    !snapshot.lock &&
-    hasManifest(agentDir) &&
-    agentDependencies.every((name) => hasManifest(join(modules, name))) &&
-    snapshot.withoutManifest.length === 0;
-  const rolledBack = !snapshot.rootManifest && !snapshot.lock && packages.length === 0;
-  const state = complete ? 'complete' : rolledBack ? 'rolled-back' : 'partial';
-  return { state, ...snapshot };
 }
 
 const SERVER_ENDINGS = [

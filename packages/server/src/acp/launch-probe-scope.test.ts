@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { getLogger } from '../logger.ts';
@@ -434,6 +434,32 @@ describe('registry launch probe scope', () => {
 
       expect(probed.args).toEqual(['-y', descriptor, '--version']);
       expect(probedDescriptors(probeLog)).toEqual([descriptor]);
+    });
+  });
+
+  test('a pinned launch that found no npm sibling still installs before it starts', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin } = acquisitionBin(home);
+      const npxLog = join(home, 'npx.log');
+      writeExecutable(
+        join(bin, 'npx'),
+        `require('node:fs').appendFileSync(${JSON.stringify(npxLog)}, JSON.stringify(process.argv.slice(2)) + '\\n');`,
+      );
+      const descriptor = 'forwarded-install-fixture@7.0.0';
+
+      const launch = await resolveRegistryLaunch(
+        registryPackage(descriptor, 'npx', { PATH: bin }),
+        null,
+        log,
+        undefined,
+        (candidate) => Promise.resolve(candidate),
+        { install: true },
+      );
+
+      expect(launch?.args).toEqual(['--yes=false', '--loglevel=error', descriptor, '--version']);
+      expect(readFileSync(npxLog, 'utf8')).toBe(
+        `${JSON.stringify(['--yes', `--package=${descriptor}`, '--call=exit 0'])}\n`,
+      );
     });
   });
 

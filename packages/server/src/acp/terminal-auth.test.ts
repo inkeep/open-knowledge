@@ -33,6 +33,41 @@ test('a managed-runtime launch puts its bin directory ahead of the terminal PATH
   });
 });
 
+test('an npx launch that refuses to install signs in with -y', () => {
+  const base = terminalAuthBaseFor(
+    {
+      ...MANAGED_NPX,
+      args: ['--yes=false', '--loglevel=error', '@augmentcode/auggie@1.2.3', '--acp'],
+    },
+    PROCESS_ENV,
+  );
+  expect(base.args).toEqual(['-y', '@augmentcode/auggie@1.2.3', '--acp']);
+});
+
+test('only the leading --yes=false of an npx launch becomes -y, never an agent argument', () => {
+  const base = terminalAuthBaseFor(
+    {
+      ...MANAGED_NPX,
+      args: ['--yes=false', '--loglevel=error', '@augmentcode/auggie@1.2.3', '--yes=false'],
+    },
+    PROCESS_ENV,
+  );
+  expect(base.args).toEqual(['-y', '@augmentcode/auggie@1.2.3', '--yes=false']);
+});
+
+test('a custom command keeps a leading --yes=false as written', () => {
+  const base = terminalAuthBaseFor(
+    {
+      cmd: 'npx',
+      args: ['--yes=false', 'my-agent@2.0.0', '--acp'],
+      env: PROCESS_ENV,
+      kind: 'custom',
+    },
+    PROCESS_ENV,
+  );
+  expect(base.args).toEqual(['--yes=false', 'my-agent@2.0.0', '--acp']);
+});
+
 test('only the agent overlay survives into the launch env, never the inherited process env or PATH', () => {
   const base = terminalAuthBaseFor(
     {

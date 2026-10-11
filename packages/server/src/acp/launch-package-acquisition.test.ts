@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { createServer } from 'node:http';
@@ -17,11 +18,21 @@ import {
 } from '../../../../test-support/capabilities.test-helper.ts';
 import { getLogger } from '../logger.ts';
 import {
+  ARGV_PROBE_PACKAGE,
+  ARGV_PROBE_VERSION,
   acquisitionFailureContract,
   withLocalAcquisitionRegistry,
 } from './acquisition-contract.test-helper.ts';
-import { AgentLaunchError, agentSpawnPath, resolveRegistryLaunch } from './launch.ts';
 import {
+  AgentLaunchError,
+  agentSpawnPath,
+  npxInstallRefused,
+  resolveRegistryLaunch,
+  spawnAcpAgent,
+} from './launch.ts';
+import { entryOutcome, npxEntries } from './npx-cache-entry.test-helper.ts';
+import {
+  captureChild,
   installNodeFixture,
   npmNative,
   npmOutputs,
@@ -35,6 +46,93 @@ const log = getLogger('package-acquisition-test');
 
 acquisitionFailureContract(withLocalAcquisitionRegistry, {
   uvxOnAgentSpawnPath: findExecutable('uvx', agentSpawnPath(), executableFacts),
+});
+
+describe('npx launches that OK installs before they start', () => {
+  const spec = `${ARGV_PROBE_PACKAGE}@${ARGV_PROBE_VERSION}`;
+  const resolveInstalled = async (reacquire = false) => {
+    const launch = await resolveRegistryLaunch(
+      registryPackage(spec),
+      null,
+      log,
+      undefined,
+      async (prepared) => prepared,
+      { install: true, reacquire },
+    );
+    if (launch?.kind !== 'npx') throw new Error(`expected an npx launch, got ${launch?.kind}`);
+    return launch;
+  };
+
+  test('the launch refuses to install and runs the copy its install step put in the npx cache', async () => {
+    await withLocalAcquisitionRegistry(async (home) => {
+      const launch = await resolveInstalled();
+      expect(launch.args).toEqual(['--yes=false', '--loglevel=error', spec, '--version']);
+      const installed = npxEntries(home);
+      expect(installed).toHaveLength(1);
+      const entry = String(installed[0]);
+      expect(entryOutcome(entry, ARGV_PROBE_PACKAGE).state).toBe('complete');
+      const run = await captureChild(spawnAcpAgent(launch));
+      expect(run.code, run.stderr).toBe(0);
+      expect(JSON.parse(run.stdout)).toEqual({
+        args: ['--version'],
+        script: join(entry, 'node_modules', ARGV_PROBE_PACKAGE, 'bin.js'),
+      });
+      expect(npxEntries(home)).toEqual([entry]);
+    });
+  }, 90_000);
+
+  test('a launch whose npx cache was wiped is refused before npm installs anything, and runs once reinstalled', async () => {
+    await withLocalAcquisitionRegistry(async (home) => {
+      const launch = await resolveInstalled();
+      const installed = npxEntries(home);
+      expect(installed).toHaveLength(1);
+      const entry = String(installed[0]);
+      expect(entryOutcome(entry, ARGV_PROBE_PACKAGE).state).toBe('complete');
+      rmSync(join(home, 'npm-cache', '_npx'), { recursive: true, force: true });
+      rmSync(join(home, 'npm-cache', '_cacache'), { recursive: true, force: true });
+      const refused = await captureChild(spawnAcpAgent(launch));
+      expect(refused.code, refused.stdout).toBe(1);
+      expect(npxInstallRefused(refused.stderr), refused.stderr).toBe(true);
+      expect(npxEntries(home)).toEqual([entry]);
+      expect(readdirSync(entry)).toEqual([]);
+      expect(await resolveInstalled(true)).toEqual(launch);
+      expect(entryOutcome(entry, ARGV_PROBE_PACKAGE).state).toBe('complete');
+      const run = await captureChild(spawnAcpAgent(launch));
+      expect(run.code, run.stderr).toBe(0);
+      expect(JSON.parse(run.stdout)).toEqual({
+        args: ['--version'],
+        script: join(entry, 'node_modules', ARGV_PROBE_PACKAGE, 'bin.js'),
+      });
+    });
+  }, 90_000);
+
+  test.each([
+    {
+      silencedBy: 'loglevel=silent in the user .npmrc',
+      silence: (home: string) => writeFileSync(join(home, '.npmrc'), 'loglevel=silent\n'),
+    },
+    {
+      silencedBy: 'npm_config_loglevel=silent in the environment',
+      silence: () => {
+        process.env.npm_config_loglevel = 'silent';
+      },
+    },
+  ])(
+    'a launch whose npx cache was wiped still reports the refusal when $silencedBy',
+    async ({ silence }) => {
+      await withLocalAcquisitionRegistry(async (home) => {
+        silence(home);
+        const launch = await resolveInstalled();
+        expect(npxEntries(home)).toHaveLength(1);
+        rmSync(join(home, 'npm-cache', '_npx'), { recursive: true, force: true });
+        rmSync(join(home, 'npm-cache', '_cacache'), { recursive: true, force: true });
+        const refused = await captureChild(spawnAcpAgent(launch));
+        expect(refused.code, refused.stdout).toBe(1);
+        expect(npxInstallRefused(refused.stderr), refused.stderr).toBe(true);
+      });
+    },
+    90_000,
+  );
 });
 
 describe('hermetic package acquisition and native dispatch', () => {

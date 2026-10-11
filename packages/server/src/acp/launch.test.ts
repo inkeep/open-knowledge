@@ -27,6 +27,7 @@ import {
   isPathQualified,
   MINIMUM_NPX_NODE_MAJOR,
   mergedEnv,
+  npxInstallRefused,
   overlaySetsPath,
   packageAcquisitionFailure,
   preflightLaunch,
@@ -1442,6 +1443,49 @@ describe('staleNpxCacheEntry', () => {
     ],
   ])('ignores %s', (_label, detail) => {
     expect(staleNpxCacheEntry(detail)).toBeNull();
+  });
+});
+
+describe('npxInstallRefused', () => {
+  const refusal =
+    'npm error npx canceled due to missing packages and no YES option: ["ok-argv-probe@1.0.0"]';
+
+  test("recognizes npm's refusal to install a missing package", () => {
+    expect(npxInstallRefused(`${refusal}\n`)).toBe(true);
+  });
+
+  test('reads the older npm ERR! spelling', () => {
+    expect(
+      npxInstallRefused(
+        'npm ERR! npx canceled due to missing packages and no YES option: ["ok-argv-probe@1.0.0"]\r\n',
+      ),
+    ).toBe(true);
+  });
+
+  test('finds the refusal after an npm notice line', () => {
+    expect(
+      npxInstallRefused(
+        `npm notice New major version of npm available! 11.19.0 -> 12.2.0\n${refusal}\n`,
+      ),
+    ).toBe(true);
+  });
+
+  test('reads a refusal npm printed with color=always', () => {
+    expect(
+      npxInstallRefused(
+        '\u001b[1mnpm\u001b[22m \u001b[31merror\u001b[39m npx canceled due to missing packages and no YES option: ["ok-argv-probe@1.0.0"]\n',
+      ),
+    ).toBe(true);
+  });
+
+  test.each([
+    [
+      'a missing file',
+      "npm error code ENOENT\nnpm error syscall open\nnpm error path /Users/andrew/.npm/_npx/4142609e2aa780f6/package.json\nnpm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/Users/andrew/.npm/_npx/4142609e2aa780f6/package.json'",
+    ],
+    ['a missing version', 'npm error code ETARGET\nnpm error notarget No matching version found'],
+  ])('ignores %s', (_label, detail) => {
+    expect(npxInstallRefused(detail)).toBe(false);
   });
 });
 

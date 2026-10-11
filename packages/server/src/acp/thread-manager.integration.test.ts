@@ -33,7 +33,6 @@ import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { resolveBundledSkillDir } from '../build-skill-zip.ts';
 import { getLogger, type PinoLogger } from '../logger.ts';
-import { isValidLockPid } from '../process-alive.ts';
 import { RUNTIME_VERSION } from '../version-constants.ts';
 import { withLocalAcquisitionRegistry } from './acquisition-contract.test-helper.ts';
 import { isWithin } from './archive.ts';
@@ -41,7 +40,7 @@ import {
   type HeldInstallRegistry,
   withHeldInstallRegistry,
 } from './held-install-registry.test-helper.ts';
-import { agentSpawnPath, resetAcquisitionCache } from './launch.ts';
+import { agentSpawnPath, resetAcquisitionCache, terminateAgentTree } from './launch.ts';
 import {
   installNodeFixture,
   native,
@@ -149,9 +148,11 @@ function internals(manager: AcpThreadManager): {
   turnActive: (threadId: string) => boolean;
   child: (threadId: string) => ChildProcess | null | undefined;
   sessionId: (threadId: string) => string | null | undefined;
+  persisted: (threadId: string) => Promise<void>;
 } {
   const m = manager as unknown as {
     reapIdleThreads: () => void;
+    persistence: { whenIdle: (threadId: string) => Promise<void> };
     threads: Map<
       string,
       {
@@ -168,6 +169,7 @@ function internals(manager: AcpThreadManager): {
     turnActive: (threadId) => m.threads.get(threadId)?.turnActive ?? false,
     child: (threadId) => m.threads.get(threadId)?.child,
     sessionId: (threadId) => m.threads.get(threadId)?.sessionId,
+    persisted: (threadId) => m.persistence.whenIdle(threadId),
   };
 }
 
@@ -1139,11 +1141,15 @@ process.stdin.on('data', (chunk) => {
         reply({});
       }
     } else if (msg.method === 'session/prompt') {
-      notify({
-        sessionUpdate: 'agent_message_chunk',
-        content: { type: 'text', text: 'echo:' + msg.params.prompt[0].text },
-      });
-      reply({ stopReason: 'end_turn' });
+      if (process.env.FAIL_PROMPT === '1') {
+        replyErr(-32603, 'prompt failed');
+      } else {
+        notify({
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text: 'echo:' + msg.params.prompt[0].text },
+        });
+        reply({ stopReason: 'end_turn' });
+      }
     } else if (msg.method === 'session/load') {
       if (process.env.FAIL_LOAD === '1' || msg.params.sessionId !== 'sess-fixed') {
         replyErr(-32002, 'unknown session');
@@ -1166,6 +1172,14 @@ process.stdin.on('data', (chunk) => {
   }
 });
 `;
+
+function launchesIn(launchLog: string): string[] {
+  return existsSync(launchLog)
+    ? readFileSync(launchLog, 'utf8')
+        .split('\n')
+        .filter((line) => line !== '')
+    : [];
+}
 
 function writeResumableAgentEntry(localDir: string, id: string, env: Record<string, string>): void {
   const agentPath = join(localDir, `${id}.mjs`);
@@ -4531,6 +4545,142 @@ describe('AcpThreadManager retry', () => {
     expect(manager.getInfo(info.threadId)?.archived).toBe(true);
     await expect(manager.retryThread(info.threadId)).rejects.toThrow(/archived/);
   }, 40_000);
+
+  test('a retry closed before its agent spawns keeps a session a restarted server resumes', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'codex-acp', { FAKE_CAPS: 'resume', FAIL_PROMPT: '1' });
+    const release = Promise.withResolvers<string | null>();
+    const entered = Promise.withResolvers<void>();
+    let hold = false;
+    const manager = makeManager(contentDir, localDir, {
+      resolveLoginShellPath: async () => {
+        if (!hold) return null;
+        entered.resolve();
+        return release.promise;
+      },
+    });
+    await manager.init();
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'codex-acp' },
+      settings: { contextWindow: 272_000 },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    manager.sendPrompt(info.threadId, 'fail this prompt');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'error',
+      5000,
+      'prompt failure',
+    );
+
+    hold = true;
+    const retried = manager.retryThread(info.threadId).catch((error: unknown) => error);
+    await entered.promise;
+    await manager.closeThread(info.threadId);
+    expect(manager.getInfo(info.threadId)?.archived).toBe(true);
+    hold = false;
+    release.resolve(null);
+
+    expect(await retried).toMatchObject({
+      code: 'not-ready',
+      message: 'thread closed during retry',
+    });
+    expect(manager.getInfo(info.threadId)?.contextWindow).toBe(272_000);
+    await internals(manager).persisted(info.threadId);
+    await manager.destroy();
+
+    const restarted = makeManager(contentDir, localDir);
+    await restarted.init();
+    expect(restarted.getInfo(info.threadId)?.resumable).toBe(true);
+    const resumed = await restarted.resumeThread(info.threadId);
+    expect(resumed.status).toBe('ready');
+    expect(resumed.contextWindow).toBe(272_000);
+    await restarted.destroy();
+  }, 40_000);
+
+  test('a retry still before its agent spawns when the server shuts down keeps a session the next server resumes', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'codex-acp', { FAKE_CAPS: 'resume', FAIL_PROMPT: '1' });
+    const release = Promise.withResolvers<string | null>();
+    const entered = Promise.withResolvers<void>();
+    let hold = false;
+    const manager = makeManager(contentDir, localDir, {
+      resolveLoginShellPath: async () => {
+        if (!hold) return null;
+        entered.resolve();
+        return release.promise;
+      },
+    });
+    await manager.init();
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'codex-acp' },
+      settings: { contextWindow: 272_000 },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    manager.sendPrompt(info.threadId, 'fail this prompt');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'error',
+      5000,
+      'prompt failure',
+    );
+
+    hold = true;
+    const retried = manager.retryThread(info.threadId).catch((error: unknown) => error);
+    await entered.promise;
+    await manager.destroy();
+
+    const restarted = makeManager(contentDir, localDir);
+    try {
+      await restarted.init();
+      expect(restarted.getInfo(info.threadId)?.resumable).toBe(true);
+      const resumed = await restarted.resumeThread(info.threadId);
+      expect(resumed.status).toBe('ready');
+      expect(resumed.contextWindow).toBe(272_000);
+    } finally {
+      await restarted.destroy();
+      hold = false;
+      release.resolve(null);
+      await retried;
+      await internals(manager).persisted(info.threadId);
+    }
+  }, 40_000);
+
+  test('a failed retry on an open thread leaves no session a restarted server can resume', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'codex-acp', { FAKE_CAPS: 'resume', FAIL_PROMPT: '1' });
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'codex-acp' } });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    manager.sendPrompt(info.threadId, 'fail this prompt');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'error',
+      5000,
+      'prompt failure',
+    );
+    expect(internals(manager).sessionId(info.threadId)).not.toBeNull();
+
+    writeMarkerGatedAgentEntry(localDir, 'codex-acp', join(tmp(), 'never-written'));
+    await expect(manager.retryThread(info.threadId)).rejects.toThrow(/harness not installed/);
+    await internals(manager).persisted(info.threadId);
+    const metaPath = join(localDir, 'threads', `${info.threadId}.meta.json`);
+    const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { sessionId: string | null };
+    expect(meta.sessionId).toBeNull();
+
+    await manager.closeThread(info.threadId);
+    await internals(manager).persisted(info.threadId);
+    await manager.destroy();
+
+    const restarted = makeManager(contentDir, localDir);
+    try {
+      await restarted.init();
+      expect(restarted.getInfo(info.threadId)?.resumable).toBe(false);
+    } finally {
+      await restarted.destroy();
+    }
+  }, 40_000);
 });
 
 function writeSessionFailingAgentEntry(
@@ -5719,6 +5869,145 @@ process.stdin.on('data', (chunk) => {
     await manager.closeThread(info.threadId);
   }, 45_000);
 
+  test('a context window change closed before its agent spawns keeps a session a restarted server resumes', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'codex-acp', { FAKE_CAPS: 'resume' });
+    const release = Promise.withResolvers<string | null>();
+    const entered = Promise.withResolvers<void>();
+    let hold = false;
+    const manager = makeManager(contentDir, localDir, {
+      resolveLoginShellPath: async () => {
+        if (!hold) return null;
+        entered.resolve();
+        return release.promise;
+      },
+    });
+    await manager.init();
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'codex-acp' },
+      settings: { contextWindow: 272_000 },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    manager.sendPrompt(info.threadId, 'retain history');
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'turn ended');
+    await manager.closeThread(info.threadId);
+    expect((await manager.resumeThread(info.threadId)).status).toBe('ready');
+
+    hold = true;
+    const changed = manager
+      .setContextWindow(info.threadId, 872_000)
+      .catch((error: unknown) => error);
+    await entered.promise;
+    await manager.closeThread(info.threadId);
+    expect(manager.getInfo(info.threadId)?.archived).toBe(true);
+    hold = false;
+    release.resolve(null);
+
+    expect(await changed).toMatchObject({
+      code: 'not-ready',
+      message: 'thread closed during the context window change',
+    });
+    expect(manager.getInfo(info.threadId)?.contextWindow).toBe(272_000);
+    await internals(manager).persisted(info.threadId);
+    await manager.destroy();
+
+    const restarted = makeManager(contentDir, localDir);
+    await restarted.init();
+    expect(restarted.getInfo(info.threadId)?.resumable).toBe(true);
+    const resumed = await restarted.resumeThread(info.threadId);
+    expect(resumed.status).toBe('ready');
+    expect(resumed.contextWindow).toBe(272_000);
+    await restarted.destroy();
+  }, 45_000);
+
+  test('a context window change still before its agent spawns when the server shuts down keeps a session the next server resumes', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'codex-acp', { FAKE_CAPS: 'resume' });
+    const release = Promise.withResolvers<string | null>();
+    const entered = Promise.withResolvers<void>();
+    let hold = false;
+    const manager = makeManager(contentDir, localDir, {
+      resolveLoginShellPath: async () => {
+        if (!hold) return null;
+        entered.resolve();
+        return release.promise;
+      },
+    });
+    await manager.init();
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'codex-acp' },
+      settings: { contextWindow: 272_000 },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    manager.sendPrompt(info.threadId, 'retain history');
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'turn ended');
+    await manager.closeThread(info.threadId);
+    expect((await manager.resumeThread(info.threadId)).status).toBe('ready');
+
+    hold = true;
+    const changed = manager
+      .setContextWindow(info.threadId, 872_000)
+      .catch((error: unknown) => error);
+    await entered.promise;
+    await manager.destroy();
+
+    const restarted = makeManager(contentDir, localDir);
+    try {
+      await restarted.init();
+      expect(restarted.getInfo(info.threadId)?.resumable).toBe(true);
+      const resumed = await restarted.resumeThread(info.threadId);
+      expect(resumed.status).toBe('ready');
+      expect(resumed.contextWindow).toBe(272_000);
+    } finally {
+      await restarted.destroy();
+      hold = false;
+      release.resolve(null);
+      await changed;
+      await internals(manager).persisted(info.threadId);
+    }
+  }, 45_000);
+
+  test('a context window change that fails to apply on an open thread leaves no session a restarted server can resume', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'codex-acp', { FAKE_CAPS: 'resume' });
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'codex-acp' },
+      settings: { contextWindow: 272_000 },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    manager.sendPrompt(info.threadId, 'retain history');
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'turn ended');
+    await manager.closeThread(info.threadId);
+    expect((await manager.resumeThread(info.threadId)).status).toBe('ready');
+    expect(internals(manager).sessionId(info.threadId)).not.toBeNull();
+
+    writeMarkerGatedAgentEntry(localDir, 'codex-acp', join(tmp(), 'never-written'));
+    await expect(manager.setContextWindow(info.threadId, 872_000)).rejects.toMatchObject({
+      code: 'spawn-failed',
+    });
+    await internals(manager).persisted(info.threadId);
+    const metaPath = join(localDir, 'threads', `${info.threadId}.meta.json`);
+    const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { sessionId: string | null };
+    expect(meta.sessionId).toBeNull();
+
+    await manager.closeThread(info.threadId);
+    await internals(manager).persisted(info.threadId);
+    await manager.destroy();
+
+    const restarted = makeManager(contentDir, localDir);
+    try {
+      await restarted.init();
+      expect(restarted.getInfo(info.threadId)?.resumable).toBe(false);
+    } finally {
+      await restarted.destroy();
+    }
+  }, 45_000);
+
   test('a picked window survives a restart, so a resumed conversation keeps it', async () => {
     const contentDir = tmp();
     const localDir = tmp();
@@ -6273,7 +6562,7 @@ describe('diagnostic stream lifetime', () => {
     20_000,
   );
 
-  test('a resume that spawns after close terminates its rejected agent', async () => {
+  test('a resume closed before its agent spawns starts no agent', async () => {
     const localDir = tmp();
     const id = 'resume-after-close';
     const pidFile = join(localDir, 'resumed-pid');
@@ -6314,31 +6603,52 @@ describe('diagnostic stream lifetime', () => {
     await manager.closeThread(info.threadId);
     expect(manager.getInfo(info.threadId)?.archived).toBe(true);
     release.resolve(null);
-    expect(await resumed).toMatchObject({ code: 'spawn-failed' });
-    const pid = Number(readFileSync(pidFile, 'utf8'));
-    expect(
-      isValidLockPid(pid),
-      `resumed-pid held ${JSON.stringify(readFileSync(pidFile, 'utf8'))}`,
-    ).toBe(true);
-    await expect
-      .poll(
-        () => {
-          try {
-            process.kill(pid, 0);
-            return true;
-          } catch {
-            return false;
-          }
-        },
-        { timeout: 3000 },
-      )
-      .toBe(false);
+    expect(await resumed).toMatchObject({
+      code: 'not-ready',
+      message: 'thread closed during resume',
+    });
+    expect(existsSync(pidFile)).toBe(false);
     const replay: ThreadEvent[] = [];
     await manager.subscribe(info.threadId, 0, (frame) => {
       if (frame.op === 'event') replay.push(frame.event);
       if (frame.op === 'events') replay.push(...frame.events);
     });
     expect(replay.at(-1)).toMatchObject({ kind: 'status', detail: 'thread closed' });
+  }, 15_000);
+
+  test('a resume closed before its agent spawns can be resumed again', async () => {
+    const localDir = tmp();
+    const id = 'resume-again-after-close';
+    writeResumableAgentEntry(localDir, id, { FAKE_CAPS: 'resume' });
+    const release = Promise.withResolvers<string | null>();
+    const entered = Promise.withResolvers<void>();
+    let hold = false;
+    const manager = makeManager(tmp(), localDir, {
+      resolveLoginShellPath: async () => {
+        if (!hold) return null;
+        entered.resolve();
+        return release.promise;
+      },
+    });
+    await manager.init();
+    const info = await manager.createThread({ agent: { source: 'custom', id } });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 5000, 'ready');
+    manager.sendPrompt(info.threadId, 'retain history');
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 5000, 'prompt');
+    await manager.closeThread(info.threadId);
+
+    hold = true;
+    const cancelled = manager.resumeThread(info.threadId).catch((error: unknown) => error);
+    await entered.promise;
+    await manager.closeThread(info.threadId);
+    hold = false;
+    release.resolve(null);
+    expect(await cancelled).toMatchObject({
+      code: 'not-ready',
+      message: 'thread closed during resume',
+    });
+
+    expect((await manager.resumeThread(info.threadId)).status).toBe('ready');
   }, 15_000);
 
   test.each(['prompt', 'resume'] as const)(
@@ -7728,6 +8038,105 @@ describe('registry adapter acquisition probe scope across thread opens', () => {
       ]);
     });
   }, 90_000);
+
+  test('the refusal recovery reinstalls at most once', async () => {
+    await withAcquisitionHome(async (home) => {
+      const launchLog = join(home, 'launches.log');
+      const refusal = `npm error npx canceled due to missing packages and no YES option: ${JSON.stringify([PINNED_DESCRIPTOR])}\n`;
+      const { bin } = acquisitionBin(
+        home,
+        `const args = process.argv.slice(2);
+         if (args.includes('--call=exit 0')) process.exit(0);
+         process.getBuiltinModule('node:fs').appendFileSync(${JSON.stringify(launchLog)}, JSON.stringify(args) + '\\n');
+         process.stderr.write(${JSON.stringify(refusal)}, () => process.exit(1));`,
+      );
+      const { agentId, manager } = pinnedAdapterManager(home, bin);
+
+      const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () =>
+          ['error', 'exited'].includes(manager.getInfo(info.threadId)?.status ?? '') ||
+          launchesIn(launchLog).length > 2,
+        30_000,
+        'the refused launch to settle',
+      );
+
+      expect(launchesIn(launchLog)).toHaveLength(2);
+      const statuses = await statusesOf(manager, info.threadId);
+      expect(statuses.filter((status) => status === 'installing' || status === 'spawning')).toEqual(
+        ['spawning', 'installing', 'spawning', 'installing', 'spawning'],
+      );
+      expect(statuses.at(-1)).toBe('error');
+    });
+  }, 60_000);
+
+  test('a conversation closed during its install starts no agent', async () => {
+    await withAcquisitionHome(async (home) => {
+      const hold = join(home, 'install.hold');
+      const launchLog = join(home, 'launches.log');
+      const { bin } = acquisitionBin(
+        home,
+        `const fs = process.getBuiltinModule('node:fs');
+         const args = process.argv.slice(2);
+         if (args.includes('--call=exit 0')) {
+           const parent = process.ppid;
+           const poll = setInterval(() => {
+             if (!fs.existsSync(${JSON.stringify(hold)}) || process.ppid !== parent) {
+               clearInterval(poll);
+               process.exit(0);
+             }
+           }, 25);
+         } else {
+           fs.appendFileSync(${JSON.stringify(launchLog)}, JSON.stringify(args) + '\\n');
+           ${RESUMABLE_AGENT_SOURCE}
+         }`,
+      );
+      const { agentId, manager } = pinnedAdapterManager(home, bin, {
+        FAKE_CAPS: 'resume,load',
+      });
+      await manager.init();
+
+      const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'ready',
+        20_000,
+        'the open to become ready',
+      );
+      manager.sendPrompt(info.threadId, 'retain this session');
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'ready',
+        20_000,
+        'the turn to end',
+      );
+      await manager.closeThread(info.threadId);
+      expect(manager.getInfo(info.threadId)?.archived).toBe(true);
+      const firstOpen = launchesIn(launchLog);
+      expect(firstOpen).toHaveLength(1);
+
+      resetAcquisitionCache();
+      writeFileSync(hold, '');
+      const resuming = manager.resumeThread(info.threadId).catch((error: unknown) => error);
+      try {
+        await waitUntil(
+          () => manager.getInfo(info.threadId)?.status === 'installing',
+          20_000,
+          'the resume to install the adapter',
+        );
+        await manager.closeThread(info.threadId);
+      } finally {
+        rmSync(hold, { force: true });
+      }
+      await resuming;
+
+      try {
+        expect(launchesIn(launchLog)).toEqual(firstOpen);
+        expect(manager.getInfo(info.threadId)?.status).not.toBe('ready');
+      } finally {
+        const child = internals(manager).child(info.threadId);
+        if (child) await terminateAgentTree(child, { graceMs: 2_000 });
+      }
+    });
+  }, 90_000);
 });
 
 describe.skipIf(process.platform === 'win32')(
@@ -8127,16 +8536,28 @@ describe.skipIf(process.platform === 'win32')(
 
 const NPX_ENTRY_HASH = '4142609e2aa780f6';
 const NPX_RELAUNCH_LOG = '[acp-threads] cleared a stale npx cache entry; relaunching the agent';
+const NPX_CLOSED_CLEAR_LOG =
+  '[acp-threads] cleared a stale npx cache entry; the thread was closed, so the agent is not relaunched';
 const NPX_JOIN_LOG =
   '[acp-threads] npx cache entry was cleared by another launch moments ago; relaunching without clearing it again';
 
-type NpxEnoentMode = 'while-entry-exists' | 'always' | 'stderr-after-stdout-eof';
+type NpxEnoentMode =
+  | 'while-entry-exists'
+  | 'always'
+  | 'stderr-after-stdout-eof'
+  | 'held-after-stdout-eof';
+
+function stdoutEndedMarker(entryDir: string): string {
+  return join(dirname(dirname(dirname(entryDir))), 'npx-stdout-ended');
+}
 
 function npmEnoentSource(entryDir: string, mode: NpxEnoentMode): string {
   const fail =
     mode === 'stderr-after-stdout-eof'
       ? `process.stdout.end(() => setTimeout(() => process.stderr.write(lines.join('\\n'), () => process.exit(254)), 150));`
-      : `process.stderr.write(lines.join('\\n'), () => process.exit(254));`;
+      : mode === 'held-after-stdout-eof'
+        ? `process.stderr.write(lines.join('\\n'), () => process.stdout.end(() => { process.getBuiltinModule('node:fs').writeFileSync(${JSON.stringify(stdoutEndedMarker(entryDir))}, ''); setTimeout(() => process.exit(254), 10_000); }));`
+        : `process.stderr.write(lines.join('\\n'), () => process.exit(254));`;
   return `
 const entry = ${JSON.stringify(entryDir)};
 if (${mode === 'always' ? 'true' : 'existsSync(entry)'}) {
@@ -8267,6 +8688,29 @@ describe('launch failure diagnostics and npx cache recovery', () => {
         const statuses = await statusesOf(manager, info.threadId);
         expect(statuses).not.toContain('exited');
         expect(statuses).not.toContain('error');
+      },
+    );
+  }, 40_000);
+
+  test('a conversation closed while its launch reports a stale npx entry still clears the entry', async () => {
+    await withNpxLaunchFixture(
+      'held-after-stdout-eof',
+      async ({ manager, agentId, entryDir, warn }) => {
+        mkdirSync(entryDir, { recursive: true });
+        const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+        await waitUntil(
+          () => existsSync(stdoutEndedMarker(entryDir)),
+          20_000,
+          'the failing launch to close its stdout',
+        );
+        await manager.closeThread(info.threadId);
+        await waitUntil(() => !existsSync(entryDir), 5_000, 'the stale entry to be cleared');
+        await waitUntil(
+          () => logCount(warn, NPX_CLOSED_CLEAR_LOG) === 1,
+          5_000,
+          'the removal to be logged',
+        );
+        expect(logCount(warn, NPX_RELAUNCH_LOG)).toBe(0);
       },
     );
   }, 40_000);
@@ -8402,6 +8846,101 @@ describe('launch failure diagnostics and npx cache recovery', () => {
     );
     expect(logText).toContain('npm error code ENOENT');
   }, 30_000);
+
+  test('a custom agent whose npx prints the install refusal is launched once and not retried', async () => {
+    const localDir = tmp();
+    const bin = tmp();
+    const launchLog = join(localDir, 'launches.log');
+    const refusal =
+      'npm error npx canceled due to missing packages and no YES option: ["refused-agent@1.0.0"]\n';
+    writeExecutable(
+      join(bin, 'npx'),
+      `const args = process.argv.slice(2);
+       if (args.join(' ') === '--version') process.exit(0);
+       require('node:fs').appendFileSync(${JSON.stringify(launchLog)}, JSON.stringify(args) + '\\n');
+       process.stderr.write(${JSON.stringify(refusal)}, () => process.exit(1));`,
+    );
+    writeFileSync(
+      join(localDir, 'acp-agents.json'),
+      JSON.stringify([
+        {
+          id: 'refused-npx',
+          name: 'Refused npx agent',
+          command: join(bin, 'npx'),
+          args: ['--yes=false', 'refused-agent@1.0.0'],
+        },
+      ]),
+    );
+    const manager = makeManager(tmp(), localDir);
+
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'refused-npx' } });
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'error',
+      20_000,
+      'launch failure',
+    );
+
+    const launches = launchesIn(launchLog).map((line) => JSON.parse(line) as string[]);
+    expect(launches).toEqual([['--yes=false', 'refused-agent@1.0.0']]);
+    expect(manager.getInfo(info.threadId)?.status).toBe('error');
+  }, 30_000);
+
+  test('the reinstall stays silent when the npx refusal lands after stdout closes', async () => {
+    await withAcquisitionHome(async (home) => {
+      const localDir = tmp();
+      const bin = join(home, 'bin');
+      mkdirSync(bin);
+      installNodeFixture(bin);
+      writeRecordingNpm(bin, join(home, 'probes.log'));
+      const refusedOnce = join(home, 'refused-once');
+      const descriptor = 'late-refusal-fixture@1.0.0';
+      const refusal = `npm error npx canceled due to missing packages and no YES option: ${JSON.stringify([descriptor])}\n`;
+      writeExecutable(
+        join(bin, 'npx'),
+        `const { existsSync, writeFileSync } = require('node:fs');
+         const args = process.argv.slice(2);
+         if (args.join(' ') === '--version' || args.includes('--call=exit 0')) process.exit(0);
+         if (!existsSync(${JSON.stringify(refusedOnce)})) {
+           writeFileSync(${JSON.stringify(refusedOnce)}, '');
+           process.stdout.end(() => setTimeout(() => process.stderr.write(${JSON.stringify(refusal)}, () => process.exit(1)), 150));
+         } else {
+           import(${JSON.stringify(pathToFileURL(EXAMPLE_AGENT).href)});
+         }`,
+      );
+      const agent = registryPackage(descriptor, 'npx', { PATH: bin });
+      const registry = new AcpRegistry({
+        localDir,
+        log,
+        fetchImpl: async () => new Response(JSON.stringify({ agents: [agent] })),
+      });
+      const warn = vi.spyOn(log, 'warn');
+      const manager = makeManager(home, localDir, { registry });
+      try {
+        const info = await manager.createThread({ agent: { source: 'registry', id: agent.id } });
+        await waitUntil(
+          () => manager.getInfo(info.threadId)?.status === 'ready',
+          20_000,
+          'agent ready after reinstall',
+        );
+        expect(existsSync(refusedOnce)).toBe(true);
+        expect(
+          logCount(
+            warn,
+            '[acp-threads] npx refused to install a missing agent package; reinstalling it before relaunch',
+          ),
+        ).toBe(1);
+        expect(warn).toHaveBeenCalledWith(
+          expect.objectContaining({ package: descriptor }),
+          '[acp-threads] npx refused to install a missing agent package; reinstalling it before relaunch',
+        );
+        const statuses = await statusesOf(manager, info.threadId);
+        expect(statuses).not.toContain('exited');
+        expect(statuses).not.toContain('error');
+      } finally {
+        await manager.destroy();
+      }
+    });
+  }, 40_000);
 
   test('a session setup failure is recorded with its reason', async () => {
     const localDir = tmp();
@@ -8548,6 +9087,57 @@ describe('terminal sign-in methods', () => {
     );
     expect(JSON.parse(readFileSync(capsFile, 'utf8'))).toMatchObject({ auth: { terminal: true } });
   }, 20_000);
+
+  test('a catalog npx agent installed by OK signs in through npx -y and its pinned package', async () => {
+    await withAcquisitionHome(async (home) => {
+      const localDir = tmp();
+      const agentPath = writeTerminalAuthAgentEntry(
+        localDir,
+        'term-auth',
+        {},
+        join(localDir, 'caps.json'),
+      );
+      const bin = join(home, 'bin');
+      mkdirSync(bin);
+      installNodeFixture(bin);
+      writeRecordingNpm(bin, join(home, 'probes.log'));
+      const invocationLog = join(home, 'npx-invocations.log');
+      writeExecutable(
+        join(bin, 'npx'),
+        `const args = process.argv.slice(2);
+         if (args.join(' ') === '--version') process.exit(0);
+         require('node:fs').appendFileSync(${JSON.stringify(invocationLog)}, JSON.stringify(args) + '\\n');
+         if (args.includes('--call=exit 0')) process.exit(0);
+         import(${JSON.stringify(pathToFileURL(agentPath).href)});`,
+      );
+      const descriptor = 'terminal-sign-in-fixture@4.0.0';
+      const agent = registryPackage(descriptor, 'npx', { PATH: bin });
+      const registry = new AcpRegistry({
+        localDir,
+        log,
+        fetchImpl: async () => new Response(JSON.stringify({ agents: [agent] })),
+      });
+      const manager = makeManager(home, localDir, { registry, terminalAuthAvailable: true });
+
+      const info = await manager.createThread({ agent: { source: 'registry', id: agent.id } });
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'auth_required',
+        20_000,
+        'sign in',
+      );
+
+      const invocations = launchesIn(invocationLog).map((line) => JSON.parse(line) as string[]);
+      expect(invocations).toContainEqual(
+        expect.arrayContaining([`--package=${descriptor}`, '--call=exit 0']),
+      );
+      expect(manager.terminalAuthLaunch(info.threadId, 'cli-login').args).toEqual([
+        '-y',
+        descriptor,
+        '--version',
+        'login',
+      ]);
+    });
+  }, 30_000);
 
   test('a host without a terminal does not advertise terminal sign-in', async () => {
     const localDir = tmp();

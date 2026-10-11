@@ -90,12 +90,18 @@ export function acquisitionFailureContract(
 
 export type AcquisitionRegistryControl = { closeRegistry: () => Promise<void> };
 
+export const ARGV_PROBE_PACKAGE = 'ok-argv-probe';
+export const ARGV_PROBE_VERSION = '1.0.0';
+
 export async function withLocalAcquisitionRegistry(
   run: (home: string, control: AcquisitionRegistryControl) => Promise<void>,
 ): Promise<void> {
   await withAcquisitionHome(async (home) => {
-    const packages = new Map<string, Map<string, { bytes: Buffer; published: string }>>();
-    for (const { name, version, published } of [
+    const packages = new Map<
+      string,
+      Map<string, { bytes: Buffer; published: string; manifest: { bin?: Record<string, string> } }>
+    >();
+    for (const { name, version, published, bin } of [
       { name: 'is-number', version: '7.0.0', published: '2018-07-04T15:08:58.238Z' },
       { name: 'is-number', version: '6.0.0', published: '2018-03-31T17:02:39.953Z' },
       {
@@ -103,10 +109,25 @@ export async function withLocalAcquisitionRegistry(
         version: '0.75.1',
         published: '2018-07-04T15:08:58.238Z',
       },
-    ] satisfies { name: string; version: string; published: string }[]) {
+      {
+        name: ARGV_PROBE_PACKAGE,
+        version: ARGV_PROBE_VERSION,
+        published: '2018-07-04T15:08:58.238Z',
+        bin: `process.stdout.write(JSON.stringify({ args: process.argv.slice(2), script: require('node:fs').realpathSync(__filename) }));`,
+      },
+    ] satisfies { name: string; version: string; published: string; bin?: string }[]) {
       const directory = join(home, `${name.replaceAll('/', '-')}-${version}`);
       mkdirSync(join(directory, 'package'), { recursive: true });
-      writeFileSync(join(directory, 'package/package.json'), JSON.stringify({ name, version }));
+      const manifest = bin === undefined ? {} : { bin: { [name]: 'bin.js' } };
+      writeFileSync(
+        join(directory, 'package/package.json'),
+        JSON.stringify({ name, version, ...manifest }),
+      );
+      if (bin !== undefined) {
+        writeFileSync(join(directory, 'package/bin.js'), `#!/usr/bin/env node\n${bin}\n`, {
+          mode: 0o755,
+        });
+      }
       const archive = join(directory, 'fixture.tgz');
       execFileSync('tar', ['-czf', archive, '-C', directory, 'package']);
       let releases = packages.get(name);
@@ -114,7 +135,7 @@ export async function withLocalAcquisitionRegistry(
         releases = new Map();
         packages.set(name, releases);
       }
-      releases.set(version, { bytes: readFileSync(archive), published });
+      releases.set(version, { bytes: readFileSync(archive), published, manifest });
     }
     const endpoint = createServer((req, res) => {
       const pathname = decodeURIComponent(req.url ?? '/');
@@ -165,11 +186,12 @@ export async function withLocalAcquisitionRegistry(
           name,
           'dist-tags': { latest: [...releases.keys()].sort(compareVersions).at(-1) },
           versions: Object.fromEntries(
-            [...releases].map(([version, { bytes }]) => [
+            [...releases].map(([version, { bytes, manifest }]) => [
               version,
               {
                 name,
                 version,
+                ...manifest,
                 dist: {
                   tarball: `http://${req.headers.host}/${name}/${version}.tgz`,
                   shasum: createHash('sha1').update(bytes).digest('hex'),
