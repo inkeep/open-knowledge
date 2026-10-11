@@ -61,12 +61,13 @@ export function recoveryCommand(tag, repo = DEFAULT_REPO) {
 
 function summaryLine(tag, verdict, blockedBy) {
   const { subject } = describeBlock({ verdict, blockedBy });
-  return `🚨 ${ALERT_HEADLINE}: ${tag} ${subject} — nothing shipped`;
+  return `🚨 ${ALERT_HEADLINE}: ${tag} ${subject}`;
 }
 
 function recoveryGuidance(tag) {
   return [
-    "*Recovery guidance:* Inspect the failed packaging job's final `outcome=`.",
+    '*Recovery guidance:* If the Release is published, inspect the failed downstream npm or release-consumer operation before choosing recovery.',
+    "If it is unpublished, follow RELEASES.md, Resuming a blocked cut, using a guarded workflow revision. Inspect the failed packaging job's final `outcome=` when packaging failed.",
     'With no newer stable release, `transient-exhausted`, `deadline`, or `signal` can re-fire the same tag; investigate a recurring deadline.',
     '`unknown-exhausted` requires manual log review. `terminal` requires fixing the cause in `reason=`.',
     '`reason=rule:download-integrity` is the terminal exception: re-fire once on a fresh runner, then stop and investigate upstream if the same artifact fails again.',
@@ -88,9 +89,9 @@ function bodyLines({ tag, verdict, reason, runUrl, repo, blockedBy }) {
         ? `*Why:* ${other} failed. The DMG smoke itself passed (${reason}).`
         : `*Why:* ${other} failed (${reason}).`
       : `*Why:* ${reason}`,
-    '*State:* the GitHub Release is still a DRAFT and npm `latest` has NOT moved.',
+    '*State:* Publication may have completed. Inspect the GitHub Release, npm and run before recovery.',
     recoveryGuidance(tag),
-    `*Recovery command:*\n\`${recoveryCommand(tag, repo)}\``,
+    `*Recovery command (only after confirming an eligible unpublished tag):*\n\`${recoveryCommand(tag, repo)}\``,
     `*Run:* ${runUrl}`,
   ];
 }

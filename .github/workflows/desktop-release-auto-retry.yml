@@ -46,7 +46,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}
         run: |
           set -uo pipefail
-          TEXT="🚨 RELEASE BLOCKED: the automatic re-run of ${RUN_URL} could not start — nothing shipped. Re-run its failed jobs by hand: gh run rerun ${RUN_ID} --failed -R ${GITHUB_REPOSITORY}"
+          TEXT="🚨 RELEASE BLOCKED: the automatic re-run of ${RUN_URL} could not start or its request was not confirmed. Publication may have completed. Inspect the Release, npm and current run attempt before recovery; follow RELEASES.md, Resuming a blocked cut."
           echo "::error::${TEXT}"
           webhook="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"
           if [[ -z "$webhook" ]]; then
@@ -55,5 +55,5 @@ jobs:
           fi
           if ! curl -sS --fail --max-time 30 -X POST -H 'Content-type: application/json' \
             --data "$(jq -nc --arg t "$TEXT" '{text: $t}')" "$webhook"; then
-            echo "::warning::The auto-retry alert failed to POST; the release is still blocked."
+            echo "::warning::The auto-retry alert failed to POST; delivery is unconfirmed; inspect the source run and Release."
           fi

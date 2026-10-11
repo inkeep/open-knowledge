@@ -706,7 +706,7 @@ describe('the stable gate does not touch the beta cadence', () => {
 
   test('the beta path keeps its existing stuck-draft warning', () => {
     const warn = scoped('- name: Warn on stuck draft');
-    expect(warn).toContain('RECOVERY="gh release edit');
+    expect(warn).toContain('Recovering unpublished beta installers');
     expect(warn).not.toContain("if: needs.prepare.outputs.channel == 'latest'");
   });
 });

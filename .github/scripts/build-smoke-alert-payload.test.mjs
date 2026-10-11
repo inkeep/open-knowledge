@@ -41,11 +41,13 @@ describe('alert content', () => {
     }
   });
 
-  test('states that nothing shipped', () => {
+  test('does not infer publication state from a smoke failure', () => {
     const slack = JSON.stringify(buildSlackPayload(base));
-    expect(slack).toContain('nothing shipped');
-    expect(slack).toContain('DRAFT');
-    expect(slack).toContain('npm `latest` has NOT moved');
+    expect(slack).toContain('Publication may have completed');
+    expect(slack).toContain('Inspect the GitHub Release, npm and run before recovery');
+    expect(slack).not.toContain('nothing shipped');
+    expect(slack).not.toContain('DRAFT');
+    expect(slack).not.toContain('npm `latest` has NOT moved');
   });
 
   test('a genuine failure and an infrastructure error read differently', () => {
@@ -107,7 +109,7 @@ describe('a passing smoke is never rendered as a smoke failure', () => {
     expect(text).not.toContain('DMG smoke ERRORED');
     expect(text).not.toContain('DMG smoke FAILED');
     expect(text).toContain('RELEASE BLOCKED');
-    expect(text).toContain('nothing shipped');
+    expect(text).not.toContain('nothing shipped');
   });
 
   test('the body does not pair an error verdict with a passing reason', () => {
@@ -131,7 +133,7 @@ describe('a passing smoke is never rendered as a smoke failure', () => {
   test('a pass with no known blocking stage still reads as blocked, not as a pass', () => {
     const vague = buildSlackPayload({ ...base, verdict: 'pass', blockedBy: '' });
     expect(vague.text).toContain('RELEASE BLOCKED');
-    expect(vague.text).toContain('nothing shipped');
+    expect(vague.text).not.toContain('nothing shipped');
     expect(JSON.stringify(vague)).toContain('NOT an app regression');
   });
 

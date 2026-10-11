@@ -482,15 +482,8 @@ jobs:
           # Idempotency: a re-run after a transient failure should not
           # explode if the Release already exists.
           if gh release view "$STABLE_TAG" >/dev/null 2>&1; then
-            # Idempotent re-run after a transient failure (e.g., the draft
-            # was created but desktop-release.yml never promoted it). The
-            # combined PATCH (--draft=false + --prerelease=false + --latest)
-            # is empirically atomic: GitHub evaluates the make_latest
-            # constraint against the post-request state, so the draft→
-            # published flip and Latest stamp succeed in a single call.
-            # No-op on an already-published release.
-            echo "Release ${STABLE_TAG} already exists; updating notes + ensuring published + --latest."
-            gh release edit "$STABLE_TAG" --notes-file "$BODY_FILE" --draft=false --prerelease=false --latest
+            echo "Release ${STABLE_TAG} already exists; updating notes and preserving publication state."
+            gh release edit "$STABLE_TAG" --notes-file "$BODY_FILE"
           else
             # Create as draft so the release is invisible in the .atom feed
             # until desktop-release.yml uploads latest-mac.yml AND promotes

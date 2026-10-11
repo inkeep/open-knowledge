@@ -1835,6 +1835,9 @@ jobs:
   # that).
   finalize:
     needs: [prepare, build-macos, publish-assets]
+    concurrency:
+      group: ${{ needs.prepare.outputs.channel == 'latest' && 'ok-stable-publication' || format('desktop-finalize-{0}', github.run_id) }}
+      cancel-in-progress: false
     outputs:
       published: ${{ steps.publish.outputs.published }}
     # `!cancelled()` for the same reason as publish-assets: under a degraded
@@ -2067,7 +2070,7 @@ jobs:
           # through. A failed fetch is not fatal: the builder degrades to the
           # header + link message on empty input. The builder strips the
           # Downloads block + consumed-set marker on its side.
-          NOTES="$(gh release view "$RELEASE_TAG" --json body --jq '.body' 2>/dev/null || true)"
+          NOTES="$(timeout --kill-after=5s 30s gh release view "$RELEASE_TAG" --json body --jq '.body' 2>/dev/null)" || NOTES=""
           # The builder emits the whole Block Kit payload as JSON (so $VERSION /
           # $RELEASE_URL are JSON-escaped — a stray quote in a tag would
           # otherwise corrupt the body), converts the notes from GitHub markdown
@@ -2102,7 +2105,7 @@ jobs:
           # The failing curl sits in an `if` condition, which `set -e` does
           # not treat as fatal — a Slack outage routes to the else/warning
           # and the step still exits 0.
-          if curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$WEBHOOK_URL"; then
+          if curl -sS --fail --connect-timeout 10 --max-time 30 -X POST -H 'Content-type: application/json' --data "$payload" "$WEBHOOK_URL"; then
             echo "Posted stable-release announcement for ${RELEASE_TAG} to Slack."
           else
             echo "::warning::Slack announcement failed for ${RELEASE_TAG} (release is published; notification is best-effort)."
@@ -2121,7 +2124,7 @@ jobs:
             exit 0
           fi
           RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
-          NOTES="$(gh release view "$RELEASE_TAG" --json body --jq '.body' 2>/dev/null || true)"
+          NOTES="$(timeout --kill-after=5s 30s gh release view "$RELEASE_TAG" --json body --jq '.body' 2>/dev/null)" || NOTES=""
           # Discord renders no markdown tables; strip the marker-delimited
           # Downloads block (the release page keeps it — the embed links
           # there).
@@ -2148,8 +2151,8 @@ jobs:
                   ) }
               ]
             }')"
-          if curl -sS --fail -X POST -H 'Content-Type: application/json' --data "$payload" "$DISCORD_WEBHOOK_URL"; then
-            echo "Posted stable-release announcement for ${RELEASE_TAG} to Discord."
+          if curl -sS --fail --connect-timeout 10 --max-time 30 -X POST -H 'Content-Type: application/json' --data "$payload" "$DISCORD_WEBHOOK_URL"; then
+            echo "Discord announcement request completed for ${RELEASE_TAG} (best-effort; saved-message confirmation not checked)."
           else
             echo "::warning::Discord announcement failed for ${RELEASE_TAG} (release is published; notification is best-effort)."
           fi
@@ -2196,9 +2199,6 @@ jobs:
 
   alert:
     needs: [prepare, build-macos, build-windows, build-linux, publish-assets, finalize]
-    # "The release did not publish" — not "some job failed": under a degraded
-    # required-set a non-required platform can fail while the release still
-    # publishes, and paging on that would train readers to ignore the alert.
     # finalize != success covers every blocked shape transitively (prepare,
     # a required build, publish-assets, or finalize itself). prepare failing
     # before channel detection leaves the channel output empty; the steps
@@ -2252,12 +2252,6 @@ jobs:
       # Stable only, matching the smoke gate's own scope. A failed beta cut
       # keeps the STUCK-DRAFT warning below; paging the release channel for
       # every beta hiccup would train readers to ignore the alert.
-      #
-      # Same destination as the release announcement: this alert is the
-      # negative of that message (the release that did NOT ship), so it belongs
-      # with the notes rather than in the product channel. SLACK_WEBHOOK_URL
-      # remains the fallback, with the same unset -> ::notice:: -> skip
-      # tolerance.
       #
       # Slack only, deliberately — rationale lives in the module docstring of
       # .github/scripts/build-smoke-alert-payload.mjs. Ratcheted by
@@ -2322,13 +2316,26 @@ jobs:
           [[ "${RESULT_PUBLISH}" == "failure" ]] && blocked+=("asset publication")
           # finalize is the alert's own trigger, so it is only worth naming when
           # nothing blocking upstream failed — otherwise every page would list it.
-          if [[ ${#blocked[@]} -eq 0 && "${RESULT_FINALIZE}" == "failure" ]]; then
+          if [[ ${#blocked[@]} -eq 0 && ( "${RESULT_FINALIZE}" == "failure" || "${RESULT_FINALIZE}" == "cancelled" ) ]]; then
             blocked+=("finalize")
           fi
           BLOCKED_BY=""
           for b in ${blocked[@]+"${blocked[@]}"}; do
             BLOCKED_BY="${BLOCKED_BY:+${BLOCKED_BY}, }${b}"
           done
+          if [[ "$RESULT_FINALIZE" == "cancelled" && "$BLOCKED_BY" == "finalize" ]]; then
+            RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            TEXT="RELEASE FINALIZATION CANCELLED: ${RELEASE_TAG}: finalize was cancelled. Inspect the Release and run before recovery; publication may have completed. ${RUN_URL}"
+            echo "::warning::${TEXT}"
+            webhook="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"
+            if [[ -n "$webhook" ]]; then
+              payload="$(jq -nc --arg text "$TEXT" '{text: $text}')"
+              if ! curl -sS --fail --connect-timeout 10 --max-time 30 -X POST -H 'Content-Type: application/json' --data "$payload" "$webhook"; then
+                echo "::warning::The cancelled-finalize alert failed to POST; inspect the run and Release."
+              fi
+            fi
+            exit 0
+          fi
           REASON="${SMOKE_REASON:-the release pipeline failed before completing — see the run}"
           if [[ "${RETRY_OUTCOME:-}" == "failure" ]]; then
             REASON="${REASON}. Not re-run automatically: the re-run decision failed, see the run"
@@ -2356,37 +2363,27 @@ jobs:
               # Never go silent. Losing the formatting is a degradation; losing
               # the page is the outage this step exists to prevent.
               echo "::warning::Smoke-alert payload builder unavailable for ${RELEASE_TAG}; sending the plain-text alert."
-              payload="$(jq -nc --arg t "🚨 RELEASE BLOCKED: ${RELEASE_TAG} — ${BLOCKED_BY:-pipeline ${VERDICT}} — nothing shipped. ${REASON} ${RUN_URL}" '{text: $t}')"
+              payload="$(jq -nc --arg t "🚨 RELEASE BLOCKED: ${RELEASE_TAG} — ${BLOCKED_BY:-pipeline ${VERDICT}} — publication may have completed. Inspect the Release, npm and run before recovery. ${REASON} ${RUN_URL}" '{text: $t}')"
             fi
             # The failing curl sits in an `if` condition, so a webhook outage
             # routes to the warning instead of masking the failure.
-            if curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$webhook"; then
+            if curl -sS --fail --connect-timeout 10 --max-time 30 -X POST -H 'Content-type: application/json' --data "$payload" "$webhook"; then
               echo "Posted the ${label} smoke alert for ${RELEASE_TAG}."
             else
-              echo "::warning::${label} smoke alert failed to POST for ${RELEASE_TAG} — the release is still blocked; only the notification was lost."
+              echo "::warning::${label} smoke alert failed to POST for ${RELEASE_TAG} — delivery is unconfirmed; inspect the Release, npm and run before recovery."
             fi
           }
 
           post "${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}" Slack
           # The annotation is emitted IN ADDITION to the page, so the run page
           # tells the same story as the channel.
-          echo "::error::RELEASE BLOCKED: ${RELEASE_TAG} — ${BLOCKED_BY:-pipeline ${VERDICT}} — ${REASON}. The Release stays a draft and npm latest is untouched."
+          echo "::error::RELEASE BLOCKED: ${RELEASE_TAG} — ${BLOCKED_BY:-pipeline ${VERDICT}} — ${REASON}. Publication may have completed. Inspect the Release, npm and run before recovery."
 
-      # Lightweight discoverability for stuck-draft state. NOT a substitute
-      # for full paging observability — this is a zero-cost log marker that
-      # makes stuck drafts findable via GitHub Actions log search using the
-      # STUCK-DRAFT tag. Operators bisecting a missing release can grep
-      # workflow logs for the tag, then run the recovery command in the
-      # message. (Recovery re-publishes nothing by itself — re-run the failed
-      # jobs first so publish-assets has verified the inventory.)
       - name: Warn on stuck draft
         run: |
-          # Recovery command mirrors the Promote step's combined PATCH shape
-          # (--draft=false [--latest]) — empirically atomic per GitHub's
-          # post-state evaluation of make_latest.
-          if [[ "$CHANNEL" == "latest" ]]; then
-            RECOVERY="gh release edit ${RELEASE_TAG} --draft=false --latest (never for a tag the shipped-fix check refused)"
+          if [[ "$CHANNEL" == "beta" ]]; then
+            RECOVERY="Follow RELEASES.md, Recovering unpublished beta installers; re-dispatch desktop-release.yml for this tag so the build and inventory gates pass before publication."
           else
-            RECOVERY="gh release edit ${RELEASE_TAG} --draft=false"
+            RECOVERY="Follow RELEASES.md, Recovery workflow revision and Resuming a blocked cut; stable recovery must publish through a lock-bearing finalize. Never recover a tag the shipped-fix check refused."
           fi
-          echo "::warning::STUCK-DRAFT: Release ${RELEASE_TAG} may be stuck as draft (channel=${CHANNEL:-unknown}). Recovery after the failed jobs are re-run green: ${RECOVERY}"
+          echo "::warning::STUCK-DRAFT: Release ${RELEASE_TAG} may be stuck as draft (channel=${CHANNEL:-unknown}). ${RECOVERY}"
