@@ -267,6 +267,33 @@ describe('hermetic package acquisition and native dispatch', () => {
     });
   });
 
+  test('an install that fails without output names its exit code in the machine detail', async () => {
+    await withAcquisitionHome(async (home) => {
+      const bin = join(home, 'bin');
+      mkdirSync(bin);
+      installNodeFixture(bin);
+      writeExecutable(join(bin, 'npx'), 'process.exit(3);');
+      writeExecutable(
+        join(bin, 'npm'),
+        `process.stdout.write(${JSON.stringify(JSON.stringify([{ name: 'is-number', version: '7.0.0' }]))});`,
+      );
+      await expect(
+        resolveRegistryLaunch(
+          registryPackage('is-number@7.0.0', 'npx', { PATH: bin }),
+          null,
+          log,
+          undefined,
+          async (launch) => launch,
+          { install: true },
+        ),
+      ).rejects.toMatchObject({
+        code: 'install-failed',
+        message: 'Could not install is-number@7.0.0.',
+        machineDetail: 'exit code 3',
+      });
+    });
+  });
+
   test.each(['malformed', 'overflow', 'timeout'] as const)(
     'native npm %s output fails acquisition and releases the owned process',
     async (mode) => {

@@ -116,6 +116,7 @@ import {
   incompatibleManagedRuntimeHint,
   incompatibleNodeHint,
   isPathQualified,
+  type NpxCacheEntry,
   packageAcquisitionFailure,
   preflightLaunch,
   probeInterpreterHealth,
@@ -838,29 +839,42 @@ export class AcpThreadManager {
     } else {
       const manifest = await this.opts.registry.getAgent(record.agentRef.id);
       if (manifest === undefined) throw new ThreadOpError('unknown-agent', 'agent vanished');
-      launch = await resolveRegistryLaunch(
-        manifest,
-        registryPlatformKey(),
-        this.opts.log,
-        undefined,
-        (candidate) => this.ensureLaunchable(record, candidate, consentBudgetMs),
-        {
-          reacquire: acquisition === 'reacquire',
-          onProbeStart: () => this.emitStatus(record, 'installing'),
-          onResolved: ({ acquired, outcome, source, elapsedMs }) =>
-            this.opts.log.info(
-              {
-                threadId: record.info.threadId,
-                agentId: record.info.agent.id,
-                package: acquired,
-                outcome,
-                source,
-                elapsedMs,
-              },
-              '[acp-threads] agent package acquired',
-            ),
-        },
-      );
+      try {
+        launch = await resolveRegistryLaunch(
+          manifest,
+          registryPlatformKey(),
+          this.opts.log,
+          undefined,
+          (candidate) => this.ensureLaunchable(record, candidate, consentBudgetMs),
+          {
+            reacquire: acquisition === 'reacquire',
+            install: true,
+            onAcquiring: () => this.emitStatus(record, 'installing'),
+            onResolved: ({ acquired, outcome, source, elapsedMs }) =>
+              this.opts.log.info(
+                {
+                  threadId: record.info.threadId,
+                  agentId: record.info.agent.id,
+                  package: acquired,
+                  outcome,
+                  source,
+                  elapsedMs,
+                },
+                '[acp-threads] agent package acquired',
+              ),
+          },
+        );
+      } catch (err) {
+        if (
+          err instanceof AgentLaunchError &&
+          err.npxCacheEntry !== undefined &&
+          npxCacheRecovery === 'available' &&
+          (await this.clearStaleNpxCacheEntry(record, err.npxCacheEntry))
+        ) {
+          return this.connectAgent(record, custom, 'reacquire', consentBudgetMs, 'spent');
+        }
+        throw err;
+      }
     }
     if (launch === null || record.closed) return null;
 
@@ -1143,7 +1157,7 @@ export class AcpThreadManager {
           : null;
       if (staleEntry !== null && (await this.clearStaleNpxCacheEntry(record, staleEntry))) {
         launchSuperseded = true;
-        return this.connectAgent(record, custom, acquisition, consentBudgetMs, 'spent');
+        return this.connectAgent(record, custom, 'reacquire', consentBudgetMs, 'spent');
       }
       throw new ThreadOpError('spawn-failed', `initialize failed: ${agentErrorMessage(err)}`);
     } finally {
@@ -1158,7 +1172,10 @@ export class AcpThreadManager {
     return { conn, init, launch };
   }
 
-  private async clearStaleNpxCacheEntry(record: ThreadRecord, entryDir: string): Promise<boolean> {
+  private async clearStaleNpxCacheEntry(
+    record: ThreadRecord,
+    entryDir: NpxCacheEntry,
+  ): Promise<boolean> {
     const logContext = {
       threadId: record.info.threadId,
       agentId: record.info.agent.id,

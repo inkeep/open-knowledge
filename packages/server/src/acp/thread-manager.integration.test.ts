@@ -37,9 +37,14 @@ import { isValidLockPid } from '../process-alive.ts';
 import { RUNTIME_VERSION } from '../version-constants.ts';
 import { withLocalAcquisitionRegistry } from './acquisition-contract.test-helper.ts';
 import { isWithin } from './archive.ts';
-import { agentSpawnPath } from './launch.ts';
+import {
+  type HeldInstallRegistry,
+  withHeldInstallRegistry,
+} from './held-install-registry.test-helper.ts';
+import { agentSpawnPath, resetAcquisitionCache } from './launch.ts';
 import {
   installNodeFixture,
+  native,
   npmCli,
   probedDescriptors,
   registryPackage,
@@ -50,7 +55,7 @@ import {
 import { AcpPermissionStore, readAutoApproveOkTools } from './permissions.ts';
 import * as projectSkillStaging from './project-skill-staging.ts';
 import { PROJECT_SKILL_ENTRY, projectSkillStageDir } from './project-skill-staging.ts';
-import { AcpRegistry } from './registry.ts';
+import { AcpRegistry, type RegistryAgent, registryPlatformKey } from './registry.ts';
 import {
   ACP_ENVIRONMENT_NOTE,
   AcpThreadManager,
@@ -7724,6 +7729,401 @@ describe('registry adapter acquisition probe scope across thread opens', () => {
     });
   }, 90_000);
 });
+
+describe.skipIf(process.platform === 'win32')(
+  'status frames while an agent package is really being installed',
+  () => {
+    const heldInstallManager = (
+      held: HeldInstallRegistry,
+      distribution: RegistryAgent['distribution'],
+    ): { agentId: string; manager: AcpThreadManager } => {
+      const localDir = tmp();
+      const agent: RegistryAgent = {
+        id: 'held-install',
+        name: 'Held install agent',
+        version: '1.0.0',
+        distribution,
+      };
+      const registry = new AcpRegistry({
+        localDir,
+        log,
+        fetchImpl: async () => new Response(JSON.stringify({ agents: [agent] })),
+      });
+      return {
+        agentId: agent.id,
+        manager: makeManager(held.home, localDir, { registry, projectSkillSourceDir: null }),
+      };
+    };
+
+    const binaryDistribution = (held: HeldInstallRegistry): RegistryAgent['distribution'] => {
+      const platformKey = registryPlatformKey();
+      if (platformKey === null) throw new Error('this platform has no registry binary key');
+      return { binary: { [platformKey]: held.binaryTarget } };
+    };
+
+    const expectNpxLeavingStaleEntries = async (): Promise<void> => {
+      const npx = await native('npx', ['--version']);
+      expect(npx.code, npx.stderr).toBe(0);
+      expect(
+        Number.parseInt(npx.stdout, 10),
+        `npx ${npx.stdout.trim()} cannot leave the stale entry this test reinstalls; it needs npm 11 or later`,
+      ).toBeGreaterThanOrEqual(11);
+    };
+
+    const statusOnceReached = async (
+      read: () => string | undefined,
+      wanted: string,
+      ms: number,
+    ): Promise<string | undefined> => {
+      const deadline = Date.now() + ms;
+      let seen = read();
+      while (seen !== wanted && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 25));
+        seen = read();
+      }
+      return seen;
+    };
+
+    const leaveStaleNpxEntry = (held: HeldInstallRegistry): void => {
+      const npxCache = join(held.home, 'npm-cache', '_npx');
+      const entries = readdirSync(npxCache);
+      expect(entries).toHaveLength(1);
+      const packageJson = join(npxCache, String(entries[0]), 'package.json');
+      expect(existsSync(packageJson)).toBe(true);
+      rmSync(packageJson);
+      rmSync(join(held.home, 'npm-cache', '_cacache'), { recursive: true, force: true });
+    };
+
+    test('a cold npx launch reports installing while npx installs the package', async () => {
+      await withHeldInstallRegistry(async (held) => {
+        const { agentId, manager } = heldInstallManager(held, {
+          npx: { package: held.npmPackage },
+        });
+        try {
+          const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+          await waitUntil(
+            () => held.requested('npm-dependency') > 0,
+            30_000,
+            'npx to start installing the package',
+          );
+
+          await expect
+            .poll(() => manager.getInfo(info.threadId)?.status, { timeout: 10_000 })
+            .toBe('installing');
+
+          held.release('npm-dependency');
+          await expect
+            .poll(() => manager.getInfo(info.threadId)?.status, { timeout: 30_000 })
+            .toBe('ready');
+        } finally {
+          await manager.destroy();
+        }
+      });
+    }, 90_000);
+
+    test('a second thread waiting on an in-flight npx install reports installing', async () => {
+      await withHeldInstallRegistry(async (held) => {
+        const { agentId, manager } = heldInstallManager(held, {
+          npx: { package: held.npmPackage },
+        });
+        try {
+          const first = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+          await waitUntil(
+            () => held.requested('npm-dependency') > 0,
+            30_000,
+            "the first thread's npx to start installing the package",
+          );
+          const second = await manager.createThread({
+            agent: { source: 'registry', id: agentId },
+          });
+
+          await expect
+            .poll(() => manager.getInfo(second.threadId)?.status, { timeout: 10_000 })
+            .toBe('installing');
+
+          held.release('npm-dependency');
+          await expect
+            .poll(() => manager.getInfo(first.threadId)?.status, { timeout: 30_000 })
+            .toBe('ready');
+          await expect
+            .poll(() => manager.getInfo(second.threadId)?.status, { timeout: 30_000 })
+            .toBe('ready');
+        } finally {
+          await manager.destroy();
+        }
+      });
+    }, 90_000);
+
+    test('a cold binary agent launch reports installing while its archive downloads', async () => {
+      await withHeldInstallRegistry(async (held) => {
+        const { agentId, manager } = heldInstallManager(held, binaryDistribution(held));
+        try {
+          const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+          await waitUntil(
+            () => held.requested('binary-archive') > 0,
+            30_000,
+            'the agent archive download to start',
+          );
+
+          await expect
+            .poll(() => manager.getInfo(info.threadId)?.status, { timeout: 10_000 })
+            .toBe('installing');
+
+          held.release('binary-archive');
+          await expect
+            .poll(() => manager.getInfo(info.threadId)?.status, { timeout: 30_000 })
+            .toBe('ready');
+        } finally {
+          await manager.destroy();
+        }
+      });
+    }, 90_000);
+
+    test('an npx reopen after a completed install never reports installing', async () => {
+      await withHeldInstallRegistry(async (held) => {
+        const { agentId, manager } = heldInstallManager(held, {
+          npx: { package: held.npmPackage },
+        });
+        try {
+          const first = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+          held.release('npm-dependency');
+          await expect
+            .poll(() => manager.getInfo(first.threadId)?.status, { timeout: 30_000 })
+            .toBe('ready');
+          expect(held.requested('npm-dependency')).toBe(1);
+
+          const second = await manager.createThread({
+            agent: { source: 'registry', id: agentId },
+          });
+          await expect
+            .poll(() => manager.getInfo(second.threadId)?.status, { timeout: 30_000 })
+            .toBe('ready');
+
+          expect(held.requested('npm-dependency')).toBe(1);
+          expect(await statusesOf(manager, second.threadId)).not.toContain('installing');
+        } finally {
+          await manager.destroy();
+        }
+      });
+    }, 90_000);
+
+    test('a reopen of an installed binary agent never reports installing', async () => {
+      await withHeldInstallRegistry(async (held) => {
+        const { agentId, manager } = heldInstallManager(held, binaryDistribution(held));
+        try {
+          const first = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+          held.release('binary-archive');
+          await expect
+            .poll(() => manager.getInfo(first.threadId)?.status, { timeout: 30_000 })
+            .toBe('ready');
+          expect(held.requested('binary-archive')).toBe(1);
+
+          const second = await manager.createThread({
+            agent: { source: 'registry', id: agentId },
+          });
+          await expect
+            .poll(() => manager.getInfo(second.threadId)?.status, { timeout: 30_000 })
+            .toBe('ready');
+
+          expect(held.requested('binary-archive')).toBe(1);
+          expect(await statusesOf(manager, second.threadId)).not.toContain('installing');
+        } finally {
+          await manager.destroy();
+        }
+      });
+    }, 90_000);
+
+    test('a uvx reopen after a completed install never reports installing', async (ctx) => {
+      ctx.skip(
+        !hasUvx || !findExecutable('python3', agentSpawnPath(), executableFacts),
+        'uvx and python3 must be available to install a real Python agent',
+      );
+      await withHeldInstallRegistry(async (held) => {
+        const { agentId, manager } = heldInstallManager(held, {
+          uvx: { package: held.uvxPackage },
+        });
+        try {
+          const first = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+          held.release('wheel');
+          await expect
+            .poll(() => manager.getInfo(first.threadId)?.status, { timeout: 30_000 })
+            .toBe('ready');
+
+          const second = await manager.createThread({
+            agent: { source: 'registry', id: agentId },
+          });
+          await expect
+            .poll(() => manager.getInfo(second.threadId)?.status, { timeout: 30_000 })
+            .toBe('ready');
+
+          expect(await statusesOf(manager, second.threadId)).not.toContain('installing');
+        } finally {
+          await manager.destroy();
+        }
+      });
+    }, 90_000);
+
+    test.for(['warm', 'cold'] as const)(
+      'a stale npx entry is reinstalled under installing with a %s acquisition memo',
+      { timeout: 90_000 },
+      async (memo) => {
+        await withHeldInstallRegistry(async (held) => {
+          await expectNpxLeavingStaleEntries();
+          const { agentId, manager } = heldInstallManager(held, {
+            npx: { package: held.npmPackage },
+          });
+          try {
+            const first = await manager.createThread({
+              agent: { source: 'registry', id: agentId },
+            });
+            held.release('npm-dependency');
+            await expect
+              .poll(() => manager.getInfo(first.threadId)?.status, { timeout: 30_000 })
+              .toBe('ready');
+            if (memo === 'cold') resetAcquisitionCache();
+            leaveStaleNpxEntry(held);
+            held.rearm('npm-dependency');
+
+            const second = await manager.createThread({
+              agent: { source: 'registry', id: agentId },
+            });
+            await waitUntil(
+              () => held.requested('npm-dependency') === 2,
+              30_000,
+              'npx to reinstall the package into the cleared entry',
+            );
+
+            await expect
+              .poll(() => manager.getInfo(second.threadId)?.status, { timeout: 10_000 })
+              .toBe('installing');
+
+            held.release('npm-dependency');
+            await expect
+              .poll(() => manager.getInfo(second.threadId)?.status, { timeout: 30_000 })
+              .toBe('ready');
+          } finally {
+            await manager.destroy();
+          }
+        });
+      },
+    );
+
+    test('a second thread joining an in-flight version probe reports installing', async () => {
+      await withHeldInstallRegistry(async (held) => {
+        held.rearm('npm-package');
+        const { agentId, manager } = heldInstallManager(held, {
+          npx: { package: held.npmPackage },
+        });
+        try {
+          const first = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+          await waitUntil(
+            () => held.requested('npm-package') === 1,
+            30_000,
+            "the first thread's version probe to fetch the package",
+          );
+          expect(manager.getInfo(first.threadId)?.status).toBe('installing');
+          const second = await manager.createThread({
+            agent: { source: 'registry', id: agentId },
+          });
+          const joinedStatus = await statusOnceReached(
+            () => manager.getInfo(second.threadId)?.status,
+            'installing',
+            10_000,
+          );
+
+          held.release('npm-package');
+          held.release('npm-dependency');
+          await expect
+            .poll(() => manager.getInfo(first.threadId)?.status, { timeout: 30_000 })
+            .toBe('ready');
+          await expect
+            .poll(() => manager.getInfo(second.threadId)?.status, { timeout: 30_000 })
+            .toBe('ready');
+          expect(joinedStatus).toBe('installing');
+        } finally {
+          await manager.destroy();
+        }
+      });
+    }, 90_000);
+
+    test('a failed npx install goes from installing straight to error', async () => {
+      await withHeldInstallRegistry(async (held) => {
+        held.answerNotFound('npm-dependency');
+        const { agentId, manager } = heldInstallManager(held, {
+          npx: { package: held.npmPackage },
+        });
+        try {
+          const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+          await waitUntil(
+            () => ['error', 'exited'].includes(manager.getInfo(info.threadId)?.status ?? ''),
+            30_000,
+            'the failed npx install to settle',
+          );
+          expect(held.requested('npm-dependency')).toBeGreaterThan(0);
+
+          const events: ThreadEvent[] = [];
+          await manager.subscribe(info.threadId, 0, (frame) => {
+            if (frame.op === 'event') events.push(frame.event);
+            else if (frame.op === 'events') events.push(...frame.events);
+          });
+          const statuses = events.flatMap((event) =>
+            event.kind === 'status' ? [event.status] : [],
+          );
+          expect(statuses).toEqual(['spawning', 'installing', 'error']);
+          expect(
+            events.filter((event) => event.kind === 'status' && event.status === 'error').at(-1),
+          ).toMatchObject({
+            failure: { reason: 'connect', agentMessage: expect.stringContaining(held.npmPackage) },
+          });
+        } finally {
+          await manager.destroy();
+        }
+      });
+    }, 90_000);
+
+    test('a dependency the release-date policy refuses during the npx install reports that policy', async () => {
+      await withHeldInstallRegistry(
+        async (held) => {
+          writeFileSync(join(held.home, '.npmrc'), 'before=2025-01-01T00:00:00Z\n');
+          const { agentId, manager } = heldInstallManager(held, {
+            npx: { package: held.npmPackage },
+          });
+          try {
+            const info = await manager.createThread({
+              agent: { source: 'registry', id: agentId },
+            });
+            await waitUntil(
+              () => manager.getInfo(info.threadId)?.status === 'error',
+              30_000,
+              'the refused npx install to settle',
+            );
+
+            const events: ThreadEvent[] = [];
+            await manager.subscribe(info.threadId, 0, (frame) => {
+              if (frame.op === 'event') events.push(frame.event);
+              else if (frame.op === 'events') events.push(...frame.events);
+            });
+            expect(
+              events.flatMap((event) => (event.kind === 'status' ? [event.status] : [])),
+            ).toEqual(['spawning', 'installing', 'error']);
+            expect(
+              events.filter((event) => event.kind === 'status' && event.status === 'error').at(-1),
+            ).toMatchObject({
+              failure: {
+                reason: 'connect',
+                agentMessage: expect.stringContaining("package manager's release-date policy"),
+              },
+            });
+            expect(held.requested('npm-dependency')).toBe(0);
+          } finally {
+            await manager.destroy();
+          }
+        },
+        { dependencyPublished: '2030-01-01T00:00:00.000Z' },
+      );
+    }, 90_000);
+  },
+);
 
 const NPX_ENTRY_HASH = '4142609e2aa780f6';
 const NPX_RELAUNCH_LOG = '[acp-threads] cleared a stale npx cache entry; relaunching the agent';

@@ -32,10 +32,13 @@ export type ResolvedLaunch = {
   pathFromOverlay: boolean;
 } & ({ kind: 'npx' } | { kind: 'uvx' } | { kind: 'binary' } | { kind: 'custom' });
 
+export type NpxCacheEntry = string & { readonly __brand: 'NpxCacheEntry' };
+
 export const MINIMUM_NPX_NODE_MAJOR = 22;
 
 export class AgentLaunchError extends Error {
   readonly machineDetail?: string;
+  readonly npxCacheEntry?: NpxCacheEntry;
   readonly code:
     | 'unsupported-platform'
     | 'no-distribution'
@@ -44,11 +47,12 @@ export class AgentLaunchError extends Error {
   constructor(
     code: AgentLaunchError['code'],
     message: string,
-    options?: ErrorOptions & { machineDetail?: string },
+    options?: ErrorOptions & { machineDetail?: string; npxCacheEntry?: NpxCacheEntry },
   ) {
     super(message, options);
     this.name = 'AgentLaunchError';
     this.code = code;
+    this.npxCacheEntry = options?.npxCacheEntry;
     this.machineDetail =
       options?.machineDetail === undefined
         ? undefined
@@ -110,9 +114,10 @@ type ResolvedNpmAcquisition =
   | { outcome: ProbedNpmOutcome; acquired: string; source: 'memo'; elapsedMs: 0 }
   | (NpmPackageResolution & { source: 'probe' | 'joined' });
 
-type NpmAcquisitionOptions = {
+type RegistryAcquisitionOptions = {
   reacquire?: boolean;
-  onProbeStart?: () => void;
+  install?: boolean;
+  onAcquiring?: () => void;
   onResolved?: (resolution: ResolvedNpmAcquisition) => void;
 };
 
@@ -128,7 +133,7 @@ export function resolveRegistryLaunch(
   log: PinoLogger,
   binaryCacheDir: string | undefined,
   prepare: PrepareRegistryLaunch,
-  acquisition?: NpmAcquisitionOptions,
+  acquisition?: RegistryAcquisitionOptions,
 ): Promise<ResolvedLaunch | null>;
 export async function resolveRegistryLaunch(
   agent: RegistryAgent,
@@ -136,8 +141,17 @@ export async function resolveRegistryLaunch(
   log: PinoLogger,
   binaryCacheDir: string = defaultBinaryCacheDir(),
   prepare?: PrepareRegistryLaunch,
-  acquisition?: NpmAcquisitionOptions,
+  acquisition?: RegistryAcquisitionOptions,
 ): Promise<ResolvedLaunch | null> {
+  let acquiringReported = false;
+  const reporting: RegistryAcquisitionOptions = {
+    ...acquisition,
+    onAcquiring: () => {
+      if (acquiringReported) return;
+      acquiringReported = true;
+      acquisition?.onAcquiring?.();
+    },
+  };
   const dist = agent.distribution;
   if (dist.npx !== undefined) {
     const raw: ResolvedLaunch = {
@@ -154,14 +168,17 @@ export async function resolveRegistryLaunch(
         dist.npx.package,
       );
     if (pin?.groups === undefined) return launch;
-    const selected = await acquireNpmPackage(
+    const { acquired, outcome } = await acquireNpmPackage(
       launch,
       pin.groups.name,
       pin.groups.version,
       log,
-      acquisition,
+      reporting,
     );
-    return { ...launch, args: ['-y', selected, ...(dist.npx.args ?? [])] };
+    if (acquisition?.install === true && outcome !== 'forwarded') {
+      await ensureNpmPackageInstalled(launch, acquired, log, reporting);
+    }
+    return { ...launch, args: ['-y', acquired, ...(dist.npx.args ?? [])] };
   }
   if (dist.uvx !== undefined) {
     const pin = /^(?<name>[A-Za-z0-9][A-Za-z0-9._-]*)(?:==|@)(?<version>\d+\.\d+\.\d+)$/.exec(
@@ -195,7 +212,9 @@ export async function resolveRegistryLaunch(
       );
     }
     const target = dist.binary[platformKey];
-    const root = await ensureBinaryInstalled(agent.id, agent.version, target, binaryCacheDir, log);
+    const root = await ensureBinaryInstalled(agent.id, agent.version, target, binaryCacheDir, log, {
+      onDownloadStart: reporting.onAcquiring,
+    });
     const cmd = resolve(root, target.cmd.replace(/\\/g, '/'));
     if (!isWithin(root, cmd)) {
       throw new AgentLaunchError(
@@ -266,12 +285,12 @@ const NPX_CACHE_PACKAGE_JSON =
 
 const PARENT_SEGMENT = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
 
-export function staleNpxCacheEntry(detail: string): string | null {
+export function staleNpxCacheEntry(detail: string): NpxCacheEntry | null {
   if (!/\bENOENT\b/.test(detail)) return null;
   for (const pattern of NPM_ENOENT_PATH_LINES) {
     const path = pattern.exec(detail)?.[1];
     const entry = path === undefined ? undefined : NPX_CACHE_PACKAGE_JSON.exec(path)?.[1];
-    if (entry !== undefined && !PARENT_SEGMENT.test(entry)) return entry;
+    if (entry !== undefined && !PARENT_SEGMENT.test(entry)) return entry as NpxCacheEntry;
   }
   return null;
 }
@@ -368,15 +387,104 @@ type AcquiredNpmPackage =
 
 const acquiredNpmPackages = new Map<string, AcquiredNpmPackage>();
 
+type InstalledNpmPackage = { state: 'installing'; install: Promise<void> } | { state: 'installed' };
+
+const installedNpmPackages = new Map<string, InstalledNpmPackage>();
+
 export function resetAcquisitionCache(): void {
   acquiredNpmPackages.clear();
+  installedNpmPackages.clear();
+}
+
+function sortedLaunchEnv(launch: ResolvedLaunch): [string, string][] {
+  return Object.entries(launch.env).sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
 }
 
 function acquisitionKey(launch: ResolvedLaunch, name: string, ceiling: string): string {
-  const env = Object.entries(launch.env).sort(([left], [right]) =>
-    left < right ? -1 : left > right ? 1 : 0,
+  return JSON.stringify([launch.cmd, sortedLaunchEnv(launch), name, ceiling]);
+}
+
+function ensureNpmPackageInstalled(
+  launch: ResolvedLaunch,
+  acquired: string,
+  log: PinoLogger,
+  acquisition: RegistryAcquisitionOptions,
+): Promise<void> {
+  const key = JSON.stringify([launch.cmd, sortedLaunchEnv(launch), acquired]);
+  const cached = installedNpmPackages.get(key);
+  if (cached?.state === 'installing') {
+    acquisition.onAcquiring?.();
+    return cached.install;
+  }
+  if (cached?.state === 'installed' && acquisition.reacquire !== true) return Promise.resolve();
+  acquisition.onAcquiring?.();
+  const install = installNpmPackage(launch, acquired, log);
+  const entry: InstalledNpmPackage = { state: 'installing', install };
+  installedNpmPackages.set(key, entry);
+  const replace = (next: InstalledNpmPackage | null): void => {
+    if (installedNpmPackages.get(key) !== entry) return;
+    if (next === null) installedNpmPackages.delete(key);
+    else installedNpmPackages.set(key, next);
+  };
+  void install.then(
+    () => replace({ state: 'installed' }),
+    () => replace(null),
   );
-  return JSON.stringify([launch.cmd, env, name, ceiling]);
+  return install;
+}
+
+async function installNpmPackage(
+  launch: ResolvedLaunch,
+  acquired: string,
+  log: PinoLogger,
+): Promise<void> {
+  const startedAt = Date.now();
+  const child = spawnAcpAgent({
+    ...launch,
+    kind: 'npx',
+    args: ['--yes', `--package=${acquired}`, '--call=exit 0'],
+  });
+  let stderr = '';
+  let rawStderr = '';
+  let spawnFailure: string | undefined;
+  child.stdin?.end();
+  child.stdout?.resume();
+  child.stderr?.setEncoding('utf8');
+  const stderrCapture = createDiagnosticStderrCapture(
+    (line) => {
+      stderr = `${stderr}${line}\n`.slice(-ACQUISITION_DETAIL_MAX_CHARS);
+    },
+    (rawLine) => {
+      rawStderr = `${rawStderr}${rawLine}\n`.slice(-ACQUISITION_DETAIL_MAX_CHARS);
+    },
+  );
+  child.stderr?.on('data', stderrCapture.write);
+  child.stderr?.on('end', stderrCapture.end);
+  child.once('error', (err) => {
+    spawnFailure = err.message;
+  });
+  const [code, signal] = await new Promise<[number | null, NodeJS.Signals | null]>(
+    (resolvePromise) => child.once('close', (...exit) => resolvePromise(exit)),
+  );
+  if (spawnFailure === undefined && code === 0) {
+    log.info(
+      { package: acquired, elapsedMs: Date.now() - startedAt },
+      '[acp-launch] agent package installed',
+    );
+    return;
+  }
+  const detail = `${stderr}${spawnFailure ?? ''}`.trim() || (signal ?? `exit code ${code}`);
+  const npxCacheEntry = staleNpxCacheEntry(rawStderr) ?? undefined;
+  if (npxCacheEntry === undefined) {
+    const refusal = spawnFailure === undefined ? packageAcquisitionFailure(launch, detail) : null;
+    if (refusal !== null) throw refusal;
+  }
+  throw new AgentLaunchError('install-failed', `Could not install ${acquired}.`, {
+    machineDetail: detail,
+    npxCacheEntry,
+  });
 }
 
 function heldNpmPackage(entry: AcquiredNpmPackage | undefined): HeldNpmPackage | null {
@@ -396,8 +504,8 @@ function acquireNpmPackage(
   name: string,
   ceiling: string,
   log: PinoLogger,
-  acquisition?: NpmAcquisitionOptions,
-): Promise<string> {
+  acquisition?: RegistryAcquisitionOptions,
+): Promise<{ acquired: string; outcome: NpmPackageResolution['outcome'] }> {
   const key = acquisitionKey(launch, name, ceiling);
   const cached = acquiredNpmPackages.get(key);
   const held = heldNpmPackage(cached);
@@ -408,14 +516,15 @@ function acquireNpmPackage(
       source: 'memo',
       elapsedMs: 0,
     });
-    return Promise.resolve(held.acquired);
+    return Promise.resolve({ acquired: held.acquired, outcome: held.outcome });
   }
   const joined = openNpmProbe(cached);
+  if (joined !== null) acquisition?.onAcquiring?.();
   const probe = joined ?? beginNpmAcquisition(key, held, launch, name, ceiling, log, acquisition);
   const source: 'probe' | 'joined' = joined === null ? 'probe' : 'joined';
   return probe.then((resolved) => {
     acquisition?.onResolved?.({ ...resolved, source });
-    return resolved.acquired;
+    return { acquired: resolved.acquired, outcome: resolved.outcome };
   });
 }
 
@@ -426,7 +535,7 @@ function beginNpmAcquisition(
   name: string,
   ceiling: string,
   log: PinoLogger,
-  acquisition?: NpmAcquisitionOptions,
+  acquisition?: RegistryAcquisitionOptions,
 ): Promise<NpmPackageResolution> {
   const probe = acquireNpmPackageUncached(launch, name, ceiling, log, acquisition);
   const entry: AcquiredNpmPackage =
@@ -456,7 +565,7 @@ async function acquireNpmPackageUncached(
   name: string,
   ceiling: string,
   log: PinoLogger,
-  acquisition?: NpmAcquisitionOptions,
+  acquisition?: RegistryAcquisitionOptions,
 ): Promise<NpmPackageResolution> {
   let descriptor = `${name}@${ceiling}`;
   const npm = await npmCommand(launch);
@@ -467,7 +576,7 @@ async function acquireNpmPackageUncached(
     );
     return { outcome: 'forwarded', acquired: descriptor, elapsedMs: 0 };
   }
-  acquisition?.onProbeStart?.();
+  acquisition?.onAcquiring?.();
   const probeStartedAt = Date.now();
   let result = await probeNpmPackage(launch, descriptor, npm);
   let bounded = false;
@@ -574,6 +683,7 @@ function prependPath(dir: string, existing: string | undefined): string {
 
 export interface EnsureBinaryInstallOptions {
   fetchImpl?: typeof fetch;
+  onDownloadStart?: () => void;
   beforeCommit?: () => Promise<void>;
   commitLockTimeoutMs?: number;
 }
@@ -682,6 +792,7 @@ export async function ensureBinaryInstalled(
           );
         }
         await tracedRm(markerPath, { force: true });
+        opts.onDownloadStart?.();
         log.info({ id, version, archive: target.archive }, '[acp-launch] downloading agent binary');
         const isZip = /\.zip$/i.test(new URL(target.archive).pathname);
         const archivePath = join(stagingDir, isZip ? 'archive.zip' : 'archive.tar.gz');
