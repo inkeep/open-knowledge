@@ -242,9 +242,10 @@ describe('ensureGitAvailable', () => {
     expect(boxCalls[1]?.type).toBe('error');
     expect(boxCalls[1]?.buttons).toEqual(['Quit']);
     expect(boxCalls[1]?.detail).toContain('git binary crashed unexpectedly');
-    expect(warn).toHaveBeenCalled();
-    const warnCall = warn.mock.calls[0];
-    expect(warnCall?.[0]).toContain('unexpected retry error');
+    expect(warn.mock.calls.map(([msg]) => msg)).toEqual([
+      expect.stringContaining('waiting on the install dialog'),
+      expect.stringContaining('unexpected retry error'),
+    ]);
   });
 
   test('openExternal failure surfaces the URL in the next dialog detail', async () => {
@@ -328,9 +329,11 @@ describe('ensureGitAvailable', () => {
     expect(outcome).toBe('recovered');
     expect(attempts).toBe(2);
     expect(openExternal).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalled();
-    const warnCall = warn.mock.calls[0];
-    expect(warnCall?.[0]).toContain('openExternal failed');
+    expect(warn.mock.calls.map(([msg]) => msg)).toEqual([
+      expect.stringContaining('waiting on the install dialog'),
+      expect.stringContaining('openExternal failed'),
+      expect.stringContaining('waiting on the install dialog'),
+    ]);
   });
 
   test('out-of-range dialog response is treated as Quit (defensive)', async () => {
@@ -349,9 +352,96 @@ describe('ensureGitAvailable', () => {
     });
 
     expect(outcome).toBe('aborted');
-    expect(warn).toHaveBeenCalled();
-    const warnCall = warn.mock.calls[0];
-    expect(warnCall?.[0]).toContain('unexpected dialog response');
+    expect(warn.mock.calls.map(([msg]) => msg)).toEqual([
+      expect.stringContaining('waiting on the install dialog'),
+      expect.stringContaining('unexpected dialog response'),
+    ]);
+  });
+
+  test('logs the git failure before the install dialog settles, then the answer', async () => {
+    const assertGitAvailable = vi.fn(() => {
+      throw new GitNotAvailableError('linux', LINUX_GUIDANCE, {
+        probe: { path: 'unparseable', fallback: 'enoent' },
+      });
+    });
+    let answer: (value: { response: number }) => void = () => {};
+    const showMessageBox = vi.fn(
+      () =>
+        new Promise<{ response: number }>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const warn = vi.fn((_msg: string, _obj?: unknown) => {});
+    const info = vi.fn((_msg: string, _obj?: unknown) => {});
+
+    const pending = ensureGitAvailable({
+      assertGitAvailable,
+      showMessageBox,
+      openExternal: vi.fn(async () => {}),
+      log: { warn, info },
+    });
+    await vi.waitFor(() => expect(showMessageBox).toHaveBeenCalledTimes(1));
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('waiting on the install dialog'), {
+      code: 'GIT_NOT_AVAILABLE',
+      platform: 'linux',
+      pathProbe: 'unparseable',
+      fallbackProbe: 'enoent',
+    });
+    expect(info).not.toHaveBeenCalled();
+
+    answer({ response: 2 });
+
+    await expect(pending).resolves.toBe('aborted');
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('install dialog answered'), {
+      response: 'quit',
+    });
+  });
+
+  test('a too-old git logs the detected and required versions', async () => {
+    const assertGitAvailable = vi.fn(() => {
+      throw new GitTooOldError('darwin', '2.20.0', '2.31.0', '/usr/bin/git', MAC_GUIDANCE);
+    });
+    const { fn: showMessageBox } = showMessageBoxSequence([2]);
+    const warn = vi.fn((_msg: string, _obj?: unknown) => {});
+
+    await ensureGitAvailable({
+      assertGitAvailable,
+      showMessageBox,
+      openExternal: vi.fn(async () => {}),
+      log: { warn },
+    });
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('waiting on the install dialog'), {
+      code: 'GIT_TOO_OLD',
+      platform: 'darwin',
+      detected: '2.20.0',
+      required: '2.31.0',
+      resolvedPath: '/usr/bin/git',
+    });
+  });
+
+  test('a git-missing error without probe detail logs null probe fields', async () => {
+    const assertGitAvailable = vi.fn(() => {
+      throw new GitNotAvailableError('win32', LINUX_GUIDANCE);
+    });
+    const { fn: showMessageBox } = showMessageBoxSequence([2]);
+    const warn = vi.fn((_msg: string, _obj?: unknown) => {});
+
+    await ensureGitAvailable({
+      assertGitAvailable,
+      showMessageBox,
+      openExternal: vi.fn(async () => {}),
+      log: { warn },
+    });
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('waiting on the install dialog'), {
+      code: 'GIT_NOT_AVAILABLE',
+      platform: 'win32',
+      pathProbe: null,
+      fallbackProbe: null,
+    });
   });
 
   test('handler does NOT require a log dep (no-op default)', async () => {

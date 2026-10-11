@@ -26,7 +26,8 @@ export interface EnsureGitDeps {
   readonly showMessageBox: (opts: MessageBoxOptions) => Promise<MessageBoxReturnValue>;
   readonly openExternal: (url: string) => Promise<void>;
   readonly log?: {
-    readonly warn: (msg: string, obj?: unknown) => void;
+    readonly warn: (msg: string, obj?: Readonly<Record<string, unknown>>) => void;
+    readonly info?: (msg: string, obj?: Readonly<Record<string, unknown>>) => void;
   };
 }
 
@@ -35,6 +36,30 @@ const BUTTON_RETRY = 1;
 const BUTTON_QUIT = 2;
 
 const BUTTON_LABELS = ['Open Install Page', "I've Installed Git — Retry", 'Quit'] as const;
+
+const BUTTON_NAMES: Readonly<Partial<Record<number, string>>> = {
+  [BUTTON_OPEN_INSTALL_PAGE]: 'open-install-page',
+  [BUTTON_RETRY]: 'retry',
+  [BUTTON_QUIT]: 'quit',
+};
+
+function preflightFailureFields(err: GitNotAvailableError | GitTooOldError) {
+  if (err instanceof GitTooOldError) {
+    return {
+      code: err.code,
+      platform: err.platform,
+      detected: err.detected,
+      required: err.required,
+      resolvedPath: err.resolvedPath,
+    };
+  }
+  return {
+    code: err.code,
+    platform: err.platform,
+    pathProbe: err.probe?.path ?? null,
+    fallbackProbe: err.probe?.fallback ?? null,
+  };
+}
 
 type PreflightAttempt =
   | { kind: 'ok'; detection: GitDetected }
@@ -94,6 +119,10 @@ export async function ensureGitAvailable(deps: EnsureGitDeps): Promise<EnsureGit
       failedInstallUrl === null
         ? currentErr.message
         : `${currentErr.message}\n\nCould not open browser automatically. Please visit: ${failedInstallUrl}`;
+    deps.log?.warn(
+      'ensureGitAvailable: git unavailable, startup is waiting on the install dialog',
+      preflightFailureFields(currentErr),
+    );
     const result = await deps.showMessageBox({
       type: 'warning',
       buttons: BUTTON_LABELS,
@@ -102,6 +131,9 @@ export async function ensureGitAvailable(deps: EnsureGitDeps): Promise<EnsureGit
       title,
       message,
       detail,
+    });
+    deps.log?.info?.('ensureGitAvailable: install dialog answered', {
+      response: BUTTON_NAMES[result.response] ?? result.response,
     });
 
     if (result.response === BUTTON_OPEN_INSTALL_PAGE) {

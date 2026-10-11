@@ -27,16 +27,29 @@ export interface InstallGuidance {
   readonly url: string;
 }
 
+type GitProbeFailureReason = 'enoent' | 'spawn-failed' | 'unparseable' | 'timeout' | 'nonzero';
+
+export interface GitProbeFailures {
+  readonly path: GitProbeFailureReason;
+  readonly fallback: GitProbeFailureReason | null;
+}
+
 export class GitNotAvailableError extends Error {
   readonly code = 'GIT_NOT_AVAILABLE';
   readonly platform: NodeJS.Platform;
   readonly guidance: InstallGuidance;
+  readonly probe: GitProbeFailures | null;
 
-  constructor(platform: NodeJS.Platform, guidance: InstallGuidance, options?: { cause?: unknown }) {
+  constructor(
+    platform: NodeJS.Platform,
+    guidance: InstallGuidance,
+    options?: { cause?: unknown; probe?: GitProbeFailures },
+  ) {
     super(buildMissingMessage(guidance), options);
     this.name = 'GitNotAvailableError';
     this.platform = platform;
     this.guidance = guidance;
+    this.probe = options?.probe ?? null;
   }
 }
 
@@ -77,6 +90,7 @@ export function detectGit(): GitDetected {
     };
   }
 
+  let fallback: GitProbeFailureReason | null = null;
   for (const candidate of fallbackPaths(process.platform)) {
     if (!existsSync(candidate)) continue;
     const result = probeGit(candidate);
@@ -88,9 +102,12 @@ export function detectGit(): GitDetected {
         source: 'fallback',
       };
     }
+    fallback = result.reason;
   }
 
-  throw new GitNotAvailableError(process.platform, buildGuidance(process.platform));
+  throw new GitNotAvailableError(process.platform, buildGuidance(process.platform), {
+    probe: { path: stage1.reason, fallback },
+  });
 }
 
 export function assertGitAvailable(): GitDetected {
@@ -109,7 +126,7 @@ export function assertGitAvailable(): GitDetected {
 
 type ProbeResult =
   | { kind: 'ok'; version: string; resolvedPath: string }
-  | { kind: 'fail'; reason: 'enoent' | 'unparseable' | 'timeout' | 'nonzero' };
+  | { kind: 'fail'; reason: GitProbeFailureReason };
 
 function probeGit(command: string): ProbeResult {
   const opts: SpawnSyncOptions = withHiddenWindowsConsole({
@@ -122,7 +139,8 @@ function probeGit(command: string): ProbeResult {
   if (result.error) {
     if ('signal' in result && result.signal === 'SIGTERM')
       return { kind: 'fail', reason: 'timeout' };
-    return { kind: 'fail', reason: 'enoent' };
+    const code = (result.error as NodeJS.ErrnoException).code;
+    return { kind: 'fail', reason: code === 'ENOENT' ? 'enoent' : 'spawn-failed' };
   }
   if (result.status !== 0) {
     return { kind: 'fail', reason: 'nonzero' };

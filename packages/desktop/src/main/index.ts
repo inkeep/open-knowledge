@@ -6616,7 +6616,13 @@ function bootPrimaryInstance(): void {
           showMessageBox: async (opts) =>
             dialog.showMessageBox({ ...opts, buttons: [...opts.buttons] }),
           openExternal: (url) => shell.openExternal(url),
-          log: { warn: (msg, obj) => console.warn(msg, obj) },
+          log: {
+            warn: (msg, obj) => {
+              getLogger('git-preflight').warn({ ...obj }, msg);
+              flushDesktopLogger();
+            },
+            info: (msg, obj) => getLogger('git-preflight').info({ ...obj }, msg),
+          },
         });
         if (gitOutcome === 'aborted') {
           app.quit();
@@ -7001,6 +7007,11 @@ function bootPrimaryInstance(): void {
     .catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
       const stack = err instanceof Error ? (err.stack ?? '') : '';
+      getLogger('startup').error(
+        { event: 'whenReady-unhandled-rejection', err },
+        'startup chain rejected; its remaining steps did not run',
+      );
+      flushDesktopLogger();
       console.error(JSON.stringify({ event: 'whenReady-unhandled-rejection', message, stack }));
     });
 
