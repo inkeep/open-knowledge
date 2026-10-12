@@ -2,7 +2,7 @@
  * They never carry file content, so the precedent #60 invariant ("agent grounds via OK MCP, not
  * native attach") holds by virtue of the URL never carrying `file=` attach data.
  */
-import { shellSingleQuote } from './terminal-launch.ts';
+import { shellSingleQuote, toTerminalPromptText } from './terminal-launch.ts';
 import type { HandoffTarget } from './types.ts';
 
 const PATH_INJECTION_SANITIZE_RE = new RegExp(
@@ -224,7 +224,7 @@ function promptTransportLength(
   transport: PromptTransport,
 ): number {
   if (transport === 'terminal') {
-    return UTF8_ENCODER.encode(shellSingleQuote(prompt)).length;
+    return UTF8_ENCODER.encode(shellSingleQuote(toTerminalPromptText(prompt))).length;
   }
   return encodedPromptLength(prompt, target);
 }

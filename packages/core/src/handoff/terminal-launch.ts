@@ -313,7 +313,41 @@ const ESC = '\x1b';
 const BRACKETED_PASTE_START = `${ESC}[200~`;
 const BRACKETED_PASTE_END = `${ESC}[201~`;
 
-const BRACKETED_PASTE_ENABLE_MARKER = '\x1b[?2004h';
+const TERMINAL_LINE_BREAK_RE = /\r\n?/g;
+const TERMINAL_UNSAFE_CONTROL_RE = new RegExp(
+  '[' + '\\u0000-\\u0008' + '\\u000b-\\u001f' + '\\u007f-\\u009f' + ']',
+  'g',
+);
+const TRAILING_LINE_BREAKS_RE = /\n*$/;
+
+export const TERMINAL_CONTROL_LABEL_NOTICE =
+  'Control characters in the text above are shown as <control-NNNN> labels; the source document holds the raw characters.';
+
+function controlLabel(control: string): string {
+  const codePoint = control.codePointAt(0) ?? 0;
+  return `<control-${codePoint.toString(16).toUpperCase().padStart(4, '0')}>`;
+}
+
+export function toTerminalPromptText(text: string): string {
+  let labeled = false;
+  const printable = text
+    .replace(TERMINAL_LINE_BREAK_RE, '\n')
+    .replace(TERMINAL_UNSAFE_CONTROL_RE, (control) => {
+      labeled = true;
+      return controlLabel(control);
+    });
+  if (!labeled) return printable;
+  const trailing = TRAILING_LINE_BREAKS_RE.exec(printable)?.[0] ?? '';
+  const body = printable.slice(0, printable.length - trailing.length);
+  return `${body}\n\n${TERMINAL_CONTROL_LABEL_NOTICE}${trailing}`;
+}
+
+export function buildTerminalInputBytes(text: string, bracketedPaste: boolean): string {
+  const printable = toTerminalPromptText(text);
+  return bracketedPaste ? `${BRACKETED_PASTE_START}${printable}${BRACKETED_PASTE_END}` : printable;
+}
+
+export const BRACKETED_PASTE_ENABLE_MARKER = '\x1b[?2004h';
 const HERMES_INJECT_DEBOUNCE_MS = 300;
 const HERMES_INJECT_CAP_MS = 4000;
 const WINDOWS_INJECT_SETTLE_MS = 800;
@@ -471,7 +505,7 @@ export function buildCliLaunchArgString(
     return `${info.bin} ${sub}${fixedPrefix}`.trimEnd();
   }
   const promptFlag = info.promptFlag ? `${info.promptFlag} ` : '';
-  return `${info.bin} ${sub}${fixedPrefix}${promptFlag}${shellSingleQuote(prompt)}`;
+  return `${info.bin} ${sub}${fixedPrefix}${promptFlag}${shellSingleQuote(toTerminalPromptText(prompt))}`;
 }
 
 export function buildCliLaunchCommand(
@@ -501,6 +535,5 @@ export function buildStartupInjectionBytes(
 ): string | null {
   const injection = startupInjectionFor(cli, platform);
   if (injection == null || prompt == null || prompt.length === 0) return null;
-  const safe = prompt.replaceAll(ESC, '');
-  return `${BRACKETED_PASTE_START}${safe}${BRACKETED_PASTE_END}${injection.submit}`;
+  return `${buildTerminalInputBytes(prompt, true)}${injection.submit}`;
 }

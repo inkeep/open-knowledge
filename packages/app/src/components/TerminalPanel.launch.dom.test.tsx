@@ -28,6 +28,7 @@ class MockTerminal {
   cols = 80;
   rows = 24;
   unicode = { activeVersion: '6' };
+  modes = { bracketedPasteMode: false, mouseTrackingMode: 'none' as string };
   onDataCb: ((d: string) => void) | null = null;
   keyHandler: ((e: KeyboardEvent) => boolean) | null = null;
   options: Record<string, unknown>;
@@ -165,7 +166,10 @@ function makeBridge(
   };
 }
 
-const { TerminalPanel, STAGE_PASTE_SETTLE_MS } = await import('./TerminalPanel');
+const { TerminalPanel, STAGE_PASTE_CAP_MS, STAGE_PASTE_SETTLE_MS } = await import(
+  './TerminalPanel'
+);
+const { isBracketedPasteEnabled } = await import('./handoff/terminal-paste-mode');
 
 function bakedLaunch(
   createMock: ReturnType<typeof vi.fn>,
@@ -456,8 +460,8 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     await waitFor(() => expect(lastTerm?.paste).toHaveBeenCalledWith('launch clipboard paste'));
   });
 
-  test('a launch carrying stagePaste writes it into the CLI input after the TUI settles — no submit', async () => {
-    const { bridge, terminal } = makeBridge(WIRED);
+  test('a launch carrying stagePaste writes it into the CLI input as one paste once the CLI enables bracketed paste — no submit', async () => {
+    const { bridge, terminal, pushData } = makeBridge(WIRED);
     const staged = 'work on @notes.md — the selected passage\n\n';
     render(
       <TerminalPanel
@@ -468,11 +472,73 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(bakedLaunch(terminal.create)).toBe(`claude ${CLAUDE_PRE}`);
-    await waitFor(() => expect(terminal.input).toHaveBeenCalledWith('pty-1', staged), {
-      timeout: 2_000,
-    });
+    await new Promise((r) => setTimeout(r, STAGE_PASTE_SETTLE_MS + 300));
+    expect(terminal.input).not.toHaveBeenCalled();
+    if (lastTerm !== null) lastTerm.modes.bracketedPasteMode = true;
+    pushData({ ptyId: 'pty-1', data: '\x1b[?2004h' });
+    await waitFor(
+      () => expect(terminal.input).toHaveBeenCalledWith('pty-1', `\x1b[200~${staged}\x1b[201~`),
+      { timeout: 2_000 },
+    );
     expect(terminal.input.mock.calls.every((c) => !(c[1] as string).includes('\r'))).toBe(true);
   });
+
+  test("publishes the PTY's live bracketed-paste mode for live-tab handoffs and withdraws it on unmount", async () => {
+    const { bridge, terminal } = makeBridge(WIRED);
+    const { unmount } = render(<TerminalPanel bridge={bridge} />);
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    if (lastTerm === null) throw new Error('no terminal mounted');
+    const term = lastTerm;
+    term.modes.bracketedPasteMode = true;
+    await waitFor(() => expect(isBracketedPasteEnabled('pty-1')).toBe(true));
+    term.modes.bracketedPasteMode = false;
+    expect(isBracketedPasteEnabled('pty-1')).toBe(false);
+    term.modes.bracketedPasteMode = true;
+    unmount();
+    expect(isBracketedPasteEnabled('pty-1')).toBe(false);
+  });
+
+  test('a stagePaste holding control characters is labeled, so no control reaches the CLI as a keystroke', async () => {
+    const { bridge, terminal, pushData } = makeBridge(WIRED);
+    const staged = 'passage\u0004 with\r\nbreaks\u001b[201~\n\n';
+    render(
+      <TerminalPanel
+        bridge={bridge}
+        launch={{ prompt: null, cli: 'claude', nonce: 1, stagePaste: staged }}
+      />,
+    );
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    if (lastTerm !== null) lastTerm.modes.bracketedPasteMode = true;
+    pushData({ ptyId: 'pty-1', data: '\x1b[?2004h' });
+    await waitFor(() => expect(terminal.input).toHaveBeenCalledTimes(1), { timeout: 2_000 });
+    const bytes = terminal.input.mock.calls[0]?.[1] as string;
+    expect(bytes).toBe(
+      '\x1b[200~passage<control-0004> with\nbreaks<control-001B>[201~\n\nControl characters in the text above are shown as <control-NNNN> labels; the source document holds the raw characters.\n\n\x1b[201~',
+    );
+  });
+
+  test('a stagePaste for a CLI that never enables bracketed paste lands unframed but labeled after the cap', async () => {
+    const { bridge, terminal } = makeBridge(WIRED);
+    const staged = 'passage\u0003 here\n\n';
+    render(
+      <TerminalPanel
+        bridge={bridge}
+        launch={{ prompt: null, cli: 'claude', nonce: 1, stagePaste: staged }}
+      />,
+    );
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, STAGE_PASTE_SETTLE_MS + 100));
+    expect(terminal.input).not.toHaveBeenCalled();
+    await waitFor(() => expect(terminal.input).toHaveBeenCalledTimes(1), {
+      timeout: STAGE_PASTE_CAP_MS + 1_000,
+    });
+    expect(terminal.input.mock.calls[0]?.[1]).toBe(
+      'passage<control-0003> here\n\nControl characters in the text above are shown as <control-NNNN> labels; the source document holds the raw characters.\n\n',
+    );
+  }, 10_000);
 
   test('a Hermes launch bakes promptless `hermes chat` and injects the prompt only after the ready marker (ESC[?2004h)', async () => {
     const { bridge, terminal, pushData } = makeBridge();

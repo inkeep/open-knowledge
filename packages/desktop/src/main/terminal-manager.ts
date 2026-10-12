@@ -1,4 +1,5 @@
 import {
+  BRACKETED_PASTE_ENABLE_MARKER,
   isWindowsShellFamily,
   isWindowsShellLaunchFailureReason,
   type TerminalLaunchCommand,
@@ -82,6 +83,8 @@ interface SessionState {
   pendingCreate: PtyCreateMessage | null;
   outbound: string;
   replay: string;
+  bracketedPaste: boolean;
+  modeScanTail: string;
   flushToken: TimerToken | null;
   staleToken: TimerToken | null;
   pendingBytes: number;
@@ -133,6 +136,29 @@ const STALE_RESERVATION_WARN_MS = 30_000;
 export const DEFAULT_PTY_COLS = 80;
 export const DEFAULT_PTY_ROWS = 24;
 const MAX_PTY_DIMENSION = 1000;
+
+const ESC = '\u001b';
+const MODE_SCAN_CARRY_MAX_CHARS = 256;
+const PRIVATE_MODE_OR_RESET_RE = new RegExp(`${ESC}(?:\\[\\?([0-9;]*)([hl])|c)`, 'g');
+const UNTERMINATED_ESCAPE_RE = new RegExp(`^${ESC}(?:\\[[0-?]*[ -/]*)?$`);
+
+function trackBracketedPaste(session: SessionState, data: string): void {
+  const scanned = session.modeScanTail + data;
+  for (const match of scanned.matchAll(PRIVATE_MODE_OR_RESET_RE)) {
+    if (match[2] === undefined) {
+      session.bracketedPaste = false;
+    } else if ((match[1] ?? '').split(';').includes('2004')) {
+      session.bracketedPaste = match[2] === 'h';
+    }
+  }
+  const pending = scanned.slice(scanned.lastIndexOf(ESC));
+  session.modeScanTail =
+    scanned.includes(ESC) &&
+    pending.length <= MODE_SCAN_CARRY_MAX_CHARS &&
+    UNTERMINATED_ESCAPE_RE.test(pending)
+      ? pending
+      : '';
+}
 
 export function clampPtyDimension(value: unknown, fallback: number): number {
   return typeof value === 'number' &&
@@ -351,6 +377,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         session.sawOutput = true;
         session.outbound += message.data;
         session.replay += message.data;
+        trackBracketedPaste(session, message.data);
         if (session.replay.length > replayCap) {
           session.replay = session.replay.slice(session.replay.length - replayCap);
         }
@@ -552,6 +579,8 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         },
         outbound: '',
         replay: '',
+        bracketedPaste: false,
+        modeScanTail: '',
         flushToken: null,
         pendingBytes: 0,
         paused: false,
@@ -738,7 +767,9 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       handle.webContents = req.webContents;
       return {
         ok: true,
-        replay: session.replay,
+        replay: session.bracketedPaste
+          ? `${BRACKETED_PASTE_ENABLE_MARKER}${session.replay}`
+          : session.replay,
         ...(session.shellFamily === null ? {} : { shellFamily: session.shellFamily }),
         ...(session.shellNoticeReason === null
           ? {}

@@ -20,7 +20,7 @@ import {
   TERMINAL_INLINE_PROMPT_BUDGET,
   withSkillPointer,
 } from './prompt-composer.ts';
-import { shellSingleQuote } from './terminal-launch.ts';
+import { shellSingleQuote, toTerminalPromptText } from './terminal-launch.ts';
 import type { HandoffPayload, HandoffTarget } from './types.ts';
 
 test('composeFilePrompt with autoOpen=true emits the file directive + Open-the-OK-editor trailer', () => {
@@ -1286,6 +1286,28 @@ test('terminal transport measures shell-quoted BYTES — an apostrophe-dense ins
   expect(out).not.toContain(instruction);
   expect(out).toContain(' …');
   expect(quotedByteLength(out)).toBeLessThanOrEqual(TERMINAL_INLINE_PROMPT_BUDGET);
+});
+
+test('terminal transport measures the labeled bytes — a control-dense instruction trims by its labeled length, not its raw length', () => {
+  const instruction = 'x\u0003'.repeat(20_000);
+  expect(quotedByteLength(instruction)).toBeLessThan(TERMINAL_INLINE_PROMPT_BUDGET);
+  expect(quotedByteLength(toTerminalPromptText(instruction))).toBeGreaterThan(
+    TERMINAL_INLINE_PROMPT_BUDGET,
+  );
+  const out = assembleHandoffPrompt({
+    scope: 'doc',
+    docRelativePath: 'plans/migration.md',
+    instruction,
+    mentions: [],
+    autoOpen: false,
+    target: 'claude-code',
+    transport: 'terminal',
+  });
+  expect(out).not.toContain(instruction);
+  expect(out).toContain(' …');
+  expect(quotedByteLength(toTerminalPromptText(out))).toBeLessThanOrEqual(
+    TERMINAL_INLINE_PROMPT_BUDGET,
+  );
 });
 
 test('an inline selection between the URL and terminal budgets ships inline on terminal, degrades to locus on url', () => {

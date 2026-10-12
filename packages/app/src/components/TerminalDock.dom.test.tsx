@@ -11,9 +11,11 @@ import {
 } from '@/lib/local-menu-action-bus';
 import { writePreferBareTerminal } from '@/lib/terminal-new-tab-store';
 import { saveStickyAgent, terminalCliId } from '@/lib/unified-agent-store';
+import { composeTerminalSelectionPaste } from './handoff/compose-terminal-selection';
 import { requestPreferredSession } from './handoff/preferred-session-events';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
 import { subscribeToTerminalLaunchRequests } from './handoff/terminal-launch-events';
+import { registerBracketedPasteProbe } from './handoff/terminal-paste-mode';
 
 const TERMINAL_PANEL_ID = 'terminal-dock-panel';
 
@@ -897,19 +899,73 @@ describe('TerminalDock multi-session', () => {
     expect(view.input).not.toHaveBeenCalled();
   });
 
-  test('the selection input reuses a live CLI tab — raw PTY write, no new tab', async () => {
+  test('the selection input reuses a live CLI tab — one bracketed-paste PTY write, no new tab', async () => {
     const view = renderDock(true);
     await waitFor(() => expect(emitTitle('pty-1', 'zsh')).toBe(true));
     act(() => view.rerender(true, { prompt: null, cli: 'claude', nonce: 1 }));
     await waitFor(() => expect(emitTitle('pty-2', 'claude')).toBe(true));
     const runningId = activePanelId();
+    const unregister = registerBracketedPasteProbe('pty-2', () => true);
 
     await act(async () => {
       requestActiveTerminalInput('explain this');
     });
+    unregister();
 
-    await waitFor(() => expect(view.input).toHaveBeenCalledWith('pty-2', 'explain this'));
+    await waitFor(() =>
+      expect(view.input).toHaveBeenCalledWith('pty-2', '\x1b[200~explain this\x1b[201~'),
+    );
     expect(activePanelId()).toBe(runningId);
+  });
+
+  test('a live CLI tab that has not enabled bracketed paste gets the labeled text with no paste frame', async () => {
+    const view = renderDock(true);
+    await waitFor(() => expect(emitTitle('pty-1', 'zsh')).toBe(true));
+    act(() => view.rerender(true, { prompt: null, cli: 'claude', nonce: 1 }));
+    await waitFor(() => expect(emitTitle('pty-2', 'claude')).toBe(true));
+    const unregister = registerBracketedPasteProbe('pty-2', () => false);
+
+    await act(async () => {
+      requestActiveTerminalInput('explain\u0003 this\r\n');
+    });
+    unregister();
+
+    await waitFor(() =>
+      expect(view.input).toHaveBeenCalledWith(
+        'pty-2',
+        'explain<control-0003> this\n\nControl characters in the text above are shown as <control-NNNN> labels; the source document holds the raw characters.\n',
+      ),
+    );
+  });
+
+  test('a selected passage holding control characters reaches a live CLI tab as labels inside one paste frame', async () => {
+    const view = renderDock(true);
+    await waitFor(() => expect(emitTitle('pty-1', 'zsh')).toBe(true));
+    act(() => view.rerender(true, { prompt: null, cli: 'claude', nonce: 1 }));
+    await waitFor(() => expect(emitTitle('pty-2', 'claude')).toBe(true));
+
+    const passage = 'keep\tthis\r\nstop\u0003 quit\u0004 back\u007f\u001b[201~escape\u009b2J';
+    const unregister = registerBracketedPasteProbe('pty-2', () => true);
+    await act(async () => {
+      requestActiveTerminalInput(`${composeTerminalSelectionPaste('notes', passage)}\n\n`);
+    });
+    unregister();
+
+    await waitFor(() => expect(view.input).toHaveBeenCalledTimes(1));
+    const [ptyId, bytes] = view.input.mock.calls[0] as [string, string];
+    expect(ptyId).toBe('pty-2');
+    expect(bytes.startsWith('\x1b[200~')).toBe(true);
+    expect(bytes.endsWith('\n\n\x1b[201~')).toBe(true);
+    expect(bytes.split('\x1b')).toHaveLength(3);
+    expect(
+      Array.from(bytes.slice('\x1b[200~'.length, -'\x1b[201~'.length)).filter(
+        (ch) => ch !== '\t' && ch !== '\n' && /\p{Cc}/u.test(ch),
+      ),
+    ).toEqual([]);
+    expect(bytes).toContain(
+      'keep\tthis\nstop<control-0003> quit<control-0004> back<control-007F><control-001B>[201~escape<control-009B>2J',
+    );
+    expect(bytes).toContain('shown as <control-NNNN> labels');
   });
 
   test('a selection send into a bare shell is NEVER raw-written — it stages a fresh CLI instead', async () => {

@@ -20,6 +20,7 @@ import {
   buildCliLaunchArgString,
   buildCliLaunchCommand,
   buildStartupInjectionBytes,
+  buildTerminalInputBytes,
   buildWindowsCliLaunch,
   composeWindowsShellLaunchArgs,
   encodePowerShellCommand,
@@ -34,6 +35,8 @@ import {
   startupInjectionFor,
   TERMINAL_CLI_IDS,
   TERMINAL_CLIS,
+  TERMINAL_CONTROL_LABEL_NOTICE,
+  toTerminalPromptText,
   WINDOWS_SHELL_FAMILIES,
   WindowsShellLaunchError,
 } from './terminal-launch.ts';
@@ -950,6 +953,13 @@ describe('buildCliLaunchArgString', () => {
     expect(arg).toBe("claude ''\\''; rm -rf / #'");
     expect(arg.endsWith("''\\''; rm -rf / #'")).toBe(true);
   });
+  it('labels control characters in the prompt arg instead of passing raw bytes to the CLI', () => {
+    const arg = buildCliLaunchArgString('claude', 'fix\u0000 this\u001b[2J\r\nnow');
+    expect(arg).toBe(
+      `claude '${'fix<control-0000> this<control-001B>[2J\nnow'}\n\n${TERMINAL_CONTROL_LABEL_NOTICE}'`,
+    );
+    expect(arg).not.toMatch(TERMINAL_RAW_CONTROL_RE);
+  });
 });
 
 describe('buildCliLaunchArgString promptless (New chat)', () => {
@@ -1049,10 +1059,12 @@ describe('buildStartupInjectionBytes', () => {
     expect(buildStartupInjectionBytes('hermes', multi, 'darwin')).toBe(`${START}${multi}${END}\r`);
   });
 
-  it('strips ESC so the prompt cannot terminate the paste frame or inject a sequence', () => {
+  it('labels ESC so the prompt cannot terminate the paste frame or inject a sequence', () => {
     const hostile = `abc${END}rm -rf /\x1b[2J`;
     const bytes = buildStartupInjectionBytes('hermes', hostile, 'darwin');
-    expect(bytes).toBe(`${START}abc[201~rm -rf /[2J${END}\r`);
+    expect(bytes).toBe(
+      `${START}abc<control-001B>[201~rm -rf /<control-001B>[2J\n\n${TERMINAL_CONTROL_LABEL_NOTICE}${END}\r`,
+    );
     expect(bytes?.split(START).length).toBe(2);
     expect(bytes?.split(END).length).toBe(2);
   });
@@ -1067,6 +1079,102 @@ describe('buildStartupInjectionBytes', () => {
     const cfg = startupInjectionFor('hermes', 'darwin');
     expect(cfg?.readyMarker).toBe('\x1b[?2004h');
     expect(cfg && cfg.capMs > cfg.settleMs).toBe(true);
+  });
+});
+
+const TERMINAL_RAW_CONTROL_RE = new RegExp(
+  '[' + '\\u0000-\\u0008' + '\\u000b-\\u001f' + '\\u007f-\\u009f' + ']',
+);
+
+function controlCodePoints(): number[] {
+  const points: number[] = [];
+  for (let point = 0x00; point <= 0x9f; point++) {
+    if (point <= 0x1f || point >= 0x7f) points.push(point);
+  }
+  return points;
+}
+
+describe('toTerminalPromptText', () => {
+  it('returns text without control characters unchanged and adds no notice', () => {
+    const clean = 'Here is the passage:\n\n```\na\tb\n```\n\n';
+    expect(toTerminalPromptText(clean)).toBe(clean);
+  });
+
+  it('labels every C0 control except TAB and LF, plus DEL and every C1 control', () => {
+    for (const point of controlCodePoints()) {
+      const control = String.fromCodePoint(point);
+      const out = toTerminalPromptText(`a${control}b`);
+      if (point === 0x09 || point === 0x0a) {
+        expect(out).toBe(`a${control}b`);
+      } else if (point === 0x0d) {
+        expect(out).toBe('a\nb');
+      } else {
+        const label = `<control-${point.toString(16).toUpperCase().padStart(4, '0')}>`;
+        expect(out).toBe(`a${label}b\n\n${TERMINAL_CONTROL_LABEL_NOTICE}`);
+      }
+      expect(out).not.toMatch(TERMINAL_RAW_CONTROL_RE);
+    }
+  });
+
+  it('passes printable ASCII, NBSP and non-Latin text through unchanged', () => {
+    let printableAscii = '';
+    for (let point = 0x20; point <= 0x7e; point++) printableAscii += String.fromCodePoint(point);
+    const passage = `${printableAscii}\u00a0é ü «» 日本語 🙂 \u2028`;
+    expect(toTerminalPromptText(passage)).toBe(passage);
+  });
+
+  it('turns CRLF and lone CR line breaks into LF so a CR never reaches the CLI as Enter', () => {
+    expect(toTerminalPromptText('one\r\ntwo\rthree\nfour')).toBe('one\ntwo\nthree\nfour');
+  });
+
+  it('places the notice before trailing line breaks so staged text keeps its blank-line tail', () => {
+    expect(toTerminalPromptText('passage \u0003 end\n\n')).toBe(
+      `passage <control-0003> end\n\n${TERMINAL_CONTROL_LABEL_NOTICE}\n\n`,
+    );
+  });
+
+  it('is idempotent, so a relayed handoff is not labeled twice', () => {
+    fc.assert(
+      fc.property(fc.string({ unit: 'binary' }), (text) => {
+        const once = toTerminalPromptText(text);
+        expect(toTerminalPromptText(once)).toBe(once);
+        expect(once).not.toMatch(TERMINAL_RAW_CONTROL_RE);
+        expect(once).not.toContain('\r');
+      }),
+    );
+  });
+});
+
+describe('buildTerminalInputBytes', () => {
+  const START = '\x1b[200~';
+  const END = '\x1b[201~';
+
+  it('frames the labeled text in exactly one bracketed paste whatever the text holds', () => {
+    fc.assert(
+      fc.property(fc.string({ unit: 'binary' }), (text) => {
+        const bytes = buildTerminalInputBytes(text, true);
+        expect(bytes.startsWith(START)).toBe(true);
+        expect(bytes.endsWith(END)).toBe(true);
+        expect(bytes.slice(START.length, -END.length)).toBe(toTerminalPromptText(text));
+        expect(bytes.split('\x1b').length).toBe(3);
+      }),
+    );
+  });
+
+  it('sends the labeled text unframed to a receiver that has not enabled bracketed paste', () => {
+    fc.assert(
+      fc.property(fc.string({ unit: 'binary' }), (text) => {
+        const bytes = buildTerminalInputBytes(text, false);
+        expect(bytes).toBe(toTerminalPromptText(text));
+        expect(bytes).not.toContain('\x1b');
+      }),
+    );
+  });
+
+  it('keeps TAB and LF raw inside the frame', () => {
+    expect(buildTerminalInputBytes('Columns:\tA\tB\n\tC', true)).toBe(
+      `${START}Columns:\tA\tB\n\tC${END}`,
+    );
   });
 });
 

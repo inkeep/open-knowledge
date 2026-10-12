@@ -198,6 +198,57 @@ describe('terminal creation waits for the renderer to subscribe', () => {
     expect(h.forked[0]?.posted.filter((m) => m.type === 'create')).toHaveLength(1);
   });
 
+  test('an adopted replay keeps bracketed paste on after the enable sequence scrolled out of the cap', () => {
+    const h = reserve({ replayCapBytes: 16 });
+    h.start();
+    const emit = (data: string) => h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data });
+    emit('\u001b[?20');
+    emit('04h');
+    emit('x'.repeat(40));
+    h.runTimers();
+    expect(h.start()).toEqual({ ok: true, replay: `\u001b[?2004h${'x'.repeat(16)}` });
+  });
+
+  test('a long private-mode list split across chunks still sets bracketed paste', () => {
+    const h = reserve({ replayCapBytes: 16 });
+    h.start();
+    const emit = (data: string) => h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data });
+    emit(`${'p'.repeat(40)}\u001b[?1000;1002;1003;1004;1005;1006;1015;10`);
+    emit(`16;2004h${'q'.repeat(40)}`);
+    h.runTimers();
+    expect(h.start()).toEqual({ ok: true, replay: `\u001b[?2004h${'q'.repeat(16)}` });
+  });
+
+  test('a sequence split right after its ESC byte still sets bracketed paste', () => {
+    const h = reserve({ replayCapBytes: 16 });
+    h.start();
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: `${'p'.repeat(40)}\u001b` });
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: `[?2004h${'q'.repeat(40)}` });
+    h.runTimers();
+    expect(h.start()).toEqual({ ok: true, replay: `\u001b[?2004h${'q'.repeat(16)}` });
+  });
+
+  test('an adopted replay carries no enable sequence once the CLI turned bracketed paste off', () => {
+    const disabled = reserve({ replayCapBytes: 16 });
+    disabled.start();
+    disabled.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: '\u001b[?1049;2004h' });
+    disabled.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: '\u001b[?2004l' });
+    disabled.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'y'.repeat(40) });
+    disabled.runTimers();
+    expect(disabled.start()).toEqual({ ok: true, replay: 'y'.repeat(16) });
+
+    const reset = reserve({ replayCapBytes: 16 });
+    reset.start();
+    reset.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: '\u001b[?2004h' });
+    reset.forked[0]?.emitMessage({
+      type: 'data',
+      ptyId: 'pty-1',
+      data: `\u001bc${'z'.repeat(40)}`,
+    });
+    reset.runTimers();
+    expect(reset.start()).toEqual({ ok: true, replay: 'z'.repeat(16) });
+  });
+
   test('delivers immediate output and exit in order without needing later input', () => {
     const h = reserve();
     const utility = h.forked[0];
