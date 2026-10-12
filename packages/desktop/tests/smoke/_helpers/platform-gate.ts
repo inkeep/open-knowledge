@@ -23,8 +23,6 @@ export function userDataDirFor(tmpHome: string): string {
 }
 
 export const SPEC_PLATFORM_GATES = {
-  '_nav-empty-840x600.e2e.ts': ['!PLATFORM_SUPPORTED'],
-  '_nav-size-screenshots.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'agent-patch-divergence-probe.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'background-throttle.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'cold-single-file-launch.e2e.ts': ['!DARWIN'],

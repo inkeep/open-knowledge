@@ -6,11 +6,14 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, test } from 'vitest';
 import { configureTestGitRepository } from '../test-support/configure-git-fixture.test-helper.ts';
 import { okVitestBase } from '../test-support/vitest.base.ts';
+import { ISSUE_URL_RULE } from './deviations/contract.mjs';
 import { gitCleanEnv } from './git-clean-env.mjs';
 import {
+  ALLOWANCE_FIELDS,
   ALLOWLIST_PATH,
   CONVENTION_DOC,
   EXPIRY_WARNING_DAYS,
+  expired,
   expiringSoon,
   KNOWN_BUG_TAG,
   listTestFiles,
@@ -1024,21 +1027,82 @@ describe('known-reds validation', () => {
       { owner: 'someone-else' },
       `known-bug pin has owner "someone-else", which is not one of ${OWNERS.join(', ')}`,
     ],
-    [{ issue: undefined }, 'known-bug pin has no issue link'],
+    [{ issue: undefined }, 'known-bug pin has no issue'],
     [
       { issue: 'inkeep/agents-private#1056' },
-      'known-bug pin has issue "inkeep/agents-private#1056", which is not a GitHub or Linear issue URL',
+      `known-bug pin has issue "inkeep/agents-private#1056", which is not ${ISSUE_URL_RULE}`,
     ],
-    [{ until: undefined }, 'known-bug pin has no until date'],
-    [{ until: '15/10/2026' }, 'known-bug pin has until "15/10/2026", which is not YYYY-MM-DD'],
-    [{ until: '2026-02-30' }, 'known-bug pin has until "2026-02-30", which is not a date'],
-    [{ until: '2026-09-30' }, 'known-bug pin expired on 2026-09-30'],
+    [{ until: undefined }, 'known-bug pin has no until'],
+    [
+      { until: '15/10/2026' },
+      'known-bug pin has until "15/10/2026", which is not a YYYY-MM-DD date',
+    ],
+    [
+      { until: '2026-02-30' },
+      'known-bug pin has until "2026-02-30", which is not a YYYY-MM-DD date',
+    ],
     [
       { until: '2026-12-31' },
       `known-bug pin has until 2026-12-31, beyond the ${MAX_HORIZON_DAYS}-day horizon (2026-12-30)`,
     ],
   ])('refuses %j', (fields, message) => {
     expect(messages(pinReport(fields))).toEqual([message]);
+  });
+
+  test('reports a pin past its until date instead of refusing it', () => {
+    const report = pinReport({ until: '2026-09-30' });
+    expect(messages(report)).toEqual([]);
+    expect(expired(report, { today: TODAY, allowlist: NO_ALLOWLIST })).toEqual([
+      {
+        kind: 'pin',
+        path: 'a.test.ts',
+        line: 1,
+        owner: 'get-main-green',
+        issue: ISSUE,
+        until: '2026-09-30',
+      },
+    ]);
+    expect(expired(pinReport({}), { today: TODAY, allowlist: NO_ALLOWLIST })).toEqual([]);
+  });
+
+  test('a pin dated its own day is neither expired nor refused', () => {
+    const report = pinReport({ until: TODAY });
+    expect(messages(report)).toEqual([]);
+    expect(expired(report, { today: TODAY, allowlist: NO_ALLOWLIST })).toEqual([]);
+  });
+
+  test('an expired pin with a malformed issue is still refused for the issue', () => {
+    expect(messages(pinReport({ until: '2026-09-30', issue: 'PRD-1' }))).toEqual([
+      `known-bug pin has issue "PRD-1", which is not ${ISSUE_URL_RULE}`,
+    ]);
+  });
+
+  test('reports an expired quarantine and an expired allowlist entry the same way', () => {
+    const report = {
+      ...pinReport({}),
+      quarantines: [
+        { path: 'q.test.ts', line: 4, issue: ISSUE, owner: 'get-main-green', until: '2026-09-01' },
+      ],
+    };
+    const allowlist = {
+      ciSkips: [
+        {
+          path: 'd.test.ts',
+          condition: 'CI',
+          issue: ISSUE,
+          owner: 'known-reds',
+          until: '2026-09-02',
+          reason: 'r',
+          exit: 'e',
+        },
+      ],
+    };
+    expect(
+      expired(report, { today: TODAY, allowlist }).map((row) => `${row.kind} ${row.until}`),
+    ).toEqual(['quarantine 2026-09-01', 'ci-skip-entry 2026-09-02']);
+    expect(
+      validate(report, { today: TODAY, allowlist }).map((violation) => violation.rule),
+    ).toEqual(['allowlist-stale']);
   });
 
   test(`lists what expires within ${EXPIRY_WARNING_DAYS} days, without failing it`, () => {
@@ -1054,13 +1118,28 @@ describe('known-reds validation', () => {
       ciSkips: [{ path: 'd.test.ts', condition: 'CI', owner: 'known-reds', until: '2026-10-02' }],
     };
     expect(expiringSoon(report, { today: TODAY, allowlist })).toEqual([
-      { kind: 'pin', path: 'a.test.ts', line: 1, owner: 'get-main-green', until: '2026-10-08' },
-      { kind: 'pin', path: 'b.test.ts', line: 2, owner: 'get-main-green', until: '2026-10-15' },
+      {
+        kind: 'pin',
+        path: 'a.test.ts',
+        line: 1,
+        owner: 'get-main-green',
+        issue: null,
+        until: '2026-10-08',
+      },
+      {
+        kind: 'pin',
+        path: 'b.test.ts',
+        line: 2,
+        owner: 'get-main-green',
+        issue: null,
+        until: '2026-10-15',
+      },
       {
         kind: 'ci-skip-entry',
         path: 'd.test.ts',
         line: null,
         owner: 'known-reds',
+        issue: null,
         until: '2026-10-02',
       },
     ]);
@@ -1164,7 +1243,7 @@ describe('known-reds validation', () => {
         { path: 'a.test.ts', line: 1, title: 't', issue: ISSUE, owner: 'get-main-green' },
       ],
     };
-    expect(messages(report)).toEqual(['quarantine has no until date']);
+    expect(messages(report)).toEqual(['quarantine has no until']);
   });
 
   test('refuses an environment early return', () => {
@@ -1191,9 +1270,11 @@ describe('known-reds validation', () => {
     const entry = {
       path: skip.path,
       condition: skip.condition,
+      issue: ISSUE,
       owner: 'known-reds',
       until: '2026-11-01',
       reason: 'skips the whole file on CI',
+      exit: 'run the file on CI, then delete this entry',
     };
     const report = { ...pinReport({}), pins: [], ciSkips: [skip] };
     const ruleNames = (allowlist) =>
@@ -1203,8 +1284,18 @@ describe('known-reds validation', () => {
       expect(ruleNames(NO_ALLOWLIST)).toEqual(['ci-skip']);
     });
 
-    test('accepts a listed, owned, dated CI skip', () => {
+    test('accepts a listed CI skip that carries all five fields', () => {
+      expect(ALLOWANCE_FIELDS).toEqual(['issue', 'owner', 'until', 'reason', 'exit']);
       expect(ruleNames({ ciSkips: [entry] })).toEqual([]);
+    });
+
+    test.each(ALLOWANCE_FIELDS)('refuses an entry without %s, by exactly that field', (field) => {
+      const { [field]: _dropped, ...missing } = entry;
+      expect(
+        validate(report, { today: TODAY, allowlist: { ciSkips: [missing] } }).map(
+          (violation) => violation.message,
+        ),
+      ).toEqual([`entry ${entry.path} has no ${field}`]);
     });
 
     test('permits exactly one site per entry', () => {
@@ -1222,17 +1313,24 @@ describe('known-reds validation', () => {
       ).toEqual(['ci-skip', 'allowlist-stale']);
     });
 
-    test('refuses a stale, expired, unowned or unexplained entry', () => {
+    test('refuses a stale, unowned or unexplained entry, a whitespace-only reason included', () => {
       expect(
         validate({ ...report, ciSkips: [] }, { today: TODAY, allowlist: { ciSkips: [entry] } }).map(
           (violation) => violation.rule,
         ),
       ).toEqual(['allowlist-stale']);
-      expect(ruleNames({ ciSkips: [{ ...entry, until: '2026-09-01' }] })).toEqual([
-        'allowlist-fields',
-      ]);
       expect(ruleNames({ ciSkips: [{ ...entry, owner: 'nobody' }] })).toEqual(['allowlist-fields']);
       expect(ruleNames({ ciSkips: [{ ...entry, reason: '' }] })).toEqual(['allowlist-fields']);
+      expect(ruleNames({ ciSkips: [{ ...entry, reason: ' \t ' }] })).toEqual(['allowlist-fields']);
+      expect(ruleNames({ ciSkips: [{ ...entry, exit: '  ' }] })).toEqual(['allowlist-fields']);
+    });
+
+    test('reports an expired entry and still consumes its site', () => {
+      const lapsed = { ...entry, until: '2026-09-01' };
+      expect(ruleNames({ ciSkips: [lapsed] })).toEqual([]);
+      expect(
+        expired(report, { today: TODAY, allowlist: { ciSkips: [lapsed] } }).map((row) => row.kind),
+      ).toEqual(['ci-skip-entry']);
     });
   });
 });
@@ -1325,7 +1423,8 @@ describe('known-reds through its real invocation', () => {
     });
     expect(run.status).toBe(1);
     const feed = JSON.parse(run.stdout);
-    expect(feed.schemaVersion).toBe(3);
+    expect(feed.schemaVersion).toBe(4);
+    expect(feed.expired).toEqual([]);
     expect(feed.files).toBe(4);
     expect(feed.violations.map((violation) => violation.rule)).toEqual(
       expect.arrayContaining(['pin-retries', 'ci-skip', 'early-return']),
@@ -1353,6 +1452,7 @@ describe('known-reds through its real invocation', () => {
             path: 'packages/server/src/expiring.test.ts',
             line: 4,
             owner: 'get-main-green',
+            issue: ISSUE,
             until: soon,
           },
         ]),
@@ -1401,6 +1501,75 @@ describe('known-reds through its real invocation', () => {
     } finally {
       rmSync(notARepo, { recursive: true, force: true });
     }
+  });
+});
+
+describe('an expired date through the real invocation', () => {
+  const yesterday = new Date(Date.parse(`${todayUtc()}T00:00:00Z`) - 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const treeWith = (until) => {
+    const root = mkdtempSync(join(tmpdir(), 'ok-known-reds-expiry-'));
+    const file = join(root, 'packages/server/src/lapsed.test.ts');
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(
+      file,
+      vitestPin({ meta: `{ issue: '${ISSUE}', owner: 'get-main-green', until: '${until}' }` }),
+    );
+    const init = spawnSync('git', ['init', '-q'], {
+      cwd: root,
+      env: gitCleanEnv(),
+      windowsHide: true,
+      encoding: 'utf8',
+    });
+    if (init.status === 0) configureTestGitRepository(root);
+    return { root, init };
+  };
+  const roots = [];
+  afterAll(() => {
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
+  });
+  const run = (until, args) => {
+    const { root, init } = treeWith(until);
+    roots.push(root);
+    expect(init.status).toBe(0);
+    return spawnSync(process.execPath, [SCRIPT, ...args, '--root', root], {
+      encoding: 'utf8',
+      env: gitCleanEnv(),
+      windowsHide: true,
+    });
+  };
+
+  test('a pin past its until exits 0, and the feed and the listing report it', () => {
+    const json = run(yesterday, ['--json']);
+    expect(json.status, json.stderr).toBe(0);
+    const feed = JSON.parse(json.stdout);
+    expect(feed.files).toBe(1);
+    expect(feed.pins.map((pin) => pin.until)).toEqual([yesterday]);
+    expect(feed.violations).toEqual([]);
+    expect(feed.expired).toEqual([
+      {
+        kind: 'pin',
+        path: 'packages/server/src/lapsed.test.ts',
+        line: 4,
+        owner: 'get-main-green',
+        issue: ISSUE,
+        until: yesterday,
+      },
+    ]);
+    const listing = run(yesterday, []);
+    expect(listing.status, listing.stderr).toBe(0);
+    expect(listing.stdout).toContain(
+      `Expired, reported and not failed (1)\n  pin  packages/server/src/lapsed.test.ts:4  owner get-main-green, until ${yesterday}, issue ${ISSUE}`,
+    );
+  });
+
+  test('the same pin with a date that is not a real day exits 1', () => {
+    const json = run('2026-02-30', ['--json']);
+    expect(json.status).toBe(1);
+    expect(JSON.parse(json.stdout).violations.map((violation) => violation.message)).toEqual([
+      'known-bug pin has until "2026-02-30", which is not a YYYY-MM-DD date',
+    ]);
   });
 });
 
@@ -1466,6 +1635,7 @@ describe('known-reds on this tree', () => {
       `no more than ${MAX_HORIZON_DAYS} days away`,
       `at least ${MIN_SIGNATURE_LITERAL} literal characters in a row`,
       `Expiring within ${EXPIRY_WARNING_DAYS} days`,
+      'Expired, reported and not failed',
       `(\`schemaVersion\` ${SCHEMA_VERSION})`,
     ]) {
       expect(doc, `${CONVENTION_DOC} must mention ${cited}`).toContain(cited);

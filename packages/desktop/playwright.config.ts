@@ -24,12 +24,6 @@ import { ONE_LAUNCH_AND_ITS_READINESS_VERDICT_MS } from './tests/smoke/_helpers/
 export default defineConfig({
   testDir: './tests/smoke',
   testMatch: /.*\.e2e\.ts$/,
-  // Underscore-prefixed `_*.e2e.ts` are dev-only screenshot/utility scripts
-  // (opt-in via OK_DESKTOP_E2E_SMOKE=1). They produce no assertions and exist
-  // to capture rendered Electron output for visual comparison during design
-  // iteration. Excluding them at the matcher level codifies the convention:
-  // CI never runs them even if the smoke env var leaks in.
-  testIgnore: ['**/_*.e2e.ts'],
   timeout: process.env.CI ? 150_000 : ONE_LAUNCH_AND_ITS_READINESS_VERDICT_MS,
   // Retries for CI macOS runner flake. Tests that hang or time out from
   // runner-load contention (Electron Helper XPC delays, slow loadFile

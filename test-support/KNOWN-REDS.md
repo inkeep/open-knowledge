@@ -45,7 +45,7 @@ test(
 - `owner` is one of the owners listed in `scripts/known-reds.mjs`.
 - `until` is a date no more than 90 days away.
 
-When the date passes, the guard fails. Either fix the bug, or move the date and record why on the issue. The listing shows every pin, quarantine and allowlist entry under "Expiring within 14 days" before that happens.
+A date that has passed does not fail the guard: `pnpm known-reds` lists the entry under "Expired, reported and not failed" and in the feed's `expired`, and the owner either fixes the bug, or moves the date and records why on the issue. A missing or malformed field, or a date more than 90 days away on the day the guard runs, still fails. The listing shows every pin, quarantine and allowlist entry under "Expiring within 14 days" before its date passes.<br>_[Recorded 2026-10-12 post-ship: before 2026-10-12 this passage read "When the date passes, the guard fails", so a pin or quarantine past its `until` turned the guard red on that date alone; the owner's decisions Q52 and 8A made a passed date reported and not failed.]_
 
 **Never use** `test.fails`, `{ fails: true }` or Playwright's `test.fail()`. Each accepts any failure, including one that has nothing to do with the bug.
 
@@ -75,7 +75,7 @@ Never `return` early from a test body on an environment condition, such as the p
 
 A test in the uncached tier (`*.uncached.test.*`) may not skip at all. That tier fails any run in which a test did not execute, and prints the rule for such tests (`test-support/uncached-tier-floor.ts`).
 
-A skip keyed on CI (`process.env.CI`, `IS_CI` and the like) hides the test from the run that gates merges. It fails the guard unless `scripts/known-reds-allowlist.json` lists it with an owner, a date and a reason. Prefer to key the skip on the missing capability instead.
+A skip keyed on CI (`process.env.CI`, `IS_CI` and the like) hides the test from the run that gates merges. It fails the guard unless `scripts/known-reds-allowlist.json` lists it with an `issue`, an `owner`, an `until` date, a `reason` and an `exit` (what removes it), each non-blank, the same five fields as any other temporary gate exception. An entry past its date is reported, not failed. Prefer to key the skip on the missing capability instead.<br>_[Recorded 2026-10-12 post-ship: before 2026-10-12 an allowlist entry needed only an owner, a date and a reason, with an optional `issue`, and one past its date failed the guard; the owner's decisions Q52 and 8A made a passed date reported and not failed, and 8A made `issue` required and added `exit`.]_
 
 The guard follows a condition through names declared in the same file: a renamed or destructured `process.env`, a destructured `CI`, a constant key, a helper that takes no arguments and whose body is a single return expression, and `isCI` from `ci-info`. Anything else, such as a helper imported from another file, a longer helper body, a rest element or a nested destructuring, is labelled `unknown` and listed under "Gates with a condition the scanner cannot read", where a reviewer has to check it.
 
@@ -87,6 +87,9 @@ Use `test.todo('title')`.
 
 - `pnpm known-reds` prints the pins, the quarantines and the CI-keyed skips.
 - `--all` adds every test that does not run, every environment gate, and each gate whose condition the scanner cannot read. Without it, those groups show only their counts.
-- `--json` prints the full feed (`schemaVersion` 3). Beyond the listing, it carries:
+- `--json` prints the full feed (`schemaVersion` 4).<br>_[Recorded 2026-10-12 post-ship: before 2026-10-12 the feed was `schemaVersion` 3, carried no `expired` list and reported a passed date as a `violation`; the owner's decisions Q52 and 8A made a passed date reported and not failed, which version 4's `expired` carries.]_
+
+  Beyond the listing, it carries:
+  - `expired` and `expiringSoon`: each pin, quarantine and allowlist entry past its `until`, or due within 14 days, with its owner and issue. An expired date is never a `violation`.
   - `atoms` on each CI skip and environment gate: the facts its condition reads, following each name to the declaration visible where the gate sits. Each is `{ kind, name, text }`, and `kind` is `platform`, `arch`, `uid`, `env`, `ci`, `fs`, `import`, `runtime` or `unknown`. `runtime` is a resolved read of `process.versions` or `process.release`, which keeps its full name, or of an `os` function with no narrower kind. `unknown` is anything the scanner cannot resolve, such as a helper imported from another file; the receiver and arguments of an unresolved call are still read, so `isTerminalPlatform(process.platform)` yields `unknown` and `platform`, and `process.env.DIR?.trim()` yields `unknown` and `env`.
   - `titles` on every pin and quarantine, and on each other entry scoped to a test or describe: the enclosing describe titles, ending with the entry's own declaration title, so a describe-scoped gate ends with its describe's title. A title that is not a string literal appears as `{ nonLiteral: <source> }`.

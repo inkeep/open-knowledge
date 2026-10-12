@@ -3,7 +3,16 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  HORIZON_DAYS,
+  horizonProblem,
+  reviewState,
+  todayUtc,
+  trackingProblems,
+} from './deviations/contract.mjs';
 import { gitCleanEnv } from './git-clean-env.mjs';
+
+export { todayUtc };
 
 const ts = createRequire(import.meta.url)('typescript');
 
@@ -11,11 +20,11 @@ export const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const ALLOWLIST_PATH = fileURLToPath(
   new URL('./known-reds-allowlist.json', import.meta.url),
 );
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 export const KNOWN_BUG_TAG = 'known-bug';
 export const QUARANTINE_TAG = 'quarantine';
 export const OWNERS = Object.freeze(['get-main-green', 'known-reds']);
-export const MAX_HORIZON_DAYS = 90;
+export const MAX_HORIZON_DAYS = HORIZON_DAYS;
 export const EXCLUDED_PREFIXES = Object.freeze(['reports/', 'specs/']);
 export const CONVENTION_DOC = 'test-support/KNOWN-REDS.md';
 export const MIN_SIGNATURE_LITERAL = 4;
@@ -23,10 +32,6 @@ export const EXPIRY_WARNING_DAYS = 14;
 
 const TEST_FILE = /\.test\.[cm]?[jt]sx?$|\.e2e\.tsx?$|\.test-helper\.[cm]?[jt]sx?$/;
 const PLAYWRIGHT_FILE = /\.e2e\.tsx?$/;
-const ISSUE_URL =
-  /^https:\/\/(?:github\.com\/inkeep\/[\w.-]+\/issues\/\d+|linear\.app\/inkeep\/issue\/[A-Z]+-\d+(?:\/[\w-]*)?)$/;
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const DAY_MS = 86_400_000;
 const RUNNER_KINDS = new Map([
   ['test', 'test'],
   ['it', 'test'],
@@ -58,6 +63,7 @@ const CI_IDENTIFIERS = new Set(['CI', 'IS_CI', 'isCI', 'isCi', 'ON_CI', 'onCI', 
 const CI_INFO_MODULE = 'ci-info';
 const CI_INFO_FLAG = 'isCI';
 const FIELDS = ['issue', 'owner', 'until'];
+export const ALLOWANCE_FIELDS = Object.freeze(['issue', 'owner', 'until', 'reason', 'exit']);
 
 function scriptKind(path) {
   if (path.endsWith('.tsx')) return ts.ScriptKind.TSX;
@@ -1552,37 +1558,10 @@ export function scanTree(root) {
   return report;
 }
 
-export function todayUtc(now = new Date()) {
-  return now.toISOString().slice(0, 10);
-}
-
-function addDays(day, days) {
-  return new Date(Date.parse(`${day}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
-}
-
-function dateProblem(until, today) {
-  if (!until) return 'has no until date';
-  if (!ISO_DATE.test(until)) return `has until "${until}", which is not YYYY-MM-DD`;
-  const time = Date.parse(`${until}T00:00:00Z`);
-  if (Number.isNaN(time) || new Date(time).toISOString().slice(0, 10) !== until)
-    return `has until "${until}", which is not a date`;
-  if (until < today) return `expired on ${until}`;
-  const horizon = addDays(today, MAX_HORIZON_DAYS);
-  if (until > horizon)
-    return `has until ${until}, beyond the ${MAX_HORIZON_DAYS}-day horizon (${horizon})`;
-  return null;
-}
-
-function trackedProblems(entry, today, { needsIssue }) {
-  const problems = [];
-  if (needsIssue && !entry.issue) problems.push('has no issue link');
-  if (entry.issue && !ISSUE_URL.test(entry.issue))
-    problems.push(`has issue "${entry.issue}", which is not a GitHub or Linear issue URL`);
-  if (!entry.owner) problems.push('has no owner');
-  else if (!OWNERS.includes(entry.owner))
-    problems.push(`has owner "${entry.owner}", which is not one of ${OWNERS.join(', ')}`);
-  const date = dateProblem(entry.until, today);
-  if (date) problems.push(date);
+function trackedProblems(entry, today, required) {
+  const problems = trackingProblems(entry, { required, owners: OWNERS });
+  const beyond = horizonProblem(entry.until, today);
+  if (beyond) problems.push(beyond);
   return problems;
 }
 
@@ -1597,7 +1576,7 @@ export function loadAllowlist(path = ALLOWLIST_PATH) {
 export function validate(report, { today, allowlist }) {
   const violations = [...report.problems];
   for (const pin of report.pins) {
-    for (const message of trackedProblems(pin, today, { needsIssue: true })) {
+    for (const message of trackedProblems(pin, today, FIELDS)) {
       violations.push({
         path: pin.path,
         line: pin.line,
@@ -1607,7 +1586,7 @@ export function validate(report, { today, allowlist }) {
     }
   }
   for (const quarantine of report.quarantines) {
-    for (const message of trackedProblems(quarantine, today, { needsIssue: true })) {
+    for (const message of trackedProblems(quarantine, today, FIELDS)) {
       violations.push({
         path: quarantine.path,
         line: quarantine.line,
@@ -1651,13 +1630,7 @@ export function validate(report, { today, allowlist }) {
         message: `entry ${entry.path} (${entry.condition}) matches no CI-keyed skip; remove it`,
       });
     }
-    if (!entry.reason)
-      violations.push({
-        ...where,
-        rule: 'allowlist-fields',
-        message: `entry ${entry.path} has no reason`,
-      });
-    for (const message of trackedProblems(entry, today, { needsIssue: false })) {
+    for (const message of trackedProblems(entry, today, ALLOWANCE_FIELDS)) {
       violations.push({
         ...where,
         rule: 'allowlist-fields',
@@ -1668,25 +1641,32 @@ export function validate(report, { today, allowlist }) {
   return violations;
 }
 
-export function expiringSoon(report, { today, allowlist }) {
-  const limit = addDays(today, EXPIRY_WARNING_DAYS);
-  const due = (entry) =>
-    typeof entry.until === 'string' &&
-    ISO_DATE.test(entry.until) &&
-    entry.until >= today &&
-    entry.until <= limit;
+function trackedRows(report, allowlist, keep) {
   const row = (kind) => (entry) => ({
     kind,
     path: entry.path,
     line: entry.line ?? null,
     owner: entry.owner ?? null,
+    issue: entry.issue ?? null,
     until: entry.until,
   });
   return [
-    ...report.pins.filter(due).map(row('pin')),
-    ...report.quarantines.filter(due).map(row('quarantine')),
-    ...allowlist.ciSkips.filter(due).map(row('ci-skip-entry')),
+    ...report.pins.filter(keep).map(row('pin')),
+    ...report.quarantines.filter(keep).map(row('quarantine')),
+    ...allowlist.ciSkips.filter(keep).map(row('ci-skip-entry')),
   ];
+}
+
+export function expiringSoon(report, { today, allowlist }) {
+  return trackedRows(
+    report,
+    allowlist,
+    (entry) => reviewState(entry.until, today, { soonDays: EXPIRY_WARNING_DAYS }) === 'due-soon',
+  );
+}
+
+export function expired(report, { today, allowlist }) {
+  return trackedRows(report, allowlist, (entry) => reviewState(entry.until, today) === 'expired');
 }
 
 const EXPIRING_KIND_LABELS = {
@@ -1695,7 +1675,7 @@ const EXPIRING_KIND_LABELS = {
   'ci-skip-entry': 'allowlisted CI skip',
 };
 
-export function render(report, violations, upcoming, today, { all }) {
+export function render(report, violations, upcoming, today, { all, lapsed = [] }) {
   const lines = [
     `Known reds in open-knowledge on ${today}: ${report.files} test files scanned.`,
     '',
@@ -1754,6 +1734,12 @@ export function render(report, violations, upcoming, today, { all }) {
       `${EXPIRING_KIND_LABELS[row.kind] ?? row.kind}  ${row.path}${row.line === null ? '' : `:${row.line}`}  owner ${row.owner ?? '?'}, until ${row.until}`,
   );
   section(
+    'Expired, reported and not failed',
+    lapsed,
+    (row) =>
+      `${EXPIRING_KIND_LABELS[row.kind] ?? row.kind}  ${row.path}${row.line === null ? '' : `:${row.line}`}  owner ${row.owner ?? '?'}, until ${row.until}, issue ${row.issue ?? 'none'}`,
+  );
+  section(
     'Violations',
     violations,
     (row) => `${row.path}:${row.line}  [${row.rule}]  ${row.message}`,
@@ -1775,13 +1761,14 @@ function main(argv) {
     const allowlist = loadAllowlist();
     const violations = validate(report, { today, allowlist });
     const upcoming = expiringSoon(report, { today, allowlist });
+    const lapsed = expired(report, { today, allowlist });
     if (argv.includes('--json')) {
       process.stdout.write(
-        `${JSON.stringify({ ...report, today, expiringSoon: upcoming, violations }, null, 2)}\n`,
+        `${JSON.stringify({ ...report, today, expiringSoon: upcoming, expired: lapsed, violations }, null, 2)}\n`,
       );
     } else {
       process.stdout.write(
-        render(report, violations, upcoming, today, { all: argv.includes('--all') }),
+        render(report, violations, upcoming, today, { all: argv.includes('--all'), lapsed }),
       );
     }
     process.exitCode = violations.length > 0 ? 1 : 0;
