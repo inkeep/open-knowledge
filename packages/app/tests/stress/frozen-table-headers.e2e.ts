@@ -475,6 +475,36 @@ test('a document height change keeps the frozen header on its existing animation
   expect(sameAnimations).toBe(true);
 });
 
+test('a browser that rejects ViewTimeline construction still pins the header', async ({
+  page,
+  api,
+  workerServer,
+}) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { ViewTimeline?: unknown; __okViewTimelineThrows: number };
+    w.__okViewTimelineThrows = 0;
+    w.ViewTimeline = class {
+      constructor() {
+        w.__okViewTimelineThrows++;
+        throw new TypeError('ViewTimeline is not supported');
+      }
+    };
+  });
+  await api.seedDocs([{ name: 'frozen-hdr-long-vt-reject', markdown: LONG_TABLE_MARKDOWN }]);
+  await page.goto(`${workerServer.baseURL}/#/frozen-hdr-long-vt-reject`);
+  await waitForActiveProviderSynced(page);
+  await page.locator('table').first().waitFor({ state: 'visible' });
+  await waitForQuiescence(page, SCROLL_SELECTOR);
+  const state = await scrollAndReadFreeze(page, 260);
+  expect(state.frozen).toBe(true);
+  expect(state.pinErrorPx).toBeLessThan(2);
+  if (state.syncShiftErrorPx !== null) expect(state.syncShiftErrorPx).toBeLessThan(1.5);
+  const throws = await page.evaluate(
+    () => (window as unknown as { __okViewTimelineThrows: number }).__okViewTimelineThrows,
+  );
+  expect(throws).toBe(1);
+});
+
 test('header row stays pinned on deep scroll and releases past the table', async ({
   page,
   api,
