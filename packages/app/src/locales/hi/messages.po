@@ -8938,6 +8938,12 @@ msgstr "मिरर स्रोत <0>api-spec</0>"
 msgid "Missing"
 msgstr "अनुपस्थित"
 
+#. placeholder {0}: error.slots.length
+#. placeholder {1}: error.slots.join(', ')
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Missing {0} slot(s): {1}"
+msgstr "गायब रंग स्लॉट ({0}): {1}"
+
 #: src/components/FeedbackForm.tsx
 msgid "Missing a feature"
 msgstr "एक सुविधा अनुपस्थित"
@@ -9934,6 +9940,11 @@ msgstr "इनमें से किसी भी समस्या का क
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Not a base16 theme"
 msgstr "यह base16 थीम नहीं है"
+
+#. placeholder {0}: error.slots.join(', ')
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Not a hex color: {0}"
+msgstr "हेक्स रंग नहीं: {0}"
 
 #: src/components/SkillConsentRow.tsx
 msgid "Not added to any AI tool yet."
@@ -14703,6 +14714,15 @@ msgstr "यह पूरा नहीं हुआ। सर्वर लॉग 
 msgid "That document didn't open in time. Try again once it has synced."
 msgstr "वह दस्तावेज़ समय पर नहीं खुला। सिंक होने के बाद फिर से कोशिश करें।"
 
+#. placeholder {0}: error.line
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That doesn’t parse as YAML or JSON — check line {0}."
+msgstr "यह YAML या JSON के रूप में पार्स नहीं हो रहा है — पंक्ति {0} जाँचें।"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That doesn’t parse as YAML or JSON."
+msgstr "यह YAML या JSON के रूप में पार्स नहीं हो रहा है।"
+
 #: src/components/settings/SearchSection.tsx
 msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for loopback endpoints."
 msgstr "वह एंडपॉइंट उपयोग नहीं किया जा सकता। कोई https:// URL डालें — http:// केवल लूपबैक एंडपॉइंट के लिए अनुमत है।"
@@ -14731,6 +14751,10 @@ msgstr "वह भाषा वर्तनी जाँच के लिए उ
 #: src/components/acp/ThreadView.tsx
 msgid "That message already went out — your edit wasn't applied."
 msgstr "वह संदेश पहले ही भेजा जा चुका है — आपका संपादन लागू नहीं हुआ।"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That parsed, but it isn’t a base16 theme."
+msgstr "यह पार्स हो गया, लेकिन यह base16 थीम नहीं है।"
 
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx

@@ -8942,6 +8942,12 @@ msgstr "مصدر المرآة <0>api-spec</0>"
 msgid "Missing"
 msgstr "مفقود"
 
+#. placeholder {0}: error.slots.length
+#. placeholder {1}: error.slots.join(', ')
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Missing {0} slot(s): {1}"
+msgstr "خانات الألوان المفقودة ({0}): {1}"
+
 #: src/components/FeedbackForm.tsx
 msgid "Missing a feature"
 msgstr "ينقصه ميزة"
@@ -9938,6 +9944,11 @@ msgstr "لا يوجد لأي من هذه المشكلات إصلاح تلقائ�
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Not a base16 theme"
 msgstr "ليست سمة base16"
+
+#. placeholder {0}: error.slots.join(', ')
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Not a hex color: {0}"
+msgstr "ليست قيمة لون بالنظام الست عشري: {0}"
 
 #: src/components/SkillConsentRow.tsx
 msgid "Not added to any AI tool yet."
@@ -14707,6 +14718,15 @@ msgstr "لم تكتمل العملية. راجع سجلات الخادم ثم أ
 msgid "That document didn't open in time. Try again once it has synced."
 msgstr "لم يُفتح ذلك المستند في الوقت المناسب. حاول مرة أخرى بعد اكتمال المزامنة."
 
+#. placeholder {0}: error.line
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That doesn’t parse as YAML or JSON — check line {0}."
+msgstr "لا يمكن تحليل هذا بتنسيق YAML أو JSON — تحقق من السطر {0}."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That doesn’t parse as YAML or JSON."
+msgstr "لا يمكن تحليل هذا بتنسيق YAML أو JSON."
+
 #: src/components/settings/SearchSection.tsx
 msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for loopback endpoints."
 msgstr "لا يمكن استخدام نقطة النهاية تلك. أدخل رابط https:// — لا يُسمح بـ http:// إلا لنقاط نهاية loopback."
@@ -14735,6 +14755,10 @@ msgstr "هذه اللغة غير متاحة للتدقيق الإملائي."
 #: src/components/acp/ThreadView.tsx
 msgid "That message already went out — your edit wasn't applied."
 msgstr "تلك الرسالة أُرسلت بالفعل — لم يُطبَّق تعديلك."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That parsed, but it isn’t a base16 theme."
+msgstr "تم التحليل، لكن هذه ليست سمة base16."
 
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx

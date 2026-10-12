@@ -10,6 +10,8 @@ import {
   base16ToYaml,
   parseBase16Scheme,
 } from '@inkeep/open-knowledge-core/theme/base16';
+import type { MessageDescriptor } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react/macro';
 import { ArrowUpRight } from 'lucide-react';
 import { useTheme } from 'next-themes';
@@ -584,19 +586,19 @@ function ColorWorkbench({
   );
 }
 
-type Translate = ReturnType<typeof useLingui>['t'];
+type Translate = (message: MessageDescriptor) => string;
 
-function describeParseError(error: Base16ParseError, t: Translate): string {
+function describeParseError(error: Base16ParseError, translate: Translate): string {
   switch (error.kind) {
     case 'unparseable':
       return error.line === undefined
-        ? t`That doesn’t parse as YAML or JSON.`
-        : t`That doesn’t parse as YAML or JSON — check line ${error.line}.`;
+        ? translate(msg`That doesn’t parse as YAML or JSON.`)
+        : translate(msg`That doesn’t parse as YAML or JSON — check line ${error.line}.`);
     case 'not-a-scheme':
-      return t`That parsed, but it isn’t a base16 theme.`;
+      return translate(msg`That parsed, but it isn’t a base16 theme.`);
     case 'missing-slots':
-      return t`Missing ${error.slots.length} slot(s): ${error.slots.join(', ')}`;
+      return translate(msg`Missing ${error.slots.length} slot(s): ${error.slots.join(', ')}`);
     case 'bad-hex':
-      return t`Not a hex color: ${error.slots.join(', ')}`;
+      return translate(msg`Not a hex color: ${error.slots.join(', ')}`);
   }
 }

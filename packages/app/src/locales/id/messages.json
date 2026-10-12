@@ -57,6 +57,7 @@
     ],
     "-rMxuf": ["Agen kehabisan memori."],
     "-slrNR": ["Menyalakan atau mematikan daftar tugas."],
+    "-u0gMq": ["Ini tidak dapat diurai sebagai YAML atau JSON — periksa baris ", ["0"], "."],
     "-uaQnI": ["Tidak ada worktree atau cabang yang cocok."],
     "-yOx8u": ["Menyimpan perubahan…"],
     "-yPBXI": ["Pilih berkas"],
@@ -1755,6 +1756,7 @@
     "I5AfhE": ["Status sinkronisasi tidak tersedia — server tidak dapat dihubungi."],
     "I6gXOa": ["Jalur"],
     "I7Exsw": ["Ikuti kami di X"],
+    "I7F-p1": ["Slot warna yang belum ada (", ["0"], "): ", ["1"]],
     "I7y_vn": ["Jalankan ulang audit proyek"],
     "IA1wNb": [
       "Aplikasi Claude Desktop tidak membuka berkasnya. Apakah ia terpasang? (",
@@ -2646,6 +2648,7 @@
       " ini sudah dipindahkan, diganti nama, atau dihapus di salinan lokal Anda, dan perubahan itu belum tersinkron."
     ],
     "S-7ej_": ["Komentar itu tidak bisa ditandai untuk dikirim."],
+    "S1sFIQ": ["Ini tidak dapat diurai sebagai YAML atau JSON."],
     "S33tz3": ["Tidak terhubung"],
     "S3qu11": ["Itu hanya percobaan atau proyek sekali pakai"],
     "S48xcO": ["tertunda"],
@@ -4093,6 +4096,7 @@
       "\" ada, tetapi dikecualikan oleh .gitignore atau .okignore. Sertakan kembali file itu, atau foldernya, dengan aturan \"!\" di .okignore."
     ],
     "gtEbeW": ["Sorotan"],
+    "gtuaAV": ["Berhasil diurai, tetapi ini bukan tema base16."],
     "guidance.mcp.managed-file": [
       "Menulis berkas jembatan kecil yang dimuat ",
       ["agent"],
@@ -4836,6 +4840,7 @@
     "ni5Vqi": ["(nama folder saja memerlukan /** setelahnya agar cocok dengan isinya)"],
     "njBeMm": ["Keduanya"],
     "njU86j": ["Properti \"", ["trimmed"], "\" sudah ada"],
+    "nlVYlU": ["Bukan warna heksa: ", ["0"]],
     "nmwqWS": ["Belum dijawab"],
     "nnhrHd": [
       "Kecualikan tautan rusak yang ditulis di dalam log.md atau log.mdx pada kedalaman folder mana pun dari Masalah, indikator penjelajah file, diagnostik editor, audit, dan saran penulisan agen. Yang menentukan adalah file tempat tautan ditulis, bukan file yang dituju, dan LOG.md adalah dokumen biasa. Panel Tautan dan editor tetap menampilkannya."

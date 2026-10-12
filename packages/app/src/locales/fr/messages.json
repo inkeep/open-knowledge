@@ -75,6 +75,11 @@
     ],
     "-rMxuf": ["L'agent a manqué de mémoire."],
     "-slrNR": ["Bascule une liste de tâches."],
+    "-u0gMq": [
+      "Ce contenu ne peut pas être analysé comme du YAML ou du JSON — vérifiez la ligne ",
+      ["0"],
+      "."
+    ],
     "-uaQnI": ["Aucun worktree ni branche correspondant."],
     "-yOx8u": ["Enregistrement des modifications…"],
     "-yPBXI": ["Choisir un fichier"],
@@ -2040,6 +2045,7 @@
     "I5AfhE": ["État de synchronisation indisponible — serveur injoignable."],
     "I6gXOa": ["Chemin"],
     "I7Exsw": ["Suivez-nous sur X"],
+    "I7F-p1": ["Emplacements de couleur manquants (", ["0"], ") : ", ["1"]],
     "I7y_vn": ["Relancer l'audit du projet"],
     "IA1wNb": [
       "L'application Claude Desktop n'a pas ouvert le fichier. Est-elle installée ? (",
@@ -3066,6 +3072,7 @@
       " a été déplacé, renommé ou supprimé dans votre copie locale, et ce changement n'est pas encore synchronisé."
     ],
     "S-7ej_": ["Impossible de marquer ce commentaire pour envoi."],
+    "S1sFIQ": ["Ce contenu ne peut pas être analysé comme du YAML ou du JSON."],
     "S33tz3": ["Non connecté"],
     "S3qu11": ["C'était un essai ou un projet ponctuel"],
     "S48xcO": ["en attente"],
@@ -4807,6 +4814,7 @@
       " » existe, mais .gitignore ou .okignore l’exclut. Réincluez-la, ou son dossier, avec une règle « ! » dans .okignore."
     ],
     "gtEbeW": ["Surlignage"],
+    "gtuaAV": ["Ce contenu a été analysé, mais ce n’est pas un thème base16."],
     "guidance.mcp.managed-file": [
       "Écrit un petit fichier passerelle que ",
       ["agent"],
@@ -5618,6 +5626,7 @@
     "ni5Vqi": ["(un nom de dossier seul doit être suivi de /** pour correspondre à son contenu)"],
     "njBeMm": ["Les deux"],
     "njU86j": ["La propriété « ", ["trimmed"], " » existe déjà"],
+    "nlVYlU": ["Ce n’est pas une couleur hexadécimale : ", ["0"]],
     "nmwqWS": ["Sans réponse"],
     "nnhrHd": [
       "Excluez des Problèmes, des indicateurs de l’explorateur de fichiers, des diagnostics de l’éditeur, des audits et des avis d’écriture des agents les liens rompus écrits dans un fichier log.md ou log.mdx, quelle que soit la profondeur du dossier. C’est le fichier dans lequel le lien est écrit qui compte, et non celui qu’il cible, et LOG.md reste un document ordinaire. Le panneau Liens et l’éditeur continuent de les afficher."

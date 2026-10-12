@@ -8938,6 +8938,12 @@ msgstr ""
 msgid "Missing"
 msgstr ""
 
+#. placeholder {0}: error.slots.length
+#. placeholder {1}: error.slots.join(', ')
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Missing {0} slot(s): {1}"
+msgstr ""
+
 #: src/components/FeedbackForm.tsx
 msgid "Missing a feature"
 msgstr ""
@@ -9933,6 +9939,11 @@ msgstr ""
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Not a base16 theme"
+msgstr ""
+
+#. placeholder {0}: error.slots.join(', ')
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Not a hex color: {0}"
 msgstr ""
 
 #: src/components/SkillConsentRow.tsx
@@ -14703,6 +14714,15 @@ msgstr ""
 msgid "That document didn't open in time. Try again once it has synced."
 msgstr ""
 
+#. placeholder {0}: error.line
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That doesn’t parse as YAML or JSON — check line {0}."
+msgstr ""
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That doesn’t parse as YAML or JSON."
+msgstr ""
+
 #: src/components/settings/SearchSection.tsx
 msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for loopback endpoints."
 msgstr ""
@@ -14730,6 +14750,10 @@ msgstr ""
 
 #: src/components/acp/ThreadView.tsx
 msgid "That message already went out — your edit wasn't applied."
+msgstr ""
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That parsed, but it isn’t a base16 theme."
 msgstr ""
 
 #. placeholder {0}: item.displayName

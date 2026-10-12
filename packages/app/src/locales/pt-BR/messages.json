@@ -73,6 +73,7 @@
     ],
     "-rMxuf": ["O agente ficou sem memória."],
     "-slrNR": ["Liga ou desliga uma lista de tarefas."],
+    "-u0gMq": ["Não foi possível interpretar como YAML ou JSON — verifique a linha ", ["0"], "."],
     "-uaQnI": ["Nenhum worktree ou ramo corresponde."],
     "-yOx8u": ["Salvando alterações…"],
     "-yPBXI": ["Escolher arquivo"],
@@ -1985,6 +1986,7 @@
     "I5AfhE": ["Status de sincronização indisponível — servidor inacessível."],
     "I6gXOa": ["Caminho"],
     "I7Exsw": ["Siga a gente no X"],
+    "I7F-p1": ["Espaços de cor ausentes (", ["0"], "): ", ["1"]],
     "I7y_vn": ["Rodar a auditoria do projeto de novo"],
     "IA1wNb": ["O app Claude Desktop não abriu o arquivo. Ele está instalado? (", ["msg"], ")"],
     "IA6JW2": ["Detectando"],
@@ -2981,6 +2983,7 @@
       " foi movido, renomeado ou excluído na sua cópia local, e essa mudança ainda não sincronizou."
     ],
     "S-7ej_": ["Não deu para marcar esse comentário para envio."],
+    "S1sFIQ": ["Não foi possível interpretar como YAML ou JSON."],
     "S33tz3": ["Não conectado"],
     "S3qu11": ["Era um teste ou um projeto pontual"],
     "S48xcO": ["pendente"],
@@ -4670,6 +4673,7 @@
       "\" existe, mas é ignorado por .gitignore ou .okignore. Inclua-o de novo, ou a pasta dele, com uma regra \"!\" em .okignore."
     ],
     "gtEbeW": ["Destaque"],
+    "gtuaAV": ["O conteúdo foi interpretado, mas não é um tema base16."],
     "guidance.mcp.managed-file": [
       "Grava um pequeno arquivo de ponte que o ",
       ["agent"],
@@ -5464,6 +5468,7 @@
     ],
     "njBeMm": ["Ambos"],
     "njU86j": ["A propriedade \"", ["trimmed"], "\" já existe"],
+    "nlVYlU": ["Não é uma cor hexadecimal: ", ["0"]],
     "nmwqWS": ["Sem resposta"],
     "nnhrHd": [
       "Deixe os links quebrados escritos em um log.md ou log.mdx, em qualquer profundidade de pasta, fora de Problemas, dos indicadores do explorador de arquivos, dos diagnósticos do editor, das auditorias e dos avisos de escrita do agente. O que conta é o arquivo em que o link foi escrito, não o arquivo para o qual ele aponta, e LOG.md é um documento comum. O painel Links e o editor continuam exibindo esses links."

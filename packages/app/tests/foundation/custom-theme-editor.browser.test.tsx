@@ -8,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { CustomThemeEditor } from '@/components/settings/CustomThemeEditor';
 import { SavedThemesProvider } from '@/lib/saved-themes-client';
-import { expectKnownBug } from '../../../../test-support/known-bug.vitest.test-helper';
 import { stubApiRoutes } from './api-routes.test-helper';
 import { renderWithI18n } from './render-with-i18n.test-helper';
 
@@ -100,24 +99,49 @@ describe('CustomThemeEditor under the real Lingui runtime', () => {
     expect(view.getByRole('status').textContent).toBe('Theme imported.');
   });
 
-  test('an unparseable paste shows a translated inline error and writes nothing', {
-    tags: ['known-bug'],
-    meta: {
-      issue: 'https://github.com/inkeep/agents-private/issues/5612',
-      owner: 'get-main-green',
-      until: '2026-12-31',
-    },
-  }, async () => {
+  test('an unparseable paste shows a translated inline error and writes nothing', async () => {
     const binding = inMemoryUserConfig();
     const view = await renderEditor(binding);
 
     await pasteIntoImport(view, 'not a scheme');
 
-    await expectKnownBug(/expected undefined to be 'That parsed, but it isn’t a base16 th/, () => {
-      expect(view.queryByTestId('custom-theme-import-error')?.textContent).toBe(
-        'That parsed, but it isn’t a base16 theme.',
-      );
-    });
+    expect(view.queryByTestId('custom-theme-import-error')?.textContent).toBe(
+      'That parsed, but it isn’t a base16 theme.',
+    );
     expect(binding.current().appearance?.customTheme).toBeUndefined();
   });
+
+  test.each([
+    {
+      problem: 'an unresolved YAML alias',
+      text: '*missing',
+      message: 'That doesn’t parse as YAML or JSON.',
+    },
+    {
+      problem: 'malformed YAML on line 1',
+      text: '{[unclosed',
+      message: 'That doesn’t parse as YAML or JSON — check line 1.',
+    },
+    {
+      problem: 'two missing color slots',
+      text: PASTED_SCHEME.replace('  base0E: "#d2a6ff"\n', '').replace('  base0F: "#e6b673"\n', ''),
+      message: 'Missing 2 slot(s): base0E, base0F',
+    },
+    {
+      problem: 'two invalid hex colors',
+      text: PASTED_SCHEME.replace('#f07178', 'orange').replace('#e6b673', '#12'),
+      message: 'Not a hex color: base08, base0F',
+    },
+  ])(
+    'a paste with $problem shows a translated inline error and writes nothing',
+    async ({ text, message }) => {
+      const binding = inMemoryUserConfig();
+      const view = await renderEditor(binding);
+
+      await pasteIntoImport(view, text);
+
+      expect(binding.current().appearance?.customTheme).toBeUndefined();
+      expect(view.queryByTestId('custom-theme-import-error')?.textContent).toBe(message);
+    },
+  );
 });

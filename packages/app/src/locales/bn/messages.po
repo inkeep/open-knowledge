@@ -8938,6 +8938,12 @@ msgstr "মিরর উৎস <0>api-spec</0>"
 msgid "Missing"
 msgstr "অনুপস্থিত"
 
+#. placeholder {0}: error.slots.length
+#. placeholder {1}: error.slots.join(', ')
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Missing {0} slot(s): {1}"
+msgstr "অনুপস্থিত রঙের স্লট ({0}): {1}"
+
 #: src/components/FeedbackForm.tsx
 msgid "Missing a feature"
 msgstr "একটি বৈশিষ্ট্য অনুপস্থিত"
@@ -9934,6 +9940,11 @@ msgstr "এই সমস্যাগুলোর কোনোটিরই স্
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Not a base16 theme"
 msgstr "এটি base16 থিম নয়"
+
+#. placeholder {0}: error.slots.join(', ')
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Not a hex color: {0}"
+msgstr "হেক্স রঙ নয়: {0}"
 
 #: src/components/SkillConsentRow.tsx
 msgid "Not added to any AI tool yet."
@@ -14703,6 +14714,15 @@ msgstr "এটি সম্পন্ন হয়নি। সার্ভার
 msgid "That document didn't open in time. Try again once it has synced."
 msgstr "সেই নথিটি সময়মতো খোলেনি। সিঙ্ক হয়ে গেলে আবার চেষ্টা করুন।"
 
+#. placeholder {0}: error.line
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That doesn’t parse as YAML or JSON — check line {0}."
+msgstr "এটি YAML বা JSON হিসেবে পার্স করা যাচ্ছে না — {0} নম্বর লাইনটি দেখুন।"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That doesn’t parse as YAML or JSON."
+msgstr "এটি YAML বা JSON হিসেবে পার্স করা যাচ্ছে না।"
+
 #: src/components/settings/SearchSection.tsx
 msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for loopback endpoints."
 msgstr "ওই এন্ডপয়েন্টটি ব্যবহার করা যায় না। একটি https:// URL দিন — http:// কেবল loopback এন্ডপয়েন্টের জন্য অনুমোদিত।"
@@ -14731,6 +14751,10 @@ msgstr "সেই ভাষাটি বানান পরীক্ষার �
 #: src/components/acp/ThreadView.tsx
 msgid "That message already went out — your edit wasn't applied."
 msgstr "সেই বার্তাটি ইতিমধ্যে চলে গেছে — আপনার সম্পাদনা প্রয়োগ হয়নি।"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That parsed, but it isn’t a base16 theme."
+msgstr "এটি পার্স করা গেছে, তবে এটি base16 থিম নয়।"
 
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx

@@ -73,6 +73,7 @@
     ],
     "-rMxuf": ["El agente se quedó sin memoria."],
     "-slrNR": ["Activa o desactiva una lista de tareas."],
+    "-u0gMq": ["No se puede interpretar como YAML o JSON; revisa la línea ", ["0"], "."],
     "-uaQnI": ["Ningún worktree ni rama coincide."],
     "-yOx8u": ["Guardando cambios…"],
     "-yPBXI": ["Elegir archivo"],
@@ -2008,6 +2009,7 @@
     "I5AfhE": ["Estado de sincronización no disponible: no se pudo contactar con el servidor."],
     "I6gXOa": ["Ruta"],
     "I7Exsw": ["Síguenos en X"],
+    "I7F-p1": ["Casillas de color que faltan (", ["0"], "): ", ["1"]],
     "I7y_vn": ["Volver a ejecutar la auditoría del proyecto"],
     "IA1wNb": [
       "La aplicación Claude Desktop no abrió el archivo. ¿Está instalada? (",
@@ -3020,6 +3022,7 @@
       " se ha movido, renombrado o eliminado en tu copia local, y ese cambio todavía no se ha sincronizado."
     ],
     "S-7ej_": ["No se pudo marcar ese comentario para enviarlo."],
+    "S1sFIQ": ["No se puede interpretar como YAML o JSON."],
     "S33tz3": ["Sin conexión"],
     "S3qu11": ["Era una prueba o un proyecto puntual"],
     "S48xcO": ["pendiente"],
@@ -4768,6 +4771,7 @@
       "» existe, pero .gitignore o .okignore lo excluye. Vuelve a incluirlo, o su carpeta, con una regla «!» en .okignore."
     ],
     "gtEbeW": ["Resaltado"],
+    "gtuaAV": ["Se pudo interpretar, pero no es un tema base16."],
     "guidance.mcp.managed-file": [
       "Escribe un pequeño archivo puente que ",
       ["agent"],
@@ -5571,6 +5575,7 @@
     "ni5Vqi": ["(un nombre de carpeta solo necesita /** después para coincidir con su contenido)"],
     "njBeMm": ["Ambos"],
     "njU86j": ["La propiedad \"", ["trimmed"], "\" ya existe"],
+    "nlVYlU": ["No es un color hexadecimal: ", ["0"]],
     "nmwqWS": ["Sin responder"],
     "nnhrHd": [
       "Deja fuera de Problemas, de los indicadores del explorador de archivos, de los diagnósticos del editor, de las auditorías y de los avisos de escritura para agentes los enlaces rotos escritos dentro de un log.md o log.mdx en cualquier nivel de carpeta. Lo que cuenta es el archivo donde está escrito el enlace, no el archivo al que apunta, y LOG.md es un documento normal. El panel Enlaces y el editor siguen mostrándolos."

@@ -8938,6 +8938,12 @@ msgstr "Fonte do espelho <0>api-spec</0>"
 msgid "Missing"
 msgstr "Ausente"
 
+#. placeholder {0}: error.slots.length
+#. placeholder {1}: error.slots.join(', ')
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Missing {0} slot(s): {1}"
+msgstr "Espaços de cor ausentes ({0}): {1}"
+
 #: src/components/FeedbackForm.tsx
 msgid "Missing a feature"
 msgstr "Faltava um recurso"
@@ -9934,6 +9940,11 @@ msgstr "Nenhum destes problemas tem correção automática. Tente Corrigir tudo 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Not a base16 theme"
 msgstr "Não é um tema base16"
+
+#. placeholder {0}: error.slots.join(', ')
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Not a hex color: {0}"
+msgstr "Não é uma cor hexadecimal: {0}"
 
 #: src/components/SkillConsentRow.tsx
 msgid "Not added to any AI tool yet."
@@ -14703,6 +14714,15 @@ msgstr "Isso não foi concluído. Verifique os logs do servidor e tente de novo.
 msgid "That document didn't open in time. Try again once it has synced."
 msgstr "Esse documento não abriu a tempo. Tente novamente quando ele estiver sincronizado."
 
+#. placeholder {0}: error.line
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That doesn’t parse as YAML or JSON — check line {0}."
+msgstr "Não foi possível interpretar como YAML ou JSON — verifique a linha {0}."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That doesn’t parse as YAML or JSON."
+msgstr "Não foi possível interpretar como YAML ou JSON."
+
 #: src/components/settings/SearchSection.tsx
 msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for loopback endpoints."
 msgstr "Não dá para usar esse endpoint. Digite uma URL https:// — http:// só é aceito para endpoints de loopback."
@@ -14731,6 +14751,10 @@ msgstr "Esse idioma não está disponível para a verificação ortográfica."
 #: src/components/acp/ThreadView.tsx
 msgid "That message already went out — your edit wasn't applied."
 msgstr "Essa mensagem já foi enviada — sua edição não foi aplicada."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That parsed, but it isn’t a base16 theme."
+msgstr "O conteúdo foi interpretado, mas não é um tema base16."
 
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx

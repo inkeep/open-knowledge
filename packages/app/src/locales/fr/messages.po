@@ -8942,6 +8942,12 @@ msgstr "Source du miroir <0>api-spec</0>"
 msgid "Missing"
 msgstr "Manquant"
 
+#. placeholder {0}: error.slots.length
+#. placeholder {1}: error.slots.join(', ')
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Missing {0} slot(s): {1}"
+msgstr "Emplacements de couleur manquants ({0}) : {1}"
+
 #: src/components/FeedbackForm.tsx
 msgid "Missing a feature"
 msgstr "Une fonctionnalité manquante"
@@ -9938,6 +9944,11 @@ msgstr "Aucun de ces problèmes n'a de correction automatique. Essayez Tout corr
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Not a base16 theme"
 msgstr "Ce n’est pas un thème base16"
+
+#. placeholder {0}: error.slots.join(', ')
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Not a hex color: {0}"
+msgstr "Ce n’est pas une couleur hexadécimale : {0}"
 
 #: src/components/SkillConsentRow.tsx
 msgid "Not added to any AI tool yet."
@@ -14707,6 +14718,15 @@ msgstr "Cela n'a pas abouti. Consultez les journaux du serveur et réessayez."
 msgid "That document didn't open in time. Try again once it has synced."
 msgstr "Ce document ne s'est pas ouvert à temps. Réessayez une fois qu'il sera synchronisé."
 
+#. placeholder {0}: error.line
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That doesn’t parse as YAML or JSON — check line {0}."
+msgstr "Ce contenu ne peut pas être analysé comme du YAML ou du JSON — vérifiez la ligne {0}."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That doesn’t parse as YAML or JSON."
+msgstr "Ce contenu ne peut pas être analysé comme du YAML ou du JSON."
+
 #: src/components/settings/SearchSection.tsx
 msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for loopback endpoints."
 msgstr "Ce point de terminaison ne peut pas être utilisé. Saisissez une URL https:// — http:// n'est autorisé que pour les points de terminaison de bouclage."
@@ -14735,6 +14755,10 @@ msgstr "Cette langue n'est pas disponible pour la correction orthographique."
 #: src/components/acp/ThreadView.tsx
 msgid "That message already went out — your edit wasn't applied."
 msgstr "Ce message est déjà parti : votre modification n’a pas été appliquée."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "That parsed, but it isn’t a base16 theme."
+msgstr "Ce contenu a été analysé, mais ce n’est pas un thème base16."
 
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx

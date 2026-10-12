@@ -63,6 +63,7 @@
     ],
     "-rMxuf": ["The agent ran out of memory."],
     "-slrNR": ["Toggle a task list."],
+    "-u0gMq": ["That doesn’t parse as YAML or JSON — check line ", ["0"], "."],
     "-uaQnI": ["No matching worktrees or branches."],
     "-yOx8u": ["Saving changes…"],
     "-yPBXI": ["Choose file"],
@@ -1732,6 +1733,7 @@
     "I5AfhE": ["Sync status unavailable — server unreachable."],
     "I6gXOa": ["Path"],
     "I7Exsw": ["Follow us on X"],
+    "I7F-p1": ["Missing ", ["0"], " slot(s): ", ["1"]],
     "I7y_vn": ["Re-run the project audit"],
     "IA1wNb": ["The Claude Desktop App didn't open the file. Is it installed? (", ["msg"], ")"],
     "IA6JW2": ["Detecting"],
@@ -2638,6 +2640,7 @@
       " has been moved, renamed, or deleted in your local copy, and that change hasn't synced yet."
     ],
     "S-7ej_": ["Couldn't mark that comment to send."],
+    "S1sFIQ": ["That doesn’t parse as YAML or JSON."],
     "S33tz3": ["Not connected"],
     "S3qu11": ["It was a trial or one-off project"],
     "S48xcO": ["pending"],
@@ -4102,6 +4105,7 @@
       "\" exists but is excluded by .gitignore or .okignore. Re-include it, or its folder, with a \"!\" rule in .okignore."
     ],
     "gtEbeW": ["Highlight"],
+    "gtuaAV": ["That parsed, but it isn’t a base16 theme."],
     "guidance.mcp.managed-file": [
       "Writes a small bridge file ",
       ["agent"],
@@ -4836,6 +4840,7 @@
     "ni5Vqi": ["(a bare folder name needs /** after it to match what's inside)"],
     "njBeMm": ["Both"],
     "njU86j": ["Property \"", ["trimmed"], "\" already exists"],
+    "nlVYlU": ["Not a hex color: ", ["0"]],
     "nmwqWS": ["Not answered"],
     "nnhrHd": [
       "Leave the broken links written inside a log.md or log.mdx at any folder depth out of Problems, file explorer indicators, editor diagnostics, audits, and agent write advisories. What counts is the file a link is written in, not the file it points at, and LOG.md is an ordinary document. The Links panel and the editor still show them."

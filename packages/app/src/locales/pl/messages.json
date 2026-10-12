@@ -79,6 +79,7 @@
     ],
     "-rMxuf": ["Agentowi zabrakło pamięci."],
     "-slrNR": ["Przełącz listę zadań."],
+    "-u0gMq": ["Nie można odczytać tego jako YAML ani JSON — sprawdź wiersz ", ["0"], "."],
     "-uaQnI": ["Brak pasujących worktrees ani gałęzi."],
     "-yOx8u": ["Zapisywanie zmian…"],
     "-yPBXI": ["Wybierz plik"],
@@ -2042,6 +2043,7 @@
     "I5AfhE": ["Status synchronizacji niedostępny — serwer nieosiągalny."],
     "I6gXOa": ["Ścieżka"],
     "I7Exsw": ["Obserwuj nas na X"],
+    "I7F-p1": ["Brakujące pola kolorów (", ["0"], "): ", ["1"]],
     "I7y_vn": ["Uruchom ponownie audyt projektu"],
     "IA1wNb": [
       "Aplikacja Claude Desktop nie otworzyła pliku. Czy jest zainstalowana? (",
@@ -3078,6 +3080,7 @@
       " został przeniesiony, przemianowany lub usunięty w Twojej lokalnej kopii, a ta zmiana jeszcze się nie zsynchronizowała."
     ],
     "S-7ej_": ["Nie udało się oznaczyć tego komentarza do wysłania."],
+    "S1sFIQ": ["Nie można odczytać tego jako YAML ani JSON."],
     "S33tz3": ["Niepołączone"],
     "S3qu11": ["To był projekt próbny lub jednorazowy"],
     "S48xcO": ["oczekuje"],
@@ -4873,6 +4876,7 @@
       "” istnieje, ale wyklucza go .gitignore lub .okignore. Dołącz go ponownie, lub jego folder, regułą „!” w .okignore."
     ],
     "gtEbeW": ["Podświetlenie"],
+    "gtuaAV": ["Udało się odczytać dane, ale to nie jest motyw base16."],
     "guidance.mcp.managed-file": [
       "Zapisuje niewielki plik mostkowy, który ",
       ["agent"],
@@ -5689,6 +5693,7 @@
     "ni5Vqi": ["(sama nazwa folderu wymaga po niej /**, aby dopasować jego zawartość)"],
     "njBeMm": ["Obie"],
     "njU86j": ["Właściwość \"", ["trimmed"], "\" już istnieje"],
+    "nlVYlU": ["To nie jest kolor hex: ", ["0"]],
     "nmwqWS": ["Bez odpowiedzi"],
     "nnhrHd": [
       "Nie uwzględniaj uszkodzonych linków zapisanych w pliku log.md lub log.mdx na dowolnej głębokości folderu w panelu Problemy, wskaźnikach eksploratora plików, diagnostyce edytora, audytach i zaleceniach zapisu agenta. Liczy się plik, w którym link jest zapisany, nie plik, na który wskazuje, a LOG.md jest zwykłym dokumentem. Panel Linki i edytor nadal je pokazują."
