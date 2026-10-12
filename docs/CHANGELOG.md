@@ -1,5 +1,12 @@
 # @inkeep/open-knowledge-docs
 
+## 0.0.254
+
+### Patch Changes
+
+- Updated dependencies [0e927e2]
+  - @inkeep/open-knowledge-core@0.86.0
+
 ## 0.0.253
 
 ### Patch Changes
