@@ -415,6 +415,66 @@ test('header row pins below the toolbar on mid-table scroll', async ({
   await page.screenshot({ path: testInfo.outputPath('frozen-mid.png') });
 });
 
+test('a document height change keeps the frozen header on its existing animations', async ({
+  page,
+  api,
+  workerServer,
+}) => {
+  await api.seedDocs([{ name: 'frozen-hdr-long-grow', markdown: LONG_TABLE_MARKDOWN }]);
+  await page.goto(`${workerServer.baseURL}/#/frozen-hdr-long-grow`);
+  await waitForActiveProviderSynced(page);
+  await page.locator('table').first().waitFor({ state: 'visible' });
+  await waitForQuiescence(page, SCROLL_SELECTOR);
+  const before = await scrollAndReadFreeze(page, 260);
+  expect(before.frozen).toBe(true);
+
+  const scrollHeightGrowth = await page.evaluate(async (sel) => {
+    const scrollEl = document.querySelector(sel) as HTMLElement;
+    const cells = Array.from(
+      (
+        document.querySelector(
+          '.ProseMirror .tableWrapper > table > tbody tr',
+        ) as HTMLTableRowElement
+      ).cells,
+    );
+    (window as unknown as { __okHeaderAnimations?: Animation[][] }).__okHeaderAnimations =
+      cells.map((cell) => cell.getAnimations({ subtree: true }));
+    const heightBefore = scrollEl.scrollHeight;
+    const spacer = document.createElement('div');
+    spacer.style.height = '600px';
+    document.querySelector('.ProseMirror')?.parentElement?.append(spacer);
+    await new Promise((r) => setTimeout(r, 250));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return scrollEl.scrollHeight - heightBefore;
+  }, SCROLL_SELECTOR);
+  expect(scrollHeightGrowth).toBeGreaterThanOrEqual(600);
+
+  const after = await scrollAndReadFreeze(page, 300);
+  expect(after.frozen).toBe(true);
+  expect(after.pinErrorPx).toBeLessThan(2);
+  const sameAnimations = await page.evaluate(() => {
+    const saved = (window as unknown as { __okHeaderAnimations: Animation[][] })
+      .__okHeaderAnimations;
+    const cells = Array.from(
+      (
+        document.querySelector(
+          '.ProseMirror .tableWrapper > table > tbody tr',
+        ) as HTMLTableRowElement
+      ).cells,
+    );
+    return cells.every((cell, i) => {
+      const current = cell.getAnimations({ subtree: true });
+      const prior = saved[i] ?? [];
+      return (
+        current.length > 0 &&
+        current.length === prior.length &&
+        current.every((animation) => prior.includes(animation))
+      );
+    });
+  });
+  expect(sameAnimations).toBe(true);
+});
+
 test('header row stays pinned on deep scroll and releases past the table', async ({
   page,
   api,

@@ -8,14 +8,19 @@ const FROZEN_SHADOW = '0 2px 4px rgba(0, 0, 0, 0.08)';
 
 const DRIFT_RECOMPUTE_MS = 150;
 
-interface ScrollTimelineOptions {
-  source: Element | null;
+interface ViewTimelineOptions {
+  subject: Element;
   axis?: 'block' | 'inline' | 'x' | 'y';
+  inset?: CSSNumericValue[];
 }
-type ScrollTimelineConstructor = new (options: ScrollTimelineOptions) => AnimationTimeline;
+interface ViewTimelineLike extends AnimationTimeline {
+  readonly source: Element | null;
+}
+type ViewTimelineConstructor = new (options: ViewTimelineOptions) => ViewTimelineLike;
 
-const ScrollTimelineImpl = (globalThis as { ScrollTimeline?: ScrollTimelineConstructor })
-  .ScrollTimeline;
+const ViewTimelineImpl = (globalThis as { ViewTimeline?: ViewTimelineConstructor }).ViewTimeline;
+
+let viewTimelinesUsable = Boolean(ViewTimelineImpl);
 
 interface ScrollDrivenAnimationOptions extends KeyframeAnimationOptions {
   timeline?: AnimationTimeline | null;
@@ -40,14 +45,43 @@ export function computeFreezeRange(
   return { startOffset, endOffset: startOffset + maxShift, maxShift };
 }
 
+export interface WrapperFreeze {
+  range: FreezeRange;
+  timelineLength: number;
+}
+
+const toLayoutUnit = (px: number): number => Math.round(px * 64) / 64;
+
+export function computeWrapperFreeze(
+  wrapperTop: number,
+  wrapperHeight: number,
+  tableTop: number,
+  tableHeight: number,
+  headerHeight: number,
+  scrollportHeight: number,
+): WrapperFreeze | null {
+  const maxShift = toLayoutUnit(tableHeight - headerHeight);
+  const scrollport = toLayoutUnit(scrollportHeight);
+  const wrapper = toLayoutUnit(wrapperHeight);
+  if (maxShift <= 0 || !(wrapper > 0) || !(scrollport > 0)) return null;
+  const startOffset = scrollport + toLayoutUnit(tableTop - wrapperTop);
+  return {
+    range: { startOffset, endOffset: startOffset + maxShift, maxShift },
+    timelineLength: scrollport + wrapper,
+  };
+}
+
 interface AppliedFreeze {
   key: string;
+  timeline?: AnimationTimeline;
   animations: Animation[];
 }
 
 const appliedFreezes = new WeakMap<HTMLTableCellElement, AppliedFreeze>();
 
 const skippedChunks = new WeakSet<Element>();
+
+const wrapperTimelines = new WeakMap<HTMLElement, { inset: number; timeline: ViewTimelineLike }>();
 
 function cancelFreeze(cell: HTMLTableCellElement): void {
   const prev = appliedFreezes.get(cell);
@@ -62,18 +96,18 @@ function resetHeaderCells(firstRow: HTMLTableRowElement): void {
   }
 }
 
-export function buildShiftKeyframes(range: FreezeRange, scrollMax: number): Keyframe[] {
-  return buildFreezeKeyframes(range, scrollMax, (shift) => ({
+export function buildShiftKeyframes(range: FreezeRange, timelineLength: number): Keyframe[] {
+  return buildFreezeKeyframes(range, timelineLength, (shift) => ({
     transform: `translateY(${shift}px)`,
   }));
 }
 
 function buildFreezeKeyframes(
   range: FreezeRange,
-  scrollMax: number,
+  timelineLength: number,
   toProps: (shiftPx: number) => Omit<Keyframe, 'offset'>,
 ): Keyframe[] {
-  if (!(scrollMax > 0)) {
+  if (!(timelineLength > 0)) {
     return [
       { offset: 0, ...toProps(0) },
       { offset: 1, ...toProps(0) },
@@ -83,30 +117,30 @@ function buildFreezeKeyframes(
     Math.max(0, Math.min(scroll - range.startOffset, range.maxShift));
   const breakpoints = Array.from(
     new Set(
-      [0, range.startOffset / scrollMax, range.endOffset / scrollMax, 1].map((o) =>
+      [0, range.startOffset / timelineLength, range.endOffset / timelineLength, 1].map((o) =>
         Math.max(0, Math.min(o, 1)),
       ),
     ),
   ).sort((a, b) => a - b);
   return breakpoints.map((offset) => ({
     offset,
-    ...toProps(shiftAt(offset * scrollMax)),
+    ...toProps(shiftAt(offset * timelineLength)),
   }));
 }
 
 function buildBoundaryFlipKeyframes(
   range: FreezeRange,
-  scrollMax: number,
+  timelineLength: number,
   pre: Omit<Keyframe, 'offset'>,
   post: Omit<Keyframe, 'offset'>,
 ): Keyframe[] {
-  if (!(scrollMax > 0)) {
+  if (!(timelineLength > 0)) {
     return [
       { ...pre, offset: 0 },
       { ...pre, offset: 1 },
     ];
   }
-  const flip = range.startOffset / scrollMax;
+  const flip = range.startOffset / timelineLength;
   if (flip <= 0)
     return [
       { ...post, offset: 0 },
@@ -117,7 +151,7 @@ function buildBoundaryFlipKeyframes(
       { ...pre, offset: 0 },
       { ...pre, offset: 1 },
     ];
-  const flipEnd = Math.min(flip + 1 / scrollMax, 1);
+  const flipEnd = Math.min(flip + 1 / timelineLength, 1);
   return [
     { ...pre, offset: 0 },
     { ...pre, offset: flip },
@@ -126,40 +160,39 @@ function buildBoundaryFlipKeyframes(
   ];
 }
 
-function buildChromeKeyframes(range: FreezeRange, scrollMax: number): Keyframe[] {
+function buildChromeKeyframes(range: FreezeRange, timelineLength: number): Keyframe[] {
   return buildBoundaryFlipKeyframes(
     range,
-    scrollMax,
+    timelineLength,
     { boxShadow: 'none' },
     { boxShadow: FROZEN_SHADOW },
   );
 }
 
-function buildOccluderKeyframes(range: FreezeRange, scrollMax: number): Keyframe[] {
-  return buildBoundaryFlipKeyframes(range, scrollMax, { opacity: '0' }, { opacity: '1' });
+function buildOccluderKeyframes(range: FreezeRange, timelineLength: number): Keyframe[] {
+  return buildBoundaryFlipKeyframes(range, timelineLength, { opacity: '0' }, { opacity: '1' });
 }
 
-export function applyScrollDrivenFreeze(
+export function applyViewTimelineFreeze(
   cell: HTMLTableCellElement,
   timeline: AnimationTimeline,
-  range: FreezeRange,
-  scrollMax: number,
+  { range, timelineLength }: WrapperFreeze,
 ): void {
-  const key = `sd|${range.startOffset}|${range.maxShift}|${scrollMax}`;
+  const key = `vt|${range.startOffset}|${range.maxShift}|${timelineLength}`;
   const prev = appliedFreezes.get(cell);
-  if (prev?.key === key) return;
+  if (prev?.key === key && prev.timeline === timeline) return;
   if (prev) for (const animation of prev.animations) animation.cancel();
 
   const base: ScrollDrivenAnimationOptions = { timeline, fill: 'both', easing: 'linear' };
-  const transformAnimation = cell.animate(buildShiftKeyframes(range, scrollMax), base);
-  const chromeAnimation = cell.animate(buildChromeKeyframes(range, scrollMax), base);
-  const occluderAnimation = cell.animate(buildOccluderKeyframes(range, scrollMax), {
+  const transformAnimation = cell.animate(buildShiftKeyframes(range, timelineLength), base);
+  const chromeAnimation = cell.animate(buildChromeKeyframes(range, timelineLength), base);
+  const occluderAnimation = cell.animate(buildOccluderKeyframes(range, timelineLength), {
     ...base,
     pseudoElement: '::before',
   });
   const animations = [transformAnimation, chromeAnimation, occluderAnimation];
   for (const animation of animations) anchorScrollDrivenStartTime(animation);
-  appliedFreezes.set(cell, { key, animations });
+  appliedFreezes.set(cell, { key, timeline, animations });
 }
 
 let scrollDrivenStartTimeRejectionWarned = false;
@@ -195,8 +228,47 @@ function applyInstantFreeze(cell: HTMLTableCellElement, shift: number): void {
   appliedFreezes.set(cell, { key, animations: [animation, occluderAnimation] });
 }
 
+let viewTimelineSourceMismatchWarned = false;
+
+function wrapperTimeline(wrapper: HTMLElement, scrollEl: HTMLElement): ViewTimelineLike | null {
+  if (!ViewTimelineImpl || !viewTimelinesUsable) return null;
+  const inset = editorToolbarOverlapPx();
+  const cached = wrapperTimelines.get(wrapper);
+  if (cached?.inset === inset) return cached.timeline;
+  let timeline: ViewTimelineLike;
+  try {
+    timeline = new ViewTimelineImpl({
+      subject: wrapper,
+      axis: 'block',
+      inset: [CSS.px(inset), CSS.px(0)],
+    });
+  } catch (error) {
+    viewTimelinesUsable = false;
+    if (import.meta.env.DEV) {
+      console.warn(
+        '[frozen-table-headers] ViewTimeline construction rejected; table headers fall back to scroll-event freezing',
+        error,
+      );
+    }
+    return null;
+  }
+  if (timeline.source !== scrollEl) {
+    if (import.meta.env.DEV && !viewTimelineSourceMismatchWarned) {
+      viewTimelineSourceMismatchWarned = true;
+      console.warn(
+        '[frozen-table-headers] a table wrapper resolves to a scroll container other than editor-scroll-container; its header will not freeze',
+      );
+    }
+    return null;
+  }
+  wrapperTimelines.set(wrapper, { inset, timeline });
+  return timeline;
+}
+
 interface MeasuredHeader {
   firstRow: HTMLTableRowElement;
+  wrapper: HTMLElement;
+  wrapperRect: DOMRect;
   tableRect: DOMRect;
   headerHeight: number;
 }
@@ -204,27 +276,51 @@ interface MeasuredHeader {
 function computeAndApplyFrozenHeaders(
   scrollEl: HTMLElement,
   editorDom: HTMLElement,
-  timeline: AnimationTimeline | null,
   isRenderingSkipped: (table: HTMLTableElement) => boolean,
 ): void {
   const containerTop = scrollEl.getBoundingClientRect().top;
   const scrollTop = scrollEl.scrollTop;
-  const scrollMax = scrollEl.scrollHeight - scrollEl.clientHeight;
+  const scrollportHeight = scrollEl.clientHeight - editorToolbarOverlapPx();
   const measured: MeasuredHeader[] = [];
   for (const table of editorDom.querySelectorAll<HTMLTableElement>('.tableWrapper > table')) {
+    const wrapper = table.parentElement;
     const firstRow = table.querySelector('tbody')?.rows[0];
-    if (!firstRow || !Array.from(firstRow.cells).some((c) => c.tagName === 'TH')) {
+    if (!wrapper || !firstRow || !Array.from(firstRow.cells).some((c) => c.tagName === 'TH')) {
       continue;
     }
     if (isRenderingSkipped(table)) continue;
     measured.push({
       firstRow,
+      wrapper,
+      wrapperRect: wrapper.getBoundingClientRect(),
       tableRect: table.getBoundingClientRect(),
       headerHeight: firstRow.getBoundingClientRect().height,
     });
   }
 
-  for (const { firstRow, tableRect, headerHeight } of measured) {
+  for (const { firstRow, wrapper, wrapperRect, tableRect, headerHeight } of measured) {
+    const cells = Array.from(firstRow.cells) as HTMLTableCellElement[];
+
+    if (viewTimelinesUsable) {
+      const freeze = computeWrapperFreeze(
+        wrapperRect.top,
+        wrapperRect.height,
+        tableRect.top,
+        tableRect.height,
+        headerHeight,
+        scrollportHeight,
+      );
+      const timeline = freeze ? wrapperTimeline(wrapper, scrollEl) : null;
+      if (freeze && timeline) {
+        for (const cell of cells) applyViewTimelineFreeze(cell, timeline, freeze);
+        continue;
+      }
+      if (viewTimelinesUsable) {
+        resetHeaderCells(firstRow);
+        continue;
+      }
+    }
+
     const range = computeFreezeRange(
       scrollTop,
       containerTop,
@@ -232,31 +328,12 @@ function computeAndApplyFrozenHeaders(
       tableRect.height,
       headerHeight,
     );
-
-    if (!range) {
-      resetHeaderCells(firstRow);
-      continue;
-    }
-
-    if (timeline) {
-      if (scrollMax <= 0) {
-        resetHeaderCells(firstRow);
-        continue;
-      }
-      for (const cell of Array.from(firstRow.cells) as HTMLTableCellElement[]) {
-        applyScrollDrivenFreeze(cell, timeline, range, scrollMax);
-      }
-      continue;
-    }
-
-    const shift = Math.max(0, Math.min(scrollTop - range.startOffset, range.maxShift));
+    const shift = range ? Math.max(0, Math.min(scrollTop - range.startOffset, range.maxShift)) : 0;
     if (shift <= 0 || tableRect.bottom <= containerTop + editorToolbarOverlapPx()) {
       resetHeaderCells(firstRow);
       continue;
     }
-    for (const cell of Array.from(firstRow.cells) as HTMLTableCellElement[]) {
-      applyInstantFreeze(cell, shift);
-    }
+    for (const cell of cells) applyInstantFreeze(cell, shift);
   }
 }
 
@@ -270,7 +347,6 @@ export const FrozenTableHeaders = Extension.create({
 
         view(editorView) {
           let scrollEl: HTMLElement | null = null;
-          let timeline: AnimationTimeline | null = null;
           let rafId: number | null = null;
           let driftTimer: ReturnType<typeof setTimeout> | null = null;
           let resizeObserver: ResizeObserver | null = null;
@@ -286,7 +362,7 @@ export const FrozenTableHeaders = Extension.create({
 
           const run = (): void => {
             if (destroyed || !scrollEl) return;
-            computeAndApplyFrozenHeaders(scrollEl, editorDom, timeline, isRenderingSkipped);
+            computeAndApplyFrozenHeaders(scrollEl, editorDom, isRenderingSkipped);
           };
 
           const scheduleRun = (): void => {
@@ -312,7 +388,7 @@ export const FrozenTableHeaders = Extension.create({
           });
 
           const onScroll = (): void => {
-            if (timeline) {
+            if (viewTimelinesUsable) {
               if (driftTimer == null) scheduleRun();
               if (driftTimer != null) clearTimeout(driftTimer);
               driftTimer = setTimeout(() => {
@@ -331,13 +407,6 @@ export const FrozenTableHeaders = Extension.create({
               console.warn(
                 '[frozen-table-headers] editor-scroll-container not found; table headers will not freeze',
               );
-            }
-            if (scrollEl && ScrollTimelineImpl) {
-              try {
-                timeline = new ScrollTimelineImpl({ source: scrollEl, axis: 'block' });
-              } catch {
-                timeline = null;
-              }
             }
             scrollEl?.addEventListener('scroll', onScroll, { passive: true });
             if (scrollEl && typeof ResizeObserver !== 'undefined') {

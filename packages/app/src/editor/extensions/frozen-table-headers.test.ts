@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   anchorScrollDrivenStartTime,
-  applyScrollDrivenFreeze,
+  applyViewTimelineFreeze,
   buildShiftKeyframes,
   computeFreezeRange,
+  computeWrapperFreeze,
 } from './frozen-table-headers.ts';
 
 describe('computeFreezeRange (scroll-driven animation ranges)', () => {
@@ -43,6 +44,71 @@ describe('computeFreezeRange (scroll-driven animation ranges)', () => {
   it('yields a negative startOffset for a table starting under the toolbar', () => {
     const range = computeFreezeRange(0, 0, 30, 400, 40);
     expect(range?.startOffset).toBe(-26);
+  });
+});
+
+describe('computeWrapperFreeze (view-timeline cover ranges)', () => {
+  it('returns null for a single-row table', () => {
+    expect(computeWrapperFreeze(0, 40, 0, 40, 40, 700)).toBeNull();
+  });
+
+  it('spans the cover range: scrollport plus wrapper height', () => {
+    const freeze = computeWrapperFreeze(200, 1000, 200, 1000, 40, 700);
+    expect(freeze).toEqual({
+      range: { startOffset: 700, endOffset: 1660, maxShift: 960 },
+      timelineLength: 1700,
+    });
+  });
+
+  it('offsets the ramp by the table position inside its wrapper', () => {
+    const freeze = computeWrapperFreeze(200, 1016, 208, 1000, 40, 700);
+    expect(freeze?.range.startOffset).toBe(708);
+  });
+
+  it('agrees with the per-frame shift formula at every scroll position', () => {
+    const containerTop = 0;
+    const toolbar = 56;
+    const clientHeight = 756;
+    const wrapperDocTop = 1200;
+    const tableDocTop = 1208;
+    const wrapperHeight = 1016;
+    const tableHeight = 1000;
+    const headerHeight = 40;
+    const freeze = computeWrapperFreeze(
+      wrapperDocTop,
+      wrapperHeight,
+      tableDocTop,
+      tableHeight,
+      headerHeight,
+      clientHeight - toolbar,
+    );
+    if (!freeze) throw new Error('expected a freeze');
+    const coverStart = wrapperDocTop - clientHeight;
+    for (const scrollTop of [0, 444, 1144, 1152, 1153, 1600, 2112, 2500, 4000]) {
+      const coverScroll = scrollTop - coverStart;
+      const animShift = Math.max(
+        0,
+        Math.min(coverScroll - freeze.range.startOffset, freeze.range.maxShift),
+      );
+      const tableTop = tableDocTop - scrollTop;
+      const expected = Math.max(
+        0,
+        Math.min(containerTop + toolbar - tableTop, tableHeight - headerHeight),
+      );
+      expect(animShift).toBe(expected);
+    }
+  });
+
+  it('is unchanged when the table only moves in the viewport', () => {
+    const atTop = computeWrapperFreeze(1200, 1016, 1208, 1000, 40, 700);
+    const scrolled = computeWrapperFreeze(1200 - 900, 1016, 1208 - 900, 1000, 40, 700);
+    expect(scrolled).toEqual(atTop);
+  });
+
+  it('absorbs sub-layout-unit noise in measured rects', () => {
+    const exact = computeWrapperFreeze(300, 1016, 308, 1000, 40, 700);
+    const noisy = computeWrapperFreeze(300.0041, 1016.0003, 308.0049, 999.9998, 40.0002, 699.9996);
+    expect(noisy).toEqual(exact);
   });
 });
 
@@ -114,7 +180,7 @@ describe('anchorScrollDrivenStartTime (deletion guard, not browser-rung coverage
   });
 });
 
-describe('applyScrollDrivenFreeze (every animation it creates is anchored)', () => {
+describe('applyViewTimelineFreeze (every animation it creates is anchored)', () => {
   const realCss = (globalThis as { CSS?: unknown }).CSS;
 
   afterEach(() => {
@@ -137,13 +203,33 @@ describe('applyScrollDrivenFreeze (every animation it creates is anchored)', () 
       },
     } as unknown as HTMLTableCellElement;
 
-    applyScrollDrivenFreeze(
-      cell,
-      {} as AnimationTimeline,
-      { startOffset: 100, endOffset: 1000, maxShift: 900 },
-      2_000,
-    );
+    applyViewTimelineFreeze(cell, {} as AnimationTimeline, {
+      range: { startOffset: 100, endOffset: 1000, maxShift: 900 },
+      timelineLength: 2_000,
+    });
 
     expect(anchored).toEqual([{ percent: 0 }, { percent: 0 }, { percent: 0 }]);
+  });
+
+  it('keeps its animations when the table only moves in the viewport', () => {
+    (globalThis as { CSS?: unknown }).CSS = { percent: (value: number) => ({ percent: value }) };
+    let created = 0;
+    const cell = {
+      animate: () => {
+        created++;
+        return { cancel: () => {}, set startTime(_value: unknown) {} } as unknown as Animation;
+      },
+    } as unknown as HTMLTableCellElement;
+    const timeline = {} as AnimationTimeline;
+    const freezeAt = (wrapperTop: number) =>
+      computeWrapperFreeze(wrapperTop, 1016, wrapperTop + 8, 1000, 40, 700);
+
+    for (const wrapperTop of [1200, 300, -400]) {
+      const freeze = freezeAt(wrapperTop);
+      if (!freeze) throw new Error('expected a freeze');
+      applyViewTimelineFreeze(cell, timeline, freeze);
+    }
+
+    expect(created).toBe(3);
   });
 });
