@@ -81,7 +81,7 @@ const appliedFreezes = new WeakMap<HTMLTableCellElement, AppliedFreeze>();
 
 const skippedChunks = new WeakSet<Element>();
 
-const wrapperTimelines = new WeakMap<HTMLElement, { inset: number; timeline: ViewTimelineLike }>();
+const wrapperTimelines = new WeakMap<HTMLElement, ViewTimelineLike | 'scroll-events'>();
 
 function cancelFreeze(cell: HTMLTableCellElement): void {
   const prev = appliedFreezes.get(cell);
@@ -228,19 +228,18 @@ function applyInstantFreeze(cell: HTMLTableCellElement, shift: number): void {
   appliedFreezes.set(cell, { key, animations: [animation, occluderAnimation] });
 }
 
-let viewTimelineSourceMismatchWarned = false;
+let nestedScrollerWarned = false;
 
 function wrapperTimeline(wrapper: HTMLElement, scrollEl: HTMLElement): ViewTimelineLike | null {
   if (!ViewTimelineImpl || !viewTimelinesUsable) return null;
-  const inset = editorToolbarOverlapPx();
   const cached = wrapperTimelines.get(wrapper);
-  if (cached?.inset === inset) return cached.timeline;
+  if (cached) return cached === 'scroll-events' ? null : cached;
   let timeline: ViewTimelineLike;
   try {
     timeline = new ViewTimelineImpl({
       subject: wrapper,
       axis: 'block',
-      inset: [CSS.px(inset), CSS.px(0)],
+      inset: [CSS.px(editorToolbarOverlapPx()), CSS.px(0)],
     });
   } catch (error) {
     viewTimelinesUsable = false;
@@ -253,15 +252,16 @@ function wrapperTimeline(wrapper: HTMLElement, scrollEl: HTMLElement): ViewTimel
     return null;
   }
   if (timeline.source !== scrollEl) {
-    if (import.meta.env.DEV && !viewTimelineSourceMismatchWarned) {
-      viewTimelineSourceMismatchWarned = true;
+    wrapperTimelines.set(wrapper, 'scroll-events');
+    if (import.meta.env.DEV && !nestedScrollerWarned) {
+      nestedScrollerWarned = true;
       console.warn(
-        '[frozen-table-headers] a table wrapper resolves to a scroll container other than editor-scroll-container; its header will not freeze',
+        '[frozen-table-headers] a table sits inside a scroll container other than editor-scroll-container; its header freezes from scroll events on the main thread',
       );
     }
     return null;
   }
-  wrapperTimelines.set(wrapper, { inset, timeline });
+  wrapperTimelines.set(wrapper, timeline);
   return timeline;
 }
 
@@ -277,11 +277,12 @@ function computeAndApplyFrozenHeaders(
   scrollEl: HTMLElement,
   editorDom: HTMLElement,
   isRenderingSkipped: (table: HTMLTableElement) => boolean,
-): void {
+): boolean {
   const containerTop = scrollEl.getBoundingClientRect().top;
   const scrollTop = scrollEl.scrollTop;
   const scrollportHeight = scrollEl.clientHeight - editorToolbarOverlapPx();
   const measured: MeasuredHeader[] = [];
+  let followsScrollEvents = false;
   for (const table of editorDom.querySelectorAll<HTMLTableElement>('.tableWrapper > table')) {
     const wrapper = table.parentElement;
     const firstRow = table.querySelector('tbody')?.rows[0];
@@ -301,25 +302,24 @@ function computeAndApplyFrozenHeaders(
   for (const { firstRow, wrapper, wrapperRect, tableRect, headerHeight } of measured) {
     const cells = Array.from(firstRow.cells) as HTMLTableCellElement[];
 
-    if (viewTimelinesUsable) {
-      const freeze = computeWrapperFreeze(
-        wrapperRect.top,
-        wrapperRect.height,
-        tableRect.top,
-        tableRect.height,
-        headerHeight,
-        scrollportHeight,
-      );
-      const timeline = freeze ? wrapperTimeline(wrapper, scrollEl) : null;
-      if (freeze && timeline) {
-        for (const cell of cells) applyViewTimelineFreeze(cell, timeline, freeze);
-        continue;
-      }
-      if (viewTimelinesUsable) {
-        resetHeaderCells(firstRow);
-        continue;
-      }
+    const freeze = computeWrapperFreeze(
+      wrapperRect.top,
+      wrapperRect.height,
+      tableRect.top,
+      tableRect.height,
+      headerHeight,
+      scrollportHeight,
+    );
+    if (!freeze) {
+      resetHeaderCells(firstRow);
+      continue;
     }
+    const timeline = wrapperTimeline(wrapper, scrollEl);
+    if (timeline) {
+      for (const cell of cells) applyViewTimelineFreeze(cell, timeline, freeze);
+      continue;
+    }
+    followsScrollEvents = true;
 
     const range = computeFreezeRange(
       scrollTop,
@@ -335,6 +335,7 @@ function computeAndApplyFrozenHeaders(
     }
     for (const cell of cells) applyInstantFreeze(cell, shift);
   }
+  return followsScrollEvents;
 }
 
 export const FrozenTableHeaders = Extension.create({
@@ -351,6 +352,7 @@ export const FrozenTableHeaders = Extension.create({
           let driftTimer: ReturnType<typeof setTimeout> | null = null;
           let resizeObserver: ResizeObserver | null = null;
           let destroyed = false;
+          let followsScrollEvents = false;
           const editorDom = editorView.dom as HTMLElement;
 
           const isRenderingSkipped = (table: HTMLTableElement): boolean => {
@@ -362,7 +364,11 @@ export const FrozenTableHeaders = Extension.create({
 
           const run = (): void => {
             if (destroyed || !scrollEl) return;
-            computeAndApplyFrozenHeaders(scrollEl, editorDom, isRenderingSkipped);
+            followsScrollEvents = computeAndApplyFrozenHeaders(
+              scrollEl,
+              editorDom,
+              isRenderingSkipped,
+            );
           };
 
           const scheduleRun = (): void => {
@@ -388,7 +394,7 @@ export const FrozenTableHeaders = Extension.create({
           });
 
           const onScroll = (): void => {
-            if (viewTimelinesUsable) {
+            if (!followsScrollEvents) {
               if (driftTimer == null) scheduleRun();
               if (driftTimer != null) clearTimeout(driftTimer);
               driftTimer = setTimeout(() => {

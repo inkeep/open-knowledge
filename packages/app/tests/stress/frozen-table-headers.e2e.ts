@@ -768,3 +768,69 @@ test('an editor width change lays out once, not once per table in a skipped chun
   );
   expect(misplacedBars).toEqual([]);
 });
+
+const ACCORDION_TABLE_MARKDOWN = LONG_TABLE_MARKDOWN.replace(
+  '| Metric | Count |',
+  '<Accordion title="Metrics" defaultOpen>\n\n| Metric | Count |',
+).replace('\n\n## Notes', '\n\n</Accordion>\n\n## Notes');
+
+async function scrollIntoAccordionTable(
+  page: Parameters<typeof test>[1]['page'],
+): Promise<Awaited<ReturnType<typeof scrollAndReadFreeze>>> {
+  await page.locator('.accordion table').first().waitFor({ state: 'visible' });
+  await waitForQuiescence(page, SCROLL_SELECTOR);
+  const top = await page.evaluate((sel) => {
+    const scrollEl = document.querySelector(sel) as HTMLElement;
+    const table = document.querySelector('.ProseMirror .accordion .tableWrapper > table');
+    if (!table) return Number.NaN;
+    const offset = table.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top;
+    return Math.round(scrollEl.scrollTop + offset + 200);
+  }, SCROLL_SELECTOR);
+  expect(top).not.toBeNaN();
+  return scrollAndReadFreeze(page, top);
+}
+
+const headerTimelineKinds = (page: Parameters<typeof test>[1]['page']) =>
+  page.evaluate(() => {
+    const cell = (
+      document.querySelector('.ProseMirror .tableWrapper > table > tbody tr') as HTMLTableRowElement
+    ).cells[0];
+    return cell.getAnimations().map((animation) => animation.timeline?.constructor.name ?? 'none');
+  });
+
+test('a table inside an accordion freezes on the compositor like any other', async ({
+  page,
+  api,
+  workerServer,
+}) => {
+  await api.seedDocs([{ name: 'frozen-hdr-accordion', markdown: ACCORDION_TABLE_MARKDOWN }]);
+  await page.goto(`${workerServer.baseURL}/#/frozen-hdr-accordion`);
+  await waitForActiveProviderSynced(page);
+  const state = await scrollIntoAccordionTable(page);
+  expect(state.frozen).toBe(true);
+  expect(state.pinErrorPx).toBeLessThan(2);
+  if (state.syncShiftErrorPx !== null) expect(state.syncShiftErrorPx).toBeLessThan(1.5);
+  expect(await headerTimelineKinds(page)).toEqual(['ViewTimeline', 'ViewTimeline']);
+});
+
+test('a table inside another scroll container still pins its header', async ({
+  page,
+  api,
+  workerServer,
+}) => {
+  await page.addInitScript(() => {
+    document.addEventListener('DOMContentLoaded', () => {
+      const style = document.createElement('style');
+      style.textContent = '.accordion { overflow: hidden !important; }';
+      document.head.append(style);
+    });
+  });
+  await api.seedDocs([{ name: 'frozen-hdr-nested-scroller', markdown: ACCORDION_TABLE_MARKDOWN }]);
+  await page.goto(`${workerServer.baseURL}/#/frozen-hdr-nested-scroller`);
+  await waitForActiveProviderSynced(page);
+  const state = await scrollIntoAccordionTable(page);
+  expect(state.frozen).toBe(true);
+  expect(state.pinErrorPx).toBeLessThan(2);
+  if (state.syncShiftErrorPx !== null) expect(state.syncShiftErrorPx).toBeLessThan(1.5);
+  expect(await headerTimelineKinds(page)).not.toContain('ViewTimeline');
+});

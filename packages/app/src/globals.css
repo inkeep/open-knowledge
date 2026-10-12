@@ -5215,7 +5215,7 @@ html.electron-mode [data-slot="sidebar-inner"] {
   border: 1px solid var(--border);
   background: var(--background);
   margin: 0.5rem 0;
-  overflow: hidden;
+  overflow: clip;
   @apply rounded-lg;
 }
 
