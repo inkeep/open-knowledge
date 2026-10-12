@@ -41,14 +41,18 @@ afterEach(async () => {
   dirs = [];
 });
 
+type SeamLaunchTicket = { initialPrompt: null };
+
 type BuildMcpServersSeam = {
   buildMcpServers: (
     record: {
       agentRef: { source: 'registry' | 'custom'; id: string };
       cwd: string;
       info: { threadId: string };
+      launchTicket: SeamLaunchTicket;
       agentNpmCache?: string | null;
     },
+    ticket: SeamLaunchTicket,
     init: { agentCapabilities?: { mcpCapabilities?: { http?: boolean } } },
     consentBudgetMs?: number,
   ) => Promise<{
@@ -60,6 +64,7 @@ type BuildMcpServersSeam = {
     }>;
     hostedMarker: OkMcpHostedMarker;
     browserUnavailable: 'no-node' | 'failed' | null;
+    browserInjected: boolean;
   }>;
 };
 
@@ -119,10 +124,13 @@ const THREAD_ID = '6f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f';
 
 const PROJECT = '/tmp/acp-injection-skip-project';
 
+const LAUNCH: SeamLaunchTicket = { initialPrompt: null };
+
 const record = (source: 'registry' | 'custom', id: string) => ({
   agentRef: { source, id },
   cwd: PROJECT,
   info: { threadId: THREAD_ID },
+  launchTicket: LAUNCH,
 });
 
 const HTTP_INIT = { agentCapabilities: { mcpCapabilities: { http: true } } };
@@ -136,15 +144,17 @@ const hit: HarnessManagedMcpEntryHit = {
 describe('buildMcpServers × probeHarnessManagedMcpEntry', () => {
   test('skips injection entirely on a probe hit (http-capable and stdio agents)', async () => {
     const m = makeManager(() => hit);
-    expect((await m.buildMcpServers(record('registry', 'codex-acp'), HTTP_INIT)).servers).toEqual(
+    expect(
+      (await m.buildMcpServers(record('registry', 'codex-acp'), LAUNCH, HTTP_INIT)).servers,
+    ).toEqual([]);
+    expect((await m.buildMcpServers(record('registry', 'claude-acp'), LAUNCH, {})).servers).toEqual(
       [],
     );
-    expect((await m.buildMcpServers(record('registry', 'claude-acp'), {})).servers).toEqual([]);
   });
 
   test('injects on a probe miss', async () => {
     const m = makeManager(() => null);
-    const { servers } = await m.buildMcpServers(record('registry', 'codex-acp'), HTTP_INIT);
+    const { servers } = await m.buildMcpServers(record('registry', 'codex-acp'), LAUNCH, HTTP_INIT);
     expect(servers).toHaveLength(1);
     expect(servers[0]).toMatchObject({ name: 'open-knowledge', type: 'http' });
   });
@@ -153,8 +163,8 @@ describe('buildMcpServers × probeHarnessManagedMcpEntry', () => {
     vi.stubEnv('OK_CHANNEL', 'beta');
     try {
       const m = makeManager(() => null);
-      const http = await m.buildMcpServers(record('registry', 'codex-acp'), HTTP_INIT);
-      const stdio = await m.buildMcpServers(record('registry', 'claude-acp'), {});
+      const http = await m.buildMcpServers(record('registry', 'codex-acp'), LAUNCH, HTTP_INIT);
+      const stdio = await m.buildMcpServers(record('registry', 'claude-acp'), LAUNCH, {});
       expect(http.servers[0]).toMatchObject({ name: 'open-knowledge-beta', type: 'http' });
       expect(stdio.servers[0]).toMatchObject({ name: 'open-knowledge-beta' });
     } finally {
@@ -166,6 +176,7 @@ describe('buildMcpServers × probeHarnessManagedMcpEntry', () => {
     const m = makeManager(() => null);
     const { servers, hostedMarker } = await m.buildMcpServers(
       record('registry', 'codex-acp'),
+      LAUNCH,
       HTTP_INIT,
     );
     expect(servers[0]).toMatchObject({
@@ -177,7 +188,11 @@ describe('buildMcpServers × probeHarnessManagedMcpEntry', () => {
 
   test('the injected stdio server carries the hosted-agent marker and PATH', async () => {
     const m = makeManager(() => null);
-    const { servers, hostedMarker } = await m.buildMcpServers(record('registry', 'claude-acp'), {});
+    const { servers, hostedMarker } = await m.buildMcpServers(
+      record('registry', 'claude-acp'),
+      LAUNCH,
+      {},
+    );
     expect(servers).toHaveLength(1);
     expect(servers[0]).toMatchObject({ name: 'open-knowledge' });
     const env = (servers[0] as { env: Array<{ name: string; value: string }> }).env;
@@ -187,7 +202,7 @@ describe('buildMcpServers × probeHarnessManagedMcpEntry', () => {
 
   test('the injected stdio PATH is the agent spawn PATH, not the server process PATH', async () => {
     const m = makeManager(() => null);
-    const { servers } = await m.buildMcpServers(record('registry', 'claude-acp'), {});
+    const { servers } = await m.buildMcpServers(record('registry', 'claude-acp'), LAUNCH, {});
     const env = (servers[0] as { env: Array<{ name: string; value: string }> }).env;
     const declared = env.find((e) => e.name === 'PATH')?.value;
     expect(declared).toBe(agentSpawnPath());
@@ -203,12 +218,12 @@ describe('buildMcpServers × probeHarnessManagedMcpEntry', () => {
       calls += 1;
       return hit;
     });
-    expect((await m.buildMcpServers(record('custom', 'my-agent'), HTTP_INIT)).servers).toHaveLength(
-      1,
-    );
-    expect((await m.buildMcpServers(record('registry', 'gemini'), HTTP_INIT)).servers).toHaveLength(
-      1,
-    );
+    expect(
+      (await m.buildMcpServers(record('custom', 'my-agent'), LAUNCH, HTTP_INIT)).servers,
+    ).toHaveLength(1);
+    expect(
+      (await m.buildMcpServers(record('registry', 'gemini'), LAUNCH, HTTP_INIT)).servers,
+    ).toHaveLength(1);
     expect(calls).toBe(0);
   });
 
@@ -218,9 +233,13 @@ describe('buildMcpServers × probeHarnessManagedMcpEntry', () => {
       calls += 1;
       return { ...hit, editorId: 'cursor' as const };
     });
-    const { servers, hostedMarker } = await m.buildMcpServers(record('registry', 'cursor'), {
-      agentCapabilities: { mcpCapabilities: { http: true } },
-    });
+    const { servers, hostedMarker } = await m.buildMcpServers(
+      record('registry', 'cursor'),
+      LAUNCH,
+      {
+        agentCapabilities: { mcpCapabilities: { http: true } },
+      },
+    );
     expect(servers).toHaveLength(1);
     expect(servers[0]).toMatchObject({ name: 'open-knowledge', type: 'http' });
     expect(hostedMarker).toBe('http-header');
@@ -231,28 +250,28 @@ describe('buildMcpServers × probeHarnessManagedMcpEntry', () => {
     const m = makeManager(() => {
       throw new Error('probe exploded');
     });
-    const { servers } = await m.buildMcpServers(record('registry', 'claude-acp'), {});
+    const { servers } = await m.buildMcpServers(record('registry', 'claude-acp'), LAUNCH, {});
     expect(servers).toHaveLength(1);
     expect(servers[0]).toMatchObject({ name: 'open-knowledge', command: 'open-knowledge' });
   });
 
   test('unwired seam keeps unconditional injection', async () => {
     const m = makeManager(undefined);
-    expect((await m.buildMcpServers(record('registry', 'codex-acp'), HTTP_INIT)).servers).toEqual([
-      expect.objectContaining({ name: 'open-knowledge' }),
-    ]);
+    expect(
+      (await m.buildMcpServers(record('registry', 'codex-acp'), LAUNCH, HTTP_INIT)).servers,
+    ).toEqual([expect.objectContaining({ name: 'open-knowledge' })]);
   });
 });
 
 describe('buildMcpServers hosted-marker outcomes', () => {
   test('a skip-branch thread reports `unknown`, not a false negative', async () => {
     const m = makeManager(() => hit);
-    expect((await m.buildMcpServers(record('registry', 'codex-acp'), HTTP_INIT)).hostedMarker).toBe(
-      'unknown',
-    );
-    expect((await m.buildMcpServers(record('registry', 'claude-acp'), {})).hostedMarker).toBe(
-      'unknown',
-    );
+    expect(
+      (await m.buildMcpServers(record('registry', 'codex-acp'), LAUNCH, HTTP_INIT)).hostedMarker,
+    ).toBe('unknown');
+    expect(
+      (await m.buildMcpServers(record('registry', 'claude-acp'), LAUNCH, {})).hostedMarker,
+    ).toBe('unknown');
   });
 
   test('an agent with no usable transport reports `none` and gets no servers', async () => {
@@ -260,7 +279,11 @@ describe('buildMcpServers hosted-marker outcomes', () => {
       () => null,
       () => null,
     );
-    const { servers, hostedMarker } = await m.buildMcpServers(record('registry', 'claude-acp'), {});
+    const { servers, hostedMarker } = await m.buildMcpServers(
+      record('registry', 'claude-acp'),
+      LAUNCH,
+      {},
+    );
     expect(servers).toEqual([]);
     expect(hostedMarker).toBe('none');
   });
@@ -274,9 +297,9 @@ describe.skipIf(process.platform === 'win32')('buildMcpServers × agentBrowserTo
     return { npx: join(dir, 'npx'), path: dir };
   };
   const names = async (m: BuildMcpServersSeam, id: string, init = HTTP_INIT) =>
-    (await m.buildMcpServers(record('registry', id), init)).servers.map((s) => s.name);
+    (await m.buildMcpServers(record('registry', id), LAUNCH, init)).servers.map((s) => s.name);
   const unavailable = async (m: BuildMcpServersSeam, id = 'claude-acp') =>
-    (await m.buildMcpServers(record('registry', id), HTTP_INIT)).browserUnavailable;
+    (await m.buildMcpServers(record('registry', id), LAUNCH, HTTP_INIT)).browserUnavailable;
 
   test('adds the browser after OK tools, relayed through the node beside the resolved npx, from its own folder', async () => {
     const localDir = tmp();
@@ -292,7 +315,7 @@ describe.skipIf(process.platform === 'win32')('buildMcpServers × agentBrowserTo
       localDir,
       globalDir,
     });
-    const { servers } = await m.buildMcpServers(record('registry', 'claude-acp'), {});
+    const { servers } = await m.buildMcpServers(record('registry', 'claude-acp'), LAUNCH, {});
     expect(servers.map((s) => s.name)).toEqual(['open-knowledge', 'ok-browser']);
     const browser = servers[1] as { command?: string; args?: string[]; env?: unknown };
     expect(browser.command).toBe(join(npx.path, 'node'));
@@ -318,7 +341,11 @@ describe.skipIf(process.platform === 'win32')('buildMcpServers × agentBrowserTo
     const npx = resolveOnPath('npx', agentSpawnPath());
     if (npx === null) return;
     const m = makeManager(undefined, undefined, undefined, { enabled: () => true });
-    const { servers } = await m.buildMcpServers(record('registry', 'claude-acp'), HTTP_INIT);
+    const { servers } = await m.buildMcpServers(
+      record('registry', 'claude-acp'),
+      LAUNCH,
+      HTTP_INIT,
+    );
     const browser = servers.find((s) => s.name === 'ok-browser') as
       | { args: string[]; env: Array<{ name: string; value: string }> }
       | undefined;
@@ -385,6 +412,7 @@ describe.skipIf(process.platform === 'win32')('buildMcpServers × agentBrowserTo
     });
     const { servers, browserUnavailable } = await m.buildMcpServers(
       record('registry', 'claude-acp'),
+      LAUNCH,
       HTTP_INIT,
     );
     expect(servers.map((s) => s.name)).toEqual(['open-knowledge']);
@@ -412,6 +440,7 @@ describe.skipIf(process.platform === 'win32')('buildMcpServers × agentBrowserTo
     });
     const { servers } = await m.buildMcpServers(
       { ...record('registry', 'codex-acp'), agentNpmCache: '/runtime/npm-cache' },
+      LAUNCH,
       HTTP_INIT,
     );
     const browser = servers.find((s) => s.name === 'ok-browser');
@@ -429,6 +458,7 @@ describe.skipIf(process.platform === 'win32')('buildMcpServers × agentBrowserTo
     });
     const { servers, browserUnavailable } = await m.buildMcpServers(
       record('registry', 'claude-acp'),
+      LAUNCH,
       HTTP_INIT,
     );
     expect(servers.map((s) => s.name)).toEqual(['open-knowledge']);
@@ -444,6 +474,7 @@ describe.skipIf(process.platform === 'win32')('buildMcpServers × agentBrowserTo
     });
     const { browserUnavailable } = await m.buildMcpServers(
       record('registry', 'claude-acp'),
+      LAUNCH,
       HTTP_INIT,
       20,
     );
@@ -462,7 +493,7 @@ describe.skipIf(process.platform === 'win32')('buildMcpServers × agentBrowserTo
       expect(await names(on, id)).toEqual(['open-knowledge']);
     }
     expect(await names(on, 'pi-acp')).toEqual([]);
-    const custom = await on.buildMcpServers(record('custom', 'claude-acp'), HTTP_INIT);
+    const custom = await on.buildMcpServers(record('custom', 'claude-acp'), LAUNCH, HTTP_INIT);
     expect(custom.servers.map((s) => s.name)).toEqual(['open-knowledge']);
   });
 
@@ -482,7 +513,11 @@ describe.skipIf(process.platform === 'win32')('buildMcpServers × agentBrowserTo
           accept,
         ),
     });
-    const { servers } = await m.buildMcpServers(record('registry', 'claude-acp'), HTTP_INIT);
+    const { servers } = await m.buildMcpServers(
+      record('registry', 'claude-acp'),
+      LAUNCH,
+      HTTP_INIT,
+    );
     const browser = servers.find((s) => s.name === 'ok-browser') as { args?: string[] } | undefined;
     expect(browser?.args?.[4]).toBe(safe.npx);
     expect(tried).toEqual([join(PROJECT, 'node_modules', '.bin'), bare, safe.path]);
@@ -542,21 +577,24 @@ describe('buildMcpServers × pi-acp', () => {
 
   test('never injects for pi, even with an http-capable init and a working stdio command', async () => {
     const m = makeManager(() => null, undefined, { probePiAcpBridge: () => PI_LOADABLE });
-    expect((await m.buildMcpServers(record('registry', 'pi-acp'), HTTP_INIT)).servers).toEqual([]);
-    expect((await m.buildMcpServers(record('registry', 'pi-acp'), {})).servers).toEqual([]);
+    expect(
+      (await m.buildMcpServers(record('registry', 'pi-acp'), LAUNCH, HTTP_INIT)).servers,
+    ).toEqual([]);
+    expect((await m.buildMcpServers(record('registry', 'pi-acp'), LAUNCH, {})).servers).toEqual([]);
   });
 
   test('a loadable bridge reports `unknown` — the bridge spawns the server, not us', async () => {
     const m = makeManager(() => null, undefined, { probePiAcpBridge: () => PI_LOADABLE });
-    expect((await m.buildMcpServers(record('registry', 'pi-acp'), HTTP_INIT)).hostedMarker).toBe(
-      'unknown',
-    );
+    expect(
+      (await m.buildMcpServers(record('registry', 'pi-acp'), LAUNCH, HTTP_INIT)).hostedMarker,
+    ).toBe('unknown');
   });
 
   test('unwired seams suppress injection and report `unknown`, not `none`', async () => {
     const m = makeManager(() => null);
     const { servers, hostedMarker } = await m.buildMcpServers(
       record('registry', 'pi-acp'),
+      LAUNCH,
       HTTP_INIT,
     );
     expect(servers).toEqual([]);
@@ -569,9 +607,9 @@ describe('buildMcpServers × pi-acp', () => {
         throw new Error('probe exploded');
       },
     });
-    expect((await m.buildMcpServers(record('registry', 'pi-acp'), HTTP_INIT)).hostedMarker).toBe(
-      'unknown',
-    );
+    expect(
+      (await m.buildMcpServers(record('registry', 'pi-acp'), LAUNCH, HTTP_INIT)).hostedMarker,
+    ).toBe('unknown');
   });
 
   test('an unprovisioned bridge with no ensure seam reports `none` without prompting', async () => {
@@ -585,6 +623,7 @@ describe('buildMcpServers × pi-acp', () => {
     });
     const { servers, hostedMarker } = await m.buildMcpServers(
       record('registry', 'pi-acp'),
+      LAUNCH,
       HTTP_INIT,
     );
     expect(servers).toEqual([]);
@@ -593,7 +632,7 @@ describe('buildMcpServers × pi-acp', () => {
 
   test('a custom agent named like the registry entry still gets normal injection', async () => {
     const m = makeManager(() => null, undefined, { probePiAcpBridge: () => PI_LOADABLE });
-    const { servers } = await m.buildMcpServers(record('custom', 'pi-acp'), HTTP_INIT);
+    const { servers } = await m.buildMcpServers(record('custom', 'pi-acp'), LAUNCH, HTTP_INIT);
     expect(servers).toHaveLength(1);
   });
 });

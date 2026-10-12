@@ -8591,9 +8591,14 @@ describe.skipIf(process.platform === 'win32')(
 const NPX_ENTRY_HASH = '4142609e2aa780f6';
 const NPX_RELAUNCH_LOG = '[acp-threads] cleared a stale npx cache entry; relaunching the agent';
 const NPX_CLOSED_CLEAR_LOG =
-  '[acp-threads] cleared a stale npx cache entry; the thread was closed, so the agent is not relaunched';
+  '[acp-threads] cleared a stale npx cache entry; the launch was closed or superseded, so the agent is not relaunched';
 const NPX_JOIN_LOG =
   '[acp-threads] npx cache entry was cleared by another launch moments ago; relaunching without clearing it again';
+const NPX_REINSTALL_LOG =
+  '[acp-threads] npx refused to install a missing agent package; reinstalling it before relaunch';
+const SUPERSEDED_STATUS_LOG = '[acp-threads] status suppressed for a superseded launch';
+const CONTEXT_WINDOW_AGENT = 'codex-acp';
+const CHANGED_CONTEXT_WINDOW = 400_000;
 
 type NpxEnoentMode =
   | 'while-entry-exists'
@@ -8652,6 +8657,54 @@ function logCount(warn: ReturnType<typeof vi.spyOn>, message: string): number {
   return warn.mock.calls.filter((call) => call[1] === message).length;
 }
 
+function supersededFailureReports(warn: ReturnType<typeof vi.spyOn>, threadId: string): number {
+  return warn.mock.calls.filter((call: unknown[]) => {
+    const [fields, message] = call;
+    const report = fields as { threadId?: string; status?: string };
+    return (
+      message === SUPERSEDED_STATUS_LOG && report.threadId === threadId && report.status === 'error'
+    );
+  }).length;
+}
+
+async function observeEvents(
+  manager: AcpThreadManager,
+  threadId: string,
+): Promise<(afterSeq: number) => ThreadEvent[]> {
+  const seen = new Map<number, ThreadEvent>();
+  await manager.subscribe(threadId, 0, (frame) => {
+    if (frame.op === 'event') seen.set(frame.seq, frame.event);
+    else if (frame.op === 'events') {
+      frame.events.forEach((event, index) => {
+        seen.set(frame.fromSeq + index, event);
+      });
+    }
+  });
+  return (afterSeq) =>
+    [...seen.entries()]
+      .filter(([seq]) => seq > afterSeq)
+      .sort(([a], [b]) => a - b)
+      .map(([, event]) => event);
+}
+
+function statusesIn(events: ThreadEvent[]): string[] {
+  return events.flatMap((event) => (event.kind === 'status' ? [event.status] : []));
+}
+
+async function expectServingAgent(
+  manager: AcpThreadManager,
+  threadId: string,
+  eventsAfter: (afterSeq: number) => ThreadEvent[],
+): Promise<void> {
+  const from = manager.getInfo(threadId)?.lastSeq ?? -1;
+  manager.sendPrompt(threadId, 'are you still there');
+  await waitUntil(
+    () => eventsAfter(from).some((event) => event.kind === 'session_update'),
+    10_000,
+    'the agent to answer the prompt',
+  );
+}
+
 function hasLaunchFailureEntry(logPath: string, threadId: string): boolean {
   if (!existsSync(logPath)) return false;
   const text = readFileSync(logPath, 'utf8');
@@ -8667,6 +8720,7 @@ async function withNpxLaunchFixture(
     localDir: string;
     warn: ReturnType<typeof vi.spyOn>;
   }) => Promise<void>,
+  options: { agentId?: string } = {},
 ): Promise<void> {
   await withAcquisitionHome(async (home) => {
     const localDir = tmp();
@@ -8687,6 +8741,7 @@ ${npmEnoentSource(entryDir, mode)}`,
     const env = { PATH: [bin, process.env.PATH ?? ''].join(delimiter) };
     const agent = registryPackage('fixture-bootstrap', 'npx', env);
     agent.distribution.npx = { package: 'fixture-bootstrap', env };
+    if (options.agentId !== undefined) agent.id = options.agentId;
     const registry = new AcpRegistry({
       localDir,
       log,
@@ -8766,6 +8821,42 @@ describe('launch failure diagnostics and npx cache recovery', () => {
         );
         expect(logCount(warn, NPX_RELAUNCH_LOG)).toBe(0);
       },
+    );
+  }, 40_000);
+
+  test('a first launch a context window change supersedes while it reports a stale npx entry clears the entry without relaunching over the current agent', async () => {
+    await withNpxLaunchFixture(
+      'held-after-stdout-eof',
+      async ({ manager, agentId, entryDir, warn }) => {
+        mkdirSync(entryDir, { recursive: true });
+        const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+        const eventsAfter = await observeEvents(manager, info.threadId);
+        await waitUntil(
+          () => existsSync(stdoutEndedMarker(entryDir)),
+          20_000,
+          'the failing launch to close its stdout',
+        );
+        const changedFrom = manager.getInfo(info.threadId)?.lastSeq ?? -1;
+
+        expect(await manager.setContextWindow(info.threadId, CHANGED_CONTEXT_WINDOW)).toMatchObject(
+          { status: 'ready', contextWindow: CHANGED_CONTEXT_WINDOW },
+        );
+        await waitUntil(
+          () => supersededFailureReports(warn, info.threadId) === 1,
+          5_000,
+          'the superseded launch to settle its failure',
+        );
+
+        expect.soft(logCount(warn, NPX_RELAUNCH_LOG)).toBe(0);
+        expect.soft(logCount(warn, NPX_CLOSED_CLEAR_LOG)).toBe(1);
+        expect.soft(existsSync(entryDir)).toBe(false);
+        const statuses = statusesIn(eventsAfter(changedFrom));
+        expect.soft(statuses).not.toContain('error');
+        expect.soft(statuses).not.toContain('exited');
+        expect.soft(manager.getInfo(info.threadId)?.status).toBe('ready');
+        await expectServingAgent(manager, info.threadId, eventsAfter);
+      },
+      { agentId: CONTEXT_WINDOW_AGENT },
     );
   }, 40_000);
 
@@ -8990,6 +9081,74 @@ describe('launch failure diagnostics and npx cache recovery', () => {
         const statuses = await statusesOf(manager, info.threadId);
         expect(statuses).not.toContain('exited');
         expect(statuses).not.toContain('error');
+      } finally {
+        await manager.destroy();
+      }
+    });
+  }, 40_000);
+
+  test('a first launch a context window change supersedes while npx refuses its install reinstalls nothing over the current agent', async () => {
+    await withAcquisitionHome(async (home) => {
+      const localDir = tmp();
+      const bin = join(home, 'bin');
+      mkdirSync(bin);
+      installNodeFixture(bin);
+      writeRecordingNpm(bin, join(home, 'probes.log'));
+      const refusedOnce = join(home, 'refused-once');
+      const refusalStdoutEnded = join(home, 'refusal-stdout-ended');
+      const descriptor = 'held-refusal-fixture@1.0.0';
+      const refusal = `npm error npx canceled due to missing packages and no YES option: ${JSON.stringify([descriptor])}\n`;
+      writeExecutable(
+        join(bin, 'npx'),
+        `const { existsSync, writeFileSync } = require('node:fs');
+         const args = process.argv.slice(2);
+         if (args.join(' ') === '--version' || args.includes('--call=exit 0')) process.exit(0);
+         if (!existsSync(${JSON.stringify(refusedOnce)})) {
+           writeFileSync(${JSON.stringify(refusedOnce)}, '');
+           process.stderr.write(${JSON.stringify(refusal)}, () => process.stdout.end(() => {
+             writeFileSync(${JSON.stringify(refusalStdoutEnded)}, '');
+             setTimeout(() => process.exit(1), 10_000);
+           }));
+         } else {
+           import(${JSON.stringify(pathToFileURL(EXAMPLE_AGENT).href)});
+         }`,
+      );
+      const agent = {
+        ...registryPackage(descriptor, 'npx', { PATH: bin }),
+        id: CONTEXT_WINDOW_AGENT,
+      };
+      const registry = new AcpRegistry({
+        localDir,
+        log,
+        fetchImpl: async () => new Response(JSON.stringify({ agents: [agent] })),
+      });
+      const warn = vi.spyOn(log, 'warn');
+      const manager = makeManager(home, localDir, { registry });
+      try {
+        const info = await manager.createThread({ agent: { source: 'registry', id: agent.id } });
+        const eventsAfter = await observeEvents(manager, info.threadId);
+        await waitUntil(
+          () => existsSync(refusalStdoutEnded),
+          20_000,
+          'the refused launch to close its stdout',
+        );
+        const changedFrom = manager.getInfo(info.threadId)?.lastSeq ?? -1;
+
+        expect(await manager.setContextWindow(info.threadId, CHANGED_CONTEXT_WINDOW)).toMatchObject(
+          { status: 'ready', contextWindow: CHANGED_CONTEXT_WINDOW },
+        );
+        await waitUntil(
+          () => supersededFailureReports(warn, info.threadId) === 1,
+          5_000,
+          'the superseded launch to settle its failure',
+        );
+
+        expect.soft(logCount(warn, NPX_REINSTALL_LOG)).toBe(0);
+        const statuses = statusesIn(eventsAfter(changedFrom));
+        expect.soft(statuses).not.toContain('error');
+        expect.soft(statuses).not.toContain('exited');
+        expect.soft(manager.getInfo(info.threadId)?.status).toBe('ready');
+        await expectServingAgent(manager, info.threadId, eventsAfter);
       } finally {
         await manager.destroy();
       }
