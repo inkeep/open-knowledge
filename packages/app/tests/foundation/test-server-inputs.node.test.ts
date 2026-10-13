@@ -179,6 +179,21 @@ describe('prebuilt DEV output freshness', () => {
     );
   });
 
+  test('an edited env file Vite reads at build time refuses the recorded output and names the file', () => {
+    const root = okTree();
+    write(root, 'packages/app/.env.local', 'VITE_OTEL_ENABLED=false\n');
+    const recorded = prebuiltManifest(root, BUILD_OPTIONS);
+
+    write(root, 'packages/app/.env.local', 'VITE_OTEL_ENABLED=true\n');
+
+    expect(prebuiltServingDecision(recorded, prebuiltManifest(root, BUILD_OPTIONS))).toEqual({
+      serve: false,
+      reason: 'stale',
+      changedInputs: ['packages/app/.env.local'],
+      changedOptions: [],
+    });
+  });
+
   test('a changed build option refuses the recorded output and names the option', () => {
     const root = okTree();
     const recorded = prebuiltManifest(root, BUILD_OPTIONS);

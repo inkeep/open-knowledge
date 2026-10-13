@@ -27,6 +27,7 @@ export const SERVER_RESTART_INPUTS = [
 export const PREBUILT_BUILD_INPUTS = [
   ...SERVER_RESTART_INPUTS,
   'packages/app/*.html',
+  'packages/app/.env*',
   'packages/app/public/**',
   'packages/app/src/**',
 ] as const;

@@ -30,6 +30,7 @@ const KNOWN_TEST_PROJECTS = [
   'packages/app/vitest.fidelity.config.ts',
   'packages/app/vitest.integration.config.ts',
   'packages/app/vitest.node.config.ts',
+  'packages/app/vitest.worker-lifetime.config.ts',
   'packages/cli/vitest.config.ts',
   'packages/cli/vitest.e2e.config.ts',
   'packages/core/vitest.config.ts',

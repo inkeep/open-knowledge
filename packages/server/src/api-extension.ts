@@ -1341,6 +1341,8 @@ interface ApiExtensionBaseOptions {
   getBridgeLossReporter?: () => BridgeDeriveLossReporter | undefined;
   getPrincipal?: () => Principal | null;
   homeDirOverride?: string;
+  resetSettingsForTest?: () => void;
+  settleDiskEventsForTest?: () => Promise<void>;
   agentIntegrations?: AgentRegistryHostSeam;
   savedThemeLockTimeoutMs?: number;
   acpRegistry?: AcpRegistry;
@@ -1573,6 +1575,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     getBridgeLossReporter,
     getPrincipal,
     homeDirOverride,
+    resetSettingsForTest,
+    settleDiskEventsForTest,
     agentIntegrations,
     savedThemeLockTimeoutMs,
     acpRegistry,
@@ -5526,6 +5530,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     renameAttributionCounter,
   });
   const testRoutes = createTestRoutes({
+    agentPresence: agentPresenceBroadcaster,
+    resetSettingsForTest,
+    settleDiskEvents: settleDiskEventsForTest,
+    recentlyRemovedDocs,
     conflicts,
     durabilityState,
     resolveAlias,

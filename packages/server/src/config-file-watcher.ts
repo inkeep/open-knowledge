@@ -7,10 +7,25 @@ import { startPolledPathWatcher } from './polled-path-watcher.ts';
 
 export type ConfigFileWatcherUnsubscribe = () => Promise<void>;
 
+export type ConfigFileWatcher = ConfigFileWatcherUnsubscribe & {
+  readonly resync: () => void;
+};
+
+function readOrNull(path: string, log: ReturnType<typeof getLogger>): string | null {
+  try {
+    return readFileSync(path, 'utf-8');
+  } catch (err) {
+    if (errnoCode(err) !== 'ENOENT') {
+      log.warn({ err, path }, 'config file baseline read failed; treating it as absent');
+    }
+    return null;
+  }
+}
+
 export async function startConfigFileWatcher(
   absPath: string,
   onChange: (content: string) => void,
-): Promise<ConfigFileWatcherUnsubscribe> {
+): Promise<ConfigFileWatcher> {
   const log = getLogger('config-file-watcher');
 
   const watchDir = dirname(absPath);
@@ -23,10 +38,7 @@ export async function startConfigFileWatcher(
     }
   }
 
-  let lastContent: string | null = null;
-  try {
-    lastContent = readFileSync(absPath, 'utf-8');
-  } catch {}
+  let lastContent = readOrNull(absPath, log);
   const handlePath = (path: string, logMissing = true): void => {
     if (path !== absPath) return;
     let content: string;
@@ -64,13 +76,17 @@ export async function startConfigFileWatcher(
     },
   });
   handlePath(absPath, false);
-  return stop;
+  return Object.assign(() => stop(), {
+    resync: () => {
+      lastContent = readOrNull(absPath, log);
+    },
+  });
 }
 
 export async function startMultiPathConfigFileWatcher(
   absPaths: ReadonlyArray<string>,
   onChange: (path: string, content: string) => void,
-): Promise<ConfigFileWatcherUnsubscribe> {
+): Promise<ConfigFileWatcher> {
   if (absPaths.length === 0) {
     throw new Error('startMultiPathConfigFileWatcher requires at least one absolute path');
   }
@@ -91,13 +107,10 @@ export async function startMultiPathConfigFileWatcher(
   }
 
   const lastContent = new Map<string, string | null>();
-  for (const path of watchedPaths) {
-    try {
-      lastContent.set(path, readFileSync(path, 'utf-8'));
-    } catch {
-      lastContent.set(path, null);
-    }
-  }
+  const resync = (): void => {
+    for (const path of watchedPaths) lastContent.set(path, readOrNull(path, log));
+  };
+  resync();
 
   const handlePath = (path: string, logMissing = true): void => {
     if (!watchedPaths.has(path)) return;
@@ -136,5 +149,5 @@ export async function startMultiPathConfigFileWatcher(
     },
   });
   for (const path of watchedPaths) handlePath(path, false);
-  return stop;
+  return Object.assign(() => stop(), { resync });
 }

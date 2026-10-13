@@ -1,4 +1,5 @@
 export type { Principal } from '@inkeep/open-knowledge-core';
+export { TEST_LOOP_CORE_MARKER } from '@inkeep/open-knowledge-core';
 export {
   GitDirAccessError,
   MalformedGitPointerError,
@@ -684,6 +685,7 @@ export {
   spansCurrentPath,
   spansPreviousPath,
 } from './telemetry-file-sink.ts';
+export { TEST_LOOP_SERVER_MARKER } from './test-loop-marker.ts';
 export {
   initToleranceTelemetryWriter,
   isToleranceTelemetryEnabled,

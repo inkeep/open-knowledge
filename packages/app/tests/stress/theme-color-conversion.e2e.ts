@@ -1,9 +1,12 @@
 import { PREVIEW_THEME_TOKENS } from '@inkeep/open-knowledge-core';
+import { E2E_PAGE_MODULES_SOURCE } from '../../src/build/prebuilt-dev-contract.ts';
+import type * as PageModules from '../../src/test-utils/e2e-page-modules.ts';
 import {
   expect,
   FADE_DURATION_MS,
   installThemeFadeProbe,
   openColorThemes,
+  servedModuleUrl,
   type ThemeFadeProbeWindow,
   test,
 } from './_helpers';
@@ -13,9 +16,8 @@ test('painted comment underlines retain their sRGB contrast in both default mode
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  const samples = await page.evaluate(async () => {
-    const modulePath = '/src/comments/anchor-layers.ts';
-    const { buildAnchorSegments, commentColor } = await import(modulePath);
+  const samples = await page.evaluate(async (pageModules) => {
+    const { buildAnchorSegments, commentColor }: typeof PageModules = await import(pageModules);
     const root = document.documentElement;
     const originalClass = root.className;
     const surface = document.createElement('div');
@@ -59,7 +61,7 @@ test('painted comment underlines retain their sRGB contrast in both default mode
       root.className = originalClass;
       surface.remove();
     }
-  });
+  }, servedModuleUrl(E2E_PAGE_MODULES_SOURCE));
   const luminance = (rgb: number[]) =>
     rgb.reduce((sum, value, index) => {
       const channel = value / 255;
@@ -80,9 +82,9 @@ test('converts CSS Color 4 tokens for live xterm themes without losing alpha cha
   page,
 }) => {
   await openColorThemes(page);
-  const converted = await page.evaluate(async () => {
-    const modulePath = '/src/lib/css-color-to-hex.ts';
-    const { cssColorToHex } = await import(modulePath);
+  const pageModules = servedModuleUrl(E2E_PAGE_MODULES_SOURCE);
+  const converted = await page.evaluate(async (pageModules) => {
+    const { cssColorToHex }: typeof PageModules = await import(pageModules);
     return {
       transparentRgb: cssColorToHex('rgb(80 120 255 / 0)', { alpha: true }),
       translucentRgb: cssColorToHex('rgb(80 120 255 / 0.18)', { alpha: true }),
@@ -100,7 +102,7 @@ test('converts CSS Color 4 tokens for live xterm themes without losing alpha cha
         ).join('')}`;
       })(),
     };
-  });
+  }, pageModules);
 
   expect(converted.transparentRgb).toBe('#5078ff00');
   expect(converted.translucentRgb).toBe('#5078ff2e');
@@ -108,17 +110,19 @@ test('converts CSS Color 4 tokens for live xterm themes without losing alpha cha
   expect(converted.color4Black).toBe('#000000ff');
   expect(converted.color4Translucent).toBe(converted.color4Reference);
 
-  const invalidRegisteredTokens = await page.evaluate(async (tokens) => {
-    const modulePath = '/src/lib/theme-color-properties.ts';
-    const { THEME_COLOR_PROPERTIES } = await import(modulePath);
-    return tokens
-      .filter(
-        (token) =>
-          THEME_COLOR_PROPERTIES.includes(token.name) &&
-          (!CSS.supports('color', token.light) || !CSS.supports('color', token.dark)),
-      )
-      .map((token) => token.name);
-  }, PREVIEW_THEME_TOKENS);
+  const invalidRegisteredTokens = await page.evaluate(
+    async ({ tokens, pageModules }) => {
+      const { THEME_COLOR_PROPERTIES }: typeof PageModules = await import(pageModules);
+      return tokens
+        .filter(
+          (token) =>
+            THEME_COLOR_PROPERTIES.includes(token.name) &&
+            (!CSS.supports('color', token.light) || !CSS.supports('color', token.dark)),
+        )
+        .map((token) => token.name);
+    },
+    { tokens: PREVIEW_THEME_TOKENS, pageModules },
+  );
   expect(invalidRegisteredTokens).toEqual([]);
 
   const dracula = page.getByRole('button', { name: 'Use Dracula for the active light mode' });
@@ -131,10 +135,9 @@ test('converts CSS Color 4 tokens for live xterm themes without losing alpha cha
   const monokai = page.getByRole('button', { name: 'Use Monokai for the active light mode' });
   await installThemeFadeProbe(page);
   const fade = await monokai.evaluate(
-    async (element, { token }) => {
+    async (element, { token, pageModules }) => {
       if (!(element instanceof HTMLButtonElement)) throw new Error('Expected a palette button');
-      const modulePath = '/src/components/terminal-theme.ts';
-      const { computeLiveXtermTheme } = await import(modulePath);
+      const { computeLiveXtermTheme }: typeof PageModules = await import(pageModules);
       const { armThemeFade } = window as typeof window & ThemeFadeProbeWindow;
       if (!armThemeFade) {
         throw new Error(
@@ -150,7 +153,7 @@ test('converts CSS Color 4 tokens for live xterm themes without losing alpha cha
       element.click();
       return armed.report();
     },
-    { token: '--selection-soft' },
+    { token: '--selection-soft', pageModules },
   );
 
   const detail = `\n${fade.token} fade report:\n${JSON.stringify(fade)}\n`;

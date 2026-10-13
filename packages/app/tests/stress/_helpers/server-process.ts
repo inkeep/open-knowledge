@@ -226,6 +226,8 @@ function parseStartupReceipt(pending: PendingViteStartup): TestServerStartupRece
   };
 }
 
+const RECEIPT_POLL_INTERVAL_MS = 100;
+
 function waitForStartupReceipt(
   pending: PendingViteStartup,
   deadlineAt: number,
@@ -233,11 +235,13 @@ function waitForStartupReceipt(
   return new Promise((resolve, reject) => {
     let watcher: ReturnType<typeof watch> | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let poll: ReturnType<typeof setInterval> | undefined;
     let settled = false;
     const cleanup = () => {
       watcher?.off('error', onWatchError);
       watcher?.close();
       if (timer !== undefined) clearTimeout(timer);
+      if (poll !== undefined) clearInterval(poll);
       pending.proc.off('error', onError);
       pending.proc.off('exit', onExit);
     };
@@ -294,6 +298,7 @@ function waitForStartupReceipt(
           ),
         remainingMs,
       );
+      poll = setInterval(readReceipt, RECEIPT_POLL_INTERVAL_MS);
       readReceipt();
       if (pending.proc.exitCode !== null || pending.proc.signalCode !== null) onExit();
     } catch (err) {

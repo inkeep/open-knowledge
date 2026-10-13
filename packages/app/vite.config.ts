@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 import { injectAppVersionEnv } from './src/build/app-version';
 import { chromeTokensVitePlugin } from './src/build/chrome-tokens-vite-plugin';
 import { rejectionLoopGuardPlugin } from './src/build/rejection-loop-guard-plugin';
+import { testLoopMarkerPlugin } from './src/build/test-loop-marker-plugin';
 import { TEST_SERVER_STARTUP_ENV } from './src/build/test-server-startup-contract';
 import {
   parseTestServerStartupRequest,
@@ -74,7 +75,9 @@ export default defineConfig({
     // options are shared with the Electron renderer build.
     babel(RENDERER_BABEL_OPTIONS),
     hocuspocusPlugin(),
-    ...(startupRequest === undefined ? [] : [testServerStartupPlugin(startupRequest)]),
+    ...(startupRequest === undefined
+      ? []
+      : [testServerStartupPlugin(startupRequest), testLoopMarkerPlugin()]),
   ],
   resolve: {
     tsconfigPaths: true,

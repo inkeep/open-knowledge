@@ -1,6 +1,11 @@
 import { defineConfig, type ViteUserConfig } from 'vitest/config';
 import { appVitestConfig } from './vitest.config';
 
+export const WORKER_LIFETIME_TESTS = [
+  'tests/meta/worker-server-lifetime.test.ts',
+  'tests/meta/standalone-prebuilt-worker-lifetime.test.ts',
+];
+
 // Integration tier: multi-client CRDT convergence over the real Node test
 // harness (tests/integration) plus the meta suite. Reuses the
 // app base config (lingui macro shim, single-instance dedupe, development-
@@ -18,7 +23,11 @@ export const appIntegrationVitestConfig = {
   test: {
     ...appVitestConfig.test,
     include: ['tests/integration/**/*.test.ts?(x)', 'tests/meta/**/*.test.ts?(x)'],
-    exclude: [...appVitestConfig.test.exclude, '**/per-session-um-perf.test.ts'],
+    exclude: [
+      ...appVitestConfig.test.exclude,
+      '**/per-session-um-perf.test.ts',
+      ...WORKER_LIFETIME_TESTS,
+    ],
     // Per-test / per-hook budget for the CRDT convergence suite, carried over
     // from the bun `--timeout 30000`. Declared here (not only inherited) so the
     // CI test-coverage meta-guard reads it directly off this config.

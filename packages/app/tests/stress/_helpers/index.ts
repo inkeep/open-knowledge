@@ -44,6 +44,12 @@ export {
   waitForLandingSettled,
 } from './landing.ts';
 export {
+  appSourcesIn,
+  servedEntryScriptRoute,
+  servedModuleRoute,
+  servedModuleUrl,
+} from './prebuilt/served-modules.ts';
+export {
   installClockAfterSync,
   type WaitForProviderOptions,
   waitForActiveProviderSynced,

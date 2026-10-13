@@ -1,5 +1,6 @@
 export const TEST_SERVER_STARTUP_ENV = 'OK_TEST_VITE_START_REQUEST';
 export const TEST_SERVER_IDENTITY_PATH = '/__ok-test-server-identity';
+export const TEST_SERVER_LOADED_INPUTS_PATH = '/__ok-test-server-loaded-inputs';
 export const TEST_SERVER_CANDIDATE_PORTS = { start: 49152, end: 57344 } as const;
 export const TEST_SERVER_HOST_FAMILY = {
   '127.0.0.1': 'IPv4',

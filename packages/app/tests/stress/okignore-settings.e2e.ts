@@ -1,4 +1,8 @@
-import { expect, test } from './_helpers';
+import { appSourcesIn, expect, servedModuleRoute, test } from './_helpers';
+
+const SETTINGS_SECTIONS = 'src/components/settings';
+const SETTINGS_SECTION_FILE = /^[A-Za-z]+Section\.tsx$/;
+const HOTKEYS_SECTION = `${SETTINGS_SECTIONS}/HotkeysSection.tsx`;
 
 test.describe('Settings — Ignore patterns section (US-007 / US-008 / US-009 / US-010 / US-011 / US-012 / US-013)', () => {
   test.beforeEach(async ({ api }) => {
@@ -466,13 +470,15 @@ test.describe('Settings selected section loading', () => {
     }, testInfo) => {
       await api.testReset();
 
-      const themesModule = /\/src\/components\/settings\/ThemePluginSection\.tsx(?:\?|$)/;
+      const themesModule = servedModuleRoute(`${SETTINGS_SECTIONS}/ThemePluginSection.tsx`);
       const releaseThemes = Promise.withResolvers<void>();
       await page.route(themesModule, async (route) => {
         await releaseThemes.promise;
         await route.continue();
       });
-      const themesRequested = page.waitForRequest(themesModule);
+      const themesRequested = page.waitForRequest((request) =>
+        themesModule(new URL(request.url())),
+      );
 
       const section = page.getByTestId(panel);
       try {
@@ -503,9 +509,7 @@ test.describe('Settings selected section loading', () => {
     api,
   }) => {
     await api.testReset();
-    await page.route(/\/src\/components\/settings\/HotkeysSection\.tsx(?:\?|$)/, (route) =>
-      route.abort(),
-    );
+    await page.route(servedModuleRoute(HOTKEYS_SECTION), (route) => route.abort());
 
     const dialog = page.getByTestId('settings-dialog');
     await page.goto('/#settings');
@@ -522,8 +526,11 @@ test.describe('Settings selected section loading', () => {
   }) => {
     await api.testReset();
 
-    const otherSectionModules =
-      /\/src\/components\/settings\/(?!HotkeysSection\.tsx)[A-Za-z]+Section\.tsx(?:\?|$)/;
+    const otherSectionModules = servedModuleRoute(
+      ...appSourcesIn(SETTINGS_SECTIONS, SETTINGS_SECTION_FILE).filter(
+        (source) => source !== HOTKEYS_SECTION,
+      ),
+    );
     const releaseOtherSections = Promise.withResolvers<void>();
     await page.route(otherSectionModules, async (route) => {
       await releaseOtherSections.promise;

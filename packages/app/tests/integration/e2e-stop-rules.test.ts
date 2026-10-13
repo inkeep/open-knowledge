@@ -105,16 +105,21 @@ const CHILD_PROCESS_CALL_PATTERN =
   /(?<![\w$])(?:spawnSync|spawn|execFileSync|execFile|execSync|fork)\s*\(|(?<![.\w$])exec\s*\(/;
 const MIRROR_EXCLUDED_INFIX = '.private.';
 const DEV_SERVER_SPAWN_SITES = [
-  'packages/app/tests/stress/_helpers/fixtures.ts',
+  'packages/app/tests/stress/_helpers/worker-server-command.ts',
   'packages/app/tests/stress/_helpers/global-warm-cache.ts',
 ] as const;
 const NON_DEV_SERVER_SPAWN_SITES = [
+  'packages/app/tests/stress/_helpers/worker-server-lifetime.ts',
   'packages/app/tests/stress/_helpers/i18n-catalog-freshness.ts',
   'packages/app/tests/stress/_helpers/port-ownership/cleanup-order-control.test-helper.ts',
   'packages/app/tests/stress/_helpers/port-ownership/lifetime-global-setup.ts',
+  'packages/app/tests/stress/_helpers/port-ownership/nested-playwright-run.test-helper.ts',
   'packages/app/tests/stress/_helpers/port-ownership/owner-loss.test-helper.ts',
   'packages/app/tests/stress/_helpers/port-ownership/run-case.test-helper.ts',
+  'packages/app/tests/stress/_helpers/prebuilt/prebuilt-dev-build.ts',
+  'packages/app/tests/stress/_helpers/reuse/reuse-run.test-helper.ts',
   'packages/app/tests/stress/okf-generated-index-settings.e2e.ts',
+  'packages/app/tests/stress/prebuilt-dev-serving.e2e.ts',
 ] as const;
 const PINNED_SPAWN_SITES = [...DEV_SERVER_SPAWN_SITES, ...NON_DEV_SERVER_SPAWN_SITES].sort();
 

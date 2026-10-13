@@ -2021,6 +2021,7 @@ export {
   TERMINAL_PLACEMENTS,
   type TerminalPlacement,
 } from './terminal-layout.ts';
+export { TEST_LOOP_CORE_MARKER } from './test-loop-marker.ts';
 export type {
   AnsiSlotName,
   Base16Palette,

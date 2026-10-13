@@ -297,7 +297,8 @@
     },
     "test:e2e": {
       "dependsOn": ["^build", "build"],
-      "cache": false
+      "cache": false,
+      "passThroughEnv": ["OK_TEST_E2E_SERVING"]
     },
     "test:visual": {
       "dependsOn": ["^build"],
@@ -324,11 +325,13 @@
     },
     "test:a11y": {
       "dependsOn": ["^build"],
-      "cache": false
+      "cache": false,
+      "passThroughEnv": ["OK_TEST_E2E_SERVING"]
     },
     "@inkeep/open-knowledge-app#test:a11y": {
       "dependsOn": ["^build", "build"],
-      "cache": false
+      "cache": false,
+      "passThroughEnv": ["OK_TEST_E2E_SERVING"]
     },
     "test:perf:bench": {
       "dependsOn": [],

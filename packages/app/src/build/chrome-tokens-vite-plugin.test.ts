@@ -1,4 +1,6 @@
-import { dirname, resolve } from 'node:path';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { CHROME_BG_DARK, CHROME_BG_LIGHT } from '../../../core/src/constants/chrome.ts';
@@ -46,4 +48,31 @@ describe('chromeTokensVitePlugin', () => {
     };
     expect(transform.handler(html)).toBe(`${CHROME_BG_LIGHT}/${CHROME_BG_LIGHT}/${CHROME_BG_DARK}`);
   });
+});
+
+function sidebarCss(light: string, dark: string): string {
+  return `:root {\n  --sidebar: ${light};\n}\n.dark {\n  --sidebar: ${dark};\n}\n`;
+}
+
+test('a running dev server serves the --sidebar token the stylesheet holds now, not the one it held at start', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ok-chrome-tokens-'));
+  try {
+    const cssPath = join(dir, 'globals.css');
+    writeFileSync(cssPath, sidebarCss('oklch(0.985 0 0)', 'oklch(0.205 0 0)'));
+    const plugin = chromeTokensVitePlugin({ globalsCssPath: cssPath });
+    const buildStart = plugin.buildStart as () => void;
+    const transform = plugin.transformIndexHtml as { handler: (html: string) => string };
+    buildStart();
+    expect(transform.handler('__OK_CHROME_BG_LIGHT__ __OK_CHROME_BG_DARK__')).toBe(
+      '#fafafa #171717',
+    );
+
+    writeFileSync(cssPath, sidebarCss('oklch(0.9 0 0)', 'oklch(0.205 0 0)'));
+
+    expect(transform.handler('__OK_CHROME_BG_LIGHT__ __OK_CHROME_BG_DARK__')).toBe(
+      '#dedede #171717',
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

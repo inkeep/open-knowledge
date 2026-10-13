@@ -20,10 +20,11 @@ import {
   updateServerLockPort,
 } from '@inkeep/open-knowledge-server';
 import sirv from 'sirv';
-import type { Plugin } from 'vite';
+import type { Plugin, ViteDevServer } from 'vite';
 import type { WebSocketServer } from 'ws';
 import { parse as parseYaml } from 'yaml';
 import { computeDevApiConfigResponse } from './api-config-handler.ts';
+import { type AssetRouting, routeAssets } from './asset-routing.ts';
 
 let configureServerInvocations = 0;
 
@@ -118,8 +119,12 @@ function closeWebSocketServer(wss: WebSocketServer): Promise<void> {
   });
 }
 
+type OkServerHost = Pick<ViteDevServer, 'httpServer' | 'middlewares'>;
+
+type RuntimeTeardowns = Set<() => Promise<void>>;
+
 export function hocuspocusPlugin(): Plugin {
-  const activeRuntimeTeardowns = new Set<() => Promise<void>>();
+  const activeRuntimeTeardowns: RuntimeTeardowns = new Set();
   return {
     name: 'hocuspocus',
     async buildEnd() {
@@ -132,199 +137,202 @@ export function hocuspocusPlugin(): Plugin {
       if (errors.length > 0) throw new AggregateError(errors, 'Hocuspocus Vite teardown failed');
     },
     async configureServer(server) {
-      configureServerInvocations += 1;
-      if (configureServerInvocations > 1) {
-        console.warn(
-          `[collab] configureServer invoked ${configureServerInvocations}× — Vite restarted; spinning up a fresh ServerInstance. The previous srv will be destroyed by its httpServer close handler.`,
-        );
-      } else {
-        console.info(`[collab] configureServer invocation=1 pid=${process.pid}`);
-      }
-
-      const currentSrv = createServer({
-        contentDir: CONTENT_DIR,
-        projectDir: TEST_PROJECT_DIR ?? (isTestIsolated ? CONTENT_DIR : PROJECT_ROOT),
-        contentRoot: isTestIsolated ? '' : CONTENT_ROOT,
-        ...(isTestIsolated ? { configHomedirOverride: CONTENT_DIR } : {}),
-        gitEnabled: isEphemeralTest ? false : !isTestIsolated || gitEnabledForTest,
-        enableTestRoutes: true,
-        quiet: true,
-        embeddingsKeyStore: makeLazyEmbeddingsKeyStore(),
-        capabilities: ['http', 'ws', 'ui'],
-        ...(isEphemeralTest ? { ephemeral: true, singleDocRelPath: SINGLE_DOC_REL_PATH } : {}),
-      });
-
-      latestLockDir = currentSrv.lockDir;
-      if (!exitHandlerRegistered) {
-        exitHandlerRegistered = true;
-        process.once('exit', () => {
-          if (latestLockDir === null) return;
-          try {
-            releaseServerLock(latestLockDir);
-          } catch {}
-        });
-      }
-
-      if (configureServerInvocations === 1) {
-        getLogger('hocuspocus').info({ contentDir: CONTENT_DIR }, 'content dir');
-      }
-
-      server.httpServer?.once('listening', () => {
-        const addr = server.httpServer?.address();
-        if (typeof addr === 'object' && addr !== null) {
-          updateServerLockPort(currentSrv.lockDir, addr.port, `http://localhost:${addr.port}`);
-        }
-      });
-
-      const {
-        hocuspocus,
-        nativeApi,
-        sessionManager,
-        agentFocusBroadcaster,
-        agentPresenceBroadcaster,
-      } = currentSrv;
-
-      const acpThreadManager = isEphemeralTest
-        ? null
-        : new AcpThreadManager({
-            contentDir: CONTENT_DIR,
-            localDir: currentSrv.lockDir,
-            globalDir: okUserHomeDir(),
-            registry: currentSrv.acpRegistry,
-            permissions: currentSrv.acpPermissions,
-            sessionManager,
-            agentPresenceBroadcaster,
-            resolveEmbed: currentSrv.resolveEmbed,
-            isExcludedPath: (rel) => currentSrv.contentFilter.isExcluded(rel),
-            isIgnoredPath: (rel) => currentSrv.contentFilter.isPathIgnored(rel),
-            getLoadedDocText: (docName) =>
-              hocuspocus.documents.get(docName)?.getText('source').toString() ?? null,
-            getServerUrl: () => {
-              const addr = server.httpServer?.address();
-              const port = typeof addr === 'object' && addr !== null ? addr.port : 5173;
-              return `http://localhost:${port}`;
-            },
-            getMcpStdioCommand: () => {
-              const addr = server.httpServer?.address();
-              const port = typeof addr === 'object' && addr !== null ? addr.port : 5173;
-              return buildOkMcpStdioCommand(undefined, port, { log: getLogger('acp-threads') });
-            },
-            agentBrowserTools: () =>
-              !isTestIsolated &&
-              readAgentBrowserTools(PROJECT_ROOT, undefined, getLogger('acp-permissions')),
-            log: getLogger('acp-threads'),
-          });
-      await acpThreadManager?.init();
-
-      const collaborationHost = createCollaborationHost({
-        hocuspocus,
-        log: getLogger('hocuspocus'),
-        sessionManager,
-        agentFocusBroadcaster,
-        agentPresenceBroadcaster,
-        maintenanceCoordinator: currentSrv.maintenanceCoordinator,
-        acpThreadManager,
-      });
-      server.httpServer?.prependListener('upgrade', collaborationHost.handleUpgrade);
-
-      const assetMiddleware = createAssetServeMiddleware({
-        contentDir: CONTENT_DIR,
-        contentFilter: currentSrv.contentFilter,
-        contentSirv: sirv(CONTENT_DIR, { dev: true, dotfiles: false }),
-        inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,
-        assetExtensions: ASSET_EXTENSIONS,
-        blocklistExtensions: EXECUTABLE_BLOCKLIST_EXTENSIONS,
-        ingressPolicy: buildIngressPolicy({}),
-        resolveTrackedFile: currentSrv.resolveTrackedFile,
-      });
-      server.middlewares.use((req, res, next) => {
-        const url = req.url ?? '';
-        const path = url.split('?')[0] ?? '';
-        const queryStart = url.indexOf('?');
-        const query = queryStart >= 0 ? url.slice(queryStart) : '';
-        const params = query ? new URLSearchParams(query) : null;
-        if (
-          path.startsWith('/@vite/') ||
-          path.startsWith('/@fs/') ||
-          path.startsWith('/@id/') ||
-          path === '/@react-refresh' ||
-          path.startsWith('/node_modules/') ||
-          path.startsWith('/src/') ||
-          path === '/favicon.svg' ||
-          params?.has('import') ||
-          params?.has('html-proxy')
-        ) {
-          return next();
-        }
-        return assetMiddleware(req, res, next);
-      });
-
-      server.middlewares.use(async (req, res, next) => {
-        const url = req.url?.split('?')[0];
-        if (url?.startsWith('/api/')) {
-          if (url === '/api/config') {
-            const addr = server.httpServer?.address();
-            const port = typeof addr === 'object' && addr !== null ? addr.port : 0;
-            const response = computeDevApiConfigResponse(req.method, port, isEphemeralTest);
-            if (response) {
-              for (const [name, value] of Object.entries(response.headers)) {
-                res.setHeader(name, value);
-              }
-              res.statusCode = response.status;
-              if (response.omitBody) {
-                res.end();
-              } else {
-                res.end(response.body);
-              }
-              return;
-            }
-          }
-          if (await nativeApi.dispatch(req, res)) return;
-          // biome-ignore lint/suspicious/noExplicitAny: Hocuspocus `hooks()` has no exported payload type for onRequest
-          await hocuspocus.hooks('onRequest', { request: req, response: res } as any);
-          if (res.writableEnded || res.headersSent) return;
-          res.statusCode = 404;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'API route not found', path: url }));
-          return;
-        }
-        next();
-      });
-
-      let teardownPromise: Promise<void> | undefined;
-      const teardown = (): Promise<void> => {
-        teardownPromise ??= (async () => {
-          const errors: unknown[] = [];
-          const run = async (label: string, action: () => Promise<void>): Promise<void> => {
-            try {
-              await action();
-            } catch (err) {
-              errors.push(err);
-              getLogger('hocuspocus').error(
-                { err },
-                `Vite collaboration teardown failed: ${label}`,
-              );
-            }
-          };
-          server.httpServer?.off('upgrade', collaborationHost.handleUpgrade);
-          await run('ACP thread manager', async () => acpThreadManager?.destroy());
-          await run('collaboration host', () => collaborationHost.shutdown());
-          await run('WebSocket server', () => closeWebSocketServer(collaborationHost.wss));
-          await run('server instance', () => currentSrv.destroy());
-          if (errors.length > 0)
-            throw new AggregateError(errors, 'Vite collaboration teardown failed');
-        })();
-        void teardownPromise.finally(() => activeRuntimeTeardowns.delete(teardown)).catch(() => {});
-        return teardownPromise;
-      };
-      activeRuntimeTeardowns.add(teardown);
-      server.httpServer?.on('close', () => {
-        void teardown().catch((err) =>
-          getLogger('hocuspocus').error({ err }, 'HTTP close fallback teardown failed'),
-        );
-      });
-
-      getLogger('hocuspocus').info({}, 'WebSocket server ready on /collab');
+      await attachOkServer(server, { kind: 'dev-server' }, activeRuntimeTeardowns);
     },
   };
+}
+
+export function prebuiltHocuspocusPlugin(): Plugin {
+  const activeRuntimeTeardowns: RuntimeTeardowns = new Set();
+  return {
+    name: 'hocuspocus:prebuilt',
+    apply: 'serve',
+    async configurePreviewServer(server) {
+      const teardown = await attachOkServer(
+        server,
+        { kind: 'prebuilt', bundleDir: resolve(server.config.root, server.config.build.outDir) },
+        activeRuntimeTeardowns,
+      );
+      const closePreview = server.close.bind(server);
+      server.close = async () => {
+        const results = await Promise.allSettled([closePreview(), teardown()]);
+        const errors = results
+          .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+          .map((result) => result.reason);
+        if (errors.length > 0) throw new AggregateError(errors, 'Prebuilt preview close failed');
+      };
+    },
+  };
+}
+
+async function attachOkServer(
+  server: OkServerHost,
+  assetRouting: AssetRouting,
+  activeRuntimeTeardowns: RuntimeTeardowns,
+): Promise<() => Promise<void>> {
+  configureServerInvocations += 1;
+  if (configureServerInvocations > 1) {
+    console.warn(
+      `[collab] configureServer invoked ${configureServerInvocations}× — Vite restarted; spinning up a fresh ServerInstance. The previous srv will be destroyed by its httpServer close handler.`,
+    );
+  } else {
+    console.info(`[collab] configureServer invocation=1 pid=${process.pid}`);
+  }
+
+  const currentSrv = createServer({
+    contentDir: CONTENT_DIR,
+    projectDir: TEST_PROJECT_DIR ?? (isTestIsolated ? CONTENT_DIR : PROJECT_ROOT),
+    contentRoot: isTestIsolated ? '' : CONTENT_ROOT,
+    ...(isTestIsolated ? { configHomedirOverride: CONTENT_DIR } : {}),
+    gitEnabled: isEphemeralTest ? false : !isTestIsolated || gitEnabledForTest,
+    enableTestRoutes: true,
+    quiet: true,
+    embeddingsKeyStore: makeLazyEmbeddingsKeyStore(),
+    capabilities: ['http', 'ws', 'ui'],
+    ...(isEphemeralTest ? { ephemeral: true, singleDocRelPath: SINGLE_DOC_REL_PATH } : {}),
+  });
+
+  latestLockDir = currentSrv.lockDir;
+  if (!exitHandlerRegistered) {
+    exitHandlerRegistered = true;
+    process.once('exit', () => {
+      if (latestLockDir === null) return;
+      try {
+        releaseServerLock(latestLockDir);
+      } catch {}
+    });
+  }
+
+  if (configureServerInvocations === 1) {
+    getLogger('hocuspocus').info({ contentDir: CONTENT_DIR }, 'content dir');
+  }
+
+  server.httpServer?.once('listening', () => {
+    const addr = server.httpServer?.address();
+    if (typeof addr === 'object' && addr !== null) {
+      updateServerLockPort(currentSrv.lockDir, addr.port, `http://localhost:${addr.port}`);
+    }
+  });
+
+  const { hocuspocus, nativeApi, sessionManager, agentFocusBroadcaster, agentPresenceBroadcaster } =
+    currentSrv;
+
+  const acpThreadManager = isEphemeralTest
+    ? null
+    : new AcpThreadManager({
+        contentDir: CONTENT_DIR,
+        localDir: currentSrv.lockDir,
+        globalDir: okUserHomeDir(),
+        registry: currentSrv.acpRegistry,
+        permissions: currentSrv.acpPermissions,
+        sessionManager,
+        agentPresenceBroadcaster,
+        resolveEmbed: currentSrv.resolveEmbed,
+        isExcludedPath: (rel) => currentSrv.contentFilter.isExcluded(rel),
+        isIgnoredPath: (rel) => currentSrv.contentFilter.isPathIgnored(rel),
+        getLoadedDocText: (docName) =>
+          hocuspocus.documents.get(docName)?.getText('source').toString() ?? null,
+        getServerUrl: () => {
+          const addr = server.httpServer?.address();
+          const port = typeof addr === 'object' && addr !== null ? addr.port : 5173;
+          return `http://localhost:${port}`;
+        },
+        getMcpStdioCommand: () => {
+          const addr = server.httpServer?.address();
+          const port = typeof addr === 'object' && addr !== null ? addr.port : 5173;
+          return buildOkMcpStdioCommand(undefined, port, { log: getLogger('acp-threads') });
+        },
+        agentBrowserTools: () =>
+          !isTestIsolated &&
+          readAgentBrowserTools(PROJECT_ROOT, undefined, getLogger('acp-permissions')),
+        log: getLogger('acp-threads'),
+      });
+  await acpThreadManager?.init();
+
+  const collaborationHost = createCollaborationHost({
+    hocuspocus,
+    log: getLogger('hocuspocus'),
+    sessionManager,
+    agentFocusBroadcaster,
+    agentPresenceBroadcaster,
+    maintenanceCoordinator: currentSrv.maintenanceCoordinator,
+    acpThreadManager,
+  });
+  server.httpServer?.prependListener('upgrade', collaborationHost.handleUpgrade);
+
+  const assetMiddleware = createAssetServeMiddleware({
+    contentDir: CONTENT_DIR,
+    contentFilter: currentSrv.contentFilter,
+    contentSirv: sirv(CONTENT_DIR, { dev: true, dotfiles: false }),
+    inlineExtensions: INLINE_RENDERABLE_EXTENSIONS,
+    assetExtensions: ASSET_EXTENSIONS,
+    blocklistExtensions: EXECUTABLE_BLOCKLIST_EXTENSIONS,
+    ingressPolicy: buildIngressPolicy({}),
+    resolveTrackedFile: currentSrv.resolveTrackedFile,
+  });
+  server.middlewares.use(routeAssets(assetRouting, assetMiddleware));
+
+  server.middlewares.use(async (req, res, next) => {
+    const url = req.url?.split('?')[0];
+    if (url?.startsWith('/api/')) {
+      if (url === '/api/config') {
+        const addr = server.httpServer?.address();
+        const port = typeof addr === 'object' && addr !== null ? addr.port : 0;
+        const response = computeDevApiConfigResponse(req.method, port, isEphemeralTest);
+        if (response) {
+          for (const [name, value] of Object.entries(response.headers)) {
+            res.setHeader(name, value);
+          }
+          res.statusCode = response.status;
+          if (response.omitBody) {
+            res.end();
+          } else {
+            res.end(response.body);
+          }
+          return;
+        }
+      }
+      if (await nativeApi.dispatch(req, res)) return;
+      // biome-ignore lint/suspicious/noExplicitAny: Hocuspocus `hooks()` has no exported payload type for onRequest
+      await hocuspocus.hooks('onRequest', { request: req, response: res } as any);
+      if (res.writableEnded || res.headersSent) return;
+      res.statusCode = 404;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'API route not found', path: url }));
+      return;
+    }
+    next();
+  });
+
+  let teardownPromise: Promise<void> | undefined;
+  const teardown = (): Promise<void> => {
+    teardownPromise ??= (async () => {
+      const errors: unknown[] = [];
+      const run = async (label: string, action: () => Promise<void>): Promise<void> => {
+        try {
+          await action();
+        } catch (err) {
+          errors.push(err);
+          getLogger('hocuspocus').error({ err }, `Vite collaboration teardown failed: ${label}`);
+        }
+      };
+      server.httpServer?.off('upgrade', collaborationHost.handleUpgrade);
+      await run('ACP thread manager', async () => acpThreadManager?.destroy());
+      await run('collaboration host', () => collaborationHost.shutdown());
+      await run('WebSocket server', () => closeWebSocketServer(collaborationHost.wss));
+      await run('server instance', () => currentSrv.destroy());
+      if (errors.length > 0) throw new AggregateError(errors, 'Vite collaboration teardown failed');
+    })();
+    void teardownPromise.finally(() => activeRuntimeTeardowns.delete(teardown)).catch(() => {});
+    return teardownPromise;
+  };
+  activeRuntimeTeardowns.add(teardown);
+  server.httpServer?.on('close', () => {
+    void teardown().catch((err) =>
+      getLogger('hocuspocus').error({ err }, 'HTTP close fallback teardown failed'),
+    );
+  });
+
+  getLogger('hocuspocus').info({}, 'WebSocket server ready on /collab');
+  return teardown;
 }

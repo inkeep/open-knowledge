@@ -2,13 +2,18 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { isAbsolute } from 'node:path';
-import type { Plugin } from 'vite';
-
+import type { Plugin, ViteDevServer } from 'vite';
+import {
+  digestLoadedInputs,
+  type TestServerLoadedInputs,
+  viteRestartInputs,
+} from './test-server-loaded-inputs';
 import {
   isTestServerHost,
   TEST_SERVER_CANDIDATE_PORTS,
   TEST_SERVER_HOST_FAMILY,
   TEST_SERVER_IDENTITY_PATH,
+  TEST_SERVER_LOADED_INPUTS_PATH,
   TEST_SERVER_STARTUP_ENV,
   type TestServerStartupReceipt,
   type TestServerStartupRequest,
@@ -80,37 +85,85 @@ function boundReceipt(
   };
 }
 
+type StartupHostServer = Pick<ViteDevServer, 'httpServer' | 'middlewares'>;
+
+const RECEIPTS_WRITTEN_BY_THIS_PROCESS = Symbol.for('ok:test-server-startup:receipts-written');
+
+function receiptsWrittenByThisProcess(): Map<string, string> {
+  const processScope = globalThis as { [RECEIPTS_WRITTEN_BY_THIS_PROCESS]?: Map<string, string> };
+  processScope[RECEIPTS_WRITTEN_BY_THIS_PROCESS] ??= new Map();
+  return processScope[RECEIPTS_WRITTEN_BY_THIS_PROCESS];
+}
+
+function publishReceipt(request: TestServerStartupRequest, receipt: string): void {
+  const written = receiptsWrittenByThisProcess();
+  const earlier = written.get(request.receiptPath);
+  if (earlier !== undefined) {
+    if (earlier !== receipt) {
+      throw new Error(
+        `automatic Vite startup restarted in-process and bound ${receipt}, not the endpoint its receipt records (${earlier})`,
+      );
+    }
+    return;
+  }
+  if (existsSync(request.receiptPath)) {
+    throw new Error('automatic Vite startup receipt already exists');
+  }
+  const temporaryPath = `${request.receiptPath}.${process.pid}.${randomUUID()}`;
+  try {
+    writeFileSync(temporaryPath, receipt, { flag: 'wx', mode: 0o600 });
+    renameSync(temporaryPath, request.receiptPath);
+  } finally {
+    rmSync(temporaryPath, { force: true });
+  }
+  written.set(request.receiptPath, receipt);
+}
+
+function installStartupIdentity(
+  request: TestServerStartupRequest,
+  server: StartupHostServer,
+  configuredHost: string | boolean | undefined,
+  loadedInputs: TestServerLoadedInputs | undefined,
+): void {
+  const httpServer = server.httpServer;
+  if (httpServer === null) {
+    throw new Error('automatic Vite startup needs an HTTP server');
+  }
+  if (configuredHost !== request.host) {
+    throw new Error('automatic Vite startup host differs from its request');
+  }
+  if (loadedInputs === undefined) {
+    throw new Error('automatic Vite startup has no record of the configuration it loaded');
+  }
+  server.middlewares.use(TEST_SERVER_IDENTITY_PATH, (_req, res) => {
+    const receipt = boundReceipt(request, httpServer.address());
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(JSON.stringify(receipt));
+  });
+  server.middlewares.use(TEST_SERVER_LOADED_INPUTS_PATH, (_req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(JSON.stringify(loadedInputs));
+  });
+  httpServer.once('listening', () => {
+    publishReceipt(request, JSON.stringify(boundReceipt(request, httpServer.address())));
+  });
+}
+
 export function testServerStartupPlugin(request: TestServerStartupRequest): Plugin {
+  let loadedInputs: TestServerLoadedInputs | undefined;
   return {
     name: 'ok:test-server-startup',
     apply: 'serve',
+    configResolved(config) {
+      loadedInputs = digestLoadedInputs(viteRestartInputs(config));
+    },
     configureServer(server) {
-      const httpServer = server.httpServer;
-      if (httpServer === null) {
-        throw new Error('automatic Vite startup needs an HTTP server');
-      }
-      if (server.config.server.host !== request.host) {
-        throw new Error('automatic Vite startup host differs from its request');
-      }
-      server.middlewares.use(TEST_SERVER_IDENTITY_PATH, (_req, res) => {
-        const receipt = boundReceipt(request, httpServer.address());
-        res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Cache-Control', 'no-store');
-        res.end(JSON.stringify(receipt));
-      });
-      httpServer.once('listening', () => {
-        const receipt = boundReceipt(request, httpServer.address());
-        if (existsSync(request.receiptPath)) {
-          throw new Error('automatic Vite startup receipt already exists');
-        }
-        const temporaryPath = `${request.receiptPath}.${process.pid}.${randomUUID()}`;
-        try {
-          writeFileSync(temporaryPath, JSON.stringify(receipt), { flag: 'wx', mode: 0o600 });
-          renameSync(temporaryPath, request.receiptPath);
-        } finally {
-          rmSync(temporaryPath, { force: true });
-        }
-      });
+      installStartupIdentity(request, server, server.config.server.host, loadedInputs);
+    },
+    configurePreviewServer(server) {
+      installStartupIdentity(request, server, server.config.preview.host, loadedInputs);
     },
   };
 }

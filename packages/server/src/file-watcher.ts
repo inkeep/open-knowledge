@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   type Dirent,
   existsSync,
@@ -26,7 +27,13 @@ import {
   stripDocExtension,
 } from './doc-extensions.ts';
 import { canonicalContentPathIsRefused, resolvesIntoPrivateState } from './fs-safety.ts';
-import { classifyFsPath, normalizeFsPath } from './fs-traced.ts';
+import {
+  classifyFsPath,
+  normalizeFsPath,
+  tracedMkdirSync,
+  tracedRmSync,
+  tracedWriteFileSync,
+} from './fs-traced.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 import {
@@ -252,6 +259,7 @@ export interface WatcherHandle {
   pruneFileIndexNowExcluded: () => number;
   pruneFolderIndexNowExcluded: () => number;
   rescanFromDisk: () => Promise<void>;
+  settle: () => Promise<void>;
 }
 
 export const writeTracker = new Map<string, Array<{ hash: string; timestamp: number }>>();
@@ -3438,6 +3446,9 @@ type RecoveryPublicMutations = GeneralMutationRecord & {
   hashEffects: Map<string, string | null>;
 };
 
+/* WARN: LEASE_RESET_MS in packages/app/tests/stress/_helpers/reuse/lease-fixture.ts must exceed this bound plus the rest of a slot reset. */
+export const INTERIM_SETTLE_NO_PROGRESS_MS = 20_000;
+
 async function startParcelWatcher(
   contentDir: string,
   contentFilter: ContentFilter | undefined,
@@ -3455,7 +3466,13 @@ async function startParcelWatcher(
   onRawBatch?: (absPaths: readonly string[]) => void,
   discoveredStructuralDirs?: ReadonlySet<string>,
   onRecoveryComplete?: () => Promise<void>,
-): Promise<(AsyncSubscription & { runOrdered(work: () => Promise<void>): Promise<void> }) | null> {
+): Promise<
+  | (AsyncSubscription & {
+      runOrdered(work: () => Promise<void>): Promise<void>;
+      settle(): Promise<void>;
+    })
+  | null
+> {
   let parcel: typeof import('@parcel/watcher');
   try {
     parcel = await import('@parcel/watcher');
@@ -3478,13 +3495,20 @@ async function startParcelWatcher(
       : undefined;
 
     let closed = false;
+    let failure: Error | undefined;
+    const settleFences = new Map<string, PromiseWithResolvers<void>>();
+    const settleProgress = new Set<() => void>();
     let workTail = Promise.resolve();
     const runOrdered = (work: () => Promise<void>): Promise<void> => {
       if (closed) return Promise.resolve();
       const next = workTail.then(work);
-      workTail = next.catch((err) => {
-        log.error({ err }, 'parcel batch error');
-      });
+      workTail = next
+        .catch((err) => {
+          log.error({ err }, 'parcel batch error');
+        })
+        .then(() => {
+          for (const progressed of settleProgress) progressed();
+        });
       return next;
     };
     let recoveryRunning = false;
@@ -3563,6 +3587,10 @@ async function startParcelWatcher(
         const notification = classifyParcelNotification(err, events);
         if (notification.kind === 'error') {
           log.error({ err: notification.error }, 'parcel watcher callback error');
+          failure = new Error(
+            `the file watcher failed before it saw its settle fence: ${notification.error.message}`,
+          );
+          for (const fence of settleFences.values()) fence.reject(failure);
           return;
         }
         if (notification.kind === 'rescan') {
@@ -3591,9 +3619,17 @@ async function startParcelWatcher(
           } catch (handleErr) {
             log.error({ err: handleErr }, 'parcel batch error');
           }
+          for (const event of notification.events)
+            settleFences.get(basename(event.path))?.resolve();
         });
         if (notification.kind !== 'rescan') return records;
-        return Promise.all([records, requestRecovery()]);
+        const fencesBeforeRescan = [...settleFences.values()];
+        return Promise.all([
+          records,
+          requestRecovery().then(() => {
+            for (const fence of fencesBeforeRescan) fence.resolve();
+          }),
+        ]);
       },
       subscribeOpts,
       platform,
@@ -3601,8 +3637,44 @@ async function startParcelWatcher(
 
     return {
       runOrdered,
+      async settle() {
+        if (closed) return;
+        if (failure) throw failure;
+        const name = `watcher-settle-fence-${randomUUID()}`;
+        const fencePath = join(contentDir, '.ok', name);
+        const reached = Promise.withResolvers<void>();
+        let quiet: ReturnType<typeof setTimeout> | undefined;
+        const progressed = (): void => {
+          clearTimeout(quiet);
+          quiet = setTimeout(() => {
+            reached.reject(
+              new Error(
+                `the file watcher handled no batch for ${INTERIM_SETTLE_NO_PROGRESS_MS} ms before it saw its settle fence`,
+              ),
+            );
+          }, INTERIM_SETTLE_NO_PROGRESS_MS);
+        };
+        settleFences.set(name, reached);
+        let fenceWritten = false;
+        try {
+          tracedMkdirSync(dirname(fencePath), { recursive: true });
+          tracedWriteFileSync(fencePath, '');
+          fenceWritten = true;
+          settleProgress.add(progressed);
+          progressed();
+          await reached.promise;
+        } finally {
+          clearTimeout(quiet);
+          settleProgress.delete(progressed);
+          settleFences.delete(name);
+          if (fenceWritten) tracedRmSync(fencePath, { force: true });
+        }
+      },
       async unsubscribe() {
         closed = true;
+        for (const fence of settleFences.values()) {
+          fence.reject(new Error('the file watcher stopped before it saw its settle fence'));
+        }
         await subscription.unsubscribe();
         await workTail;
       },
@@ -3804,6 +3876,7 @@ export async function startWatcher(
 
   let subscription: AsyncSubscription;
   let runOrderedRescan: ((work: () => Promise<void>) => Promise<void>) | undefined;
+  let settleSubscription: (() => Promise<void>) | undefined;
   let backend: WatcherBackend;
   const forceChokidar = process.env.OK_FILE_WATCHER_BACKEND === 'chokidar';
   const platform = opts.platform ?? process.platform;
@@ -3834,6 +3907,7 @@ export async function startWatcher(
     if (parcelSub) {
       subscription = parcelSub;
       runOrderedRescan = parcelSub.runOrdered;
+      settleSubscription = () => parcelSub.settle();
       backend = 'parcel';
     } else {
       if (opts.forceBackend === 'parcel') {
@@ -4111,6 +4185,14 @@ export async function startWatcher(
       }
       if (pruned > 0 || aliasesChanged) bumpFileIndexGeneration();
       return pruned;
+    },
+    async settle() {
+      if (settleSubscription === undefined) {
+        throw new Error(
+          'settling disk events needs the parcel watcher backend, and this watcher runs on chokidar',
+        );
+      }
+      await settleSubscription();
     },
     async rescanFromDisk() {
       const reseed = async () => {

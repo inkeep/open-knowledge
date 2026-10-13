@@ -1,6 +1,6 @@
 import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { REQUIRED_FIXTURE_ENTRY_NAMES } from './fixtures.ts';
+import { REQUIRED_FIXTURE_DOC_NAMES, REQUIRED_FIXTURE_ENTRY_NAMES } from './fixtures.ts';
 
 async function deletePathIfExists(
   baseURL: string,
@@ -16,23 +16,47 @@ async function deletePathIfExists(
   throw new Error(`delete-path failed for ${kind}:${path}: ${res.status} ${await res.text()}`);
 }
 
+async function removeEntriesOutside(
+  baseURL: string,
+  contentDir: string,
+  folder: string,
+  preserved: ReadonlySet<string>,
+): Promise<void> {
+  for (const entry of readdirSync(join(contentDir, folder), { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    if (preserved.has(entry.name)) continue;
+    const path = folder === '' ? entry.name : `${folder}/${entry.name}`;
+    if (entry.isDirectory()) {
+      await deletePathIfExists(baseURL, 'folder', path);
+      continue;
+    }
+    const docName = path.replace(/\.(md|mdx)$/i, '');
+    if (docName !== path) {
+      await deletePathIfExists(baseURL, 'file', docName);
+      continue;
+    }
+    rmSync(join(contentDir, path), { recursive: true, force: true });
+  }
+}
+
 export async function resetContentToFixtureBaseline(
   baseURL: string,
   contentDir: string,
 ): Promise<void> {
-  const preserved = new Set<string>(REQUIRED_FIXTURE_ENTRY_NAMES);
-  for (const entry of readdirSync(contentDir, { withFileTypes: true })) {
-    if (entry.name.startsWith('.')) continue;
-    if (preserved.has(entry.name)) continue;
-    if (entry.isDirectory()) {
-      await deletePathIfExists(baseURL, 'folder', entry.name);
-      continue;
-    }
-    const docName = entry.name.replace(/\.(md|mdx)$/i, '');
-    if (docName !== entry.name) {
-      await deletePathIfExists(baseURL, 'file', docName);
-      continue;
-    }
-    rmSync(join(contentDir, entry.name), { recursive: true, force: true });
+  await removeEntriesOutside(baseURL, contentDir, '', new Set(REQUIRED_FIXTURE_ENTRY_NAMES));
+}
+
+export async function resetFixtureFolders(baseURL: string, contentDir: string): Promise<void> {
+  const preservedByFolder = new Map<string, Set<string>>();
+  for (const docName of REQUIRED_FIXTURE_DOC_NAMES) {
+    const slash = docName.lastIndexOf('/');
+    if (slash === -1) continue;
+    const folder = docName.slice(0, slash);
+    const preserved = preservedByFolder.get(folder) ?? new Set<string>();
+    preserved.add(`${docName.slice(slash + 1)}.md`);
+    preservedByFolder.set(folder, preserved);
+  }
+  for (const [folder, preserved] of preservedByFolder) {
+    await removeEntriesOutside(baseURL, contentDir, folder, preserved);
   }
 }

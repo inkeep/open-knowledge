@@ -41,7 +41,10 @@ const isCI = !!process.env.CI;
 
 export default defineConfig({
   testDir: './tests/a11y',
-  globalSetup: './tests/stress/_helpers/i18n-catalog-freshness.ts',
+  globalSetup: [
+    './tests/stress/_helpers/i18n-catalog-freshness.ts',
+    './tests/stress/_helpers/prebuilt/prebuilt-dev-setup.ts',
+  ],
   testMatch: /.*\.e2e\.ts$/,
   timeout: 120_000,
   expect: { timeout: EXPECT_TIMEOUT_MS },

@@ -1,4 +1,6 @@
 import type { Page } from '@playwright/test';
+import { E2E_PAGE_MODULES_SOURCE } from '../../src/build/prebuilt-dev-contract.ts';
+import type * as PageModules from '../../src/test-utils/e2e-page-modules.ts';
 import {
   expect,
   FADE_DURATION_MS,
@@ -6,6 +8,7 @@ import {
   installThemeFadeProbe,
   openColorThemes,
   runningRootAnimations,
+  servedModuleUrl,
   switchColorThemeAndSettleFade,
   type ThemeFadeProbeWindow,
   test,
@@ -156,10 +159,13 @@ test('default light and dark modes fade surfaces without losing selection', asyn
   await page.getByTestId('settings-sidebar-item-preferences').click();
   await page.getByTestId('theme-picker-light').click();
   expect(
-    await page
-      .locator('html')
-      .evaluate((root) => getComputedStyle(root).getPropertyValue('--radius').trim()),
-  ).toBe('0.625rem');
+    await page.locator('html').evaluate((root) => {
+      const radius = CSSNumericValue.parse(getComputedStyle(root).getPropertyValue('--radius'));
+      return radius instanceof CSSUnitValue
+        ? { value: radius.value, unit: radius.unit }
+        : radius.toString();
+    }),
+  ).toEqual({ value: 0.625, unit: 'rem' });
   expect(
     await page
       .getByTestId('theme-picker-light')
@@ -328,11 +334,10 @@ test('default light and dark modes fade surfaces without losing selection', asyn
   ).toEqual([]);
   await expect(page.locator('html')).toHaveClass(/dark/);
   await expect(page.locator('html')).not.toHaveAttribute('data-theme-color-fading');
-  const selectionColor = await page.evaluate(async () => {
-    const modulePath = '/src/components/terminal-theme.ts';
-    const { computeLiveXtermTheme } = await import(modulePath);
+  const selectionColor = await page.evaluate(async (pageModules) => {
+    const { computeLiveXtermTheme }: typeof PageModules = await import(pageModules);
     return computeLiveXtermTheme('dark').selectionBackground;
-  });
+  }, servedModuleUrl(E2E_PAGE_MODULES_SOURCE));
   expect(selectionColor).toMatch(/^#[0-9a-f]{6}52$/);
 
   await search.fill('');

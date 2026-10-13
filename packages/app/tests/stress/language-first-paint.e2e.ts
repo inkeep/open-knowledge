@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './_helpers';
+import { expect, servedEntryScriptRoute, test } from './_helpers';
 
 const STORAGE_KEY = 'ok-language-v1';
 
@@ -19,7 +19,7 @@ async function seedLanguageCache(page: Page, entry: CachedLanguage): Promise<voi
 }
 
 async function gotoWithoutApp(page: Page): Promise<void> {
-  await page.route('**/src/main.tsx', (route) => route.abort());
+  await page.route(servedEntryScriptRoute(), (route) => route.abort());
   await page.goto('/', { waitUntil: 'commit' });
 }
 

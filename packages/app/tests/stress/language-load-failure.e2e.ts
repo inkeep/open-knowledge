@@ -1,12 +1,12 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './_helpers';
+import { expect, servedModuleRoute, servedModuleUrl, test } from './_helpers';
 
 const REQUESTED = 'es';
 
-const CATALOG_ROUTE = `**/locales/${REQUESTED}/messages.json*`;
+const CATALOG_SOURCE = `src/locales/${REQUESTED}/messages.json`;
 
 async function withholdCatalog(page: Page): Promise<{ release: () => Promise<void> }> {
-  await page.route(CATALOG_ROUTE, (route) => route.abort('failed'));
+  await page.route(servedModuleRoute(CATALOG_SOURCE), (route) => route.abort('failed'));
   return {
     release: async () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
@@ -47,16 +47,15 @@ test.describe('a locale catalog that cannot be fetched', () => {
     await expect(reloadAction(page)).toBeVisible();
     await withheld.release();
 
-    const outcome = await page.evaluate(async () => {
-      const url = '/src/locales/es/messages.json?import';
+    const outcome = await page.evaluate(async (url) => {
       const refetched = await fetch(url);
       try {
-        await import(/* @vite-ignore */ url);
+        await import(url);
         return { refetched: refetched.status, reimported: 'resolved' };
       } catch {
         return { refetched: refetched.status, reimported: 'rejected' };
       }
-    });
+    }, servedModuleUrl(CATALOG_SOURCE));
 
     expect(outcome).toEqual({ refetched: 200, reimported: 'rejected' });
   });

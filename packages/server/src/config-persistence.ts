@@ -403,6 +403,27 @@ async function storeConfigDocInner(
   }
 }
 
+export function resetConfigDocForTest(
+  document: Y.Doc | null,
+  documentName: string,
+  ctx: ConfigPersistenceCtx,
+): void {
+  try {
+    tracedUnlinkSync(configDocAbsPath(documentName, ctx));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+  }
+  ctx.lkgCache.delete(documentName);
+  if (document === null) return;
+  const ytext = document.getText('source');
+  if (ytext.length > 0) {
+    document.transact(() => {
+      ytext.delete(0, ytext.length);
+    }, CONFIG_VALIDATION_REVERT_ORIGIN);
+  }
+  loadConfigDoc(document, documentName, ctx);
+}
+
 type ApplyExternalConfigChangeOutcome = 'applied' | 'rejected' | 'no-op';
 
 export function isConfigEcho(

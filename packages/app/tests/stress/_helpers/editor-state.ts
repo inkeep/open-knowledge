@@ -1,6 +1,6 @@
 import { expect, type JSHandle, type Page } from '@playwright/test';
 
-export const SELECT_ALL_SETTLE_TIMEOUT_MS = process.env.CI ? 15_000 : 5_000;
+export const SELECT_ALL_SETTLE_TIMEOUT_MS = 15_000;
 
 type ViewSelectionState = 'covers-document' | 'partial' | 'empty' | 'unreadable';
 

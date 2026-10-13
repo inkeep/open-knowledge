@@ -13,6 +13,7 @@ import {
   CONFIG_DOC_NAME_USER,
   CONFIG_DOC_NAMES,
   type ConfigDiagnosticsReport,
+  type ConfigDocName,
   type ConfigIssue,
   createBasenameIndex,
   DEFAULT_ATTACHMENT_FOLDER_PATH,
@@ -85,7 +86,11 @@ import {
   startConfigFileWatcher,
   startMultiPathConfigFileWatcher,
 } from './config-file-watcher.ts';
-import { applyExternalConfigChange, isConfigEcho } from './config-persistence.ts';
+import {
+  applyExternalConfigChange,
+  isConfigEcho,
+  resetConfigDocForTest,
+} from './config-persistence.ts';
 import { bindConflictAuthority, ConflictAuthority } from './conflict-authority.ts';
 import { createGeneratedIndexWarningScope } from './content/generate-index.ts';
 import { type GeneratedArtifactEnv, writeGeneratedArtifact } from './content/generated-artifact.ts';
@@ -2583,6 +2588,9 @@ export function createServer(options: ServerOptions): ServerInstance {
       getFolderAliasIndex: () => (watcher ? watcher.getFolderAliasIndex() : new Map()),
       resolveTrackedFile,
       rescanFiles: () => watcher?.rescanFromDisk(),
+      settleDiskEventsForTest: async () => {
+        await watcher?.settle();
+      },
       enableTestRoutes,
       shadowRef,
       flushGitCommit: () => persistence.flushPendingGitCommit(),
@@ -2610,6 +2618,20 @@ export function createServer(options: ServerOptions): ServerInstance {
       acpRegistry,
       loadAcpCustomAgents: () => loadCustomAgents(lockDir, getLogger('acp-registry')),
       homeDirOverride: configHomedirOverride,
+      resetSettingsForTest:
+        configHomedirOverride === undefined
+          ? undefined
+          : () => {
+              for (const configDocName of CONFIG_DOC_NAMES) {
+                resetConfigDocForTest(
+                  hocuspocus.documents.get(configDocName) ?? null,
+                  configDocName,
+                  persistence.configPersistenceCtx,
+                );
+                configFileWatcherResyncs.get(configDocName)?.();
+                applyPersistedConfigToConsumers(configDocName);
+              }
+            },
       forceUnloadDocument,
       ready,
       recentlyRemovedDocs,
@@ -2713,6 +2735,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     docName: string;
     cleanup: ConfigFileWatcherUnsubscribe;
   }> = [];
+  const configFileWatcherResyncs = new Map<ConfigDocName, () => void>();
 
   function safeRescuePath(shadowGitDir: string, docName: string): string | null {
     const rescueBase = resolve(shadowGitDir, 'rescue');
@@ -3907,6 +3930,7 @@ export function createServer(options: ServerOptions): ServerInstance {
               }
             }
             configFileWatcherCleanups.length = 0;
+            configFileWatcherResyncs.clear();
           } catch (err) {
             phaseErrors.push({
               phase: 'watcher-unsubscribe',
@@ -4365,6 +4389,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           }
         });
         configFileWatcherCleanups.push({ docName: configDocName, cleanup });
+        configFileWatcherResyncs.set(configDocName, cleanup.resync);
         log.info({ docName: configDocName, path: absPath }, '[config-file-watcher] started');
       } catch (err) {
         log.warn(
@@ -4520,6 +4545,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           });
       if (ignoreCleanup) {
         configFileWatcherCleanups.push({ docName: '__ignore-files__', cleanup: ignoreCleanup });
+        configFileWatcherResyncs.set(CONFIG_DOC_NAME_OKIGNORE, ignoreCleanup.resync);
         ignoreLog.info(
           { okignorePath, gitignorePath },
           '[ignore-watcher] multi-path watcher started',

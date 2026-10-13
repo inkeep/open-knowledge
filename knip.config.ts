@@ -117,6 +117,8 @@ export default {
         'tests/**/*.{test,e2e}.ts',
         'tests/perf/lib/*.ts',
         'tests/dom/**/*.ts',
+        'vite.prebuilt-dev.ts',
+        'tests/stress/_helpers/reuse/server-supervisor.ts',
       ],
       project: 'src/**',
       ignoreDependencies: [
@@ -147,7 +149,11 @@ export default {
       entry: ['src/**/*.test.{ts,tsx}'],
     },
     'packages/server': {
-      entry: ['src/**/*.test.ts', 'src/parse-worker.ts'],
+      entry: [
+        'src/**/*.test.ts',
+        'src/parse-worker.ts',
+        'src/shadow-fixture-launch.test-helper.mjs',
+      ],
       project: 'src/**',
       ignoreDependencies: ['@types/shell-quote'],
     },

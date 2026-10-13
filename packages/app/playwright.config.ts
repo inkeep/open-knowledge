@@ -70,7 +70,7 @@ export function resolveWorkerCount(logicalCpus: number): number {
  * run on the same per-worker fixture, so they share one convergence band.
  * Rationale for the value itself is on `expect` below.
  */
-export const EXPECT_TIMEOUT_MS = isCI ? 15_000 : 5_000;
+export const EXPECT_TIMEOUT_MS = 15_000;
 
 export default defineConfig({
   testDir: './tests/stress',
@@ -84,6 +84,8 @@ export default defineConfig({
     // mid-test reload storms were the suite's dominant cross-cutting flake
     // class. Fail-open: a failed warm build logs and falls back to cold boots.
     './tests/stress/_helpers/global-warm-cache.ts',
+    './tests/stress/_helpers/reuse/reuse-run.ts',
+    './tests/stress/_helpers/prebuilt/prebuilt-dev-setup.ts',
   ],
   timeout: 120_000,
   // Web-first assertions poll until this budget, not Playwright's 5s default.

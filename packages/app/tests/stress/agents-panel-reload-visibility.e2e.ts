@@ -4,12 +4,12 @@ import AxeBuilder from '@axe-core/playwright';
 import type { Locator, Page } from '@playwright/test';
 import { HISTORY_PANEL_WIDTH_PX } from '../../src/hooks/use-history-presentation-mode';
 import { AGENTS_PANEL_WIDTH_KEY } from '../../src/lib/agents-panel-width-store';
-import { expect, switchColorThemeAndSettleFade, test } from './_helpers';
+import { expect, servedModuleRoute, switchColorThemeAndSettleFade, test } from './_helpers';
 
 const AGENTS_PANEL_MOUNT = '[data-agents-panel-mount]';
 const AGENTS_REVEAL_TAB = '[data-terminal-reveal="right"]';
 const COLLAPSE_AGENT_PANEL_BUTTON = 'Collapse agent panel';
-const SESSIONS_CHUNK_GLOB = '**/src/components/SessionsHost*';
+const SESSIONS_HOST_SOURCE = 'src/components/SessionsHost.tsx';
 const CONFIG_RESPONSE_GLOB = '**/api/config';
 const AGENTS_ORDER_STORAGE_KEY = 'ok-agent-session-order-v1';
 const SEED_AGENT_ID = 'panel-level-fixture-agent';
@@ -1109,7 +1109,7 @@ test.describe('agents panel reload visibility level', () => {
     await expectPersistedPanelLevel(page, false);
 
     const marks: RouteMark[] = [];
-    await page.route(SESSIONS_CHUNK_GLOB, async (route) => {
+    await page.route(servedModuleRoute(SESSIONS_HOST_SOURCE), async (route) => {
       await route.continue();
       marks.push({ route: 'sessions-chunk-response', at: Date.now() });
     });
@@ -1150,7 +1150,7 @@ test.describe('agents panel reload visibility level', () => {
     await expectPersistedPanelLevel(page, false);
 
     const marks: RouteMark[] = [];
-    await page.route(SESSIONS_CHUNK_GLOB, async (route) => {
+    await page.route(servedModuleRoute(SESSIONS_HOST_SOURCE), async (route) => {
       await waitForRouteMark(
         marks,
         'roster-frame',
@@ -1214,7 +1214,7 @@ test.describe('agents panel reload visibility level', () => {
     await expectPersistedPanelLevel(page, true);
 
     const marks: RouteMark[] = [];
-    await page.route(SESSIONS_CHUNK_GLOB, async (route) => {
+    await page.route(servedModuleRoute(SESSIONS_HOST_SOURCE), async (route) => {
       await waitForRouteMark(
         marks,
         'roster-frame',

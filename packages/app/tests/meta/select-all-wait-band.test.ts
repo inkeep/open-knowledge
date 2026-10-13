@@ -26,10 +26,4 @@ describe('select-all barrier wait band', () => {
     const { configured, helper } = await loadBand(undefined);
     expect(helper).toBe(configured);
   });
-
-  test('the CI band and the local band stay distinct, so neither regime can go vacuous', async () => {
-    const ci = await loadBand('1');
-    const local = await loadBand(undefined);
-    expect(ci.helper).toBeGreaterThan(local.helper);
-  });
 });

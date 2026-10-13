@@ -44,6 +44,7 @@ function isCommentOnlyLine(line: string): boolean {
 }
 
 const LOOPBACK_HOST_LITERAL = /['"](?:127\.0\.0\.1|::1)['"]/;
+const UNIX_SOCKET_LISTEN = /^\.listen\(\s*\{(?=[^}]*\bpath\s*[:,}])(?![^}]*\bport\b)/;
 
 export function findNonLoopbackListenCalls(lines: string[]): Array<{ line: number; text: string }> {
   const violations: Array<{ line: number; text: string }> = [];
@@ -58,7 +59,7 @@ export function findNonLoopbackListenCalls(lines: string[]): Array<{ line: numbe
     }
     const paren = window.indexOf(')');
     if (paren !== -1) window = window.slice(0, paren + 1);
-    if (!LOOPBACK_HOST_LITERAL.test(window)) {
+    if (!LOOPBACK_HOST_LITERAL.test(window) && !UNIX_SOCKET_LISTEN.test(window)) {
       violations.push({ line: i + 1, text: line.trim() });
     }
   }
@@ -301,5 +302,23 @@ describe('loopback bind discipline (app test sources)', () => {
     );
 
     expect(findAmbiguousLocalhostDials(["  host: 'localhost:5173',"]).length).toBe(0);
+  });
+
+  test('a listen on a Unix-socket path is not a host bind, while the object form with a port still needs a loopback host', () => {
+    const planted = [
+      '  s.listen(0);',
+      '  server.listen(port, () => resolve());',
+      '  server.listen({ port }, cb);',
+      "  server.listen({ port: 0, host: '0.0.0.0' }, cb);",
+      '  server.listen({ path: socketPath, port: 0 }, cb);',
+      '  server.listen({ path: socketPath }, () => {',
+      '  server.listen({ path }, cb);',
+      '  server.listen(',
+      '    { path: join(dir, "supervisor.sock") },',
+      '    () => resolve(),',
+      '  );',
+      "  server.listen({ port: 0, host: '127.0.0.1' }, cb);",
+    ];
+    expect(findNonLoopbackListenCalls(planted).map((v) => v.line)).toEqual([1, 2, 3, 4, 5]);
   });
 });

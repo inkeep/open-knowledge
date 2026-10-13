@@ -89,6 +89,7 @@ const MACHINE_LOCAL_FILES = OK_MACHINE_LOCAL_ROOT_FILES.map((name) => `${OK_DIR}
 const SHADOW_EXCLUDE_PATTERNS: readonly string[] = [
   ...MACHINE_LOCAL_DIRS.map((dir) => `**/${dir}`),
   ...MACHINE_LOCAL_FILES.map((file) => `**/${file}`),
+  `**/${OK_DIR}/watcher-settle-fence-*`,
   ATOMIC_TEMP_GLOB,
 ];
 
