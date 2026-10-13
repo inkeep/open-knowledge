@@ -142,7 +142,7 @@ export const ConfigSchema = z.looseObject({
           reload: 'live',
           defaultScope: 'project',
           description:
-            "Where pasted and dropped assets are stored, relative to the content root. './' colocates beside the current document (default); '/' targets the content root; './subdir' targets a subfolder under the current document folder; 'folder' targets a fixed folder under the content root. Whitespace-only values are treated as './'.",
+            "Where pasted and dropped assets, and MCP write assets given a bare file name, are stored, relative to the content root. './' colocates beside the current document (default); '/' targets the content root; './subdir' targets a subfolder under the current document folder; 'folder' targets a fixed folder under the content root. Whitespace-only values are treated as './'.",
         })
         .refine(isValidAttachmentFolderPath, {
           message:

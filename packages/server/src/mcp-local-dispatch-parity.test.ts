@@ -1,23 +1,16 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { type BootedServer, bootServer } from './boot.ts';
-import { ConfigSchema } from './config/schema.ts';
-import { connectMcpTestClient } from './mcp/client.test-helper.ts';
-import { createMcpHttpHandler, type McpHttpHandler } from './mcp-http.ts';
+import type { BootedServer } from './boot.ts';
+import {
+  type DualTransportMcpRig,
+  startDualTransportMcpRig,
+} from './mcp-dual-transport-rig.test-helper.ts';
 
-const TEST_CONFIG = ConfigSchema.parse({});
-
-let tmpDir: string;
+let rig: DualTransportMcpRig | undefined;
 let booted: BootedServer;
-let httpOnlyMcp: McpHttpHandler;
-let sideServer: Server;
 let localClient: Client;
 let httpClient: Client;
 
@@ -33,9 +26,6 @@ function seedOkScaffold(projectDir: string): void {
   writeFileSync(resolve(okDir, 'config.yml'), '', 'utf-8');
   writeFileSync(resolve(okDir, '.gitignore'), '', 'utf-8');
 }
-
-const connectClient = (url: string, name: string): Promise<Client> =>
-  connectMcpTestClient(url, { name, version: '0.0.0-test' });
 
 function maskVolatile(result: ToolResult): unknown {
   return JSON.parse(
@@ -55,47 +45,26 @@ async function callBoth(name: string, args: Record<string, unknown>): Promise<[u
 }
 
 beforeAll(async () => {
-  tmpDir = await mkdtemp(resolve(tmpdir(), 'ok-mcp-parity-'));
-  const contentDir = resolve(tmpDir, 'project');
-  mkdirSync(contentDir, { recursive: true });
-  seedOkScaffold(contentDir);
-  writeFileSync(resolve(contentDir, 'alpha.md'), '# Alpha\n\nThe alpha reference doc.\n', 'utf-8');
-  writeFileSync(
-    resolve(contentDir, 'beta.md'),
-    '# Beta\n\nSee [[alpha]] and the missing [[gamma-nowhere]].\n',
-    'utf-8',
-  );
-  writeFileSync(resolve(contentDir, 'del-local.md'), '# Doomed\n\nSame body.\n', 'utf-8');
-  writeFileSync(resolve(contentDir, 'del-http.md'), '# Doomed\n\nSame body.\n', 'utf-8');
-
-  booted = await bootServer({
-    host: '127.0.0.1',
-    config: TEST_CONFIG,
-    contentDir,
-    port: 0,
-    quiet: true,
-    gitEnabled: false,
-    idleShutdownMs: null,
+  rig = await startDualTransportMcpRig({
+    tmpPrefix: 'ok-mcp-parity-',
+    clientName: 'parity-suite',
+    seed: (contentDir) => {
+      seedOkScaffold(contentDir);
+      writeFileSync(
+        resolve(contentDir, 'alpha.md'),
+        '# Alpha\n\nThe alpha reference doc.\n',
+        'utf-8',
+      );
+      writeFileSync(
+        resolve(contentDir, 'beta.md'),
+        '# Beta\n\nSee [[alpha]] and the missing [[gamma-nowhere]].\n',
+        'utf-8',
+      );
+      writeFileSync(resolve(contentDir, 'del-local.md'), '# Doomed\n\nSame body.\n', 'utf-8');
+      writeFileSync(resolve(contentDir, 'del-http.md'), '# Doomed\n\nSame body.\n', 'utf-8');
+    },
   });
-  await booted.ready;
-
-  httpOnlyMcp = createMcpHttpHandler({
-    contentDir: booted.contentDir,
-    projectDir: booted.contentDir,
-    config: TEST_CONFIG,
-    getServerUrl: () => `http://127.0.0.1:${booted.port}`,
-  });
-  sideServer = createServer((req, res) => {
-    void httpOnlyMcp.handle(req, res);
-  });
-  const sidePort = await new Promise<number>((resolvePort) => {
-    sideServer.listen(0, '127.0.0.1', () => {
-      resolvePort((sideServer.address() as AddressInfo).port);
-    });
-  });
-
-  localClient = await connectClient(`http://127.0.0.1:${booted.port}/mcp`, 'parity-suite');
-  httpClient = await connectClient(`http://127.0.0.1:${sidePort}/mcp`, 'parity-suite');
+  ({ booted, localClient, httpClient } = rig);
 
   const deadline = Date.now() + 15_000;
   for (;;) {
@@ -112,13 +81,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await localClient?.close().catch(() => {});
-  await httpClient?.close().catch(() => {});
-  await httpOnlyMcp?.close();
-  sideServer?.closeAllConnections();
-  sideServer?.close();
-  await booted?.destroy();
-  await rm(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rig?.close();
 });
 
 describe('MCP local-dispatch transport parity (same server, two sessions)', () => {

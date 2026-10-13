@@ -434,3 +434,55 @@ describe('write — an asset upload whose request to the server fails', () => {
     expect(result.content[0]?.text).toBe('Error: Server unreachable: fetch failed');
   });
 });
+
+describe('write — the reply to an asset upload the server accepted', () => {
+  type AssetHandler = (args: Record<string, unknown>) => Promise<{
+    isError?: boolean;
+    content: Array<{ type: string; text?: string }>;
+    structuredContent?: { asset?: unknown };
+  }>;
+  const asset = { path: 'assets/photo.bin', content: Buffer.from('bytes').toString('base64') };
+  let cwd: string;
+
+  beforeAll(() => {
+    cwd = mkdtempSync(join(tmpdir(), 'ok-write-asset-reply-'));
+    mkdirSync(join(cwd, '.ok'), { recursive: true });
+  });
+
+  afterAll(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  function uploadAnswering(bodyText: string): AssetHandler {
+    let captured: AssetHandler | null = null;
+    const server = {
+      registerTool(_name: string, _cfg: unknown, toolHandler: AssetHandler) {
+        captured = toolHandler;
+      },
+    } as unknown as ServerInstance;
+    registerWrite(server, {
+      serverUrl: 'http://127.0.0.1:1',
+      localApi: async () => ({ status: 200, bodyText }),
+      config: ConfigSchema.parse({}),
+      resolveCwd: async () => cwd,
+    });
+    if (captured === null) throw new Error('write tool did not register');
+    return captured as AssetHandler;
+  }
+
+  it('claims no location rather than the requested path when the response names none', async () => {
+    const result = await uploadAnswering('{"src":"photo.bin"}')({ asset });
+    expect(result.isError ?? false).toBe(false);
+    expect(result.structuredContent?.asset).toStrictEqual({ ok: true, src: 'photo.bin' });
+    expect(result.content[0]?.text).not.toContain(asset.path);
+  });
+
+  it('reports an error, not an upload, when the response breaks the upload contract', async () => {
+    const result = await uploadAnswering('{"src":"photo.bin","path":12345}')({ asset });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent?.asset).toBeUndefined();
+    expect(result.content[0]?.text).toMatch(
+      /^Error: Server returned 2xx response with malformed upload body: .*path/s,
+    );
+  });
+});
