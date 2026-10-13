@@ -118,6 +118,7 @@ export interface FolderTemplateRouteDeps {
     docNames: string[],
     lifecycleStatus: RemovalLifecycleStatus,
   ) => Promise<Map<string, string>>;
+  captureNamespaceMove?: (docName: string) => () => void;
   renameTrackedPathInGit: (
     projectDir: string | undefined,
     sourcePath: string,
@@ -162,6 +163,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
     respondStaleExternalWrite,
     registerWrittenDocInFileIndex,
     captureAndCloseDocuments,
+    captureNamespaceMove,
     renameTrackedPathInGit,
     renamePathOnDisk,
     splitContentPath,
@@ -872,6 +874,9 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           'renamed',
         );
 
+        const acceptMove = captureNamespaceMove?.(
+          templateDocNameFor(toValidated.folderRel, body.toName),
+        );
         const result = await applyTemplateMove({
           projectDir: fromValidated.resolvedContentDir,
           fromFolder: fromValidated.folderRel,
@@ -951,6 +956,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           return;
         }
 
+        acceptMove?.();
         recentlyRemovedDocs?.setDeleted(templateDocNameFor(fromValidated.folderRel, body.fromName));
 
         const movedAbs = resolve(toValidated.resolvedContentDir, result.toPath);

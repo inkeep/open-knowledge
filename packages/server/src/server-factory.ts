@@ -51,6 +51,7 @@ import {
   resolveShadowDir,
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
+import type { Doc } from 'yjs';
 import { AcpPermissionStore } from './acp/permissions.ts';
 import { AcpRegistry, loadCustomAgents } from './acp/registry.ts';
 import { AgentFocusBroadcaster } from './agent-focus.ts';
@@ -154,6 +155,8 @@ import {
   assertNeverDiskEvent,
   contentHash,
   type DiskEvent,
+  getMarkdownRemovalCurrentness,
+  hasAdmittedMarkdownFile,
   pathToDocName,
   reconcileFileIndexAfterFilterRebuild,
   registerRemoval,
@@ -633,6 +636,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           throw cause;
         }
         contentFilter.decrementMdDir(dirname(docName));
+        commentDocHooksRef.current?.deleted(docName);
       },
       applyResolvedContent: async (docName, absPath, bytes) => {
         assertContentPath(absPath);
@@ -661,70 +665,110 @@ export function createServer(options: ServerOptions): ServerInstance {
           }
           durabilityState.clearStaleExternalWrite(docName);
         }
+        if (strategy === 'delete' && hasAdmittedMarkdownBinding(docName)) {
+          log.debug(
+            { docName, source: 'resolve-delete', bindingRecreated: true },
+            `[reconcile] delete skipped: ${docName} (binding recreated)`,
+          );
+          return;
+        }
         const document = hocuspocus.documents.get(docName);
         const lifecycle = document?.getMap('lifecycle');
         if (strategy === 'delete') {
-          const isDirty = document
-            ? rescueUnflushedEditsBeforeTeardown(
-                docName,
-                headWatcher?.getLastKnownBranch() ?? 'main',
-                'delete',
-                true,
-              )
-            : false;
-          await derivedDocumentIndex.recordDiskDelete(docName);
-          log.info(
-            { docName, isDirty, source: 'resolve-delete' },
-            `[reconcile] delete: ${docName} (dirty=${isDirty})`,
-          );
-          const priorLifecycle = lifecycle
-            ? {
-                status: lifecycle.get('status'),
-                reason: lifecycle.get('reason'),
-                detectedAt: lifecycle.get('detectedAt'),
-              }
-            : undefined;
-          lifecycle?.set('status', 'deleted-upstream');
-          lifecycle?.delete('reason');
-          lifecycle?.delete('detectedAt');
-          if (document) {
-            try {
-              hocuspocus.closeConnections(docName);
-              await forceUnloadDocument(document);
-            } catch (cause) {
-              if (lifecycle && priorLifecycle) {
-                for (const [key, value] of Object.entries(priorLifecycle)) {
-                  if (value === undefined) lifecycle.delete(key);
-                  else lifecycle.set(key, value);
-                }
-              }
-              if (priorStaleExternalWrite) {
-                try {
-                  durabilityState.restoreStaleExternalWrite(
-                    priorStaleExternalWrite.conflict,
-                    priorStaleExternalWrite.branch,
-                  );
-                } catch (rollbackFailure) {
-                  log.error(
-                    { err: rollbackFailure, docName },
-                    `[reconcile] stale-external-write rollback failed for ${docName}; the retry may not find the conflict`,
-                  );
-                }
-              }
-              throw cause;
+          const removal = beginRemoval(docName);
+          try {
+            const isDirty =
+              removal.residentCurrent() && document
+                ? rescueUnflushedEditsBeforeTeardown(
+                    docName,
+                    headWatcher?.getLastKnownBranch() ?? 'main',
+                    'delete',
+                    true,
+                  )
+                : false;
+            if (removal.namespaceCurrent()) {
+              commentDocHooksRef.current?.deleted(docName);
+              await derivedDocumentIndex.recordDiskDelete(docName);
             }
+            if (!removal.namespaceCurrent() && !removal.residentCurrent()) {
+              log.debug(
+                {
+                  docName,
+                  source: 'resolve-delete',
+                  namespaceCurrent: false,
+                  residentCurrent: false,
+                },
+                `[reconcile] delete skipped: ${docName} (stale removal)`,
+              );
+              return;
+            }
+            log.info(
+              { docName, isDirty, source: 'resolve-delete' },
+              `[reconcile] delete: ${docName} (dirty=${isDirty})`,
+            );
+            const priorLifecycle = lifecycle
+              ? {
+                  status: lifecycle.get('status'),
+                  reason: lifecycle.get('reason'),
+                  detectedAt: lifecycle.get('detectedAt'),
+                }
+              : undefined;
+            if (document && removal.residentCurrent()) {
+              lifecycle?.set('status', 'deleted-upstream');
+              lifecycle?.delete('reason');
+              lifecycle?.delete('detectedAt');
+              try {
+                hocuspocus.closeConnections(docName);
+                await forceUnloadDocument(document, removal.residentCurrent);
+              } catch (cause) {
+                if (removal.residentCurrent() && lifecycle && priorLifecycle) {
+                  for (const [key, value] of Object.entries(priorLifecycle)) {
+                    if (value === undefined) lifecycle.delete(key);
+                    else lifecycle.set(key, value);
+                  }
+                }
+                if (removal.namespaceCurrent() && priorStaleExternalWrite) {
+                  try {
+                    durabilityState.restoreStaleExternalWrite(
+                      priorStaleExternalWrite.conflict,
+                      priorStaleExternalWrite.branch,
+                    );
+                  } catch (rollbackFailure) {
+                    log.error(
+                      { err: rollbackFailure, docName },
+                      `[reconcile] stale-external-write rollback failed for ${docName}; the retry may not find the conflict`,
+                    );
+                  }
+                }
+                throw cause;
+              }
+            }
+            if (!removal.namespaceCurrent()) {
+              log.debug(
+                {
+                  docName,
+                  source: 'resolve-delete',
+                  namespaceCurrent: false,
+                  residentCurrent: removal.residentCurrent(),
+                },
+                `[reconcile] delete: ${docName} not recorded as removed (stale removal)`,
+              );
+              return;
+            }
+            deleteReconciledBase(docName);
+            onUpstreamDelete(docName);
+            scheduleIndexRegenerationAfterRemoval(docName);
+            console.info(
+              JSON.stringify({
+                event: 'recently-removed-docs-populate',
+                docName,
+                kind: 'deleted',
+                source: 'resolve-delete',
+              }),
+            );
+          } finally {
+            removal.dispose();
           }
-          deleteReconciledBase(docName);
-          onUpstreamDelete(docName);
-          scheduleIndexRegenerationAfterRemoval(docName);
-          console.info(
-            JSON.stringify({
-              event: 'recently-removed-docs-populate',
-              docName,
-              kind: 'deleted',
-              source: 'resolve-delete',
-            }),
-          );
         } else if (lifecycle?.get('reason') === entry.reason) {
           lifecycle.delete('status');
           lifecycle.delete('reason');
@@ -1167,10 +1211,10 @@ export function createServer(options: ServerOptions): ServerInstance {
   });
 
   let loadedPrincipal: Principal | null = null;
-  const forceUnloadSet = new Set<Document>();
+  const forceUnloadRequests = new Map<Document, Set<() => boolean>>();
   let shutdownAllowsUnload = false;
   const unregisterWorkloadProviders: Array<() => void> = [];
-  let forceUnloadDocument!: (document: Document) => Promise<void>;
+  let forceUnloadDocument!: (document: Document, isCurrent?: () => boolean) => Promise<void>;
   let defaultShouldUnloadDocument!: (document: Document) => boolean;
 
   let resolveReady!: () => void;
@@ -1789,6 +1833,156 @@ export function createServer(options: ServerOptions): ServerInstance {
   removedDocsJournalWritable = true;
   const commentDocHooksRef: { current: CommentDocHooks | null } = { current: null };
 
+  type ResidentOccurrence = {
+    source: string | undefined;
+    mutation: { occurrence: ResidentOccurrence } | undefined;
+    adoption: object | undefined;
+    pendingRetirement: boolean;
+  };
+  let residentOccurrences = new WeakMap<Doc, ResidentOccurrence>();
+  type RemovalOperation = { namespaceAllowed: boolean; residentAllowed: boolean };
+  const activeRemovals = new Map<string, Set<RemovalOperation>>();
+
+  const resolvedContentDir = resolve(contentDir);
+  function resolveDocFilePath(docName: string): string | null {
+    if (!isSafeDocName(docName)) return null;
+    const relativePath = docNameToRelativePath(docName);
+    const filePath = resolve(resolvedContentDir, relativePath);
+    if (!isWithinDir(filePath, resolvedContentDir)) return null;
+    return filePath;
+  }
+
+  function hasAdmittedMarkdownBinding(docName: string): boolean {
+    const owner = watcher?.getFileIndex().get(docName);
+    const filePath = owner?.canonicalPath ?? resolveDocFilePath(docName);
+    if (filePath === null) return false;
+    return hasAdmittedMarkdownFile(docName, filePath, contentDir, contentFilter);
+  }
+
+  function occurrenceFor(document: Doc): ResidentOccurrence {
+    let occurrence = residentOccurrences.get(document);
+    if (!occurrence) {
+      occurrence = {
+        source: document.getText('source').toString(),
+        mutation: undefined,
+        adoption: undefined,
+        pendingRetirement: false,
+      };
+      residentOccurrences.set(document, occurrence);
+    }
+    return occurrence;
+  }
+
+  function revokeNamespaceRemovals(docName: string): void {
+    for (const removal of activeRemovals.get(docName) ?? []) removal.namespaceAllowed = false;
+  }
+
+  function acceptResident(document: Doc, docName: string): void {
+    if (
+      documentAdmissionClosed ||
+      document.isDestroyed ||
+      hocuspocus.documents.get(docName) !== document
+    )
+      return;
+    const occurrence = occurrenceFor(document);
+    occurrence.pendingRetirement = false;
+    occurrence.adoption = {};
+    for (const removal of activeRemovals.get(docName) ?? []) {
+      removal.namespaceAllowed = false;
+      removal.residentAllowed = false;
+    }
+  }
+
+  function markResidentForRetirement(document: Doc): void {
+    residentOccurrences.set(document, {
+      source: document.getText('source').toString(),
+      mutation: undefined,
+      adoption: undefined,
+      pendingRetirement: true,
+    });
+  }
+
+  function acceptNamespaceCreate(docName: string): void {
+    if (documentAdmissionClosed) return;
+    revokeNamespaceRemovals(docName);
+    const document = hocuspocus.documents.get(docName);
+    if (document) markResidentForRetirement(document);
+    commentDocHooksRef.current?.deleted(docName);
+  }
+
+  function captureNamespaceMove(docName: string): () => void {
+    const document = hocuspocus.documents.get(docName);
+    const occurrence = document ? occurrenceFor(document) : undefined;
+    const adoption = occurrence?.adoption;
+    return () => {
+      if (documentAdmissionClosed) return;
+      revokeNamespaceRemovals(docName);
+      if (
+        document &&
+        hocuspocus.documents.get(docName) === document &&
+        residentOccurrences.get(document) === occurrence &&
+        occurrence?.adoption === adoption
+      )
+        markResidentForRetirement(document);
+    };
+  }
+
+  function capturePublicationReceipt(document: Doc, docName: string): (() => void) | undefined {
+    const mutation = residentOccurrences.get(document)?.mutation;
+    if (!mutation) return undefined;
+    return () => {
+      if (residentOccurrences.get(document) === mutation.occurrence)
+        acceptResident(document, docName);
+    };
+  }
+
+  function acceptConnectedDocument(docName: string, document: Document): void {
+    if (hasAdmittedMarkdownBinding(docName)) acceptResident(document, docName);
+  }
+
+  function beginRemoval(docName: string, observedCurrent?: () => boolean) {
+    const document = hocuspocus.documents.get(docName);
+    const isApplicable = () =>
+      (observedCurrent?.() ?? true) && !hasAdmittedMarkdownBinding(docName);
+    const namespaceAllowed = !documentAdmissionClosed && isApplicable();
+    const operation: RemovalOperation = {
+      namespaceAllowed,
+      residentAllowed:
+        !documentAdmissionClosed &&
+        document !== undefined &&
+        (namespaceAllowed || occurrenceFor(document).pendingRetirement),
+    };
+    const removals = activeRemovals.get(docName) ?? new Set<RemovalOperation>();
+    if (!documentAdmissionClosed) {
+      removals.add(operation);
+      activeRemovals.set(docName, removals);
+    }
+    const namespaceCurrent = () => {
+      if (operation.namespaceAllowed && !isApplicable()) operation.namespaceAllowed = false;
+      return operation.namespaceAllowed;
+    };
+    return {
+      document,
+      namespaceCurrent,
+      residentCurrent: () => {
+        if (
+          operation.residentAllowed &&
+          (document === undefined ||
+            document.isDestroyed ||
+            hocuspocus.documents.get(docName) !== document)
+        )
+          operation.residentAllowed = false;
+        return operation.residentAllowed;
+      },
+      dispose: () => {
+        operation.namespaceAllowed = false;
+        operation.residentAllowed = false;
+        removals.delete(operation);
+        if (removals.size === 0) activeRemovals.delete(docName);
+      },
+    };
+  }
+
   const onUpstreamRename = (oldDocName: string, newDocName: string): void => {
     if (isReservedForUserTree(oldDocName)) return;
     recentlyRemovedDocs.setRenamed(oldDocName, newDocName);
@@ -1806,7 +2000,6 @@ export function createServer(options: ServerOptions): ServerInstance {
       return;
     }
     recentlyRemovedDocs.setDeleted(docName);
-    commentDocHooksRef.current?.deleted(docName);
   };
   const onUpstreamAdd = (docName: string): void => {
     if (isReservedForUserTree(docName)) return;
@@ -1948,6 +2141,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       getPrincipal: () => loadedPrincipal,
       onAgentCommit: () => cc1Broadcaster?.signal('session-activity'),
       onFlushCommit: () => maintenanceCoordinator?.noteFlushCommit(),
+      capturePublicationReceipt,
       onDiskFlush: (docName, sv, persistedMarkdown, previousMarkdown) => {
         cc1Broadcaster?.emitDiskAck(docName, sv);
         if (isReservedForUserTree(docName)) return;
@@ -1993,6 +2187,34 @@ export function createServer(options: ServerOptions): ServerInstance {
       maxDebounce,
       extensions: [persistence.extension],
     });
+
+    const dispatchHooks = hocuspocus.hooks.bind(hocuspocus);
+    hocuspocus.hooks = (name, payload, callback) => {
+      if (
+        (name === 'afterLoadDocument' || name === 'onChange') &&
+        'document' in payload &&
+        !isReservedForUserTree(payload.document.name)
+      ) {
+        const document = payload.document;
+        const occurrence = occurrenceFor(document);
+        if (name === 'onChange' && occurrence.mutation === undefined) {
+          const source = document.getText('source').toString();
+          if (source !== occurrence.source) {
+            occurrence.source = undefined;
+            occurrence.mutation = { occurrence };
+          }
+        }
+      }
+      if (
+        name === 'connected' &&
+        'connection' in payload &&
+        payload.connection &&
+        !isReservedForUserTree(payload.documentName)
+      ) {
+        acceptConnectedDocument(payload.documentName, payload.connection.document);
+      }
+      return dispatchHooks(name, payload, callback);
+    };
 
     const openDirect = hocuspocus.openDirectConnection.bind(hocuspocus);
     function assertDocumentProjectScope(documentName: string): void {
@@ -2082,9 +2304,8 @@ export function createServer(options: ServerOptions): ServerInstance {
 
     defaultShouldUnloadDocument = hocuspocus.shouldUnloadDocument.bind(hocuspocus);
     hocuspocus.shouldUnloadDocument = (document) => {
-      if (forceUnloadSet.has(document)) {
-        return true;
-      }
+      const requests = forceUnloadRequests.get(document);
+      if (requests) return [...requests].some((isCurrent) => isCurrent());
       if (
         shutdownAllowsUnload &&
         !isReservedForUserTree(document.name) &&
@@ -2103,12 +2324,17 @@ export function createServer(options: ServerOptions): ServerInstance {
       return defaultShouldUnloadDocument(document);
     };
 
-    forceUnloadDocument = async (document: Document): Promise<void> => {
-      forceUnloadSet.add(document);
+    forceUnloadDocument = async (document, isCurrent): Promise<void> => {
+      const request = () =>
+        hocuspocus.documents.get(document.name) === document && (isCurrent?.() ?? true);
+      const requests = forceUnloadRequests.get(document) ?? new Set<() => boolean>();
+      requests.add(request);
+      forceUnloadRequests.set(document, requests);
       try {
         await hocuspocus.unloadDocument(document);
       } finally {
-        forceUnloadSet.delete(document);
+        requests.delete(request);
+        if (requests.size === 0) forceUnloadRequests.delete(document);
       }
     };
 
@@ -2237,16 +2463,6 @@ export function createServer(options: ServerOptions): ServerInstance {
     };
     hocuspocus.configuration.extensions.push(configDocAdmissionGuard);
 
-    const resolvedContentDir = resolve(contentDir);
-    function resolveDocFilePath(docName: string): string | null {
-      if (!isSafeDocName(docName)) return null;
-      const relativePath = docNameToRelativePath(docName);
-      const filePath = resolve(resolvedContentDir, relativePath);
-      if (!isWithinDir(filePath, resolvedContentDir)) {
-        return null;
-      }
-      return filePath;
-    }
     const removalRedirectGuard: Extension & { __kind: 'removal-redirect-guard' } = {
       __kind: 'removal-redirect-guard',
       async onAuthenticate(payload) {
@@ -2308,6 +2524,10 @@ export function createServer(options: ServerOptions): ServerInstance {
       ingressPolicy,
       sessionManager,
       commentDocHooksRef,
+      onNamespaceCreateAccepted: acceptNamespaceCreate,
+      capturePublicationReceipt,
+      captureNamespaceMove,
+      onResidentAdopted: acceptResident,
       contentDir,
       assertContentPath,
       assertContentSubtree,
@@ -2337,6 +2557,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             scheduleIndexRegeneration(event.docName);
             break;
           case 'delete':
+            commentDocHooksRef.current?.deleted(event.docName);
             scheduleIndexRegenerationAfterRemoval(event.docName);
             break;
           case 'rename':
@@ -2507,7 +2728,8 @@ export function createServer(options: ServerOptions): ServerInstance {
     return serializeYDocSource(document);
   }
 
-  const applyToDoc = (docName: string, content: string): void =>
+  const applyToDoc = (docName: string, content: string): void => {
+    const document = hocuspocus.documents.get(docName);
     applyExternalChange(
       durabilityState,
       hocuspocus,
@@ -2517,9 +2739,11 @@ export function createServer(options: ServerOptions): ServerInstance {
       resolveSize,
       bridgeLossReporter,
     );
+    if (document && hasAdmittedMarkdownBinding(docName)) acceptResident(document, docName);
+  };
 
-  const reviveFrozenResident = (docName: string, content: string): FrozenResidentRevival =>
-    reviveFrozenResidentDoc(
+  const reviveFrozenResident = (docName: string, content: string): FrozenResidentRevival => {
+    const result = reviveFrozenResidentDoc(
       durabilityState,
       hocuspocus,
       docName,
@@ -2528,6 +2752,12 @@ export function createServer(options: ServerOptions): ServerInstance {
       resolveSize,
       bridgeLossReporter,
     );
+    const document = hocuspocus.documents.get(docName);
+    if (result === 'revived' && document && hasAdmittedMarkdownBinding(docName)) {
+      acceptResident(document, docName);
+    }
+    return result;
+  };
 
   const refreshLoadedEmbeds = (
     needle: string,
@@ -2793,7 +3023,21 @@ export function createServer(options: ServerOptions): ServerInstance {
     }
   };
 
-  async function handleDiskEvent(event: DiskEvent): Promise<void> {
+  const bufferedRemovalScopes = new Map<
+    Extract<DiskEvent, { kind: 'delete' | 'rename' }>,
+    ReturnType<typeof beginRemoval>
+  >();
+
+  async function handleDiskEvent(
+    event: DiskEvent,
+    preparedRemoval = event.kind === 'delete' || event.kind === 'rename'
+      ? (bufferedRemovalScopes.get(event) ??
+        beginRemoval(
+          event.kind === 'delete' ? event.docName : event.oldDocName,
+          getMarkdownRemovalCurrentness(event),
+        ))
+      : undefined,
+  ): Promise<void> {
     try {
       switch (event.kind) {
         case 'create': {
@@ -2974,11 +3218,68 @@ export function createServer(options: ServerOptions): ServerInstance {
 
         case 'delete': {
           const { docName } = event;
-          dissolveNonGitConflicts(docName);
-          const document = hocuspocus.documents.get(docName);
-          if (!document) {
-            deleteReconciledBase(docName);
-            await derivedDocumentIndex.recordDiskDelete(docName);
+          const removal =
+            preparedRemoval ?? beginRemoval(docName, getMarkdownRemovalCurrentness(event));
+          bufferedRemovalScopes.delete(event);
+          try {
+            const namespaceCurrent = removal.namespaceCurrent();
+            const residentCurrent = removal.residentCurrent();
+            if (!namespaceCurrent && !residentCurrent) {
+              log.debug(
+                { docName, source: 'watcher-delete', namespaceCurrent, residentCurrent },
+                `[reconcile] delete skipped: ${docName} (stale removal)`,
+              );
+              return;
+            }
+            if (namespaceCurrent) {
+              dissolveNonGitConflicts(docName);
+              commentDocHooksRef.current?.deleted(docName);
+            }
+            const { document } = removal;
+            const isDirty =
+              residentCurrent && document
+                ? rescueUnflushedEditsBeforeTeardown(
+                    docName,
+                    getStorageBranch() ?? 'main',
+                    'delete',
+                    true,
+                  )
+                : false;
+            if (residentCurrent) document?.getMap('lifecycle').set('status', 'deleted-upstream');
+            if (namespaceCurrent) deleteReconciledBase(docName);
+            if (namespaceCurrent) await derivedDocumentIndex.recordDiskDelete(docName);
+            if (!removal.namespaceCurrent() && !removal.residentCurrent()) {
+              log.debug(
+                {
+                  docName,
+                  source: 'watcher-delete',
+                  namespaceCurrent: false,
+                  residentCurrent: false,
+                },
+                `[reconcile] delete skipped: ${docName} (stale removal)`,
+              );
+              return;
+            }
+            log.info(
+              { docName, isDirty, source: 'watcher-delete' },
+              `[reconcile] delete: ${docName} (dirty=${isDirty})`,
+            );
+            if (removal.residentCurrent() && document) {
+              hocuspocus.closeConnections(docName);
+              await forceUnloadDocument(document, removal.residentCurrent);
+            }
+            if (!removal.namespaceCurrent()) {
+              log.debug(
+                {
+                  docName,
+                  source: 'watcher-delete',
+                  namespaceCurrent: false,
+                  residentCurrent: removal.residentCurrent(),
+                },
+                `[reconcile] delete: ${docName} not recorded as removed (stale removal)`,
+              );
+              return;
+            }
             signalChannel('files');
             onUpstreamDelete(docName);
             scheduleIndexRegenerationAfterRemoval(docName);
@@ -2990,107 +3291,108 @@ export function createServer(options: ServerOptions): ServerInstance {
                 source: 'watcher-delete',
               }),
             );
-            return;
+          } finally {
+            removal.dispose();
           }
-
-          const isDirty = rescueUnflushedEditsBeforeTeardown(
-            docName,
-            getStorageBranch() ?? 'main',
-            'delete',
-            true,
-          );
-
-          const lifecycleMap = document.getMap('lifecycle');
-          lifecycleMap.set('status', 'deleted-upstream');
-
-          deleteReconciledBase(docName);
-          await derivedDocumentIndex.recordDiskDelete(docName);
-          log.info(
-            { docName, isDirty, source: 'watcher-delete' },
-            `[reconcile] delete: ${docName} (dirty=${isDirty})`,
-          );
-
-          hocuspocus.closeConnections(docName);
-          await forceUnloadDocument(document);
-          signalChannel('files');
-          onUpstreamDelete(docName);
-          scheduleIndexRegenerationAfterRemoval(docName);
-          console.info(
-            JSON.stringify({
-              event: 'recently-removed-docs-populate',
-              docName,
-              kind: 'deleted',
-              source: 'watcher-delete',
-            }),
-          );
           break;
         }
 
         case 'rename': {
           const { oldDocName, newDocName, content } = event;
-          dissolveNonGitConflicts(oldDocName);
-          const freezeAsRenamed = (doc: Document): void => {
-            const lifecycleMap = doc.getMap('lifecycle');
-            lifecycleMap.set('status', 'renamed');
-            lifecycleMap.set('newPath', newDocName);
-          };
-          const loadedBeforeIndex = hocuspocus.documents.get(oldDocName);
-          const isDirty = loadedBeforeIndex
-            ? rescueUnflushedEditsBeforeTeardown(oldDocName, getStorageBranch() ?? 'main', 'rename')
-            : false;
-          if (loadedBeforeIndex) freezeAsRenamed(loadedBeforeIndex);
-
-          deleteReconciledBase(oldDocName);
-          persistence.forgetObservedFile(oldDocName);
-          setReconciledBase(newDocName, content);
-
-          log.info(
-            { oldDocName, newDocName, isDirty },
-            `[reconcile] rename: ${oldDocName} → ${newDocName} (dirty=${isDirty})`,
-          );
-          signalChannel('files');
-          onUpstreamAdd(newDocName);
-          onUpstreamRename(oldDocName, newDocName);
-
+          const removal =
+            preparedRemoval ?? beginRemoval(oldDocName, getMarkdownRemovalCurrentness(event));
+          bufferedRemovalScopes.delete(event);
           try {
-            await derivedDocumentIndex.recordDiskRename(oldDocName, newDocName, content);
-          } catch (err) {
-            log.error(
-              { oldDocName, newDocName, err },
-              `[reconcile] rename: index update failed for ${oldDocName} → ${newDocName}; completing client teardown anyway`,
-            );
-          }
-
-          const document = hocuspocus.documents.get(oldDocName);
-          if (document && document !== loadedBeforeIndex) freezeAsRenamed(document);
-
-          reviveFrozenResident(newDocName, content);
-
-          await sessionManager.closeAllForDoc(oldDocName);
-          const closedConnections = document?.getConnectionsCount() ?? 0;
-          /* WARN: the `delete` branch above and `captureAndCloseDocuments` pair their
-             close with `forceUnloadDocument`; this branch does not, so the frozen doc
-             stays resident under the old name and template-watcher-capabilities.test.ts
-             pins that residency. The destination clear above is what stops a move back
-             to this path from being served that stale frozen doc. */
-          hocuspocus.closeConnections(oldDocName);
-          if (closedConnections > 0) {
+            const document = removal.document;
+            const freezeAsRenamed = (doc: Document): void => {
+              const lifecycle = doc.getMap('lifecycle');
+              lifecycle.set('status', 'renamed');
+              lifecycle.set('newPath', newDocName);
+            };
+            const isDirty =
+              removal.residentCurrent() && document
+                ? rescueUnflushedEditsBeforeTeardown(
+                    oldDocName,
+                    getStorageBranch() ?? 'main',
+                    'rename',
+                  )
+                : false;
+            if (removal.residentCurrent() && document) freezeAsRenamed(document);
+            if (removal.namespaceCurrent()) {
+              dissolveNonGitConflicts(oldDocName);
+              deleteReconciledBase(oldDocName);
+              persistence.forgetObservedFile(oldDocName);
+              onUpstreamRename(oldDocName, newDocName);
+            }
+            setReconciledBase(newDocName, content);
             log.info(
-              { oldDocName, newDocName, closedConnections },
-              `[reconcile] rename: closed ${closedConnections} connection(s) on ${oldDocName}`,
+              { oldDocName, newDocName, isDirty },
+              `[reconcile] rename: ${oldDocName} → ${newDocName} (dirty=${isDirty})`,
             );
+            signalChannel('files');
+            onUpstreamAdd(newDocName);
+            try {
+              if (removal.namespaceCurrent()) {
+                await derivedDocumentIndex.recordDiskRename(oldDocName, newDocName, content);
+              } else {
+                await derivedDocumentIndex.recordDiskUpsert(newDocName, content);
+              }
+            } catch (err) {
+              log.error(
+                { oldDocName, newDocName, err },
+                `[reconcile] rename: index update failed for ${oldDocName} → ${newDocName}; completing client teardown anyway`,
+              );
+            }
+            const loadedDuringIndex = removal.namespaceCurrent()
+              ? hocuspocus.documents.get(oldDocName)
+              : undefined;
+            const lateResident = loadedDuringIndex !== document ? loadedDuringIndex : undefined;
+            if (lateResident) freezeAsRenamed(lateResident);
+            reviveFrozenResident(newDocName, content);
+            scheduleIndexRegeneration(newDocName);
+            const retired = removal.residentCurrent() && document ? document : lateResident;
+            if (retired) {
+              const closedConnections = retired.getConnectionsCount();
+              /* WARN: the `delete` branch above and `captureAndCloseDocuments` pair their
+               close with `forceUnloadDocument`; this branch does not, so the frozen doc
+               stays resident under the old name and template-watcher-capabilities.test.ts
+               pins that residency. The destination clear above is what stops a move back
+               to this path from being served that stale frozen doc. */
+              hocuspocus.closeConnections(oldDocName);
+              await sessionManager.closeAllForDoc(oldDocName);
+              if (closedConnections > 0) {
+                log.info(
+                  { oldDocName, newDocName, closedConnections },
+                  `[reconcile] rename: closed ${closedConnections} connection(s) on ${oldDocName}`,
+                );
+              }
+            }
+            if (!removal.namespaceCurrent()) {
+              log.debug(
+                {
+                  docName: oldDocName,
+                  newDocName,
+                  source: 'watcher-rename',
+                  namespaceCurrent: false,
+                  residentCurrent: removal.residentCurrent(),
+                },
+                `[reconcile] rename: ${oldDocName} not recorded as removed (stale removal)`,
+              );
+              break;
+            }
+            console.info(
+              JSON.stringify({
+                event: 'recently-removed-docs-populate',
+                from: oldDocName,
+                to: newDocName,
+                kind: 'renamed',
+                source: 'watcher-rename',
+              }),
+            );
+            scheduleIndexRegenerationAfterRemoval(oldDocName);
+          } finally {
+            removal.dispose();
           }
-          console.info(
-            JSON.stringify({
-              event: 'recently-removed-docs-populate',
-              from: oldDocName,
-              to: newDocName,
-              kind: 'renamed',
-              source: 'watcher-rename',
-            }),
-          );
-          scheduleIndexRegenerationAfterRemoval(oldDocName);
-          scheduleIndexRegeneration(newDocName);
           break;
         }
 
@@ -3166,6 +3468,16 @@ export function createServer(options: ServerOptions): ServerInstance {
   const eventBuffer: DiskEvent[] = [];
 
   async function onDiskEvent(event: DiskEvent): Promise<void> {
+    if (documentAdmissionClosed) return;
+    if ((event.kind === 'delete' || event.kind === 'rename') && !bufferedRemovalScopes.has(event)) {
+      bufferedRemovalScopes.set(
+        event,
+        beginRemoval(
+          event.kind === 'delete' ? event.docName : event.oldDocName,
+          getMarkdownRemovalCurrentness(event),
+        ),
+      );
+    }
     if (isBatchInProgress()) {
       eventBuffer.push(event);
       return;
@@ -3178,6 +3490,11 @@ export function createServer(options: ServerOptions): ServerInstance {
     for (const event of events) {
       await handleDiskEvent(event);
     }
+  }
+
+  function disposeBufferedRemovalScopes(): void {
+    for (const scope of bufferedRemovalScopes.values()) scope.dispose();
+    bufferedRemovalScopes.clear();
   }
 
   let watcher: WatcherHandle | null = null;
@@ -3459,6 +3776,15 @@ export function createServer(options: ServerOptions): ServerInstance {
         log.error({ err }, '[server] shutdown mutation drain failed');
       }
       documentAdmissionClosed = true;
+      disposeBufferedRemovalScopes();
+      for (const removals of activeRemovals.values()) {
+        for (const removal of removals) {
+          removal.namespaceAllowed = false;
+          removal.residentAllowed = false;
+        }
+      }
+      activeRemovals.clear();
+      residentOccurrences = new WeakMap();
 
       try {
         await joinPrelude(closeIndexRegeneration(), 'generated-index');
@@ -4464,7 +4790,11 @@ export function createServer(options: ServerOptions): ServerInstance {
           if (info.batchKind === 'within-branch') {
             setBatchInProgress(false);
             try {
-              await drainEventBuffer();
+              try {
+                await drainEventBuffer();
+              } finally {
+                disposeBufferedRemovalScopes();
+              }
 
               if (info.headMoved && info.newHead) {
                 const changes = resolveUpstreamChanges(
@@ -4502,6 +4832,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           } else {
             incrementBranchSwitch();
             eventBuffer.splice(0, eventBuffer.length);
+            disposeBufferedRemovalScopes();
             let deferredStoresFlushed = false;
             let branchTransition: DerivedDocumentIndexBranchTransition | undefined;
             try {

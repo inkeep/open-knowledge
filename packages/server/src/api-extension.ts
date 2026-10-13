@@ -1190,10 +1190,11 @@ function createCaseOnlyRenameTempPath(sourcePath: string): string {
   throw new Error('Unable to allocate temporary path for case-only rename');
 }
 
-function writeFileIfContentDiffers(filePath: string, content: string): void {
+function writeFileIfContentDiffers(filePath: string, content: string): boolean {
   const current = existsSync(filePath) ? readFileSync(filePath, 'utf-8') : null;
-  if (current === content) return;
+  if (current === content) return false;
   tracedWriteFileSync(filePath, content, 'utf-8');
+  return true;
 }
 
 function renamePathOnDisk(sourcePath: string, destinationPath: string): void {
@@ -1348,6 +1349,10 @@ interface ApiExtensionBaseOptions {
   contentFilter?: ContentFilter;
   installedAgentsProbe?: (scheme: InstalledAgentScheme) => Promise<boolean>;
   forceUnloadDocument?: (document: Document) => Promise<void>;
+  onNamespaceCreateAccepted?: (docName: string) => void;
+  captureNamespaceMove?: (docName: string) => () => void;
+  capturePublicationReceipt?: (document: Document, docName: string) => (() => void) | undefined;
+  onResidentAdopted?: (document: Document, docName: string) => void;
   ready?: Promise<void>;
   recentlyRemovedDocs?: RecentlyRemovedDocs;
   serializeDoc?: (docName: string) => string | null;
@@ -1576,6 +1581,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     contentFilter,
     installedAgentsProbe,
     forceUnloadDocument,
+    onNamespaceCreateAccepted,
+    captureNamespaceMove,
+    capturePublicationReceipt,
+    onResidentAdopted,
     ready,
     recentlyRemovedDocs,
     serializeDoc,
@@ -2378,7 +2387,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
   }
 
   function reviveFrozenResident(docName: string, content: string): void {
-    reviveFrozenResidentDoc(
+    const document = hocuspocus.documents.get(docName);
+    const result = reviveFrozenResidentDoc(
       durabilityState,
       hocuspocus,
       docName,
@@ -2387,6 +2397,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       undefined,
       getBridgeLossReporter?.(),
     );
+    if (result === 'revived' && document) onResidentAdopted?.(document, docName);
   }
 
   function syncRenamedDocsToDisk(
@@ -2449,12 +2460,20 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     return readFileSync(filePath, 'utf-8');
   }
 
-  function writeManagedRenameDocumentToDisk(docName: string, markdown: string): void {
+  function writeManagedRenameDocumentToDisk(
+    docName: string,
+    markdown: string,
+    document: Document | undefined,
+  ): void {
+    const publicationReceipt = document
+      ? capturePublicationReceipt?.(document, docName)
+      : undefined;
     const filePath = resolveContentEntryPath(contentDir, 'file', docName);
     tracedMkdirSync(dirname(filePath), { recursive: true });
-    writeFileIfContentDiffers(filePath, markdown);
+    const published = writeFileIfContentDiffers(filePath, markdown);
     registerWrite(filePath, contentHash(markdown));
     durabilityState.setReconciledBase(docName, markdown);
+    if (published) publicationReceipt?.();
 
     mutateFileIndex?.({ kind: 'update', path: filePath, docName, content: markdown });
   }
@@ -2582,7 +2601,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
         ? applyAssetRenamesToLoadedDocument(pending.docName, renamedAssets)
         : pending;
       if (rewritten.rewrites === 0) continue;
-      writeManagedRenameDocumentToDisk(pending.docName, rewritten.markdown);
+      writeManagedRenameDocumentToDisk(pending.docName, rewritten.markdown, document);
       derivedMutations.push({
         kind: 'link-rewrite',
         documentName: pending.docName,
@@ -3160,7 +3179,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
                   );
 
               if (rewritten.rewrites > 0) {
-                writeManagedRenameDocumentToDisk(docName, rewritten.markdown);
+                writeManagedRenameDocumentToDisk(docName, rewritten.markdown, document);
                 rewrittenDocs.push({ docName, rewrites: rewritten.rewrites });
               }
 
@@ -3189,6 +3208,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
 
             const rootSourcePath = resolveContentEntryPath(contentDir, kind, fromPath);
             const rootDestinationPath = resolveContentEntryPath(contentDir, kind, toPath);
+            const acceptedMoves = affectedDocs.map(({ to }) => captureNamespaceMove?.(to));
             const renamedWithGit = await renameTrackedPathInGit(
               projectDir,
               rootSourcePath,
@@ -3197,6 +3217,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
             if (!renamedWithGit) {
               renamePathOnDisk(rootSourcePath, rootDestinationPath);
             }
+            for (const acceptMove of acceptedMoves) acceptMove?.();
             if (kind === 'folder') {
               renameFolderIndexEntries(fromPath, toPath);
             }
@@ -4161,7 +4182,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
       ? (docName) => recentlyRemovedDocs.delete(docName)
       : undefined,
     mutateFileIndexCreate: mutateFileIndex
-      ? ({ path, docName, content }) => mutateFileIndex({ kind: 'create', path, docName, content })
+      ? ({ path, docName, content }) => {
+          onNamespaceCreateAccepted?.(docName);
+          mutateFileIndex({ kind: 'create', path, docName, content });
+        }
       : undefined,
     recordDerivedDocumentBestEffort,
     recordDerivedMutationsBestEffort,
@@ -5385,6 +5409,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     respondStaleExternalWrite,
     registerWrittenDocInFileIndex,
     captureAndCloseDocuments,
+    captureNamespaceMove,
     renameTrackedPathInGit,
     renamePathOnDisk,
     splitContentPath,

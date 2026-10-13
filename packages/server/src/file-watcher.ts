@@ -25,7 +25,7 @@ import {
   SUPPORTED_DOC_EXTENSIONS,
   stripDocExtension,
 } from './doc-extensions.ts';
-import { resolvesIntoPrivateState } from './fs-safety.ts';
+import { canonicalContentPathIsRefused, resolvesIntoPrivateState } from './fs-safety.ts';
 import { classifyFsPath, normalizeFsPath } from './fs-traced.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
@@ -637,6 +637,95 @@ type KnownDeletion = {
 type RecoveredFileEvent = { type: 'create' | 'update'; path: string } | KnownDeletion;
 type InternalRawFileEvent = RawFileEvent | KnownDeletion;
 
+type MarkdownRemovalOrigin =
+  | { kind: 'native'; docName: string; path: string }
+  | {
+      kind: 'recovery';
+      docName: string;
+      previousPath: string;
+      isCurrent: () => boolean;
+    };
+
+type MarkdownRemovalObservation = {
+  isCurrent: () => boolean;
+  discarded: boolean;
+};
+
+const removalOrigins = new WeakMap<RawFileEvent, MarkdownRemovalOrigin>();
+const removalObservations = new WeakMap<MarkdownDiskEvent, MarkdownRemovalObservation>();
+
+export function getMarkdownRemovalCurrentness(
+  event: Extract<DiskEvent, { kind: 'delete' | 'rename' }>,
+): (() => boolean) | undefined {
+  return removalObservations.get(event)?.isCurrent;
+}
+
+export function hasAdmittedMarkdownFile(
+  docName: string,
+  filePath: string,
+  contentDir: string,
+  contentFilter: Pick<ContentFilter, 'isExcluded'> | undefined,
+): boolean {
+  try {
+    if (!statSync(filePath).isFile()) return false;
+    if (!readdirSync(dirname(filePath)).includes(basename(filePath))) return false;
+    if (contentFilter?.isExcluded(toPosix(relative(contentDir, filePath))) === true) return false;
+    return !canonicalContentPathIsRefused(filePath, realpathSync(filePath), contentDir);
+  } catch (err) {
+    const code = errnoCode(err);
+    if (code === undefined) {
+      log.error(
+        { err, docName, path: filePath },
+        `[file-watcher] markdown binding for ${docName} could not be checked; treating it as absent`,
+      );
+    } else if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+      log.warn(
+        { err, docName, path: filePath, code },
+        `[file-watcher] markdown binding for ${docName} could not be inspected (${code}); treating it as absent`,
+      );
+    }
+    return false;
+  }
+}
+
+function observeMarkdownRemoval(
+  origin: MarkdownRemovalOrigin,
+  contentDir: string,
+  fileIndex: ReadonlyMap<string, FileIndexEntry>,
+  contentFilter: ContentFilter | undefined,
+  aliasPaths: ReadonlyMap<string, string> | undefined,
+): MarkdownRemovalObservation {
+  const observation: MarkdownRemovalObservation = {
+    discarded: false,
+    isCurrent: () => {
+      if (observation.discarded) return false;
+      const owner = fileIndex.get(origin.docName);
+      if (origin.kind === 'recovery') {
+        const current =
+          origin.isCurrent() &&
+          (owner === undefined || owner.canonicalPath === origin.previousPath);
+        observation.discarded = !current;
+        return current;
+      }
+      const effectivePath = join(contentDir, `${origin.docName}${getDocExtension(origin.docName)}`);
+      const currentPath =
+        owner?.kind === 'markdown'
+          ? owner.canonicalPath
+          : (aliasPaths?.get(origin.docName) ??
+            (existsSync(effectivePath) ? effectivePath : origin.path));
+      const current = !hasAdmittedMarkdownFile(
+        origin.docName,
+        currentPath,
+        contentDir,
+        contentFilter,
+      );
+      observation.discarded ||= !current;
+      return current;
+    },
+  };
+  return observation;
+}
+
 export async function classifyEvents(
   rawEvents: RawFileEvent[],
   contentDir: string,
@@ -667,6 +756,7 @@ async function classifyEventsInternal(
     fileIndex: ReadonlyMap<string, FileIndexEntry>;
     aliasPaths: ReadonlyMap<string, string>;
     canonicalRecords: Set<RawFileEvent>;
+    removals: ReadonlyMap<RawFileEvent, MarkdownRemovalObservation>;
   },
 ): Promise<MarkdownDiskEvent[]> {
   const deletes: RawFileEvent[] = [];
@@ -817,6 +907,7 @@ async function classifyEventsInternal(
   const pairedDeletes = new Set<string>();
 
   for (const del of deletes) {
+    if (aliasContext?.removals.get(del)?.isCurrent() === false) continue;
     const deletedHash = removeLastKnownHash(del.path);
     if (!deletedHash) continue;
 
@@ -829,14 +920,17 @@ async function classifyEventsInternal(
         pairedCreates.add(create.path);
         pairedDeletes.add(del.path);
         updateLastKnownHash(create.path, hash);
-        results.push({
+        const renamed: MarkdownDiskEvent = {
           kind: 'rename',
           oldPath: del.path,
           newPath: create.path,
           oldDocName: resolveDocName(del),
           newDocName: resolveDocName(create),
           content,
-        });
+        };
+        const observation = aliasContext?.removals.get(del);
+        if (observation) removalObservations.set(renamed, observation);
+        results.push(renamed);
         break;
       }
     }
@@ -844,12 +938,16 @@ async function classifyEventsInternal(
 
   for (const del of deletes) {
     if (pairedDeletes.has(del.path)) continue;
-    removeLastKnownHash(del.path);
-    results.push({
+    const observation = aliasContext?.removals.get(del);
+    if (observation?.isCurrent() !== false) removeLastKnownHash(del.path);
+    const origin = removalOrigins.get(del);
+    const event: MarkdownDiskEvent = {
       kind: 'delete',
       path: del.path,
-      docName: resolveDocName(del),
-    });
+      docName: origin?.kind === 'recovery' ? origin.docName : resolveDocName(del),
+    };
+    if (observation) removalObservations.set(event, observation);
+    results.push(event);
   }
 
   for (const create of creates) {
@@ -2515,6 +2613,19 @@ async function handleRawEventsInternal(
   }
 
   const canonicalAliasRecords = new Set<RawFileEvent>();
+  const removals = new Map<RawFileEvent, MarkdownRemovalObservation>();
+  for (const event of mdEvents) {
+    if (event.type !== 'delete') continue;
+    const origin = removalOrigins.get(event) ?? {
+      kind: 'native',
+      docName: pathToDocName(event.path, contentDir),
+      path: event.path,
+    };
+    removals.set(
+      event,
+      observeMarkdownRemoval(origin, contentDir, fileIndex, contentFilter, aliasPaths),
+    );
+  }
   const observations = new Map<string, OwnWriteObservation>();
   const admittedMarkdownPaths = new Set<string>();
   try {
@@ -2526,9 +2637,12 @@ async function handleRawEventsInternal(
             observations,
             contentFilter,
             aliasMap,
-            aliasPaths
-              ? { fileIndex, aliasPaths, canonicalRecords: canonicalAliasRecords }
-              : undefined,
+            {
+              fileIndex,
+              aliasPaths: aliasPaths ?? new Map(),
+              canonicalRecords: canonicalAliasRecords,
+              removals,
+            },
           )
         : [];
 
@@ -2584,10 +2698,24 @@ async function handleRawEventsInternal(
         event.kind === 'update' && previousIndexedFields !== undefined
           ? { ...event, previousIndexedFields }
           : event;
+      const staleNamespace =
+        (event.kind === 'delete' || event.kind === 'rename') &&
+        getMarkdownRemovalCurrentness(event)?.() === false;
 
-      updateFileIndex(indexEvent, fileIndex);
+      if (!staleNamespace) updateFileIndex(indexEvent, fileIndex);
+      else if (indexEvent.kind === 'rename') {
+        updateFileIndex(
+          {
+            kind: 'create',
+            path: indexEvent.newPath,
+            docName: indexEvent.newDocName,
+            content: indexEvent.content,
+          },
+          fileIndex,
+        );
+      }
 
-      if (contentFilter && !isSelf) {
+      if (contentFilter && !isSelf && !staleNamespace) {
         switch (event.kind) {
           case 'create':
             contentFilter.incrementMdDir(dirname(event.docName));
@@ -2630,6 +2758,7 @@ async function handleRawEventsInternal(
         {
           kind: event.kind,
           path: event.kind === 'rename' ? event.newPath : event.path,
+          staleNamespace,
         },
         `[file-watcher] Dispatching: ${event.kind}`,
       );
@@ -2650,6 +2779,9 @@ async function handleRawEventsInternal(
     }
   } finally {
     releaseOwnWriteObservations(observations);
+    if ([...removals.values()].some((observation) => observation.discarded)) {
+      contentFilter?.rebuildDirCount();
+    }
   }
 
   for (const event of folderEvents) {
@@ -2948,7 +3080,20 @@ async function recoverDiskChanges(
     )
       continue;
     if (current?.canonicalPath !== previous.canonicalPath) {
-      rawEvents.push({ type: 'delete', path: previous.canonicalPath, entryKind: 'file' });
+      const removal: KnownDeletion = {
+        type: 'delete',
+        path: previous.canonicalPath,
+        entryKind: 'file',
+      };
+      removalOrigins.set(removal, {
+        kind: 'recovery',
+        docName,
+        previousPath: previous.canonicalPath,
+        isCurrent: () =>
+          !markdownPublicMutationFor(docName, previous) &&
+          !(current && markdownPublicMutationFor(docName, current)),
+      });
+      rawEvents.push(removal);
     } else if (
       previousHashes.get(previous.canonicalPath) !== observed.hashes.get(current.canonicalPath)
     ) {

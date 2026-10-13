@@ -296,6 +296,11 @@ export interface PersistenceOptions {
   getPrincipal?: () => Principal | null;
   onAgentCommit?: () => void;
   onFlushCommit?: () => void;
+  capturePublicationReceipt?: (
+    document: Y.Doc,
+    documentName: string,
+    snapshotSV: Uint8Array,
+  ) => (() => void) | undefined;
   onDiskFlush?: (
     docName: string,
     sv: Uint8Array,
@@ -1423,6 +1428,19 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
         const { sv: stateVectorAtRead, json } = captureDocSnapshotForPersistence(document);
         const ytextSnapshot = document.getText('source').toString();
+        let publicationReceipt: (() => void) | undefined;
+        try {
+          publicationReceipt = options?.capturePublicationReceipt?.(
+            document,
+            documentName,
+            stateVectorAtRead,
+          );
+        } catch (err) {
+          log.warn(
+            { err, documentName },
+            '[persistence] capturePublicationReceipt callback failed',
+          );
+        }
         const storeAttempt = durabilityState.beginStoreAttempt(documentName);
 
         const { frontmatter, body } = stripFrontmatter(ytextSnapshot);
@@ -1931,6 +1949,14 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           registerWrite(canonicalPath, contentHash(markdown));
           durabilityState.clearStoreFailure(documentName);
           incrementPersistenceDiskWrite();
+          try {
+            publicationReceipt?.();
+          } catch (err) {
+            log.warn(
+              { err, documentName },
+              '[persistence] capturePublicationReceipt receipt completion failed',
+            );
+          }
           try {
             onDiskFlush?.(documentName, stateVectorAtRead, markdown, currentBase ?? null);
           } catch (flushErr) {
