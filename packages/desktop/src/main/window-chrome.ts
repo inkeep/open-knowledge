@@ -57,7 +57,10 @@ export function applyThemeToWindow(
   try {
     win.setBackgroundColor(bg);
   } catch {}
-  if (platform === 'win32' && typeof win.setTitleBarOverlay === 'function') {
+  if (
+    (platform === 'win32' || platform === 'linux') &&
+    typeof win.setTitleBarOverlay === 'function'
+  ) {
     try {
       win.setTitleBarOverlay(computeTitleBarOverlay(isDark, live));
     } catch {}

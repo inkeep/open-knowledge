@@ -96,11 +96,11 @@ describe('applyThemeToWindow', () => {
     expect(calls.overlay).toEqual([computeTitleBarOverlay(true)]);
   });
 
-  test('linux recolors background only (setTitleBarOverlay is Windows-only)', () => {
+  test('linux recolors background AND overlay', () => {
     const { win, calls } = makeWin();
     applyThemeToWindow(win, 'linux', false);
     expect(calls.bg).toEqual([CHROME_BG.light]);
-    expect(calls.overlay).toHaveLength(0);
+    expect(calls.overlay).toEqual([computeTitleBarOverlay(false)]);
   });
 
   test('destroyed window is skipped entirely', () => {
@@ -123,9 +123,10 @@ describe('applyThemeToWindow', () => {
     expect(calls.overlay).toEqual([computeTitleBarOverlay(true, LIVE)]);
   });
 
-  test('linux repaints the background from the live palette', () => {
+  test('linux repaints the background AND overlay from the live palette', () => {
     const { win, calls } = makeWin();
     applyThemeToWindow(win, 'linux', false, LIVE);
     expect(calls.bg).toEqual([LIVE.bg]);
+    expect(calls.overlay).toEqual([computeTitleBarOverlay(false, LIVE)]);
   });
 });
