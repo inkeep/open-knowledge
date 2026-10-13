@@ -2367,7 +2367,10 @@ describe('TerminalPanel', () => {
       expect(originalTerm?.dispose).toHaveBeenCalledTimes(1);
       expect(siblingTerm?.dispose).not.toHaveBeenCalled();
       expect(terminal.create).toHaveBeenLastCalledWith(
-        expect.objectContaining({ launchCli: cli, launchCommand: expect.any(String) }),
+        expect.objectContaining({
+          launchCli: cli,
+          launchCommand: expect.objectContaining({ executable: expect.any(String) }),
+        }),
       );
       expect(
         cli === 'claude' ? terminal.claudePreflight : terminal.cliPreflight,

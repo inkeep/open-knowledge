@@ -1,6 +1,6 @@
 import {
   assembleHandoffPrompt,
-  buildCliLaunchArgString,
+  buildPosixCliLaunch,
   composeAskPrompt,
   composeSelectionPrompt,
   shellSingleQuote,
@@ -15,6 +15,15 @@ const TRUNCATION_MARKER = ' …';
 const MACOS_ARG_MAX = 1_048_576;
 
 const URL_INLINE_PROMPT_ENCODED_BUDGET = 4096 - 1024;
+
+function launchArgvBytes(cli: (typeof TERMINAL_CLI_IDS)[number], prompt: string): number {
+  const launch = buildPosixCliLaunch(cli, prompt);
+  const encoder = new TextEncoder();
+  return [launch.executable, ...launch.args].reduce(
+    (total, arg) => total + encoder.encode(arg).length + 1,
+    0,
+  );
+}
 
 const workspace = { contentDir: '/Users/u/notes', pathSeparator: '/' as const };
 
@@ -44,7 +53,7 @@ describe('composeTerminalLaunchPrompt — terminal transport carries long instru
       const prompt = composeTerminalLaunchPrompt(input, cli);
       expect(prompt).toContain(instruction);
       expect(prompt).not.toContain(TRUNCATION_MARKER);
-      expect(buildCliLaunchArgString(cli, prompt).length).toBeLessThanOrEqual(MACOS_ARG_MAX);
+      expect(launchArgvBytes(cli, prompt)).toBeLessThanOrEqual(MACOS_ARG_MAX);
     }
   });
 
@@ -96,7 +105,7 @@ describe('composeTerminalLaunchPrompt — terminal transport carries long instru
     expect(new TextEncoder().encode(shellSingleQuote(prompt)).length).toBeLessThanOrEqual(
       TERMINAL_INLINE_PROMPT_BUDGET + 1024,
     );
-    expect(buildCliLaunchArgString('claude', prompt).length).toBeLessThanOrEqual(MACOS_ARG_MAX);
+    expect(launchArgvBytes('claude', prompt)).toBeLessThanOrEqual(MACOS_ARG_MAX);
     expect(prompt).not.toContain(instruction);
     expect(prompt).toContain(TRUNCATION_MARKER);
     expect(prompt.length).toBeGreaterThan(TERMINAL_INLINE_PROMPT_BUDGET - 2_000);

@@ -28,13 +28,12 @@ export {
 } from './prompt-composer.ts';
 export {
   BRACKETED_PASTE_ENABLE_MARKER,
-  buildClaudeLaunchCommand,
-  buildCliLaunchArgString,
-  buildCliLaunchCommand,
+  buildPosixCliLaunch,
   buildStartupInjectionBytes,
   buildTerminalInputBytes,
   buildWindowsCliLaunch,
   composeWindowsShellLaunchArgs,
+  fishSingleQuote,
   isTerminalLaunchEnvName,
   isWindowsShellFamily,
   isWindowsShellLaunchFailureReason,

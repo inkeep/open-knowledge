@@ -179,6 +179,16 @@ function bakedLaunch(
   return last?.launchCommand;
 }
 
+function bakedArgv(createMock: ReturnType<typeof vi.fn>): string | readonly string[] | undefined {
+  const launch = bakedLaunch(createMock);
+  return typeof launch === 'object' ? [launch.executable, ...launch.args] : launch;
+}
+
+function bakedArgvText(createMock: ReturnType<typeof vi.fn>): string {
+  const argv = bakedArgv(createMock);
+  return Array.isArray(argv) ? argv.join(' ') : String(argv);
+}
+
 function reportedCli(createMock: ReturnType<typeof vi.fn>): string | undefined {
   const last = createMock.mock.calls.at(-1)?.[0] as { launchCli?: string } | undefined;
   return last?.launchCli;
@@ -190,11 +200,17 @@ function launchInputWrites(inputMock: ReturnType<typeof vi.fn>): string[] {
     .filter((d) => typeof d === 'string' && /^(claude|codex|cursor-agent|opencode) /.test(d));
 }
 
-const CLAUDE_PRE = `--settings '{"enabledMcpjsonServers":["open-knowledge"],"permissions":{"allow":["mcp__open-knowledge","Bash(ok open:*)"],"ask":["mcp__open-knowledge__delete","mcp__open-knowledge__move","mcp__open-knowledge__share_link","mcp__open-knowledge__install","mcp__open-knowledge__import"]}}'`;
+const CLAUDE_PRE = [
+  '--settings',
+  '{"enabledMcpjsonServers":["open-knowledge"],"permissions":{"allow":["mcp__open-knowledge","Bash(ok open:*)"],"ask":["mcp__open-knowledge__delete","mcp__open-knowledge__move","mcp__open-knowledge__share_link","mcp__open-knowledge__install","mcp__open-knowledge__import"]}}',
+];
 
-const CLAUDE_TRUST_ONLY = `--settings '{"enabledMcpjsonServers":["open-knowledge"]}'`;
+const CLAUDE_TRUST_ONLY = ['--settings', '{"enabledMcpjsonServers":["open-knowledge"]}'];
 
-const CLAUDE_AUTO_ONLY = `--settings '{"permissions":{"allow":["mcp__open-knowledge","Bash(ok open:*)"],"ask":["mcp__open-knowledge__delete","mcp__open-knowledge__move","mcp__open-knowledge__share_link","mcp__open-knowledge__install","mcp__open-knowledge__import"]}}'`;
+const CLAUDE_AUTO_ONLY = [
+  '--settings',
+  '{"permissions":{"allow":["mcp__open-knowledge","Bash(ok open:*)"],"ask":["mcp__open-knowledge__delete","mcp__open-knowledge__move","mcp__open-knowledge__share_link","mcp__open-knowledge__install","mcp__open-knowledge__import"]}}',
+];
 
 function renderWithAutoApproveOff(ui: ReactElement) {
   const value = {
@@ -236,10 +252,8 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt, cli: 'claude', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    expect(bakedLaunch(terminal.create)).toBe(
-      `claude ${CLAUDE_PRE} 'Let'\\''s work on \`foo.md\` using OpenKnowledge.'`,
-    );
-    expect(bakedLaunch(terminal.create)).not.toContain('\r');
+    expect(bakedArgv(terminal.create)).toEqual(['claude', ...CLAUDE_PRE, prompt]);
+    expect(bakedArgvText(terminal.create)).not.toContain('\r');
     expect(launchInputWrites(terminal.input)).toEqual([]);
   });
 
@@ -471,7 +485,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     );
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    expect(bakedLaunch(terminal.create)).toBe(`claude ${CLAUDE_PRE}`);
+    expect(bakedArgv(terminal.create)).toEqual(['claude', ...CLAUDE_PRE]);
     await new Promise((r) => setTimeout(r, STAGE_PASTE_SETTLE_MS + 300));
     expect(terminal.input).not.toHaveBeenCalled();
     if (lastTerm !== null) lastTerm.modes.bracketedPasteMode = true;
@@ -546,8 +560,8 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt, cli: 'hermes', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    expect(bakedLaunch(terminal.create)).toBe('hermes chat');
-    expect(bakedLaunch(terminal.create)).not.toContain(prompt);
+    expect(bakedArgv(terminal.create)).toEqual(['hermes', 'chat']);
+    expect(bakedArgvText(terminal.create)).not.toContain(prompt);
 
     await new Promise((r) => setTimeout(r, 80));
     expect(terminal.input).not.toHaveBeenCalled();
@@ -606,8 +620,8 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    expect(bakedLaunch(terminal.create)).toBe("claude 'hi'");
-    expect(bakedLaunch(terminal.create)).not.toContain('--settings');
+    expect(bakedArgv(terminal.create)).toEqual(['claude', 'hi']);
+    expect(bakedArgv(terminal.create)).not.toContain('--settings');
   });
 
   test("does NOT pre-approve when the project MCP entry is not OK's own (mcpPreApprovable false)", async () => {
@@ -615,8 +629,8 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    expect(bakedLaunch(terminal.create)).toBe("claude 'hi'");
-    expect(bakedLaunch(terminal.create)).not.toContain('--settings');
+    expect(bakedArgv(terminal.create)).toEqual(['claude', 'hi']);
+    expect(bakedArgv(terminal.create)).not.toContain('--settings');
   });
 
   test('verifies pre-approval at LAUNCH time (the bake gates on the fresh preflight, not a stale snapshot)', async () => {
@@ -624,7 +638,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    expect(bakedLaunch(terminal.create)).toBe("claude 'hi'");
+    expect(bakedArgv(terminal.create)).toEqual(['claude', 'hi']);
     expect(terminal.claudePreflight).toHaveBeenCalled();
   });
 
@@ -665,7 +679,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(terminal.cliPreflight).toHaveBeenCalledTimes(1);
     expect(terminal.cliPreflight.mock.calls[0]?.[0]).toBe('codex');
-    expect(bakedLaunch(terminal.create)).toBe("codex 'hi'");
+    expect(bakedArgv(terminal.create)).toEqual(['codex', 'hi']);
     expect(launchInputWrites(terminal.input)).toEqual([]);
   });
 
@@ -674,9 +688,12 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'codex', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    expect(bakedLaunch(terminal.create)).toBe(
-      `codex -c 'mcp_servers.open-knowledge.default_tools_approval_mode="approve"' 'hi'`,
-    );
+    expect(bakedArgv(terminal.create)).toEqual([
+      'codex',
+      '-c',
+      'mcp_servers.open-knowledge.default_tools_approval_mode="approve"',
+      'hi',
+    ]);
   });
 
   test('codex auto-approves only the server name main checked, and nothing without one', async () => {
@@ -688,9 +705,12 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
       <TerminalPanel bridge={beta.bridge} launch={{ prompt: 'hi', cli: 'codex', nonce: 1 }} />,
     );
     await waitFor(() => expect(beta.terminal.create).toHaveBeenCalledTimes(1));
-    expect(bakedLaunch(beta.terminal.create)).toBe(
-      `codex -c 'mcp_servers.open-knowledge-beta.default_tools_approval_mode="approve"' 'hi'`,
-    );
+    expect(bakedArgv(beta.terminal.create)).toEqual([
+      'codex',
+      '-c',
+      'mcp_servers.open-knowledge-beta.default_tools_approval_mode="approve"',
+      'hi',
+    ]);
     cleanup();
 
     const unnamed = makeBridge(WIRED, { onPath: 'present', okServerConfigured: true });
@@ -698,7 +718,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
       <TerminalPanel bridge={unnamed.bridge} launch={{ prompt: 'hi', cli: 'codex', nonce: 1 }} />,
     );
     await waitFor(() => expect(unnamed.terminal.create).toHaveBeenCalledTimes(1));
-    expect(bakedLaunch(unnamed.terminal.create)).toBe("codex 'hi'");
+    expect(bakedArgv(unnamed.terminal.create)).toEqual(['codex', 'hi']);
   });
 
   test('codex stays BARE (no -c) when OK is not configured in codex — the launch never breaks', async () => {
@@ -709,8 +729,8 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'codex', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    expect(bakedLaunch(terminal.create)).toBe("codex 'hi'");
-    expect(bakedLaunch(terminal.create)).not.toContain('-c');
+    expect(bakedArgv(terminal.create)).toEqual(['codex', 'hi']);
+    expect(bakedArgv(terminal.create)).not.toContain('-c');
   });
 
   test('toggle OFF: a WIRED claude launch keeps server trust but bakes no permissions block', async () => {
@@ -720,8 +740,8 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     );
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    expect(bakedLaunch(terminal.create)).toBe(`claude ${CLAUDE_TRUST_ONLY} 'hi'`);
-    expect(bakedLaunch(terminal.create)).not.toContain('permissions');
+    expect(bakedArgv(terminal.create)).toEqual(['claude', ...CLAUDE_TRUST_ONLY, 'hi']);
+    expect(bakedArgvText(terminal.create)).not.toContain('permissions');
   });
 
   test("toggle OFF: codex stays BARE (no -c) even when OK's server is configured", async () => {
@@ -731,7 +751,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     );
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    expect(bakedLaunch(terminal.create)).toBe("codex 'hi'");
+    expect(bakedArgv(terminal.create)).toEqual(['codex', 'hi']);
   });
 
   test('cursor launch bakes the cursor-agent command (the agent CLI, not the editor)', async () => {
@@ -739,7 +759,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'cursor', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    expect(bakedLaunch(terminal.create)).toBe("cursor-agent 'hi'");
+    expect(bakedArgv(terminal.create)).toEqual(['cursor-agent', 'hi']);
   });
 
   test('opencode launch bakes the --prompt form (positional is the project dir)', async () => {
@@ -747,7 +767,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'opencode', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    expect(bakedLaunch(terminal.create)).toBe("opencode --prompt 'hi'");
+    expect(bakedArgv(terminal.create)).toEqual(['opencode', '--prompt', 'hi']);
   });
 
   test('codex not on PATH: spawns a plain shell + surfaces the missing-CLI banner', async () => {
@@ -784,7 +804,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(terminal.cliPreflight).toHaveBeenCalledTimes(2);
-    expect(bakedLaunch(terminal.create)).toBe("cursor-agent 'hi'");
+    expect(bakedArgv(terminal.create)).toEqual(['cursor-agent', 'hi']);
   });
 
   test('cliPreflight IPC rejection spawns plain + surfaces the UNVERIFIED banner (never "isn\'t installed")', async () => {
@@ -872,26 +892,26 @@ describe('the two --settings halves are gated independently, across all four MCP
     const { bridge, terminal } = makeBridge(preflight);
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    return bakedLaunch(terminal.create);
+    return bakedArgv(terminal.create);
   }
 
   test('global-only: OK tools are auto-approved, and no project server trust is claimed', async () => {
     const baked = await bakeClaudeLaunch(WIRED_GLOBAL_ONLY);
-    expect(baked).toBe(`claude ${CLAUDE_AUTO_ONLY} 'hi'`);
-    expect(baked).not.toContain('enabledMcpjsonServers');
+    expect(baked).toEqual(['claude', ...CLAUDE_AUTO_ONLY, 'hi']);
+    expect(String(baked)).not.toContain('enabledMcpjsonServers');
   });
 
   test('project-only: both halves, exactly as before the split', async () => {
-    expect(await bakeClaudeLaunch(PROJECT_ONLY)).toBe(`claude ${CLAUDE_PRE} 'hi'`);
+    expect(await bakeClaudeLaunch(PROJECT_ONLY)).toEqual(['claude', ...CLAUDE_PRE, 'hi']);
   });
 
   test('both scopes: both halves, in one settings object', async () => {
-    expect(await bakeClaudeLaunch(BOTH_SCOPES)).toBe(`claude ${CLAUDE_PRE} 'hi'`);
+    expect(await bakeClaudeLaunch(BOTH_SCOPES)).toEqual(['claude', ...CLAUDE_PRE, 'hi']);
   });
 
   test('neither scope: a bare launch, no settings at all', async () => {
     const baked = await bakeClaudeLaunch(NEITHER_SCOPE);
-    expect(baked).toBe("claude 'hi'");
+    expect(baked).toEqual(['claude', 'hi']);
     expect(baked).not.toContain('--settings');
   });
 
@@ -901,21 +921,22 @@ describe('the two --settings halves are gated independently, across all four MCP
       mcpPreApprovable: false,
       okToolsAutoApprovable: false,
     });
-    expect(baked).toBe("claude 'hi'");
+    expect(baked).toEqual(['claude', 'hi']);
     expect(baked).not.toContain('--settings');
   });
 
   test('names only the server main checked: a Beta verdict never approves open-knowledge', async () => {
     const baked = await bakeClaudeLaunch({ ...BOTH_SCOPES, mcpServerName: 'open-knowledge-beta' });
-    expect(baked).toContain('"enabledMcpjsonServers":["open-knowledge-beta"]');
-    expect(baked).toContain('"mcp__open-knowledge-beta__delete"');
-    expect(baked?.replaceAll('open-knowledge-beta', '')).not.toContain('open-knowledge');
+    const bakedText = String(baked);
+    expect(bakedText).toContain('"enabledMcpjsonServers":["open-knowledge-beta"]');
+    expect(bakedText).toContain('"mcp__open-knowledge-beta__delete"');
+    expect(bakedText.replaceAll('open-knowledge-beta', '')).not.toContain('open-knowledge');
   });
 
   test('a verdict that carries no server name bakes a bare launch, never a guessed name', async () => {
     const { mcpServerName: _omitted, ...unnamed } = BOTH_SCOPES;
     const baked = await bakeClaudeLaunch(unnamed);
-    expect(baked).toBe("claude 'hi'");
+    expect(baked).toEqual(['claude', 'hi']);
   });
 
   test('toggle OFF on a global-only install: neither half, so the launch is bare', async () => {
@@ -925,8 +946,8 @@ describe('the two --settings halves are gated independently, across all four MCP
     );
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    expect(bakedLaunch(terminal.create)).toBe("claude 'hi'");
-    expect(bakedLaunch(terminal.create)).not.toContain('--settings');
+    expect(bakedArgv(terminal.create)).toEqual(['claude', 'hi']);
+    expect(bakedArgv(terminal.create)).not.toContain('--settings');
   });
 });
 
@@ -944,7 +965,7 @@ describe('the agent CLI reported to the host alongside the spawn', () => {
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(reportedCli(terminal.create)).toBe('claude');
-    expect(bakedLaunch(terminal.create)).toBe(`claude ${CLAUDE_PRE} 'hi'`);
+    expect(bakedArgv(terminal.create)).toEqual(['claude', ...CLAUDE_PRE, 'hi']);
   });
 
   test('names the agent for a non-claude launch too', async () => {

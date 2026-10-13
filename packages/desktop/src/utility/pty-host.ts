@@ -820,10 +820,15 @@ function unsetEnvStep(shell: string, names: readonly string[]): string {
     : `unset ${names.join(' ')}; `;
 }
 
+const BARE_COMMAND_NAME_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/u;
+
 function composeStructuredLaunch(shell: string, launch: TerminalLaunchCommand): string {
-  const command = [launch.executable, ...launch.args]
-    .map((token) => quoteShellArg(shell, token))
-    .join(' ');
+  const executable = BARE_COMMAND_NAME_RE.test(launch.executable)
+    ? launch.executable
+    : quoteShellArg(shell, launch.executable);
+  const command = [executable, ...launch.args.map((token) => quoteShellArg(shell, token))].join(
+    ' ',
+  );
   const slots = terminalLaunchEnvSlots(launch.env);
   if (slots.length === 0) return command;
   if (shellCommandFamily(shell) === 'fish') {

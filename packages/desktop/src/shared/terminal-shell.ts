@@ -1,11 +1,7 @@
-import { shellSingleQuote } from '@inkeep/open-knowledge-core';
+import { fishSingleQuote, shellSingleQuote } from '@inkeep/open-knowledge-core';
 
 export function interactiveShellArgs(platform: NodeJS.Platform): readonly string[] {
   return platform === 'linux' ? ['-i'] : ['-l', '-i'];
-}
-
-function fishSingleQuote(value: string): string {
-  return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 }
 
 const POSIX_SHELL_NAMES = new Set(['ash', 'bash', 'dash', 'ksh', 'ksh93', 'mksh', 'sh', 'zsh']);

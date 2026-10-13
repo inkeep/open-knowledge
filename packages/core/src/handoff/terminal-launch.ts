@@ -5,6 +5,10 @@ export function shellSingleQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
+export function fishSingleQuote(s: string): string {
+  return `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+}
+
 export interface TerminalLaunchCommand {
   readonly executable: string;
   readonly args: readonly string[];
@@ -304,11 +308,6 @@ function buildClaudeSettingsJson(opts: BuildCliLaunchOptions): string | null {
   return JSON.stringify(settings);
 }
 
-function buildClaudeSettingsArg(opts: BuildCliLaunchOptions): string {
-  const settingsJson = buildClaudeSettingsJson(opts);
-  return settingsJson === null ? '' : `--settings ${shellSingleQuote(settingsJson)}`;
-}
-
 const ESC = '\x1b';
 const BRACKETED_PASTE_START = `${ESC}[200~`;
 const BRACKETED_PASTE_END = `${ESC}[201~`;
@@ -486,38 +485,28 @@ export function buildWindowsCliLaunch(
   };
 }
 
-export function buildCliLaunchArgString(
+export function buildPosixCliLaunch(
   cli: TerminalCli,
   prompt: string | null | undefined,
   opts: BuildCliLaunchOptions = {},
-): string {
+): TerminalLaunchCommand {
   const info: TerminalCliInfo = TERMINAL_CLIS[cli];
   const server = approvedServerName(opts);
+  const settingsJson = cli === 'claude' ? buildClaudeSettingsJson(opts) : null;
   const fixedArgs =
-    cli === 'claude'
-      ? buildClaudeSettingsArg(opts)
+    settingsJson !== null
+      ? ['--settings', settingsJson]
       : cli === 'codex' && opts.autoApproveOkTools === true && server !== null
-        ? `-c ${shellSingleQuote(codexAutoApproveSetting(server, '"'))}`
-        : '';
-  const fixedPrefix = fixedArgs ? `${fixedArgs} ` : '';
-  const sub = info.subcommand ? `${info.subcommand} ` : '';
+        ? ['-c', codexAutoApproveSetting(server, '"')]
+        : [];
+  const args = [...(info.subcommand ? [info.subcommand] : []), ...fixedArgs];
   if (info.startupInjection != null || prompt == null || prompt.length === 0) {
-    return `${info.bin} ${sub}${fixedPrefix}`.trimEnd();
+    return { executable: info.bin, args };
   }
-  const promptFlag = info.promptFlag ? `${info.promptFlag} ` : '';
-  return `${info.bin} ${sub}${fixedPrefix}${promptFlag}${shellSingleQuote(toTerminalPromptText(prompt))}`;
-}
-
-export function buildCliLaunchCommand(
-  cli: TerminalCli,
-  prompt: string,
-  opts: BuildCliLaunchOptions = {},
-): string {
-  return `${buildCliLaunchArgString(cli, prompt, opts)}\r`;
-}
-
-export function buildClaudeLaunchCommand(prompt: string, opts: BuildCliLaunchOptions = {}): string {
-  return buildCliLaunchCommand('claude', prompt, opts);
+  return {
+    executable: info.bin,
+    args: [...args, ...(info.promptFlag ? [info.promptFlag] : []), toTerminalPromptText(prompt)],
+  };
 }
 
 export function startupInjectionFor(

@@ -20,7 +20,7 @@ import {
   TERMINAL_INLINE_PROMPT_BUDGET,
   withSkillPointer,
 } from './prompt-composer.ts';
-import { shellSingleQuote, toTerminalPromptText } from './terminal-launch.ts';
+import { fishSingleQuote, shellSingleQuote, toTerminalPromptText } from './terminal-launch.ts';
 import type { HandoffPayload, HandoffTarget } from './types.ts';
 
 test('composeFilePrompt with autoOpen=true emits the file directive + Open-the-OK-editor trailer', () => {
@@ -1191,7 +1191,11 @@ test('assembleHandoffPrompt renders an anchor selection as the locus reference',
 });
 
 function quotedByteLength(prompt: string): number {
-  return new TextEncoder().encode(shellSingleQuote(prompt)).length;
+  const encoder = new TextEncoder();
+  return Math.max(
+    encoder.encode(shellSingleQuote(prompt)).length,
+    encoder.encode(fishSingleQuote(prompt)).length,
+  );
 }
 
 function terminalProse(chars: number): string {
@@ -1286,6 +1290,31 @@ test('terminal transport measures shell-quoted BYTES — an apostrophe-dense ins
   expect(out).not.toContain(instruction);
   expect(out).toContain(' …');
   expect(quotedByteLength(out)).toBeLessThanOrEqual(TERMINAL_INLINE_PROMPT_BUDGET);
+});
+
+test('terminal transport measures fish-quoted bytes too — a backslash-dense instruction trims by the longer of the POSIX and fish quotings', () => {
+  const instruction = 'y\\'.repeat(40_000);
+  const encoder = new TextEncoder();
+  expect(encoder.encode(shellSingleQuote(instruction)).length).toBeLessThan(
+    TERMINAL_INLINE_PROMPT_BUDGET,
+  );
+  expect(encoder.encode(fishSingleQuote(instruction)).length).toBeGreaterThan(
+    TERMINAL_INLINE_PROMPT_BUDGET,
+  );
+  const out = assembleHandoffPrompt({
+    scope: 'doc',
+    docRelativePath: 'plans/migration.md',
+    instruction,
+    mentions: [],
+    autoOpen: false,
+    target: 'claude-code',
+    transport: 'terminal',
+  });
+  expect(out).not.toContain(instruction);
+  expect(out).toContain(' …');
+  expect(encoder.encode(fishSingleQuote(out)).length).toBeLessThanOrEqual(
+    TERMINAL_INLINE_PROMPT_BUDGET,
+  );
 });
 
 test('terminal transport measures the labeled bytes — a control-dense instruction trims by its labeled length, not its raw length', () => {

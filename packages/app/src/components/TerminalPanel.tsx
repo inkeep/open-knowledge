@@ -7,7 +7,7 @@ import {
 } from '@inkeep/open-knowledge-core/desktop-bridge';
 import {
   BRACKETED_PASTE_ENABLE_MARKER,
-  buildCliLaunchArgString,
+  buildPosixCliLaunch,
   buildStartupInjectionBytes,
   buildTerminalInputBytes,
   buildWindowsCliLaunch,
@@ -633,11 +633,11 @@ function TerminalSession({
 
     const resolveLaunchCommand = async (
       intent: TerminalCliLaunchIntent,
-    ): Promise<string | TerminalLaunchCommand | undefined> => {
-      const buildLaunch = (opts: Parameters<typeof buildCliLaunchArgString>[2]) =>
+    ): Promise<TerminalLaunchCommand | undefined> => {
+      const buildLaunch = (opts: Parameters<typeof buildPosixCliLaunch>[2]) =>
         bridge.platform === 'win32'
           ? buildWindowsCliLaunch(intent.cli, intent.prompt, opts)
-          : buildCliLaunchArgString(intent.cli, intent.prompt, opts);
+          : buildPosixCliLaunch(intent.cli, intent.prompt, opts);
       if (intent.cli === 'claude') {
         try {
           const fresh = await bridge.terminal.claudePreflight();

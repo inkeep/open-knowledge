@@ -4,6 +4,7 @@ import {
   OK_DESKTOP_TERMINAL_ENV,
   OK_HOSTED_AGENT_ENV,
   posixOkManagedBinDir,
+  shellSingleQuote,
 } from '@inkeep/open-knowledge-core';
 import { TERMINAL_SHELL_NOTICE_REASONS } from '@inkeep/open-knowledge-core/desktop-bridge';
 import { describe, expect, test, vi } from 'vitest';
@@ -2339,7 +2340,7 @@ describe('buildShellArgs', () => {
     if (!call) throw new Error('no spawn');
     const script = call.args[3] ?? '';
     expect(script).toContain(
-      `(export ZDOTDIR="$OK_TERMINAL_LAUNCH_ENV_0" AUGGIE_HOME="$OK_TERMINAL_LAUNCH_ENV_1"; exec 'agent' 'login'); unset OK_TERMINAL_LAUNCH_ENV_0 OK_TERMINAL_LAUNCH_ENV_1; exec`,
+      `(export ZDOTDIR="$OK_TERMINAL_LAUNCH_ENV_0" AUGGIE_HOME="$OK_TERMINAL_LAUNCH_ENV_1"; exec agent 'login'); unset OK_TERMINAL_LAUNCH_ENV_0 OK_TERMINAL_LAUNCH_ENV_1; exec`,
     );
     const pairs = [...script.matchAll(/(\w+)="\$(OK_TERMINAL_LAUNCH_ENV_\d+)"/g)].map((match) => [
       match[1] ?? '',
@@ -2355,7 +2356,7 @@ describe('buildShellArgs', () => {
     }
   });
 
-  test('a structured launch under fish uses fish quoting for every token', () => {
+  test('a structured launch under fish uses fish quoting for every argument', () => {
     expect(
       buildShellArgs(
         'linux',
@@ -2366,8 +2367,29 @@ describe('buildShellArgs', () => {
     ).toEqual([
       '-i',
       '-c',
-      `begin; set -lx A "$OK_TERMINAL_LAUNCH_ENV_0"; 'agent' 'it\\\\\\'s' 'trailing\\\\'; end; set -e OK_TERMINAL_LAUNCH_ENV_0; exec '/usr/bin/fish' -i`,
+      `begin; set -lx A "$OK_TERMINAL_LAUNCH_ENV_0"; agent 'it\\\\\\'s' 'trailing\\\\'; end; set -e OK_TERMINAL_LAUNCH_ENV_0; exec '/usr/bin/fish' -i`,
     ]);
+  });
+
+  test('a structured launch leaves a bare command name unquoted so shell aliases still resolve', () => {
+    expect(
+      buildShellArgs(
+        'darwin',
+        '/bin/zsh',
+        { executable: 'claude', args: ['--settings', '{}'] },
+        [],
+      ),
+    ).toEqual(['-l', '-i', '-c', "claude '--settings' '{}'; exec '/bin/zsh' -l -i"]);
+  });
+
+  test('a structured launch quotes an executable that is a path or carries shell syntax', () => {
+    for (const executable of ['/opt/my tools/claude', '$(touch pwned)', '-claude', 'a;b']) {
+      const script = buildShellArgs('darwin', '/bin/zsh', { executable, args: [] }, [])[3];
+      expect(script).toBe(`${shellSingleQuote(executable)}; exec '/bin/zsh' -l -i`);
+    }
+    expect(buildShellArgs('linux', '/usr/bin/fish', { executable: "o'k\\", args: [] }, [])[2]).toBe(
+      "'o\\'k\\\\'; exec '/usr/bin/fish' -i",
+    );
   });
 
   test('uses fish list syntax for the reassert when the terminal shell is fish', () => {

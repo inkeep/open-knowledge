@@ -16,9 +16,7 @@ const spawnSyncMock = vi.mocked(spawnSync);
 import { MCP_SERVER_NAME } from '../constants/mcp.ts';
 import { DESKTOP_PRODUCTS } from '../constants/product.ts';
 import {
-  buildClaudeLaunchCommand,
-  buildCliLaunchArgString,
-  buildCliLaunchCommand,
+  buildPosixCliLaunch,
   buildStartupInjectionBytes,
   buildTerminalInputBytes,
   buildWindowsCliLaunch,
@@ -41,9 +39,12 @@ import {
   WindowsShellLaunchError,
 } from './terminal-launch.ts';
 
-const CLAUDE_PREAPPROVE = `--settings '{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"]}'`;
 const OK_ALLOW = `["mcp__${MCP_SERVER_NAME}","Bash(ok open:*)"]`;
 const OK_ASK = `["mcp__${MCP_SERVER_NAME}__delete","mcp__${MCP_SERVER_NAME}__move","mcp__${MCP_SERVER_NAME}__share_link","mcp__${MCP_SERVER_NAME}__install","mcp__${MCP_SERVER_NAME}__import"]`;
+const CLAUDE_PREAPPROVE_JSON = `{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"]}`;
+const CLAUDE_AUTO_APPROVE_JSON = `{"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}`;
+const CLAUDE_BOTH_JSON = `{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"],"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}`;
+const CODEX_APPROVE = `mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode="approve"`;
 
 describe('TERMINAL_CLI_IDS', () => {
   it('lists the CLIs in auto-pick priority order (claude > codex > opencode > cursor > copilot > pi > antigravity > openclaw > hermes)', () => {
@@ -855,174 +856,163 @@ describe('PowerShell launch composition read back by a real PowerShell parser', 
   });
 });
 
-describe('buildClaudeLaunchCommand', () => {
-  it("defaults to a bare `claude '<prompt>'` — no MCP pre-approval unless opted in", () => {
-    expect(buildClaudeLaunchCommand("Let's work on `foo.md` using OpenKnowledge.")).toBe(
-      "claude 'Let'\\''s work on `foo.md` using OpenKnowledge.'\r",
-    );
+describe('buildPosixCliLaunch', () => {
+  it('passes the prompt as one unquoted argument after the fixed args, for every argv-prompt CLI', () => {
+    const prompt = "x\\'(touch pwned)\\' and '; rm -rf / # $(id) `id`\nline two";
+    for (const cli of TERMINAL_CLI_IDS) {
+      const launch = buildPosixCliLaunch(cli, prompt);
+      expect(launch.executable).toBe(TERMINAL_CLIS[cli].bin);
+      if (startupInjectionFor(cli, 'darwin') != null) {
+        expect(launch.args).not.toContain(prompt);
+        continue;
+      }
+      expect(launch.args.at(-1)).toBe(prompt);
+      expect(launch.args.filter((arg) => arg.includes('pwned'))).toHaveLength(1);
+    }
   });
 
-  it("with mcpPreApprove, produces the `claude --settings '<json>' '<prompt>'` shape", () => {
+  it('labels control characters in the prompt argument', () => {
+    expect(buildPosixCliLaunch('codex', 'fix\u0003 this\r\nnow').args).toEqual([
+      `fix<control-0003> this\nnow\n\n${TERMINAL_CONTROL_LABEL_NOTICE}`,
+    ]);
+  });
+
+  it('carries the claude settings and codex approval as separate raw arguments', () => {
     expect(
-      buildClaudeLaunchCommand("Let's work on `foo.md` using OpenKnowledge.", {
-        mcpPreApprove: true,
+      buildPosixCliLaunch('claude', 'hi', { mcpPreApprove: true, mcpServerName: MCP_SERVER_NAME }),
+    ).toEqual({
+      executable: 'claude',
+      args: ['--settings', `{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"]}`, 'hi'],
+    });
+    expect(
+      buildPosixCliLaunch('codex', 'hi', {
+        autoApproveOkTools: true,
         mcpServerName: MCP_SERVER_NAME,
       }),
-    ).toBe(
-      "claude --settings '{\"enabledMcpjsonServers\":[\"open-knowledge\"]}' 'Let'\\''s work on `foo.md` using OpenKnowledge.'\r",
-    );
+    ).toEqual({
+      executable: 'codex',
+      args: ['-c', `mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode="approve"`, 'hi'],
+    });
+    expect(buildPosixCliLaunch('openclaw', 'hi')).toEqual({
+      executable: 'openclaw',
+      args: ['chat', '--message', 'hi'],
+    });
   });
 
-  it('keeps an injection payload inert and contained in the prompt arg (pre-approved)', () => {
-    const cmd = buildClaudeLaunchCommand("'; rm -rf / #", {
-      mcpPreApprove: true,
-      mcpServerName: MCP_SERVER_NAME,
-    });
-    expect(cmd).toBe(`claude ${CLAUDE_PREAPPROVE} ''\\''; rm -rf / #'\r`);
-    expect(cmd.startsWith(`claude ${CLAUDE_PREAPPROVE} `)).toBe(true);
-    expect(cmd.endsWith("''\\''; rm -rf / #'\r")).toBe(true);
+  it('launches promptless when there is no prompt or the CLI takes it by startup injection', () => {
+    expect(buildPosixCliLaunch('claude', null)).toEqual({ executable: 'claude', args: [] });
+    expect(buildPosixCliLaunch('copilot', '')).toEqual({ executable: 'copilot', args: [] });
+    expect(buildPosixCliLaunch('hermes', 'hi')).toEqual({ executable: 'hermes', args: ['chat'] });
   });
 });
 
-describe('buildCliLaunchCommand', () => {
-  it('defaults to a bare positional single-quoted prompt per CLI (no pre-approval)', () => {
-    expect(buildCliLaunchCommand('claude', 'hi')).toBe("claude 'hi'\r");
-    expect(buildCliLaunchCommand('codex', 'hi')).toBe("codex 'hi'\r");
-    expect(buildCliLaunchCommand('copilot', 'hi')).toBe("copilot --interactive 'hi'\r");
-    expect(buildCliLaunchCommand('cursor', 'hi')).toBe("cursor-agent 'hi'\r");
-    expect(buildCliLaunchCommand('opencode', 'hi')).toBe("opencode --prompt 'hi'\r");
-    expect(buildCliLaunchCommand('pi', 'hi')).toBe("pi 'hi'\r");
-    expect(buildCliLaunchCommand('antigravity', 'hi')).toBe("agy --prompt-interactive 'hi'\r");
-    expect(buildCliLaunchCommand('openclaw', 'hi')).toBe("openclaw chat --message 'hi'\r");
-    expect(buildCliLaunchCommand('hermes', 'hi')).toBe('hermes chat\r');
+describe('buildPosixCliLaunch per-CLI shape', () => {
+  it('keeps the fixed per-CLI shape (registry bin, subcommand and prompt flag, prompt last)', () => {
+    expect(buildPosixCliLaunch('claude', 'hi')).toEqual({ executable: 'claude', args: ['hi'] });
+    expect(buildPosixCliLaunch('codex', 'hi')).toEqual({ executable: 'codex', args: ['hi'] });
+    expect(buildPosixCliLaunch('copilot', 'hi')).toEqual({
+      executable: 'copilot',
+      args: ['--interactive', 'hi'],
+    });
+    expect(buildPosixCliLaunch('cursor', 'hi')).toEqual({
+      executable: 'cursor-agent',
+      args: ['hi'],
+    });
+    expect(buildPosixCliLaunch('opencode', 'hi')).toEqual({
+      executable: 'opencode',
+      args: ['--prompt', 'hi'],
+    });
+    expect(buildPosixCliLaunch('pi', 'hi')).toEqual({ executable: 'pi', args: ['hi'] });
+    expect(buildPosixCliLaunch('antigravity', 'hi')).toEqual({
+      executable: 'agy',
+      args: ['--prompt-interactive', 'hi'],
+    });
+    expect(buildPosixCliLaunch('openclaw', 'hi')).toEqual({
+      executable: 'openclaw',
+      args: ['chat', '--message', 'hi'],
+    });
+    expect(buildPosixCliLaunch('hermes', 'hi')).toEqual({ executable: 'hermes', args: ['chat'] });
   });
 
-  it('escapes the prompt identically for every argv-prompt CLI regardless of fixed args', () => {
+  it('keeps an injection payload as the final argument for every argv-prompt CLI with every option on', () => {
     for (const cli of TERMINAL_CLI_IDS) {
       if (startupInjectionFor(cli, 'darwin') != null) continue;
-      const cmd = buildCliLaunchCommand(cli, "'; rm -rf / #", {
+      const launch = buildPosixCliLaunch(cli, "'; rm -rf / #", {
         mcpPreApprove: true,
+        autoApproveOkTools: true,
         mcpServerName: MCP_SERVER_NAME,
       });
-      expect(cmd.startsWith(`${TERMINAL_CLIS[cli].bin} `)).toBe(true);
-      expect(cmd.endsWith("''\\''; rm -rf / #'\r")).toBe(true);
+      expect(launch.executable).toBe(TERMINAL_CLIS[cli].bin);
+      expect(launch.args.at(-1)).toBe("'; rm -rf / #");
     }
   });
 
-  it('buildClaudeLaunchCommand is the claude specialization (opts forwarded)', () => {
-    expect(buildClaudeLaunchCommand('hi')).toBe(buildCliLaunchCommand('claude', 'hi'));
-    expect(
-      buildClaudeLaunchCommand('hi', { mcpPreApprove: true, mcpServerName: MCP_SERVER_NAME }),
-    ).toBe(
-      buildCliLaunchCommand('claude', 'hi', {
-        mcpPreApprove: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
+  it('labels control characters in the prompt argument instead of passing raw bytes to the CLI', () => {
+    const prompt = buildPosixCliLaunch('claude', 'fix\u0000 this\u001b[2J\r\nnow').args.at(-1);
+    expect(prompt).toBe(
+      `fix<control-0000> this<control-001B>[2J\nnow\n\n${TERMINAL_CONTROL_LABEL_NOTICE}`,
     );
+    expect(prompt).not.toMatch(TERMINAL_RAW_CONTROL_RE);
   });
 });
 
-describe('buildCliLaunchArgString', () => {
-  it('is the launch command WITHOUT the trailing carriage return', () => {
-    for (const cli of TERMINAL_CLI_IDS) {
-      const arg = buildCliLaunchArgString(cli, 'hi', {
-        mcpPreApprove: true,
-        mcpServerName: MCP_SERVER_NAME,
-      });
-      expect(arg.endsWith('\r')).toBe(false);
-      expect(`${arg}\r`).toBe(
-        buildCliLaunchCommand(cli, 'hi', { mcpPreApprove: true, mcpServerName: MCP_SERVER_NAME }),
-      );
-    }
-  });
-
-  it('keeps the fixed per-CLI shape (registry bin + single-quoted prompt)', () => {
-    expect(buildCliLaunchArgString('claude', 'hi')).toBe("claude 'hi'");
-    expect(buildCliLaunchArgString('codex', 'hi')).toBe("codex 'hi'");
-    expect(buildCliLaunchArgString('copilot', 'hi')).toBe("copilot --interactive 'hi'");
-    expect(buildCliLaunchArgString('cursor', 'hi')).toBe("cursor-agent 'hi'");
-    expect(buildCliLaunchArgString('opencode', 'hi')).toBe("opencode --prompt 'hi'");
-    expect(buildCliLaunchArgString('pi', 'hi')).toBe("pi 'hi'");
-    expect(buildCliLaunchArgString('antigravity', 'hi')).toBe("agy --prompt-interactive 'hi'");
-    expect(buildCliLaunchArgString('openclaw', 'hi')).toBe("openclaw chat --message 'hi'");
-    expect(buildCliLaunchArgString('hermes', 'hi')).toBe('hermes chat');
-  });
-
-  it('keeps an injection payload inert and contained in the prompt arg', () => {
-    const arg = buildCliLaunchArgString('claude', "'; rm -rf / #");
-    expect(arg).toBe("claude ''\\''; rm -rf / #'");
-    expect(arg.endsWith("''\\''; rm -rf / #'")).toBe(true);
-  });
-  it('labels control characters in the prompt arg instead of passing raw bytes to the CLI', () => {
-    const arg = buildCliLaunchArgString('claude', 'fix\u0000 this\u001b[2J\r\nnow');
-    expect(arg).toBe(
-      `claude '${'fix<control-0000> this<control-001B>[2J\nnow'}\n\n${TERMINAL_CONTROL_LABEL_NOTICE}'`,
-    );
-    expect(arg).not.toMatch(TERMINAL_RAW_CONTROL_RE);
-  });
-});
-
-describe('buildCliLaunchArgString promptless (New chat)', () => {
-  it('emits a bare `<bin>` for a null/undefined/empty prompt — no positional, no prompt flag', () => {
+describe('buildPosixCliLaunch promptless (New chat)', () => {
+  it('emits the bare executable for a null/undefined/empty prompt, with no positional and no prompt flag', () => {
     for (const emptyPrompt of [null, undefined, ''] as const) {
-      expect(buildCliLaunchArgString('claude', emptyPrompt)).toBe('claude');
-      expect(buildCliLaunchArgString('codex', emptyPrompt)).toBe('codex');
-      expect(buildCliLaunchArgString('copilot', emptyPrompt)).toBe('copilot');
-      expect(buildCliLaunchArgString('cursor', emptyPrompt)).toBe('cursor-agent');
-      expect(buildCliLaunchArgString('opencode', emptyPrompt)).toBe('opencode');
-      expect(buildCliLaunchArgString('openclaw', emptyPrompt)).toBe('openclaw chat');
-      expect(buildCliLaunchArgString('hermes', emptyPrompt)).toBe('hermes chat');
+      expect(buildPosixCliLaunch('claude', emptyPrompt)).toEqual({
+        executable: 'claude',
+        args: [],
+      });
+      expect(buildPosixCliLaunch('codex', emptyPrompt)).toEqual({ executable: 'codex', args: [] });
+      expect(buildPosixCliLaunch('copilot', emptyPrompt)).toEqual({
+        executable: 'copilot',
+        args: [],
+      });
+      expect(buildPosixCliLaunch('cursor', emptyPrompt)).toEqual({
+        executable: 'cursor-agent',
+        args: [],
+      });
+      expect(buildPosixCliLaunch('opencode', emptyPrompt)).toEqual({
+        executable: 'opencode',
+        args: [],
+      });
+      expect(buildPosixCliLaunch('openclaw', emptyPrompt)).toEqual({
+        executable: 'openclaw',
+        args: ['chat'],
+      });
+      expect(buildPosixCliLaunch('hermes', emptyPrompt)).toEqual({
+        executable: 'hermes',
+        args: ['chat'],
+      });
     }
   });
 
   it('still applies Claude MCP pre-approval on a promptless launch when opted in', () => {
-    const arg = buildCliLaunchArgString('claude', null, {
-      mcpPreApprove: true,
-      mcpServerName: MCP_SERVER_NAME,
-    });
-    expect(arg).toBe(`claude ${CLAUDE_PREAPPROVE}`);
-    expect(arg.endsWith(' ')).toBe(false);
+    expect(
+      buildPosixCliLaunch('claude', null, { mcpPreApprove: true, mcpServerName: MCP_SERVER_NAME }),
+    ).toEqual({ executable: 'claude', args: ['--settings', CLAUDE_PREAPPROVE_JSON] });
   });
 
   it('still applies Claude OK auto-approve on a promptless launch, alone and merged with pre-approval', () => {
-    const autoOnly = buildCliLaunchArgString('claude', null, {
-      autoApproveOkTools: true,
-      mcpServerName: MCP_SERVER_NAME,
-    });
-    expect(autoOnly).toBe(
-      `claude --settings '{"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}'`,
-    );
-    expect(autoOnly.endsWith(' ')).toBe(false);
-
-    const both = buildCliLaunchArgString('claude', null, {
-      mcpPreApprove: true,
-      autoApproveOkTools: true,
-      mcpServerName: MCP_SERVER_NAME,
-    });
-    expect(both).toBe(
-      `claude --settings '{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"],"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}'`,
-    );
-    expect(both.endsWith(' ')).toBe(false);
+    expect(
+      buildPosixCliLaunch('claude', null, {
+        autoApproveOkTools: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }).args,
+    ).toEqual(['--settings', CLAUDE_AUTO_APPROVE_JSON]);
+    expect(
+      buildPosixCliLaunch('claude', null, {
+        mcpPreApprove: true,
+        autoApproveOkTools: true,
+        mcpServerName: MCP_SERVER_NAME,
+      }).args,
+    ).toEqual(['--settings', CLAUDE_BOTH_JSON]);
   });
 
   it('never adds --prompt or a positional to a promptless opencode launch, even opted in', () => {
     expect(
-      buildCliLaunchArgString('opencode', '', {
-        mcpPreApprove: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
-    ).toBe('opencode');
-  });
-
-  it('leaves the non-empty prompted shape byte-identical (promptless branch must not perturb it)', () => {
-    expect(buildCliLaunchArgString('claude', 'hi')).toBe("claude 'hi'");
-    expect(
-      buildCliLaunchArgString('claude', 'hi', {
-        mcpPreApprove: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
-    ).toBe(`claude ${CLAUDE_PREAPPROVE} 'hi'`);
-    expect(buildCliLaunchArgString('opencode', 'hi')).toBe("opencode --prompt 'hi'");
+      buildPosixCliLaunch('opencode', '', { mcpPreApprove: true, mcpServerName: MCP_SERVER_NAME }),
+    ).toEqual({ executable: 'opencode', args: [] });
   });
 });
 
@@ -1180,142 +1170,77 @@ describe('buildTerminalInputBytes', () => {
 
 describe('claude MCP pre-approval', () => {
   it('is OFF by default and only added for claude when opted in', () => {
-    expect(buildCliLaunchCommand('claude', 'hi')).not.toContain('--settings');
+    expect(buildPosixCliLaunch('claude', 'hi').args).not.toContain('--settings');
     expect(
-      buildCliLaunchCommand('claude', 'hi', {
-        mcpPreApprove: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
-    ).toContain(CLAUDE_PREAPPROVE);
+      buildPosixCliLaunch('claude', 'hi', { mcpPreApprove: true, mcpServerName: MCP_SERVER_NAME })
+        .args,
+    ).toEqual(['--settings', CLAUDE_PREAPPROVE_JSON, 'hi']);
   });
 
   it('never added for codex/copilot/cursor/opencode, even when opted in (claude-only flag)', () => {
-    expect(
-      buildCliLaunchCommand('codex', 'hi', { mcpPreApprove: true, mcpServerName: MCP_SERVER_NAME }),
-    ).toBe("codex 'hi'\r");
-    expect(
-      buildCliLaunchCommand('copilot', 'hi', {
-        mcpPreApprove: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
-    ).toBe("copilot --interactive 'hi'\r");
-    expect(
-      buildCliLaunchCommand('cursor', 'hi', {
-        mcpPreApprove: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
-    ).toBe("cursor-agent 'hi'\r");
-    expect(
-      buildCliLaunchCommand('opencode', 'hi', {
-        mcpPreApprove: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
-    ).toBe("opencode --prompt 'hi'\r");
+    const opts = { mcpPreApprove: true, mcpServerName: MCP_SERVER_NAME };
+    expect(buildPosixCliLaunch('codex', 'hi', opts).args).toEqual(['hi']);
+    expect(buildPosixCliLaunch('copilot', 'hi', opts).args).toEqual(['--interactive', 'hi']);
+    expect(buildPosixCliLaunch('cursor', 'hi', opts).args).toEqual(['hi']);
+    expect(buildPosixCliLaunch('opencode', 'hi', opts).args).toEqual(['--prompt', 'hi']);
   });
 
   it('names the canonical MCP server, matching what editor wiring registers in .mcp.json', () => {
     expect(
-      buildCliLaunchCommand('claude', 'hi', {
-        mcpPreApprove: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
+      buildPosixCliLaunch('claude', 'hi', { mcpPreApprove: true, mcpServerName: MCP_SERVER_NAME })
+        .args[1],
     ).toContain(`["${MCP_SERVER_NAME}"]`);
   });
 });
 
 describe('OK auto-approve (autoApproveOkTools)', () => {
+  const AUTO = { autoApproveOkTools: true, mcpServerName: MCP_SERVER_NAME };
+
   it('adds the OK allow-list + destructive ask-list to Claude --settings when on', () => {
-    expect(
-      buildCliLaunchArgString('claude', 'hi', {
-        autoApproveOkTools: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
-    ).toBe(`claude --settings '{"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}' 'hi'`);
+    expect(buildPosixCliLaunch('claude', 'hi', AUTO).args).toEqual([
+      '--settings',
+      CLAUDE_AUTO_APPROVE_JSON,
+      'hi',
+    ]);
   });
 
   it('merges server-trust + auto-approve into one --settings object when both on', () => {
-    expect(
-      buildCliLaunchArgString('claude', 'hi', {
-        mcpPreApprove: true,
-        autoApproveOkTools: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
-    ).toBe(
-      `claude --settings '{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"],"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}' 'hi'`,
-    );
+    expect(buildPosixCliLaunch('claude', 'hi', { ...AUTO, mcpPreApprove: true }).args).toEqual([
+      '--settings',
+      CLAUDE_BOTH_JSON,
+      'hi',
+    ]);
   });
 
   it('keeps every gated tool in the ask list (never silently auto-approved)', () => {
-    const arg = buildCliLaunchArgString('claude', 'hi', {
-      autoApproveOkTools: true,
-      mcpServerName: MCP_SERVER_NAME,
-    });
+    const settings = buildPosixCliLaunch('claude', 'hi', AUTO).args[1];
     expect(OK_GATED_TOOL_NAMES).toEqual(['delete', 'move', 'share_link', 'install', 'import']);
     for (const gated of OK_GATED_TOOL_NAMES) {
-      expect(arg).toContain(`"mcp__${MCP_SERVER_NAME}__${gated}"`);
+      expect(settings).toContain(`"mcp__${MCP_SERVER_NAME}__${gated}"`);
     }
   });
 
   it('never gates with `deny` (that would hide the tools from the agent)', () => {
-    const arg = buildCliLaunchArgString('claude', 'hi', {
-      autoApproveOkTools: true,
-      mcpServerName: MCP_SERVER_NAME,
-    });
-    expect(arg).not.toContain('"deny"');
+    expect(buildPosixCliLaunch('claude', 'hi', AUTO).args[1]).not.toContain('"deny"');
   });
 
   it('adds the codex per-server `-c approve` override only when on', () => {
-    expect(
-      buildCliLaunchArgString('codex', 'hi', {
-        autoApproveOkTools: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
-    ).toBe(`codex -c 'mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode="approve"' 'hi'`);
-    expect(buildCliLaunchArgString('codex', 'hi')).toBe("codex 'hi'");
+    expect(buildPosixCliLaunch('codex', 'hi', AUTO).args).toEqual(['-c', CODEX_APPROVE, 'hi']);
+    expect(buildPosixCliLaunch('codex', 'hi').args).toEqual(['hi']);
   });
 
   it('is claude/codex only — copilot/cursor/opencode/pi never get an auto-approve arg', () => {
-    expect(
-      buildCliLaunchArgString('copilot', 'hi', {
-        autoApproveOkTools: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
-    ).toBe("copilot --interactive 'hi'");
-    expect(
-      buildCliLaunchArgString('cursor', 'hi', {
-        autoApproveOkTools: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
-    ).toBe("cursor-agent 'hi'");
-    expect(
-      buildCliLaunchArgString('opencode', 'hi', {
-        autoApproveOkTools: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
-    ).toBe("opencode --prompt 'hi'");
-    expect(
-      buildCliLaunchArgString('pi', 'hi', {
-        autoApproveOkTools: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
-    ).toBe("pi 'hi'");
+    expect(buildPosixCliLaunch('copilot', 'hi', AUTO).args).toEqual(['--interactive', 'hi']);
+    expect(buildPosixCliLaunch('cursor', 'hi', AUTO).args).toEqual(['hi']);
+    expect(buildPosixCliLaunch('opencode', 'hi', AUTO).args).toEqual(['--prompt', 'hi']);
+    expect(buildPosixCliLaunch('pi', 'hi', AUTO).args).toEqual(['hi']);
   });
 
-  it('keeps the prompt the final escaped arg with auto-approve on (injection inert)', () => {
-    const arg = buildCliLaunchArgString('claude', "'; rm -rf / #", {
-      autoApproveOkTools: true,
-      mcpServerName: MCP_SERVER_NAME,
+  it('keeps the fixed args for a promptless auto-approve launch', () => {
+    expect(buildPosixCliLaunch('codex', null, AUTO)).toEqual({
+      executable: 'codex',
+      args: ['-c', CODEX_APPROVE],
     });
-    expect(arg.endsWith("''\\''; rm -rf / #'")).toBe(true);
-  });
-
-  it('emits a bare `<bin>` for a promptless auto-approve launch with the fixed args', () => {
-    expect(
-      buildCliLaunchArgString('codex', null, {
-        autoApproveOkTools: true,
-        mcpServerName: MCP_SERVER_NAME,
-      }),
-    ).toBe(`codex -c 'mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode="approve"'`);
   });
 });
 
@@ -1323,11 +1248,11 @@ describe('launch approval names the server the main process checked', () => {
   const BETA = DESKTOP_PRODUCTS.beta.mcpServerName;
   const ALL_ON = { mcpPreApprove: true, autoApproveOkTools: true } as const;
 
-  function artifacts(opts: Parameters<typeof buildCliLaunchArgString>[2]): string[] {
+  function artifacts(opts: Parameters<typeof buildPosixCliLaunch>[2]): string[] {
     const winClaude = buildWindowsCliLaunch('claude', 'hi', opts);
     return [
-      buildCliLaunchArgString('claude', 'hi', opts),
-      buildCliLaunchArgString('codex', 'hi', opts),
+      buildPosixCliLaunch('claude', 'hi', opts).args.join(' '),
+      buildPosixCliLaunch('codex', 'hi', opts).args.join(' '),
       winClaude.supportFile?.contents ?? '',
       buildWindowsCliLaunch('codex', 'hi', opts).args.join(' '),
     ];
@@ -1338,11 +1263,9 @@ describe('launch approval names the server the main process checked', () => {
     try {
       const out = artifacts({ ...ALL_ON, mcpServerName: BETA });
       expect(out[0]).toBe(
-        `claude --settings '{"enabledMcpjsonServers":["${BETA}"],"permissions":{"allow":["mcp__${BETA}","Bash(ok open:*)"],"ask":["mcp__${BETA}__delete","mcp__${BETA}__move","mcp__${BETA}__share_link","mcp__${BETA}__install","mcp__${BETA}__import"]}}' 'hi'`,
+        `--settings {"enabledMcpjsonServers":["${BETA}"],"permissions":{"allow":["mcp__${BETA}","Bash(ok open:*)"],"ask":["mcp__${BETA}__delete","mcp__${BETA}__move","mcp__${BETA}__share_link","mcp__${BETA}__install","mcp__${BETA}__import"]}} hi`,
       );
-      expect(out[1]).toBe(
-        `codex -c 'mcp_servers.${BETA}.default_tools_approval_mode="approve"' 'hi'`,
-      );
+      expect(out[1]).toBe(`-c mcp_servers.${BETA}.default_tools_approval_mode="approve" hi`);
       expect(out[2]).toContain(`["${BETA}"]`);
       expect(out[3]).toBe(`-c mcp_servers.${BETA}.default_tools_approval_mode=approve`);
       for (const artifact of out) {
@@ -1355,8 +1278,14 @@ describe('launch approval names the server the main process checked', () => {
 
   it('emits no pre-approval and no auto-approve when main supplied no name', () => {
     for (const opts of [ALL_ON, { ...ALL_ON, mcpServerName: '' }]) {
-      expect(buildCliLaunchArgString('claude', 'hi', opts)).toBe("claude 'hi'");
-      expect(buildCliLaunchArgString('codex', 'hi', opts)).toBe("codex 'hi'");
+      expect(buildPosixCliLaunch('claude', 'hi', opts)).toEqual({
+        executable: 'claude',
+        args: ['hi'],
+      });
+      expect(buildPosixCliLaunch('codex', 'hi', opts)).toEqual({
+        executable: 'codex',
+        args: ['hi'],
+      });
       expect(buildWindowsCliLaunch('claude', 'hi', opts)).toEqual({
         executable: 'claude',
         args: [],
@@ -1368,11 +1297,9 @@ describe('launch approval names the server the main process checked', () => {
   it('keeps the Stable artifacts byte-identical when main supplies the Stable name', () => {
     const out = artifacts({ ...ALL_ON, mcpServerName: 'open-knowledge' });
     expect(out[0]).toBe(
-      `claude --settings '{"enabledMcpjsonServers":["open-knowledge"],"permissions":{"allow":["mcp__open-knowledge","Bash(ok open:*)"],"ask":["mcp__open-knowledge__delete","mcp__open-knowledge__move","mcp__open-knowledge__share_link","mcp__open-knowledge__install","mcp__open-knowledge__import"]}}' 'hi'`,
+      `--settings {"enabledMcpjsonServers":["open-knowledge"],"permissions":{"allow":["mcp__open-knowledge","Bash(ok open:*)"],"ask":["mcp__open-knowledge__delete","mcp__open-knowledge__move","mcp__open-knowledge__share_link","mcp__open-knowledge__install","mcp__open-knowledge__import"]}} hi`,
     );
-    expect(out[1]).toBe(
-      `codex -c 'mcp_servers.open-knowledge.default_tools_approval_mode="approve"' 'hi'`,
-    );
+    expect(out[1]).toBe(`-c mcp_servers.open-knowledge.default_tools_approval_mode="approve" hi`);
     expect(out[3]).toBe('-c mcp_servers.open-knowledge.default_tools_approval_mode=approve');
   });
 
@@ -1381,9 +1308,10 @@ describe('launch approval names the server the main process checked', () => {
     vi.resetModules();
     try {
       const mod = await import('./terminal-launch.ts');
-      expect(mod.buildCliLaunchArgString('codex', 'hi', { autoApproveOkTools: true })).toBe(
-        "codex 'hi'",
-      );
+      expect(mod.buildPosixCliLaunch('codex', 'hi', { autoApproveOkTools: true })).toEqual({
+        executable: 'codex',
+        args: ['hi'],
+      });
     } finally {
       vi.unstubAllEnvs();
       vi.resetModules();
