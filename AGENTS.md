@@ -51,7 +51,7 @@ pnpm run dev
 
 ## Process safety
 
-Never signal a pid you did not spawn. Signal a held `ChildProcess` before it exits (its group only then); never a pid from a file, `ps` or stdout, a `?? <n>` fallback or literal `0`/`1`/`-1`. Gate: `ok/no-sentinel-signal-target`.
+Never signal a pid you did not spawn. Signal a held `ChildProcess` before it exits (its group only then); never a pid from a file, `ps` or stdout, a `?? <n>` fallback or literal `0`/`1`/`-1`. Two acts in the maintainers' gate tooling, which this repository does not carry, go further, and nothing else does: the lifeline watcher the guard of each gate step forks into the step's process group may run `kill -s KILL 0`, which ends the group it belongs to; and after the step's first process exits, its supervisor may still signal the step's group while that lifeline, a live member, holds the group. Gate: `ok/no-sentinel-signal-target`.
 
 ## Comment policy
 

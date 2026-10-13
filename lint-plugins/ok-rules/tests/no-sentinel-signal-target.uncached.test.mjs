@@ -66,6 +66,7 @@ describe(`${RULE} oxlint rule`, () => {
     for (const fire of literal) {
       expect(fire.message).toContain('its pid taken from that handle');
       expect(fire.message).toContain('negated for the group only if you spawned it detached');
+      expect(fire.message).toContain("two acts in the maintainers' gate tooling, which the public mirror does not carry");
     }
   });
 
