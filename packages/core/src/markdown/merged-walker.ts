@@ -2,7 +2,11 @@ import type { Nodes, Parent, Root } from 'mdast';
 import { SKIP, visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
 import { promoteInParent } from './autolink-promotion.ts';
-import { applyPositionSliceToNode } from './position-slice.ts';
+import {
+  applyPositionSliceToNode,
+  needsNestedRawRelativization,
+  relativizeNestedMdxSourceRaw,
+} from './position-slice.ts';
 import { promoteTagsInParent } from './tag-promotion.ts';
 import { KNOWN_MDAST_TYPES, toRawMdxFallbackMdast } from './unknown-mdast-guard.ts';
 
@@ -12,6 +16,7 @@ export function mergedPostParseWalkerPlugin() {
 
     const debug = typeof process !== 'undefined' && process.env?.OK_DEBUG_POSITION_SLICE === '1';
 
+    let sawNestedRawSourceMdx = false;
     visit(tree, (node, index, parent) => {
       if (
         parent !== undefined &&
@@ -38,6 +43,9 @@ export function mergedPostParseWalkerPlugin() {
         debug,
         parent as { type?: string } | undefined,
       );
+      if (needsNestedRawRelativization(node as Nodes, parent as { type?: string } | undefined)) {
+        sawNestedRawSourceMdx = true;
+      }
 
       if (node.type === 'heading' && parent !== undefined && typeof index === 'number') {
         const headingEnd = node.position?.end?.line;
@@ -55,5 +63,6 @@ export function mergedPostParseWalkerPlugin() {
         }
       }
     });
+    if (sawNestedRawSourceMdx) relativizeNestedMdxSourceRaw(tree, source);
   };
 }

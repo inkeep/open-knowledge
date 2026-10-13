@@ -1,4 +1,6 @@
-import type { Nodes, Root } from 'mdast';
+import type { Blockquote, FootnoteDefinition, ListItem, Nodes, Root } from 'mdast';
+import type { MdxFlowExpression, MdxTextExpression } from 'mdast-util-mdx-expression';
+import type { MdxJsxFlowElement, MdxJsxTextElement } from 'mdast-util-mdx-jsx';
 import { visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
 import { type EscapeProvenanceEntry, hasEscapeProvenance } from './mdast-augmentation.ts';
@@ -596,6 +598,273 @@ function definitionLabelCloseIndex(slice: string): number {
   return -1;
 }
 
+type RawSourceMdxNode =
+  | MdxJsxFlowElement
+  | MdxJsxTextElement
+  | MdxFlowExpression
+  | MdxTextExpression;
+
+type LinePrefixContainer = Blockquote | ListItem | FootnoteDefinition;
+
+interface PrefixConsumption {
+  offset: number;
+  complete: boolean;
+}
+
+interface LineContent extends PrefixConsumption {
+  contentStart: number;
+}
+
+const RAW_SOURCE_MDX_TYPES: ReadonlySet<string> = new Set([
+  'mdxJsxFlowElement',
+  'mdxJsxTextElement',
+  'mdxFlowExpression',
+  'mdxTextExpression',
+]);
+
+const LIST_MARKER_RE = /^(?:[-+*]|\d{1,9}[.)])/;
+
+const FOOTNOTE_CONTINUATION_WIDTH = 4;
+
+interface PrefixScan {
+  readonly source: string;
+  readonly lineStarts: readonly number[];
+  readonly widths: Map<LinePrefixContainer, number | null>;
+  readonly contentOffsets: Map<LinePrefixContainer, number | null>;
+}
+
+function isRawSourceMdxNode(node: Nodes): node is RawSourceMdxNode {
+  return RAW_SOURCE_MDX_TYPES.has(node.type);
+}
+
+function isLinePrefixContainer(node: Nodes): node is LinePrefixContainer {
+  return (
+    node.type === 'blockquote' || node.type === 'listItem' || node.type === 'footnoteDefinition'
+  );
+}
+
+export function needsNestedRawRelativization(
+  node: Nodes,
+  parent: { type?: string } | undefined,
+): boolean {
+  if (parent === undefined || parent.type === 'root' || !isRawSourceMdxNode(node)) return false;
+  if (node.type === 'mdxJsxFlowElement' && parent.type === 'mdxJsxFlowElement') return true;
+  const raw = node.data?.sourceRaw;
+  return typeof raw === 'string' && raw.includes('\n');
+}
+
+function createPrefixScan(source: string): PrefixScan {
+  const lineStarts = [0];
+  for (
+    let newline = source.indexOf('\n');
+    newline !== -1;
+    newline = source.indexOf('\n', newline + 1)
+  ) {
+    lineStarts.push(newline + 1);
+  }
+  return { source, lineStarts, widths: new Map(), contentOffsets: new Map() };
+}
+
+function lineStartOf(scan: PrefixScan, offset: number): number {
+  const { lineStarts } = scan;
+  let low = 0;
+  let high = lineStarts.length - 1;
+  while (low < high) {
+    const middle = (low + high + 1) >> 1;
+    if (lineStarts[middle] <= offset) low = middle;
+    else high = middle - 1;
+  }
+  return lineStarts[low];
+}
+
+function isBlankFrom(source: string, offset: number): boolean {
+  let cursor = offset;
+  while (source[cursor] === ' ' || source[cursor] === '\t' || source[cursor] === '\r') cursor++;
+  return cursor >= source.length || source[cursor] === '\n';
+}
+
+function isSpaceRun(source: string, from: number, to: number): boolean {
+  for (let cursor = from; cursor < to; cursor++) {
+    if (source[cursor] !== ' ') return false;
+  }
+  return true;
+}
+
+function findFirstLineContentOffset(
+  container: ListItem | FootnoteDefinition,
+  source: string,
+  start: number,
+): number | null {
+  if (container.type === 'footnoteDefinition') {
+    const label = /\[\^[^\]\n]*\]:[ \t]*/y;
+    label.lastIndex = start;
+    const match = label.exec(source);
+    return match ? start + match[0].length : null;
+  }
+  const marker = LIST_MARKER_RE.exec(source.slice(start, start + 11));
+  if (!marker) return null;
+  let cursor = start + marker[0].length;
+  while (source[cursor] === ' ') cursor++;
+  return cursor;
+}
+
+function firstLineContentOffset(
+  scan: PrefixScan,
+  container: ListItem | FootnoteDefinition,
+  start: number,
+): number | null {
+  const memo = scan.contentOffsets.get(container);
+  if (memo !== undefined) return memo;
+  const offset = findFirstLineContentOffset(container, scan.source, start);
+  scan.contentOffsets.set(container, offset);
+  return offset;
+}
+
+function containerWidth(
+  scan: PrefixScan,
+  containers: readonly LinePrefixContainer[],
+  index: number,
+): number | null {
+  const container = containers[index];
+  const memo = scan.widths.get(container);
+  if (memo !== undefined) return memo;
+  let width: number | null = null;
+  if (container.type === 'footnoteDefinition') {
+    width = FOOTNOTE_CONTINUATION_WIDTH;
+  } else if (container.type === 'listItem') {
+    width = listItemWidth(scan, container, containers.slice(0, index));
+  }
+  scan.widths.set(container, width);
+  return width;
+}
+
+function listItemWidth(
+  scan: PrefixScan,
+  item: ListItem,
+  outer: readonly LinePrefixContainer[],
+): number | null {
+  const { source } = scan;
+  const start = item.position?.start?.offset;
+  if (typeof start !== 'number') return null;
+  const before = consumeLinePrefixes(scan, lineStartOf(scan, start), outer);
+  if (!before.complete || before.offset > start) return null;
+  if (!isSpaceRun(source, before.offset, start)) return null;
+  const marker = LIST_MARKER_RE.exec(source.slice(start, start + 11));
+  if (!marker) return null;
+  const afterMarker = start + marker[0].length;
+  let spaces = 0;
+  while (source[afterMarker + spaces] === ' ') spaces++;
+  if (source[afterMarker + spaces] === '\t') return null;
+  const contentGap = isBlankFrom(source, afterMarker) ? 1 : spaces;
+  return start - before.offset + marker[0].length + contentGap;
+}
+
+function consumeLinePrefix(
+  scan: PrefixScan,
+  offset: number,
+  lineStart: number,
+  containers: readonly LinePrefixContainer[],
+  index: number,
+): number | null {
+  const { source } = scan;
+  const container = containers[index];
+  if (container.type === 'blockquote') {
+    let cursor = offset;
+    while (source[cursor] === ' ') cursor++;
+    if (source[cursor] !== '>') return null;
+    cursor++;
+    if (source[cursor] === ' ' || source[cursor] === '\t') cursor++;
+    return cursor;
+  }
+  const start = container.position?.start?.offset;
+  if (typeof start !== 'number') return null;
+  if (start >= lineStart) return firstLineContentOffset(scan, container, start);
+  const width = containerWidth(scan, containers, index);
+  if (width === null) return null;
+  let cursor = offset;
+  while (cursor < offset + width && source[cursor] === ' ') cursor++;
+  if (cursor === offset + width) return cursor;
+  return isBlankFrom(source, cursor) ? cursor : null;
+}
+
+function consumeLinePrefixes(
+  scan: PrefixScan,
+  lineStart: number,
+  containers: readonly LinePrefixContainer[],
+): PrefixConsumption {
+  let offset = lineStart;
+  for (let index = 0; index < containers.length; index++) {
+    const next = consumeLinePrefix(scan, offset, lineStart, containers, index);
+    if (next === null) return { offset, complete: false };
+    offset = next;
+  }
+  return { offset, complete: true };
+}
+
+function relativizeNestedRaw(
+  node: RawSourceMdxNode,
+  parent: Nodes,
+  scan: PrefixScan,
+  consumeLine: (lineStart: number) => LineContent,
+): void {
+  const { source } = scan;
+  const raw = node.data?.sourceRaw;
+  const start = node.position?.start?.offset;
+  if (typeof raw !== 'string' || typeof start !== 'number') return;
+  if (source.slice(start, start + raw.length) !== raw) return;
+  const lines = raw.split('\n');
+  let lineStart = start + lines[0].length + 1;
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    const consumed = consumeLine(lineStart);
+    lines[i] = line.slice(Math.min(consumed.offset - lineStart, line.length));
+    lineStart += line.length + 1;
+  }
+  let leadingIndent = '';
+  if (node.type === 'mdxJsxFlowElement' && parent.type === 'mdxJsxFlowElement') {
+    const content = consumeLine(lineStartOf(scan, start));
+    if (content.complete && content.contentStart === start) {
+      leadingIndent = source.slice(content.offset, start);
+    }
+  }
+  const relativized = leadingIndent + lines.join('\n');
+  if (relativized !== raw) node.data = { ...node.data, sourceRaw: relativized };
+}
+
+export function relativizeNestedMdxSourceRaw(tree: Root, source: string): void {
+  const scan = createPrefixScan(source);
+  const containers: LinePrefixContainer[] = [];
+  let lineContents = new Map<number, LineContent>();
+  const consumeLine = (lineStart: number): LineContent => {
+    let content = lineContents.get(lineStart);
+    if (content === undefined) {
+      const consumed = consumeLinePrefixes(scan, lineStart, containers);
+      let contentStart = consumed.offset;
+      while (source[contentStart] === ' ') contentStart++;
+      content = { ...consumed, contentStart };
+      lineContents.set(lineStart, content);
+    }
+    return content;
+  };
+  const walk = (node: Nodes, parent: Nodes): void => {
+    if (parent.type !== 'root' && isRawSourceMdxNode(node)) {
+      relativizeNestedRaw(node, parent, scan, consumeLine);
+    }
+    if (!('children' in node)) return;
+    const isContainer = isLinePrefixContainer(node);
+    if (isContainer) {
+      containers.push(node);
+      lineContents = new Map();
+    }
+    for (const child of node.children) walk(child as Nodes, node);
+    if (isContainer) {
+      containers.pop();
+      lineContents = new Map();
+    }
+  };
+  for (const child of tree.children) walk(child, tree);
+}
+
 export function positionSlicePlugin() {
   return (tree: Root, file: VFile) => {
     const source = typeof file.value === 'string' ? file.value : '';
@@ -603,8 +872,11 @@ export function positionSlicePlugin() {
 
     const debug = typeof process !== 'undefined' && process.env?.OK_DEBUG_POSITION_SLICE === '1';
 
+    let sawNestedRawSourceMdx = false;
     visit(tree, (node: Nodes, _index, parent) => {
       applyPositionSliceToNode(node, source, debug, parent ?? undefined);
+      if (needsNestedRawRelativization(node, parent ?? undefined)) sawNestedRawSourceMdx = true;
     });
+    if (sawNestedRawSourceMdx) relativizeNestedMdxSourceRaw(tree, source);
   };
 }
