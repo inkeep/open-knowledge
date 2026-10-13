@@ -1489,7 +1489,7 @@ const SERVER_PROCESS_SOURCE_PATH = join(
 const READINESS_BOUND_SITE = 'waitForServerReady -> waitForHttpReady readiness bound';
 const WARMUP_NAVIGATION_STALL_SITE = 'warmupAppFirstLoad -> gotoWhileLoadProgresses stall window';
 const WARMUP_VISIBLE_SITE = 'warmupAppFirstLoad -> locator.waitFor visibility bound';
-const DEV_SERVER_REAP_SITE = 'workerServer fixture body -> killGracefully reap bound';
+const DEV_SERVER_REAP_SITE = 'workerServer fixture body -> stopWorkerServer reap bound';
 const STARVATION_ELAPSED_SITE =
   'workerServer fixture body -> refuseStarvedBudgetSlot elapsed-since-fixture-start argument';
 const FIXTURE_START_IDENTIFIER = 'fixtureStartedAt';
@@ -1562,7 +1562,7 @@ const BUDGET_WIRING_SITES: readonly BudgetWiringSite[] = [
   {
     site: DEV_SERVER_REAP_SITE,
     scope: { kind: 'worker-server-fixture-body' },
-    callee: 'killGracefully',
+    callee: 'stopWorkerServer',
     calls: 2,
     argument: { kind: 'positional', index: 1 },
     requires: { kind: 'reserve', key: DEV_SERVER_REAP_RESERVE_KEY },
@@ -2264,12 +2264,12 @@ function plantedFixtureSource(overrides: {
     '        await warmupAppFirstLoad(browser, baseURL, setupOverhead);',
     `        refuseStarvedBudgetSlot(setupOverhead, ${starvationElapsed}, residue);`,
     '      } catch (err) {',
-    `        await killGracefully(${reap[0]});`,
+    `        await stopWorkerServer(${reap[0]});`,
     '        throw err;',
     '      }',
     '      await use({ port, baseURL, contentDir });',
     `      const teardown = openBudgetPhase('teardown', ${teardownPhase});`,
-    `      await killGracefully(${reap[1]});`,
+    `      await stopWorkerServer(${reap[1]});`,
     '      await spendOnBudgetPhase(teardown, () => removeAllDuringTeardown(contentDir));',
     '    },',
     `    { scope: 'worker', timeout: ${DECLARED_TOTAL_EXPORT} },`,
@@ -2334,7 +2334,7 @@ describe('worker-server fixture budget wiring', () => {
 
     expect(
       findingsAt(scanBudgetWiring(source), DEV_SERVER_REAP_SITE),
-      `both reap calls must spend ${DECLARED_RESERVES_EXPORT}.${DEV_SERVER_REAP_RESERVE_KEY}. killGracefully keeps its own default for the globalSetup caller that has no enclosing fixture slot, so an omitted argument here silently reverts the fixture's reap bound and compiles clean`,
+      `both reap calls must spend ${DECLARED_RESERVES_EXPORT}.${DEV_SERVER_REAP_RESERVE_KEY}. stopWorkerServer takes its bound as a required argument, so the drift this pins is a free literal or any expression other than the declared reserve, which compiles clean and detaches the fixture's reap bound from the budget`,
     ).toEqual([]);
   });
 
@@ -2700,8 +2700,8 @@ describe('worker-server fixture budget wiring', () => {
 
     const thirdReapCall = scanBudgetWiring(
       plantedFixtureSource({}).replace(
-        `      await killGracefully(${COMPLIANT_REAP_ARGUMENT});`,
-        `      await killGracefully(${COMPLIANT_REAP_ARGUMENT});\n      await killGracefully(proc);`,
+        `      await stopWorkerServer(${COMPLIANT_REAP_ARGUMENT});`,
+        `      await stopWorkerServer(${COMPLIANT_REAP_ARGUMENT});\n      await stopWorkerServer(proc);`,
       ),
     );
     expect(reasonsOf(thirdReapCall)).toEqual(['call-count', 'argument-missing']);

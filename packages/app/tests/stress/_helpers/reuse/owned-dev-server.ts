@@ -19,7 +19,11 @@ import {
   tailServerLog,
 } from '../server-process.ts';
 import { removeAllDuringTeardown, runTeardownPhases } from '../teardown-fs.ts';
-import { completeWorkerServerRelease, killGracefully } from '../worker-server-lifetime.ts';
+import {
+  completeWorkerServerRelease,
+  stopWorkerServer,
+  type WorkerServerProcess,
+} from '../worker-server-lifetime.ts';
 import type { WorkerServerEnv } from './lease-protocol.ts';
 import type { LaunchOwnedServer, OwnedServer } from './server-supervisor.ts';
 
@@ -33,7 +37,7 @@ export async function launchOwnedWorkerServer({
   readonly serving: WorkerServing;
 }): Promise<OwnedServer> {
   const teardown: Array<() => void | Promise<void>> = [];
-  let ownedProc: import('node:child_process').ChildProcess | undefined;
+  let ownedProc: WorkerServerProcess | undefined;
   const releaseAll = () =>
     runTeardownPhases(
       () => runTeardownPhases(...[...teardown].reverse()),
@@ -64,7 +68,7 @@ export async function launchOwnedWorkerServer({
     const lifetimeLost = new Promise<never>((_, reject) => {
       proc.on('error', reject);
     });
-    teardown.push(() => killGracefully(proc, WORKER_SERVER_BUDGET_RESERVES.devServerReap));
+    teardown.push(() => stopWorkerServer(proc, WORKER_SERVER_BUDGET_RESERVES.devServerReap));
     const endpoint = await Promise.race([
       waitForServerReady({
         pending: beginViteStartup(request, proc),

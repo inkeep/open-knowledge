@@ -1,4 +1,3 @@
-import type { ChildProcess } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -29,7 +28,8 @@ import { removeAllDuringTeardown, runTeardownPhases } from './teardown-fs.ts';
 import {
   acquireWorkerServer,
   completeWorkerServerRelease,
-  killGracefully,
+  stopWorkerServer,
+  type WorkerServerProcess,
 } from './worker-server-lifetime.ts';
 
 interface ProblemError extends Error {
@@ -452,7 +452,7 @@ export function spawnWorkerDevServer(
   viteCacheDir: string,
   serverLog: ServerLog,
   serving: WorkerServing = workerServingFromEnv(process.env),
-): ChildProcess {
+): WorkerServerProcess {
   return acquireWorkerServer(
     request,
     workerServerEnv,
@@ -469,7 +469,7 @@ export interface StartedWorkerServer {
   contentDir: string;
   viteCacheDir: string;
   serverLog: ServerLog;
-  proc: ChildProcess;
+  proc: WorkerServerProcess;
 }
 
 function setupResidueOf(started: StartedWorkerServer): string {
@@ -494,7 +494,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       const releaseSetupResources: Array<() => void | Promise<void>> = [];
       let openedServerLog: ServerLog | undefined;
       let started: StartedWorkerServer | undefined;
-      let ownedProc: ChildProcess | undefined;
+      let ownedProc: WorkerServerProcess | undefined;
       let endpoint: BoundViteEndpoint;
 
       try {
@@ -523,7 +523,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           );
           ownedProc = proc;
           releaseSetupResources.push(() =>
-            killGracefully(proc, WORKER_SERVER_BUDGET_RESERVES.devServerReap),
+            stopWorkerServer(proc, WORKER_SERVER_BUDGET_RESERVES.devServerReap),
           );
 
           proc.on('error', (err) => {
@@ -589,7 +589,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       const teardown = openBudgetPhase(TEARDOWN_PHASE_NAME, WORKER_SERVER_BUDGET_RESERVES.teardown);
       await completeWorkerServerRelease(proc, async () => {
         try {
-          await killGracefully(proc, WORKER_SERVER_BUDGET_RESERVES.devServerReap);
+          await stopWorkerServer(proc, WORKER_SERVER_BUDGET_RESERVES.devServerReap);
         } finally {
           await spendOnBudgetPhase(teardown, () => {
             closeServerLog(serverLog);

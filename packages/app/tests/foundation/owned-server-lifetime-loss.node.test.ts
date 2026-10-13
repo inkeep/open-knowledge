@@ -27,7 +27,7 @@ vi.mock('../stress/_helpers/worker-server-lifetime.ts', async (importOriginal) =
     await importOriginal<typeof import('../stress/_helpers/worker-server-lifetime.ts')>();
   return {
     ...lifetime,
-    killGracefully: async () => {
+    stopWorkerServer: async () => {
       harness.releases.push('stop');
     },
     completeWorkerServerRelease: async () => {

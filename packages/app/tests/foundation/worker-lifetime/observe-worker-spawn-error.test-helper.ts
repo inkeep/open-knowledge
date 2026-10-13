@@ -111,7 +111,7 @@ async function runFailedSpawnActor(
     openServerLog,
     prepareViteCacheDir,
   } = await import('../../stress/_helpers/server-process.ts');
-  const { completeWorkerServerRelease, killGracefully } = await import(
+  const { completeWorkerServerRelease, stopWorkerServer } = await import(
     '../../stress/_helpers/worker-server-lifetime.ts'
   );
   const { removeAllDuringTeardown, runTeardownPhases } = await import(
@@ -135,13 +135,9 @@ async function runFailedSpawnActor(
       JSON.stringify(prebuiltManifest(join(APP_DIR, '..', '..'), PREBUILT_BUILD_OPTIONS)),
     );
   }
-  const proc: ChildProcess =
+  const workerProc =
     backend === 'native'
-      ? spawn('pnpm', [...FAILED_SPAWN_COMMANDS[mode]], {
-          cwd: APP_DIR,
-          env: { ...process.env, PATH: emptyPath },
-          stdio: ['ignore', serverLog.fd, 'inherit'],
-        })
+      ? undefined
       : fixture.spawnWorkerDevServer(
           request,
           { PATH: emptyPath },
@@ -150,6 +146,13 @@ async function runFailedSpawnActor(
           serverLog,
           mode === 'prebuilt' ? { kind: 'prebuilt', outputDir } : { kind: 'dev-server' },
         );
+  const proc: ChildProcess =
+    workerProc ??
+    spawn('pnpm', [...FAILED_SPAWN_COMMANDS[mode]], {
+      cwd: APP_DIR,
+      env: { ...process.env, PATH: emptyPath },
+      stdio: ['ignore', serverLog.fd, 'inherit'],
+    });
   const exits: Array<z.infer<typeof terminalSchema>> = [];
   proc.on('exit', (code, signal) => exits.push({ code, signal }));
   const closed = new Promise<z.infer<typeof terminalSchema>>((resolve) =>
@@ -177,12 +180,13 @@ async function runFailedSpawnActor(
     }
   } finally {
     await runTeardownPhases(
-      () => (backend === 'native' ? killNative(proc, 5_000) : killGracefully(proc, 5_000)),
+      () =>
+        workerProc === undefined ? killNative(proc, 5_000) : stopWorkerServer(workerProc, 5_000),
       () => {
         closeServerLog(serverLog);
         removeAllDuringTeardown(contentDir, viteCacheDir, request.receiptDir, serverLog.path);
       },
-      () => (backend === 'exported' ? completeWorkerServerRelease(proc) : undefined),
+      () => (workerProc === undefined ? undefined : completeWorkerServerRelease(workerProc)),
     );
   }
   writeFileSync(

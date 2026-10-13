@@ -5,14 +5,17 @@ import { z } from 'zod';
 import { prebuiltServerCommand, type WorkerServing } from './prebuilt/prebuilt-serving.ts';
 import {
   APP_PACKAGE_ROOT,
-  killGracefully as killCommandGracefully,
   type ServerLog,
   type ViteStartupRequest,
+  type WORKER_SERVER_HANDLE,
 } from './server-process.ts';
 import { runTeardownPhases } from './teardown-fs.ts';
 import type { WorkerServerLaunch } from './worker-server-command.ts';
 
+export type WorkerServerProcess = ChildProcess & { readonly [WORKER_SERVER_HANDLE]: true };
+
 interface Lifetime {
+  readonly sendToOwner: (type: 'stop' | 'release') => void;
   readonly stopped: Promise<void>;
   readonly released: Promise<void>;
   readonly exited: Promise<void>;
@@ -21,6 +24,12 @@ interface Lifetime {
 }
 
 const lifetimes = new WeakMap<ChildProcess, Lifetime>();
+
+function lifetimeOf(proc: WorkerServerProcess): Lifetime {
+  const lifetime = lifetimes.get(proc);
+  if (lifetime === undefined) throw new Error('not a handle acquireWorkerServer returned');
+  return lifetime;
+}
 
 const commandStatusSchema = z.object({
   code: z.number().int().nullable(),
@@ -64,7 +73,7 @@ export function acquireWorkerServer(
   serverLog: ServerLog,
   serving: WorkerServing,
   reapMs: number,
-): ChildProcess {
+): WorkerServerProcess {
   const command =
     serving.kind === 'prebuilt'
       ? prebuiltServerCommand(request.host, serving, join(APP_PACKAGE_ROOT, '..', '..'))
@@ -166,6 +175,7 @@ export function acquireWorkerServer(
     }
     return nativeEmit(event, ...args);
   };
+  proc.on('error', () => undefined);
   proc.on('message', (input: unknown) => {
     const result = lifetimeMessageSchema.safeParse(input);
     if (!result.success) {
@@ -215,21 +225,32 @@ export function acquireWorkerServer(
         message satisfies never;
     }
   });
+  const sendToOwner = (type: 'stop' | 'release') => {
+    if (!proc.connected) return;
+    proc.send({ type }, (error) => {
+      if (error === null) return;
+      if (type === 'stop') rejectStopped(error);
+      else rejectReleased(error);
+    });
+  };
   lifetimes.set(proc, {
+    sendToOwner,
     stopped,
     released,
     exited,
     ownerExited: () => nativeExitCode !== null || nativeSignalCode !== null,
     reapMs,
   });
-  return proc;
+  return proc as WorkerServerProcess;
 }
 
-export async function killGracefully(proc: ChildProcess, timeoutMs: number): Promise<void> {
-  const lifetime = lifetimes.get(proc);
-  if (lifetime === undefined) return killCommandGracefully(proc, timeoutMs);
+export async function stopWorkerServer(
+  proc: WorkerServerProcess,
+  timeoutMs: number,
+): Promise<void> {
+  const lifetime = lifetimeOf(proc);
   if (lifetime.ownerExited()) return lifetime.exited;
-  if (proc.connected) proc.send({ type: 'stop' });
+  lifetime.sendToOwner('stop');
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
@@ -247,13 +268,12 @@ export async function killGracefully(proc: ChildProcess, timeoutMs: number): Pro
 }
 
 export async function completeWorkerServerRelease(
-  proc: ChildProcess,
+  proc: WorkerServerProcess,
   cleanup: () => void | Promise<void> = () => undefined,
 ): Promise<void> {
   await runTeardownPhases(cleanup, async () => {
-    const lifetime = lifetimes.get(proc);
-    if (lifetime === undefined) return;
-    if (proc.connected) proc.send({ type: 'release' });
+    const lifetime = lifetimeOf(proc);
+    lifetime.sendToOwner('release');
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([

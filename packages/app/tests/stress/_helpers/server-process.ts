@@ -466,7 +466,12 @@ export function signalTree(proc: ChildProcess, signal: NodeJS.Signals): boolean 
 
 const GROUP_DRAIN_POLL_INTERVAL_MS = 25;
 
-export async function killGracefully(proc: ChildProcess, timeoutMs = 5000): Promise<void> {
+export declare const WORKER_SERVER_HANDLE: unique symbol;
+
+export async function killGracefully(
+  proc: ChildProcess & { readonly [WORKER_SERVER_HANDLE]?: never },
+  timeoutMs = 5000,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   if (proc.exitCode === null && proc.signalCode === null) {
     const exited = new Promise<void>((resolve) => proc.once('exit', () => resolve()));
