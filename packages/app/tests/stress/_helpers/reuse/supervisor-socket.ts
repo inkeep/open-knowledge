@@ -58,8 +58,28 @@ function describeEntry(entry: Stats): string {
   return 'an entry of another kind';
 }
 
+function unsafeDirectory(directory: string): string | undefined {
+  const entry = lstatSync(directory);
+  if (entry.isSymbolicLink()) return 'is a symbolic link';
+  const uid = process.getuid?.();
+  if (uid !== undefined && entry.uid !== uid) {
+    return `is owned by uid ${entry.uid}, not by this process's uid ${uid}`;
+  }
+  if ((entry.mode & 0o022) !== 0) {
+    return `is group- or world-writable (mode ${(entry.mode & 0o777).toString(8).padStart(4, '0')})`;
+  }
+  return undefined;
+}
+
 async function claimSocketPath(socketPath: string): Promise<void> {
-  mkdirSync(dirname(socketPath), { recursive: true, mode: 0o700 });
+  const directory = dirname(socketPath);
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const unsafe = unsafeDirectory(directory);
+  if (unsafe !== undefined) {
+    throw new Error(
+      `cannot claim ${socketPath}: its directory ${directory} ${unsafe}, so another user could replace the socket`,
+    );
+  }
   const entry = lstatSync(socketPath, { throwIfNoEntry: false });
   if (entry === undefined) return;
   if (!entry.isSocket()) {
