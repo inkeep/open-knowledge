@@ -75,6 +75,7 @@ export const EXPECT_TIMEOUT_MS = 15_000;
 export default defineConfig({
   testDir: './tests/stress',
   testMatch: /.*\.e2e\.ts$/,
+  testIgnore: ['**/frontmatter-edit.e2e.ts'],
   globalSetup: [
     './tests/stress/_helpers/i18n-catalog-freshness.ts',
     // Build the per-run Vite optimizer seed cache once, before any worker

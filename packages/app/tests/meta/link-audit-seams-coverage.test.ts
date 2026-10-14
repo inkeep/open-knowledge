@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
+import { E2E_CI_EXCLUSIONS } from '../stress/e2e-ci-ledger';
 import {
   LINK_AUDIT_COMPOSITION_ROOTS,
   LINK_AUDIT_SEAMS,
@@ -9,6 +11,10 @@ import {
 } from './link-audit-seams.manifest.ts';
 
 const workspaceRoot = fileURLToPath(new URL('../../../../', import.meta.url));
+const BLOCKING_E2E_DIR = 'packages/app/tests/stress/';
+const CI_EXCLUDED_E2E = new Set(
+  E2E_CI_EXCLUSIONS.map((entry) => `${BLOCKING_E2E_DIR}${entry.file}`),
+);
 
 interface ValidationDeps {
   exists(path: string): boolean;
@@ -19,6 +25,7 @@ function validateLinkAuditSubstrate(
   seams: readonly LinkAuditSeam[],
   roots: readonly LinkAuditCompositionRoot[],
   deps: ValidationDeps,
+  ciExcluded: ReadonlySet<string> = CI_EXCLUDED_E2E,
 ): string[] {
   const violations: string[] = [];
   const ids = new Set<string>();
@@ -35,15 +42,15 @@ function validateLinkAuditSubstrate(
     }
   }
 
-  const packageJson = deps.read('packages/app/package.json');
   for (const testPath of new Set(
     seams.flatMap((seam) =>
       seam.tests.filter((entry) => entry.tier === 'browser-e2e').map((entry) => entry.path),
     ),
   )) {
-    const appRelative = testPath.replace(/^packages\/app\//, '');
-    if (!packageJson.includes(appRelative)) {
-      violations.push(`browser E2E is not in the blocking app test:e2e script: ${testPath}`);
+    const collected =
+      testPath.startsWith(BLOCKING_E2E_DIR) && isTestOnlySourceFile(testPath, 'playwright');
+    if (!collected || ciExcluded.has(testPath)) {
+      violations.push(`browser E2E is not in the blocking app test:e2e run: ${testPath}`);
     }
   }
 
@@ -85,6 +92,32 @@ describe('local-target link-audit seam substrate', () => {
     expect(violations).toEqual([
       `canonical-occurrence-classification: missing path ${planted as string}`,
     ]);
+  });
+
+  test('the checker flags a browser E2E that the blocking run does not collect', () => {
+    const ledgered = `${BLOCKING_E2E_DIR}ledgered.e2e.ts`;
+    const seamWith = (path: string): LinkAuditSeam => ({
+      id: 'planted',
+      priority: 'P1',
+      owner: 'test',
+      failureClass: 'test',
+      modules: [],
+      tests: [{ path, tier: 'browser-e2e' }],
+      requiredTiers: ['browser-e2e'],
+    });
+    const deps = { exists: () => true, read: () => '' };
+    const violationsFor = (path: string) =>
+      validateLinkAuditSubstrate([seamWith(path)], [], deps, new Set([ledgered]));
+    expect(violationsFor(`${BLOCKING_E2E_DIR}local-target-audit.e2e.ts`)).toEqual([]);
+    for (const path of [
+      `${BLOCKING_E2E_DIR}_helpers/fixtures.ts`,
+      ledgered,
+      'packages/app/tests/a11y/x.e2e.ts',
+    ]) {
+      expect(violationsFor(path)).toEqual([
+        `browser E2E is not in the blocking app test:e2e run: ${path}`,
+      ]);
+    }
   });
 
   test('the checker distinguishes missing real wiring from an adjacent masking path', () => {
