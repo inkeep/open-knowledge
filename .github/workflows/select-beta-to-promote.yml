@@ -170,11 +170,12 @@ jobs:
         with:
           node-version-file: .node-version
 
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          cache: false
+
       - name: Install root dependencies for the Changesets reader
-        run: |
-          set -euo pipefail
-          corepack enable
-          pnpm install --frozen-lockfile --filter=. --ignore-scripts
+        run: pnpm install --frozen-lockfile --filter=. --ignore-scripts
 
       - name: Read the bump of every changeset an unshipped beta adds
         id: bumps
@@ -393,11 +394,16 @@ jobs:
         with:
           node-version-file: .node-version
 
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          cache: false
+
       - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the workspace packages the smoke harness imports
         run: |
-          set -euo pipefail
-          corepack enable
-          pnpm install --frozen-lockfile
+          pnpm exec turbo run build --filter=@inkeep/open-knowledge-server --cache=local:,remote:
 
       - name: Download the candidate's DMG
         id: download

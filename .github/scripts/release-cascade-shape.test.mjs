@@ -974,6 +974,76 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
   });
 });
 
+describe('the fast-tier DMG smoke builds the workspace packages its harness loads', () => {
+  test('its build covers every workspace package the packaged specs load at runtime', () => {
+    const okRoot = join(WORKFLOWS, '..', '..');
+    const desktop = join(okRoot, 'packages', 'desktop');
+    const config = readFileSync(join(desktop, 'playwright.packaged.config.ts'), 'utf8');
+    const subset = [
+      ...config.match(/PACKAGED_SMOKE_SUBSET = \[([^\]]*)\]/)[1].matchAll(/'([^']+)'/g),
+    ].map((m) => join(desktop, 'tests', 'smoke', m[1]));
+    expect(subset.length).toBeGreaterThan(0);
+
+    const resolveRelative = (from, specifier) =>
+      [specifier, `${specifier}.ts`, join(specifier, 'index.ts')]
+        .map((candidate) => resolve(dirname(from), candidate))
+        .find((path) => /\.[cm]?[jt]sx?$/.test(path) && existsSync(path));
+    const imported = new Set();
+    const seen = new Set();
+    const queue = [...subset];
+    while (queue.length > 0) {
+      const file = queue.pop();
+      if (seen.has(file)) continue;
+      seen.add(file);
+      const source = readFileSync(file, 'utf8');
+      const loads = [
+        ...[...source.matchAll(/^(?:import|export)\s+(type\s+)?[^;]*?\sfrom\s+['"]([^'"]+)['"]/gms)].map(
+          (m) => [Boolean(m[1]), m[2]],
+        ),
+        ...[...source.matchAll(/^import\s+['"]([^'"]+)['"]/gm)].map((m) => [false, m[1]]),
+        ...[...source.matchAll(/\b(?:import|require)\s*\(\s*([^)]*?)\s*\)/g)].map((m) => {
+          const literal = m[1].match(/^(['"])([^'"`$]+)\1$/);
+          expect(literal, `${file} loads a computed specifier: ${m[0]}`).not.toBeNull();
+          return [false, literal[2]];
+        }),
+      ];
+      for (const [typeOnly, specifier] of loads) {
+        if (specifier.startsWith('.')) {
+          const next = resolveRelative(file, specifier);
+          expect(next, `${file} imports unresolvable ${specifier}`).toBeDefined();
+          queue.push(next);
+        } else if (!typeOnly && specifier.startsWith('@inkeep/')) {
+          imported.add(specifier.split('/').slice(0, 2).join('/'));
+        }
+      }
+    }
+    expect(imported).toContain('@inkeep/open-knowledge-core');
+
+    const workspaceDeps = new Map(
+      readdirSync(join(okRoot, 'packages'))
+        .filter((dir) => existsSync(join(okRoot, 'packages', dir, 'package.json')))
+        .map((dir) => {
+          const pkg = JSON.parse(readFileSync(join(okRoot, 'packages', dir, 'package.json'), 'utf8'));
+          const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+          return [pkg.name, Object.keys(deps).filter((name) => deps[name].startsWith('workspace:'))];
+        }),
+    );
+    const { steps } = parse(selectBeta).jobs['smoke-fast-tier-candidate'];
+    const buildIndex = steps.findIndex((step) => /\bturbo\s+run\s+build\b/.test(step.run ?? ''));
+    expect(buildIndex).toBeGreaterThan(-1);
+    expect(buildIndex).toBeLessThan(steps.findIndex((step) => step.name === 'Smoke the DMG'));
+    const built = new Set();
+    const pending = [...steps[buildIndex].run.matchAll(/--filter=(\S+)/g)].map((m) => m[1]);
+    while (pending.length > 0) {
+      const name = pending.pop();
+      if (built.has(name)) continue;
+      built.add(name);
+      pending.push(...(workspaceDeps.get(name) ?? []));
+    }
+    expect([...imported].filter((name) => !built.has(name))).toEqual([]);
+  });
+});
+
 describe('every release-pipeline post prefers the releases webhook', () => {
   const announce = desktopRelease.slice(
     desktopRelease.indexOf('- name: Announce stable release to Slack'),
