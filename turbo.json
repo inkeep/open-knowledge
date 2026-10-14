@@ -301,14 +301,6 @@
       "cache": false,
       "passThroughEnv": ["OK_TEST_E2E_SERVING"]
     },
-    "test:visual": {
-      "dependsOn": ["^build"],
-      "cache": false
-    },
-    "@inkeep/open-knowledge-app#test:visual": {
-      "dependsOn": ["^build", "build"],
-      "cache": false
-    },
     "test:perf": {
       "dependsOn": [],
       "cache": false,

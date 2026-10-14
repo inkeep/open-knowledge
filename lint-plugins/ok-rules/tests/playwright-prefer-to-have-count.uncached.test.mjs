@@ -38,7 +38,6 @@ describe(`${RULE} oxlint rule`, () => {
     expect(readRuleScope(REPO_ROOT, RULE).sort()).toEqual(
       [
         'packages/app/tests/stress/**/*.e2e.ts',
-        'packages/app/tests/visual/**/*.e2e.ts',
         'packages/app/tests/a11y/**/*.e2e.ts',
         FIXTURE,
       ].sort(),

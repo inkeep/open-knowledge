@@ -123,7 +123,6 @@ export const RULE_SCOPES = {
   ],
   'playwright-prefer-to-have-count': [
     'packages/app/tests/stress/**/*.e2e.ts',
-    'packages/app/tests/visual/**/*.e2e.ts',
     'packages/app/tests/a11y/**/*.e2e.ts',
     'lint-plugins/ok-rules/__fixtures__/playwright-prefer-to-have-count.fixture.tsx',
   ],

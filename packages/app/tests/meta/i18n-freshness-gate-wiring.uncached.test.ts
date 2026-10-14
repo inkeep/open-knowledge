@@ -25,11 +25,6 @@ const PLAYWRIGHT_TIERS = {
     turboTask: 'test:a11y',
     load: () => import('../../playwright.a11y.config'),
   },
-  visual: {
-    configFile: 'playwright.visual.config.ts',
-    turboTask: 'test:visual',
-    load: () => import('../../playwright.visual.config'),
-  },
 } as const;
 
 type TierName = keyof typeof PLAYWRIGHT_TIERS;
@@ -40,7 +35,7 @@ type TurboDryRun = {
   tasks: { taskId: string; dependencies: string[]; resolvedTaskDefinition?: TurboTaskDefinition }[];
 };
 
-const SCOPED_OVERRIDE_TASKS = ['test:a11y', 'test:visual'] as const;
+const SCOPED_OVERRIDE_TASKS = ['test:a11y'] as const;
 
 let unfilteredDefinitions: Map<string, TurboTaskDefinition> | undefined;
 

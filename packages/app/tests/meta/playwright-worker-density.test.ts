@@ -12,7 +12,6 @@ const SETUP_NON_RESULT_REPORTER_PATH = fileURLToPath(
 const FIXTURE_SHARING_CONFIGS = {
   e2e: () => import('../../playwright.config'),
   a11y: () => import('../../playwright.a11y.config'),
-  visual: () => import('../../playwright.visual.config'),
 } as const;
 
 async function loadConfigWithCI(

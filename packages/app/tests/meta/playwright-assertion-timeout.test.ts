@@ -5,7 +5,6 @@ const ASSERTION_TIMEOUT_MS = 15_000;
 const FIXTURE_SHARING_CONFIGS = {
   e2e: () => import('../../playwright.config'),
   a11y: () => import('../../playwright.a11y.config'),
-  visual: () => import('../../playwright.visual.config'),
 } as const;
 
 type ConfigName = keyof typeof FIXTURE_SHARING_CONFIGS;
