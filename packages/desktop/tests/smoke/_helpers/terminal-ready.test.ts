@@ -1,5 +1,14 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { waitForShellReady, waitForTerminalOutput } from './terminal-ready';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createTempDirFactory } from '../../../../../test-support/temp-dir.test-helper.ts';
+import { bootLogDirFor, readBootLog } from './launch-readiness';
+import type { DiagnosticAttachment, TerminalDomText } from './terminal-ready';
+import {
+  captureTerminalStartupDiagnostics,
+  waitForShellReady,
+  waitForTerminalOutput,
+} from './terminal-ready';
 import { numberedScrollLine } from './terminal-scrollback';
 import { terminalSmokeShellCommands } from './terminal-smoke-shell';
 
@@ -30,6 +39,8 @@ const XTERM_CURSOR_CELL = ' ';
 const PROMPTED_POLL = { interval: 10, timeout: 5_000 };
 const LONG_BLANK_POLL = { interval: 25, timeout: 5_000 };
 const NEVER_READY_POLL = { interval: 10, timeout: 600 };
+const DIAGNOSTIC_CAPTURE_FAILURE =
+  'page.screenshot: Target page, context or browser has been closed';
 
 type TerminalReader = 'accessibility-then-rows' | 'rows-inner-text';
 
@@ -269,10 +280,12 @@ async function settleOnTheFakeClock(wait: Promise<unknown>): Promise<void> {
 async function runWindowsReadiness(
   shell: ScriptedPowerShell,
   poll: { readonly interval: number; readonly timeout: number },
+  onPrimaryPromptFailure?: () => Promise<void>,
 ): Promise<ReadinessHandover> {
   const handover = waitForShellReady(shell.read, shell.send, {
     ...poll,
     platform: 'win32',
+    onPrimaryPromptFailure,
   }).then(
     () => shell.handover('resolved'),
     () => shell.handover('rejected'),
@@ -353,6 +366,42 @@ describe('terminal smoke shell readiness', () => {
         expect(handover.outcome).toBe('rejected');
       },
     );
+
+    test('runs the primary-prompt diagnostic callback at the failed wait boundary', async () => {
+      const shell = scriptedPowerShell({ ...screen, firstPromptAtRead: null });
+      const failures: number[] = [];
+
+      const handover = await runWindowsReadiness(shell, NEVER_READY_POLL, async () => {
+        failures.push(1);
+      });
+
+      expect(handover.outcome).toBe('rejected');
+      expect(failures).toHaveLength(1);
+    });
+
+    test('keeps the primary-prompt failure and reports why its diagnostic capture failed when the capture rejects', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      try {
+        const shell = scriptedPowerShell({ ...screen, firstPromptAtRead: null });
+        const readiness = waitForShellReady(shell.read, shell.send, {
+          ...NEVER_READY_POLL,
+          platform: 'win32',
+          onPrimaryPromptFailure: () => Promise.reject(new Error(DIAGNOSTIC_CAPTURE_FAILURE)),
+        });
+        await settleOnTheFakeClock(readiness);
+        const message = await readiness.then(
+          () => '',
+          (error: unknown) => (error instanceof Error ? error.message : String(error)),
+        );
+
+        expect(message).toContain('PowerShell primary prompt');
+        expect(message).not.toContain(DIAGNOSTIC_CAPTURE_FAILURE);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining(DIAGNOSTIC_CAPTURE_FAILURE));
+      } finally {
+        warn.mockRestore();
+      }
+    });
 
     test.each([2, 5])(
       'writes no reset and no second probe while the Windows shell is still evaluating the first (evaluation trails the echo by %i reads)',
@@ -999,6 +1048,208 @@ describe('terminal output wait', () => {
         ...readFigures,
         windowMs: SCROLL_STALL_WINDOW_MS,
         slowestReadMs: SLOW_PERIOD_READ_MS,
+      },
+    });
+  });
+});
+
+const DIAGNOSTIC_ATTACHMENT_CAP_BYTES = 128 * 1024;
+const BOOT_LOG_FINAL_LINE_MARK = 'final-boot-line-5d81';
+const BOOT_LOG_LAST_EVENT = 'terminal prompt wait pending 3c07';
+const A11Y_FINAL_ROW_MARK = 'a11y-final-row-c41d';
+const ROWS_FINAL_ROW_MARK = 'rows-final-row-9e2b';
+const POWERSHELL_SCROLLBACK_ROW = `${POWERSHELL_PROMPT}Write-Output tick\n`;
+const JPEG_START_OF_IMAGE = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+const JPEG_END_OF_IMAGE = Buffer.from([0xff, 0xd9]);
+const SMALL_SCREEN_BYTES = 4 * 1024;
+const USUAL_SCREEN_QUALITY = 60;
+const SMALL_TERMINAL_DOM: TerminalDomText = {
+  a11y: [POWERSHELL_PROMPT],
+  rows: [POWERSHELL_PROMPT],
+};
+
+const makeDiagnosticsHome = createTempDirFactory(afterAll);
+
+interface RecordedAttachment extends DiagnosticAttachment {
+  readonly name: string;
+}
+
+interface CapturedScreen {
+  readonly quality: number;
+  readonly image: Buffer;
+}
+
+interface StartupDiagnosticsFixture {
+  readonly bootLogLines: readonly string[];
+  readonly terminalDom?: TerminalDomText;
+  readonly screenBytesAtQuality?: (quality: number) => number;
+}
+
+function seedBootLog(lines: readonly string[]): string {
+  const home = makeDiagnosticsHome('ok-terminal-diagnostics-');
+  const dir = bootLogDirFor(home);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'desktop.2026-10-14.log'), `${lines.join('\n')}\n`, 'utf8');
+  return home;
+}
+
+function ptyPhaseLines(count: number): string[] {
+  return Array.from({ length: count }, (_, sequence) =>
+    JSON.stringify({
+      level: 30,
+      event: 'pty-phase',
+      producer: 'main',
+      phase: 'pty-first-output',
+      edge: 'point',
+      sequence,
+      pad: 'x'.repeat(96),
+    }),
+  );
+}
+
+function linesNamingNoEvent(count: number): string[] {
+  return Array.from({ length: count }, (_, chunk) =>
+    JSON.stringify({ level: 30, ptyId: 'pty-1', chunk, bytes: 512, pad: 'y'.repeat(96) }),
+  );
+}
+
+function jpegOfBytes(totalBytes: number, fill: number): Buffer {
+  const fillBytes = totalBytes - JPEG_START_OF_IMAGE.length - JPEG_END_OF_IMAGE.length;
+  return Buffer.concat([JPEG_START_OF_IMAGE, Buffer.alloc(fillBytes, fill), JPEG_END_OF_IMAGE]);
+}
+
+function textOf(attachment: RecordedAttachment): string {
+  return typeof attachment.body === 'string' ? attachment.body : attachment.body.toString('utf8');
+}
+
+function attachmentNamed(
+  attachments: readonly RecordedAttachment[],
+  name: string,
+): RecordedAttachment {
+  const match = attachments.find((attachment) => attachment.name === name);
+  if (match === undefined) throw new Error(`no ${name} attachment was recorded`);
+  return match;
+}
+
+async function captureStartupDiagnostics({
+  bootLogLines,
+  terminalDom = SMALL_TERMINAL_DOM,
+  screenBytesAtQuality = () => SMALL_SCREEN_BYTES,
+}: StartupDiagnosticsFixture): Promise<{
+  home: string;
+  attachments: RecordedAttachment[];
+  screens: CapturedScreen[];
+}> {
+  const home = seedBootLog(bootLogLines);
+  const attachments: RecordedAttachment[] = [];
+  const screens: CapturedScreen[] = [];
+  await captureTerminalStartupDiagnostics({
+    readBootLog: () => readBootLog(home),
+    readTerminalDom: async () => terminalDom,
+    captureScreen: async ({ quality }) => {
+      const image = jpegOfBytes(screenBytesAtQuality(quality), quality);
+      screens.push({ quality, image });
+      return image;
+    },
+    attach: async (name, attachment) => {
+      attachments.push({ name, ...attachment });
+    },
+  });
+  return { home, attachments, screens };
+}
+
+describe('terminal startup diagnostics', () => {
+  test('keeps the final lines of a boot log over the attachment cap, marked as truncated, within the cap', async () => {
+    const finalLine = JSON.stringify({ level: 30, event: BOOT_LOG_FINAL_LINE_MARK });
+    const { attachments } = await captureStartupDiagnostics({
+      bootLogLines: [...ptyPhaseLines(1200), finalLine],
+    });
+
+    const bootLog = textOf(attachmentNamed(attachments, 'terminal-startup-boot-log'));
+
+    expect({
+      withinCap: Buffer.byteLength(bootLog) <= DIAGNOSTIC_ATTACHMENT_CAP_BYTES,
+      markedTruncated: (JSON.parse(bootLog) as { truncated?: unknown }).truncated,
+      keepsFinalLine: bootLog.includes(BOOT_LOG_FINAL_LINE_MARK),
+    }).toEqual({ withinCap: true, markedTruncated: true, keepsFinalLine: true });
+  });
+
+  test('keeps the last event of a boot log over the attachment cap whose final lines name no event', async () => {
+    const lastEventLine = JSON.stringify({ level: 30, msg: BOOT_LOG_LAST_EVENT });
+    const { home, attachments } = await captureStartupDiagnostics({
+      bootLogLines: [...ptyPhaseLines(900), lastEventLine, ...linesNamingNoEvent(900)],
+    });
+
+    const bootLog = textOf(attachmentNamed(attachments, 'terminal-startup-boot-log'));
+
+    expect(readBootLog(home).lastEvent).toBe(BOOT_LOG_LAST_EVENT);
+    expect({
+      withinCap: Buffer.byteLength(bootLog) <= DIAGNOSTIC_ATTACHMENT_CAP_BYTES,
+      keepsLastEvent: bootLog.includes(BOOT_LOG_LAST_EVENT),
+    }).toEqual({ withinCap: true, keepsLastEvent: true });
+  });
+
+  test('keeps the end of extracted terminal text over the attachment cap, marked as truncated, within the cap', async () => {
+    const { attachments } = await captureStartupDiagnostics({
+      bootLogLines: ptyPhaseLines(3),
+      terminalDom: {
+        a11y: [`${POWERSHELL_SCROLLBACK_ROW.repeat(3000)}${A11Y_FINAL_ROW_MARK}`],
+        rows: [`${POWERSHELL_SCROLLBACK_ROW.repeat(30)}${ROWS_FINAL_ROW_MARK}`],
+      },
+    });
+
+    const terminalText = textOf(attachmentNamed(attachments, 'terminal-startup-dom'));
+
+    expect({
+      withinCap: Buffer.byteLength(terminalText) <= DIAGNOSTIC_ATTACHMENT_CAP_BYTES,
+      markedTruncated: (JSON.parse(terminalText) as { truncated?: unknown }).truncated,
+      keepsAccessibilityEnd: terminalText.includes(A11Y_FINAL_ROW_MARK),
+      keepsRowsEnd: terminalText.includes(ROWS_FINAL_ROW_MARK),
+    }).toEqual({
+      withinCap: true,
+      markedTruncated: true,
+      keepsAccessibilityEnd: true,
+      keepsRowsEnd: true,
+    });
+  });
+
+  test('attaches a whole screen image within the cap when the screen at the usual quality is over it', async () => {
+    const screenBytesAtQuality = (quality: number) =>
+      Math.round((quality / USUAL_SCREEN_QUALITY) * 1.5 * DIAGNOSTIC_ATTACHMENT_CAP_BYTES);
+    const { attachments, screens } = await captureStartupDiagnostics({
+      bootLogLines: ptyPhaseLines(3),
+      screenBytesAtQuality,
+    });
+
+    const screen = attachmentNamed(attachments, 'terminal-startup-screen');
+
+    expect(screenBytesAtQuality(USUAL_SCREEN_QUALITY)).toBeGreaterThan(
+      DIAGNOSTIC_ATTACHMENT_CAP_BYTES,
+    );
+    expect({
+      contentType: screen.contentType,
+      withinCap: Buffer.byteLength(screen.body) <= DIAGNOSTIC_ATTACHMENT_CAP_BYTES,
+      wholeCapturedImage: screens.some(({ image }) => image.equals(Buffer.from(screen.body))),
+    }).toEqual({ contentType: 'image/jpeg', withinCap: true, wholeCapturedImage: true });
+  });
+
+  test('attaches a boot log, terminal text and screen under the cap whole', async () => {
+    const { home, attachments, screens } = await captureStartupDiagnostics({
+      bootLogLines: ptyPhaseLines(3),
+    });
+
+    const screen = attachmentNamed(attachments, 'terminal-startup-screen');
+
+    expect({
+      bootLog: JSON.parse(textOf(attachmentNamed(attachments, 'terminal-startup-boot-log'))),
+      terminalText: JSON.parse(textOf(attachmentNamed(attachments, 'terminal-startup-dom'))),
+      screen: { contentType: screen.contentType, body: screen.body },
+    }).toEqual({
+      bootLog: readBootLog(home),
+      terminalText: SMALL_TERMINAL_DOM,
+      screen: {
+        contentType: 'image/jpeg',
+        body: screens.find(({ quality }) => quality === USUAL_SCREEN_QUALITY)?.image,
       },
     });
   });

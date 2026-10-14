@@ -20,7 +20,7 @@ import {
   watchForDockReveal,
 } from './_helpers/dock-reveal-latency';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
-import { launchDesktopApp, waitForWindowByMode } from './_helpers/launch-readiness';
+import { launchDesktopApp, readBootLog, waitForWindowByMode } from './_helpers/launch-readiness';
 import { sumOfDeclaredBoundsMs } from './_helpers/parse-timeouts';
 import {
   PTY_PLATFORM_SKIP_REASON,
@@ -35,7 +35,7 @@ import {
   settleBudget,
 } from './_helpers/settled-reading';
 import { expect, test } from './_helpers/smoke-test';
-import { waitForShellReady } from './_helpers/terminal-ready';
+import { captureTerminalStartupDiagnostics, waitForShellReady } from './_helpers/terminal-ready';
 import {
   buildInputReadyProbe,
   seedTerminalShellProfiles,
@@ -127,6 +127,7 @@ function seed(prefix: string, opts: SeedOpts = {}): Seed {
 interface LaunchOpts {
   restrictPath?: boolean;
   connectionsAvailable?: boolean;
+  phaseTrace?: boolean;
 }
 
 async function launchApp(s: Seed, opts: LaunchOpts = {}): Promise<ElectronApplication> {
@@ -151,6 +152,7 @@ async function launchApp(s: Seed, opts: LaunchOpts = {}): Promise<ElectronApplic
           restrictPath: opts.restrictPath,
         }),
         OK_DESKTOP_E2E_SMOKE: '1',
+        OK_PTY_PHASE_TRACE: opts.phaseTrace ? '1' : '',
         OK_RECLAIM_DISABLE: opts.connectionsAvailable ? '0' : '1',
         OK_M6B_FORCE: opts.connectionsAvailable ? '1' : '0',
       },
@@ -355,7 +357,10 @@ async function waitForStatus(
   page: Page,
   status: string,
   timeoutMs = 20_000,
-  { foreground = 'shell' }: { foreground?: 'shell' | 'program' } = {},
+  {
+    foreground = 'shell',
+    onPrimaryPromptFailure,
+  }: { foreground?: 'shell' | 'program'; onPrimaryPromptFailure?: () => Promise<void> } = {},
 ): Promise<void> {
   await expect(terminalStatus(page)).toHaveAttribute('data-terminal-status', status, {
     timeout: timeoutMs,
@@ -364,8 +369,21 @@ async function waitForStatus(
     await waitForShellReady(
       () => readTerminalText(page),
       (command) => typeInTerminal(page, `${command}\r`),
+      { onPrimaryPromptFailure },
     );
   }
+}
+
+async function attachTerminalStartupDiagnostics(page: Page, home: string): Promise<void> {
+  await captureTerminalStartupDiagnostics({
+    readBootLog: () => readBootLog(home),
+    readTerminalDom: async () => ({
+      a11y: await page.locator('.xterm-accessibility').allTextContents(),
+      rows: await page.locator('.xterm-rows').allTextContents(),
+    }),
+    captureScreen: ({ quality }) => page.screenshot({ type: 'jpeg', quality }),
+    attach: (name, attachment) => test.info().attach(name, attachment),
+  });
 }
 
 async function ensureBottomDock(page: Page): Promise<void> {
@@ -410,12 +428,14 @@ test.describe('Docked terminal — live Electron', () => {
     test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('default-on');
     track(s.tmpHome, s.projectDir);
-    const app = await launchApp(s, { restrictPath: true });
+    const app = await launchApp(s, { restrictPath: true, phaseTrace: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
-    await waitForStatus(page, 'running', 25_000);
+    await waitForStatus(page, 'running', 25_000, {
+      onPrimaryPromptFailure: () => attachTerminalStartupDiagnostics(page, s.tmpHome),
+    });
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 
@@ -878,12 +898,14 @@ test.describe('Docked terminal — live Electron', () => {
     test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('ctrl-backtick', { consent: true });
     track(s.tmpHome, s.projectDir);
-    const app = await launchApp(s, { restrictPath: true });
+    const app = await launchApp(s, { restrictPath: true, phaseTrace: true });
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await configureDesktopGitRepositories(page, s.realProjectDir);
     await openTerminal(app, page);
-    await waitForStatus(page, 'running', 25_000);
+    await waitForStatus(page, 'running', 25_000, {
+      onPrimaryPromptFailure: () => attachTerminalStartupDiagnostics(page, s.tmpHome),
+    });
 
     const focusInTerminal = () =>
       page.evaluate(() => {

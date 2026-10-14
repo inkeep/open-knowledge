@@ -11,7 +11,6 @@ import {
   attachCapturedStderr,
   captureElectronStderr,
   type ElectronStderrCapture,
-  shouldAttachStderr,
 } from './electron-stderr';
 import { rememberLaunchHome } from './launch-readiness';
 
@@ -71,7 +70,9 @@ export const test = baseTest.extend<SmokeFixtures>({
         console.warn(`[smoke-test] tmp-dir cleanup failed for ${dir}: ${reason}`);
       }
     }
-    if (shouldAttachStderr(testInfo) || unclosed.length > 0) {
+    const attemptFailed =
+      testInfo.status !== 'skipped' && testInfo.status !== testInfo.expectedStatus;
+    if (attemptFailed || unclosed.length > 0) {
       await attachCapturedStderr(testInfo, captures);
     }
     if (unclosed.length > 0) {

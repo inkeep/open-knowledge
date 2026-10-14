@@ -2,7 +2,7 @@ import type { TestInfo } from '@playwright/test';
 import { describe, expect, test } from 'vitest';
 import { shouldAttachStderr } from '../smoke/_helpers/electron-stderr';
 
-describe('smoke-test fixture: shouldAttachStderr predicate', () => {
+describe('smoke-test fixture boot-log narration: shouldAttachStderr gate in emitBootGapLines', () => {
   const ti = (status: TestInfo['status'], retry: number, retries: number): TestInfo =>
     ({
       status,
@@ -76,13 +76,13 @@ describe('smoke-test fixture: shouldAttachStderr predicate', () => {
       expect(shouldAttachStderr(noRetries)).toBe(true);
     });
 
-    test('flake-passed scenario from CI run 25616440454 — exact reproduction', () => {
+    test('flake-passed sequence: timed-out attempt then passing retry attaches no boot-log narration', () => {
       expect(shouldAttachStderr(ti('timedOut', 0, 2))).toBe(false);
 
       expect(shouldAttachStderr(ti('passed', 1, 2))).toBe(false);
     });
 
-    test('genuine failure scenario — final attempt failure surfaces stderr for triage', () => {
+    test('genuine failure sequence: only the final failing attempt attaches boot-log narration', () => {
       expect(shouldAttachStderr(ti('timedOut', 0, 2))).toBe(false);
       expect(shouldAttachStderr(ti('timedOut', 1, 2))).toBe(false);
       expect(shouldAttachStderr(ti('timedOut', 2, 2))).toBe(true);

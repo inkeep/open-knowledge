@@ -1,9 +1,13 @@
 import { expect } from '@playwright/test';
+import type { BootLogSnapshot } from './launch-readiness';
 import {
   buildInputReadyProbe,
   WINDOWS_PRIMARY_PROMPT_AT_END,
   windowsPrimaryPromptAfter,
 } from './terminal-smoke-shell';
+
+const DIAGNOSTIC_ATTACHMENT_MAX_BYTES = 128 * 1024;
+const SCREEN_JPEG_QUALITIES = [60, 40, 20, 10] as const;
 
 export async function waitForShellReady(
   readTerminalText: () => Promise<string>,
@@ -13,17 +17,28 @@ export async function waitForShellReady(
     quietPolls = 3,
     interval = 250,
     platform = process.platform,
+    onPrimaryPromptFailure,
   }: WaitForShellReadyOptions = {},
 ): Promise<void> {
   if (platform === 'win32') {
     const startedAt = Date.now();
-    await waitForTerminalText(
-      readTerminalText,
-      WINDOWS_PRIMARY_PROMPT_AT_END,
-      'PowerShell primary prompt',
-      timeout,
-      interval,
-    );
+    try {
+      await waitForTerminalText(
+        readTerminalText,
+        WINDOWS_PRIMARY_PROMPT_AT_END,
+        'PowerShell primary prompt',
+        timeout,
+        interval,
+      );
+    } catch (error) {
+      await onPrimaryPromptFailure?.().catch((captureError: unknown) => {
+        const reason = captureError instanceof Error ? captureError.message : String(captureError);
+        console.warn(
+          `[terminal-ready] could not capture the PowerShell primary-prompt diagnostics: ${reason}`,
+        );
+      });
+      throw error;
+    }
     const firstPromptWaitMs = Date.now() - startedAt;
     const { marker, command } = buildInputReadyProbe('win32');
     await sendTerminalCommand(command);
@@ -46,6 +61,52 @@ export async function waitForShellReady(
   }
 
   await waitForQuietTerminalText(readTerminalText, timeout, quietPolls, interval);
+}
+
+export async function captureTerminalStartupDiagnostics({
+  readBootLog,
+  readTerminalDom,
+  captureScreen,
+  attach,
+}: TerminalStartupDiagnosticSources): Promise<void> {
+  await attach('terminal-startup-boot-log', {
+    body: boundedJson(readBootLog()),
+    contentType: 'application/json',
+  });
+  await attach('terminal-startup-dom', {
+    body: boundedJson(await readTerminalDom()),
+    contentType: 'application/json',
+  });
+  let screen = await captureScreen({ quality: SCREEN_JPEG_QUALITIES[0] });
+  const originalBytes = screen.byteLength;
+  for (const quality of SCREEN_JPEG_QUALITIES.slice(1)) {
+    if (screen.byteLength <= DIAGNOSTIC_ATTACHMENT_MAX_BYTES) break;
+    screen = await captureScreen({ quality });
+  }
+  if (screen.byteLength <= DIAGNOSTIC_ATTACHMENT_MAX_BYTES) {
+    await attach('terminal-startup-screen', {
+      body: screen,
+      contentType: 'image/jpeg',
+    });
+  } else {
+    await attach('terminal-startup-screen', {
+      body: boundedJson({ truncated: true, originalBytes }),
+      contentType: 'application/json',
+    });
+  }
+}
+
+function boundedJson(value: unknown): string {
+  const source = JSON.stringify(value) ?? 'null';
+  const originalBytes = Buffer.byteLength(source, 'utf8');
+  if (originalBytes <= DIAGNOSTIC_ATTACHMENT_MAX_BYTES) return source;
+  let end = source.slice(-DIAGNOSTIC_ATTACHMENT_MAX_BYTES);
+  let body = JSON.stringify({ truncated: true, originalBytes, end });
+  while (Buffer.byteLength(body, 'utf8') > DIAGNOSTIC_ATTACHMENT_MAX_BYTES && end.length > 0) {
+    end = end.slice(1024);
+    body = JSON.stringify({ truncated: true, originalBytes, end });
+  }
+  return body;
 }
 
 async function waitForTerminalText(
@@ -121,8 +182,30 @@ export interface WaitForShellReadyOptions {
   quietPolls?: number;
   interval?: number;
   platform?: NodeJS.Platform;
+  onPrimaryPromptFailure?: () => Promise<void>;
 }
 
 export interface WaitForTerminalOutputOptions {
   stallMs: number;
+}
+
+export interface TerminalDomText {
+  readonly a11y: readonly string[];
+  readonly rows: readonly string[];
+}
+
+export interface ScreenCaptureSetting {
+  readonly quality: number;
+}
+
+export interface DiagnosticAttachment {
+  readonly body: string | Buffer;
+  readonly contentType: string;
+}
+
+export interface TerminalStartupDiagnosticSources {
+  readonly readBootLog: () => BootLogSnapshot;
+  readonly readTerminalDom: () => Promise<TerminalDomText>;
+  readonly captureScreen: (setting: ScreenCaptureSetting) => Promise<Buffer>;
+  readonly attach: (name: string, attachment: DiagnosticAttachment) => Promise<void>;
 }
