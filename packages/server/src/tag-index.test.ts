@@ -41,6 +41,26 @@ describe('TagIndex', () => {
     }
   });
 
+  test('indexes non-ASCII frontmatter and inline tags', () => {
+    const { contentDir, cleanup } = tempContentDir();
+    try {
+      const idx = new TagIndex({ contentDir });
+      idx.updateDocumentFromMarkdown(
+        'alpha',
+        '---\ntags: [蔵, 心筋梗塞, 循環器]\n---\nBody #循環器/不整脈 and #café.\n',
+      );
+      for (const tag of ['蔵', '心筋梗塞', '循環器', '循環器/不整脈', 'café']) {
+        expect(idx.getDocsForTag(tag)).toEqual(['alpha']);
+      }
+      expect(idx.getDocsForTag('caf')).toEqual([]);
+      idx.updateDocumentFromMarkdown('beta', 'Ward #葛\u{e0100}飾区 and #ta\u034fg.\n');
+      expect(idx.getAllTags().map((t) => t.name)).not.toContain('葛');
+      expect(idx.getDocsForTag('ta')).toEqual([]);
+    } finally {
+      cleanup();
+    }
+  });
+
   test('merges inline + frontmatter tags into the same index', () => {
     const { contentDir, cleanup } = tempContentDir();
     try {

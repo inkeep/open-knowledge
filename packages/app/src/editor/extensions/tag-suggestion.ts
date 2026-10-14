@@ -1,3 +1,7 @@
+import {
+  INLINE_TAG_VALUE_PATTERN_SOURCE,
+  INLINE_TAG_VALUE_RE,
+} from '@inkeep/open-knowledge-core/markdown/tag-promotion';
 import type { Editor } from '@tiptap/core';
 import type { ResolvedPos } from '@tiptap/pm/model';
 import { PluginKey } from '@tiptap/pm/state';
@@ -25,7 +29,7 @@ export type TagSuggestionItem =
 
 const MAX_ITEMS = 8;
 
-const TAG_VALID_RE = /^[a-zA-Z][\w/-]*$/;
+const TAG_TRIGGER_RE = new RegExp(`(^|[\\s￼])#(${INLINE_TAG_VALUE_PATTERN_SOURCE})?$`, 'u');
 
 export async function fetchTags(): Promise<TagSummaryEntry[]> {
   const r = await fetch('/api/tags');
@@ -65,7 +69,7 @@ export function buildTagSuggestionItems(
   }));
 
   const trimmed = query.trim();
-  if (trimmed && TAG_VALID_RE.test(trimmed) && !tags.some((t) => t.name === trimmed)) {
+  if (trimmed && INLINE_TAG_VALUE_RE.test(trimmed) && !tags.some((t) => t.name === trimmed)) {
     items.push({ kind: 'create', value: trimmed });
   }
 
@@ -78,7 +82,7 @@ export function tagMatcher(config: {
   const { $position } = config;
   const textBefore = $position.parent.textBetween(0, $position.parentOffset, undefined, '￼');
 
-  const match = textBefore.match(/(^|[\s￼])#([a-zA-Z][\w/-]*)?$/);
+  const match = textBefore.match(TAG_TRIGGER_RE);
   if (!match) return null;
 
   const query = match[2] ?? '';
@@ -130,7 +134,7 @@ export function configureTagSuggestion(editor: Editor) {
     command: ({ editor, range, props: item }) => {
       try {
         const value = item.value;
-        if (!value || !TAG_VALID_RE.test(value)) return;
+        if (!value || !INLINE_TAG_VALUE_RE.test(value)) return;
         editor
           .chain()
           .focus()
@@ -241,7 +245,7 @@ export function configureTagSuggestion(editor: Editor) {
               return true;
             }
             const trimmed = (currentProps.query ?? '').trim();
-            if (trimmed && TAG_VALID_RE.test(trimmed)) {
+            if (trimmed && INLINE_TAG_VALUE_RE.test(trimmed)) {
               currentProps.command({ kind: 'create', value: trimmed });
               return true;
             }

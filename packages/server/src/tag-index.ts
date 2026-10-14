@@ -41,12 +41,12 @@ interface FileMeta {
 }
 
 interface SerializedTagIndexSnapshot {
-  version: 1;
+  version: 2;
   docs: Record<string, string[]>;
   files: Record<string, FileMeta>;
 }
 
-const SNAPSHOT_VERSION = 1;
+const SNAPSHOT_VERSION = 2;
 
 function isOtherSnapshotVersion(data: unknown): boolean {
   if (typeof data !== 'object' || data === null) return false;

@@ -4,6 +4,7 @@ import type { NodeViewProps } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { NodeViewWrapper } from '@tiptap/react';
 import { useEffect, useRef, useState } from 'react';
+import { isImeCompositionKey } from '@/lib/ime-composition';
 
 function commitDraft(
   editor: NodeViewProps['editor'],
@@ -56,7 +57,15 @@ function PlaceholderInput({ initialDraft, onCommit, onCancel }: PlaceholderInput
   const { t } = useLingui();
   const inputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(initialDraft);
+  const lastValidDraftRef = useRef(initialDraft);
   const committedRef = useRef(false);
+
+  const acceptDraft = (next: string): boolean => {
+    if (next !== '' && !INLINE_TAG_VALUE_RE.test(next)) return false;
+    lastValidDraftRef.current = next;
+    setDraft(next);
+    return true;
+  };
 
   useEffect(() => {
     const handle = requestAnimationFrame(() => {
@@ -86,11 +95,17 @@ function PlaceholderInput({ initialDraft, onCommit, onCancel }: PlaceholderInput
         className="bg-transparent border-0 p-0 outline-none focus:outline-none focus:ring-0 text-inherit font-inherit"
         onChange={(e) => {
           const next = e.target.value;
-          if (next === '' || INLINE_TAG_VALUE_RE.test(next)) {
+          if ((e.nativeEvent as InputEvent).isComposing) {
             setDraft(next);
+            return;
           }
+          acceptDraft(next);
+        }}
+        onCompositionEnd={(e) => {
+          if (!acceptDraft(e.currentTarget.value)) setDraft(lastValidDraftRef.current);
         }}
         onKeyDown={(e) => {
+          if (isImeCompositionKey(e)) return;
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             committedRef.current = true;

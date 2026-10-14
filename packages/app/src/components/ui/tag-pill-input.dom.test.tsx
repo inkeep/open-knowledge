@@ -78,6 +78,22 @@ describe('TagPillInput — input-side grammar gate', () => {
     expect(alert?.textContent).toContain('Tags must start with a letter');
   });
 
+  test('Enter, comma and Tab during IME composition do not commit', () => {
+    const onChange = vi.fn(() => {});
+    const { container } = renderInput({ onChange });
+    const input = container.querySelector('input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'にほんご' } });
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+    fireEvent.keyDown(input, { key: ',', isComposing: true });
+    fireEvent.keyDown(input, { key: 'Tab', isComposing: true });
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 });
+    expect(onChange).toHaveBeenCalledTimes(0);
+    expect(input.value).toBe('にほんご');
+    fireEvent.change(input, { target: { value: '日本語' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith(['日本語']);
+  });
+
   test('Enter on valid input commits + clears draft + clears any prior rejection state', () => {
     const onChange = vi.fn(() => {});
     const { container } = renderInput({ onChange });

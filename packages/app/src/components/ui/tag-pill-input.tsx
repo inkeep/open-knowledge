@@ -9,6 +9,7 @@ import { XIcon } from 'lucide-react';
 import { type Ref, useEffect, useId, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { isImeCompositionKey } from '@/lib/ime-composition';
 import { cn } from '@/lib/utils';
 
 interface TagPillInputProps {
@@ -190,6 +191,7 @@ function TagPillInput({
           if (highlightedEntry !== null) setHighlightedEntry(null);
         }}
         onKeyDown={(e) => {
+          if (isImeCompositionKey(e)) return;
           const el = e.currentTarget;
           const caretAtStart = el.selectionStart === 0 && el.selectionEnd === 0;
           if (editingEntry === null && value.length > 0) {

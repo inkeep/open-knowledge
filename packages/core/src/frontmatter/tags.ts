@@ -1,6 +1,10 @@
+import { TAG_CHAR_PATTERN_SOURCE } from '../markdown/tag-promotion.ts';
 import { parseFrontmatterYaml } from './yaml-codec.ts';
 
-export const FRONTMATTER_TAG_VALUE_RE = /^[a-zA-Z0-9][\w/-]*$/;
+export const FRONTMATTER_TAG_VALUE_RE = new RegExp(
+  `^(?!\\p{DI})[\\p{L}\\p{N}]${TAG_CHAR_PATTERN_SOURCE}*$`,
+  'u',
+);
 
 export function isValidFrontmatterTagValue(value: string): boolean {
   if (typeof value !== 'string') return false;

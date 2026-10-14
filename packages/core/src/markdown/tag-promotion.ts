@@ -7,13 +7,16 @@ import {
   sliceTextWithProvenance,
 } from './promoter-position.ts';
 
-export const TAG_IN_TEXT_PATTERN_SOURCE = '(^|\\s)#([a-zA-Z][\\w/-]*)';
+const TAG_CHAR_CLASS_SOURCE = '[\\p{L}\\p{M}\\p{N}_/-]';
+export const TAG_CHAR_PATTERN_SOURCE = `(?:(?!\\p{DI})${TAG_CHAR_CLASS_SOURCE})`;
+export const INLINE_TAG_VALUE_PATTERN_SOURCE = `(?!\\p{DI})\\p{L}${TAG_CHAR_PATTERN_SOURCE}*`;
+export const TAG_IN_TEXT_PATTERN_SOURCE = `(^|\\s)#(${INLINE_TAG_VALUE_PATTERN_SOURCE})(?!\\p{DI}*${TAG_CHAR_CLASS_SOURCE})`;
 export function createTagInTextRegex(): RegExp {
-  return new RegExp(TAG_IN_TEXT_PATTERN_SOURCE, 'g');
+  return new RegExp(TAG_IN_TEXT_PATTERN_SOURCE, 'gu');
 }
 const TAG_IN_TEXT_RE = createTagInTextRegex();
 
-export const INLINE_TAG_VALUE_RE = /^[a-zA-Z][\w/-]*$/;
+export const INLINE_TAG_VALUE_RE = new RegExp(`^${INLINE_TAG_VALUE_PATTERN_SOURCE}$`, 'u');
 
 export function promoteTagsInParent(parent: Parent, source: string = ''): void {
   const newChildren: Parent['children'] = [];

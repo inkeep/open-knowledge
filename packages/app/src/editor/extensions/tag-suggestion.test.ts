@@ -82,6 +82,12 @@ describe('buildTagSuggestionItems — filter + rank', () => {
     expect(out).toEqual([]);
   });
 
+  test('non-ASCII tag names offer a Create row', () => {
+    const out = buildTagSuggestionItems(tags([['日本', 2]]), '日本語');
+    expect(out[out.length - 1]).toEqual({ kind: 'create', value: '日本語' });
+    expect(buildTagSuggestionItems(tags([]), 'café')).toEqual([{ kind: 'create', value: 'café' }]);
+  });
+
   test('hierarchical tag names work end-to-end', () => {
     const out = buildTagSuggestionItems(
       tags([
@@ -202,6 +208,15 @@ describe('tagMatcher — boundary semantics', () => {
 
   test('`#-bad` (hyphen-leading) does NOT trigger', () => {
     expect(tagMatcher(stubPosition('#-bad', 1) as never)).toBeNull();
+  });
+
+  test('`#日本語` triggers with the full non-ASCII query', () => {
+    const result = tagMatcher(stubPosition('メモ #日本語', 1) as never);
+    expect(result).toEqual({
+      range: { from: 4, to: 8 },
+      query: '日本語',
+      text: '#日本語',
+    });
   });
 
   test('matches `#tag` after an inline-atom placeholder (textBetween emits ￼)', () => {

@@ -92,6 +92,18 @@ describe('extractFrontmatterTags', () => {
     const yaml = 'tags:\n  - valid\n  - [inner, list]\n  - alsoValid\n';
     expect(extractFrontmatterTags(yaml)).toEqual(['valid', 'alsoValid']);
   });
+  test('keeps non-ASCII tags instead of dropping them', () => {
+    expect(extractFrontmatterTags('tags: [蔵, 心筋梗塞, 循環器]\n')).toEqual([
+      '蔵',
+      '心筋梗塞',
+      '循環器',
+    ]);
+    expect(extractFrontmatterTags('tags: [café, "#Привет", 研究/循環器]\n')).toEqual([
+      'café',
+      'Привет',
+      '研究/循環器',
+    ]);
+  });
 });
 
 describe('isValidFrontmatterTagValue', () => {
@@ -146,6 +158,40 @@ describe('isValidFrontmatterTagValue', () => {
     expect(isValidFrontmatterTagValue('#showcase')).toBe(true);
     expect(isValidFrontmatterTagValue('#proj/team')).toBe(true);
     expect(isValidFrontmatterTagValue('##showcase')).toBe(false);
+  });
+
+  test('accepts letters and digits from every script, including combining marks', () => {
+    for (const value of [
+      '蔵',
+      '心筋梗塞',
+      'カテゴリー',
+      '한국어',
+      'Привет',
+      'Ελληνικά',
+      'العربية',
+      'हिन्दी',
+      'ภาษาไทย',
+      'café',
+      'cafe\u0301',
+      'naïve/ü-ber_2026',
+      '２０２６',
+    ]) {
+      expect(isValidFrontmatterTagValue(value)).toBe(true);
+    }
+  });
+
+  test('rejects a leading combining mark and invisible or bidi control characters', () => {
+    expect(isValidFrontmatterTagValue('\u0301cafe')).toBe(false);
+    expect(isValidFrontmatterTagValue('ta\u200bg')).toBe(false);
+    expect(isValidFrontmatterTagValue('ta\u200dg')).toBe(false);
+    expect(isValidFrontmatterTagValue('\u202etag')).toBe(false);
+    expect(isValidFrontmatterTagValue('\u3164')).toBe(false);
+    expect(isValidFrontmatterTagValue('tag\ufe0f')).toBe(false);
+    expect(isValidFrontmatterTagValue('ta\u034fg')).toBe(false);
+    expect(isValidFrontmatterTagValue('葛\u{e0100}')).toBe(false);
+    expect(isValidFrontmatterTagValue('tag\u00a0two')).toBe(false);
+    expect(isValidFrontmatterTagValue('日本　語')).toBe(false);
+    expect(isValidFrontmatterTagValue('タグ。')).toBe(false);
   });
 
   test('agrees with the FRONTMATTER_TAG_VALUE_RE constant (single source of truth)', () => {

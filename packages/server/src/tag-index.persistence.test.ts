@@ -47,7 +47,7 @@ describe('TagIndex persistence', () => {
       await idx.saveToDisk();
       expect(existsSync(rig.snapshotPath)).toBe(true);
       const snapshot = JSON.parse(await readFile(rig.snapshotPath, 'utf-8'));
-      expect(snapshot.version).toBe(1);
+      expect(snapshot.version).toBe(2);
       expect(snapshot.docs.alpha).toEqual(['typescript']);
       expect(snapshot.files.alpha.mtimeMs).toBeGreaterThan(0);
       expect(snapshot.files.alpha.size).toBeGreaterThan(0);
@@ -73,6 +73,30 @@ describe('TagIndex persistence', () => {
       const diff = await second.reconcileWithDisk();
       expect(diff).toEqual({ added: 0, updated: 0, deleted: 0 });
       expect(second.getDocsForTag('proj/team')).toEqual(['alpha']);
+    } finally {
+      rig.cleanup();
+    }
+  });
+
+  test('a snapshot written under the ASCII-only grammar is rebuilt so unchanged non-ASCII tags appear', async () => {
+    const rig = tempRig();
+    try {
+      const body = '---\ntags: [蔵, 心筋梗塞]\n---\nBody.\n';
+      writeDoc(rig.contentDir, 'alpha.md', body, 1_000);
+      mkdirSync(dirname(rig.snapshotPath), { recursive: true });
+      writeFileSync(
+        rig.snapshotPath,
+        JSON.stringify({
+          version: 1,
+          docs: { alpha: [] },
+          files: { alpha: { mtimeMs: 1_000_000, size: Buffer.byteLength(body) } },
+        }),
+      );
+      const idx = newIndex(rig);
+      expect(await idx.loadFromDisk()).toBe(false);
+      await idx.init();
+      expect(idx.getDocsForTag('蔵')).toEqual(['alpha']);
+      expect(idx.getDocsForTag('心筋梗塞')).toEqual(['alpha']);
     } finally {
       rig.cleanup();
     }
@@ -205,10 +229,11 @@ describe('TagIndex persistence', () => {
 
   test.each([
     { snapshot: '[]', kept: false },
-    { snapshot: '{"version":1,"docs":{"a":"not-an-array"},"files":{}}', kept: false },
-    { snapshot: '{"version":1,"docs":{"a":[""]},"files":{}}', kept: false },
-    { snapshot: '{"version":1,"docs":{},"files":{"a":{"mtimeMs":"nan","size":1}}}', kept: false },
-    { snapshot: '{"version":2,"docs":{},"files":{}}', kept: true },
+    { snapshot: '{"version":2,"docs":{"a":"not-an-array"},"files":{}}', kept: false },
+    { snapshot: '{"version":2,"docs":{"a":[""]},"files":{}}', kept: false },
+    { snapshot: '{"version":2,"docs":{},"files":{"a":{"mtimeMs":"nan","size":1}}}', kept: false },
+    { snapshot: '{"version":1,"docs":{},"files":{}}', kept: true },
+    { snapshot: '{"version":3,"docs":{},"files":{}}', kept: true },
   ])('off-shape snapshot $snapshot reports a miss (kept: $kept)', async ({ snapshot, kept }) => {
     const rig = tempRig();
     try {
@@ -229,7 +254,7 @@ describe('TagIndex persistence', () => {
       writeFileSync(
         rig.snapshotPath,
         JSON.stringify({
-          version: 1,
+          version: 2,
           docs: { __system__: ['smuggled'], alpha: ['legit'] },
           files: {},
         }),

@@ -17,7 +17,9 @@ export const tagToMarkdown: {
   }>;
 } = {
   handlers: { tag: tagHandler },
-  unsafe: [{ character: '#', inConstruct: ['phrasing'], before: '\\s', after: '[a-zA-Z]' }],
+  unsafe: [
+    { character: '#', inConstruct: ['phrasing'], before: '\\s', after: '[A-Za-z]|[^\\x00-\\x7F]' },
+  ],
 };
 
 export function remarkTags(this: Processor) {
