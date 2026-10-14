@@ -76,7 +76,7 @@ Docs for general usage: <https://openknowledge.ai/docs>.
 
 ## Contributions
 
-Public pull requests or issues are welcome!
+The best way to contribute is a detailed [issue](https://github.com/inkeep/open-knowledge/issues/new/choose): we build and review the change ourselves. Pull requests are welcome for small fixes, and for larger changes once a maintainer has accepted the issue.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 

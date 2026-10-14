@@ -513,7 +513,7 @@ function buildWelcomePublicComment() {
 
 **What happens next:**
 
-- A maintainer will review your PR.
+- A maintainer will review your PR if it is a small fix (typo, broken link, docs or translation correction) or links an issue a maintainer has accepted. Other pull requests may be closed without review; a detailed issue is the faster path for those.
 - If you don't hear back within a few business days, please comment here to nudge our team.
 - This repository is maintained through an internal mirror. When your change is accepted, this PR will close automatically. Don't be alarmed when it closes — that's how it merges, and your authorship is preserved.`;
 }

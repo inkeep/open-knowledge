@@ -462,7 +462,9 @@ describe('applyPatchWithConflictDetection (graceful conflict routing canary)', (
     const body = buildWelcomePublicComment();
 
     expect(body).toContain('Thanks for the contribution!');
-    expect(body).toContain('A maintainer will review your PR.');
+    expect(body).toContain('A maintainer will review your PR if it is a small fix');
+    expect(body).toContain('links an issue a maintainer has accepted');
+    expect(body).toContain('may be closed without review');
     expect(body).toContain('internal mirror');
     expect(body).toContain('authorship is preserved');
     expect(body).not.toContain('Copybara');

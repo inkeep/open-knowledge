@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the suggestion! If this is an open-ended idea worth discussing, [Discord](https://discord.gg/VRKk2EaGHN) is often a better starting place.
+        Thanks for the suggestion! A detailed issue is the main way to contribute to OpenKnowledge: the team builds and reviews the change itself. If this is an open-ended idea worth discussing, [Discord](https://discord.gg/VRKk2EaGHN) is often a better starting place.
   - type: textarea
     id: problem
     attributes:
@@ -18,6 +18,20 @@ body:
     id: proposal
     attributes:
       label: Proposed solution
+    validations:
+      required: false
+  - type: textarea
+    id: done-when
+    attributes:
+      label: What would you see if it worked?
+      description: Describe the behavior that would tell you this is done.
+    validations:
+      required: false
+  - type: textarea
+    id: code-pointers
+    attributes:
+      label: Relevant code
+      description: Files, functions or links to lines you think are involved, with the change described in words. Please don't paste a full patch. If you want to write the change yourself, say so here and wait for a maintainer to accept the issue (a `help wanted` label or an explicit go-ahead for a pull request).
     validations:
       required: false
   - type: dropdown
