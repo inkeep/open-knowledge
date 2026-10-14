@@ -44,8 +44,9 @@ import { isFileishTarget, resolveRootDispatch } from './commands/single-file-dis
 import { createRealSingleFileOpenDeps, runSingleFileOpen } from './commands/single-file-open.ts';
 import { skillsCommand } from './commands/skills.ts';
 import { runStartCommand, startCommand } from './commands/start.ts';
-import { statusCommand } from './commands/status.ts';
+import { type ObservationContext, statusCommand } from './commands/status.ts';
 import { stopCommand } from './commands/stop.ts';
+import { supervisionFormats } from './commands/supervision-formats.ts';
 import { syncCommand } from './commands/sync.ts';
 import { uninstallCommand } from './commands/uninstall.ts';
 import { PACKAGE_VERSION } from './constants.ts';
@@ -56,6 +57,10 @@ import { buildVersionNotice } from './version-notice.ts';
 const program = new Command();
 
 let resolvedConfig: Config;
+let observationContext: ObservationContext = {
+  project: { root: null, resolution: 'unavailable' },
+  failure: null,
+};
 
 program
   .name('open-knowledge')
@@ -70,9 +75,54 @@ program
   )
   .option('--no-color', 'Disable color output')
   .option('--color', 'Force color output')
-  .hook('preAction', (thisCommand) => {
+  .hook('preAction', (thisCommand, actionCommand) => {
     const opts = thisCommand.opts();
     const cwd = opts.cwd as string | undefined;
+    const observationName = actionCommand.name();
+    const selected = supervisionFormats.select(observationName, actionCommand.opts().format);
+    if (selected) {
+      try {
+        if (cwd !== undefined) process.chdir(cwd);
+        if (program.getOptionValueSource('logLevel') === 'cli') {
+          const level = String(program.opts().logLevel);
+          process.env.LOG_LEVEL = level;
+          process.env.OK_CONSOLE_LEVEL = level;
+        }
+        const anchorRoot = resolveProjectAnchor(observationName, process.cwd());
+        if (anchorRoot !== null) {
+          recordInvocationCwd(process.cwd());
+          process.chdir(anchorRoot);
+          console.error(`[ok] Using OpenKnowledge project at ${anchorRoot}`);
+        }
+        observationContext = {
+          project: {
+            root: process.cwd(),
+            resolution: anchorRoot === null ? 'cwd' : 'enclosing-project',
+          },
+          failure: null,
+        };
+        if (!selected.strategy.requiresProjectConfig(selected.command, actionCommand.args)) {
+          initCliLogger({ command: observationName, cwd: process.cwd() });
+          return;
+        }
+        const loaded = loadConfig(anchorRoot ?? cwd);
+        resolvedConfig = loaded.config;
+        for (const key of loaded.ignoredCommittedKeys) {
+          console.error(`[ok] ${formatIgnoredCommittedKey(key)}`);
+        }
+        initCliLogger({
+          command: observationName,
+          cwd: process.cwd(),
+          configuredProjectName: (loaded.config as { project?: { name?: string } }).project?.name,
+        });
+      } catch (error) {
+        observationContext = {
+          project: { root: null, resolution: 'unavailable' },
+          failure: error instanceof Error ? error.message : String(error),
+        };
+      }
+      return;
+    }
     if (cwd !== undefined) {
       process.chdir(cwd);
     }
@@ -175,14 +225,29 @@ program.addCommand(uiTombstone, { hidden: true });
 
 program.addCommand(openCommand());
 
-program.addCommand(stopCommand(() => resolvedConfig));
-program.addCommand(cleanCommand(() => resolvedConfig));
-program.addCommand(statusCommand(() => resolvedConfig));
+program.addCommand(
+  stopCommand(
+    () => resolvedConfig,
+    () => observationContext,
+  ),
+);
+program.addCommand(
+  cleanCommand(
+    () => resolvedConfig,
+    () => observationContext,
+  ),
+);
+program.addCommand(
+  statusCommand(
+    () => resolvedConfig,
+    () => observationContext,
+  ),
+);
 
 program.addCommand(deinitCommand());
 program.addCommand(uninstallCommand());
 
-program.addCommand(psCommand());
+program.addCommand(psCommand(() => observationContext.failure));
 
 program.addCommand(diagnoseCommand());
 

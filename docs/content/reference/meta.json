@@ -5,6 +5,7 @@
     "core-concepts",
     "agentic-search",
     "cli",
+    "server-supervision-json",
     "configuration",
     "mcp",
     "components",

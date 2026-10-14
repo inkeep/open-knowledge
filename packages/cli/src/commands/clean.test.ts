@@ -85,6 +85,47 @@ describe('buildCleanPlan', () => {
 });
 
 describe('runClean', () => {
+  test.each([
+    [missing(), 'nothing-to-clean'],
+    [alive(100, 3001), 'live-retained'],
+    [foreign(), 'ownership-unverified'],
+    [
+      { status: 'unverified-owner', lockPath: '/tmp/server.lock', pid: 100 } as LockState,
+      'ownership-unverified',
+    ],
+    [
+      { status: 'corrupt', lockPath: '/tmp/server.lock', foreignHost: true } as LockState,
+      'ownership-unverified',
+    ],
+    [
+      { status: 'read-error', lockPath: '/tmp/server.lock', error: 'EACCES' } as LockState,
+      'read-failed',
+    ],
+  ] as const)('retains %s with typed %s decision', (state, code) => {
+    const unlinked: string[] = [];
+    const outcome = runClean({
+      lockDir: '/tmp/x',
+      inspect: () => state,
+      unlink: (path) => unlinked.push(path),
+      log: () => {},
+      error: () => {},
+    });
+    expect(outcome.decision.code).toBe(code);
+    expect(unlinked).toEqual([]);
+  });
+
+  test.each([dead(999), corrupt()])('removes stale %s with typed success', (state) => {
+    const unlinked: string[] = [];
+    const outcome = runClean({
+      lockDir: '/tmp/x',
+      inspect: () => state,
+      unlink: (path) => unlinked.push(path),
+      log: () => {},
+      error: () => {},
+    });
+    expect(outcome.decision.code).toBe('stale-removed');
+    expect(unlinked).toEqual([state.lockPath]);
+  });
   test('reports foreign ownership as a refusal instead of claiming no stale locks', () => {
     const logs: string[] = [];
     const errors: string[] = [];

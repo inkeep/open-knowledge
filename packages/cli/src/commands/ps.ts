@@ -1,10 +1,4 @@
-import { basename, dirname } from 'node:path';
-import {
-  formatRelativeAge,
-  LOCAL_DIR,
-  OK_DIR,
-  RELATIVE_TIME_UNKNOWN,
-} from '@inkeep/open-knowledge-core';
+import { formatRelativeAge, RELATIVE_TIME_UNKNOWN } from '@inkeep/open-knowledge-core';
 import { lockAdvertisesUi } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import pc from 'picocolors';
@@ -16,6 +10,11 @@ import {
   processUsage,
 } from '../utils/process-scan.ts';
 import { inspectLock, type LockState } from './lock-state.ts';
+import { projectDirectoryForLockDir } from './ps-observation.ts';
+import type { SupervisionFormatRegistry } from './supervision-format-registry.ts';
+import { supervisionFormats } from './supervision-formats.ts';
+
+export { buildPsV1, psV1Failure } from './ps-v1.ts';
 
 interface PsEntry {
   directory: string | null;
@@ -52,13 +51,6 @@ export function startedCell(isoString: string | null, now = Date.now()): string 
   if (isoString === null) return '—';
   const age = formatRelativeAge(isoString, now);
   return age === RELATIVE_TIME_UNKNOWN ? '—' : age;
-}
-
-function projectDirectoryForLockDir(lockDir: string): string | null {
-  const parent = dirname(lockDir);
-  if (basename(lockDir) === LOCAL_DIR && basename(parent) === OK_DIR) return dirname(parent);
-  if (basename(lockDir) === OK_DIR) return parent;
-  return null;
 }
 
 function buildEntry(
@@ -299,14 +291,36 @@ export async function runPs(deps: RunPsDeps = {}): Promise<void> {
   log(renderTable(filtered));
 }
 
-export function psCommand(): Command {
-  return new Command('ps')
-    .description('List all running open-knowledge servers')
-    .argument('[modifier]', '"all" to include stale (dead-pid) entries')
-    .option('--all', 'Include stale entries (foreign and unverified entries already show)')
-    .option('--json', 'Emit structured JSON (always includes all statuses)')
-    .action(async (modifier: string | undefined, opts: { all?: boolean; json?: boolean }) => {
-      const all = opts.all === true || modifier === 'all';
-      await runPs({ all, json: opts.json === true });
-    });
+export function psCommand(
+  getV1Failure?: () => string | null,
+  registry: SupervisionFormatRegistry = supervisionFormats,
+): Command {
+  return registry
+    .addFormatOption(
+      new Command('ps')
+        .description('List all running open-knowledge servers')
+        .argument('[modifier]', '"all" to include stale (dead-pid) entries')
+        .option('--all', 'Include stale entries (foreign and unverified entries already show)')
+        .option('--json', 'Emit structured JSON (always includes all statuses)'),
+      true,
+    )
+    .action(
+      async (
+        modifier: string | undefined,
+        opts: { all?: boolean; json?: boolean; format?: string },
+      ) => {
+        if (opts.format !== undefined) {
+          await registry.execute(opts.format, {
+            command: 'ps',
+            context: {
+              project: { root: process.cwd(), resolution: 'cwd' },
+              failure: getV1Failure?.() ?? null,
+            },
+          });
+          return;
+        }
+        const all = opts.all === true || modifier === 'all';
+        await runPs({ all, json: opts.json === true });
+      },
+    );
 }
