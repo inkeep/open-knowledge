@@ -258,6 +258,13 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
     return templateContentDocName(folderRel, name);
   }
 
+  const reservedImportTargets = new Set<string>();
+
+  function isTemplateNameTaken(templatesDir: string, name: string): boolean {
+    const filePath = resolve(templatesDir, `${name}.md`);
+    return reservedImportTargets.has(filePath) || existsSync(filePath);
+  }
+
   const handleFolderConfigGet = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -1079,6 +1086,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
   const handleTemplateImport = withValidation(
     TemplateImportRequestSchema,
     async (_req, res, body) => {
+      let reservedTarget: string | undefined;
       try {
         if (ephemeral) {
           errorResponse(
@@ -1195,13 +1203,20 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         );
         if (!validated) return;
 
-        const templateFilePath = resolve(
+        const templatesDir = resolve(
           validated.resolvedContentDir,
           validated.folderRel,
           '.ok',
           'templates',
-          `${name}.md`,
         );
+        if (!body.name) {
+          const baseName = name;
+          for (let suffix = 2; isTemplateNameTaken(templatesDir, name); suffix++) {
+            name = `${baseName}-${suffix}`;
+          }
+        }
+
+        const templateFilePath = resolve(templatesDir, `${name}.md`);
         if (checkSymlinkLeaf(templateFilePath).kind === 'symlink') {
           errorResponse(
             res,
@@ -1221,6 +1236,19 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           )
         )
           return;
+
+        if (isTemplateNameTaken(templatesDir, name)) {
+          errorResponse(
+            res,
+            409,
+            'urn:ok:error:doc-already-exists',
+            `Template "${name}" already exists in "${validated.folderRel || '(root)'}". Choose another name, or edit the existing template instead.`,
+            { handler: 'template-import', detail: 'TEMPLATE_EXISTS' },
+          );
+          return;
+        }
+        reservedImportTargets.add(templateFilePath);
+        reservedTarget = templateFilePath;
 
         const { frontmatter: sourceFmText, body: sourceBody } = stripFrontmatter(sourceContent);
         const cleanFmText = unwrapFrontmatterFences(sourceFmText);
@@ -1346,6 +1374,8 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
             cause: e,
           },
         );
+      } finally {
+        if (reservedTarget !== undefined) reservedImportTargets.delete(reservedTarget);
       }
     },
     { handler: 'template-import', method: 'POST' },
