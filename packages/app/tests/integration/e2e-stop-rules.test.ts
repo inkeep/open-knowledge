@@ -615,7 +615,7 @@ describe('E2E STOP rule — zero allowlist', () => {
     }
   });
 
-  test('no page.waitForTimeout( in tests/{stress,visual,a11y}/*.e2e.ts (AC-3)', () => {
+  test('no page.waitForTimeout( in tests/{stress,a11y}/*.e2e.ts (AC-3)', () => {
     const violations = collectMatches(e2eFiles, (line) => line.includes('page.waitForTimeout('));
     expect(
       violations,
@@ -623,7 +623,7 @@ describe('E2E STOP rule — zero allowlist', () => {
     ).toEqual([]);
   });
 
-  test("no waitUntil: 'networkidle' in tests/{stress,visual,a11y}/*.e2e.ts (AC-4)", () => {
+  test("no waitUntil: 'networkidle' in tests/{stress,a11y}/*.e2e.ts (AC-4)", () => {
     const violations = collectMatches(e2eFiles, (line) =>
       /waitUntil:\s*['"]networkidle['"]/.test(line),
     );
@@ -633,7 +633,7 @@ describe('E2E STOP rule — zero allowlist', () => {
     ).toEqual([]);
   });
 
-  test('no new Promise + setTimeout busy-wait in tests/{stress,visual,a11y}/*.e2e.ts (D-Q14)', () => {
+  test('no new Promise + setTimeout busy-wait in tests/{stress,a11y}/*.e2e.ts (D-Q14)', () => {
     const pattern = /new Promise\(\s*(\w+)\s*=>\s*setTimeout\(\s*\1\s*,/;
     const violations = collectMatches(e2eFiles, (line) => pattern.test(line));
     expect(
@@ -642,7 +642,7 @@ describe('E2E STOP rule — zero allowlist', () => {
     ).toEqual([]);
   });
 
-  test('no page.pause( in tests/{stress,visual,a11y}/*.e2e.ts (D-Q14)', () => {
+  test('no page.pause( in tests/{stress,a11y}/*.e2e.ts (D-Q14)', () => {
     const violations = collectMatches(e2eFiles, (line) => line.includes('page.pause('));
     expect(
       violations,
@@ -650,7 +650,7 @@ describe('E2E STOP rule — zero allowlist', () => {
     ).toEqual([]);
   });
 
-  test("no test.skip(browserName === 'webkit') in tests/{stress,visual,a11y}/*.e2e.ts (AC-5 ratchet)", () => {
+  test("no test.skip(browserName === 'webkit') in tests/{stress,a11y}/*.e2e.ts (AC-5 ratchet)", () => {
     const pattern = /test\.skip\(\s*browserName\s*===\s*['"]webkit['"]/;
     const violations = collectMatches(e2eFiles, (line) => pattern.test(line));
     expect(
@@ -1419,7 +1419,7 @@ describe('E2E STOP rule — zero allowlist', () => {
     ).toEqual([]);
   });
 
-  test('no remote placeholder-image hosts in tests/{stress,visual,a11y} (PRD-8532)', () => {
+  test('no remote placeholder-image hosts in tests/{stress,a11y} (PRD-8532)', () => {
     const violations = collectMatches(e2eTsFiles, isRemoteImageHost);
     expect(
       violations,

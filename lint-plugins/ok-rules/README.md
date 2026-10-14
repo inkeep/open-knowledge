@@ -232,7 +232,7 @@ Rule: [`lint-plugins/ok-rules/rules/class-proof-registration-discipline.mjs`](ru
 
 Flags `expect(await locator.count())` — the one-shot count snapshot that never retries. Under CI CPU contention the DOM settles a few frames after the read, so the assertion flakes while the auto-retrying web-first form `await expect(locator).toHaveCount(n)` passes deterministically (the no-retry read was one of the hidden-flake shapes in the 2026-06 e2e CI audit). The pattern matches the probe sub-expression regardless of the matcher that follows (`.toBe`, `.toEqual`, `.toBeGreaterThanOrEqual`, ...). Upstream precedent: eslint-plugin-playwright `prefer-to-have-count`.
 
-**Scoped** (see the rule's `RULE_SCOPES` entry in [`scope.mjs`](scope.mjs)) to `packages/app/tests/{stress,a11y}/**/*.e2e.ts` (two of the three dirs `tests/integration/e2e-stop-rules.test.ts` source-scans; that scan also covers `tests/visual`, whose spec has no route and awaits deletion) + the fixture. Not workspace-wide: outside Playwright specs, `.count()` is usually not a `Locator` and the web-first rewrite does not apply.
+**Scoped** (see the rule's `RULE_SCOPES` entry in [`scope.mjs`](scope.mjs)) to `packages/app/tests/{stress,a11y}/**/*.e2e.ts` (the two dirs `tests/integration/e2e-stop-rules.test.ts` source-scans) + the fixture. Not workspace-wide: outside Playwright specs, `.count()` is usually not a `Locator` and the web-first rewrite does not apply.
 
 The rule does NOT catch:
 - `expect.soft(await locator.count())` — different callee node shape; zero occurrences today.

@@ -1,10 +1,6 @@
 import { TEST_ONLY_SOURCE_SUFFIXES } from '../../../../test-support/test-only-source-file.mjs';
 
-export const E2E_SCAN_ROOTS = [
-  'packages/app/tests/stress',
-  'packages/app/tests/visual',
-  'packages/app/tests/a11y',
-];
+export const E2E_SCAN_ROOTS = ['packages/app/tests/stress', 'packages/app/tests/a11y'];
 export const APP_SOURCE_ROOT = 'packages/app/src';
 export const APP_SOURCE_EXTENSIONS = ['.ts', '.tsx'];
 export const APP_SOURCE_EXCLUDED_SUFFIXES = [...TEST_ONLY_SOURCE_SUFFIXES, '.spec.ts', '.spec.tsx'];
