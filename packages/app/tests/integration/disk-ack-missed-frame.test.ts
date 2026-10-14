@@ -10,6 +10,7 @@ import {
   createRestartableServer,
   pollDiskContentStable,
   pollUntil,
+  refreshServerInfoAndAwaitMismatch,
 } from './test-harness';
 
 const MARKER = 'T15-MISSED-FRAME-MARKER-9b2e';
@@ -83,7 +84,8 @@ describe('T15: Missed disk-ack frame recovery via /api/server-info', () => {
     server = await server.killAndRestartOnSamePort({ downtimeMs: 300 });
     cleanups.unshift(() => server.shutdown());
 
-    await pollUntil(() => pool.getActive()?.provider !== firstProvider, 10_000, 50);
+    await refreshServerInfoAndAwaitMismatch(pool, `http://127.0.0.1:${server.port}`);
+    expect(pool.getActive()?.provider).not.toBe(firstProvider);
     await pollUntil(() => pool.getActive()?.provider.isSynced === true, 10_000, 50);
     await wait(500);
 

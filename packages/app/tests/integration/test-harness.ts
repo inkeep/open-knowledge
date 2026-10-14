@@ -60,6 +60,7 @@ import {
 import type { ProviderPool } from '../../src/editor/provider-pool';
 import { dispatchCC1Stateless, SYSTEM_DOC_NAME } from '../../src/lib/cc1';
 import { createSyncedReconnectGate, refreshServerInfo } from '../../src/lib/server-info-refresh';
+import { getServerInstanceId } from '../../src/lib/server-instance-store';
 import { getFreePort } from '../free-port.test-helper.ts';
 import {
   removeAllDuringTeardown,
@@ -639,6 +640,31 @@ export async function pollUntil(
       ? `pollUntil timed out after ${timeoutMs}ms`
       : `pollUntil timed out after ${timeoutMs}ms waiting for ${what}`,
   );
+}
+
+export async function refreshServerInfoAndAwaitMismatch(
+  pool: ProviderPool,
+  baseUrl: string,
+): Promise<void> {
+  const res = await fetch(`${baseUrl}/api/server-info`);
+  if (!res.ok) {
+    throw new Error(`refreshServerInfoAndAwaitMismatch: /api/server-info returned ${res.status}`);
+  }
+  const { serverInstanceId } = ServerInfoSuccessSchema.parse(await res.json());
+  await refreshServerInfo(pool, baseUrl);
+  const adopted = getServerInstanceId();
+  if (adopted !== serverInstanceId) {
+    throw new Error(
+      `refreshServerInfoAndAwaitMismatch: refreshServerInfo did not adopt server instance ${serverInstanceId} from ${baseUrl}/api/server-info (store holds ${adopted})`,
+    );
+  }
+  const poolInstanceId = await pool.whenServerInstanceKnown();
+  if (poolInstanceId !== serverInstanceId) {
+    throw new Error(
+      `refreshServerInfoAndAwaitMismatch: pool holds server instance ${poolInstanceId} after refreshServerInfo, expected ${serverInstanceId}`,
+    );
+  }
+  await pool.awaitMismatchSettled();
 }
 
 export async function awaitFileWatcherIndexed(

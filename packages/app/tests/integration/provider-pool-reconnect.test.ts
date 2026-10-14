@@ -12,6 +12,7 @@ import {
   pollDiskContentStable,
   pollUntil,
   type RestartableServer,
+  refreshServerInfoAndAwaitMismatch,
   seedPoolServerInstanceId,
 } from './test-harness';
 
@@ -194,10 +195,9 @@ describe('ProviderPool reconnects', () => {
     server = await server.killAndRestartOnSamePort({ downtimeMs: 4500 });
     cleanups.unshift(() => server.shutdown());
 
-    await pollUntil(() => pool.getActive()?.provider !== firstProvider, 10_000, 50);
-    await pollUntil(() => pool.getActive()?.provider.isSynced === true, 10_000, 50);
-
+    await refreshServerInfoAndAwaitMismatch(pool, `http://127.0.0.1:${server.port}`);
     expect(pool.getActive()?.provider).not.toBe(firstProvider);
+    await pollUntil(() => pool.getActive()?.provider.isSynced === true, 10_000, 50);
 
     const afterRestart = await pollDiskContentStable(
       join(server.contentDir, 'test-doc.md'),

@@ -9,6 +9,7 @@ import {
   createRestartableServer,
   createTestClient,
   pollUntil,
+  refreshServerInfoAndAwaitMismatch,
   schema,
   seedPoolServerInstanceId,
 } from './test-harness';
@@ -76,7 +77,8 @@ describe('restart-with-embed-doc: server restart preserves single PM image with 
 
     server = await server.killAndRestartOnSamePort({ downtimeMs: 400 });
     cleanups.unshift(() => server.shutdown());
-    await pollUntil(() => pool.getActive()?.provider !== previousProvider, 15_000, 50);
+    await refreshServerInfoAndAwaitMismatch(pool, `http://127.0.0.1:${server.port}`);
+    expect(pool.getActive()?.provider).not.toBe(previousProvider);
     try {
       await pollUntil(
         () => {
