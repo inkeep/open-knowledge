@@ -542,3 +542,66 @@ test('docked graph clicks still navigate immediately with anchor-preserving hash
   expect(await clickGraphDoc(page, fixtures.beta)).toBe(true);
   await expect(page).toHaveURL(new RegExp(`#/${escapeRegExp(fixtures.beta)}#deep-link$`));
 });
+
+async function fetchLinkGraphNodes(baseURL: string) {
+  const response = await fetch(`${baseURL}/api/link-graph`);
+  const data: {
+    nodes?: Array<{ kind?: string; docName?: string; url?: string; label?: string }>;
+  } = await response.json();
+  return data.nodes ?? [];
+}
+
+async function expectGraphNodeTooltipText(page: Page, nodeKey: string, text: string) {
+  const tooltip = page.locator('.float-tooltip-kap');
+  await expect(async () => {
+    const point = await getGraphNodeClickPoint(page, nodeKey);
+    if (!point) {
+      throw new Error(`Expected a hover point for graph node ${nodeKey}`);
+    }
+    await page.mouse.move(0, 0);
+    await getGraphSurface(page).hover({ position: point, force: true });
+    await expect(tooltip).toHaveText(text, { timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+  await expect(tooltip.locator('*')).toHaveCount(0);
+}
+
+test('graph node tooltips show a markup document title as text', async ({ page, api, baseURL }) => {
+  const fixtures = await seedGraphFixtures(api, baseURL);
+  const title = `<i>Zeta ${fixtures.suffix}</i>`;
+  await api.replaceDoc(fixtures.zeta, `# ${title}\n\n[[${fixtures.beta}]]`);
+  await expect
+    .poll(
+      async () =>
+        (await fetchLinkGraphNodes(baseURL)).find((node) => node.docName === fixtures.zeta)?.label,
+      { timeout: 10_000, intervals: [200, 500, 1000] },
+    )
+    .toBe(title);
+
+  await openGraph(page, { docName: fixtures.alpha, fullscreen: true });
+  await waitForGraphNode(page, fixtures.zeta);
+  await waitForGraphSimulationSettled(page);
+
+  await expectGraphNodeTooltipText(page, fixtures.zeta, title);
+});
+
+test('graph external node tooltips show a markup URL as text', async ({ page, api, baseURL }) => {
+  const fixtures = await seedGraphFixtures(api, baseURL);
+  const url = `https://example.com/${fixtures.suffix}<i>docs</i>`;
+  await api.replaceDoc(fixtures.alpha, `# Alpha\n\n[[${fixtures.beta}]]\n\n[Example](${url})`);
+  await expect
+    .poll(
+      async () =>
+        (await fetchLinkGraphNodes(baseURL)).some(
+          (node) => node.kind === 'external' && node.url === url,
+        ),
+      { timeout: 10_000, intervals: [200, 500, 1000] },
+    )
+    .toBe(true);
+
+  await openGraph(page, { docName: fixtures.alpha, fullscreen: true });
+  await page.getByLabel('Show external URL nodes').click();
+  await waitForGraphNodeClickPoint(page, url);
+  await waitForGraphSimulationSettled(page);
+
+  await expectGraphNodeTooltipText(page, url, url);
+});

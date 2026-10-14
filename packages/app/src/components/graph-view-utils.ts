@@ -201,12 +201,12 @@ export function getGraphNodeTooltipLabel(
     displayState?: GraphDocDisplayState;
   } = {},
 ): string {
-  if (node.kind === 'external') return node.url;
+  if (node.kind === 'external') return escapeHtml(node.url);
 
   const title = node.label ?? node.id;
   const displayState = options.displayState ?? 'doc';
   const hasMetadata = node.cluster || node.category || (node.tags && node.tags.length > 0);
-  if (displayState === 'doc' && !hasMetadata) return title;
+  if (displayState === 'doc' && !hasMetadata) return escapeHtml(title);
 
   const lines: string[] = [
     ...getGraphNodeTooltipStatusLines(displayState),
