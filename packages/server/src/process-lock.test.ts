@@ -730,6 +730,17 @@ describe('channel metadata (one writer per project across channels)', () => {
     expect(detailed.status === 'live' ? detailed.lock.channel : null).toBe('beta');
   });
 
+  test('a dev build records the dev channel, not Stable', () => {
+    vi.stubEnv('OK_CHANNEL', 'dev');
+    acquireProcessLock({
+      lockName: LOCK_NAME,
+      lockDir,
+      metadata: { port: 3000, worktreeRoot: '/me' },
+    });
+    const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
+    expect(md.channel).toBe('dev');
+  });
+
   test('a lock with no channel reads back without one, and a channel this build does not know is kept', () => {
     mkdirSync(lockDir, { recursive: true });
     for (const channel of [undefined, 'cloud']) {

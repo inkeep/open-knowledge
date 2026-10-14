@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { DESKTOP_PRODUCTS } from './constants/product.ts';
+import { DESKTOP_PRODUCTS, PACKAGED_DESKTOP_PRODUCT_NAMES } from './constants/product.ts';
 import {
   HELPER_BUNDLE_NAME,
   HELPER_EXECUTABLE_NAME,
@@ -30,7 +30,7 @@ describe('resolveHelperBundleBinary', () => {
     );
   });
 
-  test.each(Object.values(DESKTOP_PRODUCTS))(
+  test.each(PACKAGED_DESKTOP_PRODUCT_NAMES.map((name) => DESKTOP_PRODUCTS[name]))(
     'matches the layout afterPack writes for $productName',
     ({ productName }) => {
       const app = `/Applications/${productName}.app`;

@@ -25,7 +25,9 @@ import {
   LocalOpEmbeddingsTestResponseSchema,
   LocalOpOkInitRequestSchema,
   LocalOpOkInitResponseSchema,
+  OkCliCommand,
   okUserHomeDisplayPath,
+  type ProblemType,
 } from '@inkeep/open-knowledge-core';
 import { resolveGitDirDetailed } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import {
@@ -97,7 +99,7 @@ export interface LocalOpRouteDeps {
     res: ServerResponse,
     opts: { handler: string },
   ) => boolean;
-  localOpCliArgs: string[];
+  localOpCliArgs: readonly string[] | undefined;
   localOpGuard: ConcurrencyGuard;
   getSyncEngine: (() => SyncEngine | null) | undefined;
   authStreamHeartbeatMs: number | undefined;
@@ -122,6 +124,21 @@ export function createLocalOpRoutes(
     readSemanticProviderConfig,
     semanticSearch,
   } = deps;
+  const okCli = OkCliCommand.resolve({
+    host: localOpCliArgs === undefined ? undefined : { cliArgs: localOpCliArgs },
+  });
+
+  function rejectDevFallback(
+    res: ServerResponse,
+    handler: string,
+    type: ProblemType,
+    command: readonly string[],
+  ): boolean {
+    const refused = okCli.refusalFor(command);
+    if (refused === undefined) return false;
+    errorResponse(res, 409, type, 'This dev build has no built CLI.', { handler, detail: refused });
+    return true;
+  }
   const subprocessLifetime = new LocalOpSubprocessLifetime();
   const resolveGhBinaryPath = createGhBinaryPathResolver(subprocessLifetime);
 
@@ -148,6 +165,9 @@ export function createLocalOpRoutes(
     body: LocalOpCloneRequest,
   ): Promise<void> {
     const { url, dir, branch } = body;
+    if (rejectDevFallback(res, HANDLE_LOCAL_OP_CLONE, 'urn:ok:error:clone-failed', ['clone'])) {
+      return;
+    }
 
     if (!isAllowedGitUrl(url)) {
       errorResponse(
@@ -193,7 +213,7 @@ export function createLocalOpRoutes(
     let cloneCompleteDir: string | null = null;
 
     const flow = runCloneSubprocess({
-      cliArgs: localOpCliArgs,
+      cli: okCli,
       url,
       dir,
       branch,
@@ -293,17 +313,18 @@ export function createLocalOpRoutes(
     if (existing === 'no-ui') return { error: SERVER_WITHOUT_UI_ERROR };
     if (existing !== null) return { port: existing };
 
-    const [cmd, ...baseArgs] = localOpCliArgs;
+    const startInvocation = okCli.spawn(['start'], { ...process.env, OK_LOCK_KIND: 'interactive' });
+    if ('refused' in startInvocation) return { error: startInvocation.refused };
 
     const spawnAndAwaitServer = async (): Promise<{ port: number } | { error: string }> => {
       const child = spawn(
-        cmd,
-        [...baseArgs, 'start'],
+        startInvocation.command,
+        startInvocation.args,
         withHiddenWindowsConsole({
           ...LOCAL_OP_STDERR_ONLY_OPTIONS,
           cwd: absDir,
           detached: true,
-          env: { ...process.env, OK_LOCK_KIND: 'interactive' },
+          env: startInvocation.env,
         }),
       );
 
@@ -702,6 +723,14 @@ export function createLocalOpRoutes(
     if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_LOGIN)) return;
     const host = resolveAuthHost(res, HANDLE_LOCAL_OP_AUTH_LOGIN, body.host);
     if (host === null) return;
+    if (
+      rejectDevFallback(res, HANDLE_LOCAL_OP_AUTH_LOGIN, 'urn:ok:error:auth-failed', [
+        'auth',
+        'login',
+      ])
+    ) {
+      return;
+    }
     streamAuthFlow({
       res,
       handler: HANDLE_LOCAL_OP_AUTH_LOGIN,
@@ -712,7 +741,7 @@ export function createLocalOpRoutes(
       makeFlow: (onEvent) =>
         runDeviceFlowSubprocess({
           lifetime: subprocessLifetime,
-          cliArgs: localOpCliArgs,
+          cli: okCli,
           cwd: authProjectDir,
           host,
           timeoutMs: AUTH_DEVICE_FLOW_TIMEOUT_MS,
@@ -826,17 +855,17 @@ export function createLocalOpRoutes(
 
       const finish = subprocessLifetime.begin();
       try {
-        const [cmd, ...baseArgs] = localOpCliArgs;
-        const spawnArgs = [...baseArgs, 'auth', 'status', '--json', '--host', host];
+        const invocation = okCli.spawn(['auth', 'status', '--json', '--host', host], process.env);
+        if ('refused' in invocation) throw new Error(invocation.refused);
 
         const output = await new Promise<string>((resolve, reject) => {
           const child = subprocessLifetime.spawn(() =>
             spawn(
-              cmd,
-              spawnArgs,
+              invocation.command,
+              invocation.args,
               withHiddenWindowsConsole({
                 ...LOCAL_OP_PIPE_STDIO_OPTIONS,
-                env: { ...process.env },
+                env: invocation.env,
                 cwd: authProjectDir,
               }),
             ),
@@ -930,6 +959,14 @@ export function createLocalOpRoutes(
       if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_PAT)) return;
       const host = resolveAuthHost(res, HANDLE_LOCAL_OP_AUTH_PAT, body.host);
       if (host === null) return;
+      if (
+        rejectDevFallback(res, HANDLE_LOCAL_OP_AUTH_PAT, 'urn:ok:error:auth-failed', [
+          'auth',
+          'pat',
+        ])
+      ) {
+        return;
+      }
 
       if (!localOpGuard.tryAcquire(LOCAL_OP_AUTH_PAT_KEY)) {
         errorResponse(
@@ -946,7 +983,7 @@ export function createLocalOpRoutes(
       try {
         const result = await runPatSubprocess({
           lifetime: subprocessLifetime,
-          cliArgs: localOpCliArgs,
+          cli: okCli,
           cwd: authProjectDir,
           host,
           token: body.token,
@@ -990,6 +1027,14 @@ export function createLocalOpRoutes(
     LocalOpAuthTokenRequestSchema,
     async (_req, res, body) => {
       if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_TOKEN)) return;
+      if (
+        rejectDevFallback(res, HANDLE_LOCAL_OP_AUTH_TOKEN, 'urn:ok:error:auth-failed', [
+          'auth',
+          'token',
+        ])
+      ) {
+        return;
+      }
       if (!localOpGuard.tryAcquire(LOCAL_OP_AUTH_TOKEN_KEY)) {
         errorResponse(
           res,
@@ -1005,7 +1050,7 @@ export function createLocalOpRoutes(
       try {
         const result = await runAuthTokenSubprocess({
           lifetime: subprocessLifetime,
-          cliArgs: localOpCliArgs,
+          cli: okCli,
           host: body.host,
           username: body.username,
           token: body.token,
@@ -1084,8 +1129,8 @@ export function createLocalOpRoutes(
 
     const writeStreamError = createStreamingErrorWriter(res, HANDLE_LOCAL_OP_AUTH_REPOS);
 
-    const [cmd, ...baseArgs] = localOpCliArgs;
-    const spawnArgs = [...baseArgs, 'auth', 'repos', '--json', '--host', host];
+    const invocation = okCli.spawn(['auth', 'repos', '--json', '--host', host], process.env);
+    if ('refused' in invocation) throw new Error(invocation.refused);
 
     let settled = false;
     let stdoutBuffer = '';
@@ -1094,11 +1139,11 @@ export function createLocalOpRoutes(
       try {
         return subprocessLifetime.spawn(() =>
           spawn(
-            cmd,
-            spawnArgs,
+            invocation.command,
+            invocation.args,
             withHiddenWindowsConsole({
               ...LOCAL_OP_PIPE_STDIO_OPTIONS,
-              env: { ...process.env },
+              env: invocation.env,
               cwd: authProjectDir,
             }),
           ),
@@ -1214,6 +1259,14 @@ export function createLocalOpRoutes(
       if (rejectShuttingDown(res, HANDLE_LOCAL_OP_AUTH_SIGNOUT)) return;
       const host = body.host ?? resolveAuthHost(res, HANDLE_LOCAL_OP_AUTH_SIGNOUT, undefined);
       if (host === null) return;
+      if (
+        rejectDevFallback(res, HANDLE_LOCAL_OP_AUTH_SIGNOUT, 'urn:ok:error:auth-failed', [
+          'auth',
+          'signout',
+        ])
+      ) {
+        return;
+      }
 
       if (!localOpGuard.tryAcquire(LOCAL_OP_AUTH_SIGNOUT_KEY)) {
         errorResponse(
@@ -1228,17 +1281,17 @@ export function createLocalOpRoutes(
 
       const finish = subprocessLifetime.begin();
       try {
-        const [cmd, ...baseArgs] = localOpCliArgs;
-        const spawnArgs = [...baseArgs, 'auth', 'signout', '--host', host];
+        const invocation = okCli.spawn(['auth', 'signout', '--host', host], process.env);
+        if ('refused' in invocation) throw new Error(invocation.refused);
 
         await new Promise<void>((resolve, reject) => {
           const child = subprocessLifetime.spawn(() =>
             spawn(
-              cmd,
-              spawnArgs,
+              invocation.command,
+              invocation.args,
               withHiddenWindowsConsole({
                 ...LOCAL_OP_IGNORED_STDIO_OPTIONS,
-                env: { ...process.env },
+                env: invocation.env,
                 cwd: authProjectDir,
               }),
             ),

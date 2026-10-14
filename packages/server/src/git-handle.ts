@@ -1,11 +1,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, resolve } from 'node:path';
-import {
-  augmentGitSpawnPath,
-  OK_CHANNEL_ENV,
-  resolveDesktopProductName,
-} from '@inkeep/open-knowledge-core';
+import { augmentGitSpawnPath, OkCliCommand } from '@inkeep/open-knowledge-core';
 import simpleGit, { type SimpleGit, type SimpleGitOptions } from 'simple-git';
 import { shellEscape } from './bash/shell-escape.ts';
 
@@ -138,10 +134,9 @@ export function buildSyncCredentialConfig(
   localOpCliArgs: string[] | undefined,
   opts: { resetAmbient: boolean },
 ): string[] {
-  const argv = localOpCliArgs && localOpCliArgs.length > 0 ? localOpCliArgs : ['open-knowledge'];
-  const cliPrefix = argv.map(shellEscape).join(' ');
-  const channel = resolveDesktopProductName();
-  const channelPin = channel === 'stable' ? '' : `${OK_CHANNEL_ENV}=${channel} `;
-  const helper = `credential.helper=!${channelPin}${cliPrefix} auth git-credential`;
+  const cli = OkCliCommand.resolve({
+    host: localOpCliArgs === undefined ? undefined : { cliArgs: localOpCliArgs },
+  });
+  const helper = `credential.helper=!${cli.shellCommand(['auth', 'git-credential'], shellEscape)}`;
   return opts.resetAmbient ? ['credential.helper=', helper] : [helper];
 }

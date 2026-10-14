@@ -327,7 +327,7 @@ describe('detectDesktop — unsupported channel override', () => {
     });
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith(
-      `Treating this CLI as OpenKnowledge (Stable) for this command: Unsupported ${OK_CHANNEL_ENV}="nightly". Expected stable or beta.`,
+      `Treating this CLI as OpenKnowledge (Stable) for this command: Unsupported ${OK_CHANNEL_ENV}="nightly". Expected stable or beta or dev.`,
     );
   });
 
@@ -349,7 +349,7 @@ describe('detectDesktop — unsupported channel override', () => {
       cliProduct: 'beta',
     });
     expect(warn).toHaveBeenCalledWith(
-      `Treating this CLI as OpenKnowledge Beta for this command: Unsupported ${OK_CHANNEL_ENV}="nightly". Expected stable or beta.`,
+      `Treating this CLI as OpenKnowledge Beta for this command: Unsupported ${OK_CHANNEL_ENV}="nightly". Expected stable or beta or dev.`,
     );
   });
 
@@ -358,6 +358,23 @@ describe('detectDesktop — unsupported channel override', () => {
     const result = detectDesktop(baseDeps({ env: { [OK_CHANNEL_ENV]: 'beta' }, warn }));
     expect(result.cliProduct).toBe('beta');
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('detectDesktop — dev channel', () => {
+  test('a dev-channel CLI never probes for a dev app, which is never packaged', () => {
+    const probed: string[] = [];
+    const result = detectDesktop(
+      baseDeps({
+        env: { [OK_CHANNEL_ENV]: 'dev' },
+        statSync: (p) => {
+          probed.push(p);
+          return p === APP_EXEC ? { isFile: () => true, isDirectory: () => false } : null;
+        },
+      }),
+    );
+    expect(result).toMatchObject({ available: true, product: 'stable', cliProduct: 'dev' });
+    expect(probed.filter((p) => p.includes('OpenKnowledge Dev'))).toEqual([]);
   });
 });
 

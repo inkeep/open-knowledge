@@ -1,3 +1,4 @@
+import { OkCliCommand } from '@inkeep/open-knowledge-core';
 import type { CloneEvent } from '@inkeep/open-knowledge-server';
 import { describe, expect, test, vi } from 'vitest';
 
@@ -49,7 +50,7 @@ function makeSender(captured: CapturedSend[]) {
 
 function makeDeps() {
   return {
-    resolveCliInvocation: () => ({ cliArgs: ['open-knowledge'] }),
+    resolveOkCli: () => OkCliCommand.resolve({ host: { cliArgs: ['open-knowledge'] }, env: {} }),
     logFailure: vi.fn(),
     state: createLocalOpState(),
   };

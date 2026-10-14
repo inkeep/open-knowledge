@@ -4,6 +4,7 @@ import {
   EmptyRequestSchema,
   encodeShareUrl,
   InvalidShareUrlError,
+  OkCliCommand,
   parseCanonicalGitHubShareUrl,
   ShareConstructUrlRequestSchema,
   ShareConstructUrlResponseSchema,
@@ -74,7 +75,7 @@ export interface ShareRouteDeps {
     res: ServerResponse,
     opts: { handler: string },
   ) => boolean;
-  localOpCliArgs: string[];
+  localOpCliArgs: readonly string[] | undefined;
   localOpGuard: ConcurrencyGuard;
   getSyncEngine: (() => SyncEngine | null) | undefined;
   resolveCredentialConfig: () => Promise<string[]>;
@@ -94,6 +95,9 @@ export function createShareRoutes(deps: ShareRouteDeps): ApiRouteGroup {
     toGitRelativePath,
   } = deps;
   const declaredGitHubHosts = deps.declaredGitHubHosts ?? readDeclaredGitHubHosts();
+  const okCli = OkCliCommand.resolve({
+    host: localOpCliArgs === undefined ? undefined : { cliArgs: localOpCliArgs },
+  });
 
   const handleShareConstructUrl = withValidation(
     ShareConstructUrlRequestSchema,
@@ -336,15 +340,15 @@ export function createShareRoutes(deps: ShareRouteDeps): ApiRouteGroup {
   async function spawnShareSubprocess(
     args: readonly string[],
   ): Promise<{ stdout: string; code: number | null }> {
-    const [cmd, ...baseArgs] = localOpCliArgs;
-    const spawnArgs = [...baseArgs, ...args];
+    const invocation = okCli.spawn(args, process.env);
+    if ('refused' in invocation) throw new Error(invocation.refused);
     return await new Promise<{ stdout: string; code: number | null }>((resolveSpawn, reject) => {
       const child = spawn(
-        cmd,
-        spawnArgs,
+        invocation.command,
+        invocation.args,
         withHiddenWindowsConsole({
           ...LOCAL_OP_PIPE_STDIO_OPTIONS,
-          env: { ...process.env },
+          env: invocation.env,
         }),
       );
       let settled = false;

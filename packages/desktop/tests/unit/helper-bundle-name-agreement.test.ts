@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DESKTOP_PRODUCTS, desktopWindowsExecutableName } from '@inkeep/open-knowledge-core';
+import {
+  DESKTOP_PRODUCTS,
+  desktopWindowsExecutableName,
+  PACKAGED_DESKTOP_PRODUCT_NAMES,
+} from '@inkeep/open-knowledge-core';
 import {
   HELPER_BUNDLE_NAME,
   HELPER_EXECUTABLE_NAME,
@@ -121,7 +125,7 @@ describe('helper-bundle name agreement across spawn site / Info.plist / afterPac
     const cmd = readFileSync(okCmdPath, 'utf8');
     const ps1 = readFileSync(okPs1Path, 'utf8');
     const linux = readFileSync(okLinuxPath, 'utf8');
-    for (const product of Object.values(DESKTOP_PRODUCTS)) {
+    for (const product of PACKAGED_DESKTOP_PRODUCT_NAMES.map((name) => DESKTOP_PRODUCTS[name])) {
       expect(cmd).toContain(`"${desktopWindowsExecutableName(product)}"`);
       expect(ps1).toContain(`'${desktopWindowsExecutableName(product)}'`);
       expect(linux).toContain(product.linuxExecutableName);

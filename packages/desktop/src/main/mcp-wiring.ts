@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import {
   buildMcpConfigDeclineEvent,
   buildMcpConfigMigrateEvent,
+  canonicalEntryFor,
   droppedManagedKeys,
   type EditorMcpTarget,
   editorConfigPathDisplay,
@@ -324,7 +325,7 @@ export function checkAndRepairMcpWiringOnStartup(
           logger.event({ event: 'mcp-wiring-repair-unsupported-format', severity: 'warn', editor });
           continue;
         }
-        const dropped = droppedManagedKeys(classification.entry, target.buildEntry('', {}));
+        const dropped = droppedManagedKeys(classification.entry, canonicalEntryFor(target, ''));
         if (dropped.length === 0) {
           logger.event({ event: 'mcp-wiring-repair-healthy-current', severity: 'info', editor });
           continue;

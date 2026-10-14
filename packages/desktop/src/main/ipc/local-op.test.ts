@@ -1,9 +1,13 @@
+import { DEV_FALLBACK_CLI_REFUSAL, OkCliCommand } from '@inkeep/open-knowledge-core';
 import type { AuthReposResponse, AuthStatusResponse } from '@inkeep/open-knowledge-server';
 import { describe, expect, test, vi } from 'vitest';
 
 const statusCalls: Array<{ host: string | undefined; resolve: (r: AuthStatusResponse) => void }> =
   [];
 const reposCalls: Array<{ host: string | undefined; resolve: (r: AuthReposResponse) => void }> = [];
+
+const cloneSpawn = vi.fn(() => ({ done: Promise.resolve(), cancel: () => {} }));
+const deviceFlowSpawn = vi.fn(() => ({ done: Promise.resolve(), cancel: () => {} }));
 
 vi.doMock('@inkeep/open-knowledge-server', () => ({
   runAuthStatusSubprocess: ({ host }: { host?: string }) =>
@@ -14,16 +18,17 @@ vi.doMock('@inkeep/open-knowledge-server', () => ({
     new Promise<AuthReposResponse>((resolve) => {
       reposCalls.push({ host, resolve });
     }),
-  runCloneSubprocess: () => ({ done: Promise.resolve(), cancel: () => {} }),
-  runDeviceFlowSubprocess: () => ({ done: Promise.resolve(), cancel: () => {} }),
+  runCloneSubprocess: cloneSpawn,
+  runDeviceFlowSubprocess: deviceFlowSpawn,
   validateCloneInputs: () => ({ ok: true }),
 }));
 
-const { createLocalOpState, handleAuthRepos, handleAuthStatus } = await import('./local-op.ts');
+const { createLocalOpState, handleAuthRepos, handleAuthStart, handleAuthStatus, handleCloneStart } =
+  await import('./local-op.ts');
 
 function makeDeps() {
   return {
-    resolveCliInvocation: () => ({ cliArgs: ['open-knowledge'] }),
+    resolveOkCli: () => OkCliCommand.resolve({ host: { cliArgs: ['open-knowledge'] }, env: {} }),
     logFailure: vi.fn(),
     state: createLocalOpState(),
   };
@@ -143,5 +148,50 @@ describe('handleAuthRepos — coalescing + concurrency cap', () => {
     }
     await Promise.all(inFlight);
     expect(deps.state.authReposInFlight.size).toBe(0);
+  });
+});
+
+describe('handleAuthStart on a dev build without its workspace CLI', () => {
+  test('answers the sign-in request with the refusal, which the renderer shows as the error', () => {
+    deviceFlowSpawn.mockClear();
+    const deps = {
+      ...makeDeps(),
+      resolveOkCli: () => OkCliCommand.resolve({ env: { OK_CHANNEL: 'dev' } }),
+    };
+    const sender = { send: vi.fn(), isDestroyed: () => false };
+    expect(handleAuthStart(deps, sender)).toEqual({ ok: false, error: DEV_FALLBACK_CLI_REFUSAL });
+    expect(deviceFlowSpawn).not.toHaveBeenCalled();
+    expect(deps.state.authInFlight).toBeNull();
+  });
+
+  test('starts the flow when the dev build has its workspace CLI', () => {
+    deviceFlowSpawn.mockClear();
+    const deps = {
+      ...makeDeps(),
+      resolveOkCli: () =>
+        OkCliCommand.resolve({
+          host: { cliArgs: ['node', '/src/cli.mjs'] },
+          env: { OK_CHANNEL: 'dev' },
+        }),
+    };
+    const sender = { send: vi.fn(), isDestroyed: () => false };
+    expect(handleAuthStart(deps, sender)).toMatchObject({ ok: true });
+    expect(deviceFlowSpawn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('handleCloneStart on a dev build without its workspace CLI', () => {
+  test('answers the clone request with the refusal and clones nothing', () => {
+    cloneSpawn.mockClear();
+    const deps = {
+      ...makeDeps(),
+      resolveOkCli: () => OkCliCommand.resolve({ env: { OK_CHANNEL: 'dev' } }),
+    };
+    const sender = { send: vi.fn(), isDestroyed: () => false };
+    expect(
+      handleCloneStart(deps, sender, { url: 'https://github.com/o/r.git', dir: '/tmp/r' }),
+    ).toEqual({ ok: false, error: DEV_FALLBACK_CLI_REFUSAL });
+    expect(cloneSpawn).not.toHaveBeenCalled();
+    expect(deps.state.cloneInFlight).toBeNull();
   });
 });

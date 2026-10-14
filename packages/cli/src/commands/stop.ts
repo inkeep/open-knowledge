@@ -1,6 +1,8 @@
 import { resolve } from 'node:path';
 import {
+  CHECKOUT_CLI_COMMAND,
   currentCliCommandName,
+  DEV_CHANNEL,
   desktopChannelLabel,
   resolveDesktopProductName,
 } from '@inkeep/open-knowledge-core';
@@ -95,7 +97,7 @@ interface RunStopDeps {
   error?: (msg: string) => void;
   probeClients?: (lockDir: string, logger?: PinoLoggerInstance) => Promise<number | null>;
   logger?: PinoLoggerInstance;
-  selfChannel?: 'stable' | 'beta';
+  selfChannel?: 'stable' | 'beta' | 'dev';
 }
 
 interface StopOutcome {
@@ -143,7 +145,9 @@ export async function runStop(deps: RunStopDeps): Promise<StopOutcome> {
     if (self !== undefined && holder !== self) {
       error(
         `Not stopping: the server at ${deps.lockDir} belongs to ${desktopChannelLabel(holder)}. ` +
-          'Stop it from that app or its CLI, or re-run with --force to terminate anyway.',
+          (holder === DEV_CHANNEL
+            ? `Stop it from that dev build, or run \`${CHECKOUT_CLI_COMMAND} stop\` with OK_CHANNEL=dev set, or re-run with --force to terminate anyway.`
+            : 'Stop it from that app or its CLI, or re-run with --force to terminate anyway.'),
       );
       logger?.warn(
         {
@@ -278,7 +282,7 @@ export function stopCommand(getConfig: () => Config): Command {
     .argument('[target...]', 'port number, directory path (spaces OK), or "all"')
     .option(
       '--force',
-      'Stop even when the server belongs to another OpenKnowledge app (Stable or Beta) or editor windows or agents are still connected to it',
+      'Stop even when the server belongs to another OpenKnowledge app (Stable, Beta or a dev build run from source) or editor windows or agents are still connected to it',
     )
     .action(async (parts: string[], options: { force?: boolean }) => {
       const force = options.force === true;

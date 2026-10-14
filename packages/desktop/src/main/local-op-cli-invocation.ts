@@ -1,6 +1,12 @@
 import { win32 } from 'node:path';
-import type { LocalOpCliInvocation } from '@inkeep/open-knowledge-server';
+import {
+  type HostCliInvocation,
+  isDevChannel,
+  OkCliCommand,
+} from '@inkeep/open-knowledge-core/constants/product';
 import { wrapperPathInBundle } from './bundle-paths.ts';
+
+export type { HostCliInvocation };
 
 export interface ResolveLocalOpCliInvocationInput {
   readonly platform: NodeJS.Platform;
@@ -8,6 +14,8 @@ export interface ResolveLocalOpCliInvocationInput {
   readonly execPath: string;
   readonly resourcesPath: string;
   readonly parentEnv: Readonly<Record<string, string | undefined>>;
+  readonly workspaceCliEntry: string;
+  readonly workspaceCliBuilt: boolean;
 }
 
 function bundledCliEntryOnWindows(resourcesPath: string): string {
@@ -16,9 +24,10 @@ function bundledCliEntryOnWindows(resourcesPath: string): string {
 
 export function resolveLocalOpCliInvocation(
   input: ResolveLocalOpCliInvocationInput,
-): LocalOpCliInvocation {
+): HostCliInvocation | undefined {
   if (!input.isPackaged) {
-    return { cliArgs: ['open-knowledge'] };
+    if (!isDevChannel(input.parentEnv)) return { cliArgs: ['open-knowledge'] };
+    return input.workspaceCliBuilt ? { cliArgs: ['node', input.workspaceCliEntry] } : undefined;
   }
   if (input.platform === 'win32') {
     const nodeOptions = input.parentEnv.NODE_OPTIONS;
@@ -34,11 +43,18 @@ export function resolveLocalOpCliInvocation(
   return { cliArgs: [wrapperPathInBundle(input.execPath, input.platform)] };
 }
 
-export function resolveLocalOpCliArgsForUtilityFork(invocation: LocalOpCliInvocation): string[] {
+export function resolveLocalOpCliArgsForUtilityFork(invocation: HostCliInvocation): string[] {
   if (invocation.cliEnv !== undefined) {
     throw new Error(
       'local-op CLI invocation carries a cliEnv overlay that bare argv would drop; the utility-fork path cannot run this invocation',
     );
   }
   return [...invocation.cliArgs];
+}
+
+export function mainProcessOkCli(
+  invocation: HostCliInvocation | undefined,
+  env: Readonly<Record<string, string | undefined>>,
+): OkCliCommand {
+  return OkCliCommand.resolve({ host: invocation, env });
 }

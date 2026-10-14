@@ -44,7 +44,7 @@ export function httpCloneTransport(): CloneTransport {
                 const body = (await res.json()) as unknown;
                 const result = ProblemDetailsSchema.safeParse(body);
                 if (result.success) {
-                  const title = result.data.title;
+                  const title = result.data.detail || result.data.title;
                   message = t`Clone failed: ${title}`;
                 }
               } catch {}

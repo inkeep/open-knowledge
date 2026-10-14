@@ -1,6 +1,7 @@
 import { EMPTY_DETECTION_SNAPSHOT, EMPTY_PROBE_SNAPSHOT } from '@inkeep/open-knowledge-core';
 import type { IpcMainInvokeEvent } from 'electron';
 import { describe, expect, test, vi } from 'vitest';
+import { writeUserMcpConfigs } from '../../../cli/src/commands/init.ts';
 import type {
   AgentIntegrationsApplyRequest,
   AgentIntegrationsApplyResult,
@@ -420,6 +421,27 @@ describe('ok:integrations:dispatch — set editor', () => {
       expect(result.error).toContain("Cursor wasn't found on this machine");
       expect(result.error).not.toContain("Couldn't add OpenKnowledge");
       expect(result.error).not.toContain('()');
+    }
+  });
+
+  test('a dev build says why it adds nothing to user-level editor config', async () => {
+    vi.stubEnv('OK_CHANNEL', 'dev');
+    try {
+      const cli = {
+        ...makeCli(),
+        writeUserMcpConfigs: (opts: { editors: McpWiringEditorId[]; home?: string }) =>
+          writeUserMcpConfigs(opts),
+      };
+      const { set } = setup({ cli });
+      const result = await set({ component: { kind: 'editor', id: 'claude' }, enabled: true });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe(
+          "Couldn't add OpenKnowledge to Claude (A dev build registers OpenKnowledge MCP in project config only, never in user-level editor config. Run `node <checkout>/packages/cli/dist/cli.mjs init --dev-mcp` in the project, or set OK_CHANNEL=stable.).",
+        );
+      }
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 

@@ -95,6 +95,30 @@ describe('composeOkChildEnv PATH grant', () => {
 });
 
 describe('composeOkChildEnv', () => {
+  test('keeps the dev channel away from a terminal, whose ok on PATH may predate it', () => {
+    const env = composeOkChildEnv(
+      { PATH: '/usr/bin', OK_CHANNEL: 'dev' },
+      { platform: 'darwin', home: '/Users/alice' },
+    );
+    expect(env.OK_CHANNEL).toBeUndefined();
+  });
+
+  test('drops the dev channel under the differently cased key a Windows environment can carry', () => {
+    const env = composeOkChildEnv(
+      { Path: 'C:\\Windows', Ok_Channel: 'dev' },
+      { platform: 'win32', cliBinDir: 'C:\\ok\\bin' },
+    );
+    expect(Object.keys(env).filter((key) => key.toUpperCase() === 'OK_CHANNEL')).toEqual([]);
+  });
+
+  test('passes a shipped channel through, since every released CLI knows it', () => {
+    const env = composeOkChildEnv(
+      { PATH: '/usr/bin', OK_CHANNEL: 'beta' },
+      { platform: 'darwin', home: '/Users/alice' },
+    );
+    expect(env.OK_CHANNEL).toBe('beta');
+  });
+
   test('strips OK and Electron markers, drops undefined, and grants the OK-managed bin dir', () => {
     const env = composeOkChildEnv(
       {

@@ -11,11 +11,12 @@ import {
   buildManagedServerEntry,
   CHAIN_V2,
   CHAIN_WIN_V1,
+  DEV_CHANNEL_LAUNCHER_REFUSAL,
   EDITOR_TARGETS,
   isEntryUpToDate,
   isOwnManagedEntry,
 } from './editors.ts';
-import { writeEditorMcpConfig } from './init.ts';
+import { writeEditorMcpConfig, writeUserMcpConfigs } from './init.ts';
 
 const STABLE_UNIX_CHAIN = `# ok-mcp-v2
 USER_BUNDLE="$HOME/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh"
@@ -229,5 +230,60 @@ describe('per-channel MCP registration', () => {
     expect(isOwnPiExtensionSource(stableSource)).toBe(true);
     expect(isOwnPiExtensionSource(betaSource)).toBe(false);
     expect(isPiExtensionSourceUpToDate(betaSource)).toBe(false);
+  });
+
+  it('the dev channel never claims a Stable dev-mode bridge, and Stable never claims a dev bridge', () => {
+    const stableDevBridge = '// ok-pi-bridge-dev\nbody';
+    const devPublishedBridge = '// ok-pi-bridge-dev-v1\nbody';
+    const devDevBridge = '// ok-pi-bridge-dev-dev\nbody';
+
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    expect(isOwnPiExtensionSource(stableDevBridge)).toBe(true);
+    expect(isOwnPiExtensionSource(devPublishedBridge)).toBe(false);
+    expect(isOwnPiExtensionSource(devDevBridge)).toBe(false);
+
+    vi.stubEnv('OK_CHANNEL', 'dev');
+    expect(EDITOR_TARGETS.pi.projectConfigPath('/p')).toBe(
+      join('/p', '.pi', 'extensions', 'open-knowledge-dev.ts'),
+    );
+    expect(isOwnPiExtensionSource(devPublishedBridge)).toBe(true);
+    expect(isOwnPiExtensionSource(devDevBridge)).toBe(true);
+    expect(isOwnPiExtensionSource(stableDevBridge)).toBe(false);
+  });
+
+  it('a dev-channel process builds no launcher for an installed channel and owns none', () => {
+    const stableEntry = buildManagedServerEntry({ mode: 'published', platformName: 'darwin' });
+    vi.stubEnv('OK_CHANNEL', 'dev');
+    expect(() => buildManagedServerEntry({ mode: 'published', platformName: 'darwin' })).toThrow(
+      DEV_CHANNEL_LAUNCHER_REFUSAL,
+    );
+    expect(() => buildManagedServerEntry({ mode: 'published', platformName: 'win32' })).toThrow(
+      DEV_CHANNEL_LAUNCHER_REFUSAL,
+    );
+    expect(() => buildPiExtensionSource({ mode: 'published' })).toThrow(
+      DEV_CHANNEL_LAUNCHER_REFUSAL,
+    );
+    const opencode = writeEditorMcpConfig(
+      EDITOR_TARGETS.opencode,
+      home,
+      { mode: 'published', skipAvailabilityCheck: true },
+      home,
+      join(home, 'opencode.json'),
+    );
+    expect([opencode.action, opencode.error]).toEqual(['failed', DEV_CHANNEL_LAUNCHER_REFUSAL]);
+    expect(isOwnManagedEntry(stableEntry)).toBe(false);
+  });
+
+  it('a dev-channel process writes no user-global MCP config, and says why', async () => {
+    vi.stubEnv('OK_CHANNEL', 'dev');
+    const results = await writeUserMcpConfigs({ editors: ['claude'], home });
+    expect(results.map((r) => [r.serverName, r.action, r.error])).toEqual([
+      [
+        'open-knowledge-dev',
+        'failed',
+        'A dev build registers OpenKnowledge MCP in project config only, never in user-level editor config. Run `node <checkout>/packages/cli/dist/cli.mjs init --dev-mcp` in the project, or set OK_CHANNEL=stable.',
+      ],
+    ]);
+    expect(() => readFileSync(join(home, '.claude.json'), 'utf-8')).toThrow();
   });
 });

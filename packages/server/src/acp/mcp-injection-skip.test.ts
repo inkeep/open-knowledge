@@ -200,6 +200,21 @@ describe('buildMcpServers × probeHarnessManagedMcpEntry', () => {
     expect(hostedMarker).toBe('stdio-entry-env');
   });
 
+  test('the injected stdio server carries the channel its host CLI was built with', async () => {
+    const m = makeManager(
+      () => null,
+      () => ({
+        command: 'node',
+        args: ['/src/cli.mjs', 'mcp', '--port', '4242'],
+        env: { OK_CHANNEL: 'dev' },
+      }),
+    );
+    const { servers } = await m.buildMcpServers(record('registry', 'claude-acp'), LAUNCH, {});
+    const env = (servers[0] as { env: Array<{ name: string; value: string }> }).env;
+    expect(env).toContainEqual({ name: 'OK_CHANNEL', value: 'dev' });
+    expect(env).toContainEqual({ name: OK_HOSTED_AGENT_ENV, value: '1' });
+  });
+
   test('the injected stdio PATH is the agent spawn PATH, not the server process PATH', async () => {
     const m = makeManager(() => null);
     const { servers } = await m.buildMcpServers(record('registry', 'claude-acp'), LAUNCH, {});

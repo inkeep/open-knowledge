@@ -1,5 +1,11 @@
+import { DEV_FALLBACK_CLI_REFUSAL, OkCliCommand } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { runAuthTokenSubprocess } from './auth-token.ts';
+
+const okCli = (
+  cliArgs: readonly string[],
+  cliEnv?: Readonly<Record<string, string | undefined>>,
+): OkCliCommand => OkCliCommand.resolve({ host: { cliArgs, cliEnv }, env: {} });
 
 const fixtureCli = (script: string): readonly string[] => [process.execPath, '-e', script];
 
@@ -28,7 +34,7 @@ process.stdin.on('end', () => {
 describe('runAuthTokenSubprocess', () => {
   test('feeds the token via stdin and returns the stored identity on complete', async () => {
     const result = await runAuthTokenSubprocess({
-      cliArgs: fixtureCli(ECHO_STDIN_CLI),
+      cli: okCli(fixtureCli(ECHO_STDIN_CLI)),
       host: 'ghes.test',
       username: 'alice',
       token: 'good-token',
@@ -38,7 +44,7 @@ describe('runAuthTokenSubprocess', () => {
 
   test('surfaces the CLI error message when the store fails', async () => {
     const result = await runAuthTokenSubprocess({
-      cliArgs: fixtureCli(ECHO_STDIN_CLI),
+      cli: okCli(fixtureCli(ECHO_STDIN_CLI)),
       host: 'ghes.test',
       username: 'alice',
       token: 'wrong-token',
@@ -52,7 +58,7 @@ describe('runAuthTokenSubprocess', () => {
 
   test('falls back to a bounded generic error when the child exits with no terminal event', async () => {
     const result = await runAuthTokenSubprocess({
-      cliArgs: fixtureCli('process.exit(3)'),
+      cli: okCli(fixtureCli('process.exit(3)')),
       host: 'ghes.test',
       username: 'alice',
       token: 'x',
@@ -65,10 +71,12 @@ describe('runAuthTokenSubprocess', () => {
 
   test('folds the child stderr into the generic fallback error', async () => {
     const result = await runAuthTokenSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         process.stderr.write('spawn EINVAL');
         process.exitCode = 3;
       `),
+      ),
       host: 'ghes.test',
       username: 'alice',
       token: 'x',
@@ -83,7 +91,7 @@ describe('runAuthTokenSubprocess', () => {
   test('keeps the token out of the child argv while passing the username through', async () => {
     const token = 'argv-must-not-carry-this-token';
     const result = await runAuthTokenSubprocess({
-      cliArgs: fixtureCli(ECHO_ARGV_CLI),
+      cli: okCli(fixtureCli(ECHO_ARGV_CLI)),
       host: 'ghes.test',
       username: 'alice',
       token,
@@ -103,10 +111,12 @@ describe('runAuthTokenSubprocess', () => {
   test('redacts credentialed stderr before it reaches the fallback error', async () => {
     const token = `ghp_${'b'.repeat(36)}`;
     const result = await runAuthTokenSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         process.stderr.write("fatal: unable to access 'https://x-access-token:${token}@ghes.test/o/r.git/'");
         process.exitCode = 3;
       `),
+      ),
       host: 'ghes.test',
       username: 'alice',
       token,
@@ -121,10 +131,12 @@ describe('runAuthTokenSubprocess', () => {
   test('redacts a bare PAT in stderr other than the submitted token', async () => {
     const storedToken = `ghp_${'g'.repeat(36)}`;
     const result = await runAuthTokenSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         process.stderr.write("[auth] Failed to parse auth.yml: bad indentation at line 2:\\n  token: ${storedToken}");
         process.exitCode = 3;
       `),
+      ),
       host: 'ghes.test',
       username: 'alice',
       token: 'submitted-token',
@@ -139,10 +151,12 @@ describe('runAuthTokenSubprocess', () => {
   test('removes the submitted token from stderr even when no scrubber pattern knows its shape', async () => {
     const token = `${'a'.repeat(8)}0123456789abcdef0123456789abcdef`;
     const result = await runAuthTokenSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         process.stderr.write("[auth] Failed to parse auth.yml: bad indentation at line 2:\\n  token: ${token}");
         process.exitCode = 3;
       `),
+      ),
       host: 'gitea.internal',
       username: 'alice',
       token: `${token}\n`,
@@ -154,9 +168,24 @@ describe('runAuthTokenSubprocess', () => {
     }
   });
 
+  test('a dev build without its workspace CLI refuses to store a token instead of running the CLI on PATH', async () => {
+    const result = await runAuthTokenSubprocess({
+      cli: OkCliCommand.resolve({ env: { OK_CHANNEL: 'dev' } }),
+      host: 'github.com',
+      username: 'octocat',
+      token: 'test-token',
+    });
+    expect(result).toEqual({
+      ok: false,
+      host: 'github.com',
+      error: DEV_FALLBACK_CLI_REFUSAL,
+    });
+  });
+
   test('forwards cliEnv through to the spawned CLI', async () => {
     const result = await runAuthTokenSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         let d='';
         process.stdin.on('data', c => { d += c; });
         process.stdin.on('end', () => {
@@ -164,7 +193,8 @@ describe('runAuthTokenSubprocess', () => {
           process.exit(0);
         });
       `),
-      cliEnv: { OK_AUTH_TOKEN_ENV_MARKER: 'marker-from-cli-env' },
+        { OK_AUTH_TOKEN_ENV_MARKER: 'marker-from-cli-env' },
+      ),
       host: 'ghes.test',
       username: 'alice',
       token: 'good-token',

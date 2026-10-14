@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
+import { isDevChannel } from '@inkeep/open-knowledge-core/constants/product';
 import {
   ASSET_EXTENSIONS,
   EXECUTABLE_BLOCKLIST_EXTENSIONS,
@@ -25,6 +26,11 @@ import type { WebSocketServer } from 'ws';
 import { parse as parseYaml } from 'yaml';
 import { computeDevApiConfigResponse } from './api-config-handler.ts';
 import { type AssetRouting, routeAssets } from './asset-routing.ts';
+import {
+  applyDevServerChannel,
+  devServerCliArgs,
+  workspaceCliEntry,
+} from './dev-server-channel.ts';
 
 let configureServerInvocations = 0;
 
@@ -170,6 +176,14 @@ async function attachOkServer(
   assetRouting: AssetRouting,
   activeRuntimeTeardowns: RuntimeTeardowns,
 ): Promise<() => Promise<void>> {
+  applyDevServerChannel(process.env);
+  const localOpCliArgs = devServerCliArgs(PROJECT_ROOT, process.env);
+  if (localOpCliArgs === undefined && isDevChannel(process.env)) {
+    getLogger('hocuspocus').warn(
+      { entry: workspaceCliEntry(PROJECT_ROOT) },
+      'The workspace CLI is not built, so this dev server runs the open-knowledge on PATH as Stable for MCP, git credentials and local operations, and refuses sign-in, sign-out, token storage and clone. Run pnpm build in the checkout, then restart pnpm dev.',
+    );
+  }
   configureServerInvocations += 1;
   if (configureServerInvocations > 1) {
     console.warn(
@@ -189,6 +203,7 @@ async function attachOkServer(
     quiet: true,
     embeddingsKeyStore: makeLazyEmbeddingsKeyStore(),
     capabilities: ['http', 'ws', 'ui'],
+    ...(localOpCliArgs === undefined ? {} : { localOpCliArgs }),
     ...(isEphemeralTest ? { ephemeral: true, singleDocRelPath: SINGLE_DOC_REL_PATH } : {}),
   });
 
@@ -240,7 +255,7 @@ async function attachOkServer(
         getMcpStdioCommand: () => {
           const addr = server.httpServer?.address();
           const port = typeof addr === 'object' && addr !== null ? addr.port : 5173;
-          return buildOkMcpStdioCommand(undefined, port, { log: getLogger('acp-threads') });
+          return buildOkMcpStdioCommand(localOpCliArgs, port, { log: getLogger('acp-threads') });
         },
         agentBrowserTools: () =>
           !isTestIsolated &&

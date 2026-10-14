@@ -300,6 +300,22 @@ describe('an MCP entry', () => {
     expect(answer?.state).toBe('satisfied');
   });
 
+  it('reads a present launcher on the dev channel as satisfied, never as unprobed', async () => {
+    const previous = process.env.OK_CHANNEL;
+    process.env.OK_CHANNEL = 'dev';
+    try {
+      writeProjectMcpJson({
+        command: '/bin/sh',
+        args: ['-l', '-c', '# ok-mcp-v99\nfuture launcher body'],
+      });
+      const answer = await answerFor('claude/mcp/project/config-entry');
+      expect(answer?.state).toBe('satisfied');
+    } finally {
+      if (previous === undefined) delete process.env.OK_CHANNEL;
+      else process.env.OK_CHANNEL = previous;
+    }
+  });
+
   it('reads a config it cannot parse as unprobed, never as absent', async () => {
     writeFileSync(join(ctx.cwd, '.mcp.json'), '{ this is not json');
     expect(await answerFor('claude/mcp/project/config-entry')).toEqual({ state: 'unprobed' });

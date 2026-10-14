@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { createServer, type Server as HttpServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DEV_FALLBACK_CLI_REFUSAL } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { createConcurrencyGuard } from '../local-op-security.ts';
@@ -374,6 +375,33 @@ describe('auth-login stream displacement (a second start orphans the first clien
       expect(response.status).toBe(200);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a dev build without its workspace CLI answers every Stable-changing route with the same refusal', async () => {
+    vi.stubEnv('OK_CHANNEL', 'dev');
+    vi.stubEnv('PATH', join(tmpdir(), 'ok-no-cli-on-path'));
+    const homeDir = mkdtempSync(join(tmpdir(), 'ok-dev-fallback-clone-'));
+    try {
+      const baseUrl = await serveLocalOpGroup({ localOpCliArgs: undefined });
+      const requests: Array<[string, Record<string, unknown>]> = [
+        ['/api/local-op/auth/login', { host: 'github.com', json: true }],
+        ['/api/local-op/auth/pat', { host: 'github.com', token: 'test-token' }],
+        ['/api/local-op/auth/token', { host: 'github.com', username: 'u', token: 'test-token' }],
+        ['/api/local-op/auth/signout', { host: 'github.com' }],
+        ['/api/local-op/clone', { url: 'https://github.com/o/r.git', dir: join(homeDir, 'r') }],
+      ];
+      for (const [path, body] of requests) {
+        const response = await postJson(baseUrl, path, body);
+        expect({ path, status: response.status }).toEqual({ path, status: 409 });
+        expect(await response.json()).toMatchObject({
+          title: 'This dev build has no built CLI.',
+          detail: DEV_FALLBACK_CLI_REFUSAL,
+        });
+      }
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(homeDir, { recursive: true, force: true });
     }
   });
 

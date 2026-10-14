@@ -14,6 +14,9 @@ import {
 import { dirname, join } from 'node:path';
 import type { PathDiscovery, PathInstallConsent, PathInstallMarker } from '@inkeep/open-knowledge';
 import {
+  DESKTOP_PRODUCTS,
+  type DesktopProductName,
+  isDevChannel,
   pathShimBinDir,
   pathShimBlockLabel,
   pathShimFishConfFileName,
@@ -24,8 +27,8 @@ import { DESKTOP_VARIANT } from '../shared/desktop-variant.ts';
 import type { McpWiringPathInstallDescriptor } from '../shared/ipc-channels.ts';
 import { classifyInstallShape } from './install-shape.ts';
 
-const NAMES = DESKTOP_VARIANT.cliCommandNames;
-const CHANNEL = DESKTOP_VARIANT.name;
+const CHANNEL: DesktopProductName = isDevChannel(process.env) ? 'dev' : DESKTOP_VARIANT.name;
+const NAMES = DESKTOP_PRODUCTS[CHANNEL].cliCommandNames;
 const CLI_HOME_PREFIX = pathShimHomeDirName(CHANNEL);
 const RC_BIN_DIR = pathShimBinDir(CHANNEL, '$HOME');
 const ENV_SH_BIN_DIR = pathShimBinDir(CHANNEL, `\${HOME}`);
@@ -528,7 +531,7 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
     fs.mkdirSync(dirname(shim), { recursive: true });
     fs.writeFileSync(
       shim,
-      `# ${DESKTOP_VARIANT.productName} CLI environment — managed file, do not edit.\ncase ":\${PATH}:" in\n  *:"${ENV_SH_BIN_DIR}":*) ;;\n  *) export PATH="${ENV_SH_BIN_DIR}:\${PATH}" ;;\nesac\n`,
+      `# ${DESKTOP_PRODUCTS[CHANNEL].productName} CLI environment — managed file, do not edit.\ncase ":\${PATH}:" in\n  *:"${ENV_SH_BIN_DIR}":*) ;;\n  *) export PATH="${ENV_SH_BIN_DIR}:\${PATH}" ;;\nesac\n`,
     );
 
     phase = 'discoverPath';

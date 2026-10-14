@@ -151,8 +151,8 @@ export function httpAuthQueryTransport(): AuthQueryTransport {
     async signout(request) {
       const res = await postJson('/api/local-op/auth/signout', request);
       if (!res.ok) {
-        const error = (await extractProblem(res))?.title;
-        return { ok: false, error };
+        const problem = await extractProblem(res);
+        return { ok: false, error: problem?.detail || problem?.title };
       }
       return { ok: true };
     },

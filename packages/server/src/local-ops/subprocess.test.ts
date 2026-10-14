@@ -242,6 +242,33 @@ describe('runSubprocess — cliEnv overlay', () => {
     });
   });
 
+  test('an inherited dev channel reaches the child only through the overlay', async () => {
+    const previous = process.env.OK_CHANNEL;
+    process.env.OK_CHANNEL = 'dev';
+    const channelCli = fixtureCli(
+      `process.stdout.write(JSON.stringify({ channel: process.env.OK_CHANNEL ?? null }))`,
+    );
+    const channelOf = async (cliEnv?: Record<string, string>): Promise<unknown> => {
+      const lines: { parsed: Record<string, unknown> | null }[] = [];
+      const proc = runSubprocess({
+        cliArgs: channelCli,
+        ...(cliEnv === undefined ? {} : { cliEnv }),
+        trailingArgs: [],
+        timeoutMs: 5000,
+        onLine: (line) => lines.push(line),
+      });
+      await proc.done;
+      return lines[0]?.parsed?.channel;
+    };
+    try {
+      expect(await channelOf()).toBeNull();
+      expect(await channelOf({ OK_CHANNEL: 'dev' })).toBe('dev');
+    } finally {
+      if (previous === undefined) delete process.env.OK_CHANNEL;
+      else process.env.OK_CHANNEL = previous;
+    }
+  });
+
   test('no overlay leaves the inherited environment untouched', async () => {
     await withInheritedB(async () => {
       const lines: { parsed: Record<string, unknown> | null }[] = [];

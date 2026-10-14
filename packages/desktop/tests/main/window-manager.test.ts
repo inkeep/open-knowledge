@@ -1206,6 +1206,30 @@ describe('WindowManager', () => {
         });
       });
 
+      test("installed Stable refuses a dev build's server, and a dev build refuses Stable's instead of reclaiming it", async () => {
+        const killProbe = vi.fn(() => {});
+        env.deps.killProbe = killProbe;
+        env.deps.selfChannel = 'stable';
+        enableAttachProbe({ readServerLock: () => ({ ...liveLock, channel: 'dev' }) });
+        expect(await openOutcome(new WindowManager(env.deps))).toEqual({
+          kind: 'refused',
+          errKind: 'other-channel-holder',
+          holderChannel: 'dev',
+          message:
+            'OpenKnowledge Dev is serving this project (pid 65792). Only one OpenKnowledge app can edit a project at a time.',
+        });
+
+        env.deps.selfChannel = 'dev';
+        env.deps.reclaimForeignServerInDev = true;
+        enableAttachProbe({ readServerLock: () => stableLock });
+        expect(await openOutcome(new WindowManager(env.deps))).toMatchObject({
+          kind: 'refused',
+          errKind: 'other-channel-holder',
+          holderChannel: 'stable',
+        });
+        expect(killProbe).not.toHaveBeenCalled();
+      });
+
       test("restart refuses to stop another channel's server", async () => {
         const killProbe = vi.fn(() => {});
         env.deps.killProbe = killProbe;
@@ -5356,6 +5380,8 @@ describe('WindowManager — local-op CLI invocation threading', () => {
       execPath: WIN_EXE,
       resourcesPath: WIN_RESOURCES,
       parentEnv: {},
+      workspaceCliEntry: 'C:\\src\\open-knowledge\\packages\\cli\\dist\\cli.mjs',
+      workspaceCliBuilt: true,
     });
   }
 

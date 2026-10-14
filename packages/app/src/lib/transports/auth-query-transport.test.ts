@@ -1,3 +1,4 @@
+import { DEV_FALLBACK_CLI_REFUSAL } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { httpAuthQueryTransport } from './auth-query-transport';
 
@@ -219,6 +220,25 @@ describe('httpAuthQueryTransport().signout', () => {
     const result = await transport.signout();
 
     expect(result).toEqual({ ok: false, error: 'Auth signout failed.' });
+  });
+
+  it('surfaces the problem detail over the title, so a refusal keeps its remedy', async () => {
+    stubFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            type: 'urn:ok:error:auth-failed',
+            title: 'This dev build has no built CLI.',
+            status: 409,
+            detail: DEV_FALLBACK_CLI_REFUSAL,
+          }),
+          { status: 409, headers: { 'content-type': 'application/problem+json' } },
+        ),
+    );
+    const transport = httpAuthQueryTransport();
+    if (!transport.signout) throw new Error('http transport must implement signout');
+
+    expect(await transport.signout()).toEqual({ ok: false, error: DEV_FALLBACK_CLI_REFUSAL });
   });
 
   it('returns failure with no error title when the body is not problem+json', async () => {

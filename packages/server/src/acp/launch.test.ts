@@ -242,6 +242,28 @@ describe('mergedEnv PATH augmentation', () => {
     }
   });
 
+  test('keeps the dev channel away from agents, whose MCP children may run a CLI that predates it', () => {
+    const prior = process.env.OK_CHANNEL;
+    process.env.OK_CHANNEL = 'dev';
+    try {
+      expect(mergedEnv().OK_CHANNEL).toBeUndefined();
+    } finally {
+      if (prior === undefined) delete process.env.OK_CHANNEL;
+      else process.env.OK_CHANNEL = prior;
+    }
+  });
+
+  test('passes a shipped channel through to agents', () => {
+    const prior = process.env.OK_CHANNEL;
+    process.env.OK_CHANNEL = 'beta';
+    try {
+      expect(mergedEnv().OK_CHANNEL).toBe('beta');
+    } finally {
+      if (prior === undefined) delete process.env.OK_CHANNEL;
+      else process.env.OK_CHANNEL = prior;
+    }
+  });
+
   test('overlaySetsPath sees PATH under any spelling', () => {
     expect(overlaySetsPath({ Path: '/x' })).toBe(true);
     expect(overlaySetsPath({ PATH: '/x' })).toBe(true);

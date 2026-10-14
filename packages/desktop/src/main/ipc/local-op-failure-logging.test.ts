@@ -1,3 +1,4 @@
+import { OkCliCommand } from '@inkeep/open-knowledge-core';
 import type {
   AuthEvent,
   AuthReposResponse,
@@ -58,7 +59,7 @@ function makeSender() {
 
 function makeDeps() {
   return {
-    resolveCliInvocation: () => ({ cliArgs: ['open-knowledge'] }),
+    resolveOkCli: () => OkCliCommand.resolve({ host: { cliArgs: ['open-knowledge'] }, env: {} }),
     logFailure: vi.fn(),
     state: createLocalOpState(),
   };

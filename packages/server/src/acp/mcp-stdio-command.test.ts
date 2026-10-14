@@ -55,6 +55,28 @@ describe('buildOkMcpStdioCommand', () => {
     });
   });
 
+  test('a dev-channel host CLI carries the dev channel into the MCP entry', () => {
+    const cli = ['node', '/src/open-knowledge/packages/cli/dist/cli.mjs'];
+    expect(
+      buildOkMcpStdioCommand(cli, 5173, {
+        resolveCommand: () => '/usr/local/bin/node',
+        env: { OK_CHANNEL: 'dev' },
+      }),
+    ).toEqual({
+      command: '/usr/local/bin/node',
+      args: ['/src/open-knowledge/packages/cli/dist/cli.mjs', 'mcp', '--port', '5173'],
+      env: { OK_CHANNEL: 'dev' },
+    });
+  });
+
+  test('never hands the dev channel to the open-knowledge on PATH, which may predate it', () => {
+    const command = buildOkMcpStdioCommand(undefined, 5173, {
+      resolveCommand: () => '/Users/alice/.ok/bin/open-knowledge',
+      env: { OK_CHANNEL: 'dev' },
+    });
+    expect(command.env).toBeUndefined();
+  });
+
   test('always pins to the given port', () => {
     expect(buildOkMcpStdioCommand(['ok'], 61999, unresolvable).args).toContain('--port');
     expect(buildOkMcpStdioCommand(['ok'], 61999, unresolvable).args.at(-1)).toBe('61999');

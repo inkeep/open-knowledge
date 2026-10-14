@@ -1,8 +1,14 @@
 import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { DEV_FALLBACK_CLI_REFUSAL, OkCliCommand } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { type RunDeviceFlowController, runDeviceFlowSubprocess } from './auth-flow.ts';
 import type { AuthEvent } from './types.ts';
+
+const okCli = (
+  cliArgs: readonly string[],
+  cliEnv?: Readonly<Record<string, string | undefined>>,
+): OkCliCommand => OkCliCommand.resolve({ host: { cliArgs, cliEnv }, env: {} });
 
 const fixtureCli = (script: string): readonly string[] => [process.execPath, '-e', script];
 
@@ -10,10 +16,12 @@ describe('runDeviceFlowSubprocess', () => {
   test('forwards verification + complete events parsed from stdout', async () => {
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         console.log(JSON.stringify({type:'verification', user_code:'ABCD', verification_uri:'https://example.com/login', expires_in:60}));
         console.log(JSON.stringify({type:'complete', host:'github.com', login:'me', name:'Me', email:'me@example.com', avatarUrl:'https://example.com/me.png'}));
       `),
+      ),
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
@@ -37,7 +45,7 @@ describe('runDeviceFlowSubprocess', () => {
   test('synthesizes a complete event on clean exit without one (older CLI builds)', async () => {
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`process.exit(0)`),
+      cli: okCli(fixtureCli(`process.exit(0)`)),
       host: 'github.com',
       onEvent: (e) => events.push(e),
     });
@@ -49,7 +57,7 @@ describe('runDeviceFlowSubprocess', () => {
   test('synthesized complete uses default host when not specified', async () => {
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`process.exit(0)`),
+      cli: okCli(fixtureCli(`process.exit(0)`)),
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
@@ -59,7 +67,7 @@ describe('runDeviceFlowSubprocess', () => {
   test('emits structured error event on nonzero exit', async () => {
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`process.exit(2)`),
+      cli: okCli(fixtureCli(`process.exit(2)`)),
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
@@ -73,7 +81,7 @@ describe('runDeviceFlowSubprocess', () => {
   test('emits "Sign-in timed out" error on timeout', async () => {
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`setInterval(() => {}, 1000)`),
+      cli: okCli(fixtureCli(`setInterval(() => {}, 1000)`)),
       timeoutMs: 100,
       onEvent: (e) => events.push(e),
     });
@@ -88,10 +96,12 @@ describe('runDeviceFlowSubprocess', () => {
   test('CLI-emitted error event is forwarded and counts as terminal', async () => {
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         console.log(JSON.stringify({type:'error', message:'bad code'}));
         process.exit(0);
       `),
+      ),
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
@@ -103,10 +113,12 @@ describe('runDeviceFlowSubprocess', () => {
     const events: AuthEvent[] = [];
     const token = `ghp_${'c'.repeat(36)}`;
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         const message = "[auth] Failed to parse auth.yml at line 2:\\n  token: ${token} " + "z".repeat(3000);
         console.log(JSON.stringify({type:'error', message}));
       `),
+      ),
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
@@ -122,9 +134,11 @@ describe('runDeviceFlowSubprocess', () => {
   test('CLI-emitted error message that redacts to nothing falls back to "Unknown error"', async () => {
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         console.log(JSON.stringify({type:'error', message:'   \\n  '}));
       `),
+      ),
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
@@ -134,13 +148,15 @@ describe('runDeviceFlowSubprocess', () => {
   test('a cancel landing after the timeout still reports the timeout', async () => {
     const events: AuthEvent[] = [];
     const ctrl: RunDeviceFlowController = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         process.on('SIGTERM', () => {
           console.log(JSON.stringify({type:'verification', user_code:'TERM', verification_uri:'https://e.com/login', expires_in:60}));
           setTimeout(() => process.exit(7), 200);
         });
         setInterval(() => {}, 1000);
       `),
+      ),
       timeoutMs: 800,
       onEvent: (e) => {
         events.push(e);
@@ -158,11 +174,13 @@ describe('runDeviceFlowSubprocess', () => {
   test('malformed JSON lines are silently dropped, not forwarded as errors', async () => {
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         console.log('this is not json');
         console.log(JSON.stringify({type:'verification', user_code:'X', verification_uri:'https://e.com', expires_in:60}));
         console.log(JSON.stringify({type:'complete', host:'github.com', login:'me'}));
       `),
+      ),
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
@@ -172,10 +190,12 @@ describe('runDeviceFlowSubprocess', () => {
   test('verification events with missing required fields are dropped', async () => {
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         console.log(JSON.stringify({type:'verification', user_code:'X'}));
         console.log(JSON.stringify({type:'complete', host:'github.com', login:'me'}));
       `),
+      ),
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
@@ -185,10 +205,12 @@ describe('runDeviceFlowSubprocess', () => {
   test('unknown JSON event types are dropped', async () => {
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         console.log(JSON.stringify({type:'keychain-probe', backend:'darwin'}));
         console.log(JSON.stringify({type:'complete', host:'github.com', login:'me'}));
       `),
+      ),
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
@@ -198,10 +220,12 @@ describe('runDeviceFlowSubprocess', () => {
   test('non-zero exit folds the child stderr into the error message', async () => {
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         process.stderr.write('spawn EINVAL');
         process.exitCode = 2;
       `),
+      ),
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
@@ -217,10 +241,12 @@ describe('runDeviceFlowSubprocess', () => {
     const token = `ghp_${'a'.repeat(36)}`;
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         process.stderr.write("fatal: unable to access 'https://x-access-token:${token}@github.com/o/r.git/'");
         process.exitCode = 2;
       `),
+      ),
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
@@ -235,10 +261,12 @@ describe('runDeviceFlowSubprocess', () => {
     const token = `ghp_${'f'.repeat(36)}`;
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         process.stderr.write("[auth] Failed to parse auth.yml: bad indentation at line 2:\\n  token: ${token}");
         process.exitCode = 2;
       `),
+      ),
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
@@ -249,13 +277,25 @@ describe('runDeviceFlowSubprocess', () => {
     }
   });
 
+  test('a dev build without its workspace CLI refuses to sign in instead of running the CLI on PATH', async () => {
+    const events: AuthEvent[] = [];
+    const ctrl = runDeviceFlowSubprocess({
+      cli: OkCliCommand.resolve({ env: { OK_CHANNEL: 'dev' } }),
+      onEvent: (e) => events.push(e),
+    });
+    await ctrl.done;
+    expect(events).toEqual([{ type: 'error', message: DEV_FALLBACK_CLI_REFUSAL }]);
+  });
+
   test('forwards cliEnv through to the spawned CLI', async () => {
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`
+      cli: okCli(
+        fixtureCli(`
         console.log(JSON.stringify({type:'complete', host:'github.com', login: process.env.OK_AUTH_FLOW_ENV_MARKER || 'unset'}));
       `),
-      cliEnv: { OK_AUTH_FLOW_ENV_MARKER: 'marker-from-cli-env' },
+        { OK_AUTH_FLOW_ENV_MARKER: 'marker-from-cli-env' },
+      ),
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
@@ -268,7 +308,7 @@ describe('runDeviceFlowSubprocess', () => {
   test('cancel terminates the subprocess without synthesizing an error event', async () => {
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      cliArgs: fixtureCli(`setInterval(() => {}, 1000)`),
+      cli: okCli(fixtureCli(`setInterval(() => {}, 1000)`)),
       onEvent: (e) => events.push(e),
     });
     setTimeout(() => ctrl.cancel(), 50);
@@ -282,8 +322,10 @@ test('device flow runs in the supplied project directory', async () => {
   const events: AuthEvent[] = [];
   const controller = runDeviceFlowSubprocess({
     cwd,
-    cliArgs: fixtureCli(
-      `console.log(JSON.stringify({type: 'complete', host: process.cwd(), login: 'octocat'}));`,
+    cli: okCli(
+      fixtureCli(
+        `console.log(JSON.stringify({type: 'complete', host: process.cwd(), login: 'octocat'}));`,
+      ),
     ),
     onEvent: (event) => events.push(event),
   });

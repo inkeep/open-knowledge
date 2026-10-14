@@ -10,7 +10,7 @@ import { emitPreflightFailureSpan } from '../git-preflight-telemetry.ts';
 import { expandTilde, isAllowedGitUrl, isSafeLocalPath } from '../local-op-security.ts';
 import { getLogger } from '../logger.ts';
 import { redactedStderrDetail, stderrDetailSuffix } from './clone-error-classify.ts';
-import { type LocalOpCliInvocation, runSubprocess } from './subprocess.ts';
+import { type LocalOpCliInvocation, runOkCliSubprocess } from './subprocess.ts';
 
 const log = getLogger('clone-flow');
 
@@ -130,9 +130,7 @@ export function runCloneSubprocess(opts: RunCloneOptions): RunCloneController {
 
   const branchArgs =
     typeof opts.branch === 'string' && opts.branch.length > 0 ? ['-b', opts.branch] : [];
-  const proc = runSubprocess({
-    cliArgs: opts.cliArgs,
-    cliEnv: opts.cliEnv,
+  const proc = runOkCliSubprocess(opts.cli, {
     trailingArgs: ['clone', '--json', ...branchArgs, opts.url, targetDir],
     extraPathDirs,
     timeoutMs,
@@ -148,6 +146,10 @@ export function runCloneSubprocess(opts: RunCloneOptions): RunCloneController {
   });
 
   const done = proc.done.then((result) => {
+    if ('refused' in result) {
+      opts.onEvent({ type: 'error', message: result.refused });
+      return;
+    }
     if (sawTerminal) return;
     if (result.timedOut) {
       opts.onEvent({ type: 'error', message: 'Clone timed out after 10 minutes' });

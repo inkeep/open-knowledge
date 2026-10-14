@@ -1,5 +1,6 @@
 import { homedir } from 'node:os';
 import {
+  envWithoutDevChannel,
   OK_DESKTOP_TERMINAL_ENV,
   OK_HOSTED_AGENT_ENV,
   posixOkManagedBinDir,
@@ -109,8 +110,7 @@ export function composeOkChildEnv(
 ): Record<string, string> {
   const stripped = new Set<string>(STRIPPED_ENV_MARKERS);
   const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(parentEnv)) {
-    if (value === undefined) continue;
+  for (const [key, value] of Object.entries(envWithoutDevChannel(parentEnv))) {
     if (stripped.has(key) || key.startsWith('GDK_PIXBUF_')) continue;
     out[key] = value;
   }

@@ -18,7 +18,10 @@ import {
   type McpEntryClassification,
 } from '@inkeep/open-knowledge';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { classifyExistingMcpEntry as classifyWithOverridableEngine } from '../../../cli/src/commands/init.ts';
+import {
+  classifyExistingMcpEntry as classifyWithOverridableEngine,
+  writeUserMcpConfigs,
+} from '../../../cli/src/commands/init.ts';
 import {
   createTomlConfigEngine,
   setTomlConfigEngineForTesting,
@@ -748,6 +751,36 @@ function buildWiringOpts(overrides: Partial<WiringOpts> = {}): WiringOpts {
     ...overrides,
   };
 }
+
+describe('runMcpWiringOnFirstLaunch — dev channel', () => {
+  test('a dev build reports why it wrote no user-level config and leaves the marker unwritten', async () => {
+    vi.stubEnv('OK_CHANNEL', 'dev');
+    try {
+      const ipcMain = stubIpcMain();
+      const wc = fakeWebContents(11);
+      const fs = memoryFs();
+      const { cli } = buildFirstLaunchCli();
+      runMcpWiringOnFirstLaunch(
+        buildWiringOpts({
+          ipcMain,
+          cli: { ...cli, writeUserMcpConfigs: (opts) => writeUserMcpConfigs(opts) },
+          fs,
+          immediateDispatchTarget: wc,
+        }),
+      );
+
+      const confirm = ipcMain.handlers.get('ok:mcp-wiring:confirm');
+      const result = await confirm?.({ sender: { id: 11 } }, { editorIds: ['claude'] });
+      expect(result).toMatchObject({ ok: false });
+      expect((result as { error: string }).error).toContain(
+        'A dev build registers OpenKnowledge MCP in project config only',
+      );
+      expect(readMcpStatusMarker('/home/u', fs)).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
 
 describe('runMcpWiringOnFirstLaunch — skills consent leg', () => {
   const TWO_SKILLS = [

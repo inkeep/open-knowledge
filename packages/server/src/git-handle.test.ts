@@ -441,6 +441,21 @@ describe('buildSyncCredentialConfig()', () => {
     });
   });
 
+  test('dev channel pins dev only on the CLI the host supplies, never on the CLI on PATH', () => {
+    withEnvEntries({ OK_CHANNEL: 'dev' }, () => {
+      const argv = ['/usr/local/bin/node', '/src/ok/packages/cli/dist/cli.mjs'];
+      expect(argvFromHelper(buildSyncCredentialConfig(argv, { resetAmbient: true }))).toEqual([
+        'OK_CHANNEL=dev',
+        ...argv,
+        'auth',
+        'git-credential',
+      ]);
+      expect(buildSyncCredentialConfig(undefined, { resetAmbient: true }).at(-1)).toBe(
+        'credential.helper=!open-knowledge auth git-credential',
+      );
+    });
+  });
+
   test('Stable channel keeps the helper unpinned', () => {
     withEnvEntries({ OK_CHANNEL: undefined }, () => {
       const config = buildSyncCredentialConfig(['/usr/local/bin/node', '/opt/ok/cli.mjs'], {

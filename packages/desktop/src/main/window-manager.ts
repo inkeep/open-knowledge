@@ -10,7 +10,7 @@ import {
   sliceLastSpawnAttempt,
 } from '@inkeep/open-knowledge-core';
 import type { KeepaliveHandle } from '@inkeep/open-knowledge-core/keepalive';
-import { getLocalDir, type LocalOpCliInvocation } from '@inkeep/open-knowledge-server';
+import { getLocalDir } from '@inkeep/open-knowledge-server';
 import {
   BOOT_HEARTBEAT_EVENTS,
   isUtilityInitPhase,
@@ -30,7 +30,10 @@ import { registerPendingDelivery } from '../shared/ipc-send.ts';
 import type { AssetOpenResult } from './asset-allowlist.ts';
 import { attachAssetSafetyNet } from './asset-safety-net.ts';
 import { startBootHeartbeat } from './boot-heartbeat.ts';
-import { resolveLocalOpCliArgsForUtilityFork } from './local-op-cli-invocation.ts';
+import {
+  type HostCliInvocation,
+  resolveLocalOpCliArgsForUtilityFork,
+} from './local-op-cli-invocation.ts';
 import type { ServerExitInfo } from './server-exit-record.ts';
 import type { ShowGateRegistry } from './show-gate.ts';
 import type { RestoredWindow } from './state-store.ts';
@@ -315,7 +318,7 @@ interface CreateProjectWindowOpts {
   pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload;
   didEnsureGit?: boolean;
   consentVersion?: number;
-  localOpCliInvocation?: LocalOpCliInvocation;
+  localOpCliInvocation?: HostCliInvocation;
   pendingServerRestartedToast?: boolean;
   freshlyCreated?: boolean;
 }
@@ -902,7 +905,7 @@ export class WindowManager {
 
   async restartAttachedServer(
     projectPath: string,
-    opts?: { localOpCliInvocation?: LocalOpCliInvocation },
+    opts?: { localOpCliInvocation?: HostCliInvocation },
   ): Promise<OkServerRestartOutcome> {
     const resolved = resolve(projectPath);
     const canonicalKey = this.canonicalizeKey(resolved);
@@ -1077,7 +1080,7 @@ export class WindowManager {
   async restartServerForWindow(
     sender: BrowserWindowLike | null,
     projectPath: string,
-    opts: { localOpCliInvocation?: LocalOpCliInvocation },
+    opts: { localOpCliInvocation?: HostCliInvocation },
   ): Promise<OkServerRestartOutcome> {
     if (sender !== null) {
       const ephemeralIdentity = this.getEphemeralIdentityForWindow(sender);

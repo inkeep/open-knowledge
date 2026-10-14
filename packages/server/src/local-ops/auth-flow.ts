@@ -1,5 +1,5 @@
 import { redactedStderrDetail, stderrDetailSuffix } from './clone-error-classify.ts';
-import { type LocalOpCliInvocation, runSubprocess } from './subprocess.ts';
+import { type LocalOpCliInvocation, runOkCliSubprocess } from './subprocess.ts';
 import type { LocalOpSubprocessLifetime } from './subprocess-lifetime.ts';
 import type { AuthEvent } from './types.ts';
 
@@ -57,10 +57,8 @@ export function runDeviceFlowSubprocess(opts: RunDeviceFlowOptions): RunDeviceFl
 
   let sawTerminal = false;
 
-  const proc = runSubprocess({
+  const proc = runOkCliSubprocess(opts.cli, {
     lifetime: opts.lifetime,
-    cliArgs: opts.cliArgs,
-    cliEnv: opts.cliEnv,
     cwd: opts.cwd,
     trailingArgs: ['auth', 'login', '--json', '--host', host],
     timeoutMs,
@@ -78,6 +76,10 @@ export function runDeviceFlowSubprocess(opts: RunDeviceFlowOptions): RunDeviceFl
 
   const done = proc.done.then((result) => {
     if (opts.lifetime?.stopped) return;
+    if ('refused' in result) {
+      opts.onEvent({ type: 'error', message: result.refused });
+      return;
+    }
     if (sawTerminal) return;
     if (result.timedOut) {
       opts.onEvent({ type: 'error', message: 'Sign-in timed out' });

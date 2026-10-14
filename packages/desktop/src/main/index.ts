@@ -54,6 +54,7 @@ import {
   estimateSkillCost,
   hasUninstallFeedbackContent,
   type LanguagePreference,
+  type OkCliCommand,
   OPENKNOWLEDGE_SKILLS_REPO,
   PROTOCOL_VERSION,
   projectWorktreeCreateResult,
@@ -86,7 +87,6 @@ import {
   getMeter,
   initContent,
   isProcessAlive,
-  type LocalOpCliInvocation,
   normalizeFsPath,
   ONBOARDING_BUNDLE_IDS,
   prepareSingleFileOpen,
@@ -282,6 +282,7 @@ import {
   showDesktopUninstallResult,
 } from './desktop-uninstall-handoff.ts';
 import { desktopUninstallResultCommand } from './desktop-uninstall-result.ts';
+import { desktopProtocolScheme } from './dev-channel.ts';
 import { promptForExistingFolder, promptForExistingMarkdownFile } from './dialog-helpers.ts';
 import {
   type DriverUtilityLike,
@@ -355,7 +356,11 @@ import {
   runManualInstallFallbackDialog,
 } from './linux-install-fallback.ts';
 import { applyDevShmPosture } from './linux-shm-posture.ts';
-import { resolveLocalOpCliInvocation } from './local-op-cli-invocation.ts';
+import {
+  type HostCliInvocation,
+  mainProcessOkCli,
+  resolveLocalOpCliInvocation,
+} from './local-op-cli-invocation.ts';
 import { createMenuTranslator, resolveMenuCatalogDir } from './main-i18n.ts';
 import { createMainThreadWatchdog } from './main-thread-watchdog.ts';
 import { withMcpServerNameArg } from './mcp-server-name-arg.ts';
@@ -1253,14 +1258,31 @@ function isDebugKeyringSmokeAllowed(): boolean {
   return !app.isPackaged || process.env.OK_DEBUG_KEYRING_SMOKE === '1';
 }
 
-function resolveLocalOpCli(): LocalOpCliInvocation {
-  return resolveLocalOpCliInvocation({
+let warnedUnbuiltWorkspaceCli = false;
+
+function resolveLocalOpCli(): HostCliInvocation | undefined {
+  const workspaceCliEntry = join(app.getAppPath(), '..', 'cli', 'dist', 'cli.mjs');
+  const invocation = resolveLocalOpCliInvocation({
     platform: process.platform,
     isPackaged: app.isPackaged,
     execPath: app.getPath('exe'),
     resourcesPath: process.resourcesPath,
     parentEnv: process.env,
+    workspaceCliEntry,
+    workspaceCliBuilt: !app.isPackaged && existsSync(workspaceCliEntry),
   });
+  if (invocation === undefined && !warnedUnbuiltWorkspaceCli) {
+    warnedUnbuiltWorkspaceCli = true;
+    getLogger('lifecycle').warn(
+      { workspaceCliEntry },
+      'The workspace CLI is not built, so this dev build runs the open-knowledge on PATH as Stable and refuses sign-in, sign-out, token storage and clone. Run pnpm build in the checkout, then restart this dev build.',
+    );
+  }
+  return invocation;
+}
+
+function resolveMainProcessLocalOpCli(): OkCliCommand {
+  return mainProcessOkCli(resolveLocalOpCli(), process.env);
 }
 
 function runDriverBootSmokeInProduction(): void {
@@ -5553,7 +5575,7 @@ function registerIpcHandlers() {
   });
 
   const localOpDeps: LocalOpDeps = {
-    resolveCliInvocation: resolveLocalOpCli,
+    resolveOkCli: resolveMainProcessLocalOpCli,
     logFailure: logIpcError,
     state: createLocalOpState(),
   };
@@ -6358,7 +6380,7 @@ function bootPrimaryInstance(): void {
   });
 
   const protocolControl = registerProtocolHandler({
-    protocolScheme: DESKTOP_VARIANT.protocolScheme,
+    protocolScheme: desktopProtocolScheme(app.isPackaged, DESKTOP_VARIANT.protocolScheme),
     app: {
       on: (event, cb) => {
         app.on(event as Parameters<typeof app.on>[0], cb as Parameters<typeof app.on>[1]);
@@ -6411,7 +6433,7 @@ function bootPrimaryInstance(): void {
       let authenticated = false;
       try {
         const status = await runAuthStatusSubprocess({
-          ...resolveLocalOpCli(),
+          cli: resolveMainProcessLocalOpCli(),
           host,
         });
         authenticated = status.authenticated;

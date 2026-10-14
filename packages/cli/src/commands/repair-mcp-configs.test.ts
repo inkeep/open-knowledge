@@ -179,6 +179,37 @@ describe('repairMcpConfigs', () => {
     expect(readFileSync(configPath, 'utf-8')).toBe(before);
   });
 
+  it('reads a recognized project launcher on the dev channel without building a launcher for it', () => {
+    const previous = process.env.OK_CHANNEL;
+    process.env.OK_CHANNEL = 'dev';
+    try {
+      const path = join(projectDir, '.mcp.json');
+      writeFileSync(
+        path,
+        JSON.stringify({
+          mcpServers: {
+            'open-knowledge-dev': {
+              command: '/bin/sh',
+              args: ['-l', '-c', '# ok-mcp-dev-v99\nfuture launcher body'],
+            },
+          },
+        }),
+      );
+      const before = readFileSync(path, 'utf-8');
+
+      const result = repairMcpConfigs({ projectDir, home: fakeHome });
+      const outcome = result.outcomes.find(
+        (item) => item.scope === 'project' && item.editorId === 'claude',
+      );
+
+      expect(outcome?.outcome).toBe('canonical');
+      expect(readFileSync(path, 'utf-8')).toBe(before);
+    } finally {
+      if (previous === undefined) delete process.env.OK_CHANNEL;
+      else process.env.OK_CHANNEL = previous;
+    }
+  });
+
   it('declines a foreign project entry without writing it', () => {
     const configPath = writeProjectClaude({ command: '/usr/bin/foreign', args: ['server.js'] });
     const before = readFileSync(configPath, 'utf-8');

@@ -56,12 +56,9 @@ const OPEN_KNOWLEDGE_TOOLS: ReadonlySet<string> = new Set(OPEN_KNOWLEDGE_MCP_TOO
 
 const ANY_OPEN_KNOWLEDGE_SERVER = /^(?:open[-_ ]?knowledge|ok)(?:[-_][a-z]+)*$/;
 
-const KNOWN_SERVER_SUFFIXES = [
-  '-dev',
-  ...Object.values(DESKTOP_PRODUCTS)
-    .map((product) => product.mcpServerName.slice(MCP_SERVER_NAME.length))
-    .filter((suffix) => suffix !== ''),
-];
+const KNOWN_SERVER_SUFFIXES = Object.values(DESKTOP_PRODUCTS)
+  .map((product) => product.mcpServerName.slice(MCP_SERVER_NAME.length))
+  .filter((suffix) => suffix !== '');
 
 const KNOWN_OPEN_KNOWLEDGE_SERVER = new RegExp(
   `^open[-_ ]?knowledge(?:${KNOWN_SERVER_SUFFIXES.join('|')})?$`,

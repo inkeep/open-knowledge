@@ -2,6 +2,7 @@ import { homedir } from 'node:os';
 import { classifyMcpLauncherEntry } from '@inkeep/open-knowledge-core';
 import {
   ALL_EDITOR_IDS,
+  canonicalEntryFor,
   droppedManagedKeys,
   EDITOR_TARGETS,
   type EditorId,
@@ -143,7 +144,7 @@ function repairOne(opts: RepairOneOptions): RepairOutcome {
   } else {
     const launcher = classifyMcpLauncherEntry(existing);
     if (launcher.kind === 'recognized' && launcher.disposition === 'keep') {
-      const dropped = droppedManagedKeys(existing, opts.target.buildEntry(opts.cwd, {}));
+      const dropped = droppedManagedKeys(existing, canonicalEntryFor(opts.target, opts.cwd));
       if (dropped.length === 0) return { ...base, outcome: 'canonical' };
       const pruned = finishRepairWrite(
         opts,

@@ -5,6 +5,7 @@ import {
   UNINSTALL_PROGRESS_ARG,
   UNINSTALL_RESULT_ARG,
 } from './desktop-uninstall-result.ts';
+import { applyUnpackagedDevChannel } from './dev-channel.ts';
 import { isExecutableFileSync } from './executable-file.ts';
 import { clearAmbientCapsBeforeBoot } from './linux-ambient-caps.ts';
 
@@ -37,5 +38,6 @@ if (process.argv.includes(UNINSTALL_RESULT_ARG) || process.argv.includes(UNINSTA
     void runDesktopUninstallResultWindow(options);
   }
 } else {
+  applyUnpackagedDevChannel(process.env, app.isPackaged);
   await import('./index.ts');
 }

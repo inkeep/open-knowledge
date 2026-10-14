@@ -253,6 +253,32 @@ describe('runStop channel guard', () => {
     expect(warnings.some((msg) => msg.includes('Unsupported OK_CHANNEL'))).toBe(true);
   });
 
+  test("installed Stable refuses a dev build's server without --force", async () => {
+    vi.stubEnv('OK_CHANNEL', '');
+    const { outcome, killed, errors } = run('dev', { selfChannel: undefined });
+    expect((await outcome).declined).toEqual({ otherChannel: 'dev' });
+    expect(killed).toEqual([]);
+    expect(errors[0]).toContain('OpenKnowledge Dev');
+    expect(errors[0]).toContain(
+      '`node <checkout>/packages/cli/dist/cli.mjs stop` with OK_CHANNEL=dev set',
+    );
+    expect(errors[0]).toContain('--force');
+  });
+
+  test("a dev-channel CLI stops the dev build's server", async () => {
+    vi.stubEnv('OK_CHANNEL', 'dev');
+    const { outcome, killed } = run('dev', { selfChannel: undefined });
+    expect((await outcome).declined).toBeUndefined();
+    expect(killed).toEqual([[100, 'SIGTERM']]);
+  });
+
+  test("a dev-channel CLI refuses installed Stable's server", async () => {
+    vi.stubEnv('OK_CHANNEL', 'dev');
+    const { outcome, killed } = run('stable', { selfChannel: undefined });
+    expect((await outcome).declined).toEqual({ otherChannel: 'stable' });
+    expect(killed).toEqual([]);
+  });
+
   test('refuses a foreign-host lock of another channel whose pid is alive here', async () => {
     const { outcome, killed } = run('stable', {
       inspect: () => lockOf('stable', foreign(100, 3001)),

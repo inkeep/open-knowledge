@@ -1,11 +1,11 @@
-import { DESKTOP_PRODUCTS, type DesktopProductName } from '@inkeep/open-knowledge-core';
+import { DESKTOP_PRODUCTS, type PackagedDesktopProductName } from '@inkeep/open-knowledge-core';
 
 const DESKTOP_VARIANT_NAMES = ['stable', 'beta', 'legacy-beta'] as const;
 
 export type DesktopVariantName = (typeof DESKTOP_VARIANT_NAMES)[number];
 
 interface DesktopVariantIdentity {
-  readonly name: DesktopProductName;
+  readonly name: PackagedDesktopProductName;
   readonly appId: string;
   readonly productName: string;
   readonly artifactName: string;
@@ -66,7 +66,7 @@ const DESKTOP_PRODUCT_VARIANTS = {
     cliCommandNames: DESKTOP_PRODUCTS.beta.cliCommandNames,
     cliHomeSegment: 'beta',
   },
-} as const satisfies Record<DesktopProductName, DesktopVariantIdentity>;
+} as const satisfies Record<PackagedDesktopProductName, DesktopVariantIdentity>;
 
 export const DESKTOP_VARIANTS = {
   ...DESKTOP_PRODUCT_VARIANTS,

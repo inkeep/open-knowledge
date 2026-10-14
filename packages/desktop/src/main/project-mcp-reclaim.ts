@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import {
   buildMcpConfigDeclineEvent,
   buildMcpConfigMigrateEvent,
+  canonicalEntryFor,
   droppedManagedKeys,
   type EditorMcpTarget,
   isEntryUpToDate,
@@ -229,7 +230,7 @@ export async function checkAndRepairProjectMcpOnProjectOpen(
         if (launcher.kind === 'recognized' && launcher.disposition === 'keep') {
           const dropped = droppedManagedKeys(
             classification.entry,
-            target.buildEntry(projectDir, {}),
+            canonicalEntryFor(target, projectDir),
           );
           if (dropped.length === 0) {
             perEditor.push({ editor, status: 'healthy-current', configPath: projectPath });

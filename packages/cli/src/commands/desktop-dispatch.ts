@@ -10,13 +10,14 @@ import {
   desktopWindowsExecutableName,
   desktopWindowsInstallDirNames,
   OK_CHANNEL_ENV,
+  PACKAGED_DESKTOP_PRODUCT_NAMES,
   resolveDesktopProductName,
 } from '@inkeep/open-knowledge-core';
 import { spawnDetachedScrubbed } from '../utils/detached-spawn.ts';
 
 export const DESKTOP_BUNDLE_ID = DESKTOP_PRODUCTS.stable.appId;
 
-const ALL_DESKTOP_PRODUCTS = Object.keys(DESKTOP_PRODUCTS) as readonly DesktopProductName[];
+const PACKAGED_DESKTOP_PRODUCTS: readonly DesktopProductName[] = PACKAGED_DESKTOP_PRODUCT_NAMES;
 
 const PUBLIC_DESKTOP_PRODUCTS: readonly DesktopProductName[] = ['stable', 'beta'];
 
@@ -44,7 +45,8 @@ export function runningDesktopProduct(
 export function desktopProductsVisibleTo(
   cliProduct: DesktopProductName,
 ): readonly DesktopProductName[] {
-  return PUBLIC_DESKTOP_PRODUCTS.includes(cliProduct)
+  return PUBLIC_DESKTOP_PRODUCTS.includes(cliProduct) ||
+    !PACKAGED_DESKTOP_PRODUCTS.includes(cliProduct)
     ? PUBLIC_DESKTOP_PRODUCTS
     : [cliProduct, ...PUBLIC_DESKTOP_PRODUCTS];
 }
@@ -118,7 +120,7 @@ function resolveBundlePath(
     if (m?.[1]) {
       const bundle = m[1];
       const product =
-        ALL_DESKTOP_PRODUCTS.find((name) =>
+        PACKAGED_DESKTOP_PRODUCTS.find((name) =>
           bundle.endsWith(`/${DESKTOP_PRODUCTS[name].productName}.app`),
         ) ?? cliProduct;
       return { path: bundle, product };
@@ -154,7 +156,7 @@ function resolveWindowsExecutable(
   cliProduct: DesktopProductName,
 ): ResolvedDesktop | null {
   if (deps.env.ELECTRON_RUN_AS_NODE === '1') {
-    const bundledProduct = ALL_DESKTOP_PRODUCTS.find((name) =>
+    const bundledProduct = PACKAGED_DESKTOP_PRODUCTS.find((name) =>
       deps.execPath
         .toLowerCase()
         .endsWith(`\\${desktopWindowsExecutableName(DESKTOP_PRODUCTS[name]).toLowerCase()}`),
@@ -183,7 +185,7 @@ function resolveLinuxExecutable(
   cliProduct: DesktopProductName,
 ): ResolvedDesktop | null {
   if (deps.env.ELECTRON_RUN_AS_NODE === '1') {
-    const bundledProduct = ALL_DESKTOP_PRODUCTS.find((name) =>
+    const bundledProduct = PACKAGED_DESKTOP_PRODUCTS.find((name) =>
       deps.execPath.endsWith(`/${DESKTOP_PRODUCTS[name].linuxExecutableName}`),
     );
     if (bundledProduct) return { path: deps.execPath, product: bundledProduct };

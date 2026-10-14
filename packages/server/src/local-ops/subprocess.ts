@@ -1,5 +1,10 @@
 import { spawn } from 'node:child_process';
 import { posix, win32 } from 'node:path';
+import {
+  envWithoutDevChannel,
+  type OkCliCommand,
+  type OkCliRefusal,
+} from '@inkeep/open-knowledge-core';
 import { withHiddenWindowsConsole } from '../child-process-windows-hide.ts';
 import type { LocalOpSubprocessLifetime } from './subprocess-lifetime.ts';
 
@@ -13,12 +18,14 @@ type LocalOpCliEnv = Readonly<Record<string, string | undefined>>;
 export const LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS = 30_000;
 
 export interface LocalOpCliInvocation {
-  readonly cliArgs: readonly string[];
-  readonly cliEnv?: LocalOpCliEnv;
+  readonly cli: OkCliCommand;
   readonly cwd?: string;
 }
 
-interface SubprocessRunOptions extends LocalOpCliInvocation {
+interface SubprocessRunOptions {
+  readonly cliArgs: readonly string[];
+  readonly cliEnv?: LocalOpCliEnv;
+  readonly cwd?: string;
   lifetime?: LocalOpSubprocessLifetime;
   trailingArgs: readonly string[];
   extraPathDirs?: readonly string[];
@@ -38,6 +45,13 @@ interface SubprocessRunResult {
 
 interface SubprocessController {
   done: Promise<SubprocessRunResult>;
+  cancel(): void;
+}
+
+type OkCliRunResult = SubprocessRunResult | OkCliRefusal;
+
+interface OkCliSubprocessController {
+  done: Promise<OkCliRunResult>;
   cancel(): void;
 }
 
@@ -130,7 +144,12 @@ export function runSubprocess(opts: SubprocessRunOptions): SubprocessController 
   const stderrChunks: Buffer[] = [];
 
   const platform = opts.platform ?? process.platform;
-  const childEnv = buildOverlaidEnv(process.env, opts.cliEnv, opts.extraPathDirs, platform);
+  const childEnv = buildOverlaidEnv(
+    envWithoutDevChannel(process.env),
+    opts.cliEnv,
+    opts.extraPathDirs,
+    platform,
+  );
 
   const stdio: ['ignore' | 'pipe', 'pipe', 'pipe'] =
     opts.stdinData !== undefined ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'];
@@ -230,4 +249,15 @@ export function runSubprocess(opts: SubprocessRunOptions): SubprocessController 
       }
     },
   };
+}
+
+export function runOkCliSubprocess(
+  cli: OkCliCommand,
+  opts: Omit<SubprocessRunOptions, 'cliArgs' | 'cliEnv'>,
+): OkCliSubprocessController {
+  const invocation = cli.runnerInvocation(opts.trailingArgs);
+  if ('refused' in invocation) {
+    return { done: Promise.resolve({ refused: invocation.refused }), cancel: () => {} };
+  }
+  return runSubprocess({ ...opts, ...invocation, trailingArgs: [] });
 }

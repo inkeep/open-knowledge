@@ -2,7 +2,7 @@ import { redactedStderrDetail } from './clone-error-classify.ts';
 import {
   LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS,
   type LocalOpCliInvocation,
-  runSubprocess,
+  runOkCliSubprocess,
 } from './subprocess.ts';
 
 const SIGNED_OUT_SENTENCE = /^not logged in to /i;
@@ -50,9 +50,7 @@ export async function runAuthStatusSubprocess(
 ): Promise<AuthStatusResponse> {
   const host = opts.host ?? 'github.com';
   const lines: Record<string, unknown>[] = [];
-  const proc = runSubprocess({
-    cliArgs: opts.cliArgs,
-    cliEnv: opts.cliEnv,
+  const proc = runOkCliSubprocess(opts.cli, {
     cwd: opts.cwd,
     trailingArgs: ['auth', 'status', '--json', '--host', host],
     timeoutMs: opts.timeoutMs ?? LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS,
@@ -61,6 +59,7 @@ export async function runAuthStatusSubprocess(
     },
   });
   const result = await proc.done;
+  if ('refused' in result) return { authenticated: false, host, error: result.refused };
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i] as Record<string, unknown>;
     if (line.type !== 'status') continue;
@@ -99,9 +98,7 @@ export async function runAuthReposSubprocess(
 ): Promise<AuthReposResponse> {
   const host = opts.host ?? 'github.com';
   const lines: Record<string, unknown>[] = [];
-  const proc = runSubprocess({
-    cliArgs: opts.cliArgs,
-    cliEnv: opts.cliEnv,
+  const proc = runOkCliSubprocess(opts.cli, {
     cwd: opts.cwd,
     trailingArgs: ['auth', 'repos', '--json', '--host', host],
     timeoutMs: opts.timeoutMs ?? LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS,
@@ -110,6 +107,7 @@ export async function runAuthReposSubprocess(
     },
   });
   const result = await proc.done;
+  if ('refused' in result) return { ok: false, error: result.refused };
   if (result.timedOut) return { ok: false, error: 'auth repos timed out' };
   if (result.code !== 0) {
     const detail = redactedStderrDetail(result.stderr);

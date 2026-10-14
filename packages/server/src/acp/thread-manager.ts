@@ -41,6 +41,7 @@ import {
   type HostSnapshot,
   iconFromClientName,
   OK_HOSTED_AGENT_ENV,
+  OkCliCommand,
 } from '@inkeep/open-knowledge-core';
 import type {
   AttachmentPart,
@@ -460,7 +461,7 @@ export interface AcpThreadManagerOptions {
   isIgnoredPath: (relPosix: string) => boolean;
   getLoadedDocText?: (docName: string) => string | null;
   getServerUrl?: () => string;
-  getMcpStdioCommand?: () => { command: string; args: readonly string[] } | null | undefined;
+  getMcpStdioCommand?: () => OkMcpStdioCommand | null | undefined;
   probeHarnessManagedMcpEntry?: (
     editorId: EditorId,
     cwd: string,
@@ -493,18 +494,28 @@ export interface AcpThreadManagerOptions {
   browserInstallWaitMs?: number;
 }
 
+export interface OkMcpStdioCommand {
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+}
+
 export function buildOkMcpStdioCommand(
   localOpCliArgs: readonly string[] | undefined,
   port: number,
   deps?: {
     resolveCommand?: (name: string) => string | null;
     log?: PinoLogger;
+    env?: Readonly<Record<string, string | undefined>>;
   },
-): { command: string; args: string[] } {
-  const argv = localOpCliArgs && localOpCliArgs.length > 0 ? localOpCliArgs : ['open-knowledge'];
-  const [command = 'open-knowledge', ...rest] = argv;
-  const args = [...rest, 'mcp', '--port', String(port)];
-  if (command.includes('/') || command.includes('\\')) return { command, args };
+): OkMcpStdioCommand {
+  const server = OkCliCommand.resolve({
+    host: localOpCliArgs === undefined ? undefined : { cliArgs: localOpCliArgs },
+    ...(deps?.env === undefined ? {} : { env: deps.env }),
+  }).stdioServer(['mcp', '--port', String(port)]);
+  const { command, args } = server;
+  const channel = Object.keys(server.env).length > 0 ? { env: server.env } : {};
+  if (command.includes('/') || command.includes('\\')) return { command, args, ...channel };
   const resolved = (deps?.resolveCommand ?? ((name) => resolveOnPath(name, agentSpawnPath())))(
     command,
   );
@@ -513,9 +524,9 @@ export function buildOkMcpStdioCommand(
       { command },
       '[acp-threads] OK MCP stdio command did not resolve on PATH — injecting the bare name, which fails for harnesses that spawn MCP children under a minimal PATH',
     );
-    return { command, args };
+    return { command, args, ...channel };
   }
-  return { command: resolved, args };
+  return { command: resolved, args, ...channel };
 }
 
 export type OkMcpHostedMarker = 'http-header' | 'stdio-entry-env' | 'unknown' | 'none';
@@ -1763,6 +1774,7 @@ export class AcpThreadManager {
               ...(entryPath !== undefined && entryPath !== ''
                 ? [{ name: 'PATH', value: entryPath }]
                 : []),
+              ...Object.entries(stdio.env ?? {}).map(([name, value]) => ({ name, value })),
             ],
           });
           hostedMarker = 'stdio-entry-env';

@@ -5,7 +5,11 @@ import { access, chmod, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
-import { augmentAgentSpawnPath, OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
+import {
+  augmentAgentSpawnPath,
+  envWithoutDevChannel,
+  OK_HOSTED_AGENT_ENV,
+} from '@inkeep/open-knowledge-core';
 import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import { z } from 'zod';
 import {
@@ -80,8 +84,7 @@ function isDir(dir: string): boolean {
 
 export function mergedEnv(overlay?: Record<string, string>): Record<string, string> {
   const base: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) {
-    if (v === undefined) continue;
+  for (const [k, v] of Object.entries(envWithoutDevChannel(process.env))) {
     if (k.toLowerCase() === 'npm_config_overrides') continue;
     base[k] = v;
   }

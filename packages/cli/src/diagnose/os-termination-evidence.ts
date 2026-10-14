@@ -2,7 +2,11 @@ import { type ExecFileException, execFile } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, win32 } from 'node:path';
-import { DESKTOP_PRODUCTS, desktopWindowsExecutableName } from '@inkeep/open-knowledge-core';
+import {
+  DESKTOP_PRODUCTS,
+  desktopWindowsExecutableName,
+  PACKAGED_DESKTOP_PRODUCT_NAMES,
+} from '@inkeep/open-knowledge-core';
 import { okUserHomeDir } from '@inkeep/open-knowledge-core/server';
 import {
   DIAGNOSTIC_REPORT_WINDOW_DAYS,
@@ -22,7 +26,9 @@ const MACOS_SYSTEM_DIAGNOSTIC_REPORTS_DIR = '/Library/Logs/DiagnosticReports';
 
 const OWNED_NAME = /openknowledge/i;
 
-const WINDOWS_EXECUTABLES = Object.values(DESKTOP_PRODUCTS).map(desktopWindowsExecutableName);
+const WINDOWS_EXECUTABLES = PACKAGED_DESKTOP_PRODUCT_NAMES.map((name) =>
+  desktopWindowsExecutableName(DESKTOP_PRODUCTS[name]),
+);
 
 type OsTerminationSource = 'macos-jetsam' | 'linux-journal' | 'windows-event-log';
 

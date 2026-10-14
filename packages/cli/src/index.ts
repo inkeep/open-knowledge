@@ -23,6 +23,7 @@ export { redactContent } from './commands/bug-report-redact.ts';
 export {
   ALL_EDITOR_IDS,
   buildManagedServerEntry,
+  canonicalEntryFor,
   droppedManagedKeys,
   EDITOR_LABELS,
   EDITOR_TARGETS,

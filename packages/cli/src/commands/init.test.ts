@@ -50,6 +50,7 @@ import {
   buildInitJsonSummary,
   ContentDirError,
   classifyExistingMcpEntry,
+  DevMcpScopeError,
   detectInstalledEditors,
   type EditorMcpResult,
   formatInitResult,
@@ -106,8 +107,13 @@ describe('runInit', () => {
     env: {
       MCP_DEBUG: '1',
       OK_LOG_FILE: '/tmp/ok-mcp.log',
+      OK_CHANNEL: 'dev',
     },
   });
+  const enableDevChannelMcp = () => {
+    enableDevMcp();
+    vi.stubEnv('OK_CHANNEL', 'dev');
+  };
   const defaultInstallUserSkill = async () => 'installed' as const;
   const runInitForTest = async (options: Parameters<typeof runInit>[0] = {}) =>
     runInit({
@@ -149,6 +155,7 @@ describe('runInit', () => {
       process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
     }
     process.argv[1] = originalArgv1;
+    vi.unstubAllEnvs();
     rmSync(testDir, { recursive: true, force: true });
   });
 
@@ -218,14 +225,70 @@ describe('runInit', () => {
     expect(config.mcpServers[result.editors[0].serverName]).toBeDefined();
   });
 
-  it('writes a local dev MCP entry when --dev-mcp is enabled', async () => {
-    enableDevMcp();
-    const result = await runInitForTest({ devMcp: true });
+  it('writes the dev MCP entry under the open-knowledge-dev key in project config only', async () => {
+    enableDevChannelMcp();
+    const result = await runInitForTest({ devMcp: true, scope: undefined });
 
-    expect(result.mcpAction).toBe('written');
+    expect(result.editors).toEqual([
+      expect.objectContaining({
+        editorId: 'claude',
+        action: 'written',
+        serverName: 'open-knowledge-dev',
+        configScope: 'project',
+      }),
+    ]);
+    const config = JSON.parse(readFileSync(join(testDir, '.mcp.json'), 'utf-8'));
+    expect(config.mcpServers).toEqual({ 'open-knowledge-dev': expectedDevMcpEntry() });
+    expect(existsSync(claudeConfigPath())).toBe(false);
+    expect(formatInitResult(result, testDir)).toContain(
+      'The open-knowledge-dev entry runs this checkout on this machine only; keep it out of commits.',
+    );
+  });
 
-    const config = JSON.parse(readFileSync(claudeConfigPath(), 'utf-8'));
-    expect(config.mcpServers[result.editors[0].serverName]).toEqual(expectedDevMcpEntry());
+  it.each(['user', 'both'] as const)('refuses --dev-mcp with --scope %s', async (scope) => {
+    enableDevChannelMcp();
+    await expect(runInitForTest({ devMcp: true, scope })).rejects.toBeInstanceOf(DevMcpScopeError);
+    expect(existsSync(claudeConfigPath())).toBe(false);
+    expect(existsSync(join(testDir, '.mcp.json'))).toBe(false);
+  });
+
+  it('the command action selects the dev channel for --dev-mcp and exits 64 on a user scope', async () => {
+    vi.stubEnv('OK_CHANNEL', undefined);
+    const savedCwd = process.cwd();
+    const savedExitCode = process.exitCode;
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      process.chdir(testDir);
+      await initCommand().parseAsync(['--dev-mcp', '--scope', 'user', '--no-skills'], {
+        from: 'user',
+      });
+
+      expect(process.env.OK_CHANNEL).toBe('dev');
+      expect(process.exitCode).toBe(64);
+      const printed = stderrSpy.mock.calls.map((call) => String(call[0])).join('');
+      expect(printed).toContain('A dev MCP entry is written to project config only');
+      expect(existsSync(claudeConfigPath())).toBe(false);
+    } finally {
+      process.chdir(savedCwd);
+      process.exitCode = savedExitCode;
+      stderrSpy.mockRestore();
+    }
+  });
+
+  it('refuses a launcher for an installed channel on a dev-channel run without --dev-mcp', async () => {
+    vi.stubEnv('OK_CHANNEL', 'dev');
+    const result = await runInitForTest({ scope: undefined });
+
+    expect(result.editors.map((e) => [e.serverName, e.configScope, e.action, e.error])).toEqual([
+      [
+        'open-knowledge-dev',
+        'project',
+        'failed',
+        'A dev build writes no MCP launcher for an installed OpenKnowledge channel, because that launcher runs a released CLI. Register this checkout by running `node <checkout>/packages/cli/dist/cli.mjs init --dev-mcp` in the project, or set OK_CHANNEL=stable.',
+      ],
+    ]);
+    expect(existsSync(join(testDir, '.mcp.json'))).toBe(false);
+    expect(existsSync(claudeConfigPath())).toBe(false);
   });
 
   it('overwrites a differing open-knowledge entry by default', async () => {
@@ -283,30 +346,27 @@ describe('runInit', () => {
     });
   });
 
-  it('updates only the managed launcher when switching a published entry to dev mode', async () => {
+  it('leaves the installed Stable entry alone when registering dev MCP', async () => {
+    const stableUserConfig = `${JSON.stringify(
+      { mcpServers: { 'open-knowledge': PUBLISHED_CHAIN_ENTRY } },
+      null,
+      2,
+    )}\n`;
+    writeFileSync(claudeConfigPath(), stableUserConfig);
     writeFileSync(
-      claudeConfigPath(),
-      JSON.stringify(
-        {
-          mcpServers: {
-            'open-knowledge': {
-              command: 'npx',
-              args: ['-y', '@inkeep/open-knowledge@latest', 'mcp'],
-            },
-          },
-        },
-        null,
-        2,
-      ),
+      join(testDir, '.mcp.json'),
+      JSON.stringify({ mcpServers: { 'open-knowledge': PUBLISHED_CHAIN_ENTRY } }, null, 2),
     );
 
-    enableDevMcp();
-    const result = await runInitForTest({ devMcp: true });
-    expect(result.mcpAction).toBe('overwritten');
-    expect(result.editors[0].action).toBe('overwritten');
+    enableDevChannelMcp();
+    await runInitForTest({ devMcp: true, scope: undefined });
 
-    const config = JSON.parse(readFileSync(claudeConfigPath(), 'utf-8'));
-    expect(config.mcpServers['open-knowledge']).toEqual(expectedDevMcpEntry());
+    expect(readFileSync(claudeConfigPath(), 'utf-8')).toBe(stableUserConfig);
+    const project = JSON.parse(readFileSync(join(testDir, '.mcp.json'), 'utf-8'));
+    expect(project.mcpServers).toEqual({
+      'open-knowledge': PUBLISHED_CHAIN_ENTRY,
+      'open-knowledge-dev': expectedDevMcpEntry(),
+    });
   });
 
   it('does not touch ~/.claude.json when --no-mcp is passed', async () => {
@@ -447,19 +507,21 @@ describe('runInit', () => {
       expect(config.mcp_servers[result.editors[0].serverName]).toEqual(PUBLISHED_CHAIN_ENTRY);
     });
 
-    it('writes the dev MCP env block to Codex TOML configs', async () => {
+    it('writes the dev MCP env block to the project Codex TOML config', async () => {
       mkdirSync(dirname(codexConfigPath()), { recursive: true });
-      enableDevMcp();
+      enableDevChannelMcp();
       const result = await runInitForTest({
         editors: ['codex'],
         devMcp: true,
+        scope: undefined,
       });
 
       expect(result.editors).toHaveLength(1);
       expect(result.editors[0].action).toBe('written');
 
-      const config = Bun.TOML.parse(readFileSync(codexConfigPath(), 'utf-8'));
-      expect(config.mcp_servers[result.editors[0].serverName]).toEqual(expectedDevMcpEntry());
+      const config = Bun.TOML.parse(readFileSync(join(testDir, '.codex', 'config.toml'), 'utf-8'));
+      expect(config.mcp_servers['open-knowledge-dev']).toEqual(expectedDevMcpEntry());
+      expect(existsSync(codexConfigPath())).toBe(false);
     });
 
     it.skipIf(!NATIVE_TOML_AVAILABLE)('preserves existing Codex MCP entries', async () => {
@@ -510,21 +572,26 @@ describe('runInit', () => {
       expect(config.mcp['open-knowledge']).toEqual(PUBLISHED_OPENCODE_ENTRY);
     });
 
-    it('writes the dev MCP entry with an environment block', async () => {
+    it('writes the dev MCP entry with an environment block to project opencode.json', async () => {
       mkdirSync(dirname(opencodeConfigPath()), { recursive: true });
-      enableDevMcp();
-      const result = await runInitForTest({ editors: ['opencode'], devMcp: true });
+      enableDevChannelMcp();
+      const result = await runInitForTest({
+        editors: ['opencode'],
+        devMcp: true,
+        scope: undefined,
+      });
 
       expect(result.editors).toHaveLength(1);
       expect(result.editors[0].action).toBe('written');
 
-      const config = JSON.parse(readFileSync(opencodeConfigPath(), 'utf-8'));
-      expect(config.mcp[result.editors[0].serverName]).toEqual({
+      const config = JSON.parse(readFileSync(join(testDir, 'opencode.json'), 'utf-8'));
+      expect(config.mcp['open-knowledge-dev']).toEqual({
         type: 'local',
         enabled: true,
         command: ['node', join(devRepoRoot(), 'packages', 'cli', 'dist', 'cli.mjs'), 'mcp'],
-        environment: { MCP_DEBUG: '1', OK_LOG_FILE: '/tmp/ok-mcp.log' },
+        environment: { MCP_DEBUG: '1', OK_LOG_FILE: '/tmp/ok-mcp.log', OK_CHANNEL: 'dev' },
       });
+      expect(existsSync(opencodeConfigPath())).toBe(false);
     });
 
     it('preserves existing OpenCode mcp entries', async () => {

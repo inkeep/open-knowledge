@@ -62,7 +62,7 @@ describe('identifyOpenKnowledgeToolCall', () => {
     expect(openKnowledgeToolName({ title: 'write', rawInput: { tool: 'write' } })).toBe('write');
   });
 
-  test('known-server matching needs the server we inject, its dev alias, or the Pi bridge prefix', () => {
+  test('known-server matching needs a channel server we inject or its Pi bridge prefix', () => {
     for (const title of [
       'mcp__open-knowledge__write',
       'mcp__open-knowledge-dev__write',
@@ -70,6 +70,7 @@ describe('identifyOpenKnowledgeToolCall', () => {
       'mcp.open_knowledge.write',
       'ok_write',
       'ok-beta_write',
+      'ok-dev_write',
     ]) {
       expect(identifyOpenKnowledgeToolCall({ title, rawInput: {} }, 'known')?.tool).toBe('write');
     }
@@ -77,7 +78,6 @@ describe('identifyOpenKnowledgeToolCall', () => {
       'mcp__ok__write',
       'mcp__ok-dev__write',
       'mcp.ok.write',
-      'ok-dev_write',
       'mcp__open-knowledge-payments__write',
     ]) {
       expect(identifyOpenKnowledgeToolCall({ title, rawInput: {} }, 'known')).toBeNull();

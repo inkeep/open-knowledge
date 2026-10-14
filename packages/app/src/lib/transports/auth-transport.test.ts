@@ -1,3 +1,4 @@
+import { DEV_FALLBACK_CLI_REFUSAL } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { httpAuthTransport } from './auth-transport';
 
@@ -155,6 +156,24 @@ describe('httpAuthTransport().start / ghLogin (streamAuthEndpoint)', () => {
         type: 'error',
         message: 'Declare ghes.example.test in ~/.ok/global.yml to use GitHub Enterprise sign-in.',
       },
+    ]);
+  });
+
+  test('a dev build without its workspace CLI shows the build-and-restart refusal as the sign-in error', async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            type: 'urn:ok:error:auth-failed',
+            title: 'This dev build has no built CLI.',
+            status: 409,
+            detail: DEV_FALLBACK_CLI_REFUSAL,
+          }),
+          { status: 409, headers: { 'Content-Type': 'application/problem+json' } },
+        ),
+    ) as unknown as typeof fetch;
+    expect(await collectEvents(httpAuthTransport().start())).toEqual([
+      { type: 'error', message: DEV_FALLBACK_CLI_REFUSAL },
     ]);
   });
 

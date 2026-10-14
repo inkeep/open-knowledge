@@ -1569,7 +1569,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     getSyncEngine,
     conflicts,
     setBatchInProgress,
-    localOpCliArgs = ['open-knowledge'],
+    localOpCliArgs,
     authStreamHeartbeatMs,
     projectDir,
     getBridgeLossReporter,

@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import type { OkCliCommand } from '@inkeep/open-knowledge-core';
 import {
   type AuthReposResponse,
   type AuthStatusResponse,
-  type LocalOpCliInvocation,
   type RunCloneController,
   type RunDeviceFlowController,
   runAuthReposSubprocess,
@@ -49,7 +49,7 @@ interface LocalOpFailure {
 }
 
 export interface LocalOpDeps {
-  resolveCliInvocation: () => LocalOpCliInvocation;
+  resolveOkCli: () => OkCliCommand;
   logFailure: (failure: LocalOpFailure) => void;
   state: LocalOpHandlerState;
 }
@@ -58,6 +58,9 @@ export function handleAuthStart(
   deps: LocalOpDeps,
   sender: SendableWebContents,
 ): { ok: true; streamId: string } | { ok: false; error: string } {
+  const cli = deps.resolveOkCli();
+  const refused = cli.refusalFor(['auth', 'login']);
+  if (refused !== undefined) return { ok: false, error: refused };
   const streamId = randomUUID();
   const stale = deps.state.authInFlight;
   if (stale) {
@@ -74,7 +77,7 @@ export function handleAuthStart(
   }
   let terminalError: string | null = null;
   const controller = runDeviceFlowSubprocess({
-    ...deps.resolveCliInvocation(),
+    cli,
     onEvent: (event) => {
       if (event.type === 'error') terminalError = event.message;
       if (!sender.isDestroyed?.()) {
@@ -121,6 +124,9 @@ export function handleCloneStart(
           : 'dir must be within the user home directory',
     };
   }
+  const cli = deps.resolveOkCli();
+  const refused = cli.refusalFor(['clone']);
+  if (refused !== undefined) return { ok: false, error: refused };
   const streamId = randomUUID();
   const stale = deps.state.cloneInFlight;
   if (stale) {
@@ -137,7 +143,7 @@ export function handleCloneStart(
   }
   let terminalError: string | null = null;
   const controller = runCloneSubprocess({
-    ...deps.resolveCliInvocation(),
+    cli,
     url: request.url,
     dir: request.dir,
     branch: request.branch,
@@ -217,7 +223,7 @@ export function handleAuthStatus(
     host,
     () =>
       runAuthStatusSubprocess({
-        ...deps.resolveCliInvocation(),
+        cli: deps.resolveOkCli(),
         host: request?.host,
       }).then(logged),
     (h) =>
@@ -250,7 +256,7 @@ export function handleAuthRepos(
     host,
     () =>
       runAuthReposSubprocess({
-        ...deps.resolveCliInvocation(),
+        cli: deps.resolveOkCli(),
         host: request?.host,
       }).then(logged),
     () =>

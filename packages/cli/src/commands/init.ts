@@ -3,8 +3,12 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { inspect } from 'node:util';
 import {
+  CHECKOUT_CLI_COMMAND,
   currentCliCommandName,
   currentMcpServerName,
+  DESKTOP_PRODUCTS,
+  defaultToDevChannel,
+  isDevChannel,
   type McpLauncherDeclineReason,
   OPENKNOWLEDGE_SKILLS_REPO,
   okUserHomeDisplayPath,
@@ -594,6 +598,17 @@ export class ContentDirError extends Error {
   }
 }
 
+export class DevMcpScopeError extends Error {
+  constructor(scope: McpScope) {
+    super(
+      `A dev MCP entry is written to project config only, never to user-level editor config, so --scope ${scope} is not supported with --dev-mcp or OK_CHANNEL=dev. Re-run with --scope project or without --scope.`,
+    );
+    this.name = 'DevMcpScopeError';
+  }
+}
+
+const DEV_CHANNEL_USER_MCP_REFUSAL = `A dev build registers OpenKnowledge MCP in project config only, never in user-level editor config. Run \`${CHECKOUT_CLI_COMMAND} init --dev-mcp\` in the project, or set OK_CHANNEL=stable.`;
+
 export { FilesystemRootProjectError, HomeProjectRootError };
 
 export function resolveInitSkillEnablement(skills: string | boolean | undefined): Set<BundleId> {
@@ -1021,6 +1036,16 @@ export interface UserMcpConfigsOptions {
 
 export async function writeUserMcpConfigs(opts: UserMcpConfigsOptions): Promise<EditorMcpResult[]> {
   const targets = resolveEditorTargets(opts.editors).filter((t) => t.scope === 'global');
+  if (isDevChannel()) {
+    return targets.map((target) => ({
+      editorId: target.id,
+      label: target.label,
+      action: 'failed',
+      configPath: target.configPath('', opts.home),
+      serverName: target.serverName(''),
+      error: DEV_CHANNEL_USER_MCP_REFUSAL,
+    }));
+  }
   const installOptions: McpInstallOptions = {
     mode: 'published',
     skipAvailabilityCheck: true,
@@ -1168,6 +1193,10 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
   const installOptions: McpInstallOptions = {
     mode: options.devMcp ? 'dev' : 'published',
   };
+  const projectOnlyMcp = options.devMcp === true || isDevChannel();
+  if (projectOnlyMcp && options.mcp !== false && options.scope && options.scope !== 'project') {
+    throw new DevMcpScopeError(options.scope);
+  }
 
   const gitResult = await ensureProjectGit(projectRoot);
 
@@ -1223,7 +1252,7 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
   }
 
   const scope = await resolveMcpScope({
-    scope: options.scope,
+    scope: projectOnlyMcp ? 'project' : options.scope,
     mcp: options.mcp,
     isTTY: options.isTTY,
     promptFn: options.promptFn,
@@ -1653,6 +1682,17 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
       const verb = result.projectScopeUnsupportedLabels.length === 1 ? 'does' : 'do';
       lines.push(`  ${names} ${verb} not support project-level config; skipped`);
     }
+    const devServerName = DESKTOP_PRODUCTS.dev.mcpServerName;
+    if (
+      result.editors.some(
+        (e) =>
+          e.serverName === devServerName && (e.action === 'written' || e.action === 'overwritten'),
+      )
+    ) {
+      lines.push(
+        `  The ${devServerName} entry runs this checkout on this machine only; keep it out of commits.`,
+      );
+    }
   }
 
   if (result.projectSkills.length > 0) {
@@ -1933,7 +1973,7 @@ export function initCommand(): Command {
     .option('--no-mcp', `Scaffold the ${OK_DIR}/ directory but do not touch MCP config`)
     .option(
       '--dev-mcp',
-      'Register a local dev MCP entry using node + packages/cli/dist/cli.mjs with debug logging',
+      'Register a local dev MCP entry (node + packages/cli/dist/cli.mjs, debug logging) in project config only, as the dev channel unless OK_CHANNEL is set',
     )
     .option(
       '--content-dir <dir>',
@@ -1975,6 +2015,7 @@ export function initCommand(): Command {
         skills?: string | boolean;
       }) => {
         const cwd = process.cwd();
+        if (opts.devMcp) defaultToDevChannel(process.env);
 
         const sharing: 'shared' | 'local-only' | undefined = opts.shared
           ? 'shared'
@@ -1997,6 +2038,7 @@ export function initCommand(): Command {
           } catch (err) {
             if (
               err instanceof ContentDirError ||
+              err instanceof DevMcpScopeError ||
               err instanceof HomeProjectRootError ||
               err instanceof FilesystemRootProjectError
             ) {

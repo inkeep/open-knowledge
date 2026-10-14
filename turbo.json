@@ -41,6 +41,7 @@
       "cache": false,
       "persistent": true,
       "passThroughEnv": [
+        "OK_CHANNEL",
         "OK_INSTANCE",
         "OK_AUTO_INSTANCE",
         "OK_DEV_PROTOCOL",
