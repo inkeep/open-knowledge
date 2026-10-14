@@ -7,6 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
+import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
 import { NOTES_SOURCE_MARKER, renderStableNotes } from '../../scripts/render-stable-notes.mjs';
 import { buildSlackPayload } from './build-smoke-alert-payload.mjs';
 import { execFileSync } from './child-tripwire.test-helper.mjs';
@@ -1636,7 +1637,7 @@ describe('the macOS artifact is attested signed before it can ship', () => {
 
 describe('every job that reads changesets installs the Changesets reader first', () => {
   const OK_ROOT = join(WORKFLOWS, '..', '..');
-  const READER = join(OK_ROOT, 'scripts', 'compute-next-beta.mjs');
+  const READER = join(OK_ROOT, 'scripts', 'changeset-versions.mjs');
   const importsReader = (file, seen = new Set()) => {
     if (file === READER) return true;
     if (seen.has(file) || !existsSync(file)) return false;
@@ -2421,6 +2422,7 @@ describe('the release App credential never shares a job with installed packages'
     };
     const PUBLISH_STEP = 'Publish to npm via Trusted Publishing';
     const VALIDATE_STEP = 'Refuse build outputs that are not well-formed versions';
+    const LEAD_STEP = 'Refuse a beta base that does not lead the newest stable tag';
     const replacePublishLine = (workflow, line) => {
       const step = stepNamed(workflow.jobs.publish, PUBLISH_STEP);
       step.run = step.run.replace(TARBALL_PUBLISH, line);
@@ -2546,8 +2548,8 @@ describe('the release App credential never shares a job with installed packages'
         `steps > ${VALIDATE_STEP} > if: ${BETA_IF}`,
         `steps > ${VALIDATE_STEP} > env > BASE_VERSION: needs.build.outputs.base_version`,
         `steps > ${VALIDATE_STEP} > env > BUILD_VERSION: needs.build.outputs.version`,
-        `steps > Guard - beta base must lead the latest stable > if: ${BETA_IF}`,
-        'steps > Guard - beta base must lead the latest stable > env > BASE_VERSION: needs.build.outputs.base_version',
+        `steps > ${LEAD_STEP} > if: ${BETA_IF}`,
+        `steps > ${LEAD_STEP} > env > BASE_VERSION: needs.build.outputs.base_version`,
         `steps > ${RESOLVE} > if: ${BETA_IF}`,
         `steps > ${RESOLVE} > env > BASE_VERSION: needs.build.outputs.base_version`,
         `steps > Refuse a beta the build job resolved differently > if: ${BETA_IF}`,
@@ -2581,7 +2583,7 @@ describe('the release App credential never shares a job with installed packages'
         (step) => step !== validate && /needs\.build\.outputs\.(base_version|version)\b/.test(JSON.stringify(step.env ?? {})),
       );
       expect(readers.map((step) => step.name)).toEqual([
-        'Guard - beta base must lead the latest stable',
+        LEAD_STEP,
         'Resolve -beta.N counter',
         'Refuse a beta the build job resolved differently',
       ]);
@@ -2598,6 +2600,47 @@ describe('the release App credential never shares a job with installed packages'
         expect(refused.status, JSON.stringify([base, version])).toBe(1);
         expect(refused.stdout).not.toContain('injected');
         expect(refused.stdout).toMatch(/^::error::The build job's (base_version|version) is not/m);
+      }
+    });
+
+    test('the release job refuses a beta base that a stable tagged after build caught up with', () => {
+      const { release } = releaseWorkflow.jobs;
+      const lead = stepNamed(release, LEAD_STEP);
+      expect(lead.if).toBe(BETA_IF);
+      expect(steps(release).indexOf(lead)).toBeLessThan(steps(release).indexOf(stepNamed(release, 'Resolve -beta.N counter')));
+      const repo = mkdtempSync(join(tmpdir(), 'release-lead-'));
+      try {
+        const env = gitCleanEnv();
+        const git = (...args) => execFileSync('git', args, { cwd: repo, env, encoding: 'utf8' });
+        git('init', '-q', '-b', 'main');
+        for (const [tag, date] of [
+          ['v0.86.1', '2026-01-01T00:00:00Z'],
+          ['v0.86.10', '2026-01-02T00:00:00Z'],
+          ['v0.86.9', '2026-01-03T00:00:00Z'],
+          ['v0.86.11-beta.0', '2026-01-04T00:00:00Z'],
+        ]) {
+          execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', tag], {
+            cwd: repo,
+            env: { ...env, GIT_COMMITTER_DATE: date, GIT_AUTHOR_DATE: date },
+          });
+          git('tag', tag);
+        }
+        const run = (base) => {
+          try {
+            return { status: 0, stdout: execFileSync('bash', ['-c', lead.run], { cwd: repo, encoding: 'utf8', env: { PATH: process.env.PATH, BASE_VERSION: base }, stdio: ['ignore', 'pipe', 'pipe'] }) };
+          } catch (error) {
+            if (typeof error.status !== 'number') throw error;
+            return { status: error.status, stdout: error.stdout };
+          }
+        };
+        expect(run('0.86.11')).toMatchObject({ status: 0, stdout: expect.stringContaining('leads the newest stable tag v0.86.10') });
+        for (const base of ['0.86.10', '0.86.9', '0.85.99']) {
+          const refused = run(base);
+          expect(refused.status, base).toBe(1);
+          expect(refused.stdout).toMatch(/^::error::The build job numbered this beta from base .* does not lead the newest stable tag v0\.86\.10: .*Re-run all jobs/m);
+        }
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
       }
     });
 
@@ -2894,12 +2937,12 @@ describe('the release App credential never shares a job with installed packages'
       });
     });
 
-    describe('read-releases hands build the previous beta that a contents: write read sees, drafts included', () => {
-      const READ_STEP = 'Read the newest beta Release, drafts included, and its body';
+    describe('read-releases hands build the previous beta and the stable Releases that a contents: write read sees, drafts included', () => {
+      const READ_STEP = 'Read the newest beta Release and its body, and list the stable Releases, drafts included';
       const COMPUTE_STEP = 'Compute next beta base version + render release notes';
       const BETA_PATH = "github.event_name == 'push' || github.event_name == 'workflow_dispatch'";
 
-      test('read-releases always runs, runs only gh release list and view, and build takes its outputs under their own names', () => {
+      test('read-releases always runs, runs only gh release list and view and the stable Release listing, and build takes its outputs under their own names', () => {
         const { 'read-releases': readReleases, build } = releaseWorkflow.jobs;
         expect(readReleases.if).toBeUndefined();
         expect(readReleases.needs).toBeUndefined();
@@ -2909,7 +2952,7 @@ describe('the release App credential never shares a job with installed packages'
         expect(read.if).toBe(BETA_PATH);
         expect(read.if).toBe(stepNamed(build, COMPUTE_STEP).if);
         expect(read.env).toEqual({ GH_TOKEN: '${{ github.token }}' });
-        expect(commands(read).match(/\bgh\s+\S+\s+\S+/g)).toEqual(['gh release list', 'gh release view']);
+        expect(commands(read).match(/\bgh\s+\S+\s+\S+/g)).toEqual(['gh release list', 'gh release view', 'gh api -X']);
         expect(build.needs).toBe('read-releases');
         const names = Object.keys(readReleases.outputs);
         expect(names.length).toBeGreaterThan(0);
@@ -2938,9 +2981,14 @@ describe('the release App credential never shares a job with installed packages'
           'const args = process.argv.slice(2);',
           "appendFileSync(process.env.STUB_LOG, `${JSON.stringify(args)}\\n`);",
           'const world = JSON.parse(process.env.STUB_WORLD);',
-          'const failure = (world.fail ?? {})[args[1]];',
+          "const failure = (world.fail ?? {})[args[0] === 'api' ? 'api' : args[1]];",
           "if (failure) { process.stderr.write(failure.stderr ?? ''); process.exit(failure.status); }",
           "const visible = world.releases.filter((release) => world.token === 'write' || !release.isDraft);",
+          "if (args[0] === 'api') {",
+          '  const stable = visible.filter((release) => /^v[0-9]+\\.[0-9]+\\.[0-9]+$/.test(release.tagName));',
+          "  process.stdout.write(stable.map((release) => `${JSON.stringify({ tag_name: release.tagName, draft: release.isDraft })}\\n`).join(''));",
+          '  process.exit(0);',
+          '}',
           "if (args[1] === 'list') {",
           '  const first = visible.find((release) => release.isPrerelease && /^v[0-9]+\\.[0-9]+\\.[0-9]+-beta\\.[0-9]+$/.test(release.tagName));',
           "  process.stdout.write(`${first ? first.tagName : ''}\\n`);",
@@ -3020,11 +3068,13 @@ describe('the release App credential never shares a job with installed packages'
       };
       const marker = (ids) => `Notes for the beta.\n\n<!-- ok-consumed-set: ${JSON.stringify(ids)} -->\n\n`;
       const beta = (tagName, body, isDraft = false) => ({ tagName, isDraft, isPrerelease: true, body });
+      const stable = (tagName, isDraft = false) => ({ tagName, isDraft, isPrerelease: false, body: 'Stable.' });
       const draftNewest = {
         releases: [
           beta('v0.82.0-beta.9', marker(['a', 'b']), true),
+          stable('v0.81.5', true),
           beta('v0.82.0-beta.8', marker(['a'])),
-          { tagName: 'v0.81.4', isDraft: false, isPrerelease: false, body: 'Stable.' },
+          stable('v0.81.4'),
         ],
       };
       const worlds = {
@@ -3035,15 +3085,24 @@ describe('the release App credential never shares a job with installed packages'
         'the body has no marker': { releases: [beta('v0.82.0-beta.9', 'Notes without a marker.\n')] },
         'the marker is not JSON': { releases: [beta('v0.82.0-beta.9', 'Notes.\n<!-- ok-consumed-set: [a, b] -->')] },
         'the marker is not a string array': { releases: [beta('v0.82.0-beta.9', 'Notes.\n<!-- ok-consumed-set: [1, 2] -->')] },
+        'the stable listing fails': { releases: draftNewest.releases, fail: { api: { status: 1, stderr: 'HTTP 502: Bad Gateway\n' } } },
       };
 
       test.each(Object.keys(worlds))('when %s, build replays exactly what a contents: write gh read returns', async (name) => {
-        const { previousBeta, recordedReleases, RELEASE_LIST_ARGS, releaseViewArgs } = await import('../../scripts/compute-next-beta.mjs');
+        const { previousBeta, recordedReleases, RELEASE_LIST_ARGS, releaseViewArgs, STABLE_RELEASES_ARGS } = await import(
+          '../../scripts/compute-next-beta.mjs'
+        );
+        const { parseReleaseListing } = await import('./shipped-fix-containment.mjs');
         const world = worlds[name];
         const { env, calls } = throughTheWorkflow(releaseWorkflow, world, RELEASE_LIST_ARGS[3]);
         const replayed = previousBeta(recordedReleases(env));
         expect(replayed).toEqual(previousBeta(directly(world, 'write')));
-        expect(calls).toEqual(replayed.prevBetaTag ? [RELEASE_LIST_ARGS, releaseViewArgs(replayed.prevBetaTag)] : [RELEASE_LIST_ARGS]);
+        const listing = (res) => ({ status: res.status, releases: res.status === 0 ? parseReleaseListing(res.stdout) : null });
+        expect(listing(recordedReleases(env)(STABLE_RELEASES_ARGS))).toEqual(listing(directly(world, 'write')(STABLE_RELEASES_ARGS)));
+        expect(calls).toEqual([
+          ...(replayed.prevBetaTag ? [RELEASE_LIST_ARGS, releaseViewArgs(replayed.prevBetaTag)] : [RELEASE_LIST_ARGS]),
+          STABLE_RELEASES_ARGS,
+        ]);
       });
 
       test('with the previous beta still a draft, the replay is the draft and not what a contents: read token sees', async () => {
@@ -3051,6 +3110,19 @@ describe('the release App credential never shares a job with installed packages'
         const { env } = throughTheWorkflow(releaseWorkflow, draftNewest, RELEASE_LIST_ARGS[3]);
         expect(previousBeta(recordedReleases(env))).toEqual({ prevBetaTag: 'v0.82.0-beta.9', recovered: ['a', 'b'] });
         expect(previousBeta(directly(draftNewest, 'read'))).toEqual({ prevBetaTag: 'v0.82.0-beta.8', recovered: ['a'] });
+      });
+
+      test('the stable listing carries the draft stable a contents: read token cannot see', async () => {
+        const { recordedReleases, RELEASE_LIST_ARGS, STABLE_RELEASES_ARGS } = await import('../../scripts/compute-next-beta.mjs');
+        const { parseReleaseListing } = await import('./shipped-fix-containment.mjs');
+        const { env } = throughTheWorkflow(releaseWorkflow, draftNewest, RELEASE_LIST_ARGS[3]);
+        expect(parseReleaseListing(recordedReleases(env)(STABLE_RELEASES_ARGS).stdout)).toEqual([
+          { tag_name: 'v0.81.5', draft: true },
+          { tag_name: 'v0.81.4', draft: false },
+        ]);
+        expect(parseReleaseListing(directly(draftNewest, 'read')(STABLE_RELEASES_ARGS).stdout)).toEqual([
+          { tag_name: 'v0.81.4', draft: false },
+        ]);
       });
     });
 

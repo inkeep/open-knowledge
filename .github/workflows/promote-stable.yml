@@ -20,7 +20,7 @@ name: Promote stable
 #   4. Creates a non-prerelease GitHub Release at vX.Y.Z as a DRAFT.
 #      desktop-release.yml fires automatically and builds the stable DMG with
 #      --config.extraMetadata.version=X.Y.Z (override since the public repo's
-#      commit still has -beta.N in package.json).
+#      commit carries the previous stable's version in package.json).
 #   5. desktop-release.yml smokes that DMG, promotes the draft to published,
 #      and only then dispatches publish-stable to release.yml, which promotes
 #      the npm `latest` dist-tag using a transient package.json#version

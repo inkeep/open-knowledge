@@ -12,7 +12,6 @@ import {
   APP_CREDENTIAL_HELPER,
   deriveEntryLevelResolution,
   formatReleaseNotes,
-  guardAnchor,
   guardBasePublished,
   guardDeltaMatchesFix,
   guardMainResetDeltaIds,
@@ -103,25 +102,6 @@ const droppedFixVerdict = () => ({
       stables: ['v0.31.4'],
     },
   ],
-});
-
-describe('guardAnchor', () => {
-  test('refuses while a stable tag is ahead of the changeset anchor', () => {
-    const r = guardAnchor({ anchorVersion: '0.32.0', latestStableTag: 'v0.32.1' });
-    expect(r.ok).toBe(false);
-    expect(r.code).toBe('anchor-drift');
-  });
-
-  test('passes when the anchor is level with the newest stable', () => {
-    const r = guardAnchor({ anchorVersion: '0.32.1', latestStableTag: 'v0.32.1' });
-    expect(r).toMatchObject({ ok: true, code: null });
-  });
-
-  test('propagates a malformed anchor instead of reporting it as drift', () => {
-    expect(() =>
-      guardAnchor({ anchorVersion: 'not-a-version', latestStableTag: 'v0.32.1' }),
-    ).toThrow();
-  });
 });
 
 describe('parseFixRefs', () => {
@@ -586,7 +566,6 @@ describe('verifyWorkspaceMatchesLockfile', () => {
 describe('guard codes', () => {
   test('every guard refuses with its own distinct code', () => {
     const refusals = [
-      guardAnchor({ anchorVersion: '0.32.0', latestStableTag: 'v0.32.1' }),
       guardRefsOnMain({ fixRefs: ['stray'], isOnMain: membership() }),
       guardResolvePathsAllowlisted({ resolvePaths: ['packages/app/src/main.tsx'] }),
       guardTagFree({ tag: 'v0.32.1', tagExists: membership('v0.32.1') }),
@@ -607,7 +586,6 @@ describe('guard codes', () => {
 function makeIo(overrides = {}) {
   const {
     stableTag = 'v0.32.0',
-    anchorVersion = '0.32.0',
     onMain = ['bad1', 'fix1'],
     existingTags = ['v0.32.0'],
     changesets = { 'stable-sha': ['keep-a'], 'synthetic-sha': ['keep-a'] },
@@ -665,7 +643,6 @@ function makeIo(overrides = {}) {
         written[path] = content;
       },
     },
-    readAnchorVersion: () => anchorVersion,
     git: {
       newestStableTag: () => stableTag,
       revParse: (ref) => (ref === stableTag ? 'stable-sha' : `${ref}-sha`),
@@ -1119,7 +1096,6 @@ describe('runPointRelease cascade', () => {
 
 describe('runPointRelease refusals', () => {
   const cases = [
-    ['anchor-drift', { anchorVersion: '0.31.0' }, { mode: 'revert', fixRefs: ['bad1'] }],
     ['ref-not-on-main', { onMain: [] }, { mode: 'revert', fixRefs: ['bad1'] }],
     ['tag-exists', { existingTags: ['v0.32.0', 'v0.32.1'] }, { mode: 'revert', fixRefs: ['bad1'] }],
     [
@@ -1169,8 +1145,8 @@ describe('runPointRelease refusals', () => {
     },
   );
 
-  test('a failing anchor guard stops before the synthetic commit is even built', () => {
-    const io = makeIo({ anchorVersion: '0.31.0' });
+  test('a failing base-published guard stops before the synthetic commit is even built', () => {
+    const io = makeIo({ publishedTags: ['v0.31.9'] });
     expect(() =>
       runPointRelease({ mode: 'revert', fixRefs: ['bad1'], dryRun: false }, io),
     ).toThrow();

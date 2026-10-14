@@ -18,12 +18,12 @@ import {
   NOTES_SOURCE_MARKER as DOCS_NOTES_SOURCE_MARKER,
   markedNotes,
 } from '../docs/src/lib/releases.ts';
+import { fixedGroupOf } from './changeset-versions.mjs';
 import { gitCleanEnv } from './git-clean-env.mjs';
 import {
   changesetSummary,
   collectStableNotes,
   EMPTY_NOTES,
-  fixedGroupOf,
   NOTES_SOURCE_MARKER,
   noteLevel,
   noteReaderAt,
@@ -522,7 +522,7 @@ describe('the release job renders the notes with no node_modules at all', () => 
   const SCRIPT_FILES = [
     'render-stable-notes.mjs',
     'compute-stable-version.mjs',
-    'compute-next-beta.mjs',
+    'changeset-versions.mjs',
     'git-clean-env.mjs',
   ];
 

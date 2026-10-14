@@ -5,7 +5,7 @@ import {
   createShippedFixCheck,
   parseReleaseListing,
 } from '../.github/scripts/shipped-fix-containment.mjs';
-import { FIXED_GROUP_ANCHOR, loadChangesets, maxReleaseType } from './compute-next-beta.mjs';
+import { FIXED_GROUP_ANCHOR, fixedGroupOf, loadChangesets, maxReleaseType } from './changeset-versions.mjs';
 import {
   gitAt,
   parseVerdicts,
@@ -43,11 +43,6 @@ export function changesetSummary(text) {
       'changeset has no frontmatter delimited by "---"; Changesets cannot read it either.',
     );
   return match[2].trim();
-}
-
-export function fixedGroupOf(config) {
-  const group = (config?.fixed ?? []).find((members) => members.includes(FIXED_GROUP_ANCHOR));
-  return group ?? [FIXED_GROUP_ANCHOR];
 }
 
 export function noteLevel(releases, fixedGroup) {

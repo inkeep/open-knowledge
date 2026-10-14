@@ -4,9 +4,7 @@ import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import {
   computePointReleaseVersion,
-  evaluateAnchorGuard,
   parseBumpVerdicts,
-  readAnchorVersion,
   realGit,
   recordBumpVerdicts,
   runGit,
@@ -42,20 +40,6 @@ function refuse(code, message) {
 
 function pass(message) {
   return { ok: true, code: null, message };
-}
-
-export function guardAnchor({ anchorVersion, latestStableTag }) {
-  const verdict = evaluateAnchorGuard({ anchorVersion, latestStableTag });
-  if (!verdict.ok) {
-    return refuse(
-      'anchor-drift',
-      `${verdict.reason} Refusing rather than waiting: this lane holds the release-cadence lock, ` +
-        'and the consolidation that clears the drift needs it. Re-run once the anchor is level. ' +
-        'If main-reset itself keeps failing its version guard, dispatch it with anchor_override=true ' +
-        '(RELEASES.md, Recovering anchor drift).',
-    );
-  }
-  return pass(verdict.reason);
 }
 
 export function parseFixRefs(raw) {
@@ -516,7 +500,6 @@ export function runPointRelease(opts, io) {
     guards,
     guardBasePublished({ latestStableTag, publishedTags: io.containment.publishedStableTags() }),
   );
-  checkGuard(guards, guardAnchor({ anchorVersion: io.readAnchorVersion(), latestStableTag }));
   checkGuard(guards, guardRefsOnMain({ fixRefs, isOnMain: io.git.isOnMain }));
   checkGuard(guards, guardResolvePathsAllowlisted({ resolvePaths }));
 
@@ -747,8 +730,9 @@ function decideMainReset({ anchorDeltaIds, addedIds, bridgeConfigured, guards, w
       'Skipping the main-reset dispatch: this release forwards no changeset delta, and dispatching an ' +
         'empty one would consolidate the entire pending pile. Two follow-ups are now yours: land the fix ' +
         '(for a revert, the revert itself) on main so the pile stops carrying it, and run main-reset with ' +
-        'that changeset so the anchor advances past this stable. Until the anchor advances, every ' +
-        'version-computing path refuses.',
+        'that changeset so the anchor advances past this stable. Until the anchor advances, every later ' +
+        'automatic main-reset fails its version guard; beta and stable versions come from the stable tags ' +
+        'and are unaffected.',
     );
     return { dispatch: false, deltaIds: null, skipReason: 'no-delta-to-forward' };
   }
@@ -815,7 +799,6 @@ export function formatReleaseNotes(plan) {
 
 export function realIo() {
   return {
-    readAnchorVersion,
     containment: createShippedFixCheck(),
     fs: {
       readWorktreeFile: (path) => readFileSync(path, 'utf8'),

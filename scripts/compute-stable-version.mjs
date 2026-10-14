@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { gitCleanEnv } from './git-clean-env.mjs';
-import { FIXED_GROUP_ANCHOR, bumpSemver, loadChangesets, maxBumpType, maxReleaseType } from './compute-next-beta.mjs';
+import { bumpSemver, loadChangesets, maxBumpType, maxReleaseType } from './changeset-versions.mjs';
 
 const BETA_TAG_RE = /^v\d+\.\d+\.\d+-beta\.\d+$/;
 const STABLE_TAG_RE = /^v\d+\.\d+\.\d+$/;
@@ -102,56 +102,6 @@ export function computePointReleaseVersion({ syntheticSha, latestStableTag, late
   const bump = mode === 'revert' ? 'patch' : maxBumpType(addedIds.map((id) => git.bumpTypeOf(sha, id)));
   const version = bumpSemver(latestStableVersion, bump);
   return { version, tag: `v${version}`, latestStableVersion, addedIds, removedIds, bump };
-}
-
-export function evaluateAnchorGuard({ anchorVersion, latestStableTag }) {
-  const anchor = String(anchorVersion ?? '').trim();
-  if (!/^\d+\.\d+\.\d+$/.test(anchor)) {
-    throw new Error(`anchor version '${anchorVersion}' is not a bare X.Y.Z version.`);
-  }
-  const tag = String(latestStableTag ?? '').trim();
-  if (tag === '') {
-    return {
-      ok: true,
-      anchorVersion: anchor,
-      latestStableVersion: '',
-      drift: 'bootstrap',
-      reason: `No stable tag exists yet; the anchor (${anchor}) cannot be stale against it.`,
-    };
-  }
-  if (!STABLE_TAG_RE.test(tag)) {
-    throw new Error(`latest stable tag '${latestStableTag}' is not in the expected vX.Y.Z format.`);
-  }
-  const latestStableVersion = tag.slice(1);
-  if (anchor === latestStableVersion) {
-    return {
-      ok: true,
-      anchorVersion: anchor,
-      latestStableVersion,
-      drift: 'none',
-      reason: `Anchor ${anchor} matches the newest stable ${tag}.`,
-    };
-  }
-  const drift = compareVersions(anchor, latestStableVersion) < 0 ? 'behind' : 'ahead';
-  return {
-    ok: false,
-    anchorVersion: anchor,
-    latestStableVersion,
-    drift,
-    reason:
-      drift === 'behind'
-        ? `Anchor ${anchor} is behind the newest stable ${tag}; a main-reset consolidation is still pending.`
-        : `Anchor ${anchor} is ahead of the newest stable ${tag}; a consolidation advanced without a matching stable tag.`,
-  };
-}
-
-function compareVersions(a, b) {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1;
-  }
-  return 0;
 }
 
 export function runGit(args, cwd) {
@@ -300,50 +250,6 @@ export const recordBumpVerdicts = (git, verdicts) => recordVerdicts(git, 'bumpTy
 export const withBumpVerdicts = (git, verdicts) =>
   withVerdicts(git, 'bumpTypeOf', verdicts, BUMP_VERDICTS);
 
-export function readAnchorVersion() {
-  const pre = JSON.parse(readFileSync('.changeset/pre.json', 'utf8'));
-  if (pre.mode !== 'pre') {
-    throw new Error(`Expected .changeset/pre.json mode=pre, got mode=${pre.mode}; the anchor is not meaningful.`);
-  }
-  const anchor = pre.initialVersions?.[FIXED_GROUP_ANCHOR];
-  if (!anchor) throw new Error(`No initialVersion for ${FIXED_GROUP_ANCHOR} in .changeset/pre.json`);
-  return anchor;
-}
-
-function anchorGuardMain() {
-  let result;
-  try {
-    result = evaluateAnchorGuard({
-      anchorVersion: readAnchorVersion(),
-      latestStableTag: realGit.newestStableTag(),
-    });
-  } catch (err) {
-    console.error(`::error::compute-stable-version --anchor-guard: ${err.message}`);
-    process.exit(1);
-  }
-
-  console.log(JSON.stringify(result));
-
-  if (process.env.GITHUB_OUTPUT) {
-    appendFileSync(
-      process.env.GITHUB_OUTPUT,
-      [
-        `anchor_ok=${result.ok ? 'true' : 'false'}`,
-        `anchor_version=${result.anchorVersion}`,
-        `latest_stable_version=${result.latestStableVersion}`,
-        `anchor_drift=${result.drift}`,
-        '',
-      ].join('\n'),
-    );
-  }
-
-  if (!result.ok) {
-    console.error(`::error::${result.reason}`);
-    process.exit(2);
-  }
-  log(result.reason);
-}
-
 function pointReleaseMain() {
   let result;
   try {
@@ -388,11 +294,6 @@ function pointReleaseMain() {
 }
 
 function main() {
-  if (process.argv[2] === '--anchor-guard') {
-    anchorGuardMain();
-    return;
-  }
-
   if (process.argv[2] === '--point-release') {
     pointReleaseMain();
     return;

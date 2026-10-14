@@ -5,12 +5,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 import { configureTestGitRepository } from '../test-support/configure-git-fixture.test-helper.ts';
-import { loadChangesets, maxReleaseType } from './compute-next-beta.mjs';
+import { loadChangesets, maxReleaseType } from './changeset-versions.mjs';
 import {
   changesetIdsFromTreePaths,
   computePointReleaseVersion,
   computeStablePromotion,
-  evaluateAnchorGuard,
   gitAt,
   parseBumpVerdicts,
   recordBumpVerdicts,
@@ -157,78 +156,6 @@ describe('releasedChangesetIds', () => {
   test('with no stable tag every changeset is unreleased', () => {
     const git = { stableTags: () => [], changesetIds: () => ['a', 'b'] };
     expect(unreleasedChangesetIds(git, 'MAIN')).toEqual(['a', 'b']);
-  });
-});
-
-describe('evaluateAnchorGuard', () => {
-  test('level anchor passes', () => {
-    expect(evaluateAnchorGuard({ anchorVersion: '0.41.0', latestStableTag: 'v0.41.0' })).toMatchObject({
-      ok: true,
-      drift: 'none',
-      anchorVersion: '0.41.0',
-      latestStableVersion: '0.41.0',
-    });
-  });
-
-  test('anchor behind the newest stable fails and names the pending consolidation', () => {
-    const r = evaluateAnchorGuard({ anchorVersion: '0.41.0', latestStableTag: 'v0.41.1' });
-    expect(r.ok).toBe(false);
-    expect(r.drift).toBe('behind');
-    expect(r.reason).toMatch(/main-reset consolidation is still pending/);
-  });
-
-  test('anchor ahead of the newest stable fails and is reported as a different shape', () => {
-    const r = evaluateAnchorGuard({ anchorVersion: '0.42.0', latestStableTag: 'v0.41.0' });
-    expect(r.ok).toBe(false);
-    expect(r.drift).toBe('ahead');
-    expect(r.reason).toMatch(/ahead of the newest stable/);
-  });
-
-  test('compares numerically, not lexically, across a double-digit component', () => {
-    expect(evaluateAnchorGuard({ anchorVersion: '0.9.0', latestStableTag: 'v0.10.0' }).drift).toBe('behind');
-    expect(evaluateAnchorGuard({ anchorVersion: '0.35.10', latestStableTag: 'v0.35.9' }).drift).toBe('ahead');
-    expect(evaluateAnchorGuard({ anchorVersion: '0.35.10', latestStableTag: 'v0.35.10' }).ok).toBe(true);
-  });
-
-  test('bootstrap: no stable tag yet cannot be stale', () => {
-    expect(evaluateAnchorGuard({ anchorVersion: '0.1.0', latestStableTag: '' })).toMatchObject({
-      ok: true,
-      drift: 'bootstrap',
-      latestStableVersion: '',
-    });
-  });
-
-  test('tolerates surrounding whitespace from raw git / json input', () => {
-    expect(evaluateAnchorGuard({ anchorVersion: ' 0.41.0 ', latestStableTag: 'v0.41.0\n' }).ok).toBe(true);
-  });
-
-  test('a malformed anchor throws rather than reporting drift', () => {
-    expect(() => evaluateAnchorGuard({ anchorVersion: '0.41', latestStableTag: 'v0.41.0' })).toThrow(
-      /bare X\.Y\.Z version/,
-    );
-    expect(() => evaluateAnchorGuard({ anchorVersion: undefined, latestStableTag: 'v0.41.0' })).toThrow(
-      /bare X\.Y\.Z version/,
-    );
-    expect(() => evaluateAnchorGuard({ anchorVersion: 'v0.41.0', latestStableTag: 'v0.41.0' })).toThrow(
-      /bare X\.Y\.Z version/,
-    );
-  });
-
-  test('a malformed stable tag throws rather than reporting drift', () => {
-    expect(() => evaluateAnchorGuard({ anchorVersion: '0.41.0', latestStableTag: 'v0.41.0-beta.3' })).toThrow(
-      /vX\.Y\.Z format/,
-    );
-    expect(() => evaluateAnchorGuard({ anchorVersion: '0.41.0', latestStableTag: 'garbage' })).toThrow(
-      /vX\.Y\.Z format/,
-    );
-  });
-
-  test('reports only: it never sleeps, retries, or mutates', () => {
-    const before = Date.now();
-    const a = evaluateAnchorGuard({ anchorVersion: '0.41.0', latestStableTag: 'v0.41.1' });
-    const b = evaluateAnchorGuard({ anchorVersion: '0.41.0', latestStableTag: 'v0.41.1' });
-    expect(a).toEqual(b);
-    expect(Date.now() - before).toBeLessThan(500);
   });
 });
 
@@ -476,6 +403,35 @@ describe('gitAt reads a commit\'s changesets the way Changesets reads the same t
     expect(gitAt(root).changesetIds('v1.1.0')).toEqual(['plain']);
   });
 
+  test('newestStableTag orders by version, not by string order', () => {
+    const root = committedChangesets({ 'plain.md': bump(`"${OK}": patch`) });
+    for (const tag of ['v0.86.10', 'v0.86.9', 'v0.86.11-beta.0', 'v0.9.99'])
+      git(root, ['tag', tag]);
+    expect(gitAt(root).newestStableTag()).toBe('v0.86.10');
+  });
+
+  test('newestStableTag orders by version, not by creation order', () => {
+    const root = committedChangesets({ 'plain.md': bump(`"${OK}": patch`) });
+    const created = [
+      ['v0.86.1', '2026-01-01T00:00:00Z'],
+      ['v0.86.10', '2026-01-02T00:00:00Z'],
+      ['v0.86.9', '2026-01-03T00:00:00Z'],
+    ];
+    for (const [tag, date] of created) {
+      const res = spawnSync(
+        'git',
+        ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', tag],
+        { cwd: root, env: { ...gitCleanEnv(), GIT_COMMITTER_DATE: date, GIT_AUTHOR_DATE: date }, encoding: 'utf8' },
+      );
+      expect(res.status, res.stderr).toBe(0);
+      git(root, ['tag', tag]);
+    }
+    for (const key of ['creatordate', '-creatordate', 'refname', '-refname']) {
+      expect(git(root, ['tag', '--list', 'v*', `--sort=${key}`]).split('\n')[0], key).not.toBe('v0.86.10');
+    }
+    expect(gitAt(root).newestStableTag()).toBe('v0.86.10');
+  });
+
   test('a changeset Changesets cannot parse fails the read instead of counting as no bump', () => {
     const root = committedChangesets({ 'broken.md': bump(`"${OK}": Major`) });
     expect(() => gitAt(root).bumpTypeOf('HEAD', 'broken')).toThrow();
@@ -528,7 +484,7 @@ describe('bump verdicts carry a read from one job to another by blob id', () => 
 
 describe('the promote job computes the stable version with no node_modules at all', () => {
   const SCRIPTS = dirname(fileURLToPath(import.meta.url));
-  const SCRIPT_FILES = ['compute-stable-version.mjs', 'compute-next-beta.mjs', 'git-clean-env.mjs'];
+  const SCRIPT_FILES = ['compute-stable-version.mjs', 'changeset-versions.mjs', 'git-clean-env.mjs'];
 
   function promotionFixture() {
     const root = mkdtempSync(join(tmpdir(), 'stable-version-promotion-'));

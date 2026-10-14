@@ -145,8 +145,9 @@ jobs:
       platforms: ${{ steps.stage.outputs.platforms }}
     steps:
       - name: Link to triggering run
-        # Back-link: promote-stable forwards its run URL in
-        # client_payload.dispatched_by. Blank on manual / beta paths.
+        # Back-link: client_payload.dispatched_by carries promote-stable.yml's
+        # own run URL, or the dispatched_by that point-release.yml received
+        # (blank when it ran by hand). Blank on manual / beta paths.
         env:
           DISPATCHED_BY: ${{ github.event.client_payload.dispatched_by }}
         run: |
@@ -163,14 +164,15 @@ jobs:
           ref: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
           fetch-depth: 0
 
-      # Detect channel from the release TAG (not package.json#version). Under
-      # the zero-commit-bump cadence (release.yml header lines 7-10), the
-      # tag is the only source of truth for the release's version — the
-      # public repo's commits at the tagged SHA carry the cycle-base version (e.g.
-      # `0.5.0-beta.5`), not the tag's version. Tag also drives manifest
-      # selection (beta-* vs latest-* channel files) for the stable-promotion
-      # case where tag (`v0.4.0`) and on-disk package.json (`0.4.0-beta.N`)
-      # diverge.
+      # Detect channel from the release TAG (not package.json#version). No
+      # release commits a version (release.yml's header describes the
+      # transient override for each path), so the tag is the only source
+      # of truth for the release's version — the public repo's commits at
+      # the tagged SHA carry the version the last main reset wrote
+      # (normally the previous stable), never the tag's and never a
+      # `-beta.N`. Tag also drives manifest selection (beta-* vs latest-*
+      # channel files), since tag (`v0.4.0` or `v0.4.0-beta.N`) and on-disk
+      # package.json (`0.3.2`) always diverge.
       #
       # Fail-fast on anything other than `-beta.*` or plain semver —
       # `-rc.*` / `-canary.*` etc. would ship manifests with a channel
@@ -413,10 +415,10 @@ jobs:
           rustup toolchain install --no-self-update
           rustc -vV
 
-      # PRD-6650: under the zero-commit-bump cadence (release.yml header
-      # lines 7-10), workspace package.json files on disk at the tagged SHA
-      # always lag the release tag. `tsdown` inlines
-      # `import pkgJson from "../package.json"` into
+      # PRD-6650: no release commits a version (release.yml's header
+      # describes the transient override), so workspace package.json
+      # files on disk at the tagged SHA always lag the release tag.
+      # `tsdown` inlines `import pkgJson from "../package.json"` into
       # `packages/cli/dist/constants-*.mjs` at build time, and
       # `packages/cli/build:skill-asset` composes + copies both
       # `packages/server/assets/skills/{project,discovery}/SKILL.md` into

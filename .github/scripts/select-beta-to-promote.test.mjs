@@ -948,7 +948,7 @@ describe('the selector entry points the two jobs run', () => {
     '.github/scripts/select-beta-to-promote.mjs',
     '.github/scripts/shipped-fix-containment.mjs',
     'scripts/compute-stable-version.mjs',
-    'scripts/compute-next-beta.mjs',
+    'scripts/changeset-versions.mjs',
     'scripts/git-clean-env.mjs',
   ];
   const dirs = [];

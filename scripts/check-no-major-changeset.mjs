@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadChangesets } from './compute-next-beta.mjs';
+import { loadChangesets } from './changeset-versions.mjs';
 
 const PASS = "No 'major' bumps in changesets.";
 const root = fileURLToPath(new URL('..', import.meta.url));

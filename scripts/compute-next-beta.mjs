@@ -1,61 +1,23 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+import {
+  createShippedFixCheck,
+  parseReleaseListing,
+} from '../.github/scripts/shipped-fix-containment.mjs';
+import { bumpSemver, fixedGroupOf, loadChangesets, maxBumpType, maxReleaseType } from './changeset-versions.mjs';
+import { gitAt, releasedChangesetIds } from './compute-stable-version.mjs';
 
-export const FIXED_GROUP_ANCHOR = '@inkeep/open-knowledge';
 const PRE_PATH = '.changeset/pre.json';
+const CONFIG_PATH = '.changeset/config.json';
+const STABLE_TAG_RE = /^v\d+\.\d+\.\d+$/;
 const PUBLIC_REPO = process.env.GITHUB_REPOSITORY || 'inkeep/open-knowledge';
 const CHANGELOG_PKGS = ['cli', 'core', 'server', 'app', 'desktop'];
 const CONSUMED_MARKER_RE = /<!--\s*ok-consumed-set:\s*(\[[^\]]*\])\s*-->/;
-const BUMP_RANK = { patch: 1, minor: 2, major: 3 };
-const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 function log(...args) {
   process.stderr.write(`${args.join(' ')}\n`);
-}
-
-export function bumpSemver(version, type) {
-  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
-  if (!m) throw new Error(`Invalid version: ${version}`);
-  const [major, minor, patch] = m.slice(1).map(Number);
-  if (type === 'major') return `${major + 1}.0.0`;
-  if (type === 'minor') return `${major}.${minor + 1}.0`;
-  if (type === 'patch') return `${major}.${minor}.${patch + 1}`;
-  throw new Error(`Invalid bump type: ${type}`);
-}
-
-export function maxBumpType(bumpTypes) {
-  let max = 'patch';
-  for (const t of bumpTypes) {
-    if (t && BUMP_RANK[t] > BUMP_RANK[max]) max = t;
-  }
-  return max;
-}
-
-export function computeBaseVersion(anchor, bumpTypes) {
-  return bumpSemver(anchor, maxBumpType(bumpTypes));
-}
-
-export function loadChangesets(root = OK_ROOT) {
-  const cliRequire = createRequire(
-    createRequire(join(root, 'package.json')).resolve('@changesets/cli/package.json'),
-  );
-  const readerRequire = createRequire(cliRequire.resolve('@changesets/read'));
-  return {
-    read: cliRequire('@changesets/read').default,
-    parse: readerRequire('@changesets/parse').default,
-  };
-}
-
-export function maxReleaseType(releases) {
-  let maxType = null;
-  for (const { type } of releases) {
-    if (BUMP_RANK[type] && (!maxType || BUMP_RANK[type] > BUMP_RANK[maxType])) maxType = type;
-  }
-  return maxType;
 }
 
 export const RELEASE_LIST_ARGS = [
@@ -69,6 +31,16 @@ export const RELEASE_LIST_ARGS = [
   'tagName,isPrerelease',
   '--jq',
   '[.[] | select(.isPrerelease) | select(.tagName | test("^v[0-9]+\\\\.[0-9]+\\\\.[0-9]+-beta\\\\.[0-9]+$")) | .tagName] | first // ""',
+];
+
+export const STABLE_RELEASES_ARGS = [
+  'api',
+  '-X',
+  'GET',
+  `repos/${PUBLIC_REPO}/releases?per_page=100`,
+  '--paginate',
+  '--jq',
+  '.[] | select(.tag_name | test("^v[0-9]+[.][0-9]+[.][0-9]+$")) | {tag_name, draft}',
 ];
 
 export function releaseViewArgs(tag) {
@@ -92,6 +64,13 @@ export function recordedReleases(env) {
     }
     if (env.RELEASE_VIEW_TAG && sameArgs(args, releaseViewArgs(env.RELEASE_VIEW_TAG))) {
       return { status: status('RELEASE_VIEW_STATUS'), stdout: env.RELEASE_VIEW_STDOUT, stderr: '' };
+    }
+    if (sameArgs(args, STABLE_RELEASES_ARGS)) {
+      return {
+        status: status('STABLE_RELEASES_STATUS'),
+        stdout: env.STABLE_RELEASES_STDOUT,
+        stderr: env.STABLE_RELEASES_STDERR,
+      };
     }
     throw new Error(`the read-releases job recorded no result for gh ${args.join(' ')}`);
   };
@@ -135,6 +114,53 @@ function recoverConsumedSet(tag, gh) {
 export function previousBeta(gh) {
   const prevBetaTag = findPrevBetaTag(gh);
   return { prevBetaTag, recovered: prevBetaTag ? recoverConsumedSet(prevBetaTag, gh) : null };
+}
+
+export function publishedStableTags(gh, readListing) {
+  const unusable = (reason) => {
+    console.error(
+      `::warning::compute-next-beta: ${reason}. Counting every stable tag as released, so while the newest stable ` +
+        "is still a draft this beta's notes and consumed set leave out that stable's changesets.",
+    );
+    return null;
+  };
+  const res = gh(STABLE_RELEASES_ARGS);
+  if (res.status !== 0) {
+    const stderr = String(res.stderr ?? '').trim().replace(/\s+/g, ' ').slice(0, 300);
+    return unusable(`listing the stable Releases failed (exit ${res.status}${stderr ? `: ${stderr}` : ''})`);
+  }
+  try {
+    return readListing(res.stdout);
+  } catch (err) {
+    return unusable(`the stable Release listing is unusable (${err instanceof Error ? err.message : String(err)})`);
+  }
+}
+
+export function betaBase({ changesets, newestStableTag, releasedIds, anchorIds }) {
+  if (!STABLE_TAG_RE.test(String(newestStableTag ?? ''))) {
+    throw new Error(
+      `'${newestStableTag}' is not a vX.Y.Z stable tag; a beta is numbered from the newest stable tag, ` +
+        'so the checkout needs every tag.',
+    );
+  }
+  const pending = changesets.filter(({ id }) => !releasedIds.has(id));
+  const beyondAnchor = pending.filter(({ id }) => !anchorIds.has(id));
+  const bump = maxBumpType(beyondAnchor.map(({ releases }) => maxReleaseType(releases)));
+  return {
+    pending,
+    beyondAnchorCount: beyondAnchor.length,
+    maxBumpType: bump,
+    baseVersion: bumpSemver(newestStableTag.slice(1), bump),
+  };
+}
+
+export function transientPreState({ fixedGroup, anchorVersion, consumed }) {
+  return {
+    mode: 'pre',
+    tag: 'beta',
+    initialVersions: Object.fromEntries(fixedGroup.map((name) => [name, anchorVersion])),
+    changesets: consumed,
+  };
 }
 
 function readChangelogs() {
@@ -250,28 +276,40 @@ export function renderNotes({ packageDeltas, newConsumedSet, prevBetaTag, newCou
 }
 
 async function main() {
-  const pre = JSON.parse(readFileSync(PRE_PATH, 'utf8'));
-  if (pre.mode !== 'pre') {
-    throw new Error(`Expected pre.json mode=pre, got mode=${pre.mode}`);
-  }
-  const anchor = pre.initialVersions?.[FIXED_GROUP_ANCHOR];
-  if (!anchor) {
-    throw new Error(`No initialVersion for ${FIXED_GROUP_ANCHOR} in pre.json`);
-  }
+  const git = gitAt();
+  const newestStableTag = git.newestStableTag();
+  const gh = recordedReleases(process.env);
 
   const changesets = await loadChangesets().read(process.cwd());
-  if (changesets.length === 0) {
+  const stableTags = new Set(git.stableTags());
+  const publishedTags = publishedStableTags(gh, (stdout) =>
+    createShippedFixCheck({
+      listReleases: () => parseReleaseListing(stdout),
+      git: { stableTags: () => stableTags },
+    }).publishedStableTags(),
+  );
+  const { pending, beyondAnchorCount, maxBumpType: cycleMaxBump, baseVersion } = betaBase({
+    changesets,
+    newestStableTag,
+    releasedIds: releasedChangesetIds(git, { releasedTags: publishedTags }),
+    anchorIds: new Set(newestStableTag ? git.changesetIds(newestStableTag) : []),
+  });
+  log(
+    `Beta base ${baseVersion}: ${cycleMaxBump} over the newest stable tag ${newestStableTag}, from ` +
+      `${beyondAnchorCount} of ${pending.length} pending changesets (the rest are already in its tree). Released means ` +
+      `in the tree of ${publishedTags === null ? 'any stable tag' : `one of ${publishedTags.length} published stable tags`}.`,
+  );
+  if (pending.length === 0) {
     console.log(JSON.stringify({ skip: true, reason: 'no pending changesets' }));
     return;
   }
-  const allIds = changesets.map(({ id }) => id);
-  const allIdsSet = new Set(allIds);
+  const pendingIds = pending.map(({ id }) => id);
+  const pendingSet = new Set(pendingIds);
 
-  const { prevBetaTag, recovered } = previousBeta(recordedReleases(process.env));
-  let priorConsumed = [];
-  if (recovered) priorConsumed = recovered.filter((id) => allIdsSet.has(id));
+  const { prevBetaTag, recovered } = previousBeta(gh);
+  const priorConsumed = recovered ? recovered.filter((id) => pendingSet.has(id)) : [];
   const priorSet = new Set(priorConsumed);
-  const newIds = allIds.filter((id) => !priorSet.has(id));
+  const newIds = pendingIds.filter((id) => !priorSet.has(id));
 
   if (newIds.length === 0) {
     console.log(
@@ -283,15 +321,22 @@ async function main() {
     return;
   }
 
-  const cycleBumpTypes = changesets.map(({ releases }) => maxReleaseType(releases));
-  const cycleMaxBump = maxBumpType(cycleBumpTypes);
-  const baseVersion = bumpSemver(anchor, cycleMaxBump);
-
   const changelogsBefore = readChangelogs();
 
+  for (const { id } of changesets) {
+    if (!pendingSet.has(id)) rmSync(`.changeset/${id}.md`);
+  }
   writeFileSync(
     PRE_PATH,
-    `${JSON.stringify({ ...pre, changesets: priorConsumed }, null, 2)}\n`,
+    `${JSON.stringify(
+      transientPreState({
+        fixedGroup: fixedGroupOf(JSON.parse(readFileSync(CONFIG_PATH, 'utf8'))),
+        anchorVersion: newestStableTag.slice(1),
+        consumed: priorConsumed,
+      }),
+      null,
+      2,
+    )}\n`,
   );
 
   const versionRes = spawnSync('pnpm', ['exec', 'changeset', 'version'], {
@@ -322,6 +367,7 @@ async function main() {
       skip: false,
       baseVersion,
       maxBumpType: cycleMaxBump,
+      newestStableTag,
       pendingCount: newIds.length,
       releaseNotes,
     }),
@@ -329,5 +375,11 @@ async function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await main();
+  try {
+    await main();
+  } catch (err) {
+    console.error(err);
+    console.error(`::error::compute-next-beta: ${err instanceof Error ? err.message : String(err)}`);
+    process.exitCode = 1;
+  }
 }
