@@ -118,6 +118,7 @@ jobs:
       contents: read
     outputs:
       bump_verdicts: ${{ steps.bumps.outputs.bump_verdicts }}
+      note_levels: ${{ steps.bumps.outputs.note_levels }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -136,7 +137,7 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile --filter=. --ignore-scripts
 
-      - name: Read the bump of every changeset the fix refs write
+      - name: Read the bump and release-note level of every changeset the fix refs write
         id: bumps
         env:
           MODE: ${{ inputs.mode }}
@@ -247,6 +248,7 @@ jobs:
           BRIDGE_GH_TOKEN: ${{ steps.bridge-token.outputs.token }}
           BRIDGE_CONFIGURED: ${{ steps.bridge-check.outputs.configured }}
           BUMP_VERDICTS: ${{ needs.read-bumps.outputs.bump_verdicts }}
+          NOTE_LEVELS: ${{ needs.read-bumps.outputs.note_levels }}
           MODE: ${{ inputs.mode }}
           FIX_REFS: ${{ inputs.fix_refs }}
           ANCHOR_DELTA_IDS: ${{ inputs.anchor_delta_ids }}

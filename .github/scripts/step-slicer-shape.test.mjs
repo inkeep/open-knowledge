@@ -15,7 +15,7 @@ const NESTED_SLICE = /\.slice\(\s*[A-Za-z_$][\w$]*(?:\.[\w$]+)*\.(?:indexOf|last
 const BASELINE = {
   'build-smoke-alert-payload.test.mjs': 3,
   'point-release-plan.test.mjs': 1,
-  'release-cascade-shape.test.mjs': 18,
+  'release-cascade-shape.test.mjs': 17,
 };
 
 const countIn = (src) => [...src.matchAll(NESTED_SLICE)].length;

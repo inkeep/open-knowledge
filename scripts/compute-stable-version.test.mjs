@@ -14,6 +14,8 @@ import {
   gitAt,
   parseBumpVerdicts,
   recordBumpVerdicts,
+  releasedChangesetIds,
+  unreleasedChangesetIds,
   withBumpVerdicts,
 } from './compute-stable-version.mjs';
 import { gitCleanEnv } from './git-clean-env.mjs';
@@ -122,6 +124,39 @@ describe('computeStablePromotion', () => {
   test('rejects a non-beta tag', () => {
     expect(() => computeStablePromotion('v0.30.1', fakeGit())).toThrow(/vX\.Y\.Z-beta\.N/);
     expect(() => computeStablePromotion('garbage', fakeGit())).toThrow();
+  });
+});
+
+describe('releasedChangesetIds', () => {
+  const tags = {
+    'v1.0.0': ['a', 'x'],
+    'v1.0.1': ['a'],
+    'v1.1.0': ['a', 'y'],
+  };
+  const releaseGit = (extra = {}) => ({
+    stableTags: () => Object.keys(tags),
+    changesetIds: (ref) => tags[ref] ?? extra[ref] ?? [],
+  });
+
+  test('is the union of every stable tag tree, not only the newest', () => {
+    expect([...releasedChangesetIds(releaseGit())].sort()).toEqual(['a', 'x', 'y']);
+  });
+
+  test('skips the tags it is told to exclude', () => {
+    expect([...releasedChangesetIds(releaseGit(), { excludeTags: ['v1.1.0'] })].sort()).toEqual([
+      'a',
+      'x',
+    ]);
+  });
+
+  test('a changeset a revert point release removed from its tag stays released for the next stable', () => {
+    const git = releaseGit({ MAIN: ['a', 'x', 'y', 'z'] });
+    expect(unreleasedChangesetIds(git, 'MAIN', { excludeTags: ['v1.2.0'] })).toEqual(['z']);
+  });
+
+  test('with no stable tag every changeset is unreleased', () => {
+    const git = { stableTags: () => [], changesetIds: () => ['a', 'b'] };
+    expect(unreleasedChangesetIds(git, 'MAIN')).toEqual(['a', 'b']);
   });
 });
 
@@ -431,6 +466,14 @@ describe('gitAt reads a commit\'s changesets the way Changesets reads the same t
     const reader = gitAt(join(root, 'public/open-knowledge'));
     expect(reader.changesetIds('HEAD')).toEqual(['quoted']);
     expect(reader.bumpTypeOf('HEAD', 'quoted')).toBe('minor');
+  });
+
+  test('stableTags lists only vX.Y.Z tags, whatever else the clone carries', () => {
+    const root = committedChangesets({ 'plain.md': bump(`"${OK}": patch`) });
+    for (const tag of ['v1.0.0', 'v1.0.1-beta.0', 'v1.1.0', 'docs-v2', 'v2'])
+      git(root, ['tag', tag]);
+    expect(gitAt(root).stableTags().sort()).toEqual(['v1.0.0', 'v1.1.0']);
+    expect(gitAt(root).changesetIds('v1.1.0')).toEqual(['plain']);
   });
 
   test('a changeset Changesets cannot parse fails the read instead of counting as no bump', () => {

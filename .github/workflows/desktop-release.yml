@@ -1893,14 +1893,6 @@ jobs:
             exit 1
           fi
 
-      # Marker-delimited (`<!-- ok-downloads:start/end -->`) so re-renders are
-      # idempotent and the rest of the body — the changelog and the beta
-      # cadence's hidden consumed-set marker, which compute-next-beta.mjs
-      # reads back from the previous beta's body — passes through
-      # byte-identical. The announcement steps below and
-      # aggregate-stable-changelog.mjs each strip the block on their side.
-      # Best-effort: a release with assets but no Downloads table is a
-      # cosmetic gap, not a reason to strand the release as a draft.
       - name: Render the Downloads table into the release body
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1980,6 +1972,45 @@ jobs:
 
           echo "published=true" >> "$GITHUB_OUTPUT"
 
+      - name: Detect bridge App for the docs changelog refresh
+        id: docs-bridge
+        if: success() && needs.prepare.outputs.channel == 'latest'
+        env:
+          OK_RELEASE_BRIDGE_APP_ID: ${{ secrets.OK_RELEASE_BRIDGE_APP_ID }}
+        run: |
+          if [[ -n "${OK_RELEASE_BRIDGE_APP_ID:-}" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::OK_RELEASE_BRIDGE_APP_ID not set; skipping the docs changelog refresh for ${RELEASE_TAG}. The changelog picks it up on the next docs deploy."
+          fi
+
+      - name: Mint docs refresh token (bridge App)
+        id: docs-bridge-token
+        if: success() && steps.docs-bridge.outputs.configured == 'true'
+        continue-on-error: true
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          client-id: Iv23lii4qS2FAc6tkzfI
+          private-key: ${{ secrets.OK_RELEASE_BRIDGE_APP_PRIVATE_KEY }}
+          owner: inkeep
+          repositories: agents-private
+
+      - name: Refresh the docs changelog on agents-private
+        if: success() && steps.docs-bridge-token.outputs.token != ''
+        env:
+          GH_TOKEN: ${{ steps.docs-bridge-token.outputs.token }}
+        run: |
+          set -uo pipefail
+          SELF_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          payload=$(jq -nc --arg tag "$RELEASE_TAG" --arg by "$SELF_URL" \
+            '{event_type: "ok-stable-published", client_payload: {release_tag: $tag, dispatched_by: $by}}')
+          if gh api -X POST "repos/inkeep/agents-private/dispatches" --input - <<<"$payload" >/dev/null; then
+            echo "Dispatched ok-stable-published to agents-private for ${RELEASE_TAG}; the docs changelog rebuilds there."
+          else
+            echo "::warning::Could not dispatch ok-stable-published for ${RELEASE_TAG}; the docs changelog refreshes on the next docs deploy, or run public-open-knowledge-docs-changelog-deploy.yml by hand."
+          fi
+
       # FR5b — the npm stable publish sits downstream of the DMG smoke gate
       # (build-macos fails on a bad verdict, which skips this whole job) AND
       # the full-inventory verification, so npm `latest` can only move for a
@@ -2023,13 +2054,6 @@ jobs:
             echo "- Gated on the DMG smoke verdict: \`${SMOKE_VERDICT}\`"
             if [[ -n "$CHILD" ]]; then echo "- Run: ${CHILD}"; else echo "- (run link unresolved; open release.yml)"; fi
           } >> "$GITHUB_STEP_SUMMARY"
-
-      # The on-site changelog (/docs/changelog) is rebuilt by
-      # public-open-knowledge-docs-changelog-deploy.yml (on agents-private), which
-      # fires the Vercel deploy hook when the `main-reset` commit rewrites
-      # packages/cli/CHANGELOG.md on main. Triggering here would be too early — the
-      # changelog reads that file, and it isn't updated until main-reset lands after
-      # this release completes.
 
       # Announce STABLE releases to Slack. Gated on channel=latest so betas
       # stay silent — every *-beta.N cut also flows through this job (on
@@ -2128,7 +2152,7 @@ jobs:
           # Discord renders no markdown tables; strip the marker-delimited
           # Downloads block (the release page keeps it — the embed links
           # there).
-          NOTES="$(printf '%s' "$NOTES" | sed '/<!-- ok-downloads:start -->/,/<!-- ok-downloads:end -->/d')"
+          NOTES="$(printf '%s' "$NOTES" | sed -e '/<!-- ok-downloads:start -->/,/<!-- ok-downloads:end -->/d' -e '/^<!-- ok-notes-source: .* -->$/d')"
           NOTES_LIMIT=3500
           if [[ "${#NOTES}" -gt "$NOTES_LIMIT" ]]; then
             NOTES="${NOTES:0:$NOTES_LIMIT}…"

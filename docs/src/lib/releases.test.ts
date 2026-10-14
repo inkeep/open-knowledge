@@ -1,5 +1,20 @@
-import { describe, expect, test } from 'vitest';
-import { collectDates, fetchReleaseDates, parseChangelog } from './releases.ts';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, test, vi } from 'vitest';
+import {
+  collectDates,
+  collectMarkedNotes,
+  cutoverOf,
+  fetchReleaseFeed,
+  loadStableReleases,
+  markedNotes,
+  mergeReleaseNotes,
+  NOTES_SOURCE_MARKER,
+  newMarkedNotesScan,
+  parseChangelog,
+  passedCutover,
+  releaseNotesFrom,
+} from './releases.ts';
 
 const SAMPLE = `# @inkeep/open-knowledge
 
@@ -67,10 +82,24 @@ describe('parseChangelog', () => {
 
 function apiRelease(
   tag: string,
-  opts: { draft?: boolean; prerelease?: boolean; published_at?: string | null } = {},
+  opts: {
+    draft?: boolean;
+    prerelease?: boolean;
+    published_at?: string | null;
+    created_at?: string;
+    body?: string;
+  } = {},
 ) {
-  const { draft = false, prerelease = false, published_at = '2026-07-01T00:00:00Z' } = opts;
-  return { tag_name: tag, draft, prerelease, published_at };
+  const { draft = false, prerelease = false, published_at = '2026-07-01T00:00:00Z', body } = opts;
+  const created_at = opts.created_at ?? published_at ?? '2026-07-01T00:00:00Z';
+  return {
+    tag_name: tag,
+    draft,
+    prerelease,
+    created_at,
+    published_at,
+    ...(body === undefined ? {} : { body }),
+  };
 }
 
 describe('collectDates', () => {
@@ -114,34 +143,453 @@ const json = (data: unknown) => new Response(JSON.stringify(data), { status: 200
 const fullPage = (page: number) =>
   Array.from({ length: 100 }, (_, i) => apiRelease(`v9.${page}.${i}`, { prerelease: i > 0 }));
 
-describe('fetchReleaseDates (best-effort)', () => {
-  test('paginates until it has enough stable dates, then stops', async () => {
-    const dates = await fetchReleaseDates(
-      2,
-      mockFetch((p) => json(fullPage(p))),
-    );
-    expect(dates.size).toBe(2);
+describe('fetchReleaseFeed dates (best-effort)', () => {
+  test('keeps only as many stable dates as asked for', async () => {
+    const feed = await fetchReleaseFeed({
+      dateLimit: 2,
+      changelogTags: new Set(),
+      fetchImpl: mockFetch((p) => json(fullPage(p))),
+    });
+    expect(feed.dates.size).toBe(2);
   });
 
   test('stops on a short (final) page', async () => {
-    const dates = await fetchReleaseDates(
-      30,
-      mockFetch(() => json([apiRelease('v1.0.0')])),
-    );
-    expect(dates.size).toBe(1);
+    const feed = await fetchReleaseFeed({
+      changelogTags: new Set(),
+      fetchImpl: mockFetch(() => json([apiRelease('v1.0.0')])),
+    });
+    expect(feed.dates.size).toBe(1);
   });
 
   test('degrades to empty on HTTP error — never throws', async () => {
-    const dates = await fetchReleaseDates(
-      30,
-      mockFetch(() => new Response('nope', { status: 500 })),
-    );
-    expect(dates.size).toBe(0);
+    const feed = await fetchReleaseFeed({
+      changelogTags: new Set(),
+      fetchImpl: mockFetch(() => new Response('nope', { status: 500 })),
+    });
+    expect(feed.dates.size).toBe(0);
   });
 
   test('degrades to empty on a network throw — never throws', async () => {
-    const dates = await fetchReleaseDates(30, (() =>
-      Promise.reject(new Error('offline'))) as never);
-    expect(dates.size).toBe(0);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const feed = await fetchReleaseFeed({
+      changelogTags: new Set(),
+      fetchImpl: (() => Promise.reject(new Error('offline'))) as never,
+    });
+    expect(feed.dates.size).toBe(0);
+    warn.mockRestore();
+  });
+});
+
+const DOWNLOADS =
+  '<!-- ok-downloads:start -->\n## Downloads\n\n| a | b |\n| --- | --- |\n<!-- ok-downloads:end -->';
+const marked = (notes: string) => `${notes}\n\n${NOTES_SOURCE_MARKER}\n\n${DOWNLOADS}\n`;
+
+describe('markedNotes', () => {
+  test('is the body before the notes-source marker, without the Downloads block', () => {
+    expect(markedNotes(marked('### Patch Changes\n\n- A fix.'))).toBe(
+      '### Patch Changes\n\n- A fix.',
+    );
+    expect(
+      markedNotes(
+        `### Patch Changes\n\n- A fix.\n\n${NOTES_SOURCE_MARKER}\n\nPoint release over v1.0.0.`,
+      ),
+    ).toBe('### Patch Changes\n\n- A fix.');
+  });
+
+  test('is null for a body without the marker, so the version keeps its CHANGELOG.md notes', () => {
+    expect(markedNotes(`### Patch Changes\n\n- A fix.\n\n${DOWNLOADS}\n`)).toBeNull();
+    expect(markedNotes('')).toBeNull();
+  });
+});
+
+const day = (n: number) => new Date(Date.UTC(2026, 9, 1) - n * 86_400_000).toISOString();
+
+describe('collectMarkedNotes', () => {
+  test('keeps every marked stable body and takes the highest unmarked CHANGELOG stable published before them as the cutover', () => {
+    const scan = newMarkedNotesScan();
+    collectMarkedNotes(
+      [
+        apiRelease('v0.88.0', { draft: true, body: marked('- Draft.') }),
+        apiRelease('v0.88.0-beta.1', { prerelease: true, body: marked('- Beta.') }),
+        apiRelease('v0.87.1', { body: marked('- Newest.'), published_at: day(0) }),
+        apiRelease('v0.87.0', {
+          body: 'A revert point release, unmarked and not in CHANGELOG.md.',
+          published_at: day(1),
+        }),
+        apiRelease('v0.86.11', { body: '- Covered, below the cutover.', published_at: day(5) }),
+        apiRelease('v0.86.13', { body: marked('- Older.'), published_at: day(2) }),
+        apiRelease('v0.86.12', { body: '- From before the cutover.', published_at: day(3) }),
+      ],
+      scan,
+      new Set(['v0.86.12', 'v0.86.11']),
+    );
+    expect([...scan.notes]).toEqual([
+      ['v0.87.1', '- Newest.'],
+      ['v0.86.13', '- Older.'],
+    ]);
+    expect(cutoverOf(scan)).toEqual({ tag: 'v0.86.12', publishedAt: Date.parse(day(3)) });
+  });
+
+  test('an unmarked CHANGELOG stable published after a marked body is never the cutover', () => {
+    const scan = newMarkedNotesScan();
+    collectMarkedNotes(
+      [
+        apiRelease('v0.90.1', { body: '- Revert, unmarked.', published_at: day(1) }),
+        apiRelease('v0.90.0', { body: marked('- Ninety.'), published_at: day(3) }),
+      ],
+      scan,
+      new Set(['v0.90.1']),
+    );
+    expect(cutoverOf(scan)).toBeNull();
+  });
+
+  test('tolerates malformed entries and payloads', () => {
+    const scan = newMarkedNotesScan();
+    collectMarkedNotes([null, 42, { tag_name: 5 }, apiRelease('v1.0.0')], scan, new Set());
+    collectMarkedNotes('not-an-array', scan, new Set());
+    expect(scan.notes.size).toBe(0);
+    expect(cutoverOf(scan)).toBeNull();
+  });
+});
+
+describe('passedCutover', () => {
+  test('holds once the scan reaches releases created 14 days before the cutover was published', () => {
+    const scan = newMarkedNotesScan();
+    const covered = new Set(['v1.0.0']);
+    collectMarkedNotes([apiRelease('v1.0.0', { published_at: day(0) })], scan, covered);
+    collectMarkedNotes(
+      [apiRelease('v0.9.0-beta.0', { prerelease: true, created_at: day(13) })],
+      scan,
+      covered,
+    );
+    expect(passedCutover(scan)).toBe(false);
+    collectMarkedNotes(
+      [apiRelease('v0.9.0-beta.1', { prerelease: true, created_at: day(15) })],
+      scan,
+      covered,
+    );
+    expect(passedCutover(scan)).toBe(true);
+  });
+
+  test('never holds without an unmarked stable the CHANGELOG covers', () => {
+    const scan = newMarkedNotesScan();
+    collectMarkedNotes(
+      [apiRelease('v2.0.0', { body: marked('- x'), created_at: day(400) })],
+      scan,
+      new Set(['v1.0.0']),
+    );
+    expect(passedCutover(scan)).toBe(false);
+  });
+});
+
+function pagedFetch(pages: unknown[][], status: (page: number) => number = () => 200) {
+  const requested: number[] = [];
+  const impl = ((url: string | URL) => {
+    const page = Number(/[?&]page=(\d+)/.exec(String(url))?.[1] ?? '1');
+    requested.push(page);
+    const code = status(page);
+    return Promise.resolve(
+      code === 200
+        ? new Response(JSON.stringify(pages[page - 1] ?? []), { status: 200 })
+        : new Response('no', { status: code }),
+    );
+  }) as unknown as typeof fetch;
+  return { impl, requested };
+}
+
+const betas = (page: number, count: number) =>
+  Array.from({ length: count }, (_, i) =>
+    apiRelease(`v9.${page}.${i}-beta.0`, { prerelease: true }),
+  );
+
+const betasCreated = (page: number, count: number, createdDay: number) =>
+  Array.from({ length: count }, (_, i) =>
+    apiRelease(`v9.${page}.${i}-beta.0`, { prerelease: true, created_at: day(createdDay) }),
+  );
+
+describe('fetchReleaseFeed', () => {
+  test('pages past the date limit until it is 14 days below the newest unmarked CHANGELOG stable', async () => {
+    const pages = [
+      [
+        apiRelease('v0.90.0', { body: marked('- Ninety.'), published_at: day(0) }),
+        ...betasCreated(1, 99, 1),
+      ],
+      [
+        apiRelease('v0.89.0', { body: marked('- Eighty-nine.'), published_at: day(2) }),
+        ...betasCreated(2, 99, 3),
+      ],
+      [
+        apiRelease('v0.88.0', { body: '- Before the marker.', published_at: day(9) }),
+        ...betasCreated(3, 99, 10),
+      ],
+      [
+        apiRelease('v0.87.0', { body: '- Old.', published_at: day(20) }),
+        ...betasCreated(4, 99, 25),
+      ],
+      [apiRelease('v0.86.0', { body: marked('- Not read.') }), ...betasCreated(5, 99, 30)],
+    ];
+    const { impl, requested } = pagedFetch(pages);
+    const feed = await fetchReleaseFeed({
+      dateLimit: 1,
+      changelogTags: new Set(['v0.88.0', 'v0.87.0']),
+      fetchImpl: impl,
+    });
+    expect(requested).toEqual([1, 2, 3, 4]);
+    expect([...feed.dates.keys()]).toEqual(['v0.90.0']);
+    expect([...feed.notes.keys()]).toEqual(['v0.90.0', 'v0.89.0']);
+    expect(feed.notesComplete).toBe(true);
+    expect(feed.failure).toBeNull();
+  });
+
+  test('a revert or truncated stable published after marked bodies does not end the scan before them', async () => {
+    const pages = [
+      [
+        apiRelease('v0.90.1', {
+          body: '- Revert point release, unmarked.',
+          created_at: day(1),
+          published_at: day(1),
+        }),
+        ...betasCreated(1, 99, 2),
+      ],
+      [
+        apiRelease('v0.90.0', {
+          body: marked('- Ninety.'),
+          created_at: day(4),
+          published_at: day(3),
+        }),
+        ...betasCreated(2, 99, 16),
+      ],
+      [
+        apiRelease('v0.89.0', {
+          body: marked('- Eighty-nine.'),
+          created_at: day(17),
+          published_at: day(16),
+        }),
+        ...betasCreated(3, 99, 30),
+      ],
+      [
+        apiRelease('v0.88.0', {
+          body: '- Before the marker.',
+          created_at: day(31),
+          published_at: day(30),
+        }),
+        ...betasCreated(4, 99, 50),
+      ],
+      [apiRelease('v0.87.0', { body: marked('- Not read.') }), ...betasCreated(5, 99, 60)],
+    ];
+    const { impl, requested } = pagedFetch(pages);
+    const feed = await fetchReleaseFeed({
+      dateLimit: 1,
+      changelogTags: new Set(['v0.90.1', 'v0.88.0']),
+      fetchImpl: impl,
+    });
+    expect(requested).toEqual([1, 2, 3, 4]);
+    expect([...feed.notes.keys()]).toEqual(['v0.90.0', 'v0.89.0']);
+    expect(feed.notesComplete).toBe(true);
+  });
+
+  test('a newer marked stable listed after an unmarked point release is still read', async () => {
+    const pages = [
+      [
+        apiRelease('v0.90.1', {
+          body: '- Revert point release, unmarked.',
+          created_at: day(1),
+          published_at: day(1),
+        }),
+        ...betasCreated(1, 99, 1),
+      ],
+      [
+        apiRelease('v0.91.0', {
+          body: marked('- Promoted after the point release.'),
+          created_at: day(2),
+          published_at: day(0),
+        }),
+        apiRelease('v0.90.0', {
+          body: marked('- Ninety.'),
+          created_at: day(5),
+          published_at: day(4),
+        }),
+        ...betasCreated(2, 98, 6),
+      ],
+      [
+        apiRelease('v0.89.0', { body: '- Before the marker.', published_at: day(7) }),
+        ...betasCreated(3, 99, 30),
+      ],
+      betasCreated(4, 100, 40),
+    ];
+    const { impl, requested } = pagedFetch(pages);
+    const feed = await fetchReleaseFeed({
+      dateLimit: 1,
+      changelogTags: new Set(['v0.90.1', 'v0.89.0']),
+      fetchImpl: impl,
+    });
+    expect(requested).toEqual([1, 2, 3]);
+    expect([...feed.notes.keys()]).toEqual(['v0.91.0', 'v0.90.0']);
+    expect(feed.notesComplete).toBe(true);
+  });
+
+  test('a short final page completes the notes even with no unmarked stable', async () => {
+    const { impl } = pagedFetch([[apiRelease('v1.0.0', { body: marked('- One.') })]]);
+    const feed = await fetchReleaseFeed({ changelogTags: new Set(), fetchImpl: impl });
+    expect(feed.notesComplete).toBe(true);
+    expect([...feed.notes.keys()]).toEqual(['v1.0.0']);
+  });
+
+  test('an HTTP error before the cutover leaves the notes incomplete and names the page and status', async () => {
+    const { impl } = pagedFetch(
+      [[apiRelease('v1.1.0', { body: marked('- New.') }), ...betas(1, 99)]],
+      (page) => (page === 2 ? 502 : 200),
+    );
+    const feed = await fetchReleaseFeed({ changelogTags: new Set(['v1.0.0']), fetchImpl: impl });
+    expect(feed.notesComplete).toBe(false);
+    expect(feed.failure).toBe('page 2 returned HTTP 502');
+    expect([...feed.dates.keys()]).toEqual(['v1.1.0']);
+  });
+
+  test('a 200 that is not a list of releases leaves the notes incomplete', async () => {
+    const impl = (() =>
+      Promise.resolve(json({ message: 'API rate limit exceeded' }))) as unknown as typeof fetch;
+    const feed = await fetchReleaseFeed({ changelogTags: new Set(['v1.0.0']), fetchImpl: impl });
+    expect(feed.notesComplete).toBe(false);
+    expect(feed.failure).toBe('page 1 returned a body that is not a list of releases');
+  });
+
+  test('stops at the page cap without passing the cutover, and says the notes are incomplete', async () => {
+    const { impl, requested } = pagedFetch(
+      Array.from({ length: 30 }, (_, i) => [
+        apiRelease(`v2.${i}.0`, { body: marked('- x') }),
+        ...betas(i, 99),
+      ]),
+    );
+    const feed = await fetchReleaseFeed({ changelogTags: new Set(['v1.0.0']), fetchImpl: impl });
+    expect(requested).toHaveLength(20);
+    expect(feed.notesComplete).toBe(false);
+    expect(feed.failure).toBe('stopped at the 20-page cap');
+  });
+
+  test('a network throw leaves the notes incomplete and never throws', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const feed = await fetchReleaseFeed({
+      changelogTags: new Set(['v1.0.0']),
+      fetchImpl: (() => Promise.reject(new Error('offline'))) as never,
+    });
+    expect(feed).toEqual({
+      dates: new Map(),
+      notes: new Map(),
+      notesComplete: false,
+      failure: 'offline',
+    });
+    warn.mockRestore();
+  });
+});
+
+describe('releaseNotesFrom', () => {
+  test('passes complete notes through and drops incomplete ones with a warning', () => {
+    const notes = new Map([['v1.0.0', '- One.']]);
+    expect(releaseNotesFrom({ dates: new Map(), notes, notesComplete: true, failure: null })).toBe(
+      notes,
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(
+      releaseNotesFrom({
+        dates: new Map(),
+        notes,
+        notesComplete: false,
+        failure: 'page 2 returned HTTP 403',
+      }).size,
+    ).toBe(0);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(/\(page 2 returned HTTP 403\).*CHANGELOG\.md notes only/),
+    );
+    warn.mockRestore();
+  });
+});
+
+describe('mergeReleaseNotes', () => {
+  const changelog = parseChangelog(SAMPLE);
+
+  test('with no marked notes it returns the CHANGELOG releases untouched', () => {
+    expect(mergeReleaseNotes(changelog, new Map(), new Map())).toBe(changelog);
+  });
+
+  test('a marked body replaces that version and adds new ones, newest version first', () => {
+    const dates = new Map([['v0.36.0', '2026-08-01T00:00:00Z']]);
+    const out = mergeReleaseNotes(
+      changelog,
+      new Map([
+        ['v0.36.0', '### Patch Changes\n\n- From the tag.'],
+        ['v0.34.0', '### Patch Changes\n\n- Corrected in the Release body.'],
+        ['v0.10.0', '### Patch Changes\n\n- Sorted by version, not text.'],
+      ]),
+      dates,
+    );
+    expect(out.map((r) => r.tag)).toEqual(['v0.36.0', 'v0.35.0', 'v0.34.0', 'v0.10.0', 'v0.9.1']);
+    expect(out[0]).toEqual({
+      tag: 'v0.36.0',
+      title: 'v0.36.0',
+      publishedAt: '2026-08-01T00:00:00Z',
+      bodyHtml: expect.stringContaining('<li>From the tag.</li>'),
+      htmlUrl: 'https://github.com/inkeep/open-knowledge/releases/tag/v0.36.0',
+    });
+    expect(out[2]?.bodyHtml).toContain('Corrected in the Release body.');
+    expect(out[2]?.bodyHtml).not.toContain('95380ab');
+    expect(out[1]).toBe(changelog[0]);
+  });
+});
+
+describe('loadStableReleases', () => {
+  const realChangelog = readFileSync(
+    join(process.cwd(), '..', 'packages', 'cli', 'CHANGELOG.md'),
+    'utf8',
+  );
+  const changelogTags = realChangelog
+    .split('\n')
+    .flatMap((line) => /^## (\d+\.\d+\.\d+)\s*$/.exec(line)?.slice(1) ?? [])
+    .map((version) => `v${version}`);
+  const unmarkedPages = () => {
+    const releases = changelogTags.flatMap((tag, i) => [
+      apiRelease(`${tag}-beta.0`, { prerelease: true, body: 'Beta.' }),
+      apiRelease(tag, {
+        body: `### Patch Changes\n\n- Unmarked ${i}.\n\n${DOWNLOADS}\n`,
+        published_at: `2026-01-01T00:00:${String(i % 60).padStart(2, '0')}Z`,
+      }),
+    ]);
+    return Array.from({ length: Math.ceil(releases.length / 100) }, (_, i) =>
+      releases.slice(i * 100, i * 100 + 100),
+    );
+  };
+
+  test('with no marked Release body it renders exactly what CHANGELOG.md alone renders today', async () => {
+    const pages = unmarkedPages();
+    const out = await loadStableReleases(undefined, { fetchImpl: pagedFetch(pages).impl });
+    const dates = new Map<string, string>();
+    for (const page of pages.slice(0, 5)) collectDates(page, dates, 30);
+    expect(out).toEqual(parseChangelog(realChangelog, dates));
+    expect(dates.size).toBe(30);
+  });
+
+  test('a marked stable shows its Release body; every other version keeps its CHANGELOG.md notes', async () => {
+    const pages = unmarkedPages();
+    pages[0]?.unshift(
+      apiRelease('v99.0.0', { body: marked('### Minor Changes\n\n- From the stable tag.') }),
+    );
+    const out = await loadStableReleases(undefined, { fetchImpl: pagedFetch(pages).impl });
+    expect(out[0]?.tag).toBe('v99.0.0');
+    expect(out[0]?.bodyHtml).toContain('<li>From the stable tag.</li>');
+    expect(out[0]?.bodyHtml).not.toContain('Downloads');
+    const changelogOnly = parseChangelog(realChangelog, new Map());
+    expect(out.slice(1).map((r) => [r.tag, r.bodyHtml])).toEqual(
+      changelogOnly.map((r) => [r.tag, r.bodyHtml]),
+    );
+  });
+
+  test('when the Release bodies cannot be read it falls back to CHANGELOG.md alone', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const out = await loadStableReleases(undefined, {
+      fetchImpl: pagedFetch([], () => 503).impl,
+    });
+    expect(out).toEqual(parseChangelog(realChangelog, new Map()));
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/CHANGELOG\.md notes only/));
+    warn.mockRestore();
   });
 });

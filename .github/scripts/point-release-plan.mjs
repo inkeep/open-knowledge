@@ -14,6 +14,14 @@ import {
   withBumpVerdicts,
 } from '../../scripts/compute-stable-version.mjs';
 import {
+  noteReaderAt,
+  parseNoteLevels,
+  recordNoteLevels,
+  serializeNoteLevels,
+  stableNotes,
+  withNoteLevels,
+} from '../../scripts/render-stable-notes.mjs';
+import {
   describeNoSelection,
   listPrebuildRuns,
   makeIsAncestor,
@@ -437,18 +445,29 @@ export const pushTagArgs = (tag) => [
   tag,
 ];
 
-export function readFixBumps({ mode, fixRefs }, git) {
-  const verdicts = new Map();
-  if (mode === 'revert') return verdicts;
-  const reading = recordBumpVerdicts(git, verdicts);
+function forEachFixChangeset({ mode, fixRefs }, git, visit) {
+  if (mode === 'revert') return;
   for (const ref of fixRefs) {
     const sha = git.revParse(ref);
     const before = git.changesetBlobs(`${sha}^`);
     for (const [id, blob] of git.changesetBlobs(sha)) {
-      if (before.get(id) !== blob) reading.bumpTypeOf(sha, id);
+      if (before.get(id) !== blob) visit(sha, id);
     }
   }
+}
+
+export function readFixBumps(opts, git) {
+  const verdicts = new Map();
+  const reading = recordBumpVerdicts(git, verdicts);
+  forEachFixChangeset(opts, git, (sha, id) => reading.bumpTypeOf(sha, id));
   return verdicts;
+}
+
+export function readFixNoteLevels(opts, git) {
+  const levels = new Map();
+  const reading = recordNoteLevels(git, levels);
+  forEachFixChangeset(opts, git, (sha, id) => reading.noteLevelOf(sha, id));
+  return levels;
 }
 
 export class PointReleaseRefusal extends Error {
@@ -583,7 +602,8 @@ export function runPointRelease(opts, io) {
     guards,
     warnings,
   };
-  plan.releaseNotes = formatReleaseNotes(plan);
+  plan.releaseNotes =
+    mode === 'cherry-pick' ? renderedReleaseNotes(plan, io, warnings) : formatReleaseNotes(plan);
 
   if (dryRun) return plan;
 
@@ -746,13 +766,38 @@ function decideMainReset({ anchorDeltaIds, addedIds, bridgeConfigured, guards, w
   return { dispatch: true, deltaIds, skipReason: null };
 }
 
-export function formatReleaseNotes(plan) {
-  const lines = [
+function provenanceLines(plan) {
+  return [
     `Point release over ${plan.latestStableTag}: the current stable plus ${plan.fixRefs.length} applied ` +
       `commit(s), isolated from the changes still soaking on main.`,
     '',
     `Applied: ${plan.fixRefs.map((r) => (r.ref === r.sha ? r.sha : `${r.ref} (${r.sha})`)).join(', ')}`,
   ];
+}
+
+function renderedReleaseNotes(plan, io, warnings) {
+  let notes;
+  try {
+    notes = stableNotes(
+      {
+        commit: plan.syntheticSha,
+        excludeTags: [plan.tag],
+        publishedTags: io.containment.publishedStableTags(),
+      },
+      io.git,
+    );
+  } catch (err) {
+    warnings.push(
+      `The release notes could not be rendered from the changesets (${messageOf(err)}), so the body quotes ` +
+        `them instead and carries no notes-source marker; the docs changelog keeps CHANGELOG.md for ${plan.tag}.`,
+    );
+    return formatReleaseNotes(plan);
+  }
+  return `${notes}\n${provenanceLines(plan).join('\n')}\n`;
+}
+
+export function formatReleaseNotes(plan) {
+  const lines = provenanceLines(plan);
   const entries = plan.changesetEntries ?? [];
   const quoted = entries.filter((e) => e.body);
   const unquoted = entries.filter((e) => !e.body);
@@ -777,7 +822,7 @@ export function realIo() {
       writeWorktreeFile: (path, content) => writeFileSync(path, content),
     },
     git: {
-      ...realGit,
+      ...noteReaderAt(),
       isOnMain: (ref) => realGit.isAncestor(ref, 'origin/main'),
       tagExists: (tag) => {
         const res = spawnSync('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`], { encoding: 'utf8' });
@@ -858,16 +903,33 @@ function log(...args) {
 }
 
 function readBumpsMain() {
+  let opts;
+  let reader;
   let verdicts;
   try {
-    verdicts = readFixBumps({ mode: process.env.MODE, fixRefs: parseFixRefs(process.env.FIX_REFS) }, realGit);
+    opts = { mode: process.env.MODE, fixRefs: parseFixRefs(process.env.FIX_REFS) };
+    reader = noteReaderAt();
+    verdicts = readFixBumps(opts, reader);
   } catch (err) {
     console.error(`::error::point-release-plan --read-bumps: ${messageOf(err)}`);
     process.exit(1);
   }
+  let levels;
+  try {
+    levels = readFixNoteLevels(opts, reader);
+  } catch (err) {
+    levels = new Map();
+    console.log(
+      `::warning::point-release-plan --read-bumps: the release-note level of a changeset could not be read ` +
+        `(${messageOf(err)}), so the release body will quote the changesets without the notes-source marker.`,
+    );
+  }
   log(`Read the bump of ${verdicts.size} changeset(s) written by ${process.env.MODE} refs ${process.env.FIX_REFS}.`);
   if (process.env.GITHUB_OUTPUT) {
-    appendFileSync(process.env.GITHUB_OUTPUT, `bump_verdicts=${serializeBumpVerdicts(verdicts)}\n`);
+    appendFileSync(
+      process.env.GITHUB_OUTPUT,
+      `bump_verdicts=${serializeBumpVerdicts(verdicts)}\nnote_levels=${serializeNoteLevels(levels)}\n`,
+    );
   }
 }
 
@@ -884,6 +946,9 @@ function main() {
     const io = realIo();
     if (process.env.BUMP_VERDICTS !== undefined) {
       io.git = withBumpVerdicts(io.git, parseBumpVerdicts(process.env.BUMP_VERDICTS));
+    }
+    if (process.env.NOTE_LEVELS !== undefined) {
+      io.git = withNoteLevels(io.git, parseNoteLevels(process.env.NOTE_LEVELS));
     }
     plan = runPointRelease(
       {

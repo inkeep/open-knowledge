@@ -202,67 +202,103 @@ export function gitAt(cwd) {
         `git merge-base --is-ancestor ${a} ${b} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`,
       );
     },
+    changesetText: (sha, id) => runGit(['show', `${sha}:./.changeset/${id}.md`], cwd),
+    stableTags: () =>
+      runGit(['tag', '--list', 'v*'], cwd)
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((tag) => STABLE_TAG_RE.test(tag)),
     bumpTypeOf: (sha, id) =>
       maxReleaseType(loadChangesets().parse(runGit(['show', `${sha}:./.changeset/${id}.md`], cwd)).releases),
   };
 }
 
+export function releasedChangesetIds(git, { excludeTags = [], releasedTags = null } = {}) {
+  const excluded = new Set(excludeTags);
+  const released = new Set();
+  for (const tag of releasedTags ?? git.stableTags()) {
+    if (excluded.has(tag)) continue;
+    for (const id of git.changesetIds(tag)) released.add(id);
+  }
+  return released;
+}
+
+export function unreleasedChangesetIds(git, sha, { excludeTags = [], releasedTags = null } = {}) {
+  const released = releasedChangesetIds(git, { excludeTags, releasedTags });
+  return git.changesetIds(sha).filter((id) => !released.has(id));
+}
+
 export const realGit = gitAt();
 
-const BUMP_VERDICT_TYPES = new Set(['patch', 'minor', 'major', null]);
+const VERDICT_TYPES = new Set(['patch', 'minor', 'major', null]);
 
-export function parseBumpVerdicts(raw) {
+const BUMP_VERDICTS = {
+  env: 'BUMP_VERDICTS',
+  output: 'bump_verdicts',
+  job: 'read-bumps',
+  noun: 'bump verdict',
+  value: 'bump types',
+};
+
+export function parseVerdicts(raw, { env, output, job, noun, value }) {
   if (String(raw ?? '').trim() === '') {
     throw new Error(
-      'BUMP_VERDICTS is empty: the read-bumps job wrote no bump_verdicts output, or this step does not ' +
-        'receive needs.read-bumps.outputs.bump_verdicts.',
+      `${env} is empty: the ${job} job wrote no ${output} output, or this step does not ` +
+        `receive needs.${job}.outputs.${output}.`,
     );
   }
   let parsed;
   try {
     parsed = JSON.parse(String(raw));
   } catch (err) {
-    throw new Error(`bump verdicts are not JSON: ${err.message}`);
+    throw new Error(`${noun}s are not JSON: ${err.message}`);
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('bump verdicts must be a JSON object mapping changeset blob ids to bump types.');
+    throw new Error(`${noun}s must be a JSON object mapping changeset blob ids to ${value}.`);
   }
   for (const [blob, type] of Object.entries(parsed)) {
-    if (!BUMP_VERDICT_TYPES.has(type)) {
-      throw new Error(`bump verdict for blob ${blob} is ${JSON.stringify(type)}, not patch, minor, major or null.`);
+    if (!VERDICT_TYPES.has(type)) {
+      throw new Error(`${noun} for blob ${blob} is ${JSON.stringify(type)}, not patch, minor, major or null.`);
     }
   }
   return new Map(Object.entries(parsed));
 }
 
+export const parseBumpVerdicts = (raw) => parseVerdicts(raw, BUMP_VERDICTS);
+
 export const serializeBumpVerdicts = (verdicts) => JSON.stringify(Object.fromEntries(verdicts));
 
-export function recordBumpVerdicts(git, verdicts) {
+export function recordVerdicts(git, method, verdicts) {
   return {
     ...git,
-    bumpTypeOf: (sha, id) => {
-      const type = git.bumpTypeOf(sha, id);
+    [method]: (sha, id) => {
+      const type = git[method](sha, id);
       verdicts.set(git.changesetBlobs(sha).get(id), type);
       return type;
     },
   };
 }
 
-export function withBumpVerdicts(git, verdicts) {
+export function withVerdicts(git, method, verdicts, { noun }) {
   return {
     ...git,
-    bumpTypeOf: (sha, id) => {
+    [method]: (sha, id) => {
       const blob = git.changesetBlobs(sha).get(id);
       if (blob === undefined || !verdicts.has(blob)) {
         throw new Error(
-          `no bump verdict for .changeset/${id}.md at ${sha} (blob ${blob ?? 'absent'}); the job that ran the ` +
-            'Changesets reader did not read this changeset, so its bump is unknown here.',
+          `no ${noun} for .changeset/${id}.md at ${sha} (blob ${blob ?? 'absent'}); the job that ran the ` +
+            `Changesets reader did not read this changeset, so its ${noun} is unknown here.`,
         );
       }
       return verdicts.get(blob);
     },
   };
 }
+
+export const recordBumpVerdicts = (git, verdicts) => recordVerdicts(git, 'bumpTypeOf', verdicts);
+
+export const withBumpVerdicts = (git, verdicts) =>
+  withVerdicts(git, 'bumpTypeOf', verdicts, BUMP_VERDICTS);
 
 export function readAnchorVersion() {
   const pre = JSON.parse(readFileSync('.changeset/pre.json', 'utf8'));

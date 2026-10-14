@@ -10,7 +10,19 @@ const PER_PAGE = 100;
 
 const MAX_DATE_PAGES = 5;
 
+const MAX_RELEASE_PAGES = 20;
+
 const DATE_LIMIT = 30;
+
+const RELEASE_NOTES_REQUIRED = false;
+
+const NOTES_LAG_MS = 14 * 24 * 60 * 60 * 1000;
+
+export const NOTES_SOURCE_MARKER = '<!-- ok-notes-source: stable-tag-tree -->';
+
+const DOWNLOADS_BLOCK = /<!-- ok-downloads:start -->[\s\S]*?<!-- ok-downloads:end -->/g;
+
+const STABLE_TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
 
 const CHANGELOG_PATH = join(process.cwd(), '..', 'packages', 'cli', 'CHANGELOG.md');
 
@@ -81,11 +93,110 @@ export function collectDates(payload: unknown, dates: Map<string, string>, limit
   }
 }
 
-export async function fetchReleaseDates(
-  limit = DATE_LIMIT,
-  fetchImpl: typeof fetch = fetch,
-): Promise<Map<string, string>> {
+export function markedNotes(body: string): string | null {
+  const marker = body.indexOf(NOTES_SOURCE_MARKER);
+  if (marker === -1) return null;
+  return body.slice(0, marker).replace(DOWNLOADS_BLOCK, '').trim();
+}
+
+interface PublishedStable {
+  tag: string;
+  publishedAt: number;
+}
+
+export interface MarkedNotesScan {
+  notes: Map<string, string>;
+  unmarkedCovered: PublishedStable[];
+  earliestMarkedAt: number;
+  oldestCreatedAt: number;
+}
+
+export function newMarkedNotesScan(): MarkedNotesScan {
+  return {
+    notes: new Map(),
+    unmarkedCovered: [],
+    earliestMarkedAt: Number.POSITIVE_INFINITY,
+    oldestCreatedAt: Number.POSITIVE_INFINITY,
+  };
+}
+
+function versionOf(tag: string): number[] {
+  return STABLE_TAG.exec(tag)?.slice(1).map(Number) ?? [0, 0, 0];
+}
+
+function compareVersions(a: string, b: string): number {
+  const pa = versionOf(a);
+  const pb = versionOf(b);
+  for (let i = 0; i < 3; i++) {
+    const delta = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (delta !== 0) return delta;
+  }
+  return 0;
+}
+
+export function collectMarkedNotes(
+  payload: unknown,
+  scan: MarkedNotesScan,
+  changelogTags: ReadonlySet<string>,
+): void {
+  if (!Array.isArray(payload)) return;
+  for (const entry of payload) {
+    if (!entry || typeof entry !== 'object') continue;
+    const rec = entry as Record<string, unknown>;
+    const createdAt = typeof rec.created_at === 'string' ? Date.parse(rec.created_at) : Number.NaN;
+    if (Number.isFinite(createdAt))
+      scan.oldestCreatedAt = Math.min(scan.oldestCreatedAt, createdAt);
+    if (rec.draft || rec.prerelease) continue;
+    const tag = rec.tag_name;
+    if (typeof tag !== 'string' || !STABLE_TAG.test(tag)) continue;
+    const publishedAt =
+      typeof rec.published_at === 'string' ? Date.parse(rec.published_at) : Number.NaN;
+    const notes = typeof rec.body === 'string' ? markedNotes(rec.body) : null;
+    if (notes !== null) {
+      if (!scan.notes.has(tag)) scan.notes.set(tag, notes);
+      if (Number.isFinite(publishedAt)) {
+        scan.earliestMarkedAt = Math.min(scan.earliestMarkedAt, publishedAt);
+      }
+    } else if (changelogTags.has(tag) && Number.isFinite(publishedAt)) {
+      scan.unmarkedCovered.push({ tag, publishedAt });
+    }
+  }
+}
+
+export function cutoverOf(scan: MarkedNotesScan): PublishedStable | null {
+  let cutover: PublishedStable | null = null;
+  for (const release of scan.unmarkedCovered) {
+    if (release.publishedAt >= scan.earliestMarkedAt) continue;
+    if (cutover === null || compareVersions(release.tag, cutover.tag) > 0) cutover = release;
+  }
+  return cutover;
+}
+
+export function passedCutover(scan: MarkedNotesScan): boolean {
+  const cutover = cutoverOf(scan);
+  return cutover !== null && scan.oldestCreatedAt < cutover.publishedAt - NOTES_LAG_MS;
+}
+
+export interface ReleaseFeed {
+  dates: Map<string, string>;
+  notes: Map<string, string>;
+  notesComplete: boolean;
+  failure: string | null;
+}
+
+export async function fetchReleaseFeed({
+  dateLimit = DATE_LIMIT,
+  changelogTags,
+  fetchImpl = fetch,
+}: {
+  dateLimit?: number;
+  changelogTags: ReadonlySet<string>;
+  fetchImpl?: typeof fetch;
+}): Promise<ReleaseFeed> {
   const dates = new Map<string, string>();
+  const scan = newMarkedNotesScan();
+  let exhausted = false;
+  let failure: string | null = null;
   const token = process.env.GITHUB_TOKEN;
   const headers = {
     accept: 'application/vnd.github+json',
@@ -93,21 +204,73 @@ export async function fetchReleaseDates(
     ...(token ? { authorization: `Bearer ${token}` } : {}),
   };
   try {
-    for (let page = 1; page <= MAX_DATE_PAGES && dates.size < limit; page++) {
+    for (let page = 1; ; page++) {
+      const wantDates = page <= MAX_DATE_PAGES && dates.size < dateLimit;
+      if (!wantDates && passedCutover(scan)) break;
+      if (page > MAX_RELEASE_PAGES) {
+        failure = `stopped at the ${MAX_RELEASE_PAGES}-page cap`;
+        break;
+      }
       const res = await fetchImpl(`${RELEASES_API}?per_page=${PER_PAGE}&page=${page}`, { headers });
-      if (!res.ok) break;
+      if (!res.ok) {
+        failure = `page ${page} returned HTTP ${res.status}`;
+        break;
+      }
       const payload = await res.json();
-      collectDates(payload, dates, limit);
-      if (!Array.isArray(payload) || payload.length < PER_PAGE) break;
+      if (!Array.isArray(payload)) {
+        failure = `page ${page} returned a body that is not a list of releases`;
+        break;
+      }
+      if (wantDates) collectDates(payload, dates, dateLimit);
+      collectMarkedNotes(payload, scan, changelogTags);
+      if (payload.length < PER_PAGE) {
+        exhausted = true;
+        break;
+      }
     }
   } catch (err) {
-    console.warn(
-      `[releases] date enrichment failed; building changelog without dates: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
+    failure = err instanceof Error ? err.message : String(err);
+    console.warn(`[releases] date enrichment failed; building changelog without dates: ${failure}`);
   }
-  return dates;
+  return {
+    dates,
+    notes: scan.notes,
+    notesComplete: passedCutover(scan) || exhausted,
+    failure,
+  };
+}
+
+function compareTagsDescending(a: ReleaseNote, b: ReleaseNote): number {
+  return compareVersions(b.tag, a.tag);
+}
+
+export function mergeReleaseNotes(
+  changelogReleases: ReleaseNote[],
+  notes: ReadonlyMap<string, string>,
+  dates: ReadonlyMap<string, string>,
+): ReleaseNote[] {
+  if (notes.size === 0) return changelogReleases;
+  const fromBodies = [...notes].map(([tag, markdown]) => ({
+    tag,
+    title: tag,
+    publishedAt: dates.get(tag) ?? null,
+    bodyHtml: renderNotes(markdown),
+    htmlUrl: `${REPO_URL}/releases/tag/${tag}`,
+  }));
+  return [...fromBodies, ...changelogReleases.filter((release) => !notes.has(release.tag))].sort(
+    compareTagsDescending,
+  );
+}
+
+export function releaseNotesFrom(feed: ReleaseFeed): ReadonlyMap<string, string> {
+  if (feed.notesComplete) return feed.notes;
+  const reason =
+    '[releases] could not read every stable Release body back to the newest one without notes' +
+    `${feed.failure ? ` (${feed.failure})` : ''}; ` +
+    'the changelog cannot tell which versions have notes in their Release body.';
+  if (RELEASE_NOTES_REQUIRED) throw new Error(reason);
+  console.warn(`${reason} Showing packages/cli/CHANGELOG.md notes only.`);
+  return new Map();
 }
 
 function readChangelog(): string | null {
@@ -133,12 +296,23 @@ export async function loadStableReleases(
 ): Promise<ReleaseNote[]> {
   const markdown = readChangelog();
   if (markdown === null) return [];
-  const dates = await fetchReleaseDates(DATE_LIMIT, deps.fetchImpl ?? fetch);
-  const releases = parseChangelog(markdown, dates);
-  if (releases.length === 0) {
+  const changelogTags = new Set(
+    markdown.split('\n').flatMap((line) => {
+      const heading = VERSION_HEADING.exec(line);
+      return heading ? [`v${heading[1]}`] : [];
+    }),
+  );
+  const feed = await fetchReleaseFeed({
+    dateLimit: DATE_LIMIT,
+    changelogTags,
+    fetchImpl: deps.fetchImpl ?? fetch,
+  });
+  const changelogReleases = parseChangelog(markdown, feed.dates);
+  if (changelogReleases.length === 0) {
     throw new Error(
       `[changelog] CHANGELOG.md at ${CHANGELOG_PATH} has no \`## X.Y.Z\` sections — malformed or empty.`,
     );
   }
+  const releases = mergeReleaseNotes(changelogReleases, releaseNotesFrom(feed), feed.dates);
   return Number.isFinite(limit) ? releases.slice(0, limit) : releases;
 }

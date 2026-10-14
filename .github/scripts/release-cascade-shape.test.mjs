@@ -7,6 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
+import { NOTES_SOURCE_MARKER, renderStableNotes } from '../../scripts/render-stable-notes.mjs';
 import { buildSlackPayload } from './build-smoke-alert-payload.mjs';
 import { execFileSync } from './child-tripwire.test-helper.mjs';
 import { selectPromotion } from './select-beta-to-promote.mjs';
@@ -561,10 +562,11 @@ describe('the moved dispatch keeps the contract release.yml consumes', () => {
   });
 
   test('the dispatch is gated so beta cuts and manual re-runs never publish npm', () => {
-    const dispatch = desktopRelease.slice(
-      desktopRelease.indexOf('- name: Trigger release.yml to publish stable to npm'),
-      desktopRelease.indexOf('# The on-site changelog'),
-    );
+    const start = desktopRelease.indexOf('- name: Trigger release.yml to publish stable to npm');
+    const end = desktopRelease.indexOf('- name: Announce stable release to Slack');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const dispatch = desktopRelease.slice(start, end);
     expect(dispatch).toContain("needs.prepare.outputs.channel == 'latest'");
     expect(dispatch).toContain("github.event_name != 'workflow_dispatch'");
   });
@@ -1573,18 +1575,24 @@ describe('every job that reads changesets installs the Changesets reader first',
       importsReader(resolve(dirname(file), spec), seen),
     );
   };
-  const VERDICT_MODE_SCRIPTS = new Set([
-    join(OK_ROOT, 'scripts', 'compute-stable-version.mjs'),
-    join(OK_ROOT, '.github', 'scripts', 'point-release-plan.mjs'),
-    join(OK_ROOT, '.github', 'scripts', 'bug-lane.mjs'),
-    join(OK_ROOT, '.github', 'scripts', 'select-beta-to-promote.mjs'),
+  const VERDICT_MODE_SCRIPTS = new Map([
+    [join(OK_ROOT, 'scripts', 'compute-stable-version.mjs'), ['BUMP_VERDICTS']],
+    [join(OK_ROOT, 'scripts', 'render-stable-notes.mjs'), ['NOTE_LEVELS']],
+    [
+      join(OK_ROOT, '.github', 'scripts', 'point-release-plan.mjs'),
+      ['BUMP_VERDICTS', 'NOTE_LEVELS'],
+    ],
+    [join(OK_ROOT, '.github', 'scripts', 'bug-lane.mjs'), ['BUMP_VERDICTS']],
+    [join(OK_ROOT, '.github', 'scripts', 'select-beta-to-promote.mjs'), ['BUMP_VERDICTS']],
   ]);
   const readsChangesets = (step) => {
     const readers = [...(step.run ?? '').matchAll(/[\w./-]+\.mjs\b/g)]
       .map(([path]) => resolve(OK_ROOT, path))
       .filter((file) => importsReader(file));
     if (readers.length === 0) return false;
-    return step.env?.BUMP_VERDICTS === undefined || readers.some((file) => !VERDICT_MODE_SCRIPTS.has(file));
+    return readers.some(
+      (file) => !VERDICT_MODE_SCRIPTS.has(file) || VERDICT_MODE_SCRIPTS.get(file).some((name) => step.env?.[name] === undefined),
+    );
   };
   const readerJobs = readdirSync(WORKFLOWS)
     .filter((file) => file.endsWith('.yml'))
@@ -1614,15 +1622,19 @@ describe('every job that reads changesets installs the Changesets reader first',
     expect(uninstalled).toEqual([]);
   });
 
-  test('BUMP_VERDICTS exempts only a script that implements verdict mode', () => {
+  test('BUMP_VERDICTS and NOTE_LEVELS exempt only a script that implements verdict mode for every read it makes', () => {
     const env = { BUMP_VERDICTS: '${{ needs.read-bumps.outputs.bump_verdicts }}' };
     expect(readsChangesets({ env, run: 'node scripts/compute-stable-version.mjs "$BETA_TAG"' })).toBe(false);
-    expect(readsChangesets({ env, run: 'node .github/scripts/point-release-plan.mjs' })).toBe(false);
+    expect(readsChangesets({ env, run: 'node .github/scripts/point-release-plan.mjs' })).toBe(true);
     expect(readsChangesets({ env, run: 'node scripts/compute-next-beta.mjs' })).toBe(true);
     expect(
       readsChangesets({ env, run: 'node scripts/compute-stable-version.mjs v1\nnode scripts/compute-next-beta.mjs' }),
     ).toBe(true);
     expect(readsChangesets({ run: 'node scripts/compute-stable-version.mjs "$BETA_TAG"' })).toBe(true);
+    const levels = { NOTE_LEVELS: '${{ needs.read-bumps.outputs.note_levels }}' };
+    expect(readsChangesets({ env: levels, run: 'node scripts/render-stable-notes.mjs --commit "$SHA"' })).toBe(false);
+    expect(readsChangesets({ env, run: 'node scripts/render-stable-notes.mjs --commit "$SHA"' })).toBe(true);
+    expect(readsChangesets({ env: { ...env, ...levels }, run: 'node .github/scripts/point-release-plan.mjs' })).toBe(false);
   });
 });
 
@@ -1689,6 +1701,7 @@ describe('the release App credential never shares a job with installed packages'
   const isSanctionedRead = (job, { path, expr }) => {
     if (path[0] !== 'steps' || path[2] !== 'env') return false;
     if (path[3] === 'BUMP_VERDICTS') return expr === 'needs.read-bumps.outputs.bump_verdicts';
+    if (path[3] === 'NOTE_LEVELS') return expr === 'needs.read-bumps.outputs.note_levels';
     return (
       path[3] === 'READ_BUMPS_BETA_TAG' &&
       job.steps[path[1]]?.name === REFUSAL &&
@@ -1870,6 +1883,9 @@ describe('the release App credential never shares a job with installed packages'
       'BUMP_VERDICTS reading another output': withStep({
         env: { BUMP_VERDICTS: '${{ needs.read-bumps.outputs.beta_tag }}' },
       }),
+      'NOTE_LEVELS reading another output': withStep({
+        env: { NOTE_LEVELS: '${{ needs.read-bumps.outputs.beta_tag }}' },
+      }),
       'an action input named BUMP_VERDICTS': withStep({
         uses: './.github/actions/consumer',
         with: { BUMP_VERDICTS: '${{ needs.read-bumps.outputs.bump_verdicts }}' },
@@ -1884,13 +1900,20 @@ describe('the release App credential never shares a job with installed packages'
     }
   });
 
-  test('a job that mints an App token takes only bump_verdicts from the reader job', () => {
+  test('a job that mints an App token takes only bump_verdicts and note_levels from the reader job', () => {
     for (const { name, job } of jobs.filter(({ job }) => mintsAppToken(job))) {
       const verdictSteps = steps(job).filter((step) => step.env?.BUMP_VERDICTS !== undefined);
       expect(verdictSteps.length, name).toBeGreaterThan(0);
       for (const step of verdictSteps) {
         expect(step.env.BUMP_VERDICTS, `${name} ${step.name}`).toBe(
           '${{ needs.read-bumps.outputs.bump_verdicts }}',
+        );
+      }
+      const levelSteps = steps(job).filter((step) => step.env?.NOTE_LEVELS !== undefined);
+      expect(levelSteps.length, name).toBeGreaterThan(0);
+      for (const step of levelSteps) {
+        expect(step.env.NOTE_LEVELS, `${name} ${step.name}`).toBe(
+          '${{ needs.read-bumps.outputs.note_levels }}',
         );
       }
       expect(strayReaderReads(job), name).toEqual([]);
@@ -3097,5 +3120,26 @@ describe('Linux packaging ships the native prebuilds and checks them before uplo
         true,
       );
     }
+  });
+});
+
+describe('the Discord stable announcement and the notes renderer agree on the notes-source marker', () => {
+  test('the announcement strips the marker line the renderer writes and keeps the notes', () => {
+    const step = workflowStep(desktopRelease, 'desktop-release.yml', 'Announce stable release to Discord');
+    const stripLine = step.split('\n').find((line) => line.includes('ok-notes-source'));
+    expect(stripLine, 'the Discord step no longer strips the notes-source marker').toBeDefined();
+    const programs = [...(stripLine ?? '').matchAll(/-e '([^']*)'/g)].map((match) => match[1]);
+    const rendered = renderStableNotes([{ id: 'a-fix', level: 'patch', summary: 'A fix.' }], {
+      marked: true,
+    });
+    expect(rendered).toContain(NOTES_SOURCE_MARKER);
+    const body = `${rendered}\n<!-- ok-downloads:start -->\n| a | b |\n<!-- ok-downloads:end -->\n`;
+    const stripped = execFileSync('sed', programs.flatMap((program) => ['-e', program]), {
+      input: body,
+      encoding: 'utf8',
+    });
+    expect(stripped).not.toContain('ok-notes-source');
+    expect(stripped).not.toContain('ok-downloads');
+    expect(stripped).toContain('- A fix.');
   });
 });
