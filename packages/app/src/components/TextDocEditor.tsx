@@ -92,12 +92,12 @@ export function TextDocEditor({
   }, [ytext, provider, resolvedTheme, docName, undoManager]);
 
   return (
-    <main
+    <section
       className="flex h-full min-h-0 flex-col bg-background"
       aria-label={t`${basename} — text editor`}
       data-text-doc-editor=""
     >
       <div ref={containerRef} className="min-h-0 flex-1 overflow-auto" />
-    </main>
+    </section>
   );
 }

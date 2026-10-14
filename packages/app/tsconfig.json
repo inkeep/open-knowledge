@@ -91,11 +91,15 @@
     "tests/stress/_helpers/acp-catalog.ts",
     "tests/stress/_helpers/assertion-timeout",
     "tests/stress/_helpers/boot-verdict",
+    "tests/stress/_helpers/card-surface.ts",
+    "tests/stress/_helpers/corner-stack.ts",
     "tests/stress/_helpers/editor-state.ts",
+    "tests/stress/_helpers/feedback-nudge.ts",
     "tests/stress/_helpers/image.ts",
     "tests/stress/_helpers/loop-markers.ts",
     "tests/stress/_helpers/prebuilt",
     "tests/stress/_helpers/reuse",
+    "tests/stress/_helpers/subscribe-card.ts",
     "tests/stress/_helpers/theme-fade.ts"
   ],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]

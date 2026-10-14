@@ -110,7 +110,7 @@ else {
       terminal = { code, signal };
       send({ type: 'command-close', code, signal });
     });
-    send({ type: 'started' });
+    send({ type: 'started', pid: proc.pid ?? null });
   } catch (error) {
     send({ type: 'launch-error', message: describe(error) });
     void stop().catch(() => finish());

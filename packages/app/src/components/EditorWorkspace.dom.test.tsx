@@ -174,23 +174,25 @@ vi.doMock('@/lib/single-file-mode', () => ({
 vi.doMock('./EditorTabs', () => ({
   EditorTabs: ({
     dropIndicatorIndex,
+    leading,
     paneId,
-    reserveLeadingChrome,
-    reserveTrailingChrome,
   }: {
     dropIndicatorIndex?: number | null;
+    leading?: ReactNode;
     paneId: string;
-    reserveLeadingChrome?: boolean;
-    reserveTrailingChrome?: boolean;
   }) => (
-    <div
-      data-editor-pane-tabs={paneId}
-      data-drop-indicator-index={dropIndicatorIndex ?? undefined}
-      data-reserve-leading-chrome={reserveLeadingChrome || undefined}
-      data-reserve-trailing-chrome={reserveTrailingChrome || undefined}
-    >
+    <div data-editor-pane-tabs={paneId} data-drop-indicator-index={dropIndicatorIndex ?? undefined}>
+      {leading}
       Tabs {paneId}
     </div>
+  ),
+}));
+
+vi.doMock('./FileListToggle', () => ({
+  FileListToggle: () => (
+    <button type="button" data-testid="file-list-toggle">
+      Files
+    </button>
   ),
 }));
 
@@ -386,9 +388,15 @@ describe('EditorWorkspace', () => {
     expect(headerGroups[0]?.style.flexGrow).toBe('60');
     expect(headerGroups[1]?.classList.contains('basis-0')).toBe(true);
     expect(headerGroups[1]?.style.flexGrow).toBe('40');
+    expect(
+      headerGroups[0]?.classList.contains('[&>*]:pe-[var(--editor-header-trailing-width,0px)]'),
+    ).toBe(false);
+    expect(
+      headerGroups[1]?.classList.contains('[&>*]:pe-[var(--editor-header-trailing-width,0px)]'),
+    ).toBe(true);
     expect(container.querySelectorAll('[data-editor-header-pane-separator]')).toHaveLength(1);
-    expect(headerGroups[0]?.querySelector('[data-reserve-leading-chrome="true"]')).toBeTruthy();
-    expect(headerGroups[1]?.querySelector('[data-reserve-trailing-chrome="true"]')).toBeTruthy();
+    expect(screen.getAllByTestId('file-list-toggle')).toHaveLength(1);
+    expect(headerGroups[0]?.contains(screen.getByTestId('file-list-toggle'))).toBe(true);
 
     if (!workspace || !headerCanvas) throw new Error('Expected workspace and header canvas');
     workspace.scrollLeft = 96;

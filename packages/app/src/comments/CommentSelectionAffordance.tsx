@@ -19,7 +19,9 @@ import {
   SELECTION_SURFACE_GAP_PX,
 } from '@/editor/utils/editor-visible-region';
 import { getEditorView } from '@/editor/utils/get-editor-view';
+import { focusAwayFromHiddenEditor } from '@/lib/editor-hidden-focus';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import { useEditorPaneOnScreen } from '@/lib/use-editor-pane-on-screen';
 import { cn } from '@/lib/utils';
 import { setCommentDraftRange } from './anchor-decorations';
 import { captureSelectionContext } from './anchor-search';
@@ -49,11 +51,12 @@ export function CommentSelectionAffordance({
   const [captured, setCaptured] = useState<Captured | null>(null);
   const [empty, setEmpty] = useState(true);
   const commentsOnScreen = useCommentsPanelOnScreen();
+  const editorPaneOnScreen = useEditorPaneOnScreen();
   const inputRef = useRef<ComposerMentionInputHandle>(null);
   const floatingRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!shortcutEnabled) return;
+    if (!shortcutEnabled || !editorPaneOnScreen) return;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!matchesKeyboardShortcut(event, 'add-comment')) return;
       const target = event.target;
@@ -64,7 +67,13 @@ export function CommentSelectionAffordance({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [shortcutEnabled, editor]);
+  }, [shortcutEnabled, editorPaneOnScreen, editor]);
+
+  useEffect(() => {
+    if (editorPaneOnScreen) return;
+    const floating = floatingRef.current;
+    if (floating?.contains(document.activeElement)) focusAwayFromHiddenEditor();
+  }, [editorPaneOnScreen]);
 
   useEffect(() => {
     return subscribeStartComment(() => {
@@ -170,7 +179,10 @@ export function CommentSelectionAffordance({
   return createPortal(
     <div
       ref={floatingRef}
-      className="z-[60] flex w-80 flex-col gap-2 rounded-lg border bg-popover p-3 text-popover-foreground shadow-md"
+      className={cn(
+        'z-[60] flex w-80 flex-col gap-2 rounded-lg border bg-popover p-3 text-popover-foreground shadow-md',
+        !editorPaneOnScreen && 'hidden',
+      )}
       style={{ position: 'fixed', top: 0, left: 0 }}
       data-testid="comment-composer"
     >

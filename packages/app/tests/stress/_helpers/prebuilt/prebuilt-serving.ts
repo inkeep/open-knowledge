@@ -8,6 +8,11 @@ import {
   prebuiltManifest,
   prebuiltServingDecision,
 } from '../../../foundation/test-server-inputs.ts';
+import {
+  PRODUCTION_SHELL_ENV,
+  type ProductionShellLaunch,
+  productionShellLaunch,
+} from '../production-shell-server.ts';
 
 export const E2E_SERVING_ENV = 'OK_TEST_E2E_SERVING';
 export const PREBUILT_APP_ENV = 'OK_TEST_PREBUILT_APP';
@@ -24,7 +29,10 @@ export const PREBUILT_BUILD_OPTIONS = {
 
 export type WorkerServing =
   | { readonly kind: 'dev-server' }
-  | { readonly kind: 'prebuilt'; readonly outputDir: string };
+  | { readonly kind: 'prebuilt'; readonly outputDir: string }
+  | { readonly kind: 'production-shell'; readonly launch: ProductionShellLaunch };
+
+export type ModuleServing = Exclude<WorkerServing, { readonly kind: 'production-shell' }>;
 
 export type PrebuiltServing = Extract<WorkerServing, { readonly kind: 'prebuilt' }>;
 
@@ -49,7 +57,7 @@ export function e2eServingMode(env: Env): E2eServingMode {
   return mode;
 }
 
-export function workerServingFromEnv(env: Env): WorkerServing {
+export function workerServingFromEnv(env: Env): ModuleServing {
   if (e2eServingMode(env) === 'dev-server') return { kind: 'dev-server' };
   const outputDir = env[PREBUILT_APP_ENV];
   if (outputDir === undefined || outputDir === '') {
@@ -58,6 +66,33 @@ export function workerServingFromEnv(env: Env): WorkerServing {
     );
   }
   return { kind: 'prebuilt', outputDir };
+}
+
+export function workerServingKind(
+  workerServerEnv: Readonly<Record<string, string>>,
+  env: Env,
+): WorkerServing['kind'] {
+  if ((workerServerEnv[PRODUCTION_SHELL_ENV] ?? env[PRODUCTION_SHELL_ENV]) === '1') {
+    return 'production-shell';
+  }
+  return e2eServingMode(env);
+}
+
+export function workerServingFor(
+  workerServerEnv: Readonly<Record<string, string>>,
+  env: Env,
+  endpoint: { readonly host: string; readonly candidatePort: number },
+): WorkerServing {
+  const kind = workerServingKind(workerServerEnv, env);
+  switch (kind) {
+    case 'production-shell':
+      return { kind, launch: productionShellLaunch(endpoint.host, endpoint.candidatePort) };
+    case 'dev-server':
+    case 'prebuilt':
+      return workerServingFromEnv(env);
+    default:
+      return kind satisfies never;
+  }
 }
 
 function stringRecord(value: unknown): Readonly<Record<string, string>> | undefined {

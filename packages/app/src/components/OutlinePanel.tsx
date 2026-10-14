@@ -74,6 +74,7 @@ export interface OutlineNavDetail {
   index: number;
   slug: string;
   mode: 'wysiwyg' | 'source';
+  onNavigated?: (target: HTMLElement) => void;
 }
 
 export const OUTLINE_NAV_EVENT = 'open-knowledge:outline-nav';
@@ -88,6 +89,7 @@ export function OutlinePanel(props: {
   docName: string;
   isSourceMode: boolean;
   className?: string;
+  onNavigated?: (target: HTMLElement) => void;
 }) {
   return (
     <ProfilerBoundary name="outline-panel">
@@ -100,10 +102,12 @@ function OutlinePanelInner({
   docName,
   isSourceMode,
   className = '',
+  onNavigated,
 }: {
   docName: string;
   isSourceMode: boolean;
   className?: string;
+  onNavigated?: (target: HTMLElement) => void;
 }) {
   const { t } = useLingui();
   const { pages, loading, error: pageListError } = usePageList();
@@ -162,6 +166,7 @@ function OutlinePanelInner({
       index,
       slug,
       mode: isSourceMode ? 'source' : 'wysiwyg',
+      onNavigated,
     };
     if (detail.mode === 'source') {
       rememberPendingSourceNavigation(docName, { kind: 'outline', detail });
@@ -229,7 +234,7 @@ function OutlinePanelInner({
                   className={cn(
                     'w-full cursor-pointer truncate py-1.5 pe-2 text-left text-sm transition-colors',
                     isActive
-                      ? 'font-medium text-primary'
+                      ? 'font-medium text-[var(--secondary-panel-accent,var(--primary))]'
                       : 'text-muted-foreground hover:text-foreground',
                   )}
                   style={{ paddingLeft: `${(heading.level - 1) * LEVEL_W + 20}px` }}

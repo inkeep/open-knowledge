@@ -3,7 +3,7 @@
 import type { FrontmatterDelta } from '@inkeep/open-knowledge-core/frontmatter-diff';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { PanelRightClose, PanelRightOpen, X } from 'lucide-react';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { PropertyDiffBlock } from '@/components/PropertyDiffBlock';
 import { computeRenderedDiff, RenderedDiffView } from '@/components/RenderedDiffView';
 import { Button } from '@/components/ui/button';
@@ -36,25 +36,60 @@ interface AgentDiffPaneProps {
   view: AgentDiffView;
   isPanelCollapsed: boolean;
   onTogglePanel: () => void;
+  onDestinationComplete?: (target?: HTMLElement) => void;
+  onDestinationFailed?: () => void;
 }
 
-export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDiffPaneProps) {
+export function AgentDiffPane({
+  view,
+  isPanelCollapsed,
+  onTogglePanel,
+  onDestinationComplete,
+  onDestinationFailed,
+}: AgentDiffPaneProps) {
   const { t } = useLingui();
   const { agentId, agentName, agentColor, agentIcon, docName, keptCount } = view;
   const [cache] = useState(() => new LruStringCache(VERSION_DIFF_CACHE_LIMIT));
   const diffBodyRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [renderMode, setRenderMode] = useState<'rendered' | 'source'>('rendered');
   const [result, setResult] = useState<{
     status: 'loading' | 'ready' | 'error';
+    key: string | null;
     diff: string;
     before: string;
     after: string;
     properties: FrontmatterDelta;
-  }>({ status: 'loading', diff: '', before: '', after: '', properties: EMPTY_DELTA });
+  }>({ status: 'loading', key: null, diff: '', before: '', after: '', properties: EMPTY_DELTA });
+
+  const currentKey = `${agentId}\0${docName}\0${keptCount}`;
+  const completeDestination = useEffectEvent(() => {
+    onDestinationComplete?.(closeButtonRef.current ?? undefined);
+  });
+  const failDestination = useEffectEvent(() => onDestinationFailed?.());
+  const settledRequestRef = useRef<AgentDiffView | null>(null);
+  useEffect(() => {
+    if (settledRequestRef.current === view) return;
+    if (result.key !== currentKey) return;
+    if (result.status === 'ready') {
+      settledRequestRef.current = view;
+      completeDestination();
+    } else if (result.status === 'error') {
+      settledRequestRef.current = view;
+      failDestination();
+    }
+  }, [result, currentKey, view]);
 
   useEffect(() => {
     let cancelled = false;
-    setResult({ status: 'loading', diff: '', before: '', after: '', properties: EMPTY_DELTA });
+    setResult({
+      status: 'loading',
+      key: null,
+      diff: '',
+      before: '',
+      after: '',
+      properties: EMPTY_DELTA,
+    });
     const key = `${agentId}\0${docName}\0${keptCount}`;
     const cached = cache.get(key);
     if (cached !== undefined) {
@@ -64,14 +99,14 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
         after: string;
         properties: FrontmatterDelta;
       };
-      setResult({ status: 'ready', ...parsed });
+      setResult({ status: 'ready', key, ...parsed });
       return;
     }
     fetchAgentBurstDiff(agentId, docName, keptCount)
       .then((data) => {
         if (cancelled) return;
         cache.set(key, JSON.stringify(data));
-        setResult({ status: 'ready', ...data });
+        setResult({ status: 'ready', key, ...data });
       })
       .catch((err) => {
         if (!cancelled) {
@@ -81,7 +116,14 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
             keptCount,
             err,
           });
-          setResult({ status: 'error', diff: '', before: '', after: '', properties: EMPTY_DELTA });
+          setResult({
+            status: 'error',
+            key,
+            diff: '',
+            before: '',
+            after: '',
+            properties: EMPTY_DELTA,
+          });
         }
       });
     return () => {
@@ -190,6 +232,7 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
+              ref={closeButtonRef}
               variant="ghost"
               size="icon"
               className="size-7 shrink-0"

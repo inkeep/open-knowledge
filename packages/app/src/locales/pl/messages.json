@@ -415,6 +415,7 @@
     "3Fcb0I": ["Otwórz graf"],
     "3HAPpl": ["Żaden schemat nie pasuje do wyszukiwania."],
     "3HNlwb": ["Witaj, świecie!"],
+    "3HOAcR": ["Panel agentów"],
     "3Ib6FN": ["Przenieś w dół"],
     "3J7d2N": ["Duży nagłówek sekcji."],
     "3JYy1p": ["Gałąź ", ["0"], " już nie istnieje. Sklonowano do gałęzi domyślnej."],
@@ -630,6 +631,7 @@
     ],
     "5OTgC7": ["Otwórz i ustaw fokus na dolnym polu wpisywania Zapytaj AI."],
     "5OqaJi": ["Wpisz nazwę projektu"],
+    "5Q9-G-": ["Panel dokumentu"],
     "5QGTaA": ["Nie udało się skopiować ścieżki względnej"],
     "5RiC8D": [
       "Umiejętności discovery są zarządzane wspólnie dla wszystkich narzędzi AI. Zainstaluj tę z Ustawienia → Studio umiejętności."
@@ -929,6 +931,7 @@
     "7cAW1G": ["Dla tego punktu końcowego nie ustawiono klucza API. Dodaj go powyżej."],
     "7czmD1": ["OpenKnowledge wyszukało paletę tworzenia"],
     "7d1a0d": ["Publiczne"],
+    "7dDoQu": ["Panel edytora"],
     "7dZnmw": ["Trafność"],
     "7hctf2": ["Opisz projekt, który chcesz utworzyć"],
     "7idx48": ["Zainstalowano umiejętność agenta OKF"],
@@ -1510,7 +1513,6 @@
     "DWJtEo": ["Co dalej"],
     "DXd9LM": ["Nowe worktree"],
     "D_WKe_": ["Kliknij awatar agenta na pasku obecności, aby zobaczyć jego sesję."],
-    "DbCfXV": ["Szukaj (", ["searchShortcutLabel"], ")"],
     "DbILZA": [
       "Brak dopasowań. Niektóre pliki są wyłączone z wyszukiwania (ukryte lub ignorowane)."
     ],
@@ -1749,6 +1751,7 @@
       ")."
     ],
     "FWSjnp": ["Panel edycji źródła i pola właściwości kodu"],
+    "FYy2EN": ["Zmień rozmiar panelu dokumentu"],
     "FZtBeR": ["Włącz ", ["0"]],
     "FeXcUS": [
       ["display"],
@@ -1821,6 +1824,7 @@
       ", ale nie udało się użyć danych dostępowych tego konta."
     ],
     "GBQjiV": ["Dodaj umiejętność"],
+    "GCrhIF": ["Panele"],
     "GDvlUT": ["Rola"],
     "GEyl32": ["Uruchamianie terminala…"],
     "GGsM4y": ["Zaznaczone w grafie"],
@@ -2475,7 +2479,6 @@
       "Symlink to wskaźnik na folder źródłowy, a nie osobny folder. Każda lokalizacja czyta dokładnie te same bajty, więc nic nie może się rozjechać, a lokalizacja przestaje działać, gdy źródło zostanie usunięte."
     ],
     "MTs6g3": ["Nie udało się ponownie połączyć po restarcie serwera"],
-    "MU_NVW": ["Zwiń terminal"],
     "MUrVEo": ["Brak ostatnich projektów."],
     "MV-Dkb": ["Znaleziono ", ["countDisplay"], " plików Markdown"],
     "MVxpbf": ["Znajdź i zamień"],
@@ -3362,13 +3365,13 @@
       "</0> został usunięty lokalnie, ale zmodyfikowany w źródle."
     ],
     "V4JHny": ["Udostępnianie obsługuje wyłącznie zdalne repozytoria GitHub."],
-    "V6AIOn": ["Nawigacja po obszarze roboczym"],
     "V6e25h": ["Podgląd motywu"],
     "V7QxyT": ["Połączenie zostało zerwane"],
     "VAHWL_": ["Połączono jako <0>@", ["signedInLogin"], "</0>"],
     "VBE2dw": [
       "Zbuduj i śledź świat stojący za Twoją historią. Miejsce dla Twoich postaci, miejsc, frakcji i legend, które je spinają, dzięki czemu szczegóły pozostają spójne, gdy piszesz."
     ],
+    "VBtCdv": ["Nie udało się przewinąć do tego fragmentu. Spróbuj ponownie."],
     "VFQXPl": [
       "Podglądy linków zewnętrznych pokazują kartę z nazwą strony, tytułem i opisem po najechaniu na link."
     ],
@@ -3556,7 +3559,6 @@
     "X2zUS5": ["Usuń ten komentarz"],
     "X3MMeA": ["Żaden z tych problemów nie ma automatycznej poprawki."],
     "X59Fx2": ["Nie można otworzyć tego dokumentu w Slidev."],
-    "X7ShnN": ["Otwórz panel agentów"],
     "X8kjQX": ["Uwierzytelnij się ponownie z GitHub"],
     "X9VpsP": ["Ładowanie zawartości folderu"],
     "XA9uvc": ["OpenKnowledge sprawdza i pobiera aktualizacje w tle."],
@@ -3725,6 +3727,7 @@
     "YS9mSt": ["Zaktualizowano „", ["name"], "” na podstawie ", ["0"]],
     "YSFv5w": ["Brak repozytorium git — udostępnianie konfiguracji nie dotyczy tego miejsca."],
     "YScUUO": ["Pobiera stronę internetową"],
+    "YStFYH": ["Otwórz agentów"],
     "YTLmTM": ["Usuń nadrzędny folder <0>.git</0>"],
     "YW7Q86": ["Ustawienia wyszukiwania jeszcze się nie wczytały — spróbuj ponownie za chwilę"],
     "YWK2zy": ["Widok różnic konfliktu dla ", ["fileName"]],
@@ -4022,6 +4025,7 @@
       "Nie wykryto jeszcze narzędzi AI. Po zainstalowaniu połącz je w Ustawieniach > Ten projekt."
     ],
     "aTDVi6": ["Zachowano Twoją zawartość"],
+    "aV2vel": ["Panel ", ["number"]],
     "aWlJai": ["Uruchamianie procesu logowania"],
     "aXkLuE": ["Nieprawidłowa odpowiedź apply"],
     "a_u4ck": ["Ładowanie tagów"],
@@ -4633,6 +4637,7 @@
     "f1-q9m": ["zachowuje umiejętności"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Przenieś blok"],
+    "f3YhVJ": ["Nic nie jest otwarte"],
     "f65AOQ": ["Zacznij od"],
     "f6suyZ": ["Zażądano zmian"],
     "f8fH8W": ["Design"],
@@ -4650,6 +4655,7 @@
     "fKsRVO": ["Umiejętności z ", ["0"], "/", ["1"], "."],
     "fMsFdZ": ["Nie udało się zapisać ustawienia automatycznej aktualizacji: ", ["0"]],
     "fNr-MX": ["Wyłącz wyszukiwanie semantyczne"],
+    "fObclJ": ["Wróć do edytora"],
     "fOzzSV": ["Cel linku „", ["shown"], "” nie wskazuje na istniejący plik."],
     "fRVBiq": [
       "Dodaje telemetrię, stan serwera i informacje o czasie działania, gdy są dostępne. Dane logowania są zawsze usuwane; nazwy dokumentów, jeśli są dołączone, pojawiają się w postaci jawnej (bez maskowania)."
@@ -4758,7 +4764,6 @@
       ["descriptorLabel"],
       "> nie wyrenderował się (prawdopodobnie zła właściwość). Skopiuj źródło, aby zobaczyć, co poszło nie tak, albo usuń blok."
     ],
-    "g5V4_P": ["Zwiń panel agenta"],
     "g5w1sF": [
       "Wybierz folder do POŁĄCZENIA Z ",
       ["display"],
@@ -5034,19 +5039,6 @@
     "i04BJx": ["Znajduje się poza tym projektem — tutaj tylko do odczytu."],
     "i09An-": ["Przywrócono wcześniejszą wersję (", ["0"], ")"],
     "i1flq_": ["Podpowiedzi linków wiki"],
-    "i25FHa": [
-      "Otwórz panel agentów — ",
-      [
-        "liveThreadCount",
-        "plural",
-        {
-          "one": ["#", " aktywny wątek agenta"],
-          "few": ["#", " aktywne wątki agenta"],
-          "many": ["#", " aktywnych wątków agenta"],
-          "other": ["#", " aktywnego wątku agenta"]
-        }
-      ]
-    ],
     "i3f2kh": ["Brak pasujących poleceń."],
     "i6o7XB": ["Szukaj języków"],
     "i92eAT": [
@@ -5647,6 +5639,7 @@
     ],
     "n7aopT": ["Tryb edytora"],
     "n81AV0": [["owner"], "/", ["name"], " już istnieje. Wybierz inną nazwę."],
+    "nBFK5w": ["Zmień rozmiar terminala"],
     "nBHvPL": ["Anuluj edycję"],
     "nBgzKO": ["Ustaw to jako źródło — prawdziwy folder umiejętności przenosi się tutaj"],
     "nCzR-G": ["Skopiuj kod ", ["userCode"]],
@@ -6074,6 +6067,7 @@
     "qyLmWw": ["Panel wyszukiwania w edytorze źródłowym"],
     "qze9od": ["Ten folder należy również do ", ["alsoAffects"], "."],
     "r-OJYm": ["Wpisz poprawną nazwę gałęzi (bez spacji, bez kropki na początku, bez \"..\")."],
+    "r-wzd8": ["Aktualizacje i opinie"],
     "r2eKE3": ["Najpierw zaloguj się do ", ["agentName"]],
     "r3iaI0": ["Brak czatów."],
     "r4R7AZ": ["Błąd sieci podczas sprzątania"],
@@ -6352,6 +6346,7 @@
     "ten9en": ["Ostatni projekt"],
     "tfDRzk": ["Zapisz"],
     "tfi40B": ["Nie udało się utworzyć strony"],
+    "tgB_VT": ["Otwórz edytor"],
     "tgWuMB": ["Zmodyfikowane"],
     "thnPBX": ["Aktywuj następną kartę edytora."],
     "ti6aF_": ["Zapytaj CLI ", ["0"]],
@@ -6557,6 +6552,7 @@
     "un-K1H": ["Pozostaje na tym komputerze. Nie jest zapisywane w Gitcie."],
     "un8kBM": ["Tworzenie strony: ", ["linkTitle"], "."],
     "uoJF_D": ["Był zbyt trudny w konfiguracji lub na starcie"],
+    "uqgCZJ": ["Ukryj edytor"],
     "uqs8Gd": [
       [
         "others",
@@ -6949,6 +6945,7 @@
     "xzAmL_": ["Zatwierdzone automatycznie"],
     "xzktOa": ["Edytuj link wiki"],
     "y-LQPF": ["Nie można rozwiązać obrazu ", ["identity"], ". Przejdź do odwołania."],
+    "y0_w13": ["Pokaż edytor"],
     "y1eoq1": ["Kopiuj link"],
     "y1t8bQ": ["Sekcje ustawień"],
     "y3aU20": ["Zapisz zmiany"],

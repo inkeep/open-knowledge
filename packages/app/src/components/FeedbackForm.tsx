@@ -153,81 +153,94 @@ export const FeedbackForm = ({
     }
   };
 
+  const ratingSection = (
+    <>
+      {(title || onDismiss) && (
+        <div className="flex items-start justify-between gap-2">
+          {title ? (
+            <p className={cn('font-medium', compact ? 'text-sm' : 'text-1sm')}>{title}</p>
+          ) : (
+            <span />
+          )}
+          {onDismiss ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={onDismiss}
+              aria-label={t`Close`}
+              className={cn(
+                '-mr-1.5 size-7 shrink-0 text-muted-foreground opacity-60',
+                compact ? '-my-1' : '-mt-1',
+              )}
+            >
+              <X className="size-4" />
+            </Button>
+          ) : null}
+        </div>
+      )}
+      {}
+      <FormField
+        control={form.control}
+        name="rating"
+        render={({ field }) => (
+          <FormItem>
+            <FormControl>
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                spacing={2}
+                aria-label={t`Rate your experience`}
+                value={field.value ?? ''}
+                onValueChange={(value) => {
+                  if (!value) return;
+                  field.onChange(value);
+                  if (value === 'positive') form.setValue('reasons', []);
+                }}
+                className="w-full"
+              >
+                <ToggleGroupItem
+                  value="positive"
+                  className={cn(
+                    'h-auto flex-1 justify-center gap-2 py-2',
+                    compact && 'text-1sm',
+                    selectedStateClassName,
+                  )}
+                >
+                  <ThumbsUp className="size-4" />
+                  <Trans>Good</Trans>
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="negative"
+                  className={cn(
+                    'h-auto flex-1 justify-center gap-2 py-2',
+                    compact && 'text-1sm',
+                    selectedStateClassName,
+                  )}
+                >
+                  <ThumbsDown className="size-4" />
+                  <Trans>Not great</Trans>
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+    </>
+  );
+
   return (
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
         onPaste={attachmentIntake.onPaste}
-        className={cn(compact ? 'space-y-3' : 'space-y-5', className)}
+        className={cn(compact ? 'flex flex-col gap-5' : 'space-y-5', className)}
       >
-        {(title || onDismiss) && (
-          <div className="flex items-start justify-between gap-2">
-            {title ? <p className="font-medium text-1sm">{title}</p> : <span />}
-            {onDismiss ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={onDismiss}
-                aria-label={t`Close`}
-                className="-mr-1.5 -mt-1 size-7 shrink-0 text-muted-foreground opacity-60"
-              >
-                <X className="size-4" />
-              </Button>
-            ) : null}
-          </div>
-        )}
-        {}
-        <FormField
-          control={form.control}
-          name="rating"
-          render={({ field }) => (
-            <FormItem>
-              <FormControl>
-                <ToggleGroup
-                  type="single"
-                  variant="outline"
-                  spacing={2}
-                  aria-label={t`Rate your experience`}
-                  value={field.value ?? ''}
-                  onValueChange={(value) => {
-                    if (!value) return;
-                    field.onChange(value);
-                    if (value === 'positive') form.setValue('reasons', []);
-                  }}
-                  className="w-full"
-                >
-                  <ToggleGroupItem
-                    value="positive"
-                    className={cn(
-                      'h-auto flex-1 justify-center py-2',
-                      compact ? 'gap-1.5 text-xs' : 'gap-2',
-                      selectedStateClassName,
-                    )}
-                  >
-                    <ThumbsUp className="size-4" />
-                    <Trans>Good</Trans>
-                  </ToggleGroupItem>
-                  <ToggleGroupItem
-                    value="negative"
-                    className={cn(
-                      'h-auto flex-1 justify-center py-2',
-                      compact ? 'gap-1.5 text-xs' : 'gap-2',
-                      selectedStateClassName,
-                    )}
-                  >
-                    <ThumbsDown className="size-4" />
-                    <Trans>Not great</Trans>
-                  </ToggleGroupItem>
-                </ToggleGroup>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {compact ? <div className="flex flex-col gap-2">{ratingSection}</div> : ratingSection}
         {showBeyondRating && (
           <>
-            <div className="space-y-3">
+            <div className={compact ? 'space-y-5' : 'space-y-3'}>
               {}
               {rating === 'negative' && (
                 <FormField
@@ -251,7 +264,7 @@ export const FeedbackForm = ({
                             <ToggleGroupItem
                               key={reason.value}
                               value={reason.value}
-                              className={pillClassName}
+                              className={cn(pillClassName, compact && 'text-1sm')}
                             >
                               {t(reason.label)}
                             </ToggleGroupItem>

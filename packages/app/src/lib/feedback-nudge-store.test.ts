@@ -254,3 +254,17 @@ describe('createFeedbackNudgeStore', () => {
     expect(notified).toBeGreaterThan(0);
   });
 });
+
+describe('feedback state saved by earlier releases', () => {
+  test('the storage key is still ok-feedback-nudge-v1', () => {
+    expect(FEEDBACK_NUDGE_STORAGE_KEY).toBe('ok-feedback-nudge-v1');
+  });
+
+  test('a prompt already shown and dismissed reads back unchanged and stays ineligible', () => {
+    const stored = { firstSeenAt: 1_790_000_000_000, shownAt: 1_791_500_000_000, dismissed: true };
+    const s = memoryStorage({ 'ok-feedback-nudge-v1': JSON.stringify(stored) });
+    const read = readPersistedState(s);
+    expect(read).toEqual(stored);
+    expect(isFeedbackNudgeEligible(read, NOW, 400)).toBe(false);
+  });
+});

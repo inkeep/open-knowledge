@@ -16,6 +16,11 @@
   background-color: var(--background);
 }
 
+[data-editor-hidden] [data-rmiz-content] {
+  /* biome-ignore lint/complexity/noImportantStyles: react-medium-image-zoom writes visibility: visible as an inline style, which no selector specificity can outrank. */
+  visibility: hidden !important;
+}
+
 /*
  * Explicit source root for Tailwind v4 content scanning.
  *
@@ -438,6 +443,21 @@
     -webkit-text-fill-color: var(--muted-foreground);
     color: var(--muted-foreground);
   }
+}
+
+@utility floating-card-surface {
+  @apply rounded-lg border border-border bg-card shadow-[0_2px_8px_0_rgb(0_0_0/0.08),0_1px_2px_-1px_rgb(0_0_0/0.1)];
+}
+
+@utility corner-card-column {
+  & .floating-card-surface {
+    pointer-events: auto;
+  }
+}
+
+/* UPSTREAM(radix-ui@1.4.3): a modal Radix menu or dialog locks the page by writing pointer-events none inline on body, and the cards must honor that lock. */
+body[style*="pointer-events: none"] .corner-card-column .floating-card-surface {
+  pointer-events: none;
 }
 
 /* Reduced-motion override — keep the opacity crossfade as a comprehension
@@ -1082,6 +1102,11 @@
   opacity: 0.3;
 }
 
+section[data-editor-pane-id] {
+  container-type: inline-size;
+  container-name: editor-document;
+}
+
 /* Editor layout — grid on wrapper; content column max 1024px (lg), side rails minmax(gutter, 1fr) */
 .tiptap-editor {
   --content-max-width: 1024px;
@@ -1339,32 +1364,36 @@
   --ok-trailing-zone: 2rem;
 }
 
-/* Phone-width rails. The 4rem side rails are a desktop reading measure; on a
-   ~390px screen they eat 128px, leaving a ~246px text column and starving the
-   floating composer — whose card is a content-column child — down to a
-   single-digit-pixel input that cannot be typed into.
+@container editor-document (width < 40rem) {
+  .tiptap-editor,
+  .property-panel {
+    --margin-left-width: 3.75rem;
+    --margin-right-width: 1rem;
+  }
 
-   The two declarations move together on purpose: .ProseMirror escapes its
-   content column into the rail (negative margin, compensating padding) to win
-   drag-handle hit area on the left and border slack on the right. Shrink the
-   rail without shrinking the escape and the border-box overhangs the editor and
-   overflows the viewport, so the negative margin must never exceed
-   --margin-width. Must also stay AFTER the .ProseMirror base rule — a media
-   query adds no specificity, so an earlier block would lose to it.
-   .ProseMirror.composer-prosemirror zeroes both below at higher specificity and
-   is deliberately unaffected.
+  .tiptap-editor:where(:dir(rtl)),
+  .property-panel:where(:dir(rtl)) {
+    --margin-left-width: 1rem;
+    --margin-right-width: 3.75rem;
+  }
 
-   Gated on a coarse pointer, not width alone. The block drag handle renders at
-   content-start minus 52px, which a 1rem rail cannot hold — it lands at -28px
-   and is clipped. A touch device never reveals that handle (it is hover-only),
-   so nothing is lost there, while a narrow desktop window with a mouse keeps
-   both the wide rail and a working handle. Consequence worth knowing when
-   testing: resizing a desktop browser narrow does NOT reproduce this layout;
-   emulate a touch device. */
+  .editor-content-aligned:where(:not(.property-panel)) {
+    --margin-left-width: 1rem;
+    --margin-right-width: 1rem;
+  }
+
+  .ProseMirror:not(.composer-prosemirror) {
+    margin-right: -1rem;
+    padding-right: 1rem;
+  }
+}
+
 @media (width < 40rem) and (pointer: coarse) {
   .tiptap-editor,
   .editor-content-aligned {
     --margin-width: 1rem;
+    --margin-left-width: 1rem;
+    --margin-right-width: 1rem;
   }
 
   .ProseMirror {
@@ -3349,6 +3378,7 @@ button:active:not(:disabled) {
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-desk: var(--desk);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -3448,6 +3478,8 @@ button:active:not(:disabled) {
   --chart-4: oklch(0.55 0.18 290);
   --chart-5: oklch(0.58 0.21 25);
   --radius: 0.625rem;
+  --desk: oklch(from var(--sidebar) calc(l - 0.015) c h);
+  --desk-hover: oklch(from var(--sidebar-hover) calc(l - 0.015) c h);
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -3474,7 +3506,7 @@ button:active:not(:disabled) {
     that wants theme-adaptive coloring. Light values are the Tailwind v4
     `-700`/`-800` saturated palette (good contrast on `--background:
     oklch(1 0 0)`); the matching `.dark` block below shifts to `-300`/
-    `-400` for WCAG AA on `--background: oklch(0.145 0 0)`. Hex
+    `-400` for WCAG AA on `--background: oklch(0.195 0 0)`. Hex
     fallbacks are GitHub-light defaults — only used if Tailwind's
     default theme tokens haven't loaded (SSR / preview-render edge).
   */
@@ -3541,9 +3573,9 @@ button:active:not(:disabled) {
 .dark {
   color-scheme: dark;
 
-  --background: oklch(0.145 0 0);
+  --background: oklch(0.195 0 0);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
+  --card: oklch(0.245 0 0);
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
@@ -3573,13 +3605,14 @@ button:active:not(:disabled) {
   --chart-3: oklch(0.77 0.14 70);
   --chart-4: oklch(0.72 0.16 290);
   --chart-5: oklch(0.72 0.2 25);
-  --sidebar: oklch(0.205 0 0);
+  --sidebar: oklch(0.21 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.274 0.006 286.033);
   --sidebar-accent-foreground: var(--color-sky-blue);
   --sidebar-hover: oklch(0.269 0 0 / 50%);
+  --desk-hover: var(--sidebar-hover);
   --sidebar-hover-foreground: oklch(0.985 0 0);
   --sidebar-hover-muted-foreground: var(--muted-foreground);
   --sidebar-hover-destructive-foreground: var(--destructive);
@@ -3593,7 +3626,7 @@ button:active:not(:disabled) {
   /*
     Syntax-highlight tokens — dark-theme overrides. Lighter shades
     (`-300` / `-400`) clear WCAG AA on the dark `--background:
-    oklch(0.145 0 0)`. Hex fallbacks are mid-light shades that survive
+    oklch(0.195 0 0)`. Hex fallbacks are mid-light shades that survive
     on dark for the SSR / preview-render edge.
   */
   --syntax-keyword: var(--color-purple-300, #d2a8ff);
@@ -3636,6 +3669,20 @@ button:active:not(:disabled) {
   --ansi-bright-white: #ffffff;
 }
 
+html.dark:not([data-color-theme]) {
+  --desk: oklch(0.28 0 0);
+  --file-tree-foreground: color-mix(in oklab, var(--sidebar-foreground) 75%, var(--sidebar));
+}
+
+html.dark:not([data-color-theme]) [data-app-header-leading] [data-variant="secondary"] {
+  background-color: color-mix(in oklab, var(--desk) 96%, var(--sidebar-foreground));
+  color: var(--muted-foreground);
+}
+
+html.dark [data-app-header] button[data-variant="ghost"]:is(:hover, [data-state="open"]) {
+  background-color: oklch(from var(--desk) calc(l + 0.04) c h);
+}
+
 /*
   Electron-mode outer-canvas alpha-aware retrofit.
 
@@ -3666,19 +3713,28 @@ button:active:not(:disabled) {
 html.electron-mode {
   background-color: transparent;
   /*
-    macOS traffic-light safe-area reserve. The Electron main process spreads
-    `trafficLightPosition: { x: 22, y: 24 }` on darwin (see
-    `packages/desktop/src/main/index.ts`), placing OS-drawn close/min/zoom
-    buttons in the renderer's top-left at x=22..~100. Any full-viewport
-    overlay must reserve enough left padding to clear that footprint.
-    78px = trafficLightPosition.x (22) + 3 buttons × ~18px + margin. This
-    token is the single source for that reserve — EditorHeader, FileSidebar's
-    SidebarHeader, GraphPanel, and ConnectingBanner all consume it rather than
-    re-declaring the literal.
+    macOS traffic-light safe-area reserve. The Electron main process places
+    the OS-drawn close/min/zoom buttons in the renderer's top-left: at
+    x=16, y=15 inside a project window's 44px AppHeader (lined up with the
+    file list's content edge), x=22, y=17 in note windows and x=22, y=24 in
+    every other window (see
+    `packages/desktop/src/main/window-chrome.ts` and `note-window.ts`). Any
+    top-row chrome or full-viewport overlay must reserve enough left padding
+    to clear that footprint. 78px = trafficLightPosition.x (22) + 3 buttons
+    × ~18px + margin. This token is the single source for that reserve:
+    AppHeader, the note and single-file windows' EditorHeader, GraphPanel,
+    and the connection and branch banners all consume it rather than
+    re-declaring the literal. The AppHeader adds 10px to it, so on darwin
+    back and forward start 12px after the window buttons at x=16, and on
+    the web the first button's icon lines up with the file list, 16px from
+    the edge. Windows and Linux re-declare it as 0px inside the AppHeader for
+    the same alignment (see the rule after the reduced-transparency block).
     Web hosts (no `window.okDesktop`) never gain the `electron-mode` class,
-    so the variable is undefined there. Consumers MUST use the fallback
-    form `pl-[var(--ok-titlebar-reserve-left,1rem)]` — `,1rem` matches the
-    base `px-4` so web layout is unchanged. A bare no-fallback
+    so the variable is undefined there. Consumers MUST always supply a
+    fallback, and its value is the padding that consumer wants on the web:
+    `pl-[var(--ok-titlebar-reserve-left,1rem)]` for the ones whose base is
+    `px-4`, and `,0px` for the AppHeader, which supplies its own 10px on top
+    and so wants nothing added underneath. A bare no-fallback
     `pl-[var(--ok-titlebar-reserve-left)]` is invalid-at-computed-value-time
     on web and collapses `padding-left` to `0`, discarding the consumer's
     base padding — a regression, not intended behavior. See precedent #49.
@@ -3711,12 +3767,31 @@ html.electron-mode.electron-platform-linux {
   );
 }
 
+@media (hover: hover) {
+  [data-app-header]
+    :is([data-variant^="ghost"], [data-slot="menubar-trigger"]):not([aria-pressed="true"]):hover {
+    background-color: var(--desk-hover);
+  }
+}
+
+[data-app-header]
+  :is([data-variant^="ghost"], [data-slot="menubar-trigger"]):not([aria-pressed="true"]):is(
+    [data-state="open"],
+    [aria-expanded="true"]
+  ) {
+  background-color: var(--desk-hover);
+}
+
 html.electron-mode body {
-  background-color: oklch(from var(--sidebar) l c h / 0.85);
+  background-color: oklch(from var(--desk) l c h / 0.85);
 }
 
 html.electron-mode [data-slot="sidebar-wrapper"] {
-  background-color: oklch(from var(--sidebar) l c h / 0.85);
+  background-color: oklch(from var(--desk) l c h / 0.85);
+}
+
+html.electron-mode [data-app-header] {
+  background-color: oklch(from var(--desk) l c h / 0.85);
 }
 
 html.electron-mode [data-slot="sidebar-inner"] {
@@ -3747,20 +3822,33 @@ html.electron-mode [data-slot="sidebar-inner"] {
 */
 @media (prefers-reduced-transparency: reduce) {
   html.electron-mode {
-    background-color: var(--sidebar);
+    background-color: var(--desk);
   }
 
   html.electron-mode body {
-    background-color: var(--sidebar);
+    background-color: var(--desk);
   }
 
   html.electron-mode [data-slot="sidebar-wrapper"] {
-    background-color: var(--sidebar);
+    background-color: var(--desk);
+  }
+
+  html.electron-mode [data-app-header] {
+    background-color: var(--desk);
   }
 
   html.electron-mode [data-slot="sidebar-inner"] {
     background-color: var(--sidebar);
   }
+}
+
+html.electron-mode.electron-platform-win32 [data-app-header],
+html.electron-mode.electron-platform-linux [data-app-header] {
+  --ok-titlebar-reserve-left: 0px;
+}
+
+html [data-editor-file-list-slot] [data-slot="sidebar-inner"] {
+  background-color: var(--sidebar);
 }
 
 /* prose-no-margin — margin reset for first/last children inside wrappers.
@@ -6773,4 +6861,39 @@ html.electron-mode [data-slot="sidebar-inner"] {
      theming, so opt the element out rather than restate them as system
      colours: the app it annotates is entirely system-coloured in this mode. */
   forced-color-adjust: none;
+}
+
+[data-agents-panel-mount][data-chat-alone]
+  [data-agent-thread-root]
+  > :not(.absolute):not([data-testid="agent-thread-transcript"]):not(
+    :has([data-testid="agent-thread-transcript"])
+  ) {
+  width: 100%;
+  max-width: var(--chat-reading-width);
+  margin-inline: auto;
+}
+
+[data-agents-panel-mount][data-chat-alone] [data-testid="agent-thread-transcript"] {
+  padding-inline: max(0.75rem, calc((100% - var(--chat-reading-width)) / 2 + 0.75rem));
+}
+
+[data-agents-panel-mount] {
+  --chat-reading-width: 48rem;
+}
+
+[data-editor-pane-projected] [data-editor-pane-panel]:not([data-editor-pane-selected]),
+[data-editor-pane-projected] [data-editor-pane-tab-group]:not([data-editor-pane-selected]) {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+[data-editor-pane-projected] [data-editor-pane-resize-handle] {
+  display: none;
+}
+
+[data-editor-pane-projected] [data-editor-pane-panel][data-editor-pane-selected],
+[data-editor-pane-projected] [data-editor-pane-tab-group][data-editor-pane-selected] {
+  min-width: 0;
 }

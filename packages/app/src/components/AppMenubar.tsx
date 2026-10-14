@@ -20,11 +20,18 @@ import type {
   OkMenuUiDispatchRequest,
 } from '@/lib/desktop-bridge-types';
 import { aboutAppLabel, moveToTrashLabel, revealInFileManagerLabel } from '@/lib/platform-labels';
+import { useSingleFileMode } from '@/lib/single-file-mode';
+import { cn } from '@/lib/utils';
 
-export function AppMenubar() {
+interface AppMenubarProps {
+  readonly className?: string;
+}
+
+export function AppMenubar({ className }: AppMenubarProps) {
   const { t } = useLingui();
   const bridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   const [snapshot, setSnapshot] = useState<OkMenuRendererSnapshot | null>(null);
+  const singleFile = useSingleFileMode();
 
   if (!shouldShowAppMenubar() || bridge == null || bridge.menu == null) return null;
   const menu: NonNullable<OkDesktopBridge['menu']> = bridge.menu;
@@ -47,7 +54,10 @@ export function AppMenubar() {
   return (
     <Menubar
       data-testid="app-menubar"
-      className="h-auto rounded-none border-0 bg-transparent p-0 shadow-none [-webkit-app-region:no-drag]"
+      className={cn(
+        'h-auto rounded-none border-0 bg-transparent p-0 shadow-none [-webkit-app-region:no-drag]',
+        className,
+      )}
       onValueChange={(value) => {
         if (value) refreshSnapshot();
       }}
@@ -260,6 +270,13 @@ export function AppMenubar() {
             {view?.docPanelVisible === false ? t`Show document panel` : t`Hide document panel`}
             <MenubarShortcut>Ctrl+Alt+B</MenubarShortcut>
           </MenubarItem>
+          {!singleFile && (
+            <MenubarItem
+              onSelect={() => dispatch({ kind: 'menu-action', action: 'toggle-editor' })}
+            >
+              {view?.editorVisible === false ? t`Show Editor` : t`Hide Editor`}
+            </MenubarItem>
+          )}
           {bridge.config.ptyAvailable && (
             <MenubarItem
               onSelect={() => dispatch({ kind: 'menu-action', action: 'toggle-terminal' })}

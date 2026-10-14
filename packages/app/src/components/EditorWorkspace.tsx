@@ -25,6 +25,13 @@ import {
 } from 'react';
 import { docNameForNavigationTarget } from '@/components/navigation-targets';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import type { EditorPaneState, PaneSide } from '@/editor/editor-panes';
 import { openSidebarDropPayload } from '@/editor/sidebar-drop';
@@ -33,6 +40,7 @@ import {
   subscribeNoteWindowDeleted,
 } from '@/lib/note-window-deleted-store';
 import { isNoteWindow } from '@/lib/note-window-mode';
+import { paneVisibilityStore } from '@/lib/pane-visibility-store';
 import { hasSidebarDragType, parseSidebarDragPayload } from '@/lib/sidebar-drag';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 import { cn } from '@/lib/utils';
@@ -46,6 +54,7 @@ import {
   TAB_KEYBOARD_DRAG_CODES,
   TAB_SELECTED_SURFACE_CLASS,
 } from './editor-tabs-chrome';
+import { FileListToggle } from './FileListToggle';
 import { NoteWindowDeletedState } from './NoteWindowDeletedState';
 
 const MIN_EDITOR_PANE_WIDTH = 300;
@@ -87,13 +96,19 @@ function PaneStripDropTarget({
   children,
   index,
   isFocused,
+  isLast,
   paneId,
+  projected,
+  selected,
   size,
 }: {
   children: ReactNode;
   index: number;
   isFocused: boolean;
+  isLast: boolean;
   paneId: string;
+  projected: boolean;
+  selected: boolean;
   size: number;
 }) {
   const { setNodeRef } = useDroppable({
@@ -105,7 +120,13 @@ function PaneStripDropTarget({
       ref={setNodeRef}
       data-editor-pane-tab-group={paneId}
       data-editor-pane-focused={isFocused || undefined}
-      className="relative h-full min-w-0 shrink basis-0"
+      data-editor-pane-selected={projected && selected ? '' : undefined}
+      aria-hidden={projected && !selected ? true : undefined}
+      inert={projected && !selected}
+      className={cn(
+        'relative h-full min-w-0 shrink basis-0',
+        isLast && '[&>*]:pe-[var(--editor-header-trailing-width,0px)]',
+      )}
       style={{ flexGrow: size }}
     >
       {children}
@@ -384,6 +405,14 @@ export function EditorWorkspace({
     () => new Map(),
   );
   const [parkingHost, setParkingHost] = useState<HTMLElement | null>(null);
+  const [workspaceElement, setWorkspaceElement] = useState<HTMLDivElement | null>(null);
+  const [workspaceWidth, setWorkspaceWidth] = useState(0);
+  const pendingGroupTabFocusRef = useRef<{ paneId: string; tabId: string } | null>(null);
+  const exclusive = useSyncExternalStore(
+    paneVisibilityStore.subscribe,
+    paneVisibilityStore.isExclusive,
+    () => false,
+  );
   const focusFrameRef = useRef<number | null>(null);
   const [headerCanvas, setHeaderCanvas] = useState<HTMLDivElement | null>(null);
   const resolvedPaneLayoutRef = useRef<{
@@ -410,9 +439,46 @@ export function EditorWorkspace({
       keyboardCodes: TAB_KEYBOARD_DRAG_CODES,
     }),
   );
+  const narrowForPanes = (width: number) =>
+    width > 0 && width < panes.length * MIN_EDITOR_PANE_WIDTH + panes.length - 1;
+  const projected =
+    !singleDocumentSurface && panes.length > 1 && (exclusive || narrowForPanes(workspaceWidth));
   const canvasStyle = {
-    '--editor-workspace-min-width': `max(100%, ${panes.length * MIN_EDITOR_PANE_WIDTH}px)`,
+    '--editor-workspace-min-width':
+      projected || panes.length === 1
+        ? '100%'
+        : `max(100%, ${panes.length * MIN_EDITOR_PANE_WIDTH}px)`,
   } as CSSProperties;
+
+  const liveWorkspaceWidthRef = useRef(0);
+  const syncWorkspaceWidth = useEffectEvent(() => {
+    const liveWidth = liveWorkspaceWidthRef.current;
+    if (Math.abs(liveWidth - workspaceWidth) <= 1) return;
+    if (narrowForPanes(liveWidth) !== narrowForPanes(workspaceWidth)) setWorkspaceWidth(liveWidth);
+  });
+  useLayoutEffect(() => {
+    syncWorkspaceWidth();
+  });
+  useLayoutEffect(() => {
+    if (!workspaceElement) return;
+    let frame: number | null = null;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry && entry.contentRect.width > 0) {
+        const nextWidth = entry.contentRect.width;
+        if (frame !== null) cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(() => {
+          frame = null;
+          liveWorkspaceWidthRef.current = nextWidth;
+          syncWorkspaceWidth();
+        });
+      }
+    });
+    observer.observe(workspaceElement);
+    return () => {
+      observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [workspaceElement]);
 
   function applyHeaderLayout(layout: Record<string, number>) {
     const groups = headerCanvas?.querySelectorAll<HTMLElement>('[data-editor-pane-tab-group]');
@@ -601,7 +667,12 @@ export function EditorWorkspace({
 
   function syncHeaderLayout(layout: Record<string, number>) {
     resolvedPaneLayoutRef.current = { paneKey, layout };
-    applyHeaderLayout(layout);
+    if (!projected) applyHeaderLayout(layout);
+  }
+
+  function groupOptionLabel(paneId: string): string {
+    const number = panes.findIndex((pane) => pane.id === paneId) + 1;
+    return t`Pane ${number}`;
   }
 
   function paneLabel(paneId: string): string {
@@ -621,15 +692,21 @@ export function EditorWorkspace({
     return paneLabel(data.paneId);
   }
 
+  function paneLeadingControl(pane: EditorPaneState, index: number): ReactNode {
+    if (projected) return pane.id === focusedPaneId ? <FileListToggle /> : undefined;
+    return index === 0 ? <FileListToggle /> : undefined;
+  }
+
   const paneGroup = (
     <ResizablePanelGroup
       key={paneKey}
       id="editor-workspace-panes"
       orientation="horizontal"
+      disabled={projected}
       defaultLayout={savedLayout}
       onLayoutChange={syncHeaderLayout}
       onLayoutChanged={(layout, meta) => {
-        if (!meta.isUserInteraction) return;
+        if (!meta.isUserInteraction || projected) return;
         resizePanes(
           new Map(panes.map((pane) => [pane.id, layout[`editor-pane:${pane.id}`] ?? pane.size])),
         );
@@ -641,6 +718,7 @@ export function EditorWorkspace({
             <ResizableHandle
               withHandle
               data-editor-pane-resize-handle=""
+              data-editor-pane-projected={projected ? '' : undefined}
               data-editor-pane-before={panes[index - 1]?.id}
               data-editor-pane-after={pane.id}
             >
@@ -653,8 +731,12 @@ export function EditorWorkspace({
           ) : null}
           <ResizablePanel
             id={`editor-pane:${pane.id}`}
+            data-editor-pane-panel=""
+            data-editor-pane-selected={projected && pane.id === focusedPaneId ? '' : undefined}
+            aria-hidden={projected && pane.id !== focusedPaneId ? true : undefined}
+            inert={projected && pane.id !== focusedPaneId}
             defaultSize={`${pane.size}%`}
-            minSize={`${MIN_EDITOR_PANE_WIDTH}px`}
+            minSize={projected || panes.length === 1 ? '0px' : `${MIN_EDITOR_PANE_WIDTH}px`}
           >
             <WorkspacePane
               drag={drag}
@@ -676,12 +758,13 @@ export function EditorWorkspace({
       <div
         ref={setHeaderCanvas}
         data-editor-header-tab-canvas=""
+        data-editor-pane-projected={projected ? '' : undefined}
         className="flex h-full min-w-(--editor-workspace-min-width)"
         style={canvasStyle}
       >
         {panes.map((pane, index) => (
           <Fragment key={pane.id}>
-            {index > 0 ? (
+            {index > 0 && !projected ? (
               <div
                 aria-hidden="true"
                 data-editor-header-pane-separator=""
@@ -692,14 +775,16 @@ export function EditorWorkspace({
               paneId={pane.id}
               index={visibleOrderForPane(pane).length}
               isFocused={pane.id === focusedPaneId}
+              isLast={projected ? pane.id === focusedPaneId : index === panes.length - 1}
+              projected={projected}
+              selected={pane.id === focusedPaneId}
               size={pane.size}
             >
               <EditorTabs
                 dropIndicatorIndex={dropIndicator?.paneId === pane.id ? dropIndicator.index : null}
                 paneId={pane.id}
                 onSplitComplete={requestTabFocus}
-                reserveLeadingChrome={index === 0}
-                reserveTrailingChrome={index === panes.length - 1}
+                leading={paneLeadingControl(pane, index)}
               />
             </PaneStripDropTarget>
           </Fragment>
@@ -792,14 +877,55 @@ export function EditorWorkspace({
         },
       }}
     >
-      {renderHeader(headerTabs)}
+      {renderHeader(
+        <>
+          {projected ? (
+            <Select
+              value={focusedPaneId}
+              onValueChange={(paneId) => {
+                focusPane(paneId);
+                const pane = panes.find((candidate) => candidate.id === paneId);
+                const tabId = pane?.activeTabId ?? pane?.activeNewTabId;
+                pendingGroupTabFocusRef.current = tabId ? { paneId, tabId } : null;
+              }}
+            >
+              <SelectTrigger
+                aria-label={t`Editor pane`}
+                data-editor-group-selector=""
+                size="sm"
+                className="mx-1 my-auto w-24 shrink-0"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent
+                onCloseAutoFocus={(event) => {
+                  const pending = pendingGroupTabFocusRef.current;
+                  pendingGroupTabFocusRef.current = null;
+                  if (!pending) return;
+                  event.preventDefault();
+                  requestTabFocus(pending.paneId, pending.tabId);
+                }}
+              >
+                {panes.map((pane) => (
+                  <SelectItem key={pane.id} value={pane.id}>
+                    {groupOptionLabel(pane.id)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+          {headerTabs}
+        </>,
+      )}
       <div
+        ref={setWorkspaceElement}
         data-editor-workspace=""
         className="relative min-h-0 flex-1 overflow-x-auto overflow-y-hidden"
         onScroll={syncHeaderScroll}
       >
         <div
           data-editor-workspace-canvas=""
+          data-editor-pane-projected={projected ? '' : undefined}
           className="h-full min-w-[var(--editor-workspace-min-width)]"
           style={canvasStyle}
         >

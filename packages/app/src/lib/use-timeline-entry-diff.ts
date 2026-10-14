@@ -13,9 +13,10 @@ export const HISTORICAL_CONTENT_CACHE_LIMIT = 32;
 type UseTimelineEntryDiffResult =
   | { status: 'idle'; diff: null }
   | { status: 'loading'; diff: null }
-  | { status: 'error'; diff: null }
+  | { status: 'error'; key: string; diff: null }
   | {
       status: 'ready';
+      key: string;
       diff: string;
       additions: number;
       deletions: number;
@@ -101,7 +102,11 @@ export function useTimelineEntryDiff(
         const shaContent = await fetchHistoricalContent(activeSha);
         if (cancelled) return;
         if (shaContent === null) {
-          setResult({ status: 'error', diff: null });
+          setResult({
+            status: 'error',
+            key: timelineEntryCacheKey(docName, activeSha),
+            diff: null,
+          });
           return;
         }
 
@@ -111,7 +116,11 @@ export function useTimelineEntryDiff(
           const parentContent = parentSha ? await fetchHistoricalContent(parentSha) : '';
           if (cancelled) return;
           if (parentContent === null) {
-            setResult({ status: 'error', diff: null });
+            setResult({
+              status: 'error',
+              key: timelineEntryCacheKey(docName, activeSha),
+              diff: null,
+            });
             return;
           }
           beforeRaw = parentContent;
@@ -129,6 +138,7 @@ export function useTimelineEntryDiff(
         const { additions, deletions } = countDiffStat(patchStr);
         setResult({
           status: 'ready',
+          key: timelineEntryCacheKey(docName, activeSha),
           diff: patchStr,
           additions,
           deletions,
@@ -144,7 +154,11 @@ export function useTimelineEntryDiff(
             mode,
             err,
           });
-          setResult({ status: 'error', diff: null });
+          setResult({
+            status: 'error',
+            key: timelineEntryCacheKey(docName, activeSha),
+            diff: null,
+          });
         }
       }
     }

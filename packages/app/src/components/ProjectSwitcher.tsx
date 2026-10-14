@@ -1,7 +1,8 @@
 import { Trans, useLingui } from '@lingui/react/macro';
 import {
-  ChevronsUpDown,
+  ChevronDown,
   FileText,
+  Folder,
   FolderOpen,
   GitBranch,
   LayoutGrid,
@@ -9,6 +10,7 @@ import {
   Search,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,16 +20,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
-import { SidebarMenuButton } from '@/components/ui/sidebar';
 import { useCurrentBranch } from '@/hooks/use-current-branch';
 import { useWorktrees } from '@/hooks/use-worktrees';
 import type { OkDesktopBridge, RecentProjectEntry } from '@/lib/desktop-bridge-types';
 import { runWithToast as runWithToastBase } from '@/lib/error-state';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
-import { cn } from '@/lib/utils';
 import { CreateProjectDialog } from './CreateProjectDialog';
+import { checkoutIdentity } from './checkout-identity';
 import { NewWorktreeDialog } from './NewWorktreeDialog';
-import { basenameOf } from './project-switcher-recents';
 import { RecentProjectsMenu } from './RecentProjectsMenu';
 
 export const runWithToast = (
@@ -146,30 +146,22 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
   const loadedRecents = recents ?? [];
   const menuRecents = loadedRecents;
   const menuWorktreeModel = worktreeModel;
-  const triggerName =
-    worktreeModel !== null ? basenameOf(worktreeModel.mainRoot) : bridge.config.projectName;
-  const currentCheckout = worktreeModel?.entries.find((entry) => entry.isCurrent) ?? null;
-  const checkoutName =
-    branch ??
-    (currentCheckout?.worktreePath !== null && currentCheckout?.worktreePath !== undefined
-      ? basenameOf(currentCheckout.worktreePath)
-      : null);
-  const projectScopeName =
-    bridge.config.projectName === triggerName ? null : bridge.config.projectName;
-  const triggerCheckout = [projectScopeName, checkoutName]
-    .filter((value) => value !== null)
-    .join(' · ');
+  const { repositoryName } = checkoutIdentity({
+    projectName: bridge.config.projectName,
+    branch,
+    worktreeModel,
+  });
+  const triggerName = repositoryName ?? bridge.config.projectName;
 
   return (
     <>
       {}
       <DropdownMenu open={open} onOpenChange={handleOpenChange} modal={false}>
         <DropdownMenuTrigger asChild>
-          <SidebarMenuButton
-            className={cn(
-              'justify-between text-sidebar-foreground/70 hover:text-sidebar-foreground! data-open:hover:text-sidebar-foreground!',
-              triggerCheckout.length > 0 && 'h-auto py-1.5',
-            )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="max-w-[min(100%,15rem)] min-w-0"
             data-testid="project-switcher-trigger"
             aria-label={t`Open project menu`}
             title={bridge.config.projectPath}
@@ -192,24 +184,20 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
                 : undefined
             }
           >
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="truncate">{triggerName}</span>
-              {triggerCheckout.length > 0 ? (
-                <span
-                  className="flex min-w-0 items-center gap-1 text-xs text-sidebar-foreground/50 group-hover/menu-button:text-sidebar-foreground"
-                  data-testid="project-switcher-branch"
-                >
-                  <GitBranch aria-hidden="true" className="size-3! shrink-0" />
-                  <span className="truncate">{triggerCheckout}</span>
-                </span>
-              ) : null}
+            <Folder aria-hidden="true" className="size-4" />
+            <span
+              className="min-w-0 truncate"
+              data-app-header-center-label=""
+              data-testid="project-switcher-name"
+            >
+              {triggerName}
             </span>
-            <ChevronsUpDown aria-hidden="true" className="opacity-60" />
-          </SidebarMenuButton>
+            <ChevronDown aria-hidden="true" className="size-4 opacity-60" />
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
-          align="start"
-          side="top"
+          align="center"
+          side="bottom"
           className="min-w-[260px]"
           data-testid="project-switcher-menu"
         >

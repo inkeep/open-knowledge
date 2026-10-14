@@ -2,6 +2,7 @@ import type { ChildProcess } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { expect as baseExpect, test as baseTest, type ElectronApplication } from '@playwright/test';
 import { emitBootGapLines } from './boot-gap-emit';
+import { attachDomStateOnFailure } from './dom-state';
 import {
   captureAppProcess,
   cleanupIncompleteReport,
@@ -40,6 +41,7 @@ export const test = baseTest.extend<SmokeFixtures>({
       }
     });
     await emitBootGapLines(apps, testInfo);
+    await attachDomStateOnFailure(testInfo, apps);
     const { unclosed, survivors, closedAfterServerRelease } = await closeAppsThenAwaitServerRelease(
       procs,
       cleanupDirs,

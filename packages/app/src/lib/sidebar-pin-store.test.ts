@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
-  applyToggle,
+  applyToggleAtEveryWidth,
+  openIntentAfterPartitionChange,
   type PinStorage,
   readPins,
   resolveEffectiveState,
@@ -139,76 +140,44 @@ describe('resolveEffectiveState (Per-Partition Pins)', () => {
   });
 });
 
-describe('applyToggle (per-partition slot)', () => {
-  test('sets slot for current partition', () => {
-    const s = memoryStorage();
-    applyToggle('left', 'above', 'collapsed', s);
-    expect(readPins(s)).toEqual({ left: { above: 'collapsed' } });
-  });
-
-  test('toggling in a NEW partition preserves the existing slot for the OTHER partition', () => {
-    const s = memoryStorage();
-    applyToggle('left', 'above', 'collapsed', s);
-    applyToggle('left', 'below', 'open', s);
-    expect(readPins(s)).toEqual({
-      left: { above: 'collapsed', below: 'open' },
+describe('applyToggleAtEveryWidth', () => {
+  test('writes the same state to every partition of one side, replacing its earlier slots', () => {
+    const s = memoryStorage({
+      [SIDEBAR_PINS_KEY]: JSON.stringify({ left: { above: 'open' }, right: { below: 'open' } }),
     });
-  });
-
-  test('toggling the SAME partition overwrites only that slot', () => {
-    const s = memoryStorage();
-    applyToggle('left', 'above', 'collapsed', s);
-    applyToggle('left', 'above', 'open', s);
-    expect(readPins(s)).toEqual({ left: { above: 'open' } });
-  });
-
-  test('embedded slot is independent from above/below', () => {
-    const s = memoryStorage();
-    applyToggle('left', 'above', 'collapsed', s);
-    applyToggle('left', 'below', 'open', s);
-    applyToggle('left', 'embedded', 'open', s);
+    applyToggleAtEveryWidth('left', 'collapsed', s);
     expect(readPins(s)).toEqual({
-      left: { above: 'collapsed', below: 'open', embedded: 'open' },
-    });
-  });
-
-  test('toggle on one side does not affect the other', () => {
-    const s = memoryStorage();
-    applyToggle('left', 'above', 'collapsed', s);
-    applyToggle('right', 'below', 'open', s);
-    expect(readPins(s)).toEqual({
-      left: { above: 'collapsed' },
+      left: { above: 'collapsed', below: 'collapsed', embedded: 'collapsed' },
       right: { below: 'open' },
     });
   });
 
-  test('scenario: pin-then-cross-threshold uses smart default for new partition', () => {
-    const s = memoryStorage();
-    applyToggle('left', 'above', 'collapsed', s);
-    const pins = readPins(s);
-    expect(resolveEffectiveState('left', 'below', pins)).toBe('collapsed');
-  });
-
-  test('scenario: pin in narrow survives a wide round-trip (the D13 canary)', () => {
-    const s = memoryStorage();
-    applyToggle('right', 'below', 'open', s);
-    applyToggle('right', 'above', 'collapsed', s);
-    const pins = readPins(s);
-    expect(resolveEffectiveState('right', 'below', pins)).toBe('open');
-    expect(resolveEffectiveState('right', 'above', pins)).toBe('collapsed');
-    expect(pins).toEqual({
-      right: { above: 'collapsed', below: 'open' },
-    });
-  });
-
-  test('applyToggle returns the merged pins even when storage.setItem throws (quota exceeded)', () => {
+  test('returns the merged pins even when storage.setItem throws (quota exceeded)', () => {
     const throwingStorage: PinStorage = {
       getItem: () => null,
       setItem: () => {
         throw new DOMException('QuotaExceededError');
       },
     };
-    const result = applyToggle('left', 'above', 'collapsed', throwingStorage);
-    expect(result).toEqual({ left: { above: 'collapsed' } });
+    expect(applyToggleAtEveryWidth('left', 'collapsed', throwingStorage)).toEqual({
+      left: { above: 'collapsed', below: 'collapsed', embedded: 'collapsed' },
+    });
+  });
+});
+
+describe('openIntentAfterPartitionChange', () => {
+  test('a pinned partition returns its pin', () => {
+    expect(openIntentAfterPartitionChange('left', 'above', { left: { above: 'collapsed' } })).toBe(
+      false,
+    );
+    expect(openIntentAfterPartitionChange('right', 'below', { right: { below: 'open' } })).toBe(
+      true,
+    );
+  });
+
+  test('an unpinned partition opens only where the default is open', () => {
+    expect(openIntentAfterPartitionChange('left', 'above', {})).toBe(true);
+    expect(openIntentAfterPartitionChange('left', 'below', {})).toBeUndefined();
+    expect(openIntentAfterPartitionChange('right', 'embedded', {})).toBeUndefined();
   });
 });

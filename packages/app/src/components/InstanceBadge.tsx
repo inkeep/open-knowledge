@@ -1,4 +1,5 @@
 import { useLingui } from '@lingui/react/macro';
+import { GitBranch } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Badge } from './ui/badge';
@@ -7,9 +8,10 @@ const UNKNOWN_APP_VERSION = '0.0.0';
 
 interface InstanceBadgeProps {
   readonly className?: string;
+  readonly compact?: boolean;
 }
 
-export function InstanceBadge({ className }: InstanceBadgeProps) {
+export function InstanceBadge({ className, compact = false }: InstanceBadgeProps) {
   const { t } = useLingui();
   const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
   const label = bridge?.instanceLabel ?? null;
@@ -35,7 +37,12 @@ export function InstanceBadge({ className }: InstanceBadgeProps) {
             className,
           )}
         >
-          <span aria-hidden="true" className="max-w-40 truncate">
+          {compact ? <GitBranch aria-hidden="true" /> : null}
+          <span
+            aria-hidden="true"
+            data-instance-badge-label=""
+            className={cn('max-w-40 truncate', compact && 'sr-only')}
+          >
             {label}
           </span>
           <span className="sr-only">{accessibleName}</span>

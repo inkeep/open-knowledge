@@ -32,6 +32,12 @@ export interface TerminalSmokeShellCommands {
   readEnvironment(name: string, label: string): string;
   scroll(sentinel: string, start: string, prefix: string, count: number): string;
   setEnvironment(name: string, value: string): string;
+  waitForFileThenOutput(
+    releasePath: string,
+    waitingPath: string,
+    acknowledgementPath: string,
+    waitingMarker: string,
+  ): string;
   workingDirectory(marker: string): string;
 }
 
@@ -58,6 +64,8 @@ export function terminalSmokeShellCommands(
         validateEnvironmentName(name);
         return `$env:${name}=${psQuoteArg(value)}`;
       },
+      waitForFileThenOutput: (releasePath, waitingPath, acknowledgementPath, waitingMarker) =>
+        `Write-Output ${psQuoteArg(waitingMarker)}; Set-Content -LiteralPath ${psQuoteArg(waitingPath)} -Value ${psQuoteArg(waitingMarker)}; $okWait=0; while (-not (Test-Path -LiteralPath ${psQuoteArg(releasePath)}) -and $okWait -lt 300) { Start-Sleep -Milliseconds 100; $okWait++ }; if (Test-Path -LiteralPath ${psQuoteArg(releasePath)}) { $okResult=Get-Content -LiteralPath ${psQuoteArg(releasePath)}; Write-Output $okResult; Set-Content -LiteralPath ${psQuoteArg(acknowledgementPath)} -Value $okResult }`,
       workingDirectory: (marker) =>
         `Write-Output (${psQuoteArg(marker)} + '=[' + (Get-Location).Path + ']')`,
     };
@@ -81,6 +89,8 @@ export function terminalSmokeShellCommands(
       validateEnvironmentName(name);
       return `export ${name}=${quotePosix(value)}`;
     },
+    waitForFileThenOutput: (releasePath, waitingPath, acknowledgementPath, waitingMarker) =>
+      `printf '%s\\n' ${quotePosix(waitingMarker)}; printf '%s\\n' ${quotePosix(waitingMarker)} > ${quotePosix(waitingPath)}; ok_wait=0; while [ ! -f ${quotePosix(releasePath)} ] && [ "$ok_wait" -lt 300 ]; do sleep 0.1; ok_wait=$((ok_wait+1)); done; if [ -f ${quotePosix(releasePath)} ]; then cat ${quotePosix(releasePath)}; cp ${quotePosix(releasePath)} ${quotePosix(acknowledgementPath)}; fi`,
     workingDirectory: (marker) => `printf '%s=[%s]\\n' ${quotePosix(marker)} "$PWD"`,
   };
 }

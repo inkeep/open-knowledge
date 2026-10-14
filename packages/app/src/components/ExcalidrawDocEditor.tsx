@@ -81,7 +81,7 @@ export function ExcalidrawDocEditor({ provider }: { provider: HocuspocusProvider
   };
 
   return (
-    <main
+    <section
       className="relative flex h-full min-h-0 flex-col bg-background"
       aria-label={t`Excalidraw canvas`}
       data-excalidraw-doc-editor=""
@@ -94,6 +94,6 @@ export function ExcalidrawDocEditor({ provider }: { provider: HocuspocusProvider
           langCode={excalidrawLangCode(i18n.locale)}
         />
       </div>
-    </main>
+    </section>
   );
 }

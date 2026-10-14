@@ -42,7 +42,6 @@ interface Props {
   name: string;
   subtitle: string;
   level?: SkillScope;
-  reserveRightGutter?: boolean;
   path?: string;
 }
 
@@ -75,15 +74,7 @@ export function BuiltinHeaderActions({ scope, name }: { scope: SkillScope; name:
   );
 }
 
-export function SkillPreviewTab({
-  flavor,
-  source,
-  name,
-  subtitle,
-  level,
-  reserveRightGutter,
-  path,
-}: Props) {
+export function SkillPreviewTab({ flavor, source, name, subtitle, level, path }: Props) {
   const selectedPath = path ?? SKILL_MD;
   const scopeLabels = useSkillScopeLabels();
   const openSkill = useOpenSkill();
@@ -384,7 +375,6 @@ export function SkillPreviewTab({
       onBundlePathClick={onBundlePathClick}
       headerActions={headerActions}
       headerLine={headerLine}
-      reserveRightGutter={reserveRightGutter}
       selectedPath={selectedPath}
       onPreviewMeta={(preview) => {
         const next = detected ? (preview.plugin ?? null) : null;

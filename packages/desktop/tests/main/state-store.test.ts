@@ -275,6 +275,7 @@ describe('state-store (terminal full-restart state)', () => {
       terminalVisible: false,
       terminalSnapshot: { tabs: [], activeOrdinal: null },
       agentPanelVisible: false,
+      editorVisible: true,
     });
   });
 
@@ -289,6 +290,7 @@ describe('state-store (terminal full-restart state)', () => {
         activeOrdinal: 1,
       },
       agentPanelVisible: false,
+      editorVisible: true,
     });
     const parsed = parseAppState(JSON.parse(JSON.stringify(state)));
     expect(getTerminalDockState(parsed ?? emptyState(), '/tmp/project')).toEqual(
@@ -322,7 +324,27 @@ describe('state-store (terminal full-restart state)', () => {
         activeOrdinal: null,
       },
       agentPanelVisible: false,
+      editorVisible: true,
     });
+  });
+
+  test('a saved hidden editor round-trips, and a record from before the editor field reads as shown', () => {
+    const hidden = setTerminalDockState(emptyState(), '/tmp/project', {
+      terminalVisible: false,
+      terminalSnapshot: { tabs: [], activeOrdinal: null },
+      agentPanelVisible: false,
+      editorVisible: false,
+    });
+    const reparsed = parseAppState(JSON.parse(JSON.stringify(hidden)));
+    expect(getTerminalDockState(reparsed ?? emptyState(), '/tmp/project').editorVisible).toBe(
+      false,
+    );
+
+    const legacy = parseAppState({
+      recentProjects: [],
+      terminalDockStates: { '/tmp/project': { terminalVisible: true, agentPanelVisible: true } },
+    });
+    expect(getTerminalDockState(legacy ?? emptyState(), '/tmp/project').editorVisible).toBe(true);
   });
 
   test('removing a recent project also removes its terminal state', () => {
@@ -331,6 +353,7 @@ describe('state-store (terminal full-restart state)', () => {
       terminalVisible: true,
       terminalSnapshot: { tabs: [{ ordinal: 1, customLabel: null }], activeOrdinal: 1 },
       agentPanelVisible: false,
+      editorVisible: true,
     });
     expect(removeRecentProject(state, '/tmp/project').terminalDockStates).toEqual({});
   });

@@ -78,6 +78,13 @@ describe('HelpPopover runtime behavior', () => {
     expect(screen.queryByText('Settings')).toBeNull();
   });
 
+  test('the open popover is a dialog that screen readers announce as Resources, like its trigger', async () => {
+    await renderOpenHelpPopover();
+
+    const dialog = screen.getByRole('dialog', { name: 'Resources' });
+    expect(within(dialog).getByRole('navigation', { name: 'Community' })).not.toBeNull();
+  });
+
   test('omits the desktop-only Report a bug action in the web host', async () => {
     await renderOpenHelpPopover();
 

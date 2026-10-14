@@ -44,6 +44,7 @@ import type {
   OkChromeColors,
   OkDesktopConfig,
   OkEditorActiveTargetSnapshot,
+  OkEditorViewMenuStateChange,
   OkEditorViewMenuStateSnapshot,
   OkLocalOpAuthReposResponse,
   OkLocalOpAuthStatusResponse,
@@ -90,6 +91,7 @@ import type { EntryPoint } from './entry-point.ts';
 
 export type EditorActiveTargetSnapshot = OkEditorActiveTargetSnapshot;
 export type EditorViewMenuStateSnapshot = OkEditorViewMenuStateSnapshot;
+export type EditorViewMenuStateChange = OkEditorViewMenuStateChange;
 export type { SkillCostTiers };
 export type MenuDispatchRole = OkMenuDispatchRole;
 export type MenuDispatchCommand = OkMenuDispatchCommand;
@@ -667,7 +669,7 @@ export interface RequestChannels {
     result: undefined;
   };
   'ok:editor:view-menu-state-changed': {
-    args: [state: Partial<EditorViewMenuStateSnapshot>];
+    args: [state: EditorViewMenuStateChange];
     result: undefined;
   };
   'ok:editor:background-throttle': {

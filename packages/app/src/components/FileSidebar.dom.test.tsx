@@ -13,10 +13,7 @@ import { __resetSkillsSectionVisibleCacheForTests } from '@/components/skills-se
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
-import {
-  expectVisualClassTokens,
-  expectVisualClassTokensAbsent,
-} from '@/test-utils/visual-contract';
+import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 
 function PassThrough({ children }: { children?: ReactNode }) {
   return <>{children}</>;
@@ -107,7 +104,6 @@ let mergedConfig: {
 };
 let projectLocalBindingNull = false;
 let projectLocalSynced = true;
-let sidebarSearchThrows = false;
 let projectPatchResult: { ok: true } | { ok: false; error: unknown } = { ok: true };
 let openInAgentSubmenuProps: Array<{
   input: unknown;
@@ -115,7 +111,6 @@ let openInAgentSubmenuProps: Array<{
 let toastSuccesses: unknown[][] = [];
 let toastErrors: unknown[][] = [];
 let toastInfos: unknown[][] = [];
-let pillRenderErrors: unknown[][] = [];
 const treeListeners = new Set<() => void>();
 
 const treeCalls = {
@@ -128,7 +123,6 @@ const treeCalls = {
 const projectLocalPatch = vi.fn((_patch: unknown) => projectPatchResult);
 const showItemInFolderMock = vi.fn((_path: string) => Promise.resolve());
 const notifyViewMenuStateChangedMock = vi.fn((_snapshot: unknown) => {});
-const onOpenSearch = vi.fn(() => {});
 
 function setFolderState(next: FolderState) {
   folderState = next;
@@ -198,22 +192,22 @@ vi.doMock('@/components/ProjectSwitcher', () => ({
   ProjectSwitcher: () => <button type="button">Project switcher</button>,
 }));
 
-vi.doMock('@/components/SidebarSearchBar', () => ({
-  SidebarSearchBar: ({ onClick }: { onClick: () => void }) => {
-    if (sidebarSearchThrows) throw new Error('search pill render failed');
-    return (
-      <button data-testid="sidebar-search" type="button" onClick={onClick}>
-        Search
-      </button>
-    );
-  },
-  onPillRenderError: (...args: unknown[]) => {
-    pillRenderErrors.push(args);
-  },
-}));
-
 vi.doMock('@/components/UpdateNotices', () => ({
   UpdateNotices: () => <div data-testid="update-notices" />,
+}));
+
+vi.doMock('@/components/OnboardingCard', async () => ({
+  ...(await vi.importActual<typeof import('@/components/OnboardingCard')>(
+    '@/components/OnboardingCard',
+  )),
+  OnboardingCardMount: () => <div data-testid="onboarding-card-mount" />,
+}));
+
+vi.doMock('@/components/FeedbackCard', async () => ({
+  ...(await vi.importActual<typeof import('@/components/FeedbackCard')>(
+    '@/components/FeedbackCard',
+  )),
+  FeedbackCardMount: () => <div data-testid="feedback-card-mount" />,
 }));
 
 vi.doMock('@/components/handoff/OpenInAgentEmptySpaceSubmenu', () => ({
@@ -453,7 +447,7 @@ vi.doMock('sonner', () => ({
 
 async function renderSidebar() {
   const { FileSidebar } = await import('./FileSidebar');
-  return render(<FileSidebar onOpenSearch={onOpenSearch} />, {
+  return render(<FileSidebar />, {
     wrapper: ({ children }) => <TooltipProvider delayDuration={0}>{children}</TooltipProvider>,
   });
 }
@@ -474,13 +468,11 @@ describe('FileSidebar runtime behavior', () => {
     mergedConfig = { appearance: { sidebar: { showHiddenFiles: false } } };
     projectLocalBindingNull = false;
     projectLocalSynced = true;
-    sidebarSearchThrows = false;
     projectPatchResult = { ok: true };
     openInAgentSubmenuProps = [];
     toastSuccesses = [];
     toastErrors = [];
     toastInfos = [];
-    pillRenderErrors = [];
     treeListeners.clear();
     for (const fn of [
       treeCalls.collapseAll,
@@ -491,7 +483,6 @@ describe('FileSidebar runtime behavior', () => {
       projectLocalPatch,
       showItemInFolderMock,
       notifyViewMenuStateChangedMock,
-      onOpenSearch,
     ]) {
       fn.mockClear();
     }
@@ -515,63 +506,48 @@ describe('FileSidebar runtime behavior', () => {
     });
   });
 
-  test('web mode header holds only search and omits navigation history', async () => {
-    await renderSidebar();
+  for (const host of [
+    { label: 'on the web', electron: false, state: 'expanded' },
+    { label: 'in an expanded Electron window', electron: true, state: 'expanded' },
+    { label: 'in a collapsed Electron window', electron: true, state: 'collapsed' },
+  ] as const) {
+    test(`${host.label} the file list has no top bar, and the project row is its first row`, async () => {
+      if (host.electron) installBridge();
+      sidebarState = host.state;
+      const { container } = await renderSidebar();
 
-    const header = screen.getByTestId('sidebar-header');
-    expect(screen.queryByText('Files')).toBeNull();
-    expect(header.children).toHaveLength(1);
-    expect(header.contains(screen.getByTestId('sidebar-search'))).toBe(true);
-    expect(header.contains(screen.getByTestId('sidebar-toolbar'))).toBe(false);
-    expect(screen.queryByTestId('navigation-history-controls')).toBeNull();
-    expectVisualClassTokens(header.className, ['justify-between']);
-    expectVisualClassTokensAbsent(header.className, [
-      '[-webkit-app-region:drag]',
-      'overflow-x-clip',
-    ]);
-    expect(header.getAttribute('data-electron-drag')).toBeNull();
-    expect(screen.queryByTestId('sidebar-traffic-light-reserve')).toBeNull();
-    expect(screen.queryByText('Project switcher')).toBeNull();
+      expect(screen.queryByTestId('sidebar-header')).toBeNull();
+      const content = screen.getByTestId('sidebar-content');
+      const projectRow = container.querySelector('[data-sidebar-project-row]') as HTMLElement;
+      const conflicts = screen.getByTestId('conflicts-section');
+      const rowsAbove = Array.from(content.querySelectorAll('*')).filter(
+        (element) =>
+          element !== conflicts &&
+          !conflicts.contains(element) &&
+          !element.contains(projectRow) &&
+          (element.compareDocumentPosition(projectRow) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+      );
+      expect(rowsAbove, 'only the sync-conflicts slot may sit above the project row').toEqual([]);
+      expect(projectRow.textContent).toContain('open-knowledge');
+      expect(projectRow.contains(screen.getByTestId('sidebar-toolbar'))).toBe(true);
+      expectVisualClassTokens(projectRow.className, ['h-11']);
+      expect(screen.queryByRole('button', { name: /^Search/ })).toBeNull();
+      expect(screen.queryByTestId('navigation-history-controls')).toBeNull();
+      expect(screen.queryByTestId('sidebar-traffic-light-reserve')).toBeNull();
+      expect(screen.queryByText('Project switcher')).toBeNull();
+    });
+  }
 
-    fireEvent.click(screen.getByTestId('sidebar-search'));
-    expect(onOpenSearch).toHaveBeenCalledTimes(1);
-  });
-
-  test('expanded Electron header contains the traffic-light reserve, one navigation pair, and search', async () => {
+  test('in an expanded Electron window the file list toolbar opts out of window dragging', async () => {
     const user = userEvent.setup();
     installBridge();
     await renderSidebar();
 
-    const header = screen.getByTestId('sidebar-header');
     const toolbar = screen.getByTestId('sidebar-toolbar');
-    const searchCluster = screen.getByTestId('sidebar-search').parentElement as HTMLElement;
-
-    expect(screen.queryByText('Files')).toBeNull();
-    expect(screen.getByText('Project switcher')).toBeTruthy();
-    expect(header.getAttribute('data-electron-drag')).toBe('');
-    expectVisualClassTokens(header.className, [
-      'justify-between',
-      'overflow-x-clip',
-      '[-webkit-app-region:drag]',
-    ]);
-    const reserve = screen.getByTestId('sidebar-traffic-light-reserve');
-    expectVisualClassTokens(reserve.className, [
-      'w-[var(--ok-titlebar-reserve-left,0px)]',
-      'shrink-0',
-      'self-stretch',
-    ]);
     expectVisualClassTokens(toolbar.className, ['[&>*]:[-webkit-app-region:no-drag]']);
-    expectVisualClassTokens(searchCluster.className, ['[&>*]:[-webkit-app-region:no-drag]']);
     expect(screen.getByTestId('sidebar-rail').getAttribute('data-enable-toggle')).toBe('false');
-
-    const navigation = screen.getByTestId('navigation-history-controls');
-    expect(header.children).toHaveLength(2);
-    expect(header.children.item(0)).toBe(reserve);
-    expect(header.children.item(1)).toBe(searchCluster);
-    expect(searchCluster.contains(navigation)).toBe(true);
-    expect(header.contains(toolbar)).toBe(false);
-    expect(within(header).getByRole('button', { name: 'Back' })).toBeTruthy();
-    expect(within(header).getByRole('button', { name: 'Forward' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Forward' })).toBeNull();
 
     await user.hover(screen.getByRole('button', { name: 'New folder' }));
     const newFolderTooltip = await screen.findByRole('tooltip', {
@@ -582,20 +558,17 @@ describe('FileSidebar runtime behavior', () => {
     );
   });
 
-  test('collapsed Electron sidebar removes navigation and fades the header, search included', async () => {
+  test('Electron footer keeps only the onboarding checklist, leaving update notices and feedback to the corner stack and the project switcher to the app header', async () => {
     installBridge();
-    sidebarState = 'collapsed';
     await renderSidebar();
 
-    expect(screen.queryByTestId('navigation-history-controls')).toBeNull();
-    const header = screen.getByTestId('sidebar-header');
-    expectVisualClassTokens(header.className, [
-      'opacity-0',
-      'motion-safe:transition-opacity',
-      'motion-safe:duration-100',
-      'motion-safe:ease-out',
+    const footer = screen.getByTestId('sidebar-footer');
+    expect(Array.from(footer.children).map((child) => child.getAttribute('data-testid'))).toEqual([
+      'onboarding-card-mount',
     ]);
-    expect(header.contains(screen.getByTestId('sidebar-search'))).toBe(true);
+    expect(screen.queryByTestId('update-notices')).toBeNull();
+    expect(screen.queryByTestId('feedback-card-mount')).toBeNull();
+    expect(screen.queryByText('Project switcher')).toBeNull();
   });
 
   test('toolbar buttons name their shortcut as a keycap in the tooltip', async () => {
@@ -681,7 +654,7 @@ describe('FileSidebar runtime behavior', () => {
     const menu = screen.getByTestId('tree-options-menu');
     expect(within(menu).getByRole('button', { name: 'Expand all' })).toBeTruthy();
     const collapseAll = within(menu).getByRole('button', { name: 'Collapse all' });
-    expect(within(menu).getAllByTestId('dropdown-menu-separator')).toHaveLength(2);
+    expect(within(menu).getAllByTestId('dropdown-menu-separator')).toHaveLength(3);
 
     const group = within(menu).getByRole('group', { name: 'Show' });
     const checkboxes = within(group).getAllByRole('menuitemcheckbox');
@@ -698,6 +671,8 @@ describe('FileSidebar runtime behavior', () => {
     const grouping = within(menu).getByTestId('tree-options-group-skills');
     expect(within(group).queryByTestId('tree-options-group-skills')).toBeNull();
     expect(group.compareDocumentPosition(grouping) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const hide = within(menu).getByRole('button', { name: 'Hide Files' });
+    expect(grouping.compareDocumentPosition(hide) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   test('tree-options trigger stays visible with zero folders and the popover keeps its state-independent items', async () => {
@@ -709,8 +684,9 @@ describe('FileSidebar runtime behavior', () => {
     const menu = screen.getByTestId('tree-options-menu');
     expect(within(menu).queryByRole('button', { name: 'Expand all' })).toBeNull();
     expect(within(menu).queryByRole('button', { name: 'Collapse all' })).toBeNull();
-    expect(within(menu).getAllByTestId('dropdown-menu-separator')).toHaveLength(1);
+    expect(within(menu).getAllByTestId('dropdown-menu-separator')).toHaveLength(2);
     expect(within(menu).getAllByRole('menuitemcheckbox')).toHaveLength(5);
+    expect(within(menu).getByRole('button', { name: 'Hide Files' })).toBeTruthy();
   });
 
   test('each Show checkbox reflects its config leaf and writes it through the project-local binding', async () => {
@@ -813,7 +789,7 @@ describe('FileSidebar runtime behavior', () => {
 
     projectLocalSynced = true;
     const { FileSidebar } = await import('./FileSidebar');
-    rendered.rerender(<FileSidebar onOpenSearch={onOpenSearch} />);
+    rendered.rerender(<FileSidebar />);
 
     const readyCheckbox = within(screen.getByTestId('tree-options-menu')).getByTestId(
       'tree-options-show-hidden-files',
@@ -992,7 +968,7 @@ describe('FileSidebar runtime behavior', () => {
 
     mergedConfig = null;
     const { FileSidebar } = await import('./FileSidebar');
-    rendered.rerender(<FileSidebar onOpenSearch={onOpenSearch} />);
+    rendered.rerender(<FileSidebar />);
     expect(screen.getByTestId('skills-dock')).toBeTruthy();
   });
 
@@ -1003,7 +979,7 @@ describe('FileSidebar runtime behavior', () => {
 
     mergedConfig = null;
     const { FileSidebar } = await import('./FileSidebar');
-    rendered.rerender(<FileSidebar onOpenSearch={onOpenSearch} />);
+    rendered.rerender(<FileSidebar />);
     expect(screen.queryByTestId('skills-dock')).toBeNull();
   });
 
@@ -1016,27 +992,5 @@ describe('FileSidebar runtime behavior', () => {
     expect(screen.queryByTestId('skills-dock')).toBeNull();
     expect(screen.getByTestId('file-tree-stub')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'New file' }).length).toBeGreaterThan(0);
-  });
-
-  test('search pill render failures are contained to the pill row and reset when sidebar state changes', async () => {
-    const originalConsoleError = console.error;
-    console.error = vi.fn(() => {}) as never;
-    try {
-      sidebarSearchThrows = true;
-      const rendered = await renderSidebar();
-
-      await waitFor(() => expect(pillRenderErrors.length).toBeGreaterThan(0));
-      expect(screen.queryByTestId('sidebar-search')).toBeNull();
-      expect(screen.getByTestId('file-tree-stub')).toBeTruthy();
-      expect(screen.getByTestId('sidebar-footer')).toBeTruthy();
-
-      sidebarSearchThrows = false;
-      sidebarState = 'collapsed';
-      const { FileSidebar } = await import('./FileSidebar');
-      rendered.rerender(<FileSidebar onOpenSearch={onOpenSearch} />);
-      expect(await screen.findByTestId('sidebar-search')).toBeTruthy();
-    } finally {
-      console.error = originalConsoleError;
-    }
   });
 });

@@ -3,7 +3,13 @@ import type { ReactNode } from 'react';
 import { CommentListPanel } from './CommentListPanel';
 import { useAllThreads } from './store';
 
-export function CommentProjectPanel({ scopeSwitch }: { scopeSwitch?: ReactNode }) {
+export function CommentProjectPanel({
+  scopeSwitch,
+  onDestinationComplete,
+}: {
+  scopeSwitch?: ReactNode;
+  onDestinationComplete?: (target: HTMLElement) => void;
+}) {
   const threads = useAllThreads();
   return (
     <CommentListPanel
@@ -12,6 +18,7 @@ export function CommentProjectPanel({ scopeSwitch }: { scopeSwitch?: ReactNode }
       empty={<Trans>No comments in this project yet. Comment on a passage to start one.</Trans>}
       testIdPrefix="comment-queue"
       scopeSwitch={scopeSwitch}
+      onDestinationComplete={onDestinationComplete}
     />
   );
 }

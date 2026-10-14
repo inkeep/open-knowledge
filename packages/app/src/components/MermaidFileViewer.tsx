@@ -53,7 +53,7 @@ export function MermaidFileViewer({ fileName, extension, ...source }: MermaidFil
   const text = fetchState.content;
 
   return (
-    <main
+    <section
       className="flex h-full min-h-0 flex-col bg-background"
       aria-label={fileName}
       data-mermaid-file-viewer=""
@@ -115,6 +115,6 @@ export function MermaidFileViewer({ fileName, extension, ...source }: MermaidFil
           <TextViewer {...source} fileName={fileName} extension={extension} />
         )}
       </div>
-    </main>
+    </section>
   );
 }

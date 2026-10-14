@@ -3,6 +3,7 @@ import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { SidebarProvider } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import type { SessionPlacements } from './EditorArea';
@@ -372,29 +373,31 @@ function CompositionHarness({ bridge }: { bridge: OkDesktopBridge }) {
   }, [placements]);
   return (
     <TooltipProvider>
-      <EditorArea
-        editorMode="wysiwyg"
-        onModeChange={() => {}}
-        activeTab="timeline"
-        onActiveTabChange={() => {}}
-        terminalBridge={bridge}
-        terminalVisible
-        terminalPlacement="right"
-        onTerminalVisibleChange={() => {}}
-        onSessionPlacements={setPlacements}
-      />
-      <SessionsHost
-        surface="terminal-dock"
-        terminalPlacement="right"
-        bridge={bridge}
-        terminalCapable
-        visible
-        onVisibleChange={() => {}}
-        installedClis={{}}
-        container={placements.terminal.container}
-        isShowing={placements.terminal.isShowing}
-        onRequestEditorFocus={() => {}}
-      />
+      <SidebarProvider>
+        <EditorArea
+          editorMode="wysiwyg"
+          onModeChange={() => {}}
+          activeTab="timeline"
+          onActiveTabChange={() => {}}
+          terminalBridge={bridge}
+          terminalVisible
+          terminalPlacement="right"
+          onTerminalVisibleChange={() => {}}
+          onSessionPlacements={setPlacements}
+        />
+        <SessionsHost
+          surface="terminal-dock"
+          terminalPlacement="right"
+          bridge={bridge}
+          terminalCapable
+          visible
+          onVisibleChange={() => {}}
+          installedClis={{}}
+          container={placements.terminal.container}
+          isShowing={placements.terminal.isShowing}
+          onRequestEditorFocus={() => {}}
+        />
+      </SidebarProvider>
     </TooltipProvider>
   );
 }
@@ -438,28 +441,33 @@ describe('terminal dock restore vs portal-host attachment', () => {
     expect(gatesMountedIntoADetachedHost()).toEqual([]);
   });
 
-  test('mounts no terminal gate during the cold-start window that nulls the real container', async () => {
+  test('restores the terminal into its live mount while the cold-load skeleton shows, never into a detached host', async () => {
     window.location.hash = '#/some-doc';
     const bridge = makeRestartBridge();
     const view = render(<CompositionHarness bridge={bridge} />);
 
     await settle(500);
     expect(screen.getByTestId('editor-skeleton')).toBeTruthy();
-    expect(document.querySelector('[data-terminal-panel-mount]')).toBeNull();
-    expect(publishedTerminalContainers).toContain(null);
+    const coldLoadMount = document.querySelector('[data-terminal-panel-mount]');
+    expect(coldLoadMount).not.toBeNull();
+    expect(publishedTerminalContainers.at(-1)).toBe(coldLoadMount);
     expect(gatesMountedIntoADetachedHost()).toEqual([]);
+    const coldLoadGates = screen.getAllByTestId('terminal-gate');
+    expect(coldLoadGates).toHaveLength(2);
+    expect(coldLoadGates.filter((gate) => !coldLoadMount?.contains(gate))).toEqual([]);
 
     await act(async () => {
       docCtx = LIVE_DOC_CTX;
     });
     view.rerender(<CompositionHarness bridge={bridge} />);
     await settle(500);
-    expect(document.querySelector('[data-terminal-panel-mount]')).not.toBeNull();
-    expect(publishedTerminalContainers).toContain(
-      document.querySelector('[data-terminal-panel-mount]'),
-    );
-    expect(screen.getAllByTestId('terminal-gate')).toHaveLength(2);
+    expect(screen.queryByTestId('editor-skeleton')).toBeNull();
+    const liveMount = document.querySelector('[data-terminal-panel-mount]');
+    expect(publishedTerminalContainers.at(-1)).toBe(liveMount);
     expect(gatesMountedIntoADetachedHost()).toEqual([]);
+    const liveGates = screen.getAllByTestId('terminal-gate');
+    expect(liveGates).toHaveLength(2);
+    expect(liveGates.filter((gate) => !liveMount?.contains(gate))).toEqual([]);
   });
 
   test('keeps every restored terminal gate mounted when the dock container is withdrawn and replaced', async () => {
@@ -471,6 +479,9 @@ describe('terminal dock restore vs portal-host attachment', () => {
     expect(gatesMountedIntoADetachedHost()).toEqual([]);
     const mountsAfterRestore = [...gateLifecycle.mounts];
     expect(mountsAfterRestore).toHaveLength(2);
+    const firstAttachment = screen.getByTestId('terminal-mount').firstElementChild;
+    const gatesAfterRestore = screen.getAllByTestId('terminal-gate');
+    expect(firstAttachment).not.toBeNull();
 
     view.rerender(<ChurnHarness slot="none" />);
     await settle(500);
@@ -486,6 +497,9 @@ describe('terminal dock restore vs portal-host attachment', () => {
     const gatesAfterSwap = screen.getAllByTestId('terminal-gate');
     expect(gatesAfterSwap).toHaveLength(2);
     expect(gatesAfterSwap.filter((gate) => !replacementContainer.contains(gate))).toEqual([]);
+    expect(replacementContainer.firstElementChild).toBe(firstAttachment);
+    expect(gatesAfterSwap[0]).toBe(gatesAfterRestore[0]);
+    expect(gatesAfterSwap[1]).toBe(gatesAfterRestore[1]);
     expect(tabTitles()).toEqual(['process second', 'process first']);
     expect(gatesMountedIntoADetachedHost()).toEqual([]);
   });

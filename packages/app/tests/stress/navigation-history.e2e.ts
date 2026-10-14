@@ -37,7 +37,9 @@ async function expectFolder(page: Page, hash: string, folderName: string): Promi
 
 async function expectAsset(page: Page, hash: string, assetName: string): Promise<void> {
   await expectHash(page, hash);
-  await expect(page.getByRole('main', { name: assetName, exact: true })).toBeVisible({
+  await expect(
+    page.getByRole('main').getByRole('region', { name: assetName, exact: true }),
+  ).toBeVisible({
     timeout: 15_000,
   });
 }

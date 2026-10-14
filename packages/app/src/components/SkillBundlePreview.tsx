@@ -38,7 +38,6 @@ interface Props {
   headerActions: ReactNode;
   headerLine: ReactNode;
   noPreviewFallback?: ReactNode;
-  reserveRightGutter?: boolean;
   selectedPath?: string;
   scope?: SkillScope;
   onPreviewMeta?: (preview: SkillPreviewData) => void;
@@ -55,7 +54,6 @@ export function SkillBundlePreview({
   headerLine,
   noPreviewFallback,
   banner,
-  reserveRightGutter = false,
   selectedPath: selectedPathProp,
   scope,
   onBundlePathClick,
@@ -120,11 +118,7 @@ export function SkillBundlePreview({
         <ProseFindBar containerRef={scrollRef} onClose={() => setFindOpen(false)} />
       ) : null}
       {}
-      <SkillModeBanner
-        icon={<Eye className="size-4" aria-hidden />}
-        actions={headerActions}
-        reserveRightGutter={reserveRightGutter}
-      >
+      <SkillModeBanner icon={<Eye className="size-4" aria-hidden />} actions={headerActions}>
         {headerLine}
       </SkillModeBanner>
 

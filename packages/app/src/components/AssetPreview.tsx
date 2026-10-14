@@ -49,11 +49,11 @@ function AssetPreviewBody({ assetPath, mediaKind }: AssetPreviewProps) {
 
   if (effectiveMediaKind === 'pdf') {
     return (
-      <main className="flex h-full min-h-0 flex-col bg-background" aria-label={fileName}>
+      <section className="flex h-full min-h-0 flex-col bg-background" aria-label={fileName}>
         <div className="min-h-0 flex-1 overflow-hidden">
           <Pdf src={src} title={fileName} fillContainer />
         </div>
-      </main>
+      </section>
     );
   }
 
@@ -82,7 +82,7 @@ function AssetPreviewBody({ assetPath, mediaKind }: AssetPreviewProps) {
   }
 
   return (
-    <main className="flex h-full min-h-0 flex-col bg-background" aria-label={fileName}>
+    <section className="flex h-full min-h-0 flex-col bg-background" aria-label={fileName}>
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
         {effectiveMediaKind === 'image' ? (
           <LoadingImage
@@ -139,6 +139,6 @@ function AssetPreviewBody({ assetPath, mediaKind }: AssetPreviewProps) {
           </div>
         )}
       </div>
-    </main>
+    </section>
   );
 }

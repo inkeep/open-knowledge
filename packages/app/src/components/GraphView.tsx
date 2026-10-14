@@ -433,10 +433,12 @@ function applyGraphNodeClick({
   node,
   docClickBehavior,
   onSelectNode,
+  onDestinationRequested,
 }: {
   node: GraphNode;
   docClickBehavior: GraphDocClickBehavior;
   onSelectNode?: (selection: GraphNodeSelection) => void;
+  onDestinationRequested?: (docName: string) => void;
 }): void {
   const action = resolveGraphNodeClickAction(node, docClickBehavior);
 
@@ -446,6 +448,7 @@ function applyGraphNodeClick({
   }
 
   if (action.kind === 'navigate') {
+    if (node.kind === 'doc') onDestinationRequested?.(node.docName);
     window.location.assign(action.hash);
     return;
   }
@@ -458,12 +461,14 @@ function handleGraphPointerTapTarget({
   docClickBehavior,
   selectedNodeId,
   onSelectNode,
+  onDestinationRequested,
   onBackgroundClick,
 }: {
   target: GraphPointerTarget;
   docClickBehavior: GraphDocClickBehavior;
   selectedNodeId: string | null;
   onSelectNode?: (selection: GraphNodeSelection) => void;
+  onDestinationRequested?: (docName: string) => void;
   onBackgroundClick?: () => void;
 }): void {
   if (target.kind === 'background' || target.kind === 'link') {
@@ -484,6 +489,7 @@ function handleGraphPointerTapTarget({
     node: target.node,
     docClickBehavior,
     onSelectNode,
+    onDestinationRequested,
   });
 }
 
@@ -498,6 +504,7 @@ export function GraphView({
   className = '',
   docClickBehavior = 'navigate',
   onSelectNode,
+  onDestinationRequested,
   onBackgroundClick,
   onStatsChange,
   onClustersChange,
@@ -512,6 +519,7 @@ export function GraphView({
   className?: string;
   docClickBehavior?: GraphDocClickBehavior;
   onSelectNode?: (selection: GraphNodeSelection) => void;
+  onDestinationRequested?: (docName: string) => void;
   onBackgroundClick?: () => void;
   onStatsChange?: (nodes: number, links: number, loading: boolean) => void;
   onClustersChange?: (clusters: string[]) => void;
@@ -811,6 +819,7 @@ export function GraphView({
           node,
           docClickBehavior,
           onSelectNode,
+          onDestinationRequested,
         });
         return true;
       },
@@ -966,6 +975,7 @@ export function GraphView({
     navigationIntentByNodeId,
     onBackgroundClick,
     onSelectNode,
+    onDestinationRequested,
     selectedNodeId,
   ]);
 
@@ -1042,6 +1052,7 @@ export function GraphView({
           docClickBehavior,
           selectedNodeId,
           onSelectNode,
+          onDestinationRequested,
           onBackgroundClick,
         });
       }}
@@ -1326,6 +1337,7 @@ export function GraphView({
               }
               if (node.docName) {
                 const navigationIntent = navigationIntentByNodeId.get(node.id);
+                onDestinationRequested?.(navigationIntent?.hashDocName ?? node.docName);
                 window.location.assign(
                   navigationIntent?.hash ??
                     hashFromDocName(

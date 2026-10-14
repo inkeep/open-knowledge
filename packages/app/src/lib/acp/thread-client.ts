@@ -35,6 +35,10 @@ interface PendingCreate {
   timer: ReturnType<typeof setTimeout>;
 }
 
+interface PendingThreadCreate extends PendingCreate {
+  onCreated?: (info: ThreadInfo) => void;
+}
+
 interface PendingTerminalAuthLaunch {
   resolve: (launch: ThreadAuthTerminalLaunch) => void;
   reject: (err: Error) => void;
@@ -45,6 +49,28 @@ interface PendingQueueEdit {
   resolve: () => void;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+}
+
+function invalidCreatedThreadInfoField(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return 'info';
+  const info = value as Partial<ThreadInfo>;
+  if (typeof info.threadId !== 'string' || info.threadId.length === 0) return 'threadId';
+  const agent = info.agent;
+  if (typeof agent !== 'object' || agent === null) return 'agent';
+  if (typeof agent.id !== 'string') return 'agent.id';
+  if (typeof agent.name !== 'string') return 'agent.name';
+  if (agent.source !== 'custom' && agent.source !== 'registry') return 'agent.source';
+  if (typeof info.title !== 'string') return 'title';
+  if (typeof info.status !== 'string') return 'status';
+  if (typeof info.createdAt !== 'number') return 'createdAt';
+  if (typeof info.lastActivityAt !== 'number') return 'lastActivityAt';
+  if (typeof info.lastSeq !== 'number') return 'lastSeq';
+  return null;
+}
+
+function createdThreadIdOf(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null || !('threadId' in value)) return null;
+  return typeof value.threadId === 'string' ? value.threadId : null;
 }
 
 const SEQ_GAP_EVENT: ThreadEvent = Object.freeze({
@@ -103,7 +129,7 @@ export class AgentThreadClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private threads = new Map<string, ThreadState>();
   private listeners = new Set<() => void>();
-  private pendingCreates = new Map<string, PendingCreate>();
+  private pendingCreates = new Map<string, PendingThreadCreate>();
   private pendingResumes = new Map<string, PendingCreate>();
   private pendingRetries = new Map<string, PendingCreate>();
   private pendingTerminalAuthLaunches = new Map<string, PendingTerminalAuthLaunch>();
@@ -114,6 +140,7 @@ export class AgentThreadClient {
   private lastViewedByThread = new Map<string, number>();
   private resumingThreads = new Set<string>();
   private reqCounter = 0;
+  private connectionGeneration = 0;
   private status: ThreadConnectionStatus = 'idle';
   private version = 0;
   private initialRosterIds: ReadonlySet<string> | null = null;
@@ -198,15 +225,20 @@ export class AgentThreadClient {
 
   getConnectionStatus = (): ThreadConnectionStatus => this.status;
 
+  getConnectionGeneration = (): number => this.connectionGeneration;
+
   getThreadScope = (): string | null => this.url;
 
-  async createThread(params: {
-    agent: { source: 'registry' | 'custom'; id: string };
-    prompt?: string;
-    attachments?: readonly AttachmentPart[];
-    docName?: string;
-    titleHint?: string;
-  }): Promise<ThreadInfo> {
+  async createThread(
+    params: {
+      agent: { source: 'registry' | 'custom'; id: string };
+      prompt?: string;
+      attachments?: readonly AttachmentPart[];
+      docName?: string;
+      titleHint?: string;
+    },
+    onCreated?: (info: ThreadInfo) => void,
+  ): Promise<ThreadInfo> {
     this.connectNow();
     await this.waitForOpen(CHANNEL_WAIT_MS);
     this.reqCounter += 1;
@@ -216,7 +248,7 @@ export class AgentThreadClient {
         this.pendingCreates.delete(reqId);
         reject(new Error('thread creation timed out'));
       }, CREATE_TIMEOUT_MS);
-      this.pendingCreates.set(reqId, { resolve, reject, timer });
+      this.pendingCreates.set(reqId, { resolve, reject, timer, onCreated });
     });
     const settingsKey = agentSettingsKey(params.agent);
     const config = getRememberedAgentConfig(settingsKey);
@@ -507,6 +539,7 @@ export class AgentThreadClient {
       this.scheduleReconnect();
       return;
     }
+    this.connectionGeneration += 1;
     this.ws = ws;
     ws.onopen = () => {
       if (this.ws !== ws) return;
@@ -614,9 +647,32 @@ export class AgentThreadClient {
     switch (frame.op) {
       case 'created': {
         const pending = this.pendingCreates.get(frame.reqId);
+        const invalidField = invalidCreatedThreadInfoField(frame.info);
+        if (invalidField !== null) {
+          console.warn('[agent-threads] invalid created thread info', {
+            field: invalidField,
+            threadId: createdThreadIdOf(frame.info),
+            reqId: frame.reqId,
+          });
+          if (pending !== undefined) {
+            this.pendingCreates.delete(frame.reqId);
+            clearTimeout(pending.timer);
+            pending.reject(new Error(`invalid created thread info: ${invalidField}`));
+          }
+          return;
+        }
         if (pending !== undefined) {
           this.pendingCreates.delete(frame.reqId);
           clearTimeout(pending.timer);
+          try {
+            pending.onCreated?.(frame.info);
+          } catch (error) {
+            console.error(
+              '[agent-threads] created-thread callback failed for',
+              frame.info.threadId,
+              error,
+            );
+          }
           pending.resolve(frame.info);
         }
         this.upsertInfo(frame.info);

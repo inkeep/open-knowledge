@@ -1,4 +1,4 @@
-import { CHROME_BG_DARK, CHROME_BG_LIGHT } from '@inkeep/open-knowledge-core/constants/chrome';
+import { SIDEBAR_BG_DARK, SIDEBAR_BG_LIGHT } from '@inkeep/open-knowledge-core/constants/chrome';
 import { PREVIEW_THEME_TOKENS } from '@inkeep/open-knowledge-core/constants/preview-theme-tokens';
 import {
   BASE16_SLOTS,
@@ -75,7 +75,7 @@ function baseToken(name: string, mode: 'light' | 'dark'): string {
 
 export function defaultThemeTokens(mode: 'light' | 'dark'): Record<string, string> {
   return {
-    sidebar: mode === 'dark' ? CHROME_BG_DARK : CHROME_BG_LIGHT,
+    sidebar: mode === 'dark' ? SIDEBAR_BG_DARK : SIDEBAR_BG_LIGHT,
     background: baseToken('--background', mode),
     primary: baseToken('--primary', mode),
     border: baseToken('--border', mode),

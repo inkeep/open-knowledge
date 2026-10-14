@@ -176,8 +176,6 @@ describe('HtmlPreview space reservation', () => {
 
 describe('preview theme tokens track the editor', () => {
   const DARK_OVERRIDES = new Map([
-    ['--background', 'sits on the docs card surface, not the editor canvas'],
-    ['--card', 'sits on the docs card surface, not the editor canvas'],
     ['--border', 'docs card is lighter, so its border runs 14% alpha against the editor 10%'],
   ]);
 

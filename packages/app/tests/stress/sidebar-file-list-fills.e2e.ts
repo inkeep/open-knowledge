@@ -4,6 +4,7 @@ import { expect, resetContentToFixtureBaseline, test } from './_helpers';
 
 const SIDEBAR = '[data-slot="sidebar-container"]';
 const FOOTER = '[data-slot="sidebar-footer"]';
+const BODY = '[data-slot="sidebar-content"]';
 const TREE_SCROLL =
   '[data-slot="sidebar-group"] [data-slot="collapsible-content"] [data-file-tree-virtualized-scroll]';
 
@@ -45,7 +46,7 @@ test.describe('sidebar file list fills the body', () => {
 
     const scroll = await boxOf(page, TREE_SCROLL);
     const dockCount = await page.getByTestId('skills-dock').count();
-    const below = await boxOf(page, dockCount > 0 ? '[data-testid="skills-dock"]' : FOOTER);
+    const below = await boxOf(page, dockCount > 0 ? '[data-testid="skills-dock"]' : BODY);
     expect(below.y - (scroll.y + scroll.height)).toBeLessThan(ROW_HEIGHT);
 
     const slack = scroll.y + scroll.height - (await lowestRowBottom(page));
@@ -73,8 +74,8 @@ test.describe('sidebar file list fills the body', () => {
     }).toPass({ timeout: 15_000 });
 
     const scroll = await boxOf(page, TREE_SCROLL);
-    const footer = await boxOf(page, FOOTER);
-    expect(scroll.y + scroll.height).toBeLessThanOrEqual(footer.y + 1);
+    const body = await boxOf(page, BODY);
+    expect(scroll.y + scroll.height).toBeLessThanOrEqual(body.y + body.height + 1);
   });
 
   test('a tall Conflicts section cannot squeeze the file list away', async ({ page, api }) => {
@@ -108,6 +109,56 @@ test.describe('sidebar file list fills the body', () => {
         .evaluate((el) => el.scrollHeight > el.clientHeight);
       expect(bodyScrolls).toBe(true);
     }).toPass({ timeout: 15_000 });
+  });
+
+  test('an empty footer takes no room below the Skills dock', async ({ page, api }) => {
+    await api.seedDocs([{ name: 'folder/note', markdown: '# Note\n' }]);
+    await page.goto('/#/folder/note');
+    await expect(page.locator(SIDEBAR).getByRole('treeitem', { name: 'note.md' })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const footer = page.locator(FOOTER);
+    await expect(footer).toHaveCount(1);
+    expect(await footer.evaluate((el) => el.childElementCount)).toBe(0);
+    await expect(footer).toBeHidden();
+    const body = await boxOf(page, BODY);
+    const inner = await boxOf(page, '[data-slot="sidebar-inner"]');
+    expect(Math.abs(inner.y + inner.height - (body.y + body.height))).toBeLessThanOrEqual(1);
+  });
+
+  test('a saved Skills dock taller than the room left fits on screen and keeps its saved height', async ({
+    page,
+    api,
+  }) => {
+    const savedHeight = '560';
+    await page.addInitScript((height: string) => {
+      localStorage.setItem('ok-skills-dock-expanded-v1', 'true');
+      localStorage.setItem('ok-skills-dock-height-v1', height);
+    }, savedHeight);
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await api.seedDocs([{ name: 'folder/note', markdown: '# Note\n' }]);
+    await page.goto('/#/folder/note');
+    await expect(page.locator(SIDEBAR).getByRole('treeitem', { name: 'note.md' })).toBeVisible({
+      timeout: 20_000,
+    });
+    const dock = page.getByTestId('skills-dock');
+    await expect(dock.getByTestId('skills-dock-resize')).toBeVisible({ timeout: 10_000 });
+
+    await expect(async () => {
+      const body = await boxOf(page, '[data-slot="sidebar-content"]');
+      const dockBox = await boxOf(page, '[data-testid="skills-dock"]');
+      expect(dockBox.y + dockBox.height).toBeLessThanOrEqual(body.y + body.height + 1);
+      const bodyScrolls = await page
+        .locator('[data-slot="sidebar-content"]')
+        .evaluate((el) => el.scrollHeight > el.clientHeight + 1);
+      expect(bodyScrolls).toBe(false);
+    }).toPass({ timeout: 15_000 });
+    const files = await boxOf(page, '[data-slot="sidebar-content"] > .group\\/files');
+    expect(files.height).toBeGreaterThanOrEqual(192 - 1);
+    expect(await page.evaluate(() => localStorage.getItem('ok-skills-dock-height-v1'))).toBe(
+      savedHeight,
+    );
   });
 
   test('a round trip through Skills mode leaves the file list correctly sized', async ({

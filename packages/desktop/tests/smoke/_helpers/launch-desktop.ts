@@ -36,6 +36,8 @@ export interface DesktopTarget {
 export interface ResolveDesktopTargetOptions {
   env?: NodeJS.ProcessEnv;
   requirePackaged?: boolean;
+  platform?: NodeJS.Platform;
+  arch?: NodeJS.Architecture;
 }
 
 export function executableForAppBundle(appPath: string): string {
@@ -51,18 +53,28 @@ function probedOnRead(target: Omit<DesktopTarget, 'exists'>): DesktopTarget {
   };
 }
 
+function defaultPackagedAppPath(platform: NodeJS.Platform, arch: NodeJS.Architecture): string {
+  if (platform !== 'linux') return DEFAULT_LOCAL_PACKAGED_APP;
+  if (arch === 'x64') return join(DESKTOP_ROOT, 'dist-desktop', 'linux-unpacked');
+  if (arch === 'arm64') return join(DESKTOP_ROOT, 'dist-desktop', 'linux-arm64-unpacked');
+  throw new Error(`No local Linux packaged desktop target for architecture ${arch}`);
+}
+
 export function resolveDesktopTarget(options: ResolveDesktopTargetOptions = {}): DesktopTarget {
   const env = options.env ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const arch = options.arch ?? process.arch;
   const override = env[PACKAGED_APP_ENV];
   const appPath =
     override && override.length > 0
       ? resolve(override)
       : options.requirePackaged
-        ? DEFAULT_LOCAL_PACKAGED_APP
+        ? defaultPackagedAppPath(platform, arch)
         : undefined;
 
   if (appPath !== undefined) {
-    const targetPath = executableForAppBundle(appPath);
+    const targetPath =
+      platform === 'linux' ? join(appPath, 'openknowledge') : executableForAppBundle(appPath);
     return probedOnRead({
       mode: 'packaged',
       appPath,

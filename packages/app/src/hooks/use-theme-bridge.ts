@@ -22,7 +22,7 @@ function resolveTokenHex(token: string): string | null {
 function readChromeColors(): { bg: string; symbol: string } | undefined {
   if (typeof document === 'undefined') return undefined;
   try {
-    const bg = resolveTokenHex('--sidebar');
+    const bg = resolveTokenHex('--desk');
     const symbol = resolveTokenHex('--sidebar-foreground');
     if (!bg || !symbol) return undefined;
     return { bg, symbol };

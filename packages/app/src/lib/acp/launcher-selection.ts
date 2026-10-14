@@ -17,6 +17,16 @@ export type LauncherSelection =
   | { readonly kind: 'terminal' }
   | { readonly kind: 'none' };
 
+export const LAUNCHER_KIND_PANE: Readonly<
+  Record<LauncherSelection['kind'], 'agents' | 'terminal'>
+> = {
+  thread: 'agents',
+  none: 'agents',
+  cli: 'terminal',
+  terminal: 'terminal',
+  desktop: 'terminal',
+};
+
 export function enabledThreadAgents(
   agents: readonly RegisteredAgent[],
   overrides: EnabledOverrides,

@@ -2,6 +2,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { getLocalDir } from '@inkeep/open-knowledge-server';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
+import type { WindowChromeKind } from '../../src/main/window-chrome.ts';
 import {
   type BrowserWindowLike,
   type EphemeralOpenIdentity,
@@ -64,7 +65,11 @@ function makeWindow(): FakeWindow {
 interface EphemeralEnv {
   deps: WindowManagerDeps;
   windows: FakeWindow[];
-  createWindowOpts: Array<{ additionalArguments: string[]; title: string }>;
+  createWindowOpts: Array<{
+    additionalArguments: string[];
+    title: string;
+    chrome?: WindowChromeKind;
+  }>;
   spawnCalls: Array<{
     contentDir: string;
     reactShellDistDir: string;
@@ -81,7 +86,11 @@ interface EphemeralEnv {
 
 function buildEphemeralEnv(): EphemeralEnv {
   const windows: FakeWindow[] = [];
-  const createWindowOpts: Array<{ additionalArguments: string[]; title: string }> = [];
+  const createWindowOpts: Array<{
+    additionalArguments: string[];
+    title: string;
+    chrome?: WindowChromeKind;
+  }> = [];
   const spawnCalls: EphemeralEnv['spawnCalls'] = [];
   const createTempCalls: string[] = [];
   const removedDirs: string[] = [];
@@ -227,6 +236,7 @@ describe('createEphemeralWindow', () => {
     expect(env.createWindowOpts[0]?.additionalArguments).toContain(`--ok-project-path=${PARENT}`);
     expect(env.createWindowOpts[0]?.additionalArguments).toContain('--ok-single-file=1');
     expect(env.createWindowOpts[0]?.additionalArguments).toContain('--ok-initial-doc=todo');
+    expect(env.createWindowOpts[0]?.chrome).toBe('app-header');
 
     expect(ctx.ephemeral).toEqual({
       projectDir: '/tmp/ok-ephemeral-1',

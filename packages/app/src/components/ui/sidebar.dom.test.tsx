@@ -90,6 +90,18 @@ describe('Sidebar runtime contracts', () => {
     ).toBe('20rem');
   });
 
+  test('the inset refuses to render outside a SidebarProvider, like the rest of the sidebar', async () => {
+    const { SidebarInset } = await import('./sidebar');
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(() => {
+        render(<SidebarInset>Main</SidebarInset>);
+      }).toThrow('useSidebar must be used within a SidebarProvider.');
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
   test('desktop sidebar trigger controls a labeled sidebar landmark', async () => {
     await renderSidebarShell(1400);
 

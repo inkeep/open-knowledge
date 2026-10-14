@@ -171,6 +171,7 @@ describe('createDefaultEditorViewMenuState — pre-first-push menu state', () =>
       terminalPlacement: 'bottom',
       terminalLive: false,
       agentPanelVisible: false,
+      editorVisible: true,
       canViewInSource: false,
       hasEditorSelection: false,
     });

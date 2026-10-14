@@ -24,6 +24,7 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from '@/components/ui/input-group';
+import { SECONDARY_PANEL_SURFACE_CLASS } from '@/components/ui/pane-card';
 import {
   SidebarContent,
   SidebarFooter,
@@ -367,7 +368,10 @@ export function ThreadHistoryPanel({
     <aside
       id={panelId}
       aria-label={t`Chat history`}
-      className="flex h-full min-h-0 w-full flex-col bg-muted/20 text-sidebar-foreground [--sidebar-accent-foreground:var(--foreground)]"
+      className={cn(
+        'flex h-full min-h-0 w-full flex-col text-sidebar-foreground [--sidebar-accent-foreground:var(--foreground)]',
+        SECONDARY_PANEL_SURFACE_CLASS,
+      )}
       data-testid="agent-thread-history-panel"
       data-history-mode={mode}
       onKeyDown={(event) => {

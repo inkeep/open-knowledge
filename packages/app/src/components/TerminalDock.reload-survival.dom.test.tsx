@@ -74,9 +74,10 @@ function ReloadHarness({
     <TooltipProvider>
       <TerminalDock
         visible={visible}
+        available
+        variant="card"
         onVisibleChange={() => {}}
         onBottomContainer={setBottomContainer}
-        onEditorRegion={() => {}}
       >
         <div data-testid="editor-child" />
       </TerminalDock>

@@ -30,8 +30,8 @@ export function revealPropertyValueRange(args: {
   quote: string;
   start?: number;
   end?: number;
-}): boolean {
-  if (args.quote === '') return false;
+}): HTMLElement | null {
+  if (args.quote === '') return null;
   const lastStep = args.path.length === 0 ? args.key : args.path[args.path.length - 1];
   const preferred = Array.from(
     document.querySelectorAll<HTMLElement>(
@@ -48,9 +48,9 @@ export function revealPropertyValueRange(args: {
     control.focus();
     control.setSelectionRange(range.start, range.end);
     paintRevealSelection(control);
-    return true;
+    return control;
   }
-  return false;
+  return null;
 }
 
 export function locateInValue(

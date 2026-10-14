@@ -14,6 +14,7 @@ interface RightRailVisibility {
 interface RightRailAdmissionInput {
   readonly workspaceWidthPx: number;
   readonly otherRailWidthPx: number;
+  readonly editorMinimumWidthPx?: number;
   readonly agentsMinimumWidthPx: number;
   readonly previous: RightRailVisibility;
   readonly current: RightRailVisibility;
@@ -27,18 +28,24 @@ export type RightRailAdmissionDecision =
 
 export function minimumWorkspaceWidthForRightRailPeers({
   otherRailWidthPx,
+  editorMinimumWidthPx = 0,
   agentsMinimumWidthPx,
 }: {
   readonly otherRailWidthPx: number;
+  readonly editorMinimumWidthPx?: number;
   readonly agentsMinimumWidthPx: number;
 }): number {
   const peerWidthPx = otherRailWidthPx + agentsMinimumWidthPx + MIN_USABLE_RIGHT_TERMINAL_WIDTH_PX;
-  return Math.ceil(peerWidthPx / (1 - EDITOR_RESIDUAL_FRACTION));
+  return Math.max(
+    Math.ceil(peerWidthPx / (1 - EDITOR_RESIDUAL_FRACTION)),
+    peerWidthPx + editorMinimumWidthPx,
+  );
 }
 
 export function resolveRightRailAdmission({
   workspaceWidthPx,
   otherRailWidthPx,
+  editorMinimumWidthPx,
   agentsMinimumWidthPx,
   previous,
   current,
@@ -48,6 +55,7 @@ export function resolveRightRailAdmission({
 
   const minimumWidthPx = minimumWorkspaceWidthForRightRailPeers({
     otherRailWidthPx,
+    editorMinimumWidthPx,
     agentsMinimumWidthPx,
   });
   if (workspaceWidthPx >= minimumWidthPx) return { kind: 'none' };

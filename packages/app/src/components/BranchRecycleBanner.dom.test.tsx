@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { BRANCH_SWITCH_NOTICE_MS, type ContentRecycleNotice } from '@/lib/branch-recycle-notice';
+import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 
 let notice: ContentRecycleNotice | null = null;
 const dismiss = vi.fn();
@@ -105,4 +106,23 @@ test('with the desktop bridge, Restart server disables in flight and re-enables 
   } finally {
     Reflect.deleteProperty(window, 'okDesktop');
   }
+});
+
+test('both variants start below the application header rather than over it', async () => {
+  notice = { kind: 'branch-switch', branch: 'feat/x', at: Date.now() };
+  await renderBanner();
+  expectVisualClassTokens(screen.getByTestId('branch-recycle-banner-switch').className, [
+    'fixed',
+    'top-[var(--ok-app-header-height,0px)]',
+    'inset-x-0',
+  ]);
+
+  cleanup();
+  notice = { kind: 'refused', at: Date.now() };
+  await renderBanner();
+  expectVisualClassTokens(screen.getByTestId('branch-recycle-banner-refused').className, [
+    'fixed',
+    'top-[var(--ok-app-header-height,0px)]',
+    'inset-x-0',
+  ]);
 });

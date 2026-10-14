@@ -11,7 +11,11 @@ import { FeedbackForm } from './FeedbackForm';
 export function FeedbackCard({ onClose }: { onClose: () => void }) {
   const { t } = useLingui();
   return (
-    <Card asChild size="sm" className="mx-1 mb-1">
+    <Card
+      asChild
+      size="sm"
+      className="floating-card-surface subtle-scrollbar min-h-0 rounded-lg overflow-y-auto overscroll-contain ring-0 ring-transparent"
+    >
       <section aria-label={t`Share feedback`}>
         <CardContent>
           <FeedbackForm

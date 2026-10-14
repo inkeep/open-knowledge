@@ -1,9 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ReactNode, useEffect } from 'react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import { __resetSkillsSectionVisibleCacheForTests } from '@/components/skills-section-visible-cache';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import {
+  __resetPaneVisibilityStoreForTests,
+  type PaneVisibilityRequest,
+  paneVisibilityStore,
+} from '@/lib/pane-visibility-store';
 import type { ResolvedNavigationTarget } from './navigation-targets';
 
 type MenuAction =
@@ -163,19 +168,6 @@ vi.doMock('@/components/handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states: noAgentsInstalled ? noAgentStates : installedAgentStates }),
 }));
 
-vi.doMock('@/components/ProjectSwitcher', () => ({
-  ProjectSwitcher: () => null,
-}));
-
-vi.doMock('@/components/SidebarSearchBar', () => ({
-  SidebarSearchBar: () => <button type="button">Search</button>,
-  onPillRenderError: () => {},
-}));
-
-vi.doMock('@/components/UpdateNotices', () => ({
-  UpdateNotices: () => null,
-}));
-
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName: 'notes/source',
@@ -232,8 +224,34 @@ const { registerAgent, reloadRegisteredAgentsFromStorage } = await import(
 const { saveStickyAgent } = await import('@/lib/unified-agent-store');
 
 function renderSidebar() {
-  return render(<FileSidebar onOpenSearch={() => {}} />, { wrapper: TooltipProvider });
+  return render(<FileSidebar />, { wrapper: TooltipProvider });
 }
+
+function actWhenCalled(
+  mock: { mockImplementation(fn: () => void): unknown; mockReset(): unknown },
+  act: () => void,
+): () => void {
+  mock.mockImplementation(act);
+  return () => {
+    mock.mockReset();
+  };
+}
+
+const REVEAL_BEFORE_ACTING: ReadonlyArray<{
+  action: string;
+  observeAct: (act: () => void) => () => void;
+}> = [
+  { action: 'new-doc', observeAct: (act) => actWhenCalled(treeCalls.startCreating, act) },
+  { action: 'new-folder', observeAct: (act) => actWhenCalled(treeCalls.startCreating, act) },
+  {
+    action: 'new-from-template',
+    observeAct: (act) => actWhenCalled(treeCalls.startCreatingFromTemplate, act),
+  },
+  { action: 'rename', observeAct: (act) => subscribeToFileTreeMenuActionRename(act) },
+  { action: 'duplicate', observeAct: (act) => subscribeToFileTreeMenuActionDuplicate(act) },
+  { action: 'move-to-trash', observeAct: (act) => subscribeToFileTreeMenuActionDelete(act) },
+  { action: 'toggle-sidebar', observeAct: (act) => actWhenCalled(toggleSidebarMock, act) },
+];
 
 describe('FileSidebar menu-action runtime routing', () => {
   beforeEach(() => {
@@ -291,11 +309,33 @@ describe('FileSidebar menu-action runtime routing', () => {
 
   afterEach(() => {
     cleanup();
+    __resetPaneVisibilityStoreForTests();
     Object.defineProperty(window, 'okDesktop', {
       configurable: true,
       value: undefined,
     });
   });
+
+  test.each(REVEAL_BEFORE_ACTING)(
+    '$action shows a hidden editor before acting',
+    async ({ action, observeAct }) => {
+      const log: Array<PaneVisibilityRequest | 'act'> = [];
+      paneVisibilityStore.subscribeRequests((request) => log.push(request));
+      paneVisibilityStore.publish({
+        editor: { open: false, onScreen: false },
+        agents: null,
+        terminal: null,
+      });
+      const stopObserving = observeAct(() => log.push('act'));
+      onTestFinished(stopObserving);
+      renderSidebar();
+      await waitFor(() => expect(menuActionCallback).not.toBeNull());
+
+      menuActionCallback?.(action as MenuAction);
+
+      expect(log).toEqual([{ pane: 'editor', open: true }, 'act']);
+    },
+  );
 
   test('duplicate menu action emits the active target on the FileTree event bus', async () => {
     const received: ResolvedNavigationTarget[] = [];
@@ -432,7 +472,7 @@ describe('FileSidebar menu-action runtime routing', () => {
         mediaKind: 'image',
       } satisfies ResolvedNavigationTarget;
       activeTarget = imageTarget;
-      rendered.rerender(<FileSidebar onOpenSearch={() => {}} />);
+      rendered.rerender(<FileSidebar />);
       await waitFor(() => expect(menuActionCallback).not.toBeNull());
 
       menuActionCallback?.('rename' as MenuAction);
@@ -561,7 +601,7 @@ describe('FileSidebar menu-action runtime routing', () => {
     );
 
     projectLocalSynced = true;
-    rendered.rerender(<FileSidebar onOpenSearch={() => {}} />);
+    rendered.rerender(<FileSidebar />);
     menuActionCallback?.('toggle-show-hidden-files' as MenuAction);
     expect(projectLocalPatch).toHaveBeenCalledWith({
       appearance: { sidebar: { showHiddenFiles: true } },
@@ -605,7 +645,7 @@ describe('FileSidebar menu-action runtime routing', () => {
     );
 
     projectLocalSynced = true;
-    rendered.rerender(<FileSidebar onOpenSearch={() => {}} />);
+    rendered.rerender(<FileSidebar />);
 
     const ready = within(screen.getByTestId('tree-options-menu')).getByTestId(
       'tree-options-show-hidden-files',
@@ -663,7 +703,7 @@ describe('FileSidebar menu-action runtime routing', () => {
 
     for (const { action, key, defaultValue } of toggleRoundTrips) {
       mergedConfig = { appearance: { sidebar: {} } };
-      rerender(<FileSidebar onOpenSearch={() => {}} />);
+      rerender(<FileSidebar />);
 
       projectLocalPatch.mockClear();
       menuActionCallback?.(action as MenuAction);
@@ -672,7 +712,7 @@ describe('FileSidebar menu-action runtime routing', () => {
       });
 
       mergedConfig = { appearance: { sidebar: { [key]: !defaultValue } } };
-      rerender(<FileSidebar onOpenSearch={() => {}} />);
+      rerender(<FileSidebar />);
 
       projectLocalPatch.mockClear();
       menuActionCallback?.(action as MenuAction);

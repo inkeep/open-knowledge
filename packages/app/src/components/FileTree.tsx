@@ -123,6 +123,7 @@ import {
   applyProblemIndicators,
   FILE_TREE_PROBLEM_CSS,
   OK_PROBLEM_BADGE_ATTR,
+  OK_PROBLEM_ROW_ATTR,
 } from '@/components/file-tree-problem-indicators';
 import {
   applyRenameInputAffordance,
@@ -408,8 +409,15 @@ const FILE_TREE_CREATION_CLEARED_CSS = `
   }
 `;
 
+const FILE_TREE_NAME_FOREGROUND_CSS = `
+  [data-type="item"]:not([data-item-selected="true"]):not([data-item-git-status]):not([${OK_PROBLEM_ROW_ATTR}]) > [data-item-section="content"] {
+    color: var(--file-tree-foreground, var(--trees-fg));
+  }
+`;
+
 const FILE_TREE_UNSAFE_CSS = [
   OK_FILE_TREE_READONLY_UNSAFE_CSS,
+  FILE_TREE_NAME_FOREGROUND_CSS,
   FILE_TREE_PROBLEM_CSS,
   FILE_TREE_RENAME_INPUT_CSS,
   FILE_TREE_ROOT_DROP_CSS,
@@ -799,7 +807,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     reconcileLocalRemoval,
     reconcileLocalRename,
   } = useDocumentContext();
-  const { notifySidebarFileSelected } = useSidebar();
+  const { notifySidebarFileSelected, cover: filesCover } = useSidebar();
   const { resolvedTheme } = useTheme();
   const { addPage, pageMeta, pages } = usePageList();
   const { okignoreBinding, merged } = useConfigContext();
@@ -866,10 +874,13 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       | { kind: 'folder'; folderPath: string }
       | { kind: 'asset'; assetPath: string; entries?: readonly FileEntry[] },
   ) {
+    let editorDocName: string | null = null;
     if (target.kind === 'doc') {
       if (target.registerPage) addPage(target.docName);
-      openTarget(navigationTargetForDocument(target.docName, target.size), previewOpenOptions);
+      const resolved = navigationTargetForDocument(target.docName, target.size);
+      openTarget(resolved, previewOpenOptions);
       pushHashWithoutNavigation(hashFromDocName(target.docName));
+      if (resolved.kind === 'doc') editorDocName = resolved.docName;
     } else if (target.kind === 'folder') {
       openTarget(
         { kind: 'folder', target: target.folderPath, folderPath: target.folderPath },
@@ -893,7 +904,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       );
       pushHashWithoutNavigation(hashFromAssetPath(target.assetPath));
     }
-    notifySidebarFileSelected();
+    notifySidebarFileSelected(editorDocName);
   }
   function activateTreePath(
     treePath: string,
@@ -3002,7 +3013,10 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       const folderPath = treeDirectoryPathToFolderPath(path);
       if (wasSelected) {
         if (model.getSelectedPaths().length !== 1) return;
-        if (isSameHash(window.location.hash, hashFromFolderPath(folderPath))) return;
+        if (isSameHash(window.location.hash, hashFromFolderPath(folderPath))) {
+          if (filesCover) queueMicrotask(() => notifySidebarFileSelected());
+          return;
+        }
       }
       queueMicrotask(() => navigateWithPulse({ kind: 'folder', folderPath }));
       return;
@@ -3022,7 +3036,15 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     }
     const docName = treeFilePathToDocumentDocName(path, documentsRef.current);
     if (model.getSelectedPaths().length !== 1) return;
-    if (isSameHash(window.location.hash, hashFromDocName(docName))) return;
+    if (isSameHash(window.location.hash, hashFromDocName(docName))) {
+      if (filesCover) {
+        const resolved = navigationTargetForDocument(docName, undefined);
+        queueMicrotask(() =>
+          notifySidebarFileSelected(resolved.kind === 'doc' ? resolved.docName : null),
+        );
+      }
+      return;
+    }
     queueMicrotask(() => activateTreePath(path));
   }
 

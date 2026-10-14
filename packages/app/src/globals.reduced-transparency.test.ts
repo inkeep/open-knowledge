@@ -10,21 +10,21 @@ describe('globals.css — prefers-reduced-transparency revert', () => {
     expect(CSS).toMatch(/@media\s*\(\s*prefers-reduced-transparency:\s*reduce\s*\)\s*\{/);
   });
 
-  test('reverts html.electron-mode to a solid sidebar background', () => {
+  test('reverts html.electron-mode to a solid desk background', () => {
     expect(CSS).toMatch(
-      /@media\s*\(\s*prefers-reduced-transparency:\s*reduce\s*\)[\s\S]*?html\.electron-mode\s*\{[\s\S]*?background-color:\s*var\(--sidebar\)/,
+      /@media\s*\(\s*prefers-reduced-transparency:\s*reduce\s*\)[\s\S]*?html\.electron-mode\s*\{[\s\S]*?background-color:\s*var\(--desk\)/,
     );
   });
 
-  test('reverts html.electron-mode body to a solid sidebar background', () => {
+  test('reverts html.electron-mode body to a solid desk background', () => {
     expect(CSS).toMatch(
-      /@media\s*\(\s*prefers-reduced-transparency:\s*reduce\s*\)[\s\S]*?html\.electron-mode\s+body\s*\{[\s\S]*?background-color:\s*var\(--sidebar\)/,
+      /@media\s*\(\s*prefers-reduced-transparency:\s*reduce\s*\)[\s\S]*?html\.electron-mode\s+body\s*\{[\s\S]*?background-color:\s*var\(--desk\)/,
     );
   });
 
-  test('reverts the sidebar-wrapper data-slot to a solid sidebar background', () => {
+  test('reverts the sidebar-wrapper data-slot to a solid desk background', () => {
     expect(CSS).toMatch(
-      /@media\s*\(\s*prefers-reduced-transparency:\s*reduce\s*\)[\s\S]*?html\.electron-mode\s+\[data-slot="sidebar-wrapper"\]\s*\{[\s\S]*?background-color:\s*var\(--sidebar\)/,
+      /@media\s*\(\s*prefers-reduced-transparency:\s*reduce\s*\)[\s\S]*?html\.electron-mode\s+\[data-slot="sidebar-wrapper"\]\s*\{[\s\S]*?background-color:\s*var\(--desk\)/,
     );
   });
 
@@ -71,8 +71,9 @@ describe('globals.css — STOP rule preserved (inner surfaces stay opaque)', () 
     expect(block).not.toMatch(/--background\b/);
   });
 
-  test('@media block does not redeclare --sidebar (no cycle / no shadow)', () => {
+  test('@media block does not redeclare --sidebar or --desk (no cycle / no shadow)', () => {
     expect(block).not.toMatch(/--sidebar\s*:/);
+    expect(block).not.toMatch(/--desk\s*:/);
   });
 });
 

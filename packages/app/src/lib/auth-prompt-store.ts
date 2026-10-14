@@ -1,28 +1,30 @@
+export type AuthPromptStep = 'auth' | 'identity';
+
 export interface AuthPromptStore {
-  request(): void;
+  request(step?: AuthPromptStep): void;
   clear(): void;
-  getSnapshot(): boolean;
+  getSnapshot(): AuthPromptStep | null;
   subscribe(listener: () => void): () => void;
 }
 
 function createAuthPromptStore(): AuthPromptStore {
-  let pending = false;
+  let pending: AuthPromptStep | null = null;
   const listeners = new Set<() => void>();
 
-  function set(next: boolean): void {
+  function set(next: AuthPromptStep | null): void {
     if (pending === next) return;
     pending = next;
     for (const l of listeners) l();
   }
 
   return {
-    request(): void {
-      set(true);
+    request(step: AuthPromptStep = 'auth'): void {
+      set(step);
     },
     clear(): void {
-      set(false);
+      set(null);
     },
-    getSnapshot(): boolean {
+    getSnapshot(): AuthPromptStep | null {
       return pending;
     },
     subscribe(listener): () => void {

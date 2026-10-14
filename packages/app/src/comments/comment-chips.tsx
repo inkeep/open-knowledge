@@ -3,6 +3,7 @@
 import { graphemePrefix, graphemeSuffix } from '@inkeep/open-knowledge-core/utils/grapheme-clip';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { MessageSquare, X } from 'lucide-react';
+import { setPropertiesCollapsed } from '@/components/properties-collapsed-store';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -117,33 +118,32 @@ export function propertyAddress(key: string, path: readonly (string | number)[])
   return out;
 }
 
-export function revealThread(thread: CommentThread): void {
+export function revealThread(
+  thread: CommentThread,
+  onDestinationComplete?: (target: HTMLElement) => void,
+): void {
+  const { target, anchor } = thread;
+  if (target.kind === 'property') setPropertiesCollapsed(false);
+  const resolveTarget =
+    target.kind === 'property' && anchor !== null
+      ? () =>
+          revealPropertyValueRange({
+            key: target.key,
+            path: target.path,
+            quote: anchor.quote,
+            start: anchor.start,
+            end: anchor.end,
+          })
+      : undefined;
   revealComment({
     docName: thread.docName,
-    quote: thread.target.kind === 'property' ? '' : (thread.anchor?.quote ?? ''),
+    quote: target.kind === 'property' ? '' : (anchor?.quote ?? ''),
     threadId: thread.id,
-    context: thread.anchor ?? undefined,
+    context: anchor ?? undefined,
+    onDestinationComplete,
+    resolveTarget,
   });
-  const { target, anchor } = thread;
-  if (target.kind !== 'property' || anchor === null) return;
-  let attempts = 0;
-  const attempt = (): void => {
-    const done = revealPropertyValueRange({
-      key: target.key,
-      path: target.path,
-      quote: anchor.quote,
-      start: anchor.start,
-      end: anchor.end,
-    });
-    if (done) return;
-    attempts += 1;
-    if (attempts >= REVEAL_FRAME_BUDGET) return;
-    requestAnimationFrame(attempt);
-  };
-  requestAnimationFrame(attempt);
 }
-
-const REVEAL_FRAME_BUDGET = 30;
 
 export interface CommentBatchItem {
   docName: string;

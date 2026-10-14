@@ -6,7 +6,7 @@ import {
   setTerminalDockState,
 } from './state-store';
 import {
-  applyAgentPanelVisibilityUpdate,
+  applyDockVisibilityUpdate,
   commitTerminalDockState,
   resolveRestoredAgentPanelVisible,
 } from './terminal-dock-persistence';
@@ -137,13 +137,13 @@ describe('resolveRestoredAgentPanelVisible', () => {
   });
 });
 
-describe('applyAgentPanelVisibilityUpdate', () => {
+describe('applyDockVisibilityUpdate', () => {
   test('a level update is remembered for the window and persisted', () => {
     const rememberForWindow = vi.fn();
     const persist = vi.fn(() => ({ ok: true }) as const);
     const warnPersistFailed = vi.fn();
 
-    applyAgentPanelVisibilityUpdate({ rememberForWindow, persist, warnPersistFailed }, true);
+    applyDockVisibilityUpdate({ rememberForWindow, persist, warnPersistFailed }, true);
 
     expect(rememberForWindow).toHaveBeenCalledWith(true);
     expect(persist).toHaveBeenCalledWith(true);
@@ -155,7 +155,7 @@ describe('applyAgentPanelVisibilityUpdate', () => {
     const persist = vi.fn(() => ({ ok: false, reason: 'persist-failed' }) as const);
     const warnPersistFailed = vi.fn();
 
-    applyAgentPanelVisibilityUpdate({ rememberForWindow, persist, warnPersistFailed }, false);
+    applyDockVisibilityUpdate({ rememberForWindow, persist, warnPersistFailed }, false);
 
     expect(rememberForWindow).toHaveBeenCalledWith(false);
     expect(persist).toHaveBeenCalledWith(false);

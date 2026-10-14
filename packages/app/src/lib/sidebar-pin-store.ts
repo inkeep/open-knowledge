@@ -68,15 +68,24 @@ export function resolveEffectiveState(
   return pins[side]?.[currentPartition] ?? smartDefault(currentPartition);
 }
 
-export function applyToggle(
+export function applyToggleAtEveryWidth(
   side: SidebarSide,
-  currentPartition: Partition,
   newState: SidebarState,
   storage?: PinStorage,
 ): StoredPins {
   const s = storage ?? localStorage;
   const pins = readPins(s);
-  pins[side] = { ...pins[side], [currentPartition]: newState };
+  pins[side] = { above: newState, below: newState, embedded: newState };
   writePins(pins, s);
   return pins;
+}
+
+export function openIntentAfterPartitionChange(
+  side: SidebarSide,
+  partition: Partition,
+  pins: StoredPins,
+): boolean | undefined {
+  const pinned = pins[side]?.[partition];
+  if (pinned !== undefined) return pinned === 'open';
+  return smartDefault(partition) === 'open' ? true : undefined;
 }

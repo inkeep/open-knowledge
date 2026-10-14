@@ -13,6 +13,10 @@ import {
   writeDockSessionOrder,
 } from '@/lib/dock-session-persistence';
 import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
+import {
+  __resetPaneVisibilityStoreForTests,
+  paneVisibilityStore,
+} from '@/lib/pane-visibility-store';
 
 let openThreads: ThreadInfo[] = [];
 let connectionStatus: 'idle' | 'connecting' | 'open' | 'closed' = 'open';
@@ -166,12 +170,10 @@ vi.doMock('./EditorArea', () => ({
   EditorArea: ({
     agentsVisible,
     onAgentsVisibleChange,
-    onRevealAgents,
     onSessionPlacements,
   }: {
     agentsVisible?: boolean;
     onAgentsVisibleChange?: (visible: boolean) => void;
-    onRevealAgents?: () => void;
     onSessionPlacements?: (placements: unknown) => void;
   }) => {
     const [agentsContainer] = useState(() => document.createElement('div'));
@@ -192,10 +194,6 @@ vi.doMock('./EditorArea', () => ({
             onClick={() => onAgentsVisibleChange?.(false)}
           />
         </div>
-      );
-    if (onRevealAgents != null)
-      return (
-        <button type="button" data-testid="agents-reveal-tab" onClick={() => onRevealAgents()} />
       );
     return null;
   },
@@ -321,6 +319,7 @@ describe('EditorPane agents-panel reload visibility', () => {
   afterEach(() => {
     cleanup();
     delete (window as { okDesktop?: unknown }).okDesktop;
+    __resetPaneVisibilityStoreForTests();
   });
 
   test('web: a fresh mount restores a persisted open agents panel', async () => {
@@ -329,7 +328,7 @@ describe('EditorPane agents-panel reload visibility', () => {
     await renderPane(3);
 
     expect(screen.queryByTestId('agents-column')).not.toBeNull();
-    expect(screen.queryByTestId('agents-reveal-tab')).toBeNull();
+    expect(paneVisibilityStore.getSnapshot().agents?.open).toBe(true);
   });
 
   test('web: the reload roster snapshot does not reveal a panel persisted closed', async () => {
@@ -338,7 +337,7 @@ describe('EditorPane agents-panel reload visibility', () => {
     await renderPane(3);
 
     expect(screen.queryByTestId('agents-column')).toBeNull();
-    expect(screen.queryByTestId('agents-reveal-tab')).not.toBeNull();
+    expect(paneVisibilityStore.getSnapshot().agents?.open).toBe(false);
 
     await act(async () => {
       deliverRosterThreads([makeThread({ threadId: 't1' })]);
@@ -394,7 +393,7 @@ describe('EditorPane agents-panel reload visibility', () => {
       fireEvent.click(screen.getByTestId('agents-collapse'));
     });
 
-    expect(screen.queryByTestId('agents-reveal-tab')).not.toBeNull();
+    expect(paneVisibilityStore.getSnapshot().agents?.open).toBe(false);
 
     await act(async () => {
       pushLiveThreads([
@@ -412,7 +411,7 @@ describe('EditorPane agents-panel reload visibility', () => {
     await renderPane(3);
 
     expect(screen.queryByTestId('agents-column')).toBeNull();
-    expect(screen.queryByTestId('agents-reveal-tab')).not.toBeNull();
+    expect(paneVisibilityStore.getSnapshot().agents?.open).toBe(false);
 
     await act(async () => {
       deliverRosterThreads([makeThread({ threadId: 't1' })]);
@@ -428,7 +427,7 @@ describe('EditorPane agents-panel reload visibility', () => {
     await renderPane(6);
 
     expect(screen.queryByTestId('agents-column')).toBeNull();
-    expect(screen.queryByTestId('agents-reveal-tab')).not.toBeNull();
+    expect(paneVisibilityStore.getSnapshot().agents?.open).toBe(false);
 
     await act(async () => {
       deliverRosterThreads([makeThread({ threadId: 't1' })]);
@@ -483,17 +482,59 @@ describe('EditorPane agents-panel reload visibility', () => {
     expect(readPersistedAgentsPanelLevel()).toBe(false);
   });
 
-  test('web: revealing the agents panel persists the open level', async () => {
+  test('web: a header show and hide persist the agents-panel level', async () => {
     await renderPane(3);
 
     expect(readPersistedAgentsPanelLevel()).toBe(false);
 
     await act(async () => {
-      fireEvent.click(screen.getByTestId('agents-reveal-tab'));
+      paneVisibilityStore.request('agents', true);
     });
 
     expect(screen.queryByTestId('agents-column')).not.toBeNull();
     expect(readPersistedAgentsPanelLevel()).toBe(true);
+
+    await act(async () => {
+      paneVisibilityStore.request('agents', false);
+    });
+
+    expect(screen.queryByTestId('agents-column')).toBeNull();
+    expect(readPersistedAgentsPanelLevel()).toBe(false);
+  });
+
+  test('desktop: a header show during a pending dock restore reads closed first and survives settlement', async () => {
+    const pendingDockState = deferredDockState();
+    const viewMenuStates: Array<Record<string, unknown>> = [];
+    installDesktopBridge(() => pendingDockState.promise, {
+      onViewMenuStateChanged: (state) => viewMenuStates.push(state),
+    });
+
+    await renderPane(6);
+
+    expect(paneVisibilityStore.getSnapshot()).toEqual({
+      editor: { open: true, onScreen: true },
+      agents: { open: false, onScreen: false },
+      terminal: { open: false, onScreen: false },
+    });
+
+    await act(async () => {
+      paneVisibilityStore.request('agents', true);
+      paneVisibilityStore.request('terminal', true);
+    });
+
+    expect(screen.queryByTestId('agents-column')).not.toBeNull();
+
+    await act(async () => {
+      pendingDockState.resolve({ terminalVisible: false, agentPanelVisible: false });
+    });
+
+    expect(screen.queryByTestId('agents-column')).not.toBeNull();
+    expect(paneVisibilityStore.getSnapshot().agents?.open).toBe(true);
+    expect(paneVisibilityStore.getSnapshot().terminal?.open).toBe(true);
+    const levels = (key: string) =>
+      viewMenuStates.filter((state) => key in state).map((state) => state[key]);
+    expect(levels('agentPanelVisible').at(-1)).toBe(true);
+    expect(levels('terminalVisible').at(-1)).toBe(true);
   });
 
   test('desktop: a toggle during a pending dock restore survives settlement with the toggled level', async () => {
@@ -506,7 +547,7 @@ describe('EditorPane agents-panel reload visibility', () => {
     await renderPane(6);
 
     await act(async () => {
-      fireEvent.click(screen.getByTestId('agents-reveal-tab'));
+      paneVisibilityStore.request('agents', true);
     });
 
     expect(screen.queryByTestId('agents-column')).not.toBeNull();
@@ -586,7 +627,10 @@ describe('EditorPane agents-panel reload visibility', () => {
       expect(storeListeners.size).toBeGreaterThanOrEqual(6);
 
       expect(screen.queryByTestId('agents-column')).toBeNull();
-      expect(viewMenuStates).not.toContainEqual({ terminalVisible: false });
+      expect(viewMenuStates).not.toContainEqual({
+        terminalVisible: false,
+        wideIntent: { terminalVisible: false },
+      });
 
       await act(async () => {
         vi.advanceTimersByTime(5_000);
@@ -595,12 +639,22 @@ describe('EditorPane agents-panel reload visibility', () => {
       expect(
         warnSpy.mock.calls.some((call) =>
           String(call[0]).includes(
-            'dock-state restore exceeded its 5000ms bound; the agents panel and terminal start closed and only that un-restored level is withheld from the view menu and the dock record, so a later reveal or toggle still publishes',
+            'dock-state restore exceeded its 5000ms bound; the agents panel and terminal start closed and the editor starts shown until the read lands; a read that still lands reveals nothing, and hides the editor only when the saved layout had no pane open and the user has not chosen an editor level since mount; each level still unrestored is withheld from the view menu and the dock record, so a later reveal or toggle still publishes',
           ),
         ),
       ).toBe(true);
-      expect(viewMenuStates).not.toContainEqual({ terminalVisible: false });
-      expect(viewMenuStates).not.toContainEqual({ agentPanelVisible: false });
+      expect(viewMenuStates).not.toContainEqual({
+        terminalVisible: false,
+        wideIntent: { terminalVisible: false },
+      });
+      expect(viewMenuStates).not.toContainEqual({
+        agentPanelVisible: false,
+        wideIntent: { agentPanelVisible: false },
+      });
+      expect(viewMenuStates).not.toContainEqual({
+        editorVisible: true,
+        wideIntent: { editorVisible: true },
+      });
 
       await act(async () => {
         pushLiveThreads([
@@ -610,14 +664,23 @@ describe('EditorPane agents-panel reload visibility', () => {
       });
 
       expect(screen.queryByTestId('agents-column')).not.toBeNull();
-      expect(viewMenuStates).toContainEqual({ agentPanelVisible: true });
-      expect(viewMenuStates).not.toContainEqual({ terminalVisible: false });
+      expect(viewMenuStates).toContainEqual({
+        agentPanelVisible: true,
+        wideIntent: { agentPanelVisible: true },
+      });
+      expect(viewMenuStates).not.toContainEqual({
+        terminalVisible: false,
+        wideIntent: { terminalVisible: false },
+      });
 
       await act(async () => {
         hungDockState.resolve({ terminalVisible: true, agentPanelVisible: false });
       });
 
-      expect(viewMenuStates).not.toContainEqual({ terminalVisible: true });
+      expect(viewMenuStates).not.toContainEqual({
+        terminalVisible: true,
+        wideIntent: { terminalVisible: true },
+      });
       expect(screen.queryByTestId('agents-column')).not.toBeNull();
     } finally {
       vi.useRealTimers();
@@ -646,15 +709,35 @@ describe('EditorPane agents-panel reload visibility', () => {
         failingDockState.reject(new Error('dock-state ipc failed'));
       });
 
+      expect(
+        errorSpy.mock.calls.some((call) =>
+          String(call[0]).includes(
+            'dock-state restore failed; the agents panel and terminal start closed and the editor starts shown without its saved state applied;',
+          ),
+        ),
+      ).toBe(true);
       expect(viewMenuStates).toContainEqual({ terminalPlacement: 'bottom' });
-      expect(viewMenuStates).not.toContainEqual({ terminalVisible: false });
-      expect(viewMenuStates).not.toContainEqual({ agentPanelVisible: false });
-
-      await act(async () => {
-        fireEvent.click(screen.getByTestId('agents-reveal-tab'));
+      expect(viewMenuStates).not.toContainEqual({
+        terminalVisible: false,
+        wideIntent: { terminalVisible: false },
+      });
+      expect(viewMenuStates).not.toContainEqual({
+        agentPanelVisible: false,
+        wideIntent: { agentPanelVisible: false },
+      });
+      expect(viewMenuStates).not.toContainEqual({
+        editorVisible: true,
+        wideIntent: { editorVisible: true },
       });
 
-      expect(viewMenuStates).toContainEqual({ agentPanelVisible: true });
+      await act(async () => {
+        paneVisibilityStore.request('agents', true);
+      });
+
+      expect(viewMenuStates).toContainEqual({
+        agentPanelVisible: true,
+        wideIntent: { agentPanelVisible: true },
+      });
     } finally {
       errorSpy.mockRestore();
     }
@@ -679,20 +762,32 @@ describe('EditorPane agents-panel reload visibility', () => {
       await act(async () => {});
 
       await act(async () => {
-        fireEvent.click(screen.getByTestId('agents-reveal-tab'));
+        paneVisibilityStore.request('agents', true);
       });
       await act(async () => {
         fireEvent.click(screen.getByTestId('agents-collapse'));
       });
-      expect(viewMenuStates).not.toContainEqual({ agentPanelVisible: true });
-      expect(viewMenuStates).not.toContainEqual({ agentPanelVisible: false });
+      expect(viewMenuStates).not.toContainEqual({
+        agentPanelVisible: true,
+        wideIntent: { agentPanelVisible: true },
+      });
+      expect(viewMenuStates).not.toContainEqual({
+        agentPanelVisible: false,
+        wideIntent: { agentPanelVisible: false },
+      });
 
       await act(async () => {
         vi.advanceTimersByTime(5_000);
       });
 
-      expect(viewMenuStates).toContainEqual({ agentPanelVisible: false });
-      expect(viewMenuStates).not.toContainEqual({ terminalVisible: false });
+      expect(viewMenuStates).toContainEqual({
+        agentPanelVisible: false,
+        wideIntent: { agentPanelVisible: false },
+      });
+      expect(viewMenuStates).not.toContainEqual({
+        terminalVisible: false,
+        wideIntent: { terminalVisible: false },
+      });
     } finally {
       vi.useRealTimers();
       warnSpy.mockRestore();
@@ -717,19 +812,28 @@ describe('EditorPane agents-panel reload visibility', () => {
       await act(async () => {});
 
       await act(async () => {
-        fireEvent.click(screen.getByTestId('agents-reveal-tab'));
+        paneVisibilityStore.request('agents', true);
       });
       await act(async () => {
         fireEvent.click(screen.getByTestId('agents-collapse'));
       });
-      expect(viewMenuStates).not.toContainEqual({ agentPanelVisible: false });
+      expect(viewMenuStates).not.toContainEqual({
+        agentPanelVisible: false,
+        wideIntent: { agentPanelVisible: false },
+      });
 
       await act(async () => {
         failingDockState.reject(new Error('dock-state ipc failed'));
       });
 
-      expect(viewMenuStates).toContainEqual({ agentPanelVisible: false });
-      expect(viewMenuStates).not.toContainEqual({ terminalVisible: false });
+      expect(viewMenuStates).toContainEqual({
+        agentPanelVisible: false,
+        wideIntent: { agentPanelVisible: false },
+      });
+      expect(viewMenuStates).not.toContainEqual({
+        terminalVisible: false,
+        wideIntent: { terminalVisible: false },
+      });
     } finally {
       errorSpy.mockRestore();
     }
@@ -759,10 +863,13 @@ describe('EditorPane agents-panel reload visibility', () => {
       });
 
       await act(async () => {
-        fireEvent.click(screen.getByTestId('agents-reveal-tab'));
+        paneVisibilityStore.request('agents', true);
       });
 
-      expect(viewMenuStates).toContainEqual({ agentPanelVisible: true });
+      expect(viewMenuStates).toContainEqual({
+        agentPanelVisible: true,
+        wideIntent: { agentPanelVisible: true },
+      });
 
       const lateRejection = new Error('dock-state ipc failed after the deadline');
       await act(async () => {
@@ -780,7 +887,10 @@ describe('EditorPane agents-panel reload visibility', () => {
         fireEvent.click(screen.getByTestId('agents-collapse'));
       });
 
-      expect(viewMenuStates).toContainEqual({ agentPanelVisible: false });
+      expect(viewMenuStates).toContainEqual({
+        agentPanelVisible: false,
+        wideIntent: { agentPanelVisible: false },
+      });
     } finally {
       vi.useRealTimers();
       warnSpy.mockRestore();
@@ -807,19 +917,28 @@ describe('EditorPane agents-panel reload visibility', () => {
       await act(async () => {});
 
       await act(async () => {
-        fireEvent.click(screen.getByTestId('agents-reveal-tab'));
+        paneVisibilityStore.request('agents', true);
       });
 
       expect(screen.queryByTestId('agents-column')).not.toBeNull();
-      expect(viewMenuStates).not.toContainEqual({ agentPanelVisible: true });
+      expect(viewMenuStates).not.toContainEqual({
+        agentPanelVisible: true,
+        wideIntent: { agentPanelVisible: true },
+      });
 
       await act(async () => {
         vi.advanceTimersByTime(5_000);
       });
 
       expect(screen.queryByTestId('agents-column')).not.toBeNull();
-      expect(viewMenuStates).toContainEqual({ agentPanelVisible: true });
-      expect(viewMenuStates).not.toContainEqual({ agentPanelVisible: false });
+      expect(viewMenuStates).toContainEqual({
+        agentPanelVisible: true,
+        wideIntent: { agentPanelVisible: true },
+      });
+      expect(viewMenuStates).not.toContainEqual({
+        agentPanelVisible: false,
+        wideIntent: { agentPanelVisible: false },
+      });
     } finally {
       vi.useRealTimers();
       warnSpy.mockRestore();
@@ -844,18 +963,27 @@ describe('EditorPane agents-panel reload visibility', () => {
       await act(async () => {});
 
       await act(async () => {
-        fireEvent.click(screen.getByTestId('agents-reveal-tab'));
+        paneVisibilityStore.request('agents', true);
       });
 
-      expect(viewMenuStates).not.toContainEqual({ agentPanelVisible: true });
+      expect(viewMenuStates).not.toContainEqual({
+        agentPanelVisible: true,
+        wideIntent: { agentPanelVisible: true },
+      });
 
       await act(async () => {
         failingDockState.reject(new Error('dock-state ipc failed'));
       });
 
       expect(screen.queryByTestId('agents-column')).not.toBeNull();
-      expect(viewMenuStates).toContainEqual({ agentPanelVisible: true });
-      expect(viewMenuStates).not.toContainEqual({ agentPanelVisible: false });
+      expect(viewMenuStates).toContainEqual({
+        agentPanelVisible: true,
+        wideIntent: { agentPanelVisible: true },
+      });
+      expect(viewMenuStates).not.toContainEqual({
+        agentPanelVisible: false,
+        wideIntent: { agentPanelVisible: false },
+      });
     } finally {
       errorSpy.mockRestore();
     }
@@ -883,14 +1011,23 @@ describe('EditorPane agents-panel reload visibility', () => {
         emitLocalMenuAction('toggle-terminal');
       });
 
-      expect(viewMenuStates).not.toContainEqual({ terminalVisible: true });
+      expect(viewMenuStates).not.toContainEqual({
+        terminalVisible: true,
+        wideIntent: { terminalVisible: true },
+      });
 
       await act(async () => {
         vi.advanceTimersByTime(5_000);
       });
 
-      expect(viewMenuStates).toContainEqual({ terminalVisible: true });
-      expect(viewMenuStates).not.toContainEqual({ terminalVisible: false });
+      expect(viewMenuStates).toContainEqual({
+        terminalVisible: true,
+        wideIntent: { terminalVisible: true },
+      });
+      expect(viewMenuStates).not.toContainEqual({
+        terminalVisible: false,
+        wideIntent: { terminalVisible: false },
+      });
     } finally {
       vi.useRealTimers();
       warnSpy.mockRestore();

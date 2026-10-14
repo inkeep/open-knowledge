@@ -1,9 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { isMacOS } from '@tiptap/core';
 import type { ComponentProps, ReactNode } from 'react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { assetTabId, folderTabId, skillFileTabId } from '@/editor/editor-tabs';
+import {
+  __resetPaneVisibilityStoreForTests,
+  type PaneVisibilityRequest,
+  paneVisibilityStore,
+} from '@/lib/pane-visibility-store';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import {
   expectVisualClassTokens,
@@ -456,19 +461,15 @@ function resetState() {
 
 async function renderEditorTabs({
   dropIndicatorIndex = null,
-  reserveLeadingChrome = false,
+  leading,
 }: {
   dropIndicatorIndex?: number | null;
-  reserveLeadingChrome?: boolean;
+  leading?: ReactNode;
 } = {}) {
   const { EditorTabs } = await import('./EditorTabs');
   return render(
     <TooltipProvider>
-      <EditorTabs
-        dropIndicatorIndex={dropIndicatorIndex}
-        paneId="pane-a"
-        reserveLeadingChrome={reserveLeadingChrome}
-      />
+      <EditorTabs dropIndicatorIndex={dropIndicatorIndex} paneId="pane-a" leading={leading} />
     </TooltipProvider>,
   );
 }
@@ -896,17 +897,31 @@ describe('EditorTabs runtime behavior', () => {
     expectVisualClassTokens(newTabButton.className, ['[-webkit-app-region:no-drag]']);
   });
 
-  test('keeps restored-tab chrome alignment immediate', async () => {
-    const { container } = await renderEditorTabs({ reserveLeadingChrome: true });
+  test('a leading control sits in the tab row ahead of the tabs, as an ordinary row item', async () => {
+    const { container } = await renderEditorTabs({
+      leading: <button type="button">Files</button>,
+    });
+    const root = container.firstElementChild as HTMLElement;
+    const leading = screen.getByRole('button', { name: 'Files' });
+    const firstTab = container.querySelector('[data-editor-tab-sortable]') as HTMLElement;
+
+    expect(leading.parentElement).toBe(root);
+    expect(root.firstElementChild).toBe(leading);
+    expect(
+      leading.compareDocumentPosition(firstTab) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expectVisualClassTokens(root.className, ['flex', 'h-11', 'ps-2']);
+    expectVisualClassTokensAbsent(root.className, [
+      'pl-[calc(var(--editor-header-leading-offset,0px)+var(--editor-header-leading-width,0px)+0.5rem)]',
+      'pr-[var(--editor-header-trailing-width,0px)]',
+    ]);
+  });
+
+  test('without a leading control the row opens straight onto the tabs', async () => {
+    const { container } = await renderEditorTabs();
     const root = container.firstElementChild as HTMLElement;
 
-    expectVisualClassTokens(root.className, [
-      'pl-[calc(var(--editor-header-leading-offset,0px)+var(--editor-header-leading-width,0px)+0.5rem)]',
-    ]);
-    expectVisualClassTokensAbsent(root.className, [
-      'motion-safe:group-data-[sidebar-transition-ready]/editor-header:transition-[padding-left]',
-      'motion-safe:transition-[padding-left]',
-    ]);
+    expect(root.firstElementChild?.hasAttribute('data-editor-tab-overflow-root')).toBe(true);
   });
 
   test('keeps every tab kind at the same wider resting width whether active or inactive', async () => {
@@ -1564,6 +1579,59 @@ describe('EditorTabs runtime behavior', () => {
       'opacity-0',
       'group-hover:pointer-events-auto',
     ]);
+  });
+});
+
+describe('EditorTabs shortcuts with the editor hidden', () => {
+  beforeEach(() => {
+    resetState();
+    __resetPaneVisibilityStoreForTests();
+  });
+
+  afterEach(() => {
+    cleanup();
+    __resetPaneVisibilityStoreForTests();
+  });
+
+  test.each([
+    {
+      shortcut: 'tab-new',
+      keys: () => ({ key: 't', ...primaryShortcutModifier() }),
+      performs: openNewTab,
+    },
+    {
+      shortcut: 'tab-reopen-closed',
+      keys: () => ({ key: 'T', shiftKey: true, ...primaryShortcutModifier() }),
+      performs: reopenClosedTab,
+    },
+    { shortcut: 'tab-next', keys: () => ({ key: 'Tab', ctrlKey: true }), performs: activateTab },
+    {
+      shortcut: 'tab-previous',
+      keys: () => ({ key: 'Tab', ctrlKey: true, shiftKey: true }),
+      performs: activateTab,
+    },
+    {
+      shortcut: 'jump to tab 1',
+      keys: () => ({ key: '1', ...primaryShortcutModifier() }),
+      performs: activateTab,
+    },
+  ])('$shortcut shows a hidden editor before acting', async ({ keys, performs }) => {
+    const log: Array<PaneVisibilityRequest | 'act'> = [];
+    paneVisibilityStore.subscribeRequests((request) => log.push(request));
+    paneVisibilityStore.publish({
+      editor: { open: false, onScreen: false },
+      agents: null,
+      terminal: null,
+    });
+    performs.mockImplementation(() => log.push('act'));
+    onTestFinished(() => {
+      performs.mockReset();
+    });
+    await renderEditorTabs();
+
+    fireEvent.keyDown(window, keys());
+
+    expect(log).toEqual([{ pane: 'editor', open: true }, 'act']);
   });
 });
 

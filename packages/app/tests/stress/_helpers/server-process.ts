@@ -319,7 +319,9 @@ export async function waitForBoundViteEndpoint(
   return { port: receipt.port, baseURL };
 }
 
-function endpointBaseURL(receipt: TestServerStartupReceipt): string {
+export function endpointBaseURL(
+  receipt: Pick<TestServerStartupReceipt, 'address' | 'family' | 'port'>,
+): string {
   return `http://${receipt.family === 'IPv6' ? `[${receipt.address}]` : receipt.address}:${receipt.port}`;
 }
 
@@ -369,7 +371,7 @@ async function assertViteStartupIdentity(
   }
 }
 
-function describeExit(proc: ChildProcess): string {
+export function describeExit(proc: ChildProcess): string {
   return proc.signalCode === null ? `with code ${proc.exitCode}` : `on ${proc.signalCode}`;
 }
 

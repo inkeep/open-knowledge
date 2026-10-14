@@ -86,6 +86,7 @@ export interface LintNavDetail {
   column: number;
   source?: string;
   frontmatterScope?: FrontmatterScope;
+  onNavigated?: (target: HTMLElement) => void;
 }
 
 export const LINT_NAV_EVENT = 'open-knowledge:lint-nav';
@@ -462,6 +463,8 @@ export function ProblemsPanel({
   onAutoFix,
   onAskAi,
   onFixWithAi,
+  onDestinationComplete,
+  onDestinationRequested,
 }: {
   docName: string;
   diagnostics: DiagnosticLike[];
@@ -471,6 +474,13 @@ export function ProblemsPanel({
   onAutoFix?: () => void;
   onAskAi?: (diagnostic: DiagnosticLike) => void;
   onFixWithAi?: (scope: PanelScope) => void;
+  onDestinationComplete?: (target: HTMLElement) => void;
+  onDestinationRequested?: (
+    docName: string,
+    allowMissing?: boolean,
+    onReady?: () => void,
+    completion?: 'synced' | 'navigated',
+  ) => void;
 }) {
   const { t } = useLingui();
   const panelRef = useRef<HTMLElement>(null);
@@ -606,7 +616,7 @@ export function ProblemsPanel({
   useEffect(() => subscribeToProjectFixSweepSettled(() => onSweepSettledRef.current()), []);
 
   function handleNav(diagnostic: DiagnosticLike) {
-    const detail = lintNavDetailOf(docName, diagnostic);
+    const detail = { ...lintNavDetailOf(docName, diagnostic), onNavigated: onDestinationComplete };
     rememberPendingSourceNavigation(docName, { kind: 'lint', detail });
     window.dispatchEvent(new CustomEvent(LINT_NAV_EVENT, { detail }));
   }
@@ -617,10 +627,22 @@ export function ProblemsPanel({
       handleNav(diagnostic);
       return;
     }
+    const detail = {
+      ...lintNavDetailOf(targetDocName, diagnostic),
+      onNavigated: onDestinationComplete,
+    };
     rememberPendingSourceNavigation(targetDocName, {
       kind: 'lint',
-      detail: lintNavDetailOf(targetDocName, diagnostic),
+      detail,
     });
+    onDestinationRequested?.(
+      targetDocName,
+      false,
+      () => {
+        window.dispatchEvent(new CustomEvent(LINT_NAV_EVENT, { detail }));
+      },
+      'navigated',
+    );
     window.location.hash = hashFromDocName(targetDocName);
   }
 

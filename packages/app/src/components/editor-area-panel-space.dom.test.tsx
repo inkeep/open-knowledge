@@ -6,6 +6,8 @@ import {
   describeRailFloorShortfall,
   describeRailWidthShortfall,
   findRailPanelGroup,
+  reportUnexpectedPanelGroupFailure,
+  resolveInnerRowChromePx,
   resolveRailPanelSpace,
   resolveRailPanelSpacePx,
 } from './editor-area-panel-space';
@@ -83,6 +85,47 @@ function buildRailContainer(panelIds: readonly string[]): HTMLElement {
 afterEach(() => {
   cleanup();
   document.body.replaceChildren();
+});
+
+describe('a panel library failure is reported only when it is not the library still registering', () => {
+  function warningsFor(error: unknown, context?: Record<string, unknown>): unknown[] {
+    const warnings: unknown[] = [];
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((message: unknown) => {
+      warnings.push(JSON.parse(String(message)));
+    });
+    reportUnexpectedPanelGroupFailure('panel-resize-failed', error, context);
+    warnSpy.mockRestore();
+    return warnings;
+  }
+
+  test.each([
+    'Could not find Group with id ":r1:"',
+    'Group :r1: not found',
+    'Layout not found for Panel terminal-dock-panel',
+    'Panel constraints not found for Panel terminal-dock-panel',
+  ])('%s is expected and stays quiet', (message) => {
+    expect(warningsFor(new Error(message))).toEqual([]);
+  });
+
+  test.each<[string, unknown, string]>([
+    ['an unrelated error', new Error('size out of range'), 'size out of range'],
+    ['a message that only mentions not found', new Error('Panel not found'), 'Panel not found'],
+    ['a thrown non-Error', 'layout exploded', 'layout exploded'],
+  ])('%s is reported with its event and message', (_label, error, message) => {
+    expect(warningsFor(error)).toEqual([{ event: 'panel-resize-failed', error: message }]);
+  });
+
+  test('context adds fields but never replaces the event or the error', () => {
+    expect(
+      warningsFor(new Error('size out of range'), {
+        event: 'renamed',
+        error: 'masked',
+        decision: 'sync-rail-columns',
+      }),
+    ).toEqual([
+      { event: 'panel-resize-failed', error: 'size out of range', decision: 'sync-rail-columns' },
+    ]);
+  });
 });
 
 describe('rail panel space is the sum of the panels, not an estimate from one of them', () => {
@@ -521,5 +564,54 @@ describe('the markers the resolver keys on are the ones the panel library guaran
     expect(panelSpacePx).toBe(1200);
 
     expect(resolveRailPanelSpacePx(container)).toBeCloseTo(panelSpacePx, 6);
+  });
+});
+
+describe('the inner row chrome is measured against the outer column that holds the inner row', () => {
+  const INNER_PANEL_SPACE_PX = 700;
+
+  function renderEditorRows() {
+    const view = render(
+      <div data-editor-area-panels="">
+        <ResizablePanelGroup orientation="horizontal">
+          <ResizablePanel defaultSize="60%">
+            <div data-editor-inner-panels="">
+              <ResizablePanelGroup orientation="horizontal">
+                <ResizablePanel defaultSize="60%" />
+                <ResizableHandle />
+                <ResizablePanel id="doc-panel" defaultSize="40%" />
+              </ResizablePanelGroup>
+            </div>
+          </ResizablePanel>
+          <ResizableHandle />
+          <ResizablePanel id="agents-column" defaultSize="40%" />
+        </ResizablePanelGroup>
+      </div>,
+    );
+    const outer = view.container.querySelector('[data-editor-area-panels]');
+    const inner = view.container.querySelector('[data-editor-inner-panels]');
+    if (!(outer instanceof HTMLElement) || !(inner instanceof HTMLElement)) {
+      throw new Error('editor rows not rendered');
+    }
+    return { outer, inner };
+  }
+
+  test('the column the library rendered with a generated id yields the width around the inner panels', () => {
+    const { outer, inner } = renderEditorRows();
+    const group = findRailPanelGroup(outer);
+    if (group == null) throw new Error('outer panel group not found');
+    expect(railPanels(group)[0]?.id).not.toBe('');
+    stubPanelWidths(outer, [INNER_PANEL_SPACE_PX + SEPARATOR_WIDTH_PX, 400]);
+
+    expect(resolveInnerRowChromePx(outer, inner, INNER_PANEL_SPACE_PX)).toBe(SEPARATOR_WIDTH_PX);
+  });
+
+  test('an inner row outside every outer column refuses instead of reading as zero chrome', () => {
+    const { outer } = renderEditorRows();
+    const strayInner = document.createElement('div');
+    document.body.append(strayInner);
+    stubPanelWidths(outer, [INNER_PANEL_SPACE_PX, 400]);
+
+    expect(resolveInnerRowChromePx(outer, strayInner, INNER_PANEL_SPACE_PX)).toBeNull();
   });
 });

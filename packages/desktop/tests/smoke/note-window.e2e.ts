@@ -12,7 +12,7 @@ import {
   SMOKE_ENABLED,
   userDataDirFor,
 } from './_helpers/platform-gate';
-import { expect, test } from './_helpers/smoke-test';
+import { expect, type SmokeFixtures, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
 
@@ -157,6 +157,18 @@ function track(...paths: string[]): void {
   cleanup.push(...paths);
 }
 
+function registerAppCleanup(
+  captureStderrFor: SmokeFixtures['captureStderrFor'],
+  app: ElectronApplication,
+  s: Seed,
+): void {
+  captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+  for (const path of [s.tmpHome, s.projectDir]) {
+    const index = cleanup.indexOf(path);
+    if (index >= 0) cleanup.splice(index, 1);
+  }
+}
+
 test.describe('Popped-out note window — live Electron', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!PLATFORM_SUPPORTED, PLATFORM_SKIP_REASON);
@@ -175,10 +187,11 @@ test.describe('Popped-out note window — live Electron', () => {
     const s = seed('open');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    registerAppCleanup(captureStderrFor, app, s);
     const editor = await findWindowByMode(app, 'editor');
     await configureDesktopGitRepositories(editor, s.projectDir);
     await openDocument(editor, 'start');
+    await expect(editor.getByTestId('header-pane-button-agents')).toBeVisible();
 
     await popOutFrom(app, editor);
     const note = await findWindowByMode(app, 'note');
@@ -190,8 +203,9 @@ test.describe('Popped-out note window — live Electron', () => {
     await expect(note.locator('[data-sidebar="trigger"]')).toHaveCount(0);
     await expect(note.locator('[data-editor-tab-scroll]')).toHaveCount(0);
     await expect(note.locator('[data-doc-panel-toggle]')).toHaveCount(0);
-    await expect(note.getByRole('button', { name: 'Open agents panel' })).toHaveCount(0);
     await expect(note.getByRole('button', { name: 'Resources' })).toHaveCount(0);
+    await expect(note.locator('[data-testid^="header-pane-"]')).toHaveCount(0);
+    await expect(note.getByRole('group', { name: 'Panels', exact: true })).toHaveCount(0);
     await expect(note.locator('[data-note-window-mode-toggle]')).toBeVisible();
 
     const noteWindow = await app.browserWindow(note);
@@ -229,7 +243,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const s = seed('handoff');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    registerAppCleanup(captureStderrFor, app, s);
     const editor = await findWindowByMode(app, 'editor');
     await configureDesktopGitRepositories(editor, s.projectDir);
     await openDocument(editor, 'start');
@@ -284,14 +298,16 @@ test.describe('Popped-out note window — live Electron', () => {
       ),
     ).toEqual({ ok: true });
     await expect(editorBody(editor)).toContainText('Second', { timeout: 15_000 });
-    await expect(editor.locator('#doc-panel')).toBeVisible({ timeout: 15_000 });
+    await expect(editor.locator('[role="tabpanel"]#panel-comments')).toBeVisible({
+      timeout: 15_000,
+    });
   });
 
   test('edits cross both live editor UIs in one app instance', async ({ captureStderrFor }) => {
     const s = seed('sync');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    registerAppCleanup(captureStderrFor, app, s);
     const editor = await findWindowByMode(app, 'editor');
     await configureDesktopGitRepositories(editor, s.projectDir);
     await openDocument(editor, 'start');
@@ -315,7 +331,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const s = seed('dedup');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    registerAppCleanup(captureStderrFor, app, s);
     const editor = await findWindowByMode(app, 'editor');
     await configureDesktopGitRepositories(editor, s.projectDir);
     await openDocument(editor, 'start');
@@ -334,7 +350,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const s = seed('menu');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    registerAppCleanup(captureStderrFor, app, s);
     const editor = await findWindowByMode(app, 'editor');
     await configureDesktopGitRepositories(editor, s.projectDir);
     await openDocument(editor, 'start');
@@ -373,7 +389,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const s = seed('cascade');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    registerAppCleanup(captureStderrFor, app, s);
     const editor = await findWindowByMode(app, 'editor');
     await configureDesktopGitRepositories(editor, s.projectDir);
     await openDocument(editor, 'start');
@@ -408,7 +424,7 @@ test.describe('Popped-out note window — live Electron', () => {
     await first.close();
 
     const second = await launchApp(s, { deepLink: false });
-    captureStderrFor(second, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    registerAppCleanup(captureStderrFor, second, s);
 
     const restored = await findWindowByMode(second, 'note', 30_000);
     expect(await restored.evaluate(() => window.okDesktop?.config.projectPath)).toBe(s.projectDir);

@@ -25,7 +25,7 @@ export function userDataDirFor(tmpHome: string): string {
 export const SPEC_PLATFORM_GATES = {
   'agent-patch-divergence-probe.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'background-throttle.e2e.ts': ['!PLATFORM_SUPPORTED'],
-  'cold-single-file-launch.e2e.ts': ['!DARWIN'],
+  'cold-single-file-launch.e2e.ts': ['!DARWIN', '!DARWIN'],
   'consent-dialog.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'create-new-project.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'deep-link.e2e.ts': ['!DARWIN'],
@@ -43,7 +43,6 @@ export const SPEC_PLATFORM_GATES = {
   'share-receive-miss-terminal.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'share-receive-multi-worktree.e2e.ts': ['!DARWIN'],
   'sidebar-create-rename-editable.e2e.ts': ['!DARWIN'],
-  'sidebar-pill-lockstep-fade.e2e.ts': ['!DARWIN'],
   'skill-scope-roundtrip.e2e.ts': ['!DARWIN'],
   'skills-studio.e2e.ts': ['!DARWIN'],
   'slidev-render-readiness.e2e.ts': ['!PLATFORM_SUPPORTED'],

@@ -92,7 +92,7 @@ export function TextViewer({ fileName, extension, ...source }: TextViewerProps) 
   }
 
   return (
-    <main
+    <section
       className="flex h-full min-h-0 flex-col bg-background"
       aria-label={fileName}
       data-text-viewer=""
@@ -100,6 +100,6 @@ export function TextViewer({ fileName, extension, ...source }: TextViewerProps) 
       data-text-viewer-extension={extension}
     >
       <div ref={containerRef} className="min-h-0 flex-1 overflow-auto" />
-    </main>
+    </section>
   );
 }

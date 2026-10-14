@@ -293,9 +293,25 @@ describe('useThemeBridge (Tier-3 mount)', () => {
     expect(stubBridge.setThemeSourceCalls[1]).toBe('dark');
   });
 
-  test('reports chrome as hex even when the token is authored in a syntax Electron cannot parse', async () => {
-    document.documentElement.style.setProperty('--sidebar', 'oklch(0.985 0 0)');
-    document.documentElement.style.setProperty('--sidebar-foreground', 'oklch(0.145 0 0)');
+  test('reports the desk, not the file list surface, as the hex window chrome colour', async () => {
+    const tokens = {
+      '--sidebar': 'rgb(250, 250, 250)',
+      '--desk': 'rgb(245, 245, 245)',
+      '--sidebar-foreground': 'rgb(10, 10, 10)',
+    };
+    for (const [name, value] of Object.entries(tokens)) {
+      document.documentElement.style.setProperty(name, value);
+    }
+    const computedStyle = window.getComputedStyle.bind(window);
+    const resolveVarReferences = vi
+      .spyOn(window, 'getComputedStyle')
+      .mockImplementation((element, pseudo) => {
+        const style = computedStyle(element, pseudo);
+        const token = /^var\((--[\w-]+)\)$/.exec(style.backgroundColor)?.[1];
+        if (token === undefined) return style;
+        const value = document.documentElement.style.getPropertyValue(token).trim();
+        return { backgroundColor: value || 'rgba(0, 0, 0, 0)' } as CSSStyleDeclaration;
+      });
     const stubBridge = makeStubBridge();
     try {
       render(
@@ -311,14 +327,15 @@ describe('useThemeBridge (Tier-3 mount)', () => {
         },
         { timeout: ASYNC_EFFECT_TIMEOUT_MS },
       );
-      const chrome = stubBridge.signalThemeAppliedCalls[0]?.chrome;
-      if (chrome) {
-        expect(chrome.bg).toMatch(/^#[0-9a-f]{6}$/);
-        expect(chrome.symbol).toMatch(/^#[0-9a-f]{6}$/);
-      }
+      expect(stubBridge.signalThemeAppliedCalls[0]?.chrome).toEqual({
+        bg: '#f5f5f5',
+        symbol: '#0a0a0a',
+      });
     } finally {
-      document.documentElement.style.removeProperty('--sidebar');
-      document.documentElement.style.removeProperty('--sidebar-foreground');
+      resolveVarReferences.mockRestore();
+      for (const name of Object.keys(tokens)) {
+        document.documentElement.style.removeProperty(name);
+      }
     }
   });
 

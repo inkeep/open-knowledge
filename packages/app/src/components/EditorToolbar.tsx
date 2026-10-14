@@ -9,24 +9,16 @@ import { isEditableTextDocFile } from '@inkeep/open-knowledge-core/constants/cod
 import { isExcalidrawDocFile } from '@inkeep/open-knowledge-core/constants/upload';
 import type { LintDiagnostic } from '@inkeep/open-knowledge-core/markdown/lint';
 import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
-import { useLingui } from '@lingui/react/macro';
-import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 import { AddPropertiesButton } from '@/components/AddPropertiesButton';
-import { Button } from '@/components/ui/button.tsx';
-import { Kbd } from '@/components/ui/kbd';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { EditorModeValue } from '@/editor/use-editor-mode.ts';
 import { useConfigContextOptional } from '@/lib/config-context';
-import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
-import { isNoteWindow } from '@/lib/note-window-mode';
 import {
   NO_RESERVED_KEYS,
   SKILL_RESERVED_KEYS,
   withoutReservedProperties,
 } from '@/lib/reserved-property-keys';
-import { cn } from '@/lib/utils';
 import { EditorBreadcrumb } from './EditorBreadcrumb';
 import { EditorModeToggle } from './EditorModeToggle';
 import { NotInSidebarIndicator } from './NotInSidebarIndicator';
@@ -55,9 +47,6 @@ interface EditorToolbarProps {
   showAddPropertyButton: boolean;
   onAddProperty: () => void;
   frontmatterProblems?: readonly LintDiagnostic[];
-  isPanelCollapsed: boolean;
-  onTogglePanel: () => void;
-  reserveRightGutter?: boolean;
 }
 
 export function EditorToolbar({
@@ -69,15 +58,8 @@ export function EditorToolbar({
   showAddPropertyButton,
   onAddProperty,
   frontmatterProblems = NO_FRONTMATTER_PROBLEMS,
-  isPanelCollapsed,
-  onTogglePanel,
-  reserveRightGutter = false,
 }: EditorToolbarProps) {
-  const { t } = useLingui();
   const slidesPluginEnabled = useConfigContextOptional()?.merged?.slides?.enabled === true;
-  const panelShortcut = formatShortcut('toggle-document-panel');
-  const panelShortcutLabel = formatShortcutLabel('toggle-document-panel');
-  const showPanelToggle = !isNoteWindow();
   const managed = activeDocName ? parseManagedArtifactName(activeDocName) : null;
   const projectSkillName = activeDocName ? parseProjectSkillContentDocName(activeDocName) : null;
   const activeSkill: { scope: SkillScope; name: string } | null =
@@ -135,12 +117,7 @@ export function EditorToolbar({
         </div>
       </div>
       {}
-      <div
-        className={cn(
-          'pointer-events-auto absolute top-0 right-0 flex min-w-0 max-w-[calc(50%_-_3rem)] items-center justify-end gap-1 py-2 pr-2',
-          reserveRightGutter && 'pr-9',
-        )}
-      >
+      <div className="pointer-events-auto absolute top-0 right-0 flex min-w-0 max-w-[calc(50%_-_3rem)] items-center justify-end gap-1 py-2 pr-2">
         {activeSkill && activeDocName ? (
           <Suspense fallback={null}>
             <SkillToolbarControls
@@ -168,32 +145,6 @@ export function EditorToolbar({
           <Suspense fallback={null}>
             <SlidesToolbarControls provider={activeProvider} docName={activeDocName} />
           </Suspense>
-        ) : null}
-        {showPanelToggle ? (
-          <Tooltip>
-            <Button
-              data-doc-panel-toggle=""
-              variant="ghost"
-              size="icon"
-              onClick={onTogglePanel}
-              aria-expanded={!isPanelCollapsed}
-              aria-controls="doc-panel"
-              aria-label={
-                isPanelCollapsed
-                  ? t`Show panel (${panelShortcutLabel})`
-                  : t`Hide panel (${panelShortcutLabel})`
-              }
-              asChild
-            >
-              <TooltipTrigger>
-                {isPanelCollapsed ? <PanelRightOpen /> : <PanelRightClose />}
-              </TooltipTrigger>
-            </Button>
-            <TooltipContent side="bottom">
-              <span>{isPanelCollapsed ? t`Show panel` : t`Hide panel`}</span>{' '}
-              <Kbd aria-label={panelShortcutLabel}>{panelShortcut}</Kbd>
-            </TooltipContent>
-          </Tooltip>
         ) : null}
       </div>
       <div

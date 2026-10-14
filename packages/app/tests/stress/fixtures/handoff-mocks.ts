@@ -8,11 +8,17 @@ export interface InstallMap {
   readonly cursor: boolean;
 }
 
+export interface HeldDockState {
+  readonly terminalVisible: boolean;
+  readonly agentPanelVisible: boolean;
+}
+
 export interface HandoffMockConfig {
   readonly host: 'electron' | 'web';
   readonly install: InstallMap;
   readonly workerBaseURL: string;
   readonly workerContentDir: string;
+  readonly heldDockState?: HeldDockState;
   readonly initialConnectionSnapshot?: HostSnapshot;
 }
 
@@ -31,6 +37,7 @@ export interface CapturedHandoff {
     readonly workspacePath?: string;
   }>;
   readonly recordHandoffCalls: ReadonlyArray<Record<string, unknown>>;
+  readonly terminalCreateCalls: ReadonlyArray<Record<string, unknown>>;
 }
 
 function connectedAgentSnapshot(): HostSnapshot {
@@ -116,7 +123,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
 
   await page.addInitScript((args) => {
     const init = args as HandoffMockInitConfig;
-    const { host, install, workerBaseURL, workerContentDir } = init;
+    const { host, install, workerBaseURL, workerContentDir, heldDockState } = init;
 
     interface HandoffApiCall {
       target: string;
@@ -129,19 +136,29 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
       detectProtocolCalls: string[];
       handoffApiCalls: HandoffApiCall[];
       recordHandoffCalls: Record<string, unknown>[];
+      terminalCreateCalls: Record<string, unknown>[];
       install: { claude: boolean; codex: boolean; cursor: boolean };
       fakeTimeOffset: number;
       installedAgentsFetchResolved: boolean;
+      dockStateRequests: number;
+      releaseDockState: () => void;
     }
+    let releaseDockState = (): void => {};
+    const dockStateReleased = new Promise<void>((resolve) => {
+      releaseDockState = resolve;
+    });
     const mocks: HandoffMocksState = {
       anchorClicks: [],
       openExternalCalls: [],
       detectProtocolCalls: [],
       handoffApiCalls: [],
       recordHandoffCalls: [],
+      terminalCreateCalls: [],
       install: { ...install },
       fakeTimeOffset: 0,
       installedAgentsFetchResolved: false,
+      dockStateRequests: 0,
+      releaseDockState,
     };
     // biome-ignore lint/suspicious/noExplicitAny: test-only global attachment.
     (window as any).__handoffMocks__ = mocks;
@@ -529,7 +546,10 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           collapseAll: (_cb: () => void) => () => {},
         },
         terminal: {
-          create: async () => ({ ok: true as const, ptyId: 'mock-pty' }),
+          create: async (options: Record<string, unknown>) => {
+            mocks.terminalCreateCalls.push({ ...options });
+            return { ok: true as const, ptyId: 'mock-pty' };
+          },
           input: () => {},
           resize: () => {},
           kill: async () => {},
@@ -539,7 +559,14 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           start: async () => ({ ok: true as const, replay: '' }),
           setMeta: () => {},
           setOrder: () => {},
-          getDockState: async () => ({ terminalVisible: false, agentPanelVisible: false }),
+          getDockState: async () => {
+            mocks.dockStateRequests += 1;
+            if (heldDockState === undefined) {
+              return { terminalVisible: false, agentPanelVisible: false };
+            }
+            await dockStateReleased;
+            return { ...heldDockState };
+          },
           setDockState: async () => ({ ok: true as const }),
           onData: () => () => {},
           onExit: () => () => {},
@@ -591,6 +618,7 @@ export async function readCapturedHandoff(page: Page): Promise<CapturedHandoff> 
       detectProtocolCalls: string[];
       handoffApiCalls: { target: string; url: string; workspacePath?: string }[];
       recordHandoffCalls: Record<string, unknown>[];
+      terminalCreateCalls: Record<string, unknown>[];
     };
     return {
       anchorClicks: [...mocks.anchorClicks],
@@ -598,6 +626,7 @@ export async function readCapturedHandoff(page: Page): Promise<CapturedHandoff> 
       detectProtocolCalls: [...mocks.detectProtocolCalls],
       handoffApiCalls: mocks.handoffApiCalls.map((c) => ({ ...c })),
       recordHandoffCalls: mocks.recordHandoffCalls.map((l) => ({ ...l })),
+      terminalCreateCalls: mocks.terminalCreateCalls.map((call) => ({ ...call })),
     };
   });
 }
@@ -619,6 +648,20 @@ export async function updateWebInstallMap(page: Page, install: InstallMap): Prom
       body: JSON.stringify(install),
     });
   });
+}
+
+export async function releaseHeldDockState(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    // biome-ignore lint/suspicious/noExplicitAny: test-only global attachment.
+    (window as any).__handoffMocks__.releaseDockState();
+  });
+}
+
+export async function readDockStateRequests(page: Page): Promise<number> {
+  return await page.evaluate(
+    // biome-ignore lint/suspicious/noExplicitAny: test-only global attachment.
+    () => (window as any).__handoffMocks__.dockStateRequests as number,
+  );
 }
 
 export async function advanceHandoffFakeTime(page: Page, ms: number): Promise<void> {

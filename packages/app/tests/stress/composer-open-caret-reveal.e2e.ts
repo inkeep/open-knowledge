@@ -10,7 +10,7 @@ import {
   type FullPageCmHost,
   SCROLL_PIN_SLACK_PX,
 } from '../../src/editor/document-scrollports';
-import { expect, test, toggleMode } from './_helpers';
+import { acpCatalogBody, expect, test, toggleMode } from './_helpers';
 
 const COMPOSER_CARD = '[data-testid="bottom-composer"] > div';
 const WYSIWYG_SCROLLPORT = '[data-testid="editor-scroll-container"]';
@@ -531,6 +531,9 @@ function assertCaretRevealed(result: CaseResult): void {
   ).toBeLessThanOrEqual(CARET_REVEAL_GAP_PX + (result.after.bottom - result.after.top));
 }
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/acp/catalog', (route) => route.fulfill({ json: acpCatalogBody([]) }));
+});
 test.describe('opening the Ask AI composer reveals the caret it would otherwise bury', () => {
   test.setTimeout(CASE_TIMEOUT_MS);
 

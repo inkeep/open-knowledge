@@ -64,6 +64,7 @@ import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { skillEntryLiveDocName } from '@/lib/managed-artifact-doc-name';
 import { openDocInNoteWindow } from '@/lib/open-note-window';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
+import { revealEditorBeforeActing } from '@/lib/reveal-editor';
 import { cn } from '@/lib/utils';
 import {
   type EditorTabDragData,
@@ -687,16 +688,14 @@ interface EditorTabsProps {
   dropIndicatorIndex?: number | null;
   paneId: string;
   onSplitComplete?: (paneId: string, tabId: string) => void;
-  reserveLeadingChrome?: boolean;
-  reserveTrailingChrome?: boolean;
+  leading?: ReactNode;
 }
 
 export function EditorTabs({
   dropIndicatorIndex = null,
   paneId,
   onSplitComplete,
-  reserveLeadingChrome = false,
-  reserveTrailingChrome = false,
+  leading,
 }: EditorTabsProps) {
   const { t } = useLingui();
   const context = useDocumentContext();
@@ -866,21 +865,25 @@ export function EditorTabs({
 
       if (matchesKeyboardShortcut(event, 'tab-new')) {
         event.preventDefault();
+        revealEditorBeforeActing();
         context.openNewTabInPane(resolvedPaneId);
         return;
       }
       if (matchesKeyboardShortcut(event, 'tab-reopen-closed')) {
         event.preventDefault();
+        revealEditorBeforeActing();
         reopenClosedTab();
         return;
       }
       if (matchesKeyboardShortcut(event, 'tab-next')) {
         event.preventDefault();
+        revealEditorBeforeActing();
         activateTabByOffset(1);
         return;
       }
       if (matchesKeyboardShortcut(event, 'tab-previous')) {
         event.preventDefault();
+        revealEditorBeforeActing();
         activateTabByOffset(-1);
         return;
       }
@@ -888,6 +891,7 @@ export function EditorTabs({
       const jumpIndex = jumpTabIndexFromShortcut(event, currentVisibleTabIds.length);
       if (jumpIndex === null) return;
       event.preventDefault();
+      revealEditorBeforeActing();
       activateVisibleTab(currentVisibleTabIds[jumpIndex]);
     }
 
@@ -954,14 +958,11 @@ export function EditorTabs({
       data-editor-pane-tabs={resolvedPaneId}
       data-electron-drag={isElectronHost ? '' : undefined}
       className={cn(
-        'flex h-12 w-full min-w-0 touch-manipulation items-center overflow-hidden',
-        reserveLeadingChrome
-          ? 'pl-[calc(var(--editor-header-leading-offset,0px)+var(--editor-header-leading-width,0px)+0.5rem)]'
-          : 'pl-2',
-        reserveTrailingChrome && 'pr-[var(--editor-header-trailing-width,0px)]',
+        'flex h-11 w-full min-w-0 touch-manipulation items-center overflow-hidden ps-2',
         isElectronHost && '[-webkit-app-region:drag]',
       )}
     >
+      {leading}
       <div
         data-editor-tab-overflow-root=""
         data-electron-drag={isElectronHost ? '' : undefined}

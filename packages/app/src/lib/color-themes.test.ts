@@ -1,7 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BASE16_SLOTS, ConfigSchema, resolveLeafSchema } from '@inkeep/open-knowledge-core';
+import {
+  BASE16_SLOTS,
+  ConfigSchema,
+  resolveLeafSchema,
+  SIDEBAR_BG_DARK,
+  SIDEBAR_BG_LIGHT,
+} from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
   base16ToTokens,
@@ -150,6 +156,14 @@ describe('defaultThemeTokens', () => {
     for (const name of ['sidebar', 'background', 'primary', 'border']) {
       expect(dark[name], name).not.toBe(light[name]);
     }
+  });
+
+  test('the default dark theme swatch uses the sidebar rather than the frame color', () => {
+    expect(defaultThemeTokens('dark').sidebar).toBe(SIDEBAR_BG_DARK);
+  });
+
+  test('the default light theme swatch uses the sidebar rather than the frame color', () => {
+    expect(defaultThemeTokens('light').sidebar).toBe(SIDEBAR_BG_LIGHT);
   });
 });
 

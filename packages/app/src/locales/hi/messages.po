@@ -1670,6 +1670,7 @@ msgstr "सक्रिय"
 msgid "Active panel content for the selected tab shows here."
 msgstr "चयनित टैब की सक्रिय पैनल सामग्री यहाँ दिखती है।"
 
+#: src/components/EditorArea.tsx
 #: src/components/FolderTimelineCard.tsx
 msgid "Activity"
 msgstr "गतिविधि"
@@ -1962,6 +1963,10 @@ msgid "Agent mode"
 msgstr "एजेंट मोड"
 
 #: src/components/EditorArea.tsx
+msgid "Agent panel"
+msgstr "एजेंट पैनल"
+
+#: src/components/EditorArea.tsx
 msgid "Agent panel closed to keep Terminal readable."
 msgstr "Terminal को पढ़ने योग्य बनाए रखने के लिए एजेंट पैनल बंद कर दिया गया।"
 
@@ -1983,6 +1988,7 @@ msgstr "एजेंट प्रतिलेख"
 
 #: src/components/EditorArea.tsx
 #: src/components/ExploreSkills.tsx
+#: src/components/HeaderPaneButtons.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
 msgstr "एजेंट"
@@ -2179,6 +2185,7 @@ msgstr "ऐप इंस्टेंस: {label}, v{version}"
 msgid "Append-only log of what changed."
 msgstr "क्या बदला इसका केवल-जोड़ा-जाने वाला लॉग।"
 
+#: src/components/AppHeader.tsx
 #: src/components/CommandPalette.tsx
 msgid "Application"
 msgstr "एप्लिकेशन"
@@ -2542,6 +2549,10 @@ msgstr "वापस"
 #: src/components/ActivityModeContent.tsx
 msgid "Back to document view"
 msgstr "दस्तावेज़ दृश्य पर वापस"
+
+#: src/components/EditorArea.tsx
+msgid "Back to editor"
+msgstr "संपादक पर वापस"
 
 #: src/components/LinksPanel.tsx
 msgid "Backlinks"
@@ -3463,10 +3474,6 @@ msgstr "समेटें"
 msgid "Collapse {keyName}"
 msgstr "{keyName} समेटें"
 
-#: src/components/TerminalTabStrip.tsx
-msgid "Collapse agent panel"
-msgstr "एजेंट पैनल संक्षिप्त करें"
-
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -3489,10 +3496,6 @@ msgstr "Ask AI समेटें"
 #: src/components/GraphPanel.tsx
 msgid "Collapse graph"
 msgstr "ग्राफ़ समेटें"
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Collapse Terminal"
-msgstr "Terminal संक्षिप्त करें"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Collapsible content block (Notion-style toggle)."
@@ -3661,7 +3664,7 @@ msgstr "उपयोगकर्ता, प्रोजेक्ट और ए�
 msgid "conflict"
 msgstr "टकराव"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Conflict"
 msgstr "टकराव"
@@ -4300,6 +4303,7 @@ msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "\"{0}\" की नकल नहीं बनाई जा सकी: {1}"
 
 #: src/comments/reveal-comment.ts
+#: src/comments/ThreadCard.tsx
 msgid "Couldn't find that passage — the text it was on may have changed."
 msgstr "वह अंश नहीं मिल सका — जिस पाठ पर वह था वह बदल गया हो सकता है।"
 
@@ -4664,6 +4668,10 @@ msgstr "यह सेटिंग सहेजी नहीं जा सकी�
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr "आपकी थीम प्राथमिकता सहेजी नहीं जा सकी।"
+
+#: src/comments/reveal-comment.ts
+msgid "Couldn't scroll to that passage. Try again."
+msgstr "उस अंश तक स्क्रॉल नहीं किया जा सका। फिर से कोशिश करें।"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Couldn't send the report"
@@ -5285,6 +5293,7 @@ msgid "Diff render mode"
 msgstr "अंतर रेंडर मोड"
 
 #: src/components/AgentDiffPane.tsx
+#: src/components/EditorArea.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Diff unavailable"
 msgstr "अंतर अनुपलब्ध"
@@ -5405,6 +5414,10 @@ msgstr "दस्तावेज़ नहीं मिला"
 #: src/components/OutlinePanel.tsx
 msgid "Document outline"
 msgstr "दस्तावेज़ रूपरेखा"
+
+#: src/components/EditorArea.tsx
+msgid "Document panel"
+msgstr "दस्तावेज़ पैनल"
 
 #: src/components/DocPanel.tsx
 msgid "Document panels"
@@ -5729,6 +5742,7 @@ msgstr "{boldName} को उसी जगह संपादित किया
 msgid "Editing broken MDX source: {reason}"
 msgstr "टूटा हुआ MDX स्रोत संपादित किया जा रहा है: {reason}"
 
+#: src/components/HeaderPaneButtons.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Editor"
 msgstr "संपादक"
@@ -5739,6 +5753,10 @@ msgstr "संपादक मोड"
 
 #: src/components/EditorWorkspace.tsx
 msgid "editor pane"
+msgstr "संपादक फलक"
+
+#: src/components/EditorWorkspace.tsx
+msgid "Editor pane"
 msgstr "संपादक फलक"
 
 #: src/lib/keyboard-shortcuts.ts
@@ -6687,6 +6705,7 @@ msgstr "फ़ाइल: <0>{fixedName}.md</0>"
 msgid "Filename"
 msgstr "फ़ाइल का नाम"
 
+#: src/components/EditorArea.tsx
 #: src/components/FileSidebar.tsx
 msgid "Files"
 msgstr "फ़ाइलें"
@@ -7349,11 +7368,17 @@ msgstr "विवरण छिपाएँ"
 msgid "Hide document panel"
 msgstr "दस्तावेज़ पैनल छिपाएँ"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+msgid "Hide Editor"
+msgstr "संपादक छिपाएँ"
+
 #: src/components/GraphPanel.tsx
 msgid "Hide external URL nodes"
 msgstr "बाहरी URL नोड छिपाएँ"
 
-#: src/components/EditorHeader.tsx
+#: src/components/FileListToggle.tsx
+#: src/components/FileSidebar.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Hide Files"
 msgstr "Files छिपाएँ"
@@ -7384,12 +7409,13 @@ msgid "Hide Others"
 msgstr "अन्य छिपाएँ"
 
 #: src/components/AgentDiffPane.tsx
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
+#: src/components/EditorArea.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Hide panel"
 msgstr "पैनल छिपाएँ"
 
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 msgid "Hide panel ({panelShortcutLabel})"
 msgstr "पैनल छिपाएँ ({panelShortcutLabel})"
 
@@ -9004,11 +9030,11 @@ msgstr "लिंक लक्ष्य, एंकर और प्रदर्�
 msgid "More"
 msgstr "और"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 msgid "More actions"
 msgstr "और क्रियाएँ"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 msgid "More actions ({syncAttentionLabel})"
 msgstr "और क्रियाएँ ({syncAttentionLabel})"
 
@@ -10058,6 +10084,10 @@ msgstr "जब तक आप न कहें, कुछ नहीं चले�
 msgid "Nothing moves until you ask."
 msgstr "जब तक आप न कहें, कुछ नहीं चलेगा।"
 
+#: src/components/NothingOpen.tsx
+msgid "Nothing open"
+msgstr "कुछ भी खुला नहीं है"
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr "अभी कुछ भी सेट नहीं।"
@@ -10107,7 +10137,7 @@ msgstr "बंद — बाहरी लिंक केवल अपना URL
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr "बंद — खोज केवल कीवर्ड से क्रम तय करती है। कोई सामग्री इस कंप्यूटर से बाहर नहीं जाती।"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "ऑफ़लाइन"
@@ -10273,13 +10303,9 @@ msgstr "{tooltipName} के लिए गतिविधि पैनल खो
 msgid "Open activity panel for {tooltipName}, editing {realCurrentDoc}"
 msgstr "{tooltipName} के लिए गतिविधि पैनल खोलें, {realCurrentDoc} संपादित किया जा रहा है"
 
-#: src/components/TerminalRevealTab.tsx
-msgid "Open agents panel"
-msgstr "एजेंट पैनल खोलें"
-
-#: src/components/TerminalRevealTab.tsx
-msgid "Open agents panel — {liveThreadCount, plural, one {# live agent thread} other {# live agent threads}}"
-msgstr "एजेंट पैनल खोलें — {liveThreadCount, plural, one {# सक्रिय एजेंट थ्रेड} other {# सक्रिय एजेंट थ्रेड}}"
+#: src/components/NothingOpen.tsx
+msgid "Open agents"
+msgstr "एजेंट खोलें"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
@@ -10325,6 +10351,10 @@ msgstr "चयनित फ़ाइल-ट्री आइटम के लि�
 #: src/components/PropertyWidgets.tsx
 msgid "Open documents tagged #{chip}"
 msgstr "#{chip} टैग वाले दस्तावेज़ खोलें"
+
+#: src/components/NothingOpen.tsx
+msgid "Open editor"
+msgstr "संपादक खोलें"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Open email draft"
@@ -10497,7 +10527,7 @@ msgstr "स्रोत lint पैनल खोलें"
 msgid "Open source: {mirrorSrc}"
 msgstr "स्रोत खोलें: {mirrorSrc}"
 
-#: src/components/TerminalRevealTab.tsx
+#: src/components/NothingOpen.tsx
 msgid "Open terminal"
 msgstr "टर्मिनल खोलें"
 
@@ -11058,6 +11088,14 @@ msgstr "ऊपर खिसकाएँ"
 msgid "pane {0}"
 msgstr "फलक {0}"
 
+#: src/components/EditorWorkspace.tsx
+msgid "Pane {number}"
+msgstr "फलक {number}"
+
+#: src/components/HeaderPaneButtons.tsx
+msgid "Panels"
+msgstr "पैनल"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Paragraph"
 msgstr "पैराग्राफ़"
@@ -11466,6 +11504,7 @@ msgstr "प्रोजेक्ट"
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillsTree.tsx
+#: src/components/WebProjectName.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
 msgstr "प्रोजेक्ट"
@@ -11859,7 +11898,7 @@ msgstr "अनुशंसित"
 msgid "Recommended agent skill"
 msgstr "अनुशंसित एजेंट कौशल"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "फिर से जुड़ना ज़रूरी"
@@ -12448,9 +12487,18 @@ msgstr "दृश्य फ़िल्टर रीसेट करें"
 msgid "Resize {handleKey}"
 msgstr "{handleKey} का आकार बदलें"
 
+#: src/components/EditorArea.tsx
+msgid "Resize document panel"
+msgstr "दस्तावेज़ पैनल का आकार बदलें"
+
 #: src/components/SkillsSidebarDock.tsx
 msgid "Resize skills panel"
 msgstr "स्किल पैनल का आकार बदलें"
+
+#: src/components/EditorArea.tsx
+#: src/components/TerminalDock.tsx
+msgid "Resize terminal"
+msgstr "टर्मिनल का आकार बदलें"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
@@ -12864,9 +12912,8 @@ msgid "Scroll to start"
 msgstr "शुरुआत तक स्क्रॉल करें"
 
 #: src/components/CommandPalette.tsx
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderSearchBar.tsx
 #: src/components/settings/SettingsDialogShell.tsx
-#: src/components/SidebarSearchBar.tsx
 #: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
@@ -12875,10 +12922,6 @@ msgstr "खोजें"
 #: src/components/CommandPalette.tsx
 msgid "Search \"{semanticSubmitQuery}\" by meaning"
 msgstr "अर्थ के आधार पर \"{semanticSubmitQuery}\" खोजें"
-
-#: src/components/EditorHeader.tsx
-msgid "Search ({searchShortcutLabel})"
-msgstr "खोजें ({searchShortcutLabel})"
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Search agents"
@@ -13545,6 +13588,11 @@ msgstr "आरेख दिखाएँ"
 msgid "Show document panel"
 msgstr "दस्तावेज़ पैनल दिखाएँ"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+msgid "Show Editor"
+msgstr "संपादक दिखाएँ"
+
 #: src/components/GraphPanel.tsx
 msgid "Show external URL nodes"
 msgstr "बाहरी URL नोड दिखाएँ"
@@ -13553,7 +13601,7 @@ msgstr "बाहरी URL नोड दिखाएँ"
 msgid "Show fewer"
 msgstr "कम दिखाएँ"
 
-#: src/components/EditorHeader.tsx
+#: src/components/FileListToggle.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Show Files"
 msgstr "Files दिखाएँ"
@@ -13610,12 +13658,12 @@ msgid "Show original"
 msgstr "मूल दिखाएँ"
 
 #: src/components/AgentDiffPane.tsx
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Show panel"
 msgstr "पैनल दिखाएँ"
 
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "पैनल दिखाएँ ({panelShortcutLabel})"
 
@@ -14434,7 +14482,7 @@ msgstr "सिंक मोड"
 msgid "Sync now"
 msgstr "अभी सिंक करें"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "सिंक रुका हुआ"
@@ -14612,6 +14660,7 @@ msgstr "उपलब्ध टेम्पलेट"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+#: src/components/HeaderPaneButtons.tsx
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -16412,6 +16461,10 @@ msgstr "फ़ोल्डर प्रॉपर्टी अपडेट की
 msgid "Updated to Version {version}"
 msgstr "संस्करण {version} पर अपडेट किया गया"
 
+#: src/components/CornerCardStack.tsx
+msgid "Updates and feedback"
+msgstr "अपडेट और प्रतिक्रिया"
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Updates flow in"
 msgstr "अपडेट आते रहते हैं"
@@ -16984,10 +17037,6 @@ msgstr "कार्यक्षेत्र"
 #: src/components/CommandPalette.tsx
 msgid "Workspace Command Palette"
 msgstr "कार्यक्षेत्र कमांड पैलेट"
-
-#: src/components/EditorHeader.tsx
-msgid "Workspace navigation"
-msgstr "कार्यक्षेत्र नेविगेशन"
 
 #: src/components/NavigatorApp.tsx
 #: src/components/RecentProjectsMenu.tsx

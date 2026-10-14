@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { emptyState, getTerminalDockState, setTerminalDockState } from './state-store';
-import { commitTerminalDockState } from './terminal-dock-persistence';
+import { commitTerminalDockState, resolveRestoredEditorVisible } from './terminal-dock-persistence';
 
 describe('commitTerminalDockState', () => {
   test('publishes the new state only after the durable write succeeds', () => {
@@ -25,6 +25,7 @@ describe('commitTerminalDockState', () => {
       terminalVisible: false,
       terminalSnapshot: { tabs: [], activeOrdinal: null },
       agentPanelVisible: false,
+      editorVisible: true,
     });
   });
 
@@ -49,6 +50,7 @@ describe('commitTerminalDockState', () => {
       terminalVisible: true,
       terminalSnapshot,
       agentPanelVisible: false,
+      editorVisible: true,
     });
     const save = vi.fn(() => true);
 
@@ -61,5 +63,32 @@ describe('commitTerminalDockState', () => {
 
     expect(save).not.toHaveBeenCalled();
     expect(outcome).toEqual({ state: current, result: { ok: true } });
+  });
+});
+
+describe('resolveRestoredEditorVisible', () => {
+  test("prefers this window's in-memory level, then the saved one, and defaults to shown", () => {
+    const saved = getTerminalDockState(
+      setTerminalDockState(emptyState(), '/project', {
+        terminalVisible: false,
+        terminalSnapshot: { tabs: [], activeOrdinal: null },
+        agentPanelVisible: false,
+        editorVisible: false,
+      }),
+      '/project',
+    );
+    expect(resolveRestoredEditorVisible({ inMemory: true, persisted: saved })).toBe(true);
+    expect(resolveRestoredEditorVisible({ inMemory: undefined, persisted: saved })).toBe(false);
+    expect(resolveRestoredEditorVisible({ inMemory: undefined, persisted: null })).toBe(true);
+  });
+
+  test('an editor hide is saved per project', () => {
+    const outcome = commitTerminalDockState({
+      current: emptyState(),
+      stateKey: '/project',
+      update: { editorVisible: false },
+      save: () => true,
+    });
+    expect(getTerminalDockState(outcome.state, '/project').editorVisible).toBe(false);
   });
 });

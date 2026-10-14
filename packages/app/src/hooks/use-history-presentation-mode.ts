@@ -4,12 +4,11 @@ import type { ThreadHistoryMode } from '@/components/acp/ThreadHistoryPanel';
 export const HISTORY_PANEL_WIDTH_PX = 248;
 const HISTORY_MIN_TRANSCRIPT_WIDTH_PX = 300;
 const HISTORY_DIVIDER_WIDTH_PX = 1;
+export const HISTORY_DOCKED_MIN_PANE_WIDTH_PX =
+  HISTORY_PANEL_WIDTH_PX + HISTORY_MIN_TRANSCRIPT_WIDTH_PX + HISTORY_DIVIDER_WIDTH_PX;
 
 function historyModeForPaneWidth(width: number): ThreadHistoryMode {
-  return width >=
-    HISTORY_PANEL_WIDTH_PX + HISTORY_MIN_TRANSCRIPT_WIDTH_PX + HISTORY_DIVIDER_WIDTH_PX
-    ? 'docked'
-    : 'cover';
+  return width >= HISTORY_DOCKED_MIN_PANE_WIDTH_PX ? 'docked' : 'cover';
 }
 
 export function useHistoryPresentationMode(

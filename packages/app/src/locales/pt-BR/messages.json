@@ -389,6 +389,7 @@
     "3Fcb0I": ["Abrir o grafo"],
     "3HAPpl": ["Nenhum esquema corresponde à sua busca."],
     "3HNlwb": ["Olá, mundo!"],
+    "3HOAcR": ["Painel de agentes"],
     "3Ib6FN": ["Mover para baixo"],
     "3J7d2N": ["Título de seção grande."],
     "3JYy1p": ["O ramo ", ["0"], " não existe mais. Clonado no ramo padrão."],
@@ -612,6 +613,7 @@
     ],
     "5OTgC7": ["Abre e foca o compositor de prompts de Perguntar à IA na parte de baixo."],
     "5OqaJi": ["Digite um nome de projeto"],
+    "5Q9-G-": ["Painel do documento"],
     "5QGTaA": ["Não foi possível copiar o caminho relativo"],
     "5RiC8D": [
       "As habilidades de descoberta são gerenciadas em conjunto para todas as ferramentas de IA. Instale esta em Configurações → Estúdio de habilidades."
@@ -886,6 +888,7 @@
     "7cAW1G": ["Nenhuma chave de API definida para este endpoint. Adicione uma acima."],
     "7czmD1": ["OpenKnowledge consultou a paleta de edição"],
     "7d1a0d": ["Público"],
+    "7dDoQu": ["Painel do editor"],
     "7dZnmw": ["Relevância"],
     "7hctf2": ["Descreva o projeto que você quer criar"],
     "7idx48": ["OKF habilidade do agente instalada"],
@@ -1455,7 +1458,6 @@
     "DWJtEo": ["O que acontece depois"],
     "DXd9LM": ["Novo worktree"],
     "D_WKe_": ["Clique no avatar de um agente na barra de presença para ver a sessão dele."],
-    "DbCfXV": ["Buscar (", ["searchShortcutLabel"], ")"],
     "DbILZA": [
       "Sem correspondências. Alguns arquivos ficam fora da busca (arquivos ocultos ou ignorados)."
     ],
@@ -1685,6 +1687,7 @@
       ")."
     ],
     "FWSjnp": ["Painel de edição de código e campos de propriedade do tipo código"],
+    "FYy2EN": ["Redimensionar o painel do documento"],
     "FZtBeR": ["Ativar ", ["0"]],
     "FeXcUS": [
       ["display"],
@@ -1760,6 +1763,7 @@
       ", mas as credenciais dessa conta não puderam ser usadas."
     ],
     "GBQjiV": ["Adicionar habilidade"],
+    "GCrhIF": ["Painéis"],
     "GDvlUT": ["Função"],
     "GEyl32": ["Iniciando terminal…"],
     "GGsM4y": ["Selecionado no grafo"],
@@ -2392,7 +2396,6 @@
       "Um link simbólico aponta para a pasta de origem em vez de ser uma pasta própria. Todos os locais leem exatamente os mesmos bytes, então nada se desvia, e um local para de funcionar se a origem for excluída."
     ],
     "MTs6g3": ["Não deu para reconectar após o reinício do servidor"],
-    "MU_NVW": ["Recolher o Terminal"],
     "MUrVEo": ["Nenhum projeto recente."],
     "MV-Dkb": [["countDisplay"], " arquivos markdown encontrados"],
     "MVxpbf": ["Buscar e substituir"],
@@ -3247,13 +3250,13 @@
       "</0> localmente, mas ele foi modificado no remoto."
     ],
     "V4JHny": ["O compartilhamento só funciona com remotos do GitHub."],
-    "V6AIOn": ["Navegação do espaço de trabalho"],
     "V6e25h": ["Pré-visualização do tema"],
     "V7QxyT": ["A conexão caiu"],
     "VAHWL_": ["Conectado como <0>@", ["signedInLogin"], "</0>"],
     "VBE2dw": [
       "Construa e organize o mundo por trás da sua história. Um lugar para seus personagens, lugares, facções e a mitologia que os une, para que os detalhes não se contradigam enquanto você escreve."
     ],
+    "VBtCdv": ["Não foi possível rolar até esse trecho. Tente novamente."],
     "VFQXPl": [
       "A pré-visualização de links externos mostra um cartão com o nome do site, o título da página e a descrição quando você passa o cursor sobre um link."
     ],
@@ -3428,7 +3431,6 @@
     "X2zUS5": ["Excluir este comentário"],
     "X3MMeA": ["Nenhum destes problemas tem correção automática."],
     "X59Fx2": ["Não foi possível abrir este documento no Slidev."],
-    "X7ShnN": ["Abrir o painel de agentes"],
     "X8kjQX": ["Autenticar de novo no GitHub"],
     "X9VpsP": ["Carregando o conteúdo da pasta"],
     "XA9uvc": ["O OpenKnowledge busca e baixa atualizações em segundo plano."],
@@ -3584,6 +3586,7 @@
     "YS9mSt": ["\"", ["name"], "\" atualizado a partir de ", ["0"]],
     "YSFv5w": ["Sem repositório git — o compartilhamento de configuração não se aplica aqui."],
     "YScUUO": ["Busca uma página da web"],
+    "YStFYH": ["Abrir agentes"],
     "YTLmTM": ["Excluir a pasta <0>.git</0> acima"],
     "YW7Q86": ["As configurações de busca ainda não carregaram — tente de novo em instantes"],
     "YWK2zy": ["Diferenças do conflito em ", ["fileName"]],
@@ -3867,6 +3870,7 @@
       "Nenhuma ferramenta de IA detectada ainda. Depois de instalar uma, conecte-a em Configurações > Este projeto."
     ],
     "aTDVi6": ["Seu conteúdo foi preservado"],
+    "aV2vel": ["Painel ", ["number"]],
     "aWlJai": ["Iniciando o fluxo de login"],
     "aXkLuE": ["Resposta de aplicação malformada"],
     "a_u4ck": ["Carregando tags"],
@@ -4363,7 +4367,7 @@
     "eQkgKV": ["Instalado"],
     "eQn7nI": ["Carregando compartilhamento da configuração"],
     "eQxm13": ["Falha ao atualizar o local dos anexos — ", ["detail"]],
-    "eRSPr9": ["Abrir o terminal"],
+    "eRSPr9": ["Abrir terminal"],
     "eTL5y9": ["Mostrar a pré-visualização da seleção"],
     "eTsJYJ": ["descrição"],
     "eUFXS1": ["Ordenar as habilidades"],
@@ -4443,6 +4447,7 @@
     "f1-q9m": ["mantém as habilidades"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Mover o bloco"],
+    "f3YhVJ": ["Nada aberto"],
     "f65AOQ": ["Começar a partir de"],
     "f6suyZ": ["Alterações solicitadas"],
     "f8fH8W": ["Design"],
@@ -4460,6 +4465,7 @@
     "fKsRVO": ["Habilidades de ", ["0"], "/", ["1"], "."],
     "fMsFdZ": ["Não deu para salvar a configuração de atualização automática: ", ["0"]],
     "fNr-MX": ["Desativar a busca semântica"],
+    "fObclJ": ["Voltar ao editor"],
     "fOzzSV": ["O destino do link \"", ["shown"], "\" não corresponde a um arquivo existente."],
     "fRVBiq": [
       "Adiciona telemetria, estado do servidor e informações de execução quando disponíveis. As credenciais são sempre removidas; os nomes de documento, se incluídos, aparecem em texto simples (sem ocultação)."
@@ -4568,7 +4574,6 @@
       ["descriptorLabel"],
       "> (provavelmente uma prop inválida). Copie o código para ver o que deu errado ou exclua o bloco."
     ],
-    "g5V4_P": ["Recolher o painel de agentes"],
     "g5w1sF": [
       "Escolha uma pasta para mesclar DENTRO de ",
       ["display"],
@@ -4831,18 +4836,6 @@
     "i04BJx": ["Vive fora deste projeto — somente leitura aqui."],
     "i09An-": ["Uma versão anterior foi restaurada (", ["0"], ")"],
     "i1flq_": ["Sugestões de link wiki"],
-    "i25FHa": [
-      "Abrir o painel de agentes — ",
-      [
-        "liveThreadCount",
-        "plural",
-        {
-          "one": ["#", " conversa de agente ativa"],
-          "many": ["#", " conversas de agente ativas"],
-          "other": ["#", " conversas de agente ativas"]
-        }
-      ]
-    ],
     "i3f2kh": ["Nenhum comando corresponde."],
     "i6o7XB": ["Pesquisar idiomas"],
     "i92eAT": ["Vamos criar um repositório e começar a sincronizar — sem precisar de terminal."],
@@ -5421,6 +5414,7 @@
     ],
     "n7aopT": ["Modo do editor"],
     "n81AV0": [["owner"], "/", ["name"], " já existe. Escolha outro nome."],
+    "nBFK5w": ["Redimensionar o terminal"],
     "nBHvPL": ["Cancelar edição"],
     "nBgzKO": ["Tornar esta a fonte — a pasta real da habilidade se muda para cá"],
     "nCzR-G": ["Copiar o código ", ["userCode"]],
@@ -5817,6 +5811,7 @@
     "qyLmWw": ["Painel de busca do editor de código"],
     "qze9od": ["Esta pasta também é de ", ["alsoAffects"], "."],
     "r-OJYm": ["Digite um nome de ramo válido (sem espaços, sem ponto inicial, sem \"..\")."],
+    "r-wzd8": ["Atualizações e comentários"],
     "r2eKE3": ["Entre primeiro no ", ["agentName"]],
     "r3iaI0": ["Ainda não há chats."],
     "r4R7AZ": ["Erro de rede durante a limpeza"],
@@ -6088,6 +6083,7 @@
     "ten9en": ["Projeto recente"],
     "tfDRzk": ["Salvar"],
     "tfi40B": ["Falha ao criar a página"],
+    "tgB_VT": ["Abrir editor"],
     "tgWuMB": ["Modificado"],
     "thnPBX": ["Ativa a próxima aba do editor."],
     "ti6aF_": ["Perguntar à CLI do ", ["0"]],
@@ -6289,6 +6285,7 @@
     "un-K1H": ["Fica neste computador. Não vai para o git."],
     "un8kBM": ["Criando a página: ", ["linkTitle"], "."],
     "uoJF_D": ["Foi difícil demais configurar ou começar"],
+    "uqgCZJ": ["Ocultar o Editor"],
     "uqs8Gd": [
       [
         "others",
@@ -6631,6 +6628,7 @@
     "xzAmL_": ["Aprovado automaticamente"],
     "xzktOa": ["Editar o link wiki"],
     "y-LQPF": ["Não foi possível resolver a imagem ", ["identity"], ". Ir para a referência."],
+    "y0_w13": ["Mostrar o Editor"],
     "y1eoq1": ["Copiar link"],
     "y1t8bQ": ["Seções das configurações"],
     "y3aU20": ["Salvar as alterações"],

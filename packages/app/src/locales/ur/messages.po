@@ -1674,6 +1674,7 @@ msgstr "فعال"
 msgid "Active panel content for the selected tab shows here."
 msgstr "منتخب ٹیب کے فعال پینل کا مواد یہاں دکھایا جاتا ہے۔"
 
+#: src/components/EditorArea.tsx
 #: src/components/FolderTimelineCard.tsx
 msgid "Activity"
 msgstr "سرگرمی"
@@ -1966,6 +1967,10 @@ msgid "Agent mode"
 msgstr "ایجنٹ موڈ"
 
 #: src/components/EditorArea.tsx
+msgid "Agent panel"
+msgstr "ایجنٹ پینل"
+
+#: src/components/EditorArea.tsx
 msgid "Agent panel closed to keep Terminal readable."
 msgstr "Terminal کو پڑھنے کے قابل رکھنے کے لیے ایجنٹ پینل بند کر دیا گیا۔"
 
@@ -1987,6 +1992,7 @@ msgstr "ایجنٹ کا ٹرانسکرپٹ"
 
 #: src/components/EditorArea.tsx
 #: src/components/ExploreSkills.tsx
+#: src/components/HeaderPaneButtons.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
 msgstr "ایجنٹس"
@@ -2183,6 +2189,7 @@ msgstr "ایپ انسٹینس: {label}، v{version}"
 msgid "Append-only log of what changed."
 msgstr "کیا بدلا اس کا صرف اضافے والا لاگ۔"
 
+#: src/components/AppHeader.tsx
 #: src/components/CommandPalette.tsx
 msgid "Application"
 msgstr "ایپلیکیشن"
@@ -2546,6 +2553,10 @@ msgstr "واپس"
 #: src/components/ActivityModeContent.tsx
 msgid "Back to document view"
 msgstr "دستاویز کے منظر پر واپس"
+
+#: src/components/EditorArea.tsx
+msgid "Back to editor"
+msgstr "ایڈیٹر پر واپس"
 
 #: src/components/LinksPanel.tsx
 msgid "Backlinks"
@@ -3467,10 +3478,6 @@ msgstr "سکیڑیں"
 msgid "Collapse {keyName}"
 msgstr "{keyName} سکیڑیں"
 
-#: src/components/TerminalTabStrip.tsx
-msgid "Collapse agent panel"
-msgstr "ایجنٹ پینل سمیٹیں"
-
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -3493,10 +3500,6 @@ msgstr "«AI سے پوچھیں» سکیڑیں"
 #: src/components/GraphPanel.tsx
 msgid "Collapse graph"
 msgstr "گراف سکیڑیں"
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Collapse Terminal"
-msgstr "Terminal سمیٹیں"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Collapsible content block (Notion-style toggle)."
@@ -3665,7 +3668,7 @@ msgstr "صارف، پروجیکٹ اور انضمام کی ترتیبات مقر
 msgid "conflict"
 msgstr "تصادم"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Conflict"
 msgstr "تصادم"
@@ -4304,6 +4307,7 @@ msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "«{0}» کی نقل نہیں بن سکی: {1}"
 
 #: src/comments/reveal-comment.ts
+#: src/comments/ThreadCard.tsx
 msgid "Couldn't find that passage — the text it was on may have changed."
 msgstr "وہ اقتباس نہیں مل سکا — جس متن پر یہ تھا وہ شاید تبدیل ہو چکا ہے۔"
 
@@ -4668,6 +4672,10 @@ msgstr "یہ ترتیب محفوظ نہیں ہو سکی۔ دوبارہ کوشش 
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr "آپ کی تھیم ترجیح محفوظ نہیں ہو سکی۔"
+
+#: src/comments/reveal-comment.ts
+msgid "Couldn't scroll to that passage. Try again."
+msgstr "اس اقتباس تک اسکرول نہیں ہو سکا۔ دوبارہ کوشش کریں۔"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Couldn't send the report"
@@ -5289,6 +5297,7 @@ msgid "Diff render mode"
 msgstr "فرق کے رینڈر کا موڈ"
 
 #: src/components/AgentDiffPane.tsx
+#: src/components/EditorArea.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Diff unavailable"
 msgstr "فرق دستیاب نہیں"
@@ -5409,6 +5418,10 @@ msgstr "دستاویز نہیں ملی"
 #: src/components/OutlinePanel.tsx
 msgid "Document outline"
 msgstr "دستاویز کا خاکہ"
+
+#: src/components/EditorArea.tsx
+msgid "Document panel"
+msgstr "دستاویز کا پینل"
 
 #: src/components/DocPanel.tsx
 msgid "Document panels"
@@ -5733,6 +5746,7 @@ msgstr "{boldName} میں اسی جگہ ترمیم ہو رہی ہے۔ تبدیل
 msgid "Editing broken MDX source: {reason}"
 msgstr "ٹوٹے ہوئے MDX سورس میں ترمیم: {reason}"
 
+#: src/components/HeaderPaneButtons.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Editor"
 msgstr "ایڈیٹر"
@@ -5743,6 +5757,10 @@ msgstr "ایڈیٹر موڈ"
 
 #: src/components/EditorWorkspace.tsx
 msgid "editor pane"
+msgstr "ایڈیٹر پین"
+
+#: src/components/EditorWorkspace.tsx
+msgid "Editor pane"
 msgstr "ایڈیٹر پین"
 
 #: src/lib/keyboard-shortcuts.ts
@@ -6691,6 +6709,7 @@ msgstr "فائل: <0>{fixedName}.md</0>"
 msgid "Filename"
 msgstr "فائل کا نام"
 
+#: src/components/EditorArea.tsx
 #: src/components/FileSidebar.tsx
 msgid "Files"
 msgstr "فائلیں"
@@ -7353,11 +7372,17 @@ msgstr "تفصیلات چھپائیں"
 msgid "Hide document panel"
 msgstr "دستاویز کا پینل چھپائیں"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+msgid "Hide Editor"
+msgstr "ایڈیٹر چھپائیں"
+
 #: src/components/GraphPanel.tsx
 msgid "Hide external URL nodes"
 msgstr "بیرونی URL نوڈز چھپائیں"
 
-#: src/components/EditorHeader.tsx
+#: src/components/FileListToggle.tsx
+#: src/components/FileSidebar.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Hide Files"
 msgstr "فائلیں چھپائیں"
@@ -7388,12 +7413,13 @@ msgid "Hide Others"
 msgstr "دیگر چھپائیں"
 
 #: src/components/AgentDiffPane.tsx
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
+#: src/components/EditorArea.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Hide panel"
 msgstr "پینل چھپائیں"
 
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 msgid "Hide panel ({panelShortcutLabel})"
 msgstr "پینل چھپائیں ({panelShortcutLabel})"
 
@@ -9008,11 +9034,11 @@ msgstr "لنک کا ہدف، اینکر اور ظاہری لیبل تبدیل ک
 msgid "More"
 msgstr "مزید"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 msgid "More actions"
 msgstr "مزید اعمال"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 msgid "More actions ({syncAttentionLabel})"
 msgstr "مزید اعمال ({syncAttentionLabel})"
 
@@ -10062,6 +10088,10 @@ msgstr "جب تک آپ نہ کہیں، کچھ نہیں چلے گا — مطاب�
 msgid "Nothing moves until you ask."
 msgstr "جب تک آپ نہ کہیں، کچھ نہیں چلے گا۔"
 
+#: src/components/NothingOpen.tsx
+msgid "Nothing open"
+msgstr "کچھ بھی کھلا نہیں"
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr "ابھی کچھ مقرر نہیں۔"
@@ -10111,7 +10141,7 @@ msgstr "بند — بیرونی لنکس صرف اپنا URL دکھاتے ہیں
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr "بند — تلاش صرف کلیدی الفاظ سے درجہ بندی کرتی ہے۔ کوئی مواد اس کمپیوٹر سے باہر نہیں جاتا۔"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "آف لائن"
@@ -10277,13 +10307,9 @@ msgstr "{tooltipName} کے لیے سرگرمی کا پینل کھولیں"
 msgid "Open activity panel for {tooltipName}, editing {realCurrentDoc}"
 msgstr "{tooltipName} کے لیے سرگرمی کا پینل کھولیں، {realCurrentDoc} میں ترمیم کر رہا ہے"
 
-#: src/components/TerminalRevealTab.tsx
-msgid "Open agents panel"
-msgstr "ایجنٹس کا پینل کھولیں"
-
-#: src/components/TerminalRevealTab.tsx
-msgid "Open agents panel — {liveThreadCount, plural, one {# live agent thread} other {# live agent threads}}"
-msgstr "ایجنٹس کا پینل کھولیں — {liveThreadCount, plural, one {# فعال ایجنٹ تھریڈ} other {# فعال ایجنٹ تھریڈ}}"
+#: src/components/NothingOpen.tsx
+msgid "Open agents"
+msgstr "ایجنٹس کھولیں"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
@@ -10329,6 +10355,10 @@ msgstr "منتخب فائل ٹری آئٹمز کے لیے حذف کی تصدیق
 #: src/components/PropertyWidgets.tsx
 msgid "Open documents tagged #{chip}"
 msgstr "#{chip} سے ٹیگ شدہ دستاویزات کھولیں"
+
+#: src/components/NothingOpen.tsx
+msgid "Open editor"
+msgstr "ایڈیٹر کھولیں"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Open email draft"
@@ -10501,7 +10531,7 @@ msgstr "سورس لِنٹ پینل کھولیں"
 msgid "Open source: {mirrorSrc}"
 msgstr "ماخذ کھولیں: {mirrorSrc}"
 
-#: src/components/TerminalRevealTab.tsx
+#: src/components/NothingOpen.tsx
 msgid "Open terminal"
 msgstr "ٹرمینل کھولیں"
 
@@ -11062,6 +11092,14 @@ msgstr "اوپر کھسکائیں"
 msgid "pane {0}"
 msgstr "پین {0}"
 
+#: src/components/EditorWorkspace.tsx
+msgid "Pane {number}"
+msgstr "پین {number}"
+
+#: src/components/HeaderPaneButtons.tsx
+msgid "Panels"
+msgstr "پینلز"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Paragraph"
 msgstr "پیراگراف"
@@ -11470,6 +11508,7 @@ msgstr "پروجیکٹ"
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillsTree.tsx
+#: src/components/WebProjectName.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
 msgstr "پروجیکٹ"
@@ -11863,7 +11902,7 @@ msgstr "تجویز کردہ"
 msgid "Recommended agent skill"
 msgstr "تجویز کردہ ایجنٹ کی مہارت"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "دوبارہ منسلک ہونا ضروری ہے"
@@ -12452,9 +12491,18 @@ msgstr "منظر کے فلٹرز دوبارہ ترتیب دیں"
 msgid "Resize {handleKey}"
 msgstr "{handleKey} کا حجم بدلیں"
 
+#: src/components/EditorArea.tsx
+msgid "Resize document panel"
+msgstr "دستاویز کے پینل کا سائز تبدیل کریں"
+
 #: src/components/SkillsSidebarDock.tsx
 msgid "Resize skills panel"
 msgstr "مہارتوں کے پینل کا سائز تبدیل کریں"
+
+#: src/components/EditorArea.tsx
+#: src/components/TerminalDock.tsx
+msgid "Resize terminal"
+msgstr "ٹرمینل کا سائز تبدیل کریں"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
@@ -12868,9 +12916,8 @@ msgid "Scroll to start"
 msgstr "شروع تک سکرول کریں"
 
 #: src/components/CommandPalette.tsx
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderSearchBar.tsx
 #: src/components/settings/SettingsDialogShell.tsx
-#: src/components/SidebarSearchBar.tsx
 #: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
@@ -12879,10 +12926,6 @@ msgstr "تلاش"
 #: src/components/CommandPalette.tsx
 msgid "Search \"{semanticSubmitQuery}\" by meaning"
 msgstr "«{semanticSubmitQuery}» کو معنی کے لحاظ سے تلاش کریں"
-
-#: src/components/EditorHeader.tsx
-msgid "Search ({searchShortcutLabel})"
-msgstr "تلاش ({searchShortcutLabel})"
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Search agents"
@@ -13549,6 +13592,11 @@ msgstr "خاکہ دکھائیں"
 msgid "Show document panel"
 msgstr "دستاویز کا پینل دکھائیں"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+msgid "Show Editor"
+msgstr "ایڈیٹر دکھائیں"
+
 #: src/components/GraphPanel.tsx
 msgid "Show external URL nodes"
 msgstr "بیرونی URL نوڈز دکھائیں"
@@ -13557,7 +13605,7 @@ msgstr "بیرونی URL نوڈز دکھائیں"
 msgid "Show fewer"
 msgstr "کم دکھائیں"
 
-#: src/components/EditorHeader.tsx
+#: src/components/FileListToggle.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Show Files"
 msgstr "فائلیں دکھائیں"
@@ -13614,12 +13662,12 @@ msgid "Show original"
 msgstr "اصل دکھائیں"
 
 #: src/components/AgentDiffPane.tsx
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Show panel"
 msgstr "پینل دکھائیں"
 
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "پینل دکھائیں ({panelShortcutLabel})"
 
@@ -14438,7 +14486,7 @@ msgstr "مطابقت پذیری کا موڈ"
 msgid "Sync now"
 msgstr "ابھی مطابق کریں"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "مطابقت پذیری روکی ہوئی"
@@ -14616,6 +14664,7 @@ msgstr "دستیاب ٹیمپلیٹس"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+#: src/components/HeaderPaneButtons.tsx
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -16416,6 +16465,10 @@ msgstr "فولڈر کی خصوصیات تازہ کیں"
 msgid "Updated to Version {version}"
 msgstr "ورژن {version} پر تازہ ہو گیا"
 
+#: src/components/CornerCardStack.tsx
+msgid "Updates and feedback"
+msgstr "اپ ڈیٹس اور رائے"
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Updates flow in"
 msgstr "اپ ڈیٹس آتی رہتی ہیں"
@@ -16988,10 +17041,6 @@ msgstr "ورک اسپیس"
 #: src/components/CommandPalette.tsx
 msgid "Workspace Command Palette"
 msgstr "ورک اسپیس کمانڈ پیلیٹ"
-
-#: src/components/EditorHeader.tsx
-msgid "Workspace navigation"
-msgstr "ورک اسپیس کی نیویگیشن"
 
 #: src/components/NavigatorApp.tsx
 #: src/components/RecentProjectsMenu.tsx

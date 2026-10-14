@@ -67,6 +67,7 @@ export interface OkTerminalRestartSnapshot {
 export interface OkTerminalDockState {
   terminalVisible: boolean;
   agentPanelVisible: boolean;
+  editorVisible?: boolean;
   terminal?: { order: string[]; activeKey: string | null };
   terminalSnapshot?: OkTerminalRestartSnapshot;
   agents?: { order: string[]; activeKey: string | null };
@@ -177,6 +178,7 @@ export type OkMenuAction =
   | 'toggle-terminal'
   | 'move-terminal'
   | 'toggle-agent-panel'
+  | 'toggle-editor'
   | 'new-terminal'
   | 'kill-terminal'
   | 'new-worktree'
@@ -754,9 +756,36 @@ export interface OkEditorViewMenuStateSnapshot {
   readonly terminalPlacement?: TerminalPlacement;
   readonly terminalLive?: boolean;
   readonly agentPanelVisible?: boolean;
+  readonly editorVisible?: boolean;
   readonly canViewInSource?: boolean;
   readonly hasEditorSelection?: boolean;
 }
+
+export interface OkEditorWideVisibility {
+  readonly editorVisible?: boolean;
+  readonly terminalVisible?: boolean;
+  readonly agentPanelVisible?: boolean;
+}
+
+type OkEditorDockVisibilityKey = keyof OkEditorWideVisibility;
+
+type OkEditorOnlyPane<K extends OkEditorDockVisibilityKey> = { readonly [P in K]: boolean } & {
+  readonly [P in Exclude<OkEditorDockVisibilityKey, K>]?: never;
+};
+
+type OkEditorDockVisibilityChange = {
+  [K in OkEditorDockVisibilityKey]: OkEditorOnlyPane<K> & {
+    readonly wideIntent: OkEditorOnlyPane<K>;
+  };
+}[OkEditorDockVisibilityKey];
+
+export type OkEditorViewMenuStateChange = Partial<
+  Omit<OkEditorViewMenuStateSnapshot, OkEditorDockVisibilityKey>
+> &
+  (
+    | OkEditorDockVisibilityChange
+    | ({ readonly [K in OkEditorDockVisibilityKey]?: never } & { readonly wideIntent?: never })
+  );
 
 export type OkMenuDispatchRole =
   | 'undo'
@@ -1434,7 +1463,7 @@ export interface OkDesktopBridge {
 
   editor: {
     notifyActiveTargetChanged(target: OkEditorActiveTargetSnapshot): void;
-    notifyViewMenuStateChanged(state: Partial<OkEditorViewMenuStateSnapshot>): void;
+    notifyViewMenuStateChanged(state: OkEditorViewMenuStateChange): void;
     notifyBackgroundThrottle(signal: { hasPendingWork: boolean; enabled: boolean }): void;
   };
 

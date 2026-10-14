@@ -1,5 +1,23 @@
 const GROUP_SELECTOR = ':scope > [data-group]';
 const PANEL_SELECTOR = ':scope > [data-panel]';
+const PANEL_GROUP_UNAVAILABLE_MESSAGE =
+  /^(?:Could not find Group with id "|Group .+ not found$|Layout not found for Panel |Panel constraints not found for Panel )/;
+
+export function reportUnexpectedPanelGroupFailure(
+  event: string,
+  error: unknown,
+  context?: Readonly<Record<string, unknown>>,
+) {
+  if (error instanceof Error && PANEL_GROUP_UNAVAILABLE_MESSAGE.test(error.message)) return;
+  const { event: _shadowedEvent, error: _shadowedError, ...fields } = context ?? {};
+  console.warn(
+    JSON.stringify({
+      event,
+      error: error instanceof Error ? error.message : String(error),
+      ...fields,
+    }),
+  );
+}
 
 export function findRailPanelGroup(container: Element | null | undefined): HTMLElement | null {
   const group = container?.querySelector(GROUP_SELECTOR);
@@ -62,6 +80,21 @@ export function resolveRailPanelSpace(container: Element | null | undefined): Ra
 export function resolveRailPanelSpacePx(container: Element | null | undefined): number | null {
   const result = resolveRailPanelSpace(container);
   return result.ok ? result.panelSpacePx : null;
+}
+
+export function resolveInnerRowChromePx(
+  outerContainer: Element | null | undefined,
+  innerContainer: Element | null | undefined,
+  innerPanelSpacePx: number,
+): number | null {
+  const group = findRailPanelGroup(outerContainer);
+  if (group == null || innerContainer == null) return null;
+  for (const column of group.querySelectorAll(PANEL_SELECTOR)) {
+    if (column.contains(innerContainer)) {
+      return Math.max(0, column.getBoundingClientRect().width - innerPanelSpacePx);
+    }
+  }
+  return null;
 }
 
 export interface RailWidthShortfall {

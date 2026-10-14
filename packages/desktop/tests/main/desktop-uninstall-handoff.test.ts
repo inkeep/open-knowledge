@@ -1716,7 +1716,9 @@ case "$1" in
 esac
 if [ "$1" = -- ]; then shift; fi
 target=${'$'}{1-}
-record="sender=$PPID self=$$ signal=$signal target=$target"
+recordSender=$PPID
+if [ -n "${'$'}{OK_SIGNAL_RECORDER_REPLACE_UI:-}" ]; then recordSender=$$; fi
+record="sender=$recordSender self=$$ signal=$signal target=$target"
 if [ "$#" -ne 1 ] || [ -z "$signal" ]; then
   printf '%s refused=call\\n' "$record" >> '${recordsPath}'
   exit 1
@@ -1733,6 +1735,9 @@ if [ "$signal" = 0 ]; then
   /bin/kill -s 0 "$target" 2>/dev/null
   status=$?
   printf '%s probed=%s\\n' "$record" "$status" >> '${recordsPath}'
+  if [ -n "${'$'}{OK_SIGNAL_RECORDER_REPLACE_UI:-}" ]; then
+    exec /bin/sleep "$OK_SIGNAL_RECORDER_REPLACE_UI"
+  fi
   exit "$status"
 fi
 if [ "${'$'}{1:-}" = "$PPID" ] || [ "${'$'}{1:-}" = "$$" ]; then
@@ -3900,8 +3905,8 @@ while [ -f "$profile/watched" ]; do
   [ "$polls" -le ${inMilliseconds(STUCK_QUERY_SECONDS) / RECORDED_IDENTITY_POLL_MS} ] || exit 1
   /bin/sleep ${RECORDED_IDENTITY_POLL_MS / 1000}
 done
-'${recorder.path}' -s 0 "$$"
-exec /bin/sleep ${STUCK_QUERY_SECONDS}`,
+export OK_SIGNAL_RECORDER_REPLACE_UI=${STUCK_QUERY_SECONDS}
+exec '${recorder.path}' -s 0 "$$"`,
               ),
             ],
           },

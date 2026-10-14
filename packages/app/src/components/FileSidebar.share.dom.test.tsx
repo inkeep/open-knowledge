@@ -163,15 +163,6 @@ vi.doMock('@/components/handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states: {} }),
 }));
 
-vi.doMock('@/components/ProjectSwitcher', () => ({ ProjectSwitcher: () => null }));
-
-vi.doMock('@/components/SidebarSearchBar', () => ({
-  SidebarSearchBar: () => <button type="button">Search</button>,
-  onPillRenderError: () => {},
-}));
-
-vi.doMock('@/components/UpdateNotices', () => ({ UpdateNotices: () => null }));
-
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName: 'notes/source',
@@ -204,7 +195,7 @@ vi.doMock('sonner', () => ({
 const { FileSidebar } = await import('./FileSidebar');
 
 function renderSidebar() {
-  return render(<FileSidebar onOpenSearch={() => {}} />, { wrapper: TooltipProvider });
+  return render(<FileSidebar />, { wrapper: TooltipProvider });
 }
 
 describe('FileSidebar project-root Share', () => {

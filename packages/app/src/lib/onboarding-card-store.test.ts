@@ -307,3 +307,39 @@ describe('createOnboardingCardStore — install', () => {
     expect(() => createOnboardingCardStore().install()).not.toThrow();
   });
 });
+
+describe('onboarding state saved by earlier releases', () => {
+  test('the storage key is still ok-onboarding-card-v1', () => {
+    expect(ONBOARDING_CARD_STORAGE_KEY).toBe('ok-onboarding-card-v1');
+  });
+
+  test('a saved checklist reads back unchanged', () => {
+    const stored = {
+      initialized: true,
+      steps: { file: true, askedAi: false },
+      fileBaseline: 4,
+      dismissed: true,
+      completed: false,
+    };
+    const s = memoryStorage({ 'ok-onboarding-card-v1': JSON.stringify(stored) });
+    expect(readPersistedState(s)).toEqual(stored);
+  });
+
+  test('a finished checklist reads back with every saved flag set', () => {
+    const stored = {
+      initialized: true,
+      steps: { file: true, askedAi: true },
+      fileBaseline: 7,
+      dismissed: true,
+      completed: true,
+    };
+    const s = memoryStorage({ 'ok-onboarding-card-v1': JSON.stringify(stored) });
+    const read = readPersistedState(s);
+    expect(read).toEqual(stored);
+    expect(read.initialized).toBe(true);
+    expect(read.steps.file).toBe(true);
+    expect(read.steps.askedAi).toBe(true);
+    expect(read.dismissed).toBe(true);
+    expect(read.completed).toBe(true);
+  });
+});

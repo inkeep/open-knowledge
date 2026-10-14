@@ -104,6 +104,7 @@ import {
 } from '@/lib/keyboard-shortcuts';
 import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
+import { revealEditor } from '@/lib/reveal-editor';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils.ts';
@@ -133,6 +134,7 @@ interface CommandPaletteProps {
 }
 
 function navigateToDocHash(docName: string): void {
+  revealEditor();
   window.location.assign(hashFromDocName(docName));
 }
 
@@ -1468,7 +1470,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
         kind="folder"
         initialDir={initialCreateDir}
       />
-      <SeedDialog open={seedDialogOpen} onOpenChange={setSeedDialogOpen} />
+      <SeedDialog
+        open={seedDialogOpen}
+        onOpenChange={setSeedDialogOpen}
+        onSeedApplied={revealEditor}
+      />
       {}
       {bridge ? (
         <CreateProjectDialog

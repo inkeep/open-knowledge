@@ -86,6 +86,39 @@ async function findEditorWindow(app: ElectronApplication): Promise<Page> {
   return waitForWindowByMode(app, 'editor');
 }
 
+async function findEditorWindowWithin20s(app: ElectronApplication): Promise<Page> {
+  await expect
+    .poll(
+      async () => {
+        for (const page of app.windows()) {
+          const mode = await page
+            .evaluate(() => window.okDesktop?.config?.mode)
+            .catch(() => undefined);
+          if (mode === 'editor') return true;
+        }
+        return false;
+      },
+      { timeout: 20_000, message: 'editor window did not appear within timeout' },
+    )
+    .toBe(true);
+
+  for (const page of app.windows()) {
+    const mode = await page.evaluate(() => window.okDesktop?.config?.mode).catch(() => undefined);
+    if (mode === 'editor') return page;
+  }
+  throw new Error('editor window vanished between poll resolution and read');
+}
+
+async function resizeEditorWindow(app: ElectronApplication, page: Page): Promise<void> {
+  const nativeWindowHandle = await app.browserWindow(page);
+  await nativeWindowHandle.evaluate((nativeWindow: unknown) => {
+    (
+      nativeWindow as { setSize: (width: number, height: number, animate: boolean) => void }
+    ).setSize(720, 480, false);
+  });
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(720);
+}
+
 async function openRunningTerminal(app: ElectronApplication, page: Page): Promise<void> {
   const label = await app.evaluate(async ({ Menu }) => {
     const view = Menu.getApplicationMenu()?.items.find((i) => i.label === 'View');
@@ -187,23 +220,36 @@ test.describe('Terminal clickable links — live Electron', () => {
     }).toPass({ timeout: 20_000 });
   });
 
-  test.fixme('clicking an in-project markdown path opens the doc in the editor', async ({
+  test.fixme('clicking a printed project document from narrow Terminal reveals it in Editor', async ({
     captureStderrFor,
   }) => {
     const s = seed('doc');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
-    const page = await findEditorWindow(app);
+    const page = await findEditorWindowWithin20s(app);
     await configureDesktopGitRepositories(page, s.projectDir);
     await openRunningTerminal(app, page);
+    await resizeEditorWindow(app, page);
 
+    await expect(page.getByTestId('header-pane-button-terminal')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('[data-pane="editor"]')).toBeHidden();
     await runInTerminal(page, SHELL_COMMANDS.output('notes.md'), 'notes.md');
-
     await expect(async () => {
       await clickTerminalLink(page, 'notes.md');
-      const hash = await page.evaluate(() => window.location.hash);
-      expect(hash).toBe('#/notes');
+      expect(await page.evaluate(() => window.location.hash)).toBe('#/notes');
     }).toPass({ timeout: 20_000 });
+    await expect(page.getByTestId('header-pane-button-editor')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.locator('[data-pane="editor"]')).toBeVisible();
+    await expect(page.locator('[data-pane="terminal"]:visible')).toHaveCount(0);
+    await expect(
+      page.locator('[data-pane="editor"] .ProseMirror:not(.composer-prosemirror):visible').first(),
+    ).toContainText('Clickable link target.');
   });
 });

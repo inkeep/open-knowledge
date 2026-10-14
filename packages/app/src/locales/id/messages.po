@@ -1670,6 +1670,7 @@ msgstr "Aktif"
 msgid "Active panel content for the selected tab shows here."
 msgstr "Isi panel aktif untuk tab yang dipilih muncul di sini."
 
+#: src/components/EditorArea.tsx
 #: src/components/FolderTimelineCard.tsx
 msgid "Activity"
 msgstr "Aktivitas"
@@ -1962,6 +1963,10 @@ msgid "Agent mode"
 msgstr "Mode agen"
 
 #: src/components/EditorArea.tsx
+msgid "Agent panel"
+msgstr "Panel agen"
+
+#: src/components/EditorArea.tsx
 msgid "Agent panel closed to keep Terminal readable."
 msgstr "Panel agen ditutup agar Terminal tetap mudah dibaca."
 
@@ -1983,6 +1988,7 @@ msgstr "Transkrip agen"
 
 #: src/components/EditorArea.tsx
 #: src/components/ExploreSkills.tsx
+#: src/components/HeaderPaneButtons.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
 msgstr "Agen"
@@ -2179,6 +2185,7 @@ msgstr "Instans aplikasi: {label}, v{version}"
 msgid "Append-only log of what changed."
 msgstr "Log tambah-saja tentang apa yang berubah."
 
+#: src/components/AppHeader.tsx
 #: src/components/CommandPalette.tsx
 msgid "Application"
 msgstr "Aplikasi"
@@ -2542,6 +2549,10 @@ msgstr "Kembali"
 #: src/components/ActivityModeContent.tsx
 msgid "Back to document view"
 msgstr "Kembali ke tampilan dokumen"
+
+#: src/components/EditorArea.tsx
+msgid "Back to editor"
+msgstr "Kembali ke penyunting"
 
 #: src/components/LinksPanel.tsx
 msgid "Backlinks"
@@ -3463,10 +3474,6 @@ msgstr "Ciutkan"
 msgid "Collapse {keyName}"
 msgstr "Ciutkan {keyName}"
 
-#: src/components/TerminalTabStrip.tsx
-msgid "Collapse agent panel"
-msgstr "Ciutkan panel agen"
-
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -3489,10 +3496,6 @@ msgstr "Ciutkan Tanya AI"
 #: src/components/GraphPanel.tsx
 msgid "Collapse graph"
 msgstr "Ciutkan graf"
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Collapse Terminal"
-msgstr "Ciutkan Terminal"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Collapsible content block (Notion-style toggle)."
@@ -3661,7 +3664,7 @@ msgstr "Atur pengaturan pengguna, proyek, dan integrasi."
 msgid "conflict"
 msgstr "konflik"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Conflict"
 msgstr "Konflik"
@@ -4300,6 +4303,7 @@ msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "\"{0}\" tidak bisa digandakan: {1}"
 
 #: src/comments/reveal-comment.ts
+#: src/comments/ThreadCard.tsx
 msgid "Couldn't find that passage — the text it was on may have changed."
 msgstr "Tidak dapat menemukan bagian teks itu — teks yang ditandainya mungkin telah berubah."
 
@@ -4664,6 +4668,10 @@ msgstr "Pengaturan ini tidak dapat disimpan. Coba lagi."
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr "Tidak dapat menyimpan preferensi tema Anda."
+
+#: src/comments/reveal-comment.ts
+msgid "Couldn't scroll to that passage. Try again."
+msgstr "Tidak dapat menggulir ke bagian teks itu. Coba lagi."
 
 #: src/components/BugReportSendToast.tsx
 msgid "Couldn't send the report"
@@ -5285,6 +5293,7 @@ msgid "Diff render mode"
 msgstr "Mode render perbedaan"
 
 #: src/components/AgentDiffPane.tsx
+#: src/components/EditorArea.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Diff unavailable"
 msgstr "Perbedaan tidak tersedia"
@@ -5405,6 +5414,10 @@ msgstr "Dokumen tidak ditemukan"
 #: src/components/OutlinePanel.tsx
 msgid "Document outline"
 msgstr "Kerangka dokumen"
+
+#: src/components/EditorArea.tsx
+msgid "Document panel"
+msgstr "Panel dokumen"
 
 #: src/components/DocPanel.tsx
 msgid "Document panels"
@@ -5729,6 +5742,7 @@ msgstr "Menyunting {boldName} di tempatnya. Perubahan langsung tersimpan ke sali
 msgid "Editing broken MDX source: {reason}"
 msgstr "Menyunting sumber MDX yang rusak: {reason}"
 
+#: src/components/HeaderPaneButtons.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Editor"
 msgstr "Penyunting"
@@ -5740,6 +5754,10 @@ msgstr "Mode penyunting"
 #: src/components/EditorWorkspace.tsx
 msgid "editor pane"
 msgstr "panel editor"
+
+#: src/components/EditorWorkspace.tsx
+msgid "Editor pane"
+msgstr "Panel penyunting"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Editor selection"
@@ -6687,6 +6705,7 @@ msgstr "Berkas: <0>{fixedName}.md</0>"
 msgid "Filename"
 msgstr "Nama berkas"
 
+#: src/components/EditorArea.tsx
 #: src/components/FileSidebar.tsx
 msgid "Files"
 msgstr "Berkas"
@@ -7349,11 +7368,17 @@ msgstr "Sembunyikan detail"
 msgid "Hide document panel"
 msgstr "Sembunyikan panel dokumen"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+msgid "Hide Editor"
+msgstr "Sembunyikan Penyunting"
+
 #: src/components/GraphPanel.tsx
 msgid "Hide external URL nodes"
 msgstr "Sembunyikan simpul URL eksternal"
 
-#: src/components/EditorHeader.tsx
+#: src/components/FileListToggle.tsx
+#: src/components/FileSidebar.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Hide Files"
 msgstr "Sembunyikan Berkas"
@@ -7384,12 +7409,13 @@ msgid "Hide Others"
 msgstr "Sembunyikan lainnya"
 
 #: src/components/AgentDiffPane.tsx
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
+#: src/components/EditorArea.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Hide panel"
 msgstr "Sembunyikan panel"
 
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 msgid "Hide panel ({panelShortcutLabel})"
 msgstr "Sembunyikan panel ({panelShortcutLabel})"
 
@@ -9004,11 +9030,11 @@ msgstr "Ubah tujuan tautan, jangkar, dan label tampilannya."
 msgid "More"
 msgstr "Lainnya"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 msgid "More actions"
 msgstr "Tindakan lainnya"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 msgid "More actions ({syncAttentionLabel})"
 msgstr "Tindakan lainnya ({syncAttentionLabel})"
 
@@ -10058,6 +10084,10 @@ msgstr "Tidak ada yang berjalan sampai Anda meminta — pull dan push dari menu 
 msgid "Nothing moves until you ask."
 msgstr "Tidak ada yang berjalan sampai Anda meminta."
 
+#: src/components/NothingOpen.tsx
+msgid "Nothing open"
+msgstr "Tidak ada yang terbuka"
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr "Belum ada yang disetel."
@@ -10107,7 +10137,7 @@ msgstr "Mati — tautan eksternal hanya menampilkan URL-nya. Tidak ada permintaa
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr "Mati — pencarian hanya memeringkat berdasarkan kata kunci. Tidak ada konten yang keluar dari komputer ini."
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "Luring"
@@ -10273,13 +10303,9 @@ msgstr "Buka panel aktivitas untuk {tooltipName}"
 msgid "Open activity panel for {tooltipName}, editing {realCurrentDoc}"
 msgstr "Buka panel aktivitas untuk {tooltipName}, yang sedang menyunting {realCurrentDoc}"
 
-#: src/components/TerminalRevealTab.tsx
-msgid "Open agents panel"
-msgstr "Buka panel agen"
-
-#: src/components/TerminalRevealTab.tsx
-msgid "Open agents panel — {liveThreadCount, plural, one {# live agent thread} other {# live agent threads}}"
-msgstr "Buka panel agen — {liveThreadCount, plural, other {# utas agen aktif}}"
+#: src/components/NothingOpen.tsx
+msgid "Open agents"
+msgstr "Buka agen"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
@@ -10325,6 +10351,10 @@ msgstr "Membuka konfirmasi penghapusan untuk item pohon berkas yang dipilih."
 #: src/components/PropertyWidgets.tsx
 msgid "Open documents tagged #{chip}"
 msgstr "Buka dokumen bertag #{chip}"
+
+#: src/components/NothingOpen.tsx
+msgid "Open editor"
+msgstr "Buka penyunting"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Open email draft"
@@ -10497,7 +10527,7 @@ msgstr "Buka panel lint sumber"
 msgid "Open source: {mirrorSrc}"
 msgstr "Buka sumber: {mirrorSrc}"
 
-#: src/components/TerminalRevealTab.tsx
+#: src/components/NothingOpen.tsx
 msgid "Open terminal"
 msgstr "Buka terminal"
 
@@ -11058,6 +11088,14 @@ msgstr "Geser ke atas"
 msgid "pane {0}"
 msgstr "panel {0}"
 
+#: src/components/EditorWorkspace.tsx
+msgid "Pane {number}"
+msgstr "Panel {number}"
+
+#: src/components/HeaderPaneButtons.tsx
+msgid "Panels"
+msgstr "Panel"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Paragraph"
 msgstr "Paragraf"
@@ -11466,6 +11504,7 @@ msgstr "proyek"
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillsTree.tsx
+#: src/components/WebProjectName.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
 msgstr "Proyek"
@@ -11859,7 +11898,7 @@ msgstr "Direkomendasikan"
 msgid "Recommended agent skill"
 msgstr "Keterampilan agen yang direkomendasikan"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "Perlu menyambung ulang"
@@ -12448,9 +12487,18 @@ msgstr "Setel ulang filter tampilan"
 msgid "Resize {handleKey}"
 msgstr "Ubah ukuran {handleKey}"
 
+#: src/components/EditorArea.tsx
+msgid "Resize document panel"
+msgstr "Ubah ukuran panel dokumen"
+
 #: src/components/SkillsSidebarDock.tsx
 msgid "Resize skills panel"
 msgstr "Ubah ukuran panel Keterampilan"
+
+#: src/components/EditorArea.tsx
+#: src/components/TerminalDock.tsx
+msgid "Resize terminal"
+msgstr "Ubah ukuran terminal"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
@@ -12864,9 +12912,8 @@ msgid "Scroll to start"
 msgstr "Gulir ke awal"
 
 #: src/components/CommandPalette.tsx
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderSearchBar.tsx
 #: src/components/settings/SettingsDialogShell.tsx
-#: src/components/SidebarSearchBar.tsx
 #: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
@@ -12875,10 +12922,6 @@ msgstr "Cari"
 #: src/components/CommandPalette.tsx
 msgid "Search \"{semanticSubmitQuery}\" by meaning"
 msgstr "Cari \"{semanticSubmitQuery}\" berdasarkan makna"
-
-#: src/components/EditorHeader.tsx
-msgid "Search ({searchShortcutLabel})"
-msgstr "Cari ({searchShortcutLabel})"
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Search agents"
@@ -13545,6 +13588,11 @@ msgstr "Tampilkan diagram"
 msgid "Show document panel"
 msgstr "Tampilkan panel dokumen"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+msgid "Show Editor"
+msgstr "Tampilkan Penyunting"
+
 #: src/components/GraphPanel.tsx
 msgid "Show external URL nodes"
 msgstr "Tampilkan simpul URL eksternal"
@@ -13553,7 +13601,7 @@ msgstr "Tampilkan simpul URL eksternal"
 msgid "Show fewer"
 msgstr "Tampilkan lebih sedikit"
 
-#: src/components/EditorHeader.tsx
+#: src/components/FileListToggle.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Show Files"
 msgstr "Tampilkan Berkas"
@@ -13610,12 +13658,12 @@ msgid "Show original"
 msgstr "Tampilkan versi asli"
 
 #: src/components/AgentDiffPane.tsx
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Show panel"
 msgstr "Tampilkan panel"
 
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "Tampilkan panel ({panelShortcutLabel})"
 
@@ -14434,7 +14482,7 @@ msgstr "Mode sinkronisasi"
 msgid "Sync now"
 msgstr "Sinkronkan sekarang"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "Sinkronisasi dijeda"
@@ -14612,6 +14660,7 @@ msgstr "Templat tersedia"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+#: src/components/HeaderPaneButtons.tsx
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -16412,6 +16461,10 @@ msgstr "properti folder diperbarui"
 msgid "Updated to Version {version}"
 msgstr "Diperbarui ke Versi {version}"
 
+#: src/components/CornerCardStack.tsx
+msgid "Updates and feedback"
+msgstr "Pembaruan dan masukan"
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Updates flow in"
 msgstr "Pembaruan mengalir masuk"
@@ -16984,10 +17037,6 @@ msgstr "Ruang kerja"
 #: src/components/CommandPalette.tsx
 msgid "Workspace Command Palette"
 msgstr "Palet Perintah Ruang Kerja"
-
-#: src/components/EditorHeader.tsx
-msgid "Workspace navigation"
-msgstr "Navigasi ruang kerja"
 
 #: src/components/NavigatorApp.tsx
 #: src/components/RecentProjectsMenu.tsx

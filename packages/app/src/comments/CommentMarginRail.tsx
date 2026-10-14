@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { getEditorView } from '@/editor/utils/get-editor-view';
+import { useEditorPaneOnScreen } from '@/lib/use-editor-pane-on-screen';
 import { cn } from '@/lib/utils';
 import { createAnchorResolver, findQuoteRange } from './anchor-search';
 import {
@@ -90,6 +91,7 @@ export function CommentMarginRail({ editor, docName }: { editor: Editor; docName
   const activeId = useOpenThread();
   const [rail, setRail] = useState<RailBox | null>(null);
   const [positions, setPositions] = useState<MarkerPosition[]>([]);
+  const editorPaneOnScreen = useEditorPaneOnScreen();
 
   useEffect(() => {
     const view = getEditorView(editor);
@@ -183,7 +185,7 @@ export function CommentMarginRail({ editor, docName }: { editor: Editor; docName
     emitOpenThread(threadId);
   }
 
-  if (rail === null || positions.length === 0) return null;
+  if (!editorPaneOnScreen || rail === null || positions.length === 0) return null;
 
   return createPortal(
     <div

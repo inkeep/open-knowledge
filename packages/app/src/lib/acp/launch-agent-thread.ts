@@ -55,18 +55,21 @@ export function launchAgentThread(
   titleHint: string | null,
   stageDraft?: string | ThreadDraftContent | null,
   attachments?: readonly AttachmentPart[],
+  onCreated?: (info: ThreadInfo) => void,
 ): Promise<ThreadLaunchOutcome> {
   const launchKey = `${agent.source}:${agent.id}`;
   if (inflightLaunches.has(launchKey)) return Promise.resolve('deduped');
   inflightLaunches.add(launchKey);
-  return getAgentThreadClient()
-    .createThread({
-      agent,
-      prompt: prompt ?? undefined,
-      docName: docName ?? undefined,
-      titleHint: titleHint ?? undefined,
-      ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
-    })
+  const client = getAgentThreadClient();
+  const request = {
+    agent,
+    prompt: prompt ?? undefined,
+    docName: docName ?? undefined,
+    titleHint: titleHint ?? undefined,
+    ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
+  };
+  return client
+    .createThread(request, onCreated)
     .then((info) => {
       warnWhenLaunchedImagesAreUnsupported(info, attachments);
       if (stageDraft != null) {

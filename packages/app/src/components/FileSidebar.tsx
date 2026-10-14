@@ -10,6 +10,7 @@ import {
   FolderPlus,
   FoldVertical,
   ListCollapse,
+  PanelLeftClose,
   Share2,
   SquarePen,
   UnfoldVertical,
@@ -23,10 +24,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ErrorBoundary } from 'react-error-boundary';
 import { toast } from 'sonner';
 import { ConflictsSection } from '@/components/ConflictsSection';
-import { FeedbackCardMount } from '@/components/FeedbackCard';
 import { FileTree, type FileTreeHandle } from '@/components/FileTree';
 import { defaultInitialDir, hasOkPathSegment } from '@/components/file-tree-utils';
 import { subscribeToFilesSectionReveal } from '@/components/files-section-reveal-store';
@@ -39,10 +38,7 @@ import {
   useHandoffDispatch,
 } from '@/components/handoff/useHandoffDispatch';
 import { useInstalledAgents } from '@/components/handoff/useInstalledAgents';
-import { NavigationHistoryControls } from '@/components/NavigationHistoryControls';
 import { OnboardingCardMount } from '@/components/OnboardingCard';
-import { ProjectSwitcher } from '@/components/ProjectSwitcher';
-import { onPillRenderError, SidebarSearchBar } from '@/components/SidebarSearchBar';
 import {
   SidebarToolbarButton as ToolbarButton,
   type SidebarToolbarButtonProps as ToolbarButtonProps,
@@ -53,7 +49,6 @@ import {
   writeCachedSkillsSectionVisible,
 } from '@/components/skills-section-visible-cache';
 import { TemplateMenuRows } from '@/components/template-menu-rows';
-import { UpdateNotices } from '@/components/UpdateNotices';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
@@ -84,9 +79,6 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuItem,
   SidebarRail,
   useSidebar,
 } from '@/components/ui/sidebar';
@@ -125,16 +117,13 @@ import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { ProfilerBoundary } from '@/lib/perf';
 import { revealInFileManagerLabel } from '@/lib/platform-labels';
+import { revealEditorBeforeActing } from '@/lib/reveal-editor';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { buildFolderShareInput, runShareAction } from '@/lib/share/run-share-action';
 import { useStickyAgent } from '@/lib/unified-agent-store';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { setViewMenuState } from '@/lib/view-menu-state-store';
-
-interface FileSidebarProps {
-  onOpenSearch: () => void;
-}
 
 const EMPTY_FOLDER_STATE: { folderCount: number; expandedCount: number } = {
   folderCount: 0,
@@ -149,10 +138,10 @@ export function isInteractiveSidebarControl(target: EventTarget | null): boolean
   return target.closest(SIDEBAR_INTERACTIVE_CONTROL_SELECTOR) !== null;
 }
 
-export function FileSidebar({ onOpenSearch }: FileSidebarProps) {
+export function FileSidebar() {
   return (
     <ProfilerBoundary name="file-sidebar">
-      <FileSidebarInner onOpenSearch={onOpenSearch} />
+      <FileSidebarInner />
     </ProfilerBoundary>
   );
 }
@@ -187,10 +176,11 @@ function SettingsLoadingMenuGroupTooltip({
   );
 }
 
-function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
+function FileSidebarInner() {
   const { t } = useLingui();
   const settingsLoadingReasonId = useId();
   const [tree, setTree] = useState<FileTreeHandle | null>(null);
+  const suppressTreeMenuFocusRestoreRef = useRef(false);
 
   const { activeDocName, activeTarget } = useDocumentContext();
   const activeCreateDir =
@@ -203,11 +193,8 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
 
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
 
-  const { state: sidebarState, toggleSidebar } = useSidebar();
+  const { state: sidebarState, toggleSidebar, setOpen, dismissCover } = useSidebar();
   const isEmbedded = useIsEmbedded();
-  const isExpanded = sidebarState === 'expanded';
-  const isCollapsed = sidebarState === 'collapsed';
-  const shouldFadeChrome = isElectronHost && isCollapsed;
 
   const [folderState, setFolderState] = useState(EMPTY_FOLDER_STATE);
 
@@ -409,31 +396,37 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
       switch (action) {
         case 'new-doc': {
           if (!workspace || !tree) return;
+          revealEditorBeforeActing();
           tree.startCreating('file', initialCreateDir);
           return;
         }
         case 'new-folder': {
           if (!workspace || !tree) return;
+          revealEditorBeforeActing();
           tree.startCreating('folder', initialCreateDir);
           return;
         }
         case 'new-from-template': {
           if (!workspace || !tree) return;
+          revealEditorBeforeActing();
           tree.startCreatingFromTemplate(initialCreateDir);
           return;
         }
         case 'rename': {
           if (!activeTarget || isOkManagedTarget) return;
+          revealEditorBeforeActing();
           emitFileTreeMenuActionRename(activeTarget);
           return;
         }
         case 'duplicate': {
           if (!activeTarget || isOkManagedTarget) return;
+          revealEditorBeforeActing();
           emitFileTreeMenuActionDuplicate(activeTarget);
           return;
         }
         case 'move-to-trash': {
           if (!activeTarget || isOkManagedTarget) return;
+          revealEditorBeforeActing();
           emitFileTreeMenuActionDelete(activeTarget);
           return;
         }
@@ -521,30 +514,37 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
           return;
         }
         case 'toggle-show-ok-folders': {
+          revealEditorBeforeActing();
           patchSidebarVisibility({ showOkFolders: !showOkFolders });
           return;
         }
         case 'toggle-show-hidden-files': {
+          revealEditorBeforeActing();
           patchSidebarVisibility({ showHiddenFiles: !showHiddenFiles });
           return;
         }
         case 'toggle-show-only-markdown-files': {
+          revealEditorBeforeActing();
           patchSidebarVisibility({ showOnlyMarkdownFiles: !showOnlyMarkdownFiles });
           return;
         }
         case 'toggle-show-skills-section': {
+          revealEditorBeforeActing();
           patchSidebarVisibility({ showSkillsSection: !showSkillsSection });
           return;
         }
         case 'expand-all-tree': {
+          revealEditorBeforeActing();
           tree?.expandAll();
           return;
         }
         case 'collapse-all-tree': {
+          revealEditorBeforeActing();
           tree?.collapseAll();
           return;
         }
         case 'toggle-sidebar': {
+          revealEditorBeforeActing();
           toggleSidebar();
           return;
         }
@@ -584,7 +584,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   ]);
 
   return (
-    <Sidebar variant="inset">
+    <Sidebar variant="inset" className="pt-0">
       {pendingSettingsReason ? (
         <span id={settingsLoadingReasonId} className="sr-only">
           {pendingSettingsReason}
@@ -596,45 +596,12 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
           {/* biome-ignore lint/a11y/noStaticElementInteractions: ContextMenuTrigger
            * delegation surface — display:contents wrapper for the asChild Slot's
            * single-child requirement. Keyboard equivalents live on the individual
-           * interactive controls inside (toolbar buttons, search-pill button,
-           * project switcher trigger, Pierre tree rows, sidebar rail); this wrapper
+           * interactive controls inside (toolbar buttons, Pierre tree rows,
+           * sidebar rail); this wrapper
            * has no perceivable interactive surface of its own. The onContextMenu
            * handler delegates the button-target opt-out for the sidebar-wide
            * context menu — same a11y semantics as a Radix Slot. */}
           <div className="contents" onContextMenu={handleSidebarSurfaceContextMenu}>
-            <SidebarHeader
-              data-electron-drag={isElectronHost ? '' : undefined}
-              className={cn(
-                'flex-row h-12 items-center py-0 pl-3 pr-2',
-                'justify-between',
-                isElectronHost && 'overflow-x-clip',
-                isElectronHost &&
-                  'motion-safe:transition-opacity motion-safe:duration-100 motion-safe:ease-out',
-                isElectronHost && isExpanded && 'motion-safe:delay-100',
-                shouldFadeChrome && 'opacity-0',
-                isElectronHost && '[-webkit-app-region:drag]',
-              )}
-            >
-              {isElectronHost ? (
-                <div
-                  aria-hidden="true"
-                  data-testid="sidebar-traffic-light-reserve"
-                  className="w-[var(--ok-titlebar-reserve-left,0px)] shrink-0 self-stretch"
-                />
-              ) : null}
-              <div className="ml-auto flex shrink-0 items-center gap-0.5 [&>*]:[-webkit-app-region:no-drag]">
-                {}
-                {isElectronHost && isExpanded ? <NavigationHistoryControls /> : null}
-                {}
-                <ErrorBoundary
-                  fallbackRender={() => null}
-                  onError={onPillRenderError}
-                  resetKeys={[sidebarState]}
-                >
-                  <SidebarSearchBar onClick={onOpenSearch} />
-                </ErrorBoundary>
-              </div>
-            </SidebarHeader>
             <SidebarContent>
               <ConflictsSection />
               {}
@@ -644,9 +611,12 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                   onOpenChange={setFilesOpen}
                   className="group/files flex min-h-0 flex-col data-[state=open]:min-h-48 data-[state=open]:flex-1"
                 >
-                  <SidebarGroup className="min-h-0 flex-1 px-0">
+                  <SidebarGroup className="min-h-0 flex-1 px-0 pt-0">
                     {}
-                    <SidebarGroupLabel className="shrink-0 gap-1 rounded-none">
+                    <SidebarGroupLabel
+                      data-sidebar-project-row=""
+                      className="h-11 shrink-0 gap-1 rounded-none"
+                    >
                       <CollapsibleTrigger
                         data-sidebar-root-context
                         className="flex min-w-0 flex-1 items-center gap-1.5"
@@ -672,113 +642,136 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                             icon={ListCollapse}
                             label={t`Tree view options`}
                           />
-                          <DropdownMenuContent
-                            align="end"
-                            className="min-w-52"
-                            data-testid="tree-options-menu"
-                          >
-                            {showExpandAll ? (
-                              <DropdownMenuItem onSelect={() => tree?.expandAll()}>
-                                <UnfoldVertical aria-hidden="true" />
-                                <Trans>Expand all</Trans>
-                              </DropdownMenuItem>
-                            ) : null}
-                            {showCollapseAll ? (
-                              <DropdownMenuItem onSelect={() => tree?.collapseAll()}>
-                                <FoldVertical aria-hidden="true" />
-                                <Trans>Collapse all</Trans>
-                              </DropdownMenuItem>
-                            ) : null}
-                            {showTreeStateSection ? <DropdownMenuSeparator /> : null}
-                            {}
-                            <SettingsLoadingMenuGroupTooltip reason={pendingSettingsReason}>
-                              <DropdownMenuGroup aria-label={t`Show`}>
-                                <DropdownMenuLabel>
-                                  <Trans>Show</Trans>
-                                </DropdownMenuLabel>
-                                <DropdownMenuCheckboxItem
-                                  checked={showHiddenFiles}
-                                  onCheckedChange={(checked) =>
-                                    patchSidebarVisibility({ showHiddenFiles: checked })
-                                  }
-                                  aria-disabled={pendingSettingsReason ? true : undefined}
-                                  onSelect={preventPendingSettingsSelection}
-                                  aria-describedby={
-                                    pendingSettingsReason ? settingsLoadingReasonId : undefined
-                                  }
-                                  data-testid="tree-options-show-hidden-files"
+                          {sidebarState === 'expanded' ? (
+                            <DropdownMenuContent
+                              align="end"
+                              className="min-w-52"
+                              data-testid="tree-options-menu"
+                              onCloseAutoFocus={(event) => {
+                                if (!suppressTreeMenuFocusRestoreRef.current) return;
+                                suppressTreeMenuFocusRestoreRef.current = false;
+                                event.preventDefault();
+                              }}
+                            >
+                              {showExpandAll ? (
+                                <DropdownMenuItem onSelect={() => tree?.expandAll()}>
+                                  <UnfoldVertical aria-hidden="true" />
+                                  <Trans>Expand all</Trans>
+                                </DropdownMenuItem>
+                              ) : null}
+                              {showCollapseAll ? (
+                                <DropdownMenuItem onSelect={() => tree?.collapseAll()}>
+                                  <FoldVertical aria-hidden="true" />
+                                  <Trans>Collapse all</Trans>
+                                </DropdownMenuItem>
+                              ) : null}
+                              {showTreeStateSection ? <DropdownMenuSeparator /> : null}
+                              {}
+                              <SettingsLoadingMenuGroupTooltip reason={pendingSettingsReason}>
+                                <DropdownMenuGroup aria-label={t`Show`}>
+                                  <DropdownMenuLabel>
+                                    <Trans>Show</Trans>
+                                  </DropdownMenuLabel>
+                                  <DropdownMenuCheckboxItem
+                                    checked={showHiddenFiles}
+                                    onCheckedChange={(checked) =>
+                                      patchSidebarVisibility({ showHiddenFiles: checked })
+                                    }
+                                    aria-disabled={pendingSettingsReason ? true : undefined}
+                                    onSelect={preventPendingSettingsSelection}
+                                    aria-describedby={
+                                      pendingSettingsReason ? settingsLoadingReasonId : undefined
+                                    }
+                                    data-testid="tree-options-show-hidden-files"
+                                  >
+                                    <Trans>Hidden files</Trans>
+                                  </DropdownMenuCheckboxItem>
+                                  <DropdownMenuCheckboxItem
+                                    checked={showOkFolders}
+                                    onCheckedChange={(checked) =>
+                                      patchSidebarVisibility({ showOkFolders: checked })
+                                    }
+                                    aria-disabled={pendingSettingsReason ? true : undefined}
+                                    onSelect={preventPendingSettingsSelection}
+                                    aria-describedby={
+                                      pendingSettingsReason ? settingsLoadingReasonId : undefined
+                                    }
+                                    data-testid="tree-options-show-ok-folders"
+                                  >
+                                    <Trans>.ok folders</Trans>
+                                  </DropdownMenuCheckboxItem>
+                                  <DropdownMenuCheckboxItem
+                                    checked={showOnlyMarkdownFiles}
+                                    onCheckedChange={(checked) =>
+                                      patchSidebarVisibility({ showOnlyMarkdownFiles: checked })
+                                    }
+                                    aria-disabled={pendingSettingsReason ? true : undefined}
+                                    onSelect={preventPendingSettingsSelection}
+                                    aria-describedby={
+                                      pendingSettingsReason ? settingsLoadingReasonId : undefined
+                                    }
+                                    data-testid="tree-options-show-only-markdown-files"
+                                  >
+                                    <Trans>Only markdown files</Trans>
+                                  </DropdownMenuCheckboxItem>
+                                  <DropdownMenuCheckboxItem
+                                    checked={showSkillsSection}
+                                    onCheckedChange={(checked) =>
+                                      patchSidebarVisibility({ showSkillsSection: checked })
+                                    }
+                                    aria-disabled={pendingSettingsReason ? true : undefined}
+                                    onSelect={preventPendingSettingsSelection}
+                                    aria-describedby={
+                                      pendingSettingsReason ? settingsLoadingReasonId : undefined
+                                    }
+                                    data-testid="tree-options-show-skills"
+                                  >
+                                    <Trans>Skills Studio</Trans>
+                                  </DropdownMenuCheckboxItem>
+                                </DropdownMenuGroup>
+                              </SettingsLoadingMenuGroupTooltip>
+                              {}
+                              {showSkillsSection ? (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <SettingsLoadingMenuGroupTooltip reason={pendingSettingsReason}>
+                                    <DropdownMenuGroup>
+                                      <DropdownMenuCheckboxItem
+                                        checked={showSkillGroups}
+                                        onCheckedChange={(checked) =>
+                                          patchSidebarVisibility({ showSkillGroups: checked })
+                                        }
+                                        aria-disabled={pendingSettingsReason ? true : undefined}
+                                        onSelect={preventPendingSettingsSelection}
+                                        aria-describedby={
+                                          pendingSettingsReason
+                                            ? settingsLoadingReasonId
+                                            : undefined
+                                        }
+                                        data-testid="tree-options-group-skills"
+                                      >
+                                        <Trans>Group skills by source</Trans>
+                                      </DropdownMenuCheckboxItem>
+                                    </DropdownMenuGroup>
+                                  </SettingsLoadingMenuGroupTooltip>
+                                </>
+                              ) : null}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuGroup>
+                                <DropdownMenuItem
+                                  data-files-hide=""
+                                  onSelect={() => {
+                                    suppressTreeMenuFocusRestoreRef.current = true;
+                                    setOpen(false);
+                                    dismissCover();
+                                  }}
                                 >
-                                  <Trans>Hidden files</Trans>
-                                </DropdownMenuCheckboxItem>
-                                <DropdownMenuCheckboxItem
-                                  checked={showOkFolders}
-                                  onCheckedChange={(checked) =>
-                                    patchSidebarVisibility({ showOkFolders: checked })
-                                  }
-                                  aria-disabled={pendingSettingsReason ? true : undefined}
-                                  onSelect={preventPendingSettingsSelection}
-                                  aria-describedby={
-                                    pendingSettingsReason ? settingsLoadingReasonId : undefined
-                                  }
-                                  data-testid="tree-options-show-ok-folders"
-                                >
-                                  <Trans>.ok folders</Trans>
-                                </DropdownMenuCheckboxItem>
-                                <DropdownMenuCheckboxItem
-                                  checked={showOnlyMarkdownFiles}
-                                  onCheckedChange={(checked) =>
-                                    patchSidebarVisibility({ showOnlyMarkdownFiles: checked })
-                                  }
-                                  aria-disabled={pendingSettingsReason ? true : undefined}
-                                  onSelect={preventPendingSettingsSelection}
-                                  aria-describedby={
-                                    pendingSettingsReason ? settingsLoadingReasonId : undefined
-                                  }
-                                  data-testid="tree-options-show-only-markdown-files"
-                                >
-                                  <Trans>Only markdown files</Trans>
-                                </DropdownMenuCheckboxItem>
-                                <DropdownMenuCheckboxItem
-                                  checked={showSkillsSection}
-                                  onCheckedChange={(checked) =>
-                                    patchSidebarVisibility({ showSkillsSection: checked })
-                                  }
-                                  aria-disabled={pendingSettingsReason ? true : undefined}
-                                  onSelect={preventPendingSettingsSelection}
-                                  aria-describedby={
-                                    pendingSettingsReason ? settingsLoadingReasonId : undefined
-                                  }
-                                  data-testid="tree-options-show-skills"
-                                >
-                                  <Trans>Skills Studio</Trans>
-                                </DropdownMenuCheckboxItem>
+                                  <PanelLeftClose aria-hidden="true" />
+                                  <Trans>Hide Files</Trans>
+                                </DropdownMenuItem>
                               </DropdownMenuGroup>
-                            </SettingsLoadingMenuGroupTooltip>
-                            {}
-                            {showSkillsSection ? (
-                              <>
-                                <DropdownMenuSeparator />
-                                <SettingsLoadingMenuGroupTooltip reason={pendingSettingsReason}>
-                                  <DropdownMenuGroup>
-                                    <DropdownMenuCheckboxItem
-                                      checked={showSkillGroups}
-                                      onCheckedChange={(checked) =>
-                                        patchSidebarVisibility({ showSkillGroups: checked })
-                                      }
-                                      aria-disabled={pendingSettingsReason ? true : undefined}
-                                      onSelect={preventPendingSettingsSelection}
-                                      aria-describedby={
-                                        pendingSettingsReason ? settingsLoadingReasonId : undefined
-                                      }
-                                      data-testid="tree-options-group-skills"
-                                    >
-                                      <Trans>Group skills by source</Trans>
-                                    </DropdownMenuCheckboxItem>
-                                  </DropdownMenuGroup>
-                                </SettingsLoadingMenuGroupTooltip>
-                              </>
-                            ) : null}
-                          </DropdownMenuContent>
+                            </DropdownMenuContent>
+                          ) : null}
                         </DropdownMenu>
                         <ToolbarButton
                           icon={SquarePen}
@@ -822,18 +815,8 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
               {}
               {showSkillsSection ? <SkillsSidebarDock filesOpen={filesOpen} /> : null}
             </SidebarContent>
-            <SidebarFooter className="px-0">
+            <SidebarFooter className="px-0 empty:hidden">
               <OnboardingCardMount />
-              <UpdateNotices />
-              {}
-              <FeedbackCardMount />
-              {typeof window !== 'undefined' && window.okDesktop ? (
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <ProjectSwitcher bridge={window.okDesktop} />
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              ) : null}
             </SidebarFooter>
             {}
             <SidebarRail

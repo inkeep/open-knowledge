@@ -1,5 +1,10 @@
 import { afterEach, expect, test } from 'vitest';
 import {
+  __resetPaneVisibilityStoreForTests,
+  type PaneVisibilityRequest,
+  paneVisibilityStore,
+} from '@/lib/pane-visibility-store';
+import {
   __resetSkillsDockExpandedForTests,
   readSkillsDockExpanded,
   requestSkillsDockExpanded,
@@ -9,6 +14,7 @@ import {
 
 afterEach(() => {
   __resetSkillsDockExpandedForTests();
+  __resetPaneVisibilityStoreForTests();
 });
 
 test('ships collapsed when nothing was ever stored', () => {
@@ -33,4 +39,13 @@ test('notifies subscribers so an outside reveal reaches the mounted dock', () =>
   unsubscribe();
   writeSkillsDockExpanded(false);
   expect(seen).toEqual([true]);
+});
+
+test('asking for the dock also asks a hidden editor to show, since the dock lives in it', () => {
+  const requests: PaneVisibilityRequest[] = [];
+  paneVisibilityStore.subscribeRequests((request) => requests.push(request));
+
+  requestSkillsDockExpanded();
+
+  expect(requests).toEqual([{ pane: 'editor', open: true }]);
 });

@@ -76,6 +76,25 @@ describe('useSyncAuthPrompt', () => {
     expect(toastInfoCalls).toEqual([]);
   });
 
+  test('a GitHub sign-in request opens the modal at the auth step', () => {
+    const onPrompt = vi.fn();
+    render(<TestComponent remote={GITHUB_REMOTE} onPrompt={onPrompt} />);
+
+    act(() => authPromptStore.request());
+
+    expect(onPrompt).toHaveBeenCalledWith('auth');
+  });
+
+  test('an identity request opens the modal at the identity step on any host', () => {
+    const onPrompt = vi.fn();
+    render(<TestComponent remote={GITEA_HTTPS_REMOTE} onPrompt={onPrompt} />);
+
+    act(() => authPromptStore.request('identity'));
+
+    expect(onPrompt).toHaveBeenCalledWith('identity');
+    expect(toastInfoCalls).toEqual([]);
+  });
+
   test('a non-GitHub remote gets the stored-credential sentence and no modal', () => {
     const onPrompt = vi.fn();
     render(<TestComponent remote={GITEA_HTTPS_REMOTE} onPrompt={onPrompt} />);
@@ -104,7 +123,7 @@ describe('useSyncAuthPrompt', () => {
 
     act(() => authPromptStore.request());
 
-    expect(authPromptStore.getSnapshot()).toBe(false);
+    expect(authPromptStore.getSnapshot()).toBeNull();
     expect(toastInfoCalls).toHaveLength(1);
   });
 

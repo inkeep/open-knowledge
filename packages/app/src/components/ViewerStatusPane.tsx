@@ -11,7 +11,7 @@ interface ViewerStatusPaneBaseProps {
 
 export function ViewerLoadingPane({ fileName, dataAttr, extraAttrs }: ViewerStatusPaneBaseProps) {
   return (
-    <main
+    <section
       className="flex h-full min-h-0 flex-col items-center justify-center bg-background text-muted-foreground text-sm"
       aria-label={fileName}
       {...{ [dataAttr]: '', [`${dataAttr}-state`]: 'loading' }}
@@ -20,7 +20,7 @@ export function ViewerLoadingPane({ fileName, dataAttr, extraAttrs }: ViewerStat
       <span>
         <Trans>Loading {fileName}</Trans>
       </span>
-    </main>
+    </section>
   );
 }
 
@@ -35,7 +35,7 @@ export function ViewerErrorPane({
   openFile?: ViewerOpenFileTarget;
 }) {
   return (
-    <main
+    <section
       className="flex h-full min-h-0 flex-col items-center justify-center gap-2 bg-background p-4 text-center"
       aria-label={fileName}
       {...{ [dataAttr]: '', [`${dataAttr}-state`]: 'error' }}
@@ -64,6 +64,6 @@ export function ViewerErrorPane({
           <Trans>Open file</Trans>
         </Button>
       ) : null}
-    </main>
+    </section>
   );
 }

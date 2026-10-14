@@ -516,9 +516,9 @@ import {
   readTerminalShellSetting,
 } from './terminal-consent.ts';
 import {
-  applyAgentPanelVisibilityUpdate,
   commitTerminalDockState,
   resolveRestoredAgentPanelVisible,
+  resolveRestoredEditorVisible,
 } from './terminal-dock-persistence.ts';
 import { observeTerminalLaunch } from './terminal-gate-observation.ts';
 import { type TerminalReaper, wireWindowTerminalReap } from './terminal-lifecycle.ts';
@@ -574,7 +574,15 @@ import { migrateLegacyUserDataDir } from './userdata-migration.ts';
 import { buildUtilityForkEnv } from './utility-fork-env.ts';
 import { computeFirstLaunchAfterUpgrade } from './version-drift.ts';
 import { buildViewMenuStateDeps, EditorViewMenuStateRegistry } from './view-menu-state.ts';
-import { applyThemeToWindow, buildNonDarwinChromeOpts } from './window-chrome.ts';
+import { handleViewMenuStateChange } from './view-menu-state-change.ts';
+import {
+  applyThemeToWindow,
+  buildNonDarwinChromeOpts,
+  DEFAULT_WINDOW_CHROME_KIND,
+  rememberWindowChromeKind,
+  TRAFFIC_LIGHT_POSITION,
+  windowChromeOptsForKind,
+} from './window-chrome.ts';
 import {
   type BrowserWindowLike,
   bringWindowToFront,
@@ -649,7 +657,7 @@ const DEFAULT_WIN_OPTS: BrowserWindowConstructorOptions = {
   ...(process.platform === 'darwin'
     ? {
         titleBarStyle: 'hiddenInset',
-        trafficLightPosition: { x: 22, y: 24 },
+        trafficLightPosition: TRAFFIC_LIGHT_POSITION,
         vibrancy: VIBRANCY_DEFAULT,
         visualEffectState: 'followWindow',
         transparent: true,
@@ -1043,6 +1051,7 @@ function sweepConsoleHostsBeforeUpdate(): WindowsUpdateSurvivorSweepResult {
 const slidesDeckRegistry = createSlidesDeckRegistry();
 const dockVisibleForWindow = new Map<number, boolean>();
 const agentPanelVisibleForWindow = new Map<number, boolean>();
+const editorVisibleForWindow = new Map<number, boolean>();
 type DockOrderRecord = { order: string[]; activeKey: string | null };
 const dockOrderForWindow = new Map<
   number,
@@ -1061,6 +1070,7 @@ function persistTerminalDockForWindow(
     terminalVisible: boolean;
     terminalSnapshot: OkTerminalRestartSnapshot;
     agentPanelVisible: boolean;
+    editorVisible: boolean;
   }>,
 ): OkTerminalDockStateWriteResult {
   const stateKey = terminalStateKey(win);
@@ -1496,8 +1506,10 @@ function ensureWindowManager() {
 
   wm = new WindowManager({
     createWindow: (opts) => {
+      const chromeKind = opts.chrome ?? DEFAULT_WINDOW_CHROME_KIND;
       const win = new BrowserWindow({
         ...DEFAULT_WIN_OPTS,
+        ...windowChromeOptsForKind(chromeKind, process.platform, nativeTheme.shouldUseDarkColors),
         minWidth: WINDOW_MIN_SIZE.EDITOR.width,
         minHeight: WINDOW_MIN_SIZE.EDITOR.height,
         title: opts.title,
@@ -1507,6 +1519,7 @@ function ensureWindowManager() {
           preload: join(__dirname, '../preload/index.js'),
         },
       });
+      rememberWindowChromeKind(win, chromeKind);
       win.on('page-title-updated', (e) => {
         e.preventDefault();
       });
@@ -1540,6 +1553,7 @@ function ensureWindowManager() {
         wireWindowTerminalReap(win, terminalReaper, (windowId) => {
           dockVisibleForWindow.delete(windowId);
           agentPanelVisibleForWindow.delete(windowId);
+          editorVisibleForWindow.delete(windowId);
           dockOrderForWindow.delete(windowId);
           terminalSnapshotForWindow.delete(windowId);
         });
@@ -2562,6 +2576,10 @@ async function runApplicationMenuRefresh(): Promise<void> {
     onNavigateBack: () => sendMenuAction('navigate-back'),
     onNavigateForward: () => sendMenuAction('navigate-forward'),
     noteWindow: focusedWindow !== null && getNoteWindowContext(focusedWindow.id) !== undefined,
+    singleFileWindow:
+      focusedWindow !== null &&
+      wm?.getContextForBrowserWindow(focusedWindow as unknown as BrowserWindowLike)?.ephemeral !==
+        undefined,
     activeTarget: currentActiveTarget(),
     onOpenInNewWindow: () => {
       const focused = BrowserWindow.getFocusedWindow();
@@ -4132,6 +4150,7 @@ function registerIpcHandlers() {
       return {
         terminalVisible: false,
         agentPanelVisible: false,
+        editorVisible: true,
       };
     const stateKey = terminalStateKey(win);
     const persisted = stateKey === null ? null : getTerminalDockState(appState, stateKey);
@@ -4140,6 +4159,10 @@ function registerIpcHandlers() {
       terminalVisible: dockVisibleForWindow.get(win.id) ?? persisted?.terminalVisible ?? false,
       agentPanelVisible: resolveRestoredAgentPanelVisible({
         inMemory: agentPanelVisibleForWindow.get(win.id),
+        persisted,
+      }),
+      editorVisible: resolveRestoredEditorVisible({
+        inMemory: editorVisibleForWindow.get(win.id),
         persisted,
       }),
       terminal: orders?.terminal,
@@ -4499,39 +4522,33 @@ function registerIpcHandlers() {
 
   handle('ok:editor:view-menu-state-changed', async (event, state) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    if (win) editorViewMenuStates.update(win.id, state);
-    if (state.terminalVisible !== undefined || state.agentPanelVisible !== undefined) {
-      if (win) {
-        if (state.terminalVisible !== undefined) {
-          dockVisibleForWindow.set(win.id, state.terminalVisible);
-          const result = persistTerminalDockForWindow(win, {
-            terminalVisible: state.terminalVisible,
-          });
-          if (!result.ok) {
-            getLogger('terminal').warn(
-              { reason: result.reason },
-              'terminal visibility persistence failed',
-            );
-          }
-        }
-        if (state.agentPanelVisible !== undefined) {
-          applyAgentPanelVisibilityUpdate(
-            {
-              rememberForWindow: (visible) => agentPanelVisibleForWindow.set(win.id, visible),
-              persist: (visible) =>
-                persistTerminalDockForWindow(win, { agentPanelVisible: visible }),
-              warnPersistFailed: (reason) =>
-                getLogger('terminal').warn(
-                  { reason },
-                  'agents panel visibility persistence failed',
-                ),
-            },
-            state.agentPanelVisible,
-          );
-        }
-      }
-    }
-    refreshApplicationMenu();
+    handleViewMenuStateChange(
+      {
+        windowId: win?.id ?? null,
+        state,
+      },
+      {
+        updateMenuState: (windowId, partial) => editorViewMenuStates.update(windowId, partial),
+        rememberEditorVisible: (windowId, visible) => editorVisibleForWindow.set(windowId, visible),
+        rememberTerminalVisible: (windowId, visible) => dockVisibleForWindow.set(windowId, visible),
+        rememberAgentPanelVisible: (windowId, visible) =>
+          agentPanelVisibleForWindow.set(windowId, visible),
+        persist: (update) =>
+          win === null
+            ? { ok: false, reason: 'no-window-context' }
+            : persistTerminalDockForWindow(win, update),
+        warnPersistFailed: (kind, reason) => {
+          const message =
+            kind === 'editor'
+              ? 'editor visibility persistence failed'
+              : kind === 'terminal'
+                ? 'terminal visibility persistence failed'
+                : 'agents panel visibility persistence failed';
+          getLogger('terminal').warn({ reason }, message);
+        },
+        refreshApplicationMenu,
+      },
+    );
     return undefined;
   });
 
@@ -7106,6 +7123,7 @@ function bootPrimaryInstance(): void {
     desktopProcessObservability = null;
     dockVisibleForWindow.clear();
     agentPanelVisibleForWindow.clear();
+    editorVisibleForWindow.clear();
     dockOrderForWindow.clear();
     terminalSnapshotForWindow.clear();
     autoUpdaterHandle?.destroy();

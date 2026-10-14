@@ -8,6 +8,11 @@ import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { hashFromAssetPath } from '@/lib/doc-hash';
 import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
 import {
+  __resetPaneVisibilityStoreForTests,
+  type PaneVisibilityRequest,
+  paneVisibilityStore,
+} from '@/lib/pane-visibility-store';
+import {
   consumeHashNavigationSuppression,
   recordAppShellCrashTrip,
   resetTabSessionRestoreSuppression,
@@ -353,6 +358,50 @@ function CloseActiveHarness() {
   );
 }
 
+function HiddenEditorRevealHarness() {
+  const ctx = useDocumentContext();
+  return (
+    <>
+      <span data-testid="open-tabs">{ctx.openTabs.join('|')}</span>
+      <button
+        type="button"
+        onClick={() =>
+          ctx.openTargetTransition({ kind: 'skills', target: 'skills' }, { deliberate: false })
+        }
+      >
+        Sync skills
+      </button>
+      <button type="button" onClick={() => ctx.clearTarget()}>
+        Clear target
+      </button>
+      <button type="button" onClick={() => ctx.openBlobRunner()}>
+        Blob run
+      </button>
+    </>
+  );
+}
+
+function BridgeHiddenEditorRevealHarness({ bridge }: { bridge: OkDesktopBridge }) {
+  useLayoutEffect(() => {
+    window.okDesktop = bridge;
+    return () => {
+      delete window.okDesktop;
+    };
+  }, [bridge]);
+  return <HiddenEditorRevealHarness />;
+}
+
+function hideEditorAndRecordRequests(): PaneVisibilityRequest[] {
+  const requests: PaneVisibilityRequest[] = [];
+  paneVisibilityStore.subscribeRequests((request) => requests.push(request));
+  paneVisibilityStore.publish({
+    editor: { open: false, onScreen: false },
+    agents: null,
+    terminal: null,
+  });
+  return requests;
+}
+
 function BridgeCloseActiveHarness({ bridge }: { bridge: OkDesktopBridge }) {
   useLayoutEffect(() => {
     window.okDesktop = bridge;
@@ -590,9 +639,10 @@ describe('DocumentContext preview-tab promotion on user edit', () => {
 
 describe('DocumentContext tab close force contract', () => {
   afterEach(() => {
+    __resetPaneVisibilityStoreForTests();
+    mockCollabUrl = null;
     cleanup();
     delete window.okDesktop;
-    mockCollabUrl = null;
     globalThis.fetch = originalFetch;
     window.localStorage.clear();
     window.location.hash = '';
@@ -819,6 +869,59 @@ describe('DocumentContext tab close force contract', () => {
       `pane-left:${OTHER_TAB_ID}::${OTHER_TAB_ID}`,
     );
     expect(screen.getByTestId('pane-state').textContent).not.toContain('new-tab:1');
+  });
+
+  test('with the editor hidden, Close Tab asks it to show first', async () => {
+    seedActiveOtherTabSession();
+    const stub = makeEditorBridgeStub(
+      persistedTabSession(
+        [PINNED_TAB_ID, OTHER_TAB_ID],
+        [],
+        OTHER_TAB_ID,
+        new Date('2026-05-13T00:00:00.000Z').toISOString(),
+      ),
+    );
+    render(<BridgeCloseActiveHarness bridge={stub.bridge} />, { wrapper: ProviderHarness });
+    await new Promise((r) => setTimeout(r, 0));
+    const requests = hideEditorAndRecordRequests();
+
+    stub.fire('close-active-tab-or-window');
+
+    expect(requests).toEqual([{ pane: 'editor', open: true }]);
+    expect(screen.getByTestId('open-tabs').textContent).toBe(PINNED_TAB_ID);
+  });
+
+  test('a non-deliberate skills sync leaves a hidden editor hidden, while Blob Run shows it', async () => {
+    mockCollabUrl = 'ws://localhost:1/collab';
+    render(<HiddenEditorRevealHarness />, { wrapper: ProviderHarness });
+    await new Promise((r) => setTimeout(r, 0));
+    const requests = hideEditorAndRecordRequests();
+
+    act(() => screen.getByRole('button', { name: 'Sync skills' }).click());
+    expect(requests).toEqual([]);
+
+    act(() => screen.getByRole('button', { name: 'Blob run' }).click());
+    expect(requests).toEqual([{ pane: 'editor', open: true }]);
+  });
+
+  test('clearing the target over restored tabs leaves a hidden editor hidden', async () => {
+    seedActiveOtherTabSession();
+    const stub = makeEditorBridgeStub(
+      persistedTabSession(
+        [PINNED_TAB_ID, OTHER_TAB_ID],
+        [],
+        OTHER_TAB_ID,
+        new Date('2026-05-13T00:00:00.000Z').toISOString(),
+      ),
+    );
+    render(<BridgeHiddenEditorRevealHarness bridge={stub.bridge} />, { wrapper: ProviderHarness });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.getByTestId('open-tabs').textContent).toBe(`${PINNED_TAB_ID}|${OTHER_TAB_ID}`);
+    const requests = hideEditorAndRecordRequests();
+
+    act(() => screen.getByRole('button', { name: 'Clear target' }).click());
+
+    expect(requests).toEqual([]);
   });
 
   test('desktop close-active-tab-or-window action closes tabs before closing the editor window', async () => {

@@ -93,7 +93,8 @@ export interface CommandStateToggle {
     | 'sidebarVisible'
     | 'docPanelVisible'
     | 'terminalVisible'
-    | 'agentPanelVisible';
+    | 'agentPanelVisible'
+    | 'editorVisible';
   readonly defaultVisible: boolean;
   readonly overrideKey?: MenuLabelKey;
   readonly overrideField?: 'hasEditorSelection';
@@ -475,6 +476,21 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     menu: [{ section: 'view-panels', order: 1, accelerator: 'CmdOrCtrl+Alt+B' }],
   },
   {
+    id: 'toggle-editor',
+    menuActionId: 'toggle-editor',
+    labelKey: 'editorShow',
+    keywords: ['editor', 'document', 'pane', 'panel', 'show editor', 'hide editor'],
+    stateToggle: {
+      showKey: 'editorShow',
+      hideKey: 'editorHide',
+      stateField: 'editorVisible',
+      defaultVisible: true,
+    },
+    availability: { singleFileHidden: true },
+    palette: { group: 'view', visibility: 'search-only' },
+    menu: [{ section: 'view-panels', order: 2 }],
+  },
+  {
     id: 'toggle-terminal',
     menuActionId: 'toggle-terminal',
     labelKey: 'terminalShow',
@@ -499,7 +515,7 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     },
     availability: { host: 'desktop', requiresTerminalCapability: true },
     palette: { group: 'view', visibility: 'search-only' },
-    menu: [{ section: 'view-panels', order: 2, accelerator: 'CmdOrCtrl+J' }],
+    menu: [{ section: 'view-panels', order: 3, accelerator: 'CmdOrCtrl+J' }],
   },
   {
     id: 'toggle-agent-panel',
@@ -517,7 +533,7 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     },
     availability: {},
     palette: { group: 'view', visibility: 'search-only' },
-    menu: [{ section: 'view-panels', order: 3, accelerator: 'CmdOrCtrl+L' }],
+    menu: [{ section: 'view-panels', order: 4, accelerator: 'CmdOrCtrl+L' }],
   },
   {
     id: 'toggle-show-hidden-files',

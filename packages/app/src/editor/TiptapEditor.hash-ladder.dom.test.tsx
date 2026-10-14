@@ -7,9 +7,12 @@ import { Suspense } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
+import { REPEAT_ANCHOR_NAV_EVENT } from './anchor-navigation-event';
 import { sharedExtensions } from './extensions/shared';
+import { toInternalHashHref } from './internal-link-helpers';
 
 const DOC_NAME = 'hash-ladder-doc';
+const HANGUL_HEADING = '한국어';
 
 let editorEntry: {
   editor: Editor;
@@ -78,7 +81,7 @@ describe('TiptapEditor deep-link hash ladder', () => {
 
     const ydoc = new Y.Doc();
     const ytext = ydoc.getText('source');
-    ytext.insert(0, '# Target Heading\n\nbody');
+    ytext.insert(0, `# Target Heading\n\nbody\n\n# ${HANGUL_HEADING}\n\nmore`);
     const editor = new Editor({
       element: host,
       extensions: sharedExtensions,
@@ -91,6 +94,12 @@ describe('TiptapEditor deep-link hash ladder', () => {
             content: [{ type: 'text', text: 'Target Heading' }],
           },
           { type: 'paragraph', content: [{ type: 'text', text: 'body' }] },
+          {
+            type: 'heading',
+            attrs: { level: 1 },
+            content: [{ type: 'text', text: HANGUL_HEADING }],
+          },
+          { type: 'paragraph', content: [{ type: 'text', text: 'more' }] },
         ],
       },
     });
@@ -147,6 +156,12 @@ describe('TiptapEditor deep-link hash ladder', () => {
     return result;
   }
 
+  function headingById(id: string): HTMLElement {
+    const heading = editorEntry?.editor.view.dom.querySelector<HTMLElement>(`#${CSS.escape(id)}`);
+    if (!heading) throw new Error(`no heading rendered with id ${id}`);
+    return heading;
+  }
+
   test('anchor id is present so the ladder has a target to find', () => {
     expect(editorEntry?.editor.view.dom.querySelector('#target-heading')).not.toBeNull();
   });
@@ -170,5 +185,31 @@ describe('TiptapEditor deep-link hash ladder', () => {
     });
 
     expect(scrollIntoView).toHaveBeenCalled();
+  });
+
+  test('a decomposed-jamo hash anchor scrolls the heading whose id is composed', async () => {
+    const composed = HANGUL_HEADING.normalize('NFC');
+    const decomposed = HANGUL_HEADING.normalize('NFD');
+    expect(decomposed).not.toBe(composed);
+    const heading = headingById(composed);
+    window.location.hash = toInternalHashHref({ docName: DOC_NAME, anchor: decomposed });
+
+    await renderEditor(false);
+
+    expect(scrollIntoView.mock.contexts).toContain(heading);
+    expect(scrollIntoView.mock.contexts).not.toContain(headingById('target-heading'));
+  });
+
+  test('the repeat-anchor event scrolls the heading the hash already names again', async () => {
+    const heading = headingById('target-heading');
+    await renderEditor(false);
+    expect(scrollIntoView.mock.contexts).toContain(heading);
+    scrollIntoView.mockClear();
+
+    act(() => {
+      window.dispatchEvent(new Event(REPEAT_ANCHOR_NAV_EVENT));
+    });
+
+    expect(scrollIntoView.mock.contexts).toEqual([heading]);
   });
 });

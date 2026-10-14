@@ -251,7 +251,13 @@ function LinkRow({
   return row;
 }
 
-function BacklinksSection({ docName }: { docName: string }) {
+function BacklinksSection({
+  docName,
+  onDestinationRequested,
+}: {
+  docName: string;
+  onDestinationRequested?: (docName: string) => void;
+}) {
   const { t } = useLingui();
   const {
     folderPaths,
@@ -325,6 +331,7 @@ function BacklinksSection({ docName }: { docName: string }) {
                       anchor={backlink.anchor}
                       snippet={backlink.snippet}
                       href={hashFromDocName(navigationIntent.hashDocName, backlink.anchor)}
+                      onClick={() => onDestinationRequested?.(navigationIntent.hashDocName)}
                     />
                   );
                 })}
@@ -342,7 +349,13 @@ function BacklinksSection({ docName }: { docName: string }) {
   );
 }
 
-function ForwardLinksSection({ docName }: { docName: string }) {
+function ForwardLinksSection({
+  docName,
+  onDestinationRequested,
+}: {
+  docName: string;
+  onDestinationRequested?: (docName: string) => void;
+}) {
   const { t } = useLingui();
   const {
     addPage,
@@ -380,7 +393,10 @@ function ForwardLinksSection({ docName }: { docName: string }) {
     try {
       await createPageFromSeedAndUpdate(seed, {
         addPage,
-        onCreated: navigateToDocHash,
+        onCreated: (createdDocName) => {
+          onDestinationRequested?.(createdDocName);
+          navigateToDocHash(createdDocName);
+        },
       });
       setCreatingKey(null);
     } catch (err) {
@@ -468,6 +484,7 @@ function ForwardLinksSection({ docName }: { docName: string }) {
           anchor={link.anchor}
           snippet={link.snippet}
           href={navigateHref}
+          onClick={() => onDestinationRequested?.(navigateHashDocName)}
         />
       );
     }
@@ -482,6 +499,7 @@ function ForwardLinksSection({ docName }: { docName: string }) {
         anchor={link.anchor}
         snippet={link.snippet}
         href={navigateHref}
+        onClick={() => onDestinationRequested?.(navigateHashDocName)}
       />
     );
   }
@@ -529,7 +547,13 @@ function ForwardLinksSection({ docName }: { docName: string }) {
   );
 }
 
-function LocalFilesSection({ docName }: { docName: string }) {
+function LocalFilesSection({
+  docName,
+  onDestinationComplete,
+}: {
+  docName: string;
+  onDestinationComplete?: (target?: HTMLElement) => void;
+}) {
   const { t } = useLingui();
   const { pages, loading: pagesLoading, error: pageListError } = usePageList();
   const { data, isLoading, error } = useQuery({
@@ -558,6 +582,7 @@ function LocalFilesSection({ docName }: { docName: string }) {
       line: target.line + 1,
       column: target.column + 1,
       source: 'links',
+      onNavigated: onDestinationComplete,
     };
     rememberPendingSourceNavigation(docName, { kind: 'lint', detail });
     window.dispatchEvent(new CustomEvent(LINT_NAV_EVENT, { detail }));
@@ -657,15 +682,25 @@ function LocalFilesSection({ docName }: { docName: string }) {
   );
 }
 
-export function LinksPanel({ docName, className = '' }: { docName: string; className?: string }) {
+export function LinksPanel({
+  docName,
+  className = '',
+  onDestinationRequested,
+  onDestinationComplete,
+}: {
+  docName: string;
+  className?: string;
+  onDestinationRequested?: (docName: string) => void;
+  onDestinationComplete?: (target?: HTMLElement) => void;
+}) {
   return (
     <Panel className={className}>
       <PanelBody className="px-0 py-0">
-        <ForwardLinksSection docName={docName} />
+        <ForwardLinksSection docName={docName} onDestinationRequested={onDestinationRequested} />
         <Separator />
-        <LocalFilesSection docName={docName} />
+        <LocalFilesSection docName={docName} onDestinationComplete={onDestinationComplete} />
         <Separator />
-        <BacklinksSection docName={docName} />
+        <BacklinksSection docName={docName} onDestinationRequested={onDestinationRequested} />
       </PanelBody>
     </Panel>
   );

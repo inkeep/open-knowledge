@@ -46,7 +46,7 @@ const ANNOUNCER = '[data-testid="agent-thread-warning-announcer"]';
 const THREAD_ROOT = '[data-agent-thread-root]';
 const COMPOSER = '[data-testid="agent-thread-composer"]';
 const AGENTS_PANEL = '[data-agents-panel-mount]';
-const AGENTS_PANEL_REVEAL = '[data-terminal-reveal="right"]';
+const AGENTS_HEADER_BUTTON = 'header-pane-button-agents';
 const DOCK_EMPTY = '[data-testid="sessions-dock-empty"]';
 const TRANSCRIPT = '[data-testid="agent-thread-transcript"]';
 const EMPTY_AGENT_CATALOG = { agents: [], stale: false, maxThreads: 8 };
@@ -98,7 +98,7 @@ function threadRosterDelivered(page: Page): Promise<void> {
 }
 
 async function openAgentsPanel(page: Page): Promise<void> {
-  await page.locator(AGENTS_PANEL_REVEAL).click({ timeout: PANEL_OPEN_TIMEOUT_MS });
+  await page.getByTestId(AGENTS_HEADER_BUTTON).click({ timeout: PANEL_OPEN_TIMEOUT_MS });
   await expect(
     page.locator(AGENTS_PANEL).locator(DOCK_EMPTY),
     'the agents panel did not open onto an empty session dock: it is either collapsed to zero width or a session was seeded into it',

@@ -55,6 +55,8 @@ export const MENU_LABELS = {
   terminalHide: 'Hide Terminal',
   terminalMoveRight: 'Move Terminal to right',
   terminalMoveBottom: 'Move Terminal to bottom',
+  editorShow: 'Show Editor',
+  editorHide: 'Hide Editor',
   agentPanelShow: 'Show Agents',
   agentPanelHide: 'Hide Agents',
   agentPanelAskSelection: 'Ask AI About Selection',

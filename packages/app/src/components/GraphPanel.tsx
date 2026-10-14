@@ -109,7 +109,8 @@ async function fetchHubs(limit: number): Promise<HubEntry[]> {
   return success.data.hubs;
 }
 
-function navigateToDoc(docName: string) {
+function navigateToDoc(docName: string, onDestinationRequested?: (docName: string) => void) {
+  onDestinationRequested?.(docName);
   window.location.assign(hashFromDocName(docName));
 }
 
@@ -136,9 +137,11 @@ function getOrphanEmptyState(mode: OrphanMode): string {
 function FullscreenOrphansView({
   mode,
   onModeChange,
+  onDestinationRequested,
 }: {
   mode: OrphanMode;
   onModeChange: (mode: OrphanMode) => void;
+  onDestinationRequested?: (docName: string) => void;
 }) {
   const { t } = useLingui();
   const {
@@ -194,7 +197,7 @@ function FullscreenOrphansView({
                 key={entry.docName}
                 type="button"
                 className="block w-full rounded-lg border border-border bg-background/80 px-3 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => navigateToDoc(entry.docName)}
+                onClick={() => navigateToDoc(entry.docName, onDestinationRequested)}
               >
                 <div className="truncate text-sm font-medium">{entry.title}</div>
                 <div className="truncate text-xs text-muted-foreground">{entry.docName}</div>
@@ -207,7 +210,11 @@ function FullscreenOrphansView({
   );
 }
 
-function FullscreenHubsView() {
+function FullscreenHubsView({
+  onDestinationRequested,
+}: {
+  onDestinationRequested?: (docName: string) => void;
+}) {
   const { t } = useLingui();
   const {
     data: hubs = [],
@@ -249,7 +256,7 @@ function FullscreenHubsView() {
                 key={hub.docName}
                 type="button"
                 className="block w-full rounded-lg border border-border bg-background/80 px-3 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => navigateToDoc(hub.docName)}
+                onClick={() => navigateToDoc(hub.docName, onDestinationRequested)}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -269,7 +276,17 @@ function FullscreenHubsView() {
   );
 }
 
-export function GraphPanel({ activeDocName }: { activeDocName: string }) {
+export function GraphPanel({
+  activeDocName,
+  onDestinationRequested,
+}: {
+  activeDocName: string;
+  onDestinationRequested?: (
+    docName: string,
+    allowMissing?: boolean,
+    onComplete?: () => void,
+  ) => void;
+}) {
   const { t } = useLingui();
   const {
     folderPaths,
@@ -283,6 +300,7 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
   const [fullscreenMode, setFullscreenMode] = useState<FullscreenGraphMode>('explore');
   const [orphanMode, setOrphanMode] = useState<OrphanMode>('both');
   const [selectedNode, setSelectedNode] = useState<GraphNodeSelection | null>(null);
+  const [pendingOpenDocName, setPendingOpenDocName] = useState<string | null>(null);
   const [stats, setStats] = useState<{ nodes: number; links: number } | null>(null);
   const [clusters, setClusters] = useState<string[]>([]);
   const [showUrlNodesDocked, setShowUrlNodesDocked] = useState(() =>
@@ -314,6 +332,8 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (isOverlayLayerOpen()) return;
+      e.preventDefault();
+      e.stopPropagation();
       setIsExpanded(false);
     };
     window.addEventListener('keydown', onKeyDown, { capture: true });
@@ -364,6 +384,23 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
   const hashForSelectedNode = (
     selection: Parameters<typeof getHashForGraphDocSelection>[0],
   ): string => selectedNodeIntent?.hash ?? getHashForGraphDocSelection(selection);
+  const openSelectedNode = (
+    docName: string,
+    selection: Parameters<typeof getHashForGraphDocSelection>[0],
+    allowMissing = false,
+  ) => {
+    const hash = hashForSelectedNode(selection);
+    if (onDestinationRequested) {
+      setPendingOpenDocName(docName);
+      onDestinationRequested(selectedNodeIntent?.hashDocName ?? docName, allowMissing, () => {
+        setPendingOpenDocName(null);
+        setIsExpanded(false);
+      });
+    } else {
+      setIsExpanded(false);
+    }
+    window.location.assign(hash);
+  };
   const selectedNodeState =
     selectedNode === null
       ? null
@@ -374,24 +411,18 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
             Icon: AlertTriangle,
             actionLabel: t`Create page`,
             secondaryLabel: selectedNode.docName,
-            onAction: () => {
-              const hash = hashForSelectedNode(selectedNode);
-              setIsExpanded(false);
-              window.location.assign(hash);
-            },
+            onAction: () => openSelectedNode(selectedNode.docName, selectedNode, true),
           }
-        : selectedNode.kind === 'doc' && selectedNode.docName === activeDocName
+        : selectedNode.kind === 'doc' &&
+            selectedNode.docName === activeDocName &&
+            selectedNode.docName !== pendingOpenDocName
           ? {
               eyebrow: t`Already open`,
               description: t`This document is already active in the editor. Use Open to collapse the graph.`,
               Icon: CheckCircle2,
               actionLabel: t`Open`,
               secondaryLabel: selectedNode.docName,
-              onAction: () => {
-                const hash = hashForSelectedNode(selectedNode);
-                setIsExpanded(false);
-                window.location.assign(hash);
-              },
+              onAction: () => openSelectedNode(selectedNode.docName, selectedNode),
             }
           : selectedNode.kind === 'doc'
             ? {
@@ -400,11 +431,7 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
                 Icon: ArrowUpRight,
                 actionLabel: t`Open`,
                 secondaryLabel: selectedNode.docName,
-                onAction: () => {
-                  const hash = hashForSelectedNode(selectedNode);
-                  setIsExpanded(false);
-                  window.location.assign(hash);
-                },
+                onAction: () => openSelectedNode(selectedNode.docName, selectedNode),
               }
             : {
                 eyebrow: t`Selected in graph`,
@@ -574,7 +601,15 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
             skillVisibility={skillVisibility}
             className="h-full min-h-0"
             docClickBehavior={isExpanded ? 'select' : 'navigate'}
-            onSelectNode={isExpanded ? setSelectedNode : undefined}
+            onSelectNode={
+              isExpanded
+                ? (node) => {
+                    setPendingOpenDocName(null);
+                    setSelectedNode(node);
+                  }
+                : undefined
+            }
+            onDestinationRequested={onDestinationRequested}
             onBackgroundClick={
               isExpanded
                 ? () => {
@@ -623,9 +658,15 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
         </div>
       ) : null}
       {isExpanded && activeMode === 'orphans' ? (
-        <FullscreenOrphansView mode={orphanMode} onModeChange={setOrphanMode} />
+        <FullscreenOrphansView
+          mode={orphanMode}
+          onModeChange={setOrphanMode}
+          onDestinationRequested={onDestinationRequested}
+        />
       ) : null}
-      {isExpanded && activeMode === 'hubs' ? <FullscreenHubsView /> : null}
+      {isExpanded && activeMode === 'hubs' ? (
+        <FullscreenHubsView onDestinationRequested={onDestinationRequested} />
+      ) : null}
     </Panel>
   );
 }

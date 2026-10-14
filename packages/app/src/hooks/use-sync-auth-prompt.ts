@@ -3,26 +3,26 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
 import { hasNonGitHubRemote, remoteTakesStoredToken } from '@/components/SyncStatusBadge';
 import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
-import { authPromptStore } from '@/lib/auth-prompt-store';
+import { type AuthPromptStep, authPromptStore } from '@/lib/auth-prompt-store';
 import { openAccountSettings } from '@/lib/use-settings-route';
 
 export function useSyncAuthPrompt(
   remote: GitSyncStatus['remote'] | undefined,
-  onPrompt: () => void,
+  onPrompt: (step: AuthPromptStep) => void,
 ): void {
   const { t } = useLingui();
   const pending = useSyncExternalStore(
     authPromptStore.subscribe,
     authPromptStore.getSnapshot,
-    () => false,
+    () => null,
   );
   const nonGitHub = hasNonGitHubRemote(remote ?? null);
   const takesToken = remoteTakesStoredToken(remote);
   useEffect(() => {
-    if (!pending) return;
+    if (pending === null) return;
     authPromptStore.clear();
-    if (!nonGitHub) {
-      onPrompt();
+    if (pending === 'identity' || !nonGitHub) {
+      onPrompt(pending);
       return;
     }
     if (!takesToken) {

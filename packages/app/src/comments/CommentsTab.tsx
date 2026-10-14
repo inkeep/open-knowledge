@@ -6,7 +6,13 @@ import { CommentsPanel } from './CommentsPanel';
 import { consumePendingCommentScope, subscribeCommentScopeRequests } from './reveal-queue';
 import { setVisibleCommentScope } from './visible-scope';
 
-export function CommentsTab({ docName }: { docName: string }) {
+export function CommentsTab({
+  docName,
+  onDestinationComplete,
+}: {
+  docName: string;
+  onDestinationComplete?: (target: HTMLElement) => void;
+}) {
   const [requestedScope, setRequestedScope] = useState<PanelScope>('doc');
   const singleFile = useSingleFileMode();
   const scope: PanelScope = singleFile ? 'doc' : requestedScope;
@@ -23,8 +29,12 @@ export function CommentsTab({ docName }: { docName: string }) {
     <PanelScopeHeader scope={scope} onScopeChange={setRequestedScope} />
   );
   return scope === 'doc' ? (
-    <CommentsPanel docName={docName} scopeSwitch={scopeSwitch} />
+    <CommentsPanel
+      docName={docName}
+      scopeSwitch={scopeSwitch}
+      onDestinationComplete={onDestinationComplete}
+    />
   ) : (
-    <CommentProjectPanel scopeSwitch={scopeSwitch} />
+    <CommentProjectPanel scopeSwitch={scopeSwitch} onDestinationComplete={onDestinationComplete} />
   );
 }

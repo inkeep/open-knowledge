@@ -1674,6 +1674,7 @@ msgstr "Actif"
 msgid "Active panel content for the selected tab shows here."
 msgstr "Le contenu du panneau actif de l'onglet sélectionné s'affiche ici."
 
+#: src/components/EditorArea.tsx
 #: src/components/FolderTimelineCard.tsx
 msgid "Activity"
 msgstr "Activité"
@@ -1966,6 +1967,10 @@ msgid "Agent mode"
 msgstr "Mode agent"
 
 #: src/components/EditorArea.tsx
+msgid "Agent panel"
+msgstr "Panneau des agents"
+
+#: src/components/EditorArea.tsx
 msgid "Agent panel closed to keep Terminal readable."
 msgstr "Le panneau des agents a été fermé pour que Terminal reste lisible."
 
@@ -1987,6 +1992,7 @@ msgstr "Transcription de l'agent"
 
 #: src/components/EditorArea.tsx
 #: src/components/ExploreSkills.tsx
+#: src/components/HeaderPaneButtons.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
 msgstr "Agents"
@@ -2183,6 +2189,7 @@ msgstr "Instance de l’application : {label}, v{version}"
 msgid "Append-only log of what changed."
 msgstr "Journal en ajout seul de ce qui a changé."
 
+#: src/components/AppHeader.tsx
 #: src/components/CommandPalette.tsx
 msgid "Application"
 msgstr "Application"
@@ -2546,6 +2553,10 @@ msgstr "Retour"
 #: src/components/ActivityModeContent.tsx
 msgid "Back to document view"
 msgstr "Retour à la vue document"
+
+#: src/components/EditorArea.tsx
+msgid "Back to editor"
+msgstr "Retour à l'éditeur"
 
 #: src/components/LinksPanel.tsx
 msgid "Backlinks"
@@ -3467,10 +3478,6 @@ msgstr "Réduire"
 msgid "Collapse {keyName}"
 msgstr "Réduire {keyName}"
 
-#: src/components/TerminalTabStrip.tsx
-msgid "Collapse agent panel"
-msgstr "Réduire le panneau des agents"
-
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -3493,10 +3500,6 @@ msgstr "Réduire Demander à l'IA"
 #: src/components/GraphPanel.tsx
 msgid "Collapse graph"
 msgstr "Réduire le graphe"
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Collapse Terminal"
-msgstr "Réduire Terminal"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Collapsible content block (Notion-style toggle)."
@@ -3665,7 +3668,7 @@ msgstr "Configurez les paramètres utilisateur, projet et intégrations."
 msgid "conflict"
 msgstr "conflit"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Conflict"
 msgstr "Conflit"
@@ -4304,6 +4307,7 @@ msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "Impossible de dupliquer « {0} » : {1}"
 
 #: src/comments/reveal-comment.ts
+#: src/comments/ThreadCard.tsx
 msgid "Couldn't find that passage — the text it was on may have changed."
 msgstr "Impossible de trouver ce passage — le texte auquel il était rattaché a peut-être changé."
 
@@ -4668,6 +4672,10 @@ msgstr "Impossible d'enregistrer ce paramètre. Réessayez."
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr "Impossible d'enregistrer votre préférence de thème."
+
+#: src/comments/reveal-comment.ts
+msgid "Couldn't scroll to that passage. Try again."
+msgstr "Impossible de faire défiler jusqu’à ce passage. Réessayez."
 
 #: src/components/BugReportSendToast.tsx
 msgid "Couldn't send the report"
@@ -5289,6 +5297,7 @@ msgid "Diff render mode"
 msgstr "Mode de rendu des différences"
 
 #: src/components/AgentDiffPane.tsx
+#: src/components/EditorArea.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Diff unavailable"
 msgstr "Différences indisponibles"
@@ -5409,6 +5418,10 @@ msgstr "Document introuvable"
 #: src/components/OutlinePanel.tsx
 msgid "Document outline"
 msgstr "Plan du document"
+
+#: src/components/EditorArea.tsx
+msgid "Document panel"
+msgstr "Panneau du document"
 
 #: src/components/DocPanel.tsx
 msgid "Document panels"
@@ -5733,6 +5746,7 @@ msgstr "Modification de {boldName} sur place. Les changements sont enregistrés 
 msgid "Editing broken MDX source: {reason}"
 msgstr "Modification d'une source MDX cassée : {reason}"
 
+#: src/components/HeaderPaneButtons.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Editor"
 msgstr "Éditeur"
@@ -5744,6 +5758,10 @@ msgstr "Mode de l'éditeur"
 #: src/components/EditorWorkspace.tsx
 msgid "editor pane"
 msgstr "volet de l’éditeur"
+
+#: src/components/EditorWorkspace.tsx
+msgid "Editor pane"
+msgstr "Volet de l'éditeur"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Editor selection"
@@ -6691,6 +6709,7 @@ msgstr "Fichier : <0>{fixedName}.md</0>"
 msgid "Filename"
 msgstr "Nom de fichier"
 
+#: src/components/EditorArea.tsx
 #: src/components/FileSidebar.tsx
 msgid "Files"
 msgstr "Fichiers"
@@ -7353,11 +7372,17 @@ msgstr "Masquer les détails"
 msgid "Hide document panel"
 msgstr "Masquer le panneau du document"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+msgid "Hide Editor"
+msgstr "Masquer l’éditeur"
+
 #: src/components/GraphPanel.tsx
 msgid "Hide external URL nodes"
 msgstr "Masquer les nœuds d'URL externes"
 
-#: src/components/EditorHeader.tsx
+#: src/components/FileListToggle.tsx
+#: src/components/FileSidebar.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Hide Files"
 msgstr "Masquer les fichiers"
@@ -7388,12 +7413,13 @@ msgid "Hide Others"
 msgstr "Masquer les autres"
 
 #: src/components/AgentDiffPane.tsx
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
+#: src/components/EditorArea.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Hide panel"
 msgstr "Masquer le panneau"
 
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 msgid "Hide panel ({panelShortcutLabel})"
 msgstr "Masquer le panneau ({panelShortcutLabel})"
 
@@ -9008,11 +9034,11 @@ msgstr "Modifiez la cible du lien, l'ancre et le libellé affiché."
 msgid "More"
 msgstr "Plus"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 msgid "More actions"
 msgstr "Plus d'actions"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 msgid "More actions ({syncAttentionLabel})"
 msgstr "Plus d'actions ({syncAttentionLabel})"
 
@@ -10062,6 +10088,10 @@ msgstr "Rien ne bouge tant que vous ne le demandez pas — tirez et poussez depu
 msgid "Nothing moves until you ask."
 msgstr "Rien ne bouge tant que vous ne le demandez pas."
 
+#: src/components/NothingOpen.tsx
+msgid "Nothing open"
+msgstr "Rien d’ouvert"
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr "Rien de défini pour l'instant."
@@ -10111,7 +10141,7 @@ msgstr "Désactivé — les liens externes n'affichent que leur URL. Aucune requ
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr "Désactivé — la recherche classe uniquement par mots-clés. Aucun contenu ne quitte cet ordinateur."
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "Hors ligne"
@@ -10277,13 +10307,9 @@ msgstr "Ouvrir le panneau d'activité de {tooltipName}"
 msgid "Open activity panel for {tooltipName}, editing {realCurrentDoc}"
 msgstr "Ouvrir le panneau d'activité de {tooltipName}, qui modifie {realCurrentDoc}"
 
-#: src/components/TerminalRevealTab.tsx
-msgid "Open agents panel"
-msgstr "Ouvrir le panneau des agents"
-
-#: src/components/TerminalRevealTab.tsx
-msgid "Open agents panel — {liveThreadCount, plural, one {# live agent thread} other {# live agent threads}}"
-msgstr "Ouvrir le panneau des agents — {liveThreadCount, plural, one {# fil d'agent actif} many {# fils d'agents actifs} other {# fils d'agents actifs}}"
+#: src/components/NothingOpen.tsx
+msgid "Open agents"
+msgstr "Ouvrir les agents"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
@@ -10329,6 +10355,10 @@ msgstr "Ouvre la confirmation de suppression pour les éléments sélectionnés 
 #: src/components/PropertyWidgets.tsx
 msgid "Open documents tagged #{chip}"
 msgstr "Ouvrir les documents étiquetés #{chip}"
+
+#: src/components/NothingOpen.tsx
+msgid "Open editor"
+msgstr "Ouvrir l’éditeur"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Open email draft"
@@ -10501,7 +10531,7 @@ msgstr "Ouvrir le panneau de vérification de la source"
 msgid "Open source: {mirrorSrc}"
 msgstr "Source : {mirrorSrc}"
 
-#: src/components/TerminalRevealTab.tsx
+#: src/components/NothingOpen.tsx
 msgid "Open terminal"
 msgstr "Ouvrir le terminal"
 
@@ -11062,6 +11092,14 @@ msgstr "Faire défiler vers le haut"
 msgid "pane {0}"
 msgstr "volet {0}"
 
+#: src/components/EditorWorkspace.tsx
+msgid "Pane {number}"
+msgstr "Volet {number}"
+
+#: src/components/HeaderPaneButtons.tsx
+msgid "Panels"
+msgstr "Panneaux"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Paragraph"
 msgstr "Paragraphe"
@@ -11470,6 +11508,7 @@ msgstr "projet"
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillsTree.tsx
+#: src/components/WebProjectName.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
 msgstr "Projet"
@@ -11863,7 +11902,7 @@ msgstr "Recommandé"
 msgid "Recommended agent skill"
 msgstr "Compétence d'agent recommandée"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "Reconnexion nécessaire"
@@ -12452,9 +12491,18 @@ msgstr "Réinitialiser les filtres d'affichage"
 msgid "Resize {handleKey}"
 msgstr "Redimensionner {handleKey}"
 
+#: src/components/EditorArea.tsx
+msgid "Resize document panel"
+msgstr "Redimensionner le panneau du document"
+
 #: src/components/SkillsSidebarDock.tsx
 msgid "Resize skills panel"
 msgstr "Redimensionner le panneau Compétences"
+
+#: src/components/EditorArea.tsx
+#: src/components/TerminalDock.tsx
+msgid "Resize terminal"
+msgstr "Redimensionner le terminal"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
@@ -12868,9 +12916,8 @@ msgid "Scroll to start"
 msgstr "Défiler jusqu'au début"
 
 #: src/components/CommandPalette.tsx
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderSearchBar.tsx
 #: src/components/settings/SettingsDialogShell.tsx
-#: src/components/SidebarSearchBar.tsx
 #: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
@@ -12879,10 +12926,6 @@ msgstr "Rechercher"
 #: src/components/CommandPalette.tsx
 msgid "Search \"{semanticSubmitQuery}\" by meaning"
 msgstr "Rechercher « {semanticSubmitQuery} » par le sens"
-
-#: src/components/EditorHeader.tsx
-msgid "Search ({searchShortcutLabel})"
-msgstr "Rechercher ({searchShortcutLabel})"
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Search agents"
@@ -13549,6 +13592,11 @@ msgstr "Afficher le diagramme"
 msgid "Show document panel"
 msgstr "Afficher le panneau du document"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+msgid "Show Editor"
+msgstr "Afficher l’éditeur"
+
 #: src/components/GraphPanel.tsx
 msgid "Show external URL nodes"
 msgstr "Afficher les nœuds d'URL externes"
@@ -13557,7 +13605,7 @@ msgstr "Afficher les nœuds d'URL externes"
 msgid "Show fewer"
 msgstr "Afficher moins"
 
-#: src/components/EditorHeader.tsx
+#: src/components/FileListToggle.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Show Files"
 msgstr "Afficher les fichiers"
@@ -13614,12 +13662,12 @@ msgid "Show original"
 msgstr "Afficher l’original"
 
 #: src/components/AgentDiffPane.tsx
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Show panel"
 msgstr "Afficher le panneau"
 
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "Afficher le panneau ({panelShortcutLabel})"
 
@@ -14438,7 +14486,7 @@ msgstr "Mode de synchronisation"
 msgid "Sync now"
 msgstr "Synchroniser maintenant"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "Synchronisation en pause"
@@ -14616,6 +14664,7 @@ msgstr "Modèles disponibles"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+#: src/components/HeaderPaneButtons.tsx
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -16416,6 +16465,10 @@ msgstr "propriétés du dossier mises à jour"
 msgid "Updated to Version {version}"
 msgstr "Mis à jour vers la version {version}"
 
+#: src/components/CornerCardStack.tsx
+msgid "Updates and feedback"
+msgstr "Mises à jour et avis"
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Updates flow in"
 msgstr "Les mises à jour arrivent"
@@ -16988,10 +17041,6 @@ msgstr "Espace de travail"
 #: src/components/CommandPalette.tsx
 msgid "Workspace Command Palette"
 msgstr "Palette de commandes de l'espace de travail"
-
-#: src/components/EditorHeader.tsx
-msgid "Workspace navigation"
-msgstr "Navigation dans l'espace de travail"
 
 #: src/components/NavigatorApp.tsx
 #: src/components/RecentProjectsMenu.tsx

@@ -15,6 +15,7 @@ import { SPAWN_STARTUP_DEADLINE_MS } from '../../../src/shared/boot-narration.ts
 import {
   DEFAULT_LAUNCH_TIMEOUT_MS,
   DEFAULT_LOCAL_PACKAGED_APP,
+  DESKTOP_ROOT,
   desktopLaunchOptions,
   executableForAppBundle,
   PACKAGED_APP_ENV,
@@ -51,28 +52,62 @@ describe('resolveDesktopTarget', () => {
   });
 
   it('resolves the bundle executable when the override names an .app', () => {
-    const target = resolveDesktopTarget({ env: { [PACKAGED_APP_ENV]: '/mnt/OpenKnowledge.app' } });
+    const target = resolveDesktopTarget({
+      env: { [PACKAGED_APP_ENV]: '/mnt/OpenKnowledge.app' },
+      platform: 'darwin',
+    });
     expect(target.mode).toBe('packaged');
     expect(target.appPath).toBe('/mnt/OpenKnowledge.app');
     expect(target.targetPath).toBe('/mnt/OpenKnowledge.app/Contents/MacOS/OpenKnowledge');
   });
 
   it('falls back to the local packaged build for packaged-only suites', () => {
-    const target = resolveDesktopTarget({ env: {}, requirePackaged: true });
+    const target = resolveDesktopTarget({ env: {}, requirePackaged: true, platform: 'darwin' });
     expect(target.mode).toBe('packaged');
     expect(target.appPath).toBe(DEFAULT_LOCAL_PACKAGED_APP);
+  });
+
+  it.each([
+    ['x64', 'linux-unpacked'],
+    ['arm64', 'linux-arm64-unpacked'],
+  ] as const)('resolves the canonical %s Linux packaged executable', (arch, directory) => {
+    const target = resolveDesktopTarget({
+      env: {},
+      requirePackaged: true,
+      platform: 'linux',
+      arch,
+    });
+    expect(target.mode).toBe('packaged');
+    expect(target.appPath).toBe(join(DESKTOP_ROOT, 'dist-desktop', directory));
+    expect(target.targetPath).toBe(join(DESKTOP_ROOT, 'dist-desktop', directory, 'openknowledge'));
+  });
+
+  it('resolves a Linux unpacked directory override to its packaged executable', () => {
+    const target = resolveDesktopTarget({
+      env: { [PACKAGED_APP_ENV]: '/mnt/linux-unpacked' },
+      requirePackaged: true,
+      platform: 'linux',
+      arch: 'x64',
+    });
+    expect(target.appPath).toBe('/mnt/linux-unpacked');
+    expect(target.targetPath).toBe('/mnt/linux-unpacked/openknowledge');
+    expect(target.exists).toBe(false);
   });
 
   it('lets the override win over the packaged-only fallback', () => {
     const target = resolveDesktopTarget({
       env: { [PACKAGED_APP_ENV]: '/mnt/OpenKnowledge.app' },
       requirePackaged: true,
+      platform: 'darwin',
     });
     expect(target.appPath).toBe('/mnt/OpenKnowledge.app');
   });
 
   it('reports a mode-appropriate skip reason', () => {
-    const missing = resolveDesktopTarget({ env: { [PACKAGED_APP_ENV]: '/nope/Absent.app' } });
+    const missing = resolveDesktopTarget({
+      env: { [PACKAGED_APP_ENV]: '/nope/Absent.app' },
+      platform: 'darwin',
+    });
     expect(missing.missingReason).toContain('/nope/Absent.app/Contents/MacOS/Absent');
     expect(resolveDesktopTarget({ env: {} }).missingReason).toContain('pnpm run build:desktop');
     expect(resolveDesktopTarget({ env: {} }).missingReason).not.toContain('bun run');
@@ -83,6 +118,7 @@ describe('resolveDesktopTarget', () => {
     try {
       const target = resolveDesktopTarget({
         env: { [PACKAGED_APP_ENV]: join(root, 'Absent.app') },
+        platform: 'darwin',
       });
       expect(target.exists).toBe(false);
       mkdirSync(dirname(target.targetPath), { recursive: true });

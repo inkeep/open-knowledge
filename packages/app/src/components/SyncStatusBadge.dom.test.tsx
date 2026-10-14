@@ -5,6 +5,11 @@ import { type ReactNode, useEffect, useReducer } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
+import {
+  __resetPaneVisibilityStoreForTests,
+  type PaneVisibilityRequest,
+  paneVisibilityStore,
+} from '@/lib/pane-visibility-store';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 vi.doMock('@lingui/core/macro', () => ({
@@ -1443,6 +1448,61 @@ describe('SyncStatusBadge working-tree listing', () => {
     worktreeLastReadAt = null;
     triggered.length = 0;
     triggerRejection = null;
+    __resetPaneVisibilityStoreForTests();
+  });
+
+  function hideEditorBesideOneChangedDoc(): Array<
+    PaneVisibilityRequest & { hashWhenAsked: string }
+  > {
+    const reveals: Array<PaneVisibilityRequest & { hashWhenAsked: string }> = [];
+    paneVisibilityStore.subscribeRequests((request) => {
+      reveals.push({ ...request, hashWhenAsked: window.location.hash });
+    });
+    paneVisibilityStore.publish({
+      editor: { open: false, onScreen: false },
+      agents: null,
+      terminal: null,
+    });
+    status = { ...baseStatus, state: 'idle' };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    worktree = {
+      ...emptyWorktree,
+      notStaged: [
+        {
+          path: 'notes/cadence.md',
+          code: 'M',
+          syncScoped: true,
+          open: { kind: 'doc', docName: 'notes/cadence' },
+        },
+      ],
+    };
+    return reveals;
+  }
+
+  test('opening a row shows a hidden editor before navigating to it', async () => {
+    const reveals = hideEditorBesideOneChangedDoc();
+    window.location.hash = '#/elsewhere';
+    await renderBadge();
+    await openPopover();
+    await expandWorktreeListing();
+
+    await userEvent.click(screen.getByRole('button', { name: 'notes/cadence.md' }));
+
+    expect(reveals).toEqual([{ pane: 'editor', open: true, hashWhenAsked: '#/elsewhere' }]);
+    expect(window.location.hash).toBe('#/notes/cadence');
+  });
+
+  test('opening a row for the document already open still shows a hidden editor', async () => {
+    const reveals = hideEditorBesideOneChangedDoc();
+    window.location.hash = '#/notes/cadence';
+    await renderBadge();
+    await openPopover();
+    await expandWorktreeListing();
+
+    await userEvent.click(screen.getByRole('button', { name: 'notes/cadence.md' }));
+
+    expect(reveals).toEqual([{ pane: 'editor', open: true, hashWhenAsked: '#/notes/cadence' }]);
+    expect(window.location.hash).toBe('#/notes/cadence');
   });
 
   test("groups by what Push will do, not by git's index state", async () => {

@@ -30,7 +30,7 @@ export function BranchRecycleBanner() {
       <div
         role="status"
         data-testid="branch-recycle-banner-switch"
-        className="fixed top-0 inset-x-0 z-50 bg-amber-500/95 text-amber-950 text-sm text-center py-2 px-4 ps-[var(--ok-titlebar-reserve-left,1rem)] shadow-md"
+        className="fixed top-[var(--ok-app-header-height,0px)] inset-x-0 z-50 bg-amber-500/95 text-amber-950 text-sm text-center py-2 px-4 ps-[var(--ok-titlebar-reserve-left,1rem)] shadow-md"
       >
         <Trans>
           Server switched to branch <code className="bg-amber-100/60 px-1 rounded">{branch}</code> —
@@ -55,7 +55,7 @@ export function BranchRecycleBanner() {
     <div
       role="alert"
       data-testid="branch-recycle-banner-refused"
-      className="fixed top-0 inset-x-0 z-50 bg-red-500/95 text-red-950 text-sm text-center py-2 px-4 ps-[var(--ok-titlebar-reserve-left,1rem)] shadow-md flex items-center justify-center gap-3 flex-wrap"
+      className="fixed top-[var(--ok-app-header-height,0px)] inset-x-0 z-50 bg-red-500/95 text-red-950 text-sm text-center py-2 px-4 ps-[var(--ok-titlebar-reserve-left,1rem)] shadow-md flex items-center justify-center gap-3 flex-wrap"
     >
       <span>
         <Trans>

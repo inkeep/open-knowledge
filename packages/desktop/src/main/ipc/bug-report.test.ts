@@ -195,6 +195,7 @@ describe('handleBugReportCreate — agent chat transcript', () => {
   const threadId = '0f5c0c0b-f439-4e49-84d6-6a6a97d675c6';
 
   test("attaches the chosen chat's transcript with secrets scrubbed", async () => {
+    process.env.HOME = makeTmpDir('ok-bugreport-home-');
     const threadsDir = makeTmpDir('ok-bugreport-threads-');
     const secret = `ghp_${'a'.repeat(36)}`;
     writeFileSync(
@@ -225,10 +226,9 @@ describe('handleBugReportCreate — agent chat transcript', () => {
       lineCount: 1,
       patterns: ['github-pat'],
     };
-    expect(result.summary.redactions).toContainEqual(audit);
-    expect(JSON.parse(readZipEntry(result.zipPath, 'MANIFEST.json')).redactions).toContainEqual(
-      audit,
-    );
+    expect(result.summary.redactions).toEqual([audit]);
+    expect(result.summary.redactedLineCount).toBe(1);
+    expect(JSON.parse(readZipEntry(result.zipPath, 'MANIFEST.json')).redactions).toEqual([audit]);
     expect(readZipEntry(result.zipPath, 'README.md')).toContain(
       '1 line(s) were scrubbed across 1 file(s).',
     );

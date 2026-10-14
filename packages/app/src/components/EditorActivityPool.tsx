@@ -393,10 +393,28 @@ function ActivityEntryHost({
     element.className = 'relative h-full min-h-0';
     return element;
   });
+  const lastScrollTop = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const recordScroll = (event: Event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.dataset.testid === 'editor-scroll-container') {
+        lastScrollTop.current = target.scrollTop;
+      }
+    };
+    host.addEventListener('scroll', recordScroll, true);
+    return () => host.removeEventListener('scroll', recordScroll, true);
+  }, [host]);
 
   useLayoutEffect(() => {
     if (hostMount === null) return;
     hostMount.append(host);
+    const scrollContainer = host.querySelector<HTMLElement>(
+      '[data-testid="editor-scroll-container"]',
+    );
+    if (scrollContainer && lastScrollTop.current !== null) {
+      scrollContainer.scrollTop = lastScrollTop.current;
+    }
     return () => host.remove();
   }, [host, hostMount]);
 

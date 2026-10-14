@@ -25,8 +25,8 @@ const CLASS_PATTERNS: readonly ClassPattern[] = [
   },
   {
     id: 'P3-top-banner',
-    regex: /fixed\s+top-0\s+inset-x-0\b/,
-    description: 'full-width top banner (fixed top-0 inset-x-0)',
+    regex: /fixed\s+top-(?:0|\[[^\]]*\])\s+inset-x-0\b/,
+    description: 'full-width top banner (fixed top-0 / top-[…] inset-x-0)',
   },
 ];
 
@@ -129,7 +129,7 @@ function isAllowlisted(hit: PatternHit): AllowlistEntry | undefined {
 }
 
 describe('Fullscreen-overlay safe-area class invariant (Electron + macOS)', () => {
-  test('every fixed inset-0 / w-[Nvw] / fixed top-0 inset-x-0 site is on the allowlist OR adopts a safe-area marker', () => {
+  test('every fixed inset-0 / w-[Nvw] / fixed top-pinned inset-x-0 site is on the allowlist OR adopts a safe-area marker', () => {
     const hits = findHits();
     const offenders: Array<{
       hit: PatternHit;

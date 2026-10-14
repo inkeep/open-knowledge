@@ -110,6 +110,9 @@ describe('ShareButton', () => {
     const input = screen.getByLabelText('Share URL') as HTMLInputElement;
     expect(input.value).toBe('https://openknowledge.ai/d/Share123');
     expect(screen.getByRole('button', { name: 'Copied!' })).not.toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Share' })).toBe(
+      screen.getByTestId('share-button-popover'),
+    );
   });
 
   test('swallows only the clipboard toast when the popover already carries the link', async () => {

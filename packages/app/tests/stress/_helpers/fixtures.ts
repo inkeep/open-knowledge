@@ -5,7 +5,15 @@ import type { ProblemType } from '@inkeep/open-knowledge-core';
 import { test as base } from '@playwright/test';
 import { resetContentToFixtureBaseline } from './content-reset.ts';
 import { gotoWhileLoadProgresses, requireDeadlineAt } from './load-progress.ts';
-import { type WorkerServing, workerServingFromEnv } from './prebuilt/prebuilt-serving.ts';
+import { type WorkerServing, workerServingFor } from './prebuilt/prebuilt-serving.ts';
+import {
+  type ProductionShellStartup,
+  waitForProductionShellReady,
+} from './production-shell-readiness.ts';
+import {
+  initProductionShellContent,
+  type ProductionShellLaunch,
+} from './production-shell-server.ts';
 import { checkServerLease, leaseWorkerServer, type ServerLease } from './reuse/lease-fixture.ts';
 import {
   type BoundViteEndpoint,
@@ -30,6 +38,7 @@ import {
   completeWorkerServerRelease,
   stopWorkerServer,
   type WorkerServerProcess,
+  workerServerCommandPid,
 } from './worker-server-lifetime.ts';
 
 interface ProblemError extends Error {
@@ -64,6 +73,7 @@ export interface WorkerServer {
   port: number;
   baseURL: string;
   contentDir: string;
+  launch?: ProductionShellLaunch;
 }
 
 export interface AgentIdentity {
@@ -268,21 +278,46 @@ export async function checkApiConfig(baseURL: string, timeoutMs: number): Promis
   }
 }
 
+function productionShellStartupOf(started: StartedWorkerServer): ProductionShellStartup {
+  const { pending, proc, contentDir } = started;
+  return {
+    host: pending.request.host,
+    port: pending.request.candidatePort,
+    contentDir,
+    proc,
+    commandPid: () => workerServerCommandPid(proc),
+    startedAt: pending.startedAt,
+  };
+}
+
 export async function waitForServerReady(started: StartedWorkerServer): Promise<BoundViteEndpoint> {
-  const { pending } = started;
-  const { baseURL, port } = await waitForBoundViteEndpoint(
-    pending,
-    WORKER_SERVER_READINESS_BUDGET_MS,
-  );
-  await waitForHttpReady(
-    baseURL,
-    WORKER_SERVER_READINESS_BUDGET_MS,
-    pending.proc,
-    pending.startedAt,
-  );
-  await checkApiConfig(baseURL, WORKER_SERVER_BUDGET_RESERVES.apiConfig);
-  await checkCollabSync(port, WORKER_SERVER_BUDGET_RESERVES.collabSync);
-  return { baseURL, port };
+  const { pending, serving } = started;
+  const probeServedEndpoint = async ({ baseURL, port }: BoundViteEndpoint): Promise<void> => {
+    await waitForHttpReady(
+      baseURL,
+      WORKER_SERVER_READINESS_BUDGET_MS,
+      pending.proc,
+      pending.startedAt,
+    );
+    await checkApiConfig(baseURL, WORKER_SERVER_BUDGET_RESERVES.apiConfig);
+    await checkCollabSync(port, WORKER_SERVER_BUDGET_RESERVES.collabSync, pending.request.host);
+  };
+  switch (serving.kind) {
+    case 'production-shell':
+      return waitForProductionShellReady(
+        productionShellStartupOf(started),
+        WORKER_SERVER_READINESS_BUDGET_MS,
+        probeServedEndpoint,
+      );
+    case 'dev-server':
+    case 'prebuilt': {
+      const endpoint = await waitForBoundViteEndpoint(pending, WORKER_SERVER_READINESS_BUDGET_MS);
+      await probeServedEndpoint(endpoint);
+      return endpoint;
+    }
+    default:
+      return serving satisfies never;
+  }
 }
 
 async function settleBeforeDeadline<T>(
@@ -451,7 +486,7 @@ export function spawnWorkerDevServer(
   contentDir: string,
   viteCacheDir: string,
   serverLog: ServerLog,
-  serving: WorkerServing = workerServingFromEnv(process.env),
+  serving: WorkerServing,
 ): WorkerServerProcess {
   return acquireWorkerServer(
     request,
@@ -470,6 +505,7 @@ export interface StartedWorkerServer {
   viteCacheDir: string;
   serverLog: ServerLog;
   proc: WorkerServerProcess;
+  serving: WorkerServing;
 }
 
 function setupResidueOf(started: StartedWorkerServer): string {
@@ -509,6 +545,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           releaseSetupResources.push(() => removeAllDuringTeardown(viteCacheDir));
 
           seedRequiredFixtureFiles(contentDir);
+          const serving = workerServingFor(workerServerEnv, process.env, request);
+          if (serving.kind === 'production-shell') initProductionShellContent(contentDir);
 
           const serverLog = openServerLog(`w${workerInfo.workerIndex}`);
           openedServerLog = serverLog;
@@ -520,6 +558,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
             contentDir,
             viteCacheDir,
             serverLog,
+            serving,
           );
           ownedProc = proc;
           releaseSetupResources.push(() =>
@@ -536,6 +575,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
             viteCacheDir,
             serverLog,
             proc,
+            serving,
           };
         });
 
@@ -582,9 +622,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         );
       }
 
-      const { contentDir, viteCacheDir, serverLog, proc, pending } = started;
+      const { contentDir, viteCacheDir, serverLog, proc, pending, serving } = started;
 
-      await use({ ...endpoint, contentDir });
+      await use({
+        ...endpoint,
+        contentDir,
+        ...(serving.kind === 'production-shell' ? { launch: serving.launch } : {}),
+      });
 
       const teardown = openBudgetPhase(TEARDOWN_PHASE_NAME, WORKER_SERVER_BUDGET_RESERVES.teardown);
       await completeWorkerServerRelease(proc, async () => {

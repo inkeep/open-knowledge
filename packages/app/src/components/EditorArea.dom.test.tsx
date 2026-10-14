@@ -1,9 +1,26 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { type ReactNode, useEffect, useState } from 'react';
+import { act, cleanup, fireEvent, render as rtlRender, screen } from '@testing-library/react';
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { MIN_AGENTS_PANEL_WIDTH } from '@/lib/agents-panel-width-store';
+import {
+  AGENTS_PANEL_WIDTH_KEY,
+  getInitialAgentsPanelWidth,
+  MIN_AGENTS_PANEL_WIDTH,
+} from '@/lib/agents-panel-width-store';
+import { DOC_PANEL_WIDTH_KEY } from '@/lib/doc-panel-width-store';
+import {
+  __resetPaneVisibilityStoreForTests,
+  type PaneId,
+  type PaneVisibilityRequest,
+  paneVisibilityStore,
+} from '@/lib/pane-visibility-store';
+import { SIDEBAR_PINS_KEY } from '@/lib/sidebar-pin-store';
+import {
+  expectVisualClassTokens,
+  expectVisualClassTokensAbsent,
+} from '@/test-utils/visual-contract';
 import type { PanelTab } from './DocPanel';
+import { FileListHostProvider } from './FileListHost';
 
 type SettingsDialogShellProps = {
   open: boolean;
@@ -181,6 +198,7 @@ vi.doMock('./TerminalDock', () => ({
   },
 }));
 
+let editorWorkspaceMounts = 0;
 vi.doMock('./EditorWorkspace', () => ({
   EditorWorkspace: ({
     renderHeader,
@@ -192,32 +210,55 @@ vi.doMock('./EditorWorkspace', () => ({
       isFocused: boolean;
       activityDocName: string | null;
     }) => ReactNode;
-  }) => (
-    <>
-      {renderHeader(<div data-testid="workspace-tabs" />)}
-      {renderPane({
-        pane: { id: 'pane-test' },
-        isFocused: true,
-        activityDocName: null,
-      })}
-    </>
-  ),
+  }) => {
+    useEffect(() => {
+      editorWorkspaceMounts += 1;
+    }, []);
+    return (
+      <>
+        {renderHeader(<div data-testid="workspace-tabs" />)}
+        {renderPane({
+          pane: { id: 'pane-test' },
+          isFocused: true,
+          activityDocName: null,
+        })}
+      </>
+    );
+  },
 }));
 
-let groupLayout: Record<string, number> = {};
-let groupSetLayoutCalls: Array<Record<string, number>> = [];
+type EditorRow = 'outer' | 'inner';
+type MockLayout = Record<string, number>;
+type LayoutChangedHandler = (layout: MockLayout, meta: { isUserInteraction: boolean }) => void;
+
+const INNER_LAYOUT_DOC_CLOSED: MockLayout = { 'workspace-main': 100, 'doc-panel': 0 };
+let groupLayout: MockLayout = {};
+let innerLayout: MockLayout = { ...INNER_LAYOUT_DOC_CLOSED };
+let groupSetLayoutCalls: MockLayout[] = [];
+let innerSetLayoutCalls: MockLayout[] = [];
 let rejectNextGroupLayoutWrite = false;
 let rejectGroupLayoutWrites = false;
-let groupOnLayoutChanged:
-  | ((layout: Record<string, number>, meta: { isUserInteraction: boolean }) => void)
-  | null = null;
+let groupOnLayoutChanged: LayoutChangedHandler | null = null;
+let groupOnLayoutChange: ((layout: MockLayout) => void) | null = null;
+const innerRowHandlers: {
+  onLayoutChanged: LayoutChangedHandler | null;
+  onLayoutChange: ((layout: MockLayout) => void) | null;
+} = {
+  onLayoutChanged: null,
+  onLayoutChange: null,
+};
 let panelIsCollapsed = false;
 let mockGroupPx = 1360;
+let mockInnerPx: number | null = null;
+let mockFileListPx = 0;
 let mockPanelPercentage: number | null = null;
 let mockPanelPx: number | null = null;
-let panelExpandCalls = 0;
 let deferPanelGeometryCommit = false;
-let committedGroupLayout: Record<string, number> = {};
+let committedGroupLayout: MockLayout = {};
+let committedInnerLayout: MockLayout = {};
+let innerSetLayoutPx: number[] = [];
+let deliverDocPanelResizeAfterLayout = false;
+let lastDeliveredDocPanelSize: { asPercentage: number; inPixels: number } | null = null;
 
 beforeEach(() => {
   mockPanelPercentage = null;
@@ -225,22 +266,93 @@ beforeEach(() => {
   rejectGroupLayoutWrites = false;
   deferPanelGeometryCommit = false;
   committedGroupLayout = {};
+  committedInnerLayout = {};
+  innerLayout = { ...INNER_LAYOUT_DOC_CLOSED };
+  innerSetLayoutCalls = [];
+  innerSetLayoutPx = [];
+  deliverDocPanelResizeAfterLayout = false;
+  lastDeliveredDocPanelSize = null;
+  innerRowHandlers.onLayoutChanged = null;
+  innerRowHandlers.onLayoutChange = null;
+  mockInnerPx = null;
+  mockFileListPx = 0;
+  conflictedDocName = null;
 });
 
-function geometryLayout(): Record<string, number> {
-  return deferPanelGeometryCommit ? committedGroupLayout : groupLayout;
+const renderedInnerPanelIds = () =>
+  [...screen.getByTestId('resizable-group-inner').children].map((el) => el.id).filter(Boolean);
+const innerRowWithDoc = (docPx: number, editorColumnPx: number): MockLayout => ({
+  'workspace-main': 100 - (docPx / editorColumnPx) * 100,
+  'doc-panel': (docPx / editorColumnPx) * 100,
+});
+const innerResidualWidthPx = () =>
+  screen
+    .getByTestId('resizable-group-inner')
+    .querySelector<HTMLElement>(':scope > [data-panel]:not([id])')
+    ?.getBoundingClientRect().width;
+
+function lastInnerWritePx(id: string): number | null {
+  const layout = innerSetLayoutCalls.at(-1);
+  const px = innerSetLayoutPx.at(-1);
+  const pct = layout?.[id];
+  return pct == null || px == null ? null : (pct / 100) * px;
 }
 
-function mockedPanelWidthPx(element: HTMLElement): number {
-  const layout = geometryLayout();
-  if (element.id !== '') return ((layout[element.id] ?? 0) / 100) * mockGroupPx;
+function rowOf(element: Element | null | undefined): EditorRow {
+  return element?.closest('[data-editor-row]')?.getAttribute('data-editor-row') === 'inner'
+    ? 'inner'
+    : 'outer';
+}
+
+function rowLayout(row: EditorRow): MockLayout {
+  return row === 'inner' ? innerLayout : groupLayout;
+}
+
+function assignRowLayout(row: EditorRow, layout: MockLayout) {
+  if (row === 'inner') innerLayout = layout;
+  else groupLayout = layout;
+}
+
+function assignCommittedRowLayout(row: EditorRow, layout: MockLayout) {
+  if (row === 'inner') committedInnerLayout = layout;
+  else committedGroupLayout = layout;
+}
+
+function rowSetLayoutCalls(row: EditorRow): MockLayout[] {
+  return row === 'inner' ? innerSetLayoutCalls : groupSetLayoutCalls;
+}
+
+function geometryLayout(row: EditorRow): MockLayout {
+  if (!deferPanelGeometryCommit) return rowLayout(row);
+  return row === 'inner' ? committedInnerLayout : committedGroupLayout;
+}
+
+function residualPanelWidthPx(element: HTMLElement, row: EditorRow): number {
+  const layout = geometryLayout(row);
   const group = element.parentElement;
   if (group == null) return 0;
   let claimedPercentage = 0;
   for (const sibling of group.querySelectorAll<HTMLElement>(':scope > [data-panel]')) {
     if (sibling.id !== '') claimedPercentage += layout[sibling.id] ?? 0;
   }
-  return (Math.max(0, 100 - claimedPercentage) / 100) * mockGroupPx;
+  return (Math.max(0, 100 - claimedPercentage) / 100) * rowPx(row);
+}
+
+function rowPx(row: EditorRow): number {
+  if (row === 'outer') return mockGroupPx;
+  if (mockInnerPx != null) return mockInnerPx;
+  const outerResidual = document.querySelector<HTMLElement>(
+    '[data-editor-row="outer"] > [data-panel]:not([id])',
+  );
+  const editorColumnPx =
+    outerResidual == null ? mockGroupPx : residualPanelWidthPx(outerResidual, 'outer');
+  return Math.max(0, editorColumnPx - mockFileListPx);
+}
+
+function mockedPanelWidthPx(element: HTMLElement): number {
+  const row = rowOf(element.parentElement);
+  if (element.id !== '') return ((geometryLayout(row)[element.id] ?? 0) / 100) * rowPx(row);
+  return residualPanelWidthPx(element, row);
 }
 
 function measureMockedPanel(element: HTMLDivElement | null) {
@@ -257,57 +369,118 @@ function measureMockedPanel(element: HTMLDivElement | null) {
     get: () => Math.round(mockedPanelWidthPx(element)),
   });
 }
+
+function createGroupHandle(row: EditorRow) {
+  return {
+    getLayout: () => rowLayout(row),
+    setLayout: (layout: MockLayout) => {
+      rowSetLayoutCalls(row).push(layout);
+      if (row === 'inner') innerSetLayoutPx.push(rowPx('inner'));
+      if (rejectNextGroupLayoutWrite && row === 'outer') {
+        rejectNextGroupLayoutWrite = false;
+        return;
+      }
+      if (rejectGroupLayoutWrites) return;
+      assignRowLayout(row, layout);
+      if (deferPanelGeometryCommit) {
+        queueMicrotask(() => {
+          assignCommittedRowLayout(row, layout);
+        });
+      } else {
+        assignCommittedRowLayout(row, layout);
+      }
+      if (row === 'inner' && deliverDocPanelResizeAfterLayout) {
+        const size = docPanelSizeFromRow();
+        if (
+          lastDeliveredDocPanelSize?.asPercentage !== size.asPercentage ||
+          lastDeliveredDocPanelSize.inPixels !== size.inPixels
+        ) {
+          lastDeliveredDocPanelSize = size;
+          panelIsCollapsed = size.asPercentage === 0;
+          railPanelOnResizeById.get('doc-panel')?.(size);
+        }
+      }
+    },
+  };
+}
+
+const groupHandles: Record<EditorRow, ReturnType<typeof createGroupHandle>> = {
+  outer: createGroupHandle('outer'),
+  inner: createGroupHandle('inner'),
+};
+
+let panelRefCalls = 0;
+const PANEL_REF_ORDER = ['doc-panel', 'agents-column', 'terminal-column'] as const;
+
+function docPanelSizeFromRow() {
+  const pct = rowLayout('inner')['doc-panel'] ?? 0;
+  return { asPercentage: pct, inPixels: (pct / 100) * rowPx('inner') };
+}
+
 vi.doMock('react-resizable-panels', () => ({
-  usePanelRef: () => ({
-    current: {
-      collapse: () => {},
-      expand: () => {
-        panelExpandCalls += 1;
+  usePanelRef: () => {
+    const slot = PANEL_REF_ORDER[panelRefCalls % PANEL_REF_ORDER.length];
+    panelRefCalls += 1;
+    return {
+      current: {
+        collapse: () => {},
+        expand: () => {},
+        getSize: () => {
+          if (slot !== 'doc-panel') {
+            return {
+              asPercentage: mockPanelPercentage ?? 25,
+              inPixels: mockPanelPx ?? mockGroupPx / 4,
+            };
+          }
+          const fromRow = docPanelSizeFromRow();
+          return {
+            asPercentage: mockPanelPercentage ?? fromRow.asPercentage,
+            inPixels: mockPanelPx ?? fromRow.inPixels,
+          };
+        },
+        isCollapsed: () =>
+          deliverDocPanelResizeAfterLayout
+            ? (slot === 'doc-panel' ? innerLayout : groupLayout)[slot] === 0
+            : panelIsCollapsed,
       },
-      getSize: () => ({
-        asPercentage: mockPanelPercentage ?? 25,
-        inPixels: mockPanelPx ?? mockGroupPx / 4,
-      }),
-      isCollapsed: () => panelIsCollapsed,
-    },
-  }),
-  useGroupRef: () => ({
-    current: {
-      getLayout: () => groupLayout,
-      setLayout: (layout: Record<string, number>) => {
-        groupSetLayoutCalls.push(layout);
-        if (rejectNextGroupLayoutWrite) {
-          rejectNextGroupLayoutWrite = false;
-          return;
-        }
-        if (rejectGroupLayoutWrites) return;
-        groupLayout = layout;
-        if (deferPanelGeometryCommit) {
-          queueMicrotask(() => {
-            committedGroupLayout = layout;
-          });
-        } else {
-          committedGroupLayout = layout;
-        }
-      },
-    },
-  }),
+    };
+  },
+  useGroupRef: () => useRef<ReturnType<typeof createGroupHandle> | null>(null),
 }));
 
 vi.doMock('@/components/ui/resizable', () => ({
   ResizablePanelGroup: ({
     children,
+    onLayoutChange,
     onLayoutChanged,
+    groupRef,
+    'data-editor-row': rowProp,
+    'data-dragging': dragging,
   }: {
     children: ReactNode;
-    onLayoutChanged?: (
-      layout: Record<string, number>,
-      meta: { isUserInteraction: boolean },
-    ) => void;
+    onLayoutChange?: (layout: MockLayout) => void;
+    onLayoutChanged?: LayoutChangedHandler;
+    groupRef?: { current: ReturnType<typeof createGroupHandle> | null };
+    'data-editor-row'?: string;
+    'data-dragging'?: boolean;
   }) => {
-    groupOnLayoutChanged = onLayoutChanged ?? null;
+    const row: EditorRow = rowProp === 'inner' ? 'inner' : 'outer';
+    if (groupRef != null) groupRef.current = groupHandles[row];
+    if (row === 'inner') {
+      innerRowHandlers.onLayoutChanged = onLayoutChanged ?? null;
+      innerRowHandlers.onLayoutChange = onLayoutChange ?? null;
+    } else {
+      groupOnLayoutChanged = onLayoutChanged ?? null;
+      groupOnLayoutChange = onLayoutChange ?? null;
+    }
     return (
-      <div data-testid="resizable-group" data-group="true" data-slot="resizable-panel-group">
+      <div
+        data-testid={row === 'inner' ? 'resizable-group-inner' : 'resizable-group'}
+        data-group="true"
+        data-editor-row={row}
+        data-dragging={dragging || undefined}
+        data-slot="resizable-panel-group"
+      >
         {children}
       </div>
     );
@@ -318,17 +491,28 @@ vi.doMock('@/components/ui/resizable', () => ({
     minSize,
     maxSize,
     onResize,
+    role,
+    'aria-label': ariaLabel,
+    inert,
+    style,
   }: {
     children: ReactNode;
+    style?: CSSProperties;
     id?: string;
     minSize?: string | number;
     maxSize?: string | number;
     onResize?: (size: { asPercentage: number; inPixels: number }) => void;
+    role?: string;
+    'aria-label'?: string;
+    inert?: boolean;
   }) => {
     if (id != null) railPanelOnResizeById.set(id, onResize ?? null);
     return (
       <div
         id={id}
+        {...(role == null ? {} : { role, 'aria-label': ariaLabel })}
+        inert={inert}
+        style={style}
         data-panel="true"
         data-slot="resizable-panel"
         ref={measureMockedPanel}
@@ -347,29 +531,40 @@ vi.doMock('@/components/ui/resizable', () => ({
     'aria-controls'?: string;
     'aria-label'?: string;
     'data-agents-panel-resize-handle'?: string;
+    'data-doc-panel-handle'?: string;
+    'data-terminal-panel-handle'?: string;
+    style?: CSSProperties;
   }) => (
     <hr
+      style={props.style}
       aria-controls={props['aria-controls']}
       aria-label={props['aria-label']}
       aria-valuenow={50}
       data-testid="resizable-handle"
       data-agents-panel-resize-handle={props['data-agents-panel-resize-handle']}
+      data-doc-panel-handle={props['data-doc-panel-handle']}
+      data-terminal-panel-handle={props['data-terminal-panel-handle']}
       onPointerDown={onPointerDown}
       tabIndex={0}
     />
   ),
 }));
 
-vi.doMock('@/hooks/use-doc-panel-layout', () => ({
-  useDocPanelLayout: () => ({ layout: 'panel', autoCollapse: false }),
-}));
-
 vi.doMock('@/hooks/use-document-stats', () => ({
   useDocumentStats: () => null,
 }));
 
+let conflictedDocName: string | null = null;
 vi.doMock('@/hooks/use-conflicts', () => ({
-  useDocConflict: () => null,
+  useDocConflict: (docName: string | null) =>
+    docName != null && docName === conflictedDocName
+      ? {
+          file: `${docName}.md`,
+          docName,
+          detectedAt: '2026-09-25T00:00:00.000Z',
+          conflict: 'merge-native',
+        }
+      : null,
   useConflicts: () => ({
     conflicts: [],
     loading: false,
@@ -414,6 +609,25 @@ vi.doMock('./EditorFooter', () => ({
   EditorFooter: () => <div data-testid="editor-footer" />,
 }));
 
+vi.doMock('@/components/DocPanelToggle', () => ({
+  DocPanelToggle: ({
+    isPanelCollapsed,
+    onTogglePanel,
+  }: {
+    isPanelCollapsed: boolean;
+    onTogglePanel: () => void;
+  }) => (
+    <button
+      type="button"
+      data-doc-panel-toggle=""
+      aria-controls="doc-panel"
+      aria-expanded={!isPanelCollapsed}
+      aria-label={isPanelCollapsed ? 'Show panel' : 'Hide panel'}
+      onClick={onTogglePanel}
+    />
+  ),
+}));
+
 vi.doMock('@/components/settings/SettingsDialogShell', () => ({
   SettingsDialogShell: (props: SettingsDialogShellProps) => {
     shellProps.push(props);
@@ -429,12 +643,18 @@ vi.doMock('@/lib/use-settings-route', () => ({
 }));
 
 const { EditorArea } = await import('./EditorArea');
+const { SidebarProvider } = await import('@/components/ui/sidebar');
 const { TooltipProvider } = await import('@/components/ui/tooltip');
+const { SingleFileModeProvider } = await import('@/lib/single-file-mode');
 const { emitLocalMenuAction } = await import('@/lib/local-menu-action-bus');
 const { requestDocPanelTab } = await import('./doc-panel-events');
 const { AGENTS_COLUMN_ID, TERMINAL_COLUMN_ID } = await import('./editor-area-rail-registry');
 const { MAX_RAIL_PIN_EXHAUSTED_REPORTS } = await import('./EditorArea');
 const { RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX } = await import('./right-rail-admission');
+
+function render(ui: ReactNode) {
+  return rtlRender(ui, { wrapper: SidebarProvider });
+}
 
 function renderEditorArea() {
   return render(
@@ -663,10 +883,10 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     mockGroupPx = 1360;
     mockPanelPercentage = null;
     mockPanelPx = null;
-    panelExpandCalls = 0;
     deferPanelGeometryCommit = false;
     committedGroupLayout = {};
     groupOnLayoutChanged = null;
+    groupOnLayoutChange = null;
     toastInfoMessages = [];
   });
 
@@ -919,19 +1139,22 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     render(<EditorArea {...baseProps} />);
     groupLayout = {
       'editor-main': 100,
-      'doc-panel': 0,
       'terminal-column': 0,
       'agents-column': 0,
     };
     groupSetLayoutCalls = [];
+    innerSetLayoutCalls = [];
 
     act(() => emitLocalMenuAction('toggle-doc-panel'));
 
+    const correctedInner = innerSetLayoutCalls.at(-1);
+    expect(correctedInner?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
+    expect(lastInnerWritePx('doc-panel')).toBeCloseTo(320, 3);
+    expect(correctedInner?.['workspace-main']).toBeCloseTo(100 - pctOf(320), 3);
     const corrected = groupSetLayoutCalls.at(-1);
-    expect(corrected?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
     expect(corrected?.['terminal-column']).toBe(0);
     expect(corrected?.['agents-column']).toBe(0);
-    expect(corrected?.['editor-main']).toBeCloseTo(100 - pctOf(320), 3);
+    expect(corrected?.['editor-main']).toBe(100);
   });
 
   test('a second toggle re-opens the doc panel the first toggle collapsed', () => {
@@ -939,18 +1162,19 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     docCtx = DOC_LIVE_CTX;
     render(<EditorArea {...baseProps} />);
     groupLayout = {
-      'editor-main': 75,
-      'doc-panel': 25,
+      'editor-main': 100,
       'terminal-column': 0,
       'agents-column': 0,
     };
-    groupSetLayoutCalls = [];
+    innerLayout = { 'workspace-main': 75, 'doc-panel': 25 };
+    innerSetLayoutCalls = [];
 
     act(() => emitLocalMenuAction('toggle-doc-panel'));
-    expect(groupSetLayoutCalls.at(-1)?.['doc-panel']).toBe(0);
+    expect(innerSetLayoutCalls.at(-1)?.['doc-panel']).toBe(0);
 
     act(() => emitLocalMenuAction('toggle-doc-panel'));
-    expect(groupSetLayoutCalls.at(-1)?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
+    expect(innerSetLayoutCalls.at(-1)?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
+    expect(lastInnerWritePx('doc-panel')).toBeCloseTo(320, 3);
   });
 
   test('hiding the agents panel re-asserts the collapsed doc panel over the stale panel-set restore', async () => {
@@ -958,12 +1182,17 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     docCtx = DOC_LIVE_CTX;
     const view = render(<EditorArea {...baseProps} agentsVisible />);
     expect(groupSetLayoutCalls).toHaveLength(0);
-    groupLayout = { 'editor-main': 70, 'doc-panel': 30 };
+    expect(innerSetLayoutCalls).toHaveLength(0);
+    groupLayout = { 'editor-main': 70, 'agents-column': 30 };
+    innerLayout = { 'workspace-main': 70, 'doc-panel': 30 };
     view.rerender(<EditorArea {...baseProps} agentsVisible={false} />);
     await act(async () => {});
+    const correctedInner = innerSetLayoutCalls.at(-1);
+    expect(correctedInner).toBeDefined();
+    expect(correctedInner?.['doc-panel']).toBe(0);
+    expect(correctedInner?.['workspace-main']).toBe(100);
     const corrected = groupSetLayoutCalls.at(-1);
-    expect(corrected).toBeDefined();
-    expect(corrected?.['doc-panel']).toBe(0);
+    expect(corrected?.['agents-column']).toBe(0);
     expect(corrected?.['editor-main']).toBe(100);
   });
 
@@ -976,12 +1205,8 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     const view = render(
       <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible={false} />,
     );
-    groupLayout = {
-      'editor-main': 100 - (320 / 1610) * 100 - (740 / 1610) * 100,
-      'doc-panel': (320 / 1610) * 100,
-      'terminal-column': (740 / 1610) * 100,
-      'agents-column': 0,
-    };
+    groupLayout = { ...RAIL_OUTER_1610 };
+    innerLayout = { ...RAIL_INNER_1610 };
     groupSetLayoutCalls = [];
 
     view.rerender(
@@ -997,12 +1222,19 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     expect(terminalPercentage).toBeCloseTo((740 / 1610) * 100, 3);
   });
 
-  const RAIL_LAYOUT_1610 = {
-    'editor-main': 100 - (320 / 1610) * 100 - (740 / 1610) * 100,
-    'doc-panel': (320 / 1610) * 100,
+  const RAIL_OUTER_1610 = {
+    'editor-main': 100 - (740 / 1610) * 100,
     'terminal-column': (740 / 1610) * 100,
     'agents-column': 0,
   };
+  const RAIL_INNER_1610 = innerRowWithDoc(320, 1610 - 740);
+  const strandedOuter1610 = (terminalPercentage: number): MockLayout => ({
+    'editor-main': 100 - terminalPercentage,
+    'terminal-column': terminalPercentage,
+    'agents-column': 0,
+  });
+  const strandedInner1610 = (terminalPercentage: number): MockLayout =>
+    innerRowWithDoc(320, ((100 - terminalPercentage) / 100) * 1610);
 
   const readExhaustedReports = (warnings: readonly string[]) =>
     warnings
@@ -1022,7 +1254,7 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
       })
       .filter((entry) => entry?.event === 'right-rail-pin-exhausted');
 
-  async function withSynchronousFrames(run: () => void) {
+  async function withSynchronousFrames(run: () => void | Promise<void>) {
     const warnings: string[] = [];
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation((message: unknown) => {
       warnings.push(String(message));
@@ -1033,7 +1265,7 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
       return 0;
     }) as typeof globalThis.requestAnimationFrame;
     try {
-      run();
+      await run();
       await act(async () => {});
     } finally {
       globalThis.requestAnimationFrame = realRequestAnimationFrame;
@@ -1049,8 +1281,10 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     const view = render(
       <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible={false} />,
     );
-    groupLayout = { ...RAIL_LAYOUT_1610 };
-    committedGroupLayout = { ...RAIL_LAYOUT_1610 };
+    groupLayout = { ...RAIL_OUTER_1610 };
+    committedGroupLayout = { ...RAIL_OUTER_1610 };
+    innerLayout = { ...RAIL_INNER_1610 };
+    committedInnerLayout = { ...RAIL_INNER_1610 };
     deferPanelGeometryCommit = true;
     groupSetLayoutCalls = [];
 
@@ -1074,12 +1308,8 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     const view = render(
       <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible={false} />,
     );
-    groupLayout = {
-      'editor-main': 100 - (320 / 1610) * 100 - strandedTerminalPercentage,
-      'doc-panel': (320 / 1610) * 100,
-      'terminal-column': strandedTerminalPercentage,
-      'agents-column': 0,
-    };
+    groupLayout = strandedOuter1610(strandedTerminalPercentage);
+    innerLayout = strandedInner1610(strandedTerminalPercentage);
     rejectGroupLayoutWrites = true;
 
     const warnings = await withSynchronousFrames(() => {
@@ -1105,12 +1335,8 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     const view = render(
       <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible={false} />,
     );
-    groupLayout = {
-      'editor-main': 100 - (320 / 1610) * 100 - 44,
-      'doc-panel': (320 / 1610) * 100,
-      'terminal-column': 44,
-      'agents-column': 0,
-    };
+    groupLayout = strandedOuter1610(44);
+    innerLayout = strandedInner1610(44);
     rejectGroupLayoutWrites = true;
 
     const warnings = await withSynchronousFrames(() => {
@@ -1185,7 +1411,6 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     );
     groupLayout = {
       'editor-main': 60,
-      'doc-panel': 0,
       'terminal-column': 40,
       'agents-column': 0,
     };
@@ -1231,11 +1456,11 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     );
     act(() => emitLocalMenuAction('toggle-doc-panel'));
     groupLayout = {
-      'editor-main': ((groupPx - terminalRenderedPx - docRenderedPx) / groupPx) * 100,
-      'doc-panel': (docRenderedPx / groupPx) * 100,
+      'editor-main': ((groupPx - terminalRenderedPx) / groupPx) * 100,
       'terminal-column': (terminalRenderedPx / groupPx) * 100,
       'agents-column': 0,
     };
+    innerLayout = innerRowWithDoc(docRenderedPx, groupPx - terminalRenderedPx);
 
     const warnings = await withSynchronousFrames(() => {
       view.rerender(
@@ -1266,12 +1491,8 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     const view = render(
       <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible={false} />,
     );
-    groupLayout = {
-      'editor-main': 100 - (320 / 1610) * 100 - 44,
-      'doc-panel': (320 / 1610) * 100,
-      'terminal-column': 44,
-      'agents-column': 0,
-    };
+    groupLayout = strandedOuter1610(44);
+    innerLayout = strandedInner1610(44);
     rejectGroupLayoutWrites = true;
 
     const warnings = await withSynchronousFrames(() => {
@@ -1300,12 +1521,8 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     const view = render(
       <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible={false} />,
     );
-    groupLayout = {
-      'editor-main': 100 - (320 / 1610) * 100 - 44,
-      'doc-panel': (320 / 1610) * 100,
-      'terminal-column': 44,
-      'agents-column': 0,
-    };
+    groupLayout = strandedOuter1610(44);
+    innerLayout = strandedInner1610(44);
     rejectGroupLayoutWrites = true;
 
     const warnings = await withSynchronousFrames(() => {
@@ -1333,18 +1550,46 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     expect(reports.filter((report) => report.trigger === 'doc-slot-presence').length).toBe(1);
   });
 
+  test('an editor hide the row never settles into reports its own pin outcome under its own cap', async () => {
+    setViewportWidth(1400);
+    docCtx = DOC_LIVE_CTX;
+    const view = render(<EditorArea {...baseProps} agentsVisible />);
+    groupLayout = { 'editor-main': 65, 'terminal-column': 0, 'agents-column': 35 };
+    await act(async () => {});
+    rejectGroupLayoutWrites = true;
+
+    const warnings = await withSynchronousFrames(async () => {
+      for (let toggle = 0; toggle <= MAX_RAIL_PIN_EXHAUSTED_REPORTS * 2; toggle += 1) {
+        view.rerender(<EditorArea {...baseProps} agentsVisible editorVisible={toggle % 2 === 1} />);
+        await act(async () => {});
+      }
+    });
+
+    const reports = readExhaustedReports(warnings).filter(
+      (report) => report.trigger === 'editor-visibility',
+    );
+    expect(reports.length).toBe(MAX_RAIL_PIN_EXHAUSTED_REPORTS);
+    expect(reports[0]?.stage).toBe('editor-hidden-unsettled');
+  });
+
   test('revealing the agents panel keeps the open doc panel open despite a stale cached layout', async () => {
     setViewportWidth(1400);
     docCtx = DOC_LIVE_CTX;
     const view = render(<EditorArea {...baseProps} agentsVisible={false} />);
-    groupLayout = { 'editor-main': 45, 'doc-panel': 25, 'agents-column': 30 };
+    groupLayout = { 'editor-main': 70, 'agents-column': 30 };
+    innerLayout = innerRowWithDoc(340, 0.7 * 1360);
     view.rerender(<EditorArea {...baseProps} agentsVisible />);
     await act(async () => {});
     const corrected = groupSetLayoutCalls.at(-1);
     expect(corrected).toBeDefined();
-    expect(corrected?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
+    expect(lastInnerWritePx('doc-panel')).toBeCloseTo(320, 3);
     expect(corrected?.['agents-column']).toBeCloseTo(pctOf(480), 3);
-    expect(corrected?.['editor-main']).toBeCloseTo(100 - pctOf(320) - pctOf(480), 3);
+    expect(corrected?.['editor-main']).toBeCloseTo(100 - pctOf(480), 3);
+    const innerWrite = innerSetLayoutCalls.at(-1);
+    expect(innerWrite).toBeDefined();
+    expect(
+      ((innerWrite?.['workspace-main'] ?? 0) / 100) * (innerSetLayoutPx.at(-1) ?? 0),
+    ).toBeCloseTo(1360 - 480 - 320, 3);
   });
 
   test('the rail keeps one panel-ID set from a document to a new tab', () => {
@@ -1352,18 +1597,22 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     docCtx = DOC_LIVE_CTX;
     const view = render(<EditorArea {...baseProps} agentsVisible />);
     const withDocument = renderedPanelIds();
-    expect(withDocument).toEqual(['doc-panel', 'terminal-column', 'agents-column']);
+    const withDocumentInner = renderedInnerPanelIds();
+    expect(withDocument).toEqual(['terminal-column', 'agents-column']);
+    expect(withDocumentInner).toEqual(['doc-panel']);
 
     docCtx = EMPTY_DOC_CTX;
     view.rerender(<EditorArea {...baseProps} agentsVisible />);
 
     expect(renderedPanelIds()).toEqual(withDocument);
-    expect(document.getElementById('doc-panel')?.childElementCount).toBe(0);
+    expect(renderedInnerPanelIds()).toEqual(withDocumentInner);
+    expect(document.getElementById('doc-panel')?.textContent).toBe('');
   });
 
   test('the rail keeps one panel-ID set across every view kind', () => {
     setViewportWidth(1400);
-    const expected = ['doc-panel', 'terminal-column', 'agents-column'];
+    const expected = ['terminal-column', 'agents-column'];
+    const expectedInner = ['doc-panel'];
     for (const ctx of [
       DOC_LIVE_CTX,
       EMPTY_DOC_CTX,
@@ -1376,6 +1625,7 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
       docCtx = ctx;
       render(<EditorArea {...baseProps} agentsVisible />);
       expect(renderedPanelIds()).toEqual(expected);
+      expect(renderedInnerPanelIds()).toEqual(expectedInner);
     }
   });
 
@@ -1399,7 +1649,8 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     view.rerender(<EditorArea {...baseProps} agentsVisible />);
 
     expect(screen.getByTestId('editor-skeleton')).toBeTruthy();
-    expect(renderedPanelIds()).toEqual(['doc-panel', 'terminal-column', 'agents-column']);
+    expect(renderedPanelIds()).toEqual(['terminal-column', 'agents-column']);
+    expect(renderedInnerPanelIds()).toEqual(['doc-panel']);
     expect(document.getElementById('doc-panel')?.childElementCount).toBe(1);
     window.location.hash = '';
   });
@@ -1409,27 +1660,28 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     docCtx = DOC_LIVE_CTX;
     const view = render(<EditorArea {...baseProps} />);
     groupLayout = {
-      'editor-main': 60,
-      'doc-panel': 40,
+      'editor-main': 100,
       'terminal-column': 0,
       'agents-column': 0,
     };
-    groupSetLayoutCalls = [];
+    innerLayout = { 'workspace-main': 60, 'doc-panel': 40 };
+    innerSetLayoutCalls = [];
 
     docCtx = ASSET_DOC_CTX;
     view.rerender(<EditorArea {...baseProps} />);
     await act(async () => {});
-    const emptied = groupSetLayoutCalls.at(-1);
+    const emptied = innerSetLayoutCalls.at(-1);
     expect(emptied?.['doc-panel']).toBe(0);
-    expect(emptied?.['editor-main']).toBe(100);
+    expect(emptied?.['workspace-main']).toBe(100);
 
-    groupLayout = { ...groupLayout, 'editor-main': 100, 'doc-panel': 0 };
+    innerLayout = { 'workspace-main': 100, 'doc-panel': 0 };
     docCtx = DOC_LIVE_CTX;
     view.rerender(<EditorArea {...baseProps} />);
     await act(async () => {});
-    const refilled = groupSetLayoutCalls.at(-1);
+    const refilled = innerSetLayoutCalls.at(-1);
     expect(refilled?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
-    expect(refilled?.['editor-main']).toBeCloseTo(100 - pctOf(320), 3);
+    expect(lastInnerWritePx('doc-panel')).toBeCloseTo(320, 3);
+    expect(refilled?.['workspace-main']).toBeCloseTo(100 - pctOf(320), 3);
   });
 
   test('folder-view agent activity fills the shared slot, not a panel of its own', () => {
@@ -1447,18 +1699,44 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     const view = render(<EditorArea {...baseProps} />);
     groupLayout = {
       'editor-main': 100,
-      'doc-panel': 0,
       'terminal-column': 0,
       'agents-column': 0,
     };
-    groupSetLayoutCalls = [];
+    innerSetLayoutCalls = [];
 
     docCtx = { ...FOLDER_AGENT_CTX, docPanelExpandSignal: 1 };
     view.rerender(<EditorArea {...baseProps} />);
     await act(async () => {});
 
-    const opened = groupSetLayoutCalls.at(-1);
+    const opened = innerSetLayoutCalls.at(-1);
     expect(opened?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
+    expect(lastInnerWritePx('doc-panel')).toBeCloseTo(320, 3);
+  });
+
+  test('an avatar click with the editor hidden shows the editor, then opens the side panel', async () => {
+    setViewportWidth(1024);
+    docCtx = FOLDER_DOC_CTX;
+    __resetPaneVisibilityStoreForTests();
+    const requests: PaneVisibilityRequest[] = [];
+    paneVisibilityStore.subscribeRequests((request) => requests.push(request));
+    const view = render(<EditorArea {...baseProps} editorVisible={false} />);
+    groupLayout = {
+      'editor-main': 100,
+      'terminal-column': 0,
+      'agents-column': 0,
+    };
+    await act(async () => {});
+    innerSetLayoutCalls = [];
+
+    docCtx = { ...FOLDER_AGENT_CTX, docPanelExpandSignal: 1 };
+    view.rerender(<EditorArea {...baseProps} editorVisible={false} />);
+    await act(async () => {});
+    expect(requests).toEqual([{ pane: 'editor', open: true }]);
+
+    view.rerender(<EditorArea {...baseProps} />);
+    await act(async () => {});
+    expect(lastInnerWritePx('doc-panel')).toBeCloseTo(320, 3);
+    __resetPaneVisibilityStoreForTests();
   });
 
   test('a view with no document pane pins the slot shut and ignores the toggle', async () => {
@@ -1466,23 +1744,24 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     docCtx = ASSET_DOC_CTX;
     groupLayout = {
       'editor-main': 100 - pctOf(480),
-      'doc-panel': 0,
       'terminal-column': 0,
       'agents-column': pctOf(480),
     };
     render(<EditorArea {...baseProps} agentsVisible />);
     groupSetLayoutCalls = [];
+    innerSetLayoutCalls = [];
     groupLayout = {
-      'editor-main': 45,
-      'doc-panel': 25,
+      'editor-main': 70,
       'terminal-column': 0,
       'agents-column': 30,
     };
+    innerLayout = { 'workspace-main': 75, 'doc-panel': 25 };
 
     act(() => emitLocalMenuAction('toggle-doc-panel'));
     await act(async () => {});
 
     expect(groupSetLayoutCalls).toHaveLength(0);
+    expect(innerSetLayoutCalls).toHaveLength(0);
   });
 
   test('releasing an agents-handle drag below the close threshold hides the panel', async () => {
@@ -1508,6 +1787,37 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
       fireEvent.pointerUp(window, { pointerId: 1 });
     });
     expect(visibleChanges.at(-1)).toBe(false);
+  });
+
+  test('a divider drag that closes chat while its history covers the panel leaves it collapsed without changing visibility', async () => {
+    setViewportWidth(1400);
+    const visibleChanges: boolean[] = [];
+    render(
+      <EditorArea
+        {...baseProps}
+        agentsVisible
+        onAgentsVisibleChange={(visible: boolean) => {
+          visibleChanges.push(visible);
+        }}
+      />,
+    );
+    const mount = document.querySelector('[data-agents-panel-mount]');
+    if (mount == null) throw new Error('no chat mount to hold the history cover');
+    const cover = document.createElement('aside');
+    cover.setAttribute('data-history-mode', 'cover');
+    mount.appendChild(cover);
+    const handle = getAgentsHandle();
+    act(() => {
+      fireEvent.pointerDown(handle, { pointerId: 1 });
+    });
+    mockPanelPx = 0;
+    mockPanelPercentage = 0;
+    panelIsCollapsed = true;
+    act(() => {
+      fireEvent.pointerUp(window, { pointerId: 1 });
+    });
+    expect(visibleChanges).toEqual([]);
+    cover.remove();
   });
 
   test('releasing an agents-handle drag in the middle band settles at the minimum', () => {
@@ -1579,11 +1889,11 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
       setViewportWidth(1400);
       docCtx = FOLDER_DOC_CTX;
       groupLayout = {
-        'editor-main': 100 - pctOf(320 + 440 + 480),
-        'doc-panel': pctOf(320),
+        'editor-main': 100 - pctOf(440 + 480),
         'terminal-column': pctOf(440),
         'agents-column': pctOf(480),
       };
+      innerLayout = innerRowWithDoc(320, 1360 - 440 - 480);
       const frames = controlAnimationFrames();
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       try {
@@ -1597,11 +1907,11 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
           />,
         );
         groupLayout = {
-          'editor-main': 100 - pctOf(320 + 440 + 250),
-          'doc-panel': pctOf(320),
+          'editor-main': 100 - pctOf(440 + 250),
           'terminal-column': pctOf(440),
           'agents-column': pctOf(250),
         };
+        innerLayout = innerRowWithDoc(320, 1360 - 440 - 250);
         mockPanelPx = 250;
         mockPanelPercentage = pctOf(250);
         rejectNextGroupLayoutWrite = true;
@@ -1648,19 +1958,19 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     setViewportWidth(1400);
     docCtx = FOLDER_DOC_CTX;
     groupLayout = {
-      'editor-main': 100 - pctOf(320 + 480),
-      'doc-panel': pctOf(320),
+      'editor-main': 100 - pctOf(480),
       'agents-column': pctOf(480),
     };
+    innerLayout = innerRowWithDoc(320, 1360 - 480);
     const frames = controlAnimationFrames();
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       render(<EditorArea {...baseProps} agentsVisible />);
       groupLayout = {
-        'editor-main': 100 - pctOf(320 + 250),
-        'doc-panel': pctOf(320),
+        'editor-main': 100 - pctOf(250),
         'agents-column': pctOf(250),
       };
+      innerLayout = innerRowWithDoc(320, 1360 - 250);
       mockPanelPx = 250;
       mockPanelPercentage = pctOf(250);
       rejectNextGroupLayoutWrite = true;
@@ -1996,6 +2306,22 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     expect(handle.getAttribute('aria-controls')).toBe(AGENTS_COLUMN_ID);
   });
 
+  test('names the side panel and right terminal separators for the panes they resize', () => {
+    setViewportWidth(1400);
+    docCtx = DOC_LIVE_CTX;
+    render(<EditorArea {...baseProps} agentsVisible terminalVisible terminalPlacement="right" />);
+
+    expect(
+      screen
+        .getByRole('separator', { name: 'Resize document panel' })
+        .getAttribute('aria-controls'),
+    ).toBe('doc-panel');
+    expect(
+      screen.getByRole('separator', { name: 'Resize terminal' }).getAttribute('aria-controls'),
+    ).toBe(TERMINAL_COLUMN_ID);
+    expect(screen.getByRole('separator', { name: 'Terminal' })).toBe(getAgentsHandle());
+  });
+
   test('keyboard resizing floors only the focused agents separator', () => {
     setViewportWidth(1400);
     render(<EditorArea {...baseProps} agentsVisible terminalVisible terminalPlacement="right" />);
@@ -2218,19 +2544,19 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     setViewportWidth(1400);
     docCtx = FOLDER_DOC_CTX;
     groupLayout = {
-      'editor-main': 100 - pctOf(320 + 480),
-      'doc-panel': pctOf(320),
+      'editor-main': 100 - pctOf(480),
       'agents-column': pctOf(480),
     };
+    innerLayout = innerRowWithDoc(320, 1360 - 480);
     const frames = controlAnimationFrames();
     try {
       render(<EditorArea {...baseProps} agentsVisible />);
       getAgentsHandle().focus();
       groupLayout = {
-        'editor-main': 100 - pctOf(320 + 250),
-        'doc-panel': pctOf(320),
+        'editor-main': 100 - pctOf(250),
         'agents-column': pctOf(250),
       };
+      innerLayout = innerRowWithDoc(320, 1360 - 250);
       rejectNextGroupLayoutWrite = true;
       act(() => {
         groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
@@ -2242,12 +2568,12 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
       if (!(docHandle instanceof HTMLElement)) throw new Error('doc-panel resize handle not found');
       docHandle.focus();
       groupLayout = {
-        'editor-main': 100 - pctOf(320 + 600),
-        'doc-panel': pctOf(320),
+        'editor-main': 100 - pctOf(600),
         'agents-column': pctOf(600),
       };
+      innerLayout = innerRowWithDoc(320, 1360 - 600);
       act(() => {
-        groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+        innerRowHandlers.onLayoutChanged?.(innerLayout, { isUserInteraction: true });
       });
       frames.run(30);
 
@@ -2266,11 +2592,16 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     ({ panelId, terminalVisible }) => {
       setViewportWidth(1400);
       if (!terminalVisible) docCtx = FOLDER_DOC_CTX;
-      groupLayout = {
-        'editor-main': 100 - pctOf(320 + 480),
-        [panelId]: pctOf(320),
-        'agents-column': pctOf(480),
-      };
+      const outerRowWith = (agentsPx: number): MockLayout =>
+        terminalVisible
+          ? {
+              'editor-main': 100 - pctOf(320 + agentsPx),
+              'terminal-column': pctOf(320),
+              'agents-column': pctOf(agentsPx),
+            }
+          : { 'editor-main': 100 - pctOf(agentsPx), 'agents-column': pctOf(agentsPx) };
+      groupLayout = outerRowWith(480);
+      if (!terminalVisible) innerLayout = innerRowWithDoc(320, 1360 - 480);
       const frames = controlAnimationFrames();
       try {
         render(
@@ -2282,11 +2613,8 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
           />,
         );
         getAgentsHandle().focus();
-        groupLayout = {
-          'editor-main': 100 - pctOf(320 + 250),
-          [panelId]: pctOf(320),
-          'agents-column': pctOf(250),
-        };
+        groupLayout = outerRowWith(250);
+        if (!terminalVisible) innerLayout = innerRowWithDoc(320, 1360 - 250);
         rejectNextGroupLayoutWrite = true;
         act(() => {
           groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
@@ -2302,7 +2630,11 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
         });
         handle.focus();
         act(() => {
-          groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+          if (panelId === 'doc-panel') {
+            innerRowHandlers.onLayoutChanged?.(innerLayout, { isUserInteraction: true });
+          } else {
+            groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+          }
         });
         frames.run(30);
 
@@ -2328,10 +2660,10 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     render(<EditorArea {...baseProps} agentsVisible />);
     const handle = getAgentsHandle();
     handle.focus();
-    const panelWidths = [880, 0, 0, 320];
+    const panelWidths = [880, 0, 320];
     const panelElements = screen
       .getByTestId('resizable-group')
-      .querySelectorAll('[data-slot="resizable-panel"]');
+      .querySelectorAll(':scope > [data-slot="resizable-panel"]');
     expect(panelElements).toHaveLength(panelWidths.length);
     panelElements.forEach((element, index) => {
       Object.defineProperty(element, 'getBoundingClientRect', {
@@ -2346,7 +2678,6 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     mockPanelPx = 320.004;
     groupLayout = {
       'editor-main': 100 - mockPanelPercentage,
-      'doc-panel': 0,
       'terminal-column': 0,
       'agents-column': mockPanelPercentage,
     };
@@ -2363,21 +2694,17 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     setViewportWidth(1400);
     const visibleChanges: boolean[] = [];
     render(
-      <TooltipProvider>
-        <EditorArea
-          {...baseProps}
-          agentsVisible
-          onRevealAgents={() => {}}
-          onAgentsVisibleChange={(visible: boolean) => {
-            visibleChanges.push(visible);
-          }}
-        />
-      </TooltipProvider>,
+      <EditorArea
+        {...baseProps}
+        agentsVisible
+        onAgentsVisibleChange={(visible: boolean) => {
+          visibleChanges.push(visible);
+        }}
+      />,
     );
     getAgentsHandle().focus();
     groupLayout = {
       'editor-main': 100,
-      'doc-panel': 0,
       'terminal-column': 0,
       'agents-column': 0,
     };
@@ -2388,7 +2715,6 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     });
     expect(groupSetLayoutCalls).toHaveLength(0);
     expect(visibleChanges).toHaveLength(0);
-    expect(screen.getByRole('button', { name: 'Open agents panel' })).toBeTruthy();
   });
 
   test('releasing an agents-handle drag with the column still open does NOT hide the panel', async () => {
@@ -2425,7 +2751,7 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     });
     groupSetLayoutCalls = [];
 
-    groupLayout = { 'editor-main': 45, 'doc-panel': 25, 'agents-column': 30 };
+    groupLayout = { 'editor-main': 70, 'agents-column': 30 };
     view.rerender(<EditorArea {...baseProps} agentsVisible={false} />);
     await act(async () => {});
     expect(groupSetLayoutCalls.length).toBeGreaterThan(0);
@@ -2508,92 +2834,33 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
   });
 });
 
-describe('EditorArea session-panel edge reveal tabs', () => {
-  const revealProps = {
-    editorMode: 'wysiwyg',
-    onModeChange: () => {},
-    activeTab: 'timeline',
-    onActiveTabChange: () => {},
-    terminalBridge: { terminal: {} } as never,
-    onAgentsVisibleChange: () => {},
-    onTerminalVisibleChange: () => {},
-    onRevealAgents: () => {},
-  } as const;
-
+describe('EditorArea agents panel region', () => {
   beforeEach(() => {
     cleanup();
     docCtx = EMPTY_DOC_CTX;
   });
 
-  const renderArea = (props: Record<string, unknown>) =>
+  test('the agents panel mounts in the panels region, not the header', () => {
     render(
-      <TooltipProvider>
-        <EditorArea {...revealProps} {...props} />
-      </TooltipProvider>,
+      <EditorArea
+        editorMode="wysiwyg"
+        onModeChange={() => {}}
+        activeTab="timeline"
+        onActiveTabChange={() => {}}
+        terminalBridge={{ terminal: {} } as never}
+        onAgentsVisibleChange={() => {}}
+        onTerminalVisibleChange={() => {}}
+        agentsVisible
+      />,
     );
-
-  test('the agents tab is up while the panel is hidden, even with no chats', () => {
-    renderArea({ agentsVisible: false });
-    const reveal = screen.getByRole('button', { name: 'Open agents panel' });
-    const header = document.querySelector('[data-editor-area-header]');
-    const panels = document.querySelector('[data-editor-area-panels]');
-
-    expect(header).toBeTruthy();
-    expect(panels).toBeTruthy();
-    expect(header?.contains(screen.getByTestId('workspace-tabs'))).toBe(true);
-    expect(panels?.contains(reveal)).toBe(true);
-    expect(header?.contains(reveal)).toBe(false);
-  });
-
-  test('the agents tab goes away once the panel is open', () => {
-    renderArea({ agentsVisible: true });
-    expect(screen.queryByRole('button', { name: 'Open agents panel' })).toBeNull();
     const header = document.querySelector('[data-editor-area-header]');
     const panels = document.querySelector('[data-editor-area-panels]');
     const agentMount = document.querySelector('[data-agents-panel-mount]');
 
     expect(header).toBeTruthy();
+    expect(agentMount).toBeTruthy();
     expect(panels?.contains(agentMount)).toBe(true);
     expect(header?.contains(agentMount)).toBe(false);
-  });
-
-  test('the measured-collapse reveal restores the preferred rail width without panel expand', () => {
-    mockGroupPx = 1360;
-    mockPanelPercentage = null;
-    mockPanelPx = null;
-    panelExpandCalls = 0;
-    renderArea({ agentsVisible: true });
-    groupLayout = {
-      'editor-main': 100,
-      'doc-panel': 0,
-      'terminal-column': 0,
-      'agents-column': 0,
-    };
-    act(() => {
-      railPanelOnResizeById.get(AGENTS_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
-    });
-    groupSetLayoutCalls = [];
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open agents panel' }));
-
-    expect(panelExpandCalls).toBe(0);
-    expect(groupSetLayoutCalls.at(-1)?.['agents-column']).toBeCloseTo((480 / 1360) * 100, 3);
-  });
-
-  test('a note window never renders the agents reveal tab', () => {
-    Object.defineProperty(window, 'okDesktop', {
-      configurable: true,
-      value: {
-        config: { mode: 'note' },
-        editor: { notifyViewMenuStateChanged: () => {} },
-      },
-    });
-    try {
-      renderArea({ agentsVisible: false });
-      expect(screen.queryByRole('button', { name: 'Open agents panel' })).toBeNull();
-    } finally {
-      Reflect.deleteProperty(window, 'okDesktop');
-    }
   });
 });
 
@@ -2777,7 +3044,7 @@ describe('EditorArea terminal persists across view-kind switches', () => {
   });
 });
 
-describe('EditorArea hash-load skeleton renders outside the panel group (cold start)', () => {
+describe('EditorArea hash-load skeleton renders inside the editor card (cold start)', () => {
   beforeEach(() => {
     cleanup();
     docCtx = DOC_COLD_CTX;
@@ -2786,7 +3053,7 @@ describe('EditorArea hash-load skeleton renders outside the panel group (cold st
     window.location.hash = '';
   });
 
-  test('renders the load skeleton directly, not inside the terminal dock or panel group', () => {
+  test('renders the load skeleton in the document area, with the panel rows and the side panel slot in place', () => {
     window.location.hash = '#/some-doc';
     render(
       <EditorArea
@@ -2800,9 +3067,101 @@ describe('EditorArea hash-load skeleton renders outside the panel group (cold st
       />,
     );
 
+    const skeleton = screen.getByTestId('editor-skeleton');
+    expect(skeleton.closest('[data-editor-workspace-column]')).not.toBeNull();
+    expect(skeleton.closest('[data-slot="pane-card"][data-pane="editor"]')).not.toBeNull();
+    expect(screen.getByTestId('resizable-group')).toBeTruthy();
+    expect(renderedInnerPanelIds()).toEqual(['doc-panel']);
+    expect(document.getElementById('doc-panel')?.getAttribute('data-max-size')).toBe('600px');
+  });
+
+  test('keeps the file list drawn in the editor card while the skeleton shows', () => {
+    window.location.hash = '#/some-doc';
+    render(
+      <FileListHostProvider enabled fileList={<nav data-testid="cold-load-file-list" />}>
+        <EditorArea
+          editorMode="wysiwyg"
+          onModeChange={() => {}}
+          activeTab="timeline"
+          onActiveTabChange={() => {}}
+        />
+      </FileListHostProvider>,
+    );
+
     expect(screen.getByTestId('editor-skeleton')).toBeTruthy();
-    expect(screen.queryByTestId('resizable-group')).toBeNull();
-    expect(screen.queryByTestId('terminal-dock')).toBeNull();
+    const card = document.querySelector('[data-slot="pane-card"][data-pane="editor"]');
+    expect(card?.contains(screen.getByTestId('cold-load-file-list'))).toBe(true);
+    expect(card?.contains(screen.getByTestId('editor-skeleton'))).toBe(true);
+  });
+
+  test('ignores a side panel toggle while the skeleton holds the slot, so no pin is written before the target is known', () => {
+    localStorage.clear();
+    window.location.hash = '#/some-folder';
+    render(
+      <EditorArea
+        editorMode="wysiwyg"
+        onModeChange={() => {}}
+        activeTab="timeline"
+        onActiveTabChange={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('editor-skeleton')).toBeTruthy();
+
+    act(() => emitLocalMenuAction('toggle-doc-panel'));
+
+    expect(localStorage.getItem('ok-sidebar-pins-v2')).toBeNull();
+  });
+
+  test('keeps the side panel slot the same panel when the document arrives, so its width restore is undisturbed', () => {
+    window.location.hash = '#/docs/notes';
+    const props = {
+      editorMode: 'wysiwyg' as const,
+      onModeChange: () => {},
+      activeTab: 'timeline' as const,
+      onActiveTabChange: () => {},
+    };
+    const { rerender } = render(<EditorArea {...props} />);
+    const docPanel = document.getElementById('doc-panel');
+    expect(docPanel?.getAttribute('data-max-size')).toBe('600px');
+
+    act(() => {
+      docCtx = DOC_LIVE_CTX;
+    });
+    rerender(<EditorArea {...props} />);
+
+    expect(screen.queryByTestId('editor-skeleton')).toBeNull();
+    expect(document.getElementById('doc-panel')).toBe(docPanel);
+    expect(docPanel?.getAttribute('data-max-size')).toBe('600px');
+    expect(renderedInnerPanelIds()).toEqual(['doc-panel']);
+  });
+});
+
+describe('EditorArea document panel host ownership', () => {
+  beforeEach(() => {
+    cleanup();
+    docCtx = DOC_LIVE_CTX;
+  });
+
+  test('releases the document panel host when the editor area unmounts', () => {
+    const { unmount } = render(
+      <EditorArea
+        editorMode="wysiwyg"
+        onModeChange={() => {}}
+        activeTab="outline"
+        onActiveTabChange={() => {}}
+      />,
+    );
+    const panel = document.getElementById('doc-panel');
+    const dock = panel?.firstElementChild;
+    const host = dock?.firstElementChild;
+    expect(panel).not.toBeNull();
+    expect(host).not.toBeNull();
+    expect(host?.parentElement).toBe(dock);
+
+    unmount();
+
+    expect(document.getElementById('doc-panel')).toBeNull();
+    expect(host?.parentElement).toBeNull();
   });
 });
 
@@ -2846,30 +3205,39 @@ describe('EditorArea terminal persists across a mid-session cold navigation', ()
     expect(screen.getByTestId('resizable-group')).toBeTruthy();
   });
 
-  test('web host keeps the bare early-return on mid-session cold nav (no dock to preserve)', () => {
+  test('web host keeps chat on screen through a mid-session cold nav, with the skeleton in the document area', () => {
     const webProps = {
       editorMode: 'wysiwyg' as const,
       onModeChange: () => {},
       activeTab: 'timeline' as const,
       onActiveTabChange: () => {},
+      agentsVisible: true,
+      onAgentsVisibleChange: () => {},
     };
     const { rerender } = render(<EditorArea {...webProps} />);
+    const agentsMount = document.querySelector('[data-agents-panel-mount]');
+    expect(agentsMount).not.toBeNull();
     act(() => {
       docCtx = DOC_COLD_CTX;
       window.location.hash = '#/some-doc';
     });
     rerender(<EditorArea {...webProps} />);
 
-    expect(screen.getByTestId('editor-skeleton')).toBeTruthy();
-    expect(screen.queryByTestId('resizable-group')).toBeNull();
-    expect(screen.queryByTestId('terminal-dock')).toBeNull();
+    const skeleton = screen.getByTestId('editor-skeleton');
+    expect(skeleton.closest('[data-editor-workspace-column]')).not.toBeNull();
+    expect(screen.getByTestId('resizable-group')).toBeTruthy();
+    expect(document.querySelector('[data-agents-panel-mount]')).toBe(agentsMount);
   });
 });
 
 describe('EditorArea doc-panel tab requests', () => {
-  const pctOf = (px: number) => (px / 1360) * 100;
-
-  function TabHost({ initialTab }: { initialTab: PanelTab }) {
+  function TabHost({
+    initialTab,
+    onActiveTabChange,
+  }: {
+    initialTab: PanelTab;
+    onActiveTabChange?: (tab: PanelTab) => void;
+  }) {
     const [tab, setTab] = useState<PanelTab>(initialTab);
     return (
       <TooltipProvider>
@@ -2877,70 +3245,138 @@ describe('EditorArea doc-panel tab requests', () => {
           editorMode="wysiwyg"
           onModeChange={() => {}}
           activeTab={tab}
-          onActiveTabChange={setTab}
+          onActiveTabChange={(nextTab) => {
+            onActiveTabChange?.(nextTab);
+            setTab(nextTab);
+          }}
         />
       </TooltipProvider>
     );
   }
 
+  function mountTabHost(initialTab: PanelTab, onActiveTabChange?: (tab: PanelTab) => void) {
+    const resizeObserver = installResizeObserver();
+    const view = render(<TabHost initialTab={initialTab} onActiveTabChange={onActiveTabChange} />);
+    const card = document.querySelector<HTMLElement>('[data-slot="pane-card"][data-pane="editor"]');
+    const inner = document.querySelector<HTMLElement>('[data-editor-inner-panels]');
+    if (card == null || inner == null) throw new Error('the editor card or inner row is absent');
+    for (const element of [card, inner]) {
+      Object.defineProperty(element, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => ({ width: rowPx('inner'), height: 0, top: 0, left: 0 }),
+      });
+    }
+    resizeObserver.fire('[data-slot="pane-card"][data-pane="editor"]');
+    resizeObserver.fire('[data-editor-inner-panels]');
+    return { view, resizeObserver };
+  }
+
+  const infoWidthPx = () => document.getElementById('doc-panel')?.getBoundingClientRect().width;
+  const docPanelToggle = () => {
+    const toggle = document.querySelector<HTMLElement>('[data-doc-panel-toggle]');
+    if (toggle == null) throw new Error('the document panel toggle is absent');
+    return toggle;
+  };
+
   beforeEach(() => {
     cleanup();
     localStorage.clear();
+    localStorage.setItem(
+      SIDEBAR_PINS_KEY,
+      JSON.stringify({ right: { above: 'collapsed', below: 'collapsed', embedded: 'collapsed' } }),
+    );
     docCtx = { ...DOC_LIVE_CTX, docPanelMode: 'doc' };
-    groupLayout = {};
+    groupLayout = { 'editor-main': 100 };
+    innerLayout = { ...INNER_LAYOUT_DOC_CLOSED };
     groupSetLayoutCalls = [];
     mockGroupPx = 1360;
+    Object.defineProperty(window, 'innerWidth', {
+      value: 1400,
+      configurable: true,
+      writable: true,
+    });
+    panelIsCollapsed = true;
+    deliverDocPanelResizeAfterLayout = true;
     closeActivityPanelCalls = 0;
   });
 
-  test('a doc-scoped problems request opens the Problems tab and expands the collapsed rail', () => {
-    render(<TabHost initialTab="timeline" />);
-    groupLayout = { 'editor-main': 100, 'doc-panel': 0 };
-    groupSetLayoutCalls = [];
+  test('a doc-scoped problems request opens the Problems tab and expands the collapsed rail', async () => {
+    const { resizeObserver } = mountTabHost('timeline');
+    try {
+      expect(infoWidthPx()).toBe(0);
+      expect(docPanelToggle().getAttribute('aria-expanded')).toBe('false');
 
-    act(() => requestDocPanelTab('problems', { scope: 'doc' }));
+      const storedPins = localStorage.getItem('ok-sidebar-pins-v2');
+      act(() => requestDocPanelTab('problems', { scope: 'doc' }));
+      await act(async () => {});
 
-    const panel = screen.getByRole('tabpanel');
-    expect(panel.getAttribute('id')).toBe('panel-problems');
-    expect(groupSetLayoutCalls.at(-1)?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
+      expect(localStorage.getItem('ok-sidebar-pins-v2')).toBe(storedPins);
+
+      expect(screen.getByRole('tabpanel').getAttribute('id')).toBe('panel-problems');
+      expect(screen.getByTestId('panel-scope-doc').getAttribute('data-state')).toBe('on');
+      expect(docPanelToggle().getAttribute('aria-expanded')).toBe('true');
+      expect(infoWidthPx()).toBeCloseTo(320, 0);
+      expect(innerResidualWidthPx()).toBeGreaterThanOrEqual(300);
+    } finally {
+      resizeObserver.restore();
+    }
   });
 
-  test('a panel already parked on Problems in project scope comes back in doc scope', () => {
-    render(<TabHost initialTab="problems" />);
-    fireEvent.click(screen.getByTestId('panel-scope-project'));
-    expect(screen.getByTestId('problems-project-scope')).toBeTruthy();
-    groupLayout = { 'editor-main': 100, 'doc-panel': 0 };
-    groupSetLayoutCalls = [];
+  test('a panel already parked on Problems in project scope comes back in doc scope', async () => {
+    const { resizeObserver } = mountTabHost('problems');
+    try {
+      act(() => requestDocPanelTab('problems', { scope: 'doc' }));
+      await act(async () => {});
+      fireEvent.click(screen.getByTestId('panel-scope-project'));
+      expect(screen.getByTestId('problems-project-scope')).toBeTruthy();
+      fireEvent.click(docPanelToggle());
+      await act(async () => {});
+      expect(infoWidthPx()).toBe(0);
+      expect(docPanelToggle().getAttribute('aria-expanded')).toBe('false');
 
-    act(() => requestDocPanelTab('problems', { scope: 'doc' }));
+      act(() => requestDocPanelTab('problems', { scope: 'doc' }));
+      await act(async () => {});
 
-    expect(screen.getByTestId('panel-scope-doc').getAttribute('data-state')).toBe('on');
-    expect(screen.queryByTestId('problems-project-scope')).toBeNull();
-    expect(groupSetLayoutCalls.at(-1)?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
+      expect(screen.getByRole('tabpanel').getAttribute('id')).toBe('panel-problems');
+      expect(screen.getByTestId('panel-scope-doc').getAttribute('data-state')).toBe('on');
+      expect(screen.queryByTestId('problems-project-scope')).toBeNull();
+      expect(infoWidthPx()).toBeCloseTo(320, 0);
+      expect(innerResidualWidthPx()).toBeGreaterThanOrEqual(300);
+    } finally {
+      resizeObserver.restore();
+    }
   });
 
   test('a tab request takes the rail back from the agent drill-in', () => {
     docCtx = { ...DOC_LIVE_CTX, docPanelMode: 'agent', docPanelAgentId: 'agent-1' };
-    render(<TabHost initialTab="timeline" />);
+    const { resizeObserver } = mountTabHost('timeline');
     expect(screen.queryByRole('tabpanel')).toBeNull();
 
     act(() => requestDocPanelTab('problems', { scope: 'doc' }));
 
     expect(closeActivityPanelCalls).toBe(1);
+    resizeObserver.restore();
   });
 
   test('re-rendering does not stack the subscription, and unmounting drops it', () => {
-    const view = render(<TabHost initialTab="timeline" />);
-    for (let i = 0; i < 3; i += 1) view.rerender(<TabHost initialTab="timeline" />);
-    groupLayout = { 'editor-main': 100, 'doc-panel': 0 };
-    groupSetLayoutCalls = [];
+    const onActiveTabChange = vi.fn();
+    const { view, resizeObserver } = mountTabHost('timeline', onActiveTabChange);
+    try {
+      for (let i = 0; i < 3; i += 1) {
+        view.rerender(<TabHost initialTab="timeline" onActiveTabChange={onActiveTabChange} />);
+      }
 
-    act(() => requestDocPanelTab('problems', { scope: 'doc' }));
-    expect(groupSetLayoutCalls).toHaveLength(1);
+      act(() => requestDocPanelTab('problems', { scope: 'doc' }));
+      expect(onActiveTabChange).toHaveBeenCalledTimes(1);
+      expect(onActiveTabChange).toHaveBeenCalledWith('problems');
+      expect(infoWidthPx()).toBeCloseTo(320, 0);
 
-    view.unmount();
-    act(() => requestDocPanelTab('problems', { scope: 'doc' }));
-    expect(groupSetLayoutCalls).toHaveLength(1);
+      view.unmount();
+      act(() => requestDocPanelTab('problems', { scope: 'doc' }));
+      expect(onActiveTabChange).toHaveBeenCalledTimes(1);
+    } finally {
+      resizeObserver.restore();
+    }
   });
 });
 
@@ -3288,5 +3724,2336 @@ describe('EditorArea rail mount inert', () => {
       railPanelOnResizeById.get(TERMINAL_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
     });
     expect(placements.at(-1)?.terminal?.isShowing).toBe(false);
+  });
+});
+
+type Observation = {
+  callback: ResizeObserverCallback;
+  observer: ResizeObserver;
+  target: Element;
+};
+const installResizeObserver = () => {
+  const original = globalThis.ResizeObserver;
+  const observations = new Set<Observation>();
+  class TestResizeObserver implements ResizeObserver {
+    readonly callback: ResizeObserverCallback;
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+    }
+    observe(target: Element) {
+      observations.add({ callback: this.callback, observer: this, target });
+    }
+    unobserve(target: Element) {
+      for (const observation of observations) {
+        if (observation.observer === this && observation.target === target) {
+          observations.delete(observation);
+        }
+      }
+    }
+    disconnect() {
+      for (const observation of observations) {
+        if (observation.observer === this) observations.delete(observation);
+      }
+    }
+  }
+  Object.defineProperty(globalThis, 'ResizeObserver', {
+    value: TestResizeObserver,
+    configurable: true,
+    writable: true,
+  });
+  return {
+    fire: (selector: string) => {
+      const target = document.querySelector(selector);
+      const matching = [...observations].filter((entry) => entry.target === target);
+      if (matching.length === 0) throw new Error(`${selector} is not observed`);
+      act(() => {
+        for (const observation of matching) observation.callback([], observation.observer);
+      });
+    },
+    restore: () => {
+      Object.defineProperty(globalThis, 'ResizeObserver', {
+        value: original,
+        configurable: true,
+        writable: true,
+      });
+    },
+  };
+};
+
+describe('EditorArea editor card rows', () => {
+  const rowProps = {
+    editorMode: 'wysiwyg',
+    onModeChange: () => {},
+    activeTab: 'timeline',
+    onActiveTabChange: () => {},
+    terminalBridge: {} as never,
+    onAgentsVisibleChange: () => {},
+    onTerminalVisibleChange: () => {},
+  } as const;
+  const FILE_LIST_PX = 288;
+  const SHELL_CHROME_PX = 8;
+  const setViewportWidth = (px: number) => {
+    Object.defineProperty(window, 'innerWidth', { value: px, configurable: true, writable: true });
+  };
+  const pctOfRow = (px: number, rowPx: number) => (px / rowPx) * 100;
+  const docHandle = () => {
+    const handle = document.getElementById('doc-panel')?.previousElementSibling;
+    if (!(handle instanceof HTMLElement)) throw new Error('doc-panel resize handle not found');
+    return handle;
+  };
+  const agentsHandle = () => {
+    const handle = screen.getAllByTestId('resizable-handle').at(-1);
+    if (handle == null) throw new Error('agents resize handle not found');
+    return handle;
+  };
+  const terminalHandle = () => {
+    const handle = document.querySelector<HTMLElement>('[data-terminal-panel-handle]');
+    if (handle == null) throw new Error('terminal resize handle not found');
+    return handle;
+  };
+  const flushFrame = () => act(async () => {});
+  const measureEditorCardForRow = (resizeObserver: ReturnType<typeof installResizeObserver>) => {
+    const card = document.querySelector<HTMLElement>('[data-slot="pane-card"][data-pane="editor"]');
+    if (card == null) throw new Error('the editor card is absent');
+    Object.defineProperty(card, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ width: rowPx('inner'), height: 0, top: 0, left: 0 }),
+    });
+    resizeObserver.fire('[data-slot="pane-card"][data-pane="editor"]');
+  };
+
+  beforeEach(() => {
+    cleanup();
+    localStorage.clear();
+    docCtx = EMPTY_DOC_CTX;
+    groupLayout = {};
+    groupSetLayoutCalls = [];
+    rejectNextGroupLayoutWrite = false;
+    rejectGroupLayoutWrites = false;
+    panelIsCollapsed = false;
+    mockGroupPx = 1360;
+    mockPanelPercentage = null;
+    mockPanelPx = null;
+    toastInfoMessages = [];
+  });
+
+  test('a project window puts the tab row, the workspace and the side panel inside one editor card row', () => {
+    setViewportWidth(1400);
+    docCtx = DOC_LIVE_CTX;
+    render(<EditorArea {...rowProps} agentsVisible terminalVisible terminalPlacement="right" />);
+
+    const card = document.querySelector('[data-slot="pane-card"][data-pane="editor"]');
+    const outer = screen.getByTestId('resizable-group');
+    const inner = screen.getByTestId('resizable-group-inner');
+    const header = document.querySelector('[data-editor-area-header]');
+    const column = document.querySelector('[data-editor-workspace-column]');
+    const docPanel = document.getElementById('doc-panel');
+    const terminalPanel = document.getElementById('terminal-column');
+    const agentsPanel = document.getElementById('agents-column');
+    if (card == null || header == null || column == null || docPanel == null) {
+      throw new Error('editor card structure is incomplete');
+    }
+
+    expect(card.getAttribute('data-variant')).toBe('card');
+    expect(card.closest('[data-panel]')).toBe(outer.firstElementChild);
+    expect(outer.querySelector(':scope > [data-slot="pane-card"]')).toBeNull();
+    expect(card.contains(inner)).toBe(true);
+    expect(inner.contains(docPanel)).toBe(true);
+    expect(inner.contains(column)).toBe(true);
+    expect(column.firstElementChild).toBe(header);
+    expect(header.contains(screen.getByTestId('workspace-tabs'))).toBe(true);
+    expect(docPanel.contains(header)).toBe(false);
+    expect(card.contains(terminalPanel)).toBe(false);
+    expect(card.contains(agentsPanel)).toBe(false);
+    expect(
+      docPanel.compareDocumentPosition(terminalPanel as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(document.querySelector('[data-editor-inner-panels]')?.firstElementChild).toBe(inner);
+  });
+
+  test('a note window keeps the tab row target above the row and renders the flat card', () => {
+    Object.defineProperty(window, 'okDesktop', {
+      configurable: true,
+      value: {
+        config: { mode: 'note' },
+        editor: { notifyViewMenuStateChanged: () => {} },
+      },
+    });
+    try {
+      render(<EditorArea {...rowProps} />);
+      const panels = document.querySelector('[data-editor-area-panels]');
+      const header = document.querySelector('[data-editor-area-header]');
+      const card = document.querySelector('[data-slot="pane-card"][data-pane="editor"]');
+      expect(header?.nextElementSibling).toBe(panels);
+      expect(panels?.contains(header)).toBe(false);
+      expect(card?.getAttribute('data-variant')).toBe('flat');
+      expect(screen.getByTestId('resizable-group-inner').contains(card)).toBe(false);
+      expect(card?.contains(screen.getByTestId('resizable-group-inner'))).toBe(true);
+    } finally {
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
+  });
+
+  test('a single-file window renders the normal editor card', () => {
+    Object.defineProperty(window, 'okDesktop', {
+      configurable: true,
+      value: {
+        config: { singleFile: true },
+        editor: { notifyViewMenuStateChanged: () => {} },
+      },
+    });
+    try {
+      render(
+        <SingleFileModeProvider>
+          <EditorArea {...rowProps} />
+        </SingleFileModeProvider>,
+      );
+      const card = document.querySelector('[data-slot="pane-card"][data-pane="editor"]');
+      expect(card?.getAttribute('data-variant')).toBe('card');
+    } finally {
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
+  });
+
+  test('while the chat divider is dragged the inner row follows the outer move in the same write and keeps the side panel width', async () => {
+    setViewportWidth(1400);
+    docCtx = DOC_LIVE_CTX;
+    groupLayout = {
+      'editor-main': 100 - pctOfRow(480, 1360),
+      'agents-column': pctOfRow(480, 1360),
+    };
+    innerLayout = innerRowWithDoc(320, 1360 - 480);
+    render(<EditorArea {...rowProps} agentsVisible />);
+    await act(async () => {});
+    groupSetLayoutCalls = [];
+    innerSetLayoutCalls = [];
+
+    act(() => {
+      fireEvent.pointerDown(agentsHandle(), { pointerId: 1 });
+      agentsHandle().setAttribute('data-separator', 'active');
+    });
+    groupLayout = {
+      'editor-main': 100 - pctOfRow(600, 1360),
+      'agents-column': pctOfRow(600, 1360),
+    };
+    act(() => {
+      groupOnLayoutChange?.(groupLayout);
+    });
+
+    expect(groupSetLayoutCalls).toHaveLength(0);
+    expect(lastInnerWritePx('doc-panel')).toBeCloseTo(320, 3);
+    expect(document.getElementById('doc-panel')?.getBoundingClientRect().width).toBeCloseTo(320, 3);
+    expect(innerResidualWidthPx()).toBeCloseTo(1360 - 600 - 320, 3);
+
+    act(() => {
+      groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+      fireEvent.pointerUp(window, { pointerId: 1 });
+    });
+    expect(document.getElementById('doc-panel')?.getBoundingClientRect().width).toBeCloseTo(320, 3);
+  });
+
+  test('a collapsed side panel stays collapsed while the outer row is dragged', async () => {
+    setViewportWidth(1024);
+    docCtx = DOC_LIVE_CTX;
+    groupLayout = {
+      'editor-main': 100 - pctOfRow(480, 1360),
+      'agents-column': pctOfRow(480, 1360),
+    };
+    render(<EditorArea {...rowProps} agentsVisible />);
+    await act(async () => {});
+    innerSetLayoutCalls = [];
+
+    act(() => {
+      fireEvent.pointerDown(agentsHandle(), { pointerId: 1 });
+      agentsHandle().setAttribute('data-separator', 'active');
+    });
+    groupLayout = {
+      'editor-main': 100 - pctOfRow(600, 1360),
+      'agents-column': pctOfRow(600, 1360),
+    };
+    act(() => {
+      groupOnLayoutChange?.(groupLayout);
+    });
+    act(() => {
+      groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+      fireEvent.pointerUp(window, { pointerId: 1 });
+    });
+
+    for (const write of innerSetLayoutCalls) expect(write['doc-panel']).toBe(0);
+    expect(document.getElementById('doc-panel')?.getBoundingClientRect().width).toBe(0);
+  });
+
+  test('each row marks only its own drag', () => {
+    setViewportWidth(1400);
+    docCtx = DOC_LIVE_CTX;
+    render(<EditorArea {...rowProps} agentsVisible />);
+    const outer = screen.getByTestId('resizable-group');
+    const inner = screen.getByTestId('resizable-group-inner');
+
+    act(() => {
+      fireEvent.pointerDown(docHandle(), { pointerId: 1 });
+    });
+    expect(inner.getAttribute('data-dragging')).toBe('true');
+    expect(outer.hasAttribute('data-dragging')).toBe(false);
+    act(() => {
+      fireEvent.pointerUp(window, { pointerId: 1 });
+    });
+    expect(inner.hasAttribute('data-dragging')).toBe(false);
+
+    act(() => {
+      fireEvent.pointerDown(agentsHandle(), { pointerId: 2 });
+    });
+    expect(outer.getAttribute('data-dragging')).toBe('true');
+    expect(inner.hasAttribute('data-dragging')).toBe(false);
+    act(() => {
+      fireEvent.pointerUp(window, { pointerId: 2 });
+    });
+    expect(outer.hasAttribute('data-dragging')).toBe(false);
+  });
+
+  test('at a 1400px window with the file list open every column drops to its floor and the document keeps 159px', async () => {
+    const rowPx = 1400 - FILE_LIST_PX - SHELL_CHROME_PX;
+    setViewportWidth(1400);
+    mockGroupPx = rowPx;
+    docCtx = DOC_LIVE_CTX;
+    const view = render(
+      <EditorArea
+        {...rowProps}
+        agentsVisible={false}
+        terminalVisible={false}
+        terminalPlacement="right"
+      />,
+    );
+    groupLayout = { 'editor-main': 40, 'terminal-column': 40, 'agents-column': 20 };
+    innerLayout = { 'workspace-main': 50, 'doc-panel': 50 };
+    groupSetLayoutCalls = [];
+    innerSetLayoutCalls = [];
+
+    view.rerender(
+      <EditorArea {...rowProps} agentsVisible terminalVisible terminalPlacement="right" />,
+    );
+    await act(async () => {});
+
+    const outer = groupSetLayoutCalls.at(-1);
+    expect(outer).toBeDefined();
+    expect(((outer?.['terminal-column'] ?? 0) / 100) * rowPx).toBeCloseTo(
+      RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX,
+      3,
+    );
+    expect(((outer?.['agents-column'] ?? 0) / 100) * rowPx).toBeCloseTo(MIN_AGENTS_PANEL_WIDTH, 3);
+    expect(lastInnerWritePx('doc-panel')).toBeCloseTo(300, 3);
+    const innerWrite = innerSetLayoutCalls.at(-1);
+    const innerWritePx = innerSetLayoutPx.at(-1) ?? 0;
+    expect(innerWritePx - ((innerWrite?.['doc-panel'] ?? 0) / 100) * innerWritePx).toBeCloseTo(
+      rowPx - RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX - MIN_AGENTS_PANEL_WIDTH - 300,
+      3,
+    );
+    expect(innerWritePx - ((innerWrite?.['doc-panel'] ?? 0) / 100) * innerWritePx).toBeCloseTo(
+      159,
+      3,
+    );
+  });
+
+  test('at a 1300px window with a document open, chat and the right terminal cannot both stay', async () => {
+    const rowPx = 1300 - FILE_LIST_PX - SHELL_CHROME_PX;
+    setViewportWidth(1300);
+    mockGroupPx = rowPx;
+    mockPanelPx = 320;
+    mockPanelPercentage = pctOfRow(320, rowPx);
+    docCtx = DOC_LIVE_CTX;
+    const terminalChanges: boolean[] = [];
+    const view = render(
+      <EditorArea
+        {...rowProps}
+        agentsVisible={false}
+        terminalVisible
+        terminalPlacement="right"
+        onTerminalVisibleChange={(visible: boolean) => {
+          terminalChanges.push(visible);
+        }}
+      />,
+    );
+    groupLayout = {
+      'editor-main': 100 - pctOfRow(740, rowPx),
+      'terminal-column': pctOfRow(740, rowPx),
+      'agents-column': 0,
+    };
+    innerLayout = innerRowWithDoc(320, rowPx - 740);
+
+    view.rerender(
+      <EditorArea
+        {...rowProps}
+        agentsVisible
+        terminalVisible
+        terminalPlacement="right"
+        onTerminalVisibleChange={(visible: boolean) => {
+          terminalChanges.push(visible);
+        }}
+      />,
+    );
+    await act(async () => {});
+
+    expect(terminalChanges).toEqual([false]);
+    expect(toastInfoMessages).toEqual(['Terminal closed to make room for the agent panel.']);
+  });
+
+  function FileListShell({ children }: { children: ReactNode }) {
+    return (
+      <FileListHostProvider enabled fileList={<nav data-testid="card-file-list" />}>
+        {children}
+      </FileListHostProvider>
+    );
+  }
+  const measureFileListSlot = () => {
+    const slot = document.querySelector<HTMLElement>('[data-editor-file-list-slot]');
+    if (slot == null) throw new Error('the editor card has no file list slot');
+    Object.defineProperty(slot, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({
+        width: mockFileListPx,
+        height: 0,
+        top: 0,
+        left: 0,
+        right: mockFileListPx,
+        bottom: 0,
+        x: 0,
+        y: 0,
+      }),
+    });
+    return slot;
+  };
+
+  test('draws the file list in the editor card slot, ahead of the content column', () => {
+    docCtx = DOC_LIVE_CTX;
+    render(
+      <FileListShell>
+        <EditorArea {...rowProps} agentsVisible={false} terminalVisible={false} />
+      </FileListShell>,
+    );
+
+    const card = document.querySelector('[data-slot="pane-card"][data-pane="editor"]');
+    const slot = measureFileListSlot();
+    const content = card?.querySelector('[data-slot="sidebar-inset"]');
+    expect(slot.parentElement).toBe(card);
+    expect(slot.contains(screen.getByTestId('card-file-list'))).toBe(true);
+    expect(content?.parentElement).toBe(card);
+    expect(
+      slot.compareDocumentPosition(content as Element) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(content?.contains(screen.getByTestId('resizable-group-inner'))).toBe(true);
+  });
+
+  test('with the file list inside the card, a 1400px window still floors every column and leaves the document 159px', async () => {
+    const outerPx = 1400 - SHELL_CHROME_PX;
+    const rowPx = outerPx - FILE_LIST_PX;
+    setViewportWidth(1400);
+    mockGroupPx = outerPx;
+    mockFileListPx = FILE_LIST_PX;
+    docCtx = DOC_LIVE_CTX;
+    const view = render(
+      <FileListShell>
+        <EditorArea
+          {...rowProps}
+          agentsVisible={false}
+          terminalVisible={false}
+          terminalPlacement="right"
+        />
+      </FileListShell>,
+    );
+    measureFileListSlot();
+    groupLayout = { 'editor-main': 40, 'terminal-column': 40, 'agents-column': 20 };
+    innerLayout = { 'workspace-main': 50, 'doc-panel': 50 };
+    groupSetLayoutCalls = [];
+    innerSetLayoutCalls = [];
+
+    view.rerender(
+      <FileListShell>
+        <EditorArea {...rowProps} agentsVisible terminalVisible terminalPlacement="right" />
+      </FileListShell>,
+    );
+    await act(async () => {});
+    await act(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+
+    const outer = groupSetLayoutCalls.at(-1);
+    expect(outer).toBeDefined();
+    expect(((outer?.['terminal-column'] ?? 0) / 100) * outerPx).toBeCloseTo(
+      RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX,
+      3,
+    );
+    expect(((outer?.['agents-column'] ?? 0) / 100) * outerPx).toBeCloseTo(
+      MIN_AGENTS_PANEL_WIDTH,
+      3,
+    );
+    expect(lastInnerWritePx('doc-panel')).toBeCloseTo(300, 3);
+    const innerWrite = innerSetLayoutCalls.at(-1);
+    const innerWritePx = innerSetLayoutPx.at(-1) ?? 0;
+    expect(innerWritePx - ((innerWrite?.['doc-panel'] ?? 0) / 100) * innerWritePx).toBeCloseTo(
+      rowPx - RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX - MIN_AGENTS_PANEL_WIDTH - 300,
+      3,
+    );
+    expect(innerWritePx - ((innerWrite?.['doc-panel'] ?? 0) / 100) * innerWritePx).toBeCloseTo(
+      159,
+      3,
+    );
+  });
+
+  test('with the file list inside the card, a 1300px window still closes the right terminal for chat', async () => {
+    const outerPx = 1300 - SHELL_CHROME_PX;
+    const rowPx = outerPx - FILE_LIST_PX;
+    setViewportWidth(1300);
+    mockGroupPx = outerPx;
+    mockFileListPx = FILE_LIST_PX;
+    mockPanelPx = 320;
+    mockPanelPercentage = pctOfRow(320, rowPx);
+    docCtx = DOC_LIVE_CTX;
+    const terminalChanges: boolean[] = [];
+    const renderRow = (agentsVisible: boolean) => (
+      <FileListShell>
+        <EditorArea
+          {...rowProps}
+          agentsVisible={agentsVisible}
+          terminalVisible
+          terminalPlacement="right"
+          onTerminalVisibleChange={(visible: boolean) => {
+            terminalChanges.push(visible);
+          }}
+        />
+      </FileListShell>
+    );
+    const view = render(renderRow(false));
+    measureFileListSlot();
+    groupLayout = {
+      'editor-main': 100 - pctOfRow(740, outerPx),
+      'terminal-column': pctOfRow(740, outerPx),
+      'agents-column': 0,
+    };
+    innerLayout = innerRowWithDoc(320, rowPx - 740);
+
+    view.rerender(renderRow(true));
+    await act(async () => {});
+
+    expect(terminalChanges).toEqual([false]);
+    expect(toastInfoMessages).toEqual(['Terminal closed to make room for the agent panel.']);
+  });
+
+  test('a terminal close decided while Files is still collapsing applies once the file list has no width', async () => {
+    const resizeObserver = installResizeObserver();
+    try {
+      const outerPx = 900 - SHELL_CHROME_PX;
+      setViewportWidth(900);
+      mockGroupPx = outerPx;
+      mockFileListPx = FILE_LIST_PX;
+      docCtx = DOC_LIVE_CTX;
+      const terminalChanges: boolean[] = [];
+      const renderRow = (agentsVisible: boolean) => (
+        <FileListShell>
+          <EditorArea
+            {...rowProps}
+            agentsVisible={agentsVisible}
+            terminalVisible
+            terminalPlacement="right"
+            onTerminalVisibleChange={(visible: boolean) => {
+              terminalChanges.push(visible);
+            }}
+          />
+        </FileListShell>
+      );
+      const view = render(renderRow(false));
+      measureFileListSlot();
+      groupLayout = {
+        'editor-main': 100 - pctOfRow(740, outerPx),
+        'terminal-column': pctOfRow(740, outerPx),
+        'agents-column': 0,
+      };
+
+      view.rerender(renderRow(true));
+      await act(async () => {});
+      expect(document.querySelector('[data-editor-file-list-slot]')).not.toBeNull();
+      expect(toastInfoMessages).toEqual([]);
+
+      mockFileListPx = 0;
+      resizeObserver.fire('[data-editor-file-list-slot]');
+
+      expect(terminalChanges).toEqual([false]);
+      expect(toastInfoMessages).toEqual(['Terminal closed to make room for the agent panel.']);
+    } finally {
+      resizeObserver.restore();
+    }
+  });
+
+  test('a transient over-wide side panel reading while chat opens does not close the right terminal at 1900px', async () => {
+    const outerPx = 1900 - SHELL_CHROME_PX;
+    const rowPx = outerPx - FILE_LIST_PX;
+    setViewportWidth(1900);
+    mockGroupPx = outerPx;
+    mockFileListPx = FILE_LIST_PX;
+    mockPanelPx = 1122;
+    mockPanelPercentage = pctOfRow(1122, rowPx);
+    docCtx = DOC_LIVE_CTX;
+    const terminalChanges: boolean[] = [];
+    const renderRow = (agentsVisible: boolean) => (
+      <FileListShell>
+        <EditorArea
+          {...rowProps}
+          agentsVisible={agentsVisible}
+          terminalVisible
+          terminalPlacement="right"
+          onTerminalVisibleChange={(visible: boolean) => {
+            terminalChanges.push(visible);
+          }}
+        />
+      </FileListShell>
+    );
+    const view = render(renderRow(false));
+    measureFileListSlot();
+    groupLayout = {
+      'editor-main': 100 - pctOfRow(740, outerPx),
+      'terminal-column': pctOfRow(740, outerPx),
+      'agents-column': 0,
+    };
+    innerLayout = innerRowWithDoc(320, rowPx - 740);
+
+    view.rerender(renderRow(true));
+    await act(async () => {});
+
+    expect(terminalChanges).toEqual([]);
+    expect(toastInfoMessages).toEqual([]);
+  });
+
+  test('opening the file list inside the card re-plans the side panel, right terminal and chat against the narrower row', async () => {
+    const resizeObserver = installResizeObserver();
+    try {
+      const outerPx = 1400 - SHELL_CHROME_PX;
+      setViewportWidth(1400);
+      mockGroupPx = outerPx;
+      mockFileListPx = 0;
+      docCtx = DOC_LIVE_CTX;
+      const renderRow = () => (
+        <FileListShell>
+          <EditorArea
+            {...rowProps}
+            agentsVisible
+            terminalVisible
+            terminalPlacement="right"
+            terminalRightWidth={480}
+          />
+        </FileListShell>
+      );
+      render(renderRow());
+      measureFileListSlot();
+      await flushFrame();
+      groupLayout = { 'editor-main': 40, 'terminal-column': 40, 'agents-column': 20 };
+      innerLayout = { 'workspace-main': 50, 'doc-panel': 50 };
+      groupSetLayoutCalls = [];
+      innerSetLayoutCalls = [];
+      resizeObserver.fire('[data-editor-inner-panels]');
+      const preferredOuter = groupSetLayoutCalls.at(-1) ?? groupLayout;
+      expect(((preferredOuter['terminal-column'] ?? 0) / 100) * outerPx).toBeCloseTo(480, 3);
+      expect(((preferredOuter['agents-column'] ?? 0) / 100) * outerPx).toBeCloseTo(480, 3);
+
+      mockFileListPx = FILE_LIST_PX;
+      groupSetLayoutCalls = [];
+      innerSetLayoutCalls = [];
+      resizeObserver.fire('[data-editor-inner-panels]');
+
+      const flooredOuter = groupSetLayoutCalls.at(-1);
+      expect(flooredOuter).toBeDefined();
+      expect(((flooredOuter?.['terminal-column'] ?? 0) / 100) * outerPx).toBeCloseTo(
+        RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX,
+        3,
+      );
+      expect(((flooredOuter?.['agents-column'] ?? 0) / 100) * outerPx).toBeCloseTo(
+        MIN_AGENTS_PANEL_WIDTH,
+        3,
+      );
+      expect(lastInnerWritePx('doc-panel')).toBeCloseTo(300, 3);
+    } finally {
+      resizeObserver.restore();
+    }
+  });
+
+  test('at a 1400px window with a document open, chat joins the right terminal', async () => {
+    const resizeObserver = installResizeObserver();
+    try {
+      const rowPx = 1400 - FILE_LIST_PX - SHELL_CHROME_PX;
+      setViewportWidth(1400);
+      mockGroupPx = rowPx;
+      mockPanelPx = 320;
+      mockPanelPercentage = pctOfRow(320, rowPx);
+      docCtx = DOC_LIVE_CTX;
+      const terminalChanges: boolean[] = [];
+      const agentsChanges: boolean[] = [];
+      const view = render(
+        <EditorArea
+          {...rowProps}
+          agentsVisible={false}
+          terminalVisible
+          terminalPlacement="right"
+          onAgentsVisibleChange={(visible: boolean) => {
+            agentsChanges.push(visible);
+          }}
+          onTerminalVisibleChange={(visible: boolean) => {
+            terminalChanges.push(visible);
+          }}
+        />,
+      );
+      groupLayout = {
+        'editor-main': 100 - pctOfRow(740, rowPx),
+        'terminal-column': pctOfRow(740, rowPx),
+        'agents-column': 0,
+      };
+      innerLayout = innerRowWithDoc(320, rowPx - 740);
+      const inner = document.querySelector<HTMLElement>('[data-editor-inner-panels]');
+      if (inner == null) throw new Error('the editor inner row is absent');
+      Object.defineProperty(inner, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => ({ width: rowPx - 740 }),
+      });
+      resizeObserver.fire('[data-editor-inner-panels]');
+
+      view.rerender(
+        <EditorArea
+          {...rowProps}
+          agentsVisible
+          terminalVisible
+          terminalPlacement="right"
+          onAgentsVisibleChange={(visible: boolean) => {
+            agentsChanges.push(visible);
+          }}
+          onTerminalVisibleChange={(visible: boolean) => {
+            terminalChanges.push(visible);
+          }}
+        />,
+      );
+      await act(async () => {});
+
+      expect(terminalChanges).toEqual([]);
+      expect(agentsChanges).toEqual([]);
+      expect(toastInfoMessages).toEqual([]);
+    } finally {
+      resizeObserver.restore();
+    }
+  });
+
+  test('a re-plan and an admission check that arrive during a side-panel drag wait for the drag to end', async () => {
+    const resizeObserver = installResizeObserver();
+    try {
+      setViewportWidth(2000);
+      mockGroupPx = 2000;
+      mockPanelPx = 320;
+      docCtx = DOC_LIVE_CTX;
+      const agentsChanges: boolean[] = [];
+      groupLayout = {
+        'editor-main': 100 - pctOfRow(740 + 480, 2000),
+        'terminal-column': pctOfRow(740, 2000),
+        'agents-column': pctOfRow(480, 2000),
+      };
+      innerLayout = innerRowWithDoc(320, 2000 - 740 - 480);
+      render(
+        <EditorArea
+          {...rowProps}
+          agentsVisible
+          terminalVisible
+          terminalPlacement="right"
+          onAgentsVisibleChange={(visible: boolean) => {
+            agentsChanges.push(visible);
+          }}
+        />,
+      );
+      await act(async () => {});
+
+      act(() => {
+        fireEvent.pointerDown(docHandle(), { pointerId: 1 });
+      });
+      groupSetLayoutCalls = [];
+      innerSetLayoutCalls = [];
+      toastInfoMessages = [];
+      mockGroupPx = 1000;
+      resizeObserver.fire('[data-editor-area-panels]');
+      resizeObserver.fire('[data-editor-inner-panels]');
+
+      expect(groupSetLayoutCalls).toHaveLength(0);
+      expect(innerSetLayoutCalls).toHaveLength(0);
+      expect(agentsChanges).toEqual([]);
+      expect(toastInfoMessages).toEqual([]);
+
+      act(() => {
+        fireEvent.pointerUp(window, { pointerId: 1 });
+      });
+
+      expect(groupSetLayoutCalls.length).toBeGreaterThan(0);
+      expect(agentsChanges).toEqual([false]);
+      expect(toastInfoMessages).toEqual(['Agent panel closed to keep Terminal readable.']);
+    } finally {
+      resizeObserver.restore();
+    }
+  });
+
+  test('a chat drag the library starts beside the divider takes the drag lock, marks the outer row, and re-plans on release', async () => {
+    const resizeObserver = installResizeObserver();
+    try {
+      setViewportWidth(2000);
+      mockGroupPx = 2000;
+      deliverDocPanelResizeAfterLayout = true;
+      docCtx = DOC_LIVE_CTX;
+      const agentsChanges: boolean[] = [];
+      groupLayout = {
+        'editor-main': 100 - pctOfRow(740 + 480, 2000),
+        'terminal-column': pctOfRow(740, 2000),
+        'agents-column': pctOfRow(480, 2000),
+      };
+      innerLayout = innerRowWithDoc(320, 2000 - 740 - 480);
+      render(
+        <EditorArea
+          {...rowProps}
+          agentsVisible
+          terminalVisible
+          terminalPlacement="right"
+          onAgentsVisibleChange={(visible: boolean) => {
+            agentsChanges.push(visible);
+          }}
+        />,
+      );
+      await act(async () => {});
+      measureEditorCardForRow(resizeObserver);
+      const outerRow = screen.getByTestId('resizable-group');
+      expect(outerRow.getAttribute('data-dragging')).toBeNull();
+
+      agentsHandle().setAttribute('data-separator', 'active');
+      groupLayout = {
+        'editor-main': 100 - pctOfRow(740 + 630, 2000),
+        'terminal-column': pctOfRow(740, 2000),
+        'agents-column': pctOfRow(630, 2000),
+      };
+      act(() => {
+        groupOnLayoutChange?.(groupLayout);
+        railPanelOnResizeById.get(AGENTS_COLUMN_ID)?.({
+          asPercentage: groupLayout[AGENTS_COLUMN_ID],
+          inPixels: 630,
+        });
+      });
+      expect(outerRow.getAttribute('data-dragging')).toBe('true');
+      expect(document.getElementById(AGENTS_COLUMN_ID)?.getBoundingClientRect().width).toBeCloseTo(
+        630,
+        0,
+      );
+      expect(lastInnerWritePx('doc-panel')).toBeCloseTo(320, 3);
+
+      groupSetLayoutCalls = [];
+      innerSetLayoutCalls = [];
+      toastInfoMessages = [];
+      setViewportWidth(1000);
+      mockGroupPx = 1000;
+      measureEditorCardForRow(resizeObserver);
+      resizeObserver.fire('[data-editor-area-panels]');
+      resizeObserver.fire('[data-editor-inner-panels]');
+
+      expect(groupSetLayoutCalls).toHaveLength(0);
+      expect(document.getElementById('doc-panel')?.getBoundingClientRect().width).toBe(0);
+      expect(innerResidualWidthPx()).toBeGreaterThanOrEqual(300);
+      expect(agentsChanges).toEqual([]);
+      expect(toastInfoMessages).toEqual([]);
+
+      setViewportWidth(2200);
+      mockGroupPx = 2200;
+      measureEditorCardForRow(resizeObserver);
+      resizeObserver.fire('[data-editor-area-panels]');
+      resizeObserver.fire('[data-editor-inner-panels]');
+      expect(groupSetLayoutCalls).toHaveLength(0);
+      expect(document.getElementById('doc-panel')?.getBoundingClientRect().width).toBeCloseTo(
+        320,
+        0,
+      );
+      expect(innerResidualWidthPx()).toBeGreaterThanOrEqual(300);
+      expect(agentsChanges).toEqual([]);
+      expect(toastInfoMessages).toEqual([]);
+
+      setViewportWidth(1000);
+      mockGroupPx = 1000;
+      measureEditorCardForRow(resizeObserver);
+      resizeObserver.fire('[data-editor-area-panels]');
+      resizeObserver.fire('[data-editor-inner-panels]');
+      expect(groupSetLayoutCalls).toHaveLength(0);
+      expect(document.getElementById('doc-panel')?.getBoundingClientRect().width).toBe(0);
+      expect(innerResidualWidthPx()).toBeGreaterThanOrEqual(300);
+
+      setViewportWidth(850);
+      mockGroupPx = 850;
+      measureEditorCardForRow(resizeObserver);
+      resizeObserver.fire('[data-editor-area-panels]');
+      resizeObserver.fire('[data-editor-inner-panels]');
+      expect(groupSetLayoutCalls).toHaveLength(0);
+      expect(agentsChanges).toEqual([]);
+      expect(toastInfoMessages).toEqual([]);
+
+      agentsHandle().removeAttribute('data-separator');
+      act(() => {
+        fireEvent.pointerUp(window, { pointerId: 7 });
+      });
+
+      expect(outerRow.getAttribute('data-dragging')).toBeNull();
+      expect(groupSetLayoutCalls.length).toBeGreaterThan(0);
+      expect(agentsChanges).toEqual([false]);
+      expect(toastInfoMessages).toEqual(['Agent panel closed to keep Terminal readable.']);
+    } finally {
+      resizeObserver.restore();
+    }
+  });
+
+  test('a side-panel drag the library starts beside the divider takes the drag lock, marks the inner row, and re-plans on release', async () => {
+    const resizeObserver = installResizeObserver();
+    try {
+      setViewportWidth(1400);
+      mockGroupPx = 1360;
+      docCtx = DOC_LIVE_CTX;
+      groupLayout = {
+        'editor-main': 100 - pctOfRow(480, 1360),
+        'agents-column': pctOfRow(480, 1360),
+      };
+      innerLayout = innerRowWithDoc(320, 1360 - 480);
+      render(<EditorArea {...rowProps} agentsVisible />);
+      await act(async () => {});
+      const innerRow = screen.getByTestId('resizable-group-inner');
+      expect(innerRow.getAttribute('data-dragging')).toBeNull();
+
+      docHandle().setAttribute('data-separator', 'active');
+      innerLayout = innerRowWithDoc(360, 1360 - 480);
+      act(() => {
+        innerRowHandlers.onLayoutChange?.(innerLayout);
+      });
+      expect(innerRow.getAttribute('data-dragging')).toBe('true');
+
+      groupSetLayoutCalls = [];
+      innerSetLayoutCalls = [];
+      mockGroupPx = 1000;
+      resizeObserver.fire('[data-editor-area-panels]');
+      resizeObserver.fire('[data-editor-inner-panels]');
+      expect(groupSetLayoutCalls).toHaveLength(0);
+      expect(innerSetLayoutCalls).toHaveLength(0);
+
+      docHandle().removeAttribute('data-separator');
+      act(() => {
+        fireEvent.pointerUp(window, { pointerId: 7 });
+      });
+      expect(innerRow.getAttribute('data-dragging')).toBeNull();
+      expect(groupSetLayoutCalls.length).toBeGreaterThan(0);
+    } finally {
+      resizeObserver.restore();
+    }
+  });
+
+  test('the joint plan’s own outer write never adopts a drag from a separator that still reads active', async () => {
+    setViewportWidth(1400);
+    mockGroupPx = 1360;
+    docCtx = DOC_LIVE_CTX;
+    groupLayout = {
+      'editor-main': 100 - pctOfRow(480, 1360),
+      'agents-column': pctOfRow(480, 1360),
+    };
+    innerLayout = innerRowWithDoc(320, 1360 - 480);
+    render(<EditorArea {...rowProps} agentsVisible />);
+    await act(async () => {});
+    const outerRow = screen.getByTestId('resizable-group');
+
+    agentsHandle().setAttribute('data-separator', 'active');
+    groupLayout = { 'editor-main': 60, 'agents-column': 40 };
+    act(() => {
+      groupOnLayoutChange?.(groupLayout);
+    });
+    expect(outerRow.getAttribute('data-dragging')).toBe('true');
+
+    const echoOuterWrites = groupHandles.outer.setLayout;
+    groupHandles.outer.setLayout = (layout: MockLayout) => {
+      echoOuterWrites(layout);
+      groupOnLayoutChange?.(layout);
+    };
+    try {
+      groupSetLayoutCalls = [];
+      act(() => {
+        fireEvent.pointerUp(window, { pointerId: 7 });
+      });
+      expect(groupSetLayoutCalls.length).toBeGreaterThan(0);
+      expect(outerRow.getAttribute('data-dragging')).toBeNull();
+    } finally {
+      groupHandles.outer.setLayout = echoOuterWrites;
+    }
+  });
+
+  test('every side-panel drag end re-plans both rows', async () => {
+    setViewportWidth(1400);
+    docCtx = DOC_LIVE_CTX;
+    groupLayout = {
+      'editor-main': 100 - pctOfRow(480, 1360),
+      'agents-column': pctOfRow(480, 1360),
+    };
+    innerLayout = innerRowWithDoc(320, 1360 - 480);
+    render(<EditorArea {...rowProps} agentsVisible />);
+    await act(async () => {});
+    groupLayout = { 'editor-main': 60, 'agents-column': 40 };
+    innerLayout = innerRowWithDoc(300, 0.6 * 1360);
+    groupSetLayoutCalls = [];
+    innerSetLayoutCalls = [];
+
+    act(() => {
+      fireEvent.pointerDown(docHandle(), { pointerId: 1 });
+    });
+    expect(groupSetLayoutCalls).toHaveLength(0);
+    act(() => {
+      fireEvent.pointerUp(window, { pointerId: 1 });
+    });
+
+    expect(((groupSetLayoutCalls.at(-1)?.['agents-column'] ?? 0) / 100) * 1360).toBeCloseTo(480, 3);
+    expect(lastInnerWritePx('doc-panel')).toBeCloseTo(320, 3);
+  });
+
+  test('a chat drag the library started beside the divider commits the released width as the preferred width', async () => {
+    const resizeObserver = installResizeObserver();
+    try {
+      setViewportWidth(1400);
+      mockGroupPx = 1360;
+      docCtx = DOC_LIVE_CTX;
+      groupLayout = {
+        'editor-main': 100 - pctOfRow(480, 1360),
+        'agents-column': pctOfRow(480, 1360),
+      };
+      innerLayout = innerRowWithDoc(320, 1360 - 480);
+      render(<EditorArea {...rowProps} agentsVisible />);
+      await act(async () => {});
+
+      agentsHandle().setAttribute('data-separator', 'active');
+      groupLayout = {
+        'editor-main': 100 - pctOfRow(630, 1360),
+        'agents-column': pctOfRow(630, 1360),
+      };
+      act(() => {
+        groupOnLayoutChange?.(groupLayout);
+      });
+      mockPanelPx = 630;
+      mockPanelPercentage = pctOfRow(630, 1360);
+      agentsHandle().removeAttribute('data-separator');
+      act(() => {
+        fireEvent.pointerUp(window, { pointerId: 7 });
+      });
+      mockPanelPx = null;
+      mockPanelPercentage = null;
+
+      groupSetLayoutCalls = [];
+      mockGroupPx = 1300;
+      resizeObserver.fire('[data-editor-area-panels]');
+      expect(((groupSetLayoutCalls.at(-1)?.['agents-column'] ?? 0) / 100) * 1300).toBeCloseTo(
+        630,
+        3,
+      );
+    } finally {
+      resizeObserver.restore();
+    }
+  });
+
+  test('a chat drag the library started beside the divider that closes the column leaves it collapsed without changing visibility', async () => {
+    setViewportWidth(1400);
+    mockGroupPx = 1360;
+    docCtx = DOC_LIVE_CTX;
+    const agentsChanges: boolean[] = [];
+    groupLayout = {
+      'editor-main': 100 - pctOfRow(480, 1360),
+      'agents-column': pctOfRow(480, 1360),
+    };
+    innerLayout = innerRowWithDoc(320, 1360 - 480);
+    render(
+      <EditorArea
+        {...rowProps}
+        agentsVisible
+        onAgentsVisibleChange={(visible: boolean) => {
+          agentsChanges.push(visible);
+        }}
+      />,
+    );
+    await act(async () => {});
+    const outerRow = screen.getByTestId('resizable-group');
+
+    agentsHandle().setAttribute('data-separator', 'active');
+    groupLayout = { 'editor-main': 100, 'agents-column': 0 };
+    act(() => {
+      groupOnLayoutChange?.(groupLayout);
+    });
+    expect(outerRow.getAttribute('data-dragging')).toBe('true');
+    groupSetLayoutCalls = [];
+    mockPanelPx = 0;
+    mockPanelPercentage = 0;
+    panelIsCollapsed = true;
+    agentsHandle().removeAttribute('data-separator');
+    act(() => {
+      fireEvent.pointerUp(window, { pointerId: 7 });
+    });
+
+    expect(outerRow.getAttribute('data-dragging')).toBeNull();
+    expect(agentsChanges).toEqual([]);
+    expect(groupSetLayoutCalls).toHaveLength(0);
+  });
+
+  test('a right-terminal drag the library starts beside the divider takes the drag lock, marks the outer row, and re-plans on release', async () => {
+    const resizeObserver = installResizeObserver();
+    try {
+      setViewportWidth(2000);
+      mockGroupPx = 2000;
+      deliverDocPanelResizeAfterLayout = true;
+      docCtx = DOC_LIVE_CTX;
+      const agentsChanges: boolean[] = [];
+      groupLayout = {
+        'editor-main': 100 - pctOfRow(740 + 480, 2000),
+        'terminal-column': pctOfRow(740, 2000),
+        'agents-column': pctOfRow(480, 2000),
+      };
+      innerLayout = innerRowWithDoc(320, 2000 - 740 - 480);
+      render(
+        <EditorArea
+          {...rowProps}
+          agentsVisible
+          terminalVisible
+          terminalPlacement="right"
+          onAgentsVisibleChange={(visible: boolean) => {
+            agentsChanges.push(visible);
+          }}
+        />,
+      );
+      await act(async () => {});
+      measureEditorCardForRow(resizeObserver);
+      const outerRow = screen.getByTestId('resizable-group');
+      expect(outerRow.getAttribute('data-dragging')).toBeNull();
+
+      terminalHandle().setAttribute('data-separator', 'active');
+      groupLayout = {
+        'editor-main': 100 - pctOfRow(890 + 480, 2000),
+        'terminal-column': pctOfRow(890, 2000),
+        'agents-column': pctOfRow(480, 2000),
+      };
+      act(() => {
+        groupOnLayoutChange?.(groupLayout);
+        railPanelOnResizeById.get(TERMINAL_COLUMN_ID)?.({
+          asPercentage: groupLayout[TERMINAL_COLUMN_ID],
+          inPixels: 890,
+        });
+      });
+      expect(outerRow.getAttribute('data-dragging')).toBe('true');
+      expect(
+        document.getElementById(TERMINAL_COLUMN_ID)?.getBoundingClientRect().width,
+      ).toBeCloseTo(890, 0);
+      expect(lastInnerWritePx('doc-panel')).toBeCloseTo(320, 3);
+
+      groupSetLayoutCalls = [];
+      innerSetLayoutCalls = [];
+      toastInfoMessages = [];
+      setViewportWidth(1000);
+      mockGroupPx = 1000;
+      measureEditorCardForRow(resizeObserver);
+      resizeObserver.fire('[data-editor-area-panels]');
+      resizeObserver.fire('[data-editor-inner-panels]');
+
+      expect(groupSetLayoutCalls).toHaveLength(0);
+      expect(document.getElementById('doc-panel')?.getBoundingClientRect().width).toBe(0);
+      expect(innerResidualWidthPx()).toBeGreaterThanOrEqual(300);
+      expect(agentsChanges).toEqual([]);
+      expect(toastInfoMessages).toEqual([]);
+
+      setViewportWidth(2200);
+      mockGroupPx = 2200;
+      measureEditorCardForRow(resizeObserver);
+      resizeObserver.fire('[data-editor-area-panels]');
+      resizeObserver.fire('[data-editor-inner-panels]');
+      expect(groupSetLayoutCalls).toHaveLength(0);
+      expect(document.getElementById('doc-panel')?.getBoundingClientRect().width).toBeCloseTo(
+        320,
+        0,
+      );
+      expect(innerResidualWidthPx()).toBeGreaterThanOrEqual(300);
+      expect(agentsChanges).toEqual([]);
+      expect(toastInfoMessages).toEqual([]);
+
+      setViewportWidth(1000);
+      mockGroupPx = 1000;
+      measureEditorCardForRow(resizeObserver);
+      resizeObserver.fire('[data-editor-area-panels]');
+      resizeObserver.fire('[data-editor-inner-panels]');
+      expect(groupSetLayoutCalls).toHaveLength(0);
+      expect(document.getElementById('doc-panel')?.getBoundingClientRect().width).toBe(0);
+      expect(innerResidualWidthPx()).toBeGreaterThanOrEqual(300);
+
+      setViewportWidth(850);
+      mockGroupPx = 850;
+      measureEditorCardForRow(resizeObserver);
+      resizeObserver.fire('[data-editor-area-panels]');
+      resizeObserver.fire('[data-editor-inner-panels]');
+      expect(groupSetLayoutCalls).toHaveLength(0);
+      expect(agentsChanges).toEqual([]);
+      expect(toastInfoMessages).toEqual([]);
+
+      terminalHandle().removeAttribute('data-separator');
+      act(() => {
+        fireEvent.pointerUp(window, { pointerId: 7 });
+      });
+      await act(async () => {});
+
+      expect(outerRow.getAttribute('data-dragging')).toBeNull();
+      expect(groupSetLayoutCalls.length).toBeGreaterThan(0);
+      expect(agentsChanges).toEqual([false]);
+      expect(toastInfoMessages).toEqual(['Agent panel closed to keep Terminal readable.']);
+    } finally {
+      resizeObserver.restore();
+    }
+  });
+
+  test('a right-terminal drag the library started beside the divider that closes the column leaves it collapsed without changing visibility', async () => {
+    setViewportWidth(2000);
+    mockGroupPx = 2000;
+    docCtx = DOC_LIVE_CTX;
+    const terminalChanges: boolean[] = [];
+    groupLayout = {
+      'editor-main': 100 - pctOfRow(740, 2000),
+      'terminal-column': pctOfRow(740, 2000),
+    };
+    innerLayout = innerRowWithDoc(320, 2000 - 740);
+    render(
+      <EditorArea
+        {...rowProps}
+        terminalVisible
+        terminalPlacement="right"
+        onTerminalVisibleChange={(visible: boolean) => {
+          terminalChanges.push(visible);
+        }}
+      />,
+    );
+    await act(async () => {});
+    const outerRow = screen.getByTestId('resizable-group');
+
+    terminalHandle().setAttribute('data-separator', 'active');
+    groupLayout = { 'editor-main': 100, 'terminal-column': 0 };
+    act(() => {
+      groupOnLayoutChange?.(groupLayout);
+    });
+    expect(outerRow.getAttribute('data-dragging')).toBe('true');
+    groupSetLayoutCalls = [];
+    panelIsCollapsed = true;
+    terminalHandle().removeAttribute('data-separator');
+    act(() => {
+      fireEvent.pointerUp(window, { pointerId: 7 });
+    });
+
+    expect(outerRow.getAttribute('data-dragging')).toBeNull();
+    expect(terminalChanges).toEqual([]);
+    expect(groupSetLayoutCalls).toHaveLength(0);
+  });
+
+  test('a drag end that closes a column leaves the follow-up pin to the column sync', () => {
+    setViewportWidth(1400);
+    docCtx = DOC_LIVE_CTX;
+    const agentsChanges: boolean[] = [];
+    render(
+      <EditorArea
+        {...rowProps}
+        agentsVisible
+        onAgentsVisibleChange={(visible: boolean) => {
+          agentsChanges.push(visible);
+        }}
+      />,
+    );
+    groupLayout = { 'editor-main': 100, 'agents-column': 0 };
+    groupSetLayoutCalls = [];
+    act(() => {
+      fireEvent.pointerDown(agentsHandle(), { pointerId: 1 });
+    });
+    mockPanelPx = 0;
+    mockPanelPercentage = 0;
+    panelIsCollapsed = true;
+    act(() => {
+      fireEvent.pointerUp(window, { pointerId: 1 });
+    });
+
+    expect(agentsChanges).toEqual([false]);
+    expect(groupSetLayoutCalls).toHaveLength(0);
+  });
+
+  test('the inner row observer re-plans and re-checks admission on its own', async () => {
+    const resizeObserver = installResizeObserver();
+    try {
+      setViewportWidth(2000);
+      mockGroupPx = 2000;
+      mockPanelPx = 320;
+      docCtx = DOC_LIVE_CTX;
+      const agentsChanges: boolean[] = [];
+      groupLayout = {
+        'editor-main': 100 - pctOfRow(740 + 480, 2000),
+        'terminal-column': pctOfRow(740, 2000),
+        'agents-column': pctOfRow(480, 2000),
+      };
+      innerLayout = innerRowWithDoc(320, 2000 - 740 - 480);
+      render(
+        <EditorArea
+          {...rowProps}
+          agentsVisible
+          terminalVisible
+          terminalPlacement="right"
+          onAgentsVisibleChange={(visible: boolean) => {
+            agentsChanges.push(visible);
+          }}
+        />,
+      );
+      await act(async () => {});
+      groupSetLayoutCalls = [];
+      innerSetLayoutCalls = [];
+
+      mockGroupPx = 1000;
+      resizeObserver.fire('[data-editor-inner-panels]');
+
+      expect(groupSetLayoutCalls.length).toBeGreaterThan(0);
+      expect(agentsChanges).toEqual([false]);
+      expect(toastInfoMessages).toEqual(['Agent panel closed to keep Terminal readable.']);
+    } finally {
+      resizeObserver.restore();
+    }
+  });
+
+  const renderWideRowsWithTerminalAndChat = async (agentsChanges: boolean[]) => {
+    setViewportWidth(2000);
+    mockGroupPx = 2000;
+    mockPanelPx = 320;
+    docCtx = DOC_LIVE_CTX;
+    groupLayout = {
+      'editor-main': 100 - pctOfRow(740 + 480, 2000),
+      'terminal-column': pctOfRow(740, 2000),
+      'agents-column': pctOfRow(480, 2000),
+    };
+    innerLayout = innerRowWithDoc(320, 2000 - 740 - 480);
+    render(
+      <EditorArea
+        {...rowProps}
+        agentsVisible
+        terminalVisible
+        terminalPlacement="right"
+        onAgentsVisibleChange={(visible: boolean) => {
+          agentsChanges.push(visible);
+        }}
+      />,
+    );
+    await act(async () => {});
+  };
+
+  test('the inner row observer skips the resize an outer row layout change explains while every pin is in place, and re-plans on the next one', async () => {
+    const resizeObserver = installResizeObserver();
+    try {
+      const agentsChanges: boolean[] = [];
+      await renderWideRowsWithTerminalAndChat(agentsChanges);
+      groupSetLayoutCalls = [];
+      innerSetLayoutCalls = [];
+
+      mockGroupPx = 1000;
+      act(() => groupOnLayoutChange?.(groupLayout));
+      resizeObserver.fire('[data-editor-inner-panels]');
+      await flushFrame();
+
+      expect(groupSetLayoutCalls).toHaveLength(0);
+      expect(innerSetLayoutCalls).toHaveLength(0);
+      expect(agentsChanges).toEqual([]);
+      expect(toastInfoMessages).toEqual([]);
+
+      resizeObserver.fire('[data-editor-inner-panels]');
+      await flushFrame();
+
+      expect(groupSetLayoutCalls.length).toBeGreaterThan(0);
+      expect(agentsChanges).toEqual([false]);
+      expect(toastInfoMessages).toEqual(['Agent panel closed to keep Terminal readable.']);
+    } finally {
+      resizeObserver.restore();
+    }
+  });
+
+  test('an outer layout change that leaves the editor column width alone does not swallow the next inner resize', async () => {
+    const resizeObserver = installResizeObserver();
+    try {
+      const agentsChanges: boolean[] = [];
+      await renderWideRowsWithTerminalAndChat(agentsChanges);
+      act(() => groupOnLayoutChange?.(groupLayout));
+      resizeObserver.fire('[data-editor-inner-panels]');
+      await flushFrame();
+
+      groupLayout = {
+        'editor-main': groupLayout['editor-main'],
+        'terminal-column': pctOfRow(700, 2000),
+        'agents-column': pctOfRow(520, 2000),
+      };
+      act(() => groupOnLayoutChange?.(groupLayout));
+      groupSetLayoutCalls = [];
+      innerSetLayoutCalls = [];
+
+      innerLayout = innerRowWithDoc(300, 2000 - 740 - 480);
+      resizeObserver.fire('[data-editor-inner-panels]');
+      await flushFrame();
+
+      expect(innerSetLayoutCalls.length).toBeGreaterThan(0);
+      expect(lastInnerWritePx('doc-panel')).toBeCloseTo(320, 0);
+    } finally {
+      resizeObserver.restore();
+    }
+  });
+
+  test('the inner row observer still re-plans after an outer row layout change when the last plan left a pin unplaced', async () => {
+    const resizeObserver = installResizeObserver();
+    try {
+      const agentsChanges: boolean[] = [];
+      await renderWideRowsWithTerminalAndChat(agentsChanges);
+
+      mockGroupPx = 0;
+      resizeObserver.fire('[data-editor-area-panels]');
+      await flushFrame();
+      expect(agentsChanges).toEqual([]);
+      groupSetLayoutCalls = [];
+      innerSetLayoutCalls = [];
+
+      mockGroupPx = 1000;
+      act(() => groupOnLayoutChange?.(groupLayout));
+      resizeObserver.fire('[data-editor-inner-panels]');
+      await flushFrame();
+
+      expect(groupSetLayoutCalls.length).toBeGreaterThan(0);
+      expect(agentsChanges).toEqual([false]);
+      expect(toastInfoMessages).toEqual(['Agent panel closed to keep Terminal readable.']);
+    } finally {
+      resizeObserver.restore();
+    }
+  });
+
+  test('the observers stay off inside an embedded host', () => {
+    const resizeObserver = installResizeObserver();
+    const originalUserAgent = navigator.userAgent;
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      value: `${originalUserAgent} Claude/1.0`,
+    });
+    try {
+      setViewportWidth(1400);
+      docCtx = DOC_LIVE_CTX;
+      render(<EditorArea {...rowProps} agentsVisible />);
+      expect(() => resizeObserver.fire('[data-editor-area-panels]')).toThrow(/not observed/);
+      groupSetLayoutCalls = [];
+      innerSetLayoutCalls = [];
+      resizeObserver.fire('[data-editor-inner-panels]');
+      expect(groupSetLayoutCalls).toHaveLength(0);
+      expect(innerSetLayoutCalls).toHaveLength(0);
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', {
+        configurable: true,
+        value: originalUserAgent,
+      });
+      resizeObserver.restore();
+    }
+  });
+});
+
+describe('EditorArea terminal and chat cards', () => {
+  const cardProps = {
+    editorMode: 'wysiwyg',
+    onModeChange: () => {},
+    activeTab: 'timeline',
+    onActiveTabChange: () => {},
+    onAgentsVisibleChange: () => {},
+    onTerminalVisibleChange: () => {},
+  } as const;
+  const setViewportWidth = (px: number) => {
+    Object.defineProperty(window, 'innerWidth', { value: px, configurable: true, writable: true });
+  };
+  const pctOfRow = (px: number, rowPx: number) => (px / rowPx) * 100;
+  const cardOf = (pane: PaneId) =>
+    document.querySelector<HTMLElement>(`[data-slot="pane-card"][data-pane="${pane}"]`);
+
+  beforeEach(() => {
+    cleanup();
+    localStorage.clear();
+    docCtx = DOC_LIVE_CTX;
+    groupLayout = {};
+    groupSetLayoutCalls = [];
+    rejectNextGroupLayoutWrite = false;
+    rejectGroupLayoutWrites = false;
+    panelIsCollapsed = false;
+    mockGroupPx = 1360;
+    mockPanelPercentage = null;
+    mockPanelPx = null;
+    toastInfoMessages = [];
+    editorWorkspaceMounts = 0;
+    setViewportWidth(1400);
+  });
+
+  test('a right terminal and chat are their own cards in their columns, and the editor card sits inside the terminal split', () => {
+    render(
+      <TooltipProvider>
+        <EditorArea
+          {...cardProps}
+          terminalBridge={{} as never}
+          terminalVisible
+          terminalPlacement="right"
+          agentsVisible
+        />
+      </TooltipProvider>,
+    );
+
+    const editorCard = cardOf('editor');
+    const terminalCard = cardOf('terminal');
+    const chatCard = cardOf('agents');
+    expect(terminalCard?.getAttribute('data-placement')).toBe('right');
+    expect(terminalCard?.getAttribute('data-variant')).toBe('card');
+    expect(chatCard?.getAttribute('data-variant')).toBe('card');
+    expect(document.getElementById('terminal-column')?.contains(terminalCard)).toBe(true);
+    expect(document.getElementById('agents-column')?.contains(chatCard)).toBe(true);
+    expect(terminalCard?.contains(document.querySelector('[data-terminal-panel-mount]'))).toBe(
+      true,
+    );
+    expect(chatCard?.contains(document.querySelector('[data-agents-panel-mount]'))).toBe(true);
+    expect(screen.getByTestId('terminal-dock').contains(editorCard)).toBe(true);
+    expect(editorCard?.contains(terminalCard)).toBe(false);
+    expect(editorCard?.contains(chatCard)).toBe(false);
+  });
+
+  test('without a terminal, as on the web, the terminal column keeps its mount but draws no card', () => {
+    render(
+      <TooltipProvider>
+        <EditorArea {...cardProps} agentsVisible />
+      </TooltipProvider>,
+    );
+
+    expect(cardOf('terminal')).toBeNull();
+    expect(cardOf('agents')).not.toBeNull();
+    expect(
+      document
+        .getElementById('terminal-column')
+        ?.contains(document.querySelector('[data-terminal-panel-mount]')),
+    ).toBe(true);
+  });
+
+  test('the chat and right terminal cards cast their shadow only while their column shows', () => {
+    const area = (visible: boolean) => (
+      <TooltipProvider>
+        <EditorArea
+          {...cardProps}
+          terminalBridge={{} as never}
+          terminalVisible={visible}
+          terminalPlacement="right"
+          agentsVisible={visible}
+        />
+      </TooltipProvider>
+    );
+    const expectShadow = (casting: boolean) => {
+      for (const pane of ['terminal', 'agents'] as const) {
+        const card = cardOf(pane);
+        expect(card, `${pane} card`).not.toBeNull();
+        if (casting) expectVisualClassTokensAbsent(card?.className, ['shadow-none']);
+        else expectVisualClassTokens(card?.className, ['shadow-none']);
+      }
+    };
+    const view = render(area(true));
+    expectShadow(true);
+
+    act(() => {
+      railPanelOnResizeById.get(TERMINAL_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
+      railPanelOnResizeById.get(AGENTS_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
+    });
+    expectShadow(false);
+
+    act(() => {
+      railPanelOnResizeById.get(TERMINAL_COLUMN_ID)?.({ asPercentage: 25, inPixels: 300 });
+      railPanelOnResizeById.get(AGENTS_COLUMN_ID)?.({ asPercentage: 25, inPixels: 300 });
+    });
+    expectShadow(true);
+
+    view.rerender(area(false));
+    expectShadow(false);
+  });
+
+  test('main wraps the document column; the file list, chat and the side panel sit outside it as their own landmarks', () => {
+    render(
+      <TooltipProvider>
+        <FileListHostProvider enabled fileList={<nav data-testid="landmark-file-list" />}>
+          <EditorArea {...cardProps} agentsVisible />
+        </FileListHostProvider>
+      </TooltipProvider>,
+    );
+
+    const main = screen.getByRole('main');
+    expect(main.hasAttribute('data-editor-workspace-column')).toBe(true);
+    expect(main.contains(screen.getByTestId('workspace-tabs'))).toBe(true);
+    expect(main.contains(screen.getByTestId('landmark-file-list'))).toBe(false);
+    expect(cardOf('editor')?.contains(screen.getByTestId('landmark-file-list'))).toBe(true);
+    const sidePanel = screen.getByRole('region', { name: 'Document panel' });
+    expect(sidePanel.id).toBe('doc-panel');
+    expect(main.contains(sidePanel)).toBe(false);
+    const chat = screen.getByRole('region', { name: 'Agent panel' });
+    expect(chat.hasAttribute('data-agents-panel-mount')).toBe(true);
+    expect(main.contains(chat)).toBe(false);
+    expect(main.contains(document.querySelector('[data-terminal-panel-mount]'))).toBe(false);
+    expect(cardOf('editor')?.querySelector('[data-slot="sidebar-inset"]')?.contains(main)).toBe(
+      true,
+    );
+  });
+
+  test('the side panel toggle is one button at the end of the tab bar, only for an open document', () => {
+    const { rerender } = render(
+      <TooltipProvider>
+        <EditorArea {...cardProps} />
+      </TooltipProvider>,
+    );
+
+    const toggles = document.querySelectorAll('[data-doc-panel-toggle]');
+    expect(toggles).toHaveLength(1);
+    const header = document.querySelector('[data-editor-area-header]');
+    expect(header?.contains(toggles[0] ?? null)).toBe(true);
+    expect(toggles[0]?.getAttribute('aria-controls')).toBe('doc-panel');
+    expect(toggles[0]?.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      screen.getByTestId('workspace-tabs').compareDocumentPosition(toggles[0] as Node) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.click(toggles[0] as Element);
+    act(() => {
+      railPanelOnResizeById.get('doc-panel')?.({ asPercentage: 0, inPixels: 0 });
+    });
+    expect(document.querySelector('[data-doc-panel-toggle]')?.getAttribute('aria-expanded')).toBe(
+      'false',
+    );
+
+    act(() => {
+      docCtx = FOLDER_DOC_CTX;
+    });
+    rerender(
+      <TooltipProvider>
+        <EditorArea {...cardProps} />
+      </TooltipProvider>,
+    );
+    expect(document.querySelector('[data-doc-panel-toggle]')).toBeNull();
+  });
+
+  test('the side panel toggle leaves the tab bar while the open document has a sync conflict', () => {
+    const { rerender } = render(
+      <TooltipProvider>
+        <EditorArea {...cardProps} />
+      </TooltipProvider>,
+    );
+    expect(document.querySelectorAll('[data-doc-panel-toggle]')).toHaveLength(1);
+
+    conflictedDocName = 'docs/notes';
+    rerender(
+      <TooltipProvider>
+        <EditorArea {...cardProps} />
+      </TooltipProvider>,
+    );
+
+    const header = document.querySelector('[data-editor-area-header]');
+    expect(header?.contains(screen.getByTestId('workspace-tabs'))).toBe(true);
+    expect(document.querySelector('[data-doc-panel-toggle]')).toBeNull();
+  });
+
+  test('moving or hiding the terminal, and showing or hiding chat, never remounts the open editor', () => {
+    const props = { ...cardProps, terminalBridge: {} as never };
+    const { rerender } = render(
+      <TooltipProvider>
+        <EditorArea {...props} terminalVisible terminalPlacement="bottom" agentsVisible={false} />
+      </TooltipProvider>,
+    );
+    const tabs = screen.getByTestId('workspace-tabs');
+    const editorRegion = document.querySelector('[data-editor-region]');
+    expect(editorWorkspaceMounts).toBe(1);
+
+    const steps: Array<{
+      terminalVisible: boolean;
+      terminalPlacement: 'bottom' | 'right';
+      agentsVisible: boolean;
+    }> = [
+      { terminalVisible: true, terminalPlacement: 'right', agentsVisible: false },
+      { terminalVisible: true, terminalPlacement: 'right', agentsVisible: true },
+      { terminalVisible: false, terminalPlacement: 'right', agentsVisible: true },
+      { terminalVisible: true, terminalPlacement: 'bottom', agentsVisible: true },
+      { terminalVisible: false, terminalPlacement: 'bottom', agentsVisible: false },
+      { terminalVisible: true, terminalPlacement: 'bottom', agentsVisible: false },
+    ];
+    for (const step of steps) {
+      rerender(
+        <TooltipProvider>
+          <EditorArea {...props} {...step} />
+        </TooltipProvider>,
+      );
+    }
+    act(() => emitLocalMenuAction('toggle-doc-panel'));
+    act(() => emitLocalMenuAction('toggle-doc-panel'));
+
+    expect(editorWorkspaceMounts).toBe(1);
+    expect(screen.getByTestId('workspace-tabs')).toBe(tabs);
+    expect(document.querySelector('[data-editor-region]')).toBe(editorRegion);
+    expect(screen.getByRole('main').contains(tabs)).toBe(true);
+  });
+
+  test('a single-file window renders every normal card', () => {
+    Object.defineProperty(window, 'okDesktop', {
+      configurable: true,
+      value: {
+        config: { singleFile: true },
+        editor: { notifyViewMenuStateChanged: () => {} },
+      },
+    });
+    try {
+      render(
+        <TooltipProvider>
+          <SingleFileModeProvider>
+            <EditorArea
+              {...cardProps}
+              terminalBridge={{} as never}
+              terminalVisible
+              terminalPlacement="right"
+              agentsVisible
+            />
+          </SingleFileModeProvider>
+        </TooltipProvider>,
+      );
+      expect(cardOf('editor')?.getAttribute('data-variant')).toBe('card');
+      expect(cardOf('terminal')?.getAttribute('data-variant')).toBe('card');
+      expect(cardOf('agents')?.getAttribute('data-variant')).toBe('card');
+      expect(screen.getByRole('main').contains(screen.getByTestId('workspace-tabs'))).toBe(true);
+    } finally {
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
+  });
+
+  test('inside an embedded host the cards render as in a project window while the host rules hold', () => {
+    const originalUserAgent = navigator.userAgent;
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      value: `${originalUserAgent} Cursor/1.0`,
+    });
+    try {
+      render(
+        <TooltipProvider>
+          <EditorArea {...cardProps} agentsVisible={false} />
+        </TooltipProvider>,
+      );
+      expect(cardOf('editor')?.getAttribute('data-variant')).toBe('card');
+      expect(cardOf('agents')?.getAttribute('data-variant')).toBe('card');
+      expect(screen.queryByTestId('bottom-composer')).toBeNull();
+      expect(document.getElementById('doc-panel')?.hasAttribute('inert')).toBe(true);
+      expect(document.querySelector('[data-doc-panel-toggle]')?.getAttribute('aria-expanded')).toBe(
+        'false',
+      );
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', {
+        configurable: true,
+        value: originalUserAgent,
+      });
+    }
+    cleanup();
+    render(
+      <TooltipProvider>
+        <EditorArea {...cardProps} agentsVisible={false} />
+      </TooltipProvider>,
+    );
+    expect(screen.getByTestId('bottom-composer')).toBeTruthy();
+  });
+
+  test('the joint plan keeps a minimum width for Chat beside a right Terminal in both shared card shells', async () => {
+    const initialOuterWidthPx = 1600;
+    const outerWidthPx = 1128;
+    const planAgentsWidth = async (singleFile: boolean) => {
+      cleanup();
+      localStorage.clear();
+      localStorage.setItem(AGENTS_PANEL_WIDTH_KEY, '480');
+      localStorage.setItem(DOC_PANEL_WIDTH_KEY, '320');
+      localStorage.setItem(
+        SIDEBAR_PINS_KEY,
+        JSON.stringify({ right: { above: 'open', below: 'open', embedded: 'open' } }),
+      );
+      setViewportWidth(initialOuterWidthPx);
+      mockGroupPx = initialOuterWidthPx;
+      mockInnerPx = null;
+      mockFileListPx = 0;
+      mockPanelPx = null;
+      mockPanelPercentage = null;
+      panelIsCollapsed = false;
+      panelRefCalls = 0;
+      lastDeliveredDocPanelSize = null;
+      deliverDocPanelResizeAfterLayout = true;
+      railPanelOnResizeById.clear();
+      groupLayout = {
+        'editor-main': 100 - pctOfRow(RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX + 480, initialOuterWidthPx),
+        'terminal-column': pctOfRow(RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX, initialOuterWidthPx),
+        'agents-column': pctOfRow(480, initialOuterWidthPx),
+      };
+      innerLayout = innerRowWithDoc(
+        320,
+        initialOuterWidthPx - RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX - 480,
+      );
+      committedGroupLayout = { ...groupLayout };
+      committedInnerLayout = { ...innerLayout };
+      groupSetLayoutCalls = [];
+      innerSetLayoutCalls = [];
+      innerSetLayoutPx = [];
+      toastInfoMessages = [];
+      Reflect.deleteProperty(window, 'okDesktop');
+      if (singleFile) {
+        Object.defineProperty(window, 'okDesktop', {
+          configurable: true,
+          value: {
+            config: { singleFile: true },
+            editor: { notifyViewMenuStateChanged: () => {} },
+          },
+        });
+      }
+      const resizeObserver = installResizeObserver();
+      try {
+        const withColumns = {
+          ...cardProps,
+          terminalBridge: {} as never,
+          terminalVisible: true,
+          terminalPlacement: 'right',
+          terminalRightWidth: RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX,
+        } as const;
+        const wrap = (node: ReactNode) =>
+          singleFile ? (
+            <TooltipProvider>
+              <SingleFileModeProvider>{node}</SingleFileModeProvider>
+            </TooltipProvider>
+          ) : (
+            <TooltipProvider>{node}</TooltipProvider>
+          );
+        render(wrap(<EditorArea {...withColumns} agentsVisible />));
+        const card = cardOf('editor');
+        const inner = document.querySelector<HTMLElement>('[data-editor-inner-panels]');
+        if (card == null || inner == null)
+          throw new Error('the editor card or inner row is absent');
+        for (const element of [card, inner]) {
+          Object.defineProperty(element, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => ({ width: rowPx('inner'), height: 0, top: 0, left: 0 }),
+          });
+        }
+        resizeObserver.fire('[data-slot="pane-card"][data-pane="editor"]');
+        resizeObserver.fire('[data-editor-inner-panels]');
+        await act(async () => {});
+        const initialInfoWidthPx = document
+          .getElementById('doc-panel')
+          ?.getBoundingClientRect().width;
+        const initialDocumentWidthPx = innerResidualWidthPx();
+        const initialCardWidthPx = card.getBoundingClientRect().width;
+        groupSetLayoutCalls = [];
+        setViewportWidth(outerWidthPx);
+        mockGroupPx = outerWidthPx;
+        resizeObserver.fire('[data-slot="pane-card"][data-pane="editor"]');
+        resizeObserver.fire('[data-editor-area-panels]');
+        resizeObserver.fire('[data-editor-inner-panels]');
+        resizeObserver.fire('[data-slot="pane-card"][data-pane="editor"]');
+        await act(async () => {});
+        return {
+          initialInfoWidthPx,
+          initialDocumentWidthPx,
+          initialCardWidthPx,
+          chatWidthPx: document.getElementById(AGENTS_COLUMN_ID)?.getBoundingClientRect().width,
+          terminalWidthPx: document.getElementById(TERMINAL_COLUMN_ID)?.getBoundingClientRect()
+            .width,
+          infoWidthPx: document.getElementById('doc-panel')?.getBoundingClientRect().width,
+          documentWidthPx: innerResidualWidthPx(),
+          cardWidthPx: card.getBoundingClientRect().width,
+          chatLayoutWrites: groupSetLayoutCalls.filter((layout) => layout[AGENTS_COLUMN_ID] > 0)
+            .length,
+          toasts: [...toastInfoMessages],
+        };
+      } finally {
+        cleanup();
+        resizeObserver.restore();
+        Reflect.deleteProperty(window, 'okDesktop');
+      }
+    };
+
+    const project = await planAgentsWidth(false);
+    const singleFile = await planAgentsWidth(true);
+    for (const variant of [project, singleFile]) {
+      expect(variant.initialCardWidthPx).toBeCloseTo(
+        initialOuterWidthPx - RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX - 480,
+        0,
+      );
+      expect(variant.initialInfoWidthPx).toBeCloseTo(320, 0);
+      expect(variant.initialDocumentWidthPx).toBeGreaterThanOrEqual(300);
+      expect(variant.chatLayoutWrites).toBeGreaterThan(0);
+      expect(variant.chatWidthPx).toBeGreaterThanOrEqual(MIN_AGENTS_PANEL_WIDTH);
+      expect(variant.chatWidthPx).toBeCloseTo(480, 0);
+      expect(variant.terminalWidthPx).toBeCloseTo(RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX, 0);
+      expect(variant.infoWidthPx).toBe(0);
+      expect(variant.documentWidthPx).toBeGreaterThanOrEqual(300);
+      expect(variant.cardWidthPx).toBeCloseTo(
+        outerWidthPx - RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX - 480,
+        0,
+      );
+      expect(variant.toasts).toEqual([]);
+    }
+    expect(singleFile.chatWidthPx).toBeCloseTo(project.chatWidthPx, 3);
+  });
+});
+
+describe('EditorArea with the editor hidden', () => {
+  const hiddenProps = {
+    editorMode: 'wysiwyg',
+    onModeChange: () => {},
+    activeTab: 'timeline',
+    onActiveTabChange: () => {},
+    terminalBridge: {} as never,
+    onAgentsVisibleChange: () => {},
+    onTerminalVisibleChange: () => {},
+  } as const;
+  const ROW_PX = 1360;
+  const pctOfRow = (px: number) => (px / ROW_PX) * 100;
+  const editorColumn = () => {
+    const column = document.querySelector<HTMLElement>(
+      '[data-editor-row="outer"] > [data-panel]:not([id])',
+    );
+    if (column == null) throw new Error('editor column not rendered');
+    return column;
+  };
+  const agentsHandle = () => {
+    const handle = document.querySelector<HTMLElement>('[data-agents-panel-resize-handle]');
+    if (handle == null) throw new Error('agents resize handle not found');
+    return handle;
+  };
+  const terminalHandle = () => {
+    const handle = document.querySelector<HTMLElement>('[data-terminal-panel-handle]');
+    if (handle == null) throw new Error('terminal resize handle not found');
+    return handle;
+  };
+  const settle = () => act(async () => {});
+
+  beforeEach(() => {
+    cleanup();
+    localStorage.clear();
+    docCtx = DOC_LIVE_CTX;
+    groupLayout = {};
+    groupSetLayoutCalls = [];
+    rejectNextGroupLayoutWrite = false;
+    rejectGroupLayoutWrites = false;
+    panelIsCollapsed = false;
+    mockGroupPx = ROW_PX;
+    mockPanelPercentage = null;
+    mockPanelPx = null;
+    toastInfoMessages = [];
+    Object.defineProperty(window, 'innerWidth', {
+      value: 1400,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  test('chat alone fills the row and the editor column may reach zero', async () => {
+    const view = render(<EditorArea {...hiddenProps} agentsVisible />);
+    groupLayout = { 'editor-main': 65, 'terminal-column': 0, 'agents-column': 35 };
+    await settle();
+    const innerWritesBeforeHide = innerSetLayoutCalls.length;
+
+    view.rerender(<EditorArea {...hiddenProps} agentsVisible editorVisible={false} />);
+    await settle();
+
+    expect(groupSetLayoutCalls.at(-1)).toEqual({
+      'editor-main': 0,
+      'terminal-column': 0,
+      'agents-column': 100,
+    });
+    expect(innerSetLayoutCalls).toHaveLength(innerWritesBeforeHide);
+    expect(editorColumn().getAttribute('data-min-size')).toBe('0%');
+    expect(document.getElementById('agents-column')?.getAttribute('data-max-size')).toBe('100%');
+    expect(agentsHandle().style.display).toBe('none');
+  });
+
+  test('a right terminal and chat share the row in proportion to their current widths', async () => {
+    groupLayout = { 'editor-main': 40, 'terminal-column': 25, 'agents-column': 35 };
+    const view = render(
+      <EditorArea
+        {...hiddenProps}
+        agentsVisible
+        terminalVisible
+        terminalPlacement="right"
+        terminalRightWidth={400}
+      />,
+    );
+    groupLayout = { 'editor-main': 40, 'terminal-column': 25, 'agents-column': 35 };
+    await settle();
+
+    view.rerender(
+      <EditorArea
+        {...hiddenProps}
+        agentsVisible
+        terminalVisible
+        terminalPlacement="right"
+        terminalRightWidth={400}
+        editorVisible={false}
+      />,
+    );
+    await settle();
+
+    const written = groupSetLayoutCalls.at(-1);
+    expect(written?.['editor-main']).toBe(0);
+    expect(written?.['terminal-column']).toBeCloseTo((25 / (25 + 35)) * 100);
+    expect(written?.['agents-column']).toBeCloseTo((35 / (25 + 35)) * 100);
+    expect(terminalHandle().style.display).toBe('none');
+    expect(agentsHandle().style.display).toBe('');
+  });
+
+  test('with no right column the editor column keeps the row and nothing is written', async () => {
+    const view = render(<EditorArea {...hiddenProps} />);
+    groupLayout = { 'editor-main': 100, 'terminal-column': 0, 'agents-column': 0 };
+    await settle();
+    const writesBeforeHide = groupSetLayoutCalls.length;
+
+    view.rerender(<EditorArea {...hiddenProps} editorVisible={false} />);
+    await settle();
+
+    expect(groupSetLayoutCalls).toHaveLength(writesBeforeHide);
+    expect(editorColumn().getAttribute('data-min-size')).toBe('0%');
+  });
+
+  test('showing the editor re-plans both rows back to the pre-hide chat width', async () => {
+    const view = render(<EditorArea {...hiddenProps} agentsVisible />);
+    groupLayout = { 'editor-main': 65, 'terminal-column': 0, 'agents-column': 35 };
+    await settle();
+    view.rerender(<EditorArea {...hiddenProps} agentsVisible editorVisible={false} />);
+    await settle();
+    expect(groupLayout['agents-column']).toBe(100);
+    const innerWritesWhileHidden = innerSetLayoutCalls.length;
+
+    view.rerender(<EditorArea {...hiddenProps} agentsVisible />);
+    await settle();
+
+    const chatPct = pctOfRow(getInitialAgentsPanelWidth());
+    expect(groupLayout['agents-column']).toBeCloseTo(chatPct);
+    expect(groupLayout['editor-main']).toBeCloseTo(100 - chatPct);
+    expect(editorColumn().getAttribute('data-min-size')).toBe('5%');
+    expect(document.getElementById('agents-column')?.getAttribute('data-max-size')).toBe('95%');
+    expect(agentsHandle().style.display).toBe('');
+    expect(innerSetLayoutCalls.length).toBeGreaterThanOrEqual(innerWritesWhileHidden);
+  });
+
+  const editorCard = () => {
+    const card = document.querySelector<HTMLElement>('[data-slot="pane-card"][data-pane="editor"]');
+    if (card == null) throw new Error('editor card not rendered');
+    return card;
+  };
+
+  test('hiding keeps the same editor card, workspace and file list mounted, pinned at their size and out of reach', async () => {
+    const view = render(
+      <FileListHostProvider enabled>
+        <EditorArea {...hiddenProps} agentsVisible />
+      </FileListHostProvider>,
+    );
+    groupLayout = { 'editor-main': 65, 'terminal-column': 0, 'agents-column': 35 };
+    await settle();
+    const card = editorCard();
+    const fileListSlot = document.querySelector('[data-editor-file-list-slot]');
+    const tabsTarget = document.querySelector('[data-editor-area-header]');
+    Object.defineProperty(card, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ width: 840, height: 610, top: 0, left: 0, right: 840, bottom: 610 }),
+    });
+    const workspaceMountsBefore = editorWorkspaceMounts;
+
+    view.rerender(
+      <FileListHostProvider enabled>
+        <EditorArea {...hiddenProps} agentsVisible editorVisible={false} />
+      </FileListHostProvider>,
+    );
+    await settle();
+
+    expect(editorCard()).toBe(card);
+    expect(document.querySelector('[data-editor-file-list-slot]')).toBe(fileListSlot);
+    expect(document.querySelector('[data-editor-area-header]')).toBe(tabsTarget);
+    expect(editorWorkspaceMounts).toBe(workspaceMountsBefore);
+    expect(card.hasAttribute('inert')).toBe(true);
+    expect(card.classList.contains('invisible')).toBe(true);
+    expect(card.style.width).toBe('840px');
+    expect(card.style.height).toBe('610px');
+    expect(editorColumn().style.overflow).toBe('hidden');
+
+    view.rerender(
+      <FileListHostProvider enabled>
+        <EditorArea {...hiddenProps} agentsVisible />
+      </FileListHostProvider>,
+    );
+    await settle();
+    await act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+
+    expect(groupLayout['editor-main']).toBeGreaterThan(0);
+    expect(editorCard()).toBe(card);
+    expect(editorWorkspaceMounts).toBe(workspaceMountsBefore);
+    expect(card.hasAttribute('inert')).toBe(false);
+    expect(card.classList.contains('invisible')).toBe(false);
+    expect(card.style.width).toBe('');
+    expect(editorColumn().style.overflow).toBe('visible');
+  });
+
+  test('hiding the editor while focus is inside it moves focus to the header Editor button', async () => {
+    const editorButton = document.createElement('button');
+    editorButton.setAttribute('data-header-pane-button', 'editor');
+    document.body.append(editorButton);
+    const view = render(<EditorArea {...hiddenProps} agentsVisible />);
+    const region = document.querySelector<HTMLElement>('[data-editor-region]');
+    region?.focus();
+    expect(document.activeElement).toBe(region);
+
+    view.rerender(<EditorArea {...hiddenProps} agentsVisible editorVisible={false} />);
+    await settle();
+
+    expect(document.activeElement).toBe(editorButton);
+    editorButton.remove();
+  });
+
+  test('showing the editor from the header Editor button moves focus into the editor', async () => {
+    const editorButton = document.createElement('button');
+    editorButton.setAttribute('data-header-pane-button', 'editor');
+    document.body.append(editorButton);
+    const view = render(<EditorArea {...hiddenProps} agentsVisible editorVisible={false} />);
+    await settle();
+    editorButton.focus();
+
+    view.rerender(<EditorArea {...hiddenProps} agentsVisible />);
+    await settle();
+
+    expect(document.activeElement).toBe(document.querySelector('[data-editor-region]'));
+    editorButton.remove();
+  });
+
+  test('showing the editor after Nothing open lets go of focus lands in the editor, not the page', async () => {
+    const view = render(<EditorArea {...hiddenProps} editorVisible={false} />);
+    await settle();
+    const nothingOpen = document.querySelector<HTMLElement>('[data-nothing-open]');
+    nothingOpen?.focus();
+    expect(document.activeElement).toBe(nothingOpen);
+
+    view.rerender(<EditorArea {...hiddenProps} />);
+    await settle();
+
+    expect(document.querySelector('[data-nothing-open]')).toBeNull();
+    expect(document.activeElement).toBe(document.querySelector('[data-editor-region]'));
+  });
+
+  test('showing the editor while focus is in another pane leaves it there', async () => {
+    const composer = document.createElement('textarea');
+    document.body.append(composer);
+    const view = render(<EditorArea {...hiddenProps} agentsVisible editorVisible={false} />);
+    await settle();
+    composer.focus();
+
+    view.rerender(<EditorArea {...hiddenProps} agentsVisible />);
+    await settle();
+
+    expect(document.activeElement).toBe(composer);
+    composer.remove();
+  });
+
+  test('a chat divider dragged while the editor is hidden is not saved, and showing the editor restores the pre-hide widths', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const pastWidthWriteDebounceMs = 101;
+      const terminalWidths: number[] = [];
+      const props = {
+        ...hiddenProps,
+        agentsVisible: true,
+        terminalVisible: true,
+        terminalPlacement: 'right',
+        terminalRightWidth: 400,
+        onTerminalRightWidthChange: (px: number) => terminalWidths.push(px),
+      } as const;
+      const view = render(<EditorArea {...props} />);
+      groupLayout = { 'editor-main': 40, 'terminal-column': 25, 'agents-column': 35 };
+      await settle();
+
+      fireEvent.pointerDown(terminalHandle(), { pointerId: 6 });
+      act(() => {
+        railPanelOnResizeById.get('terminal-column')?.({
+          asPercentage: pctOfRow(400),
+          inPixels: 400,
+        });
+      });
+      act(() => {
+        window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 6 }));
+      });
+      act(() => vi.advanceTimersByTime(pastWidthWriteDebounceMs));
+      expect(terminalWidths).toEqual([400]);
+
+      view.rerender(<EditorArea {...props} editorVisible={false} />);
+      await settle();
+      const preferredChatPx = getInitialAgentsPanelWidth();
+
+      fireEvent.pointerDown(agentsHandle(), { pointerId: 7 });
+      groupLayout = { 'editor-main': 0, 'terminal-column': 30, 'agents-column': 70 };
+      mockPanelPx = 0.7 * ROW_PX;
+      act(() => {
+        railPanelOnResizeById.get('terminal-column')?.({
+          asPercentage: 30,
+          inPixels: 0.3 * ROW_PX,
+        });
+      });
+      act(() => {
+        window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7 }));
+      });
+      await settle();
+
+      expect(groupLayout).toEqual({ 'editor-main': 0, 'terminal-column': 30, 'agents-column': 70 });
+      expect(localStorage.getItem(AGENTS_PANEL_WIDTH_KEY)).toBeNull();
+      act(() => vi.advanceTimersByTime(pastWidthWriteDebounceMs));
+      expect(terminalWidths).toEqual([400]);
+
+      mockPanelPx = null;
+      view.rerender(<EditorArea {...props} />);
+      await settle();
+      await act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+
+      expect(groupLayout['agents-column']).toBeCloseTo(pctOfRow(preferredChatPx));
+      expect(groupLayout['terminal-column']).toBeCloseTo(pctOfRow(400));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('chat is marked as the only pane only while the editor is hidden and no terminal shows', async () => {
+    const mount = () => document.querySelector('[data-agents-panel-mount]');
+    const view = render(<EditorArea {...hiddenProps} agentsVisible />);
+    groupLayout = { 'editor-main': 65, 'terminal-column': 0, 'agents-column': 35 };
+    await settle();
+    expect(mount()?.hasAttribute('data-chat-alone')).toBe(false);
+
+    view.rerender(<EditorArea {...hiddenProps} agentsVisible editorVisible={false} />);
+    await settle();
+    expect(mount()?.hasAttribute('data-chat-alone')).toBe(true);
+
+    view.rerender(
+      <EditorArea
+        {...hiddenProps}
+        agentsVisible
+        editorVisible={false}
+        terminalVisible
+        terminalPlacement="right"
+      />,
+    );
+    await settle();
+    expect(mount()?.hasAttribute('data-chat-alone')).toBe(false);
+  });
+
+  test('Nothing open appears only when the editor, chat and terminal are all hidden', async () => {
+    const view = render(<EditorArea {...hiddenProps} agentsVisible editorVisible={false} />);
+    await settle();
+    expect(document.querySelector('[data-nothing-open]')).toBeNull();
+
+    view.rerender(<EditorArea {...hiddenProps} editorVisible={false} />);
+    await settle();
+    const nothingOpen = document.querySelector('[data-nothing-open]');
+    expect(nothingOpen?.parentElement).toBe(document.querySelector('[data-editor-area-panels]'));
+
+    view.rerender(<EditorArea {...hiddenProps} />);
+    await settle();
+    expect(document.querySelector('[data-nothing-open]')).toBeNull();
+  });
+
+  test('hiding the last pane while focus is in the editor moves focus to Nothing open', async () => {
+    const view = render(<EditorArea {...hiddenProps} />);
+    const region = document.querySelector<HTMLElement>('[data-editor-region]');
+    region?.focus();
+
+    view.rerender(<EditorArea {...hiddenProps} editorVisible={false} />);
+    await settle();
+
+    expect(document.activeElement).toBe(document.querySelector('[data-nothing-open]'));
+  });
+
+  test('a column closing while the editor is hidden hands its width to the other column, not the hidden editor', async () => {
+    const view = render(
+      <EditorArea {...hiddenProps} agentsVisible terminalVisible terminalPlacement="right" />,
+    );
+    groupLayout = { 'editor-main': 40, 'terminal-column': 25, 'agents-column': 35 };
+    await settle();
+    view.rerender(
+      <EditorArea
+        {...hiddenProps}
+        agentsVisible
+        terminalVisible
+        terminalPlacement="right"
+        editorVisible={false}
+      />,
+    );
+    await settle();
+
+    view.rerender(
+      <EditorArea
+        {...hiddenProps}
+        agentsVisible={false}
+        terminalVisible
+        terminalPlacement="right"
+        editorVisible={false}
+      />,
+    );
+    act(() => {
+      railPanelOnResizeById.get('agents-column')?.({ asPercentage: 40, inPixels: 544 });
+    });
+    await settle();
+
+    expect(groupLayout).toEqual({ 'editor-main': 0, 'terminal-column': 100, 'agents-column': 0 });
+  });
+
+  test('hiding the editor beside chat keeps the column that holds a bottom terminal at its share', async () => {
+    const props = { ...hiddenProps, agentsVisible: true, terminalVisible: true } as const;
+    groupLayout = { 'editor-main': 65, 'terminal-column': 0, 'agents-column': 35 };
+    const view = render(<EditorArea {...props} terminalPlacement="bottom" />);
+    groupLayout = { 'editor-main': 65, 'terminal-column': 0, 'agents-column': 35 };
+    await settle();
+
+    view.rerender(<EditorArea {...props} terminalPlacement="bottom" editorVisible={false} />);
+    await settle();
+
+    expect(groupLayout).toEqual({ 'editor-main': 65, 'terminal-column': 0, 'agents-column': 35 });
+    expect(editorColumn().getAttribute('data-min-size')).toBe('5%');
+    expect(document.getElementById('agents-column')?.getAttribute('data-max-size')).toBe('95%');
+    expect(agentsHandle().style.display).toBe('');
+  });
+
+  test('a bottom terminal opened beside chat alone takes back the column at chat’s preferred width', async () => {
+    const view = render(<EditorArea {...hiddenProps} agentsVisible editorVisible={false} />);
+    groupLayout = { 'editor-main': 0, 'terminal-column': 0, 'agents-column': 100 };
+    await settle();
+
+    view.rerender(
+      <EditorArea
+        {...hiddenProps}
+        agentsVisible
+        terminalVisible
+        terminalPlacement="bottom"
+        editorVisible={false}
+      />,
+    );
+    await settle();
+
+    const chatPct = pctOfRow(getInitialAgentsPanelWidth());
+    expect(Object.keys(groupSetLayoutCalls.at(-1) ?? {})).toEqual([
+      'editor-main',
+      'terminal-column',
+      'agents-column',
+    ]);
+    expect(groupLayout['editor-main']).toBeCloseTo(100 - chatPct);
+    expect(groupLayout['terminal-column']).toBe(0);
+    expect(groupLayout['agents-column']).toBeCloseTo(chatPct);
+  });
+
+  test('chat opened beside a full-height bottom terminal takes its preferred width, not the whole row', async () => {
+    const props = { ...hiddenProps, terminalVisible: true, editorVisible: false } as const;
+    const view = render(<EditorArea {...props} terminalPlacement="bottom" />);
+    groupLayout = { 'editor-main': 100, 'terminal-column': 0, 'agents-column': 0 };
+    await settle();
+
+    view.rerender(<EditorArea {...props} terminalPlacement="bottom" agentsVisible />);
+    await settle();
+
+    const chatPct = pctOfRow(getInitialAgentsPanelWidth());
+    expect(groupLayout['editor-main']).toBeCloseTo(100 - chatPct);
+    expect(groupLayout['agents-column']).toBeCloseTo(chatPct);
   });
 });

@@ -5,7 +5,7 @@ import {
   PREBUILT_MODULE_MANIFEST,
 } from '../../../../src/build/prebuilt-dev-contract.ts';
 import { APP_PACKAGE_ROOT } from '../seed-key.ts';
-import { type WorkerServing, workerServingFromEnv } from './prebuilt-serving.ts';
+import { type ModuleServing, workerServingFromEnv } from './prebuilt-serving.ts';
 
 type ModuleLocator = {
   readonly moduleUrl: (source: string) => string;
@@ -145,7 +145,7 @@ function prebuiltModuleLocator(outputDir: string): ModuleLocator {
 }
 
 export function resolveServedModules(
-  serving: WorkerServing,
+  serving: ModuleServing,
   appRoot: string = APP_PACKAGE_ROOT,
 ): ServedModules {
   const locator =

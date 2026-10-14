@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { SidebarProvider } from '@/components/ui/sidebar';
 import { ConfigProvider } from '@/lib/config-provider';
 import { pendingReceiveNavStore } from '@/lib/share/pending-receive-nav-store';
 
@@ -118,12 +119,14 @@ const { EditorArea } = await import('./EditorArea');
 function renderEditorArea() {
   return render(
     <ConfigProvider collabUrl={null}>
-      <EditorArea
-        editorMode="wysiwyg"
-        onModeChange={() => {}}
-        activeTab="timeline"
-        onActiveTabChange={() => {}}
-      />
+      <SidebarProvider>
+        <EditorArea
+          editorMode="wysiwyg"
+          onModeChange={() => {}}
+          activeTab="timeline"
+          onActiveTabChange={() => {}}
+        />
+      </SidebarProvider>
     </ConfigProvider>,
   );
 }

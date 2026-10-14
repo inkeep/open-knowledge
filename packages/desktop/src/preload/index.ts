@@ -29,7 +29,7 @@ import type {
   OkDesktopBridge,
   OkDesktopConfig,
   OkEditorActiveTargetSnapshot,
-  OkEditorViewMenuStateSnapshot,
+  OkEditorViewMenuStateChange,
   OkLocalOpAuthEvent,
   OkLocalOpCloneEvent,
   OkLocalOpStream,
@@ -286,6 +286,7 @@ const MENU_ACTION_BUFFER_POLICY: Record<OkMenuAction, MenuActionBufferPolicy> = 
   'toggle-doc-panel': 'parity',
   'toggle-terminal': 'parity',
   'toggle-agent-panel': 'parity',
+  'toggle-editor': 'parity',
   'toggle-show-hidden-files': 'parity',
   'toggle-show-ok-folders': 'parity',
   'toggle-show-only-markdown-files': 'parity',
@@ -850,7 +851,7 @@ const bridge: OkDesktopBridge = {
     notifyActiveTargetChanged: (target: OkEditorActiveTargetSnapshot) => {
       invoke('ok:editor:active-target-changed', target).catch(() => {});
     },
-    notifyViewMenuStateChanged: (state: Partial<OkEditorViewMenuStateSnapshot>) => {
+    notifyViewMenuStateChanged: (state: OkEditorViewMenuStateChange) => {
       invoke('ok:editor:view-menu-state-changed', state).catch(() => {});
     },
     notifyBackgroundThrottle: (signal: { hasPendingWork: boolean; enabled: boolean }) => {

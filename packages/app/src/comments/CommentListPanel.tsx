@@ -76,12 +76,14 @@ export function CommentListPanel({
   empty,
   testIdPrefix,
   scopeSwitch,
+  onDestinationComplete,
 }: {
   threads: readonly CommentThread[];
   groupByDocument?: boolean;
   empty: ReactNode;
   testIdPrefix: string;
   scopeSwitch?: ReactNode;
+  onDestinationComplete?: (target: HTMLElement) => void;
 }) {
   const { t } = useLingui();
   const [showResolved, setShowResolved] = useState(false);
@@ -158,6 +160,7 @@ export function CommentListPanel({
         active={activeId === thread.id}
         focused={focusedId === thread.id}
         layout={groupByDocument ? 'project' : 'doc'}
+        onDestinationComplete={onDestinationComplete}
         cardRef={(el) => {
           if (el) cardRefs.current.set(thread.id, el);
           else cardRefs.current.delete(thread.id);

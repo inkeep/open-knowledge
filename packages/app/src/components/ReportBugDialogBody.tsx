@@ -326,7 +326,10 @@ function ReportBugDialog({
             </DialogHeader>
             <DialogBody className="flex flex-auto flex-col gap-2 pb-2 [&>*]:shrink-0">
               {crashInvite !== undefined && (
-                <div className="flex items-start gap-2.5 rounded-md border border-chart-3/35 bg-chart-3/10 px-3 py-2.5 text-sm">
+                <div
+                  data-testid="report-bug-crash-invite"
+                  className="flex items-start gap-2.5 rounded-md border border-chart-3/35 bg-chart-3/10 px-3 py-2.5 text-sm"
+                >
                   <TriangleAlertIcon
                     className="mt-0.5 size-4 shrink-0 text-chart-3"
                     aria-hidden="true"

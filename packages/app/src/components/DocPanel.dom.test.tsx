@@ -4,6 +4,10 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { DocLinkFindingsState } from '@/editor/validation-audit-client';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
+import {
+  expectVisualClassTokens,
+  expectVisualClassTokensAbsent,
+} from '@/test-utils/visual-contract';
 
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
@@ -193,5 +197,41 @@ describe('DocPanel — Problems badge', () => {
     diagnosticsValue = Array.from({ length: 150 }, () => ({ severity: 'warning' }));
     renderPanel('outline');
     expect(screen.getByText('99+')).toBeTruthy();
+  });
+});
+
+describe('DocPanel — card top bar', () => {
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'okDesktop');
+  });
+
+  test('the icon row is a 44px top bar with no hairline under it', () => {
+    renderPanel('outline');
+    const header = document.querySelector('[data-doc-panel-header]');
+    expectVisualClassTokens(header?.getAttribute('class'), ['h-11', 'shrink-0']);
+    expectVisualClassTokensAbsent(header?.getAttribute('class'), [
+      'pe-9',
+      '[-webkit-app-region:drag]',
+      'shadow-[inset_0_-1px_0_var(--border)]',
+    ]);
+    expect(header?.contains(screen.getByRole('tab', { name: 'Outline' }))).toBe(true);
+  });
+
+  test('on desktop the empty top bar drags the window while the tab buttons opt out', () => {
+    Object.defineProperty(window, 'okDesktop', {
+      configurable: true,
+      value: { config: { mode: 'editor' } },
+    });
+    renderPanel('outline');
+    const header = document.querySelector('[data-doc-panel-header]');
+    expect(header?.getAttribute('data-electron-drag')).toBe('');
+    expectVisualClassTokens(header?.getAttribute('class'), ['[-webkit-app-region:drag]']);
+    expectVisualClassTokens(
+      screen
+        .getByRole('tab', { name: 'Outline' })
+        .closest('[data-slot="toggle-group"]')
+        ?.getAttribute('class'),
+      ['[-webkit-app-region:no-drag]'],
+    );
   });
 });

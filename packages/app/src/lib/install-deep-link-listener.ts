@@ -2,6 +2,7 @@ import { t } from '@lingui/core/macro';
 import { toast } from 'sonner';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { encodeShareTargetForHash } from '@/lib/doc-hash';
+import { revealEditor } from '@/lib/reveal-editor';
 import { missDialogStore } from '@/lib/share/miss-dialog-store';
 import { pendingReceiveNavStore } from '@/lib/share/pending-receive-nav-store';
 
@@ -55,6 +56,7 @@ export function installDeepLinkListener(
       return;
     }
     pendingReceiveNavStore.arm(nav);
+    revealEditor();
     setHash(encodeShareTargetForHash(kind, evt.doc, kind === 'doc' ? evt.branch : undefined));
     const payload = deriveShareReceiveToast(evt, bridge.config.projectPath);
     if (payload !== null) {

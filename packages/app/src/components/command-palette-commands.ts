@@ -53,6 +53,7 @@ import { requestDocPanelTab } from '@/components/doc-panel-events';
 import { DiscordIcon } from '@/components/icons/discord';
 import { GithubIcon } from '@/components/icons/github';
 import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
+import { PANE_ICON } from '@/components/pane-icons';
 import { requestSkillsDockExpanded } from '@/components/skills-dock-expanded-store';
 import type { OkDesktopBridge, OkMenuAction } from '@/lib/desktop-bridge-types';
 import { i18n } from '@/lib/i18n';
@@ -155,6 +156,8 @@ const PALETTE_COMMAND_LABELS = {
   sidebarHide: msg`Hide sidebar`,
   docPanelShow: msg`Show document panel`,
   docPanelHide: msg`Hide document panel`,
+  editorShow: msg`Show Editor`,
+  editorHide: msg`Hide Editor`,
   terminalShow: msg`Show Terminal`,
   terminalHide: msg`Hide Terminal`,
   terminalMoveRight: msg`Move Terminal to right`,
@@ -240,9 +243,10 @@ const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'switch-worktree': GitBranch,
   'toggle-sidebar': PanelLeft,
   'toggle-doc-panel': PanelRight,
-  'toggle-terminal': SquareTerminal,
+  'toggle-terminal': PANE_ICON.terminal,
   'move-terminal': SquareTerminal,
-  'toggle-agent-panel': MessageSquare,
+  'toggle-agent-panel': PANE_ICON.agents,
+  'toggle-editor': PANE_ICON.editor,
   'toggle-show-hidden-files': Eye,
   'toggle-show-ok-folders': Folder,
   'toggle-show-only-markdown-files': FileText,
@@ -375,7 +379,8 @@ function resolvePaletteLabel(cmd: CommandIdentity, ctx: PaletteCommandContext): 
     ) {
       return i18n._(PALETTE_COMMAND_LABELS[overrideKey as PaletteLabelKey]);
     }
-    const visible = ctx.viewMenuState[cmd.stateToggle.stateField] === true;
+    const visible =
+      (ctx.viewMenuState[cmd.stateToggle.stateField] ?? cmd.stateToggle.defaultVisible) === true;
     const key = visible ? cmd.stateToggle.hideKey : cmd.stateToggle.showKey;
     return i18n._(paletteLabelDescriptor(key as PaletteLabelKey, platform));
   }

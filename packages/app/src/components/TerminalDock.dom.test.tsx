@@ -1,7 +1,7 @@
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useEffect, useRef, useState } from 'react';
+import { type PointerEventHandler, useEffect, useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { OkDesktopBridge, OkMenuAction } from '@/lib/desktop-bridge-types';
@@ -11,6 +11,10 @@ import {
 } from '@/lib/local-menu-action-bus';
 import { writePreferBareTerminal } from '@/lib/terminal-new-tab-store';
 import { saveStickyAgent, terminalCliId } from '@/lib/unified-agent-store';
+import {
+  expectVisualClassTokens,
+  expectVisualClassTokensAbsent,
+} from '@/test-utils/visual-contract';
 import { composeTerminalSelectionPaste } from './handoff/compose-terminal-selection';
 import { requestPreferredSession } from './handoff/preferred-session-events';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
@@ -60,9 +64,22 @@ vi.doMock('@/components/ui/resizable', () => ({
       </div>
     );
   },
-  // biome-ignore lint/suspicious/noExplicitAny: test stub
-  ResizableHandle: ({ onPointerDown, disabled, withHandle }: any) => (
-    <div
+  ResizableHandle: ({
+    onPointerDown,
+    disabled,
+    withHandle,
+    'aria-label': ariaLabel,
+    'aria-controls': ariaControls,
+  }: {
+    onPointerDown?: PointerEventHandler<HTMLHRElement>;
+    disabled?: boolean;
+    withHandle?: boolean;
+    'aria-label'?: string;
+    'aria-controls'?: string;
+  }) => (
+    <hr
+      aria-label={ariaLabel}
+      aria-controls={ariaControls}
       data-testid="terminal-resize-handle"
       data-disabled={disabled ? 'true' : 'false'}
       data-with-handle={withHandle ? 'true' : 'false'}
@@ -184,7 +201,9 @@ function DockHarness({
   p = 'bottom',
   targetAvailable = true,
   onVisibleChange,
+  onPreferredSessionHostReady,
   bridge,
+  children,
   // biome-ignore lint/suspicious/noExplicitAny: test harness props
 }: any) {
   const [bottomContainer, setBottomContainer] = useState<HTMLDivElement | null>(null);
@@ -195,16 +214,20 @@ function DockHarness({
       <TerminalDock
         placement={p}
         visible={v}
+        available
+        variant="card"
         onVisibleChange={onVisibleChange}
         onBottomContainer={setBottomContainer}
-        onEditorRegion={setEditorRegionEl}
       >
-        <div data-testid="editor-child" />
+        <div ref={setEditorRegionEl} tabIndex={-1} data-testid="editor-region">
+          {children ?? <div data-testid="editor-child" />}
+        </div>
       </TerminalDock>
       {p === 'right' && targetAvailable ? (
         <div ref={setRightContainer} data-testid="terminal-right-mount" />
       ) : null}
       <SessionsHost
+        {...(onPreferredSessionHostReady ? { onPreferredSessionHostReady } : {})}
         surface="terminal-dock"
         terminalPlacement={p}
         bridge={bridge}
@@ -225,6 +248,7 @@ function renderDock(
   launch?: TestLaunch | null,
   placement = 'bottom',
   platform: OkDesktopBridge['platform'] = 'darwin',
+  onPreferredSessionHostReady?: () => void,
 ) {
   const onVisibleChange = vi.fn((_v: boolean) => {});
   const { bridge, create, kill, input, viewMenuPushes, dispatchMenuAction } = makeBridge(platform);
@@ -235,6 +259,7 @@ function renderDock(
       p={p}
       targetAvailable={targetAvailable}
       onVisibleChange={onVisibleChange}
+      onPreferredSessionHostReady={onPreferredSessionHostReady}
       bridge={bridge}
     />
   );
@@ -371,9 +396,76 @@ describe('TerminalDock multi-session', () => {
     ).toHaveLength(2);
   });
 
-  test('tab strip exposes the collapse button without obsolete dock or drag controls', () => {
+  test('moving the terminal between bottom and right, and hiding it, never remounts the editor', async () => {
+    let editorMounts = 0;
+    function CountingEditor() {
+      useEffect(() => {
+        editorMounts += 1;
+      }, []);
+      return <div data-testid="counting-editor" />;
+    }
+    const onVisibleChange = vi.fn((_v: boolean) => {});
+    const { bridge, create, kill } = makeBridge();
+    const ui = (v: boolean, p: 'bottom' | 'right') => (
+      <DockHarness v={v} l={null} p={p} onVisibleChange={onVisibleChange} bridge={bridge}>
+        <CountingEditor />
+      </DockHarness>
+    );
+    const view = render(ui(true, 'bottom'));
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const editor = screen.getByTestId('counting-editor');
+    const region = screen.getByTestId('editor-region');
+    const card = document.querySelector('[data-slot="pane-card"][data-pane="terminal"]');
+    expect(card?.getAttribute('data-placement')).toBe('bottom');
+    expect(document.getElementById(TERMINAL_PANEL_ID)?.contains(card)).toBe(true);
+    expect(editorMounts).toBe(1);
+
+    view.rerender(ui(true, 'right'));
+    view.rerender(ui(false, 'right'));
+    view.rerender(ui(true, 'right'));
+    view.rerender(ui(true, 'bottom'));
+    view.rerender(ui(false, 'bottom'));
+    view.rerender(ui(true, 'bottom'));
+
+    expect(editorMounts).toBe(1);
+    expect(screen.getByTestId('counting-editor')).toBe(editor);
+    expect(screen.getByTestId('editor-region')).toBe(region);
+    expect(screen.getByTestId('rrp-group').contains(editor)).toBe(true);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  test('names the bottom terminal divider for the pane it resizes', () => {
     renderDock(true);
-    expect(screen.getByRole('button', { name: 'Collapse Terminal' })).not.toBeNull();
+    const divider = screen.getByRole('separator', { name: 'Resize terminal' });
+    expect(divider.getAttribute('aria-controls')).toBe(TERMINAL_PANEL_ID);
+  });
+
+  test('renders no bottom terminal panel or divider when no terminal is available, as on the web', () => {
+    render(
+      <TooltipProvider>
+        <TerminalDock
+          placement="bottom"
+          visible={false}
+          available={false}
+          variant="card"
+          onVisibleChange={() => {}}
+          onBottomContainer={() => {}}
+        >
+          <div data-testid="editor-child" />
+        </TerminalDock>
+      </TooltipProvider>,
+    );
+
+    expect(screen.getByTestId('editor-child')).toBeTruthy();
+    expect(document.getElementById(TERMINAL_PANEL_ID)).toBeNull();
+    expect(screen.queryByTestId('terminal-resize-handle')).toBeNull();
+    expect(document.querySelector('[data-slot="pane-card"][data-pane="terminal"]')).toBeNull();
+  });
+
+  test('tab strip carries no in-pane collapse, dock or drag controls', () => {
+    renderDock(true);
+    expect(screen.queryByRole('button', { name: /^Collapse/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Dock sessions/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Drag to dock the terminal' })).toBeNull();
   });
@@ -433,6 +525,24 @@ describe('TerminalDock multi-session', () => {
 
     act(() => requestPreferredSession());
 
+    const sessions = screen.getAllByTestId('terminal-session');
+    expect(sessions).toHaveLength(2);
+    expect(sessions[1].getAttribute('data-cli')).toBe('cursor');
+  });
+
+  test('a ready terminal host claims a preferred terminal request once', () => {
+    writePreferBareTerminal(false);
+    saveStickyAgent(terminalCliId('cursor'));
+    const ready = vi.fn();
+    renderDock(true, null, 'bottom', 'darwin', ready);
+
+    expect(ready).toHaveBeenCalledTimes(1);
+    let claimed: unknown;
+    act(() => {
+      claimed = requestPreferredSession();
+    });
+
+    expect(claimed).toBe(true);
     const sessions = screen.getAllByTestId('terminal-session');
     expect(sessions).toHaveLength(2);
     expect(sessions[1].getAttribute('data-cli')).toBe('cursor');
@@ -840,7 +950,7 @@ describe('TerminalDock multi-session', () => {
     await user.click(screen.getByRole('button', { name: 'Close Terminal 1' }));
 
     expect(screen.queryAllByTestId('terminal-session')).toHaveLength(0);
-    expect(view.onVisibleChange).toHaveBeenCalledWith(false);
+    expect(view.onVisibleChange).toHaveBeenCalledWith(false, 'session-close');
     expect(document.activeElement).toBe(editorRegion());
   });
 
@@ -1263,13 +1373,27 @@ describe('TerminalDock multi-session', () => {
     expect(document.activeElement).toBe(session);
   });
 
-  test('renders no edge reveal tab, hidden or visible', () => {
-    const view = renderDock(false);
-    expect(screen.queryByRole('button', { name: 'Open terminal' })).toBeNull();
-    expect(editorRegion().querySelector('[data-terminal-reveal]')).toBeNull();
+  test('the bottom terminal card casts its shadow only while the dock is open', () => {
+    const card = () => {
+      const el = document.querySelector<HTMLElement>(
+        '[data-slot="pane-card"][data-pane="terminal"]',
+      );
+      if (el == null) throw new Error('no bottom terminal card rendered');
+      return el;
+    };
+    const view = renderDock(true);
+    expectVisualClassTokensAbsent(card().className, ['shadow-none']);
+
+    act(() => {
+      terminalPanelProps?.onResize?.({ asPercentage: 0, inPixels: 0 });
+    });
+    expectVisualClassTokens(card().className, ['shadow-none']);
+
+    act(() => view.rerender(false));
+    expectVisualClassTokens(card().className, ['shadow-none']);
 
     act(() => view.rerender(true));
-    expect(screen.queryByRole('button', { name: 'Open terminal' })).toBeNull();
+    expectVisualClassTokensAbsent(card().className, ['shadow-none']);
   });
 
   test('disables the resize handle while hidden so there is no drag-to-open', () => {
@@ -1303,7 +1427,7 @@ describe('TerminalDock extraction pins', () => {
     await user.click(screen.getByRole('button', { name: 'Close Terminal 1' }));
 
     expect(screen.queryAllByTestId('terminal-session')).toHaveLength(0);
-    expect(view.onVisibleChange).toHaveBeenCalledWith(false);
+    expect(view.onVisibleChange).toHaveBeenCalledWith(false, 'session-close');
     expect(document.activeElement).toBe(editorRegion());
   });
 

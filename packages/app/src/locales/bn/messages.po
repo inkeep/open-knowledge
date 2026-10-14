@@ -1670,6 +1670,7 @@ msgstr "সক্রিয়"
 msgid "Active panel content for the selected tab shows here."
 msgstr "নির্বাচিত ট্যাবের সক্রিয় প্যানেলের বিষয়বস্তু এখানে দেখা যায়।"
 
+#: src/components/EditorArea.tsx
 #: src/components/FolderTimelineCard.tsx
 msgid "Activity"
 msgstr "কার্যকলাপ"
@@ -1962,6 +1963,10 @@ msgid "Agent mode"
 msgstr "এজেন্ট মোড"
 
 #: src/components/EditorArea.tsx
+msgid "Agent panel"
+msgstr "এজেন্ট প্যানেল"
+
+#: src/components/EditorArea.tsx
 msgid "Agent panel closed to keep Terminal readable."
 msgstr "Terminal পাঠযোগ্য রাখতে এজেন্ট প্যানেল বন্ধ করা হয়েছে।"
 
@@ -1983,6 +1988,7 @@ msgstr "এজেন্ট প্রতিলিপি"
 
 #: src/components/EditorArea.tsx
 #: src/components/ExploreSkills.tsx
+#: src/components/HeaderPaneButtons.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
 msgstr "এজেন্ট"
@@ -2179,6 +2185,7 @@ msgstr "অ্যাপ ইনস্ট্যান্স: {label}, v{version}"
 msgid "Append-only log of what changed."
 msgstr "কী বদলেছে তার শুধু-যোগ-হওয়া লগ।"
 
+#: src/components/AppHeader.tsx
 #: src/components/CommandPalette.tsx
 msgid "Application"
 msgstr "অ্যাপ্লিকেশন"
@@ -2542,6 +2549,10 @@ msgstr "ফিরে যান"
 #: src/components/ActivityModeContent.tsx
 msgid "Back to document view"
 msgstr "নথি দৃশ্যে ফিরুন"
+
+#: src/components/EditorArea.tsx
+msgid "Back to editor"
+msgstr "সম্পাদকে ফিরুন"
 
 #: src/components/LinksPanel.tsx
 msgid "Backlinks"
@@ -3463,10 +3474,6 @@ msgstr "গুটিয়ে নিন"
 msgid "Collapse {keyName}"
 msgstr "{keyName} গুটিয়ে নিন"
 
-#: src/components/TerminalTabStrip.tsx
-msgid "Collapse agent panel"
-msgstr "এজেন্ট প্যানেল সংকুচিত করুন"
-
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -3489,10 +3496,6 @@ msgstr "Ask AI গুটিয়ে নিন"
 #: src/components/GraphPanel.tsx
 msgid "Collapse graph"
 msgstr "গ্রাফ গুটিয়ে নিন"
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Collapse Terminal"
-msgstr "Terminal সংকুচিত করুন"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Collapsible content block (Notion-style toggle)."
@@ -3661,7 +3664,7 @@ msgstr "ব্যবহারকারী, প্রকল্প ও সংয�
 msgid "conflict"
 msgstr "দ্বন্দ্ব"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Conflict"
 msgstr "দ্বন্দ্ব"
@@ -4300,6 +4303,7 @@ msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "\"{0}\"-এর প্রতিলিপি বানানো যায়নি: {1}"
 
 #: src/comments/reveal-comment.ts
+#: src/comments/ThreadCard.tsx
 msgid "Couldn't find that passage — the text it was on may have changed."
 msgstr "সেই অংশটি খুঁজে পাওয়া যায়নি — এটি যে লেখায় ছিল তা পরিবর্তিত হয়ে থাকতে পারে।"
 
@@ -4664,6 +4668,10 @@ msgstr "এই সেটিংটি সংরক্ষণ করা যায�
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr "আপনার থিম পছন্দ সংরক্ষণ করা যায়নি।"
+
+#: src/comments/reveal-comment.ts
+msgid "Couldn't scroll to that passage. Try again."
+msgstr "সেই অংশে স্ক্রল করা যায়নি। আবার চেষ্টা করুন।"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Couldn't send the report"
@@ -5285,6 +5293,7 @@ msgid "Diff render mode"
 msgstr "পার্থক্য রেন্ডার মোড"
 
 #: src/components/AgentDiffPane.tsx
+#: src/components/EditorArea.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Diff unavailable"
 msgstr "পার্থক্য অনুপলব্ধ"
@@ -5405,6 +5414,10 @@ msgstr "নথি পাওয়া যায়নি"
 #: src/components/OutlinePanel.tsx
 msgid "Document outline"
 msgstr "নথির রূপরেখা"
+
+#: src/components/EditorArea.tsx
+msgid "Document panel"
+msgstr "নথি প্যানেল"
 
 #: src/components/DocPanel.tsx
 msgid "Document panels"
@@ -5729,6 +5742,7 @@ msgstr "{boldName} সেখানেই সম্পাদনা করা হ�
 msgid "Editing broken MDX source: {reason}"
 msgstr "ভাঙা MDX সোর্স সম্পাদনা করা হচ্ছে: {reason}"
 
+#: src/components/HeaderPaneButtons.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Editor"
 msgstr "সম্পাদক"
@@ -5740,6 +5754,10 @@ msgstr "সম্পাদক মোড"
 #: src/components/EditorWorkspace.tsx
 msgid "editor pane"
 msgstr "এডিটর প্যান"
+
+#: src/components/EditorWorkspace.tsx
+msgid "Editor pane"
+msgstr "সম্পাদক প্যান"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Editor selection"
@@ -6687,6 +6705,7 @@ msgstr "ফাইল: <0>{fixedName}.md</0>"
 msgid "Filename"
 msgstr "ফাইলের নাম"
 
+#: src/components/EditorArea.tsx
 #: src/components/FileSidebar.tsx
 msgid "Files"
 msgstr "ফাইল"
@@ -7349,11 +7368,17 @@ msgstr "বিবরণ লুকান"
 msgid "Hide document panel"
 msgstr "নথি প্যানেল লুকান"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+msgid "Hide Editor"
+msgstr "সম্পাদক লুকান"
+
 #: src/components/GraphPanel.tsx
 msgid "Hide external URL nodes"
 msgstr "বাইরের URL নোড লুকান"
 
-#: src/components/EditorHeader.tsx
+#: src/components/FileListToggle.tsx
+#: src/components/FileSidebar.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Hide Files"
 msgstr "Files লুকান"
@@ -7384,12 +7409,13 @@ msgid "Hide Others"
 msgstr "অন্যগুলি লুকান"
 
 #: src/components/AgentDiffPane.tsx
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
+#: src/components/EditorArea.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Hide panel"
 msgstr "প্যানেল লুকান"
 
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 msgid "Hide panel ({panelShortcutLabel})"
 msgstr "প্যানেল লুকান ({panelShortcutLabel})"
 
@@ -9004,11 +9030,11 @@ msgstr "লিংকের লক্ষ্য, অ্যাংকর ও প্�
 msgid "More"
 msgstr "আরও"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 msgid "More actions"
 msgstr "আরও ক্রিয়া"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 msgid "More actions ({syncAttentionLabel})"
 msgstr "আরও ক্রিয়া ({syncAttentionLabel})"
 
@@ -10058,6 +10084,10 @@ msgstr "আপনি না বলা পর্যন্ত কিছুই স�
 msgid "Nothing moves until you ask."
 msgstr "আপনি না বলা পর্যন্ত কিছুই সরবে না।"
 
+#: src/components/NothingOpen.tsx
+msgid "Nothing open"
+msgstr "কিছুই খোলা নেই"
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr "এখনও কিছুই নির্ধারিত হয়নি।"
@@ -10107,7 +10137,7 @@ msgstr "বন্ধ — বাইরের লিংক কেবল তাদ�
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr "বন্ধ — অনুসন্ধান কেবল কীওয়ার্ড দিয়ে ক্রম করে। কোনো বিষয়বস্তু এই কম্পিউটার ছেড়ে যায় না।"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "অফলাইন"
@@ -10273,13 +10303,9 @@ msgstr "{tooltipName}-এর জন্য কার্যকলাপ প্য�
 msgid "Open activity panel for {tooltipName}, editing {realCurrentDoc}"
 msgstr "{tooltipName}-এর জন্য কার্যকলাপ প্যানেল খুলুন, {realCurrentDoc} সম্পাদনা করা হচ্ছে"
 
-#: src/components/TerminalRevealTab.tsx
-msgid "Open agents panel"
-msgstr "এজেন্ট প্যানেল খুলুন"
-
-#: src/components/TerminalRevealTab.tsx
-msgid "Open agents panel — {liveThreadCount, plural, one {# live agent thread} other {# live agent threads}}"
-msgstr "এজেন্ট প্যানেল খুলুন — {liveThreadCount, plural, one {# সক্রিয় এজেন্ট থ্রেড} other {# সক্রিয় এজেন্ট থ্রেড}}"
+#: src/components/NothingOpen.tsx
+msgid "Open agents"
+msgstr "এজেন্ট খুলুন"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
@@ -10325,6 +10351,10 @@ msgstr "নির্বাচিত ফাইল-ট্রি আইটেমগ
 #: src/components/PropertyWidgets.tsx
 msgid "Open documents tagged #{chip}"
 msgstr "#{chip} ট্যাগযুক্ত নথি খুলুন"
+
+#: src/components/NothingOpen.tsx
+msgid "Open editor"
+msgstr "সম্পাদক খুলুন"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Open email draft"
@@ -10497,7 +10527,7 @@ msgstr "সোর্স lint প্যানেল খুলুন"
 msgid "Open source: {mirrorSrc}"
 msgstr "উৎস খুলুন: {mirrorSrc}"
 
-#: src/components/TerminalRevealTab.tsx
+#: src/components/NothingOpen.tsx
 msgid "Open terminal"
 msgstr "টার্মিনাল খুলুন"
 
@@ -11058,6 +11088,14 @@ msgstr "উপরে সরান"
 msgid "pane {0}"
 msgstr "প্যান {0}"
 
+#: src/components/EditorWorkspace.tsx
+msgid "Pane {number}"
+msgstr "প্যান {number}"
+
+#: src/components/HeaderPaneButtons.tsx
+msgid "Panels"
+msgstr "প্যানেলসমূহ"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Paragraph"
 msgstr "অনুচ্ছেদ"
@@ -11466,6 +11504,7 @@ msgstr "প্রকল্প"
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillsTree.tsx
+#: src/components/WebProjectName.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
 msgstr "প্রকল্প"
@@ -11859,7 +11898,7 @@ msgstr "প্রস্তাবিত"
 msgid "Recommended agent skill"
 msgstr "প্রস্তাবিত এজেন্ট দক্ষতা"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "পুনরায় যুক্ত হওয়া দরকার"
@@ -12448,9 +12487,18 @@ msgstr "দৃশ্যের ছাঁকনি রিসেট করুন"
 msgid "Resize {handleKey}"
 msgstr "{handleKey}-এর আকার বদলান"
 
+#: src/components/EditorArea.tsx
+msgid "Resize document panel"
+msgstr "নথি প্যানেলের আকার পরিবর্তন করুন"
+
 #: src/components/SkillsSidebarDock.tsx
 msgid "Resize skills panel"
 msgstr "স্কিল প্যানেলের আকার পরিবর্তন করুন"
+
+#: src/components/EditorArea.tsx
+#: src/components/TerminalDock.tsx
+msgid "Resize terminal"
+msgstr "টার্মিনালের আকার পরিবর্তন করুন"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
@@ -12864,9 +12912,8 @@ msgid "Scroll to start"
 msgstr "শুরুতে স্ক্রল করুন"
 
 #: src/components/CommandPalette.tsx
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderSearchBar.tsx
 #: src/components/settings/SettingsDialogShell.tsx
-#: src/components/SidebarSearchBar.tsx
 #: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
@@ -12875,10 +12922,6 @@ msgstr "খুঁজুন"
 #: src/components/CommandPalette.tsx
 msgid "Search \"{semanticSubmitQuery}\" by meaning"
 msgstr "অর্থের ভিত্তিতে \"{semanticSubmitQuery}\" খুঁজুন"
-
-#: src/components/EditorHeader.tsx
-msgid "Search ({searchShortcutLabel})"
-msgstr "খুঁজুন ({searchShortcutLabel})"
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Search agents"
@@ -13545,6 +13588,11 @@ msgstr "চিত্র দেখান"
 msgid "Show document panel"
 msgstr "নথি প্যানেল দেখান"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+msgid "Show Editor"
+msgstr "সম্পাদক দেখান"
+
 #: src/components/GraphPanel.tsx
 msgid "Show external URL nodes"
 msgstr "বাইরের URL নোড দেখান"
@@ -13553,7 +13601,7 @@ msgstr "বাইরের URL নোড দেখান"
 msgid "Show fewer"
 msgstr "কম দেখান"
 
-#: src/components/EditorHeader.tsx
+#: src/components/FileListToggle.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Show Files"
 msgstr "Files দেখান"
@@ -13610,12 +13658,12 @@ msgid "Show original"
 msgstr "মূল সংস্করণ দেখান"
 
 #: src/components/AgentDiffPane.tsx
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Show panel"
 msgstr "প্যানেল দেখান"
 
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "প্যানেল দেখান ({panelShortcutLabel})"
 
@@ -14434,7 +14482,7 @@ msgstr "সিঙ্ক মোড"
 msgid "Sync now"
 msgstr "এখনই সিঙ্ক করুন"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "সিঙ্ক থেমে আছে"
@@ -14612,6 +14660,7 @@ msgstr "উপলব্ধ টেমপ্লেট"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+#: src/components/HeaderPaneButtons.tsx
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -16412,6 +16461,10 @@ msgstr "ফোল্ডার প্রপার্টি হালনাগা�
 msgid "Updated to Version {version}"
 msgstr "সংস্করণ {version}-এ হালনাগাদ হয়েছে"
 
+#: src/components/CornerCardStack.tsx
+msgid "Updates and feedback"
+msgstr "হালনাগাদ ও মতামত"
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Updates flow in"
 msgstr "হালনাগাদ আসতে থাকে"
@@ -16984,10 +17037,6 @@ msgstr "ওয়ার্কস্পেস"
 #: src/components/CommandPalette.tsx
 msgid "Workspace Command Palette"
 msgstr "ওয়ার্কস্পেস কমান্ড প্যালেট"
-
-#: src/components/EditorHeader.tsx
-msgid "Workspace navigation"
-msgstr "ওয়ার্কস্পেস নেভিগেশন"
 
 #: src/components/NavigatorApp.tsx
 #: src/components/RecentProjectsMenu.tsx

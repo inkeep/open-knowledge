@@ -219,7 +219,7 @@ export function MermaidDocEditor({
   }, [isSourceMode, undoManager]);
 
   return (
-    <main
+    <section
       className="flex h-full min-h-0 flex-col bg-background"
       aria-label={t`Mermaid diagram`}
       data-mermaid-doc-editor=""
@@ -239,6 +239,6 @@ export function MermaidDocEditor({
           </div>
         )}
       </div>
-    </main>
+    </section>
   );
 }

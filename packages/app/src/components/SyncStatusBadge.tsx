@@ -38,6 +38,7 @@ import { useGitWorktreeStatus } from '@/hooks/use-git-worktree-status';
 import { useConfigContext } from '@/lib/config-provider';
 import { hashFromAssetPath, hashFromDocName, isSameHash } from '@/lib/doc-hash';
 import { engineSyncMode } from '@/lib/engine-sync-mode';
+import { revealEditor } from '@/lib/reveal-editor';
 import { triggerSync } from '@/lib/trigger-sync';
 import { openAccountSettings, openSyncSettings } from '@/lib/use-settings-route';
 import { EnableSyncConfirmDialog } from './EnableSyncConfirmDialog';
@@ -68,6 +69,7 @@ function triggerSyncFromBadge(op: ManualSyncOp = 'sync', onFailure?: () => void)
 
 function navigateToHash(nextHash: string): void {
   if (typeof window === 'undefined') return;
+  revealEditor();
   if (!isSameHash(window.location.hash, nextHash)) {
     window.location.hash = nextHash;
   }
@@ -140,10 +142,11 @@ export function displayState(status: GitSyncStatus): GitSyncStatus['state'] {
 
 interface BadgeIconProps {
   status: GitSyncStatus;
+  size?: 'size-3.5' | 'size-4';
 }
 
-function BadgeIcon({ status }: BadgeIconProps) {
-  const cls = 'size-3.5';
+function BadgeIcon({ status, size = 'size-3.5' }: BadgeIconProps) {
+  const cls = size;
   switch (displayState(status)) {
     case 'dormant':
       return <Cloud className={`${cls} text-muted-foreground`} />;
@@ -1488,7 +1491,7 @@ export function SyncStatusBadge({ onSignIn, onSetIdentity }: SyncStatusBadgeProp
                   : t`Sync status: ${syncStateLabel}`
               }
             >
-              <BadgeIcon status={status} />
+              <BadgeIcon status={status} size="size-4" />
               {label && (
                 <span className="absolute -top-0.5 -right-0.5 text-[9px] leading-none font-medium bg-background border rounded-full px-0.5">
                   {label}

@@ -411,6 +411,7 @@
     "3Fcb0I": ["Ouvrir le graphe"],
     "3HAPpl": ["Aucun schéma ne correspond à votre recherche."],
     "3HNlwb": ["Bonjour, tout le monde !"],
+    "3HOAcR": ["Panneau des agents"],
     "3Ib6FN": ["Descendre"],
     "3J7d2N": ["Grand titre de section."],
     "3JYy1p": ["La branche ", ["0"], " n'existe plus. Clonage effectué sur la branche par défaut."],
@@ -645,6 +646,7 @@
     ],
     "5OTgC7": ["Ouvre et met le focus sur la zone d'invite Demander à l'IA en bas."],
     "5OqaJi": ["Saisissez un nom de projet"],
+    "5Q9-G-": ["Panneau du document"],
     "5QGTaA": ["Impossible de copier le chemin relatif"],
     "5RiC8D": [
       "Les compétences de découverte sont gérées ensemble pour tous les outils d’IA. Installez celle-ci depuis Paramètres → Studio de compétences."
@@ -925,6 +927,7 @@
     ],
     "7czmD1": ["OpenKnowledge a consulté la palette de rédaction"],
     "7d1a0d": ["Public"],
+    "7dDoQu": ["Volet de l'éditeur"],
     "7dZnmw": ["Pertinence"],
     "7hctf2": ["Décrivez le projet que vous voulez créer"],
     "7idx48": ["Compétence d'agent OKF installée"],
@@ -1514,7 +1517,6 @@
     "DWJtEo": ["Ce qui se passe ensuite"],
     "DXd9LM": ["Nouveau worktree"],
     "D_WKe_": ["Cliquez sur l'avatar d'un agent dans la barre de présence pour voir sa session."],
-    "DbCfXV": ["Rechercher (", ["searchShortcutLabel"], ")"],
     "DbILZA": [
       "Aucune correspondance. Certains fichiers sont exclus de la recherche (fichiers masqués ou ignorés)."
     ],
@@ -1749,6 +1751,7 @@
       ")."
     ],
     "FWSjnp": ["Volet Modifier la source et champs de propriétés de type code"],
+    "FYy2EN": ["Redimensionner le panneau du document"],
     "FZtBeR": ["Activer ", ["0"]],
     "FeXcUS": [
       ["display"],
@@ -1822,6 +1825,7 @@
       ", mais les identifiants de ce compte n'ont pas pu être utilisés."
     ],
     "GBQjiV": ["Ajouter une compétence"],
+    "GCrhIF": ["Panneaux"],
     "GDvlUT": ["Rôle"],
     "GEyl32": ["Démarrage du terminal…"],
     "GGsM4y": ["Sélectionné dans le graphe"],
@@ -2473,7 +2477,6 @@
       "Un lien symbolique pointe vers le dossier source au lieu d'être un dossier à part entière. Chaque emplacement lit exactement les mêmes octets, donc rien ne peut diverger, et un emplacement cesse de fonctionner si la source est supprimée."
     ],
     "MTs6g3": ["Impossible de se reconnecter après le redémarrage du serveur"],
-    "MU_NVW": ["Réduire Terminal"],
     "MUrVEo": ["Aucun projet récent."],
     "MV-Dkb": [["countDisplay"], " fichiers markdown trouvés"],
     "MVxpbf": ["Rechercher et remplacer"],
@@ -3340,13 +3343,13 @@
       "</0> en local, mais il a été modifié en amont."
     ],
     "V4JHny": ["Le partage ne prend en charge que les dépôts distants GitHub."],
-    "V6AIOn": ["Navigation dans l'espace de travail"],
     "V6e25h": ["Aperçu du thème"],
     "V7QxyT": ["Connexion interrompue"],
     "VAHWL_": ["Connecté en tant que <0>@", ["signedInLogin"], "</0>"],
     "VBE2dw": [
       "Construisez et gardez la trace du monde qui se cache derrière votre histoire. Un espace pour vos personnages, vos lieux, vos factions et la mythologie qui les relie, afin que les détails restent cohérents pendant que vous écrivez."
     ],
+    "VBtCdv": ["Impossible de faire défiler jusqu’à ce passage. Réessayez."],
     "VFQXPl": [
       "Les aperçus de liens externes affichent une carte avec le nom du site, le titre de la page et sa description au survol d'un lien."
     ],
@@ -3531,7 +3534,6 @@
     "X2zUS5": ["Supprimer ce commentaire"],
     "X3MMeA": ["Aucun de ces problèmes n'a de correction automatique."],
     "X59Fx2": ["Impossible d'ouvrir ce document dans Slidev."],
-    "X7ShnN": ["Ouvrir le panneau des agents"],
     "X8kjQX": ["Se réauthentifier auprès de GitHub"],
     "X9VpsP": ["Chargement du contenu du dossier"],
     "XA9uvc": ["OpenKnowledge recherche et télécharge les mises à jour en arrière-plan."],
@@ -3697,6 +3699,7 @@
     "YS9mSt": ["« ", ["name"], " » mis à jour depuis ", ["0"]],
     "YSFv5w": ["Aucun dépôt git — le partage de configuration ne s'applique pas ici."],
     "YScUUO": ["Récupère une page web"],
+    "YStFYH": ["Ouvrir les agents"],
     "YTLmTM": ["Supprimer le dossier <0>.git</0> parent"],
     "YW7Q86": [
       "Les paramètres de recherche ne sont pas encore chargés — réessayez dans un instant"
@@ -3997,6 +4000,7 @@
       "Aucun outil IA détecté pour l'instant. Une fois que vous en installez un, connectez-le depuis Paramètres > Ce projet."
     ],
     "aTDVi6": ["Votre contenu a été conservé"],
+    "aV2vel": ["Volet ", ["number"]],
     "aWlJai": ["Démarrage du processus de connexion"],
     "aXkLuE": ["Réponse d'application mal formée"],
     "a_u4ck": ["Chargement des étiquettes"],
@@ -4583,6 +4587,7 @@
     "f1-q9m": ["conserve les compétences"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Déplacer le bloc"],
+    "f3YhVJ": ["Rien d’ouvert"],
     "f65AOQ": ["Partir de"],
     "f6suyZ": ["Modifications demandées"],
     "f8fH8W": ["Conception"],
@@ -4602,6 +4607,7 @@
     "fKsRVO": ["Compétences de ", ["0"], "/", ["1"], "."],
     "fMsFdZ": ["Impossible d'enregistrer le réglage de mise à jour automatique : ", ["0"]],
     "fNr-MX": ["Désactiver la recherche sémantique"],
+    "fObclJ": ["Retour à l'éditeur"],
     "fOzzSV": ["La cible du lien « ", ["shown"], " » ne correspond à aucun fichier existant."],
     "fRVBiq": [
       "Ajoute la télémétrie, l'état du serveur et les informations d'exécution lorsqu'elles sont disponibles. Les identifiants sont toujours supprimés ; les noms de documents, s'ils sont inclus, apparaissent en clair (non masqués)."
@@ -4707,7 +4713,6 @@
       ["descriptorLabel"],
       "> a échoué (probablement une propriété incorrecte). Copiez la source pour voir ce qui ne va pas, ou supprimez le bloc."
     ],
-    "g5V4_P": ["Réduire le panneau des agents"],
     "g5w1sF": [
       "Choisissez un dossier à fusionner DANS ",
       ["display"],
@@ -4971,18 +4976,6 @@
     "i04BJx": ["Vit hors de ce projet — lecture seule ici."],
     "i09An-": ["Version antérieure restaurée (", ["0"], ")"],
     "i1flq_": ["Suggestions de liens wiki"],
-    "i25FHa": [
-      "Ouvrir le panneau des agents — ",
-      [
-        "liveThreadCount",
-        "plural",
-        {
-          "one": ["#", " fil d'agent actif"],
-          "many": ["#", " fils d'agents actifs"],
-          "other": ["#", " fils d'agents actifs"]
-        }
-      ]
-    ],
     "i3f2kh": ["Aucune commande correspondante."],
     "i6o7XB": ["Rechercher des langues"],
     "i92eAT": [
@@ -5581,6 +5574,7 @@
     ],
     "n7aopT": ["Mode de l'éditeur"],
     "n81AV0": [["owner"], "/", ["name"], " existe déjà. Choisissez un autre nom."],
+    "nBFK5w": ["Redimensionner le terminal"],
     "nBHvPL": ["Annuler la modification"],
     "nBgzKO": ["En faire la source — le vrai dossier de la compétence est déplacé ici"],
     "nCzR-G": ["Copier le code ", ["userCode"]],
@@ -6005,6 +5999,7 @@
     "r-OJYm": [
       "Saisissez un nom de branche valide (pas d'espaces, pas de point initial, pas de « .. »)."
     ],
+    "r-wzd8": ["Mises à jour et avis"],
     "r2eKE3": ["Connectez-vous d'abord à ", ["agentName"]],
     "r3iaI0": ["Aucune discussion pour le moment."],
     "r4R7AZ": ["Erreur réseau pendant le nettoyage"],
@@ -6280,6 +6275,7 @@
     "ten9en": ["Projet récent"],
     "tfDRzk": ["Enregistrer"],
     "tfi40B": ["Échec de la création de la page"],
+    "tgB_VT": ["Ouvrir l’éditeur"],
     "tgWuMB": ["Modifié"],
     "thnPBX": ["Active l'onglet suivant de l'éditeur."],
     "ti6aF_": ["Demander à la CLI ", ["0"]],
@@ -6480,6 +6476,7 @@
     "un-K1H": ["Reste sur cet ordinateur. Non validé dans git."],
     "un8kBM": ["Création de la page : ", ["linkTitle"], "."],
     "uoJF_D": ["C'était trop compliqué à installer ou à prendre en main"],
+    "uqgCZJ": ["Masquer l’éditeur"],
     "uqs8Gd": [
       [
         "others",
@@ -6842,6 +6839,7 @@
     "xzAmL_": ["Approuvé automatiquement"],
     "xzktOa": ["Modifier le lien wiki"],
     "y-LQPF": ["Image ", ["identity"], " impossible à résoudre. Accéder à la référence."],
+    "y0_w13": ["Afficher l’éditeur"],
     "y1eoq1": ["Copier le lien"],
     "y1t8bQ": ["Sections des paramètres"],
     "y3aU20": ["Enregistrer les modifications"],

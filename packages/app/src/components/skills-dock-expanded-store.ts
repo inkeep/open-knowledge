@@ -1,3 +1,5 @@
+import { revealEditor } from '@/lib/reveal-editor';
+
 const STORAGE_KEY = 'ok-skills-dock-expanded-v1';
 
 function storage(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null {
@@ -35,6 +37,7 @@ export function subscribeSkillsDockExpanded(listener: (expanded: boolean) => voi
 }
 
 export function requestSkillsDockExpanded(): void {
+  revealEditor();
   writeSkillsDockExpanded(true);
 }
 

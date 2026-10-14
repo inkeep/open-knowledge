@@ -852,8 +852,8 @@ describe('worker cache rule self-test', () => {
       missingEnv: 0,
       nonUnique: 0,
       missingCleanup: 0,
-      spawns: 2,
-      teardowns: 4,
+      spawns: 3,
+      teardowns: 6,
     });
     const command = resolve(APP_PACKAGE_ROOT, 'tests/stress/_helpers/worker-server-command.ts');
     const adapter = resolve(APP_PACKAGE_ROOT, 'tests/stress/_helpers/worker-server-lifetime.ts');
@@ -862,7 +862,7 @@ describe('worker cache rule self-test', () => {
     expect(absentKey).not.toBe(graph[command]);
     expect(
       inspectWorkerCache(source, { ...graph, [command]: absentKey }, WORKER_FIXTURES).missingEnv,
-    ).toBe(2);
+    ).toBe(3);
     const noOwnerCache = graph[owner].replace('launch.viteCacheDir,', '');
     const noFailureCache = source.replace(
       'releaseSetupResources.push(() => removeAllDuringTeardown(viteCacheDir));',
@@ -873,7 +873,7 @@ describe('worker cache rule self-test', () => {
     expect(
       inspectWorkerCache(noFailureCache, { ...graph, [owner]: noOwnerCache }, WORKER_FIXTURES)
         .missingCleanup,
-    ).toBe(2);
+    ).toBe(3);
     const missing = { ...graph };
     delete missing[owner];
     expect(inspectWorkerCache(source, missing, WORKER_FIXTURES).census).not.toEqual([]);
@@ -896,7 +896,7 @@ describe('worker cache rule self-test', () => {
         },
         WORKER_FIXTURES,
       ).nonUnique,
-    ).toBe(2);
+    ).toBe(3);
     expect(
       inspectWorkerCache(
         source,
@@ -906,7 +906,7 @@ describe('worker cache rule self-test', () => {
         },
         WORKER_FIXTURES,
       ).nonUnique,
-    ).toBe(2);
+    ).toBe(3);
   });
   test('accepts a unique reclaimed cache and rejects the adjacent shared cache', () => {
     expect(inspectWorkerCache(workerFixture)).toEqual({

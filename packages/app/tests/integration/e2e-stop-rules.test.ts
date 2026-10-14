@@ -117,6 +117,7 @@ const NON_DEV_SERVER_SPAWN_SITES = [
   'packages/app/tests/stress/_helpers/port-ownership/owner-loss.test-helper.ts',
   'packages/app/tests/stress/_helpers/port-ownership/run-case.test-helper.ts',
   'packages/app/tests/stress/_helpers/prebuilt/prebuilt-dev-build.ts',
+  'packages/app/tests/stress/_helpers/production-shell-server.ts',
   'packages/app/tests/stress/_helpers/reuse/reuse-run.test-helper.ts',
   'packages/app/tests/stress/okf-generated-index-settings.e2e.ts',
   'packages/app/tests/stress/prebuilt-dev-serving.e2e.ts',

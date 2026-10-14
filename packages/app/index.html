@@ -28,14 +28,6 @@
     <ThemeProvider storageKey='ok-theme-v1'> in `src/main.tsx` — keep keys
     in sync. next-themes stores the value as a plain string, not JSON.
 
-    The inline <style> below paints the html background to match the
-    body's resolved background (body uses `bg-sidebar` per globals.css).
-    The placeholders __OK_CHROME_BG_LIGHT__ / __OK_CHROME_BG_DARK__ are
-    substituted at build time by chromeTokensVitePlugin (resolves the
-    Tailwind v4 `--sidebar` OKLCH values to sRGB hex via culori). Single
-    source of truth for chrome bg — no hand-maintained drift between
-    this file and packages/core/src/constants/chrome.ts.
-
     The `electron-mode` class is added when `window.okDesktop` is
     present (preload bridge runs before any inline page script). Paired
     consumer: globals.css `html.electron-mode` rules — render the outer
@@ -93,7 +85,7 @@
     FOUC scripts above.
   -->
   <script>(() => { try { const raw = localStorage.getItem('ok-language-v1'); if (!raw) return; const o = JSON.parse(raw); if (typeof o?.locale !== 'string' || !/^[a-zA-Z]{2,8}(-[a-zA-Z0-9]{2,8})*$/.test(o.locale)) return; document.documentElement.lang = o.locale; document.documentElement.dir = o.dir === 'rtl' ? 'rtl' : 'ltr'; } catch {} })();</script>
-  <style>html { background-color: __OK_CHROME_BG_LIGHT__ } html.dark { background-color: __OK_CHROME_BG_DARK__ }</style>
+  <style>html { background-color: __OK_SIDEBAR_BG_LIGHT__ } html.dark { background-color: __OK_CHROME_BG_DARK__ }</style>
 </head>
 
 <body class="antialiased">

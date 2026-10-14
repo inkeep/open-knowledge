@@ -1,5 +1,10 @@
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { normalizeTargetPath } from '@/components/navigation-targets';
+import {
+  __resetPaneVisibilityStoreForTests,
+  type PaneVisibilityRequest,
+  paneVisibilityStore,
+} from '@/lib/pane-visibility-store';
 import { missDialogStore } from '@/lib/share/miss-dialog-store';
 import { pendingReceiveNavStore } from '@/lib/share/pending-receive-nav-store';
 import type { OkDeepLinkPayload, OkDesktopBridge, OkDesktopConfig } from './desktop-bridge-types';
@@ -266,6 +271,36 @@ describe('installDeepLinkListener — share-receive miss guard arming', () => {
       branch: null,
     });
     expect(pendingReceiveNavStore.getSnapshot()).toBeNull();
+  });
+});
+
+describe('installDeepLinkListener — a hidden editor', () => {
+  beforeEach(() => {
+    __resetPaneVisibilityStoreForTests();
+  });
+
+  afterEach(() => {
+    __resetPaneVisibilityStoreForTests();
+    pendingReceiveNavStore.clear();
+  });
+
+  test.each<{ share: string; payload: DeepLinkPayload; hash: string }>([
+    { share: 'doc', payload: { doc: 'intro.md', kind: 'doc' }, hash: '#/intro.md' },
+    { share: 'folder', payload: { doc: 'docs/sub', kind: 'folder' }, hash: '#/docs/sub/' },
+  ])('a $share deep link shows a hidden editor before navigating to it', ({ payload, hash }) => {
+    const log: Array<PaneVisibilityRequest | string> = [];
+    paneVisibilityStore.subscribeRequests((request) => log.push(request));
+    paneVisibilityStore.publish({
+      editor: { open: false, onScreen: false },
+      agents: null,
+      terminal: null,
+    });
+    const bridge = makeBridge();
+    installDeepLinkListener({ bridge, setHash: (next) => log.push(`navigate ${next}`) });
+
+    bridge.fireDeepLink(payload);
+
+    expect(log).toEqual([{ pane: 'editor', open: true }, `navigate ${hash}`]);
   });
 });
 

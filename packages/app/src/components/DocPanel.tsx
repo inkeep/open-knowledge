@@ -6,6 +6,7 @@ import { AlertTriangle, Clock, Link2, ListTree, MessageSquare, Network } from 'l
 import { lazy, Suspense, useEffect } from 'react';
 import { CommentsTab } from '@/comments/CommentsTab';
 import { setCommentsPanelOnScreen } from '@/comments/comments-panel-visibility';
+import { setDocPanelOnScreen } from '@/components/doc-panel-visibility';
 import {
   composeFixAllProblemsTerminalPaste,
   composeLintFixTerminalPaste,
@@ -18,6 +19,7 @@ import type { PanelScope } from '@/components/PanelScopeHeader';
 import { type DiagnosticLike, ProblemsPanel } from '@/components/ProblemsPanel';
 import { TimelineContent } from '@/components/TimelinePanel';
 import { Badge } from '@/components/ui/badge';
+import { PANE_CARD_TOP_BAR_CLASS } from '@/components/ui/pane-card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { applyLintFixes, collectFixes } from '@/editor/apply-lint-fix';
@@ -26,6 +28,7 @@ import { useDocLintConfig } from '@/editor/lint-config-client';
 import { useDocDiagnostics } from '@/editor/useDocDiagnostics';
 import { useDocLinkFindings } from '@/editor/validation-audit-client';
 import { useSingleFileMode } from '@/lib/single-file-mode';
+import { cn } from '@/lib/utils';
 import { type DocProblemCounts, patchDocValidationSource } from '@/lib/validation-store';
 
 export type PanelTab = 'outline' | 'links' | 'graph' | 'timeline' | 'problems' | 'comments';
@@ -83,6 +86,13 @@ interface DocPanelProps {
   onActiveTabChange: (tab: PanelTab) => void;
   mode: DocPanelMode;
   isCollapsed?: boolean;
+  onDestinationComplete?: (target?: HTMLElement) => void;
+  onDestinationRequested?: (
+    docName: string,
+    allowMissing?: boolean,
+    onReady?: () => void,
+    completion?: 'synced' | 'navigated',
+  ) => void;
 }
 
 export function DocPanel({
@@ -92,8 +102,11 @@ export function DocPanel({
   onActiveTabChange,
   mode,
   isCollapsed = false,
+  onDestinationComplete,
+  onDestinationRequested,
 }: DocPanelProps) {
   const { t } = useLingui();
+  const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
   const { activeProvider, activeDocName } = useDocumentContext();
   const { data: lintConfig } = useDocLintConfig(docName);
   const lintProvider = activeDocName === docName ? activeProvider : null;
@@ -142,17 +155,30 @@ export function DocPanel({
   const showTabStrip = mode === 'doc' && tabs.length > 1;
   useEffect(() => {
     setCommentsPanelOnScreen(!isCollapsed && mode === 'doc' && effectiveTab === 'comments');
-    return () => setCommentsPanelOnScreen(false);
+    setDocPanelOnScreen(!isCollapsed);
+    return () => {
+      setCommentsPanelOnScreen(false);
+      setDocPanelOnScreen(false);
+    };
   }, [isCollapsed, mode, effectiveTab]);
   return (
     <>
       {}
       {showTabStrip ? (
-        <div className="flex flex-row items-center justify-center gap-3 p-2">
+        <div
+          data-doc-panel-header=""
+          data-electron-drag={isElectronHost ? '' : undefined}
+          className={cn(
+            PANE_CARD_TOP_BAR_CLASS,
+            'flex flex-row items-center justify-center gap-3 px-2',
+            isElectronHost && '[-webkit-app-region:drag]',
+          )}
+        >
           <ToggleGroup
             type="single"
             variant="outline"
             value={effectiveTab}
+            className={cn(isElectronHost && '[-webkit-app-region:no-drag]')}
             onValueChange={(value: PanelTab) => {
               if (value) onActiveTabChange(value);
             }}
@@ -204,9 +230,19 @@ export function DocPanel({
           className="min-h-0 flex-1"
         >
           {effectiveTab === 'outline' && (
-            <OutlinePanel docName={docName} isSourceMode={isSourceMode} />
+            <OutlinePanel
+              docName={docName}
+              isSourceMode={isSourceMode}
+              onNavigated={onDestinationComplete}
+            />
           )}
-          {effectiveTab === 'links' && <LinksPanel docName={docName} />}
+          {effectiveTab === 'links' && (
+            <LinksPanel
+              docName={docName}
+              onDestinationRequested={onDestinationRequested}
+              onDestinationComplete={onDestinationComplete}
+            />
+          )}
           {effectiveTab === 'graph' && (
             <Suspense
               fallback={
@@ -215,11 +251,16 @@ export function DocPanel({
                 </div>
               }
             >
-              <LazyGraphPanel activeDocName={docName} />
+              <LazyGraphPanel
+                activeDocName={docName}
+                onDestinationRequested={onDestinationRequested}
+              />
             </Suspense>
           )}
           {effectiveTab === 'timeline' && <TimelineContent docName={docName} />}
-          {effectiveTab === 'comments' && <CommentsTab docName={docName} />}
+          {effectiveTab === 'comments' && (
+            <CommentsTab docName={docName} onDestinationComplete={onDestinationComplete} />
+          )}
           {effectiveTab === 'problems' && (
             <ProblemsPanel
               docName={docName}
@@ -230,6 +271,8 @@ export function DocPanel({
               onAutoFix={lintProvider !== null ? handleAutoFix : undefined}
               onAskAi={lintProvider !== null && terminalLaunch !== null ? handleAskAi : undefined}
               onFixWithAi={terminalLaunch !== null ? handleFixWithAi : undefined}
+              onDestinationComplete={onDestinationComplete}
+              onDestinationRequested={onDestinationRequested}
             />
           )}
         </div>
@@ -246,7 +289,7 @@ export function DocPanel({
               </div>
             }
           >
-            <LazyActivityModeContent />
+            <LazyActivityModeContent onDestinationRequested={onDestinationRequested} />
           </Suspense>
         </div>
       )}

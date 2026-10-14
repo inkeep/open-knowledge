@@ -121,6 +121,7 @@ describe('SubscribeCard (combined release-notes + subscribe)', () => {
     await userEvent.click(screen.getByTestId('subscribe-submit'));
 
     await waitFor(() => expect(submitSubscribe).toHaveBeenCalled());
+    expect(submitSubscribe).toHaveBeenCalledWith('someone@example.com', 'post_update_card');
     expect(store.getSnapshot().subscribed).toBe(true);
     expect(screen.queryByText('Follow us on')).toBeNull();
     expect(screen.getByText(/Updated to Version/)).toBeTruthy();

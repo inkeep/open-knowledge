@@ -1,7 +1,7 @@
 import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { StrictMode, useEffect, useState, useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { requestSendToOpenChat, subscribeSendInThread } from '@/comments/open-chat-send';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -18,6 +18,7 @@ import {
 } from '@/lib/acp/thread-draft-staging';
 import type { ThreadRenderModel } from '@/lib/acp/thread-event-model';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import { IN_APP_THREAD_ID, saveStickyAgent, terminalCliId } from '@/lib/unified-agent-store';
 import type { ThreadLaunchIntent } from './EditorPane';
 import { requestPreferredSession } from './handoff/preferred-session-events';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
@@ -136,6 +137,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     ),
   useAgentThreadUnread: (threadId: string) => unreadThreadIds.has(threadId),
   getAgentThreadClient: () => ({
+    getConnectionGeneration: () => 0,
     closeThread,
     renameThread,
     openArchivedThread,
@@ -211,6 +213,9 @@ vi.doMock('sonner', () => ({
 vi.doMock('@/lib/acp/launch-agent-thread', () => ({
   launchAgentThread,
   hasInflightThreadLaunch: () => mockInflightLaunch,
+}));
+vi.doMock('./TerminalGate', () => ({
+  TerminalGate: () => <span data-testid="preferred-terminal-session" />,
 }));
 
 let catalogData: unknown;
@@ -301,21 +306,31 @@ function makeControl(): { current: HarnessControl | null } {
 function Harness({
   bridge: initialBridge = null,
   initialVisible = true,
+  hostKey,
+  placementProbe = false,
+  externalPlacement,
   onVisibleChange,
   threadLaunch: initialThreadLaunch = null,
   control,
   initiallyRestoreSettled = true,
   initialShowing,
   onRequestEditorFocus,
+  onPreferredSessionHostReady,
+  installedClis = {},
 }: {
   bridge?: OkDesktopBridge | null;
   initialVisible?: boolean;
+  hostKey?: string;
+  placementProbe?: boolean;
+  externalPlacement?: HTMLDivElement;
   onVisibleChange?: (v: boolean) => void;
   threadLaunch?: ThreadLaunchIntent | null;
   control?: { current: HarnessControl | null };
   initiallyRestoreSettled?: boolean;
   initialShowing?: boolean;
   onRequestEditorFocus?: () => void;
+  onPreferredSessionHostReady?: () => void;
+  installedClis?: { claude?: boolean };
 }) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(initialVisible);
@@ -340,8 +355,12 @@ function Harness({
   }, [control]);
   return (
     <TooltipProvider>
-      <div ref={setContainer} data-testid="dock-container" />
+      <div ref={setContainer} data-testid="dock-container">
+        {placementProbe ? <span data-testid="consumer-owned-placement-content" /> : null}
+      </div>
       <SessionsHost
+        {...(onPreferredSessionHostReady ? { onPreferredSessionHostReady } : {})}
+        key={hostKey}
         surface="agents-panel"
         bridge={bridge}
         terminalCapable={bridge != null}
@@ -352,10 +371,31 @@ function Harness({
           onVisibleChange?.(v);
           setVisible(v);
         }}
-        installedClis={{}}
-        container={container}
+        installedClis={installedClis}
+        container={externalPlacement ?? container}
         isShowing={showing && container != null}
         onRequestEditorFocus={onRequestEditorFocus ?? (() => {})}
+      />
+    </TooltipProvider>
+  );
+}
+
+function DualDesktopPreferredHosts({ bridge }: { bridge: OkDesktopBridge }) {
+  const [terminalContainer, setTerminalContainer] = useState<HTMLDivElement | null>(null);
+  return (
+    <TooltipProvider>
+      <Harness bridge={bridge} initialVisible={false} installedClis={{ claude: true }} />
+      <div ref={setTerminalContainer} data-testid="terminal-host-container" />
+      <SessionsHost
+        surface="terminal-dock"
+        bridge={bridge}
+        terminalCapable
+        visible={false}
+        onVisibleChange={() => {}}
+        installedClis={{ claude: true }}
+        container={terminalContainer}
+        isShowing={false}
+        onRequestEditorFocus={() => {}}
       />
     </TooltipProvider>
   );
@@ -957,6 +997,97 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     vi.restoreAllMocks();
   });
 
+  test('a replaced host removes its attachment from the persistent placement', async () => {
+    setOpenThreads([makeThread({ threadId: 'gap-probe', title: 'Gap probe' })]);
+    const view = render(<Harness hostKey="first" placementProbe />);
+    const placement = screen.getByTestId('dock-container');
+    const consumerContent = screen.getByTestId('consumer-owned-placement-content');
+    const firstTab = await screen.findByRole('tab', { name: /Gap probe/ });
+    const firstAttachment = Array.from(placement.children).find((child) =>
+      child.contains(firstTab),
+    );
+    expect(firstAttachment).toBeDefined();
+
+    view.rerender(<Harness hostKey="second" placementProbe />);
+
+    const nextTab = await screen.findByRole('tab', { name: /Gap probe/ });
+    expect(placement.contains(nextTab)).toBe(true);
+    expect(firstAttachment?.isConnected).toBe(false);
+    expect(placement.contains(firstAttachment ?? null)).toBe(false);
+    expect(screen.getByTestId('consumer-owned-placement-content')).toBe(consumerContent);
+    expect(placement.contains(consumerContent)).toBe(true);
+  });
+
+  test('owner lifetime removes its attachment on final unmount and keeps consumer content', async () => {
+    setOpenThreads([makeThread({ threadId: 'owner-final', title: 'Owner final' })]);
+    const placement = document.createElement('div');
+    const consumerContent = document.createElement('span');
+    placement.append(consumerContent);
+    document.body.append(placement);
+
+    try {
+      const view = render(<Harness externalPlacement={placement} />);
+      const tab = await screen.findByRole('tab', { name: /Owner final/ });
+      const attachment = Array.from(placement.children).find((child) => child.contains(tab));
+      expect(attachment).toBeDefined();
+      expect(attachment?.isConnected).toBe(true);
+
+      view.unmount();
+
+      expect(attachment?.isConnected).toBe(false);
+      expect(placement.contains(attachment ?? null)).toBe(false);
+      expect(consumerContent.isConnected).toBe(true);
+      expect(placement.contains(consumerContent)).toBe(true);
+    } finally {
+      placement.remove();
+    }
+  });
+
+  test('owner lifetime keeps one attachment through StrictMode rehearsal and retires replacements', async () => {
+    setOpenThreads([makeThread({ threadId: 'owner-strict', title: 'Owner strict' })]);
+    const placement = document.createElement('div');
+    const consumerContent = document.createElement('span');
+    placement.append(consumerContent);
+    document.body.append(placement);
+
+    try {
+      const view = render(
+        <StrictMode>
+          <Harness hostKey="first" externalPlacement={placement} />
+        </StrictMode>,
+      );
+      const firstTab = await screen.findByRole('tab', { name: /Owner strict/ });
+      const firstAttachment = Array.from(placement.children).find((child) =>
+        child.contains(firstTab),
+      );
+      expect(firstAttachment).toBeDefined();
+      expect(placement.children).toHaveLength(2);
+
+      view.rerender(
+        <StrictMode>
+          <Harness hostKey="second" externalPlacement={placement} />
+        </StrictMode>,
+      );
+
+      const nextTab = await screen.findByRole('tab', { name: /Owner strict/ });
+      const nextAttachment = Array.from(placement.children).find((child) =>
+        child.contains(nextTab),
+      );
+      expect(nextAttachment).toBeDefined();
+      expect(nextAttachment).not.toBe(firstAttachment);
+      expect(firstAttachment?.isConnected).toBe(false);
+      expect(placement.children).toHaveLength(2);
+      expect(placement.contains(consumerContent)).toBe(true);
+
+      view.unmount();
+
+      expect(nextAttachment?.isConnected).toBe(false);
+      expect(consumerContent.isConnected).toBe(true);
+    } finally {
+      placement.remove();
+    }
+  });
+
   test('a thread-launch intent carrying an image attachment forwards it to launchAgentThread', async () => {
     render(
       <Harness
@@ -1203,6 +1334,10 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     const panelLayout = screen.getByTestId('agent-panel-layout');
     expect(sessionSurface.hasAttribute('inert')).toBe(true);
     expect(screen.getByTestId('agent-thread-history-surface').parentElement).toBe(panelLayout);
+    expect(
+      screen.getByTestId('agent-thread-history-surface').className.split(/\s+/),
+      'the cover sits over the draggable chat top bar, so it opts out of the window-drag region',
+    ).toContain('[-webkit-app-region:no-drag]');
     expect(screen.getByRole('tab', { name: /Live conversation/ })).toBeDefined();
 
     await user.keyboard('{Escape}');
@@ -1399,6 +1534,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       null,
       null,
       null,
+      undefined,
       undefined,
     );
     expect(screen.queryByTestId('agent-thread-history-panel')).toBeNull();
@@ -1616,6 +1752,24 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     setOpenThreads([makeThread({ threadId: 't1', title: 'Fresh' })]);
 
     await waitFor(() => expect(onVisibleChange).toHaveBeenCalledWith(true));
+  });
+
+  test('a thread seeded by a visible Chat does not reopen Chat after the user switches away', async () => {
+    setInitialRosterIds(new Set());
+    mockRegisteredAgent = FIRST_AGENT;
+    const control = makeControl();
+    const onVisibleChange = vi.fn((_v: boolean) => {});
+    render(<Harness initialVisible={false} onVisibleChange={onVisibleChange} control={control} />);
+
+    act(() => control.current?.setVisible(true));
+    await waitFor(() => expect(launchAgentThread).toHaveBeenCalledTimes(1));
+    act(() => control.current?.setVisible(false));
+    act(() =>
+      setOpenThreads([makeThread({ threadId: 'seeded', title: 'Seeded', agent: FIRST_AGENT })]),
+    );
+
+    expect(onVisibleChange).not.toHaveBeenCalledWith(true);
+    expect(await screen.findByRole('tab', { name: /Seeded/ })).toBeDefined();
   });
 
   test('an archived-only backlog does NOT auto-reveal the dock', async () => {
@@ -2091,19 +2245,19 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     },
   );
 
-  test('collapsing the dock hands focus back to the editor', async () => {
-    const user = userEvent.setup();
-    const onVisibleChange = vi.fn((_v: boolean) => {});
+  test('hiding the dock while focus is inside it hands focus back to the editor', async () => {
     const onRequestEditorFocus = vi.fn(() => {});
+    const control = makeControl();
     setOpenThreads([makeThread({ threadId: 't1', title: 'Pre-existing' })]);
-    render(
-      <Harness onVisibleChange={onVisibleChange} onRequestEditorFocus={onRequestEditorFocus} />,
-    );
+    render(<Harness control={control} onRequestEditorFocus={onRequestEditorFocus} />);
     await screen.findByTestId('thread-view');
+    act(() => {
+      screen.getByRole('tab', { name: /Pre-existing/ }).focus();
+    });
+    onRequestEditorFocus.mockClear();
 
-    await user.click(screen.getByRole('button', { name: 'Collapse agent panel' }));
+    act(() => control.current?.setVisible(false));
 
-    expect(onVisibleChange).toHaveBeenCalledWith(false);
     expect(onRequestEditorFocus).toHaveBeenCalled();
   });
 
@@ -2440,6 +2594,64 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
   });
 
   describe('Ask AI honors the preferred AI', () => {
+    test.each([
+      { label: 'agent', sticky: IN_APP_THREAD_ID, expectedAgent: 1, expectedTerminal: 0 },
+      {
+        label: 'CLI',
+        sticky: terminalCliId('claude'),
+        expectedAgent: 0,
+        expectedTerminal: 1,
+      },
+    ])(
+      'two desktop hosts claim exactly one $label preferred route',
+      async ({ sticky, expectedAgent, expectedTerminal }) => {
+        setInitialRosterIds(new Set());
+        mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
+        saveStickyAgent(sticky);
+        const bridge = makeTerminalBridge();
+        render(<DualDesktopPreferredHosts bridge={bridge} />);
+        await act(async () => {});
+
+        let claimed: unknown;
+        act(() => {
+          claimed = requestPreferredSession();
+        });
+
+        expect(launchAgentThread).toHaveBeenCalledTimes(expectedAgent);
+        expect(screen.queryAllByTestId('preferred-terminal-session')).toHaveLength(
+          expectedTerminal,
+        );
+        expect(claimed).toBe(true);
+      },
+    );
+
+    test('no available session kind handles the request by revealing Chat settings', async () => {
+      setInitialRosterIds(new Set());
+      const visibleChanges: boolean[] = [];
+      render(
+        <Harness
+          initialVisible={false}
+          onVisibleChange={(visible) => visibleChanges.push(visible)}
+        />,
+      );
+      await act(async () => {});
+
+      const originalUrl = window.location.href;
+      try {
+        let claimed: unknown;
+        act(() => {
+          claimed = requestPreferredSession();
+        });
+
+        expect(visibleChanges).toContain(true);
+        expect(window.location.hash).toBe('#settings/agent-connections');
+        expect(launchAgentThread).not.toHaveBeenCalled();
+        expect(claimed).toBe(true);
+      } finally {
+        window.history.replaceState(null, '', originalUrl);
+      }
+    });
+
     test('an Ask AI instruction RUNS on a new thread (never a CLI)', async () => {
       mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
       const launches: unknown[] = [];
@@ -2548,6 +2760,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
         null,
         null,
         undefined,
+        undefined,
       ]);
     });
 
@@ -2651,6 +2864,76 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       expect(launchAgentThread).not.toHaveBeenCalled();
     });
 
+    test('the agent host signals readiness but declines a terminal-kind preferred request', async () => {
+      const ready = vi.fn();
+      render(<Harness bridge={makeTerminalBridge()} onPreferredSessionHostReady={ready} />);
+      await screen.findByTestId('terminal-new-chat');
+
+      let claimed: unknown;
+      act(() => {
+        claimed = requestPreferredSession();
+      });
+
+      expect(claimed).toBe(false);
+      expect(ready).toHaveBeenCalledTimes(1);
+      expect(launchAgentThread).not.toHaveBeenCalled();
+    });
+
+    test('an explicit preferred request opens one agent conversation from a settled empty roster', async () => {
+      setInitialRosterIds(new Set());
+      mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
+      const ready = vi.fn();
+      const visibleChanges: boolean[] = [];
+      render(
+        <Harness
+          initialVisible={false}
+          onPreferredSessionHostReady={ready}
+          onVisibleChange={(visible) => visibleChanges.push(visible)}
+        />,
+      );
+      await act(async () => {});
+      expect(launchAgentThread).not.toHaveBeenCalled();
+
+      let claimed: unknown;
+      act(() => {
+        claimed = requestPreferredSession();
+      });
+
+      expect(claimed).toBe(true);
+      expect(ready).toHaveBeenCalledTimes(1);
+      expect(visibleChanges).toContain(true);
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    });
+
+    test('an explicit preferred request opens a new conversation without replacing a restored tab', async () => {
+      setInitialRosterIds(new Set(['existing']));
+      act(() => setOpenThreads([makeThread({ threadId: 'existing', title: 'Existing' })]));
+      mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
+      const ready = vi.fn();
+      const visibleChanges: boolean[] = [];
+      render(
+        <Harness
+          initialVisible={false}
+          onPreferredSessionHostReady={ready}
+          onVisibleChange={(visible) => visibleChanges.push(visible)}
+        />,
+      );
+      await act(async () => {});
+      expect(screen.getByRole('tab', { name: /Existing/ })).toBeDefined();
+      expect(launchAgentThread).not.toHaveBeenCalled();
+
+      let claimed: unknown;
+      act(() => {
+        claimed = requestPreferredSession();
+      });
+
+      expect(claimed).toBe(true);
+      expect(ready).toHaveBeenCalledTimes(1);
+      expect(visibleChanges).toContain(true);
+      expect(screen.getByRole('tab', { name: /Existing/ })).toBeDefined();
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    });
+
     test.each([
       { submit: true, label: 'an Ask AI instruction' },
       { submit: false, label: 'a selection send' },
@@ -2712,6 +2995,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
         null,
         null,
         null,
+        undefined,
         undefined,
       ]);
       expect(window.location.hash).toBe('');
@@ -2818,6 +3102,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
         'Notes',
         null,
         undefined,
+        undefined,
       ]);
     });
   });
@@ -2868,8 +3153,102 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
   });
 
   describe('seed on reveal', () => {
+    test('revealing after an empty roster settles starts one conversation', () => {
+      setInitialRosterIds(new Set());
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+
+      expect(launchAgentThread).not.toHaveBeenCalled();
+      act(() => control.current?.setVisible(true));
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      expect(launchAgentThread.mock.calls[0][0]).toEqual({ source: 'registry', id: 'claude-acp' });
+      act(() => control.current?.rerender());
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    });
+
+    test('a restored open tab prevents a default conversation while session tabs catch up', () => {
+      setInitialRosterIds(new Set(['existing']));
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+
+      act(() => {
+        setOpenThreads([makeThread({ threadId: 'existing', title: 'Existing' })]);
+        control.current?.setVisible(true);
+      });
+
+      expect(screen.getByRole('tab', { name: /Existing/ })).toBeDefined();
+      expect(launchAgentThread).not.toHaveBeenCalled();
+    });
+
+    test('a reveal waits for an unknown roster and starts once it arrives empty', () => {
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+
+      act(() => control.current?.setVisible(true));
+      expect(launchAgentThread).not.toHaveBeenCalled();
+
+      act(() => setInitialRosterIds(new Set()));
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      act(() => control.current?.rerender());
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    });
+
+    test('hiding before the roster settles cancels an automatic conversation', () => {
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+
+      act(() => control.current?.setVisible(true));
+      act(() => control.current?.setVisible(false));
+      act(() => setInitialRosterIds(new Set()));
+
+      expect(launchAgentThread).not.toHaveBeenCalled();
+    });
+
+    test('a later reveal starts a conversation after the restored tab closes', () => {
+      setInitialRosterIds(new Set(['restored']));
+      setOpenThreads([makeThread({ threadId: 'restored', title: 'Restored' })]);
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+
+      expect(screen.getByRole('tab', { name: /Restored/ })).toBeDefined();
+      act(() => control.current?.setVisible(true));
+      expect(launchAgentThread).not.toHaveBeenCalled();
+
+      act(() => setOpenThreads([]));
+      expect(launchAgentThread).not.toHaveBeenCalled();
+
+      act(() => control.current?.setVisible(false));
+      act(() => control.current?.setVisible(true));
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      expect(launchAgentThread.mock.calls[0][0]).toEqual({ source: 'registry', id: 'claude-acp' });
+    });
+
+    test('an independently opened tab cancels an automatic seed owed while agents load', () => {
+      setInitialRosterIds(new Set());
+      const control = makeControl();
+      render(<Harness initialVisible control={control} />);
+      expect(launchAgentThread).not.toHaveBeenCalled();
+
+      act(() => {
+        setOpenThreads([makeThread({ threadId: 'independent', title: 'Independent' })]);
+        mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+        control.current?.rerender();
+      });
+
+      expect(screen.getByRole('tab', { name: /Independent/ })).toBeDefined();
+      expect(launchAgentThread).not.toHaveBeenCalled();
+    });
+
     test('revealing an empty panel starts one conversation when an agent resolves', () => {
       window.location.hash = '';
+      setInitialRosterIds(new Set());
       mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
       const control = makeControl();
       render(<Harness initialVisible={false} control={control} />);
@@ -2885,12 +3264,30 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
         null,
         null,
         undefined,
+        expect.any(Function),
       ]);
       expect(registerAgent).not.toHaveBeenCalled();
     });
 
+    test('a roster refresh after an empty Chat reveal does not start a second conversation', () => {
+      window.location.hash = '';
+      setInitialRosterIds(new Set());
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+
+      act(() => control.current?.setVisible(true));
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+
+      mockInflightLaunch = false;
+      act(() => setInitialRosterIds(new Set()));
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    });
+
     test('a reveal before the registry lands still gets its conversation once it does', () => {
       window.location.hash = '';
+      setInitialRosterIds(new Set());
       mockRegisteredAgent = null;
       const control = makeControl();
       render(<Harness initialVisible={false} control={control} />);
@@ -2908,6 +3305,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
 
     test('re-subscribing the agents order restore keeps a reveal seed another effect owes', async () => {
       window.location.hash = '';
+      setInitialRosterIds(new Set());
       mockRegisteredAgent = null;
       const control = makeControl();
       const makeDockBridge = () =>
@@ -3148,6 +3546,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
 
     test('a launch that fails to land re-enables reveal-seed once it is no longer in flight', () => {
       window.location.hash = '';
+      setInitialRosterIds(new Set());
       mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
       const control = makeControl();
       render(<Harness initialVisible={false} control={control} />);
@@ -3176,6 +3575,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
 
     test('a conversation created on one reveal is not duplicated on the next reveal', async () => {
       window.location.hash = '';
+      setInitialRosterIds(new Set());
       mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
       const control = makeControl();
       render(<Harness initialVisible={false} control={control} />);
@@ -3275,6 +3675,7 @@ describe('switching the agent of an unsent chat', () => {
       null,
       { doc: DRAFT_DOC, attachments: [DRAFT_IMAGE] },
       undefined,
+      undefined,
     ]);
     await waitFor(() => expect(closeThread).toHaveBeenCalledWith('t1'));
   });
@@ -3334,6 +3735,7 @@ describe('switching the agent of an unsent chat', () => {
       null,
       null,
       null,
+      undefined,
       undefined,
     ]);
   });

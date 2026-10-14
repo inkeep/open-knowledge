@@ -2,11 +2,10 @@ import { Plural, useLingui } from '@lingui/react/macro';
 import { ChevronUp, GitBranch, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-  type EditorFooterIdentity,
-  useEditorFooterIdentity,
-} from '@/hooks/use-editor-footer-identity';
+import { useCurrentBranch } from '@/hooks/use-current-branch';
+import { useWorktrees } from '@/hooks/use-worktrees';
 import type { DocumentStats } from '@/lib/document-stats';
+import { checkoutIdentity } from './checkout-identity';
 
 interface EditorFooterProps {
   stats: DocumentStats;
@@ -22,8 +21,16 @@ export function EditorFooter({
   composerBadge,
 }: EditorFooterProps) {
   const { t } = useLingui();
-  const identity = useEditorFooterIdentity();
-  if (!showStats && identity === null && composerBadge == null) return null;
+  const branch = useCurrentBranch();
+  const worktreeModel = useWorktrees();
+  const desktopConfig = typeof window !== 'undefined' ? window.okDesktop?.config : undefined;
+  const { checkoutDetail } = checkoutIdentity({
+    projectName: desktopConfig?.projectName ?? null,
+    branch,
+    worktreeModel,
+  });
+  const projectPath = desktopConfig?.projectPath ?? null;
+  if (!showStats && checkoutDetail === null && composerBadge == null) return null;
   const active = selectionStats ?? stats;
   const isSelection = selectionStats != null;
   const { words, chars, tokens } = active;
@@ -57,7 +64,9 @@ export function EditorFooter({
         </Button>
       ) : null}
       <span className="flex min-w-0 items-center gap-3">
-        {identity !== null ? <IdentityRow identity={identity} /> : null}
+        {checkoutDetail !== null ? (
+          <CheckoutDetail detail={checkoutDetail} projectPath={projectPath} />
+        ) : null}
       </span>
       {showStats ? (
         <span className="flex shrink-0 items-center gap-3">
@@ -88,35 +97,25 @@ export function EditorFooter({
   );
 }
 
-function IdentityRow({ identity }: { identity: EditorFooterIdentity }) {
-  const { projectName, projectPath, branch } = identity;
+function CheckoutDetail({ detail, projectPath }: { detail: string; projectPath: string | null }) {
+  const row = (
+    <span className="flex min-w-0 items-center gap-1" data-testid="editor-footer-branch">
+      <GitBranch aria-hidden="true" className="size-3 shrink-0" />
+      <span className="truncate">{detail}</span>
+    </span>
+  );
+  if (projectPath === null) return row;
   return (
-    <>
-      {projectName !== null ? (
-        projectPath ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              {/* biome-ignore lint/a11y/noNoninteractiveTabindex: tooltip-on-static-text pattern — focusable span lets keyboard users surface the full project path that mouse users see on hover. */}
-              <span tabIndex={0} className="truncate" data-testid="editor-footer-project-name">
-                {projectName}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-xs break-all">
-              {projectPath}
-            </TooltipContent>
-          </Tooltip>
-        ) : (
-          <span className="truncate" data-testid="editor-footer-project-name">
-            {projectName}
-          </span>
-        )
-      ) : null}
-      {branch !== null ? (
-        <span className="flex min-w-0 items-center gap-1" data-testid="editor-footer-branch">
-          <GitBranch aria-hidden="true" className="size-3 shrink-0" />
-          <span className="truncate">{branch}</span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {/* biome-ignore lint/a11y/noNoninteractiveTabindex: tooltip-on-static-text pattern — focusable span lets keyboard users surface the full project path that mouse users see on hover. */}
+        <span tabIndex={0} className="flex min-w-0" data-testid="editor-footer-checkout">
+          {row}
         </span>
-      ) : null}
-    </>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs break-all">
+        {projectPath}
+      </TooltipContent>
+    </Tooltip>
   );
 }

@@ -32,6 +32,7 @@ export const OK_MENU_ACTIONS = [
   'toggle-terminal',
   'move-terminal',
   'toggle-agent-panel',
+  'toggle-editor',
   'new-terminal',
   'kill-terminal',
   'new-worktree',

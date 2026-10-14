@@ -121,6 +121,24 @@ async function findEditorWindow(app: ElectronApplication): Promise<Page> {
   return waitForWindowByMode(app, 'editor');
 }
 
+async function resizeEditorWindow(
+  app: ElectronApplication,
+  page: Page,
+  width: number,
+  height: number,
+): Promise<void> {
+  const nativeWindowHandle = await app.browserWindow(page);
+  await nativeWindowHandle.evaluate(
+    (nativeWindow: unknown, size) => {
+      (
+        nativeWindow as { setSize: (width: number, height: number, animate: boolean) => void }
+      ).setSize(size.width, size.height, false);
+    },
+    { width, height },
+  );
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
+}
+
 async function clickViewTerminalItem(app: ElectronApplication, editorPage: Page): Promise<void> {
   await app.evaluate(async ({ Menu }) => {
     const menu = Menu.getApplicationMenu();
@@ -247,5 +265,54 @@ test.describe('Docked terminal launch — composed argv', () => {
     expect(ask.length).toBeGreaterThan(0);
     expect(ask).toContain(`mcp__${OK_SERVER_NAME}__delete`);
     for (const rule of ask) expect(rule.startsWith(`mcp__${OK_SERVER_NAME}__`)).toBe(true);
+  });
+
+  test('a narrow file action selects Terminal and delivers its prompt to the real PTY', async ({
+    captureStderrFor,
+  }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
+    const s = seed();
+    const app = await launchApp(s);
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+    await resizeEditorWindow(app, page, 900, 700);
+    await expect(
+      page.locator('header[data-app-header]').getByRole('button', { name: 'Editor' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect
+      .poll(() => page.evaluate(() => window.okDesktop?.terminal.getDockState()))
+      .toMatchObject({
+        terminalVisible: false,
+      });
+
+    await resizeEditorWindow(app, page, 720, 480);
+    const filesTrigger = page.locator('[data-sidebar="trigger"]');
+    if ((await filesTrigger.getAttribute('aria-expanded')) !== 'true') await filesTrigger.click();
+    await expect(filesTrigger).toHaveAttribute('aria-expanded', 'true');
+    const file = page
+      .locator('[data-slot="sidebar-container"]')
+      .getByRole('treeitem', { name: 'start.md', exact: true });
+    await file.click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Open with AI' }).click();
+    await page.getByTestId('file-tree-open-in-terminal-claude').click();
+
+    await expect(terminalSection(page)).toBeVisible();
+    await expect(page.locator('[data-pane="editor"]')).toBeHidden();
+    await expect(
+      page.locator('header[data-app-header]').getByRole('button', { name: 'Terminal' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => readRecordedArgv(s.capturePath), { timeout: 45_000 }).not.toBeNull();
+    const recorded = readRecordedArgv(s.capturePath);
+    if (recorded === null) throw new Error('recorded argv vanished after the poll');
+    expect(recorded[0]).toBe(join(s.binDir, 'claude'));
+    expect(recorded.at(-1)).toContain('start.md');
+    expect(existsSync(s.injectedPath)).toBe(false);
+    await expect
+      .poll(() => page.evaluate(() => window.okDesktop?.terminal.getDockState()))
+      .toMatchObject({
+        terminalVisible: false,
+      });
+    await resizeEditorWindow(app, page, 900, 700);
+    await expect(terminalSection(page)).toBeHidden();
   });
 });

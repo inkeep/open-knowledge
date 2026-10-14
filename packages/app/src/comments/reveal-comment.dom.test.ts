@@ -192,6 +192,31 @@ describe('revealing a comment', () => {
     expect(toasted[0]).toMatch(/passage/i);
   });
 
+  test('a found passage whose scroll stays refused says it could not be reached, not that it changed', () => {
+    editor = makeEditor('press the tofu first');
+    scrollAllowed = false;
+
+    reveal();
+    expect(captured.focused).toEqual(['t1']);
+
+    vi.advanceTimersByTime(REVEAL_WAIT_MS + RETRY_MS);
+    expect(captured.opened).toEqual([]);
+    expect(toasted).toHaveLength(1);
+    expect(toasted[0]).toMatch(/scroll to that passage/i);
+    expect(toasted[0]).not.toMatch(/changed/i);
+  });
+
+  test('a passage that disappears after it was found is still reported missing', () => {
+    editor = makeEditor('press the tofu first');
+    scrollAllowed = false;
+
+    reveal();
+    if (editor) editor.state.doc.text = 'press it first';
+    vi.advanceTimersByTime(REVEAL_WAIT_MS + RETRY_MS);
+    expect(toasted).toHaveLength(1);
+    expect(toasted[0]).toMatch(/may have changed/i);
+  });
+
   test('names the document, not the passage, when the document never came up', () => {
     editor = makeEditor('press the tofu first');
     editorVisible = false;

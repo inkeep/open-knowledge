@@ -8,7 +8,7 @@ import {
   WORKER_SERVER_BUDGET_RESERVES,
   waitForServerReady,
 } from '../fixtures.ts';
-import type { WorkerServing } from '../prebuilt/prebuilt-serving.ts';
+import type { ModuleServing } from '../prebuilt/prebuilt-serving.ts';
 import {
   beginViteStartup,
   closeServerLog,
@@ -34,7 +34,7 @@ export async function launchOwnedWorkerServer({
 }: {
   readonly label: string;
   readonly workerServerEnv: WorkerServerEnv;
-  readonly serving: WorkerServing;
+  readonly serving: ModuleServing;
 }): Promise<OwnedServer> {
   const teardown: Array<() => void | Promise<void>> = [];
   let ownedProc: WorkerServerProcess | undefined;
@@ -76,6 +76,7 @@ export async function launchOwnedWorkerServer({
         viteCacheDir,
         serverLog,
         proc,
+        serving,
       }),
       lifetimeLost,
     ]);

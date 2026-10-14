@@ -66,7 +66,6 @@ describe('NavigationHistoryControls', () => {
     const group = screen.getByRole('group', { name: 'Navigation history' });
     const back = screen.getByRole('button', { name: 'Back' });
     const forward = screen.getByRole('button', { name: 'Forward' });
-    expect(group.getAttribute('data-slot')).toBe('button-group');
     expect(group.contains(back)).toBe(true);
     expect(group.contains(forward)).toBe(true);
     expect(back.getAttribute('data-variant')).toBe('ghost');

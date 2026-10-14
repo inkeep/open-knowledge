@@ -7,7 +7,7 @@ import {
 } from '@inkeep/open-knowledge-core/handoff';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, ChevronDown, TextQuote, X } from 'lucide-react';
-import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
 import {
   composeCommentBatchInstruction,
@@ -96,7 +96,12 @@ import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { docNameToRelativePath } from '@/lib/workspace-paths';
 import { emitOpenAskAiComposer, subscribeToOpenAskAiComposer } from './ask-ai-composer-events';
-import { clearComposerDraft, getComposerDraft, setComposerDraftDoc } from './composer-draft-store';
+import {
+  clearComposerDraft,
+  getComposerDraft,
+  setComposerDraftDoc,
+  subscribeComposerDraft,
+} from './composer-draft-store';
 import { nextTouchedFiles } from './composer-touched-files';
 import { focusComposerInputOnCardPointer } from './focus-composer-on-card-pointer';
 import { usePageList } from './PageListContext';
@@ -165,7 +170,7 @@ export function BottomComposer({
   const cardRef = useRef<HTMLDivElement>(null);
   const clampRef = useRef<(() => void) | null>(null);
 
-  const [initialDraftDoc] = useState(() => getComposerDraft().doc ?? undefined);
+  const { doc: savedDraftDoc } = useSyncExternalStore(subscribeComposerDraft, getComposerDraft);
 
   const {
     pendingAttachments,
@@ -857,7 +862,7 @@ export function BottomComposer({
           />
         ) : null}
       </div>
-      <div className="flex items-end gap-2">
+      <div className="flex flex-wrap items-end gap-2">
         <ComposerAddMenu composerRef={inputRef} testId="ask-ai-add-to-prompt" size="icon">
           {attachmentsAccepted ? <ComposerFilesMenuItem onFiles={ingestFiles} /> : null}
           {selectedCommentCount > 0 && !hasQueuedComments ? (
@@ -868,7 +873,7 @@ export function BottomComposer({
           ) : null}
           <ComposerMentionMenuItem onSelect={() => inputRef.current?.openMentionPicker()} />
         </ComposerAddMenu>
-        <div className="relative flex min-h-8 flex-1 flex-col justify-center">
+        <div className="relative flex min-h-8 min-w-24 flex-[1_1_6rem] flex-col justify-center">
           <ComposerMentionInput
             ref={inputRef}
             ariaLabel={t`Ask AI`}
@@ -881,7 +886,7 @@ export function BottomComposer({
             }}
             onMentionsChange={setInlineMentions}
             onSubmit={submit}
-            initialDoc={initialDraftDoc}
+            initialDoc={savedDraftDoc ?? undefined}
             className="max-h-[200px] overflow-y-auto overscroll-contain text-base md:text-sm"
           />
           {}
@@ -895,6 +900,8 @@ export function BottomComposer({
           ) : null}
         </div>
         <AgentSplitButton
+          className="ms-auto max-w-full min-w-0"
+          primaryClassName="h-auto min-h-8 min-w-0 shrink whitespace-normal"
           primary={
             <>
               {isThreadSelected ? (
@@ -908,7 +915,7 @@ export function BottomComposer({
               ) : resolvedTarget ? (
                 <TargetIcon id={resolvedTarget.id} className="size-4" aria-hidden />
               ) : null}
-              <span>
+              <span className="min-w-0 break-words">
                 {isThreadSelected ? (
                   defaultThreadAgent !== null ? (
                     <AskAgentNameLabel agentName={defaultThreadAgent.name} />

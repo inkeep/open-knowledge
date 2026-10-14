@@ -215,3 +215,38 @@ test('an agent write below the fold is still followed toward', async ({ page, ap
     })
     .toBeLessThanOrEqual(LANDING_TOLERANCE_BLOCKS);
 });
+
+test('activating a document soon after an agent wrote below its fold follows the write', async ({
+  page,
+  api,
+}) => {
+  const name = docName('activation');
+  const { markdown } = await openTallDoc(page, api, name);
+  await drainFlash(page, 'the document under test');
+
+  await scrollWysiwygBlockToTop(page, blockMarker(0));
+  expect(await topReadableMarker(page), 'setup did not park the reader at the top').toBe(
+    blockMarker(0),
+  );
+
+  await page.evaluate((warm) => {
+    window.location.hash = `#/${warm}`;
+  }, `${name}-warm`);
+  await waitForActiveProviderSynced(page);
+  await expect
+    .poll(() => topReadableMarker(page), { message: 'the warm document never became active' })
+    .toBeNull();
+
+  const edited = bumpBlock(markdown, blockMarker(OFFSCREEN_EDIT_AT));
+  await api.writeAsAgent(name, edited, { agentId: 'follow-probe', agentName: 'FollowProbe' });
+  await page.evaluate((doc) => {
+    window.location.hash = `#/${doc}`;
+  }, name);
+
+  await expect
+    .poll(async () => Math.abs(markerIndex(await topReadableMarker(page)) - OFFSCREEN_EDIT_AT), {
+      message:
+        'activating the document did not follow the recent off-screen agent write; the received value is how many blocks it missed by',
+    })
+    .toBeLessThanOrEqual(LANDING_TOLERANCE_BLOCKS);
+});

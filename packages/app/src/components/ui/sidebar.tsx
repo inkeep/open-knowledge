@@ -12,8 +12,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useSidebarResize } from '@/hooks/use-sidebar-resize';
 import { formatShortcutLabel, matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
+import { revealEditorBeforeActing } from '@/lib/reveal-editor';
 import { LEFT_COLLAPSE_THRESHOLD, resolvePartition } from '@/lib/sidebar-partition';
-import { applyToggle, readPins, resolveEffectiveState } from '@/lib/sidebar-pin-store';
+import {
+  applyToggleAtEveryWidth,
+  openIntentAfterPartitionChange,
+  readPins,
+  resolveEffectiveState,
+} from '@/lib/sidebar-pin-store';
 import { cn } from '@/lib/utils';
 
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -26,19 +32,27 @@ const SIDEBAR_WIDTH_COOKIE_NAME = 'sidebar_width';
 const SIDEBAR_WIDTH_VALUE_PATTERN = /^\d+(?:\.\d+)?(?:rem|px)$/;
 
 type OpenHandler = React.Dispatch<React.SetStateAction<boolean>>;
+type OpenRequestHandler = (open: boolean) => boolean | null;
+type CoverSelectionHandler = (editorDocName: string | null) => void;
 
 type SidebarContextProps = {
   state: 'expanded' | 'collapsed';
   open: boolean;
   setOpen: OpenHandler;
   toggleSidebar: () => void;
+  canDock: boolean;
+  setCanDock: React.Dispatch<React.SetStateAction<boolean>>;
+  registerOpenRequestHandler: (handler: OpenRequestHandler) => () => void;
+  registerCoverSelectionHandler: (handler: CoverSelectionHandler) => () => void;
+  cover: boolean;
+  dismissCover: (restoreFocus?: boolean) => void;
   width: string;
   setWidth: React.Dispatch<React.SetStateAction<string>>;
   isDraggingRail: boolean;
   setIsDraggingRail: React.Dispatch<React.SetStateAction<boolean>>;
   showPushPulse: boolean;
   setShowPushPulse: React.Dispatch<React.SetStateAction<boolean>>;
-  notifySidebarFileSelected: () => void;
+  notifySidebarFileSelected: (editorDocName?: string | null) => void;
 };
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null);
@@ -93,6 +107,24 @@ function SidebarProvider({
   const [width, setWidth] = React.useState(() => getInitialSidebarWidth(defaultWidth));
   const [isDraggingRail, setIsDraggingRail] = React.useState(false);
   const [showPushPulse, setShowPushPulse] = React.useState(false);
+  const [canDock, setCanDock] = React.useState(true);
+  const [cover, setCover] = React.useState(false);
+  const coverOpenerRef = React.useRef<HTMLElement | null>(null);
+  const openRequestHandlerRef = React.useRef<OpenRequestHandler | null>(null);
+
+  function registerOpenRequestHandler(handler: OpenRequestHandler) {
+    openRequestHandlerRef.current = handler;
+    return () => {
+      if (openRequestHandlerRef.current === handler) openRequestHandlerRef.current = null;
+    };
+  }
+  const coverSelectionHandlerRef = React.useRef<CoverSelectionHandler | null>(null);
+  function registerCoverSelectionHandler(handler: CoverSelectionHandler) {
+    coverSelectionHandlerRef.current = handler;
+    return () => {
+      if (coverSelectionHandlerRef.current === handler) coverSelectionHandlerRef.current = null;
+    };
+  }
 
   const [_open, _setOpen] = React.useState(() => {
     const pins = readPins();
@@ -101,18 +133,55 @@ function SidebarProvider({
   });
   const open = openProp ?? _open;
 
-  const setOpen: OpenHandler = (value) => {
+  function dismissCover(restoreFocus = true) {
+    setCover(false);
+    if (!restoreFocus) return;
+    const opener = coverOpenerRef.current;
+    requestAnimationFrame(() => {
+      const candidates = [
+        opener,
+        document.querySelector<HTMLElement>('[data-sidebar="trigger"]'),
+        document.querySelector<HTMLElement>('[data-header-pane-button="editor"]'),
+      ];
+      for (const candidate of candidates) {
+        if (
+          candidate?.isConnected &&
+          candidate.tabIndex >= 0 &&
+          !candidate.matches(':disabled') &&
+          candidate.closest('[inert]') == null &&
+          candidate.getClientRects().length > 0
+        ) {
+          candidate.focus();
+          if (document.activeElement === candidate) return;
+        }
+      }
+    });
+  }
+  const dismissCoverEvent = React.useEffectEvent(dismissCover);
+
+  const setOpen = (value: React.SetStateAction<boolean>) => {
     const openState = typeof value === 'function' ? value(openRef.current) : value;
+    const requestedCanDock =
+      openRequestHandlerRef.current == null ? canDock : openRequestHandlerRef.current(openState);
+    if (requestedCanDock == null) return false;
     if (setOpenProp) {
       setOpenProp(openState);
     } else {
       _setOpen(openState);
     }
-    applyToggle('left', partition, openState ? 'open' : 'collapsed');
+    applyToggleAtEveryWidth('left', openState ? 'open' : 'collapsed');
+    if (openState && !requestedCanDock) {
+      coverOpenerRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setCover(true);
+    } else {
+      setCover(false);
+    }
+    return true;
   };
 
   function toggleSidebar() {
-    setOpen((prev) => !prev);
+    return setOpen(!(open && (canDock || cover)));
   }
 
   const openRef = React.useRef(open);
@@ -120,7 +189,12 @@ function SidebarProvider({
     openRef.current = open;
   });
 
-  function notifySidebarFileSelected() {
+  function notifySidebarFileSelected(editorDocName: string | null = null) {
+    if (cover) {
+      dismissCover(editorDocName === null);
+      coverSelectionHandlerRef.current?.(editorDocName);
+      return;
+    }
     if (window.innerWidth >= LEFT_COLLAPSE_THRESHOLD) return;
     if (!openRef.current) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -133,23 +207,31 @@ function SidebarProvider({
       const newPartition = resolvePartition(embeddedHost, window.innerWidth, 'left');
       setPartition(newPartition);
       const pins = readPins();
-      const effective = resolveEffectiveState('left', newPartition, pins);
-      _setOpen(effective === 'open');
+      if (openRequestHandlerRef.current == null) {
+        _setOpen(resolveEffectiveState('left', newPartition, pins) === 'open');
+        return;
+      }
+      const intent = openIntentAfterPartitionChange('left', newPartition, pins);
+      if (intent !== undefined) _setOpen(intent);
     };
     mql.addEventListener('change', onChange);
     return () => mql.removeEventListener('change', onChange);
   }, [embeddedHost]);
 
   React.useLayoutEffect(() => {
-    if (open) return;
+    if (cover && canDock) dismissCoverEvent();
+  }, [cover, canDock]);
+
+  React.useLayoutEffect(() => {
+    if (open && (canDock || cover)) return;
     const sidebarEl = document.getElementById(SIDEBAR_ID);
     if (!sidebarEl?.contains(document.activeElement)) return;
     const trigger = document.querySelector<HTMLElement>('[data-sidebar="trigger"]');
     trigger?.focus();
-  }, [open]);
+  }, [open, canDock, cover]);
 
   React.useEffect(() => {
-    if (partition === 'above' || !open) return;
+    if (partition === 'above' || !open || !canDock || cover) return;
     const onEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       if (isOverlayLayerOpen()) return;
@@ -161,8 +243,8 @@ function SidebarProvider({
     };
     window.addEventListener('keydown', onEscape, { capture: true });
     return () => window.removeEventListener('keydown', onEscape, { capture: true });
-    // biome-ignore lint/correctness/useExhaustiveDependencies: setOpen is render-bound; partition + open gate the subscription lifecycle
-  }, [partition, open, setOpen]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: setOpen is render-bound; partition, open, canDock and cover gate the subscription lifecycle
+  }, [partition, open, canDock, cover, setOpen]);
 
   React.useEffect(() => {
     if (typeof window !== 'undefined' && window.okDesktop != null) return;
@@ -170,7 +252,7 @@ function SidebarProvider({
       if (!matchesKeyboardShortcut(event, 'toggle-files-sidebar')) return;
       if (isOverlayLayerOpen()) return;
       event.preventDefault();
-      toggleSidebar();
+      if (toggleSidebar()) revealEditorBeforeActing();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -179,7 +261,7 @@ function SidebarProvider({
     toggleSidebar,
   ]);
 
-  const state = open ? 'expanded' : 'collapsed';
+  const state = open && (canDock || cover) ? 'expanded' : 'collapsed';
 
   return (
     <SidebarContext.Provider
@@ -188,6 +270,12 @@ function SidebarProvider({
         open,
         setOpen,
         toggleSidebar,
+        canDock,
+        setCanDock,
+        registerOpenRequestHandler,
+        registerCoverSelectionHandler,
+        cover,
+        dismissCover,
         width,
         setWidth,
         isDraggingRail,
@@ -207,7 +295,7 @@ function SidebarProvider({
           } as React.CSSProperties
         }
         className={cn(
-          'group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar',
+          'group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-desk',
           className,
         )}
         {...props}
@@ -231,7 +319,7 @@ function Sidebar({
   collapsible?: 'offcanvas' | 'icon' | 'none';
 }) {
   const { t } = useLingui();
-  const { state, isDraggingRail } = useSidebar();
+  const { state, isDraggingRail, cover } = useSidebar();
 
   if (collapsible === 'none') {
     return (
@@ -251,7 +339,7 @@ function Sidebar({
 
   return (
     <div
-      className="group peer text-sidebar-foreground"
+      className={cn('group peer text-sidebar-foreground', cover && 'relative size-full')}
       data-state={state}
       data-collapsible={state === 'collapsed' ? collapsible : ''}
       data-variant={variant}
@@ -269,6 +357,7 @@ function Sidebar({
             ? 'group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]'
             : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon)',
           'group-data-[dragging=true]:duration-0! group-data-[dragging=true]_*:!duration-0',
+          cover && 'hidden',
         )}
       />
       <nav
@@ -276,12 +365,16 @@ function Sidebar({
         aria-label={t`File sidebar`}
         data-slot="sidebar-container"
         data-side={side}
+        inert={state === 'collapsed'}
         className={cn(
-          'fixed inset-y-0 z-10 flex h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear motion-reduce:transition-none motion-reduce:duration-0 data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]',
-          variant === 'floating' || variant === 'inset'
+          'absolute inset-y-0 z-10 flex w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear motion-reduce:transition-none motion-reduce:duration-0 data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]',
+          variant === 'floating'
             ? 'p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]'
-            : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l',
+            : variant === 'inset'
+              ? 'group-data-[side=left]:border-e group-data-[side=right]:border-s group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]'
+              : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l',
           'group-data-[dragging=true]:duration-0! group-data-[dragging=true]_*:!duration-0',
+          cover && 'inset-0 size-full transition-none',
           className,
         )}
         {...props}
@@ -339,11 +432,11 @@ function SidebarRail({
   enableToggle?: boolean;
 }) {
   const { t } = useLingui();
-  const { toggleSidebar, setWidth, state, width, setIsDraggingRail } = useSidebar();
+  const { toggleSidebar, setWidth, state, width, setIsDraggingRail, cover } = useSidebar();
   const { dragRef, handleMouseDown } = useSidebarResize({
     direction: 'right',
-    enableDrag,
-    enableToggle,
+    enableDrag: enableDrag && !cover,
+    enableToggle: enableToggle && !cover,
     onResize: setWidth,
     onToggle: toggleSidebar,
     currentWidth: width,
@@ -353,6 +446,7 @@ function SidebarRail({
     setIsDraggingRail,
     widthCookieName: SIDEBAR_WIDTH_COOKIE_NAME,
     widthCookieMaxAge: SIDEBAR_COOKIE_MAX_AGE,
+    isNested: true,
   });
 
   return (
@@ -374,9 +468,10 @@ function SidebarRail({
         'in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize',
         '[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize',
         'group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full hover:group-data-[collapsible=offcanvas]:bg-sidebar',
-        '[[data-side=left][data-collapsible=offcanvas]_&]:-right-2',
-        '[[data-side=right][data-collapsible=offcanvas]_&]:-left-2',
+        '[[data-side=left][data-collapsible=offcanvas]_&]:-right-4',
+        '[[data-side=right][data-collapsible=offcanvas]_&]:-left-4',
         'md:group-data-[variant=inset]:after:inset-y-5',
+        cover && 'hidden',
         className,
       )}
       {...props}
@@ -384,10 +479,10 @@ function SidebarRail({
   );
 }
 
-function SidebarInset({ className, onAnimationEnd, ...props }: React.ComponentProps<'main'>) {
+function SidebarInset({ className, onAnimationEnd, ...props }: React.ComponentProps<'div'>) {
   const { showPushPulse, setShowPushPulse } = useSidebar();
 
-  const handleAnimationEnd: React.AnimationEventHandler<HTMLElement> = (event) => {
+  const handleAnimationEnd: React.AnimationEventHandler<HTMLDivElement> = (event) => {
     onAnimationEnd?.(event);
     if (event.animationName === 'sidebar-push-pulse') {
       setShowPushPulse(false);
@@ -395,14 +490,11 @@ function SidebarInset({ className, onAnimationEnd, ...props }: React.ComponentPr
   };
 
   return (
-    <main
+    <div
       data-slot="sidebar-inset"
       data-push-pulse={showPushPulse ? '' : undefined}
       onAnimationEnd={handleAnimationEnd}
-      className={cn(
-        'relative flex w-full flex-1 flex-col bg-background peer-data-[variant=inset]:m-2 peer-data-[variant=inset]:ml-0 peer-data-[variant=inset]:rounded-xl peer-data-[variant=inset]:shadow-sm peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2',
-        className,
-      )}
+      className={cn('relative flex w-full flex-1 flex-col bg-background', className)}
       {...props}
     />
   );

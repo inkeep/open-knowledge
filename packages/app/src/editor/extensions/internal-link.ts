@@ -13,8 +13,8 @@ import { openExternalUrl } from '@/lib/external-link';
 import { resolveLinkTargetIntent } from '../../components/link-target-intent';
 import {
   activateAssetLink,
+  navigateToMarkdownTarget,
   openInternalHashHrefInNewTab,
-  toInternalHashHref,
 } from '../internal-link-helpers';
 import { getPageListCache, type PageListCacheSnapshot } from '../page-list-cache';
 import { createAssetContextMenuPlugin } from '../plugins/asset-context-menu';
@@ -164,9 +164,7 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
           if (newTab) {
             openInternalHashHrefInNewTab({ docName: target.docName, anchor: target.anchor });
           } else {
-            window.location.assign(
-              toInternalHashHref({ docName: target.docName, anchor: target.anchor }),
-            );
+            navigateToMarkdownTarget(target);
           }
           return true;
         }
@@ -174,7 +172,7 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
           if (newTab) {
             openInternalHashHrefInNewTab({ docName, anchor: target.anchor });
           } else {
-            window.location.assign(toInternalHashHref({ docName, anchor: target.anchor }));
+            navigateToMarkdownTarget(target);
           }
           return true;
         case 'external':

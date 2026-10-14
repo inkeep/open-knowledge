@@ -1,5 +1,11 @@
 import type { Page } from '@playwright/test';
-import { expect, test, waitForActiveProviderSynced } from './_helpers';
+import {
+  type ApiHelpers,
+  acpCatalogBody,
+  expect,
+  test,
+  waitForActiveProviderSynced,
+} from './_helpers';
 
 const SIDEBAR_PINS_KEY = 'ok-sidebar-pins-v2';
 const SIDEBAR_STATE_COOKIE_NAME = 'sidebar_state';
@@ -42,6 +48,40 @@ async function docPanelOpen(page: Page): Promise<boolean> {
   const toggle = page.locator('[data-doc-panel-toggle]');
   const expanded = await toggle.getAttribute('aria-expanded');
   return expanded === 'true';
+}
+
+async function expectEmbeddedHeaderAddsOnlyAgents(page: Page, api: ApiHelpers, slug: string) {
+  const name = `${slug}-${test.info().workerIndex}`;
+  await seedDoc(api, name);
+  await page.route('**/api/acp/catalog', (route) => route.fulfill({ json: acpCatalogBody([]) }));
+  await page.setViewportSize(WIDE);
+  await page.goto(`/#/${name}`);
+  await waitForActiveProviderSynced(page);
+  await expect(page.locator('.ProseMirror:not(.composer-prosemirror)').first()).toBeVisible({
+    timeout: 30_000,
+  });
+
+  const agents = page.getByTestId('header-pane-button-agents');
+  const chat = page.locator('[data-agents-panel-mount]');
+  await expect(agents).toBeVisible();
+  await expect(agents).toHaveAttribute('aria-pressed', 'false');
+  await expect(chat).not.toBeVisible();
+  await expect(page.getByTestId('header-pane-button-terminal')).toHaveCount(0);
+  await expect(page.getByTestId('bottom-composer')).toHaveCount(0);
+
+  await page.locator('[data-sidebar="trigger"]').click();
+  await page
+    .locator('[data-slot="sidebar-container"]')
+    .getByRole('treeitem', { name: `${name}.md`, exact: true })
+    .click({ button: 'right' });
+  await expect(page.getByRole('menuitem').first()).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Open with AI' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menuitem')).toHaveCount(0);
+
+  await agents.click();
+  await expect(agents).toHaveAttribute('aria-pressed', 'true');
+  await expect(chat).toBeVisible();
 }
 
 async function seedDoc(
@@ -137,7 +177,9 @@ test.describe('non-embedded UA', () => {
       'false',
     );
     const pinsBefore = await readPinsFromPage(page);
-    expect(pinsBefore).toEqual({ left: { above: 'collapsed' } });
+    expect(pinsBefore).toEqual({
+      left: { above: 'collapsed', below: 'collapsed', embedded: 'collapsed' },
+    });
     await page.reload();
     await waitForActiveProviderSynced(page);
     expect(await leftSidebarState(page)).toBe('collapsed');
@@ -228,7 +270,7 @@ test.describe('non-embedded UA', () => {
     await expect(docPanelHandle).toHaveAttribute('tabindex', '0');
   });
 
-  test('QA-013: focus inside left sidebar → narrow → focus on trigger (FR-9)', async ({
+  test('QA-013: focus inside left sidebar → too narrow to fit → focus on trigger (FR-9)', async ({
     page,
     api,
   }) => {
@@ -238,7 +280,7 @@ test.describe('non-embedded UA', () => {
     await waitForActiveProviderSynced(page);
     const sidebarFirstButton = page.locator('#app-file-sidebar button').first();
     await sidebarFirstButton.focus();
-    await page.setViewportSize(NARROW);
+    await page.setViewportSize(VERY_NARROW);
     const trigger = page.locator('[data-sidebar="trigger"]');
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
     const focusOnTrigger = await page.evaluate(() => {
@@ -380,16 +422,11 @@ test.describe('non-embedded UA', () => {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2 - 20, box.y + box.height / 2, { steps: 5 });
-    const dragging = await page
-      .locator('[data-slot="resizable-panel-group"]')
-      .first()
-      .getAttribute('data-dragging');
+    const draggedRow = handle.locator('xpath=ancestor::*[@data-slot="resizable-panel-group"][1]');
+    const dragging = await draggedRow.getAttribute('data-dragging');
     expect(dragging, 'data-dragging while pointer is held on handle').toBeTruthy();
     await page.mouse.up();
-    await expect(page.locator('[data-slot="resizable-panel-group"]').first()).not.toHaveAttribute(
-      'data-dragging',
-      /.+/,
-    );
+    await expect(draggedRow).not.toHaveAttribute('data-dragging', /.+/);
   });
 
   test('QA-024: no sidebar_state cookie after toggles', async ({ page, context, api }) => {
@@ -424,14 +461,16 @@ test.describe('non-embedded UA', () => {
     await page.locator('[data-doc-panel-toggle]').click();
     await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'false');
     const pins = await readPinsFromPage(page);
-    expect(pins).toEqual({ right: { above: 'collapsed' } });
+    expect(pins).toEqual({
+      right: { above: 'collapsed', below: 'collapsed', embedded: 'collapsed' },
+    });
     await page.reload();
     await waitForActiveProviderSynced(page);
     expect(await leftSidebarState(page)).toBe('expanded');
     expect(await docPanelOpen(page)).toBe(false);
   });
 
-  test('QA-027: pinned-open right at 800px and 560px — T2 honored at both (constraint clash resolved)', async ({
+  test('QA-027: pinned-open right docks at 800px and is only suppressed at 560px', async ({
     page,
     api,
   }) => {
@@ -456,16 +495,17 @@ test.describe('non-embedded UA', () => {
 
     await page.setViewportSize(VERY_NARROW);
     await expect.poll(() => page.evaluate(() => window.innerWidth), { timeout: 2000 }).toBe(560);
-    const probe560 = await page.evaluate(() => {
-      const panel = document.querySelector('#doc-panel') as HTMLElement | null;
-      const toggle = document.querySelector('[data-doc-panel-toggle]') as HTMLElement | null;
-      return {
-        panelWidth: panel ? panel.getBoundingClientRect().width : null,
-        toggleAriaExpanded: toggle?.getAttribute('aria-expanded') ?? null,
-      };
-    });
-    expect(probe560.toggleAriaExpanded, '560px aria-expanded (pin still honored)').toBe('true');
-    expect(probe560.panelWidth, '560px panel ≥ minSize').toBeGreaterThanOrEqual(280);
+    await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'false');
+    expect(await readPinsFromPage(page)).toEqual({ right: { below: 'open' } });
+    await page.setViewportSize(NARROW);
+    await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'true');
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.querySelector('#doc-panel')?.getBoundingClientRect().width ?? 0,
+        ),
+      )
+      .toBeGreaterThanOrEqual(280);
   });
 
   test('QA-028: rapid resize across 1024 settles without thrash', async ({ page, api }) => {
@@ -563,7 +603,7 @@ test.describe('non-embedded UA', () => {
     await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'true');
   });
 
-  test('QA-001: full responsive journey (narrow → toggle → reload → widen)', async ({
+  test('QA-001: full responsive journey (narrow → hide → reload → widen)', async ({
     page,
     api,
   }) => {
@@ -574,18 +614,22 @@ test.describe('non-embedded UA', () => {
     expect(await leftSidebarState(page)).toBe('expanded');
     expect(await docPanelOpen(page)).toBe(true);
     await page.setViewportSize(NARROW);
+    await expect(page.locator('[data-sidebar="trigger"]')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'false');
+    await page.locator('[data-sidebar="trigger"]').click();
     await expect(page.locator('[data-sidebar="trigger"]')).toHaveAttribute(
       'aria-expanded',
       'false',
     );
-    await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'false');
-    await page.locator('[data-sidebar="trigger"]').click();
-    await expect(page.locator('[data-sidebar="trigger"]')).toHaveAttribute('aria-expanded', 'true');
     await page.reload();
     await waitForActiveProviderSynced(page);
-    expect(await leftSidebarState(page)).toBe('expanded');
+    expect(await leftSidebarState(page)).toBe('collapsed');
     await page.setViewportSize(WIDE);
     await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('[data-sidebar="trigger"]')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
     await expect(page.locator('.ProseMirror:not(.composer-prosemirror)').first()).toBeVisible();
   });
 
@@ -731,7 +775,7 @@ test.describe('non-embedded UA', () => {
     await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'false');
   });
 
-  test('QA-045: above slot does not apply to below partition → smartDefault collapses (D13)', async ({
+  test('QA-045: an information panel opened wide stays open below 1280px while it fits', async ({
     page,
     api,
   }) => {
@@ -742,11 +786,28 @@ test.describe('non-embedded UA', () => {
     await waitForActiveProviderSynced(page);
     await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'true');
     await page.setViewportSize(ABOVE_1024_BELOW_1280);
-    await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('#doc-panel')).toBeVisible();
     expect(await readPinsFromPage(page)).toEqual({ right: { above: 'open' } });
   });
 
-  test('QA-046: narrow→toggle-open→toggle-collapse→wide → right auto-expands (below slot does NOT carry to above)', async ({
+  test('an unpinned information panel reopens when a narrow-start window widens', async ({
+    page,
+    api,
+  }) => {
+    await seedDoc(api, 'qa-right-unpinned-widen');
+    await page.setViewportSize(ABOVE_1024_BELOW_1280);
+    await page.goto('/#/qa-right-unpinned-widen');
+    await waitForActiveProviderSynced(page);
+    await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'false');
+    expect(await readPinsFromPage(page)).toBeNull();
+    await page.setViewportSize(WIDE);
+    await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('#doc-panel')).toBeVisible();
+    expect(await readPinsFromPage(page)).toBeNull();
+  });
+
+  test('QA-046: information hidden below 1280px stays hidden after widening', async ({
     page,
     api,
   }) => {
@@ -757,16 +818,19 @@ test.describe('non-embedded UA', () => {
     await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'false');
     await page.locator('[data-doc-panel-toggle]').click();
     await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'true');
-    expect(await readPinsFromPage(page)).toEqual({ right: { below: 'open' } });
+    expect(await readPinsFromPage(page)).toEqual({
+      right: { above: 'open', below: 'open', embedded: 'open' },
+    });
     await page.locator('[data-doc-panel-toggle]').click();
     await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'false');
-    expect(await readPinsFromPage(page)).toEqual({ right: { below: 'collapsed' } });
+    const hidden = { right: { above: 'collapsed', below: 'collapsed', embedded: 'collapsed' } };
+    expect(await readPinsFromPage(page)).toEqual(hidden);
     await page.setViewportSize(WIDE);
-    await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'true');
-    expect(await readPinsFromPage(page)).toEqual({ right: { below: 'collapsed' } });
+    await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'false');
+    expect(await readPinsFromPage(page)).toEqual(hidden);
   });
 
-  test('QA-047: D13 — narrow `open` pin survives a wide round-trip with a contradictory `above` pin', async ({
+  test('QA-047: information hidden wide stays hidden after narrowing below 1280px', async ({
     page,
     api,
   }) => {
@@ -776,19 +840,15 @@ test.describe('non-embedded UA', () => {
     await waitForActiveProviderSynced(page);
     await page.locator('[data-doc-panel-toggle]').click();
     await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'true');
-    expect(await readPinsFromPage(page)).toEqual({ right: { below: 'open' } });
     await page.setViewportSize(WIDE);
     await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'true');
     await page.locator('[data-doc-panel-toggle]').click();
     await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'false');
-    expect(await readPinsFromPage(page)).toEqual({
-      right: { above: 'collapsed', below: 'open' },
-    });
+    const hidden = { right: { above: 'collapsed', below: 'collapsed', embedded: 'collapsed' } };
+    expect(await readPinsFromPage(page)).toEqual(hidden);
     await page.setViewportSize(ABOVE_1024_BELOW_1280);
-    await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'true');
-    expect(await readPinsFromPage(page)).toEqual({
-      right: { above: 'collapsed', below: 'open' },
-    });
+    await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'false');
+    expect(await readPinsFromPage(page)).toEqual(hidden);
   });
 });
 
@@ -820,13 +880,6 @@ type HeaderProbe = {
   controls: HeaderControlProbe[];
 };
 
-type ShellGeometry = {
-  viewportWidth: number;
-  workspaceWidth: number;
-  workspaceLeft: number;
-  navigatorWidth: number;
-};
-
 async function waitForShellLayoutSettled(page: Page) {
   await page.evaluate(
     (frameBudget) =>
@@ -838,7 +891,7 @@ async function waitForShellLayoutSettled(page: Page) {
             widthOf('[data-slot="sidebar-inset"]'),
             widthOf('[data-slot="sidebar-container"]'),
             widthOf('[data-slot="sidebar-gap"]'),
-            widthOf('header'),
+            widthOf('header[data-editor-header]'),
           ].join(':');
         };
         let previous = '';
@@ -888,19 +941,32 @@ async function probeHeader(page: Page, controlSelector: string): Promise<HeaderP
       const text = nameOf(el);
       return text == null ? '' : `text:${text}`;
     };
-    const header = document.querySelector('header');
-    if (header == null) {
-      throw new Error('probeHeader: no <header> in the document, so every probe below is vacuous');
+    const appHeader = document.querySelector('header[data-app-header]');
+    if (appHeader == null) {
+      throw new Error(
+        'probeHeader: no <header data-app-header> in the document, so the trailing header ' +
+          'actions it holds would go unprobed and every overflow guard below would be vacuous',
+      );
     }
-    const trailingRail = document.querySelector('[data-editor-header-actions]');
+    const header = document.querySelector('header[data-editor-header]');
+    if (header == null) {
+      throw new Error(
+        'probeHeader: no <header data-editor-header> in the document, so the file-navigator ' +
+          'toggle it holds would go unprobed',
+      );
+    }
+    const trailingRail = appHeader.querySelector('[data-app-header-trailing]');
     if (trailingRail == null) {
       throw new Error(
-        'probeHeader: [data-editor-header-actions] is missing, so inTrailingRail would be ' +
+        'probeHeader: [data-app-header-trailing] is missing, so inTrailingRail would be ' +
           'false for every control and the overflow guards would pass without probing anything',
       );
     }
     const toggleElement = header.querySelector('[data-sidebar="trigger"]');
-    const all = Array.from(header.querySelectorAll(selector));
+    const all = [
+      ...Array.from(appHeader.querySelectorAll(selector)),
+      ...Array.from(header.querySelectorAll(selector)),
+    ];
     const probeOf = (el: Element, index: number) => {
       const box = el.getBoundingClientRect();
       const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
@@ -926,40 +992,12 @@ async function probeHeader(page: Page, controlSelector: string): Promise<HeaderP
     const toggleEntry = rendered.find(({ el }) => el === toggleElement) ?? null;
     return {
       viewportWidth: window.innerWidth,
-      headerWidth: Math.round(header.getBoundingClientRect().width),
+      headerWidth: Math.round(appHeader.getBoundingClientRect().width),
       navigatorExpanded: toggleElement?.getAttribute('aria-expanded') === 'true',
       toggle: toggleEntry == null ? null : probeOf(toggleEntry.el, toggleEntry.index),
       controls: rendered.map(({ el, index }) => probeOf(el, index)),
     };
   }, controlSelector);
-}
-
-async function measureShellGeometry(page: Page): Promise<ShellGeometry> {
-  return await page.evaluate(() => {
-    const rectOf = (selector: string) =>
-      document.querySelector(selector)?.getBoundingClientRect() ?? null;
-    const workspace = rectOf('[data-slot="sidebar-inset"]');
-    if (workspace == null) {
-      throw new Error(
-        'measureShellGeometry: [data-slot="sidebar-inset"] is missing, so a zero substituted ' +
-          'here would read as overlay geometry rather than as a stale selector',
-      );
-    }
-    const container = rectOf('[data-slot="sidebar-container"]');
-    const gap = rectOf('[data-slot="sidebar-gap"]');
-    if (container == null && gap == null) {
-      throw new Error(
-        'measureShellGeometry: neither [data-slot="sidebar-container"] nor ' +
-          '[data-slot="sidebar-gap"] is present, so navigatorWidth would be a fabricated zero',
-      );
-    }
-    return {
-      viewportWidth: window.innerWidth,
-      workspaceWidth: Math.round(workspace.width),
-      workspaceLeft: Math.round(workspace.x),
-      navigatorWidth: Math.round(Math.max(container?.width ?? 0, gap?.width ?? 0)),
-    };
-  });
 }
 
 async function visibleControlKeys(page: Page, selector: string): Promise<string[]> {
@@ -1011,7 +1049,7 @@ function trailingHeaderActionKeys(probe: HeaderProbe): string[] {
 test.describe('below-threshold header layout — controls must not occlude one another', () => {
   test.use({ userAgent: CHROME_VANILLA, viewport: PHONE_STANDARD });
 
-  test('MOBILE-HEADER-1: 393x852 — the file-navigator toggle stays hit-testable with the navigator open', async ({
+  test('MOBILE-HEADER-1: 393x852 — the Files cover keeps Back hit-testable and Hide Files reachable', async ({
     page,
     api,
   }) => {
@@ -1021,25 +1059,29 @@ test.describe('below-threshold header layout — controls must not occlude one a
     await waitForActiveProviderSynced(page);
     await openFileNavigator(page);
 
-    const probe = await probeHeader(page, HEADER_CONTROL_SELECTOR);
-    expect(probe.toggle, 'the file-navigator toggle must be rendered in the header').not.toBeNull();
-    expect(
-      probe.toggle?.occluderInTrailingRail ?? false,
-      `393x852 (header ${probe.headerWidth}px): the file-navigator toggle's own centre is owned ` +
-        `by "${probe.toggle?.occludedBy ?? ''}" from the trailing rail`,
-    ).toBe(false);
-    expect(
-      probe.toggle?.directlyReachable ?? false,
-      `393x852 (header ${probe.headerWidth}px): the file-navigator toggle's own centre resolves ` +
-        `to "${probe.toggle?.occludedBy ?? ''}" instead of the toggle`,
-    ).toBe(true);
+    const cover = page.locator('[data-files-cover]');
+    await expect(cover).toBeVisible();
+    const back = cover.locator('[data-files-back]');
+    await expect(back).toBeVisible();
+    const backOwnsItsCentre = await back.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      return hit != null && element.contains(hit);
+    });
+    expect(backOwnsItsCentre, '393x852: the Files cover Back control owns its own centre').toBe(
+      true,
+    );
 
-    const toggle = page.locator('[data-sidebar="trigger"]');
-    await toggle.click({ timeout: 5_000 });
-    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await cover.getByRole('button', { name: 'Tree view options' }).click();
+    await page.getByRole('menuitem', { name: 'Hide Files', exact: true }).click();
+    await expect(cover).not.toBeVisible();
+    await expect(page.locator('[data-sidebar="trigger"]')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
   });
 
-  test('MOBILE-HEADER-2: 393x852 — no header action is lost when the header cannot fit both rails', async ({
+  test('MOBILE-HEADER-2: a header too narrow for both of its groups loses no action', async ({
     page,
     api,
   }) => {
@@ -1062,16 +1104,31 @@ test.describe('below-threshold header layout — controls must not occlude one a
       'baseline: the roomy header must expose trailing actions',
     ).toBeGreaterThan(0);
 
-    await page.setViewportSize(PHONE_STANDARD);
+    const crampedWidth = await page.evaluate(() => {
+      const widthOf = (selector: string) => {
+        const el = document.querySelector(selector);
+        if (el == null) throw new Error(`MOBILE-HEADER-2: ${selector} is not in the document`);
+        return el.getBoundingClientRect().width;
+      };
+      return Math.floor(
+        widthOf('[data-app-header-leading]') + widthOf('[data-app-header-trailing]'),
+      );
+    });
+    await page.setViewportSize({ width: crampedWidth, height: PHONE_STANDARD.height });
     await waitForShellLayoutSettled(page);
     const cramped = await probeHeader(page, HEADER_CONTROL_SELECTOR);
-    expect(cramped.navigatorExpanded, 'the navigator must still be open after the resize').toBe(
-      true,
-    );
+    const at = `${cramped.viewportWidth}x${PHONE_STANDARD.height} (header ${cramped.headerWidth}px)`;
+    expect(
+      cramped.navigatorExpanded,
+      'a docked navigator that no longer fits is temporarily suppressed by the resize',
+    ).toBe(false);
+    expect(await readPinsFromPage(page), 'suppression keeps the saved open choice').toEqual({
+      left: { above: 'open', below: 'open', embedded: 'open' },
+    });
     await expect(
       page.getByTestId('header-overflow-actions-trigger'),
-      `393x852 (header ${cramped.headerWidth}px): the trailing rail did not collapse, so this ` +
-        `test never exercised the overflow recovery path it exists to guard`,
+      `${at}: the trailing group did not collapse, so this test never exercised the ` +
+        `overflow recovery path it exists to guard`,
     ).toBeVisible();
 
     const directlyReachable = cramped.controls
@@ -1087,8 +1144,7 @@ test.describe('below-threshold header layout — controls must not occlude one a
     );
     expect(
       revealed.length,
-      `393x852 (header ${cramped.headerWidth}px): opening the overflow trigger revealed nothing, ` +
-        `so the recovery affordance is empty`,
+      `${at}: opening the overflow trigger revealed nothing, so the recovery affordance is empty`,
     ).toBeGreaterThan(0);
     missing = actionsMissingFrom(revealed, missing);
     await page.keyboard.press('Escape');
@@ -1096,8 +1152,8 @@ test.describe('below-threshold header layout — controls must not occlude one a
 
     expect(
       missing,
-      `393x852 (header ${cramped.headerWidth}px): header actions available at 900px are neither ` +
-        `directly hit-testable nor reachable through an overflow affordance. ` +
+      `${at}: header actions available at 900px are neither directly hit-testable nor ` +
+        `reachable through an overflow affordance. ` +
         `Directly reachable now: [${directlyReachable.join(', ')}]`,
     ).toEqual([]);
   });
@@ -1239,7 +1295,7 @@ test.describe('below-threshold header layout — controls must not occlude one a
 test.describe('phone-width shell geometry — characterization of the shipped responsive model', () => {
   test.use({ userAgent: CHROME_VANILLA, viewport: PHONE_STANDARD });
 
-  test('MOBILE-PUSH-1: 393x852 — the open navigator displaces the workspace in flow (spec JR2)', async ({
+  test('MOBILE-PUSH-1: 393x852 — the open navigator is a full editor cover, not a push', async ({
     page,
     api,
   }) => {
@@ -1249,24 +1305,33 @@ test.describe('phone-width shell geometry — characterization of the shipped re
     await waitForActiveProviderSynced(page);
     await openFileNavigator(page);
 
-    const geometry = await measureShellGeometry(page);
-    expect(geometry.navigatorWidth, 'the open navigator occupies width').toBeGreaterThan(0);
-    expect(
-      geometry.workspaceLeft,
-      `393x852: the workspace starts at x=${geometry.workspaceLeft}, so the navigator ` +
-        `(${geometry.navigatorWidth}px) no longer displaces it. Overlay geometry is deferred ` +
-        `scope, not this fix — update this characterization deliberately, with a spec.`,
-    ).toBeGreaterThanOrEqual(geometry.navigatorWidth - 1);
-    expect(
-      geometry.workspaceWidth,
-      `393x852: the workspace must keep the residual width beside the navigator`,
-    ).toBeGreaterThanOrEqual(
-      geometry.viewportWidth - geometry.navigatorWidth - RESIDUAL_WORKSPACE_SLACK_PX,
+    await expect(page.locator('[data-files-cover]')).toBeVisible();
+    const geometry = await page.evaluate(() => {
+      const workspace = document
+        .querySelector('[data-slot="sidebar-inset"]')
+        ?.getBoundingClientRect();
+      const cover = document.querySelector('[data-files-cover]')?.getBoundingClientRect();
+      if (workspace == null || cover == null)
+        throw new Error('MOBILE-PUSH-1: workspace or cover missing');
+      return {
+        viewportWidth: window.innerWidth,
+        workspaceLeft: Math.round(workspace.x),
+        workspaceRight: Math.round(workspace.right),
+        coverLeft: Math.round(cover.x),
+        coverRight: Math.round(cover.right),
+        coverWidth: Math.round(cover.width),
+      };
+    });
+    expect(geometry.workspaceLeft, '393x852: the workspace is not displaced').toBeLessThanOrEqual(
+      RESIDUAL_WORKSPACE_SLACK_PX,
     );
+    expect(geometry.workspaceRight).toBeLessThanOrEqual(geometry.viewportWidth + 1);
+    expect(geometry.coverLeft).toBeGreaterThanOrEqual(geometry.workspaceLeft - 1);
+    expect(geometry.coverRight).toBeLessThanOrEqual(geometry.workspaceRight + 1);
     expect(
-      geometry.workspaceLeft + geometry.workspaceWidth,
-      `393x852: the workspace must not extend past the viewport`,
-    ).toBeLessThanOrEqual(geometry.viewportWidth + 1);
+      geometry.coverWidth,
+      '393x852: the Files cover spans the editor card',
+    ).toBeGreaterThanOrEqual(geometry.viewportWidth - 2 * RESIDUAL_WORKSPACE_SLACK_PX);
   });
 });
 
@@ -1286,7 +1351,7 @@ test.describe('Cursor UA (embedded)', () => {
     await page.locator('[data-doc-panel-toggle]').click();
     await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'true');
     const pins = await readPinsFromPage(page);
-    expect(pins).toEqual({ right: { embedded: 'open' } });
+    expect(pins).toEqual({ right: { above: 'open', below: 'open', embedded: 'open' } });
     await page.reload();
     await waitForActiveProviderSynced(page);
     expect(await docPanelOpen(page)).toBe(true);
@@ -1321,7 +1386,9 @@ test.describe('Cursor UA (embedded)', () => {
 
     const railButton = page.locator('[data-sidebar="rail"]');
     await expect(railButton).toHaveCount(1);
-    await railButton.hover();
+    const railBox = await railButton.boundingBox();
+    if (railBox == null) throw new Error('QA-043: the collapsed rail has no box');
+    await page.mouse.move(railBox.x + railBox.width / 2, railBox.y + railBox.height / 2);
     await page.mouse.down();
     await page.mouse.move(500, 400, { steps: 10 });
     await page.mouse.up();
@@ -1355,6 +1422,13 @@ test.describe('Cursor UA (embedded)', () => {
     expect(after.editorWidth, 'editor width unchanged (right handle drag was a no-op)').toBe(
       before.editorWidth,
     );
+  });
+
+  test('the header adds only the Agents button; chat starts closed and AI handoff stays hidden', async ({
+    page,
+    api,
+  }) => {
+    await expectEmbeddedHeaderAddsOnlyAgents(page, api, 'embedded-header-cursor');
   });
 
   test('QA-019: AI-handoff affordances hidden when embedded (palette + empty-state)', async ({
@@ -1408,11 +1482,18 @@ test.describe('Codex(Dev) UA — parenthetical-tolerant embedded', () => {
     await page.locator('[data-sidebar="trigger"]').click();
     await expect(page.locator('[data-sidebar="trigger"]')).toHaveAttribute('aria-expanded', 'true');
     const pins = await readPinsFromPage(page);
-    expect(pins).toEqual({ left: { embedded: 'open' } });
+    expect(pins).toEqual({ left: { above: 'open', below: 'open', embedded: 'open' } });
     await page.setViewportSize(NARROW);
     await page.reload();
     await waitForActiveProviderSynced(page);
     expect(await leftSidebarState(page)).toBe('expanded');
+  });
+
+  test('the header adds only the Agents button; chat starts closed and AI handoff stays hidden', async ({
+    page,
+    api,
+  }) => {
+    await expectEmbeddedHeaderAddsOnlyAgents(page, api, 'embedded-header-codex');
   });
 
   test('QA-038: embedded + install hidden + handoff hidden composite', async ({ page, api }) => {
@@ -1449,5 +1530,12 @@ test.describe('Claude(Canary) UA — embedded', () => {
     await waitForActiveProviderSynced(page);
     expect(await leftSidebarState(page)).toBe('collapsed');
     expect(await docPanelOpen(page)).toBe(false);
+  });
+
+  test('the header adds only the Agents button; chat starts closed and AI handoff stays hidden', async ({
+    page,
+    api,
+  }) => {
+    await expectEmbeddedHeaderAddsOnlyAgents(page, api, 'embedded-header-claude');
   });
 });

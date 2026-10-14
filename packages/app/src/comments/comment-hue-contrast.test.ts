@@ -11,7 +11,7 @@ const RESTING_LINE_ALPHA = 0.7;
 
 const CANVASES = {
   light: { rgb: [255, 255, 255], decl: 'oklch(1 0 0)' },
-  dark: { rgb: [10, 10, 10], decl: 'oklch(0.145 0 0)' },
+  dark: { rgb: [21, 21, 21], decl: 'oklch(0.195 0 0)' },
 } as const;
 
 type Rgb = readonly [number, number, number] | number[];
@@ -50,7 +50,7 @@ function hue(declaration: string): number[] {
 }
 
 describe('comment highlight hue', () => {
-  test('canvas declarations are unchanged', () => {
+  test('canvas declarations match the contrast calculation', () => {
     const backgrounds = declarations('--background');
     expect(backgrounds[0]).toBe(CANVASES.light.decl);
     expect(backgrounds[1]).toBe(CANVASES.dark.decl);

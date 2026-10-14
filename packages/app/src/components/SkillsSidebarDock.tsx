@@ -106,7 +106,7 @@ export function SkillsSidebarDock({ filesOpen = true }: { filesOpen?: boolean } 
       }}
       className={cn(
         'group/skills-dock flex min-h-0 flex-col',
-        expanded && !filesOpen ? 'flex-1' : 'shrink-0',
+        !expanded ? 'shrink-0' : filesOpen ? 'shrink' : 'flex-1',
       )}
       data-testid="skills-dock"
     >

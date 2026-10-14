@@ -8,9 +8,11 @@ import { refresh, useCommentThreads } from './store';
 function CommentsPanelInner({
   docName,
   scopeSwitch,
+  onDestinationComplete,
 }: {
   docName: string;
   scopeSwitch?: ReactNode;
+  onDestinationComplete?: (target: HTMLElement) => void;
 }) {
   const threads = useCommentThreads(docName);
 
@@ -24,6 +26,7 @@ function CommentsPanelInner({
       empty={<Trans>No comments yet. Select text in the document to add one.</Trans>}
       testIdPrefix="comment-doc"
       scopeSwitch={scopeSwitch}
+      onDestinationComplete={onDestinationComplete}
     />
   );
 }
@@ -31,13 +34,19 @@ function CommentsPanelInner({
 export function CommentsPanel({
   docName,
   scopeSwitch,
+  onDestinationComplete,
 }: {
   docName: string;
   scopeSwitch?: ReactNode;
+  onDestinationComplete?: (target: HTMLElement) => void;
 }) {
   return (
     <ProfilerBoundary name="comments-panel">
-      <CommentsPanelInner docName={docName} scopeSwitch={scopeSwitch} />
+      <CommentsPanelInner
+        docName={docName}
+        scopeSwitch={scopeSwitch}
+        onDestinationComplete={onDestinationComplete}
+      />
     </ProfilerBoundary>
   );
 }

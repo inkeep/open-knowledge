@@ -203,6 +203,7 @@ export const HelpPopover: FC = () => {
         </Tooltip>
         <PopoverContent
           align="end"
+          aria-label={t`Resources`}
           className="w-56 p-3 subtle-scrollbar max-h-(--radix-popover-content-available-height) overflow-y-auto data-[state=closed]:overflow-hidden"
         >
           {sections.map((section, index) => (

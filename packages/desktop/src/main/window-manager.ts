@@ -39,6 +39,7 @@ import type { ShowGateRegistry } from './show-gate.ts';
 import type { RestoredWindow } from './state-store.ts';
 import type { ShareDeepLinkBranchSwitchPayload } from './url-scheme.ts';
 import { classifyServerVersion } from './version-drift.ts';
+import { SINGLE_FILE_WINDOW_CHROME_KIND, type WindowChromeKind } from './window-chrome.ts';
 
 const RESTART_SIGTERM_GRACE_MS = 3_000;
 
@@ -339,6 +340,7 @@ export interface WindowManagerDeps {
     title: string;
     projectPath?: string;
     focusKey?: string;
+    chrome?: WindowChromeKind;
   }): BrowserWindowLike;
   forkUtility(
     entry: string,
@@ -1514,6 +1516,7 @@ export class WindowManager {
       additionalArguments,
       title: formatEditorTitle(projectName),
       projectPath,
+      chrome: 'app-header',
     });
     this.deps.startup?.markWindowCreated?.();
     this.attachSafetyNet(window.webContents, apiOrigin, projectPath);
@@ -1876,6 +1879,7 @@ export class WindowManager {
       ],
       title: formatEditorTitle(projectName),
       focusKey: canonicalKey,
+      chrome: SINGLE_FILE_WINDOW_CHROME_KIND,
     });
     this.attachSafetyNet(window.webContents, apiOrigin, opts.contentDir);
 
@@ -2315,6 +2319,7 @@ export class WindowManager {
       ],
       title: formatEditorTitle(projectName),
       projectPath,
+      chrome: 'app-header',
     });
     this.deps.startup?.markWindowCreated?.();
     this.attachSafetyNet(window.webContents, apiOrigin, projectPath);

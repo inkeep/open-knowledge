@@ -251,8 +251,8 @@ describe('SidebarProvider — focus safety on auto-collapse (FR-9 left side)', (
   });
 });
 
-describe('SidebarProvider — trigger click writes the current-partition slot (FR-3, FR-5, D13)', () => {
-  test('click in above partition writes a slot under the `above` key', () => {
+describe('SidebarProvider — trigger click writes one intent for every partition', () => {
+  test('click in above partition writes the same slot for every partition', () => {
     setInnerWidth(1280);
     installMatchMedia(true);
     render(<Fixture />);
@@ -266,11 +266,11 @@ describe('SidebarProvider — trigger click writes the current-partition slot (F
 
     expect(getSidebarState()).toBe('collapsed');
     expect(readPins(window.localStorage)).toEqual({
-      left: { above: 'collapsed' },
+      left: { above: 'collapsed', below: 'collapsed', embedded: 'collapsed' },
     });
   });
 
-  test('click in below partition PRESERVES the existing above slot (D13 — slots are independent)', () => {
+  test('click in below partition replaces an earlier slot in every partition', () => {
     window.localStorage.setItem(SIDEBAR_PINS_KEY, JSON.stringify({ left: { above: 'open' } }));
     setInnerWidth(900);
     installMatchMedia(false);
@@ -285,11 +285,11 @@ describe('SidebarProvider — trigger click writes the current-partition slot (F
 
     expect(getSidebarState()).toBe('expanded');
     expect(readPins(window.localStorage)).toEqual({
-      left: { above: 'open', below: 'open' },
+      left: { above: 'open', below: 'open', embedded: 'open' },
     });
   });
 
-  test('matchMedia re-resolution followed by click writes the NEW partition slot (closure freshness)', () => {
+  test('matchMedia re-resolution followed by click writes the fresh intent everywhere (closure freshness)', () => {
     setInnerWidth(1280);
     const mql = installMatchMedia(true);
     render(<Fixture />);
@@ -307,7 +307,7 @@ describe('SidebarProvider — trigger click writes the current-partition slot (F
     });
 
     expect(readPins(window.localStorage)).toEqual({
-      left: { below: 'open' },
+      left: { above: 'open', below: 'open', embedded: 'open' },
     });
   });
 });

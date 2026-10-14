@@ -1695,3 +1695,49 @@ describe('Window → Open in New Window', () => {
     }
   });
 });
+
+describe('buildMenuTemplate — View → Show/Hide Editor', () => {
+  const viewLabels = (deps: Partial<MenuDeps>) => {
+    const sub = findByLabel(buildMenuTemplate(makeDeps(deps)), 'View')?.submenu as
+      | MenuItemConstructorOptions[]
+      | undefined;
+    return sub?.map((i) => (i.role ? `[role:${i.role}]` : (i.label ?? '[sep]'))) ?? [];
+  };
+
+  test('a project window offers Hide Editor while the editor shows and Show Editor once hidden, with no shortcut', () => {
+    const shown = buildMenuTemplate(makeDeps({ onToggleEditor: vi.fn(() => {}) }));
+    expect(findByLabel(shown, 'Hide Editor')).toBeDefined();
+    expect(findByLabel(shown, 'Hide Editor')?.accelerator).toBeUndefined();
+    const hidden = buildMenuTemplate(
+      makeDeps({ onToggleEditor: vi.fn(() => {}), editorVisible: false }),
+    );
+    expect(findByLabel(hidden, 'Show Editor')).toBeDefined();
+    expect(findByLabel(hidden, 'Hide Editor')).toBeUndefined();
+  });
+
+  test('clicking it sends the toggle to the renderer', () => {
+    const onToggleEditor = vi.fn(() => {});
+    const template = buildMenuTemplate(makeDeps({ onToggleEditor }));
+    (findByLabel(template, 'Hide Editor')?.click as (() => void) | undefined)?.();
+    expect(onToggleEditor).toHaveBeenCalledOnce();
+  });
+
+  test('sits before Terminal and Agents in the View panel cluster', () => {
+    const labels = viewLabels({
+      onToggleEditor: vi.fn(() => {}),
+      onToggleTerminal: vi.fn(() => {}),
+      onToggleAgentPanel: vi.fn(() => {}),
+    });
+    expect(labels.indexOf('Hide Editor')).toBeGreaterThanOrEqual(0);
+    expect(labels.indexOf('Hide Editor')).toBeLessThan(labels.indexOf('Show Terminal'));
+    expect(labels.indexOf('Show Terminal')).toBeLessThan(labels.indexOf('Show Agents'));
+  });
+
+  test('single-file and note windows do not offer it', () => {
+    for (const deps of [{ singleFileWindow: true }, { noteWindow: true }]) {
+      const labels = viewLabels({ ...deps, onToggleEditor: vi.fn(() => {}) });
+      expect(labels).not.toContain('Hide Editor');
+      expect(labels).not.toContain('Show Editor');
+    }
+  });
+});

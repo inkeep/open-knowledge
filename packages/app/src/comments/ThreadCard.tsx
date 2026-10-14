@@ -3,7 +3,9 @@
 import { Trans, useLingui } from '@lingui/react/macro';
 import { CheckCheck, MapPin, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import type { PanelScope } from '@/components/PanelScopeHeader';
+import { getPropertiesCollapsed } from '@/components/properties-collapsed-store';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -13,6 +15,7 @@ import {
   ComposerMentionInput,
   type ComposerMentionInputHandle,
 } from '@/editor/ComposerMentionInput';
+import { getEditorView } from '@/editor/utils/get-editor-view';
 import { cn } from '@/lib/utils';
 import { captureSelectionContext, findQuoteRange } from './anchor-search';
 import { propertyAddress, revealThread } from './comment-chips';
@@ -60,6 +63,7 @@ export function ThreadCard({
   active,
   sending,
   layout,
+  onDestinationComplete,
 }: {
   thread: CommentThread;
   cardRef: (el: HTMLElement | null) => void;
@@ -67,6 +71,7 @@ export function ThreadCard({
   active: boolean;
   sending: boolean;
   layout: PanelScope;
+  onDestinationComplete?: (target: HTMLElement) => void;
 }) {
   const { t } = useLingui();
   const [renderedAt] = useState(() => Date.now());
@@ -122,29 +127,47 @@ export function ThreadCard({
     };
   }, [editing]);
 
+  function reportPassageMissing() {
+    toast.error(t`Couldn't find that passage — the text it was on may have changed.`);
+  }
+
   function jumpToQuote(quote: string) {
     if (thread.anchor === null) return;
     if (getVisibleEditorForDoc(thread.docName) === null) {
-      revealThread(thread);
+      revealThread(thread, onDestinationComplete);
       return;
     }
     if (thread.target.kind === 'property') {
-      revealPropertyValueRange({
+      const target = revealPropertyValueRange({
         key: thread.target.key,
         path: thread.target.path,
         quote,
         start: thread.anchor.start,
         end: thread.anchor.end,
       });
+      if (!target) {
+        if (getPropertiesCollapsed()) revealThread(thread, onDestinationComplete);
+        else reportPassageMissing();
+        return;
+      }
       emitOpenThread(thread.id);
+      onDestinationComplete?.(target);
       return;
     }
     const editor = getVisibleEditorForDoc(thread.docName);
     if (!editor) return;
     const range = findQuoteRange(editor.state.doc, quote, thread.anchor);
-    if (!range) return;
-    scrollAnchorIntoView(editor, range, thread.docName);
+    if (!range) {
+      reportPassageMissing();
+      return;
+    }
+    if (!scrollAnchorIntoView(editor, range, thread.docName)) {
+      revealThread(thread, onDestinationComplete);
+      return;
+    }
     emitOpenThread(thread.id);
+    const target = getEditorView(editor)?.dom;
+    if (target) onDestinationComplete?.(target);
   }
 
   function rePlaceOnSelection() {

@@ -1,4 +1,3 @@
-import { act } from '@testing-library/react';
 import { vi } from 'vitest';
 
 export interface HeaderMetrics {
@@ -8,6 +7,7 @@ export interface HeaderMetrics {
   tabs?: number;
   trailing: number;
   collapsedTrailing?: number;
+  paneButton?: number;
 }
 
 export function mockHeaderMetrics(source: HeaderMetrics | (() => HeaderMetrics)) {
@@ -15,14 +15,18 @@ export function mockHeaderMetrics(source: HeaderMetrics | (() => HeaderMetrics))
   const offsetWidth = vi
     .spyOn(HTMLElement.prototype, 'offsetWidth', 'get')
     .mockImplementation(function (this: HTMLElement) {
-      const { header, leading, tabs = 0, trailing, collapsedTrailing } = current();
+      const { header, leading, tabs = 0, trailing, collapsedTrailing, paneButton = 0 } = current();
       if (this.tagName === 'HEADER') return header;
       if (this.hasAttribute('data-editor-header-leading-actions')) return leading;
       if (this.hasAttribute('data-editor-header-tabs')) return tabs;
       if (this.hasAttribute('data-editor-header-actions')) {
         const collapsed =
           this.querySelector('[data-testid="header-overflow-actions-trigger"]') !== null;
-        return collapsed && collapsedTrailing !== undefined ? collapsedTrailing : trailing;
+        const paneRow =
+          this.querySelectorAll('[data-testid^="header-pane-button-"]').length * paneButton;
+        return (
+          (collapsed && collapsedTrailing !== undefined ? collapsedTrailing : trailing) + paneRow
+        );
       }
       return 0;
     });
@@ -36,31 +40,5 @@ export function mockHeaderMetrics(source: HeaderMetrics | (() => HeaderMetrics))
   return () => {
     offsetLeft.mockRestore();
     offsetWidth.mockRestore();
-  };
-}
-
-export function captureResizeObserver() {
-  const callbacks: ResizeObserverCallback[] = [];
-  const original = globalThis.ResizeObserver;
-  class CapturingResizeObserver {
-    constructor(callback: ResizeObserverCallback) {
-      callbacks.push(callback);
-    }
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  }
-  globalThis.ResizeObserver = CapturingResizeObserver as unknown as typeof ResizeObserver;
-  return {
-    flush() {
-      for (const callback of callbacks) {
-        act(() => {
-          callback([], {} as ResizeObserver);
-        });
-      }
-    },
-    restore() {
-      globalThis.ResizeObserver = original;
-    },
   };
 }

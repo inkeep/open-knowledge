@@ -44,6 +44,7 @@ import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
 import { hasInflightThreadLaunch, launchAgentThread } from '@/lib/acp/launch-agent-thread';
 import {
   enabledTerminalClis,
+  LAUNCHER_KIND_PANE,
   type LauncherSelection,
   resolveLauncherSelection,
 } from '@/lib/acp/launcher-selection';
@@ -71,6 +72,7 @@ import {
   type ThreadDraftContent,
 } from '@/lib/acp/thread-draft-staging';
 import { threadHasUserMessage } from '@/lib/acp/thread-event-model';
+import { usePreferredSessionSelection } from '@/lib/acp/use-preferred-session-selection';
 import type { OkDesktopBridge, OkTerminalRestartSnapshot } from '@/lib/desktop-bridge-types';
 import { emitDiagnosticBreadcrumb } from '@/lib/diagnostic-breadcrumb';
 import {
@@ -85,6 +87,7 @@ import { matchesPrimaryModifier, type ShortcutPlatform } from '@/lib/keyboard-sh
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import type { NewSessionChoice } from '@/lib/new-session-choice';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
+import { paneVisibilityStore } from '@/lib/pane-visibility-store';
 import { RESTORE_SETTLE_TIMEOUT_MS } from '@/lib/restore-settle-timeout';
 import { usePreferBareTerminal, writePreferBareTerminal } from '@/lib/terminal-new-tab-store';
 import {
@@ -217,6 +220,16 @@ function fallbackSessionFocusElement(session: SessionDescriptor): HTMLElement | 
 
 function focusInsideHost(hostEl: HTMLElement | null): boolean {
   return hostEl?.contains(document.activeElement) ?? false;
+}
+
+function focusRemainsUsable(element: Element | null): boolean {
+  return (
+    element instanceof HTMLElement &&
+    element !== document.body &&
+    element.isConnected &&
+    element.closest('[inert]') == null &&
+    element.getClientRects().length > 0
+  );
 }
 
 function focusAvailableButton(candidate: HTMLButtonElement | null): HTMLButtonElement | null {
@@ -409,16 +422,18 @@ interface SessionsHostSharedProps {
   readonly terminalCapable?: boolean;
   readonly terminalPlacement?: TerminalPlacement;
   readonly onTerminalPlacementChange?: (placement: TerminalPlacement) => void;
-  readonly reserveRightRevealTabGutter?: boolean;
   readonly terminalRestoreRevealNonce?: number;
   readonly visible: boolean;
-  readonly onVisibleChange: (visible: boolean) => void;
+  readonly wideVisible?: boolean;
+  readonly onVisibleChange: (visible: boolean, reason?: 'session-close') => void;
+  readonly onPreferredSessionHostReady?: () => void;
   readonly launch?: TerminalLaunchIntent | null;
   readonly commandLaunch?: { readonly id: TerminalCommandId; readonly nonce: number } | null;
   readonly threadLaunch?: ThreadLaunchIntent | null;
   readonly installedClis?: Partial<Record<TerminalCli, boolean>>;
   readonly container: HTMLElement | null;
   readonly isShowing: boolean;
+  readonly revealFocusHold?: boolean;
   readonly onRequestEditorFocus: () => void;
 }
 
@@ -435,12 +450,6 @@ type SessionsHostProps = SessionsHostSharedProps &
   );
 
 const REVEAL_FOCUS_LANDING_TIMEOUT_MS = 5_000;
-
-const TERMINAL_DOCK_KINDS: Record<Exclude<LauncherSelection['kind'], 'thread' | 'none'>, true> = {
-  cli: true,
-  terminal: true,
-  desktop: true,
-};
 
 function closeHistory(
   setOpen: (open: boolean) => void,
@@ -464,10 +473,11 @@ export function SessionsHost({
   surface,
   terminalPlacement = 'bottom',
   onTerminalPlacementChange,
-  reserveRightRevealTabGutter,
   terminalRestoreRevealNonce = 0,
   visible,
+  wideVisible = visible,
   onVisibleChange,
+  onPreferredSessionHostReady,
   agentsVisibilityRestoreSettled,
   launch = null,
   commandLaunch = null,
@@ -475,6 +485,7 @@ export function SessionsHost({
   installedClis,
   container,
   isShowing,
+  revealFocusHold = false,
   onRequestEditorFocus,
 }: SessionsHostProps) {
   const { t } = useLingui();
@@ -485,7 +496,7 @@ export function SessionsHost({
   const terminalAvailable = hostTerminals && terminalCapable && bridge?.terminal != null;
   const edge: SessionPanelEdge = hostThreads ? 'right' : terminalPlacement;
   const persistSurface: DockSurface = hostThreads ? 'agents' : 'terminal';
-  const persistedPanelLevel = hostThreads && visible;
+  const persistedPanelLevel = hostThreads && wideVisible;
   const persistsOrder = !isWindow;
   const shortcutPlatform: ShortcutPlatform | undefined =
     bridge?.platform === 'darwin'
@@ -503,6 +514,11 @@ export function SessionsHost({
 
   const [attachedHostEl, setAttachedHostEl] = useState<HTMLDivElement | null>(null);
   const hostStateReportsRef = useRef(0);
+
+  useLayoutEffect(() => {
+    if (hostEl == null) return;
+    return () => hostEl.remove();
+  }, [hostEl]);
 
   useLayoutEffect(() => {
     if (hostEl == null || container == null) return;
@@ -572,6 +588,11 @@ export function SessionsHost({
   const lastHandledThreadNonceRef = useRef<number | null>(null);
   const settingsShownForNonceRef = useRef<number | null>(null);
   const seedOwedRef = useRef(false);
+  const seededThreadLaunchRef = useRef<{
+    agentKey: string;
+    connectionGeneration: number;
+  } | null>(null);
+  const seededThreadIdRef = useRef<string | null>(null);
   const initialVisibleSeedAttemptedRef = useRef(false);
   const [emptyAgentLaunchState, setEmptyAgentLaunchState] = useState<EmptyAgentLaunchState>('idle');
   const pendingAgentLaunchRequestRef = useRef<AgentPaneLaunchRequest | null>(null);
@@ -591,6 +612,11 @@ export function SessionsHost({
   const consumedRestoreRevealNonceRef = useRef(terminalRestoreRevealNonce);
   const ptyIdBySessionRef = useRef(new Map<string, string>());
   const stripLaunchNonceRef = useRef(0);
+
+  const revealFocusHoldRef = useRef(revealFocusHold);
+  useLayoutEffect(() => {
+    revealFocusHoldRef.current = revealFocusHold;
+  }, [revealFocusHold]);
 
   useLayoutEffect(() => {
     const revealing = isShowing && !revealFocusWasShowingRef.current;
@@ -710,7 +736,7 @@ export function SessionsHost({
     const snapshot = buildTerminalRestartSnapshot(sessionsRef.current, activeSessionIdRef.current);
     if (hostThreads) {
       writeDockSessionOrder(bridge, 'agents', { order, activeKey }, snapshot);
-      writeAgentsPanelLevel(bridge, visible);
+      writeAgentsPanelLevel(bridge, wideVisible);
     } else {
       writeDockSessionOrder(bridge, 'terminal', { order, activeKey }, snapshot);
     }
@@ -791,7 +817,10 @@ export function SessionsHost({
     openSession({ prompt: null, cli, nonce: stripLaunchNonceRef.current }, null, provenance);
   }
 
-  function launchAgentForPane(request: AgentPaneLaunchRequest) {
+  function launchAgentForPane(
+    request: AgentPaneLaunchRequest,
+    onCreated?: (info: ThreadInfo) => void,
+  ) {
     const {
       agent,
       prompt = null,
@@ -813,6 +842,7 @@ export function SessionsHost({
       titleHint,
       stageDraft,
       attachments,
+      onCreated,
     ).then((outcome) => {
       if (outcome === 'deduped') {
         toast.error(t`Already starting a chat with this agent — try again in a moment.`);
@@ -870,7 +900,21 @@ export function SessionsHost({
   function seedOnReveal(): boolean {
     if (hostThreads) {
       if (newSessionChoice.kind !== 'agent' || newSessionChoice.agent == null) return false;
-      void launchAgentForPane({ agent: newSessionChoice.agent });
+      const agent = newSessionChoice.agent;
+      const seededLaunch = {
+        agentKey: `${agent.source}:${agent.id}`,
+        connectionGeneration: getAgentThreadClient().getConnectionGeneration(),
+      };
+      seededThreadIdRef.current = null;
+      seededThreadLaunchRef.current = seededLaunch;
+      void launchAgentForPane({ agent }, (info) => {
+        if (seededThreadLaunchRef.current !== seededLaunch) return;
+        seededThreadIdRef.current = info.threadId;
+        seededThreadLaunchRef.current = null;
+      }).then((outcome) => {
+        if (outcome !== 'started' && seededThreadLaunchRef.current === seededLaunch)
+          seededThreadLaunchRef.current = null;
+      });
       return true;
     }
     if (newSessionChoice.kind === 'terminal') openSession(null, null, 'restore-seed');
@@ -905,23 +949,15 @@ export function SessionsHost({
     bareTerminalFallback: false,
   });
 
-  const preferredSessionSelection = resolveLauncherSelection({
-    sticky: stickyAgentId,
-    effectiveThreadAgent: effectiveDefaultAgent,
-    enabledClis: enabledTerminalClis(enabledOverrides, installedClis ?? {}),
-    enabledDesktopTargets: [],
+  const preferredSessionSelection = usePreferredSessionSelection({
     installedClis: installedClis ?? {},
     terminalAvailable: terminalCapable,
     threadsAvailable: !isWindow,
-    desktopSelectable: false,
-    preferBareTerminal,
-    bareTerminalFallback: true,
   });
 
   function claimsSessionKind(kind: LauncherSelection['kind']): boolean {
     if (isWindow) return true;
-    const agentsPanelKind = kind === 'thread' || kind === 'none';
-    return hostThreads ? agentsPanelKind : kind in TERMINAL_DOCK_KINDS;
+    return LAUNCHER_KIND_PANE[kind] === (hostThreads ? 'agents' : 'terminal');
   }
 
   function publishReusableSessionFrom(sessionList: readonly SessionDescriptor[], activeId: string) {
@@ -960,9 +996,14 @@ export function SessionsHost({
     publishReusableSessionFrom(sessions, activeSessionId);
   }, [activeSessionId, sessions, openThreadTabs]);
 
+  function requestHostPaneReveal() {
+    if (!visible) onVisibleChange(true);
+    else if (hostThreads) paneVisibilityStore.request('agents', true);
+  }
+
   function revealForReuse() {
     dismissCoveringHistory();
-    if (!visible) onVisibleChange(true);
+    requestHostPaneReveal();
   }
 
   function dispatchAskAi({ text, newTab, submit, target }: ActiveTerminalInputDetail) {
@@ -970,14 +1011,13 @@ export function SessionsHost({
     if (target === 'agents') {
       if (!hostThreads) return;
     } else if (!claimsSessionKind(selection.kind)) return;
-    if (!visible) onVisibleChange(true);
+    requestHostPaneReveal();
     dismissCoveringHistory();
     const activeId = activeSessionIdRef.current;
     const active = sessionsRef.current.find((s) => s.id === activeId);
     if (!newTab && active != null) {
       if (active.kind === 'thread') {
         stageThreadDraft(active.threadId, text);
-        revealForReuse();
         queueMicrotask(() => focusSession(active));
         return;
       }
@@ -1142,7 +1182,7 @@ export function SessionsHost({
   }
   function launchPreferredSession() {
     if (!claimsSessionKind(preferredSessionSelection.kind)) return;
-    if (!visible) onVisibleChange(true);
+    requestHostPaneReveal();
     launchSelectedNewTab();
   }
 
@@ -1154,6 +1194,7 @@ export function SessionsHost({
   const dispatchAskAiRef = useRef(dispatchAskAi);
   const revealForReuseRef = useRef(revealForReuse);
   const launchPreferredSessionRef = useRef(launchPreferredSession);
+  const preferredSessionKindRef = useRef(preferredSessionSelection.kind);
 
   function closeSession(id: string) {
     const current = sessionsRef.current;
@@ -1176,7 +1217,7 @@ export function SessionsHost({
       setSessions(current.filter((s) => s.id !== id));
     }
     if (isLast) {
-      onVisibleChange(false);
+      onVisibleChange(false, 'session-close');
       onRequestEditorFocus();
     }
   }
@@ -1199,6 +1240,7 @@ export function SessionsHost({
     dispatchAskAiRef.current = dispatchAskAi;
     revealForReuseRef.current = revealForReuse;
     launchPreferredSessionRef.current = launchPreferredSession;
+    preferredSessionKindRef.current = preferredSessionSelection.kind;
     noteUserArrangementRef.current = noteUserArrangement;
     moveActiveSessionRef.current = moveActiveSession;
     activeSessionIdRef.current = activeSessionId;
@@ -1333,11 +1375,36 @@ export function SessionsHost({
     const previous = prevLiveThreadIdsRef.current;
     prevLiveThreadIdsRef.current = liveThreadIds;
     const added = liveThreadIds.filter((id) => !previous.includes(id));
-    if (added.length === 0 || visible) return;
-    const absorbsReloadSnapshot = added.every((id) => initialRosterThreadIds?.has(id) === true);
+    if (added.length === 0) return;
+    const seededLaunch = seededThreadLaunchRef.current;
+    const seededThreadId = added.find((id) => {
+      if (id === seededThreadIdRef.current) return true;
+      if (
+        seededLaunch === null ||
+        seededLaunch.connectionGeneration !== getAgentThreadClient().getConnectionGeneration()
+      )
+        return false;
+      const info = openThreadTabs.find((thread) => thread.threadId === id);
+      return (
+        initialRosterThreadIds?.has(id) !== true &&
+        info !== undefined &&
+        `${info.agent.source}:${info.agent.id}` === seededLaunch.agentKey
+      );
+    });
+    if (seededThreadId !== undefined) {
+      seededThreadIdRef.current = seededThreadId;
+      seededThreadLaunchRef.current = null;
+    }
+    if (visible) return;
+    const newArrival = added.filter((id) => id !== seededThreadId);
+    if (newArrival.length === 0) return;
+    const absorbsReloadSnapshot = newArrival.every(
+      (id) => initialRosterThreadIds?.has(id) === true,
+    );
     if (!absorbsReloadSnapshot) onVisibleChange(true);
   }, [
     liveThreadIds,
+    openThreadTabs,
     hostThreads,
     agentsVisibilityRestoreSettled,
     visible,
@@ -1395,6 +1462,14 @@ export function SessionsHost({
       !(hostThreads && hasInflightThreadLaunch())
     ) {
       if (restoredVisibility && !restoreAbandonedRef.current) return;
+      if (hostThreads) {
+        if (initialRosterThreadIds === null) return;
+        initialVisibleSeedAttemptedRef.current = true;
+        if (openThreadTabs.length > 0) {
+          seedOwedRef.current = false;
+          return;
+        }
+      }
       seedOwedRef.current = !seedOnRevealRef.current();
       return;
     }
@@ -1417,7 +1492,12 @@ export function SessionsHost({
       return;
     }
     if (!seedOwedRef.current) return;
-    if (!visible || sessions.length > 0 || threadLaunchPending) {
+    if (
+      !visible ||
+      sessions.length > 0 ||
+      threadLaunchPending ||
+      (hostThreads && openThreadTabs.length > 0)
+    ) {
       seedOwedRef.current = false;
       return;
     }
@@ -1675,8 +1755,20 @@ export function SessionsHost({
   }, [hostThreads]);
 
   useEffect(() => {
-    return subscribeToPreferredSessionRequests(() => launchPreferredSessionRef.current());
-  }, []);
+    const unsubscribe = subscribeToPreferredSessionRequests(
+      () => launchPreferredSessionRef.current(),
+      window,
+      () => {
+        if (isWindow) return true;
+        return (
+          LAUNCHER_KIND_PANE[preferredSessionKindRef.current] ===
+          (hostThreads ? 'agents' : 'terminal')
+        );
+      },
+    );
+    onPreferredSessionHostReady?.();
+    return unsubscribe;
+  }, [hostThreads, isWindow, onPreferredSessionHostReady]);
 
   useEffect(() => {
     if (!hostTerminals) return;
@@ -1770,6 +1862,10 @@ export function SessionsHost({
   useEffect(() => {
     if (!isShowing || attachedHostEl == null) return;
     const focusOrigin = document.activeElement;
+    if (revealFocusHoldRef.current && focusRemainsUsable(focusOrigin)) {
+      revealFocusRef.current = null;
+      return;
+    }
     const initialTargetId = revealFocusRef.current?.pendingThreadId ?? activeSessionIdRef.current;
     const initialActive = sessionsRef.current.find((s) => s.id === initialTargetId);
     let initialFallbackLanding = false;
@@ -2091,15 +2187,6 @@ export function SessionsHost({
       }}
       edge={edge}
       onPlacementChange={surface === 'terminal-dock' ? onTerminalPlacementChange : undefined}
-      reserveRightRevealTabGutter={reserveRightRevealTabGutter}
-      onCollapse={
-        isWindow
-          ? undefined
-          : () => {
-              onVisibleChange(false);
-              onRequestEditorFocus();
-            }
-      }
       draggable={isWindow}
       className="h-full"
     >
@@ -2128,9 +2215,9 @@ export function SessionsHost({
           {historyOpen ? (
             <div
               className={cn(
-                'z-20 h-full max-w-full bg-background',
+                'z-20 h-full max-w-full bg-sidebar',
                 historyMode === 'cover'
-                  ? 'absolute inset-0 w-full shadow-xl'
+                  ? 'absolute inset-0 w-full shadow-xl [-webkit-app-region:no-drag]'
                   : 'w-(--history-panel-width) shrink-0 border-s',
               )}
               style={

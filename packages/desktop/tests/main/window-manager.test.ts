@@ -9,6 +9,7 @@ import { failedOpenHolder, promptHolderStop } from '../../src/main/holder-stop-p
 import { resolveLocalOpCliInvocation } from '../../src/main/local-op-cli-invocation.ts';
 import { breakServerLockHeldBy } from '../../src/main/server-lock-break.ts';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
+import type { WindowChromeKind } from '../../src/main/window-chrome.ts';
 import {
   type BrowserWindowLike,
   isOtherChannelHolderError,
@@ -129,6 +130,7 @@ interface TestEnv {
     additionalArguments: string[];
     title: string;
     projectPath?: string;
+    chrome?: WindowChromeKind;
   }>;
   forkUtilityArgs: string[][];
   forkUtilityOpts: Array<{ windowLifecycleBound?: boolean; serviceName: string }>;
@@ -147,6 +149,7 @@ function buildEnv(): TestEnv {
     additionalArguments: string[];
     title: string;
     projectPath?: string;
+    chrome?: WindowChromeKind;
   }> = [];
   const forkUtilityArgs: string[][] = [];
   const forkUtilityOpts: Array<{ windowLifecycleBound?: boolean; serviceName: string }> = [];
@@ -236,6 +239,14 @@ describe('WindowManager', () => {
     env.utilities[0]?.fire({ type: 'ready', port: 52010, apiOrigin: 'http://localhost:52010' });
     const ctx = await promise;
     expect(env.createWindowOpts[0]?.projectPath).toBe(ctx.projectPath);
+  });
+
+  test('createProjectWindow asks for the app-header window chrome', async () => {
+    const wm = new WindowManager(env.deps);
+    const promise = wm.createProjectWindow({ projectPath: '/tmp/dragon-wiki' });
+    env.utilities[0]?.fire({ type: 'ready', port: 52010, apiOrigin: 'http://localhost:52010' });
+    await promise;
+    expect(env.createWindowOpts[0]?.chrome).toBe('app-header');
   });
 
   test('createProjectWindow injects --ok-fresh-create=1 only when freshlyCreated is set', async () => {
@@ -1260,6 +1271,16 @@ describe('WindowManager', () => {
       expect(env.windows.length).toBe(1);
       expect(env.createWindowOpts[0]?.title).toBe('dragon — OpenKnowledge');
       expect(env.createWindowOpts[0]?.projectPath).toBe(ctx.projectPath);
+    });
+
+    test('an attach-mode project window asks for the app-header window chrome', async () => {
+      enableAttachProbe();
+
+      const wm = new WindowManager(env.deps);
+      await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+
+      expect(env.utilities.length).toBe(0);
+      expect(env.createWindowOpts[0]?.chrome).toBe('app-header');
     });
 
     test('an attach-mode window resolves to its project while its renderer loads', async () => {

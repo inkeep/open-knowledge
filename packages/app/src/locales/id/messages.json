@@ -345,6 +345,7 @@
     "3Fcb0I": ["Buka graf"],
     "3HAPpl": ["Tidak ada skema yang cocok dengan pencarian Anda."],
     "3HNlwb": ["Halo, dunia!"],
+    "3HOAcR": ["Panel agen"],
     "3Ib6FN": ["Turunkan"],
     "3J7d2N": ["Judul bagian besar."],
     "3JYy1p": ["Cabang ", ["0"], " sudah tidak ada. Dikloning ke cabang bawaan."],
@@ -543,6 +544,7 @@
     ],
     "5OTgC7": ["Membuka dan memfokuskan penyusun prompt Tanya AI di bawah."],
     "5OqaJi": ["Masukkan nama proyek"],
+    "5Q9-G-": ["Panel dokumen"],
     "5QGTaA": ["Jalur relatif tidak dapat disalin"],
     "5RiC8D": [
       "Skill penemuan dikelola bersama untuk semua alat AI. Instal skill ini dari Pengaturan → Studio Keterampilan."
@@ -769,6 +771,7 @@
     "7cAW1G": ["Tidak ada kunci API yang disetel untuk endpoint ini. Tambahkan satu di atas."],
     "7czmD1": ["OpenKnowledge membuka palet penulisan"],
     "7d1a0d": ["Publik"],
+    "7dDoQu": ["Panel penyunting"],
     "7dZnmw": ["Relevansi"],
     "7hctf2": ["Jelaskan proyek yang ingin Anda buat"],
     "7idx48": ["OKF keterampilan agen diinstal"],
@@ -1263,7 +1266,6 @@
     "DWJtEo": ["Apa yang terjadi selanjutnya"],
     "DXd9LM": ["Worktree baru"],
     "D_WKe_": ["Klik avatar seorang agen di bilah kehadiran untuk melihat sesinya."],
-    "DbCfXV": ["Cari (", ["searchShortcutLabel"], ")"],
     "DbILZA": [
       "Tidak ada kecocokan. Sebagian berkas dikecualikan dari pencarian (berkas tersembunyi atau yang diabaikan)."
     ],
@@ -1485,6 +1487,7 @@
       ")."
     ],
     "FWSjnp": ["Panel sunting sumber dan bidang properti berbentuk kode"],
+    "FYy2EN": ["Ubah ukuran panel dokumen"],
     "FZtBeR": ["Aktifkan ", ["0"]],
     "FeXcUS": [
       ["display"],
@@ -1550,6 +1553,7 @@
       ", tetapi kredensial akun itu tidak dapat digunakan."
     ],
     "GBQjiV": ["Tambahkan keterampilan"],
+    "GCrhIF": ["Panel"],
     "GDvlUT": ["Peran"],
     "GEyl32": ["Memulai terminal…"],
     "GGsM4y": ["Terpilih di graf"],
@@ -2098,7 +2102,6 @@
       "Symlink adalah penunjuk ke folder sumber, bukan folder tersendiri. Setiap lokasi membaca bita yang persis sama, jadi tidak ada yang bisa melenceng, dan sebuah lokasi berhenti bekerja jika sumbernya dihapus."
     ],
     "MTs6g3": ["Tidak bisa tersambung kembali setelah server dimulai ulang"],
-    "MU_NVW": ["Ciutkan Terminal"],
     "MUrVEo": ["Tidak ada proyek terbaru."],
     "MV-Dkb": ["Ditemukan ", ["countDisplay"], " berkas markdown"],
     "MVxpbf": ["Cari dan ganti"],
@@ -2865,13 +2868,13 @@
       "</0> secara lokal, tetapi ia diubah di remote."
     ],
     "V4JHny": ["Berbagi hanya mendukung remote GitHub."],
-    "V6AIOn": ["Navigasi ruang kerja"],
     "V6e25h": ["Pratinjau tema"],
     "V7QxyT": ["Koneksi terputus"],
     "VAHWL_": ["Terhubung sebagai <0>@", ["signedInLogin"], "</0>"],
     "VBE2dw": [
       "Bangun dan pantau dunia di balik cerita Anda. Rumah bagi tokoh, tempat, faksi, dan latar cerita yang mengikat semuanya, agar detailnya tetap konsisten selama Anda menulis."
     ],
+    "VBtCdv": ["Tidak dapat menggulir ke bagian teks itu. Coba lagi."],
     "VFQXPl": [
       "Pratinjau tautan eksternal menampilkan kartu berisi nama situs, judul halaman, dan deskripsi saat Anda mengarahkan kursor ke sebuah tautan."
     ],
@@ -3024,7 +3027,6 @@
     "X2zUS5": ["Hapus komentar ini"],
     "X3MMeA": ["Tidak satu pun masalah ini punya perbaikan otomatis."],
     "X59Fx2": ["Tidak dapat membuka dokumen ini di Slidev."],
-    "X7ShnN": ["Buka panel agen"],
     "X8kjQX": ["Autentikasi ulang dengan GitHub"],
     "X9VpsP": ["Memuat isi folder"],
     "XA9uvc": ["OpenKnowledge memeriksa dan mengunduh pembaruan di latar belakang."],
@@ -3165,6 +3167,7 @@
     "YS9mSt": ["\"", ["name"], "\" diperbarui dari ", ["0"]],
     "YSFv5w": ["Tidak ada repositori git — berbagi konfigurasi tidak berlaku di sini."],
     "YScUUO": ["Mengambil halaman web"],
+    "YStFYH": ["Buka agen"],
     "YTLmTM": ["Hapus folder <0>.git</0> induknya"],
     "YW7Q86": ["Pengaturan pencarian belum dimuat — coba lagi sebentar"],
     "YWK2zy": ["Diff konflik untuk ", ["fileName"]],
@@ -3437,6 +3440,7 @@
       "Belum ada alat AI yang terdeteksi. Setelah Anda memasang satu, hubungkan dari Pengaturan > Proyek ini."
     ],
     "aTDVi6": ["Konten Anda dipertahankan"],
+    "aV2vel": ["Panel ", ["number"]],
     "aWlJai": ["Memulai alur masuk"],
     "aXkLuE": ["Respons apply salah bentuk"],
     "a_u4ck": ["Memuat tag"],
@@ -3905,6 +3909,7 @@
     "f1-q9m": ["menyimpan keterampilan"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Pindahkan blok"],
+    "f3YhVJ": ["Tidak ada yang terbuka"],
     "f65AOQ": ["Mulai dari"],
     "f6suyZ": ["Perubahan diminta"],
     "f8fH8W": ["Desain"],
@@ -3924,6 +3929,7 @@
     "fKsRVO": ["Keterampilan dari ", ["0"], "/", ["1"], "."],
     "fMsFdZ": ["Pengaturan pembaruan otomatis tidak bisa disimpan: ", ["0"]],
     "fNr-MX": ["Nonaktifkan pencarian semantik"],
+    "fObclJ": ["Kembali ke penyunting"],
     "fOzzSV": ["Target tautan \"", ["shown"], "\" tidak merujuk ke file yang ada."],
     "fRVBiq": [
       "Menambahkan telemetri, keadaan server, dan info runtime bila tersedia. Kredensial selalu dihapus; nama dokumen, jika disertakan, muncul sebagai teks biasa (tidak disunting)."
@@ -3995,7 +4001,6 @@
       ["descriptorLabel"],
       "> gagal dirender (kemungkinan prop yang salah). Salin sumbernya untuk melihat apa yang salah, atau hapus bloknya."
     ],
-    "g5V4_P": ["Ciutkan panel agen"],
     "g5w1sF": [
       "Pilih sebuah folder untuk digabungkan KE DALAM ",
       ["display"],
@@ -4249,10 +4254,6 @@
     "i04BJx": ["Berada di luar proyek ini — hanya-baca di sini."],
     "i09An-": ["Versi terdahulu dipulihkan (", ["0"], ")"],
     "i1flq_": ["Saran tautan wiki"],
-    "i25FHa": [
-      "Buka panel agen — ",
-      ["liveThreadCount", "plural", { "other": ["#", " utas agen aktif"] }]
-    ],
     "i3f2kh": ["Tidak ada perintah yang cocok."],
     "i6o7XB": ["Cari bahasa"],
     "i92eAT": [
@@ -4799,6 +4800,7 @@
     ],
     "n7aopT": ["Mode penyunting"],
     "n81AV0": [["owner"], "/", ["name"], " sudah ada. Pilih nama lain."],
+    "nBFK5w": ["Ubah ukuran terminal"],
     "nBHvPL": ["Batalkan penyuntingan"],
     "nBgzKO": ["Jadikan ini sumbernya — folder asli keterampilan ini pindah ke sini"],
     "nCzR-G": ["Salin kode ", ["userCode"]],
@@ -5139,6 +5141,7 @@
     "qyLmWw": ["Panel pencarian penyunting sumber"],
     "qze9od": ["Folder ini juga milik ", ["alsoAffects"], "."],
     "r-OJYm": ["Masukkan nama cabang yang valid (tanpa spasi, tanpa titik di awal, tanpa \"..\")."],
+    "r-wzd8": ["Pembaruan dan masukan"],
     "r2eKE3": ["Masuk dulu ke ", ["agentName"]],
     "r3iaI0": ["Belum ada chat."],
     "r4R7AZ": ["Galat jaringan saat pembersihan"],
@@ -5397,6 +5400,7 @@
     "ten9en": ["Proyek terbaru"],
     "tfDRzk": ["Simpan"],
     "tfi40B": ["Gagal membuat halaman"],
+    "tgB_VT": ["Buka penyunting"],
     "tgWuMB": ["Diubah"],
     "thnPBX": ["Mengaktifkan tab penyunting berikutnya."],
     "ti6aF_": ["Tanya CLI ", ["0"]],
@@ -5572,6 +5576,7 @@
     "un-K1H": ["Tetap di komputer ini. Tidak di-commit ke git."],
     "un8kBM": ["Membuat halaman: ", ["linkTitle"], "."],
     "uoJF_D": ["Terlalu sulit disiapkan atau dimulai"],
+    "uqgCZJ": ["Sembunyikan Penyunting"],
     "uqs8Gd": [["others", "plural", { "other": ["#", " lainnya"] }]],
     "ur2XSb": ["Penyunting visual"],
     "uraHF0": ["GitLab"],
@@ -5874,6 +5879,7 @@
     "xzAmL_": ["Disetujui otomatis"],
     "xzktOa": ["Sunting tautan wiki"],
     "y-LQPF": ["Gambar ", ["identity"], " tidak dapat ditentukan. Buka referensi."],
+    "y0_w13": ["Tampilkan Penyunting"],
     "y1eoq1": ["Salin tautan"],
     "y1t8bQ": ["Bagian pengaturan"],
     "y3aU20": ["Simpan perubahan"],

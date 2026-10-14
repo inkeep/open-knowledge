@@ -108,14 +108,6 @@ vi.doMock('@/components/ui/input-group', () => ({
   InputGroupInput: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
 }));
 
-vi.doMock('@/components/ui/sidebar', () => ({
-  SidebarMenuButton: ({ children, ...props }: ItemProps) => (
-    <button type="button" {...props}>
-      {children}
-    </button>
-  ),
-}));
-
 vi.doMock('./CreateProjectDialog', () => ({
   CreateProjectDialog: (props: { open: boolean; bridge: unknown }) => {
     createDialogProps.push(props);
@@ -251,8 +243,7 @@ describe('ProjectSwitcher dropdown behavior', () => {
     const bridge = createBridge();
     render(<ProjectSwitcher bridge={bridge as never} />);
 
-    expect(screen.getByTestId('project-switcher-trigger').textContent).toContain('current');
-    expect(screen.getByTestId('project-switcher-trigger').textContent).toContain('main');
+    expect(screen.getByTestId('project-switcher-name').textContent).toBe('current');
 
     await openMenu();
 
@@ -306,14 +297,15 @@ describe('ProjectSwitcher dropdown behavior', () => {
     expect(createDialogProps.at(-1)?.bridge).toBe(bridge);
   });
 
-  test('keeps a nested project name visible alongside its repository and branch', () => {
+  test('names the repository for a nested project and leaves its folder and branch to the editor footer', () => {
     const bridge = createBridge();
     bridge.config.projectName = 'docs';
     render(<ProjectSwitcher bridge={bridge as never} />);
+    expect(screen.getByTestId('project-switcher-name').textContent).toBe('current');
     const trigger = screen.getByTestId('project-switcher-trigger');
-    expect(trigger.textContent).toContain('current');
-    expect(trigger.textContent).toContain('docs');
-    expect(trigger.textContent).toContain('main');
+    expect(trigger.textContent).not.toContain('docs');
+    expect(trigger.textContent).not.toContain('main');
+    expect(trigger.getAttribute('title')).toBe('/projects/current');
   });
 
   test('the per-row × removes a recent from the list without opening it', async () => {

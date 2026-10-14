@@ -1,6 +1,7 @@
-import type { SVGProps } from 'react';
+import { type SVGProps, useId } from 'react';
 
 export function OpenClawIcon(props: SVGProps<SVGSVGElement>) {
+  const maskId = `openclaw-eyes-${useId().replace(/:/g, '')}`;
   return (
     <svg
       role="img"
@@ -13,12 +14,12 @@ export function OpenClawIcon(props: SVGProps<SVGSVGElement>) {
       {...props}
     >
       <title>OpenClaw icon</title>
-      <mask id="openclaw-eyes" maskUnits="userSpaceOnUse" x={0} y={0} width={120} height={120}>
+      <mask id={maskId} maskUnits="userSpaceOnUse" x={0} y={0} width={120} height={120}>
         <rect width={120} height={120} fill="white" />
         <circle cx={45} cy={35} r={6} fill="black" />
         <circle cx={75} cy={35} r={6} fill="black" />
       </mask>
-      <g fill="currentColor" mask="url(#openclaw-eyes)">
+      <g fill="currentColor" mask={`url(#${maskId})`}>
         {}
         <path d="M60 10 C30 10 15 35 15 55 C15 75 30 95 45 100 L45 110 L55 110 L55 100 C55 100 60 102 65 100 L65 110 L75 110 L75 100 C90 95 105 75 105 55 C105 35 90 10 60 10Z" />
         {}

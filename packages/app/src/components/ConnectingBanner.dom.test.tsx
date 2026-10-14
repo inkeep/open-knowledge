@@ -1,8 +1,10 @@
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 
+let collabTerminal = true;
 let collabLastError: unknown = null;
 
 vi.doMock('@lingui/react/macro', () => ({
@@ -13,7 +15,7 @@ vi.doMock('@lingui/react/macro', () => ({
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     collabUrl: null,
-    collabTerminal: true,
+    collabTerminal,
     collabLastError,
     retryCollab: () => {},
   }),
@@ -22,12 +24,42 @@ vi.doMock('@/editor/DocumentContext', () => ({
 
 const { ConnectingBanner } = await import('./ConnectingBanner');
 
-describe('ConnectingBanner terminal copy names the running channel CLI', () => {
-  afterEach(() => {
-    cleanup();
-    (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  collabTerminal = true;
+  collabLastError = null;
+  (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
+});
+
+describe('ConnectingBanner placement', () => {
+  test('the terminal variant starts below the application header rather than over it', () => {
+    render(<ConnectingBanner />);
+
+    expectVisualClassTokens(screen.getByRole('alert').className, [
+      'fixed',
+      'top-[var(--ok-app-header-height,0px)]',
+      'inset-x-0',
+    ]);
   });
 
+  test('the retrying variant starts below the application header rather than over it', async () => {
+    collabTerminal = false;
+    vi.useFakeTimers();
+    render(<ConnectingBanner />);
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+    });
+
+    expectVisualClassTokens(screen.getByRole('status').className, [
+      'fixed',
+      'top-[var(--ok-app-header-height,0px)]',
+      'inset-x-0',
+    ]);
+  });
+});
+
+describe('ConnectingBanner terminal copy names the running channel CLI', () => {
   test.each([
     [undefined, 'ok'],
     ['ok-beta', 'ok-beta'],

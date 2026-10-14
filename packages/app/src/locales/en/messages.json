@@ -347,6 +347,7 @@
     "3Fcb0I": ["Open graph"],
     "3HAPpl": ["No schemas match your search."],
     "3HNlwb": ["Hello, world!"],
+    "3HOAcR": ["Agent panel"],
     "3Ib6FN": ["Move down"],
     "3J7d2N": ["Big section heading."],
     "3JYy1p": ["Branch ", ["0"], " no longer exists. Cloned to default branch."],
@@ -533,6 +534,7 @@
     ],
     "5OTgC7": ["Open and focus the bottom Ask AI prompt composer."],
     "5OqaJi": ["Enter a project name"],
+    "5Q9-G-": ["Document panel"],
     "5QGTaA": ["Could not copy relative path"],
     "5RiC8D": [
       "Discovery skills are managed for all AI tools together. Install this one from Settings → Skills Studio."
@@ -762,6 +764,7 @@
     "7cAW1G": ["No API key is set for this endpoint. Add one above."],
     "7czmD1": ["OpenKnowledge looked up the authoring palette"],
     "7d1a0d": ["Public"],
+    "7dDoQu": ["Editor pane"],
     "7dZnmw": ["Relevance"],
     "7hctf2": ["Describe the project you want to create"],
     "7idx48": ["OKF agent skill installed"],
@@ -1268,7 +1271,6 @@
     "DWJtEo": ["What happens next"],
     "DXd9LM": ["New worktree"],
     "D_WKe_": ["Click an agent's avatar in the presence bar to view their session."],
-    "DbCfXV": ["Search (", ["searchShortcutLabel"], ")"],
     "DbILZA": ["No matches. Some files are excluded from search (hidden or ignored files)."],
     "DcFr-y": ["OpenKnowledge deleted a document"],
     "DcH8-w": ["Move ", ["0"], " to Project"],
@@ -1481,6 +1483,7 @@
       ")."
     ],
     "FWSjnp": ["Edit source pane and code property fields"],
+    "FYy2EN": ["Resize document panel"],
     "FZtBeR": ["Enable ", ["0"]],
     "FeXcUS": [
       ["display"],
@@ -1538,6 +1541,7 @@
       ", but that account's credentials couldn't be used."
     ],
     "GBQjiV": ["Add skill"],
+    "GCrhIF": ["Panels"],
     "GDvlUT": ["Role"],
     "GEyl32": ["Starting terminal…"],
     "GGsM4y": ["Selected in graph"],
@@ -2088,7 +2092,6 @@
       "A symlink is a pointer to the source folder rather than a folder of its own. Every location reads the exact same bytes, so nothing can drift, and a location stops working if the source is deleted."
     ],
     "MTs6g3": ["Couldn't reconnect after server restart"],
-    "MU_NVW": ["Collapse Terminal"],
     "MUrVEo": ["No recent projects."],
     "MV-Dkb": ["Found ", ["countDisplay"], " markdown files"],
     "MVxpbf": ["Find and replace"],
@@ -2862,13 +2865,13 @@
     ],
     "V48OUT": ["You deleted <0>", ["filePath"], "</0> locally, but it was modified upstream."],
     "V4JHny": ["Sharing supports GitHub remotes only."],
-    "V6AIOn": ["Workspace navigation"],
     "V6e25h": ["Theme preview"],
     "V7QxyT": ["Connection dropped"],
     "VAHWL_": ["Connected as <0>@", ["signedInLogin"], "</0>"],
     "VBE2dw": [
       "Build and keep track of the world behind your story. A home for your characters, places, factions, and the lore that ties them together, so details stay consistent as you write."
     ],
+    "VBtCdv": ["Couldn't scroll to that passage. Try again."],
     "VFQXPl": [
       "External link previews show a card with the site name, page title, and description when you hover a link."
     ],
@@ -3004,7 +3007,6 @@
     "X2zUS5": ["Delete this comment"],
     "X3MMeA": ["None of these problems have an automatic fix."],
     "X59Fx2": ["Couldn't open this document in Slidev."],
-    "X7ShnN": ["Open agents panel"],
     "X8kjQX": ["Re-authenticate with GitHub"],
     "X9VpsP": ["Loading folder contents"],
     "XA9uvc": ["OpenKnowledge checks for and downloads updates in the background."],
@@ -3149,6 +3151,7 @@
     "YS9mSt": ["Updated \"", ["name"], "\" from ", ["0"]],
     "YSFv5w": ["No git repository — config sharing does not apply here."],
     "YScUUO": ["Fetches a web page"],
+    "YStFYH": ["Open agents"],
     "YTLmTM": ["Remove the parent <0>.git</0> folder"],
     "YW7Q86": ["Search settings not yet loaded — try again in a moment"],
     "YWK2zy": ["Conflict diff for ", ["fileName"]],
@@ -3425,6 +3428,7 @@
       "No AI tools detected yet. Once you install one, connect it from Settings > This project."
     ],
     "aTDVi6": ["Kept your content"],
+    "aV2vel": ["Pane ", ["number"]],
     "aWlJai": ["Starting sign-in flow"],
     "aXkLuE": ["Malformed apply response"],
     "a_u4ck": ["Loading tags"],
@@ -3910,6 +3914,7 @@
     "f1-q9m": ["keeps the skills"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Move block"],
+    "f3YhVJ": ["Nothing open"],
     "f65AOQ": ["Start from"],
     "f6suyZ": ["Changes requested"],
     "f8fH8W": ["Design"],
@@ -3927,6 +3932,7 @@
     "fKsRVO": ["Skills from ", ["0"], "/", ["1"], "."],
     "fMsFdZ": ["Couldn't save the auto-update setting: ", ["0"]],
     "fNr-MX": ["Disable semantic search"],
+    "fObclJ": ["Back to editor"],
     "fOzzSV": ["Link target \"", ["shown"], "\" does not resolve to an existing file."],
     "fRVBiq": [
       "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
@@ -4013,7 +4019,6 @@
       ["descriptorLabel"],
       "> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
     ],
-    "g5V4_P": ["Collapse agent panel"],
     "g5w1sF": [
       "Pick a folder to merge INTO ",
       ["display"],
@@ -4252,14 +4257,6 @@
     "i04BJx": ["Lives outside this project — read-only here."],
     "i09An-": ["Restored an earlier version (", ["0"], ")"],
     "i1flq_": ["Wiki link suggestions"],
-    "i25FHa": [
-      "Open agents panel — ",
-      [
-        "liveThreadCount",
-        "plural",
-        { "one": ["#", " live agent thread"], "other": ["#", " live agent threads"] }
-      ]
-    ],
     "i3f2kh": ["No matching commands."],
     "i6o7XB": ["Search languages"],
     "i92eAT": ["We'll create a repository and start syncing — no terminal needed."],
@@ -4796,6 +4793,7 @@
     ],
     "n7aopT": ["Editor mode"],
     "n81AV0": [["owner"], "/", ["name"], " already exists. Pick a different name."],
+    "nBFK5w": ["Resize terminal"],
     "nBHvPL": ["Cancel editing"],
     "nBgzKO": ["Make this the source — the skill's real folder moves here"],
     "nCzR-G": ["Copy code ", ["userCode"]],
@@ -5150,6 +5148,7 @@
     "qyLmWw": ["Source editor search panel"],
     "qze9od": ["This folder is also ", ["alsoAffects"], "'s."],
     "r-OJYm": ["Enter a valid branch name (no spaces, no leading dot, no \"..\")."],
+    "r-wzd8": ["Updates and feedback"],
     "r2eKE3": ["Sign in to ", ["agentName"], " first"],
     "r3iaI0": ["No chats yet."],
     "r4R7AZ": ["Network error during cleanup"],
@@ -5401,6 +5400,7 @@
     "ten9en": ["Recent project"],
     "tfDRzk": ["Save"],
     "tfi40B": ["Failed to create page"],
+    "tgB_VT": ["Open editor"],
     "tgWuMB": ["Modified"],
     "thnPBX": ["Activate the next editor tab."],
     "ti6aF_": ["Ask ", ["0"], " CLI"],
@@ -5585,6 +5585,7 @@
     "un-K1H": ["Stays on this computer. Not committed to git."],
     "un8kBM": ["Creating page: ", ["linkTitle"], "."],
     "uoJF_D": ["It was too hard to set up or get started"],
+    "uqgCZJ": ["Hide Editor"],
     "uqs8Gd": [["others", "plural", { "one": ["#", " other"], "other": ["#", " others"] }]],
     "ur2XSb": ["Visual editor"],
     "uraHF0": ["GitLab"],
@@ -5890,6 +5891,7 @@
     "xzAmL_": ["Auto-approved"],
     "xzktOa": ["Edit wiki link"],
     "y-LQPF": ["Unresolvable image ", ["identity"], ". Go to reference."],
+    "y0_w13": ["Show Editor"],
     "y1eoq1": ["Copy link"],
     "y1t8bQ": ["Settings sections"],
     "y3aU20": ["Save changes"],

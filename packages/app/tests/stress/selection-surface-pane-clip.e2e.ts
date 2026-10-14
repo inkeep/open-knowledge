@@ -5,6 +5,7 @@ import type { Page } from '@playwright/test';
 import { EDITOR_BUBBLE_MENU_KEY } from '../../src/editor/bubble-menu/bubble-menu-key';
 import {
   type ApiHelpers,
+  acpCatalogBody,
   blockMarker,
   expect,
   generateTallDoc,
@@ -404,6 +405,9 @@ function expectPluginAgreesWithLoop(
   ).toBeLessThanOrEqual(1);
 }
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/acp/catalog', (route) => route.fulfill({ json: acpCatalogBody([]) }));
+});
 test('bubble bar stays in the pane when a tall selection scrolls behind the toolbar', async ({
   page,
   api,

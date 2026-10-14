@@ -1,0 +1,42 @@
+import { useLingui } from '@lingui/react/macro';
+import { Kbd } from '@/components/ui/kbd';
+import { Separator } from '@/components/ui/separator';
+import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
+import { cn } from '@/lib/utils';
+
+export function FileListToggle() {
+  const { t } = useLingui();
+  const { state } = useSidebar();
+  const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
+
+  return (
+    <div
+      data-file-list-toggle=""
+      data-electron-drag={isElectronHost ? '' : undefined}
+      className={cn(
+        'flex h-full shrink-0 items-center gap-1 pe-1',
+        isElectronHost && '[-webkit-app-region:drag]',
+      )}
+    >
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <SidebarTrigger
+            className={cn(
+              'shrink-0 text-muted-foreground',
+              isElectronHost && '[-webkit-app-region:no-drag]',
+            )}
+          />
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <span>{state === 'expanded' ? t`Hide Files` : t`Show Files`}</span>{' '}
+          <Kbd aria-label={formatShortcutLabel('toggle-files-sidebar')}>
+            {formatShortcut('toggle-files-sidebar')}
+          </Kbd>
+        </TooltipContent>
+      </Tooltip>
+      <Separator orientation="vertical" className="h-4 shrink-0 data-vertical:self-center" />
+    </div>
+  );
+}

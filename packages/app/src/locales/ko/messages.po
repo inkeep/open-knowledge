@@ -1674,6 +1674,7 @@ msgstr "활성"
 msgid "Active panel content for the selected tab shows here."
 msgstr "선택한 탭의 활성 패널 콘텐츠가 여기에 표시됩니다."
 
+#: src/components/EditorArea.tsx
 #: src/components/FolderTimelineCard.tsx
 msgid "Activity"
 msgstr "활동"
@@ -1966,6 +1967,10 @@ msgid "Agent mode"
 msgstr "에이전트 모드"
 
 #: src/components/EditorArea.tsx
+msgid "Agent panel"
+msgstr "에이전트 패널"
+
+#: src/components/EditorArea.tsx
 msgid "Agent panel closed to keep Terminal readable."
 msgstr "Terminal을 읽기 쉽게 에이전트 패널을 닫았습니다."
 
@@ -1987,6 +1992,7 @@ msgstr "에이전트 대화 기록"
 
 #: src/components/EditorArea.tsx
 #: src/components/ExploreSkills.tsx
+#: src/components/HeaderPaneButtons.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
 msgstr "에이전트"
@@ -2183,6 +2189,7 @@ msgstr "앱 인스턴스: {label}, v{version}"
 msgid "Append-only log of what changed."
 msgstr "변경 사항의 추가 전용 로그입니다."
 
+#: src/components/AppHeader.tsx
 #: src/components/CommandPalette.tsx
 msgid "Application"
 msgstr "애플리케이션"
@@ -2546,6 +2553,10 @@ msgstr "뒤로"
 #: src/components/ActivityModeContent.tsx
 msgid "Back to document view"
 msgstr "문서 보기로 돌아가기"
+
+#: src/components/EditorArea.tsx
+msgid "Back to editor"
+msgstr "편집기로 돌아가기"
 
 #: src/components/LinksPanel.tsx
 msgid "Backlinks"
@@ -3467,10 +3478,6 @@ msgstr "접기"
 msgid "Collapse {keyName}"
 msgstr "{keyName} 접기"
 
-#: src/components/TerminalTabStrip.tsx
-msgid "Collapse agent panel"
-msgstr "에이전트 패널 접기"
-
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -3493,10 +3500,6 @@ msgstr "Ask AI 접기"
 #: src/components/GraphPanel.tsx
 msgid "Collapse graph"
 msgstr "그래프 접기"
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Collapse Terminal"
-msgstr "터미널 접기"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Collapsible content block (Notion-style toggle)."
@@ -3665,7 +3668,7 @@ msgstr "사용자, 프로젝트 및 통합 설정을 구성합니다."
 msgid "conflict"
 msgstr "충돌"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Conflict"
 msgstr "충돌"
@@ -4304,6 +4307,7 @@ msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "\"{0}\" 복제 실패: {1}"
 
 #: src/comments/reveal-comment.ts
+#: src/comments/ThreadCard.tsx
 msgid "Couldn't find that passage — the text it was on may have changed."
 msgstr "해당 구절을 찾지 못했습니다. 원문 변경 가능성이 있습니다."
 
@@ -4668,6 +4672,10 @@ msgstr "이 설정을 저장하지 못했습니다. 다시 시도하세요."
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr "테마 설정을 저장하지 못했습니다."
+
+#: src/comments/reveal-comment.ts
+msgid "Couldn't scroll to that passage. Try again."
+msgstr "해당 구절로 스크롤하지 못했습니다. 다시 시도하세요."
 
 #: src/components/BugReportSendToast.tsx
 msgid "Couldn't send the report"
@@ -5289,6 +5297,7 @@ msgid "Diff render mode"
 msgstr "Diff 렌더링 모드"
 
 #: src/components/AgentDiffPane.tsx
+#: src/components/EditorArea.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Diff unavailable"
 msgstr "Diff 사용 불가"
@@ -5409,6 +5418,10 @@ msgstr "문서를 찾을 수 없음"
 #: src/components/OutlinePanel.tsx
 msgid "Document outline"
 msgstr "문서 개요"
+
+#: src/components/EditorArea.tsx
+msgid "Document panel"
+msgstr "문서 패널"
 
 #: src/components/DocPanel.tsx
 msgid "Document panels"
@@ -5733,6 +5746,7 @@ msgstr "{boldName} 직접 편집 중입니다. 변경 사항은 편집기의 복
 msgid "Editing broken MDX source: {reason}"
 msgstr "손상된 MDX 소스 편집 중: {reason}"
 
+#: src/components/HeaderPaneButtons.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Editor"
 msgstr "편집기"
@@ -5743,6 +5757,10 @@ msgstr "편집기 모드"
 
 #: src/components/EditorWorkspace.tsx
 msgid "editor pane"
+msgstr "편집기 패널"
+
+#: src/components/EditorWorkspace.tsx
+msgid "Editor pane"
 msgstr "편집기 패널"
 
 #: src/lib/keyboard-shortcuts.ts
@@ -6691,6 +6709,7 @@ msgstr "파일: <0>{fixedName}.md</0>"
 msgid "Filename"
 msgstr "파일 이름"
 
+#: src/components/EditorArea.tsx
 #: src/components/FileSidebar.tsx
 msgid "Files"
 msgstr "파일"
@@ -7353,11 +7372,17 @@ msgstr "세부 정보 숨기기"
 msgid "Hide document panel"
 msgstr "문서 패널 가리기"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+msgid "Hide Editor"
+msgstr "편집기 가리기"
+
 #: src/components/GraphPanel.tsx
 msgid "Hide external URL nodes"
 msgstr "외부 URL 노드 숨기기"
 
-#: src/components/EditorHeader.tsx
+#: src/components/FileListToggle.tsx
+#: src/components/FileSidebar.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Hide Files"
 msgstr "파일 숨기기"
@@ -7388,12 +7413,13 @@ msgid "Hide Others"
 msgstr "다른 앱 가리기"
 
 #: src/components/AgentDiffPane.tsx
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
+#: src/components/EditorArea.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Hide panel"
 msgstr "패널 숨기기"
 
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 msgid "Hide panel ({panelShortcutLabel})"
 msgstr "패널 숨기기 ({panelShortcutLabel})"
 
@@ -9008,11 +9034,11 @@ msgstr "링크 대상, 앵커, 표시 레이블을 수정합니다."
 msgid "More"
 msgstr "더 보기"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 msgid "More actions"
 msgstr "추가 작업"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 msgid "More actions ({syncAttentionLabel})"
 msgstr "추가 작업 ({syncAttentionLabel})"
 
@@ -10062,6 +10088,10 @@ msgstr "요청하기 전까지는 아무것도 움직이지 않습니다. 동기
 msgid "Nothing moves until you ask."
 msgstr "요청하기 전까지는 아무것도 움직이지 않습니다."
 
+#: src/components/NothingOpen.tsx
+msgid "Nothing open"
+msgstr "열린 항목 없음"
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr "아직 설정된 항목 없음."
@@ -10111,7 +10141,7 @@ msgstr "꺼짐, 외부 링크에는 URL만 나타납니다. 이 컴퓨터 밖으
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr "꺼짐, 검색은 키워드로만 순위를 매깁니다. 이 컴퓨터 밖으로 콘텐츠가 전송되지 않습니다."
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "오프라인"
@@ -10277,13 +10307,9 @@ msgstr "{tooltipName} 활동 패널 열기"
 msgid "Open activity panel for {tooltipName}, editing {realCurrentDoc}"
 msgstr "{tooltipName} 활동 패널 열기, {realCurrentDoc} 편집 중"
 
-#: src/components/TerminalRevealTab.tsx
-msgid "Open agents panel"
-msgstr "에이전트 패널 열기"
-
-#: src/components/TerminalRevealTab.tsx
-msgid "Open agents panel — {liveThreadCount, plural, one {# live agent thread} other {# live agent threads}}"
-msgstr "에이전트 패널 열기 — {liveThreadCount, plural, other {# 실행 중인 에이전트 대화}}"
+#: src/components/NothingOpen.tsx
+msgid "Open agents"
+msgstr "에이전트 열기"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
@@ -10329,6 +10355,10 @@ msgstr "선택한 파일 트리 항목의 삭제 확인을 엽니다."
 #: src/components/PropertyWidgets.tsx
 msgid "Open documents tagged #{chip}"
 msgstr "#{chip} 태그가 있는 문서 열기"
+
+#: src/components/NothingOpen.tsx
+msgid "Open editor"
+msgstr "편집기 열기"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Open email draft"
@@ -10501,7 +10531,7 @@ msgstr "소스 lint 패널 열기"
 msgid "Open source: {mirrorSrc}"
 msgstr "소스 열기: {mirrorSrc}"
 
-#: src/components/TerminalRevealTab.tsx
+#: src/components/NothingOpen.tsx
 msgid "Open terminal"
 msgstr "터미널 열기"
 
@@ -11062,6 +11092,14 @@ msgstr "위로 이동"
 msgid "pane {0}"
 msgstr "패널 {0}"
 
+#: src/components/EditorWorkspace.tsx
+msgid "Pane {number}"
+msgstr "패널 {number}"
+
+#: src/components/HeaderPaneButtons.tsx
+msgid "Panels"
+msgstr "패널"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Paragraph"
 msgstr "문단"
@@ -11470,6 +11508,7 @@ msgstr "프로젝트"
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillsTree.tsx
+#: src/components/WebProjectName.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
 msgstr "프로젝트"
@@ -11863,7 +11902,7 @@ msgstr "권장"
 msgid "Recommended agent skill"
 msgstr "권장 에이전트 스킬"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "다시 연결 필요"
@@ -12452,9 +12491,18 @@ msgstr "보기 필터 초기화"
 msgid "Resize {handleKey}"
 msgstr "{handleKey} 크기 조정"
 
+#: src/components/EditorArea.tsx
+msgid "Resize document panel"
+msgstr "문서 패널 크기 조절"
+
 #: src/components/SkillsSidebarDock.tsx
 msgid "Resize skills panel"
 msgstr "스킬 패널 크기 조절"
+
+#: src/components/EditorArea.tsx
+#: src/components/TerminalDock.tsx
+msgid "Resize terminal"
+msgstr "터미널 크기 조절"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
@@ -12868,9 +12916,8 @@ msgid "Scroll to start"
 msgstr "시작으로 스크롤"
 
 #: src/components/CommandPalette.tsx
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderSearchBar.tsx
 #: src/components/settings/SettingsDialogShell.tsx
-#: src/components/SidebarSearchBar.tsx
 #: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
@@ -12879,10 +12926,6 @@ msgstr "검색"
 #: src/components/CommandPalette.tsx
 msgid "Search \"{semanticSubmitQuery}\" by meaning"
 msgstr "“{semanticSubmitQuery}”를 의미로 검색"
-
-#: src/components/EditorHeader.tsx
-msgid "Search ({searchShortcutLabel})"
-msgstr "검색 ({searchShortcutLabel})"
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Search agents"
@@ -13549,6 +13592,11 @@ msgstr "다이어그램 보기"
 msgid "Show document panel"
 msgstr "문서 패널 표시"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+msgid "Show Editor"
+msgstr "편집기 표시"
+
 #: src/components/GraphPanel.tsx
 msgid "Show external URL nodes"
 msgstr "외부 URL 노드 보기"
@@ -13557,7 +13605,7 @@ msgstr "외부 URL 노드 보기"
 msgid "Show fewer"
 msgstr "더 적게 보기"
 
-#: src/components/EditorHeader.tsx
+#: src/components/FileListToggle.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Show Files"
 msgstr "파일 보기"
@@ -13614,12 +13662,12 @@ msgid "Show original"
 msgstr "원본 표시"
 
 #: src/components/AgentDiffPane.tsx
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Show panel"
 msgstr "패널 보기"
 
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "패널 보기 ({panelShortcutLabel})"
 
@@ -14438,7 +14486,7 @@ msgstr "동기화 모드"
 msgid "Sync now"
 msgstr "지금 동기화"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "동기화 일시 중지됨"
@@ -14616,6 +14664,7 @@ msgstr "사용 가능한 템플릿"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+#: src/components/HeaderPaneButtons.tsx
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -16416,6 +16465,10 @@ msgstr "폴더 속성 업데이트됨"
 msgid "Updated to Version {version}"
 msgstr "버전 {version}으로 업데이트됨"
 
+#: src/components/CornerCardStack.tsx
+msgid "Updates and feedback"
+msgstr "업데이트 및 피드백"
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Updates flow in"
 msgstr "업데이트가 들어옴"
@@ -16988,10 +17041,6 @@ msgstr "워크스페이스"
 #: src/components/CommandPalette.tsx
 msgid "Workspace Command Palette"
 msgstr "워크스페이스 명령 팔레트"
-
-#: src/components/EditorHeader.tsx
-msgid "Workspace navigation"
-msgstr "워크스페이스 탐색"
 
 #: src/components/NavigatorApp.tsx
 #: src/components/RecentProjectsMenu.tsx

@@ -80,6 +80,9 @@ export interface MenuDeps {
   agentPanelVisible?: boolean;
   hasEditorSelection?: boolean;
   onToggleAgentPanel?(): void;
+  singleFileWindow?: boolean;
+  editorVisible?: boolean;
+  onToggleEditor?(): void;
   onNewTerminal?(): void;
   onKillTerminal?(): void;
   onNewTerminalWindow?(): void;
@@ -299,6 +302,11 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
     click: (d) => () => d.onToggleAgentPanel?.(),
     present: (d) => d.noteWindow !== true,
     enabled: (d) => d.onToggleAgentPanel !== undefined,
+  },
+  'toggle-editor': {
+    click: (d) => () => d.onToggleEditor?.(),
+    present: (d) => d.noteWindow !== true && d.singleFileWindow !== true,
+    enabled: (d) => d.onToggleEditor !== undefined,
   },
   'toggle-show-hidden-files': {
     click: (d) => () => d.onToggleShowHiddenFiles?.(),

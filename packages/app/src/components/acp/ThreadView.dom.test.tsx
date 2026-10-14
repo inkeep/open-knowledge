@@ -30,6 +30,7 @@ import type {
   ThreadRenderModel,
 } from '@/lib/acp/thread-event-model';
 import { installPointerPositionTracker } from '@/lib/pointer-position';
+import { consumeWorkspaceHashWrite } from '@/lib/workspace-hash-writes';
 import {
   expectVisualClassTokens,
   expectVisualClassTokensAbsent,
@@ -1322,6 +1323,32 @@ describe('ThreadView permissions', () => {
     rerender(view());
 
     expect(window.location.hash).toBe('#/notes/today');
+  });
+
+  test('follow-the-agent navigation is a hash change the workspace did not write, which the navigation handler treats as a deliberate open', async () => {
+    model = makeModel();
+    window.location.hash = '#/notes/yesterday';
+    const hashChanges: string[] = [];
+    const onHashChange = (event: HashChangeEvent) => hashChanges.push(event.newURL);
+    window.addEventListener('hashchange', onHashChange);
+    const view = () => <ThreadView info={makeInfo({ status: 'awaiting_permission' })} />;
+    const { rerender } = render(view());
+
+    model = makeModel({
+      items: [
+        toolCall({ toolKind: 'edit', rawInput: { docName: 'notes/today' } }),
+        permission({ toolCallId: 'c1' }),
+      ],
+    });
+    threadState = { info: undefined, events: [], lastSeq: 6, replayThroughSeq: 6 };
+    rerender(view());
+    threadState = { info: undefined, events: [], lastSeq: 7, replayThroughSeq: 7 };
+    rerender(view());
+
+    expect(window.location.hash).toBe('#/notes/today');
+    await waitFor(() => expect(hashChanges.at(-1)).toMatch(/#\/notes\/today$/));
+    window.removeEventListener('hashchange', onHashChange);
+    expect(consumeWorkspaceHashWrite(window.location.hash)).toBe(false);
   });
 
   test('stacks three-plus options top-to-bottom with the primary grant emphasized', () => {
@@ -4220,10 +4247,13 @@ describe('ThreadView auth-required dead ends', () => {
 
     await userEvent.click(offerButton());
     expect(resumeThread).not.toHaveBeenCalled();
-    expect(createThread).toHaveBeenCalledWith({
-      agent: { source: 'registry', id: 'claude' },
-      prompt: undefined,
-    });
+    expect(createThread).toHaveBeenCalledWith(
+      {
+        agent: { source: 'registry', id: 'claude' },
+        prompt: undefined,
+      },
+      undefined,
+    );
   });
 
   test('a new chat that lost the race to another launch says so rather than going quiet', async () => {
@@ -4315,10 +4345,13 @@ describe('ThreadView auth-required dead ends', () => {
     fireEvent.change(composer, { target: { value: 'draft I have not sent yet' } });
 
     await userEvent.click(offerButton());
-    expect(createThread).toHaveBeenCalledWith({
-      agent: { source: 'registry', id: 'claude' },
-      prompt: undefined,
-    });
+    expect(createThread).toHaveBeenCalledWith(
+      {
+        agent: { source: 'registry', id: 'claude' },
+        prompt: undefined,
+      },
+      undefined,
+    );
     await waitFor(() => expect(staged.text).toBe('draft I have not sent yet'));
     expect(composer.value).toBe('draft I have not sent yet');
   });
@@ -4338,10 +4371,13 @@ describe('ThreadView auth-required dead ends', () => {
     fireEvent.change(composer, { target: { value: 'half-finished instruction' } });
 
     await userEvent.click(screen.getByTestId('agent-thread-resume-fallback-new'));
-    expect(createThread).toHaveBeenCalledWith({
-      agent: { source: 'registry', id: 'claude' },
-      prompt: undefined,
-    });
+    expect(createThread).toHaveBeenCalledWith(
+      {
+        agent: { source: 'registry', id: 'claude' },
+        prompt: undefined,
+      },
+      undefined,
+    );
     await waitFor(() => expect(staged.text).toBe('half-finished instruction'));
     expect(composer.value).toBe('half-finished instruction');
   });
@@ -4362,10 +4398,13 @@ describe('ThreadView auth-required dead ends', () => {
 
     await userEvent.click(screen.getByTestId('agent-thread-resume-fallback-new'));
     await waitFor(() => expect(createThread).toHaveBeenCalledTimes(1));
-    expect(createThread).toHaveBeenLastCalledWith({
-      agent: { source: 'registry', id: 'claude' },
-      prompt: 'finish the migration',
-    });
+    expect(createThread).toHaveBeenLastCalledWith(
+      {
+        agent: { source: 'registry', id: 'claude' },
+        prompt: 'finish the migration',
+      },
+      undefined,
+    );
     expect(staged.text).toBeNull();
   });
 
@@ -4379,10 +4418,13 @@ describe('ThreadView auth-required dead ends', () => {
 
     await userEvent.click(offerButton());
     await waitFor(() => expect(createThread).toHaveBeenCalledTimes(1));
-    expect(createThread).toHaveBeenLastCalledWith({
-      agent: { source: 'registry', id: 'claude' },
-      prompt: undefined,
-    });
+    expect(createThread).toHaveBeenLastCalledWith(
+      {
+        agent: { source: 'registry', id: 'claude' },
+        prompt: undefined,
+      },
+      undefined,
+    );
     await waitFor(() => expect(staged.text).toBe('finish the migration'));
   });
 
@@ -4550,10 +4592,13 @@ describe('ThreadView auth-required dead ends', () => {
 
     await userEvent.click(screen.getByTestId('agent-thread-resume-fallback-new'));
     await waitFor(() => expect(createThread).toHaveBeenCalledTimes(1));
-    expect(createThread).toHaveBeenCalledWith({
-      agent: { source: 'registry', id: 'claude' },
-      prompt: undefined,
-    });
+    expect(createThread).toHaveBeenCalledWith(
+      {
+        agent: { source: 'registry', id: 'claude' },
+        prompt: undefined,
+      },
+      undefined,
+    );
   });
 
   test('a thread the server says it cannot resume leaves no control that still says resume', async () => {
@@ -4565,10 +4610,13 @@ describe('ThreadView auth-required dead ends', () => {
     expect(screen.queryByRole('button', { name: 'Resume chat' })).toBeNull();
     await userEvent.click(offerButton());
     expect(resumeThread).not.toHaveBeenCalled();
-    expect(createThread).toHaveBeenCalledWith({
-      agent: { source: 'registry', id: 'claude' },
-      prompt: undefined,
-    });
+    expect(createThread).toHaveBeenCalledWith(
+      {
+        agent: { source: 'registry', id: 'claude' },
+        prompt: undefined,
+      },
+      undefined,
+    );
   });
 
   test('one rejection does not retire a resume the server still says is available', async () => {
@@ -6238,6 +6286,7 @@ describe('ThreadView context window', () => {
     await waitFor(() =>
       expect(createThread).toHaveBeenCalledWith(
         expect.objectContaining({ agent: { source: 'registry', id: 'codex-acp' } }),
+        undefined,
       ),
     );
   });

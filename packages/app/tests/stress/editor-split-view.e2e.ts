@@ -2,10 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
-import { expect, test, waitForActiveProviderSynced } from './_helpers';
+import { afterEditorFocusSync, expect, test, waitForActiveProviderSynced } from './_helpers';
 
 const WIDE_VIEWPORT = { width: 2400, height: 900 } as const;
 const MIN_EDITOR_PANE_WIDTH = 300;
+const LINE_END_KEY = process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End';
 
 function testId(): string {
   return randomUUID().slice(0, 8);
@@ -178,6 +179,37 @@ function editorForDoc(page: Page, docName: string): Locator {
     .locator('.ProseMirror:not(.composer-prosemirror)');
 }
 
+async function activeCaret(page: Page): Promise<{
+  from: number;
+  to: number;
+  fromOffset: number;
+  toOffset: number;
+  paragraph: string;
+  domText: string;
+  domOffset: number;
+  domSelectedText: string;
+  domWithinEditor: boolean;
+} | null> {
+  return page.evaluate(() => {
+    const editor = window.__activeEditor;
+    if (!editor) return null;
+    const selection = editor.state.selection;
+    const domSelection = window.getSelection();
+    const domNode = domSelection?.anchorNode;
+    return {
+      from: selection.from,
+      to: selection.to,
+      fromOffset: selection.$from.parentOffset,
+      toOffset: selection.$to.parentOffset,
+      paragraph: selection.$from.parent.textContent,
+      domText: domNode?.textContent ?? '',
+      domOffset: domSelection?.anchorOffset ?? -1,
+      domSelectedText: domSelection?.toString() ?? '',
+      domWithinEditor: Boolean(domNode && editor.view.dom.contains(domNode)),
+    };
+  });
+}
+
 function sourceEditorForDoc(page: Page, docName: string): Locator {
   return page
     .locator(`[data-editor-activity-mount][data-doc-name="${docName}"]`)
@@ -289,6 +321,117 @@ test.describe('vertical editor splits', () => {
     writeFileSync(join(workerServer.contentDir, '.ok', 'config.yml'), '', 'utf-8');
   });
 
+  test('narrow editor selects one live group and restores the split', async ({ page, api }) => {
+    const suffix = testId();
+    const first = `group-first-${suffix}`;
+    const second = `group-second-${suffix}`;
+    await api.seedDocs([
+      { name: first, markdown: '# First group' },
+      { name: second, markdown: '# Second group' },
+    ]);
+    await page.setViewportSize(WIDE_VIEWPORT);
+    await page.goto(`/#/${first}`);
+    await waitForActiveProviderSynced(page);
+    await paneTabs(page).first().getByTestId('editor-new-tab-button').click();
+    await openDocFromSidebar(page, second);
+    const [firstPaneId] = await paneIds(page);
+    expect(firstPaneId).toBeTruthy();
+    if (!firstPaneId) return;
+    await dragTabToPaneEdge(page, tabInPane(page, firstPaneId, second), firstPaneId, 'right');
+    await expect(paneTabs(page)).toHaveCount(2);
+    const ids = await paneIds(page);
+
+    await page.setViewportSize({ width: 767, height: 800 });
+    const selector = page.getByRole('combobox', { name: 'Editor pane' });
+    await expect(selector).toBeVisible();
+    await expect(paneRoot(page, ids[1])).toBeVisible();
+    await expect(paneRoot(page, ids[0])).toBeHidden();
+    await selector.click();
+    await page.getByRole('option', { name: 'Pane 1' }).click();
+    await expect(paneRoot(page, ids[0])).toBeVisible();
+    await expect(paneRoot(page, ids[1])).toBeHidden();
+    await expect(tabInPane(page, ids[0], first)).toBeFocused();
+    await expect(
+      page.locator(`[data-editor-pane-panel]:not([data-editor-pane-selected])`),
+    ).toHaveAttribute('inert', '');
+    await expect(editorForDoc(page, first)).toBeVisible();
+
+    await selector.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('option', { name: 'Pane 2' })).toBeVisible();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByRole('option', { name: 'Pane 2' })).toHaveAttribute(
+      'data-highlighted',
+      '',
+    );
+    await page.keyboard.press('Enter');
+    await expect(paneRoot(page, ids[1])).toBeVisible();
+    await expect(tabInPane(page, ids[1], second)).toBeFocused();
+
+    await page.setViewportSize({ width: 320, height: 700 });
+    await expect(selector).toBeVisible();
+    await expect(paneRoot(page, ids[1])).toBeVisible();
+    const narrowGeometry = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      page: document.documentElement.scrollWidth,
+      editor: document.querySelector('[data-editor-workspace]')?.getBoundingClientRect().width,
+    }));
+    expect(narrowGeometry.viewport).toBe(320);
+    expect(narrowGeometry.page).toBeLessThanOrEqual(narrowGeometry.viewport + 1);
+    expect(narrowGeometry.editor).toBeGreaterThan(0);
+
+    await page.setViewportSize(WIDE_VIEWPORT);
+    await expect(paneRoot(page, ids[0])).toBeVisible();
+    await expect(paneRoot(page, ids[1])).toBeVisible();
+    expect(await paneIds(page)).toEqual(ids);
+  });
+
+  test('splitting a tab while projected selects the new group without removing others', async ({
+    page,
+    api,
+  }) => {
+    const suffix = testId();
+    const docs = ['first', 'second', 'third'].map((label) => ({
+      name: `projected-split-${label}-${suffix}`,
+      markdown: `# ${label}`,
+    }));
+    await api.seedDocs(docs);
+    await page.setViewportSize(WIDE_VIEWPORT);
+    await page.goto(`/#/${docs[0].name}`);
+    await waitForActiveProviderSynced(page);
+    for (const doc of docs.slice(1)) {
+      await paneTabs(page).first().getByTestId('editor-new-tab-button').click();
+      await openDocFromSidebar(page, doc.name);
+    }
+    const [firstPaneId] = await paneIds(page);
+    expect(firstPaneId).toBeTruthy();
+    if (!firstPaneId) return;
+    await dragTabToPaneEdge(page, tabInPane(page, firstPaneId, docs[1].name), firstPaneId, 'right');
+    await expect(paneTabs(page)).toHaveCount(2);
+
+    await page.setViewportSize({ width: 767, height: 800 });
+    const selector = page.getByRole('combobox', { name: 'Editor pane' });
+    await expect(selector).toBeVisible();
+    await selector.click();
+    await page.getByRole('option', { name: 'Pane 1' }).click();
+    await tabInPane(page, firstPaneId, docs[2].name).click({ button: 'right' });
+    await page.getByTestId('editor-tab-context-split-right').click();
+    await expect(selector).toBeVisible();
+    await selector.click();
+    await expect(page.getByRole('option')).toHaveCount(3);
+    await expect(page.getByRole('option', { name: 'Pane 2' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await page.keyboard.press('Escape');
+    await expect(page.locator('section[data-editor-pane-id]:visible')).toHaveCount(1);
+    await expect(editorForDoc(page, docs[2].name)).toBeVisible();
+
+    await page.setViewportSize(WIDE_VIEWPORT);
+    await expect(paneTabs(page)).toHaveCount(3);
+    for (const doc of docs) await expect(editorForDoc(page, doc.name)).toBeVisible();
+  });
+
   test('pointer edge splits create four live, isolated editors and restore their layout', async ({
     page,
     api,
@@ -296,7 +439,7 @@ test.describe('vertical editor splits', () => {
     const suffix = testId();
     const docs = ['alpha', 'bravo', 'charlie', 'delta'].map((label) => ({
       name: `split-${label}-${suffix}`,
-      markdown: `# ${label}-${suffix}\n\n${label} body`,
+      markdown: `# ${label}-${suffix}\n\n${label} body\n\n${Array.from({ length: 70 }, (_, index) => `${label} paragraph ${index}`).join('\n\n')}`,
     }));
     await api.seedDocs(docs);
     await page.setViewportSize(WIDE_VIEWPORT);
@@ -341,9 +484,11 @@ test.describe('vertical editor splits', () => {
     const uniqueToken = `isolated-${suffix}`;
     const editedDoc = docs[1];
     await editorForDoc(page, editedDoc.name).locator('p').last().click();
-    await page.keyboard.press('End');
+    await page.keyboard.press(LINE_END_KEY);
     await page.keyboard.type(` ${uniqueToken}`);
-    await expect.poll(() => readDocument(page, editedDoc.name)).toContain(uniqueToken);
+    await expect
+      .poll(() => readDocument(page, editedDoc.name))
+      .toContain(`bravo paragraph 69 ${uniqueToken}`);
     for (const other of docs.filter((doc) => doc.name !== editedDoc.name)) {
       await expect.poll(() => readDocument(page, other.name)).not.toContain(uniqueToken);
     }
@@ -398,23 +543,325 @@ test.describe('vertical editor splits', () => {
       )
       .toBe(4);
 
+    const readSavedSizes = () =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem(`ok-editor-tabs-v1:${window.location.origin}`);
+        if (!raw) throw new Error('no persisted editor session');
+        return (JSON.parse(raw) as { panes: Array<{ id: string; size: number }> }).panes.map(
+          ({ id, size }) => ({ id, size }),
+        );
+      });
+    const savedSizesBeforeReload = await readSavedSizes();
+    expect(savedSizesBeforeReload).toEqual(
+      splitPaneIds.map((id) => ({ id, size: expect.any(Number) })),
+    );
+
     await page.reload();
     await waitForActiveProviderSynced(page);
     await expect(paneTabs(page)).toHaveCount(4);
+    expect(await paneIds(page)).toEqual(splitPaneIds);
     await expectHeaderGroupsAlignedWithPanes(page);
     const widthsAfterReload = await paneWidths(page);
-    expect(Math.abs(widthsAfterReload[0] - widthsAfterResize[0])).toBeLessThan(40);
+    for (const [index, width] of widthsAfterReload.entries()) {
+      expect(Math.abs(width - widthsAfterResize[index])).toBeLessThan(40);
+    }
     await expect.poll(() => windowHash(page)).toContain(editedDoc.name);
     for (const doc of docs) {
       await expect.poll(() => portalGeneration(page, doc.name)).not.toBe('absent');
     }
 
-    await page.setViewportSize({ width: 1200, height: 800 });
-    await page.locator('[data-editor-workspace]').evaluate((workspace) => {
-      workspace.scrollLeft = 96;
-      workspace.dispatchEvent(new Event('scroll'));
+    const generationsAfterReload = Object.fromEntries(
+      await Promise.all(
+        docs.map(async (doc) => [doc.name, await portalGeneration(page, doc.name)] as const),
+      ),
+    );
+    const savedSizes = await readSavedSizes();
+    expect(savedSizes).toEqual(savedSizesBeforeReload);
+    const requestedScrollTops = docs.map((_, index) => 140 * (index + 1));
+    const scrollContainerForDoc = (docName: string) =>
+      page
+        .locator(`[data-editor-activity-mount][data-doc-name="${docName}"]`)
+        .getByTestId('editor-scroll-container');
+    const scrollState = (docName: string) =>
+      scrollContainerForDoc(docName).evaluate((element) => {
+        const readingLine = element.getBoundingClientRect().top + 100;
+        const paragraphs = Array.from(element.querySelectorAll('.ProseMirror p'));
+        return {
+          top: element.scrollTop,
+          max: element.scrollHeight - element.clientHeight,
+          firstVisibleParagraph: paragraphs.findIndex(
+            (paragraph) => paragraph.getBoundingClientRect().bottom > readingLine,
+          ),
+        };
+      });
+    const expectScrollTop = async (docName: string, requestedTop: number, tolerance: number) => {
+      await expect
+        .poll(async () => {
+          const state = await scrollState(docName);
+          expect(state.max).toBeGreaterThan(requestedTop + 50);
+          return Math.abs(state.top - requestedTop);
+        })
+        .toBeLessThanOrEqual(tolerance);
+    };
+    const firstVisibleParagraphs: number[] = [];
+    for (const [index, doc] of docs.entries()) {
+      await scrollContainerForDoc(doc.name).evaluate(
+        (element, top) => element.scrollTo({ top, behavior: 'instant' }),
+        requestedScrollTops[index],
+      );
+      await expectScrollTop(doc.name, requestedScrollTops[index], 2);
+      const state = await scrollState(doc.name);
+      expect(state.firstVisibleParagraph).toBeGreaterThan(0);
+      firstVisibleParagraphs.push(state.firstVisibleParagraph);
+    }
+    expect(new Set(firstVisibleParagraphs).size).toBe(docs.length);
+    const charlieAnchor = () =>
+      scrollContainerForDoc(docs[2].name).evaluate((element, index) => {
+        const paragraph = element.querySelectorAll('.ProseMirror p')[index];
+        const node = paragraph?.firstChild;
+        if (!paragraph || !node || node.nodeType !== Node.TEXT_NODE) {
+          throw new Error('the reading anchor is missing');
+        }
+        const range = document.createRange();
+        range.setStart(node, 8);
+        range.setEnd(node, 9);
+        const port = element.getBoundingClientRect();
+        const block = paragraph.getBoundingClientRect();
+        return {
+          text: node.textContent,
+          glyphTop: range.getBoundingClientRect().top - port.top,
+          blockTop: block.top - port.top,
+          blockHeight: block.height,
+          scrollTop: element.scrollTop,
+          scrollMax: element.scrollHeight - element.clientHeight,
+          portWidth: port.width,
+        };
+      }, firstVisibleParagraphs[2]);
+    const initialCharlieAnchor = await charlieAnchor();
+    const expectCharlieAnchor = async () => {
+      const current = await charlieAnchor();
+      expect(current.text).toBe(initialCharlieAnchor.text);
+      expect(
+        Math.abs(current.glyphTop - initialCharlieAnchor.glyphTop),
+        JSON.stringify({ initial: initialCharlieAnchor, current }),
+      ).toBeLessThanOrEqual(4);
+    };
+
+    await page.setViewportSize({ width: 767, height: 800 });
+    const selector = page.getByRole('combobox', { name: 'Editor pane' });
+    await expect(selector).toBeVisible();
+    await expect(page.locator('section[data-editor-pane-id]:visible')).toHaveCount(1);
+    for (const [index, doc] of docs.entries()) {
+      await expectScrollTop(doc.name, requestedScrollTops[index], 50);
+    }
+    await expectCharlieAnchor();
+    for (const [index, paneId] of splitPaneIds.entries()) {
+      await selector.click();
+      await expect(page.getByRole('option')).toHaveCount(4);
+      if (index === 0) {
+        await expectScrollTop(docs[0].name, requestedScrollTops[0], 50);
+      }
+      await page.getByRole('option', { name: `Pane ${index + 1}` }).click();
+      await expect(paneRoot(page, paneId)).toBeVisible();
+      await expect(editorForDoc(page, docs[index].name)).toBeVisible();
+      await expect(page.locator('section[data-editor-pane-id]:visible')).toHaveCount(1);
+      await expectScrollTop(docs[index].name, requestedScrollTops[index], 50);
+      await expect
+        .poll(async () => (await scrollState(docs[index].name)).firstVisibleParagraph)
+        .toBe(firstVisibleParagraphs[index]);
+      if (index === 2) await expectCharlieAnchor();
+    }
+
+    await selector.click();
+    await page.getByRole('option', { name: 'Pane 1' }).click();
+    await expect(paneRoot(page, splitPaneIds[0])).toBeVisible();
+    await selector.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('option', { name: 'Pane 2' })).toBeVisible();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByRole('option', { name: 'Pane 2' })).toHaveAttribute(
+      'data-highlighted',
+      '',
+    );
+    await page.keyboard.press('Enter');
+    await expect(paneRoot(page, splitPaneIds[1])).toBeVisible();
+    await expect(tabInPane(page, splitPaneIds[1], docs[1].name)).toBeFocused();
+    await expect(editorForDoc(page, docs[1].name)).toBeVisible();
+
+    const hiddenDoc = docs[0];
+    const hiddenUpdate = `remote-${suffix}`;
+    await api.writeAsAgent(hiddenDoc.name, `${hiddenDoc.markdown}\n\n${hiddenUpdate}`, {
+      agentId: `split-${suffix}`,
+      agentName: 'Split test',
     });
+    await expect.poll(() => readDocument(page, hiddenDoc.name)).toContain(hiddenUpdate);
+    await expect.poll(() => readDocument(page, hiddenDoc.name)).toContain('alpha paragraph 69');
+    await selector.click();
+    await page.getByRole('option', { name: 'Pane 1' }).click();
+    await expect(editorForDoc(page, hiddenDoc.name)).toContainText(hiddenUpdate);
+    await expectScrollTop(hiddenDoc.name, requestedScrollTops[0], 50);
+    await expect
+      .poll(async () => (await scrollState(hiddenDoc.name)).firstVisibleParagraph)
+      .toBe(firstVisibleParagraphs[0]);
+    for (const doc of docs) {
+      expect(await portalGeneration(page, doc.name)).toBe(generationsAfterReload[doc.name]);
+    }
+
+    await page.setViewportSize(WIDE_VIEWPORT);
+    await expect(selector).toBeHidden();
+    await expect(page.locator('section[data-editor-pane-id]:visible')).toHaveCount(4);
     await expectHeaderGroupsAlignedWithPanes(page);
+    expect(await paneIds(page)).toEqual(splitPaneIds);
+    const restoredSizes = await readSavedSizes();
+    expect(restoredSizes).toEqual(savedSizes);
+    for (const [index, doc] of docs.entries()) {
+      await expectScrollTop(doc.name, requestedScrollTops[index], 50);
+      await expect
+        .poll(async () => (await scrollState(doc.name)).firstVisibleParagraph)
+        .toBe(firstVisibleParagraphs[index]);
+    }
+    await expectCharlieAnchor();
+
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await expect(selector).toBeVisible();
+    await expect(page.locator('section[data-editor-pane-id]:visible')).toHaveCount(1);
+    await selector.click();
+    await page.getByRole('option', { name: 'Pane 2' }).click();
+    await expect(editorForDoc(page, editedDoc.name)).toBeVisible();
+    const bareEndParagraph = `bravo paragraph 69 ${uniqueToken}`;
+    const bareEndToken = `bare-end-${suffix}`;
+    const bareEndBaseline = await readDocument(page, editedDoc.name);
+    const bravoParagraph = editorForDoc(page, editedDoc.name)
+      .locator('p')
+      .filter({ hasText: 'bravo paragraph 69' });
+    await bravoParagraph.click();
+    await expect(editorForDoc(page, editedDoc.name)).toBeFocused();
+    await page.keyboard.press('End');
+    await page.keyboard.type(bareEndToken);
+    const readBareEndLine = async () =>
+      (await readDocument(page, editedDoc.name)).split('\n').filter(Boolean).at(-1);
+    await expect.poll(readBareEndLine).toContain(bareEndToken);
+    const persistedLine = await readBareEndLine();
+    const localLine = (await bravoParagraph.textContent())?.replace(/\u00a0/g, ' ');
+    expect(persistedLine?.split(bareEndToken)).toHaveLength(2);
+    expect(localLine?.split(bareEndToken)).toHaveLength(2);
+    expect(persistedLine?.replace(bareEndToken, '')).toBe(bareEndParagraph);
+    expect(localLine?.replace(bareEndToken, '')).toBe(bareEndParagraph);
+    for (const other of docs.filter((doc) => doc.name !== editedDoc.name)) {
+      await expect.poll(() => readDocument(page, other.name)).not.toContain(bareEndToken);
+    }
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect
+      .poll(async () => (await readDocument(page, editedDoc.name)).replace(/\n$/, ''))
+      .toBe(bareEndBaseline.replace(/\n$/, ''));
+    await bravoParagraph.click();
+    const projectedEdit = `projected-${suffix}`;
+    expect(await readDocument(page, editedDoc.name)).not.toContain(projectedEdit);
+    await page.keyboard.press(LINE_END_KEY);
+    await page.keyboard.type(projectedEdit);
+    await expect
+      .poll(() => readDocument(page, editedDoc.name))
+      .toContain(`bravo paragraph 69 ${uniqueToken}${projectedEdit}`);
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect.poll(() => readDocument(page, editedDoc.name)).not.toContain(projectedEdit);
+
+    const groupLabels = ['alpha', 'bravo', 'charlie', 'delta'];
+    const groupTokens = docs.map((_, index) => ` group-${index}-${suffix}`);
+    const baselines = await Promise.all(docs.map((doc) => readDocument(page, doc.name)));
+    const carets = [];
+    for (const [index, doc] of docs.entries()) {
+      await selector.click();
+      await page.getByRole('option', { name: `Pane ${index + 1}` }).click();
+      const paragraph = editorForDoc(page, doc.name)
+        .locator('p')
+        .filter({ hasText: `${groupLabels[index]} paragraph 69` });
+      const seededParagraph = `${groupLabels[index]} paragraph 69${index === 1 ? ` ${uniqueToken}` : ''}`;
+      await expect(paragraph).toHaveText(seededParagraph);
+      await paragraph.click();
+      await afterEditorFocusSync(page);
+      await page.keyboard.press(LINE_END_KEY);
+      const initialCaret = await activeCaret(page);
+      expect(initialCaret).toMatchObject({
+        paragraph: seededParagraph,
+        domText: seededParagraph,
+        domOffset: seededParagraph.length,
+        domSelectedText: '',
+        domWithinEditor: true,
+      });
+      expect(initialCaret?.from).toBe(initialCaret?.to);
+      await page.keyboard.type(groupTokens[index]);
+      const expectedParagraph = `${seededParagraph}${groupTokens[index]}`;
+      await expect.poll(() => readDocument(page, doc.name)).toContain(expectedParagraph);
+      await expect.poll(async () => (await activeCaret(page))?.paragraph).toBe(expectedParagraph);
+      const caret = await activeCaret(page);
+      expect(caret).not.toBeNull();
+      expect(caret?.from).toBe(caret?.to);
+      expect(caret).toMatchObject({
+        fromOffset: expectedParagraph.length,
+        toOffset: expectedParagraph.length,
+        paragraph: expectedParagraph,
+        domText: expectedParagraph,
+        domOffset: expectedParagraph.length,
+        domSelectedText: '',
+      });
+      expect(caret?.domWithinEditor).toBe(true);
+      carets.push(caret);
+    }
+
+    for (const [index, doc] of docs.entries()) {
+      await selector.click();
+      await page.getByRole('option', { name: `Pane ${index + 1}` }).click();
+      await editorForDoc(page, doc.name).focus();
+      await expect.poll(() => activeCaret(page)).toEqual(carets[index]);
+    }
+
+    await selector.click();
+    await page.getByRole('option', { name: 'Pane 2' }).click();
+    await editorForDoc(page, editedDoc.name).focus();
+    await afterEditorFocusSync(page);
+    await expect.poll(() => activeCaret(page)).toEqual(carets[1]);
+    const bravoCaret = carets[1];
+    if (!bravoCaret) throw new Error('the Bravo caret was not captured');
+    const selectedSuffix = groupTokens[1].slice(-1);
+    await page.keyboard.press('Shift+ArrowLeft');
+    await expect
+      .poll(() => activeCaret(page))
+      .toMatchObject({
+        fromOffset: bravoCaret.toOffset - selectedSuffix.length,
+        toOffset: bravoCaret.toOffset,
+        paragraph: bravoCaret.paragraph,
+        domSelectedText: selectedSuffix,
+        domWithinEditor: true,
+      });
+    const selectedRange = await activeCaret(page);
+    expect(selectedRange?.from).toBeLessThan(selectedRange?.to ?? 0);
+    await selector.click();
+    await page.getByRole('option', { name: 'Pane 1' }).click();
+    await selector.click();
+    await page.getByRole('option', { name: 'Pane 2' }).click();
+    await editorForDoc(page, editedDoc.name).focus();
+    await expect.poll(() => activeCaret(page)).toEqual(selectedRange);
+
+    await page.setViewportSize(WIDE_VIEWPORT);
+    await expect(page.locator('section[data-editor-pane-id]:visible')).toHaveCount(4);
+    for (const [index, doc] of docs.entries()) {
+      await tabInPane(page, splitPaneIds[index], doc.name).click();
+      await editorForDoc(page, doc.name).focus();
+      await expect
+        .poll(() => activeCaret(page))
+        .toEqual(index === 1 ? selectedRange : carets[index]);
+      await page.keyboard.press('ControlOrMeta+z');
+      await expect
+        .poll(async () => (await readDocument(page, doc.name)).replace(/\n$/, ''))
+        .toBe(baselines[index].replace(/\n$/, ''));
+      for (const [otherIndex, other] of docs.entries()) {
+        if (otherIndex > index) {
+          await expect
+            .poll(() => readDocument(page, other.name))
+            .toContain(groupTokens[otherIndex]);
+        }
+      }
+    }
   });
 
   test('diagonal pointer movement keeps the dragged tab visible before an edge split', async ({
@@ -472,7 +919,7 @@ test.describe('vertical editor splits', () => {
     api,
   }) => {
     const suffix = testId();
-    const docs = Array.from({ length: 6 }, (_, index) => ({
+    const docs = Array.from({ length: 8 }, (_, index) => ({
       name: `shrink-tab-${index}-${suffix}`,
       markdown: `# Shrink tab ${index}`,
     }));
@@ -766,6 +1213,68 @@ test.describe('vertical editor splits', () => {
     expect(smallest).toBeLessThanOrEqual(MIN_EDITOR_PANE_WIDTH + 1);
     const totalWidth = widths.reduce((sum, width) => sum + width, 0);
     expect(smallest).toBeGreaterThan((Math.min(...skewed) / 100) * totalWidth + 1);
+  });
+
+  test.describe('touch group selection', () => {
+    test.use({ hasTouch: true, viewport: { width: 390, height: 700 } });
+
+    test('touch can select and close a projected group without restoring its document', async ({
+      page,
+      api,
+    }) => {
+      const suffix = testId();
+      const first = `touch-group-first-${suffix}`;
+      const second = `touch-group-second-${suffix}`;
+      await api.seedDocs([
+        { name: first, markdown: '# First group\n\nFirst body' },
+        { name: second, markdown: '# Second group\n\nSecond body' },
+      ]);
+      await page.setViewportSize(WIDE_VIEWPORT);
+      await page.goto(`/#/${first}`);
+      await waitForActiveProviderSynced(page);
+      await paneTabs(page).first().getByTestId('editor-new-tab-button').click();
+      await openDocFromSidebar(page, second);
+      const [firstPaneId] = await paneIds(page);
+      expect(firstPaneId).toBeTruthy();
+      if (!firstPaneId) return;
+      await dragTabToPaneEdge(page, tabInPane(page, firstPaneId, second), firstPaneId, 'right');
+      await expect(paneTabs(page)).toHaveCount(2);
+      const [firstId, secondId] = await paneIds(page);
+
+      await page.setViewportSize({ width: 390, height: 700 });
+      const selector = page.getByRole('combobox', { name: 'Editor pane' });
+      await expect(selector).toBeVisible();
+      await selector.tap();
+      await page.getByRole('option', { name: 'Pane 1' }).tap();
+      await expect(paneRoot(page, firstId)).toBeVisible();
+      await expect(
+        paneRoot(page, secondId).locator('xpath=ancestor::*[@data-editor-pane-panel][1]'),
+      ).toHaveAttribute('inert', '');
+      await expect(editorForDoc(page, first)).toBeVisible();
+
+      await selector.tap();
+      await page.getByRole('option', { name: 'Pane 2' }).tap();
+      await expect(paneRoot(page, secondId)).toBeVisible();
+      await expect(
+        paneRoot(page, firstId).locator('xpath=ancestor::*[@data-editor-pane-panel][1]'),
+      ).toHaveAttribute('inert', '');
+      await expect(editorForDoc(page, second)).toBeVisible();
+      await page
+        .locator(`[data-editor-pane-tabs="${secondId}"]`)
+        .getByTestId('editor-tab-close-button')
+        .tap();
+      await expect(paneTabs(page)).toHaveCount(1);
+      expect(await paneIds(page)).toEqual([firstId]);
+      await expect(editorForDoc(page, first)).toBeVisible();
+      await expect(editorForDoc(page, second)).toHaveCount(0);
+
+      await page.setViewportSize(WIDE_VIEWPORT);
+      await page.reload();
+      await waitForActiveProviderSynced(page);
+      expect(await paneIds(page)).toEqual([firstId]);
+      await expect(editorForDoc(page, first)).toBeVisible();
+      await expect(editorForDoc(page, second)).toHaveCount(0);
+    });
   });
 });
 

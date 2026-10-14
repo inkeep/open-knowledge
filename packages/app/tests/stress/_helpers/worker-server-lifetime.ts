@@ -20,6 +20,7 @@ interface Lifetime {
   readonly released: Promise<void>;
   readonly exited: Promise<void>;
   readonly ownerExited: () => boolean;
+  readonly commandPid: () => number | undefined;
   readonly reapMs: number;
 }
 
@@ -52,7 +53,7 @@ const commandErrorSchema = z.object({
 });
 
 const lifetimeMessageSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('started') }),
+  z.object({ type: z.literal('started'), pid: z.number().int().positive().nullable() }),
   z.object({ type: z.literal('command-exit'), ...commandStatusSchema.shape }),
   z.object({ type: z.literal('command-close'), ...commandStatusSchema.shape }),
   z.object({
@@ -99,6 +100,7 @@ export function acquireWorkerServer(
     },
   );
   let commandStatus: z.infer<typeof commandStatusSchema> | undefined;
+  let commandPid: number | undefined;
   let nativeExitCode = proc.exitCode;
   let nativeSignalCode = proc.signalCode;
   Object.defineProperties(proc, {
@@ -188,6 +190,7 @@ export function acquireWorkerServer(
     const message = result.data;
     switch (message.type) {
       case 'started':
+        commandPid = message.pid ?? undefined;
         return;
       case 'command-exit':
         commandStatus = { code: message.code, signal: message.signal };
@@ -239,9 +242,14 @@ export function acquireWorkerServer(
     released,
     exited,
     ownerExited: () => nativeExitCode !== null || nativeSignalCode !== null,
+    commandPid: () => commandPid,
     reapMs,
   });
   return proc as WorkerServerProcess;
+}
+
+export function workerServerCommandPid(proc: WorkerServerProcess): number | undefined {
+  return lifetimeOf(proc).commandPid();
 }
 
 export async function stopWorkerServer(

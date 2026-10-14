@@ -84,7 +84,7 @@ async function clickLinkAndExpectBoard(
   await page.click(linkSelector);
 
   await expect.poll(async () => page.evaluate(() => window.location.hash)).toBe(`#/${board}`);
-  await expect(page.getByRole('main', { name: 'Excalidraw canvas' })).toBeVisible({
+  await expect(page.getByRole('region', { name: 'Excalidraw canvas' })).toBeVisible({
     timeout: 30_000,
   });
   await expect(page.getByTestId('asset-preview-open-as-text')).toHaveCount(0);

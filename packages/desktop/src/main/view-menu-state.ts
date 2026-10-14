@@ -52,6 +52,7 @@ export function createDefaultEditorViewMenuState(): EditorViewMenuStateSnapshot 
     terminalPlacement: 'bottom',
     terminalLive: false,
     agentPanelVisible: false,
+    editorVisible: true,
     canViewInSource: false,
     hasEditorSelection: false,
   };
@@ -71,6 +72,7 @@ type ViewMenuStateDeps = Pick<
   | 'terminalPlacement'
   | 'terminalLive'
   | 'agentPanelVisible'
+  | 'editorVisible'
   | 'hasEditorSelection'
   | 'onToggleShowHiddenFiles'
   | 'onToggleShowOkFolders'
@@ -81,6 +83,7 @@ type ViewMenuStateDeps = Pick<
   | 'onToggleTerminal'
   | 'onMoveTerminal'
   | 'onToggleAgentPanel'
+  | 'onToggleEditor'
   | 'onNewTerminal'
   | 'onKillTerminal'
   | 'onExpandAll'
@@ -104,6 +107,7 @@ export function buildViewMenuStateDeps(
     terminalPlacement: state.terminalPlacement,
     terminalLive: state.terminalLive,
     agentPanelVisible: state.agentPanelVisible,
+    editorVisible: state.editorVisible,
     hasEditorSelection: state.hasEditorSelection,
     onToggleShowHiddenFiles: () => sendMenuAction('toggle-show-hidden-files'),
     onToggleShowOkFolders: () => sendMenuAction('toggle-show-ok-folders'),
@@ -114,6 +118,7 @@ export function buildViewMenuStateDeps(
     onToggleTerminal: () => sendMenuAction('toggle-terminal'),
     onMoveTerminal: () => sendMenuAction('move-terminal'),
     onToggleAgentPanel: () => sendMenuAction('toggle-agent-panel'),
+    onToggleEditor: () => sendMenuAction('toggle-editor'),
     onNewTerminal: () => sendMenuAction('new-terminal'),
     onKillTerminal: () => sendMenuAction('kill-terminal'),
     onExpandAll: () => sendMenuAction('expand-all-tree'),

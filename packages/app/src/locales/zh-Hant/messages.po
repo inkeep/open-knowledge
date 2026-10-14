@@ -1674,6 +1674,7 @@ msgstr "使用中"
 msgid "Active panel content for the selected tab shows here."
 msgstr "所選分頁的作用中面板內容會顯示在這裡。"
 
+#: src/components/EditorArea.tsx
 #: src/components/FolderTimelineCard.tsx
 msgid "Activity"
 msgstr "動態"
@@ -1966,6 +1967,10 @@ msgid "Agent mode"
 msgstr "代理模式"
 
 #: src/components/EditorArea.tsx
+msgid "Agent panel"
+msgstr "智慧代理面板"
+
+#: src/components/EditorArea.tsx
 msgid "Agent panel closed to keep Terminal readable."
 msgstr "為保持 Terminal 清晰可讀，已關閉智慧代理面板。"
 
@@ -1987,6 +1992,7 @@ msgstr "代理記錄"
 
 #: src/components/EditorArea.tsx
 #: src/components/ExploreSkills.tsx
+#: src/components/HeaderPaneButtons.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
 msgstr "代理"
@@ -2183,6 +2189,7 @@ msgstr "應用程式實例：{label}，v{version}"
 msgid "Append-only log of what changed."
 msgstr "記錄變更內容的唯附加記錄檔。"
 
+#: src/components/AppHeader.tsx
 #: src/components/CommandPalette.tsx
 msgid "Application"
 msgstr "應用程式"
@@ -2546,6 +2553,10 @@ msgstr "返回"
 #: src/components/ActivityModeContent.tsx
 msgid "Back to document view"
 msgstr "回到文件檢視"
+
+#: src/components/EditorArea.tsx
+msgid "Back to editor"
+msgstr "返回編輯器"
 
 #: src/components/LinksPanel.tsx
 msgid "Backlinks"
@@ -3467,10 +3478,6 @@ msgstr "摺疊"
 msgid "Collapse {keyName}"
 msgstr "摺疊 {keyName}"
 
-#: src/components/TerminalTabStrip.tsx
-msgid "Collapse agent panel"
-msgstr "收合智慧代理面板"
-
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -3493,10 +3500,6 @@ msgstr "摺疊「問 AI」"
 #: src/components/GraphPanel.tsx
 msgid "Collapse graph"
 msgstr "摺疊關係圖"
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Collapse Terminal"
-msgstr "收合 Terminal"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Collapsible content block (Notion-style toggle)."
@@ -3665,7 +3668,7 @@ msgstr "設定使用者、專案和整合相關的選項。"
 msgid "conflict"
 msgstr "衝突"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Conflict"
 msgstr "衝突"
@@ -4304,6 +4307,7 @@ msgid "Couldn't duplicate \"{0}\": {1}"
 msgstr "無法複製「{0}」：{1}"
 
 #: src/comments/reveal-comment.ts
+#: src/comments/ThreadCard.tsx
 msgid "Couldn't find that passage — the text it was on may have changed."
 msgstr "找不到該段落 — 它所在的文字可能已變更。"
 
@@ -4668,6 +4672,10 @@ msgstr "無法儲存此設定。請再試一次。"
 #: src/components/McpConsentDialogBody.tsx
 msgid "Couldn't save your theme preference."
 msgstr "無法儲存你的主題偏好。"
+
+#: src/comments/reveal-comment.ts
+msgid "Couldn't scroll to that passage. Try again."
+msgstr "無法捲動到該段落。請重試。"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Couldn't send the report"
@@ -5289,6 +5297,7 @@ msgid "Diff render mode"
 msgstr "差異顯示模式"
 
 #: src/components/AgentDiffPane.tsx
+#: src/components/EditorArea.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Diff unavailable"
 msgstr "無法顯示差異"
@@ -5409,6 +5418,10 @@ msgstr "找不到文件"
 #: src/components/OutlinePanel.tsx
 msgid "Document outline"
 msgstr "文件大綱"
+
+#: src/components/EditorArea.tsx
+msgid "Document panel"
+msgstr "文件面板"
 
 #: src/components/DocPanel.tsx
 msgid "Document panels"
@@ -5733,6 +5746,7 @@ msgstr "正在原地編輯 {boldName}。變更會直接存到你編輯器裡的�
 msgid "Editing broken MDX source: {reason}"
 msgstr "正在編輯壞掉的 MDX 原始碼：{reason}"
 
+#: src/components/HeaderPaneButtons.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Editor"
 msgstr "編輯器"
@@ -5743,6 +5757,10 @@ msgstr "編輯器模式"
 
 #: src/components/EditorWorkspace.tsx
 msgid "editor pane"
+msgstr "編輯器窗格"
+
+#: src/components/EditorWorkspace.tsx
+msgid "Editor pane"
 msgstr "編輯器窗格"
 
 #: src/lib/keyboard-shortcuts.ts
@@ -6691,6 +6709,7 @@ msgstr "檔案：<0>{fixedName}.md</0>"
 msgid "Filename"
 msgstr "檔案名稱"
 
+#: src/components/EditorArea.tsx
 #: src/components/FileSidebar.tsx
 msgid "Files"
 msgstr "檔案"
@@ -7353,11 +7372,17 @@ msgstr "隱藏詳細資料"
 msgid "Hide document panel"
 msgstr "隱藏文件面板"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+msgid "Hide Editor"
+msgstr "隱藏編輯器"
+
 #: src/components/GraphPanel.tsx
 msgid "Hide external URL nodes"
 msgstr "隱藏外部 URL 節點"
 
-#: src/components/EditorHeader.tsx
+#: src/components/FileListToggle.tsx
+#: src/components/FileSidebar.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Hide Files"
 msgstr "隱藏「檔案」"
@@ -7388,12 +7413,13 @@ msgid "Hide Others"
 msgstr "隱藏其他"
 
 #: src/components/AgentDiffPane.tsx
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
+#: src/components/EditorArea.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Hide panel"
 msgstr "隱藏面板"
 
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 msgid "Hide panel ({panelShortcutLabel})"
 msgstr "隱藏面板（{panelShortcutLabel}）"
 
@@ -9008,11 +9034,11 @@ msgstr "修改連結目標、錨點和顯示標籤。"
 msgid "More"
 msgstr "更多"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 msgid "More actions"
 msgstr "更多動作"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 msgid "More actions ({syncAttentionLabel})"
 msgstr "更多動作（{syncAttentionLabel}）"
 
@@ -10062,6 +10088,10 @@ msgstr "在你發起操作之前不會有任何變動——請在同步選單中
 msgid "Nothing moves until you ask."
 msgstr "在你發起操作之前不會有任何變動。"
 
+#: src/components/NothingOpen.tsx
+msgid "Nothing open"
+msgstr "沒有開啟的面板"
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr "還沒有設定任何東西。"
@@ -10111,7 +10141,7 @@ msgstr "關閉——外部連結只顯示 URL。不會有任何要求離開這�
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr "關閉——搜尋只按關鍵字排序。不會有任何內容離開這台電腦。"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "離線"
@@ -10277,13 +10307,9 @@ msgstr "開啟 {tooltipName} 的活動面板"
 msgid "Open activity panel for {tooltipName}, editing {realCurrentDoc}"
 msgstr "開啟 {tooltipName} 的活動面板，它正在編輯 {realCurrentDoc}"
 
-#: src/components/TerminalRevealTab.tsx
-msgid "Open agents panel"
-msgstr "開啟代理面板"
-
-#: src/components/TerminalRevealTab.tsx
-msgid "Open agents panel — {liveThreadCount, plural, one {# live agent thread} other {# live agent threads}}"
-msgstr "開啟代理面板 — {liveThreadCount, plural, other {# 個進行中的代理執行緒}}"
+#: src/components/NothingOpen.tsx
+msgid "Open agents"
+msgstr "開啟智慧代理"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
@@ -10329,6 +10355,10 @@ msgstr "為選取的檔案樹項目開啟刪除確認框。"
 #: src/components/PropertyWidgets.tsx
 msgid "Open documents tagged #{chip}"
 msgstr "開啟標了 #{chip} 的文件"
+
+#: src/components/NothingOpen.tsx
+msgid "Open editor"
+msgstr "開啟編輯器"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Open email draft"
@@ -10501,7 +10531,7 @@ msgstr "開啟原始碼檢查面板"
 msgid "Open source: {mirrorSrc}"
 msgstr "來源：{mirrorSrc}"
 
-#: src/components/TerminalRevealTab.tsx
+#: src/components/NothingOpen.tsx
 msgid "Open terminal"
 msgstr "開啟終端機"
 
@@ -11062,6 +11092,14 @@ msgstr "向上平移"
 msgid "pane {0}"
 msgstr "窗格 {0}"
 
+#: src/components/EditorWorkspace.tsx
+msgid "Pane {number}"
+msgstr "窗格 {number}"
+
+#: src/components/HeaderPaneButtons.tsx
+msgid "Panels"
+msgstr "面板"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Paragraph"
 msgstr "段落"
@@ -11470,6 +11508,7 @@ msgstr "專案"
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillsTree.tsx
+#: src/components/WebProjectName.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
 msgstr "專案"
@@ -11863,7 +11902,7 @@ msgstr "建議"
 msgid "Recommended agent skill"
 msgstr "推薦代理技能"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "需要重新連接"
@@ -12452,9 +12491,18 @@ msgstr "重設檢視篩選條件"
 msgid "Resize {handleKey}"
 msgstr "調整 {handleKey} 的大小"
 
+#: src/components/EditorArea.tsx
+msgid "Resize document panel"
+msgstr "調整文件面板大小"
+
 #: src/components/SkillsSidebarDock.tsx
 msgid "Resize skills panel"
 msgstr "調整「技能」面板大小"
+
+#: src/components/EditorArea.tsx
+#: src/components/TerminalDock.tsx
+msgid "Resize terminal"
+msgstr "調整終端機大小"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
@@ -12868,9 +12916,8 @@ msgid "Scroll to start"
 msgstr "捲動到開頭"
 
 #: src/components/CommandPalette.tsx
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderSearchBar.tsx
 #: src/components/settings/SettingsDialogShell.tsx
-#: src/components/SidebarSearchBar.tsx
 #: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
@@ -12879,10 +12926,6 @@ msgstr "搜尋"
 #: src/components/CommandPalette.tsx
 msgid "Search \"{semanticSubmitQuery}\" by meaning"
 msgstr "按語意搜尋「{semanticSubmitQuery}」"
-
-#: src/components/EditorHeader.tsx
-msgid "Search ({searchShortcutLabel})"
-msgstr "搜尋（{searchShortcutLabel}）"
 
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Search agents"
@@ -13549,6 +13592,11 @@ msgstr "顯示圖表"
 msgid "Show document panel"
 msgstr "顯示文件面板"
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+msgid "Show Editor"
+msgstr "顯示編輯器"
+
 #: src/components/GraphPanel.tsx
 msgid "Show external URL nodes"
 msgstr "顯示外部 URL 節點"
@@ -13557,7 +13605,7 @@ msgstr "顯示外部 URL 節點"
 msgid "Show fewer"
 msgstr "顯示少一點"
 
-#: src/components/EditorHeader.tsx
+#: src/components/FileListToggle.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Show Files"
 msgstr "顯示「檔案」"
@@ -13614,12 +13662,12 @@ msgid "Show original"
 msgstr "顯示原始版本"
 
 #: src/components/AgentDiffPane.tsx
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Show panel"
 msgstr "顯示面板"
 
-#: src/components/EditorToolbar.tsx
+#: src/components/DocPanelToggle.tsx
 msgid "Show panel ({panelShortcutLabel})"
 msgstr "顯示面板（{panelShortcutLabel}）"
 
@@ -14438,7 +14486,7 @@ msgstr "同步模式"
 msgid "Sync now"
 msgstr "立即同步"
 
-#: src/components/EditorHeader.tsx
+#: src/components/HeaderOverflowActions.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "同步已暫停"
@@ -14616,6 +14664,7 @@ msgstr "可用的範本"
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
+#: src/components/HeaderPaneButtons.tsx
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -16416,6 +16465,10 @@ msgstr "已更新資料夾屬性"
 msgid "Updated to Version {version}"
 msgstr "已更新到版本 {version}"
 
+#: src/components/CornerCardStack.tsx
+msgid "Updates and feedback"
+msgstr "更新與意見回饋"
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Updates flow in"
 msgstr "更新會自動流入"
@@ -16988,10 +17041,6 @@ msgstr "工作區"
 #: src/components/CommandPalette.tsx
 msgid "Workspace Command Palette"
 msgstr "工作區指令面板"
-
-#: src/components/EditorHeader.tsx
-msgid "Workspace navigation"
-msgstr "工作區導覽"
 
 #: src/components/NavigatorApp.tsx
 #: src/components/RecentProjectsMenu.tsx

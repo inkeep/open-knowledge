@@ -84,7 +84,11 @@ function cleanupSourceEditorEntry(docName: string, entry: CmCacheEntry): void {
   }
 }
 
-function applyOutlineNavigation(view: EditorView, detail: OutlineNavDetail, docName: string): void {
+function applyOutlineNavigation(
+  view: EditorView,
+  detail: OutlineNavDetail,
+  docName: string,
+): boolean {
   const lines = sourceHeadingLines(view.state.doc);
   const heading = lines[detail.index];
   const trace = {
@@ -95,7 +99,7 @@ function applyOutlineNavigation(view: EditorView, detail: OutlineNavDetail, docN
   };
   if (!heading) {
     emitDiagnosticBreadcrumb(OUTLINE_NAV_BREADCRUMB, { ...trace, outcome: 'no-target' });
-    return;
+    return false;
   }
 
   const claimed = runScrollNavigation(docName, 'outline', () => {
@@ -110,6 +114,7 @@ function applyOutlineNavigation(view: EditorView, detail: OutlineNavDetail, docN
     outcome: claimed ? 'scrolled' : 'declined',
     targetLine: view.state.doc.lineAt(heading.from).number,
   });
+  return claimed;
 }
 
 export function applyRawMdxNavigation(
@@ -397,7 +402,7 @@ export function SourceEditor({
         });
         return;
       }
-      applyOutlineNavigation(view, detail, docName);
+      if (applyOutlineNavigation(view, detail, docName)) detail.onNavigated?.(view.contentDOM);
       clearPendingSourceNavigation(docName);
     }
     window.addEventListener(OUTLINE_NAV_EVENT, onNav);
@@ -410,7 +415,10 @@ export function SourceEditor({
       if (!detail || detail.docName !== docName || !isSourceModeActive) return;
       const view = viewRef.current;
       if (!view) return;
-      if (applyLintNavigation(view, detail, docName)) clearPendingSourceNavigation(docName);
+      if (applyLintNavigation(view, detail, docName)) {
+        clearPendingSourceNavigation(docName);
+        detail.onNavigated?.(view.contentDOM);
+      }
     }
     window.addEventListener(LINT_NAV_EVENT, onLintNav);
     return () => window.removeEventListener(LINT_NAV_EVENT, onLintNav);
@@ -427,9 +435,13 @@ export function SourceEditor({
     if (pendingNavigation.kind !== 'selection-offset') {
       consumePendingSourceNavigation(docName);
       if (pendingNavigation.kind === 'outline') {
-        applyOutlineNavigation(view, pendingNavigation.detail, docName);
+        if (applyOutlineNavigation(view, pendingNavigation.detail, docName)) {
+          pendingNavigation.detail.onNavigated?.(view.contentDOM);
+        }
       } else if (pendingNavigation.kind === 'lint') {
-        applyLintNavigation(view, pendingNavigation.detail, docName);
+        if (applyLintNavigation(view, pendingNavigation.detail, docName)) {
+          pendingNavigation.detail.onNavigated?.(view.contentDOM);
+        }
       } else if (pendingNavigation.kind === 'raw-mdx') {
         applyRawMdxNavigation(
           view,

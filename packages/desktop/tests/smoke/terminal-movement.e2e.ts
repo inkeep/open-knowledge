@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ElectronApplication, ElementHandle, JSHandle, Page } from '@playwright/test';
+import type { ElectronApplication, ElementHandle, JSHandle, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
@@ -584,6 +584,63 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await expectScrollbackRetains(page, scrollback);
   });
 
+  test('dragging the right Terminal divider narrows the document and keeps the side panel width', async ({
+    captureStderrFor,
+  }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
+    const s = seed();
+    const app = await launchApp(s);
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+    await widenEditorWindow(app, page, 1900, 900);
+    await page.evaluate(() => {
+      window.location.hash = '#/start';
+    });
+    await expect(
+      page.locator('.ProseMirror[contenteditable="true"]:not(.composer-prosemirror)').first(),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'true', {
+      timeout: 10_000,
+    });
+
+    await openTerminal(app, page);
+    await moveTerminal(app, page, 'right');
+    await expect(page.locator('#terminal-column')).toBeVisible({ timeout: 20_000 });
+
+    const sidePanel = page.locator('#doc-panel');
+    const documentColumn = page.locator('[data-editor-workspace-column]');
+    const editorCard = page.locator('[data-slot="pane-card"][data-pane="editor"]');
+    await expect(editorCard.locator('#doc-panel')).toHaveCount(1);
+    await expect
+      .poll(() => sidePanel.evaluate((element) => element.getBoundingClientRect().width), {
+        timeout: RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+      })
+      .toBeGreaterThanOrEqual(300);
+    const sidePanelBefore = await sidePanel.evaluate(
+      (element) => element.getBoundingClientRect().width,
+    );
+    const columnBefore = await documentColumn.evaluate(
+      (element) => element.getBoundingClientRect().width,
+    );
+
+    const deltaPx = 150;
+    await growRightTerminal(page, deltaPx);
+
+    const sidePanelAfter = await sidePanel.evaluate(
+      (element) => element.getBoundingClientRect().width,
+    );
+    const columnAfter = await documentColumn.evaluate(
+      (element) => element.getBoundingClientRect().width,
+    );
+    expect(
+      Math.abs(sidePanelAfter - sidePanelBefore),
+      'the side panel keeps its width while the right Terminal divider is dragged',
+    ).toBeLessThanOrEqual(1);
+    expect(columnAfter, 'the document column gives up the width').toBeLessThan(
+      columnBefore - deltaPx / 2,
+    );
+  });
+
   test('renderer restart restores the right layout and its live active terminal', async ({
     captureStderrFor,
   }) => {
@@ -676,7 +733,10 @@ test.describe('Terminal placement continuity — live Electron', () => {
     );
     await expectCollapsedRailColumn(page, '#agents-column', { budget: shrink });
     await page.evaluate(() => {
-      window.okDesktop?.editor.notifyViewMenuStateChanged({ agentPanelVisible: true });
+      window.okDesktop?.editor.notifyViewMenuStateChanged({
+        agentPanelVisible: true,
+        wideIntent: { agentPanelVisible: true },
+      });
     });
     await expect
       .poll(
@@ -750,5 +810,119 @@ test.describe('Terminal placement continuity — live Electron', () => {
     const output = `AFTER_MALFORMED_RESTART_${token}`;
     await typeInActiveTerminal(page, `${SHELL_COMMANDS.output(output)}\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(output);
+  });
+
+  test('the terminal is its own card: under the whole editor card at the bottom, a full-height card on the right', async ({
+    captureStderrFor,
+  }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
+    const s = seed();
+    const app = await launchApp(s);
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+    await widenEditorWindow(app, page, 1900, 900);
+    await page.evaluate(() => {
+      window.location.hash = '#/start';
+    });
+    await expect(
+      page.locator('.ProseMirror[contenteditable="true"]:not(.composer-prosemirror)').first(),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-doc-panel-toggle]')).toHaveAttribute('aria-expanded', 'true', {
+      timeout: 10_000,
+    });
+
+    const box = async (selector: string) => {
+      const rect = await page.locator(selector).first().boundingBox();
+      if (rect == null) throw new Error(`${selector} has no box`);
+      return {
+        x: rect.x,
+        y: rect.y,
+        right: rect.x + rect.width,
+        bottom: rect.y + rect.height,
+        height: rect.height,
+      };
+    };
+    const gapPx = 8;
+    const clippingAncestors = (card: Locator) =>
+      card.evaluate((element) => {
+        const clippers: string[] = [];
+        let cur: Element | null = element.parentElement;
+        while (cur != null && cur !== document.body) {
+          if (getComputedStyle(cur).overflow !== 'visible') clippers.push(cur.className.toString());
+          cur = cur.parentElement;
+        }
+        return clippers;
+      });
+
+    await openTerminal(app, page);
+    const bottomCard = page.locator(
+      '#terminal-dock-panel [data-slot="pane-card"][data-pane="terminal"]',
+    );
+    await expect(bottomCard).toBeVisible({ timeout: 10_000 });
+    expect(
+      await clippingAncestors(bottomCard),
+      'nothing between the bottom terminal card and the window clips its shadow',
+    ).toEqual([]);
+    const editor = await box('[data-slot="pane-card"][data-pane="editor"]');
+    const bottom = await box('#terminal-dock-panel [data-slot="pane-card"][data-pane="terminal"]');
+    const fileList = await box('[data-slot="sidebar-container"]');
+    const sidePanel = await box('#doc-panel');
+    expect(
+      Math.abs(bottom.x - editor.x),
+      'the bottom terminal card starts under the file list',
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(bottom.right - editor.right),
+      'the bottom terminal card ends under the side panel',
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(bottom.y - editor.bottom - gapPx),
+      'one gap separates the editor card and the terminal card',
+    ).toBeLessThanOrEqual(1);
+    expect(fileList.bottom, 'the file list stops above the terminal card').toBeLessThanOrEqual(
+      bottom.y + 1,
+    );
+    expect(sidePanel.bottom, 'the side panel stops above the terminal card').toBeLessThanOrEqual(
+      bottom.y + 1,
+    );
+    const bottomBar = await box('#terminal-dock-panel [data-terminal-tab-row]');
+    expect(Math.abs(bottomBar.height - 44), 'the terminal top bar is 44px').toBeLessThanOrEqual(1);
+    expect(Math.abs(bottomBar.y - bottom.y)).toBeLessThanOrEqual(1);
+
+    await moveTerminal(app, page, 'right');
+    const rightCard = page.locator(
+      '#terminal-column [data-slot="pane-card"][data-pane="terminal"]',
+    );
+    await expect(rightCard).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('#terminal-dock-panel')).toHaveCount(0);
+    expect(
+      await clippingAncestors(rightCard),
+      'nothing between the right terminal card and the window clips its shadow',
+    ).toEqual([]);
+    const editorAfter = await box('[data-slot="pane-card"][data-pane="editor"]');
+    const right = await box('#terminal-column [data-slot="pane-card"][data-pane="terminal"]');
+    expect(
+      Math.abs(right.y - editorAfter.y),
+      'the right terminal card top lines up with the editor card',
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(right.bottom - editorAfter.bottom),
+      'the right terminal card runs the full height',
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(right.x - editorAfter.right - gapPx),
+      'one gap separates the editor card and the right terminal card',
+    ).toBeLessThanOrEqual(1);
+    const agentsColumn = await box('#agents-column');
+    expect(right.right, 'the right terminal sits left of the chat column').toBeLessThanOrEqual(
+      agentsColumn.x + 1,
+    );
+    const tabRow = await box('header[data-editor-header]');
+    const rightBar = await box('#terminal-column [data-terminal-tab-row]');
+    expect(
+      Math.abs(rightBar.height - tabRow.height),
+      'the right terminal top bar matches the tab row height',
+    ).toBeLessThanOrEqual(1);
+    expect(Math.abs(rightBar.y - tabRow.y)).toBeLessThanOrEqual(1);
   });
 });

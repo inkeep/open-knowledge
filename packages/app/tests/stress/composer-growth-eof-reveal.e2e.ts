@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { DOCUMENT_SCROLL_HOST_SELECTOR } from '../../src/editor/document-scrollports';
-import { expect, test, toggleMode } from './_helpers';
+import { acpCatalogBody, expect, test, toggleMode } from './_helpers';
 
 const COMPOSER_CARD = '[data-testid="bottom-composer"] > div';
 const COMPOSER_INPUT = '.composer-prosemirror';
@@ -249,6 +249,9 @@ function assertLastLineStaysAboveCard(surface: Surface, before: Geometry, after:
   expect(clearanceOf(after), describeTransition(surface, before, after)).toBeGreaterThan(0);
 }
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/acp/catalog', (route) => route.fulfill({ json: acpCatalogBody([]) }));
+});
 test.describe('the Ask AI composer keeps the end-of-document line visible as it grows', () => {
   test.setTimeout(CASE_TIMEOUT_MS);
 

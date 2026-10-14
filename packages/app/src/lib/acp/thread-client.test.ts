@@ -647,6 +647,143 @@ describe('retry and sign-in lifecycle', () => {
 });
 
 describe('createThread channel wait', () => {
+  test('a malformed created frame rejects the pending launch instead of stranding it', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const client = new AgentThreadClient();
+      const sent: Array<Record<string, unknown>> = [];
+      const internals = client as unknown as { ws: unknown };
+      internals.ws = {
+        readyState: WebSocket.OPEN,
+        send: (raw: string) => sent.push(JSON.parse(raw) as Record<string, unknown>),
+      };
+      const pending = client.createThread({ agent: { source: 'custom', id: 'agent' } }, (info) => {
+        if (info.threadId === '') throw new Error('empty thread');
+      });
+      await Promise.resolve();
+      const reqId = sent.find((frame) => frame.op === 'create')?.reqId;
+      expect(typeof reqId).toBe('string');
+
+      expect(() =>
+        client.receiveServerFrame(JSON.stringify({ op: 'created', reqId })),
+      ).not.toThrow();
+      await expect(pending).rejects.toThrow(/invalid created thread info: info/);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test('a malformed created frame with no pending launch names the failing field and thread', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const client = new AgentThreadClient();
+
+      client.receiveServerFrame(
+        JSON.stringify({
+          op: 'created',
+          reqId: 'create-unknown',
+          info: {
+            threadId: 'thread-bad',
+            agent: { source: 'custom', id: 'agent', name: 'Agent' },
+            title: 'Agent',
+            status: 'ready',
+            createdAt: 'yesterday',
+            lastActivityAt: 1,
+            lastSeq: -1,
+          },
+        }),
+      );
+
+      expect(client.getThread('thread-bad')).toBeNull();
+      expect(warn).toHaveBeenCalledWith(
+        '[agent-threads] invalid created thread info',
+        expect.objectContaining({ field: 'createdAt', threadId: 'thread-bad' }),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test('a created frame with a status this build does not know still starts the thread', async () => {
+    const client = new AgentThreadClient();
+    const sent: Array<Record<string, unknown>> = [];
+    const internals = client as unknown as { ws: unknown };
+    internals.ws = {
+      readyState: WebSocket.OPEN,
+      send: (raw: string) => sent.push(JSON.parse(raw) as Record<string, unknown>),
+    };
+    const created = vi.fn();
+    const pending = client.createThread({ agent: { source: 'custom', id: 'agent' } }, created);
+    await Promise.resolve();
+    const reqId = sent.find((frame) => frame.op === 'create')?.reqId;
+
+    client.receiveServerFrame(
+      JSON.stringify({
+        op: 'created',
+        reqId,
+        info: {
+          threadId: 'thread-1',
+          agent: { source: 'custom', id: 'agent', name: 'Agent' },
+          title: 'Agent',
+          status: 'sleeping',
+          createdAt: 1,
+          lastActivityAt: 1,
+          lastSeq: -1,
+        },
+      }),
+    );
+
+    await expect(pending).resolves.toMatchObject({ threadId: 'thread-1', status: 'sleeping' });
+    expect(created).toHaveBeenCalledWith(expect.objectContaining({ threadId: 'thread-1' }));
+  });
+
+  test('a creation callback failure still starts and lists the thread the server created', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const client = new AgentThreadClient();
+      const sent: Array<Record<string, unknown>> = [];
+      const internals = client as unknown as { ws: unknown };
+      internals.ws = {
+        readyState: WebSocket.OPEN,
+        send: (raw: string) => sent.push(JSON.parse(raw) as Record<string, unknown>),
+      };
+      const callbackFailure = new Error('creation callback failed');
+      const pending = client.createThread({ agent: { source: 'custom', id: 'agent' } }, () => {
+        throw callbackFailure;
+      });
+      await Promise.resolve();
+      const reqId = sent.find((frame) => frame.op === 'create')?.reqId;
+      expect(typeof reqId).toBe('string');
+
+      expect(() =>
+        client.receiveServerFrame(
+          JSON.stringify({
+            op: 'created',
+            reqId,
+            info: {
+              threadId: 'thread-1',
+              agent: { source: 'custom', id: 'agent', name: 'Agent' },
+              title: 'Agent',
+              status: 'ready',
+              createdAt: 1,
+              lastActivityAt: 1,
+              lastSeq: -1,
+            },
+          }),
+        ),
+      ).not.toThrow();
+      await expect(pending).resolves.toMatchObject({ threadId: 'thread-1' });
+      expect(client.getThread('thread-1')?.info.threadId).toBe('thread-1');
+      expect(error).toHaveBeenCalledWith(
+        '[agent-threads] created-thread callback failed for',
+        'thread-1',
+        callbackFailure,
+      );
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   test('rejects with ThreadChannelUnavailableError when no URL is ever bound', async () => {
     const client = new AgentThreadClient();
     const waitFor = (

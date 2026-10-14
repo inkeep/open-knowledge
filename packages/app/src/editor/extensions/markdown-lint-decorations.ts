@@ -361,6 +361,7 @@ export const MarkdownLintDecorations = Extension.create<MarkdownLintDecorationsO
               const pending = peekPendingSourceNavigation(docName);
               if (pending?.kind === 'lint' && scrollToLintBlock(pending.detail)) {
                 clearPendingSourceNavigation(docName);
+                pending.detail.onNavigated?.(view.dom);
               }
             }
             if (sourceAtStart !== null && !destroyed && getSource?.() !== sourceAtStart) {
@@ -439,7 +440,10 @@ export const MarkdownLintDecorations = Extension.create<MarkdownLintDecorationsO
           function onLintNav(event: Event) {
             const detail = (event as CustomEvent<LintNavDetail>).detail;
             if (!detail || detail.docName !== docName || destroyed) return;
-            if (scrollToLintBlock(detail)) clearPendingSourceNavigation(docName);
+            if (scrollToLintBlock(detail)) {
+              clearPendingSourceNavigation(docName);
+              detail.onNavigated?.(view.dom);
+            }
           }
 
           startPass();

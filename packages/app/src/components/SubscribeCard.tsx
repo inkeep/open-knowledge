@@ -56,7 +56,7 @@ export function SubscribeCard({
   }, [succeeded, onClose, autoDismissMs]);
 
   return (
-    <Card asChild size="sm" className="mx-1 mb-1">
+    <Card asChild size="sm" className="floating-card-surface rounded-lg ring-0 ring-transparent">
       <section aria-label={t`Stay in the loop`}>
         <CardContent>
           <SubscribeForm

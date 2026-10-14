@@ -3,7 +3,7 @@
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core/schemas/api';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ChevronDown, ChevronUp, PanelRightClose, PanelRightOpen, Undo2, X } from 'lucide-react';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { MAX_RENDERED_CHANGES, PropertyDiffBlock } from '@/components/PropertyDiffBlock';
 import { computeRenderedDiff, RenderedDiffView } from '@/components/RenderedDiffView';
@@ -33,6 +33,7 @@ import {
 import { closeTimelineDiff, type TimelineDiffView } from '@/lib/timeline-diff-store';
 import {
   HISTORICAL_CONTENT_CACHE_LIMIT,
+  timelineEntryCacheKey,
   useTimelineEntryDiff,
 } from '@/lib/use-timeline-entry-diff';
 
@@ -45,9 +46,17 @@ interface TimelineDiffPaneProps {
   view: TimelineDiffView;
   isPanelCollapsed: boolean;
   onTogglePanel: () => void;
+  onDestinationComplete?: (target?: HTMLElement) => void;
+  onDestinationFailed?: () => void;
 }
 
-export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: TimelineDiffPaneProps) {
+export function TimelineDiffPane({
+  view,
+  isPanelCollapsed,
+  onTogglePanel,
+  onDestinationComplete,
+  onDestinationFailed,
+}: TimelineDiffPaneProps) {
   const { t } = useLingui();
   const { docName, sha, parentSha, laterEdits, authorName, relativeTime } = view;
   const [cache] = useState(() => new LruStringCache(HISTORICAL_CONTENT_CACHE_LIMIT));
@@ -55,12 +64,30 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
   const [dialogOpen, setDialogOpen] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const diffBodyRef = useRef<HTMLDivElement>(null);
   const [currentChange, setCurrentChange] = useState(0);
   const [pierreChangeCount, setPierreChangeCount] = useState(0);
   const [pierreSettled, setPierreSettled] = useState(false);
   const [propertiesOpen, setPropertiesOpen] = useState(true);
   const result = useTimelineEntryDiff(sha, docName, cache, 'vs-parent', parentSha);
+  const completeDestination = useEffectEvent(() => {
+    onDestinationComplete?.(closeButtonRef.current ?? undefined);
+  });
+  const failDestination = useEffectEvent(() => onDestinationFailed?.());
+  const settledRequestRef = useRef<TimelineDiffView | null>(null);
+  useEffect(() => {
+    if (settledRequestRef.current === view) return;
+    if (result.status !== 'ready' && result.status !== 'error') return;
+    if (result.key !== timelineEntryCacheKey(docName, sha)) return;
+    if (result.status === 'ready') {
+      settledRequestRef.current = view;
+      completeDestination();
+    } else {
+      settledRequestRef.current = view;
+      failDestination();
+    }
+  }, [result, docName, sha, view]);
 
   const rendered =
     result.status === 'ready' ? computeRenderedDiff(result.before, result.after) : null;
@@ -246,6 +273,7 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
+              ref={closeButtonRef}
               variant="ghost"
               size="icon"
               className="size-7 shrink-0"

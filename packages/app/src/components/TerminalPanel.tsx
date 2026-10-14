@@ -28,6 +28,7 @@ import { useTheme } from 'next-themes';
 import { use, useEffect, useRef, useState } from 'react';
 import { ConfigContext } from '@/lib/config-context';
 import type { OkDesktopBridge, OkPtyNotice } from '@/lib/desktop-bridge-types';
+import { revealEditor } from '@/lib/reveal-editor';
 import { cn } from '@/lib/utils';
 import { getPageListCache } from '../editor/page-list-cache';
 import { filePathToDocName, hashFromDocName, hashFromFolderPath } from '../lib/doc-hash';
@@ -286,9 +287,11 @@ function TerminalSession({
     const activateFileLink = (target: TerminalLinkTarget) => {
       switch (target.kind) {
         case 'doc':
+          revealEditor();
           window.location.hash = hashFromDocName(filePathToDocName(target.relPath));
           return;
         case 'folder':
+          revealEditor();
           window.location.hash = hashFromFolderPath(target.relPath);
           return;
         case 'external':
@@ -395,7 +398,17 @@ function TerminalSession({
       if (cancelled || sessionEnded || terminalInputEnabledRef.current) return;
       terminalInputEnabledRef.current = true;
       setStatus('running');
-      term.focus();
+      const active = document.activeElement;
+      const sessionHost = term.element?.closest('[data-session-id]') ?? term.element;
+      const focusUnclaimed =
+        active === null || active === document.body || sessionHost?.contains(active) === true;
+      const hostRect = sessionHost?.getBoundingClientRect();
+      const hostOnScreen =
+        sessionHost?.closest('[inert]') == null &&
+        hostRect !== undefined &&
+        hostRect.width > 0 &&
+        hostRect.height > 0;
+      if (focusUnclaimed || hostOnScreen) term.focus();
     };
 
     term.attachCustomKeyEventHandler((event) => {

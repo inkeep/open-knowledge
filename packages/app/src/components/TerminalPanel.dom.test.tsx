@@ -12,6 +12,11 @@ import type {
   OkPtyExit,
   OkPtyNotice,
 } from '@/lib/desktop-bridge-types';
+import {
+  __resetPaneVisibilityStoreForTests,
+  type PaneVisibilityRequest,
+  paneVisibilityStore,
+} from '@/lib/pane-visibility-store';
 import { terminalAgentSnapshot } from './terminal-agent-connections.test-helper';
 import {
   applyModelledScroll,
@@ -357,6 +362,7 @@ describe('TerminalPanel', () => {
   });
   afterEach(() => {
     cleanup();
+    __resetPaneVisibilityStoreForTests();
   });
 
   test('mounts an accessible region, configures xterm for a11y, and creates a PTY sized to the fitted terminal', async () => {
@@ -2884,6 +2890,42 @@ describe('TerminalPanel', () => {
       link?.activate({} as MouseEvent, link.text);
       expect(window.location.hash).toBe('#/packages/app/');
     });
+
+    test.each([
+      { kind: 'markdown path', line: 'edited notes/a.md', text: 'notes/a.md', hash: '#/notes/a' },
+      {
+        kind: 'trailing-slash folder',
+        line: 'cd packages/app/',
+        text: 'packages/app',
+        hash: '#/packages/app/',
+      },
+    ])(
+      'clicking a $kind shows a hidden editor before navigating to it',
+      async ({ line, text, hash }) => {
+        const reveals: Array<PaneVisibilityRequest & { hashWhenAsked: string }> = [];
+        paneVisibilityStore.subscribeRequests((request) => {
+          reveals.push({ ...request, hashWhenAsked: window.location.hash });
+        });
+        paneVisibilityStore.publish({
+          editor: { open: false, onScreen: false },
+          agents: null,
+          terminal: null,
+        });
+        const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
+        render(<TerminalPanel bridge={bridge} />);
+        await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
+        const term = lastTerm as MockTerminal;
+        term.lineText = line;
+
+        const [link] = await provide(term);
+        expect(link?.text).toBe(text);
+        window.location.hash = '';
+        link?.activate({} as MouseEvent, link.text);
+
+        expect(reveals).toEqual([{ pane: 'editor', open: true, hashWhenAsked: '' }]);
+        expect(window.location.hash).toBe(hash);
+      },
+    );
 
     test('a non-blocked openAsset failure surfaces silently — no reveal fallback', async () => {
       const { bridge, openAsset, revealAsset } = makeBridge({ ok: true, ptyId: 'pty-1' });

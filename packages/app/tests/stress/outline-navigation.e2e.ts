@@ -132,6 +132,50 @@ test('browser-style anchor hash opens the doc and scrolls to the matching WYSIWY
     .toBeLessThan(250);
 });
 
+test('choosing the same document heading again scrolls back to it', async ({ page, api }) => {
+  const docName = `repeat-heading-${randomUUID().slice(0, 8)}`;
+  const markdown = [
+    '# Navigation',
+    '',
+    '[Go to destination](#destination)',
+    '',
+    ...Array.from({ length: 24 }, () => FILLER),
+    '## Destination',
+    '',
+    'Destination body.',
+    '',
+    ...Array.from({ length: 8 }, () => FILLER),
+  ].join('\n');
+  await api.seedDocs([{ name: docName, markdown }]);
+  await page.setViewportSize({ width: 767, height: 700 });
+  await page.goto(`/#/${docName}`);
+
+  const destination = page.locator('.ProseMirror h2', { hasText: 'Destination' });
+  const scroller = page.locator('[data-testid="editor-scroll-container"]').first();
+  const link = page.getByRole('link', { name: 'Link: #destination' });
+  await expect(link).toBeVisible();
+  await link.click();
+  await expect
+    .poll(() => destination.evaluate((element) => element.getBoundingClientRect().top))
+    .toBeLessThan(250);
+
+  await scroller.evaluate((element) => {
+    element.scrollTo({ top: 0, behavior: 'instant' });
+  });
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeLessThan(10);
+  await expect
+    .poll(() => destination.evaluate((element) => element.getBoundingClientRect().top))
+    .toBeGreaterThan(500);
+  await link.click();
+  await expect
+    .poll(() => destination.evaluate((element) => element.getBoundingClientRect().top))
+    .toBeLessThan(250);
+  await expect(page.getByTestId('header-pane-button-editor')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+});
+
 test('outline click in source mode puts cursor on the heading line, skipping frontmatter', async ({
   page,
   api,

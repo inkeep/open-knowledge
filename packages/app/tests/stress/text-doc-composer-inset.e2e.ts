@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { expect, test } from './_helpers';
+import { acpCatalogBody, expect, test } from './_helpers';
 
 const TEXT_DOC = '[data-text-doc-editor]';
 const CM_CONTENT = `${TEXT_DOC} .cm-content`;
@@ -11,6 +11,9 @@ const COMPOSER_CARD = `${COMPOSER} > div`;
 
 const LINE_COUNT = 400;
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/acp/catalog', (route) => route.fulfill({ json: acpCatalogBody([]) }));
+});
 test.describe('editable text doc reserves the Ask AI composer height', () => {
   test('the last line of a code file scrolls clear of the composer card', async ({
     page,

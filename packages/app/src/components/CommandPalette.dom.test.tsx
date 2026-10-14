@@ -1,11 +1,15 @@
 import type { HandoffHostPlatform } from '@inkeep/open-knowledge-core/agent-registry';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   __resetLocalMenuActionBusForTests,
   subscribeLocalMenuAction,
 } from '@/lib/local-menu-action-bus';
+import {
+  __resetPaneVisibilityStoreForTests,
+  paneVisibilityStore,
+} from '@/lib/pane-visibility-store';
 import { __resetViewMenuStateForTests, setViewMenuState } from '@/lib/view-menu-state-store';
 import {
   restrictHandoffTargetPlatforms,
@@ -43,7 +47,7 @@ let activeTarget: { kind: string; [key: string]: unknown } | null = {
   docName: 'docs/active',
 };
 let requestDocPanelTabCalls: string[] = [];
-let seedDialogProps: Array<{ open: boolean }> = [];
+let seedDialogProps: Array<{ open: boolean; onSeedApplied?: () => void }> = [];
 let newItemDialogProps: Array<{ open: boolean; kind: string; initialDir: string }> = [];
 let createProjectDialogProps: Array<{ open: boolean; bridge: unknown }> = [];
 let reportBugDialogProps: Array<{ open: boolean; launcherBorne?: boolean }> = [];
@@ -142,7 +146,7 @@ vi.doMock('@/components/NewItemDialog', () => ({
 }));
 
 vi.doMock('@/components/SeedDialog', () => ({
-  SeedDialog: (props: { open: boolean }) => {
+  SeedDialog: (props: { open: boolean; onSeedApplied?: () => void }) => {
     seedDialogProps.push(props);
     return <div data-open={String(props.open)} data-testid="seed-dialog" />;
   },
@@ -312,15 +316,25 @@ function createBridge({
 async function renderPalette({
   bridge = createBridge(),
   docName = 'docs/active',
+  withSingleFileModeProvider = false,
 }: {
   bridge?: (ReturnType<typeof createBridge> & { platform?: HandoffHostPlatform }) | null;
   docName?: string | null;
+  withSingleFileModeProvider?: boolean;
 } = {}) {
   activeDocName = docName;
   activeTarget = docName ? { kind: 'doc', docName } : null;
   const onOpenChange = vi.fn(() => {});
   const { CommandPalette } = await import('./CommandPalette');
-  render(<CommandPalette bridge={bridge as never} open={true} onOpenChange={onOpenChange} />);
+  const palette = (
+    <CommandPalette bridge={bridge as never} open={true} onOpenChange={onOpenChange} />
+  );
+  if (withSingleFileModeProvider) {
+    const { SingleFileModeProvider } = await import('@/lib/single-file-mode');
+    render(<SingleFileModeProvider>{palette}</SingleFileModeProvider>);
+  } else {
+    render(palette);
+  }
   await waitFor(() => expect(screen.getByRole('dialog')).not.toBeNull());
   return { bridge, onOpenChange };
 }
@@ -335,6 +349,7 @@ async function setQuery(value: string) {
 describe('CommandPalette DOM behavior', () => {
   beforeEach(() => {
     cleanup();
+    __resetPaneVisibilityStoreForTests();
     activeDocName = 'docs/active';
     activeTarget = { kind: 'doc', docName: 'docs/active' };
     pageListLoading = false;
@@ -619,6 +634,25 @@ describe('CommandPalette DOM behavior', () => {
       expect(screen.getByTestId('seed-dialog').getAttribute('data-open')).toBe('true');
     });
     expect(seedDialogProps.at(-1)?.open).toBe(true);
+  });
+
+  test('an applied starter pack asks a hidden editor to show', async () => {
+    await renderPalette({ bridge: null });
+    await setQuery('scaffold');
+    fireEvent.click(screen.getByTestId('command-palette-initialize-starter-pack'));
+    await waitFor(() => expect(seedDialogProps.at(-1)?.open).toBe(true));
+
+    const requests: Array<{ pane: string; open: boolean }> = [];
+    paneVisibilityStore.subscribeRequests((request) => requests.push(request));
+    paneVisibilityStore.publish({
+      editor: { open: false, onScreen: false },
+      agents: null,
+      terminal: null,
+    });
+
+    act(() => seedDialogProps.at(-1)?.onSeedApplied?.());
+
+    expect(requests).toEqual([{ pane: 'editor', open: true }]);
   });
 
   test('CommandDialog receives no transition or placement prop from CommandPalette', async () => {
@@ -1169,6 +1203,7 @@ describe('Cmd+K menu-parity backfill', () => {
       query: 'copy relative path',
       id: 'copy-relative-path',
     },
+    { testid: 'command-palette-toggle-editor', query: 'hide editor', id: 'toggle-editor' },
   ];
 
   for (const { testid, query, id } of ID_BACKED) {
@@ -1192,6 +1227,22 @@ describe('Cmd+K menu-parity backfill', () => {
     expect(screen.getByTestId('command-palette-navigate-forward').textContent).toMatch(
       /⌘ \]|Alt →/,
     );
+  });
+
+  test('each pane toggle row wears the glyph its header pane button wears', async () => {
+    await renderPalette({ bridge: createBridge() });
+
+    await setQuery('agents');
+    const agents = screen.getByTestId('command-palette-toggle-agent-panel').querySelector('svg');
+    expect(agents?.classList.contains('lucide-sparkles')).toBe(true);
+
+    await setQuery('hide terminal');
+    const terminal = screen.getByTestId('command-palette-toggle-terminal').querySelector('svg');
+    expect(terminal?.classList.contains('lucide-square-terminal')).toBe(true);
+
+    await setQuery('hide editor');
+    const editor = screen.getByTestId('command-palette-toggle-editor').querySelector('svg');
+    expect(editor?.querySelector('path[d="M9 4v16"]')).not.toBeNull();
   });
 
   test('Ratchet C: every classified palette-command id renders a row or is a pre-existing surface', async () => {
@@ -1335,6 +1386,48 @@ describe('Cmd+K menu-parity backfill', () => {
     expect(screen.getByTestId('command-palette-toggle-terminal').textContent).toContain(
       'Show Terminal',
     );
+  });
+
+  test('a project window offers Show/Hide Editor and a single-file window offers neither', async () => {
+    setViewMenuState({ editorVisible: true });
+    await renderPalette({ bridge: createBridge() });
+    await setQuery('hide editor');
+    expect(screen.getByTestId('command-palette-toggle-editor').textContent).toContain(
+      'Hide Editor',
+    );
+
+    cleanup();
+    setViewMenuState({ editorVisible: false });
+    await renderPalette({ bridge: createBridge() });
+    await setQuery('show editor');
+    expect(screen.getByTestId('command-palette-toggle-editor').textContent).toContain(
+      'Show Editor',
+    );
+
+    cleanup();
+    const projectBridge = createBridge();
+    const singleFileBridge = {
+      ...projectBridge,
+      config: { ...projectBridge.config, singleFile: true },
+    };
+    Object.defineProperty(window, 'okDesktop', { configurable: true, value: singleFileBridge });
+    try {
+      for (const editorVisible of [true, false]) {
+        setViewMenuState({ editorVisible });
+        await renderPalette({ bridge: singleFileBridge, withSingleFileModeProvider: true });
+        for (const query of ['editor', 'show editor', 'hide editor']) {
+          await setQuery(query);
+          expect(screen.queryByTestId('command-palette-toggle-editor')).toBeNull();
+          const editorRows = screen
+            .queryAllByRole('option')
+            .filter((row) => /Show Editor|Hide Editor/.test(row.textContent ?? ''));
+          expect(editorRows).toEqual([]);
+        }
+        cleanup();
+      }
+    } finally {
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
   });
 
   test('terminal placement label and action invert with the current home', async () => {

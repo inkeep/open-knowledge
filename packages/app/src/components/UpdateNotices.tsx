@@ -1,9 +1,7 @@
 // oxlint-disable ok/no-raw-html-interactive-element -- pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-raw-html-interactive-element
 
-// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
-
 import { useLingui } from '@lingui/react/macro';
-import { X } from 'lucide-react';
+import { TriangleAlertIcon, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useSyncExternalStore } from 'react';
 import { Button } from '@/components/ui/button';
@@ -38,25 +36,37 @@ export function NoticeCard({ notice, onDismiss }: { notice: UpdateNotice; onDism
   const { t } = useLingui();
   const tone =
     notice.variant === 'error'
-      ? 'border-destructive/60 bg-sidebar-accent/30 text-muted-foreground'
+      ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300'
       : notice.variant === 'success'
-        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-        : 'border-sidebar-border bg-sidebar-accent/30 text-muted-foreground';
+        ? 'border-emerald-500/40 text-emerald-700 dark:text-emerald-400'
+        : 'text-muted-foreground';
+  const dismissTone =
+    notice.variant === 'error'
+      ? 'text-amber-700 hover:bg-amber-100 hover:text-amber-800 dark:text-amber-300 dark:hover:bg-amber-900 dark:hover:text-amber-200'
+      : 'text-muted-foreground hover:text-sidebar-foreground';
   const dismissButton =
     notice.dismissible === false ? null : (
       <Button
         variant="ghost"
         size="icon"
-        className="size-5 shrink-0 text-muted-foreground hover:text-sidebar-foreground"
+        className={`size-5 shrink-0 ${dismissTone}`}
         aria-label={t`Dismiss notice`}
         onClick={onDismiss}
       >
         <X aria-hidden="true" className="size-3" />
       </Button>
     );
-  const actionDecoration =
-    notice.variant === 'success' ? 'decoration-emerald-500/40' : 'decoration-muted-foreground/40';
-  const actionButtonClass = `shrink-0 text-xs font-medium underline underline-offset-2 ${actionDecoration} hover:text-sidebar-foreground hover:decoration-sidebar-foreground`;
+  const warningIcon =
+    notice.variant === 'error' ? (
+      <TriangleAlertIcon aria-hidden="true" className="mt-px size-3.5 shrink-0" />
+    ) : null;
+  const actionTone =
+    notice.variant === 'error'
+      ? 'decoration-amber-700/40 hover:text-amber-800 hover:decoration-amber-800 dark:decoration-amber-300/40 dark:hover:text-amber-200 dark:hover:decoration-amber-200'
+      : notice.variant === 'success'
+        ? 'decoration-emerald-500/40 hover:text-sidebar-foreground hover:decoration-sidebar-foreground'
+        : 'decoration-muted-foreground/40 hover:text-sidebar-foreground hover:decoration-sidebar-foreground';
+  const actionButtonClass = `shrink-0 text-xs font-medium underline underline-offset-2 ${actionTone}`;
 
   if (notice.secondaryAction) {
     return (
@@ -64,13 +74,14 @@ export function NoticeCard({ notice, onDismiss }: { notice: UpdateNotice; onDism
         role="status"
         aria-live="polite"
         data-testid={`update-notice-${notice.id}`}
-        className={`flex flex-col gap-2 rounded-md border px-2 py-2 text-xs ${tone}`}
+        className={`floating-card-surface relative flex w-fit max-w-full flex-col gap-2 py-2 ps-3 ${dismissButton ? 'pe-9' : 'pe-3'} text-xs ${tone}`}
       >
         <div className="flex items-start gap-2">
-          <span className="flex-1 leading-snug">{notice.body}</span>
-          {dismissButton}
+          {warningIcon}
+          <span className="min-w-0 flex-1 leading-snug wrap-anywhere">{notice.body}</span>
         </div>
-        <div className="flex gap-3 pl-1">
+        {dismissButton ? <div className="absolute end-1.5 top-1.5">{dismissButton}</div> : null}
+        <div className={`flex gap-3 ${warningIcon ? 'ps-5.5' : 'ps-1'}`}>
           {notice.action ? (
             <button
               type="button"
@@ -101,9 +112,10 @@ export function NoticeCard({ notice, onDismiss }: { notice: UpdateNotice; onDism
       role="status"
       aria-live="polite"
       data-testid={`update-notice-${notice.id}`}
-      className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs ${tone}`}
+      className={`floating-card-surface relative flex w-fit max-w-full items-center gap-3 py-2 ps-3 ${dismissButton ? 'pe-9' : 'pe-3'} text-xs ${tone}`}
     >
-      <span className="flex-1 leading-snug">{notice.body}</span>
+      {warningIcon}
+      <span className="min-w-0 flex-1 leading-snug wrap-anywhere">{notice.body}</span>
       {notice.action ? (
         <button
           type="button"
@@ -115,7 +127,7 @@ export function NoticeCard({ notice, onDismiss }: { notice: UpdateNotice; onDism
           {notice.action.label}
         </button>
       ) : null}
-      {dismissButton}
+      {dismissButton ? <div className="absolute end-1.5 top-1.5">{dismissButton}</div> : null}
     </div>
   );
 }
@@ -137,7 +149,7 @@ export function UpdateNotices(): ReactNode {
   if (!active) return null;
   if (active.combinedSubscribe && active.whatsNew) {
     return (
-      <div data-testid="update-notices-list">
+      <div data-testid="update-notices-list" className="shrink-0">
         <SubscribeCard
           version={active.whatsNew.version}
           onOpenReleaseNotes={() => active.action?.onClick()}
@@ -147,7 +159,7 @@ export function UpdateNotices(): ReactNode {
     );
   }
   return (
-    <div data-testid="update-notices-list">
+    <div data-testid="update-notices-list" className="shrink-0">
       <NoticeCard
         notice={active}
         onDismiss={() => {

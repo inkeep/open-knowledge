@@ -1,7 +1,7 @@
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import { mentionRecencyAttribute } from '@/components/acp/composer-mention-input.test-helper';
 
 vi.doMock('@lingui/react/macro', () => ({
@@ -83,6 +83,7 @@ vi.doMock('@/components/doc-panel-events', () => ({
 
 vi.doMock('./store', () => ({
   createThread: (args: CreateArgs) => captured.created.push(args),
+  emitStartComment: () => captured.startComment?.(),
   subscribeStartComment: (cb: () => void) => {
     captured.startComment = cb;
     return () => {
@@ -262,5 +263,53 @@ describe('what the comment @ picker is told to list first', () => {
       currentDocName: 'recipes/stir-fry',
       recentPaths: [],
     });
+  });
+});
+
+describe('the comment composer while the editor is hidden', () => {
+  async function hideEditorPane() {
+    const { paneVisibilityStore } = await import('@/lib/pane-visibility-store');
+    act(() =>
+      paneVisibilityStore.publish({
+        editor: { open: false, onScreen: false },
+        agents: null,
+        terminal: null,
+      }),
+    );
+  }
+
+  afterEach(async () => {
+    const { __resetPaneVisibilityStoreForTests } = await import('@/lib/pane-visibility-store');
+    __resetPaneVisibilityStoreForTests();
+  });
+
+  test('the comment shortcut starts no composer while the editor is off screen', async () => {
+    await hideEditorPane();
+    const { CommentSelectionAffordance } = await import('./CommentSelectionAffordance');
+    // biome-ignore lint/suspicious/noExplicitAny: structural editor double
+    const editor = fakeEditor() as any;
+    render(
+      <CommentSelectionAffordance editor={editor} docName="recipes/stir-fry" shortcutEnabled />,
+    );
+
+    fireEvent.keyDown(window, { key: 'm', ctrlKey: true, shiftKey: true });
+
+    expect(screen.queryByPlaceholderText('Add a comment')).toBeNull();
+  });
+
+  test('hiding the editor with focus in the composer moves focus to the Editor button', async () => {
+    const editorButton = document.createElement('button');
+    editorButton.setAttribute('data-header-pane-button', 'editor');
+    document.body.append(editorButton);
+    onTestFinished(() => editorButton.remove());
+    const field = await openComposer();
+    act(() => field.focus());
+    expect(document.activeElement).toBe(field);
+    expect(screen.getByTestId('comment-composer').classList.contains('hidden')).toBe(false);
+
+    await hideEditorPane();
+
+    expect(document.activeElement).toBe(editorButton);
+    expect(screen.getByTestId('comment-composer').classList.contains('hidden')).toBe(true);
   });
 });

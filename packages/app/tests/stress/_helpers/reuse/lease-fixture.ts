@@ -11,7 +11,7 @@ import {
   type WorkerServer,
   warmupAppFirstLoad,
 } from '../fixtures.ts';
-import { e2eServingMode } from '../prebuilt/prebuilt-serving.ts';
+import { workerServingKind } from '../prebuilt/prebuilt-serving.ts';
 import { APP_PACKAGE_ROOT } from '../seed-key.ts';
 import { checkCollabSync } from '../server-process.ts';
 import { declareSetupNonResult } from '../setup-non-result.ts';
@@ -115,11 +115,22 @@ export async function leaseWorkerServer(
       currentLease = undefined;
     }
   };
-  if (e2eServingMode(process.env) === 'prebuilt') {
-    await startFresh(
-      `slot ${slot}: server reuse leases dev servers, and this invocation serves the prebuilt DEV app, so this worker starts its own server`,
-    );
-    return;
+  const servingKind = workerServingKind(workerServerEnv, process.env);
+  switch (servingKind) {
+    case 'production-shell':
+      await startFresh(
+        `slot ${slot}: server reuse leases dev servers, and this worker serves the production shell, so this worker starts its own server`,
+      );
+      return;
+    case 'prebuilt':
+      await startFresh(
+        `slot ${slot}: server reuse leases dev servers, and this invocation serves the prebuilt DEV app, so this worker starts its own server`,
+      );
+      return;
+    case 'dev-server':
+      break;
+    default:
+      servingKind satisfies never;
   }
   const run = process.env[REUSE_RUN_ENV];
   if (run === undefined || run === '') {
