@@ -529,6 +529,96 @@ describe('suggestLinks', () => {
     }
   });
 
+  async function suggestAgainst(
+    targetMarkdown: string,
+    sourceMarkdown: string,
+  ): Promise<Array<{ source: string; excerpt: string; offset: number }>> {
+    const contentDir = mkdtempSync(join(tmpdir(), 'ok-suggest-links-unicode-'));
+    const hocuspocus = new Hocuspocus({ quiet: true });
+    try {
+      writeFileSync(join(contentDir, 'target.md'), targetMarkdown, 'utf-8');
+      writeFileSync(join(contentDir, 'notes.md'), sourceMarkdown, 'utf-8');
+      const result = await suggestLinks({
+        hocuspocus,
+        fileIndex: buildFileIndex(contentDir, ['target', 'notes']),
+        docName: 'target',
+      });
+      return result.mentions;
+    } finally {
+      rmSync(contentDir, { recursive: true, force: true });
+    }
+  }
+
+  test.each([
+    ['Japanese', '東京', '来週東京に行きます。'],
+    ['Chinese', '北京', '我们下周去北京开会。'],
+    ['Thai', 'กรุงเทพ', 'พรุ่งนี้ฉันจะไปกรุงเทพกับเพื่อน'],
+    ['Lao', 'ລາວ', 'ດິນແດນລາວງາມ'],
+    ['Katakana beside Latin', 'テスト', 'Unitテスト'],
+    ['Khmer', 'ភ្នំពេញ', 'ភ្នំពេញជាទីក្រុង'],
+    ['Myanmar', 'ဗမာ', 'ဗမာစကားပြော'],
+    ['Latin beside Japanese', 'React', 'Reactは便利です。'],
+    ['Japanese beside Latin', '日本語', 'Python日本語ガイド'],
+  ])('finds a %s mention in text written without spaces', async (_script, title, source) => {
+    const mentions = await suggestAgainst(`# ${title}\n`, `${source}\n`);
+    expect(mentions).toEqual([{ source: 'notes', excerpt: source, offset: source.indexOf(title) }]);
+  });
+
+  test.each([
+    ['Japanese', '京都', '東京都に住んでいます。'],
+    ['Thai', 'ท', 'ที่นี่'],
+  ])(
+    'rejects a %s mention that splits a word written without spaces',
+    async (_script, title, source) => {
+      const mentions = await suggestAgainst(`# ${title}\n`, `${source}\n`);
+      expect(mentions).toEqual([]);
+    },
+  );
+
+  test('still rejects a Latin title inside a longer Latin word', async () => {
+    const mentions = await suggestAgainst('# Cat\n', 'The category is not a cat.\n');
+    expect(mentions).toEqual([
+      { source: 'notes', excerpt: 'The category is not a cat.', offset: 22 },
+    ]);
+  });
+
+  test('reads a neighbouring character outside the Basic Multilingual Plane as one letter', async () => {
+    const source = '𝐀cat and cat𝐀 and cat.';
+    const mentions = await suggestAgainst('# Cat\n', `${source}\n`);
+    expect(mentions.map((mention) => mention.offset)).toEqual([source.lastIndexOf('cat')]);
+  });
+
+  test.each([
+    ['C++', 'We write C++ daily.', [9]],
+    ['Node.js', 'Use Node.js, not Nodexjs.', [4]],
+    ['(a|b)?', 'Pick (a|b)? or ab.', [5]],
+  ])('matches the title %s literally', async (title, source, offsets) => {
+    const mentions = await suggestAgainst(`# ${title}\n`, `${source}\n`);
+    expect(mentions.map((mention) => mention.offset)).toEqual(offsets);
+  });
+
+  test('rejects a Latin title followed by a combining accent', async () => {
+    const mentions = await suggestAgainst('# Cafe\n', 'Cafe\u0301 society.\n');
+    expect(mentions).toEqual([]);
+  });
+
+  test('returns source offsets when lowercasing the text would change its length', async () => {
+    const source = 'İİ notes mention Project Alpha here.';
+    const mentions = await suggestAgainst('# Project Alpha\n', `${source}\n`);
+    expect(mentions).toEqual([
+      { source: 'notes', excerpt: source, offset: source.indexOf('Project Alpha') },
+    ]);
+  });
+
+  test('matches a title whose lowercase form is longer than the title', async () => {
+    const source = 'We flew to İzmir and to İZMIR again.';
+    const mentions = await suggestAgainst('# İzmir\n', `${source}\n`);
+    expect(mentions.map((mention) => mention.offset)).toEqual([
+      source.indexOf('İzmir'),
+      source.indexOf('İZMIR'),
+    ]);
+  });
+
   test('returns an empty success result when no candidates exist', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-suggest-links-'));
     const contentDir = join(projectDir, 'content');

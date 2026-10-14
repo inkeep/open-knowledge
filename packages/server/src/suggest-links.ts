@@ -16,7 +16,12 @@ import { buildProjectWikiLinkLookup } from './project-wiki-link-lookup.ts';
 
 const log = getLogger('suggest-links');
 
-const WORD_CHAR_RE = /[\p{L}\p{N}]/u;
+const WORD_CHAR_RE = /[\p{L}\p{M}\p{N}]/u;
+const UNSPACED_SCRIPT_CHAR_RE =
+  /[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}\p{scx=Thai}\p{scx=Lao}\p{scx=Khmer}\p{scx=Myanmar}]/u;
+const REGEXP_SYNTAX_CHAR_RE = /[\\^$.*+?()[\]{}|/]/g;
+
+const WORD_SEGMENTER = new Intl.Segmenter('und', { granularity: 'word' });
 
 interface FenceState {
   char: '`' | '~';
@@ -25,8 +30,7 @@ interface FenceState {
 
 interface SearchLabel {
   raw: string;
-  lower: string;
-  length: number;
+  pattern: RegExp;
 }
 
 interface SegmentMatch {
@@ -249,12 +253,57 @@ function readMarkdownImage(line: string, start: number): { alt: string; nextInde
   };
 }
 
-function isWordBoundaryChar(char: string | undefined): boolean {
-  return !char || !WORD_CHAR_RE.test(char);
+function charAt(text: string, index: number): string | undefined {
+  const codePoint = text.codePointAt(index);
+  return codePoint === undefined ? undefined : String.fromCodePoint(codePoint);
 }
 
-function hasWholeWordBoundaries(text: string, start: number, end: number): boolean {
-  return isWordBoundaryChar(text[start - 1]) && isWordBoundaryChar(text[end]);
+function charBefore(text: string, index: number): string | undefined {
+  if (index <= 0) return undefined;
+  const lowIndex = index - 1;
+  const unit = text.charCodeAt(lowIndex);
+  const isTrailSurrogate = unit >= 0xdc00 && unit <= 0xdfff;
+  return charAt(text, isTrailSurrogate && lowIndex > 0 ? lowIndex - 1 : lowIndex);
+}
+
+function isUnspacedScriptChar(char: string | undefined): boolean {
+  return char !== undefined && UNSPACED_SCRIPT_CHAR_RE.test(char);
+}
+
+type WordBoundaryLookup = (index: number) => boolean;
+
+function createWordBoundaryLookup(text: string): WordBoundaryLookup {
+  let boundaries: Set<number> | null = null;
+  return (index) => {
+    if (!boundaries) {
+      boundaries = new Set([text.length]);
+      for (const segment of WORD_SEGMENTER.segment(text)) boundaries.add(segment.index);
+    }
+    return boundaries.has(index);
+  };
+}
+
+function isMatchBoundary(
+  outside: string | undefined,
+  inside: string | undefined,
+  index: number,
+  isWordBoundary: WordBoundaryLookup,
+): boolean {
+  if (outside === undefined || !WORD_CHAR_RE.test(outside)) return true;
+  if (!isUnspacedScriptChar(outside) && !isUnspacedScriptChar(inside)) return false;
+  return isWordBoundary(index);
+}
+
+function hasWholeWordBoundaries(
+  text: string,
+  start: number,
+  end: number,
+  isWordBoundary: WordBoundaryLookup,
+): boolean {
+  return (
+    isMatchBoundary(charBefore(text, start), charAt(text, start), start, isWordBoundary) &&
+    isMatchBoundary(charAt(text, end), charBefore(text, end), end, isWordBoundary)
+  );
 }
 
 function prepareSearchLabels(identity: PageIdentity): SearchLabel[] {
@@ -264,36 +313,35 @@ function prepareSearchLabels(identity: PageIdentity): SearchLabel[] {
   for (const label of identity.matchLabels) {
     const trimmed = label.trim();
     if (!trimmed) continue;
-    const lower = trimmed.toLocaleLowerCase();
-    if (seen.has(lower)) continue;
-    seen.add(lower);
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
     labels.push({
       raw: trimmed,
-      lower,
-      length: trimmed.length,
+      pattern: new RegExp(trimmed.replace(REGEXP_SYNTAX_CHAR_RE, '\\$&'), 'giu'),
     });
   }
 
   return labels.sort((left, right) => {
-    if (right.length !== left.length) return right.length - left.length;
+    if (right.raw.length !== left.raw.length) return right.raw.length - left.raw.length;
     return left.raw.localeCompare(right.raw);
   });
 }
 
 function findSegmentMatches(text: string, labels: readonly SearchLabel[]): SegmentMatch[] {
-  const lowerText = text.toLocaleLowerCase();
   const candidates: SegmentMatch[] = [];
+  const isWordBoundary = createWordBoundaryLookup(text);
 
   for (const label of labels) {
-    let startIndex = 0;
-    while (startIndex <= lowerText.length - label.length) {
-      const foundIndex = lowerText.indexOf(label.lower, startIndex);
-      if (foundIndex === -1) break;
-      const endIndex = foundIndex + label.length;
-      if (hasWholeWordBoundaries(text, foundIndex, endIndex)) {
-        candidates.push({ start: foundIndex, end: endIndex });
+    const { pattern } = label;
+    pattern.lastIndex = 0;
+    for (let found = pattern.exec(text); found; found = pattern.exec(text)) {
+      const start = found.index;
+      const end = start + found[0].length;
+      if (hasWholeWordBoundaries(text, start, end, isWordBoundary)) {
+        candidates.push({ start, end });
       }
-      startIndex = foundIndex + 1;
+      pattern.lastIndex = start + (charAt(text, start)?.length ?? 1);
     }
   }
 
