@@ -44,6 +44,7 @@ import { RotatingComposerPlaceholder } from '@/components/RotatingComposerPlaceh
 import { AGENT_CONNECTIONS_SECTION_LABEL } from '@/components/settings/settings-section-labels';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { publishAskComposerHeight } from '@/editor/ask-composer-inset';
 import {
   type ComposerAttachmentDropPolicy,
   ComposerMentionInput,
@@ -184,7 +185,6 @@ export function BottomComposer({
 
   useEffect(() => {
     if (folderMode || docName == null) return;
-    const root = document.documentElement;
     const followBottom = () => {
       clampRef.current?.();
       if (isScrollRestoreSuppressed(docName)) return;
@@ -234,17 +234,13 @@ export function BottomComposer({
     const card = cardRef.current;
     if (dismissed || !card) {
       followBottom();
-      root.style.removeProperty('--ask-composer-height');
       return () => {
         clampRef.current?.();
       };
     }
     const apply = () => {
       followBottom();
-      root.style.setProperty(
-        '--ask-composer-height',
-        `${card.offsetHeight + ASK_COMPOSER_HEIGHT_RESERVE_PX}px`,
-      );
+      publishAskComposerHeight(card.offsetHeight + ASK_COMPOSER_HEIGHT_RESERVE_PX);
     };
     apply();
     const observer = new ResizeObserver(apply);
@@ -252,7 +248,7 @@ export function BottomComposer({
     return () => {
       observer.disconnect();
       followBottom();
-      root.style.removeProperty('--ask-composer-height');
+      publishAskComposerHeight(null);
     };
   }, [dismissed, docName, folderMode]);
 

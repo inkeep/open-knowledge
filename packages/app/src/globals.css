@@ -1114,13 +1114,18 @@
   grid-column: content;
 }
 
+@property --ask-composer-height {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: false;
+}
+
 /* The floating Ask AI composer reserves scroll room at the bottom of the doc by
    padding the editor CONTENT (.ProseMirror / .cm-content) — padding the scroll
    container alone creates no overflow because the content's own min-height fills
    it. The inset tracks the live composer via `--ask-composer-height` (card height
-   + gap, published by BottomComposer); the var is the single source of truth and
-   is absent when the composer is collapsed or hidden, so the padding collapses to
-   0 and the space is reclaimed — no class to fall out of sync. Scoped inside
+   + gap, published by BottomComposer); the var resolves to 0px when the composer is
+   collapsed or hidden, so the space is reclaimed — no class to fall out of sync. Scoped inside
    `.editor-doc-scroll` so the floating composer's own ProseMirror (a sibling of
    the scroll container) is never padded. */
 .editor-doc-scroll {
@@ -1283,8 +1288,7 @@
      block's own `margin-bottom` collapses THROUGH a parent with no bottom
      padding: with `padding-bottom: 0` those two edges are the same pixel and
      the band is exactly 0px tall. That is the state a document is in whenever
-     the Ask composer is unmounted, because `BottomComposer` REMOVES
-     `--ask-composer-height` rather than setting it to zero. With the composer
+     the Ask composer is unmounted. With the composer
      mounted the scroller rule above does supply padding, but the composer
      floats over precisely that band, so the only room ever left to click was
      whatever `margin-bottom` the final block happened to carry. The old

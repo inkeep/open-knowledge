@@ -9,9 +9,9 @@ import { Extension } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
+import { ASK_COMPOSER_HEIGHT_VAR } from '../ask-composer-inset.ts';
 import { OPT_OUT_ATTR } from '../clipboard/index.ts';
 import { insertParagraphAt } from '../selection/place-caret.ts';
-import { ASK_COMPOSER_HEIGHT_VAR } from '../utils/editor-visible-region.ts';
 import { GUTTER_PLUS_SVG } from './gutter-plus-icon.ts';
 
 export const OK_TRAILING_AFFORDANCE_CLASS = 'ok-trailing-affordance';

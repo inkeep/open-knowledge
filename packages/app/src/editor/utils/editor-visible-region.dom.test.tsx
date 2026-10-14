@@ -1,6 +1,7 @@
 import { cleanup, render } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';
 import { afterEach, describe, expect, test } from 'vitest';
+import { publishAskComposerHeight } from '../ask-composer-inset';
 import { TOOLBAR_HEIGHT } from '../extensions/frozen-table-headers';
 import {
   deriveEditorClipOptions,
@@ -26,7 +27,7 @@ function preMountEditor(): Editor {
 
 afterEach(() => {
   cleanup();
-  document.documentElement.style.removeProperty('--ask-composer-height');
+  publishAskComposerHeight(null);
   document.documentElement.style.removeProperty('--conflict-footer-height');
 });
 
@@ -40,7 +41,7 @@ describe('deriveEditorClipOptions', () => {
 
   test('bottom inset tracks the published composer height', () => {
     const { editor } = renderEditorInScroller();
-    document.documentElement.style.setProperty('--ask-composer-height', '236px');
+    publishAskComposerHeight(236);
     expect(deriveEditorClipOptions(editor)().padding.bottom).toBe(236);
   });
 
@@ -52,7 +53,7 @@ describe('deriveEditorClipOptions', () => {
 
   test('composer and conflict-footer overlays stack into one bottom inset', () => {
     const { editor } = renderEditorInScroller();
-    document.documentElement.style.setProperty('--ask-composer-height', '236px');
+    publishAskComposerHeight(236);
     document.documentElement.style.setProperty('--conflict-footer-height', '48px');
     expect(deriveEditorClipOptions(editor)().padding.bottom).toBe(284);
   });
@@ -61,15 +62,15 @@ describe('deriveEditorClipOptions', () => {
     const { editor } = renderEditorInScroller();
     const derive = deriveEditorClipOptions(editor);
     expect(derive().padding.bottom).toBe(0);
-    document.documentElement.style.setProperty('--ask-composer-height', '180px');
+    publishAskComposerHeight(180);
     expect(derive().padding.bottom).toBe(180);
-    document.documentElement.style.removeProperty('--ask-composer-height');
+    publishAskComposerHeight(null);
     expect(derive().padding.bottom).toBe(0);
   });
 
   test('malformed overlay value reads as no inset', () => {
     const { editor } = renderEditorInScroller();
-    document.documentElement.style.setProperty('--ask-composer-height', 'auto');
+    document.documentElement.style.setProperty('--conflict-footer-height', 'auto');
     expect(deriveEditorClipOptions(editor)().padding.bottom).toBe(0);
   });
 
@@ -107,7 +108,7 @@ describe('deriveEditorShiftOptions', () => {
 
   test('uncompensated insets match the clip region exactly', () => {
     const { editor } = renderEditorInScroller();
-    document.documentElement.style.setProperty('--ask-composer-height', `${COMPOSER_HEIGHT_PX}px`);
+    publishAskComposerHeight(COMPOSER_HEIGHT_PX);
     document.documentElement.style.setProperty(
       '--conflict-footer-height',
       `${CONFLICT_FOOTER_HEIGHT_PX}px`,
@@ -124,10 +125,7 @@ describe('deriveEditorShiftOptions', () => {
     'a %s placement absorbs a pending anchor gap by tightening the top inset',
     (placement) => {
       const { editor } = renderEditorInScroller();
-      document.documentElement.style.setProperty(
-        '--ask-composer-height',
-        `${COMPOSER_HEIGHT_PX}px`,
-      );
+      publishAskComposerHeight(COMPOSER_HEIGHT_PX);
       const options = deriveEditorShiftOptions(editor, {
         pendingOffsetPx: PENDING_OFFSET_PX,
       })({ placement });
@@ -140,10 +138,7 @@ describe('deriveEditorShiftOptions', () => {
     'a %s placement mirrors the compensation',
     (placement) => {
       const { editor } = renderEditorInScroller();
-      document.documentElement.style.setProperty(
-        '--ask-composer-height',
-        `${COMPOSER_HEIGHT_PX}px`,
-      );
+      publishAskComposerHeight(COMPOSER_HEIGHT_PX);
       const options = deriveEditorShiftOptions(editor, {
         pendingOffsetPx: PENDING_OFFSET_PX,
       })({ placement });
@@ -156,10 +151,7 @@ describe('deriveEditorShiftOptions', () => {
     'a %s placement needs no compensation — the pending gap is horizontal there',
     (placement) => {
       const { editor } = renderEditorInScroller();
-      document.documentElement.style.setProperty(
-        '--ask-composer-height',
-        `${COMPOSER_HEIGHT_PX}px`,
-      );
+      publishAskComposerHeight(COMPOSER_HEIGHT_PX);
       const options = deriveEditorShiftOptions(editor, {
         pendingOffsetPx: PENDING_OFFSET_PX,
       })({ placement });
@@ -277,7 +269,7 @@ function stubRect(el: HTMLElement, top: number, bottom: number): void {
 
 describe('editorVisibleBand', () => {
   test('keeps both insets for a pre-mount editor', () => {
-    document.documentElement.style.setProperty('--ask-composer-height', `${COMPOSER_HEIGHT_PX}px`);
+    publishAskComposerHeight(COMPOSER_HEIGHT_PX);
     const band = editorVisibleBand(preMountEditor());
     expect(band.top).toBe(TOOLBAR_HEIGHT);
     expect(band.bottom).toBe(window.innerHeight - COMPOSER_HEIGHT_PX);
@@ -286,7 +278,7 @@ describe('editorVisibleBand', () => {
   test('insets the container box by the toolbar and composer bands', () => {
     const { editor, scroller } = renderEditorInScroller();
     stubRect(scroller, 0, 800);
-    document.documentElement.style.setProperty('--ask-composer-height', `${COMPOSER_HEIGHT_PX}px`);
+    publishAskComposerHeight(COMPOSER_HEIGHT_PX);
     const band = editorVisibleBand(editor);
     expect(band.top).toBe(TOOLBAR_HEIGHT);
     expect(band.bottom).toBe(800 - COMPOSER_HEIGHT_PX);
@@ -295,7 +287,7 @@ describe('editorVisibleBand', () => {
   test('collapses rather than inverting when the insets exceed the pane', () => {
     const { editor, scroller } = renderEditorInScroller();
     stubRect(scroller, 0, 200);
-    document.documentElement.style.setProperty('--ask-composer-height', `${COMPOSER_HEIGHT_PX}px`);
+    publishAskComposerHeight(COMPOSER_HEIGHT_PX);
     document.documentElement.style.setProperty(
       '--conflict-footer-height',
       `${CONFLICT_FOOTER_HEIGHT_PX}px`,

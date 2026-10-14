@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
+import { DOCUMENT_SCROLL_HOST_SELECTOR } from '../../src/editor/document-scrollports';
 import { expect, test, toggleMode } from './_helpers';
 
 const COMPOSER_CARD = '[data-testid="bottom-composer"] > div';
@@ -77,11 +78,13 @@ function describeTransition(surface: Surface, before: Geometry, after: Geometry)
 }
 
 async function readComposerHeight(page: Page): Promise<number> {
-  return page.evaluate(() =>
-    Number.parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue('--ask-composer-height') || '0',
-    ),
-  );
+  return page.evaluate((scrollHostSelector) => {
+    const scrollHost = document.querySelector(scrollHostSelector);
+    if (!scrollHost) return 0;
+    return Number.parseFloat(
+      getComputedStyle(scrollHost).getPropertyValue('--ask-composer-height') || '0',
+    );
+  }, DOCUMENT_SCROLL_HOST_SELECTOR);
 }
 
 async function readLineBottom(page: Page, lineSelector: string): Promise<number> {
@@ -97,7 +100,7 @@ async function readLineBottom(page: Page, lineSelector: string): Promise<number>
 
 async function readGeometry(page: Page, surface: Surface): Promise<Geometry> {
   return page.evaluate(
-    ([cardSelector, lineSelector, scrollportSelector]) => {
+    ([cardSelector, lineSelector, scrollportSelector, scrollHostSelector]) => {
       const card = document.querySelector(cardSelector);
       if (!(card instanceof HTMLElement))
         throw new Error('the Ask AI composer card is not painted');
@@ -110,18 +113,24 @@ async function readGeometry(page: Page, surface: Surface): Promise<Geometry> {
       );
       const last = painted.at(-1);
       if (!last) throw new Error(`no painted line matched ${lineSelector}`);
+      const scrollHost = document.querySelector(scrollHostSelector);
+      if (!scrollHost) throw new Error(`no scroll host matched ${scrollHostSelector}`);
       return {
         cardTop: card.getBoundingClientRect().top,
         lineBottom: last.getBoundingClientRect().bottom,
         composerHeight: Number.parseFloat(
-          getComputedStyle(document.documentElement).getPropertyValue('--ask-composer-height') ||
-            '0',
+          getComputedStyle(scrollHost).getPropertyValue('--ask-composer-height') || '0',
         ),
         scrollTop: scrollport.scrollTop,
         scrollMax: scrollport.scrollHeight - scrollport.clientHeight,
       };
     },
-    [COMPOSER_CARD, surface.lineSelector, surface.scrollportSelector] as const,
+    [
+      COMPOSER_CARD,
+      surface.lineSelector,
+      surface.scrollportSelector,
+      DOCUMENT_SCROLL_HOST_SELECTOR,
+    ] as const,
   );
 }
 

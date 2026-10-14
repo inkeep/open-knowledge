@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { ASK_COMPOSER_INSET_SELECTORS } from './editor/ask-composer-inset';
 import {
   CONFLICT_SCROLLPORT_SELECTOR,
   DOCUMENT_SCROLL_HOST_SELECTOR,
@@ -25,10 +26,7 @@ const INSET_VAR = '--ask-composer-height';
 
 const INSET_VALUE = `var(${INSET_VAR}`;
 
-const INSET_VAR_ALLOWED_OUTSIDE_GLOBALS_CSS = [
-  'components/BottomComposer.tsx',
-  'editor/utils/editor-visible-region.ts',
-] as const;
+const INSET_VAR_ALLOWED_OUTSIDE_GLOBALS_CSS = ['editor/ask-composer-inset.ts'] as const;
 
 type InsetKind = 'content' | 'host';
 
@@ -176,6 +174,35 @@ describe('full-page CodeMirror surfaces reserve the Ask AI composer height', () 
         '`COMPOSER_INSET_RULES` row naming the scrollport that scrolls this prelude, and add that ' +
         'scrollport to `DOCUMENT_SCROLLPORT_SELECTORS` if it is new',
     ).toEqual([...new Set(COMPOSER_INSET_RULES.map((rule) => rule.prelude))].toSorted());
+  });
+
+  test('the composer publishes its height onto every globals.css rule that reads it', () => {
+    expect(
+      [...ASK_COMPOSER_INSET_SELECTORS].toSorted(),
+      '`--ask-composer-height` is registered non-inherited, so an element only sees the ' +
+        'composer height when the published rule selects that element itself. A globals.css ' +
+        'rule missing from `ASK_COMPOSER_INSET_SELECTORS` reads the 0px initial value and its ' +
+        'surface reserves no room under the composer; a selector with no rule left reading it ' +
+        'restyles elements for nothing on every composer resize',
+    ).toEqual(insetBearingSelectors(css));
+  });
+
+  test('the inset variable is registered as a non-inherited property', () => {
+    const registration = collectBlocks(css).find(
+      (block) => block.prelude === `@property ${INSET_VAR}`,
+    );
+    expect(
+      registration,
+      `globals.css no longer registers \`${INSET_VAR}\` with \`@property\`. Unregistered, the ` +
+        'variable inherits, so the rule publishing it on `.editor-doc-scroll` changes the style ' +
+        'of every element in the open document on each composer resize',
+    ).toBeDefined();
+    expect(
+      registration?.declarations,
+      `the \`@property ${INSET_VAR}\` registration no longer says \`inherits: false\`. An ` +
+        'inherited variable published on `.editor-doc-scroll` restyles the whole open document ' +
+        'on each composer resize; non-inherited, it restyles only the elements the rule selects',
+    ).toMatch(/inherits\s*:\s*false/);
   });
 
   test('every scrollport the composer re-clamps compensates a real inset rule', () => {

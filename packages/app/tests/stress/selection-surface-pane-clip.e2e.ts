@@ -60,12 +60,13 @@ async function readFloatingSurfaceGeometry(page: Page, selector: string): Promis
         throw new Error(`missing chrome: scroller=${!!scroller} toolbar=${!!toolbar}`);
       }
       const scrollerBox = scroller.getBoundingClientRect();
-      const readRootPx = (name: string): number => {
-        const value = Number.parseFloat(document.documentElement.style.getPropertyValue(name));
-        return Number.isFinite(value) ? value : 0;
+      const readPx = (value: string): number => {
+        const parsed = Number.parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : 0;
       };
       const overlayBandPx =
-        readRootPx('--ask-composer-height') + readRootPx('--conflict-footer-height');
+        readPx(getComputedStyle(scroller).getPropertyValue('--ask-composer-height')) +
+        readPx(document.documentElement.style.getPropertyValue('--conflict-footer-height'));
       const regionTop = toolbar.getBoundingClientRect().bottom;
       const regionBottom = scrollerBox.bottom - overlayBandPx;
       const region = {
@@ -527,12 +528,13 @@ async function parkSelectionBottomAtRegionFloor(page: Page, inset: number): Prom
         );
         if (!editor) throw new Error('parkSelectionBottomAtRegionFloor: no active editor');
         if (!scroller) throw new Error('parkSelectionBottomAtRegionFloor: no painted scrollport');
-        const readRootPx = (name: string): number => {
-          const value = Number.parseFloat(document.documentElement.style.getPropertyValue(name));
-          return Number.isFinite(value) ? value : 0;
+        const readPx = (value: string): number => {
+          const parsed = Number.parseFloat(value);
+          return Number.isFinite(parsed) ? parsed : 0;
         };
         const overlayBandPx =
-          readRootPx('--ask-composer-height') + readRootPx('--conflict-footer-height');
+          readPx(getComputedStyle(scroller).getPropertyValue('--ask-composer-height')) +
+          readPx(document.documentElement.style.getPropertyValue('--conflict-footer-height'));
         const regionBottom = scroller.getBoundingClientRect().bottom - overlayBandPx;
         const { to } = editor.state.selection;
         const selectionBottom = editor.view.coordsAtPos(to, -1).bottom;

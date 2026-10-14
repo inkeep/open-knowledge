@@ -33,13 +33,13 @@ test.describe('editable text doc reserves the Ask AI composer height', () => {
     await expect
       .poll(
         () =>
-          page.evaluate(() =>
-            Number.parseFloat(
-              getComputedStyle(document.documentElement).getPropertyValue(
-                '--ask-composer-height',
-              ) || '0',
-            ),
-          ),
+          page.evaluate((contentSel) => {
+            const content = document.querySelector(contentSel);
+            if (!content) return 0;
+            return Number.parseFloat(
+              getComputedStyle(content).getPropertyValue('--ask-composer-height') || '0',
+            );
+          }, CM_CONTENT),
         {
           message:
             'the composer never published --ask-composer-height, so every assertion below would ' +
@@ -56,7 +56,7 @@ test.describe('editable text doc reserves the Ask AI composer height', () => {
             const content = document.querySelector(contentSel);
             if (!(content instanceof HTMLElement)) throw new Error('no painted .cm-content');
             const composerHeight = Number.parseFloat(
-              getComputedStyle(document.documentElement).getPropertyValue('--ask-composer-height'),
+              getComputedStyle(content).getPropertyValue('--ask-composer-height'),
             );
             return Number.parseFloat(getComputedStyle(content).paddingBottom) - composerHeight;
           }, CM_CONTENT),

@@ -2127,3 +2127,45 @@ describe('what the Ask AI @ picker is told to list first', () => {
     expect(JSON.parse(handed ?? 'null')).toEqual({ currentDocName: null, recentPaths: [] });
   });
 });
+
+describe('BottomComposer (composer inset publication)', () => {
+  test('publishes its height to the inset surfaces without restyling the document root', async () => {
+    const { ASK_COMPOSER_HEIGHT_VAR, publishedAskComposerHeightPx } = await import(
+      '@/editor/ask-composer-inset'
+    );
+    const scroller = document.createElement('div');
+    scroller.className = 'editor-doc-scroll';
+    document.body.append(scroller);
+    try {
+      const { unmount } = await renderComposer();
+      const published = publishedAskComposerHeightPx();
+      expect(published).toBeGreaterThan(0);
+      expect(
+        document.documentElement.style.getPropertyValue(ASK_COMPOSER_HEIGHT_VAR),
+        'an inline custom property on <html> changes the style of every element in the ' +
+          'document, so each composer resize restyled the whole open document',
+      ).toBe('');
+      expect(getComputedStyle(scroller).getPropertyValue(ASK_COMPOSER_HEIGHT_VAR)).toBe(
+        `${published}px`,
+      );
+      unmount();
+      expect(publishedAskComposerHeightPx()).toBe(0);
+      expect(getComputedStyle(scroller).getPropertyValue(ASK_COMPOSER_HEIGHT_VAR)).toBe('');
+    } finally {
+      scroller.remove();
+    }
+  });
+
+  test('dismissing a live composer withdraws the inset it published', async () => {
+    const { publishedAskComposerHeightPx } = await import('@/editor/ask-composer-inset');
+    const { BottomComposer } = await import('./BottomComposer');
+    const { rerender } = await renderComposer();
+    expect(publishedAskComposerHeightPx()).toBeGreaterThan(0);
+    rerender(<BottomComposer docName="notes" surface="wysiwyg" dismissed />);
+    expect(
+      publishedAskComposerHeightPx(),
+      'a dismissed card that keeps its published height leaves the document padded for a ' +
+        'composer that is no longer there',
+    ).toBe(0);
+  });
+});

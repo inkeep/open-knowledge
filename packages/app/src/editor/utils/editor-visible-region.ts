@@ -1,5 +1,6 @@
 import type { DetectOverflowOptions, MiddlewareState, ShiftOptions } from '@floating-ui/dom';
 import type { Editor } from '@tiptap/react';
+import { publishedAskComposerHeightPx } from '@/editor/ask-composer-inset';
 import { DOCUMENT_SCROLL_HOST_SELECTOR } from '@/editor/document-scrollports';
 import { editorToolbarOverlapPx } from '@/lib/editor-toolbar-overlap';
 import { getEditorView } from './get-editor-view';
@@ -40,9 +41,7 @@ export function deriveEditorClipOptions(editor: Editor): () => EditorClipOptions
     const boundary = resolveRegionBoundary(editor);
     const padding = {
       top: editorToolbarOverlapPx(),
-      bottom:
-        readRootInlinePxVar(ASK_COMPOSER_HEIGHT_VAR) +
-        readRootInlinePxVar('--conflict-footer-height'),
+      bottom: publishedAskComposerHeightPx() + readRootInlinePxVar('--conflict-footer-height'),
     };
     return boundary ? { boundary, padding } : { padding };
   };
@@ -109,8 +108,6 @@ export function editorRegionWidthPx(editor: Editor): number | null {
   if (!boundary) return null;
   return Math.max(0, boundary.getBoundingClientRect().width - PANE_GUTTER_PX * 2);
 }
-
-export const ASK_COMPOSER_HEIGHT_VAR = '--ask-composer-height';
 
 function readRootInlinePxVar(name: string): number {
   const value = Number.parseFloat(document.documentElement.style.getPropertyValue(name));

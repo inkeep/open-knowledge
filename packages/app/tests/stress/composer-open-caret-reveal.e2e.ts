@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { CARET_REVEAL_GAP_PX } from '../../src/editor/caret-reveal';
 import {
+  DOCUMENT_SCROLL_HOST_SELECTOR,
   FULL_PAGE_CM_HOST_SELECTORS,
   FULL_PAGE_CM_SCROLLPORTS,
   type FullPageCmHost,
@@ -111,11 +112,13 @@ const occlusionClearanceOf = (result: CaseResult): number =>
   occlusionTopOf(result) - result.after.bottom;
 
 async function readComposerHeight(page: Page): Promise<number> {
-  return page.evaluate(() =>
-    Number.parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue('--ask-composer-height') || '0',
-    ),
-  );
+  return page.evaluate((scrollHostSelector) => {
+    const scrollHost = document.querySelector(scrollHostSelector);
+    if (!scrollHost) return 0;
+    return Number.parseFloat(
+      getComputedStyle(scrollHost).getPropertyValue('--ask-composer-height') || '0',
+    );
+  }, DOCUMENT_SCROLL_HOST_SELECTOR);
 }
 
 async function readCardTop(page: Page): Promise<number> {
