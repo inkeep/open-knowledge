@@ -1,5 +1,6 @@
 import { desktopChannelLabel } from '@inkeep/open-knowledge-core/constants/product';
 import { t } from '@lingui/core/macro';
+import { okCliCommandName } from '@/lib/channel-cli-copy';
 import type { OkDesktopBridge, OkServerRestartFailure } from '@/lib/desktop-bridge-types';
 
 export function restartServerFailureMessage(failure: OkServerRestartFailure): string {
@@ -8,8 +9,10 @@ export function restartServerFailureMessage(failure: OkServerRestartFailure): st
       return otherChannelRestartMessage(failure.holderChannel);
     case 'eperm':
       return t`Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again.`;
-    case 'other':
-      return t`Couldn't restart the server. Try \`ok start\` in this folder.`;
+    case 'other': {
+      const cliCommand = okCliCommandName();
+      return t`Couldn't restart the server. Try \`${cliCommand} start\` in this folder.`;
+    }
   }
 }
 

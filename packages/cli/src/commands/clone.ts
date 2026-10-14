@@ -4,6 +4,7 @@ import {
   type ClassifiedGitAuthError,
   classifyGitAuthError,
   credentialHostFromRemoteUrl,
+  currentCliCommandName,
   isBranchNotFoundGitError,
   isLoginFixableGitAuthError,
   shellSingleQuote,
@@ -384,7 +385,7 @@ function quoteIfNeeded(s: string): string {
 function reconstructCloneCommand(url: string, branch: string | null | undefined): string {
   const branchSuffix =
     typeof branch === 'string' && branch.length > 0 ? ` -b ${quoteIfNeeded(branch)}` : '';
-  return `ok clone ${quoteIfNeeded(url)}${branchSuffix}`;
+  return `${currentCliCommandName()} clone ${quoteIfNeeded(url)}${branchSuffix}`;
 }
 
 export function formatCloneAuthFailure(opts: {
@@ -405,7 +406,7 @@ export function formatCloneAuthFailure(opts: {
       `✗ Couldn't clone ${displayUrl} — authentication is required.`,
       '',
       '  To fix:',
-      '    1. Run: ok auth login',
+      `    1. Run: ${currentCliCommandName()} auth login`,
       `    2. Then re-run: ${reRun}`,
     ].join('\n');
   }
@@ -435,7 +436,7 @@ export function formatCloneAuthFailure(opts: {
     '',
     '  To fix:',
     '    1. Create a token with `repo` scope at https://github.com/settings/tokens',
-    '    2. Run: ok auth pat',
+    `    2. Run: ${currentCliCommandName()} auth pat`,
     `    3. Then re-run: ${reconstructCloneCommand(displayUrl, opts.branch)}`,
   ].join('\n');
 }

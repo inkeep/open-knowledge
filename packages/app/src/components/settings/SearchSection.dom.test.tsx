@@ -273,6 +273,41 @@ describe('SearchSection', () => {
     expect(screen.queryByTestId('settings-search-pending')).toBeNull();
   });
 
+  test.each([
+    [null, '~/.ok/secrets.yml'],
+    ['ok-beta', '~/.ok-beta/secrets.yml'],
+  ])(
+    'names the key file in the home of the channel main named (%s)',
+    async (cliCommandName, path) => {
+      (window as unknown as { okDesktop?: unknown }).okDesktop =
+        cliCommandName === null ? undefined : { cliCommandName };
+      try {
+        mockProjectLocalConfig = configWithSemantic({ enabled: true });
+        mockStatus = {
+          enabled: true,
+          keyPresent: false,
+          keyNotRequired: false,
+          keySource: null,
+          keyHint: null,
+          ready: false,
+          capable: false,
+          embedded: 0,
+          total: 5,
+        };
+
+        render(<SearchSection />);
+
+        const stored = await screen.findByText(
+          (_content, el) =>
+            el?.tagName === 'P' && (el.textContent ?? '').includes('Stored on this machine only'),
+        );
+        expect(stored.textContent).toContain(`(in ${path})`);
+      } finally {
+        (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
+      }
+    },
+  );
+
   test('on + key present but provider rejected it: shows the provider-error hint', async () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;

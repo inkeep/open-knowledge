@@ -610,7 +610,7 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
     const parts: string[] = [];
     if (changedRcFiles.length > 0)
       parts.push(
-        `Added ok to your PATH — managed block in ${changedRcFiles.map((p) => tildify(p, home)).join(', ')}.`,
+        `Added ${NAMES[0]} to your PATH — managed block in ${changedRcFiles.map((p) => tildify(p, home)).join(', ')}.`,
       );
     if (newOptOuts.length > 0)
       parts.push(
@@ -618,7 +618,7 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
       );
     if (cleanup.removedCount > 0)
       parts.push(
-        `Removed ${cleanup.removedCount} leftover ok symlink(s) created by an older version.`,
+        `Removed ${cleanup.removedCount} leftover ${NAMES[0]} symlink(s) created by an older version.`,
       );
     if (parts.length === 0) return { status: 'installed-silent', marker };
     return { status: 'installed', marker, summary: parts.join(' ') };

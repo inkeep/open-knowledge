@@ -2,13 +2,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { LOCAL_DIR, OK_DIR } from '@inkeep/open-knowledge-core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   acquireServerLock,
   markServerLockDraining,
   updateServerLockPort,
 } from '../../server-lock.ts';
 import {
+  buildPreviewAttachWarning,
   encodeSkillRoute,
   resolvePreviewUrl,
   resolveSkillPreviewUrl,
@@ -220,5 +221,29 @@ describe('resolveUiInfo — server.lock source', () => {
 
   test('no lock at all yields a null base', () => {
     expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: null });
+  });
+});
+
+describe('buildPreviewAttachWarning — names the running channel command', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('Stable text is byte-identical', () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    expect(buildPreviewAttachWarning(null, true).message).toBe(
+      'No UI is running for this project. Start one to see the preview: `ok start` (terminal), or open the project in OK Electron.',
+    );
+    expect(buildPreviewAttachWarning({ url: '/#/a' }, true).message).toMatch(
+      /on a stdio CLI with no browser, `ok open <doc>`\.$/,
+    );
+  });
+
+  test('Beta names ok-beta', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    expect(buildPreviewAttachWarning(null, true).message).toContain('`ok-beta start` (terminal)');
+    expect(buildPreviewAttachWarning({ url: '/#/a' }, true).message).toMatch(
+      /on a stdio CLI with no browser, `ok-beta open <doc>`\.$/,
+    );
   });
 });

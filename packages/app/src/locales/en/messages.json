@@ -742,9 +742,6 @@
     "7Ongq0": ["Condense my AGENTS.md file to less than 40k characters"],
     "7OwvEL": ["Show HTML preview"],
     "7PNNNs": ["This sends content off your machine"],
-    "7PXYaF": [
-      "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
-    ],
     "7PzzBU": ["User"],
     "7S7FNA": ["OpenKnowledge checked the project"],
     "7Voget": ["Select ", ["name"]],
@@ -824,6 +821,11 @@
     "8L0EPw": ["or paste a token"],
     "8OGgNM": ["Open or close visual-editor find."],
     "8OxKZy": ["Move succeeded but the sidebar may be out of date — refresh to resync"],
+    "8PBuqT": [
+      "<0>",
+      ["cliCommand"],
+      "</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
+    ],
     "8PifYj": ["Mermaid diagram"],
     "8PmoQF": ["Open the insert menu in an empty or active text position."],
     "8QLpZe": ["The server stopped. Restart it to reconnect."],
@@ -1109,15 +1111,11 @@
     "BMoSQy": [
       "This agent gives OpenKnowledge no way to set this up for you. Its setup guide has the manual steps."
     ],
-    "BOsvJ8": [
-      "<0>ok</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
-    ],
     "BQKHuL": ["Restart terminal"],
     "BQu9Pg": ["Symlink"],
     "BRtKwG": [
       "To connect AI tools without a project, use File > Set up OpenKnowledge integrations…"
     ],
-    "BUyQnq": ["Couldn't restart the server. Try `ok start` in this folder."],
     "BVkqD9": [
       "Index maintenance is paused because another Git attribute controls index.md. Update .gitattributes so the scoped index.md paths use merge=union, then try again."
     ],
@@ -1523,7 +1521,6 @@
     "Fqx38P": ["What got in the way?"],
     "Fr8JGg": ["Zip file"],
     "FsEXax": ["That did not go through. Check the server logs and try again."],
-    "Fsx78O": ["Add the <0>ok</0> command to your terminal"],
     "FumRbV": ["Checks are running"],
     "FvMSms": ["Renaming changes the file on disk and the id agents use to pick this template."],
     "Fx9aOF": ["OpenKnowledge edited a document"],
@@ -1968,9 +1965,6 @@
     "LHH461": ["Finish setup"],
     "LJHTS5": ["Choose where to send this message"],
     "LJXDjm": ["Couldn't save your theme preference."],
-    "LJeFU6": [
-      "Launch OpenKnowledge from any terminal — <0>ok</0> opens a project, <1>ok init</1> connects your agents."
-    ],
     "LK83k1": ["Type '@' to mention a page"],
     "LKIPzv": [
       [
@@ -2408,9 +2402,6 @@
     "Pkw7J9": ["This folder is empty."],
     "Pp0Vgd": ["Click to install in ", ["label"]],
     "PpJy-V": ["The endpoint didn't respond in time."],
-    "PqYWiC": [
-      "Couldn't restart the server automatically. Try running `ok stop all` in a terminal, then reopen this project — or restart your computer if it persists."
-    ],
     "PrJYSN": ["This folder isn't on GitHub yet. The link won't work until it's pushed."],
     "PrVaZo": ["Uninstall OpenKnowledge?"],
     "PrWQiT": ["Move Terminal to right"],
@@ -2610,16 +2601,17 @@
     "RfaEio": ["Toggle source comment"],
     "RfilGt": ["No rules match your filters."],
     "RgbKEe": ["You don't have access to this repository."],
-    "RhX_1U": [
+    "Rh_duv": [
       "Sent to <0>",
       ["endpointHost"],
-      "</0> to embed your content. Stored on this machine only (in <1>~/.ok/secrets.yml</1>), never in the project."
+      "</0> to embed your content. Stored on this machine only (in <1>",
+      ["secretsPath"],
+      "</1>), never in the project."
     ],
     "Rj01Fz": ["Links"],
     "RkXlPZ": ["GitHub"],
     "RlCInP": ["Slash commands"],
     "RmBY0A": ["No git remote"],
-    "RnrnTe": ["Already set up — ok is available in your terminal"],
     "RoafuO": ["Send feedback"],
     "RobAKV": ["Update the destination and optional section anchor."],
     "RojU4W": ["Skills from OpenKnowledge"],
@@ -2856,6 +2848,11 @@
     "Uuj_R4": ["New from template"],
     "Uw6ERJ": ["Couldn't copy: ", ["detail"]],
     "UyROxs": [["mins", "plural", { "one": ["#", " min ago"], "other": ["#", " min ago"] }]],
+    "V-pEOB": [
+      "<0>",
+      ["cliCommand"],
+      "</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
+    ],
     "V0Jk_K": ["Not detected on this machine · OpenKnowledge files present"],
     "V0mbgd": ["Close this chat's tab to delete it"],
     "V2Gmie": [
@@ -3579,6 +3576,7 @@
     "c9C7DQ": ["Couldn't save this setting. Try again."],
     "cCd8Bs": ["Cut"],
     "cD3aew": ["Re-embedding happens as searches run, so coverage restarts at zero and refills."],
+    "cD5D4S": ["Couldn't restart the server. Try `", ["cliCommand"], " start` in this folder."],
     "cEoyWz": ["Add item to ", ["keyName"]],
     "cF9DyA": ["Reconnecting after server restart"],
     "cFCKYZ": ["Deny"],
@@ -3788,6 +3786,7 @@
     "dprWmL": ["Anchor in this page"],
     "dr1vFs": ["Replace all matches"],
     "drzzZw": ["Preview tabs"],
+    "ds0rjh": ["Add the <0>", ["cliCommand"], "</0> command to your terminal"],
     "dw_3cv": ["Rename skill"],
     "dw_dUJ": ["Failed to duplicate path"],
     "dx-TwN": ["Running project audit"],
@@ -4173,6 +4172,11 @@
     "h69WC6": ["Sent"],
     "h7FzJC": ["Link-graph response did not match expected shape."],
     "h9QFb9": ["Skill \"", ["0"], "\" deleted"],
+    "hARd2R": [
+      "Couldn't restart the server automatically. Try running `",
+      ["cliCommand"],
+      " stop all` in a terminal, then reopen this project — or restart your computer if it persists."
+    ],
     "hAbGf0": ["Opened existing OpenKnowledge project at ", ["ancestorPath"]],
     "hBMK4W": ["Project templates"],
     "hCOLSd": [
@@ -4655,6 +4659,7 @@
     "loE6tM": ["Couldn't switch to ", ["language"], "."],
     "lond3p": ["Shows above the code body. Round-trips as `title=\"...\"` in markdown."],
     "lrhetp": ["+ ", ["overflow"], " more"],
+    "lvHgM-": ["Already set up — ", ["cliCommand"], " is available in your terminal"],
     "lwCV5v": ["Couldn't open ", ["0"], " for editing: ", ["1"]],
     "lwvkBP": [
       "It also adds any display-connection errors OpenKnowledge wrote to your user journal in the past week, each message cut to 200 characters."
@@ -6025,6 +6030,13 @@
     "zo3Dl7": ["Toggle thumbnails"],
     "zpfN9p": ["No comments yet. Select text in the document to add one."],
     "zq2eBA": ["View in source"],
+    "zqJgDd": [
+      "Launch OpenKnowledge from any terminal — <0>",
+      ["cliCommand"],
+      "</0> opens a project, <1>",
+      ["cliCommand"],
+      " init</1> connects your agents."
+    ],
     "zqQlBg": ["Maximum text chunks per indexing request"],
     "zrP8HX": [
       "Frontmatter every document created from this template starts with. Values are YAML — a list is <0>[a, b]</0>; <1>{",

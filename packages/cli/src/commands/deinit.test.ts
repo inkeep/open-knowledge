@@ -447,3 +447,19 @@ test('keeps project state when a later skill removal fails', async () => {
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+describe('deinit help names the running channel command', () => {
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s', (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    try {
+      expect(deinitCommand().description()).toContain(
+        `Re-run \`${command} start\` to re-scaffold.`,
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});

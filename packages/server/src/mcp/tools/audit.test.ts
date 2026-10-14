@@ -11,7 +11,7 @@ import {
   AUDIT_FILE_CAP,
   AUDIT_FILE_DIAGNOSTIC_CAP,
   AUDIT_WARNING_CAP,
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
+  hocuspocusNotRunningError,
 } from './shared.ts';
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
@@ -278,7 +278,7 @@ describe('audit — registration + DESCRIPTION', () => {
     register(server, makeDeps(undefined, tmpDir));
     const result = await getTool().handler({});
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toBe(HOCUSPOCUS_NOT_RUNNING_ERROR);
+    expect(result.content[0]?.text).toBe(hocuspocusNotRunningError());
   });
 });
 

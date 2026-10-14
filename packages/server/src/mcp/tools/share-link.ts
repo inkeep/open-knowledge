@@ -13,7 +13,7 @@ import { resolveWithinRoot } from './path-safety.ts';
 import { encodeDocName, resolvePreviewUrlForTool } from './preview-url.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
+  hocuspocusNotRunningError,
   isTimeoutError,
   outputSchemaWithText,
   ROUTED_CWD_DESCRIPTION,
@@ -224,7 +224,7 @@ export function register(server: ServerInstance, deps: ShareLinkDeps): void {
       );
       if (!context.ok) return textResult(`Error: ${context.error}`, true);
       const { cwd, config, url } = context;
-      if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+      if (!url) return textResult(hocuspocusNotRunningError(), true);
 
       const contentDir = join(cwd, config.content.dir);
       const resolved = resolveShareTarget(contentDir, args.path, args.kind);

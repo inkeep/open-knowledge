@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import {
   ASSET_EXTENSIONS,
+  currentCliCommandName,
   DEFAULT_SERVER_HOST,
   EXECUTABLE_BLOCKLIST_EXTENSIONS,
   INLINE_RENDERABLE_EXTENSIONS,
@@ -336,7 +337,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   if (!existsSync(gitignorePath)) {
     getLogger('boot').warn(
       { path: gitignorePath },
-      `Note: ${OK_DIR}/.gitignore is missing — per-machine state files in ${OK_DIR}/ may show up as untracked changes. Run \`ok init\` to add the recommended ignore entries.`,
+      `Note: ${OK_DIR}/.gitignore is missing — per-machine state files in ${OK_DIR}/ may show up as untracked changes. Run \`${currentCliCommandName()} init\` to add the recommended ignore entries.`,
     );
   }
 

@@ -6,7 +6,7 @@ import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './sh
 import {
   type ApiTarget,
   apiTarget,
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
+  hocuspocusNotRunningError,
   httpGet,
   looseObjectArray,
   normalizeDocName,
@@ -143,7 +143,7 @@ export function register(server: ServerInstance, deps: LinksDeps): void {
       );
       if (!context.ok) return textResult(`Error: ${context.error}`, true);
       const { cwd, url } = context;
-      if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+      if (!url) return textResult(hocuspocusNotRunningError(), true);
 
       const kinds = Array.isArray(args.kind) ? [...new Set(args.kind)] : [args.kind];
       const { resolve } = await buildListResolver(deps, cwd);

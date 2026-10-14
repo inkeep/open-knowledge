@@ -13,7 +13,7 @@ import {
   countSummary,
   degradationBlock,
   formatDiagnosticLine,
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
+  hocuspocusNotRunningError,
   httpGet,
   looseObjectArray,
   outputSchemaWithText,
@@ -132,7 +132,7 @@ export function register(server: ServerInstance, deps: AuditDeps): void {
       );
       if (!context.ok) return textResult(`Error: ${context.error}`, true);
       const { cwd, url } = context;
-      if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+      if (!url) return textResult(hocuspocusNotRunningError(), true);
       return runAudit(args.path, url, cwd);
     },
   );

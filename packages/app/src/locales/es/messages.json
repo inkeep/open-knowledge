@@ -872,9 +872,6 @@
     "7Ongq0": ["Reduce mi archivo AGENTS.md a menos de 40k caracteres"],
     "7OwvEL": ["Mostrar la vista previa del HTML"],
     "7PNNNs": ["Esto envía contenido fuera de tu equipo"],
-    "7PXYaF": [
-      "<0>ok</0> no funcionará en terminales externas hasta que lo añadas más adelante desde el menú Archivo. La terminal integrada y las herramientas de IA de OpenKnowledge siguen funcionando."
-    ],
     "7PzzBU": ["Usuario"],
     "7S7FNA": ["OpenKnowledge revisó el proyecto"],
     "7Voget": ["Seleccionar ", ["name"]],
@@ -961,6 +958,11 @@
     "8OGgNM": ["Abre o cierra la búsqueda del editor visual."],
     "8OxKZy": [
       "Se movió correctamente, pero puede que la barra lateral esté desactualizada; actualízala para resincronizar"
+    ],
+    "8PBuqT": [
+      "<0>",
+      ["cliCommand"],
+      "</0> no funcionará en terminales externas hasta que lo añadas más adelante desde el menú Archivo. La terminal integrada y las herramientas de IA de OpenKnowledge siguen funcionando."
     ],
     "8PifYj": ["Diagrama de Mermaid"],
     "8PmoQF": ["Abre el menú de inserción en una posición de texto vacía o activa."],
@@ -1290,15 +1292,11 @@
     "BMoSQy": [
       "Este agente no ofrece a OpenKnowledge ninguna forma de configurarlo por ti. Su guía de configuración incluye los pasos manuales."
     ],
-    "BOsvJ8": [
-      "<0>ok</0> no funcionará en terminales externas hasta que lo añadas más tarde desde el menú Archivo. Tus herramientas de IA seguirán funcionando."
-    ],
     "BQKHuL": ["Reiniciar la terminal"],
     "BQu9Pg": ["Enlace simbólico"],
     "BRtKwG": [
       "Para conectar herramientas de IA sin un proyecto, usa Archivo > Configurar las integraciones de OpenKnowledge…"
     ],
-    "BUyQnq": ["No se pudo reiniciar el servidor. Prueba `ok start` en esta carpeta."],
     "BVkqD9": [
       "El mantenimiento del índice está en pausa porque otro atributo de Git controla index.md. Actualiza .gitattributes para que las rutas index.md de ese ámbito usen merge=union y vuelve a intentarlo."
     ],
@@ -1755,7 +1753,6 @@
     "Fqx38P": ["¿Qué te lo impidió?"],
     "Fr8JGg": ["Archivo zip"],
     "FsEXax": ["Eso no se completó. Revisa los registros del servidor e inténtalo de nuevo."],
-    "Fsx78O": ["Añade el comando <0>ok</0> a tu terminal"],
     "FumRbV": ["Las comprobaciones se están ejecutando"],
     "FvMSms": [
       "Renombrarlo cambia el archivo en el disco y el id con el que los agentes eligen esta plantilla."
@@ -2282,9 +2279,6 @@
     "LHH461": ["Finalizar configuración"],
     "LJHTS5": ["Elegir a dónde enviar este mensaje"],
     "LJXDjm": ["No se pudo guardar tu preferencia de tema."],
-    "LJeFU6": [
-      "Inicia OpenKnowledge desde cualquier terminal: <0>ok</0> abre un proyecto y <1>ok init</1> conecta tus agentes."
-    ],
     "LK83k1": ["Escribe '@' para mencionar una página"],
     "LKIPzv": [
       [
@@ -2765,9 +2759,6 @@
     "Pkw7J9": ["Esta carpeta está vacía."],
     "Pp0Vgd": ["Haz clic para instalarlo en ", ["label"]],
     "PpJy-V": ["El endpoint no respondió a tiempo."],
-    "PqYWiC": [
-      "No se pudo reiniciar el servidor automáticamente. Prueba a ejecutar `ok stop all` en una terminal y vuelve a abrir este proyecto; si sigue igual, reinicia el equipo."
-    ],
     "PrJYSN": [
       "Esta carpeta todavía no está en GitHub. El enlace no funcionará hasta que se suba."
     ],
@@ -2992,16 +2983,17 @@
     "RfaEio": ["Comentar o descomentar en el código"],
     "RfilGt": ["Ninguna regla coincide con tus filtros."],
     "RgbKEe": ["No tienes acceso a este repositorio."],
-    "RhX_1U": [
+    "Rh_duv": [
       "Se envía a <0>",
       ["endpointHost"],
-      "</0> para generar los embeddings de tu contenido. Se guarda solo en este equipo (en <1>~/.ok/secrets.yml</1>), nunca en el proyecto."
+      "</0> para generar los embeddings de tu contenido. Se guarda solo en este equipo (en <1>",
+      ["secretsPath"],
+      "</1>), nunca en el proyecto."
     ],
     "Rj01Fz": ["Enlaces"],
     "RkXlPZ": ["GitHub"],
     "RlCInP": ["Comandos de barra"],
     "RmBY0A": ["No hay remoto de git"],
-    "RnrnTe": ["Ya está configurado: ok está disponible en tu terminal"],
     "RoafuO": ["Enviar comentarios"],
     "RobAKV": ["Actualiza el destino y el ancla de sección opcional."],
     "RojU4W": ["Habilidades de OpenKnowledge"],
@@ -3283,6 +3275,11 @@
           "other": ["hace ", "#", " min"]
         }
       ]
+    ],
+    "V-pEOB": [
+      "<0>",
+      ["cliCommand"],
+      "</0> no funcionará en terminales externas hasta que lo añadas más tarde desde el menú Archivo. Tus herramientas de IA seguirán funcionando."
     ],
     "V0Jk_K": ["No detectado en este equipo · Archivos de OpenKnowledge presentes"],
     "V0mbgd": ["Cierra la pestaña de este chat para eliminarlo"],
@@ -4131,6 +4128,11 @@
     "cD3aew": [
       "Los embeddings se recalculan a medida que se hacen búsquedas, así que la cobertura empieza de cero y se vuelve a llenar."
     ],
+    "cD5D4S": [
+      "No se pudo reiniciar el servidor. Prueba `",
+      ["cliCommand"],
+      " start` en esta carpeta."
+    ],
     "cEoyWz": ["Añadir elemento a ", ["keyName"]],
     "cF9DyA": ["Reconectando tras el reinicio del servidor"],
     "cFCKYZ": ["Denegar"],
@@ -4375,6 +4377,7 @@
     "dprWmL": ["Ancla en esta página"],
     "dr1vFs": ["Reemplazar todas las coincidencias"],
     "drzzZw": ["Pestañas de vista previa"],
+    "ds0rjh": ["Añade el comando <0>", ["cliCommand"], "</0> a tu terminal"],
     "dw_3cv": ["Renombrar la habilidad"],
     "dw_dUJ": ["No se pudo duplicar la ruta"],
     "dx-TwN": ["Ejecutando la auditoría del proyecto"],
@@ -4841,6 +4844,11 @@
     "h69WC6": ["Enviado"],
     "h7FzJC": ["La respuesta del grafo de enlaces no tenía la forma esperada."],
     "h9QFb9": ["Se eliminó la habilidad \"", ["0"], "\""],
+    "hARd2R": [
+      "No se pudo reiniciar el servidor automáticamente. Prueba a ejecutar `",
+      ["cliCommand"],
+      " stop all` en una terminal y vuelve a abrir este proyecto; si sigue igual, reinicia el equipo."
+    ],
     "hAbGf0": ["Se abrió el proyecto de OpenKnowledge existente en ", ["ancestorPath"]],
     "hBMK4W": ["Plantillas del proyecto"],
     "hCOLSd": [
@@ -5368,6 +5376,7 @@
       "Se muestra encima del cuerpo del código. En markdown va y viene como `title=\"...\"`."
     ],
     "lrhetp": ["+ ", ["overflow"], " más"],
+    "lvHgM-": ["Ya está configurado: ", ["cliCommand"], " está disponible en tu terminal"],
     "lwCV5v": ["No se pudo abrir ", ["0"], " para editarlo: ", ["1"]],
     "lwvkBP": [
       "También añade los errores de conexión con la pantalla que OpenKnowledge escribió en tu registro de usuario durante la última semana, con cada mensaje recortado a 200 caracteres."
@@ -6936,6 +6945,13 @@
     "zo3Dl7": ["Mostrar u ocultar las miniaturas"],
     "zpfN9p": ["Todavía no hay comentarios. Selecciona texto en el documento para añadir uno."],
     "zq2eBA": ["Ver en el código"],
+    "zqJgDd": [
+      "Inicia OpenKnowledge desde cualquier terminal: <0>",
+      ["cliCommand"],
+      "</0> abre un proyecto y <1>",
+      ["cliCommand"],
+      " init</1> conecta tus agentes."
+    ],
     "zqQlBg": ["Máximo de fragmentos de texto por solicitud de indexación"],
     "zrP8HX": [
       "El frontmatter con el que empieza cada documento creado a partir de esta plantilla. Los valores son YAML: una lista es <0>[a, b]</0>; <1>{",

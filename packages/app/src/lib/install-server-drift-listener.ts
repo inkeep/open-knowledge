@@ -2,6 +2,7 @@ import { t } from '@lingui/core/macro';
 import { createElement } from 'react';
 import { toast } from 'sonner';
 import { ServerDriftToast } from '@/components/ServerDriftToast';
+import { okCliCommandName } from '@/lib/channel-cli-copy';
 import type {
   OkDesktopBridge,
   OkServerRestartFailure,
@@ -33,8 +34,10 @@ export function restartFailureMessage(failure: OkServerRestartFailure): string {
       return otherChannelRestartMessage(failure.holderChannel);
     case 'eperm':
       return t`Couldn't restart the server — it's running under a different account. Restart your computer to clear it, then reopen this project.`;
-    case 'other':
-      return t`Couldn't restart the server automatically. Try running \`ok stop all\` in a terminal, then reopen this project — or restart your computer if it persists.`;
+    case 'other': {
+      const cliCommand = okCliCommandName();
+      return t`Couldn't restart the server automatically. Try running \`${cliCommand} stop all\` in a terminal, then reopen this project — or restart your computer if it persists.`;
+    }
   }
 }
 

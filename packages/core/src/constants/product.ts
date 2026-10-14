@@ -98,3 +98,18 @@ export function currentDesktopProduct(): DesktopProduct {
 export function currentMcpServerName(): DesktopProduct['mcpServerName'] {
   return currentDesktopProduct().mcpServerName;
 }
+
+export function currentCliCommandName(): DesktopProduct['cliCommandNames'][0] {
+  return currentDesktopProduct().cliCommandNames[0];
+}
+
+export function desktopProductForCliCommand(command: string | null | undefined): DesktopProduct {
+  for (const product of Object.values(DESKTOP_PRODUCTS)) {
+    if (product.cliCommandNames[0] === command) return product;
+  }
+  return DESKTOP_PRODUCTS.stable;
+}
+
+export function userHomeDisplayPath(product: DesktopProduct, ...segments: string[]): string {
+  return ['~', product.userHomeDirName, ...segments].join('/');
+}

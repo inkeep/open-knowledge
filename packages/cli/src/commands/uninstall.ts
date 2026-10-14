@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
+  currentCliCommandName,
   DESKTOP_PRODUCTS,
   desktopWindowsExecutableName,
   desktopWindowsInstallDirNames,
@@ -243,7 +244,7 @@ async function defaultProjectCheckbox(candidates: ProjectCandidate[]): Promise<s
     message:
       'Also remove OpenKnowledge from these projects? (space to toggle; none selected by default)\n' +
       "  Removes each project's .ok/ config, editor MCP entries, and OK edit-history\n" +
-      '  (.git/ok/). Your markdown content is kept — `ok start` re-adds OK later.\n',
+      `  (.git/ok/). Your markdown content is kept — \`${currentCliCommandName()} start\` re-adds OK later.\n`,
     required: false,
     theme: { icon: { checked: '[x]', unchecked: '[ ]' } },
     choices: candidates.map((c) => ({
@@ -340,7 +341,7 @@ export async function runUninstall(opts: UninstallOptions = {}): Promise<Uninsta
 
   const fallbackNote = dim(
     'Individual projects are only removed when you select them (or pass --all-projects). ' +
-      'To remove OpenKnowledge from one project, run `ok deinit` inside it.',
+      `To remove OpenKnowledge from one project, run \`${currentCliCommandName()} deinit\` inside it.`,
   );
   const binaryBlock = (): string =>
     formatInstallInstructions(

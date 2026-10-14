@@ -753,9 +753,6 @@
     "7Ongq0": ["Ringkas berkas AGENTS.md saya menjadi kurang dari 40 ribu karakter"],
     "7OwvEL": ["Tampilkan pratinjau HTML"],
     "7PNNNs": ["Ini mengirim konten keluar dari komputer Anda"],
-    "7PXYaF": [
-      "<0>ok</0> tidak akan berjalan di terminal eksternal sampai Anda menambahkannya nanti dari menu Berkas. Terminal bawaan dan alat AI OpenKnowledge tetap berfungsi."
-    ],
     "7PzzBU": ["Pengguna"],
     "7S7FNA": ["OpenKnowledge memeriksa proyek"],
     "7Voget": ["Pilih ", ["name"]],
@@ -834,6 +831,11 @@
     "8OGgNM": ["Membuka atau menutup pencarian penyunting visual."],
     "8OxKZy": [
       "Pemindahan berhasil tetapi bilah sisi mungkin tidak mutakhir — segarkan untuk menyinkronkan ulang"
+    ],
+    "8PBuqT": [
+      "<0>",
+      ["cliCommand"],
+      "</0> tidak akan berjalan di terminal eksternal sampai Anda menambahkannya nanti dari menu Berkas. Terminal bawaan dan alat AI OpenKnowledge tetap berfungsi."
     ],
     "8PifYj": ["Diagram Mermaid"],
     "8PmoQF": ["Membuka menu sisip pada posisi teks yang kosong atau aktif."],
@@ -1103,15 +1105,11 @@
     "BMoSQy": [
       "Agen ini tidak memberi OpenKnowledge cara untuk menyiapkannya untuk Anda. Panduan penyiapannya memuat langkah-langkah manual."
     ],
-    "BOsvJ8": [
-      "<0>ok</0> tidak akan berjalan di terminal eksternal sampai Anda menambahkannya nanti dari menu File. Alat AI Anda tetap berfungsi."
-    ],
     "BQKHuL": ["Mulai ulang terminal"],
     "BQu9Pg": ["Symlink"],
     "BRtKwG": [
       "Untuk menghubungkan alat AI tanpa proyek, gunakan Berkas > Siapkan integrasi OpenKnowledge…"
     ],
-    "BUyQnq": ["Server tidak bisa dimulai ulang. Coba `ok start` di folder ini."],
     "BVkqD9": [
       "Pemeliharaan indeks dihentikan sementara karena atribut Git lainnya mengontrol index.md. Perbarui .gitattributes sehingga jalur index.md yang dicakup menggunakan merge=union, lalu coba lagi."
     ],
@@ -1535,7 +1533,6 @@
     "Fqx38P": ["Apa yang menghambat?"],
     "Fr8JGg": ["Berkas zip"],
     "FsEXax": ["Itu tidak berhasil. Periksa log server lalu coba lagi."],
-    "Fsx78O": ["Tambahkan perintah <0>ok</0> ke terminal Anda"],
     "FumRbV": ["Pemeriksaan sedang berjalan"],
     "FvMSms": [
       "Mengganti nama mengubah berkas di disk dan id yang dipakai agen untuk memilih templat ini."
@@ -2005,9 +2002,6 @@
     "LHH461": ["Selesaikan penyiapan"],
     "LJHTS5": ["Pilih ke mana pesan ini dikirim"],
     "LJXDjm": ["Tidak dapat menyimpan preferensi tema Anda."],
-    "LJeFU6": [
-      "Jalankan OpenKnowledge dari terminal mana pun — <0>ok</0> membuka proyek, <1>ok init</1> menghubungkan agen Anda."
-    ],
     "LK83k1": ["Ketik '@' untuk menyebut halaman"],
     "LKIPzv": [
       [
@@ -2422,9 +2416,6 @@
     "Pkw7J9": ["Folder ini kosong."],
     "Pp0Vgd": ["Klik untuk memasang di ", ["label"]],
     "PpJy-V": ["Endpoint-nya tidak merespons tepat waktu."],
-    "PqYWiC": [
-      "Server tidak bisa dimulai ulang secara otomatis. Coba jalankan `ok stop all` di terminal, lalu buka lagi proyek ini — atau mulai ulang komputer Anda jika masih berlanjut."
-    ],
     "PrJYSN": ["Folder ini belum ada di GitHub. Tautannya tidak akan berfungsi sampai ia dikirim."],
     "PrVaZo": ["Copot OpenKnowledge?"],
     "PrWQiT": ["Pindahkan Terminal ke kanan"],
@@ -2619,16 +2610,17 @@
     "RfaEio": ["Komentari atau batalkan komentar di sumber"],
     "RfilGt": ["Tidak ada aturan yang cocok dengan filter Anda."],
     "RgbKEe": ["Anda tidak punya akses ke repositori ini."],
-    "RhX_1U": [
+    "Rh_duv": [
       "Dikirim ke <0>",
       ["endpointHost"],
-      "</0> untuk meng-embed konten Anda. Disimpan hanya di komputer ini (di <1>~/.ok/secrets.yml</1>), tidak pernah di proyek."
+      "</0> untuk meng-embed konten Anda. Disimpan hanya di komputer ini (di <1>",
+      ["secretsPath"],
+      "</1>), tidak pernah di proyek."
     ],
     "Rj01Fz": ["Tautan"],
     "RkXlPZ": ["GitHub"],
     "RlCInP": ["Perintah garis miring"],
     "RmBY0A": ["Tidak ada remote git"],
-    "RnrnTe": ["Sudah disiapkan — ok tersedia di terminal Anda"],
     "RoafuO": ["Kirim masukan"],
     "RobAKV": ["Perbarui tujuan dan jangkar bagian opsionalnya."],
     "RojU4W": ["Keterampilan dari OpenKnowledge"],
@@ -2859,6 +2851,11 @@
     "Uuj_R4": ["Baru dari templat"],
     "Uw6ERJ": ["Tidak bisa menyalin: ", ["detail"]],
     "UyROxs": [["mins", "plural", { "other": ["#", " mnt lalu"] }]],
+    "V-pEOB": [
+      "<0>",
+      ["cliCommand"],
+      "</0> tidak akan berjalan di terminal eksternal sampai Anda menambahkannya nanti dari menu File. Alat AI Anda tetap berfungsi."
+    ],
     "V0Jk_K": ["Tidak terdeteksi di mesin ini · File OpenKnowledge ada"],
     "V0mbgd": ["Tutup tab obrolan ini untuk menghapusnya"],
     "V2Gmie": [
@@ -3610,6 +3607,7 @@
     "cD3aew": [
       "Embedding dihitung ulang seiring pencarian berjalan, jadi cakupannya dimulai lagi dari nol lalu terisi kembali."
     ],
+    "cD5D4S": ["Server tidak bisa dimulai ulang. Coba `", ["cliCommand"], " start` di folder ini."],
     "cEoyWz": ["Tambahkan item ke ", ["keyName"]],
     "cF9DyA": ["Menyambung ulang setelah server dimulai ulang"],
     "cFCKYZ": ["Tolak"],
@@ -3794,6 +3792,7 @@
     "dprWmL": ["Jangkar di halaman ini"],
     "dr1vFs": ["Ganti semua kecocokan"],
     "drzzZw": ["Tab pratinjau"],
+    "ds0rjh": ["Tambahkan perintah <0>", ["cliCommand"], "</0> ke terminal Anda"],
     "dw_3cv": ["Ganti nama keterampilan"],
     "dw_dUJ": ["Gagal menggandakan jalur"],
     "dx-TwN": ["Menjalankan audit proyek"],
@@ -4166,6 +4165,11 @@
     "h69WC6": ["Terkirim"],
     "h7FzJC": ["Respons graf tautan tidak sesuai bentuk yang diharapkan."],
     "h9QFb9": ["Keterampilan \"", ["0"], "\" dihapus"],
+    "hARd2R": [
+      "Server tidak bisa dimulai ulang secara otomatis. Coba jalankan `",
+      ["cliCommand"],
+      " stop all` di terminal, lalu buka lagi proyek ini — atau mulai ulang komputer Anda jika masih berlanjut."
+    ],
     "hAbGf0": ["Proyek OpenKnowledge yang sudah ada dibuka di ", ["ancestorPath"]],
     "hBMK4W": ["Templat proyek"],
     "hCOLSd": [
@@ -4659,6 +4663,7 @@
     "loE6tM": ["Tidak dapat beralih ke ", ["language"], "."],
     "lond3p": ["Muncul di atas badan kode. Bolak-balik sebagai `title=\"...\"` di markdown."],
     "lrhetp": ["+ ", ["overflow"], " lagi"],
+    "lvHgM-": ["Sudah disiapkan — ", ["cliCommand"], " tersedia di terminal Anda"],
     "lwCV5v": [["0"], " tidak bisa dibuka untuk disunting: ", ["1"]],
     "lwvkBP": [
       "Ini juga menambahkan galat koneksi layar yang ditulis OpenKnowledge ke jurnal pengguna Anda dalam seminggu terakhir, dengan setiap pesan dipotong menjadi 200 karakter."
@@ -6014,6 +6019,13 @@
     "zo3Dl7": ["Tampilkan atau sembunyikan gambar mini"],
     "zpfN9p": ["Belum ada komentar. Pilih teks di dokumen untuk menambahkan satu."],
     "zq2eBA": ["Lihat di sumber"],
+    "zqJgDd": [
+      "Jalankan OpenKnowledge dari terminal mana pun — <0>",
+      ["cliCommand"],
+      "</0> membuka proyek, <1>",
+      ["cliCommand"],
+      " init</1> menghubungkan agen Anda."
+    ],
     "zqQlBg": ["Maksimum potongan teks per permintaan pengindeksan"],
     "zrP8HX": [
       "Frontmatter yang mengawali setiap dokumen yang dibuat dari templat ini. Nilainya berupa YAML — daftar ditulis <0>[a, b]</0>; <1>{",

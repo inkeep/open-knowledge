@@ -51,6 +51,9 @@ describe('Beta CLI path install', () => {
     });
 
     expect(result.status).toBe('installed');
+    if (result.status === 'installed') {
+      expect(result.summary).toBe('Added ok-beta to your PATH — managed block in ~/.zshrc.');
+    }
     const betaRoot = join(userHome, '.ok-beta');
     expect(pathInstallMarkerPath(userHome)).toBe(join(betaRoot, 'path-install.json'));
     expect(readlinkSync(join(betaRoot, 'bin', 'ok-beta'))).toBe(BETA_WRAPPER);
@@ -415,5 +418,44 @@ describe('Beta installer and runtime agree on the bin dir', () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+});
+
+describe('Beta PATH install summary', () => {
+  test('names ok-beta when it removes leftover symlinks', async () => {
+    const userHome = home();
+    const bin = join(userHome, 'bin');
+    mkdirSync(bin);
+    symlinkSync(BETA_WRAPPER, join(bin, 'ok-beta'));
+    const markerPath = pathInstallMarkerPath(userHome);
+    mkdirSync(join(userHome, '.ok-beta'), { recursive: true });
+    writeFileSync(
+      markerPath,
+      JSON.stringify({
+        version: 1,
+        installedAt: '2026-09-23T00:00:00.000Z',
+        bundleVersion: '0.77.7-beta.0',
+        bundleWrapperPath: BETA_WRAPPER,
+        binDir: join(userHome, '.ok-beta', 'bin'),
+        envShimPath: join(userHome, '.ok-beta', 'env.sh'),
+        rcFiles: [],
+        pathDiscovery: null,
+        extraSymlinks: [
+          {
+            path: join(bin, 'ok-beta'),
+            target: BETA_WRAPPER,
+            createdAt: '2026-09-23T00:00:00.000Z',
+            kind: 'created',
+          },
+        ],
+      }),
+    );
+
+    const result = await launch(userHome);
+
+    if (result.status !== 'installed') throw new Error(`unexpected ${result.status}`);
+    expect(result.summary).toBe(
+      'Removed 1 leftover ok-beta symlink(s) created by an older version.',
+    );
   });
 });

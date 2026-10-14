@@ -6,7 +6,7 @@ import { resolvePreviewUrlForTool } from './preview-url.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   agentIdentityFields,
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
+  hocuspocusNotRunningError,
   httpGet,
   httpPost,
   normalizeDocName,
@@ -93,7 +93,7 @@ export function register(server: ServerInstance, deps: RestoreVersionDeps): void
       );
       if (!context.ok) return textResult(`Error: ${context.error}`, true);
       const { cwd, url } = context;
-      if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+      if (!url) return textResult(hocuspocusNotRunningError(), true);
 
       if ((args.document !== undefined) === (args.skill !== undefined)) {
         return textResult('Error: pass EXACTLY ONE of `document` or `skill`.', true);

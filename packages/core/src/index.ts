@@ -558,6 +558,7 @@ export {
   type PreviewThemeToken,
 } from './constants/preview-theme-tokens.ts';
 export {
+  currentCliCommandName,
   currentDesktopProduct,
   currentMcpServerName,
   DESKTOP_PRODUCTS,

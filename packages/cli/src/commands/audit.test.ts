@@ -4,8 +4,16 @@ import { join } from 'node:path';
 import type { ValidationAuditResponse } from '@inkeep/open-knowledge-core';
 import type { Config } from '@inkeep/open-knowledge-server';
 import { RUNTIME_VERSION } from '@inkeep/open-knowledge-server';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { runAudit, toContentRelativeTarget } from './audit.ts';
+
+beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const minimalConfig = { content: { dir: '.' } } as Config;
 
@@ -299,6 +307,20 @@ describe('runAudit', () => {
     expect(code).toBe(1);
     expect(err.join('\n')).toContain('ok start');
     expect(err.join('\n')).toContain('ok lint');
+  });
+
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('no-server guidance names the %s command', async (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    rmSync(join(dir, '.ok', 'local', 'server.lock'));
+    const { io, err } = collectIo();
+
+    expect(await runAudit(undefined, {}, minimalConfig, dir, dir, io)).toBe(1);
+    expect(err.join('\n')).toContain(
+      `Start it with \`${command} start\` (or open OK Desktop) and re-run. For headless lint-only checks, use \`${command} lint\`.`,
+    );
   });
 
   test('rejects a target outside the content dir before dialing the server', async () => {

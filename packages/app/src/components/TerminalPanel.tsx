@@ -646,6 +646,7 @@ function TerminalSession({
             return buildLaunch({
               mcpPreApprove: fresh.mcpPreApprovable === true,
               mcpServerName: fresh.mcpServerName,
+              ...(bridge.cliCommandName ? { cliCommandName: bridge.cliCommandName } : {}),
               autoApproveOkTools:
                 autoApproveOkToolsRef.current && fresh.okToolsAutoApprovable === true,
             });

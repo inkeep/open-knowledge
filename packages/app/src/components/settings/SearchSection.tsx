@@ -42,6 +42,7 @@ import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { useSemanticSearchStatus } from '@/hooks/use-semantic-search-status';
+import { okUserHomeLabel } from '@/lib/channel-cli-copy';
 import { useConfigContext } from '@/lib/config-provider';
 import {
   type EmbeddingsKeyTransport,
@@ -711,6 +712,7 @@ function EmbeddingsKeyField({
   loaded,
 }: EmbeddingsKeyFieldProps) {
   const { t } = useLingui();
+  const secretsPath = okUserHomeLabel('secrets.yml');
   const [keyInput, setKeyInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -757,9 +759,7 @@ function EmbeddingsKeyField({
             <Trans>
               Sent to <span className="font-medium">{endpointHost}</span> to embed your content.
               Stored on this machine only (in{' '}
-              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-                ~/.ok/secrets.yml
-              </code>
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{secretsPath}</code>
               ), never in the project.
             </Trans>
           )}

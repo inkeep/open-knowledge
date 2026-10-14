@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { resolvePreviewUrlForTool } from './preview-url.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
+  hocuspocusNotRunningError,
   httpGet,
   httpGetRows,
   looseObjectArray,
@@ -133,7 +133,7 @@ export function register(server: ServerInstance, deps: GetHistoryDeps): void {
       );
       if (!context.ok) return textResult(`Error: ${context.error}`, true);
       const { cwd, url } = context;
-      if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+      if (!url) return textResult(hocuspocusNotRunningError(), true);
 
       const targetCount =
         (args.document !== undefined ? 1 : 0) +

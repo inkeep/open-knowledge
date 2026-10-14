@@ -118,6 +118,7 @@ describe('Windows launch composition', () => {
         mcpPreApprove: true,
         autoApproveOkTools: true,
         mcpServerName: MCP_SERVER_NAME,
+        cliCommandName: 'ok',
       }),
     ).toEqual({
       executable: 'claude',
@@ -998,6 +999,7 @@ describe('buildPosixCliLaunch promptless (New chat)', () => {
       buildPosixCliLaunch('claude', null, {
         autoApproveOkTools: true,
         mcpServerName: MCP_SERVER_NAME,
+        cliCommandName: 'ok',
       }).args,
     ).toEqual(['--settings', CLAUDE_AUTO_APPROVE_JSON]);
     expect(
@@ -1005,6 +1007,7 @@ describe('buildPosixCliLaunch promptless (New chat)', () => {
         mcpPreApprove: true,
         autoApproveOkTools: true,
         mcpServerName: MCP_SERVER_NAME,
+        cliCommandName: 'ok',
       }).args,
     ).toEqual(['--settings', CLAUDE_BOTH_JSON]);
   });
@@ -1194,7 +1197,7 @@ describe('claude MCP pre-approval', () => {
 });
 
 describe('OK auto-approve (autoApproveOkTools)', () => {
-  const AUTO = { autoApproveOkTools: true, mcpServerName: MCP_SERVER_NAME };
+  const AUTO = { autoApproveOkTools: true, mcpServerName: MCP_SERVER_NAME, cliCommandName: 'ok' };
 
   it('adds the OK allow-list + destructive ask-list to Claude --settings when on', () => {
     expect(buildPosixCliLaunch('claude', 'hi', AUTO).args).toEqual([
@@ -1261,9 +1264,9 @@ describe('launch approval names the server the main process checked', () => {
   it('uses only the supplied Beta name, even when this process resolves to Stable', () => {
     vi.stubEnv('OK_CHANNEL', 'stable');
     try {
-      const out = artifacts({ ...ALL_ON, mcpServerName: BETA });
+      const out = artifacts({ ...ALL_ON, mcpServerName: BETA, cliCommandName: 'ok-beta' });
       expect(out[0]).toBe(
-        `--settings {"enabledMcpjsonServers":["${BETA}"],"permissions":{"allow":["mcp__${BETA}","Bash(ok open:*)"],"ask":["mcp__${BETA}__delete","mcp__${BETA}__move","mcp__${BETA}__share_link","mcp__${BETA}__install","mcp__${BETA}__import"]}} hi`,
+        `--settings {"enabledMcpjsonServers":["${BETA}"],"permissions":{"allow":["mcp__${BETA}","Bash(ok-beta open:*)"],"ask":["mcp__${BETA}__delete","mcp__${BETA}__move","mcp__${BETA}__share_link","mcp__${BETA}__install","mcp__${BETA}__import"]}} hi`,
       );
       expect(out[1]).toBe(`-c mcp_servers.${BETA}.default_tools_approval_mode="approve" hi`);
       expect(out[2]).toContain(`["${BETA}"]`);
@@ -1294,8 +1297,15 @@ describe('launch approval names the server the main process checked', () => {
     }
   });
 
-  it('keeps the Stable artifacts byte-identical when main supplies the Stable name', () => {
-    const out = artifacts({ ...ALL_ON, mcpServerName: 'open-knowledge' });
+  it('pre-approves no open command when main supplied no CLI name', () => {
+    const out = artifacts({ ...ALL_ON, mcpServerName: BETA });
+    expect(out[0]).toContain(`"allow":["mcp__${BETA}"]`);
+    expect(out[2]).toContain(`"allow":["mcp__${BETA}"]`);
+    for (const artifact of out) expect(artifact).not.toContain('Bash(');
+  });
+
+  it('keeps the Stable artifacts byte-identical when main supplies the Stable names', () => {
+    const out = artifacts({ ...ALL_ON, mcpServerName: 'open-knowledge', cliCommandName: 'ok' });
     expect(out[0]).toBe(
       `--settings {"enabledMcpjsonServers":["open-knowledge"],"permissions":{"allow":["mcp__open-knowledge","Bash(ok open:*)"],"ask":["mcp__open-knowledge__delete","mcp__open-knowledge__move","mcp__open-knowledge__share_link","mcp__open-knowledge__install","mcp__open-knowledge__import"]}} hi`,
     );

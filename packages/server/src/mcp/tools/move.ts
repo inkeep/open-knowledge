@@ -14,7 +14,7 @@ import { type PreviewUrlSource, resolvePreviewUrlForTool } from './preview-url.t
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   agentIdentityFields,
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
+  hocuspocusNotRunningError,
   httpPost,
   looseObjectArray,
   normalizeDocName,
@@ -267,7 +267,7 @@ export function register(server: ServerInstance, deps: MoveDeps): void {
       );
       if (!context.ok) return textResult(`Error: ${context.error}`, true);
       const { cwd, config, url } = context;
-      if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+      if (!url) return textResult(hocuspocusNotRunningError(), true);
 
       if (args.template !== undefined) {
         if (args.from !== undefined || args.to !== undefined) {

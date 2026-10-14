@@ -1,6 +1,7 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import {
   clientVersionHeaders,
+  currentCliCommandName,
   ProblemDetailsSchema,
   type ValidationAuditResponse,
   ValidationAuditResponseSchema,
@@ -40,9 +41,13 @@ const LegacyAuditErrorSchema = z.object({
   message: z.string().optional(),
 });
 
-const SERVER_NOT_RUNNING_MESSAGE =
-  'OpenKnowledge server is not running — the links validator needs the live backlink index. ' +
-  'Start it with `ok start` (or open OK Desktop) and re-run. For headless lint-only checks, use `ok lint`.';
+function serverNotRunningMessage(): string {
+  const command = currentCliCommandName();
+  return (
+    'OpenKnowledge server is not running — the links validator needs the live backlink index. ' +
+    `Start it with \`${command} start\` (or open OK Desktop) and re-run. For headless lint-only checks, use \`${command} lint\`.`
+  );
+}
 
 export function auditCommand(getConfig: () => Config): Command {
   return new Command('audit')
@@ -86,7 +91,7 @@ export async function runAudit(
 
   const lock = readServerLock(resolveLockDir(projectDir));
   if (!lock || lock.port <= 0) {
-    io.err(SERVER_NOT_RUNNING_MESSAGE);
+    io.err(serverNotRunningMessage());
     return 1;
   }
 

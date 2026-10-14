@@ -6,7 +6,7 @@ import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import { DESCRIPTION, type RestoreVersionDeps, register } from './restore-version.ts';
 import type { ServerInstance } from './shared.ts';
-import { HOCUSPOCUS_NOT_RUNNING_ERROR } from './shared.ts';
+import { hocuspocusNotRunningError } from './shared.ts';
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 const SHA = '0123456789abcdef0123456789abcdef01234567';
@@ -134,6 +134,6 @@ describe('restore_version — registration + behavior', () => {
     register(server, makeDeps(undefined, tmpDir));
     const result = await getTool().handler({ document: 'notes/x', version: SHA });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain(HOCUSPOCUS_NOT_RUNNING_ERROR);
+    expect(result.content[0]?.text).toContain(hocuspocusNotRunningError());
   });
 });

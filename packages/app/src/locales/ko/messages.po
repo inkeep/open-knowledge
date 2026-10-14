@@ -1307,6 +1307,16 @@ msgstr "<{componentName}>는 알려진 컴포넌트가 아닙니다. 다른 곳�
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "<{descriptorLabel}> 컴포넌트를 렌더링하지 못했습니다. 잘못된 속성 때문일 수 있습니다. 문제를 확인하려면 소스를 복사하거나 블록을 삭제하세요."
 
+#. Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal
+#: src/components/McpConsentDialogBody.tsx
+msgid "<0>{cliCommand}</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
+msgstr "<0>{cliCommand}</0> 외부 터미널 실행 불가. File 메뉴에서 나중에 추가하면 실행할 수 있습니다. OpenKnowledge 내장 터미널과 AI 도구도 계속 작동합니다."
+
+#. Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal
+#: src/components/McpConsentDialogBody.tsx
+msgid "<0>{cliCommand}</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
+msgstr "<0>{cliCommand}</0>는 나중에 파일 메뉴에서 추가할 때까지 외부 터미널에서 실행되지 않습니다. AI 도구는 계속 작동합니다."
+
 #: src/components/DiffViewBoundary.tsx
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0>은 여기에서 병합할 수 없습니다. 유지할 버전을 고르세요."
@@ -1322,16 +1332,6 @@ msgstr "<0>미러 앵커를 찾을 수 없습니다.</0> <1>{mirrorSourceTag}</1
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>미러 소스가 삭제되었습니다.</0> 문서 <1>{src}</1>는 더 이상 사용할 수 없습니다."
-
-#. Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal
-#: src/components/McpConsentDialogBody.tsx
-msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
-msgstr "<0>ok</0> 외부 터미널 실행 불가. File 메뉴에서 나중에 추가하면 실행할 수 있습니다. OpenKnowledge 내장 터미널과 AI 도구도 계속 작동합니다."
-
-#. Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal
-#: src/components/McpConsentDialogBody.tsx
-msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
-msgstr "<0>ok</0>는 나중에 파일 메뉴에서 추가할 때까지 외부 터미널에서 실행되지 않습니다. AI 도구는 계속 작동합니다."
 
 #: src/components/OkBlobRunner.tsx
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
@@ -1829,8 +1829,8 @@ msgstr "태그 추가"
 #. Toggle in the first-launch dialog that adds the ok CLI to the user's shell PATH
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/OkCliPathRow.tsx
-msgid "Add the <0>ok</0> command to your terminal"
-msgstr "터미널에 <0>ok</0> 명령 추가"
+msgid "Add the <0>{cliCommand}</0> command to your terminal"
+msgstr "터미널에 <0>{cliCommand}</0> 명령 추가"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Add the next matching source selection."
@@ -2093,8 +2093,8 @@ msgid "Already sending this report"
 msgstr "이 보고서는 이미 보내는 중입니다"
 
 #: src/components/McpConsentDialogBody.tsx
-msgid "Already set up — ok is available in your terminal"
-msgstr "이미 설정됨. 터미널에서 ok 사용 가능"
+msgid "Already set up — {cliCommand} is available in your terminal"
+msgstr "이미 설정됨. 터미널에서 {cliCommand} 사용 가능"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Already signed in?"
@@ -4600,16 +4600,16 @@ msgid "Couldn't restart the server — it's running under a different account. R
 msgstr "서버를 다시 시작하지 못했습니다. 다른 계정으로 실행 중입니다. 컴퓨터를 다시 시작하여 해결한 다음 이 프로젝트를 다시 여세요."
 
 #: src/lib/install-server-drift-listener.ts
-msgid "Couldn't restart the server automatically. Try running `ok stop all` in a terminal, then reopen this project — or restart your computer if it persists."
-msgstr "서버를 자동으로 다시 시작하지 못했습니다. 터미널에서 `ok stop all`을 실행한 다음 이 프로젝트를 다시 여세요. 문제가 계속되면 컴퓨터를 다시 시작하세요."
+msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop all` in a terminal, then reopen this project — or restart your computer if it persists."
+msgstr "서버를 자동으로 다시 시작하지 못했습니다. 터미널에서 `{cliCommand} stop all`을 실행한 다음 이 프로젝트를 다시 여세요. 문제가 계속되면 컴퓨터를 다시 시작하세요."
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Couldn't restart the server. Run ok start in this folder to retry."
 msgstr "서버를 다시 시작할 수 없습니다. 다시 시도하려면 이 폴더에서 ok start를 실행하세요."
 
 #: src/lib/restart-collab-server.ts
-msgid "Couldn't restart the server. Try `ok start` in this folder."
-msgstr "서버를 다시 시작할 수 없습니다. 이 폴더에서 `ok start`를 실행해 보세요."
+msgid "Couldn't restart the server. Try `{cliCommand} start` in this folder."
+msgstr "서버를 다시 시작할 수 없습니다. 이 폴더에서 `{cliCommand} start`를 실행해 보세요."
 
 #. placeholder {0}: theme.label
 #: src/components/settings/SavedThemesTiles.tsx
@@ -8326,8 +8326,8 @@ msgstr "최신 편집"
 
 #. Subtext under the terminal toggle explaining what the ok command gives you
 #: src/components/McpConsentDialogBody.tsx
-msgid "Launch OpenKnowledge from any terminal — <0>ok</0> opens a project, <1>ok init</1> connects your agents."
-msgstr "어떤 터미널에서든 OpenKnowledge를 실행하세요 — <0>ok</0>는 프로젝트를 열고, <1>ok init</1>은 에이전트를 연결합니다."
+msgid "Launch OpenKnowledge from any terminal — <0>{cliCommand}</0> opens a project, <1>{cliCommand} init</1> connects your agents."
+msgstr "어떤 터미널에서든 OpenKnowledge를 실행하세요 — <0>{cliCommand}</0>는 프로젝트를 열고, <1>{cliCommand} init</1>은 에이전트를 연결합니다."
 
 #: src/editor/components/Pdf.tsx
 msgid "Layout"
@@ -13257,8 +13257,8 @@ msgid "Sent privately to the OpenKnowledge team, along with your note and app ve
 msgstr "사용자 메모 및 앱 버전과 함께 OpenKnowledge 팀에 비공개로 전송되었습니다. 공개적으로 게시되지 않습니다."
 
 #: src/components/settings/SearchSection.tsx
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>~/.ok/secrets.yml</1>), never in the project."
-msgstr "콘텐츠를 임베딩하기 위해 <0>{endpointHost}</0>로 전송합니다. 이 컴퓨터에만 저장하며(<1>~/.ok/secrets.yml</1>), 프로젝트에는 저장하지 않습니다."
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
+msgstr "콘텐츠를 임베딩하기 위해 <0>{endpointHost}</0>로 전송합니다. 이 컴퓨터에만 저장하며(<1>{secretsPath}</1>), 프로젝트에는 저장하지 않습니다."
 
 #: src/comments/store.ts
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."

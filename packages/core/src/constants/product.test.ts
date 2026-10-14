@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { DESKTOP_PRODUCTS, desktopChannelLabel, resolveDesktopProductName } from './product.ts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  currentCliCommandName,
+  DESKTOP_PRODUCTS,
+  desktopChannelLabel,
+  desktopProductForCliCommand,
+  resolveDesktopProductName,
+  userHomeDisplayPath,
+} from './product.ts';
 
 describe('resolveDesktopProductName', () => {
   it.each([
@@ -69,5 +76,35 @@ describe('desktopChannelLabel', () => {
     ['cloud', 'OpenKnowledge (cloud)'],
   ])('%s is named %s', (channel, expected) => {
     expect(desktopChannelLabel(channel)).toBe(expected);
+  });
+});
+
+describe('channel CLI command name', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('names ok on Stable', () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    expect(currentCliCommandName()).toBe('ok');
+  });
+
+  it('names ok-beta on Beta', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    expect(currentCliCommandName()).toBe('ok-beta');
+  });
+
+  it('maps a command name back to its product, and anything else to Stable', () => {
+    expect(desktopProductForCliCommand('ok-beta')).toBe(DESKTOP_PRODUCTS.beta);
+    expect(desktopProductForCliCommand('ok')).toBe(DESKTOP_PRODUCTS.stable);
+    expect(desktopProductForCliCommand(null)).toBe(DESKTOP_PRODUCTS.stable);
+    expect(desktopProductForCliCommand('open-knowledge-beta')).toBe(DESKTOP_PRODUCTS.stable);
+  });
+
+  it('names each product home folder for display', () => {
+    expect(userHomeDisplayPath(DESKTOP_PRODUCTS.stable, 'secrets.yml')).toBe('~/.ok/secrets.yml');
+    expect(userHomeDisplayPath(DESKTOP_PRODUCTS.beta, 'secrets.yml')).toBe(
+      '~/.ok-beta/secrets.yml',
+    );
   });
 });

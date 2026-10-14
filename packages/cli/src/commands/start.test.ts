@@ -46,6 +46,14 @@ import {
   withIdleShutdownProcessExit,
 } from './start.ts';
 
+beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('resolveHost', () => {
   test('falls back to HOST env when --bind is absent', () => {
     expect(resolveHost({}, { HOST: '0.0.0.0' })).toBe('0.0.0.0');
@@ -1912,5 +1920,31 @@ describe('startCommand — flag-conflict guards (exit 2)', () => {
     ]);
     expect(code).toBe(2);
     expect(stderr).toContain('--react-shell-dist-dir');
+  });
+});
+
+describe('start messages name the running channel command', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('Stable keeps ok in the missing-setup error and the reuse notice', () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    expect(new OkDirMissingError('/p').message).toBe(
+      "This directory isn't set up yet. Run `ok init` first, then `ok start` again.",
+    );
+    expect(formatServerReuseNotice({ url: 'u', pid: 7, servesUi: true })[2]).toBe(
+      'Leaving it running — run `ok stop` first if you want a fresh server.',
+    );
+  });
+
+  test('Beta names ok-beta in the missing-setup error and the reuse notice', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    expect(new OkDirMissingError('/p').message).toBe(
+      "This directory isn't set up yet. Run `ok-beta init` first, then `ok-beta start` again.",
+    );
+    expect(formatServerReuseNotice({ url: 'u', pid: 7, servesUi: true })[2]).toBe(
+      'Leaving it running — run `ok-beta stop` first if you want a fresh server.',
+    );
   });
 });

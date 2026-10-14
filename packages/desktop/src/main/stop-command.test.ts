@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'vitest';
-import { quoteStopCommandPath } from './stop-command.ts';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { quoteStopCommandPath, stopCommandLine } from './stop-command.ts';
 
 describe('quoteStopCommandPath', () => {
   describe('posix', () => {
@@ -38,5 +38,29 @@ describe('quoteStopCommandPath', () => {
     ])('%s doubles only a trailing backslash run', (_label, input, expected) => {
       expect(quoteStopCommandPath(input, 'win32')).toBe(expected);
     });
+  });
+});
+
+describe('stopCommandLine', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('keeps the Stable command byte-identical', () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    expect(stopCommandLine("/Users/bob/Bob's Notes", 'darwin')).toBe(
+      "ok stop '/Users/bob/Bob'\\''s Notes'",
+    );
+    expect(stopCommandLine('C:\\notes\\', 'win32', { force: true })).toBe(
+      'ok stop --force "C:\\notes\\\\"',
+    );
+  });
+
+  test('names the Beta command on Beta', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    expect(stopCommandLine('/Users/me/notes', 'darwin')).toBe("ok-beta stop '/Users/me/notes'");
+    expect(stopCommandLine('/Users/me/notes', 'linux', { force: true })).toBe(
+      "ok-beta stop --force '/Users/me/notes'",
+    );
   });
 });

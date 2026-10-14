@@ -1,6 +1,10 @@
 import { statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { MANAGED_ARTIFACT_SCOPES, type SkillScope } from '@inkeep/open-knowledge-core';
+import {
+  currentCliCommandName,
+  MANAGED_ARTIFACT_SCOPES,
+  type SkillScope,
+} from '@inkeep/open-knowledge-core';
 import {
   encodeDocName,
   encodeFolderRoute,
@@ -82,7 +86,7 @@ function isUnsafeName(name: string): boolean {
 function noTargetError(deps: OpenDeps): number {
   deps.error(
     'No OpenKnowledge desktop app found and no UI is running. ' +
-      'Install it from https://openknowledge.ai/download, or run `ok start` to serve the editor, then retry.',
+      `Install it from https://openknowledge.ai/download, or run \`${currentCliCommandName()} start\` to serve the editor, then retry.`,
   );
   return 1;
 }
@@ -132,7 +136,7 @@ export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps
 
   if (!cleanName) {
     deps.error(
-      'Nothing to open: pass a doc, folder, or skill name (e.g. `ok open specs/foo/SPEC`).',
+      `Nothing to open: pass a doc, folder, or skill name (e.g. \`${currentCliCommandName()} open specs/foo/SPEC\`).`,
     );
     return 1;
   }

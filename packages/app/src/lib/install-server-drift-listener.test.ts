@@ -133,7 +133,20 @@ describe('drift copy', () => {
   });
 
   test('other failure suggests `ok stop all`', () => {
-    expect(restartFailureMessage({ ok: false, reason: 'other' })).toContain('ok stop all');
+    expect(restartFailureMessage({ ok: false, reason: 'other' })).toBe(
+      "Couldn't restart the server automatically. Try running `ok stop all` in a terminal, then reopen this project — or restart your computer if it persists.",
+    );
+  });
+
+  test('other failure in a Beta window suggests `ok-beta stop all`', () => {
+    vi.stubGlobal('window', { okDesktop: { cliCommandName: 'ok-beta' } });
+    try {
+      expect(restartFailureMessage({ ok: false, reason: 'other' })).toContain(
+        'Try running `ok-beta stop all` in a terminal',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   test("another channel's server is left running and never offered `ok stop all`", () => {

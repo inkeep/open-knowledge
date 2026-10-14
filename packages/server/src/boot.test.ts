@@ -22,6 +22,14 @@ import { getLogger } from './logger.ts';
 import { parseKeepaliveConnectionId } from './mcp-mount.ts';
 import { shutdownTelemetry } from './telemetry.ts';
 
+beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 function seedOkScaffold(projectDir: string): void {
   const okDir = resolve(projectDir, OK_DIR);
   mkdirSync(okDir, { recursive: true });
@@ -184,7 +192,7 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
         .filter((w) => w.includes('.gitignore is missing'));
       expect(bootWarnings.length).toBe(1);
       expect(bootWarnings[0]).toContain('.ok/.gitignore');
-      expect(bootWarnings[0]).toContain('ok init');
+      expect(bootWarnings[0]).toContain('Run `ok init` to add the recommended ignore entries.');
     } finally {
       warnSpy.mockRestore();
       if (booted) await booted.destroy();

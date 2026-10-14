@@ -565,6 +565,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         appVersion: 'test-0.0.0',
         instanceLabel: null,
         mcpServerName: null,
+        cliCommandName: null,
         getPathForFile: () => null,
         setDisplayLockCrashKey: () => undefined,
       } satisfies OkDesktopBridge;

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withCliCommandNameArg } from '../main/cli-command-name-arg.ts';
 import { withMcpServerNameArg } from '../main/mcp-server-name-arg.ts';
 
 const invokeMock = vi.fn(() => Promise.resolve({ ok: true }));
@@ -20,6 +21,7 @@ vi.mock('electron', () => ({
 
 type BridgeProbe = {
   mcpServerName: string | null;
+  cliCommandName: string | null;
   state: { query(): Promise<unknown> };
   update: {
     relaunchNow(): Promise<void>;
@@ -124,6 +126,23 @@ describe('preload argv config', () => {
     const bridge = await loadBridge();
 
     expect(bridge.mcpServerName).toBe('open-knowledge-beta');
+  });
+
+  it('exposes the CLI command main hands a Beta window', async () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    process.argv = withCliCommandNameArg(originalArgv);
+
+    const bridge = await loadBridge();
+
+    expect(bridge.cliCommandName).toBe('ok-beta');
+  });
+
+  it('exposes no CLI command when main sent none', async () => {
+    process.argv = originalArgv.filter((arg) => !arg.startsWith('--ok-cli-command-name='));
+
+    const bridge = await loadBridge();
+
+    expect(bridge.cliCommandName).toBeNull();
   });
 });
 

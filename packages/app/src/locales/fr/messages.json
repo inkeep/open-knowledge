@@ -905,9 +905,6 @@
     "7Ongq0": ["Condense mon fichier AGENTS.md à moins de 40 000 caractères"],
     "7OwvEL": ["Afficher l'aperçu HTML"],
     "7PNNNs": ["Ceci envoie du contenu hors de votre machine"],
-    "7PXYaF": [
-      "<0>ok</0> ne fonctionnera pas dans les terminaux externes tant que vous ne l'aurez pas ajouté depuis le menu Fichier. Le terminal intégré et les outils IA d'OpenKnowledge continuent de fonctionner."
-    ],
     "7PzzBU": ["Utilisateur"],
     "7S7FNA": ["OpenKnowledge a vérifié le projet"],
     "7Voget": ["Sélectionner ", ["name"]],
@@ -994,6 +991,11 @@
     "8OGgNM": ["Ouvre ou ferme la recherche de l'éditeur visuel."],
     "8OxKZy": [
       "Déplacement réussi, mais la barre latérale n'est peut-être pas à jour — actualisez pour resynchroniser"
+    ],
+    "8PBuqT": [
+      "<0>",
+      ["cliCommand"],
+      "</0> ne fonctionnera pas dans les terminaux externes tant que vous ne l'aurez pas ajouté depuis le menu Fichier. Le terminal intégré et les outils IA d'OpenKnowledge continuent de fonctionner."
     ],
     "8PifYj": ["Diagramme Mermaid"],
     "8PmoQF": ["Ouvre le menu d'insertion à une position de texte vide ou active."],
@@ -1323,15 +1325,11 @@
     "BMoSQy": [
       "Cet agent ne permet pas à OpenKnowledge de le configurer à votre place. Son guide de configuration indique les étapes manuelles."
     ],
-    "BOsvJ8": [
-      "<0>ok</0> ne fonctionnera pas dans les terminaux externes tant que vous ne l’aurez pas ajouté depuis le menu Fichier. Vos outils d’IA continueront de fonctionner."
-    ],
     "BQKHuL": ["Redémarrer le terminal"],
     "BQu9Pg": ["Lien symbolique"],
     "BRtKwG": [
       "Pour connecter des outils IA sans projet, utilisez Fichier > Configurer les intégrations OpenKnowledge…"
     ],
-    "BUyQnq": ["Impossible de redémarrer le serveur. Essayez `ok start` dans ce dossier."],
     "BVkqD9": [
       "La maintenance de l'index est suspendue car un autre attribut Git contrôle index.md. Mettez à jour .gitattributes pour que les chemins index.md définis utilisent merge=union, puis réessayez."
     ],
@@ -1797,7 +1795,6 @@
     "Fqx38P": ["Qu'est-ce qui vous a gêné ?"],
     "Fr8JGg": ["Fichier zip"],
     "FsEXax": ["Cela n'a pas abouti. Consultez les journaux du serveur et réessayez."],
-    "Fsx78O": ["Ajoutez la commande <0>ok</0> à votre terminal"],
     "FumRbV": ["Vérifications en cours"],
     "FvMSms": [
       "Renommer modifie le fichier sur le disque ainsi que l'id que les agents utilisent pour choisir ce modèle."
@@ -2332,9 +2329,6 @@
     "LHH461": ["Terminer la configuration"],
     "LJHTS5": ["Choisir où envoyer ce message"],
     "LJXDjm": ["Impossible d'enregistrer votre préférence de thème."],
-    "LJeFU6": [
-      "Lancez OpenKnowledge depuis n'importe quel terminal : <0>ok</0> ouvre un projet, <1>ok init</1> connecte vos agents."
-    ],
     "LK83k1": ["Tapez '@' pour mentionner une page"],
     "LKIPzv": [
       [
@@ -2813,9 +2807,6 @@
     "Pkw7J9": ["Ce dossier est vide."],
     "Pp0Vgd": ["Cliquez pour installer dans ", ["label"]],
     "PpJy-V": ["Le point de terminaison n'a pas répondu à temps."],
-    "PqYWiC": [
-      "Impossible de redémarrer automatiquement le serveur. Essayez d'exécuter `ok stop all` dans un terminal, puis rouvrez ce projet — ou redémarrez votre ordinateur si le problème persiste."
-    ],
     "PrJYSN": [
       "Ce dossier n'est pas encore sur GitHub. Le lien ne fonctionnera pas tant qu'il n'aura pas été poussé."
     ],
@@ -3042,16 +3033,17 @@
     "RfaEio": ["Basculer le commentaire de source"],
     "RfilGt": ["Aucune règle ne correspond à vos filtres."],
     "RgbKEe": ["Vous n'avez pas accès à ce dépôt."],
-    "RhX_1U": [
+    "Rh_duv": [
       "Envoyée à <0>",
       ["endpointHost"],
-      "</0> pour calculer les embeddings de votre contenu. Stockée uniquement sur cette machine (dans <1>~/.ok/secrets.yml</1>), jamais dans le projet."
+      "</0> pour calculer les embeddings de votre contenu. Stockée uniquement sur cette machine (dans <1>",
+      ["secretsPath"],
+      "</1>), jamais dans le projet."
     ],
     "Rj01Fz": ["Liens"],
     "RkXlPZ": ["GitHub"],
     "RlCInP": ["Commandes slash"],
     "RmBY0A": ["Aucun dépôt distant git"],
-    "RnrnTe": ["Déjà configuré — ok est disponible dans votre terminal"],
     "RoafuO": ["Envoyer un retour"],
     "RobAKV": ["Mettez à jour la destination et l'ancre de section facultative."],
     "RojU4W": ["Compétences d'OpenKnowledge"],
@@ -3333,6 +3325,11 @@
           "other": ["il y a ", "#", " min"]
         }
       ]
+    ],
+    "V-pEOB": [
+      "<0>",
+      ["cliCommand"],
+      "</0> ne fonctionnera pas dans les terminaux externes tant que vous ne l’aurez pas ajouté depuis le menu Fichier. Vos outils d’IA continueront de fonctionner."
     ],
     "V0Jk_K": ["Non détecté sur cette machine · Fichiers OpenKnowledge présents"],
     "V0mbgd": ["Fermez l'onglet de ce chat pour le supprimer"],
@@ -4192,6 +4189,11 @@
     "cD3aew": [
       "Le recalcul des embeddings se fait au fil des recherches, donc la couverture repart de zéro et se remplit peu à peu."
     ],
+    "cD5D4S": [
+      "Impossible de redémarrer le serveur. Essayez `",
+      ["cliCommand"],
+      " start` dans ce dossier."
+    ],
     "cEoyWz": ["Ajouter un élément à ", ["keyName"]],
     "cF9DyA": ["Reconnexion après le redémarrage du serveur"],
     "cFCKYZ": ["Refuser"],
@@ -4432,6 +4434,7 @@
     "dprWmL": ["Ancre dans cette page"],
     "dr1vFs": ["Remplacer toutes les occurrences"],
     "drzzZw": ["Onglets d'aperçu"],
+    "ds0rjh": ["Ajoutez la commande <0>", ["cliCommand"], "</0> à votre terminal"],
     "dw_3cv": ["Renommer la compétence"],
     "dw_dUJ": ["Échec de la duplication du chemin"],
     "dx-TwN": ["Audit du projet en cours"],
@@ -4884,6 +4887,11 @@
     "h69WC6": ["Envoyé"],
     "h7FzJC": ["La réponse du graphe de liens ne correspond pas à la forme attendue."],
     "h9QFb9": ["Compétence « ", ["0"], " » supprimée"],
+    "hARd2R": [
+      "Impossible de redémarrer automatiquement le serveur. Essayez d'exécuter `",
+      ["cliCommand"],
+      " stop all` dans un terminal, puis rouvrez ce projet — ou redémarrez votre ordinateur si le problème persiste."
+    ],
     "hAbGf0": ["Projet OpenKnowledge existant ouvert dans ", ["ancestorPath"]],
     "hBMK4W": ["Modèles du projet"],
     "hCOLSd": [
@@ -5419,6 +5427,7 @@
       "S'affiche au-dessus du corps du code. Conservé sous la forme `title=\"...\"` en markdown."
     ],
     "lrhetp": ["+ ", ["overflow"], " de plus"],
+    "lvHgM-": ["Déjà configuré — ", ["cliCommand"], " est disponible dans votre terminal"],
     "lwCV5v": ["Impossible d'ouvrir ", ["0"], " pour modification : ", ["1"]],
     "lwvkBP": [
       "Il ajoute aussi les erreurs de connexion à l'affichage qu'OpenKnowledge a écrites dans votre journal utilisateur la semaine dernière, chaque message étant tronqué à 200 caractères."
@@ -7028,6 +7037,13 @@
       "Pas encore de commentaires. Sélectionnez du texte dans le document pour en ajouter un."
     ],
     "zq2eBA": ["Voir dans la source"],
+    "zqJgDd": [
+      "Lancez OpenKnowledge depuis n'importe quel terminal : <0>",
+      ["cliCommand"],
+      "</0> ouvre un projet, <1>",
+      ["cliCommand"],
+      " init</1> connecte vos agents."
+    ],
     "zqQlBg": ["Nombre maximal de fragments de texte par requête d'indexation"],
     "zrP8HX": [
       "Le frontmatter par lequel commence chaque document créé à partir de ce modèle. Les valeurs sont en YAML — une liste s'écrit <0>[a, b]</0> ; <1>{",

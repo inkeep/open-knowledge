@@ -39,7 +39,7 @@ import {
   parseBrokenLinkSuppression,
   parseBrokenLinks,
 } from './advisory-warnings.ts';
-import { buildPreviewAttachWarning, resolvePreviewUrl, START_UI_TEXT_HINT } from './preview-url.ts';
+import { buildPreviewAttachWarning, resolvePreviewUrl, startUiTextHint } from './preview-url.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   AUTHORING_WARNING_CODE_GLOSS,
@@ -49,7 +49,7 @@ import {
   docExtensionOnDisk,
   documentResultBaseShape,
   errorTextWithDetail,
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
+  hocuspocusNotRunningError,
   httpPost,
   httpPut,
   looseObjectArray,
@@ -395,7 +395,7 @@ async function handleFolder(
   url: string | undefined,
   deps: WriteDeps,
 ) {
-  if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+  if (!url) return textResult(hocuspocusNotRunningError(), true);
   const identity = deps.identityRef?.current;
   const result = await httpPost(apiTarget(url, deps.localApi), '/api/create-folder', {
     path: folder.path,
@@ -443,7 +443,7 @@ async function handleTemplate(
   const resolved = resolveTemplatePath(template.path);
   if (!resolved.ok) return textResult(`Error: ${resolved.error}`, true);
   const { folder, name } = resolved;
-  if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+  if (!url) return textResult(hocuspocusNotRunningError(), true);
   const result = await httpPut(url, '/api/template', {
     folder,
     name,
@@ -480,7 +480,7 @@ async function handleAsset(
   url: string | undefined,
   deps: WriteDeps,
 ) {
-  if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+  if (!url) return textResult(hocuspocusNotRunningError(), true);
   if ((asset.content === undefined) === (asset.source === undefined)) {
     return textResult(
       'Error: provide exactly one of `content` (base64) or `source` (local file path) for an asset.',
@@ -815,7 +815,7 @@ async function handleSingleDoc(
   const fmNote = frontmatterIgnoredNote(w.position, spec.content);
   if (fmNote) lines.push(fmNote);
   if (w.extensionNote) lines.push(w.extensionNote);
-  if (noPreviewAnywhere && !preview) lines.push(START_UI_TEXT_HINT);
+  if (noPreviewAnywhere && !preview) lines.push(startUiTextHint());
   if (summaryHint) lines.push(summaryHint);
   if (hints) {
     for (const hint of hints) {
@@ -1112,7 +1112,7 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
           'documents',
         ]);
         if (teaching) return textResult(`Error: ${teaching}`, true);
-        if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+        if (!url) return textResult(hocuspocusNotRunningError(), true);
         return handleBatch(args.documents, cwd, contentDir, url, deps, lockDir, autoOpen);
       }
 
@@ -1126,7 +1126,7 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
       if (teaching) return textResult(`Error: ${teaching}`, true);
 
       if (args.document !== undefined) {
-        if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+        if (!url) return textResult(hocuspocusNotRunningError(), true);
         return handleSingleDoc(
           { ...args.document, summary: args.summary },
           cwd,

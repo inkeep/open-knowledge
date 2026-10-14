@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AutoStartDisabledError } from '../../autostart.ts';
 import { resolveLockDir } from '../../config/paths.ts';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
@@ -10,6 +10,14 @@ import { markServerLockDraining } from '../../server-lock.ts';
 import { register } from './get-preview-url.ts';
 import { bindTestServerLock, bindTestUiServerLock } from './preview-url-test-helpers.ts';
 import type { ServerInstance } from './shared.ts';
+
+beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const ownedDirectories: string[] = [];
 function temporaryProject(prefix = 'ok-get-preview-url-'): string {
@@ -656,5 +664,72 @@ describe('preview_url tool — file branch boot-on-demand', () => {
     const result = await handler({ file: '/loose/notes.md' });
     expect(result.structuredContent?.running).toBe(true);
     expect(result.structuredContent?.autoOpen).toBe(false);
+  });
+});
+
+describe('preview_url tool — names the running channel command', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('a Beta hosted agent is steered to ok-beta open', async () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    const cwd = temporaryProject();
+    bindTestUiServerLock(cwd);
+    const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
+
+    const doc = await handler({ document: 'specs/foo/SPEC' });
+    expect(doc.structuredContent?.okOpenCommand).toBe('ok-beta open specs/foo/SPEC');
+    expect(doc.content[0]?.text ?? '').toContain('run `ok-beta open specs/foo/SPEC`');
+
+    const skill = await handler({ skill: { name: 'trip-log', scope: 'global' } });
+    expect(skill.structuredContent?.okOpenCommand).toBe(
+      'ok-beta open trip-log --skill --scope global',
+    );
+  });
+
+  test('a Beta server with nothing running says ok-beta start', async () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    const handler = captureRegistration(temporaryProject());
+    const result = await handler({ document: 'specs/foo/SPEC' });
+    expect(result.content[0]?.text).toContain('Start it with `ok-beta start`');
+    expect(result.content[0]?.text).not.toContain('`ok start`');
+  });
+
+  test('a Beta server without a mounted UI says ok-beta start', async () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    const cwd = temporaryProject();
+    bindTestServerLock(cwd, 4321, ['http', 'ws']);
+    const result = await captureRegistration(cwd)({ document: 'specs/foo/SPEC' });
+    expect(result.content[0]?.text).toContain('Restart it with plain `ok-beta start`');
+  });
+
+  test('a Beta loose file without a session says ok-beta open', async () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    const empty: OffCwdResolverDeps = {
+      discover: async () => [],
+      inspect: async () => null,
+      realpath: async (p) => p,
+    };
+    const handler = captureRegistration(temporaryProject('ok-pv-'), BASE_CONFIG, {
+      offCwdResolverDeps: empty,
+    });
+    const result = await handler({ file: '/loose/y.md' });
+    expect(result.content[0]?.text).toContain('`ok-beta open /loose/y.md` starts one');
+  });
+
+  test('Stable hints stay byte-identical', async () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    const cwd = temporaryProject();
+    bindTestUiServerLock(cwd);
+    const steered = await captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true })({
+      folder: 'specs/foo',
+    });
+    expect(steered.structuredContent?.okOpenCommand).toBe('ok open specs/foo');
+
+    const idle = await captureRegistration(temporaryProject())({ document: 'specs/foo/SPEC' });
+    expect(idle.content[0]?.text).toContain(
+      'No OpenKnowledge server is running for this project. Start it with `ok start` (also starts the preview UI), or open the project in OK Electron.',
+    );
   });
 });

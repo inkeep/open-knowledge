@@ -2,6 +2,7 @@ import {
   type ClassifiedGitAuthError,
   classifyGitAuthError,
   clientVersionHeaders,
+  currentCliCommandName,
   isGitHubHost,
   normalizeGitHostname,
 } from '@inkeep/open-knowledge-core';
@@ -163,7 +164,9 @@ function describeSignInUsed(
     case 'no-credential':
     case '401':
     case 'unknown-auth': {
-      const renew = viaGh ? `gh auth login --hostname ${host}` : `ok auth login --host ${host}`;
+      const renew = viaGh
+        ? `gh auth login --hostname ${host}`
+        : `${currentCliCommandName()} auth login --host ${host}`;
       return `${used} If that sign-in has expired or was revoked, run: ${renew}`;
     }
     case '403':
@@ -173,7 +176,7 @@ function describeSignInUsed(
     case 'scope-mismatch': {
       const rescope = viaGh
         ? `run: gh auth refresh --hostname ${host} --scopes repo`
-        : `create a token with that scope at https://${host}/settings/tokens and run: ok auth pat --host ${host}`;
+        : `create a token with that scope at https://${host}/settings/tokens and run: ${currentCliCommandName()} auth pat --host ${host}`;
       return `${used} If its token is missing a required OAuth scope, likely repo, ${rescope}`;
     }
     case 'ssh-auth':

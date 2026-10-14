@@ -6,7 +6,7 @@ import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './sh
 import {
   agentIdentityFields,
   apiTarget,
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
+  hocuspocusNotRunningError,
   httpDelete,
   httpPost,
   looseObjectArray,
@@ -265,7 +265,7 @@ export function register(server: ServerInstance, deps: DeleteDeps): void {
         const resolved = resolveTemplatePath(args.template.path);
         if (!resolved.ok) return textResult(`Error: ${resolved.error}`, true);
         const { folder, name } = resolved;
-        if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+        if (!url) return textResult(hocuspocusNotRunningError(), true);
         const params = new URLSearchParams({ folder, name });
         for (const [key, value] of Object.entries(agentIdentityFields(deps.identityRef?.current))) {
           if (typeof value === 'string' && value.length > 0) params.set(key, value);
@@ -281,7 +281,7 @@ export function register(server: ServerInstance, deps: DeleteDeps): void {
         );
       }
 
-      if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+      if (!url) return textResult(hocuspocusNotRunningError(), true);
 
       if (args.folder !== undefined) {
         const result = await httpPost(apiTarget(url, deps.localApi), '/api/delete-path', {

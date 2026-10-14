@@ -426,9 +426,9 @@ export {
   resetMetrics,
 } from './metrics.ts';
 export {
-  MISSING_OK_CONFIG_MESSAGE,
   MissingOkConfigError,
   type MissingOkConfigKind,
+  missingOkConfigMessage,
 } from './missing-ok-config-error.ts';
 export {
   createPersistenceExtension,

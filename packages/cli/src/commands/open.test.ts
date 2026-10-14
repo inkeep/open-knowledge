@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { OpenTargetOptions } from '../utils/open-target.ts';
 import {
   type DesktopAppTarget,
@@ -507,5 +507,29 @@ describe('running from a subdirectory of a project', () => {
     await runOpen('notes', { project: '/other/project' }, deps);
     expect(consulted).toBe(false);
     expect(opened[0]).toContain(encodeURIComponent('/other/project'));
+  });
+});
+
+describe('runOpen hints name the running channel command', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s', async (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    const missing = makeDeps();
+    expect(await runOpen('', { project: '/abs/proj' }, missing.deps)).toBe(1);
+    expect(missing.errors).toEqual([
+      `Nothing to open: pass a doc, folder, or skill name (e.g. \`${command} open specs/foo/SPEC\`).`,
+    ]);
+
+    const noTarget = makeDeps();
+    expect(await runOpen('notes', { project: '/abs/proj' }, noTarget.deps)).toBe(1);
+    expect(noTarget.errors.join('\n')).toContain(
+      `or run \`${command} start\` to serve the editor, then retry.`,
+    );
   });
 });

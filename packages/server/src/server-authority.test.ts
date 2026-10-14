@@ -20,6 +20,14 @@ import {
 } from './server-authority.ts';
 import { ServerAuthorityLeaseVerificationError } from './server-authority-lease.ts';
 
+beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 vi.mock('node:fs', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:fs')>()),
 }));
@@ -288,6 +296,19 @@ describe('acquireServerAuthority', () => {
     expect(() => claim(tree())).toThrow(ServerAuthorityRegistryError);
     expect(() => claim(tree())).toThrow(registryPath);
     expect(() => claim(tree())).toThrow(/Never remove either while a server is running/);
+  });
+
+  test('corrupt registry recovery names the running channel command', () => {
+    writeFileSync(join(directory, 'corrupt.sqlite'), 'not a SQLite database');
+    registryPath = join(directory, 'corrupt.sqlite');
+    try {
+      vi.stubEnv('OK_CHANNEL', 'stable');
+      expect(() => claim(tree())).toThrow(/Run ok stop all and confirm/);
+      vi.stubEnv('OK_CHANNEL', 'beta');
+      expect(() => claim(tree())).toThrow(/Run ok-beta stop all and confirm/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   test('unwritable registry location fails closed', () => {

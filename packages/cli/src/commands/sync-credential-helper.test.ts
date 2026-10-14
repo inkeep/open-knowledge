@@ -1185,6 +1185,15 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
       remedy: `ok auth login --host ${GITHUB_HOST}`,
     },
     {
+      source: "OpenKnowledge Beta's own stored sign-in",
+      channel: 'beta',
+      okStoreToken: REVOKED_OK_TOKEN,
+      detectGh: ghUnavailable,
+      rejected: REVOKED_OK_TOKEN,
+      named: `OpenKnowledge's GitHub sign-in for ${GITHUB_HOST}`,
+      remedy: `ok-beta auth login --host ${GITHUB_HOST}`,
+    },
+    {
       source: "the gh CLI's sign-in",
       okStoreToken: undefined,
       detectGh: (): GhDetectResult => ({ available: true, token: REVOKED_GH_TOKEN }),
@@ -1195,6 +1204,7 @@ describe("ok sync without a running server authenticates through OpenKnowledge's
   ])(
     "when GitHub rejects $source while the user's own helper holds a working credential, ok sync's error names the credential it used and how to renew it",
     async (row) => {
+      vi.stubEnv('OK_CHANNEL', 'channel' in row ? row.channel : 'stable');
       const server = await arrange({
         gitHubAccepts: USER_PASSWORD,
         okStoreToken: row.okStoreToken,

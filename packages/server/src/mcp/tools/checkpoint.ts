@@ -4,7 +4,7 @@ import type { AgentIdentity } from '../agent-identity.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   apiTarget,
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
+  hocuspocusNotRunningError,
   httpPost,
   outputSchemaWithText,
   previewUrlOutputField,
@@ -55,7 +55,7 @@ export function register(server: ServerInstance, deps: CheckpointDeps): void {
       );
       if (!context.ok) return textResult(`Error: ${context.error}`, true);
       const { url } = context;
-      if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+      if (!url) return textResult(hocuspocusNotRunningError(), true);
 
       const identity = deps.identityRef?.current;
       const result = await httpPost(apiTarget(url, deps.localApi), '/api/save-version', {

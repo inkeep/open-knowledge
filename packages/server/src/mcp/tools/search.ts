@@ -19,7 +19,7 @@ import {
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   apiTarget,
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
+  hocuspocusNotRunningError,
   httpPost,
   outputSchemaWithText,
   ROUTED_CWD_DESCRIPTION,
@@ -290,7 +290,7 @@ export function register(server: ServerInstance, deps: SearchDeps): void {
         const { cwd, config, url } = context;
         if (!url) {
           return textResult(
-            `${HOCUSPOCUS_NOT_RUNNING_ERROR}\nFor server-free literal-string search, use \`exec("grep ...")\` instead — it walks the filesystem and does not need Hocuspocus.`,
+            `${hocuspocusNotRunningError()}\nFor server-free literal-string search, use \`exec("grep ...")\` instead — it walks the filesystem and does not need Hocuspocus.`,
             true,
           );
         }

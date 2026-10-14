@@ -8,7 +8,7 @@ import { acquireServerLock, updateServerLockPort } from '../../server-lock.ts';
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import { register, type ShareLinkDeps } from './share-link.ts';
 import type { ServerInstance } from './shared.ts';
-import { HOCUSPOCUS_NOT_RUNNING_ERROR } from './shared.ts';
+import { hocuspocusNotRunningError } from './shared.ts';
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 
@@ -169,7 +169,7 @@ describe('share_link — registration + preconditions', () => {
     await writeFile(resolve(tmpDir, 'notes.md'), '# notes');
     const result = await getTool().handler({ path: 'notes' });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toBe(HOCUSPOCUS_NOT_RUNNING_ERROR);
+    expect(result.content[0]?.text).toBe(hocuspocusNotRunningError());
   });
 });
 

@@ -86,7 +86,9 @@ describe('ensureCliOnPath — consent gate (rc files are never written without a
       baseOpts(h, { consentDecision: GRANTED, logger: { event: (e) => events.push(e) } }),
     );
     expect(result.status).toBe('installed');
-    if (result.status === 'installed') expect(result.summary).toContain('~/.zshrc');
+    if (result.status === 'installed') {
+      expect(result.summary).toBe('Added ok to your PATH — managed block in ~/.zshrc.');
+    }
     const zshrc = readFileSync(join(h, '.zshrc'), 'utf8');
     expect(zshrc).toContain('# >>> open-knowledge cli >>>');
     expect(zshrc).toContain('Delete this whole block to opt out');

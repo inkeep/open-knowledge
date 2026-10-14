@@ -56,7 +56,7 @@ describe('ok ui tombstone', () => {
         `,
       ],
       cwd: CLI_PACKAGE_ROOT,
-      env: { ...process.env, NO_COLOR: '1' },
+      env: { ...process.env, NO_COLOR: '1', OK_CHANNEL: 'stable' },
     });
 
     const stderr = result.stderr.toString();
@@ -64,6 +64,58 @@ describe('ok ui tombstone', () => {
     expect(stderr).toContain('`ok ui` was removed');
     expect(stderr).toContain('ok start');
     expect(stderr).not.toContain('too many arguments');
+  }, 30_000);
+});
+
+function runCliSource(args: readonly string[], channel: 'stable' | 'beta') {
+  return Bun.spawnSync({
+    cmd: [
+      'node',
+      '--import',
+      'tsx',
+      '--conditions=development',
+      '-e',
+      `
+      process.argv = [process.execPath, process.cwd() + '/src/cli.ts', ...${JSON.stringify(args)}];
+      await import('./src/cli.ts');
+      `,
+    ],
+    cwd: CLI_PACKAGE_ROOT,
+    env: { ...process.env, NO_COLOR: '1', OK_CHANNEL: channel },
+  });
+}
+
+describe('CLI names the running channel command', () => {
+  test('Stable --help keeps its program name and examples', () => {
+    const result = runCliSource(['--help'], 'stable');
+    const stdout = result.stdout.toString();
+    expect(result.exitCode).toBe(0);
+    expect(stdout).toContain('Usage: open-knowledge [options] [file | command]');
+    expect(stdout).toContain(
+      '  ok notes.md              Open a single markdown file in the editor',
+    );
+    expect(stdout).toContain(
+      '  ok open ./start.md       Open a file whose name collides with a subcommand',
+    );
+  }, 30_000);
+
+  test('Beta --help names open-knowledge-beta and ok-beta', () => {
+    const result = runCliSource(['--help'], 'beta');
+    const stdout = result.stdout.toString();
+    expect(result.exitCode).toBe(0);
+    expect(stdout).toContain('Usage: open-knowledge-beta [options] [file | command]');
+    expect(stdout).toContain(
+      '  ok-beta notes.md              Open a single markdown file in the editor',
+    );
+    expect(stdout).not.toMatch(/^ {2}ok /m);
+  }, 30_000);
+
+  test('Beta `ui` tombstone points at ok-beta start', () => {
+    const result = runCliSource(['ui'], 'beta');
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain(
+      '`ok-beta ui` was removed — the editor UI is served by the project server. Run `ok-beta start` instead.',
+    );
   }, 30_000);
 });
 

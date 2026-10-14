@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'vitest';
-import { HOCUSPOCUS_NOT_RUNNING_ERROR, UNREADABLE_WARNINGS_TEXT } from './shared.ts';
+import { hocuspocusNotRunningError, UNREADABLE_WARNINGS_TEXT } from './shared.ts';
 import { deleteSkill, moveSkill, moveSkillCrossScope, writeSkill } from './skill-target.ts';
 
 interface ToolResult {
@@ -17,13 +17,13 @@ describe('skill verb tools — server-required contract', () => {
       description: 'Use when logging a trip.',
     })) as ToolResult;
     expect(r.isError).toBe(true);
-    expect(text(r)).toBe(HOCUSPOCUS_NOT_RUNNING_ERROR);
+    expect(text(r)).toBe(hocuspocusNotRunningError());
   });
 
   test('deleteSkill with no server URL returns the not-running error', async () => {
     const r = (await deleteSkill(undefined, { name: 'trip-log' })) as ToolResult;
     expect(r.isError).toBe(true);
-    expect(text(r)).toBe(HOCUSPOCUS_NOT_RUNNING_ERROR);
+    expect(text(r)).toBe(hocuspocusNotRunningError());
   });
 
   test('moveSkill with no server URL returns the not-running error', async () => {
@@ -32,7 +32,7 @@ describe('skill verb tools — server-required contract', () => {
       toName: 'fishing-log',
     })) as ToolResult;
     expect(r.isError).toBe(true);
-    expect(text(r)).toBe(HOCUSPOCUS_NOT_RUNNING_ERROR);
+    expect(text(r)).toBe(hocuspocusNotRunningError());
   });
 });
 
@@ -65,7 +65,7 @@ describe('skill verb tools — name grammar short-circuits before the network', 
       toName: 'trip-log',
     })) as ToolResult;
     expect(r.isError).toBe(true);
-    expect(text(r)).toContain(HOCUSPOCUS_NOT_RUNNING_ERROR);
+    expect(text(r)).toContain(hocuspocusNotRunningError());
     expect(text(r)).toContain('moveState: nothing-written');
     expect(text(r)).toContain('safe to retry once the refusal is addressed');
   });

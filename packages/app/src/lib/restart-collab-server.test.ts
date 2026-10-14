@@ -22,6 +22,17 @@ describe('restartServerFailureMessage', () => {
       "Couldn't restart the server. Try `ok start` in this folder.",
     );
   });
+
+  test('other in a Beta window points at ok-beta start', () => {
+    vi.stubGlobal('window', { okDesktop: { cliCommandName: 'ok-beta' } });
+    try {
+      expect(restartServerFailureMessage({ ok: false, reason: 'other' })).toBe(
+        "Couldn't restart the server. Try `ok-beta start` in this folder.",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('restartCollabServer', () => {

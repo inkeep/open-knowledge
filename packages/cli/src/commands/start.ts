@@ -7,6 +7,7 @@ import { basename, dirname, resolve as pathResolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import {
   applyConfigOverlay,
+  currentCliCommandName,
   DEFAULT_SERVER_HOST,
   type EnvConfigLayer,
   EnvVarError,
@@ -158,7 +159,9 @@ export function deriveServerProcessTitle(cwd: string): string {
 export class OkDirMissingError extends Error {
   readonly cwd: string;
   constructor(cwd: string) {
-    super("This directory isn't set up yet. Run `ok init` first, then `ok start` again.");
+    super(
+      `This directory isn't set up yet. Run \`${currentCliCommandName()} init\` first, then \`${currentCliCommandName()} start\` again.`,
+    );
     this.name = 'OkDirMissingError';
     this.cwd = cwd;
   }
@@ -170,7 +173,7 @@ export class EphemeralProjectDirNotThrowawayError extends Error {
     super(
       `--project-dir must be a throwaway ${EPHEMERAL_PROJECT_DIR_PREFIX}* directory under the OS temp dir. ` +
         `Refusing to write ephemeral session state into ${projectDir}. ` +
-        'Omit --project-dir to let ok start create (and clean up) its own.',
+        `Omit --project-dir to let ${currentCliCommandName()} start create (and clean up) its own.`,
     );
     this.name = 'EphemeralProjectDirNotThrowawayError';
     this.projectDir = projectDir;
@@ -924,7 +927,7 @@ export function formatServerReuseNotice(info: ServerReuseInfo): string[] {
   return [
     `${holder} (pid ${info.pid}).`,
     `  ${info.url}`,
-    'Leaving it running — run `ok stop` first if you want a fresh server.',
+    `Leaving it running — run \`${currentCliCommandName()} stop\` first if you want a fresh server.`,
   ];
 }
 
@@ -960,13 +963,11 @@ export function tryDescribeLockCollision(
 
   try {
     const meta = serverModule.readServerLock(serverModule.resolveLockDir(cwd));
-    if (!meta) {
-      return 'OpenKnowledge server is already running on this project — check `ok status` or `ok stop`.';
+    const command = currentCliCommandName();
+    if (meta?.kind === 'mcp-spawned') {
+      return `An MCP-spawned server holds this lock; it should release on idle-shutdown (~30 min). Or run \`${command} stop\`.`;
     }
-    if (meta.kind === 'mcp-spawned') {
-      return 'An MCP-spawned server holds this lock; it should release on idle-shutdown (~30 min). Or run `ok stop`.';
-    }
-    return 'OpenKnowledge server is already running on this project — check `ok status` or `ok stop`.';
+    return `OpenKnowledge server is already running on this project — check \`${command} status\` or \`${command} stop\`.`;
   } catch {
     return null;
   }

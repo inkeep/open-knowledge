@@ -7,7 +7,7 @@ import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.
 import { DESCRIPTION, type LinksDeps, register } from './links.ts';
 import { bindTestUiServerLock } from './preview-url-test-helpers.ts';
 import type { ServerInstance } from './shared.ts';
-import { HOCUSPOCUS_NOT_RUNNING_ERROR } from './shared.ts';
+import { hocuspocusNotRunningError } from './shared.ts';
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 
@@ -186,7 +186,7 @@ describe('links — registration + DESCRIPTION', () => {
     register(server, makeDeps(undefined, tmpDir));
     const result = await getTool().handler({ kind: 'hubs' });
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toBe(HOCUSPOCUS_NOT_RUNNING_ERROR);
+    expect(result.content[0]?.text).toBe(hocuspocusNotRunningError());
   });
 });
 

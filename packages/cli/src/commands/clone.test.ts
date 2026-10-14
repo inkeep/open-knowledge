@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { type Config, UnsafeIncomingSymlinkError } from '@inkeep/open-knowledge-server';
 import simpleGit, { type SimpleGitOptions } from 'simple-git';
-import { afterEach, beforeEach, describe, expect, it, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest';
 import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import type { ExecFileSyncFn, GhDetectResult } from '../auth/gh-detect.ts';
 import { detectGh } from '../auth/gh-detect.ts';
@@ -30,6 +30,14 @@ import {
   runClone,
   shouldSkipAuthForPublicRepo,
 } from './clone.ts';
+
+beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('resolveSelfCliArgs', () => {
   it('returns [execPath, cliEntry] from argv', () => {
@@ -1512,5 +1520,26 @@ describe('runClone git preflight', () => {
       });
       process.env.PATH = originalPath;
     }
+  });
+});
+
+describe('formatCloneAuthFailure names the running channel command', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s', (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    const login = formatCloneAuthFailure({
+      error: new Error('fatal: could not read Username for https://github.com'),
+      url: 'https://github.com/inkeep/playbooks',
+    });
+    expect(login).toContain(`    1. Run: ${command} auth login`);
+    expect(login).toContain(
+      `    2. Then re-run: ${command} clone https://github.com/inkeep/playbooks`,
+    );
   });
 });

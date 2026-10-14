@@ -6,7 +6,7 @@ import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { type CheckpointDeps, DESCRIPTION, register } from './checkpoint.ts';
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import type { ServerInstance } from './shared.ts';
-import { HOCUSPOCUS_NOT_RUNNING_ERROR } from './shared.ts';
+import { hocuspocusNotRunningError } from './shared.ts';
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 
@@ -102,6 +102,6 @@ describe('checkpoint — registration + behavior', () => {
     register(server, makeDeps(undefined, tmpDir));
     const result = await getTool().handler({});
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain(HOCUSPOCUS_NOT_RUNNING_ERROR);
+    expect(result.content[0]?.text).toContain(hocuspocusNotRunningError());
   });
 });

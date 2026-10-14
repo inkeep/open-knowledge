@@ -1307,6 +1307,16 @@ msgstr "<{componentName}> 不是已知的元件。複製原始碼以便在別處
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "<{descriptorLabel}> 顯示失敗（很可能是屬性有誤）。複製原始碼看看哪裡出了問題，或刪除這個區塊。"
 
+#. Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal
+#: src/components/McpConsentDialogBody.tsx
+msgid "<0>{cliCommand}</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
+msgstr "在你之後從「檔案」選單裡加上之前，<0>{cliCommand}</0> 不會在外部終端機中執行。OpenKnowledge 的內建終端機和 AI 工具照常可用。"
+
+#. Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal
+#: src/components/McpConsentDialogBody.tsx
+msgid "<0>{cliCommand}</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
+msgstr "<0>{cliCommand}</0> 在你稍後從「檔案」選單新增之前，無法在外部終端機中執行。你的 AI 工具仍可正常使用。"
+
 #: src/components/DiffViewBoundary.tsx
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> 無法在這裡合併。請選擇要保留的版本。"
@@ -1322,16 +1332,6 @@ msgstr "<0>找不到鏡像錨點。</0><2>{src}</2> 中不存在 <1>{mirrorSourc
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>鏡像來源已移除。</0>文件 <1>{src}</1> 已無法使用。"
-
-#. Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal
-#: src/components/McpConsentDialogBody.tsx
-msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
-msgstr "在你之後從「檔案」選單裡加上之前，<0>ok</0> 不會在外部終端機中執行。OpenKnowledge 的內建終端機和 AI 工具照常可用。"
-
-#. Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal
-#: src/components/McpConsentDialogBody.tsx
-msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
-msgstr "<0>ok</0> 在你稍後從「檔案」選單新增之前，無法在外部終端機中執行。你的 AI 工具仍可正常使用。"
 
 #: src/components/OkBlobRunner.tsx
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
@@ -1829,8 +1829,8 @@ msgstr "新增標籤"
 #. Toggle in the first-launch dialog that adds the ok CLI to the user's shell PATH
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/OkCliPathRow.tsx
-msgid "Add the <0>ok</0> command to your terminal"
-msgstr "把 <0>ok</0> 指令加到你的終端機"
+msgid "Add the <0>{cliCommand}</0> command to your terminal"
+msgstr "把 <0>{cliCommand}</0> 指令加到你的終端機"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Add the next matching source selection."
@@ -2093,8 +2093,8 @@ msgid "Already sending this report"
 msgstr "這份回報已在傳送中"
 
 #: src/components/McpConsentDialogBody.tsx
-msgid "Already set up — ok is available in your terminal"
-msgstr "已經設定好了——ok 現在可以在你的終端機中使用"
+msgid "Already set up — {cliCommand} is available in your terminal"
+msgstr "已經設定好了——{cliCommand} 現在可以在你的終端機中使用"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Already signed in?"
@@ -4600,16 +4600,16 @@ msgid "Couldn't restart the server — it's running under a different account. R
 msgstr "無法重新啟動伺服器——它正以另一個帳戶執行。請重新啟動電腦來清除，再重新開啟這個專案。"
 
 #: src/lib/install-server-drift-listener.ts
-msgid "Couldn't restart the server automatically. Try running `ok stop all` in a terminal, then reopen this project — or restart your computer if it persists."
-msgstr "無法自動重新啟動伺服器。請在終端機中執行 `ok stop all`，然後重新開啟這個專案——如果狀況持續，請重新啟動電腦。"
+msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop all` in a terminal, then reopen this project — or restart your computer if it persists."
+msgstr "無法自動重新啟動伺服器。請在終端機中執行 `{cliCommand} stop all`，然後重新開啟這個專案——如果狀況持續，請重新啟動電腦。"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Couldn't restart the server. Run ok start in this folder to retry."
 msgstr "無法重新啟動伺服器。請在此資料夾中執行 ok start 以重試。"
 
 #: src/lib/restart-collab-server.ts
-msgid "Couldn't restart the server. Try `ok start` in this folder."
-msgstr "無法重新啟動伺服器。請在這個資料夾中試試 `ok start`。"
+msgid "Couldn't restart the server. Try `{cliCommand} start` in this folder."
+msgstr "無法重新啟動伺服器。請在這個資料夾中試試 `{cliCommand} start`。"
 
 #. placeholder {0}: theme.label
 #: src/components/settings/SavedThemesTiles.tsx
@@ -8326,8 +8326,8 @@ msgstr "最近一次編輯"
 
 #. Subtext under the terminal toggle explaining what the ok command gives you
 #: src/components/McpConsentDialogBody.tsx
-msgid "Launch OpenKnowledge from any terminal — <0>ok</0> opens a project, <1>ok init</1> connects your agents."
-msgstr "在任何終端機中啟動 OpenKnowledge——<0>ok</0> 開啟專案，<1>ok init</1> 連接你的智慧代理。"
+msgid "Launch OpenKnowledge from any terminal — <0>{cliCommand}</0> opens a project, <1>{cliCommand} init</1> connects your agents."
+msgstr "在任何終端機中啟動 OpenKnowledge——<0>{cliCommand}</0> 開啟專案，<1>{cliCommand} init</1> 連接你的智慧代理。"
 
 #: src/editor/components/Pdf.tsx
 msgid "Layout"
@@ -13257,8 +13257,8 @@ msgid "Sent privately to the OpenKnowledge team, along with your note and app ve
 msgstr "會連同你的備註和應用程式版本一起私下寄給 OpenKnowledge 團隊。絕不會公開發布。"
 
 #: src/components/settings/SearchSection.tsx
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>~/.ok/secrets.yml</1>), never in the project."
-msgstr "會送到 <0>{endpointHost}</0> 來產生你內容的嵌入向量。只存在這台電腦上（在 <1>~/.ok/secrets.yml</1>），絕不會存進專案。"
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
+msgstr "會送到 <0>{endpointHost}</0> 來產生你內容的嵌入向量。只存在這台電腦上（在 <1>{secretsPath}</1>），絕不會存進專案。"
 
 #: src/comments/store.ts
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."

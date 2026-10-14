@@ -229,6 +229,7 @@ import {
   runLoginShellProbe,
   runWindowsPathProbe,
 } from './claude-readiness.ts';
+import { withCliCommandNameArg } from './cli-command-name-arg.ts';
 import { requestUserConsent } from './consent-dialog.ts';
 import { copyImageToClipboard } from './copy-image-clipboard.ts';
 import {
@@ -502,7 +503,7 @@ import {
   unrecognizedUpdateModeIn,
   windowRestoreKey,
 } from './state-store.ts';
-import { quoteStopCommandPath } from './stop-command.ts';
+import { stopCommandLine } from './stop-command.ts';
 import { isTerminalAvailable, withTerminalCapabilityArg } from './terminal-capability.ts';
 import {
   isTerminalConsented,
@@ -1281,7 +1282,7 @@ function runDriverBootSmokeInProduction(): void {
 }
 
 function withWindowRuntimeArgs(args: readonly string[]): string[] {
-  const withServerName = withMcpServerNameArg(args);
+  const withServerName = withCliCommandNameArg(withMcpServerNameArg(args));
   const withDebug = isDebugKeyringSmokeAllowed()
     ? [...withServerName, '--ok-debug-keyring-smoke=1']
     : withServerName;
@@ -2277,7 +2278,7 @@ async function openProjectOrFallbackToNavigator(
           `${projectPath}\n\n` +
             (prompt.reason === 'eperm'
               ? 'The conflicting server belongs to another user account and cannot be stopped from here. Quit it from that account and try again.'
-              : `Could not stop the conflicting server. Quit it manually (\`ok stop --force ${quoteStopCommandPath(projectPath, process.platform)}\`) and try again.`),
+              : `Could not stop the conflicting server. Quit it manually (\`${stopCommandLine(projectPath, process.platform, { force: true })}\`) and try again.`),
         );
       } else {
         getLogger('project').info(
@@ -2290,7 +2291,7 @@ async function openProjectOrFallbackToNavigator(
           'user declined the stop-and-retry remedy',
         );
         if (isStaleLockHolder && otherChannelHolder === null) {
-          const stopCommandTarget = quoteStopCommandPath(projectPath, process.platform);
+          const stopCommand = stopCommandLine(projectPath, process.platform);
           flushDesktopLogger();
           showErrorOverNavigator(
             dialogTitle,
@@ -2302,9 +2303,9 @@ async function openProjectOrFallbackToNavigator(
                   `Help > Report a bug.`
                 : warnsHolderMayBeLive
                   ? `Nothing was stopped. If you need that process, leave it running and open a ` +
-                    `different project; if you do not, run \`ok stop ${stopCommandTarget}\` and ` +
+                    `different project; if you do not, run \`${stopCommand}\` and ` +
                     `open the project again, or reopen and choose Stop Server & Retry.`
-                  : `Nothing was stopped. Run \`ok stop ${stopCommandTarget}\` and open the ` +
+                  : `Nothing was stopped. Run \`${stopCommand}\` and open the ` +
                     `project again, or reopen and choose Stop Server & Retry to have ` +
                     `OpenKnowledge do it.`),
           );

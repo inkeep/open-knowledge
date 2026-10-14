@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { INTERNAL_BUNDLE_SKILL_NAMES, isInternalBundleSkillName } from '../../skill-bundles.ts';
 import {
   type ConfigOrResolver,
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
+  hocuspocusNotRunningError,
   httpGetRows,
   outputSchemaWithText,
   ROUTED_CWD_DESCRIPTION,
@@ -296,7 +296,7 @@ export function register(server: ServerInstance, deps: SkillsToolDeps): void {
       );
       if (!context.ok) return textResult(`Error: ${context.error}`, true);
       const { url } = context;
-      if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+      if (!url) return textResult(hocuspocusNotRunningError(), true);
 
       if (args.query !== undefined) {
         const q = args.query.trim();

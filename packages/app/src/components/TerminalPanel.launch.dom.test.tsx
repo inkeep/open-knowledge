@@ -106,6 +106,7 @@ function makeBridge(
   preflight: ClaudeReadiness = WIRED,
   cliReadiness: CliReadiness = ON_PATH,
   platform: OkDesktopBridge['platform'] = 'darwin',
+  cliCommandName: string | null = 'ok',
 ) {
   const dataSubs: Array<(m: OkPtyData) => void> = [];
   const noticeSubs: Array<(m: OkPtyNotice) => void> = [];
@@ -155,6 +156,7 @@ function makeBridge(
       shell: { openExternal: vi.fn(async () => {}) },
       config: { e2eSmoke: false },
       platform,
+      cliCommandName,
     } as unknown as OkDesktopBridge,
     terminal,
     pushData: (m: OkPtyData) => {
@@ -182,6 +184,11 @@ function bakedLaunch(
 function bakedArgv(createMock: ReturnType<typeof vi.fn>): string | readonly string[] | undefined {
   const launch = bakedLaunch(createMock);
   return typeof launch === 'object' ? [launch.executable, ...launch.args] : launch;
+}
+
+function bakedLaunchArgs(createMock: ReturnType<typeof vi.fn>): readonly string[] {
+  const launch = bakedLaunch(createMock);
+  return typeof launch === 'object' ? launch.args : [];
 }
 
 function bakedArgvText(createMock: ReturnType<typeof vi.fn>): string {
@@ -694,6 +701,34 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
       'mcp_servers.open-knowledge.default_tools_approval_mode="approve"',
       'hi',
     ]);
+  });
+
+  test('claude pre-approves the open command of the channel main named', async () => {
+    const beta = makeBridge(
+      { ...WIRED, mcpServerName: 'open-knowledge-beta' },
+      ON_PATH,
+      'darwin',
+      'ok-beta',
+    );
+    render(
+      <TerminalPanel bridge={beta.bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />,
+    );
+    await waitFor(() => expect(beta.terminal.create).toHaveBeenCalledTimes(1));
+    const settings = JSON.parse(String(bakedLaunchArgs(beta.terminal.create)[1])) as {
+      permissions: { allow: string[] };
+    };
+    expect(settings.permissions.allow).toEqual([
+      'mcp__open-knowledge-beta',
+      'Bash(ok-beta open:*)',
+    ]);
+    cleanup();
+
+    const unnamed = makeBridge(WIRED, ON_PATH, 'darwin', null);
+    render(
+      <TerminalPanel bridge={unnamed.bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />,
+    );
+    await waitFor(() => expect(unnamed.terminal.create).toHaveBeenCalledTimes(1));
+    expect(bakedArgvText(unnamed.terminal.create)).not.toContain('Bash(');
   });
 
   test('codex auto-approves only the server name main checked, and nothing without one', async () => {

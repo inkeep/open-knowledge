@@ -19,7 +19,7 @@ import {
   degradationBlock,
   errorTextWithDetail,
   formatDiagnosticLine,
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
+  hocuspocusNotRunningError,
   httpGet,
   httpPost,
   looseObjectArray,
@@ -194,7 +194,7 @@ export function register(server: ServerInstance, deps: LintDeps): void {
       );
       if (!context.ok) return textResult(`Error: ${context.error}`, true);
       const { cwd, url } = context;
-      if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+      if (!url) return textResult(hocuspocusNotRunningError(), true);
 
       if (args.fix === true) {
         if (args.document === undefined) {

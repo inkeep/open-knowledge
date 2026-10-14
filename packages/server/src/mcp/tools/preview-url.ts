@@ -1,3 +1,4 @@
+import { currentCliCommandName } from '@inkeep/open-knowledge-core';
 import { resolveLockDir } from '../../config/paths.ts';
 import { lockBaseUrl } from '../../process-lock.ts';
 import { lockAdvertisesUi, readServerLock } from '../../server-lock.ts';
@@ -47,10 +48,12 @@ type PreviewAttachWarning =
       autoOpen: boolean;
     };
 
-const START_UI_MESSAGE =
-  'No UI is running for this project. Start one to see the preview: `ok start` (terminal), or open the project in OK Electron.';
-const ATTACH_PREVIEW_ONCE_MESSAGE =
-  "No browser is attached to the preview. Open it in your host's surface: `preview_url`, then drive your in-app browser (Claude Code Desktop: `preview_start({url})` to open the pane, then `navigate({url})` to move; Cursor: `Navigate`; Codex desktop: `@Browser`); on a stdio CLI with no browser, `ok open <doc>`.";
+export function startUiTextHint(): string {
+  return `No UI is running for this project. Start one to see the preview: \`${currentCliCommandName()} start\` (terminal), or open the project in OK Electron.`;
+}
+function attachPreviewOnceMessage(): string {
+  return `No browser is attached to the preview. Open it in your host's surface: \`preview_url\`, then drive your in-app browser (Claude Code Desktop: \`preview_start({url})\` to open the pane, then \`navigate({url})\` to move; Cursor: \`Navigate\`; Codex desktop: \`@Browser\`); on a stdio CLI with no browser, \`${currentCliCommandName()} open <doc>\`.`;
+}
 
 export function buildPreviewAttachWarning(
   preview: { url: string } | null,
@@ -60,19 +63,17 @@ export function buildPreviewAttachWarning(
     return {
       action: 'attach-preview-once',
       previewUrl: preview.url,
-      message: ATTACH_PREVIEW_ONCE_MESSAGE,
+      message: attachPreviewOnceMessage(),
       autoOpen,
     };
   }
   return {
     action: 'start-ui',
     previewUrl: null,
-    message: START_UI_MESSAGE,
+    message: startUiTextHint(),
     autoOpen,
   };
 }
-
-export const START_UI_TEXT_HINT = START_UI_MESSAGE;
 
 export async function resolvePreviewUrlForTool(
   docName: string,

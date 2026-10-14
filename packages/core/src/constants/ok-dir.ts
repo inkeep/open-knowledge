@@ -1,4 +1,4 @@
-import { currentDesktopProduct } from './product.ts';
+import { currentDesktopProduct, userHomeDisplayPath } from './product.ts';
 
 export const OK_DIR = '.ok';
 
@@ -57,5 +57,5 @@ export function posixOkManagedBinDir(
 }
 
 export function okUserHomeDisplayPath(...segments: string[]): string {
-  return ['~', currentDesktopProduct().userHomeDirName, ...segments].join('/');
+  return userHomeDisplayPath(currentDesktopProduct(), ...segments);
 }

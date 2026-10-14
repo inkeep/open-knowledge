@@ -1487,6 +1487,7 @@ export interface OkDesktopBridge {
   readonly appVersion: string;
   readonly instanceLabel: string | null;
   readonly mcpServerName: string | null;
+  readonly cliCommandName: string | null;
 
   getPathForFile(file: File): string | null;
 

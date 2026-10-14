@@ -1,5 +1,9 @@
 import { isAbsolute } from 'node:path';
-import { MANAGED_ARTIFACT_SCOPES, SKILL_NAME_REGEX } from '@inkeep/open-knowledge-core';
+import {
+  currentCliCommandName,
+  MANAGED_ARTIFACT_SCOPES,
+  SKILL_NAME_REGEX,
+} from '@inkeep/open-knowledge-core';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import { z } from 'zod';
 import { AutoStartDisabledError } from '../../autostart.ts';
@@ -112,16 +116,18 @@ const OutputSchema = outputSchemaWithText({
     .nullable()
     .optional()
     .describe(
-      'Machine-readable form of the hosted-agent steer: when the calling agent runs inside an OpenKnowledge surface (the desktop app’s built-in terminal, or its in-app agent panel) AND a doc/folder/skill target was given, the exact `ok open …` command to run to bring it up for the user. Run it INSTEAD of navigating `url`, and do not paste `url` into your reply — the user is already in the app it points at. `null`/absent in every other context (navigate `url` per your host instead).',
+      'Machine-readable form of the hosted-agent steer: when the calling agent runs inside an OpenKnowledge surface (the desktop app’s built-in terminal, or its in-app agent panel) AND a doc/folder/skill target was given, the exact OpenKnowledge CLI `open` command to run to bring it up for the user. Run it INSTEAD of navigating `url`, and do not paste `url` into your reply — the user is already in the app it points at. `null`/absent in every other context (navigate `url` per your host instead).',
     ),
 });
 
 const NO_UI_SERVER_RUNNING_MESSAGE =
   'The OK server is running but no UI has bound for this project yet. Retry in a few seconds, or open the project in OK Electron.';
-const NO_UI_NONE_MOUNTED_MESSAGE =
-  'The OK server is running but no preview UI is mounted (e.g. it was started with `--only server`). Restart it with plain `ok start` to serve the editor, or open the project in OK Electron.';
-const NO_SERVER_MESSAGE =
-  'No OpenKnowledge server is running for this project. Start it with `ok start` (also starts the preview UI), or open the project in OK Electron.';
+function noUiNoneMountedMessage(): string {
+  return `The OK server is running but no preview UI is mounted (e.g. it was started with \`--only server\`). Restart it with plain \`${currentCliCommandName()} start\` to serve the editor, or open the project in OK Electron.`;
+}
+function noServerMessage(): string {
+  return `No OpenKnowledge server is running for this project. Start it with \`${currentCliCommandName()} start\` (also starts the preview UI), or open the project in OK Electron.`;
+}
 const AUTOSTART_DISABLED_NOTE = ' Auto-start is disabled (OK_MCP_AUTOSTART=0).';
 function readUserAutoOpen(): boolean {
   try {
@@ -140,7 +146,7 @@ function readUserAutoOpen(): boolean {
 }
 
 function noSingleFileSessionMessage(file: string): string {
-  return `No Open Knowledge session is serving ${file} yet. On a host with a terminal, \`ok open ${file}\` starts one; otherwise open ${file} in the OK Desktop app. Then retry.`;
+  return `No Open Knowledge session is serving ${file} yet. On a host with a terminal, \`${currentCliCommandName()} open ${file}\` starts one; otherwise open ${file} in the OK Desktop app. Then retry.`;
 }
 
 function serverExplicitlyLacksUi(lockDir: string): boolean {
@@ -264,12 +270,13 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
             ? `#/${encodeSkillRoute(args.skill.scope ?? 'project', args.skill.name)}`
             : null;
 
+      const cliCommand = currentCliCommandName();
       const okOpenCommand = args.document
-        ? `ok open ${shellQuoteArg(args.document)}`
+        ? `${cliCommand} open ${shellQuoteArg(args.document)}`
         : args.folder
-          ? `ok open ${shellQuoteArg(args.folder)}`
+          ? `${cliCommand} open ${shellQuoteArg(args.folder)}`
           : args.skill
-            ? `ok open ${args.skill.name} --skill${args.skill.scope === 'global' ? ' --scope global' : ''}`
+            ? `${cliCommand} open ${args.skill.name} --skill${args.skill.scope === 'global' ? ' --scope global' : ''}`
             : null;
       const hostedAgentSteer =
         deps.isHostedAgent && okOpenCommand
@@ -308,9 +315,9 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
 
       if (baseUrl === null) {
         const hint = !isServerLive(lockDir)
-          ? `${NO_SERVER_MESSAGE}${autoStartDisabled ? AUTOSTART_DISABLED_NOTE : ''}`
+          ? `${noServerMessage()}${autoStartDisabled ? AUTOSTART_DISABLED_NOTE : ''}`
           : serverExplicitlyLacksUi(lockDir)
-            ? NO_UI_NONE_MOUNTED_MESSAGE
+            ? noUiNoneMountedMessage()
             : NO_UI_SERVER_RUNNING_MESSAGE;
         return textPlusStructured(`${hostedAgentSteer}${hint}`, {
           url: null,

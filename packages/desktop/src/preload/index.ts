@@ -81,6 +81,7 @@ import {
   asSpellingLanguagesSetResult,
 } from '../shared/menu-dispatch-results.ts';
 import {
+  CLI_COMMAND_NAME_ARG_NAME,
   LANGUAGE_PREFERENCE_ARG_NAME,
   MCP_SERVER_NAME_ARG_NAME,
   resolveOkDesktopMode,
@@ -967,6 +968,7 @@ const bridge: OkDesktopBridge = {
   appVersion: parseArg('app-version') ?? '0.0.0',
   instanceLabel: parseArg('instance-label') ?? null,
   mcpServerName: parseArg(MCP_SERVER_NAME_ARG_NAME) ?? null,
+  cliCommandName: parseArg(CLI_COMMAND_NAME_ARG_NAME) ?? null,
 
   getPathForFile: (file) => {
     const path = webUtils.getPathForFile(file);

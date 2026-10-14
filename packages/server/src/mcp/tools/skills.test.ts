@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { BUNDLE_SKILL_NAME } from '../../skill-bundles.ts';
-import { HOCUSPOCUS_NOT_RUNNING_ERROR, type ServerInstance } from './shared.ts';
+import { hocuspocusNotRunningError, type ServerInstance } from './shared.ts';
 import { register as registerSkills, type SkillsToolDeps } from './skills.ts';
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
@@ -77,7 +77,7 @@ describe('skills read tool — server-required', () => {
     const handler = captureSkills(undefined);
     const r = await handler({ name: 'trip-log' });
     expect(r.isError).toBe(true);
-    expect(text(r)).toContain(HOCUSPOCUS_NOT_RUNNING_ERROR);
+    expect(text(r)).toContain(hocuspocusNotRunningError());
   });
 });
 
@@ -162,7 +162,7 @@ describe('skills read tool — built-in OK skills short-circuit before the netwo
     const handler = captureSkills(undefined);
     const r = await handler({ name: 'open-knowledge-pack-fishing' });
     expect(r.isError).toBe(true);
-    expect(text(r)).toContain(HOCUSPOCUS_NOT_RUNNING_ERROR);
+    expect(text(r)).toContain(hocuspocusNotRunningError());
   });
 });
 

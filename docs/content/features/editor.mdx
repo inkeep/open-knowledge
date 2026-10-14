@@ -293,7 +293,7 @@ If a connection check fails because of a read error or an indeterminate result, 
 
 The empty-state create composer on a fresh project carries the same three-way split: its In app rows pick the in-app agent the **Create** button uses, its Terminal rows (desktop only, disabled until the workspace resolves) launch any of those CLIs with the brief you typed, and its External apps rows hand that brief to an agent app installed here.
 
-When Claude or Codex launches from the docked terminal, OpenKnowledge auto-approves its own MCP tools, so the agent searches, reads, and edits the knowledge base without a per-call approval prompt. Claude additionally auto-approves the `ok open` command. Every other CLI launches unchanged.
+When Claude or Codex launches from the docked terminal, OpenKnowledge auto-approves its own MCP tools, so the agent searches, reads, and edits the knowledge base without a per-call approval prompt. Claude additionally auto-approves the `ok open` command (`ok-beta open` for Beta). Every other CLI launches unchanged.
 
 Five tools stay gated: `delete` and `move` (knowledge-base-wide blast radius), `share_link` (publishes content), `install` (writes executable skill scripts into the agent's own config directory), and `import` (acquires skill content from an external source). For Claude, everything outside OpenKnowledge still prompts too, including shell commands and non-OK file edits. The guarantee is best-effort per agent: Claude uses an explicit allow/ask list, while Codex uses its own **approve** mode (auto-approve except potentially-unsafe actions) and only gets it once its OpenKnowledge entry is already configured, so run `ok init` for Codex if it keeps asking.
 

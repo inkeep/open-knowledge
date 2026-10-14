@@ -6,11 +6,7 @@ import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import { DESCRIPTION, type LintDeps, register } from './lint.ts';
 import type { ServerInstance } from './shared.ts';
-import {
-  AUDIT_FILE_CAP,
-  AUDIT_FILE_DIAGNOSTIC_CAP,
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
-} from './shared.ts';
+import { AUDIT_FILE_CAP, AUDIT_FILE_DIAGNOSTIC_CAP, hocuspocusNotRunningError } from './shared.ts';
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 
@@ -240,7 +236,7 @@ describe('lint — registration + DESCRIPTION', () => {
     register(server, makeDeps(undefined, tmpDir));
     const result = await getTool().handler({});
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toBe(HOCUSPOCUS_NOT_RUNNING_ERROR);
+    expect(result.content[0]?.text).toBe(hocuspocusNotRunningError());
   });
 });
 

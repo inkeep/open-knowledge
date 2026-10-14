@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { okCliCommandName } from '@/lib/channel-cli-copy';
 import { useConfigContextOptional, useSettingsLoadingReason } from '@/lib/config-context';
 import type { OkMcpWiringShowPayload } from '@/lib/desktop-bridge-types';
 import { type McpConsentStore, mcpConsentStore } from '@/lib/mcp-consent-store';
@@ -142,6 +143,7 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
   const skillsOffered = globalSkills.some((skill) => skill.paths.length > 0);
   const pathActionable = isPathRowActionable(pathInstall);
   const ptyAvailable = window.okDesktop?.config.ptyAvailable === true;
+  const cliCommand = okCliCommandName();
   const editors = connectableEditors(payload.detectedEditors);
   const hasEditors = editors.length > 0;
   const replacing = editors.filter((e) => e.willReplace);
@@ -308,8 +310,8 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                     />
                     <span className="flex min-w-0 flex-1 items-center gap-1.5 pe-28 text-sm font-medium text-foreground">
                       <Trans comment="Toggle in the first-launch dialog that adds the ok CLI to the user's shell PATH">
-                        Add the <code className="inline-code text-1sm!">ok</code> command to your
-                        terminal
+                        Add the <code className="inline-code text-1sm!">{cliCommand}</code> command
+                        to your terminal
                       </Trans>
                     </span>
                   </span>
@@ -317,29 +319,30 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                     <span className={ROW_SUBTEXT}>
                       <Trans comment="Subtext under the terminal toggle explaining what the ok command gives you">
                         Launch OpenKnowledge from any terminal —{' '}
-                        <code className="inline-code text-xs!">ok</code> opens a project,{' '}
-                        <code className="inline-code text-xs!">ok init</code> connects your agents.
+                        <code className="inline-code text-xs!">{cliCommand}</code> opens a project,{' '}
+                        <code className="inline-code text-xs!">{cliCommand} init</code> connects
+                        your agents.
                       </Trans>
                     </span>
                   )}
                   {!pathActionable && (
                     <span className={ROW_SUBTEXT} data-testid="mcp-consent-path-status">
-                      {t`Already set up — ok is available in your terminal`}
+                      {t`Already set up — ${cliCommand} is available in your terminal`}
                     </span>
                   )}
                   {pathActionable && pathTouched && !pathChecked && (
                     <span className={ROW_WARNING} data-testid="mcp-consent-path-warning">
                       {ptyAvailable ? (
                         <Trans comment="Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal">
-                          <code className="inline-code text-xs!">ok</code> won't run in external
-                          terminals until you add it later from the File menu. OpenKnowledge's
-                          built-in terminal and AI tools keep working.
+                          <code className="inline-code text-xs!">{cliCommand}</code> won't run in
+                          external terminals until you add it later from the File menu.
+                          OpenKnowledge's built-in terminal and AI tools keep working.
                         </Trans>
                       ) : (
                         <Trans comment="Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal">
-                          <code className="inline-code text-xs!">ok</code> won't run in external
-                          terminals until you add it later from the File menu. Your AI tools keep
-                          working.
+                          <code className="inline-code text-xs!">{cliCommand}</code> won't run in
+                          external terminals until you add it later from the File menu. Your AI
+                          tools keep working.
                         </Trans>
                       )}
                     </span>

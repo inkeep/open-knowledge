@@ -24,5 +24,9 @@ describe('renderer-window MCP server-name wiring (bypass-pin)', () => {
       /withMcpServerNameArg\(args\)/.test(fn?.[1] ?? ''),
       FIX('withWindowRuntimeArgs no longer passes its args through withMcpServerNameArg.'),
     ).toBe(true);
+    expect(
+      /withCliCommandNameArg\(/.test(fn?.[1] ?? ''),
+      FIX('withWindowRuntimeArgs no longer passes its args through withCliCommandNameArg.'),
+    ).toBe(true);
   });
 });

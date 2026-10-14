@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { inspect } from 'node:util';
 import {
+  currentCliCommandName,
   currentMcpServerName,
   type McpLauncherDeclineReason,
   OPENKNOWLEDGE_SKILLS_REPO,
@@ -530,8 +531,7 @@ async function promptSharingMode(
       {
         name: 'Local only (keep out of git via .git/info/exclude)',
         value: 'local-only',
-        description:
-          'OK config stays on this machine only; teammates do not see it. Safe escape hatch via `ok config-sharing share`.',
+        description: `OK config stays on this machine only; teammates do not see it. Safe escape hatch via \`${currentCliCommandName()} config-sharing share\`.`,
       },
     ],
   });
@@ -1161,7 +1161,7 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
       `${warning(`[ok] Content scope promoted to the git repo root: ${projectRoot}`)}\n` +
         `      Ran in ${promotedFromDir}/, but .ok/ lives at the git root (one .ok/ per git repo),\n` +
         `      so the whole repo is now the content scope. To narrow it, re-run with\n` +
-        `      \`ok init --content-dir .\`, or set content.dir: ${promotedFromDir} in ${OK_DIR}/config.yml.\n`,
+        `      \`${currentCliCommandName()} init --content-dir .\`, or set content.dir: ${promotedFromDir} in ${OK_DIR}/config.yml.\n`,
     );
   }
 
@@ -1711,7 +1711,7 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
       lines.push(`  ${dim('none installed — skipped for this run (--no-skills)')}`);
       lines.push(`  ${dim('No user-global skill was installed or removed; any already on this')}`);
       lines.push(`  ${dim('machine are untouched. Run init without the flag to install them:')}`);
-      lines.push(`  ${dim('  ok init')}`);
+      lines.push(`  ${dim(`  ${currentCliCommandName()} init`)}`);
       lines.push(
         `  ${dim('--no-skills covers user-global skills only, not project-local skills.')}`,
       );
@@ -1746,12 +1746,12 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
           break;
         case 'opted-out':
           lines.push(
-            `  ${name}  ${dim(`not installed — turned off on this machine; reinstall with ok init --skills ${bundle.bundleId} or Settings → Skills Studio`)}`,
+            `  ${name}  ${dim(`not installed — turned off on this machine; reinstall with ${currentCliCommandName()} init --skills ${bundle.bundleId} or Settings → Skills Studio`)}`,
           );
           break;
         case 'decision-read-failed':
           lines.push(
-            `  ${warning(`${name}  not installed — could not read whether it is turned off on this machine; rerun ok init once ${okUserHomeDisplayPath(SKILL_STATE_FILENAME)} is readable`)}`,
+            `  ${warning(`${name}  not installed — could not read whether it is turned off on this machine; rerun ${currentCliCommandName()} init once ${okUserHomeDisplayPath(SKILL_STATE_FILENAME)} is readable`)}`,
           );
           break;
         default: {
@@ -1765,7 +1765,7 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
       lines.push(`  ${dim('Opt out: DO_NOT_TRACK=1, or Settings → User → Preferences.')}`);
     }
     if (bundles.some((b) => b.result === 'failed')) {
-      lines.push(`  ${warning('Retry with: ok repair-skills')}`);
+      lines.push(`  ${warning(`Retry with: ${currentCliCommandName()} repair-skills`)}`);
     }
   }
 
@@ -1795,11 +1795,11 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
       `  .ok/ was initialized at ${cwd} because it contains a .git folder (one .ok/ per git repo),`,
     );
     lines.push(
-      `  not the sub-folder you ran \`ok init\` in${result.promotedFromDir ? ` (${result.promotedFromDir})` : ''}. The whole repo is now the content scope.`,
+      `  not the sub-folder you ran \`${currentCliCommandName()} init\` in${result.promotedFromDir ? ` (${result.promotedFromDir})` : ''}. The whole repo is now the content scope.`,
     );
     if (result.promotedFromDir) {
       lines.push(
-        `  To scope to just that sub-folder, re-run \`ok init --content-dir .\` from there, or set`,
+        `  To scope to just that sub-folder, re-run \`${currentCliCommandName()} init --content-dir .\` from there, or set`,
       );
       lines.push(`  content.dir: ${result.promotedFromDir} in ${OK_DIR}/config.yml.`);
     }
@@ -1817,8 +1817,8 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
   lines.push(...formatSharingOutcome(result.sharing, cwd));
 
   const seedLines = (indent: string): string[] => [
-    `${indent}- ${info('ok seed --list-packs')}   — browse the starter packs`,
-    `${indent}- ${info('ok seed')}                — scaffold an empty repo`,
+    `${indent}- ${info(`${currentCliCommandName()} seed --list-packs`)}   — browse the starter packs`,
+    `${indent}- ${info(`${currentCliCommandName()} seed`)}                — scaffold an empty repo`,
   ];
   if (anyWritten) {
     const seen = new Set<EditorId>();
@@ -2107,7 +2107,7 @@ export function formatSharingOutcome(outcome: SharingOutcome, cwd: string): stri
         lines.push(raw.length > 0 ? `  ${raw}` : '');
       }
       lines.push(
-        `  Re-run ${info('ok config-sharing unshare')} after resolving to complete the switch.`,
+        `  Re-run ${info(`${currentCliCommandName()} config-sharing unshare`)} after resolving to complete the switch.`,
       );
       return lines;
     case 'no-exclude': {
@@ -2116,7 +2116,7 @@ export function formatSharingOutcome(outcome: SharingOutcome, cwd: string): stri
           warning('Sharing mode: --local-only requested but no git repo found — option ignored'),
         );
         lines.push(
-          `  Run ${info('git init')} (or open this folder via OK Desktop, which can scaffold a repo) and then ${info('ok config-sharing unshare')}.`,
+          `  Run ${info('git init')} (or open this folder via OK Desktop, which can scaffold a repo) and then ${info(`${currentCliCommandName()} config-sharing unshare`)}.`,
         );
       } else if (outcome.reason === 'no-git') {
         return [];

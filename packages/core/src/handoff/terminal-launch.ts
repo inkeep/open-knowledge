@@ -298,7 +298,9 @@ function buildClaudeSettingsJson(opts: BuildCliLaunchOptions): string | null {
   }
   if (opts.autoApproveOkTools === true) {
     settings.permissions = {
-      allow: [`mcp__${server}`, 'Bash(ok open:*)'],
+      allow: opts.cliCommandName
+        ? [`mcp__${server}`, `Bash(${opts.cliCommandName} open:*)`]
+        : [`mcp__${server}`],
       ask: OK_GATED_TOOL_NAMES.map((tool) => `mcp__${server}__${tool}`),
     };
   }
@@ -443,6 +445,7 @@ export interface BuildCliLaunchOptions {
   readonly mcpPreApprove?: boolean;
   readonly autoApproveOkTools?: boolean;
   readonly mcpServerName?: string;
+  readonly cliCommandName?: string;
 }
 
 export function buildWindowsCliLaunch(

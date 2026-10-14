@@ -1303,6 +1303,16 @@ msgstr "<{componentName}> bukan komponen yang dikenal. Salin sumbernya untuk dip
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "<{descriptorLabel}> gagal dirender (kemungkinan prop yang salah). Salin sumbernya untuk melihat apa yang salah, atau hapus bloknya."
 
+#. Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal
+#: src/components/McpConsentDialogBody.tsx
+msgid "<0>{cliCommand}</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
+msgstr "<0>{cliCommand}</0> tidak akan berjalan di terminal eksternal sampai Anda menambahkannya nanti dari menu Berkas. Terminal bawaan dan alat AI OpenKnowledge tetap berfungsi."
+
+#. Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal
+#: src/components/McpConsentDialogBody.tsx
+msgid "<0>{cliCommand}</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
+msgstr "<0>{cliCommand}</0> tidak akan berjalan di terminal eksternal sampai Anda menambahkannya nanti dari menu File. Alat AI Anda tetap berfungsi."
+
 #: src/components/DiffViewBoundary.tsx
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "<0>{filePath}</0> tidak bisa digabungkan di sini. Pilih versi yang ingin disimpan."
@@ -1318,16 +1328,6 @@ msgstr "<0>Jangkar cermin tidak ditemukan.</0> Tidak ada <1>{mirrorSourceTag}</1
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>Sumber cermin dihapus.</0> Dokumen <1>{src}</1> sudah tidak tersedia."
-
-#. Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal
-#: src/components/McpConsentDialogBody.tsx
-msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
-msgstr "<0>ok</0> tidak akan berjalan di terminal eksternal sampai Anda menambahkannya nanti dari menu Berkas. Terminal bawaan dan alat AI OpenKnowledge tetap berfungsi."
-
-#. Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal
-#: src/components/McpConsentDialogBody.tsx
-msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
-msgstr "<0>ok</0> tidak akan berjalan di terminal eksternal sampai Anda menambahkannya nanti dari menu File. Alat AI Anda tetap berfungsi."
 
 #: src/components/OkBlobRunner.tsx
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
@@ -1825,8 +1825,8 @@ msgstr "Tambahkan tag"
 #. Toggle in the first-launch dialog that adds the ok CLI to the user's shell PATH
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/OkCliPathRow.tsx
-msgid "Add the <0>ok</0> command to your terminal"
-msgstr "Tambahkan perintah <0>ok</0> ke terminal Anda"
+msgid "Add the <0>{cliCommand}</0> command to your terminal"
+msgstr "Tambahkan perintah <0>{cliCommand}</0> ke terminal Anda"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Add the next matching source selection."
@@ -2089,8 +2089,8 @@ msgid "Already sending this report"
 msgstr "Laporan ini sudah dikirim"
 
 #: src/components/McpConsentDialogBody.tsx
-msgid "Already set up — ok is available in your terminal"
-msgstr "Sudah disiapkan — ok tersedia di terminal Anda"
+msgid "Already set up — {cliCommand} is available in your terminal"
+msgstr "Sudah disiapkan — {cliCommand} tersedia di terminal Anda"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Already signed in?"
@@ -4596,16 +4596,16 @@ msgid "Couldn't restart the server — it's running under a different account. R
 msgstr "Server tidak bisa dimulai ulang — ia berjalan di bawah akun lain. Mulai ulang komputer Anda untuk membersihkannya, lalu buka lagi proyek ini."
 
 #: src/lib/install-server-drift-listener.ts
-msgid "Couldn't restart the server automatically. Try running `ok stop all` in a terminal, then reopen this project — or restart your computer if it persists."
-msgstr "Server tidak bisa dimulai ulang secara otomatis. Coba jalankan `ok stop all` di terminal, lalu buka lagi proyek ini — atau mulai ulang komputer Anda jika masih berlanjut."
+msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop all` in a terminal, then reopen this project — or restart your computer if it persists."
+msgstr "Server tidak bisa dimulai ulang secara otomatis. Coba jalankan `{cliCommand} stop all` di terminal, lalu buka lagi proyek ini — atau mulai ulang komputer Anda jika masih berlanjut."
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Couldn't restart the server. Run ok start in this folder to retry."
 msgstr "Tidak dapat memulai ulang server. Jalankan ok start di folder ini untuk mencoba lagi."
 
 #: src/lib/restart-collab-server.ts
-msgid "Couldn't restart the server. Try `ok start` in this folder."
-msgstr "Server tidak bisa dimulai ulang. Coba `ok start` di folder ini."
+msgid "Couldn't restart the server. Try `{cliCommand} start` in this folder."
+msgstr "Server tidak bisa dimulai ulang. Coba `{cliCommand} start` di folder ini."
 
 #. placeholder {0}: theme.label
 #: src/components/settings/SavedThemesTiles.tsx
@@ -8322,8 +8322,8 @@ msgstr "Suntingan terakhir"
 
 #. Subtext under the terminal toggle explaining what the ok command gives you
 #: src/components/McpConsentDialogBody.tsx
-msgid "Launch OpenKnowledge from any terminal — <0>ok</0> opens a project, <1>ok init</1> connects your agents."
-msgstr "Jalankan OpenKnowledge dari terminal mana pun — <0>ok</0> membuka proyek, <1>ok init</1> menghubungkan agen Anda."
+msgid "Launch OpenKnowledge from any terminal — <0>{cliCommand}</0> opens a project, <1>{cliCommand} init</1> connects your agents."
+msgstr "Jalankan OpenKnowledge dari terminal mana pun — <0>{cliCommand}</0> membuka proyek, <1>{cliCommand} init</1> menghubungkan agen Anda."
 
 #: src/editor/components/Pdf.tsx
 msgid "Layout"
@@ -13253,8 +13253,8 @@ msgid "Sent privately to the OpenKnowledge team, along with your note and app ve
 msgstr "Dikirim secara pribadi ke tim OpenKnowledge, beserta catatan Anda dan versi aplikasinya. Tidak pernah dipublikasikan."
 
 #: src/components/settings/SearchSection.tsx
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>~/.ok/secrets.yml</1>), never in the project."
-msgstr "Dikirim ke <0>{endpointHost}</0> untuk meng-embed konten Anda. Disimpan hanya di komputer ini (di <1>~/.ok/secrets.yml</1>), tidak pernah di proyek."
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
+msgstr "Dikirim ke <0>{endpointHost}</0> untuk meng-embed konten Anda. Disimpan hanya di komputer ini (di <1>{secretsPath}</1>), tidak pernah di proyek."
 
 #: src/comments/store.ts
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."

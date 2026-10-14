@@ -6,10 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { okCliCommandName } from '@/lib/channel-cli-copy';
 import type { OkIntegrationsStatus } from '@/lib/desktop-bridge-types';
 
 export function OkCliPathRow() {
   const { t } = useLingui();
+  const cliCommand = okCliCommandName();
   const bridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   const [status, setStatus] = useState<OkIntegrationsStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -70,7 +72,7 @@ export function OkCliPathRow() {
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="font-medium text-foreground text-sm">
               <Trans>
-                Add the <code className="inline-code">ok</code> command to your terminal
+                Add the <code className="inline-code">{cliCommand}</code> command to your terminal
               </Trans>
             </span>
             <span className="text-muted-foreground text-xs" data-testid="ok-cli-path-status">

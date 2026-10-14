@@ -31,9 +31,11 @@ function statusWith(path: OkIntegrationsStatus['path']): OkIntegrationsStatus {
 function installBridge(
   status: OkIntegrationsStatus,
   setResult?: (request: OkIntegrationsSetRequest) => OkIntegrationsSetResult,
+  cliCommandName: string | null = null,
 ) {
   const setCalls: OkIntegrationsSetRequest[] = [];
   const bridge = {
+    cliCommandName,
     integrations: {
       status: async () => status,
       setComponent: async (request: OkIntegrationsSetRequest) => {
@@ -75,6 +77,32 @@ describe('OkCliPathRow', () => {
     const checkbox = await screen.findByTestId('ok-cli-path-checkbox');
     expect(checkbox.getAttribute('data-state')).toBe('checked');
     expect(screen.getByTestId('ok-cli-path-status').textContent).toContain('~/.zshrc');
+  });
+
+  test('names the ok command when main sent the Stable command or none', async () => {
+    installBridge(
+      statusWith({ shellDetected: true, rcFilesToTouch: ['~/.zshrc'], installed: false }),
+      undefined,
+      'ok',
+    );
+    renderRow();
+
+    expect((await screen.findByTestId('ok-cli-path-row')).textContent).toContain(
+      'Add the ok command to your terminal',
+    );
+  });
+
+  test('names the Beta command in a Beta window', async () => {
+    installBridge(
+      statusWith({ shellDetected: true, rcFilesToTouch: ['~/.zshrc'], installed: false }),
+      undefined,
+      'ok-beta',
+    );
+    renderRow();
+
+    expect((await screen.findByTestId('ok-cli-path-row')).textContent).toContain(
+      'Add the ok-beta command to your terminal',
+    );
   });
 
   test('checking it asks the host to install the shim', async () => {

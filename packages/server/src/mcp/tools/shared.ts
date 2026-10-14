@@ -4,6 +4,7 @@ import {
   AdvisoryWarningSchema,
   BrokenLinkSchema,
   BrokenLinkSuppressionSchema,
+  currentCliCommandName,
   getAgentCanonicalDescriptors,
   isAuditEmptyScopeWarning,
   SERVER_TIMEOUT_ERROR_PREFIX,
@@ -206,8 +207,9 @@ export function textPlusStructured<T>(text: string, structured: T, isError?: boo
   };
 }
 
-export const HOCUSPOCUS_NOT_RUNNING_ERROR =
-  'Error: Hocuspocus server is not running. Start it with `ok start`, then retry.\nDo not fall back to native file edits for in-scope markdown; route writes through OpenKnowledge so attribution and live sync stay intact.';
+export function hocuspocusNotRunningError(): string {
+  return `Error: Hocuspocus server is not running. Start it with \`${currentCliCommandName()} start\`, then retry.\nDo not fall back to native file edits for in-scope markdown; route writes through OpenKnowledge so attribution and live sync stay intact.`;
+}
 
 export type ServerUrlOrResolver =
   | string
@@ -258,7 +260,7 @@ export async function requireProjectServer(
 > {
   const context = await resolveProjectServerContext(resolveCwd, config, serverUrl, explicitCwd);
   if (!context.ok) return { ok: false, result: textResult(`Error: ${context.error}`, true) };
-  if (!context.url) return { ok: false, result: textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true) };
+  if (!context.url) return { ok: false, result: textResult(hocuspocusNotRunningError(), true) };
   return {
     ok: true,
     cwd: context.cwd,

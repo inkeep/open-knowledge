@@ -17,7 +17,7 @@ import {
   agentIdentityFields,
   alignWarningCodes,
   errorTextWithDetail,
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
+  hocuspocusNotRunningError,
   httpDelete,
   httpGet,
   httpPost,
@@ -60,7 +60,7 @@ export async function writeSkill(
 ) {
   const resolved = resolveSkillName(input.name);
   if (!resolved.ok) return textResult(`Error: ${resolved.error}`, true);
-  if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+  if (!url) return textResult(hocuspocusNotRunningError(), true);
   const result = await httpPut(url, '/api/skill', {
     ...(input.scope !== undefined ? { scope: input.scope } : {}),
     name: input.name,
@@ -146,7 +146,7 @@ export async function writeSkillFile(
 ) {
   const resolved = resolveSkillName(input.name);
   if (!resolved.ok) return textResult(`Error: ${resolved.error}`, true);
-  if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+  if (!url) return textResult(hocuspocusNotRunningError(), true);
   const result = await httpPut(url, '/api/skill-file', {
     ...(input.scope !== undefined ? { scope: input.scope } : {}),
     name: input.name,
@@ -207,7 +207,7 @@ export async function deleteSkillFile(
 ) {
   const resolved = resolveSkillName(input.name);
   if (!resolved.ok) return textResult(`Error: ${resolved.error}`, true);
-  if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+  if (!url) return textResult(hocuspocusNotRunningError(), true);
   const params = new URLSearchParams({
     name: input.name,
     scope: input.scope ?? 'project',
@@ -232,7 +232,7 @@ export async function deleteSkill(
 ) {
   const resolved = resolveSkillName(input.name);
   if (!resolved.ok) return textResult(`Error: ${resolved.error}`, true);
-  if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+  if (!url) return textResult(hocuspocusNotRunningError(), true);
   const params = new URLSearchParams({ name: input.name, scope: input.scope ?? 'project' });
   if (input.summary !== undefined) params.set('summary', input.summary);
   appendIdentityParams(params, input.identity);
@@ -259,7 +259,7 @@ export async function moveSkill(
   if (!rf.ok) return textResult(`Error: ${rf.error}`, true);
   const rt = resolveSkillName(input.toName);
   if (!rt.ok) return textResult(`Error: ${rt.error}`, true);
-  if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+  if (!url) return textResult(hocuspocusNotRunningError(), true);
   const result = await httpPost(url, '/api/skill', {
     ...(input.scope !== undefined ? { scope: input.scope } : {}),
     fromName: input.fromName,
@@ -388,7 +388,7 @@ export async function moveSkillCrossScope(
   if (!rf.ok) return refuse(`Error: ${rf.error}`);
   const rt = resolveSkillName(input.toName);
   if (!rt.ok) return refuse(`Error: ${rt.error}`);
-  if (!url) return refuse(HOCUSPOCUS_NOT_RUNNING_ERROR);
+  if (!url) return refuse(hocuspocusNotRunningError());
 
   const moved = await httpPost(url, '/api/skill/move-scope', {
     name: input.fromName,

@@ -1307,6 +1307,16 @@ msgstr "<{componentName}> ليس مكوّنًا معروفًا. انسخ الم�
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "تعذّر عرض <{descriptorLabel}> (على الأرجح خاصية غير صالحة). انسخ المصدر لمعرفة الخطأ، أو احذف الكتلة."
 
+#. Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal
+#: src/components/McpConsentDialogBody.tsx
+msgid "<0>{cliCommand}</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
+msgstr "لن يعمل <0>{cliCommand}</0> في الطرفيات الخارجية حتى تضيفه لاحقًا من قائمة «ملف». تظل طرفية OpenKnowledge المدمجة وأدوات الذكاء الاصطناعي تعمل."
+
+#. Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal
+#: src/components/McpConsentDialogBody.tsx
+msgid "<0>{cliCommand}</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
+msgstr "<0>{cliCommand}</0> لن يعمل في الوحدات الطرفية الخارجية حتى تضيفه لاحقًا من قائمة «ملف». ستستمر أدوات الذكاء الاصطناعي لديك في العمل."
+
 #: src/components/DiffViewBoundary.tsx
 msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
 msgstr "تعذّر دمج <0>{filePath}</0> هنا. اختر النسخة التي تريد الاحتفاظ بها."
@@ -1322,16 +1332,6 @@ msgstr "<0>لم يُعثر على مرساة المرآة.</0> لا يوجد <1>
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>تمت إزالة مصدر المرآة.</0> لم يعد المستند <1>{src}</1> متاحًا."
-
-#. Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal
-#: src/components/McpConsentDialogBody.tsx
-msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
-msgstr "لن يعمل <0>ok</0> في الطرفيات الخارجية حتى تضيفه لاحقًا من قائمة «ملف». تظل طرفية OpenKnowledge المدمجة وأدوات الذكاء الاصطناعي تعمل."
-
-#. Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal
-#: src/components/McpConsentDialogBody.tsx
-msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
-msgstr "<0>ok</0> لن يعمل في الوحدات الطرفية الخارجية حتى تضيفه لاحقًا من قائمة «ملف». ستستمر أدوات الذكاء الاصطناعي لديك في العمل."
 
 #: src/components/OkBlobRunner.tsx
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
@@ -1829,8 +1829,8 @@ msgstr "إضافة وسم"
 #. Toggle in the first-launch dialog that adds the ok CLI to the user's shell PATH
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/OkCliPathRow.tsx
-msgid "Add the <0>ok</0> command to your terminal"
-msgstr "أضف الأمر <0>ok</0> إلى طرفيتك"
+msgid "Add the <0>{cliCommand}</0> command to your terminal"
+msgstr "أضف الأمر <0>{cliCommand}</0> إلى طرفيتك"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Add the next matching source selection."
@@ -2093,8 +2093,8 @@ msgid "Already sending this report"
 msgstr "يجري إرسال هذا التقرير بالفعل"
 
 #: src/components/McpConsentDialogBody.tsx
-msgid "Already set up — ok is available in your terminal"
-msgstr "مُعدّ بالفعل — الأمر ok متاح في طرفيتك"
+msgid "Already set up — {cliCommand} is available in your terminal"
+msgstr "مُعدّ بالفعل — الأمر {cliCommand} متاح في طرفيتك"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Already signed in?"
@@ -4600,16 +4600,16 @@ msgid "Couldn't restart the server — it's running under a different account. R
 msgstr "تعذّرت إعادة تشغيل الخادم — يعمل تحت حساب مختلف. أعد تشغيل جهازك لتحريره، ثم أعد فتح هذا المشروع."
 
 #: src/lib/install-server-drift-listener.ts
-msgid "Couldn't restart the server automatically. Try running `ok stop all` in a terminal, then reopen this project — or restart your computer if it persists."
-msgstr "تعذّرت إعادة تشغيل الخادم تلقائيًا. جرّب تشغيل `ok stop all` في طرفية، ثم أعد فتح هذا المشروع — أو أعد تشغيل جهازك إن استمرت المشكلة."
+msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop all` in a terminal, then reopen this project — or restart your computer if it persists."
+msgstr "تعذّرت إعادة تشغيل الخادم تلقائيًا. جرّب تشغيل `{cliCommand} stop all` في طرفية، ثم أعد فتح هذا المشروع — أو أعد تشغيل جهازك إن استمرت المشكلة."
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Couldn't restart the server. Run ok start in this folder to retry."
 msgstr "تعذّر إعادة تشغيل الخادم. شغّل ok start في هذا المجلد لإعادة المحاولة."
 
 #: src/lib/restart-collab-server.ts
-msgid "Couldn't restart the server. Try `ok start` in this folder."
-msgstr "تعذّرت إعادة تشغيل الخادم. جرّب `ok start` في هذا المجلد."
+msgid "Couldn't restart the server. Try `{cliCommand} start` in this folder."
+msgstr "تعذّرت إعادة تشغيل الخادم. جرّب `{cliCommand} start` في هذا المجلد."
 
 #. placeholder {0}: theme.label
 #: src/components/settings/SavedThemesTiles.tsx
@@ -8326,8 +8326,8 @@ msgstr "آخر تعديل"
 
 #. Subtext under the terminal toggle explaining what the ok command gives you
 #: src/components/McpConsentDialogBody.tsx
-msgid "Launch OpenKnowledge from any terminal — <0>ok</0> opens a project, <1>ok init</1> connects your agents."
-msgstr "شغّل OpenKnowledge من أي طرفية — <0>ok</0> يفتح مشروعًا، و<1>ok init</1> يربط وكلاءك."
+msgid "Launch OpenKnowledge from any terminal — <0>{cliCommand}</0> opens a project, <1>{cliCommand} init</1> connects your agents."
+msgstr "شغّل OpenKnowledge من أي طرفية — <0>{cliCommand}</0> يفتح مشروعًا، و<1>{cliCommand} init</1> يربط وكلاءك."
 
 #: src/editor/components/Pdf.tsx
 msgid "Layout"
@@ -13257,8 +13257,8 @@ msgid "Sent privately to the OpenKnowledge team, along with your note and app ve
 msgstr "يُرسل بشكل خاص إلى فريق OpenKnowledge، مع ملاحظتك ونسخة التطبيق. لا يُنشر علنًا أبدًا."
 
 #: src/components/settings/SearchSection.tsx
-msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>~/.ok/secrets.yml</1>), never in the project."
-msgstr "يُرسل إلى <0>{endpointHost}</0> لتضمين محتواك. يُخزَّن على هذا الجهاز فقط (في <1>~/.ok/secrets.yml</1>)، وليس في المشروع أبدًا."
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>{secretsPath}</1>), never in the project."
+msgstr "يُرسل إلى <0>{endpointHost}</0> لتضمين محتواك. يُخزَّن على هذا الجهاز فقط (في <1>{secretsPath}</1>)، وليس في المشروع أبدًا."
 
 #: src/comments/store.ts
 msgid "Sent, but the comments could not be marked done — they're still waiting to send."

@@ -11,7 +11,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { AutoStartDisabledError, type ServerLockMetadata } from '@inkeep/open-knowledge-server';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   bridgeStdioToHttpMcp,
   parseSpawnTimeoutEnv,
@@ -19,6 +19,14 @@ import {
   resolveMcpKeepaliveWsUrl,
   startMcpShim,
 } from './shim.ts';
+
+beforeEach(() => {
+  vi.stubEnv('OK_CHANNEL', 'stable');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 interface FakeTransport {
   onerror: ((err: Error) => void) | undefined;
@@ -235,6 +243,20 @@ describe('MCP stdio shim server resolution', () => {
     expect((err as Error).message).toContain('Run `ok start` in the target project');
     expect((err as Error).message).toContain('then retry this tool');
     expect((err as Error).message).toContain('native file edits for OpenKnowledge content');
+  });
+
+  test('auto-start opt-out on Beta names ok-beta start', async () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    const err: unknown = await resolveMcpHttpUrl({
+      lockDir,
+      contentDir: tmp,
+      envAutoStart: '0',
+      readLock: () => null,
+      isAlive: () => false,
+    }).catch((e: unknown) => e);
+    expect((err as Error).message).toContain(
+      'Run `ok-beta start` in the target project, then retry this tool.',
+    );
   });
 
   test.each(['missing', 'overlong'])(

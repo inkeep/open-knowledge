@@ -717,7 +717,7 @@ describe('search MCP tool — route-only previewUrl + no ui block (PRD-6735)', (
 });
 
 describe('search MCP tool — error paths', () => {
-  test('server-not-running returns HOCUSPOCUS_NOT_RUNNING_ERROR + grep fallback hint (FR7, AC4)', async () => {
+  test('server-not-running returns hocuspocusNotRunningError() + grep fallback hint (FR7, AC4)', async () => {
     const { server, registered } = makeFakeServer();
     register(server, {
       resolveCwd: async () => '/tmp/proj',

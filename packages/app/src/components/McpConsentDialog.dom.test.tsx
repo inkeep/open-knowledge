@@ -572,6 +572,26 @@ describe('McpConsentDialog PATH consent row', () => {
     );
   });
 
+  test('names the Beta command throughout the row in a Beta window', async () => {
+    (window as unknown as { okDesktop?: unknown }).okDesktop = {
+      config: { ptyAvailable: true },
+      cliCommandName: 'ok-beta',
+    };
+    await renderDialog();
+
+    const checkbox = screen.getByTestId('mcp-consent-path-checkbox');
+    const row = checkbox.closest('label')?.textContent ?? '';
+    expect(row).toContain('Add the ok-beta command to your terminal');
+    expect(row).toContain('ok-beta opens a project, ok-beta init connects your agents.');
+    expect(row).not.toMatch(/\bok\b(?!-beta)/);
+
+    await userEvent.click(checkbox);
+    await userEvent.click(checkbox);
+    expect(screen.getByTestId('mcp-consent-path-warning').textContent).toMatch(
+      /^ok-beta won't run in external terminals/,
+    );
+  });
+
   test('mentions the built-in terminal only when the desktop bridge reports PTY support', async () => {
     (window as unknown as { okDesktop?: unknown }).okDesktop = {
       config: { ptyAvailable: true },
@@ -596,6 +616,25 @@ describe('McpConsentDialog PATH consent row', () => {
         { editorIds: [], pathInstall: true, skills: undefined },
       ]);
     });
+  });
+
+  test('alreadyInstalled names the Beta command in a Beta window', async () => {
+    (window as unknown as { okDesktop?: unknown }).okDesktop = {
+      config: { ptyAvailable: false },
+      cliCommandName: 'ok-beta',
+    };
+    await renderDialog(
+      makeHarness({
+        snapshot: {
+          ...payload,
+          pathInstall: { ...payload.pathInstall, alreadyInstalled: true },
+        },
+      }),
+    );
+
+    expect(screen.getByTestId('mcp-consent-path-status').textContent).toBe(
+      'Already set up — ok-beta is available in your terminal',
+    );
   });
 
   test('alreadyInstalled renders an informational row and solicits no decision', async () => {

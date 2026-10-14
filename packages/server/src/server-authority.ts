@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { userInfo } from 'node:os';
 import { dirname, isAbsolute, normalize, relative, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { LOCAL_DIR, OK_DIR, SERVER_AUTHORITY_REGISTRY_FILENAME } from '@inkeep/open-knowledge-core';
+import {
+  currentCliCommandName,
+  LOCAL_DIR,
+  OK_DIR,
+  SERVER_AUTHORITY_REGISTRY_FILENAME,
+} from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import {
   normalizeFsPath,
@@ -38,7 +43,7 @@ type ServerAuthorityVerification =
   | { kind: 'failed'; error: ServerAuthorityLeaseVerificationError };
 
 function ownershipRegistryRecovery(registryPath: string | undefined): string {
-  return `Run ok stop all and confirm every OpenKnowledge server under this OS account has exited. Then back up and remove ${registryPath ?? 'the named ownership registry'} together with its -journal file if present, keeping them together as one backup. Never remove either while a server is running.`;
+  return `Run ${currentCliCommandName()} stop all and confirm every OpenKnowledge server under this OS account has exited. Then back up and remove ${registryPath ?? 'the named ownership registry'} together with its -journal file if present, keeping them together as one backup. Never remove either while a server is running.`;
 }
 
 function unverifiedOwnershipMessage(

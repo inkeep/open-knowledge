@@ -6,6 +6,7 @@ import {
   EDITOR_LABELS as CORE_EDITOR_LABELS,
   HOSTS_WITH_USER_SKILL_DIR as CORE_HOSTS_WITH_USER_SKILL_DIR,
   type EditorId as CoreEditorId,
+  currentCliCommandName,
   currentDesktopProduct,
   currentMcpServerName,
   DESKTOP_PRODUCTS,
@@ -709,7 +710,7 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> & { pi: ManagedFi
     label: EDITOR_LABELS.pi,
     configPath: () => {
       throw new Error(
-        `Pi has no user-global MCP config; OK's integration is the project-scoped bridge extension at ${piExtensionProjectPath(currentDesktopProduct())} (run \`ok init\` in the project).`,
+        `Pi has no user-global MCP config; OK's integration is the project-scoped bridge extension at ${piExtensionProjectPath(currentDesktopProduct())} (run \`${currentCliCommandName()} init\` in the project).`,
       );
     },
     format: 'file',

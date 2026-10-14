@@ -21,7 +21,7 @@ import {
   parseBrokenLinks,
 } from './advisory-warnings.ts';
 import { resolveWithinRoot } from './path-safety.ts';
-import { buildPreviewAttachWarning, resolvePreviewUrl, START_UI_TEXT_HINT } from './preview-url.ts';
+import { buildPreviewAttachWarning, resolvePreviewUrl, startUiTextHint } from './preview-url.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   AUTHORING_WARNING_CODE_GLOSS,
@@ -29,7 +29,7 @@ import {
   CANONICAL_COMPONENT_GUIDANCE,
   documentResultBaseShape,
   errorTextWithDetail,
-  HOCUSPOCUS_NOT_RUNNING_ERROR,
+  hocuspocusNotRunningError,
   httpPost,
   httpPut,
   nestDocResult,
@@ -274,7 +274,7 @@ function composeWritePreviewResult(
   const brokenLinkSuppression = parseBrokenLinkSuppression(result.brokenLinkSuppression);
 
   const lines: string[] = [leadLine];
-  if (noPreviewAnywhere && !preview) lines.push(START_UI_TEXT_HINT);
+  if (noPreviewAnywhere && !preview) lines.push(startUiTextHint());
   if (summaryHint) lines.push(summaryHint);
   if (advisoryWarnings) {
     lines.push(...formatAdvisoryLines(advisoryWarnings));
@@ -337,7 +337,7 @@ async function handleTemplate(
   if (!resolved.ok) return textResult(`Error: ${resolved.error}`, true);
   const { folder, name } = resolved;
 
-  if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+  if (!url) return textResult(hocuspocusNotRunningError(), true);
   const filePath = templateFilePath(cwd, folder, name);
   if (!filePath.ok || !existsSync(filePath.abs)) {
     return textResult(
@@ -436,7 +436,7 @@ async function handleSkillFileEdit(
       true,
     );
   }
-  if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+  if (!url) return textResult(hocuspocusNotRunningError(), true);
 
   const scope = skill.scope ?? 'project';
   const existing = await readSkillFile(url, scope, skill.name, pathCheck.path);
@@ -515,7 +515,7 @@ async function handleSkill(
       true,
     );
   }
-  if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+  if (!url) return textResult(hocuspocusNotRunningError(), true);
 
   const scope = skill.scope ?? 'project';
   const existing = await fetchSkill(url, scope, skill.name);
@@ -562,7 +562,7 @@ async function handleFolder(
   url: string | undefined,
   deps: EditDeps,
 ) {
-  if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+  if (!url) return textResult(hocuspocusNotRunningError(), true);
   const result = await httpPut(url, '/api/folder-config', {
     path: folder.path,
     frontmatter: folder.frontmatter,
@@ -752,7 +752,7 @@ export function register(server: ServerInstance, deps: EditDeps): void {
       if (args.document !== undefined) {
         const docTeaching = bodyOrFrontmatterError(args.document, 'document');
         if (docTeaching) return textResult(`Error: ${docTeaching}`, true);
-        if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+        if (!url) return textResult(hocuspocusNotRunningError(), true);
         if (args.document.frontmatter !== undefined) {
           return handleDocFrontmatter(
             { path: args.document.path, frontmatter: args.document.frontmatter },
