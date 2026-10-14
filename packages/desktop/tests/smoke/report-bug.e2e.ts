@@ -103,6 +103,20 @@ async function readScreenshotPreview(dialog: Locator): Promise<string | null> {
   return await img.getAttribute('src');
 }
 
+const MENU_PAINT_CSS =
+  '[role="menu"], [role="menu"] * { animation: none !important; transition: none !important; }\n' +
+  '[role="menu"] { background: rgb(255, 0, 255) !important; opacity: 1 !important; ' +
+  'transform: none !important; }\n' +
+  '[role="menu"] * { opacity: 0 !important; }\n';
+
+async function attachPreview(name: string, dataUrl: string): Promise<void> {
+  const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+  await test.info().attach(name, {
+    body: Buffer.from(base64, 'base64'),
+    contentType: 'image/png',
+  });
+}
+
 function skipWhenHostCannotCapture(preview: string | null): asserts preview is string {
   test.skip(
     preview === null,
@@ -182,6 +196,12 @@ test.describe('Report-a-bug entry points', () => {
       .getByRole('menu')
       .filter({ has: page.getByRole('menuitem', { name: /rename/i }) });
     await expect(contextMenu).toBeVisible({ timeout: 10_000 });
+    await page.addStyleTag({ content: MENU_PAINT_CSS });
+    await expect(contextMenu).toHaveCSS('background-color', 'rgb(255, 0, 255)');
+    await expect(contextMenu).toHaveCSS('opacity', '1');
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
     const menuBox = await contextMenu.boundingBox();
     if (!menuBox) throw new Error('context menu reported no bounding box');
 
@@ -189,35 +209,35 @@ test.describe('Report-a-bug entry points', () => {
     await expect(composeDialog).toBeVisible({ timeout: 10_000 });
     const withMenu = await readScreenshotPreview(composeDialog);
     if (withMenu === null) throw new Error('the second pass captured nothing while the first did');
-    expect(withMenu).not.toEqual(withoutMenu);
+    await attachPreview('preview-without-menu', withoutMenu);
+    await attachPreview('preview-with-menu', withMenu);
 
-    const diff = await app.evaluate(
+    const painted = await app.evaluate(
       ({ nativeImage }, images) => {
-        const a = nativeImage.createFromDataURL(images.a).toBitmap();
-        const b = nativeImage.createFromDataURL(images.b).toBitmap();
-        if (a.length !== b.length || a.length === 0) {
-          return { comparable: false, changedPixels: 0, totalPixels: 0 };
-        }
-        let changedPixels = 0;
-        for (let i = 0; i < a.length; i += 4) {
-          if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2]) changedPixels += 1;
-        }
-        return { comparable: true, changedPixels, totalPixels: a.length / 4 };
+        const fraction = (dataUrl: string): number => {
+          const bitmap = nativeImage.createFromDataURL(dataUrl).toBitmap();
+          let matched = 0;
+          for (let i = 0; i < bitmap.length; i += 4) {
+            if (bitmap[i] > 200 && bitmap[i + 1] < 80 && bitmap[i + 2] > 200) matched += 1;
+          }
+          return bitmap.length === 0 ? 0 : matched / (bitmap.length / 4);
+        };
+        return { without: fraction(images.without), with: fraction(images.with) };
       },
-      { a: withoutMenu, b: withMenu },
+      { without: withoutMenu, with: withMenu },
     );
-    expect(diff.comparable, 'the two previews did not decode to comparable bitmaps').toBe(true);
 
     const viewport = await page.evaluate(() => ({
       width: window.innerWidth,
       height: window.innerHeight,
     }));
     const menuFraction = (menuBox.width * menuBox.height) / (viewport.width * viewport.height);
-    const changedFraction = diff.changedPixels / diff.totalPixels;
-    expect(
-      changedFraction,
-      `changed ${(changedFraction * 100).toFixed(3)}% of the preview; the menu covers ` +
-        `${(menuFraction * 100).toFixed(3)}% of the viewport`,
-    ).toBeGreaterThan(menuFraction * 0.25);
+    const detail =
+      `the menu covers ${(menuFraction * 100).toFixed(3)}% of the viewport; its paint covers ` +
+      `${(painted.with * 100).toFixed(3)}% of the preview with it open and ` +
+      `${(painted.without * 100).toFixed(3)}% without`;
+    expect(painted.without, detail).toBeLessThan(menuFraction * 0.1);
+    expect(painted.with, detail).toBeGreaterThan(menuFraction * 0.5);
+    expect(painted.with, detail).toBeLessThan(menuFraction * 1.1);
   });
 });

@@ -10,9 +10,11 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import { TERMINAL_CLIS } from '@inkeep/open-knowledge-core';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
+import { windowsPathKey } from '../../src/shared/windows-env.ts';
 import { configureDesktopGitRepositories } from '../support/git-fixture.test-helper.ts';
 import { typeProjectName } from './_helpers/create-new-dialog';
 import { captureAppProcess, closeAppBounded } from './_helpers/electron-cleanup';
@@ -31,6 +33,28 @@ const TARGET = resolveDesktopTarget();
 
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
+const CLI_BINS = Object.values(TERMINAL_CLIS).map((cli) => cli.bin);
+const CLI_SUFFIXES = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', '.ps1'] : [''];
+
+function holdsDetectableCli(dir: string): boolean {
+  return CLI_BINS.some((bin) => CLI_SUFFIXES.some((suffix) => existsSync(join(dir, bin + suffix))));
+}
+
+function hermeticPath(tmpHome: string): string {
+  const hostDirs = (process.env[windowsPathKey(process.env)] ?? '')
+    .split(delimiter)
+    .filter((dir) => dir.length > 0 && !holdsDetectableCli(dir));
+  return [join(tmpHome, 'bin'), ...hostDirs].join(delimiter);
+}
+
+function seedShellProfiles(tmpHome: string): void {
+  if (process.platform === 'win32') return;
+  const escaped = hermeticPath(tmpHome).replace(/["\\$`]/g, '\\$&');
+  for (const rc of ['.zprofile', '.zshrc', '.bash_profile', '.profile']) {
+    writeFileSync(join(tmpHome, rc), `export PATH="${escaped}"\n`);
+  }
+}
+
 function seedCliOnPath(tmpHome: string, bin: string): void {
   const binDir = join(tmpHome, 'bin');
   mkdirSync(binDir, { recursive: true });
@@ -38,10 +62,6 @@ function seedCliOnPath(tmpHome: string, bin: string): void {
     writeFileSync(join(binDir, `${bin}.cmd`), '@exit /b 0\r\n');
   } else {
     writeFileSync(join(binDir, bin), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-    const pathLine = 'export PATH="$HOME/bin:$PATH"\n';
-    for (const rc of ['.zprofile', '.zshrc', '.bash_profile', '.profile']) {
-      writeFileSync(join(tmpHome, rc), pathLine);
-    }
   }
 }
 
@@ -61,6 +81,7 @@ function seedTmpHome(prefix: string, stateOverride?: Record<string, unknown>): s
       ...stateOverride,
     }),
   );
+  seedShellProfiles(tmpHome);
   return tmpHome;
 }
 
@@ -77,9 +98,10 @@ async function launchApp(tmpHome: string, opts: LaunchOpts = {}): Promise<Electr
       timeout: 30_000,
       env: {
         ...process.env,
-        PATH: `${join(tmpHome, 'bin')}${delimiter}${process.env.PATH ?? ''}`,
+        [windowsPathKey(process.env)]: hermeticPath(tmpHome),
         ...homeEnv(tmpHome),
         OK_DESKTOP_E2E_SMOKE: '1',
+        OK_DESKTOP_TEST_SCHEME_HANDLERS: '',
         ...(opts.pickedParent !== undefined
           ? { OK_DESKTOP_TEST_PICKED_PATH: opts.pickedParent }
           : {}),

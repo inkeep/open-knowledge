@@ -153,6 +153,20 @@ export function detectedEditorsFromProbes(probes: EditorPresenceProbes): Set<Mcp
   return detected;
 }
 
+export function testPinnedSchemeHandlers(
+  env: Readonly<Record<string, string | undefined>>,
+): ReadonlySet<string> | null {
+  if (env.OK_DESKTOP_E2E_SMOKE !== '1') return null;
+  const raw = env.OK_DESKTOP_TEST_SCHEME_HANDLERS;
+  if (raw === undefined) return null;
+  return new Set(
+    raw
+      .split(',')
+      .map((scheme) => scheme.trim())
+      .filter((scheme) => scheme.length > 0),
+  );
+}
+
 export async function safeDetectedEditors(
   probeEditorPresence: () => Promise<EditorPresenceProbes>,
 ): Promise<Set<McpWiringEditorId>> {

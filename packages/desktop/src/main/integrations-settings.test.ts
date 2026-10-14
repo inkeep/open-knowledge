@@ -18,6 +18,7 @@ import {
   type IntegrationsSkillsSurface,
   type RegisterIntegrationsSettingsOpts,
   registerIntegrationsSettings,
+  testPinnedSchemeHandlers,
 } from './integrations-settings.ts';
 import type { McpStatusMarker, McpWiringFsOps } from './mcp-wiring.ts';
 
@@ -210,6 +211,27 @@ describe('classifyEditorState', () => {
     expect(classifyEditorState({ kind: 'decline' }, isOwn)).toBe('unmanageable');
     expect(classifyEditorState({ kind: 'present', entry: OWN_ENTRY }, isOwn)).toBe('installed');
     expect(classifyEditorState({ kind: 'present', entry: FOREIGN_ENTRY }, isOwn)).toBe('foreign');
+  });
+});
+
+describe('testPinnedSchemeHandlers', () => {
+  const smoke = { OK_DESKTOP_E2E_SMOKE: '1' };
+
+  test('an empty pin under smoke reports every scheme handler absent', () => {
+    expect(testPinnedSchemeHandlers({ ...smoke, OK_DESKTOP_TEST_SCHEME_HANDLERS: '' })).toEqual(
+      new Set(),
+    );
+  });
+
+  test('a pin lists the schemes reported present', () => {
+    expect(
+      testPinnedSchemeHandlers({ ...smoke, OK_DESKTOP_TEST_SCHEME_HANDLERS: ' codex, cursor ,' }),
+    ).toEqual(new Set(['codex', 'cursor']));
+  });
+
+  test('an unset pin, or one outside smoke, leaves the real probe in charge', () => {
+    expect(testPinnedSchemeHandlers(smoke)).toBeNull();
+    expect(testPinnedSchemeHandlers({ OK_DESKTOP_TEST_SCHEME_HANDLERS: '' })).toBeNull();
   });
 });
 

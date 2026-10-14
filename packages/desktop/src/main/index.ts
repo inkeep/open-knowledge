@@ -312,6 +312,7 @@ import { deriveInstanceUserDataDir } from './instance-isolation.ts';
 import {
   type EditorPresenceProbes,
   registerIntegrationsSettings,
+  testPinnedSchemeHandlers,
 } from './integrations-settings.ts';
 import { handleAssetUpload } from './ipc/asset-upload.ts';
 import {
@@ -5656,18 +5657,21 @@ function probeEditorPresence(): Promise<EditorPresenceProbes> {
 }
 
 async function probeEditorPresenceUncached(): Promise<EditorPresenceProbes> {
+  const pinnedSchemes = testPinnedSchemeHandlers(process.env);
   const [cliOnPath, ...schemes] = await Promise.all([
     resolveTerminalCliInstalledMap().catch(() => ({}) as Record<TerminalCli, boolean>),
     ...(['claude', 'codex', 'cursor', 'lmstudio'] as const).map((scheme) =>
-      detectProtocolImpl(
-        {
-          platform: process.platform,
-          getApplicationInfoForProtocol: (url) => app.getApplicationInfoForProtocol(url),
-        },
-        scheme,
-      )
-        .then((r) => r.installed)
-        .catch(() => false),
+      pinnedSchemes !== null
+        ? Promise.resolve(pinnedSchemes.has(scheme))
+        : detectProtocolImpl(
+            {
+              platform: process.platform,
+              getApplicationInfoForProtocol: (url) => app.getApplicationInfoForProtocol(url),
+            },
+            scheme,
+          )
+            .then((r) => r.installed)
+            .catch(() => false),
     ),
   ]);
   return {
