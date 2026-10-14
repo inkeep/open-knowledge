@@ -4,17 +4,25 @@ export interface HeadingEntry {
   slug: string;
 }
 
-const COMBINING_MARK_RE = /\p{M}+/gu;
-const NON_LETTER_OR_NUMBER_RE = /[^\p{L}\p{N}]+/gu;
+const MARK_RUN_RE = /(^|\P{M})(\p{M}+)/gu;
+const MARK_KEEPING_BASE_RE =
+  /^(?![\p{Script_Extensions=Latin}\p{Script_Extensions=Greek}\p{Script_Extensions=Cyrillic}\p{Script_Extensions=Arabic}\p{Script_Extensions=Hebrew}])\p{L}$/u;
+const DEFAULT_IGNORABLE_RE = /\p{DI}/gu;
+const NON_SLUG_CHARACTER_RE = /[^\p{L}\p{M}\p{N}]+/gu;
 const EDGE_HYPHENS_RE = /^-+|-+$/g;
+
+function foldMarkRun(_run: string, base: string, marks: string): string {
+  return MARK_KEEPING_BASE_RE.test(base) ? base + marks.replace(DEFAULT_IGNORABLE_RE, '') : base;
+}
 
 export function toWikiLinkSlug(text: string): string {
   return text
     .trim()
     .normalize('NFKD')
-    .replace(COMBINING_MARK_RE, '')
+    .replace(MARK_RUN_RE, foldMarkRun)
+    .normalize('NFC')
     .toLowerCase()
-    .replace(NON_LETTER_OR_NUMBER_RE, '-')
+    .replace(NON_SLUG_CHARACTER_RE, '-')
     .replace(EDGE_HYPHENS_RE, '');
 }
 

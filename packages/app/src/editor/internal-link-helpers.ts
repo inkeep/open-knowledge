@@ -10,6 +10,7 @@ import {
 } from '@inkeep/open-knowledge-core/utils/link-targets';
 import { hashFromAssetPath, hashFromDocName } from '../lib/doc-hash';
 import { openExternalUrl } from '../lib/external-link';
+import { findAnchorTarget } from './anchor-target';
 import { dispatchAssetClick } from './asset-dispatch';
 import { isSafeNavigationUrl } from './safe-navigation-url';
 
@@ -110,7 +111,7 @@ function navigateToAnchorHref(anchor: string, locationHash = window.location.has
   const currentDocName = getCurrentDocNameFromHash(locationHash);
   if (!currentDocName) return;
 
-  const element = document.getElementById(anchor);
+  const element = findAnchorTarget(document, anchor);
   if (element) {
     element.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }

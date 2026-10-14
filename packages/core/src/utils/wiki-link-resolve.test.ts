@@ -308,6 +308,27 @@ describe('resolution chain boundaries', () => {
     expect(resolveWikiLinkTargetDocName('sub/foo', pages)).toBeUndefined();
   });
 
+  test('a voiced kana target does not fall back to the unvoiced page', () => {
+    const pages = new Set(['カラス', 'notes/ハン']);
+    const index: WikiLinkLookupIndex = {
+      pages,
+      pagesBySlug: buildPagesBySlugIndex(pages, toWikiLinkSlug),
+      pagesByBasename: buildPagesByBasenameIndex(pages, toWikiLinkSlug),
+    };
+    for (const input of [pages, index]) {
+      expect(resolveWikiLinkTargetDocName('ガラス', input)).toBeUndefined();
+      expect(resolveWikiLinkTargetDocName('パン', input)).toBeUndefined();
+      expect(resolveWikiLinkTargetDocName('カラス', input)).toBe('カラス');
+      expect(resolveWikiLinkTargetDocName('ハン', input)).toBe('notes/ハン');
+    }
+  });
+
+  test('a Devanagari target does not fall back to a page missing its vowel signs', () => {
+    const pages = new Set(['कतब', 'किताब']);
+    expect(resolveWikiLinkTargetDocName('किताब', new Set(['कतब']))).toBeUndefined();
+    expect(resolveWikiLinkTargetDocName('किताब', pages)).toBe('किताब');
+  });
+
   test('an asset that shares a name with a document resolves as the asset', () => {
     const pages = new Set(['meeting.pdf']);
     const assets = new Set(['meeting.pdf']);

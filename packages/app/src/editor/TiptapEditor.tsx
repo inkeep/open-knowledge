@@ -52,6 +52,7 @@ import { useSingleFileMode } from '@/lib/single-file-mode';
 import { useIdentity } from '../presence/identity';
 import { registerEditor, unregisterEditor } from './active-editor';
 import { changedRangeIsOnScreen } from './agent-follow-scroll';
+import { findAnchorTarget } from './anchor-target';
 import { applyLintFixes } from './apply-lint-fix.ts';
 import { getAwarenessHeartbeat } from './awareness-heartbeat-runtime';
 import { buildAwarenessUser } from './awareness-user';
@@ -983,18 +984,9 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       attempts = 0;
     }
 
-    function findAnchorTarget(anchor: string): HTMLElement | null {
-      const realView = getEditorView(editor);
-      if (!realView) return null;
-      const escapedAnchor = CSS.escape(anchor);
-      return (
-        realView.dom.querySelector<HTMLElement>(`#${escapedAnchor}`) ??
-        realView.dom.querySelector<HTMLElement>(`[data-mirror-source-id="${escapedAnchor}"]`)
-      );
-    }
-
     function scrollAnchorIntoView(anchor: string): boolean {
-      const el = findAnchorTarget(anchor);
+      const realView = getEditorView(editor);
+      const el = realView ? findAnchorTarget(realView.dom, anchor) : null;
       if (!el) return false;
       return runScrollNavigation(docName, 'deep-link', () => {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
