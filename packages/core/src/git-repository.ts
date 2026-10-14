@@ -281,7 +281,7 @@ function unquote(value: string): string {
   return trimmed;
 }
 
-function isMissing(cause: unknown): boolean {
+export function isMissing(cause: unknown): boolean {
   const code = (cause as NodeJS.ErrnoException | undefined)?.code;
   return code === 'ENOENT' || code === 'ENOTDIR';
 }

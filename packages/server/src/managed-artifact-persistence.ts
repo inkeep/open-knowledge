@@ -4,12 +4,14 @@
  * re-canonicalize the markdown that gets projected verbatim into an agent's context).
  */
 
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, relative, resolve, sep } from 'node:path';
 import {
   LEGACY_SKILL_STORE_ROOT,
   LINEAGE_EPOCH_KEY,
+  MANAGED_ARTIFACT_PREFIX_EXTSKILL,
   MANAGED_ARTIFACT_PREFIX_SKILL,
   MANAGED_ARTIFACT_PREFIX_TEMPLATE,
   type ManagedArtifactScope,
@@ -253,6 +255,32 @@ export function loadManagedArtifactDoc(
 }
 
 const DISCARDED_EDIT_STASH_MAX = 5;
+const DISCARDED_EDIT_READABLE_MAX = 100;
+const DISCARDED_EDIT_DIGEST_LEN = 12;
+const UNAMBIGUOUS_STASH_SEGMENT_RE = /^(?!.*__)[A-Za-z0-9.-](?:[A-Za-z0-9._-]*[A-Za-z0-9.-])?$/;
+
+function discardedEditStashKey(documentName: string): string {
+  const legacy = documentName.replace(/[^A-Za-z0-9._-]+/g, '__');
+  const prefix = [
+    MANAGED_ARTIFACT_PREFIX_SKILL,
+    MANAGED_ARTIFACT_PREFIX_TEMPLATE,
+    MANAGED_ARTIFACT_PREFIX_EXTSKILL,
+  ].find((p) => documentName.startsWith(p));
+  const rest = prefix === undefined ? documentName : documentName.slice(prefix.length);
+  if (rest.split('/').every((segment) => UNAMBIGUOUS_STASH_SEGMENT_RE.test(segment))) {
+    return legacy;
+  }
+  const canonical = documentName.normalize('NFC');
+  const digest = createHash('sha256')
+    .update(canonical)
+    .digest('hex')
+    .slice(0, DISCARDED_EDIT_DIGEST_LEN);
+  const readable = canonical
+    .replace(/[^A-Za-z0-9._-]+/g, '__')
+    .replace(/^\.+/, '_')
+    .slice(0, DISCARDED_EDIT_READABLE_MAX);
+  return `${readable}-${digest}`;
+}
 
 async function stashDiscardedEdit(
   documentName: string,
@@ -260,8 +288,12 @@ async function stashDiscardedEdit(
   ctx: Pick<ManagedArtifactCtx, 'homedirOverride'>,
 ): Promise<void> {
   try {
-    const safe = documentName.replace(/[^A-Za-z0-9._-]+/g, '__');
-    const dir = resolve(okUserHomeDir(homeFor(ctx)), 'edit-backups', 'discarded', safe);
+    const dir = resolve(
+      okUserHomeDir(homeFor(ctx)),
+      'edit-backups',
+      'discarded',
+      discardedEditStashKey(documentName),
+    );
     await tracedMkdir(dir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     await atomicWriteFile(resolve(dir, `${stamp}.md`), content, { fs: tracedAtomicFs });

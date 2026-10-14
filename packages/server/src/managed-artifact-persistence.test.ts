@@ -328,6 +328,69 @@ describe('store/load round-trip', () => {
   });
 });
 
+describe('discarded-edit backups', () => {
+  beforeEach(adoptClaudeHost);
+
+  async function reconcileLocalEdit(docName: string, localEdit: string): Promise<void> {
+    const ctx = makeCtx();
+    const path = managedArtifactAbsPath(docName, ctx);
+    mkdirSync(dirname(path), { recursive: true });
+    const doc = new Y.Doc();
+    doc.transact(() => doc.getText('source').insert(0, 'base\n'), 'agent');
+    await storeManagedArtifactDoc(doc, docName, 'agent', ctx);
+    writeFileSync(path, 'other writer\n', 'utf-8');
+    doc.transact(
+      () => doc.getText('source').insert(doc.getText('source').length, localEdit),
+      'agent',
+    );
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('reconciled');
+  }
+
+  function backupDirs(): string[] {
+    return readdirSync(resolve(home, '.ok', 'edit-backups', 'discarded')).sort();
+  }
+
+  function backupsIn(dir: string): string[] {
+    const abs = resolve(home, '.ok', 'edit-backups', 'discarded', dir);
+    return readdirSync(abs).map((f) => readFileSync(resolve(abs, f), 'utf-8'));
+  }
+
+  test('documents whose names differ only in non-Latin letters keep separate backups', async () => {
+    await reconcileLocalEdit('__skill__/global/demo/references/会議', 'meeting edit');
+    await reconcileLocalEdit('__skill__/global/demo/references/日報', 'daily edit');
+    const dirs = backupDirs();
+    expect(dirs).toHaveLength(2);
+    const contents = dirs.map(backupsIn);
+    expect(contents.map((c) => c.length)).toEqual([1, 1]);
+    expect(contents.flat().some((c) => c.includes('meeting edit'))).toBe(true);
+    expect(contents.flat().some((c) => c.includes('daily edit'))).toBe(true);
+  });
+
+  test('documents whose names differ only in punctuation keep separate backups', async () => {
+    await reconcileLocalEdit('__skill__/global/demo/references/a b', 'space edit');
+    await reconcileLocalEdit('__skill__/global/demo/references/a#b', 'hash edit');
+    expect(backupDirs()).toHaveLength(2);
+  });
+
+  test('ASCII-safe documents keep the backup folder they had before', async () => {
+    await reconcileLocalEdit('__skill__/global/demo/references/my_notes-v2.0', 'edit');
+    expect(backupDirs()).toEqual(['__skill____global__demo__references__my_notes-v2.0']);
+  });
+
+  test('ASCII names that the separator encoding cannot tell apart keep separate backups', async () => {
+    await reconcileLocalEdit('__skill__/global/demo/references/a/b', 'nested edit');
+    await reconcileLocalEdit('__skill__/global/demo/references/a__b', 'underscore edit');
+    await reconcileLocalEdit('__skill__/global/demo/references/a_/b', 'trailing edit');
+    await reconcileLocalEdit('__skill__/global/demo/references/a/_b', 'leading edit');
+    expect(backupDirs()).toHaveLength(4);
+  });
+
+  test('backup folder names stay filesystem-safe', async () => {
+    await reconcileLocalEdit('__skill__/global/demo/references/会議 メモ', 'edit');
+    for (const dir of backupDirs()) expect(dir).toMatch(/^[A-Za-z0-9._-]{1,120}$/);
+  });
+});
+
 describe('concurrent-writer reconcile', () => {
   const docName = '__skill__/global/demo';
 

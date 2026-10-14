@@ -1,7 +1,8 @@
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { runningAsRoot } from '../../../test-support/capabilities.test-helper.ts';
 import {
@@ -557,6 +558,129 @@ describe('resolveShadowDir', () => {
     const project = resolve(tmp, 'orphan/deep/nest');
     mkdirSync(project, { recursive: true });
     expect(resolveShadowDir(project)).toBe(resolve(project, '.git/ok'));
+  });
+});
+describe('resolveShadowDir sub-path keys are injective', () => {
+  function legacyShadowName(rel: string): string {
+    const flat = rel.split('/').join('-');
+    return `ok-${flat.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '_')}`;
+  }
+
+  function fakeShadow(dir: string, worktree: string): void {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(resolve(dir, 'HEAD'), 'ref: refs/heads/main\n');
+    writeFileSync(
+      resolve(dir, 'config'),
+      `[core]\n\trepositoryformatversion = 0\n\tworktree = ${worktree}\n[user]\n\tname = openknowledge\n`,
+    );
+  }
+
+  function makeRepo(...subs: string[]): string {
+    const repo = resolve(tmp, 'repo');
+    mkdirSync(resolve(repo, '.git'), { recursive: true });
+    for (const sub of subs) mkdirSync(resolve(repo, sub), { recursive: true });
+    return repo;
+  }
+
+  test('subfolders whose names differ only in non-Latin letters get distinct shadow dirs', () => {
+    const repo = makeRepo('ノート', '日記帳');
+    const a = resolveShadowDir(resolve(repo, 'ノート'));
+    const b = resolveShadowDir(resolve(repo, '日記帳'));
+    expect(a).not.toBe(b);
+    for (const dir of [a, b]) {
+      expect(dirname(dir)).toBe(resolve(repo, '.git'));
+      expect(basename(dir)).toMatch(/^ok-[A-Za-z0-9._-]{1,64}$/);
+    }
+  });
+
+  test('names that differ only in punctuation or spaces get distinct shadow dirs', () => {
+    const repo = makeRepo('My Notes', 'My_Notes', 'My#Notes');
+    const dirs = ['My Notes', 'My_Notes', 'My#Notes'].map((s) =>
+      resolveShadowDir(resolve(repo, s)),
+    );
+    expect(new Set(dirs).size).toBe(3);
+  });
+
+  test('ASCII-safe sub-paths keep the exact key they had before', () => {
+    const repo = makeRepo('my-notes_v2.0', 'public/open-knowledge');
+    expect(resolveShadowDir(resolve(repo, 'my-notes_v2.0'))).toBe(
+      resolve(repo, '.git/ok-my-notes_v2.0'),
+    );
+    expect(resolveShadowDir(resolve(repo, 'public/open-knowledge'))).toBe(
+      resolve(repo, '.git/ok-public-open-knowledge'),
+    );
+  });
+
+  test('a lossy shadow dir created by an earlier version stays with the project that owns it', () => {
+    const repo = makeRepo('ノート', '日記帳');
+    const legacy = resolve(repo, '.git', legacyShadowName('ノート'));
+    expect(legacy).toBe(resolve(repo, '.git', legacyShadowName('日記帳')));
+    fakeShadow(legacy, resolve(repo, 'ノート'));
+    expect(resolveShadowDir(resolve(repo, 'ノート'))).toBe(legacy);
+    expect(getShadowRepoPath(resolve(repo, 'ノート'))).toBe(legacy);
+    expect(resolveShadowDir(resolve(repo, '日記帳'))).not.toBe(legacy);
+  });
+
+  test('legacy ownership survives the repository moving to another path', () => {
+    const repo = makeRepo('ノート');
+    const legacy = resolve(repo, '.git', legacyShadowName('ノート'));
+    fakeShadow(legacy, resolve(tmp, 'old-location', 'repo', 'ノート'));
+    expect(resolveShadowDir(resolve(repo, 'ノート'))).toBe(legacy);
+  });
+
+  test('legacy ownership reads a core.worktree value that git itself wrote', () => {
+    const sub = 'メモ #1; a b';
+    const repo = makeRepo(sub, 'メモ');
+    const legacy = resolve(repo, '.git', legacyShadowName(sub));
+    execFileSync('git', ['init', '--bare', '--quiet', legacy]);
+    execFileSync('git', ['config', 'core.worktree', resolve(repo, sub)], {
+      env: { ...process.env, GIT_DIR: legacy },
+    });
+    expect(resolveShadowDir(resolve(repo, sub))).toBe(legacy);
+    expect(resolveShadowDir(resolve(repo, 'メモ'))).not.toBe(legacy);
+  });
+
+  test('a lossy legacy dir with no recorded owner is kept rather than abandoned', () => {
+    const repo = makeRepo('ノート');
+    const legacy = resolve(repo, '.git', legacyShadowName('ノート'));
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(resolve(legacy, 'HEAD'), 'ref: refs/heads/main\n');
+    writeFileSync(resolve(legacy, 'config'), '[core]\n\trepositoryformatversion = 0\n');
+    expect(resolveShadowDir(resolve(repo, 'ノート'))).toBe(legacy);
+  });
+
+  test('an unreadable legacy config keeps the legacy dir rather than moving to a new one', () => {
+    const repo = makeRepo('ノート');
+    const legacy = resolve(repo, '.git', legacyShadowName('ノート'));
+    mkdirSync(resolve(legacy, 'config'), { recursive: true });
+    expect(resolveShadowDir(resolve(repo, 'ノート'))).toBe(legacy);
+  });
+
+  test('a separator and a hyphen no longer share a dir once the hyphenated one owns it', () => {
+    const repo = makeRepo('a-b', 'a/b');
+    const shared = resolve(repo, '.git/ok-a-b');
+    fakeShadow(shared, resolve(repo, 'a-b'));
+    expect(resolveShadowDir(resolve(repo, 'a-b'))).toBe(shared);
+    const nested = resolveShadowDir(resolve(repo, 'a/b'));
+    expect(nested).not.toBe(shared);
+    expect(basename(nested)).toMatch(/^ok-[A-Za-z0-9._-]{1,64}$/);
+  });
+
+  test('a project that moved off a foreign-owned dir keeps its own dir after the owner leaves', () => {
+    const repo = makeRepo('a-b', 'a/b');
+    const shared = resolve(repo, '.git/ok-a-b');
+    fakeShadow(shared, resolve(repo, 'a-b'));
+    const own = resolveShadowDir(resolve(repo, 'a/b'));
+    fakeShadow(own, resolve(repo, 'a/b'));
+    rmSync(shared, { recursive: true, force: true });
+    expect(resolveShadowDir(resolve(repo, 'a/b'))).toBe(own);
+  });
+
+  test('NFC and NFD spellings of one name resolve to the same shadow dir', () => {
+    const repo = makeRepo('café');
+    const nfc = resolveShadowDir(resolve(repo, 'café'.normalize('NFC')));
+    const nfd = resolveShadowDir(resolve(repo, 'café'.normalize('NFD')));
+    expect(nfd).toBe(nfc);
   });
 });
 

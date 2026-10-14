@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fnv1aDigest } from './bridge/hash-util.ts';
-import { discoverGitRepository } from './git-repository.ts';
+import { discoverGitRepository, isMissing } from './git-repository.ts';
 
 /** Writer-ID taxonomy (precedent #25). */
 export type WriterClassification =
@@ -77,12 +78,12 @@ export function resolveShadowDir(projectRoot: string): string {
   const result = resolveGitDirDetailed(projectRoot);
   switch (result.kind) {
     case 'directory':
-      return resolve(result.path, shadowSubdirName(result.projectSubPath));
+      return resolve(result.path, shadowSubdirName(result.path, result.projectSubPath));
     case 'linked':
       if (!existsSync(result.path)) {
         throw new MalformedGitPointerError(result.gitPath, result.path);
       }
-      return resolve(result.path, shadowSubdirName(result.projectSubPath));
+      return resolve(result.path, shadowSubdirName(result.path, result.projectSubPath));
     case 'malformed-pointer':
       throw new MalformedGitPointerError(result.gitPath, result.target, { cause: result.cause });
     case 'inaccessible':
@@ -92,18 +93,121 @@ export function resolveShadowDir(projectRoot: string): string {
   }
 }
 
-function shadowSubdirName(projectSubPath: string): string {
+function shadowSubdirName(gitDir: string, projectSubPath: string): string {
   if (projectSubPath === '') return 'ok';
-  return `ok-${slugifyShadowSubPath(projectSubPath)}`;
+  const hashed = `ok-${hashedShadowSlug(projectSubPath)}`;
+  if (existsSync(resolve(gitDir, hashed))) return hashed;
+  const legacy = `ok-${legacyShadowSlug(projectSubPath)}`;
+  switch (shadowOwner(resolve(gitDir, legacy), projectSubPath)) {
+    case 'ours':
+    case 'unrecorded':
+      return legacy;
+    case 'theirs':
+      return hashed;
+    case 'absent':
+      return SAFE_SHADOW_SLUG_RE.test(flattenSubPath(projectSubPath)) ? legacy : hashed;
+  }
 }
 
-function slugifyShadowSubPath(rel: string): string {
-  const flat = rel.split(sep).join('-').replace(/\/+/g, '-');
-  const sanitized = flat.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '_');
-  const MAX = 64;
-  if (sanitized.length <= MAX) return sanitized || 'sub';
+const SAFE_SHADOW_SLUG_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
+const SHADOW_SLUG_MAX = 64;
+const SHADOW_DIGEST_LEN = 12;
+
+function flattenSubPath(rel: string): string {
+  return rel.split(sep).join('-').replace(/\/+/g, '-');
+}
+
+function sanitizeShadowSlug(flat: string): string {
+  return flat.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '_');
+}
+
+function legacyShadowSlug(rel: string): string {
+  const sanitized = sanitizeShadowSlug(flattenSubPath(rel));
+  if (sanitized.length <= SHADOW_SLUG_MAX) return sanitized || 'sub';
   const hash = djb2(rel).toString(16).padStart(8, '0');
-  return `${sanitized.slice(0, MAX - 9)}-${hash}`;
+  return `${sanitized.slice(0, SHADOW_SLUG_MAX - 9)}-${hash}`;
+}
+
+function hashedShadowSlug(rel: string): string {
+  const canonical = canonicalSubPath(rel);
+  const digest = createHash('sha256').update(canonical).digest('hex').slice(0, SHADOW_DIGEST_LEN);
+  const readable = sanitizeShadowSlug(canonical.split('/').join('-')).slice(
+    0,
+    SHADOW_SLUG_MAX - SHADOW_DIGEST_LEN - 1,
+  );
+  return `${readable || 'sub'}-${digest}`;
+}
+
+function canonicalSubPath(rel: string): string {
+  return rel.normalize('NFC').split(sep).join('/').replace(/\/+/g, '/');
+}
+
+const CASE_INSENSITIVE_PATHS = process.platform === 'darwin' || process.platform === 'win32';
+
+function comparablePath(p: string): string {
+  const s = p.normalize('NFC').replace(/\\/g, '/').replace(/\/+$/, '');
+  return CASE_INSENSITIVE_PATHS ? s.toLowerCase() : s;
+}
+
+function shadowOwner(
+  shadowDir: string,
+  projectSubPath: string,
+): 'ours' | 'theirs' | 'unrecorded' | 'absent' {
+  let config: string;
+  try {
+    config = readFileSync(resolve(shadowDir, 'config'), 'utf-8');
+  } catch (cause) {
+    return isMissing(cause) ? 'absent' : 'unrecorded';
+  }
+  const worktree = readCoreWorktree(config);
+  if (worktree === null || worktree === '') return 'unrecorded';
+  const owner = comparablePath(worktree);
+  const sub = comparablePath(canonicalSubPath(projectSubPath));
+  return owner === sub || owner.endsWith(`/${sub}`) ? 'ours' : 'theirs';
+}
+
+function readCoreWorktree(config: string): string | null {
+  let inCore = false;
+  let worktree: string | null = null;
+  for (const rawLine of config.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line.startsWith('[')) {
+      inCore = /^\[\s*core\s*\]/i.test(line);
+      continue;
+    }
+    if (!inCore) continue;
+    const match = /^worktree\s*=(.*)$/i.exec(line);
+    if (match) worktree = parseGitConfigValue(match[1] ?? '');
+  }
+  return worktree;
+}
+
+function parseGitConfigValue(raw: string): string {
+  let out = '';
+  let pendingSpace = '';
+  let quoted = false;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (c === '\\') {
+      const next = raw[++i];
+      out +=
+        pendingSpace +
+        (next === 'n' ? '\n' : next === 't' ? '\t' : next === 'b' ? '\b' : (next ?? ''));
+      pendingSpace = '';
+    } else if (c === '"') {
+      quoted = !quoted;
+      out += pendingSpace;
+      pendingSpace = '';
+    } else if (!quoted && (c === ';' || c === '#')) {
+      break;
+    } else if (!quoted && (c === ' ' || c === '\t')) {
+      if (out.length > 0) pendingSpace += c;
+    } else {
+      out += pendingSpace + c;
+      pendingSpace = '';
+    }
+  }
+  return out;
 }
 
 function djb2(s: string): number {

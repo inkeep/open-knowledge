@@ -129,6 +129,49 @@ describe('initShadowRepo', () => {
     expect(existsSync(resolve(shadow2.gitDir, 'HEAD'))).toBe(true);
   });
 
+  test('sub-projects whose names differ only in non-Latin letters get separate shadow repos', async () => {
+    const repo = resolve(tmpDir, 'repo');
+    mkdirSync(repo, { recursive: true });
+    await simpleGit(repo).init();
+    configureTestGitRepository(repo);
+    const projectA = resolve(repo, 'ノート');
+    const projectB = resolve(repo, '日記帳');
+    mkdirSync(projectA, { recursive: true });
+    mkdirSync(projectB, { recursive: true });
+
+    const shadowA = await initShadowRepo(projectA);
+    const shadowB = await initShadowRepo(projectB);
+
+    expect(shadowA.gitDir).not.toBe(shadowB.gitDir);
+    for (const [shadow, project] of [
+      [shadowA, projectA],
+      [shadowB, projectB],
+    ] as const) {
+      const sg = simpleGit().env({ GIT_DIR: shadow.gitDir });
+      expect((await sg.raw('config', 'core.worktree')).trim()).toBe(project);
+    }
+    expect((await initShadowRepo(projectA)).gitDir).toBe(shadowA.gitDir);
+  });
+
+  test("an earlier version's lossy shadow repo stays with its owner after upgrade", async () => {
+    const repo = resolve(tmpDir, 'repo');
+    mkdirSync(repo, { recursive: true });
+    await simpleGit(repo).init();
+    configureTestGitRepository(repo);
+    const owner = resolve(repo, 'ノート');
+    const other = resolve(repo, '日記帳');
+    mkdirSync(owner, { recursive: true });
+    mkdirSync(other, { recursive: true });
+    const legacyDir = resolve(repo, '.git', 'ok-___');
+    execFileSync('git', ['init', '--bare', '--quiet', legacyDir]);
+    execFileSync('git', ['config', 'core.worktree', owner], {
+      env: { ...process.env, GIT_DIR: legacyDir },
+    });
+
+    expect((await initShadowRepo(owner)).gitDir).toBe(legacyDir);
+    expect((await initShadowRepo(other)).gitDir).not.toBe(legacyDir);
+  });
+
   test('R9 rename shim: legacy .git/openknowledge/ is renamed to .git/ok/', async () => {
     const projectRoot = resolve(tmpDir, 'legacy');
     mkdirSync(projectRoot, { recursive: true });
