@@ -1,0 +1,398 @@
+[
+  {
+    "tool": "audit",
+    "schema": "outputSchema",
+    "path": "properties.brokenLinkSuppression.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "audit",
+    "schema": "outputSchema",
+    "path": "properties.files.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "config",
+    "schema": "outputSchema",
+    "path": "properties.value",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "delete",
+    "schema": "outputSchema",
+    "path": "properties.documents.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "delete",
+    "schema": "outputSchema",
+    "path": "properties.skill.properties.files.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "inputSchema",
+    "path": "properties.document.properties.frontmatter.additionalProperties.anyOf[3].items",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "inputSchema",
+    "path": "properties.document.properties.frontmatter.additionalProperties.anyOf[4].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "inputSchema",
+    "path": "properties.folder.properties.frontmatter.additionalProperties.anyOf[3].items",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "inputSchema",
+    "path": "properties.folder.properties.frontmatter.additionalProperties.anyOf[4].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "inputSchema",
+    "path": "properties.template.properties.frontmatter.additionalProperties.anyOf[3].items",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "inputSchema",
+    "path": "properties.template.properties.frontmatter.additionalProperties.anyOf[4].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.brokenLinkSuppression.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.brokenLinks.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.brokenLinks.items.properties.localTarget.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.brokenLinks.items.properties.localTarget.properties.definition.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.warnings.items.oneOf[0].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.warnings.items.oneOf[1].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.warnings.items.oneOf[2].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.warnings.items.oneOf[3].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.warnings.items.oneOf[3].properties.localTarget.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.warnings.items.oneOf[3].properties.localTarget.properties.definition.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.warnings.items.oneOf[4].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "edit",
+    "schema": "outputSchema",
+    "path": "properties.warning.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "exec",
+    "schema": "outputSchema",
+    "path": "properties.enrichedPaths.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "history",
+    "schema": "outputSchema",
+    "path": "properties.entries.items.properties.checkpoint.anyOf[0]",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "history",
+    "schema": "outputSchema",
+    "path": "properties.entries.items.properties.contributors.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "links",
+    "schema": "outputSchema",
+    "path": "properties.backlinks.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "links",
+    "schema": "outputSchema",
+    "path": "properties.deadLinks.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "links",
+    "schema": "outputSchema",
+    "path": "properties.forwardLinks.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "links",
+    "schema": "outputSchema",
+    "path": "properties.hubs.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "links",
+    "schema": "outputSchema",
+    "path": "properties.orphans.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "links",
+    "schema": "outputSchema",
+    "path": "properties.suggest.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "lint",
+    "schema": "outputSchema",
+    "path": "properties.files.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "move",
+    "schema": "outputSchema",
+    "path": "properties.colliding.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "move",
+    "schema": "outputSchema",
+    "path": "properties.renamedAssets.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "move",
+    "schema": "outputSchema",
+    "path": "properties.rewrittenDocs.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "palette",
+    "schema": "outputSchema",
+    "path": "properties.componentDetails.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "restore_version",
+    "schema": "outputSchema",
+    "path": "properties.warnings.anyOf[1].items.oneOf[0].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "restore_version",
+    "schema": "outputSchema",
+    "path": "properties.warnings.anyOf[1].items.oneOf[1].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "restore_version",
+    "schema": "outputSchema",
+    "path": "properties.warnings.anyOf[1].items.oneOf[2].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "restore_version",
+    "schema": "outputSchema",
+    "path": "properties.warnings.anyOf[1].items.oneOf[3].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "restore_version",
+    "schema": "outputSchema",
+    "path": "properties.warnings.anyOf[1].items.oneOf[3].properties.localTarget.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "restore_version",
+    "schema": "outputSchema",
+    "path": "properties.warnings.anyOf[1].items.oneOf[3].properties.localTarget.properties.definition.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "restore_version",
+    "schema": "outputSchema",
+    "path": "properties.warnings.anyOf[1].items.oneOf[4].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "search",
+    "schema": "outputSchema",
+    "path": "properties.semantic.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "inputSchema",
+    "path": "properties.document.properties.frontmatter.additionalProperties.anyOf[3].items",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "inputSchema",
+    "path": "properties.document.properties.frontmatter.additionalProperties.anyOf[4].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "inputSchema",
+    "path": "properties.documents.items.properties.frontmatter.additionalProperties.anyOf[3].items",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "inputSchema",
+    "path": "properties.documents.items.properties.frontmatter.additionalProperties.anyOf[4].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "inputSchema",
+    "path": "properties.folder.properties.frontmatter.additionalProperties.anyOf[3].items",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "inputSchema",
+    "path": "properties.folder.properties.frontmatter.additionalProperties.anyOf[4].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.brokenLinkSuppression.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.brokenLinks.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.brokenLinks.items.properties.localTarget.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.brokenLinks.items.properties.localTarget.properties.definition.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.hints.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.warnings.items.oneOf[0].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.warnings.items.oneOf[1].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.warnings.items.oneOf[2].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.warnings.items.oneOf[3].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.warnings.items.oneOf[3].properties.localTarget.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.warnings.items.oneOf[3].properties.localTarget.properties.definition.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "outputSchema",
+    "path": "properties.document.properties.warnings.items.oneOf[4].additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "outputSchema",
+    "path": "properties.documents.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "outputSchema",
+    "path": "properties.skill.properties.files.items.additionalProperties",
+    "rule": "untyped-schema"
+  },
+  {
+    "tool": "write",
+    "schema": "outputSchema",
+    "path": "properties.warning.additionalProperties",
+    "rule": "untyped-schema"
+  }
+]

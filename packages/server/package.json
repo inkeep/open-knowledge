@@ -76,6 +76,7 @@
     "typecheck": "pnpm run typecheck:bash && pnpm run typecheck:test-helper-callers && tsc",
     "test": "vitest run",
     "test:network": "vitest run --config vitest.network.config.ts",
+    "test:mcp-inspector": "vitest run --config vitest.mcp-inspector.config.ts",
     "measure:generated-index-sweep": "node --import tsx --conditions=development measure-generated-index-sweep.ts",
     "measure:observer-a-drain": "node --import tsx --conditions=development measure-observer-a-drain.ts",
     "typecheck:bash": "tsc -p tsconfig.bash.json",

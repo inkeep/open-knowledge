@@ -36,6 +36,7 @@ const KNOWN_TEST_PROJECTS = [
   'packages/core/vitest.config.ts',
   'packages/desktop/vitest.config.ts',
   'packages/server/vitest.config.ts',
+  'packages/server/vitest.mcp-inspector.config.ts',
   'packages/server/vitest.network.config.ts',
   'test-support/fixtures/no-net-connect/vitest.no-net-connect-fixture.config.ts',
   'vitest.scripts.config.ts',

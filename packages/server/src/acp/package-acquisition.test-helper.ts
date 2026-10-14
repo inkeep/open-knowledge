@@ -81,35 +81,57 @@ export function withLiveAcquisitionHome<T>(run: (home: string) => Promise<T>): P
   return acquisitionHome(run, true);
 }
 
-async function acquisitionHome<T>(run: (home: string) => Promise<T>, network: boolean): Promise<T> {
-  const prior = { ...process.env };
+export function isolateNpmHome(
+  home: string,
+  { registry, cache }: { registry: string; cache: string },
+  source: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
   const inherited = (key: string) =>
-    Object.entries(prior).find(([name]) => name.toLowerCase() === key.toLowerCase())?.[1];
-  using home = mkdtempDisposableSync(join(realpathSync(tmpdir()), 'ok-acquisition-'));
-  const env = {
+    Object.entries(source).find(([name]) => name.toLowerCase() === key.toLowerCase())?.[1];
+  const env: Record<string, string | undefined> = {
     PATH: inherited('PATH'),
     PATHEXT: inherited('PATHEXT'),
     SystemRoot: inherited('SystemRoot'),
     ComSpec: inherited('ComSpec'),
-    HOME: home.path,
-    USERPROFILE: home.path,
-    TMPDIR: home.path,
-    TMP: home.path,
-    TEMP: home.path,
-    XDG_CONFIG_HOME: join(home.path, 'config'),
-    XDG_CACHE_HOME: join(home.path, 'cache'),
-    npm_config_cache: join(home.path, 'npm-cache'),
-    npm_config_userconfig: join(home.path, '.npmrc'),
-    npm_config_globalconfig: join(home.path, 'global.npmrc'),
-    npm_config_registry: network ? 'https://registry.npmjs.org/' : 'http://127.0.0.1:1/',
-    UV_OFFLINE: network ? '0' : '1',
+    HOME: home,
+    USERPROFILE: home,
+    TMPDIR: home,
+    TMP: home,
+    TEMP: home,
+    XDG_CONFIG_HOME: join(home, 'config'),
+    XDG_CACHE_HOME: join(home, 'cache'),
+    npm_config_cache: cache,
+    npm_config_userconfig: join(home, '.npmrc'),
+    npm_config_globalconfig: join(home, 'global.npmrc'),
+    npm_config_registry: registry,
     npm_config_ignore_scripts: 'true',
     npm_config_audit: 'false',
     npm_config_fund: 'false',
     npm_config_update_notifier: 'false',
+    DO_NOT_TRACK: '1',
+  };
+  writeFileSync(join(home, '.npmrc'), '');
+  writeFileSync(join(home, 'global.npmrc'), '');
+  return Object.fromEntries(
+    Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
+}
+
+async function acquisitionHome<T>(run: (home: string) => Promise<T>, network: boolean): Promise<T> {
+  const prior = { ...process.env };
+  using home = mkdtempDisposableSync(join(realpathSync(tmpdir()), 'ok-acquisition-'));
+  const env = {
+    ...isolateNpmHome(
+      home.path,
+      {
+        registry: network ? 'https://registry.npmjs.org/' : 'http://127.0.0.1:1/',
+        cache: join(home.path, 'npm-cache'),
+      },
+      prior,
+    ),
+    UV_OFFLINE: network ? '0' : '1',
     npm_config_fetch_timeout: '3000',
     npm_config_fetch_retries: '0',
-    DO_NOT_TRACK: '1',
     UV_CACHE_DIR: join(home.path, 'uv-cache'),
     UV_TOOL_DIR: join(home.path, 'uv-tools'),
     UV_TOOL_BIN_DIR: join(home.path, 'uv-bin'),
@@ -119,9 +141,7 @@ async function acquisitionHome<T>(run: (home: string) => Promise<T>, network: bo
     UV_PYTHON_DOWNLOADS: 'never',
   };
   for (const key of Object.keys(process.env)) delete process.env[key];
-  for (const [key, value] of Object.entries(env)) if (value !== undefined) process.env[key] = value;
-  writeFileSync(join(home.path, '.npmrc'), '');
-  writeFileSync(join(home.path, 'global.npmrc'), '');
+  for (const [key, value] of Object.entries(env)) process.env[key] = value;
   resetAcquisitionCache();
   try {
     return await run(home.path);

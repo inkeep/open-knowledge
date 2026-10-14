@@ -139,6 +139,10 @@
       ],
       "outputs": ["test-results/vitest-test.json", "test-results/vitest-test.provenance.json"]
     },
+    "@inkeep/open-knowledge-server#test:mcp-inspector": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
     "@inkeep/open-knowledge#test": {
       "dependsOn": ["^build", "build"],
       "cache": true,

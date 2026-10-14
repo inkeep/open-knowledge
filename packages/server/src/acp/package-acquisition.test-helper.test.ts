@@ -1,6 +1,10 @@
+import { existsSync, mkdtempDisposableSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
   acquisitionDescriptors,
+  isolateNpmHome,
   native,
   npmOutputs,
   npmPackedVersion,
@@ -33,6 +37,45 @@ describe('package acquisition command outcomes', () => {
     const failed = await native('ok-nonexistent-acquisition-executable', []);
     expect(failed.code).toBe('ENOENT');
     expect(failed.stderr).toBe('Missing test prerequisite: ok-nonexistent-acquisition-executable');
+  });
+});
+
+describe('npm home isolation', () => {
+  test('passes only the allowlisted variables and redirects npm state into the home', () => {
+    using home = mkdtempDisposableSync(join(tmpdir(), 'ok-npm-isolation-'));
+    const env = isolateNpmHome(
+      home.path,
+      { registry: 'https://registry.example/', cache: '/persistent/npm-cache' },
+      {
+        Path: '/bin',
+        GH_TOKEN: 'secret',
+        AWS_SECRET_ACCESS_KEY: 'secret',
+        NODE_OPTIONS: '--require=/tmp/hook.cjs',
+        npm_config_registry: 'https://other.example/',
+        HTTPS_PROXY: 'http://proxy.example',
+      },
+    );
+    expect(env).toEqual({
+      PATH: '/bin',
+      HOME: home.path,
+      USERPROFILE: home.path,
+      TMPDIR: home.path,
+      TMP: home.path,
+      TEMP: home.path,
+      XDG_CONFIG_HOME: join(home.path, 'config'),
+      XDG_CACHE_HOME: join(home.path, 'cache'),
+      npm_config_cache: '/persistent/npm-cache',
+      npm_config_userconfig: join(home.path, '.npmrc'),
+      npm_config_globalconfig: join(home.path, 'global.npmrc'),
+      npm_config_registry: 'https://registry.example/',
+      npm_config_ignore_scripts: 'true',
+      npm_config_audit: 'false',
+      npm_config_fund: 'false',
+      npm_config_update_notifier: 'false',
+      DO_NOT_TRACK: '1',
+    });
+    expect(existsSync(join(home.path, '.npmrc'))).toBe(true);
+    expect(existsSync(join(home.path, 'global.npmrc'))).toBe(true);
   });
 });
 
