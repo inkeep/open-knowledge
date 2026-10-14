@@ -69,6 +69,7 @@ describe('helper-bundle name agreement across spawn site / Info.plist / afterPac
           includePath: 'installer.nsh',
           postInstallPath: 'deb-postinst.sh',
           postRemovePath: 'deb-postrm.sh',
+          postTransactionPath: 'rpm-posttrans.sh',
           localEntitlementsPath: 'entitlements.mac.local.plist',
           helperInfoPath: 'helper-Info.plist',
           profileAvailable: false,

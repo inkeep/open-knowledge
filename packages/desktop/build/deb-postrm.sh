@@ -13,11 +13,7 @@ else
     rm -f '/usr/bin/${executable}'
 fi
 
-APPARMOR_PROFILE_DEST='/etc/apparmor.d/${executable}'
-
-if [ -f "$APPARMOR_PROFILE_DEST" ]; then
-  rm -f "$APPARMOR_PROFILE_DEST"
-fi
+rm -f '/etc/apparmor.d/${executable}-userns' '/etc/apparmor.d/${executable}'
 
 for link in /usr/bin/ok /usr/bin/open-knowledge; do
   if [ -L "$link" ]; then

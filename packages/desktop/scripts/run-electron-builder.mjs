@@ -12,6 +12,7 @@ import {
   createVariantNsisInclude,
   createVariantPostInstall,
   createVariantPostRemove,
+  createVariantPostTransaction,
   parseBuilderConfig,
 } from './desktop-variant-config.ts';
 import {
@@ -41,6 +42,7 @@ mkdirSync(buildDir, { recursive: true });
 const includePath = '.variant-build/installer.nsh';
 const postInstallPath = '.variant-build/deb-postinst.sh';
 const postRemovePath = '.variant-build/deb-postrm.sh';
+const postTransactionPath = '.variant-build/rpm-posttrans.sh';
 const localEntitlementsPath = '.variant-build/entitlements.mac.local.plist';
 const helperInfoPath = '.variant-build/helper-Info.plist';
 
@@ -53,6 +55,7 @@ const config = createVariantBuilderConfig(
     includePath,
     postInstallPath,
     postRemovePath,
+    postTransactionPath,
     localEntitlementsPath,
     helperInfoPath,
     profileAvailable,
@@ -72,6 +75,10 @@ writeFileSync(
 writeFileSync(
   postRemovePath,
   createVariantPostRemove(readFileSync('build/deb-postrm.sh', 'utf8'), variantName),
+);
+writeFileSync(
+  postTransactionPath,
+  createVariantPostTransaction(readFileSync('build/deb-postinst.sh', 'utf8'), variantName),
 );
 writeFileSync(
   localEntitlementsPath,

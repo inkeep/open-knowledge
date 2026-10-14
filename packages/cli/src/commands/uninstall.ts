@@ -44,7 +44,12 @@ export function detectInstallMethods(
   argv1: string | undefined,
   runNpmLs: (args: string[]) => string | null = defaultNpmLs,
   exists: (path: string) => boolean = existsSync,
-  opts: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv; execPath?: string } = {},
+  opts: {
+    platform?: NodeJS.Platform;
+    env?: NodeJS.ProcessEnv;
+    execPath?: string;
+    queryPackageDatabase?: (command: string, args: string[]) => string | null;
+  } = {},
 ): InstallMethod[] {
   const methods: InstallMethod[] = [];
   const platform = opts.platform ?? process.platform;
@@ -89,14 +94,23 @@ export function detectInstallMethods(
       }
     }
   } else if (platform === 'linux') {
+    const query = opts.queryPackageDatabase ?? defaultRunCommand;
     for (const product of desktopProducts) {
       const installDir = `/opt/${product.productName}`;
-      if (exists(join(installDir, product.linuxExecutableName))) {
+      const executable = join(installDir, product.linuxExecutableName);
+      if (exists(executable)) {
         const { deb: debPackageName, rpm: rpmPackageName } = product.linuxPackageNames;
+        const owner = linuxPackageOwner(executable, query);
         methods.push({
           method: 'app',
           label: `${product.productName} (${installDir})`,
-          instruction: `Remove with your package manager: sudo apt remove ${debPackageName} (Debian/Ubuntu) or sudo dnf remove ${rpmPackageName} (Fedora/RHEL)`,
+          instruction: `Remove with your package manager: ${
+            owner === null
+              ? `sudo apt remove ${debPackageName} (Debian/Ubuntu), ${rpmRemoveCommands(rpmPackageName)}`
+              : owner.format === 'deb'
+                ? `sudo apt remove ${owner.name}`
+                : rpmRemoveCommands(owner.name)
+          }`,
         });
       }
     }
@@ -123,10 +137,10 @@ export function detectInstallMethods(
   return methods;
 }
 
-function defaultNpmLs(args: string[]): string | null {
+function defaultRunCommand(command: string, args: string[]): string | null {
   try {
     return execFileSync(
-      'npm',
+      command,
       args,
       withHiddenWindowsConsole({
         encoding: 'utf-8',
@@ -137,6 +151,29 @@ function defaultNpmLs(args: string[]): string | null {
   } catch {
     return null;
   }
+}
+
+function rpmRemoveCommands(name: string): string {
+  return `sudo dnf remove ${name} (Fedora/RHEL) or sudo zypper remove ${name} (openSUSE)`;
+}
+
+function linuxPackageOwner(
+  path: string,
+  query: (command: string, args: string[]) => string | null,
+): { format: 'deb' | 'rpm'; name: string } | null {
+  const debName = query('dpkg-query', ['-S', path])
+    ?.split('\n')[0]
+    ?.split(':')[0]
+    ?.split(',')[0]
+    ?.trim();
+  if (debName && /^[a-z0-9][a-z0-9.+-]*$/.test(debName)) return { format: 'deb', name: debName };
+  const rpmName = query('rpm', ['-qf', '--queryformat', '%{NAME}\n', path])?.split('\n')[0]?.trim();
+  if (rpmName && /^[A-Za-z0-9._+-]+$/.test(rpmName)) return { format: 'rpm', name: rpmName };
+  return null;
+}
+
+function defaultNpmLs(args: string[]): string | null {
+  return defaultRunCommand('npm', args);
 }
 
 const CALLOUT_RULE = '━'.repeat(64);

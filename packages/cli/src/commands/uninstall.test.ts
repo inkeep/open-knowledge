@@ -135,11 +135,12 @@ describe('detectInstallMethods', () => {
       undefined,
       () => null,
       (p) => p === '/opt/OpenKnowledge/openknowledge',
-      { platform: 'linux' },
+      { platform: 'linux', queryPackageDatabase: () => null },
     );
     expect(methods.map((m) => m.method)).toEqual(['app']);
-    expect(methods[0]?.instruction).toContain('apt remove openknowledge');
-    expect(methods[0]?.instruction).toContain('dnf remove OpenKnowledge');
+    expect(methods[0]?.instruction).toBe(
+      'Remove with your package manager: sudo apt remove openknowledge (Debian/Ubuntu), sudo dnf remove openknowledge (Fedora/RHEL) or sudo zypper remove openknowledge (openSUSE)',
+    );
   });
 
   test('reports the Beta Linux install by product name', () => {
@@ -148,15 +149,70 @@ describe('detectInstallMethods', () => {
       undefined,
       () => null,
       (path) => path === '/opt/OpenKnowledge Beta/openknowledge-beta',
-      { platform: 'linux' },
+      { platform: 'linux', queryPackageDatabase: () => null },
     );
     expect(methods).toEqual([
       {
         method: 'app',
         label: 'OpenKnowledge Beta (/opt/OpenKnowledge Beta)',
         instruction:
-          'Remove with your package manager: sudo apt remove openknowledge-beta-desktop (Debian/Ubuntu) or sudo dnf remove openknowledge-beta-desktop (Fedora/RHEL)',
+          'Remove with your package manager: sudo apt remove openknowledge-beta (Debian/Ubuntu), sudo dnf remove openknowledge-beta (Fedora/RHEL) or sudo zypper remove openknowledge-beta (openSUSE)',
       },
+    ]);
+  });
+
+  test.each([
+    {
+      installed: 'a Beta deb from before the rename',
+      executable: '/opt/OpenKnowledge Beta/openknowledge-beta',
+      dpkg: 'openknowledge-beta-desktop: /opt/OpenKnowledge Beta/openknowledge-beta\n',
+      rpm: null,
+      instruction: 'sudo apt remove openknowledge-beta-desktop',
+    },
+    {
+      installed: 'a renamed Beta deb',
+      executable: '/opt/OpenKnowledge Beta/openknowledge-beta',
+      dpkg: 'openknowledge-beta: /opt/OpenKnowledge Beta/openknowledge-beta\n',
+      rpm: null,
+      instruction: 'sudo apt remove openknowledge-beta',
+    },
+    {
+      installed: 'a Stable rpm from before the rename',
+      executable: '/opt/OpenKnowledge/openknowledge',
+      dpkg: null,
+      rpm: 'OpenKnowledge\n',
+      instruction:
+        'sudo dnf remove OpenKnowledge (Fedora/RHEL) or sudo zypper remove OpenKnowledge (openSUSE)',
+    },
+    {
+      installed: 'a renamed Stable rpm',
+      executable: '/opt/OpenKnowledge/openknowledge',
+      dpkg: null,
+      rpm: 'openknowledge\n',
+      instruction:
+        'sudo dnf remove openknowledge (Fedora/RHEL) or sudo zypper remove openknowledge (openSUSE)',
+    },
+  ])('names the package that owns $installed', ({ executable, dpkg, rpm, instruction }) => {
+    const queries: string[][] = [];
+    const methods = detectInstallMethods(
+      '/home/jane',
+      undefined,
+      () => null,
+      (p) => p === executable,
+      {
+        platform: 'linux',
+        queryPackageDatabase: (command, args) => {
+          queries.push([command, ...args]);
+          return command === 'dpkg-query' ? dpkg : rpm;
+        },
+      },
+    );
+    expect(methods.map((m) => m.instruction)).toEqual([
+      `Remove with your package manager: ${instruction}`,
+    ]);
+    expect(queries).toEqual([
+      ['dpkg-query', '-S', executable],
+      ...(dpkg === null ? [['rpm', '-qf', '--queryformat', '%{NAME}\n', executable]] : []),
     ]);
   });
 

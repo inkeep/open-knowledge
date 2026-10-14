@@ -7,7 +7,11 @@ export const DESKTOP_PRODUCTS = {
     protocolScheme: 'openknowledge',
     linuxPackageNames: {
       deb: 'openknowledge',
-      rpm: 'OpenKnowledge',
+      rpm: 'openknowledge',
+    },
+    retiredLinuxPackageNames: {
+      deb: [],
+      rpm: ['OpenKnowledge'],
     },
     cliCommandNames: ['ok', 'open-knowledge'],
     mcpServerName: 'open-knowledge',
@@ -23,8 +27,12 @@ export const DESKTOP_PRODUCTS = {
     linuxExecutableName: 'openknowledge-beta',
     protocolScheme: 'openknowledge-beta',
     linuxPackageNames: {
-      deb: 'openknowledge-beta-desktop',
-      rpm: 'openknowledge-beta-desktop',
+      deb: 'openknowledge-beta',
+      rpm: 'openknowledge-beta',
+    },
+    retiredLinuxPackageNames: {
+      deb: ['openknowledge-beta-desktop'],
+      rpm: ['openknowledge-beta-desktop'],
     },
     cliCommandNames: ['ok-beta', 'open-knowledge-beta'],
     mcpServerName: 'open-knowledge-beta',

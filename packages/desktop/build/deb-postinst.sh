@@ -27,9 +27,11 @@ if hash update-desktop-database 2>/dev/null; then
     update-desktop-database /usr/share/applications || true
 fi
 
+rm -f '/etc/apparmor.d/${executable}'
+
 if apparmor_status --enabled > /dev/null 2>&1; then
   APPARMOR_PROFILE_SOURCE='/opt/${sanitizedProductName}/resources/apparmor-profile'
-  APPARMOR_PROFILE_TARGET='/etc/apparmor.d/${executable}'
+  APPARMOR_PROFILE_TARGET='/etc/apparmor.d/${executable}-userns'
   if apparmor_parser --skip-kernel-load --debug "$APPARMOR_PROFILE_SOURCE" > /dev/null 2>&1; then
     cp -f "$APPARMOR_PROFILE_SOURCE" "$APPARMOR_PROFILE_TARGET"
     if ! { [ -x '/usr/bin/ischroot' ] && /usr/bin/ischroot; } && hash apparmor_parser 2>/dev/null; then

@@ -21,6 +21,10 @@ interface DesktopVariantIdentity {
     readonly deb: string;
     readonly rpm: string;
   };
+  readonly retiredLinuxPackageNames: {
+    readonly deb: readonly string[];
+    readonly rpm: readonly string[];
+  };
   readonly cliCommandNames: readonly [string, string];
   readonly cliHomeSegment: string | null;
 }
@@ -40,6 +44,7 @@ const DESKTOP_PRODUCT_VARIANTS = {
     windowsIconPath: 'build/icon.ico',
     linuxExecutableName: DESKTOP_PRODUCTS.stable.linuxExecutableName,
     linuxPackageNames: DESKTOP_PRODUCTS.stable.linuxPackageNames,
+    retiredLinuxPackageNames: DESKTOP_PRODUCTS.stable.retiredLinuxPackageNames,
     cliCommandNames: DESKTOP_PRODUCTS.stable.cliCommandNames,
     cliHomeSegment: null,
   },
@@ -57,6 +62,7 @@ const DESKTOP_PRODUCT_VARIANTS = {
     windowsIconPath: 'build/icon-beta.ico',
     linuxExecutableName: DESKTOP_PRODUCTS.beta.linuxExecutableName,
     linuxPackageNames: DESKTOP_PRODUCTS.beta.linuxPackageNames,
+    retiredLinuxPackageNames: DESKTOP_PRODUCTS.beta.retiredLinuxPackageNames,
     cliCommandNames: DESKTOP_PRODUCTS.beta.cliCommandNames,
     cliHomeSegment: 'beta',
   },

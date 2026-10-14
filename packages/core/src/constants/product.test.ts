@@ -57,6 +57,45 @@ describe('resolveDesktopProductName', () => {
     expect(DESKTOP_PRODUCTS.stable.keyringService).toBe('open-knowledge');
   });
 
+  it('names each channel’s deb and rpm after its Linux executable', () => {
+    expect(
+      Object.fromEntries(
+        Object.entries(DESKTOP_PRODUCTS).map(([name, p]) => [name, p.linuxPackageNames]),
+      ),
+    ).toEqual({
+      stable: { deb: 'openknowledge', rpm: 'openknowledge' },
+      beta: { deb: 'openknowledge-beta', rpm: 'openknowledge-beta' },
+    });
+    for (const product of Object.values(DESKTOP_PRODUCTS)) {
+      expect(product.linuxPackageNames.deb).toBe(product.linuxExecutableName);
+      expect(product.linuxPackageNames.rpm).toBe(product.linuxExecutableName);
+    }
+  });
+
+  it('retires the package names each channel shipped before, and only its own', () => {
+    expect(DESKTOP_PRODUCTS.stable.retiredLinuxPackageNames).toEqual({
+      deb: [],
+      rpm: ['OpenKnowledge'],
+    });
+    expect(DESKTOP_PRODUCTS.beta.retiredLinuxPackageNames).toEqual({
+      deb: ['openknowledge-beta-desktop'],
+      rpm: ['openknowledge-beta-desktop'],
+    });
+    const current = Object.values(DESKTOP_PRODUCTS).flatMap((p) => [
+      p.linuxPackageNames.deb,
+      p.linuxPackageNames.rpm,
+    ]);
+    const retired = Object.values(DESKTOP_PRODUCTS).flatMap((p) => [
+      ...p.retiredLinuxPackageNames.deb,
+      ...p.retiredLinuxPackageNames.rpm,
+    ]);
+    for (const name of retired) expect(current).not.toContain(name);
+    for (const product of Object.values(DESKTOP_PRODUCTS)) {
+      for (const name of product.retiredLinuxPackageNames.deb)
+        expect(name).toMatch(/^[a-z0-9.+-]+$/);
+    }
+  });
+
   it('gives every channel its own deep-link scheme, keeping Stable on openknowledge', () => {
     expect(
       Object.fromEntries(

@@ -22,6 +22,7 @@ import {
   createVariantNsisInclude,
   createVariantPostInstall,
   createVariantPostRemove,
+  createVariantPostTransaction,
   parseBuilderConfig,
 } from '../../scripts/desktop-variant-config.ts';
 import { MAC_UPDATE_MINIMUM_DARWIN_VERSION } from '../../scripts/mac-update-manifest.ts';
@@ -214,6 +215,7 @@ const paths = {
   includePath: '.variant-build/installer.nsh',
   postInstallPath: '.variant-build/deb-postinst.sh',
   postRemovePath: '.variant-build/deb-postrm.sh',
+  postTransactionPath: '.variant-build/rpm-posttrans.sh',
   localEntitlementsPath: '.variant-build/entitlements.mac.local.plist',
   helperInfoPath: '.variant-build/helper-Info.plist',
   profileAvailable: false,
@@ -277,12 +279,21 @@ describe('desktop variant builder config', () => {
         afterInstall: paths.postInstallPath,
         afterRemove: paths.postRemovePath,
         packageName: 'openknowledge',
+        fpm: [],
       },
       rpm: {
         afterInstall: paths.postInstallPath,
         afterRemove: paths.postRemovePath,
-        packageName: 'OpenKnowledge',
+        packageName: 'openknowledge',
         depends: ['libsecret'],
+        fpm: [
+          '--replaces',
+          'OpenKnowledge',
+          '--provides',
+          'OpenKnowledge',
+          '--rpm-posttrans',
+          paths.postTransactionPath,
+        ],
       },
     });
     expect(config.win.extraResources).toEqual([
@@ -322,13 +333,29 @@ describe('desktop variant builder config', () => {
       deb: {
         afterInstall: paths.postInstallPath,
         afterRemove: paths.postRemovePath,
-        packageName: 'openknowledge-beta-desktop',
+        packageName: 'openknowledge-beta',
+        fpm: [
+          '--replaces',
+          'openknowledge-beta-desktop',
+          '--conflicts',
+          'openknowledge-beta-desktop',
+          '--provides',
+          'openknowledge-beta-desktop',
+        ],
       },
       rpm: {
         afterInstall: paths.postInstallPath,
         afterRemove: paths.postRemovePath,
-        packageName: 'openknowledge-beta-desktop',
+        packageName: 'openknowledge-beta',
         depends: ['libsecret'],
+        fpm: [
+          '--replaces',
+          'openknowledge-beta-desktop',
+          '--provides',
+          'openknowledge-beta-desktop',
+          '--rpm-posttrans',
+          paths.postTransactionPath,
+        ],
       },
     });
     expect(beta.mac.provisioningProfile).toBeUndefined();
@@ -396,6 +423,37 @@ describe('desktop variant builder config', () => {
     ).toContain('/usr/bin/ok-beta /usr/bin/open-knowledge-beta');
   });
 
+  test.each([
+    {
+      variant: 'stable',
+      links: ['/usr/bin/ok', '/usr/bin/open-knowledge'],
+      exe: "'/opt/OpenKnowledge/openknowledge'",
+    },
+    {
+      variant: 'beta',
+      links: ['/usr/bin/ok-beta', '/usr/bin/open-knowledge-beta'],
+      exe: "'/opt/OpenKnowledge Beta/openknowledge-beta'",
+    },
+  ] as const)(
+    'rebuilds the $variant postinst as an rpm post-transaction script with every macro expanded',
+    ({ variant, links, exe }) => {
+      const postInstall = readFileSync(resolve(desktopRoot, 'build/deb-postinst.sh'), 'utf8');
+      const script = createVariantPostTransaction(postInstall, variant);
+      expect(script).not.toMatch(/\$\{/);
+      expect(script).toContain(exe);
+      for (const link of links) expect(script).toContain(`ln -sf "$OK_WRAPPER" ${link}`);
+    },
+  );
+
+  test('refuses a post-transaction template with a macro it cannot expand', () => {
+    expect(() =>
+      createVariantPostTransaction(
+        `ln -sf "$OK_WRAPPER" /usr/bin/ok\nln -sf "$OK_WRAPPER" /usr/bin/open-knowledge\n${token('version')}`,
+        'beta',
+      ),
+    ).toThrow(/\$\{version\}/);
+  });
+
   test('drops the restricted entitlement for unsigned local variant builds', () => {
     expect(
       createLocalEntitlements(
@@ -426,6 +484,7 @@ describe('desktop variant builder config', () => {
       expect(() => createVariantNsisInclude(installer, variant)).not.toThrow();
       expect(() => createVariantPostInstall(postInstall, variant)).not.toThrow();
       expect(() => createVariantPostRemove(postRemove, variant)).not.toThrow();
+      expect(() => createVariantPostTransaction(postInstall, variant)).not.toThrow();
       expect(() => createVariantHelperInfo(helperInfo, variant)).not.toThrow();
     }
     expect(() => createLocalEntitlements(entitlements)).not.toThrow();
@@ -492,6 +551,13 @@ describe('electron-builder wrapper execution', () => {
       );
       expect(generated.npmRebuild).toBe(target === '--linux' ? false : baseRebuild);
       expect(generated.mac.notarize).toBe(false);
+      expect(generated.rpm.fpm.slice(-2)).toEqual([
+        '--rpm-posttrans',
+        '.variant-build/rpm-posttrans.sh',
+      ]);
+      expect(readFileSync(join(fixture, '.variant-build/rpm-posttrans.sh'), 'utf8')).toContain(
+        `/opt/${DESKTOP_VARIANTS[variant as keyof typeof DESKTOP_VARIANTS].productName}/`,
+      );
       if (target === '--mac') {
         const manifest = parseYaml(
           readFileSync(join(fixture, 'dist-desktop/latest-mac.yml'), 'utf8'),

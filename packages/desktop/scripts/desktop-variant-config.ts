@@ -12,6 +12,7 @@ interface LinuxPackageTargetConfig {
   afterRemove: string;
   packageName?: string;
   depends?: string[];
+  fpm?: string[];
 }
 
 interface BuilderConfig {
@@ -53,6 +54,7 @@ export interface VariantConfigPaths {
   readonly includePath: string;
   readonly postInstallPath: string;
   readonly postRemovePath: string;
+  readonly postTransactionPath: string;
   readonly localEntitlementsPath: string;
   readonly helperInfoPath: string;
   readonly profileAvailable: boolean;
@@ -117,6 +119,28 @@ export function createVariantBuilderConfig(
   config.linux.executableName = variant.linuxExecutableName;
   config.deb.packageName = variant.linuxPackageNames.deb;
   config.rpm.packageName = variant.linuxPackageNames.rpm;
+  config.deb.fpm = [
+    ...(config.deb.fpm ?? []),
+    ...variant.retiredLinuxPackageNames.deb.flatMap((name) => [
+      '--replaces',
+      name,
+      '--conflicts',
+      name,
+      '--provides',
+      name,
+    ]),
+  ];
+  config.rpm.fpm = [
+    ...(config.rpm.fpm ?? []),
+    ...variant.retiredLinuxPackageNames.rpm.flatMap((name) => [
+      '--replaces',
+      name,
+      '--provides',
+      name,
+    ]),
+    '--rpm-posttrans',
+    paths.postTransactionPath,
+  ];
   config.nsis.include = paths.includePath;
   config.deb.afterInstall = paths.postInstallPath;
   config.deb.afterRemove = paths.postRemovePath;
@@ -209,6 +233,29 @@ export function createVariantPostRemove(source: string, variantName: DesktopVari
     'for link in /usr/bin/ok /usr/bin/open-knowledge; do',
     `for link in /usr/bin/${shortName} /usr/bin/${longName}; do`,
     'the Linux CLI removal loop in build/deb-postrm.sh',
+  );
+}
+
+export function createVariantPostTransaction(
+  postInstallSource: string,
+  variantName: DesktopVariantName,
+): string {
+  const variant = DESKTOP_VARIANTS[variantName];
+  const macros = new Map([
+    ['executable', variant.linuxExecutableName],
+    ['sanitizedProductName', variant.productName],
+  ]);
+  return createVariantPostInstall(postInstallSource, variantName).replace(
+    /\$\{([^}]*)\}/g,
+    (macro, name: string) => {
+      const value = macros.get(name);
+      if (value === undefined) {
+        throw new Error(
+          `Desktop packaging template build/deb-postinst.sh uses ${macro}, which the rpm post-transaction script cannot expand.`,
+        );
+      }
+      return value;
+    },
   );
 }
 
