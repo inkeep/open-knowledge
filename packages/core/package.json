@@ -731,6 +731,12 @@
       "types": "./dist/utils-github-stars.d.mts",
       "default": "./dist/utils-github-stars.mjs"
     },
+    "./utils/grapheme-clip": {
+      "@inkeep/source": "./src/utils/grapheme-clip.ts",
+      "development": "./src/utils/grapheme-clip.ts",
+      "types": "./dist/utils-grapheme-clip.d.mts",
+      "default": "./dist/utils-grapheme-clip.mjs"
+    },
     "./utils/heading-scan": {
       "@inkeep/source": "./src/utils/heading-scan.ts",
       "development": "./src/utils/heading-scan.ts",

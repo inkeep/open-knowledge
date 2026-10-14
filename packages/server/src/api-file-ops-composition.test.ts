@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -113,6 +114,56 @@ describe('file-ops group over the composed listener — served natively', () => 
     expect(res.status).toBe(400);
     expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:invalid-request');
     expect(existsSync(resolve(contentDir, 'leaky', 'from-leak.md'))).toBe(false);
+  });
+
+  test('create-page instantiates a template whose name uses non-Latin letters', async () => {
+    const tplDir = resolve(contentDir, 'minutes', '.ok', 'templates');
+    mkdirSync(tplDir, { recursive: true });
+    writeFileSync(
+      resolve(tplDir, '議事録.md'),
+      '---\ntemplate:\n  title: 議事録\n---\n## 出席者\n',
+      'utf-8',
+    );
+    const res = await postJson('/api/create-page', {
+      path: 'minutes/2026-10-13.md',
+      template: '議事録',
+    });
+    expect(res.status).toBe(200);
+    expect(readFileSync(resolve(contentDir, 'minutes', '2026-10-13.md'), 'utf-8')).toContain(
+      '## 出席者',
+    );
+  });
+
+  test('create-page resolves a decomposed template name to its composed spelling', async () => {
+    const tplDir = resolve(contentDir, 'nfc', '.ok', 'templates');
+    mkdirSync(tplDir, { recursive: true });
+    writeFileSync(
+      resolve(tplDir, 'café.md'),
+      '---\ntemplate:\n  title: Café\n---\n## Menu\n',
+      'utf-8',
+    );
+    const res = await postJson('/api/create-page', {
+      path: 'nfc/today.md',
+      template: 'cafe\u0301',
+    });
+    expect(res.status).toBe(200);
+    expect(readFileSync(resolve(contentDir, 'nfc', 'today.md'), 'utf-8')).toContain('## Menu');
+  });
+
+  test('create-page finds a decomposed template file from its composed spelling', async () => {
+    const tplDir = resolve(contentDir, 'nfd', '.ok', 'templates');
+    mkdirSync(tplDir, { recursive: true });
+    writeFileSync(
+      resolve(tplDir, 'cafe\u{0301}.md'),
+      '---\ntemplate:\n  title: Cafe\n---\n## Specials\n',
+      'utf-8',
+    );
+    const res = await postJson('/api/create-page', {
+      path: 'nfd/today.md',
+      template: 'caf\u{00E9}',
+    });
+    expect(res.status).toBe(200);
+    expect(readFileSync(resolve(contentDir, 'nfd', 'today.md'), 'utf-8')).toContain('## Specials');
   });
 
   test('create-page refuses a target routed into .ok through a symlinked directory', async () => {

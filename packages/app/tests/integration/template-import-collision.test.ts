@@ -63,33 +63,56 @@ async function waitForRemoval(docName: string): Promise<void> {
 }
 
 describe('template import never overwrites an existing template', () => {
-  test('two pages named only in non-Latin script land as separate templates', async () => {
+  test('two pages with the same non-Latin name keep it and land as separate templates', async () => {
     const folder = `jp-${randomUUID().slice(0, 8)}`;
     const firstMarker = `minutes-${randomUUID().slice(0, 8)}`;
-    const secondMarker = `daily-${randomUUID().slice(0, 8)}`;
-    await writeSource(`${folder}/議事録`, `# 議事録\n\n${firstMarker}\n`);
-    await writeSource(`${folder}/日報`, `# 日報\n\n${secondMarker}\n`);
+    const secondMarker = `minutes-${randomUUID().slice(0, 8)}`;
+    await writeSource(`${folder}/sales/議事録`, `# 議事録\n\n${firstMarker}\n`);
+    await writeSource(`${folder}/eng/議事録`, `# 議事録\n\n${secondMarker}\n`);
 
     const firstPath = await importedPath(
-      await importTemplate({ sourcePath: `${folder}/議事録`, targetFolder: folder }),
+      await importTemplate({ sourcePath: `${folder}/sales/議事録`, targetFolder: folder }),
     );
     const secondPath = await importedPath(
       await importTemplate({
-        sourcePath: `${folder}/日報`,
+        sourcePath: `${folder}/eng/議事録`,
         targetFolder: folder,
         deleteSource: true,
       }),
     );
 
-    expect(firstPath).toBe(`${folder}/.ok/templates/imported-template.md`);
-    expect(secondPath).toBe(`${folder}/.ok/templates/imported-template-2.md`);
-    expect(templateBytes(folder, 'imported-template')).toContain(firstMarker);
-    expect(templateBytes(folder, 'imported-template')).not.toContain(secondMarker);
-    expect(templateBytes(folder, 'imported-template-2')).toContain(secondMarker);
+    expect(firstPath).toBe(`${folder}/.ok/templates/議事録.md`);
+    expect(secondPath).toBe(`${folder}/.ok/templates/議事録-2.md`);
+    expect(templateBytes(folder, '議事録')).toContain(firstMarker);
+    expect(templateBytes(folder, '議事録')).not.toContain(secondMarker);
+    expect(templateBytes(folder, '議事録-2')).toContain(secondMarker);
 
-    await waitForRemoval(`${folder}/日報`);
-    expect(existsSync(join(server.contentDir, folder, '日報.md'))).toBe(false);
-    expect(existsSync(join(server.contentDir, folder, '議事録.md'))).toBe(true);
+    await waitForRemoval(`${folder}/eng/議事録`);
+    expect(existsSync(join(server.contentDir, folder, 'eng', '議事録.md'))).toBe(false);
+    expect(existsSync(join(server.contentDir, folder, 'sales', '議事録.md'))).toBe(true);
+  });
+
+  test('pages named only in symbols fall back to a numbered default name', async () => {
+    const folder = `sym-${randomUUID().slice(0, 8)}`;
+    const markers = [0, 1].map((i) => `s${i}-${randomUUID().slice(0, 8)}`);
+    await writeSource(`${folder}/★★★`, `# A\n\n${markers[0]}\n`);
+    await writeSource(`${folder}/☆☆☆`, `# B\n\n${markers[1]}\n`);
+
+    const paths = [
+      await importedPath(
+        await importTemplate({ sourcePath: `${folder}/★★★`, targetFolder: folder }),
+      ),
+      await importedPath(
+        await importTemplate({ sourcePath: `${folder}/☆☆☆`, targetFolder: folder }),
+      ),
+    ];
+
+    expect(paths).toEqual([
+      `${folder}/.ok/templates/imported-template.md`,
+      `${folder}/.ok/templates/imported-template-2.md`,
+    ]);
+    expect(templateBytes(folder, 'imported-template')).toContain(markers[0]);
+    expect(templateBytes(folder, 'imported-template-2')).toContain(markers[1]);
   });
 
   test('ASCII names that derive the same slug walk to the next free suffix', async () => {
@@ -123,20 +146,25 @@ describe('template import never overwrites an existing template', () => {
 
   test('concurrent unnamed imports of colliding pages each get their own template', async () => {
     const folder = `race-${randomUUID().slice(0, 8)}`;
-    const names = ['Привет', 'Мир', 'Тест'];
+    const names = ['one', 'two', 'three'];
     for (const name of names) {
-      await writeSource(`${folder}/${name}`, `# ${name}\n\nbody-${name}\n`);
+      await writeSource(`${folder}/${name}/Привет`, `# Привет\n\nbody-${name}\n`);
     }
 
     const paths = await Promise.all(
       names.map(async (name) =>
         importedPath(
-          await importTemplate({ sourcePath: `${folder}/${name}`, targetFolder: folder }),
+          await importTemplate({ sourcePath: `${folder}/${name}/Привет`, targetFolder: folder }),
         ),
       ),
     );
 
     expect(new Set(paths).size).toBe(names.length);
+    expect([...paths].sort()).toEqual([
+      `${folder}/.ok/templates/привет-2.md`,
+      `${folder}/.ok/templates/привет-3.md`,
+      `${folder}/.ok/templates/привет.md`,
+    ]);
     const contents = paths.map((p) => readFileSync(join(server.contentDir, p), 'utf-8'));
     for (const name of names) {
       expect(contents.filter((c) => c.includes(`body-${name}`))).toHaveLength(1);

@@ -4,6 +4,7 @@ import type { ServerResponse } from 'node:http';
 import { relative, resolve, sep } from 'node:path';
 import type { Hocuspocus } from '@hocuspocus/server';
 import {
+  canonicalTemplateName,
   EmptyRequestSchema,
   FolderConfigGetSuccessSchema,
   FolderConfigPutRequestSchema,
@@ -15,6 +16,7 @@ import {
   parseTemplateFile,
   stripFrontmatter,
   TEMPLATE_NAME_REGEX,
+  TEMPLATE_NAME_RULE,
   TemplateDeleteSuccessSchema,
   TemplateGetSuccessSchema,
   TemplateImportRequestSchema,
@@ -176,7 +178,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         res,
         400,
         'urn:ok:error:invalid-request',
-        'Invalid name: must be letters / digits / `_` / `-` only (no `.md` extension).',
+        `Invalid name: must use ${TEMPLATE_NAME_RULE}, without the \`.md\` extension.`,
         { handler },
       );
       return false;
@@ -1187,7 +1189,9 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         if (!name) {
           const { basename } = splitContentPath(sourcePath);
           const nameWithoutExt = basename.replace(/\.(md|mdx)$/i, '');
-          name = nameWithoutExt.replace(/[^A-Za-z0-9_-]/g, '-').toLowerCase();
+          name = canonicalTemplateName(nameWithoutExt)
+            .replace(/[^\p{L}\p{M}\p{N}_-]|\p{DI}/gu, '-')
+            .toLowerCase();
           name = name.replace(/^[-_]+|[-_]+$/g, '');
           name ||= 'imported-template';
         }

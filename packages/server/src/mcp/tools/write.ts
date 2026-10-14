@@ -4,6 +4,7 @@ import {
   type DocExtension,
   type FrontmatterMap,
   type FrontmatterPatch,
+  findTemplateByName,
   instantiateDoc,
   normalizeBridge,
   type ProblemType,
@@ -274,7 +275,7 @@ async function writeOneDoc(
   if (spec.template !== undefined) {
     const parentFolder = parentFolderOf(docName);
     const available = resolveTemplatesAvailable(cwd, parentFolder);
-    const matched = available.find((t) => t.name === spec.template);
+    const matched = findTemplateByName(available, spec.template);
     if (!matched) {
       return {
         docName,

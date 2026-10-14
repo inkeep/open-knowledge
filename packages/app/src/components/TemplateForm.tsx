@@ -2,6 +2,11 @@ import {
   stripFrontmatter,
   unwrapFrontmatterFences,
 } from '@inkeep/open-knowledge-core/extensions/frontmatter';
+import {
+  canonicalTemplateName,
+  TEMPLATE_NAME_REGEX,
+  templateRenameTarget,
+} from '@inkeep/open-knowledge-core/schemas/api';
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { X } from 'lucide-react';
@@ -14,12 +19,10 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { moveTemplate, saveTemplate } from '@/lib/folder-config-api';
 
-const NAME_RE = /^[A-Za-z0-9_-]+$/;
-
 export function slugifyTemplateName(name: string): string {
-  return name
+  return canonicalTemplateName(name)
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(?:[^\p{L}\p{M}\p{N}]|\p{DI})+/gu, '-')
     .replace(/^-+|-+$/g, '');
 }
 
@@ -191,9 +194,10 @@ export function useTemplateForm({
   const slugEditable = mode === 'create' || canRename;
 
   const trimmedTitle = title.trim();
-  const trimmedSlug = slug.trim();
+  const trimmedSlug = canonicalTemplateName(slug.trim());
   const titleInvalid = trimmedTitle === '';
-  const slugInvalid = slugEditable && (trimmedSlug === '' || !NAME_RE.test(trimmedSlug));
+  const slugInvalid =
+    slugEditable && (trimmedSlug === '' || !TEMPLATE_NAME_REGEX.test(trimmedSlug));
   const slugShadows =
     mode === 'create' && !slugInvalid && (existingNames?.has(trimmedSlug) ?? false);
   const canSubmit = !saving && !titleInvalid && !slugInvalid;
@@ -206,7 +210,7 @@ export function useTemplateForm({
     setSaving(true);
     const frontmatter = buildTemplateFrontmatter({ title, description });
     const composedBody = composeDocBody({ type, properties, markdown: body });
-    const renaming = canRename && trimmedSlug !== initial.name;
+    const renaming = canRename && templateRenameTarget(initial.name, slug) !== null;
     const result = renaming
       ? await moveTemplate({
           fromFolder: folderPath,

@@ -69,6 +69,22 @@ const MATRIX: Array<{ token: string; expected: GfmLinkToken | null }> = [
     token: 'www.a_b.example.com',
     expected: { href: 'http://www.a_b.example.com', text: 'www.a_b.example.com' },
   },
+  {
+    token: 'https://例え.jp',
+    expected: { href: 'https://例え.jp', text: 'https://例え.jp' },
+  },
+  {
+    token: 'https://bücher.de/straße',
+    expected: { href: 'https://bücher.de/straße', text: 'https://bücher.de/straße' },
+  },
+  {
+    token: 'www.例え.jp',
+    expected: { href: 'http://www.例え.jp', text: 'www.例え.jp' },
+  },
+  {
+    token: 'https://пример.рф.',
+    expected: { href: 'https://пример.рф', text: 'https://пример.рф' },
+  },
 ];
 
 describe('detectGfmLinkToken — acceptance matrix', () => {
@@ -88,6 +104,8 @@ describe('detectGfmLinkToken — parity with MarkdownManager.parse', () => {
     'a.b@c.co.uk',
     'ftp://files.example.com',
     'https://en.wikipedia.org/wiki/Foo_(bar)',
+    'https://ab\u200Ccd.example',
+    'https://ab\u200Ccd.ex\u200Cample',
   ];
   for (const token of parityTokens) {
     test(`agrees with the pipeline for ${token}`, () => {

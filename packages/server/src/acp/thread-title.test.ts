@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { clampThreadTitle, deriveThreadTitle, TITLE_MAX_CHARS } from './thread-title.ts';
 
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
 describe('deriveThreadTitle', () => {
   test('passes a plain imperative line through unchanged', () => {
     expect(deriveThreadTitle('Fix the login bug')).toBe('Fix the login bug');
@@ -150,5 +152,37 @@ describe('clampThreadTitle', () => {
     const clamped = clampThreadTitle(word);
     expect(clamped.length).toBe(TITLE_MAX_CHARS);
     expect(clamped.endsWith('…')).toBe(true);
+  });
+});
+
+describe('thread titles outside ASCII', () => {
+  test('strips a leading agent name that ends in a non-ASCII letter', () => {
+    expect(deriveThreadTitle('Café, fix the parser', 'Café')).toBe('Fix the parser');
+    expect(deriveThreadTitle('@Café fix the parser', 'Café')).toBe('Fix the parser');
+    expect(deriveThreadTitle('@助手 请帮我修复解析器里的这个错误', '助手')).toBe(
+      '请帮我修复解析器里的这个错误',
+    );
+  });
+
+  test('leaves a longer word that starts with the agent name alone', () => {
+    expect(deriveThreadTitle('@Caféteria menu needs updating', 'Café')).toBe(
+      '@Caféteria menu needs updating',
+    );
+  });
+
+  test('clamping never leaves half of an emoji behind', () => {
+    const clamped = clampThreadTitle(
+      `${'x'.repeat(TITLE_MAX_CHARS - 2)}\u{1F600}${'y'.repeat(20)}`,
+    );
+    expect(clamped).toBe(`${'x'.repeat(TITLE_MAX_CHARS - 2)}…`);
+    expect(LONE_SURROGATE.test(clamped)).toBe(false);
+  });
+
+  test('clamping keeps a joined emoji whole or drops it', () => {
+    const family = '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}';
+    const clamped = clampThreadTitle(
+      `${'x'.repeat(TITLE_MAX_CHARS - 4)}${family}${'y'.repeat(20)}`,
+    );
+    expect(clamped).toBe(`${'x'.repeat(TITLE_MAX_CHARS - 4)}…`);
   });
 });

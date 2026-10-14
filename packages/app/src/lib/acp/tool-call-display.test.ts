@@ -384,6 +384,23 @@ describe('describeToolCall — everything that is not an OK tool', () => {
     expect(display.preview).not.toContain('second line');
   });
 
+  test('a long preview cut at an emoji drops the whole emoji', () => {
+    const command = `${'x'.repeat(59)}\u{1F600}${'y'.repeat(10)}`;
+    const display = describeToolCall({ title: 'bash', toolKind: 'execute', rawInput: { command } });
+    expect(display.preview).toBe(`${'x'.repeat(59)}…`);
+  });
+
+  test('a long inline argument cut at an emoji drops the whole emoji', () => {
+    const query = `${'q'.repeat(118)}\u{1F600}${'r'.repeat(10)}`;
+    expect(
+      describeToolCall({
+        title: 'mcp__open-knowledge__search',
+        toolKind: 'other',
+        rawInput: { cwd: '/repo', query },
+      }).text,
+    ).toBe(`OpenKnowledge searched for ${'q'.repeat(118)}…`);
+  });
+
   test('a long command that is already the label does not get repeated beside it', () => {
     const command =
       'ps -p 51625 -o pid,command | tail -n +1; echo "----"; curl -s localhost:3000/health';

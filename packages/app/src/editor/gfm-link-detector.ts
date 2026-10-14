@@ -5,9 +5,10 @@ export type GfmLinkToken = {
   text: string;
 };
 
-const URL_HEAD = /^(https?:\/\/|www(?=\.))([-.\w]+)([^ \t\r\n]*)/i;
+const URL_HEAD = /^(https?:\/\/|www(?=\.))((?:[-.\w]|[^\s\p{P}\p{S}\p{Cc}])+)([^ \t\r\n]*)/iu;
 const EMAIL_HEAD = /^([-.\w+]+)@([-\w]+(?:\.[-\w]+)+)/;
 const EMAIL_LABEL_BAD_TAIL = /[-\d_]$/;
+const DOMAIN_LABEL_ALNUM = /[\p{L}\p{N}]/u;
 
 const ALLOWED_SCHEME_PREFIXES = SAFE_URL_SCHEMES.map((scheme) => `${scheme}:`);
 
@@ -28,8 +29,8 @@ function hasCorrectDomainLabels(domain: string): boolean {
   const parts = domain.split('.');
   const last = parts[parts.length - 1];
   const penultimate = parts[parts.length - 2];
-  if (last && (/_/.test(last) || !/[a-zA-Z\d]/.test(last))) return false;
-  if (penultimate && (/_/.test(penultimate) || !/[a-zA-Z\d]/.test(penultimate))) return false;
+  if (last && (/_/.test(last) || !DOMAIN_LABEL_ALNUM.test(last))) return false;
+  if (penultimate && (/_/.test(penultimate) || !DOMAIN_LABEL_ALNUM.test(penultimate))) return false;
   return true;
 }
 

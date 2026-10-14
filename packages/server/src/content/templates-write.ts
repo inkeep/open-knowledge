@@ -13,6 +13,7 @@ import {
   stripFrontmatter,
   TEMPLATE_IDENTITY_KEY,
   TEMPLATE_NAME_REGEX,
+  TEMPLATE_NAME_RULE,
   type TemplateIdentity,
   unwrapFrontmatterFences,
 } from '@inkeep/open-knowledge-core';
@@ -79,7 +80,7 @@ export function composeTemplateContent(input: {
       ok: false,
       error: {
         code: 'BAD_NAME',
-        message: `Template name must match /^[A-Za-z0-9_-]+$/ (got: ${JSON.stringify(input.name)}). Use letters, digits, underscores, or hyphens — no slashes, dots, or spaces.`,
+        message: `Template name must use ${TEMPLATE_NAME_RULE} (got: ${JSON.stringify(input.name)}).`,
       },
     };
   }
@@ -334,7 +335,7 @@ function validateInputs(
       ok: false,
       error: {
         code: 'BAD_NAME',
-        message: `Template name must match /^[A-Za-z0-9_-]+$/ (got: ${JSON.stringify(name)}). Use letters, digits, underscores, or hyphens — no slashes, dots, or spaces.`,
+        message: `Template name must use ${TEMPLATE_NAME_RULE} (got: ${JSON.stringify(name)}).`,
       },
     };
   }

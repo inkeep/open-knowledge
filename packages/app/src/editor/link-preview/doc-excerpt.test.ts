@@ -131,3 +131,15 @@ describe('extractDocExcerpt', () => {
     expect(excerpt).toContain('handle_document_read');
   });
 });
+
+describe('extractDocExcerpt — truncation keeps characters whole', () => {
+  test('an excerpt cut at an emoji drops the whole emoji', () => {
+    expect(extractDocExcerpt(`${'a'.repeat(9)}\u{1F600}bbb`, { maxChars: 10 })).toBe(
+      `${'a'.repeat(9)}…`,
+    );
+  });
+
+  test('an excerpt cut at a rare Han character drops the whole character', () => {
+    expect(extractDocExcerpt('會議\u{20BB7}記錄', { maxChars: 3 })).toBe('會議…');
+  });
+});

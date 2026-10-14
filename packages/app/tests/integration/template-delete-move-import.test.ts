@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { parseAuthRejectionWire } from '@inkeep/open-knowledge-server';
@@ -316,6 +316,77 @@ describe('template delete/move/import — content-doc lifecycle', () => {
       });
       expect(imp.status).toBe(400);
       expect((await imp.json()).type).toBe('urn:ok:error:invalid-request');
+    },
+    HARNESS_BOOT_TIMEOUT_MS + 30_000,
+  );
+
+  test(
+    'import without a name keeps non-Latin letters of the source file name',
+    async () => {
+      const rig = server;
+      const suffix = randomUUID().slice(0, 8);
+      const sourceName = `会議メモ-${suffix}`;
+      await writeSource(rig.port, rig.contentDir, sourceName, '# 会議\n\nBody.\n');
+      const folder = `unicode-imp-${suffix}`;
+      const imp = await importTemplate(rig.port, { sourcePath: sourceName, targetFolder: folder });
+      expect(imp.status).toBe(200);
+      expect(existsSync(join(rig.contentDir, folder, '.ok', 'templates', `${sourceName}.md`))).toBe(
+        true,
+      );
+    },
+    HARNESS_BOOT_TIMEOUT_MS + 30_000,
+  );
+
+  test(
+    'import without a name derives the composed spelling from a decomposed file name',
+    async () => {
+      const rig = server;
+      const suffix = randomUUID().slice(0, 8);
+      const sourceName = `cafe\u{0301}-${suffix}`;
+      await writeSource(rig.port, rig.contentDir, sourceName, '# Café\n\nBody.\n');
+      const folder = `nfc-imp-${suffix}`;
+      const imp = await importTemplate(rig.port, { sourcePath: sourceName, targetFolder: folder });
+      expect(imp.status).toBe(200);
+      expect(((await imp.json()) as { path?: string }).path).toBe(
+        `${folder}/.ok/templates/café-${suffix}.md`,
+      );
+    },
+    HARNESS_BOOT_TIMEOUT_MS + 30_000,
+  );
+
+  test(
+    'a decomposed template name is stored, read, moved and deleted in the spelling given',
+    async () => {
+      const rig = server;
+      const suffix = randomUUID().slice(0, 8);
+      const folder = `nfd-routes-${suffix}`;
+      const fromName = `cafe\u{0301}-${suffix}`;
+      const toName = `cre\u{0300}me-${suffix}`;
+      const templatesDir = join(rig.contentDir, folder, '.ok', 'templates');
+
+      const put = await putTemplate(rig.port, folder, fromName, '# Menu\n', { title: 'Menu' });
+      expect(put.status).toBe(200);
+      await pollUntil(() => existsSync(join(templatesDir, `${fromName}.md`)), 8000);
+      expect(readdirSync(templatesDir)).toEqual([`${fromName}.md`]);
+
+      const qs = new URLSearchParams({ folder, name: fromName });
+      const get = await fetch(`http://127.0.0.1:${rig.port}/api/template?${qs.toString()}`);
+      expect(get.status).toBe(200);
+
+      const move = await moveTemplate(rig.port, {
+        fromFolder: folder,
+        fromName,
+        toFolder: folder,
+        toName,
+      });
+      expect(move.status).toBe(200);
+      await pollUntil(() => existsSync(join(templatesDir, `${toName}.md`)), 8000);
+      expect(readdirSync(templatesDir)).toEqual([`${toName}.md`]);
+
+      const del = await deleteTemplate(rig.port, folder, toName);
+      expect(del.status).toBe(200);
+      expect(((await del.json()) as { existed?: boolean }).existed).toBe(true);
+      expect(existsSync(join(templatesDir, `${toName}.md`))).toBe(false);
     },
     HARNESS_BOOT_TIMEOUT_MS + 30_000,
   );

@@ -215,7 +215,32 @@ export function containsXmlTag(s: string): boolean {
   return XML_TAG_REGEX.test(s);
 }
 
-export const TEMPLATE_NAME_REGEX = /^[A-Za-z0-9_-]+$/;
+export const TEMPLATE_NAME_REGEX = /^(?:(?!\p{DI})[\p{L}\p{M}\p{N}_-])+$/u;
+
+export const TEMPLATE_NAME_RULE =
+  'letters and digits in any script, `_` or `-` only (no spaces, dots, slashes or invisible characters)';
+
+export function canonicalTemplateName(name: string): string {
+  return name.normalize('NFC');
+}
+
+export function templateRenameTarget(storedName: string, draft: string): string | null {
+  const trimmed = draft.trim();
+  if (trimmed === storedName) return null;
+  const target = canonicalTemplateName(trimmed);
+  return target === storedName ? null : target;
+}
+
+export function findTemplateByName<T extends { name: string }>(
+  templates: readonly T[],
+  requested: string,
+): T | undefined {
+  const key = canonicalTemplateName(requested);
+  return (
+    templates.find((t) => t.name === requested) ??
+    templates.find((t) => canonicalTemplateName(t.name) === key)
+  );
+}
 
 export const SkillFrontmatterSchema = z
   .object({

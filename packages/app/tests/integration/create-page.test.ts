@@ -194,6 +194,6 @@ describe('/api/create-page — template seeding', () => {
     const { status, body } = await createPageWithTemplate('bad-tpl-name.md', 'bad name!');
     expect(status).toBe(400);
     expect(body.type).toBe('urn:ok:error:invalid-request');
-    expect(body.title).toMatch(/must match/i);
+    expect(body.title).toMatch(/letters and digits/i);
   });
 });

@@ -18,6 +18,7 @@ import {
   DeletePathSuccessSchema,
   DuplicatePathRequestSchema,
   DuplicatePathSuccessSchema,
+  findTemplateByName,
   instantiateDoc,
   isManagedArtifactDocName,
   LINKABLE_ASSET_EXTENSIONS,
@@ -25,6 +26,8 @@ import {
   type ProblemType,
   RenamePathRequestSchema,
   RenamePathSuccessSchema,
+  TEMPLATE_NAME_REGEX,
+  TEMPLATE_NAME_RULE,
   TrashCleanupRequestSchema,
   TrashCleanupSuccessSchema,
   UploadAssetSuccessSchema,
@@ -547,12 +550,12 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
         let initialContent = '';
         let templateScopeForLog: 'local' | 'inherited' | undefined;
         if (templateName.length > 0) {
-          if (!/^[A-Za-z0-9_-]+$/.test(templateName)) {
+          if (!TEMPLATE_NAME_REGEX.test(templateName)) {
             errorResponse(
               res,
               400,
               'urn:ok:error:invalid-request',
-              'Template name must match [A-Za-z0-9_-]+.',
+              `Template name must use ${TEMPLATE_NAME_RULE}.`,
               { handler: 'create-page' },
             );
             return;
@@ -561,7 +564,7 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
             ? filePath.slice(0, filePath.lastIndexOf('/'))
             : '';
           const available = resolveTemplatesAvailable(resolvedContentDir, parentFolder);
-          const matched = available.find((t) => t.name === templateName);
+          const matched = findTemplateByName(available, templateName);
           if (!matched) {
             const availableLabel =
               available.length === 0

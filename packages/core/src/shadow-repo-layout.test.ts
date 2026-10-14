@@ -1665,3 +1665,20 @@ describe('resolveProjectIdentity', () => {
     expect(resolveProjectIdentity(wt)).toBe(wt);
   });
 });
+
+describe('composeCommitSubject — truncation keeps characters whole', () => {
+  test('a summary cut at an emoji drops the whole emoji', () => {
+    const base = 'wip: notes.md';
+    const prefix = `${base} — `;
+    const budget = COMMIT_SUBJECT_MAX_LEN - prefix.length - 1;
+    const summary = `${'a'.repeat(budget - 1)}\u{1F600}${'b'.repeat(20)}`;
+    expect(composeCommitSubject(base, [summary])).toBe(`${prefix}${'a'.repeat(budget - 1)}…`);
+  });
+
+  test('an over-long base cut at an emoji drops the whole emoji', () => {
+    const base = `wip: ${'n'.repeat(COMMIT_SUBJECT_MAX_LEN - 6)}\u{1F600}${'m'.repeat(10)}`;
+    expect(composeCommitSubject(base, ['why'])).toBe(
+      `wip: ${'n'.repeat(COMMIT_SUBJECT_MAX_LEN - 6)}`,
+    );
+  });
+});

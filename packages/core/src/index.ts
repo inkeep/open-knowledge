@@ -1303,6 +1303,7 @@ export {
   CreatePageRequestSchema,
   type CreatePageSuccess,
   CreatePageSuccessSchema,
+  canonicalTemplateName,
   classifyGitAuthError,
   classifySemanticProviderError,
   containsXmlTag,
@@ -1363,6 +1364,7 @@ export {
   FrontmatterPatchRequestSchema,
   type FrontmatterPatchSuccess,
   FrontmatterPatchSuccessSchema,
+  findTemplateByName,
   GIT_STATUS_CODES,
   type GitAuthFailureSubclass,
   type GitHubReferencePreview,
@@ -1800,6 +1802,7 @@ export {
   type TagsListSuccess,
   TagsListSuccessSchema,
   TEMPLATE_NAME_REGEX,
+  TEMPLATE_NAME_RULE,
   type TemplateDeleteSuccess,
   TemplateDeleteSuccessSchema,
   type TemplateFrontmatter,
@@ -1837,6 +1840,7 @@ export {
   TrashCleanupRequestSchema,
   type TrashCleanupSuccess,
   TrashCleanupSuccessSchema,
+  templateRenameTarget,
   UNREADABLE_WARNINGS_TEXT,
   type UploadAssetSuccess,
   UploadAssetSuccessSchema,
@@ -2126,6 +2130,7 @@ export { isEmbedUrlRewritable, rewriteEmbedUrl } from './utils/embed-url-rewrite
 export { extensionOf } from './utils/extension.ts';
 export { formatFileSize } from './utils/file-size.ts';
 export { getGitHubStars } from './utils/github-stars.ts';
+export { graphemePrefix, graphemeSuffix } from './utils/grapheme-clip.ts';
 export { scanHeadingLine } from './utils/heading-scan.ts';
 export {
   AGENT_COLORS,

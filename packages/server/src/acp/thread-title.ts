@@ -1,4 +1,8 @@
+import { graphemePrefix } from '@inkeep/open-knowledge-core/utils/grapheme-clip';
+
 export const TITLE_MAX_CHARS = 48;
+
+const WORD_END = String.raw`(?![\p{L}\p{M}\p{N}_])`;
 
 const FILLER_PREFIXES = [
   'do you mind',
@@ -51,8 +55,8 @@ const FILLER_PREFIXES = [
 ];
 
 const FILLER_RE = new RegExp(
-  `^(?:${FILLER_PREFIXES.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b(?:[\\s,:;!.\\-–—]+|$)`,
-  'i',
+  `^(?:${FILLER_PREFIXES.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})${WORD_END}(?:[\\s,:;!.\\-–—]+|$)`,
+  'iu',
 );
 
 const MARKDOWN_LEAD_RE = /^(?:[#>]+\s*|[-*]\s+|\d+[.)]\s+)+/;
@@ -72,7 +76,7 @@ function firstLine(raw: string): string {
 export function clampThreadTitle(raw: string): string {
   const line = firstLine(raw);
   if (line.length <= TITLE_MAX_CHARS) return line;
-  const hard = line.slice(0, TITLE_MAX_CHARS - 1);
+  const hard = graphemePrefix(line, TITLE_MAX_CHARS - 1);
   const lastSpace = hard.lastIndexOf(' ');
   const cut = lastSpace >= TITLE_MAX_CHARS / 2 ? hard.slice(0, lastSpace) : hard;
   return `${cut.trimEnd()}…`;
@@ -85,8 +89,8 @@ export function deriveThreadTitle(prompt: string, agentName?: string): string {
     const name = escapeRegExp(agentName.trim());
     const delim = String.raw`[,:;!.?\-–—•|]`;
     const nameRe = new RegExp(
-      `^(?:@${name}\\b(?:\\s+|${delim}+(?:\\s+|$)|$)|${name}\\b\\s*${delim}+(?:\\s+|$)|@?${name}\\b$)`,
-      'i',
+      `^(?:@${name}${WORD_END}(?:\\s+|${delim}+(?:\\s+|$)|$)|${name}${WORD_END}\\s*${delim}+(?:\\s+|$)|@?${name}${WORD_END}$)`,
+      'iu',
     );
     stripped = stripped.replace(nameRe, '');
   }

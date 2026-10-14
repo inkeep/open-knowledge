@@ -366,3 +366,23 @@ describe('the composed instruction for a property comment', () => {
     expect(out).toContain('   > Whisk the peanut sauce');
   });
 });
+
+describe('composeCommentBatchInstruction — locating context keeps characters whole', () => {
+  test('context cut at an emoji drops the whole emoji on either side', () => {
+    const prompt = composeCommentBatchInstruction(
+      [
+        {
+          docName: 'notes/one',
+          body: 'fix this',
+          quote: 'repeated',
+          anchorLost: false,
+          repeats: true,
+          prefix: `\u{1F600}${'a'.repeat(47)}`,
+          suffix: `${'b'.repeat(47)}\u{1F600}`,
+        },
+      ],
+      '',
+    );
+    expect(prompt).toContain(`between "…${'a'.repeat(47)}" and "${'b'.repeat(47)}…"`);
+  });
+});

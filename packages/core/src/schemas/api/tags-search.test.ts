@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import {
+  canonicalTemplateName,
   classifySemanticProviderError,
+  findTemplateByName,
   interpretSkillMoveFailure,
   isSkillMoveRetainedDestinationCode,
   isSkillMoveStateCode,
@@ -14,8 +16,10 @@ import {
   SKILL_RETENTION_LEDGER_CODES,
   SKILL_SOURCE_STATE_CODES,
   semanticProviderErrorBlocks,
+  TEMPLATE_NAME_REGEX,
   TemplateGetSuccessSchema,
   TemplatePayloadSchema,
+  templateRenameTarget,
 } from './tags-search.ts';
 
 const validPayload = (scope: 'local' | 'inherited') => ({
@@ -241,5 +245,98 @@ describe('skill move-state, source-state and retention-ledger code guards', () =
       ...SKILL_RETENTION_LEDGER_CODES,
     ];
     expect(new Set(all).size).toBe(all.length);
+  });
+});
+
+describe('TEMPLATE_NAME_REGEX', () => {
+  test.each([
+    'daily-journal',
+    'Weekly_1',
+    '議事録',
+    'café',
+    'cafe\u0301',
+    'notas-reunión',
+    'заметки_1',
+    'ملاحظات',
+    'मीटिंग-नोट्स',
+    '회의록',
+  ])('accepts %s', (name) => {
+    expect(TEMPLATE_NAME_REGEX.test(name)).toBe(true);
+  });
+
+  test.each([
+    '',
+    'a b',
+    'a.b',
+    'a/b',
+    'a\\b',
+    'a:b',
+    'a*b',
+    'a?b',
+    'a"b',
+    'a<b',
+    'a|b',
+    'notes.md',
+    'a\u200bb',
+    'a\u3164b',
+    'a\u034fb',
+    '\u115f',
+  ])('rejects %j', (name) => {
+    expect(TEMPLATE_NAME_REGEX.test(name)).toBe(false);
+  });
+});
+
+describe('canonicalTemplateName', () => {
+  test('a decomposed name becomes its composed spelling', () => {
+    expect(canonicalTemplateName('cafe\u0301')).toBe('café');
+    expect(canonicalTemplateName('\u30C6\u3099\u30FC\u30BF')).toBe('データ');
+  });
+
+  test('an already composed or ASCII name is unchanged', () => {
+    expect(canonicalTemplateName('café')).toBe('café');
+    expect(canonicalTemplateName('daily-journal')).toBe('daily-journal');
+  });
+});
+
+describe('findTemplateByName', () => {
+  const composed = { name: 'caf\u{00E9}' };
+  const decomposed = { name: 'cafe\u{0301}' };
+
+  test('a composed request finds a listed decomposed template', () => {
+    expect(findTemplateByName([decomposed], 'caf\u{00E9}')).toBe(decomposed);
+  });
+
+  test('a decomposed request finds a listed composed template', () => {
+    expect(findTemplateByName([composed], 'cafe\u{0301}')).toBe(composed);
+  });
+
+  test('an exact spelling wins over another spelling of the same name', () => {
+    expect(findTemplateByName([composed, decomposed], 'cafe\u{0301}')).toBe(decomposed);
+    expect(findTemplateByName([decomposed, composed], 'caf\u{00E9}')).toBe(composed);
+  });
+
+  test('a different name finds nothing', () => {
+    expect(findTemplateByName([composed], 'cafe')).toBeUndefined();
+  });
+});
+
+describe('templateRenameTarget', () => {
+  test('an unedited name, in any spelling, is not a rename', () => {
+    expect(templateRenameTarget('cafe\u{0301}', 'cafe\u{0301}')).toBeNull();
+    expect(templateRenameTarget('caf\u{00E9}', 'caf\u{00E9}')).toBeNull();
+    expect(templateRenameTarget('meeting', '  meeting ')).toBeNull();
+  });
+
+  test('re-entering a composed name in decomposed form is not a rename', () => {
+    expect(templateRenameTarget('caf\u{00E9}', 'cafe\u{0301}')).toBeNull();
+  });
+
+  test('a new name is a rename to its composed spelling', () => {
+    expect(templateRenameTarget('meeting', 'cafe\u{0301}')).toBe('caf\u{00E9}');
+    expect(templateRenameTarget('meeting', ' standup ')).toBe('standup');
+  });
+
+  test('a decomposed name can be renamed to its composed spelling', () => {
+    expect(templateRenameTarget('cafe\u{0301}', 'caf\u{00E9}')).toBe('caf\u{00E9}');
   });
 });

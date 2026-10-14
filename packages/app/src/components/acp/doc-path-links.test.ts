@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { hashFromDocName } from '@/lib/doc-hash';
 import type { Workspace } from '@/lib/workspace-paths';
 import { buildDocPathResolver, remarkDocPathLinks, setDocPathResolver } from './doc-path-links';
 
@@ -631,5 +632,54 @@ describe('remarkDocPathLinks', () => {
     expect(kids[0]?.url).toBe('#/reports/100%25/REPORT');
     expect(kids[1]?.url).toBe('reports/foo%zz/REPORT.md');
     expect(kids[2]?.url).toBe('#/reports/foo/REPORT');
+  });
+});
+
+describe('remarkDocPathLinks — paths in any script', () => {
+  const resolveUnicode = buildDocPathResolver({
+    workspace,
+    pages: new Set(['notes/会議', 'docs/日報', 'café', 'notes/plain']),
+  });
+
+  function linkify(value: string): MdastNode[] {
+    const tree = makeTree([{ type: 'paragraph', children: [{ type: 'text', value }] }]);
+    setDocPathResolver(resolveUnicode);
+    remarkDocPathLinks()()(tree);
+    return tree.children?.[0]?.children ?? [];
+  }
+
+  test('links a path whose segments are not ASCII', () => {
+    const kids = linkify('Updated notes/会議.md just now');
+    expect(kids).toHaveLength(3);
+    expect(kids[0]).toEqual({ type: 'text', value: 'Updated ' });
+    expect(kids[1]).toMatchObject({
+      type: 'link',
+      url: hashFromDocName('notes/会議'),
+      children: [{ type: 'text', value: 'notes/会議.md' }],
+    });
+    expect(kids[2]).toEqual({ type: 'text', value: ' just now' });
+  });
+
+  test('keeps a non-ASCII heading anchor on the link', () => {
+    const kids = linkify('See docs/日報.md#概要 for the summary');
+    expect(kids[1]).toMatchObject({
+      type: 'link',
+      url: hashFromDocName('docs/日報', '概要'),
+      children: [{ type: 'text', value: 'docs/日報.md#概要' }],
+    });
+  });
+
+  test('links an accented file name', () => {
+    const kids = linkify('Wrote café.md.');
+    expect(kids[1]).toMatchObject({
+      type: 'link',
+      url: hashFromDocName('café'),
+      children: [{ type: 'text', value: 'café.md' }],
+    });
+  });
+
+  test('does not link a path glued to a following letter', () => {
+    expect(linkify('notes/plain.mdé')).toEqual([{ type: 'text', value: 'notes/plain.mdé' }]);
+    expect(linkify('xnotes/会議.md')).toEqual([{ type: 'text', value: 'xnotes/会議.md' }]);
   });
 });

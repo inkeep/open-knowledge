@@ -135,6 +135,31 @@ describe('applyTemplateWrite', () => {
     expect(result.warnings.some((w) => w.match(/description is missing/))).toBe(true);
   });
 
+  test('writes a template whose name uses non-Latin letters', () => {
+    const result = applyTemplateWrite({
+      projectDir,
+      folder: 'meetings',
+      name: '議事録',
+      body: 'body',
+      frontmatter: { title: '議事録', description: 'Minutes' },
+    });
+    expect(result.ok).toBe(true);
+    expect(existsSync(join(projectDir, 'meetings', '.ok', 'templates', '議事録.md'))).toBe(true);
+  });
+
+  test('rejects a name hidden behind an invisible character (BAD_NAME)', () => {
+    const result = applyTemplateWrite({
+      projectDir,
+      folder: 'meetings',
+      name: 'notes\u200b',
+      body: 'body',
+      frontmatter: { title: 'X', description: 'X' },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('BAD_NAME');
+  });
+
   test('rejects bad name (BAD_NAME)', () => {
     const result = applyTemplateWrite({
       projectDir,

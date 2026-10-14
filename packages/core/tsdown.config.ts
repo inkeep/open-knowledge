@@ -122,6 +122,7 @@ const entry = {
   'utils-extension': 'src/utils/extension.ts',
   'utils-file-size': 'src/utils/file-size.ts',
   'utils-github-stars': 'src/utils/github-stars.ts',
+  'utils-grapheme-clip': 'src/utils/grapheme-clip.ts',
   'utils-heading-scan': 'src/utils/heading-scan.ts',
   'utils-identity': 'src/utils/identity.ts',
   'utils-link-targets': 'src/utils/link-targets.ts',

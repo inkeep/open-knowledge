@@ -5,6 +5,7 @@ import {
   stringField,
   unwrapMcpInput,
 } from '@inkeep/open-knowledge-core/acp/tool-call-input';
+import { graphemePrefix } from '@inkeep/open-knowledge-core/utils/grapheme-clip';
 import { plural, t } from '@lingui/core/macro';
 
 export type ToolCallGlyph =
@@ -55,7 +56,7 @@ function argumentValue(rawInput: unknown): string | undefined {
 }
 
 function ellipsize(line: string): string {
-  return line.length > PREVIEW_LIMIT ? `${line.slice(0, PREVIEW_LIMIT).trimEnd()}…` : line;
+  return line.length > PREVIEW_LIMIT ? `${graphemePrefix(line, PREVIEW_LIMIT).trimEnd()}…` : line;
 }
 
 const MCP_TITLE = /^mcp([^a-zA-Z0-9]+)([a-zA-Z0-9][a-zA-Z0-9_-]*?)\1([a-zA-Z0-9][a-zA-Z0-9_-]*)$/;
@@ -106,7 +107,9 @@ function inlineText(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const collapsed = value.replace(/\s+/g, ' ').trim();
   if (collapsed === '') return null;
-  return collapsed.length > INLINE_MAX ? `${collapsed.slice(0, INLINE_MAX - 1)}…` : collapsed;
+  return collapsed.length > INLINE_MAX
+    ? `${graphemePrefix(collapsed, INLINE_MAX - 1)}…`
+    : collapsed;
 }
 
 function openKnowledgeDisplay(tool: string, args: Record<string, unknown>): ToolCallDisplay {

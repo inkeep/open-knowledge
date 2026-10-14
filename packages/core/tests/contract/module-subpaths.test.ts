@@ -107,6 +107,7 @@ import * as utilsEmbedUrlRewriteSubpath from '@inkeep/open-knowledge-core/utils/
 import * as utilsExtensionSubpath from '@inkeep/open-knowledge-core/utils/extension';
 import * as utilsFileSizeSubpath from '@inkeep/open-knowledge-core/utils/file-size';
 import * as utilsGithubStarsSubpath from '@inkeep/open-knowledge-core/utils/github-stars';
+import * as utilsGraphemeClipSubpath from '@inkeep/open-knowledge-core/utils/grapheme-clip';
 import * as utilsHeadingScanSubpath from '@inkeep/open-knowledge-core/utils/heading-scan';
 import * as utilsIdentitySubpath from '@inkeep/open-knowledge-core/utils/identity';
 import * as utilsLinkTargetsSubpath from '@inkeep/open-knowledge-core/utils/link-targets';
@@ -249,6 +250,7 @@ const MODULE_SUBPATHS: Record<string, object> = {
   './utils/extension': utilsExtensionSubpath,
   './utils/file-size': utilsFileSizeSubpath,
   './utils/github-stars': utilsGithubStarsSubpath,
+  './utils/grapheme-clip': utilsGraphemeClipSubpath,
   './utils/heading-scan': utilsHeadingScanSubpath,
   './utils/identity': utilsIdentitySubpath,
   './utils/link-targets': utilsLinkTargetsSubpath,

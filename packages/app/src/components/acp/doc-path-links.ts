@@ -9,7 +9,13 @@ import type { Workspace } from '@/lib/workspace-paths';
 
 export type DocPathResolver = (candidate: string) => string | null;
 
-const DOC_PATH_REGEX = /(?<![A-Za-z0-9_./@-])[A-Za-z0-9_./@-]+\.(?:md|mdx)\b(?:#[A-Za-z0-9_-]+)?/g;
+const PATH_CHAR = String.raw`(?:(?!\p{DI})[\p{L}\p{M}\p{N}_./@-])`;
+const ANCHOR_CHAR = String.raw`(?:(?!\p{DI})[\p{L}\p{M}\p{N}_-])`;
+const WORD_CHAR = String.raw`[\p{L}\p{M}\p{N}_]`;
+const DOC_PATH_REGEX = new RegExp(
+  `(?<!${PATH_CHAR})${PATH_CHAR}+\\.(?:md|mdx)(?!${WORD_CHAR})(?:#${ANCHOR_CHAR}+)?`,
+  'gu',
+);
 const LEADING_DOT_SEGMENTS_RE = /^(?:\.[\\/])+/;
 
 export interface BuildDocPathResolverInput {

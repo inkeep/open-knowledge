@@ -1,5 +1,6 @@
 import { stripFrontmatter } from '@inkeep/open-knowledge-core/extensions/frontmatter';
 import { createCodeFenceTracker } from '@inkeep/open-knowledge-core/utils/code-fence-tracker';
+import { graphemePrefix } from '@inkeep/open-knowledge-core/utils/grapheme-clip';
 import { getHeadingSlug, toWikiLinkSlug } from '@inkeep/open-knowledge-core/utils/slug';
 
 export interface DocExcerptOptions {
@@ -28,7 +29,7 @@ export function extractDocExcerpt(markdown: string, options: DocExcerptOptions =
 
   const joined = collected.join(' ').replace(/\s+/g, ' ').trim();
   if (joined.length <= maxChars) return joined;
-  return `${joined.slice(0, maxChars).trimEnd()}…`;
+  return `${graphemePrefix(joined, maxChars).trimEnd()}…`;
 }
 
 function stripCarriageReturn(line: string): string {

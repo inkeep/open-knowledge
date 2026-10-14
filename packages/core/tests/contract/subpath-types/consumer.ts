@@ -772,6 +772,10 @@ export type { rewriteEmbedUrl } from '@inkeep/open-knowledge-core/utils/embed-ur
 export type { extensionOf } from '@inkeep/open-knowledge-core/utils/extension';
 export type { formatFileSize } from '@inkeep/open-knowledge-core/utils/file-size';
 export type { getGitHubStars } from '@inkeep/open-knowledge-core/utils/github-stars';
+export type {
+  graphemePrefix,
+  graphemeSuffix,
+} from '@inkeep/open-knowledge-core/utils/grapheme-clip';
 export type { scanHeadingLine } from '@inkeep/open-knowledge-core/utils/heading-scan';
 export type {
   AGENT_ICON_COLORS,

@@ -55,4 +55,48 @@ describe('TemplateProperties (CRDT)', () => {
     expect(onRename).toHaveBeenCalledWith('standup');
     expect(ytext.toString()).toContain('# Agenda');
   });
+
+  test('blurring an unedited decomposed name does not fire onRename', () => {
+    const { provider } = makeProvider(SOURCE);
+    const onRename = vi.fn((_next: string) => {});
+    render(
+      <TemplateProperties
+        provider={provider}
+        name={'cafe\u{0301}'}
+        folder="notes"
+        onRename={onRename}
+      />,
+    );
+    fireEvent.blur(screen.getByTestId('template-name-input'));
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  test('re-entering a composed name in decomposed form does not fire onRename', () => {
+    const { provider } = makeProvider(SOURCE);
+    const onRename = vi.fn((_next: string) => {});
+    render(
+      <TemplateProperties
+        provider={provider}
+        name={'caf\u{00E9}'}
+        folder="notes"
+        onRename={onRename}
+      />,
+    );
+    const nameInput = screen.getByTestId('template-name-input');
+    fireEvent.change(nameInput, { target: { value: 'cafe\u{0301}' } });
+    fireEvent.blur(nameInput);
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  test('renaming to a decomposed name sends its composed spelling', () => {
+    const { provider } = makeProvider(SOURCE);
+    const onRename = vi.fn((_next: string) => {});
+    render(
+      <TemplateProperties provider={provider} name="meeting" folder="notes" onRename={onRename} />,
+    );
+    const nameInput = screen.getByTestId('template-name-input');
+    fireEvent.change(nameInput, { target: { value: 'cafe\u{0301}' } });
+    fireEvent.blur(nameInput);
+    expect(onRename).toHaveBeenCalledWith('caf\u{00E9}');
+  });
 });

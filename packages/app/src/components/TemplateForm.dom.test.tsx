@@ -79,17 +79,32 @@ describe('slugifyTemplateName', () => {
     expect(slugifyTemplateName('blog-post')).toBe('blog-post');
   });
 
+  test('keeps letters and digits from any script', () => {
+    expect(slugifyTemplateName('議事録')).toBe('議事録');
+    expect(slugifyTemplateName('Notas de reunión')).toBe('notas-de-reunión');
+    expect(slugifyTemplateName('Заметки 2')).toBe('заметки-2');
+  });
+
+  test('composes decomposed accents and drops invisible characters', () => {
+    expect(slugifyTemplateName('Cafe\u0301')).toBe('café');
+    expect(slugifyTemplateName('a\u200bb\u3164c')).toBe('a-b-c');
+  });
+
   test('returns empty when the name has no alphanumeric content', () => {
     expect(slugifyTemplateName('!!!')).toBe('');
   });
 });
 
-function CreateFormHarness() {
+function CreateFormHarness({
+  existingNames = new Set<string>(),
+}: {
+  existingNames?: ReadonlySet<string>;
+}) {
   const form = useTemplateForm({
     mode: 'create',
     folderPath: '',
     initial: { name: '', title: '', description: '', body: '' },
-    existingNames: new Set(),
+    existingNames,
     onCommitted: () => {},
   });
   return <TemplateFormFields form={form} />;
@@ -105,6 +120,31 @@ describe('TemplateFormFields — create mode', () => {
     render(<CreateFormHarness />);
     await user.type(screen.getByTestId('template-name-input'), 'My Release Notes');
     expect(screen.getByText('my-release-notes.md')).toBeDefined();
+  });
+
+  test('a name in a non-Latin script derives a valid filename', async () => {
+    const user = userEvent.setup();
+    render(<CreateFormHarness />);
+    await user.type(screen.getByTestId('template-name-input'), '議事録');
+    await user.tab();
+    expect(screen.getByText('議事録.md')).toBeDefined();
+    expect(screen.queryByText(/Use letters, digits/)).toBeNull();
+  });
+
+  test('a name with no letters or digits shows the filename rule once blurred', async () => {
+    const user = userEvent.setup();
+    render(<CreateFormHarness />);
+    await user.type(screen.getByTestId('template-name-input'), '!!!');
+    await user.tab();
+    expect(screen.getByText(/Use letters, digits/)).toBeDefined();
+  });
+
+  test('a decomposed name derives the composed filename and finds the existing template', async () => {
+    const user = userEvent.setup();
+    render(<CreateFormHarness existingNames={new Set(['café'])} />);
+    await user.type(screen.getByTestId('template-name-input'), 'Cafe\u{0301}');
+    await user.tab();
+    expect(screen.getByText(/already exists here/)).toBeDefined();
   });
 
   test('shows the required-name error only after the field is blurred empty', async () => {

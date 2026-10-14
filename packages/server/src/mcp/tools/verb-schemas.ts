@@ -5,6 +5,7 @@ import {
   SKILL_NAME_REGEX,
   skillFilePathSegments,
   TEMPLATE_NAME_REGEX,
+  TEMPLATE_NAME_RULE,
 } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import { SUPPORTED_DOC_EXTENSIONS } from '../../doc-extensions.ts';
@@ -67,8 +68,7 @@ export function splitTargetPath(path: string): { folder: string; name: string } 
     : { folder: clean.slice(0, idx), name: clean.slice(idx + 1) };
 }
 
-export const TEMPLATE_PATH_DESCRIBE =
-  'Template path = `<folder>/<name>` (e.g. "fishing-log/trip-log"). The slashes are the folder it belongs to; the final segment is the template name (letters, digits, `_`, `-` only — no dots/spaces). Stored at `<folder>/.ok/templates/<name>.md`.';
+export const TEMPLATE_PATH_DESCRIBE = `Template path = \`<folder>/<name>\` (e.g. "fishing-log/trip-log"). The slashes are the folder it belongs to; the final segment is the template name, which must use ${TEMPLATE_NAME_RULE}. Stored at \`<folder>/.ok/templates/<name>.md\`.`;
 export const TEMPLATE_CONTENT_DESCRIBE =
   "Starter content — the Markdown a new document becomes. A leading `---…---` frontmatter block here sets the STARTING PROPERTIES every doc created from this template gets (e.g. `type`, `status`, `tags`); the markdown below it is the body. The template's own picker identity (title/description) is the separate `frontmatter` field, NOT this block — it is stripped at instantiation and never copied onto created docs. (On disk this composes to one frontmatter block with the identity under a reserved `template:` key; you don't author that — just give the starter content here.) Only the `{{date}}` and `{{user}}` substitution tokens are allowed; any other `{{...}}` token hard-errors at write time.";
 
@@ -79,7 +79,7 @@ export function resolveTemplatePath(
   if (!TEMPLATE_NAME_REGEX.test(name)) {
     return {
       ok: false,
-      error: `the final segment of a template path is its name — "${name}" must be letters, digits, \`_\`, \`-\` only (no dots/spaces). e.g. { template: { path: "fishing-log/trip-log" } }.`,
+      error: `the final segment of a template path is its name — "${name}" must use ${TEMPLATE_NAME_RULE}. e.g. { template: { path: "fishing-log/trip-log" } }.`,
     };
   }
   return { ok: true, folder, name };

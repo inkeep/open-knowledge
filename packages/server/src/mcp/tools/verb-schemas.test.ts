@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import { SUPPORTED_DOC_EXTENSIONS } from '../../doc-extensions.ts';
-import { DocExtensionArg, FrontmatterArg, resolveSkillFilePath } from './verb-schemas.ts';
+import {
+  DocExtensionArg,
+  FrontmatterArg,
+  resolveSkillFilePath,
+  resolveTemplatePath,
+} from './verb-schemas.ts';
 
 describe('FrontmatterArg — recursive value contract (PRD-6947)', () => {
   test('flat scalar values still parse (regression guard for the pre-PRD-6947 contract)', () => {
@@ -144,5 +149,34 @@ describe('resolveSkillFilePath — bundle-file path allowlist', () => {
     const b = resolveSkillFilePath('scripts\\run.sh');
     expect(b.ok).toBe(true);
     if (b.ok) expect(b.path).toBe('scripts/run.sh');
+  });
+});
+
+describe('resolveTemplatePath — template name grammar', () => {
+  test('accepts a name written in any script', () => {
+    expect(resolveTemplatePath('meetings/議事録')).toEqual({
+      ok: true,
+      folder: 'meetings',
+      name: '議事録',
+    });
+    expect(resolveTemplatePath('notas-reunión')).toEqual({
+      ok: true,
+      folder: '',
+      name: 'notas-reunión',
+    });
+  });
+
+  test('keeps the spelling the caller wrote', () => {
+    expect(resolveTemplatePath('menus/cafe\u{0301}')).toEqual({
+      ok: true,
+      folder: 'menus',
+      name: 'cafe\u{0301}',
+    });
+  });
+
+  test('rejects dots, spaces and invisible characters in the name', () => {
+    for (const path of ['x/a.b', 'x/a b', 'x/a\u200bb']) {
+      expect(resolveTemplatePath(path).ok, path).toBe(false);
+    }
   });
 });

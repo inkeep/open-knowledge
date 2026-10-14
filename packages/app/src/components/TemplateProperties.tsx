@@ -1,5 +1,9 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import { TEMPLATE_NAME_REGEX } from '@inkeep/open-knowledge-core/schemas/api';
+import {
+  canonicalTemplateName,
+  TEMPLATE_NAME_REGEX,
+  templateRenameTarget,
+} from '@inkeep/open-knowledge-core/schemas/api';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { FolderGit2, Type } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
@@ -33,12 +37,13 @@ export function TemplateProperties({
 
   const [nameDraft, setNameDraft] = useState(name);
   useEffect(() => setNameDraft(name), [name]);
-  const trimmedName = nameDraft.trim();
+  const trimmedName = canonicalTemplateName(nameDraft.trim());
   const nameInvalid = trimmedName !== '' && !TEMPLATE_NAME_REGEX.test(trimmedName);
   function commitName() {
     if (!onRename) return;
-    if (nameInvalid || trimmedName === '' || trimmedName === name) return;
-    onRename(trimmedName);
+    if (nameInvalid || trimmedName === '') return;
+    const target = templateRenameTarget(name, nameDraft);
+    if (target !== null) onRename(target);
   }
   const showNameError = nameInvalid || Boolean(nameError);
 

@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fnv1aDigest } from './bridge/hash-util.ts';
 import { discoverGitRepository, isMissing } from './git-repository.ts';
+import { graphemePrefix } from './utils/grapheme-clip.ts';
 
 /** Writer-ID taxonomy (precedent #25). */
 export type WriterClassification =
@@ -533,8 +534,8 @@ export function composeCommitSubject(base: string, summaries: readonly string[])
   if (full.length <= COMMIT_SUBJECT_MAX_LEN) return full;
   const prefix = `${safeBase} — `;
   const budget = COMMIT_SUBJECT_MAX_LEN - prefix.length - 1;
-  if (budget <= 0) return full.slice(0, COMMIT_SUBJECT_MAX_LEN);
-  return `${prefix}${summary.slice(0, budget)}…`;
+  if (budget <= 0) return graphemePrefix(full, COMMIT_SUBJECT_MAX_LEN);
+  return `${prefix}${graphemePrefix(summary, budget)}…`;
 }
 
 export function parseWriterId(id: string): ParsedWriter {

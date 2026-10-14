@@ -177,7 +177,7 @@ describe('write/edit/delete({ template }) — server-routed for attribution (PRD
       template: { path: 'x/a.b', content: 'ok', frontmatter: { title: 'A' } },
     });
     expect(r.isError).toBe(true);
-    expect(textOf(r)).toContain('must be letters, digits');
+    expect(textOf(r)).toContain('must use letters and digits');
     expect(existsSync(join(cwd, 'x', '.ok', 'templates', 'a.b.md'))).toBe(false);
   });
 });
@@ -296,6 +296,19 @@ describe('write({ document }) — template-availability nudge on create', () => 
       const r = await write({ document: { path: 'notes/second', template: 'note' } });
       expect(r.isError).toBeUndefined();
       expect(textOf(r)).not.toContain('templates you can start from');
+    });
+  });
+
+  test('a decomposed template name finds the composed template', async () => {
+    const cwd = newProject();
+    mkdirSync(join(cwd, 'menus', '.ok', 'templates'), { recursive: true });
+    writeFileSync(
+      join(cwd, 'menus', '.ok', 'templates', 'café.md'),
+      '---\ntitle: Café\ndescription: A menu\n---\n\n## Menu\n',
+    );
+    await withWriteStub(cwd, async (write) => {
+      const r = await write({ document: { path: 'menus/today', template: 'cafe\u0301' } });
+      expect(r.isError).toBeUndefined();
     });
   });
 
