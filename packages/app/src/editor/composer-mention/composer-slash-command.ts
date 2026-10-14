@@ -12,6 +12,12 @@ import {
   type SuggestionPositionState,
   setSuggestionSelectableCount,
 } from '../extensions/suggestion-floating-ui';
+import {
+  allowOutsideComposition,
+  createTriggerMatcher,
+  IDEOGRAPHIC_SPACE,
+  SLASH_TRIGGER_CHARS,
+} from '../extensions/suggestion-ime';
 import { ComposerSlashMenu } from './ComposerSlashMenu';
 
 export interface SlashCommandItem {
@@ -140,7 +146,7 @@ export function leadingSlashToken(text: string): { name: string; length: number 
   return { name: match[1] ?? '', length: match[0].length };
 }
 
-const SLASH_TRIGGER_PREFIXES: readonly string[] = [' ', '\t', '\n', '\u00a0'];
+const SLASH_TRIGGER_PREFIXES: readonly string[] = [' ', '\t', '\n', '\u00a0', IDEOGRAPHIC_SPACE];
 
 export function slashTokenTailLength(textAfterCaret: string): number {
   return /^\S*/.exec(textAfterCaret)?.[0].length ?? 0;
@@ -283,6 +289,8 @@ export const ComposerSlashCommand = Extension.create<SlashCommandOptions, SlashC
       pluginKey: composerSlashSuggestionKey,
       char: '/',
       allowedPrefixes: [...SLASH_TRIGGER_PREFIXES],
+      findSuggestionMatch: createTriggerMatcher(SLASH_TRIGGER_CHARS),
+      allow: allowOutsideComposition,
 
       items: ({ query }) => {
         const commands = liveCommands();

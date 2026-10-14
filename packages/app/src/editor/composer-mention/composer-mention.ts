@@ -18,6 +18,13 @@ import {
   type SuggestionPositionState,
   setSuggestionSelectableCount,
 } from '../extensions/suggestion-floating-ui';
+import {
+  allowOutsideComposition,
+  createTriggerMatcher,
+  MENTION_TRIGGER_CHARS,
+  SUGGESTION_TRIGGER_PREFIXES,
+  SuggestionCompositionEnd,
+} from '../extensions/suggestion-ime';
 import { fetchPages, filterPages, type PageItem } from '../extensions/wiki-link-suggestion';
 import { lucideIconToSvgString } from '../registry/lucide-svg';
 import { ComposerMentionMenu } from './ComposerMentionMenu';
@@ -241,6 +248,7 @@ export function composerMentionExtensions(options?: {
     ComposerHistory,
     ComposerMention,
     ComposerCommand,
+    SuggestionCompositionEnd,
     ...(options?.slashCommands !== undefined
       ? [ComposerSlashCommand.configure({ commands: options.slashCommands })]
       : []),
@@ -320,6 +328,9 @@ function configureComposerMentionSuggestion(editor: Editor) {
     editor,
     pluginKey: composerMentionSuggestionKey,
     char: '@',
+    allowedPrefixes: [...SUGGESTION_TRIGGER_PREFIXES],
+    findSuggestionMatch: createTriggerMatcher(MENTION_TRIGGER_CHARS),
+    allow: allowOutsideComposition,
 
     items: ({ query }) => corpus.getItems(query, getMentionRecency(editor)),
 

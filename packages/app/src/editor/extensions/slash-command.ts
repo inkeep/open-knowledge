@@ -12,6 +12,11 @@ import {
   destroySuggestionPopup,
   type SuggestionPositionState,
 } from './suggestion-floating-ui';
+import {
+  createTriggerMatcher,
+  SLASH_TRIGGER_CHARS,
+  SUGGESTION_TRIGGER_PREFIXES,
+} from './suggestion-ime';
 
 const slashCommandKey = new PluginKey('slashCommand');
 
@@ -87,6 +92,8 @@ export const SlashCommand = Extension.create<SlashCommandOptions>({
         pluginKey: slashCommandKey,
         char: '/',
         startOfLine: false,
+        allowedPrefixes: [...SUGGESTION_TRIGGER_PREFIXES],
+        findSuggestionMatch: createTriggerMatcher(SLASH_TRIGGER_CHARS),
         allow: suggestionAllow,
 
         items: ({ query, editor }) =>

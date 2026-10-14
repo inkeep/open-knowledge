@@ -32,6 +32,7 @@ import { RawMdxFallback } from './raw-mdx-fallback';
 import { SelectionStatePlugin } from './selection-state-plugin';
 import { SlashCommand } from './slash-command';
 import { SourceDirtyObserver } from './source-dirty-observer';
+import { SuggestionCompositionEnd } from './suggestion-ime';
 import { TabFocusTrap } from './tab-focus-trap';
 import { TableInsertControls } from './table-insert-controls';
 import { TableRowEnter } from './table-row-enter';
@@ -78,6 +79,7 @@ export const sharedExtensions = [
       embed: 'Embeds',
     },
   }),
+  SuggestionCompositionEnd,
   FormattingShortcuts,
   TabFocusTrap,
   FileHandler.configure({
