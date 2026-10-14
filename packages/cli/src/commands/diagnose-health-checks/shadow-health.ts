@@ -1,5 +1,6 @@
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { currentCliCommandName } from '@inkeep/open-knowledge-core';
 import { parseCheckpoint, resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import {
   countShadowObjects,
@@ -109,7 +110,7 @@ export function makeShadowHealthCheck(deps: ShadowHealthCheckDeps = {}): CheckDe
           name: 'shadow-health',
           status: 'warn',
           summary: 'no .git/ at project root (shadow repo not initialized)',
-          remediation: 'Run `ok start` once to initialize the shadow repo.',
+          remediation: `Run \`${currentCliCommandName()} start\` once to initialize the shadow repo.`,
         };
       }
       let shadowDir: string;
@@ -127,7 +128,7 @@ export function makeShadowHealthCheck(deps: ShadowHealthCheckDeps = {}): CheckDe
           name: 'shadow-health',
           status: 'warn',
           summary: 'shadow repo not yet initialized',
-          remediation: 'Run `ok start` once to initialize the shadow repo.',
+          remediation: `Run \`${currentCliCommandName()} start\` once to initialize the shadow repo.`,
         };
       }
 

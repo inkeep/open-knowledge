@@ -7,6 +7,7 @@ import { ConfigSharingInfoTooltip } from '@/components/ConfigSharingInfoTooltip'
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Skeleton } from '@/components/ui/skeleton';
+import { okCliCommandName } from '@/lib/channel-cli-copy';
 import type { OkSharingStatusResult } from '@/lib/desktop-bridge-types';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
@@ -19,6 +20,7 @@ export function SharingSection() {
 }
 
 function SharingSectionUnsupported() {
+  const cliCommand = okCliCommandName();
   return (
     <section aria-labelledby={TITLE_ID} className="space-y-3" data-field="section:sharing">
       <SettingsSectionHeader
@@ -29,7 +31,8 @@ function SharingSectionUnsupported() {
       >
         <Trans>
           Available in the OpenKnowledge desktop app. From a terminal, use
-          <code> ok config-sharing status</code> / <code>share</code> / <code>unshare</code>.
+          <code> {cliCommand} config-sharing status</code> / <code>share</code> /{' '}
+          <code>unshare</code>.
         </Trans>
       </SettingsSectionHeader>
     </section>

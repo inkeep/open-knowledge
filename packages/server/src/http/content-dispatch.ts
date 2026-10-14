@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { currentCliCommandName } from '@inkeep/open-knowledge-core';
 import {
   HOST_NOT_ADMITTED_REMEDIATION,
   type IngressPolicy,
@@ -81,7 +82,7 @@ export function createContentDispatch({
       if (res.writableEnded || res.headersSent) return;
       const uiHint =
         reactShellMiddleware === undefined
-          ? 'This server is running without the web UI. Restart it with plain `ok start` to serve the editor. '
+          ? `This server is running without the web UI. Restart it with plain \`${currentCliCommandName()} start\` to serve the editor. `
           : '';
       errorResponse(res, 404, 'urn:ok:error:not-found', 'Not found.', {
         handler: 'mcp-mount',
@@ -102,7 +103,7 @@ export function createContentDispatch({
     }
     errorResponse(res, 404, 'urn:ok:error:not-found', 'Not found.', {
       handler: 'mcp-mount',
-      detail: `This server is running without the web UI. Restart it with plain \`ok start\` to serve the editor. No handler for ${url ?? '/'}`,
+      detail: `This server is running without the web UI. Restart it with plain \`${currentCliCommandName()} start\` to serve the editor. No handler for ${url ?? '/'}`,
     });
   };
 }

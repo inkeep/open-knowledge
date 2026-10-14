@@ -2200,8 +2200,8 @@ msgid "Applies to all projects on this machine, in Claude Code and Codex chats i
 msgstr "Dotyczy wszystkich projektów na tym komputerze, w czatach Claude Code i Codex w panelu Agentów uruchomionych po włączeniu tej opcji. Agent może otwierać strony, klikać, pisać i robić zrzuty ekranu w własnym oknie Google Chrome z świeżym profilem. Wymaga zainstalowanych Google Chrome i Node.js. Każde działanie w przeglądarce pyta o Twoją zgodę, bez opcji „zawsze zezwalaj”, chyba że tryb agenta lub ustawienia uprawnień pomijają pytania."
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
-msgstr "Dotyczy wszystkich projektów na tym komputerze. Claude i Codex uruchomione z wbudowanego terminala oraz każdy agent w czacie panelu Agentów w aplikacji automatycznie zatwierdzają narzędzia odczytu i zapisu OpenKnowledge (Claude uruchamia też automatycznie \"ok open\"). Usuwanie, przenoszenie, udostępnianie, importowanie i instalowanie umiejętności, inne polecenia oraz edycje plików spoza OpenKnowledge nadal pytają o zgodę. W terminalu Cursor, OpenCode i Pi nie są objęte tą zmianą. W miarę możliwości, osobno dla każdego agenta."
+msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"{cliCommand} open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgstr "Dotyczy wszystkich projektów na tym komputerze. Claude i Codex uruchomione z wbudowanego terminala oraz każdy agent w czacie panelu Agentów w aplikacji automatycznie zatwierdzają narzędzia odczytu i zapisu OpenKnowledge (Claude uruchamia też automatycznie \"{cliCommand} open\"). Usuwanie, przenoszenie, udostępnianie, importowanie i instalowanie umiejętności, inne polecenia oraz edycje plików spoza OpenKnowledge nadal pytają o zgodę. W terminalu Cursor, OpenCode i Pi nie są objęte tą zmianą. W miarę możliwości, osobno dla każdego agenta."
 
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
@@ -2529,8 +2529,8 @@ msgid "Available in every project on this machine. Not shared through git."
 msgstr "Dostępne w każdym projekcie na tym komputerze. Nieudostępniane przez git."
 
 #: src/components/settings/SharingSection.tsx
-msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
-msgstr "Dostępne w aplikacji desktopowej OpenKnowledge. W terminalu użyj<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
+msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> {cliCommand} config-sharing status</0> / <1>share</1> / <2>unshare</2>."
+msgstr "Dostępne w aplikacji desktopowej OpenKnowledge. W terminalu użyj<0> {cliCommand} config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 
 #: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/AppMenubar.tsx
@@ -3450,8 +3450,8 @@ msgid "Code field undo or redo"
 msgstr "Cofanie lub ponawianie w polu kodu"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Codex will still ask until you run \"ok init\" in a terminal for this project."
-msgstr "Codex będzie nadal pytał, dopóki nie uruchomisz „ok init” w terminalu dla tego projektu."
+msgid "Codex will still ask until you run \"{cliCommand} init\" in a terminal for this project."
+msgstr "Codex będzie nadal pytał, dopóki nie uruchomisz „{cliCommand} init” w terminalu dla tego projektu."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Collaborators see your in-progress edits as soon as they sync."
@@ -4476,8 +4476,8 @@ msgid "Couldn't reach {displayName} — try again?"
 msgstr "Nie udało się połączyć z {displayName} — spróbować ponownie?"
 
 #: src/components/ConnectingBanner.tsx
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>ok status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "Nie udało się połączyć z serwerem współpracy — {errorDetail}. Spróbuj <0>ok status</0> lub sprawdź <1>.ok/local/last-spawn-error.log</1>."
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
+msgstr "Nie udało się połączyć z serwerem współpracy — {errorDetail}. Spróbuj <0>{cliCommand} status</0> lub sprawdź <1>.ok/local/last-spawn-error.log</1>."
 
 #: src/components/PublishToGitHubDialog.tsx
 #: src/lib/share/publish-wizard.ts
@@ -4604,8 +4604,8 @@ msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop
 msgstr "Nie udało się automatycznie zrestartować serwera. Spróbuj uruchomić `{cliCommand} stop all` w terminalu, potem otwórz ten projekt ponownie — albo zrestartuj komputer, jeśli problem się utrzymuje."
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Couldn't restart the server. Run ok start in this folder to retry."
-msgstr "Nie udało się zrestartować serwera. Uruchom ok start w tym folderze, aby spróbować ponownie."
+msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
+msgstr "Nie udało się zrestartować serwera. Uruchom {cliCommand} start w tym folderze, aby spróbować ponownie."
 
 #: src/lib/restart-collab-server.ts
 msgid "Couldn't restart the server. Try `{cliCommand} start` in this folder."
@@ -9319,8 +9319,8 @@ msgid "Network error — please try again"
 msgstr "Błąd sieci — spróbuj ponownie"
 
 #: src/components/ConnectingBanner.tsx
-msgid "network error (is `ok start` running?)"
-msgstr "błąd sieci (czy `ok start` działa?)"
+msgid "network error (is `{cliCommand} start` running?)"
+msgstr "błąd sieci (czy `{cliCommand} start` działa?)"
 
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
@@ -9608,8 +9608,8 @@ msgid "No chats yet."
 msgstr "Brak czatów."
 
 #: src/components/ConnectingBanner.tsx
-msgid "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
-msgstr "Brak serwera współpracy dla tego worktree — uruchom <0>ok start</0> tutaj albo otwórz projekt ponownie."
+msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
+msgstr "Brak serwera współpracy dla tego worktree — uruchom <0>{cliCommand} start</0> tutaj albo otwórz projekt ponownie."
 
 #: src/comments/CommentProjectPanel.tsx
 msgid "No comments in this project yet. Comment on a passage to start one."
@@ -15986,8 +15986,8 @@ msgid "token"
 msgstr "token"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Token stored for {login} on {host}. To remove it, run <0>ok auth signout --host {host}</0>."
-msgstr "Zapisano token dla {login} na {host}. Aby go usunąć, uruchom <0>ok auth signout --host {host}</0>."
+msgid "Token stored for {login} on {host}. To remove it, run <0>{cliCommand} auth signout --host {host}</0>."
+msgstr "Zapisano token dla {login} na {host}. Aby go usunąć, uruchom <0>{cliCommand} auth signout --host {host}</0>."
 
 #: src/components/SkillBundlePreview.tsx
 #: src/components/SkillProperties.tsx
@@ -17050,8 +17050,8 @@ msgid "You can add"
 msgstr "Możesz dodać"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "You can also create one from a terminal with <0>ok bug-report</0>."
-msgstr "Możesz też utworzyć je w terminalu poleceniem <0>ok bug-report</0>."
+msgid "You can also create one from a terminal with <0>{cliCommand} bug-report</0>."
+msgstr "Możesz też utworzyć je w terminalu poleceniem <0>{cliCommand} bug-report</0>."
 
 #: src/components/TerminalGate.tsx
 msgid "You can also manage this in Settings."

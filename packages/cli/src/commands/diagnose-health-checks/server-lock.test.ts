@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProcessLockMetadata } from '@inkeep/open-knowledge-server';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { LockState } from '../lock-state.ts';
 import { makeServerLockCheck } from './server-lock.ts';
 
@@ -127,4 +127,28 @@ test('reports a read failure with access guidance rather than suggesting deletio
   expect(result.status).toBe('fail');
   expect(result.remediation).toContain('Restore file and parent-directory access');
   expect(result.detail).toContain('EACCES');
+});
+
+describe('server-lock remediation names the running channel CLI', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s: live and dead locks name %s stop and clean', async (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    const remediationFor = async (state: LockState) =>
+      (await makeServerLockCheck({ inspect: () => state }).run({ cwd: makeProjectWithLockDir() }))
+        .remediation;
+    expect(
+      await remediationFor({ status: 'alive', lockPath: '/x/server.lock', lock: makeLockMeta() }),
+    ).toBe(`Stop the other OpenKnowledge process or run \`${command} stop\`.`);
+    expect(
+      await remediationFor({
+        status: 'dead-pid',
+        lockPath: '/x/server.lock',
+        lock: makeLockMeta({ pid: 999999 }),
+      }),
+    ).toBe(`Run \`${command} clean\` to prune.`);
+  });
 });

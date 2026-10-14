@@ -237,6 +237,26 @@ describe('runTokenPaste', () => {
     expect(await store.get('github.com')).toMatchObject({ login: 'octocat', token: 'verified' });
   });
 
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('the GitHub-host refusal names the %s auth pat command', async (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    try {
+      const result = await runTokenPaste(
+        { host: 'github.com', username: 'mallory', json: false },
+        makeStore(tmpDir),
+        constantToken('unverified'),
+      );
+      expect(result).toMatchObject({
+        type: 'error',
+        message: `github.com is a GitHub host. Use ${command} auth pat --host github.com, which checks the token with GitHub before storing it.`,
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   test('a credential store that refuses the write reports a structured error', async () => {
     const store = makeStore(tmpDir);
     vi.spyOn(store, 'set').mockRejectedValue(new Error('keychain locked'));

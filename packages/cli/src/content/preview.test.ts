@@ -1,9 +1,9 @@
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OK_DIR } from '../constants.ts';
-import { previewContent } from './preview.ts';
+import { formatPreviewBlock, previewContent } from './preview.ts';
 
 describe('previewContent', () => {
   let testDir: string;
@@ -163,5 +163,34 @@ describe('previewContent', () => {
     expect(result.totalCount).toBe(1);
     expect(result.warnings.length).toBe(1);
     expect(result.warnings[0]).toContain('broken or cyclic symlink');
+  });
+});
+
+describe('formatPreviewBlock names the running channel CLI', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([
+    ['stable', 'open-knowledge'],
+    ['beta', 'open-knowledge-beta'],
+  ])('%s: the init and re-check hints name %s', (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    const cwd = resolve(
+      tmpdir(),
+      `preview-hint-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    const output = formatPreviewBlock(
+      { totalCount: 0, sample: [], contentDir: cwd, warnings: [] },
+      cwd,
+    );
+    expect(output).toBe(
+      [
+        'Content:',
+        '  Found 0 markdown files in ./',
+        '',
+        `  Run \`${command} init\` to scaffold config + .okignore.`,
+        '',
+        `  Re-check anytime: ${command} preview`,
+      ].join('\n'),
+    );
   });
 });

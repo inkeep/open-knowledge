@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { makeConfigYamlCheck } from './config-yaml.ts';
 
 let tmpDirs: string[] = [];
@@ -61,5 +61,18 @@ describe('config-yaml check', () => {
     expect(result.status).toBe('fail');
     expect(result.summary).toContain('failed to parse');
     expect(result.detail).toContain('content.dir must be a string');
+  });
+});
+
+describe('config-yaml remediation names the running channel CLI', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s: an uninitialized project names %s init', async (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    const result = await makeConfigYamlCheck().run({ cwd: makeProject() });
+    expect(result.remediation).toBe(`Run \`${command} init\` to scaffold the project.`);
   });
 });

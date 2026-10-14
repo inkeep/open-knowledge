@@ -131,3 +131,30 @@ describe('scaffold writers refuse $HOME', () => {
     expect(result.created).toContain('config.yml');
   });
 });
+
+describe('the remediation names the running channel CLI', () => {
+  test('Stable keeps its exact ok init lines', () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    expect(new HomeProjectRootError('/Users/x').message).toBe(
+      `Refusing to set up an OpenKnowledge project in your home directory (/Users/x).\n` +
+        `  A project here would run 'git init' in your home directory and write project config\n` +
+        `  and skills into your editors' user-global directories (~/.cursor, ~/.codex, ~/.claude).\n` +
+        `  Make a folder for this project, then run 'ok init' inside it.`,
+    );
+    expect(new FilesystemRootProjectError('/').message).toBe(
+      `Refusing to set up an OpenKnowledge project at the top of a drive (/).\n` +
+        `  A project here would scan every file on the drive and run 'git init' at its root.\n` +
+        `  Make a folder for this project, then run 'ok init' inside it.`,
+    );
+  });
+
+  test('Beta names ok-beta init', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    expect(new HomeProjectRootError('/Users/x').message).toContain(
+      "then run 'ok-beta init' inside it.",
+    );
+    expect(new FilesystemRootProjectError('/').message).toContain(
+      "then run 'ok-beta init' inside it.",
+    );
+  });
+});

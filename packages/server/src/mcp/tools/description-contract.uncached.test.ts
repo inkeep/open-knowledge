@@ -156,6 +156,17 @@ test('share_link retains its path, kind, cwd and publishing preconditions', () =
     expect(description('share_link')).toContain(pin);
 });
 
+test('served descriptions name no single channel CLI command', () => {
+  const channelCommand =
+    /(^|[\s`'"(])(ok|ok-beta|open-knowledge|open-knowledge-beta) (open|ps|status|start|stop|init|lint|clean|seed|diagnose|auth|config|cowork|bug-report)\b/;
+  const offenders = tools
+    .filter((tool) => channelCommand.test(tool.description ?? ''))
+    .map((tool) => tool.name);
+  expect(offenders).toEqual([]);
+  expect(description('preview_url')).toContain("the OpenKnowledge CLI's open <doc>");
+  expect(description('lint')).toContain("the OpenKnowledge CLI's lint --fix");
+});
+
 test('retired conflict tools are neither registered nor suggested as callable tools', () => {
   expect(tools.map((tool) => tool.name)).not.toContain('conflicts');
   expect(tools.map((tool) => tool.name)).not.toContain('resolve_conflict');

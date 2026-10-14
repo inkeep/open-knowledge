@@ -1,4 +1,5 @@
 import {
+  currentCliCommandName,
   currentDesktopProduct,
   DESKTOP_PRODUCTS,
   piToolNamespace,
@@ -48,9 +49,9 @@ export function buildPiExtensionSource(options: McpInstallOptions = {}): string 
   };
   return `${header}
 /**
- * Open Knowledge bridge for Pi — MANAGED FILE, written by \`ok init\`.
+ * Open Knowledge bridge for Pi — MANAGED FILE, written by \`${currentCliCommandName()} init\`.
  * Hand edits are overwritten whenever OK re-syncs this project; remove it
- * with \`ok deinit\` (or delete the file) to disconnect Pi from OK.
+ * with \`${currentCliCommandName()} deinit\` (or delete the file) to disconnect Pi from OK.
  *
  * On session start it spawns Open Knowledge's MCP stdio server via OK's
  * resilient launcher (bundle, then npx, then version-manager probes), performs

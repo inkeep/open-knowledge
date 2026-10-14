@@ -1,5 +1,6 @@
 import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { currentDesktopProduct } from '@inkeep/open-knowledge-core';
 import { createContentFilter } from '@inkeep/open-knowledge-server';
 import { OK_DIR } from '../constants.ts';
 
@@ -142,11 +143,13 @@ export function formatPreviewBlock(result: PreviewResult, cwd: string): string {
     lines.push('  To adjust scope, add patterns to .okignore at the project root.');
     lines.push(`  To change the content root, edit ${OK_DIR}/config.yml → content.dir.`);
   } else {
-    lines.push('  Run `open-knowledge init` to scaffold config + .okignore.');
+    lines.push(
+      `  Run \`${currentDesktopProduct().cliCommandNames[1]} init\` to scaffold config + .okignore.`,
+    );
   }
 
   lines.push('');
-  lines.push('  Re-check anytime: open-knowledge preview');
+  lines.push(`  Re-check anytime: ${currentDesktopProduct().cliCommandNames[1]} preview`);
 
   return lines.join('\n');
 }

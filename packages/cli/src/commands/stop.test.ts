@@ -404,6 +404,20 @@ describe('formatNoTargetMessage', () => {
     expect(formatNoTargetMessage('/proj', 1)).toContain('1 other open-knowledge server is running');
   });
 
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s: the pointer names %s ps', (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    try {
+      expect(formatNoTargetMessage('/proj', 2)).toBe(
+        `Nothing was running for /proj. 2 other open-knowledge servers are running — run \`${command} ps\` to list them.`,
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   test('drops the `ok ps` pointer when the caller prints the listing itself', () => {
     const msg = formatNoTargetMessage('/proj', 2, { listingFollows: true });
     expect(msg).toContain('Nothing was running for /proj');

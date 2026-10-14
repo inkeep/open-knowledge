@@ -33,7 +33,7 @@ import {
 } from './shared.ts';
 
 export const DESCRIPTION = [
-  'Lint markdown and optionally auto-fix. Requires the Hocuspocus server. `document` selects one extension-less doc and overrides path. Otherwise scan all in-scope .md/.mdx; path narrows to file/folder. `fix: true` requires document and applies fixable rules through the live collaborative doc with attribution. Use edit/write for remaining findings; shell ok lint --fix is the unattributed headless/CI path.',
+  "Lint markdown and optionally auto-fix. Requires the Hocuspocus server. `document` selects one extension-less doc and overrides path. Otherwise scan all in-scope .md/.mdx; path narrows to file/folder. `fix: true` requires document and applies fixable rules through the live collaborative doc with attribution. Use edit/write for remaining findings; the OpenKnowledge CLI's lint --fix is the unattributed headless/CI path.",
   'ran lists selected `markdownlint`, `frontmatter` and document-level `okf` families. A family absent from `ran` was not checked. Project-tree OKF checks and link validation run only through audit.',
   'Findings carry source, code, message, 0-based LSP range and severity; only problematic files are listed. Counts reflect the full scan. Project output is capped at 10 files × 10 diagnostics each and project-wide at 10 warnings; omittedWarningCount reports dropped warnings. Narrow path reduces competing files; per-file caps still apply. Follow truncation recovery text.',
   'Configure lint in Settings → Plugins and native .markdownlint.* rules.',

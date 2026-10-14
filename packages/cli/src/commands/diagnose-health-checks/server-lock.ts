@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { currentCliCommandName } from '@inkeep/open-knowledge-core';
 import { resolveLockDir } from '@inkeep/open-knowledge-server';
 import { describeLockOwnershipRefusal, inspectLock, type LockState } from '../lock-state.ts';
 import type { CheckContext, CheckDefinition, CheckResult } from './types.ts';
@@ -33,7 +34,7 @@ export function makeServerLockCheck(deps: ServerLockCheckDeps = {}): CheckDefini
             name: 'server-lock',
             status: 'fail',
             summary: `server lock held by pid ${state.lock.pid} on this host`,
-            remediation: 'Stop the other OpenKnowledge process or run `ok stop`.',
+            remediation: `Stop the other OpenKnowledge process or run \`${currentCliCommandName()} stop\`.`,
             detail: `lockPath: ${state.lockPath}; port: ${state.lock.port}; started: ${state.lock.startedAt}`,
           };
         case 'unverified-owner':
@@ -58,7 +59,7 @@ export function makeServerLockCheck(deps: ServerLockCheckDeps = {}): CheckDefini
             name: 'server-lock',
             status: 'warn',
             summary: `stale lock for non-existent pid ${state.lock.pid}`,
-            remediation: 'Run `ok clean` to prune.',
+            remediation: `Run \`${currentCliCommandName()} clean\` to prune.`,
             detail: `lockPath: ${state.lockPath}`,
           };
         case 'read-error':

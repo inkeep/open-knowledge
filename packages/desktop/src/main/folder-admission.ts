@@ -3,6 +3,7 @@ import { existsSync, realpathSync, statSync } from 'node:fs';
 import { homedir as nodeHomedir } from 'node:os';
 import { dirname, isAbsolute, join, posix, relative, resolve, win32 } from 'node:path';
 import { promisify } from 'node:util';
+import { okUserHomeDisplayPath } from '@inkeep/open-knowledge-core';
 import { resolveGitDirDetailed } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import {
   canonicalizeForCompare,
@@ -131,8 +132,9 @@ export function isSystemDirectory(
 export const REJECTION_REASON_COPY = {
   'symlink-escape': 'Symlink resolves outside its parent directory.',
   unreadable: 'Folder is unreadable or does not exist.',
-  'home-directory':
-    "This is your home directory, not a project. ~/.ok is OpenKnowledge's own user-global folder (settings, skills), and opening a project here would set up git in your home directory and write project config into your editors' global folders. Make a folder for your notes and open that instead.",
+  get 'home-directory'() {
+    return `This is your home directory, not a project. ${okUserHomeDisplayPath()} is OpenKnowledge's own user-global folder (settings, skills), and opening a project here would set up git in your home directory and write project config into your editors' global folders. Make a folder for your notes and open that instead.`;
+  },
   'filesystem-root':
     'This is the top of a drive, not a project folder. Setting up OpenKnowledge here would scan every file on the drive and set up git at its root. Make a folder for your notes and open that instead.',
   'system-directory':

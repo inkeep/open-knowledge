@@ -2200,8 +2200,8 @@ msgid "Applies to all projects on this machine, in Claude Code and Codex chats i
 msgstr "اس مشین کے تمام پروجیکٹس پر لاگو ہوتا ہے، ایجنٹ پینل کی ان Claude Code اور Codex چیٹس میں جو اسے آن کرنے کے بعد شروع ہوں۔ ایجنٹ نئی پروفائل والی اپنی Google Chrome ونڈو میں صفحات کھول، کلک کر، ٹائپ کر اور اسکرین شاٹ لے سکتا ہے۔ Google Chrome اور Node.js انسٹال ہونا ضروری ہے۔ براؤزر کی ہر کارروائی آپ کی منظوری مانگتی ہے، ہمیشہ اجازت دینے کے کسی اختیار کے بغیر، جب تک ایجنٹ کا اپنا موڈ یا اس کی اجازت کی ترتیبات منظوری کو نظرانداز نہ کریں۔"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
-msgstr "اس مشین کے تمام پروجیکٹس پر لاگو ہوتا ہے۔ بلٹ اِن ٹرمینل سے شروع کیے گئے Claude اور Codex، اور ایپ کے ایجنٹ پینل چیٹ میں کوئی بھی ایجنٹ، OpenKnowledge کے پڑھنے اور لکھنے کے ٹولز خود بخود منظور کرتے ہیں (Claude \"ok open\" بھی خود چلاتا ہے)۔ اسکلز حذف کرنا، منتقل کرنا، شیئر کرنا، درآمد یا انسٹال کرنا، دیگر کمانڈز اور غیر OpenKnowledge فائل ترامیم اب بھی پوچھتی ہیں۔ ٹرمینل میں Cursor، OpenCode اور Pi متاثر نہیں ہوتے۔ ہر ایجنٹ کے لیے حتی الامکان۔"
+msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"{cliCommand} open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgstr "اس مشین کے تمام پروجیکٹس پر لاگو ہوتا ہے۔ بلٹ اِن ٹرمینل سے شروع کیے گئے Claude اور Codex، اور ایپ کے ایجنٹ پینل چیٹ میں کوئی بھی ایجنٹ، OpenKnowledge کے پڑھنے اور لکھنے کے ٹولز خود بخود منظور کرتے ہیں (Claude \"{cliCommand} open\" بھی خود چلاتا ہے)۔ اسکلز حذف کرنا، منتقل کرنا، شیئر کرنا، درآمد یا انسٹال کرنا، دیگر کمانڈز اور غیر OpenKnowledge فائل ترامیم اب بھی پوچھتی ہیں۔ ٹرمینل میں Cursor، OpenCode اور Pi متاثر نہیں ہوتے۔ ہر ایجنٹ کے لیے حتی الامکان۔"
 
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
@@ -2529,8 +2529,8 @@ msgid "Available in every project on this machine. Not shared through git."
 msgstr "اس مشین کے ہر پروجیکٹ میں دستیاب۔ git کے ذریعے شیئر نہیں ہوتا۔"
 
 #: src/components/settings/SharingSection.tsx
-msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
-msgstr "OpenKnowledge ڈیسک ٹاپ ایپ میں دستیاب۔ ٹرمینل سے<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2> استعمال کریں۔"
+msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> {cliCommand} config-sharing status</0> / <1>share</1> / <2>unshare</2>."
+msgstr "OpenKnowledge ڈیسک ٹاپ ایپ میں دستیاب۔ ٹرمینل سے<0> {cliCommand} config-sharing status</0> / <1>share</1> / <2>unshare</2> استعمال کریں۔"
 
 #: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/AppMenubar.tsx
@@ -3450,8 +3450,8 @@ msgid "Code field undo or redo"
 msgstr "کوڈ فیلڈ میں واپسی یا دوبارہ"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Codex will still ask until you run \"ok init\" in a terminal for this project."
-msgstr "Codex اس وقت تک پوچھتا رہے گا جب تک آپ اس پروجیکٹ کے لیے ٹرمینل میں «ok init» نہ چلائیں۔"
+msgid "Codex will still ask until you run \"{cliCommand} init\" in a terminal for this project."
+msgstr "Codex اس وقت تک پوچھتا رہے گا جب تک آپ اس پروجیکٹ کے لیے ٹرمینل میں «{cliCommand} init» نہ چلائیں۔"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Collaborators see your in-progress edits as soon as they sync."
@@ -4476,8 +4476,8 @@ msgid "Couldn't reach {displayName} — try again?"
 msgstr "{displayName} تک رسائی نہیں ہو سکی۔ دوبارہ کوشش کریں؟"
 
 #: src/components/ConnectingBanner.tsx
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>ok status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "اشتراکی سرور تک رسائی نہیں ہو سکی — {errorDetail}۔ <0>ok status</0> آزمائیں یا <1>.ok/local/last-spawn-error.log</1> دیکھیں۔"
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
+msgstr "اشتراکی سرور تک رسائی نہیں ہو سکی — {errorDetail}۔ <0>{cliCommand} status</0> آزمائیں یا <1>.ok/local/last-spawn-error.log</1> دیکھیں۔"
 
 #: src/components/PublishToGitHubDialog.tsx
 #: src/lib/share/publish-wizard.ts
@@ -4604,8 +4604,8 @@ msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop
 msgstr "سرور خودکار طور پر دوبارہ نہیں چل سکا۔ ٹرمینل میں `{cliCommand} stop all` چلا کر دیکھیں، پھر یہ پروجیکٹ دوبارہ کھولیں — یا مسئلہ برقرار رہے تو اپنا کمپیوٹر دوبارہ چالو کریں۔"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Couldn't restart the server. Run ok start in this folder to retry."
-msgstr "سرور دوبارہ شروع نہیں ہو سکا۔ دوبارہ کوشش کرنے کے لیے اس فولڈر میں ok start چلائیں۔"
+msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
+msgstr "سرور دوبارہ شروع نہیں ہو سکا۔ دوبارہ کوشش کرنے کے لیے اس فولڈر میں {cliCommand} start چلائیں۔"
 
 #: src/lib/restart-collab-server.ts
 msgid "Couldn't restart the server. Try `{cliCommand} start` in this folder."
@@ -9319,8 +9319,8 @@ msgid "Network error — please try again"
 msgstr "نیٹ ورک کی خرابی — براہِ کرم دوبارہ کوشش کریں"
 
 #: src/components/ConnectingBanner.tsx
-msgid "network error (is `ok start` running?)"
-msgstr "نیٹ ورک کی خرابی (کیا `ok start` چل رہا ہے؟)"
+msgid "network error (is `{cliCommand} start` running?)"
+msgstr "نیٹ ورک کی خرابی (کیا `{cliCommand} start` چل رہا ہے؟)"
 
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
@@ -9608,8 +9608,8 @@ msgid "No chats yet."
 msgstr "ابھی کوئی چیٹ نہیں۔"
 
 #: src/components/ConnectingBanner.tsx
-msgid "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
-msgstr "اس ورک ٹری کے لیے کوئی اشتراکی سرور نہیں — یہاں <0>ok start</0> چلائیں، یا پروجیکٹ دوبارہ کھولیں۔"
+msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
+msgstr "اس ورک ٹری کے لیے کوئی اشتراکی سرور نہیں — یہاں <0>{cliCommand} start</0> چلائیں، یا پروجیکٹ دوبارہ کھولیں۔"
 
 #: src/comments/CommentProjectPanel.tsx
 msgid "No comments in this project yet. Comment on a passage to start one."
@@ -15986,8 +15986,8 @@ msgid "token"
 msgstr "ٹوکن"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Token stored for {login} on {host}. To remove it, run <0>ok auth signout --host {host}</0>."
-msgstr "{host} پر {login} کے لیے ٹوکن محفوظ کر لیا گیا۔ اسے ہٹانے کے لیے <0>ok auth signout --host {host}</0> چلائیں۔"
+msgid "Token stored for {login} on {host}. To remove it, run <0>{cliCommand} auth signout --host {host}</0>."
+msgstr "{host} پر {login} کے لیے ٹوکن محفوظ کر لیا گیا۔ اسے ہٹانے کے لیے <0>{cliCommand} auth signout --host {host}</0> چلائیں۔"
 
 #: src/components/SkillBundlePreview.tsx
 #: src/components/SkillProperties.tsx
@@ -17050,8 +17050,8 @@ msgid "You can add"
 msgstr "آپ شامل کر سکتے ہیں"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "You can also create one from a terminal with <0>ok bug-report</0>."
-msgstr "آپ ٹرمینل سے <0>ok bug-report</0> کے ذریعے بھی ایک بنا سکتے ہیں۔"
+msgid "You can also create one from a terminal with <0>{cliCommand} bug-report</0>."
+msgstr "آپ ٹرمینل سے <0>{cliCommand} bug-report</0> کے ذریعے بھی ایک بنا سکتے ہیں۔"
 
 #: src/components/TerminalGate.tsx
 msgid "You can also manage this in Settings."

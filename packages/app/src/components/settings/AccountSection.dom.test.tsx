@@ -577,6 +577,26 @@ describe('AccountSection host-token form', () => {
     expect((submit as HTMLButtonElement).disabled).toBe(false);
   });
 
+  test('the confirmation names ok-beta auth signout on Beta', async () => {
+    const user = userEvent.setup();
+    (window as unknown as { okDesktop?: unknown }).okDesktop = { cliCommandName: 'ok-beta' };
+    try {
+      renderSection(
+        makeQueryTransport({ status: async () => CONNECTED }),
+        makeAuthTransport(async () => ({ ok: true, login: 'oauth2' })),
+      );
+      await user.type(await screen.findByLabelText('Host'), 'gitea.internal');
+      await user.type(screen.getByLabelText('Username'), 'oauth2');
+      await user.type(screen.getByLabelText('Access token'), 'glpat_secret');
+      await user.click(screen.getByTestId('settings-account-host-token-submit'));
+      expect((await screen.findByTestId('settings-account-host-token-success')).textContent).toBe(
+        'Token stored for oauth2 on gitea.internal. To remove it, run ok-beta auth signout --host gitea.internal.',
+      );
+    } finally {
+      (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
+    }
+  });
+
   test('a successful submit sends trimmed values, confirms, and clears only the token', async () => {
     const user = userEvent.setup();
     const calls: Array<[string, string, string]> = [];

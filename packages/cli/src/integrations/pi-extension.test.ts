@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CHAIN_V2,
   CHAIN_WIN_V1,
@@ -215,4 +215,22 @@ rl.on("line", (line) => {
       await handlers.get('session_shutdown')?.({}, {});
     }
   }, 20000);
+});
+
+describe('buildPiExtensionSource header names the running channel CLI', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s: the managed-file note names %s init and deinit', (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    const source = buildPiExtensionSource();
+    expect(source).toContain(
+      ` * Open Knowledge bridge for Pi — MANAGED FILE, written by \`${command} init\`.\n`,
+    );
+    expect(source).toContain(
+      ` * with \`${command} deinit\` (or delete the file) to disconnect Pi from OK.\n`,
+    );
+  });
 });

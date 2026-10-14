@@ -6,9 +6,9 @@ The content directory is the resolved `content.dir` — read it with `config({ k
 
 **Two toolsets, two jobs.** Read source code with your NATIVE tools (`Read`/`Grep`/`Glob`/`Bash` — OK MCP does not index non-markdown source). Author and audit the wiki with OK MCP verbs (`write`/`edit` for pages, `links`/`search` for the graph, `exec` for markdown listings). Never hand-write the wiki markdown with native `Write`/`Edit` — that bypasses attribution, backlinks, and the live preview.
 
-**Server requirement.** Phases that author or audit the wiki (`write`/`edit`/`links`/`search`) need the OK Hocuspocus server. Source reading (native tools) and git do not. If a `write` returns "Hocuspocus server is not running", tell the user to run `ok start` and retry — do NOT fall back to native file writes for the wiki markdown.
+**Server requirement.** Phases that author or audit the wiki (`write`/`edit`/`links`/`search`) need the OK Hocuspocus server. Source reading (native tools) and git do not. If a `write` returns "Hocuspocus server is not running", tell the user to run `ok start` (`ok-beta start` for Beta) and retry — do NOT fall back to native file writes for the wiki markdown.
 
-**Prerequisite.** This procedure assumes the `codebase-wiki` pack is seeded (`ok seed --pack codebase-wiki` → `wiki/` with `architecture/ modules/ flows/ concepts/ guides/`, each carrying folder frontmatter + a page template, plus `wiki/OVERVIEW.md` + `wiki/log.md`). If `exec("ls -A <content-dir>/wiki")` shows the layout is missing, tell the user to seed first, then start over.
+**Prerequisite.** This procedure assumes the `codebase-wiki` pack is seeded (`ok seed --pack codebase-wiki`, or `ok-beta` for Beta, → `wiki/` with `architecture/ modules/ flows/ concepts/ guides/`, each carrying folder frontmatter + a page template, plus `wiki/OVERVIEW.md` + `wiki/log.md`). If `exec("ls -A <content-dir>/wiki")` shows the layout is missing, tell the user to seed first, then start over.
 
 ---
 
@@ -154,7 +154,7 @@ Incremental by default — don't re-read the whole repo.
 
 ## Exit conditions
 
-- **Pack not seeded** — `wiki/` layout missing → tell the user to run `ok seed --pack codebase-wiki`, then start over. Exit.
-- **Server down** — a `write`/`links` call reports the server is not running → tell the user to run `ok start` and retry. Exit cleanly; resuming keeps already-written pages.
+- **Pack not seeded** — `wiki/` layout missing → tell the user to run `ok seed --pack codebase-wiki` (`ok-beta` for Beta), then start over. Exit.
+- **Server down** — a `write`/`links` call reports the server is not running → tell the user to run `ok start` (`ok-beta start` for Beta) and retry. Exit cleanly; resuming keeps already-written pages.
 - **User aborts at a STOP gate** → exit cleanly, leaving any already-written pages in place.
 - **Empty / unreadable repo** (no source detected in Phase 1) → tell the user there's nothing to document yet. Exit.

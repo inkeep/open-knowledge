@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { makeContentDirCheck } from './content-dir.ts';
 
 let tmpDirs: string[] = [];
@@ -94,5 +94,18 @@ describe('content-dir check', () => {
     expect(result.status).toBe('fail');
     expect(result.summary).toContain('content.dir unresolved');
     expect(result.detail).toContain('config invalid');
+  });
+});
+
+describe('content-dir remediation names the running channel CLI', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s: an uninitialized project names %s init', async (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    const result = await makeContentDirCheck().run({ cwd: makeProject(false) });
+    expect(result.remediation).toBe(`Run \`${command} init\` to scaffold the project.`);
   });
 });

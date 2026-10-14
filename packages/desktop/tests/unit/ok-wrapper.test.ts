@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { accessSync, constants, readFileSync } from 'node:fs';
+import { accessSync, constants, readFileSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, test } from 'vitest';
 import { createTempDirFactory } from '../../../../test-support/temp-dir.test-helper.ts';
@@ -15,7 +15,7 @@ describe('ok.sh wrapper', () => {
 
   test('missing bundle emits two-line stderr and exits 69', () => {
     const result = spawnSync(WRAPPER, [], {
-      env: { ...process.env, APP_BUNDLE_DIR: '/nonexistent/fake.app' },
+      env: { ...process.env, APP_BUNDLE_DIR: '/nonexistent/fake.app', OK_CHANNEL: '' },
       encoding: 'utf8',
     });
     expect(result.status).toBe(69);
@@ -27,6 +27,22 @@ describe('ok.sh wrapper', () => {
       error: 'ok-bundle-missing',
       hint: 'OpenKnowledge app appears to have been removed. Reinstall from the DMG, or remove OK entries from your MCP config and rerun ok init.',
     });
+  });
+
+  test.each([
+    ['OK_CHANNEL=beta', WRAPPER, 'beta'],
+    ['an ok-beta link', 'ok-beta', ''],
+  ])('Beta (%s) names ok-beta init in the hint', (_label, entry, channel) => {
+    const target = entry === WRAPPER ? entry : join(makeTempDir('ok-wrapper-beta-'), entry);
+    if (target !== WRAPPER) symlinkSync(WRAPPER, target);
+    const result = spawnSync(target, [], {
+      env: { ...process.env, APP_BUNDLE_DIR: '/nonexistent/fake.app', OK_CHANNEL: channel },
+      encoding: 'utf8',
+    });
+    expect(result.status).toBe(69);
+    expect(JSON.parse(result.stderr.trimEnd().split('\n')[1] ?? '').hint).toBe(
+      'OpenKnowledge app appears to have been removed. Reinstall from the DMG, or remove OK entries from your MCP config and rerun ok-beta init.',
+    );
   });
 
   test('missing Electron binary but present CLI also diagnoses missing-bundle', async () => {
@@ -87,13 +103,34 @@ describe('ok-linux.sh wrapper', () => {
   });
 
   test('missing install emits two-line stderr and exits 69', () => {
-    const result = spawnSync(LINUX_WRAPPER, [], { encoding: 'utf8' });
+    const result = spawnSync(LINUX_WRAPPER, [], {
+      env: { ...process.env, OK_CHANNEL: '' },
+      encoding: 'utf8',
+    });
     expect(result.status).toBe(69);
     const lines = result.stderr.trimEnd().split('\n');
     expect(lines).toHaveLength(2);
     expect(lines[0]).toBe('OpenKnowledge has been removed. Reinstall the OpenKnowledge package.');
-    const parsed = JSON.parse(lines[1] ?? '');
-    expect(parsed.error).toBe('ok-bundle-missing');
+    expect(JSON.parse(lines[1] ?? '')).toEqual({
+      error: 'ok-bundle-missing',
+      hint: 'OpenKnowledge app appears to have been removed. Reinstall it, or remove OK entries from your MCP config and rerun ok init.',
+    });
+  });
+
+  test.each([
+    ['OK_CHANNEL=beta', LINUX_WRAPPER, 'beta'],
+    ['an ok-beta link', 'ok-beta', ''],
+  ])('Beta (%s) names ok-beta init in the hint', (_label, entry, channel) => {
+    const target = entry === LINUX_WRAPPER ? entry : join(makeTempDir('ok-linux-beta-'), entry);
+    if (target !== LINUX_WRAPPER) symlinkSync(LINUX_WRAPPER, target);
+    const result = spawnSync(target, [], {
+      env: { ...process.env, OK_CHANNEL: channel },
+      encoding: 'utf8',
+    });
+    expect(result.status).toBe(69);
+    expect(JSON.parse(result.stderr.trimEnd().split('\n')[1] ?? '').hint).toBe(
+      'OpenKnowledge app appears to have been removed. Reinstall it, or remove OK entries from your MCP config and rerun ok-beta init.',
+    );
   });
 
   test('NODE_OPTIONS is rescoped to OK_NODE_OPTIONS before exec (quoted)', () => {

@@ -1,5 +1,9 @@
 import { resolve } from 'node:path';
-import { desktopChannelLabel, resolveDesktopProductName } from '@inkeep/open-knowledge-core';
+import {
+  currentCliCommandName,
+  desktopChannelLabel,
+  resolveDesktopProductName,
+} from '@inkeep/open-knowledge-core';
 import {
   type Config,
   isProcessAlive,
@@ -245,7 +249,8 @@ export function formatNoTargetMessage(
     return `Nothing was running for ${targetDir}, and no other open-knowledge servers are running.`;
   }
   const agreement = otherRunningServers === 1 ? ' is' : 's are';
-  const pointer = opts.listingFollows === true ? '' : ' — run `ok ps` to list them';
+  const pointer =
+    opts.listingFollows === true ? '' : ` — run \`${currentCliCommandName()} ps\` to list them`;
   return (
     `Nothing was running for ${targetDir}. ${otherRunningServers} other open-knowledge server` +
     `${agreement} running${pointer}.`

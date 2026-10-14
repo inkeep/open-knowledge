@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MalformedGitPointerError } from '@inkeep/open-knowledge-server';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { makeShadowRepoCheck } from './shadow-repo.ts';
 
 let tmpDirs: string[] = [];
@@ -83,5 +83,24 @@ describe('shadow-repo check', () => {
     const result = await def.run({ cwd });
     expect(result.status).toBe('fail');
     expect(result.summary).toContain('missing HEAD');
+  });
+});
+
+describe('shadow-repo remediation names the running channel CLI', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s: both uninitialized states name %s start', async (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    const remediation = `Run \`${command} start\` once to initialize the shadow repo.`;
+    expect((await makeShadowRepoCheck().run({ cwd: makeProject() })).remediation).toBe(remediation);
+    const cwd = makeProject();
+    mkdirSync(join(cwd, '.git'), { recursive: true });
+    const missingShadow = makeShadowRepoCheck({
+      resolveDir: () => join(cwd, '.git', 'ok-missing'),
+    });
+    expect((await missingShadow.run({ cwd })).remediation).toBe(remediation);
   });
 });

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { currentCliCommandName } from '@inkeep/open-knowledge-core';
 import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { GitDirAccessError, MalformedGitPointerError } from '@inkeep/open-knowledge-server';
 import type { CheckContext, CheckDefinition, CheckResult } from './types.ts';
@@ -19,7 +20,7 @@ export function makeShadowRepoCheck(deps: ShadowRepoCheckDeps = {}): CheckDefini
           name: 'shadow-repo',
           status: 'warn',
           summary: 'no .git/ at project root (shadow repo not initialized)',
-          remediation: 'Run `ok start` once to initialize the shadow repo.',
+          remediation: `Run \`${currentCliCommandName()} start\` once to initialize the shadow repo.`,
         };
       }
       let shadowDir: string;
@@ -40,7 +41,7 @@ export function makeShadowRepoCheck(deps: ShadowRepoCheckDeps = {}): CheckDefini
           name: 'shadow-repo',
           status: 'warn',
           summary: `shadow repo at ${shadowDir} not yet initialized`,
-          remediation: 'Run `ok start` once to initialize the shadow repo.',
+          remediation: `Run \`${currentCliCommandName()} start\` once to initialize the shadow repo.`,
         };
       }
       const headPath = resolve(shadowDir, 'HEAD');

@@ -386,6 +386,30 @@ describe('NetworkAccessSection', () => {
     expect(applyButton().disabled).toBe(false);
   });
 
+  test.each([
+    [undefined, 'ok'],
+    ['ok-beta', 'ok-beta'],
+  ])(
+    'the restart IPC failure toast names the running channel CLI (%s)',
+    async (cliCommandName, command) => {
+      (globalThis as unknown as { window: { okDesktop?: unknown } }).window.okDesktop = {
+        cliCommandName,
+      };
+      restartImpl = () => Promise.reject(new Error('unexpected main-side error'));
+      projectLocalConfig = { server: { allowExternal: true } };
+      projectConfig = { server: { externalUrl: 'https://box.example.com', port: 24550 } };
+      render(<NetworkAccessSection />);
+      await userEvent.clear(screen.getByTestId('settings-network-port-input'));
+      await userEvent.type(screen.getByTestId('settings-network-port-input'), '24551');
+      await userEvent.click(applyButton());
+      await waitFor(() =>
+        expect(toastErrors).toContain(
+          `Couldn't restart the server. Run ${command} start in this folder to retry.`,
+        ),
+      );
+    },
+  );
+
   test('a valid URL with a non-http(s) scheme is rejected without writing', async () => {
     render(<NetworkAccessSection />);
     await userEvent.click(exposeToggle());

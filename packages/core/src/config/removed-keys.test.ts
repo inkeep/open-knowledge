@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { parseDocument } from 'yaml';
 import { isKnownConfigError } from './errors.ts';
 import { detectRemovedKeys, REMOVED_KEYS, stripRemovedKeys } from './removed-keys.ts';
@@ -162,5 +162,20 @@ describe('stripRemovedKeys', () => {
 
   test('a clean config is returned structurally unchanged', () => {
     expect(stripRemovedKeys({ content: { dir: 'docs' } })).toEqual({ content: { dir: 'docs' } });
+  });
+});
+
+describe('removed-key redirects name the running channel CLI', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s: the migrate and start hints name %s', (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    const [diagnostic] = detectRemovedKeys({ value: { preview: { baseUrl: 'x' } } });
+    expect(diagnostic?.code === 'REMOVED_KEY' ? diagnostic.redirect : '').toBe(
+      `preview URLs now resolve only to the running server — start one with \`${command} start\`. Run \`${command} config migrate\` to strip the obsolete key automatically, or remove it by hand.`,
+    );
   });
 });

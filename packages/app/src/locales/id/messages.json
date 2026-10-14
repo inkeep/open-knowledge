@@ -273,7 +273,6 @@
     "2IYGkU": [
       "Dokumen ini punya perubahan yang belum dikirim. Penerima akan melihat versi terakhir yang dikirim."
     ],
-    "2L8aeZ": ["kesalahan jaringan (apakah `ok start` sedang berjalan?)"],
     "2M0JF6": ["Pembaruan otomatis"],
     "2O5Z0r": ["Sembunyikan ", ["appName"]],
     "2QM24L": ["Semua tag"],
@@ -484,15 +483,6 @@
     "4mp6Tv": ["OpenKnowledge menampilkan daftar keterampilan yang terpasang"],
     "4niEzY": ["Sematan HTML tersekat — tulis HTML, lihat pratinjau terendernya secara langsung."],
     "4nj6n8": ["/api/config mengembalikan HTTP ", ["code"]],
-    "4p8Baj": [
-      "Token disimpan untuk ",
-      ["login"],
-      " di ",
-      ["host"],
-      ". Untuk menghapusnya, jalankan <0>ok auth signout --host ",
-      ["host"],
-      "</0>."
-    ],
     "4pDZ2N": ["\"", ["0"], "\" dihapus dari semua lokasi lain — folder sumbernya tetap dimuat"],
     "4r6p_B": [
       "Perintah ini berisi karakter tersembunyi yang dapat membuatnya terlihat berbeda dari yang dijalankan. Karakter tersebut ditampilkan di sini sebagai ⟨U+…⟩."
@@ -553,7 +543,6 @@
     ],
     "5OTgC7": ["Membuka dan memfokuskan penyusun prompt Tanya AI di bawah."],
     "5OqaJi": ["Masukkan nama proyek"],
-    "5PHgV2": ["Anda juga bisa membuatnya dari terminal dengan <0>ok bug-report</0>."],
     "5QGTaA": ["Jalur relatif tidak dapat disalin"],
     "5RiC8D": [
       "Skill penemuan dikelola bersama untuk semua alat AI. Instal skill ini dari Pengaturan → Studio Keterampilan."
@@ -570,9 +559,6 @@
     ],
     "5UccRr": ["Aktivitas terakhir: ", ["lastActivity"]],
     "5WDhAk": ["Menaut ke sebuah halaman atau URL eksternal."],
-    "5W_u0E": [
-      "Tidak dapat memulai ulang server. Jalankan ok start di folder ini untuk mencoba lagi."
-    ],
     "5Y17qa": ["Berlaku untuk (glob — awalan ! mengecualikan; kosong berarti semua dokumen)"],
     "5YWCV_": ["Respons plan salah bentuk"],
     "5ZB7XC": ["Area jatuhkan berkas"],
@@ -759,9 +745,6 @@
     "7WnfoD": ["Laporan ini sudah dalam perjalanan. Hasilnya akan muncul di riwayat laporan bug."],
     "7Y9yTo": [["owner"], "/", ["name"], " dibuat, tetapi push gagal."],
     "7YJr6i": ["Shell untuk sesi ini tidak pernah dimulai."],
-    "7YRrJ9": [
-      "Tersedia di aplikasi desktop OpenKnowledge. Dari terminal, gunakan<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
-    ],
     "7ZpNC-": ["gh"],
     "7_bFEL": ["Seret ", ["patternText"], " untuk menata ulang"],
     "7a0YcF": ["Tekan <0>Spasi</0> atau ketuk blob untuk mulai"],
@@ -996,9 +979,6 @@
     "A5hiCy": ["Buat templat"],
     "A67Uwj": ["Masih memuat"],
     "A6h5b-": ["Berkas digandakan"],
-    "AAlr5Y": [
-      "Tidak ada server kolaborasi untuk worktree ini — jalankan <0>ok start</0> di sini, atau buka lagi proyeknya."
-    ],
     "AB4qw9": ["Terminal baru"],
     "ABq-cq": ["OpenKnowledge membuat tautan berbagi"],
     "ACKMCN": ["Gagal memuat pengaturan keterampilan: ", ["0"]],
@@ -1857,6 +1837,11 @@
     "JlFcis": ["Kirim"],
     "JmfgFc": ["(sebuah worktree dari ", ["0"], ")"],
     "Jnz9AY": [["0"], " berada di atas ", ["destination"], "."],
+    "JpDb1D": [
+      "Tidak dapat memulai ulang server. Jalankan ",
+      ["cliCommand"],
+      " start di folder ini untuk mencoba lagi."
+    ],
     "Jqqevv": ["Galat sistem"],
     "JrqL_z": ["Sisipkan baris di atas"],
     "Jrwm42": ["Agen Anda tidak bisa dimuat."],
@@ -1953,9 +1938,6 @@
     ],
     "KmydK6": ["Tebal"],
     "KnoB--": ["Akan disimpan sebagai <0>", ["sanitized"], "</0>."],
-    "Kr3VPS": [
-      "Codex akan tetap bertanya sampai Anda menjalankan \"ok init\" di terminal untuk proyek ini."
-    ],
     "KsAPaB": ["Cabang ini sedang dipakai di:"],
     "KtACeE": ["Bawaan: <0>", ["0"], "</0>"],
     "KujtjC": ["Cari"],
@@ -2212,6 +2194,11 @@
     "NeY1Np": ["Slidev terlalu lama saat memulai. Coba lagi."],
     "NfraGd": ["Cara lain untuk memasang Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " aktif"],
+    "NgqxB9": [
+      "Tidak ada server kolaborasi untuk worktree ini — jalankan <0>",
+      ["cliCommand"],
+      " start</0> di sini, atau buka lagi proyeknya."
+    ],
     "Ni4b7h": [
       "Plugin proyek adalah standar penulisan proyek Anda — nyalakan atau matikan di sini. Setiap plugin yang aktif mendapat halamannya sendiri di bawah Plugin pada bilah sisi pengaturan."
     ],
@@ -2814,6 +2801,11 @@
       ["shareBranch"],
       "</0>. Ganti cabang dan perbarui untuk membukanya."
     ],
+    "UbQzWP": [
+      "Tersedia di aplikasi desktop OpenKnowledge. Dari terminal, gunakan<0> ",
+      ["cliCommand"],
+      " config-sharing status</0> / <1>share</1> / <2>unshare</2>."
+    ],
     "UcTm1A": [
       "Disediakan oleh GitHub CLI (<0>gh</0>) di komputer ini. Untuk berganti akun atau keluar, jalankan <1>gh auth</1> di terminal."
     ],
@@ -3285,6 +3277,11 @@
     "ZjtgI-": ["Palet perintah"],
     "ZkY0ic": ["Menunggu tinjauan"],
     "ZlCe_H": ["Tidak ada bahasa yang tersedia untuk pemeriksaan ejaan."],
+    "Zmg5Ge": [
+      "Berlaku untuk semua proyek di mesin ini. Claude dan Codex yang dimulai dari terminal bawaan, serta agen apa pun dalam obrolan panel Agen di aplikasi, otomatis menyetujui alat baca dan tulis OpenKnowledge (Claude juga otomatis menjalankan \"",
+      ["cliCommand"],
+      " open\"). Menghapus, memindahkan, membagikan, mengimpor atau memasang skill, perintah lain, dan pengeditan berkas non-OpenKnowledge tetap bertanya. Di terminal, Cursor, OpenCode, dan Pi tidak terpengaruh. Upaya terbaik per agen."
+    ],
     "Zon_qG": ["Sumber cermin <0>", ["label"], "</0>"],
     "ZptNUh": ["Tampilkan ", ["hidden"], " lagi"],
     "Zs3d0w": [
@@ -3634,9 +3631,6 @@
     "cOX1Cj": ["host git"],
     "cOrTMo": ["Tautan berbagi Anda sudah siap di bawah."],
     "cPAWbl": ["Dikirim lewat surel"],
-    "cPgQ_i": [
-      "Berlaku untuk semua proyek di mesin ini. Claude dan Codex yang dimulai dari terminal bawaan, serta agen apa pun dalam obrolan panel Agen di aplikasi, otomatis menyetujui alat baca dan tulis OpenKnowledge (Claude juga otomatis menjalankan \"ok open\"). Menghapus, memindahkan, membagikan, mengimpor atau memasang skill, perintah lain, dan pengeditan berkas non-OpenKnowledge tetap bertanya. Di terminal, Cursor, OpenCode, dan Pi tidak terpengaruh. Upaya terbaik per agen."
-    ],
     "cQlPDN": ["Baca"],
     "cRHuuI": ["Jalurnya tidak bisa disalin"],
     "cRm498": ["Belum ada berkas skema di proyek ini — buat satu untuk mulai memvalidasi."],
@@ -3724,6 +3718,7 @@
       "</1>, di worktree tersendiri di bawah <2>.ok/worktrees/</2>."
     ],
     "dGcsnU": ["Hapus untuk keduanya"],
+    "dHaD0-": ["kesalahan jaringan (apakah `", ["cliCommand"], " start` sedang berjalan?)"],
     "dIYSqk": ["remote"],
     "dJw2_7": ["Disimpan bersama proyek untuk tim Anda."],
     "dMsx3p": ["Halaman utama dan pusat navigasi."],
@@ -4472,6 +4467,11 @@
       "Folder dan templat siap pakai agar Anda cepat memulai. Pilih sebuah paket untuk melihat apa yang akan dibuat, lalu tambahkan ke proyek Anda."
     ],
     "k5rKNs": ["frontmatter"],
+    "k6Gfom": [
+      "Anda juga bisa membuatnya dari terminal dengan <0>",
+      ["cliCommand"],
+      " bug-report</0>."
+    ],
     "k7Hoig": ["Tidak ada perubahan isi pada versi ini."],
     "kBNHN1": ["Riwayat navigasi"],
     "kCjkGY": ["Ini mungkin makan waktu sebentar. Konten markdown Anda dipertahankan."],
@@ -4850,11 +4850,6 @@
     "nnhrHd": [
       "Kecualikan tautan rusak yang ditulis di dalam log.md atau log.mdx pada kedalaman folder mana pun dari Masalah, indikator penjelajah file, diagnostik editor, audit, dan saran penulisan agen. Yang menentukan adalah file tempat tautan ditulis, bukan file yang dituju, dan LOG.md adalah dokumen biasa. Panel Tautan dan editor tetap menampilkannya."
     ],
-    "noH1JX": [
-      "Server kolaborasi tidak bisa dihubungi — ",
-      ["errorDetail"],
-      ". Coba <0>ok status</0> atau periksa <1>.ok/local/last-spawn-error.log</1>."
-    ],
     "np2zZM": ["Masuk ke ", ["agentName"], " untuk melanjutkan."],
     "npcziF": ["Pasang di"],
     "nqV0Kk": [
@@ -4880,6 +4875,17 @@
     "o1veZ6": ["Tidak dapat membuka dokumen ini di jendela baru."],
     "o49mDZ": ["Memuat riwayat lini masa"],
     "o7AkQ0": ["Tampilkan yang selesai"],
+    "o8OY2K": [
+      "Token disimpan untuk ",
+      ["login"],
+      " di ",
+      ["host"],
+      ". Untuk menghapusnya, jalankan <0>",
+      ["cliCommand"],
+      " auth signout --host ",
+      ["host"],
+      "</0>."
+    ],
     "o9CrsQ": ["catatan-riset"],
     "o9fPtM": ["Perbarui otomatis dari sumber"],
     "o9yN4T": ["Pindahkan ke Recycle Bin"],
@@ -5273,6 +5279,11 @@
     "sQoLn0": ["Keluar"],
     "sR0I-f": ["Ciutkan semua berkas"],
     "sSRndh": ["Mulai pertahankan index.md"],
+    "sTQjgr": [
+      "Codex akan tetap bertanya sampai Anda menjalankan \"",
+      ["cliCommand"],
+      " init\" di terminal untuk proyek ini."
+    ],
     "sW5OjU": ["wajib"],
     "sZ2IOu": [
       ["targetNoun"],
@@ -5591,6 +5602,13 @@
     "vGeNNQ": ["Salin sebuah prompt dan tempelkan ke agen Anda untuk menyiapkan proyek Anda."],
     "vGjmyl": ["Dihapus"],
     "vHlhDc": ["Klik dua kali untuk menyunting"],
+    "vHw_jF": [
+      "Server kolaborasi tidak bisa dihubungi — ",
+      ["errorDetail"],
+      ". Coba <0>",
+      ["cliCommand"],
+      " status</0> atau periksa <1>.ok/local/last-spawn-error.log</1>."
+    ],
     "vIxrEk": ["Sesuaikan lebar"],
     "vLyv1R": ["Sembunyikan"],
     "vO2v-0": ["Sembunyikan lainnya"],

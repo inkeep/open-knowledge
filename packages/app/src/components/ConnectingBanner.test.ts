@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { computeBannerMode, describeError, isNoCollabServerError } from './ConnectingBanner';
 
 describe('computeBannerMode', () => {
@@ -81,5 +81,16 @@ describe('isNoCollabServerError (D4 — worktree-no-collab-server message branch
     expect(isNoCollabServerError({ kind: 'error', code: 'network' })).toBe(false);
     expect(isNoCollabServerError({ kind: 'error', code: 'invalid-body' })).toBe(false);
     expect(isNoCollabServerError({ kind: 'error', code: 503 })).toBe(false);
+  });
+});
+
+describe('describeError names the running channel CLI', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  test('Beta asks whether ok-beta start is running', () => {
+    vi.stubGlobal('window', { okDesktop: { cliCommandName: 'ok-beta' } });
+    expect(describeError({ kind: 'error', code: 'network' })).toBe(
+      'network error (is `ok-beta start` running?)',
+    );
   });
 });

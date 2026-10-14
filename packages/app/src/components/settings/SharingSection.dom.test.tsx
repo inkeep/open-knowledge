@@ -90,3 +90,21 @@ describe('SharingSection', () => {
     expect(setModeCalls).toEqual([]);
   });
 });
+
+describe('SharingSection without the sharing bridge', () => {
+  afterEach(() => {
+    cleanup();
+    (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
+  });
+
+  test('Stable and plain browsers name ok config-sharing', () => {
+    render(<SharingSection />);
+    expect(screen.getByText('ok config-sharing status', { exact: false })).toBeTruthy();
+  });
+
+  test('Beta names ok-beta config-sharing', () => {
+    (window as unknown as { okDesktop?: unknown }).okDesktop = { cliCommandName: 'ok-beta' };
+    render(<SharingSection />);
+    expect(screen.getByText('ok-beta config-sharing status', { exact: false })).toBeTruthy();
+  });
+});

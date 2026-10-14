@@ -336,7 +336,6 @@
     "2IYGkU": [
       "Ten dokument ma niewypchnięte zmiany. Odbiorcy zobaczą ostatnią wypchniętą wersję."
     ],
-    "2L8aeZ": ["błąd sieci (czy `ok start` działa?)"],
     "2M0JF6": ["Automatyczna aktualizacja"],
     "2O5Z0r": ["Ukryj ", ["appName"]],
     "2QM24L": ["Wszystkie tagi"],
@@ -576,15 +575,6 @@
     "4mp6Tv": ["OpenKnowledge wypisało zainstalowane umiejętności"],
     "4niEzY": ["Osadzenie HTML w piaskownicy — wpisz HTML i zobacz renderowany podgląd na żywo."],
     "4nj6n8": ["/api/config zwrócił HTTP ", ["code"]],
-    "4p8Baj": [
-      "Zapisano token dla ",
-      ["login"],
-      " na ",
-      ["host"],
-      ". Aby go usunąć, uruchom <0>ok auth signout --host ",
-      ["host"],
-      "</0>."
-    ],
     "4pDZ2N": [
       "Usunięto \"",
       ["0"],
@@ -640,7 +630,6 @@
     ],
     "5OTgC7": ["Otwórz i ustaw fokus na dolnym polu wpisywania Zapytaj AI."],
     "5OqaJi": ["Wpisz nazwę projektu"],
-    "5PHgV2": ["Możesz też utworzyć je w terminalu poleceniem <0>ok bug-report</0>."],
     "5QGTaA": ["Nie udało się skopiować ścieżki względnej"],
     "5RiC8D": [
       "Umiejętności discovery są zarządzane wspólnie dla wszystkich narzędzi AI. Zainstaluj tę z Ustawienia → Studio umiejętności."
@@ -675,9 +664,6 @@
     ],
     "5UccRr": ["Ostatnia aktywność ", ["lastActivity"]],
     "5WDhAk": ["Link do strony lub zewnętrznego adresu URL."],
-    "5W_u0E": [
-      "Nie udało się zrestartować serwera. Uruchom ok start w tym folderze, aby spróbować ponownie."
-    ],
     "5Y17qa": [
       "Dotyczy (wzorce glob — wyróżnik ! na początku wyklucza; pusty oznacza każdy dokument)"
     ],
@@ -919,9 +905,6 @@
     ],
     "7Y9yTo": ["Utworzono ", ["owner"], "/", ["name"], ", push nie powiódł się."],
     "7YJr6i": ["Powłoka tej sesji nigdy się nie uruchomiła."],
-    "7YRrJ9": [
-      "Dostępne w aplikacji desktopowej OpenKnowledge. W terminalu użyj<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
-    ],
     "7ZpNC-": ["gh"],
     "7_bFEL": ["Przeciągnij ", ["patternText"], ", aby zmienić kolejność"],
     "7a0YcF": ["Naciśnij <0>Spację</0> lub dotknij bloba, aby rozpocząć"],
@@ -1188,9 +1171,6 @@
     "A5hiCy": ["Utwórz szablon"],
     "A67Uwj": ["Nadal się wczytuje"],
     "A6h5b-": ["Plik zduplikowany"],
-    "AAlr5Y": [
-      "Brak serwera współpracy dla tego worktree — uruchom <0>ok start</0> tutaj albo otwórz projekt ponownie."
-    ],
     "AB4qw9": ["Nowy terminal"],
     "ABq-cq": ["OpenKnowledge utworzyło link udostępniania"],
     "ACKMCN": ["Nie udało się wczytać ustawień umiejętności: ", ["0"]],
@@ -2155,6 +2135,11 @@
     "JlFcis": ["Wyślij"],
     "JmfgFc": ["(worktree projektu ", ["0"], ")"],
     "Jnz9AY": [["0"], " przekracza ", ["destination"], "."],
+    "JpDb1D": [
+      "Nie udało się zrestartować serwera. Uruchom ",
+      ["cliCommand"],
+      " start w tym folderze, aby spróbować ponownie."
+    ],
     "Jqqevv": ["Błąd systemu"],
     "JrqL_z": ["Wstaw wiersz powyżej"],
     "Jrwm42": ["Nie udało się wczytać Twoich agentów."],
@@ -2255,9 +2240,6 @@
     ],
     "KmydK6": ["Pogrubienie"],
     "KnoB--": ["Zostanie zapisane jako <0>", ["sanitized"], "</0>."],
-    "Kr3VPS": [
-      "Codex będzie nadal pytał, dopóki nie uruchomisz „ok init” w terminalu dla tego projektu."
-    ],
     "KsAPaB": ["Ta gałąź jest aktualnie otwarta w:"],
     "KtACeE": ["Domyślnie: <0>", ["0"], "</0>"],
     "KujtjC": ["Znajdź"],
@@ -2605,6 +2587,11 @@
     "NeY1Np": ["Upłynął limit czasu podczas uruchamiania Slidev. Spróbuj ponownie."],
     "NfraGd": ["Inne sposoby instalacji Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " włączone"],
+    "NgqxB9": [
+      "Brak serwera współpracy dla tego worktree — uruchom <0>",
+      ["cliCommand"],
+      " start</0> tutaj albo otwórz projekt ponownie."
+    ],
     "Ni4b7h": [
       "Wtyczki projektu to standard tworzenia w Twoim projekcie — włączaj je i wyłączaj tutaj. Każda włączona wtyczka ma własną stronę pod Wtyczkami na pasku bocznym ustawień."
     ],
@@ -3295,6 +3282,11 @@
       ["shareBranch"],
       "</0>. Przełącz się i zaktualizuj, aby go otworzyć."
     ],
+    "UbQzWP": [
+      "Dostępne w aplikacji desktopowej OpenKnowledge. W terminalu użyj<0> ",
+      ["cliCommand"],
+      " config-sharing status</0> / <1>share</1> / <2>unshare</2>."
+    ],
     "UcTm1A": [
       "Udostępnione przez GitHub CLI (<0>gh</0>) na tym komputerze. Aby przełączyć konto lub się wylogować, uruchom <1>gh auth</1> w terminalu."
     ],
@@ -3854,6 +3846,11 @@
     "ZjtgI-": ["Paleta poleceń"],
     "ZkY0ic": ["Oczekiwanie na przegląd"],
     "ZlCe_H": ["Brak dostępnych języków do sprawdzania pisowni."],
+    "Zmg5Ge": [
+      "Dotyczy wszystkich projektów na tym komputerze. Claude i Codex uruchomione z wbudowanego terminala oraz każdy agent w czacie panelu Agentów w aplikacji automatycznie zatwierdzają narzędzia odczytu i zapisu OpenKnowledge (Claude uruchamia też automatycznie \"",
+      ["cliCommand"],
+      " open\"). Usuwanie, przenoszenie, udostępnianie, importowanie i instalowanie umiejętności, inne polecenia oraz edycje plików spoza OpenKnowledge nadal pytają o zgodę. W terminalu Cursor, OpenCode i Pi nie są objęte tą zmianą. W miarę możliwości, osobno dla każdego agenta."
+    ],
     "Zon_qG": ["Źródło lustra <0>", ["label"], "</0>"],
     "ZptNUh": ["Pokaż jeszcze ", ["hidden"]],
     "Zs3d0w": [
@@ -4239,9 +4236,6 @@
     "cOX1Cj": ["host gita"],
     "cOrTMo": ["Twój link do udostępnienia jest gotowy poniżej."],
     "cPAWbl": ["Wysłano e-mailem"],
-    "cPgQ_i": [
-      "Dotyczy wszystkich projektów na tym komputerze. Claude i Codex uruchomione z wbudowanego terminala oraz każdy agent w czacie panelu Agentów w aplikacji automatycznie zatwierdzają narzędzia odczytu i zapisu OpenKnowledge (Claude uruchamia też automatycznie \"ok open\"). Usuwanie, przenoszenie, udostępnianie, importowanie i instalowanie umiejętności, inne polecenia oraz edycje plików spoza OpenKnowledge nadal pytają o zgodę. W terminalu Cursor, OpenCode i Pi nie są objęte tą zmianą. W miarę możliwości, osobno dla każdego agenta."
-    ],
     "cQlPDN": ["Odczyt"],
     "cRHuuI": ["Nie udało się skopiować ścieżki"],
     "cRm498": [
@@ -4366,6 +4360,7 @@
       "</1>, we własnym worktree w <2>.ok/worktrees/</2>."
     ],
     "dGcsnU": ["Usuń dla obu"],
+    "dHaD0-": ["błąd sieci (czy `", ["cliCommand"], " start` działa?)"],
     "dIYSqk": ["zdalny"],
     "dJw2_7": ["Zapisano w projekcie dla Twojego zespołu."],
     "dMsx3p": ["Strona główna i centrum nawigacji."],
@@ -5278,6 +5273,11 @@
       "Gotowe foldery i szablony, dzięki którym szybko zaczniesz. Wybierz pakiet, aby zobaczyć, co zostanie utworzone, a następnie dodaj go do projektu."
     ],
     "k5rKNs": ["Frontmatter"],
+    "k6Gfom": [
+      "Możesz też utworzyć je w terminalu poleceniem <0>",
+      ["cliCommand"],
+      " bug-report</0>."
+    ],
     "k7Hoig": ["Brak zmian zawartości w tej wersji."],
     "kBNHN1": ["Historia nawigacji"],
     "kCjkGY": ["To może chwilę potrwać. Twoja zawartość markdown zostanie zachowana."],
@@ -5707,11 +5707,6 @@
     "nnhrHd": [
       "Nie uwzględniaj uszkodzonych linków zapisanych w pliku log.md lub log.mdx na dowolnej głębokości folderu w panelu Problemy, wskaźnikach eksploratora plików, diagnostyce edytora, audytach i zaleceniach zapisu agenta. Liczy się plik, w którym link jest zapisany, nie plik, na który wskazuje, a LOG.md jest zwykłym dokumentem. Panel Linki i edytor nadal je pokazują."
     ],
-    "noH1JX": [
-      "Nie udało się połączyć z serwerem współpracy — ",
-      ["errorDetail"],
-      ". Spróbuj <0>ok status</0> lub sprawdź <1>.ok/local/last-spawn-error.log</1>."
-    ],
     "np2zZM": ["Zaloguj się do ", ["agentName"], ", aby kontynuować."],
     "npcziF": ["Instaluj na"],
     "nqV0Kk": [
@@ -5737,6 +5732,17 @@
     "o1veZ6": ["Nie udało się otworzyć tego dokumentu w nowym oknie."],
     "o49mDZ": ["Ładowanie historii osi czasu"],
     "o7AkQ0": ["Pokazuj rozwiązane"],
+    "o8OY2K": [
+      "Zapisano token dla ",
+      ["login"],
+      " na ",
+      ["host"],
+      ". Aby go usunąć, uruchom <0>",
+      ["cliCommand"],
+      " auth signout --host ",
+      ["host"],
+      "</0>."
+    ],
     "o9CrsQ": ["research-note"],
     "o9fPtM": ["Automatyczna aktualizacja ze źródła"],
     "o9yN4T": ["Przenieś do Kosza"],
@@ -6222,6 +6228,11 @@
     "sQoLn0": ["Zakończ"],
     "sR0I-f": ["Zwiń wszystkie pliki"],
     "sSRndh": ["Zacznij utrzymywać index.md"],
+    "sTQjgr": [
+      "Codex będzie nadal pytał, dopóki nie uruchomisz „",
+      ["cliCommand"],
+      " init” w terminalu dla tego projektu."
+    ],
     "sW5OjU": ["wymagane"],
     "sZ2IOu": [
       "Ten ",
@@ -6604,6 +6615,13 @@
     "vGeNNQ": ["Skopiuj prompt i wklej go do agenta, aby skonfigurować swój projekt."],
     "vGjmyl": ["Usunięto"],
     "vHlhDc": ["Kliknij dwukrotnie, aby edytować"],
+    "vHw_jF": [
+      "Nie udało się połączyć z serwerem współpracy — ",
+      ["errorDetail"],
+      ". Spróbuj <0>",
+      ["cliCommand"],
+      " status</0> lub sprawdź <1>.ok/local/last-spawn-error.log</1>."
+    ],
     "vIxrEk": ["Dopasuj do szerokości"],
     "vLyv1R": ["Ukryj"],
     "vO2v-0": ["Ukryj pozostałe"],

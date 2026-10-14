@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { LockState } from './lock-state.ts';
 import { buildStatusReport, renderStatusText, runStatus } from './status.ts';
 
@@ -185,4 +185,21 @@ test('read failures retain unknown liveness and suggest restoring access', () =>
   expect(report.server).toMatchObject({ state: 'read-error', alive: 'unknown' });
   expect(report.server.pid).toBeUndefined();
   expect(renderStatusText(report)).toContain('restore file and parent-directory access');
+});
+
+describe('status hints name the running channel CLI', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s: stale and corrupt locks suggest %s clean', (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    expect(renderStatusText(buildStatusReport(dead(999)))).toContain(
+      `server  stale (dead pid=999) — run \`${command} clean\``,
+    );
+    expect(renderStatusText(buildStatusReport(corrupt()))).toContain(
+      `server  lock file corrupt — run \`${command} clean\``,
+    );
+  });
 });

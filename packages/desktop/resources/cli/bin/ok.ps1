@@ -15,7 +15,11 @@ if (-not $electron -or -not (Test-Path $cli)) {
   # Mirrors ok.sh / ok.cmd's ok-bundle-missing contract: two-line stderr
   # (human-readable + machine-readable JSON), exit 69 (EX_UNAVAILABLE).
   [Console]::Error.WriteLine('OpenKnowledge has been removed. Reinstall from the OpenKnowledge installer.')
-  [Console]::Error.WriteLine('{"error":"ok-bundle-missing","hint":"OpenKnowledge app appears to have been removed. Reinstall it, or remove OK entries from your MCP config and rerun ok init."}')
+  $okInitCommand = 'ok init'
+  if ($env:OK_CHANNEL -ieq 'beta' -or [IO.Path]::GetFileNameWithoutExtension($PSCommandPath) -like '*-beta') {
+    $okInitCommand = 'ok-beta init'
+  }
+  [Console]::Error.WriteLine('{"error":"ok-bundle-missing","hint":"OpenKnowledge app appears to have been removed. Reinstall it, or remove OK entries from your MCP config and rerun ' + $okInitCommand + '."}')
   exit 69
 }
 

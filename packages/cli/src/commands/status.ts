@@ -1,3 +1,4 @@
+import { currentCliCommandName } from '@inkeep/open-knowledge-core';
 import { type Config, lockAdvertisesUi, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { inspectLock, type LockState } from './lock-state.ts';
@@ -89,7 +90,7 @@ function renderEntry(entry: StatusEntry): string {
     return `${label}  not running`;
   }
   if (entry.state === 'corrupt') {
-    return `${label}  lock file corrupt — run \`ok clean\``;
+    return `${label}  lock file corrupt — run \`${currentCliCommandName()} clean\``;
   }
   if (entry.state === 'read-error') {
     return `${label}  lock file unreadable — restore file and parent-directory access, then retry`;
@@ -101,7 +102,7 @@ function renderEntry(entry: StatusEntry): string {
     return `${label}  foreign host (${entry.host}) pid=${entry.pid} port=${entry.port}`;
   }
   if (entry.state === 'dead-pid') {
-    return `${label}  stale (dead pid=${entry.pid}) — run \`ok clean\``;
+    return `${label}  stale (dead pid=${entry.pid}) — run \`${currentCliCommandName()} clean\``;
   }
   if (entry.servedByServer === true) {
     return `${label}  served by server  pid=${entry.pid} port=${entry.port}`;

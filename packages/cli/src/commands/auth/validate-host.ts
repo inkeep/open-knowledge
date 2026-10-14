@@ -1,4 +1,5 @@
 import {
+  currentCliCommandName,
   gitCredentialHostKey,
   isGitHubHost,
   normalizeGitHostname,
@@ -22,7 +23,7 @@ function declarationRemedy(host: string): string {
 }
 
 export function tokenCommandLine(host: string): string {
-  return `  ok auth token --host ${host} --username <username>`;
+  return `  ${currentCliCommandName()} auth token --host ${host} --username <username>`;
 }
 
 function tokenRemedy(host: string): string {
@@ -127,7 +128,7 @@ export function resolveSignoutHost(
       : `This project's git remote is ${normalizeGitHostname(credentialHost)}, which is not a known GitHub host.`;
   process.stderr.write(
     `${errorColor('Error:')} ${lead}\n` +
-      `Run ok auth signout --host ${credentialHost ?? '<hostname>'} to remove stored local credentials. No provider declaration is required.\n`,
+      `Run ${currentCliCommandName()} auth signout --host ${credentialHost ?? '<hostname>'} to remove stored local credentials. No provider declaration is required.\n`,
   );
   process.exit(1);
 }

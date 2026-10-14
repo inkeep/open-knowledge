@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { currentCliCommandName } from '@inkeep/open-knowledge-core';
 import { loadConfig } from '../../config/loader.ts';
 import { CONFIG_FILENAME, OK_DIR } from '../../constants.ts';
 import type { CheckContext, CheckDefinition, CheckResult } from './types.ts';
@@ -19,7 +20,7 @@ export function makeConfigYamlCheck(deps: ConfigYamlCheckDeps = {}): CheckDefini
           name: 'config-yaml',
           status: 'warn',
           summary: `${OK_DIR}/${CONFIG_FILENAME} not found (project not initialized)`,
-          remediation: `Run \`ok init\` to scaffold the project.`,
+          remediation: `Run \`${currentCliCommandName()} init\` to scaffold the project.`,
         };
       }
       try {

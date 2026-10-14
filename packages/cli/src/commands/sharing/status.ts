@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { currentCliCommandName } from '@inkeep/open-knowledge-core';
 import { Command } from 'commander';
 import {
   getExcludedOkPaths,
@@ -66,7 +67,7 @@ export function sharingStatusCommand(): Command {
       }
       lines.push('');
       lines.push(
-        `Toggle with: ${info(mode === 'local-only' ? 'ok config-sharing share' : 'ok config-sharing unshare')}`,
+        `Toggle with: ${info(`${currentCliCommandName()} config-sharing ${mode === 'local-only' ? 'share' : 'unshare'}`)}`,
       );
       process.stdout.write(`${lines.join('\n')}\n`);
     });

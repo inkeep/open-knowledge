@@ -20,13 +20,18 @@ const EXPECTED_JSON = {
   hint: 'OpenKnowledge app appears to have been removed. Reinstall it, or remove OK entries from your MCP config and rerun ok init.',
 };
 
-function stageOrphanedWrapper(name: string): string {
+function stageOrphanedWrapper(name: string, stagedName = name): string {
   const root = mkdtempSync(join(tmpdir(), 'ok-wrapper-win-'));
   const binDir = join(root, 'resources', 'cli', 'bin');
   mkdirSync(binDir, { recursive: true });
-  const staged = join(binDir, name);
+  const staged = join(binDir, stagedName);
   copyFileSync(join(BIN_DIR, name), staged);
   return staged;
+}
+
+function envWithoutChannel(): NodeJS.ProcessEnv {
+  const { OK_CHANNEL: _ignored, ...rest } = process.env;
+  return rest;
 }
 
 function stderrLines(stderr: string): string[] {
@@ -38,6 +43,7 @@ describe.skipIf(!WINDOWS)('Windows ok wrapper bundle-missing contract', () => {
     const wrapper = stageOrphanedWrapper('ok.cmd');
     const result = spawnSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/c', wrapper], {
       encoding: 'utf8',
+      env: envWithoutChannel(),
       timeout: WRAPPER_SPAWN_TIMEOUT_MS,
     });
 
@@ -53,7 +59,7 @@ describe.skipIf(!WINDOWS)('Windows ok wrapper bundle-missing contract', () => {
     const result = spawnSync(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', wrapper],
-      { encoding: 'utf8', timeout: WRAPPER_SPAWN_TIMEOUT_MS },
+      { encoding: 'utf8', env: envWithoutChannel(), timeout: WRAPPER_SPAWN_TIMEOUT_MS },
     );
 
     expect(result.status).toBe(69);
@@ -63,12 +69,22 @@ describe.skipIf(!WINDOWS)('Windows ok wrapper bundle-missing contract', () => {
     expect(JSON.parse(lines[1] ?? '')).toEqual(EXPECTED_JSON);
   });
 
-  test('both wrappers agree on the stderr contract byte-for-byte', () => {
+  const BETA_JSON = {
+    ...EXPECTED_JSON,
+    hint: 'OpenKnowledge app appears to have been removed. Reinstall it, or remove OK entries from your MCP config and rerun ok-beta init.',
+  };
+
+  test('both wrappers agree byte-for-byte and name ok-beta init when installed under Beta names', () => {
     const runs = [
-      spawnSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/c', stageOrphanedWrapper('ok.cmd')], {
-        encoding: 'utf8',
-        timeout: WRAPPER_SPAWN_TIMEOUT_MS,
-      }),
+      spawnSync(
+        process.env.ComSpec ?? 'cmd.exe',
+        ['/d', '/c', stageOrphanedWrapper('ok.cmd', 'ok-beta.cmd')],
+        {
+          encoding: 'utf8',
+          env: envWithoutChannel(),
+          timeout: WRAPPER_SPAWN_TIMEOUT_MS,
+        },
+      ),
       spawnSync(
         'powershell.exe',
         [
@@ -77,12 +93,16 @@ describe.skipIf(!WINDOWS)('Windows ok wrapper bundle-missing contract', () => {
           '-ExecutionPolicy',
           'Bypass',
           '-File',
-          stageOrphanedWrapper('ok.ps1'),
+          stageOrphanedWrapper('ok.ps1', 'ok-beta.ps1'),
         ],
-        { encoding: 'utf8', timeout: WRAPPER_SPAWN_TIMEOUT_MS },
+        { encoding: 'utf8', env: envWithoutChannel(), timeout: WRAPPER_SPAWN_TIMEOUT_MS },
       ),
     ];
     const [cmdLines, ps1Lines] = runs.map((r) => stderrLines(r.stderr));
     expect(cmdLines).toEqual(ps1Lines);
+    for (const result of runs) {
+      expect(result.status).toBe(69);
+      expect(JSON.parse(stderrLines(result.stderr)[1] ?? '')).toEqual(BETA_JSON);
+    }
   });
 });

@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import {
   checkEmbeddingsBaseUrl,
   classifySemanticProviderError,
+  currentCliCommandName,
   DEFAULT_EMBEDDINGS_BASE_URL,
   DEFAULT_EMBEDDINGS_MODEL,
   humanFormat,
@@ -121,7 +122,7 @@ function setKeyCommand(): Command {
       process.stderr.write(
         `✓ Embeddings API key stored for ${baseUrl}\n` +
           `  (kept in ${okUserHomeDisplayPath(OK_USER_HOME_SECRETS_FILE)}, 0600, this machine only — never in the project).\n` +
-          '  Enable semantic search with `ok embeddings enable`, or in\n' +
+          `  Enable semantic search with \`${currentCliCommandName()} embeddings enable\`, or in\n` +
           '  OK Desktop → Settings → This project → Search.\n',
       );
     });
@@ -308,7 +309,7 @@ function toggleEnabledCommand(name: 'enable' | 'disable', value: boolean): Comma
         const { present, notRequired } = await resolveKeyPresence(projectDir, cfg.baseUrl);
         if (!present && !notRequired) {
           process.stderr.write(
-            '  Note: no API key set yet — run `ok embeddings set-key`. Until then, search stays lexical.\n',
+            `  Note: no API key set yet — run \`${currentCliCommandName()} embeddings set-key\`. Until then, search stays lexical.\n`,
           );
         }
       }
@@ -397,10 +398,14 @@ function statusCommand(): Command {
 
       const hints: string[] = [];
       if (!hasKey && !keyNotRequired) {
-        hints.push(`Set a key:  ok embeddings set-key   (or export ${EMBEDDINGS_API_KEY_ENV})`);
+        hints.push(
+          `Set a key:  ${currentCliCommandName()} embeddings set-key   (or export ${EMBEDDINGS_API_KEY_ENV})`,
+        );
       }
       if (!cfg.enabled) {
-        hints.push('Enable it:  ok embeddings enable   (in this project folder)');
+        hints.push(
+          `Enable it:  ${currentCliCommandName()} embeddings enable   (in this project folder)`,
+        );
       }
       if (hints.length > 0) lines.push('', ...hints.map((h) => `  ${h}`));
 

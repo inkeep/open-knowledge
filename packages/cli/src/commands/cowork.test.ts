@@ -2,8 +2,8 @@ import type { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { runCoworkSkill } from './cowork.ts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { coworkCommand, runCoworkSkill } from './cowork.ts';
 
 function makeFakeSpawn(capture: {
   command?: string;
@@ -131,5 +131,19 @@ describe('runCoworkSkill', () => {
     expect(result.exitCode).toBe(0);
     expect(result.message).toContain('EACCES: permission denied');
     expect(existsSync(outPath)).toBe(true);
+  });
+});
+
+describe('coworkCommand help names the running channel CLI', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s: the description says %s init already wires Claude', (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    expect(coworkCommand().description()).toBe(
+      `Build openknowledge.skill and open the Claude Desktop App so you can upload it for Claude Chat & Cowork. (Advanced/rarely needed — \`${command} init\` already wires Claude.)`,
+    );
   });
 });

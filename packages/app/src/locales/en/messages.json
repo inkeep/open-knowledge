@@ -279,7 +279,6 @@
     "2GT3Hf": ["Global"],
     "2H5Zhu": ["Nothing leaves your computer until you review and send the report."],
     "2IYGkU": ["This doc has unpushed changes. Recipients will see the last pushed version."],
-    "2L8aeZ": ["network error (is `ok start` running?)"],
     "2M0JF6": ["Auto-update"],
     "2O5Z0r": ["Hide ", ["appName"]],
     "2QM24L": ["All tags"],
@@ -487,15 +486,6 @@
     "4mp6Tv": ["OpenKnowledge listed the installed skills"],
     "4niEzY": ["Sandboxed HTML embed — write HTML, see the rendered preview live."],
     "4nj6n8": ["/api/config returned HTTP ", ["code"]],
-    "4p8Baj": [
-      "Token stored for ",
-      ["login"],
-      " on ",
-      ["host"],
-      ". To remove it, run <0>ok auth signout --host ",
-      ["host"],
-      "</0>."
-    ],
     "4pDZ2N": ["Removed \"", ["0"], "\" from every other location — its source folder still loads"],
     "4r6p_B": [
       "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
@@ -543,7 +533,6 @@
     ],
     "5OTgC7": ["Open and focus the bottom Ask AI prompt composer."],
     "5OqaJi": ["Enter a project name"],
-    "5PHgV2": ["You can also create one from a terminal with <0>ok bug-report</0>."],
     "5QGTaA": ["Could not copy relative path"],
     "5RiC8D": [
       "Discovery skills are managed for all AI tools together. Install this one from Settings → Skills Studio."
@@ -560,7 +549,6 @@
     ],
     "5UccRr": ["Last activity ", ["lastActivity"]],
     "5WDhAk": ["Link to a page or external URL."],
-    "5W_u0E": ["Couldn't restart the server. Run ok start in this folder to retry."],
     "5Y17qa": ["Applies to (globs — leading ! excludes; empty means every doc)"],
     "5YWCV_": ["Malformed plan response"],
     "5ZB7XC": ["File drop zone"],
@@ -750,9 +738,6 @@
     ],
     "7Y9yTo": ["Created ", ["owner"], "/", ["name"], ", push failed."],
     "7YJr6i": ["The shell for this session was never started."],
-    "7YRrJ9": [
-      "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
-    ],
     "7ZpNC-": ["gh"],
     "7_bFEL": ["Drag ", ["patternText"], " to reorder"],
     "7a0YcF": ["Press <0>Space</0> or tap the blob to start"],
@@ -988,9 +973,6 @@
     "A5hiCy": ["Create template"],
     "A67Uwj": ["Still loading"],
     "A6h5b-": ["File duplicated"],
-    "AAlr5Y": [
-      "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
-    ],
     "AB4qw9": ["New terminal"],
     "ABq-cq": ["OpenKnowledge created a share link"],
     "ACKMCN": ["Failed to load skill settings: ", ["0"]],
@@ -1828,6 +1810,11 @@
     "JlFcis": ["Send"],
     "JmfgFc": ["(a worktree of ", ["0"], ")"],
     "Jnz9AY": [["0"], " is over ", ["destination"], "."],
+    "JpDb1D": [
+      "Couldn't restart the server. Run ",
+      ["cliCommand"],
+      " start in this folder to retry."
+    ],
     "Jqqevv": ["System error"],
     "JrqL_z": ["Insert row above"],
     "Jrwm42": ["Couldn't load your agents."],
@@ -1920,7 +1907,6 @@
     ],
     "KmydK6": ["Bold"],
     "KnoB--": ["Will be saved as <0>", ["sanitized"], "</0>."],
-    "Kr3VPS": ["Codex will still ask until you run \"ok init\" in a terminal for this project."],
     "KsAPaB": ["This branch is checked out in:"],
     "KtACeE": ["Default: <0>", ["0"], "</0>"],
     "KujtjC": ["Find"],
@@ -2202,6 +2188,11 @@
     "NeY1Np": ["Slidev timed out while starting. Try again."],
     "NfraGd": ["Other ways to install Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " on"],
+    "NgqxB9": [
+      "No collab server for this worktree — run <0>",
+      ["cliCommand"],
+      " start</0> here, or reopen the project."
+    ],
     "Ni4b7h": [
       "Project plugins are your project's authoring standard — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
     ],
@@ -2808,6 +2799,11 @@
       ["shareBranch"],
       "</0> recently. Switch and update to open it."
     ],
+    "UbQzWP": [
+      "Available in the OpenKnowledge desktop app. From a terminal, use<0> ",
+      ["cliCommand"],
+      " config-sharing status</0> / <1>share</1> / <2>unshare</2>."
+    ],
     "UcTm1A": [
       "Provided by the GitHub CLI (<0>gh</0>) on this computer. To switch accounts or sign out, run <1>gh auth</1> in a terminal."
     ],
@@ -3262,6 +3258,11 @@
     "ZjtgI-": ["Command palette"],
     "ZkY0ic": ["Waiting for review"],
     "ZlCe_H": ["No spelling languages are available."],
+    "Zmg5Ge": [
+      "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"",
+      ["cliCommand"],
+      " open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+    ],
     "Zon_qG": ["Mirror source <0>", ["label"], "</0>"],
     "ZptNUh": ["Show ", ["hidden"], " more"],
     "Zs3d0w": [
@@ -3603,9 +3604,6 @@
     "cOX1Cj": ["git host"],
     "cOrTMo": ["Your share link is ready below."],
     "cPAWbl": ["Emailed"],
-    "cPgQ_i": [
-      "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
-    ],
     "cQlPDN": ["Read"],
     "cRHuuI": ["Couldn't copy path"],
     "cRm498": ["No schema files in this project yet — create one to start validating."],
@@ -3705,6 +3703,7 @@
       "</1>, in its own worktree under <2>.ok/worktrees/</2>."
     ],
     "dGcsnU": ["Remove for both"],
+    "dHaD0-": ["network error (is `", ["cliCommand"], " start` running?)"],
     "dIYSqk": ["remote"],
     "dJw2_7": ["Saved with the project for your team."],
     "dMsx3p": ["Home page and navigation hub."],
@@ -4468,6 +4467,11 @@
       "Ready-made folders and templates to get you started quickly. Select a pack to preview what gets created, then add it to your project."
     ],
     "k5rKNs": ["Frontmatter"],
+    "k6Gfom": [
+      "You can also create one from a terminal with <0>",
+      ["cliCommand"],
+      " bug-report</0>."
+    ],
     "k7Hoig": ["No content changes at this version."],
     "kBNHN1": ["Navigation history"],
     "kCjkGY": ["This may take a moment. Your markdown content is kept."],
@@ -4850,11 +4854,6 @@
     "nnhrHd": [
       "Leave the broken links written inside a log.md or log.mdx at any folder depth out of Problems, file explorer indicators, editor diagnostics, audits, and agent write advisories. What counts is the file a link is written in, not the file it points at, and LOG.md is an ordinary document. The Links panel and the editor still show them."
     ],
-    "noH1JX": [
-      "Couldn't reach collab server — ",
-      ["errorDetail"],
-      ". Try <0>ok status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-    ],
     "np2zZM": ["Sign in to ", ["agentName"], " to continue."],
     "npcziF": ["Install on"],
     "nqV0Kk": ["This folder hasn't synced to GitHub yet. The link will work after the next sync."],
@@ -4878,6 +4877,17 @@
     "o1veZ6": ["Could not open this document in a new window."],
     "o49mDZ": ["Loading timeline history"],
     "o7AkQ0": ["Show resolved"],
+    "o8OY2K": [
+      "Token stored for ",
+      ["login"],
+      " on ",
+      ["host"],
+      ". To remove it, run <0>",
+      ["cliCommand"],
+      " auth signout --host ",
+      ["host"],
+      "</0>."
+    ],
     "o9CrsQ": ["research-note"],
     "o9fPtM": ["Auto-update from source"],
     "o9yN4T": ["Move to Recycle Bin"],
@@ -5276,6 +5286,11 @@
     "sQoLn0": ["Quit"],
     "sR0I-f": ["Collapse all files"],
     "sSRndh": ["Start maintaining index.md"],
+    "sTQjgr": [
+      "Codex will still ask until you run \"",
+      ["cliCommand"],
+      " init\" in a terminal for this project."
+    ],
     "sW5OjU": ["required"],
     "sZ2IOu": [
       "This ",
@@ -5606,6 +5621,13 @@
     "vGeNNQ": ["Copy a prompt and paste it into your agent to set up your project."],
     "vGjmyl": ["Deleted"],
     "vHlhDc": ["Double-click to edit"],
+    "vHw_jF": [
+      "Couldn't reach collab server — ",
+      ["errorDetail"],
+      ". Try <0>",
+      ["cliCommand"],
+      " status</0> or check <1>.ok/local/last-spawn-error.log</1>."
+    ],
     "vIxrEk": ["Fit width"],
     "vLyv1R": ["Hide"],
     "vO2v-0": ["Hide Others"],

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
+import { currentCliCommandName } from '@inkeep/open-knowledge-core';
 import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import pc from 'picocolors';
@@ -663,7 +664,7 @@ export function diagnoseCommand(): Command {
     )
     .option(
       '--pid <pid>',
-      'Include `ok diagnose process <pid>` output under process/ in the bundle',
+      `Include \`${currentCliCommandName()} diagnose process <pid>\` output under process/ in the bundle`,
     )
     .option('--out <path>', 'Write the zip to this path instead of the default location')
     .option('--yes', 'Skip the y/N prompt')

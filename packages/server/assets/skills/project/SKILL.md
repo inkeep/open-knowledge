@@ -12,6 +12,8 @@ OpenKnowledge (OK) is a markdown-CRDT collaboration platform exposed via MCP. Th
 
 > Skill version tracks `@inkeep/open-knowledge-server`. `cat ~/.ok/skill-state.yml` shows what's installed. `ok seed` needs `@inkeep/open-knowledge` >= 0.4.0; if it errors `unknown command`, `npm install -g @inkeep/open-knowledge`.
 
+> **CLI name.** Commands here use Stable's `ok` (`open-knowledge`) and `~/.ok/`. With OpenKnowledge Beta, use `ok-beta` (`open-knowledge-beta`) and `~/.ok-beta/` instead; `preview_url`'s `okOpenCommand` already names the right one.
+
 > **Setup (not connected yet?).** If the `mcp__open-knowledge*` tools aren't available in your client, this project isn't wired up on this machine — see [`references/setup.md`](references/setup.md) for the rung ladder (approve `.mcp.json` → `ok start` CLI → optional desktop app) and the canonical quickstart.
 
 ## TL;DR — the 90% case

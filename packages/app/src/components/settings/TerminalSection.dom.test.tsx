@@ -157,8 +157,9 @@ describe('TerminalSection (auto-approve OpenKnowledge tools toggle)', () => {
 
 type CodexReadiness = { onPath: string; okServerConfigured?: boolean };
 
-function stubDesktopBridge(readiness: CodexReadiness | Error): void {
+function stubDesktopBridge(readiness: CodexReadiness | Error, cliCommandName?: string): void {
   (globalThis as unknown as { window: { okDesktop?: unknown } }).window.okDesktop = {
+    cliCommandName,
     terminal: {
       cliPreflight: async () =>
         readiness instanceof Error ? Promise.reject(readiness) : readiness,
@@ -230,5 +231,43 @@ describe("TerminalSection (codex-can't-honor note)", () => {
 
     expect(screen.getByTestId('settings-scope-badge-project-local')).not.toBeNull();
     expect(screen.getByTestId('settings-scope-badge-user')).not.toBeNull();
+  });
+});
+
+describe('TerminalSection names the running channel CLI', () => {
+  beforeEach(() => {
+    consentState = { enabled: true, synced: true };
+    writerImpl = () => ({ ok: true });
+    userConfig = { agents: { autoApproveOkTools: true } };
+    userSynced = true;
+    userBinding = { patch: () => ({ ok: true }) };
+  });
+  afterEach(() => {
+    cleanup();
+    (globalThis as unknown as { window: { okDesktop?: unknown } }).window.okDesktop = undefined;
+  });
+
+  test('Stable keeps ok open and ok init', async () => {
+    stubDesktopBridge({ onPath: 'present', okServerConfigured: false });
+    render(<TerminalSection />);
+    await waitFor(() => expect(codexNote()).not.toBeNull());
+    expect(screen.getByTestId('settings-terminal-autoapprove-body').textContent).toContain(
+      '(Claude also auto-runs "ok open")',
+    );
+    expect(codexNote()?.textContent).toBe(
+      'Codex will still ask until you run "ok init" in a terminal for this project.',
+    );
+  });
+
+  test('Beta names ok-beta open and ok-beta init', async () => {
+    stubDesktopBridge({ onPath: 'present', okServerConfigured: false }, 'ok-beta');
+    render(<TerminalSection />);
+    await waitFor(() => expect(codexNote()).not.toBeNull());
+    expect(screen.getByTestId('settings-terminal-autoapprove-body').textContent).toContain(
+      '(Claude also auto-runs "ok-beta open")',
+    );
+    expect(codexNote()?.textContent).toBe(
+      'Codex will still ask until you run "ok-beta init" in a terminal for this project.',
+    );
   });
 });

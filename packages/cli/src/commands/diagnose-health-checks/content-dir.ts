@@ -1,5 +1,6 @@
 import { accessSync, existsSync, constants as fsConstants, statSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { currentCliCommandName } from '@inkeep/open-knowledge-core';
 import { loadConfig } from '../../config/loader.ts';
 import { CONFIG_FILENAME, OK_DIR } from '../../constants.ts';
 import type { CheckContext, CheckDefinition, CheckResult } from './types.ts';
@@ -30,7 +31,7 @@ export function makeContentDirCheck(deps: ContentDirCheckDeps = {}): CheckDefini
           name: 'content-dir',
           status: 'warn',
           summary: 'project not initialized',
-          remediation: `Run \`ok init\` to scaffold the project.`,
+          remediation: `Run \`${currentCliCommandName()} init\` to scaffold the project.`,
         };
       }
       let contentDir: string;

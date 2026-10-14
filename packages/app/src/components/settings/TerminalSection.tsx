@@ -4,12 +4,14 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { useTerminalConsentState, useTerminalEnabledWriter } from '@/hooks/use-terminal-enabled';
+import { okCliCommandName } from '@/lib/channel-cli-copy';
 import { useConfigContext } from '@/lib/config-provider';
 import { ScopeBadge } from './ScopeBadge';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 export function TerminalSection() {
   const { t } = useLingui();
+  const cliCommand = okCliCommandName();
   const { enabled, synced } = useTerminalConsentState();
   const writer = useTerminalEnabledWriter();
   const isOn = enabled !== false;
@@ -112,14 +114,14 @@ export function TerminalSection() {
             className="text-1sm text-muted-foreground"
             data-testid="settings-terminal-autoapprove-body"
           >
-            {t`Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs "ok open"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent.`}
+            {t`Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs "${cliCommand} open"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent.`}
           </p>
           {autoApproveOn && codexNeedsInit ? (
             <p
               className="text-1sm text-muted-foreground"
               data-testid="settings-terminal-autoapprove-codex-note"
             >
-              {t`Codex will still ask until you run "ok init" in a terminal for this project.`}
+              {t`Codex will still ask until you run "${cliCommand} init" in a terminal for this project.`}
             </p>
           ) : null}
         </div>

@@ -2200,8 +2200,8 @@ msgid "Applies to all projects on this machine, in Claude Code and Codex chats i
 msgstr "適用於本機上的所有專案，作用於開啟後新建的代理面板中的 Claude Code 和 Codex 對話。代理可以在它自己的 Google Chrome 視窗中（使用全新的設定檔）開啟頁面、點按、輸入和擷取螢幕畫面。需要已安裝 Google Chrome 和 Node.js。除非代理本身的模式或權限設定略過了核准，否則每個瀏覽器操作都會請求你的核准，且沒有「一律允許」的選項。"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
-msgstr "適用於本機上的所有專案。從內建終端機啟動的 Claude 和 Codex，以及應用程式內代理面板對話中的任何代理，都會自動核准 OpenKnowledge 的讀寫工具（Claude 也會自動執行 \"ok open\"）。刪除、移動、分享、匯入或安裝技能、其他命令以及非 OpenKnowledge 檔案的編輯仍會詢問。在終端機中，Cursor、OpenCode 和 Pi 不受影響。依各代理盡力而為。"
+msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"{cliCommand} open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgstr "適用於本機上的所有專案。從內建終端機啟動的 Claude 和 Codex，以及應用程式內代理面板對話中的任何代理，都會自動核准 OpenKnowledge 的讀寫工具（Claude 也會自動執行 \"{cliCommand} open\"）。刪除、移動、分享、匯入或安裝技能、其他命令以及非 OpenKnowledge 檔案的編輯仍會詢問。在終端機中，Cursor、OpenCode 和 Pi 不受影響。依各代理盡力而為。"
 
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
@@ -2529,8 +2529,8 @@ msgid "Available in every project on this machine. Not shared through git."
 msgstr "在這台電腦的每個專案中都可以使用。不會透過 git 分享。"
 
 #: src/components/settings/SharingSection.tsx
-msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
-msgstr "在 OpenKnowledge 桌面應用程式中提供。在終端機裡可以使用<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>。"
+msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> {cliCommand} config-sharing status</0> / <1>share</1> / <2>unshare</2>."
+msgstr "在 OpenKnowledge 桌面應用程式中提供。在終端機裡可以使用<0> {cliCommand} config-sharing status</0> / <1>share</1> / <2>unshare</2>。"
 
 #: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/AppMenubar.tsx
@@ -3450,8 +3450,8 @@ msgid "Code field undo or redo"
 msgstr "程式碼欄位的復原或重做"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Codex will still ask until you run \"ok init\" in a terminal for this project."
-msgstr "在你為這個專案在終端機中執行「ok init」之前，Codex 仍然會詢問。"
+msgid "Codex will still ask until you run \"{cliCommand} init\" in a terminal for this project."
+msgstr "在你為這個專案在終端機中執行「{cliCommand} init」之前，Codex 仍然會詢問。"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Collaborators see your in-progress edits as soon as they sync."
@@ -4476,8 +4476,8 @@ msgid "Couldn't reach {displayName} — try again?"
 msgstr "無法連線到 {displayName}。要再試一次嗎？"
 
 #: src/components/ConnectingBanner.tsx
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>ok status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "無法連上協作伺服器——{errorDetail}。可以試試 <0>ok status</0>，或看看 <1>.ok/local/last-spawn-error.log</1>。"
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
+msgstr "無法連上協作伺服器——{errorDetail}。可以試試 <0>{cliCommand} status</0>，或看看 <1>.ok/local/last-spawn-error.log</1>。"
 
 #: src/components/PublishToGitHubDialog.tsx
 #: src/lib/share/publish-wizard.ts
@@ -4604,8 +4604,8 @@ msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop
 msgstr "無法自動重新啟動伺服器。請在終端機中執行 `{cliCommand} stop all`，然後重新開啟這個專案——如果狀況持續，請重新啟動電腦。"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Couldn't restart the server. Run ok start in this folder to retry."
-msgstr "無法重新啟動伺服器。請在此資料夾中執行 ok start 以重試。"
+msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
+msgstr "無法重新啟動伺服器。請在此資料夾中執行 {cliCommand} start 以重試。"
 
 #: src/lib/restart-collab-server.ts
 msgid "Couldn't restart the server. Try `{cliCommand} start` in this folder."
@@ -9319,8 +9319,8 @@ msgid "Network error — please try again"
 msgstr "網路錯誤——請再試一次"
 
 #: src/components/ConnectingBanner.tsx
-msgid "network error (is `ok start` running?)"
-msgstr "網路錯誤（`ok start` 有在執行嗎？）"
+msgid "network error (is `{cliCommand} start` running?)"
+msgstr "網路錯誤（`{cliCommand} start` 有在執行嗎？）"
 
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
@@ -9608,8 +9608,8 @@ msgid "No chats yet."
 msgstr "尚無聊天。"
 
 #: src/components/ConnectingBanner.tsx
-msgid "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
-msgstr "這個 worktree 沒有協作伺服器——請在這裡執行 <0>ok start</0>，或重新開啟專案。"
+msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
+msgstr "這個 worktree 沒有協作伺服器——請在這裡執行 <0>{cliCommand} start</0>，或重新開啟專案。"
 
 #: src/comments/CommentProjectPanel.tsx
 msgid "No comments in this project yet. Comment on a passage to start one."
@@ -15986,8 +15986,8 @@ msgid "token"
 msgstr "權杖"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Token stored for {login} on {host}. To remove it, run <0>ok auth signout --host {host}</0>."
-msgstr "已為 {host} 上的 {login} 儲存權杖。要移除它，請執行 <0>ok auth signout --host {host}</0>。"
+msgid "Token stored for {login} on {host}. To remove it, run <0>{cliCommand} auth signout --host {host}</0>."
+msgstr "已為 {host} 上的 {login} 儲存權杖。要移除它，請執行 <0>{cliCommand} auth signout --host {host}</0>。"
 
 #: src/components/SkillBundlePreview.tsx
 #: src/components/SkillProperties.tsx
@@ -17050,8 +17050,8 @@ msgid "You can add"
 msgstr "你可以新增"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "You can also create one from a terminal with <0>ok bug-report</0>."
-msgstr "你也可以在終端機中用 <0>ok bug-report</0> 建立一份。"
+msgid "You can also create one from a terminal with <0>{cliCommand} bug-report</0>."
+msgstr "你也可以在終端機中用 <0>{cliCommand} bug-report</0> 建立一份。"
 
 #: src/components/TerminalGate.tsx
 msgid "You can also manage this in Settings."

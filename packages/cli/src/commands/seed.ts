@@ -2,6 +2,7 @@ import { relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import {
   AGENTS_SKILLS_ROOT,
+  currentCliCommandName,
   EDITOR_PROJECT_SKILL_ROOT,
   PROJECT_SKILL_EDITOR_IDS,
   planHasOutstandingWork,
@@ -33,7 +34,7 @@ interface SeedCommandOptions {
 function skillHomeRefusalNote(plan: ScaffoldPlan, packName: string): string {
   if (plan.packSkillHomeRefusal === undefined) return '';
   if (plan.packSkillHomeRefusal === 'home-escapes-project') {
-    return `\n${warning('!')} The ${packName} skills were not installed: this project's skill folder is a symlink pointing outside the project, and Open Knowledge will not write through it. Replace it with a real directory inside the project, then run \`ok seed\` again.`;
+    return `\n${warning('!')} The ${packName} skills were not installed: this project's skill folder is a symlink pointing outside the project, and Open Knowledge will not write through it. Replace it with a real directory inside the project, then run \`${currentCliCommandName()} seed\` again.`;
   }
   const homes = [
     ...new Set(
@@ -42,7 +43,7 @@ function skillHomeRefusalNote(plan: ScaffoldPlan, packName: string): string {
         .map(skillRootActivationPath),
     ),
   ].map((home) => `${home}/`);
-  return `\n${warning('!')} The ${packName} skills were not installed: this project has no agent folder for them. Open Knowledge only writes skills into a folder that already exists (${homes.join(', ')}) and never creates one for you. Create the folder your agent uses, then run \`ok seed\` again to install them.`;
+  return `\n${warning('!')} The ${packName} skills were not installed: this project has no agent folder for them. Open Knowledge only writes skills into a folder that already exists (${homes.join(', ')}) and never creates one for you. Create the folder your agent uses, then run \`${currentCliCommandName()} seed\` again to install them.`;
 }
 
 function isPackId(value: unknown): value is PackId {

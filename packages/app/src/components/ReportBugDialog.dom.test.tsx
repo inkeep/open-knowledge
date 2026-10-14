@@ -97,6 +97,7 @@ function installBridge(
     captureScreenshot?: () => Promise<OkBugReportScreenshot | null>;
     crashDumpAvailability?: () => Promise<{ available: boolean }>;
     platform?: string;
+    cliCommandName?: string;
   } = {},
 ): BridgeLog {
   const log: BridgeLog = {
@@ -110,6 +111,7 @@ function installBridge(
   };
   const bridge = {
     platform: handlers.platform ?? 'darwin',
+    cliCommandName: handlers.cliCommandName,
     bugReport: {
       create: (request: CreateRequest) => {
         log.createCalls.push(request);
@@ -618,8 +620,25 @@ describe('ReportBugDialog', () => {
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain("Couldn't create the report");
     expect(alert.textContent).toContain('zip destination not writable');
-    expect(alert.textContent).toContain('ok bug-report');
+    expect(alert.textContent).toContain(
+      'You can also create one from a terminal with ok bug-report.',
+    );
     expect(screen.getByRole('heading', { name: 'Report a bug' })).not.toBeNull();
+  });
+
+  test('the CLI fallback names ok-beta bug-report on Beta', async () => {
+    installBridge({
+      create: () => Promise.resolve({ ok: false, error: 'zip destination not writable' }),
+      cliCommandName: 'ok-beta',
+    });
+    await renderDialog();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain(
+      'You can also create one from a terminal with ok-beta bug-report.',
+    );
   });
 
   const BOOT_INVITE: OkBugReportCrashDetectedEvent = {

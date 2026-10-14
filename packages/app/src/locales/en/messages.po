@@ -2200,8 +2200,8 @@ msgid "Applies to all projects on this machine, in Claude Code and Codex chats i
 msgstr "Applies to all projects on this machine, in Claude Code and Codex chats in the Agents panel started after you turn it on. The agent can open pages, click, type, and take screenshots in its own Google Chrome window with a fresh profile. Needs Google Chrome and Node.js installed. Every browser action asks for your approval, with no option to always allow it, unless the agent's own mode or permission settings skip approvals."
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
-msgstr "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"{cliCommand} open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgstr "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"{cliCommand} open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
@@ -2529,8 +2529,8 @@ msgid "Available in every project on this machine. Not shared through git."
 msgstr "Available in every project on this machine. Not shared through git."
 
 #: src/components/settings/SharingSection.tsx
-msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
-msgstr "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
+msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> {cliCommand} config-sharing status</0> / <1>share</1> / <2>unshare</2>."
+msgstr "Available in the OpenKnowledge desktop app. From a terminal, use<0> {cliCommand} config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 
 #: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/AppMenubar.tsx
@@ -3450,8 +3450,8 @@ msgid "Code field undo or redo"
 msgstr "Code field undo or redo"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Codex will still ask until you run \"ok init\" in a terminal for this project."
-msgstr "Codex will still ask until you run \"ok init\" in a terminal for this project."
+msgid "Codex will still ask until you run \"{cliCommand} init\" in a terminal for this project."
+msgstr "Codex will still ask until you run \"{cliCommand} init\" in a terminal for this project."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Collaborators see your in-progress edits as soon as they sync."
@@ -4476,8 +4476,8 @@ msgid "Couldn't reach {displayName} — try again?"
 msgstr "Couldn't reach {displayName} — try again?"
 
 #: src/components/ConnectingBanner.tsx
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>ok status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "Couldn't reach collab server — {errorDetail}. Try <0>ok status</0> or check <1>.ok/local/last-spawn-error.log</1>."
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
+msgstr "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
 
 #: src/components/PublishToGitHubDialog.tsx
 #: src/lib/share/publish-wizard.ts
@@ -4604,8 +4604,8 @@ msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop
 msgstr "Couldn't restart the server automatically. Try running `{cliCommand} stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Couldn't restart the server. Run ok start in this folder to retry."
-msgstr "Couldn't restart the server. Run ok start in this folder to retry."
+msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
+msgstr "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
 
 #: src/lib/restart-collab-server.ts
 msgid "Couldn't restart the server. Try `{cliCommand} start` in this folder."
@@ -9319,8 +9319,8 @@ msgid "Network error — please try again"
 msgstr "Network error — please try again"
 
 #: src/components/ConnectingBanner.tsx
-msgid "network error (is `ok start` running?)"
-msgstr "network error (is `ok start` running?)"
+msgid "network error (is `{cliCommand} start` running?)"
+msgstr "network error (is `{cliCommand} start` running?)"
 
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
@@ -9608,8 +9608,8 @@ msgid "No chats yet."
 msgstr "No chats yet."
 
 #: src/components/ConnectingBanner.tsx
-msgid "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
-msgstr "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
+msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
+msgstr "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
 
 #: src/comments/CommentProjectPanel.tsx
 msgid "No comments in this project yet. Comment on a passage to start one."
@@ -15986,8 +15986,8 @@ msgid "token"
 msgstr "token"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Token stored for {login} on {host}. To remove it, run <0>ok auth signout --host {host}</0>."
-msgstr "Token stored for {login} on {host}. To remove it, run <0>ok auth signout --host {host}</0>."
+msgid "Token stored for {login} on {host}. To remove it, run <0>{cliCommand} auth signout --host {host}</0>."
+msgstr "Token stored for {login} on {host}. To remove it, run <0>{cliCommand} auth signout --host {host}</0>."
 
 #: src/components/SkillBundlePreview.tsx
 #: src/components/SkillProperties.tsx
@@ -17050,8 +17050,8 @@ msgid "You can add"
 msgstr "You can add"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "You can also create one from a terminal with <0>ok bug-report</0>."
-msgstr "You can also create one from a terminal with <0>ok bug-report</0>."
+msgid "You can also create one from a terminal with <0>{cliCommand} bug-report</0>."
+msgstr "You can also create one from a terminal with <0>{cliCommand} bug-report</0>."
 
 #: src/components/TerminalGate.tsx
 msgid "You can also manage this in Settings."

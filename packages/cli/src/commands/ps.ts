@@ -1,5 +1,6 @@
 import { basename, dirname } from 'node:path';
 import {
+  currentCliCommandName,
   formatRelativeAge,
   LOCAL_DIR,
   OK_DIR,
@@ -240,7 +241,7 @@ export function renderTable(entries: PsEntry[]): string {
     return cols.join('  ').trimEnd();
   });
 
-  const hint = pc.dim('To stop a server: ok stop <port|pid|directory|all>');
+  const hint = pc.dim(`To stop a server: ${currentCliCommandName()} stop <port|pid|directory|all>`);
   return [headerLine, ...dataLines, '', hint].join('\n');
 }
 

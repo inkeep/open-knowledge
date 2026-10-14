@@ -21,6 +21,10 @@ linking rules, the MCP routing table) — that ships separately as the
 project-local skill installed by `ok init` (see *Working inside a project*
 below).
 
+> **CLI name.** Commands below use Stable's `ok` (`open-knowledge`). OpenKnowledge
+> Beta's terminal commands are `ok-beta` (`open-knowledge-beta`), with `~/.ok-beta/`
+> in place of `~/.ok/`.
+
 ## Install OpenKnowledge on a repository
 
 Run `ok init` from the repository root:

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { makeShadowHealthCheck, type ShadowHealthFacts } from './shadow-health.ts';
 
 let tmpDirs: string[] = [];
@@ -138,5 +138,25 @@ describe('shadow-health check', () => {
     const { cwd, shadowDir } = makeProjectWithShadow();
     const result = await check({ ...HEALTHY, wipWidth: 40 }, shadowDir).run({ cwd });
     expect(result.summary.toLowerCase()).not.toContain('save version');
+  });
+});
+
+describe('shadow-health remediation names the running channel CLI', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s: both uninitialized states name %s start', async (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    const remediation = `Run \`${command} start\` once to initialize the shadow repo.`;
+    const bare = mkdtempSync(join(tmpdir(), 'ok-health-nogit-'));
+    tmpDirs.push(bare);
+    expect((await makeShadowHealthCheck().run({ cwd: bare })).remediation).toBe(remediation);
+    const { cwd } = makeProjectWithShadow();
+    const missingShadow = makeShadowHealthCheck({
+      resolveDir: () => join(cwd, '.git', 'ok-missing'),
+    });
+    expect((await missingShadow.run({ cwd })).remediation).toBe(remediation);
   });
 });

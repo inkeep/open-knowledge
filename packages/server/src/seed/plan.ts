@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { OK_PROJECT_MARKER } from '@inkeep/open-knowledge-core';
+import { currentCliCommandName, OK_PROJECT_MARKER } from '@inkeep/open-knowledge-core';
 import { SKILLS_LOCK_REL } from '@inkeep/open-knowledge-core/skills-catalog';
 import { isProjectRoot } from '../fs/find-project-root.ts';
 import { scanInPlaceSkills } from '../in-place-skills.ts';
@@ -52,7 +52,7 @@ export async function planSeed(opts: SeedOptions = {}): Promise<ScaffoldPlan> {
 
   if (!opts.skipPrerequisite && !isProjectRoot(projectDir)) {
     throw new SeedPrerequisiteError(
-      `No ${OK_PROJECT_MARKER} found at ${projectDir}. Run \`ok init\` first to scaffold the tool config.`,
+      `No ${OK_PROJECT_MARKER} found at ${projectDir}. Run \`${currentCliCommandName()} init\` first to scaffold the tool config.`,
     );
   }
 

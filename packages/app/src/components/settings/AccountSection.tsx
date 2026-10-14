@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { type GitSyncStatus, useGitSyncStatus } from '@/hooks/use-git-sync-status';
 import { recordAuthStatus } from '@/lib/auth-state-cache';
+import { okCliCommandName } from '@/lib/channel-cli-copy';
 import {
   type AuthQueryStatus,
   type AuthQueryTransport,
@@ -203,6 +204,7 @@ export function hostFromRemoteLabel(label: string): string {
 }
 
 function HostTokenSuccess({ login, host }: { login: string; host: string }) {
+  const cliCommand = okCliCommandName();
   return (
     <p
       role="status"
@@ -211,7 +213,10 @@ function HostTokenSuccess({ login, host }: { login: string; host: string }) {
     >
       <Trans>
         Token stored for {login} on {host}. To remove it, run{' '}
-        <code translate="no">ok auth signout --host {host}</code>.
+        <code translate="no">
+          {cliCommand} auth signout --host {host}
+        </code>
+        .
       </Trans>
     </p>
   );

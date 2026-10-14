@@ -30,7 +30,10 @@ CLI="$CONTENTS/Resources/cli/dist/cli.mjs"
 
 if [ ! -f "$CLI" ] || [ ! -x "$ELECTRON" ]; then
   echo "OpenKnowledge has been removed. Reinstall from the OpenKnowledge DMG." >&2
-  echo '{"error":"ok-bundle-missing","hint":"OpenKnowledge app appears to have been removed. Reinstall from the DMG, or remove OK entries from your MCP config and rerun ok init."}' >&2
+  OK_INIT_COMMAND="ok init"
+  case "$(basename "${BASH_SOURCE[0]}")" in *-beta) OK_INIT_COMMAND="ok-beta init" ;; esac
+  case "$OK_CHANNEL" in [Bb][Ee][Tt][Aa]) OK_INIT_COMMAND="ok-beta init" ;; esac
+  echo '{"error":"ok-bundle-missing","hint":"OpenKnowledge app appears to have been removed. Reinstall from the DMG, or remove OK entries from your MCP config and rerun '"$OK_INIT_COMMAND"'."}' >&2
   exit 69
 fi
 

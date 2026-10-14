@@ -33,9 +33,9 @@ import {
 } from './shared.ts';
 
 const DESCRIPTION = [
-  'Get the full browser URL for this project or a document/folder/skill, or an absolute markdown file outside the project. Opening is demand: auto-starts OK under the normal OK_MCP_AUTOSTART gate and waits briefly for UI; cold calls can take seconds. Other tools return route-only previewUrl paths; use this tool for an openable URL, never guess ports or hunt via ok ps/status.',
+  "Get the full browser URL for this project or a document/folder/skill, or an absolute markdown file outside the project. Opening is demand: auto-starts OK under the normal OK_MCP_AUTOSTART gate and waits briefly for UI; cold calls can take seconds. Other tools return route-only previewUrl paths; use this tool for an openable URL, never guess ports or hunt via the OpenKnowledge CLI's ps/status.",
   'Choose one: document (extension-less), folder (trailing-slash route), skill:{name,scope?} (project default), or file (absolute .md/.mdx in a loose-file/worktree session). file ignores cwd; other targets use current project. Omit targets for UI root.',
-  'When YOUR host opens URLs, navigate its embedded browser to url; Claude Code Desktop uses preview_start({url}) then navigate({url}). Only a stdio host without a browser tool should open the URL in the system browser. A CLI without a browser can use ok open <doc> for OK Desktop. This tool forces browser access even when Desktop is installed.',
+  "When YOUR host opens URLs, navigate its embedded browser to url; Claude Code Desktop uses preview_start({url}) then navigate({url}). Only a stdio host without a browser tool should open the URL in the system browser. A CLI without a browser can use the OpenKnowledge CLI's open <doc> for OK Desktop. This tool forces browser access even when Desktop is installed.",
   "INSIDE OK's terminal/agent panel, use returned okOpenCommand instead; never paste url in the answer. If no UI is reachable, returns url:null, baseUrl:null, running:false, autoOpen plus state-specific recovery text (autostart disabled, no spawn authority or UI timeout). Follow it.",
 ].join('\n');
 

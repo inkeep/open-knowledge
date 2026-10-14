@@ -335,7 +335,6 @@
     "2IYGkU": [
       "Ce document a des modifications non poussées. Les destinataires verront la dernière version poussée."
     ],
-    "2L8aeZ": ["erreur réseau (`ok start` est-il en cours d'exécution ?)"],
     "2M0JF6": ["Mise à jour automatique"],
     "2O5Z0r": ["Masquer ", ["appName"]],
     "2QM24L": ["Toutes les étiquettes"],
@@ -580,15 +579,6 @@
       "Intégration HTML en bac à sable — écrivez du HTML, voyez l'aperçu se rendre en direct."
     ],
     "4nj6n8": ["/api/config a renvoyé HTTP ", ["code"]],
-    "4p8Baj": [
-      "Jeton enregistré pour ",
-      ["login"],
-      " sur ",
-      ["host"],
-      ". Pour le supprimer, exécutez <0>ok auth signout --host ",
-      ["host"],
-      "</0>."
-    ],
     "4pDZ2N": [
       "« ",
       ["0"],
@@ -655,7 +645,6 @@
     ],
     "5OTgC7": ["Ouvre et met le focus sur la zone d'invite Demander à l'IA en bas."],
     "5OqaJi": ["Saisissez un nom de projet"],
-    "5PHgV2": ["Vous pouvez aussi en créer un depuis un terminal avec <0>ok bug-report</0>."],
     "5QGTaA": ["Impossible de copier le chemin relatif"],
     "5RiC8D": [
       "Les compétences de découverte sont gérées ensemble pour tous les outils d’IA. Installez celle-ci depuis Paramètres → Studio de compétences."
@@ -684,9 +673,6 @@
     ],
     "5UccRr": ["Dernière activité : ", ["lastActivity"]],
     "5WDhAk": ["Lien vers une page ou une URL externe."],
-    "5W_u0E": [
-      "Impossible de redémarrer le serveur. Exécutez ok start dans ce dossier pour réessayer."
-    ],
     "5Y17qa": ["S'applique à (globs — un ! initial exclut ; vide signifie tous les documents)"],
     "5YWCV_": ["Réponse de plan mal formée"],
     "5ZB7XC": ["Zone de dépôt de fichiers"],
@@ -913,9 +899,6 @@
     ],
     "7Y9yTo": [["owner"], "/", ["name"], " a été créé, mais l'envoi a échoué."],
     "7YJr6i": ["Le shell de cette session n'a jamais démarré."],
-    "7YRrJ9": [
-      "Disponible dans l'application de bureau OpenKnowledge. Depuis un terminal, utilisez<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
-    ],
     "7ZpNC-": ["gh"],
     "7_bFEL": ["Faites glisser ", ["patternText"], " pour réorganiser"],
     "7a0YcF": ["Appuyez sur <0>Espace</0> ou touchez le blob pour commencer"],
@@ -1184,9 +1167,6 @@
     "A5hiCy": ["Créer un modèle"],
     "A67Uwj": ["Chargement en cours"],
     "A6h5b-": ["Fichier dupliqué"],
-    "AAlr5Y": [
-      "Aucun serveur de collaboration pour ce worktree — exécutez <0>ok start</0> ici, ou rouvrez le projet."
-    ],
     "AB4qw9": ["Nouveau terminal"],
     "ABq-cq": ["OpenKnowledge a créé un lien de partage"],
     "ACKMCN": ["Échec du chargement des paramètres de la compétence : ", ["0"]],
@@ -2160,6 +2140,11 @@
     "JlFcis": ["Envoyer"],
     "JmfgFc": ["(un worktree de ", ["0"], ")"],
     "Jnz9AY": [["0"], " est au-dessus de ", ["destination"], "."],
+    "JpDb1D": [
+      "Impossible de redémarrer le serveur. Exécutez ",
+      ["cliCommand"],
+      " start dans ce dossier pour réessayer."
+    ],
     "Jqqevv": ["Erreur système"],
     "JrqL_z": ["Insérer une ligne au-dessus"],
     "Jrwm42": ["Impossible de charger vos agents."],
@@ -2262,9 +2247,6 @@
     ],
     "KmydK6": ["Gras"],
     "KnoB--": ["Sera enregistré sous <0>", ["sanitized"], "</0>."],
-    "Kr3VPS": [
-      "Codex continuera de demander tant que vous n'aurez pas exécuté « ok init » dans un terminal pour ce projet."
-    ],
     "KsAPaB": ["Cette branche est extraite dans :"],
     "KtACeE": ["Par défaut : <0>", ["0"], "</0>"],
     "KujtjC": ["Rechercher"],
@@ -2599,6 +2581,11 @@
     "NeY1Np": ["Slidev a mis trop de temps à démarrer. Réessayez."],
     "NfraGd": ["Autres méthodes d'installation de Slidev"],
     "NgZwB0": [["enabledCount"], "/", ["0"], " activés"],
+    "NgqxB9": [
+      "Aucun serveur de collaboration pour ce worktree — exécutez <0>",
+      ["cliCommand"],
+      " start</0> ici, ou rouvrez le projet."
+    ],
     "Ni4b7h": [
       "Les plugins de projet constituent la norme de rédaction de votre projet — activez-les ou désactivez-les ici. Chaque plugin activé obtient sa propre page sous Plugins dans la barre latérale des paramètres."
     ],
@@ -3274,6 +3261,11 @@
       ["shareBranch"],
       "</0>. Changez de branche et mettez à jour pour l'ouvrir."
     ],
+    "UbQzWP": [
+      "Disponible dans l'application de bureau OpenKnowledge. Depuis un terminal, utilisez<0> ",
+      ["cliCommand"],
+      " config-sharing status</0> / <1>share</1> / <2>unshare</2>."
+    ],
     "UcTm1A": [
       "Fourni par la CLI GitHub (<0>gh</0>) sur cet ordinateur. Pour changer de compte ou vous déconnecter, exécutez <1>gh auth</1> dans un terminal."
     ],
@@ -3824,6 +3816,11 @@
     "ZjtgI-": ["Palette de commandes"],
     "ZkY0ic": ["En attente de revue"],
     "ZlCe_H": ["Aucune langue n'est disponible pour la correction orthographique."],
+    "Zmg5Ge": [
+      "S'applique à tous les projets de cette machine. Claude et Codex lancés depuis le terminal intégré, ainsi que tout agent dans un chat du panneau Agents de l'app, approuvent automatiquement les outils de lecture et d'écriture d'OpenKnowledge (Claude exécute aussi \"",
+      ["cliCommand"],
+      " open\" automatiquement). Supprimer, déplacer, partager, importer ou installer des skills, les autres commandes et les modifications de fichiers hors OpenKnowledge demandent toujours confirmation. Dans le terminal, Cursor, OpenCode et Pi ne sont pas concernés. Au mieux, selon l'agent."
+    ],
     "Zon_qG": ["Source du miroir <0>", ["label"], "</0>"],
     "ZptNUh": ["Afficher ", ["hidden"], " de plus"],
     "Zs3d0w": [
@@ -4220,9 +4217,6 @@
     "cOX1Cj": ["hôte git"],
     "cOrTMo": ["Votre lien de partage est prêt ci-dessous."],
     "cPAWbl": ["Envoyé par e-mail"],
-    "cPgQ_i": [
-      "S'applique à tous les projets de cette machine. Claude et Codex lancés depuis le terminal intégré, ainsi que tout agent dans un chat du panneau Agents de l'app, approuvent automatiquement les outils de lecture et d'écriture d'OpenKnowledge (Claude exécute aussi \"ok open\" automatiquement). Supprimer, déplacer, partager, importer ou installer des skills, les autres commandes et les modifications de fichiers hors OpenKnowledge demandent toujours confirmation. Dans le terminal, Cursor, OpenCode et Pi ne sont pas concernés. Au mieux, selon l'agent."
-    ],
     "cQlPDN": ["Lire"],
     "cRHuuI": ["Impossible de copier le chemin"],
     "cRm498": [
@@ -4338,6 +4332,7 @@
       "</1>, dans son propre worktree sous <2>.ok/worktrees/</2>."
     ],
     "dGcsnU": ["Retirer pour les deux"],
+    "dHaD0-": ["erreur réseau (`", ["cliCommand"], " start` est-il en cours d'exécution ?)"],
     "dIYSqk": ["distant"],
     "dJw2_7": ["Enregistré avec le projet pour votre équipe."],
     "dMsx3p": ["Page d'accueil et pivot de navigation."],
@@ -5209,6 +5204,11 @@
       "Des dossiers et des modèles prêts à l'emploi pour démarrer rapidement. Sélectionnez un pack pour prévisualiser ce qui sera créé, puis ajoutez-le à votre projet."
     ],
     "k5rKNs": ["frontmatter"],
+    "k6Gfom": [
+      "Vous pouvez aussi en créer un depuis un terminal avec <0>",
+      ["cliCommand"],
+      " bug-report</0>."
+    ],
     "k7Hoig": ["Aucune modification de contenu dans cette version."],
     "kBNHN1": ["Historique de navigation"],
     "kCjkGY": ["Cela peut prendre un moment. Votre contenu markdown est conservé."],
@@ -5640,11 +5640,6 @@
     "nnhrHd": [
       "Excluez des Problèmes, des indicateurs de l’explorateur de fichiers, des diagnostics de l’éditeur, des audits et des avis d’écriture des agents les liens rompus écrits dans un fichier log.md ou log.mdx, quelle que soit la profondeur du dossier. C’est le fichier dans lequel le lien est écrit qui compte, et non celui qu’il cible, et LOG.md reste un document ordinaire. Le panneau Liens et l’éditeur continuent de les afficher."
     ],
-    "noH1JX": [
-      "Impossible de joindre le serveur de collaboration — ",
-      ["errorDetail"],
-      ". Essayez <0>ok status</0> ou consultez <1>.ok/local/last-spawn-error.log</1>."
-    ],
     "np2zZM": ["Connectez-vous à ", ["agentName"], " pour continuer."],
     "npcziF": ["Installer sur"],
     "nqV0Kk": [
@@ -5670,6 +5665,17 @@
     "o1veZ6": ["Impossible d'ouvrir ce document dans une nouvelle fenêtre."],
     "o49mDZ": ["Chargement de l'historique de la chronologie"],
     "o7AkQ0": ["Afficher les résolus"],
+    "o8OY2K": [
+      "Jeton enregistré pour ",
+      ["login"],
+      " sur ",
+      ["host"],
+      ". Pour le supprimer, exécutez <0>",
+      ["cliCommand"],
+      " auth signout --host ",
+      ["host"],
+      "</0>."
+    ],
     "o9CrsQ": ["research-note"],
     "o9fPtM": ["Mise à jour automatique depuis la source"],
     "o9yN4T": ["Mettre à la Corbeille"],
@@ -6145,6 +6151,11 @@
     "sQoLn0": ["Quitter"],
     "sR0I-f": ["Réduire tous les fichiers"],
     "sSRndh": ["Commencez à maintenir index.md"],
+    "sTQjgr": [
+      "Codex continuera de demander tant que vous n'aurez pas exécuté « ",
+      ["cliCommand"],
+      " init » dans un terminal pour ce projet."
+    ],
     "sW5OjU": ["obligatoire"],
     "sZ2IOu": [
       "Ce ",
@@ -6517,6 +6528,13 @@
     "vGeNNQ": ["Copiez une invite et collez-la dans votre agent pour configurer votre projet."],
     "vGjmyl": ["Supprimé"],
     "vHlhDc": ["Double-cliquez pour modifier"],
+    "vHw_jF": [
+      "Impossible de joindre le serveur de collaboration — ",
+      ["errorDetail"],
+      ". Essayez <0>",
+      ["cliCommand"],
+      " status</0> ou consultez <1>.ok/local/last-spawn-error.log</1>."
+    ],
     "vIxrEk": ["Ajuster à la largeur"],
     "vLyv1R": ["Masquer"],
     "vO2v-0": ["Masquer les autres"],

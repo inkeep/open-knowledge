@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { diagnoseCommand } from './diagnose.ts';
 
 function bundleCommand(): Command {
@@ -40,5 +40,20 @@ describe('ok diagnose bundle — redaction switch', () => {
     const help = bundleCommand().helpInformation();
     expect(help).toMatch(/^\s+--redact\s+\S/m);
     expect(help).toMatch(/^\s+--no-redact\s+\S/m);
+  });
+});
+
+describe('ok diagnose bundle --pid help names the running channel CLI', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s: names %s diagnose process', (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    const pid = bundleCommand().options.find((option) => option.long === '--pid');
+    expect(pid?.description).toBe(
+      `Include \`${command} diagnose process <pid>\` output under process/ in the bundle`,
+    );
   });
 });

@@ -40,5 +40,9 @@ rem Redirect FIRST: `echo text 1>&2` keeps the space before the redirect token
 rem as part of the echoed text, so every line would ship a trailing space and
 rem diverge byte-for-byte from ok.sh / ok.ps1's identical contract.
 1>&2 echo OpenKnowledge has been removed. Reinstall from the OpenKnowledge installer.
-1>&2 echo {"error":"ok-bundle-missing","hint":"OpenKnowledge app appears to have been removed. Reinstall it, or remove OK entries from your MCP config and rerun ok init."}
+set "OK_INIT_COMMAND=ok init"
+if /i "%~n0"=="ok-beta" set "OK_INIT_COMMAND=ok-beta init"
+if /i "%~n0"=="open-knowledge-beta" set "OK_INIT_COMMAND=ok-beta init"
+if /i "%OK_CHANNEL%"=="beta" set "OK_INIT_COMMAND=ok-beta init"
+1>&2 echo {"error":"ok-bundle-missing","hint":"OpenKnowledge app appears to have been removed. Reinstall it, or remove OK entries from your MCP config and rerun %OK_INIT_COMMAND%."}
 endlocal & exit /b 69

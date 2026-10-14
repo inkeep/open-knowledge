@@ -2196,8 +2196,8 @@ msgid "Applies to all projects on this machine, in Claude Code and Codex chats i
 msgstr "Berlaku untuk semua proyek di mesin ini, pada obrolan Claude Code dan Codex di panel Agen yang dimulai setelah Anda mengaktifkannya. Agen dapat membuka halaman, mengeklik, mengetik, dan mengambil tangkapan layar di jendela Google Chrome miliknya dengan profil baru. Memerlukan Google Chrome dan Node.js yang terpasang. Setiap tindakan browser meminta persetujuan Anda, tanpa opsi untuk selalu mengizinkannya, kecuali mode agen itu sendiri atau pengaturan izinnya melewati persetujuan."
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
-msgstr "Berlaku untuk semua proyek di mesin ini. Claude dan Codex yang dimulai dari terminal bawaan, serta agen apa pun dalam obrolan panel Agen di aplikasi, otomatis menyetujui alat baca dan tulis OpenKnowledge (Claude juga otomatis menjalankan \"ok open\"). Menghapus, memindahkan, membagikan, mengimpor atau memasang skill, perintah lain, dan pengeditan berkas non-OpenKnowledge tetap bertanya. Di terminal, Cursor, OpenCode, dan Pi tidak terpengaruh. Upaya terbaik per agen."
+msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"{cliCommand} open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgstr "Berlaku untuk semua proyek di mesin ini. Claude dan Codex yang dimulai dari terminal bawaan, serta agen apa pun dalam obrolan panel Agen di aplikasi, otomatis menyetujui alat baca dan tulis OpenKnowledge (Claude juga otomatis menjalankan \"{cliCommand} open\"). Menghapus, memindahkan, membagikan, mengimpor atau memasang skill, perintah lain, dan pengeditan berkas non-OpenKnowledge tetap bertanya. Di terminal, Cursor, OpenCode, dan Pi tidak terpengaruh. Upaya terbaik per agen."
 
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
@@ -2525,8 +2525,8 @@ msgid "Available in every project on this machine. Not shared through git."
 msgstr "Tersedia di setiap proyek pada komputer ini. Tidak dibagikan lewat git."
 
 #: src/components/settings/SharingSection.tsx
-msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
-msgstr "Tersedia di aplikasi desktop OpenKnowledge. Dari terminal, gunakan<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
+msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> {cliCommand} config-sharing status</0> / <1>share</1> / <2>unshare</2>."
+msgstr "Tersedia di aplikasi desktop OpenKnowledge. Dari terminal, gunakan<0> {cliCommand} config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 
 #: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/AppMenubar.tsx
@@ -3446,8 +3446,8 @@ msgid "Code field undo or redo"
 msgstr "Batalkan atau ulangi di bidang kode"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Codex will still ask until you run \"ok init\" in a terminal for this project."
-msgstr "Codex akan tetap bertanya sampai Anda menjalankan \"ok init\" di terminal untuk proyek ini."
+msgid "Codex will still ask until you run \"{cliCommand} init\" in a terminal for this project."
+msgstr "Codex akan tetap bertanya sampai Anda menjalankan \"{cliCommand} init\" di terminal untuk proyek ini."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Collaborators see your in-progress edits as soon as they sync."
@@ -4472,8 +4472,8 @@ msgid "Couldn't reach {displayName} — try again?"
 msgstr "Tidak dapat menghubungi {displayName}. Coba lagi?"
 
 #: src/components/ConnectingBanner.tsx
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>ok status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "Server kolaborasi tidak bisa dihubungi — {errorDetail}. Coba <0>ok status</0> atau periksa <1>.ok/local/last-spawn-error.log</1>."
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
+msgstr "Server kolaborasi tidak bisa dihubungi — {errorDetail}. Coba <0>{cliCommand} status</0> atau periksa <1>.ok/local/last-spawn-error.log</1>."
 
 #: src/components/PublishToGitHubDialog.tsx
 #: src/lib/share/publish-wizard.ts
@@ -4600,8 +4600,8 @@ msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop
 msgstr "Server tidak bisa dimulai ulang secara otomatis. Coba jalankan `{cliCommand} stop all` di terminal, lalu buka lagi proyek ini — atau mulai ulang komputer Anda jika masih berlanjut."
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Couldn't restart the server. Run ok start in this folder to retry."
-msgstr "Tidak dapat memulai ulang server. Jalankan ok start di folder ini untuk mencoba lagi."
+msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
+msgstr "Tidak dapat memulai ulang server. Jalankan {cliCommand} start di folder ini untuk mencoba lagi."
 
 #: src/lib/restart-collab-server.ts
 msgid "Couldn't restart the server. Try `{cliCommand} start` in this folder."
@@ -9315,8 +9315,8 @@ msgid "Network error — please try again"
 msgstr "Galat jaringan — silakan coba lagi"
 
 #: src/components/ConnectingBanner.tsx
-msgid "network error (is `ok start` running?)"
-msgstr "kesalahan jaringan (apakah `ok start` sedang berjalan?)"
+msgid "network error (is `{cliCommand} start` running?)"
+msgstr "kesalahan jaringan (apakah `{cliCommand} start` sedang berjalan?)"
 
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
@@ -9604,8 +9604,8 @@ msgid "No chats yet."
 msgstr "Belum ada chat."
 
 #: src/components/ConnectingBanner.tsx
-msgid "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
-msgstr "Tidak ada server kolaborasi untuk worktree ini — jalankan <0>ok start</0> di sini, atau buka lagi proyeknya."
+msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
+msgstr "Tidak ada server kolaborasi untuk worktree ini — jalankan <0>{cliCommand} start</0> di sini, atau buka lagi proyeknya."
 
 #: src/comments/CommentProjectPanel.tsx
 msgid "No comments in this project yet. Comment on a passage to start one."
@@ -15982,8 +15982,8 @@ msgid "token"
 msgstr "token"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Token stored for {login} on {host}. To remove it, run <0>ok auth signout --host {host}</0>."
-msgstr "Token disimpan untuk {login} di {host}. Untuk menghapusnya, jalankan <0>ok auth signout --host {host}</0>."
+msgid "Token stored for {login} on {host}. To remove it, run <0>{cliCommand} auth signout --host {host}</0>."
+msgstr "Token disimpan untuk {login} di {host}. Untuk menghapusnya, jalankan <0>{cliCommand} auth signout --host {host}</0>."
 
 #: src/components/SkillBundlePreview.tsx
 #: src/components/SkillProperties.tsx
@@ -17046,8 +17046,8 @@ msgid "You can add"
 msgstr "Anda dapat menambahkan"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "You can also create one from a terminal with <0>ok bug-report</0>."
-msgstr "Anda juga bisa membuatnya dari terminal dengan <0>ok bug-report</0>."
+msgid "You can also create one from a terminal with <0>{cliCommand} bug-report</0>."
+msgstr "Anda juga bisa membuatnya dari terminal dengan <0>{cliCommand} bug-report</0>."
 
 #: src/components/TerminalGate.tsx
 msgid "You can also manage this in Settings."

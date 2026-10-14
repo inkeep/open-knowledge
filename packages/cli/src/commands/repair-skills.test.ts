@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
 import type { SkillInstallEvent } from '@inkeep/open-knowledge-server';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EDITOR_TARGETS } from './editors.ts';
 import {
   __testing,
@@ -1596,6 +1596,20 @@ describe('repairSkillsCommand — Commander action wiring (AC-D1, AC-D3)', () =>
   });
 });
 
+describe('repairSkillsCommand help names the running channel CLI', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s: the description points at %s init', (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    expect(repairSkillsCommand().description()).toBe(
+      `Restore missing project skill copies and repair user-global bundles for installed AI editors. Existing project skills are preserved; run \`${command} init\` to refresh them.`,
+    );
+  });
+});
+
 describe('repairSkills — symlink-escape guard (parity with writeProjectSkill)', () => {
   let scratch: ReturnType<typeof mkScratch>;
   let projectBundleDir: string;
@@ -1775,6 +1789,29 @@ describe('confirmLegacyCleanup — prompt behaviour', () => {
     const piped = new PassThrough() as unknown as NodeJS.ReadableStream & { isTTY?: boolean };
     piped.isTTY = false;
     expect(await confirmLegacyCleanup(plan, { yes: false, input: piped })).toBe(false);
+  });
+
+  it.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s: the non-TTY decline names %s repair-skills --yes', async (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    let stdout = '';
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk);
+      return true;
+    });
+    try {
+      const piped = new PassThrough() as unknown as NodeJS.ReadableStream & { isTTY?: boolean };
+      piped.isTTY = false;
+      await confirmLegacyCleanup(plan, { yes: false, input: piped });
+      expect(stdout).toContain(
+        `Not a terminal — skipping cleanup. Re-run with \`${command} repair-skills --yes\` to remove these.`,
+      );
+    } finally {
+      write.mockRestore();
+      vi.unstubAllEnvs();
+    }
   });
 
   it('a bare Enter declines — deletion is never the default', async () => {

@@ -1,4 +1,4 @@
-import { okUserHomeDisplayPath } from '@inkeep/open-knowledge-core';
+import { currentCliCommandName, okUserHomeDisplayPath } from '@inkeep/open-knowledge-core';
 import {
   type BuildAndOpenSkillResult,
   buildAndOpenSkill,
@@ -92,7 +92,7 @@ export async function runCoworkSkill(
 export function coworkCommand(): Command {
   return new Command('cowork')
     .description(
-      'Build openknowledge.skill and open the Claude Desktop App so you can upload it for Claude Chat & Cowork. (Advanced/rarely needed — `ok init` already wires Claude.)',
+      `Build openknowledge.skill and open the Claude Desktop App so you can upload it for Claude Chat & Cowork. (Advanced/rarely needed — \`${currentCliCommandName()} init\` already wires Claude.)`,
     )
     .option('--out <path>', 'Custom output path (default: ~/Downloads/openknowledge.skill)')
     .option('--no-open', 'Build the file but skip the OS file-association handoff')

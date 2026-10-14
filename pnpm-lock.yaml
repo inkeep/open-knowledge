@@ -1412,6 +1412,9 @@ importers:
       '@types/yazl':
         specifier: ^2.4.6
         version: 2.4.6
+      js-yaml:
+        specifier: ~4.3.1
+        version: 4.3.1
       lib0:
         specifier: ^0.2.117
         version: 0.2.117

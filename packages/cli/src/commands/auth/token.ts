@@ -1,4 +1,8 @@
-import { gitCredentialHostKey, isGitCredentialHost } from '@inkeep/open-knowledge-core';
+import {
+  currentCliCommandName,
+  gitCredentialHostKey,
+  isGitCredentialHost,
+} from '@inkeep/open-knowledge-core';
 import password from '@inquirer/password';
 import { Command } from 'commander';
 import type { TokenStore } from '../../auth/token-store.ts';
@@ -54,7 +58,7 @@ export async function runTokenPaste(
     return emit(
       {
         type: 'error',
-        message: `${host} is a GitHub host. Use ok auth pat --host ${host}, which checks the token with GitHub before storing it.`,
+        message: `${host} is a GitHub host. Use ${currentCliCommandName()} auth pat --host ${host}, which checks the token with GitHub before storing it.`,
       },
       json,
     );

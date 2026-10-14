@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import {
   DEFAULT_EMBEDDINGS_BASE_URL,
   DEFAULT_EMBEDDINGS_MODEL,
@@ -198,5 +199,65 @@ describe('ok embeddings status transport settings', () => {
         providerError: true,
       }),
     ).toContain('provider error');
+  });
+});
+
+describe('embeddings hints name the running channel CLI', () => {
+  let dir: string;
+  let stdout: string;
+  let stderr: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'ok-embeddings-channel-'));
+    stdout = '';
+    stderr = '';
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf-8');
+      return true;
+    });
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf-8');
+      return true;
+    });
+    vi.spyOn(embeddingsKeyStore, 'resolveEmbeddingsCredential').mockResolvedValue({
+      apiKey: null,
+      keyless: false,
+      source: 'none',
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    process.exitCode = 0;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s: status, enable and set-key name %s embeddings', async (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    await embeddingsCommand().parseAsync(['status', '--cwd', dir], { from: 'user' });
+    expect(stdout).toContain(`  Set a key:  ${command} embeddings set-key   (or export `);
+    expect(stdout).toContain(
+      `  Enable it:  ${command} embeddings enable   (in this project folder)`,
+    );
+
+    await embeddingsCommand().parseAsync(['enable', '--cwd', dir], { from: 'user' });
+    expect(stderr).toContain(
+      `  Note: no API key set yet — run \`${command} embeddings set-key\`. Until then, search stays lexical.\n`,
+    );
+
+    vi.spyOn(process, 'stdin', 'get').mockReturnValue(
+      Readable.from([Buffer.from('sk-test')]) as unknown as typeof process.stdin,
+    );
+    vi.spyOn(embeddingsKeyStore, 'createEmbeddingsSecretStore').mockReturnValue({
+      setForProject: async () => {},
+    } as unknown as ReturnType<typeof embeddingsKeyStore.createEmbeddingsSecretStore>);
+    await embeddingsCommand().parseAsync(['set-key', '--cwd', dir], { from: 'user' });
+    expect(stderr).toContain(
+      `  Enable semantic search with \`${command} embeddings enable\`, or in\n`,
+    );
   });
 });

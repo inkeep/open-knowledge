@@ -1,136 +1,173 @@
 import type { Document } from 'yaml';
+import { currentCliCommandName } from '../constants/product.ts';
 import type { ConfigIssueSource, RemovedKeyDiagnostic } from './errors.ts';
 import { locateIssue } from './source-locator.ts';
 
 export interface RemovedKey {
   path: string[];
-  redirect: string;
+  readonly redirect: string;
 }
 
-const MIGRATE_HINT =
-  'Run `ok config migrate` to strip the obsolete key automatically, or remove it by hand.';
+const migrateHint = (): string =>
+  `Run \`${currentCliCommandName()} config migrate\` to strip the obsolete key automatically, or remove it by hand.`;
 
 export const REMOVED_KEYS: readonly RemovedKey[] = [
   {
     path: ['content', 'include'],
-    redirect: [
-      'content.include has been removed.',
-      'For subdirectory scoping, set content.dir in .ok/config.yml instead.',
-      'For pattern-based filtering, use .okignore (gitignore syntax — exclude-only; do not copy include patterns directly).',
-      MIGRATE_HINT,
-    ].join(' '),
+    get redirect() {
+      return [
+        'content.include has been removed.',
+        'For subdirectory scoping, set content.dir in .ok/config.yml instead.',
+        'For pattern-based filtering, use .okignore (gitignore syntax — exclude-only; do not copy include patterns directly).',
+        migrateHint(),
+      ].join(' ');
+    },
   },
   {
     path: ['content', 'exclude'],
-    redirect: [
-      'Move these patterns to .okignore at the project root (gitignore syntax, 1:1 migration).',
-      MIGRATE_HINT,
-    ].join(' '),
+    get redirect() {
+      return [
+        'Move these patterns to .okignore at the project root (gitignore syntax, 1:1 migration).',
+        migrateHint(),
+      ].join(' ');
+    },
   },
   {
     path: ['folders'],
-    redirect: [
-      'folders is no longer a top-level config field.',
-      "A folder's own frontmatter (open-shape, like a doc's) lives in nested `<folder>/.ok/frontmatter.yml`; new-doc starting properties come from templates in `<folder>/.ok/templates/`.",
-      'Edit via the folder overview in the editor sidebar, or `edit({ folder: { path, frontmatter } })` via the MCP.',
-      MIGRATE_HINT,
-    ].join(' '),
+    get redirect() {
+      return [
+        'folders is no longer a top-level config field.',
+        "A folder's own frontmatter (open-shape, like a doc's) lives in nested `<folder>/.ok/frontmatter.yml`; new-doc starting properties come from templates in `<folder>/.ok/templates/`.",
+        'Edit via the folder overview in the editor sidebar, or `edit({ folder: { path, frontmatter } })` via the MCP.',
+        migrateHint(),
+      ].join(' ');
+    },
   },
   {
     path: ['appearance', 'editorModeDefault'],
-    redirect: [
-      'appearance.editorModeDefault was removed and is never read — new docs always open in WYSIWYG; toggle mode via the editor mode button.',
-      MIGRATE_HINT,
-    ].join(' '),
+    get redirect() {
+      return [
+        'appearance.editorModeDefault was removed and is never read — new docs always open in WYSIWYG; toggle mode via the editor mode button.',
+        migrateHint(),
+      ].join(' ');
+    },
   },
   {
     path: ['upload', 'maxBytes'],
-    redirect: [
-      'streaming uploads have no user-facing cap; the value is hardcoded in @inkeep/open-knowledge-core.',
-      MIGRATE_HINT,
-    ].join(' '),
+    get redirect() {
+      return [
+        'streaming uploads have no user-facing cap; the value is hardcoded in @inkeep/open-knowledge-core.',
+        migrateHint(),
+      ].join(' ');
+    },
   },
   {
     path: ['github', 'oauthAppClientId'],
-    redirect: [
-      'Use the OPEN_KNOWLEDGE_GITHUB_CLIENT_ID environment variable instead.',
-      MIGRATE_HINT,
-    ].join(' '),
+    get redirect() {
+      return [
+        'Use the OPEN_KNOWLEDGE_GITHUB_CLIENT_ID environment variable instead.',
+        migrateHint(),
+      ].join(' ');
+    },
   },
   {
     path: ['server', 'host'],
-    redirect: [
-      'Use server.bind in .ok/config.yml instead — a list of bind addresses, e.g. [127.0.0.1]; a non-loopback bind additionally requires server.allowExternal.',
-      'The --bind CLI flag and HOST environment variable also remain available.',
-      MIGRATE_HINT,
-    ].join(' '),
+    get redirect() {
+      return [
+        'Use server.bind in .ok/config.yml instead — a list of bind addresses, e.g. [127.0.0.1]; a non-loopback bind additionally requires server.allowExternal.',
+        'The --bind CLI flag and HOST environment variable also remain available.',
+        migrateHint(),
+      ].join(' ');
+    },
   },
   {
     path: ['remote', 'url'],
-    redirect: [
-      'remote.url has been removed. Use server.externalUrl in .ok/config.yml instead (the public origin your tunnel serves).',
-      MIGRATE_HINT,
-    ].join(' '),
+    get redirect() {
+      return [
+        'remote.url has been removed. Use server.externalUrl in .ok/config.yml instead (the public origin your tunnel serves).',
+        migrateHint(),
+      ].join(' ');
+    },
   },
   {
     path: ['remote', 'port'],
-    redirect: [
-      'remote.port has been removed. Use server.port in .ok/config.yml instead.',
-      MIGRATE_HINT,
-    ].join(' '),
+    get redirect() {
+      return [
+        'remote.port has been removed. Use server.port in .ok/config.yml instead.',
+        migrateHint(),
+      ].join(' ');
+    },
   },
   {
     path: ['server', 'publicUrl'],
-    redirect: [
-      'server.publicUrl has been removed. Use server.externalUrl in .ok/config.yml instead (the same key under its current name).',
-      MIGRATE_HINT,
-    ].join(' '),
+    get redirect() {
+      return [
+        'server.publicUrl has been removed. Use server.externalUrl in .ok/config.yml instead (the same key under its current name).',
+        migrateHint(),
+      ].join(' ');
+    },
   },
   {
     path: ['server', 'openOnAgentEdit'],
-    redirect: ['This behavior was removed; the value is hardcoded.', MIGRATE_HINT].join(' '),
+    get redirect() {
+      return ['This behavior was removed; the value is hardcoded.', migrateHint()].join(' ');
+    },
   },
   {
     path: ['mcp', 'autoStart'],
-    redirect: ['To disable MCP auto-start, set OK_MCP_AUTOSTART=0.', MIGRATE_HINT].join(' '),
+    get redirect() {
+      return ['To disable MCP auto-start, set OK_MCP_AUTOSTART=0.', migrateHint()].join(' ');
+    },
   },
   {
     path: ['mcp', 'tools', 'read_document', 'historyDepth'],
-    redirect: ['This value is hardcoded in @inkeep/open-knowledge-core.', MIGRATE_HINT].join(' '),
+    get redirect() {
+      return ['This value is hardcoded in @inkeep/open-knowledge-core.', migrateHint()].join(' ');
+    },
   },
   {
     path: ['mcp', 'tools', 'grep', 'maxResults'],
-    redirect: ['This value is hardcoded in @inkeep/open-knowledge-core.', MIGRATE_HINT].join(' '),
+    get redirect() {
+      return ['This value is hardcoded in @inkeep/open-knowledge-core.', migrateHint()].join(' ');
+    },
   },
   {
     path: ['mcp', 'tools', 'search', 'maxResults'],
-    redirect: [
-      'The search result cap is hardcoded in @inkeep/open-knowledge-core; this config key was removed.',
-      MIGRATE_HINT,
-    ].join(' '),
+    get redirect() {
+      return [
+        'The search result cap is hardcoded in @inkeep/open-knowledge-core; this config key was removed.',
+        migrateHint(),
+      ].join(' ');
+    },
   },
   {
     path: ['preview', 'baseUrl'],
-    redirect: [
-      'preview URLs now resolve only to the running server — start one with `ok start`.',
-      MIGRATE_HINT,
-    ].join(' '),
+    get redirect() {
+      return [
+        `preview URLs now resolve only to the running server — start one with \`${currentCliCommandName()} start\`.`,
+        migrateHint(),
+      ].join(' ');
+    },
   },
   {
     path: ['preview', 'scriptSrc'],
-    redirect: [
-      'preview.scriptSrc has been removed.',
-      'The code-block preview iframe now runs a fixed open network policy (it is no longer configurable).',
-      MIGRATE_HINT,
-    ].join(' '),
+    get redirect() {
+      return [
+        'preview.scriptSrc has been removed.',
+        'The code-block preview iframe now runs a fixed open network policy (it is no longer configurable).',
+        migrateHint(),
+      ].join(' ');
+    },
   },
   {
     path: ['appearance', 'sidebar', 'showAllFiles'],
-    redirect: [
-      'appearance.sidebar.showAllFiles has been removed.',
-      'The sidebar lists every file on disk by default; dot-prefixed entries are gated by appearance.sidebar.showHiddenFiles, and appearance.sidebar.showOnlyMarkdownFiles scopes the tree down to markdown documents as a per-machine view preference.',
-      MIGRATE_HINT,
-    ].join(' '),
+    get redirect() {
+      return [
+        'appearance.sidebar.showAllFiles has been removed.',
+        'The sidebar lists every file on disk by default; dot-prefixed entries are gated by appearance.sidebar.showHiddenFiles, and appearance.sidebar.showOnlyMarkdownFiles scopes the tree down to markdown documents as a per-machine view preference.',
+        migrateHint(),
+      ].join(' ');
+    },
   },
 ];
 

@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join, relative } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   assertGitAvailable,
   buildGuidance,
@@ -452,5 +452,38 @@ VERSION_ID="12"`,
     );
     const contents = readFileSync(path, 'utf-8');
     expect(detectLinuxFamily(contents)).toBe('debian');
+  });
+});
+
+describe('git remediation names the running channel CLI', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  const verify = (command: string) =>
+    `Run \`${command} diagnose health --check git\` to verify your installation.`;
+
+  test('Stable keeps the ok diagnose line on both errors', () => {
+    vi.stubEnv('OK_CHANNEL', 'stable');
+    const guidance = buildGuidance('darwin');
+    expect(new GitNotAvailableError('darwin', guidance).message.split('\n')).toContain(
+      verify('ok'),
+    );
+    expect(
+      new GitTooOldError('darwin', '2.10.0', '2.31.0', '/usr/bin/git', guidance).message.split(
+        '\n',
+      ),
+    ).toContain(verify('ok'));
+  });
+
+  test('Beta names ok-beta diagnose on both errors', () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    const guidance = buildGuidance('darwin');
+    expect(new GitNotAvailableError('darwin', guidance).message.split('\n')).toContain(
+      verify('ok-beta'),
+    );
+    expect(
+      new GitTooOldError('darwin', '2.10.0', '2.31.0', '/usr/bin/git', guidance).message.split(
+        '\n',
+      ),
+    ).toContain(verify('ok-beta'));
   });
 });

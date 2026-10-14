@@ -54,6 +54,24 @@ test('explicit signout removes a legacy credential even without a provider decla
   expect(clearTokenFromAllBackends).toHaveBeenCalledWith('legacy.example.com');
 });
 
+test('implicit signout names ok-beta auth signout on Beta', async () => {
+  vi.stubEnv('OK_CHANNEL', 'beta');
+  execFileSync('git', ['remote', 'add', 'origin', 'https://git.example.com/team/kb.git'], {
+    cwd: projectDir,
+  });
+  vi.spyOn(process, 'exit').mockImplementation(() => {
+    throw new Error('exit');
+  });
+  await expect(signoutCommand().parseAsync([], { from: 'user' })).rejects.toThrow('exit');
+  const message = vi
+    .mocked(process.stderr.write)
+    .mock.calls.map(([text]) => text)
+    .join('');
+  expect(message).toContain(
+    'Run ok-beta auth signout --host git.example.com to remove stored local credentials.',
+  );
+});
+
 test('implicit signout refuses a generic origin without clearing another credential', async () => {
   execFileSync('git', ['remote', 'add', 'origin', 'https://git.example.com/team/kb.git'], {
     cwd: projectDir,

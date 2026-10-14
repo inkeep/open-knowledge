@@ -2,7 +2,7 @@ import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { planSeed } from './plan.ts';
 import { STARTER_PACKS } from './starter.ts';
 import { SeedPrerequisiteError, SeedRootDirError } from './types.ts';
@@ -27,6 +27,23 @@ describe('planSeed — nested .ok/ era', () => {
     try {
       await expect(planSeed({ projectDir: bare })).rejects.toThrow(SeedPrerequisiteError);
     } finally {
+      await rm(bare, { recursive: true, force: true });
+    }
+  });
+
+  test('the missing-config error names the running channel init command', async () => {
+    const bare = await mkdtemp(join(tmpdir(), 'seed-bare-'));
+    try {
+      vi.stubEnv('OK_CHANNEL', 'stable');
+      await expect(planSeed({ projectDir: bare })).rejects.toThrow(
+        'Run `ok init` first to scaffold the tool config.',
+      );
+      vi.stubEnv('OK_CHANNEL', 'beta');
+      await expect(planSeed({ projectDir: bare })).rejects.toThrow(
+        'Run `ok-beta init` first to scaffold the tool config.',
+      );
+    } finally {
+      vi.unstubAllEnvs();
       await rm(bare, { recursive: true, force: true });
     }
   });

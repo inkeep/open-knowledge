@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { STARTER_PACKS } from '@inkeep/open-knowledge-server';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { CONFIG_FILENAME, OK_DIR } from '../constants.ts';
 import { runSeed } from './seed.ts';
 
@@ -178,6 +178,37 @@ describe('runSeed — no-op', () => {
       expect(result.message).not.toContain('no agent folder for them');
       expect(readdirSync(join(outside, 'skills'))).toEqual([]);
     } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('runSeed — refusal notes name the running channel CLI', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  test.each([
+    ['stable', 'ok'],
+    ['beta', 'ok-beta'],
+  ])('%s: both refusal notes name %s seed', async (channel, command) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    scaffoldOkDir(testDir);
+    const noFolder = await runSeed({ cwd: testDir, yes: true });
+    expect(noFolder.message).toContain(
+      `Create the folder your agent uses, then run \`${command} seed\` again to install them.`,
+    );
+
+    const escaped = mkdtempSync(join(tmpdir(), 'ok-seed-escaped-'));
+    const outside = mkdtempSync(join(tmpdir(), 'ok-seed-outside-'));
+    try {
+      scaffoldOkDir(escaped);
+      symlinkSync(outside, join(escaped, '.claude'));
+      mkdirSync(join(outside, 'skills'), { recursive: true });
+      const result = await runSeed({ cwd: escaped, yes: true });
+      expect(result.message).toContain(
+        `Replace it with a real directory inside the project, then run \`${command} seed\` again.`,
+      );
+    } finally {
+      rmSync(escaped, { recursive: true, force: true });
       rmSync(outside, { recursive: true, force: true });
     }
   });

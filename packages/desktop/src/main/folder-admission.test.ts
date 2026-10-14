@@ -811,6 +811,20 @@ describe('discoverProject — type surface', () => {
     expect(Object.keys(REJECTION_REASON_COPY).sort()).toEqual([...allReasons].sort());
   });
 
+  test.each([
+    ['stable', '~/.ok'],
+    ['beta', '~/.ok-beta'],
+  ])('%s: the home-directory copy names %s as the user-global folder', (channel, home) => {
+    vi.stubEnv('OK_CHANNEL', channel);
+    try {
+      expect(REJECTION_REASON_COPY['home-directory']).toBe(
+        `This is your home directory, not a project. ${home} is OpenKnowledge's own user-global folder (settings, skills), and opening a project here would set up git in your home directory and write project config into your editors' global folders. Make a folder for your notes and open that instead.`,
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   test('DiscoverProjectOptions and DiscoverProjectResult are import-able', () => {
     const opts: DiscoverProjectOptions = { homeDir: HOME, dirSizeProbe: null };
     const empty: ValidateFolderPickOptions = {};

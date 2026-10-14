@@ -2200,8 +2200,8 @@ msgid "Applies to all projects on this machine, in Claude Code and Codex chats i
 msgstr "S'applique à tous les projets de cette machine, dans les chats Claude Code et Codex du panneau Agents démarrés après l'activation. L'agent peut ouvrir des pages, cliquer, saisir du texte et prendre des captures d'écran dans sa propre fenêtre Google Chrome avec un profil vierge. Nécessite que Google Chrome et Node.js soient installés. Chaque action du navigateur demande votre approbation, sans option pour toujours l'autoriser, sauf si le mode de l'agent lui-même ou ses paramètres d'autorisation ignorent les approbations."
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
-msgstr "S'applique à tous les projets de cette machine. Claude et Codex lancés depuis le terminal intégré, ainsi que tout agent dans un chat du panneau Agents de l'app, approuvent automatiquement les outils de lecture et d'écriture d'OpenKnowledge (Claude exécute aussi \"ok open\" automatiquement). Supprimer, déplacer, partager, importer ou installer des skills, les autres commandes et les modifications de fichiers hors OpenKnowledge demandent toujours confirmation. Dans le terminal, Cursor, OpenCode et Pi ne sont pas concernés. Au mieux, selon l'agent."
+msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"{cliCommand} open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgstr "S'applique à tous les projets de cette machine. Claude et Codex lancés depuis le terminal intégré, ainsi que tout agent dans un chat du panneau Agents de l'app, approuvent automatiquement les outils de lecture et d'écriture d'OpenKnowledge (Claude exécute aussi \"{cliCommand} open\" automatiquement). Supprimer, déplacer, partager, importer ou installer des skills, les autres commandes et les modifications de fichiers hors OpenKnowledge demandent toujours confirmation. Dans le terminal, Cursor, OpenCode et Pi ne sont pas concernés. Au mieux, selon l'agent."
 
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
@@ -2529,8 +2529,8 @@ msgid "Available in every project on this machine. Not shared through git."
 msgstr "Disponible dans tous les projets de cette machine. Non partagé via git."
 
 #: src/components/settings/SharingSection.tsx
-msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
-msgstr "Disponible dans l'application de bureau OpenKnowledge. Depuis un terminal, utilisez<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
+msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> {cliCommand} config-sharing status</0> / <1>share</1> / <2>unshare</2>."
+msgstr "Disponible dans l'application de bureau OpenKnowledge. Depuis un terminal, utilisez<0> {cliCommand} config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 
 #: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/AppMenubar.tsx
@@ -3450,8 +3450,8 @@ msgid "Code field undo or redo"
 msgstr "Annuler ou rétablir dans un champ de code"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Codex will still ask until you run \"ok init\" in a terminal for this project."
-msgstr "Codex continuera de demander tant que vous n'aurez pas exécuté « ok init » dans un terminal pour ce projet."
+msgid "Codex will still ask until you run \"{cliCommand} init\" in a terminal for this project."
+msgstr "Codex continuera de demander tant que vous n'aurez pas exécuté « {cliCommand} init » dans un terminal pour ce projet."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Collaborators see your in-progress edits as soon as they sync."
@@ -4476,8 +4476,8 @@ msgid "Couldn't reach {displayName} — try again?"
 msgstr "Impossible de joindre {displayName}. Réessayer ?"
 
 #: src/components/ConnectingBanner.tsx
-msgid "Couldn't reach collab server — {errorDetail}. Try <0>ok status</0> or check <1>.ok/local/last-spawn-error.log</1>."
-msgstr "Impossible de joindre le serveur de collaboration — {errorDetail}. Essayez <0>ok status</0> ou consultez <1>.ok/local/last-spawn-error.log</1>."
+msgid "Couldn't reach collab server — {errorDetail}. Try <0>{cliCommand} status</0> or check <1>.ok/local/last-spawn-error.log</1>."
+msgstr "Impossible de joindre le serveur de collaboration — {errorDetail}. Essayez <0>{cliCommand} status</0> ou consultez <1>.ok/local/last-spawn-error.log</1>."
 
 #: src/components/PublishToGitHubDialog.tsx
 #: src/lib/share/publish-wizard.ts
@@ -4604,8 +4604,8 @@ msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop
 msgstr "Impossible de redémarrer automatiquement le serveur. Essayez d'exécuter `{cliCommand} stop all` dans un terminal, puis rouvrez ce projet — ou redémarrez votre ordinateur si le problème persiste."
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Couldn't restart the server. Run ok start in this folder to retry."
-msgstr "Impossible de redémarrer le serveur. Exécutez ok start dans ce dossier pour réessayer."
+msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
+msgstr "Impossible de redémarrer le serveur. Exécutez {cliCommand} start dans ce dossier pour réessayer."
 
 #: src/lib/restart-collab-server.ts
 msgid "Couldn't restart the server. Try `{cliCommand} start` in this folder."
@@ -9319,8 +9319,8 @@ msgid "Network error — please try again"
 msgstr "Erreur réseau — veuillez réessayer"
 
 #: src/components/ConnectingBanner.tsx
-msgid "network error (is `ok start` running?)"
-msgstr "erreur réseau (`ok start` est-il en cours d'exécution ?)"
+msgid "network error (is `{cliCommand} start` running?)"
+msgstr "erreur réseau (`{cliCommand} start` est-il en cours d'exécution ?)"
 
 #: src/components/FileTree.tsx
 msgid "Network error during cleanup"
@@ -9608,8 +9608,8 @@ msgid "No chats yet."
 msgstr "Aucune discussion pour le moment."
 
 #: src/components/ConnectingBanner.tsx
-msgid "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
-msgstr "Aucun serveur de collaboration pour ce worktree — exécutez <0>ok start</0> ici, ou rouvrez le projet."
+msgid "No collab server for this worktree — run <0>{cliCommand} start</0> here, or reopen the project."
+msgstr "Aucun serveur de collaboration pour ce worktree — exécutez <0>{cliCommand} start</0> ici, ou rouvrez le projet."
 
 #: src/comments/CommentProjectPanel.tsx
 msgid "No comments in this project yet. Comment on a passage to start one."
@@ -15986,8 +15986,8 @@ msgid "token"
 msgstr "jeton"
 
 #: src/components/settings/AccountSection.tsx
-msgid "Token stored for {login} on {host}. To remove it, run <0>ok auth signout --host {host}</0>."
-msgstr "Jeton enregistré pour {login} sur {host}. Pour le supprimer, exécutez <0>ok auth signout --host {host}</0>."
+msgid "Token stored for {login} on {host}. To remove it, run <0>{cliCommand} auth signout --host {host}</0>."
+msgstr "Jeton enregistré pour {login} sur {host}. Pour le supprimer, exécutez <0>{cliCommand} auth signout --host {host}</0>."
 
 #: src/components/SkillBundlePreview.tsx
 #: src/components/SkillProperties.tsx
@@ -17050,8 +17050,8 @@ msgid "You can add"
 msgstr "Vous pouvez ajouter"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "You can also create one from a terminal with <0>ok bug-report</0>."
-msgstr "Vous pouvez aussi en créer un depuis un terminal avec <0>ok bug-report</0>."
+msgid "You can also create one from a terminal with <0>{cliCommand} bug-report</0>."
+msgstr "Vous pouvez aussi en créer un depuis un terminal avec <0>{cliCommand} bug-report</0>."
 
 #: src/components/TerminalGate.tsx
 msgid "You can also manage this in Settings."

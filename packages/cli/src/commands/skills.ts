@@ -1,5 +1,5 @@
 import { resolve as resolvePath } from 'node:path';
-import { isDetectedSkillInProject } from '@inkeep/open-knowledge-core';
+import { currentCliCommandName, isDetectedSkillInProject } from '@inkeep/open-knowledge-core';
 import { resolveProjectIdentity } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { enumerateInstalledSkills } from '@inkeep/open-knowledge-core/skills-catalog';
 import { findEnclosingProjectRoot, resolveLockDir } from '@inkeep/open-knowledge-server';
@@ -65,7 +65,7 @@ export function skillsCommand(): Command {
       const state = inspectLock(lockDir, 'server');
       if (state.status !== 'alive') {
         process.stderr.write(
-          `${errorColor('Error:')} no running Open Knowledge server for this project. Start it with ${accent('ok start')} and retry.\n`,
+          `${errorColor('Error:')} no running Open Knowledge server for this project. Start it with ${accent(`${currentCliCommandName()} start`)} and retry.\n`,
         );
         process.exitCode = 1;
         return;

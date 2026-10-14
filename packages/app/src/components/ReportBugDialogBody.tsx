@@ -41,6 +41,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { useContactEmail } from '@/hooks/use-contact-email';
 import { bugReportSendManager } from '@/lib/bug-report-send-manager';
 import { formatBundleSize, zipBasename } from '@/lib/bug-report-support';
+import { okCliCommandName } from '@/lib/channel-cli-copy';
 import { commitContactEmail } from '@/lib/contact-email-store';
 import { isImageAttachmentType } from '@/lib/image-attachments';
 import { revealInFileManagerLabel } from '@/lib/platform-labels';
@@ -171,6 +172,7 @@ function ReportBugDialog({
   agentChat,
 }: ReportBugDialogProps) {
   const { t } = useLingui();
+  const cliCommand = okCliCommandName();
   const desktopPlatform = typeof window !== 'undefined' ? window.okDesktop?.platform : undefined;
   const isMacOS = desktopPlatform === 'darwin';
   const [phase, setPhase] = useState<Phase>(COMPOSE_IDLE);
@@ -359,7 +361,7 @@ function ReportBugDialog({
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       <Trans>
                         You can also create one from a terminal with{' '}
-                        <code className="font-mono">ok bug-report</code>.
+                        <code className="font-mono">{cliCommand} bug-report</code>.
                       </Trans>
                     </p>
                   </div>

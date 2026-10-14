@@ -10,7 +10,7 @@ import {
 import { homedir } from 'node:os';
 import { basename, dirname, join, relative, resolve as resolvePath } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { USER_SKILL_HOSTS } from '@inkeep/open-knowledge-core';
+import { currentCliCommandName, USER_SKILL_HOSTS } from '@inkeep/open-knowledge-core';
 import {
   BUNDLE_SKILL_NAME,
   type BundleId,
@@ -807,7 +807,7 @@ function formatRepairSkillsResult(result: RepairSkillsResult): string {
 export function repairSkillsCommand(): Command {
   return new Command('repair-skills')
     .description(
-      'Restore missing project skill copies and repair user-global bundles for installed AI editors. Existing project skills are preserved; run `ok init` to refresh them.',
+      `Restore missing project skill copies and repair user-global bundles for installed AI editors. Existing project skills are preserved; run \`${currentCliCommandName()} init\` to refresh them.`,
     )
     .option(
       '-y, --yes',
@@ -868,7 +868,7 @@ async function confirmLegacyCleanup(
   if (opts.yes) return true;
   if (!input.isTTY) {
     process.stdout.write(
-      `${warning('Not a terminal — skipping cleanup. Re-run with `ok repair-skills --yes` to remove these.')}\n`,
+      `${warning(`Not a terminal — skipping cleanup. Re-run with \`${currentCliCommandName()} repair-skills --yes\` to remove these.`)}\n`,
     );
     return false;
   }

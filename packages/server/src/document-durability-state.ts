@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { currentCliCommandName } from '@inkeep/open-knowledge-core';
 import { atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import {
   tracedMkdirSync,
@@ -190,7 +191,7 @@ export class DocumentDurabilityStateError extends Error {
           ? 'This build does not support the snapshot schema. Preserve the file and restore a compatible backup or contact support to identify a compatible build.'
           : 'Restore this snapshot from a known-good backup, or contact support to recover its protected edits.';
     super(
-      `Cannot safely open this project: its stale-write recovery snapshot is ${kind}${code ? ` [${code}]` : ''} (${path}). The snapshot has been preserved because it may contain the only copy of protected edits. ${recovery} Run ok bug-report from the project directory to collect diagnostics without starting the server. Do not delete it to bypass recovery.`,
+      `Cannot safely open this project: its stale-write recovery snapshot is ${kind}${code ? ` [${code}]` : ''} (${path}). The snapshot has been preserved because it may contain the only copy of protected edits. ${recovery} Run ${currentCliCommandName()} bug-report from the project directory to collect diagnostics without starting the server. Do not delete it to bypass recovery.`,
       { cause },
     );
     this.name = 'DocumentDurabilityStateError';
