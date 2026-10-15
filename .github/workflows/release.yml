@@ -234,6 +234,11 @@ jobs:
         working-directory: packages/app
         run: |
           if grep -q '"i18n:compile"' package.json; then
+            pnpm_config_script_shell=$(command -v bash)
+            if command -v cygpath >/dev/null; then
+              pnpm_config_script_shell=$(cygpath -w "$pnpm_config_script_shell")
+            fi
+            export pnpm_config_script_shell
             pnpm run i18n:compile
           else
             echo "packages/app/package.json defines no i18n:compile script, so this build compiles no i18n catalogs"

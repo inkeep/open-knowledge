@@ -1,5 +1,13 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
@@ -9,6 +17,47 @@ import { smokeHistoricalUpgrade } from './smoke-historical-upgrade.mjs';
 const workflow = parse(
   readFileSync(new URL('../workflows/desktop-release.yml', import.meta.url), 'utf8'),
 );
+const releaseWorkflow = parse(
+  readFileSync(new URL('../workflows/release.yml', import.meta.url), 'utf8'),
+);
+const catalogCompileSteps = [
+  ...Object.entries(workflow.jobs).map(([job, { steps }]) => [`desktop-release ${job}`, steps]),
+  ...Object.entries(releaseWorkflow.jobs).map(([job, { steps }]) => [`release ${job}`, steps]),
+].flatMap(([label, steps]) =>
+  (steps ?? [])
+    .filter((step) => step.name === 'Compile the i18n catalogs from the .po files this build ships')
+    .map((step) => [label, step]),
+);
+
+function runCatalogCompileStep(step, i18nCompile) {
+  const dir = mkdtempSync(join(tmpdir(), 'ok-release-i18n-'));
+  try {
+    const app = join(dir, step['working-directory']);
+    const calls = join(dir, 'calls');
+    mkdirSync(app, { recursive: true });
+    writeFileSync(
+      join(app, 'package.json'),
+      JSON.stringify({ scripts: i18nCompile ? { 'i18n:compile': i18nCompile } : {} }),
+    );
+    const bin = join(dir, 'bin');
+    mkdirSync(bin);
+    writeFileSync(
+      join(bin, 'pnpm'),
+      `#!/bin/sh\necho "pnpm $* with $pnpm_config_script_shell" >> '${calls}'\n`,
+    );
+    chmodSync(join(bin, 'pnpm'), 0o755);
+    const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', step.run], {
+      cwd: app,
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      encoding: 'utf8',
+    });
+    expect(result.status, result.stderr).toBe(0);
+    return existsSync(calls) ? readFileSync(calls, 'utf8').trim().split('\n') : [];
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 const inventoryStep = workflow.jobs['publish-assets'].steps.find(
   (step) => step.name === 'Define the expected asset inventory',
 );
@@ -98,4 +147,36 @@ describe('legacy desktop release compatibility', () => {
     expect(matrices[0].variant).toContain('["stable"]');
     expect(matrices[2].runner).toEqual(['ubuntu-24.04', 'ubuntu-24.04-arm']);
   });
+});
+
+describe('i18n catalog compile against the tag being built', () => {
+  test('every build job compiles its catalogs', () => {
+    expect(catalogCompileSteps.map(([label]) => label)).toEqual([
+      'desktop-release prepare',
+      'desktop-release build-macos',
+      'desktop-release build-windows',
+      'desktop-release build-linux',
+      'release build',
+    ]);
+  });
+
+  test.each(catalogCompileSteps)(
+    '%s runs the compile script through bash, which expands its catalog glob on Windows too',
+    (_label, step) => {
+      const bash = spawnSync('bash', ['-c', 'command -v bash'], { encoding: 'utf8' }).stdout.trim();
+      expect(
+        runCatalogCompileStep(
+          step,
+          'pnpm run i18n:compile:catalogs && biome format --write src/locales/*/messages.json',
+        ),
+      ).toEqual([`pnpm run i18n:compile with ${bash}`]);
+    },
+  );
+
+  test.each(catalogCompileSteps)(
+    '%s compiles nothing for a tag without a compile script',
+    (_label, step) => {
+      expect(runCatalogCompileStep(step, undefined)).toEqual([]);
+    },
+  );
 });
