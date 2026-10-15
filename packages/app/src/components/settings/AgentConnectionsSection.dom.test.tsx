@@ -1216,13 +1216,14 @@ describe('AgentConnectionsSection — connection status and action', () => {
   test('Not connected shows only when the row is on', async () => {
     renderSection(async () => result(snapshotWith([])));
     const onRow = await waitFor(() => terminalRow('claude'));
-    expect(within(onRow).getByText('Not connected')).toBeTruthy();
+    await within(onRow).findByText('Not connected');
 
     cleanup();
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ 'terminal:claude': false }));
     reloadEnabledAgentsFromStorage();
     renderSection(async () => result(snapshotWith([])));
     const offRow = await waitFor(() => terminalRow('claude'));
+    await within(desktopRow('claude-code')).findByText('Not connected');
     expect(within(offRow).queryByText('Not connected')).toBeNull();
     expect(within(offRow).getByRole('switch')).toBeTruthy();
   });
@@ -1243,10 +1244,13 @@ describe('AgentConnectionsSection — connection status and action', () => {
     terminalLaunchValue = { installedClis: {} };
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ 'terminal:hermes': false }));
     reloadEnabledAgentsFromStorage();
-    renderSection(async () => result(snapshotWith([])));
+    const detection = Promise.withResolvers<ApplyAgentConnectionsResult>();
+    renderSection(() => detection.promise);
 
     const row = await screen.findByTestId('configure-agents-terminal-row-hermes');
-    expect(within(row).getByText('Not installed')).toBeTruthy();
+    expect(within(row).queryByText('Not installed')).toBeNull();
+    detection.resolve(result(snapshotWith([])));
+    expect(await within(row).findByText('Not installed')).toBeTruthy();
     expect(
       screen.getByTestId('configure-agents-terminal-hermes').getAttribute('data-disabled'),
     ).toBe('');
@@ -1811,7 +1815,7 @@ describe('AgentConnectionsSection — degraded install-state read', () => {
   test('the action button carries the description itself, not a wrapper', async () => {
     renderSection(async () => result(snapshotWith(diskSatisfierIds('claude'))));
     const row = await waitFor(() => terminalRow('claude'));
-    const status = within(row).getByText('Connected');
+    const status = await within(row).findByText('Connected');
     const manage = within(row).getByRole('button', { name: /^Manage/ });
     expect(manage.getAttribute('aria-describedby')).toBe(status.parentElement?.id ?? status.id);
   });
@@ -1823,7 +1827,7 @@ describe('AgentConnectionsSection — degraded install-state read', () => {
     renderSection(async () => result(snapshotWith([])));
 
     const row = await screen.findByTestId('configure-agents-terminal-row-hermes');
-    const hint = within(row).getByText('Not installed');
+    const hint = await within(row).findByText('Not installed');
     expect(hint.id).toBeTruthy();
     const described =
       screen.getByTestId('configure-agents-terminal-hermes').getAttribute('aria-describedby') ?? '';
