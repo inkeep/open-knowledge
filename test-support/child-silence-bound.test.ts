@@ -110,6 +110,8 @@ describe('runChildWithSilenceBound', () => {
     );
     expect(run.status).toBe(3);
     expect(run.signal).toBeNull();
+    expect(run.stdout).toBe('to stdout\n');
+    expect(run.stderr).toBe('to stderr\n');
     expect(run.output).toBe('to stdout\n\nto stderr\n');
   });
 
