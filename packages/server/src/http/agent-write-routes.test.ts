@@ -57,6 +57,7 @@ function buildGroup(overrides: Partial<Deps> = {}) {
     computeLintViolations: notDispatched,
     log: loggerFactory.getLogger('test'),
     flushDocToGit: notDispatched,
+    flushGitCommit: undefined,
     commitOkArtifactWrite: notDispatched,
     isSafeDocName: notDispatched,
     shadowRef: undefined,

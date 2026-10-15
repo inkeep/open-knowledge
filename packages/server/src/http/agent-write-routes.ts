@@ -212,6 +212,7 @@ export interface AgentWriteRouteDeps {
   ) => Promise<LintViolationWarning[]>;
   log: import('../logger.ts').PinoLogger;
   flushDocToGit: (docName: string, label: string) => void;
+  flushGitCommit: (() => Promise<void>) | undefined;
   commitOkArtifactWrite: (context: string) => Promise<unknown>;
   isSafeDocName: (docName: string) => boolean;
   shadowRef: ShadowRef | undefined;
@@ -258,6 +259,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
     computeLintViolations,
     log,
     flushDocToGit,
+    flushGitCommit,
     commitOkArtifactWrite,
     isSafeDocName,
     shadowRef,
@@ -271,6 +273,18 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
   } = deps;
 
   const versionOpsService = createVersionOpsService({ getCurrentBranch, contentRoot });
+
+  async function storePendingEdits(): Promise<void> {
+    await Promise.all(
+      [...hocuspocus.documents.values()]
+        .filter((document) => !isSystemDoc(document.name) && !isConfigDoc(document.name))
+        .map(async (document) => {
+          await hocuspocus.debouncer.executeNow(`onStoreDocument-${document.name}`);
+          await document.saveMutex.waitForUnlock();
+        }),
+    );
+    await flushGitCommit?.();
+  }
 
   function getSubscriberCount(docName: string): number {
     try {
@@ -1440,6 +1454,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
         const checkpointSummary = normalizeSummary(
           typeof body.summary === 'string' ? body.summary : undefined,
         );
+        await storePendingEdits();
         const result = await versionOpsService.saveCheckpoint(shadow, {
           explicitWriters: writers,
           agentWriter,

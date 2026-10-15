@@ -759,10 +759,15 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   }
 
   async function flushPendingGitCommit(): Promise<void> {
+    if (commitInFlight && (gitCommitTimer || pendingAfterCommit)) {
+      pendingAfterCommit = true;
+      await commitInFlight;
+      return flushPendingGitCommit();
+    }
     if (gitCommitTimer) {
       clearTimeout(gitCommitTimer);
       gitCommitTimer = null;
-      commitInFlight ||= commitToWipRef().finally(() => {
+      commitInFlight = commitToWipRef().finally(() => {
         commitInFlight = null;
         if (pendingAfterCommit) {
           pendingAfterCommit = false;

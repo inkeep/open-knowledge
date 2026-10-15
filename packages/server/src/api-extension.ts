@@ -5518,6 +5518,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     computeLintViolations,
     log,
     flushDocToGit,
+    flushGitCommit,
     commitOkArtifactWrite,
     isSafeDocName,
     shadowRef,
