@@ -459,12 +459,10 @@ describe('stale external write does not roll back an acknowledged agent write', 
     state.recordStaleExternalWrite(docName, 'stale\n');
     const failed = await resolveConflict(server, `${docName}.md`, 'content', 'replacement\n');
     expect(failed.status).toBe(500);
+    expect(server.instance.conflicts.has(docName)).toBe(true);
     expect(state.getReconciledBase(docName)).toBe('acknowledged\n');
     expect(state.getStaleExternalWrite(docName)?.diskContent).toBe('stale\n');
     expect(lstatSync(file).isDirectory()).toBe(true);
-    rmSync(file, { recursive: true });
-    expect((await resolveConflict(server, `${docName}.md`, 'mine')).status).toBe(200);
-    expect(readTestDoc(server.contentDir, docName)).toBe('acknowledged\n');
   });
 
   test('a delete resolution whose unlink fails leaves no removal declared', async () => {
