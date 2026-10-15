@@ -89,6 +89,7 @@ function packedApp() {
     'cli/dist/native/native-config.darwin-arm64.node',
     'app.asar.unpacked/node_modules/@inkeep/open-knowledge/dist/native/index.js',
     'app.asar.unpacked/node_modules/@inkeep/open-knowledge/dist/native/native-config.darwin-arm64.node',
+    'locales/en/messages.json',
   ]) {
     mkdirSync(dirname(join(resources, file)), { recursive: true });
     writeFileSync(join(resources, file), 'x');
