@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
-import { writeFileSync } from 'node:fs';
+import { renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,7 +19,10 @@ export default async function lifetimeGlobalSetup(): Promise<() => Promise<void>
   const receipt = message as { port: number; nonce: string; pid: number };
   const response = await fetch(`http://127.0.0.1:${receipt.port}/identity`);
   if ((await response.text()) !== nonce) throw new Error('owned lifetime endpoint did not serve');
-  writeFileSync(join(runDir, 'lifetime-receipt.json'), JSON.stringify(receipt));
+  const receiptPath = join(runDir, 'lifetime-receipt.json');
+  const temporaryReceiptPath = `${receiptPath}.tmp`;
+  writeFileSync(temporaryReceiptPath, JSON.stringify(receipt));
+  renameSync(temporaryReceiptPath, receiptPath);
 
   if (process.env.OK_PORT_OWNERSHIP_CALLER !== 'lifetime-normal') {
     await new Promise<never>(() => {});
