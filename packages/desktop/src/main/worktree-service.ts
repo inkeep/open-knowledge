@@ -9,7 +9,6 @@ import {
   isBranchNotFoundGitError,
   isLoginFixableGitAuthError,
   isValidBranchName,
-  parseBranchList,
   stripRemotePrefix,
   WORKTREES_PARENT_DIR,
   type WorktreeCreateRequest,
@@ -60,14 +59,13 @@ export async function listWorktreeSelector(
 ): Promise<WorktreeListResult> {
   const worktrees = await listGitWorktrees(anchorPath);
   if (worktrees.length === 0) return { ok: false, reason: 'no-git' };
-  const branches = await listLocalBranches(anchorPath);
-  const remoteBranches = await listRemoteBranches(anchorPath);
-  const behind = await computeBehindCounts(anchorPath, branches, remoteBranches);
+  const refs = await readRefSnapshot(anchorPath);
+  const behind = await computeBehindCounts(anchorPath, worktrees[0]?.path ?? anchorPath, refs);
   const resolvedCurrent = resolveAnchorToplevel(currentProjectPath, worktrees);
   const model = buildWorktreeSelectorModel({
     worktrees,
-    branches,
-    remoteBranches,
+    branches: refs.branches,
+    remoteBranches: refs.remoteBranches,
     behind,
     currentProjectPath: resolvedCurrent,
   });
@@ -415,59 +413,139 @@ function buildAddArgs(args: CreateWorktreeArgs, worktreePath: string): string[] 
   return ['worktree', 'add', worktreePath, '--', branch];
 }
 
-async function listLocalBranches(anchorPath: string): Promise<string[]> {
-  if (!isAbsolute(anchorPath)) return [];
+interface RefSnapshot {
+  readonly branches: readonly string[];
+  readonly remoteBranches: readonly string[];
+  readonly localShas: ReadonlyMap<string, string>;
+  readonly originShas: ReadonlyMap<string, string>;
+}
+
+const EMPTY_REF_SNAPSHOT: RefSnapshot = {
+  branches: [],
+  remoteBranches: [],
+  localShas: new Map(),
+  originShas: new Map(),
+};
+
+const REF_LIST_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
+const REF_LIST_TIMEOUT_MS = 15_000;
+const BEHIND_COUNT_TIMEOUT_MS = 30_000;
+const LOCAL_REF_PREFIX = 'refs/heads/';
+const REMOTE_REF_PREFIX = 'refs/remotes/';
+const ORIGIN_PREFIX = 'origin/';
+
+async function readRefSnapshot(anchorPath: string): Promise<RefSnapshot> {
+  if (!isAbsolute(anchorPath)) return EMPTY_REF_SNAPSHOT;
+  let stdout: string;
   try {
-    const { stdout } = await execFileAsync(
+    const result = await execFileAsync(
       'git',
-      ['for-each-ref', '--format=%(refname:short)', 'refs/heads/'],
-      { cwd: anchorPath, env: gitSpawnEnv(), windowsHide: true },
+      ['for-each-ref', '--format=%(objectname) %(refname)', LOCAL_REF_PREFIX, REMOTE_REF_PREFIX],
+      {
+        cwd: anchorPath,
+        env: gitSpawnEnv(),
+        maxBuffer: REF_LIST_MAX_BUFFER_BYTES,
+        timeout: REF_LIST_TIMEOUT_MS,
+        windowsHide: true,
+      },
     );
-    return parseBranchList(String(stdout));
+    stdout = String(result.stdout);
   } catch {
-    return [];
+    return EMPTY_REF_SNAPSHOT;
+  }
+  const branches: string[] = [];
+  const remoteBranches: string[] = [];
+  const localShas = new Map<string, string>();
+  const originShas = new Map<string, string>();
+  for (const rawLine of stdout.split('\n')) {
+    const line = rawLine.replace(/\r$/, '');
+    const space = line.indexOf(' ');
+    if (space === -1) continue;
+    const sha = line.slice(0, space);
+    const refname = line.slice(space + 1);
+    if (refname.startsWith(LOCAL_REF_PREFIX)) {
+      const branch = refname.slice(LOCAL_REF_PREFIX.length);
+      if (branch.length === 0) continue;
+      branches.push(branch);
+      localShas.set(branch, sha);
+    } else if (refname.startsWith(REMOTE_REF_PREFIX)) {
+      const ref = refname.slice(REMOTE_REF_PREFIX.length);
+      if (!ref.includes('/') || stripRemotePrefix(ref) === 'HEAD') continue;
+      remoteBranches.push(ref);
+      if (ref.startsWith(ORIGIN_PREFIX)) originShas.set(ref.slice(ORIGIN_PREFIX.length), sha);
+    }
+  }
+  return { branches, remoteBranches, localShas, originShas };
+}
+
+const BEHIND_COUNT_CONCURRENCY = 8;
+let activeBehindCounts = 0;
+const behindCountWaiters: (() => void)[] = [];
+const behindCountCache = new Map<string, Map<string, Promise<number | null>>>();
+
+async function withBehindCountSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (activeBehindCounts < BEHIND_COUNT_CONCURRENCY) {
+    activeBehindCounts += 1;
+  } else {
+    await new Promise<void>((resolve) => behindCountWaiters.push(resolve));
+  }
+  try {
+    return await run();
+  } finally {
+    const next = behindCountWaiters.shift();
+    if (next) next();
+    else activeBehindCounts -= 1;
   }
 }
 
-async function listRemoteBranches(anchorPath: string): Promise<string[]> {
-  if (!isAbsolute(anchorPath)) return [];
+async function countCommitsInRange(anchorPath: string, range: string): Promise<number | null> {
   try {
-    const { stdout } = await execFileAsync(
-      'git',
-      ['for-each-ref', '--format=%(refname:short)', 'refs/remotes/'],
-      { cwd: anchorPath, env: gitSpawnEnv(), windowsHide: true },
-    );
-    return parseBranchList(String(stdout)).filter(
-      (ref) => ref.includes('/') && stripRemotePrefix(ref) !== 'HEAD',
-    );
+    const { stdout } = await execFileAsync('git', ['rev-list', '--count', range], {
+      cwd: anchorPath,
+      env: gitSpawnEnv(),
+      timeout: BEHIND_COUNT_TIMEOUT_MS,
+      windowsHide: true,
+    });
+    const n = Number.parseInt(String(stdout).trim(), 10);
+    return Number.isFinite(n) && n >= 0 ? n : null;
   } catch {
-    return [];
+    return null;
   }
 }
 
 async function computeBehindCounts(
   anchorPath: string,
-  branches: readonly string[],
-  remoteBranches: readonly string[],
+  repositoryRoot: string,
+  refs: RefSnapshot,
 ): Promise<Record<string, number>> {
   if (!isAbsolute(anchorPath)) return {};
-  const remoteRefSet = new Set(remoteBranches);
+  const previous = behindCountCache.get(repositoryRoot);
+  const current = new Map<string, Promise<number | null>>();
+  behindCountCache.set(repositoryRoot, current);
   const out: Record<string, number> = {};
-  await Promise.all(
-    branches.map(async (branch) => {
-      const upstream = `origin/${branch}`;
-      if (!remoteRefSet.has(upstream)) return;
-      try {
-        const { stdout } = await execFileAsync(
-          'git',
-          ['rev-list', '--count', `${branch}..${upstream}`],
-          { cwd: anchorPath, env: gitSpawnEnv(), windowsHide: true },
-        );
-        const n = Number.parseInt(String(stdout).trim(), 10);
-        if (Number.isFinite(n) && n >= 0) out[branch] = n;
-      } catch {}
-    }),
-  );
+  const settled: Promise<void>[] = [];
+  for (const branch of refs.branches) {
+    const localSha = refs.localShas.get(branch);
+    const originSha = refs.originShas.get(branch);
+    if (localSha === undefined || originSha === undefined) continue;
+    const range = `${localSha}..${originSha}`;
+    const count =
+      current.get(range) ??
+      previous?.get(range) ??
+      withBehindCountSlot(() => countCommitsInRange(anchorPath, range));
+    current.set(range, count);
+    settled.push(
+      count.then((n) => {
+        if (n !== null) {
+          out[branch] = n;
+          return;
+        }
+        const cache = behindCountCache.get(repositoryRoot);
+        if (cache?.get(range) === count) cache.delete(range);
+      }),
+    );
+  }
+  await Promise.all(settled);
   return out;
 }
 

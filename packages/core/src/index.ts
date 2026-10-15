@@ -756,7 +756,6 @@ export {
   FrontmatterDeltaSchema,
   type PropertyChange,
 } from './frontmatter-diff.ts';
-export { parseBranchList } from './git/branch-list-parser.ts';
 export {
   agentToolDirs,
   augmentAgentSpawnPath,

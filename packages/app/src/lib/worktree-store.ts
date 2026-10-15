@@ -9,13 +9,20 @@ export interface WorktreeStore {
 interface WorktreeStoreDeps {
   fetchModel: () => Promise<WorktreeSelectorModel | null>;
   subscribeRevalidate?: (onRevalidate: () => void) => () => void;
+  minRevalidateIntervalMs?: number;
+  now?: () => number;
 }
+
+const REVALIDATE_MIN_INTERVAL_MS = 2_000;
 
 export function createWorktreeStore(deps: WorktreeStoreDeps): WorktreeStore {
   let model: WorktreeSelectorModel | null = null;
   let bootstrapped = false;
   let inFlight = false;
   let reloadQueued = false;
+  let lastLoadStartedAt = Number.NEGATIVE_INFINITY;
+  const now = deps.now ?? (() => performance.now());
+  const minRevalidateIntervalMs = deps.minRevalidateIntervalMs ?? 0;
   let revalidateUnsub: (() => void) | null = null;
   const listeners = new Set<() => void>();
 
@@ -29,6 +36,7 @@ export function createWorktreeStore(deps: WorktreeStoreDeps): WorktreeStore {
       return;
     }
     inFlight = true;
+    lastLoadStartedAt = now();
     try {
       const next = await deps.fetchModel();
       if (next !== null && next !== model) {
@@ -45,6 +53,11 @@ export function createWorktreeStore(deps: WorktreeStoreDeps): WorktreeStore {
     }
   }
 
+  function revalidate(): void {
+    if (now() - lastLoadStartedAt < minRevalidateIntervalMs) return;
+    void load();
+  }
+
   return {
     getSnapshot: () => model,
     subscribe(listener) {
@@ -54,9 +67,7 @@ export function createWorktreeStore(deps: WorktreeStoreDeps): WorktreeStore {
         void load();
       }
       if (deps.subscribeRevalidate && revalidateUnsub === null) {
-        revalidateUnsub = deps.subscribeRevalidate(() => {
-          void load();
-        });
+        revalidateUnsub = deps.subscribeRevalidate(revalidate);
       }
       return () => {
         listeners.delete(listener);
@@ -97,6 +108,7 @@ const productionStore: WorktreeStore =
     : createWorktreeStore({
         fetchModel: fetchWorktreeModel,
         subscribeRevalidate: subscribeBrowserRevalidate,
+        minRevalidateIntervalMs: REVALIDATE_MIN_INTERVAL_MS,
       });
 
 export const subscribeToWorktrees = productionStore.subscribe;

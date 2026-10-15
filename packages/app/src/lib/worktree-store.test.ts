@@ -194,4 +194,45 @@ describe('createWorktreeStore', () => {
     expect(fetchModel).toHaveBeenCalledTimes(2);
     expect(store.getSnapshot()?.mainRoot).toBe('/repo-revalidated');
   });
+
+  test('revalidations inside the minimum interval are dropped, and refresh() still reloads at once', async () => {
+    let clock = 1_000;
+    const fetchModel = vi.fn(() => Promise.resolve(model('/repo')));
+    let fireRevalidate: (() => void) | null = null;
+    const subscribeRevalidate = vi.fn((onRevalidate: () => void) => {
+      fireRevalidate = onRevalidate;
+      return () => {};
+    });
+    const store = createWorktreeStore({
+      fetchModel,
+      subscribeRevalidate,
+      minRevalidateIntervalMs: 10_000,
+      now: () => clock,
+    });
+    store.subscribe(() => {});
+    await flush();
+    expect(fetchModel).toHaveBeenCalledTimes(1);
+
+    for (let i = 0; i < 5; i += 1) {
+      clock += 1_000;
+      fireRevalidate?.();
+      fireRevalidate?.();
+      await flush();
+    }
+    expect(fetchModel).toHaveBeenCalledTimes(1);
+
+    store.refresh();
+    await flush();
+    expect(fetchModel).toHaveBeenCalledTimes(2);
+
+    clock += 9_999;
+    fireRevalidate?.();
+    await flush();
+    expect(fetchModel).toHaveBeenCalledTimes(2);
+
+    clock += 1;
+    fireRevalidate?.();
+    await flush();
+    expect(fetchModel).toHaveBeenCalledTimes(3);
+  });
 });
