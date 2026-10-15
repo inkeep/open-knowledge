@@ -2654,8 +2654,6 @@ describe('shadow repo excludes a git dir that lives inside the work tree under a
     writeFileSync(resolve(nlRoot, 'intro.md'), '# Hello\n');
     const nlShadow = await initShadowRepo(nlRoot);
 
-    for (const pattern of gitDirExcludePatterns(nlShadow)) {
-      expect(pattern).not.toContain('\n');
-    }
+    expect(gitDirExcludePatterns(nlShadow)).toEqual([]);
   });
 });
