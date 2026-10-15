@@ -9,8 +9,10 @@ import { afterAll, describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
 import { NOTES_SOURCE_MARKER, renderStableNotes } from '../../scripts/render-stable-notes.mjs';
+import { configureTestGitRepository } from '../../test-support/configure-git-fixture.test-helper.ts';
 import { buildSlackPayload } from './build-smoke-alert-payload.mjs';
 import { execFileSync } from './child-tripwire.test-helper.mjs';
+import { expectNoAutomaticGitMaintenance } from './git-fixture-maintenance.test-helper.mjs';
 import { selectPromotion } from './select-beta-to-promote.mjs';
 import { smokePackagedDmg, VERDICT } from './smoke-packaged-dmg.mjs';
 import { credentialReasons, holdsCredential } from './workflow-credentials.test-helper.mjs';
@@ -2613,6 +2615,8 @@ describe('the release App credential never shares a job with installed packages'
         const env = gitCleanEnv();
         const git = (...args) => execFileSync('git', args, { cwd: repo, env, encoding: 'utf8' });
         git('init', '-q', '-b', 'main');
+        env.GIT_TRACE2_EVENT = join(repo, '.git', 'fixture-maintenance.jsonl');
+        configureTestGitRepository(repo, (args) => git(...args));
         for (const [tag, date] of [
           ['v0.86.1', '2026-01-01T00:00:00Z'],
           ['v0.86.10', '2026-01-02T00:00:00Z'],
@@ -2639,6 +2643,7 @@ describe('the release App credential never shares a job with installed packages'
           expect(refused.status, base).toBe(1);
           expect(refused.stdout).toMatch(/^::error::The build job numbered this beta from base .* does not lead the newest stable tag v0\.86\.10: .*Re-run all jobs/m);
         }
+        expectNoAutomaticGitMaintenance(repo, env);
       } finally {
         rmSync(repo, { recursive: true, force: true });
       }

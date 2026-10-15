@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from 'vitest';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
+import { configureTestGitRepository } from '../../test-support/configure-git-fixture.test-helper.ts';
+import { expectNoAutomaticGitMaintenance } from './git-fixture-maintenance.test-helper.mjs';
 
 test('the operator CLI resolves only published desktop releases and fails closed on API errors', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'ok-shipped-cli-'));
@@ -13,6 +15,8 @@ test('the operator CLI resolves only published desktop releases and fails closed
     execFileSync('git', args, { cwd, env, encoding: 'utf8', stdio: 'pipe' }).trim();
   try {
     git('init', '--quiet');
+    env.GIT_TRACE2_EVENT = join(cwd, '.git', 'fixture-maintenance.jsonl');
+    configureTestGitRepository(cwd, (args) => git(...args));
     git(
       '-c',
       'user.name=Test',
@@ -57,6 +61,7 @@ console.log(${JSON.stringify(releases.map((r) => JSON.stringify(r)).join('\n'))}
     const failure = run({ TEST_API_FAILURE: 'true' });
     expect(failure.status).toBe(1);
     expect(failure.stdout).toBe('');
+    expectNoAutomaticGitMaintenance(cwd, env);
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }

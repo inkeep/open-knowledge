@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
+import { configureTestGitRepository } from '../../test-support/configure-git-fixture.test-helper.ts';
 import * as bridge from './bridge-public-pr-to-monorepo.mjs';
 import {
   applyPatchWithConflictDetection,
@@ -19,6 +20,7 @@ import {
   readCommitClaStatus,
   syncPublicPr,
 } from './bridge-public-pr-to-monorepo.mjs';
+import { expectNoAutomaticGitMaintenance } from './git-fixture-maintenance.test-helper.mjs';
 
 const fakeRequest = (response) => {
   const calls = [];
@@ -355,13 +357,22 @@ describe('createClaGateGh', () => {
 });
 
 const git = (dir, ...args) =>
-  execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', env: gitCleanEnv() }).trim();
+  execFileSync('git', ['-C', dir, ...args], {
+    encoding: 'utf8',
+    env: {
+      ...gitCleanEnv(),
+      ...(existsSync(path.join(dir, '.git'))
+        ? { GIT_TRACE2_EVENT: path.join(dir, '.git', 'fixture-maintenance.jsonl') }
+        : {}),
+    },
+  }).trim();
 
 function setupBridgeRepo({ baseContent, oursContent, theirsContent }) {
   const root = mkdtempSync(path.join(tmpdir(), 'bridge-canary-'));
   const repoDir = path.join(root, 'repo');
   mkdirSync(repoDir);
   git(repoDir, 'init', '-q');
+  configureTestGitRepository(repoDir, (args) => git(repoDir, ...args));
   git(repoDir, 'config', 'user.email', 'canary@test.local');
   git(repoDir, 'config', 'user.name', 'canary');
   writeFileSync(path.join(repoDir, 'f.ts'), baseContent);
@@ -431,6 +442,7 @@ describe('applyPatchWithConflictDetection (graceful conflict routing canary)', (
     const repoDir = path.join(root, 'repo');
     mkdirSync(repoDir);
     git(repoDir, 'init', '-q');
+    configureTestGitRepository(repoDir, (args) => git(repoDir, ...args));
     git(repoDir, 'config', 'user.email', 'canary@test.local');
     git(repoDir, 'config', 'user.name', 'canary');
     writeFileSync(path.join(repoDir, 'f.ts'), STRIPPED_BASE);
@@ -453,6 +465,7 @@ describe('applyPatchWithConflictDetection (graceful conflict routing canary)', (
       expect(result.outcome).toBe('failed');
       expect(result.conflictedPaths).toHaveLength(0);
       expect(result.message).toBeTruthy();
+      expectNoAutomaticGitMaintenance(repoDir);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -867,7 +880,9 @@ function setupSyncRepo({ sourceContent = 'updated\n', mapForkToSource = true } =
   const internal = path.join(root, 'internal');
   const branch = 'public-pr/open-knowledge-310';
   git(root, 'init', '--bare', '--initial-branch=main', remote);
+  configureTestGitRepository(remote, (args) => git(root, ...args));
   git(root, 'init', '--initial-branch=main', internal);
+  configureTestGitRepository(internal, (args) => git(root, ...args));
   git(internal, 'config', 'user.name', 'Fixture');
   git(internal, 'config', 'user.email', 'fixture@example.test');
   mkdirSync(path.join(internal, 'public/open-knowledge'), { recursive: true });
@@ -886,7 +901,9 @@ function setupSyncRepo({ sourceContent = 'updated\n', mapForkToSource = true } =
   const source = path.join(root, 'public');
   const sourceRepoDir = path.join(root, 'public.git');
   git(root, 'init', '--bare', '--initial-branch=main', sourceRepoDir);
+  configureTestGitRepository(sourceRepoDir, (args) => git(root, ...args));
   git(root, 'init', '--initial-branch=main', source);
+  configureTestGitRepository(source, (args) => git(root, ...args));
   git(source, 'config', 'user.name', 'Contributor');
   git(source, 'config', 'user.email', 'contributor@example.test');
   writeFileSync(path.join(source, 'fixture.txt'), 'base\n');
@@ -945,7 +962,9 @@ function setupForkOnlySyncRepo() {
   const fork = path.join(fixture.root, 'fork');
   const forkRepoDir = path.join(fixture.root, 'fork.git');
   git(fixture.root, 'init', '--bare', '--initial-branch=main', forkRepoDir);
+  configureTestGitRepository(forkRepoDir, (args) => git(fixture.root, ...args));
   git(fixture.root, 'clone', fixture.sourceRepoDir, fork);
+  configureTestGitRepository(fork, (args) => git(fixture.root, ...args));
   git(fork, 'config', 'user.name', 'Fork Contributor');
   git(fork, 'config', 'user.email', 'fork@example.test');
   writeFileSync(path.join(fork, 'fixture.txt'), 'fork-only\n');
@@ -962,6 +981,20 @@ function setupForkOnlySyncRepo() {
   );
   return { ...fixture, forkHead };
 }
+
+test.each([
+  ['patch', () => setupBridgeRepo({ baseContent: 'base\n', oursContent: 'ours\n', theirsContent: 'theirs\n' }), (fixture) => fixture.repoDir],
+  ['sync internal', () => setupSyncRepo(), (fixture) => fixture.internal],
+  ['sync public', () => setupSyncRepo(), (fixture) => fixture.source],
+  ['fork', () => setupForkOnlySyncRepo(), (fixture) => path.join(fixture.root, 'fork')],
+])('bridge fixture Git operations do not launch automatic maintenance: %s', (_name, create, repository) => {
+  const fixture = create();
+  try {
+    expect(() => expectNoAutomaticGitMaintenance(repository(fixture))).not.toThrow();
+  } finally {
+    fixture.cleanup();
+  }
+});
 
 async function captureBridgeLogs(action) {
   const logs = [];

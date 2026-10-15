@@ -8,6 +8,8 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { gitAt, withBumpVerdicts } from '../../scripts/compute-stable-version.mjs';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
 import { NOTES_SOURCE_MARKER, withNoteLevels } from '../../scripts/render-stable-notes.mjs';
+import { configureTestGitRepository } from '../../test-support/configure-git-fixture.test-helper.ts';
+import { expectNoAutomaticGitMaintenance } from './git-fixture-maintenance.test-helper.mjs';
 import {
   APP_CREDENTIAL_HELPER,
   deriveEntryLevelResolution,
@@ -1933,7 +1935,11 @@ describe('a bump read in one job is found by blob in the other', () => {
   const git = (cwd, ...args) => {
     const res = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
       cwd,
-      env: gitCleanEnv(),
+      env: {
+        ...gitCleanEnv(),
+        GIT_TRACE2_EVENT:
+          args[0] === 'init' ? undefined : join(cwd, '.git', 'fixture-maintenance.jsonl'),
+      },
       encoding: 'utf8',
     });
     if (res.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${res.stderr}`);
@@ -1948,6 +1954,7 @@ describe('a bump read in one job is found by blob in the other', () => {
     const root = mkdtempSync(join(tmpdir(), 'point-release-bumps-'));
     roots.push(root);
     git(root, 'init', '-q', '-b', 'main');
+    configureTestGitRepository(root, (args) => git(root, ...args));
     changeset(root, 'keep-a', 'patch');
     git(root, 'add', '-A');
     git(root, 'commit', '-q', '-m', 'stable');
@@ -1978,6 +1985,7 @@ describe('a bump read in one job is found by blob in the other', () => {
       verdicts,
     );
     expect(releaseJob.bumpTypeOf(synthetic, 'shiny-fix')).toBe('minor');
+    expectNoAutomaticGitMaintenance(root);
   });
 });
 
@@ -1996,7 +2004,11 @@ describe('the production entry points the release workflows run', () => {
   const git = (cwd, ...args) => {
     const res = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
       cwd,
-      env: gitCleanEnv(),
+      env: {
+        ...gitCleanEnv(),
+        GIT_TRACE2_EVENT:
+          args[0] === 'init' ? undefined : join(cwd, '.git', 'fixture-maintenance.jsonl'),
+      },
       encoding: 'utf8',
     });
     if (res.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${res.stderr}`);
@@ -2009,6 +2021,7 @@ describe('the production entry points the release workflows run', () => {
       writeFileSync(join(root, '.changeset', `${id}.md`), `---\n"@inkeep/open-knowledge": ${type}\n---\n\nA change.\n`);
     };
     git(root, 'init', '-q', '-b', 'main');
+    configureTestGitRepository(root, (args) => git(root, ...args));
     changeset('keep-a', 'patch');
     if (config) {
       writeFileSync(
@@ -2059,6 +2072,11 @@ describe('the production entry points the release workflows run', () => {
       'origin',
       'v9.9.9',
     ]);
+  });
+
+  test('fixture Git operations do not launch automatic maintenance', () => {
+    const { root } = fixRepo('minor');
+    expect(() => expectNoAutomaticGitMaintenance(root)).not.toThrow();
   });
 
   test('--read-bumps writes the bump and note level of each changeset a fix ref writes, keyed by blob id', () => {

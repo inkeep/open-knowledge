@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 import { computeStablePromotion, withBumpVerdicts } from '../../scripts/compute-stable-version.mjs';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
+import { configureTestGitRepository } from '../../test-support/configure-git-fixture.test-helper.ts';
+import { expectNoAutomaticGitMaintenance } from './git-fixture-maintenance.test-helper.mjs';
 import {
   evaluateFastTier,
   makeResolveChangesetPrUrl,
@@ -580,9 +582,19 @@ function makeRepoWithChangesets(commits) {
         'commit.gpgsign=false',
         ...args,
       ],
-      { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: gitCleanEnv() },
+      {
+        cwd: dir,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...gitCleanEnv(),
+          GIT_TRACE2_EVENT:
+            args[0] === 'init' ? undefined : join(dir, '.git', 'fixture-maintenance.jsonl'),
+        },
+      },
     );
   git('init', '--quiet', '--initial-branch=main');
+  configureTestGitRepository(dir, (args) => git(...args));
   execFileSync('mkdir', ['-p', join(dir, '.changeset')]);
   for (const { id, subject } of commits) {
     writeFileSync(
@@ -594,6 +606,11 @@ function makeRepoWithChangesets(commits) {
   }
   return dir;
 }
+
+test('changeset fixture Git operations do not launch automatic maintenance', () => {
+  const repository = makeRepoWithChangesets([{ id: 'fix', subject: 'fix: fixture' }]);
+  expect(() => expectNoAutomaticGitMaintenance(repository)).not.toThrow();
+});
 
 describe('screenShippedFixes (no dispatch promote-stable would refuse)', () => {
   const refused = (candidate) => ({
@@ -972,7 +989,11 @@ describe('the selector entry points the two jobs run', () => {
     execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], {
       cwd,
       encoding: 'utf8',
-      env: gitCleanEnv(),
+      env: {
+        ...gitCleanEnv(),
+        GIT_TRACE2_EVENT:
+          args[0] === 'init' ? undefined : join(cwd, '.git', 'fixture-maintenance.jsonl'),
+      },
     }).trim();
   const betaRepo = () => {
     const root = scratch('select-beta-entry-');
@@ -984,6 +1005,7 @@ describe('the selector entry points the two jobs run', () => {
       git(root, 'tag', tag);
     };
     git(root, 'init', '-q', '-b', 'main');
+    configureTestGitRepository(root, (args) => git(root, ...args));
     commit('keep', 'patch', 'chore: the shipped change (#100)', 'v1.0.0');
     commit('fix-crash', 'patch', 'fix: stop the crash (#201)', 'v1.0.1-beta.0');
     commit('new-thing', 'minor', 'feat: a new thing (#202)', 'v1.1.0-beta.0');
@@ -1061,6 +1083,11 @@ describe('the selector entry points the two jobs run', () => {
   };
   const readBumps = (root) =>
     run(SCRIPT, root, { args: ['--read-bumps'], bin: ghBin('#!/bin/sh\necho "the reader job must not call gh" >&2\nexit 97\n') });
+
+  test('fixture Git operations do not launch automatic maintenance', () => {
+    const { root } = betaRepo();
+    expect(() => expectNoAutomaticGitMaintenance(root)).not.toThrow();
+  });
 
   test('--read-bumps writes the bump of every changeset an unshipped beta adds, keyed by blob id, without gh', () => {
     const { root, blobs } = betaRepo();

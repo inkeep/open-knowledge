@@ -14,12 +14,14 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
+import { configureTestGitRepository } from '../../test-support/configure-git-fixture.test-helper.ts';
 import {
   deriveReleaseStamp,
   formatOutputLines,
   parseReleaseTag,
   previousStableTag,
 } from './derive-release-stamp.mjs';
+import { expectNoAutomaticGitMaintenance } from './git-fixture-maintenance.test-helper.mjs';
 
 const TAGS = [
   'v0.35.0',
@@ -251,6 +253,8 @@ function makeReleaseRepo() {
       { cwd: dir, encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] },
     ).trim();
   git('init', '--quiet', '--initial-branch=main');
+  env.GIT_TRACE2_EVENT = join(dir, '.git', 'fixture-maintenance.jsonl');
+  configureTestGitRepository(dir, (args) => git(...args));
   const bin = join(dir, '.git', 'test-bin');
   mkdirSync(bin);
   writeFileSync(
@@ -285,6 +289,12 @@ for (const tag_name of execFileSync('git', ['tag', '--list'], {encoding:'utf8'})
     );
   return { dir, git, commit, run, env };
 }
+
+test('release fixture Git operations do not launch automatic maintenance', () => {
+  const repository = makeReleaseRepo();
+  repository.commit('fixture');
+  expect(() => expectNoAutomaticGitMaintenance(repository.dir, repository.env)).not.toThrow();
+});
 
 describe('release scan bounds with real Git histories', () => {
   test('recovery scans every unpublished beta and refuses writeback before publication', () => {

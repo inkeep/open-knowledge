@@ -5,6 +5,8 @@ import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
+import { configureTestGitRepository } from '../../test-support/configure-git-fixture.test-helper.ts';
+import { expectNoAutomaticGitMaintenance } from './git-fixture-maintenance.test-helper.mjs';
 import {
   appliedOrigins,
   COVERAGE,
@@ -33,6 +35,7 @@ afterAll(() => {
 function makeRepo() {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-shipped-fix-')));
   scratch.push(dir);
+  const fixtureEnv = gitCleanEnv();
   const git = (args, { env = {}, input } = {}) =>
     execFileSync(
       'git',
@@ -47,9 +50,11 @@ function makeRepo() {
         'tag.gpgsign=false',
         ...args,
       ],
-      { cwd: dir, env: { ...gitCleanEnv(), ...env }, encoding: 'utf8', input, stdio: 'pipe' },
+      { cwd: dir, env: { ...fixtureEnv, ...env }, encoding: 'utf8', input, stdio: 'pipe' },
     ).trim();
   git(['init', '--quiet', '--initial-branch=main']);
+  fixtureEnv.GIT_TRACE2_EVENT = join(dir, '.git', 'fixture-maintenance.jsonl');
+  configureTestGitRepository(dir, (args) => git(args));
   const commit = ({
     files = {},
     message,
@@ -72,6 +77,12 @@ function makeRepo() {
   };
   return { dir, git, commit };
 }
+
+test('shipped-fix fixture Git operations do not launch automatic maintenance', () => {
+  const repository = makeRepo();
+  repository.commit({ message: 'fixture' });
+  expect(() => expectNoAutomaticGitMaintenance(repository.dir)).not.toThrow();
+});
 
 const AUTOSAVE = {
   message: 'fix: keep autosave working (#11)\n\nBody one.',

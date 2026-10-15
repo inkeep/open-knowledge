@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
+import { configureTestGitRepository } from '../../test-support/configure-git-fixture.test-helper.ts';
+import { expectNoAutomaticGitMaintenance } from './git-fixture-maintenance.test-helper.mjs';
 
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const OK_ROOT = join(SCRIPTS, '..', '..');
@@ -136,6 +138,7 @@ describe('direct recovery: desktop-release refuses a stable in prepare', () => {
   test('the archived guard runs on its own against a tag checkout that predates it', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'ok-shipped-fix-archive-')));
     scratch.push(root);
+    const env = gitCleanEnv();
     const git = (...args) =>
       execFileSync(
         'git',
@@ -148,10 +151,12 @@ describe('direct recovery: desktop-release refuses a stable in prepare', () => {
           'commit.gpgsign=false',
           ...args,
         ],
-        { cwd: join(root, 'checkout'), env: gitCleanEnv(), encoding: 'utf8' },
+        { cwd: join(root, 'checkout'), env, encoding: 'utf8' },
       ).trim();
     mkdirSync(join(root, 'checkout'));
     git('init', '-q', '-b', 'main');
+    env.GIT_TRACE2_EVENT = join(root, 'checkout', '.git', 'fixture-maintenance.jsonl');
+    configureTestGitRepository(join(root, 'checkout'), (args) => git(...args));
     writeFileSync(join(root, 'checkout', 'notes.txt'), 'first\n');
     git('add', '-A');
     git('commit', '-q', '-m', 'Initial (#1)');
@@ -185,6 +190,7 @@ describe('direct recovery: desktop-release refuses a stable in prepare', () => {
     expect(refused.stdout).toContain(
       '::error::refs/tags/v1.0.0 lacks 1 fix that a published stable already shipped: #2 (v1.0.1).',
     );
+    expectNoAutomaticGitMaintenance(join(root, 'checkout'), env);
   });
 });
 

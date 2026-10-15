@@ -14,6 +14,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
+import { configureTestGitRepository } from '../../test-support/configure-git-fixture.test-helper.ts';
+import { expectNoAutomaticGitMaintenance } from './git-fixture-maintenance.test-helper.mjs';
 import {
   DEFAULT_CANDIDATE_LIMIT,
   describeNoSelection,
@@ -426,6 +428,8 @@ describe('git boundary', () => {
           { cwd: repo, encoding: 'utf8', env },
         ).stdout.trim();
       git('init', '--quiet', '--initial-branch=main');
+      env.GIT_TRACE2_EVENT = join(repo, '.git', 'fixture-maintenance.jsonl');
+      configureTestGitRepository(repo, (args) => git(...args));
       git('commit', '--quiet', '--allow-empty', '-m', 'before native-config');
       const first = git('rev-parse', 'HEAD');
       mkdirSync(join(repo, 'packages', 'native-config'), { recursive: true });
@@ -447,6 +451,7 @@ describe('git boundary', () => {
         spawnSync(cmd, args, { ...options, cwd: outside, env });
       expect(() => makeIsAncestor(inNoRepo)(first, 'HEAD')).toThrow('not a git repository');
       expect(() => makeTreeAt(inNoRepo)('HEAD')).toThrow('not a git repository');
+      expectNoAutomaticGitMaintenance(repo, env);
     } finally {
       rmSync(repo, { recursive: true, force: true });
       rmSync(outside, { recursive: true, force: true });

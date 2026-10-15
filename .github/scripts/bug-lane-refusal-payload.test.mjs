@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
-
+import { configureTestGitRepository } from '../../test-support/configure-git-fixture.test-helper.ts';
 import {
   actionLine,
   buildHeadline,
@@ -28,6 +28,7 @@ import {
   parseArgs,
   reasonPhrase,
 } from './bug-lane-refusal-payload.mjs';
+import { expectNoAutomaticGitMaintenance } from './git-fixture-maintenance.test-helper.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const bugLane = readFileSync(join(REPO_ROOT, '.github', 'workflows', 'bug-lane.yml'), 'utf8');
@@ -846,6 +847,8 @@ describe('the page a failed toolchain install sends', () => {
         { cwd: repo, env, encoding: 'utf8' },
       ).trim();
     git('init', '-q');
+    env.GIT_TRACE2_EVENT = join(repo, '.git', 'fixture-maintenance.jsonl');
+    configureTestGitRepository(repo, (args) => git(...args));
     writeFileSync(join(repo, 'stable.txt'), 'stable\n');
     git('add', '-A');
     git('commit', '-qm', 'stable');
@@ -957,5 +960,6 @@ describe('the page a failed toolchain install sends', () => {
     expect(whole).toMatch(/toolchain|\brust/i);
     expect(payload.text).not.toMatch(TIMEOUT_CAUSE);
     expect(whole).not.toMatch(TIMEOUT_CAUSE);
+    expectNoAutomaticGitMaintenance(repo, env);
   });
 });

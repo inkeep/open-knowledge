@@ -5,7 +5,9 @@ import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
+import { configureTestGitRepository } from '../../test-support/configure-git-fixture.test-helper.ts';
 import { evaluateBugLane, holdBugLaneBatch, makeIsInStable, readPendingBumps } from './bug-lane.mjs';
+import { expectNoAutomaticGitMaintenance } from './git-fixture-maintenance.test-helper.mjs';
 
 const FIX_A = 'a'.repeat(40);
 const FIX_B = 'b'.repeat(40);
@@ -187,12 +189,21 @@ describe('makeIsInStable', () => {
   let laterOnMain;
 
   const git = (...args) =>
-    execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: gitCleanEnv() }).trim();
+    execFileSync('git', args, {
+      cwd: dir,
+      encoding: 'utf8',
+      env: {
+        ...gitCleanEnv(),
+        GIT_TRACE2_EVENT:
+          args[0] === 'init' ? undefined : join(dir, '.git', 'fixture-maintenance.jsonl'),
+      },
+    }).trim();
   const inRepo = (args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8', env: gitCleanEnv() });
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), 'ok-bug-lane-containment-'));
     git('init', '--initial-branch=main', '--quiet');
+    configureTestGitRepository(dir, (args) => git(...args));
     git('config', 'user.email', 't@t');
     git('config', 'user.name', 't');
     git('config', 'commit.gpgsign', 'false');
@@ -222,6 +233,10 @@ describe('makeIsInStable', () => {
   });
 
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  test('fixture Git operations do not launch automatic maintenance', () => {
+    expect(() => expectNoAutomaticGitMaintenance(dir)).not.toThrow();
+  });
 
   test('the cherry-picked copy on the stable is NOT an ancestor of it', () => {
     expect(git('rev-parse', 'v1.0.0')).not.toBe(fixOnMain);
@@ -305,7 +320,11 @@ describe('the bug-lane entry points the two jobs run', () => {
     execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], {
       cwd,
       encoding: 'utf8',
-      env: gitCleanEnv(),
+      env: {
+        ...gitCleanEnv(),
+        GIT_TRACE2_EVENT:
+          args[0] === 'init' ? undefined : join(cwd, '.git', 'fixture-maintenance.jsonl'),
+      },
     }).trim();
   const pendingRepo = () => {
     const root = scratch('bug-lane-entry-');
@@ -317,6 +336,7 @@ describe('the bug-lane entry points the two jobs run', () => {
       return git(root, 'rev-parse', 'HEAD');
     };
     git(root, 'init', '-q', '-b', 'main');
+    configureTestGitRepository(root, (args) => git(root, ...args));
     writeFileSync(join(root, 'README.md'), 'stable\n');
     git(root, 'add', '-A');
     git(root, 'commit', '-q', '-m', 'stable');
@@ -379,6 +399,11 @@ describe('the bug-lane entry points the two jobs run', () => {
     });
     return { ...res, output: readFileSync(output, 'utf8') };
   };
+
+  test('fixture Git operations do not launch automatic maintenance', () => {
+    const { root } = pendingRepo();
+    expect(() => expectNoAutomaticGitMaintenance(root)).not.toThrow();
+  });
 
   test('--read-bumps writes the bump of every pending changeset, keyed by blob id', () => {
     const { root, blobs } = pendingRepo();
