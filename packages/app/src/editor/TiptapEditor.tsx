@@ -60,6 +60,7 @@ import { getAwarenessHeartbeat } from './awareness-heartbeat-runtime';
 import { buildAwarenessUser } from './awareness-user';
 import { bindingStalenessGuardPlugin, type WedgeDetail } from './binding-staleness-guard';
 import { BubbleMenuBar } from './bubble-menu/BubbleMenuBar';
+import { attachCaretLabel, caretLabelLayerPlugin } from './caret-label-layer';
 import {
   createClipboardHtmlSerializer,
   createClipboardTextSerializer,
@@ -118,7 +119,7 @@ function renderCursor(user: Record<string, string>): HTMLElement {
   label.style.backgroundColor = user.color;
   label.style.color = deriveIconColor(user.color);
   label.textContent = user.name;
-  cursor.append(label);
+  attachCaretLabel(cursor, label);
 
   return cursor;
 }
@@ -281,6 +282,7 @@ export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[]
           yCursorPlugin(awareness, {
             cursorBuilder: renderCursor,
           }),
+          caretLabelLayerPlugin(),
         ];
       },
     }),

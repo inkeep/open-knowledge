@@ -1055,10 +1055,17 @@ body[style*="pointer-events: none"] .corner-card-column .floating-card-surface {
   pointer-events: none;
 }
 
+.collaboration-cursor__label-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
 .collaboration-cursor__label {
   position: absolute;
-  top: calc(-100% - 0.2em);
-  left: -1px;
+  top: 0;
+  left: 0;
   padding: 1.5px 6px;
   border-radius: 5px 5px 5px 0;
   font-family: var(--font-mono);
