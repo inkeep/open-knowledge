@@ -135,12 +135,14 @@ describe('native serving over the real booted listener', () => {
         const response = await wire(path);
         expect(response.status, path).toBe(200);
         expect(response.bytes.toString(), path).toBe(shell);
-        expect(response.headers['content-security-policy'], path).toBeUndefined();
+        expect(response.headers['content-security-policy'], path).toContain("script-src 'self'");
+        expect(response.headers['content-security-policy'], path).not.toContain('sandbox');
         expect(response.headers['content-disposition'], path).toBeUndefined();
       }
       const html = await wire('/docs/missing.html');
       expect(html.bytes.toString()).toBe('<h1>shell HTML fallback</h1>');
-      expect(html.headers['content-security-policy']).toBeUndefined();
+      expect(html.headers['content-security-policy']).toContain("script-src 'self'");
+      expect(html.headers['content-security-policy']).not.toContain('sandbox');
       expect(html.headers['content-disposition']).toBeUndefined();
       expect(html.headers['x-content-type-options']).toBeUndefined();
       expect(html.headers['cache-control']).not.toBe('no-store');

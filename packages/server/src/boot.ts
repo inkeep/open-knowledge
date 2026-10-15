@@ -41,6 +41,7 @@ import {
   GitTooOldError,
 } from './git-preflight.ts';
 import { emitPreflightFailureSpan } from './git-preflight-telemetry.ts';
+import { createShellHeaderSetter } from './http/shell-csp.ts';
 import {
   attachCollabClientCounter,
   attachIdleShutdown,
@@ -468,6 +469,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         gzip: true,
         etag: true,
         dev: true,
+        setHeaders: createShellHeaderSetter(opts.reactShellDistDir),
       })
     : undefined;
 
