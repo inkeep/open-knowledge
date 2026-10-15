@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from './config/schema.ts';
-import { getFreeLoopbackPort } from './loopback-rig-test-helpers.ts';
+import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
 import { MCP_CONNECTION_ID_HEADER, MCP_HOSTED_AGENT_HEADER } from './mcp/agent-identity.ts';
 import {
   createMcpHttpHandler,
@@ -26,9 +26,9 @@ async function bootHandler(
   handlerOptions: Partial<Pick<McpHttpHandlerOptions, 'log' | 'maxSessions' | 'sessionTtlMs'>> = {},
 ): Promise<SessionHarness> {
   const contentDir = mkdtempSync(join(tmpdir(), 'ok-mcp-http-cfg-'));
-  const port = await getFreeLoopbackPort();
   let handler: McpHttpHandler | null = null;
   let httpServer: HttpServer | null = null;
+  let port = 0;
   try {
     handler = createMcpHttpHandler({
       contentDir,
@@ -53,10 +53,7 @@ async function bootHandler(
       res.writeHead(404);
       res.end('Not found');
     });
-    await new Promise<void>((res) => {
-      // biome-ignore lint/style/noNonNullAssertion: httpServer is set inside the try
-      httpServer!.listen(port, '127.0.0.1', () => res());
-    });
+    port = (await listenOnLoopback(httpServer)).port;
   } catch (err) {
     if (httpServer) await new Promise<void>((res) => httpServer?.close(() => res()));
     if (handler) await handler.close();
@@ -248,9 +245,9 @@ test('PRD-6659: tools/call write with an invalid position returns field name + a
 test('forwarded connectionId header reaches /api/agent-write-md as agentId', async () => {
   const config: Config = ConfigSchema.parse({});
   const contentDir = mkdtempSync(join(tmpdir(), 'ok-mcp-http-cid-'));
-  const port = await getFreeLoopbackPort();
   let handler: McpHttpHandler | null = null;
   let httpServer: HttpServer | null = null;
+  let port = 0;
   let capturedAgentId: string | undefined;
 
   try {
@@ -291,10 +288,7 @@ test('forwarded connectionId header reaches /api/agent-write-md as agentId', asy
       res.writeHead(404);
       res.end('Not found');
     });
-    await new Promise<void>((res) => {
-      // biome-ignore lint/style/noNonNullAssertion: httpServer set above
-      httpServer!.listen(port, '127.0.0.1', () => res());
-    });
+    port = (await listenOnLoopback(httpServer)).port;
 
     const forwarded = 'forwarded-keepalive-id-1234';
 
@@ -370,9 +364,9 @@ test('forwarded connectionId header reaches /api/agent-write-md as agentId', asy
 test('invalid connectionId header is ignored — session falls back to a fresh UUID', async () => {
   const config: Config = ConfigSchema.parse({});
   const contentDir = mkdtempSync(join(tmpdir(), 'ok-mcp-http-cid-bad-'));
-  const port = await getFreeLoopbackPort();
   let handler: McpHttpHandler | null = null;
   let httpServer: HttpServer | null = null;
+  let port = 0;
   let capturedAgentId: string | undefined;
   const warnCalls: Array<{ obj: object; msg: string }> = [];
 
@@ -419,10 +413,7 @@ test('invalid connectionId header is ignored — session falls back to a fresh U
       res.writeHead(404);
       res.end('Not found');
     });
-    await new Promise<void>((res) => {
-      // biome-ignore lint/style/noNonNullAssertion: httpServer set above
-      httpServer!.listen(port, '127.0.0.1', () => res());
-    });
+    port = (await listenOnLoopback(httpServer)).port;
 
     const forwarded = 'bad value with spaces!';
 

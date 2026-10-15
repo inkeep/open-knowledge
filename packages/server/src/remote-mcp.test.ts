@@ -12,7 +12,7 @@ import { resolveServerRuntimeConfig } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
 import { ConfigSchema } from './config/schema.ts';
 import { buildIngressPolicy } from './ingress-policy.ts';
-import { getFreeLoopbackPort } from './loopback-rig-test-helpers.ts';
+import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
 import { createMcpHttpHandler, type McpHttpHandler } from './mcp-http.ts';
 import { type MountMcpAndApiHandle, mountMcpAndApi } from './mcp-mount.ts';
 
@@ -69,7 +69,6 @@ async function bootRemoteRig(externalUrl: string | null, extras: RigExtras = {})
   const config = ConfigSchema.parse(
     externalUrl === null ? {} : { server: { externalUrl, allowExternal: true } },
   );
-  const port = await getFreeLoopbackPort();
   const handler: McpHttpHandler = createMcpHttpHandler({
     contentDir,
     projectDir: contentDir,
@@ -89,7 +88,7 @@ async function bootRemoteRig(externalUrl: string | null, extras: RigExtras = {})
       : {}),
     log,
   });
-  await new Promise<void>((resolve) => httpServer.listen(port, '127.0.0.1', () => resolve()));
+  const { port } = await listenOnLoopback(httpServer);
   const rig: Rig = {
     port,
     contentDir,

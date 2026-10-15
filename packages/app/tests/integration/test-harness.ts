@@ -52,6 +52,7 @@ import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
 import { configureTestGitRepository } from '../../../../test-support/configure-git-fixture.test-helper.ts';
 import { testAuthorityRegistryPath } from '../../../../test-support/server-authority-registry.test-helper.ts';
+import { listenOnLoopback } from '../../../server/src/loopback-rig-test-helpers.ts';
 import {
   ORIGIN_TEXT_TO_TREE,
   ORIGIN_TREE_TO_TEXT,
@@ -61,7 +62,6 @@ import type { ProviderPool } from '../../src/editor/provider-pool';
 import { dispatchCC1Stateless, SYSTEM_DOC_NAME } from '../../src/lib/cc1';
 import { createSyncedReconnectGate, refreshServerInfo } from '../../src/lib/server-info-refresh';
 import { getServerInstanceId } from '../../src/lib/server-instance-store';
-import { getFreePort } from '../free-port.test-helper.ts';
 import {
   removeAllDuringTeardown,
   removeAllStrictDuringTeardown,
@@ -163,7 +163,6 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
       }
     }
 
-    port = await getFreePort();
     srv = createServer({
       authorityRegistryPath: options.authorityRegistryPath ?? testAuthorityRegistryPath,
       contentDir,
@@ -223,17 +222,7 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
     keepaliveGraceMs: options.keepaliveGraceMs,
   });
 
-  await new Promise<void>((resolve, reject) => {
-    const onErr = (err: Error): void => {
-      httpServer.off('error', onErr);
-      reject(err);
-    };
-    httpServer.once('error', onErr);
-    httpServer.listen(port, '127.0.0.1', () => {
-      httpServer.off('error', onErr);
-      resolve();
-    });
-  });
+  ({ port } = await listenOnLoopback(httpServer));
 
   return {
     port,
@@ -1077,7 +1066,6 @@ export interface InspectableServer {
 }
 
 export interface CreateInspectableServerOptions extends CreateTestServerOptions {
-  port?: number;
   gitEnabled?: boolean;
   commitDebounceMs?: number;
 }
@@ -1121,7 +1109,6 @@ export async function createInspectableServer(
   await ensureProjectGit(contentDir);
   configureTestGitRepository(contentDir);
 
-  const port = options.port ?? (await getFreePort());
   const srv = createServer({
     authorityRegistryPath: options.authorityRegistryPath ?? testAuthorityRegistryPath,
     contentDir,
@@ -1158,37 +1145,7 @@ export async function createInspectableServer(
   });
   const wss = mount.wss;
 
-  const listenWithRetry = async (): Promise<void> => {
-    const deadline = Date.now() + 2500;
-    let lastErr: unknown;
-    while (Date.now() < deadline) {
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const onErr = (err: Error): void => {
-            httpServer.off('error', onErr);
-            reject(err);
-          };
-          httpServer.once('error', onErr);
-          httpServer.listen(port, '127.0.0.1', () => {
-            httpServer.off('error', onErr);
-            resolve();
-          });
-        });
-        return;
-      } catch (err) {
-        lastErr = err;
-        const code = (err as NodeJS.ErrnoException)?.code;
-        if (code !== 'EADDRINUSE') throw err;
-        await wait(100);
-      }
-    }
-    throw new Error(
-      `createRestartableServer: could not bind port ${port} within 2500ms; last error: ${
-        lastErr instanceof Error ? lastErr.message : String(lastErr)
-      }`,
-    );
-  };
-  await listenWithRetry();
+  const { port } = await listenOnLoopback(httpServer);
 
   let networkKilled = false;
 

@@ -12,7 +12,7 @@ import {
   type RawResponse,
   rawRequest,
 } from './composition-rig.test-helper.ts';
-import { getFreeLoopbackPort } from './loopback-rig-test-helpers.ts';
+import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
 import { mountMcpAndApi } from './mcp-mount.ts';
 
 let tmpRoot: string;
@@ -162,8 +162,7 @@ describe('/readyz provider states (mounted harness)', () => {
         ? {}
         : { health: { readiness: () => readiness, degraded: () => ['shadow-repo'] } }),
     });
-    const port = await getFreeLoopbackPort();
-    await new Promise<void>((r) => httpServer.listen(port, '127.0.0.1', () => r()));
+    const { port } = await listenOnLoopback(httpServer);
     try {
       const res = await fetch(`http://127.0.0.1:${port}/readyz`);
       return {
@@ -209,8 +208,7 @@ describe('/readyz provider states (mounted harness)', () => {
         degraded: () => [],
       },
     });
-    const port = await getFreeLoopbackPort();
-    await new Promise<void>((r) => httpServer.listen(port, '127.0.0.1', () => r()));
+    const { port } = await listenOnLoopback(httpServer);
     try {
       const res = await fetch(`http://127.0.0.1:${port}/readyz`);
       expect(res.status).toBe(500);

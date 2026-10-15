@@ -17,7 +17,7 @@ import {
   __resetWarnedForwardedHeaderRefusalForTests,
   buildIngressPolicy,
 } from './ingress-policy.ts';
-import { getFreeLoopbackPort } from './loopback-rig-test-helpers.ts';
+import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
 import type { McpHttpHandler } from './mcp-http.ts';
 import {
   type MountMcpAndApiHandle,
@@ -55,8 +55,7 @@ async function startMountedServer(
     mcpHttpHandler: handler,
     log,
   });
-  const port = await getFreeLoopbackPort();
-  await new Promise<void>((resolve) => httpServer.listen(port, '127.0.0.1', () => resolve()));
+  const { port } = await listenOnLoopback(httpServer);
   servers.push({ httpServer, mount });
   return { port, mount };
 }
@@ -333,8 +332,7 @@ describe('mountMcpAndApi shutdown drains live WS clients', () => {
     test(`drains live ${path.split('?')[0]} WS so wss.close + httpServer.close resolve promptly`, async () => {
       const httpServer = createServer();
       const mount = mountMcpAndApi({ httpServer, nativeApi: undefined, hocuspocus, log });
-      const port = await getFreeLoopbackPort();
-      await new Promise<void>((resolve) => httpServer.listen(port, '127.0.0.1', () => resolve()));
+      const { port } = await listenOnLoopback(httpServer);
 
       const client = new WebSocket(`ws://127.0.0.1:${port}${path}`);
       client.on('error', () => {});
@@ -407,8 +405,7 @@ describe('mountMcpAndApi content-asset middleware', () => {
         blocklistExtensions: EXECUTABLE_BLOCKLIST_EXTENSIONS,
       }),
     });
-    const port = await getFreeLoopbackPort();
-    await new Promise<void>((resolve) => httpServer.listen(port, '127.0.0.1', () => resolve()));
+    const { port } = await listenOnLoopback(httpServer);
     servers.push({ httpServer, mount });
     return { port };
   }
@@ -463,8 +460,7 @@ describe('mountMcpAndApi content-asset middleware', () => {
         throw new Error('simulated EMFILE');
       },
     });
-    const port = await getFreeLoopbackPort();
-    await new Promise<void>((resolve) => httpServer.listen(port, '127.0.0.1', () => resolve()));
+    const { port } = await listenOnLoopback(httpServer);
     servers.push({ httpServer, mount });
 
     const res = await fetch(`http://127.0.0.1:${port}/assets/x.png`);
@@ -509,8 +505,7 @@ describe('mountMcpAndApi ephemeral content-asset gate', () => {
         ingressPolicy: buildIngressPolicy({}),
       }),
     });
-    const port = await getFreeLoopbackPort();
-    await new Promise<void>((resolve) => httpServer.listen(port, '127.0.0.1', () => resolve()));
+    const { port } = await listenOnLoopback(httpServer);
     servers.push({ httpServer, mount });
     return { port };
   }
@@ -574,8 +569,7 @@ describe('mountMcpAndApi react-shell middleware', () => {
         immutable: true,
       }),
     });
-    const port = await getFreeLoopbackPort();
-    await new Promise<void>((resolve) => httpServer.listen(port, '127.0.0.1', () => resolve()));
+    const { port } = await listenOnLoopback(httpServer);
     servers.push({ httpServer, mount });
     return { port, shellDir };
   }
