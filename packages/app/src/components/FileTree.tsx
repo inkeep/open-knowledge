@@ -3059,7 +3059,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     if (tabId) requestPreviewTabPromotionForTab(tabId);
   }
 
-  function handleEmptyExternalFileDragOver(event: ReactDragEvent<HTMLDivElement>) {
+  function handleEmptyExternalFileDragOver(event: ReactDragEvent<HTMLElement>) {
     if (!isExternalFileDrag(event.nativeEvent)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -3067,13 +3067,13 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     setEmptyExternalFileDropActive(true);
   }
 
-  function handleEmptyExternalFileDragLeave(event: ReactDragEvent<HTMLDivElement>) {
+  function handleEmptyExternalFileDragLeave(event: ReactDragEvent<HTMLElement>) {
     const related = event.relatedTarget;
     if (related instanceof Node && event.currentTarget.contains(related)) return;
     setEmptyExternalFileDropActive(false);
   }
 
-  function handleEmptyExternalFileDrop(event: ReactDragEvent<HTMLDivElement>) {
+  function handleEmptyExternalFileDrop(event: ReactDragEvent<HTMLElement>) {
     if (!isExternalFileDrag(event.nativeEvent)) return;
     const files = filesFromExternalDrop(event.nativeEvent);
     if (files.length === 0) return;
@@ -3124,28 +3124,13 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       return <FileTreeFilteredToZeroNotice />;
     }
     return (
-      <section
-        aria-label={t`File drop zone`}
-        className={cn(
-          'flex flex-1 flex-col items-center justify-center gap-3 rounded-md py-8',
-          emptyExternalFileDropActive && 'bg-primary/5 ring-2 ring-primary/70 ring-inset',
-        )}
+      <FileTreeEmptyState
+        active={emptyExternalFileDropActive}
         onDragOver={handleEmptyExternalFileDragOver}
         onDragLeave={handleEmptyExternalFileDragLeave}
         onDrop={handleEmptyExternalFileDrop}
-      >
-        <span className="select-none text-sidebar-foreground/30 text-sm">
-          <Trans>No files yet.</Trans>
-        </span>
-        <Button
-          variant="link"
-          size="sm"
-          className="font-mono uppercase"
-          onClick={() => startCreating('file', '')}
-        >
-          <Trans>Create your first file</Trans>
-        </Button>
-      </section>
+        onCreate={() => startCreating('file', '')}
+      />
     );
   }
 
@@ -3324,6 +3309,41 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
         defaultToTemplate
       />
     </>
+  );
+}
+
+export function FileTreeEmptyState({
+  active,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onCreate,
+}: {
+  active: boolean;
+  onDragOver: (event: ReactDragEvent<HTMLElement>) => void;
+  onDragLeave: (event: ReactDragEvent<HTMLElement>) => void;
+  onDrop: (event: ReactDragEvent<HTMLElement>) => void;
+  onCreate: () => void;
+}) {
+  const { t } = useLingui();
+  return (
+    <section
+      aria-label={t`File drop zone`}
+      className={cn(
+        'flex flex-1 flex-col items-center justify-center gap-3 rounded-md py-8',
+        active && 'bg-primary/5 ring-2 ring-primary/70 ring-inset',
+      )}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      <span className="file-tree-empty-text select-none text-sidebar-foreground/30 text-sm">
+        <Trans>No files yet.</Trans>
+      </span>
+      <Button variant="link" size="sm" className="font-mono uppercase" onClick={onCreate}>
+        <Trans>Create your first file</Trans>
+      </Button>
+    </section>
   );
 }
 

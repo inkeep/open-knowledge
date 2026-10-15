@@ -749,8 +749,9 @@ function SettingsSidebarGroup({
       <h3
         id={headerId}
         aria-describedby={group.enabled ? undefined : describedById}
+        data-disabled={!group.enabled || undefined}
         className={cn(
-          'shrink-0 whitespace-nowrap px-2 text-xs font-semibold uppercase tracking-wide font-mono sm:mb-1',
+          'settings-sidebar-group-title shrink-0 whitespace-nowrap px-2 text-xs font-semibold uppercase tracking-wide font-mono sm:mb-1',
           group.enabled ? 'text-muted-foreground/80' : 'text-muted-foreground/50',
         )}
       >

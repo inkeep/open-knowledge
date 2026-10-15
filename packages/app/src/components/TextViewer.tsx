@@ -1,10 +1,11 @@
+import { syntaxHighlighting } from '@codemirror/language';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { codeLanguageForExtension } from '@inkeep/open-knowledge-core/constants/code-languages';
 import { basicSetup } from 'codemirror';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef } from 'react';
-import { okCmTheme } from '@/editor/extensions/cm-theme';
+import { okCmTheme, okSyntaxHighlight } from '@/editor/extensions/cm-theme';
 import { loadCodeMirrorLanguageForExtension } from './text-viewer-languages';
 import { useViewerText, type ViewerTextSource } from './use-viewer-text';
 import { ViewerErrorPane, ViewerLoadingPane } from './ViewerStatusPane';
@@ -47,6 +48,7 @@ export function TextViewer({ fileName, extension, ...source }: TextViewerProps) 
       if (!containerRef.current) return;
       const extensions = [
         basicSetup,
+        syntaxHighlighting(okSyntaxHighlight),
         ...(language ? [language] : []),
         EditorView.editable.of(true),
         EditorState.readOnly.of(true),

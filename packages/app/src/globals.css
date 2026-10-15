@@ -2949,7 +2949,7 @@ body[data-editor-tab-dragging] * {
   @apply border-none!;
 }
 
-.cm-gutters {
+:where(html[data-color-theme]) .cm-gutters {
   @apply text-muted-foreground/80!;
 }
 
@@ -3507,33 +3507,23 @@ button:active:not(:disabled) {
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
-  /*
-    Syntax-highlight semantic tokens — used by the PropPanel CodeMirror
-    editor (`CodeMirrorPropInput`) and any future code-shaped surface
-    that wants theme-adaptive coloring. Light values are the Tailwind v4
-    `-700`/`-800` saturated palette (good contrast on `--background:
-    oklch(1 0 0)`); the matching `.dark` block below shifts to `-300`/
-    `-400` for WCAG AA on `--background: oklch(0.195 0 0)`. Hex
-    fallbacks are GitHub-light defaults — only used if Tailwind's
-    default theme tokens haven't loaded (SSR / preview-render edge).
-  */
   --syntax-keyword: var(--color-purple-700, #6f42c1);
   --syntax-tag: var(--color-red-700, #b31d28);
   --syntax-attr: var(--color-blue-700, #005cc5);
-  --syntax-string: var(--color-green-800, #22863a);
+  --syntax-string: var(--color-green-900, oklch(0.393 0.095 152.535));
   --syntax-number: var(--color-blue-800, #005cc5);
-  --syntax-atom: var(--color-orange-700, #d2691e);
+  --syntax-atom: var(--color-orange-800, oklch(0.47 0.157 37.304));
   /*
     The remaining syntax roles. A selected color theme overrides all of these
     from its base16 slots; the values here are the `default` theme's own, so
     the same rules paint correctly with no palette applied.
   */
-  --syntax-comment: var(--color-gray-500, #6a737d);
+  --syntax-comment: var(--color-gray-600, oklch(0.444 0.011 73.639));
   --syntax-func: var(--color-purple-700, #6f42c1);
   --syntax-var: var(--color-red-700, #b31d28);
   --syntax-type: var(--color-yellow-700, #8b6500);
   --syntax-operator: var(--foreground);
-  --syntax-meta: var(--color-gray-600, #6a737d);
+  --syntax-meta: var(--color-gray-600, oklch(0.444 0.011 73.639));
   /* Code-block canvas — a hair off `--background` so a fence reads as a slab. */
   --syntax-bg: oklch(0.97 0 0);
 
@@ -3630,24 +3620,18 @@ button:active:not(:disabled) {
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
 
-  /*
-    Syntax-highlight tokens — dark-theme overrides. Lighter shades
-    (`-300` / `-400`) clear WCAG AA on the dark `--background:
-    oklch(0.195 0 0)`. Hex fallbacks are mid-light shades that survive
-    on dark for the SSR / preview-render edge.
-  */
   --syntax-keyword: var(--color-purple-300, #d2a8ff);
   --syntax-tag: var(--color-red-300, #ffa198);
   --syntax-attr: var(--color-blue-300, #79c0ff);
-  --syntax-string: var(--color-green-300, #7ee787);
+  --syntax-string: oklch(0.9 0.15 154.449);
   --syntax-number: var(--color-blue-300, #79c0ff);
   --syntax-atom: var(--color-orange-300, #ffa657);
-  --syntax-comment: var(--color-gray-400, #8b949e);
+  --syntax-comment: oklch(0.78 0.01 56.259);
   --syntax-func: var(--color-purple-300, #d2a8ff);
   --syntax-var: var(--color-red-300, #ffa198);
   --syntax-type: var(--color-yellow-300, #e3b341);
   --syntax-operator: var(--foreground);
-  --syntax-meta: var(--color-gray-400, #8b949e);
+  --syntax-meta: oklch(0.78 0.01 56.259);
   --syntax-bg: oklch(0.18 0.005 285);
 
   --link-color: var(--color-sky-blue);
@@ -6868,6 +6852,89 @@ html [data-editor-file-list-slot] [data-slot="sidebar-inner"] {
      theming, so opt the element out rather than restate them as system
      colours: the app it annotates is entirely system-coloured in this mode. */
   forced-color-adjust: none;
+}
+
+html:not([data-color-theme]):not(.dark)
+  .raw-mdx-fallback-wrapper[data-severity="error"]
+  > div
+  > span {
+  color: #a31524;
+}
+
+html:not([data-color-theme]):not(.dark) file-tree-container {
+  /* biome-ignore lint/complexity/noImportantStyles: the tree host receives --trees-selected-fg as an inline style, which no selector specificity can outrank. */
+  --trees-selected-fg: #1d4ed8 !important;
+}
+
+html:not([data-color-theme]) .file-tree-empty-text {
+  color: var(--muted-foreground);
+}
+
+html:not([data-color-theme]):not(.dark) .cm-gutters {
+  color: #606060;
+}
+
+html:not([data-color-theme]) .color-theme-picker [data-state="off"]:not(:hover) {
+  color: var(--muted-foreground);
+}
+
+html:not([data-color-theme]):not(.dark) .settings-sidebar-group-title {
+  color: #5a5a5a;
+}
+
+html:not([data-color-theme]):not(.dark) .settings-sidebar-group-title[data-disabled] {
+  color: var(--muted-foreground);
+}
+
+html:not([data-color-theme]).dark .settings-sidebar-group-title[data-disabled] {
+  color: color-mix(in oklab, var(--muted-foreground) 80%, transparent);
+}
+
+html:not([data-color-theme]):not(.dark) .cm-content {
+  --muted-foreground: #5a5a5a;
+  --syntax-type: var(--color-yellow-800, oklch(0.476 0.114 61.907));
+  --link-color: var(--color-azure-700, oklch(0.4895 0.233 263.93));
+  --destructive: var(--color-red-800, oklch(0.444 0.177 26.899));
+}
+html:not([data-color-theme]).dark .cm-content {
+  --link-color: #8bb9ff;
+  --muted-foreground: oklch(0.78 0 0);
+  --destructive: var(--color-red-300, oklch(0.808 0.114 19.571));
+}
+html:not([data-color-theme]):not(.dark) .cm-selectionLayer {
+  --selection-soft: #e0ebfc;
+}
+
+html:not([data-color-theme]).dark .cm-selectionLayer {
+  --selection-soft: #20364d;
+}
+
+html:not([data-color-theme]) .cm-editor .cm-selectionBackground,
+html:not([data-color-theme])
+  .cm-editor.cm-focused
+  > .cm-scroller
+  > .cm-selectionLayer
+  .cm-selectionBackground {
+  background-color: var(--selection-soft);
+}
+
+html:not([data-color-theme]):not(.dark) .cm-editor .cm-searchMatch,
+html:not([data-color-theme]):not(.dark) .cm-editor .cm-selectionMatch {
+  background-color: rgb(230 198 76 / 24%);
+}
+html:not([data-color-theme]).dark .cm-editor .cm-searchMatch,
+html:not([data-color-theme]).dark .cm-editor .cm-selectionMatch {
+  background-color: rgb(155 122 39 / 16%);
+}
+html:not([data-color-theme]):not(.dark) .cm-editor .cm-searchMatch.cm-searchMatch-selected {
+  background-color: #cbdcfa;
+}
+html:not([data-color-theme]).dark .cm-editor .cm-searchMatch.cm-searchMatch-selected {
+  background-color: #243950;
+}
+
+html:not([data-color-theme]):not(.dark) [data-slot="kbd"] {
+  --muted-foreground: #686868;
 }
 
 [data-agents-panel-mount][data-chat-alone]
