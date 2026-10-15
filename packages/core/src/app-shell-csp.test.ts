@@ -10,12 +10,10 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs';
-import { IncomingMessage, ServerResponse } from 'node:http';
-import { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { createShellHeaderSetter } from './shell-csp.ts';
+import { createAppShellPolicies } from './app-shell-csp.ts';
 
 vi.mock('node:fs', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs')>();
@@ -32,7 +30,7 @@ function denied(): never {
 
 const SHELL_SCRIPT = 'window.shellBooted = true;';
 
-describe('createShellHeaderSetter', () => {
+describe('createAppShellPolicies', () => {
   let dist: string;
 
   beforeEach(() => {
@@ -52,22 +50,28 @@ describe('createShellHeaderSetter', () => {
   afterEach(() => {
     vi.mocked(readFileSync).mockReset();
     vi.mocked(readdirSync).mockReset();
+    onFailure.mockReset();
     rmSync(dist, { recursive: true, force: true });
   });
 
-  function serve(setHeaders: ReturnType<typeof createShellHeaderSetter>, file: string) {
-    const res = new ServerResponse(new IncomingMessage(new Socket()));
-    setHeaders(res, '/the-request-path-is-not-used', statSync(join(dist, file)));
-    return res.getHeader('content-security-policy');
+  const onFailure = vi.fn();
+
+  function policies() {
+    return createAppShellPolicies(dist, onFailure);
+  }
+
+  function serve(policyFor: ReturnType<typeof createAppShellPolicies>, file: string) {
+    const path = join(dist, file);
+    return policyFor(statSync(path), path);
   }
 
   test('each served document gets its own policy, and other files get none', () => {
-    const setHeaders = createShellHeaderSetter(dist);
-    expect(serve(setHeaders, 'index.html')).toContain(scriptHash(SHELL_SCRIPT));
-    expect(serve(setHeaders, 'assets/preview-frame.html')).toBe(
+    const policyFor = policies();
+    expect(serve(policyFor, 'index.html')).toContain(scriptHash(SHELL_SCRIPT));
+    expect(serve(policyFor, 'assets/preview-frame.html')).toBe(
       "sandbox allow-scripts; frame-ancestors 'self'",
     );
-    expect(serve(setHeaders, 'assets/app.js')).toBeUndefined();
+    expect(serve(policyFor, 'assets/app.js')).toBeUndefined();
   });
 
   function setFolderTimes(time: Date) {
@@ -76,46 +80,53 @@ describe('createShellHeaderSetter', () => {
 
   test('a document added to a subfolder after the first scan gets its policy', () => {
     setFolderTimes(new Date('2020-01-01T00:00:00Z'));
-    const setHeaders = createShellHeaderSetter(dist);
-    serve(setHeaders, 'index.html');
+    const policyFor = policies();
+    serve(policyFor, 'index.html');
     writeFileSync(join(dist, 'assets', 'late.html'), '<script>window.late = true;</script>');
     const assetsTouched = new Date('2021-01-01T00:00:00Z');
     utimesSync(join(dist, 'assets'), assetsTouched, assetsTouched);
-    expect(serve(setHeaders, 'assets/late.html')).toContain(scriptHash('window.late = true;'));
+    expect(serve(policyFor, 'assets/late.html')).toContain(scriptHash('window.late = true;'));
   });
 
   test('a listing of recently changed folders is taken again even if no mtime moves', () => {
     const recent = new Date(Date.now() - 500);
     setFolderTimes(recent);
-    const setHeaders = createShellHeaderSetter(dist);
-    serve(setHeaders, 'index.html');
+    const policyFor = policies();
+    serve(policyFor, 'index.html');
     writeFileSync(join(dist, 'assets', 'late.html'), '<script>window.late = true;</script>');
     setFolderTimes(recent);
-    expect(serve(setHeaders, 'assets/late.html')).toContain(scriptHash('window.late = true;'));
+    expect(serve(policyFor, 'assets/late.html')).toContain(scriptHash('window.late = true;'));
   });
 
   test('a served file that matches two documents blocks inline scripts', () => {
     linkSync(join(dist, 'index.html'), join(dist, 'assets', 'index-copy.html'));
-    const policy = serve(createShellHeaderSetter(dist), 'index.html');
+    const policy = serve(policies(), 'index.html');
     expect(policy).toContain("script-src 'self'");
     expect(policy).not.toContain('sha256-');
+    expect(onFailure).toHaveBeenCalledTimes(1);
+    expect(onFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ file: join(dist, 'index.html') }),
+      expect.any(String),
+    );
   });
 
   test('a failed document read blocks inline scripts once and is not remembered', () => {
-    const setHeaders = createShellHeaderSetter(dist);
+    const policyFor = policies();
     vi.mocked(readFileSync).mockImplementationOnce(denied);
-    const failed = serve(setHeaders, 'index.html');
+    const failed = serve(policyFor, 'index.html');
     expect(failed).toContain("script-src 'self'");
     expect(failed).not.toContain('sha256-');
-    expect(serve(setHeaders, 'index.html')).toContain(scriptHash(SHELL_SCRIPT));
+    expect(onFailure).toHaveBeenCalledTimes(1);
+    expect(serve(policyFor, 'index.html')).toContain(scriptHash(SHELL_SCRIPT));
   });
 
   test('a failed scan blocks inline scripts once and is not remembered', () => {
-    const setHeaders = createShellHeaderSetter(dist);
+    const policyFor = policies();
     vi.mocked(readdirSync).mockImplementationOnce(denied);
-    const failed = serve(setHeaders, 'index.html');
+    const failed = serve(policyFor, 'index.html');
     expect(failed).toContain("script-src 'self'");
     expect(failed).not.toContain('sha256-');
-    expect(serve(setHeaders, 'index.html')).toContain(scriptHash(SHELL_SCRIPT));
+    expect(onFailure).toHaveBeenCalledTimes(1);
+    expect(serve(policyFor, 'index.html')).toContain(scriptHash(SHELL_SCRIPT));
   });
 });

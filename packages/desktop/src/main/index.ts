@@ -440,6 +440,7 @@ import {
 } from './reduced-transparency-handler.ts';
 import { removeGitFolder } from './remove-git-folder.ts';
 import { attachRendererConsoleCapture } from './renderer-console-capture.ts';
+import { installRendererFileProtocol } from './renderer-file-protocol.ts';
 import { createRendererReadySink, type RendererReadySink } from './renderer-ready-sink.ts';
 import { createRendererRecovery, type RendererRecovery } from './renderer-recovery.ts';
 import { resolveDetachedSpawnArgs } from './resolve-detached-spawn-args.ts';
@@ -1357,11 +1358,13 @@ function readPositiveIntEnv(envVar: string): number | undefined {
   return parsed;
 }
 
+function rendererRoot(): string {
+  return app.isPackaged ? join(process.resourcesPath, 'app') : join(__dirname, '../renderer');
+}
+
 function ensureWindowManager() {
   if (wm) return;
-  const rendererEntryPath = app.isPackaged
-    ? join(process.resourcesPath, 'app', 'index.html')
-    : join(__dirname, '../renderer/index.html');
+  const rendererEntryPath = join(rendererRoot(), 'index.html');
   const utilityEntryPath = join(__dirname, 'utility/server-entry.js');
 
   const bundleCliMjsPath = app.isPackaged
@@ -1688,9 +1691,7 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
       attachSpellcheckMenuToWindow(win);
       return win as unknown as BrowserWindowLike;
     },
-    rendererEntryPath: app.isPackaged
-      ? join(process.resourcesPath, 'app', 'index.html')
-      : join(__dirname, '../renderer/index.html'),
+    rendererEntryPath: join(rendererRoot(), 'index.html'),
     rendererDevUrl,
     appVersion: app.getVersion(),
     productName: DESKTOP_VARIANT.productName,
@@ -3273,9 +3274,7 @@ function openTerminalWindow(): void {
     terminal: focused ? getTerminalWindowContext(focused.id) : undefined,
     note: focused ? getNoteWindowContext(focused.id) : undefined,
   });
-  const rendererEntryPath = app.isPackaged
-    ? join(process.resourcesPath, 'app', 'index.html')
-    : join(__dirname, '../renderer/index.html');
+  const rendererEntryPath = join(rendererRoot(), 'index.html');
   createTerminalWindow({
     createWindow: (opts) => {
       const win = new BrowserWindow({
@@ -3401,9 +3400,7 @@ function openNoteWindowForDoc(args: {
     });
   if (!project) return { ok: false, reason: 'no-project' };
 
-  const rendererEntryPath = app.isPackaged
-    ? join(process.resourcesPath, 'app', 'index.html')
-    : join(__dirname, '../renderer/index.html');
+  const rendererEntryPath = join(rendererRoot(), 'index.html');
   const nativeChrome = noteWindowNativeChromeOptions(process.platform);
 
   const result = openNoteWindow({
@@ -6542,6 +6539,7 @@ function bootPrimaryInstance(): void {
     .whenReady()
     .then(async () => {
       startupWaterfall.mark('appReady');
+      installRendererFileProtocol(session.defaultSession.protocol, rendererRoot());
       startupWaterfall.otelEnabled = beginRoot();
       desktopProcessObservability?.start();
       logBootAccessibilityPosture();

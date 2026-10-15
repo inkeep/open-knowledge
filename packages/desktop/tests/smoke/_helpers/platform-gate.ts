@@ -38,6 +38,7 @@ export const SPEC_PLATFORM_GATES = {
   'okf-rule-toggle.e2e.ts': ['!DARWIN'],
   'qa-create-new-extended.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'rename-divergence-probe.e2e.ts': ['!PLATFORM_SUPPORTED'],
+  'renderer-file-protocol.e2e.ts': ['!DARWIN'],
   'report-bug.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'saved-theme-paint.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'share-receive-miss-terminal.e2e.ts': ['!PLATFORM_SUPPORTED'],

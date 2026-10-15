@@ -1,3 +1,4 @@
+export { type AppShellPolicyFailure, createAppShellPolicies } from './app-shell-csp.ts';
 export {
   type CollectConfigDiagnosticsOptions,
   collectConfigDiagnostics,
