@@ -117,70 +117,85 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
     options.contentDir !== undefined
       ? realpathSync(options.contentDir)
       : realpathSync(mkdtempSync(join(tmpdir(), 'ok-test-')));
-  const ownedHomeDir =
-    options.configHomedirOverride === undefined
-      ? realpathSync(mkdtempSync(join(tmpdir(), 'ok-test-home-')))
-      : null;
-  const homeOverride = options.configHomedirOverride ?? (ownedHomeDir as string);
-  if (ownedHomeDir !== null && (options.seedSkillHostRoot ?? true)) {
-    mkdirSync(join(ownedHomeDir, '.claude', 'skills'), { recursive: true });
-  }
-
   const createdProjectDir = ephemeral && options.projectDir === undefined;
-  const projectDir = options.projectDir
-    ? realpathSync(options.projectDir)
-    : ephemeral
-      ? realpathSync(mkdtempSync(join(tmpdir(), 'ok-ephemeral-test-')))
-      : contentDir;
+  let ownedHomeDir: string | null = null;
+  let projectDir: string | undefined;
+  let port: number;
+  let srv: ServerInstance;
+  try {
+    if (options.configHomedirOverride === undefined) {
+      ownedHomeDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-test-home-')));
+    }
+    const homeOverride = options.configHomedirOverride ?? (ownedHomeDir as string);
 
-  if (!ephemeral) {
-    if (options.contentDir === undefined) {
-      writeFileSync(join(contentDir, 'test-doc.md'), '', 'utf-8');
+    if (ownedHomeDir !== null && (options.seedSkillHostRoot ?? true)) {
+      mkdirSync(join(ownedHomeDir, '.claude', 'skills'), { recursive: true });
     }
 
-    if (options.contentDir === undefined) {
-      mkdirSync(join(contentDir, '.ok'), { recursive: true });
-      const seedConfig =
-        options.seedProjectConfigYml ??
-        (options.markdownlintEnabled ? 'contentRules:\n  markdownlint:\n    enabled: true\n' : '');
-      writeFileSync(join(contentDir, '.ok', 'config.yml'), seedConfig, 'utf-8');
+    projectDir = options.projectDir
+      ? realpathSync(options.projectDir)
+      : ephemeral
+        ? realpathSync(mkdtempSync(join(tmpdir(), 'ok-ephemeral-test-')))
+        : contentDir;
+
+    if (!ephemeral) {
+      if (options.contentDir === undefined) {
+        writeFileSync(join(contentDir, 'test-doc.md'), '', 'utf-8');
+      }
+
+      if (options.contentDir === undefined) {
+        mkdirSync(join(contentDir, '.ok'), { recursive: true });
+        const seedConfig =
+          options.seedProjectConfigYml ??
+          (options.markdownlintEnabled
+            ? 'contentRules:\n  markdownlint:\n    enabled: true\n'
+            : '');
+        writeFileSync(join(contentDir, '.ok', 'config.yml'), seedConfig, 'utf-8');
+      }
+
+      if (options.contentDir === undefined && (options.seedSkillHostRoot ?? true)) {
+        mkdirSync(join(contentDir, '.claude', 'skills'), { recursive: true });
+      }
+
+      const gitSetup = await ensureProjectGit(contentDir);
+      if (gitSetup.didInit || existsSync(join(contentDir, '.git', 'config'))) {
+        configureTestGitRepository(contentDir);
+      }
     }
 
-    if (options.contentDir === undefined && (options.seedSkillHostRoot ?? true)) {
-      mkdirSync(join(contentDir, '.claude', 'skills'), { recursive: true });
-    }
-
-    const gitSetup = await ensureProjectGit(contentDir);
-    if (gitSetup.didInit || existsSync(join(contentDir, '.git', 'config'))) {
-      configureTestGitRepository(contentDir);
-    }
+    port = await getFreePort();
+    srv = createServer({
+      authorityRegistryPath: options.authorityRegistryPath ?? testAuthorityRegistryPath,
+      contentDir,
+      projectDir,
+      ingressPolicy: options.ingressPolicy,
+      quiet: true,
+      debounce: options.debounce ?? 200,
+      maxDebounce: options.maxDebounce ?? 1000,
+      stalenessGraceMs: options.stalenessGraceMs,
+      stalenessSweepIntervalMs: options.stalenessSweepIntervalMs,
+      gitEnabled: ephemeral ? false : (options.gitEnabled ?? false),
+      commitDebounceMs: options.commitDebounceMs ?? 200,
+      contentRoot: options.gitEnabled === true ? '.' : undefined,
+      enableTestRoutes: true,
+      localOpCliArgs: options.localOpCliArgs,
+      authStreamHeartbeatMs: options.authStreamHeartbeatMs,
+      configHomedirOverride: homeOverride,
+      mdManager: options.mdManager,
+      pullIntervalSeconds: options.pullIntervalSeconds,
+      pushIntervalSeconds: options.pushIntervalSeconds,
+      agentSessionOptions: options.agentSessionOptions,
+      ...(ephemeral ? { ephemeral: true, singleDocRelPath: options.singleDocRelPath } : {}),
+      skipStateManifestCheck: true,
+    });
+  } catch (error) {
+    removeAllStrictDuringTeardown(
+      ...(options.contentDir === undefined ? [contentDir] : []),
+      ...(ownedHomeDir !== null ? [ownedHomeDir] : []),
+      ...(createdProjectDir && projectDir !== undefined ? [projectDir] : []),
+    );
+    throw error;
   }
-
-  const port = await getFreePort();
-  const srv = createServer({
-    authorityRegistryPath: options.authorityRegistryPath ?? testAuthorityRegistryPath,
-    contentDir,
-    projectDir,
-    ingressPolicy: options.ingressPolicy,
-    quiet: true,
-    debounce: options.debounce ?? 200,
-    maxDebounce: options.maxDebounce ?? 1000,
-    stalenessGraceMs: options.stalenessGraceMs,
-    stalenessSweepIntervalMs: options.stalenessSweepIntervalMs,
-    gitEnabled: ephemeral ? false : (options.gitEnabled ?? false),
-    commitDebounceMs: options.commitDebounceMs ?? 200,
-    contentRoot: options.gitEnabled === true ? '.' : undefined,
-    enableTestRoutes: true,
-    localOpCliArgs: options.localOpCliArgs,
-    authStreamHeartbeatMs: options.authStreamHeartbeatMs,
-    configHomedirOverride: homeOverride,
-    mdManager: options.mdManager,
-    pullIntervalSeconds: options.pullIntervalSeconds,
-    pushIntervalSeconds: options.pushIntervalSeconds,
-    agentSessionOptions: options.agentSessionOptions,
-    ...(ephemeral ? { ephemeral: true, singleDocRelPath: options.singleDocRelPath } : {}),
-    skipStateManifestCheck: true,
-  });
 
   await srv.ready;
 

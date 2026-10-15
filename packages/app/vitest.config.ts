@@ -22,6 +22,9 @@ const srcDir = fileURLToPath(new URL('./src/', import.meta.url));
 const idbPreloadPath = fileURLToPath(
   new URL('./tests/integration/idb-preload.ts', import.meta.url),
 );
+const serverAuthorityRegistrySetup = fileURLToPath(
+  new URL('../../test-support/server-authority-registry.setup.ts', import.meta.url),
+);
 
 export const appVitestConfig = {
   ...okVitestBase,
@@ -46,7 +49,7 @@ export const appVitestConfig = {
       'public/excalidraw-assets/**',
       '.excalidraw-assets-staging-*',
     ],
-    setupFiles: [...okVitestBase.test.setupFiles, idbPreloadPath],
+    setupFiles: [...okVitestBase.test.setupFiles, idbPreloadPath, serverAuthorityRegistrySetup],
     globalSetup: [fileURLToPath(new URL('./scripts/compile-i18n-catalogs.ts', import.meta.url))],
   },
 } satisfies ViteUserConfig;

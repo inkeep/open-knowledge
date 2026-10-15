@@ -58,18 +58,28 @@ export async function createRestartableServer(
   const contentDir = realpathSync.native(
     options.contentDir ?? mkdtempSync(join(tmpdir(), 'ok-restartable-')),
   );
-  const home = options.configHomedirOverride ?? mkdtempSync(join(tmpdir(), 'ok-restart-home-'));
-  mkdirSync(join(contentDir, '.ok'), { recursive: true });
-  if (options.contentDir === undefined) {
-    writeFileSync(join(contentDir, 'test-doc.md'), '');
+  let home = options.configHomedirOverride;
+  let port: number;
+  try {
+    home ??= mkdtempSync(join(tmpdir(), 'ok-restart-home-'));
+    mkdirSync(join(contentDir, '.ok'), { recursive: true });
+    if (options.contentDir === undefined) {
+      writeFileSync(join(contentDir, 'test-doc.md'), '');
+    }
+    if (!existsSync(join(contentDir, '.ok', 'config.yml'))) {
+      writeFileSync(join(contentDir, '.ok', 'config.yml'), options.seedProjectConfigYml ?? '');
+    }
+    writeFileSync(join(contentDir, '.ok', '.gitignore'), '*\n');
+    await ensureProjectGit(contentDir);
+    configureTestGitRepository(contentDir);
+    port = options.port ?? (await getFreePort());
+  } catch (error) {
+    removeAllStrictDuringTeardown(
+      ...(options.configHomedirOverride === undefined && home !== undefined ? [home] : []),
+      ...(options.contentDir === undefined ? [contentDir] : []),
+    );
+    throw error;
   }
-  if (!existsSync(join(contentDir, '.ok', 'config.yml'))) {
-    writeFileSync(join(contentDir, '.ok', 'config.yml'), options.seedProjectConfigYml ?? '');
-  }
-  writeFileSync(join(contentDir, '.ok', '.gitignore'), '*\n');
-  await ensureProjectGit(contentDir);
-  configureTestGitRepository(contentDir);
-  const port = options.port ?? (await getFreePort());
   const child = spawn(
     process.execPath,
     [
@@ -140,8 +150,10 @@ export async function createRestartableServer(
   } catch (error) {
     kill();
     await exited;
-    if (options.configHomedirOverride === undefined) removeAllStrictDuringTeardown(home);
-    if (options.contentDir === undefined) removeAllStrictDuringTeardown(contentDir);
+    removeAllStrictDuringTeardown(
+      ...(options.configHomedirOverride === undefined ? [home] : []),
+      ...(options.contentDir === undefined ? [contentDir] : []),
+    );
     throw error;
   } finally {
     if (startupTimer !== undefined) clearTimeout(startupTimer);
@@ -171,8 +183,10 @@ export async function createRestartableServer(
         if (timer !== undefined) clearTimeout(timer);
         kill();
         await exited;
-        if (options.configHomedirOverride === undefined) removeAllStrictDuringTeardown(home);
-        if (!options.keepContentDir && !restarted) removeAllStrictDuringTeardown(contentDir);
+        removeAllStrictDuringTeardown(
+          ...(options.configHomedirOverride === undefined ? [home] : []),
+          ...(!options.keepContentDir && !restarted ? [contentDir] : []),
+        );
       }
     })();
     return shutdownPromise;
