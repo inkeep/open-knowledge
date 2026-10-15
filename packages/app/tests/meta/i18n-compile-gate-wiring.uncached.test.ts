@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
@@ -7,7 +7,7 @@ import { describe, expect, test } from 'vitest';
 const APP_PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const WORKSPACE_ROOT = join(APP_PACKAGE_ROOT, '..', '..');
 const APP_PACKAGE_NAME = '@inkeep/open-knowledge-app';
-const FRESHNESS_GLOBAL_SETUP = './tests/stress/_helpers/i18n-catalog-freshness.ts';
+const COMPILE_GLOBAL_SETUP = './tests/stress/_helpers/i18n-catalog-compile.ts';
 const TURBO_DRY_RUN_TIMEOUT_MS = 120_000;
 const TURBO_DRY_RUN_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 const TURBO_OUTPUT_HEAD_CHARS = 400;
@@ -157,22 +157,54 @@ describe('Playwright tiers wait for the app build', () => {
   );
 });
 
-describe('i18n catalog freshness gate wiring', () => {
-  test.each(TIER_NAMES)('the %s tier declares the catalog freshness globalSetup', async (tier) => {
+describe('i18n catalog compile wiring', () => {
+  test.each(TIER_NAMES)('the %s tier declares the catalog compile globalSetup', async (tier) => {
     const { configFile, load } = PLAYWRIGHT_TIERS[tier];
     const declared = declaredGlobalSetups((await load()).default.globalSetup);
     expect(
       declared,
-      `the ${tier} tier (packages/app/${configFile}) does not declare ${FRESHNESS_GLOBAL_SETUP} in globalSetup, so it would silently serve the committed src/locales/*/messages.json: every dev server it boots sets OK_TEST_SKIP_I18N_COMPILE, so nothing in the run recompiles them and every assertion reads the committed copy instead of the edit under test. Re-add that path to globalSetup in packages/app/${configFile}.`,
-    ).toContain(FRESHNESS_GLOBAL_SETUP);
+      `the ${tier} tier (packages/app/${configFile}) does not declare ${COMPILE_GLOBAL_SETUP} in globalSetup, so its dev servers would serve missing or stale src/locales/*/messages.json: every dev server it boots sets OK_TEST_SKIP_I18N_COMPILE, so nothing else in the run compiles them and every assertion reads whatever an earlier compile left instead of the edit under test. Re-add that path to globalSetup in packages/app/${configFile}.`,
+    ).toContain(COMPILE_GLOBAL_SETUP);
     expect(
       declared[0],
-      `the ${tier} tier (packages/app/${configFile}) declares ${declared[0] ?? '(nothing)'} ahead of ${FRESHNESS_GLOBAL_SETUP} in globalSetup. Playwright runs globalSetup entries in declared order and skips every later one once an earlier one throws (playwright 1.63.0: lib/common/index.js:497 keeps the array's order, lib/runner/index.js:6326 appends the setups in that order, lib/runner/index.js:6145-6168 awaits them one at a time and sets _interrupted on a throw), so anything ahead of the freshness gate either burns the run's setup budget before a failure that was deterministic from the first byte, or — if it writes src/locales/*/messages.json — repairs the staleness the gate exists to catch and leaves the gate reading what the entry ahead of it just wrote. Move ${FRESHNESS_GLOBAL_SETUP} back to the front of globalSetup in packages/app/${configFile}.`,
-    ).toBe(FRESHNESS_GLOBAL_SETUP);
+      `the ${tier} tier (packages/app/${configFile}) declares ${declared[0] ?? '(nothing)'} ahead of ${COMPILE_GLOBAL_SETUP} in globalSetup. Playwright runs globalSetup entries in declared order and skips every later one once an earlier one throws (playwright 1.63.0: lib/common/index.js:497 keeps the array's order, lib/runner/index.js:6326 appends the setups in that order, lib/runner/index.js:6145-6168 awaits them one at a time and sets _interrupted on a throw), so anything ahead of the catalog compile either burns the run's setup budget before a failure that was deterministic from the first byte, or reads src/locales/*/messages.json before the compile writes them, as the warm-cache seed and the prebuilt dev build both do. Move ${COMPILE_GLOBAL_SETUP} back to the front of globalSetup in packages/app/${configFile}.`,
+    ).toBe(COMPILE_GLOBAL_SETUP);
     expect(
-      existsSync(join(APP_PACKAGE_ROOT, FRESHNESS_GLOBAL_SETUP)),
-      `the ${tier} tier (packages/app/${configFile}) names ${FRESHNESS_GLOBAL_SETUP} in globalSetup but no such file exists under packages/app, so the tier declares a freshness gate Playwright cannot load and would silently serve the committed src/locales/*/messages.json under OK_TEST_SKIP_I18N_COMPILE. Point packages/app/${configFile} at the helper's real path.`,
+      existsSync(join(APP_PACKAGE_ROOT, COMPILE_GLOBAL_SETUP)),
+      `the ${tier} tier (packages/app/${configFile}) names ${COMPILE_GLOBAL_SETUP} in globalSetup but no such file exists under packages/app, so the tier declares a catalog compile Playwright cannot load and its dev servers would serve missing or stale src/locales/*/messages.json under OK_TEST_SKIP_I18N_COMPILE. Point packages/app/${configFile} at the helper's real path.`,
     ).toBe(true);
+  });
+});
+
+describe('scripts outside the app compile the catalogs before they read them', () => {
+  const scriptsOf = (manifest: string): Record<string, string> =>
+    (
+      JSON.parse(readFileSync(join(WORKSPACE_ROOT, manifest), 'utf8')) as {
+        scripts: Record<string, string>;
+      }
+    ).scripts;
+
+  test.each([
+    ['packages/desktop/package.json', 'dev:electron', 'electron-vite'],
+    ['packages/desktop/package.json', 'build:desktop', 'electron-vite'],
+    ['package.json', 'knip', '&& knip'],
+  ])('%s "%s" compiles before it runs %s', (manifest, name, reader) => {
+    const command = scriptsOf(manifest)[name] ?? '';
+    const compileAt = command.indexOf('compile-i18n-catalogs.ts');
+    expect(
+      {
+        compiles: compileAt >= 0,
+        beforeReader: compileAt >= 0 && command.indexOf(reader) > compileAt,
+      },
+      `${manifest} "${name}" must run compile-i18n-catalogs.ts before ${reader}, which reads packages/app/src/locales/*/messages.json. Those catalogs are generated and ignored by git, so a fresh checkout has none. Found: ${command}`,
+    ).toEqual({ compiles: true, beforeReader: true });
+  });
+
+  test('the root postinstall compiles the catalogs on every install, without failing it', () => {
+    expect(
+      scriptsOf('package.json').postinstall,
+      'a fresh clone gets its catalogs from the root postinstall; --best-effort keeps an install from failing when the compile cannot run yet',
+    ).toContain('node packages/app/scripts/compile-i18n-catalogs.ts --best-effort');
   });
 });
 

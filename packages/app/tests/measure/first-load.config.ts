@@ -5,7 +5,7 @@ export default defineConfig({
   testDir: '.',
   testMatch: /first-load\.measure\.ts$/,
   globalSetup: [
-    '../stress/_helpers/i18n-catalog-freshness.ts',
+    '../stress/_helpers/i18n-catalog-compile.ts',
     '../stress/_helpers/global-warm-cache.ts',
   ],
   timeout: 300_000,

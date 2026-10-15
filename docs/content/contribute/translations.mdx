@@ -40,17 +40,25 @@ Translations live in [`inkeep/open-knowledge`](https://github.com/inkeep/open-kn
 packages/app/src/locales/<locale>/messages.po
 ```
 
-1. **Edit the `msgstr` values.** Leave every `msgid` alone — that is the English source string, and the key the app uses to look the translation up. An empty `msgstr` means "untranslated" and falls back to English, so don't blank one out to flag a problem; open an issue instead.
+1. **Edit the `msgstr` values.** Leave every `msgid` alone. It is the key the app uses to look the translation up. For most entries it is the English source string. For a few entries it is a key such as `troubleshooting.claude-desktop.per-tool-approval`, and the English text is that entry's `msgstr` in `en/messages.po`. An empty `msgstr` means "untranslated" and falls back to English, so don't blank one out to flag a problem; open an issue instead.
+
+   The catalog does not say where a string appears or what a placeholder like `{0}` holds. To find out, search `packages/app/src`, for example with GitHub code search:
+
+   - For plain text, search for a distinctive part of the English that sits outside any `{...}` placeholder or `<0>` tag.
+   - For a plural or select message such as `{0, plural, one {# file} other {# files}}`, search for the words inside one branch. `#` is the count.
+   - For a key such as `troubleshooting.claude-desktop.per-tool-approval`, search for the key itself.
+
+   The code around the match shows the screen the string belongs to and the value each placeholder takes.
 
 2. **Follow the glossary.** [`GLOSSARY.md`](https://github.com/inkeep/open-knowledge/blob/main/packages/app/src/locales/GLOSSARY.md), in the same folder, pins one form per language for the words that recur everywhere (*document*, *folder*, *branch*, and so on) and lists what is never translated at all: the product name, format names such as Markdown and YAML, and placeholders like `{count}`. If a glossary entry is wrong for your language, change that row and sweep every message that uses it in the same pull request. A catalog holding two words for one concept is worse than either word on its own.
 
-3. **Regenerate the compiled catalogs.** The app loads a compiled `messages.json` beside each `.po`, and CI fails when the two disagree:
+3. **Normalize the catalog.** CI checks that each `.po` file is exactly what the extractor writes. Run:
 
    ```bash
    cd packages/app && pnpm run i18n
    ```
 
-   Commit both files.
+   Commit every `.po` file that you edited or that the command rewrote. The app compiles a `messages.json` from each `.po` before it builds or runs, and git ignores those files, so there is nothing else to commit.
 
 4. **Open a pull request.** Say which language you read and whether you speak it natively.
 

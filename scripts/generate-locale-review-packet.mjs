@@ -3,6 +3,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { messageOrigins } from '../packages/app/scripts/lingui-message-origins.mjs';
 import {
   parsePoCatalog,
   requiredPluralCategories,
@@ -379,7 +380,23 @@ export function buildPacket({
     .trim()}\n`;
 }
 
-export function generate({ locale, root = OK_ROOT }) {
+export function collectSourceReferences(root = OK_ROOT) {
+  return messageOrigins(
+    join(root, 'packages/app'),
+    CHROME_SURFACES.flatMap((surface) => surface.files),
+  );
+}
+
+export function withSourceReferences(entries, references) {
+  return entries.map((entry) => ({ ...entry, references: [...(references.get(entry.id) ?? [])] }));
+}
+
+export function generate({ locale, root = OK_ROOT, references }) {
+  if (!(references instanceof Map)) {
+    throw new Error(
+      'generate() needs the source references from collectSourceReferences(), because the .po catalogs no longer carry them',
+    );
+  }
   const localesSource = readFileSync(join(root, LOCALES_TS), 'utf8');
   const supported = readLocaleTuple(localesSource, 'SUPPORTED_LOCALES');
   const picker = readLocaleTuple(localesSource, 'PICKER_LOCALES');
@@ -410,7 +427,7 @@ export function generate({ locale, root = OK_ROOT }) {
   }
 
   const sourceText = readFileSync(join(root, CATALOG_REL(SOURCE_LOCALE)), 'utf8');
-  const entries = parsePoEntries(sourceText);
+  const entries = withSourceReferences(parsePoEntries(sourceText), references);
   const translations = parsePoCatalog(readFileSync(catalogPath, 'utf8'));
 
   const glossary = readFileSync(join(root, GLOSSARY_MD), 'utf8');
@@ -448,7 +465,7 @@ export function parseArgs(argv) {
   return { locale, out };
 }
 
-function main(argv) {
+async function main(argv) {
   const { locale, out } = parseArgs(argv);
 
   if (!locale) {
@@ -461,7 +478,7 @@ function main(argv) {
 
   let packet;
   try {
-    packet = generate({ locale });
+    packet = generate({ locale, references: await collectSourceReferences() });
   } catch (error) {
     console.error(`ERROR: ${error.message}`);
     return 1;
@@ -477,5 +494,5 @@ function main(argv) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  process.exit(main(process.argv.slice(2)));
+  process.exitCode = await main(process.argv.slice(2));
 }

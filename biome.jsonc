@@ -130,6 +130,7 @@
       // formatting taste: a formatter rewrite of the file would invalidate
       // every task hash on every machine whose formatter version differs.
       "!turbo-cache-key.json",
+      "!packages/app/src/locales/*/messages.json",
       "!**/tmp",
       "!**/test-results",
       "!**/test-results-packaged",

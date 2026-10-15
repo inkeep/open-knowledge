@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
 const APP_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const CATALOG_COMPILE = /\blingui compile\b|i18n-compile-unless-skipped/;
+const CATALOG_COMPILE = /compile-i18n-catalogs\.ts|i18n-compile-unless-skipped/;
+const IN_PLACE_COMPILE = /\blingui compile\b/;
 const SCRIPT_REFERENCE = /\b(pnpm|npm|yarn|turbo)(?=\s|$)(?: run)?(?: ([^\s;&|]+))?[^;&|]*/g;
 
 const scripts = (
@@ -41,13 +42,16 @@ function catalogCompilesRunBy(entry: string): string[] {
     .map(([name, command]) => `"${name}": ${command}`);
 }
 
-describe('the app build reads the committed catalogs', () => {
-  test.each(['i18n', 'dev'])('the %s script reaches the catalog compile', (entry) => {
-    expect(
-      catalogCompilesRunBy(entry),
-      `packages/app/package.json "${entry}" no longer reaches a command matching ${CATALOG_COMPILE}, so the build check below may be looking for a compile spelled some other way. Update the pattern to the current compile command.`,
-    ).not.toEqual([]);
-  });
+describe('every script that reads the compiled catalogs compiles them first', () => {
+  test.each(['i18n', 'dev', 'build', 'typecheck', 'check'])(
+    'the %s script reaches the catalog compile',
+    (entry) => {
+      expect(
+        catalogCompilesRunBy(entry),
+        `packages/app/package.json "${entry}" reaches no command matching ${CATALOG_COMPILE}. src/locales/*/messages.json is generated and ignored by git, so a fresh checkout has none, and this script bundles, typechecks or serves them. Run pnpm run i18n:compile first, which runs scripts/compile-i18n-catalogs.ts on the pinned Node.`,
+      ).not.toEqual([]);
+    },
+  );
 
   test.each([
     ['dev', 'turbo run'],
@@ -65,16 +69,17 @@ describe('the app build reads the committed catalogs', () => {
     const { unfollowed } = scriptsRunBy('build');
     expect(
       unfollowed,
-      `packages/app/package.json "build" reaches a call this test cannot follow to a script in this manifest (${unfollowed.join('; ')}), so it cannot tell whether that call compiles the i18n catalogs. Call the script as \`pnpm run <name>\`, or extend this test to follow the new form.`,
+      `packages/app/package.json "build" reaches a call this test cannot follow to a script in this manifest (${unfollowed.join('; ')}), so it cannot tell whether the build compiles the i18n catalogs. Call the script as \`pnpm run <name>\`, or extend this test to follow the new form.`,
     ).toEqual([]);
   });
 
-  test('the build runs no catalog compile', () => {
-    expect(scripts.build, 'packages/app/package.json has no "build" script').toBeDefined();
-    const compiles = catalogCompilesRunBy('build');
+  test('no script runs lingui compile in place', () => {
+    const inPlace = Object.entries(scripts)
+      .filter(([, command]) => IN_PLACE_COMPILE.test(command))
+      .map(([name, command]) => `"${name}": ${command}`);
     expect(
-      compiles,
-      `packages/app/package.json "build" reaches the i18n catalog compile (${compiles.join('; ')}). The compile rewrites the tracked src/locales/*/messages.json, which other tasks in the same turbo run read, so one of them can read a catalog mid-rewrite. The build ships the committed catalogs: compile them with \`pnpm run i18n\` and commit them.`,
+      inPlace,
+      `packages/app/package.json runs lingui compile directly (${inPlace.join('; ')}). lingui compile writes src/locales/*/messages.json in place, so another task in the same run can read a catalog mid-write. Call scripts/compile-i18n-catalogs.ts, as pnpm run i18n:compile does, which compiles into a scratch directory and renames only the catalogs that changed into place.`,
     ).toEqual([]);
   });
 });

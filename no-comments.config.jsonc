@@ -25,6 +25,11 @@
     { "id": "lint-plugins", "family": "esm-script", "roots": ["lint-plugins"] },
     { "id": "plugins", "family": "esm-script", "roots": ["plugins"] },
     {
+      "id": "app-catalog-compiler",
+      "family": "typescript",
+      "files": ["packages/app/scripts/compile-i18n-catalogs.ts"]
+    },
+    {
       "id": "shell",
       "family": "shell",
       "roots": ["packages", "scripts", ".github", "lint-plugins", "plugins"],

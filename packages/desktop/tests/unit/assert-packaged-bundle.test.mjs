@@ -50,6 +50,7 @@ const SOUND_DISK = [
   `${LIBRARY_NATIVE}/index.js`,
   `${LIBRARY_NATIVE}/native-config.darwin-arm64.node`,
   'app.asar.unpacked/node_modules/@napi-rs/keyring/index.js',
+  'locales/en/messages.json',
 ];
 const SOUND_PATHS = [...SOUND_DISK, ...SOUND_ASAR.map((p) => `app.asar/${p}`)];
 
@@ -90,6 +91,7 @@ describe('findMissingBundlePaths', () => {
     [`${LIBRARY_NATIVE}/native-config.darwin-arm64.node`, "main process's native-config addon"],
     ['cli/dist/native/index.js', "bundled CLI's native-config loader"],
     ['cli/dist/native/native-config.linux-x64-gnu.node', "bundled CLI's native-config addon"],
+    ['locales/en/messages.json', "main process's compiled menu catalog"],
   ])('reports a bundle without %s', (dropped, reasonFragment) => {
     const missing = findMissingBundlePaths(SOUND_PATHS.filter((p) => p !== dropped));
     expect(missing).toHaveLength(1);

@@ -53,7 +53,6 @@ in_copy() {
   return "$status"
 }
 in_copy pnpm run --silent i18n:extract || exit $?
-in_copy pnpm run --silent i18n:compile:catalogs || exit $?
 
 cd "$REPO_ROOT"
 git ls-files -z -- "$LOCALES_DIR" >"$WORK_ROOT/tracked"
@@ -61,7 +60,7 @@ COMPARED=0
 DIFFERING=""
 while IFS= read -r -d '' tracked; do
   case "$tracked" in
-    */messages.po | */messages.json) ;;
+    */messages.po) ;;
     *) continue ;;
   esac
   COMPARED=$((COMPARED + 1))
@@ -70,35 +69,9 @@ while IFS= read -r -d '' tracked; do
     DIFFERING="$DIFFERING$tracked"$'\n'
     continue
   fi
-  case "$tracked" in
-    *.json)
-      git cat-file blob ":./$tracked" >"$WORK_ROOT/indexed"
-      compared=0
-      node -e '
-const { readFileSync } = require("node:fs");
-const [indexedFile, copyFile, tracked] = process.argv.slice(1);
-const parsed = (file, side) => {
-  try {
-    return JSON.stringify(JSON.parse(readFileSync(file, "utf8")));
-  } catch (error) {
-    process.stderr.write(`ERROR: the i18n drift check could not parse ${side} of ${tracked}, so it stopped: ${error.message}\n`);
-    process.exit(2);
-  }
-};
-process.exit(parsed(indexedFile, "the index entry") === parsed(copyFile, "the regenerated copy") ? 0 : 1);
-' "$WORK_ROOT/indexed" "$copy" "$tracked" || compared=$?
-      case "$compared" in
-        0) ;;
-        1) DIFFERING="$DIFFERING$tracked"$'\n' ;;
-        *) exit "$compared" ;;
-      esac
-      ;;
-    *)
-      indexed_id="$(git rev-parse ":./$tracked")"
-      copy_id="$(git hash-object --path="$tracked" "$copy")"
-      [ "$copy_id" = "$indexed_id" ] || DIFFERING="$DIFFERING$tracked"$'\n'
-      ;;
-  esac
+  indexed_id="$(git rev-parse ":./$tracked")"
+  copy_id="$(git hash-object --path="$tracked" "$copy")"
+  [ "$copy_id" = "$indexed_id" ] || DIFFERING="$DIFFERING$tracked"$'\n'
 done <"$WORK_ROOT/tracked"
 if [ "$COMPARED" -eq 0 ]; then
   echo "ERROR: git lists no tracked catalog under $LOCALES_DIR, so the i18n drift check has nothing to compare." >&2
@@ -114,7 +87,7 @@ if [ -n "$DIFFERING" ] || [ -n "$CREATED" ]; then
   echo "" >&2
   echo "  Fix:" >&2
   echo "    cd public/open-knowledge/packages/app && pnpm run i18n" >&2
-  echo "  then commit the updated catalog files." >&2
+  echo "  then commit the updated .po catalogs." >&2
   if [ -n "$DIFFERING" ]; then
     echo "" >&2
     echo "  Catalog files that differ from the index:" >&2

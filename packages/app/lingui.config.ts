@@ -4,18 +4,14 @@ import { formatter } from '@lingui/format-po';
 /**
  * Lingui i18n configuration for the OpenKnowledge editor frontend.
  *
- * `pseudo` is a generated pseudolocalization locale — `lingui extract` derives
- * it from `en` with no translation step. Loading a development build with
+ * `pseudo` is a generated pseudolocalization locale — `lingui compile` derives
+ * it from `en` with no translation step, and `i18n:extract` writes no catalog
+ * for it. Loading a development build with
  * `?lang=pseudo` activates it (`src/lib/dev-pseudo-locale.ts`), which visually
  * marks every wrapped string so unwrapped (still-hardcoded) copy is obvious
  * during the rolling string-migration. It is not a supported language: it never
  * reaches the config enum or the picker, and a shipped build neither answers to
  * the parameter nor carries the catalog.
- *
- * Compiled catalogs (`messages.json`) are committed alongside the `.po` sources
- * so the same import path resolves under Vite dev, the production build, the
- * Electron renderer, and the test runtime without a per-entrypoint compile
- * step.
  *
  * `locales` is `SUPPORTED_LOCALES` from `@inkeep/open-knowledge-core` plus the
  * generated `pseudo`. It is spelled out literally rather than imported: the
@@ -51,7 +47,5 @@ export default defineConfig({
       exclude: ['**/node_modules/**', '**/*.test.*', '**/*.e2e.*', '**/*.stories.*'],
     },
   ],
-  // `lineNumbers: false` keeps the `.po` catalogs free of source-line
-  // references, so moving a string within a file produces no catalog diff.
-  format: formatter({ lineNumbers: false }),
+  format: formatter({ origins: false, printPlaceholdersInComments: false }),
 });

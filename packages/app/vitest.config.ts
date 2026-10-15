@@ -47,6 +47,7 @@ export const appVitestConfig = {
       '.excalidraw-assets-staging-*',
     ],
     setupFiles: [...okVitestBase.test.setupFiles, idbPreloadPath],
+    globalSetup: [fileURLToPath(new URL('./scripts/compile-i18n-catalogs.ts', import.meta.url))],
   },
 } satisfies ViteUserConfig;
 

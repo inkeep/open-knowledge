@@ -77,7 +77,7 @@ export default defineConfig({
   testMatch: /.*\.e2e\.ts$/,
   testIgnore: ['**/frontmatter-edit.e2e.ts'],
   globalSetup: [
-    './tests/stress/_helpers/i18n-catalog-freshness.ts',
+    './tests/stress/_helpers/i18n-catalog-compile.ts',
     // Build the per-run Vite optimizer seed cache once, before any worker
     // boots. Every fixture-spawned dev server copies it (see
     // tests/stress/_helpers/server-process.ts `VITE_E2E_SEED_DIR`) so no

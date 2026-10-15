@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -151,6 +152,24 @@ export function runBuildGuard(deps: GuardDeps = {}): void {
   if (stale.length > 0) throw new Error(formatStaleArtifacts(stale));
 }
 
+export const CATALOG_COMPILE_SCRIPT = resolve(
+  DESKTOP_PKG,
+  '..',
+  'app',
+  'scripts',
+  'compile-i18n-catalogs.ts',
+);
+
+function compileAppI18nCatalogs(): void {
+  const compiled = spawnSync(process.execPath, [CATALOG_COMPILE_SCRIPT], { encoding: 'utf-8' });
+  if (compiled.error !== undefined || compiled.status !== 0) {
+    throw new Error(
+      `could not compile the i18n catalogs the unpackaged app reads for its native menus. node ${CATALOG_COMPILE_SCRIPT} exited ${String(compiled.status)}${compiled.error ? ` (${String(compiled.error)})` : ''}:\n${compiled.stderr ?? ''}`,
+    );
+  }
+}
+
 export default function staleBuildGuard(): void {
+  compileAppI18nCatalogs();
   runBuildGuard();
 }

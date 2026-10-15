@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import { okVitestBase } from '../../test-support/vitest.base';
 
@@ -33,6 +34,9 @@ export default defineConfig({
       'dist-desktop/**',
       '.variant-build/**',
       'build/parcel-watcher-staging/**',
+    ],
+    globalSetup: [
+      fileURLToPath(new URL('../app/scripts/compile-i18n-catalogs.ts', import.meta.url)),
     ],
   },
 });

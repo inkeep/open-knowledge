@@ -53,6 +53,10 @@ export const REQUIRED_BUNDLE_PATHS = [
     pattern: /^cli\/dist\/native\/[^/]+\.node$/,
     reason: "the bundled CLI's native-config addon",
   },
+  {
+    pattern: /^locales\/en\/messages\.json$/,
+    reason: "the main process's compiled menu catalog",
+  },
 ];
 
 export function findForbiddenBundlePaths(paths) {

@@ -11,7 +11,9 @@ import { deriveShareReceiveToast } from '@/lib/install-deep-link-listener';
 import { presentPublishError, resolveNameCheckStatus } from '@/lib/share/publish-wizard';
 import { mapValidationToToast, presentReceiveError } from '@/lib/share/receive-flow';
 import { mapShareErrorToToast } from '@/lib/share/run-share-action';
+import { extractedMessages } from '../../scripts/lingui-message-origins.mjs';
 
+const APP_ROOT = join(import.meta.dir, '..', '..');
 const LOCALES_DIR = join(import.meta.dir, '..', 'locales', 'en');
 
 const MIGRATED_MODULES: ReadonlyArray<readonly [path: string, messages: number]> = [
@@ -37,14 +39,15 @@ function unescapePo(value: string): string {
   );
 }
 
-beforeAll(() => {
+beforeAll(async () => {
+  const extracted = await extractedMessages(
+    APP_ROOT,
+    MIGRATED_MODULES.map(([path]) => path),
+  );
+  for (const { origins } of extracted) {
+    for (const path of origins) originCounts.set(path, (originCounts.get(path) ?? 0) + 1);
+  }
   for (const line of readFileSync(join(LOCALES_DIR, 'messages.po'), 'utf8').split('\n')) {
-    if (line.startsWith('#: ')) {
-      for (const ref of line.slice(3).trim().split(/\s+/)) {
-        originCounts.set(ref, (originCounts.get(ref) ?? 0) + 1);
-      }
-      continue;
-    }
     const id = /^msgid "(.*)"$/.exec(line);
     if (id?.[1]) messageIds.add(unescapePo(id[1]));
   }

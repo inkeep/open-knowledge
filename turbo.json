@@ -165,10 +165,12 @@
         "../../scripts/lume-qa/**",
         "../app/vite.*.ts",
         "../app/lingui.config.ts",
+        "../app/scripts/compile-i18n-catalogs.ts",
         "../app/postcss.config.ts",
         "../app/*.html",
         "../app/src/**",
-        "!../app/src/**/*.md"
+        "!../app/src/**/*.md",
+        "!../app/src/locales/*/messages.json"
       ],
       "outputs": ["test-results/vitest-test.json", "test-results/vitest-test.provenance.json"]
     },

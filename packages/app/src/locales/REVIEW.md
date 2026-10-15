@@ -136,7 +136,7 @@ numbered strings to change, and what they should say.
 ### 3. Land what comes back
 
 Corrections are ordinary catalog edits. Fill the `msgstr` in `src/locales/<locale>/messages.po`,
-run `pnpm --dir packages/app run i18n` to recompile, and commit the catalogs. If a correction
+run `pnpm --dir packages/app run i18n`, and commit every `.po` file that changed. If a correction
 changes one of the locked nouns, change it in [`GLOSSARY.md`](./GLOSSARY.md) **and sweep every
 message in that locale that uses the old form, in the same change** — a half-swept rename leaves
 the catalog holding two words for one concept, which is worse than either word alone.

@@ -7,3 +7,5 @@
 # file is the overlay's and not this tree's.
 public/excalidraw-assets/
 /.excalidraw-assets-staging-*/
+src/locales/*/messages.json
+src/locales/pseudo/messages.po

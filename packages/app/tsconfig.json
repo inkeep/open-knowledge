@@ -84,6 +84,7 @@
   "include": [
     "src",
     "*.ts",
+    "scripts/compile-i18n-catalogs.ts",
     "tests/foundation",
     "tests/stress/fixtures",
     "tests/half-open-forced-close.test-helper.ts",

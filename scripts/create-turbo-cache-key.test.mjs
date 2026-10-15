@@ -22,8 +22,8 @@ describe('turbo platform cache key', () => {
     expect(readJson('turbo.json').globalDependencies).toContain(CACHE_KEY_FILE);
   });
 
-  test('postinstall regenerates it, so it exists before any turbo invocation', () => {
-    expect(readJson('package.json').scripts.postinstall).toBe(
+  test('postinstall regenerates it first, so it exists before any turbo invocation', () => {
+    expect(readJson('package.json').scripts.postinstall.split(' && ')[0]).toBe(
       'node scripts/create-turbo-cache-key.mjs',
     );
   });

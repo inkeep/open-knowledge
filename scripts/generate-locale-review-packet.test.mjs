@@ -2,11 +2,12 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, test } from 'vitest';
+import { beforeAll, describe, expect, test } from 'vitest';
 import {
   buildPacket,
   CHROME_SURFACES,
-  generate,
+  collectSourceReferences,
+  generate as generatePacket,
   MAX_PER_GLOSSARY_TERM,
   parseArgs,
   parsePoEntries,
@@ -16,6 +17,7 @@ import {
   readSection,
   selectMessages,
   TARGET_MESSAGES,
+  withSourceReferences,
 } from './generate-locale-review-packet.mjs';
 
 const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -468,22 +470,31 @@ describe('the tracking table', () => {
 });
 
 describe('against the real catalogs', () => {
-  const entries = parsePoEntries(SOURCE_CATALOG);
+  let references;
+  let entries;
+  const generate = (options) => generatePacket({ ...options, references });
 
-  test.each(
-    CHROME_SURFACES.map((surface) => [surface.label, surface]),
-  )('the %s surface still matches messages in the catalog', (_label, surface) => {
-    const matched = entries.filter((entry) =>
-      entry.references.some((ref) => surface.files.includes(ref)),
-    );
-    expect(matched.length).toBeGreaterThan(0);
+  beforeAll(async () => {
+    references = await collectSourceReferences();
+    entries = withSourceReferences(parsePoEntries(SOURCE_CATALOG), references);
   });
 
-  test.each(
-    CHROME_SURFACES.flatMap((surface) => surface.files.map((file) => [file])),
-  )('%s is still a source of user-facing messages', (file) => {
-    expect(entries.some((entry) => entry.references.includes(file))).toBe(true);
-  });
+  test.each(CHROME_SURFACES.map((surface) => [surface.label, surface]))(
+    'the %s surface still matches messages in the catalog',
+    (_label, surface) => {
+      const matched = entries.filter((entry) =>
+        entry.references.some((ref) => surface.files.includes(ref)),
+      );
+      expect(matched.length).toBeGreaterThan(0);
+    },
+  );
+
+  test.each(CHROME_SURFACES.flatMap((surface) => surface.files.map((file) => [file])))(
+    '%s is still a source of user-facing messages',
+    (file) => {
+      expect(entries.some((entry) => entry.references.includes(file))).toBe(true);
+    },
+  );
 
   test('builds a packet for every locale but the source', () => {
     for (const locale of SUPPORTED.filter((tag) => tag !== 'en')) {

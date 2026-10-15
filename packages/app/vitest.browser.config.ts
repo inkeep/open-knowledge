@@ -84,6 +84,7 @@ export const appBrowserVitestConfig = {
       '.excalidraw-assets-staging-*',
     ],
     setupFiles: APP_BROWSER_SETUP_FILES,
+    globalSetup: [fileURLToPath(new URL('./scripts/compile-i18n-catalogs.ts', import.meta.url))],
     reporters: [...configDefaults.reporters, 'json'],
     outputFile: { json: 'test-results/vitest-browser.json' },
     isolate: true,

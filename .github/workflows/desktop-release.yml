@@ -316,6 +316,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Compile the i18n catalogs from the .po files this build ships
+        shell: bash
+        working-directory: packages/app
+        run: |
+          if grep -q '"i18n:compile"' package.json; then
+            pnpm run i18n:compile
+          else
+            echo "packages/app/package.json defines no i18n:compile script, so this build compiles no i18n catalogs"
+          fi
+
       - name: Stage native-config prebuilt binaries
         id: stage
         env:
@@ -579,6 +589,16 @@ jobs:
           # desktop-build.yml.
           ELECTRON_SKIP_REBUILD: "0"
         run: pnpm install --frozen-lockfile
+
+      - name: Compile the i18n catalogs from the .po files this build ships
+        shell: bash
+        working-directory: packages/app
+        run: |
+          if grep -q '"i18n:compile"' package.json; then
+            pnpm run i18n:compile
+          else
+            echo "packages/app/package.json defines no i18n:compile script, so this build compiles no i18n catalogs"
+          fi
 
       # PRD-6650: same override as prepare, for the workspace build THIS job
       # does (the mac job stays self-contained on the proven signed-DMG path
@@ -1104,6 +1124,16 @@ jobs:
           ELECTRON_SKIP_REBUILD: "0"
         run: pnpm install --frozen-lockfile
 
+      - name: Compile the i18n catalogs from the .po files this build ships
+        shell: bash
+        working-directory: packages/app
+        run: |
+          if grep -q '"i18n:compile"' package.json; then
+            pnpm run i18n:compile
+          else
+            echo "packages/app/package.json defines no i18n:compile script, so this build compiles no i18n catalogs"
+          fi
+
       - name: Download workspace bundle
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -1449,6 +1479,16 @@ jobs:
         env:
           ELECTRON_SKIP_REBUILD: "1"
         run: pnpm install --frozen-lockfile
+
+      - name: Compile the i18n catalogs from the .po files this build ships
+        shell: bash
+        working-directory: packages/app
+        run: |
+          if grep -q '"i18n:compile"' package.json; then
+            pnpm run i18n:compile
+          else
+            echo "packages/app/package.json defines no i18n:compile script, so this build compiles no i18n catalogs"
+          fi
 
       - name: Download workspace bundle
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
