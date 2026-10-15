@@ -31,7 +31,7 @@ import {
 } from '@inkeep/open-knowledge-core/server';
 import { parseCheckpoint } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stringify as stringifyYaml } from 'yaml';
 import * as Y from 'yjs';
 import { runningAsRoot } from '../../../test-support/capabilities.test-helper.ts';
@@ -4190,6 +4190,12 @@ describe('createServer() — generated index wiring', () => {
   let server: ServerInstance | null;
   let shadowHandle: Awaited<ReturnType<typeof initShadowRepo>>;
   let localHttp: import('node:http').Server | null = null;
+  let indexDrains: Promise<void>[];
+  let holdIndexClose: Promise<void> | undefined;
+  let releaseIndexClose: (() => void) | undefined;
+  let restoreIndexClose: () => void;
+  let onDestroyComplete: (() => void) | undefined;
+  let onBeforeRemove: (() => void) | undefined;
 
   const indexPath = () => join(contentDir, 'index.md');
   const readIndex = () => readFileSync(indexPath(), 'utf-8');
@@ -4330,8 +4336,28 @@ describe('createServer() — generated index wiring', () => {
     expect(res.status, body).toBe(200);
   }
 
+  beforeAll(() => {
+    const close = DerivedDocumentIndex.prototype.close;
+    const closeIndex = vi
+      .spyOn(DerivedDocumentIndex.prototype, 'close')
+      .mockImplementation(function (this: DerivedDocumentIndex) {
+        const closing = close.call(this);
+        const draining = holdIndexClose
+          ? Promise.all([closing, holdIndexClose]).then(() => undefined)
+          : closing;
+        indexDrains.push(draining);
+        return draining;
+      });
+    restoreIndexClose = () => closeIndex.mockRestore();
+  });
+
+  afterAll(() => restoreIndexClose());
+
   beforeEach(async () => {
     projectDir = await mkdtemp(join(tmpdir(), 'ok-index-wiring-'));
+    indexDrains = [];
+    holdIndexClose = undefined;
+    releaseIndexClose = undefined;
     contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
@@ -4343,16 +4369,52 @@ describe('createServer() — generated index wiring', () => {
     server = null;
   });
 
-  afterEach(async () => {
+  async function cleanupFixture(): Promise<void> {
     if (localHttp) {
       await new Promise<void>((resolve, reject) =>
         localHttp?.close((err) => (err ? reject(err) : resolve())),
       );
       localHttp = null;
     }
-    await server?.destroy();
-    loggerFactory.reset();
-    await rm(projectDir, { recursive: true, force: true });
+    try {
+      await server?.destroy();
+      onDestroyComplete?.();
+      if (releaseIndexClose) setImmediate(releaseIndexClose);
+      await Promise.all(indexDrains);
+      onBeforeRemove?.();
+    } finally {
+      loggerFactory.reset();
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  }
+
+  afterEach(cleanupFixture);
+
+  test('fixture cleanup waits for the derived-index close promise', async () => {
+    holdIndexClose = new Promise<void>((resolve) => {
+      releaseIndexClose = resolve;
+    });
+    try {
+      await bootServer();
+      let drainsSettled = false;
+      let drainsRecordedAtRemoval = 0;
+      let drainsSettledAtRemoval = false;
+      onDestroyComplete = () => {
+        void Promise.all(indexDrains).then(() => {
+          drainsSettled = true;
+        });
+      };
+      onBeforeRemove = () => {
+        drainsRecordedAtRemoval = indexDrains.length;
+        drainsSettledAtRemoval = drainsSettled;
+      };
+      await cleanupFixture();
+      expect(drainsRecordedAtRemoval).toBeGreaterThan(0);
+      expect(drainsSettledAtRemoval).toBe(true);
+    } finally {
+      onDestroyComplete = undefined;
+      onBeforeRemove = undefined;
+    }
   });
 
   test('the setting reaches the server through the real config file', async () => {
