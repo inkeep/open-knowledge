@@ -50,6 +50,7 @@ import {
   setMetaTitle,
   shouldShowPreview,
 } from './code-block-meta';
+import { PreviewFrame } from './PreviewFrame';
 import {
   buildPreviewIframeHeader,
   buildPreviewThemeMessage,
@@ -267,12 +268,10 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
           }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <iframe
+          <PreviewFrame
             title={t`HTML preview`}
-            ref={previewFrameRef}
-            sandbox="allow-scripts"
-            referrerPolicy="no-referrer"
-            srcDoc={buildPreviewIframeHeader(bakedTheme) + node.textContent}
+            frameRef={previewFrameRef}
+            html={buildPreviewIframeHeader(bakedTheme) + node.textContent}
             className="ok-codeblock-preview-frame"
             onLoad={() => {
               setBlockedRequests(null);
@@ -524,11 +523,10 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
           language={normalized === 'xml' ? 'html' : 'plain'}
           title={t`Edit source`}
           renderPreview={(value) => (
-            <iframe
+            <PreviewFrame
               title={t`HTML preview`}
-              sandbox="allow-scripts"
               className="size-full border-0"
-              srcDoc={buildPreviewIframeHeader(bakedTheme) + value}
+              html={buildPreviewIframeHeader(bakedTheme) + value}
             />
           )}
           onSave={handleEditSave}

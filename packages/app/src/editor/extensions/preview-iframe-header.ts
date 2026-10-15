@@ -27,6 +27,18 @@ export function buildPreviewThemeMessage(
     : { [PREVIEW_THEME_MESSAGE_KEY]: theme };
 }
 
+const PREVIEW_DOCUMENT_MESSAGE_KEY = 'okPreviewDocument';
+
+export interface PreviewDocumentMessage {
+  [PREVIEW_DOCUMENT_MESSAGE_KEY]: string;
+}
+
+export const PREVIEW_FRAME_URL = `${import.meta.env.BASE_URL}assets/preview-frame.html`;
+
+export function buildPreviewDocumentMessage(html: string): PreviewDocumentMessage {
+  return { [PREVIEW_DOCUMENT_MESSAGE_KEY]: html };
+}
+
 const PREVIEW_HEIGHT_MESSAGE_KEY = 'okPreviewHeight';
 
 export function parsePreviewHeightMessage(data: unknown): number | null {

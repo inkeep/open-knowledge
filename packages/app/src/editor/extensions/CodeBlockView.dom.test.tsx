@@ -1,7 +1,7 @@
 import type { Config } from '@inkeep/open-knowledge-core';
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import type { NodeViewProps } from '@tiptap/core';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { subscribeStartComment } from '@/comments/store';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { CodeBlockView } from './CodeBlockView';
@@ -49,15 +49,21 @@ function makeProps(): NodeViewProps {
   } as unknown as NodeViewProps;
 }
 
-function renderSrcdoc(): string {
+function renderPostedPreviewDocument(): string {
   const { container } = render(
     <ConfigContext value={makeConfigValue(null)}>
       <CodeBlockView {...makeProps()} />
     </ConfigContext>,
   );
   const iframe = container.querySelector('iframe');
-  expect(iframe).toBeTruthy();
-  return iframe?.getAttribute('srcdoc') ?? '';
+  if (!iframe?.contentWindow) throw new Error('Expected a rendered preview iframe');
+  expect(iframe.getAttribute('src')).toMatch(/assets\/preview-frame\.html$/);
+  expect(iframe.hasAttribute('srcdoc')).toBe(false);
+  const postMessage = vi.spyOn(iframe.contentWindow, 'postMessage');
+  fireEvent.load(iframe);
+  const posted = postMessage.mock.calls[0]?.[0] as { okPreviewDocument?: unknown } | undefined;
+  expect(typeof posted?.okPreviewDocument).toBe('string');
+  return posted?.okPreviewDocument as string;
 }
 
 describe('CodeBlockView preview-CSP wiring', () => {
@@ -65,14 +71,14 @@ describe('CodeBlockView preview-CSP wiring', () => {
     cleanup();
   });
 
-  test('renders the fixed open-network CSP in the iframe srcdoc', () => {
-    const srcdoc = renderSrcdoc();
-    expect(srcdoc).toContain("script-src 'unsafe-inline' https:");
-    expect(srcdoc).toContain('connect-src https:');
-    expect(srcdoc).toContain('img-src https:');
-    expect(srcdoc).not.toContain("connect-src 'none'");
-    expect(srcdoc).not.toContain("'unsafe-eval'");
-    expect(srcdoc).toContain('<div id="probe">hello</div>');
+  test('posts the fixed open-network CSP and the block content to the preview frame page', () => {
+    const previewDocument = renderPostedPreviewDocument();
+    expect(previewDocument).toContain("script-src 'unsafe-inline' https:");
+    expect(previewDocument).toContain('connect-src https:');
+    expect(previewDocument).toContain('img-src https:');
+    expect(previewDocument).not.toContain("connect-src 'none'");
+    expect(previewDocument).not.toContain("'unsafe-eval'");
+    expect(previewDocument).toContain('<div id="probe">hello</div>');
   });
 });
 

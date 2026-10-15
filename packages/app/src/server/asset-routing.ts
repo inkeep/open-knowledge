@@ -18,6 +18,7 @@ function servedByViteDevServer(url: string): boolean {
     path.startsWith('/node_modules/') ||
     path.startsWith('/src/') ||
     path === '/favicon.svg' ||
+    path === '/assets/preview-frame.html' ||
     params?.has('import') === true ||
     params?.has('html-proxy') === true
   );

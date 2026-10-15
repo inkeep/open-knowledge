@@ -2,7 +2,7 @@ import { getSchema } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { JSDOM } from 'jsdom';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { buildPreviewIframeHeader } from '../extensions/preview-iframe-header.ts';
+import { PREVIEW_FRAME_URL } from '../extensions/preview-iframe-header.ts';
 import { sharedExtensions } from '../extensions/shared.ts';
 import { OPT_OUT_ATTR } from './clipboard-sanitize.ts';
 import { type WalkerEnv, walkLiveDomToInlineStyledFragment } from './clipboard-walker.ts';
@@ -72,7 +72,7 @@ function buildCodeBlockPreviewDom(): HTMLElement {
   iframe.setAttribute('title', 'HTML preview');
   iframe.setAttribute('sandbox', 'allow-scripts');
   iframe.setAttribute('referrerpolicy', 'no-referrer');
-  iframe.setAttribute('srcdoc', buildPreviewIframeHeader('light') + CODE);
+  iframe.setAttribute('src', PREVIEW_FRAME_URL);
   iframe.className = 'ok-codeblock-preview-frame';
   preview.appendChild(iframe);
 
@@ -148,11 +148,10 @@ function emitFragmentHtml(): { holder: HTMLElement; html: string } {
 }
 
 describe('preview-active codeBlock clipboard emission (text/html tier)', () => {
-  test('emits no iframe / srcdoc render-header into the payload', () => {
+  test('emits no iframe or preview frame page URL into the payload', () => {
     const { holder, html } = emitFragmentHtml();
     expect(holder.querySelector('iframe')).toBeNull();
-    expect(html).not.toContain('srcdoc');
-    expect(html).not.toContain('Content-Security-Policy');
+    expect(html).not.toContain('preview-frame');
   });
 
   test('emits no preview render chrome (resize handles) into the payload', () => {
@@ -194,9 +193,9 @@ describe('preview-active codeBlock clipboard emission — Activity-hidden (unmou
     expect(pre?.textContent ?? '').toContain('html preview');
   });
 
-  test('emits no iframe / srcdoc render internals via the palette path', () => {
+  test('emits no iframe or preview frame page URL via the palette path', () => {
     const { holder, html } = emitFromUnmounted();
     expect(holder.querySelector('iframe')).toBeNull();
-    expect(html).not.toContain('srcdoc');
+    expect(html).not.toContain('preview-frame');
   });
 });

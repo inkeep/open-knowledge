@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+</head>
+<body>
+  <script>addEventListener('message', (e) => { if (e.source !== parent) return; if (location.protocol !== 'file:' && e.origin !== location.origin) return; const html = e.data?.okPreviewDocument; if (typeof html !== 'string') return; document.open(); document.write(`<!doctype html>${html}`); document.close(); });</script>
+</body>
+</html>
