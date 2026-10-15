@@ -6689,12 +6689,12 @@ Copyright (c) 1991 - 1995, Stichting Mathematisch Centrum Amsterdam,
 
 The packages below are authored and published by Inkeep and are licensed under GPL-3.0-or-later, the same license as OpenKnowledge itself (see the repository LICENSE for the full text). They are listed for completeness; they are not third-party material.
 
-### `@visimer/core@0.1.0`
+### `@visimer/core@1.1.2`
 Homepage: https://github.com/inkeep/visimer#readme
 
 Copyright (c) 2026 Inkeep
 
-### `@visimer/dom@0.1.0`
+### `@visimer/dom@1.1.2`
 Homepage: https://github.com/inkeep/visimer#readme
 
 Copyright (c) 2026 Inkeep

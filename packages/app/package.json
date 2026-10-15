@@ -65,7 +65,7 @@
     {
       "name": "all JS chunks combined (gzipped)",
       "path": "dist/assets/*.js",
-      "limit": "9.15 MB",
+      "limit": "9.16 MB",
       "gzip": true,
       "running": false
     },
@@ -137,8 +137,8 @@
     "@tiptap/suggestion": "^3.22.3",
     "@tiptap/y-tiptap": "3.0.3",
     "@u-wave/react-vimeo": "^0.9.12",
-    "@visimer/core": "^0.1.0",
-    "@visimer/dom": "^0.1.0",
+    "@visimer/core": "^1.1.2",
+    "@visimer/dom": "^1.1.2",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/addon-unicode11": "0.9.0",
     "@xterm/addon-web-links": "0.12.0",

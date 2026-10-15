@@ -543,11 +543,11 @@ importers:
         specifier: ^0.9.12
         version: 0.9.12(react@19.2.5)
       '@visimer/core':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: ^1.1.2
+        version: 1.1.2
       '@visimer/dom':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: ^1.1.2
+        version: 1.1.2
       '@xterm/addon-fit':
         specifier: 0.11.0
         version: 0.11.0
@@ -6423,11 +6423,11 @@ packages:
   '@vimeo/player@2.30.4':
     resolution: {integrity: sha512-M8m1UAhJSb+KCWuXDLWHViwj+3YY/0ogwFquRfMHs9e9LYjXT9iB7n+sOCKwUusbiXuU2HKmXx+FEGHtYZfUSg==}
 
-  '@visimer/core@0.1.0':
-    resolution: {integrity: sha512-PIvkhrWtsRq/a/i88Yb0shvKC1oaZPA5UBLMs9/MjYZ4JMZVXKtvgqjAw3hg7hNN9lyos3qTlNGnmFuMOUJ1Eg==}
+  '@visimer/core@1.1.2':
+    resolution: {integrity: sha512-do8MDqlLQeDRI1fy2PUTVnzBkLrzpaq260UX1WrtE/3XtSoLge4T5oY+cvSXFyINhYiYKB9tgetkx+o14LFrjA==}
 
-  '@visimer/dom@0.1.0':
-    resolution: {integrity: sha512-hvBtIma0hZDIKhqMtIqEjueX4nVq353RdULBxykjj/d7OO+QoVzDIUxD3nG3732MLpjfVoLtpHbT07lWDx2Qmw==}
+  '@visimer/dom@1.1.2':
+    resolution: {integrity: sha512-Ir+Nl5vRgZA8rQwjGEQrC9ijOkdR0BmD3EjjqU/VedgK0lxleo5dKj8YIoHiocEDS1hlQwmzRZKIKg8MuV2FJw==}
 
   '@vitejs/plugin-react@6.0.1':
     resolution: {integrity: sha512-l9X/E3cDb+xY3SWzlG1MOGt2usfEHGMNIaegaUGFsLkb3RCn/k8/TOXBcab+OndDI4TBtktT8/9BwwW8Vi9KUQ==}
@@ -17247,11 +17247,11 @@ snapshots:
       native-promise-only: 0.8.1
       weakmap-polyfill: 2.0.4
 
-  '@visimer/core@0.1.0': {}
+  '@visimer/core@1.1.2': {}
 
-  '@visimer/dom@0.1.0':
+  '@visimer/dom@1.1.2':
     dependencies:
-      '@visimer/core': 0.1.0
+      '@visimer/core': 1.1.2
 
   '@vitejs/plugin-react@6.0.1(@rolldown/plugin-babel@0.2.2(@babel/core@7.29.7(supports-color@7.2.0))(@babel/runtime@7.29.7)(rolldown@1.2.6)(vite@8.0.8(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.0)(yaml@2.9.0)))(babel-plugin-react-compiler@0.0.0-experimental-a8e64ef-20260402)(vite@8.0.8(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.0)(yaml@2.9.0))':
     dependencies:
