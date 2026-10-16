@@ -5,8 +5,8 @@ name: Release
 #
 # Beta path: event-driven on `push` to open-knowledge/main with a paths
 # filter on `.changeset/**`. Copybara mirrors
-# `public/open-knowledge/.changeset/*.md`, `pre.json`, and `config.json`
-# from agents-private. When agents-private merges a PR with a changeset,
+# `public/open-knowledge/.changeset/*.md` and `config.json` from
+# agents-private. When agents-private merges a PR with a changeset,
 # Copybara batches it into a Project-import commit on open-knowledge/main;
 # that import push IS the release trigger. The workflow then runs
 # `compute-next-beta.mjs` locally to derive baseVersion
@@ -34,9 +34,8 @@ name: Release
 #        matching the paths filter) → skip cleanly.
 #      - Resolves -beta.N counter from existing vX.Y.Z-beta.* tags
 #        (race-free inside the ok-release-cadence concurrency slot).
-#      - Overrides every fixed-group packages/*/package.json#version AND
-#        both packages/server/assets/skills/{project,discovery}/SKILL.md
-#        metadata.version to X.Y.Z-beta.N (transient jq, never committed).
+#      - Overrides every fixed-group packages/*/package.json#version
+#        to X.Y.Z-beta.N (transient jq, never committed).
 #      - Tags vX.Y.Z-beta.N at `github.sha` + creates a prerelease GitHub
 #        Release with the rendered notes (consumed-set marker embedded
 #        for the next cut to read).
@@ -57,8 +56,8 @@ name: Release
 #      - Checks out the stable tag (the promoted beta's SHA, or the
 #        synthetic commit a point release tags).
 #      - Overrides every fixed-group package.json#version to the clean
-#        X.Y.Z (the public repo's commit at that SHA carries the version
-#        the last main reset wrote, normally the previous stable).
+#        X.Y.Z (the public repo's commit at that SHA carries the committed
+#        placeholder 0.0.0-unknown).
 #      - Publishes @inkeep/open-knowledge@X.Y.Z to npm with
 #        `--tag latest --provenance`.
 #    desktop-release.yml is dispatched by promote-stable.yml or
@@ -347,9 +346,10 @@ jobs:
       # listing read-releases recorded; emits `{skip: true, reason}` when no
       # new changesets exist since the last beta (e.g., a Copybara import
       # that touched `.changeset/config.json` but no `.md` files). The
-      # script MUTATES the working tree (a transient pre.json + CHANGELOG.md
-      # + package.json + deletes .changeset/*.md); the final `Restore
-      # working tree` step cleans up.
+      # script MUTATES the working tree (writes a transient pre.json, which
+      # main does not commit, + CHANGELOG.md + package.json, and deletes
+      # .changeset/*.md); the final `Restore working tree` step restores the
+      # tracked files.
       - name: Compute next beta base version + render release notes
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         id: compute-beta
@@ -448,17 +448,7 @@ jobs:
             jq --arg v "$VERSION" '.version=$v' "$f" > "${f}.tmp"
             mv "${f}.tmp" "$f"
           done
-          # Both skill bundles' metadata.version "tracks
-          # @inkeep/open-knowledge-server package version" — the build-time
-          # invariant test in packages/server/src/skill-state.test.ts asserts
-          # they match. Mutate in place (sed: same transient-only model as jq
-          # above), once per bundle.
-          for skill in packages/server/assets/skills/project/SKILL.md \
-                       packages/server/assets/skills/discovery/SKILL.md; do
-            sed -i'.bak' -E "s/^([[:space:]]+version:[[:space:]]+\")[^\"]+(\".*)$/\1${VERSION}\2/" "$skill"
-            rm -f "${skill}.bak"
-          done
-          echo "All fixed-group package.json files + both skill bundles' metadata.version now at ${VERSION} (in-memory only)."
+          echo "All fixed-group package.json files now at ${VERSION} (in-memory only)."
 
       - name: Validate stable_version + override package.json (publish-stable)
         if: github.event.action == 'publish-stable'
@@ -481,12 +471,7 @@ jobs:
             jq --arg v "$STABLE_VERSION" '.version=$v' "$f" > "${f}.tmp"
             mv "${f}.tmp" "$f"
           done
-          for skill in packages/server/assets/skills/project/SKILL.md \
-                       packages/server/assets/skills/discovery/SKILL.md; do
-            sed -i'.bak' -E "s/^([[:space:]]+version:[[:space:]]+\")[^\"]+(\".*)$/\1${STABLE_VERSION}\2/" "$skill"
-            rm -f "${skill}.bak"
-          done
-          echo "All fixed-group package.json files + both skill bundles' metadata.version now at ${STABLE_VERSION} (in-memory only)."
+          echo "All fixed-group package.json files now at ${STABLE_VERSION} (in-memory only)."
 
       - name: Build the cli and its workspace dependencies at the overridden versions
         run: |

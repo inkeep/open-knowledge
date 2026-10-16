@@ -14,7 +14,7 @@ describe('share contract corpus cache wiring', () => {
     expect(turbo.globalDependencies.filter((entry) => entry === corpusPath)).toHaveLength(1);
   });
 
-  test('the static docs manifest deployment identity invalidates the docs build cache', () => {
+  test('the static docs manifest deployment identity, and each Vercel deployment, invalidates the docs build cache', () => {
     const turbo = JSON.parse(readFileSync(join(REPO_ROOT, 'turbo.json'), 'utf8'));
     const docsBuild = turbo.tasks['@inkeep/open-knowledge-docs#build'];
 
@@ -23,8 +23,10 @@ describe('share contract corpus cache wiring', () => {
       'GITHUB_SHA',
       'VERCEL_ENV',
       'OK_ALLOW_BLOGLESS_LLMS_TXT',
+      'OK_ALLOW_PARTIAL_CHANGELOG',
       'CI',
       'VERCEL',
+      'VERCEL_DEPLOYMENT_ID',
     ]);
   });
 });

@@ -10,13 +10,21 @@ const PER_PAGE = 100;
 
 const MAX_DATE_PAGES = 5;
 
-const MAX_RELEASE_PAGES = 20;
-
 const DATE_LIMIT = 30;
 
-const RELEASE_NOTES_REQUIRED = false;
-
 const NOTES_LAG_MS = 14 * 24 * 60 * 60 * 1000;
+
+const RUNAWAY_PAGES = 1000;
+
+const FETCH_ATTEMPTS = 3;
+
+const FETCH_TIMEOUT_MS = 30_000;
+
+const MAX_RETRY_AFTER_MS = 10_000;
+
+const RETRY_BACKOFF_MS = 1000;
+
+export const ALLOW_PARTIAL_CHANGELOG = 'OK_ALLOW_PARTIAL_CHANGELOG';
 
 export const NOTES_SOURCE_MARKER = '<!-- ok-notes-source: stable-tag-tree -->';
 
@@ -107,6 +115,7 @@ interface PublishedStable {
 export interface MarkedNotesScan {
   notes: Map<string, string>;
   unmarkedCovered: PublishedStable[];
+  unlisted: string[];
   earliestMarkedAt: number;
   oldestCreatedAt: number;
 }
@@ -115,6 +124,7 @@ export function newMarkedNotesScan(): MarkedNotesScan {
   return {
     notes: new Map(),
     unmarkedCovered: [],
+    unlisted: [],
     earliestMarkedAt: Number.POSITIVE_INFINITY,
     oldestCreatedAt: Number.POSITIVE_INFINITY,
   };
@@ -157,8 +167,10 @@ export function collectMarkedNotes(
       if (Number.isFinite(publishedAt)) {
         scan.earliestMarkedAt = Math.min(scan.earliestMarkedAt, publishedAt);
       }
-    } else if (changelogTags.has(tag) && Number.isFinite(publishedAt)) {
-      scan.unmarkedCovered.push({ tag, publishedAt });
+    } else if (changelogTags.has(tag)) {
+      if (Number.isFinite(publishedAt)) scan.unmarkedCovered.push({ tag, publishedAt });
+    } else if (!scan.unlisted.includes(tag)) {
+      scan.unlisted.push(tag);
     }
   }
 }
@@ -184,14 +196,108 @@ export interface ReleaseFeed {
   failure: string | null;
 }
 
+interface PageIo {
+  fetchImpl: typeof fetch;
+  sleep: (ms: number) => Promise<void>;
+  deadline: (ms: number) => AbortSignal;
+}
+
+const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+function errorText(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const cause = err.cause as { code?: unknown; message?: unknown } | undefined;
+  const detail =
+    typeof cause?.code === 'string'
+      ? cause.code
+      : typeof cause?.message === 'string'
+        ? cause.message
+        : null;
+  return detail ? `${err.message} (${detail})` : err.message;
+}
+
+function rateLimited(res: Response): boolean {
+  return (
+    res.status === 429 ||
+    (res.status === 403 &&
+      (res.headers.get('x-ratelimit-remaining') === '0' || res.headers.has('retry-after')))
+  );
+}
+
+function httpFailure(page: number, res: Response): string {
+  if (res.status === 401) {
+    return `page ${page} returned HTTP 401: the GITHUB_TOKEN this build sent was refused`;
+  }
+  if (rateLimited(res)) return `page ${page} was rate-limited (HTTP ${res.status})`;
+  return `page ${page} returned HTTP ${res.status}`;
+}
+
+type PageRead = { payload: unknown; failure: null } | { payload: null; failure: string };
+
+async function readPage(
+  page: number,
+  headers: Record<string, string>,
+  io: PageIo,
+): Promise<PageRead> {
+  const url = `${RELEASES_API}?per_page=${PER_PAGE}&page=${page}`;
+  for (let attempt = 1; ; attempt++) {
+    let res: Response;
+    let body = '';
+    try {
+      res = await io.fetchImpl(url, { headers, signal: io.deadline(FETCH_TIMEOUT_MS) });
+      if (res.ok) body = await res.text();
+    } catch (err) {
+      if (attempt >= FETCH_ATTEMPTS) {
+        return {
+          payload: null,
+          failure: `page ${page} request failed after ${FETCH_ATTEMPTS} attempts: ${errorText(err)}`,
+        };
+      }
+      await io.sleep(RETRY_BACKOFF_MS * attempt);
+      continue;
+    }
+    if (res.ok) {
+      try {
+        return { payload: JSON.parse(body), failure: null };
+      } catch (err) {
+        return {
+          payload: null,
+          failure: `page ${page} returned a body that is not JSON: ${errorText(err)}`,
+        };
+      }
+    }
+    if (attempt < FETCH_ATTEMPTS && res.status >= 500) {
+      await io.sleep(RETRY_BACKOFF_MS * attempt);
+      continue;
+    }
+    const retryAfterMs = Number(res.headers.get('retry-after')) * 1000;
+    if (
+      attempt < FETCH_ATTEMPTS &&
+      rateLimited(res) &&
+      retryAfterMs > 0 &&
+      retryAfterMs <= MAX_RETRY_AFTER_MS
+    ) {
+      await io.sleep(retryAfterMs);
+      continue;
+    }
+    return { payload: null, failure: httpFailure(page, res) };
+  }
+}
+
 export async function fetchReleaseFeed({
   dateLimit = DATE_LIMIT,
   changelogTags,
   fetchImpl = fetch,
+  sleep = realSleep,
+  deadline = (ms: number) => AbortSignal.timeout(ms),
+  runawayPages = RUNAWAY_PAGES,
 }: {
   dateLimit?: number;
   changelogTags: ReadonlySet<string>;
   fetchImpl?: typeof fetch;
+  sleep?: (ms: number) => Promise<void>;
+  deadline?: (ms: number) => AbortSignal;
+  runawayPages?: number;
 }): Promise<ReleaseFeed> {
   const dates = new Map<string, string>();
   const scan = newMarkedNotesScan();
@@ -203,34 +309,34 @@ export async function fetchReleaseFeed({
     'user-agent': 'openknowledge.ai changelog',
     ...(token ? { authorization: `Bearer ${token}` } : {}),
   };
-  try {
-    for (let page = 1; ; page++) {
-      const wantDates = page <= MAX_DATE_PAGES && dates.size < dateLimit;
-      if (!wantDates && passedCutover(scan)) break;
-      if (page > MAX_RELEASE_PAGES) {
-        failure = `stopped at the ${MAX_RELEASE_PAGES}-page cap`;
-        break;
-      }
-      const res = await fetchImpl(`${RELEASES_API}?per_page=${PER_PAGE}&page=${page}`, { headers });
-      if (!res.ok) {
-        failure = `page ${page} returned HTTP ${res.status}`;
-        break;
-      }
-      const payload = await res.json();
-      if (!Array.isArray(payload)) {
-        failure = `page ${page} returned a body that is not a list of releases`;
-        break;
-      }
-      if (wantDates) collectDates(payload, dates, dateLimit);
-      collectMarkedNotes(payload, scan, changelogTags);
-      if (payload.length < PER_PAGE) {
-        exhausted = true;
-        break;
-      }
+  for (let page = 1; ; page++) {
+    const wantDates = page <= MAX_DATE_PAGES && dates.size < dateLimit;
+    if (!wantDates && passedCutover(scan)) break;
+    if (page > runawayPages) {
+      failure = `the Releases listing did not end within ${runawayPages} pages and never reached the cutover`;
+      break;
     }
-  } catch (err) {
-    failure = err instanceof Error ? err.message : String(err);
-    console.warn(`[releases] date enrichment failed; building changelog without dates: ${failure}`);
+    const read = await readPage(page, headers, { fetchImpl, sleep, deadline });
+    if (read.failure !== null) {
+      failure = read.failure;
+      break;
+    }
+    const { payload } = read;
+    if (!Array.isArray(payload)) {
+      failure = `page ${page} returned a body that is not a list of releases`;
+      break;
+    }
+    if (wantDates) collectDates(payload, dates, dateLimit);
+    collectMarkedNotes(payload, scan, changelogTags);
+    if (payload.length < PER_PAGE) {
+      exhausted = true;
+      break;
+    }
+  }
+  if (scan.unlisted.length > 0) {
+    console.warn(
+      `[releases] published stable Release(s) with no notes-source marker and no packages/cli/CHANGELOG.md section, so the changelog has no entry for them: ${scan.unlisted.join(', ')}. Restore the marked notes in each Release body and re-fire the docs deploy.`,
+    );
   }
   return {
     dates,
@@ -262,14 +368,39 @@ export function mergeReleaseNotes(
   );
 }
 
-export function releaseNotesFrom(feed: ReleaseFeed): ReadonlyMap<string, string> {
+type BuildEnv = Readonly<Record<string, string | undefined>>;
+
+export function releaseNotesRequired(env: BuildEnv = process.env): boolean {
+  return env.VERCEL_ENV === 'production' && env[ALLOW_PARTIAL_CHANGELOG] !== '1';
+}
+
+export function releaseNotesFrom(
+  feed: ReleaseFeed,
+  env: BuildEnv = process.env,
+): ReadonlyMap<string, string> {
   if (feed.notesComplete) return feed.notes;
   const reason =
     '[releases] could not read every stable Release body back to the newest one without notes' +
     `${feed.failure ? ` (${feed.failure})` : ''}; ` +
     'the changelog cannot tell which versions have notes in their Release body.';
-  if (RELEASE_NOTES_REQUIRED) throw new Error(reason);
-  console.warn(`${reason} Showing packages/cli/CHANGELOG.md notes only.`);
+  if (releaseNotesRequired(env)) {
+    throw new Error(
+      `${reason} packages/cli/CHANGELOG.md is frozen, so a production build without the Release ` +
+        'bodies would drop every newer stable from the live changelog. Re-run the deploy. A rate ' +
+        'limit needs GITHUB_TOKEN on the Vercel project, and an HTTP 401 means the token set there ' +
+        'was refused and needs replacing. Set ' +
+        `${ALLOW_PARTIAL_CHANGELOG}=1 to publish the CHANGELOG.md notes alone. Runbook: RELEASES.md, ` +
+        '"The docs changelog reads the Release bodies".',
+    );
+  }
+  const production =
+    env.VERCEL_ENV === 'production'
+      ? ` ${ALLOW_PARTIAL_CHANGELOG}=1 is set, so this PRODUCTION build publishes it; unset it once the cause is fixed.`
+      : '';
+  console.warn(
+    `${reason} Showing packages/cli/CHANGELOG.md notes only, so every stable newer than it is ` +
+      `missing from this build's changelog.${production}`,
+  );
   return new Map();
 }
 
@@ -292,7 +423,11 @@ function readChangelog(): string | null {
 
 export async function loadStableReleases(
   limit = Number.POSITIVE_INFINITY,
-  deps: { fetchImpl?: typeof fetch } = {},
+  deps: {
+    fetchImpl?: typeof fetch;
+    env?: BuildEnv;
+    sleep?: (ms: number) => Promise<void>;
+  } = {},
 ): Promise<ReleaseNote[]> {
   const markdown = readChangelog();
   if (markdown === null) return [];
@@ -306,6 +441,7 @@ export async function loadStableReleases(
     dateLimit: DATE_LIMIT,
     changelogTags,
     fetchImpl: deps.fetchImpl ?? fetch,
+    sleep: deps.sleep,
   });
   const changelogReleases = parseChangelog(markdown, feed.dates);
   if (changelogReleases.length === 0) {
@@ -313,6 +449,10 @@ export async function loadStableReleases(
       `[changelog] CHANGELOG.md at ${CHANGELOG_PATH} has no \`## X.Y.Z\` sections — malformed or empty.`,
     );
   }
-  const releases = mergeReleaseNotes(changelogReleases, releaseNotesFrom(feed), feed.dates);
+  const releases = mergeReleaseNotes(
+    changelogReleases,
+    releaseNotesFrom(feed, deps.env ?? process.env),
+    feed.dates,
+  );
   return Number.isFinite(limit) ? releases.slice(0, limit) : releases;
 }

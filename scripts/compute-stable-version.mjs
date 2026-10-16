@@ -337,7 +337,6 @@ function main() {
       `stable_tag=${result.stableTag ?? ''}`,
       `beta_sha=${result.betaSha ?? ''}`,
       `latest_stable_sha=${result.latestStableSha ?? ''}`,
-      `delta_ids=${JSON.stringify(result.deltaIds ?? [])}`,
       `bump_verdicts=${serializeBumpVerdicts(verdicts)}`,
     ];
     appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);

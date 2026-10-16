@@ -1,6 +1,6 @@
 {
   "name": "@inkeep/open-knowledge",
-  "version": "0.86.18",
+  "version": "0.0.0-unknown",
   "description": "Local-first, agent-friendly Markdown knowledge base with a cross-platform CLI and web editor",
   "keywords": [
     "knowledge-base",

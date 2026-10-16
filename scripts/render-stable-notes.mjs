@@ -108,7 +108,7 @@ export function readPublishedStableTags({ releasesFile = '' } = {}) {
     console.error(
       `::warning::render-stable-notes: could not read the published stable Releases (${err instanceof Error ? err.message : String(err)}). ` +
         'The notes count every stable tag as released, so they may leave out changesets first tagged in a stable ' +
-        'whose Release never published, and they carry no notes-source marker; the docs keep CHANGELOG.md for this version.',
+        'whose Release never published, and they carry no notes-source marker; the docs changelog lists no entry for this version until the body carries one.',
     );
     return null;
   }

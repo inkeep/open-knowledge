@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import {
+  ALLOW_PARTIAL_CHANGELOG,
   collectDates,
   collectMarkedNotes,
   cutoverOf,
@@ -14,6 +15,7 @@ import {
   parseChangelog,
   passedCutover,
   releaseNotesFrom,
+  releaseNotesRequired,
 } from './releases.ts';
 
 const SAMPLE = `# @inkeep/open-knowledge
@@ -140,6 +142,7 @@ function mockFetch(responder: (page: number) => Response) {
 }
 
 const json = (data: unknown) => new Response(JSON.stringify(data), { status: 200 });
+const noWait = async () => {};
 const fullPage = (page: number) =>
   Array.from({ length: 100 }, (_, i) => apiRelease(`v9.${page}.${i}`, { prerelease: i > 0 }));
 
@@ -148,7 +151,7 @@ describe('fetchReleaseFeed dates (best-effort)', () => {
     const feed = await fetchReleaseFeed({
       dateLimit: 2,
       changelogTags: new Set(),
-      fetchImpl: mockFetch((p) => json(fullPage(p))),
+      fetchImpl: mockFetch((p) => json(p <= 3 ? fullPage(p) : [])),
     });
     expect(feed.dates.size).toBe(2);
   });
@@ -165,6 +168,7 @@ describe('fetchReleaseFeed dates (best-effort)', () => {
     const feed = await fetchReleaseFeed({
       changelogTags: new Set(),
       fetchImpl: mockFetch(() => new Response('nope', { status: 500 })),
+      sleep: noWait,
     });
     expect(feed.dates.size).toBe(0);
   });
@@ -174,6 +178,7 @@ describe('fetchReleaseFeed dates (best-effort)', () => {
     const feed = await fetchReleaseFeed({
       changelogTags: new Set(),
       fetchImpl: (() => Promise.reject(new Error('offline'))) as never,
+      sleep: noWait,
     });
     expect(feed.dates.size).toBe(0);
     warn.mockRestore();
@@ -440,7 +445,11 @@ describe('fetchReleaseFeed', () => {
       [[apiRelease('v1.1.0', { body: marked('- New.') }), ...betas(1, 99)]],
       (page) => (page === 2 ? 502 : 200),
     );
-    const feed = await fetchReleaseFeed({ changelogTags: new Set(['v1.0.0']), fetchImpl: impl });
+    const feed = await fetchReleaseFeed({
+      changelogTags: new Set(['v1.0.0']),
+      fetchImpl: impl,
+      sleep: noWait,
+    });
     expect(feed.notesComplete).toBe(false);
     expect(feed.failure).toBe('page 2 returned HTTP 502');
     expect([...feed.dates.keys()]).toEqual(['v1.1.0']);
@@ -454,17 +463,239 @@ describe('fetchReleaseFeed', () => {
     expect(feed.failure).toBe('page 1 returned a body that is not a list of releases');
   });
 
-  test('stops at the page cap without passing the cutover, and says the notes are incomplete', async () => {
+  test('walks as many pages as the cutover is deep, so release volume alone never leaves the notes incomplete', async () => {
+    const pages = [
+      ...Array.from({ length: 40 }, (_, i) => [
+        apiRelease(`v2.${i}.0`, { body: marked(`- Release ${i}.`), published_at: day(i) }),
+        ...betasCreated(i, 99, i),
+      ]),
+      [
+        apiRelease('v1.0.0', { body: '- Old.', published_at: day(60) }),
+        ...betasCreated(40, 99, 80),
+      ],
+      [apiRelease('v0.9.0', { body: marked('- Not read.') })],
+    ];
+    const { impl, requested } = pagedFetch(pages);
+    const feed = await fetchReleaseFeed({ changelogTags: new Set(['v1.0.0']), fetchImpl: impl });
+    expect(requested).toEqual(Array.from({ length: 41 }, (_, i) => i + 1));
+    expect(feed.notes.size).toBe(40);
+    expect(feed.notesComplete).toBe(true);
+    expect(feed.failure).toBeNull();
+  });
+
+  test('a listing that never ends stops at the runaway bound with a failure that says so', async () => {
     const { impl, requested } = pagedFetch(
-      Array.from({ length: 30 }, (_, i) => [
+      Array.from({ length: 10 }, (_, i) => [
         apiRelease(`v2.${i}.0`, { body: marked('- x') }),
         ...betas(i, 99),
       ]),
     );
-    const feed = await fetchReleaseFeed({ changelogTags: new Set(['v1.0.0']), fetchImpl: impl });
-    expect(requested).toHaveLength(20);
+    const feed = await fetchReleaseFeed({
+      changelogTags: new Set(['v1.0.0']),
+      fetchImpl: impl,
+      runawayPages: 6,
+    });
+    expect(requested).toHaveLength(6);
     expect(feed.notesComplete).toBe(false);
-    expect(feed.failure).toBe('stopped at the 20-page cap');
+    expect(feed.failure).toBe(
+      'the Releases listing did not end within 6 pages and never reached the cutover',
+    );
+  });
+
+  test('retries a transient 5xx, a network error and a short retry-after, with a deadline on every request', async () => {
+    const waits: number[] = [];
+    const sleep = async (ms: number) => {
+      waits.push(ms);
+    };
+    const deadlines: number[] = [];
+    const issued: AbortSignal[] = [];
+    const deadline = (ms: number) => {
+      deadlines.push(ms);
+      const signal = new AbortController().signal;
+      issued.push(signal);
+      return signal;
+    };
+    const scripted = (answers: (() => Response | Error)[]) => {
+      const seen: (AbortSignal | null | undefined)[] = [];
+      const impl = ((_url: string | URL, init?: RequestInit) => {
+        seen.push(init?.signal);
+        const next = answers.shift()?.();
+        return next instanceof Error ? Promise.reject(next) : Promise.resolve(next);
+      }) as unknown as typeof fetch;
+      return { impl, seen };
+    };
+    const page = () => json([apiRelease('v1.1.0', { body: marked('- New.') })]);
+    const flaky = scripted([
+      () => new Response('busy', { status: 503 }),
+      () => new Error('socket hang up'),
+      page,
+    ]);
+    const feed = await fetchReleaseFeed({
+      changelogTags: new Set(['v1.0.0']),
+      fetchImpl: flaky.impl,
+      sleep,
+      deadline,
+    });
+    expect(feed.failure).toBeNull();
+    expect(feed.notesComplete).toBe(true);
+    expect([...feed.notes.keys()]).toEqual(['v1.1.0']);
+    expect(deadlines).toEqual([30_000, 30_000, 30_000]);
+    expect(flaky.seen).toEqual(issued);
+    expect(waits).toEqual([1000, 2000]);
+    waits.length = 0;
+    const limited = scripted([
+      () => new Response('slow down', { status: 403, headers: { 'retry-after': '5' } }),
+      page,
+    ]);
+    const throttled = await fetchReleaseFeed({
+      changelogTags: new Set(['v1.0.0']),
+      fetchImpl: limited.impl,
+      sleep,
+      deadline,
+    });
+    expect(throttled.failure).toBeNull();
+    expect(waits).toEqual([5000]);
+  });
+
+  test('gives up on a page after three attempts and does not retry another 4xx', async () => {
+    const { impl, requested } = pagedFetch([], () => 503);
+    const failed = await fetchReleaseFeed({
+      changelogTags: new Set(['v1.0.0']),
+      fetchImpl: impl,
+      sleep: noWait,
+    });
+    expect(requested).toEqual([1, 1, 1]);
+    expect(failed.failure).toBe('page 1 returned HTTP 503');
+    const forbidden = pagedFetch([], () => 403);
+    const refused = await fetchReleaseFeed({
+      changelogTags: new Set(['v1.0.0']),
+      fetchImpl: forbidden.impl,
+      sleep: noWait,
+    });
+    expect(forbidden.requested).toEqual([1]);
+    expect(refused.failure).toBe('page 1 returned HTTP 403');
+  });
+
+  test('a rate limit that outlasts the retry-after cap, a spent primary limit and a refused token each fail at once, naming the cause', async () => {
+    const cases: [() => Response, string][] = [
+      [
+        () => new Response('', { status: 429, headers: { 'retry-after': '60' } }),
+        'page 1 was rate-limited (HTTP 429)',
+      ],
+      [
+        () => new Response('', { status: 403, headers: { 'x-ratelimit-remaining': '0' } }),
+        'page 1 was rate-limited (HTTP 403)',
+      ],
+      [
+        () => new Response('', { status: 401 }),
+        'page 1 returned HTTP 401: the GITHUB_TOKEN this build sent was refused',
+      ],
+    ];
+    for (const [respond, failure] of cases) {
+      const waits: number[] = [];
+      let calls = 0;
+      const impl = (() => {
+        calls += 1;
+        return Promise.resolve(respond());
+      }) as unknown as typeof fetch;
+      const feed = await fetchReleaseFeed({
+        changelogTags: new Set(['v1.0.0']),
+        fetchImpl: impl,
+        sleep: async (ms) => {
+          waits.push(ms);
+        },
+      });
+      expect(feed.failure).toBe(failure);
+      expect(calls).toBe(1);
+      expect(waits).toEqual([]);
+    }
+  });
+
+  test('a network failure names its page and the underlying cause, and an unparseable body names its page', async () => {
+    const unreachable = (() =>
+      Promise.reject(
+        new TypeError('fetch failed', {
+          cause: Object.assign(new Error('getaddrinfo ENOTFOUND api.github.com'), {
+            code: 'ENOTFOUND',
+          }),
+        }),
+      )) as unknown as typeof fetch;
+    const offline = await fetchReleaseFeed({
+      changelogTags: new Set(['v1.0.0']),
+      fetchImpl: unreachable,
+      sleep: noWait,
+    });
+    expect(offline.failure).toBe(
+      'page 1 request failed after 3 attempts: fetch failed (ENOTFOUND)',
+    );
+    const html = (() =>
+      Promise.resolve(new Response('<html>', { status: 200 }))) as unknown as typeof fetch;
+    const garbled = await fetchReleaseFeed({ changelogTags: new Set(['v1.0.0']), fetchImpl: html });
+    expect(garbled.failure).toMatch(/^page 1 returned a body that is not JSON: /);
+  });
+
+  test('a body read that times out or resets is retried, and reported as a request failure rather than as a body that is not JSON', async () => {
+    const cut = (reason: () => Error) =>
+      ({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: () => Promise.reject(reason()),
+      }) as unknown as Response;
+    const answers = [
+      cut(() => new DOMException('The operation was aborted due to timeout', 'TimeoutError')),
+      json([apiRelease('v1.1.0', { body: marked('- New.') })]),
+    ];
+    const waits: number[] = [];
+    const recovered = await fetchReleaseFeed({
+      changelogTags: new Set(['v1.0.0']),
+      fetchImpl: (() => Promise.resolve(answers.shift())) as unknown as typeof fetch,
+      sleep: async (ms) => {
+        waits.push(ms);
+      },
+    });
+    expect(recovered.failure).toBeNull();
+    expect([...recovered.notes.keys()]).toEqual(['v1.1.0']);
+    expect(waits).toEqual([1000]);
+    const reset = (() =>
+      Promise.resolve(
+        cut(
+          () =>
+            new TypeError('terminated', {
+              cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }),
+            }),
+        ),
+      )) as unknown as typeof fetch;
+    const failed = await fetchReleaseFeed({
+      changelogTags: new Set(['v1.0.0']),
+      fetchImpl: reset,
+      sleep: noWait,
+    });
+    expect(failed.failure).toBe(
+      'page 1 request failed after 3 attempts: terminated (UND_ERR_SOCKET)',
+    );
+  });
+
+  test('warns about a published stable that has neither marked notes nor a CHANGELOG.md section', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { impl } = pagedFetch([
+      [
+        apiRelease('v1.2.0', { body: '- Unmarked, after the freeze.' }),
+        apiRelease('v1.1.0', { body: marked('- New.') }),
+        apiRelease('v1.0.0', { body: '- Old.' }),
+      ],
+    ]);
+    await fetchReleaseFeed({ changelogTags: new Set(['v1.0.0']), fetchImpl: impl });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /no notes-source marker and no packages\/cli\/CHANGELOG\.md section.*: v1\.2\.0\./,
+      ),
+    );
+    warn.mockClear();
+    const covered = pagedFetch([[apiRelease('v1.0.0', { body: '- Old.' })]]);
+    await fetchReleaseFeed({ changelogTags: new Set(['v1.0.0']), fetchImpl: covered.impl });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   test('a network throw leaves the notes incomplete and never throws', async () => {
@@ -472,34 +703,77 @@ describe('fetchReleaseFeed', () => {
     const feed = await fetchReleaseFeed({
       changelogTags: new Set(['v1.0.0']),
       fetchImpl: (() => Promise.reject(new Error('offline'))) as never,
+      sleep: noWait,
     });
     expect(feed).toEqual({
       dates: new Map(),
       notes: new Map(),
       notesComplete: false,
-      failure: 'offline',
+      failure: 'page 1 request failed after 3 attempts: offline',
     });
     warn.mockRestore();
   });
 });
 
-describe('releaseNotesFrom', () => {
-  test('passes complete notes through and drops incomplete ones with a warning', () => {
-    const notes = new Map([['v1.0.0', '- One.']]);
-    expect(releaseNotesFrom({ dates: new Map(), notes, notesComplete: true, failure: null })).toBe(
-      notes,
+describe('releaseNotesRequired', () => {
+  test('only a production Vercel build requires the Release bodies, unless the operator override is set', () => {
+    expect(releaseNotesRequired({ VERCEL: '1', VERCEL_ENV: 'production' })).toBe(true);
+    expect(releaseNotesRequired({ VERCEL: '1', VERCEL_ENV: 'preview' })).toBe(false);
+    expect(releaseNotesRequired({ VERCEL: '1' })).toBe(false);
+    expect(releaseNotesRequired({ CI: 'true' })).toBe(false);
+    expect(releaseNotesRequired({})).toBe(false);
+    expect(releaseNotesRequired({ VERCEL_ENV: 'production', [ALLOW_PARTIAL_CHANGELOG]: '1' })).toBe(
+      false,
     );
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(
-      releaseNotesFrom({
-        dates: new Map(),
-        notes,
-        notesComplete: false,
-        failure: 'page 2 returned HTTP 403',
-      }).size,
-    ).toBe(0);
+      releaseNotesRequired({ VERCEL_ENV: 'production', [ALLOW_PARTIAL_CHANGELOG]: 'true' }),
+    ).toBe(true);
+  });
+});
+
+describe('releaseNotesFrom', () => {
+  const notes = new Map([['v1.0.0', '- One.']]);
+  const incomplete = {
+    dates: new Map(),
+    notes,
+    notesComplete: false,
+    failure: 'page 2 returned HTTP 403',
+  };
+
+  const production = { VERCEL: '1', VERCEL_ENV: 'production' };
+
+  test('passes complete notes through whether or not they are required', () => {
+    const complete = { dates: new Map(), notes, notesComplete: true, failure: null };
+    expect(releaseNotesFrom(complete, production)).toBe(notes);
+    expect(releaseNotesFrom(complete, {})).toBe(notes);
+  });
+
+  test('incomplete notes fail a production build, naming the failure, GITHUB_TOKEN and the override', () => {
+    expect(() => releaseNotesFrom(incomplete, production)).toThrow(
+      /\(page 2 returned HTTP 403\).*CHANGELOG\.md is frozen.*GITHUB_TOKEN.*OK_ALLOW_PARTIAL_CHANGELOG=1/,
+    );
+  });
+
+  test('a preview or local build drops incomplete notes with a warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(releaseNotesFrom(incomplete, { VERCEL: '1', VERCEL_ENV: 'preview' }).size).toBe(0);
+    expect(releaseNotesFrom(incomplete, {}).size).toBe(0);
     expect(warn).toHaveBeenCalledWith(
       expect.stringMatching(/\(page 2 returned HTTP 403\).*CHANGELOG\.md notes only/),
+    );
+    expect(warn).not.toHaveBeenCalledWith(expect.stringMatching(/PRODUCTION/));
+    warn.mockRestore();
+  });
+
+  test('the override lets a production build publish with a warning that names it', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(
+      releaseNotesFrom(incomplete, { ...production, [ALLOW_PARTIAL_CHANGELOG]: '1' }).size,
+    ).toBe(0);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /OK_ALLOW_PARTIAL_CHANGELOG=1 is set, so this PRODUCTION build publishes it/,
+      ),
     );
     warn.mockRestore();
   });
@@ -583,10 +857,50 @@ describe('loadStableReleases', () => {
     );
   });
 
-  test('when the Release bodies cannot be read it falls back to CHANGELOG.md alone', async () => {
+  test('a production build fails when the Release bodies cannot be read, rather than drop every newer stable', async () => {
+    const env = { VERCEL: '1', VERCEL_ENV: 'production' };
+    await expect(
+      loadStableReleases(undefined, {
+        fetchImpl: pagedFetch([], () => 503).impl,
+        env,
+        sleep: noWait,
+      }),
+    ).rejects.toThrow(/page 1 returned HTTP 503.*CHANGELOG\.md is frozen/);
+    const offline = (() => Promise.reject(new Error('offline'))) as unknown as typeof fetch;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(
+      loadStableReleases(undefined, { fetchImpl: offline, env, sleep: noWait }),
+    ).rejects.toThrow(/attempts: offline\)/);
+    warn.mockRestore();
+  });
+
+  test('the Release fetch sends GITHUB_TOKEN when the build has one, and nothing when it does not', async () => {
+    const seen: (string | null)[] = [];
+    const recording = ((_url: string | URL, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get('authorization'));
+      return Promise.resolve(new Response('[]', { status: 200 }));
+    }) as unknown as typeof fetch;
+    vi.stubEnv('GITHUB_TOKEN', 'ghs_fixture');
+    try {
+      await fetchReleaseFeed({ changelogTags: new Set(), fetchImpl: recording });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    vi.stubEnv('GITHUB_TOKEN', '');
+    try {
+      await fetchReleaseFeed({ changelogTags: new Set(), fetchImpl: recording });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(seen).toEqual(['Bearer ghs_fixture', null]);
+  });
+
+  test('outside production, unreadable Release bodies fall back to CHANGELOG.md alone', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const out = await loadStableReleases(undefined, {
       fetchImpl: pagedFetch([], () => 503).impl,
+      env: { VERCEL: '1', VERCEL_ENV: 'preview' },
+      sleep: noWait,
     });
     expect(out).toEqual(parseChangelog(realChangelog, new Map()));
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/CHANGELOG\.md notes only/));

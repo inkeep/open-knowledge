@@ -1858,7 +1858,7 @@ describe('the release App credential never shares a job with installed packages'
     for (const run of [
       'node scripts/compute-stable-version.mjs "$BETA_TAG"',
       'echo "dispatches publish-stable to release.yml for npm. npm latest does NOT move"',
-      '# pnpm exec changeset version runs in main-reset',
+      '# pnpm exec changeset version runs in compute-next-beta',
       '  # if ! timeout 300 pnpm install; then exit 1; fi',
       '# x; pnpm install',
       '  # x; pnpm install',

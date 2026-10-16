@@ -16,7 +16,6 @@ import {
   formatReleaseNotes,
   guardBasePublished,
   guardDeltaMatchesFix,
-  guardMainResetDeltaIds,
   guardNativeConfigProvenance,
   guardPatchOnly,
   guardRefsOnMain,
@@ -257,28 +256,6 @@ describe('guardNativeConfigProvenance', () => {
 
   test('treats a missing selection as "nothing qualified", not as a pass', () => {
     expect(guardNativeConfigProvenance({}).ok).toBe(false);
-  });
-});
-
-describe('guardMainResetDeltaIds', () => {
-  test('passes on a non-empty delta', () => {
-    expect(guardMainResetDeltaIds({ deltaIds: ['brave-pandas-sing'] })).toMatchObject({
-      ok: true,
-      code: null,
-    });
-  });
-
-  test('refuses an empty array, which main-reset reads as consolidate-everything', () => {
-    const r = guardMainResetDeltaIds({ deltaIds: [] });
-    expect(r.ok).toBe(false);
-    expect(r.code).toBe('empty-delta-ids');
-  });
-
-  test('refuses an absent delta for the same reason', () => {
-    expect(guardMainResetDeltaIds({ deltaIds: null })).toMatchObject({
-      ok: false,
-      code: 'empty-delta-ids',
-    });
   });
 });
 
@@ -574,7 +551,6 @@ describe('guard codes', () => {
       guardDeltaMatchesFix({ mode: 'revert', addedIds: ['x'], fixChangesetIds: [] }),
       guardPatchOnly({ bump: 'major' }),
       guardNativeConfigProvenance({ selection: { headSha: '', reason: 'nothing qualified' } }),
-      guardMainResetDeltaIds({ deltaIds: [] }),
       guardBasePublished({ latestStableTag: 'v0.32.1', publishedTags: ['v0.32.0'] }),
       guardShipsPublishedFixes({ verdict: droppedFixVerdict(), latestStableTag: 'v0.32.0' }),
     ];
@@ -823,15 +799,6 @@ describe('runPointRelease cascade', () => {
         eventType: 'desktop-release',
         clientPayload: { release_tag: 'v0.32.1', ref: 'v0.32.1', dispatched_by: 'https://run/1' },
       },
-      {
-        repo: 'inkeep/agents-private',
-        eventType: 'main-reset',
-        clientPayload: {
-          stable_version: '0.32.1',
-          delta_ids: ['shiny-fix'],
-          dispatched_by: 'https://run/1',
-        },
-      },
     ]);
   });
 
@@ -973,7 +940,7 @@ describe('runPointRelease cascade', () => {
     expect(plan.releaseNotes).toContain(NOTES_SOURCE_MARKER);
   });
 
-  test('a revert body carries no notes-source marker, so the docs keep CHANGELOG.md for it', () => {
+  test('a revert body carries no notes-source marker', () => {
     const io = makeIo();
     runPointRelease({ mode: 'revert', fixRefs: ['bad1'], dryRun: false }, io);
     expect(io.releases[0].notes).not.toContain('ok-notes-source');
@@ -998,25 +965,11 @@ describe('runPointRelease cascade', () => {
     );
   });
 
-  test('revert with no named delta skips main-reset and names both follow-ups', () => {
+  test('a revert dispatches only desktop-release and writes nothing to agents-private', () => {
     const io = makeIo();
     const plan = runPointRelease({ mode: 'revert', fixRefs: ['bad1'], dryRun: false }, io);
-    expect(plan.mainReset).toMatchObject({ dispatch: false, skipReason: 'no-delta-to-forward' });
-    expect(io.dispatches.map((d) => d.eventType)).toEqual(['desktop-release']);
-    expect(io.dispatches.every((d) => d.clientPayload.delta_ids === undefined)).toBe(true);
-    const warning = plan.warnings.join(' ');
-    expect(warning).toMatch(/on main/i);
-    expect(warning).toMatch(/anchor advances/i);
-  });
-
-  test('revert forwards the changeset the operator landed to represent it', () => {
-    const io = makeIo();
-    runPointRelease(
-      { mode: 'revert', fixRefs: ['bad1'], anchorDeltaIds: '["undo-bad"]', dryRun: false },
-      io,
-    );
-    const mainReset = io.dispatches.find((d) => d.eventType === 'main-reset');
-    expect(mainReset.clientPayload.delta_ids).toEqual(['undo-bad']);
+    expect(io.dispatches.map((d) => [d.repo, d.eventType])).toEqual([['', 'desktop-release']]);
+    expect(plan).not.toHaveProperty('mainReset');
   });
 
   test('revert mode warns that main must carry the same patch before the next promotion', () => {
@@ -1035,7 +988,7 @@ describe('runPointRelease cascade', () => {
     expect(plan.removedIds).toEqual(['bad-change']);
     const warning = plan.warnings.join(' ');
     expect(warning).toContain('This revert deletes .changeset/bad-change.md');
-    expect(warning).toContain('If main-reset has already consumed these files on main');
+    expect(warning).toContain('If the daily changeset cleanup has already deleted these files from main');
     expect(warning).toContain('an ordinary code-only revert there cannot reproduce the shipped patch');
     expect(warning).toContain('putting its changeset in a separate PR does not resolve this mismatch');
     expect(warning).toContain('ship it in cherry-pick mode instead');
@@ -1048,32 +1001,6 @@ describe('runPointRelease cascade', () => {
       cherryPickIo(),
     );
     expect(plan.warnings.join(' ')).not.toContain('shipped-fix check will refuse');
-  });
-
-  test('refuses when the operator names a delta that parses to nothing', () => {
-    const io = makeIo();
-    let refusal;
-    try {
-      runPointRelease(
-        { mode: 'revert', fixRefs: ['bad1'], anchorDeltaIds: '[]', dryRun: false },
-        io,
-      );
-    } catch (err) {
-      refusal = err;
-    }
-    expect(refusal?.code).toBe('empty-delta-ids');
-    expect(io.calls).toEqual({ tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 });
-  });
-
-  test('skips main-reset when the cross-repo bridge App is absent, without failing the run', () => {
-    const io = cherryPickIo();
-    const plan = runPointRelease(
-      { mode: 'cherry-pick', fixRefs: ['fix1'], dryRun: false, bridgeConfigured: false },
-      io,
-    );
-    expect(plan.mainReset).toMatchObject({ dispatch: false, skipReason: 'bridge-not-configured' });
-    expect(io.dispatches.map((d) => d.eventType)).toEqual(['desktop-release']);
-    expect(plan.warnings.join(' ')).toContain('shiny-fix');
   });
 
   test('a cascade failure after the tag is pushed marks the error with the pushed tag', () => {

@@ -34,7 +34,7 @@ name: Bug lane
 #      patch-only bump, anchor, provenance) and its cascade smokes the signed
 #      DMG before the release publishes or npm moves.
 #   4. Re-release is structurally impossible: candidates come from the pending
-#      pile (main-reset consumes a released fix's changeset), commits already
+#      pile (a changeset a published stable carries is not pending), commits already
 #      in the stable are pre-filtered, and an empty pick is refused. Every
 #      stable this lane cuts carries novel changesets.
 #

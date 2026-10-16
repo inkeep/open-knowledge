@@ -675,15 +675,11 @@ describe('the compute-next-beta CLI numbers from the stable tags and reads only 
     const root = mkdtempSync(join(tmpdir(), 'compute-next-beta-cli-'));
     roots.push(root);
     mkdirSync(join(root, '.changeset'));
-    writeFileSync(
-      join(root, '.changeset', 'pre.json'),
-      JSON.stringify({ mode: 'pre', tag: 'beta', initialVersions: { [OK]: '0.81.4' }, changesets: [] }),
-    );
     writeFileSync(join(root, '.changeset', 'config.json'), JSON.stringify({ fixed: [[OK]] }));
     writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'fixture-root', private: true }));
     writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n');
     mkdirSync(join(root, 'packages', 'cli'), { recursive: true });
-    writeFileSync(join(root, 'packages', 'cli', 'package.json'), JSON.stringify({ name: OK, version: '0.81.4' }));
+    writeFileSync(join(root, 'packages', 'cli', 'package.json'), JSON.stringify({ name: OK, version: '0.0.0-unknown' }));
     git(root, ['init', '-q', '-b', 'main']);
     configureTestGitRepository(root);
     const commit = (name, bump, body) => {
@@ -764,7 +760,7 @@ describe('the compute-next-beta CLI numbers from the stable tags and reads only 
     expect(out.releaseNotes).toContain('<!-- ok-consumed-set: ["drafted","fixture-change"] -->');
   });
 
-  test('a draft newest stable keeps its changesets pending and the stale anchor in pre.json is ignored', () => {
+  test('a draft newest stable keeps its changesets pending', () => {
     const fx = fixture();
     const res = run(fx, { ...previousBetaConsumed(['drafted', 'fixture-change']), ...publishedThrough12 });
     expect(res.status, res.stderr).toBe(0);

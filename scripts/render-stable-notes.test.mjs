@@ -150,7 +150,7 @@ describe('renderStableNotes', () => {
     expect(markedNotes(renderStableNotes([], { marked: true }))).toBeNull();
   });
 
-  test('a release with no entries says so and carries no marker, so the docs keep CHANGELOG.md', () => {
+  test('a release with no entries says so and carries no marker', () => {
     expect(renderStableNotes([], { marked: true })).toBe(`${EMPTY_NOTES}\n`);
   });
 });

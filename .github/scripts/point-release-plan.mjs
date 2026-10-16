@@ -50,10 +50,6 @@ export function parseFixRefs(raw) {
   return refs;
 }
 
-export function parseDeltaIds(raw) {
-  return splitList(raw);
-}
-
 function splitList(raw) {
   const items = [];
   for (const piece of String(raw ?? '').split(/[\s,[\]"']+/)) {
@@ -402,20 +398,6 @@ export function guardNativeConfigProvenance({ selection }) {
   );
 }
 
-export function guardMainResetDeltaIds({ deltaIds }) {
-  if (!Array.isArray(deltaIds) || deltaIds.length === 0) {
-    return refuse(
-      'empty-delta-ids',
-      'Refusing to dispatch main-reset without an explicit changeset delta: it treats an empty or absent ' +
-        'delta as consolidate-the-whole-pending-pile, which would consume every unsoaked changeset. ' +
-        'Supply the delta, or skip the dispatch entirely.',
-    );
-  }
-  return pass(`main-reset would consolidate exactly ${deltaIds.length} changeset(s).`);
-}
-
-const MAIN_RESET_REPO = 'inkeep/agents-private';
-
 export const APP_CREDENTIAL_HELPER =
   '!f() { test "$1" = get || return 0; echo username=x-access-token; echo "password=$GH_TOKEN"; }; f';
 
@@ -472,12 +454,10 @@ export function runPointRelease(opts, io) {
   const {
     mode,
     fixRefs,
-    anchorDeltaIds,
     resolvePaths = [],
     dryRun = true,
     dispatchedBy = '',
     selfRepo = '',
-    bridgeConfigured = true,
   } = opts;
 
   if (mode !== 'cherry-pick' && mode !== 'revert') {
@@ -548,8 +528,6 @@ export function runPointRelease(opts, io) {
 
   if (mode === 'revert') warnings.push(revertFollowUpWarning(version.removedIds));
 
-  const mainReset = decideMainReset({ anchorDeltaIds, addedIds: version.addedIds, bridgeConfigured, guards, warnings });
-
   const changesetEntries = version.addedIds.map((id) => {
     let body = null;
     try {
@@ -581,7 +559,6 @@ export function runPointRelease(opts, io) {
     addedIds: version.addedIds,
     removedIds: version.removedIds,
     changesetEntries,
-    mainReset,
     guards,
     warnings,
   };
@@ -607,13 +584,6 @@ export function runPointRelease(opts, io) {
       eventType: 'desktop-release',
       clientPayload: { release_tag: plan.tag, ref: plan.tag, dispatched_by: dispatchedBy },
     });
-    if (mainReset.dispatch) {
-      io.gh.dispatch({
-        repo: MAIN_RESET_REPO,
-        eventType: 'main-reset',
-        clientPayload: { stable_version: plan.version, delta_ids: mainReset.deltaIds, dispatched_by: dispatchedBy },
-      });
-    }
   } catch (err) {
     const marked = err instanceof Error ? err : new Error(String(err));
     marked.pushedTag = plan.tag;
@@ -707,7 +677,7 @@ function revertFollowUpWarning(removedIds) {
   if (removedIds.length > 0) {
     return (
       `This revert deletes ${removedIds.map((id) => `.changeset/${id}.md`).join(', ')}. ` +
-      'If main-reset has already consumed these files on main, an ordinary code-only revert there cannot ' +
+      'If the daily changeset cleanup has already deleted these files from main, an ordinary code-only revert there cannot ' +
       'reproduce the shipped patch. The shipped-fix check will refuse that later main promotion even when ' +
       'the rollback code is correct; putting its changeset in a separate PR does not resolve this mismatch. ' +
       'Unless the revert cannot wait for main, land it on main and ship it in cherry-pick mode instead, ' +
@@ -719,35 +689,6 @@ function revertFollowUpWarning(removedIds) {
     'main holds a commit with exactly the patch this release ships. Land the revert on main in a PR that ' +
     'changes nothing else, and put its changeset in a separate PR.'
   );
-}
-
-function decideMainReset({ anchorDeltaIds, addedIds, bridgeConfigured, guards, warnings }) {
-  const named = String(anchorDeltaIds ?? '').trim() !== '';
-  const deltaIds = named ? parseDeltaIds(anchorDeltaIds) : addedIds;
-
-  if (!named && deltaIds.length === 0) {
-    warnings.push(
-      'Skipping the main-reset dispatch: this release forwards no changeset delta, and dispatching an ' +
-        'empty one would consolidate the entire pending pile. Two follow-ups are now yours: land the fix ' +
-        '(for a revert, the revert itself) on main so the pile stops carrying it, and run main-reset with ' +
-        'that changeset so the anchor advances past this stable. Until the anchor advances, every later ' +
-        'automatic main-reset fails its version guard; beta and stable versions come from the stable tags ' +
-        'and are unaffected.',
-    );
-    return { dispatch: false, deltaIds: null, skipReason: 'no-delta-to-forward' };
-  }
-
-  checkGuard(guards, guardMainResetDeltaIds({ deltaIds }));
-
-  if (!bridgeConfigured) {
-    warnings.push(
-      'Skipping the main-reset dispatch: the cross-repo bridge App is not configured on this repo. Run ' +
-        `main-reset manually with delta_ids ${JSON.stringify(deltaIds)} so the anchor advances past this stable.`,
-    );
-    return { dispatch: false, deltaIds, skipReason: 'bridge-not-configured' };
-  }
-
-  return { dispatch: true, deltaIds, skipReason: null };
 }
 
 function provenanceLines(plan) {
@@ -773,7 +714,7 @@ function renderedReleaseNotes(plan, io, warnings) {
   } catch (err) {
     warnings.push(
       `The release notes could not be rendered from the changesets (${messageOf(err)}), so the body quotes ` +
-        `them instead and carries no notes-source marker; the docs changelog keeps CHANGELOG.md for ${plan.tag}.`,
+        `them instead and carries no notes-source marker; the docs changelog lists no entry for ${plan.tag} until the body carries one.`,
     );
     return formatReleaseNotes(plan);
   }
@@ -866,10 +807,6 @@ export function realIo() {
         const res = spawnSync('gh', ['api', '-X', 'POST', `repos/${repo}/dispatches`, '--input', '-'], {
           encoding: 'utf8',
           input: JSON.stringify({ event_type: eventType, client_payload: clientPayload }),
-          env:
-            repo === MAIN_RESET_REPO && process.env.BRIDGE_GH_TOKEN
-              ? { ...process.env, GH_TOKEN: process.env.BRIDGE_GH_TOKEN }
-              : process.env,
         });
         if (res.status !== 0) {
           throw new Error(
@@ -937,12 +874,10 @@ function main() {
       {
         mode: process.env.MODE,
         fixRefs: parseFixRefs(process.env.FIX_REFS),
-        anchorDeltaIds: process.env.ANCHOR_DELTA_IDS,
         resolvePaths: parseResolvePaths(process.env.RESOLVE_PATHS),
         dryRun,
         dispatchedBy: process.env.DISPATCHED_BY || '',
         selfRepo: process.env.GITHUB_REPOSITORY || '',
-        bridgeConfigured: process.env.BRIDGE_CONFIGURED === 'true',
       },
       io,
     );
@@ -985,8 +920,7 @@ function main() {
         `latest_stable_tag=${plan.latestStableTag}`,
         `synthetic_sha=${plan.syntheticSha}`,
         `resolved_paths=${JSON.stringify(plan.resolvedPaths.map((r) => r.path))}`,
-        `delta_ids=${JSON.stringify(plan.mainReset.deltaIds ?? [])}`,
-        `main_reset_dispatched=${plan.mainReset.dispatch ? 'true' : 'false'}`,
+        `added_ids=${JSON.stringify(plan.addedIds)}`,
         '',
       ].join('\n'),
     );

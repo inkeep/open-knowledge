@@ -86,7 +86,7 @@ Shell scripts are declared in scope by `no-comments.config.jsonc`, but the sweep
 
 ## Changesets
 
-Every behavior-changing PR ships a `.changeset/<kebab-name>.md` file. The body becomes the user-facing entry on the next beta's GitHub Release and on the aggregated stable Release notes — that's how npm consumers and desktop auto-update users learn what changed. Write release-note copy, not a commit-message reprise.
+Every behavior-changing PR ships a `.changeset/<kebab-name>.md` file. The body becomes the user-facing entry on the next beta's GitHub Release and on the stable Release notes — that's how npm consumers and desktop auto-update users learn what changed. Write release-note copy, not a commit-message reprise.
 
 - Create one with `pnpm run changeset`, or hand-write a file named `.changeset/<descriptive-kebab-slug>.md`.
 - Use a name no shipped changeset has used. A stable that carried the name counts it as released, so the new notes would never appear; the PR check refuses the file and asks for a rename.

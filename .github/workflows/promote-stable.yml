@@ -37,12 +37,6 @@ name: Promote stable
 # `ok-release-cadence` lock at WORKFLOW level, so a 15-75 min build here
 # would block every beta cut for the duration.
 #
-# After a successful cut this dispatches main-reset.yml on
-# inkeep/agents-private (via the "Inkeep OK Release Bridge" App) to advance
-# the base for the next cycle — one-button promotion. When the bridge App
-# secrets are absent the dispatch skips and the engineer runs main-reset.yml
-# manually (two-button fallback).
-#
 # Concurrency group is shared with release.yml so beta cuts and stable
 # promotions never race on the same public-repo state.
 #
@@ -63,9 +57,7 @@ name: Promote stable
 # installation UI, not something this workflow file can change. If the
 # installation lacks the grant, the App token has the same scope problem
 # as GITHUB_TOKEN and the `remote rejected` signature recurs on the next
-# stale-tree promotion. See sister workflow
-# .github/workflows/public-open-knowledge-main-reset.yml on agents-private
-# for the same primitive applied to the post-promotion cycle.
+# stale-tree promotion.
 
 on:
   workflow_dispatch:
@@ -97,7 +89,7 @@ permissions:
   # write.
   contents: write
   # Read-only: lets the dispatch steps resolve the run URLs of the workflows they
-  # trigger (release.yml, desktop-release.yml, main-reset) for run-to-run links.
+  # trigger (release.yml, desktop-release.yml) for run-to-run links.
   actions: read
 
 concurrency:
@@ -484,73 +476,3 @@ jobs:
             if [[ -n "$CHILD" ]]; then echo "- Run: ${CHILD}"; else echo "- (run link unresolved; open desktop-release.yml)"; fi
             echo "- That run smokes the DMG, promotes the draft Release, then dispatches publish-stable to release.yml for npm. npm \`latest\` does NOT move until the smoke passes."
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Detect bridge App for cross-repo dispatch
-        if: steps.ver.outputs.skip != 'true'
-        # Auto-triggering main-reset.yml on agents-private needs a credential
-        # with write access to THAT repo; the workflow-default GITHUB_TOKEN is
-        # scoped to the public repo only and cannot dispatch cross-repo. The
-        # "Inkeep OK Release Bridge" GitHub App supplies it: installed on
-        # agents-private, its App-ID + private key live in the public repo's
-        # secrets, and the next step mints a short-lived installation token
-        # at runtime (no static
-        # long-lived token stored). If the App secrets are absent the bridge
-        # is not configured — skip silently and promotion stays two-button
-        # (engineer runs main-reset.yml manually). Secrets cannot be read in
-        # `if:` expressions, so the presence check runs here and gates the
-        # mint + dispatch steps via an output.
-        id: bridge-check
-        env:
-          OK_RELEASE_BRIDGE_APP_ID: ${{ secrets.OK_RELEASE_BRIDGE_APP_ID }}
-        run: |
-          set -euo pipefail
-          if [[ -n "${OK_RELEASE_BRIDGE_APP_ID:-}" ]]; then
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "OK_RELEASE_BRIDGE_APP_ID not set — skipping auto-trigger of main-reset; promotion stays two-button (run main-reset.yml manually on agents-private)."
-          fi
-
-      - name: Mint cross-repo dispatch token (bridge App)
-        if: steps.bridge-check.outputs.configured == 'true'
-        id: bridge-token
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
-        with:
-          # Public client ID for inkeep-ok-release-bridge (non-secret; supersedes the deprecated app-id input).
-          client-id: Iv23lii4qS2FAc6tkzfI
-          private-key: ${{ secrets.OK_RELEASE_BRIDGE_APP_PRIVATE_KEY }}
-          # The bridge App is installed on agents-private, not on the public
-          # repo (where this workflow runs). owner + repositories scope the minted
-          # token to that cross-repo installation.
-          owner: inkeep
-          repositories: agents-private
-
-      - name: Trigger main-reset on agents-private
-        if: steps.bridge-check.outputs.configured == 'true'
-        env:
-          GH_TOKEN: ${{ steps.bridge-token.outputs.token }}
-          STABLE_VERSION: ${{ steps.ver.outputs.stable_version }}
-          # JSON array of changeset IDs this stable consumed. main-reset consumes
-          # ONLY these and leaves later changesets pending, so the anchor advances
-          # exactly one stable per promotion without stranding newer work.
-          DELTA_IDS: ${{ steps.ver.outputs.delta_ids }}
-        run: |
-          set -euo pipefail
-          SELF_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          payload=$(jq -nc --arg v "$STABLE_VERSION" --argjson d "${DELTA_IDS:-[]}" --arg by "$SELF_URL" \
-            '{event_type: "main-reset", client_payload: {stable_version: $v, delta_ids: $d, dispatched_by: $by}}')
-          gh api -X POST "repos/inkeep/agents-private/dispatches" --input - <<<"$payload"
-          # Best-effort cross-repo forward-link (the bridge token reads agents-private).
-          CHILD=""
-          for _ in 1 2 3 4 5 6; do
-            CHILD=$(gh run list --repo inkeep/agents-private --workflow=public-open-knowledge-main-reset.yml --event=repository_dispatch --limit 8 --json url,createdAt \
-              --jq "[.[] | select(.createdAt >= \"$SINCE\")] | sort_by(.createdAt) | last | .url // empty" 2>/dev/null || true)
-            [[ -n "$CHILD" ]] && break
-            sleep 3
-          done
-          {
-            echo "### Dispatched main-reset (agents-private)"
-            if [[ -n "$CHILD" ]]; then echo "- Run: ${CHILD}"; else echo "- (run link unresolved; open the main-reset workflow on agents-private)"; fi
-          } >> "$GITHUB_STEP_SUMMARY"
-          echo "Dispatched main-reset to agents-private (stable_version=${STABLE_VERSION}, delta_ids=${DELTA_IDS})."

@@ -22,8 +22,8 @@ name: Select beta to promote
 # This workflow does NOT reimplement promotion. It dispatches promote-stable.yml
 # with an EXPLICIT beta_tag (the selected beta); promote-stable computes the
 # stable version from the changeset delta over the latest stable, tags it,
-# creates the Release, and cascades npm --tag latest + signed stable DMG +
-# main-reset unchanged. "OK desktop to stable" is covered for free via the
+# creates the Release, and cascades npm --tag latest + signed stable DMG
+# unchanged. "OK desktop to stable" is covered for free via the
 # promote-stable -> desktop-release cascade (latest-mac.yml + DMG). NOTE:
 # promote-stable's fully-cut guard runs only on its blank/auto path, so the
 # explicit dispatch bypasses it; this script performs the unshipped + fully-cut
@@ -115,8 +115,8 @@ permissions:
   # actions:write is required to dispatch promote-stable.yml (workflow_dispatch
   # via the API) and covers the read for the in-flight `gh run list` check.
   # contents:read to read tags. No id-token and no App token here — promote-stable
-  # mints its own App token for the identity-asserting work (tag push, cross-repo
-  # main-reset dispatch), so this evaluator stays minimally scoped.
+  # mints its own App token for the identity-asserting work (the tag push), so
+  # this evaluator stays minimally scoped.
   contents: read
   actions: write
 
@@ -335,7 +335,7 @@ jobs:
           SELF_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           gh workflow run promote-stable.yml -f beta_tag="$TARGET" -f dispatched_by="$SELF_URL"
-          echo "::notice::Dispatched promote-stable for ${TARGET} (it computes the stable version from the changeset delta, then npm --tag latest + stable DMG + main-reset)."
+          echo "::notice::Dispatched promote-stable for ${TARGET} (it computes the stable version from the changeset delta, then npm --tag latest + stable DMG)."
           # Link this run to the promote-stable run it just created. `gh workflow
           # run` does not return the new run id, so resolve it (best-effort) as the
           # newest workflow_dispatch run of promote-stable created after SINCE.

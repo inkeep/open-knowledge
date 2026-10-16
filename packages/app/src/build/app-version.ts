@@ -6,10 +6,15 @@ export const APP_VERSION_ENV_VAR = 'VITE_APP_VERSION';
 
 export const APP_VERSION_UNKNOWN = '0.0.0-unknown';
 
-export function resolveAppVersion(): string {
+const APP_PACKAGE_JSON = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  'package.json',
+);
+
+export function resolveAppVersion(pkgPath: string = APP_PACKAGE_JSON): string {
   try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const pkgPath = resolve(here, '..', '..', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: unknown };
     if (typeof pkg.version === 'string' && pkg.version.length > 0) {
       return pkg.version;

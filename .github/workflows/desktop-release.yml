@@ -168,11 +168,10 @@ jobs:
       # release commits a version (release.yml's header describes the
       # transient override for each path), so the tag is the only source
       # of truth for the release's version — the public repo's commits at
-      # the tagged SHA carry the version the last main reset wrote
-      # (normally the previous stable), never the tag's and never a
-      # `-beta.N`. Tag also drives manifest selection (beta-* vs latest-*
-      # channel files), since tag (`v0.4.0` or `v0.4.0-beta.N`) and on-disk
-      # package.json (`0.3.2`) always diverge.
+      # the tagged SHA carry the placeholder 0.0.0-unknown, never the tag's
+      # and never a `-beta.N`. Tag also drives manifest selection (beta-* vs
+      # latest-* channel files), since tag (`v0.4.0` or `v0.4.0-beta.N`) and
+      # on-disk package.json (`0.0.0-unknown`) always diverge.
       #
       # Fail-fast on anything other than `-beta.*` or plain semver —
       # `-rc.*` / `-canary.*` etc. would ship manifests with a channel
@@ -434,14 +433,11 @@ jobs:
       # describes the transient override), so workspace package.json
       # files on disk at the tagged SHA always lag the release tag.
       # `tsdown` inlines `import pkgJson from "../package.json"` into
-      # `packages/cli/dist/constants-*.mjs` at build time, and
-      # `packages/cli/build:skill-asset` composes + copies both
-      # `packages/server/assets/skills/{project,discovery}/SKILL.md` into
-      # `packages/cli/dist/assets/...`. Both bake in during the workspace
-      # build below, so the override has to land here first.
+      # `packages/cli/dist/constants-*.mjs` during the workspace build
+      # below, so the override has to land here first.
       #
-      # Mirrors release.yml (same `jq` loop over the five fixed-group packages
-      # + same `sed` regex against SKILL.md) so the workflows stay in lockstep.
+      # Mirrors release.yml (same `jq` loop over the five fixed-group
+      # packages) so the workflows stay in lockstep.
       - name: Override fixed-group versions on disk (zero-commit-bump cadence)
         env:
           VERSION: ${{ steps.channel.outputs.version }}
@@ -452,12 +448,7 @@ jobs:
             jq --arg v "$VERSION" '.version=$v' "$f" > "${f}.tmp"
             mv "${f}.tmp" "$f"
           done
-          for skill in packages/server/assets/skills/project/SKILL.md \
-                       packages/server/assets/skills/discovery/SKILL.md; do
-            sed -i'.bak' -E "s/^([[:space:]]+version:[[:space:]]+\")[^\"]+(\".*)$/\1${VERSION}\2/" "$skill"
-            rm -f "${skill}.bak"
-          done
-          echo "All fixed-group package.json files + both skill bundles' metadata.version now at ${VERSION} (in-memory only)."
+          echo "All fixed-group package.json files now at ${VERSION} (in-memory only)."
 
       - name: Build workspace (produces packages/cli/dist for extraResources)
         run: |
@@ -624,12 +615,7 @@ jobs:
             jq --arg v "$VERSION" '.version=$v' "$f" > "${f}.tmp"
             mv "${f}.tmp" "$f"
           done
-          for skill in packages/server/assets/skills/project/SKILL.md \
-                       packages/server/assets/skills/discovery/SKILL.md; do
-            sed -i'.bak' -E "s/^([[:space:]]+version:[[:space:]]+\")[^\"]+(\".*)$/\1${VERSION}\2/" "$skill"
-            rm -f "${skill}.bak"
-          done
-          echo "All fixed-group package.json files + both skill bundles' metadata.version now at ${VERSION} (in-memory only)."
+          echo "All fixed-group package.json files now at ${VERSION} (in-memory only)."
 
       - name: Install the declared Rust toolchain
         run: |
@@ -883,10 +869,9 @@ jobs:
           # zero-commit-bump cadence the on-disk versions ALWAYS lag the
           # release tag, so this override is never a no-op for the Desktop's
           # own metadata. But it does NOT reach the CLI bundle's
-          # compile-time-inlined PACKAGE_VERSION or the bundled SKILL.md
-          # asset's metadata.version; those are baked in at Build time, so
-          # the workspace-wide on-disk override step above is what makes
-          # them match the tag. See PRD-6650.
+          # compile-time-inlined PACKAGE_VERSION, which is baked in at Build
+          # time, so the workspace-wide on-disk override step above is what
+          # makes it match the tag. See PRD-6650.
           set -euo pipefail
           WRAPPER="${RUNNER_TEMP}/retry-transient.mjs"
           WRAPPER_TMP="${WRAPPER}.tmp.$$"

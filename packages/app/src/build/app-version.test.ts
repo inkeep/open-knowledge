@@ -1,5 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CLIENT_RUNTIME_VERSION_FALLBACK } from '@inkeep/open-knowledge-core';
 import { loadConfigFromFile } from 'vite';
@@ -25,11 +26,30 @@ describe('the unresolved-version sentinel', () => {
 });
 
 describe('resolveAppVersion', () => {
-  test('returns the real packages/app/package.json version, not a sentinel', () => {
-    const version = resolveAppVersion();
-    expect(version).toBe(appPkgVersion);
-    expect(version).not.toBe('dev');
-    expect(version).not.toBe(APP_VERSION_UNKNOWN);
+  let fixtureDir = '';
+  beforeEach(() => {
+    fixtureDir = mkdtempSync(join(tmpdir(), 'ok-app-version-'));
+  });
+  afterEach(() => rmSync(fixtureDir, { recursive: true, force: true }));
+
+  test('reads packages/app/package.json by default', () => {
+    expect(resolveAppVersion()).toBe(appPkgVersion);
+  });
+
+  test('returns the version a package.json carries, not the sentinel', () => {
+    const pkgPath = join(fixtureDir, 'package.json');
+    writeFileSync(pkgPath, JSON.stringify({ name: 'fixture', version: '1.2.3-beta.4' }));
+    expect(resolveAppVersion(pkgPath)).toBe('1.2.3-beta.4');
+  });
+
+  test('falls back to the sentinel when the package.json is missing, unparseable or versionless', () => {
+    expect(resolveAppVersion(join(fixtureDir, 'absent.json'))).toBe(APP_VERSION_UNKNOWN);
+    const broken = join(fixtureDir, 'broken.json');
+    writeFileSync(broken, '{');
+    expect(resolveAppVersion(broken)).toBe(APP_VERSION_UNKNOWN);
+    const versionless = join(fixtureDir, 'versionless.json');
+    writeFileSync(versionless, JSON.stringify({ name: 'fixture', version: '' }));
+    expect(resolveAppVersion(versionless)).toBe(APP_VERSION_UNKNOWN);
   });
 });
 

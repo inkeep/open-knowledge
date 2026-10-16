@@ -4,10 +4,10 @@ import { fileURLToPath } from 'node:url';
 
 export { PROTOCOL_VERSION } from '@inkeep/open-knowledge-core';
 
-function readRuntimeVersion(): string {
+export function readRuntimeVersion(
+  pkgPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'),
+): string {
   try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const pkgPath = resolve(here, '..', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: unknown };
     if (typeof pkg.version === 'string' && pkg.version.length > 0) {
       return pkg.version;
