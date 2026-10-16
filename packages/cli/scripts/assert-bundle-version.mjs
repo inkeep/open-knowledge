@@ -3,7 +3,7 @@ import { join, relative } from 'node:path';
 
 export const BUNDLE_DIR = 'dist/public';
 export const VERSION_KEY = 'VITE_APP_VERSION';
-export const RECOVERY_SECTION = 'The four release.yml jobs and their credentials';
+export const RECOVERY_SECTION = 'The release.yml jobs and their credentials';
 
 const BAKED_VERSION = /\bVITE_APP_VERSION["'`]?\s*:\s*(["'`])([^"'`]*)\1/g;
 
