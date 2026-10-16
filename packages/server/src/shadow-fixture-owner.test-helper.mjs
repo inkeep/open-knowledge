@@ -31,6 +31,7 @@ let deadline;
 let cleanupPromise;
 let runner;
 let runnerExit;
+let workerLossRequested = false;
 let stopping = false;
 
 function bindCompilerOwner(owner, child, terminate) {
@@ -249,12 +250,13 @@ async function cleanup(reason) {
           .filter(Boolean)
           .map((line) => JSON.parse(line))
       : [];
+    const workerLossObserved =
+      runtimes.some((row) => row.workerExit !== undefined && row.code !== 0) &&
+      runtimes.some((row) => row.terminateRequested !== undefined);
     rmSync(workDir, { recursive: true, force: true });
     const receipt = {
       reason:
-        reason === 'runner closed' &&
-        runtimes.some((row) => row.workerExit !== undefined && row.code !== 0) &&
-        runtimes.some((row) => row.terminateRequested !== undefined)
+        reason === 'runner closed' && (workerLossRequested || workerLossObserved)
           ? 'test worker lost'
           : reason,
       trigger: reason,
@@ -283,6 +285,7 @@ async function cleanup(reason) {
 function start(value) {
   if (config) throw new Error('fixture owner already started');
   config = { runId: randomUUID(), autoCleanup: true, maxLifetimeMs: 540_000, ...value };
+  workerLossRequested = false;
   mkdirSync(config.resultDir, { recursive: true });
   workDir = realpathSync(mkdtempSync(join(config.scratchRoot ?? tmpdir(), 'ok-shadow-owned-')));
   transport = join(workDir, 'transport');
@@ -310,6 +313,7 @@ function start(value) {
         TEMP: workDir,
         OK_SHADOW_OWNER_TRANSPORT: transport,
         OK_SHADOW_OWNER_RUN_ID: config.runId,
+        ...(config.readinessGate ? { OK_SHADOW_READINESS_GATE: '1' } : {}),
       },
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     },
@@ -342,8 +346,15 @@ process.on('message', (message) => {
   if (message.type === 'start') start(message.config);
   else if (message.type === 'release') void cleanup('normal release');
   else if (message.type === 'lose-runner') signal(runner, 'SIGKILL');
-  else if (message.type === 'lose-worker') runner.child.send({ type: 'lose-worker' });
-  else if (message.type === 'hold-git')
+  else if (message.type === 'release-readiness') runner.child.send({ type: 'release-readiness' });
+  else if (message.type === 'lose-worker') {
+    workerLossRequested = true;
+    if (config.dropWorkerLossRequest) {
+      record({ type: 'worker-loss-requested', target: 'runner', delivered: false });
+    } else {
+      runner.child.send({ type: 'lose-worker' });
+    }
+  } else if (message.type === 'hold-git')
     acquire(
       'held-native-git',
       'git',

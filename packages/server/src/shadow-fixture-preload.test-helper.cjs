@@ -18,9 +18,16 @@ const runId = process.env.OK_SHADOW_OWNER_RUN_ID;
 const clock = new Int32Array(new SharedArrayBuffer(4));
 const NativeChildProcess = cp.ChildProcess;
 const environmentKey = 'ok-shadow-fixture-environment';
+const readinessGate = process.env.OK_SHADOW_READINESS_GATE === '1';
 const baseline = threads.isMainThread
   ? { ...process.env }
   : threads.getEnvironmentData(environmentKey);
+const readinessSignal =
+  readinessGate && threads.isMainThread ? new Int32Array(new SharedArrayBuffer(4)) : undefined;
+if (readinessGate && !threads.isMainThread) {
+  const shared = threads.workerData?.__okShadowReadinessSignal;
+  if (shared) Atomics.wait(new Int32Array(shared), 0, 0);
+}
 
 function environmentFor(env) {
   return {
@@ -184,8 +191,12 @@ if (transport) {
     threads.Worker = class extends NativeWorker {
       constructor(filename, options) {
         const execArgv = options?.execArgv ?? process.execArgv;
+        const workerData = readinessSignal
+          ? { ...options?.workerData, __okShadowReadinessSignal: readinessSignal.buffer }
+          : options?.workerData;
         super(filename, {
           ...options,
+          ...(readinessSignal ? { workerData } : {}),
           execArgv: execArgv.includes(__filename)
             ? execArgv
             : ['--require', __filename, ...execArgv],
@@ -204,6 +215,11 @@ if (transport) {
       }
     };
     process.on('message', (message) => {
+      if (message.type === 'release-readiness' && readinessSignal) {
+        Atomics.store(readinessSignal, 0, 1);
+        Atomics.notify(readinessSignal, 0);
+        return;
+      }
       if (message.type !== 'lose-worker') return;
       for (const worker of workers) {
         appendFileSync(

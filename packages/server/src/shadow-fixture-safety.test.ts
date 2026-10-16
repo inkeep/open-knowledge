@@ -102,6 +102,52 @@ function pendingFence(resultDir: string): string | undefined {
   return undefined;
 }
 
+function waitForOwnerEvent(owner: ReturnType<typeof fork>, resultDir: string, type: string) {
+  const find = () => events(resultDir).find((row) => row.type === type);
+  const existing = find();
+  if (existing) return Promise.resolve(existing);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      owner.off('message', onMessage);
+      owner.off('exit', onExit);
+      owner.off('disconnect', onDisconnect);
+      callback();
+    };
+    const onMessage = (message: { type?: string; row?: { type?: string } }) => {
+      if (message.type === 'event' && message.row?.type === type)
+        finish(() => resolve(message.row));
+    };
+    const onExit = (code: number | null, signal: string | null) =>
+      finish(() =>
+        reject(
+          new Error(
+            `owner exited before ${type}: code=${code ?? 'null'} signal=${signal ?? 'null'} observed=${
+              [...new Set(events(resultDir).map((row) => row.type))].join(',') || 'none'
+            }`,
+          ),
+        ),
+      );
+    const onDisconnect = () =>
+      finish(() =>
+        reject(
+          new Error(
+            `owner disconnected before ${type}: observed=${
+              [...new Set(events(resultDir).map((row) => row.type))].join(',') || 'none'
+            }`,
+          ),
+        ),
+      );
+    owner.on('message', onMessage);
+    owner.once('exit', onExit);
+    owner.once('disconnect', onDisconnect);
+    const observed = find();
+    if (observed) finish(() => resolve(observed));
+  });
+}
+
 test('native Git acquisitions preserve synchronous results under a live owner', async (context) => {
   const { resultDir, closed } = createOwner(context);
   await expect
@@ -297,9 +343,11 @@ test('the frozen shadow fixture is reclaimed after abrupt test-worker loss', asy
       '--no-file-parallelism',
       '--reporter=verbose',
     ],
-    { holdCapture: true },
+    { holdCapture: true, readinessGate: true },
   );
-  await expect.poll(() => pendingFence(resultDir), { timeout: 10_000, interval: 10 }).toBeDefined();
+  await waitForOwnerEvent(owner, resultDir, 'worker-start');
+  owner.send({ type: 'release-readiness' });
+  await waitForOwnerEvent(owner, resultDir, 'capture-held');
   const fence = pendingFence(resultDir);
   expect(fence).toBeDefined();
   if (!fence) throw new Error('pending fence disappeared before the owner-loss observation');
@@ -307,9 +355,6 @@ test('the frozen shadow fixture is reclaimed after abrupt test-worker loss', asy
   const before = events(resultDir);
   expect(before.some((row) => row.type === 'worker-start')).toBe(true);
   expect(before.some((row) => row.type === 'spawn' && row.args?.includes('write-tree'))).toBe(true);
-  await expect
-    .poll(() => events(resultDir).some((row) => row.type === 'capture-held'), { timeout: 3_000 })
-    .toBe(true);
   owner.send({ type: 'lose-worker' });
   await expect
     .poll(() => existsSync(join(resultDir, 'cleanup.json')), { timeout: 5_000 })
@@ -317,12 +362,84 @@ test('the frozen shadow fixture is reclaimed after abrupt test-worker loss', asy
   await closed;
   const receipt = JSON.parse(readFileSync(join(resultDir, 'cleanup.json'), 'utf8'));
   expect(receipt.reason).toBe('test worker lost');
+  expect(receipt.trigger, `runnerExit=${JSON.stringify(receipt.runnerExit)}`).toBe(
+    'test worker lost',
+  );
+  expect(
+    receipt.runtimes.some(
+      (row: { terminateRequested?: number }) => row.terminateRequested !== undefined,
+    ),
+  ).toBe(true);
   expect(
     receipt.runtimes.some(
       (row: { workerExit?: number; code: number }) =>
         row.workerExit !== undefined && row.code !== 0,
     ),
   ).toBe(true);
+  expect(receipt.children.every((child: { close: unknown }) => child.close)).toBe(true);
+  expect(receipt.workDirAbsent).toBe(true);
+  expect(existsSync(fence)).toBe(false);
+});
+
+test('runner close after a worker-loss request is attributed to the requested worker loss', async (context) => {
+  const { resultDir, closed, owner } = createOwner(
+    context,
+    [
+      VITEST,
+      'run',
+      'src/shadow-settle-fence.test.ts',
+      '--pool=threads',
+      '--maxWorkers=1',
+      '--no-file-parallelism',
+      '--reporter=verbose',
+    ],
+    { holdCapture: true, readinessGate: true, dropWorkerLossRequest: true },
+  );
+  await waitForOwnerEvent(owner, resultDir, 'worker-start');
+  owner.send({ type: 'release-readiness' });
+  await waitForOwnerEvent(owner, resultDir, 'capture-held');
+  const fence = pendingFence(resultDir);
+  expect(fence).toBeDefined();
+  if (!fence) throw new Error('pending fence disappeared before the runner-loss observation');
+  owner.send({ type: 'lose-worker' });
+  await expect
+    .poll(
+      () =>
+        events(resultDir).some(
+          (row) => row.type === 'worker-loss-requested' && row.delivered === false,
+        ),
+      { timeout: 3_000 },
+    )
+    .toBe(true);
+  owner.send({ type: 'lose-runner' });
+  await expect
+    .poll(() => existsSync(join(resultDir, 'cleanup.json')), { timeout: 5_000 })
+    .toBe(true);
+  await closed;
+  const receipt = JSON.parse(readFileSync(join(resultDir, 'cleanup.json'), 'utf8'));
+  expect(receipt.reason).toBe('test worker lost');
+  expect(receipt.trigger).toBe('runner closed');
+  expect(receipt.runnerExit).toEqual({ code: null, signal: 'SIGKILL' });
+  expect(
+    receipt.events.some(
+      (row: { type: string; delivered?: boolean }) =>
+        row.type === 'worker-loss-requested' && row.delivered === false,
+    ),
+  ).toBe(true);
+  expect(
+    receipt.runtimes.some(
+      (row: { threadId?: number; execArgv?: string[] }) =>
+        row.execArgv !== undefined && row.threadId !== undefined && row.threadId !== 0,
+    ),
+  ).toBe(true);
+  expect(
+    receipt.runtimes.some((row: { workerExit?: number }) => row.workerExit !== undefined),
+  ).toBe(false);
+  expect(
+    receipt.runtimes.some(
+      (row: { terminateRequested?: number }) => row.terminateRequested !== undefined,
+    ),
+  ).toBe(false);
   expect(receipt.children.every((child: { close: unknown }) => child.close)).toBe(true);
   expect(receipt.workDirAbsent).toBe(true);
   expect(existsSync(fence)).toBe(false);
@@ -340,9 +457,11 @@ test('the frozen shadow fixture and live native Git are reclaimed after abrupt r
       '--no-file-parallelism',
       '--reporter=verbose',
     ],
-    { holdCapture: true },
+    { holdCapture: true, readinessGate: true },
   );
-  await expect.poll(() => pendingFence(resultDir), { timeout: 10_000, interval: 10 }).toBeDefined();
+  await waitForOwnerEvent(owner, resultDir, 'worker-start');
+  owner.send({ type: 'release-readiness' });
+  await waitForOwnerEvent(owner, resultDir, 'capture-held');
   const fence = pendingFence(resultDir);
   expect(fence).toBeDefined();
   if (!fence) throw new Error('pending fence disappeared before the runner-loss observation');
