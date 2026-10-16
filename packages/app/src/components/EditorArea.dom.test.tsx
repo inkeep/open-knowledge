@@ -5667,6 +5667,51 @@ describe('EditorArea with the editor hidden', () => {
     expect(agentsHandle().style.display).toBe('none');
   });
 
+  test.each([
+    {
+      pane: 'Chat',
+      open: { agentsVisible: true },
+      closed: { agentsVisible: false },
+    },
+    {
+      pane: 'a right Terminal',
+      open: { terminalVisible: true, terminalPlacement: 'right' },
+      closed: { terminalVisible: false, terminalPlacement: 'right' },
+    },
+  ] as const)(
+    'closing $pane while the editor is hidden mounts no composer until the editor shows',
+    async ({ open, closed }) => {
+      const view = render(<EditorArea {...hiddenProps} {...closed} />);
+      await settle();
+      expect(screen.queryByTestId('bottom-composer')).not.toBeNull();
+      view.rerender(<EditorArea {...hiddenProps} {...open} />);
+      await settle();
+      expect(
+        screen.queryByTestId('bottom-composer'),
+        'precondition: an open pane beside the shown editor keeps the composer out',
+      ).toBeNull();
+
+      view.rerender(<EditorArea {...hiddenProps} {...open} editorVisible={false} />);
+      await settle();
+      view.rerender(<EditorArea {...hiddenProps} {...closed} editorVisible={false} />);
+      await settle();
+      expect(
+        screen.queryByTestId('bottom-composer'),
+        'a hidden editor keeps the pane visibility it had when it was last shown, so closing the ' +
+          'pane under it must not mount a composer inside the hidden card. Reading either pane ' +
+          'live, or dropping its field from that snapshot, mounts one here',
+      ).toBeNull();
+
+      view.rerender(<EditorArea {...hiddenProps} {...closed} />);
+      await settle();
+      expect(
+        screen.queryByTestId('bottom-composer'),
+        'showing the editor again with no pane open has to bring the composer back, so the ' +
+          'hidden-state absence above is the snapshot and not a gate that never opens',
+      ).not.toBeNull();
+    },
+  );
+
   test('a right terminal and chat share the row in proportion to their current widths', async () => {
     groupLayout = { 'editor-main': 40, 'terminal-column': 25, 'agents-column': 35 };
     const view = render(

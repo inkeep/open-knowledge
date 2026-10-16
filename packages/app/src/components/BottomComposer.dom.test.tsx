@@ -239,7 +239,12 @@ const ALL_INSTALLED: Record<string, { installed: boolean | null }> = {
 
 async function renderComposer(
   docName = 'notes',
-  props: Partial<{ dismissed: boolean; onDismiss: () => void; onReopen: () => void }> = {},
+  props: Partial<{
+    dismissed: boolean;
+    editorVisible: boolean;
+    onDismiss: () => void;
+    onReopen: () => void;
+  }> = {},
   options: { strict?: boolean; surface?: EditorSurface } = {},
 ) {
   const { BottomComposer } = await import('./BottomComposer');
@@ -1632,10 +1637,8 @@ describe('BottomComposer (end-of-document scroll compensation)', () => {
       'switching documents under an already-mounted, already-open composer is not the card ' +
         'arriving over a caret. Scrolling `.editor-doc-scroll` here is a delta ' +
         'ScrollPreservingContainer did not write, so it reads as an external scroll and abandons ' +
-        'the restore it is mid-way through. The reveal effect keys on `dismissed` alone so a ' +
-        'switch never re-runs it. `switched-doc` deliberately carries a caret BELOW the ' +
-        'occlusion line the first reveal left behind, so widening those dependencies produces a ' +
-        'write and reds this assertion. Give both stubs the same caret and it passes either way',
+        'the restore it is mid-way through. The completed arrival has consumed its reveal, so ' +
+        '`switched-doc` must keep its viewport even with a caret below the occlusion line',
     ).toBe(afterOpen);
   });
 
@@ -1687,9 +1690,8 @@ describe('BottomComposer (end-of-document scroll compensation)', () => {
       cmPort.writes,
       'toggling into source mode under an already-open card is not the card arriving. ' +
         'mode-switch-landing owns where the source view lands, and a reveal firing here writes a ' +
-        'scroll delta that landing did not make. The reveal effect keys on `dismissed` alone so ' +
-        'the toggle never re-runs it, and adding `effectiveSurface` back to those dependencies ' +
-        'produces a write here',
+        'scroll delta that landing did not make. The completed arrival has consumed its reveal, ' +
+        'so the source viewport must stay with its mode-switch landing',
     ).toHaveLength(0);
     expect(wysiwygPort.writes.length).toBe(afterOpen);
   });
@@ -1796,6 +1798,49 @@ describe('BottomComposer (end-of-document scroll compensation)', () => {
     ).toBeGreaterThan(beforeRemount);
   });
 
+  test('a composer mounted under a hidden editor reveals on its first visible arrival, and a later hide and show does not reveal again', async () => {
+    const { BottomComposer } = await import('./BottomComposer');
+    const port = plantScrollport(100);
+    await registerCaseEditor('hidden-mount-doc', caretEditorStub(port, CARET_INSIDE_THE_GAP));
+
+    const { rerender } = await renderComposer(
+      'hidden-mount-doc',
+      { editorVisible: false },
+      { strict: true },
+    );
+    await nextFrame();
+    await nextFrame();
+    expect(
+      port.writes,
+      'a hidden editor card has no caret on screen for the composer to clear, so a mount under ' +
+        'it has to leave the scrollport alone',
+    ).toHaveLength(0);
+
+    rerender(<BottomComposer docName="hidden-mount-doc" surface="wysiwyg" editorVisible />);
+    await nextFrame();
+    await nextFrame();
+    expect(
+      port.writes,
+      'the editor showing for the first time under a composer that mounted while it was hidden ' +
+        'is the card arriving over a caret it has never revealed. Gating the reveal on the ' +
+        'mount-time visibility alone leaves that caret under the card',
+    ).not.toHaveLength(0);
+
+    port.el.scrollTop = 100;
+    const beforeRoundTrip = port.writes.length;
+    rerender(<BottomComposer docName="hidden-mount-doc" surface="wysiwyg" editorVisible={false} />);
+    await nextFrame();
+    rerender(<BottomComposer docName="hidden-mount-doc" surface="wysiwyg" editorVisible />);
+    await nextFrame();
+    await nextFrame();
+    expect(
+      port.writes.length,
+      'a Chat visit hides and shows the editor under a composer that already revealed. That is ' +
+        'not an arrival, and a reveal here writes a delta the viewport restore did not make. The ' +
+        'scroll is reset into the gap first, so a reveal on every show reds this',
+    ).toBe(beforeRoundTrip);
+  });
+
   test('a reveal frame yields to a held scroll suppression, and a reopen recovers it', async () => {
     const { acquireScrollRestoreSuppression } = await import(
       '@/editor/scroll-restore-coordination'
@@ -1826,8 +1871,8 @@ describe('BottomComposer (end-of-document scroll compensation)', () => {
     expect(
       port.writes,
       'yielding costs the caret its reveal for that arrival, so it stays where the seam left it ' +
-        'until the card arrives again. Closing and reopening flips `dismissed`, which is the ' +
-        'only dependency the reveal effect has, so it re-runs and reveals',
+        'until the card arrives again. Closing and reopening flips `dismissed`, which marks the ' +
+        'arrival reveal owed again and re-runs the effect, so it reveals',
     ).not.toHaveLength(0);
   });
 

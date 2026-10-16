@@ -136,6 +136,7 @@ export function BottomComposer({
   docName,
   surface,
   folderPath,
+  editorVisible = true,
   dismissed = false,
   onDismiss,
   onReopen,
@@ -143,6 +144,7 @@ export function BottomComposer({
   docName?: string | null;
   surface?: EditorSurface;
   folderPath?: string;
+  editorVisible?: boolean;
   dismissed?: boolean;
   onDismiss?: () => void;
   onReopen?: () => void;
@@ -258,6 +260,7 @@ export function BottomComposer({
   }, [dismissed, docName, folderMode]);
 
   const openAndFocus = useEffectEvent(() => {
+    if (!editorVisible) return;
     if (dismissed) onReopen?.();
     else inputRef.current?.focus();
   });
@@ -265,17 +268,25 @@ export function BottomComposer({
   const readPaintedOver = useEffectEvent(() => ({
     docName: activeDocOrNull,
     effectiveSurface,
+    editorVisible,
   }));
 
+  const arrivalRevealOwedRef = useRef(true);
   useEffect(() => {
-    if (dismissed) return;
+    if (dismissed) {
+      arrivalRevealOwedRef.current = true;
+      return;
+    }
+    if (!editorVisible || !arrivalRevealOwedRef.current) return;
     const arrivedOver = readPaintedOver();
     const arrivedOverDoc = arrivedOver.docName;
     if (arrivedOverDoc == null) return;
     const arrivedOverSurface = arrivedOver.effectiveSurface;
     const frame = requestAnimationFrame(() => {
+      arrivalRevealOwedRef.current = false;
       const paintedOver = readPaintedOver();
       if (
+        !paintedOver.editorVisible ||
         paintedOver.docName !== arrivedOverDoc ||
         paintedOver.effectiveSurface !== arrivedOverSurface
       ) {
@@ -291,7 +302,7 @@ export function BottomComposer({
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [dismissed]);
+  }, [dismissed, editorVisible]);
 
   useEffect(() => {
     return subscribeToOpenAskAiComposer(openAndFocus);
@@ -299,6 +310,7 @@ export function BottomComposer({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!readPaintedOver().editorVisible) return;
       if (!matchesKeyboardShortcut(event, 'open-ask-ai')) return;
       if (isOverlayLayerOpen()) return;
       if (isNativeTextControl(event.target)) return;

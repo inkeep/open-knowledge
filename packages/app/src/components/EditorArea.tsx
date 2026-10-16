@@ -898,6 +898,17 @@ function EditorAreaInner({
   const editorCardRef = useRef<HTMLDivElement | null>(null);
   const lastEditorCardSizeRef = useRef<EditorCardSize | null>(null);
   const [editorCardPin, setEditorCardPin] = useState<EditorCardSize | null>(null);
+  const [paneVisibilityWhileEditorShown, setPaneVisibilityWhileEditorShown] = useState({
+    terminalVisible,
+    agentsVisible,
+  });
+  if (
+    editorVisible &&
+    (paneVisibilityWhileEditorShown.terminalVisible !== terminalVisible ||
+      paneVisibilityWhileEditorShown.agentsVisible !== agentsVisible)
+  ) {
+    setPaneVisibilityWhileEditorShown({ terminalVisible, agentsVisible });
+  }
   useLayoutEffect(() => {
     const card = editorCardRef.current;
     if (card == null || !editorVisible || typeof ResizeObserver === 'undefined') return;
@@ -2424,7 +2435,9 @@ function EditorAreaInner({
             />
           ) : null}
         </div>
-        {showFolderComposer ? <BottomComposer folderPath={activeTarget.folderPath} /> : null}
+        {showFolderComposer ? (
+          <BottomComposer folderPath={activeTarget.folderPath} editorVisible={editorVisible} />
+        ) : null}
       </div>
     );
     const showAgentActivity = docPanelMode === 'agent' && docPanelAgentId !== null;
@@ -2524,8 +2537,7 @@ function EditorAreaInner({
   } else {
     const showBottomComposer =
       shouldShowBottomComposer({
-        terminalVisible,
-        agentsVisible,
+        ...(editorVisible ? { terminalVisible, agentsVisible } : paneVisibilityWhileEditorShown),
         isEmbedded,
         activeDocName,
       }) &&
@@ -2588,6 +2600,7 @@ function EditorAreaInner({
             <BottomComposer
               docName={activeDocName}
               surface={editingSurface}
+              editorVisible={editorVisible}
               dismissed={composerDismissed}
               onDismiss={() => setComposerDismissed(true)}
               onReopen={() => setComposerDismissed(false)}

@@ -1,3 +1,5 @@
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import type {
   ThreadClientFrame,
@@ -5,9 +7,12 @@ import type {
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import type { Locator, Page, WebSocketRoute } from '@playwright/test';
 import { PANE_CARD_GAP_PX } from '../../src/components/ui/pane-card';
+import { SCROLL_PIN_SLACK_PX } from '../../src/editor/document-scrollports';
 import {
   acpCatalogBody,
   expect,
+  placeCaretAtEndOfText,
+  readEditorCaretLine,
   switchColorThemeAndSettleFade,
   test,
   waitForActiveProviderSynced,
@@ -78,6 +83,22 @@ async function openChat(page: Page): Promise<void> {
   await expect(agentsButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator(AGENTS_PANEL_MOUNT)).toBeVisible({ timeout: BOOT_TIMEOUT_MS });
   await expect(page.locator('[data-dragging="true"]')).toHaveCount(0);
+}
+
+async function dispatchAskAiShortcut(locator: Locator): Promise<boolean> {
+  return locator.evaluate((element, isMac) => {
+    const event = new KeyboardEvent('keydown', {
+      key: 'l',
+      code: 'KeyL',
+      metaKey: isMac,
+      ctrlKey: !isMac,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  }, process.platform === 'darwin');
 }
 
 async function noSidewaysScroll(page: Page): Promise<void> {
@@ -1149,13 +1170,10 @@ for (const mode of ['source', 'visual'] as const) {
     await expect(surface).toBeVisible({ timeout: BOOT_TIMEOUT_MS });
     const lineEndKey = process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End';
     if (mode === 'source') {
-      await surface.evaluate((element) => {
-        for (let node = element.parentElement; node; node = node.parentElement) {
-          const overflowY = getComputedStyle(node).overflowY;
-          if (overflowY === 'auto' || overflowY === 'scroll') node.scrollTop = node.scrollHeight;
-        }
-      });
-      await surface.getByText('Mode paragraph 59', { exact: true }).click();
+      await surface.focus();
+      await expect(surface).toBeFocused();
+      await page.keyboard.press('ControlOrMeta+End');
+      await page.keyboard.press('ArrowLeft');
       await page.keyboard.press('End');
     } else {
       await surface.locator('p').last().click();
@@ -1176,6 +1194,11 @@ for (const mode of ['source', 'visual'] as const) {
         }
         return 0;
       });
+    const editorScrollport = surface.locator(
+      'xpath=ancestor::*[@data-testid="editor-scroll-container"]',
+    );
+    await waitForComposerViewportInset(page, surface);
+    const viewportBefore = await parkScrollportNearEnd(editorScrollport, 41);
     const bytesBefore = await readDocument();
     const scrollBefore = await scrollTopOf();
     expect(scrollBefore).toBeGreaterThan(0);
@@ -1183,6 +1206,7 @@ for (const mode of ['source', 'visual'] as const) {
     await page.getByTestId(AGENTS_HEADER_BUTTON).click();
     await expect(page.locator(CHAT_CARD)).toBeVisible();
     await expect(page.locator(EDITOR_CARD)).toBeHidden();
+    await waitForAnimationsFinished(surface);
     await page.getByTestId('header-pane-button-editor').click();
     await expect(page.locator(EDITOR_CARD)).toBeVisible();
     await expect(page.locator(CHAT_CARD)).toBeHidden();
@@ -1190,21 +1214,23 @@ for (const mode of ['source', 'visual'] as const) {
     await expect(modeToggle).toHaveAttribute('aria-checked', 'true');
     await expect(surface).toBeVisible();
     expect(await readDocument()).toBe(bytesBefore);
+    await waitForComposerViewportInset(page, surface);
+    await test.info().attach('viewport-round-trip', {
+      body: JSON.stringify({
+        mode,
+        before: viewportBefore,
+        after: await readScrollportExtent(editorScrollport),
+      }),
+      contentType: 'application/json',
+    });
     await expect.poll(scrollTopOf).toBeGreaterThanOrEqual(scrollBefore - 2);
     expect(await scrollTopOf()).toBeLessThanOrEqual(scrollBefore + 2);
 
     await surface.focus();
-    const caret = await page.evaluate(() => {
-      const selection = window.getSelection();
-      return {
-        text: selection?.focusNode?.textContent ?? '',
-        offset: selection?.focusOffset ?? -1,
-        collapsed: selection?.isCollapsed ?? false,
-      };
-    });
+    const caret = await surface.evaluate(readEditorCaretLine, mode);
     expect(caret.collapsed).toBe(true);
     expect(caret.text.endsWith('Mode paragraph 59 edited')).toBe(true);
-    expect(caret.offset).toBe(caret.text.length);
+    expect(caret.atParagraphEnd).toBe(true);
     await page.keyboard.press('ControlOrMeta+z');
     await expect.poll(readDocument).not.toContain('Mode paragraph 59 edited');
     expect(await readDocument()).toBe(seededBytes);
@@ -1488,3 +1514,269 @@ test('a second client edit made while narrow Chat is selected appears once and k
     await clientB.close();
   }
 });
+
+async function waitForAnimationsFinished(target: Locator): Promise<void> {
+  await target.evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((animation) => animation.finished));
+  });
+}
+
+function readScrollportExtent(scrollport: Locator) {
+  return scrollport.evaluate((element) => ({
+    scrollTop: element.scrollTop,
+    scrollHeight: element.scrollHeight,
+    clientHeight: element.clientHeight,
+    clientWidth: element.clientWidth,
+  }));
+}
+
+async function parkScrollportNearEnd(scrollport: Locator, endOffsetPx: number) {
+  await expect
+    .poll(() => scrollport.evaluate((element) => element.scrollHeight - element.clientHeight))
+    .toBeGreaterThan(endOffsetPx);
+  await scrollport.evaluate((element, offset) => {
+    element.scrollTop = element.scrollHeight - element.clientHeight - offset;
+  }, endOffsetPx);
+  const extent = await readScrollportExtent(scrollport);
+  expect(extent.scrollHeight - extent.clientHeight - extent.scrollTop).toBe(endOffsetPx);
+  return extent;
+}
+
+async function waitForComposerViewportInset(page: Page, inset: Locator): Promise<void> {
+  await expect(page.getByTestId('bottom-composer')).toBeVisible();
+  await expect
+    .poll(() =>
+      inset.evaluate((element) =>
+        Number.parseFloat(getComputedStyle(element).getPropertyValue('--ask-composer-height')),
+      ),
+    )
+    .toBeGreaterThan(0);
+  await Promise.all([
+    waitForAnimationsFinished(inset),
+    waitForAnimationsFinished(page.getByTestId('bottom-composer')),
+  ]);
+}
+
+async function expectChatVisitToPreserveViewport(
+  page: Page,
+  scrollport: Locator,
+  inset: Locator,
+): Promise<void> {
+  await waitForComposerViewportInset(page, inset);
+  const before = await parkScrollportNearEnd(scrollport, 41);
+  await page.getByTestId(AGENTS_HEADER_BUTTON).click();
+  await expect(page.locator(CHAT_CARD)).toBeVisible();
+  await expect(page.locator(EDITOR_CARD)).toBeHidden();
+  await waitForAnimationsFinished(inset);
+  await page.getByTestId('header-pane-button-editor').click();
+  await expect(page.locator(EDITOR_CARD)).toBeVisible();
+  await expect(page.locator(CHAT_CARD)).toBeHidden();
+  await waitForComposerViewportInset(page, inset);
+  const after = await readScrollportExtent(scrollport);
+  await test.info().attach('consumer-viewport-round-trip', {
+    body: JSON.stringify({ before, after }),
+    contentType: 'application/json',
+  });
+  expect(after.scrollTop).toBeGreaterThanOrEqual(before.scrollTop - 2);
+  expect(after.scrollTop).toBeLessThanOrEqual(before.scrollTop + 2);
+}
+
+test('a narrow Chat visit preserves the standalone text viewport', async ({
+  page,
+  workerServer,
+}) => {
+  const docName = `pane-viewport-text-${test.info().workerIndex}.ts`;
+  const content = Array.from(
+    { length: 120 },
+    (_, index) => `export const line${index} = ${index};`,
+  ).join('\n');
+  await writeFile(join(workerServer.contentDir, docName), `${content}\n`);
+  await page.setViewportSize({ width: 767, height: 800 });
+  await page.goto(`/#/${docName}`);
+  const surface = page.locator('[data-text-doc-editor] .cm-content');
+  await expect(surface).toBeVisible({ timeout: BOOT_TIMEOUT_MS });
+  await expect(surface).toContainText('export const line0 = 0;');
+  await surface.focus();
+  await expect(surface).toBeFocused();
+  await page.keyboard.press('ControlOrMeta+End');
+  await expect(surface.getByText('export const line119 = 119;', { exact: true })).toBeVisible();
+  await expectChatVisitToPreserveViewport(
+    page,
+    page.locator('[data-text-doc-editor] .cm-scroller'),
+    surface,
+  );
+});
+
+test('a narrow Chat visit preserves the standalone Mermaid source viewport', async ({
+  page,
+  workerServer,
+}) => {
+  const docName = `pane-viewport-mermaid-${test.info().workerIndex}.mmd`;
+  const content = `flowchart TD\n${Array.from({ length: 120 }, (_, index) => `N${index} --> N${index + 1}`).join('\n')}\n`;
+  await writeFile(join(workerServer.contentDir, docName), content);
+  await page.setViewportSize({ width: 767, height: 800 });
+  await page.goto(`/#/${docName}`);
+  const host = page.locator('[data-mermaid-doc-editor]');
+  await expect(host).toBeVisible({ timeout: BOOT_TIMEOUT_MS });
+  await page.getByRole('radio', { name: 'Markdown source' }).click();
+  const surface = host.locator('.cm-content');
+  await expect(surface).toBeVisible({ timeout: BOOT_TIMEOUT_MS });
+  await expect(surface).toContainText('flowchart TD');
+  await surface.focus();
+  await expect(surface).toBeFocused();
+  await page.keyboard.press('ControlOrMeta+End');
+  await expect(surface.getByText('N119 --> N120', { exact: true })).toBeVisible();
+  await expectChatVisitToPreserveViewport(page, host.locator('.cm-scroller'), host);
+});
+
+test('a narrow Chat visit preserves the conflict viewport', async ({ page, api }) => {
+  const docName = `pane-viewport-conflict-${test.info().workerIndex}`;
+  const file = `${docName}.md`;
+  const base = Array.from({ length: 120 }, (_, index) => `Original line ${index}`).join('\n');
+  const ours = Array.from({ length: 120 }, (_, index) => `Current line ${index}`).join('\n');
+  const theirs = Array.from({ length: 120 }, (_, index) => `Incoming line ${index}`).join('\n');
+  await api.seedDocs([{ name: docName, markdown: `${ours}\n` }]);
+  await page.route('**/api/sync/conflicts', (route) =>
+    route.fulfill({
+      json: {
+        conflicts: [
+          { file, docName, detectedAt: '2026-10-15T00:00:00.000Z', conflict: 'merge-native' },
+        ],
+      },
+    }),
+  );
+  await page.route('**/api/sync/conflict-content?**', (route) =>
+    route.fulfill({
+      json: {
+        file,
+        base,
+        ours,
+        theirs,
+        kind: 'both-modified',
+        conflict: 'merge-native',
+        conflictKind: 'git',
+        resolutionOptions: ['mine', 'theirs', 'content'],
+      },
+    }),
+  );
+  await page.setViewportSize({ width: 767, height: 800 });
+  await page.goto(`/#/${docName}`);
+  const scrollport = page.locator(`${EDITOR_CARD} .conflict-view`);
+  await expect(scrollport).toBeVisible({ timeout: BOOT_TIMEOUT_MS });
+  const inset = scrollport.locator('diffs-container');
+  await expect(inset).toHaveCount(1);
+  await expect(scrollport.getByText('Current line 0', { exact: true })).toBeAttached();
+  await page.getByTestId('header-pane-button-editor').focus();
+  await page.keyboard.press('ArrowLeft');
+  await expectChatVisitToPreserveViewport(page, scrollport, inset);
+});
+
+test('a narrow Chat visit keeps a collapsed Ask AI inactive', async ({ page, api }) => {
+  await openDoc(page, api, 767);
+  await expect(page.getByTestId('bottom-composer')).toBeVisible();
+  await page.getByTestId('ask-ai-collapse').click();
+  await expect(page.getByTestId('bottom-composer')).toHaveCount(0);
+  await page.getByTestId(AGENTS_HEADER_BUTTON).click();
+  await expect(page.locator(CHAT_CARD)).toBeVisible();
+  await expect(page.locator(EDITOR_CARD)).toBeHidden();
+  const visibleButton = page.getByTestId(AGENTS_HEADER_BUTTON);
+  await visibleButton.focus();
+  await expect(visibleButton).toBeFocused();
+  await page.keyboard.press('ControlOrMeta+Shift+L');
+  await expect(visibleButton).toBeFocused();
+  const claimed = await dispatchAskAiShortcut(visibleButton);
+  expect(claimed).toBe(false);
+  await page.evaluate(() =>
+    window.dispatchEvent(new CustomEvent('open-knowledge:open-ask-ai-composer')),
+  );
+  await expect(visibleButton).toBeFocused();
+  await page.getByTestId('header-pane-button-editor').click();
+  await expect(page.locator(EDITOR_CARD)).toBeVisible();
+  await expect(page.getByTestId('bottom-composer')).toHaveCount(0);
+});
+
+test('hiding a folder editor leaves Ask AI shortcuts unclaimed until it shows', async ({
+  page,
+  api,
+}) => {
+  const folder = `pane-folder-${test.info().workerIndex}`;
+  await api.seedDocs([{ name: `${folder}/child`, markdown: '# Folder child\n' }]);
+  await page.setViewportSize({ width: 767, height: 800 });
+  await page.goto(`/#/${folder}`);
+  const composer = page.getByTestId('bottom-composer');
+  await expect(composer).toBeVisible();
+  await expect(composer.getByTestId(`composer-context-chip-file-${folder}`)).toContainText(folder);
+  const input = composer.locator('[contenteditable="true"]');
+  await expect(input).toHaveCount(1);
+  const editorButton = page.getByTestId('header-pane-button-editor');
+  await editorButton.focus();
+  expect(await dispatchAskAiShortcut(editorButton)).toBe(true);
+  await expect(input).toBeFocused();
+  await page.keyboard.press('ControlOrMeta+k');
+  const paletteInput = page.locator('[data-slot="command-input"]');
+  await paletteInput.fill('hide editor');
+  await page.getByTestId('command-palette-toggle-editor').click();
+  await expect(paletteInput).toBeHidden();
+  await expect(page.locator(EDITOR_CARD)).toBeHidden();
+  await expect(composer).toHaveCount(1);
+  await editorButton.focus();
+  await page.keyboard.press('ControlOrMeta+Shift+L');
+  await expect(editorButton).toBeFocused();
+  expect(await dispatchAskAiShortcut(editorButton)).toBe(false);
+  await editorButton.click();
+  await expect(composer).toBeVisible();
+  await editorButton.focus();
+  await page.keyboard.press('ControlOrMeta+Shift+L');
+  await expect(input).toBeFocused();
+});
+
+for (const endOffsetPx of [SCROLL_PIN_SLACK_PX / 2, SCROLL_PIN_SLACK_PX + 1]) {
+  test(`hiding a wide editor beside Chat ${endOffsetPx}px above its end mounts no composer and preserves its viewport`, async ({
+    page,
+    api,
+  }) => {
+    const docName = `pane-viewport-wide-${endOffsetPx}-${test.info().workerIndex}`;
+    const content = Array.from({ length: 120 }, (_, index) => `Wide paragraph ${index}`).join(
+      '  \n',
+    );
+    await api.seedDocs([{ name: docName, markdown: `# Wide viewport\n\n${content}\n` }]);
+    await page.setViewportSize({ width: 1400, height: 800 });
+    await page.goto(`/#/${docName}`);
+    await waitForActiveProviderSynced(page);
+    const surface = page.locator(`${EDITOR_CARD} .ProseMirror:not(.composer-prosemirror)`).first();
+    await expect(surface).toBeVisible({ timeout: BOOT_TIMEOUT_MS });
+    await openChat(page);
+    await expect(page.getByTestId('bottom-composer')).toHaveCount(0);
+    await waitForAnimationsFinished(surface);
+    const caret = await placeCaretAtEndOfText(page, 'Wide paragraph 119');
+    const documentEnd = await page.evaluate(() => {
+      const editor = window.__activeEditor;
+      if (!editor) throw new Error('The wide editor is not mounted');
+      return editor.state.doc.content.size - 1;
+    });
+    expect(caret.pmCaret).toBe(documentEnd);
+    const scrollport = surface.locator('xpath=ancestor::*[@data-testid="editor-scroll-container"]');
+    const before = await parkScrollportNearEnd(scrollport, endOffsetPx);
+    await page.getByTestId('header-pane-button-editor').click();
+    await expect(page.locator(EDITOR_CARD)).toBeHidden();
+    await expect(page.locator(CHAT_CARD)).toBeVisible();
+    await expect(surface).toBeAttached();
+    await waitForAnimationsFinished(surface);
+    await expect.soft(page.getByTestId('bottom-composer')).toHaveCount(0);
+    await page.getByTestId('header-pane-button-editor').click();
+    await expect(page.locator(EDITOR_CARD)).toBeVisible();
+    await expect(page.locator(CHAT_CARD)).toBeVisible();
+    await expect(page.getByTestId('bottom-composer')).toHaveCount(0);
+    await expect
+      .poll(() => scrollport.evaluate((element) => element.clientWidth))
+      .toBe(before.clientWidth);
+    await waitForAnimationsFinished(surface);
+    const after = await readScrollportExtent(scrollport);
+    await test.info().attach('wide-viewport-round-trip', {
+      body: JSON.stringify({ before, after }),
+      contentType: 'application/json',
+    });
+    expect(after.scrollTop).toBeGreaterThanOrEqual(before.scrollTop - 2);
+    expect(after.scrollTop).toBeLessThanOrEqual(before.scrollTop + 2);
+  });
+}

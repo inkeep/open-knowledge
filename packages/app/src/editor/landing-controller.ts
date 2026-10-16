@@ -130,6 +130,7 @@ export function startLanding(params: StartLandingParams): LandingHandle {
     resizeObserver?.disconnect();
     container.removeEventListener('wheel', onUserInterrupt);
     container.removeEventListener('touchstart', onUserInterrupt);
+    window.removeEventListener('keydown', onKeyboardInterrupt, true);
     container.removeEventListener('contentvisibilityautostatechange', onSignal, true);
     container.style.overflowAnchor = priorOverflowAnchor;
     suppression.release();
@@ -189,6 +190,10 @@ export function startLanding(params: StartLandingParams): LandingHandle {
     cancel('user-scroll');
   }
 
+  function onKeyboardInterrupt(event: KeyboardEvent): void {
+    if (event.composedPath().includes(container)) onUserInterrupt();
+  }
+
   function onSignal(): void {
     if (closed) return;
     const { measurable, moved } = dispatch();
@@ -202,6 +207,7 @@ export function startLanding(params: StartLandingParams): LandingHandle {
     container.addEventListener('contentvisibilityautostatechange', onSignal, true);
     container.addEventListener('wheel', onUserInterrupt, { passive: true });
     container.addEventListener('touchstart', onUserInterrupt, { passive: true });
+    window.addEventListener('keydown', onKeyboardInterrupt, true);
     if (typeof ResizeObserver !== 'undefined' && contentColumn) {
       resizeObserver = new ResizeObserver(onSignal);
       resizeObserver.observe(contentColumn);

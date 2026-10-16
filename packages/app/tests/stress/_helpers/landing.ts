@@ -416,6 +416,51 @@ export async function readSourceCaretHead(page: Page): Promise<number> {
   }, SOURCE_SELECTOR);
 }
 
+export function readEditorCaretLine(element: Element, mode: 'source' | 'visual') {
+  if (mode === 'source') {
+    const content = element.matches('.cm-content')
+      ? element
+      : element.closest('.cm-editor')?.querySelector('.cm-content');
+    const handle = content as
+      | (Element & {
+          cmTile?: { root?: { view?: unknown } };
+          cmView?: { rootView?: { view?: unknown } };
+        })
+      | null
+      | undefined;
+    const view = (handle?.cmTile?.root?.view ?? handle?.cmView?.rootView?.view) as
+      | {
+          state: {
+            selection: { main: { head: number; empty: boolean } };
+            doc: { lineAt: (pos: number) => { to: number; text: string } };
+          };
+        }
+      | undefined;
+    if (!view) throw new Error('readEditorCaretLine: no CodeMirror view on the element');
+    const selection = view.state.selection.main;
+    const line = view.state.doc.lineAt(selection.head);
+    return {
+      collapsed: selection.empty,
+      atParagraphEnd: selection.empty && selection.head === line.to,
+      text: line.text,
+    };
+  }
+  const root = element.closest('.ProseMirror') as
+    | (Element & { editor?: typeof window.__activeEditor })
+    | null;
+  const editor = root?.editor;
+  if (!editor) throw new Error('readEditorCaretLine: no ProseMirror editor on the element');
+  const selection = editor.state.selection;
+  return {
+    collapsed: selection.empty,
+    atParagraphEnd:
+      selection.empty &&
+      selection.$from.parent.isTextblock &&
+      selection.$from.parentOffset === selection.$from.parent.content.size,
+    text: selection.$from.parent.textContent,
+  };
+}
+
 export async function readWysiwygCaretHead(page: Page): Promise<number> {
   return page.evaluate(() => {
     const editor = window.__activeEditor;

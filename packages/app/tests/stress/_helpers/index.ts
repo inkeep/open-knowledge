@@ -89,6 +89,7 @@ export {
   CHUNK_WRAPPER_SELECTOR,
   injectForcedEstimateError,
   landingMarkCount,
+  readEditorCaretLine,
   readSourceCaretHead,
   readWysiwygCaretHead,
   scrollWysiwygBlockToTop,

@@ -21,6 +21,7 @@ import {
 
 const TOOLBAR = 56;
 const VIEWPORT = 800;
+const handles: LandingHandle[] = [];
 
 function buildScroller(scrollHeight = 6000): { container: HTMLElement; content: HTMLElement } {
   const container = document.createElement('div');
@@ -54,7 +55,9 @@ function startLandingWith(overrides: StartOverrides): LandingHandle {
     toolbarOffset: TOOLBAR,
     ...overrides,
   };
-  return startLanding(params);
+  const handle = startLanding(params);
+  handles.push(handle);
+  return handle;
 }
 
 function markNamed(name: string): { properties?: Record<string, unknown> } | undefined {
@@ -72,6 +75,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const handle of handles.splice(0)) handle.cancel('superseded');
   vi.useRealTimers();
   vi.unstubAllGlobals();
   document.body.replaceChildren();
@@ -241,6 +245,75 @@ describe('startLanding — cancel and abandon', () => {
     top = 200;
     container.dispatchEvent(new Event('contentvisibilityautostatechange'));
     expect(container.scrollTop).toBe(afterDispatch);
+  });
+
+  test.each(['End', 'e'])(
+    'keyboard %s keeps the newer viewport after pending landing work',
+    (key) => {
+      const { container, content } = buildScroller();
+      startLandingWith({
+        container,
+        contentColumn: content,
+        measureTarget: () => ({ top: TOOLBAR, height: 40 }),
+        placement: 'top',
+      });
+      expect(isScrollRestoreSuppressed('doc')).toBe(true);
+      content.addEventListener('keydown', (event) => event.stopPropagation());
+
+      content.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      container.scrollTop = 1843;
+      container.dispatchEvent(new Event('contentvisibilityautostatechange'));
+      vi.runAllTimers();
+
+      expect(getDocScrollState('doc')).toBeUndefined();
+      expect(container.scrollTop).toBe(1843);
+    },
+  );
+
+  test('does not cancel when the initiating keydown starts the landing during window capture', () => {
+    const { container, content } = buildScroller();
+    const outcomes: LandingOutcome[] = [];
+    const startFromWindow = (): void => {
+      startLandingWith({
+        container,
+        contentColumn: content,
+        measureTarget: () => ({ top: TOOLBAR, height: 40 }),
+        placement: 'top',
+        onOutcome: (o) => outcomes.push(o),
+      });
+    };
+    const stopAtDescendant = (event: KeyboardEvent): void => event.stopPropagation();
+    content.addEventListener('keydown', stopAtDescendant);
+    window.addEventListener('keydown', startFromWindow, true);
+
+    content.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', bubbles: true }));
+
+    window.removeEventListener('keydown', startFromWindow, true);
+    content.removeEventListener('keydown', stopAtDescendant);
+    expect(outcomes).toEqual([]);
+
+    vi.advanceTimersByTime(150);
+
+    expect(outcomes).toEqual([{ status: 'landed', delta: 0 }]);
+  });
+
+  test('keyboard input outside the landing container leaves its landing active', () => {
+    const { container } = buildScroller();
+    const outside = document.createElement('div');
+    document.body.append(outside);
+    const outcomes: LandingOutcome[] = [];
+    startLandingWith({
+      container,
+      measureTarget: () => ({ top: 1000, height: 40 }),
+      onOutcome: (outcome) => outcomes.push(outcome),
+    });
+
+    outside.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', bubbles: true }));
+
+    expect(isScrollRestoreSuppressed('doc')).toBe(true);
+    expect(outcomes).toEqual([]);
+    vi.advanceTimersByTime(150);
+    expect(outcomes).toEqual([{ status: 'landed', delta: 0 }]);
   });
 
   test('cancels on a touch gesture', () => {
