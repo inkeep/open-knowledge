@@ -28,7 +28,7 @@ const bugLaneVerify = read('bug-lane-verify.yml');
 const tagCompatiblePnpmSetup =
   'pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86';
 const desktopReleaseRef = '${{ github.event.client_payload.release_tag || inputs.release_tag }}';
-const publishRef = '${{ github.event.client_payload.ref || github.sha }}';
+const publishRef = '${{ github.event.client_payload.ref || needs.cut-commit.outputs.ref || github.sha }}';
 
 const workflowStep = (source, workflowName, name) => {
   const start = source.indexOf(`- name: ${name}`);
@@ -2432,8 +2432,11 @@ describe('the release App credential never shares a job with installed packages'
 
     test('no job that runs package code holds a credential, and only the OIDC job publishes', () => {
       expect(releaseViolations(releaseWorkflow)).toEqual([]);
-      expect(Object.keys(releaseWorkflow.jobs)).toEqual(['read-releases', 'build', 'release', 'publish']);
-      const { 'read-releases': readReleases, build, release, publish } = releaseWorkflow.jobs;
+      expect(Object.keys(releaseWorkflow.jobs)).toEqual(['cut-commit', 'read-releases', 'build', 'release', 'publish']);
+      const { 'cut-commit': cutCommit, 'read-releases': readReleases, build, release, publish } = releaseWorkflow.jobs;
+      expect(releasePackageRoutes(releaseWorkflow, cutCommit)).toEqual([]);
+      expect(credentialsOf(releaseWorkflow, cutCommit)).toEqual([]);
+      expect(cutCommit.permissions).toEqual({ contents: 'read' });
       expect(releasePackageRoutes(releaseWorkflow, readReleases)).toEqual([]);
       expect(readReleases.permissions).toEqual({ contents: 'write' });
       expect(releasePackageRoutes(releaseWorkflow, build).length).toBeGreaterThan(0);
@@ -2504,7 +2507,7 @@ describe('the release App credential never shares a job with installed packages'
       expect(download.with).toEqual({ name: 'npm-package', path: '${{ runner.temp }}/npm-package' });
       expect(stepNamed(publish, PUBLISH_STEP).env.PACKAGE_DIR).toBe('${{ runner.temp }}/npm-package');
       expect(publish.needs).toEqual(['build', 'release']);
-      expect(releaseWorkflow.jobs.release.needs).toBe('build');
+      expect(releaseWorkflow.jobs.release.needs).toEqual(['cut-commit', 'build']);
       for (const job of ['release', 'publish']) expect(releaseWorkflow.jobs[job].if).toBe(RUN_IF);
     });
 
@@ -2559,6 +2562,7 @@ describe('the release App credential never shares a job with installed packages'
         `steps > Attest production reader before release > if: ${RUN_IF}`,
         `steps > Tag + create prerelease GitHub Release > if: ${BETA_IF}`,
         'steps > Tag + create prerelease GitHub Release > env > NOTES_B64: needs.build.outputs.notes_b64',
+        'steps > Tag + create prerelease GitHub Release > env > CUT_REF: needs.cut-commit.outputs.ref || github.sha',
         `steps > Trigger desktop-release.yml to build + upload the desktop installers > if: ${BETA_IF}`,
       ]);
       expect(reads('publish')).toEqual([
@@ -2653,6 +2657,7 @@ describe('the release App credential never shares a job with installed packages'
       const TAG_STEP = 'Tag + create prerelease GitHub Release';
       const TAG = 'v0.82.0-beta.9';
       const TOKEN = 'placeholder-job-token';
+      const CUT_REF = '1'.repeat(40);
       const root = mkdtempSync(join(tmpdir(), 'release-tag-push-'));
       afterAll(() => rmSync(root, { recursive: true, force: true }));
       const bin = join(root, 'bin');
@@ -2674,7 +2679,7 @@ describe('the release App credential never shares a job with installed packages'
         const step = stepNamed(workflow.jobs.release, TAG_STEP);
         const log = join(root, `calls-${runs}.log`);
         const env = { PATH: `${bin}:${process.env.PATH}`, CALL_LOG: log, TMPDIR: root };
-        const known = { GH_TOKEN: TOKEN, TAG, NOTES_B64: Buffer.from('Notes.\n').toString('base64') };
+        const known = { GH_TOKEN: TOKEN, TAG, NOTES_B64: Buffer.from('Notes.\n').toString('base64'), CUT_REF };
         for (const name of Object.keys(step.env ?? {})) env[name] = known[name];
         const result = runBash(step.run, env);
         const calls = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
@@ -2691,6 +2696,7 @@ describe('the release App credential never shares a job with installed packages'
         const { APP_CREDENTIAL_HELPER } = await import('./point-release-plan.mjs');
         const { result, calls } = tagStepRun(releaseWorkflow);
         expect(result.status, result.stderr).toBe(0);
+        expect(calls).toContainEqual(['git', 'tag', TAG, CUT_REF]);
         const pushes = calls.filter((call) => call[0] === 'git' && call.includes('push'));
         expect(pushes).toEqual([
           ['git', '-c', 'credential.helper=', '-c', `credential.helper=${APP_CREDENTIAL_HELPER}`, 'push', 'origin', TAG],
@@ -2958,7 +2964,7 @@ describe('the release App credential never shares a job with installed packages'
         expect(read.if).toBe(stepNamed(build, COMPUTE_STEP).if);
         expect(read.env).toEqual({ GH_TOKEN: '${{ github.token }}' });
         expect(commands(read).match(/\bgh\s+\S+\s+\S+/g)).toEqual(['gh release list', 'gh release view', 'gh api -X']);
-        expect(build.needs).toBe('read-releases');
+        expect(build.needs).toEqual(['cut-commit', 'read-releases']);
         const names = Object.keys(readReleases.outputs);
         expect(names.length).toBeGreaterThan(0);
         for (const name of names) {
@@ -2968,9 +2974,11 @@ describe('the release App credential never shares a job with installed packages'
         const reads = expressions(build)
           .filter(({ expr }) => /\bneeds\b/.test(expr))
           .map(({ path, expr }) => `${(path[0] === 'steps' ? ['steps', build.steps[path[1]].name, ...path.slice(2)] : path).join(' > ')}: ${expr}`);
-        expect(reads).toEqual(
-          names.map((name) => `steps > ${COMPUTE_STEP} > env > ${name.toUpperCase()}: needs.read-releases.outputs.${name}`),
-        );
+        expect(reads).toEqual([
+          "if: needs.cut-commit.outputs.push_skipped != 'true'",
+          'steps > Checkout > with > ref: github.event.client_payload.ref || needs.cut-commit.outputs.ref || github.sha',
+          ...names.map((name) => `steps > ${COMPUTE_STEP} > env > ${name.toUpperCase()}: needs.read-releases.outputs.${name}`),
+        ]);
       });
 
       const root = mkdtempSync(join(tmpdir(), 'release-read-releases-'));

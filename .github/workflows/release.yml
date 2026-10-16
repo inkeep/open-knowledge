@@ -1,9 +1,19 @@
 name: Release
+run-name: ${{ inputs.sha && format('Beta cut at {0}', inputs.sha) || '' }}
 
 # Release workflow on inkeep/open-knowledge. Single npm publisher
 # for BOTH auto-cadence beta releases AND on-demand stable promotions.
 #
-# Beta path: event-driven on `push` to open-knowledge/main with a paths
+# Beta path: two triggers can cut a beta, and the repository variable
+# OK_BETA_CUT picks which one does. Unset or `push` (the default): the
+# push trigger below cuts. `inertia`: Inertia on agents-private
+# (.github/workflows/ok-inertia.yml there) cuts, by dispatching this
+# workflow with a `sha` input once its hourly full-suite run on
+# agents-private main is green, and a push here skips with a summary line.
+# Any other value fails the push run rather than guess. RELEASES.md
+# "Beta cadence" has the rollout and the way back.
+#
+# Push trigger: event-driven on `push` to open-knowledge/main with a paths
 # filter on `.changeset/**`. Copybara mirrors
 # `public/open-knowledge/.changeset/*.md` and `config.json` from
 # agents-private. When agents-private merges a PR with a changeset,
@@ -20,9 +30,18 @@ name: Release
 # open-knowledge/main HEAD was still the previous import when checkout resolved
 # `github.sha`, tagging the wrong commit (Linear PRD-6701).
 #
+# Inertia's dispatch does not reopen that off-by-one: it never tags the
+# HEAD the run happens to see. It names the commit in the `sha` input,
+# the newest open-knowledge/main commit whose GitOrigin-RevId trailer is
+# the green agents-private SHA or an ancestor of it, and only once
+# Copybara has exported everything up to that SHA. After cut-commit
+# confirms main contains it, the build job checks out and packs exactly
+# that commit and the release job tags it, so a dispatch that lands before
+# or after an import tags the same commit.
+#
 # Three trigger types:
 #
-# 1. event_name=push (auto-cadence beta):
+# 1. event_name=push (auto-cadence beta, when OK_BETA_CUT is unset or push):
 #    Fires when Copybara mirrors a commit touching `.changeset/**`.
 #    Workflow:
 #      - Runs `compute-next-beta.mjs` to read `.changeset/*.md`, the
@@ -42,10 +61,15 @@ name: Release
 #      - Dispatches desktop-release.yml so the signed DMG +
 #        `beta-mac.yml` land on the prerelease.
 #
-# 2. event_name=workflow_dispatch (manual recovery):
-#    Same code path as the push trigger. Used after a transient flake
-#    to re-fire from the current
-#    main HEAD without waiting for a new mirror import.
+# 2. event_name=workflow_dispatch:
+#    Same code path as the push trigger, and never gated by OK_BETA_CUT.
+#    With `sha` set (Inertia's dispatch, or a person forcing a cut at a
+#    commit Inertia proved), it cuts at exactly that commit, refusing one
+#    that is not a 40-hex commit reachable from main; its run is named
+#    `Beta cut at <sha>`, which is how Inertia finds the cuts it started.
+#    With `sha` empty (manual recovery), it cuts at the current main HEAD,
+#    used after a transient flake to re-fire without waiting for a new
+#    mirror import.
 #
 # 3. repository_dispatch type=publish-stable (fired by desktop-release.yml
 #    on this same repo, after its DMG smoke gate passes and it has
@@ -91,6 +115,15 @@ on:
     paths:
       - ".changeset/**"
   workflow_dispatch:
+    inputs:
+      sha:
+        description: Cut the beta at this full commit SHA on main (Inertia passes the commit its green run proved). Empty cuts at main HEAD.
+        type: string
+        default: ''
+      dispatched_by:
+        description: URL of the run that dispatched this one, shown in the build summary
+        type: string
+        default: ''
   repository_dispatch:
     types: [publish-stable]
 
@@ -105,6 +138,64 @@ env:
   TURBO_TELEMETRY_DISABLED: 1
 
 jobs:
+  # Its own job, with contents: read, so read-releases keeps running nothing
+  # but its Release reads under its contents: write token.
+  cut-commit:
+    name: Decide whether this run cuts a beta, and at which commit
+    runs-on: ubuntu-24.04
+    cache-mode: none
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      push_skipped: ${{ steps.cut.outputs.push_skipped }}
+      ref: ${{ steps.cut.outputs.ref }}
+    steps:
+      - name: Decide whether this run cuts a beta, and at which commit
+        id: cut
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          BETA_CUT: ${{ vars.OK_BETA_CUT }}
+          CUT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == push ]]; then
+            case "${BETA_CUT:-push}" in
+              push)
+                echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+                ;;
+              inertia)
+                echo "::notice::No beta cut on this push: OK_BETA_CUT is inertia, so betas are cut from Inertia on agents-private."
+                echo "No beta cut on this push: OK_BETA_CUT is \`inertia\`, so betas are cut from Inertia on agents-private, which dispatches this workflow with the commit its green run proved (RELEASES.md, Beta cadence)." >> "$GITHUB_STEP_SUMMARY"
+                echo "push_skipped=true" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "::error::The repository variable OK_BETA_CUT is '${BETA_CUT}', not push, inertia or unset, so this run cannot tell which trigger cuts betas. Fix the variable, then re-run."
+                exit 1
+                ;;
+            esac
+          elif [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            if [[ -z "${CUT_SHA:-}" ]]; then
+              echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [[ ! "$CUT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::The sha input is not a full 40-character lowercase commit SHA. Refusing to cut."
+              exit 1
+            fi
+            if ! status=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${CUT_SHA}...main" --jq .status); then
+              echo "::error::Could not compare ${CUT_SHA} with main, so this run cannot confirm main contains it. Refusing to cut."
+              exit 1
+            fi
+            if [[ "$status" != ahead && "$status" != identical ]]; then
+              echo "::error::${CUT_SHA} is not reachable from main (compare status ${status}). Refusing to cut a commit main does not contain."
+              exit 1
+            fi
+            echo "ref=$CUT_SHA" >> "$GITHUB_OUTPUT"
+            echo "Cutting the beta at ${CUT_SHA}, given by the sha input; main contains it (compare status ${status})." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   read-releases:
     name: Read the previous beta Release and the stable Releases
     runs-on: ubuntu-24.04
@@ -172,7 +263,8 @@ jobs:
 
   build:
     name: Build + pack (${{ github.event.action || github.event_name }})
-    needs: read-releases
+    needs: [cut-commit, read-releases]
+    if: needs.cut-commit.outputs.push_skipped != 'true'
     runs-on: ubuntu-24.04
     cache-mode: none
     timeout-minutes: 20
@@ -186,9 +278,10 @@ jobs:
     steps:
       - name: Link to triggering run
         # Back-link: on the publish-stable path, desktop-release forwards its run
-        # URL in client_payload.dispatched_by. Blank on the beta push path.
+        # URL in client_payload.dispatched_by; an Inertia dispatch passes its run
+        # URL in the dispatched_by input. Blank on the beta push path.
         env:
-          DISPATCHED_BY: ${{ github.event.client_payload.dispatched_by }}
+          DISPATCHED_BY: ${{ github.event.client_payload.dispatched_by || inputs.dispatched_by }}
         run: |
           set -euo pipefail
           if [[ -n "${DISPATCHED_BY:-}" ]]; then
@@ -205,10 +298,11 @@ jobs:
           #   on the promoted beta's SHA or on the synthetic commit a
           #   point release tags.
           # push / workflow_dispatch (beta path): no client_payload — fall
-          #   through to github.sha, which IS the just-pushed Copybara
-          #   import for `push` events (no race; this is the off-by-one
-          #   fix from Linear PRD-6701).
-          ref: ${{ github.event.client_payload.ref || github.sha }}
+          #   through to cut-commit's ref: github.sha, which IS the
+          #   just-pushed Copybara import for `push` events (no race; this
+          #   is the off-by-one fix from Linear PRD-6701), or the sha input
+          #   of a dispatch, already checked to be on main.
+          ref: ${{ github.event.client_payload.ref || needs.cut-commit.outputs.ref || github.sha }}
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
@@ -522,7 +616,7 @@ jobs:
 
   release:
     name: Tag + release (${{ github.event.action || github.event_name }})
-    needs: build
+    needs: [cut-commit, build]
     if: github.event.action == 'publish-stable' || needs.build.outputs.run_beta == 'true'
     runs-on: ubuntu-24.04
     cache-mode: none
@@ -619,17 +713,25 @@ jobs:
           origin: https://openknowledge.ai
           evidence-name: share-contract-release-${{ github.run_id }}-${{ github.run_attempt }}
 
+      # This job checks out the workflow revision (github.sha), so the reader
+      # gate above runs current code. The tag goes on the commit build packed:
+      # github.sha for a push or a bare dispatch, the sha input otherwise.
       - name: Tag + create prerelease GitHub Release
         if: needs.build.outputs.run_beta == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.resolve-beta.outputs.tag }}
           NOTES_B64: ${{ needs.build.outputs.notes_b64 }}
+          CUT_REF: ${{ needs.cut-commit.outputs.ref || github.sha }}
         run: |
           set -euo pipefail
+          if ! git cat-file -e "${CUT_REF}^{commit}" 2>/dev/null; then
+            echo "::error::The commit build packed, ${CUT_REF}, is not in this checkout of main. Refusing to tag."
+            exit 1
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag "$TAG"
+          git tag "$TAG" "$CUT_REF"
           # shellcheck disable=SC2016
           git -c credential.helper= \
             -c 'credential.helper=!f() { test "$1" = get || return 0; echo username=x-access-token; echo "password=$GH_TOKEN"; }; f' \
