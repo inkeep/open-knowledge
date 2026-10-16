@@ -6854,6 +6854,16 @@ html [data-editor-file-list-slot] [data-slot="sidebar-inner"] {
   forced-color-adjust: none;
 }
 
+html[data-bug-report-capturing] [data-bug-report-launcher] {
+  visibility: hidden;
+  transition: none;
+}
+
+html[data-bug-report-capturing] [data-slot="dialog-overlay"]:has(~ [data-bug-report-launcher]) {
+  visibility: hidden;
+  transition: none;
+}
+
 html:not([data-color-theme]):not(.dark)
   .raw-mdx-fallback-wrapper[data-severity="error"]
   > div

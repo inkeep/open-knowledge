@@ -64,7 +64,7 @@ export function AppMenubar({ className }: AppMenubarProps) {
     >
       <MenubarMenu>
         <MenubarTrigger className="px-2 py-1 text-xs font-normal">{t`File`}</MenubarTrigger>
-        <MenubarContent>
+        <MenubarContent data-bug-report-launcher="">
           <MenubarItem onSelect={() => dispatch({ kind: 'menu-action', action: 'new-doc' })}>
             {t`New file`}
             <MenubarShortcut>Ctrl+N</MenubarShortcut>
@@ -198,7 +198,7 @@ export function AppMenubar({ className }: AppMenubarProps) {
 
       <MenubarMenu>
         <MenubarTrigger className="px-2 py-1 text-xs font-normal">{t`Edit`}</MenubarTrigger>
-        <MenubarContent>
+        <MenubarContent data-bug-report-launcher="">
           <MenubarItem onSelect={() => dispatch({ kind: 'role', role: 'undo' })}>
             {t`Undo`}
             <MenubarShortcut>Ctrl+Z</MenubarShortcut>
@@ -236,7 +236,7 @@ export function AppMenubar({ className }: AppMenubarProps) {
 
       <MenubarMenu>
         <MenubarTrigger className="px-2 py-1 text-xs font-normal">{t`View`}</MenubarTrigger>
-        <MenubarContent>
+        <MenubarContent data-bug-report-launcher="">
           <MenubarItem onSelect={() => dispatch({ kind: 'menu-action', action: 'navigate-back' })}>
             {t`Back`}
             <MenubarShortcut>Alt+Left</MenubarShortcut>
@@ -348,7 +348,7 @@ export function AppMenubar({ className }: AppMenubarProps) {
 
       <MenubarMenu>
         <MenubarTrigger className="px-2 py-1 text-xs font-normal">{t`Window`}</MenubarTrigger>
-        <MenubarContent>
+        <MenubarContent data-bug-report-launcher="">
           <MenubarItem onSelect={() => dispatch({ kind: 'role', role: 'minimize' })}>
             {t`Minimize`}
           </MenubarItem>
@@ -360,7 +360,7 @@ export function AppMenubar({ className }: AppMenubarProps) {
 
       <MenubarMenu>
         <MenubarTrigger className="px-2 py-1 text-xs font-normal">{t`Help`}</MenubarTrigger>
-        <MenubarContent>
+        <MenubarContent data-bug-report-launcher="">
           <MenubarItem onSelect={() => dispatch({ kind: 'command', command: 'open-github' })}>
             {t`OpenKnowledge on GitHub`}
           </MenubarItem>

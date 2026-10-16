@@ -93,6 +93,13 @@ describe('AppMenubar Help menu', () => {
     expect(dispatch).toHaveBeenCalledWith({ kind: 'menu-action', action: 'report-bug' });
   });
 
+  test('the open Help menu is marked as a bug-report launcher', async () => {
+    installBridge('win32');
+    await openHelpMenu();
+
+    expect(screen.getByRole('menu').hasAttribute('data-bug-report-launcher')).toBe(true);
+  });
+
   test('Help entries read identically to the native menu, ellipsis included', async () => {
     installBridge('linux');
     await openHelpMenu();

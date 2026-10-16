@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { ReportBugDialog } from '@/components/ReportBugDialog';
+import { BUG_REPORT_NO_CAPTURE } from '@/lib/bug-report-capture';
 import { crashInviteStore } from '@/lib/crash-invite-store';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
@@ -11,9 +12,8 @@ export function ReportBugCrashInviteTrigger({ bridge }: { bridge: OkDesktopBridg
   return (
     <ReportBugDialog
       key={invite.eventId}
-      open
-      onOpenChange={(open) => {
-        if (open) return;
+      capture={BUG_REPORT_NO_CAPTURE}
+      onClose={() => {
         void bridge.bugReport.crashAck({ eventId: invite.eventId });
         crashInviteStore.dismiss();
       }}

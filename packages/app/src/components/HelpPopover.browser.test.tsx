@@ -4,6 +4,7 @@ import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { captureBugReport } from '@/lib/bug-report-capture';
 import { i18n } from '@/lib/i18n';
 import spanishCatalog from '@/locales/es/messages.json';
 import { renderWithI18n } from '../../tests/foundation/render-with-i18n.test-helper';
@@ -90,5 +91,54 @@ describe('HelpPopover version footer layout', () => {
       clippedInline: false,
       outsideContainer: false,
     });
+  });
+});
+
+describe('HelpPopover in a launcher-borne bug-report shot', () => {
+  test('the open popover is already hidden when the bridge takes the screenshot', async () => {
+    installDesktopBridge(CLOUD_VERSION);
+    const content = popoverContent(await openHelpPopover());
+    let visibilityAtCapture: string | null = null;
+    const bridge = (window as unknown as { okDesktop: Record<string, unknown> }).okDesktop;
+    bridge.bugReport = {
+      captureScreenshot: async () => {
+        visibilityAtCapture = getComputedStyle(content).visibility;
+        return null;
+      },
+    };
+
+    await captureBugReport({ launcherBorne: true });
+
+    expect(visibilityAtCapture).toBe('hidden');
+    await vi.waitFor(() => expect(getComputedStyle(content).visibility).toBe('visible'));
+  });
+
+  test('reporting from the popover never shows it again between the shot and its close', async () => {
+    installDesktopBridge(CLOUD_VERSION);
+    const content = popoverContent(await openHelpPopover());
+    const seen: string[] = [];
+    let sampling = false;
+    const sample = () => {
+      if (!content.isConnected) return;
+      if (sampling) seen.push(getComputedStyle(content).visibility);
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+    const bridge = (window as unknown as { okDesktop: Record<string, unknown> }).okDesktop;
+    bridge.bugReport = {
+      captureScreenshot: async () => {
+        sampling = true;
+        return null;
+      },
+    };
+
+    await userEvent.click(screen.getByRole('button', { name: 'Report a bug' }));
+
+    await vi.waitFor(() => expect(content.isConnected).toBe(false));
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.filter((visibility) => visibility !== 'hidden')).toEqual([]);
+    await vi.waitFor(() =>
+      expect(document.documentElement.hasAttribute('data-bug-report-capturing')).toBe(false),
+    );
   });
 });

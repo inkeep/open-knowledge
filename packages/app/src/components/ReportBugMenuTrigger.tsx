@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ReportBugDialog } from '@/components/ReportBugDialog';
-import type { OkMenuActionOrigin } from '@/lib/desktop-bridge-types';
+import { useBugReport } from '@/lib/bug-report-capture';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 
 interface ReportBugMenuTriggerProps {
@@ -8,22 +8,18 @@ interface ReportBugMenuTriggerProps {
 }
 
 export function ReportBugMenuTrigger({ systemWide }: ReportBugMenuTriggerProps) {
-  const [origin, setOrigin] = useState<OkMenuActionOrigin | null>(null);
+  const bugReport = useBugReport();
 
   useEffect(() => {
-    return subscribeLocalMenuAction((action, dispatchOrigin) => {
-      if (action !== 'report-bug') return;
-      setOrigin((current) => current ?? dispatchOrigin);
+    return subscribeLocalMenuAction((action, origin) => {
+      if (action === 'report-bug') bugReport.start(origin);
     });
-  }, []);
+  }, [bugReport.start]);
 
   return (
     <ReportBugDialog
-      open={origin !== null}
-      onOpenChange={(next) => {
-        if (!next) setOrigin(null);
-      }}
-      launcherBorne={origin?.launcherBorne === true}
+      capture={bugReport.capture}
+      onClose={bugReport.close}
       systemWide={systemWide}
     />
   );

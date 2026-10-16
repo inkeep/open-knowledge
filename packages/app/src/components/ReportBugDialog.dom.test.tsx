@@ -13,9 +13,9 @@ import { useEffect, useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { makeFilesDataTransfer } from '@/editor/composer-drop.test-helper';
+import { BUG_REPORT_NO_CAPTURE, type BugReportCapture } from '@/lib/bug-report-capture';
 import { bugReportSendManager } from '@/lib/bug-report-send-manager';
 import { contactEmailStore } from '@/lib/contact-email-store';
-import { installPointerPositionTracker } from '@/lib/pointer-position';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 vi.doMock('@lingui/react/macro', () => ({
@@ -68,6 +68,7 @@ const SCREENSHOT: OkBugReportScreenshot = {
   width: 1200,
   height: 800,
 };
+const WITH_SCREENSHOT: BugReportCapture = { screenshot: SCREENSHOT, pointerMarked: false };
 
 type CreateRequest = {
   level: 'standard' | 'full';
@@ -86,7 +87,6 @@ interface BridgeLog {
   revealed: string[];
   opened: string[];
   clipboard: string[];
-  screenshotCalls: number;
   crashDumpAvailabilityCalls: number;
 }
 
@@ -94,7 +94,6 @@ function installBridge(
   handlers: {
     create?: (request: CreateRequest) => Promise<OkBugReportCreateResult>;
     send?: (request: SendRequest) => Promise<OkBugReportSendResult>;
-    captureScreenshot?: () => Promise<OkBugReportScreenshot | null>;
     crashDumpAvailability?: () => Promise<{ available: boolean }>;
     platform?: string;
     cliCommandName?: string;
@@ -106,7 +105,6 @@ function installBridge(
     revealed: [],
     opened: [],
     clipboard: [],
-    screenshotCalls: 0,
     crashDumpAvailabilityCalls: 0,
   };
   const bridge = {
@@ -123,14 +121,6 @@ function installBridge(
           ? handlers.send(request)
           : Promise.resolve({ ok: true as const, reference: 'OK-8H3KQD' });
       },
-      ...(handlers.captureScreenshot
-        ? {
-            captureScreenshot: () => {
-              log.screenshotCalls += 1;
-              return handlers.captureScreenshot?.() ?? Promise.resolve(null);
-            },
-          }
-        : {}),
       ...(handlers.crashDumpAvailability
         ? {
             crashDumpAvailability: () => {
@@ -173,20 +163,6 @@ function clearBridge() {
   }
 }
 
-async function waitFrames(count: number): Promise<void> {
-  for (let i = 0; i < count; i += 1) {
-    await act(async () => {
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => resolve());
-      });
-    });
-  }
-}
-
-function movePointerTo(x: number, y: number): void {
-  window.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
-}
-
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((r) => {
@@ -201,11 +177,13 @@ async function renderDialog(
     crashContext?: import('./ReportBugDialogBody').ReportBugCrashContext;
     crashInvite?: OkBugReportCrashDetectedEvent;
     agentChat?: { threadId: string };
+    capture?: BugReportCapture;
   } = {},
   options: { statefulOpen?: boolean } = {},
 ) {
   const { ReportBugDialog } = await import('./ReportBugDialog');
-  const openChangeCalls: boolean[] = [];
+  const { capture = BUG_REPORT_NO_CAPTURE, ...dialogProps } = props;
+  const closeCalls = { count: 0 };
   let setHostOpen: ((open: boolean) => void) | null = null;
   function Host() {
     const [open, setOpen] = useState(true);
@@ -215,12 +193,12 @@ async function renderDialog(
     return (
       <TooltipProvider>
         <ReportBugDialog
-          open={options.statefulOpen === true ? open : true}
-          onOpenChange={(next) => {
-            openChangeCalls.push(next);
-            setOpen(next);
+          capture={options.statefulOpen === true && !open ? null : capture}
+          onClose={() => {
+            closeCalls.count += 1;
+            setOpen(false);
           }}
-          {...props}
+          {...dialogProps}
         />
       </TooltipProvider>
     );
@@ -228,7 +206,7 @@ async function renderDialog(
   render(<Host />);
   await screen.findByRole('dialog', {}, { timeout: 15_000 });
   return {
-    openChangeCalls,
+    closeCalls,
     reopen: () =>
       act(() => {
         setHostOpen?.(true);
@@ -245,20 +223,13 @@ async function createReport(note?: string) {
 }
 
 describe('ReportBugDialog', () => {
-  let stopPointerTracking: (() => void) | undefined;
-
   afterEach(async () => {
     cleanup();
     vi.restoreAllMocks();
-    stopPointerTracking?.();
-    stopPointerTracking = undefined;
     await vi.waitFor(() => {
       expect(bugReportSendManager.getSnapshot().some((op) => op.status === 'sending')).toBe(false);
     });
     clearBridge();
-    for (const el of document.querySelectorAll('[cmdk-root],[data-radix-popper-content-wrapper]')) {
-      el.remove();
-    }
   });
 
   test('compose state offers a labeled optional note, an always-on logs row, an off-by-default diagnostics checkbox, and the redaction note', async () => {
@@ -405,12 +376,12 @@ describe('ReportBugDialog', () => {
   test('Send hands the reviewed zip to the background send manager and closes the dialog', async () => {
     const send = deferred<OkBugReportSendResult>();
     const log = installBridge({ send: () => send.promise });
-    const { openChangeCalls } = await renderDialog({}, { statefulOpen: true });
+    const { closeCalls } = await renderDialog({}, { statefulOpen: true });
     await createReport('upload me');
 
     await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
 
-    expect(openChangeCalls).toEqual([false]);
+    expect(closeCalls.count).toBe(1);
     await vi.waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull();
     });
@@ -463,7 +434,7 @@ describe('ReportBugDialog', () => {
     '%s resolves outside the dialog — no terminal phase, no reopen, no draft',
     async (_, result) => {
       const log = installBridge({ send: () => Promise.resolve(result) });
-      const { openChangeCalls } = await renderDialog({}, { statefulOpen: true });
+      const { closeCalls } = await renderDialog({}, { statefulOpen: true });
       await createReport('still my note');
 
       await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
@@ -471,7 +442,7 @@ describe('ReportBugDialog', () => {
         expect(log.sendCalls).toHaveLength(1);
       });
 
-      expect(openChangeCalls).toEqual([false]);
+      expect(closeCalls.count).toBe(1);
       expect(screen.queryByRole('dialog')).toBeNull();
       expect(screen.queryByRole('heading', { name: "Couldn't send the report" })).toBeNull();
       expect(screen.queryByRole('heading', { name: 'Send your report by email' })).toBeNull();
@@ -482,14 +453,14 @@ describe('ReportBugDialog', () => {
 
   test('Escape closes the dialog from review, and review keeps its close button', async () => {
     installBridge();
-    const { openChangeCalls } = await renderDialog({}, { statefulOpen: true });
+    const { closeCalls } = await renderDialog({}, { statefulOpen: true });
     await createReport();
 
     expect(screen.getByRole('button', { name: 'Close' })).not.toBeNull();
 
     await userEvent.keyboard('{Escape}');
 
-    expect(openChangeCalls).toEqual([false]);
+    expect(closeCalls.count).toBe(1);
     await vi.waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull();
     });
@@ -1035,10 +1006,8 @@ describe('ReportBugDialog', () => {
   });
 
   test('a captured screenshot shows a default-on preview + checkbox that ride into create', async () => {
-    const log = installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
-    await renderDialog();
-
-    expect(log.screenshotCalls).toBe(1);
+    const log = installBridge();
+    await renderDialog({ capture: WITH_SCREENSHOT });
 
     const shot = screen.getByRole('checkbox', { name: 'Screenshot' });
     expect(shot.getAttribute('aria-checked')).toBe('true');
@@ -1063,8 +1032,8 @@ describe('ReportBugDialog', () => {
   });
 
   test('an image pasted while the screenshot preview is open does not attach behind it', async () => {
-    installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
-    await renderDialog();
+    installBridge();
+    await renderDialog({ capture: WITH_SCREENSHOT });
     await userEvent.click(screen.getByRole('button', { name: 'Enlarge screenshot' }));
     const preview = await screen.findByRole('dialog', { name: 'Screenshot preview' });
     const event = createEvent.paste(preview, {
@@ -1091,8 +1060,8 @@ describe('ReportBugDialog', () => {
   });
 
   test('unchecking the screenshot keeps it out of create', async () => {
-    const log = installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
-    await renderDialog();
+    const log = installBridge();
+    await renderDialog({ capture: WITH_SCREENSHOT });
 
     await userEvent.click(screen.getByRole('checkbox', { name: 'Screenshot' }));
     await createReport();
@@ -1113,14 +1082,13 @@ describe('ReportBugDialog', () => {
 
   test('the review card leaves the redaction claim unqualified for a screenshot-only bundle', async () => {
     installBridge({
-      captureScreenshot: () => Promise.resolve(SCREENSHOT),
       create: () =>
         Promise.resolve({
           ...CREATE_OK,
           summary: { ...SUMMARY, files: [...SUMMARY.files, 'extra/screenshot.png'] },
         }),
     });
-    await renderDialog();
+    await renderDialog({ capture: WITH_SCREENSHOT });
 
     await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
     await screen.findByRole('heading', { name: 'Review your report' });
@@ -1131,14 +1099,13 @@ describe('ReportBugDialog', () => {
 
   test('a screenshot-bearing bundle tells main to upload the screenshot', async () => {
     const log = installBridge({
-      captureScreenshot: () => Promise.resolve(SCREENSHOT),
       create: () =>
         Promise.resolve({
           ...CREATE_OK,
           summary: { ...SUMMARY, files: [...SUMMARY.files, 'extra/screenshot.png'] },
         }),
     });
-    await renderDialog();
+    await renderDialog({ capture: WITH_SCREENSHOT });
 
     await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
     await screen.findByRole('heading', { name: 'Review your report' });
@@ -1150,288 +1117,34 @@ describe('ReportBugDialog', () => {
     expect(log.sendCalls[0]?.includeScreenshot).toBe(true);
   });
 
-  test('a trigger with no launcher captures at once, overlay still on screen', async () => {
-    const popper = document.createElement('div');
-    popper.setAttribute('data-radix-popper-content-wrapper', '');
-    document.body.appendChild(popper);
-
-    let popperAtCapture: boolean | null = null;
-    let capturedAfterMs = Number.POSITIVE_INFINITY;
-    let openedAt = Number.NaN;
-    const log = installBridge({
-      captureScreenshot: () => {
-        popperAtCapture = document.querySelector('[data-radix-popper-content-wrapper]') !== null;
-        capturedAfterMs = performance.now() - openedAt;
-        return Promise.resolve(SCREENSHOT);
-      },
-    });
-    const { ReportBugDialog } = await import('./ReportBugDialog');
-    openedAt = performance.now();
-    render(
-      <TooltipProvider>
-        <ReportBugDialog open onOpenChange={() => {}} />
-      </TooltipProvider>,
-    );
-
-    await screen.findByRole('dialog');
-    expect(log.screenshotCalls).toBe(1);
-    expect(popperAtCapture).toBe(true);
-    expect(capturedAfterMs).toBeLessThan(400);
-    expect(screen.getByRole('checkbox', { name: 'Screenshot' })).not.toBeNull();
-  });
-
-  test('a known pointer position is in the frame that gets captured, and gone once it settles', async () => {
-    stopPointerTracking = installPointerPositionTracker();
-    movePointerTo(420, 260);
-
-    let markerAtCapture: { left: string; top: string } | null = null;
-    const log = installBridge({
-      captureScreenshot: () => {
-        const marker = document.querySelector<HTMLElement>('.ok-pointer-marker');
-        markerAtCapture = marker && { left: marker.style.left, top: marker.style.top };
-        return Promise.resolve(SCREENSHOT);
-      },
-    });
-    const { ReportBugDialog } = await import('./ReportBugDialog');
-    render(
-      <TooltipProvider>
-        <ReportBugDialog open onOpenChange={() => {}} />
-      </TooltipProvider>,
-    );
-
-    await screen.findByRole('dialog');
-    expect(log.screenshotCalls).toBe(1);
-    expect(markerAtCapture).toEqual({ left: '420px', top: '260px' });
-    expect(document.querySelector('.ok-pointer-marker')).toBeNull();
-  });
-
-  test('with the pointer never moved, the capture runs with no marker and nothing else changes', async () => {
-    stopPointerTracking = installPointerPositionTracker();
-
-    let markersAtCapture = -1;
-    const log = installBridge({
-      captureScreenshot: () => {
-        markersAtCapture = document.querySelectorAll('.ok-pointer-marker').length;
-        return Promise.resolve(SCREENSHOT);
-      },
-    });
-    await renderDialog();
-
-    expect(markersAtCapture).toBe(0);
-    expect(log.screenshotCalls).toBe(1);
-    expect(screen.getByRole('checkbox', { name: 'Screenshot' })).not.toBeNull();
-  });
-
   test('the screenshot hint promises a pointer marker only when one was drawn', async () => {
-    stopPointerTracking = installPointerPositionTracker();
-    movePointerTo(120, 140);
-    installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
-    await renderDialog();
+    installBridge();
+    await renderDialog({ capture: { screenshot: SCREENSHOT, pointerMarked: true } });
 
     expect(screen.getByText(/with the pointer marked/)).not.toBeNull();
   });
 
   test('with no marker drawn, the hint does not mention one', async () => {
-    stopPointerTracking = installPointerPositionTracker();
-    installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
-    await renderDialog();
+    installBridge();
+    await renderDialog({ capture: WITH_SCREENSHOT });
 
     expect(screen.getByRole('checkbox', { name: 'Screenshot' })).not.toBeNull();
     expect(screen.queryByText(/with the pointer marked/)).toBeNull();
     expect(screen.getByText(/Captured before this dialog\./)).not.toBeNull();
   });
 
-  test('a rejected capture still takes the marker off the screen', async () => {
-    stopPointerTracking = installPointerPositionTracker();
-    movePointerTo(80, 90);
-
-    let markersAtCapture = -1;
-    installBridge({
-      captureScreenshot: () => {
-        markersAtCapture = document.querySelectorAll('.ok-pointer-marker').length;
-        return Promise.reject(new Error('capture failed'));
-      },
-    });
-    await renderDialog();
-
-    expect(markersAtCapture).toBe(1);
-    expect(document.querySelector('.ok-pointer-marker')).toBeNull();
-  });
-
-  test('closing before the capture resolves takes the marker with it', async () => {
-    stopPointerTracking = installPointerPositionTracker();
-    movePointerTo(80, 90);
-
-    const pending = deferred<OkBugReportScreenshot>();
-    installBridge({ captureScreenshot: () => pending.promise });
-    const { ReportBugDialog } = await import('./ReportBugDialog');
-    const { rerender } = render(
-      <TooltipProvider>
-        <ReportBugDialog open onOpenChange={() => {}} />
-      </TooltipProvider>,
-    );
-
-    await waitFrames(3);
-    expect(document.querySelectorAll('.ok-pointer-marker')).toHaveLength(1);
-
-    rerender(
-      <TooltipProvider>
-        <ReportBugDialog open={false} onOpenChange={() => {}} />
-      </TooltipProvider>,
-    );
-    expect(document.querySelector('.ok-pointer-marker')).toBeNull();
-
-    pending.resolve(SCREENSHOT);
-    await waitFrames(1);
-  });
-
-  test('a capture that lands after the reveal timeout is discarded, not offered', async () => {
-    stopPointerTracking = installPointerPositionTracker();
-    movePointerTo(140, 200);
-
-    const pending = deferred<OkBugReportScreenshot>();
-    const log = installBridge({ captureScreenshot: () => pending.promise });
-    const { ReportBugDialog } = await import('./ReportBugDialog');
-    render(
-      <TooltipProvider>
-        <ReportBugDialog open onOpenChange={() => {}} />
-      </TooltipProvider>,
-    );
-
-    await screen.findByRole('dialog', {}, { timeout: 3000 });
-    expect(screen.queryByRole('checkbox', { name: 'Screenshot' })).toBeNull();
-    expect(document.querySelector('.ok-pointer-marker')).toBeNull();
-
-    pending.resolve(SCREENSHOT);
-    await waitFrames(3);
-    expect(screen.queryByRole('checkbox', { name: 'Screenshot' })).toBeNull();
-    expect(log.screenshotCalls).toBe(1);
-  });
-
-  test('a frame that lands after the reveal timeout draws no marker to strand on screen', async () => {
-    stopPointerTracking = installPointerPositionTracker();
-    movePointerTo(310, 190);
-
-    const queued: FrameRequestCallback[] = [];
-    const rafSpy = vi
-      .spyOn(window, 'requestAnimationFrame')
-      .mockImplementation((cb: FrameRequestCallback) => queued.push(cb));
-
-    const log = installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
-    const { ReportBugDialog } = await import('./ReportBugDialog');
-    render(
-      <TooltipProvider>
-        <ReportBugDialog open onOpenChange={() => {}} />
-      </TooltipProvider>,
-    );
-
-    try {
-      await vi.waitFor(() => expect(queued.length).toBeGreaterThan(0), { timeout: 5000 });
-      await screen.findByRole('dialog', {}, { timeout: 5000 });
-      expect(log.screenshotCalls).toBe(0);
-    } finally {
-      rafSpy.mockRestore();
-    }
-
-    await act(async () => {
-      for (let i = 0; i < 4 && queued.length > 0; i += 1) {
-        for (const cb of queued.splice(0)) cb(performance.now());
-        await Promise.resolve();
-      }
-    });
-
-    expect(document.querySelector('.ok-pointer-marker')).toBeNull();
-    expect(log.screenshotCalls).toBe(0);
-  });
-
-  test('a crash invite draws no marker — it takes no screenshot to draw one into', async () => {
-    stopPointerTracking = installPointerPositionTracker();
-    movePointerTo(80, 90);
-
-    const log = installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
-    await renderDialog({ crashInvite: BOOT_INVITE });
-
-    expect(log.screenshotCalls).toBe(0);
-    expect(document.querySelector('.ok-pointer-marker')).toBeNull();
-  });
-
-  test('a launcher-borne capture draws no marker — the row it would mark is gone', async () => {
-    stopPointerTracking = installPointerPositionTracker();
-    movePointerTo(500, 300);
-
-    const launcher = document.createElement('div');
-    launcher.setAttribute('cmdk-root', '');
-    document.body.appendChild(launcher);
-
-    let markersAtCapture = -1;
-    const log = installBridge({
-      captureScreenshot: () => {
-        markersAtCapture = document.querySelectorAll('.ok-pointer-marker').length;
-        return Promise.resolve(SCREENSHOT);
-      },
-    });
-    const { ReportBugDialog } = await import('./ReportBugDialog');
-    render(
-      <TooltipProvider>
-        <ReportBugDialog open onOpenChange={() => {}} launcherBorne />
-      </TooltipProvider>,
-    );
-
-    await waitFrames(3);
-    launcher.remove();
-    await screen.findByRole('dialog');
-
-    expect(log.screenshotCalls).toBe(1);
-    expect(markersAtCapture).toBe(0);
-    expect(document.querySelector('.ok-pointer-marker')).toBeNull();
-  });
-
-  test('the capture waits for the launcher (⌘K palette) to clear before revealing', async () => {
-    const launcher = document.createElement('div');
-    launcher.setAttribute('cmdk-root', '');
-    document.body.appendChild(launcher);
-
-    let launcherAtCapture: boolean | null = null;
-    const log = installBridge({
-      captureScreenshot: () => {
-        launcherAtCapture = document.querySelector('[cmdk-root]') !== null;
-        return Promise.resolve(SCREENSHOT);
-      },
-    });
-    const { ReportBugDialog } = await import('./ReportBugDialog');
-    render(
-      <TooltipProvider>
-        <ReportBugDialog open onOpenChange={() => {}} launcherBorne />
-      </TooltipProvider>,
-    );
-
-    await waitFrames(6);
-    expect(log.screenshotCalls).toBe(0);
-    expect(screen.queryByRole('dialog')).toBeNull();
-
-    launcher.remove();
-    await screen.findByRole('dialog');
-    expect(log.screenshotCalls).toBe(1);
-    expect(launcherAtCapture).toBe(false);
-    expect(screen.getByRole('checkbox', { name: 'Screenshot' })).not.toBeNull();
-  });
-
-  test('a capture that rejects still reveals the dialog, with no screenshot option', async () => {
-    const log = installBridge({
-      captureScreenshot: () => Promise.reject(new Error('capture failed')),
-    });
-    await renderDialog();
+  test('a capture that came back empty reveals the dialog with no screenshot option', async () => {
+    installBridge();
+    await renderDialog({ capture: BUG_REPORT_NO_CAPTURE });
 
     expect(screen.getByRole('dialog')).not.toBeNull();
     expect(screen.queryByRole('checkbox', { name: 'Screenshot' })).toBeNull();
-    expect(log.screenshotCalls).toBe(1);
   });
 
-  test('the crash-invite variant skips capture entirely — opens instantly, no screenshot', async () => {
-    const log = installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
+  test('the crash-invite variant opens with no screenshot option', async () => {
+    installBridge();
     await renderDialog({ crashInvite: BOOT_INVITE });
 
-    expect(log.screenshotCalls).toBe(0);
     expect(screen.queryByRole('checkbox', { name: 'Screenshot' })).toBeNull();
     expect(screen.getByText('OpenKnowledge quit unexpectedly last time.')).not.toBeNull();
   });
@@ -1672,8 +1385,8 @@ describe('ReportBugDialog — reporter attachments', () => {
 
 describe('compact report interactions', () => {
   test('enlarging a screenshot preserves the note and screenshot opt-out and restores focus', async () => {
-    installBridge({ captureScreenshot: async () => SCREENSHOT });
-    await renderDialog({}, { statefulOpen: true });
+    installBridge();
+    await renderDialog({ capture: WITH_SCREENSHOT }, { statefulOpen: true });
     await userEvent.type(
       screen.getByRole('textbox', { name: /what happened/i }),
       'Keep this draft',

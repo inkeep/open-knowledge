@@ -196,6 +196,7 @@ import {
   type ToolOutputMode,
   toolOutputMode,
 } from '@/lib/acp/tool-output-format';
+import { useBugReport } from '@/lib/bug-report-capture';
 import { docNameFromHash, filePathToDocName, hashFromDocName } from '@/lib/doc-hash';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
@@ -1787,6 +1788,7 @@ function AgentSettingsPopover({
           <DropdownMenuContent
             align="end"
             className="w-60"
+            data-bug-report-launcher=""
             data-testid="agent-thread-settings-popover"
           >
             <DropdownMenuLabel className="font-normal text-muted-foreground">
@@ -1881,7 +1883,12 @@ function AgentSettingsPopover({
         </AgentSettingsTrigger>
       </DropdownMenuTrigger>
       {}
-      <DropdownMenuContent align="end" className="w-60" data-testid="agent-thread-settings-popover">
+      <DropdownMenuContent
+        align="end"
+        className="w-60"
+        data-bug-report-launcher=""
+        data-testid="agent-thread-settings-popover"
+      >
         {}
         {info.archived === true ? (
           <DropdownMenuLabel
@@ -4385,7 +4392,7 @@ function ThreadComposer({
   onIngestAllFiles: (files: readonly File[]) => Promise<void>;
   onRemovePendingAttachment: (index: number) => void;
 }): ReactNode {
-  const [reportOpen, setReportOpen] = useState(false);
+  const bugReport = useBugReport();
   const canReportProblem = typeof window !== 'undefined' && window.okDesktop != null;
   const { t, i18n } = useLingui();
   const agentName = agentDisplayName(info.agent.name);
@@ -4554,15 +4561,16 @@ function ThreadComposer({
               info={info}
               hasStartedWork={hasStartedWork}
               onNewChat={onNewChat}
-              {...(canReportProblem ? { onReportProblem: () => setReportOpen(true) } : {})}
+              {...(canReportProblem
+                ? { onReportProblem: () => bugReport.start({ launcherBorne: true }) }
+                : {})}
               triggerRef={settingsTriggerRef}
             />
             {canReportProblem ? (
               <ReportBugDialog
-                open={reportOpen}
-                onOpenChange={setReportOpen}
+                capture={bugReport.capture}
+                onClose={bugReport.close}
                 agentChat={{ threadId: info.threadId }}
-                launcherBorne
               />
             ) : null}
             <div className="ml-auto flex items-center gap-1.5">

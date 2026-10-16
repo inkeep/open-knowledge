@@ -98,7 +98,7 @@ export interface PaletteCommandContext {
   openNewItemDialog(kind: 'file' | 'folder'): void;
   openSeedDialog(): void;
   openCreateProjectDialog(): void;
-  openReportBugDialog(): void;
+  reportBug(): void;
   openBugReportHistory(): void;
   openFeedbackDialog(): void;
   createBlankSkill(): void;
@@ -325,8 +325,7 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
     window.location.hash = '#install-claude-desktop';
   },
   'report-bug': (ctx) => {
-    ctx.closePalette();
-    ctx.openReportBugDialog();
+    ctx.reportBug();
   },
   'bug-report-history': (ctx) => {
     ctx.closePalette();

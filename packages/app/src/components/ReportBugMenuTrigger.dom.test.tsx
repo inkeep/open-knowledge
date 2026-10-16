@@ -1,18 +1,20 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { BugReportCapture } from '@/lib/bug-report-capture';
 import { KEYBOARD_SHORTCUTS } from '@/lib/keyboard-shortcuts';
 import {
   __resetLocalMenuActionBusForTests,
   emitLocalMenuAction,
 } from '@/lib/local-menu-action-bus';
+import { installPointerPositionTracker } from '@/lib/pointer-position';
 import { ReportBugMenuTrigger } from './ReportBugMenuTrigger';
 
 vi.mock('./ReportBugDialog', () => ({
-  ReportBugDialog: ({ open, launcherBorne }: { open: boolean; launcherBorne?: boolean }) =>
-    open ? (
+  ReportBugDialog: ({ capture }: { capture: BugReportCapture | null }) =>
+    capture !== null ? (
       <div
         aria-label="Report a bug"
-        data-launcher-borne={String(launcherBorne === true)}
+        data-pointer-marked={String(capture.pointerMarked)}
         role="dialog"
       />
     ) : null,
@@ -46,11 +48,46 @@ function fireMenuAction(
   act(() => emitLocalMenuAction(action, origin));
 }
 
+function installCaptureBridge(): { calls: number } {
+  const log = { calls: 0 };
+  Object.defineProperty(window, 'okDesktop', {
+    configurable: true,
+    writable: true,
+    value: {
+      bugReport: {
+        captureScreenshot: () => {
+          log.calls += 1;
+          return Promise.resolve({
+            dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+            width: 1,
+            height: 1,
+          });
+        },
+      },
+    },
+  });
+  return log;
+}
+
 describe('ReportBugMenuTrigger', () => {
+  let stopPointerTracking: (() => void) | undefined;
+
   afterEach(() => {
     cleanup();
     __resetLocalMenuActionBusForTests();
+    stopPointerTracking?.();
+    stopPointerTracking = undefined;
+    Object.defineProperty(window, 'okDesktop', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
   });
+
+  function trackPointerAt(x: number, y: number): void {
+    stopPointerTracking = installPointerPositionTracker();
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y }));
+  }
 
   test('dialog is closed until the report-bug menu action fires', () => {
     render(<ReportBugMenuTrigger />);
@@ -96,37 +133,41 @@ describe('ReportBugMenuTrigger', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  test('a native-menu dispatch opens a report that captures without waiting', async () => {
+  test('a native-menu dispatch opens a report whose shot marks the pointer', async () => {
+    trackPointerAt(120, 80);
+    installCaptureBridge();
     render(<ReportBugMenuTrigger />);
 
     fireMenuAction('report-bug');
 
     const dialog = await screen.findByRole('dialog');
-    expect(dialog.dataset.launcherBorne).toBe('false');
+    expect(dialog.dataset.pointerMarked).toBe('true');
   });
 
-  test('an in-app menubar dispatch opens a report that waits out the menu', async () => {
+  test('an in-app menubar dispatch opens a report whose shot leaves the pointer unmarked', async () => {
+    trackPointerAt(120, 80);
+    installCaptureBridge();
     render(<ReportBugMenuTrigger />);
 
     fireMenuAction('report-bug', { launcherBorne: true });
 
     const dialog = await screen.findByRole('dialog');
-    expect(dialog.dataset.launcherBorne).toBe('true');
+    expect(dialog.dataset.pointerMarked).toBe('false');
   });
 
-  test('a second dispatch while open keeps the origin the capture was taken for', async () => {
+  test('a second dispatch while open keeps the capture the first one took', async () => {
+    trackPointerAt(120, 80);
+    const log = installCaptureBridge();
     render(<ReportBugMenuTrigger />);
 
     fireMenuAction('report-bug');
     await screen.findByRole('dialog');
     fireMenuAction('report-bug', { launcherBorne: true });
 
-    await waitFor(
-      () => {
-        expect(screen.getByRole('dialog').dataset.launcherBorne).toBe('false');
-      },
-      { timeout: ASYNC_TIMEOUT_MS },
-    );
+    for (let frame = 0; frame < 3; frame++)
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    expect(screen.getByRole('dialog').dataset.pointerMarked).toBe('true');
+    expect(log.calls).toBe(1);
   });
 
   test('unsubscribes from the bus on unmount', async () => {

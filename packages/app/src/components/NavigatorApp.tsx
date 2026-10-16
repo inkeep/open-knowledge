@@ -8,11 +8,11 @@ import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useLanguageBridge } from '@/hooks/use-language-bridge';
 import { useThemeBridge } from '@/hooks/use-theme-bridge';
+import { useBugReport } from '@/lib/bug-report-capture';
 import { ConfigContext } from '@/lib/config-context';
 import type {
   OkDesktopBridge,
   OkLocalOpAuthStatusResponse,
-  OkMenuActionOrigin,
   OkPackId,
   OkProjectEntryPoint,
   OkSeedPackInfo,
@@ -102,7 +102,7 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   const [openingLabel, setOpeningLabel] = useState<string | null>(null);
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [reportBugOrigin, setReportBugOrigin] = useState<OkMenuActionOrigin | null>(null);
+  const bugReport = useBugReport();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [createPackId, setCreatePackId] = useState<OkPackId | undefined>(undefined);
   const [createPacks, setCreatePacks] = useState<OkSeedPackInfo[] | undefined>(undefined);
@@ -179,11 +179,11 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   useEffect(() => {
     return subscribeLocalMenuAction((action, origin) => {
       if (action === 'new-project') setCreateDialogOpen(true);
-      if (action === 'report-bug') setReportBugOrigin((current) => current ?? origin);
+      if (action === 'report-bug') bugReport.start(origin);
       if (action === 'send-feedback') setFeedbackOpen(true);
       if (action === 'close-active-tab-or-window') window.close();
     });
-  }, []);
+  }, [bugReport.start]);
 
   useEffect(() => {
     return bridge.onRecentRemovedMissing(({ path }) => {
@@ -398,14 +398,7 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
         packs={createPacks}
       />
 
-      <ReportBugDialog
-        open={reportBugOrigin !== null}
-        onOpenChange={(next) => {
-          if (!next) setReportBugOrigin(null);
-        }}
-        launcherBorne={reportBugOrigin?.launcherBorne === true}
-        systemWide
-      />
+      <ReportBugDialog capture={bugReport.capture} onClose={bugReport.close} systemWide />
 
       <FeedbackFormDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} source="help_menu" />
 

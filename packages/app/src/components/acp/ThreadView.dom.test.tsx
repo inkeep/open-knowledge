@@ -6458,14 +6458,14 @@ describe('ThreadView reporting a problem with the chat', () => {
     }
   }, 30_000);
 
-  test('the screenshot waits for the settings menu to close and marks no row', async () => {
+  test('the screenshot is shot before the report opens, with the settings menu marked as its launcher and no row marked', async () => {
     const stopPointerTracking = installPointerPositionTracker();
     window.dispatchEvent(
       new PointerEvent('pointermove', { clientX: 240, clientY: 160, bubbles: true }),
     );
     let captures = 0;
     let markersAtCapture = -1;
-    let menuAtCapture: boolean | null = null;
+    let reportOpenAtCapture: boolean | null = null;
     Object.assign(window, {
       okDesktop: {
         bugReport: {
@@ -6473,7 +6473,8 @@ describe('ThreadView reporting a problem with the chat', () => {
           captureScreenshot: () => {
             captures += 1;
             markersAtCapture = document.querySelectorAll('.ok-pointer-marker').length;
-            menuAtCapture = screen.queryByTestId('agent-thread-settings-popover') !== null;
+            reportOpenAtCapture =
+              screen.queryByRole('checkbox', { name: 'This conversation' }) !== null;
             return Promise.resolve(null);
           },
         },
@@ -6483,12 +6484,14 @@ describe('ThreadView reporting a problem with the chat', () => {
       model = makeModel({ items: [], turnActive: false });
       render(<ThreadView info={makeInfo({ status: 'ready' })} />);
       await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
+      const menu = await screen.findByTestId('agent-thread-settings-popover');
+      expect(menu.hasAttribute('data-bug-report-launcher')).toBe(true);
       await userEvent.click(await screen.findByTestId('agent-thread-report-problem'));
       await screen.findByRole('checkbox', { name: 'This conversation' }, { timeout: 15_000 });
 
       expect(captures).toBe(1);
       expect(markersAtCapture).toBe(0);
-      expect(menuAtCapture).toBe(false);
+      expect(reportOpenAtCapture).toBe(false);
     } finally {
       stopPointerTracking();
       Reflect.deleteProperty(window, 'okDesktop');

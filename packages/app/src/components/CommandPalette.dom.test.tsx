@@ -1,7 +1,9 @@
 import type { HandoffHostPlatform } from '@inkeep/open-knowledge-core/agent-registry';
+import type { OkBugReportScreenshot } from '@inkeep/open-knowledge-core/logger-types';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { BugReportCapture } from '@/lib/bug-report-capture';
 import {
   __resetLocalMenuActionBusForTests,
   subscribeLocalMenuAction,
@@ -10,6 +12,7 @@ import {
   __resetPaneVisibilityStoreForTests,
   paneVisibilityStore,
 } from '@/lib/pane-visibility-store';
+import { installPointerPositionTracker } from '@/lib/pointer-position';
 import { __resetViewMenuStateForTests, setViewMenuState } from '@/lib/view-menu-state-store';
 import {
   restrictHandoffTargetPlatforms,
@@ -30,6 +33,7 @@ type CommandDialogProps = {
   description?: string;
   className?: string;
   commandProps?: Record<string, unknown>;
+  contentAttributes?: Record<string, string>;
   transition?: unknown;
   placement?: unknown;
 };
@@ -50,7 +54,7 @@ let requestDocPanelTabCalls: string[] = [];
 let seedDialogProps: Array<{ open: boolean; onSeedApplied?: () => void }> = [];
 let newItemDialogProps: Array<{ open: boolean; kind: string; initialDir: string }> = [];
 let createProjectDialogProps: Array<{ open: boolean; bridge: unknown }> = [];
-let reportBugDialogProps: Array<{ open: boolean; launcherBorne?: boolean }> = [];
+let reportBugDialogProps: Array<{ capture: BugReportCapture | null }> = [];
 let feedbackDialogProps: Array<{ open: boolean; source?: string }> = [];
 let commandDialogProps: CommandDialogProps[] = [];
 let refreshInstallStatesCalls = 0;
@@ -166,9 +170,9 @@ vi.doMock('@/components/CreateProjectDialog', () => ({
 }));
 
 vi.doMock('@/components/ReportBugDialog', () => ({
-  ReportBugDialog: (props: { open: boolean; launcherBorne?: boolean }) => {
+  ReportBugDialog: (props: { capture: BugReportCapture | null }) => {
     reportBugDialogProps.push(props);
-    return <div data-open={String(props.open)} data-testid="report-bug-dialog" />;
+    return <div data-open={String(props.capture !== null)} data-testid="report-bug-dialog" />;
   },
 }));
 
@@ -346,6 +350,35 @@ async function setQuery(value: string) {
   });
 }
 
+const SCREENSHOT: OkBugReportScreenshot = {
+  dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+  width: 1200,
+  height: 800,
+};
+
+function installCaptureBridge(onCapture: () => void): void {
+  Object.defineProperty(window, 'okDesktop', {
+    configurable: true,
+    writable: true,
+    value: {
+      bugReport: {
+        captureScreenshot: () => {
+          onCapture();
+          return Promise.resolve(SCREENSHOT);
+        },
+      },
+    },
+  });
+}
+
+function clearCaptureBridge(): void {
+  Object.defineProperty(window, 'okDesktop', {
+    configurable: true,
+    writable: true,
+    value: undefined,
+  });
+}
+
 describe('CommandPalette DOM behavior', () => {
   beforeEach(() => {
     cleanup();
@@ -358,6 +391,7 @@ describe('CommandPalette DOM behavior', () => {
     newItemDialogProps = [];
     createProjectDialogProps = [];
     reportBugDialogProps = [];
+    clearCaptureBridge();
     feedbackDialogProps = [];
     commandDialogProps = [];
     refreshInstallStatesCalls = 0;
@@ -555,7 +589,7 @@ describe('CommandPalette DOM behavior', () => {
     expect(createProjectDialogProps.at(-1)?.bridge).toBe(bridge);
   });
 
-  test('report-a-bug command is desktop-only, searchable by issue tokens, and opens ReportBugDialog', async () => {
+  test('report-a-bug command is desktop-only, searchable by issue tokens, leaves the palette out of the shot, then closes it', async () => {
     await renderPalette({ bridge: null });
 
     await setQuery('bug');
@@ -570,17 +604,45 @@ describe('CommandPalette DOM behavior', () => {
     const reportBug = screen.getByTestId('command-palette-report-bug');
     expect(reportBug.textContent).toContain('Report a bug');
 
-    fireEvent.click(reportBug);
-
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-    await waitFor(() => {
-      expect(screen.getByTestId('report-bug-dialog').getAttribute('data-open')).toBe('true');
+    const stopPointerTracking = installPointerPositionTracker();
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 40, clientY: 50 }));
+    let paletteAtCapture: {
+      inDocument: boolean;
+      hiddenAsLauncher: boolean;
+      closeRequested: boolean;
+    } | null = null;
+    installCaptureBridge(() => {
+      const palette = screen.queryByRole('dialog', { name: 'Workspace Command Palette' });
+      paletteAtCapture = {
+        inDocument: palette !== null,
+        hiddenAsLauncher:
+          document.documentElement.hasAttribute('data-bug-report-capturing') &&
+          commandDialogProps.at(-1)?.contentAttributes?.['data-bug-report-launcher'] === '',
+        closeRequested: onOpenChange.mock.calls.length > 0,
+      };
     });
-    expect(reportBugDialogProps.at(-1)?.open).toBe(true);
-    expect(reportBugDialogProps.at(-1)?.launcherBorne).toBe(true);
+    try {
+      fireEvent.click(reportBug);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('report-bug-dialog').getAttribute('data-open')).toBe('true');
+      });
+    } finally {
+      stopPointerTracking();
+    }
+    expect(paletteAtCapture).toEqual({
+      inDocument: true,
+      hiddenAsLauncher: true,
+      closeRequested: false,
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(reportBugDialogProps.at(-1)?.capture).toEqual({
+      screenshot: SCREENSHOT,
+      pointerMarked: false,
+    });
   });
 
-  test('the bug-report-history CTA opens the compose dialog launcher-free', async () => {
+  test('the bug-report-history CTA captures with the history still up, pointer marked, then opens', async () => {
     const bridge = createBridge();
     await renderPalette({ bridge });
 
@@ -588,13 +650,27 @@ describe('CommandPalette DOM behavior', () => {
     fireEvent.click(screen.getByTestId('command-palette-bug-report-history'));
 
     const cta = await screen.findByTestId('history-report-cta');
-    fireEvent.click(cta);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('report-bug-dialog').getAttribute('data-open')).toBe('true');
+    const stopPointerTracking = installPointerPositionTracker();
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 40, clientY: 50 }));
+    let historyAtCapture: boolean | null = null;
+    installCaptureBridge(() => {
+      historyAtCapture = screen.queryByTestId('history-report-cta') !== null;
     });
-    expect(reportBugDialogProps.at(-1)?.open).toBe(true);
-    expect(reportBugDialogProps.at(-1)?.launcherBorne).toBe(false);
+    try {
+      fireEvent.click(cta);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('report-bug-dialog').getAttribute('data-open')).toBe('true');
+      });
+    } finally {
+      stopPointerTracking();
+    }
+    expect(historyAtCapture).toBe(true);
+    expect(screen.queryByTestId('history-report-cta')).toBeNull();
+    expect(reportBugDialogProps.at(-1)?.capture).toEqual({
+      screenshot: SCREENSHOT,
+      pointerMarked: true,
+    });
   });
 
   test('send-feedback command renders on both hosts and opens FeedbackFormDialog', async () => {

@@ -1,9 +1,11 @@
+import type { OkBugReportScreenshot } from '@inkeep/open-knowledge-core/logger-types';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import type { BugReportCapture } from '@/lib/bug-report-capture';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import { createServedBindingLog } from '@/test-utils/served-binding.test-helper';
 
@@ -28,13 +30,19 @@ vi.doMock('@/lib/external-link', () => ({
   dispatchExternalLinkClick: () => {},
 }));
 
-const reportBugDialogProps: Array<{ open: boolean; launcherBorne?: boolean }> = [];
+const reportBugDialogProps: Array<{ capture: BugReportCapture | null }> = [];
 vi.doMock('@/components/ReportBugDialog', () => ({
-  ReportBugDialog: (props: { open: boolean; launcherBorne?: boolean }) => {
+  ReportBugDialog: (props: { capture: BugReportCapture | null }) => {
     reportBugDialogProps.push(props);
-    return <div data-open={String(props.open)} data-testid="report-bug-dialog" />;
+    return <div data-open={String(props.capture !== null)} data-testid="report-bug-dialog" />;
   },
 }));
+
+const SCREENSHOT: OkBugReportScreenshot = {
+  dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+  width: 1200,
+  height: 800,
+};
 
 async function renderOpenHelpPopover() {
   const { HelpPopover } = await import('./HelpPopover');
@@ -198,8 +206,21 @@ describe('HelpPopover with the desktop bridge present', () => {
     expect(docs.compareDocumentPosition(sendFeedback)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  test('the report it opens waits for the popover to clear before shooting', async () => {
+  test('Report a bug shoots with the popover still up and no tooltip showing, then closes it and opens the report', async () => {
     reportBugDialogProps.length = 0;
+    let sceneAtCapture: { popoverOpen: boolean; tooltipOpen: boolean } | null = null;
+    (window as unknown as { okDesktop: unknown }).okDesktop = {
+      state: { query: async () => ({ channel: 'latest', schemaIncompatibility: null }) },
+      bugReport: {
+        captureScreenshot: () => {
+          sceneAtCapture = {
+            popoverOpen: screen.queryByRole('navigation', { name: 'Resources' }) !== null,
+            tooltipOpen: screen.queryByRole('tooltip') !== null,
+          };
+          return Promise.resolve(SCREENSHOT);
+        },
+      },
+    };
     await renderOpenHelpPopover();
 
     const nav = screen.getByRole('navigation', { name: 'Resources' });
@@ -208,7 +229,19 @@ describe('HelpPopover with the desktop bridge present', () => {
     await waitFor(() => {
       expect(screen.getByTestId('report-bug-dialog').getAttribute('data-open')).toBe('true');
     });
-    expect(reportBugDialogProps.at(-1)?.launcherBorne).toBe(true);
+    expect(sceneAtCapture).toEqual({ popoverOpen: true, tooltipOpen: false });
+    expect(screen.queryByRole('navigation', { name: 'Resources' })).toBeNull();
+    expect(reportBugDialogProps.at(-1)?.capture).toEqual({
+      screenshot: SCREENSHOT,
+      pointerMarked: false,
+    });
+  });
+
+  test('the popover content is marked as the launcher the capture hides', async () => {
+    await renderOpenHelpPopover();
+
+    const nav = screen.getByRole('navigation', { name: 'Resources' });
+    expect(nav.closest('[data-bug-report-launcher]')).not.toBeNull();
   });
 
   test('keeps the download route available for reinstalling or sharing from desktop', async () => {

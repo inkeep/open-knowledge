@@ -24,6 +24,7 @@ interface CommandDialogProps extends ComponentProps<typeof Dialog> {
   showCloseButton?: boolean;
   commandProps?: ComponentProps<typeof CommandPrimitive>;
   onEscapeKeyDown?: ComponentProps<typeof DialogContent>['onEscapeKeyDown'];
+  contentAttributes?: Record<`data-${string}`, string>;
 }
 
 function CommandDialog({
@@ -34,6 +35,7 @@ function CommandDialog({
   showCloseButton = true,
   commandProps,
   onEscapeKeyDown,
+  contentAttributes,
   ...props
 }: CommandDialogProps) {
   const { className: commandClassName, ...restCommandProps } = commandProps ?? {};
@@ -43,6 +45,7 @@ function CommandDialog({
         className={cn('top-[12vh] translate-y-0 overflow-hidden p-0', className)}
         showCloseButton={showCloseButton}
         onEscapeKeyDown={onEscapeKeyDown}
+        {...contentAttributes}
       >
         {}
         <DialogTitle className="sr-only">{title}</DialogTitle>

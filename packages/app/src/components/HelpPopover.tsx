@@ -22,6 +22,7 @@ import { SubscribeForm } from '@/components/SubscribeForm';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useBugReport } from '@/lib/bug-report-capture';
 import type { OkAboutInfo } from '@/lib/desktop-bridge-types';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { feedbackNudgeStore } from '@/lib/feedback-nudge-store';
@@ -138,7 +139,7 @@ export const HelpPopover: FC = () => {
   const { t } = useLingui();
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [subscribeOpen, setSubscribeOpen] = useState(false);
-  const [reportBugOpen, setReportBugOpen] = useState(false);
+  const bugReport = useBugReport();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [starCount, setStarCount] = useState<number | null>(null);
   const [about, setAbout] = useState<OkAboutInfo | null>(null);
@@ -204,6 +205,7 @@ export const HelpPopover: FC = () => {
         <PopoverContent
           align="end"
           aria-label={t`Resources`}
+          data-bug-report-launcher=""
           className="w-56 p-3 subtle-scrollbar max-h-(--radix-popover-content-available-height) overflow-y-auto data-[state=closed]:overflow-hidden"
         >
           {sections.map((section, index) => (
@@ -229,10 +231,9 @@ export const HelpPopover: FC = () => {
                       {hasDesktopBridge && (
                         <ActionRow
                           icon={Bug}
-                          onSelect={() => {
-                            setPopoverOpen(false);
-                            setReportBugOpen(true);
-                          }}
+                          onSelect={() =>
+                            bugReport.start({ launcherBorne: true }, () => setPopoverOpen(false))
+                          }
                         >
                           <Trans>Report a bug</Trans>
                         </ActionRow>
@@ -326,7 +327,7 @@ export const HelpPopover: FC = () => {
       </Popover>
       {}
       {hasDesktopBridge && (
-        <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} launcherBorne />
+        <ReportBugDialog capture={bugReport.capture} onClose={bugReport.close} />
       )}
       <FeedbackFormDialog
         open={feedbackOpen}

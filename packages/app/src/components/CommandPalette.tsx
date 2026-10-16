@@ -87,12 +87,8 @@ import { useCreateBlankSkill } from '@/hooks/use-create-blank-skill';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { useSemanticSearchStatus } from '@/hooks/use-semantic-search-status';
 import { useWorktrees } from '@/hooks/use-worktrees';
-import type {
-  OkDesktopBridge,
-  OkMenuAction,
-  OkMenuActionOrigin,
-  RecentProjectEntry,
-} from '@/lib/desktop-bridge-types';
+import { useBugReport } from '@/lib/bug-report-capture';
+import type { OkDesktopBridge, OkMenuAction, RecentProjectEntry } from '@/lib/desktop-bridge-types';
 import { hashFromDocName } from '@/lib/doc-hash';
 import { runWithToast as runWithToastBase } from '@/lib/error-state';
 import { openExternalUrl as openExternalUrlViaHost } from '@/lib/external-link';
@@ -285,7 +281,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const [createDialogKind, setCreateDialogKind] = useState<'file' | 'folder' | null>(null);
   const [seedDialogOpen, setSeedDialogOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
-  const [reportBugOrigin, setReportBugOrigin] = useState<OkMenuActionOrigin | null>(null);
+  const bugReport = useBugReport();
 
   const [reportBugHistoryOpen, setReportBugHistoryOpen] = useState(false);
   const [historyEverOpened, setHistoryEverOpened] = useState(false);
@@ -719,7 +715,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     openNewItemDialog: (kind) => setCreateDialogKind(kind),
     openSeedDialog: () => setSeedDialogOpen(true),
     openCreateProjectDialog: () => setCreateProjectOpen(true),
-    openReportBugDialog: () => setReportBugOrigin({ launcherBorne: true }),
+    reportBug: () => bugReport.start({ launcherBorne: true }, () => onOpenChange(false)),
     openBugReportHistory: () => {
       setHistoryEverOpened(true);
       setReportBugHistoryOpen(true);
@@ -944,6 +940,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
             '[&_[cmdk-input-wrapper]_svg]:h-4 [&_[cmdk-input-wrapper]_svg]:w-4 [&_[cmdk-item]_svg]:h-4 [&_[cmdk-item]_svg]:w-4',
         }}
         onEscapeKeyDown={onPaletteEscapeKeyDown}
+        contentAttributes={{ 'data-bug-report-launcher': '' }}
       >
         <CommandInput
           ref={inputRef}
@@ -1484,25 +1481,16 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
         />
       ) : null}
       {}
-      {bridge ? (
-        <ReportBugDialog
-          open={reportBugOrigin !== null}
-          onOpenChange={(next) => {
-            if (!next) setReportBugOrigin(null);
-          }}
-          launcherBorne={reportBugOrigin?.launcherBorne === true}
-        />
-      ) : null}
+      {bridge ? <ReportBugDialog capture={bugReport.capture} onClose={bugReport.close} /> : null}
       {}
       {bridge && historyEverOpened ? (
         <Suspense fallback={null}>
           <BugReportHistoryDialog
             open={reportBugHistoryOpen}
             onOpenChange={setReportBugHistoryOpen}
-            onReportABug={() => {
-              setReportBugHistoryOpen(false);
-              setReportBugOrigin({ launcherBorne: false });
-            }}
+            onReportABug={() =>
+              bugReport.start({ launcherBorne: false }, () => setReportBugHistoryOpen(false))
+            }
           />
         </Suspense>
       ) : null}

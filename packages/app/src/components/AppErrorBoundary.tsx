@@ -1,15 +1,16 @@
 import { Trans, useLingui } from '@lingui/react/macro';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
 import { OkBlobRunnerEasterEgg } from '@/components/OkBlobRunnerEasterEgg';
 import { ReportBugDialog } from '@/components/ReportBugDialog';
 import { Button } from '@/components/ui/button';
+import { useBugReport } from '@/lib/bug-report-capture';
 import { recallComponentStack, rememberComponentStack } from '@/lib/component-stack-registry';
 import { recordAppShellCrashTrip } from '@/lib/tab-session-restore-suppression';
 
 function AppErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
   const { t } = useLingui();
-  const [reportOpen, setReportOpen] = useState(false);
+  const bugReport = useBugReport();
   const retryRef = useRef<HTMLButtonElement>(null);
   const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
   const message =
@@ -42,7 +43,7 @@ function AppErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
           <Button
             variant="ghost"
             className="font-mono uppercase"
-            onClick={() => setReportOpen(true)}
+            onClick={() => bugReport.start({ launcherBorne: false })}
           >
             <Trans>Report this error</Trans>
           </Button>
@@ -51,8 +52,8 @@ function AppErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
       {bridge ? (
         <CrashReportingBoundary>
           <ReportBugDialog
-            open={reportOpen}
-            onOpenChange={setReportOpen}
+            capture={bugReport.capture}
+            onClose={bugReport.close}
             systemWide={bridge.config.mode === 'navigator'}
             crashContext={{
               source: 'app shell',
