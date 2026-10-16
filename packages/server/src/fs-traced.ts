@@ -2,6 +2,7 @@ import type { RmOptions, WriteFileOptions } from 'node:fs';
 import {
   appendFileSync,
   chmodSync,
+  closeSync,
   cpSync,
   linkSync,
   mkdirSync,
@@ -178,7 +179,7 @@ export function tracedCpSync(
   );
 }
 
-export function tracedOpenSync(path: string, flags: string, mode: number): number {
+function tracedOpenSync(path: string, flags: string, mode: number): number {
   return withSpanSync('fs.openSync', { attributes: buildAttrs('openSync', path) }, () =>
     openSync(path, flags, mode),
   );
@@ -188,6 +189,17 @@ export function tracedUnlinkSync(path: string): void {
   withSpanSync('fs.unlinkSync', { attributes: buildAttrs('unlinkSync', path) }, () => {
     unlinkSync(path);
   });
+}
+
+export function tracedOpenUnlinkedSync(path: string): number {
+  const fd = tracedOpenSync(path, 'wx+', 0o600);
+  try {
+    tracedUnlinkSync(path);
+    return fd;
+  } catch (err) {
+    closeSync(fd);
+    throw err;
+  }
 }
 
 export function tracedLinkSync(existingPath: string, newPath: string): void {

@@ -1,7 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { type ChildProcess, spawn } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { setTimeout as delay } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { getLogger } from '../logger.ts';
 import {
   createLoginShellPathProvider,
@@ -19,7 +22,13 @@ function tmp(): string {
   dirs.push(d);
   return d;
 }
-afterEach(() => {
+let spawners: Array<{ child: ChildProcess; closed: Promise<void> }> = [];
+afterEach(async () => {
+  for (const { child, closed } of spawners) {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    await closed;
+  }
+  spawners = [];
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
   dirs = [];
 });
@@ -32,6 +41,64 @@ function fakeShell(body: string): string {
 }
 
 const wrap = (path: string): string => `__OK_PATH_BEGIN__${path}__OK_PATH_END__`;
+
+const spawnerScript = `
+const { createLoginShellPathProvider } = await import(process.env.PROBE_MODULE);
+createLoginShellPathProvider({
+  log: { debug() {} },
+  platform: 'darwin',
+  shell: process.env.PROBE_SHELL,
+  timeoutMs: 60_000,
+})();
+process.stdout.write('spawned');
+if (process.env.EXIT_AFTER_MS) setTimeout(() => process.exit(0), Number(process.env.EXIT_AFTER_MS));
+`;
+
+async function startProbeSpawner(
+  shell: string,
+  exitAfterMs?: number,
+): Promise<{ child: ChildProcess; closed: Promise<void> }> {
+  const child = spawn(
+    process.execPath,
+    ['--import', 'tsx', '--input-type=module', '-e', spawnerScript],
+    {
+      cwd: fileURLToPath(new URL('../..', import.meta.url)),
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        PROBE_MODULE: new URL('./login-shell-path.ts', import.meta.url).href,
+        PROBE_SHELL: shell,
+        EXIT_AFTER_MS: exitAfterMs === undefined ? '' : String(exitAfterMs),
+      },
+    },
+  );
+  const closed = new Promise<void>((resolveClosed) => {
+    child.once('close', () => resolveClosed());
+  });
+  spawners.push({ child, closed });
+  let stderr = '';
+  child.stderr?.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
+  await new Promise<void>((resolveSpawned, rejectSpawned) => {
+    child.stdout?.on('data', () => resolveSpawned());
+    void closed.then(() => rejectSpawned(new Error(`probe spawner exited early: ${stderr}`)));
+  });
+  return { child, closed };
+}
+
+function forkingStallingShell(heartbeat: string): string {
+  return fakeShell(
+    `( i=0; while [ $i -lt 300 ]; do touch '${heartbeat}'; sleep 0.1; i=$((i + 1)); done ) &\nsleep 30`,
+  );
+}
+
+async function expectHeartbeatStopped(heartbeat: string): Promise<void> {
+  expect(existsSync(heartbeat)).toBe(true);
+  rmSync(heartbeat);
+  await delay(1_000);
+  expect(existsSync(heartbeat)).toBe(false);
+}
 
 describe('parseLoginShellPath', () => {
   test('extracts the fenced PATH', () => {
@@ -312,6 +379,45 @@ describe.skipIf(process.platform === 'win32')(
       await expect(provider()).resolves.toBeNull();
       expect(Date.now() - started).toBeLessThan(5_000);
     });
+
+    test('a timed-out probe kills the subshells its shell forked', async () => {
+      const heartbeat = join(tmp(), 'heartbeat');
+      const provider = createLoginShellPathProvider({
+        log,
+        platform: 'darwin',
+        shell: forkingStallingShell(heartbeat),
+        timeoutMs: 2_000,
+      });
+      await expect(provider()).resolves.toBeNull();
+      await expectHeartbeatStopped(heartbeat);
+    }, 15_000);
+
+    test('a spawner that exits mid-probe takes the whole probe tree with it', async () => {
+      const heartbeat = join(tmp(), 'heartbeat');
+      const { closed } = await startProbeSpawner(forkingStallingShell(heartbeat), 2_000);
+      await closed;
+      await expectHeartbeatStopped(heartbeat);
+    }, 15_000);
+
+    test('a probe outliving a killed spawner never writes into a dead pipe', async () => {
+      const dir = tmp();
+      const shell = fakeShell(
+        [
+          `trap "touch '${join(dir, 'sigpipe')}'" PIPE`,
+          'sleep 1',
+          'echo "Last login: today"',
+          `touch '${join(dir, 'finished')}'`,
+        ].join('\n'),
+      );
+      const { child, closed } = await startProbeSpawner(shell);
+      child.kill('SIGKILL');
+      await closed;
+      await vi.waitFor(() => expect(existsSync(join(dir, 'finished'))).toBe(true), {
+        timeout: 10_000,
+        interval: 50,
+      });
+      expect(existsSync(join(dir, 'sigpipe'))).toBe(false);
+    }, 15_000);
 
     test('a shell that cannot be executed yields no verdict', async () => {
       const provider = createLoginShellPathProvider({

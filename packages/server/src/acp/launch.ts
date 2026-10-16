@@ -15,9 +15,8 @@ import { z } from 'zod';
 import {
   tracedMkdir,
   tracedMkdirSync,
-  tracedOpenSync,
+  tracedOpenUnlinkedSync,
   tracedRm,
-  tracedUnlinkSync,
   tracedWriteFile,
   tracedWriteFileSync,
 } from '../fs-traced.ts';
@@ -541,7 +540,7 @@ async function runFileBackedInstall(
   const stderrPath = join(acpNpxIsolatedCwd(), `.install-stderr-${process.pid}-${randomUUID()}`);
   let fd: number;
   try {
-    fd = openUnlinkedFile(stderrPath);
+    fd = tracedOpenUnlinkedSync(stderrPath);
   } catch (err) {
     return {
       code: null,
@@ -562,17 +561,6 @@ async function runFileBackedInstall(
         '[acp-launch] could not read the agent package install output',
       );
     });
-  }
-}
-
-function openUnlinkedFile(path: string): number {
-  const fd = tracedOpenSync(path, 'wx+', 0o600);
-  try {
-    tracedUnlinkSync(path);
-    return fd;
-  } catch (err) {
-    closeSync(fd);
-    throw err;
   }
 }
 

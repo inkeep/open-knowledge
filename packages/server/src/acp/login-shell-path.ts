@@ -1,5 +1,9 @@
-import { spawn } from 'node:child_process';
-import { delimiter } from 'node:path';
+import { type ChildProcess, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { closeSync, fstatSync, readSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { delimiter, join } from 'node:path';
+import { tracedOpenUnlinkedSync } from '../fs-traced.ts';
 import type { PinoLogger } from '../logger.ts';
 
 const LOGIN_SHELL_PROBE_TIMEOUT_MS = 5_000;
@@ -71,38 +75,91 @@ export interface LoginShellPathDeps {
   now?: () => number;
 }
 
+const liveProbes = new Set<ChildProcess>();
+let killLiveProbesOnExit = false;
+
+function hasExited(child: ChildProcess): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
+function killProbeTree(child: ChildProcess): void {
+  const pid = child.pid;
+  if (pid === undefined || hasExited(child)) return;
+  if (process.platform !== 'win32') {
+    try {
+      process.kill(-pid, 'SIGKILL');
+      return;
+    } catch {}
+  }
+  child.kill('SIGKILL');
+}
+
+function killLiveProbes(): void {
+  for (const child of liveProbes) killProbeTree(child);
+}
+
+function trackLiveProbe(child: ChildProcess): void {
+  liveProbes.add(child);
+  const forget = (): void => {
+    liveProbes.delete(child);
+  };
+  child.once('exit', forget);
+  child.once('error', forget);
+  if (killLiveProbesOnExit) return;
+  killLiveProbesOnExit = true;
+  process.on('exit', killLiveProbes);
+}
+
+function readProbeOutput(fd: number): string | null {
+  try {
+    const size = Math.min(fstatSync(fd).size, MAX_PROBE_STDOUT_BYTES);
+    const buffer = Buffer.alloc(size);
+    const read = readSync(fd, buffer, 0, size, 0);
+    return buffer.toString('utf8', 0, read);
+  } catch {
+    return null;
+  }
+}
+
 const spawnLoginShellProbe: RunLoginShellProbe = (shell, args, timeoutMs) =>
   new Promise((resolvePromise) => {
-    let child: ReturnType<typeof spawn>;
+    let output: number;
     try {
-      child = spawn(shell, [...args], {
-        stdio: ['ignore', 'pipe', 'ignore'],
-        windowsHide: true,
-      });
+      output = tracedOpenUnlinkedSync(join(tmpdir(), `ok-login-shell-path-${randomUUID()}`));
     } catch {
       resolvePromise(null);
       return;
     }
-    let out = '';
+    let child: ChildProcess;
+    try {
+      child = spawn(shell, [...args], {
+        stdio: ['ignore', output, 'ignore'],
+        detached: process.platform !== 'win32',
+        windowsHide: true,
+      });
+    } catch {
+      closeSync(output);
+      resolvePromise(null);
+      return;
+    }
+    trackLiveProbe(child);
     let settled = false;
-    const finish = (value: string | null): void => {
+    const finish = (result: () => string | null): void => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolvePromise(value);
+      resolvePromise(result());
+      try {
+        closeSync(output);
+      } catch {}
     };
     const timer = setTimeout(() => {
-      child.kill('SIGKILL');
-      finish(null);
+      killProbeTree(child);
+      finish(() => null);
     }, timeoutMs);
     timer.unref?.();
-    child.stdout?.setEncoding('utf8');
-    child.stdout?.on('data', (chunk: string) => {
-      if (out.length >= MAX_PROBE_STDOUT_BYTES) return;
-      out += chunk;
-    });
-    child.on('error', () => finish(null));
-    child.on('close', () => finish(out));
+    child.on('error', () => finish(() => null));
+    child.on('close', () => finish(() => readProbeOutput(output)));
   });
 
 const FAILED_PROBE_RETRY_MS = 60_000;
