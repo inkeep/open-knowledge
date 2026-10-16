@@ -557,9 +557,9 @@ function PublishSuccessView({
         <div
           role="status"
           data-testid="publish-success"
-          className="flex items-start gap-3 rounded-md border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm"
+          className="flex items-start gap-3 rounded-md border border-success/40 p-3 text-sm"
         >
-          <CheckCircle2 className="mt-0.5 size-4 text-emerald-600" aria-hidden />
+          <CheckCircle2 className="mt-0.5 size-4 text-success" aria-hidden />
           <span className="text-foreground">
             {canCopy ? (
               <Trans>Your share link is ready below.</Trans>
@@ -655,7 +655,7 @@ function PublishBanner({
     <div
       role="alert"
       data-testid="publish-banner"
-      className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm"
+      className="flex flex-col gap-2 rounded-md border border-destructive/50 p-3 text-sm"
     >
       <span>{banner.message}</span>
       {next.kind === 'authorize-org' && (
@@ -692,7 +692,7 @@ function NameCheckIndicator({ status }: { status: NameCheckStatus }) {
       <span
         data-testid="publish-name-check"
         data-status="available"
-        className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"
+        className="flex items-center gap-1 text-success"
       >
         <CheckCircle2 className="size-3.5" aria-hidden /> <Trans>Available</Trans>
       </span>

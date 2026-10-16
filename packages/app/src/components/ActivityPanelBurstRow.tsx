@@ -88,8 +88,8 @@ export function ActivityPanelBurstRow({
         >
           <span className="font-mono">{formatRelative(burst.ts, now)}</span>
           <span className="ml-auto font-mono">
-            <span className="text-green-600 dark:text-green-400">+{burst.additions}</span>{' '}
-            <span className="text-red-600 dark:text-red-400">−{burst.deletions}</span>
+            <span className="text-success">+{burst.additions}</span>{' '}
+            <span className="text-destructive">−{burst.deletions}</span>
           </span>
         </button>
         {}

@@ -160,7 +160,7 @@ function DiagnosticRowBody({
           aria-hidden="true"
           className={cn(
             'mt-0.5 size-3.5 shrink-0',
-            diagnostic.severity === 'error' ? 'text-destructive' : 'text-amber-500',
+            diagnostic.severity === 'error' ? 'text-destructive' : 'text-warning',
           )}
         />
         <span className="min-w-0 flex-1 text-foreground">
@@ -1081,10 +1081,7 @@ function ProjectAuditResults({
           {configWarnings.map((warning, index) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: the warnings array is a static audit snapshot (no reorder/insert between renders), and identical config warnings can legitimately repeat — a text-only key would collide.
             <li key={`${index}-${warning}`} className="flex items-start gap-1.5 px-2 text-xs">
-              <AlertTriangle
-                aria-hidden="true"
-                className="mt-0.5 size-3.5 shrink-0 text-amber-500"
-              />
+              <AlertTriangle aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" />
               <span className="min-w-0 text-foreground">{warning}</span>
             </li>
           ))}

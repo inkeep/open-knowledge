@@ -135,11 +135,7 @@ export function WikiLinkSuggestionMenu({
       <span className="sr-only" aria-live="polite" aria-atomic="true">
         {selectedItem ? announcementText(selectedItem) : ''}
       </span>
-      {error && (
-        <div className="rounded-md px-2 py-1.5 text-xs text-amber-700 dark:text-amber-300">
-          {error}
-        </div>
-      )}
+      {error && <div className="rounded-md px-2 py-1.5 text-xs text-warning">{error}</div>}
       {mode === 'anchor' && (
         <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
           {pageTarget}

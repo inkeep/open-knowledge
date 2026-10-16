@@ -25,6 +25,8 @@ Click **Create new theme**, name it, and the editor opens. Two ways to fill it i
 - **Paste a scheme.** The paste box accepts any [Tinted Theming](https://github.com/tinted-theming/schemes) base16 scheme (hundreds are published), in either the current layout (`palette:` nested) or the original chriskempson one, YAML or JSON.
 - **Edit the sixteen slots by hand.** Each `base00`–`base0F` slot names its role. Edits apply live and save automatically.
 
+Four slots also color status: `base0B` success, `base0A` warning, `base08` errors and `base0D` information. Four others tell threads apart: `base0E`, `base0C`, `base09` and `base0F`. Status text has to stay readable on the page and card backgrounds (`base00` and `base01`), and on a light wash of its own color, the way badges and hover states draw it. A status slot that falls short is drawn darker or lighter than the hex you entered, as far as it takes to pass, which can be a noticeable shift for a pale or mid-tone color.
+
 **Copy as YAML** exports the scheme in the standard layout, so a theme you tuned here is pasteable anywhere else in the base16 ecosystem.
 
 ## Theme files

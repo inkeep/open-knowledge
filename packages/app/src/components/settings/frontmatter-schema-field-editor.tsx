@@ -50,12 +50,12 @@ const TYPE_ICONS: Record<
   (typeof TYPE_SELECT_OPTIONS)[number],
   { Icon: LucideIcon; className: string }
 > = {
-  string: { Icon: CaseSensitive, className: 'text-green-500' },
-  number: { Icon: Hash, className: 'text-blue-500' },
-  boolean: { Icon: ToggleLeft, className: 'text-orange-500' },
-  enum: { Icon: ListChecks, className: 'text-yellow-500' },
-  array: { Icon: Brackets, className: 'text-pink-500' },
-  object: { Icon: Braces, className: 'text-purple-500' },
+  string: { Icon: CaseSensitive, className: 'text-chart-2' },
+  number: { Icon: Hash, className: 'text-chart-1' },
+  boolean: { Icon: ToggleLeft, className: 'text-(--syntax-atom)' },
+  enum: { Icon: ListChecks, className: 'text-chart-3' },
+  array: { Icon: Brackets, className: 'text-chart-5' },
+  object: { Icon: Braces, className: 'text-chart-4' },
 };
 
 function TypeSelectItemLabel({ option }: { option: (typeof TYPE_SELECT_OPTIONS)[number] }) {

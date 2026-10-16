@@ -190,7 +190,7 @@ function DeviceFlowPanel({ onSuccess, startFlow }: DeviceFlowPanelProps) {
           </span>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5">
-              <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
+              <span className="size-1.5 rounded-full bg-warning animate-pulse" />
               <Trans>Waiting for authorization</Trans>
             </span>
             <span>

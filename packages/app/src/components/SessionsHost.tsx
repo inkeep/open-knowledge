@@ -288,10 +288,10 @@ function threadTabState(info: ThreadInfo): ThreadTabState {
 }
 
 const THREAD_TAB_DOT_CLASSES: Record<ThreadTabState, string> = {
-  working: 'bg-sky-500 animate-pulse',
-  'needs-you': 'bg-amber-500',
-  ready: 'bg-emerald-500',
-  stopped: 'bg-red-500',
+  working: 'bg-info animate-pulse',
+  'needs-you': 'bg-warning',
+  ready: 'bg-success',
+  stopped: 'bg-destructive',
   closed: 'bg-muted-foreground',
 };
 
@@ -367,14 +367,10 @@ function terminalTabIcon(): ReactNode {
 }
 
 const THREAD_TINT_RINGS: readonly string[] = [
-  'ring-violet-400/60',
-  'ring-fuchsia-400/60',
-  'ring-pink-400/60',
-  'ring-cyan-400/60',
-  'ring-teal-400/60',
-  'ring-lime-400/60',
-  'ring-yellow-400/60',
-  'ring-stone-400/60',
+  'ring-identity-1/60',
+  'ring-identity-2/60',
+  'ring-identity-3/60',
+  'ring-identity-4/60',
 ];
 
 function threadTintClass(threadId: string): string {
@@ -2294,7 +2290,7 @@ function ThreadConnectionBanner() {
   const { t } = useLingui();
   return (
     <div
-      className="shrink-0 border-amber-500/30 border-b bg-amber-500/5 px-3 py-1 text-amber-700 text-xs dark:text-amber-400"
+      className="shrink-0 border-warning/30 border-b bg-warning/5 px-3 py-1 text-warning text-xs"
       data-testid="agent-thread-reconnecting"
     >
       {t`Reconnecting to the agent service…`}

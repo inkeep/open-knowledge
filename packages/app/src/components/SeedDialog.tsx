@@ -314,7 +314,7 @@ function SeedDialogBody({
         <CreatedItemsList plan={phase.plan} selectedPack={selectedPack} />
       ) : null}
       {phase.plan.warnings.length > 0 ? (
-        <div className="rounded-md bg-warning/10 p-3 text-xs text-warning-foreground">
+        <div className="rounded-md border border-warning/40 p-3 text-xs text-foreground">
           {phase.plan.warnings.map((w) => (
             <p key={w}>{w}</p>
           ))}
@@ -329,7 +329,7 @@ function PackSkillConflicts({ plan }: { plan: OkScaffoldPlan }): ReactElement | 
   const conflicts = plan.packSkills?.filter((s) => s.conflict) ?? [];
   if (conflicts.length === 0) return null;
   return (
-    <div className="rounded-md bg-warning/10 p-3 text-xs text-warning-foreground">
+    <div className="rounded-md border border-warning/40 p-3 text-xs text-foreground">
       {conflicts.map((s) => (
         <p key={s.name}>
           <Trans>

@@ -324,7 +324,7 @@ function ConsentDialogForm({ payload, store, toast, detectionGraceMs }: ConsentD
           {payload.warnings.length > 0 ? (
             <div
               role="alert"
-              className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+              className="rounded-md border border-warning/40 px-3 py-2 text-sm text-foreground"
             >
               {payload.warnings.map((w) => (
                 <p key={w.kind} className="mb-1 last:mb-0">

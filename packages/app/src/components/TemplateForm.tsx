@@ -498,7 +498,7 @@ function DerivedFilename({ form }: { form: TemplateFormState }) {
           </Trans>
         </FieldError>
       ) : form.slugShadows ? (
-        <FieldDescription className="text-yellow-600 dark:text-yellow-500">
+        <FieldDescription className="text-warning">
           <Trans>
             A template named <code className="font-mono">{trimmedSlug}</code> already exists here.
             Saving creates a local copy that overrides it for this folder.

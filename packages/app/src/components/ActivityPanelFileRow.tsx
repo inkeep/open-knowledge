@@ -74,8 +74,8 @@ export function ActivityPanelFileRow({
           {file.docName}
         </button>
         <span className="shrink-0 font-mono text-xs">
-          <span className="text-green-600 dark:text-green-400">+{file.additionsTotal}</span>{' '}
-          <span className="text-red-600 dark:text-red-400">−{file.deletionsTotal}</span>
+          <span className="text-success">+{file.additionsTotal}</span>{' '}
+          <span className="text-destructive">−{file.deletionsTotal}</span>
         </span>
         <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
           {formatRelative(file.lastTs, now)}

@@ -52,7 +52,7 @@ describe('referenceStatusLine', () => {
   test('a failing optional check is not reported as blocked', () => {
     expect(referenceStatusLine(openPull({ mergeState: 'UNSTABLE', checks: 'FAILURE' }))).toEqual({
       kind: 'unstable',
-      tone: 'severe',
+      tone: 'danger',
     });
   });
 

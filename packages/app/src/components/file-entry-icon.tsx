@@ -138,7 +138,7 @@ export function FileEntryIcon({
   const mediaKind = mediaKindForSidebarAssetExtension(normalizedExt);
   const badge =
     showExtensionBadge && ext && normalizedExt !== '.md' ? ext.slice(1).toUpperCase() : null;
-  const iconClassName = cn(className, mediaKind === 'image' && 'text-rose-500');
+  const iconClassName = cn(className, mediaKind === 'image' && 'text-chart-5');
 
   return (
     <span className="relative inline-flex shrink-0" data-file-entry-icon={normalizedExt || 'file'}>

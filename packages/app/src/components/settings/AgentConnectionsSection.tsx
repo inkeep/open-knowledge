@@ -274,7 +274,7 @@ function ConnectionStatusLine({
   }
   if (status === 'not-connected' && enabled) {
     return (
-      <span className="mt-0.5 inline-flex items-center gap-1 text-amber-700 text-xs dark:text-amber-400">
+      <span className="mt-0.5 inline-flex items-center gap-1 text-warning text-xs">
         <TriangleAlert aria-hidden className="size-3.5" />
         {t`Not connected`}
       </span>

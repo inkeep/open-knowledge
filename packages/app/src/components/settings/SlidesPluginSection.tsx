@@ -109,7 +109,7 @@ function StatusRow({ availability }: { availability: Availability }) {
   return (
     <div className="space-y-3" data-testid="slides-status-missing">
       {}
-      <p className="text-sm text-amber-600 dark:text-amber-400">
+      <p className="text-sm text-warning">
         <Trans>
           Slidev isn't installed, so the Slidev action stays hidden. Install it, then return to this
           window.

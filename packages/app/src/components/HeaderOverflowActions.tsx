@@ -67,7 +67,7 @@ export function HeaderOverflowActions({
                 'absolute top-0.5 end-0.5 size-1.5 rounded-full ring-1 ring-background',
                 syncAttention === 'auth-error' && 'bg-destructive',
                 syncAttention === 'offline' && 'bg-muted-foreground',
-                (syncAttention === 'conflict' || syncAttention === 'paused') && 'bg-amber-500',
+                (syncAttention === 'conflict' || syncAttention === 'paused') && 'bg-warning',
               )}
             />
           ) : null}

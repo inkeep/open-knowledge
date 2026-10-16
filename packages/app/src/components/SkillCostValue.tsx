@@ -17,10 +17,7 @@ function TokenFigure({ tokens, budget }: { tokens: number; budget?: number }) {
   const over = budget !== undefined && tokens > budget;
   const budgetLabel = budget !== undefined ? formatSkillTokens(budget) : '';
   const figure = (
-    <span
-      data-over-budget={over || undefined}
-      className={over ? 'text-amber-600 dark:text-amber-500' : undefined}
-    >
+    <span data-over-budget={over || undefined} className={over ? 'text-warning' : undefined}>
       {formatSkillTokens(tokens)}
       {over ? (
         <span role="img" aria-label={t`over the ${budgetLabel} token budget`}>

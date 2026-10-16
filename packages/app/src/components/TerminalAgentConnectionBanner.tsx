@@ -130,12 +130,7 @@ export function TerminalAgentConnectionBanner({
         <TerminalNoticeBanner
           testId="terminal-readiness-banner"
           onDismiss={() => setNotConnectedDismissed(true)}
-          icon={
-            <TriangleAlert
-              aria-hidden="true"
-              className="size-4 shrink-0 text-amber-700 dark:text-amber-400"
-            />
-          }
+          icon={<TriangleAlert aria-hidden="true" className="size-4 shrink-0 text-warning" />}
           action={
             <Button ref={actionRef} size="sm" onClick={() => setOpen(true)}>
               {t`Connect tools`}
@@ -149,12 +144,7 @@ export function TerminalAgentConnectionBanner({
         <TerminalNoticeBanner
           testId="terminal-restart-banner"
           onDismiss={() => setRestartRequired(false)}
-          icon={
-            <TriangleAlert
-              aria-hidden="true"
-              className="size-4 shrink-0 text-amber-700 dark:text-amber-400"
-            />
-          }
+          icon={<TriangleAlert aria-hidden="true" className="size-4 shrink-0 text-warning" />}
           action={
             <Button ref={actionRef} size="sm" onClick={onRestart}>
               {t`Restart terminal`}

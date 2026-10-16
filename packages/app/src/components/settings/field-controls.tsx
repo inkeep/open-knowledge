@@ -518,7 +518,7 @@ export function SavedIndicator({
   srOnly?: boolean;
 }) {
   return (
-    <span role="status" aria-live="polite" className={cn('text-emerald-600', srOnly && 'sr-only')}>
+    <span role="status" aria-live="polite" className={cn('text-success', srOnly && 'sr-only')}>
       {visible ? (
         <>
           {srOnly ? null : <Check aria-hidden="true" className="size-3.5" />}

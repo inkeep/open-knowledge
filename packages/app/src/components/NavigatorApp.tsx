@@ -334,17 +334,17 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
 
           {error !== null ? (
             <div
-              className="flex shrink-0 items-start justify-between gap-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2"
+              className="flex shrink-0 items-start justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2"
               data-testid="nav-error-banner"
               role="alert"
             >
-              <span className="text-red-700 text-xs dark:text-red-300">{error}</span>
+              <span className="text-destructive text-xs">{error}</span>
               <Button
                 type="button"
                 variant="link"
                 size="sm"
                 onClick={() => setError(null)}
-                className="h-auto p-0 text-red-700 text-xs dark:text-red-300"
+                className="h-auto p-0 text-destructive text-xs"
                 data-testid="nav-error-dismiss"
               >
                 <Trans>Dismiss</Trans>
@@ -622,7 +622,7 @@ function RecentRow({
                 {isWorktree ? (
                   <Badge
                     variant="secondary"
-                    className="shrink-0 gap-1 rounded-full border-transparent bg-green-600/10 px-2 py-0 font-medium text-2xs text-green-800 dark:bg-green-400/10 dark:text-green-400"
+                    className="shrink-0 gap-1 rounded-full border-transparent bg-success/10 px-2 py-0 font-medium text-2xs text-success"
                   >
                     <GitBranch aria-hidden="true" className="size-2.5" />
                     <Trans>worktree</Trans>

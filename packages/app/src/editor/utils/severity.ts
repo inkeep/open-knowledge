@@ -23,13 +23,12 @@ export const SEVERITY_STYLES: Record<Severity, SeverityStyle> = {
     label: msg`unknown`,
   },
   warn: {
-    wrapperClass:
-      'border-amber-400/60 dark:border-amber-500/40 bg-amber-50/50 dark:bg-amber-900/10',
-    badgeClass: 'text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30',
+    wrapperClass: 'border-warning/60',
+    badgeClass: 'text-warning bg-warning/10',
     label: msg`render error`,
   },
   error: {
-    wrapperClass: 'border-destructive/60 bg-destructive/5',
+    wrapperClass: 'border-destructive/60',
     badgeClass: 'text-destructive bg-destructive/10',
     label: msg`parse error`,
   },

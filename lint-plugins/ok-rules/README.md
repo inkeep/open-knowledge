@@ -714,6 +714,20 @@ The fixture pairs 15 violations with adjacent negatives. The self-test also plan
 
 Rule: [`no-hand-rolled-test-file-suffix.mjs`](rules/no-hand-rolled-test-file-suffix.mjs). Fixture: [`no-hand-rolled-test-file-suffix.fixture.tsx`](__fixtures__/no-hand-rolled-test-file-suffix.fixture.tsx). Test: [`no-hand-rolled-test-file-suffix.uncached.test.mjs`](tests/no-hand-rolled-test-file-suffix.uncached.test.mjs).
 
+### `no-fixed-palette-color`
+
+Theme discipline. Chrome colors come from the active theme, so a custom or bundled palette recolors the whole app rather than everything except the surfaces someone styled with a fixed Tailwind hue. The rule flags a color utility that names a chromatic Tailwind hue (`red` through `rose`, shades `50` to `950`), with any variant prefix or opacity modifier, and asks for a theme token instead: `success`, `warning`, `destructive` or `info` for status, `chart-1` to `chart-5` for data categories, and `identity-1` to `identity-4` for telling items such as threads apart. The identity tokens come from the palette slots that carry no status, so an identity color never reads as a state; four of the five chart tokens share slots with the status tokens, and `chart-4` shares `identity-1`'s. A status tint carries only text in that same status color, which the theme derivation holds at 4.5:1 up to a 25% tint: chips, badges, pills and hover states. That holds wherever some shade of the slot color passes on both the page and its tint; on a mid-tone page where none does, the derivation falls back to checking the bare page and card only, and the tint is unchecked. A `ghost` Button adds its own `hover:text-foreground` and `dark:hover:bg-muted/50`, so a status-tinted ghost Button names its hover text and dark hover fill explicitly. A callout or row whose text is the body foreground marks its status with a border and an icon or title, not a fill, because no wash fits under body text in every theme (Solarized's own foreground is 4.86:1 on its popover). The rule matches hue names, so it cannot catch `bg-warning/10 text-foreground`; review has to.
+
+**It matches every string, not only class props.** Status colors in this codebase mostly live in maps and helpers (`{ ready: 'bg-emerald-500' }`, a `TONE_CLASS` record, a ring palette array) rather than in a `className` attribute, so the rule reads every string literal and template-literal chunk. It knows the color utilities by prefix, hyphenated ones included (`ring-offset`, `inset-ring`, `inset-shadow`, `drop-shadow`, `text-shadow`), so a CSS custom property name (`--color-red-500`), a bare `red-500` and prose never match. The utility must also stand alone as a token, so an identifier that merely contains one (`legacy-text-red-500`, `text-red-500-legacy`) stays silent.
+
+**Neutrals are out of scope.** Grays (`slate`, `gray`, `zinc`, `neutral`, `stone`) and `black`/`white` are not palette hues; the rule does not flag them.
+
+The rule does NOT catch hex, `rgb()` or `oklch()` literals, which canvas-drawn surfaces such as the graph view use, or colors in stylesheets.
+
+Included: `packages/app/src/**/*.ts`, `packages/app/src/**/*.tsx`, `packages/desktop/src/**/*.ts`, `packages/desktop/src/**/*.tsx`, `packages/plugin/src/**/*.ts`, `packages/plugin/src/**/*.tsx`, `lint-plugins/ok-rules/__fixtures__/no-fixed-palette-color.fixture.tsx`. Excluded: `**/*.test.ts`, `**/*.test.tsx`, `**/*.dom.test.tsx`, `**/*.test-helper.ts`, `**/*.test-helper.tsx`.
+
+Rule: [`no-fixed-palette-color.mjs`](rules/no-fixed-palette-color.mjs). Fixture: [`no-fixed-palette-color.fixture.tsx`](__fixtures__/no-fixed-palette-color.fixture.tsx). Test: [`no-fixed-palette-color.uncached.test.mjs`](tests/no-fixed-palette-color.uncached.test.mjs).
+
 ## Suppression
 
 Inline `// oxlint-disable-next-line` comments silence individual diagnostics. The form names the plugin, the rule and the reason:

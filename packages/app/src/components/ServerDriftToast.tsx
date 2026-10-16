@@ -20,7 +20,7 @@ export function ServerDriftToast({
 }: ServerDriftToastProps) {
   return (
     <div className="flex w-full gap-3 rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg">
-      <TriangleAlertIcon className="mt-0.5 size-4 shrink-0 text-amber-500" />
+      <TriangleAlertIcon className="mt-0.5 size-4 shrink-0 text-warning" />
       <div className="flex min-w-0 flex-col gap-1.5">
         <p className="wrap-break-word font-medium text-sm">{body}</p>
         <p className="wrap-break-word text-muted-foreground text-sm">{detail}</p>

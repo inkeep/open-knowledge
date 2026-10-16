@@ -1203,10 +1203,10 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
 
   test('every chat state has its own tab dot and screen-reader words', async () => {
     const colors: Record<string, string> = {
-      working: 'bg-sky-500',
-      'needs-you': 'bg-amber-500',
-      ready: 'bg-emerald-500',
-      stopped: 'bg-red-500',
+      working: 'bg-info',
+      'needs-you': 'bg-warning',
+      ready: 'bg-success',
+      stopped: 'bg-destructive',
       closed: 'bg-muted-foreground',
     };
     const rows: readonly {

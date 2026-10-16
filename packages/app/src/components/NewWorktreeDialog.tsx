@@ -231,23 +231,14 @@ export function NewWorktreeDialog({
                 {isExistingWorktree ? (
                   <FolderOpen
                     aria-hidden="true"
-                    className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-400"
+                    className="mt-0.5 size-3.5 shrink-0 text-warning"
                   />
                 ) : isRemoteCheckout ? (
-                  <Cloud
-                    aria-hidden="true"
-                    className="mt-0.5 size-3.5 shrink-0 text-violet-600 dark:text-violet-400"
-                  />
+                  <Cloud aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-chart-4" />
                 ) : isLocalBranch ? (
-                  <Check
-                    aria-hidden="true"
-                    className="mt-0.5 size-3.5 shrink-0 text-blue-600 dark:text-blue-400"
-                  />
+                  <Check aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-info" />
                 ) : (
-                  <Plus
-                    aria-hidden="true"
-                    className="mt-0.5 size-3.5 shrink-0 text-green-600 dark:text-green-400"
-                  />
+                  <Plus aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-success" />
                 )}
                 {}
                 <span className="min-w-0 flex-1">
@@ -442,7 +433,7 @@ export function NewWorktreeDialog({
                             {}
                             {behind !== undefined && behind > 0 ? (
                               <span
-                                className="shrink-0 text-xs text-amber-600 dark:text-amber-400"
+                                className="shrink-0 text-xs text-warning"
                                 data-testid={`new-worktree-base-behind-${name}`}
                               >
                                 <Trans>{behind} behind origin</Trans>

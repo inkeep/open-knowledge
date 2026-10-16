@@ -209,10 +209,83 @@ describe('base16ToTokens', () => {
     expect(t['selection-soft']).toBe(p.base02);
     expect(t['muted-foreground']).toBe(p.base04);
     expect(t.primary).toBe(p.base0D);
-    expect(t.destructive).toBe(p.base08);
     expect(t['syntax-string']).toBe(p.base0B);
     expect(t['syntax-keyword']).toBe(p.base0E);
     expect(t['syntax-comment']).toBe(p.base03);
+  });
+
+  test("status tokens use the palette's own colors, nudged only as far as their own tint needs", () => {
+    const t = base16ToTokens({
+      name: 'Harvest Ember Light',
+      variant: 'light',
+      palette: {
+        base00: '#fbf4e8',
+        base01: '#f1e8d6',
+        base02: '#e3d5bd',
+        base03: '#a08868',
+        base04: '#7a624a',
+        base05: '#3a2c20',
+        base06: '#2a2018',
+        base07: '#1a1410',
+        base08: '#a8432c',
+        base09: '#a85a26',
+        base0A: '#7a5a10',
+        base0B: '#566c2c',
+        base0C: '#4a7a6c',
+        base0D: '#43659a',
+        base0E: '#8a4058',
+        base0F: '#7a4a2c',
+      },
+    });
+    expect(t.success).toBe('#455623');
+    expect(t.warning).toBe('#674c0e');
+    expect(t.info).toBe('#35507b');
+    expect(t.destructive).toBe('#873623');
+    expect(t['identity-1']).toBe('#8a4058');
+    expect(t['identity-2']).toBe('#4a7a6c');
+    expect(t['identity-3']).toBe('#a85a26');
+    expect(t['identity-4']).toBe('#7a4a2c');
+  });
+
+  test('status tokens that already read on the page, cards and their own tint keep the palette color', () => {
+    const palette = {
+      ...paletteOf(),
+      base00: '#000000',
+      base01: '#101010',
+      base08: '#ff9090',
+      base0A: '#ffd060',
+      base0B: '#80e080',
+      base0D: '#80b0ff',
+    };
+    const t = base16ToTokens({ name: 'Bright', variant: 'dark', palette });
+    expect(t.destructive).toBe(palette.base08);
+    expect(t.warning).toBe(palette.base0A);
+    expect(t.success).toBe(palette.base0B);
+    expect(t.info).toBe(palette.base0D);
+  });
+
+  test('on a mid-gray page no tint can hold, so status tokens still read on the page and keep distinct hues', () => {
+    const palette = {
+      ...paletteOf(),
+      base00: '#808080',
+      base01: '#7a7a7a',
+      base08: '#d04040',
+      base0A: '#d0a020',
+      base0B: '#40a040',
+      base0D: '#4060d0',
+    };
+    const t = base16ToTokens({ name: 'Mid gray', variant: 'light', palette });
+    const status = [t.destructive, t.warning, t.success, t.info];
+    for (const color of status) {
+      for (const surface of [palette.base00, palette.base01]) {
+        const a = relativeLuminance(surface);
+        const b = relativeLuminance(color ?? '');
+        expect((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05), color).toBeGreaterThanOrEqual(
+          4.5,
+        );
+      }
+    }
+    expect(new Set(status).size).toBe(4);
   });
 
   test('covers the surfaces that a palette without slot roles could not reach', () => {

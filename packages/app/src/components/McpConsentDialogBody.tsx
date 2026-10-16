@@ -43,7 +43,7 @@ type PathInstallDescriptor = OkMcpWiringShowPayload['pathInstall'];
 
 const SUBTEXT = 'text-1sm leading-normal';
 const ROW_SUBTEXT = `${SUBTEXT} ps-6.5 text-muted-foreground`;
-const ROW_WARNING = `${SUBTEXT} ps-6.5 text-amber-700 dark:text-amber-400`;
+const ROW_WARNING = `${SUBTEXT} ps-6.5 text-warning`;
 const SECTION_SUBTEXT = `${SUBTEXT} text-muted-foreground`;
 
 export function isPathRowActionable(pathInstall: PathInstallDescriptor): boolean {

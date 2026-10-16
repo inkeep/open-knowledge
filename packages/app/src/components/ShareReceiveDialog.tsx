@@ -550,7 +550,7 @@ function ShareReceiveDialogInner({
             <div
               ref={cloneErrorRef}
               tabIndex={-1}
-              className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 outline-none"
+              className="rounded-lg border border-destructive/40 p-4 outline-none"
               data-testid="share-receive-clone-error"
             >
               <p className="text-sm font-semibold text-foreground" role="alert">

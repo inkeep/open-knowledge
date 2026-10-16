@@ -423,7 +423,7 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
     return (
       <NodeViewWrapper className="jsx-component-wrapper my-2">
         <div
-          className="text-xs font-mono text-muted-foreground px-2 py-2 border border-destructive/40 rounded bg-destructive/5 flex items-center gap-2"
+          className="text-xs font-mono text-muted-foreground px-2 py-2 border border-destructive/40 rounded flex items-center gap-2"
           contentEditable={false}
           {...{ [OPT_OUT_ATTR]: 'true' }}
         >

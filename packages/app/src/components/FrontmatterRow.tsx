@@ -156,7 +156,7 @@ export function FrontmatterRow({
                 data-testid="property-duplicate-marker"
                 data-key={keyName}
                 title={t`Duplicate name "${keyName}"`}
-                className="flex size-4 items-center justify-center text-amber-600"
+                className="flex size-4 items-center justify-center text-warning"
               >
                 <AlertTriangle className="size-3.5" />
               </span>

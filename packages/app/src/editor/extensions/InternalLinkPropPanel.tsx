@@ -494,7 +494,7 @@ export function InternalLinkPropPanel({
       stateLabel = {
         icon: <CircleAlert className="size-3.5 shrink-0" aria-hidden="true" />,
         text: t`Page not found`,
-        className: 'text-red-700 dark:text-red-300',
+        className: 'text-destructive',
       };
     } else {
       stateLabel = {

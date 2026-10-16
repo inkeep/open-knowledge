@@ -308,7 +308,7 @@ export function SkillInstallMenuItems({
         <Button
           variant="ghost"
           size="sm"
-          className="h-5 shrink-0 rounded border border-yellow-500/40 bg-yellow-500/10 px-1 font-normal text-[10px] text-yellow-600 uppercase tracking-wide hover:bg-yellow-500/20"
+          className="h-5 shrink-0 rounded border border-warning/40 bg-warning/10 px-1 font-normal text-[10px] text-warning uppercase tracking-wide hover:bg-warning/20 hover:text-warning dark:hover:bg-warning/20"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -451,7 +451,7 @@ export function SkillInstallMenuItems({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-5 shrink-0 rounded border border-yellow-500/40 bg-yellow-500/10 px-1 text-[10px] text-yellow-600 uppercase tracking-wide hover:bg-yellow-500/20"
+                      className="h-5 shrink-0 rounded border border-warning/40 bg-warning/10 px-1 text-[10px] text-warning uppercase tracking-wide hover:bg-warning/20 hover:text-warning dark:hover:bg-warning/20"
                       onClick={(e) => {
                         e.preventDefault();
                         onResolveFork?.(editor);

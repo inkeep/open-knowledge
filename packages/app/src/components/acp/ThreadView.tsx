@@ -301,9 +301,9 @@ function highlightStderr(machineDetail: string): ReactNode {
   return lines.map((line, i) => {
     const key = `${i}:${line.slice(0, 32)}`;
     const cls = STDERR_ERROR_PATTERN.test(line)
-      ? 'text-red-600 dark:text-red-400'
+      ? 'text-destructive'
       : STDERR_WARN_PATTERN.test(line)
-        ? 'text-amber-700 dark:text-amber-400'
+        ? 'text-warning'
         : '';
     return (
       <span key={key} className={cls}>
@@ -1417,7 +1417,7 @@ export function ThreadView({
                 !cancelPending &&
                 !cancelStalled ? (
                   <div
-                    className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+                    className="flex items-center gap-2 border-warning/30 border-t bg-warning/5 px-3 py-1.5 text-warning text-xs"
                     data-testid="agent-thread-stalled"
                   >
                     <span className="flex-1">
@@ -1443,7 +1443,7 @@ export function ThreadView({
               ) : null}
               {cancelStalled && turnActive ? (
                 <div
-                  className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+                  className="flex items-center gap-2 border-warning/30 border-t bg-warning/5 px-3 py-1.5 text-warning text-xs"
                   data-testid="agent-thread-cancel-stalled"
                 >
                   <span className="flex-1">
@@ -1497,7 +1497,7 @@ export function ThreadView({
               </span>
               {resumeFailureMessage !== '' && !newChatOfferInTranscript ? (
                 <div
-                  className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+                  className="flex items-center gap-2 border-warning/30 border-t bg-warning/5 px-3 py-1.5 text-warning text-xs"
                   data-testid="agent-thread-resume-failed"
                 >
                   <span className="flex-1">{resumeFailureMessage}</span>
@@ -1567,10 +1567,7 @@ function PermissionPostureBadge({ info }: { info: ThreadInfo }): ReactNode {
       <TooltipTrigger asChild>
         {/* biome-ignore lint/a11y/noNoninteractiveTabindex: a status indicator whose detail lives in its tooltip must be focusable or keyboard users can never surface it — same rationale as the tooltip-on-disabled-button span wrapper. */}
         <span tabIndex={0} role="img" aria-label={label} className={focusRing}>
-          <span
-            className="inline-flex shrink-0 text-amber-500 dark:text-amber-400"
-            data-testid="agent-thread-posture"
-          >
+          <span className="inline-flex shrink-0 text-warning" data-testid="agent-thread-posture">
             <ShieldAlert className="size-3.5" aria-hidden="true" />
           </span>
         </span>
@@ -2507,10 +2504,10 @@ function AgentNoticeCard({
   return (
     <div
       role="note"
-      className="rounded-md border border-amber-500/40 bg-amber-500/5 px-2 py-1.5 text-xs"
+      className="rounded-md border border-warning/40 px-2 py-1.5 text-xs"
       data-testid="agent-thread-agent-notice"
     >
-      <p className="flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-400">
+      <p className="flex items-center gap-1.5 font-medium text-warning">
         <TriangleAlert aria-hidden="true" className="size-3.5 shrink-0" />
         {t`Warning`}
       </p>
@@ -2854,8 +2851,8 @@ function ThreadNotice({
       className={cn(
         'rounded-md border px-2 py-1.5 text-xs',
         item.tone === 'error'
-          ? 'border-red-500/30 bg-red-500/5 text-red-600 dark:text-red-400'
-          : 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400',
+          ? 'border-destructive/30 bg-destructive/5 text-destructive'
+          : 'border-warning/30 bg-warning/5 text-warning',
       )}
       data-testid="agent-thread-notice"
       data-notice-attempts={item.attempts}
@@ -3660,8 +3657,8 @@ function InlineDiff({
               key={index}
               className={cn(
                 'px-2',
-                row.type === 'add' && 'bg-green-500/10 text-green-700 dark:text-green-400',
-                row.type === 'del' && 'bg-red-500/10 text-red-700 dark:text-red-400',
+                row.type === 'add' && 'bg-success/10 text-success',
+                row.type === 'del' && 'bg-destructive/10 text-destructive',
                 row.type === 'ctx' && 'text-muted-foreground',
               )}
             >
@@ -3775,7 +3772,7 @@ function ShellCommandBlock({ id, command }: { id: string; command: string }): Re
         </code>
       </pre>
       {concealed ? (
-        <p className="mt-1 text-amber-700 text-xs dark:text-amber-400">
+        <p className="mt-1 text-warning text-xs">
           {t`This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩.`}
         </p>
       ) : null}
@@ -4027,10 +4024,7 @@ function RuntimeConsentPrompt({
           className="flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 text-muted-foreground text-xs"
           data-testid="agent-thread-runtime-consent"
         >
-          <Check
-            className="size-3.5 shrink-0 text-green-600 dark:text-green-400"
-            aria-hidden="true"
-          />
+          <Check className="size-3.5 shrink-0 text-success" aria-hidden="true" />
           <span>{t`Installed ${item.displayName} ${item.version}`}</span>
         </div>
       );
@@ -4074,7 +4068,7 @@ function RuntimeConsentPrompt({
 
   return (
     <div
-      className="rounded-md border border-blue-500/40 bg-blue-500/5 px-2.5 py-2 text-sm"
+      className="rounded-md border border-info/40 px-2.5 py-2 text-sm"
       data-testid="agent-thread-runtime-consent"
     >
       <div className="mb-1 flex items-center gap-1.5 font-medium">
@@ -4137,10 +4131,7 @@ function PiBridgeOutcomeRow({
     >
       <div className="flex items-start gap-1.5">
         {ready ? (
-          <Check
-            className="mt-px size-3.5 shrink-0 text-green-600 dark:text-green-400"
-            aria-hidden="true"
-          />
+          <Check className="mt-px size-3.5 shrink-0 text-success" aria-hidden="true" />
         ) : null}
         <span>
           {outcome.state === 'ready'
@@ -4209,7 +4200,7 @@ function PiBridgeConsentPrompt({
   const otherExtensions = prompt.otherExtensions.join(', ');
   return (
     <div
-      className="rounded-md border border-blue-500/40 bg-blue-500/5 px-2.5 py-2 text-sm"
+      className="rounded-md border border-info/40 px-2.5 py-2 text-sm"
       data-testid="agent-thread-pi-bridge"
     >
       <div className="mb-1 flex items-center gap-1.5 font-medium">
@@ -4286,7 +4277,11 @@ function ContextUsageRing({
   const radius = 6;
   const circumference = 2 * Math.PI * radius;
   const tone =
-    percent >= 90 ? 'text-red-500' : percent >= 75 ? 'text-amber-500' : 'text-muted-foreground/60';
+    percent >= 90
+      ? 'text-destructive'
+      : percent >= 75
+        ? 'text-warning'
+        : 'text-muted-foreground/60';
   const left = 100 - percent;
   const usedLabel = formatCompactTokens(used);
   const sizeLabel = formatCompactTokens(size);

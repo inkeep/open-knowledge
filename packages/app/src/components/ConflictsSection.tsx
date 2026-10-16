@@ -25,12 +25,9 @@ export function ConflictsSection() {
       <section
         data-testid="conflicts-section"
         aria-label={t`Conflicted files`}
-        className="border-b border-amber-200/60 bg-amber-50/40 px-2 py-2 dark:border-amber-900/40 dark:bg-amber-950/20"
+        className="border-b border-warning/30 px-2 py-2"
       >
-        <p
-          data-testid="conflicts-section-error"
-          className="px-2 py-1.5 text-[12px] text-amber-700 dark:text-amber-400"
-        >
+        <p data-testid="conflicts-section-error" className="px-2 py-1.5 text-[12px] text-warning">
           <AlertTriangle aria-hidden="true" className="mr-1.5 inline size-3" />
           <Trans>Couldn't load conflicts — reload to retry.</Trans>
         </p>
@@ -44,16 +41,16 @@ export function ConflictsSection() {
     <section
       data-testid="conflicts-section"
       aria-label={t`Conflicted files`}
-      className="border-b border-amber-200/60 bg-amber-50/40 px-2 py-2 dark:border-amber-900/40 dark:bg-amber-950/20"
+      className="border-b border-warning/30 px-2 py-2"
     >
       <header className="flex items-center justify-between px-2 pb-1.5">
-        <span className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-400">
+        <span className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-warning">
           <AlertTriangle aria-hidden="true" className="size-3" />
           <Trans>Conflicts</Trans>
         </span>
         <span
           data-testid="conflicts-section-count"
-          className="rounded-full bg-amber-500 px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-white"
+          className="rounded-full bg-warning px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-background"
         >
           {conflicts.length}
         </span>
@@ -72,7 +69,7 @@ export function ConflictsSection() {
                 data-navigable={docName === null ? 'false' : 'true'}
                 disabled={docName === null}
                 title={entry.file}
-                className="h-auto min-h-7 w-full items-start justify-start gap-1.5 px-2 py-1.5 font-normal text-[13px] text-amber-800 hover:bg-amber-100/60 hover:text-amber-900 dark:text-amber-300 dark:hover:bg-amber-900/30 dark:hover:text-amber-200"
+                className="h-auto min-h-7 w-full items-start justify-start gap-1.5 px-2 py-1.5 font-normal text-[13px] text-warning hover:bg-warning/10 hover:text-warning dark:hover:bg-warning/10"
                 onClick={() => {
                   if (docName !== null) navigateToConflictedDoc(docName);
                 }}
@@ -81,7 +78,7 @@ export function ConflictsSection() {
                 <span className="min-w-0 text-start">
                   <span className="block truncate">{entry.file}</span>
                   {entry.conflictKind === 'stale-external-write' ? (
-                    <span className="block text-pretty text-[11px] leading-4 text-amber-700/80 dark:text-amber-400/80">
+                    <span className="block text-pretty text-[11px] leading-4 text-muted-foreground">
                       <Trans>
                         The file was restored to an older version. Open it to choose which version
                         to keep.

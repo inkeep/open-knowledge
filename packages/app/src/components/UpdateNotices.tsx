@@ -36,13 +36,13 @@ export function NoticeCard({ notice, onDismiss }: { notice: UpdateNotice; onDism
   const { t } = useLingui();
   const tone =
     notice.variant === 'error'
-      ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300'
+      ? 'border-warning/40 text-warning'
       : notice.variant === 'success'
-        ? 'border-emerald-500/40 text-emerald-700 dark:text-emerald-400'
+        ? 'border-success/40 text-success'
         : 'text-muted-foreground';
   const dismissTone =
     notice.variant === 'error'
-      ? 'text-amber-700 hover:bg-amber-100 hover:text-amber-800 dark:text-amber-300 dark:hover:bg-amber-900 dark:hover:text-amber-200'
+      ? 'text-warning hover:bg-warning/15 hover:text-warning dark:hover:bg-warning/15'
       : 'text-muted-foreground hover:text-sidebar-foreground';
   const dismissButton =
     notice.dismissible === false ? null : (
@@ -62,9 +62,9 @@ export function NoticeCard({ notice, onDismiss }: { notice: UpdateNotice; onDism
     ) : null;
   const actionTone =
     notice.variant === 'error'
-      ? 'decoration-amber-700/40 hover:text-amber-800 hover:decoration-amber-800 dark:decoration-amber-300/40 dark:hover:text-amber-200 dark:hover:decoration-amber-200'
+      ? 'decoration-warning/40 hover:text-sidebar-foreground hover:decoration-sidebar-foreground'
       : notice.variant === 'success'
-        ? 'decoration-emerald-500/40 hover:text-sidebar-foreground hover:decoration-sidebar-foreground'
+        ? 'decoration-success/40 hover:text-sidebar-foreground hover:decoration-sidebar-foreground'
         : 'decoration-muted-foreground/40 hover:text-sidebar-foreground hover:decoration-sidebar-foreground';
   const actionButtonClass = `shrink-0 text-xs font-medium underline underline-offset-2 ${actionTone}`;
 

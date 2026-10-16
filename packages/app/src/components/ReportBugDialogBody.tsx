@@ -350,7 +350,7 @@ function ReportBugDialog({
               {phase.createError !== null && (
                 <div
                   role="alert"
-                  className="flex items-start gap-2.5 rounded-md border border-destructive/35 bg-destructive/10 px-3 py-2.5 text-sm"
+                  className="flex items-start gap-2.5 rounded-md border border-destructive/35 px-3 py-2.5 text-sm"
                 >
                   <AlertCircleIcon
                     className="mt-0.5 size-4 shrink-0 text-destructive"

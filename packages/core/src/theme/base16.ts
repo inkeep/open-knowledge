@@ -86,25 +86,46 @@ function readableForeground(background: string, paletteCandidates: readonly stri
 }
 
 function minimumContrastForeground(
-  background: string,
+  surfaces: readonly string[],
   preferred: string,
   minimum: EndpointSearchContrastFloor,
+  ownTint = 0,
 ): string {
-  if (contrastRatio(background, preferred) >= minimum) return preferred;
-  const endpoint = highestContrast(background, ['#000000', '#ffffff']);
-  for (let step = 1; step <= 255; step += 1) {
-    const candidate = mixHex(preferred, endpoint, step / 255);
-    if (contrastRatio(background, candidate) >= minimum) return candidate;
-  }
+  const endpoint = highestContrast(surfaces[0] ?? '#ffffff', ['#000000', '#ffffff']);
+  const nearest = (reads: (candidate: string) => boolean): string | null => {
+    for (let step = 0; step <= 255; step += 1) {
+      const candidate = step === 0 ? preferred : mixHex(preferred, endpoint, step / 255);
+      if (reads(candidate)) return candidate;
+    }
+    return null;
+  };
+  const onSurfaces = (candidate: string) =>
+    surfaces.every((surface) => contrastRatio(surface, candidate) >= minimum);
+  const onTints = (candidate: string) =>
+    surfaces.every(
+      (surface) => contrastRatio(mixHex(surface, candidate, ownTint), candidate) >= minimum,
+    );
+  const found =
+    nearest((candidate) => onSurfaces(candidate) && onTints(candidate)) ?? nearest(onSurfaces);
+  if (found !== null) return found;
   console.warn(
-    `[base16] No foreground reaches a ${minimum}:1 contrast ratio against ${background}; using the highest-contrast endpoint`,
+    `[base16] No foreground reaches a ${minimum}:1 contrast ratio against ${surfaces.join(', ')}; using the highest-contrast endpoint`,
   );
   return endpoint;
 }
 
+const STATUS_TINT = 0.25;
+
 export function base16ToTokens(scheme: Base16Scheme): Record<string, string> {
   const p = scheme.palette;
   const sidebarSelected = mixHex(p.base02, scheme.variant === 'dark' ? '#ffffff' : '#000000', 0.04);
+  const status = (preferred: string) =>
+    minimumContrastForeground(
+      [p.base00, p.base01],
+      preferred,
+      MINIMUM_CONTRAST_RATIO.text,
+      STATUS_TINT,
+    );
   return {
     background: p.base00,
     foreground: p.base05,
@@ -120,7 +141,10 @@ export function base16ToTokens(scheme: Base16Scheme): Record<string, string> {
     'muted-foreground': p.base04,
     accent: p.base02,
     'accent-foreground': p.base05,
-    destructive: p.base08,
+    destructive: status(p.base08),
+    success: status(p.base0B),
+    warning: status(p.base0A),
+    info: status(p.base0D),
     border: p.base02,
     input: p.base02,
     ring: p.base0D,
@@ -132,6 +156,11 @@ export function base16ToTokens(scheme: Base16Scheme): Record<string, string> {
     'chart-4': p.base0E,
     'chart-5': p.base08,
 
+    'identity-1': p.base0E,
+    'identity-2': p.base0C,
+    'identity-3': p.base09,
+    'identity-4': p.base0F,
+
     sidebar: p.base01,
     'sidebar-foreground': p.base05,
     'sidebar-primary': p.base0D,
@@ -141,12 +170,12 @@ export function base16ToTokens(scheme: Base16Scheme): Record<string, string> {
     'sidebar-hover': p.base02,
     'sidebar-hover-foreground': readableForeground(p.base02, [p.base00, p.base05, p.base07]),
     'sidebar-hover-muted-foreground': minimumContrastForeground(
-      p.base02,
+      [p.base02],
       p.base04,
       MINIMUM_CONTRAST_RATIO.text,
     ),
     'sidebar-hover-destructive-foreground': minimumContrastForeground(
-      p.base02,
+      [p.base02],
       p.base08,
       MINIMUM_CONTRAST_RATIO.graphical,
     ),
@@ -157,12 +186,12 @@ export function base16ToTokens(scheme: Base16Scheme): Record<string, string> {
       p.base07,
     ]),
     'sidebar-selected-muted-foreground': minimumContrastForeground(
-      sidebarSelected,
+      [sidebarSelected],
       p.base04,
       MINIMUM_CONTRAST_RATIO.text,
     ),
     'sidebar-selected-destructive-foreground': minimumContrastForeground(
-      sidebarSelected,
+      [sidebarSelected],
       p.base08,
       MINIMUM_CONTRAST_RATIO.graphical,
     ),

@@ -61,6 +61,42 @@ describe('NoticeCard — dismiss X visibility', () => {
   });
 });
 
+describe('NoticeCard — colors come from the active theme palette', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  const FIXED_TAILWIND_HUE = /(^|:)[a-z]+-(red|orange|amber|yellow|lime|green|emerald|teal)-\d+/;
+
+  function classesIn(root: HTMLElement): string[] {
+    return [root, ...root.querySelectorAll<HTMLElement>('*')].flatMap((el) => [...el.classList]);
+  }
+
+  test.each([
+    ['success', 'text-success'],
+    ['error', 'text-warning'],
+  ] as const)(
+    'a %s notice tones its text with the theme status token on the bare card',
+    (variant, toneClass) => {
+      const notice: UpdateNotice = {
+        id: `tone-${variant}`,
+        body: 'Updated to Version 1.2.3',
+        priority: 1,
+        variant,
+        action: { label: 'See what changed', onClick: () => {} },
+        secondaryAction: variant === 'error' ? { label: 'Retry', onClick: () => {} } : undefined,
+      };
+      render(<NoticeCard notice={notice} onDismiss={() => {}} />);
+
+      const card = screen.getByTestId(`update-notice-tone-${variant}`);
+      const classes = classesIn(card);
+      expect(card.classList.contains(toneClass)).toBe(true);
+      expect(classes.filter((c) => FIXED_TAILWIND_HUE.test(c))).toEqual([]);
+      expect([...card.classList].filter((c) => /^bg-(success|warning)/.test(c))).toEqual([]);
+    },
+  );
+});
+
 describe('NoticeCard — update no longer pending', () => {
   afterEach(() => {
     cleanup();

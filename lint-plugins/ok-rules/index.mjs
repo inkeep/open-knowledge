@@ -7,6 +7,7 @@ import { noAppCoreBarrelImport } from './rules/no-app-core-barrel-import.mjs';
 import { noBlindAgentHostFanout } from './rules/no-blind-agent-host-fanout.mjs';
 import { noBlockingErrorBox } from './rules/no-blocking-error-box.mjs';
 import { noDemotedDialogConfirm } from './rules/no-demoted-dialog-confirm.mjs';
+import { noFixedPaletteColor } from './rules/no-fixed-palette-color.mjs';
 import { noHandRolledBranchValidation } from './rules/no-hand-rolled-branch-validation.mjs';
 import { noHandRolledSpinner } from './rules/no-hand-rolled-spinner.mjs';
 import { noHandRolledTestFileSuffix } from './rules/no-hand-rolled-test-file-suffix.mjs';
@@ -42,6 +43,7 @@ const declared = {
   'no-blind-agent-host-fanout': noBlindAgentHostFanout,
   'no-blocking-error-box': noBlockingErrorBox,
   'no-demoted-dialog-confirm': noDemotedDialogConfirm,
+  'no-fixed-palette-color': noFixedPaletteColor,
   'no-hand-rolled-branch-validation': noHandRolledBranchValidation,
   'no-hand-rolled-test-file-suffix': noHandRolledTestFileSuffix,
   'no-hand-rolled-spinner': noHandRolledSpinner,

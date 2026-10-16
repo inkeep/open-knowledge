@@ -157,7 +157,7 @@ function EditWikiLinkDialog({
             <div>
               <label className="mb-1.5 block text-sm font-medium" htmlFor={targetId}>
                 <Trans>
-                  Page <span className="text-red-500">*</span>
+                  Page <span className="text-destructive">*</span>
                 </Trans>
               </label>
               <LinkPathSuggestionInput
@@ -439,7 +439,7 @@ export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiL
     stateLabel = {
       icon: <CircleAlert className="size-3.5 shrink-0" aria-hidden="true" />,
       text: t`Page not found`,
-      className: 'text-red-700 dark:text-red-300',
+      className: 'text-destructive',
     };
   } else if (isResolved) {
     stateLabel = {

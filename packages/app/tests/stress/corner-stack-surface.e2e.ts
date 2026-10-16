@@ -51,18 +51,17 @@ const OPAQUE = 255;
 
 type Theme = (typeof THEMES)[number];
 type Host = 'web' | 'desktop';
-type EdgeTone = 'shared' | 'warning' | 'emerald';
+type EdgeTone = 'shared' | 'warning' | 'success';
 
 interface EdgeColor {
   readonly token: string;
-  readonly darkToken?: string;
   readonly alpha?: number;
 }
 
 const EDGE_COLORS: Readonly<Record<EdgeTone, EdgeColor>> = {
   shared: { token: '--border' },
-  warning: { token: '--color-amber-200', darkToken: '--color-amber-900' },
-  emerald: { token: '--color-emerald-500', alpha: 0.4 },
+  warning: { token: '--warning', alpha: 0.4 },
+  success: { token: '--success', alpha: 0.4 },
 };
 
 interface SurfaceVerdict {
@@ -114,7 +113,7 @@ const SUCCESS_NOTICE: CardKind = {
     emitUpdateEvent(page, 'onWhatsNew', { version: VERSION, releaseUrl: RELEASE_URL }),
   card: (page) => noticeWithText(page, `Updated to Version ${VERSION}`),
   texts: [`Updated to Version ${VERSION}`],
-  edge: 'emerald',
+  edge: 'success',
   minTextContrast: MIN_TEXT_CONTRAST,
 };
 
@@ -168,12 +167,8 @@ function channelDistance(actual: RgbaBytes, expected: RgbaBytes): number {
 }
 
 async function expectedEdgeOf(page: Page, tone: EdgeTone): Promise<RgbaBytes> {
-  const { token, darkToken, alpha } = EDGE_COLORS[tone];
-  const dark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
-  const [red, green, blue, tokenAlpha] = await readRootColor(
-    page,
-    dark && darkToken !== undefined ? darkToken : token,
-  );
+  const { token, alpha } = EDGE_COLORS[tone];
+  const [red, green, blue, tokenAlpha] = await readRootColor(page, token);
   return [red, green, blue, alpha === undefined ? tokenAlpha : Math.round(alpha * OPAQUE)];
 }
 

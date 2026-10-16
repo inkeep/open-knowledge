@@ -3741,7 +3741,7 @@ describe('ThreadView agent notices', () => {
     expect(card).toBe(screen.getByTestId('agent-thread-agent-notice'));
     expect(card.textContent).toContain('Warning');
     expect(card.className).toContain('border');
-    expect(card.className).toContain('amber');
+    expect(card.className).toContain('border-warning');
     const glyph = card.querySelector('svg');
     expect(glyph?.getAttribute('aria-hidden')).toBe('true');
     expect(screen.queryByTestId('agent-thread-agent-message')).toBeNull();

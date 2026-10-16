@@ -836,13 +836,10 @@ function GeneratedIndexSettingsNotice({
   return (
     <div
       role="status"
-      className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+      className="flex gap-2 rounded-md border border-warning/40 px-3 py-2 text-sm"
       data-testid="settings-okf-generate-index-status"
     >
-      <CircleAlert
-        aria-hidden="true"
-        className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-300"
-      />
+      <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
       <p>
         {issue !== null && requestedEnabled === false ? (
           issue === 'git-conflict' ? (
@@ -1237,7 +1234,7 @@ export function FrontmatterPluginSection() {
 
       {problems.length > 0 && (
         <div
-          className="space-y-1 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm"
+          className="space-y-1 rounded-md border border-warning/50 p-3 text-sm"
           data-testid="frontmatter-config-problems"
         >
           <p className="font-medium">

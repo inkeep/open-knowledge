@@ -162,7 +162,7 @@ function BadgeIcon({ status, size = 'size-3.5' }: BadgeIconProps) {
         <Spinner aria-hidden="true" icon={RefreshCw} className={`${cls} text-muted-foreground`} />
       );
     case 'conflict':
-      return <AlertTriangle className={`${cls} text-amber-500`} />;
+      return <AlertTriangle className={`${cls} text-warning`} />;
     case 'offline':
       return <CloudOff className={`${cls} text-muted-foreground`} />;
     case 'auth-error':
@@ -172,7 +172,7 @@ function BadgeIcon({ status, size = 'size-3.5' }: BadgeIconProps) {
         <LogIn className={`${cls} text-destructive`} />
       );
     case 'disabled':
-      if (status.pausedReason) return <AlertTriangle className={`${cls} text-amber-500`} />;
+      if (status.pausedReason) return <AlertTriangle className={`${cls} text-warning`} />;
       if (status.ahead > 0 || status.behind > 0) {
         return <RefreshCw className={`${cls} text-muted-foreground`} />;
       }
@@ -1327,7 +1327,7 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
 
       {state === 'conflict' && (
         <div className="flex items-start gap-2">
-          <p className="min-w-0 flex-1 text-xs text-amber-700 dark:text-amber-400">
+          <p className="min-w-0 flex-1 text-xs text-warning">
             {}
             <Trans>A document has a conflict — resolve it to keep it up to date.</Trans>
           </p>
@@ -1499,7 +1499,7 @@ export function SyncStatusBadge({ onSignIn, onSetIdentity }: SyncStatusBadgeProp
               )}
               {!label && showIdentityDot && (
                 <span
-                  className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-amber-500 ring-2 ring-background"
+                  className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-warning ring-2 ring-background"
                   aria-hidden
                 />
               )}

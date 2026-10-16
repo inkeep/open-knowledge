@@ -10,7 +10,7 @@ export function ChangedOutsideBadge({
 }): ReactNode {
   return (
     <span
-      className="inline-flex h-5 shrink-0 items-center rounded border border-yellow-500/40 bg-yellow-500/10 px-1 text-[10px] text-yellow-600 uppercase tracking-wide"
+      className="inline-flex h-5 shrink-0 items-center rounded border border-warning/40 bg-warning/10 px-1 text-[10px] text-warning uppercase tracking-wide"
       data-testid={testId}
       {...(title !== undefined ? { title } : {})}
     >

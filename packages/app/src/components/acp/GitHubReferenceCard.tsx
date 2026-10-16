@@ -23,25 +23,26 @@ import {
 
 type Lifecycle = GitHubReferencePreview['lifecycle'];
 
+const NEUTRAL_PILL = 'bg-secondary text-secondary-foreground ring-1 ring-border ring-inset';
+
 const PILL_CLASS: Record<Lifecycle, string> = {
-  open: 'bg-green-700',
-  draft: 'bg-neutral-500',
-  merged: 'bg-violet-600',
-  closed: 'bg-red-600',
-  completed: 'bg-violet-600',
-  'not-planned': 'bg-neutral-500',
+  open: 'bg-success text-background',
+  draft: NEUTRAL_PILL,
+  merged: 'bg-info text-background',
+  closed: 'bg-destructive text-background',
+  completed: 'bg-info text-background',
+  'not-planned': NEUTRAL_PILL,
 };
 
 const TONE_CLASS: Record<ReferenceStatusTone, string> = {
-  success: 'text-green-700 dark:text-green-400',
-  attention: 'text-amber-700 dark:text-amber-400',
-  severe: 'text-orange-700 dark:text-orange-400',
-  danger: 'text-red-700 dark:text-red-400',
+  success: 'text-success',
+  attention: 'text-warning',
+  danger: 'text-destructive',
 };
 
 const BLOCK_CLASS = {
-  add: 'bg-green-600',
-  del: 'bg-red-600',
+  add: 'bg-success',
+  del: 'bg-destructive',
   none: 'bg-muted-foreground/25',
 } as const;
 
@@ -150,7 +151,7 @@ export function GitHubReferenceCard({ preview }: { preview: GitHubReferencePrevi
         <span
           data-testid="github-reference-state"
           className={cn(
-            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-white text-xs',
+            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-xs',
             PILL_CLASS[preview.lifecycle],
           )}
         >
@@ -163,8 +164,8 @@ export function GitHubReferenceCard({ preview }: { preview: GitHubReferencePrevi
             role="img"
             aria-label={t`Lines changed: ${additions} added, ${deletions} removed`}
           >
-            <span className="text-green-700 dark:text-green-400">+{additions}</span>
-            <span className="text-red-700 dark:text-red-400">−{deletions}</span>
+            <span className="text-success">+{additions}</span>
+            <span className="text-destructive">−{deletions}</span>
             <span className="inline-flex gap-px" aria-hidden="true">
               {diffBlocks(additions, deletions).map((block, index) => (
                 <span

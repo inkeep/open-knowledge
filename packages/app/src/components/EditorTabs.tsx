@@ -509,7 +509,7 @@ function TabConflictBadge({ hasConflict }: { hasConflict: boolean }) {
     <AlertTriangle
       aria-hidden="true"
       data-testid="editor-tab-conflict-badge"
-      className="mr-1 size-3.5 shrink-0 text-amber-500"
+      className="mr-1 size-3.5 shrink-0 text-warning"
     />
   );
 }

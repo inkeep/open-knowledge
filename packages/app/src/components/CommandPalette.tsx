@@ -1031,7 +1031,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                     {semanticView.submit.kind === 'retry' ? (
                       <>
                         <Sparkles />
-                        <span className="min-w-0 flex-1 truncate text-amber-700 dark:text-amber-400">
+                        <span className="min-w-0 flex-1 truncate text-warning">
                           {presentedSemanticStatus === 'provider_error' ? (
                             <Trans>Couldn't reach the embeddings provider — retry</Trans>
                           ) : (

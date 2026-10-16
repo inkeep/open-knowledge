@@ -453,7 +453,7 @@ function ForwardLinksSection({
         <LinkRow
           key={key}
           icon={<TriangleAlert className="size-3.5" />}
-          iconColorClass="text-amber-600 dark:text-amber-400"
+          iconColorClass="text-warning"
           rowTooltip={creatingKey === key ? t`Creating page` : t`Missing page — click to create`}
           ariaLabel={
             creatingKey === key
@@ -476,7 +476,7 @@ function ForwardLinksSection({
         <LinkRow
           key={key}
           icon={<Folder className="size-3.5" />}
-          iconColorClass="text-sky-600 dark:text-sky-400"
+          iconColorClass="text-info"
           ariaLabel={t`Folder target: ${linkTitle}. Click to open the overview.`}
           title={displayTitle}
           path={path}
@@ -617,7 +617,7 @@ function LocalFilesSection({
       <LinkRow
         key={`lt:${target.range.start}-${target.range.end}`}
         icon={isImage ? <ImageIcon className="size-3.5" /> : <File className="size-3.5" />}
-        iconColorClass={resolved ? undefined : 'text-amber-600 dark:text-amber-400'}
+        iconColorClass={resolved ? undefined : 'text-warning'}
         title={compactDocPath(identity)}
         titleHover={identity}
         ariaLabel={ariaLabel}

@@ -275,10 +275,10 @@ export function AgentDiffPane({
               data-testid="agent-diff-stat"
               aria-label={t`${stat.additions} added, ${stat.deletions} removed`}
             >
-              <span aria-hidden="true" className="text-emerald-600 dark:text-emerald-500">
+              <span aria-hidden="true" className="text-success">
                 +{stat.additions}
               </span>{' '}
-              <span aria-hidden="true" className="text-red-600 dark:text-red-500">
+              <span aria-hidden="true" className="text-destructive">
                 −{stat.deletions}
               </span>
             </span>

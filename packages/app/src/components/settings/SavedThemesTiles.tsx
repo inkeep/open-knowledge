@@ -242,7 +242,7 @@ export function SavedThemesTiles({ appearance, onAssign, ...pickerProps }: Saved
       {loadError ? (
         <div
           role="alert"
-          className="flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-foreground"
+          className="flex items-center justify-between gap-2 rounded-md border border-destructive/30 px-3 py-2 text-sm text-foreground"
         >
           <span>{t`Saved themes couldn’t load. The last available theme list is still shown.`}</span>
           <Button type="button" variant="outline" size="xs" onClick={() => void refresh()}>
@@ -252,8 +252,8 @@ export function SavedThemesTiles({ appearance, onAssign, ...pickerProps }: Saved
       ) : null}
       <div role="status">
         {truncated ? (
-          <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-foreground">
-            <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-amber-600" />
+          <div className="flex items-start gap-2 rounded-md border border-warning/30 px-3 py-2 text-sm text-foreground">
+            <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
             <span>{t`Some saved themes aren’t shown because the theme folder exceeds the scan limit.`}</span>
           </div>
         ) : null}

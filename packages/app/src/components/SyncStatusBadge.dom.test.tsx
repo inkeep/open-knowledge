@@ -2054,7 +2054,7 @@ describe('SyncStatusBadge panel-read truthfulness', () => {
 
   function badgeIsAmber(): boolean {
     return (
-      screen.getByRole('button', { name: /Sync status:/ }).querySelector('.text-amber-500') !== null
+      screen.getByRole('button', { name: /Sync status:/ }).querySelector('.text-warning') !== null
     );
   }
 

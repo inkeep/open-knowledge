@@ -30,11 +30,11 @@ export function BranchRecycleBanner() {
       <div
         role="status"
         data-testid="branch-recycle-banner-switch"
-        className="fixed top-[var(--ok-app-header-height,0px)] inset-x-0 z-50 bg-amber-500/95 text-amber-950 text-sm text-center py-2 px-4 ps-[var(--ok-titlebar-reserve-left,1rem)] shadow-md"
+        className="fixed top-[var(--ok-app-header-height,0px)] inset-x-0 z-50 bg-warning text-background text-sm text-center py-2 px-4 ps-[var(--ok-titlebar-reserve-left,1rem)] shadow-md"
       >
         <Trans>
-          Server switched to branch <code className="bg-amber-100/60 px-1 rounded">{branch}</code> —
-          reloading content
+          Server switched to branch <code className="bg-background/20 px-1 rounded">{branch}</code>{' '}
+          — reloading content
         </Trans>
       </div>
     );
@@ -55,7 +55,7 @@ export function BranchRecycleBanner() {
     <div
       role="alert"
       data-testid="branch-recycle-banner-refused"
-      className="fixed top-[var(--ok-app-header-height,0px)] inset-x-0 z-50 bg-red-500/95 text-red-950 text-sm text-center py-2 px-4 ps-[var(--ok-titlebar-reserve-left,1rem)] shadow-md flex items-center justify-center gap-3 flex-wrap"
+      className="fixed top-[var(--ok-app-header-height,0px)] inset-x-0 z-50 bg-destructive text-background text-sm text-center py-2 px-4 ps-[var(--ok-titlebar-reserve-left,1rem)] shadow-md flex items-center justify-center gap-3 flex-wrap"
     >
       <span>
         <Trans>
@@ -67,7 +67,7 @@ export function BranchRecycleBanner() {
           size="sm"
           onClick={handleRestart}
           disabled={restarting}
-          className="h-6 bg-red-950 text-red-50 px-2 text-xs font-medium hover:bg-red-900"
+          className="h-6 bg-background text-foreground px-2 text-xs font-medium hover:bg-background/90"
         >
           {restarting ? <Trans>Restarting</Trans> : <Trans>Restart server</Trans>}
         </Button>
@@ -75,7 +75,7 @@ export function BranchRecycleBanner() {
       <Button
         size="sm"
         onClick={() => window.location.reload()}
-        className="h-6 bg-red-950 text-red-50 px-2 text-xs font-medium hover:bg-red-900"
+        className="h-6 bg-background text-foreground px-2 text-xs font-medium hover:bg-background/90"
       >
         <Trans>Reload</Trans>
       </Button>
@@ -84,7 +84,7 @@ export function BranchRecycleBanner() {
         variant="ghost"
         onClick={dismissContentRecycleNotice}
         aria-label={t`Dismiss`}
-        className="h-6 px-2 text-xs text-red-950 hover:bg-red-400/40"
+        className="h-6 px-2 text-xs text-background hover:bg-background/20"
       >
         <Trans>Dismiss</Trans>
       </Button>

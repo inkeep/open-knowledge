@@ -1,6 +1,6 @@
 import type { GitHubReferencePreview } from '@inkeep/open-knowledge-core/schemas/api';
 
-export type ReferenceStatusTone = 'success' | 'attention' | 'severe' | 'danger';
+export type ReferenceStatusTone = 'success' | 'attention' | 'danger';
 
 export type ReferenceStatusLine =
   | { readonly kind: 'queued'; readonly tone: 'attention'; readonly position: number | null }
@@ -45,7 +45,7 @@ export function referenceStatusLine(preview: GitHubReferencePreview): ReferenceS
     return { kind: 'blocked', tone: 'attention' };
   }
   if (mergeState === 'UNSTABLE') {
-    if (checksFailing) return { kind: 'unstable', tone: 'severe' };
+    if (checksFailing) return { kind: 'unstable', tone: 'danger' };
     return checksRunning ? { kind: 'checks-running', tone: 'attention' } : null;
   }
   if (mergeState === 'BEHIND') return { kind: 'behind', tone: 'attention' };

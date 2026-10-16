@@ -969,7 +969,7 @@ function CascadeBanner({
       <div
         role="status"
         aria-live="polite"
-        className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-200"
+        className="rounded-md border border-info/40 px-3 py-2 text-sm text-foreground"
         data-testid="create-banner-git-confirm"
       >
         <p>
@@ -1005,7 +1005,7 @@ function CascadeBanner({
           </div>
         ) : (
           <div
-            className="mt-2 flex flex-col gap-2 rounded border border-blue-400/60 bg-white/40 p-2 dark:border-blue-600/60 dark:bg-black/20"
+            className="mt-2 flex flex-col gap-2 rounded border border-info/40 bg-background/40 p-2"
             data-testid="create-banner-git-remove-confirm"
           >
             <p className="text-xs">

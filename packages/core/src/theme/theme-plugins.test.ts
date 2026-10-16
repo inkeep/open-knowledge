@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { BASE16_SLOTS, type Base16Palette, base16ToTokens, relativeLuminance } from './base16.ts';
+import {
+  BASE16_SLOTS,
+  type Base16Palette,
+  base16ToTokens,
+  mixHex,
+  relativeLuminance,
+} from './base16.ts';
 import {
   colorThemeMode,
   deriveSavedThemeId,
@@ -18,6 +24,26 @@ import {
 } from './theme-plugins.ts';
 
 const NON_STATIC = new Set(['default', 'custom']);
+
+function contrast(a: string, b: string): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+function expectStatusTextReadable(label: string, tokens: Record<string, string>): void {
+  for (const status of ['success', 'warning', 'info', 'destructive'] as const) {
+    const color = tokens[status] ?? '';
+    for (const surface of ['background', 'card'] as const) {
+      const base = tokens[surface] ?? '';
+      expect(contrast(base, color), `${label} ${status} on ${surface}`).toBeGreaterThanOrEqual(4.5);
+      expect(
+        contrast(mixHex(base, color, 0.25), color),
+        `${label} ${status} on its 25% tint over ${surface}`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  }
+}
 
 describe('THEME_PLUGINS registry', () => {
   test('default is first; default + custom are the system-kind (non-static) themes', () => {
@@ -209,6 +235,13 @@ describe('token mapping + generateColorThemesCss', () => {
     }
   });
 
+  test('every generated palette theme keeps status text readable on the page, cards and its own tint', () => {
+    for (const theme of THEME_PLUGINS) {
+      if (!theme.toTokens) continue;
+      expectStatusTextReadable(theme.id, theme.toTokens());
+    }
+  });
+
   test('custom low-contrast palettes receive readable sidebar row foregrounds', () => {
     const palette: Base16Palette = {
       base00: '#e0e0e0',
@@ -234,6 +267,7 @@ describe('token mapping + generateColorThemesCss', () => {
       variant: 'light',
       palette,
     });
+    expectStatusTextReadable('low contrast', tokens);
     for (const [backgroundToken, foregroundToken] of [
       ['sidebar-hover', 'sidebar-hover-foreground'],
       ['sidebar-hover', 'sidebar-hover-muted-foreground'],

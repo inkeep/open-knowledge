@@ -311,10 +311,10 @@ export function TimelineDiffPane({
               data-testid="timeline-diff-stat"
               aria-label={t`${result.additions} added, ${result.deletions} removed`}
             >
-              <span aria-hidden="true" className="text-emerald-600 dark:text-emerald-500">
+              <span aria-hidden="true" className="text-success">
                 +{result.additions}
               </span>{' '}
-              <span aria-hidden="true" className="text-red-600 dark:text-red-500">
+              <span aria-hidden="true" className="text-destructive">
                 −{result.deletions}
               </span>
             </span>

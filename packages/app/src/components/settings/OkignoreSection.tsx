@@ -613,7 +613,7 @@ function PatternRowInput({
           aria-label={t`Pattern ${patternNumber}`}
           className={cn(
             'h-7 flex-1 font-mono text-xs',
-            warnings.length > 0 ? 'border-amber-500/60 focus-visible:ring-amber-500/40' : '',
+            warnings.length > 0 ? 'border-warning/60 focus-visible:ring-warning/40' : '',
           )}
           data-testid="settings-okignore-row-input"
         />
@@ -667,7 +667,7 @@ function AddPatternRow({
             flashing
               ? 'border-destructive ring-2 ring-destructive/30 focus-visible:ring-destructive/50'
               : warnings.length > 0
-                ? 'border-amber-500/60 focus-visible:ring-amber-500/40'
+                ? 'border-warning/60 focus-visible:ring-warning/40'
                 : '',
           )}
           data-testid="settings-okignore-add-input"
@@ -708,7 +708,7 @@ function WarningIndicator({ warnings }: { warnings: OkignoreWarning[] }) {
           role="status"
           aria-live="polite"
           aria-label={t`Pattern warnings: ${summary}`}
-          className="flex w-4 shrink-0 cursor-help justify-center text-amber-500"
+          className="flex w-4 shrink-0 cursor-help justify-center text-warning"
           data-testid="settings-okignore-warning-indicator"
           data-warnings={String(warnings.length)}
         >
@@ -732,7 +732,7 @@ function SavedIndicator({ visible }: { visible: boolean }) {
     <span
       role="status"
       aria-live="polite"
-      className="flex w-4 shrink-0 justify-center text-emerald-600"
+      className="flex w-4 shrink-0 justify-center text-success"
       data-testid="settings-okignore-saved-indicator"
     >
       {visible ? (
