@@ -42,6 +42,7 @@ function createRegistryRunner(
       testNamePattern,
       maxWorkers: 1,
       pool: 'forks',
+      fsModuleCache: true,
       execArgv: ['--import', ownerPreload],
       env: { TMPDIR: temp, TMP: temp, TEMP: temp },
       reporters: [reporter],
