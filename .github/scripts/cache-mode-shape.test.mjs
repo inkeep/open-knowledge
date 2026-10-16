@@ -670,7 +670,9 @@ describe('cache-mode sweep self-tests', () => {
           step.uses?.startsWith('pnpm/setup@') ? { ...step, with: { install: false } } : step,
         ),
       }).join('\n'),
-    ).toMatch(/does not set cache: false at pnpm\/setup/);
+    ).toMatch(
+      /does not set cache: false at Installing pnpm\ndoes not set cache: false at Installing pnpm \(retry after a failed download\)/,
+    );
   });
 
   test('the real signing jobs turn red at the default or at write', () => {

@@ -96,10 +96,39 @@ jobs:
           node-version-file: .node-version
           package-manager-cache: false
 
-      - uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
+      - name: Installing pnpm
+        id: pnpm-setup
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
+        continue-on-error: true
+        timeout-minutes: 2
         with:
           install: false
           cache: false
+      - name: Waiting before retrying the pnpm download
+        if: steps.pnpm-setup.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::warning::pnpm-setup-retry=started. The first pnpm/setup attempt failed or hit its 2-minute bound; its error is in the Installing pnpm step. Retrying once in 20s."
+          sleep 20
+      - name: Installing pnpm (retry after a failed download)
+        id: pnpm-setup-retry
+        if: steps.pnpm-setup.outcome == 'failure'
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
+        timeout-minutes: 2
+        with:
+          install: false
+          cache: false
+      - name: Recording the pnpm download retry result
+        if: ${{ !cancelled() && steps.pnpm-setup.outcome == 'failure' }}
+        shell: bash
+        env:
+          RETRY_OUTCOME: ${{ steps.pnpm-setup-retry.outcome }}
+        run: |
+          if [[ "$RETRY_OUTCOME" == success ]]; then
+            echo "::notice::pnpm-setup-retry=recovered. The first pnpm/setup attempt failed and the retry installed pnpm."
+          else
+            echo "::error::pnpm-setup-retry=exhausted retry=${RETRY_OUTCOME}. Both pnpm/setup attempts failed; their errors are in the two Installing pnpm steps."
+          fi
 
       - name: Install dependencies
         # ELECTRON_SKIP_REBUILD=0 overrides the default CI skip in
