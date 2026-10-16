@@ -35,6 +35,8 @@ const SCRIPT = fileURLToPath(new URL('./known-reds.mjs', import.meta.url));
 const ISSUE = 'https://github.com/inkeep/agents-private/issues/1056';
 const TODAY = '2026-10-01';
 const NO_ALLOWLIST = { ciSkips: [] };
+const daysFromToday = (days) =>
+  new Date(Date.parse(`${todayUtc()}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 
 const vitestPin = ({
   tags = "['known-bug']",
@@ -49,7 +51,7 @@ ${declare}('deleted file leaves the sidebar', { tags: ${tags}, meta: ${meta} }, 
 });
 `;
 
-const playwrightPin = (configure) => `
+const playwrightPin = (configure, until = '2026-10-15') => `
 import { expect, test } from '@playwright/test';
 import { expectKnownBug } from '../../../../test-support/known-bug.test-helper';
 test.describe('sidebar', () => {
@@ -59,7 +61,7 @@ test.describe('sidebar', () => {
     annotation: [
       { type: 'issue', description: '${ISSUE}' },
       { type: 'owner', description: 'get-main-green' },
-      { type: 'until', description: '2026-10-15' },
+      { type: 'until', description: '${until}' },
     ],
   }, async ({ page }) => {
     await expectKnownBug(/unexpected value "visible"/, async () => {
@@ -1350,7 +1352,10 @@ describe('known-reds through its real invocation', () => {
     'packages/server/src/spawn.test.ts',
     "test('x', () => { if (process.platform === 'win32') return; expect(1).toBe(1); });\n",
   );
-  write('packages/app/tests/stress/hide.e2e.ts', playwrightPin(''));
+  write(
+    'packages/app/tests/stress/hide.e2e.ts',
+    playwrightPin('', daysFromToday(Math.floor((EXPIRY_WARNING_DAYS + MAX_HORIZON_DAYS) / 2))),
+  );
   write(
     'packages/app/src/helper.test-helper.ts',
     [
@@ -1405,7 +1410,7 @@ describe('known-reds through its real invocation', () => {
 
   test('finds every planted violation', () => {
     const report = scanTree(root);
-    const violations = validate(report, { today: TODAY, allowlist: NO_ALLOWLIST });
+    const violations = validate(report, { today: todayUtc(), allowlist: NO_ALLOWLIST });
     expect(
       violations.map((violation) => `${violation.path}:${violation.line} ${violation.rule}`).sort(),
     ).toEqual([
@@ -1432,9 +1437,7 @@ describe('known-reds through its real invocation', () => {
   });
 
   test('the command warns about a pin that expires soon, in the feed and the listing', () => {
-    const soon = new Date(Date.parse(`${todayUtc()}T00:00:00Z`) + 7 * 86_400_000)
-      .toISOString()
-      .slice(0, 10);
+    const soon = daysFromToday(7);
     write(
       'packages/server/src/expiring.test.ts',
       vitestPin({ meta: `{ issue: '${ISSUE}', owner: 'get-main-green', until: '${soon}' }` }),
@@ -1505,9 +1508,7 @@ describe('known-reds through its real invocation', () => {
 });
 
 describe('an expired date through the real invocation', () => {
-  const yesterday = new Date(Date.parse(`${todayUtc()}T00:00:00Z`) - 86_400_000)
-    .toISOString()
-    .slice(0, 10);
+  const yesterday = daysFromToday(-1);
   const treeWith = (until) => {
     const root = mkdtempSync(join(tmpdir(), 'ok-known-reds-expiry-'));
     const file = join(root, 'packages/server/src/lapsed.test.ts');
