@@ -1,5 +1,6 @@
 import { useLingui } from '@lingui/react/macro';
 import { CircleAlert, Moon, Pencil, Plus, Sun, Trash2 } from 'lucide-react';
+import type { Ref } from 'react';
 import { Button } from '@/components/ui/button';
 import { Toggle } from '@/components/ui/toggle';
 import {
@@ -44,6 +45,7 @@ export interface ColorThemePickerProps {
   editControl?: ColorThemeEditControl;
   deleteControl?: ColorThemeDeleteControl;
   createControl?: ColorThemeCreateControl;
+  createTileRef?: Ref<HTMLButtonElement>;
   slotMode?: 'light' | 'dark';
   customSeed?: SeedInput;
   firstItemId?: string;
@@ -161,6 +163,7 @@ export function ColorThemePicker({
   editControl,
   deleteControl,
   createControl,
+  createTileRef,
   slotMode = 'light',
   customSeed,
   firstItemId,
@@ -272,6 +275,7 @@ export function ColorThemePicker({
       })}
       {createControl ? (
         <Button
+          ref={createTileRef}
           type="button"
           variant="ghost"
           onClick={createControl.onCreate}

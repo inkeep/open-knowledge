@@ -59,6 +59,7 @@ interface SavedThemesContextValue extends SavedThemesData {
   editingThemeId: string;
   themeIncarnations: Readonly<Record<string, number>>;
   themeEditorOpen: boolean;
+  themeEditorOpenNonce: number;
   selectThemeToEdit: (id: string | null) => void;
 }
 
@@ -299,6 +300,7 @@ export function SavedThemesProvider({ children }: { children: ReactNode }) {
   const [loadError, setLoadError] = useState(false);
   const [editingThemeId, setEditingThemeId] = useState('custom');
   const [themeEditorOpen, setThemeEditorOpen] = useState(false);
+  const [themeEditorOpenNonce, setThemeEditorOpenNonce] = useState(0);
   const themeIncarnationsRef = useRef<Record<string, number>>({});
   const [themeIncarnations, setThemeIncarnations] = useState<Readonly<Record<string, number>>>({});
   const mutationVersionRef = useRef(0);
@@ -470,6 +472,7 @@ export function SavedThemesProvider({ children }: { children: ReactNode }) {
     }
     setEditingThemeId(id);
     setThemeEditorOpen(true);
+    setThemeEditorOpenNonce((nonce) => nonce + 1);
   }
 
   return createElement(
@@ -484,6 +487,7 @@ export function SavedThemesProvider({ children }: { children: ReactNode }) {
         editingThemeId,
         themeIncarnations,
         themeEditorOpen,
+        themeEditorOpenNonce,
         selectThemeToEdit,
       },
     },

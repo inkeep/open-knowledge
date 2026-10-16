@@ -15,7 +15,7 @@ import { msg } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react/macro';
 import { ArrowUpRight } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { type ClipboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type ClipboardEvent, type Ref, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { FieldError } from '@/components/ui/field';
@@ -42,7 +42,13 @@ import { ThemePreviewCanvas } from './ThemePreviewCanvas';
 
 const SCHEMES_URL = 'https://github.com/tinted-theming/schemes';
 
-export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding }) {
+export function CustomThemeEditor({
+  userBinding,
+  headingRef,
+}: {
+  userBinding: ConfigBinding;
+  headingRef?: Ref<HTMLHeadingElement>;
+}) {
   const { t } = useLingui();
   const {
     themes,
@@ -322,7 +328,12 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
     >
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 id="settings-custom-theme-title" className="font-medium text-sm">
+          <h3
+            ref={headingRef}
+            id="settings-custom-theme-title"
+            tabIndex={-1}
+            className="scroll-mt-6 font-medium text-sm"
+          >
             {isEditingSavedTheme ? t`Editing ${scheme.name}` : t`Custom theme`}
           </h3>
           <p className="text-1sm text-muted-foreground">

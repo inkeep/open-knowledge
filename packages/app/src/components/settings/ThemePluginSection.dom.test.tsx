@@ -15,7 +15,13 @@ vi.doMock('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 vi.doMock('@/lib/saved-themes-client', () => ({
-  useSavedThemes: () => ({ themes, editingThemeId, themeEditorOpen, selectThemeToEdit }),
+  useSavedThemes: () => ({
+    themes,
+    editingThemeId,
+    themeEditorOpen,
+    themeEditorOpenNonce: 0,
+    selectThemeToEdit,
+  }),
 }));
 vi.doMock('./CustomThemeEditor', () => ({
   CustomThemeEditor: () => <div data-testid="theme-editor" />,

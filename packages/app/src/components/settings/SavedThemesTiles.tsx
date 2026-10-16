@@ -30,7 +30,10 @@ import { useSavedThemes } from '@/lib/saved-themes-client';
 import { ColorThemePicker, type ColorThemePickerProps } from './ColorThemePicker';
 
 interface SavedThemesTilesProps
-  extends Omit<ColorThemePickerProps, 'themes' | 'unavailableThemes' | 'selection' | 'onAssign'> {
+  extends Omit<
+    ColorThemePickerProps,
+    'themes' | 'unavailableThemes' | 'selection' | 'onAssign' | 'createTileRef'
+  > {
   appearance: ColorThemeSelectionInput | undefined;
   onAssign: (
     slot: 'light' | 'dark',
@@ -61,6 +64,8 @@ export function SavedThemesTiles({ appearance, onAssign, ...pickerProps }: Saved
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const createNameRef = useRef<HTMLInputElement>(null);
+  const pendingEditThemeIdRef = useRef<string | null>(null);
+  const createTileRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -178,9 +183,9 @@ export function SavedThemesTiles({ appearance, onAssign, ...pickerProps }: Saved
     onAssign(activeSlot, result.id, selection, [...themes, createdTheme]);
     await refresh();
     setCreateName('');
+    pendingEditThemeIdRef.current = result.id;
     setCreateOpen(false);
     setIsCreating(false);
-    selectThemeToEdit(result.id);
   }
 
   const unavailableThemes = warnings.map((warning) => {
@@ -275,6 +280,7 @@ export function SavedThemesTiles({ appearance, onAssign, ...pickerProps }: Saved
           onDelete: removeTheme,
         }}
         createControl={{ onCreate: () => setCreateOpen(true) }}
+        createTileRef={createTileRef}
         onAssign={(slot, id) => onAssign(slot, id, selection, themes)}
       />
       <Dialog
@@ -283,7 +289,18 @@ export function SavedThemesTiles({ appearance, onAssign, ...pickerProps }: Saved
           if (!isCreating) setCreateOpen(open);
         }}
       >
-        <DialogContent>
+        <DialogContent
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            const pendingId = pendingEditThemeIdRef.current;
+            if (pendingId === null) {
+              createTileRef.current?.focus();
+              return;
+            }
+            pendingEditThemeIdRef.current = null;
+            selectThemeToEdit(pendingId);
+          }}
+        >
           <DialogHeader className="gap-2">
             <DialogTitle>{t`Name your theme`}</DialogTitle>
             <DialogDescription>{t`Give it a name before editing its colors.`}</DialogDescription>
