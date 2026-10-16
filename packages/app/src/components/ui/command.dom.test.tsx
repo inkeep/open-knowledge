@@ -1,5 +1,5 @@
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { cleanup, fireEvent, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -88,6 +88,8 @@ describe('CommandDialog runtime contracts', () => {
 
   const selectedValue = () =>
     document.querySelector('[data-slot="command-item"][data-selected="true"]')?.textContent;
+  const selectedItemId = () =>
+    document.querySelector('[data-slot="command-item"][data-selected="true"]')?.id;
 
   test('cmdk moves the selection on Ctrl+P when vim bindings are left at their default', async () => {
     const input = await renderTwoItemCommand();
@@ -105,5 +107,84 @@ describe('CommandDialog runtime contracts', () => {
     fireEvent.keyDown(input, { key: 'p', ctrlKey: true });
 
     expect(selectedValue()).toBe('beta');
+  });
+
+  async function renderDeferredFilterCommand(
+    rows: readonly string[],
+    onRun: (row: string) => void,
+  ) {
+    const { Command, CommandGroup, CommandInput, CommandItem, CommandList } = await import(
+      './command'
+    );
+    const { useDeferredValue, useState } = await import('react');
+    function DeferredFilterCommand() {
+      const [query, setQuery] = useState('');
+      const deferredQuery = useDeferredValue(query).toLowerCase();
+      return (
+        <Command shouldFilter={false}>
+          <CommandInput value={query} onValueChange={setQuery} placeholder="Search" />
+          <CommandList>
+            <CommandGroup heading="Commands">
+              {rows
+                .filter((row) => row.toLowerCase().includes(deferredQuery))
+                .map((row) => (
+                  <CommandItem key={row} value={row} onSelect={() => onRun(row)}>
+                    {row}
+                  </CommandItem>
+                ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      );
+    }
+    render(<DeferredFilterCommand />);
+    return document.querySelector('[data-slot="command-input"]') as HTMLInputElement;
+  }
+
+  test('a query that hides the selected row and its neighbours selects the first remaining row, and Enter runs it', async () => {
+    const onRun = vi.fn();
+    const input = await renderDeferredFilterCommand(
+      ['New file', 'New folder', 'Report a bug', 'Settings', 'Report history'],
+      onRun,
+    );
+    expect(selectedValue()).toBe('New file');
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'report' } });
+    });
+
+    expect(selectedValue()).toBe('Report a bug');
+    expect(input.getAttribute('aria-activedescendant')).toBe(selectedItemId());
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onRun).toHaveBeenCalledExactlyOnceWith('Report a bug');
+  });
+
+  test('removing rows around a selected row that survives leaves the selection where it was', async () => {
+    const { Command, CommandInput, CommandItem, CommandList } = await import('./command');
+    function RowList({ rows }: { rows: readonly string[] }) {
+      return (
+        <Command shouldFilter={false}>
+          <CommandInput placeholder="Search" />
+          <CommandList>
+            {rows.map((row) => (
+              <CommandItem key={row} value={row}>
+                {row}
+              </CommandItem>
+            ))}
+          </CommandList>
+        </Command>
+      );
+    }
+    const { rerender } = render(<RowList rows={['alpha', 'beta', 'gamma', 'delta']} />);
+    const input = document.querySelector('[data-slot="command-input"]') as HTMLElement;
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(selectedValue()).toBe('beta');
+
+    await act(async () => {
+      rerender(<RowList rows={['alpha', 'beta']} />);
+    });
+
+    expect(selectedValue()).toBe('beta');
+    expect(input.getAttribute('aria-activedescendant')).toBe(selectedItemId());
   });
 });

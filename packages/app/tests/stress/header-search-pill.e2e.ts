@@ -290,7 +290,6 @@ test.describe('header-search-pill — discovery, click, keyboard, semantics', ()
       )
       .toBeGreaterThanOrEqual(1);
 
-    await page.keyboard.press('ArrowDown');
     await page.keyboard.press('Enter');
     await expect(cmdkRoot(page)).toBeHidden({ timeout: 2_000 });
 

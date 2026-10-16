@@ -67,3 +67,39 @@ test.describe('command-palette — menu-parity backfill (real cmdk)', () => {
     await expect(row).toBeVisible({ timeout: 5_000 });
   });
 });
+
+test.describe('command-palette — selection follows the query (real cmdk)', () => {
+  test('typing a query that hides the selected row selects the first remaining row, and Enter runs it', async ({
+    page,
+    api,
+  }) => {
+    await api.seedDocs(SEED_DOCS);
+    await page.goto('/');
+    await page.waitForSelector('[role="treeitem"]', { timeout: 15_000 });
+
+    const list = await openPalette(page);
+    const firstRow = list.locator('[cmdk-item]').first();
+    await expect(firstRow).toHaveAttribute('aria-selected', 'true');
+    const firstRowTestId = await firstRow.getAttribute('data-testid');
+    expect(firstRowTestId).not.toBe('command-palette-toggle-sidebar');
+
+    await page.keyboard.type('sidebar');
+    const row = page.getByTestId('command-palette-toggle-sidebar');
+    await expect(row).toContainText('Hide sidebar', { timeout: 5_000 });
+    await expect(list.locator(`[data-testid="${firstRowTestId}"]`)).toHaveCount(0);
+    await expect(list.locator('[cmdk-item]').first()).toHaveAttribute(
+      'data-testid',
+      'command-palette-toggle-sidebar',
+    );
+    await expect(row).toHaveAttribute('aria-selected', 'true');
+
+    await page.keyboard.press('Enter');
+    await expect(list).toBeHidden({ timeout: 5_000 });
+
+    await openPalette(page);
+    await page.keyboard.type('sidebar');
+    await expect(page.getByTestId('command-palette-toggle-sidebar')).toContainText('Show sidebar', {
+      timeout: 5_000,
+    });
+  });
+});
