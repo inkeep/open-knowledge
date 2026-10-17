@@ -10,6 +10,7 @@ const OSS_SYNC_BOT_NAME = 'inkeep-oss-sync[bot]';
 const OSS_SYNC_BOT_EMAIL = '274976938+inkeep-oss-sync[bot]@users.noreply.github.com';
 const MAX_COMMAND_ERROR_LENGTH = 4096;
 const MAX_COMMAND_LABEL_LENGTH = 256;
+const CLA_VERIFIED_DISPATCH_EVENT = 'ok-cla-verified';
 
 function sanitizeErrorMessage(value) {
   if (typeof value !== 'string') return value;
@@ -617,8 +618,8 @@ function createClaGateGh({
     isOrgMember: (login) => checkOrgMembership({ token: internalToken, org, login, request }),
     setDraft: (pr, shouldBeDraft) =>
       ensureDraftState({ token: internalToken, pullRequest: pr, shouldBeDraft }),
-    setVerifiedStatus: (pr, state, description) =>
-      postCommitStatus({
+    setVerifiedStatus: async (pr, state, description) => {
+      await postCommitStatus({
         token: internalToken,
         repo: internalRepo,
         sha: pr.head.sha,
@@ -626,7 +627,16 @@ function createClaGateGh({
         context: 'cla/verified',
         description,
         request,
-      }),
+      });
+      if (state === 'success') {
+        await request({
+          token: internalToken,
+          method: 'POST',
+          path: `/repos/${internalRepo}/dispatches`,
+          body: { event_type: CLA_VERIFIED_DISPATCH_EVENT, client_payload: { sha: pr.head.sha } },
+        });
+      }
+    },
   };
 }
 
@@ -1140,6 +1150,7 @@ export {
   buildCommitAttribution,
   buildInternalPrBody,
   buildWelcomePublicComment,
+  CLA_VERIFIED_DISPATCH_EVENT,
   checkOrgMembership,
   commitIndicatesConflicts,
   createClaGateGh,
