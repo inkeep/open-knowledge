@@ -88,6 +88,9 @@ function buildWikiLinkChipDom(params: {
   return { dom, iconSpan };
 }
 
+const resolutionStates = new WeakMap<PageListCacheSnapshot, Map<string, string | null>>();
+const RESOLUTION_CACHE_LIMIT = 512;
+
 export function getWikiLinkIcon(
   target: string,
   cache: PageListCacheSnapshot | null,
@@ -103,6 +106,26 @@ export function getWikiLinkIcon(
 }
 
 export function getWikiLinkResolutionState(
+  target: string,
+  anchor: string | null,
+  cache: PageListCacheSnapshot | null,
+): string | null {
+  if (!cache) return computeWikiLinkResolutionState(target, anchor, cache);
+  let states = resolutionStates.get(cache);
+  if (!states) {
+    states = new Map();
+    resolutionStates.set(cache, states);
+  }
+  const key = JSON.stringify([target, anchor, isLinkValidationVisible()]);
+  const cached = states.get(key);
+  if (cached !== undefined) return cached;
+  const state = computeWikiLinkResolutionState(target, anchor, cache);
+  if (states.size >= RESOLUTION_CACHE_LIMIT) states.clear();
+  states.set(key, state);
+  return state;
+}
+
+function computeWikiLinkResolutionState(
   target: string,
   anchor: string | null,
   cache: PageListCacheSnapshot | null,

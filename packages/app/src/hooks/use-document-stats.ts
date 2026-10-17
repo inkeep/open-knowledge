@@ -1,6 +1,7 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { isEditableTextDocFile } from '@inkeep/open-knowledge-core/constants/code-languages';
 import { useEffect, useState } from 'react';
+import type { Text as YText } from 'yjs';
 import {
   computeBodyStats,
   computePlainTextStats,
@@ -9,6 +10,10 @@ import {
 } from '@/lib/document-stats';
 
 const STATS_DEBOUNCE_MS = 300;
+const statsCache = new WeakMap<
+  YText,
+  { source: string; plainText: boolean; stats: DocumentStats }
+>();
 
 export function useDocumentStats(
   provider: HocuspocusProvider | null,
@@ -23,15 +28,22 @@ export function useDocumentStats(
     }
 
     const ytext = provider.document.getText('source');
-    const computeStats = isEditableTextDocFile(activeDocName)
-      ? computePlainTextStats
-      : computeBodyStats;
+    const plainText = isEditableTextDocFile(activeDocName);
+    const computeStats = plainText ? computePlainTextStats : computeBodyStats;
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | null = null;
 
     function compute() {
       if (cancelled) return;
-      setStats(computeStats(ytext.toString()));
+      const source = ytext.toString();
+      const cached = statsCache.get(ytext);
+      if (cached?.source === source && cached.plainText === plainText) {
+        setStats(cached.stats);
+      } else {
+        const nextStats = computeStats(source);
+        statsCache.set(ytext, { source, plainText, stats: nextStats });
+        setStats(nextStats);
+      }
     }
 
     compute();
