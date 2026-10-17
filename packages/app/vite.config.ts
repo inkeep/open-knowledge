@@ -1,8 +1,11 @@
+import { join } from 'node:path';
 import babel from '@rolldown/plugin-babel';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import { injectAppVersionEnv } from './src/build/app-version';
 import { chromeTokensVitePlugin } from './src/build/chrome-tokens-vite-plugin';
+import { e2eCoverageDir } from './src/build/e2e-coverage-contract';
+import { e2eCoveragePlugin } from './src/build/e2e-coverage-plugin';
 import { rejectionLoopGuardPlugin } from './src/build/rejection-loop-guard-plugin';
 import { testLoopMarkerPlugin } from './src/build/test-loop-marker-plugin';
 import { TEST_SERVER_STARTUP_ENV } from './src/build/test-server-startup-contract';
@@ -77,7 +80,13 @@ export default defineConfig({
     hocuspocusPlugin(),
     ...(startupRequest === undefined
       ? []
-      : [testServerStartupPlugin(startupRequest), testLoopMarkerPlugin()]),
+      : [
+          testServerStartupPlugin(startupRequest),
+          testLoopMarkerPlugin(),
+          ...(e2eCoverageDir(process.env) === undefined
+            ? []
+            : [e2eCoveragePlugin(join(import.meta.dirname, '../..'))]),
+        ]),
   ],
   resolve: {
     tsconfigPaths: true,

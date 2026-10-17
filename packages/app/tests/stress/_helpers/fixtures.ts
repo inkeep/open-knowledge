@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { ProblemType } from '@inkeep/open-knowledge-core';
 import { test as base } from '@playwright/test';
 import { resetContentToFixtureBaseline } from './content-reset.ts';
+import { coverageFixture, type E2eCoverage } from './coverage/e2e-coverage.ts';
 import { gotoWhileLoadProgresses, requireDeadlineAt } from './load-progress.ts';
 import { type WorkerServing, workerServingFor } from './prebuilt/prebuilt-serving.ts';
 import {
@@ -100,6 +101,7 @@ type WorkerFixtures = {
 type TestFixtures = {
   api: ApiHelpers;
   serverLeaseCheck: undefined;
+  e2eCoverage: E2eCoverage;
 };
 
 export const WORKER_SERVER_BUDGET_TOTAL_MS = 240_000;
@@ -516,6 +518,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   workerServerEnv: [{}, { scope: 'worker', option: true }],
   serverLease: [leaseWorkerServer, { scope: 'worker', timeout: WORKER_SERVER_BUDGET_TOTAL_MS }],
   serverLeaseCheck: [checkServerLease, { auto: true }],
+  e2eCoverage: [coverageFixture, { auto: true }],
+  page: async ({ page, e2eCoverage }, use) => {
+    e2eCoverage.watchContext(page.context());
+    await e2eCoverage.watchPage(page);
+    await use(page);
+    await e2eCoverage.collectPage(page);
+  },
   workerServer: [
     async ({ workerServerEnv, browser, serverLease }, use, workerInfo) => {
       if (serverLease?.kind === 'leased') {

@@ -303,12 +303,12 @@
     "test:e2e": {
       "dependsOn": ["^build", "build"],
       "cache": false,
-      "passThroughEnv": ["OK_TEST_E2E_SERVING"]
+      "passThroughEnv": ["OK_TEST_E2E_SERVING", "OK_E2E_COVERAGE_DIR"]
     },
     "@inkeep/open-knowledge-app#test:e2e": {
       "dependsOn": ["^build", "build", "@inkeep/open-knowledge#build"],
       "cache": false,
-      "passThroughEnv": ["OK_TEST_E2E_SERVING"]
+      "passThroughEnv": ["OK_TEST_E2E_SERVING", "OK_E2E_COVERAGE_DIR"]
     },
     "test:perf": {
       "dependsOn": [],

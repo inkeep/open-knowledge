@@ -94,6 +94,7 @@
     "tests/stress/_helpers/boot-verdict",
     "tests/stress/_helpers/card-surface.ts",
     "tests/stress/_helpers/corner-stack.ts",
+    "tests/stress/_helpers/coverage",
     "tests/stress/_helpers/editor-state.ts",
     "tests/stress/_helpers/feedback-nudge.ts",
     "tests/stress/_helpers/image.ts",
