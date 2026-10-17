@@ -212,6 +212,7 @@ export function parseSection(section) {
       currentEntry = { hash: m?.[1] ?? null, body: m?.[2] ?? line.slice(2) };
       groups[currentGroup].push(currentEntry);
     } else if (currentEntry) {
+      if (/^ {2}- @inkeep\/[\w-]+@\d\S*$/.test(line)) continue;
       currentEntry.body += `\n${line.startsWith('  ') ? line.slice(2) : line}`;
     } else {
       commit();

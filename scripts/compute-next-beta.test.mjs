@@ -184,6 +184,33 @@ describe('renderNotes', () => {
     expect(notes).toContain('real change');
   });
 
+  test('drops headerless dependency bumps nested under a real change', () => {
+    const packageDeltas = {
+      app: `### Patch Changes
+
+- Agent conversations now open the Agents panel.
+  - @inkeep/open-knowledge-core@0.0.0-beta.0
+  - @inkeep/open-knowledge-server@0.0.0-beta.0
+`,
+    };
+    const notes = renderNotes({ ...baseInput, packageDeltas });
+    expect(notes).toContain('- Agent conversations now open the Agents panel.');
+    expect(notes).not.toContain('@inkeep/open-knowledge-core@');
+    expect(notes).not.toContain('@inkeep/open-knowledge-server@');
+  });
+
+  test('keeps a nested bullet that is not a package bump', () => {
+    const packageDeltas = {
+      app: `### Patch Changes
+
+- abc1234: real change
+  - mention of @inkeep/open-knowledge-core in prose
+`,
+    };
+    const notes = renderNotes({ ...baseInput, packageDeltas });
+    expect(notes).toContain('mention of @inkeep/open-knowledge-core in prose');
+  });
+
   test('drops top-level fixed-group sibling-bump bullets', () => {
     const packageDeltas = {
       core: `### Patch Changes
