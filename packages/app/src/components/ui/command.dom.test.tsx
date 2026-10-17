@@ -159,6 +159,55 @@ describe('CommandDialog runtime contracts', () => {
     expect(onRun).toHaveBeenCalledExactlyOnceWith('Report a bug');
   });
 
+  test('a query that moves a better row above the surviving selection selects the new top row, and Enter runs it', async () => {
+    const { Command, CommandInput, CommandItem, CommandList, useSelectFirstItemOn } = await import(
+      './command'
+    );
+    const { useDeferredValue, useRef, useState } = await import('react');
+    const onRun = vi.fn();
+    const rows = [
+      { label: 'Open graph', keywords: 'show' },
+      { label: 'Show hidden files', keywords: '' },
+    ];
+    function RankedCommand() {
+      const [query, setQuery] = useState('');
+      const deferredQuery = useDeferredValue(query).toLowerCase();
+      const ranked = rows
+        .filter((row) => `${row.label} ${row.keywords}`.toLowerCase().includes(deferredQuery))
+        .map((row) => ({ row, rank: row.label.toLowerCase().includes(deferredQuery) ? 0 : 1 }))
+        .sort((a, b) => a.rank - b.rank);
+      const listRef = useRef<HTMLDivElement>(null);
+      useSelectFirstItemOn(listRef, deferredQuery);
+      return (
+        <Command shouldFilter={false}>
+          <CommandInput value={query} onValueChange={setQuery} placeholder="Search" />
+          <CommandList ref={listRef}>
+            {ranked.map(({ row }) => (
+              <CommandItem key={row.label} value={row.label} onSelect={() => onRun(row.label)}>
+                {row.label}
+              </CommandItem>
+            ))}
+          </CommandList>
+        </Command>
+      );
+    }
+    render(<RankedCommand />);
+    const input = document.querySelector('[data-slot="command-input"]') as HTMLInputElement;
+    expect(selectedValue()).toBe('Open graph');
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'show' } });
+    });
+
+    expect(selectedValue()).toBe('Show hidden files');
+    expect(input.getAttribute('aria-activedescendant')).toBe(selectedItemId());
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onRun).toHaveBeenCalledExactlyOnceWith('Show hidden files');
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(selectedValue()).toBe('Open graph');
+  });
+
   test('removing rows around a selected row that survives leaves the selection where it was', async () => {
     const { Command, CommandInput, CommandItem, CommandList } = await import('./command');
     function RowList({ rows }: { rows: readonly string[] }) {

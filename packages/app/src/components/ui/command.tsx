@@ -1,6 +1,6 @@
 import { Command as CommandPrimitive } from 'cmdk';
 import { SearchIcon } from 'lucide-react';
-import type { ComponentProps } from 'react';
+import { type ComponentProps, type RefObject, useLayoutEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
@@ -149,6 +149,17 @@ function CommandShortcut({ className, ...props }: ComponentProps<'span'>) {
   );
 }
 
+function useSelectFirstItemOn(listRef: RefObject<HTMLElement | null>, key: unknown) {
+  const handledKeyRef = useRef<{ key: unknown } | null>(null);
+  useLayoutEffect(() => {
+    const previous = handledKeyRef.current;
+    if (previous && Object.is(previous.key, key)) return;
+    handledKeyRef.current = { key };
+    if (previous === null) return;
+    listRef.current?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+  });
+}
+
 export {
   Command,
   CommandDialog,
@@ -159,4 +170,5 @@ export {
   CommandList,
   CommandSeparator,
   CommandShortcut,
+  useSelectFirstItemOn,
 };

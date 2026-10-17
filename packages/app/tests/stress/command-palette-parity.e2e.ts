@@ -69,6 +69,37 @@ test.describe('command-palette — menu-parity backfill (real cmdk)', () => {
 });
 
 test.describe('command-palette — selection follows the query (real cmdk)', () => {
+  test('a query that ranks a better row above the still-matching selection moves the selection to the top', async ({
+    page,
+    api,
+  }) => {
+    await api.seedDocs(SEED_DOCS);
+    await page.goto('/');
+    await page.waitForSelector('[role="treeitem"]', { timeout: 15_000 });
+
+    const list = await openPalette(page);
+    const input = page.locator('[data-slot="command-input"]');
+    const sidebarRow = page.getByTestId('command-palette-toggle-sidebar');
+
+    await input.fill('sidebar');
+    await expect(list.locator('[cmdk-item]').first()).toHaveAttribute(
+      'data-testid',
+      'command-palette-toggle-sidebar',
+    );
+    await expect(sidebarRow).toHaveAttribute('aria-selected', 'true');
+
+    await input.fill('show');
+    await expect(sidebarRow).toBeVisible({ timeout: 5_000 });
+    const topRow = list.locator('[cmdk-item]').first();
+    await expect(topRow).not.toHaveAttribute('data-testid', 'command-palette-toggle-sidebar');
+    await expect(topRow).toHaveAttribute('aria-selected', 'true');
+    await expect(sidebarRow).toHaveAttribute('aria-selected', 'false');
+    await expect(input).toHaveAttribute(
+      'aria-activedescendant',
+      (await topRow.getAttribute('id')) ?? '',
+    );
+  });
+
   test('typing a query that hides the selected row selects the first remaining row, and Enter runs it', async ({
     page,
     api,

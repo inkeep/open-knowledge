@@ -295,11 +295,11 @@ const COMMAND_RANK_LABEL_INSIDE_WORD = 1;
 const COMMAND_RANK_KEYWORD_ONLY = 2;
 
 function commandTermRank(label: string, keywordText: string, term: string): number | null {
-  if (new RegExp(`(?:^|[^\\p{L}\\p{N}])${escapeRegExp(term)}`, 'u').test(label)) {
+  if (new RegExp(`(?:^|[^\\p{L}\\p{M}\\p{N}])${escapeRegExp(term)}`, 'u').test(label)) {
     return COMMAND_RANK_LABEL_WORD_START;
   }
   if (label.includes(term)) return COMMAND_RANK_LABEL_INSIDE_WORD;
-  if (`${label} ${keywordText}`.includes(term)) return COMMAND_RANK_KEYWORD_ONLY;
+  if (keywordText.includes(term)) return COMMAND_RANK_KEYWORD_ONLY;
   return null;
 }
 
@@ -319,6 +319,20 @@ export function rankCommandQuery(
     rank = Math.max(rank, termRank);
   }
   return rank;
+}
+
+export function rankRows<T>(
+  rows: readonly T[],
+  query: string,
+  matchText: (row: T) => { label: string; keywords: readonly string[] },
+): { row: T; rank: number }[] {
+  return rows
+    .flatMap((row) => {
+      const { label, keywords } = matchText(row);
+      const rank = rankCommandQuery(label, query, keywords);
+      return rank === null ? [] : [{ row, rank }];
+    })
+    .sort((a, b) => a.rank - b.rank);
 }
 
 export function matchesCommandQuery(

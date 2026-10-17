@@ -7,6 +7,7 @@ import {
   fetchWorkspaceSearchEntries,
   matchesCommandQuery,
   rankCommandQuery,
+  rankRows,
   searchWorkspaceEntries,
   splitTextByQueryMatches,
   type WorkspaceEntry,
@@ -328,12 +329,39 @@ describe('rankCommandQuery', () => {
     expect(midWord as number).toBeLessThan(keywordOnly as number);
   });
 
+  test('a term after a combining mark inside a word is not a word start', () => {
+    expect(rankCommandQuery('किताब', 'ताब')).toBe(rankCommandQuery('Show Terminal', 'min'));
+  });
+
   test('a multi-word query ranks by its weakest term', () => {
     expect(rankCommandQuery('Report a bug', 'report bug', ['bug report issue'])).toBe(
       rankCommandQuery('Report a bug', 'bug'),
     );
     expect(rankCommandQuery('Report a bug', 'report issue', ['bug report issue'])).toBe(
       rankCommandQuery('Report a bug', 'issue', ['bug report issue']),
+    );
+  });
+});
+
+describe('rankRows', () => {
+  const rows = [
+    { label: 'dev', keywords: ['worktree branch'] },
+    { label: 'Open graph', keywords: [] },
+    { label: 'worktree-cleanup', keywords: ['worktree branch'] },
+    { label: 'main', keywords: ['worktree branch'] },
+  ];
+
+  test('drops unmatched rows and orders the rest by rank, keeping source order on ties', () => {
+    expect(rankRows(rows, 'worktree', (row) => row).map(({ row }) => row.label)).toEqual([
+      'worktree-cleanup',
+      'dev',
+      'main',
+    ]);
+  });
+
+  test('keeps every row in source order on an empty query', () => {
+    expect(rankRows(rows, '', (row) => row).map(({ row }) => row.label)).toEqual(
+      rows.map((row) => row.label),
     );
   });
 });

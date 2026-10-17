@@ -13,6 +13,7 @@ import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { Check, FileText, Folder, GitBranch, Hash, Sparkles } from 'lucide-react';
 import {
   type Dispatch,
+  Fragment,
   lazy,
   type KeyboardEvent as ReactKeyboardEvent,
   type SetStateAction,
@@ -42,8 +43,7 @@ import {
   buildWorkspaceEntries,
   classifyOmnibarSearchHint,
   fetchWorkspaceSearchEntries,
-  matchesCommandQuery,
-  rankCommandQuery,
+  rankRows,
   SEMANTIC_RESULT_LIMIT,
   searchWorkspaceEntries,
   splitTextByQueryMatches,
@@ -79,6 +79,7 @@ import {
   CommandItem,
   CommandList,
   CommandShortcut,
+  useSelectFirstItemOn,
 } from '@/components/ui/command';
 import { Kbd } from '@/components/ui/kbd';
 import { Spinner } from '@/components/ui/spinner';
@@ -299,6 +300,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   );
   const tagsListFetchedRef = useRef(false);
   const listRef = useRef<HTMLDivElement>(null);
+  useSelectFirstItemOn(listRef, deferredQuery);
   const inputRef = useRef<HTMLInputElement>(null);
   const semanticAbortRef = useRef<AbortController | null>(null);
   const semanticTimerRef = useRef<number | null>(null);
@@ -650,20 +652,16 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     searchStatus === 'loading' &&
     !showNavigation &&
     !showSearchPreparing;
-  const showProjectRecents =
-    !inExclusiveMode &&
-    bridge !== null &&
-    switchableProjects.length > 0 &&
-    (trimmedDeferredQuery === '' ||
-      switchableProjects.some((row) =>
-        matchesCommandQuery(`${row.name} ${row.path}`, deferredQuery, ['open recent project']),
-      ));
-  const matchedWorktrees = switchableWorktrees.filter(
-    (entry) =>
-      trimmedDeferredQuery === '' ||
-      matchesCommandQuery(entry.branch ?? '', deferredQuery, ['worktree branch']),
-  );
-  const showWorktrees = !inExclusiveMode && bridge !== null && matchedWorktrees.length > 0;
+  const rankedProjects = rankRows(switchableProjects, deferredQuery, (row) => ({
+    label: `${row.name} ${row.path}`,
+    keywords: ['open recent project'],
+  })).slice(0, 10);
+  const showProjectRecents = !inExclusiveMode && bridge !== null && rankedProjects.length > 0;
+  const rankedWorktrees = rankRows(switchableWorktrees, deferredQuery, (entry) => ({
+    label: entry.branch ?? '',
+    keywords: ['worktree branch'],
+  })).slice(0, 10);
+  const showWorktrees = !inExclusiveMode && bridge !== null && rankedWorktrees.length > 0;
   const isEmbedded = useIsEmbedded();
   const hostAgentTargets = VISIBLE_TARGETS.filter((target) =>
     isTargetOfferedOnHost(target, {
@@ -671,19 +669,15 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       installed: installStates[target.id]?.installed,
     }),
   );
+  const rankedAgentTargets = rankRows(hostAgentTargets, deferredQuery, (target) => {
+    const displayName = target.displayName;
+    return {
+      label: t`Open with AI ${displayName} Desktop`,
+      keywords: [target.id, 'agent handoff', 'open in'],
+    };
+  });
   const showAgentGroup =
-    !inExclusiveMode &&
-    !isEmbedded &&
-    handoffInput !== null &&
-    ((trimmedDeferredQuery === '' && hostAgentTargets.length > 0) ||
-      hostAgentTargets.some((target) => {
-        const displayName = target.displayName;
-        return matchesCommandQuery(t`Open with AI ${displayName} Desktop`, deferredQuery, [
-          target.id,
-          'agent handoff',
-          'open in',
-        ]);
-      }));
+    !inExclusiveMode && !isEmbedded && handoffInput !== null && rankedAgentTargets.length > 0;
   const tagListItems =
     paletteMode.kind === 'tag-list' ? filterTagList(tagsList, paletteMode.query) : [];
   const showTagListEmpty =
@@ -727,18 +721,15 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   };
   const visibleFixedCommands = inExclusiveMode
     ? []
-    : PALETTE_COMMANDS.flatMap((cmd) => {
-        if (!cmd.available(paletteCtx)) return [];
-        if (cmd.visibility === 'search-only' && trimmedDeferredQuery === '') return [];
-        const label = cmd.label(paletteCtx);
-        const rank = rankCommandQuery(label, deferredQuery, cmd.keywords);
-        return rank === null ? [] : [{ cmd, label, rank }];
-      }).sort((a, b) => a.rank - b.rank);
-  const bestCommandRank = (group: PaletteCommandGroup) =>
-    visibleFixedCommands.find((row) => row.cmd.group === group)?.rank ?? Number.POSITIVE_INFINITY;
-  const trailingCommandGroups = (['file', 'view', 'terminal', 'app'] as const)
-    .slice()
-    .sort((a, b) => bestCommandRank(a) - bestCommandRank(b));
+    : rankRows(
+        PALETTE_COMMANDS.flatMap((cmd) => {
+          if (!cmd.available(paletteCtx)) return [];
+          if (cmd.visibility === 'search-only' && trimmedDeferredQuery === '') return [];
+          return [{ cmd, label: cmd.label(paletteCtx) }];
+        }),
+        deferredQuery,
+        ({ cmd, label }) => ({ label, keywords: cmd.keywords }),
+      ).map(({ row, rank }) => ({ ...row, rank }));
   const hasVisibleFixedCommand = visibleFixedCommands.length > 0;
   const commandGroupHeading = (group: PaletteCommandGroup): string => {
     switch (group) {
@@ -931,6 +922,161 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     e.preventDefault();
     exitSemanticMode();
   }
+
+  const firstRank = (rows: readonly { rank: number }[]) =>
+    rows[0]?.rank ?? Number.POSITIVE_INFINITY;
+  const commandGroupBlock = (group: PaletteCommandGroup) => ({
+    key: group,
+    rank: firstRank(visibleFixedCommands.filter((row) => row.cmd.group === group)),
+    node: renderCommandGroup(group),
+  });
+  const rankedCommandBlocks = [
+    commandGroupBlock('commands'),
+    {
+      key: 'open-with-ai',
+      rank: firstRank(rankedAgentTargets),
+      node: showAgentGroup ? (
+        <CommandGroup heading={t`Open with AI`}>
+          {rankedAgentTargets.map(({ row: target }) => {
+            const installState = installStates[target.id];
+            const enabled = installState.installed === true && handoffInput !== null;
+            const displayName = target.displayName;
+            const hint =
+              installState.installed === null
+                ? t`Detecting`
+                : installState.installed === false
+                  ? t`Not installed`
+                  : null;
+            const accessibleLabel = hint
+              ? t`Open with AI ${displayName} Desktop, ${hint}`
+              : t`Open with AI ${displayName} Desktop`;
+
+            return (
+              <CommandItem
+                key={target.id}
+                value={`send to ai ${target.displayName} desktop ${target.id} agent open in`}
+                disabled={!enabled}
+                onSelect={() => {
+                  if (!enabled || !handoffInput) return;
+                  onOpenChange(false);
+                  void dispatchHandoff(target.id, handoffInput, { installState });
+                }}
+                data-testid={`command-palette-open-in-${target.id}`}
+                aria-label={accessibleLabel}
+              >
+                <span className="flex-1">
+                  <Trans>Open with AI {displayName} Desktop</Trans>
+                </span>
+                {hint ? (
+                  <span aria-hidden="true" className="ml-auto text-muted-foreground text-xs">
+                    {hint}
+                  </span>
+                ) : null}
+              </CommandItem>
+            );
+          })}
+        </CommandGroup>
+      ) : null,
+    },
+    commandGroupBlock('project'),
+    {
+      key: 'recent-projects',
+      rank: firstRank(rankedProjects),
+      node:
+        showProjectRecents && bridge ? (
+          <CommandGroup heading={t`Open recent project`}>
+            {rankedProjects.map(({ row }) => {
+              const isWorktree = row.isLinkedWorktree === true;
+              const RowIcon = isWorktree ? GitBranch : Folder;
+              const worktreeOf =
+                isWorktree && row.mainRoot !== undefined ? basenameOf(row.mainRoot) : null;
+              return (
+                <RecentItemContextMenu
+                  key={row.path}
+                  path={row.path}
+                  onRemoveRecent={onRemoveRecent}
+                  testIdPrefix="command-palette-recent"
+                >
+                  <div className="group/recent relative flex items-center">
+                    <CommandItem
+                      value={`${row.name} ${row.path} recent project`}
+                      onSelect={() =>
+                        runAction(
+                          () =>
+                            bridge.project.open({
+                              path: row.path,
+                              target: 'new-window',
+                              entryPoint: 'recents',
+                            }),
+                          t`Failed to open project.`,
+                        )
+                      }
+                      data-testid={`command-palette-recent-${row.path}`}
+                      className="flex-1 items-start pr-8"
+                    >
+                      <RowIcon className="mt-0.5" />
+                      <div className="flex min-w-0 flex-col gap-1">
+                        <UserText className="truncate font-medium">{row.name}</UserText>
+                        {worktreeOf !== null ? (
+                          <span className="truncate text-muted-foreground text-xs">
+                            <Trans>worktree of {worktreeOf}</Trans>
+                          </span>
+                        ) : null}
+                        <UserText className="truncate text-muted-foreground text-xs">
+                          {row.path}
+                        </UserText>
+                      </div>
+                    </CommandItem>
+                    <RecentRemoveButton
+                      path={row.path}
+                      name={row.name}
+                      onRemoveRecent={onRemoveRecent}
+                      testIdPrefix="command-palette-recent"
+                    />
+                  </div>
+                </RecentItemContextMenu>
+              );
+            })}
+          </CommandGroup>
+        ) : null,
+    },
+    {
+      key: 'worktrees',
+      rank: firstRank(rankedWorktrees),
+      node:
+        showWorktrees && bridge ? (
+          <CommandGroup heading={t`Worktrees`}>
+            {rankedWorktrees.map(({ row: entry }) => (
+              <CommandItem
+                key={entry.branch}
+                value={`${entry.branch} worktree branch`}
+                onSelect={() => openWorktreeEntry(entry)}
+                data-testid={`command-palette-worktree-${entry.branch}`}
+                className="items-start"
+              >
+                <GitBranch className="mt-0.5" />
+                <div className="flex min-w-0 flex-col gap-1">
+                  <UserText className="truncate font-medium">{entry.branch}</UserText>
+                  {entry.worktreePath === null ? (
+                    <span className="truncate text-muted-foreground text-xs">
+                      {t`Create worktree`}
+                    </span>
+                  ) : (
+                    <UserText className="truncate text-muted-foreground text-xs">
+                      {entry.worktreePath}
+                    </UserText>
+                  )}
+                </div>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        ) : null,
+    },
+    commandGroupBlock('file'),
+    commandGroupBlock('view'),
+    commandGroupBlock('terminal'),
+    commandGroupBlock('app'),
+  ].sort((a, b) => a.rank - b.rank);
 
   return (
     <>
@@ -1282,155 +1428,9 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
             </CommandGroup>
           ) : null}
 
-          {renderCommandGroup('commands')}
-
-          {showAgentGroup ? (
-            <CommandGroup heading={t`Open with AI`}>
-              {hostAgentTargets
-                .filter((target) => {
-                  const displayName = target.displayName;
-                  return matchesCommandQuery(
-                    t`Open with AI ${displayName} Desktop`,
-                    deferredQuery,
-                    [target.id, 'agent handoff', 'open in'],
-                  );
-                })
-                .map((target) => {
-                  const installState = installStates[target.id];
-                  const enabled = installState.installed === true && handoffInput !== null;
-                  const displayName = target.displayName;
-                  const hint =
-                    installState.installed === null
-                      ? t`Detecting`
-                      : installState.installed === false
-                        ? t`Not installed`
-                        : null;
-                  const accessibleLabel = hint
-                    ? t`Open with AI ${displayName} Desktop, ${hint}`
-                    : t`Open with AI ${displayName} Desktop`;
-
-                  return (
-                    <CommandItem
-                      key={target.id}
-                      value={`send to ai ${target.displayName} desktop ${target.id} agent open in`}
-                      disabled={!enabled}
-                      onSelect={() => {
-                        if (!enabled || !handoffInput) return;
-                        onOpenChange(false);
-                        void dispatchHandoff(target.id, handoffInput, { installState });
-                      }}
-                      data-testid={`command-palette-open-in-${target.id}`}
-                      aria-label={accessibleLabel}
-                    >
-                      <span className="flex-1">
-                        <Trans>Open with AI {displayName} Desktop</Trans>
-                      </span>
-                      {hint ? (
-                        <span aria-hidden="true" className="ml-auto text-muted-foreground text-xs">
-                          {hint}
-                        </span>
-                      ) : null}
-                    </CommandItem>
-                  );
-                })}
-            </CommandGroup>
-          ) : null}
-
-          {renderCommandGroup('project')}
-
-          {showProjectRecents && bridge ? (
-            <CommandGroup heading={t`Open recent project`}>
-              {switchableProjects
-                .filter((row) =>
-                  matchesCommandQuery(`${row.name} ${row.path}`, deferredQuery, [
-                    'open recent project',
-                  ]),
-                )
-                .slice(0, 10)
-                .map((row) => {
-                  const isWorktree = row.isLinkedWorktree === true;
-                  const RowIcon = isWorktree ? GitBranch : Folder;
-                  const worktreeOf =
-                    isWorktree && row.mainRoot !== undefined ? basenameOf(row.mainRoot) : null;
-                  return (
-                    <RecentItemContextMenu
-                      key={row.path}
-                      path={row.path}
-                      onRemoveRecent={onRemoveRecent}
-                      testIdPrefix="command-palette-recent"
-                    >
-                      <div className="group/recent relative flex items-center">
-                        <CommandItem
-                          value={`${row.name} ${row.path} recent project`}
-                          onSelect={() =>
-                            runAction(
-                              () =>
-                                bridge.project.open({
-                                  path: row.path,
-                                  target: 'new-window',
-                                  entryPoint: 'recents',
-                                }),
-                              t`Failed to open project.`,
-                            )
-                          }
-                          data-testid={`command-palette-recent-${row.path}`}
-                          className="flex-1 items-start pr-8"
-                        >
-                          <RowIcon className="mt-0.5" />
-                          <div className="flex min-w-0 flex-col gap-1">
-                            <UserText className="truncate font-medium">{row.name}</UserText>
-                            {worktreeOf !== null ? (
-                              <span className="truncate text-muted-foreground text-xs">
-                                <Trans>worktree of {worktreeOf}</Trans>
-                              </span>
-                            ) : null}
-                            <UserText className="truncate text-muted-foreground text-xs">
-                              {row.path}
-                            </UserText>
-                          </div>
-                        </CommandItem>
-                        <RecentRemoveButton
-                          path={row.path}
-                          name={row.name}
-                          onRemoveRecent={onRemoveRecent}
-                          testIdPrefix="command-palette-recent"
-                        />
-                      </div>
-                    </RecentItemContextMenu>
-                  );
-                })}
-            </CommandGroup>
-          ) : null}
-
-          {showWorktrees && bridge ? (
-            <CommandGroup heading={t`Worktrees`}>
-              {matchedWorktrees.slice(0, 10).map((entry) => (
-                <CommandItem
-                  key={entry.branch}
-                  value={`${entry.branch} worktree branch`}
-                  onSelect={() => openWorktreeEntry(entry)}
-                  data-testid={`command-palette-worktree-${entry.branch}`}
-                  className="items-start"
-                >
-                  <GitBranch className="mt-0.5" />
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <UserText className="truncate font-medium">{entry.branch}</UserText>
-                    {entry.worktreePath === null ? (
-                      <span className="truncate text-muted-foreground text-xs">
-                        {t`Create worktree`}
-                      </span>
-                    ) : (
-                      <UserText className="truncate text-muted-foreground text-xs">
-                        {entry.worktreePath}
-                      </UserText>
-                    )}
-                  </div>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          ) : null}
-
-          {trailingCommandGroups.map((groupKey) => renderCommandGroup(groupKey))}
+          {rankedCommandBlocks.map((block) => (
+            <Fragment key={block.key}>{block.node}</Fragment>
+          ))}
 
           {showNavigation ? (
             <CommandGroup heading={t`Search`}>

@@ -132,6 +132,7 @@ vi.doMock('@/components/ui/command', () => ({
   CommandShortcut: ({ children }: { children?: ReactNode }) => (
     <span data-testid="command-shortcut">{children}</span>
   ),
+  useSelectFirstItemOn: () => {},
 }));
 
 vi.doMock('@/components/doc-panel-events', () => ({
@@ -989,6 +990,97 @@ describe('CommandPalette DOM behavior', () => {
       commandIds.indexOf('command-palette-switch-worktree'),
     );
     expect(screen.queryByTestId('command-palette-search-hint-empty')).toBeNull();
+  });
+
+  test('a label match in a later group leads a keyword-only match in an earlier group', async () => {
+    await renderPalette({ bridge: createBridge() });
+
+    await setQuery('show');
+
+    const commandIds = screen
+      .getAllByRole('option')
+      .map((option) => option.getAttribute('data-testid'));
+    expect(commandIds).toContain('command-palette-open-graph');
+    expect(commandIds.indexOf('command-palette-toggle-show-hidden-files')).toBeLessThan(
+      commandIds.indexOf('command-palette-open-graph'),
+    );
+    expect(commandIds[0]).not.toBe('command-palette-open-graph');
+  });
+
+  test('a dynamic block leads with its strongest row, not its source order', async () => {
+    worktreeModelMock = {
+      mainRoot: '/projects/current',
+      currentBranch: 'main',
+      remoteBranches: [],
+      entries: [
+        {
+          branch: 'dev',
+          worktreePath: '/projects/current/.ok/worktrees/dev',
+          isCurrent: false,
+          isMain: false,
+          locked: false,
+        },
+        {
+          branch: 'worktree-cleanup',
+          worktreePath: '/projects/current/.ok/worktrees/worktree-cleanup',
+          isCurrent: false,
+          isMain: false,
+          locked: false,
+        },
+      ],
+    };
+    await renderPalette({ bridge: createBridge() });
+
+    await setQuery('worktree');
+
+    const commandIds = screen
+      .getAllByRole('option')
+      .map((option) => option.getAttribute('data-testid'));
+    expect(commandIds).toContain('command-palette-worktree-dev');
+    expect(commandIds[0]).toBe('command-palette-worktree-worktree-cleanup');
+  });
+
+  test('a dynamic block whose rows match only by keyword follows a label-matching command group', async () => {
+    worktreeModelMock = {
+      mainRoot: '/projects/current',
+      currentBranch: 'main',
+      remoteBranches: [],
+      entries: [
+        {
+          branch: 'dev',
+          worktreePath: '/projects/current/.ok/worktrees/dev',
+          isCurrent: false,
+          isMain: false,
+          locked: false,
+        },
+      ],
+    };
+    await renderPalette({ bridge: createBridge() });
+
+    await setQuery('worktree');
+
+    const commandIds = screen
+      .getAllByRole('option')
+      .map((option) => option.getAttribute('data-testid'));
+    expect(commandIds).toContain('command-palette-worktree-dev');
+    expect(commandIds.indexOf('command-palette-new-worktree')).toBeLessThan(
+      commandIds.indexOf('command-palette-worktree-dev'),
+    );
+  });
+
+  test('within a group, label matches lead keyword-only matches', async () => {
+    await renderPalette({ bridge: createBridge() });
+
+    await setQuery('copy');
+
+    const commandIds = screen
+      .getAllByRole('option')
+      .map((option) => option.getAttribute('data-testid'));
+    expect(commandIds[0]).toBe('command-palette-copy-full-path');
+    expect(commandIds).toContain('command-palette-duplicate');
+    expect(commandIds.indexOf('command-palette-copy-relative-path')).toBeLessThan(
+      commandIds.indexOf('command-palette-duplicate'),
+    );
   });
 
   test('a rejected worktree scope shows its cause, refreshes, and never opens', async () => {
