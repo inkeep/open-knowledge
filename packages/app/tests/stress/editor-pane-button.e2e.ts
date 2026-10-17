@@ -40,6 +40,10 @@ async function boxOf(page: Page, selector: string): Promise<Box> {
   return box;
 }
 
+function threadRootSelector(threadId: string): string {
+  return `[data-session-id="${threadId}"] [data-agent-thread-root]`;
+}
+
 async function widthOf(page: Page, selector: string): Promise<number> {
   return await page.evaluate((s) => {
     const element = document.querySelector(s);
@@ -348,7 +352,7 @@ async function openThread(page: Page, title: string): Promise<string> {
       title: threadTitle,
     });
   }, title);
-  await expect(page.locator('[data-agent-thread-root]')).toBeVisible({
+  await expect(page.locator(threadRootSelector(threadId))).toBeVisible({
     timeout: THREAD_FIRST_RENDER_TIMEOUT_MS,
   });
   return threadId;
@@ -371,10 +375,10 @@ type ThreadColumnPart = 'header' | 'transcript' | 'composer';
 
 async function threadColumn(
   page: Page,
+  threadId: string,
   part: ThreadColumnPart = 'header',
 ): Promise<{ width: number; centerOffset: number }> {
-  return await page.evaluate((which) => {
-    const root = document.querySelector('[data-agent-thread-root]');
+  return await page.locator(threadRootSelector(threadId)).evaluate((root, which) => {
     if (!(root instanceof HTMLElement)) throw new Error('no thread root');
     const rootBox = root.getBoundingClientRect();
     const contentBox = (element: Element | null | undefined) => {
@@ -402,22 +406,30 @@ async function threadColumn(
 }
 
 test.describe('chat on its own', () => {
+  test('opens the requested thread when another thread stays mounted', async ({ page, api }) => {
+    await openWeb(page, api, 'thread-root-scope');
+    await setHeaderPane(page, 'agents', true);
+    const backgroundThreadId = await openThread(page, 'Background');
+    await openThread(page, 'Requested');
+    await expect(page.locator(threadRootSelector(backgroundThreadId))).toHaveCount(1);
+  });
+
   test('keeps its conversation at a reading width, centered, and goes back to full width beside another pane', async ({
     page,
     api,
   }) => {
     await openWeb(page, api, 'reading-width');
-    await openThread(page, 'Reading width');
+    const threadId = await openThread(page, 'Reading width');
     await expect(headerPaneButton(page, 'agents')).toHaveAttribute('aria-pressed', 'true');
-    const besideEditor = await threadColumn(page);
+    const besideEditor = await threadColumn(page, threadId);
 
     await setHeaderPane(page, 'editor', false);
     await expectFillsRow(page, [CHAT_PANE_CARD]);
     for (const part of ['header', 'transcript', 'composer'] as const) {
       await expect
-        .poll(async () => (await threadColumn(page, part)).width)
+        .poll(async () => (await threadColumn(page, threadId, part)).width)
         .toBeLessThanOrEqual(768);
-      expect((await threadColumn(page, part)).centerOffset).toBeLessThanOrEqual(1);
+      expect((await threadColumn(page, threadId, part)).centerOffset).toBeLessThanOrEqual(1);
     }
     expect(await widthOf(page, CHAT_PANE_CARD)).toBeGreaterThan(1200);
 
@@ -426,10 +438,11 @@ test.describe('chat on its own', () => {
       transfer.items.add(new File(['hello'], 'hello.txt', { type: 'text/plain' }));
       return transfer;
     });
-    await page.locator('[data-agent-thread-root]').dispatchEvent('dragenter', { dataTransfer });
+    const rootSelector = threadRootSelector(threadId);
+    await page.locator(rootSelector).dispatchEvent('dragenter', { dataTransfer });
     const overlay = page.getByTestId('agent-thread-drop-overlay');
     await expect(overlay).toBeVisible();
-    const rootBox = await boxOf(page, '[data-agent-thread-root]');
+    const rootBox = await boxOf(page, rootSelector);
     const overlayBox = await boxOf(page, '[data-testid="agent-thread-drop-overlay"]');
     expect(Math.abs(overlayBox.x - rootBox.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(overlayBox.width - rootBox.width)).toBeLessThanOrEqual(1);
@@ -437,7 +450,7 @@ test.describe('chat on its own', () => {
 
     await setHeaderPane(page, 'editor', true);
     await expect
-      .poll(async () => (await threadColumn(page)).width)
+      .poll(async () => (await threadColumn(page, threadId)).width)
       .toBeCloseTo(besideEditor.width, 0);
   });
 });

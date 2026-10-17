@@ -6,7 +6,7 @@ import type {
   ThreadServerFrame,
   ThreadStatus,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-import type { AgentThreadClient } from './thread-client';
+import type { AgentThreadClient, ThreadState } from './thread-client';
 
 interface DevThreadOptions {
   readonly agent: ThreadAgentInfo;
@@ -48,22 +48,69 @@ function toEvent(update: SessionUpdate): ThreadEvent {
 export function installAcpThreadHarness(client: AgentThreadClient): () => void {
   if (!import.meta.env.DEV) return () => {};
 
-  const owned = new Set<string>();
+  const owned = new Map<string, ThreadState>();
+  const previousReceiveServerFrame = client.receiveServerFrame;
+  const previousSetUrl = client.setUrl;
+  const previousCloseThread = client.closeThread;
+  const previousDeleteThread = client.deleteThread;
 
   const deliver = (frame: ThreadServerFrame): void => {
     client.receiveServerFrame(JSON.stringify(frame));
   };
 
+  const deliverUnwrapped = (frame: ThreadServerFrame): void => {
+    previousReceiveServerFrame.call(client, JSON.stringify(frame));
+  };
+
+  const captureOwned = (): void => {
+    for (const threadId of owned.keys()) {
+      const state = client.getThread(threadId);
+      if (state !== null) owned.set(threadId, state);
+    }
+  };
+
+  const restoreOwned = (): void => {
+    for (const [threadId, state] of owned) {
+      if (client.getThread(threadId) !== null) continue;
+      deliverUnwrapped({ op: 'subscribed', threadId, fromSeq: 0, info: state.info });
+      if (state.events.length > 0) {
+        deliverUnwrapped({ op: 'events', threadId, fromSeq: 0, events: [...state.events] });
+      }
+    }
+  };
+
+  client.receiveServerFrame = (data: string): void => {
+    captureOwned();
+    previousReceiveServerFrame.call(client, data);
+    restoreOwned();
+  };
+  client.setUrl = (url: string | null): void => {
+    const previousUrl = client.getThreadScope();
+    captureOwned();
+    previousSetUrl.call(client, url);
+    if (previousUrl !== null && url !== previousUrl) owned.clear();
+  };
+  client.closeThread = (threadId: string): void => {
+    owned.delete(threadId);
+    previousCloseThread.call(client, threadId);
+  };
+  client.deleteThread = (threadId: string): void => {
+    owned.delete(threadId);
+    previousDeleteThread.call(client, threadId);
+  };
+
   const subscribe = (options: DevThreadOptions, lastSeq: number): string => {
     syntheticCounter += 1;
     const threadId = options.threadId ?? `injected-${syntheticCounter}`;
-    owned.add(threadId);
+    const info = makeThreadInfo(options, threadId, lastSeq);
     deliver({
       op: 'subscribed',
       threadId,
       fromSeq: 0,
-      info: makeThreadInfo(options, threadId, lastSeq),
+      info,
     });
+    const state = client.getThread(threadId);
+    if (state !== null) owned.set(threadId, state);
     return threadId;
   };
 
@@ -102,6 +149,10 @@ export function installAcpThreadHarness(client: AgentThreadClient): () => void {
 
   window.__acpThreadHarness = harness;
   return () => {
+    client.receiveServerFrame = previousReceiveServerFrame;
+    client.setUrl = previousSetUrl;
+    client.closeThread = previousCloseThread;
+    client.deleteThread = previousDeleteThread;
     if (window.__acpThreadHarness === harness) {
       delete window.__acpThreadHarness;
     }

@@ -44,6 +44,23 @@ function messageTexts(client: AgentThreadClient, threadId: string): string[] {
   return (client.getThreadModel(threadId)?.items ?? []).filter(isMessage).map((item) => item.text);
 }
 
+class InertSocket {
+  static OPEN = 1;
+  readyState = 0;
+  send(): void {}
+  close(): void {}
+}
+
+function withInertSockets(client: AgentThreadClient, body: () => void): void {
+  vi.stubGlobal('WebSocket', InertSocket);
+  try {
+    body();
+  } finally {
+    client.setUrl(null);
+    vi.unstubAllGlobals();
+  }
+}
+
 function takeHarness(): AcpThreadHarness {
   const installed = window.__acpThreadHarness;
   if (installed === undefined) throw new Error('harness did not install');
@@ -148,6 +165,65 @@ describe('injected frames reach the store through the socket path', () => {
 
     expect(client.getThread(injected)).toBeNull();
     expect(client.getThread('from-server')?.info.title).toBe('Real thread');
+  });
+
+  test('a server roster does not evict an injected thread', () => {
+    const injected = harness.openThread({ agent: CODEX });
+
+    harness.frame({ op: 'threads', threads: [] });
+
+    expect(client.getThread(injected)?.info.agent).toEqual(CODEX);
+  });
+
+  test('a server roster preserves an injected transcript', () => {
+    const injected = harness.openThread({ agent: CODEX });
+
+    harness.pushUpdates(injected, [chunk('kept')]);
+    harness.frame({ op: 'threads', threads: [] });
+
+    expect(messageTexts(client, injected)).toEqual(['kept']);
+  });
+
+  test('closing an injected thread removes its roster protection', () => {
+    const injected = harness.openThread({ agent: CODEX });
+
+    client.closeThread(injected);
+    harness.frame({ op: 'threads', threads: [] });
+
+    expect(client.getThread(injected)).toBeNull();
+  });
+
+  test('deleting an injected thread removes its roster protection', () => {
+    const injected = harness.openThread({ agent: CODEX });
+
+    client.deleteThread(injected);
+    harness.frame({ op: 'threads', threads: [] });
+
+    expect(client.getThread(injected)).toBeNull();
+  });
+
+  test('changing projects removes prior injected thread ownership', () => {
+    withInertSockets(client, () => {
+      client.setUrl('ws://project-a');
+      const injected = harness.openThread({ agent: CODEX });
+
+      client.setUrl('ws://project-b');
+      harness.frame({ op: 'threads', threads: [] });
+
+      expect(client.getThread(injected)).toBeNull();
+    });
+  });
+
+  test('a thread injected before the first project URL survives that project roster', () => {
+    withInertSockets(client, () => {
+      const injected = harness.openThread({ agent: CODEX });
+      harness.pushUpdates(injected, [chunk('early')]);
+
+      client.setUrl('ws://project-a');
+      harness.frame({ op: 'threads', threads: [] });
+
+      expect(messageTexts(client, injected)).toEqual(['early']);
+    });
   });
 
   test('uninstalling withdraws the harness from the window', () => {
