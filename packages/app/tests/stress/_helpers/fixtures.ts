@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { ProblemType } from '@inkeep/open-knowledge-core';
 import { test as base } from '@playwright/test';
 import { resetContentToFixtureBaseline } from './content-reset.ts';
-import { coverageFixture, type E2eCoverage } from './coverage/e2e-coverage.ts';
+import { coverageFixture, type E2eCoverage } from './e2e-coverage/e2e-coverage.ts';
 import { gotoWhileLoadProgresses, requireDeadlineAt } from './load-progress.ts';
 import { type WorkerServing, workerServingFor } from './prebuilt/prebuilt-serving.ts';
 import {
