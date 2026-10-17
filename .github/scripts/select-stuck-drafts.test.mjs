@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
   cycleOf,
+  highestPublishedBeta,
   highestPublishedStable,
   isPipelineTag,
   objectAgeSeconds,
@@ -85,6 +86,22 @@ describe('highestPublishedStable', () => {
   });
 });
 
+describe('highestPublishedBeta', () => {
+  test('ignores drafts and stables, and orders the beta counter numerically', () => {
+    const releases = [
+      published('v0.99.0'),
+      betaDraft('v0.86.0-beta.20'),
+      publishedBeta('v0.86.0-beta.9'),
+      publishedBeta('v0.86.0-beta.10'),
+    ];
+    expect(highestPublishedBeta(releases)).toBe('0.86.0-beta.10');
+  });
+
+  test('is null when no beta has been published', () => {
+    expect(highestPublishedBeta([published('v0.68.3'), betaDraft('v0.69.0-beta.0')])).toBeNull();
+  });
+});
+
 describe('isPipelineTag', () => {
   test('admits the shapes the release pipeline creates', () => {
     expect(isPipelineTag('v0.68.3')).toBe(true);
@@ -126,7 +143,7 @@ describe('selectStuckDrafts', () => {
     expect(swept(releases)).toEqual(['v0.65.0', 'v0.66.0']);
   });
 
-  test('retains unpublished beta history even after a newer stable ships', () => {
+  test('keeps a beta draft that only a newer stable follows, with no newer published beta', () => {
     const releases = [published('v0.68.3'), betaDraft('v0.64.0-beta.6')];
     expect(swept(releases)).toEqual([]);
     expect(kept(releases)).toEqual(['v0.64.0-beta.6']);
@@ -140,6 +157,81 @@ describe('selectStuckDrafts', () => {
 
   test('a stable publication does not erase never-published betas of the same cycle', () => {
     expect(swept([published('v0.68.3'), betaDraft('v0.68.3-beta.1')])).toEqual([]);
+  });
+
+  test('sweeps a beta draft once a later beta of its cycle has published', () => {
+    const releases = [
+      published('v0.68.3'),
+      publishedBeta('v0.69.0-beta.5'),
+      betaDraft('v0.69.0-beta.6'),
+      publishedBeta('v0.69.0-beta.7'),
+    ];
+    expect(select(releases).sweep).toEqual([
+      { tagName: 'v0.69.0-beta.6', cycle: '0.69.0', supersededBy: 'v0.69.0-beta.7' },
+    ]);
+  });
+
+  test('sweeps a beta draft that a published beta of a later cycle supersedes', () => {
+    const releases = [published('v0.68.3'), betaDraft('v0.69.0-beta.1'), publishedBeta('v0.70.0-beta.0')];
+    expect(swept(releases)).toEqual(['v0.69.0-beta.1']);
+  });
+
+  test('keeps a beta draft when every newer beta is itself still a draft', () => {
+    const releases = [
+      published('v0.68.3'),
+      publishedBeta('v0.69.0-beta.5'),
+      betaDraft('v0.69.0-beta.6'),
+      betaDraft('v0.69.0-beta.7'),
+    ];
+    expect(swept(releases)).toEqual([]);
+    expect(select(releases).keep).toEqual([
+      { tagName: 'v0.69.0-beta.6', cycle: '0.69.0', reason: 'no newer beta has been published' },
+      { tagName: 'v0.69.0-beta.7', cycle: '0.69.0', reason: 'no newer beta has been published' },
+    ]);
+  });
+
+  test('spares a superseded beta draft younger than the age gate, since its build may still be running', () => {
+    const releases = [
+      published('v0.68.3'),
+      betaDraft('v0.69.0-beta.6', AT_GATE),
+      betaDraft('v0.69.0-beta.8', PAST_GATE),
+      publishedBeta('v0.69.0-beta.9'),
+    ];
+    expect(swept(releases)).toEqual(['v0.69.0-beta.8']);
+  });
+
+  test('sweeps exactly the five drafts stranded on inkeep/open-knowledge as of 2026-10-16', () => {
+    const at = (iso) => ({ updatedAt: iso });
+    const releases = [
+      { ...published('v0.86.22') },
+      { ...published('v0.82.0') },
+      { ...published('v0.79.4') },
+      { ...betaDraft('v0.79.4-beta.0'), ...at('2026-09-29T21:10:21Z') },
+      { ...betaDraft('v0.79.12-beta.0'), ...at('2026-10-01T00:28:26Z') },
+      publishedBeta('v0.79.12-beta.1'),
+      { ...betaDraft('v0.80.0-beta.0'), ...at('2026-10-01T10:04:39Z') },
+      publishedBeta('v0.80.0-beta.1'),
+      publishedBeta('v0.82.0-beta.0'),
+      { ...betaDraft('v0.82.0-beta.1'), ...at('2026-10-02T20:02:03Z') },
+      publishedBeta('v0.82.0-beta.2'),
+      publishedBeta('v0.86.0-beta.5'),
+      { ...betaDraft('v0.86.0-beta.6'), ...at('2026-10-11T17:41:29Z') },
+      publishedBeta('v0.86.0-beta.7'),
+      publishedBeta('v0.87.0-beta.3'),
+    ];
+    const result = selectStuckDrafts({
+      releases,
+      nowMs: Date.parse('2026-10-16T22:00:00Z'),
+      maxAgeSeconds: MAX_AGE,
+    });
+    expect(result.sweep.map((entry) => entry.tagName).sort()).toEqual([
+      'v0.79.12-beta.0',
+      'v0.79.4-beta.0',
+      'v0.80.0-beta.0',
+      'v0.82.0-beta.1',
+      'v0.86.0-beta.6',
+    ]);
+    expect(result.keep).toEqual([]);
   });
 
   test('spares a draft younger than the age gate, whatever its cycle', () => {
@@ -224,7 +316,7 @@ describe('selectStuckDrafts', () => {
       nowMs: NOW,
       maxAgeSeconds: MAX_AGE,
     });
-    expect(result).toEqual({ maxStable: null, sweep: [], keep: [] });
+    expect(result).toEqual({ maxStable: null, maxBeta: null, sweep: [], keep: [] });
   });
 });
 
@@ -234,13 +326,27 @@ describe('the module CLI contract the workflow depends on', () => {
   const run = (releases) =>
     spawnSync(process.execPath, [SCRIPT], {
       encoding: 'utf8',
-      env: { ...process.env, RELEASES_JSON: JSON.stringify(releases) },
+      input: JSON.stringify(releases),
     });
 
   test('stdout carries only the sweep tags, one per line', () => {
     const r = run([published('v0.68.3'), stableDraft('v0.65.0'), stableDraft('v0.66.0')]);
     expect(r.status).toBe(0);
     expect(r.stdout).toBe('v0.65.0\nv0.66.0\n');
+  });
+
+  test('an empty stdin fails loudly instead of reading as a listing with nothing to sweep', () => {
+    const r = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8', input: '' });
+    expect(r.status).toBe(1);
+    expect(r.stdout.trim()).toBe('');
+    expect(r.stderr).toContain('::error::select-stuck-drafts:');
+    expect(r.stderr).toContain('stdin');
+  });
+
+  test('an empty listing is still a clean, empty sweep', () => {
+    const r = run([]);
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim()).toBe('');
   });
 
   test('narration goes to stderr, never stdout', () => {
@@ -278,7 +384,7 @@ describe('the janitor workflow drives this module', () => {
   });
 
   test('the release list carries the object timestamp, not the commit date', () => {
-    const start = workflow.indexOf('RELEASES_JSON=$(');
+    const start = workflow.indexOf('releases_file=$(mktemp)');
     const end = workflow.indexOf('sweep=$(');
     if (start === -1 || end === -1)
       throw new Error('the janitor no longer lists releases then sweeps');
@@ -288,27 +394,25 @@ describe('the janitor workflow drives this module', () => {
     expect(listCommand).not.toContain('createdAt');
   });
 
-  test('the release list is narrowed to what the selector actually reads', () => {
-    const start = workflow.indexOf('RELEASES_JSON=$(');
+  test('the listing reaches the selector on stdin, published betas included', () => {
+    const start = workflow.indexOf('releases_file=$(mktemp)');
     const end = workflow.indexOf('sweep=$(');
     if (start === -1 || end === -1)
       throw new Error('the janitor no longer lists releases then sweeps');
-    expect(workflow.slice(start, end)).toContain('select(.draft or (.prerelease | not))');
+    const listCommand = workflow.slice(start, end);
+    const projection = /--jq '([^']*)'/.exec(listCommand)?.[1];
+    if (projection === undefined) throw new Error('the janitor no longer projects the listing with --jq');
+    expect(projection.trim()).toMatch(/^\.\[\] \| \{[^|]*\}$/);
+    expect(projection).toContain('isPrerelease: .prerelease');
+    expect(workflow).toMatch(/node \.github\/scripts\/select-stuck-drafts\.mjs < "\$\{?\w+\}?"/);
+    expect(workflow).not.toContain('RELEASES_JSON');
   });
 
-  test('dropping published prereleases does not change the sweep set', () => {
-    const releases = [
-      published('v0.68.3'),
-      publishedBeta('v0.68.3-beta.4'),
-      publishedBeta('v0.69.0-beta.1'),
-      stableDraft('v0.68.0'),
-      betaDraft('v0.68.1-beta.0'),
-      stableDraft('v0.69.0'),
-    ];
-    const narrowed = releases.filter((r) => r.isDraft || !r.isPrerelease);
-    expect(narrowed.length).toBeLessThan(releases.length);
-    expect(select(releases).sweep).not.toEqual([]);
-    expect(select(releases)).toEqual(select(narrowed));
+  test('published betas decide the beta sweep, so a listing without them would strand drafts', () => {
+    const releases = [published('v0.68.3'), betaDraft('v0.69.0-beta.1'), publishedBeta('v0.69.0-beta.2')];
+    const withoutPublishedBetas = releases.filter((r) => r.isDraft || !r.isPrerelease);
+    expect(swept(releases)).toEqual(['v0.69.0-beta.1']);
+    expect(swept(withoutPublishedBetas)).toEqual([]);
   });
 
   test('no inline filter re-narrows the sweep to prereleases', () => {

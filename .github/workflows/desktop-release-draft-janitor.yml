@@ -17,22 +17,6 @@ name: Draft release janitor
 # STUCK_DRAFT_MAX_AGE_SECONDS is 10800 (180 min), clearing 110 with margin for
 # cold caches and build-macos's one retry. An earlier 5400 was derived from
 # build-macos's 75-minute timeout alone and did not cover the path.
-#
-# The list is narrowed to drafts plus PUBLISHED STABLES. Stable and beta drafts
-# share the stable-cycle ceiling. The narrowing is gh's LOCAL --jq transform of the full paginated
-# response: the releases endpoint has no filter parameter, so every release
-# still crosses the wire; what is bounded is the payload handed to the module.
-# That matters because Published betas are dead weight and this repo has
-# hundreds: unnarrowed, the payload measured 90,670 bytes across 915 releases,
-# and it crosses execve's per-string MAX_ARG_STRLEN (131,072 on Linux, applying
-# to env as well as argv) at roughly 1,300 releases. Narrowed, the same snapshot
-# is 16,460 bytes across 175 entries and yields an identical sweep set.
-#
-# Age is a backstop, not the real protection: an in-flight cycle is kept by the
-# cycle gate whatever its age, and age is load-bearing only where a draft's
-# cycle EQUALS the just-published stable. It cannot cover an operator re-running
-# a days-old stranded build at all; the sweep cap and dry_run are the rails for
-# that case.
 
 on:
   schedule:
@@ -79,12 +63,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          RELEASES_JSON=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate \
-            --jq '.[] | select(.draft or (.prerelease | not)) | {tagName: .tag_name, isDraft: .draft, isPrerelease: .prerelease, updatedAt: .updated_at}' \
-            | jq -sc '.')
-          export RELEASES_JSON
+          releases_file=$(mktemp)
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate \
+            --jq '.[] | {tagName: .tag_name, isDraft: .draft, isPrerelease: .prerelease, updatedAt: .updated_at}' \
+            | jq -sc '.' > "${releases_file}"
 
-          sweep=$(node .github/scripts/select-stuck-drafts.mjs)
+          sweep=$(node .github/scripts/select-stuck-drafts.mjs < "${releases_file}")
 
           if [ -z "${sweep}" ]; then
             echo "Nothing to sweep."
@@ -114,6 +98,6 @@ jobs:
           printf '%s\n' "${sweep}" | while IFS= read -r tag; do
             [ -z "${tag}" ] && continue
             gh release delete "${tag}" --repo "$GITHUB_REPOSITORY" --yes
-            echo "::notice::Swept stuck draft ${tag}: its cycle is closed. Git tag kept."
+            echo "::notice::Swept stuck draft ${tag}: a newer published release supersedes it. Git tag kept."
           done
           echo "Draft-release janitor sweep complete."
