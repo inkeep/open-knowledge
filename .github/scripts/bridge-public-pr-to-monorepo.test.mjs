@@ -9,7 +9,6 @@ import * as bridge from './bridge-public-pr-to-monorepo.mjs';
 import {
   applyPatchWithConflictDetection,
   bridgeCommitSubject,
-  CLA_VERIFIED_DISPATCH_EVENT,
   buildCommitAttribution,
   buildWelcomePublicComment,
   checkOrgMembership,
@@ -348,35 +347,6 @@ describe('createClaGateGh', () => {
     });
   });
 
-  test('a successful setVerifiedStatus then signals the internal refresh for that head', async () => {
-    const { request, calls } = fakeRequest(null);
-    const gh = createClaGateGh({ ...deps, request });
-    await gh.setVerifiedStatus({ head: { sha: 'internal-head' } }, 'success', 'CLA signed.');
-    expect(calls).toHaveLength(2);
-    expect(calls[0].path).toBe('/repos/inkeep/agents-private/statuses/internal-head');
-    expect(calls[1]).toMatchObject({
-      token: 'internal-token',
-      method: 'POST',
-      path: '/repos/inkeep/agents-private/dispatches',
-      body: { event_type: CLA_VERIFIED_DISPATCH_EVENT, client_payload: { sha: 'internal-head' } },
-    });
-  });
-
-  test('a failed status post sends no refresh signal', async () => {
-    const calls = [];
-    const request = async (args) => {
-      calls.push(args);
-      throw new Error('forbidden (403)');
-    };
-    const gh = createClaGateGh({ ...deps, request });
-    await expect(
-      gh.setVerifiedStatus({ head: { sha: 'internal-head' } }, 'success', 'CLA signed.'),
-    ).rejects.toThrow(/403/);
-    expect(calls.map((call) => call.path)).toEqual([
-      '/repos/inkeep/agents-private/statuses/internal-head',
-    ]);
-  });
-
   test("isOrgMember checks the internal repo's org on the internal token", async () => {
     const { request, calls } = fakeRequest(null);
     const gh = createClaGateGh({ ...deps, request });
@@ -577,7 +547,6 @@ async function runBridgeSync({
     draftMutation: null,
     comment: null,
     statuses: [],
-    dispatches: [],
     validationRequests: [],
     internalBodies: [],
   };
@@ -727,14 +696,6 @@ async function runBridgeSync({
       });
       return json({});
     }
-    if (method === 'POST' && url.endsWith('/repos/inkeep/agents-private/dispatches')) {
-      recorded.dispatches.push({
-        authorization: init.headers.Authorization,
-        afterStatus: recorded.statuses.at(-1),
-        ...JSON.parse(init.body),
-      });
-      return json(null, 204);
-    }
     if (method === 'POST' && url.includes('/issues/310/comments')) {
       recorded.comment = JSON.parse(init.body).body;
       return json({ html_url: 'https://github.com/x/comments/1' });
@@ -801,25 +762,9 @@ describe('syncPublicPr metadata-event composition (conflict-hold fail-open guard
 });
 
 describe('bridge CLA status refresh', () => {
-  test('a successful sync signals the internal refresh and never drives Actions', async () => {
+  test('a successful sync only posts status and never drives Actions', async () => {
     const result = await runBridgeSync({ claStatus: 'success' });
     expect(result.validationRequests).toEqual([]);
-    const status = result.statuses.at(-1);
-    expect(status).toMatchObject({ context: 'cla/verified', state: 'success' });
-    expect(result.dispatches).toEqual([
-      {
-        authorization: 'Bearer int',
-        afterStatus: status,
-        event_type: CLA_VERIFIED_DISPATCH_EVENT,
-        client_payload: { sha: status.sha },
-      },
-    ]);
-  });
-
-  test('an unsigned sync sends no refresh signal', async () => {
-    const result = await runBridgeSync({ claStatus: 'failure' });
-    expect(result.statuses.at(-1)).toMatchObject({ state: 'failure' });
-    expect(result.dispatches).toEqual([]);
   });
 
   test.each(['success', 'failure', 'pending', null])(
@@ -837,16 +782,6 @@ describe('bridge CLA status refresh', () => {
           state: claStatus === 'success' ? 'success' : 'failure',
         }),
       ]);
-      expect(result.dispatches).toEqual(
-        claStatus === 'success'
-          ? [
-              expect.objectContaining({
-                event_type: CLA_VERIFIED_DISPATCH_EVENT,
-                client_payload: { sha: 'internal-head-sha' },
-              }),
-            ]
-          : [],
-      );
       expect(result.validationRequests).toEqual([]);
       expect(result.internalBodies).toEqual([]);
     },
@@ -877,7 +812,6 @@ describe('bridge CLA status refresh', () => {
       ...overrides,
     });
     expect(result.statuses).toEqual([]);
-    expect(result.dispatches).toEqual([]);
     expect(result.draftMutation).toBeNull();
     expect(result.internalBodies).toEqual([]);
   });
