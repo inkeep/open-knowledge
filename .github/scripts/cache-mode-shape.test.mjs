@@ -380,6 +380,42 @@ describe('cache-mode sweep self-tests', () => {
     ).toEqual([]);
   });
 
+  test('a call into a local reusable workflow is swept through the jobs it calls', () => {
+    const reusable = (name, jobs) => {
+      const dir = join(fixtureRoot, '.github', 'workflows');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, name), JSON.stringify({ on: { workflow_call: {} }, jobs }));
+      return `./.github/workflows/${name}`;
+    };
+    const clean = reusable('clean.yml', {
+      file: { permissions: { issues: 'write' }, 'cache-mode': 'none', steps: [slack] },
+    });
+    const restores = reusable('restores.yml', {
+      file: { permissions: { issues: 'write' }, steps: [restore] },
+    });
+    const caller = (uses) => ({ permissions: { issues: 'write' }, uses });
+    expect(restoresNothingProblems({}, caller(clean), fixtureRoot)).toEqual([]);
+    expect(cacheModeProblems({}, caller(clean), fixtureRoot)).toEqual([]);
+    const refused = restoresNothingProblems({}, caller(restores), fixtureRoot).join('\n');
+    expect(refused).toMatch(
+      /through \.\/\.github\/workflows\/restores\.yml#file: declares no cache-mode/,
+    );
+    expect(refused).toMatch(/touches the cache \(extract\)/);
+    expect(cacheModeProblems({}, caller(restores), fixtureRoot).join('\n')).toMatch(
+      /through \.\/\.github\/workflows\/restores\.yml#file: declares no cache-mode/,
+    );
+    expect(
+      restoresNothingProblems({}, caller('./.github/workflows/missing.yml'), fixtureRoot),
+    ).toEqual([
+      'calls the reusable workflow ./.github/workflows/missing.yml, which this sweep does not trace',
+    ]);
+    expect(
+      restoresNothingProblems({}, caller('owner/repo/.github/workflows/x.yml@v1'), fixtureRoot),
+    ).toEqual([
+      'calls the reusable workflow owner/repo/.github/workflows/x.yml@v1, which this sweep does not trace',
+    ]);
+  });
+
   test('each mode is accepted exactly where the operations need it', () => {
     const accepted = {
       'none with no cache step': [{}, credentialedJob('none')],

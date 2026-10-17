@@ -102,10 +102,26 @@ function narrowestMode(ops) {
 
 export const effectiveMode = (workflow, job) => job['cache-mode'] ?? workflow['cache-mode'] ?? null;
 
+function calledWorkflow(uses, root) {
+  if (typeof uses !== 'string' || !uses.startsWith('./.github/workflows/')) return null;
+  const path = join(root, uses);
+  if (!existsSync(path)) return null;
+  const workflow = parse(readFileSync(path, 'utf8'));
+  return workflow?.jobs ? workflow : null;
+}
+
+function throughCall(job, root, check) {
+  const called = calledWorkflow(job.uses, root);
+  if (called === null)
+    return [`calls the reusable workflow ${job.uses}, which this sweep does not trace`];
+  return Object.entries(called.jobs).flatMap(([id, inner]) =>
+    check(called, inner, root).map((problem) => `through ${job.uses}#${id}: ${problem}`),
+  );
+}
+
 export function cacheModeProblems(workflow, job, root = OK_ROOT) {
   if (credentialReasons(workflow, job).length === 0) return [];
-  if (job.uses !== undefined)
-    return [`calls the reusable workflow ${job.uses}, which this sweep does not trace`];
+  if (job.uses !== undefined) return throughCall(job, root, cacheModeProblems);
   const ops = cacheOps(job.steps, root);
   const mode = effectiveMode(workflow, job);
   const problems = [];
@@ -131,8 +147,7 @@ export function cacheModeProblems(workflow, job, root = OK_ROOT) {
 }
 
 export function restoresNothingProblems(workflow, job, root = OK_ROOT) {
-  if (job.uses !== undefined)
-    return [`calls the reusable workflow ${job.uses}, which this sweep does not trace`];
+  if (job.uses !== undefined) return throughCall(job, root, restoresNothingProblems);
   const problems = [];
   const mode = effectiveMode(workflow, job);
   if (mode === null) problems.push('declares no cache-mode, so the trigger default applies');
