@@ -426,6 +426,7 @@ interface SessionsHostSharedProps {
   readonly launch?: TerminalLaunchIntent | null;
   readonly commandLaunch?: { readonly id: TerminalCommandId; readonly nonce: number } | null;
   readonly threadLaunch?: ThreadLaunchIntent | null;
+  readonly focusRevealRequestNonce?: number;
   readonly installedClis?: Partial<Record<TerminalCli, boolean>>;
   readonly container: HTMLElement | null;
   readonly isShowing: boolean;
@@ -478,6 +479,7 @@ export function SessionsHost({
   launch = null,
   commandLaunch = null,
   threadLaunch = null,
+  focusRevealRequestNonce = 0,
   installedClis,
   container,
   isShowing,
@@ -605,6 +607,13 @@ export function SessionsHost({
   const persistSuppressedRef = useRef<() => boolean>(() => false);
   const lastHandledCommandNonceRef = useRef<number | null>(null);
   const prevVisibleRef = useRef(isWindow ? false : visible);
+  const revealFocusRequestedRef = useRef(false);
+  const revealFocusRequestNonceRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (revealFocusRequestNonceRef.current === focusRevealRequestNonce) return;
+    revealFocusRequestNonceRef.current = focusRevealRequestNonce;
+    if (focusRevealRequestNonce > 0) revealFocusRequestedRef.current = true;
+  }, [focusRevealRequestNonce]);
   const consumedRestoreRevealNonceRef = useRef(terminalRestoreRevealNonce);
   const ptyIdBySessionRef = useRef(new Map<string, string>());
   const stripLaunchNonceRef = useRef(0);
@@ -1867,6 +1876,18 @@ export function SessionsHost({
   useEffect(() => {
     if (!isShowing || attachedHostEl == null) return;
     const focusOrigin = document.activeElement;
+    const focusRevealRequested = revealFocusRequestedRef.current;
+    revealFocusRequestedRef.current = false;
+    const focusOriginPane =
+      focusOrigin instanceof HTMLElement
+        ? focusOrigin.getAttribute('data-header-pane-button')
+        : null;
+    const focusOriginIsOtherPaneButton =
+      !focusRevealRequested &&
+      hostThreads &&
+      focusRemainsUsable(focusOrigin) &&
+      focusOriginPane !== null &&
+      focusOriginPane !== 'agents';
     if (revealFocusHoldRef.current && focusRemainsUsable(focusOrigin)) {
       revealFocusRef.current = null;
       return;
@@ -1884,12 +1905,12 @@ export function SessionsHost({
       initialFallbackLanding = fallback != null && document.activeElement === fallback;
     }
     const emptySurfaceLanding =
-      hostThreads && initialActive == null
+      hostThreads && initialActive == null && !focusOriginIsOtherPaneButton
         ? (focusAvailableButton(emptyAgentActionButtonRef.current) ??
           focusAvailableButton(emptyAgentStateFallbackButton(attachedHostEl)))
         : null;
     revealFocusRef.current = { pendingThreadId: revealFocusRef.current?.pendingThreadId ?? null };
-    let landed = initialFallbackLanding;
+    let landed = focusOriginIsOtherPaneButton || initialFallbackLanding;
     let attemptedFallback: HTMLElement | null = null;
     let retryFrame: number | null = null;
     let retired = false;
@@ -1902,6 +1923,16 @@ export function SessionsHost({
       const targetId = revealFocusRef.current?.pendingThreadId ?? activeSessionIdRef.current;
       const active = sessionsRef.current.find((s) => s.id === targetId);
       if (active == null) return;
+      if (
+        focusOriginIsOtherPaneButton &&
+        document.activeElement === focusOrigin &&
+        focusRemainsUsable(focusOrigin)
+      ) {
+        const revealFocus = revealFocusRef.current;
+        if (revealFocus != null) revealFocus.pendingThreadId = active.id;
+        landed = true;
+        return;
+      }
       const focused = document.activeElement;
       const fallback = fallbackSessionFocusElement(active);
       if (

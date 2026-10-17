@@ -170,8 +170,8 @@ describe('HeaderPaneButtons', () => {
     await user.click(terminal);
 
     expect(requests).toEqual([
-      { pane: 'agents', open: true },
-      { pane: 'terminal', open: true },
+      { pane: 'agents', open: true, reason: 'user' },
+      { pane: 'terminal', open: true, reason: 'user' },
     ]);
   });
 
@@ -212,8 +212,8 @@ describe('HeaderPaneButtons', () => {
     expect(document.activeElement).toBe(terminal);
 
     expect(requests).toEqual([
-      { pane: 'agents', open: true },
-      { pane: 'terminal', open: false },
+      { pane: 'agents', open: true, reason: 'user' },
+      { pane: 'terminal', open: false, reason: 'user' },
     ]);
   });
 
@@ -267,8 +267,8 @@ describe('HeaderPaneButtons', () => {
     await user.keyboard(' ');
 
     expect(requests).toEqual([
-      { pane: 'agents', open: false },
-      { pane: 'terminal', open: true },
+      { pane: 'agents', open: false, reason: 'user' },
+      { pane: 'terminal', open: true, reason: 'user' },
     ]);
     expect(document.activeElement).toBe(terminal);
   });
@@ -499,8 +499,8 @@ describe('the Editor header button', () => {
     await user.keyboard('{Enter}');
 
     expect(requests).toEqual([
-      { pane: 'editor', open: false },
-      { pane: 'editor', open: true },
+      { pane: 'editor', open: false, reason: 'user' },
+      { pane: 'editor', open: true, reason: 'user' },
     ]);
     expect(document.activeElement).toBe(editor);
   });

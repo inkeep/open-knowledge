@@ -714,6 +714,7 @@ export function EditorPane() {
   } | null>(null);
   const [threadLaunch, setThreadLaunch] = useState<ThreadLaunchIntent | null>(null);
   const threadLaunchNonceRef = useRef(0);
+  const [agentsFocusRevealNonce, setAgentsFocusRevealNonce] = useState(0);
   const [placements, setPlacements] = useState<SessionPlacements>({
     terminal: { container: null, isShowing: false },
     agents: { container: null, isShowing: false },
@@ -797,8 +798,10 @@ export function EditorPane() {
   useLayoutEffect(publishPaneVisibility);
 
   useLayoutEffect(() => {
-    return paneVisibilityStore.subscribeRequests(({ pane, open }) => {
+    return paneVisibilityStore.subscribeRequests(({ pane, open, reason }) => {
       if (noteWindow) return;
+      if (pane === 'agents' && open && reason === 'user')
+        setAgentsFocusRevealNonce((nonce) => nonce + 1);
       if (exclusive) {
         if (pane === 'terminal' && !terminalAvailable) return;
         applyPaneRequest(pane, open);
@@ -885,9 +888,11 @@ export function EditorPane() {
     else selectPane('editor');
     setEditorShown(!editorShown);
   });
-  const toggleAgentsEvent = useEffectEvent(() =>
-    handleAgentsVisibleChange(!effectiveAgentsVisible),
-  );
+  const toggleAgentsEvent = useEffectEvent(() => {
+    const next = !effectiveAgentsVisible;
+    if (next) setAgentsFocusRevealNonce((nonce) => nonce + 1);
+    handleAgentsVisibleChange(next);
+  });
   const toggleTerminalEvent = useEffectEvent(() =>
     handleTerminalVisibleChange(!effectiveTerminalVisible),
   );
@@ -1273,6 +1278,7 @@ export function EditorPane() {
             onPreferredSessionHostReady={onPreferredSessionHostReady}
             agentsVisibilityRestoreSettled={desktopBridge == null || dockRestoreSettled}
             threadLaunch={threadLaunch}
+            focusRevealRequestNonce={agentsFocusRevealNonce}
             installedClis={installedClis}
             container={placements.agents.container}
             isShowing={placements.agents.isShowing}

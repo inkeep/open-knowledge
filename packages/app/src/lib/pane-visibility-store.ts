@@ -16,6 +16,7 @@ export type PaneVisibilitySnapshot = {
 export type PaneVisibilityRequest = {
   readonly pane: PaneId;
   readonly open: boolean;
+  readonly reason?: 'user';
 };
 
 export interface PaneVisibilityStore {
@@ -23,7 +24,7 @@ export interface PaneVisibilityStore {
   isExclusive(): boolean;
   subscribe(listener: () => void): () => void;
   publish(next: PaneVisibilitySnapshot, exclusive?: boolean): void;
-  request(pane: PaneId, open: boolean): void;
+  request(pane: PaneId, open: boolean, reason?: 'user'): void;
   subscribeRequests(handler: (request: PaneVisibilityRequest) => void): () => void;
 }
 
@@ -74,8 +75,12 @@ function createPaneVisibilityStore(): PaneVisibilityStore & { reset(): void } {
       exclusive = nextExclusive;
       for (const l of listeners) l();
     },
-    request(pane, open): void {
-      const request: PaneVisibilityRequest = { pane, open };
+    request(pane, open, reason): void {
+      const request: PaneVisibilityRequest = {
+        pane,
+        open,
+        ...(reason === 'user' ? { reason } : {}),
+      };
       if (requestHandlers.size === 0) {
         waitingRequests.set(pane, request);
         return;

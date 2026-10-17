@@ -88,7 +88,7 @@ function HeaderPaneButton({ pane, pressed }: HeaderPaneButtonState) {
           onClick={(event) => {
             const button = event.currentTarget;
             if (pressed && paneVisibilityStore.isExclusive()) return;
-            paneVisibilityStore.request(pane, !pressed);
+            paneVisibilityStore.request(pane, !pressed, 'user');
             if (pressed) queueMicrotask(() => button.focus());
           }}
           className={cn('text-muted-foreground', pressed && PRESSED_CLASSES)}

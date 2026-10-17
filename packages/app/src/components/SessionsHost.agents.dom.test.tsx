@@ -278,6 +278,17 @@ function agentsDockWrites(setDockState: ReturnType<typeof vi.fn>) {
   );
 }
 
+function makeUsableEditorHeader(): HTMLButtonElement {
+  const button = document.body.appendChild(document.createElement('button'));
+  button.type = 'button';
+  button.setAttribute('data-header-pane-button', 'editor');
+  Object.defineProperty(button, 'getClientRects', {
+    configurable: true,
+    value: () => [{ width: 1, height: 1 }],
+  });
+  return button;
+}
+
 function makeTerminalBridge(): OkDesktopBridge {
   return {
     terminal: {
@@ -317,6 +328,7 @@ function Harness({
   onRequestEditorFocus,
   onPreferredSessionHostReady,
   installedClis = {},
+  focusRevealRequestNonce = 0,
 }: {
   bridge?: OkDesktopBridge | null;
   initialVisible?: boolean;
@@ -331,6 +343,7 @@ function Harness({
   onRequestEditorFocus?: () => void;
   onPreferredSessionHostReady?: () => void;
   installedClis?: { claude?: boolean };
+  focusRevealRequestNonce?: number;
 }) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(initialVisible);
@@ -367,6 +380,7 @@ function Harness({
         visible={visible}
         agentsVisibilityRestoreSettled={restoreSettled}
         threadLaunch={threadLaunch}
+        focusRevealRequestNonce={focusRevealRequestNonce}
         onVisibleChange={(v) => {
           onVisibleChange?.(v);
           setVisible(v);
@@ -1882,6 +1896,71 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     } finally {
       disqualified.remove();
       unrelated.remove();
+    }
+  });
+
+  test('an empty reveal does not steal focus from the Editor pane header', async () => {
+    const control = makeControl();
+    render(<Harness initialVisible initialShowing={false} control={control} />);
+    await screen.findByTestId('sessions-dock-empty');
+
+    const outside = makeUsableEditorHeader();
+    try {
+      outside.focus();
+      expect(document.activeElement).toBe(outside);
+
+      act(() => control.current?.setShowing(true));
+      await act(async () => {});
+
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      outside.remove();
+    }
+  });
+
+  test('a user reveal requested before the host mounts still focuses the empty Agents surface', async () => {
+    const control = makeControl();
+    setInitialRosterIds(new Set());
+    render(
+      <Harness
+        initialVisible
+        initialShowing={false}
+        focusRevealRequestNonce={1}
+        control={control}
+      />,
+    );
+    const action = await screen.findByRole('button', { name: 'Configure agents' });
+    const outside = makeUsableEditorHeader();
+    try {
+      outside.focus();
+      act(() => control.current?.setShowing(true));
+      await waitFor(() => expect(document.activeElement).toBe(action));
+    } finally {
+      outside.remove();
+    }
+  });
+
+  test('an empty reveal keeps the Editor pane header focused when a session arrives later', async () => {
+    vi.useFakeTimers();
+    const control = makeControl();
+    render(<Harness initialVisible={false} control={control} />);
+    const outside = makeUsableEditorHeader();
+    try {
+      outside.focus();
+      act(() => control.current?.setVisible(true));
+      expect(screen.getByTestId('sessions-dock-empty')).toBeDefined();
+      expect(document.activeElement).toBe(outside);
+
+      act(() => setOpenThreads([makeThread({ threadId: 'arrived', title: 'Arrived' })]));
+
+      expect(screen.getByRole('tab', { name: /Arrived/ })).toBeDefined();
+      await act(async () => {});
+      act(() => vi.advanceTimersByTime(5_000));
+      await act(async () => {});
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      outside.remove();
+      vi.useRealTimers();
     }
   });
 
