@@ -6,6 +6,7 @@ import {
   EMPTY_QUERY_NAV_LIMIT,
   fetchWorkspaceSearchEntries,
   matchesCommandQuery,
+  rankCommandQuery,
   searchWorkspaceEntries,
   splitTextByQueryMatches,
   type WorkspaceEntry,
@@ -174,6 +175,12 @@ describe('classifyOmnibarSearchHint', () => {
     expect(classifyOmnibarSearchHint('mystery', [])).toBe('empty');
   });
 
+  test('no empty verdict while the search has not answered yet', () => {
+    expect(classifyOmnibarSearchHint('check', [], { pending: true })).toBe('idle');
+    const results: WorkspaceEntry[] = [{ kind: 'file', path: 'notes/check', name: 'check' }];
+    expect(classifyOmnibarSearchHint('check', results, { pending: true })).toBe('name-only');
+  });
+
   test('name-only when results exist but no entry carries a snippet', () => {
     const results: WorkspaceEntry[] = [
       { kind: 'file', path: 'notes/foo', name: 'foo' },
@@ -291,6 +298,43 @@ describe('matchesCommandQuery', () => {
         toggleTerminal?.keywords ?? [],
       ),
     ).toBe(true);
+  });
+});
+
+describe('rankCommandQuery', () => {
+  const SWITCH_WORKTREE_KEYWORDS = ['worktree', 'switch', 'branch', 'change', 'checkout'];
+
+  test('returns null when the command does not match', () => {
+    expect(rankCommandQuery('Open graph', 'cursor')).toBeNull();
+  });
+
+  test('ranks every command equally on an empty query', () => {
+    expect(rankCommandQuery('New file', '')).toBe(rankCommandQuery('Switch worktree', '  '));
+  });
+
+  test('a label word match outranks a match found only in keywords', () => {
+    const labelRank = rankCommandQuery('Check for updates', 'check', ['update', 'check']);
+    const keywordRank = rankCommandQuery('Switch worktree', 'check', SWITCH_WORKTREE_KEYWORDS);
+    expect(labelRank).not.toBeNull();
+    expect(keywordRank).not.toBeNull();
+    expect(labelRank as number).toBeLessThan(keywordRank as number);
+  });
+
+  test('a term starting a label word outranks one found mid-word', () => {
+    const wordStart = rankCommandQuery('New worktree', 'work');
+    const midWord = rankCommandQuery('Show Terminal', 'min');
+    const keywordOnly = rankCommandQuery('Report a bug', 'issue', ['bug report issue']);
+    expect(wordStart as number).toBeLessThan(midWord as number);
+    expect(midWord as number).toBeLessThan(keywordOnly as number);
+  });
+
+  test('a multi-word query ranks by its weakest term', () => {
+    expect(rankCommandQuery('Report a bug', 'report bug', ['bug report issue'])).toBe(
+      rankCommandQuery('Report a bug', 'bug'),
+    );
+    expect(rankCommandQuery('Report a bug', 'report issue', ['bug report issue'])).toBe(
+      rankCommandQuery('Report a bug', 'issue', ['bug report issue']),
+    );
   });
 });
 

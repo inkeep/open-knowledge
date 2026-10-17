@@ -290,15 +290,43 @@ export async function fetchWorkspaceSearchEntries(
   };
 }
 
+const COMMAND_RANK_LABEL_WORD_START = 0;
+const COMMAND_RANK_LABEL_INSIDE_WORD = 1;
+const COMMAND_RANK_KEYWORD_ONLY = 2;
+
+function commandTermRank(label: string, keywordText: string, term: string): number | null {
+  if (new RegExp(`(?:^|[^\\p{L}\\p{N}])${escapeRegExp(term)}`, 'u').test(label)) {
+    return COMMAND_RANK_LABEL_WORD_START;
+  }
+  if (label.includes(term)) return COMMAND_RANK_LABEL_INSIDE_WORD;
+  if (`${label} ${keywordText}`.includes(term)) return COMMAND_RANK_KEYWORD_ONLY;
+  return null;
+}
+
+export function rankCommandQuery(
+  label: string,
+  query: string,
+  keywords: readonly string[] = [],
+): number | null {
+  const normalizedQuery = normalize(query);
+  if (!normalizedQuery) return COMMAND_RANK_LABEL_WORD_START;
+  const normalizedLabel = normalize(label);
+  const keywordText = normalize(keywords.join(' '));
+  let rank = COMMAND_RANK_LABEL_WORD_START;
+  for (const term of queryTerms(normalizedQuery)) {
+    const termRank = commandTermRank(normalizedLabel, keywordText, term);
+    if (termRank === null) return null;
+    rank = Math.max(rank, termRank);
+  }
+  return rank;
+}
+
 export function matchesCommandQuery(
   label: string,
   query: string,
   keywords: readonly string[] = [],
 ): boolean {
-  const normalizedQuery = normalize(query);
-  if (!normalizedQuery) return true;
-  const haystack = normalize([label, ...keywords].join(' '));
-  return queryTerms(normalizedQuery).every((term) => haystack.includes(term));
+  return rankCommandQuery(label, query, keywords) !== null;
 }
 
 export type OmnibarSearchHintMode = 'idle' | 'content' | 'name-only' | 'empty' | 'truncated';
@@ -306,10 +334,10 @@ export type OmnibarSearchHintMode = 'idle' | 'content' | 'name-only' | 'empty' |
 export function classifyOmnibarSearchHint(
   query: string,
   visibleResults: readonly (WorkspaceEntry | WorkspaceSearchEntry)[],
-  options: { truncated?: boolean } = {},
+  options: { truncated?: boolean; pending?: boolean } = {},
 ): OmnibarSearchHintMode {
   if (query.trim() === '') return 'idle';
-  if (visibleResults.length === 0) return 'empty';
+  if (visibleResults.length === 0) return options.pending ? 'idle' : 'empty';
   if (options.truncated) return 'truncated';
   for (const entry of visibleResults) {
     if ('snippet' in entry && typeof entry.snippet === 'string' && entry.snippet.length > 0) {

@@ -970,6 +970,27 @@ describe('CommandPalette DOM behavior', () => {
     expect(screen.queryByTestId('command-palette-report-bug')).toBeNull();
   });
 
+  test('a command whose label matches leads a command that matched only a keyword', async () => {
+    pageListLoading = true;
+    await renderPalette({ bridge: createBridge() });
+
+    await setQuery('check');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('command-palette-search-preparing')).not.toBeNull(),
+    );
+    const commandIds = screen
+      .getAllByRole('option')
+      .map((option) => option.getAttribute('data-testid'))
+      .filter((id) => id?.startsWith('command-palette-'));
+    expect(commandIds[0]).toBe('command-palette-check-for-updates');
+    expect(commandIds).toContain('command-palette-switch-worktree');
+    expect(commandIds.indexOf('command-palette-toggle-spell-check')).toBeLessThan(
+      commandIds.indexOf('command-palette-switch-worktree'),
+    );
+    expect(screen.queryByTestId('command-palette-search-hint-empty')).toBeNull();
+  });
+
   test('a rejected worktree scope shows its cause, refreshes, and never opens', async () => {
     worktreeModelMock = {
       mainRoot: '/projects/current',

@@ -43,6 +43,7 @@ import {
   classifyOmnibarSearchHint,
   fetchWorkspaceSearchEntries,
   matchesCommandQuery,
+  rankCommandQuery,
   SEMANTIC_RESULT_LIMIT,
   searchWorkspaceEntries,
   splitTextByQueryMatches,
@@ -730,8 +731,14 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
         if (!cmd.available(paletteCtx)) return [];
         if (cmd.visibility === 'search-only' && trimmedDeferredQuery === '') return [];
         const label = cmd.label(paletteCtx);
-        return matchesCommandQuery(label, deferredQuery, cmd.keywords) ? [{ cmd, label }] : [];
-      });
+        const rank = rankCommandQuery(label, deferredQuery, cmd.keywords);
+        return rank === null ? [] : [{ cmd, label, rank }];
+      }).sort((a, b) => a.rank - b.rank);
+  const bestCommandRank = (group: PaletteCommandGroup) =>
+    visibleFixedCommands.find((row) => row.cmd.group === group)?.rank ?? Number.POSITIVE_INFINITY;
+  const trailingCommandGroups = (['file', 'view', 'terminal', 'app'] as const)
+    .slice()
+    .sort((a, b) => bestCommandRank(a) - bestCommandRank(b));
   const hasVisibleFixedCommand = visibleFixedCommands.length > 0;
   const commandGroupHeading = (group: PaletteCommandGroup): string => {
     switch (group) {
@@ -1423,9 +1430,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
             </CommandGroup>
           ) : null}
 
-          {(['file', 'view', 'terminal', 'app'] as const).map((groupKey) =>
-            renderCommandGroup(groupKey),
-          )}
+          {trailingCommandGroups.map((groupKey) => renderCommandGroup(groupKey))}
 
           {showNavigation ? (
             <CommandGroup heading={t`Search`}>
@@ -1445,6 +1450,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
         <SearchHint
           mode={classifyOmnibarSearchHint(trimmedDeferredQuery, visibleSearchResults, {
             truncated: searchTruncated,
+            pending: showSearchPreparing || showSearchLoading,
           })}
           inExclusiveMode={inExclusiveMode}
           paletteModeKind={paletteMode.kind}
