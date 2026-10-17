@@ -1364,13 +1364,22 @@ export function SessionsHost({
   const liveThreadIds = openThreadTabs
     .filter((info) => info.archived !== true)
     .map((info) => info.threadId);
-  const prevLiveThreadIdsRef = useRef<readonly string[]>(liveThreadIds);
+  const prevLiveThreadIdsRef = useRef<readonly string[]>(
+    initialRosterThreadIds === null ? liveThreadIds : [...initialRosterThreadIds],
+  );
+  const initialRosterWasUnknownRef = useRef(initialRosterThreadIds === null);
   useEffect(() => {
     if (!hostThreads) return;
     if (!agentsVisibilityRestoreSettled) return;
     const previous = prevLiveThreadIdsRef.current;
     prevLiveThreadIdsRef.current = liveThreadIds;
-    const added = liveThreadIds.filter((id) => !previous.includes(id));
+    const rosterWasUnknown = initialRosterWasUnknownRef.current;
+    const rosterIsKnown = initialRosterThreadIds !== null;
+    initialRosterWasUnknownRef.current = !rosterIsKnown;
+    const added =
+      rosterWasUnknown && rosterIsKnown
+        ? liveThreadIds.filter((id) => !initialRosterThreadIds.has(id))
+        : liveThreadIds.filter((id) => !previous.includes(id));
     if (added.length === 0) return;
     const seededLaunch = seededThreadLaunchRef.current;
     const seededThreadId = added.find((id) => {

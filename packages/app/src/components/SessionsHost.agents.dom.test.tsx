@@ -1792,6 +1792,42 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     expect(onVisibleChange).not.toHaveBeenCalled();
   });
 
+  test('a live thread injected before host mount reveals a hidden dock after an empty roster', async () => {
+    const onVisibleChange = vi.fn((_v: boolean) => {});
+    setInitialRosterIds(new Set());
+    setOpenThreads([makeThread({ threadId: 'injected-1', title: 'Injected' })]);
+
+    render(<Harness initialVisible={false} onVisibleChange={onVisibleChange} />);
+    await screen.findByRole('tab', { name: /Injected/ });
+
+    await waitFor(() => expect(onVisibleChange).toHaveBeenCalledWith(true));
+  });
+
+  test('a live thread injected before the roster arrives reveals a hidden dock once the roster omits it', async () => {
+    const onVisibleChange = vi.fn((_v: boolean) => {});
+    setOpenThreads([makeThread({ threadId: 'injected-1', title: 'Injected' })]);
+
+    render(<Harness initialVisible={false} onVisibleChange={onVisibleChange} />);
+    await screen.findByRole('tab', { name: /Injected/ });
+    expect(onVisibleChange).not.toHaveBeenCalled();
+
+    act(() => setInitialRosterIds(new Set()));
+
+    expect(onVisibleChange).toHaveBeenCalledWith(true);
+  });
+
+  test('a live thread present before the roster arrives stays hidden once the roster restores it', async () => {
+    const onVisibleChange = vi.fn((_v: boolean) => {});
+    setOpenThreads([makeThread({ threadId: 'injected-1', title: 'Injected' })]);
+
+    render(<Harness initialVisible={false} onVisibleChange={onVisibleChange} />);
+    await screen.findByRole('tab', { name: /Injected/ });
+
+    act(() => setInitialRosterIds(new Set(['injected-1'])));
+
+    expect(onVisibleChange).not.toHaveBeenCalled();
+  });
+
   test('revealing the dock focuses the active session', async () => {
     const control = makeControl();
     setOpenThreads([makeThread({ threadId: 't1', title: 'Pre-existing' })]);
