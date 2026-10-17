@@ -20,6 +20,7 @@ import type { ThreadRenderModel } from '@/lib/acp/thread-event-model';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { IN_APP_THREAD_ID, saveStickyAgent, terminalCliId } from '@/lib/unified-agent-store';
 import type { ThreadLaunchIntent } from './EditorPane';
+import { withUsableEditorHeader } from './editor-pane-focus.test-helper';
 import { requestPreferredSession } from './handoff/preferred-session-events';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
 import { subscribeToTerminalLaunchRequests } from './handoff/terminal-launch-events';
@@ -276,17 +277,6 @@ function agentsDockWrites(setDockState: ReturnType<typeof vi.fn>) {
   return setDockState.mock.calls.filter(
     (call) => (call[0] as { surface?: string }).surface === 'agents',
   );
-}
-
-function makeUsableEditorHeader(): HTMLButtonElement {
-  const button = document.body.appendChild(document.createElement('button'));
-  button.type = 'button';
-  button.setAttribute('data-header-pane-button', 'editor');
-  Object.defineProperty(button, 'getClientRects', {
-    configurable: true,
-    value: () => [{ width: 1, height: 1 }],
-  });
-  return button;
 }
 
 function makeTerminalBridge(): OkDesktopBridge {
@@ -1904,18 +1894,13 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     render(<Harness initialVisible initialShowing={false} control={control} />);
     await screen.findByTestId('sessions-dock-empty');
 
-    const outside = makeUsableEditorHeader();
-    try {
-      outside.focus();
+    await withUsableEditorHeader(async (outside) => {
       expect(document.activeElement).toBe(outside);
-
       act(() => control.current?.setShowing(true));
       await act(async () => {});
 
       expect(document.activeElement).toBe(outside);
-    } finally {
-      outside.remove();
-    }
+    });
   });
 
   test('a user reveal requested before the host mounts still focuses the empty Agents surface', async () => {
@@ -1930,36 +1915,31 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       />,
     );
     const action = await screen.findByRole('button', { name: 'Configure agents' });
-    const outside = makeUsableEditorHeader();
-    try {
-      outside.focus();
+    await withUsableEditorHeader(async () => {
       act(() => control.current?.setShowing(true));
       await waitFor(() => expect(document.activeElement).toBe(action));
-    } finally {
-      outside.remove();
-    }
+    });
   });
 
   test('an empty reveal keeps the Editor pane header focused when a session arrives later', async () => {
     vi.useFakeTimers();
     const control = makeControl();
     render(<Harness initialVisible={false} control={control} />);
-    const outside = makeUsableEditorHeader();
     try {
-      outside.focus();
-      act(() => control.current?.setVisible(true));
-      expect(screen.getByTestId('sessions-dock-empty')).toBeDefined();
-      expect(document.activeElement).toBe(outside);
+      await withUsableEditorHeader(async (outside) => {
+        act(() => control.current?.setVisible(true));
+        expect(screen.getByTestId('sessions-dock-empty')).toBeDefined();
+        expect(document.activeElement).toBe(outside);
 
-      act(() => setOpenThreads([makeThread({ threadId: 'arrived', title: 'Arrived' })]));
+        act(() => setOpenThreads([makeThread({ threadId: 'arrived', title: 'Arrived' })]));
 
-      expect(screen.getByRole('tab', { name: /Arrived/ })).toBeDefined();
-      await act(async () => {});
-      act(() => vi.advanceTimersByTime(5_000));
-      await act(async () => {});
-      expect(document.activeElement).toBe(outside);
+        expect(screen.getByRole('tab', { name: /Arrived/ })).toBeDefined();
+        await act(async () => {});
+        act(() => vi.advanceTimersByTime(5_000));
+        await act(async () => {});
+        expect(document.activeElement).toBe(outside);
+      });
     } finally {
-      outside.remove();
       vi.useRealTimers();
     }
   });

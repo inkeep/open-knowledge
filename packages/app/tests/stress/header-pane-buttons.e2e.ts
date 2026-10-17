@@ -480,6 +480,23 @@ test.describe('the Agents button follows every chat show/hide path on the web', 
     await expectPaneKeepingFocus(page, 'agents', 'hidden');
   });
 
+  test('Cmd/Ctrl+L from the narrow Editor header focuses the empty Agents surface', async ({
+    page,
+    api,
+  }) => {
+    await openWeb(page, api, 'narrow-keyboard-agents-focus');
+    await page.setViewportSize({ width: 767, height: 800 });
+
+    const editorHeader = headerPaneButton(page, 'editor');
+    await editorHeader.focus();
+    await expect(editorHeader).toBeFocused();
+
+    await page.keyboard.press('ControlOrMeta+l');
+
+    await expectPane(page, 'agents', 'shown');
+    await waitForFocusInPane(page, 'agents');
+  });
+
   test('Shift+Cmd/Ctrl+J reveals chat and leaves an open chat open', async ({ page, api }) => {
     await openWeb(page, api, 'new-session');
     const agentSettings = page.getByTestId('settings-dialog');

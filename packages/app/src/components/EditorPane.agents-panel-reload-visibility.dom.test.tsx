@@ -17,11 +17,13 @@ import {
   __resetPaneVisibilityStoreForTests,
   paneVisibilityStore,
 } from '@/lib/pane-visibility-store';
+import { withUsableEditorHeader } from './editor-pane-focus.test-helper';
 
 let openThreads: ThreadInfo[] = [];
 let connectionStatus: 'idle' | 'connecting' | 'open' | 'closed' = 'open';
 let rosterThreadIds: ReadonlySet<string> | null = null;
 const storeListeners = new Set<() => void>();
+let attachSessionHosts = false;
 
 function notifyStore() {
   for (const listener of storeListeners) listener();
@@ -185,6 +187,14 @@ vi.doMock('./EditorArea', () => ({
         editorRegion: document.createElement('div'),
       });
     }, [agentsContainer, terminalContainer, agentsVisible, onSessionPlacements]);
+    useEffect(() => {
+      if (!attachSessionHosts) return;
+      document.body.append(agentsContainer, terminalContainer);
+      return () => {
+        agentsContainer.remove();
+        terminalContainer.remove();
+      };
+    }, [agentsContainer, terminalContainer]);
     if (agentsVisible)
       return (
         <div data-testid="agents-column">
@@ -318,6 +328,7 @@ describe('EditorPane agents-panel reload visibility', () => {
 
   afterEach(() => {
     cleanup();
+    attachSessionHosts = false;
     delete (window as { okDesktop?: unknown }).okDesktop;
     __resetPaneVisibilityStoreForTests();
   });
@@ -500,6 +511,30 @@ describe('EditorPane agents-panel reload visibility', () => {
 
     expect(screen.queryByTestId('agents-column')).toBeNull();
     expect(readPersistedAgentsPanelLevel()).toBe(false);
+  });
+
+  test('web: a user reveal request focuses the empty Agents action from the Editor header', async () => {
+    attachSessionHosts = true;
+    await renderPane(3);
+
+    await withUsableEditorHeader(async () => {
+      act(() => paneVisibilityStore.request('agents', true, 'user'));
+
+      const action = await screen.findByRole('button', { name: 'Start an agent' });
+      await waitFor(() => expect(document.activeElement).toBe(action));
+    });
+  });
+
+  test('web: the Agents menu toggle focuses the empty Agents action from the Editor header', async () => {
+    attachSessionHosts = true;
+    await renderPane(3);
+
+    await withUsableEditorHeader(async () => {
+      act(() => emitLocalMenuAction('toggle-agent-panel'));
+
+      const action = await screen.findByRole('button', { name: 'Start an agent' });
+      await waitFor(() => expect(document.activeElement).toBe(action));
+    });
   });
 
   test('desktop: a header show during a pending dock restore reads closed first and survives settlement', async () => {
