@@ -37,7 +37,7 @@ interface UploadPluginState {
 function createSkeletonWidget(file?: File): HTMLElement {
   const el = document.createElement('div');
   el.className =
-    'image-upload-skeleton w-full h-40 rounded-md bg-muted animate-pulse motion-reduce:animate-none my-2';
+    'image-upload-skeleton w-full h-40 rounded-md bg-foreground/10 animate-pulse motion-reduce:animate-none my-2';
   el.setAttribute('data-upload-widget', 'loading');
   el.setAttribute('role', 'status');
   const fileName = file?.name;

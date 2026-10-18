@@ -15,6 +15,7 @@ import { ProseFindBar } from '@/components/ProseFindBar';
 import { SkillCostValue } from '@/components/SkillCostValue';
 import { SkillMarkdownViewer } from '@/components/SkillMarkdownViewer';
 import { SkillModeBanner } from '@/components/SkillModeBanner';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useFindInViewer } from '@/hooks/use-find-in-viewer';
 import { subscribeToSkillsChanged } from '@/lib/documents-events';
 import { skillTint } from '@/lib/skill-tint';
@@ -200,9 +201,9 @@ export function SkillBundlePreview({
         <div className="editor-doc-scroll min-h-0 flex-1 overflow-auto subtle-scrollbar scroll-fade-mask">
           <div className="editor-content-aligned pt-6">
             <div className="space-y-3">
-              <div className="h-6 w-2/3 animate-pulse rounded bg-muted" />
+              <Skeleton className="h-6 w-2/3 rounded" />
               {['a', 'b', 'c', 'd', 'e'].map((id) => (
-                <div key={id} className="h-4 w-11/12 animate-pulse rounded bg-muted" />
+                <Skeleton key={id} className="h-4 w-11/12 rounded" />
               ))}
             </div>
           </div>

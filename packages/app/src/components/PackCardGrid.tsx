@@ -15,6 +15,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { OkPackId, OkSeedPackInfo } from '@/lib/desktop-bridge-types';
@@ -245,13 +246,13 @@ function PackCard({ pack, onSelect }: PackCardProps) {
 function PackCardSkeleton() {
   return (
     <div className="flex h-full min-h-[200px] flex-col items-start gap-4 rounded-xl border border-border/60 bg-card p-6">
-      <span className="size-10 animate-pulse rounded-lg bg-muted" aria-hidden="true">
+      <Skeleton className="size-10 rounded-lg" aria-hidden="true">
         <Spinner aria-hidden="true" className="size-5 text-muted-foreground opacity-0" />
-      </span>
+      </Skeleton>
       <div className="flex w-full flex-col gap-2">
-        <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
-        <div className="h-3 w-full animate-pulse rounded bg-muted" />
-        <div className="h-3 w-4/5 animate-pulse rounded bg-muted" />
+        <Skeleton className="h-4 w-1/2 rounded" />
+        <Skeleton className="h-3 w-full rounded" />
+        <Skeleton className="h-3 w-4/5 rounded" />
       </div>
     </div>
   );

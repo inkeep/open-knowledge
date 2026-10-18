@@ -126,7 +126,7 @@ export function LoadingImage({
           role="status"
           aria-busy="true"
           aria-label={t`Loading image`}
-          className="absolute inset-0 animate-pulse rounded-md bg-muted motion-reduce:animate-none"
+          className="absolute inset-0 animate-pulse rounded-md bg-foreground/10 motion-reduce:animate-none"
         />
       )}
       <img
