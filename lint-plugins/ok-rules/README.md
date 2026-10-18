@@ -728,6 +728,61 @@ Included: `packages/app/src/**/*.ts`, `packages/app/src/**/*.tsx`, `packages/des
 
 Rule: [`no-fixed-palette-color.mjs`](rules/no-fixed-palette-color.mjs). Fixture: [`no-fixed-palette-color.fixture.tsx`](__fixtures__/no-fixed-palette-color.fixture.tsx). Test: [`no-fixed-palette-color.uncached.test.mjs`](tests/no-fixed-palette-color.uncached.test.mjs).
 
+### `no-native-renderer-dialog`
+
+Feedback-surface discipline, from the display guide at [`plugins/ok/skills/feedback-surfaces/SKILL.md`][feedback-surfaces-guide]. Renderer code never opens the browser's native `confirm`, `alert` or `prompt` dialog. The native dialog has no title, no destructive button, no app theme and no focus handling, and its button labels come from the browser, so Lingui cannot translate them. Confirmations use `AlertDialog` from `@/components/ui/alert-dialog`, or `DeleteConfirmationDialog` for a delete.
+
+The rule fires on a call of `window.confirm`, `window.alert` or `window.prompt` (also through `globalThis` or `self`), and on a bare `confirm(...)`, `alert(...)` or `prompt(...)` call whose name resolves to the global. Resolution walks the scope chain from the call: an import, a parameter, or a function or variable declared in any enclosing scope is a local binding, so `consentStore.confirm(...)`, `threadClient.prompt(...)`, an imported `prompt` and a local `function confirm` stay silent. A parameter named `window` is local too, so `window.confirm` on it is not flagged.
+
+The scope is the renderer packages, `packages/app/src` and `packages/plugin/src`. `packages/desktop/src` is left out: it holds the Electron main process, the preload bridge, the utility process and shared modules, none of which renders UI, and the desktop renderer is `packages/app` itself (the desktop build sets `root: ../app`). Native Electron dialogs in the main process are a different surface that the guide limits separately and `no-blocking-error-box` partly gates.
+
+The rule does NOT catch a dialog function taken by reference and called later (`const ask = window.confirm; ask(...)`), a computed member (`window['confirm']`), or a call through another alias of the global object.
+
+Included: `packages/app/src/**/*.ts`, `packages/app/src/**/*.tsx`, `packages/plugin/src/**/*.ts`, `packages/plugin/src/**/*.tsx`, `lint-plugins/ok-rules/__fixtures__/no-native-renderer-dialog.fixture.tsx`. Excluded: `**/*.test.ts`, `**/*.test.tsx`, `**/*.dom.test.tsx`, `**/*.test-helper.ts`, `**/*.test-helper.tsx`.
+
+Rule: [`no-native-renderer-dialog.mjs`](rules/no-native-renderer-dialog.mjs). Fixture: [`no-native-renderer-dialog.fixture.tsx`](__fixtures__/no-native-renderer-dialog.fixture.tsx). Test: [`no-native-renderer-dialog.uncached.test.mjs`](tests/no-native-renderer-dialog.uncached.test.mjs).
+
+### `no-custom-toast`
+
+Toast discipline, from the display guide at [`plugins/ok/skills/feedback-surfaces/SKILL.md`][feedback-surfaces-guide]. App code calls the typed sonner functions (`toast.success`, `toast.error`, `toast.warning`, `toast.info`, `toast.loading`), never `toast.custom`. The app's `<Toaster richColors closeButton />` styles the typed toasts with their color, icon, width and close button. Sonner leaves a custom toast unstyled: it sizes to its content, renders no close button, and in a collapsed stack the toast behind keeps its content visible, so a mixed stack overlaps.
+
+The rule resolves `toast` from the file's own `sonner` imports: a named `toast` import under any local name (`import { toast as sonnerToast } from 'sonner'`) and `toast` read off a namespace import (`sonner.toast.custom`). The name must resolve to that import: a `toast` imported from another module, or a local declaration that shadows the import, is not flagged. A `custom` method on any other object is not flagged, and neither is a `toast.custom` reference that is never called.
+
+**Pre-rule backlog.** The three existing custom toasts, in `packages/app/src/lib/install-bug-report-send-toasts.ts`, `install-server-drift-listener.ts` and `install-stale-tab-reload-prompt.ts`, carry a file-level `// oxlint-disable ok/no-custom-toast -- pre-rule backlog: ...` header. Delete the header in the change that moves the file to a typed toast. A toast that truly needs custom content keeps an inline `// oxlint-disable-next-line ok/no-custom-toast -- <reason>` and follows the guide: `width: var(--width)`, its own close button, and a check stacked behind and in front of a typed toast.
+
+Included: `packages/app/src/**/*.ts`, `packages/app/src/**/*.tsx`, `lint-plugins/ok-rules/__fixtures__/no-custom-toast.fixture.tsx`. Excluded: `**/*.test.ts`, `**/*.test.tsx`, `**/*.dom.test.tsx`, `**/*.test-helper.ts`, `**/*.test-helper.tsx`.
+
+Rule: [`no-custom-toast.mjs`](rules/no-custom-toast.mjs). Fixture: [`no-custom-toast.fixture.tsx`](__fixtures__/no-custom-toast.fixture.tsx). Test: [`no-custom-toast.uncached.test.mjs`](tests/no-custom-toast.uncached.test.mjs).
+
+### `no-raw-error-toast`
+
+Error-copy discipline, from the display guide at [`plugins/ok/skills/feedback-surfaces/SKILL.md`][feedback-surfaces-guide]. A toast never shows raw error text. Raw text is untranslatable, often an internal message, and frequently wrong for the user; the guide asks for the failure to be mapped to a reason with copy written for it ("Couldn't {verb} {thing}."), and for raw detail to go behind a "Show details" disclosure or into Report a bug.
+
+The rule checks the message argument and the options object's `description` of a sonner `toast(...)`, `toast.error`, `toast.warning`, `toast.info`, `toast.success`, `toast.loading` or `toast.message` call, with `toast` resolved from the file's `sonner` imports as in `no-custom-toast`. It fires when that value is raw error text, which it recognizes syntactically:
+
+- `<x>.message`, `String(<x>)` and `<x>.toString()`, where `<x>` is an error value;
+- an error value used directly (`toast.error(result.error)`, `description: res.error`);
+- any `errorText(...)` call, since that helper exists to stringify an unknown error;
+- a template literal, or a Lingui `t` template, that interpolates any of the above;
+- either branch of a conditional, either side of `||`, `??` or `+`, and the right side of `&&`, holding any of the above, so the common ``err instanceof Error ? err.message : t`...` `` fires.
+
+**The error-value heuristic.** The rule runs on the untyped AST, so it cannot ask whether a value is an `Error`. It decides by name instead: an identifier, or the last property of a member chain, named `err`, `error`, `e`, `ex`, `cause` or `reason`, or ending in `Error` or `Err` after a lowercase letter or digit (`saveError`, `cloneError`, `result.error`, `lastErr`). A predicate such as `isError` also matches, which is harmless because a condition is never the rendered value: only the right side of `&&` and the branches of a conditional are read, not its test. A `message` field on anything else is not flagged, because a result or protocol object's `message` cannot be told apart from user-facing copy without types.
+
+The rule does NOT catch:
+
+- **`message` on a non-error name.** `toast.error(result.message)` and ``t`Message not sent: ${frame.message}` `` are raw text from a result or a server frame, but the name says nothing about it. Five such toasts exist today (`RestartServerButton`, `DocumentErrorBoundary`, `NetworkAccessSection`, `presence/use-sync-toasts.ts`, `lib/acp/thread-client.ts`).
+- **Raw text under another name.** `description: detail` or `description: result.detail` where `detail` came from an error, and a variable assigned from `err.message` on an earlier line and then passed to the toast. The rule reads the call's own arguments only.
+- **Formatting helpers other than `errorText`.** `humanFormat(result.error)` is treated as mapped copy, not raw text.
+- **`toast.promise`** and its `error` callback, and toasts built from a JSX element.
+
+Read the heuristic in both directions: an error-named variable that already holds written, translated copy is still flagged when it is passed straight through. Rename it (`errorCopy` does not end in `Error`), or suppress the line with a reason.
+
+**Pre-rule backlog.** Forty-two files under `packages/app/src` that predate the rule carry a file-level `// oxlint-disable ok/no-raw-error-toast -- pre-rule backlog: ...` header over their 73 existing raw-error toasts. The headers are the visible backlog. Drain a file by mapping each failure to written copy, then deleting its header; the rule fires again at once, so a partial migration fails the gate.
+
+Included: `packages/app/src/**/*.ts`, `packages/app/src/**/*.tsx`, `lint-plugins/ok-rules/__fixtures__/no-raw-error-toast.fixture.tsx`. Excluded: `**/*.test.ts`, `**/*.test.tsx`, `**/*.dom.test.tsx`, `**/*.test-helper.ts`, `**/*.test-helper.tsx`.
+
+Rule: [`no-raw-error-toast.mjs`](rules/no-raw-error-toast.mjs). Fixture: [`no-raw-error-toast.fixture.tsx`](__fixtures__/no-raw-error-toast.fixture.tsx). Test: [`no-raw-error-toast.uncached.test.mjs`](tests/no-raw-error-toast.uncached.test.mjs).
+
 ## Suppression
 
 Inline `// oxlint-disable-next-line` comments silence individual diagnostics. The form names the plugin, the rule and the reason:
@@ -756,8 +811,10 @@ Current production suppressions:
 | `microcopy-ellipsis` | 2 | 0 |
 | `no-unwrapped-user-facing-string` | 1 | 0 |
 | `no-hand-rolled-spinner` | 1 | 0 |
+| `no-raw-error-toast` | 0 | 42 |
+| `no-custom-toast` | 0 | 3 |
 
-Every other rule has zero. The file-level counts above are the visible migration backlogs for the logical-property pass and shadcn migration.
+Every other rule has zero. The file-level counts above are the visible migration backlogs for the logical-property pass, the shadcn migration and the feedback-surfaces guide.
 
 **Where an inline suppression can and cannot sit.** A suppression comment needs a line of its own directly above the reported span, which is a property of the *formatting* rather than of the rule. On a JSX attribute that means the attribute must already be on its own line. A `{/* oxlint-disable-next-line */}` child covers the element that follows it, not a text node that starts after that element.
 
@@ -883,3 +940,5 @@ Add a `### \`<rule-name>\`` section: what it catches, what it deliberately does 
 - [oxlint custom JS plugins](https://oxc.rs/docs/guide/usage/linter/plugins.html)
 - [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) — the custom-lint-enforcement convention
 - [`lint-plugins/no-comments/README.md`](../no-comments/README.md) — the sibling oxlint plugin and the comment policy that governs these modules
+
+[feedback-surfaces-guide]: ../../plugins/ok/skills/feedback-surfaces/SKILL.md

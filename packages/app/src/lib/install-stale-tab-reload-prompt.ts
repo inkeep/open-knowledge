@@ -1,3 +1,4 @@
+// oxlint-disable ok/no-custom-toast -- pre-rule backlog: this toast.custom awaits a typed toast; delete this line once it is replaced. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-custom-toast
 import { i18n } from '@lingui/core';
 import { plural, t } from '@lingui/core/macro';
 import { createElement } from 'react';

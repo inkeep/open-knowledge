@@ -1,3 +1,4 @@
+// oxlint-disable ok/no-raw-error-toast -- pre-rule backlog: toasts here show raw error text; delete this line once the file maps each failure to written copy. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-raw-error-toast
 import type { SkillScope } from '@inkeep/open-knowledge-core/schemas/api';
 import { useLingui } from '@lingui/react/macro';
 import { useState } from 'react';
