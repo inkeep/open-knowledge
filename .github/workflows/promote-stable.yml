@@ -99,7 +99,7 @@ concurrency:
 jobs:
   read-bumps:
     name: Read changeset bumps (no release credential)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -179,7 +179,7 @@ jobs:
   promote:
     name: Promote ${{ inputs.beta_tag || 'newest beta' }} to stable
     needs: read-bumps
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     cache-mode: none
     timeout-minutes: 20
     steps:

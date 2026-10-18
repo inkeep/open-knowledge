@@ -124,7 +124,7 @@ describe('decideRetry', () => {
     const jobs = [
       ...timedOut,
       {
-        name: 'build-linux (stable, ubuntu-24.04)',
+        name: 'build-linux (stable, ubuntu-26.04)',
         conclusion: 'failure',
         annotations: [failure('Failed to FinalizeArtifact: Unable to make request: ETIMEDOUT')],
       },
@@ -207,7 +207,7 @@ describe('decideRetry', () => {
   test('re-runs a timed-out job, which GitHub reports as cancelled', () => {
     const jobs = [
       {
-        name: 'build-linux (stable, ubuntu-24.04)',
+        name: 'build-linux (stable, ubuntu-26.04)',
         conclusion: 'cancelled',
         annotations: [
           failure('The job has exceeded the maximum execution time of 45m0s'),

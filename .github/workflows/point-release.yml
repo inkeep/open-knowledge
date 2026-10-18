@@ -107,7 +107,7 @@ concurrency:
 jobs:
   read-bumps:
     name: Read changeset bumps (no release credential)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -145,7 +145,7 @@ jobs:
   point-release:
     name: ${{ inputs.dry_run && 'Plan' || 'Ship' }} point release (${{ inputs.mode }})
     needs: read-bumps
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     cache-mode: none
     timeout-minutes: 20
     steps:

@@ -150,7 +150,7 @@ jobs:
   # but its Release reads under its contents: write token.
   cut-commit:
     name: Decide whether this run cuts a beta, and at which commit
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     cache-mode: none
     timeout-minutes: 5
     permissions:
@@ -206,7 +206,7 @@ jobs:
 
   read-releases:
     name: Read the previous beta Release and the stable Releases
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     cache-mode: none
     timeout-minutes: 5
     permissions:
@@ -273,7 +273,7 @@ jobs:
     name: Build + pack (${{ github.event.action || github.event_name }})
     needs: [cut-commit, read-releases]
     if: needs.cut-commit.outputs.push_skipped != 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     cache-mode: none
     timeout-minutes: 20
     permissions:
@@ -641,7 +641,7 @@ jobs:
     name: Tag + release (${{ github.event.action || github.event_name }})
     needs: [cut-commit, build]
     if: github.event.action == 'publish-stable' || needs.build.outputs.run_beta == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     cache-mode: none
     timeout-minutes: 10
     permissions:
@@ -805,7 +805,7 @@ jobs:
     name: Publish to npm (${{ github.event.action || github.event_name }})
     needs: [build, release]
     if: github.event.action == 'publish-stable' || needs.build.outputs.run_beta == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     cache-mode: none
     timeout-minutes: 10
     permissions:
