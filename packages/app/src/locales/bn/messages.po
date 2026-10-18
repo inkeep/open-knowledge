@@ -217,8 +217,8 @@ msgstr "{0} যোগ হয়েছে, {1} সরানো হয়েছে
 msgid "{0} CLI"
 msgstr "{0} CLI"
 
-msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
-msgstr "{0} সেই কনটেক্সট উইন্ডোতে পুনরায় চালু হতে পারেনি। ফিরিয়ে আনতে আবার চেষ্টা করুন।"
+msgid "{0} couldn't restart on that context window. Use Try again to bring it back."
+msgstr "{0} সেই কনটেক্সট উইন্ডোতে পুনরায় চালু হতে পারেনি। ফিরিয়ে আনতে \"আবার চেষ্টা করুন\" ব্যবহার করুন।"
 
 msgid "{0} didn't confirm the context window change. Check the conversation before picking again."
 msgstr "{0} কনটেক্সট উইন্ডো পরিবর্তন নিশ্চিত করেনি। আবার বেছে নেওয়ার আগে কথোপকথনটি দেখুন।"
@@ -3150,6 +3150,9 @@ msgstr "{filePath}-এর দ্বন্দ্ব মীমাংসা কর�
 msgid "Couldn't resolve the fork: {0}"
 msgstr "ফর্কটি মীমাংসা করা যায়নি: {0}"
 
+msgid "Couldn't restart {agentName}."
+msgstr "{agentName} পুনরায় চালু করা যায়নি।"
+
 msgid "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again."
 msgstr "সার্ভার পুনরায় চালু করা যায়নি — অন্য একটি প্রক্রিয়া এর মালিক। এই প্রকল্পের অন্য OpenKnowledge জানালাগুলো বন্ধ করে আবার চেষ্টা করুন।"
 
@@ -3224,9 +3227,6 @@ msgstr "আপনার মন্তব্য পাঠানো যায়ন
 
 msgid "Couldn't send your prompt — please try again."
 msgstr "আপনার প্রম্পট পাঠানো যায়নি — অনুগ্রহ করে আবার চেষ্টা করুন।"
-
-msgid "Couldn't start {agentName}: {0}"
-msgstr "{agentName} শুরু করা যায়নি: {0}"
 
 msgid "Couldn't start Slidev."
 msgstr "Slidev চালু করা যায়নি।"
@@ -5529,6 +5529,9 @@ msgstr "{source} থেকে ইনস্টল করুন"
 
 msgid "Install handoff failed: {msg}"
 msgstr "ইনস্টল হস্তান্তর ব্যর্থ: {msg}"
+
+msgid "Install in a shared folder?"
+msgstr "শেয়ার করা ফোল্ডারে ইনস্টল করবেন?"
 
 msgid "Install in Claude Desktop"
 msgstr "Claude Desktop-এ ইনস্টল করুন"
@@ -8609,6 +8612,18 @@ msgstr "এই অনুলিপিগুলো উৎসের সিমলি
 msgid "Replace these symlinks with independent copies?"
 msgstr "এই সিমলিংকগুলো স্বতন্ত্র অনুলিপি দিয়ে বদলাবেন?"
 
+msgid "Replace with a copy?"
+msgstr "অনুলিপি দিয়ে বদলাবেন?"
+
+msgid "Replace with a symlink?"
+msgstr "সিমলিংক দিয়ে বদলাবেন?"
+
+msgid "Replace with copy"
+msgstr "অনুলিপি দিয়ে বদলান"
+
+msgid "Replace with symlink"
+msgstr "সিমলিংক দিয়ে বদলান"
+
 msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
 msgstr "এই ফাইলে বিদ্যমান {server} এন্ট্রিটি প্রতিস্থাপন করে। ফাইলের অন্য সার্ভারগুলি অপরিবর্তিত থাকে।"
 
@@ -8633,7 +8648,7 @@ msgstr "{0} থেকে রিপোর্ট"
 msgid "Report this error"
 msgstr "এই ত্রুটিটি জানান"
 
-msgid "Reports you've generated on this computer. Retry a send, reveal a file, or delete one you no longer need."
+msgid "Reports you've generated on this computer. Try a send again, reveal a file, or delete one you no longer need."
 msgstr "এই কম্পিউটারে আপনার তৈরি করা রিপোর্ট। পাঠানোর আবার চেষ্টা করুন, কোনো ফাইল দেখান, বা প্রয়োজন নেই এমন রিপোর্ট মুছে ফেলুন।"
 
 msgid "Repositories you've already cloned may keep syncing through git's own saved credentials, even after you disconnect."
@@ -8807,9 +8822,6 @@ msgstr "চ্যাট পুনরায় শুরু হচ্ছে"
 
 msgid "Retrieving…"
 msgstr "আনা হচ্ছে…"
-
-msgid "Retry"
-msgstr "আবার চেষ্টা করুন"
 
 msgid "Retry push"
 msgstr "আবার পাঠানোর চেষ্টা করুন"
@@ -9960,6 +9972,9 @@ msgstr "ঠিক করা থামান। যেসব ফাইল আগ�
 
 msgid "Stop maintaining index.md"
 msgstr "index.md বজায় রাখা বন্ধ করুন"
+
+msgid "Stop reading"
+msgstr "পড়া বন্ধ করুন"
 
 msgid "Stopped"
 msgstr "থেমে গেছে"

@@ -273,7 +273,7 @@ describe('threadAuthOfferWithoutSignInMethods', () => {
       expect({ status, kind: offer.kind, actionLabel: offer.actionLabel }).toEqual({
         status,
         kind: 'retry',
-        actionLabel: 'Retry',
+        actionLabel: 'Try again',
       });
       expect(offer.headline).toBe('Claude needs you to sign in.');
     }
@@ -289,7 +289,7 @@ describe('threadAuthOfferWithoutSignInMethods', () => {
     });
     expect({ kind: offer.kind, actionLabel: offer.actionLabel }).toEqual({
       kind: 'retry',
-      actionLabel: 'Retry',
+      actionLabel: 'Try again',
     });
     expect(offer.headline).toBe('Claude stopped with an error.');
   });

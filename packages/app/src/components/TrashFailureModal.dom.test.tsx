@@ -93,7 +93,7 @@ describe('TrashFailureModal runtime behavior', () => {
     const deletePermanently = screen.getByTestId('trash-failure-modal-delete-permanently');
 
     expect(cancel.textContent).toBe('Cancel');
-    expect(retry.textContent).toBe('Retry');
+    expect(retry.textContent).toBe('Try again');
     expect(deletePermanently.textContent).toBe('Delete Permanently');
     expect(cancel.compareDocumentPosition(retry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(

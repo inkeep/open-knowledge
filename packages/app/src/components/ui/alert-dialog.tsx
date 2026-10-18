@@ -36,11 +36,15 @@ function AlertDialogOverlay({
 
 function AlertDialogContent({
   className,
+  overlayProps,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
+  overlayProps?: React.ComponentProps<typeof AlertDialogPrimitive.Overlay> &
+    Partial<Record<`data-${string}`, string>>;
+}) {
   return (
     <AlertDialogPortal>
-      <AlertDialogOverlay />
+      <AlertDialogOverlay {...overlayProps} />
       {}
       <ElectronDragStrip testId="alert-dialog-drag-strip" />
       <AlertDialogPrimitive.Content

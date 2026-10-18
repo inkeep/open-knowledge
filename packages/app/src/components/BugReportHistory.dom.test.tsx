@@ -225,7 +225,7 @@ describe('BugReportHistoryList', () => {
     });
 
     render(<BugReportHistoryList />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Try again' }));
 
     expect(log.sendCalls).toHaveLength(1);
     expect(log.sendCalls[0]).toEqual({
@@ -245,7 +245,7 @@ describe('BugReportHistoryList', () => {
     });
 
     render(<BugReportHistoryList />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Try again' }));
 
     await vi.waitFor(() => {
       expect(bugReportSendManager.get('e-bugreport.zip')?.status).toBe('email-draft');
@@ -303,7 +303,7 @@ describe('BugReportHistoryList', () => {
     });
 
     render(<BugReportHistoryList />);
-    const retry = await screen.findByRole('button', { name: 'Retry' });
+    const retry = await screen.findByRole('button', { name: 'Try again' });
 
     bugReportSendManager.startBugReportSend({
       kind: 'history-row',
@@ -375,7 +375,7 @@ describe('BugReportHistoryList', () => {
 
     try {
       render(<BugReportHistoryList />);
-      const retry = await screen.findByRole('button', { name: 'Retry' });
+      const retry = await screen.findByRole('button', { name: 'Try again' });
 
       bugReportSendManager.startBugReportSend({
         kind: 'history-row',

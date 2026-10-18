@@ -106,6 +106,15 @@ export class ThreadResumeError extends Error {
   }
 }
 
+export class ThreadRetryError extends Error {
+  readonly code: ThreadErrorCode | 'timeout';
+  constructor(code: ThreadErrorCode | 'timeout', message: string) {
+    super(message);
+    this.name = 'ThreadRetryError';
+    this.code = code;
+  }
+}
+
 export class ThreadAuthenticateError extends Error {
   readonly code: ThreadErrorCode | 'timeout';
   constructor(code: ThreadErrorCode | 'timeout', message: string) {
@@ -463,7 +472,7 @@ export class AgentThreadClient {
     const promise = new Promise<ThreadInfo>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingRetries.delete(reqId);
-        reject(new Error('retry timed out'));
+        reject(new ThreadRetryError('timeout', 'retry timed out'));
       }, RETRY_TIMEOUT_MS);
       this.pendingRetries.set(reqId, { resolve, reject, timer });
     });
@@ -811,7 +820,7 @@ export class AgentThreadClient {
           if (pendingRetry !== undefined) {
             this.pendingRetries.delete(frame.reqId);
             clearTimeout(pendingRetry.timer);
-            pendingRetry.reject(new Error(frame.message));
+            pendingRetry.reject(new ThreadRetryError(frame.code, frame.message));
             return;
           }
           const pendingTerminalAuth = this.pendingTerminalAuthLaunches.get(frame.reqId);

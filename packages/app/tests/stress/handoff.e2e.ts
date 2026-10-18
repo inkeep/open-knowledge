@@ -337,7 +337,7 @@ test.describe('handoff — 9-cell matrix', () => {
       .toBe(1);
 
     await expect(page.getByText("Couldn't reach Cursor — try again?")).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
 
     const captured = await readCapturedHandoff(page);
     expect(captured.openExternalCalls).toEqual([]);

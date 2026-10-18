@@ -220,7 +220,7 @@ function ReportRow({
             ) : (
               <RotateCwIcon aria-hidden="true" />
             )}
-            <Trans>Retry</Trans>
+            <Trans>Try again</Trans>
           </Button>
         ) : null}
         {row.state === 'sent' && row.reference !== undefined ? (

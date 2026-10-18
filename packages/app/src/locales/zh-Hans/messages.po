@@ -217,7 +217,7 @@ msgstr "新增 {0} 项，移除 {1} 项"
 msgid "{0} CLI"
 msgstr "{0} CLI"
 
-msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
+msgid "{0} couldn't restart on that context window. Use Try again to bring it back."
 msgstr "{0} 无法在该上下文窗口下重启。请使用「重试」将其恢复。"
 
 msgid "{0} didn't confirm the context window change. Check the conversation before picking again."
@@ -3154,6 +3154,9 @@ msgstr "无法解决 {filePath} 的冲突。"
 msgid "Couldn't resolve the fork: {0}"
 msgstr "无法解决该分叉：{0}"
 
+msgid "Couldn't restart {agentName}."
+msgstr "无法重启 {agentName}。"
+
 msgid "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again."
 msgstr "无法重启服务器——它被另一个进程占用。请关闭这个项目的其他 OpenKnowledge 窗口后重试。"
 
@@ -3228,9 +3231,6 @@ msgstr "无法发送你的评论——工作区尚未就绪。"
 
 msgid "Couldn't send your prompt — please try again."
 msgstr "无法发送你的提示词——请重试。"
-
-msgid "Couldn't start {agentName}: {0}"
-msgstr "无法启动 {agentName}：{0}"
 
 msgid "Couldn't start Slidev."
 msgstr "无法启动 Slidev。"
@@ -5533,6 +5533,9 @@ msgstr "从 {source} 安装"
 
 msgid "Install handoff failed: {msg}"
 msgstr "安装交接失败：{msg}"
+
+msgid "Install in a shared folder?"
+msgstr "要安装到共享文件夹吗？"
 
 msgid "Install in Claude Desktop"
 msgstr "安装到 Claude Desktop"
@@ -8613,6 +8616,18 @@ msgstr "要把这些副本替换为指向来源的符号链接吗？"
 msgid "Replace these symlinks with independent copies?"
 msgstr "要把这些符号链接替换为独立副本吗？"
 
+msgid "Replace with a copy?"
+msgstr "要替换为副本吗？"
+
+msgid "Replace with a symlink?"
+msgstr "要替换为符号链接吗？"
+
+msgid "Replace with copy"
+msgstr "替换为副本"
+
+msgid "Replace with symlink"
+msgstr "替换为符号链接"
+
 msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
 msgstr "替换此文件中现有的 {server} 条目。文件中的其他服务器保持不变。"
 
@@ -8637,7 +8652,7 @@ msgstr "来自 {0} 的报告"
 msgid "Report this error"
 msgstr "报告这个错误"
 
-msgid "Reports you've generated on this computer. Retry a send, reveal a file, or delete one you no longer need."
+msgid "Reports you've generated on this computer. Try a send again, reveal a file, or delete one you no longer need."
 msgstr "你在这台电脑上生成的报告。可以重新发送、显示文件，或删除不再需要的报告。"
 
 msgid "Repositories you've already cloned may keep syncing through git's own saved credentials, even after you disconnect."
@@ -8811,9 +8826,6 @@ msgstr "正在恢复对话"
 
 msgid "Retrieving…"
 msgstr "正在检索…"
-
-msgid "Retry"
-msgstr "重试"
 
 msgid "Retry push"
 msgstr "重试推送"
@@ -9964,6 +9976,9 @@ msgstr "停止修复。已修复的文件保持已修复状态。"
 
 msgid "Stop maintaining index.md"
 msgstr "停止维护 index.md"
+
+msgid "Stop reading"
+msgstr "停止读取"
 
 msgid "Stopped"
 msgstr "已停止"

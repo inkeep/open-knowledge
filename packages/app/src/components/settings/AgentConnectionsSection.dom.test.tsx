@@ -1708,7 +1708,7 @@ describe('AgentConnectionsSection — degraded install-state read', () => {
     renderSection(async () => result(null, false));
 
     await screen.findByText(READ_FAILED_NOTICE);
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
 
     expect(screen.getByText('In app')).toBeTruthy();
     expect(screen.getByText('Terminal')).toBeTruthy();
@@ -1727,7 +1727,7 @@ describe('AgentConnectionsSection — degraded install-state read', () => {
     );
 
     await screen.findByText(READ_FAILED_NOTICE);
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
   test('a host that answered nothing counts as a failed read, keys or no keys', async () => {
@@ -1765,7 +1765,7 @@ describe('AgentConnectionsSection — degraded install-state read', () => {
       expect(within(section).queryByRole('button', { name: label })).toBeNull();
     }
     expect(screen.getByTestId('configure-agents-terminal-claude')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
   test('a host that read fine but cannot apply changes shows no notice', async () => {
@@ -1788,10 +1788,10 @@ describe('AgentConnectionsSection — degraded install-state read', () => {
     renderSection(async () => result(null, false));
     await screen.findByText(READ_FAILED_NOTICE);
 
-    const retry = screen.getByRole('button', { name: 'Retry' });
+    const retry = screen.getByRole('button', { name: 'Try again' });
     retry.focus();
     fireEvent.click(retry);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Retry' })).toBe(retry));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Try again' })).toBe(retry));
     expect(document.activeElement).toBe(retry);
   });
 
@@ -1856,7 +1856,7 @@ describe('AgentConnectionsSection — degraded install-state read', () => {
     await screen.findByText(READ_FAILED_NOTICE);
     expect(within(terminalRow('claude')).queryByText('Connected')).toBeNull();
 
-    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(within(terminalRow('claude')).getByText('Connected')).toBeTruthy());
     expect(screen.queryByText(READ_FAILED_NOTICE)).toBeNull();
   });

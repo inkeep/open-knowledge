@@ -217,7 +217,7 @@ msgstr "{0}개 추가, {1}개 제거"
 msgid "{0} CLI"
 msgstr "{0} CLI"
 
-msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
+msgid "{0} couldn't restart on that context window. Use Try again to bring it back."
 msgstr "{0}이(가) 해당 컨텍스트 창으로 다시 시작하지 못했습니다. 다시 시도를 눌러 복구하세요."
 
 msgid "{0} didn't confirm the context window change. Check the conversation before picking again."
@@ -3154,6 +3154,9 @@ msgstr "{filePath}의 충돌을 해결하지 못했습니다."
 msgid "Couldn't resolve the fork: {0}"
 msgstr "포크 해결 실패: {0}"
 
+msgid "Couldn't restart {agentName}."
+msgstr "{agentName}을(를) 다시 시작할 수 없습니다."
+
 msgid "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again."
 msgstr "서버를 다시 시작할 수 없습니다. 다른 프로세스가 사용 중입니다. 이 프로젝트의 다른 OpenKnowledge 창을 닫은 후 다시 시도하세요."
 
@@ -3228,9 +3231,6 @@ msgstr "댓글 전송에 실패했습니다. 워크스페이스 준비 전입니
 
 msgid "Couldn't send your prompt — please try again."
 msgstr "프롬프트 전송 실패. 다시 시도하세요."
-
-msgid "Couldn't start {agentName}: {0}"
-msgstr "{agentName} 시작 실패: {0}"
 
 msgid "Couldn't start Slidev."
 msgstr "Slidev를 시작하지 못했습니다."
@@ -5533,6 +5533,9 @@ msgstr "{source}에서 설치"
 
 msgid "Install handoff failed: {msg}"
 msgstr "handoff 설치 실패: {msg}"
+
+msgid "Install in a shared folder?"
+msgstr "공유 폴더에 설치할까요?"
 
 msgid "Install in Claude Desktop"
 msgstr "Claude Desktop에 설치"
@@ -8613,6 +8616,18 @@ msgstr "이 복사본을 소스를 가리키는 심볼릭 링크로 바꿀까요
 msgid "Replace these symlinks with independent copies?"
 msgstr "이 심볼릭 링크를 독립적인 복사본으로 바꿀까요?"
 
+msgid "Replace with a copy?"
+msgstr "복사본으로 바꿀까요?"
+
+msgid "Replace with a symlink?"
+msgstr "심볼릭 링크로 바꿀까요?"
+
+msgid "Replace with copy"
+msgstr "복사본으로 바꾸기"
+
+msgid "Replace with symlink"
+msgstr "심볼릭 링크로 바꾸기"
+
 msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
 msgstr "이 파일의 기존 {server} 항목을 대체합니다. 파일의 다른 서버는 그대로 유지됩니다."
 
@@ -8637,7 +8652,7 @@ msgstr "{0}의 보고서"
 msgid "Report this error"
 msgstr "이 오류 보고"
 
-msgid "Reports you've generated on this computer. Retry a send, reveal a file, or delete one you no longer need."
+msgid "Reports you've generated on this computer. Try a send again, reveal a file, or delete one you no longer need."
 msgstr "이 컴퓨터에서 생성한 보고서입니다. 다시 보내거나 파일을 보거나, 더 이상 필요하지 않은 보고서를 삭제할 수 있습니다."
 
 msgid "Repositories you've already cloned may keep syncing through git's own saved credentials, even after you disconnect."
@@ -8811,9 +8826,6 @@ msgstr "채팅 재개 중"
 
 msgid "Retrieving…"
 msgstr "가져오는 중…"
-
-msgid "Retry"
-msgstr "다시 시도"
 
 msgid "Retry push"
 msgstr "푸시 재시도"
@@ -9964,6 +9976,9 @@ msgstr "수정을 중지합니다. 이미 수정한 파일은 그대로 유지�
 
 msgid "Stop maintaining index.md"
 msgstr "index.md 유지 관리 중지"
+
+msgid "Stop reading"
+msgstr "읽기 중지"
 
 msgid "Stopped"
 msgstr "중지됨"

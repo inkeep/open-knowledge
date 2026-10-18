@@ -116,7 +116,7 @@ export function TerminalAgentConnectionBanner({
             <Button
               size="sm"
               onClick={() => setReload((current) => current + 1)}
-            >{t`Retry`}</Button>
+            >{t`Try again`}</Button>
           }
         >
           {t`Couldn't check which tools are connected.`}

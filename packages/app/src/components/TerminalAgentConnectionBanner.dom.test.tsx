@@ -138,7 +138,7 @@ describe('TerminalAgentConnectionBanner', () => {
     if (throws) applyConnections.mockRejectedValueOnce(new Error('offline'));
     else applyConnections.mockResolvedValueOnce(result(null, false));
     renderBanner({ cli: 'claude', applyConnections });
-    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }));
     await screen.findByRole('button', { name: 'Connect tools' });
     expect(screen.queryByTestId('terminal-connection-check-failed-banner')).toBeNull();
     expect(applyConnections).toHaveBeenCalledTimes(2);
@@ -150,11 +150,11 @@ describe('TerminalAgentConnectionBanner', () => {
       .mockResolvedValueOnce(result(null, false))
       .mockResolvedValueOnce(result(null, false));
     renderBanner({ cli: 'claude', applyConnections });
-    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(applyConnections).toHaveBeenCalledTimes(2));
     expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Connect tools' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await screen.findByRole('button', { name: 'Connect tools' });
     expect(screen.queryByTestId('terminal-connection-check-failed-banner')).toBeNull();
     expect(applyConnections).toHaveBeenCalledTimes(3);
@@ -356,7 +356,7 @@ describe('TerminalAgentConnectionBanner', () => {
       renderBanner({ cli: 'claude', applyConnections: async () => result(snapshot) });
     });
     expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
   test('an external install can recover a failed check to show the setup warning', async () => {
@@ -378,7 +378,7 @@ describe('TerminalAgentConnectionBanner', () => {
         ),
     );
     renderBanner({ cli: 'claude' });
-    await screen.findByRole('button', { name: 'Retry' });
+    await screen.findByRole('button', { name: 'Try again' });
     await act(async () => {
       await applyAgentConnectionIntents([
         { satisfierId: AGENT_REGISTRY.codex.satisfiers[0].id, desired: 'present' },

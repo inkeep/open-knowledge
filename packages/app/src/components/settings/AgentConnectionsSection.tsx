@@ -862,7 +862,7 @@ export function AgentConnectionsSection({
           <WifiOff className="size-5" aria-hidden="true" />
           <span>{t`Couldn't reach the agent registry.`}</span>
           <Button type="button" variant="outline" size="sm" onClick={() => void catalog.refetch()}>
-            {t`Retry`}
+            {t`Try again`}
           </Button>
         </div>
       ) : (catalogAgents?.length ?? 0) === 0 ? (
@@ -1164,7 +1164,7 @@ export function AgentConnectionsSection({
             className="shrink-0"
             onClick={() => setReloadInstallState((value) => value + 1)}
           >
-            {t`Retry`}
+            {t`Try again`}
           </Button>
         </div>
       ) : null}

@@ -74,7 +74,7 @@ function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }):
         <p className="text-xs text-muted-foreground">{error}</p>
       </div>
       <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-        <Trans>Retry</Trans>
+        <Trans>Try again</Trans>
       </Button>
     </div>
   );

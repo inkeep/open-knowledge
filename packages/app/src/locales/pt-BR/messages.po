@@ -217,8 +217,8 @@ msgstr "{0} adicionados, {1} removidos"
 msgid "{0} CLI"
 msgstr "CLI do {0}"
 
-msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
-msgstr "{0} não conseguiu reiniciar com essa janela de contexto. Use Tentar novamente para retomá-lo."
+msgid "{0} couldn't restart on that context window. Use Try again to bring it back."
+msgstr "{0} não conseguiu reiniciar com essa janela de contexto. Use Tente de novo para retomá-lo."
 
 msgid "{0} didn't confirm the context window change. Check the conversation before picking again."
 msgstr "{0} não confirmou a mudança da janela de contexto. Verifique a conversa antes de escolher de novo."
@@ -3150,6 +3150,9 @@ msgstr "Não deu para resolver o conflito de {filePath}."
 msgid "Couldn't resolve the fork: {0}"
 msgstr "Não deu para resolver a bifurcação: {0}"
 
+msgid "Couldn't restart {agentName}."
+msgstr "Não deu para reiniciar {agentName}."
+
 msgid "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again."
 msgstr "Não deu para reiniciar o servidor — outro processo está com ele. Feche as outras janelas do OpenKnowledge deste projeto e tente de novo."
 
@@ -3224,9 +3227,6 @@ msgstr "Não deu para enviar seus comentários — o espaço de trabalho não es
 
 msgid "Couldn't send your prompt — please try again."
 msgstr "Não deu para enviar seu prompt — tente de novo."
-
-msgid "Couldn't start {agentName}: {0}"
-msgstr "Não foi possível iniciar {agentName}: {0}"
 
 msgid "Couldn't start Slidev."
 msgstr "Não foi possível iniciar o Slidev."
@@ -5529,6 +5529,9 @@ msgstr "Instalar a partir de {source}"
 
 msgid "Install handoff failed: {msg}"
 msgstr "Falha na passagem da instalação: {msg}"
+
+msgid "Install in a shared folder?"
+msgstr "Instalar em uma pasta compartilhada?"
 
 msgid "Install in Claude Desktop"
 msgstr "Instalar no Claude Desktop"
@@ -8609,6 +8612,18 @@ msgstr "Substituir estas cópias por links simbólicos para a fonte?"
 msgid "Replace these symlinks with independent copies?"
 msgstr "Substituir estes links simbólicos por cópias independentes?"
 
+msgid "Replace with a copy?"
+msgstr "Substituir por uma cópia?"
+
+msgid "Replace with a symlink?"
+msgstr "Substituir por um link simbólico?"
+
+msgid "Replace with copy"
+msgstr "Substituir por cópia"
+
+msgid "Replace with symlink"
+msgstr "Substituir por link simbólico"
+
 msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
 msgstr "Substitui a entrada {server} existente neste arquivo. Os outros servidores do arquivo permanecem inalterados."
 
@@ -8633,7 +8648,7 @@ msgstr "Relatório de {0}"
 msgid "Report this error"
 msgstr "Relatar este erro"
 
-msgid "Reports you've generated on this computer. Retry a send, reveal a file, or delete one you no longer need."
+msgid "Reports you've generated on this computer. Try a send again, reveal a file, or delete one you no longer need."
 msgstr "Relatórios que você gerou neste computador. Tente enviar de novo, mostre um arquivo ou exclua um de que não precisa mais."
 
 msgid "Repositories you've already cloned may keep syncing through git's own saved credentials, even after you disconnect."
@@ -8807,9 +8822,6 @@ msgstr "Retomando o chat"
 
 msgid "Retrieving…"
 msgstr "Recuperando…"
-
-msgid "Retry"
-msgstr "Tentar de novo"
 
 msgid "Retry push"
 msgstr "Tentar o push de novo"
@@ -9960,6 +9972,9 @@ msgstr "Para de corrigir. Os arquivos já corrigidos continuam corrigidos."
 
 msgid "Stop maintaining index.md"
 msgstr "Pare de manter index.md"
+
+msgid "Stop reading"
+msgstr "Parar de ler"
 
 msgid "Stopped"
 msgstr "Parado"

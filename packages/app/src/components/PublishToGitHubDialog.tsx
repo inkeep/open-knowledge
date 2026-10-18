@@ -334,7 +334,7 @@ export function PublishToGitHubDialog({
                         size="sm"
                         onClick={() => loadOwners()}
                       >
-                        <Trans>Retry</Trans>
+                        <Trans>Try again</Trans>
                       </Button>
                     </div>
                   ) : (

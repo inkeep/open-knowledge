@@ -217,7 +217,7 @@ msgstr "{0} ditambahkan, {1} dihapus"
 msgid "{0} CLI"
 msgstr "CLI {0}"
 
-msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
+msgid "{0} couldn't restart on that context window. Use Try again to bring it back."
 msgstr "{0} tidak dapat dijalankan ulang pada jendela konteks itu. Gunakan Coba lagi untuk memulihkannya."
 
 msgid "{0} didn't confirm the context window change. Check the conversation before picking again."
@@ -3150,6 +3150,9 @@ msgstr "Konflik untuk {filePath} tidak bisa diselesaikan."
 msgid "Couldn't resolve the fork: {0}"
 msgstr "Percabangannya tidak bisa diselesaikan: {0}"
 
+msgid "Couldn't restart {agentName}."
+msgstr "{agentName} tidak bisa dimulai ulang."
+
 msgid "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again."
 msgstr "Server tidak bisa dimulai ulang — proses lain menguasainya. Tutup jendela OpenKnowledge lain untuk proyek ini, lalu coba lagi."
 
@@ -3224,9 +3227,6 @@ msgstr "Komentar Anda tidak bisa dikirim — ruang kerjanya belum siap."
 
 msgid "Couldn't send your prompt — please try again."
 msgstr "Prompt Anda tidak bisa dikirim — silakan coba lagi."
-
-msgid "Couldn't start {agentName}: {0}"
-msgstr "Tidak dapat menjalankan {agentName}: {0}"
 
 msgid "Couldn't start Slidev."
 msgstr "Tidak dapat menjalankan Slidev."
@@ -5529,6 +5529,9 @@ msgstr "Pasang dari {source}"
 
 msgid "Install handoff failed: {msg}"
 msgstr "Serah terima pemasangan gagal: {msg}"
+
+msgid "Install in a shared folder?"
+msgstr "Pasang di folder bersama?"
 
 msgid "Install in Claude Desktop"
 msgstr "Pasang di Claude Desktop"
@@ -8609,6 +8612,18 @@ msgstr "Ganti salinan-salinan ini dengan symlink ke sumbernya?"
 msgid "Replace these symlinks with independent copies?"
 msgstr "Ganti symlink-symlink ini dengan salinan mandiri?"
 
+msgid "Replace with a copy?"
+msgstr "Ganti dengan salinan?"
+
+msgid "Replace with a symlink?"
+msgstr "Ganti dengan symlink?"
+
+msgid "Replace with copy"
+msgstr "Ganti dengan salinan"
+
+msgid "Replace with symlink"
+msgstr "Ganti dengan symlink"
+
 msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
 msgstr "Mengganti entri {server} yang ada di file ini. Server lain dalam file ini tidak diubah."
 
@@ -8633,7 +8648,7 @@ msgstr "Laporan dari {0}"
 msgid "Report this error"
 msgstr "Laporkan galat ini"
 
-msgid "Reports you've generated on this computer. Retry a send, reveal a file, or delete one you no longer need."
+msgid "Reports you've generated on this computer. Try a send again, reveal a file, or delete one you no longer need."
 msgstr "Laporan yang Anda buat di komputer ini. Coba kirim lagi, tampilkan berkas, atau hapus yang tidak Anda perlukan lagi."
 
 msgid "Repositories you've already cloned may keep syncing through git's own saved credentials, even after you disconnect."
@@ -8807,9 +8822,6 @@ msgstr "Melanjutkan obrolan"
 
 msgid "Retrieving…"
 msgstr "Mengambil…"
-
-msgid "Retry"
-msgstr "Coba lagi"
 
 msgid "Retry push"
 msgstr "Coba push lagi"
@@ -9960,6 +9972,9 @@ msgstr "Berhenti memperbaiki. Berkas yang sudah diperbaiki tetap terperbaiki."
 
 msgid "Stop maintaining index.md"
 msgstr "Berhenti mempertahankan index.md"
+
+msgid "Stop reading"
+msgstr "Berhenti membaca"
 
 msgid "Stopped"
 msgstr "Berhenti"

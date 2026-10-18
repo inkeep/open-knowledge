@@ -112,7 +112,7 @@ describe('successToastMessage / errorToastMessage — exact copy', () => {
   test('retryActionLabel returns Retry / Try one more time / null across attempts', async () => {
     const { retryActionLabel, MAX_DISPATCH_ATTEMPTS } = await import('./useHandoffDispatch');
     expect(MAX_DISPATCH_ATTEMPTS).toBe(3);
-    expect(retryActionLabel(1)).toBe('Retry');
+    expect(retryActionLabel(1)).toBe('Try again');
     expect(retryActionLabel(2)).toBe('Try one more time');
     expect(retryActionLabel(3)).toBeNull();
     expect(retryActionLabel(4)).toBeNull();
@@ -323,7 +323,7 @@ describe('runHandoffDispatch — autoOpen=false honors the user preference', () 
 });
 
 describe('runHandoffDispatch — failure path', () => {
-  test('renders error toast with Retry action and records error stats line', async () => {
+  test('renders error toast with Try again action and records error stats line', async () => {
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const deps = buildDeps({
       dispatchHandoff: vi.fn(
@@ -340,7 +340,7 @@ describe('runHandoffDispatch — failure path', () => {
     expect(errorCall).toBeDefined();
     if (!errorCall) throw new Error('unreachable');
     expect(errorCall.message).toBe("Couldn't reach Cursor — try again?");
-    expect(errorCall.action?.label).toBe('Retry');
+    expect(errorCall.action?.label).toBe('Try again');
     expect(typeof errorCall.action?.onClick).toBe('function');
 
     expect(deps.recordHandoff).toHaveBeenCalledTimes(1);
@@ -391,7 +391,7 @@ describe('runHandoffDispatch — failure path', () => {
     expect(deps.toast.successCalls).toEqual(['Opened in Cursor.']);
   });
 
-  test('third consecutive failure drops the Retry action (Review M5 bounded retry)', async () => {
+  test('third consecutive failure drops the Try again action (Review M5 bounded retry)', async () => {
     const { runHandoffDispatch } = await import('./useHandoffDispatch');
     const dispatch = vi.fn(
       async (_p: HandoffPayload) => ({ ok: false, reason: 'dispatch-error' }) as HandoffOutcome,
@@ -402,7 +402,7 @@ describe('runHandoffDispatch — failure path', () => {
     await runHandoffDispatch('cursor', input, deps);
     expect(deps.toast.errorCalls).toHaveLength(1);
     expect(deps.toast.errorCalls[0]?.message).toBe("Couldn't reach Cursor — try again?");
-    expect(deps.toast.errorCalls[0]?.action?.label).toBe('Retry');
+    expect(deps.toast.errorCalls[0]?.action?.label).toBe('Try again');
 
     const firstAction = deps.toast.errorCalls[0]?.action;
     expect(firstAction).toBeDefined();

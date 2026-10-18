@@ -539,6 +539,7 @@ describe('retry and sign-in lifecycle', () => {
       threadId: 't1',
     });
     await expect(pending).rejects.toThrow(/harness not installed/);
+    await expect(pending).rejects.toMatchObject({ code: 'spawn-failed' });
   });
 
   test('a refused context window change carries the server code to the caller', async () => {

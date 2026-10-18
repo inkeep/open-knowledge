@@ -163,6 +163,7 @@ import {
   getAgentThreadClient,
   ThreadContextWindowError,
   ThreadResumeError,
+  ThreadRetryError,
   useAgentThread,
   useAgentThreadModel,
 } from '@/lib/acp/thread-client';
@@ -271,6 +272,10 @@ function errorText(err: unknown): string {
 
 function isAgentExitedError(err: unknown): boolean {
   return err instanceof Error && 'code' in err && err.code === 'agent-exited';
+}
+
+function isRetryFailureShownInThread(err: unknown): boolean {
+  return err instanceof ThreadRetryError && err.code === 'spawn-failed';
 }
 
 const RETRYABLE_FAILURE_REASONS: ReadonlySet<ThreadFailureDetail['reason']> = new Set([
@@ -671,6 +676,9 @@ export function ThreadView({
   const terminalCli = useHarnessTerminalCli(info.agent.id);
   const terminalAvailable = terminalLaunchAvailable();
   const [retryPending, setRetryPending] = useState(false);
+  const [retryFailure, setRetryFailure] = useState<string | null>(null);
+  const retryAttemptRef = useRef(0);
+  const leftFailedSinceRetryRef = useRef(false);
   const [revertedPositions, setRevertedPositions] = useState<ReadonlySet<number>>(new Set());
   const canQueue = !archived && turnActive;
   const pageList = useOptionalPageList();
@@ -763,7 +771,10 @@ export function ThreadView({
   }, [lastSeq]);
 
   useEffect(() => {
-    if (!canRetry) setRetryPending(false);
+    if (canRetry) return;
+    leftFailedSinceRetryRef.current = true;
+    setRetryPending(false);
+    setRetryFailure(null);
   }, [canRetry]);
 
   useEffect(() => {
@@ -925,7 +936,11 @@ export function ThreadView({
   const retryThread = (): void => {
     const stranded =
       awaitingSignIn && model !== null ? strandedMessageBeforeSignIn(model.items) : null;
+    retryAttemptRef.current += 1;
+    const attempt = retryAttemptRef.current;
+    leftFailedSinceRetryRef.current = false;
     setRetryPending(true);
+    setRetryFailure(null);
     void client
       .retryThread(info.threadId)
       .then((next) => {
@@ -934,7 +949,9 @@ export function ThreadView({
         void sendText(stranded.text, stranded.text, stranded.attachments);
       })
       .catch((err: unknown) => {
-        toast.error(t`Couldn't start ${agentName}: ${errorText(err)}`);
+        if (isRetryFailureShownInThread(err)) return;
+        if (attempt !== retryAttemptRef.current || leftFailedSinceRetryRef.current) return;
+        setRetryFailure(errorText(err));
       })
       .finally(() => setRetryPending(false));
   };
@@ -1495,6 +1512,9 @@ export function ThreadView({
               >
                 {crashAnnouncement}
               </span>
+              {retryFailure !== null && canRetry && !retryPending ? (
+                <RetryFailedNotice key={retryFailure} agentName={agentName} detail={retryFailure} />
+              ) : null}
               {resumeFailureMessage !== '' && !newChatOfferInTranscript ? (
                 <div
                   className="flex items-center gap-2 border-warning/30 border-t bg-warning/5 px-3 py-1.5 text-warning text-xs"
@@ -1922,7 +1942,7 @@ function AgentSettingsPopover({
                 const code = err instanceof ThreadContextWindowError ? err.code : null;
                 if (code === 'spawn-failed') {
                   toast.error(
-                    t`${info.agent.name} couldn't restart on that context window. Use Retry to bring it back.`,
+                    t`${info.agent.name} couldn't restart on that context window. Use Try again to bring it back.`,
                   );
                   return;
                 }
@@ -2762,7 +2782,7 @@ function ThreadAuthPrompt({
                   {t`Retrying…`}
                 </>
               ) : (
-                t`Retry`
+                t`Try again`
               )}
             </Button>
           ) : null}
@@ -2787,6 +2807,50 @@ function ThreadAuthPrompt({
           data-testid="agent-thread-notice-details"
         >
           {machineDetail}
+        </pre>
+      ) : null}
+    </div>
+  );
+}
+
+function RetryFailedNotice({
+  agentName,
+  detail,
+}: {
+  agentName: string;
+  detail: string;
+}): ReactNode {
+  const { t } = useLingui();
+  const [showDetail, setShowDetail] = useState(false);
+  return (
+    <div
+      className="flex flex-col gap-1 border-destructive/30 border-t bg-destructive/5 px-3 py-1.5 text-destructive text-xs"
+      data-testid="agent-thread-retry-failed"
+    >
+      <div className="flex items-center gap-2">
+        <span className="flex-1" role="alert" data-testid="agent-thread-retry-failed-headline">
+          {t`Couldn't restart ${agentName}.`}
+        </span>
+        {detail !== '' ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-auto shrink-0 p-0 text-[11px] underline hover:bg-transparent"
+            onClick={() => setShowDetail((open) => !open)}
+            aria-expanded={showDetail}
+            data-testid="agent-thread-retry-failed-details-toggle"
+          >
+            {showDetail ? t`Hide details` : t`Show details`}
+          </Button>
+        ) : null}
+      </div>
+      {showDetail && detail !== '' ? (
+        <pre
+          className="overflow-x-auto whitespace-pre-wrap font-mono text-[10px] opacity-70"
+          data-testid="agent-thread-retry-failed-details"
+        >
+          {detail}
         </pre>
       ) : null}
     </div>
@@ -2935,7 +2999,7 @@ function ThreadNotice({
                     {t`Retrying…`}
                   </>
                 ) : (
-                  t`Retry`
+                  t`Try again`
                 )}
               </Button>
             </div>

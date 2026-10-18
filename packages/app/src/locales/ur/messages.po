@@ -217,8 +217,8 @@ msgstr "{0} شامل، {1} ہٹائے گئے"
 msgid "{0} CLI"
 msgstr "{0} CLI"
 
-msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
-msgstr "{0} اس سیاق ونڈو پر دوبارہ شروع نہیں ہو سکا۔ اسے واپس لانے کے لیے دوبارہ کوشش کریں۔"
+msgid "{0} couldn't restart on that context window. Use Try again to bring it back."
+msgstr "{0} اس سیاق ونڈو پر دوبارہ شروع نہیں ہو سکا۔ اسے واپس لانے کے لیے \"دوبارہ کوشش کریں\" استعمال کریں۔"
 
 msgid "{0} didn't confirm the context window change. Check the conversation before picking again."
 msgstr "{0} نے سیاق ونڈو کی تبدیلی کی تصدیق نہیں کی۔ دوبارہ منتخب کرنے سے پہلے گفتگو دیکھیں۔"
@@ -3154,6 +3154,9 @@ msgstr "{filePath} کا تصادم حل نہیں ہو سکا۔"
 msgid "Couldn't resolve the fork: {0}"
 msgstr "فورک حل نہیں ہو سکا: {0}"
 
+msgid "Couldn't restart {agentName}."
+msgstr "{agentName} دوبارہ شروع نہ ہو سکا۔"
+
 msgid "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again."
 msgstr "سرور دوبارہ نہیں چل سکا — کوئی اور عمل اس کا مالک ہے۔ اس پروجیکٹ کے لیے OpenKnowledge کی دیگر ونڈوز بند کریں، پھر دوبارہ کوشش کریں۔"
 
@@ -3228,9 +3231,6 @@ msgstr "آپ کے تبصرے نہیں بھیجے جا سکے — ورک اسپی
 
 msgid "Couldn't send your prompt — please try again."
 msgstr "آپ کا پرامپٹ نہیں بھیجا جا سکا — براہِ کرم دوبارہ کوشش کریں۔"
-
-msgid "Couldn't start {agentName}: {0}"
-msgstr "{agentName} شروع نہ ہو سکا: {0}"
 
 msgid "Couldn't start Slidev."
 msgstr "Slidev شروع نہیں ہو سکا۔"
@@ -5533,6 +5533,9 @@ msgstr "{source} سے نصب کریں"
 
 msgid "Install handoff failed: {msg}"
 msgstr "تنصیب کی منتقلی ناکام: {msg}"
+
+msgid "Install in a shared folder?"
+msgstr "کیا مشترکہ فولڈر میں نصب کیا جائے؟"
 
 msgid "Install in Claude Desktop"
 msgstr "Claude Desktop میں نصب کریں"
@@ -8613,6 +8616,18 @@ msgstr "کیا ان نقول کو ماخذ کے سِم لنکس سے بدل دی
 msgid "Replace these symlinks with independent copies?"
 msgstr "کیا ان سِم لنکس کو خودمختار نقول سے بدل دیا جائے؟"
 
+msgid "Replace with a copy?"
+msgstr "کیا نقل سے بدل دیا جائے؟"
+
+msgid "Replace with a symlink?"
+msgstr "کیا سِم لنک سے بدل دیا جائے؟"
+
+msgid "Replace with copy"
+msgstr "نقل سے بدلیں"
+
+msgid "Replace with symlink"
+msgstr "سِم لنک سے بدلیں"
+
 msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
 msgstr "اس فائل میں موجود {server} اندراج کو تبدیل کرتا ہے۔ فائل کے دیگر سرورز میں کوئی تبدیلی نہیں ہوتی۔"
 
@@ -8637,7 +8652,7 @@ msgstr "{0} سے رپورٹ"
 msgid "Report this error"
 msgstr "اس خرابی کی اطلاع دیں"
 
-msgid "Reports you've generated on this computer. Retry a send, reveal a file, or delete one you no longer need."
+msgid "Reports you've generated on this computer. Try a send again, reveal a file, or delete one you no longer need."
 msgstr "اس کمپیوٹر پر آپ کی بنائی ہوئی رپورٹس۔ بھیجنے کی دوبارہ کوشش کریں، کوئی فائل دکھائیں، یا جس کی ضرورت نہ ہو اسے حذف کریں۔"
 
 msgid "Repositories you've already cloned may keep syncing through git's own saved credentials, even after you disconnect."
@@ -8811,9 +8826,6 @@ msgstr "چیٹ دوبارہ شروع ہو رہی ہے"
 
 msgid "Retrieving…"
 msgstr "حاصل کیا جا رہا ہے…"
-
-msgid "Retry"
-msgstr "دوبارہ کوشش کریں"
 
 msgid "Retry push"
 msgstr "پُش دوبارہ آزمائیں"
@@ -9964,6 +9976,9 @@ msgstr "ٹھیک کرنا روکیں۔ جو فائلیں پہلے ہی ٹھیک 
 
 msgid "Stop maintaining index.md"
 msgstr "برقرار رکھنا بند کریں index.md"
+
+msgid "Stop reading"
+msgstr "پڑھنا بند کریں"
 
 msgid "Stopped"
 msgstr "رک گیا"

@@ -92,7 +92,7 @@ function threadAuthSignedOutOffer(
   return {
     kind: 'retry',
     headline: t`${agentName} needs you to sign in.`,
-    actionLabel: t`Retry`,
+    actionLabel: t`Try again`,
   };
 }
 
@@ -122,7 +122,7 @@ export function threadAuthOfferWithoutSignInMethods({
       return {
         kind: 'retry',
         headline: t`${agentName} stopped with an error.`,
-        actionLabel: t`Retry`,
+        actionLabel: t`Try again`,
       };
     case 'exited':
       return threadAuthNewChatOffer(agentName);

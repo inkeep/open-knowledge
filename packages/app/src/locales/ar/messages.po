@@ -217,8 +217,8 @@ msgstr "تمت إضافة {0}، وإزالة {1}"
 msgid "{0} CLI"
 msgstr "واجهة {0} السطرية"
 
-msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
-msgstr "{0} تعذر إعادة تشغيله بنافذة السياق هذه. استخدم إعادة المحاولة لاستعادته."
+msgid "{0} couldn't restart on that context window. Use Try again to bring it back."
+msgstr "{0} تعذر إعادة تشغيله بنافذة السياق هذه. استخدم «أعد المحاولة» لاستعادته."
 
 msgid "{0} didn't confirm the context window change. Check the conversation before picking again."
 msgstr "{0} لم يؤكد تغيير نافذة السياق. راجع المحادثة قبل الاختيار مرة أخرى."
@@ -3154,6 +3154,9 @@ msgstr "تعذّر حل التعارض في {filePath}."
 msgid "Couldn't resolve the fork: {0}"
 msgstr "تعذّر حل التفرّع: {0}"
 
+msgid "Couldn't restart {agentName}."
+msgstr "تعذّرت إعادة تشغيل {agentName}."
+
 msgid "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again."
 msgstr "تعذّرت إعادة تشغيل الخادم — عملية أخرى تملكه. أغلق نوافذ OpenKnowledge الأخرى لهذا المشروع، ثم أعد المحاولة."
 
@@ -3228,9 +3231,6 @@ msgstr "تعذّر إرسال تعليقاتك — مساحة العمل غير 
 
 msgid "Couldn't send your prompt — please try again."
 msgstr "تعذّر إرسال موجّهك — يرجى المحاولة مرة أخرى."
-
-msgid "Couldn't start {agentName}: {0}"
-msgstr "تعذّر تشغيل {agentName}: {0}"
 
 msgid "Couldn't start Slidev."
 msgstr "تعذّر تشغيل Slidev."
@@ -5533,6 +5533,9 @@ msgstr "التثبيت من {source}"
 
 msgid "Install handoff failed: {msg}"
 msgstr "فشل تسليم التثبيت: {msg}"
+
+msgid "Install in a shared folder?"
+msgstr "هل تثبّت في مجلد مشترك؟"
 
 msgid "Install in Claude Desktop"
 msgstr "التثبيت في Claude Desktop"
@@ -8613,6 +8616,18 @@ msgstr "هل تستبدل هذه النسخ بروابط رمزية إلى ال�
 msgid "Replace these symlinks with independent copies?"
 msgstr "هل تستبدل هذه الروابط الرمزية بنسخ مستقلة؟"
 
+msgid "Replace with a copy?"
+msgstr "هل تستبدلها بنسخة؟"
+
+msgid "Replace with a symlink?"
+msgstr "هل تستبدلها برابط رمزي؟"
+
+msgid "Replace with copy"
+msgstr "استبدال بنسخة"
+
+msgid "Replace with symlink"
+msgstr "استبدال برابط رمزي"
+
 msgid "Replaces the existing {server} entry in this file. Other servers in the file are left alone."
 msgstr "يستبدل إدخال {server} الموجود في هذا الملف. تُترك الخوادم الأخرى في الملف دون تغيير."
 
@@ -8637,7 +8652,7 @@ msgstr "تقرير من {0}"
 msgid "Report this error"
 msgstr "أبلغ عن هذا الخطأ"
 
-msgid "Reports you've generated on this computer. Retry a send, reveal a file, or delete one you no longer need."
+msgid "Reports you've generated on this computer. Try a send again, reveal a file, or delete one you no longer need."
 msgstr "التقارير التي أنشأتها على هذا الجهاز. أعد محاولة الإرسال، أو أظهر ملفًا، أو احذف تقريرًا لم تعد بحاجة إليه."
 
 msgid "Repositories you've already cloned may keep syncing through git's own saved credentials, even after you disconnect."
@@ -8811,9 +8826,6 @@ msgstr "جارٍ استئناف المحادثة"
 
 msgid "Retrieving…"
 msgstr "يجري الاسترجاع…"
-
-msgid "Retry"
-msgstr "إعادة المحاولة"
 
 msgid "Retry push"
 msgstr "إعادة محاولة الدفع"
@@ -9964,6 +9976,9 @@ msgstr "أوقف الإصلاح. تبقى الملفات المُصلَحة با
 
 msgid "Stop maintaining index.md"
 msgstr "توقف عن صيانة index.md"
+
+msgid "Stop reading"
+msgstr "إيقاف القراءة"
 
 msgid "Stopped"
 msgstr "متوقف"

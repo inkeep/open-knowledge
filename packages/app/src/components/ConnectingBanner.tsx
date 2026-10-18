@@ -91,7 +91,7 @@ export function ConnectingBanner() {
           onClick={retryCollab}
           className="bg-background text-foreground px-2 py-0.5 rounded text-xs font-medium hover:bg-background/90"
         >
-          <Trans>Retry</Trans>
+          <Trans>Try again</Trans>
         </button>
         {}
         {openBlobRunner ? (

@@ -324,7 +324,7 @@ export function errorToastMessage(displayName: string, attempt = 1): string {
 
 export function retryActionLabel(attempt: number): string | null {
   if (attempt >= MAX_DISPATCH_ATTEMPTS) return null;
-  return attempt === MAX_DISPATCH_ATTEMPTS - 1 ? t`Try one more time` : t`Retry`;
+  return attempt === MAX_DISPATCH_ATTEMPTS - 1 ? t`Try one more time` : t`Try again`;
 }
 
 function buildStatsLine(

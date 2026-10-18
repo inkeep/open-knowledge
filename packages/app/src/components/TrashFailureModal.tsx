@@ -130,7 +130,7 @@ export function TrashFailureModal({
               <Spinner aria-hidden="true" className="size-4" /> <Trans>Retrying</Trans>
             </>
           ) : (
-            <Trans>Retry</Trans>
+            <Trans>Try again</Trans>
           )}
         </Button>
         <Button

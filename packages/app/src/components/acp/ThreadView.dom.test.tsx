@@ -121,6 +121,13 @@ vi.doMock('@/lib/acp/thread-client', () => ({
       this.code = code;
     }
   },
+  ThreadRetryError: class ThreadRetryError extends Error {
+    readonly code: string;
+    constructor(code: string, message: string) {
+      super(message);
+      this.code = code;
+    }
+  },
   ThreadContextWindowError: class ThreadContextWindowError extends Error {
     readonly code: string;
     constructor(code: string, message: string) {
@@ -170,7 +177,9 @@ const {
   subscribeStagedThreadDraft,
 } = await import('@/lib/acp/thread-draft-staging');
 const { launchAgentThread } = await import('@/lib/acp/launch-agent-thread');
-const { ThreadContextWindowError, ThreadResumeError } = await import('@/lib/acp/thread-client');
+const { ThreadContextWindowError, ThreadResumeError, ThreadRetryError } = await import(
+  '@/lib/acp/thread-client'
+);
 const { buildThreadRenderModel } = await import('@/lib/acp/thread-event-model');
 const {
   agentSettingsKey,
@@ -2961,6 +2970,72 @@ describe('ThreadView retry', () => {
     expect(retryThread).toHaveBeenCalledWith('thread-1');
   });
 
+  test('a retry the agent fails is left to the thread notice, with no toast and no second message', async () => {
+    retryThread.mockRejectedValueOnce(
+      new ThreadRetryError('spawn-failed', 'harness not installed'),
+    );
+    model = makeModel({ turnActive: false, items: [failureNotice('connect')] });
+    render(<ThreadView info={makeInfo({ status: 'error' })} />);
+
+    await userEvent.click(screen.getByTestId('agent-thread-retry'));
+    await waitFor(() =>
+      expect(screen.getByTestId('agent-thread-retry').hasAttribute('disabled')).toBe(false),
+    );
+    expect(screen.getByTestId('agent-thread-notice').textContent).toContain(
+      "Claude couldn't start.",
+    );
+    expect(screen.queryByTestId('agent-thread-retry-failed')).toBeNull();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test('a retry that never reaches the agent says so in the pane, with the detail behind a disclosure and no toast', async () => {
+    retryThread.mockRejectedValueOnce(
+      new ThreadRetryError('install-failed', 'agent registry unavailable: fetch failed'),
+    );
+    model = makeModel({ turnActive: false, items: [failureNotice('connect')] });
+    render(<ThreadView info={makeInfo({ status: 'error' })} />);
+
+    await userEvent.click(screen.getByTestId('agent-thread-retry'));
+    const failed = await screen.findByTestId('agent-thread-retry-failed');
+    const alerts = within(failed).getAllByRole('alert');
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]?.textContent).toBe("Couldn't restart Claude.");
+    expect(failed.textContent).not.toContain('fetch failed');
+    await userEvent.click(within(failed).getByRole('button', { name: 'Show details' }));
+    expect(screen.getByTestId('agent-thread-retry-failed-details').textContent).toBe(
+      'agent registry unavailable: fetch failed',
+    );
+    expect(toastError).not.toHaveBeenCalled();
+
+    retryThread.mockReturnValueOnce(new Promise(() => {}));
+    await userEvent.click(screen.getByTestId('agent-thread-retry'));
+    expect(screen.queryByTestId('agent-thread-retry-failed')).toBeNull();
+  });
+
+  test('a retry rejection that lands after the thread moved on never surfaces when the thread fails again', async () => {
+    let rejectRetry: ((err: unknown) => void) | undefined;
+    retryThread.mockReturnValueOnce(
+      new Promise<ThreadInfo>((_resolve, reject) => {
+        rejectRetry = reject;
+      }),
+    );
+    model = makeModel({ turnActive: false, items: [failureNotice('connect')] });
+    const view = render(<ThreadView info={makeInfo({ status: 'error' })} />);
+
+    await userEvent.click(screen.getByTestId('agent-thread-retry'));
+    view.rerender(<ThreadView info={makeInfo({ status: 'spawning' })} />);
+    await act(async () => {
+      rejectRetry?.(new ThreadRetryError('timeout', 'retry timed out'));
+    });
+    view.rerender(<ThreadView info={makeInfo({ status: 'error' })} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('agent-thread-retry').hasAttribute('disabled')).toBe(false),
+    );
+    expect(screen.queryByTestId('agent-thread-retry-failed')).toBeNull();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
   test('a message stranded by a sign-in failure comes back once the thread can send again', async () => {
     model = makeModel({
       turnActive: false,
@@ -4538,15 +4613,17 @@ describe('ThreadView auth-required dead ends', () => {
     },
   );
 
-  test('a failed retry says so', async () => {
-    retryThread.mockRejectedValueOnce(new Error('agent binary is missing'));
+  test('a failed retry says so in the pane, not in a toast', async () => {
+    retryThread.mockRejectedValueOnce(
+      new ThreadRetryError('install-failed', 'agent registry unavailable: fetch failed'),
+    );
     model = makeModel({ turnActive: false, items: [] });
     render(<ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />);
 
     await userEvent.click(offerButton());
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Couldn't start Claude: agent binary is missing"),
-    );
+    const failed = await screen.findByTestId('agent-thread-retry-failed');
+    expect(failed.textContent).toContain("Couldn't restart Claude.");
+    expect(toastError).not.toHaveBeenCalled();
     expect(offerButton().hasAttribute('disabled')).toBe(false);
   });
 
@@ -4860,13 +4937,13 @@ describe('ThreadView auth-required dead ends', () => {
     expect(surface.textContent).not.toContain('Retry to sign in');
     expect(SIGN_IN_INSTRUCTION.test(surface.textContent ?? '')).toBe(false);
     expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('retry');
-    expect(within(surface).getByRole('button', { name: 'Retry' })).toBeTruthy();
+    expect(within(surface).getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
   test('an empty transcript on a dead thread offers a way out instead of claiming it is connecting', () => {
     for (const [status, kind, label] of [
       ['exited', 'new-chat', 'New chat with Claude'],
-      ['error', 'retry', 'Retry'],
+      ['error', 'retry', 'Try again'],
     ] as const) {
       const view = render(<ThreadView info={makeInfo({ archived: false, status })} />);
       const surface = screen.getByTestId('agent-thread-transcript');
@@ -5195,7 +5272,7 @@ describe('ThreadView auth-required dead ends', () => {
     expect(prompt).not.toHaveBeenCalled();
   });
 
-  test('Already signed in? Retry re-sends the held message once the agent is ready', async () => {
+  test('Already signed in? Try again re-sends the held message once the agent is ready', async () => {
     retryThread.mockResolvedValueOnce(makeInfo({ status: 'ready' }));
     model = makeModel({
       turnActive: false,
