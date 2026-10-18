@@ -1,23 +1,19 @@
 import { realpath } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
-import { okUserHomeDisplayPath } from '@inkeep/open-knowledge-core';
 import {
   createProbeFailureReporter,
   isLockProcessRunning,
   isProcessAlive,
   type LockProcessScan,
   type ProcessProbeOptions,
+  type ProcessStart,
   scanLockProcesses,
 } from '@inkeep/open-knowledge-server';
 import { getCliLogger } from '../cli-logger.ts';
+import { type HolderProcessStartOptions, readHolderProcessStart } from './holder-process-start.ts';
 import { describeLockOwnershipRefusal, inspectLock } from './lock-state.ts';
-import {
-  type NativeFailure,
-  type ProcessStartOptions,
-  readRemovalProcessStart,
-} from './removal-process-start.ts';
-import { runStop } from './stop.ts';
+import { describeUnconfirmedHolderStart, runStop } from './stop.ts';
 
 interface StopForRemovalOptions {
   preserveProjectState?: boolean;
@@ -25,10 +21,7 @@ interface StopForRemovalOptions {
   scanProcesses?: () => Promise<LockProcessScan>;
   timeoutMs?: number;
   pollIntervalMs?: number;
-  readProcessStart?: (
-    pid: number,
-    options?: Pick<ProcessStartOptions, 'platform' | 'onNativeFailure'>,
-  ) => number | null;
+  readProcessStart?: (pid: number, options?: HolderProcessStartOptions) => ProcessStart | null;
   isAlive?: (pid: number) => boolean;
   platform?: NodeJS.Platform;
 }
@@ -41,7 +34,13 @@ export async function stopServerForRemoval(
   const isAlive =
     options.isAlive ?? ((pid: number) => isLockProcessRunning(pid, probeOptions(pid)));
   const hasProcessEntry = options.isAlive ?? isProcessAlive;
-  const state = inspectLock(lockDir, 'server', { isAlive });
+  const platform = options.platform ?? process.platform;
+  const readHolderStart = (
+    pid: number,
+    onNativeFailure?: HolderProcessStartOptions['onNativeFailure'],
+  ): ProcessStart | null =>
+    (options.readProcessStart ?? readHolderProcessStart)(pid, { platform, onNativeFailure });
+  const state = inspectLock(lockDir, 'server', { isAlive, readProcessStart: readHolderStart });
   const lockRecovery =
     'Quit OpenKnowledge and stop any OpenKnowledge server processes. ' +
     `Once you have confirmed they have exited, remove the stale lock file at ${state.lockPath} and retry cleanup.`;
@@ -49,6 +48,7 @@ export async function stopServerForRemoval(
     switch (state.status) {
       case 'alive':
       case 'dead-pid':
+      case 'reused-pid':
       case 'foreign-host':
         return state.lock.pid;
       case 'unverified-owner':
@@ -72,11 +72,8 @@ export async function stopServerForRemoval(
       status: state.status,
     };
   };
-  const refusal = (message: string, nativeFailures: NativeFailure[] = []): Error => {
-    getCliLogger()?.warn(
-      nativeFailures.length > 0 ? { ...logContext(), nativeFailures } : logContext(),
-      message,
-    );
+  const refusal = (message: string): Error => {
+    getCliLogger()?.warn(logContext(), message);
     return new Error(message);
   };
   if (state.status === 'read-error') {
@@ -99,6 +96,13 @@ export async function stopServerForRemoval(
       stopped: 0,
       failed: [],
       skipped: `Skipped stale lock at ${state.lockPath}; its recorded local process ${state.lock.pid} has exited. No server was stopped.`,
+    };
+  }
+  if (state.status === 'reused-pid') {
+    return {
+      stopped: 0,
+      failed: [],
+      skipped: `Skipped stale lock at ${state.lockPath}; its recorded process ${state.lock.pid} has exited and that process ID now belongs to another program, which was not signalled. No server was stopped.`,
     };
   }
   if (
@@ -137,71 +141,47 @@ export async function stopServerForRemoval(
           : `Skipped malformed lock at ${state.lockPath}; process and listener inspection found no live server candidate for this directory. No server was stopped.`,
     };
   }
-  if (state.status === 'alive') {
-    const lockStartedAt =
-      typeof state.lock.startedAt === 'string' ? Date.parse(state.lock.startedAt) : Number.NaN;
-    if (!Number.isFinite(lockStartedAt)) {
-      throw refusal(`The server lock has no valid start time. ${lockRecovery}`);
-    }
-    const nativeFailures: NativeFailure[] = [];
-    const platform = options.platform ?? process.platform;
-    const processStartedAt = (options.readProcessStart ?? readRemovalProcessStart)(state.lock.pid, {
-      platform,
-      onNativeFailure: (failure) => {
-        nativeFailures.push(failure);
-      },
-    });
-    if (processStartedAt === null) {
-      if (!isAlive(state.lock.pid)) return { stopped: 0, failed: [] };
-      const componentUnavailable = nativeFailures.some((failure) => {
-        switch (failure.kind) {
-          case 'unavailable':
-            return true;
-          case 'query-failed':
-            return false;
-          default: {
-            const exhaustive: never = failure.kind;
-            return exhaustive;
-          }
-        }
-      });
-      const windowsRecovery =
-        nativeFailures.length === 0
-          ? 'Stop the server manually. '
-          : componentUnavailable
-            ? 'Reinstall OpenKnowledge to restore the Windows component that verifies process identity, or stop the server manually. '
-            : 'The Windows component loaded but the operating system refused the query, so reinstalling will not help; retry from an account that can inspect that process, or stop the server manually. ';
-      const probeRecovery =
-        platform === 'linux'
-          ? 'Linux requires ps supporting -p and -o lstart= (such as procps). Install a compatible ps and retry, or stop the server manually. '
-          : platform === 'win32'
-            ? windowsRecovery
-            : 'Stop the server manually. ';
-      const causeRecord =
-        nativeFailures.length > 0
-          ? `The failure detail is recorded in the CLI log under ${okUserHomeDisplayPath('logs')}. `
-          : '';
-      throw refusal(
-        `Cannot verify the identity of process ${state.lock.pid} recorded in the server lock at ${state.lockPath}; the OS process-start query failed or is unavailable, so it was not signalled. ` +
-          probeRecovery +
-          causeRecord +
-          'Confirm the OpenKnowledge server has exited before retrying cleanup after a manual stop.',
-        nativeFailures,
-      );
-    }
-    if (processStartedAt > lockStartedAt) {
-      throw refusal(
-        `Process ${state.lock.pid} started after the server lock was acquired; it was not signalled. ${lockRecovery}`,
-      );
-    }
-  }
   const outcome = await runStop({
     lockDir,
     inspect: () => state,
+    isAlive,
+    readProcessStart: (pid, readOptions) => readHolderStart(pid, readOptions?.onNativeFailure),
+    platform,
     force: true,
+    refuseHolderStartedAfterLock: true,
     log: () => {},
     error: () => {},
   });
+  const unverified = outcome.failed.find((failure) => failure.unverified !== undefined)?.unverified;
+  if (unverified !== undefined) {
+    switch (unverified.cause) {
+      case 'foreign-host':
+        throw new Error(
+          describeLockOwnershipRefusal({
+            status: 'foreign-host',
+            lockPath: unverified.lockPath,
+            lock: unverified.lock,
+          }),
+        );
+      case 'unverified-owner':
+        throw new Error(
+          describeLockOwnershipRefusal({
+            status: 'unverified-owner',
+            lockPath: unverified.lockPath,
+            pid: unverified.pid,
+          }),
+        );
+      default:
+        throw new Error(
+          describeUnconfirmedHolderStart(
+            unverified,
+            'it was not signalled.',
+            `Once you have confirmed no OpenKnowledge server is running for this project, remove ${unverified.lockPath} and retry cleanup.`,
+            getCliLogger() !== undefined,
+          ),
+        );
+    }
+  }
   const failed = outcome.failed.map((failure) => ({
     pid: failure.target.pid,
     error: failure.error,

@@ -23,6 +23,21 @@ describe('restartServerFailureMessage', () => {
     );
   });
 
+  test.each([
+    [
+      false,
+      "Couldn't restart the server: OpenKnowledge could not confirm that the process holding this project's server lock is still its server, so it was not stopped. Stop the server where it was started, or restart your computer, then reopen this project.",
+    ],
+    [
+      true,
+      "Couldn't restart the server: OpenKnowledge asked the process holding this project's server lock to stop, but could not confirm that it is this project's server, so it did not force it to quit. If the project is still locked, stop the server where it was started, or restart your computer, then reopen this project.",
+    ],
+  ])('an unverified holder (sigtermSent %s) names no CLI command', (sigtermSent, expected) => {
+    expect(restartServerFailureMessage({ ok: false, reason: 'unverified', sigtermSent })).toBe(
+      expected,
+    );
+  });
+
   test('other in a Beta window points at ok-beta start', () => {
     vi.stubGlobal('window', { okDesktop: { cliCommandName: 'ok-beta' } });
     try {

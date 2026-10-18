@@ -1,55 +1,44 @@
-import { describe, expect, test, vi } from 'vitest';
-import { readRemovalProcessStart } from './removal-process-start.ts';
+import { readProcessStart as readServerProcessStart } from '@inkeep/open-knowledge-server';
+import pino from 'pino';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  readHolderProcessStart,
+  readWindowsNativeProcessStart,
+  registerWindowsProcessStartReader,
+} from './holder-process-start.ts';
 
-describe('readRemovalProcessStart', () => {
-  test.each(['darwin', 'linux'] as const)(
-    'reads %s process start with second precision in UTC regardless of inherited locale',
-    (platform) => {
-      const run = vi.fn(() => 'Tue Sep  8 20:21:34 2026\n');
-      expect(
-        readRemovalProcessStart(123, {
-          platform,
-          env: { LC_ALL: 'fr_FR.UTF-8', TZ: 'America/New_York' },
-          run,
-        }),
-      ).toBe(Date.parse('2026-09-08T20:21:34.000Z'));
-      expect(run).toHaveBeenCalledWith(
-        'ps',
-        ['-p', '123', '-o', 'lstart='],
-        expect.objectContaining({
-          timeout: 5000,
-          env: expect.objectContaining({ LC_ALL: 'C', TZ: 'UTC0' }),
-        }),
-      );
-    },
-  );
+const installedNativeBinding = vi.hoisted(() => ({ current: undefined as unknown }));
 
-  test('reads Windows creation time through the native addon without launching a shell', () => {
+vi.mock('../native/load-native-config.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../native/load-native-config.ts')>();
+  return {
+    ...actual,
+    requireNativeConfigModule: (...args: Parameters<typeof actual.requireNativeConfigModule>) =>
+      installedNativeBinding.current === undefined
+        ? actual.requireNativeConfigModule(...args)
+        : installedNativeBinding.current,
+  };
+});
+
+describe('readWindowsNativeProcessStart', () => {
+  test('reads Windows creation time through the native addon', () => {
     const readProcessStart = vi.fn(() => 1_789_000_000_456);
-    const run = vi.fn(() => '');
     expect(
-      readRemovalProcessStart(123, {
-        platform: 'win32',
+      readWindowsNativeProcessStart(123, {
         nativeResolver: { requireModule: () => ({ readProcessStart }) },
-        run,
       }),
     ).toBe(1_789_000_000_456);
     expect(readProcessStart).toHaveBeenCalledWith(123);
-    expect(run).not.toHaveBeenCalled();
   });
 
   test.each([null, {}, { readProcessStart: 'invalid' }])(
     'refuses an unavailable Windows addon %j',
     (binding) => {
-      const run = vi.fn(() => '');
       expect(
-        readRemovalProcessStart(123, {
-          platform: 'win32',
+        readWindowsNativeProcessStart(123, {
           nativeResolver: { requireModule: () => binding },
-          run,
         }),
       ).toBeNull();
-      expect(run).not.toHaveBeenCalled();
     },
   );
 
@@ -57,19 +46,16 @@ describe('readRemovalProcessStart', () => {
     'refuses an invalid native process time %j',
     (value) => {
       expect(
-        readRemovalProcessStart(123, {
-          platform: 'win32',
+        readWindowsNativeProcessStart(123, {
           nativeResolver: { requireModule: () => ({ readProcessStart: () => value }) },
         }),
       ).toBeNull();
     },
   );
 
-  test('refuses a Windows native query error without a shell fallback', () => {
-    const run = vi.fn(() => '');
+  test('refuses a Windows native query error', () => {
     expect(
-      readRemovalProcessStart(123, {
-        platform: 'win32',
+      readWindowsNativeProcessStart(123, {
         nativeResolver: {
           requireModule: () => ({
             readProcessStart() {
@@ -77,52 +63,18 @@ describe('readRemovalProcessStart', () => {
             },
           }),
         },
-        run,
       }),
     ).toBeNull();
-    expect(run).not.toHaveBeenCalled();
   });
 
-  test('refuses a PID outside the 32-bit process-id range before loading native code', () => {
-    const requireModule = vi.fn();
-    expect(
-      readRemovalProcessStart(0x1_0000_0000, {
-        platform: 'win32',
-        nativeResolver: { requireModule },
-      }),
-    ).toBeNull();
-    expect(requireModule).not.toHaveBeenCalled();
-  });
-
-  test('refuses a PID outside the 32-bit process-id range before querying ps', () => {
-    const run = vi.fn(() => 'Tue Sep  8 20:21:34 2026\n');
-    expect(readRemovalProcessStart(0x1_0000_0000, { platform: 'darwin', run })).toBeNull();
-    expect(run).not.toHaveBeenCalled();
-  });
-
-  test.each(['', 'permission denied', 'Tue Sep  8 20:21:34 2026\nTue Sep  8 20:21:34 2026'])(
-    'refuses unusable process start output %j',
-    (output) => {
-      expect(readRemovalProcessStart(123, { platform: 'darwin', run: () => output })).toBeNull();
+  test.each([0x1_0000_0000, 0, -1, Number.NaN, 12.5])(
+    'refuses PID %j before loading native code',
+    (pid) => {
+      const requireModule = vi.fn();
+      expect(readWindowsNativeProcessStart(pid, { nativeResolver: { requireModule } })).toBeNull();
+      expect(requireModule).not.toHaveBeenCalled();
     },
   );
-
-  test('refuses an unavailable, unsuccessful, or timed out probe', () => {
-    expect(
-      readRemovalProcessStart(123, {
-        platform: 'darwin',
-        run: () => {
-          throw new Error('process query failed');
-        },
-      }),
-    ).toBeNull();
-  });
-
-  test.each([0, -1, Number.NaN, 12.5])('never queries an invalid PID %j', (pid) => {
-    const run = vi.fn(() => '2026-09-08T20:21:34.000Z');
-    expect(readRemovalProcessStart(pid, { run })).toBeNull();
-    expect(run).not.toHaveBeenCalled();
-  });
 
   test.each([
     ['unavailable', () => null, 'did not load or does not export readProcessStart'],
@@ -163,8 +115,7 @@ describe('readRemovalProcessStart', () => {
     const onNativeFailure = vi.fn();
     try {
       expect(
-        readRemovalProcessStart(123, {
-          platform: 'win32',
+        readWindowsNativeProcessStart(123, {
           nativeResolver: { requireModule },
           onNativeFailure,
         }),
@@ -190,8 +141,7 @@ describe('readRemovalProcessStart', () => {
     const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     try {
       expect(
-        readRemovalProcessStart(123, {
-          platform: 'win32',
+        readWindowsNativeProcessStart(123, {
           arch,
           nativeResolver: { requireModule: () => null },
           onNativeFailure,
@@ -210,8 +160,7 @@ describe('readRemovalProcessStart', () => {
   test('describes an undefined binding as absent rather than rendering the value', () => {
     const onNativeFailure = vi.fn();
     expect(
-      readRemovalProcessStart(123, {
-        platform: 'win32',
+      readWindowsNativeProcessStart(123, {
         arch: 'x64',
         nativeResolver: { requireModule: () => undefined },
         onNativeFailure,
@@ -245,8 +194,7 @@ describe('readRemovalProcessStart', () => {
       );
     };
     expect(
-      readRemovalProcessStart(123, {
-        platform: 'win32',
+      readWindowsNativeProcessStart(123, {
         arch: 'x64',
         nativeResolver: { requireModule },
         onNativeFailure,
@@ -284,8 +232,7 @@ describe('readRemovalProcessStart', () => {
   ] as const)('classifies %s for %s', (kind, _name, requireModule) => {
     const onNativeFailure = vi.fn();
     expect(
-      readRemovalProcessStart(123, {
-        platform: 'win32',
+      readWindowsNativeProcessStart(123, {
         arch: 'x64',
         nativeResolver: { requireModule },
         onNativeFailure,
@@ -295,10 +242,107 @@ describe('readRemovalProcessStart', () => {
     expect(onNativeFailure.mock.calls.at(-1)?.[0]).toMatchObject({ kind });
   });
 
-  test('reads the current process start on the current operating system', () => {
-    const startedAt = readRemovalProcessStart(process.pid);
-    expect(startedAt).not.toBeNull();
-    expect(startedAt).toBeLessThanOrEqual(Date.now());
-    expect(startedAt).toBeGreaterThan(Date.now() - process.uptime() * 1000 - 10_000);
+  test.runIf(process.platform === 'win32')(
+    'reads the current process start through the installed addon',
+    () => {
+      const startedAt = readWindowsNativeProcessStart(process.pid);
+      expect(startedAt).not.toBeNull();
+      expect(startedAt).toBeLessThanOrEqual(Date.now());
+      expect(startedAt).toBeGreaterThan(Date.now() - process.uptime() * 1000 - 10_000);
+    },
+  );
+});
+
+describe('registerWindowsProcessStartReader', () => {
+  afterEach(() => {
+    installedNativeBinding.current = undefined;
   });
+
+  test('lets the server read Windows process starts through the installed addon until unregistered', () => {
+    const readProcessStart = vi.fn(() => 1_789_000_000_456);
+    installedNativeBinding.current = { readProcessStart };
+    const unregister = registerWindowsProcessStartReader();
+    try {
+      expect(readServerProcessStart(4242, { platform: 'win32' })).toEqual({
+        startedAtMs: 1_789_000_000_456,
+        clock: 'creation',
+      });
+      expect(readProcessStart).toHaveBeenCalledWith(4242);
+    } finally {
+      unregister();
+    }
+    expect(readServerProcessStart(4242, { platform: 'win32' })).toBeNull();
+  });
+
+  test('records each kind of native failure once, however often the reader is asked', () => {
+    const records: Array<Record<string, unknown>> = [];
+    installedNativeBinding.current = {
+      readProcessStart() {
+        throw new Error('OpenProcess: os error 5');
+      },
+    };
+    const unregister = registerWindowsProcessStartReader(
+      pino({ level: 'warn' }, { write: (line) => records.push(JSON.parse(line)) }),
+    );
+    try {
+      for (let read = 0; read < 3; read += 1) {
+        expect(readServerProcessStart(4242, { platform: 'win32' })).toBeNull();
+      }
+      installedNativeBinding.current = null;
+      for (let read = 0; read < 3; read += 1) {
+        expect(readServerProcessStart(4242, { platform: 'win32' })).toBeNull();
+      }
+    } finally {
+      unregister();
+    }
+    expect(records).toEqual([
+      expect.objectContaining({
+        event: 'process-start-native-failure',
+        pid: process.pid,
+        lockPid: 4242,
+        kind: 'query-failed',
+        reasons: [expect.stringContaining('OpenProcess: os error 5')],
+      }),
+      expect.objectContaining({
+        event: 'process-start-native-failure',
+        pid: process.pid,
+        lockPid: 4242,
+        kind: 'unavailable',
+      }),
+    ]);
+  });
+});
+
+describe('readHolderProcessStart', () => {
+  afterEach(() => {
+    installedNativeBinding.current = undefined;
+  });
+
+  test('reads a Windows holder through the installed addon as a creation time', () => {
+    const readProcessStart = vi.fn(() => 1_789_000_000_456);
+    installedNativeBinding.current = { readProcessStart };
+    expect(readHolderProcessStart(4242, { platform: 'win32' })).toEqual({
+      startedAtMs: 1_789_000_000_456,
+      clock: 'creation',
+    });
+    expect(readProcessStart).toHaveBeenCalledWith(4242);
+  });
+
+  test('reports why the Windows addon could not read the holder', () => {
+    installedNativeBinding.current = {
+      readProcessStart() {
+        throw new Error('OpenProcess: os error 5');
+      },
+    };
+    const onNativeFailure = vi.fn();
+    expect(readHolderProcessStart(4242, { platform: 'win32', onNativeFailure })).toBeNull();
+    expect(onNativeFailure).toHaveBeenCalledWith(expect.objectContaining({ kind: 'query-failed' }));
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'reads a holder on this host the way the server records it in a lock',
+    () => {
+      expect(readHolderProcessStart(process.pid)).toEqual(readServerProcessStart(process.pid));
+    },
+  );
 });

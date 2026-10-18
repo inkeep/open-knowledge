@@ -19,7 +19,13 @@ export default defineConfig({
   ...okVitestBase,
   test: {
     ...okVitestBase.test,
-    setupFiles: [...okVitestBase.test.setupFiles, serverAuthorityRegistrySetup],
+    setupFiles: [
+      ...okVitestBase.test.setupFiles,
+      serverAuthorityRegistrySetup,
+      fileURLToPath(
+        new URL('./tests/support/windows-process-start-reader.test-helper.ts', import.meta.url),
+      ),
+    ],
     exclude: [...okVitestBase.test.exclude, '.ok-skill-publish-*'],
   },
 });

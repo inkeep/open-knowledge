@@ -3163,6 +3163,12 @@ msgstr "تعذّرت إعادة تشغيل الخادم — يعمل تحت حس
 msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 msgstr "تعذّرت إعادة تشغيل الخادم تلقائيًا. جرّب تشغيل `{cliCommand} stop all` في طرفية، ثم أعد فتح هذا المشروع — أو أعد تشغيل جهازك إن استمرت المشكلة."
 
+msgid "Couldn't restart the server: OpenKnowledge asked the process holding this project's server lock to stop, but could not confirm that it is this project's server, so it did not force it to quit. If the project is still locked, stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "تعذّرت إعادة تشغيل الخادم: طلب OpenKnowledge من العملية التي تحتفظ بقفل خادم هذا المشروع أن تتوقف، لكنه لم يتمكن من التأكد من أنها خادم هذا المشروع، لذلك لم يُجبرها على الإنهاء. إذا ظل المشروع مقفلًا، فأوقف الخادم من حيث بدأ تشغيله، أو أعد تشغيل جهازك، ثم أعد فتح هذا المشروع."
+
+msgid "Couldn't restart the server: OpenKnowledge could not confirm that the process holding this project's server lock is still its server, so it was not stopped. Stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "تعذّرت إعادة تشغيل الخادم: لم يتمكن OpenKnowledge من التأكد من أن العملية التي تحتفظ بقفل خادم هذا المشروع لا تزال خادمه، لذلك لم يوقفها. أوقف الخادم من حيث بدأ تشغيله، أو أعد تشغيل جهازك، ثم أعد فتح هذا المشروع."
+
 msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
 msgstr "تعذّر إعادة تشغيل الخادم. شغّل {cliCommand} start في هذا المجلد لإعادة المحاولة."
 

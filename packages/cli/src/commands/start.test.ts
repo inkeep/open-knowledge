@@ -1,5 +1,6 @@
 import type { spawn as NativeSpawn } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -1317,6 +1318,40 @@ describe('tryDescribeLockCollision', () => {
     expect(tryDescribeLockCollision(err, '/other', serverModule)).toBe(err.message);
     expect(err.message).toContain('Close that session');
   });
+
+  test.runIf(process.platform !== 'win32' && process.getuid?.() !== 0)(
+    'a lock acquisition cannot read has its remedy as the message, without a stack',
+    async () => {
+      const serverModule = await import('@inkeep/open-knowledge-server');
+      const projectDir = await mkdtemp(join(tmpdir(), 'ok-start-unreadable-lock-'));
+      const lockDir = join(projectDir, '.ok', 'local');
+      const lockPath = join(lockDir, 'server.lock');
+      try {
+        mkdirSync(lockDir, { recursive: true });
+        writeFileSync(lockPath, '{}');
+        chmodSync(lockPath, 0o000);
+        const err = (() => {
+          try {
+            serverModule.acquireProcessLock({
+              lockName: 'server',
+              lockDir,
+              metadata: { port: 0, worktreeRoot: projectDir },
+            });
+          } catch (thrown) {
+            return thrown;
+          }
+          return undefined;
+        })();
+
+        expect(tryDescribeLockCollision(err, projectDir, serverModule)).toBe(
+          `[server-lock] Could not read the lock at ${lockPath}: EACCES: permission denied, open '${lockPath}'. Restore file and parent-directory access, then retry.`,
+        );
+      } finally {
+        chmodSync(lockPath, 0o600);
+        await rm(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
   function fakeServerModule(opts: {
     meta?: { kind?: string; pid?: number; port?: number; hostname?: string } | null;
     throwOnRead?: boolean;

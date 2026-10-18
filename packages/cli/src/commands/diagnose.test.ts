@@ -131,6 +131,37 @@ describe('runDiagnose', () => {
     expect(meta.lockInfo.lock.worktreeRoot).toBe(worktreeRoot);
   });
 
+  test('lockInfo stays empty when the matching lock records a pid that now belongs to another process', async () => {
+    const out = makeTmpDir();
+    tmpDirs.push(out);
+    const pid = process.pid;
+    const worktreeRoot = '/tmp/restarted-content';
+
+    await runDiagnose(
+      { pid, noInspector: true, output: out },
+      {
+        ...makeBaseDeps(out),
+        discover: async () => [`${worktreeRoot}/.ok/local`],
+        inspect: () => ({
+          status: 'reused-pid',
+          lockPath: `${worktreeRoot}/.ok/local/server.lock`,
+          lock: {
+            pid,
+            hostname: 'test-host',
+            port: 5173,
+            startedAt: '2026-05-06T10:00:00.000Z',
+            worktreeRoot,
+          },
+          text: '',
+        }),
+      },
+    );
+
+    const meta = JSON.parse(readFileSync(join(out, 'metadata.json'), 'utf-8'));
+    expect(meta.pid).toBe(pid);
+    expect(meta.lockInfo).toBeNull();
+  });
+
   test('output dir defaults to contentDir/.ok/local/diagnostics when lock found', async () => {
     const contentDir = makeTmpDir();
     tmpDirs.push(contentDir);

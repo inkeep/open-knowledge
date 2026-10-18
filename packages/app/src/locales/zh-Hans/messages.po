@@ -3163,6 +3163,12 @@ msgstr "无法重启服务器——它正以另一个账户运行。请重启电
 msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 msgstr "无法自动重启服务器。请在终端中运行 `{cliCommand} stop all`，然后重新打开这个项目——如果问题依旧，请重启电脑。"
 
+msgid "Couldn't restart the server: OpenKnowledge asked the process holding this project's server lock to stop, but could not confirm that it is this project's server, so it did not force it to quit. If the project is still locked, stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "无法重启服务器：OpenKnowledge 已请求持有这个项目服务器锁的进程停止，但无法确认它是这个项目的服务器，因此没有强制它退出。如果项目仍被锁定，请在启动该服务器的地方将其停止，或重启电脑，然后重新打开这个项目。"
+
+msgid "Couldn't restart the server: OpenKnowledge could not confirm that the process holding this project's server lock is still its server, so it was not stopped. Stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "无法重启服务器：OpenKnowledge 无法确认持有这个项目服务器锁的进程仍是它的服务器，因此没有将其停止。请在启动该服务器的地方将其停止，或重启电脑，然后重新打开这个项目。"
+
 msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
 msgstr "无法重启服务器。请在此文件夹中运行 {cliCommand} start 以重试。"
 

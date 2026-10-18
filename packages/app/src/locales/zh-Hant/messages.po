@@ -3163,6 +3163,12 @@ msgstr "無法重新啟動伺服器——它正以另一個帳戶執行。請重
 msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 msgstr "無法自動重新啟動伺服器。請在終端機中執行 `{cliCommand} stop all`，然後重新開啟這個專案——如果狀況持續，請重新啟動電腦。"
 
+msgid "Couldn't restart the server: OpenKnowledge asked the process holding this project's server lock to stop, but could not confirm that it is this project's server, so it did not force it to quit. If the project is still locked, stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "無法重新啟動伺服器：OpenKnowledge 已要求持有這個專案伺服器鎖定的處理程序停止，但無法確認它是這個專案的伺服器，因此沒有強制它結束。如果專案仍被鎖定，請在啟動該伺服器的地方將它停止，或重新啟動電腦，再重新開啟這個專案。"
+
+msgid "Couldn't restart the server: OpenKnowledge could not confirm that the process holding this project's server lock is still its server, so it was not stopped. Stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "無法重新啟動伺服器：OpenKnowledge 無法確認持有這個專案伺服器鎖定的處理程序仍是它的伺服器，因此沒有將它停止。請在啟動該伺服器的地方將它停止，或重新啟動電腦，再重新開啟這個專案。"
+
 msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
 msgstr "無法重新啟動伺服器。請在此資料夾中執行 {cliCommand} start 以重試。"
 

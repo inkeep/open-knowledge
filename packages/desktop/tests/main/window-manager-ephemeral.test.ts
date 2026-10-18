@@ -8,9 +8,11 @@ import {
   type EphemeralOpenIdentity,
   type ServerLockMetadataLike,
   SPAWN_WAIT_HEARTBEAT_MS,
+  type SpawnedServer,
   WindowManager,
   type WindowManagerDeps,
 } from '../../src/main/window-manager.ts';
+import { heldChild } from './held-child.test-helper.ts';
 
 interface FakeWindow extends BrowserWindowLike {
   fireClose: () => void;
@@ -171,7 +173,7 @@ function buildEphemeralEnv(): EphemeralEnv {
             capabilities: ['ws'],
           });
         }
-        return { pid };
+        return heldChild(env.deps, pid);
       },
     },
   };
@@ -240,7 +242,7 @@ describe('createEphemeralWindow', () => {
 
     expect(ctx.ephemeral).toEqual({
       projectDir: '/tmp/ok-ephemeral-1',
-      pid: 42001,
+      server: expect.objectContaining({ pid: 42001 }),
       lockDir: getLocalDir('/tmp/ok-ephemeral-1'),
     });
 
@@ -364,7 +366,7 @@ describe('createEphemeralWindow', () => {
       recordingKill(pid, signal);
       if (signal === 'SIGTERM') exitRecord = { code: null, signal: 'SIGTERM' };
     };
-    env.deps.spawnSingleFileServer = async () => ({ pid: 42001, readExit: () => exitRecord });
+    env.deps.spawnSingleFileServer = async () => heldChild(env.deps, 42001, () => exitRecord);
 
     const wm = new WindowManager(env.deps);
     const err = await wm
@@ -466,6 +468,30 @@ describe('createEphemeralWindow', () => {
     expect(env.removedDirs).toEqual(['/tmp/ok-ephemeral-1']);
   });
 
+  test('closing the window after its ephemeral server exited signals nothing to the reused pid', async () => {
+    let exit: { code: number | null; signal: string | null } | null = null;
+    const spawn = env.deps.spawnSingleFileServer;
+    if (!spawn) throw new Error('spawnSingleFileServer is not wired');
+    env.deps.spawnSingleFileServer = async (opts) => ({
+      ...(await spawn(opts)),
+      readExit: () => exit,
+      signal: () => {},
+    });
+    const wm = new WindowManager(env.deps);
+    await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    exit = { code: 1, signal: null };
+
+    env.windows[0]?.fireClose();
+    await wait(20);
+
+    expect(env.killCalls.filter((k) => k.signal !== 0)).toEqual([]);
+    expect(env.removedDirs).toEqual(['/tmp/ok-ephemeral-1']);
+  });
+
   test('stopAllOwnedServers reaps an open ephemeral session (server + temp dir)', async () => {
     const wm = new WindowManager(env.deps);
     await wm.createEphemeralWindow({
@@ -482,10 +508,9 @@ describe('createEphemeralWindow', () => {
 
   test('signalStopAllOwnedServers (before-quit-for-update) SIGTERMs detached + ephemeral pids and drains the detached map', async () => {
     const wm = new WindowManager(env.deps);
-    (wm as unknown as { spawnedDetachedPids: Map<string, number> }).spawnedDetachedPids.set(
-      '/proj/detached',
-      77001,
-    );
+    (
+      wm as unknown as { spawnedDetachedServers: Map<string, SpawnedServer> }
+    ).spawnedDetachedServers.set('/proj/detached', heldChild(env.deps, 77001));
     await wm.createEphemeralWindow({
       canonicalFilePath: FILE,
       contentDir: PARENT,
@@ -523,7 +548,7 @@ describe('createEphemeralWindow', () => {
       docName: 'todo',
     });
 
-    expect(ctx.ephemeral?.pid).toBe(42001);
+    expect(ctx.ephemeral?.server.pid).toBe(42001);
     expect(env.spawnCalls).toHaveLength(1);
   });
 
@@ -536,7 +561,7 @@ describe('createEphemeralWindow', () => {
     });
     expect(env.spawnCalls).toHaveLength(1);
     const deadApiOrigin = first.apiOrigin;
-    const deadPid = first.ephemeral?.pid;
+    const deadPid = first.ephemeral?.server.pid;
     expect(deadPid).toBeDefined();
 
     env.killServer(deadPid as number);
@@ -550,7 +575,7 @@ describe('createEphemeralWindow', () => {
 
     expect(env.spawnCalls).toHaveLength(2);
     expect(second.apiOrigin).not.toBe(deadApiOrigin);
-    expect(second.ephemeral?.pid).not.toBe(deadPid);
+    expect(second.ephemeral?.server.pid).not.toBe(deadPid);
     expect(wm.getWindowFor(FILE)?.apiOrigin).toBe(second.apiOrigin);
     expect(env.removedDirs).toContain(first.ephemeral?.projectDir);
   });
@@ -581,7 +606,7 @@ describe('createEphemeralWindow', () => {
       contentDir: PARENT,
       docName: 'todo',
     });
-    const pid = ctx.ephemeral?.pid as number;
+    const pid = ctx.ephemeral?.server.pid as number;
     expect(wm.getWindowFor(FILE)).toBe(ctx);
 
     tick(intervals, 1);
@@ -638,7 +663,7 @@ describe('createEphemeralWindow', () => {
     const realReader = env.deps.readServerLock as NonNullable<WindowManagerDeps['readServerLock']>;
     const stale = realReader(lockDir) as ServerLockMetadataLike;
 
-    env.killServer(first.ephemeral?.pid as number);
+    env.killServer(first.ephemeral?.server.pid as number);
     env.deps.readServerLock = (dir) => (dir === lockDir ? stale : realReader(dir));
 
     const second = await wm.createEphemeralWindow({
@@ -659,7 +684,7 @@ describe('createEphemeralWindow', () => {
       contentDir: PARENT,
       docName: 'todo',
     });
-    env.killServer(first.ephemeral?.pid as number);
+    env.killServer(first.ephemeral?.server.pid as number);
     const second = await wm.createEphemeralWindow({
       canonicalFilePath: FILE,
       contentDir: PARENT,
@@ -705,7 +730,7 @@ describe('createEphemeralWindow', () => {
       contentDir: PARENT,
       docName: 'todo',
     });
-    env.killServer(first.ephemeral?.pid as number);
+    env.killServer(first.ephemeral?.server.pid as number);
     const second = await wm.createEphemeralWindow({
       canonicalFilePath: FILE,
       contentDir: PARENT,
@@ -720,7 +745,7 @@ describe('createEphemeralWindow', () => {
 
     expect(wm.getWindowFor(FILE)).toBe(second);
     expect(env.removedDirs).not.toContain(second.ephemeral?.projectDir);
-    expect(env.killCalls.filter((k) => k.pid === second.ephemeral?.pid)).toEqual([]);
+    expect(env.killCalls.filter((k) => k.pid === second.ephemeral?.server.pid)).toEqual([]);
   });
 });
 
@@ -788,7 +813,7 @@ describe('ephemeral keepalive lifecycle', () => {
       contentDir: PARENT,
       docName: 'todo',
     });
-    env.killServer(first.ephemeral?.pid as number);
+    env.killServer(first.ephemeral?.server.pid as number);
     await wm.createEphemeralWindow({
       canonicalFilePath: FILE,
       contentDir: PARENT,
@@ -824,7 +849,7 @@ describe('ephemeral keepalive lifecycle', () => {
     });
     expect(ka.handles[0]?.closed).toBe(false);
 
-    env.killServer(ctx.ephemeral?.pid as number);
+    env.killServer(ctx.ephemeral?.server.pid as number);
     tick(intervals, 1);
     await wait(20);
 
@@ -843,7 +868,7 @@ describe('ephemeral keepalive lifecycle', () => {
     });
     expect(ka.handles[0]?.closed).toBe(false);
 
-    env.killServer(first.ephemeral?.pid as number);
+    env.killServer(first.ephemeral?.server.pid as number);
     env.deps.spawnSingleFileServer = async () => {
       throw Object.assign(new Error('spawn boom'), { kind: 'spawn-error' });
     };
@@ -875,7 +900,7 @@ describe('restartEphemeralServer', () => {
       contentDir: PARENT,
       docName: 'todo',
     });
-    const deadPid = first.ephemeral?.pid as number;
+    const deadPid = first.ephemeral?.server.pid as number;
     const deadOrigin = first.apiOrigin;
     const deadTempDir = first.ephemeral?.projectDir as string;
 
@@ -902,7 +927,7 @@ describe('restartEphemeralServer', () => {
       contentDir: PARENT,
       docName: 'todo',
     });
-    const livePid = first.ephemeral?.pid as number;
+    const livePid = first.ephemeral?.server.pid as number;
     const liveTempDir = first.ephemeral?.projectDir as string;
     const liveOrigin = first.apiOrigin;
 
@@ -930,14 +955,14 @@ describe('restartEphemeralServer', () => {
     const orphanClose = vi.fn();
     (env.windows[0] as FakeWindow).close = orphanClose as unknown as FakeWindow['close'];
 
-    env.killServer(orphan.ephemeral?.pid as number);
+    env.killServer(orphan.ephemeral?.server.pid as number);
     const live = await wm.createEphemeralWindow({
       canonicalFilePath: FILE,
       contentDir: PARENT,
       docName: 'todo',
     });
     await wait(20);
-    const livePid = live.ephemeral?.pid as number;
+    const livePid = live.ephemeral?.server.pid as number;
     expect(wm.getWindowFor(FILE)).toBe(live);
     expect(orphanClose).toHaveBeenCalled();
     expect(wm.getEphemeralIdentityForWindow(orphan.window)).toBeDefined();
@@ -963,7 +988,7 @@ describe('restartEphemeralServer', () => {
     });
     const firstClose = vi.fn();
     (env.windows[0] as FakeWindow).close = firstClose as unknown as FakeWindow['close'];
-    env.killServer(first.ephemeral?.pid as number);
+    env.killServer(first.ephemeral?.server.pid as number);
 
     const second = await wm.createEphemeralWindow({
       canonicalFilePath: FILE,
@@ -973,7 +998,7 @@ describe('restartEphemeralServer', () => {
     await wait(20);
     const secondClose = vi.fn();
     (env.windows[1] as FakeWindow).close = secondClose as unknown as FakeWindow['close'];
-    env.killServer(second.ephemeral?.pid as number);
+    env.killServer(second.ephemeral?.server.pid as number);
     firstClose.mockClear();
     secondClose.mockClear();
 
@@ -997,7 +1022,7 @@ describe('restartEphemeralServer', () => {
       contentDir: PARENT,
       docName: 'todo',
     });
-    env.killServer(first.ephemeral?.pid as number);
+    env.killServer(first.ephemeral?.server.pid as number);
 
     const reopened = await wm.createEphemeralWindow({
       canonicalFilePath: FILE,
@@ -1022,7 +1047,7 @@ describe('restartEphemeralServer', () => {
       contentDir: PARENT,
       docName: 'todo',
     });
-    env.killServer(first.ephemeral?.pid as number);
+    env.killServer(first.ephemeral?.server.pid as number);
     const reopened = await wm.createEphemeralWindow({
       canonicalFilePath: FILE,
       contentDir: PARENT,
@@ -1031,7 +1056,7 @@ describe('restartEphemeralServer', () => {
     await wait(20);
     expect(env.windows[0]?.isDestroyed()).toBe(true);
 
-    env.killServer(reopened.ephemeral?.pid as number);
+    env.killServer(reopened.ephemeral?.server.pid as number);
 
     const outcome = await wm.restartEphemeralServer(
       identityOf(wm, reopened.window),
@@ -1056,7 +1081,7 @@ describe('restartEphemeralServer', () => {
       docName: 'todo',
     });
     const identity = identityOf(wm, first.window);
-    env.killServer(first.ephemeral?.pid as number);
+    env.killServer(first.ephemeral?.server.pid as number);
     env.deps.spawnSingleFileServer = async () => {
       throw Object.assign(new Error('spawn boom'), { kind: 'spawn-error' });
     };
@@ -1102,7 +1127,7 @@ describe('restartServerForWindow (IPC routing seam)', () => {
       contentDir: PARENT,
       docName: 'todo',
     });
-    env.killServer(first.ephemeral?.pid as number);
+    env.killServer(first.ephemeral?.server.pid as number);
 
     const outcome = await wm.restartServerForWindow(first.window, '/some/unrelated/project', {});
     await wait(20);

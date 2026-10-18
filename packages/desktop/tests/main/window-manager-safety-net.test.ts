@@ -1,4 +1,4 @@
-import { getLocalDir } from '@inkeep/open-knowledge-server';
+import { getLocalDir, getMachineId } from '@inkeep/open-knowledge-server';
 import { describe, expect, test, vi } from 'vitest';
 import type { AssetOpenResult } from '../../src/main/asset-allowlist.ts';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
@@ -9,6 +9,7 @@ import {
   WindowManager,
   type WindowManagerDeps,
 } from '../../src/main/window-manager.ts';
+import { heldChild } from './held-child.test-helper.ts';
 
 interface MockUtility extends UtilityProcessLike {
   fire: (msg: unknown) => void;
@@ -127,6 +128,10 @@ function buildEnv(): TestEnv {
     appVersion: '9.9.9-test',
     setTimeout: () => null,
     killProbe: vi.fn(() => {}),
+    readProcessStart: () => ({
+      startedAtMs: Date.parse('2026-01-01T00:00:00Z'),
+      clock: 'creation',
+    }),
     showGate,
     safetyNet: { openExternal, openAsset },
   };
@@ -154,7 +159,7 @@ function withEphemeralDeps(env: TestEnv): void {
         capabilities: ['ws'],
       });
     }
-    return { pid: spawnedPid };
+    return heldChild(env.deps, spawnedPid);
   };
 }
 
@@ -214,6 +219,7 @@ describe('WindowManager factory attaches the external-link safety net', () => {
     const liveLock: ServerLockMetadataLike = {
       pid: 65792,
       hostname: 'my-host',
+      machineId: getMachineId(),
       port: 59534,
       startedAt: '2026-04-17T20:23:20.713Z',
       worktreeRoot: '/tmp/dragon',
@@ -239,7 +245,7 @@ describe('WindowManager factory attaches the external-link safety net', () => {
     });
     env.deps.spawnDetachedServer = async () => {
       spawned = true;
-      return { pid: 6666 };
+      return heldChild(env.deps, 6666);
     };
 
     const wm = new WindowManager(env.deps);

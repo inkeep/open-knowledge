@@ -981,7 +981,8 @@ export interface OkRecentRemovedMissingInfo {
 
 export type OkServerRestartFailure =
   | { readonly ok: false; readonly reason: 'eperm' | 'other' }
-  | { readonly ok: false; readonly reason: 'other-channel'; readonly holderChannel: string };
+  | { readonly ok: false; readonly reason: 'other-channel'; readonly holderChannel: string }
+  | { readonly ok: false; readonly reason: 'unverified'; readonly sigtermSent: boolean };
 
 export type OkServerRestartOutcome = { readonly ok: true } | OkServerRestartFailure;
 

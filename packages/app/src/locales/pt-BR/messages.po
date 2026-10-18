@@ -3159,6 +3159,12 @@ msgstr "Não deu para reiniciar o servidor — ele está rodando em outra conta.
 msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 msgstr "Não deu para reiniciar o servidor automaticamente. Tente rodar `{cliCommand} stop all` em um terminal e abra este projeto de novo — ou reinicie o computador se persistir."
 
+msgid "Couldn't restart the server: OpenKnowledge asked the process holding this project's server lock to stop, but could not confirm that it is this project's server, so it did not force it to quit. If the project is still locked, stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "Não deu para reiniciar o servidor: o OpenKnowledge pediu ao processo que detém o bloqueio do servidor deste projeto que parasse, mas não conseguiu confirmar que ele é o servidor deste projeto, então não o forçou a fechar. Se o projeto continuar bloqueado, pare o servidor onde ele foi iniciado ou reinicie o computador e abra este projeto de novo."
+
+msgid "Couldn't restart the server: OpenKnowledge could not confirm that the process holding this project's server lock is still its server, so it was not stopped. Stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "Não deu para reiniciar o servidor: o OpenKnowledge não conseguiu confirmar que o processo que detém o bloqueio do servidor deste projeto ainda é o servidor dele, então não o parou. Pare o servidor onde ele foi iniciado ou reinicie o computador e abra este projeto de novo."
+
 msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
 msgstr "Não foi possível reiniciar o servidor. Execute {cliCommand} start nesta pasta para tentar novamente."
 

@@ -381,7 +381,7 @@ export {
   type PinoLoggerConfig,
 } from './logger.ts';
 export { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
-export { getMachineId } from './machine-id.ts';
+export { getMachineId, machineIdFilePath } from './machine-id.ts';
 export {
   type RenameRewriteResult,
   rewriteMarkdownLinksForDocumentRename,
@@ -438,17 +438,41 @@ export {
 export { loadPrincipal } from './principal.ts';
 export { isProcessAlive, isValidLockPid } from './process-alive.ts';
 export {
+  assessLockHolder,
+  classifyLockHolder,
+  isLockFromThisMachine,
+  type LockHolderAssessment,
+  type LockHolderIdentity,
+  type LockHolderVerdict,
+  type LockOwnerFields,
+  type ProcessStart,
+  type ProcessStartCause,
+  type ProcessStartReader,
+  type ProcessStartToken,
+  parseProcessStartToken,
+  processStartToken,
+  readProcessStart,
+  recordsLockOwner,
+  registerNativeProcessStartReader,
+  type UnverifiedLockHolderCause,
+} from './process-identity.ts';
+export {
   acquireProcessLock,
+  LOCK_FILE_ACCESS_REMEDY,
   type LockName,
+  type LockRemoval,
   lockBaseUrl,
   lockFilePath,
   ProcessLockCollisionError,
+  ProcessLockFileError,
   type ProcessLockHandle,
   type ProcessLockMetadata,
   type ReadProcessLockResult,
   readProcessLock,
   readProcessLockDetailed,
   releaseProcessLock,
+  removeLockIfUnchanged,
+  toProcessLockMetadata,
   updateProcessLockPort,
 } from './process-lock.ts';
 export {

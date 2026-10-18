@@ -34,6 +34,7 @@ import {
   type ProjectAiIntegrationsResult,
   previewContent,
   readExistingMcpEntry,
+  registerWindowsProcessStartReader,
   removeOwnMcpEntry,
   removeProjectSkill,
   removeUserGlobalSkillBundle,
@@ -93,6 +94,7 @@ import {
   type ResolvedSkillHost,
   RUNTIME_VERSION,
   readBundleDecision,
+  readProcessStart,
   readServerLock,
   readServerPackageVersion,
   recordSkillInstallEvent,
@@ -301,7 +303,7 @@ import {
 import { createBootBudgetDirSizeProbe } from './fs-walk-budget.ts';
 import { ensureGitAvailable } from './git-preflight-handler.ts';
 import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
-import { failedOpenHolder, promptHolderStop } from './holder-stop-prompt.ts';
+import { describeStopFailure, failedOpenHolder, promptHolderStop } from './holder-stop-prompt.ts';
 import { agentConnectionsAvailability, isSupportedInstallShape } from './install-shape.ts';
 import {
   combineInstanceLabels,
@@ -438,7 +440,7 @@ import {
   setPreferredWindowVibrancy,
   type VibrancyMaterial,
 } from './reduced-transparency-handler.ts';
-import { removeGitFolder } from './remove-git-folder.ts';
+import { stopServerThenRemoveGitFolder } from './remove-git-folder.ts';
 import { attachRendererConsoleCapture } from './renderer-console-capture.ts';
 import { installRendererFileProtocol } from './renderer-file-protocol.ts';
 import { createRendererReadySink, type RendererReadySink } from './renderer-ready-sink.ts';
@@ -589,6 +591,7 @@ import {
   type BrowserWindowLike,
   bringWindowToFront,
   collabUrlFromApiOrigin,
+  heldChildServer,
   setWindowInstanceLabel,
   type UtilityProcessLike,
   WindowManager,
@@ -1505,7 +1508,13 @@ function ensureWindowManager() {
         'spawnCliServer: child_process.spawn did not return a pid after spawn-event resolution.',
       );
     }
-    return { pid, readExit: () => exitRecord };
+    childRef.on('error', (err) => {
+      getLogger('server-spawn').warn(
+        { event: 'desktop-spawned-server-signal-failed', err, pid },
+        'signalling a spawned server failed',
+      );
+    });
+    return heldChildServer(childRef, pid, () => exitRecord);
   };
 
   wm = new WindowManager({
@@ -1600,6 +1609,7 @@ function ensureWindowManager() {
     readServerLock: (lockDir) => readServerLock(lockDir),
     removeServerLock: (lockDir, expected) => breakServerLockHeldBy(lockDir, expected),
     isProcessAlive: (pid) => isProcessAlive(pid),
+    readProcessStart: (pid) => readProcessStart(pid),
     hostname: () => osHostname(),
     probeWsUpgrade: (url, timeoutMs) => probeWsUpgrade(url, timeoutMs),
     realpathSync: (p) => realpathSync(p),
@@ -2313,10 +2323,7 @@ async function openProjectOrFallbackToNavigator(
         flushDesktopLogger();
         showErrorOverNavigator(
           'Unable to open project',
-          `${projectPath}\n\n` +
-            (prompt.reason === 'eperm'
-              ? 'The conflicting server belongs to another user account and cannot be stopped from here. Quit it from that account and try again.'
-              : `Could not stop the conflicting server. Quit it manually (\`${stopCommandLine(projectPath, process.platform, { force: true })}\`) and try again.`),
+          `${projectPath}\n\n${describeStopFailure(prompt, projectPath, process.platform)}`,
         );
       } else {
         getLogger('project').info(
@@ -5384,25 +5391,12 @@ function registerIpcHandlers() {
   });
 
   handle('ok:fs:remove-git-folder', async (_event, gitRoot) => {
-    if (typeof gitRoot === 'string' && recentGitRoots.has(gitRoot)) {
-      try {
-        const outcome = await runStop({
-          lockDir: resolveLockDir(gitRoot),
-          force: true,
-          log: (msg) => getLogger('project').info({ gitRoot }, `[remove-git-folder] ${msg}`),
-        });
-        getLogger('project').info(
-          { gitRoot, stopped: outcome.stopped.length, hadTargets: outcome.hadTargets },
-          'remove-git-folder: stopped worktree server before .git removal',
-        );
-      } catch (err) {
-        getLogger('project').warn(
-          { gitRoot, err },
-          'remove-git-folder: worktree server stop failed',
-        );
-      }
-    }
-    await removeGitFolder(gitRoot, { allowedGitRoots: recentGitRoots });
+    await stopServerThenRemoveGitFolder(gitRoot, {
+      allowedGitRoots: recentGitRoots,
+      lockDirFor: resolveLockDir,
+      runStop,
+      log: getLogger('project'),
+    });
     return undefined;
   });
 
@@ -6065,6 +6059,7 @@ installStdioBrokenPipeGuard(process, {
 
 app.commandLine.appendSwitch('use-system-ca');
 trustSystemCertificates();
+registerWindowsProcessStartReader(getLogger('process-start'));
 
 applyDevShmPosture({
   platform: process.platform,

@@ -9,7 +9,10 @@ import type {
   OkServerRestartOutcome,
   OkServerVersionDriftInfo,
 } from '@/lib/desktop-bridge-types';
-import { otherChannelRestartMessage } from '@/lib/restart-collab-server';
+import {
+  otherChannelRestartMessage,
+  unverifiedHolderRestartMessage,
+} from '@/lib/restart-collab-server';
 
 export function restartDisruptionWarning(): string {
   return t`Restarting closes this project's server. Connected agents (Claude Code, Codex, Cursor) will see their OpenKnowledge MCP connection close unexpectedly — you may need to restart the agent, or toggle its OpenKnowledge MCP server off and on, to reconnect.`;
@@ -38,6 +41,8 @@ export function restartFailureMessage(failure: OkServerRestartFailure): string {
       const cliCommand = okCliCommandName();
       return t`Couldn't restart the server automatically. Try running \`${cliCommand} stop all\` in a terminal, then reopen this project — or restart your computer if it persists.`;
     }
+    case 'unverified':
+      return unverifiedHolderRestartMessage(failure.sigtermSent);
   }
 }
 

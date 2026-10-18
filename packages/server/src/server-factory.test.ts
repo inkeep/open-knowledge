@@ -36,6 +36,7 @@ import { stringify as stringifyYaml } from 'yaml';
 import * as Y from 'yjs';
 import { runningAsRoot } from '../../../test-support/capabilities.test-helper.ts';
 import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
+import { processStartTokenFromOs } from '../../../test-support/os-process-start.test-helper.ts';
 import { MAX_AGENT_SESSIONS } from './agent-sessions.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { getBootTimings, resetBootTimingsForTest, startBootTimings } from './boot-timings.ts';
@@ -2472,6 +2473,7 @@ describe('createServer() server-lock integration (V0-1)', () => {
     expect(md.pid).toBe(process.pid);
     expect(md.worktreeRoot).toBe(tmpDir);
     expect(md.draining).toBeUndefined();
+    expect(md.processStart).toEqual(processStartTokenFromOs(process.pid));
 
     await server.destroy();
 
@@ -2479,6 +2481,7 @@ describe('createServer() server-lock integration (V0-1)', () => {
     const drained = JSON.parse(readFileSync(lockPath, 'utf-8'));
     expect(drained.pid).toBe(process.pid);
     expect(drained.draining).toBe(true);
+    expect(drained.processStart).toEqual(md.processStart);
   });
 
   test('exposes lockDir on ServerInstance', async () => {

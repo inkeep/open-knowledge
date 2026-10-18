@@ -58,9 +58,10 @@ function summarize(name: 'server' | 'ui', state: LockState): StatusEntry {
         alive: 'unknown',
       };
     case 'dead-pid':
+    case 'reused-pid':
       return {
         name,
-        state: 'dead-pid',
+        state: state.status,
         pid: state.lock.pid,
         port: state.lock.port,
         startedAt: state.lock.startedAt,
@@ -103,6 +104,9 @@ function renderEntry(entry: StatusEntry): string {
   }
   if (entry.state === 'dead-pid') {
     return `${label}  stale (dead pid=${entry.pid}) — run \`${currentCliCommandName()} clean\``;
+  }
+  if (entry.state === 'reused-pid') {
+    return `${label}  stale (pid=${entry.pid} now belongs to another process); run \`${currentCliCommandName()} clean\``;
   }
   if (entry.servedByServer === true) {
     return `${label}  served by server  pid=${entry.pid} port=${entry.port}`;

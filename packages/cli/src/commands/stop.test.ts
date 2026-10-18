@@ -1,10 +1,25 @@
+import { type ChildProcess, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { lockFilePath } from '@inkeep/open-knowledge-server';
+import { okUserHomeDisplayPath } from '@inkeep/open-knowledge-core';
+import {
+  type Config,
+  getMachineId,
+  isProcessAlive,
+  lockFilePath,
+  machineIdFilePath,
+} from '@inkeep/open-knowledge-server';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { LockState } from './lock-state.ts';
-import { buildStopPlan, formatNoTargetMessage, probeCollabClients, runStop } from './stop.ts';
+import {
+  buildStopPlan,
+  formatNoTargetMessage,
+  probeCollabClients,
+  runStop,
+  stopCommand,
+} from './stop.ts';
 
 function aliveLock(pid: number, port: number): LockState {
   return {
@@ -13,12 +28,18 @@ function aliveLock(pid: number, port: number): LockState {
     lock: {
       pid,
       port,
-      hostname: 'host',
+      hostname: hostname(),
+      machineId: getMachineId(),
       startedAt: '2026-04-16T00:00:00Z',
       worktreeRoot: '/x',
     },
   };
 }
+const startedBeforeFixtureLocks = () => ({
+  startedAtMs: Date.parse('2026-01-01T00:00:00Z'),
+  clock: 'creation' as const,
+});
+const verifiedWriter = { isAlive: () => true, readProcessStart: startedBeforeFixtureLocks };
 function missing(): LockState {
   return { status: 'missing', lockPath: '/tmp/missing.lock' };
 }
@@ -33,6 +54,7 @@ function dead(pid: number): LockState {
       startedAt: '2026-04-16T00:00:00Z',
       worktreeRoot: '/x',
     },
+    text: '',
   };
 }
 function foreign(pid: number, port: number): LockState {
@@ -88,6 +110,7 @@ describe('runStop', () => {
     const outcome = await runStop({
       lockDir: '/tmp/x',
       inspect: () => aliveLock(100, 3001),
+      ...verifiedWriter,
       kill: (pid, sig) => killed.push([pid, sig]),
       log: (msg) => logs.push(msg),
       error: () => {},
@@ -103,6 +126,7 @@ describe('runStop', () => {
     const outcome = await runStop({
       lockDir: '/tmp/x',
       inspect: () => aliveLock(100, 3001),
+      ...verifiedWriter,
       kill: () => {
         throw new Error('EPERM');
       },
@@ -143,18 +167,19 @@ describe('buildStopPlan with foreign-host states', () => {
 });
 
 describe('runStop with foreign-host states', () => {
-  test('foreign-host + locally-live → SIGTERM sent', async () => {
+  test('foreign-host + locally-live → refused without a signal', async () => {
     const killed: Array<[number, string]> = [];
     const outcome = await runStop({
       lockDir: '/tmp/x',
       inspect: () => foreign(100, 3001),
       kill: (pid, sig) => killed.push([pid, sig]),
-      isAlive: () => true,
+      ...verifiedWriter,
       log: () => {},
       error: () => {},
     });
-    expect(killed).toEqual([[100, 'SIGTERM']]);
-    expect(outcome.stopped.map((t) => t.pid)).toEqual([100]);
+    expect(killed).toEqual([]);
+    expect(outcome.stopped).toEqual([]);
+    expect(outcome.failed.map((failure) => failure.unverified?.cause)).toEqual(['foreign-host']);
   });
 
   test('foreign-host + dead PID → no targets, no SIGTERM', async () => {
@@ -190,6 +215,7 @@ describe('runStop channel guard', () => {
     const outcome = runStop({
       lockDir: '/tmp/channel',
       inspect: () => lockOf(channel),
+      ...verifiedWriter,
       selfChannel: 'beta',
       kill: (pid, sig) => killed.push([pid, sig]),
       log: () => {},
@@ -293,6 +319,7 @@ describe('runStop in-use guard', () => {
   const oneAlive = () => ({
     lockDir: '/tmp/guard',
     inspect: () => aliveLock(100, 3001),
+    ...verifiedWriter,
   });
 
   test('declines when the target reports live collaboration clients', async () => {
@@ -379,6 +406,7 @@ describe('runStop durable record', () => {
     await runStop({
       lockDir: '/tmp/target/.ok/local',
       inspect: () => aliveLock(100, 3001),
+      ...verifiedWriter,
       kill: () => {},
       log: () => {},
       error: () => {},
@@ -408,6 +436,436 @@ describe('runStop durable record', () => {
     const record = records.find((r) => r.msg === 'stop declined: live collaboration clients');
     expect(record?.level).toBe('warn');
     expect(record?.obj).toMatchObject({ lockDir: '/tmp/other/.ok/local', clients: 1, pids: [7] });
+  });
+});
+
+describe('runStop identity check at the signal', () => {
+  const lockDir = '/tmp/gate/.ok/local';
+  const lockPath = `${lockDir}/server.lock`;
+  const lockWrittenAt = '2026-04-16T00:00:00Z';
+  const startedLongAfterTheLock = () => ({
+    startedAtMs: Date.parse('2026-04-17T12:00:00Z'),
+    clock: 'creation' as const,
+  });
+
+  function lockState(status: 'alive' | 'foreign-host', owner: Record<string, string>): LockState {
+    return {
+      status,
+      lockPath,
+      lock: { pid: 100, port: 3001, startedAt: lockWrittenAt, worktreeRoot: '/x', ...owner },
+    };
+  }
+  const thisMachine = () => lockState('alive', { hostname: hostname(), machineId: getMachineId() });
+  const anotherMachine = () =>
+    lockState('foreign-host', {
+      hostname: 'another-machine.example',
+      machineId: '6f1c2d4e-0000-4000-8000-000000000000',
+    });
+
+  function run(state: LockState, overrides: Partial<Parameters<typeof runStop>[0]>) {
+    const killed: Array<[number, string]> = [];
+    const logs: string[] = [];
+    const errors: string[] = [];
+    const warnings: Array<{ obj: Record<string, unknown>; msg: string }> = [];
+    const logger = {
+      info: () => {},
+      warn: (obj: Record<string, unknown>, msg: string) => warnings.push({ obj, msg }),
+    } as unknown as Parameters<typeof runStop>[0]['logger'];
+    const outcome = runStop({
+      lockDir,
+      inspect: () => state,
+      kill: (pid, sig) => killed.push([pid, sig]),
+      log: (msg) => logs.push(msg),
+      error: (msg) => errors.push(msg),
+      probeClients: async () => null,
+      logger,
+      ...overrides,
+    });
+    return { outcome, killed, logs, errors, warnings };
+  }
+
+  test('a pid now held by a process started after the lock is reported stale and not signalled', async () => {
+    const { outcome, killed, logs, errors } = run(thisMachine(), {
+      isAlive: () => true,
+      readProcessStart: startedLongAfterTheLock,
+    });
+
+    expect(await outcome).toEqual({ stopped: [], failed: [], hadTargets: true });
+    expect(killed).toEqual([]);
+    expect(logs).toEqual([]);
+    expect(errors).toEqual([
+      `Process 100 is no longer the server that wrote ${lockPath}; it was not signalled. Run \`ok clean\` to remove the stale lock.`,
+    ]);
+  });
+
+  test('a lock naming a host with control characters reaches the refusal escaped', async () => {
+    const { outcome, killed, errors } = run(
+      lockState('foreign-host', { hostname: 'evil\nRun: ok clean --all\u001b]52;c;Zm9v\u0007' }),
+      { isAlive: () => true, readProcessStart: startedLongAfterTheLock },
+    );
+
+    expect((await outcome).failed).toHaveLength(1);
+    expect(killed).toEqual([]);
+    const text = errors.join('');
+    expect(text).toContain(
+      'If evil\\u000aRun: ok clean --all\\u001b]52;c;Zm9v\\u0007 is another machine',
+    );
+    expect(text).not.toContain('\n');
+    expect(text).not.toContain('\u001b');
+    expect(text).not.toContain('\u0007');
+  });
+
+  test('a Beta CLI names its own clean command for a reused pid', async () => {
+    vi.stubEnv('OK_CHANNEL', 'beta');
+    const { outcome, errors } = run(thisMachine(), {
+      isAlive: () => true,
+      readProcessStart: startedLongAfterTheLock,
+    });
+    try {
+      await outcome;
+      expect(errors.at(-1)).toContain('Run `ok-beta clean` to remove the stale lock.');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('a server that exited before the signal is reported, not signalled and not a failure', async () => {
+    const { outcome, killed, logs, errors } = run(thisMachine(), {
+      isAlive: () => false,
+      readProcessStart: startedLongAfterTheLock,
+    });
+
+    expect(await outcome).toEqual({ stopped: [], failed: [], hadTargets: true });
+    expect(killed).toEqual([]);
+    expect(logs).toEqual(['server (pid=100) had already exited']);
+    expect(errors).toEqual([]);
+  });
+
+  test('a holder whose start cannot be read fails without a signal, names the cause and says --force does not help', async () => {
+    const { outcome, killed, errors, warnings } = run(thisMachine(), {
+      isAlive: () => true,
+      readProcessStart: () => null,
+      force: true,
+      platform: 'darwin',
+    });
+    const refusal =
+      `Could not read when process 100 started, so it cannot be confirmed as the server that wrote ${lockPath}; ` +
+      'it was not signalled, and --force does not override this check. ' +
+      'macOS reads the process start with ps, and that read failed, as it does inside some sandboxes; retry from a shell where ps can run. ' +
+      'Before ending process 100 yourself, confirm that it is an OpenKnowledge server. ' +
+      `Once you have confirmed no OpenKnowledge server is running for this project, remove ${lockPath}.`;
+
+    expect(await outcome).toEqual({
+      stopped: [],
+      failed: [
+        {
+          target: { name: 'server', pid: 100, port: 3001 },
+          error: refusal,
+          unverified: expect.objectContaining({
+            cause: 'process-start-unreadable',
+            pid: 100,
+            lockPath,
+            platform: 'darwin',
+            nativeFailures: [],
+          }),
+        },
+      ],
+      hadTargets: true,
+    });
+    expect(killed).toEqual([]);
+    expect(errors).toEqual([`Failed to stop: server (pid=100): ${refusal}`]);
+    expect(warnings).toContainEqual({
+      obj: {
+        lockDir,
+        lockPath,
+        lockPid: 100,
+        platform: 'darwin',
+        cause: 'process-start-unreadable',
+      },
+      msg: 'stop declined: lock holder identity unverified',
+    });
+  });
+
+  test('on Linux an unreadable start points at the /proc files it reads', async () => {
+    const { outcome } = run(thisMachine(), {
+      isAlive: () => true,
+      readProcessStart: () => null,
+      platform: 'linux',
+    });
+
+    expect((await outcome).failed.map((failure) => failure.error)).toEqual([
+      `Could not read when process 100 started, so it cannot be confirmed as the server that wrote ${lockPath}; ` +
+        'it was not signalled, and --force does not override this check. ' +
+        'Linux reads the process start from /proc/100/stat and /proc/stat; restore read access to /proc and retry. ' +
+        'Before ending process 100 yourself, confirm that it is an OpenKnowledge server. ' +
+        `Once you have confirmed no OpenKnowledge server is running for this project, remove ${lockPath}.`,
+    ]);
+  });
+
+  test.each([
+    [
+      'unavailable',
+      'the Windows native addon (native-config.win32-x64-msvc.node) did not load or does not export readProcessStart: the addon was not found',
+      'Reinstall OpenKnowledge to restore the Windows component that verifies process identity. ',
+    ],
+    [
+      'query-failed',
+      'readProcessStart failed: OpenProcess: os error 5',
+      'The Windows component loaded but the operating system refused the query, so reinstalling will not help; retry from an account that can inspect that process. ',
+    ],
+  ] as const)(
+    'on Windows a %s native read reaches the refusal and the record',
+    async (kind, reason, recovery) => {
+      const { outcome, warnings } = run(thisMachine(), {
+        isAlive: () => true,
+        readProcessStart: (_pid, options) => {
+          options?.onNativeFailure?.({ kind, reason });
+          return null;
+        },
+        platform: 'win32',
+      });
+
+      expect((await outcome).failed.map((failure) => failure.error)).toEqual([
+        `Could not read when process 100 started, so it cannot be confirmed as the server that wrote ${lockPath}; ` +
+          'it was not signalled, and --force does not override this check. ' +
+          recovery +
+          `The failure detail is recorded in the CLI log under ${okUserHomeDisplayPath('logs')}. ` +
+          'Before ending process 100 yourself, confirm that it is an OpenKnowledge server. ' +
+          `Once you have confirmed no OpenKnowledge server is running for this project, remove ${lockPath}.`,
+      ]);
+      expect(warnings).toContainEqual({
+        obj: {
+          lockDir,
+          lockPath,
+          lockPid: 100,
+          platform: 'win32',
+          cause: 'process-start-unreadable',
+          nativeFailures: [{ kind, reason }],
+        },
+        msg: 'stop declined: lock holder identity unverified',
+      });
+    },
+  );
+
+  test('on Windows without a logger, as the desktop runs it, a native read failure points at no log', async () => {
+    const { outcome } = run(thisMachine(), {
+      isAlive: () => true,
+      readProcessStart: (_pid, options) => {
+        options?.onNativeFailure?.({
+          kind: 'query-failed',
+          reason: 'readProcessStart failed: OpenProcess: os error 5',
+        });
+        return null;
+      },
+      platform: 'win32',
+      logger: undefined,
+    });
+
+    expect((await outcome).failed.map((failure) => failure.error)).toEqual([
+      `Could not read when process 100 started, so it cannot be confirmed as the server that wrote ${lockPath}; ` +
+        'it was not signalled, and --force does not override this check. ' +
+        'The Windows component loaded but the operating system refused the query, so reinstalling will not help; retry from an account that can inspect that process. ' +
+        'Before ending process 100 yourself, confirm that it is an OpenKnowledge server. ' +
+        `Once you have confirmed no OpenKnowledge server is running for this project, remove ${lockPath}.`,
+    ]);
+  });
+
+  test('a holder whose start cannot be compared with the recorded start fails without a signal', async () => {
+    const state = lockState('alive', { hostname: hostname(), machineId: getMachineId() });
+    if (state.status !== 'alive') throw new Error('expected an alive lock state');
+    state.lock.processStart = { bootId: 'boot-a', startTicks: 5_000 };
+    const { outcome, killed, warnings } = run(state, {
+      isAlive: () => true,
+      readProcessStart: startedLongAfterTheLock,
+    });
+
+    expect((await outcome).failed.map((failure) => failure.error)).toEqual([
+      `The start of process 100 cannot be compared with the start recorded in ${lockPath}, so it cannot be confirmed as the server that wrote the lock; ` +
+        'it was not signalled, and --force does not override this check. ' +
+        'Before ending process 100 yourself, confirm that it is an OpenKnowledge server. ' +
+        `Once you have confirmed no OpenKnowledge server is running for this project, remove ${lockPath}.`,
+    ]);
+    expect(killed).toEqual([]);
+    expect(warnings.map((w) => w.obj.cause)).toEqual(['process-start-incomparable']);
+  });
+
+  test('a lock from this machine recording only its host name fails without a signal', async () => {
+    const { outcome, killed, warnings } = run(lockState('alive', { hostname: hostname() }), {
+      isAlive: () => true,
+      readProcessStart: () => ({
+        startedAtMs: Date.parse(lockWrittenAt) - 60_000,
+        clock: 'creation' as const,
+      }),
+    });
+
+    expect((await outcome).failed.map((failure) => failure.error)).toEqual([
+      `The server lock at ${lockPath} records neither a machine ID nor a process start, as locks written by version 0.25.0 and earlier do, so process 100 cannot be confirmed as the server that wrote it; ` +
+        'it was not signalled, and --force does not override this check. ' +
+        'Before ending process 100 yourself, confirm that it is an OpenKnowledge server. ' +
+        `Once you have confirmed no OpenKnowledge server is running for this project, remove ${lockPath}. ` +
+        'A server you start again with this release records its machine ID, so `ok stop` can confirm it.',
+    ]);
+    expect(killed).toEqual([]);
+    expect(warnings.map((w) => w.obj.cause)).toEqual(['writer-identity-unrecorded']);
+  });
+
+  test('a lock whose startedAt is ahead of the clock fails without a signal, naming that', async () => {
+    const { outcome, killed, warnings } = run(
+      lockState('alive', {
+        hostname: hostname(),
+        machineId: getMachineId(),
+        startedAt: '2099-01-01T00:00:00Z',
+      }),
+      {
+        isAlive: () => true,
+        readProcessStart: () => ({ startedAtMs: Date.now() - 60_000, clock: 'creation' as const }),
+      },
+    );
+
+    expect((await outcome).failed.map((failure) => failure.error)).toEqual([
+      `The server lock at ${lockPath} records a start later than the current time on this machine, so process 100 cannot be confirmed as the server that wrote it; ` +
+        'it was not signalled, and --force does not override this check. ' +
+        'Before ending process 100 yourself, confirm that it is an OpenKnowledge server. ' +
+        `Once you have confirmed no OpenKnowledge server is running for this project, remove ${lockPath}.`,
+    ]);
+    expect(killed).toEqual([]);
+    expect(warnings.map((w) => w.obj.cause)).toEqual(['recorded-start-in-future']);
+  });
+
+  test('a holder whose start contradicts the recorded start fails without a signal', async () => {
+    const state = lockState('alive', {
+      hostname: hostname(),
+      machineId: getMachineId(),
+    });
+    if (state.status !== 'alive') throw new Error('expected an alive lock state');
+    state.lock.processStart = { startedAtMs: Date.parse('2026-04-17T12:00:00Z') + 60_000 };
+    const { outcome, killed, warnings } = run(state, {
+      isAlive: () => true,
+      readProcessStart: startedLongAfterTheLock,
+    });
+    const refusal =
+      `Process 100 started before the start recorded in ${lockPath}, so it cannot be confirmed as the server that wrote the lock; ` +
+      'it was not signalled, and --force does not override this check. ' +
+      'Before ending process 100 yourself, confirm that it is an OpenKnowledge server. ' +
+      `Once you have confirmed no OpenKnowledge server is running for this project, remove ${lockPath}.`;
+
+    expect(await outcome).toEqual({
+      stopped: [],
+      failed: [
+        {
+          target: { name: 'server', pid: 100, port: 3001 },
+          error: refusal,
+          unverified: expect.objectContaining({ cause: 'process-start-mismatch', pid: 100 }),
+        },
+      ],
+      hadTargets: true,
+    });
+    expect(killed).toEqual([]);
+    expect(warnings.map((w) => w.obj.cause)).toEqual(['process-start-mismatch']);
+  });
+
+  test("a local process named by another machine's lock fails without a signal and points at the owning machine", async () => {
+    const { outcome, killed, errors, warnings } = run(anotherMachine(), {
+      isAlive: () => true,
+      readProcessStart: startedLongAfterTheLock,
+      platform: 'darwin',
+    });
+    const refusal =
+      `The server lock at ${lockPath} records a machine ID different from the one in ${machineIdFilePath()}, so process 100, which is running on this machine, cannot be confirmed as the server that wrote it; ` +
+      'it was not signalled, and --force does not override this check. ' +
+      'If the server was started on this machine from another account, run `ok stop` as that account. ' +
+      'If it was started from this account with a different home folder, run `ok stop` with `HOME` set to that folder. ' +
+      'Otherwise stop it from the machine that owns the lock. ' +
+      'This lock records no process start; a server started by this release records one, which lets `ok stop` confirm it from any home folder.';
+
+    expect(await outcome).toEqual({
+      stopped: [],
+      failed: [
+        {
+          target: { name: 'server', pid: 100, port: 3001 },
+          error: refusal,
+          unverified: expect.objectContaining({ cause: 'foreign-host', pid: 100 }),
+        },
+      ],
+      hadTargets: true,
+    });
+    expect(killed).toEqual([]);
+    expect(errors).toEqual([`Failed to stop: server (pid=100): ${refusal}`]);
+    expect(warnings.map((w) => w.obj.cause)).toEqual(['foreign-host']);
+  });
+
+  test("another machine's lock keeps the owning-machine guidance when the local start cannot be read", async () => {
+    const { outcome, warnings } = run(anotherMachine(), {
+      isAlive: () => true,
+      readProcessStart: () => null,
+      platform: 'darwin',
+    });
+
+    expect((await outcome).failed.map((failure) => failure.error)).toEqual([
+      `The server lock at ${lockPath} records a machine ID different from the one in ${machineIdFilePath()}, so process 100, which is running on this machine, cannot be confirmed as the server that wrote it; ` +
+        'it was not signalled, and --force does not override this check. ' +
+        'If the server was started on this machine from another account, run `ok stop` as that account. ' +
+        'If it was started from this account with a different home folder, run `ok stop` with `HOME` set to that folder. ' +
+        'Otherwise stop it from the machine that owns the lock. ' +
+        'This lock records no process start; a server started by this release records one, which lets `ok stop` confirm it from any home folder.',
+    ]);
+    expect(warnings.map((w) => w.obj.cause)).toEqual(['foreign-host']);
+  });
+
+  test.each([
+    ['darwin', 'HOME'],
+    ['win32', 'USERPROFILE'],
+  ] as const)(
+    "another machine's lock that records a start is refused on %s naming %s and without the restart advice",
+    async (platform, homeVariable) => {
+      const state = anotherMachine();
+      if (state.status !== 'foreign-host') throw new Error('expected a foreign-host lock state');
+      state.lock.processStart = { startedAtMs: Date.parse('2026-04-17T12:00:00Z') + 60_000 };
+      const { outcome, killed, warnings } = run(state, {
+        isAlive: () => true,
+        readProcessStart: startedLongAfterTheLock,
+        platform,
+      });
+
+      expect((await outcome).failed.map((failure) => failure.error)).toEqual([
+        `The server lock at ${lockPath} records a machine ID different from the one in ${machineIdFilePath()}, so process 100, which is running on this machine, cannot be confirmed as the server that wrote it; ` +
+          'it was not signalled, and --force does not override this check. ' +
+          'If the server was started on this machine from another account, run `ok stop` as that account. ' +
+          `If it was started from this account with a different home folder, run \`ok stop\` with \`${homeVariable}\` set to that folder. ` +
+          'Otherwise stop it from the machine that owns the lock.',
+      ]);
+      expect(killed).toEqual([]);
+      expect(warnings.map((w) => w.obj.cause)).toEqual(['foreign-host']);
+    },
+  );
+
+  test('a lock naming only another host is refused with both host names and the advice for a renamed host', async () => {
+    const state = lockState('foreign-host', { hostname: 'another-machine.example' });
+    if (state.status !== 'foreign-host') throw new Error('expected a foreign-host lock state');
+    state.lock.processStart = { startedAtMs: Date.parse('2026-04-17T12:00:00Z') + 60_000 };
+    const { outcome, killed, warnings } = run(state, {
+      isAlive: () => true,
+      readProcessStart: startedLongAfterTheLock,
+    });
+
+    expect((await outcome).failed.map((failure) => failure.error)).toEqual([
+      `The server lock at ${lockPath} records only the host another-machine.example, not this machine's ${hostname()}, and the start of process 100, which is running on this machine, does not confirm it as the server that wrote the lock; ` +
+        'it was not signalled, and --force does not override this check. ' +
+        'If another-machine.example is another machine, stop the server there. ' +
+        `If it is an earlier name of this machine, confirm that process 100 is an OpenKnowledge server before ending it yourself, and once no OpenKnowledge server is running for this project, remove ${lockPath}.`,
+    ]);
+    expect(killed).toEqual([]);
+    expect(warnings.map((w) => w.obj.cause)).toEqual(['foreign-host']);
+  });
+
+  test("an earlier-started local process named by another machine's lock is not signalled", async () => {
+    const { outcome, killed } = run(anotherMachine(), {
+      isAlive: () => true,
+      readProcessStart: startedBeforeFixtureLocks,
+    });
+
+    expect((await outcome).stopped).toEqual([]);
+    expect(killed).toEqual([]);
   });
 });
 
@@ -470,7 +928,7 @@ describe('probeCollabClients failure record', () => {
         pid: process.pid,
         port: 24999,
         hostname: hostname(),
-        startedAt: '2026-08-18T00:00:00Z',
+        startedAt: new Date().toISOString(),
         worktreeRoot: dir,
       }),
       'utf-8',
@@ -535,5 +993,136 @@ describe('probeCollabClients failure record', () => {
 
     expect(await probeCollabClients(lockDir, logger)).toBe(3);
     expect(records).toEqual([]);
+  });
+});
+
+describe('runStop on a live lock that records no owning machine', () => {
+  let lockDir: string | undefined;
+
+  afterEach(() => {
+    if (lockDir !== undefined) rmSync(lockDir, { recursive: true, force: true });
+    lockDir = undefined;
+  });
+
+  test('refuses it without a signal, even with --force, and says not to remove the lock', async () => {
+    lockDir = mkdtempSync(join(tmpdir(), 'ok-stop-ownerless-'));
+    const lockPath = lockFilePath(lockDir, 'server');
+    writeFileSync(
+      lockPath,
+      JSON.stringify({
+        pid: process.pid,
+        port: 24998,
+        startedAt: new Date().toISOString(),
+        worktreeRoot: lockDir,
+      }),
+      'utf-8',
+    );
+    const killed: Array<[number, string]> = [];
+    const errors: string[] = [];
+    const warnings: Array<{ obj: Record<string, unknown>; msg: string }> = [];
+    const logger = {
+      info: () => {},
+      warn: (obj: Record<string, unknown>, msg: string) => warnings.push({ obj, msg }),
+    } as unknown as Parameters<typeof runStop>[0]['logger'];
+
+    const outcome = await runStop({
+      lockDir,
+      force: true,
+      kill: (pid, sig) => killed.push([pid, sig]),
+      log: () => {},
+      error: (msg) => errors.push(msg),
+      probeClients: async () => null,
+      logger,
+    });
+
+    const refusal =
+      `The server lock at ${lockPath} does not record its owning machine, and its recorded process ${process.pid} is still running on this machine, so it cannot be confirmed as the server that wrote the lock; ` +
+      'it was not signalled, and --force does not override this check. ' +
+      `Check whether process ${process.pid} is an OpenKnowledge server, and if it is, stop it yourself. ` +
+      'Do not remove the lock file while that process is running.';
+
+    expect(outcome).toEqual({
+      stopped: [],
+      failed: [
+        {
+          target: { name: 'server', pid: process.pid },
+          error: refusal,
+          unverified: { cause: 'unverified-owner', pid: process.pid, lockPath },
+        },
+      ],
+      hadTargets: true,
+    });
+    expect(killed).toEqual([]);
+    expect(errors).toEqual([`Failed to stop: server (pid=${process.pid}): ${refusal}`]);
+    expect(warnings).toContainEqual({
+      obj: {
+        lockDir,
+        lockPath,
+        lockPid: process.pid,
+        platform: process.platform,
+        cause: 'unverified-owner',
+      },
+      msg: 'stop declined: lock holder identity unverified',
+    });
+  });
+});
+
+describe('ok stop on a project whose live lock records no owning machine', () => {
+  let project: string | undefined;
+  let holder: ChildProcess | undefined;
+  const savedExitCode = process.exitCode;
+
+  afterEach(async () => {
+    process.exitCode = savedExitCode;
+    vi.restoreAllMocks();
+    if (holder !== undefined && holder.exitCode === null && holder.signalCode === null) {
+      const exited = once(holder, 'exit');
+      holder.kill('SIGKILL');
+      await exited;
+    }
+    holder = undefined;
+    if (project !== undefined) rmSync(project, { recursive: true, force: true });
+    project = undefined;
+  });
+
+  test.each([
+    ['directory', []],
+    ['directory', ['--force']],
+    ['no-argument', []],
+    ['no-argument', ['--force']],
+  ] as const)('exits 1 and leaves the process running (%s form, flags %j)', async (form, flags) => {
+    project = mkdtempSync(join(tmpdir(), 'ok-stop-command-ownerless-'));
+    holder = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+      stdio: 'ignore',
+    });
+    await once(holder, 'spawn');
+    const pid = holder.pid;
+    if (pid === undefined) throw new Error('holder did not start');
+    const lockDir = join(project, '.ok', 'local');
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(lockFilePath(lockDir, 'server'), JSON.stringify({ pid }), 'utf-8');
+    const errors: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((msg: unknown) => {
+      errors.push(String(msg));
+    });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    process.exitCode = undefined;
+
+    if (form === 'directory') {
+      await stopCommand(() => {
+        throw new Error('the directory form reads no config');
+      }).parseAsync([project, ...flags], { from: 'user' });
+    } else {
+      vi.spyOn(process, 'cwd').mockReturnValue(project);
+      await stopCommand(() => ({}) as Config).parseAsync([...flags], { from: 'user' });
+    }
+
+    expect(process.exitCode).toBe(1);
+    expect(isProcessAlive(pid)).toBe(true);
+    expect(errors).toEqual([
+      expect.stringContaining(
+        `process ${pid} is still running on this machine, so it cannot be confirmed as the server that wrote the lock; it was not signalled`,
+      ),
+    ]);
   });
 });

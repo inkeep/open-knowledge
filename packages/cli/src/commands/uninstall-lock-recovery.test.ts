@@ -12,6 +12,7 @@ import {
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
+  getMachineId,
   isProcessAlive,
   type LockProcessScan,
   scanLockProcesses,
@@ -109,7 +110,7 @@ describe.skipIf(process.platform === 'win32')('uninstall lock recovery in an iso
           } else livePid = child.pid;
           raw = JSON.stringify({
             pid: child.pid,
-            ...(kind === 'pid-only' ? {} : { hostname: hostname() }),
+            ...(kind === 'pid-only' ? {} : { hostname: hostname(), machineId: getMachineId() }),
             port: 0,
             startedAt: new Date().toISOString(),
           });

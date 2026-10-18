@@ -323,6 +323,7 @@ export async function runDiagnose(
       s.status !== 'corrupt' &&
       s.status !== 'read-error' &&
       s.status !== 'unverified-owner' &&
+      s.status !== 'reused-pid' &&
       s.lock.pid === pid
     ) {
       contentDir = s.lock.worktreeRoot;

@@ -958,6 +958,8 @@ export function tryDescribeLockCollision(
   if (authorityErr !== undefined && err instanceof authorityErr) return err.message;
   const registryErr = serverModule.ServerAuthorityRegistryError;
   if (registryErr !== undefined && err instanceof registryErr) return err.message;
+  const lockFileErr = serverModule.ProcessLockFileError;
+  if (lockFileErr !== undefined && err instanceof lockFileErr) return err.message;
   const lockErr = serverModule.ServerLockCollisionError;
   if (lockErr === undefined || !(err instanceof lockErr)) return null;
 

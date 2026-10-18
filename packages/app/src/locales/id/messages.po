@@ -3159,6 +3159,12 @@ msgstr "Server tidak bisa dimulai ulang — ia berjalan di bawah akun lain. Mula
 msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 msgstr "Server tidak bisa dimulai ulang secara otomatis. Coba jalankan `{cliCommand} stop all` di terminal, lalu buka lagi proyek ini — atau mulai ulang komputer Anda jika masih berlanjut."
 
+msgid "Couldn't restart the server: OpenKnowledge asked the process holding this project's server lock to stop, but could not confirm that it is this project's server, so it did not force it to quit. If the project is still locked, stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "Server tidak bisa dimulai ulang: OpenKnowledge meminta proses yang memegang kunci server proyek ini untuk berhenti, tetapi tidak dapat memastikan bahwa itu adalah server proyek ini, jadi proses itu tidak dipaksa keluar. Jika proyek masih terkunci, hentikan server di tempat server itu dijalankan, atau mulai ulang komputer Anda, lalu buka lagi proyek ini."
+
+msgid "Couldn't restart the server: OpenKnowledge could not confirm that the process holding this project's server lock is still its server, so it was not stopped. Stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "Server tidak bisa dimulai ulang: OpenKnowledge tidak dapat memastikan bahwa proses yang memegang kunci server proyek ini masih servernya, jadi proses itu tidak dihentikan. Hentikan server di tempat server itu dijalankan, atau mulai ulang komputer Anda, lalu buka lagi proyek ini."
+
 msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
 msgstr "Tidak dapat memulai ulang server. Jalankan {cliCommand} start di folder ini untuk mencoba lagi."
 

@@ -9,8 +9,9 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { runStop } from '@inkeep/open-knowledge';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { removeGitFolder } from './remove-git-folder.ts';
+import { removeGitFolder, stopServerThenRemoveGitFolder } from './remove-git-folder.ts';
 
 let tmpRoot: string;
 
@@ -141,6 +142,136 @@ describe('removeGitFolder — pure helper backing ok:fs:remove-git-folder', () =
     await expect(
       removeGitFolder(`${gitRoot}/`, { allowedGitRoots: new Set([gitRoot]) }),
     ).rejects.toThrow(/must be an absolute, resolved path/);
+    expect(existsSync(join(gitRoot, '.git'))).toBe(true);
+  });
+});
+
+describe('stopServerThenRemoveGitFolder', () => {
+  const notStopped = 'remove-git-folder: the worktree server was not stopped; removing .git anyway';
+  let gitRoot: string;
+  let lockDir: string;
+
+  beforeEach(() => {
+    gitRoot = join(tmpRoot, 'proj');
+    lockDir = join(gitRoot, '.ok', 'local');
+    mkdirSync(join(gitRoot, '.git', 'objects'), { recursive: true });
+  });
+
+  function harness(stop: () => ReturnType<typeof runStop>) {
+    const info: Array<{ data: Record<string, unknown>; message: string }> = [];
+    const warn: Array<{ data: Record<string, unknown>; message: string }> = [];
+    const stopCalls: Array<Parameters<typeof runStop>[0]> = [];
+    const deps = {
+      allowedGitRoots: new Set([gitRoot]),
+      lockDirFor: (root: string) => join(root, '.ok', 'local'),
+      runStop: (stopDeps: Parameters<typeof runStop>[0]) => {
+        stopCalls.push(stopDeps);
+        return stop();
+      },
+      log: {
+        info: (data: Record<string, unknown>, message: string) => info.push({ data, message }),
+        warn: (data: Record<string, unknown>, message: string) => warn.push({ data, message }),
+      },
+    };
+    return { info, warn, stopCalls, deps };
+  }
+
+  test('removes .git after a refused stop, logging the holder, its lock, the cause and the native failures', async () => {
+    const lockPath = join(lockDir, 'server.lock');
+    const { info, warn, stopCalls, deps } = harness(async () => ({
+      stopped: [],
+      failed: [
+        {
+          target: { name: 'server', pid: 4242 },
+          error: 'Could not read when process 4242 started',
+          unverified: {
+            cause: 'process-start-unreadable',
+            pid: 4242,
+            lockPath,
+            platform: 'win32',
+            nativeFailures: [{ kind: 'query-failed', reason: 'Access is denied. (os error 5)' }],
+          },
+        },
+      ],
+      hadTargets: true,
+    }));
+
+    await stopServerThenRemoveGitFolder(gitRoot, deps);
+
+    expect(stopCalls).toEqual([expect.objectContaining({ lockDir, force: true })]);
+    expect(info).toEqual([]);
+    expect(warn).toEqual([
+      {
+        data: {
+          gitRoot,
+          lockPid: 4242,
+          lockPath,
+          cause: 'process-start-unreadable',
+          nativeFailures: [{ kind: 'query-failed', reason: 'Access is denied. (os error 5)' }],
+          error: 'Could not read when process 4242 started',
+        },
+        message: notStopped,
+      },
+    ]);
+    expect(existsSync(join(gitRoot, '.git'))).toBe(false);
+  });
+
+  test('reports a signalled server as stopped, then removes .git', async () => {
+    const { info, warn, deps } = harness(async () => ({
+      stopped: [{ name: 'server', pid: 4242, port: 3001 }],
+      failed: [],
+      hadTargets: true,
+    }));
+
+    await stopServerThenRemoveGitFolder(gitRoot, deps);
+
+    expect(info).toEqual([
+      {
+        data: { gitRoot, stopped: 1 },
+        message: 'remove-git-folder: stopped worktree server before .git removal',
+      },
+    ]);
+    expect(warn).toEqual([]);
+    expect(existsSync(join(gitRoot, '.git'))).toBe(false);
+  });
+
+  test('records a declined stop as not stopped and still removes .git', async () => {
+    const { warn, deps } = harness(async () => ({
+      stopped: [],
+      failed: [],
+      hadTargets: true,
+      declined: { clients: 2 },
+    }));
+
+    await stopServerThenRemoveGitFolder(gitRoot, deps);
+
+    expect(warn).toEqual([{ data: { gitRoot, declined: { clients: 2 } }, message: notStopped }]);
+    expect(existsSync(join(gitRoot, '.git'))).toBe(false);
+  });
+
+  test('records a stop that throws as not stopped and still removes .git', async () => {
+    const failure = new Error('lock unreadable');
+    const { warn, deps } = harness(async () => {
+      throw failure;
+    });
+
+    await stopServerThenRemoveGitFolder(gitRoot, deps);
+
+    expect(warn).toEqual([{ data: { gitRoot, err: failure }, message: notStopped }]);
+    expect(existsSync(join(gitRoot, '.git'))).toBe(false);
+  });
+
+  test('stops nothing for a root no probe surfaced and refuses its removal', async () => {
+    const { stopCalls, deps } = harness(async () => ({
+      stopped: [],
+      failed: [],
+      hadTargets: false,
+    }));
+
+    await expect(
+      stopServerThenRemoveGitFolder(gitRoot, { ...deps, allowedGitRoots: new Set<string>() }),
+    ).rejects.toThrow(/not surfaced by a recent probe/);
+    expect(stopCalls).toEqual([]);
     expect(existsSync(join(gitRoot, '.git'))).toBe(true);
   });
 });

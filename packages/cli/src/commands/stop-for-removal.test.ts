@@ -1,4 +1,4 @@
-import { type ChildProcess, execFileSync, type SpawnSyncReturns, spawn } from 'node:child_process';
+import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import {
   chmodSync,
@@ -12,12 +12,23 @@ import {
 } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isProcessAlive, lockFilePath, scanLockProcesses } from '@inkeep/open-knowledge-server';
+import {
+  getMachineId,
+  isProcessAlive,
+  lockFilePath,
+  type ProcessStart,
+  scanLockProcesses,
+} from '@inkeep/open-knowledge-server';
 import pino from 'pino';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  processStartTokenFromOs,
+  processStartTokenOffsetFromOs,
+  readProcessStartFromOs,
+} from '../../../../test-support/os-process-start.test-helper.ts';
 import * as cliLogger from '../cli-logger.ts';
+import { type HolderProcessStartOptions, readHolderProcessStart } from './holder-process-start.ts';
 import { runRemoval } from './removal-plan.ts';
-import { readRemovalProcessStart } from './removal-process-start.ts';
 import { stopServerForRemoval } from './stop-for-removal.ts';
 
 describe('stopServerForRemoval', () => {
@@ -66,7 +77,13 @@ describe('stopServerForRemoval', () => {
     if (pid === undefined) throw new Error('Server fixture did not start');
     writeFileSync(
       lockFilePath(dir, 'server'),
-      JSON.stringify({ pid, hostname: hostname(), port: 0, startedAt: new Date().toISOString() }),
+      JSON.stringify({
+        pid,
+        hostname: hostname(),
+        machineId: getMachineId(),
+        port: 0,
+        startedAt: new Date().toISOString(),
+      }),
     );
     return pid;
   }
@@ -119,7 +136,13 @@ describe('stopServerForRemoval', () => {
     });
     writeFileSync(
       lockFilePath(dir, 'server'),
-      JSON.stringify({ pid, hostname: hostname(), port: 0, startedAt: new Date().toISOString() }),
+      JSON.stringify({
+        pid,
+        hostname: hostname(),
+        machineId: getMachineId(),
+        port: 0,
+        startedAt: new Date().toISOString(),
+      }),
     );
     return pid;
   }
@@ -327,7 +350,7 @@ describe('stopServerForRemoval', () => {
     },
   );
 
-  test('does not signal an unrelated process whose PID appears in an older lock', async () => {
+  test('skips a lock whose PID now belongs to a process started after the lock was written, without signalling it', async () => {
     const pid = await startServer(`
       process.send('ready');
       setInterval(() => {}, 1000);
@@ -336,59 +359,94 @@ describe('stopServerForRemoval', () => {
       lockFilePath(dir, 'server'),
       JSON.stringify({ pid, hostname: hostname(), port: 0, startedAt: '2000-01-01T00:00:00.000Z' }),
     );
-    const probe: {
-      elapsedMs?: number;
-      code?: string | null;
-      status?: number | null;
-      signal?: NodeJS.Signals | null;
-      output?: string;
-    } = {};
-    const removal = stopServerForRemoval(dir, {
-      readProcessStart: (processId) =>
-        readRemovalProcessStart(processId, {
-          run: (command, args, options) => {
-            const startedAt = performance.now();
-            try {
-              const output = execFileSync(command, args, options);
-              probe.output = output.trim().slice(0, 80);
-              return output;
-            } catch (error) {
-              const failure = error as NodeJS.ErrnoException &
-                Pick<SpawnSyncReturns<string>, 'status' | 'signal'>;
-              probe.code = failure.code ?? null;
-              probe.status = failure.status ?? null;
-              probe.signal = failure.signal ?? null;
-              throw error;
-            } finally {
-              probe.elapsedMs = Math.round(performance.now() - startedAt);
-            }
-          },
-        }),
+    expect(await stopServerForRemoval(dir)).toEqual({
+      stopped: 0,
+      failed: [],
+      skipped: `Skipped stale lock at ${lockFilePath(dir, 'server')}; its recorded process ${pid} has exited and that process ID now belongs to another program, which was not signalled. No server was stopped.`,
     });
-    await expect(removal, `OS process-start query: ${JSON.stringify(probe)}`).rejects.toThrow(
-      'started after the server lock',
-    );
     expect(isProcessAlive(pid)).toBe(true);
-    expectRefusalLogged('alive', 'started after the server lock');
+    expect(warnings).toEqual([]);
   });
+
+  test.skipIf(process.platform === 'win32')(
+    'judges a lock by its recorded process start even when its startedAt is later than the holder started',
+    async () => {
+      const pid = await startServer(`
+      process.send('ready');
+      setInterval(() => {}, 1000);
+    `);
+      writeFileSync(
+        lockFilePath(dir, 'server'),
+        JSON.stringify({
+          pid,
+          hostname: hostname(),
+          port: 0,
+          startedAt: new Date().toISOString(),
+          processStart: processStartTokenOffsetFromOs(pid, -5),
+        }),
+      );
+      expect(await stopServerForRemoval(dir)).toMatchObject({
+        stopped: 0,
+        failed: [],
+        skipped: expect.stringContaining('now belongs to another program'),
+      });
+      expect(isProcessAlive(pid)).toBe(true);
+    },
+  );
 
   test('does not signal a process when its lock has no acquisition timestamp', async () => {
     const pid = await startServer(`
       process.send('ready');
       setInterval(() => {}, 1000);
     `);
-    writeFileSync(
-      lockFilePath(dir, 'server'),
-      JSON.stringify({ pid, hostname: hostname(), port: 0 }),
+    const lockPath = lockFilePath(dir, 'server');
+    writeFileSync(lockPath, JSON.stringify({ pid, hostname: hostname(), port: 0 }));
+    const error = await stopServerForRemoval(dir).then(
+      () => undefined,
+      (err: unknown) => err as Error,
     );
-    await expect(stopServerForRemoval(dir)).rejects.toThrow('valid start time');
+    expect(error?.message).toBe(
+      `The start of process ${pid} cannot be compared with the start recorded in ${lockPath}, so it cannot be confirmed as the server that wrote the lock; ` +
+        'it was not signalled. ' +
+        `Before ending process ${pid} yourself, confirm that it is an OpenKnowledge server. ` +
+        `Once you have confirmed no OpenKnowledge server is running for this project, remove ${lockPath} and retry cleanup.`,
+    );
     expect(isProcessAlive(pid)).toBe(true);
-    expectRefusalLogged('alive', 'valid start time');
+    expect(warnings).toContainEqual(
+      expect.objectContaining({
+        pid: process.pid,
+        lockPid: pid,
+        cause: 'process-start-incomparable',
+        msg: 'stop declined: lock holder identity unverified',
+      }),
+    );
   });
 
+  test.skipIf(process.platform === 'win32')(
+    'stops a holder matching the recorded process start even when its lock has no acquisition timestamp',
+    async () => {
+      const pid = await startServer(`
+      process.send('ready');
+      setInterval(() => {}, 1000);
+    `);
+      writeFileSync(
+        lockFilePath(dir, 'server'),
+        JSON.stringify({
+          pid,
+          hostname: hostname(),
+          port: 0,
+          processStart: processStartTokenFromOs(pid),
+        }),
+      );
+      expect(await stopServerForRemoval(dir)).toEqual({ stopped: 1, failed: [] });
+      const exited = await fixtureExit(pid);
+      expect(exited.signalCode ?? exited.exitCode).not.toBe(0);
+    },
+  );
+
   test.each([
-    ['linux', 'ps supporting -p and -o lstart='],
-    ['darwin', 'Stop the server manually.'],
+    ['linux', '/proc'],
+    ['darwin', 'macOS reads the process start with ps, and that read failed'],
   ] as const)(
     'explains the %s probe recovery when the process start probe is unavailable',
     async (platform, expected) => {
@@ -396,42 +454,84 @@ describe('stopServerForRemoval', () => {
       process.send('ready');
       setInterval(() => {}, 1000);
     `);
-      await expect(
-        stopServerForRemoval(dir, { platform, readProcessStart: () => null }),
-      ).rejects.toThrow('Confirm the OpenKnowledge server has exited before retrying cleanup');
+      const error = await stopServerForRemoval(dir, {
+        platform,
+        readProcessStart: () => null,
+      }).then(
+        () => undefined,
+        (err: unknown) => err as Error,
+      );
+      expect(error?.message).toContain(expected);
+      expect(error?.message).toContain(`remove ${lockFilePath(dir, 'server')} and retry cleanup.`);
+      expect(error?.message).not.toContain('--force');
       expect(isProcessAlive(pid)).toBe(true);
-      expectRefusalLogged('alive', 'Cannot verify the identity');
-      expect(warnings[0]).toMatchObject({ lockPid: pid });
-      expect(warnings[0]?.msg).toContain(expected);
+      expect(warnings).toEqual([
+        expect.objectContaining({
+          level: 40,
+          lockDir: dir,
+          lockPath: lockFilePath(dir, 'server'),
+          pid: process.pid,
+          lockPid: pid,
+          platform,
+          cause: 'process-start-unreadable',
+          msg: 'stop declined: lock holder identity unverified',
+        }),
+      ]);
     },
   );
+
+  test('without a CLI logger, as the desktop removes a project, the refusal points at no log', async () => {
+    vi.spyOn(cliLogger, 'getCliLogger').mockReturnValue(undefined);
+    await startServer(`
+      process.send('ready');
+      setInterval(() => {}, 1000);
+    `);
+    const error = await stopServerForRemoval(dir, {
+      readProcessStart: (_pid, options) => {
+        options?.onNativeFailure?.({
+          kind: 'query-failed',
+          reason: 'readProcessStart failed: OpenProcess: os error 5',
+        });
+        return null;
+      },
+    }).then(
+      () => undefined,
+      (err: unknown) => err as Error,
+    );
+    expect(error?.message).toContain('Could not read when process');
+    expect(error?.message).not.toContain('recorded in');
+    expect(error?.message).not.toContain('~/.ok/logs');
+  });
 
   test('records the native identity failure cause in the CLI log, never in the refusal a user reads', async () => {
     const pid = await startServer(`
       process.send('ready');
       setInterval(() => {}, 1000);
     `);
-    await expect(
-      stopServerForRemoval(dir, {
-        readProcessStart: (_pid, options) => {
-          options?.onNativeFailure?.({
-            kind: 'query-failed',
-            reason: 'readProcessStart failed: OpenProcess: os error 5',
-          });
-          return null;
-        },
-      }),
-    ).rejects.toThrow('Cannot verify the identity');
+    const error = await stopServerForRemoval(dir, {
+      readProcessStart: (_pid, options) => {
+        options?.onNativeFailure?.({
+          kind: 'query-failed',
+          reason: 'readProcessStart failed: OpenProcess: os error 5',
+        });
+        return null;
+      },
+    }).then(
+      () => undefined,
+      (err: unknown) => err as Error,
+    );
+    expect(error?.message).toContain('Could not read when process');
     expect(isProcessAlive(pid)).toBe(true);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatchObject({
+      cause: 'process-start-unreadable',
       nativeFailures: [
         { kind: 'query-failed', reason: 'readProcessStart failed: OpenProcess: os error 5' },
       ],
     });
-    expect(warnings[0]?.msg).toContain(lockFilePath(dir, 'server'));
-    expect(warnings[0]?.msg).not.toContain('OpenProcess: os error 5');
-    expect(warnings[0]?.msg).toContain('recorded in the CLI log under ~/.ok/logs');
+    expect(error?.message).toContain(lockFilePath(dir, 'server'));
+    expect(error?.message).not.toContain('OpenProcess: os error 5');
+    expect(error?.message).toContain('recorded in the CLI log under ~/.ok/logs');
   });
 
   test.each([
@@ -452,17 +552,19 @@ describe('stopServerForRemoval', () => {
       process.send('ready');
       setInterval(() => {}, 1000);
     `);
-      await expect(
-        stopServerForRemoval(dir, {
-          platform: 'win32',
-          readProcessStart: (_pid, options) => {
-            options?.onNativeFailure?.({ kind, reason: 'probe detail' });
-            return null;
-          },
-        }),
-      ).rejects.toThrow(expected);
+      const error = await stopServerForRemoval(dir, {
+        platform: 'win32',
+        readProcessStart: (_pid, options) => {
+          options?.onNativeFailure?.({ kind, reason: 'probe detail' });
+          return null;
+        },
+      }).then(
+        () => undefined,
+        (err: unknown) => err as Error,
+      );
+      expect(error?.message).toContain(expected);
       expect(isProcessAlive(pid)).toBe(true);
-      expect(warnings[0]?.msg).not.toContain(absent);
+      expect(error?.message).not.toContain(absent);
     },
   );
 
@@ -471,12 +573,19 @@ describe('stopServerForRemoval', () => {
       process.send('ready');
       setInterval(() => {}, 1000);
     `);
-    await expect(
-      stopServerForRemoval(dir, { platform: 'win32', readProcessStart: () => null }),
-    ).rejects.toThrow('Stop the server manually.');
+    const error = await stopServerForRemoval(dir, {
+      platform: 'win32',
+      readProcessStart: () => null,
+    }).then(
+      () => undefined,
+      (err: unknown) => err as Error,
+    );
+    expect(error?.message).toContain(
+      `it was not signalled. Before ending process ${pid} yourself, confirm that it is an OpenKnowledge server.`,
+    );
     expect(isProcessAlive(pid)).toBe(true);
-    expect(warnings[0]?.msg).not.toContain('Reinstall OpenKnowledge');
-    expect(warnings[0]?.msg).not.toContain('refused the query');
+    expect(error?.message).not.toContain('Reinstall OpenKnowledge');
+    expect(error?.message).not.toContain('refused the query');
   });
 
   test('does not prescribe a reinstall when the component loaded and the OS refused the query', async () => {
@@ -494,7 +603,7 @@ describe('stopServerForRemoval', () => {
           return null;
         },
       }),
-    ).rejects.toThrow('Cannot verify the identity');
+    ).rejects.toThrow('Could not read when process');
     expect(isProcessAlive(pid)).toBe(true);
     expect(warnings[0]).toMatchObject({
       nativeFailures: [{ kind: 'query-failed' }],
@@ -518,7 +627,7 @@ describe('stopServerForRemoval', () => {
       (err: unknown) => err as Error,
     );
     expect(isProcessAlive(pid)).toBe(true);
-    expect(error?.message).toContain('Cannot verify the identity');
+    expect(error?.message).toContain('Could not read when process');
     for (const upstreamOnly of ['package-lock.json', 'node_modules', 'npm i', 'npm/cli/issues']) {
       expect(error?.message).not.toContain(upstreamOnly);
     }
@@ -546,15 +655,16 @@ describe('stopServerForRemoval', () => {
           return null;
         },
       }),
-    ).rejects.toThrow('Cannot verify the identity');
+    ).rejects.toThrow('Could not read when process');
     expect(isProcessAlive(pid)).toBe(true);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatchObject({
       level: 40,
       lockDir: dir,
       lockPath: lockFilePath(dir, 'server'),
+      pid: process.pid,
       lockPid: pid,
-      status: 'alive',
+      cause: 'process-start-unreadable',
       nativeFailures: [
         { kind: 'unavailable', reason: 'bundled loader failed to load: invalid ELF header' },
         { kind: 'unavailable', reason: 'the Windows native addon did not load' },
@@ -567,38 +677,51 @@ describe('stopServerForRemoval', () => {
       process.send('ready');
       setInterval(() => {}, 1000);
     `);
-    await expect(stopServerForRemoval(dir, { readProcessStart: () => null })).rejects.toThrow(
-      'Cannot verify the identity',
+    const error = await stopServerForRemoval(dir, { readProcessStart: () => null }).then(
+      () => undefined,
+      (err: unknown) => err as Error,
     );
+    expect(error?.message).toContain('Could not read when process');
     expect(isProcessAlive(pid)).toBe(true);
-    expect(warnings[0]?.msg).not.toContain('~/.ok/logs');
+    expect(error?.message).not.toContain('~/.ok/logs');
     expect(warnings[0]).not.toHaveProperty('nativeFailures');
   });
 
-  test('does not log a native failure when the liveness recheck accepts an exited process', async () => {
+  test('does not log a native failure when the holder exits between inspection and the stop signal', async () => {
     const pid = await startServer(`
       process.send('ready');
       setInterval(() => {}, 1000);
     `);
-    const isAlive = vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(false);
-    expect(
-      await stopServerForRemoval(dir, {
-        readProcessStart: (_pid, options) => {
-          options?.onNativeFailure?.({
-            kind: 'query-failed',
-            reason: 'readProcessStart failed: OpenProcess: os error 87',
-          });
-          return null;
-        },
-        isAlive,
-      }),
-    ).toEqual({ stopped: 0, failed: [] });
+    const start = readHolderProcessStart(pid);
+    if (start === null) throw new Error('Could not read fixture process start time');
+    const readProcessStart = vi
+      .fn<(pid: number, options?: HolderProcessStartOptions) => ProcessStart | null>()
+      .mockReturnValueOnce(start)
+      .mockImplementation((_pid, options) => {
+        options?.onNativeFailure?.({
+          kind: 'query-failed',
+          reason: 'readProcessStart failed: OpenProcess: os error 87',
+        });
+        return null;
+      });
+    const isAlive = vi
+      .fn()
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(false);
+
+    expect(await stopServerForRemoval(dir, { readProcessStart, isAlive })).toEqual({
+      stopped: 0,
+      failed: [],
+    });
+    expect(readProcessStart).toHaveBeenCalledTimes(2);
+    expect(readProcessStart.mock.calls[1]?.[1]?.onNativeFailure).toBeTypeOf('function');
     expect(warnings).toEqual([]);
-    expect(isAlive).toHaveBeenCalledTimes(2);
+    expect(isAlive).toHaveBeenCalledTimes(3);
     expect(isProcessAlive(pid)).toBe(true);
   });
 
-  test('requires a liveness recheck to accept an exited process after an unavailable identity probe', async () => {
+  test('skips the lock when its holder exits while inspection reads its start', async () => {
     const pid = await startServer(`
       process.send('ready');
       setInterval(() => {}, 1000);
@@ -607,6 +730,7 @@ describe('stopServerForRemoval', () => {
     expect(await stopServerForRemoval(dir, { readProcessStart: () => null, isAlive })).toEqual({
       stopped: 0,
       failed: [],
+      skipped: `Skipped stale lock at ${lockFilePath(dir, 'server')}; its recorded local process ${pid} has exited. No server was stopped.`,
     });
     expect(isAlive).toHaveBeenCalledTimes(2);
     expect(isProcessAlive(pid)).toBe(true);
@@ -617,24 +741,198 @@ describe('stopServerForRemoval', () => {
       process.send('ready');
       setInterval(() => {}, 1000);
     `);
-    const startedAt = readRemovalProcessStart(pid);
-    if (startedAt === null) throw new Error('Could not read fixture process start time');
-    const startSecond = Math.floor(startedAt / 1000) * 1000;
+    const start = readHolderProcessStart(pid);
+    if (start === null) throw new Error('Could not read fixture process start time');
+    const startSecond = Math.floor(start.startedAtMs / 1000) * 1000;
     writeFileSync(
       lockFilePath(dir, 'server'),
       JSON.stringify({
         pid,
         hostname: hostname(),
+        machineId: getMachineId(),
         port: 0,
         startedAt: new Date(startSecond + 999).toISOString(),
       }),
     );
-    expect(await stopServerForRemoval(dir, { readProcessStart: () => startSecond })).toEqual({
+    expect(
+      await stopServerForRemoval(dir, {
+        readProcessStart: () => ({ ...start, startedAtMs: startSecond }),
+      }),
+    ).toEqual({
       stopped: 1,
       failed: [],
     });
     const exited = await fixtureExit(pid);
     expect(exited.signalCode ?? exited.exitCode).not.toBe(0);
+  });
+
+  describe('a same-machine lock that records no process start', () => {
+    const MINUTE_MS = 60_000;
+
+    async function startSignalRecordingServer(): Promise<{
+      pid: number;
+      receivedSigterm: () => boolean;
+    }> {
+      const marker = join(dir, 'sigterm-received');
+      const pid = await startServer(`
+        const fs = require('node:fs');
+        process.on('SIGTERM', () => {
+          fs.writeFileSync(${JSON.stringify(marker)}, 'SIGTERM');
+          process.exit(0);
+        });
+        process.send('ready');
+        setInterval(() => {}, 1000);
+      `);
+      return { pid, receivedSigterm: () => existsSync(marker) };
+    }
+
+    function writeLockWithoutProcessStart(pid: number, startedAtMs: number): void {
+      writeFileSync(
+        lockFilePath(dir, 'server'),
+        JSON.stringify({
+          pid,
+          hostname: hostname(),
+          machineId: getMachineId(),
+          port: 0,
+          startedAt: new Date(startedAtMs).toISOString(),
+        }),
+      );
+    }
+
+    function holderStart(clock: ProcessStart['clock'], startedAtMs: number): ProcessStart {
+      if (clock === 'creation') return { startedAtMs, clock };
+      const bootedAtMs = startedAtMs - 60 * MINUTE_MS;
+      return {
+        startedAtMs,
+        clock,
+        startTicks: (startedAtMs - bootedAtMs) / 10,
+        bootId: 'fixture-boot-id',
+      };
+    }
+
+    function removalReport(
+      options?: Parameters<typeof stopServerForRemoval>[1],
+    ): Promise<{ stopped: number; failed: unknown[]; explanation: string | undefined }> {
+      return stopServerForRemoval(dir, options).then(
+        ({ stopped, failed, skipped }) => ({ stopped, failed, explanation: skipped }),
+        (err: unknown) => ({
+          stopped: 0,
+          failed: [],
+          explanation: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+
+    test.each([
+      { clock: 'creation', platform: 'darwin', gapMs: 5_000, gap: '5 s' },
+      { clock: 'boot-derived', platform: 'linux', gapMs: MINUTE_MS, gap: '60 s' },
+    ] as const)(
+      'does not signal a holder whose $clock-clock start is $gap after the lock was written, and reports it was not signalled',
+      async ({ clock, platform, gapMs }) => {
+        const { pid, receivedSigterm } = await startSignalRecordingServer();
+        const lockWrittenAtMs = Date.now() - 10 * MINUTE_MS;
+        writeLockWithoutProcessStart(pid, lockWrittenAtMs);
+
+        const report = await removalReport({
+          platform,
+          readProcessStart: () => holderStart(clock, lockWrittenAtMs + gapMs),
+        });
+
+        expect(receivedSigterm(), 'the removal sent SIGTERM to the holder').toBe(false);
+        expect(isProcessAlive(pid)).toBe(true);
+        expect(report).toEqual({
+          stopped: 0,
+          failed: [],
+          explanation: expect.stringMatching(new RegExp(`\\b${pid}\\b.*not signalled`)),
+        });
+      },
+    );
+
+    test.each([
+      { clock: 'creation', platform: 'darwin', gapMs: 5_000, gap: '5 s' },
+      { clock: 'boot-derived', platform: 'linux', gapMs: MINUTE_MS, gap: '60 s' },
+    ] as const)(
+      'still stops a holder whose $clock-clock start is $gap before the lock was written',
+      async ({ clock, platform, gapMs }) => {
+        const { pid, receivedSigterm } = await startSignalRecordingServer();
+        const lockWrittenAtMs = Date.now() - 10 * MINUTE_MS;
+        writeLockWithoutProcessStart(pid, lockWrittenAtMs);
+
+        expect(
+          await stopServerForRemoval(dir, {
+            platform,
+            readProcessStart: () => holderStart(clock, lockWrittenAtMs - gapMs),
+          }),
+        ).toEqual({ stopped: 1, failed: [] });
+        const exited = await fixtureExit(pid);
+        if (process.platform !== 'win32') {
+          expect(receivedSigterm()).toBe(true);
+          expect(exited.exitCode).toBe(0);
+        }
+      },
+    );
+
+    test.skipIf(process.platform === 'win32')(
+      'does not signal a live process that started seconds after the lock was written, read from the OS',
+      async () => {
+        const { pid, receivedSigterm } = await startSignalRecordingServer();
+        writeLockWithoutProcessStart(pid, readProcessStartFromOs(pid).startedAtMs - 5_000);
+
+        const report = await removalReport();
+
+        expect(receivedSigterm(), 'the removal sent SIGTERM to the holder').toBe(false);
+        expect(isProcessAlive(pid)).toBe(true);
+        expect(report).toEqual({
+          stopped: 0,
+          failed: [],
+          explanation: expect.stringMatching(new RegExp(`\\b${pid}\\b.*not signalled`)),
+        });
+      },
+    );
+  });
+
+  test('reads the recorded process start again at the signal and leaves a replaced holder running', async () => {
+    const pid = await startServer(`
+      process.send('ready');
+      setInterval(() => {}, 1000);
+    `);
+    const start = readHolderProcessStart(pid);
+    if (start === null) throw new Error('Could not read fixture process start time');
+    const readProcessStart = vi
+      .fn()
+      .mockReturnValueOnce(start)
+      .mockReturnValue({ ...start, startedAtMs: start.startedAtMs + 36 * 60 * 60 * 1000 });
+
+    expect(await stopServerForRemoval(dir, { readProcessStart })).toEqual({
+      stopped: 0,
+      failed: [],
+    });
+    expect(isProcessAlive(pid)).toBe(true);
+  });
+
+  test('refuses a lock from before machine IDs with the cleanup remedy and no restart advice', async () => {
+    const pid = await startServer(`
+      process.send('ready');
+      setInterval(() => {}, 1000);
+    `);
+    const lockPath = lockFilePath(dir, 'server');
+    writeFileSync(
+      lockPath,
+      JSON.stringify({ pid, hostname: hostname(), port: 0, startedAt: new Date().toISOString() }),
+    );
+
+    const error = await stopServerForRemoval(dir).then(
+      () => undefined,
+      (err: unknown) => err as Error,
+    );
+
+    expect(error?.message).toBe(
+      `The server lock at ${lockPath} records neither a machine ID nor a process start, as locks written by version 0.25.0 and earlier do, so process ${pid} cannot be confirmed as the server that wrote it; ` +
+        'it was not signalled. ' +
+        `Before ending process ${pid} yourself, confirm that it is an OpenKnowledge server. ` +
+        `Once you have confirmed no OpenKnowledge server is running for this project, remove ${lockPath} and retry cleanup.`,
+    );
+    expect(isProcessAlive(pid)).toBe(true);
   });
 
   test('does not signal a local process named by a foreign-host lock', async () => {
@@ -689,7 +987,7 @@ describe('stopServerForRemoval', () => {
       const stateReads = readFileSync(psCalls.path, 'utf8')
         .split('\n')
         .filter((call) => call.includes('stat=') && call.includes(String(pid)));
-      expect(stateReads.length).toBeLessThanOrEqual(2);
+      expect(stateReads.length).toBeLessThanOrEqual(3);
     },
   );
 

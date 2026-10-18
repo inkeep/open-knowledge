@@ -3163,6 +3163,12 @@ msgstr "Nie udało się zrestartować serwera — działa na innym koncie. Uruch
 msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 msgstr "Nie udało się automatycznie zrestartować serwera. Spróbuj uruchomić `{cliCommand} stop all` w terminalu, potem otwórz ten projekt ponownie — albo zrestartuj komputer, jeśli problem się utrzymuje."
 
+msgid "Couldn't restart the server: OpenKnowledge asked the process holding this project's server lock to stop, but could not confirm that it is this project's server, so it did not force it to quit. If the project is still locked, stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "Nie udało się zrestartować serwera: OpenKnowledge poprosił proces, który trzyma blokadę serwera tego projektu, o zatrzymanie, ale nie mógł potwierdzić, że jest to serwer tego projektu, więc nie wymusił jego zamknięcia. Jeśli projekt nadal jest zablokowany, zatrzymaj serwer tam, gdzie został uruchomiony, lub uruchom ponownie komputer, a potem otwórz ten projekt ponownie."
+
+msgid "Couldn't restart the server: OpenKnowledge could not confirm that the process holding this project's server lock is still its server, so it was not stopped. Stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "Nie udało się zrestartować serwera: OpenKnowledge nie mógł potwierdzić, że proces, który trzyma blokadę serwera tego projektu, nadal jest jego serwerem, więc go nie zatrzymał. Zatrzymaj serwer tam, gdzie został uruchomiony, lub uruchom ponownie komputer, a potem otwórz ten projekt ponownie."
+
 msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
 msgstr "Nie udało się zrestartować serwera. Uruchom {cliCommand} start w tym folderze, aby spróbować ponownie."
 

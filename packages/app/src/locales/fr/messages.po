@@ -3163,6 +3163,12 @@ msgstr "Impossible de redémarrer le serveur — il s'exécute sous un autre com
 msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 msgstr "Impossible de redémarrer automatiquement le serveur. Essayez d'exécuter `{cliCommand} stop all` dans un terminal, puis rouvrez ce projet — ou redémarrez votre ordinateur si le problème persiste."
 
+msgid "Couldn't restart the server: OpenKnowledge asked the process holding this project's server lock to stop, but could not confirm that it is this project's server, so it did not force it to quit. If the project is still locked, stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "Impossible de redémarrer le serveur : OpenKnowledge a demandé au processus qui détient le verrou du serveur de ce projet de s'arrêter, mais n'a pas pu confirmer qu'il s'agit du serveur de ce projet ; il ne l'a donc pas forcé à quitter. Si le projet est toujours verrouillé, arrêtez le serveur là où il a été démarré, ou redémarrez votre ordinateur, puis rouvrez ce projet."
+
+msgid "Couldn't restart the server: OpenKnowledge could not confirm that the process holding this project's server lock is still its server, so it was not stopped. Stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "Impossible de redémarrer le serveur : OpenKnowledge n'a pas pu confirmer que le processus qui détient le verrou du serveur de ce projet est toujours son serveur ; il ne l'a donc pas arrêté. Arrêtez le serveur là où il a été démarré, ou redémarrez votre ordinateur, puis rouvrez ce projet."
+
 msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
 msgstr "Impossible de redémarrer le serveur. Exécutez {cliCommand} start dans ce dossier pour réessayer."
 

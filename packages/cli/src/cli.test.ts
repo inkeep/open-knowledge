@@ -147,6 +147,33 @@ describe('CLI --version notice', () => {
   }, 30_000);
 });
 
+describe('the Windows process-start reader', () => {
+  test('the CLI entry registers it for every command', () => {
+    const result = Bun.spawnSync({
+      cmd: [
+        'node',
+        '--import',
+        'tsx',
+        '--conditions=development',
+        '-e',
+        `
+        process.on('exit', () => {
+          const reader = globalThis[Symbol.for('@inkeep/open-knowledge/native-process-start-reader')];
+          process.stdout.write('process-start-reader=' + typeof reader + '\\n');
+        });
+        process.argv = [process.execPath, process.cwd() + '/src/cli.ts', '--version'];
+        await import('./src/cli.ts');
+        `,
+      ],
+      cwd: CLI_PACKAGE_ROOT,
+      env: { ...process.env, NO_COLOR: '1' },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString()).toContain('process-start-reader=function\n');
+  }, 30_000);
+});
+
 describe('committed project-local key startup warning', () => {
   let projectDir: string;
 

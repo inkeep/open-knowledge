@@ -3159,6 +3159,12 @@ msgstr "सर्वर पुनः आरंभ नहीं किया ज�
 msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 msgstr "सर्वर अपने आप पुनः आरंभ नहीं किया जा सका। टर्मिनल में `{cliCommand} stop all` चलाकर देखें, फिर यह प्रोजेक्ट दोबारा खोलें — या समस्या बनी रहे तो अपना कंप्यूटर पुनः आरंभ करें।"
 
+msgid "Couldn't restart the server: OpenKnowledge asked the process holding this project's server lock to stop, but could not confirm that it is this project's server, so it did not force it to quit. If the project is still locked, stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "सर्वर पुनः आरंभ नहीं किया जा सका: OpenKnowledge ने इस प्रोजेक्ट का सर्वर लॉक रखने वाली प्रक्रिया से रुकने को कहा, लेकिन यह पुष्टि नहीं कर सका कि वह इस प्रोजेक्ट का सर्वर है, इसलिए उसे ज़बरदस्ती बंद नहीं किया। अगर प्रोजेक्ट अब भी लॉक है, तो सर्वर को वहीं रोकें जहाँ उसे शुरू किया गया था, या अपना कंप्यूटर पुनः आरंभ करें, फिर यह प्रोजेक्ट दोबारा खोलें।"
+
+msgid "Couldn't restart the server: OpenKnowledge could not confirm that the process holding this project's server lock is still its server, so it was not stopped. Stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "सर्वर पुनः आरंभ नहीं किया जा सका: OpenKnowledge यह पुष्टि नहीं कर सका कि इस प्रोजेक्ट का सर्वर लॉक रखने वाली प्रक्रिया अब भी उसका सर्वर है, इसलिए उसे रोका नहीं गया। सर्वर को वहीं रोकें जहाँ उसे शुरू किया गया था, या अपना कंप्यूटर पुनः आरंभ करें, फिर यह प्रोजेक्ट दोबारा खोलें।"
+
 msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
 msgstr "सर्वर पुनः आरंभ नहीं किया जा सका। पुनः प्रयास करने के लिए इस फ़ोल्डर में {cliCommand} start चलाएँ।"
 

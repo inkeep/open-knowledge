@@ -1,6 +1,7 @@
 import {
   closeSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -14,7 +15,19 @@ import { resolveDesktopProductName } from '@inkeep/open-knowledge-core';
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 import { getMachineId } from './machine-id.ts';
-import { isProcessAlive, isValidLockPid } from './process-alive.ts';
+import { isValidLockPid } from './process-alive.ts';
+import {
+  assessLockHolder,
+  classifyLockHolder,
+  createRecentProcessStartReader,
+  isLockFromThisMachine,
+  type ProcessStartToken,
+  parseProcessStartToken,
+  processStartToken,
+  readProcessStart,
+  verdictHoldsLock,
+} from './process-identity.ts';
+import { sleepSyncMs } from './sleep-sync.ts';
 import { PROTOCOL_VERSION, RUNTIME_VERSION } from './version-constants.ts';
 
 const log = getLogger('process-lock');
@@ -31,6 +44,7 @@ export interface ProcessLockMetadata {
   startedAt: string;
   worktreeRoot: string;
   machineId?: string;
+  processStart?: ProcessStartToken;
   draining?: boolean;
   kind?: LockKind;
   parentPid?: number;
@@ -63,6 +77,40 @@ export class ProcessLockCollisionError extends Error {
   }
 }
 
+export const LOCK_FILE_ACCESS_REMEDY = 'Restore file and parent-directory access, then retry.';
+const LOCK_FILE_BUSY_REMEDY =
+  'Another program has the lock file open; close it or wait, then retry.';
+const LOCK_FILE_OTHER_REMEDY = 'Resolve that error, then retry.';
+const LOCK_FILE_ACCESS_CODES = new Set(['EACCES', 'EPERM', 'EROFS']);
+
+function lockFileRemedy(cause: unknown): string {
+  const code = errnoCode(cause);
+  if (code === 'EBUSY') return LOCK_FILE_BUSY_REMEDY;
+  if (code !== undefined && LOCK_FILE_ACCESS_CODES.has(code)) return LOCK_FILE_ACCESS_REMEDY;
+  return LOCK_FILE_OTHER_REMEDY;
+}
+
+type LockFileFailure = 'read' | 'stale' | 'corrupt' | 'dangling-link';
+
+const LOCK_FILE_FAILURE_ACTIONS: Record<LockFileFailure, string> = {
+  read: 'read the lock',
+  stale: 'remove the stale lock',
+  corrupt: 'remove the corrupt lock',
+  'dangling-link': 'remove the broken symbolic link',
+};
+
+export class ProcessLockFileError extends Error {
+  readonly lockPath: string;
+  constructor(logPrefix: string, failure: LockFileFailure, lockPath: string, cause: unknown) {
+    super(
+      `${logPrefix} Could not ${LOCK_FILE_FAILURE_ACTIONS[failure]} at ${lockPath}: ${cause instanceof Error ? cause.message : String(cause)}. ${lockFileRemedy(cause)}`,
+      { cause },
+    );
+    this.name = 'ProcessLockFileError';
+    this.lockPath = lockPath;
+  }
+}
+
 export function lockFilePath(lockDir: string, lockName: LockName): string {
   return resolve(lockDir, `${lockName}.lock`);
 }
@@ -84,9 +132,13 @@ function dropActiveLockRef(lockPath: string): boolean {
 }
 
 function isSameMachine(existing: ProcessLockMetadata): boolean {
-  if (typeof existing.machineId === 'string') return existing.machineId === getMachineId();
-  return existing.hostname === hostname();
+  return isLockFromThisMachine(existing);
 }
+
+const LOCK_READ_HOLDER_START_MAX_AGE_MS = 1_000;
+const readRecentHolderStart = createRecentProcessStartReader({
+  maxAgeMs: LOCK_READ_HOLDER_START_MAX_AGE_MS,
+});
 
 const exitUnlinkPaths = new Set<string>();
 let exitUnlinkHandlerRegistered = false;
@@ -114,17 +166,56 @@ function registerExitUnlink(lockPath: string): void {
   });
 }
 
-function parseLock(lockPath: string, logPrefix: string): ProcessLockMetadata | null {
+export function toProcessLockMetadata(record: { pid: number }): ProcessLockMetadata {
+  const { processStart, ...rest } = record as { pid: number; processStart?: unknown };
+  const token = parseProcessStartToken(processStart);
+  return { ...rest, ...(token !== undefined && { processStart: token }) } as ProcessLockMetadata;
+}
+
+function parseLockText(text: string): ProcessLockMetadata | null {
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(readFileSync(lockPath, 'utf-8'));
-    if (parsed && typeof parsed === 'object' && isValidLockPid((parsed as { pid?: unknown }).pid)) {
-      return parsed as ProcessLockMetadata;
-    }
-    log.warn({ lockPath }, `${logPrefix} Corrupt lock file at ${lockPath} — replacing`);
-    return null;
+    parsed = JSON.parse(text);
   } catch {
-    log.warn({ lockPath }, `${logPrefix} Corrupt lock file at ${lockPath} — replacing`);
     return null;
+  }
+  if (parsed && typeof parsed === 'object' && isValidLockPid((parsed as { pid?: unknown }).pid)) {
+    return toProcessLockMetadata(parsed as { pid: number });
+  }
+  return null;
+}
+
+export type LockRemoval = 'removed' | 'changed' | 'missing';
+
+export function removeLockIfUnchanged(lockPath: string, assessedText: string): LockRemoval {
+  try {
+    if (readFileSync(lockPath, 'utf-8') !== assessedText) return 'changed';
+    unlinkSync(lockPath);
+    return 'removed';
+  } catch (err) {
+    if (errnoCode(err) === 'ENOENT') return 'missing';
+    throw err;
+  }
+}
+
+const WIN32_TRANSIENT_LOCK_FILE_CODES = new Set(['EBUSY', 'EPERM', 'EACCES']);
+const WIN32_TRANSIENT_RETRY_PAUSE_MS = 100;
+
+function isTransientLockFileError(err: unknown): boolean {
+  const code = errnoCode(err);
+  return (
+    process.platform === 'win32' && code !== undefined && WIN32_TRANSIENT_LOCK_FILE_CODES.has(code)
+  );
+}
+
+function removeExitedHolderLock(lockName: LockName, lockPath: string, assessedText: string): void {
+  try {
+    removeLockIfUnchanged(lockPath, assessedText);
+  } catch (err) {
+    log.debug(
+      { lockPath, err },
+      `[${lockName}-lock] Could not remove the lock at ${lockPath} left by an exited holder`,
+    );
   }
 }
 
@@ -164,6 +255,15 @@ export function acquireProcessLock(opts: {
   mkdirSync(lockDir, { recursive: true });
   const lockPath = lockFilePath(lockDir, lockName);
 
+  const ownStart = readProcessStart(process.pid);
+  const processStart = processStartToken(ownStart);
+  if (processStart === undefined) {
+    const reason = ownStart === null ? 'start-unreadable' : 'boot-id-unreadable';
+    log.warn(
+      { event: 'process-start-unrecorded', platform: process.platform, reason },
+      `${logPrefix} Writing the lock without a processStart (${reason}); readers fall back to its startedAt margin`,
+    );
+  }
   const record: ProcessLockMetadata = {
     pid: process.pid,
     hostname: hostname(),
@@ -172,6 +272,7 @@ export function acquireProcessLock(opts: {
     startedAt: new Date().toISOString(),
     worktreeRoot: init.worktreeRoot,
     machineId: getMachineId(),
+    ...(processStart !== undefined && { processStart }),
     ...(init.kind !== undefined && { kind: init.kind }),
     ...(init.parentPid !== undefined && { parentPid: init.parentPid }),
     ...(init.capabilities !== undefined && { capabilities: init.capabilities }),
@@ -182,7 +283,49 @@ export function acquireProcessLock(opts: {
   const payload = JSON.stringify(record, null, 2);
 
   const MAX_ATTEMPTS = 3;
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+  const keepTransientFailure = (
+    failure: LockFileFailure,
+    err: unknown,
+    attempt: number,
+  ): ProcessLockFileError => {
+    const error = new ProcessLockFileError(logPrefix, failure, lockPath, err);
+    if (!isTransientLockFileError(err)) throw error;
+    if (attempt < MAX_ATTEMPTS) {
+      const code = errnoCode(err);
+      log.warn(
+        { lockPath, code, attempt },
+        `${logPrefix} Could not ${LOCK_FILE_FAILURE_ACTIONS[failure]} at ${lockPath} (${code}); retrying, attempt ${attempt} of ${MAX_ATTEMPTS}`,
+      );
+      sleepSyncMs(WIN32_TRANSIENT_RETRY_PAUSE_MS * attempt);
+    }
+    return error;
+  };
+  const removeAssessedLock = (
+    kind: 'stale' | 'corrupt',
+    text: string,
+    attempt: number,
+  ): ProcessLockFileError | undefined => {
+    try {
+      removeLockIfUnchanged(lockPath, text);
+      return undefined;
+    } catch (err) {
+      return keepTransientFailure(kind, err, attempt);
+    }
+  };
+  const removeDanglingLink = (attempt: number): ProcessLockFileError | undefined => {
+    try {
+      if (!lstatSync(lockPath).isSymbolicLink()) return undefined;
+      unlinkSync(lockPath);
+      log.warn({ lockPath }, `${logPrefix} Removed a broken symbolic link at ${lockPath}`);
+      return undefined;
+    } catch (err) {
+      if (errnoCode(err) === 'ENOENT') return undefined;
+      return keepTransientFailure('dangling-link', err, attempt);
+    }
+  };
+
+  let lastTransientFailure: ProcessLockFileError | undefined;
+  for (let attempt = 1; ; attempt++) {
     if (!existsSync(lockPath)) {
       try {
         const fd = openSync(lockPath, 'wx', 0o600);
@@ -198,8 +341,21 @@ export function acquireProcessLock(opts: {
         if (errnoCode(err) !== 'EEXIST') throw err;
       }
     }
+    if (attempt > MAX_ATTEMPTS) break;
+    lastTransientFailure = undefined;
 
-    const existing = parseLock(lockPath, logPrefix);
+    let text: string;
+    try {
+      text = readFileSync(lockPath, 'utf-8');
+    } catch (err) {
+      lastTransientFailure =
+        errnoCode(err) === 'ENOENT'
+          ? removeDanglingLink(attempt)
+          : keepTransientFailure('read', err, attempt);
+      continue;
+    }
+
+    const existing = parseLockText(text);
     if (existing) {
       if (isSameMachine(existing) && existing.pid === process.pid) {
         writeFileSync(lockPath, payload, { encoding: 'utf-8', mode: 0o600 });
@@ -207,22 +363,38 @@ export function acquireProcessLock(opts: {
         registerExitUnlink(lockPath);
         return buildHandle({ lockName, lockDir, lockPath });
       }
-      if (isProcessAlive(existing.pid)) {
+      const assessment = assessLockHolder(existing);
+      if (verdictHoldsLock(assessment.verdict)) {
+        if (assessment.verdict === 'unverified') {
+          log.warn(
+            {
+              lockPid: existing.pid,
+              host: existing.hostname,
+              holder: assessment.verdict,
+              cause: assessment.cause,
+            },
+            `${logPrefix} Could not confirm that pid=${existing.pid} wrote ${lockPath}; refusing to replace it`,
+          );
+        }
         throw new ProcessLockCollisionError(existing, lockPath, lockName);
       }
       log.warn(
-        { pid: existing.pid, host: existing.hostname },
+        { lockPid: existing.pid, host: existing.hostname, holder: assessment.verdict },
         `${logPrefix} Stale lock detected (pid=${existing.pid}, host=${existing.hostname}) — replacing`,
       );
+      lastTransientFailure = removeAssessedLock('stale', text, attempt);
+      continue;
     }
 
-    try {
-      unlinkSync(lockPath);
-    } catch {}
+    log.warn({ lockPath }, `${logPrefix} Corrupt lock file at ${lockPath} — replacing`);
+    lastTransientFailure = removeAssessedLock('corrupt', text, attempt);
   }
 
-  throw new Error(
-    `${logPrefix} Failed to acquire ${lockPath} after ${MAX_ATTEMPTS} attempts (concurrent acquire contention).`,
+  throw (
+    lastTransientFailure ??
+    new Error(
+      `${logPrefix} Failed to acquire ${lockPath} after ${MAX_ATTEMPTS} attempts (concurrent acquire contention).`,
+    )
   );
 }
 
@@ -307,7 +479,7 @@ export function updateProcessLockPort(opts: {
       );
       return;
     }
-    existing = parsed as ProcessLockMetadata;
+    existing = toProcessLockMetadata(parsed);
   } catch {
     log.warn(
       { lockPath },
@@ -358,7 +530,7 @@ export function markProcessLockDraining(opts: { lockName: LockName; lockDir: str
       );
       return;
     }
-    existing = parsed as ProcessLockMetadata;
+    existing = toProcessLockMetadata(parsed);
   } catch (err) {
     if (errnoCode(err) !== 'ENOENT') {
       log.warn(
@@ -394,21 +566,25 @@ export function readProcessLock(opts: {
   const lockPath = lockFilePath(lockDir, lockName);
   if (!existsSync(lockPath)) return null;
 
+  let text: string;
   let existing: ProcessLockMetadata;
   try {
-    const parsed = JSON.parse(readFileSync(lockPath, 'utf-8'));
+    text = readFileSync(lockPath, 'utf-8');
+    const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== 'object' || !isValidLockPid((parsed as { pid?: unknown }).pid))
       return null;
-    existing = { ...parsed, channel: lockChannel(parsed.channel) } as ProcessLockMetadata;
+    existing = toProcessLockMetadata({ ...parsed, channel: lockChannel(parsed.channel) });
   } catch {
     return null;
   }
 
   if (!isSameMachine(existing)) return null;
-  if (!isProcessAlive(existing.pid)) {
-    try {
-      unlinkSync(lockPath);
-    } catch {}
+  const holder = classifyLockHolder(existing, {
+    sameMachine: true,
+    readProcessStart: readRecentHolderStart,
+  });
+  if (!verdictHoldsLock(holder)) {
+    if (holder === 'gone') removeExitedHolderLock(lockName, lockPath, text);
     return null;
   }
 
@@ -429,9 +605,11 @@ export function readProcessLockDetailed(opts: {
   const lockPath = lockFilePath(lockDir, lockName);
   if (!existsSync(lockPath)) return { status: 'absent' };
 
+  let text: string;
   let raw: unknown;
   try {
-    raw = JSON.parse(readFileSync(lockPath, 'utf-8'));
+    text = readFileSync(lockPath, 'utf-8');
+    raw = JSON.parse(text);
   } catch {
     return { status: 'incompatible', reason: 'corrupt', raw: undefined };
   }
@@ -458,6 +636,7 @@ export function readProcessLockDetailed(opts: {
     startedAt: r.startedAt,
     worktreeRoot: r.worktreeRoot,
     machineId: typeof r.machineId === 'string' ? r.machineId : undefined,
+    processStart: parseProcessStartToken(r.processStart),
     draining: r.draining === true ? true : undefined,
     capabilities:
       Array.isArray(r.capabilities) && r.capabilities.every((c) => typeof c === 'string')
@@ -469,10 +648,12 @@ export function readProcessLockDetailed(opts: {
   };
 
   if (!isSameMachine(lock)) return { status: 'stale', lock };
-  if (!isProcessAlive(lock.pid)) {
-    try {
-      unlinkSync(lockPath);
-    } catch {}
+  const holder = classifyLockHolder(lock, {
+    sameMachine: true,
+    readProcessStart: readRecentHolderStart,
+  });
+  if (!verdictHoldsLock(holder)) {
+    if (holder === 'gone') removeExitedHolderLock(lockName, lockPath, text);
     return { status: 'stale', lock };
   }
 

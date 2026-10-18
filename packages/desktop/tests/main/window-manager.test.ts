@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { DEFAULT_SERVER_HOST, formatSpawnAttemptHeader } from '@inkeep/open-knowledge-core';
+import { getMachineId } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { failedOpenHolder, promptHolderStop } from '../../src/main/holder-stop-prompt.ts';
 import { resolveLocalOpCliInvocation } from '../../src/main/local-op-cli-invocation.ts';
@@ -15,6 +16,7 @@ import {
   isOtherChannelHolderError,
   otherChannelStopOffer,
   type ServerLockMetadataLike,
+  type SpawnedServer,
   type UtilityProcessLike,
   WindowManager,
   type WindowManagerDeps,
@@ -32,6 +34,7 @@ import {
   utilityInitPhaseEvent,
 } from '../../src/shared/boot-narration.ts';
 import { parseDeclaredPhaseBudget } from '../smoke/_helpers/launch-readiness.ts';
+import { heldChild } from './held-child.test-helper.ts';
 
 interface MockUtility extends UtilityProcessLike {
   fire: (msg: unknown) => void;
@@ -207,6 +210,10 @@ function buildEnv(): TestEnv {
         return null;
       },
       killProbe,
+      readProcessStart: () => ({
+        startedAtMs: Date.parse('2026-01-01T00:00:00Z'),
+        clock: 'creation',
+      }),
       activateApp,
       showGate,
       log: {
@@ -218,11 +225,32 @@ function buildEnv(): TestEnv {
   };
 }
 
+const LOCK_HOLDER_EVENTS = new Set([
+  'desktop-server-restart',
+  'desktop-force-stop-conflicting-server',
+  'desktop-dev-reclaim',
+  'desktop-upgrade-reconcile',
+  'desktop-lock-holder-replaced',
+  'desktop-lock-holder-unverified',
+]);
+
 describe('WindowManager', () => {
   let env: TestEnv;
 
   beforeEach(() => {
     env = buildEnv();
+  });
+
+  afterEach(() => {
+    const holderRecords = env.logEntries
+      .map((entry) => entry.payload as Record<string, unknown>)
+      .filter((payload) => LOCK_HOLDER_EVENTS.has(String(payload.event)));
+    for (const payload of holderRecords) {
+      expect(
+        payload,
+        'a lock-holder record names its holder under lockPid, not pid',
+      ).not.toHaveProperty('pid');
+    }
   });
 
   test('createProjectWindow sets BrowserWindow title to "<projectName> — OpenKnowledge" (spawn path)', async () => {
@@ -328,7 +356,7 @@ describe('WindowManager', () => {
   });
 
   test('single-file spawning does not switch project opens away from the utility', async () => {
-    const singleFileSpawn = vi.fn(async () => ({ pid: 88001 }));
+    const singleFileSpawn = vi.fn(async () => heldChild(env.deps, 88001));
     env.deps.spawnSingleFileServer = singleFileSpawn;
     const wm = new WindowManager(env.deps);
 
@@ -516,7 +544,7 @@ describe('WindowManager', () => {
     expect(env.utilities[0]?.postMessage).toHaveBeenCalledWith({ type: 'shutdown' });
   });
 
-  test('utility exit removes project from map AND schedules liveness probe (D39)', async () => {
+  test('utility exit removes project from map and schedules no follow-up signal', async () => {
     const wm = new WindowManager(env.deps);
     const p = wm.createProjectWindow({ projectPath: '/tmp/exit-test' });
     env.utilities[0]?.fire({ type: 'ready', port: 51003, apiOrigin: 'http://localhost:51003' });
@@ -526,8 +554,7 @@ describe('WindowManager', () => {
     env.utilities[0]?.fireExit(0);
     expect(wm.windowCount()).toBe(0);
 
-    const livenessProbe = env.timers.find((t) => t.ms === 1000);
-    expect(livenessProbe).toBeDefined();
+    expect(env.timers.find((t) => t.ms === 1000)).toBeUndefined();
   });
 
   test('getOpenProjectPaths is empty with no project windows open', () => {
@@ -560,37 +587,18 @@ describe('WindowManager', () => {
     expect(wm.getOpenProjectPaths()).toEqual(['/tmp/delta']);
   });
 
-  test('liveness probe sends SIGTERM if pid still alive 1s after exit', async () => {
+  test('the utility pid is never signalled after its exit event, even while that pid is alive', async () => {
     const wm = new WindowManager(env.deps);
     const p = wm.createProjectWindow({ projectPath: '/tmp/zombie-test' });
     env.utilities[0]?.fire({ type: 'ready', port: 51004, apiOrigin: 'http://localhost:51004' });
     await p;
-    const utilityPid = env.utilities[0]?.pid;
 
+    const scheduledBeforeExit = env.timers.length;
     env.utilities[0]?.fireExit(0);
-    const livenessProbe = env.timers.find((t) => t.ms === 1000);
-    expect(livenessProbe).toBeDefined();
+    expect(wm.windowCount()).toBe(0);
+    for (let i = scheduledBeforeExit; i < env.timers.length; i++) env.timers[i]?.cb();
 
-    livenessProbe?.cb();
-    expect(env.killProbe).toHaveBeenCalledWith(utilityPid, 0);
-    expect(env.killProbe).toHaveBeenCalledWith(utilityPid, 'SIGTERM');
-  });
-
-  test('liveness probe is silent if pid is truly gone (probe throws)', async () => {
-    env.killProbe = vi.fn(() => {
-      throw new Error('No such process');
-    });
-    env.deps.killProbe = env.killProbe;
-    const wm = new WindowManager(env.deps);
-    const p = wm.createProjectWindow({ projectPath: '/tmp/clean-exit' });
-    env.utilities[0]?.fire({ type: 'ready', port: 51005, apiOrigin: 'http://localhost:51005' });
-    await p;
-
-    env.utilities[0]?.fireExit(0);
-    const livenessProbe = env.timers.find((t) => t.ms === 1000);
-    expect(livenessProbe).toBeDefined();
-    expect(() => livenessProbe?.cb()).not.toThrow();
-    expect(env.killProbe).toHaveBeenCalledTimes(1);
+    expect(env.killProbe).not.toHaveBeenCalled();
   });
 
   test('runClean (when provided) is called before forking utility', async () => {
@@ -780,6 +788,7 @@ describe('WindowManager', () => {
     const liveLock: ServerLockMetadataLike = {
       pid: 65792,
       hostname: 'my-host',
+      machineId: getMachineId(),
       port: 59534,
       startedAt: '2026-04-17T20:23:20.713Z',
       worktreeRoot: '/tmp/dragon',
@@ -866,7 +875,7 @@ describe('WindowManager', () => {
           readServerLock: () => stableLock,
           probeWsUpgrade: () => Promise.resolve(false),
         });
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 22020 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 22020));
         env.deps.spawnLockPollDeadlineMs = 50;
         env.deps.spawnLockProgressDeadlineMs = 50;
 
@@ -920,7 +929,7 @@ describe('WindowManager', () => {
           stopLog: [
             {
               event: 'desktop-force-stop-conflicting-server',
-              pid: 65792,
+              lockPid: 65792,
               holderChannel: 'stable',
               outcome: 'stopped',
             },
@@ -938,7 +947,7 @@ describe('WindowManager', () => {
             {
               event: 'desktop-force-stop-conflicting-server',
               outcome: 'holder-changed',
-              pid: 70001,
+              lockPid: 70001,
               holderChannel: 'stable',
               expectedPid: 65792,
               expectedHolderChannel: 'stable',
@@ -1016,7 +1025,7 @@ describe('WindowManager', () => {
           isProcessAlive: (pid) => !(pid === STALE_PID && stopped()),
           probeWsUpgrade: (url) => Promise.resolve(!url.includes(String(stableLock.port))),
         });
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 22020 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 22020));
         env.deps.spawnLockPollDeadlineMs = 50;
         env.deps.spawnLockProgressDeadlineMs = 50;
         const projectPath = mkdtempSync(join(tmpdir(), 'ok-other-channel-stale-'));
@@ -1492,7 +1501,7 @@ describe('WindowManager', () => {
       env.deps.killProbe = killProbe;
       env.deps.spawnDetachedServer = async () => {
         spawned = true;
-        return { pid: 6666 };
+        return heldChild(env.deps, 6666);
       };
 
       const restarted: Array<{ projectPath: string; apiOrigin: string }> = [];
@@ -1507,6 +1516,13 @@ describe('WindowManager', () => {
       const outcome = await wm.restartAttachedServer('/tmp/dragon');
       expect(outcome).toEqual({ ok: true });
       expect(killProbe).toHaveBeenCalledWith(5555, 'SIGTERM');
+      expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+        expect.objectContaining({
+          event: 'desktop-server-restart',
+          outcome: 'stopped',
+          lockPid: 5555,
+        }),
+      );
       expect(env.windows.length).toBe(2);
       const ctx = wm.getContextForBrowserWindow(env.windows[1] as BrowserWindowLike);
       expect(ctx?.port).toBe(60000);
@@ -1549,7 +1565,7 @@ describe('WindowManager', () => {
       });
       env.deps.spawnDetachedServer = async () => {
         spawned = true;
-        return { pid: 6666 };
+        return heldChild(env.deps, 6666);
       };
       env.deps.onProjectServerRestarted = () => {
         throw new Error('recreate boom');
@@ -1602,7 +1618,7 @@ describe('WindowManager', () => {
       env.deps.removeServerLock = removeServerLock;
       env.deps.spawnDetachedServer = () => {
         spawned = true;
-        return Promise.resolve({ pid: FRESH_PID });
+        return Promise.resolve(heldChild(env.deps, FRESH_PID));
       };
 
       const wm = new WindowManager(env.deps);
@@ -1617,6 +1633,13 @@ describe('WindowManager', () => {
       expect(removeServerLock.mock.calls[0]?.[0]).toMatch(/[/\\]\.ok[/\\]local$/);
       expect(removeServerLock.mock.calls[0]?.[0]).toContain('/tmp/dragon');
       expect(removeServerLock.mock.calls[0]?.[1]).toEqual({ pid: STALE_PID });
+      expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+        expect.objectContaining({
+          event: 'desktop-server-restart',
+          outcome: 'eperm-stale-lock-broken',
+          lockPid: STALE_PID,
+        }),
+      );
     });
 
     test('restartAttachedServer survives a removeServerLock that throws', async () => {
@@ -1631,7 +1654,7 @@ describe('WindowManager', () => {
       env.deps.isProcessAlive = () => true;
       env.deps.hostname = () => 'my-host';
       env.deps.probeWsUpgrade = () => Promise.resolve(false);
-      const spawn = vi.fn(() => Promise.resolve({ pid: 22018 }));
+      const spawn = vi.fn(() => Promise.resolve(heldChild(env.deps, 22018)));
       env.deps.spawnDetachedServer = spawn;
       env.deps.killProbe = vi.fn(() => {
         throw Object.assign(new Error('eperm'), { code: 'EPERM' });
@@ -1656,7 +1679,7 @@ describe('WindowManager', () => {
       env.deps.isProcessAlive = () => true;
       env.deps.hostname = () => 'my-host';
       env.deps.probeWsUpgrade = () => Promise.resolve(false);
-      const spawn = vi.fn(() => Promise.resolve({ pid: 22018 }));
+      const spawn = vi.fn(() => Promise.resolve(heldChild(env.deps, 22018)));
       env.deps.spawnDetachedServer = spawn;
       env.deps.killProbe = vi.fn(() => {
         throw Object.assign(new Error('eperm'), { code: 'EPERM' });
@@ -1744,7 +1767,7 @@ describe('WindowManager', () => {
       env.deps.probeWsUpgrade = () => Promise.resolve(true);
       env.deps.spawnDetachedServer = () => {
         spawned = true;
-        return Promise.resolve({ pid: 22018 });
+        return Promise.resolve(heldChild(env.deps, 22018));
       };
       env.deps.killProbe = vi.fn(() => {
         throw Object.assign(new Error('eperm'), { code: 'EPERM' });
@@ -1820,7 +1843,7 @@ describe('WindowManager', () => {
       env.deps.isProcessAlive = () => true;
       env.deps.hostname = () => 'my-host';
       env.deps.probeWsUpgrade = () => Promise.resolve(false);
-      const spawn = vi.fn(() => Promise.resolve({ pid: 22018 }));
+      const spawn = vi.fn(() => Promise.resolve(heldChild(env.deps, 22018)));
       env.deps.spawnDetachedServer = spawn;
       env.deps.killProbe = vi.fn(() => {
         throw Object.assign(new Error('kaboom'), { code: 'EIO' });
@@ -1835,6 +1858,119 @@ describe('WindowManager', () => {
       expect(env.windows.length).toBe(0);
     });
 
+    test('restartAttachedServer reports an unverifiable holder as a failure without signalling or spawning', async () => {
+      const removeServerLock = vi.fn(() => true);
+      env.deps.removeServerLock = removeServerLock;
+      env.deps.readServerLock = () => ({ ...liveLock, pid: 5151, port: 42118 });
+      env.deps.isProcessAlive = () => true;
+      env.deps.readProcessStart = () => null;
+      const spawn = vi.fn(() => Promise.resolve(heldChild(env.deps, 22019)));
+      env.deps.spawnDetachedServer = spawn;
+      const killProbe = vi.fn();
+      env.deps.killProbe = killProbe;
+
+      const outcome = await new WindowManager(env.deps).restartAttachedServer('/tmp/dragon');
+
+      expect(outcome).toEqual({ ok: false, reason: 'unverified', sigtermSent: false });
+      expect(killProbe.mock.calls.filter(([, signal]) => signal !== 0)).toEqual([]);
+      expect(removeServerLock).not.toHaveBeenCalled();
+      expect(spawn).not.toHaveBeenCalled();
+      expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+        expect.objectContaining({
+          event: 'desktop-server-restart',
+          outcome: 'unverified',
+          lockPid: 5151,
+        }),
+      );
+    });
+
+    test('restartAttachedServer stops a server the desktop spawned through its held child even when the holder start is unreadable', async () => {
+      const OWN_CHILD_PID = 22030;
+      const FRESH_PID = 22031;
+      const ownLock = { ...liveLock, pid: OWN_CHILD_PID };
+      const freshLock = { ...liveLock, pid: FRESH_PID, port: 60000 };
+      let spawns = 0;
+      let ownChildStopped = false;
+      enableAttachProbe({
+        readServerLock: () => {
+          if (spawns === 0) return null;
+          if (spawns === 1) return ownChildStopped ? null : ownLock;
+          return freshLock;
+        },
+        isProcessAlive: (pid) => (pid === OWN_CHILD_PID ? !ownChildStopped : true),
+      });
+      env.deps.readProcessStart = () => null;
+      const killProbe = vi.fn((pid: number, signal: NodeJS.Signals | number) => {
+        if (pid === OWN_CHILD_PID && signal === 'SIGTERM') ownChildStopped = true;
+      });
+      env.deps.killProbe = killProbe;
+      const heldSignals: NodeJS.Signals[] = [];
+      env.deps.spawnDetachedServer = async () => {
+        spawns++;
+        if (spawns > 1) return heldChild(env.deps, FRESH_PID);
+        const own = heldChild(env.deps, OWN_CHILD_PID);
+        return {
+          ...own,
+          signal: (signal: NodeJS.Signals) => {
+            heldSignals.push(signal);
+            own.signal(signal);
+          },
+        };
+      };
+
+      const wm = new WindowManager(env.deps);
+      await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      expect(spawns).toBe(1);
+
+      const outcome = await wm.restartAttachedServer('/tmp/dragon');
+
+      expect(outcome).toEqual({ ok: true });
+      expect(heldSignals).toEqual(['SIGTERM']);
+      expect(killProbe).toHaveBeenCalledWith(OWN_CHILD_PID, 'SIGTERM');
+      expect(spawns).toBe(2);
+      const recreated = env.windows[1];
+      if (!recreated) throw new Error('no recreated window');
+      expect(wm.getContextForBrowserWindow(recreated as BrowserWindowLike)?.port).toBe(60000);
+    });
+
+    test('restartAttachedServer takes the lock path when the lock names a pid other than the held child', async () => {
+      const OWN_CHILD_PID = 22030;
+      const OTHER_PID = 22040;
+      let lockPid = OWN_CHILD_PID;
+      let spawns = 0;
+      enableAttachProbe({
+        readServerLock: () => (spawns === 0 ? null : { ...liveLock, pid: lockPid }),
+        isProcessAlive: () => true,
+      });
+      env.deps.readProcessStart = () => null;
+      const killProbe = vi.fn();
+      env.deps.killProbe = killProbe;
+      const heldSignals: NodeJS.Signals[] = [];
+      env.deps.spawnDetachedServer = async () => {
+        spawns++;
+        const own = heldChild(env.deps, OWN_CHILD_PID);
+        return {
+          ...own,
+          signal: (signal: NodeJS.Signals) => {
+            heldSignals.push(signal);
+            own.signal(signal);
+          },
+        };
+      };
+
+      const wm = new WindowManager(env.deps);
+      await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      expect(spawns).toBe(1);
+      lockPid = OTHER_PID;
+
+      const outcome = await wm.restartAttachedServer('/tmp/dragon');
+
+      expect(outcome).toEqual({ ok: false, reason: 'unverified', sigtermSent: false });
+      expect(heldSignals).toEqual([]);
+      expect(killProbe.mock.calls.filter(([, signal]) => signal !== 0)).toEqual([]);
+      expect(spawns).toBe(1);
+    });
+
     test('restartAttachedServer still refuses eperm when the unkillable holder IS serving', async () => {
       const liveHolderLock = {
         ...liveLock,
@@ -1842,7 +1978,7 @@ describe('WindowManager', () => {
         protocolVersion: 1,
         runtimeVersion: '0.8.0',
       };
-      const spawn = vi.fn(() => Promise.resolve({ pid: 22018 }));
+      const spawn = vi.fn(() => Promise.resolve(heldChild(env.deps, 22018)));
       env.deps.readServerLock = () => liveHolderLock;
       env.deps.isProcessAlive = () => true;
       env.deps.hostname = () => 'my-host';
@@ -1925,7 +2061,7 @@ describe('WindowManager', () => {
           rejectSpawn = reject;
         });
         spawned = true;
-        return { pid: 6666 };
+        return heldChild(env.deps, 6666);
       };
       return {
         release: () => resolveSpawn?.(),
@@ -2048,6 +2184,93 @@ describe('WindowManager', () => {
       expect(lifecycleSends.length).toBe(0);
     });
 
+    function holderReplacedAfterSigterm(lock: ServerLockMetadataLike) {
+      const signals: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
+      let sigtermSent = false;
+      env.deps.killProbe = (pid, signal) => {
+        if (signal === 'SIGTERM') sigtermSent = true;
+        signals.push({ pid, signal });
+      };
+      env.deps.sigtermGraceMs = 0;
+      env.deps.readProcessStart = () => ({
+        startedAtMs: Date.parse(sigtermSent ? '2026-07-08T00:00:00Z' : '2026-01-01T00:00:00Z'),
+        clock: 'creation',
+      });
+      enableAttachProbe({
+        readServerLock: () => (sigtermSent ? null : lock),
+        isProcessAlive: () => true,
+      });
+      return { signals };
+    }
+
+    test('dev reclaim checks the holder again before SIGKILL and spares a process that replaced it', async () => {
+      env.deps.reclaimForeignServerInDev = true;
+      const lock = { ...liveLock, pid: 64351, machineId: getMachineId() };
+      const { signals } = holderReplacedAfterSigterm(lock);
+
+      const wm = new WindowManager(env.deps);
+      const promise = wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      for (let i = 0; i < 50 && env.utilities.length === 0; i++) await wait(0);
+      env.utilities[0]?.fire({ type: 'ready', port: 52777, apiOrigin: 'http://localhost:52777' });
+      await promise;
+
+      expect(signals.filter((record) => record.signal !== 0)).toEqual([
+        { pid: 64351, signal: 'SIGTERM' },
+      ]);
+      expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+        expect.objectContaining({ event: 'desktop-lock-holder-replaced', lockPid: 64351 }),
+      );
+      expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+        expect.objectContaining({
+          event: 'desktop-dev-reclaim',
+          outcome: 'stopped',
+          lockPid: 64351,
+        }),
+      );
+    });
+
+    test('upgrade reconcile checks the holder again before SIGKILL and spares a process that replaced it', async () => {
+      env.deps.selfProtocolVersion = 1;
+      env.deps.selfRuntimeVersion = '0.8.2';
+      env.deps.isFirstLaunchAfterUpgrade = () => true;
+      const lock = {
+        ...liveLock,
+        pid: 64352,
+        machineId: getMachineId(),
+        protocolVersion: 1,
+        runtimeVersion: '0.8.0',
+      };
+      const { signals } = holderReplacedAfterSigterm(lock);
+      const freshLock = { ...lock, pid: 6666, port: 60000, runtimeVersion: '0.8.2' };
+      let spawned = false;
+      const readLock = env.deps.readServerLock;
+      env.deps.readServerLock = (dir) => (spawned ? freshLock : (readLock?.(dir) ?? null));
+      env.deps.spawnDetachedServer = async () => {
+        spawned = true;
+        return heldChild(env.deps, 6666);
+      };
+
+      const ctx = await new WindowManager(env.deps).createProjectWindow({
+        projectPath: '/tmp/dragon',
+      });
+
+      expect(ctx.port).toBe(60000);
+
+      expect(signals.filter((record) => record.signal !== 0)).toEqual([
+        { pid: 64352, signal: 'SIGTERM' },
+      ]);
+      expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+        expect.objectContaining({ event: 'desktop-lock-holder-replaced', lockPid: 64352 }),
+      );
+      expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+        expect.objectContaining({
+          event: 'desktop-upgrade-reconcile',
+          outcome: 'stopped',
+          lockPid: 64352,
+        }),
+      );
+    });
+
     test('without reclaimForeignServerInDev (production default), a foreign server is attached — no termination, no notice', async () => {
       const killProbe = vi.fn(() => {});
       env.deps.killProbe = killProbe;
@@ -2091,7 +2314,7 @@ describe('WindowManager', () => {
       env.deps.killProbe = killProbe;
       env.deps.spawnDetachedServer = async () => {
         spawned = true;
-        return { pid: 6666 };
+        return heldChild(env.deps, 6666);
       };
 
       const wm = new WindowManager(env.deps);
@@ -2136,7 +2359,7 @@ describe('WindowManager', () => {
       env.deps.killProbe = killProbe;
       env.deps.spawnDetachedServer = async () => {
         spawned = true;
-        return { pid: 6666 };
+        return heldChild(env.deps, 6666);
       };
       const wm = new WindowManager(env.deps);
       const ctx = await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
@@ -2203,6 +2426,13 @@ describe('WindowManager', () => {
       });
       const wm = new WindowManager(env.deps);
       const ctx = await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+        expect.objectContaining({
+          event: 'desktop-upgrade-reconcile',
+          outcome: 'eperm',
+          lockPid: 65792,
+        }),
+      );
       expect(ctx.ownsServer).toBe(false);
       expect(ctx.port).toBe(59534);
       expect(env.utilities.length).toBe(0);
@@ -2225,7 +2455,7 @@ describe('WindowManager', () => {
       let spawned = false;
       env.deps.spawnDetachedServer = async () => {
         spawned = true;
-        return { pid: 6666 };
+        return heldChild(env.deps, 6666);
       };
       env.deps.spawnLockPollDeadlineMs = 1000;
       enableAttachProbe({ readServerLock: () => (spawned ? ownLock : null) });
@@ -2254,6 +2484,9 @@ describe('WindowManager', () => {
       enableAttachProbe();
       const wm = new WindowManager(env.deps);
       const ctx = await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+        expect.objectContaining({ event: 'desktop-dev-reclaim', outcome: 'eperm', lockPid: 65792 }),
+      );
       expect(ctx.ownsServer).toBe(false);
       expect(ctx.port).toBe(59534);
       expect(env.utilities.length).toBe(0);
@@ -2322,7 +2555,10 @@ describe('WindowManager', () => {
     });
 
     test('foreign-host lock falls through (D44 case c)', async () => {
-      enableAttachProbe({ hostname: () => 'different-host' });
+      enableAttachProbe({
+        hostname: () => 'different-host',
+        readServerLock: () => ({ ...liveLock, machineId: undefined }),
+      });
 
       const wm = new WindowManager(env.deps);
       const p = wm.createProjectWindow({ projectPath: '/tmp/dragon' });
@@ -2421,7 +2657,7 @@ describe('WindowManager', () => {
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
 
-        const spawn = vi.fn(() => Promise.resolve({ pid: 88001 }));
+        const spawn = vi.fn(() => Promise.resolve(heldChild(env.deps, 88001)));
         env.deps.spawnDetachedServer = spawn;
 
         const wm = new WindowManager(env.deps);
@@ -2454,15 +2690,15 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 88001));
 
         const wm = new WindowManager(env.deps);
         await wm.createProjectWindow({ projectPath: '/tmp/spawned-project' });
 
-        const pids = (wm as unknown as { spawnedDetachedPids: Map<string, number> })
-          .spawnedDetachedPids;
+        const pids = (wm as unknown as { spawnedDetachedServers: Map<string, SpawnedServer> })
+          .spawnedDetachedServers;
         expect(pids.size).toBe(1);
-        expect([...pids.values()]).toEqual([88001]);
+        expect([...pids.values()].map((server) => server.pid)).toEqual([88001]);
       });
 
       test('lock-poll timeout surfaces spawn-lock-timeout error', async () => {
@@ -2471,7 +2707,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 88001));
         env.deps.spawnLockPollDeadlineMs = 1;
 
         const wm = new WindowManager(env.deps);
@@ -2483,8 +2719,8 @@ describe('WindowManager', () => {
         });
 
         expect(env.windows.length).toBe(0);
-        const pids = (wm as unknown as { spawnedDetachedPids: Map<string, number> })
-          .spawnedDetachedPids;
+        const pids = (wm as unknown as { spawnedDetachedServers: Map<string, SpawnedServer> })
+          .spawnedDetachedServers;
         expect(pids.size).toBe(0);
       });
 
@@ -2497,7 +2733,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 88001));
         const killed: number[] = [];
         env.deps.killProbe = (pid: number) => {
           killed.push(pid);
@@ -2522,7 +2758,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 88001));
         const killed: number[] = [];
         env.deps.killProbe = (pid: number) => {
           killed.push(pid);
@@ -2543,7 +2779,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 88001));
         env.deps.spawnLockPollDeadlineMs = 1;
         env.deps.spawnLockProgressDeadlineMs = 25;
 
@@ -2569,7 +2805,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = (pid: number) => pid === winnerPid;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 88001));
         env.deps.spawnLockPollDeadlineMs = 5;
         env.deps.spawnLockProgressDeadlineMs = 30_000;
 
@@ -2586,7 +2822,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => false;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 88001));
         env.deps.spawnLockPollDeadlineMs = 1;
         env.deps.spawnLockProgressDeadlineMs = 60_000;
 
@@ -2598,6 +2834,33 @@ describe('WindowManager', () => {
 
         expect(err?.kind).toBe('spawn-lock-timeout');
         expect(err?.message).toMatch(/exited before binding/);
+      });
+
+      test('a child whose exit was recorded is not granted the extension while its pid reads alive', async () => {
+        enableSyncTimers();
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () =>
+          Promise.resolve(heldChild(env.deps, 88001, () => ({ code: 1, signal: null })));
+        env.deps.spawnLockPollDeadlineMs = 1;
+        env.deps.spawnLockProgressDeadlineMs = 300;
+
+        const wm = new WindowManager(env.deps);
+        const err = await wm.createProjectWindow({ projectPath: '/tmp/recycled-child-pid' }).then(
+          () => null,
+          (e: unknown) => e as Error & { kind?: string },
+        );
+
+        expect(err?.kind).toBe('spawn-lock-timeout');
+        expect(err?.message).toMatch(/exited before binding/);
+        expect(
+          env.logEntries.filter(
+            (entry) =>
+              (entry.payload as { event?: string }).event === 'desktop-spawn-wait-extended',
+          ),
+        ).toEqual([]);
       });
 
       const spawnStderrRoots: string[] = [];
@@ -2624,7 +2887,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 88001));
         env.deps.spawnLockPollDeadlineMs = 1;
         env.deps.spawnLockProgressDeadlineMs = 5;
 
@@ -2647,7 +2910,7 @@ describe('WindowManager', () => {
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
         env.deps.spawnDetachedServer = () =>
-          Promise.resolve({ pid: 88001, readExit: () => ({ code: 1, signal: null }) });
+          Promise.resolve(heldChild(env.deps, 88001, () => ({ code: 1, signal: null })));
         env.deps.spawnLockPollDeadlineMs = 1;
 
         const wm = new WindowManager(env.deps);
@@ -2673,7 +2936,7 @@ describe('WindowManager', () => {
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
         env.deps.spawnDetachedServer = () =>
-          Promise.resolve({ pid: 88001, readExit: () => ({ code: 1, signal: null }) });
+          Promise.resolve(heldChild(env.deps, 88001, () => ({ code: 1, signal: null })));
         env.deps.spawnLockPollDeadlineMs = 1;
 
         const wm = new WindowManager(env.deps);
@@ -2698,7 +2961,7 @@ describe('WindowManager', () => {
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
         env.deps.spawnDetachedServer = () =>
-          Promise.resolve({ pid: 88001, readExit: () => ({ code: 1, signal: null }) });
+          Promise.resolve(heldChild(env.deps, 88001, () => ({ code: 1, signal: null })));
         env.deps.spawnLockPollDeadlineMs = 1;
 
         const wm = new WindowManager(env.deps);
@@ -2723,7 +2986,7 @@ describe('WindowManager', () => {
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
         env.deps.spawnDetachedServer = () =>
-          Promise.resolve({ pid: 88001, readExit: () => ({ code: 1, signal: null }) });
+          Promise.resolve(heldChild(env.deps, 88001, () => ({ code: 1, signal: null })));
         env.deps.spawnLockPollDeadlineMs = 1;
 
         const wm = new WindowManager(env.deps);
@@ -2743,7 +3006,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 88001));
         env.deps.spawnLockPollDeadlineMs = 1;
 
         const wm = new WindowManager(env.deps);
@@ -2762,7 +3025,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = undefined;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 88001));
         env.deps.spawnLockPollDeadlineMs = 1;
 
         const wm = new WindowManager(env.deps);
@@ -2786,7 +3049,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => false;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 88001));
         env.deps.spawnLockPollDeadlineMs = 500;
 
         const wm = new WindowManager(env.deps);
@@ -2825,7 +3088,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = (pid) => pid === WINNER_PID;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 88001));
         env.deps.spawnLockPollDeadlineMs = 500;
 
         const wm = new WindowManager(env.deps);
@@ -2845,7 +3108,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: OUR_CHILD_PID });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, OUR_CHILD_PID));
         const killCalls: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
         env.deps.killProbe = (pid, signal) => {
           killCalls.push({ pid, signal });
@@ -2916,7 +3179,7 @@ describe('WindowManager', () => {
           probed.push(url);
           return Promise.resolve(false);
         };
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: OUR_CHILD_PID });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, OUR_CHILD_PID));
         const killCalls: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
         env.deps.killProbe = (pid, signal) => {
           killCalls.push({ pid, signal });
@@ -2960,7 +3223,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: OUR_CHILD_PID });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, OUR_CHILD_PID));
         const killCalls: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
         env.deps.killProbe = (pid, signal) => {
           killCalls.push({ pid, signal });
@@ -3009,7 +3272,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 22018 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 22018));
         env.deps.spawnLockPollDeadlineMs = 50;
         env.deps.spawnLockProgressDeadlineMs = 50;
 
@@ -3038,7 +3301,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: OUR_CHILD_PID });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, OUR_CHILD_PID));
         const killCalls: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
         env.deps.killProbe = (pid, signal) => {
           killCalls.push({ pid, signal });
@@ -3063,6 +3326,36 @@ describe('WindowManager', () => {
         expect(killCalls).toContainEqual({ pid: OUR_CHILD_PID, signal: 'SIGTERM' });
       });
 
+      test('a refused spawn reports its held child exited while that pid reads alive', async () => {
+        enableSyncTimers();
+        const OUR_CHILD_PID = 22019;
+        const ownLock = {
+          ...spawnedLock,
+          pid: OUR_CHILD_PID,
+          port: '42117',
+        } as unknown as ServerLockMetadataLike;
+        env.deps.readServerLock = () => ownLock;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () =>
+          Promise.resolve(heldChild(env.deps, OUR_CHILD_PID, () => ({ code: 1, signal: null })));
+        env.deps.spawnLockPollDeadlineMs = 50;
+        env.deps.spawnLockProgressDeadlineMs = 50;
+
+        const wm = new WindowManager(env.deps);
+        const failure = await wm.createProjectWindow({ projectPath: '/tmp/spawned-project' }).then(
+          () => null,
+          (err: unknown) => err,
+        );
+
+        expect(failure).toMatchObject({
+          kind: 'stale-lock-holder',
+          childExited: true,
+          exitCode: 1,
+        });
+      });
+
       test('a healthy cross-pid lock-race winner is still attached (probe passes)', async () => {
         enableSyncTimers();
         const WINNER_PID = 870;
@@ -3080,7 +3373,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = (pid) => pid === WINNER_PID;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        const spawn = vi.fn(() => Promise.resolve({ pid: OUR_CHILD_PID }));
+        const spawn = vi.fn(() => Promise.resolve(heldChild(env.deps, OUR_CHILD_PID)));
         env.deps.spawnDetachedServer = spawn;
         env.deps.spawnLockPollDeadlineMs = 500;
 
@@ -3106,7 +3399,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: OUR_CHILD_PID });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, OUR_CHILD_PID));
         env.deps.spawnLockPollDeadlineMs = 50;
         env.deps.spawnLockProgressDeadlineMs = 50;
 
@@ -3134,7 +3427,7 @@ describe('WindowManager', () => {
           probes++;
           return Promise.resolve(probes >= 3);
         };
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: OUR_CHILD_PID });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, OUR_CHILD_PID));
         env.deps.spawnLockPollDeadlineMs = 50;
         env.deps.spawnLockProgressDeadlineMs = 50;
 
@@ -3161,7 +3454,7 @@ describe('WindowManager', () => {
           probed.push(url);
           return Promise.resolve(true);
         };
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: OUR_CHILD_PID });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, OUR_CHILD_PID));
         env.deps.spawnLockPollDeadlineMs = 500;
 
         const wm = new WindowManager(env.deps);
@@ -3178,10 +3471,7 @@ describe('WindowManager', () => {
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
         env.deps.spawnDetachedServer = () =>
-          Promise.resolve({
-            pid: 88001,
-            readExit: () => ({ code: 1, signal: null }),
-          });
+          Promise.resolve(heldChild(env.deps, 88001, () => ({ code: 1, signal: null })));
         env.deps.spawnLockPollDeadlineMs = 500;
 
         const wm = new WindowManager(env.deps);
@@ -3197,10 +3487,7 @@ describe('WindowManager', () => {
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
         env.deps.spawnDetachedServer = () =>
-          Promise.resolve({
-            pid: 88001,
-            readExit: () => ({ code: null, signal: 'SIGKILL' }),
-          });
+          Promise.resolve(heldChild(env.deps, 88001, () => ({ code: null, signal: 'SIGKILL' })));
         env.deps.spawnLockPollDeadlineMs = 500;
 
         const wm = new WindowManager(env.deps);
@@ -3218,7 +3505,8 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001, readExit: () => null });
+        env.deps.spawnDetachedServer = () =>
+          Promise.resolve(heldChild(env.deps, 88001, () => null));
         env.deps.spawnLockPollDeadlineMs = 1;
 
         const wm = new WindowManager(env.deps);
@@ -3237,7 +3525,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 88001));
 
         const wm = new WindowManager(env.deps);
         const ctx = await wm.createProjectWindow({ projectPath: '/tmp/spawned-project' });
@@ -3246,8 +3534,8 @@ describe('WindowManager', () => {
         expect(ctx.ownsServer).toBe(false);
 
         env.windows[0]?.fireClose();
-        const pids = (wm as unknown as { spawnedDetachedPids: Map<string, number> })
-          .spawnedDetachedPids;
+        const pids = (wm as unknown as { spawnedDetachedServers: Map<string, SpawnedServer> })
+          .spawnedDetachedServers;
         expect(pids.size).toBe(1);
         expect(env.utilities.length).toBe(0);
       });
@@ -3268,7 +3556,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        const spawn = vi.fn(() => Promise.resolve({ pid: 91001 }));
+        const spawn = vi.fn(() => Promise.resolve(heldChild(env.deps, 91001)));
         env.deps.spawnDetachedServer = spawn;
 
         const wm = new WindowManager(env.deps);
@@ -3285,7 +3573,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        const spawn = vi.fn(() => Promise.resolve({ pid: 99 }));
+        const spawn = vi.fn(() => Promise.resolve(heldChild(env.deps, 99)));
         env.deps.spawnDetachedServer = spawn;
 
         const wm = new WindowManager(env.deps);
@@ -3308,7 +3596,17 @@ describe('WindowManager', () => {
         for (const dir of owned) rmSync(dir, { recursive: true, force: true });
         for (const dir of owned) expect(existsSync(dir)).toBe(false);
       });
-      function seedRawLock(pid: number, overrides?: { port?: number }): string {
+      const recordedStartMatchingTheStubbedReading = {
+        startedAtMs: Date.parse('2026-01-01T00:00:00Z'),
+      };
+      function seedRawLock(
+        pid: number,
+        overrides?: { port?: number; machineId?: string; processStart?: object | null },
+      ): string {
+        const processStart =
+          overrides?.processStart === undefined
+            ? recordedStartMatchingTheStubbedReading
+            : overrides.processStart;
         const projectPath = temporaryProject();
         const lockDir = join(projectPath, '.ok', 'local');
         mkdirSync(lockDir, { recursive: true });
@@ -3317,11 +3615,12 @@ describe('WindowManager', () => {
           JSON.stringify({
             pid,
             hostname: 'some-old-hostname',
-            machineId: 'not-this-machine',
+            machineId: overrides?.machineId ?? 'not-this-machine',
             port: overrides?.port ?? 61000,
             startedAt: '2026-07-07T00:00:00.000Z',
             worktreeRoot: projectPath,
             kind: 'interactive',
+            ...(processStart !== null && { processStart }),
           }),
           'utf-8',
         );
@@ -3343,6 +3642,161 @@ describe('WindowManager', () => {
 
         expect(outcome).toEqual({ ok: true });
         expect(killCalls).toContainEqual({ pid: 64321, signal: 'SIGTERM' });
+      });
+
+      test('does not signal an earlier-started holder of a lock from another machine id that records no process start', async () => {
+        const signals: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
+        env.deps.killProbe = (pid, signal) => {
+          signals.push({ pid, signal });
+        };
+        const projectPath = seedRawLock(64341, { processStart: null });
+
+        const outcome = await new WindowManager(env.deps).forceStopConflictingServer(projectPath);
+
+        expect(outcome).toEqual({ ok: false, reason: 'unverified', sigtermSent: false });
+        expect(signals.filter((record) => record.signal !== 0)).toEqual([]);
+        expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+          expect.objectContaining({
+            event: 'desktop-lock-holder-unverified',
+            lockPid: 64341,
+            cause: 'foreign-host',
+          }),
+        );
+      });
+
+      test('does not signal the holder of a lock that records no owner', async () => {
+        const signals: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
+        env.deps.killProbe = (pid, signal) => {
+          signals.push({ pid, signal });
+        };
+        const projectPath = temporaryProject();
+        const lockDir = join(projectPath, '.ok', 'local');
+        mkdirSync(lockDir, { recursive: true });
+        writeFileSync(
+          join(lockDir, 'server.lock'),
+          JSON.stringify({
+            pid: 64344,
+            port: 61000,
+            startedAt: '2026-07-07T00:00:00.000Z',
+            worktreeRoot: projectPath,
+          }),
+          'utf-8',
+        );
+
+        const outcome = await new WindowManager(env.deps).forceStopConflictingServer(projectPath);
+
+        expect(outcome).toEqual({ ok: false, reason: 'unverified', sigtermSent: false });
+        expect(signals.filter((record) => record.signal !== 0)).toEqual([]);
+        expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+          expect.objectContaining({
+            event: 'desktop-lock-holder-unverified',
+            lockPid: 64344,
+            cause: 'unverified-owner',
+          }),
+        );
+      });
+
+      test('reports a holder that exited before any signal as already gone, not replaced', async () => {
+        const signals: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
+        env.deps.killProbe = (pid, signal) => {
+          signals.push({ pid, signal });
+        };
+        env.deps.isProcessAlive = () => false;
+        const projectPath = seedRawLock(64342, { machineId: getMachineId() });
+
+        const outcome = await new WindowManager(env.deps).forceStopConflictingServer(projectPath);
+
+        expect(outcome).toEqual({ ok: true });
+        expect(signals.filter((record) => record.signal !== 0)).toEqual([]);
+        expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+          expect.objectContaining({
+            event: 'desktop-force-stop-conflicting-server',
+            lockPid: 64342,
+            outcome: 'already-gone',
+          }),
+        );
+      });
+
+      test('reports SIGTERM sent and SIGKILL withheld when the holder cannot be verified after the grace period', async () => {
+        const signals: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
+        env.deps.killProbe = (pid, signal) => {
+          signals.push({ pid, signal });
+        };
+        env.deps.sigtermGraceMs = 0;
+        const readings = [
+          { startedAtMs: Date.parse('2026-01-01T00:00:00Z'), clock: 'creation' as const },
+          null,
+        ];
+        env.deps.readProcessStart = () => (readings.length > 0 ? (readings.shift() ?? null) : null);
+        const projectPath = seedRawLock(64343, { machineId: getMachineId() });
+
+        const outcome = await new WindowManager(env.deps).forceStopConflictingServer(projectPath);
+
+        expect(outcome).toEqual({ ok: false, reason: 'unverified', sigtermSent: true });
+        expect(signals.filter((record) => record.signal !== 0)).toEqual([
+          { pid: 64343, signal: 'SIGTERM' },
+        ]);
+        expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+          expect.objectContaining({
+            event: 'desktop-lock-holder-unverified',
+            lockPid: 64343,
+            sigtermSent: true,
+            cause: 'process-start-unreadable',
+          }),
+        );
+        expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+          expect.objectContaining({
+            event: 'desktop-force-stop-conflicting-server',
+            lockPid: 64343,
+            outcome: 'sigterm-sent-unverified',
+          }),
+        );
+      });
+
+      test('checks the holder again before SIGKILL and spares a process that replaced it during the grace period', async () => {
+        const signals: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
+        env.deps.killProbe = (pid, signal) => {
+          signals.push({ pid, signal });
+        };
+        env.deps.sigtermGraceMs = 0;
+        const readings = [
+          { startedAtMs: Date.parse('2026-01-01T00:00:00Z'), clock: 'creation' as const },
+          { startedAtMs: Date.parse('2026-07-08T00:00:00Z'), clock: 'creation' as const },
+        ];
+        env.deps.readProcessStart = () => readings.shift() ?? null;
+        const projectPath = seedRawLock(64331, { machineId: getMachineId() });
+
+        const outcome = await new WindowManager(env.deps).forceStopConflictingServer(projectPath);
+
+        expect(outcome).toEqual({ ok: true });
+        expect(signals.filter((record) => record.signal !== 0)).toEqual([
+          { pid: 64331, signal: 'SIGTERM' },
+        ]);
+        expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+          expect.objectContaining({ event: 'desktop-lock-holder-replaced', lockPid: 64331 }),
+        );
+      });
+
+      test('signals nothing and reports a failure when the holder cannot be identified', async () => {
+        const signals: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
+        env.deps.killProbe = (pid, signal) => {
+          signals.push({ pid, signal });
+        };
+        env.deps.sigtermGraceMs = 0;
+        env.deps.readProcessStart = () => null;
+        const projectPath = seedRawLock(64332, { machineId: getMachineId() });
+
+        const outcome = await new WindowManager(env.deps).forceStopConflictingServer(projectPath);
+
+        expect(outcome).toEqual({ ok: false, reason: 'unverified', sigtermSent: false });
+        expect(signals.filter((record) => record.signal !== 0)).toEqual([]);
+        expect(env.logEntries.map((entry) => entry.payload)).toContainEqual(
+          expect.objectContaining({
+            event: 'desktop-lock-holder-unverified',
+            lockPid: 64332,
+            cause: 'process-start-unreadable',
+          }),
+        );
       });
 
       test('no lock file → ok without signalling anything', async () => {
@@ -3646,7 +4100,7 @@ describe('WindowManager', () => {
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
         let nextSpawnPid = 91001;
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: nextSpawnPid++ });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, nextSpawnPid++));
 
         const killCalls: Array<{ pid: number; signal: NodeJS.Signals | 0 }> = [];
         env.deps.killProbe = (pid: number, signal: NodeJS.Signals | 0) => {
@@ -3666,8 +4120,8 @@ describe('WindowManager', () => {
         readCounts = new Map<string, number>();
         await wm.createProjectWindow({ projectPath: '/tmp/proj-b' });
 
-        const pidsBefore = (wm as unknown as { spawnedDetachedPids: Map<string, number> })
-          .spawnedDetachedPids;
+        const pidsBefore = (wm as unknown as { spawnedDetachedServers: Map<string, SpawnedServer> })
+          .spawnedDetachedServers;
         expect(pidsBefore.size).toBe(2);
 
         await wm.stopAllOwnedServers();
@@ -3693,7 +4147,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 91001 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 91001));
         env.deps.sigtermGraceMs = 5;
 
         const killCalls: Array<{ pid: number; signal: NodeJS.Signals | 0 }> = [];
@@ -3734,7 +4188,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 91001 });
+        env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 91001));
 
         env.deps.killProbe = () => {
           const err = new Error('No such process') as NodeJS.ErrnoException;
@@ -3745,6 +4199,75 @@ describe('WindowManager', () => {
         const wm = new WindowManager(env.deps);
         await wm.createProjectWindow({ projectPath: '/tmp/dead-pid' });
         await expect(wm.stopAllOwnedServers()).resolves.toBeUndefined();
+      });
+
+      function spawnServerThatLaterExits() {
+        enableSyncTimers();
+        let readCount = 0;
+        env.deps.readServerLock = () => {
+          readCount++;
+          return readCount === 1 ? null : { ...spawnedLock, pid: 91001 };
+        };
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        let exit: { code: number | null; signal: string | null } | null = null;
+        const handleSignals: NodeJS.Signals[] = [];
+        env.deps.spawnDetachedServer = () =>
+          Promise.resolve({
+            pid: 91001,
+            readExit: () => exit,
+            signal: (signal: NodeJS.Signals) => {
+              if (exit === null) handleSignals.push(signal);
+            },
+          });
+        const killCalls: Array<{ pid: number; signal: NodeJS.Signals | 0 }> = [];
+        env.deps.killProbe = (pid: number, signal: NodeJS.Signals | 0) => {
+          killCalls.push({ pid, signal });
+        };
+        return {
+          exitServer: () => {
+            exit = { code: 1, signal: null };
+          },
+          handleSignals,
+          killCalls,
+        };
+      }
+
+      test('a spawned server that exited is not signalled, though its pid now belongs to another process', async () => {
+        const { exitServer, handleSignals, killCalls } = spawnServerThatLaterExits();
+        const wm = new WindowManager(env.deps);
+        await wm.createProjectWindow({ projectPath: '/tmp/crashed-project' });
+        exitServer();
+
+        await wm.stopAllOwnedServers();
+
+        expect(killCalls.filter((call) => call.signal !== 0)).toEqual([]);
+        expect(handleSignals).toEqual([]);
+      });
+
+      test('signalStopAllOwnedServers leaves a spawned server that exited, and its reused pid, alone', async () => {
+        const { exitServer, handleSignals, killCalls } = spawnServerThatLaterExits();
+        const wm = new WindowManager(env.deps);
+        await wm.createProjectWindow({ projectPath: '/tmp/crashed-project' });
+        exitServer();
+
+        wm.signalStopAllOwnedServers();
+
+        expect(killCalls.filter((call) => call.signal !== 0)).toEqual([]);
+        expect(handleSignals).toEqual([]);
+      });
+
+      test('a spawned server still running is stopped through the child it was spawned as', async () => {
+        const { handleSignals, killCalls } = spawnServerThatLaterExits();
+        env.deps.sigtermGraceMs = 5;
+        const wm = new WindowManager(env.deps);
+        await wm.createProjectWindow({ projectPath: '/tmp/wedged-project' });
+
+        await wm.stopAllOwnedServers();
+
+        expect(handleSignals).toEqual(['SIGTERM', 'SIGKILL']);
+        expect(killCalls.filter((call) => call.signal !== 0)).toEqual([]);
       });
 
       test('utility-fork (dev path, ownsServer=true) is SIGKILLed by stopAllOwnedServers', async () => {
@@ -5425,7 +5948,7 @@ describe('WindowManager — local-op CLI invocation threading', () => {
     env.deps.isProcessAlive = () => true;
     env.deps.hostname = () => 'my-host';
     env.deps.probeWsUpgrade = () => Promise.resolve(true);
-    env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+    env.deps.spawnDetachedServer = () => Promise.resolve(heldChild(env.deps, 88001));
   }
 
   test('a packaged win32 host opens a project window on the detached-spawn path it actually takes', async () => {

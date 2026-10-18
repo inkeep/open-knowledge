@@ -1,9 +1,18 @@
 import { describe, expect, test, vi } from 'vitest';
 import {
+  type SpawnedServer,
   signalDetachedServerStop,
   signalStopOwnedUtilityForks,
   type UtilityProcessLike,
 } from './window-manager.ts';
+
+function child(
+  pid: number,
+  signal: (signal: NodeJS.Signals) => void,
+  exit: ReturnType<SpawnedServer['readExit']> = null,
+): SpawnedServer {
+  return { pid, readExit: () => exit, signal };
+}
 
 function ctx(
   ownsServer: boolean,
@@ -18,52 +27,50 @@ function ctx(
 }
 
 describe('signalDetachedServerStop (before-quit-for-update teardown)', () => {
-  test('sends SIGTERM to every detached server pid', () => {
-    const killProbe = vi.fn((_pid: number, _signal: number | NodeJS.Signals) => {});
-    const signalled = signalDetachedServerStop(
-      [
-        ['/proj/a', 101],
-        ['/proj/b', 202],
-      ],
-      killProbe,
-    );
+  test('sends SIGTERM to every running detached server through its child', () => {
+    const signals: Array<[number, NodeJS.Signals]> = [];
+    const signalled = signalDetachedServerStop([
+      ['/proj/a', child(101, (signal) => signals.push([101, signal]))],
+      ['/proj/b', child(202, (signal) => signals.push([202, signal]))],
+    ]);
     expect(signalled).toBe(2);
-    expect(killProbe).toHaveBeenCalledTimes(2);
-    expect(killProbe).toHaveBeenNthCalledWith(1, 101, 'SIGTERM');
-    expect(killProbe).toHaveBeenNthCalledWith(2, 202, 'SIGTERM');
+    expect(signals).toEqual([
+      [101, 'SIGTERM'],
+      [202, 'SIGTERM'],
+    ]);
   });
 
-  test('treats an already-exited server (ESRCH) as done without logging a failure', () => {
-    const killProbe = vi.fn((_pid: number, _signal: number | NodeJS.Signals) => {
-      const err = new Error('no such process') as NodeJS.ErrnoException;
-      err.code = 'ESRCH';
-      throw err;
-    });
+  test('skips a server whose child has exited, so its pid is never signalled', () => {
+    const signal = vi.fn();
     const log = { warn: vi.fn((_o: object, _m: string) => {}) };
-    const signalled = signalDetachedServerStop([['/proj/gone', 303]], killProbe, log);
+    const signalled = signalDetachedServerStop(
+      [['/proj/gone', child(303, signal, { code: 0, signal: null })]],
+      log,
+    );
     expect(signalled).toBe(0);
+    expect(signal).not.toHaveBeenCalled();
     expect(log.warn).not.toHaveBeenCalled();
   });
 
-  test('logs but never throws on a non-ESRCH signal failure, and continues to later pids', () => {
-    const killProbe = vi.fn((pid: number, _signal: number | NodeJS.Signals) => {
-      if (pid === 404) {
-        const err = new Error('operation not permitted') as NodeJS.ErrnoException;
-        err.code = 'EPERM';
-        throw err;
-      }
-    });
+  test('logs but never throws on a signal failure, and continues to later servers', () => {
+    const later = vi.fn();
     const log = { warn: vi.fn((_o: object, _m: string) => {}) };
     const signalled = signalDetachedServerStop(
       [
-        ['/proj/locked', 404],
-        ['/proj/ok', 505],
+        [
+          '/proj/locked',
+          child(404, () => {
+            const err = new Error('operation not permitted') as NodeJS.ErrnoException;
+            err.code = 'EPERM';
+            throw err;
+          }),
+        ],
+        ['/proj/ok', child(505, later)],
       ],
-      killProbe,
       log,
     );
     expect(signalled).toBe(1);
-    expect(killProbe).toHaveBeenCalledTimes(2);
+    expect(later).toHaveBeenCalledWith('SIGTERM');
     expect(log.warn).toHaveBeenCalledTimes(1);
     expect(log.warn.mock.calls[0]?.[0]).toMatchObject({
       event: 'update-install-server-stop-failed',
@@ -74,9 +81,7 @@ describe('signalDetachedServerStop (before-quit-for-update teardown)', () => {
   });
 
   test('no entries (already drained — e.g. the Relaunch-now path) is a clean no-op', () => {
-    const killProbe = vi.fn((_pid: number, _signal: number | NodeJS.Signals) => {});
-    expect(signalDetachedServerStop([], killProbe)).toBe(0);
-    expect(killProbe).not.toHaveBeenCalled();
+    expect(signalDetachedServerStop([])).toBe(0);
   });
 });
 

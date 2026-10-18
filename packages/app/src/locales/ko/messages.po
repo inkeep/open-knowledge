@@ -3163,6 +3163,12 @@ msgstr "서버를 다시 시작하지 못했습니다. 다른 계정으로 실�
 msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 msgstr "서버를 자동으로 다시 시작하지 못했습니다. 터미널에서 `{cliCommand} stop all`을 실행한 다음 이 프로젝트를 다시 여세요. 문제가 계속되면 컴퓨터를 다시 시작하세요."
 
+msgid "Couldn't restart the server: OpenKnowledge asked the process holding this project's server lock to stop, but could not confirm that it is this project's server, so it did not force it to quit. If the project is still locked, stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "서버를 다시 시작하지 못했습니다. OpenKnowledge가 이 프로젝트의 서버 잠금을 가진 프로세스에 중지를 요청했지만, 이 프로젝트의 서버인지 확인할 수 없어 강제로 종료하지 않았습니다. 프로젝트가 여전히 잠겨 있으면 서버를 시작한 곳에서 중지하거나 컴퓨터를 다시 시작한 다음 이 프로젝트를 다시 여세요."
+
+msgid "Couldn't restart the server: OpenKnowledge could not confirm that the process holding this project's server lock is still its server, so it was not stopped. Stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "서버를 다시 시작하지 못했습니다. OpenKnowledge가 이 프로젝트의 서버 잠금을 가진 프로세스가 여전히 이 프로젝트의 서버인지 확인할 수 없어 중지하지 않았습니다. 서버를 시작한 곳에서 중지하거나 컴퓨터를 다시 시작한 다음 이 프로젝트를 다시 여세요."
+
 msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
 msgstr "서버를 다시 시작할 수 없습니다. 다시 시도하려면 이 폴더에서 {cliCommand} start를 실행하세요."
 

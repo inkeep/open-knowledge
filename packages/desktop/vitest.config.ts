@@ -26,6 +26,12 @@ export default defineConfig({
   ...okVitestBase,
   test: {
     ...okVitestBase.test,
+    setupFiles: [
+      ...okVitestBase.test.setupFiles,
+      fileURLToPath(
+        new URL('./tests/support/windows-process-start-reader.test-helper.ts', import.meta.url),
+      ),
+    ],
     include: ['**/*.test.ts?(x)', '**/*.test.mjs'],
     exclude: [
       ...okVitestBase.test.exclude,

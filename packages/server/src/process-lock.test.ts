@@ -1,9 +1,20 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { processStartTokenFromOs } from '../../../test-support/os-process-start.test-helper.ts';
+import {
+  legacyServerLock,
+  lockWrittenBeforeProcessStarted,
+  lockWrittenByRunningProcess,
+  type OwnedProcess,
+  ownedProcessHasExited,
+  startOwnedProcess,
+  stopOwnedProcess,
+} from '../../../test-support/owned-process.test-helper.ts';
+import { getLogger } from './logger';
 import { getMachineId } from './machine-id';
 import {
   acquireProcessLock,
@@ -12,6 +23,7 @@ import {
   lockFilePath,
   markProcessLockDraining,
   ProcessLockCollisionError,
+  type ProcessLockHandle,
   type ProcessLockMetadata,
   readProcessLock,
   readProcessLockDetailed,
@@ -116,6 +128,32 @@ describe('acquireProcessLock', () => {
     expect(md.pid).toBe(process.pid);
     expect(md.port).toBe(3000);
     expect(md.worktreeRoot).toBe('/new');
+  });
+
+  test('records the replaced holder as lockPid, apart from the logger pid binding', () => {
+    const stale: ProcessLockMetadata = {
+      pid: 99999999,
+      hostname: hostname(),
+      port: 1234,
+      startedAt: new Date().toISOString(),
+      worktreeRoot: '/old',
+    };
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(lockPath, JSON.stringify(stale), 'utf-8');
+    const warn = vi.spyOn(getLogger('process-lock'), 'warn');
+    try {
+      acquireProcessLock({
+        lockName: LOCK_NAME,
+        lockDir,
+        metadata: { port: 3000, worktreeRoot: '/new' },
+      });
+      expect(warn).toHaveBeenCalledWith(
+        { lockPid: 99999999, host: hostname(), holder: 'gone' },
+        expect.stringContaining('Stale lock detected (pid=99999999'),
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   test('throws ProcessLockCollisionError when lock owner is alive', () => {
@@ -292,6 +330,119 @@ describe('acquireProcessLock', () => {
     expect(after.startedAt).toBe(before.startedAt);
     expect(after.worktreeRoot).toBe(before.worktreeRoot);
   });
+});
+
+describe('a lock that cannot be removed from a read-only lock directory', () => {
+  const canRestrictWrites = process.platform !== 'win32' && process.getuid?.() !== 0;
+
+  function writeLockInReadOnlyDir(text: string): void {
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(lockPath, text, 'utf-8');
+    chmodSync(lockDir, 0o500);
+  }
+
+  afterEach(() => {
+    if (existsSync(lockDir)) chmodSync(lockDir, 0o700);
+  });
+
+  const exitedHolderLock = JSON.stringify({
+    pid: 99999999,
+    hostname: hostname(),
+    machineId: getMachineId(),
+    port: 1234,
+    startedAt: new Date().toISOString(),
+    worktreeRoot: '/old',
+  });
+
+  test.runIf(canRestrictWrites)(
+    'acquireProcessLock names the stale lock and the unlink error instead of reporting contention',
+    () => {
+      writeLockInReadOnlyDir(exitedHolderLock);
+
+      expect(() =>
+        acquireProcessLock({
+          lockName: LOCK_NAME,
+          lockDir,
+          metadata: { port: 0, worktreeRoot: '/new' },
+        }),
+      ).toThrow(
+        `[server-lock] Could not remove the stale lock at ${lockPath}: EACCES: permission denied, unlink '${lockPath}'. Restore file and parent-directory access, then retry.`,
+      );
+      expect(readFileSync(lockPath, 'utf-8')).toBe(exitedHolderLock);
+    },
+  );
+
+  test.runIf(canRestrictWrites)(
+    'acquireProcessLock names the corrupt lock and the unlink error instead of reporting contention',
+    () => {
+      writeLockInReadOnlyDir('{ not json');
+
+      expect(() =>
+        acquireProcessLock({
+          lockName: LOCK_NAME,
+          lockDir,
+          metadata: { port: 0, worktreeRoot: '/new' },
+        }),
+      ).toThrow(
+        `[server-lock] Could not remove the corrupt lock at ${lockPath}: EACCES: permission denied, unlink '${lockPath}'. Restore file and parent-directory access, then retry.`,
+      );
+      expect(readFileSync(lockPath, 'utf-8')).toBe('{ not json');
+    },
+  );
+
+  test.runIf(canRestrictWrites)('readProcessLock still reports no live server', () => {
+    writeLockInReadOnlyDir(exitedHolderLock);
+
+    expect(readProcessLock({ lockName: LOCK_NAME, lockDir })).toBeNull();
+    expect(readFileSync(lockPath, 'utf-8')).toBe(exitedHolderLock);
+  });
+
+  test.runIf(canRestrictWrites)('readProcessLockDetailed still reports the lock stale', () => {
+    writeLockInReadOnlyDir(exitedHolderLock);
+
+    expect(readProcessLockDetailed({ lockName: LOCK_NAME, lockDir })).toMatchObject({
+      status: 'stale',
+      lock: { pid: 99999999 },
+    });
+    expect(readFileSync(lockPath, 'utf-8')).toBe(exitedHolderLock);
+  });
+});
+
+describe('a lock acquire cannot read', () => {
+  const canRestrictReads = process.platform !== 'win32' && process.getuid?.() !== 0;
+
+  afterEach(() => {
+    if (existsSync(lockPath)) chmodSync(lockPath, 0o600);
+  });
+
+  test.runIf(canRestrictReads)(
+    'acquireProcessLock keeps an unreadable lock naming a live process and reports the read error',
+    () => {
+      const text = JSON.stringify({
+        pid: aliveForeignPid(),
+        hostname: hostname(),
+        machineId: getMachineId(),
+        port: 1234,
+        startedAt: new Date().toISOString(),
+        worktreeRoot: '/live',
+      });
+      mkdirSync(lockDir, { recursive: true });
+      writeFileSync(lockPath, text, 'utf-8');
+      chmodSync(lockPath, 0o000);
+
+      expect(() =>
+        acquireProcessLock({
+          lockName: LOCK_NAME,
+          lockDir,
+          metadata: { port: 0, worktreeRoot: '/new' },
+        }),
+      ).toThrow(
+        `[server-lock] Could not read the lock at ${lockPath}: EACCES: permission denied, open '${lockPath}'. Restore file and parent-directory access, then retry.`,
+      );
+      chmodSync(lockPath, 0o600);
+      expect(readFileSync(lockPath, 'utf-8')).toBe(text);
+    },
+  );
 });
 
 describe('one-URL contract (url field + lockBaseUrl)', () => {
@@ -1321,5 +1472,175 @@ describe('waitForProcessLockDrain', () => {
       readLock: () => draining,
     });
     expect(outcome).toBe('timeout');
+  });
+});
+
+describe('a lock whose pid is still running', () => {
+  const owned: OwnedProcess[] = [];
+
+  afterEach(async () => {
+    for (const holder of owned.splice(0)) await stopOwnedProcess(holder);
+  });
+
+  async function startHolder(): Promise<OwnedProcess> {
+    const holder = await startOwnedProcess();
+    owned.push(holder);
+    return holder;
+  }
+
+  function writeLegacyLock(holder: OwnedProcess, startedAt: string): void {
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(
+      lockPath,
+      JSON.stringify(
+        legacyServerLock({
+          pid: holder.pid,
+          startedAt,
+          machineId: getMachineId(),
+          worktreeRoot: '/previous/boot',
+        }),
+      ),
+      'utf-8',
+    );
+  }
+
+  function acquireForNewServer(): ProcessLockHandle {
+    return acquireProcessLock({
+      lockName: LOCK_NAME,
+      lockDir,
+      metadata: { port: 0, worktreeRoot: '/new/boot', kind: 'interactive' },
+    });
+  }
+
+  describe('by a process that started after the lock was written (pid reused)', () => {
+    test('acquireProcessLock replaces the lock instead of colliding', async () => {
+      const holder = await startHolder();
+      writeLegacyLock(holder, lockWrittenBeforeProcessStarted(holder));
+
+      expect(acquireForNewServer).not.toThrow();
+      const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
+      expect(md.pid).toBe(process.pid);
+      expect(md.worktreeRoot).toBe('/new/boot');
+      expect(ownedProcessHasExited(holder)).toBe(false);
+    });
+
+    test('readProcessLock reports no live server', async () => {
+      const holder = await startHolder();
+      writeLegacyLock(holder, lockWrittenBeforeProcessStarted(holder));
+
+      expect(readProcessLock({ lockName: LOCK_NAME, lockDir })).toBeNull();
+    });
+
+    test('readProcessLockDetailed reports the lock stale', async () => {
+      const holder = await startHolder();
+      writeLegacyLock(holder, lockWrittenBeforeProcessStarted(holder));
+
+      expect(readProcessLockDetailed({ lockName: LOCK_NAME, lockDir })).toMatchObject({
+        status: 'stale',
+        lock: { pid: holder.pid },
+      });
+    });
+  });
+
+  describe('by the process that wrote it', () => {
+    test('acquireProcessLock still collides', async () => {
+      const holder = await startHolder();
+      writeLegacyLock(holder, lockWrittenByRunningProcess(holder));
+
+      expect(acquireForNewServer).toThrow(ProcessLockCollisionError);
+      const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
+      expect(md.pid).toBe(holder.pid);
+    });
+
+    test('readProcessLock returns the live lock', async () => {
+      const holder = await startHolder();
+      writeLegacyLock(holder, lockWrittenByRunningProcess(holder));
+
+      expect(readProcessLock({ lockName: LOCK_NAME, lockDir })).toMatchObject({ pid: holder.pid });
+    });
+
+    test('readProcessLockDetailed reports the lock live', async () => {
+      const holder = await startHolder();
+      writeLegacyLock(holder, lockWrittenByRunningProcess(holder));
+
+      expect(readProcessLockDetailed({ lockName: LOCK_NAME, lockDir })).toMatchObject({
+        status: 'live',
+        lock: { pid: holder.pid },
+      });
+    });
+  });
+
+  describe('by a process that does not match the recorded process start', () => {
+    const BOOT_ID_PATH = '/proc/sys/kernel/random/boot_id';
+    const PREVIOUS_BOOT_ID = '00000000-0000-4000-8000-000000000000';
+
+    function processStartOfPreviousWriter(holder: OwnedProcess): Record<string, number | string> {
+      if (process.platform === 'linux') {
+        expect(existsSync(BOOT_ID_PATH)).toBe(true);
+        const bootId = readFileSync(BOOT_ID_PATH, 'utf-8').trim();
+        expect(bootId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+        expect(bootId).not.toBe(PREVIOUS_BOOT_ID);
+        return { bootId: PREVIOUS_BOOT_ID, startTicks: 4_096 };
+      }
+      return { startedAtMs: Date.parse(lockWrittenBeforeProcessStarted(holder)) };
+    }
+
+    function writeLockRecordingPreviousWriter(holder: OwnedProcess): void {
+      mkdirSync(lockDir, { recursive: true });
+      writeFileSync(
+        lockPath,
+        JSON.stringify({
+          ...legacyServerLock({
+            pid: holder.pid,
+            startedAt: lockWrittenByRunningProcess(holder),
+            machineId: getMachineId(),
+            worktreeRoot: '/previous/boot',
+          }),
+          processStart: processStartOfPreviousWriter(holder),
+        }),
+        'utf-8',
+      );
+    }
+
+    test('acquireProcessLock replaces the lock instead of colliding', async () => {
+      const holder = await startHolder();
+      writeLockRecordingPreviousWriter(holder);
+
+      expect(acquireForNewServer).not.toThrow();
+      const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
+      expect(md.pid).toBe(process.pid);
+      expect(md.worktreeRoot).toBe('/new/boot');
+      expect(ownedProcessHasExited(holder)).toBe(false);
+    });
+
+    test('readProcessLock reports no live server', async () => {
+      const holder = await startHolder();
+      writeLockRecordingPreviousWriter(holder);
+
+      expect(readProcessLock({ lockName: LOCK_NAME, lockDir })).toBeNull();
+    });
+
+    test('readProcessLockDetailed reports the lock stale', async () => {
+      const holder = await startHolder();
+      writeLockRecordingPreviousWriter(holder);
+
+      expect(readProcessLockDetailed({ lockName: LOCK_NAME, lockDir })).toMatchObject({
+        status: 'stale',
+        lock: { pid: holder.pid },
+      });
+    });
+  });
+});
+
+describe('the process start a lock records for its writer', () => {
+  test('acquireProcessLock records the start the operating system holds for the writer', () => {
+    acquireProcessLock({
+      lockName: LOCK_NAME,
+      lockDir,
+      metadata: { port: 0, worktreeRoot: '/wt' },
+    });
+
+    const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
+    expect(md.processStart).toEqual(processStartTokenFromOs(process.pid));
   });
 });

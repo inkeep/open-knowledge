@@ -1,4 +1,5 @@
 import { desktopChannelLabel } from '@inkeep/open-knowledge-core';
+import { stopCommandLine } from './stop-command.ts';
 import {
   type ForceStopOutcome,
   isOtherChannelHolderError,
@@ -49,6 +50,7 @@ export type HolderStopPromptResult =
   | { kind: 'declined' }
   | { kind: 'reopened'; opened: boolean }
   | { kind: 'stop-failed'; reason: 'eperm' | 'other' }
+  | { kind: 'stop-failed'; reason: 'unverified'; sigtermSent: boolean }
   | { kind: 'retried'; opened: boolean };
 
 export async function promptHolderStop(
@@ -94,5 +96,29 @@ export async function promptHolderStop(
   );
   if (stop.ok) return { kind: 'retried', opened: await deps.retryOpen() };
   if (stop.reason === 'holder-changed') return { kind: 'reopened', opened: await deps.reopen() };
+  if (stop.reason === 'unverified') {
+    return { kind: 'stop-failed', reason: 'unverified', sigtermSent: stop.sigtermSent };
+  }
   return { kind: 'stop-failed', reason: stop.reason };
+}
+
+export function describeStopFailure(
+  failure: Extract<HolderStopPromptResult, { kind: 'stop-failed' }>,
+  projectPath: string,
+  platform: NodeJS.Platform,
+): string {
+  switch (failure.reason) {
+    case 'eperm':
+      return 'The conflicting server belongs to another user account and cannot be stopped from here. Quit it from that account and try again.';
+    case 'unverified':
+      return failure.sigtermSent
+        ? "OpenKnowledge asked the process holding this project's server lock to stop, but could not confirm that it is this project's server, so it did not force it to quit. Wait a moment and try again. If the project is still locked, stop the server where it was started, or restart your computer."
+        : "Could not confirm that the process holding this project's server lock is still its server, so it was not stopped. Stop the server where it was started, or restart your computer, then try again.";
+    case 'other':
+      return `Could not stop the conflicting server. Quit it manually (\`${stopCommandLine(projectPath, platform, { force: true })}\`) and try again.`;
+    default: {
+      const _exhaustive: never = failure;
+      return _exhaustive;
+    }
+  }
 }

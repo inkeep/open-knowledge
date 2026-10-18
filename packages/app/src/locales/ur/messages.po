@@ -3163,6 +3163,12 @@ msgstr "سرور دوبارہ نہیں چل سکا — یہ کسی مختلف ا
 msgid "Couldn't restart the server automatically. Try running `{cliCommand} stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 msgstr "سرور خودکار طور پر دوبارہ نہیں چل سکا۔ ٹرمینل میں `{cliCommand} stop all` چلا کر دیکھیں، پھر یہ پروجیکٹ دوبارہ کھولیں — یا مسئلہ برقرار رہے تو اپنا کمپیوٹر دوبارہ چالو کریں۔"
 
+msgid "Couldn't restart the server: OpenKnowledge asked the process holding this project's server lock to stop, but could not confirm that it is this project's server, so it did not force it to quit. If the project is still locked, stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "سرور دوبارہ نہیں چل سکا: OpenKnowledge نے اس پروجیکٹ کا سرور لاک رکھنے والے پروسیس سے رکنے کو کہا، لیکن یہ تصدیق نہیں کر سکا کہ وہ اس پروجیکٹ کا سرور ہے، اس لیے اسے زبردستی بند نہیں کیا۔ اگر پروجیکٹ اب بھی لاک ہے تو سرور کو وہیں روکیں جہاں اسے شروع کیا گیا تھا، یا اپنا کمپیوٹر دوبارہ چالو کریں، پھر یہ پروجیکٹ دوبارہ کھولیں۔"
+
+msgid "Couldn't restart the server: OpenKnowledge could not confirm that the process holding this project's server lock is still its server, so it was not stopped. Stop the server where it was started, or restart your computer, then reopen this project."
+msgstr "سرور دوبارہ نہیں چل سکا: OpenKnowledge یہ تصدیق نہیں کر سکا کہ اس پروجیکٹ کا سرور لاک رکھنے والا پروسیس اب بھی اس کا سرور ہے، اس لیے اسے روکا نہیں گیا۔ سرور کو وہیں روکیں جہاں اسے شروع کیا گیا تھا، یا اپنا کمپیوٹر دوبارہ چالو کریں، پھر یہ پروجیکٹ دوبارہ کھولیں۔"
+
 msgid "Couldn't restart the server. Run {cliCommand} start in this folder to retry."
 msgstr "سرور دوبارہ شروع نہیں ہو سکا۔ دوبارہ کوشش کرنے کے لیے اس فولڈر میں {cliCommand} start چلائیں۔"
 

@@ -223,6 +223,7 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
         import('@inkeep/open-knowledge-server'),
       ]);
       markInitPhase('imports-resolved');
+      cli.registerWindowsProcessStartReader(serverNamespace.getLogger('process-start'));
       const {
         detectGh,
         detectGhAccounts,

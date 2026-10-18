@@ -137,6 +137,7 @@ function displayStatus(entry: PsEntry): DisplayStatus {
     case 'foreign-host':
       return entry.isDesktop ? 'desktop' : 'foreign';
     case 'dead-pid':
+    case 'reused-pid':
       return 'stale';
     default: {
       const exhaustive: never = serverStatus;
@@ -271,14 +272,16 @@ export async function runPs(deps: RunPsDeps = {}): Promise<void> {
       serverState.status === 'missing' ||
       serverState.status === 'corrupt' ||
       serverState.status === 'read-error' ||
-      serverState.status === 'unverified-owner'
+      serverState.status === 'unverified-owner' ||
+      serverState.status === 'reused-pid'
         ? null
         : resolveCommand(serverState.lock.pid);
     const serverUsage =
       serverState.status === 'missing' ||
       serverState.status === 'corrupt' ||
       serverState.status === 'read-error' ||
-      serverState.status === 'unverified-owner'
+      serverState.status === 'unverified-owner' ||
+      serverState.status === 'reused-pid'
         ? null
         : resolveUsage(serverState.lock.pid);
     const entry = buildEntry(lockDir, serverState, command, serverUsage);
@@ -303,7 +306,7 @@ export async function runPs(deps: RunPsDeps = {}): Promise<void> {
 export function psCommand(): Command {
   return new Command('ps')
     .description('List all running open-knowledge servers')
-    .argument('[modifier]', '"all" to include stale (dead-pid) entries')
+    .argument('[modifier]', '"all" to include stale entries')
     .option('--all', 'Include stale entries (foreign and unverified entries already show)')
     .option('--json', 'Emit structured JSON (always includes all statuses)')
     .action(async (modifier: string | undefined, opts: { all?: boolean; json?: boolean }) => {

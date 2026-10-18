@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { getMachineId } from '@inkeep/open-knowledge-server';
 import { afterAll, afterEach, describe, expect, test } from 'vitest';
 import { getInvocationCwd, recordInvocationCwd, resolveProjectAnchor } from './project-anchor.ts';
 
@@ -197,7 +198,13 @@ describe('CLI preAction project anchoring (cold spawn)', () => {
     try {
       writeFileSync(
         join(targetDir, '.ok', 'local', 'server.lock'),
-        JSON.stringify({ pid: sleeper.pid, port: 4242, hostname: hostname() }),
+        JSON.stringify({
+          pid: sleeper.pid,
+          port: 4242,
+          hostname: hostname(),
+          machineId: getMachineId(),
+          startedAt: new Date().toISOString(),
+        }),
       );
 
       const { exitCode, stdout, stderr } = spawnCli(['--cwd', sub, 'stop', './target']);

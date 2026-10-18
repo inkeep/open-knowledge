@@ -1,12 +1,28 @@
 import { type ChildProcess, execFileSync, spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getMachineId } from '@inkeep/open-knowledge-server';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import {
+  legacyServerLock,
+  lockWrittenBeforeProcessStarted,
+  ownedProcessHasExited,
+  startOwnedProcess,
+  stopOwnedProcess,
+} from '../../../../test-support/owned-process.test-helper.ts';
 import { installPackedCli } from './packed-install.test-helper';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -435,4 +451,88 @@ describe(`CLI Linux e2e (${SUT_MODE} SUT)`, () => {
     const lockGone = await waitFor(() => !existsSync(H.lockPath), { timeoutMs: 5_000 });
     expect(lockGone, 'server.lock was not released on shutdown').toBe(true);
   }, 20_000);
+
+  test('8. a lock whose pid now belongs to another process reads stale, is pruned, and is never signalled', async () => {
+    const projectDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-e2e-reused-pid-')));
+    const lockPath = join(projectDir, '.ok', 'local', 'server.lock');
+    const standIn = await startOwnedProcess();
+    let server: ChildProcess | null = null;
+    let serverLog = '';
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: projectDir });
+      expect(runOk(['init', '--no-mcp'], { cwd: projectDir, timeoutMs: 60_000 }).status).toBe(0);
+      mkdirSync(dirname(lockPath), { recursive: true });
+      writeFileSync(
+        lockPath,
+        JSON.stringify(
+          legacyServerLock({
+            pid: standIn.pid,
+            startedAt: lockWrittenBeforeProcessStarted(standIn),
+            machineId: getMachineId(),
+            worktreeRoot: projectDir,
+          }),
+        ),
+        { mode: 0o600 },
+      );
+
+      const status = runOk(['status', '--json'], { cwd: projectDir });
+      expect(status.status, status.stderr).toBe(0);
+      const report = JSON.parse(status.stdout) as { server: { state: string; alive: boolean } };
+      expect(report.server).toMatchObject({ state: 'reused-pid', alive: false });
+
+      const stop = runOk(['stop', projectDir], { cwd: projectDir });
+      expect(stop.status, stop.stderr).toBe(0);
+      expect(
+        await waitFor(() => ownedProcessHasExited(standIn), { timeoutMs: 2_000 }),
+        'ok stop signalled the stand-in',
+      ).toBe(false);
+
+      const clean = runOk(['clean'], { cwd: projectDir });
+      expect(clean.status, clean.stderr).toBe(0);
+      expect(clean.stdout).toContain('Pruned 1 stale lock: server (reused-pid)');
+      expect(existsSync(lockPath)).toBe(false);
+
+      server = spawn(NODE, [H.cliPath, 'start'], {
+        cwd: projectDir,
+        env: { ...process.env, ...HERMETIC_ENV },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      server.stdout?.on('data', (d) => {
+        serverLog += d;
+      });
+      server.stderr?.on('data', (d) => {
+        serverLog += d;
+      });
+      const readLock = (): Record<string, unknown> | null => {
+        try {
+          return JSON.parse(readFileSync(lockPath, 'utf8')) as Record<string, unknown>;
+        } catch {
+          return null;
+        }
+      };
+      const booted = await waitFor(
+        () => serverLog.includes('Press Ctrl+C to stop') && readLock()?.pid === server?.pid,
+        { timeoutMs: 45_000 },
+      );
+      expect(
+        booted,
+        `ok start never finished booting under its own lock\nServer log:\n${serverLog}`,
+      ).toBe(true);
+      expect(readLock()?.processStart).toEqual(expect.any(Object));
+
+      const exited = new Promise<void>((res) => server?.once('exit', () => res()));
+      const stopStarted = runOk(['stop', projectDir], { cwd: projectDir, timeoutMs: 30_000 });
+      expect(stopStarted.status, stopStarted.stderr).toBe(0);
+      await exited;
+      expect(existsSync(lockPath)).toBe(false);
+      expect(
+        await waitFor(() => ownedProcessHasExited(standIn), { timeoutMs: 2_000 }),
+        'ok stop signalled the stand-in',
+      ).toBe(false);
+    } finally {
+      if (server && server.exitCode === null && server.signalCode === null) server.kill('SIGKILL');
+      await stopOwnedProcess(standIn);
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  }, 120_000);
 });

@@ -23,6 +23,7 @@ import {
   tracedUnlinkSync,
   tracedWriteFileSync,
 } from '../fs-traced.ts';
+import { sleepSyncMs } from '../sleep-sync.ts';
 import { normalizeProviderId } from './embedder.ts';
 
 const DEFAULT_ENDPOINT_ID = normalizeProviderId(DEFAULT_EMBEDDINGS_BASE_URL);
@@ -84,10 +85,6 @@ function keyHint(key: string | null): string | null {
 
 const LOCK_TIMEOUT_MS = 2000;
 const LOCK_STALE_MS = 10_000;
-
-function sleepSyncMs(ms: number): void {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
 
 export class FileEmbeddingsBackend implements EmbeddingsSecretStore {
   readonly backend = 'file' as const;

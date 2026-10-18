@@ -1,5 +1,6 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  describeStopFailure,
   failedOpenHolder,
   type HolderStopPromptDeps,
   type HolderStopPromptInput,
@@ -93,6 +94,18 @@ describe('promptHolderStop', () => {
     });
   });
 
+  test.each([true, false])(
+    'an unverified holder reports whether SIGTERM was sent (%s) instead of retrying',
+    async (sigtermSent) => {
+      expect(
+        await run(baseInput(), 0, { ok: false, reason: 'unverified', sigtermSent }),
+      ).toMatchObject({
+        result: { kind: 'stop-failed', reason: 'unverified', sigtermSent },
+        calls: ['dialog', 'stop'],
+      });
+    },
+  );
+
   test('a holder that changed while the dialog was open is re-prompted from a fresh open, not retried as if it stopped', async () => {
     expect(await run(baseInput(), 0, { ok: false, reason: 'holder-changed' })).toMatchObject({
       result: { kind: 'reopened', opened: true },
@@ -170,5 +183,52 @@ describe('promptHolderStop', () => {
       }),
     ).toBeNull();
     expect(lookups).toEqual(['/tmp/dragon']);
+  });
+});
+
+describe('describeStopFailure', () => {
+  test('tells the user a holder that was asked to stop may still exit', () => {
+    expect(
+      describeStopFailure(
+        { kind: 'stop-failed', reason: 'unverified', sigtermSent: true },
+        '/tmp/dragon',
+        'darwin',
+      ),
+    ).toBe(
+      "OpenKnowledge asked the process holding this project's server lock to stop, but could not confirm that it is this project's server, so it did not force it to quit. Wait a moment and try again. If the project is still locked, stop the server where it was started, or restart your computer.",
+    );
+  });
+
+  test('says an unverified holder that was never signalled was not stopped', () => {
+    expect(
+      describeStopFailure(
+        { kind: 'stop-failed', reason: 'unverified', sigtermSent: false },
+        '/tmp/dragon',
+        'darwin',
+      ),
+    ).toBe(
+      "Could not confirm that the process holding this project's server lock is still its server, so it was not stopped. Stop the server where it was started, or restart your computer, then try again.",
+    );
+  });
+
+  test('offers ok stop only for a failure the identity check did not cause', () => {
+    expect(
+      describeStopFailure({ kind: 'stop-failed', reason: 'other' }, '/tmp/dragon', 'darwin'),
+    ).toBe(
+      "Could not stop the conflicting server. Quit it manually (`ok stop --force '/tmp/dragon'`) and try again.",
+    );
+  });
+
+  describe('on Beta', () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    test('names the Beta CLI in the manual stop command', () => {
+      vi.stubEnv('OK_CHANNEL', 'beta');
+      expect(
+        describeStopFailure({ kind: 'stop-failed', reason: 'other' }, '/tmp/dragon', 'darwin'),
+      ).toBe(
+        "Could not stop the conflicting server. Quit it manually (`ok-beta stop --force '/tmp/dragon'`) and try again.",
+      );
+    });
   });
 });
