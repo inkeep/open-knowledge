@@ -19,6 +19,7 @@ import {
   stableNotes,
   withNoteLevels,
 } from '../../scripts/render-stable-notes.mjs';
+import { describeHold, evaluateTree, gitReader } from './release-hold.mjs';
 import {
   describeNoSelection,
   listPrebuildRuns,
@@ -315,6 +316,15 @@ export function guardShipsPublishedFixes({ verdict, latestStableTag }) {
   );
 }
 
+export function guardReleaseHold({ verdict, latestStableTag }) {
+  const label = `${latestStableTag} plus the applied fixes`;
+  if (!verdict.held) return pass(describeHold(verdict, label));
+  return refuse(
+    'release-hold',
+    `${describeHold(verdict, label)} A pick brought the hold onto the stable: leave that ref out of fix_refs.`,
+  );
+}
+
 export function guardRefsOnMain({ fixRefs, isOnMain }) {
   const offenders = fixRefs.filter((ref) => !isOnMain(ref));
   if (offenders.length > 0) {
@@ -521,6 +531,7 @@ export function runPointRelease(opts, io) {
       selection: io.gh.selectNativeConfigPrebuild(syntheticSha),
     }),
   );
+  checkGuard(guards, guardReleaseHold({ verdict: io.hold.evaluate(syntheticSha), latestStableTag }));
   checkGuard(
     guards,
     guardShipsPublishedFixes({ verdict: io.containment.evaluate(syntheticSha), latestStableTag }),
@@ -741,6 +752,9 @@ export function formatReleaseNotes(plan) {
 export function realIo() {
   return {
     containment: createShippedFixCheck(),
+    hold: {
+      evaluate: (sha) => evaluateTree({ candidate: sha, git: gitReader() }),
+    },
     fs: {
       readWorktreeFile: (path) => readFileSync(path, 'utf8'),
       writeWorktreeFile: (path, content) => writeFileSync(path, content),

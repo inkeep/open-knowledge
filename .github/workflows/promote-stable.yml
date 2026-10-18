@@ -308,6 +308,14 @@ jobs:
           # shipped, or adds no changesets) and gates every step below.
           node scripts/compute-stable-version.mjs "$BETA_TAG"
 
+      - name: Refuse a stable that carries the release hold
+        if: steps.ver.outputs.skip != 'true'
+        env:
+          BETA_TAG: ${{ steps.resolve.outputs.beta_tag }}
+          BETA_SHA: ${{ steps.ver.outputs.beta_sha }}
+          STABLE_TAG: ${{ steps.ver.outputs.stable_tag }}
+        run: node .github/scripts/release-hold.mjs --candidate "$BETA_SHA" --label "${STABLE_TAG} from ${BETA_TAG}" --main HEAD
+
       - name: Refuse a stable that lacks a fix a published stable shipped
         if: steps.ver.outputs.skip != 'true'
         env:

@@ -19,6 +19,7 @@ import {
   guardNativeConfigProvenance,
   guardPatchOnly,
   guardRefsOnMain,
+  guardReleaseHold,
   guardResolvePathsAllowlisted,
   guardShipsPublishedFixes,
   guardTagFree,
@@ -32,6 +33,7 @@ import {
   runPointRelease,
   verifyWorkspaceMatchesLockfile,
 } from './point-release-plan.mjs';
+import { RELEASE_HOLD_SENTINEL } from './release-hold.mjs';
 import { appliedOrigins } from './shipped-fix-containment.mjs';
 
 function inspectGitEscapes(source) {
@@ -87,6 +89,14 @@ const containedVerdict = (candidateSha = 'synthetic-sha') => ({
   coveredByPrNumber: 0,
   commits: [],
   uncovered: [],
+});
+
+const unheldVerdict = (sha) => ({
+  kind: 'tree',
+  candidate: sha,
+  sha,
+  path: RELEASE_HOLD_SENTINEL,
+  held: false,
 });
 
 const droppedFixVerdict = () => ({
@@ -579,10 +589,12 @@ function makeIo(overrides = {}) {
     worktree = {},
     publishedTags = [stableTag],
     containmentVerdict = containedVerdict,
+    holdVerdict = unheldVerdict,
   } = overrides;
 
   const calls = { tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 };
   const evaluated = [];
+  const holdEvaluated = [];
   const dispatches = [];
   const releases = [];
   const applied = [];
@@ -604,6 +616,13 @@ function makeIo(overrides = {}) {
     reads,
     worktree,
     evaluated,
+    holdEvaluated,
+    hold: {
+      evaluate: (sha) => {
+        holdEvaluated.push(sha);
+        return holdVerdict(sha);
+      },
+    },
     containment: {
       publishedStableTags: () =>
         typeof publishedTags === 'function' ? publishedTags() : [...publishedTags],
@@ -1267,6 +1286,58 @@ describe('runPointRelease keeps every fix a published stable shipped', () => {
     const { containment } = realIo();
     expect(typeof containment.publishedStableTags).toBe('function');
     expect(typeof containment.evaluate).toBe('function');
+  });
+});
+
+describe('runPointRelease refuses a synthetic commit that carries the release hold', () => {
+  const heldVerdict = (sha) => ({ ...unheldVerdict(sha), held: true });
+
+  test('reads the synthetic commit, not the base, and records in the guard trail that the hold does not apply', () => {
+    const io = makeIo();
+    const plan = runPointRelease({ mode: 'revert', fixRefs: ['bad1'], dryRun: true }, io);
+    expect(io.holdEvaluated).toEqual(['synthetic-sha']);
+    expect(plan.guards.map((g) => g.message)).toContain(
+      `v0.32.0 plus the applied fixes (synthetic-sh) does not carry ${RELEASE_HOLD_SENTINEL}, so the release hold does not apply.`,
+    );
+  });
+
+  test('refuses with release-hold and touches nothing remote, even in a real run', () => {
+    const io = makeIo({ holdVerdict: heldVerdict });
+    let refusal;
+    try {
+      runPointRelease({ mode: 'revert', fixRefs: ['bad1'], dryRun: false }, io);
+    } catch (err) {
+      refusal = err;
+    }
+    expect(refusal?.code).toBe('release-hold');
+    expect(refusal?.message).toContain(`v0.32.0 plus the applied fixes (synthetic-sh) carries ${RELEASE_HOLD_SENTINEL}`);
+    expect(refusal?.message).toContain('leave that ref out of fix_refs');
+    expect(io.calls).toEqual({ tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 });
+  });
+
+  test('a hold it cannot read fails the run before anything is tagged', () => {
+    const io = makeIo({
+      holdVerdict: () => {
+        throw new Error('git ls-tree failed (exit 128): fatal: not a tree object');
+      },
+    });
+    let thrown;
+    try {
+      runPointRelease({ mode: 'revert', fixRefs: ['bad1'], dryRun: false }, io);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown?.message).toMatch(/not a tree object/);
+    expect(thrown?.code).toBeUndefined();
+    expect(io.calls).toEqual({ tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 });
+  });
+
+  test('guardReleaseHold passes an unheld verdict and refuses a held one', () => {
+    expect(guardReleaseHold({ verdict: unheldVerdict('abc'), latestStableTag: 'v1.0.0' }).ok).toBe(true);
+    expect(guardReleaseHold({ verdict: { ...unheldVerdict('abc'), held: true }, latestStableTag: 'v1.0.0' })).toMatchObject({
+      ok: false,
+      code: 'release-hold',
+    });
   });
 });
 
@@ -2030,6 +2101,38 @@ describe('the production entry points the release workflows run', () => {
     expect(res.status, res.stderr).toBe(0);
     expect(res.output).toBe(`bump_verdicts={"${blob}":"minor"}\nnote_levels={}\n`);
     expect(res.stdout).toMatch(/::warning::.*without the notes-source marker/);
+  });
+
+  test.each([
+    ['a post-flip fix', 'post-flip-fix.txt', false],
+    ['the flip itself', RELEASE_HOLD_SENTINEL, true],
+  ])('realIo reads the synthetic tree of a pick of %s in a repository laid out like the mirror', (_what, path, held) => {
+    const root = scratch('point-release-hold-');
+    git(root, 'init', '-q', '-b', 'main');
+    configureTestGitRepository(root, (args) => git(root, ...args));
+    writeFileSync(join(root, 'README.md'), 'stable\n');
+    git(root, 'add', '-A');
+    git(root, 'commit', '-q', '-m', 'stable');
+    git(root, 'tag', 'v1.0.0');
+    mkdirSync(join(root, '.github', 'release-holds'), { recursive: true });
+    writeFileSync(join(root, path), 'changed\n');
+    git(root, 'add', '-A');
+    git(root, 'commit', '-q', '-m', 'the pick');
+    const pick = git(root, 'rev-parse', 'HEAD');
+    git(root, 'switch', '-q', '--detach', 'v1.0.0');
+    git(root, 'cherry-pick', pick);
+    const res = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `const { realIo } = await import(${JSON.stringify(pathToFileURL(SCRIPT).href)}); console.log(JSON.stringify(realIo().hold.evaluate('HEAD')));`,
+      ],
+      { cwd: root, encoding: 'utf8', env: cleanEnv },
+    );
+    expect(res.status, res.stderr).toBe(0);
+    expect(JSON.parse(res.stdout)).toMatchObject({ sha: git(root, 'rev-parse', 'HEAD'), held });
+    expectNoAutomaticGitMaintenance(root);
   });
 
   test('an empty BUMP_VERDICTS stops the release run with an error naming the read-bumps output', () => {

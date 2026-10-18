@@ -9,6 +9,7 @@ import {
   withBumpVerdicts,
 } from '../../scripts/compute-stable-version.mjs';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
+import { describeHold, evaluatePick, gitReader, SHALLOW_BOUNDARY } from './release-hold.mjs';
 import { makeResolveChangesetPrUrl, makeResolveIssuesForUrl } from './select-beta-to-promote.mjs';
 import {
   createShippedFixCheck,
@@ -137,10 +138,36 @@ export function holdBugLaneBatch({ stable, check }) {
   return `${refusalHeadline(verdict, stable)} point-release.yml refuses a point release over ${stable} unless its batch also carries those fixes.`;
 }
 
-export function ticketsByRef(result) {
+export function screenPicksForReleaseHold({ fixRefs, evaluate }) {
+  const admitted = [];
+  const log = [];
+  for (const ref of fixRefs) {
+    let verdict;
+    try {
+      verdict = evaluate(ref);
+    } catch (err) {
+      if (err?.code !== SHALLOW_BOUNDARY) {
+        throw new Error(`the release-hold check failed on ${ref}, so this tick hands nothing to verify: ${err.message}`, {
+          cause: err,
+        });
+      }
+      log.push(`::warning::bug-lane: holding ${ref} this tick, because the release-hold check could not decide: ${err.message}`);
+      continue;
+    }
+    if (verdict.held) {
+      log.push(`::warning::bug-lane: holding ${ref}: ${describeHold(verdict)}`);
+      continue;
+    }
+    log.push(`bug-lane: ${describeHold(verdict)}`);
+    admitted.push(ref);
+  }
+  return { fixRefs: admitted, log };
+}
+
+export function ticketsByRef(result, refs = result.fixRefs) {
   const out = {};
   for (const c of result.perCommit) {
-    if (c.qualifies && c.linkedIssues.length > 0) out[c.sha] = [...c.linkedIssues];
+    if (c.qualifies && refs.includes(c.sha) && c.linkedIssues.length > 0) out[c.sha] = [...c.linkedIssues];
   }
   return out;
 }
@@ -247,11 +274,18 @@ async function main() {
       : `::notice::bug-lane: no qualifying fixes this tick (${result.reason}).`,
   );
 
-  const held =
-    result.fixRefs.length > 0 ? holdBugLaneBatch({ stable, check: createShippedFixCheck() }) : null;
+  const holdGit = gitReader();
+  const screened = screenPicksForReleaseHold({
+    fixRefs: result.fixRefs,
+    evaluate: (ref) => evaluatePick({ candidate: ref, git: holdGit }),
+  });
+  for (const line of screened.log) console.log(line);
+  const fixRefs = screened.fixRefs;
+
+  const held = fixRefs.length > 0 ? holdBugLaneBatch({ stable, check: createShippedFixCheck() }) : null;
   if (held !== null) {
     console.log(
-      `::notice::bug-lane: holding ${result.fixRefs.length} qualifying fix(es) this tick, so no point release is attempted. ${held}`,
+      `::notice::bug-lane: holding ${fixRefs.length} qualifying fix(es) this tick, so no point release is attempted. ${held}`,
     );
   }
 
@@ -259,9 +293,9 @@ async function main() {
     appendFileSync(
       process.env.GITHUB_OUTPUT,
       [
-        `fix_refs=${held === null ? result.fixRefs.join(',') : ''}`,
+        `fix_refs=${held === null ? fixRefs.join(',') : ''}`,
         `stable=${stable}`,
-        `fix_tickets=${held === null ? JSON.stringify(ticketsByRef(result)) : '{}'}`,
+        `fix_tickets=${held === null ? JSON.stringify(ticketsByRef(result, fixRefs)) : '{}'}`,
         '',
       ].join('\n'),
     );

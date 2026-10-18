@@ -290,6 +290,19 @@ jobs:
           node-version-file: .node-version
           package-manager-cache: false
 
+      - name: Refuse a stable that carries the release hold
+        if: steps.channel.outputs.channel == 'latest'
+        env:
+          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null || git fetch --no-tags origin "$GITHUB_SHA"
+          hold="$RUNNER_TEMP/release-hold"
+          rm -rf "$hold"
+          mkdir -p "$hold"
+          git archive "$GITHUB_SHA" .github/scripts/release-hold.mjs scripts/git-clean-env.mjs | tar -x -C "$hold"
+          node "$hold/.github/scripts/release-hold.mjs" --candidate "refs/tags/${RELEASE_TAG}" --label "$RELEASE_TAG"
+
       - name: Refuse a stable that lacks a fix a published stable shipped
         if: steps.channel.outputs.channel == 'latest'
         env:
@@ -1965,6 +1978,10 @@ jobs:
             echo "::warning::render-release-downloads.mjs failed for ${RELEASE_TAG}; the release keeps its previous body."
           fi
 
+      - name: Refuse a stable that carries the release hold
+        if: success() && needs.prepare.outputs.channel == 'latest'
+        run: node .github/scripts/release-hold.mjs --candidate "refs/tags/${RELEASE_TAG}" --label "$RELEASE_TAG"
+
       - name: Refuse a stable that lacks a fix a published stable shipped
         if: success() && needs.prepare.outputs.channel == 'latest'
         env:
@@ -2455,6 +2472,6 @@ jobs:
           if [[ "$CHANNEL" == "beta" ]]; then
             RECOVERY="Follow RELEASES.md, Recovering unpublished beta installers; re-dispatch desktop-release.yml for this tag so the build and inventory gates pass before publication."
           else
-            RECOVERY="Follow RELEASES.md, Recovery workflow revision and Resuming a blocked cut; stable recovery must publish through a lock-bearing finalize. Never recover a tag the shipped-fix check refused."
+            RECOVERY="Follow RELEASES.md, Recovery workflow revision and Resuming a blocked cut; stable recovery must publish through a lock-bearing finalize. Never recover a tag the shipped-fix check or the release hold refused."
           fi
           echo "::warning::STUCK-DRAFT: Release ${RELEASE_TAG} may be stuck as draft (channel=${CHANNEL:-unknown}). ${RECOVERY}"

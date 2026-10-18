@@ -10,6 +10,7 @@ import {
   withBumpVerdicts,
 } from '../../scripts/compute-stable-version.mjs';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
+import { describeHold, evaluateTree, gitReader, mainHoldReport } from './release-hold.mjs';
 import { createShippedFixCheck, refusalHeadline } from './shipped-fix-containment.mjs';
 
 const BETA_TAG_RE = /^v\d+\.\d+\.\d+-beta\.\d+$/;
@@ -170,6 +171,35 @@ export async function evaluateFastTier({
 export function resolveTier({ armed, verdict, standardTarget, fastTarget }) {
   const tier = armed && verdict?.qualifies === true ? 'fast' : 'standard';
   return { tier, target: standardTarget, candidate: tier === 'fast' ? fastTarget : '' };
+}
+
+export function screenReleaseHold({ target, fastTierCandidate, evaluate, log = () => {} }) {
+  let screenedTarget = target;
+  if (target) {
+    const verdict = evaluate(target);
+    if (verdict.held) {
+      log(`::warning::Not dispatching ${target}: ${describeHold(verdict, target)} This tick dispatches nothing.`);
+      screenedTarget = '';
+    } else {
+      log(describeHold(verdict, target));
+    }
+  }
+  if (!fastTierCandidate) return { target: screenedTarget, fastTierCandidate };
+  let verdict;
+  try {
+    verdict = evaluate(fastTierCandidate);
+  } catch (err) {
+    log(
+      `::warning::Fast tier REFUSED for ${fastTierCandidate}: the release-hold check could not decide (${err.message}). Falling back to the 24h tier.`,
+    );
+    return { target: screenedTarget, fastTierCandidate: '' };
+  }
+  if (verdict.held) {
+    log(`::warning::Fast tier REFUSED for ${fastTierCandidate}: ${describeHold(verdict, fastTierCandidate)}`);
+    return { target: screenedTarget, fastTierCandidate: '' };
+  }
+  log(describeHold(verdict, fastTierCandidate));
+  return { target: screenedTarget, fastTierCandidate };
 }
 
 export function screenShippedFixes({
@@ -454,10 +484,18 @@ async function main() {
     fastTarget,
   });
   const soakTier = resolved.tier;
-  const shippedFixCheck = createShippedFixCheck();
-  const { target, fastTierCandidate } = screenShippedFixes({
+  const holdGit = gitReader();
+  console.log(mainHoldReport({ ref: 'HEAD', git: holdGit }));
+  const unheld = screenReleaseHold({
     target: resolved.target,
     fastTierCandidate: resolved.candidate,
+    evaluate: memoizeVerdicts((tag) => evaluateTree({ candidate: `refs/tags/${tag}`, git: holdGit })),
+    log: console.log,
+  });
+  const shippedFixCheck = createShippedFixCheck();
+  const { target, fastTierCandidate } = screenShippedFixes({
+    target: unheld.target,
+    fastTierCandidate: unheld.fastTierCandidate,
     dispatchWindowOpen: process.env.DISPATCH_WINDOW_OPEN !== 'false',
     evaluate: memoizeVerdicts((tag) => shippedFixCheck.evaluate(tag)),
     log: console.log,

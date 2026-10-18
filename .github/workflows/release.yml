@@ -314,6 +314,19 @@ jobs:
           node-version-file: .node-version
           package-manager-cache: false
 
+      - name: Refuse a stable that carries the release hold
+        if: github.event.action == 'publish-stable'
+        env:
+          STABLE_REF: ${{ github.event.client_payload.ref }}
+        run: |
+          set -euo pipefail
+          git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null || git fetch --no-tags origin "$GITHUB_SHA"
+          hold="$RUNNER_TEMP/release-hold"
+          rm -rf "$hold"
+          mkdir -p "$hold"
+          git archive "$GITHUB_SHA" .github/scripts/release-hold.mjs scripts/git-clean-env.mjs | tar -x -C "$hold"
+          node "$hold/.github/scripts/release-hold.mjs" --candidate HEAD --label "$STABLE_REF"
+
       - name: Ensure npm 11 for the cli's package surface check
         run: |
           npm install -g npm@11.21.0
