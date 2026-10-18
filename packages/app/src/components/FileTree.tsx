@@ -3434,8 +3434,8 @@ function FileTreeSkeleton() {
           key={index}
           className="flex h-6 items-center gap-2"
         >
-          <Skeleton className="h-3 w-3 shrink-0 rounded-sm" />
-          <Skeleton className={`h-3 ${width}`} />
+          <Skeleton className="h-3 w-3 shrink-0 rounded-sm bg-sidebar-foreground/10" />
+          <Skeleton className={`h-3 bg-sidebar-foreground/10 ${width}`} />
         </div>
       ))}
     </div>

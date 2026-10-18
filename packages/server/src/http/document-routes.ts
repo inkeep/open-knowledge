@@ -237,14 +237,6 @@ export function createDocumentRoutes(deps: DocumentRouteDeps): DocumentRoutes {
     EmptyRequestSchema,
     async (req, res) => {
       try {
-        if (ready) {
-          await ready.catch((err: unknown) => {
-            log.warn(
-              { err, handler: 'document-list' },
-              '[api] ready gate rejected — responding with partial index',
-            );
-          });
-        }
         const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
         const dir = url.searchParams.get('dir');
         const showAll = url.searchParams.get('showAll') === 'true';
@@ -420,6 +412,14 @@ export function createDocumentRoutes(deps: DocumentRouteDeps): DocumentRoutes {
           return;
         }
 
+        if (ready) {
+          await ready.catch((err: unknown) => {
+            log.warn(
+              { err, handler: 'document-list' },
+              '[api] ready gate rejected — responding with partial index',
+            );
+          });
+        }
         const index = getFileIndex();
         const allFiles = [...getAllFilesIndex()];
         const folderIndex = getFolderIndex?.() ?? new Map<string, FolderIndexEntry>();
