@@ -3,6 +3,7 @@ import {
   combineInstanceLabels,
   formatInstanceAppName,
   resolveInstanceLabel,
+  resolveWindowInstanceLabels,
 } from './instance-identity.ts';
 
 describe('resolveInstanceLabel', () => {
@@ -43,5 +44,23 @@ describe('combineInstanceLabels', () => {
     expect(combineInstanceLabels('Beta', 'work')).toBe('Beta · work');
     expect(combineInstanceLabels('Beta', null)).toBe('Beta');
     expect(combineInstanceLabels(null, null)).toBeNull();
+  });
+});
+
+describe('resolveWindowInstanceLabels', () => {
+  test('the Beta product label names the window but stays out of the renderer header', () => {
+    expect(resolveWindowInstanceLabels('Beta', null)).toEqual({ title: 'Beta', renderer: null });
+  });
+
+  test('a parallel instance label names the window and reaches the renderer header', () => {
+    expect(resolveWindowInstanceLabels('Beta', 'work')).toEqual({
+      title: 'Beta · work',
+      renderer: 'work',
+    });
+    expect(resolveWindowInstanceLabels(null, 'work')).toEqual({ title: 'work', renderer: 'work' });
+  });
+
+  test('a default install carries no label anywhere', () => {
+    expect(resolveWindowInstanceLabels(null, null)).toEqual({ title: null, renderer: null });
   });
 });

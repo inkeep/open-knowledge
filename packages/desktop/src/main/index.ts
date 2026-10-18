@@ -306,9 +306,9 @@ import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
 import { describeStopFailure, failedOpenHolder, promptHolderStop } from './holder-stop-prompt.ts';
 import { agentConnectionsAvailability, isSupportedInstallShape } from './install-shape.ts';
 import {
-  combineInstanceLabels,
   formatInstanceAppName,
   resolveInstanceLabel,
+  resolveWindowInstanceLabels,
 } from './instance-identity.ts';
 import { deriveInstanceUserDataDir } from './instance-isolation.ts';
 import {
@@ -592,7 +592,7 @@ import {
   bringWindowToFront,
   collabUrlFromApiOrigin,
   heldChildServer,
-  setWindowInstanceLabel,
+  setWindowInstanceLabels,
   type UtilityProcessLike,
   WindowManager,
   type WindowManagerDeps,
@@ -6109,13 +6109,14 @@ if (!app.isPackaged) {
 }
 
 const parallelInstanceLabel = resolveInstanceLabel(app.getPath('userData'));
-const instanceLabel = combineInstanceLabels(DESKTOP_VARIANT.instanceLabel, parallelInstanceLabel);
+const windowInstanceLabels = resolveWindowInstanceLabels(
+  DESKTOP_VARIANT.instanceLabel,
+  parallelInstanceLabel,
+);
 if (parallelInstanceLabel) {
   app.setName(formatInstanceAppName(app.getName(), parallelInstanceLabel));
 }
-if (instanceLabel) {
-  setWindowInstanceLabel(instanceLabel);
-}
+setWindowInstanceLabels(windowInstanceLabels);
 
 const A11Y_FORCED_BY_ENV = process.env.OK_FORCE_A11Y === '1';
 if (A11Y_FORCED_BY_ENV) {
@@ -6570,7 +6571,7 @@ function bootPrimaryInstance(): void {
           nativeTheme.themeSource = source;
         },
         refreshApplicationMenu,
-        installDockIcon: () => installDockIcon(instanceLabel),
+        installDockIcon: () => installDockIcon(windowInstanceLabels.title),
         log: { warn: (msg, obj) => console.warn(msg, obj) },
         appVersion: app.getVersion(),
         maxSupportedSchemaVersion: MAX_SUPPORTED_SCHEMA_VERSION,

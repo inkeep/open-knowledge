@@ -37,6 +37,7 @@ import { registerPendingDelivery } from '../shared/ipc-send.ts';
 import type { AssetOpenResult } from './asset-allowlist.ts';
 import { attachAssetSafetyNet } from './asset-safety-net.ts';
 import { startBootHeartbeat } from './boot-heartbeat.ts';
+import type { WindowInstanceLabels } from './instance-identity.ts';
 import {
   type HostCliInvocation,
   resolveLocalOpCliArgsForUtilityFork,
@@ -127,13 +128,15 @@ function nonNegativeInitCounters(
 }
 
 let windowInstanceLabel: string | null = null;
+let rendererInstanceLabel: string | null = null;
 
-export function setWindowInstanceLabel(label: string | null): void {
-  windowInstanceLabel = label;
+export function setWindowInstanceLabels(labels: WindowInstanceLabels): void {
+  windowInstanceLabel = labels.title;
+  rendererInstanceLabel = labels.renderer;
 }
 
 function instanceLabelArgs(): string[] {
-  return windowInstanceLabel ? [`--ok-instance-label=${windowInstanceLabel}`] : [];
+  return rendererInstanceLabel ? [`--ok-instance-label=${rendererInstanceLabel}`] : [];
 }
 
 function formatEditorTitle(projectName: string): string {

@@ -17,6 +17,7 @@ import {
   otherChannelStopOffer,
   type ServerLockMetadataLike,
   type SpawnedServer,
+  setWindowInstanceLabels,
   type UtilityProcessLike,
   WindowManager,
   type WindowManagerDeps,
@@ -259,6 +260,36 @@ describe('WindowManager', () => {
     env.utilities[0]?.fire({ type: 'ready', port: 52010, apiOrigin: 'http://localhost:52010' });
     await promise;
     expect(env.createWindowOpts[0]?.title).toBe('dragon-wiki — OpenKnowledge');
+  });
+
+  describe('instance labels', () => {
+    afterEach(() => {
+      setWindowInstanceLabels({ title: null, renderer: null });
+    });
+
+    async function openProjectWindow() {
+      const wm = new WindowManager(env.deps);
+      const promise = wm.createProjectWindow({ projectPath: '/tmp/dragon-wiki' });
+      env.utilities[0]?.fire({ type: 'ready', port: 52010, apiOrigin: 'http://localhost:52010' });
+      await promise;
+      return env.createWindowOpts[0];
+    }
+
+    test('the Beta product label names the window but never reaches the renderer header', async () => {
+      setWindowInstanceLabels({ title: 'Beta', renderer: null });
+      const opts = await openProjectWindow();
+      expect(opts?.title).toBe('dragon-wiki — OpenKnowledge (Beta)');
+      expect(opts?.additionalArguments.some((arg) => arg.startsWith('--ok-instance-label='))).toBe(
+        false,
+      );
+    });
+
+    test('a parallel dev instance label reaches the renderer header', async () => {
+      setWindowInstanceLabels({ title: 'Beta · work', renderer: 'work' });
+      const opts = await openProjectWindow();
+      expect(opts?.title).toBe('dragon-wiki — OpenKnowledge (Beta · work)');
+      expect(opts?.additionalArguments).toContain('--ok-instance-label=work');
+    });
   });
 
   test('createProjectWindow threads project identity to the window seam (spawn path)', async () => {

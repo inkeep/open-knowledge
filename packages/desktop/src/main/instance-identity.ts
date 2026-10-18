@@ -25,3 +25,18 @@ export function combineInstanceLabels(...labels: Array<string | null>): string |
   const present = labels.filter((label): label is string => label !== null && label.length > 0);
   return present.length > 0 ? present.join(' · ') : null;
 }
+
+export interface WindowInstanceLabels {
+  readonly title: string | null;
+  readonly renderer: string | null;
+}
+
+export function resolveWindowInstanceLabels(
+  variantLabel: string | null,
+  parallelLabel: string | null,
+): WindowInstanceLabels {
+  return {
+    title: combineInstanceLabels(variantLabel, parallelLabel),
+    renderer: parallelLabel !== null && parallelLabel.length > 0 ? parallelLabel : null,
+  };
+}
