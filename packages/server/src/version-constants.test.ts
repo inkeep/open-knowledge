@@ -1,8 +1,22 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CLIENT_RUNTIME_VERSION_FALLBACK } from '@inkeep/open-knowledge-core';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+
+const stamped = vi.hoisted(() => ({ version: '9.8.7-stamped.1' }));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  const { fileURLToPath: toPath } = await import('node:url');
+  const serverPackageJson = toPath(new URL('../package.json', import.meta.url));
+  const readFileSync = ((path: Parameters<typeof actual.readFileSync>[0], ...rest: unknown[]) =>
+    String(path) === serverPackageJson
+      ? JSON.stringify({ name: '@inkeep/open-knowledge-server', version: stamped.version })
+      : Reflect.apply(actual.readFileSync, actual, [path, ...rest])) as typeof actual.readFileSync;
+  return { ...actual, readFileSync };
+});
+
 import {
   PROTOCOL_VERSION,
   RUNTIME_VERSION,
@@ -11,15 +25,17 @@ import {
 } from './version-constants.ts';
 
 describe('version-constants', () => {
-  test('RUNTIME_VERSION is the version field of the neighbouring package.json', () => {
-    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
-      version: string;
-    };
-    expect(RUNTIME_VERSION).toBe(pkg.version);
+  test('RUNTIME_VERSION and the default readRuntimeVersion read the package.json beside src', () => {
+    expect(RUNTIME_VERSION).toBe(stamped.version);
+    expect(readRuntimeVersion()).toBe(stamped.version);
   });
 
-  test('a source checkout carries the unknown placeholder, which clients read as indeterminate', () => {
-    expect(RUNTIME_VERSION).toBe(CLIENT_RUNTIME_VERSION_FALLBACK);
+  test('a source checkout carries the unknown placeholder, which clients read as indeterminate', async () => {
+    const actualFs = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const committed = JSON.parse(
+      actualFs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ) as { version: string };
+    expect(committed.version).toBe(CLIENT_RUNTIME_VERSION_FALLBACK);
   });
 
   test('readRuntimeVersion reads a stamped version and falls back when the file is missing or unversioned', () => {

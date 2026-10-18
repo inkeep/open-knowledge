@@ -2046,7 +2046,6 @@ jobs:
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::OK_RELEASE_BRIDGE_APP_ID not set; skipping the docs changelog refresh for ${RELEASE_TAG}. The changelog picks it up on the next docs deploy."
           fi
 
       - name: Mint docs refresh token (bridge App)
@@ -2061,18 +2060,43 @@ jobs:
           repositories: agents-private
 
       - name: Refresh the docs changelog on agents-private
-        if: success() && steps.docs-bridge-token.outputs.token != ''
+        if: success() && needs.prepare.outputs.channel == 'latest'
         env:
+          BRIDGE_CONFIGURED: ${{ steps.docs-bridge.outputs.configured }}
+          MINT_OUTCOME: ${{ steps.docs-bridge-token.outcome }}
           GH_TOKEN: ${{ steps.docs-bridge-token.outputs.token }}
         run: |
           set -uo pipefail
+          RECOVERY="gh workflow run public-open-knowledge-docs-changelog-deploy.yml --repo inkeep/agents-private -f reason=\"${RELEASE_TAG} published\""
+          missed() {
+            echo "::warning::$1, so the docs changelog does not list ${RELEASE_TAG} until it is rebuilt by hand: ${RECOVERY}"
+            {
+              echo "### Docs changelog not refreshed for ${RELEASE_TAG}"
+              echo ""
+              echo "$1. The npm publish is not affected. Rebuild the changelog by hand:"
+              echo ""
+              echo "    ${RECOVERY}"
+            } >> "$GITHUB_STEP_SUMMARY"
+          }
+          if [[ "${BRIDGE_CONFIGURED:-}" != "true" ]]; then
+            missed "OK_RELEASE_BRIDGE_APP_ID is not set, so ok-stable-published was not sent"
+            exit 0
+          fi
+          if [[ "${MINT_OUTCOME:-}" != "success" || -z "${GH_TOKEN:-}" ]]; then
+            missed "The bridge App token could not be minted (mint step: ${MINT_OUTCOME:-not run}), so ok-stable-published was not sent"
+            exit 0
+          fi
           SELF_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          payload=$(jq -nc --arg tag "$RELEASE_TAG" --arg by "$SELF_URL" \
-            '{event_type: "ok-stable-published", client_payload: {release_tag: $tag, dispatched_by: $by}}')
+          if ! payload=$(jq -nc --arg tag "$RELEASE_TAG" --arg by "$SELF_URL" \
+            '{event_type: "ok-stable-published", client_payload: {release_tag: $tag, dispatched_by: $by}}'); then
+            missed "Building the ok-stable-published payload failed, so it was not sent"
+            exit 0
+          fi
           if gh api -X POST "repos/inkeep/agents-private/dispatches" --input - <<<"$payload" >/dev/null; then
             echo "Dispatched ok-stable-published to agents-private for ${RELEASE_TAG}; the docs changelog rebuilds there."
+            echo "Dispatched \`ok-stable-published\` to agents-private for ${RELEASE_TAG}; the docs changelog rebuilds there." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "::warning::Could not dispatch ok-stable-published for ${RELEASE_TAG}; the docs changelog refreshes on the next docs deploy, or run public-open-knowledge-docs-changelog-deploy.yml by hand."
+            missed "Dispatching ok-stable-published to agents-private failed"
           fi
 
       # FR5b — the npm stable publish sits downstream of the DMG smoke gate

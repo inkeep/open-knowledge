@@ -1,10 +1,24 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CLIENT_RUNTIME_VERSION_FALLBACK } from '@inkeep/open-knowledge-core';
 import { loadConfigFromFile } from 'vite';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+const stamped = vi.hoisted(() => ({ version: '9.8.7-stamped.1' }));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  const { fileURLToPath: toPath } = await import('node:url');
+  const appPackageJson = toPath(new URL('../../package.json', import.meta.url));
+  const readFileSync = ((path: Parameters<typeof actual.readFileSync>[0], ...rest: unknown[]) =>
+    String(path) === appPackageJson
+      ? JSON.stringify({ name: '@inkeep/open-knowledge-app', version: stamped.version })
+      : Reflect.apply(actual.readFileSync, actual, [path, ...rest])) as typeof actual.readFileSync;
+  return { ...actual, readFileSync };
+});
+
 import {
   APP_VERSION_ENV_VAR,
   APP_VERSION_UNKNOWN,
@@ -13,11 +27,6 @@ import {
 } from './app-version.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const appPkgVersion = (
-  JSON.parse(readFileSync(resolve(here, '..', '..', 'package.json'), 'utf-8')) as {
-    version: string;
-  }
-).version;
 
 describe('the unresolved-version sentinel', () => {
   test('matches the core client-version fallback it is duplicated from', () => {
@@ -33,7 +42,7 @@ describe('resolveAppVersion', () => {
   afterEach(() => rmSync(fixtureDir, { recursive: true, force: true }));
 
   test('reads packages/app/package.json by default', () => {
-    expect(resolveAppVersion()).toBe(appPkgVersion);
+    expect(resolveAppVersion()).toBe(stamped.version);
   });
 
   test('returns the version a package.json carries, not the sentinel', () => {
@@ -65,8 +74,8 @@ describe('injectAppVersionEnv', () => {
 
   test('sets VITE_APP_VERSION on process.env and returns it', () => {
     const returned = injectAppVersionEnv();
-    expect(returned).toBe(appPkgVersion);
-    expect(process.env[APP_VERSION_ENV_VAR]).toBe(appPkgVersion);
+    expect(returned).toBe(stamped.version);
+    expect(process.env[APP_VERSION_ENV_VAR]).toBe(stamped.version);
   });
 });
 
@@ -74,6 +83,12 @@ describe('build-path version injection', () => {
   afterEach(() => vi.unstubAllEnvs());
 
   test('vite.config.ts injects the app package version while loading', async () => {
+    const actualFs = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const committed = (
+      JSON.parse(actualFs.readFileSync(resolve(here, '..', '..', 'package.json'), 'utf-8')) as {
+        version: string;
+      }
+    ).version;
     const configPath = resolve(here, '../..', 'vite.config.ts');
     vi.stubEnv(APP_VERSION_ENV_VAR, undefined);
     vi.stubEnv('LINGUI_CONFIG', undefined);
@@ -83,6 +98,6 @@ describe('build-path version injection', () => {
       dirname(configPath),
     );
     expect(result).not.toBeNull();
-    expect(process.env[APP_VERSION_ENV_VAR]).toBe(appPkgVersion);
+    expect(process.env[APP_VERSION_ENV_VAR]).toBe(committed);
   });
 });

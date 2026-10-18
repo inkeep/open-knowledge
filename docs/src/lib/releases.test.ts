@@ -636,12 +636,14 @@ describe('fetchReleaseFeed', () => {
 
   test('a body read that times out or resets is retried, and reported as a request failure rather than as a body that is not JSON', async () => {
     const cut = (reason: () => Error) =>
-      ({
-        ok: true,
-        status: 200,
-        headers: new Headers(),
-        text: () => Promise.reject(reason()),
-      }) as unknown as Response;
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(reason());
+          },
+        }),
+        { status: 200 },
+      );
     const answers = [
       cut(() => new DOMException('The operation was aborted due to timeout', 'TimeoutError')),
       json([apiRelease('v1.1.0', { body: marked('- New.') })]),
@@ -657,23 +659,31 @@ describe('fetchReleaseFeed', () => {
     expect(recovered.failure).toBeNull();
     expect([...recovered.notes.keys()]).toEqual(['v1.1.0']);
     expect(waits).toEqual([1000]);
-    const reset = (() =>
-      Promise.resolve(
+    let resets = 0;
+    const reset = (() => {
+      resets += 1;
+      return Promise.resolve(
         cut(
           () =>
             new TypeError('terminated', {
               cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }),
             }),
         ),
-      )) as unknown as typeof fetch;
+      );
+    }) as unknown as typeof fetch;
+    waits.length = 0;
     const failed = await fetchReleaseFeed({
       changelogTags: new Set(['v1.0.0']),
       fetchImpl: reset,
-      sleep: noWait,
+      sleep: async (ms) => {
+        waits.push(ms);
+      },
     });
     expect(failed.failure).toBe(
       'page 1 request failed after 3 attempts: terminated (UND_ERR_SOCKET)',
     );
+    expect(resets).toBe(3);
+    expect(waits).toEqual([1000, 2000]);
   });
 
   test('warns about a published stable that has neither marked notes nor a CHANGELOG.md section', async () => {
