@@ -6,7 +6,13 @@ import {
   createShippedFixCheck,
   parseReleaseListing,
 } from '../.github/scripts/shipped-fix-containment.mjs';
-import { bumpSemver, fixedGroupOf, loadChangesets, maxBumpType, maxReleaseType } from './changeset-versions.mjs';
+import {
+  bumpSemver,
+  fixedGroupOf,
+  loadChangesets,
+  maxBumpType,
+  maxReleaseType,
+} from './changeset-versions.mjs';
 import { gitAt, releasedChangesetIds } from './compute-stable-version.mjs';
 
 const PRE_PATH = '.changeset/pre.json';
@@ -48,7 +54,8 @@ export function releaseViewArgs(tag) {
 }
 
 export function recordedReleases(env) {
-  const sameArgs = (args, expected) => args.length === expected.length && args.every((arg, i) => arg === expected[i]);
+  const sameArgs = (args, expected) =>
+    args.length === expected.length && args.every((arg, i) => arg === expected[i]);
   const status = (name) => {
     const value = env[name];
     if (typeof value !== 'string' || !/^\d+$/.test(value)) {
@@ -60,7 +67,11 @@ export function recordedReleases(env) {
   };
   return (args) => {
     if (sameArgs(args, RELEASE_LIST_ARGS)) {
-      return { status: status('RELEASE_LIST_STATUS'), stdout: env.RELEASE_LIST_STDOUT, stderr: env.RELEASE_LIST_STDERR };
+      return {
+        status: status('RELEASE_LIST_STATUS'),
+        stdout: env.RELEASE_LIST_STDOUT,
+        stderr: env.RELEASE_LIST_STDERR,
+      };
     }
     if (env.RELEASE_VIEW_TAG && sameArgs(args, releaseViewArgs(env.RELEASE_VIEW_TAG))) {
       return { status: status('RELEASE_VIEW_STATUS'), stdout: env.RELEASE_VIEW_STDOUT, stderr: '' };
@@ -126,13 +137,20 @@ export function publishedStableTags(gh, readListing) {
   };
   const res = gh(STABLE_RELEASES_ARGS);
   if (res.status !== 0) {
-    const stderr = String(res.stderr ?? '').trim().replace(/\s+/g, ' ').slice(0, 300);
-    return unusable(`listing the stable Releases failed (exit ${res.status}${stderr ? `: ${stderr}` : ''})`);
+    const stderr = String(res.stderr ?? '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .slice(0, 300);
+    return unusable(
+      `listing the stable Releases failed (exit ${res.status}${stderr ? `: ${stderr}` : ''})`,
+    );
   }
   try {
     return readListing(res.stdout);
   } catch (err) {
-    return unusable(`the stable Release listing is unusable (${err instanceof Error ? err.message : String(err)})`);
+    return unusable(
+      `the stable Release listing is unusable (${err instanceof Error ? err.message : String(err)})`,
+    );
   }
 }
 
@@ -222,7 +240,36 @@ export function parseSection(section) {
   return groups;
 }
 
-export function renderNotes({ packageDeltas, newConsumedSet, prevBetaTag, newCount }) {
+const INERTIA_REPO = 'inkeep/agents-private';
+const RUN_ID_RE = /^[1-9][0-9]{0,18}$/;
+const COMMIT_SHA_RE = /^[0-9a-f]{40}$/;
+
+export function provingRun({ run, sha } = {}) {
+  const runText = String(run ?? '');
+  const shaText = String(sha ?? '');
+  if (runText === '' && shaText === '') return { line: null, problem: null };
+  if (!RUN_ID_RE.test(runText)) {
+    return { line: null, problem: `the proving run ${JSON.stringify(runText)} is not a run id` };
+  }
+  if (!COMMIT_SHA_RE.test(shaText)) {
+    return {
+      line: null,
+      problem: `the proving commit ${JSON.stringify(shaText)} is not a full commit SHA`,
+    };
+  }
+  return {
+    line: `Proved by internal Inertia run [${runText}](https://github.com/${INERTIA_REPO}/actions/runs/${runText}) at agents-private commit \`${shaText}\`.`,
+    problem: null,
+  };
+}
+
+export function renderNotes({
+  packageDeltas,
+  newConsumedSet,
+  prevBetaTag,
+  newCount,
+  provenance = null,
+}) {
   const unioned = {};
   const seenHashes = new Set();
   for (const pkg of CHANGELOG_PKGS) {
@@ -251,11 +298,10 @@ export function renderNotes({ packageDeltas, newConsumedSet, prevBetaTag, newCou
       `Delta since previous beta ([${prevBetaTag}](https://github.com/${PUBLIC_REPO}/releases/tag/${prevBetaTag})) — ${newCount} new changeset${newCount === 1 ? '' : 's'}.`,
     );
   } else {
-    lines.push(
-      `First beta of the cycle — ${newCount} changeset${newCount === 1 ? '' : 's'}.`,
-    );
+    lines.push(`First beta of the cycle — ${newCount} changeset${newCount === 1 ? '' : 's'}.`);
   }
   lines.push('');
+  if (provenance) lines.push(provenance, '');
 
   for (const group of ['Major Changes', 'Minor Changes', 'Patch Changes']) {
     if (!unioned[group]?.length) continue;
@@ -289,7 +335,12 @@ async function main() {
       git: { stableTags: () => stableTags },
     }).publishedStableTags(),
   );
-  const { pending, beyondAnchorCount, maxBumpType: cycleMaxBump, baseVersion } = betaBase({
+  const {
+    pending,
+    beyondAnchorCount,
+    maxBumpType: cycleMaxBump,
+    baseVersion,
+  } = betaBase({
     changesets,
     newestStableTag,
     releasedIds: releasedChangesetIds(git, { releasedTags: publishedTags }),
@@ -356,11 +407,17 @@ async function main() {
   }
 
   const newConsumedSet = [...priorConsumed, ...newIds].sort();
+  const proof = provingRun({ run: process.env.OK_PROVED_BY_RUN, sha: process.env.OK_PROVED_AT });
+  if (proof.problem)
+    console.error(
+      `::warning::compute-next-beta: ${proof.problem}, so the notes name no proving run`,
+    );
   const releaseNotes = renderNotes({
     packageDeltas,
     newConsumedSet,
     prevBetaTag,
     newCount: newIds.length,
+    provenance: proof.line,
   });
 
   console.log(
@@ -380,7 +437,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     await main();
   } catch (err) {
     console.error(err);
-    console.error(`::error::compute-next-beta: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(
+      `::error::compute-next-beta: ${err instanceof Error ? err.message : String(err)}`,
+    );
     process.exitCode = 1;
   }
 }

@@ -11,6 +11,7 @@ import {
   extractDeltaSection,
   parseSection,
   previousBeta,
+  provingRun,
   publishedStableTags,
   RELEASE_LIST_ARGS,
   recordedReleases,
@@ -301,6 +302,61 @@ describe('renderNotes', () => {
   });
 });
 
+const PROVED_SHA = 'c0ffee'.repeat(6) + 'c0ff';
+
+describe('the proving Inertia run in the beta notes', () => {
+  test('a run id and a 40-hex commit become one line linking the internal run it names', () => {
+    expect(provingRun({ run: '39080223029', sha: PROVED_SHA })).toEqual({
+      line: `Proved by internal Inertia run [39080223029](https://github.com/inkeep/agents-private/actions/runs/39080223029) at agents-private commit \`${PROVED_SHA}\`.`,
+      problem: null,
+    });
+  });
+
+  test('a cut with neither input, as a push or a manual dispatch is, names no run and reports nothing', () => {
+    for (const given of [{}, { run: '', sha: '' }, { run: undefined, sha: undefined }])
+      expect(provingRun(given)).toEqual({ line: null, problem: null });
+  });
+
+  test('an input that is not a run id or a full lowercase commit SHA names no run and says which one', () => {
+    const cases = [
+      [{ run: '', sha: PROVED_SHA }, /run/],
+      [{ run: '123', sha: '' }, /commit/],
+      [{ run: '0', sha: PROVED_SHA }, /run/],
+      [{ run: '12 ', sha: PROVED_SHA }, /run/],
+      [{ run: '1e3', sha: PROVED_SHA }, /run/],
+      [{ run: '1'.repeat(20), sha: PROVED_SHA }, /run/],
+      [{ run: '123) [x](javascript:alert(1)', sha: PROVED_SHA }, /run/],
+      [{ run: '123', sha: PROVED_SHA.slice(0, 39) }, /commit/],
+      [{ run: '123', sha: PROVED_SHA.toUpperCase() }, /commit/],
+      [{ run: '123', sha: `${PROVED_SHA.slice(0, 38)}\`)` }, /commit/],
+    ];
+    for (const [given, which] of cases) {
+      const result = provingRun(given);
+      expect(result.line, JSON.stringify(given)).toBeNull();
+      expect(result.problem, JSON.stringify(given)).toMatch(which);
+    }
+  });
+
+  test('the line sits under the delta header, before the changes, and leaves the consumed-set marker last and unchanged', () => {
+    const line = provingRun({ run: '42', sha: PROVED_SHA }).line;
+    const input = {
+      newConsumedSet: ['a', 'b'],
+      prevBetaTag: 'v0.5.0-beta.6',
+      newCount: 2,
+      packageDeltas: { cli: '### Patch Changes\n\n- x: y\n' },
+    };
+    const without = renderNotes(input);
+    const notes = renderNotes({ ...input, provenance: line });
+    const lines = notes.split('\n');
+    expect(lines[0]).toMatch(/^Delta since previous beta/);
+    expect(lines.slice(1, 4)).toEqual(['', line, '']);
+    expect(lines.indexOf('### Patch Changes')).toBeGreaterThan(3);
+    expect(lines.at(-1)).toBe('<!-- ok-consumed-set: ["a","b"] -->');
+    expect(notes.replace(`${line}\n\n`, '')).toBe(without);
+    expect(without).not.toContain('Proved by');
+  });
+});
+
 describe('round-trip: extractDeltaSection → parseSection → renderNotes', () => {
   test('multi-package CHANGELOG harvest produces a single deduplicated note', () => {
     const cliChangelog = `# @inkeep/open-knowledge
@@ -402,14 +458,49 @@ describe('previousBeta reads the previous beta through the gh calls it is handed
   const body = (marker) => `Notes.\n${marker}\n`;
 
   test.each([
-    ['a failed list bootstraps', { status: 1, stdout: '', stderr: 'HTTP 502' }, null, { prevBetaTag: null, recovered: null }],
+    [
+      'a failed list bootstraps',
+      { status: 1, stdout: '', stderr: 'HTTP 502' },
+      null,
+      { prevBetaTag: null, recovered: null },
+    ],
     ['an empty list bootstraps', ok('\n'), null, { prevBetaTag: null, recovered: null }],
-    ['a failed view keeps the tag and bootstraps the set', ok(`${TAG}\n`), { status: 1, stdout: '', stderr: '' }, { prevBetaTag: TAG, recovered: null }],
-    ['a body without a marker bootstraps the set', ok(`${TAG}\n`), ok(body('no marker here')), { prevBetaTag: TAG, recovered: null }],
-    ['a marker that is not JSON bootstraps the set', ok(`${TAG}\n`), ok(body('<!-- ok-consumed-set: [a, b] -->')), { prevBetaTag: TAG, recovered: null }],
-    ['a marker that is not a string array bootstraps the set', ok(`${TAG}\n`), ok(body('<!-- ok-consumed-set: [1, 2] -->')), { prevBetaTag: TAG, recovered: null }],
-    ['a well-formed marker is the consumed set', ok(`${TAG}\n`), ok(body('<!-- ok-consumed-set: ["a","b"] -->')), { prevBetaTag: TAG, recovered: ['a', 'b'] }],
-    ['a quoted tag is unquoted', ok(`"${TAG}"\n`), ok(body('<!-- ok-consumed-set: ["a"] -->')), { prevBetaTag: TAG, recovered: ['a'] }],
+    [
+      'a failed view keeps the tag and bootstraps the set',
+      ok(`${TAG}\n`),
+      { status: 1, stdout: '', stderr: '' },
+      { prevBetaTag: TAG, recovered: null },
+    ],
+    [
+      'a body without a marker bootstraps the set',
+      ok(`${TAG}\n`),
+      ok(body('no marker here')),
+      { prevBetaTag: TAG, recovered: null },
+    ],
+    [
+      'a marker that is not JSON bootstraps the set',
+      ok(`${TAG}\n`),
+      ok(body('<!-- ok-consumed-set: [a, b] -->')),
+      { prevBetaTag: TAG, recovered: null },
+    ],
+    [
+      'a marker that is not a string array bootstraps the set',
+      ok(`${TAG}\n`),
+      ok(body('<!-- ok-consumed-set: [1, 2] -->')),
+      { prevBetaTag: TAG, recovered: null },
+    ],
+    [
+      'a well-formed marker is the consumed set',
+      ok(`${TAG}\n`),
+      ok(body('<!-- ok-consumed-set: ["a","b"] -->')),
+      { prevBetaTag: TAG, recovered: ['a', 'b'] },
+    ],
+    [
+      'a quoted tag is unquoted',
+      ok(`"${TAG}"\n`),
+      ok(body('<!-- ok-consumed-set: ["a"] -->')),
+      { prevBetaTag: TAG, recovered: ['a'] },
+    ],
   ])('%s', (_, list, view, expected) => {
     expect(previousBeta(answering(list, view))).toEqual(expected);
   });
@@ -442,45 +533,89 @@ describe('recordedReleases replays what the read-releases job recorded', () => {
   test('answers the recorded list and view calls', () => {
     const gh = recordedReleases(recorded);
     expect(gh(RELEASE_LIST_ARGS)).toEqual({ status: 0, stdout: TAG, stderr: '' });
-    expect(gh(releaseViewArgs(TAG))).toEqual({ status: 0, stdout: recorded.RELEASE_VIEW_STDOUT, stderr: '' });
+    expect(gh(releaseViewArgs(TAG))).toEqual({
+      status: 0,
+      stdout: recorded.RELEASE_VIEW_STDOUT,
+      stderr: '',
+    });
     expect(previousBeta(gh)).toEqual({ prevBetaTag: TAG, recovered: ['a'] });
   });
 
   test('replays a failed list with its status and stderr', () => {
-    const gh = recordedReleases({ RELEASE_LIST_STATUS: '1', RELEASE_LIST_STDOUT: '', RELEASE_LIST_STDERR: 'HTTP 502' });
+    const gh = recordedReleases({
+      RELEASE_LIST_STATUS: '1',
+      RELEASE_LIST_STDOUT: '',
+      RELEASE_LIST_STDERR: 'HTTP 502',
+    });
     expect(gh(RELEASE_LIST_ARGS)).toEqual({ status: 1, stdout: '', stderr: 'HTTP 502' });
     expect(previousBeta(gh)).toEqual({ prevBetaTag: null, recovered: null });
   });
 
   test.each([
-    ['an empty list status', { ...recorded, RELEASE_LIST_STATUS: '' }, RELEASE_LIST_ARGS, 'RELEASE_LIST_STATUS is ""'],
-    ['a missing list status', (({ RELEASE_LIST_STATUS: _, ...rest }) => rest)(recorded), RELEASE_LIST_ARGS, 'RELEASE_LIST_STATUS is missing'],
-    ['a list status that is not a number', { ...recorded, RELEASE_LIST_STATUS: '0\n' }, RELEASE_LIST_ARGS, 'RELEASE_LIST_STATUS is "0\\n"'],
-    ['an empty view status', { ...recorded, RELEASE_VIEW_STATUS: '' }, releaseViewArgs(TAG), 'RELEASE_VIEW_STATUS is ""'],
-    ['a missing view status', (({ RELEASE_VIEW_STATUS: _, ...rest }) => rest)(recorded), releaseViewArgs(TAG), 'RELEASE_VIEW_STATUS is missing'],
+    [
+      'an empty list status',
+      { ...recorded, RELEASE_LIST_STATUS: '' },
+      RELEASE_LIST_ARGS,
+      'RELEASE_LIST_STATUS is ""',
+    ],
+    [
+      'a missing list status',
+      (({ RELEASE_LIST_STATUS: _, ...rest }) => rest)(recorded),
+      RELEASE_LIST_ARGS,
+      'RELEASE_LIST_STATUS is missing',
+    ],
+    [
+      'a list status that is not a number',
+      { ...recorded, RELEASE_LIST_STATUS: '0\n' },
+      RELEASE_LIST_ARGS,
+      'RELEASE_LIST_STATUS is "0\\n"',
+    ],
+    [
+      'an empty view status',
+      { ...recorded, RELEASE_VIEW_STATUS: '' },
+      releaseViewArgs(TAG),
+      'RELEASE_VIEW_STATUS is ""',
+    ],
+    [
+      'a missing view status',
+      (({ RELEASE_VIEW_STATUS: _, ...rest }) => rest)(recorded),
+      releaseViewArgs(TAG),
+      'RELEASE_VIEW_STATUS is missing',
+    ],
   ])('fails loudly on %s, naming the read-releases handoff', (_, env, args, message) => {
     const gh = recordedReleases(env);
     expect(() => gh(args)).toThrow(message);
     expect(() => gh(args)).toThrow("the read-releases job's outputs did not reach this step");
-    expect(() => previousBeta(gh)).toThrow("the read-releases job's outputs did not reach this step");
+    expect(() => previousBeta(gh)).toThrow(
+      "the read-releases job's outputs did not reach this step",
+    );
   });
 
   test.each([
     ['0', { prevBetaTag: TAG, recovered: ['a'] }],
     ['1', { prevBetaTag: null, recovered: null }],
   ])('a recorded list status of %s behaves as the exit status it is', (listStatus, expected) => {
-    expect(previousBeta(recordedReleases({ ...recorded, RELEASE_LIST_STATUS: listStatus }))).toEqual(expected);
+    expect(
+      previousBeta(recordedReleases({ ...recorded, RELEASE_LIST_STATUS: listStatus })),
+    ).toEqual(expected);
   });
 
   test('a recorded view status of 1 keeps the tag and bootstraps the set', () => {
-    expect(previousBeta(recordedReleases({ ...recorded, RELEASE_VIEW_STATUS: '1' }))).toEqual({ prevBetaTag: TAG, recovered: null });
+    expect(previousBeta(recordedReleases({ ...recorded, RELEASE_VIEW_STATUS: '1' }))).toEqual({
+      prevBetaTag: TAG,
+      recovered: null,
+    });
   });
 
   test('refuses any call the job did not record', () => {
     const gh = recordedReleases(recorded);
-    expect(() => gh(releaseViewArgs('v0.82.0-beta.7'))).toThrow('the read-releases job recorded no result for gh release view v0.82.0-beta.7');
+    expect(() => gh(releaseViewArgs('v0.82.0-beta.7'))).toThrow(
+      'the read-releases job recorded no result for gh release view v0.82.0-beta.7',
+    );
     expect(() => gh(['release', 'list', '--repo', 'other/repo'])).toThrow('recorded no result');
-    expect(() => recordedReleases({ ...recorded, RELEASE_VIEW_TAG: '' })(releaseViewArgs(''))).toThrow('recorded no result');
+    expect(() =>
+      recordedReleases({ ...recorded, RELEASE_VIEW_TAG: '' })(releaseViewArgs('')),
+    ).toThrow('recorded no result');
   });
 });
 
@@ -488,12 +623,18 @@ describe('recordedReleases replays the stable Release listing the read-releases 
   const listing = '{"tag_name":"v0.86.13","draft":true}\n{"tag_name":"v0.86.12","draft":false}';
 
   test('answers the listing call with its status, stdout and stderr', () => {
-    const gh = recordedReleases({ STABLE_RELEASES_STATUS: '0', STABLE_RELEASES_STDOUT: listing, STABLE_RELEASES_STDERR: '' });
+    const gh = recordedReleases({
+      STABLE_RELEASES_STATUS: '0',
+      STABLE_RELEASES_STDOUT: listing,
+      STABLE_RELEASES_STDERR: '',
+    });
     expect(gh(STABLE_RELEASES_ARGS)).toEqual({ status: 0, stdout: listing, stderr: '' });
   });
 
   test('fails loudly when the listing status never reached the step', () => {
-    expect(() => recordedReleases({ STABLE_RELEASES_STDOUT: listing })(STABLE_RELEASES_ARGS)).toThrow(
+    expect(() =>
+      recordedReleases({ STABLE_RELEASES_STDOUT: listing })(STABLE_RELEASES_ARGS),
+    ).toThrow(
       "STABLE_RELEASES_STATUS is missing, not an exit status: the read-releases job's outputs did not reach this step",
     );
   });
@@ -523,15 +664,23 @@ describe('publishedStableTags', () => {
 
   test('asks gh for exactly the stable Release listing', () => {
     const calls = [];
-    publishedStableTags((args) => {
-      calls.push(args);
-      return { status: 0, stdout: '', stderr: '' };
-    }, () => []);
+    publishedStableTags(
+      (args) => {
+        calls.push(args);
+        return { status: 0, stdout: '', stderr: '' };
+      },
+      () => [],
+    );
     expect(calls).toEqual([STABLE_RELEASES_ARGS]);
   });
 
   test('a failed listing is null, which counts every stable tag as released', () => {
-    expect(publishedStableTags(() => ({ status: 1, stdout: '', stderr: 'HTTP 502' }), () => ['never'])).toBeNull();
+    expect(
+      publishedStableTags(
+        () => ({ status: 1, stdout: '', stderr: 'HTTP 502' }),
+        () => ['never'],
+      ),
+    ).toBeNull();
   });
 
   test('an unreadable listing is null rather than a throw', () => {
@@ -548,7 +697,9 @@ const changeset = (id, type = 'patch') => ({ id, releases: [{ name: OK, type }] 
 
 function baseFor({ tags, published, commit }) {
   const git = { stableTags: () => Object.keys(tags), changesetIds: (tag) => tags[tag] ?? [] };
-  const newestStableTag = Object.keys(tags).sort((a, b) => b.localeCompare(a, 'en', { numeric: true }))[0];
+  const newestStableTag = Object.keys(tags).sort((a, b) =>
+    b.localeCompare(a, 'en', { numeric: true }),
+  )[0];
   const result = betaBase({
     changesets: commit.map(([id, type]) => changeset(id, type)),
     newestStableTag,
@@ -561,7 +712,10 @@ function baseFor({ tags, published, commit }) {
 describe('betaBase cadence vectors over the newest stable tag', () => {
   const base = (types) =>
     betaBase({
-      changesets: types.map((type, i) => ({ id: `c${i}`, releases: type ? [{ name: '@inkeep/open-knowledge', type }] : [] })),
+      changesets: types.map((type, i) => ({
+        id: `c${i}`,
+        releases: type ? [{ name: '@inkeep/open-knowledge', type }] : [],
+      })),
       newestStableTag: 'v0.5.0',
       releasedIds: new Set(),
       anchorIds: new Set(),
@@ -598,12 +752,24 @@ describe('betaBase numbers a beta from the newest stable tag and the changesets 
   test('a pending patch over the newest stable tag is its next patch', () => {
     expect(
       baseFor({ tags: { 'v0.86.13': ['a'] }, published: ['v0.86.13'], commit: [['b', 'patch']] }),
-    ).toMatchObject({ baseVersion: '0.86.14', maxBumpType: 'patch', pending: ['b'], beyondAnchorCount: 1 });
+    ).toMatchObject({
+      baseVersion: '0.86.14',
+      maxBumpType: 'patch',
+      pending: ['b'],
+      beyondAnchorCount: 1,
+    });
   });
 
   test('a pending minor is the next minor', () => {
     expect(
-      baseFor({ tags: { 'v0.86.13': ['a'] }, published: ['v0.86.13'], commit: [['b', 'patch'], ['c', 'minor']] }),
+      baseFor({
+        tags: { 'v0.86.13': ['a'] },
+        published: ['v0.86.13'],
+        commit: [
+          ['b', 'patch'],
+          ['c', 'minor'],
+        ],
+      }),
     ).toMatchObject({ baseVersion: '0.87.0', maxBumpType: 'minor', pending: ['b', 'c'] });
   });
 
@@ -612,7 +778,10 @@ describe('betaBase numbers a beta from the newest stable tag and the changesets 
       baseFor({
         tags: { 'v0.86.0': ['a'] },
         published: ['v0.86.0'],
-        commit: [['a', 'minor'], ['b', 'patch']],
+        commit: [
+          ['a', 'minor'],
+          ['b', 'patch'],
+        ],
       }),
     ).toMatchObject({ baseVersion: '0.86.1', maxBumpType: 'patch', pending: ['b'] });
   });
@@ -660,26 +829,44 @@ describe('betaBase numbers a beta from the newest stable tag and the changesets 
     });
 
     test('an unreadable listing counts the draft as released', () => {
-      expect(baseFor({ tags, published: null, commit })).toMatchObject({ baseVersion: '0.86.14', pending: ['z'] });
+      expect(baseFor({ tags, published: null, commit })).toMatchObject({
+        baseVersion: '0.86.14',
+        pending: ['z'],
+      });
     });
   });
 
-  test.each([[''], ['v0.86.13-beta.2'], [undefined]])('refuses %j as the newest stable tag', (tag) => {
-    expect(() =>
-      betaBase({ changesets: [], newestStableTag: tag, releasedIds: new Set(), anchorIds: new Set() }),
-    ).toThrow(/is not a vX\.Y\.Z stable tag/);
-  });
+  test.each([[''], ['v0.86.13-beta.2'], [undefined]])(
+    'refuses %j as the newest stable tag',
+    (tag) => {
+      expect(() =>
+        betaBase({
+          changesets: [],
+          newestStableTag: tag,
+          releasedIds: new Set(),
+          anchorIds: new Set(),
+        }),
+      ).toThrow(/is not a vX\.Y\.Z stable tag/);
+    },
+  );
 });
 
 describe('transientPreState', () => {
   test('starts every fixed-group member at the newest stable version and carries the consumed set', () => {
     const config = { fixed: [['@inkeep/open-knowledge', '@inkeep/open-knowledge-core']] };
     expect(
-      transientPreState({ fixedGroup: fixedGroupOf(config), anchorVersion: '0.86.13', consumed: ['a'] }),
+      transientPreState({
+        fixedGroup: fixedGroupOf(config),
+        anchorVersion: '0.86.13',
+        consumed: ['a'],
+      }),
     ).toEqual({
       mode: 'pre',
       tag: 'beta',
-      initialVersions: { '@inkeep/open-knowledge': '0.86.13', '@inkeep/open-knowledge-core': '0.86.13' },
+      initialVersions: {
+        '@inkeep/open-knowledge': '0.86.13',
+        '@inkeep/open-knowledge-core': '0.86.13',
+      },
       changesets: ['a'],
     });
   });
@@ -691,7 +878,13 @@ describe('the compute-next-beta CLI numbers from the stable tags and reads only 
     for (const root of roots) rmSync(root, { recursive: true, force: true });
   });
   const script = fileURLToPath(new URL('./compute-next-beta.mjs', import.meta.url));
-  const changesetsCli = join(fileURLToPath(new URL('..', import.meta.url)), 'node_modules', '@changesets', 'cli', 'bin.js');
+  const changesetsCli = join(
+    fileURLToPath(new URL('..', import.meta.url)),
+    'node_modules',
+    '@changesets',
+    'cli',
+    'bin.js',
+  );
 
   function git(cwd, args) {
     const res = spawnSync('git', args, { cwd, env: gitCleanEnv(), encoding: 'utf8' });
@@ -703,27 +896,50 @@ describe('the compute-next-beta CLI numbers from the stable tags and reads only 
     roots.push(root);
     mkdirSync(join(root, '.changeset'));
     writeFileSync(join(root, '.changeset', 'config.json'), JSON.stringify({ fixed: [[OK]] }));
-    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'fixture-root', private: true }));
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ name: 'fixture-root', private: true }),
+    );
     writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n');
     mkdirSync(join(root, 'packages', 'cli'), { recursive: true });
-    writeFileSync(join(root, 'packages', 'cli', 'package.json'), JSON.stringify({ name: OK, version: '0.0.0-unknown' }));
+    writeFileSync(
+      join(root, 'packages', 'cli', 'package.json'),
+      JSON.stringify({ name: OK, version: '0.0.0-unknown' }),
+    );
     git(root, ['init', '-q', '-b', 'main']);
     configureTestGitRepository(root);
     const commit = (name, bump, body) => {
-      writeFileSync(join(root, '.changeset', `${name}.md`), `---\n'${OK}': ${bump}\n---\n\n${body}\n`);
+      writeFileSync(
+        join(root, '.changeset', `${name}.md`),
+        `---\n'${OK}': ${bump}\n---\n\n${body}\n`,
+      );
       git(root, ['add', '-A']);
-      git(root, ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', name]);
+      git(root, [
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@example.com',
+        'commit',
+        '-q',
+        '-m',
+        name,
+      ]);
     };
     commit('shipped', 'patch', 'Shipped in v0.86.12.');
     if (tags) git(root, ['tag', 'v0.86.12']);
     commit('drafted', 'minor', 'Drafted in v0.86.13.');
     if (tags) git(root, ['tag', 'v0.86.13']);
     commit('fixture-change', 'patch', 'A fresh fix.');
-    symlinkSync(join(fileURLToPath(new URL('..', import.meta.url)), 'node_modules'), join(root, 'node_modules'));
+    symlinkSync(
+      join(fileURLToPath(new URL('..', import.meta.url)), 'node_modules'),
+      join(root, 'node_modules'),
+    );
     const bin = join(root, 'bin');
     mkdirSync(bin);
     const tripwire = join(root, 'gh-calls.log');
-    writeFileSync(join(bin, 'gh'), `#!/bin/sh\necho "$*" >> '${tripwire}'\nexit 1\n`, { mode: 0o755 });
+    writeFileSync(join(bin, 'gh'), `#!/bin/sh\necho "$*" >> '${tripwire}'\nexit 1\n`, {
+      mode: 0o755,
+    });
     writeFileSync(
       join(bin, 'pnpm'),
       `#!/bin/sh\n[ "$1" = exec ] && [ "$2" = changeset ] || { echo "unexpected pnpm $*" >&2; exit 97; }\nshift 2\nexec '${process.execPath}' '${changesetsCli}' "$@"\n`,
@@ -734,11 +950,16 @@ describe('the compute-next-beta CLI numbers from the stable tags and reads only 
 
   const publishedThrough12 = {
     STABLE_RELEASES_STATUS: '0',
-    STABLE_RELEASES_STDOUT: '{"tag_name":"v0.86.13","draft":true}\n{"tag_name":"v0.86.12","draft":false}',
+    STABLE_RELEASES_STDOUT:
+      '{"tag_name":"v0.86.13","draft":true}\n{"tag_name":"v0.86.12","draft":false}',
     STABLE_RELEASES_STDERR: '',
   };
 
-  const noPreviousBeta = { RELEASE_LIST_STATUS: '0', RELEASE_LIST_STDOUT: '', RELEASE_LIST_STDERR: '' };
+  const noPreviousBeta = {
+    RELEASE_LIST_STATUS: '0',
+    RELEASE_LIST_STDOUT: '',
+    RELEASE_LIST_STDERR: '',
+  };
 
   const previousBetaConsumed = (ids) => ({
     RELEASE_LIST_STATUS: '0',
@@ -776,7 +997,29 @@ describe('the compute-next-beta CLI numbers from the stable tags and reads only 
     expect(existsSync(fx.tripwire)).toBe(false);
   });
 
-  test("a cut after a previous beta renders only what that beta did not consume, and carries its consumed set forward", () => {
+  test('an Inertia cut names the run and commit that proved it, and a cut without them, or with a malformed one, names none', () => {
+    const fx = fixture();
+    const env = { ...noPreviousBeta, ...publishedThrough12 };
+    const proved = run(fx, { ...env, OK_PROVED_BY_RUN: '39080223029', OK_PROVED_AT: PROVED_SHA });
+    expect(proved.status, proved.stderr).toBe(0);
+    const notes = JSON.parse(proved.stdout).releaseNotes;
+    expect(notes).toContain(
+      `Proved by internal Inertia run [39080223029](https://github.com/inkeep/agents-private/actions/runs/39080223029) at agents-private commit \`${PROVED_SHA}\`.`,
+    );
+    expect(notes).toMatch(/<!-- ok-consumed-set: \["drafted","fixture-change"\] -->$/);
+    const plain = run(fixture(), env);
+    expect(plain.status, plain.stderr).toBe(0);
+    expect(JSON.parse(plain.stdout).releaseNotes).not.toContain('Proved by');
+    expect(plain.stderr).not.toContain('proving');
+    const malformed = run(fixture(), { ...env, OK_PROVED_BY_RUN: 'abc', OK_PROVED_AT: PROVED_SHA });
+    expect(malformed.status, malformed.stderr).toBe(0);
+    expect(JSON.parse(malformed.stdout).releaseNotes).not.toContain('Proved by');
+    expect(malformed.stderr).toMatch(
+      /::warning::compute-next-beta: .*run.*so the notes name no proving run/,
+    );
+  });
+
+  test('a cut after a previous beta renders only what that beta did not consume, and carries its consumed set forward', () => {
     const fx = fixture();
     const res = run(fx, { ...previousBetaConsumed(['drafted']), ...publishedThrough12 });
     expect(res.status, res.stderr).toBe(0);
@@ -789,9 +1032,15 @@ describe('the compute-next-beta CLI numbers from the stable tags and reads only 
 
   test('a draft newest stable keeps its changesets pending', () => {
     const fx = fixture();
-    const res = run(fx, { ...previousBetaConsumed(['drafted', 'fixture-change']), ...publishedThrough12 });
+    const res = run(fx, {
+      ...previousBetaConsumed(['drafted', 'fixture-change']),
+      ...publishedThrough12,
+    });
     expect(res.status, res.stderr).toBe(0);
-    expect(JSON.parse(res.stdout)).toEqual({ skip: true, reason: 'no new changesets since v0.86.14-beta.0' });
+    expect(JSON.parse(res.stdout)).toEqual({
+      skip: true,
+      reason: 'no new changesets since v0.86.14-beta.0',
+    });
     expect(res.stderr).toContain(
       'Beta base 0.86.14: patch over the newest stable tag v0.86.13, from 1 of 2 pending changesets',
     );
@@ -808,8 +1057,13 @@ describe('the compute-next-beta CLI numbers from the stable tags and reads only 
       STABLE_RELEASES_STDERR: 'HTTP 502',
     });
     expect(res.status, res.stderr).toBe(0);
-    expect(JSON.parse(res.stdout)).toEqual({ skip: true, reason: 'no new changesets since v0.86.14-beta.0' });
-    expect(res.stderr).toContain('::warning::compute-next-beta: listing the stable Releases failed (exit 1: HTTP 502). Counting every stable tag as released');
+    expect(JSON.parse(res.stdout)).toEqual({
+      skip: true,
+      reason: 'no new changesets since v0.86.14-beta.0',
+    });
+    expect(res.stderr).toContain(
+      '::warning::compute-next-beta: listing the stable Releases failed (exit 1: HTTP 502). Counting every stable tag as released',
+    );
     expect(res.stderr).toContain('from 1 of 1 pending changesets');
     expect(res.stderr).toContain('in the tree of any stable tag');
     expect(existsSync(fx.tripwire)).toBe(false);

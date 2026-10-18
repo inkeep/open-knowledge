@@ -124,6 +124,14 @@ on:
         description: URL of the run that dispatched this one, shown in the build summary
         type: string
         default: ''
+      proved_by_run:
+        description: Run id (the number in the run's URL, not its run number) of the internal Inertia validation run whose green verdict proved the commit, named in the beta notes. Empty names none.
+        type: string
+        default: ''
+      proved_at:
+        description: Full agents-private commit SHA that run validated, named in the beta notes beside it. Empty names none.
+        type: string
+        default: ''
   repository_dispatch:
     types: [publish-stable]
 
@@ -470,6 +478,8 @@ jobs:
           STABLE_RELEASES_STATUS: ${{ needs.read-releases.outputs.stable_releases_status }}
           STABLE_RELEASES_STDOUT: ${{ needs.read-releases.outputs.stable_releases_stdout }}
           STABLE_RELEASES_STDERR: ${{ needs.read-releases.outputs.stable_releases_stderr }}
+          OK_PROVED_BY_RUN: ${{ inputs.proved_by_run }}
+          OK_PROVED_AT: ${{ inputs.proved_at }}
         run: |
           set -euo pipefail
           OUTPUT=$(node scripts/compute-next-beta.mjs)
