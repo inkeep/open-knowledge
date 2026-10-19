@@ -43,6 +43,28 @@ writeFileSync(out, [
 ].join("\n"));
 ' "$APP_DIR/lingui.config.ts" "$APP_DIR" "$CATALOGS" "$WORK_ROOT/lingui.config.mjs"
 
+cd "$REPO_ROOT"
+git ls-files -z -- "$LOCALES_DIR" >"$WORK_ROOT/tracked"
+catalog_ids() {
+  while IFS= read -r -d '' tracked; do
+    case "$tracked" in
+      */messages.po) ;;
+      *) continue ;;
+    esac
+    copy="$CATALOGS/${tracked#"$LOCALES_DIR"/}"
+    if [ -f "$copy" ]; then
+      git hash-object --path="$tracked" "$copy"
+    else
+      echo missing
+    fi
+  done <"$WORK_ROOT/tracked"
+}
+catalog_ids >"$WORK_ROOT/before"
+if [ ! -s "$WORK_ROOT/before" ]; then
+  echo "ERROR: git lists no tracked catalog under $LOCALES_DIR, so the i18n drift check has nothing to compare." >&2
+  exit 1
+fi
+
 cd "$APP_DIR"
 in_copy() {
   LINGUI_CONFIG="$WORK_ROOT/lingui.config.mjs" node "$SCRIPT_DIR/run-in-own-process-group.mjs" "$@" >/dev/null &
@@ -55,42 +77,35 @@ in_copy() {
 in_copy pnpm run --silent i18n:extract || exit $?
 
 cd "$REPO_ROOT"
-git ls-files -z -- "$LOCALES_DIR" >"$WORK_ROOT/tracked"
-COMPARED=0
+catalog_ids >"$WORK_ROOT/after"
 DIFFERING=""
+exec 3<"$WORK_ROOT/before" 4<"$WORK_ROOT/after"
 while IFS= read -r -d '' tracked; do
   case "$tracked" in
     */messages.po) ;;
     *) continue ;;
   esac
-  COMPARED=$((COMPARED + 1))
-  copy="$CATALOGS/${tracked#"$LOCALES_DIR"/}"
-  if [ ! -f "$copy" ]; then
+  IFS= read -r before_id <&3
+  IFS= read -r after_id <&4
+  if [ "$before_id" != missing ] && [ "$before_id" != "$after_id" ]; then
     DIFFERING="$DIFFERING$tracked"$'\n'
-    continue
   fi
-  indexed_id="$(git rev-parse ":./$tracked")"
-  copy_id="$(git hash-object --path="$tracked" "$copy")"
-  [ "$copy_id" = "$indexed_id" ] || DIFFERING="$DIFFERING$tracked"$'\n'
 done <"$WORK_ROOT/tracked"
-if [ "$COMPARED" -eq 0 ]; then
-  echo "ERROR: git lists no tracked catalog under $LOCALES_DIR, so the i18n drift check has nothing to compare." >&2
-  exit 1
-fi
+exec 3<&- 4<&-
 CREATED="$(comm -13 <(printf '%s\n' "$SEEDED") <(cd "$CATALOGS" && find . -type f | LC_ALL=C sort) | sed "s|^\./|$LOCALES_DIR/|")"
 if [ -n "$DIFFERING" ] || [ -n "$CREATED" ]; then
   echo "ERROR: i18n catalog drift detected." >&2
   echo "" >&2
-  echo "  <Trans> or t\`...\` macros under packages/app/src have changed without" >&2
-  echo "  regenerating the Lingui catalogs. Running the extractor on a copy of" >&2
-  echo "  $LOCALES_DIR produced catalogs that differ from the index." >&2
+  echo "  The Lingui catalogs in the working tree are not what the extractor writes" >&2
+  echo "  for the <Trans> and t\`...\` macros under packages/app/src: running it on a" >&2
+  echo "  copy of $LOCALES_DIR changed them." >&2
   echo "" >&2
   echo "  Fix:" >&2
   echo "    cd public/open-knowledge/packages/app && pnpm run i18n" >&2
   echo "  then commit the updated .po catalogs." >&2
   if [ -n "$DIFFERING" ]; then
     echo "" >&2
-    echo "  Catalog files that differ from the index:" >&2
+    echo "  Catalog files the extractor changed:" >&2
     printf '%s' "$DIFFERING" | sed 's/^/    /' >&2
   fi
   if [ -n "$CREATED" ]; then

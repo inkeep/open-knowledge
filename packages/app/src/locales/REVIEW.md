@@ -151,10 +151,6 @@ is that a model checking another model's translation tells us nothing new.
 A review that comes back with corrections is still a review. What decides the status is that a
 reader of the language read it, not that they had nothing to say.
 
-`git add` this file before running `pnpm check`. The catalog-drift guard diffs the whole of
-`src/locales/` against the index, so an unstaged edit to this file or to `GLOSSARY.md` is
-reported as catalog drift and sends you off to re-run an extractor that will change nothing.
-
 ## Offering a locale
 
 One line, in `packages/core/src/i18n/locales.ts` — adding the tag to `PICKER_LOCALES`. Everything

@@ -27,7 +27,7 @@
     "check:doc-links": "pnpm --dir docs run validate-link",
     "check:server-test-inputs": "node scripts/check-server-test-inputs.mjs",
     "check:drift": "pnpm run check:drift:guards && vitest run --config vitest.scripts.config.ts",
-    "check:drift:guards": "bash scripts/check-husky-prepare-guard.sh && bash scripts/check-knip-clean.sh && bash scripts/check-notices-clean.sh && bash scripts/check-schema-snapshot-clean.sh && bash scripts/check-i18n-drift.sh && node scripts/check-i18n-new-string-translations.mjs && node scripts/check-i18n-picker-completeness.mjs && bash scripts/check-no-major-changeset.sh && node scripts/check-override-floors.mjs && node scripts/check-typescript-resolution.mjs",
+    "check:drift:guards": "bash scripts/check-husky-prepare-guard.sh && bash scripts/check-knip-clean.sh && bash scripts/check-notices-clean.sh && bash scripts/check-schema-snapshot-clean.sh && bash scripts/check-i18n-drift.sh && node scripts/check-i18n-compiled-catalogs-untracked.mjs && node scripts/check-i18n-new-string-translations.mjs && node scripts/check-i18n-picker-completeness.mjs && bash scripts/check-no-major-changeset.sh && node scripts/check-override-floors.mjs && node scripts/check-typescript-resolution.mjs",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test test:uncached",
     "test:uncached": "vitest run --config vitest.uncached.config.ts",
