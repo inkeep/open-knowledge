@@ -3,6 +3,7 @@
 import { humanFormat } from '@inkeep/open-knowledge-core/config/errors';
 import { Trans, useLingui } from '@lingui/react/macro';
 import {
+  ChevronLeft,
   ChevronRight,
   Copy,
   FilePlus,
@@ -115,6 +116,7 @@ import {
 } from '@/lib/file-tree-menu-action-events';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { ProfilerBoundary } from '@/lib/perf';
 import { revealInFileManagerLabel } from '@/lib/platform-labels';
 import { revealEditorBeforeActing } from '@/lib/reveal-editor';
@@ -193,7 +195,7 @@ function FileSidebarInner() {
 
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
 
-  const { state: sidebarState, toggleSidebar, setOpen, dismissCover } = useSidebar();
+  const { state: sidebarState, toggleSidebar, setOpen, cover, dismissCover } = useSidebar();
   const isEmbedded = useIsEmbedded();
 
   const [folderState, setFolderState] = useState(EMPTY_FOLDER_STATE);
@@ -603,7 +605,7 @@ function FileSidebarInner() {
            * context menu — same a11y semantics as a Radix Slot. */}
           <div className="contents" onContextMenu={handleSidebarSurfaceContextMenu}>
             <SidebarContent>
-              <ConflictsSection />
+              {cover ? null : <ConflictsSection />}
               {}
               {
                 <Collapsible
@@ -615,8 +617,28 @@ function FileSidebarInner() {
                     {}
                     <SidebarGroupLabel
                       data-sidebar-project-row=""
-                      className="h-11 shrink-0 gap-1 rounded-none"
+                      className={cn(
+                        'h-11 shrink-0 gap-1 rounded-none',
+                        cover && 'sticky top-0 z-10 bg-sidebar',
+                      )}
                     >
+                      {cover ? (
+                        <Button
+                          data-files-back=""
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t`Back to editor`}
+                          title={t`Back to editor`}
+                          onClick={() => dismissCover()}
+                          onKeyDown={(event) => {
+                            if (event.key !== 'Escape' || isOverlayLayerOpen()) return;
+                            event.preventDefault();
+                            dismissCover();
+                          }}
+                        >
+                          <ChevronLeft aria-hidden="true" />
+                        </Button>
+                      ) : null}
                       <CollapsibleTrigger
                         data-sidebar-root-context
                         className="flex min-w-0 flex-1 items-center gap-1.5"
@@ -813,6 +835,7 @@ function FileSidebarInner() {
                 </Collapsible>
               }
               {}
+              {cover ? <ConflictsSection /> : null}
               {showSkillsSection ? <SkillsSidebarDock filesOpen={filesOpen} /> : null}
             </SidebarContent>
             <SidebarFooter className="px-0 empty:hidden">

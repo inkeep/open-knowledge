@@ -279,6 +279,14 @@ async function widthOf(locator: Locator): Promise<number> {
   return locator.evaluate((element) => element.getBoundingClientRect().width);
 }
 
+function ownsItsCentre(target: Locator): Promise<boolean> {
+  return target.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    return hit != null && element.contains(hit);
+  });
+}
+
 async function settleFrames(page: Page): Promise<void> {
   await page.evaluate(
     () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
@@ -940,6 +948,91 @@ test('Files opens as a full editor cover and Back preserves docking intent', asy
   await expect(cover).not.toBeVisible();
   await page.setViewportSize({ width: 1000, height: 700 });
   await expect(page.locator('[data-sidebar="sidebar"]')).toBeVisible();
+  await expect(page.locator('[data-sidebar-project-row]')).toBeVisible();
+  await expect(page.locator('[data-files-cover]')).toHaveCount(0);
+  await expect(page.locator('[data-files-back]')).toHaveCount(0);
+});
+
+test('Files cover keeps Back in view when its sidebar scrolls in a short window', async ({
+  page,
+  api,
+}) => {
+  const docName = `editor-card-files-cover-short-${test.info().workerIndex}`;
+  await api.seedDocs([{ name: docName, markdown: DOC_MARKDOWN }]);
+  await page.setViewportSize({ width: 390, height: 240 });
+  await page.goto(`/#/${docName}`);
+  await waitForActiveProviderSynced(page);
+
+  await page.locator('[data-sidebar="trigger"]').click();
+  const cover = page.locator('[data-files-cover]');
+  await expect(cover).toBeVisible();
+  await cover.getByText('Skills Studio', { exact: true }).click();
+  const content = cover.locator('[data-sidebar="content"]');
+  await expect
+    .poll(() => content.evaluate((element) => element.scrollHeight - element.clientHeight))
+    .toBeGreaterThan(0);
+  const rowHeight = await cover
+    .locator('[data-sidebar-project-row]')
+    .evaluate((element) => element.getBoundingClientRect().height);
+  await content.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect
+    .poll(() => content.evaluate((element) => element.scrollTop))
+    .toBeGreaterThanOrEqual(rowHeight);
+  const back = cover.getByRole('button', { name: 'Back to editor', exact: true });
+  await expect.poll(() => ownsItsCentre(back)).toBe(true);
+  await back.click();
+  await expect(cover).toHaveCount(0);
+});
+
+test('Files cover keeps Back as its first row when there are conflicts', async ({ page, api }) => {
+  await page.route('**/api/sync/conflicts', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        conflicts: Array.from({ length: 25 }, (_, i) => ({
+          file: `folder/conflicted-doc-number-${i}.md`,
+          detectedAt: '2026-08-05T00:00:00.000Z',
+          conflict: 'merge-native',
+          docName: `folder/conflicted-doc-number-${i}`,
+          revision: `reviewed-revision-${i}`,
+        })),
+      }),
+    });
+  });
+  const docName = `editor-card-files-cover-conflicts-${test.info().workerIndex}`;
+  await api.seedDocs([{ name: docName, markdown: DOC_MARKDOWN }]);
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.goto(`/#/${docName}`);
+  await waitForActiveProviderSynced(page);
+
+  await page.locator('[data-sidebar="trigger"]').click();
+  const cover = page.locator('[data-files-cover]');
+  await expect(cover).toBeVisible();
+  const conflicts = cover.getByTestId('conflicts-section');
+  await expect(conflicts).toBeVisible();
+  const row = cover.locator('[data-sidebar-project-row]');
+  const back = cover.getByRole('button', { name: 'Back to editor', exact: true });
+  const content = cover.locator('[data-sidebar="content"]');
+  const [contentBox, rowBox, conflictsBox] = await Promise.all([
+    content.boundingBox(),
+    row.boundingBox(),
+    conflicts.boundingBox(),
+  ]);
+  expect(Math.abs((rowBox?.y ?? -1) - (contentBox?.y ?? 0))).toBeLessThanOrEqual(1);
+  expect(conflictsBox?.y ?? 0).toBeGreaterThan((rowBox?.y ?? 0) + (rowBox?.height ?? 0) - 1);
+  await expect.poll(() => ownsItsCentre(back)).toBe(true);
+
+  const pinnedScroll = (rowBox?.height ?? 0) * 2;
+  await content.evaluate((element, top) => {
+    element.scrollTop = top;
+  }, pinnedScroll);
+  await expect
+    .poll(() => content.evaluate((element) => element.scrollTop))
+    .toBeGreaterThanOrEqual(pinnedScroll);
+  await expect.poll(() => ownsItsCentre(back)).toBe(true);
 });
 
 for (const panel of ['Files', 'information'] as const) {
@@ -966,9 +1059,22 @@ for (const panel of ['Files', 'information'] as const) {
     const back = cover.getByRole('button', { name: 'Back to editor', exact: true });
     await expect(back).toBeVisible();
     await expect(back).toBeFocused();
-    await expect(
-      cover.getByRole('heading', { name: panel === 'Files' ? 'Files' : docName }),
-    ).toBeVisible();
+    if (panel === 'Files') {
+      await expect(cover.getByRole('heading')).toHaveCount(0);
+      const backBox = await back.boundingBox();
+      const toolbarBox = await cover.getByRole('group', { name: 'Files toolbar' }).boundingBox();
+      expect(backBox).not.toBeNull();
+      expect(toolbarBox).not.toBeNull();
+      expect(
+        Math.abs(
+          (backBox?.y ?? 0) +
+            (backBox?.height ?? 0) / 2 -
+            ((toolbarBox?.y ?? 0) + (toolbarBox?.height ?? 0) / 2),
+        ),
+      ).toBeLessThanOrEqual(1);
+    } else {
+      await expect(cover.getByRole('heading', { name: docName })).toBeVisible();
+    }
     const cardBounds = await editorCard.boundingBox();
     const coverBounds = await cover.boundingBox();
     expect(cardBounds).not.toBeNull();
@@ -1221,7 +1327,7 @@ test('Files cover selection reveals its document while Hide keeps Files off afte
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
   await trigger.click();
   await expect(cover).toBeVisible();
-  await expect(cover.locator(':scope > div').first().getByRole('button')).toHaveCount(1);
+  await expect(cover.getByRole('button', { name: /^Hide/ })).toHaveCount(0);
   await cover.getByRole('button', { name: 'Tree view options' }).click();
   await page.getByRole('menuitem', { name: 'Hide Files', exact: true }).click();
   await expect(cover).not.toBeVisible();
@@ -1263,7 +1369,7 @@ test('Files menu Hide is reachable by touch and keyboard without a second cover 
     const cover = page.locator('[data-files-cover]');
     await trigger.tap();
     await expect(cover).toBeVisible();
-    await expect(cover.locator(':scope > div').first().getByRole('button')).toHaveCount(1);
+    await expect(cover.getByRole('button', { name: /^Hide/ })).toHaveCount(0);
     await cover.getByRole('button', { name: 'Tree view options' }).tap();
     await page.getByRole('menuitem', { name: 'Hide Files', exact: true }).tap();
     await expect(cover).toBeHidden();

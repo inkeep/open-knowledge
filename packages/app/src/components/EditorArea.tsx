@@ -850,7 +850,6 @@ function EditorAreaInner({
   } = useSidebar();
   const fileListHost = useFileListHost();
   const [filesCoverTarget, setFilesCoverTarget] = useState<HTMLDivElement | null>(null);
-  const filesBackRef = useRef<HTMLButtonElement | null>(null);
 
   const [agentsContainer, setAgentsContainer] = useState<HTMLElement | null>(null);
   const [rightTerminalContainer, setRightTerminalContainer] = useState<HTMLDivElement | null>(null);
@@ -2683,8 +2682,8 @@ function EditorAreaInner({
       dismissFilesCoverEvent(false);
       return;
     }
-    filesBackRef.current?.focus();
-  }, [filesCover, fileListHost]);
+    filesCoverTarget?.querySelector<HTMLElement>('[data-files-back]')?.focus();
+  }, [filesCover, fileListHost, filesCoverTarget]);
   useEffect(() => {
     if (!filesCover) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -3316,27 +3315,6 @@ function EditorAreaInner({
                       SECONDARY_PANEL_SURFACE_CLASS,
                     )}
                   >
-                    <div className="flex h-11 shrink-0 items-center gap-1 px-2">
-                      <Button
-                        ref={filesBackRef}
-                        data-files-back=""
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={t`Back to editor`}
-                        title={t`Back to editor`}
-                        onClick={() => dismissFilesCover()}
-                        onKeyDown={(event) => {
-                          if (event.key !== 'Escape' || isOverlayLayerOpen()) return;
-                          event.preventDefault();
-                          dismissFilesCover();
-                        }}
-                      >
-                        <ChevronLeft aria-hidden="true" />
-                      </Button>
-                      <h2 className="min-w-0 flex-1 truncate font-mono text-xs font-normal uppercase tracking-wide text-muted-foreground">
-                        {t`Files`}
-                      </h2>
-                    </div>
                     <div ref={setFilesCoverTarget} className="relative min-h-0 flex-1" />
                   </section>
                 ) : null}
