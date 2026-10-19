@@ -14,7 +14,7 @@ import {
   acquiredBundleTooLarge,
   discoverSkillDirs,
   discoverWellKnownSkills,
-  fetchSource,
+  fetchSourceListing,
   inspectPluginBundleDir,
   inspectPluginSource,
   parseGitHubRepoSearch,
@@ -35,7 +35,7 @@ import { successResponse } from './http/success-response.ts';
 import { isAllowedGitUrl } from './local-op-security.ts';
 import type { PinoLogger } from './logger.ts';
 import { rejectDisallowedGitSpec } from './skill-git-spec-guard.ts';
-import { fetchCachedSource } from './skill-source-cache.ts';
+import { fetchCachedListing, fetchCachedSource } from './skill-source-cache.ts';
 import { getPopularSkills, getPublisherSkills } from './skills-leaderboard.ts';
 import { readSkillsLockFile } from './skills-lock-store.ts';
 
@@ -400,7 +400,7 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
       }
       if (rejectDisallowedGitSpec(res, spec, 'skills-discover')) return;
       try {
-        const fetched = await fetchCachedSource(spec);
+        const fetched = await fetchCachedListing(spec);
         const dirs = discoverSkillDirs(fetched.dir);
         const skills = dirs.map((d) => {
           const meta = readSkillDirMeta(d.dir);
@@ -471,7 +471,7 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
           if (spec && allowed) {
             let cleanup: (() => void) | undefined;
             try {
-              const fetched = await fetchSource(spec);
+              const fetched = await fetchSourceListing(spec);
               cleanup = fetched.cleanup;
               const names = discoverSkillDirs(fetched.dir).map(
                 (d) => readSkillDirMeta(d.dir)?.name ?? d.name,

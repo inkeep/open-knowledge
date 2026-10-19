@@ -16,6 +16,7 @@ export const SkillLockEntrySchema = z.looseObject({
   source: z.string(),
   pluginProvider: z.string().optional(),
   skill: z.string().optional(),
+  subpath: z.string().optional(),
   ref: z.string().optional(),
   contentHash: z.string(),
   files: z.array(z.string()).optional(),

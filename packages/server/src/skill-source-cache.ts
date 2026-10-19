@@ -1,5 +1,5 @@
 import type { Fetched, SourceSpec } from '@inkeep/open-knowledge-core/skills-catalog';
-import { fetchSource } from '@inkeep/open-knowledge-core/skills-catalog';
+import { fetchSource, fetchSourceListing } from '@inkeep/open-knowledge-core/skills-catalog';
 
 const TTL_MS = 30_000;
 
@@ -26,12 +26,20 @@ function sweepExpired(now: number): void {
 
 export async function fetchCachedSource(spec: SourceSpec): Promise<Fetched> {
   if (spec.kind === 'local') return fetchSource(spec);
+  return cached(sourceKey(spec), () => fetchSource(spec));
+}
+
+export async function fetchCachedListing(spec: SourceSpec): Promise<Fetched> {
+  if (spec.kind !== 'git' || spec.subpath) return fetchCachedSource(spec);
+  return cached(`listing\n${sourceKey(spec)}`, () => fetchSourceListing(spec));
+}
+
+async function cached(key: string, fetchOnce: () => Promise<Fetched>): Promise<Fetched> {
   const now = Date.now();
   sweepExpired(now);
-  const key = sourceKey(spec);
   let entry = cache.get(key);
   if (!entry) {
-    const fetched = fetchSource(spec);
+    const fetched = fetchOnce();
     entry = { fetched, expiresAt: now + TTL_MS };
     cache.set(key, entry);
     const self = entry;

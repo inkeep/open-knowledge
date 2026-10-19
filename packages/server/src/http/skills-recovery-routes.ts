@@ -16,8 +16,6 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { resolveProjectIdentity } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import {
-  discoverSkillDirs,
-  fetchSource,
   parseSkillDir,
   parseSource,
   resolvePluginUpdateSource,
@@ -32,16 +30,20 @@ import type { ContentFilter } from '../content-filter.ts';
 import { extractActorIdentity } from '../extract-actor-identity.ts';
 import { scanGlobalInPlaceSkills, scanInPlaceSkills } from '../in-place-skills.ts';
 import { getLogger } from '../logger.ts';
-import type { SkillReimportDeps, SkillReimportService } from '../services/skill-reimport.ts';
+import type {
+  RecordedFolderUpdate,
+  SkillReimportDeps,
+  SkillReimportService,
+} from '../services/skill-reimport.ts';
 import {
   groupReimportNamesBySource,
-  pickReimportDir,
   type SkillReimportOutcome,
 } from '../services/skill-reimport.ts';
 import type { ShadowRef } from '../shadow-repo.ts';
 import { isDisallowedGitSpec, rejectDisallowedGitSpec } from '../skill-git-spec-guard.ts';
 import { validateSkillForInstall } from '../skill-projection.ts';
 import { restoreSkillVersion } from '../skill-restore.ts';
+import { acquireReimportSources, type ReimportAcquisition } from '../skill-source-folders.ts';
 import { mutateSkillsLock, readSkillsLockFile } from '../skills-lock-store.ts';
 import { type ApiRouteGroup, createApiRouteGroup } from './api-pipeline.ts';
 import { errorResponse } from './error-response.ts';
@@ -377,6 +379,7 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
         }
         let ref: string | undefined;
         let acquiredDir: string | null = null;
+        let folder: RecordedFolderUpdate | undefined;
         try {
           const recordedSkill = entry.skill ?? body.name;
           const renamedSkill = RENAMED_PACK_SKILLS[recordedSkill];
@@ -401,26 +404,28 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
             return;
           }
           if (rejectDisallowedGitSpec(res, spec, 'skill-reimport')) return;
-          const fetched = await fetchSource(spec);
-          cleanup = fetched.cleanup;
-          ref = fetched.ref;
-          const dirs = discoverSkillDirs(fetched.dir);
-          const pick = pickReimportDir(dirs, {
-            ...(resolvedSkill !== undefined ? { recordedSkill: resolvedSkill } : {}),
-            localName: body.name,
-            frontmatterNameOf: (dir) => parseSkillDir(dir)?.name,
-          });
+          const acquired = await acquireReimportSources(spec, [
+            {
+              name: body.name,
+              entry,
+              ...(resolvedSkill !== undefined ? { recordedSkill: resolvedSkill } : {}),
+            },
+          ]);
+          cleanup = acquired.cleanup;
+          ref = acquired.ref;
+          const pick = acquired.picks.get(body.name);
           if (!pick) {
             errorResponse(
               res,
               404,
               'urn:ok:error:not-found',
               'Could not locate this skill in its source anymore.',
-              { handler: 'skill-reimport', detail: dirs.map((d) => d.name).join(', ') },
+              { handler: 'skill-reimport', detail: acquired.dirs.map((d) => d.name).join(', ') },
             );
             return;
           }
           acquiredDir = pick.dir;
+          folder = pick.folder;
         } catch (e) {
           if (e instanceof SkillFetchError) {
             errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Could not fetch source.', {
@@ -444,6 +449,7 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
           entry,
           lockPath,
           ref,
+          ...(folder ? { folder } : {}),
           actor,
           ...(body.dryRun !== undefined ? { dryRun: body.dryRun } : {}),
         });
@@ -518,8 +524,7 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
         for (const group of bySource) {
           let cleanup: () => void = () => {};
           try {
-            let ref: string | undefined;
-            let dirs: ReturnType<typeof discoverSkillDirs> = [];
+            let acquired: ReimportAcquisition;
             try {
               const probe = group.names[0] as string;
               const skillsSh = await resolveSkillsShImportSource(group.source, probe).catch(
@@ -549,10 +554,27 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
                 }
                 continue;
               }
-              const fetched = await fetchSource(spec);
-              cleanup = fetched.cleanup;
-              ref = fetched.ref;
-              dirs = discoverSkillDirs(fetched.dir);
+              acquired = await acquireReimportSources(
+                spec,
+                group.names.flatMap((name) => {
+                  const entry = resolveReimportLockEntry(
+                    body.scope,
+                    name,
+                    effectiveSkillRoot(body.scope, name).root,
+                    lock,
+                  );
+                  return entry
+                    ? [
+                        {
+                          name,
+                          entry,
+                          ...(entry.skill !== undefined ? { recordedSkill: entry.skill } : {}),
+                        },
+                      ]
+                    : [];
+                }),
+              );
+              cleanup = acquired.cleanup;
             } catch (e) {
               getLogger('skills-reimport-bulk').warn(
                 { source: group.source, err: e, requestId: getRequestId(_req) },
@@ -586,11 +608,7 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
                 });
                 continue;
               }
-              const pick = pickReimportDir(dirs, {
-                ...(entry.skill !== undefined ? { recordedSkill: entry.skill } : {}),
-                localName: name,
-                frontmatterNameOf: (dir) => parseSkillDir(dir)?.name,
-              });
+              const pick = acquired.picks.get(name);
               if (!pick) {
                 results.push({
                   requested: name,
@@ -608,7 +626,8 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
                   scope: body.scope,
                   entry,
                   lockPath,
-                  ref,
+                  ref: acquired.ref,
+                  ...(pick.folder ? { folder: pick.folder } : {}),
                   actor,
                 });
                 if (!outcome.ok) {

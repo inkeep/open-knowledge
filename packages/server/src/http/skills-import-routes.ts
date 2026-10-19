@@ -14,7 +14,9 @@ import {
 } from '@inkeep/open-knowledge-core';
 import {
   discoverSkillDirs,
+  type FetchedListing,
   fetchSource,
+  fetchSourceListing,
   parseSkillDir,
   parseSource,
   readSkillDirMeta,
@@ -33,6 +35,11 @@ import { createMultipartParser, type MultipartParser } from '../multipart.ts';
 import type { SkillImportOutcome, SkillImportService } from '../services/skill-import.ts';
 import { rejectDisallowedGitSpec } from '../skill-git-spec-guard.ts';
 import { resolveSkillInstallReportSettings } from '../skill-install-report-config.ts';
+import {
+  fetchPickedFolders,
+  recordsSkillFolder,
+  skillFolderWithin,
+} from '../skill-source-folders.ts';
 import { reportSkillInstall } from '../skills-sh-install-report.ts';
 import { type ApiRouteGroup, createApiRouteGroup } from './api-pipeline.ts';
 import { errorResponse } from './error-response.ts';
@@ -113,6 +120,7 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
         let ref: string | undefined;
         let publisher: string | undefined;
         let upstreamSkill: string | undefined;
+        let subpath: string | undefined;
         let resolvedSourceForReport = body.source;
 
         {
@@ -138,10 +146,10 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
               return;
             }
             if (rejectDisallowedGitSpec(res, spec, 'skill-import')) return;
-            const fetched = await fetchSource(spec);
-            cleanup = fetched.cleanup;
-            ref = fetched.ref;
-            const dirs = discoverSkillDirs(fetched.dir);
+            const listing = await fetchSourceListing(spec);
+            cleanup = listing.cleanup;
+            ref = listing.ref;
+            const dirs = discoverSkillDirs(listing.dir);
             if (dirs.length === 0) {
               errorResponse(res, 404, 'urn:ok:error:not-found', 'No SKILL.md found in source.', {
                 handler: 'skill-import',
@@ -172,7 +180,16 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
               );
               return;
             }
-            acquiredDir = pick.dir;
+            const folder = skillFolderWithin(listing.dir, pick.dir);
+            const content = await fetchPickedFolders(listing, [pick.dir]);
+            const listingCleanup = cleanup;
+            cleanup = () => {
+              content.cleanup();
+              listingCleanup();
+            };
+            ref = content.ref;
+            acquiredDir = content.dirs[0] ?? pick.dir;
+            if (recordsSkillFolder(spec) && folder !== '') subpath = folder;
             upstreamSkill = pick.name;
             sourceLabel = rawSource;
             publisher = skillsSh?.publisher ?? publisherFromSource(resolvedSource);
@@ -201,6 +218,7 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
           ref,
           publisher,
           upstreamSkill,
+          ...(subpath !== undefined ? { subpath } : {}),
           actor,
           skipProjection: body.install === false,
         });
@@ -260,6 +278,11 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
         let ref: string | undefined;
         let publisher: string | undefined;
         let resolvedSourceForReport = rawSource;
+        const fetchedDirs = new Map<string, { dir: string; subpath?: string }>();
+        const findRequested = (requested: string) =>
+          dirs.find((d) => d.name === requested) ??
+          dirs.find((d) => parseSkillDir(d.dir)?.name === requested) ??
+          dirs.find((d) => d.name === RENAMED_PACK_SKILLS[requested]);
         try {
           const skillsSh = await resolveSkillsShImportSource(rawSource, body.skills[0]);
           const resolvedSource = skillsSh?.source ?? rawSource;
@@ -279,10 +302,27 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
             siteSpec = spec;
             siteIndex = await readWellKnownIndex(spec.origin);
           } else {
-            const fetched = await fetchSource(spec);
-            cleanup = fetched.cleanup;
-            ref = fetched.ref;
-            dirs = discoverSkillDirs(fetched.dir);
+            const listing: FetchedListing = await fetchSourceListing(spec);
+            cleanup = listing.cleanup;
+            ref = listing.ref;
+            dirs = discoverSkillDirs(listing.dir);
+            const picked = [...new Set(body.skills)].flatMap((requested) => {
+              const found = findRequested(requested);
+              return found ? [found.dir] : [];
+            });
+            const content = await fetchPickedFolders(listing, picked);
+            cleanup = () => {
+              content.cleanup();
+              listing.cleanup();
+            };
+            ref = content.ref;
+            picked.forEach((dir, i) => {
+              const folder = skillFolderWithin(listing.dir, dir);
+              fetchedDirs.set(dir, {
+                dir: content.dirs[i] ?? dir,
+                ...(recordsSkillFolder(spec) && folder !== '' ? { subpath: folder } : {}),
+              });
+            });
           }
         } catch (e) {
           if (e instanceof SkillFetchError) {
@@ -304,6 +344,7 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
         for (const requested of new Set(body.skills)) {
           let acquiredDir: string;
           let upstreamSkill: string;
+          let subpath: string | undefined;
           let perSkill: () => void = () => {};
           if (siteSpec !== null) {
             try {
@@ -325,15 +366,14 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
               continue;
             }
           } else {
-            const found =
-              dirs.find((d) => d.name === requested) ??
-              dirs.find((d) => parseSkillDir(d.dir)?.name === requested) ??
-              dirs.find((d) => d.name === RENAMED_PACK_SKILLS[requested]);
+            const found = findRequested(requested);
             if (!found) {
               results.push({ requested, status: 'not-found', warnings: [], warningCodes: [] });
               continue;
             }
-            acquiredDir = found.dir;
+            const fetched = fetchedDirs.get(found.dir);
+            acquiredDir = fetched?.dir ?? found.dir;
+            subpath = fetched?.subpath;
             upstreamSkill = found.name;
           }
           try {
@@ -344,6 +384,7 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
               ref,
               publisher,
               upstreamSkill,
+              ...(subpath !== undefined ? { subpath } : {}),
               actor,
               skipProjection: body.install === false,
             });

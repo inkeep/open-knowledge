@@ -162,6 +162,15 @@ describe('discoverSkillDirs', () => {
     );
     expect(discoverSkillDirs(repo).map((s) => s.name)).toEqual(['grill-me', 'tdd']);
   });
+
+  test('a folder whose SKILL.md is a directory is not a skill', () => {
+    const repo = join(root, 'skill-md-directory');
+    writeSkill(join(repo, 'skills', 'real'), 'name: real\ndescription: d');
+    mkdirSync(join(repo, 'reports', 'copied', 'SKILL.md'), { recursive: true });
+    writeFileSync(join(repo, 'reports', 'copied', 'SKILL.md', 'notes.txt'), 'notes\n');
+    expect(discoverSkillDirs(repo).map((s) => s.name)).toEqual(['real']);
+    expect(discoverSkillDirs(join(repo, 'reports', 'copied'))).toEqual([]);
+  });
 });
 
 describe('parseSource', () => {

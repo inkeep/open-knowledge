@@ -1,10 +1,10 @@
 import { execFile, execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { isLocalSkillSource } from '../source-fields.ts';
-import { SkillFetchError } from './errors.ts';
+import { SkillFetchError, SkillSubpathNotFoundError } from './errors.ts';
 import {
   fetchWellKnownSkill,
   type WellKnownFetchOptions,
@@ -23,7 +23,7 @@ export interface SkillsShSourceRef {
   skill: string;
 }
 
-export { SkillFetchError } from './errors.ts';
+export { SkillFetchError, SkillSubpathNotFoundError } from './errors.ts';
 
 const GIT_FETCH_BUDGET_MS = 60_000;
 
@@ -108,20 +108,10 @@ export async function fetchSource(
     if (!existsSync(dir)) throw new SkillFetchError(`Local path not found: ${dir}`);
     return { dir, cleanup: () => {} };
   }
-  const hasTransportScheme = /^[a-z][a-z0-9+.-]+:/i.test(spec.url);
-  if (hasTransportScheme && !ALLOWED_GIT_TRANSPORTS.some((p) => p.test(spec.url))) {
-    throw new SkillFetchError(`Unsupported git transport: ${spec.url}`);
-  }
+  assertAllowedGitTransport(spec.url);
   const deadline = performance.now() + GIT_FETCH_BUDGET_MS;
-  const tmp =
-    (spec.subpath ? await cloneSubpathOnly(spec.url, spec.subpath, deadline) : undefined) ??
-    (await cloneWholeRepository(spec.url, deadline));
-  let ref: string | undefined;
-  try {
-    ref = execFileSync('git', ['-C', tmp, 'rev-parse', 'HEAD'], { stdio: 'pipe' })
-      .toString()
-      .trim();
-  } catch {}
+  const tmp = await cloneFolders(spec.url, spec.subpath ? [spec.subpath] : [], deadline);
+  const ref = headRef(tmp);
   const dir = spec.subpath ? resolve(tmp, spec.subpath) : tmp;
   const containment = relative(tmp, dir);
   if (containment.startsWith('..') || isAbsolute(containment)) {
@@ -130,9 +120,72 @@ export async function fetchSource(
   }
   if (!existsSync(dir)) {
     rmSync(tmp, { recursive: true, force: true });
-    throw new SkillFetchError(`subpath not found in repo: ${spec.subpath}`);
+    throw new SkillSubpathNotFoundError(`subpath not found in repo: ${spec.subpath}`);
   }
   return { dir, ref, cleanup: () => rmSync(tmp, { recursive: true, force: true }) };
+}
+
+export interface FetchedListing extends Fetched {
+  readonly fetchFolders?: (folders: readonly string[]) => Promise<Fetched>;
+}
+
+export async function fetchSourceListing(
+  spec: SourceSpec,
+  opts: WellKnownFetchOptions = {},
+): Promise<FetchedListing> {
+  if (spec.kind !== 'git' || spec.subpath) return fetchSource(spec, opts);
+  const { url } = spec;
+  assertAllowedGitTransport(url);
+  const deadline = performance.now() + GIT_FETCH_BUDGET_MS;
+  const listed = await cloneSkillFilesOnly(url, deadline);
+  const tmp =
+    typeof listed === 'string' ? listed : await cloneWholeRepository(url, deadline, listed.failure);
+  const fetched = {
+    dir: tmp,
+    ref: headRef(tmp),
+    cleanup: () => rmSync(tmp, { recursive: true, force: true }),
+  };
+  if (typeof listed !== 'string') return fetched;
+  return {
+    ...fetched,
+    fetchFolders: async (folders) => {
+      const escaping = folders.find((folder) => {
+        const inside = relative(tmp, resolve(tmp, folder));
+        return inside.startsWith('..') || isAbsolute(inside);
+      });
+      if (escaping !== undefined) {
+        throw new SkillFetchError(`subpath escapes the clone: ${escaping}`);
+      }
+      const dir = await cloneFolders(url, folders, deadline);
+      const missing = folders.find((folder) => !existsSync(resolve(dir, folder)));
+      if (missing !== undefined) {
+        rmSync(dir, { recursive: true, force: true });
+        throw new SkillSubpathNotFoundError(`subpath not found in repo: ${missing}`);
+      }
+      return {
+        dir,
+        ref: headRef(dir),
+        cleanup: () => rmSync(dir, { recursive: true, force: true }),
+      };
+    },
+  };
+}
+
+function assertAllowedGitTransport(url: string): void {
+  const hasTransportScheme = /^[a-z][a-z0-9+.-]+:/i.test(url);
+  if (hasTransportScheme && !ALLOWED_GIT_TRANSPORTS.some((p) => p.test(url))) {
+    throw new SkillFetchError(`Unsupported git transport: ${url}`);
+  }
+}
+
+function headRef(repo: string): string | undefined {
+  try {
+    return execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { stdio: 'pipe' })
+      .toString()
+      .trim();
+  } catch {
+    return undefined;
+  }
 }
 
 function runGit(args: readonly string[], deadline: number, stdin?: string): Promise<unknown> {
@@ -154,60 +207,142 @@ function runGit(args: readonly string[], deadline: number, stdin?: string): Prom
   return run;
 }
 
-function gitCloneFailed(url: string, e: unknown): SkillFetchError {
-  const msg = e instanceof Error ? e.message : String(e);
-  return new SkillFetchError(`git clone failed for ${url}: ${msg}`);
+function withoutUrlCredentials(text: string): string {
+  return text.replace(/(\bhttps?:\/\/)[^\s/@]+@/gi, '$1***@');
 }
 
-async function cloneWholeRepository(url: string, deadline: number): Promise<string> {
+function gitFailureReason(e: unknown): string {
+  const stderr =
+    e instanceof Error && 'stderr' in e && typeof e.stderr === 'string' ? e.stderr.trim() : '';
+  return withoutUrlCredentials(stderr !== '' ? stderr : e instanceof Error ? e.message : String(e));
+}
+
+function gitCloneFailed(url: string, e: unknown, earlierFailure?: string): SkillFetchError {
+  const reason = gitFailureReason(e);
+  const earlier =
+    earlierFailure === undefined || earlierFailure === reason
+      ? ''
+      : `. Fetching only part of the repository had failed first: ${earlierFailure}`;
+  return new SkillFetchError(
+    withoutUrlCredentials(`git clone failed for ${url}: ${reason}${earlier}`),
+  );
+}
+
+function gitFetchTimedOut(url: string): SkillFetchError {
+  return new SkillFetchError(
+    withoutUrlCredentials(`Fetching ${url} hit the ${GIT_FETCH_BUDGET_MS / 1000}-second limit.`),
+  );
+}
+
+async function cloneWholeRepository(
+  url: string,
+  deadline: number,
+  earlierFailure?: string,
+): Promise<string> {
   const tmp = mkdtempSync(join(tmpdir(), 'ok-skill-import-'));
   try {
     await runGit(['clone', '-q', '--depth', '1', '--', url, tmp], deadline);
   } catch (e) {
     rmSync(tmp, { recursive: true, force: true });
-    throw gitCloneFailed(url, e);
+    throw budgetSpent(e, deadline) ? gitFetchTimedOut(url) : gitCloneFailed(url, e, earlierFailure);
   }
   return tmp;
 }
 
-async function cloneSubpathOnly(
+async function cloneFolders(
   url: string,
-  subpath: string,
+  folders: readonly string[],
   deadline: number,
-): Promise<string | undefined> {
+): Promise<string> {
+  const sparse = folders.length > 0 ? await cloneOnlyFolders(url, folders, deadline) : {};
+  return typeof sparse === 'string' ? sparse : cloneWholeRepository(url, deadline, sparse.failure);
+}
+
+async function cloneOnlyFolders(
+  url: string,
+  folders: readonly string[],
+  deadline: number,
+): Promise<string | { failure?: string }> {
   const tmp = mkdtempSync(join(tmpdir(), 'ok-skill-import-'));
-  const inside = relative(tmp, resolve(tmp, subpath));
-  if (inside !== '' && !inside.startsWith('..') && !isAbsolute(inside)) {
-    const sparsePath = inside.split(sep).join('/');
-    try {
-      await runGit(
-        ['clone', '-q', '--depth', '1', '--filter=blob:none', '--sparse', '--', url, tmp],
-        deadline,
-      );
-      await runGit(
-        ['-C', tmp, 'sparse-checkout', 'set', '--skip-checks', '--stdin'],
-        deadline,
-        `${sparsePath}\n`,
-      );
-      if (existsSync(join(tmp, inside)) || headCommitLacks(tmp, sparsePath)) return tmp;
-      console.warn(
-        '[skills-catalog] sparse checkout left the subpath unselected, cloning the whole repository',
-        { url, subpath },
-      );
-    } catch (e) {
-      if (budgetSpent(e, deadline)) {
-        rmSync(tmp, { recursive: true, force: true });
-        throw gitCloneFailed(url, e);
-      }
-      console.warn('[skills-catalog] sparse clone failed, cloning the whole repository', {
-        url,
-        subpath,
-        err: e,
-      });
-    }
+  const inside = folders.map((folder) => relative(tmp, resolve(tmp, folder)));
+  if (inside.some((p) => p === '' || p.startsWith('..') || isAbsolute(p))) {
+    rmSync(tmp, { recursive: true, force: true });
+    return {};
   }
-  rmSync(tmp, { recursive: true, force: true });
-  return undefined;
+  const sparsePaths = inside.map((p) => p.split(sep).join('/'));
+  const subpath = folders.join(', ');
+  try {
+    await runGit(
+      ['clone', '-q', '--depth', '1', '--filter=blob:none', '--sparse', '--', url, tmp],
+      deadline,
+    );
+    await runGit(
+      ['-C', tmp, 'sparse-checkout', 'set', '--skip-checks', '--stdin'],
+      deadline,
+      sparsePaths.map((p) => `${p}\n`).join(''),
+    );
+    const unselected = folders.filter(
+      (_, i) =>
+        !existsSync(join(tmp, inside[i] as string)) &&
+        !headCommitLacks(tmp, sparsePaths[i] as string),
+    );
+    if (unselected.length === 0) return tmp;
+    console.warn(
+      '[skills-catalog] sparse checkout left the subpath unselected, cloning the whole repository',
+      { url: withoutUrlCredentials(url), subpath: unselected.join(', ') },
+    );
+    rmSync(tmp, { recursive: true, force: true });
+    return { failure: `sparse checkout left ${unselected.join(', ')} unselected` };
+  } catch (e) {
+    rmSync(tmp, { recursive: true, force: true });
+    if (budgetSpent(e, deadline)) throw gitFetchTimedOut(url);
+    const failure = gitFailureReason(e);
+    console.warn('[skills-catalog] sparse clone failed, cloning the whole repository', {
+      url: withoutUrlCredentials(url),
+      subpath,
+      err: new Error(failure),
+    });
+    return { failure };
+  }
+}
+
+async function cloneSkillFilesOnly(
+  url: string,
+  deadline: number,
+): Promise<string | { failure: string }> {
+  const tmp = mkdtempSync(join(tmpdir(), 'ok-skill-import-'));
+  try {
+    await runGit(
+      ['clone', '-q', '--depth', '1', '--filter=blob:none', '--no-checkout', '--', url, tmp],
+      deadline,
+    );
+    mkdirSync(join(tmp, '.git', 'info'), { recursive: true });
+    writeFileSync(join(tmp, '.git', 'info', 'sparse-checkout'), 'SKILL.md\n');
+    await runGit(
+      [
+        '-c',
+        'core.sparseCheckout=true',
+        '-c',
+        'core.sparseCheckoutCone=false',
+        '-C',
+        tmp,
+        'read-tree',
+        '-mu',
+        'HEAD',
+      ],
+      deadline,
+    );
+    return tmp;
+  } catch (e) {
+    rmSync(tmp, { recursive: true, force: true });
+    if (budgetSpent(e, deadline)) throw gitFetchTimedOut(url);
+    const failure = gitFailureReason(e);
+    console.warn('[skills-catalog] skill listing clone failed, cloning the whole repository', {
+      url: withoutUrlCredentials(url),
+      err: new Error(failure),
+    });
+    return { failure };
+  }
 }
 
 function budgetSpent(e: unknown, deadline: number): boolean {

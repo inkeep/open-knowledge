@@ -190,15 +190,23 @@ function acquiredSkill(dir: string, skillMd: string, files: AcquiredFile[]): Acq
   return { name, description, skillMd, files, contentHash: hash.digest('hex') };
 }
 
+function hasSkillFile(dir: string): boolean {
+  try {
+    return statSync(join(dir, 'SKILL.md')).isFile();
+  } catch {
+    return false;
+  }
+}
+
 export function discoverSkillDirs(root: string): Array<{ name: string; dir: string }> {
-  if (existsSync(join(root, 'SKILL.md'))) return [{ name: basename(root), dir: root }];
+  if (hasSkillFile(root)) return [{ name: basename(root), dir: root }];
   const found: Array<{ name: string; dir: string }> = [];
   const MAX_DEPTH = 8;
   const MAX_DIRS = 5_000;
   let visited = 0;
   const walk = (dir: string, depth: number) => {
     if (depth > MAX_DEPTH || ++visited > MAX_DIRS) return;
-    if (existsSync(join(dir, 'SKILL.md'))) {
+    if (hasSkillFile(dir)) {
       found.push({ name: basename(dir), dir });
       return;
     }

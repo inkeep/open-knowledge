@@ -1,10 +1,13 @@
 export {
   ALLOWED_GIT_TRANSPORTS,
   type Fetched,
+  type FetchedListing,
   fetchSource,
+  fetchSourceListing,
   parseSkillsShSource,
   parseSource,
   SkillFetchError,
+  SkillSubpathNotFoundError,
   type SkillsShSourceRef,
   type SourceSpec,
 } from './acquire/fetch.ts';

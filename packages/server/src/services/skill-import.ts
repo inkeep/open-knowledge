@@ -98,6 +98,7 @@ export interface SkillImportService {
     ref?: string;
     publisher?: string;
     upstreamSkill?: string;
+    subpath?: string;
     actor: ActorIdentity;
     skipProjection?: boolean;
   }): Promise<SkillImportOutcome>;
@@ -110,7 +111,8 @@ export function createSkillImportService(deps: SkillImportDeps): SkillImportServ
 
   return {
     async runSkillImport(params) {
-      const { acquiredDir, scope, sourceLabel, ref, publisher, upstreamSkill, actor } = params;
+      const { acquiredDir, scope, sourceLabel, ref, publisher, upstreamSkill, subpath, actor } =
+        params;
       if (!deps.projectDir) {
         return {
           ok: false,
@@ -277,6 +279,7 @@ export function createSkillImportService(deps: SkillImportDeps): SkillImportServ
           publisher,
           importedAt: new Date().toISOString(),
           ...(upstreamSkill !== undefined ? { skill: upstreamSkill } : {}),
+          ...(subpath !== undefined ? { subpath } : {}),
         }),
       );
 
