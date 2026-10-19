@@ -14,8 +14,10 @@ A Git repository is the simplest way to get skills to a team. Packaging them as 
 | Both | The repository first; publish it as a plugin once it has settled |
 
 ```bash
-/plugin marketplace add your-org/team-skills
+claude plugin marketplace add https://github.com/your-org/team-skills.git --sparse .claude-plugin plugins
 ```
+
+`--sparse` downloads only the folders it names, here the marketplace file and the plugins. Without it, every install downloads the whole repository, which gets slow once the repository holds more than its plugins. Name the folders your plugins read.
 
 ## What a plugin costs
 
