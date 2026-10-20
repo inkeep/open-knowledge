@@ -35,6 +35,7 @@ function freshSlot(): string {
   write(root, '.ok/local/state.json', '{}');
   write(root, '.ok/local/acp-registry-cache.json', '{}');
   write(root, '.ok/local/stale-external-writes.json', '{}');
+  write(root, '.ok/local/receipts.jsonl', '');
   write(root, '.ok/local/removed-docs.json', '{}');
   write(root, '.git/HEAD', 'ref: refs/heads/main\n');
   return root;

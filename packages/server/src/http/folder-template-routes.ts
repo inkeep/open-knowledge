@@ -107,13 +107,9 @@ export interface FolderTemplateRouteDeps {
   flushDiskAndDetectOutcome: (
     docName: string,
   ) => Promise<
-    | { kind: 'failure'; failure: StoreFailure }
-    | { kind: 'divergence' }
-    | { kind: 'stale-external-write' }
-    | null
+    { kind: 'failure'; failure: StoreFailure } | { kind: 'stale-external-write' } | null
   >;
   respondPersistenceFailure: (res: ServerResponse, failure: StoreFailure, handler: string) => void;
-  respondDiskDivergence: (res: ServerResponse, handler: string) => void;
   respondStaleExternalWrite: (res: ServerResponse, handler: string, docName: string) => void;
   registerWrittenDocInFileIndex: (docName: string, content: string) => void;
   captureAndCloseDocuments: (
@@ -161,7 +157,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
     scheduleOkArtifactFlush,
     flushDiskAndDetectOutcome,
     respondPersistenceFailure,
-    respondDiskDivergence,
     respondStaleExternalWrite,
     registerWrittenDocInFileIndex,
     captureAndCloseDocuments,
@@ -705,10 +700,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         const templateFlush = await flushDiskAndDetectOutcome(templateDocName);
         if (templateFlush?.kind === 'failure') {
           respondPersistenceFailure(res, templateFlush.failure, 'template-put');
-          return;
-        }
-        if (templateFlush?.kind === 'divergence') {
-          respondDiskDivergence(res, 'template-put');
           return;
         }
         if (templateFlush?.kind === 'stale-external-write') {
@@ -1320,10 +1311,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         const templateFlush = await flushDiskAndDetectOutcome(templateDocName);
         if (templateFlush?.kind === 'failure') {
           respondPersistenceFailure(res, templateFlush.failure, 'template-import');
-          return;
-        }
-        if (templateFlush?.kind === 'divergence') {
-          respondDiskDivergence(res, 'template-import');
           return;
         }
         if (templateFlush?.kind === 'stale-external-write') {

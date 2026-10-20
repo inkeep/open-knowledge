@@ -32,7 +32,6 @@ function buildGroup() {
     flushDiskAndDetectOutcome: () => Promise.resolve(null),
     respondStaleExternalWrite: () => {},
     respondPersistenceFailure: () => {},
-    respondDiskDivergence: () => {},
     okArtifactKey: () => '',
     resolveSkillsRoot: () => '/nonexistent-skills',
     extractActorIdentityFromQuery: () => ({ kind: 'invalid-summary' }),

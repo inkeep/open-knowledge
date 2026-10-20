@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { getMetrics } from '@inkeep/open-knowledge-server';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   agentWriteMd,
@@ -49,8 +50,8 @@ async function agentUndoRaw(
   });
 }
 
-describe('PRD-6832 β L3: store-time divergence backstop', () => {
-  test('reverts on TOCTOU divergence (409); disk wins; retry re-applies exactly once', async () => {
+describe('store-time compare: an outside write between the pre-write merge and the store', () => {
+  test('is merged with the agent write instead of refusing it, and the agent line lands once', async () => {
     server = await createTestServer({ debounce: 50, maxDebounce: 200 });
     const { port, contentDir } = server;
     const docName = `l3-content-${randomUUID()}`;
@@ -58,35 +59,24 @@ describe('PRD-6832 β L3: store-time divergence backstop', () => {
     const seed = await writeMd(port, '# V1\n\nbody-v1\n', { docName, position: 'replace' });
     expect(seed.status).toBe(200);
     await pollUntil(() => readTestDoc(contentDir, docName).includes('body-v1'));
+    const mergesBefore = getMetrics().storeDiskCompare.changed ?? 0;
 
     process.env.OK_TEST_STORE_DIVERGENCE = docName;
-
-    const attempt1 = await writeMd(port, 'AGENT-APPEND-XYZ\n', {
-      docName,
-      position: 'append',
-    });
-    expect(attempt1.status).toBe(409);
-    const body1 = (await attempt1.json()) as { type?: string };
-    expect(body1.type).toBe('urn:ok:error:disk-divergence');
-
-    const afterRevert = readTestDoc(contentDir, docName);
-    expect(afterRevert).toContain(INJECTED_MARKER);
-    expect(afterRevert).not.toContain('AGENT-APPEND-XYZ');
-
+    const attempt = await writeMd(port, 'AGENT-APPEND-XYZ\n', { docName, position: 'append' });
+    expect(attempt.status).toBe(200);
     delete process.env.OK_TEST_STORE_DIVERGENCE;
-    const attempt2 = await writeMd(port, 'AGENT-APPEND-XYZ\n', {
-      docName,
-      position: 'append',
-    });
-    expect(attempt2.status).toBe(200);
 
-    const afterRetry = readTestDoc(contentDir, docName);
-    expect(afterRetry).toContain(INJECTED_MARKER);
-    expect(afterRetry).toContain('AGENT-APPEND-XYZ');
-    expect(afterRetry.split('AGENT-APPEND-XYZ').length - 1).toBe(1);
+    const merged = '# NATIVE\n\nnative-divergence-injected\n\nAGENT-APPEND-XYZ\n';
+    await pollUntil(() => readTestDoc(contentDir, docName) === merged);
+    expect(server.instance.hocuspocus.documents.get(docName)?.getText('source').toString()).toBe(
+      merged,
+    );
+    expect(merged.split('AGENT-APPEND-XYZ')).toHaveLength(2);
+    expect(getMetrics().storeDiskCompare.changed ?? 0).toBeGreaterThan(mergesBefore);
+    expect(server.instance.conflicts.findByDocName(docName)).toBeUndefined();
   });
 
-  test('undo: L3 reverts on TOCTOU divergence (409); native survives; undo NOT applied', async () => {
+  test('an agent undo whose store meets an outside write merges it and the undo lands', async () => {
     server = await createTestServer({ debounce: 50, maxDebounce: 200 });
     const { port, contentDir } = server;
     const docName = `l3-undo-${randomUUID()}`;
@@ -102,25 +92,17 @@ describe('PRD-6832 β L3: store-time divergence backstop', () => {
     await pollUntil(() => readTestDoc(contentDir, docName).includes('UNDO-ME-LINE'));
 
     process.env.OK_TEST_STORE_DIVERGENCE = docName;
-
     const undoRes = await agentUndoRaw(port, { docName, connectionId: 'agent-u1', scope: 'last' });
-    expect(undoRes.status).toBe(409);
-    const body = (await undoRes.json()) as { type?: string };
-    expect(body.type).toBe('urn:ok:error:disk-divergence');
-
-    const afterRevert = readTestDoc(contentDir, docName);
-    expect(afterRevert).toContain(INJECTED_MARKER);
-    expect(afterRevert).not.toContain('base-body');
-
+    expect(undoRes.status).toBe(200);
     delete process.env.OK_TEST_STORE_DIVERGENCE;
-    await agentWriteMd(port, 'RECOVERY-LINE\n', { docName, position: 'append', agentId: 'u1' });
-    await pollUntil(() => readTestDoc(contentDir, docName).includes('RECOVERY-LINE'));
-    const afterRecovery = readTestDoc(contentDir, docName);
-    expect(afterRecovery).toContain(INJECTED_MARKER);
-    expect(afterRecovery).toContain('RECOVERY-LINE');
+
+    const merged = '# NATIVE\n\nnative-divergence-injected\n';
+    await pollUntil(() => readTestDoc(contentDir, docName) === merged);
+    expect(readTestDoc(contentDir, docName)).not.toContain('UNDO-ME-LINE');
+    expect(server.instance.conflicts.findByDocName(docName)).toBeUndefined();
   });
 
-  test('gate: an unmarked human/client store is NEVER reverted by L3', async () => {
+  test('a person store over the same outside write keeps the person edit', async () => {
     server = await createTestServer({ debounce: 50, maxDebounce: 200 });
     const { port, contentDir } = server;
     const docName = `l3-gate-human-${randomUUID()}`;
@@ -142,6 +124,7 @@ describe('PRD-6832 β L3: store-time divergence backstop', () => {
       await awaitDocQuiescence(client.doc, { timeoutMs: 3000 });
 
       await pollUntil(() => readTestDoc(contentDir, docName).includes(HUMAN_MARK), 8000);
+      expect(readTestDoc(contentDir, docName)).toContain(INJECTED_MARKER);
     } finally {
       delete process.env.OK_TEST_STORE_DIVERGENCE;
       await client.cleanup();

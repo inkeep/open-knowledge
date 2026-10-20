@@ -24,6 +24,7 @@ const SERVER_WRITTEN_TREE: SlotTree = {
       'acp-registry-cache.json': SERVER_OWNED,
       cache: SERVER_OWNED,
       'principal.json': SERVER_OWNED,
+      'receipts.jsonl': SERVER_OWNED,
       'removed-docs.json': SERVER_OWNED,
       'server.lock': SERVER_OWNED,
       'stale-external-writes.json': SERVER_OWNED,

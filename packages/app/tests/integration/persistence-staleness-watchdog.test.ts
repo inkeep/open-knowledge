@@ -74,7 +74,7 @@ describe('persistence staleness watchdog (integration)', () => {
     expect(getMetrics().persistenceStalenessForcedStores).toBe(forcedBefore);
   });
 
-  test('never writes over an external native edit that lands under unflushed edits', async () => {
+  test('forces a store that keeps both versions when an outside edit lands under unflushed edits', async () => {
     server = await createTestServer({ stalenessGraceMs: 250, stalenessSweepIntervalMs: 100 });
     const docName = `staleness-external-${randomUUID()}`;
     const filePath = join(server.contentDir, `${docName}.md`);
@@ -87,6 +87,7 @@ describe('persistence staleness watchdog (integration)', () => {
     );
     expect(flushed).toBe(true);
 
+    const forcedBefore = getMetrics().persistenceStalenessForcedStores;
     const stoodDownBefore = getMetrics().persistenceStalenessStoodDown;
     process.env.OK_TEST_STORE_FAULT = docName;
     const second = await writeMd(server.port, docName, '# version two\n');
@@ -94,23 +95,11 @@ describe('persistence staleness watchdog (integration)', () => {
     delete process.env.OK_TEST_STORE_FAULT;
     writeFileSync(filePath, '# external native edit\n', 'utf-8');
 
-    const watchdogStoodDown = await pollUntil(
-      () => getMetrics().persistenceStalenessStoodDown > stoodDownBefore,
-      2_000,
-    );
-    if (!watchdogStoodDown) {
-      const state = await fetch(
-        `http://127.0.0.1:${server.port}/api/document?docName=${encodeURIComponent(docName)}`,
-      );
-      expect(state.ok).toBe(true);
-      expect((await state.text()).includes('external native edit')).toBe(true);
-    }
-
-    const deadline = Date.now() + 1_500;
-    while (Date.now() < deadline) {
-      expect(readFileSync(filePath, 'utf-8')).toContain('# external native edit\n');
-      await wait(50);
-    }
+    const bothKept = '# version two\n\n# external native edit\n';
+    const landed = await pollUntil(() => readFileSync(filePath, 'utf-8') === bothKept, 10_000);
+    expect(landed).toBe(true);
+    expect(getMetrics().persistenceStalenessForcedStores).toBeGreaterThan(forcedBefore);
+    expect(getMetrics().persistenceStalenessStoodDown).toBe(stoodDownBefore);
     expect(server.instance.conflicts.findByDocName(docName)).toBeUndefined();
   });
 });

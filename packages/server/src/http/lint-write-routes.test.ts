@@ -48,7 +48,6 @@ function buildGroup(overrides: Partial<Deps> = {}) {
     buildAgentActor: notDispatched,
     flushDiskAndDetectOutcome: notDispatched,
     respondPersistenceFailure: notDispatched,
-    respondDiskDivergence: notDispatched,
     respondStaleExternalWrite: notDispatched,
     flushDocToDisk: notDispatched,
     log: loggerFactory.getLogger('test'),

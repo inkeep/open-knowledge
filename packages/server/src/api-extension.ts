@@ -230,6 +230,7 @@ import {
   OK_DOC_REMOVED,
   OK_PATH_UNRESOLVABLE,
   OK_STORE_DISCARDED,
+  OK_STORE_HELD,
   OK_STORE_REFUSED,
   type StoreFailure,
 } from './document-durability-state.ts';
@@ -360,6 +361,7 @@ import {
   incrementAgentWriteCalls,
   incrementSummariesProvided,
   incrementSummariesTruncated,
+  type StorePendingReason,
 } from './metrics.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
 import { assertProjectContentSubtree } from './project-content-scope.ts';
@@ -1463,6 +1465,64 @@ function discardedStoreProblem(failure: StoreFailure) {
   } satisfies BatchEntryError;
 }
 
+type HeldSaveRetry = 'next-save' | 'next-edit' | 'conflict-resolved' | 'replaced-on-next-edit';
+
+const HELD_SAVE_RULES: Readonly<
+  Record<StorePendingReason, { readonly retryWhen: HeldSaveRetry; readonly sentence: string }>
+> = {
+  'pending-unreadable': {
+    retryWhen: 'next-save',
+    sentence:
+      'A later save writes it once the file can be read again: the next edit to this document, or the idle save within a few minutes.',
+  },
+  'pending-exhausted': {
+    retryWhen: 'next-save',
+    sentence:
+      'A later save writes it once the file stops changing: the next edit to this document, or the idle save within a few minutes.',
+  },
+  'pending-base-moved': {
+    retryWhen: 'next-save',
+    sentence:
+      'A later save writes it once the outside changes have been taken in: the next edit to this document, or the idle save within a few minutes.',
+  },
+  'pending-intake-failed': {
+    retryWhen: 'next-save',
+    sentence:
+      'A later save merges the outside change and writes it: the next edit to this document, or the idle save within a few minutes.',
+  },
+  'pending-intake-failed-no-base': {
+    retryWhen: 'replaced-on-next-edit',
+    sentence:
+      'This edit is not saved to the file, and no save runs on its own: OpenKnowledge has no agreed version of the file to merge it with. The next edit to this document replaces the document with the file on disk and moves this edit, with any typing since, to the document history (timeline). Do not repeat this write now: after that next edit, re-read the document and re-apply this edit if it is still needed.',
+  },
+  'pending-no-intake': {
+    retryWhen: 'next-edit',
+    sentence: 'The next edit to this document tries the save again.',
+  },
+  'pending-conflict': {
+    retryWhen: 'conflict-resolved',
+    sentence:
+      'It is saved after the conflict on this document is resolved; ask the user to resolve it in the OpenKnowledge app.',
+  },
+};
+
+function heldSaveProblem(failure: StoreFailure) {
+  const reason = failure.held?.reason ?? 'pending-unreadable';
+  const noBase = failure.held?.noBase === true || reason === 'pending-intake-failed-no-base';
+  const rule = HELD_SAVE_RULES[noBase ? 'pending-intake-failed-no-base' : reason];
+  return {
+    type: 'urn:ok:error:save-held' as const,
+    title: 'Edit applied in memory; its save to disk is held.',
+    detail: noBase
+      ? `${failure.message}. ${rule.sentence}`
+      : `${failure.message}. The edit is kept in the document. ${rule.sentence} Do not repeat this write: re-read the document before editing it further.`,
+    reason,
+    retryWhen: rule.retryWhen,
+    ...(failure.held?.causeCode === undefined ? {} : { causeCode: failure.held.causeCode }),
+    nextStep: 're-read' as const,
+  } satisfies BatchEntryError;
+}
+
 function refusedStoreProblem(failure: StoreFailure) {
   return {
     type: 'urn:ok:error:store-refused' as const,
@@ -1480,6 +1540,11 @@ export function respondPersistenceFailure(
   if (failure.code === OK_STORE_REFUSED) {
     const { type, title, detail } = refusedStoreProblem(failure);
     errorResponse(res, 503, type, title, { handler, detail });
+    return;
+  }
+  if (failure.code === OK_STORE_HELD) {
+    const { type, title, detail, ...extensions } = heldSaveProblem(failure);
+    errorResponse(res, 503, type, title, { handler, detail, extensions });
     return;
   }
   if (failure.code === OK_DOC_REMOVED) {
@@ -1922,7 +1987,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
 
   type FlushOutcome =
     | { kind: 'failure'; failure: StoreFailure }
-    | { kind: 'divergence' }
     | { kind: 'stale-external-write' }
     | null;
 
@@ -1975,18 +2039,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     if (durabilityState.takeStaleExternalWriteFreeze(docName)) {
       return { kind: 'stale-external-write' };
     }
-    if (durabilityState.takeStoreDivergence(docName)) return { kind: 'divergence' };
     return null;
-  }
-
-  function respondDiskDivergence(res: ServerResponse, handler: string): void {
-    errorResponse(
-      res,
-      409,
-      'urn:ok:error:disk-divergence',
-      'The document changed on disk after your edit was prepared; your edit was NOT applied, to avoid overwriting the newer on-disk content. Re-read the document and retry.',
-      { handler },
-    );
   }
 
   function staleExternalWriteProblem(docName: string) {
@@ -3729,10 +3782,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
           respondPersistenceFailure(res, flushOutcome.failure, 'agent-write');
           return;
         }
-        if (flushOutcome?.kind === 'divergence') {
-          respondDiskDivergence(res, 'agent-write');
-          return;
-        }
         if (flushOutcome?.kind === 'stale-external-write') {
           respondStaleExternalWrite(res, 'agent-write', docName);
           return;
@@ -4038,6 +4087,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
                   flushErrors.set(p.docName, pathFaultProblem(flushOutcome.failure));
                 } else if (flushOutcome.failure.code === OK_STORE_REFUSED) {
                   flushErrors.set(p.docName, refusedStoreProblem(flushOutcome.failure));
+                } else if (flushOutcome.failure.code === OK_STORE_HELD) {
+                  flushErrors.set(p.docName, heldSaveProblem(flushOutcome.failure));
                 } else if (flushOutcome.failure.code === OK_STORE_DISCARDED) {
                   flushErrors.set(p.docName, discardedStoreProblem(flushOutcome.failure));
                 } else {
@@ -4050,12 +4101,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
                     detail: `${flushOutcome.failure.code ?? 'unknown error'}: ${flushOutcome.failure.message}. The content was NOT saved and will be lost if the server restarts.`,
                   });
                 }
-              } else if (flushOutcome?.kind === 'divergence') {
-                flushErrors.set(p.docName, {
-                  type: 'urn:ok:error:disk-divergence',
-                  title:
-                    'The document changed on disk after your edit was prepared; your edit was NOT applied. Re-read the document and retry.',
-                });
               } else if (flushOutcome?.kind === 'stale-external-write') {
                 flushErrors.set(p.docName, staleExternalWriteProblem(p.docName));
               } else {
@@ -5145,7 +5190,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     buildAgentActor,
     flushDiskAndDetectOutcome,
     respondPersistenceFailure,
-    respondDiskDivergence,
     respondStaleExternalWrite,
     flushDocToDisk,
     log,
@@ -5178,7 +5222,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     flushDiskAndDetectOutcome,
     respondStaleExternalWrite,
     respondPersistenceFailure,
-    respondDiskDivergence,
     attributeOkArtifactWrite,
     okArtifactKey,
     commitOkArtifactWrite,
@@ -5227,7 +5270,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     flushDiskAndDetectOutcome,
     respondStaleExternalWrite,
     respondPersistenceFailure,
-    respondDiskDivergence,
     okArtifactKey,
     resolveSkillsRoot,
     extractActorIdentityFromQuery,
@@ -5415,7 +5457,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     scheduleOkArtifactFlush,
     flushDiskAndDetectOutcome,
     respondPersistenceFailure,
-    respondDiskDivergence,
     respondStaleExternalWrite,
     registerWrittenDocInFileIndex,
     captureAndCloseDocuments,
@@ -5446,7 +5487,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     flushDiskAndDetectOutcome,
     respondStaleExternalWrite,
     respondPersistenceFailure,
-    respondDiskDivergence,
     skillInstallOps,
     skillPlacementOps,
     signalChannel,
@@ -5514,7 +5554,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     countNormalizedSummary,
     flushDiskAndDetectOutcome,
     respondPersistenceFailure,
-    respondDiskDivergence,
     flushDocToDisk,
     agentFocusBroadcaster,
     onAgentWrite,

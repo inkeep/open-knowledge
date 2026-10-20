@@ -6390,6 +6390,84 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
     }
   }, 60_000);
 
+  test('a parked WIP restored after a branch round trip is saved by the next store instead of being merged away', async () => {
+    const projectDir = await realpath(mkdtempSync(join(tmpdir(), 'ok-reconcile-park-store-')));
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    configureTestGitRepository(projectDir);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@example.com');
+    const docName = 'park-store-target';
+    const docPath = join(projectDir, `${docName}.md`);
+    const mainContent = '# Park store target\n\nMain branch body.\n\nTail.\n';
+    const featureContent = '# Park store target\n\nFeature branch body.\n\nTail.\n';
+    writeFileSync(docPath, mainContent, 'utf-8');
+    await git.add('.');
+    await git.commit('main content');
+    await git.checkoutLocalBranch('feature');
+    writeFileSync(docPath, featureContent, 'utf-8');
+    await git.add(['-A']);
+    await git.commit('feature content');
+    await git.checkout('main');
+
+    const shadow = await initShadowRepo(projectDir);
+    rig = {
+      tmpDir: projectDir,
+      shadow,
+      cleanup: () => rmSync(projectDir, { recursive: true, force: true }),
+    };
+    const server = createServer({
+      contentDir: projectDir,
+      projectDir,
+      quiet: true,
+      debounce: 60_000,
+      maxDebounce: 120_000,
+      gitEnabled: false,
+      shadowRepo: shadow,
+    });
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      const serverDoc = server.hocuspocus.documents.get(docName);
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(mainContent),
+        { timeout: 5_000, interval: 25 },
+      );
+      const source = serverDoc.getText('source');
+      serverDoc.transact(() =>
+        source.insert(source.toString().indexOf('Tail.'), 'Unsaved WIP.\n\n'),
+      );
+      const withWip = '# Park store target\n\nMain branch body.\n\nUnsaved WIP.\n\nTail.\n';
+      expect(source.toString()).toBe(withWip);
+
+      await git.checkout('feature');
+      await vi.waitFor(() => expect(source.toString()).toBe(featureContent), {
+        timeout: 15_000,
+        interval: 25,
+      });
+      await git.checkout('main');
+      await vi.waitFor(() => expect(source.toString()).toBe(withWip), {
+        timeout: 15_000,
+        interval: 25,
+      });
+
+      serverDoc.transact(() => source.insert(source.length, '\nTyped after the switch.\n'));
+      await server.hocuspocus.flushPendingStores();
+      const saved = `${withWip}\nTyped after the switch.\n`;
+      await vi.waitFor(() => expect(readFileSync(docPath, 'utf-8')).toBe(saved), {
+        timeout: 10_000,
+        interval: 25,
+      });
+      expect(source.toString()).toBe(saved);
+
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+  }, 60_000);
+
   test('a branch-switch reset rescues unflushed WIP on an absent-base doc before overwriting with disk content', async () => {
     const projectDir = await realpath(mkdtempSync(join(tmpdir(), 'ok-reconcile-bs-rescue-')));
     const git = simpleGit(projectDir);
@@ -6612,7 +6690,7 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
     }
   }, 30_000);
 
-  test('a failed disk-authoritative ingest keeps the live content, adopts the disk bytes as the base, and does not re-ingest on the next update', async () => {
+  test('a failed disk-authoritative ingest keeps the live content, leaves no agreed version for the disk bytes it lacks, and takes the next update in again', async () => {
     rig = await setupReconcileRig('ok-reconcile-ingest-failure-');
     const docName = 'ingest-failure-target';
     const initial = '# Ingest failure target\n\nLive paragraph that exists only in the editor.\n';
@@ -6655,9 +6733,12 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
         writeFileSync(docPath, theirs, 'utf-8');
 
         await vi.waitFor(
-          () => expect(server.durabilityState.getReconciledBase(docName)).toBe(theirs),
+          () =>
+            expect(getMetrics().diskAuthoritativeIngestApplyFailures).toBe(applyFailuresBefore + 1),
           { timeout: 10_000, interval: 25 },
         );
+        expect(server.durabilityState.getReconciledBase(docName)).toBeUndefined();
+        expect(server.durabilityState.getReceipt(docName)).toBeUndefined();
         expect(serverDoc.getText('source').toString()).toBe(initial);
         expect(serverDoc.getMap('lifecycle').get('status')).toBeUndefined();
         expect(getMetrics().diskAuthoritativeIngestApplyFailures).toBe(applyFailuresBefore + 1);
@@ -6668,26 +6749,25 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
 
       writeFileSync(docPath, followUp, 'utf-8');
 
-      await vi.waitFor(
-        () =>
-          expect(serverDoc.getText('source').toString()).toContain('Disk addition after recovery.'),
-        { timeout: 15_000, interval: 25 },
-      );
-      expect(serverDoc.getText('source').toString()).toContain(
-        'Live paragraph that exists only in the editor.',
-      );
+      await vi.waitFor(() => expect(serverDoc.getText('source').toString()).toBe(followUp), {
+        timeout: 15_000,
+        interval: 25,
+      });
+      expect(server.durabilityState.getReconciledBase(docName)).toBe(followUp);
+      expect(getMetrics().diskAuthoritativeIngestCount).toBe(ingestsBefore + 2);
       await vi.waitFor(
         async () => {
           const rescues = await listRescueCheckpoints(rig.shadow, 'main');
-          expect(rescues.filter((r) => r.docName === docName)).toHaveLength(2);
+          expect(rescues.filter((r) => r.docName === docName).map((r) => r.size)).toEqual(
+            expect.arrayContaining([initial.length, theirs.length]),
+          );
         },
         { timeout: 10_000, interval: 50 },
       );
       const rescues = await listRescueCheckpoints(rig.shadow, 'main');
       const docRescues = rescues.filter((r) => r.docName === docName);
-      expect(docRescues).toHaveLength(2);
-      expect(docRescues.map((r) => r.size).sort((a, b) => a - b)).toEqual(
-        [initial.length, theirs.length].sort((a, b) => a - b),
+      expect(new Set(docRescues.map((r) => r.size))).toEqual(
+        new Set([initial.length, theirs.length]),
       );
       const sg = shadowGit(rig.shadow);
       const mintKinds = new Set(

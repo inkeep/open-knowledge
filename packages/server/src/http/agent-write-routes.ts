@@ -189,13 +189,9 @@ export interface AgentWriteRouteDeps {
   flushDiskAndDetectOutcome: (
     docName: string,
   ) => Promise<
-    | { kind: 'failure'; failure: StoreFailure }
-    | { kind: 'divergence' }
-    | { kind: 'stale-external-write' }
-    | null
+    { kind: 'failure'; failure: StoreFailure } | { kind: 'stale-external-write' } | null
   >;
   respondPersistenceFailure: (res: ServerResponse, failure: StoreFailure, handler: string) => void;
-  respondDiskDivergence: (res: ServerResponse, handler: string) => void;
   flushDocToDisk: (docName: string, label: string) => void;
   agentFocusBroadcaster: AgentFocusBroadcaster | undefined;
   onAgentWrite: (() => void) | undefined;
@@ -251,7 +247,6 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
     countNormalizedSummary,
     flushDiskAndDetectOutcome,
     respondPersistenceFailure,
-    respondDiskDivergence,
     flushDocToDisk,
     agentFocusBroadcaster,
     onAgentWrite,
@@ -468,10 +463,6 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           const flushOutcome = await flushDiskAndDetectOutcome(resolvedDocName);
           if (flushOutcome?.kind === 'failure') {
             respondPersistenceFailure(res, flushOutcome.failure, 'agent-write-md');
-            return;
-          }
-          if (flushOutcome?.kind === 'divergence') {
-            respondDiskDivergence(res, 'agent-write-md');
             return;
           }
           if (flushOutcome?.kind === 'stale-external-write') {
@@ -738,10 +729,6 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
               const flushOutcome = await flushDiskAndDetectOutcome(resolvedDocName);
               if (flushOutcome?.kind === 'failure') {
                 respondPersistenceFailure(res, flushOutcome.failure, 'frontmatter-patch');
-                return;
-              }
-              if (flushOutcome?.kind === 'divergence') {
-                respondDiskDivergence(res, 'frontmatter-patch');
                 return;
               }
               if (flushOutcome?.kind === 'stale-external-write') {
@@ -1051,10 +1038,6 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
             respondPersistenceFailure(res, flushOutcome.failure, 'agent-patch');
             return;
           }
-          if (flushOutcome?.kind === 'divergence') {
-            respondDiskDivergence(res, 'agent-patch');
-            return;
-          }
           if (flushOutcome?.kind === 'stale-external-write') {
             respondStaleExternalWrite(res, 'agent-patch', docName);
             return;
@@ -1219,10 +1202,6 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           const flushOutcome = await flushDiskAndDetectOutcome(docName);
           if (flushOutcome?.kind === 'failure') {
             respondPersistenceFailure(res, flushOutcome.failure, 'agent-undo');
-            return;
-          }
-          if (flushOutcome?.kind === 'divergence') {
-            respondDiskDivergence(res, 'agent-undo');
             return;
           }
           if (flushOutcome?.kind === 'stale-external-write') {
@@ -1669,10 +1648,6 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
         const flushOutcome = await flushDiskAndDetectOutcome(docName);
         if (flushOutcome?.kind === 'failure') {
           respondPersistenceFailure(res, flushOutcome.failure, 'rollback');
-          return;
-        }
-        if (flushOutcome?.kind === 'divergence') {
-          respondDiskDivergence(res, 'rollback');
           return;
         }
         if (flushOutcome?.kind === 'stale-external-write') {

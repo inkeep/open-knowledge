@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
+import { DiskReceiptLog } from './disk-receipts.ts';
 import {
   _resetDocExtensionsForTests,
   docNameToRelativePath,
@@ -30,6 +31,7 @@ import {
 import * as tracedFs from './fs-traced.ts';
 import { getLogger } from './logger.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
+import { contentHash } from './version-hash.ts';
 
 describe('DocumentDurabilityState', () => {
   test('starts with an empty main scope and no transient coordination state', () => {
@@ -41,7 +43,6 @@ describe('DocumentDurabilityState', () => {
     expect(state.isBatchInProgress()).toBe(false);
     expect(state.consumeAgentWriteStore('doc')).toBe(false);
     expect(state.takeStoreFailure('doc')).toBeNull();
-    expect(state.takeStoreDivergence('doc')).toBe(false);
   });
 
   test('retains reconciled bases independently for each visited branch', () => {
@@ -76,7 +77,6 @@ describe('DocumentDurabilityState', () => {
     first.beginInFlightFlush('doc', 'first flush');
     first.markAgentWriteStore('doc');
     first.recordStoreFailure('doc', { code: 'ENOSPC', message: 'full' });
-    first.recordStoreDivergence('doc');
     first.openDeferredStore('doc');
 
     expect(second.getReconciledBase('doc')).toBeUndefined();
@@ -84,7 +84,6 @@ describe('DocumentDurabilityState', () => {
     expect(second.peekInFlightFlush('doc')).toBeUndefined();
     expect(second.consumeAgentWriteStore('doc')).toBe(false);
     expect(second.takeStoreFailure('doc')).toBeNull();
-    expect(second.takeStoreDivergence('doc')).toBe(false);
     await expect(second.awaitDeferredStoreOutcome('doc')).resolves.toBeUndefined();
   });
 
@@ -246,18 +245,15 @@ describe('DocumentDurabilityState', () => {
     expect(state.peekInFlightFlush('doc')).toBeUndefined();
   });
 
-  test('consumes agent markers, failures, and divergences once', () => {
+  test('consumes agent markers and failures once', () => {
     const state = new DocumentDurabilityState();
     state.markAgentWriteStore('doc');
     state.recordStoreFailure('doc', { message: 'write failed' });
-    state.recordStoreDivergence('doc');
 
     expect(state.consumeAgentWriteStore('doc')).toBe(true);
     expect(state.consumeAgentWriteStore('doc')).toBe(false);
     expect(state.takeStoreFailure('doc')).toEqual({ message: 'write failed' });
     expect(state.takeStoreFailure('doc')).toBeNull();
-    expect(state.takeStoreDivergence('doc')).toBe(true);
-    expect(state.takeStoreDivergence('doc')).toBe(false);
   });
 
   test('clears a store failure without consuming another document failure', () => {
@@ -1475,5 +1471,76 @@ describe('DocumentDurabilityStateError names the running channel CLI', () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+});
+
+describe('the durable receipt follows the acknowledged base', () => {
+  test('setting the base records it as agreed, a store records it as an own write, and a delete forgets it', () => {
+    const state = new DocumentDurabilityState();
+    state.setReconciledBase('doc', 'loaded\n');
+    expect(state.getReceipt('doc')).toMatchObject({
+      hash: contentHash('loaded\n'),
+      via: 'agreed',
+    });
+
+    const observation = { size: 7n, mtimeNs: 5n, dev: 1n, ino: 9n };
+    state.recordSuccessfulStore('doc', 'stored\n', undefined, observation);
+    expect(state.getReceipt('doc')).toMatchObject({
+      hash: contentHash('stored\n'),
+      via: 'own-write',
+      ino: '9',
+    });
+    expect(state.isRecentOwnWrite('doc', contentHash('loaded\n'))).toBe(false);
+    expect(state.isRecentOwnWrite('doc', contentHash('stored\n'))).toBe(true);
+
+    state.deleteReconciledBase('doc');
+    expect(state.getReceipt('doc')).toBeUndefined();
+  });
+
+  test('a store that displaces an agent-acknowledged version still records the written bytes', () => {
+    const state = new DocumentDurabilityState();
+    state.setReconciledBase('doc', 'before\n');
+    state.recordSuccessfulStore('doc', 'after\n', 'before\n');
+    expect(state.getReceipt('doc')?.hash).toBe(contentHash('after\n'));
+    expect(state.getReconciledBase('doc')).toBe('after\n');
+  });
+
+  test('the check at load reports a missing, unchanged or changed receipt and counts it', () => {
+    resetMetrics();
+    const dir = mkdtempSync(join(tmpdir(), 'ok-durability-receipts-'));
+    try {
+      const path = join(dir, 'receipts.jsonl');
+      const before = new DocumentDurabilityState('main', {
+        receipts: new DiskReceiptLog({ path }),
+      });
+      expect(before.checkReceiptAtLoad('doc', 'first\n')).toBe('missing');
+      before.setReconciledBase('doc', 'first\n');
+
+      const restarted = new DocumentDurabilityState('main', {
+        receipts: new DiskReceiptLog({ path }),
+      });
+      expect(restarted.getReconciledBase('doc')).toBeUndefined();
+      expect(restarted.checkReceiptAtLoad('doc', 'first\n')).toBe('unchanged');
+      expect(restarted.checkReceiptAtLoad('doc', 'edited while closed\n')).toBe('changed');
+      expect(getMetrics().receiptAtLoad).toEqual({ missing: 1, unchanged: 1, changed: 1 });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('an outside change to a document that is not loaded refreshes the receipt it already has', () => {
+    const receipts = new DiskReceiptLog();
+    receipts.recordAgreed('closed', 'v1\n');
+    const state = new DocumentDurabilityState('main', { receipts });
+
+    state.refreshReceiptWithoutBase('closed', 'v2\n');
+    expect(state.getReceipt('closed')?.hash).toBe(contentHash('v2\n'));
+
+    state.refreshReceiptWithoutBase('never-loaded', 'bytes\n');
+    expect(state.getReceipt('never-loaded')).toBeUndefined();
+
+    state.setReconciledBase('loaded', 'v1\n');
+    state.refreshReceiptWithoutBase('loaded', 'v2\n');
+    expect(state.getReceipt('loaded')?.hash).toBe(contentHash('v1\n'));
   });
 });

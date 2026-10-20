@@ -20,6 +20,7 @@ import {
   DocumentDurabilityState,
   OK_DOC_REMOVED,
   OK_STORE_DISCARDED,
+  OK_STORE_HELD,
   OK_STORE_REFUSED,
 } from './document-durability-state.ts';
 
@@ -136,6 +137,37 @@ describe('agent-write-batch — store-refused flush failure rendering', () => {
     expect(results[0]?.error?.detail).toContain('recovery buffer');
     expect(results[0]?.error?.detail).toContain('filesystem fault');
     expect(results[0]?.error?.detail).not.toContain('will be lost');
+  });
+
+  test('a held save renders the save-held contract on the batch endpoint', async () => {
+    const docName = 'batch-held';
+    durabilityState.recordStoreFailure(docName, {
+      code: OK_STORE_HELD,
+      message: `${docName} was not saved: its file changed and could not be merged, so a conflict was raised`,
+      held: { reason: 'pending-conflict' },
+    });
+
+    const response = await postBatch({
+      docs: [{ docName, markdown: '# Batch held\n\nUpdated body.\n', position: 'replace' }],
+      agentId: 'claude-1',
+      agentName: 'Claude',
+    });
+
+    expect(response.status).toBe(200);
+    const { results } = JSON.parse(response.body) as {
+      results: Array<{ status: string; error?: Record<string, unknown> }>;
+    };
+    expect(results[0]?.status).toBe('error');
+    expect(results[0]?.error).toMatchObject({
+      type: 'urn:ok:error:save-held',
+      reason: 'pending-conflict',
+      retryWhen: 'conflict-resolved',
+      nextStep: 're-read',
+    });
+    expect(String(results[0]?.error?.detail)).toContain(
+      'after the conflict on this document is resolved',
+    );
+    expect(String(results[0]?.error?.detail)).toContain('Do not repeat this write');
   });
 
   test('a doc-removed flush failure keeps the doc-removed contract on the batch endpoint', async () => {

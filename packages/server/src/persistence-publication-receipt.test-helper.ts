@@ -69,6 +69,7 @@ export async function createReceiptFixture(initial = 'initial\n') {
   durability.switchReconciledBaseScope('main');
   writeFileSync(docPath, initial, { flag: 'wx' });
   const options: ReceiptOptions = {
+    ingestDiskAtStore: null,
     contentDir,
     projectDir: contentDir,
     gitEnabled: false,

@@ -128,7 +128,8 @@ describe('template concurrent-write reconcile on the content branch', () => {
         ?.getText('source')
         .toString();
       expect(docSource).toContain(AUTHOR_PENDING_LINE);
-      expect(docSource).not.toContain(FOREIGN_LINE);
+      expect(docSource).toContain(FOREIGN_LINE);
+      expect(readFileSync(tplFile, 'utf-8')).toBe(docSource);
 
       expect(
         listCheckpoints(rig).filter((c) => c.kind === 'managed-artifact-reconcile'),

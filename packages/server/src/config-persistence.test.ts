@@ -571,6 +571,7 @@ describe('persistence extension dispatch — config-doc integration', () => {
     const rejections: Array<{ docName: string; error: ConfigValidationError }> = [];
 
     const handle = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: fx.projectDir,
       projectDir: fx.projectDir,
       gitEnabled: false,
@@ -591,6 +592,7 @@ describe('persistence extension dispatch — config-doc integration', () => {
   test('config-doc onStoreDocument validates + writes disk', async () => {
     const { createPersistenceExtension } = await import('./persistence.ts');
     const handle = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: fx.projectDir,
       projectDir: fx.projectDir,
       gitEnabled: false,
@@ -616,6 +618,7 @@ describe('persistence extension dispatch — config-doc integration', () => {
     const notified: string[] = [];
 
     const handle = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: fx.projectDir,
       projectDir: fx.projectDir,
       gitEnabled: false,
@@ -646,6 +649,7 @@ describe('persistence extension dispatch — config-doc integration', () => {
     const notified: string[] = [];
 
     const handle = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: fx.projectDir,
       projectDir: fx.projectDir,
       gitEnabled: false,
@@ -680,6 +684,7 @@ describe('persistence extension dispatch — config-doc integration', () => {
     const rejections: Array<{ docName: string; error: ConfigValidationError }> = [];
 
     const handle = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: fx.projectDir,
       projectDir: fx.projectDir,
       gitEnabled: false,
@@ -713,6 +718,7 @@ describe('persistence extension dispatch — config-doc integration', () => {
     const { createPersistenceExtension } = await import('./persistence.ts');
     const rejections: Array<{ docName: string; error: ConfigValidationError }> = [];
     const handle = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: fx.projectDir,
       projectDir: fx.projectDir,
       gitEnabled: false,

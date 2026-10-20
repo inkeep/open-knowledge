@@ -221,6 +221,27 @@ describe('older own-write observations', () => {
     );
   });
 
+  test('restoring the acknowledged bytes after an external rollback clears the stale-write record with the conflict', async () => {
+    const { server: active, docName, file, post, observe } = await startOrderedServer();
+    expect((await post('Before\n')).status).toBe(200);
+    expect((await post('After\n')).status).toBe(200);
+    await observe();
+    writeFileSync(file, 'Before\n');
+    await observe();
+    expect(active.instance.conflicts.findByDocName(docName)).toMatchObject({
+      reason: 'stale-external-write',
+    });
+    expect(active.instance.durabilityState.getStaleExternalWrite(docName)).toBeDefined();
+
+    writeFileSync(file, 'Before\n\nAfter\n');
+    await observe();
+
+    expect(active.instance.conflicts.findByDocName(docName)).toBeUndefined();
+    expect(active.instance.durabilityState.getStaleExternalWrite(docName)).toBeUndefined();
+    expect((await post('Final\n')).status).toBe(200);
+    expect(readFileSync(file, 'utf8')).toBe('Before\n\nAfter\n\nFinal\n');
+  });
+
   test('a newer external edit still reconciles before the next write', async () => {
     const { server: active, docName, file, post, observe } = await startOrderedServer();
     expect((await post('Before\n')).status).toBe(200);

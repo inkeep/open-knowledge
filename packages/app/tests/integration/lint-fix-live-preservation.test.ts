@@ -434,7 +434,7 @@ describe('lint fix live-write preservation', () => {
     },
   );
 
-  test('a disk divergence returns 409 and realigns the live document to the injected disk state', async () => {
+  test('an outside write at the lint fix store keeps both versions instead of refusing the fix', async () => {
     server = await createTestServer({ markdownlintEnabled: true });
     const docName = `lint-divergence-${randomUUID()}`;
     const file = join(server.contentDir, `${docName}.md`);
@@ -448,27 +448,26 @@ describe('lint fix live-write preservation', () => {
       agentName: 'Divergence Agent',
       summary: 'Divergent durability',
     });
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ type: 'urn:ok:error:disk-divergence' });
+    expect(response.status).toBe(200);
+    delete process.env.OK_TEST_STORE_DIVERGENCE;
 
     await pollUntil(() => readFileSync(file, 'utf-8').includes('native-divergence-injected'));
-    await pollUntil(() =>
-      Boolean(
-        getServerState(server as TestServer, docName)
-          ?.ytext.toString()
-          .includes('native-divergence-injected'),
-      ),
+    await pollUntil(
+      () =>
+        getServerState(server as TestServer, docName)?.ytext.toString() ===
+        readFileSync(file, 'utf-8'),
     );
-    const state = getServerState(server, docName);
-    if (state === null) throw new Error('Expected a realigned server document');
-    expect(state.ytext.toString()).toBe(readFileSync(file, 'utf-8'));
-    expect(state.ytext.toString()).toBe('# NATIVE\n\nnative-divergence-injected\n');
+    expect(readFileSync(file, 'utf-8')).toBe(
+      '# NATIVE\n\n indented with a hard tab\n\nnative-divergence-injected\n',
+    );
+    expect(server.instance.conflicts.findByDocName(docName)).toBeUndefined();
     expect(contributors()).toEqual([
       expect.objectContaining({
         id: 'agent-lint-divergence',
         docs: [docName],
         summaries: ['Divergent durability'],
       }),
+      expect.objectContaining({ id: 'file-system', docs: [docName] }),
     ]);
     expect(
       server.instance.agentPresenceBroadcaster.getPresenceMap()['agent-lint-divergence'],

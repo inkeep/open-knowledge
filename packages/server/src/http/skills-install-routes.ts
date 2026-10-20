@@ -50,14 +50,10 @@ export interface SkillsInstallRouteDeps {
   shippedBundleSkillMd: (name: string, scope?: 'project' | 'global') => string | null;
   respondStaleExternalWrite: (res: ServerResponse, handler: string, docName: string) => void;
   respondPersistenceFailure: (res: ServerResponse, failure: StoreFailure, handler: string) => void;
-  respondDiskDivergence: (res: ServerResponse, handler: string) => void;
   flushDiskAndDetectOutcome: (
     docName: string,
   ) => Promise<
-    | { kind: 'failure'; failure: StoreFailure }
-    | { kind: 'divergence' }
-    | { kind: 'stale-external-write' }
-    | null
+    { kind: 'failure'; failure: StoreFailure } | { kind: 'stale-external-write' } | null
   >;
   skillInstallOps: SkillInstallOpsService;
   skillPlacementOps: SkillPlacementOpsService;
@@ -81,7 +77,6 @@ export function createSkillsInstallRoutes(deps: SkillsInstallRouteDeps): ApiRout
     flushDiskAndDetectOutcome,
     respondStaleExternalWrite,
     respondPersistenceFailure,
-    respondDiskDivergence,
     skillInstallOps,
     skillPlacementOps,
     signalChannel,
@@ -140,10 +135,6 @@ export function createSkillsInstallRoutes(deps: SkillsInstallRouteDeps): ApiRout
         const liveSkillFlush = await flushDiskAndDetectOutcome(liveSkillDoc);
         if (liveSkillFlush?.kind === 'failure') {
           respondPersistenceFailure(res, liveSkillFlush.failure, 'skill-install');
-          return;
-        }
-        if (liveSkillFlush?.kind === 'divergence') {
-          respondDiskDivergence(res, 'skill-install');
           return;
         }
         if (liveSkillFlush?.kind === 'stale-external-write') {

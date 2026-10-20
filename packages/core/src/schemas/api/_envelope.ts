@@ -84,6 +84,7 @@ export const ProblemTypeSchema = z.enum([
   'urn:ok:error:disk-divergence',
   'urn:ok:error:stale-external-write',
   'urn:ok:error:store-refused',
+  'urn:ok:error:save-held',
   'urn:ok:error:doc-removed',
   'urn:ok:error:branch-switched',
   'urn:ok:error:doc-not-found',

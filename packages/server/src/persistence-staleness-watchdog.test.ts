@@ -375,20 +375,16 @@ describe('exclusions', () => {
 });
 
 describe('external-edit stand-down (disk authority)', () => {
-  test('does not overwrite disk bytes the base does not account for', async () => {
+  test('forces the store when disk differs from the base, leaving the merge to the store compare', async () => {
     seedWedgedDoc(rig, 'external-doc');
     rig.disk.set('external-doc', '# external native edit\n');
 
     await rig.watchdog.sweep();
 
-    expect(rig.forceCalls).toEqual([]);
+    expect(rig.forceCalls).toEqual(['external-doc']);
     expect(getMetrics().persistenceStalenessDetected).toBe(1);
-    expect(getMetrics().persistenceStalenessForcedStores).toBe(0);
-    expect(getMetrics().persistenceStalenessStoodDown).toBe(1);
-    expect(rig.disk.get('external-doc')).toBe('# external native edit\n');
-
-    await rig.watchdog.sweep();
-    expect(getMetrics().persistenceStalenessStoodDown).toBe(1);
+    expect(getMetrics().persistenceStalenessForcedStores).toBe(1);
+    expect(getMetrics().persistenceStalenessStoodDown).toBe(0);
   });
 
   test('does not resurrect a file deleted out-of-band', async () => {
@@ -452,14 +448,14 @@ describe('external-edit stand-down (disk authority)', () => {
 
   test('a stand-down re-arms when the memory content changes', async () => {
     const doc = seedWedgedDoc(rig, 'rearm-doc');
-    rig.disk.set('rearm-doc', '# external native edit\n');
+    rig.disk.delete('rearm-doc');
 
     await rig.watchdog.sweep();
     await rig.watchdog.sweep();
     expect(rig.forceCalls).toEqual([]);
     expect(getMetrics().persistenceStalenessDetected).toBe(1);
 
-    rig.bases.set('rearm-doc', '# external native edit\n');
+    rig.disk.set('rearm-doc', '# old on disk\n');
     doc.getText('source').delete(0, doc.getText('source').length);
     doc.getText('source').insert(0, '# newer memory edit\n');
 

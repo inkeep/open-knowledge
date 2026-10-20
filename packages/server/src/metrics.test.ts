@@ -78,8 +78,6 @@ describe('reconciliation metrics', () => {
     const metrics = getMetrics();
     expect(metrics.staleExternalWriteRefused).toBe(1);
     expect(metrics.conflictCount).toBe(0);
-    expect(metrics.persistenceDivergenceRealign).toBe(0);
-    expect(metrics.persistenceDivergenceRealignCheckpointCreated).toBe(0);
     resetMetrics();
     expect(getMetrics().staleExternalWriteRefused).toBe(0);
   });
@@ -161,7 +159,10 @@ describe('reconciliation metrics', () => {
         key === 'bridgeToleranceApplied' ||
         key === 'mapDrivenSpliceFallback' ||
         key === 'mapDrivenSpliceMemoSkips' ||
-        key === 'observerAResidualMergeSpliceUnavailable'
+        key === 'observerAResidualMergeSpliceUnavailable' ||
+        key === 'storeDiskCompare' ||
+        key === 'receiptIntakeSkip' ||
+        key === 'receiptAtLoad'
       ) {
         expect(value).toEqual({});
       } else {

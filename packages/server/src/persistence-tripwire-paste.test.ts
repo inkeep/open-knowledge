@@ -411,7 +411,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
     }
   }, 40_000);
 
-  test('a doubling with a settled write behind it is still spared when the base is absent', async () => {
+  test('a doubling with a settled write behind it is spared by the tripwire but never written over a file with no base', async () => {
     rig = await setupRig('ok-tripwire-absent-spare-');
     const docName = 'absent-base-spare';
     const docPath = join(rig.tmpDir, `${docName}.md`);
@@ -473,17 +473,25 @@ describe('persistence tripwire with an absent reconciled base', () => {
         .filter((s) => s.includes('"event":"ok-persistence-duplication-spared"'));
       expect(spared).toHaveLength(1);
 
-      await waitWithinTestBudget(
-        `the doubled paste to reach ${docName}.md on disk`,
-        () => occurrences(readFileSync(docPath, 'utf-8'), settledMarker) === 2,
-        { timeoutMs: 8_000 },
+      await vi.waitFor(
+        () => expect(getMetrics().storeDiskCompare.changed ?? 0).toBeGreaterThanOrEqual(1),
+        { timeout: 10_000, interval: 25 },
       );
-      const doubledDisk = readFileSync(docPath, 'utf-8');
       await expectStable(`${docName}.md on disk`, () => readFileSync(docPath, 'utf-8'), {
         durationMs: 700,
       });
-      expect(readFileSync(docPath, 'utf-8')).toBe(doubledDisk);
+      expect(readFileSync(docPath, 'utf-8')).toBe(settledStored);
+      expect(server.durabilityState.getReconciledBase(docName)).toBe(settledStored);
       expect(getMetrics().persistenceDuplicationReset).toBe(0);
+      await vi.waitFor(
+        async () => {
+          const hist = await getDocumentHistory(rig.shadow, { docName }, '');
+          expect(
+            hist.entries.some((e) => e.checkpoint?.kind === 'external-change-rescue-disk-update'),
+          ).toBe(true);
+        },
+        { timeout: 10_000, interval: 50 },
+      );
 
       conn.disconnect();
     } finally {
@@ -504,6 +512,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,
       gitEnabled: false,
@@ -550,6 +559,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,
       gitEnabled: false,
@@ -588,6 +598,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,
       gitEnabled: false,
@@ -625,6 +636,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,
       gitEnabled: false,
@@ -661,6 +673,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,
       gitEnabled: false,
@@ -721,6 +734,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,
       gitEnabled: false,
@@ -773,6 +787,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,
       gitEnabled: false,
@@ -813,6 +828,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
 
     const durabilityState = new DocumentDurabilityState();
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: rig.tmpDir,
       projectDir: rig.tmpDir,
       gitEnabled: false,

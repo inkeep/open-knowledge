@@ -27,7 +27,6 @@ function buildGroup(overrides: Partial<SkillsInstallRouteDeps> = {}) {
     flushDiskAndDetectOutcome: () => Promise.resolve(null),
     respondStaleExternalWrite: unexpectedCall,
     respondPersistenceFailure: unexpectedCall,
-    respondDiskDivergence: unexpectedCall,
     skillInstallOps: {
       resolveFork: unexpectedCall,
       applyAddRemove: unexpectedCall,
@@ -123,21 +122,6 @@ describe('skill-install surfaces every flush outcome instead of installing over 
         handler: 'skill-install',
       },
     ]);
-    expect(captured.status).toBe(409);
-    expect(captured.body).not.toContain('INVALID_SKILL_SOURCE');
-  });
-
-  test('a diverged disk write answers with the divergence rather than validating and installing', async () => {
-    const seen: string[] = [];
-    const captured = await dispatchInstall({
-      flushDiskAndDetectOutcome: () => Promise.resolve({ kind: 'divergence' }),
-      respondDiskDivergence: (res, handler) => {
-        seen.push(handler);
-        res.writeHead(409, { 'Content-Type': 'application/problem+json' });
-        res.end(JSON.stringify({ type: 'urn:ok:error:disk-divergence' }));
-      },
-    });
-    expect(seen).toEqual(['skill-install']);
     expect(captured.status).toBe(409);
     expect(captured.body).not.toContain('INVALID_SKILL_SOURCE');
   });

@@ -33,7 +33,10 @@ describe('persistence large-file cap', () => {
     const filePath = join(tmpDir, 'big.md');
     writeFileSync(filePath, '');
     truncateSync(filePath, DOCUMENT_OPEN_BYTE_LIMIT + 1);
-    const persistence = createPersistenceExtension({ contentDir: tmpDir });
+    const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
+      contentDir: tmpDir,
+    });
     const document = new Y.Doc();
 
     await expect(loadDocument(persistence, document, 'big')).rejects.toBeInstanceOf(
@@ -46,7 +49,10 @@ describe('persistence large-file cap', () => {
   test('allows a document at exactly the byte limit', async () => {
     const filePath = join(tmpDir, 'exact.md');
     writeFileSync(filePath, 'a'.repeat(DOCUMENT_OPEN_BYTE_LIMIT));
-    const persistence = createPersistenceExtension({ contentDir: tmpDir });
+    const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
+      contentDir: tmpDir,
+    });
     const document = new Y.Doc();
 
     await expect(loadDocument(persistence, document, 'exact')).resolves.toBeUndefined();

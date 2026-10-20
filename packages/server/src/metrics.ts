@@ -19,6 +19,27 @@ export type MapDrivenSpliceMemoSkipReason =
   | 'position-not-numeric'
   | 'compose-failed';
 
+export type StoreDiskCompareOutcome =
+  | 'match'
+  | 'changed'
+  | 'drift'
+  | 'absent'
+  | 'stale-refused'
+  | StorePendingReason;
+
+export type StorePendingReason =
+  | 'pending-unreadable'
+  | 'pending-exhausted'
+  | 'pending-base-moved'
+  | 'pending-no-intake'
+  | 'pending-intake-failed'
+  | 'pending-intake-failed-no-base'
+  | 'pending-conflict';
+
+export type ReceiptIntakeSkip = 'echo' | 'superseded';
+
+export type ReceiptAtLoad = 'unchanged' | 'changed' | 'missing';
+
 export interface ReconciliationMetrics {
   reconcileCount: number;
   conflictCount: number;
@@ -113,9 +134,15 @@ export interface ReconciliationMetrics {
   persistenceDuplicationSpared: number;
   persistenceDuplicationBaselineMissing: number;
   persistenceDuplicationBaselineRefusals: number;
-  persistenceDivergenceRealign: number;
-  persistenceDivergenceRealignCheckpointCreated: number;
-  persistenceDivergenceRealignDeduped: number;
+  storeDiskCompare: Partial<Record<StoreDiskCompareOutcome, number>>;
+  storeDiskCompareReadRetries: number;
+  storeRestatRefused: number;
+  receiptIntakeSkip: Partial<Record<ReceiptIntakeSkip, number>>;
+  receiptAtLoad: Partial<Record<ReceiptAtLoad, number>>;
+  receiptPersistFailures: number;
+  receiptRecordsUnreadable: number;
+  receiptRecordsOtherVersion: number;
+  receiptLogRefused: number;
   managedArtifactReconcile: number;
   managedArtifactReconcileCheckpointCreated: number;
   managedArtifactReconcileDeduped: number;
@@ -234,9 +261,15 @@ const counters: ReconciliationMetrics = {
   persistenceDuplicationSpared: 0,
   persistenceDuplicationBaselineMissing: 0,
   persistenceDuplicationBaselineRefusals: 0,
-  persistenceDivergenceRealign: 0,
-  persistenceDivergenceRealignCheckpointCreated: 0,
-  persistenceDivergenceRealignDeduped: 0,
+  storeDiskCompare: {},
+  storeDiskCompareReadRetries: 0,
+  storeRestatRefused: 0,
+  receiptIntakeSkip: {},
+  receiptAtLoad: {},
+  receiptPersistFailures: 0,
+  receiptRecordsUnreadable: 0,
+  receiptRecordsOtherVersion: 0,
+  receiptLogRefused: 0,
   managedArtifactReconcile: 0,
   managedArtifactReconcileCheckpointCreated: 0,
   managedArtifactReconcileDeduped: 0,
@@ -562,16 +595,40 @@ export function incrementPersistenceDuplicationBaselineRefusals(): void {
   counters.persistenceDuplicationBaselineRefusals++;
 }
 
-export function incrementPersistenceDivergenceRealign(): void {
-  counters.persistenceDivergenceRealign++;
+export function incrementStoreDiskCompare(outcome: StoreDiskCompareOutcome): void {
+  counters.storeDiskCompare[outcome] = (counters.storeDiskCompare[outcome] ?? 0) + 1;
 }
 
-export function incrementPersistenceDivergenceRealignCheckpointCreated(): void {
-  counters.persistenceDivergenceRealignCheckpointCreated++;
+export function incrementStoreDiskCompareReadRetries(): void {
+  counters.storeDiskCompareReadRetries++;
 }
 
-export function incrementPersistenceDivergenceRealignDeduped(): void {
-  counters.persistenceDivergenceRealignDeduped++;
+export function incrementStoreRestatRefused(): void {
+  counters.storeRestatRefused++;
+}
+
+export function incrementReceiptIntakeSkip(kind: ReceiptIntakeSkip): void {
+  counters.receiptIntakeSkip[kind] = (counters.receiptIntakeSkip[kind] ?? 0) + 1;
+}
+
+export function incrementReceiptAtLoad(outcome: ReceiptAtLoad): void {
+  counters.receiptAtLoad[outcome] = (counters.receiptAtLoad[outcome] ?? 0) + 1;
+}
+
+export function incrementReceiptPersistFailures(): void {
+  counters.receiptPersistFailures++;
+}
+
+export function incrementReceiptRecordsUnreadable(count = 1): void {
+  counters.receiptRecordsUnreadable += count;
+}
+
+export function incrementReceiptRecordsOtherVersion(count: number): void {
+  counters.receiptRecordsOtherVersion += count;
+}
+
+export function incrementReceiptLogRefused(): void {
+  counters.receiptLogRefused++;
 }
 
 export function incrementManagedArtifactReconcile(): void {
@@ -724,6 +781,9 @@ export function getMetrics(): ReconciliationMetrics {
     ...counters,
     cc1LastSeq: { ...counters.cc1LastSeq },
     bridgeToleranceApplied: { ...counters.bridgeToleranceApplied },
+    storeDiskCompare: { ...counters.storeDiskCompare },
+    receiptIntakeSkip: { ...counters.receiptIntakeSkip },
+    receiptAtLoad: { ...counters.receiptAtLoad },
     mapDrivenSpliceFallback: { ...counters.mapDrivenSpliceFallback },
     mapDrivenSpliceMemoSkips: { ...counters.mapDrivenSpliceMemoSkips },
     observerAResidualMergeSpliceUnavailable: {
@@ -819,9 +879,15 @@ export function resetMetrics(): void {
   counters.persistenceDuplicationSpared = 0;
   counters.persistenceDuplicationBaselineMissing = 0;
   counters.persistenceDuplicationBaselineRefusals = 0;
-  counters.persistenceDivergenceRealign = 0;
-  counters.persistenceDivergenceRealignCheckpointCreated = 0;
-  counters.persistenceDivergenceRealignDeduped = 0;
+  counters.storeDiskCompare = {};
+  counters.storeDiskCompareReadRetries = 0;
+  counters.storeRestatRefused = 0;
+  counters.receiptIntakeSkip = {};
+  counters.receiptAtLoad = {};
+  counters.receiptPersistFailures = 0;
+  counters.receiptRecordsUnreadable = 0;
+  counters.receiptRecordsOtherVersion = 0;
+  counters.receiptLogRefused = 0;
   counters.managedArtifactReconcile = 0;
   counters.managedArtifactReconcileCheckpointCreated = 0;
   counters.managedArtifactReconcileDeduped = 0;

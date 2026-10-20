@@ -152,8 +152,6 @@ export function createPersistenceStalenessWatchdog(
           if (diskBytes !== null) standDownReason = 'disk-file-never-loaded';
         } else if (diskBytes === null) {
           standDownReason = 'disk-file-missing';
-        } else if (normalizeBridge(diskBytes) !== normalizedBase) {
-          standDownReason = 'disk-diverged-from-base';
         }
       } catch (err) {
         if (err instanceof StructuralDiskReadError) {

@@ -52,6 +52,7 @@ describe('persistence publish guard — a removed document is never republished'
 
   function persistenceWith(isRecentlyRemoved?: (name: string) => boolean) {
     return createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
       gitEnabled: false,

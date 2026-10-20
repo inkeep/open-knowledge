@@ -161,13 +161,9 @@ export interface SkillsDocumentRouteDeps {
   flushDiskAndDetectOutcome: (
     docName: string,
   ) => Promise<
-    | { kind: 'failure'; failure: StoreFailure }
-    | { kind: 'divergence' }
-    | { kind: 'stale-external-write' }
-    | null
+    { kind: 'failure'; failure: StoreFailure } | { kind: 'stale-external-write' } | null
   >;
   respondPersistenceFailure: (res: ServerResponse, failure: StoreFailure, handler: string) => void;
-  respondDiskDivergence: (res: ServerResponse, handler: string) => void;
   okArtifactKey: (
     kind: 'template' | 'folder-frontmatter' | 'folder' | 'skill',
     folder: string,
@@ -241,7 +237,6 @@ export function createSkillsDocumentRoutes(deps: SkillsDocumentRouteDeps): ApiRo
     flushDiskAndDetectOutcome,
     respondStaleExternalWrite,
     respondPersistenceFailure,
-    respondDiskDivergence,
     okArtifactKey,
     resolveSkillsRoot,
     extractActorIdentityFromQuery,
@@ -626,10 +621,6 @@ export function createSkillsDocumentRoutes(deps: SkillsDocumentRouteDeps): ApiRo
         const flushOutcome = await flushDiskAndDetectOutcome(docName);
         if (flushOutcome?.kind === 'failure') {
           respondPersistenceFailure(res, flushOutcome.failure, 'skill-put');
-          return;
-        }
-        if (flushOutcome?.kind === 'divergence') {
-          respondDiskDivergence(res, 'skill-put');
           return;
         }
         if (flushOutcome?.kind === 'stale-external-write') {

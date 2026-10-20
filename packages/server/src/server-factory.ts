@@ -1,6 +1,13 @@
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import type { Document, Extension } from '@hocuspocus/server';
@@ -123,11 +130,13 @@ import {
 } from './derived-document-index.ts';
 import { resolveDirectoryRoot } from './directory-root.ts';
 import { applyDiskContentToDoc } from './disk-content-intake.ts';
+import { DiskReceiptLog } from './disk-receipts.ts';
 import {
   canonicalDocName,
   docNameToRelativePath,
   getDocExtension,
   isRegisteredMarkdownDocName,
+  SUPPORTED_DOC_EXTENSIONS,
   stripDocExtension,
 } from './doc-extensions.ts';
 import { runDocLineageGuard } from './doc-lineage-guard.ts';
@@ -243,6 +252,7 @@ import {
   incrementDiskAuthoritativeIngestApplyFailures,
   incrementDiskAuthoritativeIngestUnrescued,
   incrementPark,
+  incrementReceiptIntakeSkip,
   incrementRecentlyRemovedDocsEviction,
   incrementReconcile,
   incrementReconcileInsertDedupSkipped,
@@ -329,6 +339,7 @@ import {
 import { resyncRecordedSkillCopies } from './skill-placements.ts';
 import { skillStateYamlPath } from './skill-state.ts';
 import { assertCompatibleStateManifest } from './state-manifest.ts';
+import { classifyIntakeAgainstReceipt, receiptIntakeSkipOf } from './store-compare.ts';
 import { assertRealpathWithinDir } from './symlink-guard.ts';
 import { SyncEngine } from './sync-engine.ts';
 import { createSyncHandshakeSpanExtension } from './sync-handshake-span-extension.ts';
@@ -590,8 +601,26 @@ export function createServer(options: ServerOptions): ServerInstance {
   const generatedIndexWarningScope = createGeneratedIndexWarningScope(resolve(contentDir));
   let cc1Broadcaster: CC1Broadcaster | null = null;
   const initialBranch = readProjectHeadState(projectDir).branch ?? 'main';
+  const diskReceipts = new DiskReceiptLog({
+    path: join(getLocalDir(projectDir), 'receipts.jsonl'),
+  });
+  const receiptFileIsGone = (docName: string): boolean => {
+    for (const extension of SUPPORTED_DOC_EXTENSIONS) {
+      const candidate = resolve(contentDir, `${docName}${extension}`);
+      if (!isWithinDir(candidate, contentDir)) return false;
+      try {
+        lstatSync(candidate);
+        return false;
+      } catch (err) {
+        const code = errnoCode(err);
+        if (code !== 'ENOENT' && code !== 'ENOTDIR') return false;
+      }
+    }
+    return true;
+  };
   const durabilityState = new DocumentDurabilityState(initialBranch, {
     persistencePath: join(getLocalDir(projectDir), 'stale-external-writes.json'),
+    receipts: diskReceipts,
     onStaleExternalWriteChange: () => {
       cc1Broadcaster?.signal('sync-status');
       hydrateStaleExternalWrites();
@@ -2208,6 +2237,25 @@ export function createServer(options: ServerOptions): ServerInstance {
       isRecentlyRemoved: (docName) => recentlyRemovedDocs.has(docName),
       mdManager: options.mdManager,
       getLossRing: () => lossRing,
+      ingestDiskAtStore: async (docName, absPath, content) => {
+        let outcome: DiskIntakeOutcome;
+        try {
+          outcome = await intakeDiskUpdate({ kind: 'update', path: absPath, docName, content });
+        } catch (error) {
+          return { kind: 'failed', error };
+        }
+        switch (outcome.kind) {
+          case 'applied':
+          case 'nothing-to-take':
+            return { kind: 'taken-in' };
+          case 'conflict':
+            return { kind: 'conflict' };
+          case 'failed':
+            return { kind: 'failed', error: outcome.error };
+          default:
+            return assertNeverDiskIntakeOutcome(outcome);
+        }
+      },
     };
 
     persistence = createPersistenceExtension({ ...persistenceOpts, durabilityState });
@@ -3007,8 +3055,9 @@ export function createServer(options: ServerOptions): ServerInstance {
   const applyDiskAuthoritativeIngest = async (
     docName: string,
     theirs: string,
-    baseAbsent: boolean,
-  ): Promise<void> => {
+    priorBase: string | undefined,
+  ): Promise<DiskIntakeOutcome> => {
+    const baseAbsent = priorBase === undefined;
     incrementDiskAuthoritativeIngest();
     const ours = serializeDoc(docName) ?? '';
     const branch = getStorageBranch() ?? 'main';
@@ -3022,18 +3071,19 @@ export function createServer(options: ServerOptions): ServerInstance {
     }
     const oursH = contentHash(ours).slice(0, 6);
     const baseToken = baseAbsent ? 'absent' : 'blockless';
+    let applyError: unknown;
     let ingested = false;
     try {
       applyToDoc(docName, theirs);
       dissolveNonGitConflicts(docName);
       ingested = true;
     } catch (e) {
+      applyError = e;
       incrementDiskAuthoritativeIngestApplyFailures();
       log.error(
         { err: e, docName },
         `[reconcile] failed to apply disk-authoritative ingest to Y.Doc for ${docName}`,
       );
-      setReconciledBase(docName, theirs);
       mintExternalChangeRescue(docName, theirs, branch, 'disk-update', theirsH, true);
       dissolveNonGitConflicts(docName);
       let surviving: string | undefined;
@@ -3045,6 +3095,8 @@ export function createServer(options: ServerOptions): ServerInstance {
           `[reconcile] unable to read ${docName} back after a failed disk-authoritative ingest; treating the live content as lost`,
         );
       }
+      if (surviving === theirs) setReconciledBase(docName, theirs);
+      else durabilityState.restoreReconciledBase(docName, priorBase);
       if (rescue === 'lost' && surviving !== ours) {
         incrementDiskAuthoritativeIngestUnrescued();
         log.warn(
@@ -3078,9 +3130,230 @@ export function createServer(options: ServerOptions): ServerInstance {
         },
         `[reconcile] ${docName} base=${baseToken} reason=no-base result=${result} ours=${oursH} theirs=${theirsH} rescue=${rescue}`,
       );
+      await recordUpsertAfterIntake(docName, theirs);
+      return { kind: 'applied' };
+    }
+    return { kind: 'failed', error: applyError };
+  };
+
+  const recordUpsertAfterIntake = async (docName: string, theirs: string): Promise<void> => {
+    try {
       await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
+    } catch (err) {
+      log.warn(
+        { err, docName },
+        `[reconcile] ${docName}: the derived index could not record the disk version`,
+      );
     }
   };
+
+  type DiskIntakeOutcome =
+    | { readonly kind: 'applied' }
+    | { readonly kind: 'nothing-to-take' }
+    | { readonly kind: 'conflict' }
+    | { readonly kind: 'failed'; readonly error: unknown };
+
+  function assertNeverDiskIntakeOutcome(outcome: never): never {
+    throw new Error(`unhandled disk intake outcome: ${(outcome as { kind: string }).kind}`);
+  }
+
+  function assertNeverReconcileOutcome(outcome: never): never {
+    throw new Error(`unhandled reconcile outcome: ${(outcome as { kind: string }).kind}`);
+  }
+
+  async function intakeDiskUpdate(
+    event: Extract<DiskEvent, { kind: 'update' }>,
+  ): Promise<DiskIntakeOutcome> {
+    const { docName, content: theirs } = event;
+    onUpstreamAdd(docName);
+    if (indexedMetadataChanged(event.previousIndexedFields, theirs, docName)) {
+      scheduleIndexRegeneration(docName);
+    }
+    if (conflicts.findByDocName(docName)?.kind === 'merge-native') {
+      try {
+        await conflicts.pruneMergeNativeAgainstGit();
+      } catch (err) {
+        log.warn({ err, docName }, '[reconcile] conflict prune against git failed');
+      }
+    }
+
+    const document = hocuspocus.documents.get(docName);
+    if (!document) {
+      if (!refuseStaleExternalWrite(durabilityState, undefined, docName, theirs, conflicts)) {
+        durabilityState.refreshReceiptWithoutBase(docName, theirs);
+      }
+      await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
+      return { kind: 'nothing-to-take' };
+    }
+    if (reviveFrozenResident(docName, theirs) !== 'not-frozen') {
+      await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
+      return { kind: 'nothing-to-take' };
+    }
+
+    const theirsHash = contentHash(theirs);
+    const receiptIntake = classifyIntakeAgainstReceipt({
+      receiptHash: durabilityState.getReceipt(docName)?.hash,
+      eventHash: theirsHash,
+      isRecentOwnWrite: durabilityState.isRecentOwnWrite(docName, theirsHash),
+      readDiskHash: () => {
+        try {
+          return contentHash(readFileSync(event.path, 'utf-8'));
+        } catch {
+          return null;
+        }
+      },
+    });
+    const receiptSkip = receiptIntakeSkipOf(receiptIntake);
+    if (receiptSkip !== null && durabilityState.getStaleExternalWrite(docName) === undefined) {
+      incrementReceiptIntakeSkip(receiptSkip);
+      log.debug(
+        { docName, receiptIntake },
+        `[reconcile] ${docName}: the disk bytes match its receipt (${receiptIntake}); nothing to take in`,
+      );
+      conflicts.dissolveReconcile(docName);
+      await recordUpsertAfterIntake(docName, theirs);
+      return { kind: 'nothing-to-take' };
+    }
+
+    const base = getReconciledBase(docName);
+    const ours = serializeDoc(docName) ?? base ?? '';
+
+    if (refuseStaleExternalWrite(durabilityState, document, docName, theirs, conflicts, ours)) {
+      await recordUpsertAfterIntake(docName, theirs);
+      return { kind: 'conflict' };
+    }
+
+    if (base === undefined) {
+      return applyDiskAuthoritativeIngest(docName, theirs, undefined);
+    }
+
+    const result = reconcile({ docName, base, ours, theirs });
+
+    const baseH = contentHash(base).slice(0, 6);
+    const oursH = contentHash(ours).slice(0, 6);
+    const theirsH = contentHash(theirs).slice(0, 6);
+    const oursLen = ours.length;
+    const theirsLen = theirs.length;
+    const newLen =
+      result.kind === 'clean' || result.kind === 'merged' || result.kind === 'both-kept'
+        ? result.newContent.length
+        : undefined;
+    const delta = newLen === undefined ? undefined : newLen - Math.max(oursLen, theirsLen);
+    const sizeSuffix = newLen === undefined ? '' : ` newLen=${newLen} delta=${delta}`;
+    log.info(
+      {
+        docName,
+        base: baseH,
+        ours: oursH,
+        theirs: theirsH,
+        result: result.kind,
+        oursLen,
+        theirsLen,
+        ...(newLen === undefined ? {} : { newLen, delta }),
+      },
+      `[reconcile] ${docName} base=${baseH} ours=${oursH} theirs=${theirsH} result=${result.kind} oursLen=${oursLen} theirsLen=${theirsLen}${sizeSuffix}`,
+    );
+
+    reportInsertDedupSkipped(docName, result, ours, theirs);
+
+    switch (result.kind) {
+      case 'noop':
+        conflicts.dissolveReconcile(docName);
+        await recordUpsertAfterIntake(docName, theirs);
+        return { kind: 'nothing-to-take' };
+
+      case 'clean':
+        try {
+          applyToDoc(docName, result.newContent);
+        } catch (e) {
+          log.error(
+            { err: e, docName },
+            `[reconcile] failed to apply clean content to Y.Doc for ${docName}`,
+          );
+          setReconciledBase(docName, base);
+          conflicts.dissolveReconcile(docName);
+          return { kind: 'failed', error: e };
+        }
+        setReconciledBase(docName, result.newContent);
+        incrementReconcile();
+        conflicts.dissolveReconcile(docName);
+        await recordUpsertAfterIntake(docName, theirs);
+        return { kind: 'applied' };
+
+      case 'merged':
+        try {
+          applyToDoc(docName, result.newContent);
+        } catch (e) {
+          log.error(
+            { err: e, docName },
+            `[reconcile] failed to apply merged content to Y.Doc for ${docName}`,
+          );
+          setReconciledBase(docName, base);
+          conflicts.dissolveReconcile(docName);
+          return { kind: 'failed', error: e };
+        }
+        setReconciledBase(docName, theirs);
+        incrementReconcile();
+        conflicts.dissolveReconcile(docName);
+        await recordUpsertAfterIntake(docName, theirs);
+        return { kind: 'applied' };
+
+      case 'both-kept': {
+        try {
+          applyToDoc(docName, result.newContent);
+        } catch (e) {
+          log.error(
+            { err: e, docName },
+            `[reconcile] failed to apply both-kept content to Y.Doc for ${docName}; raising the conflict`,
+          );
+          setReconciledBase(docName, base);
+          incrementConflict();
+          conflicts.raise({
+            kind: 'reconcile',
+            file: conflicts.fileOf(docName),
+            reason: 'merged-with-markers',
+            stages: { base, ours, theirs },
+          });
+          return { kind: 'failed', error: e };
+        }
+        mergeHistory.bothKept(docName, { ours, theirs }, result.kept);
+        setReconciledBase(docName, theirs);
+        incrementReconcile();
+        reportReconcileBothKept(docName, result.kept, 'watcher');
+        conflicts.dissolveReconcile(docName);
+        await recordUpsertAfterIntake(docName, theirs);
+        return { kind: 'applied' };
+      }
+
+      case 'refused': {
+        if (result.reason === 'no-base') {
+          return applyDiskAuthoritativeIngest(docName, theirs, base);
+        }
+        reportReconcileCheckFailed(docName, result, 'watcher');
+        if (result.reason === 'check-failed' || result.reason === 'too-large') {
+          if (
+            await mergeHistory.keptLive(docName, { side: 'theirs', bytes: theirs }, result.reason)
+          ) {
+            setReconciledBase(docName, theirs);
+            reportReconcileKeptLive(docName, result.reason, 'watcher');
+            conflicts.dissolveReconcile(docName);
+            await recordUpsertAfterIntake(docName, theirs);
+            return { kind: 'applied' };
+          }
+        }
+        incrementConflict();
+        conflicts.raise({
+          kind: 'reconcile',
+          file: conflicts.fileOf(docName),
+          reason: wireReasonForRefusal(result.reason),
+          stages: { base, ours, theirs },
+        });
+        return { kind: 'conflict' };
+      }
+      default:
+        return assertNeverReconcileOutcome(result);
+    }
+  }
 
   const bufferedRemovalScopes = new Map<
     Extract<DiskEvent, { kind: 'delete' | 'rename' }>,
@@ -3110,184 +3383,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         }
 
         case 'update': {
-          const { docName, content: theirs } = event;
-          onUpstreamAdd(docName);
-          if (indexedMetadataChanged(event.previousIndexedFields, theirs, docName)) {
-            scheduleIndexRegeneration(docName);
-          }
-          if (conflicts.findByDocName(docName)?.kind === 'merge-native') {
-            try {
-              await conflicts.pruneMergeNativeAgainstGit();
-            } catch (err) {
-              log.warn({ err, docName }, '[reconcile] conflict prune against git failed');
-            }
-          }
-
-          const document = hocuspocus.documents.get(docName);
-          if (!document) {
-            refuseStaleExternalWrite(durabilityState, undefined, docName, theirs, conflicts);
-            await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
-            return;
-          }
-          if (reviveFrozenResident(docName, theirs) !== 'not-frozen') {
-            await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
-            return;
-          }
-
-          const base = getReconciledBase(docName);
-          const ours = serializeDoc(docName) ?? base ?? '';
-
-          if (
-            refuseStaleExternalWrite(durabilityState, document, docName, theirs, conflicts, ours)
-          ) {
-            await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
-            return;
-          }
-
-          if (base === undefined) {
-            await applyDiskAuthoritativeIngest(docName, theirs, true);
-            break;
-          }
-
-          const result = reconcile({ docName, base, ours, theirs });
-
-          const baseH = contentHash(base).slice(0, 6);
-          const oursH = contentHash(ours).slice(0, 6);
-          const theirsH = contentHash(theirs).slice(0, 6);
-          const oursLen = ours.length;
-          const theirsLen = theirs.length;
-          const newLen =
-            result.kind === 'clean' || result.kind === 'merged' || result.kind === 'both-kept'
-              ? result.newContent.length
-              : undefined;
-          const delta = newLen === undefined ? undefined : newLen - Math.max(oursLen, theirsLen);
-          const sizeSuffix = newLen === undefined ? '' : ` newLen=${newLen} delta=${delta}`;
-          log.info(
-            {
-              docName,
-              base: baseH,
-              ours: oursH,
-              theirs: theirsH,
-              result: result.kind,
-              oursLen,
-              theirsLen,
-              ...(newLen === undefined ? {} : { newLen, delta }),
-            },
-            `[reconcile] ${docName} base=${baseH} ours=${oursH} theirs=${theirsH} result=${result.kind} oursLen=${oursLen} theirsLen=${theirsLen}${sizeSuffix}`,
-          );
-
-          reportInsertDedupSkipped(docName, result, ours, theirs);
-
-          switch (result.kind) {
-            case 'noop':
-              conflicts.dissolveReconcile(docName);
-              await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
-              break;
-
-            case 'clean':
-              {
-                let applied = false;
-                try {
-                  applyToDoc(docName, result.newContent);
-                  setReconciledBase(docName, result.newContent);
-                  incrementReconcile();
-                  conflicts.dissolveReconcile(docName);
-                  applied = true;
-                } catch (e) {
-                  log.error(
-                    { err: e, docName },
-                    `[reconcile] failed to apply clean content to Y.Doc for ${docName}`,
-                  );
-                  setReconciledBase(docName, theirs);
-                  conflicts.dissolveReconcile(docName);
-                }
-                if (applied) {
-                  await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
-                }
-              }
-              break;
-
-            case 'merged':
-              {
-                let applied = false;
-                try {
-                  applyToDoc(docName, result.newContent);
-                  setReconciledBase(docName, theirs);
-                  incrementReconcile();
-                  conflicts.dissolveReconcile(docName);
-                  applied = true;
-                } catch (e) {
-                  log.error(
-                    { err: e, docName },
-                    `[reconcile] failed to apply merged content to Y.Doc for ${docName}`,
-                  );
-                  setReconciledBase(docName, theirs);
-                  conflicts.dissolveReconcile(docName);
-                }
-                if (applied) {
-                  await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
-                }
-              }
-              break;
-
-            case 'both-kept': {
-              try {
-                applyToDoc(docName, result.newContent);
-              } catch (e) {
-                log.error(
-                  { err: e, docName },
-                  `[reconcile] failed to apply both-kept content to Y.Doc for ${docName}; raising the conflict`,
-                );
-                setReconciledBase(docName, theirs);
-                incrementConflict();
-                conflicts.raise({
-                  kind: 'reconcile',
-                  file: conflicts.fileOf(docName),
-                  reason: 'merged-with-markers',
-                  stages: { base, ours, theirs },
-                });
-                break;
-              }
-              mergeHistory.bothKept(docName, { ours, theirs }, result.kept);
-              setReconciledBase(docName, theirs);
-              incrementReconcile();
-              reportReconcileBothKept(docName, result.kept, 'watcher');
-              conflicts.dissolveReconcile(docName);
-              await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
-              break;
-            }
-
-            case 'refused': {
-              if (result.reason === 'no-base') {
-                await applyDiskAuthoritativeIngest(docName, theirs, false);
-                break;
-              }
-              reportReconcileCheckFailed(docName, result, 'watcher');
-              if (result.reason === 'check-failed' || result.reason === 'too-large') {
-                if (
-                  await mergeHistory.keptLive(
-                    docName,
-                    { side: 'theirs', bytes: theirs },
-                    result.reason,
-                  )
-                ) {
-                  setReconciledBase(docName, theirs);
-                  reportReconcileKeptLive(docName, result.reason, 'watcher');
-                  conflicts.dissolveReconcile(docName);
-                  await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
-                  break;
-                }
-              }
-              incrementConflict();
-              conflicts.raise({
-                kind: 'reconcile',
-                file: conflicts.fileOf(docName),
-                reason: wireReasonForRefusal(result.reason),
-                stages: { base, ours, theirs },
-              });
-              break;
-            }
-          }
+          await intakeDiskUpdate(event);
           break;
         }
 
@@ -5049,12 +5145,12 @@ export function createServer(options: ServerOptions): ServerInstance {
                       case 'merged':
                       case 'clean':
                         applyToDoc(docName, outcome.newContent);
-                        setReconciledBase(docName, outcome.newContent);
+                        setReconciledBase(docName, currentDisk);
                         restoredCount++;
                         break;
                       case 'both-kept': {
                         applyToDoc(docName, outcome.newContent);
-                        setReconciledBase(docName, outcome.newContent);
+                        setReconciledBase(docName, currentDisk);
                         mergeHistory.bothKept(
                           docName,
                           { ours: parked.markdown, theirs: currentDisk },
@@ -5313,6 +5409,11 @@ export function createServer(options: ServerOptions): ServerInstance {
     () => {
       indexRegenerationReady = true;
       resolveReady();
+      setImmediate(() => {
+        const pruned = diskReceipts.pruneGone(receiptFileIsGone);
+        if (pruned > 0)
+          log.info({ pruned }, `[disk-receipts] dropped ${pruned} receipt(s) whose file is gone`);
+      }).unref();
       deferBootIndexSweep();
       deferShadowHousekeeping();
     },

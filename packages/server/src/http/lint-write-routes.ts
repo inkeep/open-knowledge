@@ -99,13 +99,9 @@ export interface LintWriteRouteDeps {
   flushDiskAndDetectOutcome: (
     docName: string,
   ) => Promise<
-    | { kind: 'failure'; failure: StoreFailure }
-    | { kind: 'divergence' }
-    | { kind: 'stale-external-write' }
-    | null
+    { kind: 'failure'; failure: StoreFailure } | { kind: 'stale-external-write' } | null
   >;
   respondPersistenceFailure: (res: ServerResponse, failure: StoreFailure, handler: string) => void;
-  respondDiskDivergence: (res: ServerResponse, handler: string) => void;
   respondStaleExternalWrite: (res: ServerResponse, handler: string, docName: string) => void;
   flushDocToDisk: (docName: string, label: string) => void;
   log: PinoLogger;
@@ -131,7 +127,6 @@ export function createLintWriteRoutes(deps: LintWriteRouteDeps): ApiRouteGroup {
     buildAgentActor,
     flushDiskAndDetectOutcome,
     respondPersistenceFailure,
-    respondDiskDivergence,
     respondStaleExternalWrite,
     flushDocToDisk,
     log,
@@ -391,10 +386,6 @@ export function createLintWriteRoutes(deps: LintWriteRouteDeps): ApiRouteGroup {
             const flushOutcome = await flushDiskAndDetectOutcome(resolvedDocName);
             if (flushOutcome?.kind === 'failure') {
               respondPersistenceFailure(res, flushOutcome.failure, 'lint-fix');
-              return;
-            }
-            if (flushOutcome?.kind === 'divergence') {
-              respondDiskDivergence(res, 'lint-fix');
               return;
             }
             if (flushOutcome?.kind === 'stale-external-write') {

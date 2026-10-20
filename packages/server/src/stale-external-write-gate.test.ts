@@ -55,6 +55,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
   async function settleWrite(agentTriggered = true): Promise<void> {
     writeFileSync(join(tmpDir, `${docName}.md`), STALE_CONTENT, 'utf-8');
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
       gitEnabled: false,
@@ -115,7 +116,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     const after = getMetrics();
     expect(after.staleExternalWriteRefused).toBe(before.staleExternalWriteRefused + 1);
     expect(after.conflictCount).toBe(before.conflictCount);
-    expect(after.persistenceDivergenceRealign).toBe(before.persistenceDivergenceRealign);
+    expect(after.storeDiskCompare).toEqual(before.storeDiskCompare);
     expect(after.bridgeMergeContentLoss).toBe(before.bridgeMergeContentLoss);
   });
 
@@ -176,6 +177,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     writeFileSync(join(tmpDir, `${docName}.md`), STALE_CONTENT, 'utf-8');
     durabilityState.recordDisplacedVersion(docName, STALE_CONTENT);
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
       gitEnabled: false,
@@ -299,6 +301,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     document.destroy();
     document = new Y.Doc();
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
       gitEnabled: false,
@@ -325,6 +328,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     document = new Y.Doc();
     durabilityState = new DocumentDurabilityState('main', { persistencePath });
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
       gitEnabled: false,
@@ -349,6 +353,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     writeFileSync(join(tmpDir, `${docName}.md`), STALE_CONTENT, 'utf-8');
     durabilityState.markAgentWriteStore(docName);
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
       gitEnabled: false,
@@ -366,7 +371,6 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     expect(durabilityState.getStaleExternalWrite(docName)).toBeDefined();
     expect(durabilityState.getReconciledBase(docName)).toBe(ACKNOWLEDGED_CONTENT);
     expect(durabilityState.takeStaleExternalWriteFreeze(docName)).toBe(true);
-    expect(durabilityState.takeStoreDivergence(docName)).toBe(false);
     const retained = document.getText('source').toString();
     durabilityState.recordDisplacedVersion(docName, 'an older displaced version\n');
     writeFileSync(join(tmpDir, `${docName}.md`), 'an older displaced version\n', 'utf-8');
@@ -377,6 +381,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     document = new Y.Doc();
     const restoredState = new DocumentDurabilityState('main', { persistencePath });
     const restarted = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
       gitEnabled: false,
@@ -456,6 +461,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
       document = new Y.Doc();
       const restored = new DocumentDurabilityState('main', { persistencePath });
       const persistence = createPersistenceExtension({
+        ingestDiskAtStore: null,
         contentDir: tmpDir,
         projectDir: tmpDir,
         gitEnabled: false,
@@ -486,6 +492,10 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
       projectDir: tmpDir,
       gitEnabled: false,
       durabilityState,
+      ingestDiskAtStore: async (name, _path, content) => {
+        durabilityState.setReconciledBase(name, content);
+        return { kind: 'taken-in' };
+      },
     });
 
     await persistence.extension.onStoreDocument?.({
@@ -501,6 +511,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
   test('a blockless acknowledged base conflicts the pre-write reconcile and preserves the live doc', async () => {
     writeFileSync(join(tmpDir, `${docName}.md`), STALE_CONTENT, 'utf-8');
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
       gitEnabled: false,

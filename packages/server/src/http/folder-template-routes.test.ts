@@ -32,7 +32,6 @@ function buildGroup() {
     scheduleOkArtifactFlush: () => {},
     flushDiskAndDetectOutcome: () => Promise.resolve(null),
     respondPersistenceFailure: () => {},
-    respondDiskDivergence: () => {},
     respondStaleExternalWrite: () => {},
     registerWrittenDocInFileIndex: () => {},
     captureAndCloseDocuments: () => Promise.resolve(new Map()),

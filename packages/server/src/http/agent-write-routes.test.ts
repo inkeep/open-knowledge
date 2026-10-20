@@ -46,7 +46,6 @@ function buildGroup(overrides: Partial<Deps> = {}) {
     countNormalizedSummary: notDispatched,
     flushDiskAndDetectOutcome: notDispatched,
     respondPersistenceFailure: notDispatched,
-    respondDiskDivergence: notDispatched,
     flushDocToDisk: notDispatched,
     agentFocusBroadcaster: undefined,
     onAgentWrite: undefined,

@@ -102,6 +102,7 @@ async function drivePhantomDivergence(
   let windowFired = false;
   let windowGuard: Promise<ReconcileBeforeWriteResult> | undefined;
   const persistence = createPersistenceExtension({
+    ingestDiskAtStore: null,
     contentDir: tmpDir,
     projectDir: tmpDir,
     gitEnabled: false,
@@ -205,6 +206,7 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
     writeFileSync(docPath, BASE_CONTENT, 'utf-8');
 
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
       gitEnabled: false,
@@ -243,6 +245,7 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
     let laterFlush: Promise<void> | undefined;
     let peekAfterLaterStart: string | undefined;
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir: tmpDir,
       projectDir: tmpDir,
       gitEnabled: false,
@@ -311,6 +314,24 @@ describe('reconcileDiskBeforeAgentWrite — overlapping own flushes are not fore
     let conflictAfterGuard: boolean | undefined;
 
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: async (name, _path, content) => {
+        const taken = await reconcileDiskBeforeAgentWrite(
+          durabilityState,
+          fakeHocuspocusWith(name, document),
+          name,
+          tmpDir,
+          undefined,
+          undefined,
+          RECONCILE_TEST_CONFLICTS,
+          NO_SHADOW_MERGE_HISTORY,
+        );
+        return taken.reconciled || durabilityState.getReconciledBase(name) === content
+          ? { kind: 'taken-in' }
+          : {
+              kind: 'not-taken-in',
+              error: new Error('the pre-write merge did not take the disk version in'),
+            };
+      },
       contentDir: tmpDir,
       projectDir: tmpDir,
       gitEnabled: false,

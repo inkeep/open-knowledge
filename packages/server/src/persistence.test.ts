@@ -256,6 +256,7 @@ describe('persistence refuses links into private repository state', () => {
 
   function createPersistence(durabilityState = new DocumentDurabilityState()) {
     return createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir,
       projectDir: contentDir,
       gitEnabled: false,
@@ -267,10 +268,14 @@ describe('persistence refuses links into private repository state', () => {
     const path = join(contentDir, 'note.md');
     writeFileSync(path, '# Before\n');
     let owned = true;
+    const durabilityState = new DocumentDurabilityState();
+    durabilityState.setReconciledBase('note', '# Before\n');
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir,
       projectDir: contentDir,
       gitEnabled: false,
+      durabilityState,
       assertContentPath: () => {
         if (!owned) throw new ContentScopeAdmissionError();
       },
@@ -459,7 +464,9 @@ describe('persistence refuses links into private repository state', () => {
     const linkPath = join(contentDir, 'notes', 'alias.md');
     writeFileSync(targetPath, '# Before\n');
     symlinkSync('../shared/a.md', linkPath);
-    const persistence = createPersistence();
+    const durabilityState = new DocumentDurabilityState();
+    durabilityState.setReconciledBase('notes/alias', '# Before\n');
+    const persistence = createPersistence(durabilityState);
     const document = new Y.Doc();
     composeAndWriteRawBody(document, '# After\n', 'test');
 
@@ -509,6 +516,7 @@ describe('durable derived-index projection', () => {
       recordDurableStore,
     };
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir,
       projectDir: contentDir,
       gitEnabled: false,
@@ -531,6 +539,7 @@ describe('durable derived-index projection', () => {
     const durabilityState = new DocumentDurabilityState();
     const recordDurableStore = vi.fn();
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir,
       projectDir: contentDir,
       gitEnabled: false,
@@ -560,6 +569,7 @@ describe('durable derived-index projection', () => {
     });
     await derivedDocumentIndex.close();
     const persistence = createPersistenceExtension({
+      ingestDiskAtStore: null,
       contentDir,
       projectDir: contentDir,
       gitEnabled: false,

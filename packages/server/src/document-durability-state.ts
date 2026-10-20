@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { currentCliCommandName } from '@inkeep/open-knowledge-core';
 import { atomicTempPath } from '@inkeep/open-knowledge-core/server';
+import { type DiskReceipt, DiskReceiptLog, type FileObservation } from './disk-receipts.ts';
 import {
   tracedMkdirSync,
   tracedRenameSync,
@@ -10,13 +11,24 @@ import {
   tracedWriteFileSync,
 } from './fs-traced.ts';
 import { getLogger } from './logger.ts';
-import { incrementInFlightFlushExpired, incrementStaleExternalWriteRefused } from './metrics.ts';
+import {
+  incrementInFlightFlushExpired,
+  incrementReceiptAtLoad,
+  incrementStaleExternalWriteRefused,
+  type ReceiptAtLoad,
+  type StorePendingReason,
+} from './metrics.ts';
 import { contentHash } from './version-hash.ts';
 
 export interface StoreFailure {
   code?: string;
   message: string;
   removal?: StoreFailureRemoval;
+  held?: {
+    readonly reason: StorePendingReason;
+    readonly causeCode?: string;
+    readonly noBase?: true;
+  };
 }
 
 export type StoreFailureRemoval =
@@ -52,6 +64,7 @@ export function assertNeverDeferredStoreWait(wait: never): never {
 export const OK_DOC_REMOVED = 'OK_DOC_REMOVED';
 export const OK_PATH_UNRESOLVABLE = 'OK_PATH_UNRESOLVABLE';
 export const OK_STORE_REFUSED = 'OK_STORE_REFUSED';
+export const OK_STORE_HELD = 'OK_STORE_HELD';
 export const OK_STORE_DISCARDED = 'OK_STORE_DISCARDED';
 
 const IN_FLIGHT_FLUSH_TTL_MS = 60_000;
@@ -169,6 +182,7 @@ export interface DocumentDurabilityStateOptions {
   onStaleExternalWriteChange?: () => void;
   onStoreRefused?: (docName: string) => void;
   hasResolvedExtension?: (docName: string) => boolean;
+  receipts?: DiskReceiptLog;
 }
 
 export class DocumentDurabilityStateError extends Error {
@@ -280,13 +294,13 @@ export class DocumentDurabilityState {
   private readonly agentWriteStores = new Set<string>();
   private readonly refusedStoreDocNames = new Set<string>();
   private readonly storeFailures = new Map<string, StoreFailure>();
-  private readonly storeDivergences = new Set<string>();
   private readonly staleExternalWriteFreezes = new Set<string>();
   private readonly persistencePath: string | undefined;
   private readonly fileForDocName: (docName: string) => string;
   private readonly onStaleExternalWriteChange: (() => void) | undefined;
   private readonly onStoreRefused: ((docName: string) => void) | undefined;
   private readonly hasResolvedExtension: ((docName: string) => boolean) | undefined;
+  private readonly receipts: DiskReceiptLog;
   private cachedDocumentsByBranch = new Map<string, Map<string, CachedDurabilityDocument>>();
   private lastPersistedParts = snapshotParts(new Map());
   private nextDisplacedExpiryAt = Number.POSITIVE_INFINITY;
@@ -304,6 +318,7 @@ export class DocumentDurabilityState {
     this.onStaleExternalWriteChange = options.onStaleExternalWriteChange;
     this.onStoreRefused = options.onStoreRefused;
     this.hasResolvedExtension = options.hasResolvedExtension;
+    this.receipts = options.receipts ?? new DiskReceiptLog();
     this.reconciledBaseByBranch.set(initialBranch, new Map());
     this.restore();
   }
@@ -324,7 +339,34 @@ export class DocumentDurabilityState {
     return this.reconciledBaseByBranch.get(this.activeBranch)?.get(docName);
   }
 
-  setReconciledBase(docName: string, content: string): void {
+  getReceipt(docName: string): DiskReceipt | undefined {
+    return this.receipts.get(docName);
+  }
+
+  isRecentOwnWrite(docName: string, hash: string): boolean {
+    return this.receipts.isRecentOwnWrite(docName, hash);
+  }
+
+  checkReceiptAtLoad(docName: string, diskContent: string): ReceiptAtLoad {
+    const receipt = this.receipts.get(docName);
+    const outcome: ReceiptAtLoad =
+      receipt === undefined
+        ? 'missing'
+        : receipt.hash === contentHash(diskContent)
+          ? 'unchanged'
+          : 'changed';
+    incrementReceiptAtLoad(outcome);
+    return outcome;
+  }
+
+  refreshReceiptWithoutBase(docName: string, diskContent: string): void {
+    if (this.getReconciledBase(docName) !== undefined) return;
+    if (this.receipts.get(docName) === undefined) return;
+    this.receipts.recordAgreed(docName, diskContent);
+  }
+
+  setReconciledBase(docName: string, content: string, observation?: FileObservation): void {
+    this.receipts.recordAgreed(docName, content, observation);
     let bases = this.reconciledBaseByBranch.get(this.activeBranch);
     if (!bases) {
       bases = new Map();
@@ -339,7 +381,28 @@ export class DocumentDurabilityState {
     this.mutateDocument(docName, () => bases.set(docName, content));
   }
 
-  recordSuccessfulStore(docName: string, content: string, displacedContent?: string): void {
+  restoreReconciledBase(docName: string, previous: string | undefined): void {
+    if (previous !== undefined) {
+      this.setReconciledBase(docName, previous);
+      return;
+    }
+    this.receipts.forget(docName);
+    const bases = this.reconciledBaseByBranch.get(this.activeBranch);
+    if (!bases?.has(docName)) return;
+    if (!this.isPersistedDocument(docName)) {
+      bases.delete(docName);
+      return;
+    }
+    this.mutateDocument(docName, () => bases.delete(docName));
+  }
+
+  recordSuccessfulStore(
+    docName: string,
+    content: string,
+    displacedContent?: string,
+    observation?: FileObservation,
+  ): void {
+    this.receipts.recordOwnWrite(docName, content, observation);
     if (displacedContent === undefined) {
       this.setReconciledBase(docName, content);
       return;
@@ -376,6 +439,7 @@ export class DocumentDurabilityState {
    * reads that same base and returns early without it.
    */
   deleteReconciledBase(docName: string): void {
+    this.receipts.forget(docName);
     this.refusedStoreDocNames.delete(docName);
     this.storeFailures.delete(docName);
     const persist = this.isPersistedDocument(docName);
@@ -952,14 +1016,6 @@ export class DocumentDurabilityState {
     const failure = this.storeFailures.get(docName) ?? null;
     this.storeFailures.delete(docName);
     return failure;
-  }
-
-  recordStoreDivergence(docName: string): void {
-    this.storeDivergences.add(docName);
-  }
-
-  takeStoreDivergence(docName: string): boolean {
-    return this.storeDivergences.delete(docName);
   }
 
   recordStaleExternalWriteFreeze(docName: string): void {

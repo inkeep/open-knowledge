@@ -95,13 +95,9 @@ export interface SkillsFileRouteDeps {
   flushDiskAndDetectOutcome: (
     docName: string,
   ) => Promise<
-    | { kind: 'failure'; failure: StoreFailure }
-    | { kind: 'divergence' }
-    | { kind: 'stale-external-write' }
-    | null
+    { kind: 'failure'; failure: StoreFailure } | { kind: 'stale-external-write' } | null
   >;
   respondPersistenceFailure: (res: ServerResponse, failure: StoreFailure, handler: string) => void;
-  respondDiskDivergence: (res: ServerResponse, handler: string) => void;
   okArtifactKey: (
     kind: 'template' | 'folder-frontmatter' | 'folder' | 'skill',
     folder: string,
@@ -197,7 +193,6 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
     flushDiskAndDetectOutcome,
     respondStaleExternalWrite,
     respondPersistenceFailure,
-    respondDiskDivergence,
     attributeOkArtifactWrite,
     okArtifactKey,
     commitOkArtifactWrite,
@@ -447,10 +442,6 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
           const flushOutcome = await flushDiskAndDetectOutcome(refDocName);
           if (flushOutcome?.kind === 'failure') {
             respondPersistenceFailure(res, flushOutcome.failure, 'skill-file-put');
-            return;
-          }
-          if (flushOutcome?.kind === 'divergence') {
-            respondDiskDivergence(res, 'skill-file-put');
             return;
           }
           if (flushOutcome?.kind === 'stale-external-write') {
