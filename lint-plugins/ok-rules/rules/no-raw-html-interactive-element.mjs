@@ -3,7 +3,7 @@ import { elementName } from '../jsx.mjs';
 
 const URL = docsUrl('no-raw-html-interactive-element');
 
-const MESSAGE = `Raw HTML interactive primitive — use shadcn Button/Input/Textarea/Select from @/components/ui/* (install missing via \`pnpm dlx shadcn@latest add <name>\`). See ${URL}`;
+const MESSAGE = `Raw HTML interactive primitive — use shadcn Button/Input/Textarea/Select from @/components/ui/* (install missing via \`pnpm dlx shadcn@latest add <name>\` from \`packages/app\`). See ${URL}`;
 
 const FORBIDDEN = new Set(['button', 'input', 'textarea', 'select']);
 

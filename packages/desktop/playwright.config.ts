@@ -25,23 +25,7 @@ export default defineConfig({
   testDir: './tests/smoke',
   testMatch: /.*\.e2e\.ts$/,
   timeout: process.env.CI ? 150_000 : ONE_LAUNCH_AND_ITS_READINESS_VERDICT_MS,
-  // Retries for CI macOS runner flake. Tests that hang or time out from
-  // runner-load contention (Electron Helper XPC delays, slow loadFile
-  // resolution, slow window show under vibrancy + transparent: true) get
-  // retried up to twice. Local dev runs (CI=undefined) get 0 retries to
-  // surface real regressions immediately. This mirrors the precedent set
-  // by `OpenKnowledge Validation`'s playwright job — CLAUDE.md
-  // documents `failOnFlakyTests: false` for it explicitly because Electron
-  // smoke on macos-latest has inherent latency variance the Playwright
-  // engine itself can't eliminate. Retries are a structural acknowledgment
-  // of CI runner-class behavior, NOT a substitute for fixing real bugs.
   retries: process.env.CI ? 2 : 0,
-  // Per CLAUDE.md root policy ("PR-tier has failOnFlakyTests: false — retry-
-  // success does NOT promote to red"), a smoke that flakes once and passes on
-  // retry must not red the job. Persistent-flake detection is the nightly's
-  // job. Without this, a single transient timeout (Electron Helper XPC delay,
-  // slow vibrancy compositor under load, etc.) reds the gate even though the
-  // retry surfaces no real regression.
   failOnFlakyTests: false,
   // Fail-fast diagnostic when src/ is newer than out/. The smoke harness
   // launches `out/main/index.js` directly; if out/ is stale, tests run

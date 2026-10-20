@@ -129,7 +129,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     if (missing.length > 0) {
       const lines = missing.map((m) => `  - ${m.path.join('.')}`).join('\n');
       throw new Error(
-        `ConfigSchema leaves missing fieldRegistry entry (declaration order bug? .register() must come BEFORE .default()/.optional()/.nullable()):\n${lines}`,
+        `ConfigSchema leaves missing fieldRegistry entry (register each leaf on the \`fieldRegistry\` singleton from \`@inkeep/open-knowledge-core\`):\n${lines}`,
       );
     }
   });
