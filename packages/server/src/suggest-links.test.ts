@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Hocuspocus } from '@hocuspocus/server';
+import { filesystemIdentity } from '@inkeep/open-knowledge-core/server';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type * as Y from 'yjs';
 import { AGENT_WRITE_ORIGIN, applyAgentMarkdownWrite } from './agent-sessions.ts';
@@ -16,11 +17,12 @@ function buildFileIndex(dir: string, docNames: string[]): ReadonlyMap<string, Fi
   for (const docName of docNames) {
     const filePath = join(dir, `${docName}.md`);
     const stats = statSync(filePath);
+    const statsIdentity = filesystemIdentity(statSync(filePath, { bigint: true }));
     index.set(docName, {
       size: stats.size,
       modified: stats.mtime.toISOString(),
       canonicalPath: filePath,
-      inode: stats.ino,
+      inode: statsIdentity,
       aliases: [],
     });
   }

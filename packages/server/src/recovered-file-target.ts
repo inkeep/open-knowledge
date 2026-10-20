@@ -1,5 +1,6 @@
 import { realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { filesystemIdentity, statMtimeMs } from '@inkeep/open-knowledge-core/server';
 import type { WatcherHandle } from './file-watcher.ts';
 import { getLogger } from './logger.ts';
 
@@ -29,14 +30,14 @@ export function reconcileRecoveredFileTarget({
 
   try {
     const canonicalPath = realpathSync(absolutePath);
-    const stats = statSync(canonicalPath);
+    const stats = statSync(canonicalPath, { bigint: true });
     watcher.mutateFileIndex({
       kind: 'file-create',
       path: canonicalPath,
       relativePath,
-      size: stats.size,
-      modifiedTs: stats.mtimeMs,
-      inode: stats.ino,
+      size: Number(stats.size),
+      modifiedTs: statMtimeMs(stats),
+      inode: filesystemIdentity(stats),
     });
   } catch (error) {
     const code =

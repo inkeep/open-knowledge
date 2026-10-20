@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { filesystemIdentity } from '@inkeep/open-knowledge-core/server';
 import { describe, expect, test, vi } from 'vitest';
 import type { DiskEvent, WatcherHandle } from './file-watcher.ts';
 import { getLogger } from './logger.ts';
@@ -64,6 +65,7 @@ describe('reconcileRecoveredFileTarget', () => {
       writeFileSync(targetPath, 'report');
       const canonicalPath = realpathSync(targetPath);
       const stats = statSync(canonicalPath);
+      const statsIdentity = filesystemIdentity(statSync(canonicalPath, { bigint: true }));
       const mutations: DiskEvent[] = [];
       const invalidateReferencedAssetsCache = vi.fn();
 
@@ -84,7 +86,7 @@ describe('reconcileRecoveredFileTarget', () => {
           relativePath,
           size: stats.size,
           modifiedTs: stats.mtimeMs,
-          inode: stats.ino,
+          inode: statsIdentity,
         },
       ]);
       expect(invalidateReferencedAssetsCache).toHaveBeenCalledOnce();

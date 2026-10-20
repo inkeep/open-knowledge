@@ -457,7 +457,7 @@ describe('older own-write observations', () => {
           size: 0,
           modified: new Date(0).toISOString(),
           canonicalPath: path(name),
-          inode: 0,
+          inode: '',
           aliases: [],
           kind: 'markdown',
         },

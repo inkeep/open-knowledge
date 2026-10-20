@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  type BigIntStats,
   type Dirent,
   existsSync,
   lstatSync,
@@ -13,6 +14,7 @@ import {
 import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import { LINKABLE_ASSET_EXTENSIONS } from '@inkeep/open-knowledge-core';
+import { filesystemIdentity, statMtime } from '@inkeep/open-knowledge-core/server';
 import { isConfigDoc, isReservedForUserTree, isSystemDoc } from './cc1-broadcast.ts';
 import { type ContentFilter, WATCHER_STRUCTURAL_IGNORE_DIRS } from './content-filter.ts';
 import { isWithinContentDir } from './content-path.ts';
@@ -98,7 +100,7 @@ type FileDiskEvent =
       relativePath: string;
       size: number;
       modifiedTs: number;
-      inode: number;
+      inode: string;
     }
   | {
       kind: 'file-update';
@@ -106,7 +108,7 @@ type FileDiskEvent =
       relativePath: string;
       size: number;
       modifiedTs: number;
-      inode: number;
+      inode: string;
     }
   | { kind: 'file-delete'; path: string; relativePath: string };
 
@@ -127,7 +129,7 @@ export interface FileIndexEntry {
   size: number;
   modified: string;
   canonicalPath: string;
-  inode: number;
+  inode: string;
   aliases: string[];
   kind: 'markdown' | 'file';
   fileMembers?: GeneralFileMembers;
@@ -198,7 +200,7 @@ export interface FolderIndexEntry {
   size: 0;
   modified: string;
   canonicalPath: string;
-  inode: number;
+  inode: string;
 }
 
 class WatcherFolderIndex extends Map<string, FolderIndexEntry> {
@@ -583,16 +585,16 @@ export function upsertFolderIndexEntry(
   folderIndex: Map<string, FolderIndexEntry>,
   contentDir: string,
   folderPath: string,
-  stat: { mtime: Date; ino: number | bigint },
+  stat: Pick<BigIntStats, 'dev' | 'ino' | 'mtimeNs'>,
   canonicalPath = folderPath,
 ): string | null {
   const relativePath = contentRelativePath(contentDir, folderPath);
   if (!relativePath) return null;
   folderIndex.set(relativePath, {
     size: 0,
-    modified: stat.mtime.toISOString(),
+    modified: statMtime(stat).toISOString(),
     canonicalPath,
-    inode: Number(stat.ino),
+    inode: filesystemIdentity(stat),
   });
   return relativePath;
 }
@@ -1050,7 +1052,7 @@ interface DiskObservation {
   complete: boolean;
 }
 
-type GeneralIdentity = { device: number; inode: number };
+type GeneralIdentity = ReturnType<typeof filesystemIdentity>;
 type KnownGeneralEntry = FileIndexEntry & { kind: 'file'; fileMembers: GeneralFileMembers };
 type GeneralFileState =
   | { kind: 'known'; entry: KnownGeneralEntry; identity: GeneralIdentity; sequence: number }
@@ -1068,11 +1070,7 @@ function knownGeneralState(
 }
 
 function sameGeneralIdentity(left: GeneralIdentity, right: GeneralIdentity): boolean {
-  return left.device === right.device && left.inode === right.inode;
-}
-
-function generalIdentityKey(identity: GeneralIdentity): string {
-  return `${identity.device}:${identity.inode}`;
+  return left === right;
 }
 
 function addGeneralOwner(owners: Map<string, Set<string>>, key: string, name: string): void {
@@ -1146,7 +1144,7 @@ class GeneralFileIndex implements ReadonlyMap<string, FileIndexEntry> {
   }
 
   ownersOfIdentity(identity: GeneralIdentity): ReadonlySet<string> | undefined {
-    return this.#identities.get(generalIdentityKey(identity));
+    return this.#identities.get(identity);
   }
 
   set(name: string, entry: FileIndexEntry): void {
@@ -1175,7 +1173,7 @@ class GeneralFileIndex implements ReadonlyMap<string, FileIndexEntry> {
     );
     for (const member of members) addGeneralOwner(this.#members, member, name);
     const state = knownGeneralState(entry);
-    const identity = state ? generalIdentityKey(state.identity) : null;
+    const identity = state ? state.identity : null;
     if (identity !== null) addGeneralOwner(this.#identities, identity, name);
     this.#linked.set(name, { members, identity });
   }
@@ -1247,7 +1245,7 @@ function storeKnownGeneralGroup(
   const entry: KnownGeneralEntry = {
     kind: 'file',
     canonicalPath: join(contentDir, representative),
-    inode: identity.inode,
+    inode: identity,
     size: metadata.size,
     modified: metadata.modified,
     aliases: relations.map((relation) => relation.path),
@@ -1267,7 +1265,7 @@ function storeUnresolvedGeneralEntry(
   const entry: FileIndexEntry = {
     kind: 'file',
     canonicalPath: event.path,
-    inode: event.inode || prior?.inode || 0,
+    inode: event.inode || prior?.inode || '',
     size: event.size,
     modified: new Date(event.modifiedTs).toISOString(),
     aliases:
@@ -1386,16 +1384,15 @@ function registerKnownGeneralPath(
           changes.set(relation.path, null);
           continue;
         }
-        const targetStat = targetPath === canonicalName ? null : statSync(actualTarget);
+        const targetStat =
+          targetPath === canonicalName ? null : statSync(actualTarget, { bigint: true });
         if (targetStat && !targetStat.isFile()) {
           changes.set(relation.path, null);
           continue;
         }
-        const targetIdentity = targetStat
-          ? { device: targetStat.dev, inode: targetStat.ino }
-          : identity;
+        const targetIdentity = targetStat ? filesystemIdentity(targetStat) : identity;
         const targetMetadata = targetStat
-          ? { size: targetStat.size, modified: targetStat.mtime.toISOString() }
+          ? { size: Number(targetStat.size), modified: statMtime(targetStat).toISOString() }
           : metadata;
         const existingTarget = selectedFact(targetPath);
         if (
@@ -1462,7 +1459,7 @@ function registerKnownGeneralPath(
     if (!entry) continue;
     addGeneralEntryFacts(previousFacts, name, entry);
     const state = knownGeneralState(entry);
-    const key = state && generalIdentityKey(state.identity);
+    const key = state?.identity;
     if (key && !representatives.has(key)) representatives.set(key, name);
   }
   const selected = new Map(previousFacts);
@@ -1471,7 +1468,7 @@ function registerKnownGeneralPath(
     else selected.delete(path);
   }
   const metadataEffects = new Map<string, GeneralMetadataEffect>([
-    [generalIdentityKey(identity), { ...metadata, sequence }],
+    [identity, { ...metadata, sequence }],
   ]);
   for (const name of affected) index.delete(name);
   storeGeneralFacts(index, contentDir, selected, representatives, metadataEffects);
@@ -1590,7 +1587,7 @@ function generalRepresentativeNames(
   for (const [name, entry] of index) {
     const state = knownGeneralState(entry);
     if (!state) continue;
-    const key = generalIdentityKey(state.identity);
+    const key = state.identity;
     if (!names.has(key)) names.set(key, name);
   }
   return names;
@@ -1626,7 +1623,7 @@ function storeGeneralFacts(
   >();
   for (const fact of facts.values()) {
     if (fact.kind !== 'regular') continue;
-    const key = generalIdentityKey(fact.identity);
+    const key = fact.identity;
     const group = grouped.get(key);
     if (group) {
       group.regularPaths.push(fact.path);
@@ -1648,7 +1645,7 @@ function storeGeneralFacts(
     if (fact.kind !== 'symlink') continue;
     const target = facts.get(fact.targetPath);
     if (target?.kind !== 'regular') continue;
-    grouped.get(generalIdentityKey(target.identity))?.symlinks.push({
+    grouped.get(target.identity)?.symlinks.push({
       path: fact.path,
       targetPath: fact.targetPath,
     });
@@ -1686,7 +1683,7 @@ function materializeScanGeneralIndex(
   const representatives = generalRepresentativeNames(observation.generalFileIndex);
   for (const fact of scan.facts.values()) {
     if (fact.kind !== 'regular') continue;
-    const key = generalIdentityKey(fact.identity);
+    const key = fact.identity;
     if (!representatives.has(key)) representatives.set(key, fact.path);
   }
   const next = new GeneralFileIndex(contentDir);
@@ -1758,7 +1755,7 @@ function recordScannedGeneralPath(
       sequence,
     });
   }
-  scan.metadataEffects.set(generalIdentityKey(identity), { ...metadata, sequence });
+  scan.metadataEffects.set(identity, { ...metadata, sequence });
   return 'applied';
 }
 
@@ -1783,7 +1780,7 @@ function recordGeneralPublicEffect(
   if (event.kind === 'file-delete') return;
   const fact = facts.get(canonicalName) ?? facts.get(event.relativePath);
   if (fact?.kind !== 'regular' && fact?.kind !== 'symlink') return;
-  record.generalMetadata.set(generalIdentityKey(fact.identity), {
+  record.generalMetadata.set(fact.identity, {
     size: event.size,
     modified: new Date(event.modifiedTs).toISOString(),
     sequence: fact.sequence,
@@ -1814,18 +1811,18 @@ async function scanDisk(
   contentFilter: ContentFilter | undefined,
   observation: DiskObservation,
   generalScan: GeneralScanAccumulator,
-  visitedInodes?: Set<number>,
-  generalVisitedInodes?: Set<number>,
+  visitedInodes?: Set<string>,
+  generalVisitedInodes?: Set<string>,
 ): Promise<void> {
-  const visited = visitedInodes ?? new Set<number>();
-  const generalVisited = generalVisitedInodes ?? new Set<number>();
+  const visited = visitedInodes ?? new Set<string>();
+  const generalVisited = generalVisitedInodes ?? new Set<string>();
   try {
     const entries = await readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = join(dir, entry.name);
-      let lst: Stats;
+      let lst: BigIntStats;
       try {
-        lst = await lstat(fullPath);
+        lst = await lstat(fullPath, { bigint: true });
       } catch (e) {
         const code = errnoCode(e);
         if (code !== 'ENOENT') {
@@ -1834,6 +1831,7 @@ async function scanDisk(
         }
         continue;
       }
+      const lstIdentity = filesystemIdentity(lst);
 
       if (lst.isSymbolicLink()) {
         let canonical: string;
@@ -1862,7 +1860,8 @@ async function scanDisk(
         }
 
         try {
-          const canonStat = await stat(canonical);
+          const canonStat = await stat(canonical, { bigint: true });
+          const canonIdentity = filesystemIdentity(canonStat);
           if (canonStat.isFile() && !isSupportedDocFile(entry.name)) {
             const canonicalName = toPosix(relative(contentDir, canonical));
             const lexicalName = toPosix(relative(contentDir, fullPath));
@@ -1875,9 +1874,9 @@ async function scanDisk(
               isConfigDoc(lexicalName)
             )
               continue;
-            if (visited.has(canonStat.ino) && !generalVisited.has(canonStat.ino)) continue;
-            visited.add(canonStat.ino);
-            generalVisited.add(canonStat.ino);
+            if (visited.has(canonIdentity) && !generalVisited.has(canonIdentity)) continue;
+            visited.add(canonIdentity);
+            generalVisited.add(canonIdentity);
             const registered = recordScannedGeneralPath(
               observation,
               generalScan,
@@ -1885,15 +1884,15 @@ async function scanDisk(
               canonicalName,
               lexicalName,
               true,
-              { device: canonStat.dev, inode: canonStat.ino },
-              { size: canonStat.size, modified: canonStat.mtime.toISOString() },
+              canonIdentity,
+              { size: Number(canonStat.size), modified: statMtime(canonStat).toISOString() },
               contentFilter,
             );
             if (registered === 'unobserved') observation.complete = false;
             observation.paths.add(fullPath);
             continue;
           }
-          if (visited.has(canonStat.ino)) {
+          if (visited.has(canonIdentity)) {
             if (canonStat.isFile() && isSupportedDocFile(entry.name)) {
               const aliasDocName = pathToDocName(fullPath, contentDir);
               const canonicalDocName = pathToDocName(canonical, contentDir);
@@ -1916,7 +1915,7 @@ async function scanDisk(
             }
             continue;
           }
-          visited.add(canonStat.ino);
+          visited.add(canonIdentity);
 
           if (canonStat.isDirectory()) {
             const relPath = contentRelativePath(contentDir, fullPath);
@@ -1956,10 +1955,10 @@ async function scanDisk(
               const ext = extractDocExtension(canonical);
               if (ext && !recordObservedExtension(observation, canonicalDocName, ext)) continue;
               observation.fileIndex.set(canonicalDocName, {
-                size: canonStat.size,
-                modified: canonStat.mtime.toISOString(),
+                size: Number(canonStat.size),
+                modified: statMtime(canonStat).toISOString(),
                 canonicalPath: canonical,
-                inode: canonStat.ino,
+                inode: canonIdentity,
                 aliases: [aliasDocName],
                 kind: 'markdown',
                 ...derivePageMeta(content, canonicalDocName),
@@ -2000,8 +1999,8 @@ async function scanDisk(
           generalVisited,
         );
       } else if (lst.isFile() && isSupportedDocFile(entry.name)) {
-        if (visited.has(lst.ino)) continue;
-        visited.add(lst.ino);
+        if (visited.has(lstIdentity)) continue;
+        visited.add(lstIdentity);
 
         if (contentFilter) {
           const relPath = toPosix(relative(contentDir, fullPath));
@@ -2016,10 +2015,10 @@ async function scanDisk(
           const ext = extractDocExtension(fullPath);
           if (ext && !recordObservedExtension(observation, docName, ext)) continue;
           observation.fileIndex.set(docName, {
-            size: lst.size,
-            modified: lst.mtime.toISOString(),
+            size: Number(lst.size),
+            modified: statMtime(lst).toISOString(),
             canonicalPath: fullPath,
-            inode: lst.ino,
+            inode: lstIdentity,
             aliases: [],
             kind: 'markdown',
             ...derivePageMeta(content, docName),
@@ -2044,9 +2043,9 @@ async function scanDisk(
         }
         const relativePath = toPosix(relative(contentDir, fullPath));
         if (isSystemDoc(relativePath) || isConfigDoc(relativePath)) continue;
-        if (visited.has(lst.ino) && !generalVisited.has(lst.ino)) continue;
-        visited.add(lst.ino);
-        generalVisited.add(lst.ino);
+        if (visited.has(lstIdentity) && !generalVisited.has(lstIdentity)) continue;
+        visited.add(lstIdentity);
+        generalVisited.add(lstIdentity);
         const registered = recordScannedGeneralPath(
           observation,
           generalScan,
@@ -2054,8 +2053,8 @@ async function scanDisk(
           relativePath,
           relativePath,
           false,
-          { device: lst.dev, inode: lst.ino },
-          { size: lst.size, modified: lst.mtime.toISOString() },
+          lstIdentity,
+          { size: Number(lst.size), modified: statMtime(lst).toISOString() },
           contentFilter,
         );
         if (registered === 'unobserved') observation.complete = false;
@@ -2239,7 +2238,7 @@ function updateGeneralFileIndex(
     size: event.size,
     modified: new Date(event.modifiedTs).toISOString(),
     canonicalPath,
-    inode: event.inode || (prior?.kind === 'file' ? prior.inode : 0),
+    inode: event.inode || (prior?.kind === 'file' ? prior.inode : ''),
     aliases: [...aliases],
     kind: 'file',
   });
@@ -2274,7 +2273,7 @@ export function updateFileIndex(event: DiskEvent, fileIndex: Map<string, FileInd
       size: event.size,
       modified: new Date(event.modifiedTs).toISOString(),
       canonicalPath: existing?.canonicalPath ?? event.path,
-      inode: event.inode || existing?.inode || 0,
+      inode: event.inode || existing?.inode || '',
       aliases: existing?.aliases ?? [],
       kind: 'file',
     });
@@ -2294,7 +2293,7 @@ export function updateFileIndex(event: DiskEvent, fileIndex: Map<string, FileInd
         size: Buffer.byteLength(event.content, 'utf-8'),
         modified: new Date().toISOString(),
         canonicalPath: existing?.canonicalPath ?? event.path,
-        inode: existing?.inode ?? 0,
+        inode: existing?.inode ?? '',
         aliases: existing?.aliases ?? [],
         kind: 'markdown',
         ...derivePageMeta(event.content, docName),
@@ -2326,7 +2325,7 @@ export function updateFileIndex(event: DiskEvent, fileIndex: Map<string, FileInd
         size: Buffer.byteLength(event.content, 'utf-8'),
         modified: new Date().toISOString(),
         canonicalPath: event.newPath,
-        inode: existing?.inode ?? 0,
+        inode: existing?.inode ?? '',
         aliases: existing?.aliases ?? [],
         kind: 'markdown',
         ...derivePageMeta(event.content, event.newDocName),
@@ -2358,9 +2357,9 @@ function updateFolderIndexFromRawEvents(
       continue;
     }
 
-    let lst: ReturnType<typeof lstatSync>;
+    let lst: BigIntStats;
     try {
-      lst = lstatSync(raw.path);
+      lst = lstatSync(raw.path, { bigint: true });
     } catch (err) {
       const code = errnoCode(err);
       if (code !== 'ENOENT') {
@@ -2369,7 +2368,7 @@ function updateFolderIndexFromRawEvents(
       continue;
     }
 
-    let folderStat: ReturnType<typeof statSync> | null = null;
+    let folderStat: BigIntStats | null = null;
     let canonicalPath = raw.path;
     if (lst.isDirectory()) {
       folderStat = lst;
@@ -2377,7 +2376,7 @@ function updateFolderIndexFromRawEvents(
       try {
         canonicalPath = resolveNativePath(raw.path);
         if (!isWithinContentDir(canonicalPath, contentDir)) continue;
-        const stat = statSync(canonicalPath);
+        const stat = statSync(canonicalPath, { bigint: true });
         if (stat.isDirectory()) folderStat = stat;
       } catch (err) {
         const code = errnoCode(err);
@@ -2447,9 +2446,9 @@ function scanForUntrackedSubfolders(
       if (!relPath) continue;
       if (contentFilter?.isDirExcluded(relPath)) continue;
 
-      let stat: ReturnType<typeof lstatSync>;
+      let stat: BigIntStats;
       try {
-        stat = lstatSync(fullPath);
+        stat = lstatSync(fullPath, { bigint: true });
       } catch (err) {
         const code = errnoCode(err);
         if (code !== 'ENOENT') {
@@ -2849,16 +2848,16 @@ async function handleRawEventsInternal(
       continue;
     }
 
-    let st: ReturnType<typeof lstatSync>;
+    let st: BigIntStats;
     let leafSymlink = false;
     let canonicalPath: string;
     let canonicalContentDir: string;
     try {
       canonicalContentDir = resolveNativePath(contentDir);
-      st = lstatSync(raw.path);
+      st = lstatSync(raw.path, { bigint: true });
       leafSymlink = st.isSymbolicLink();
       canonicalPath = resolveNativePath(raw.path);
-      if (leafSymlink) st = statSync(canonicalPath);
+      if (leafSymlink) st = statSync(canonicalPath, { bigint: true });
     } catch (e) {
       const code = errnoCode(e);
       recordWatcherDecision('drop-stat-failed', raw.type, raw.path);
@@ -2889,17 +2888,17 @@ async function handleRawEventsInternal(
             kind: 'file-create',
             path: raw.path,
             relativePath,
-            size: st.size,
-            modifiedTs: st.mtime.getTime(),
-            inode: Number(st.ino),
+            size: Number(st.size),
+            modifiedTs: statMtime(st).getTime(),
+            inode: filesystemIdentity(st),
           }
         : {
             kind: 'file-update',
             path: raw.path,
             relativePath,
-            size: st.size,
-            modifiedTs: st.mtime.getTime(),
-            inode: Number(st.ino),
+            size: Number(st.size),
+            modifiedTs: statMtime(st).getTime(),
+            inode: filesystemIdentity(st),
           };
     if (admitEvent && !admitEvent(event)) continue;
     let formerOwner: [string, FileIndexEntry] | undefined;
@@ -2952,7 +2951,7 @@ async function handleRawEventsInternal(
         canonicalName,
         relativePath,
         leafSymlink,
-        { device: st.dev, inode: st.ino },
+        filesystemIdentity(st),
         { size: event.size, modified: new Date(event.modifiedTs).toISOString() },
         contentFilter,
         confirmedAbsentFormerPath,
@@ -3320,10 +3319,10 @@ async function recoverDiskChanges(
       folderAliasIndex.delete(relativePath);
       continue;
     }
-    let folderStat: ReturnType<typeof statSync>;
+    let folderStat: BigIntStats;
     let canonicalPath = path;
     try {
-      const lst = lstatSync(path);
+      const lst = lstatSync(path, { bigint: true });
       if (lst.isSymbolicLink()) {
         canonicalPath = resolveNativePath(path);
         if (!isWithinContentDir(canonicalPath, contentDir)) {
@@ -3331,7 +3330,7 @@ async function recoverDiskChanges(
           folderAliasIndex.delete(relativePath);
           continue;
         }
-        folderStat = statSync(canonicalPath);
+        folderStat = statSync(canonicalPath, { bigint: true });
       } else {
         folderStat = lst;
       }
@@ -3420,7 +3419,7 @@ async function recoverDiskChanges(
           relativePath: candidate.targetPath,
           size: target.metadata.size,
           modifiedTs: Date.parse(target.metadata.modified),
-          inode: target.identity.inode,
+          inode: target.identity,
         };
       }
       recordWatcherDecision('dispatched', event.kind, event.path);
@@ -3996,20 +3995,22 @@ export async function startWatcher(
         } else {
           try {
             const lexicalPath = join(contentDir, event.relativePath);
-            const lexicalStat = lstatSync(lexicalPath);
+            const lexicalStat = lstatSync(lexicalPath, { bigint: true });
             const leafSymlink = lexicalStat.isSymbolicLink();
             const canonicalPath = resolveNativePath(lexicalPath);
             if (!isWithinContentDir(canonicalPath, contentDir)) {
               throw new Error('General file path resolves outside content directory');
             }
-            const physicalStat = leafSymlink ? statSync(canonicalPath) : lexicalStat;
+            const physicalStat = leafSymlink
+              ? statSync(canonicalPath, { bigint: true })
+              : lexicalStat;
             const registered = registerKnownGeneralPath(
               generalFileIndex,
               contentDir,
               toPosix(relative(contentDir, canonicalPath)),
               event.relativePath,
               leafSymlink,
-              { device: physicalStat.dev, inode: physicalStat.ino },
+              filesystemIdentity(physicalStat),
               { size: event.size, modified: new Date(event.modifiedTs).toISOString() },
               contentFilter,
             );

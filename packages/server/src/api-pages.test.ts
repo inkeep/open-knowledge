@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
+import { filesystemIdentity } from '@inkeep/open-knowledge-core/server';
 import { describe, expect, test } from 'vitest';
 import {
   createApiExtension,
@@ -222,11 +223,12 @@ function buildFileIndex(dir: string, base = ''): ReadonlyMap<string, FileIndexEn
       }
     } else if (entry.isFile() && entry.name.endsWith('.md')) {
       const st = statSync(join(dir, entry.name));
+      const stIdentity = filesystemIdentity(statSync(join(dir, entry.name), { bigint: true }));
       index.set(rel.slice(0, -3), {
         size: st.size,
         modified: st.mtime.toISOString(),
         canonicalPath: join(dir, entry.name),
-        inode: st.ino,
+        inode: stIdentity,
         aliases: [],
       });
     }
@@ -321,7 +323,7 @@ describe('GET /api/pages', () => {
             size: 123,
             modified: new Date(0).toISOString(),
             canonicalPath: join(dir, 'ghost.md'),
-            inode: 1,
+            inode: '0:1',
             aliases: [],
             kind: 'markdown',
             title: 'Cached Title',
@@ -353,7 +355,7 @@ describe('GET /api/pages', () => {
             size: 0,
             modified: new Date(0).toISOString(),
             canonicalPath: join(dir, 'orphan.md'),
-            inode: 1,
+            inode: '0:1',
             aliases: [],
             kind: 'markdown',
           },

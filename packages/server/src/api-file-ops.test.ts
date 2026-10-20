@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { Hocuspocus } from '@hocuspocus/server';
+import { filesystemIdentity } from '@inkeep/open-knowledge-core/server';
 import simpleGit from 'simple-git';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
@@ -70,12 +71,14 @@ function buildFileIndex(contentDir: string): ReadonlyMap<string, FileIndexEntry>
       if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
 
       const stat = statSync(fullPath);
+
+      const statIdentity = filesystemIdentity(statSync(fullPath, { bigint: true }));
       const docName = fullPath.slice(contentDir.length + 1).replace(/\.md$/, '');
       index.set(docName, {
         size: stat.size,
         modified: stat.mtime.toISOString(),
         canonicalPath: fullPath,
-        inode: stat.ino,
+        inode: statIdentity,
         aliases: [],
       });
     }
@@ -93,12 +96,13 @@ function buildFolderIndex(contentDir: string): ReadonlyMap<string, FolderIndexEn
       if (!entry.isDirectory()) continue;
       const fullPath = resolve(dir, entry.name);
       const stat = statSync(fullPath);
+      const statIdentity = filesystemIdentity(statSync(fullPath, { bigint: true }));
       const folderPath = fullPath.slice(contentDir.length + 1);
       index.set(folderPath, {
         size: 0,
         modified: stat.mtime.toISOString(),
         canonicalPath: fullPath,
-        inode: stat.ino,
+        inode: statIdentity,
       });
       walk(fullPath);
     }
@@ -2603,7 +2607,7 @@ describe('file operation API routes', () => {
               size: event.content.length,
               modified: new Date(0).toISOString(),
               canonicalPath: event.path,
-              inode: 0,
+              inode: '',
               aliases: [],
             });
           } else if (event.kind === 'delete') {
@@ -3018,7 +3022,7 @@ describe('file operation API routes', () => {
           size: 0,
           modified: '2026-01-01T00:00:00.000Z',
           canonicalPath: join(dir, 'empty'),
-          inode: 1,
+          inode: '0:1',
         },
       ],
     ]);

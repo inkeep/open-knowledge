@@ -18,6 +18,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
+import { filesystemIdentity } from '@inkeep/open-knowledge-core/server';
 import type { Event } from '@parcel/watcher';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { configureTestGitRepository } from '../../../test-support/configure-git-fixture.test-helper.ts';
@@ -221,8 +222,8 @@ vi.mock('node:fs', async (importOriginal) => {
 const deniedDirectoryRead = vi.hoisted(() => ({ path: null as string | null }));
 const deviceContrast = vi.hoisted(() => ({
   path: null as string | null,
-  device: null as number | null,
-  inode: null as number | null,
+  device: null as bigint | null,
+  inode: null as bigint | null,
   observed: false,
 }));
 const memberStatSchedule = vi.hoisted(() => ({
@@ -2073,6 +2074,7 @@ test('notice recovery tracks general-file changes and asset notifications outsid
   writeFileSync(asset, 'fake-png-bytes');
   writeFileSync(changed, 'new,more,bytes\n');
   const changedStat = statSync(changed);
+  const changedStatIdentity = filesystemIdentity(statSync(changed, { bigint: true }));
   unlinkSync(removed);
   unlinkSync(removedAsset);
 
@@ -2090,7 +2092,7 @@ test('notice recovery tracks general-file changes and asset notifications outsid
       relativePath: 'changed.csv',
       size: Buffer.byteLength('new,more,bytes\n'),
       modifiedTs: changedStat.mtime.getTime(),
-      inode: Number(changedStat.ino),
+      inode: changedStatIdentity,
     }),
   );
   expect
@@ -2316,6 +2318,7 @@ test.each(['markdown', 'general'] as const)(
       const path = writeDoc(name, '# Fresh\n');
       const key = kind === 'markdown' ? 'fresh' : name;
       const stat = statSync(path);
+      const statIdentity = filesystemIdentity(statSync(path, { bigint: true }));
       watcher.mutateFileIndex(
         kind === 'markdown'
           ? { kind: 'create', path, docName: key, content: '# Fresh\n' }
@@ -2325,7 +2328,7 @@ test.each(['markdown', 'general'] as const)(
               relativePath: key,
               size: stat.size,
               modifiedTs: stat.mtimeMs,
-              inode: stat.ino,
+              inode: statIdentity,
             },
       );
       expect(Boolean(indexedRow(watcher, key, kind === 'markdown' ? 'markdown' : 'file'))).toBe(
@@ -2460,6 +2463,7 @@ test.each(['markdown', 'general'] as const)(
       if (event.kind !== 'delete' || event.docName !== 'first') return;
       writeFileSync(later, '# Recreated\n');
       const stat = statSync(later);
+      const statIdentity = filesystemIdentity(statSync(later, { bigint: true }));
       watched.watcher.mutateFileIndex(
         kind === 'markdown'
           ? { kind: 'create', path: later, docName: key, content: '# Recreated\n' }
@@ -2469,7 +2473,7 @@ test.each(['markdown', 'general'] as const)(
               relativePath: key,
               size: stat.size,
               modifiedTs: stat.mtimeMs,
-              inode: stat.ino,
+              inode: statIdentity,
             },
       );
     });
@@ -2633,7 +2637,7 @@ test('an ordinary canonical file update retains its aliases beside a same-stem d
       name: 'real.csv',
       aliases: ['alias.csv', 'sibling.csv'],
       size: statSync(real).size,
-      inode: Number(statSync(real).ino),
+      inode: filesystemIdentity(statSync(real, { bigint: true })),
       modified: statSync(real).mtime.toISOString(),
     },
   );
@@ -2682,7 +2686,7 @@ test('an ordinary alias retarget retains aliases already owned by its new target
     {
       aliases: ['old-sibling.csv'],
       size: statSync(real).size,
-      inode: Number(statSync(real).ino),
+      inode: filesystemIdentity(statSync(real, { bigint: true })),
     },
   );
   expect(
@@ -2691,7 +2695,7 @@ test('an ordinary alias retarget retains aliases already owned by its new target
     name: 'other.csv',
     aliases: expect.arrayContaining(['alias.csv', 'new-sibling.csv']),
     size: statSync(other).size,
-    inode: Number(statSync(other).ino),
+    inode: filesystemIdentity(statSync(other, { bigint: true })),
   });
   expect(
     rows.find((entry) => entry.kind === 'file' && entry.canonicalPath === other)?.aliases,
@@ -3905,6 +3909,7 @@ test.each(['realpath', 'stat'] as const)(
     scanSchedule.orderedPath = contentDir;
     scanSchedule.firstEntry = 'alias.csv';
     const priorStat = statSync(prior);
+    const priorStatIdentity = filesystemIdentity(statSync(prior, { bigint: true }));
     const events: DiskEvent[] = [];
     const completed: string[] = [];
     const logger = getLogger('file-watcher');
@@ -3953,7 +3958,7 @@ test.each(['realpath', 'stat'] as const)(
     expect(priorEntries[0]).toMatchObject({
       size: priorStat.size,
       modified: priorStat.mtime.toISOString(),
-      inode: Number(priorStat.ino),
+      inode: priorStatIdentity,
     });
     const diagnostic = JSON.stringify([...warnings.mock.calls, ...errors.mock.calls]);
     expect(diagnostic).toContain('EACCES');
@@ -5040,7 +5045,7 @@ test.each([
       .toMatchObject({
         name: 'real.csv',
         size: statSync(real).size,
-        inode: Number(statSync(real).ino),
+        inode: filesystemIdentity(statSync(real, { bigint: true })),
         aliases: withAlias ? expect.arrayContaining(['alias.csv', 'sibling.csv']) : [],
       });
     if (withAlias) {
@@ -5073,7 +5078,7 @@ test.each([
           name: 'real.csv',
           aliases: ['sibling.csv'],
           size: statSync(real).size,
-          inode: Number(statSync(real).ino),
+          inode: filesystemIdentity(statSync(real, { bigint: true })),
         });
       expect
         .soft(afterRetarget.find((entry) => entry.kind === 'file' && entry.canonicalPath === other))
@@ -5081,7 +5086,7 @@ test.each([
           name: 'other.csv',
           aliases: ['alias.csv'],
           size: statSync(other).size,
-          inode: Number(statSync(other).ino),
+          inode: filesystemIdentity(statSync(other, { bigint: true })),
         });
       events.length = 0;
     }
@@ -5393,13 +5398,14 @@ test.each(['file', 'markdown'] as const)(
         if (publicDomain === 'file') {
           writeFileSync(real, 'public,file,updated\n');
           const stat = statSync(real);
+          const statIdentity = filesystemIdentity(statSync(real, { bigint: true }));
           watcher?.mutateFileIndex({
             kind: 'file-update',
             path: real,
             relativePath: 'real.csv',
             size: stat.size,
             modifiedTs: stat.mtimeMs,
-            inode: Number(stat.ino),
+            inode: statIdentity,
           });
         } else {
           writeFileSync(document, '# Public document update\n');
@@ -5611,7 +5617,7 @@ test.each(['add', 'remove', 'retarget'] as const)(
         name: 'real.csv',
         aliases: action === 'add' ? ['alias.csv'] : [],
         size: statSync(real).size,
-        inode: Number(statSync(real).ino),
+        inode: filesystemIdentity(statSync(real, { bigint: true })),
       });
     expect
       .soft(
@@ -5706,7 +5712,7 @@ test('ordinary same-stem alias removal drops only that alias before notice recov
     (entry) => entry.kind === 'file' && entry.canonicalPath === real,
   );
   expect(originalFile?.size).toBe(statSync(real).size);
-  expect(originalFile?.inode).toBe(Number(statSync(real).ino));
+  expect(originalFile?.inode).toBe(filesystemIdentity(statSync(real, { bigint: true })));
   unlinkSync(alias);
 
   await deliver(contentDir, [{ type: 'delete', path: alias }]);
@@ -5726,7 +5732,7 @@ test('ordinary same-stem alias removal drops only that alias before notice recov
     .soft(immediate.find((entry) => entry.kind === 'file' && entry.canonicalPath === real))
     .toMatchObject({
       size: statSync(real).size,
-      inode: Number(statSync(real).ino),
+      inode: filesystemIdentity(statSync(real, { bigint: true })),
     });
   expect
     .soft(
@@ -5773,13 +5779,14 @@ test('a public general-file recreation during recovery retains its restored pare
     mkdirSync(folder);
     writeFileSync(later, 'recreated,general,bytes\n');
     const stat = statSync(later);
+    const statIdentity = filesystemIdentity(statSync(later, { bigint: true }));
     watched.watcher.mutateFileIndex({
       kind: 'file-create',
       path: later,
       relativePath: 'nested/later.csv',
       size: stat.size,
       modifiedTs: stat.mtimeMs,
-      inode: Number(stat.ino),
+      inode: statIdentity,
     });
     recreations += 1;
   });
@@ -5808,7 +5815,7 @@ test('a public general-file recreation during recovery retains its restored pare
       expect.objectContaining({
         name: 'nested/later.csv',
         size: statSync(later).size,
-        inode: Number(statSync(later).ino),
+        inode: filesystemIdentity(statSync(later, { bigint: true })),
       }),
     ]);
   expect
@@ -5913,7 +5920,7 @@ test.each(['general', 'markdown'] as const)(
       .soft(restored.find((entry) => entry.kind === 'file' && entry.canonicalPath === real))
       .toMatchObject({
         size: statSync(real).size,
-        inode: Number(statSync(real).ino),
+        inode: filesystemIdentity(statSync(real, { bigint: true })),
         aliases: ['alias.csv'],
       });
     expect(watcher.getFileIndex().get('real.csv')?.canonicalPath).toBe(document);
@@ -5969,13 +5976,14 @@ test.each(['file', 'markdown'] as const)(
       if (publicDomain === 'file') {
         writeFileSync(real, 'public,file,updated\n');
         const stat = statSync(real);
+        const statIdentity = filesystemIdentity(statSync(real, { bigint: true }));
         watcher.mutateFileIndex({
           kind: 'file-update',
           path: real,
           relativePath: 'real.csv',
           size: stat.size,
           modifiedTs: stat.mtimeMs,
-          inode: Number(stat.ino),
+          inode: statIdentity,
         });
       } else {
         writeFileSync(document, '# Public document update\n');
@@ -6044,7 +6052,7 @@ test.each(['a.csv', 'b.csv'] as const)(
       expect(rows[0]).toMatchObject({
         name: 'a.csv',
         canonicalPath: first,
-        inode: Number(statSync(first).ino),
+        inode: filesystemIdentity(statSync(first, { bigint: true })),
       });
       expect(readFileSync(alias, 'utf8')).toBe('same,inode,content\n');
       expect.soft(rows[0]?.aliases).toContain('z-alias.csv');
@@ -6084,21 +6092,21 @@ test.each([
     scanSchedule.orderedEntries = [first, second, 'z-alias.csv'];
     const disk = () => ({
       a: {
-        inode: Number(statSync(a).ino),
+        inode: filesystemIdentity(statSync(a, { bigint: true })),
         links: statSync(a).nlink,
         regular: lstatSync(a).isFile(),
         canonicalPath: realpathSync(a),
         bytes: readFileSync(a, 'utf8'),
       },
       b: {
-        inode: Number(statSync(b).ino),
+        inode: filesystemIdentity(statSync(b, { bigint: true })),
         links: statSync(b).nlink,
         regular: lstatSync(b).isFile(),
         canonicalPath: realpathSync(b),
         bytes: readFileSync(b, 'utf8'),
       },
       alias: {
-        inode: Number(statSync(alias).ino),
+        inode: filesystemIdentity(statSync(alias, { bigint: true })),
         symlink: lstatSync(alias).isSymbolicLink(),
         canonicalPath: realpathSync(alias),
         bytes: readFileSync(alias, 'utf8'),
@@ -6146,6 +6154,7 @@ test.each([
       } else if (action === 'public') {
         const path = join(contentDir, target);
         const stat = statSync(path);
+        const statIdentity = filesystemIdentity(statSync(path, { bigint: true }));
         const generation = active.getFileIndexGeneration();
         active.mutateFileIndex({
           kind: 'file-update',
@@ -6153,7 +6162,7 @@ test.each([
           relativePath: target,
           size: stat.size,
           modifiedTs: stat.mtimeMs,
-          inode: Number(stat.ino),
+          inode: statIdentity,
         });
         expect(active.getFileIndexGeneration()).toBeGreaterThan(generation);
       } else {
@@ -6228,14 +6237,14 @@ test.each(['direct b update', 'order a to b'] as const)(
     scanSchedule.orderedEntries = ['a.csv', 'b.csv', 'y-alias.csv', 'z-alias.csv', 'source.md'];
     const physical = () => ({
       a: {
-        inode: Number(statSync(a).ino),
+        inode: filesystemIdentity(statSync(a, { bigint: true })),
         links: statSync(a).nlink,
         regular: lstatSync(a).isFile(),
         canonicalPath: realpathSync(a),
         bytes: readFileSync(a, 'utf8'),
       },
       b: {
-        inode: Number(statSync(b).ino),
+        inode: filesystemIdentity(statSync(b, { bigint: true })),
         links: statSync(b).nlink,
         regular: lstatSync(b).isFile(),
         canonicalPath: realpathSync(b),
@@ -6447,6 +6456,7 @@ test.each(['rescued-folder-create', 'public-file-create', 'alias-before-member']
     } else if (input === 'public-file-create') {
       expect(bName.localeCompare('a.csv')).toBeLessThan(0);
       const st = statSync(b);
+      const stIdentity = filesystemIdentity(statSync(b, { bigint: true }));
       const generation = watcher.getFileIndexGeneration();
       watcher.mutateFileIndex({
         kind: 'file-create',
@@ -6454,7 +6464,7 @@ test.each(['rescued-folder-create', 'public-file-create', 'alias-before-member']
         relativePath: bName,
         size: st.size,
         modifiedTs: st.mtimeMs,
-        inode: Number(st.ino),
+        inode: stIdentity,
       });
       expect(watcher.getFileIndexGeneration()).toBeGreaterThan(generation);
       expect.soft(indexedGeneralRows(watcher)).toHaveLength(1);
@@ -6555,6 +6565,7 @@ test('a public canonical path with a lexical symlink name joins the existing har
   expect(realpathSync(z)).toBe(b);
   expect([statSync(a).dev, statSync(a).ino]).toEqual([statSync(b).dev, statSync(b).ino]);
   const st = statSync(b);
+  const stIdentity = filesystemIdentity(statSync(b, { bigint: true }));
   const generation = watcher.getFileIndexGeneration();
   watcher.mutateFileIndex({
     kind: 'file-update',
@@ -6562,7 +6573,7 @@ test('a public canonical path with a lexical symlink name joins the existing har
     relativePath: 'z-alias.csv',
     size: st.size,
     modifiedTs: st.mtimeMs,
-    inode: Number(st.ino),
+    inode: stIdentity,
   });
   expect(watcher.getFileIndexGeneration()).toBeGreaterThan(generation);
   expect.soft(indexedGeneralRows(watcher)).toHaveLength(1);
@@ -6578,12 +6589,12 @@ test('a public canonical path with a lexical symlink name joins the existing har
 test('different devices do not merge equal reported inode numbers during external observation', async () => {
   const a = writeDoc('atlas.csv', 'atlas\n');
   const b = writeDoc('beacon.csv', 'beacon\n');
-  const aPhysical = statSync(a);
-  const bPhysical = statSync(b);
+  const aPhysical = statSync(a, { bigint: true });
+  const bPhysical = statSync(b, { bigint: true });
   expect(aPhysical.ino).not.toBe(bPhysical.ino);
   expect(aPhysical.dev).toBe(bPhysical.dev);
   deviceContrast.path = b;
-  deviceContrast.device = aPhysical.dev + 1;
+  deviceContrast.device = aPhysical.dev + 1n;
   deviceContrast.inode = aPhysical.ino;
   const { watcher } = await watchContent();
   expect(deviceContrast.observed).toBe(true);
@@ -7252,7 +7263,7 @@ test('a denied actual former target preserves its hardlink group and later recor
     canonicalPath: a,
     size: statSync(a).size,
     modified: statSync(a).mtime.toISOString(),
-    inode: Number(statSync(a).ino),
+    inode: filesystemIdentity(statSync(a, { bigint: true })),
     aliases: expect.arrayContaining(['y-alias.csv', 'z-alias.csv']),
   });
 
@@ -7308,7 +7319,9 @@ test('filter rebuild prunes individual hardlink paths and aliases before positiv
   scanSchedule.orderedEntries = ['a.csv', 'b.csv', 'y-alias.csv', 'z-alias.csv', 'a.csv.md'];
   const { watcher, events } = await watchContent(filter);
   const memberRows = () =>
-    indexedGeneralRows(watcher).filter((row) => row.inode === statSync(a).ino);
+    indexedGeneralRows(watcher).filter(
+      (row) => row.inode === filesystemIdentity(statSync(a, { bigint: true })),
+    );
   const memberTargets = () => indexedFileTargets(watcher).filter((name) => name !== '.okignore');
   expect(filter.isPathIgnored('a.csv')).toBe(true);
   expect(filter.isPathIgnored('b.csv')).toBe(false);
@@ -7479,7 +7492,7 @@ test('a public update to one member before synthesis does not suppress another m
       relativePath: 'b.csv',
       size: publicStat.size,
       modifiedTs: publicStat.mtimeMs,
-      inode: Number(publicStat.ino),
+      inode: filesystemIdentity(statSync(b, { bigint: true })),
     });
   } finally {
     resume.release();
@@ -7519,13 +7532,14 @@ test('a public symlink transfer during recovery keeps its dependent without prot
       unlinkSync(b);
       symlinkSync(c, b);
       const st = statSync(b);
+      const stIdentity = filesystemIdentity(statSync(b, { bigint: true }));
       watcher?.mutateFileIndex({
         kind: 'file-update',
         path: b,
         relativePath: 'b.csv',
         size: st.size,
         modifiedTs: st.mtimeMs,
-        inode: Number(st.ino),
+        inode: stIdentity,
       });
       expect(realpathSync(y)).toBe(c);
       const active = watcher;
@@ -7586,6 +7600,7 @@ test('a public update after synthesis retains an unrelated member replacement', 
       callbackCount++;
       writeFileSync(b, 'newer,old,group\n');
       const st = statSync(b);
+      const stIdentity = filesystemIdentity(statSync(b, { bigint: true }));
       publicBModifiedTs = st.mtimeMs;
       watcher?.mutateFileIndex({
         kind: 'file-update',
@@ -7593,7 +7608,7 @@ test('a public update after synthesis retains an unrelated member replacement', 
         relativePath: 'b.csv',
         size: st.size,
         modifiedTs: st.mtimeMs,
-        inode: Number(st.ino),
+        inode: stIdentity,
       });
     },
     undefined,
@@ -7623,13 +7638,13 @@ test('a public update after synthesis retains an unrelated member replacement', 
   expect.soft(indexedFileTargets(watcher)).toEqual(['a.csv', 'b.csv', 'y-alias.csv']);
   expect.soft(indexedGeneralRows(watcher).find((row) => row.name === 'a.csv')).toMatchObject({
     canonicalPath: a,
-    inode: Number(statSync(a).ino),
+    inode: filesystemIdentity(statSync(a, { bigint: true })),
     size: statSync(a).size,
     modified: statSync(a).mtime.toISOString(),
   });
   expect.soft(indexedGeneralRows(watcher).find((row) => row.name === 'b.csv')).toMatchObject({
     canonicalPath: b,
-    inode: Number(statSync(b).ino),
+    inode: filesystemIdentity(statSync(b, { bigint: true })),
     size: statSync(b).size,
     modified: new Date(publicBModifiedTs).toISOString(),
   });
@@ -7658,6 +7673,7 @@ test('the latest public member tombstone survives an older scan without rolling 
       callbackCount++;
       writeFileSync(b, 'newer,shared,content\n');
       const sharedStat = statSync(b);
+      const sharedStatIdentity = filesystemIdentity(statSync(b, { bigint: true }));
       sharedPublicModifiedTs = sharedStat.mtimeMs;
       watcher?.mutateFileIndex({
         kind: 'file-update',
@@ -7665,18 +7681,19 @@ test('the latest public member tombstone survives an older scan without rolling 
         relativePath: 'b.csv',
         size: sharedStat.size,
         modifiedTs: sharedStat.mtimeMs,
-        inode: Number(sharedStat.ino),
+        inode: sharedStatIdentity,
       });
       const temporary = writeDoc('replacement-temporary.csv', 'replacement\n');
       renameSync(temporary, b);
       const replacementStat = statSync(b);
+      const replacementStatIdentity = filesystemIdentity(statSync(b, { bigint: true }));
       watcher?.mutateFileIndex({
         kind: 'file-update',
         path: b,
         relativePath: 'b.csv',
         size: replacementStat.size,
         modifiedTs: replacementStat.mtimeMs,
-        inode: Number(replacementStat.ino),
+        inode: replacementStatIdentity,
       });
       unlinkSync(b);
       watcher?.mutateFileIndex({ kind: 'file-delete', path: b, relativePath: 'b.csv' });
@@ -7731,7 +7748,7 @@ test('index-only reseed merges an observed sibling with a newer public hardlink 
       relativePath: 'b.csv',
       size: publicStat.size,
       modifiedTs: publicStat.mtimeMs,
-      inode: Number(publicStat.ino),
+      inode: filesystemIdentity(statSync(b, { bigint: true })),
     });
   } finally {
     resume.release();
@@ -7773,6 +7790,7 @@ test.each(['known-member', 'new-member'] as const)(
       writeFileSync(b, expectedBytes);
     }
     const st = statSync(b);
+    const stIdentity = filesystemIdentity(statSync(b, { bigint: true }));
     if (input === 'known-member') expect(st.size).not.toBe(priorIndexedSize);
     denyAdmission('lstat', b);
     expect(() =>
@@ -7782,7 +7800,7 @@ test.each(['known-member', 'new-member'] as const)(
         relativePath: 'b.csv',
         size: st.size,
         modifiedTs: st.mtimeMs,
-        inode: Number(st.ino),
+        inode: stIdentity,
       }),
     ).not.toThrow();
     expect.soft(admissionFault.observed).toBe(true);
@@ -7810,6 +7828,7 @@ test('a stale public file-create still registers without a new read failure and 
   const { watcher } = await watchContent();
   const stale = writeDoc('stale.csv', 'gone\n');
   const st = statSync(stale);
+  const stIdentity = filesystemIdentity(statSync(stale, { bigint: true }));
   unlinkSync(stale);
   expect(existsSync(stale)).toBe(false);
   expect(() =>
@@ -7819,7 +7838,7 @@ test('a stale public file-create still registers without a new read failure and 
       relativePath: 'stale.csv',
       size: st.size,
       modifiedTs: st.mtimeMs,
-      inode: Number(st.ino),
+      inode: stIdentity,
     }),
   ).not.toThrow();
   expect.soft(indexedFileTargets(watcher)).toContain('stale.csv');
@@ -7867,11 +7886,11 @@ test('legacy mixed-Map helpers expose general mutation before their public callb
       relativePath: 'legacy.csv',
       size: 3,
       modifiedTs: 0,
-      inode: 7,
+      inode: '0:7',
     },
     index,
   );
-  expect(index.get('legacy.csv')).toMatchObject({ kind: 'file', size: 3, inode: 7 });
+  expect(index.get('legacy.csv')).toMatchObject({ kind: 'file', size: 3, inode: '0:7' });
   updateFileIndex({ kind: 'file-delete', path: file, relativePath: 'legacy.csv' }, index);
   expect(index.has('legacy.csv')).toBe(false);
 });
@@ -7957,13 +7976,14 @@ test('a public recreation during the first alias deletion cancels the pending se
     await entered.promise;
     symlinkSync(a, y);
     const stat = statSync(y);
+    const statIdentity = filesystemIdentity(statSync(y, { bigint: true }));
     watcher.mutateFileIndex({
       kind: 'file-create',
       path: y,
       relativePath: 'y.csv',
       size: stat.size,
       modifiedTs: stat.mtimeMs,
-      inode: Number(stat.ino),
+      inode: statIdentity,
     });
     expect(lstatSync(y).isSymbolicLink()).toBe(true);
     expect(realpathSync(y)).toBe(a);
@@ -8798,17 +8818,18 @@ test.each(['notice recovery', 'index-only rescan'] as const)(
         relativePath: 'b.csv',
         size: publicStat.size,
         modifiedTs: publicStat.mtimeMs,
-        inode: Number(publicStat.ino),
+        inode: filesystemIdentity(statSync(b, { bigint: true })),
       });
       writeFileSync(c, 'c,unrelated,public\n');
       const cStat = statSync(c);
+      const cStatIdentity = filesystemIdentity(statSync(c, { bigint: true }));
       watcher.mutateFileIndex({
         kind: 'file-create',
         path: c,
         relativePath: 'c.csv',
         size: cStat.size,
         modifiedTs: cStat.mtimeMs,
-        inode: Number(cStat.ino),
+        inode: cStatIdentity,
       });
       expect(sortedTargetInventory(watcher).fileTargets).toEqual([
         '.okignore',
@@ -9066,6 +9087,7 @@ test('the final symlink target stat supplies shared metadata after earlier hardl
   memberStatSchedule.resume = resume.promise;
   const started = watchContent();
   let lastStat: ReturnType<typeof statSync> | undefined;
+  let lastStatIdentity = '';
   try {
     const paused = await Promise.race([
       entered.promise.then(() => true),
@@ -9074,6 +9096,7 @@ test('the final symlink target stat supplies shared metadata after earlier hardl
     expect(paused).toBe(true);
     writeFileSync(b, 'new,shared,metadata\n');
     lastStat = statSync(b);
+    lastStatIdentity = filesystemIdentity(statSync(b, { bigint: true }));
     expect(readFileSync(a, 'utf8')).toBe('new,shared,metadata\n');
     expect(readFileSync(z, 'utf8')).toBe('new,shared,metadata\n');
   } finally {
@@ -9095,7 +9118,7 @@ test('the final symlink target stat supplies shared metadata after earlier hardl
       aliases: ['z.csv'],
       size: lastStat?.size,
       modified: lastStat?.mtime.toISOString(),
-      inode: Number(lastStat?.ino),
+      inode: lastStatIdentity,
     }),
   ]);
 });
@@ -9594,6 +9617,7 @@ test('a pending alias update carries newer shared metadata from another accepted
     );
     writeFileSync(pendingPeer, 'new,longer,shared,metadata\n');
     const stat = statSync(pendingPeer);
+    const statIdentity = filesystemIdentity(statSync(pendingPeer, { bigint: true }));
     expectedSize = stat.size;
     expectedModifiedTs = new Date(stat.mtimeMs).getTime();
     watched.watcher.mutateFileIndex({
@@ -9602,7 +9626,7 @@ test('a pending alias update carries newer shared metadata from another accepted
       relativePath: basename(pendingPeer),
       size: stat.size,
       modifiedTs: stat.mtimeMs,
-      inode: Number(stat.ino),
+      inode: statIdentity,
     });
     callbackBytes = readFileSync(pendingTarget, 'utf8');
     callbackGroupSize = [...watched.watcher.getAllFilesIndex()].find(

@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hocuspocus } from '@hocuspocus/server';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
+import { filesystemIdentity } from '@inkeep/open-knowledge-core/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { streamShowAllEntries, walkContentDirForShowAll } from '../api-extension.ts';
 import { makeCaptureRes, makeSyntheticReq } from '../composition-rig.test-helper.ts';
@@ -280,7 +281,7 @@ test.each(['repeatable', 'single-pass'] as const)(
     const rich = {
       kind: 'file' as const,
       canonicalPath: join(projectDir, 'outside/atlas.csv'),
-      inode: 41,
+      inode: '0:41',
       size: 5,
       modified: '2026-01-01T00:00:00.000Z',
       aliases: ['linked-atlas.csv', 'linked-beacon.csv'],
@@ -305,7 +306,7 @@ test.each(['repeatable', 'single-pass'] as const)(
           size: 0,
           modified: '2026-01-01T00:00:00.000Z',
           canonicalPath: join(projectDir, 'canonical'),
-          inode: 42,
+          inode: '0:42',
         },
       ],
     ]);
@@ -385,11 +386,13 @@ test('a folder alias lists a contained legacy file alias', async () => {
   const mirror = join(projectDir, 'mirror');
   symlinkSync(canonicalDir, mirror);
   const targetStat = statSync(target);
+  const targetStatIdentity = filesystemIdentity(statSync(target, { bigint: true }));
   const folderStat = statSync(canonicalDir);
+  const folderStatIdentity = filesystemIdentity(statSync(canonicalDir, { bigint: true }));
   const entry: FileIndexEntry = {
     kind: 'file',
     canonicalPath: target,
-    inode: targetStat.ino,
+    inode: targetStatIdentity,
     size: targetStat.size,
     modified: targetStat.mtime.toISOString(),
     aliases: ['canonical/y.csv'],
@@ -402,7 +405,7 @@ test('a folder alias lists a contained legacy file alias', async () => {
         size: 0,
         modified: folderStat.mtime.toISOString(),
         canonicalPath: canonicalDir,
-        inode: folderStat.ino,
+        inode: folderStatIdentity,
       },
     ],
   ]);
@@ -501,13 +504,14 @@ test('a public recovery creation preserves its literal folder alias and one list
       symlinkSync(real, linked);
       writeFileSync(join(linked, 'created.csv'), 'public,bytes\n');
       const stat = statSync(created);
+      const statIdentity = filesystemIdentity(statSync(created, { bigint: true }));
       watcher.mutateFileIndex({
         kind: 'file-create',
         path: created,
         relativePath: 'linked.mdx/created.csv',
         size: stat.size,
         modifiedTs: stat.mtimeMs,
-        inode: Number(stat.ino),
+        inode: statIdentity,
       });
       creations++;
       expect(

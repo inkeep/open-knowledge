@@ -1,14 +1,14 @@
 export interface BundleIdentityCheckInput {
   bundleAnchorPath: string;
-  currentInode: number;
+  currentInode: string;
   platform: NodeJS.Platform;
   realpath: (path: string) => string;
-  statInode: (path: string) => number;
+  statInode: (path: string) => string;
 }
 
 export type BundleIdentityState =
   | { kind: 'unchanged' }
-  | { kind: 'replaced'; currentInode: number; onDiskInode: number }
+  | { kind: 'replaced'; currentInode: string; onDiskInode: string }
   | { kind: 'unreadable'; reason?: string };
 
 export function detectBundleIdentity(input: BundleIdentityCheckInput): BundleIdentityState {
@@ -21,7 +21,7 @@ export function detectBundleIdentity(input: BundleIdentityCheckInput): BundleIde
     return { kind: 'unreadable', reason: err instanceof Error ? err.message : String(err) };
   }
 
-  let onDiskInode: number;
+  let onDiskInode: string;
   try {
     onDiskInode = input.statInode(resolvedPath);
   } catch (err) {
@@ -104,13 +104,13 @@ export function startBundleIdentityWatcher(
 
 interface CaptureBootIdentityDeps {
   realpathSync: (p: string) => string;
-  statInoSync: (p: string) => number;
+  statInoSync: (p: string) => string;
   log: (msg: string) => void;
 }
 
 interface BootIdentity {
   resolvedPath: string;
-  inode: number;
+  inode: string;
 }
 
 export function captureBootIdentity(
@@ -126,7 +126,7 @@ export function captureBootIdentity(
     );
     return undefined;
   }
-  let inode: number;
+  let inode: string;
   try {
     inode = deps.statInoSync(resolvedPath);
   } catch (err) {
@@ -136,4 +136,24 @@ export function captureBootIdentity(
     return undefined;
   }
   return { resolvedPath, inode };
+}
+
+function identityParts(identity: string): { dev: string; inode: string } {
+  const separator = identity.indexOf(':');
+  return { dev: identity.slice(0, separator), inode: identity.slice(separator + 1) };
+}
+
+export function formatBootIdentityLine(boot: BootIdentity, version: string): string {
+  const { dev, inode } = identityParts(boot.inode);
+  return `[mcp] bundle identity anchor=${boot.resolvedPath} dev=${dev} inode=${inode} version=${version}`;
+}
+
+export function formatBundleReplacedLine(
+  anchorPath: string,
+  state: BundleIdentityState & { kind: 'replaced' },
+  version: string,
+): string {
+  const boot = identityParts(state.currentInode);
+  const onDisk = identityParts(state.onDiskInode);
+  return `[mcp] bundle replaced anchor=${anchorPath} bootDev=${boot.dev} bootInode=${boot.inode} onDiskDev=${onDisk.dev} onDiskInode=${onDisk.inode} version=${version} — exiting for host respawn`;
 }

@@ -26,7 +26,7 @@ export function installRendererFileProtocol(protocol: Protocol, rendererRoot: st
   }
 
   const policyFor = createAppShellPolicies(root, ({ err, file }, message) =>
-    warnOnce([message, file ?? '', causeOf(err)].join('\u0000'), { err, file }, message),
+    warnOnce([message, file, causeOf(err)].join('\u0000'), { err, file }, message),
   );
 
   function refuse(status: number, target: string, reason: string, err?: unknown): Response {
@@ -61,7 +61,7 @@ export function installRendererFileProtocol(protocol: Protocol, rendererRoot: st
     } catch (err) {
       return refuse(500, file, 'could not load the file', err);
     }
-    const policy = response.ok ? policyFor(served, file) : undefined;
+    const policy = response.ok ? policyFor({ file, stats: served }) : undefined;
     if (policy === undefined) return response;
     const headers = new Headers(response.headers);
     headers.set('Content-Security-Policy', policy);

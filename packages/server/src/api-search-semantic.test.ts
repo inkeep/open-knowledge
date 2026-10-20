@@ -17,6 +17,7 @@ import {
   type SemanticProviderErrorReason,
   type SemanticQueryOutcome,
 } from '@inkeep/open-knowledge-core';
+import { filesystemIdentity } from '@inkeep/open-knowledge-core/server';
 import { describe, expect, test } from 'vitest';
 import { createApiExtension } from './api-extension.test-helper.ts';
 import { createConceptEmbedder, type Embedder, SemanticSearchService } from './embeddings/index.ts';
@@ -83,11 +84,12 @@ function buildFileIndex(dir: string, base = ''): ReadonlyMap<string, FileIndexEn
       for (const [k, v] of buildFileIndex(join(dir, entry.name), rel)) index.set(k, v);
     } else if (entry.isFile() && entry.name.endsWith('.md')) {
       const stat = statSync(join(dir, entry.name));
+      const statIdentity = filesystemIdentity(statSync(join(dir, entry.name), { bigint: true }));
       index.set(rel.slice(0, -3), {
         size: stat.size,
         modified: stat.mtime.toISOString(),
         canonicalPath: join(dir, entry.name),
-        inode: stat.ino,
+        inode: statIdentity,
         aliases: [],
       });
     }

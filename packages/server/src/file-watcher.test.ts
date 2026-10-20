@@ -1715,7 +1715,7 @@ describe('startWatcher symlink handling', () => {
       const entry = index.get('target');
       expect(entry).toBeTruthy();
       expect(entry?.canonicalPath).toBe(targetPath);
-      expect(entry?.inode).toBeGreaterThan(0);
+      expect(entry?.inode).toMatch(/^\d+:[1-9]\d*$/);
       expect(entry?.aliases).toContain('link');
     } finally {
       await handle.unsubscribe();
@@ -1988,7 +1988,7 @@ describe('startWatcher symlink handling', () => {
       const entry = handle.getFileIndex().get('regular');
       expect(entry).toBeTruthy();
       expect(entry?.canonicalPath).toBe(resolve(contentDir, 'regular.md'));
-      expect(entry?.inode).toBeGreaterThan(0);
+      expect(entry?.inode).toMatch(/^\d+:[1-9]\d*$/);
       expect(entry?.aliases).toEqual([]);
     } finally {
       await handle.unsubscribe();

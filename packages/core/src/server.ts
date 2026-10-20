@@ -27,6 +27,7 @@ export {
   writeConfigPatch,
 } from './config/write-config-patch.ts';
 export { okUserHomeDir } from './constants/ok-user-home.ts';
+export { filesystemIdentity, statMtime, statMtimeMs } from './filesystem-identity.ts';
 export {
   LOCALE_OVERRIDE_ENV_VAR,
   type LocaleEnvironment,

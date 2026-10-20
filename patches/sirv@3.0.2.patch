@@ -1,0 +1,52 @@
+diff --git a/build.js b/build.js
+index 3734120d67745ff83b2df07fa5d0a40dcb92a69b..0a5ab7af0d72440436638bc39203cd8203c68e2d 100644
+--- a/build.js
++++ b/build.js
+@@ -191,7 +191,7 @@ module.exports = function (dir, opts={}) {
+ 			res.setHeader('Vary', 'Accept-Encoding');
+ 		}
+ 
+-		setHeaders(res, pathname, data.stats);
++		setHeaders(res, pathname, data.stats, data.abs);
+ 		send(req, res, data.abs, data.stats, data.headers);
+ 	};
+ }
+diff --git a/build.mjs b/build.mjs
+index 2f866d5216c951ec125f2044af070fa6b530e375..823066030292622030a89c2914780d8239c70c2c 100644
+--- a/build.mjs
++++ b/build.mjs
+@@ -191,7 +191,7 @@ export default function (dir, opts={}) {
+ 			res.setHeader('Vary', 'Accept-Encoding');
+ 		}
+ 
+-		setHeaders(res, pathname, data.stats);
++		setHeaders(res, pathname, data.stats, data.abs);
+ 		send(req, res, data.abs, data.stats, data.headers);
+ 	};
+ }
+diff --git a/index.d.mts b/index.d.mts
+index 8bfe364f1db2d1382c56a9b75a014579083cfa70..d4b2f87b5cb05a37694a20dedd93de906c31b73f 100644
+--- a/index.d.mts
++++ b/index.d.mts
+@@ -23,7 +23,7 @@ export interface Options {
+ 	brotli?: boolean;
+ 	gzip?: boolean;
+ 	onNoMatch?: (req: IncomingMessage, res: ServerResponse) => void;
+-	setHeaders?: (res: ServerResponse, pathname: string, stats: Stats) => void;
++	setHeaders?: (res: ServerResponse, pathname: string, stats: Stats, filePath: string) => void;
+ }
+ 
+ export default function (dir?: string, opts?: Options): RequestHandler;
+diff --git a/index.d.ts b/index.d.ts
+index 96cc63e7ee1ccdd7266e9193252b799068ef2e3c..7275f8ce2e76687bd433c0d74f3185bc0241331c 100644
+--- a/index.d.ts
++++ b/index.d.ts
+@@ -24,7 +24,7 @@ declare namespace sirv {
+ 		brotli?: boolean;
+ 		gzip?: boolean;
+ 		onNoMatch?: (req: IncomingMessage, res: ServerResponse) => void;
+-		setHeaders?: (res: ServerResponse, pathname: string, stats: Stats) => void;
++		setHeaders?: (res: ServerResponse, pathname: string, stats: Stats, filePath: string) => void;
+ 	}
+ }
+ 

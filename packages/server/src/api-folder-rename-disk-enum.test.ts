@@ -286,7 +286,7 @@ describe('managed rename corpus discovery', () => {
             size: 18,
             modified: new Date(0).toISOString(),
             canonicalPath: join(contentDir, 'late.md'),
-            inode: 0,
+            inode: '',
             aliases: [],
             kind: 'markdown',
           },

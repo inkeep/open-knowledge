@@ -348,7 +348,7 @@ test('with no settle pending, a batch and a dropped-events recovery are handled 
       relativePath: 'notes.txt',
       size: 6,
       modifiedTs: expect.any(Number),
-      inode: expect.any(Number),
+      inode: expect.any(String),
     },
     { kind: 'asset-delete', path: notes, relativePath: 'notes.txt' },
     { kind: 'file-delete', path: notes, relativePath: 'notes.txt' },

@@ -19,19 +19,25 @@ describe('document listing from file index', () => {
   const sampleIndex = new Map<string, FileIndexEntry>([
     [
       'README',
-      { size: 50, modified: now, canonicalPath: '/test/README.md', inode: 0, aliases: [] },
+      { size: 50, modified: now, canonicalPath: '/test/README.md', inode: '', aliases: [] },
     ],
     [
       'docs/guide',
-      { size: 200, modified: now, canonicalPath: '/test/docs/guide.md', inode: 0, aliases: [] },
+      { size: 200, modified: now, canonicalPath: '/test/docs/guide.md', inode: '', aliases: [] },
     ],
     [
       'docs/setup',
-      { size: 150, modified: now, canonicalPath: '/test/docs/setup.md', inode: 0, aliases: [] },
+      { size: 150, modified: now, canonicalPath: '/test/docs/setup.md', inode: '', aliases: [] },
     ],
     [
       'articles/intro',
-      { size: 100, modified: now, canonicalPath: '/test/articles/intro.md', inode: 0, aliases: [] },
+      {
+        size: 100,
+        modified: now,
+        canonicalPath: '/test/articles/intro.md',
+        inode: '',
+        aliases: [],
+      },
     ],
     [
       'articles/nested/deep',
@@ -39,7 +45,7 @@ describe('document listing from file index', () => {
         size: 80,
         modified: now,
         canonicalPath: '/test/articles/nested/deep.md',
-        inode: 0,
+        inode: '',
         aliases: [],
       },
     ],

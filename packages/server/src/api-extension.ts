@@ -1,3 +1,4 @@
+import { filesystemIdentity, statMtimeMs } from '@inkeep/open-knowledge-core/server';
 import { createAgentIntegrationsRoutes } from './http/agent-integrations-routes.ts';
 import { createAgentWriteRoutes } from './http/agent-write-routes.ts';
 import { createTestRoutes } from './http/test-routes.ts';
@@ -1173,9 +1174,9 @@ function isCaseOnlySelfCollision(sourcePath: string, destinationPath: string): b
   if (!existsSync(sourcePath) || !existsSync(destinationPath)) return false;
 
   try {
-    const sourceStat = statSync(sourcePath);
-    const destinationStat = statSync(destinationPath);
-    return sourceStat.dev === destinationStat.dev && sourceStat.ino === destinationStat.ino;
+    const sourceStat = statSync(sourcePath, { bigint: true });
+    const destinationStat = statSync(destinationPath, { bigint: true });
+    return filesystemIdentity(sourceStat) === filesystemIdentity(destinationStat);
   } catch {
     return false;
   }
@@ -1668,7 +1669,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     const index = getMutableFolderIndex();
     if (!index) return;
     try {
-      const folderStat = statSync(fullPath);
+      const folderStat = statSync(fullPath, { bigint: true });
       upsertFolderIndexEntryInIndex(index, contentDir, fullPath, folderStat, fullPath);
     } catch (err) {
       log.warn({ path: fullPath, err }, `folder index stat failed for ${fullPath}`);
@@ -2855,14 +2856,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
 
             forgetDocExtension(sourceDocName);
             mutateFileIndex?.({ kind: 'delete', path: sourcePath, docName: sourceDocName });
-            const destinationStat = statSync(destinationPath);
+            const destinationStat = statSync(destinationPath, { bigint: true });
             mutateFileIndex?.({
               kind: 'file-create',
               path: destinationPath,
               relativePath: toPath,
-              size: destinationStat.size,
-              modifiedTs: destinationStat.mtimeMs,
-              inode: destinationStat.ino,
+              size: Number(destinationStat.size),
+              modifiedTs: statMtimeMs(destinationStat),
+              inode: filesystemIdentity(destinationStat),
             });
 
             const rewriteResult = await applyPendingAssetReferenceRewrites(

@@ -88,7 +88,7 @@ function createHarness(contentDir: string, options: { withGeneration: boolean })
       size: Buffer.byteLength(content),
       modified,
       canonicalPath: abs,
-      inode: ++stampSeq,
+      inode: `0:${++stampSeq}`,
       aliases: [],
       kind: 'markdown',
     });
@@ -101,7 +101,7 @@ function createHarness(contentDir: string, options: { withGeneration: boolean })
       size: 0,
       modified: nextStamp(),
       canonicalPath: join(contentDir, docName),
-      inode: ++stampSeq,
+      inode: `0:${++stampSeq}`,
       aliases: [],
       kind: 'markdown',
       ...entry,

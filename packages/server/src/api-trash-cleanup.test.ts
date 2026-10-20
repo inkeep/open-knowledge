@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import type { Principal } from '@inkeep/open-knowledge-core';
+import { filesystemIdentity } from '@inkeep/open-knowledge-core/server';
 import { afterEach, describe, expect, test } from 'vitest';
 import { createApiExtension } from './api-extension.test-helper.ts';
 import { BacklinkIndex } from './backlink-index.ts';
@@ -58,12 +59,13 @@ function buildFileIndex(contentDir: string): Map<string, FileIndexEntry> {
       }
       if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
       const stat = statSync(fullPath);
+      const statIdentity = filesystemIdentity(statSync(fullPath, { bigint: true }));
       const docName = fullPath.slice(contentDir.length + 1).replace(/\.md$/, '');
       index.set(docName, {
         size: stat.size,
         modified: stat.mtime.toISOString(),
         canonicalPath: fullPath,
-        inode: stat.ino,
+        inode: statIdentity,
         aliases: [],
       });
     }
@@ -79,12 +81,13 @@ function buildFolderIndex(contentDir: string): Map<string, FolderIndexEntry> {
       if (!entry.isDirectory()) continue;
       const fullPath = resolve(dir, entry.name);
       const stat = statSync(fullPath);
+      const statIdentity = filesystemIdentity(statSync(fullPath, { bigint: true }));
       const folderPath = fullPath.slice(contentDir.length + 1);
       index.set(folderPath, {
         size: 0,
         modified: stat.mtime.toISOString(),
         canonicalPath: fullPath,
-        inode: stat.ino,
+        inode: statIdentity,
       });
       walk(fullPath);
     }

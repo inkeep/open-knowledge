@@ -1,4 +1,4 @@
-import type { Dirent, Stats } from 'node:fs';
+import type { BigIntStats, Dirent } from 'node:fs';
 import { readdirSync } from 'node:fs';
 import { lstat, readdir, realpath, stat } from 'node:fs/promises';
 import { join, relative } from 'node:path';
@@ -7,6 +7,7 @@ import {
   type BasenameIndex,
   LINKABLE_ASSET_EXTENSIONS,
 } from '@inkeep/open-knowledge-core';
+import { filesystemIdentity } from '@inkeep/open-knowledge-core/server';
 import type { ContentFilter } from './content-filter.ts';
 import { resolveDirectoryRoot } from './directory-root.ts';
 import { isSupportedAssetFile } from './doc-extensions.ts';
@@ -53,7 +54,7 @@ export function seedSingleDirBasenameIndex(opts: {
 
 export async function seedBasenameIndex(opts: SeedOptions): Promise<void> {
   const root = resolveDirectoryRoot(opts.contentDir, { root: 'content', component: 'asset-walk' });
-  const visited = new Set<number>();
+  const visited = new Set<string>();
 
   async function walk(dir: string): Promise<void> {
     let entries: Dirent[];
@@ -70,9 +71,9 @@ export async function seedBasenameIndex(opts: SeedOptions): Promise<void> {
       if (rel.startsWith('..')) continue;
       if (opts.contentFilter?.isDirExcluded(rel) && entry.isDirectory()) continue;
 
-      let entryStat: Stats;
+      let entryStat: BigIntStats;
       try {
-        entryStat = await lstat(full);
+        entryStat = await lstat(full, { bigint: true });
       } catch (err) {
         const code = errnoCode(err);
         if (code !== 'ENOENT') opts.onSkip?.('lstat-failed', code, full);
@@ -92,16 +93,16 @@ export async function seedBasenameIndex(opts: SeedOptions): Promise<void> {
           opts.onSkip?.('symlink-escape', undefined, full);
           continue;
         }
-        let realStat: Stats;
+        let realStat: BigIntStats;
         try {
-          realStat = await stat(canonical);
+          realStat = await stat(canonical, { bigint: true });
         } catch (err) {
           const code = errnoCode(err);
           if (code !== 'ENOENT') opts.onSkip?.('symlink-stat-failed', code, canonical);
           continue;
         }
-        if (visited.has(realStat.ino)) continue;
-        visited.add(realStat.ino);
+        if (visited.has(filesystemIdentity(realStat))) continue;
+        visited.add(filesystemIdentity(realStat));
         if (realStat.isDirectory()) await walk(canonical);
         else if (
           realStat.isFile() &&
@@ -114,8 +115,8 @@ export async function seedBasenameIndex(opts: SeedOptions): Promise<void> {
       }
 
       if (entryStat.isDirectory()) {
-        if (visited.has(entryStat.ino)) continue;
-        visited.add(entryStat.ino);
+        if (visited.has(filesystemIdentity(entryStat))) continue;
+        visited.add(filesystemIdentity(entryStat));
         await walk(full);
         continue;
       }

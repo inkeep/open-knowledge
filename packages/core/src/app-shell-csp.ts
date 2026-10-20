@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, type Stats, statSync } from 'node:fs';
+import { type BigIntStats, readdirSync, readFileSync, type Stats, statSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
+import { filesystemIdentity, statMtimeMs } from './filesystem-identity.ts';
 
 // WARN: packages/app ships this page as public/assets/preview-frame.html and loads it from preview-iframe-header.ts; keep the paths in step.
 const PREVIEW_FRAME_FILE = 'assets/preview-frame.html';
@@ -67,13 +68,22 @@ function folderChanged([folder, mtimeMs]: [string, number]): boolean {
   }
 }
 
-function fileIdentity(stats: Stats): string {
-  return [stats.dev, stats.ino, stats.size, stats.mtimeMs].join(':');
+interface ServedDocument {
+  file: string;
+  stats: Pick<Stats, 'size' | 'mtimeMs'>;
+}
+
+function fileIdentity(
+  stats: Pick<BigIntStats, 'dev' | 'ino'>,
+  metadata: Pick<Stats, 'size' | 'mtimeMs'>,
+): string {
+  return `${filesystemIdentity(stats)}:${metadata.size}:${metadata.mtimeMs}`;
 }
 
 function currentIdentity(file: string): string | undefined {
   try {
-    return fileIdentity(statSync(file));
+    const stats = statSync(file, { bigint: true });
+    return fileIdentity(stats, { size: Number(stats.size), mtimeMs: statMtimeMs(stats) });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     throw err;
@@ -83,13 +93,13 @@ function currentIdentity(file: string): string | undefined {
 export interface AppShellPolicyFailure {
   err: unknown;
   root: string;
-  file?: string;
+  file: string;
 }
 
 export function createAppShellPolicies(
   bundleDir: string,
   onFailure: (failure: AppShellPolicyFailure, message: string) => void,
-): (served: Stats, servedPath?: string) => string | undefined {
+): (served: ServedDocument) => string | undefined {
   const root = resolve(bundleDir);
   const previewFrame = resolve(root, PREVIEW_FRAME_FILE);
   let listing: BundleListing | undefined;
@@ -102,8 +112,8 @@ export function createAppShellPolicies(
     return listing;
   }
 
-  function servedDocument(served: Stats): string | undefined {
-    const identity = fileIdentity(served);
+  function servedDocument(served: ServedDocument): string | undefined {
+    const identity = fileIdentity(statSync(served.file, { bigint: true }), served.stats);
     const matches = currentListing().documents.filter((file) => currentIdentity(file) === identity);
     if (matches.length > 1) {
       throw new Error(`the served file matches more than one document: ${matches.join(', ')}`);
@@ -127,18 +137,18 @@ export function createAppShellPolicies(
     }
   }
 
-  return (served, servedPath) => {
+  return (served) => {
     let file: string | undefined;
     try {
       file = servedDocument(served);
     } catch (err) {
       onFailure(
-        { err, root, file: servedPath },
+        { err, root, file: served.file },
         'could not identify the app shell file being served; sending a policy that allows no inline script',
       );
       return NO_INLINE_SCRIPT_POLICY;
     }
     if (file === undefined) return undefined;
-    return file === previewFrame ? PREVIEW_FRAME_CSP : documentPolicy(file, served.mtimeMs);
+    return file === previewFrame ? PREVIEW_FRAME_CSP : documentPolicy(file, served.stats.mtimeMs);
   };
 }

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { Hocuspocus } from '@hocuspocus/server';
+import { filesystemIdentity } from '@inkeep/open-knowledge-core/server';
 import { describe, expect, test } from 'vitest';
 import { createApiExtension } from './api-extension.test-helper.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
@@ -44,11 +45,12 @@ function buildFileIndex(
   for (const docName of docNames) {
     const filePath = join(contentDir, `${docName}.md`);
     const stats = statSync(filePath);
+    const statsIdentity = filesystemIdentity(statSync(filePath, { bigint: true }));
     index.set(docName, {
       size: stats.size,
       modified: stats.mtime.toISOString(),
       canonicalPath: filePath,
-      inode: stats.ino,
+      inode: statsIdentity,
       aliases: [],
     });
   }

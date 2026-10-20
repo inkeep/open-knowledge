@@ -100,7 +100,7 @@ describe('agent write self-registers the file index (PRD-7201)', () => {
           size: 1,
           modified: new Date(0).toISOString(),
           canonicalPath: '',
-          inode: 0,
+          inode: '',
           aliases: [],
           kind: 'markdown',
         },

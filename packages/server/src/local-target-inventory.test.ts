@@ -19,7 +19,7 @@ function entry(
     kind,
     canonicalPath,
     aliases,
-    inode: 1,
+    inode: '0:1',
     modified: '2026-01-01T00:00:00.000Z',
     size: 1,
   };
@@ -48,7 +48,7 @@ describe('localTargetInventoryFromIndexes', () => {
             size: 0,
             modified: '2026-01-01T00:00:00.000Z',
             canonicalPath: join(contentDir, 'canonical'),
-            inode: 1,
+            inode: '0:1',
           },
         ],
       ]);

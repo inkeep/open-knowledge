@@ -5,6 +5,8 @@ import {
   type BundleIdentityWatcherDeps,
   captureBootIdentity,
   detectBundleIdentity,
+  formatBootIdentityLine,
+  formatBundleReplacedLine,
   startBundleIdentityWatcher,
 } from './bundle-identity.ts';
 
@@ -15,10 +17,10 @@ const REAL_ANCHOR_PATH = '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKno
 function input(overrides: Partial<BundleIdentityCheckInput> = {}): BundleIdentityCheckInput {
   return {
     bundleAnchorPath: ANCHOR_PATH,
-    currentInode: 299_520_753,
+    currentInode: '0:299520753',
     platform: DARWIN,
     realpath: () => REAL_ANCHOR_PATH,
-    statInode: () => 299_520_753,
+    statInode: () => '0:299520753',
     ...overrides,
   };
 }
@@ -32,14 +34,14 @@ describe('detectBundleIdentity', () => {
   test('returns `replaced` when realpath inode differs from process-start inode', () => {
     const state = detectBundleIdentity(
       input({
-        currentInode: 299_520_753,
-        statInode: () => 299_520_789,
+        currentInode: '0:299520753',
+        statInode: () => '0:299520789',
       }),
     );
     expect(state.kind).toBe('replaced');
     if (state.kind === 'replaced') {
-      expect(state.currentInode).toBe(299_520_753);
-      expect(state.onDiskInode).toBe(299_520_789);
+      expect(state.currentInode).toBe('0:299520753');
+      expect(state.onDiskInode).toBe('0:299520789');
     }
   });
 
@@ -102,8 +104,8 @@ describe('detectBundleIdentity', () => {
     const linuxState = detectBundleIdentity(
       input({
         platform: 'linux',
-        currentInode: 100,
-        statInode: () => 200,
+        currentInode: '0:100',
+        statInode: () => '0:200',
         realpath: () => {
           throw new Error('realpath should not be called on non-darwin');
         },
@@ -114,8 +116,8 @@ describe('detectBundleIdentity', () => {
     const winState = detectBundleIdentity(
       input({
         platform: 'win32',
-        currentInode: 100,
-        statInode: () => 200,
+        currentInode: '0:100',
+        statInode: () => '0:200',
         realpath: () => {
           throw new Error('realpath should not be called on non-darwin');
         },
@@ -128,8 +130,8 @@ describe('detectBundleIdentity', () => {
     const state = detectBundleIdentity(
       input({
         realpath: () => '/Applications/OK.app/Contents/MacOS/OK',
-        currentInode: 299_520_753,
-        statInode: () => 299_520_753,
+        currentInode: '0:299520753',
+        statInode: () => '0:299520753',
       }),
     );
     expect(state.kind).toBe('unchanged');
@@ -240,8 +242,8 @@ describe('startBundleIdentityWatcher', () => {
     const fx = makeWatcherFixtures();
     const replaced: BundleIdentityState = {
       kind: 'replaced',
-      currentInode: 100,
-      onDiskInode: 200,
+      currentInode: '0:100',
+      onDiskInode: '0:200',
     };
     const onReplacedCalls: BundleIdentityState[] = [];
     startBundleIdentityWatcher({
@@ -350,8 +352,8 @@ describe('startBundleIdentityWatcher', () => {
     const onReplacedCalls: BundleIdentityState[] = [];
     const replaced: BundleIdentityState = {
       kind: 'replaced',
-      currentInode: 100,
-      onDiskInode: 200,
+      currentInode: '0:100',
+      onDiskInode: '0:200',
     };
     let kind: BundleIdentityState['kind'] = 'unreadable';
     startBundleIdentityWatcher({
@@ -445,13 +447,13 @@ describe('captureBootIdentity', () => {
       '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge',
       {
         realpathSync: () => '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge',
-        statInoSync: () => 299_520_753,
+        statInoSync: () => '0:299520753',
         log: (m) => logs.push(m),
       },
     );
     expect(result).toEqual({
       resolvedPath: '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge',
-      inode: 299_520_753,
+      inode: '0:299520753',
     });
     expect(logs).toEqual([]);
   });
@@ -498,10 +500,33 @@ describe('captureBootIdentity', () => {
       realpathSync: () => {
         throw 'plain-string-error';
       },
-      statInoSync: () => 0,
+      statInoSync: () => '0:0',
       log: (m) => logs.push(m),
     });
     expect(result).toBeUndefined();
     expect(logs.join(' ')).toMatch(/plain-string-error/);
+  });
+});
+
+describe('bundle identity log lines', () => {
+  test('the boot line names the device and inode it captured', () => {
+    expect(
+      formatBootIdentityLine(
+        { resolvedPath: REAL_ANCHOR_PATH, inode: '16777232:299520753' },
+        '1.2.3',
+      ),
+    ).toBe(
+      `[mcp] bundle identity anchor=${REAL_ANCHOR_PATH} dev=16777232 inode=299520753 version=1.2.3`,
+    );
+  });
+
+  test('a replacement on another device with the same inode prints both devices', () => {
+    const state = detectBundleIdentity(
+      input({ currentInode: '16777232:299520753', statInode: () => '16777240:299520753' }),
+    );
+    if (state.kind !== 'replaced') throw new Error(`expected replaced, got ${state.kind}`);
+    expect(formatBundleReplacedLine(REAL_ANCHOR_PATH, state, '1.2.3')).toBe(
+      `[mcp] bundle replaced anchor=${REAL_ANCHOR_PATH} bootDev=16777232 bootInode=299520753 onDiskDev=16777240 onDiskInode=299520753 version=1.2.3 — exiting for host respawn`,
+    );
   });
 });

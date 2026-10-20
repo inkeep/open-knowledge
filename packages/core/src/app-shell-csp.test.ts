@@ -62,7 +62,7 @@ describe('createAppShellPolicies', () => {
 
   function serve(policyFor: ReturnType<typeof createAppShellPolicies>, file: string) {
     const path = join(dist, file);
-    return policyFor(statSync(path), path);
+    return policyFor({ file: path, stats: statSync(path) });
   }
 
   test('each served document gets its own policy, and other files get none', () => {

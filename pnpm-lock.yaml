@@ -157,6 +157,7 @@ patchedDependencies:
   cmdk@1.1.1: b06bc76a3813cc8142d7f75f85020a8ebff65a0ee84fac816da25986da6aa2a1
   react-medium-image-zoom@5.4.3: d59ed459a6ae570e843d0829f844dde24c0697b883351b198034f47606766517
   react-resizable-panels@4.12.1: bd17d922d19720e50c1805aeb59f56599bf2b15eefbb6e93fc84f7a548793f77
+  sirv@3.0.2: c18b28f0bc922fd0abed32545bae498c471d8f715f8d5fac40e84840d4e23842
   y-indexeddb@9.0.12: bc95fab9af70f704280673eafabcb5a40cc180fd5122d62e6c44cac2f7076245
   y-prosemirror@1.3.7: b77fc38bdf246f08f73b6bc5d12ec24d29408b663f0a4224758d3f776ef124e7
 
@@ -795,7 +796,7 @@ importers:
         version: 11.0.0(supports-color@7.2.0)
       sirv:
         specifier: ^3.0.2
-        version: 3.0.2
+        version: 3.0.2(patch_hash=c18b28f0bc922fd0abed32545bae498c471d8f715f8d5fac40e84840d4e23842)
       size-limit:
         specifier: ^12.1.0
         version: 12.1.0(jiti@2.7.0)
@@ -1372,7 +1373,7 @@ importers:
         version: 3.36.0(supports-color@7.2.0)
       sirv:
         specifier: ^3.0.1
-        version: 3.0.2
+        version: 3.0.2(patch_hash=c18b28f0bc922fd0abed32545bae498c471d8f715f8d5fac40e84840d4e23842)
       ws:
         specifier: ^8.20.0
         version: 8.21.0
@@ -17283,7 +17284,7 @@ snapshots:
       '@vitest/utils': 5.0.3
       magic-string: 1.4.2
       pngjs: 7.0.0
-      sirv: 3.0.2
+      sirv: 3.0.2(patch_hash=c18b28f0bc922fd0abed32545bae498c471d8f715f8d5fac40e84840d4e23842)
       tinyrainbow: 3.2.0
       vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.8(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.0)(yaml@2.9.0))
       ws: 8.22.0
@@ -17314,7 +17315,7 @@ snapshots:
       fflate: 0.8.3
       flatted: 3.4.4
       pathe: 2.0.3
-      sirv: 3.0.2
+      sirv: 3.0.2(patch_hash=c18b28f0bc922fd0abed32545bae498c471d8f715f8d5fac40e84840d4e23842)
       tinyrainbow: 3.2.0
       vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.8(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.0)(yaml@2.9.0))
 
@@ -23071,7 +23072,7 @@ snapshots:
     dependencies:
       semver: 7.8.5
 
-  sirv@3.0.2:
+  sirv@3.0.2(patch_hash=c18b28f0bc922fd0abed32545bae498c471d8f715f8d5fac40e84840d4e23842):
     dependencies:
       '@polka/url': 1.0.0-next.29
       mrmime: 2.0.1

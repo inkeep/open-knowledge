@@ -6718,6 +6718,7 @@ The following MIT-licensed packages are patched in this repository via pnpm's `p
 | `cmdk@1.1.1` | `patches/cmdk@1.1.1.patch` |
 | `react-medium-image-zoom@5.4.3` | `patches/react-medium-image-zoom@5.4.3.patch` |
 | `react-resizable-panels@4.12.1` | `patches/react-resizable-panels@4.12.1.patch` |
+| `sirv@3.0.2` | `patches/sirv@3.0.2.patch` |
 | `y-indexeddb@9.0.12` | `patches/y-indexeddb@9.0.12.patch` |
 | `y-prosemirror@1.3.7` | `patches/y-prosemirror@1.3.7.patch` |
 

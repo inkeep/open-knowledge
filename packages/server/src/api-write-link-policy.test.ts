@@ -314,7 +314,7 @@ describe('write-time advisories for links to folders that hold no document', () 
         new Map(
           folders.map((folder) => [
             folder,
-            { size: 0 as const, modified: '', canonicalPath: join(contentDir, folder), inode: 0 },
+            { size: 0 as const, modified: '', canonicalPath: join(contentDir, folder), inode: '' },
           ]),
         ),
     });
@@ -382,7 +382,7 @@ describe('write-time advisories for slash-free wiki asset embeds', () => {
               size: 3,
               modified: '',
               canonicalPath: join(contentDir, 'media', 'photo.png'),
-              inode: 0,
+              inode: '',
               aliases: [],
               kind: 'file' as const,
             },
