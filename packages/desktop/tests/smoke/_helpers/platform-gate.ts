@@ -44,6 +44,7 @@ export const SPEC_PLATFORM_GATES = {
   'share-receive-miss-terminal.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'share-receive-multi-worktree.e2e.ts': ['!DARWIN'],
   'sidebar-create-rename-editable.e2e.ts': ['!DARWIN'],
+  'skill-bundle-asar.e2e.ts': [],
   'skill-scope-roundtrip.e2e.ts': ['!DARWIN'],
   'skills-studio.e2e.ts': ['!DARWIN'],
   'slidev-render-readiness.e2e.ts': ['!PLATFORM_SUPPORTED'],

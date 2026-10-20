@@ -11,11 +11,11 @@ import {
   resolveBundledSkillDir,
 } from '@inkeep/open-knowledge-server';
 import type { EditorId } from '../commands/editors.ts';
+import { replaceBundleDir } from './replace-bundle-dir.ts';
 import {
   assertAncestorsContainedIn,
   type ProjectSkillRemoveResult,
   type ProjectSkillResult,
-  replaceBundleDir,
 } from './write-project-skill.ts';
 
 function userSkillPath(editor: EditorId, home: string): string | null {

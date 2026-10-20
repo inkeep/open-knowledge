@@ -1,13 +1,4 @@
-import {
-  cpSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  statSync,
-} from 'node:fs';
+import { existsSync, lstatSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
   AGENT_REGISTRY,
@@ -26,6 +17,7 @@ import {
   entryCarriesOwnChain,
   isOwnDevEntry,
 } from '../commands/editors.ts';
+import { replaceBundleDir } from './replace-bundle-dir.ts';
 
 export class ProjectPathSafetyError extends Error {
   override readonly name = 'ProjectPathSafetyError';
@@ -86,20 +78,6 @@ export function assertAncestorsContainedIn(targetPath: string, base: string): vo
         'escapes the project. Remove the symlink and re-run project setup.',
     );
   }
-}
-
-export function replaceBundleDir(sourceDir: string, skillPath: string): 'written' | 'overwritten' {
-  const targetDir = dirname(skillPath);
-  const action = existsSync(skillPath) ? 'overwritten' : 'written';
-  if (action === 'written' && existsSync(targetDir)) {
-    throw new Error(
-      `Refusing to replace ${targetDir}: it exists but holds no SKILL.md, so it is not a bundle OpenKnowledge wrote. Move it aside and try again.`,
-    );
-  }
-  rmSync(targetDir, { recursive: true, force: true });
-  mkdirSync(dirname(targetDir), { recursive: true });
-  cpSync(sourceDir, targetDir, { recursive: true });
-  return action;
 }
 
 export interface ProjectSkillResult {
