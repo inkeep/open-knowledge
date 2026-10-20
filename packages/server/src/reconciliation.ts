@@ -43,10 +43,6 @@ export function countKeptBlocks(kept: readonly KeptBlockPair[]): KeptBlockCounts
   return { duplicated, restoredDeletedHere, restoredDeletedOutside };
 }
 
-export function blocksKeptTwice(kept: readonly KeptBlockPair[]): number {
-  return countKeptBlocks(kept).duplicated;
-}
-
 export type ReconcileRefusalReason = 'conflict-markers' | 'no-base' | 'too-large' | 'check-failed';
 
 type MergeSide = 'ours' | 'theirs';

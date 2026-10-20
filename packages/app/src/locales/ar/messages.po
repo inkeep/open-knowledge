@@ -952,6 +952,15 @@ msgstr "قد تبقى نسخة في {scopeLabel} من: {names}. لا تحذف أ
 msgid "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
 msgstr "تم الاحتفاظ بنسخة من “{name}” في {scopeLabel} عن قصد. لا تحذفها قبل مقارنتها بالنسخة الأصلية: فقد تحتوي على النسخة الوحيدة من الملفات التي حذفها النقل الفاشل بالفعل."
 
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side."
+msgstr "تم التراجع عن حذف في {fileName} لأن الجهة الأخرى غيّرت النص نفسه."
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions are in the timeline."
+msgstr "تم التراجع عن حذف في {fileName} لأن الجهة الأخرى غيّرت النص نفسه. النسخ السابقة موجودة في الخط الزمني."
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions were saved to the document's history."
+msgstr "تم التراجع عن حذف في {fileName} لأن الجهة الأخرى غيّرت النص نفسه. حُفظت النسخ السابقة في سجل المستند."
+
 msgid "A DIFFERENT skill named like this one lives at {0} — that folder is not this skill. Rename or delete one of the two to resolve."
 msgstr "توجد مهارة مختلفة بالاسم نفسه في {0} — ذلك المجلد ليس هذه المهارة. أعد تسمية إحداهما أو احذفها للحل."
 
@@ -1451,6 +1460,12 @@ msgstr "يجري بالفعل بدء محادثة مع هذا الوكيل — �
 msgid "Always included"
 msgstr "مُدرج دائمًا"
 
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
+msgstr "تعذّر دمج تغيير خارجي في {fileName}، لذا بقيت هذه النسخة. النسخة الخارجية موجودة في الخط الزمني."
+
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
+msgstr "تعذّر دمج تغيير خارجي في {fileName}، لذا بقيت هذه النسخة. حُفظت النسخة الخارجية في سجل المستند."
+
 msgid "An unexpected error occurred."
 msgstr "حدث خطأ غير متوقع."
 
@@ -1786,6 +1801,9 @@ msgstr "يصبح محتوى المستند عندما ينشئ أحدهم مست
 msgid "Before"
 msgstr "قبل"
 
+msgid "Before an outside change was merged"
+msgstr "قبل دمج تغيير خارجي"
+
 msgid "Before syncing, set your identity for git commits:"
 msgstr "قبل المزامنة، اضبط هويتك لإيداعات git:"
 
@@ -1849,6 +1867,9 @@ msgstr "سيقرأ الوكيلان في النهاية كل ما في {keep}."
 
 msgid "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
 msgstr "النسختان متطابقتان. اختيار قبول الحالي يُبقي حماية OpenKnowledge مفعّلة، لذا سيُرفض مجددًا أي حفظ آخر للنسخة الأقدم. اختيار قبول الوارد يوقف تلك الحماية."
+
+msgid "Both versions were kept in {fileName}. It changed outside OpenKnowledge in the same place as here, so the outside version is directly under this one."
+msgstr "تم الاحتفاظ بالنسختين في {fileName}. تغيّر الملف خارج OpenKnowledge في المكان نفسه الذي تغيّر فيه هنا، لذا تظهر النسخة الخارجية أسفل هذه النسخة مباشرة."
 
 msgid "Branch"
 msgstr "فرع"
@@ -3986,6 +4007,12 @@ msgstr "تُطبّق التعديلات مباشرة. تحدد السمة الو
 msgid "Edits at the source land here — no copy-paste drift."
 msgstr "تصل التعديلات من المصدر إلى هنا — بلا انحراف نسخ ولصق."
 
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits are in the timeline."
+msgstr "تعذّر دمج التعديلات على {fileName} المحفوظة منذ آخر مرة كان فيها هذا الفرع مفتوحًا، لذا بقيت نسخة الملف. هذه التعديلات موجودة في الخط الزمني."
+
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits were saved to the document's history."
+msgstr "تعذّر دمج التعديلات على {fileName} المحفوظة منذ آخر مرة كان فيها هذا الفرع مفتوحًا، لذا بقيت نسخة الملف. حُفظت هذه التعديلات في سجل المستند."
+
 msgid "Element fields"
 msgstr "حقول العنصر"
 
@@ -4593,6 +4620,9 @@ msgstr "الملف {identity}. انتقل إلى المرجع."
 
 msgid "File already exists"
 msgstr "الملف موجود بالفعل"
+
+msgid "File change notice"
+msgstr "إشعار تغيير الملف"
 
 msgid "File drop zone"
 msgstr "منطقة إفلات الملفات"
@@ -6969,6 +6999,9 @@ msgstr "غير مثبَّت · ملفات OpenKnowledge موجودة"
 msgid "Not installed in this project yet."
 msgstr "لم تُثبَّت في هذا المشروع بعد."
 
+msgid "Not merged"
+msgstr "لم يُدمج"
+
 #. Declines the first-visit skill offer; the row on the page keeps it available
 msgid "Not now"
 msgstr "ليس الآن"
@@ -7347,6 +7380,9 @@ msgstr "افتح هذا الرابط في تبويب جديد واطوِ الر�
 msgid "Open this settings dialog."
 msgstr "افتح حوار الإعدادات هذا."
 
+msgid "Open timeline"
+msgstr "فتح الخط الزمني"
+
 msgid "Open visual-editor find with replace controls expanded."
 msgstr "افتح بحث المحرر المرئي مع توسيع عناصر الاستبدال."
 
@@ -7653,6 +7689,9 @@ msgstr "خارج أي كتلة"
 
 msgid "Outside this repository's OpenKnowledge worktrees folder"
 msgstr "خارج مجلد أشجار العمل الخاص بـ OpenKnowledge في هذا المستودع"
+
+msgid "Outside version"
+msgstr "النسخة الخارجية"
 
 msgid "Outside what Open Knowledge commits."
 msgstr "خارج نطاق ما يودعه Open Knowledge."
@@ -11666,6 +11705,9 @@ msgstr "قيم {keyName}"
 msgctxt "settings search keyword"
 msgid "version"
 msgstr "الإصدار"
+
+msgid "Version in OpenKnowledge"
+msgstr "النسخة في OpenKnowledge"
 
 msgid "via {viaTags}"
 msgstr "عبر {viaTags}"

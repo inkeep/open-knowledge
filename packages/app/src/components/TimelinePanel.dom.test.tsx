@@ -145,6 +145,48 @@ const SURFACED_KINDS: ParsedCheckpoint[] = [
     metadata: { side: 'theirs', reason: 'check-failed' },
   },
 ];
+const MERGE_VERSION_ROWS: Array<{ checkpoint: ParsedCheckpoint; title: string; side: string }> = [
+  {
+    checkpoint: {
+      kind: 'external-change-both-kept',
+      docName: 'notes',
+      size: 12,
+      metadata: { side: 'ours', keptBlocks: 1 },
+    },
+    title: 'Before an outside change was merged',
+    side: 'Version in OpenKnowledge',
+  },
+  {
+    checkpoint: {
+      kind: 'external-change-both-kept',
+      docName: 'notes',
+      size: 12,
+      metadata: { side: 'theirs', keptBlocks: 1 },
+    },
+    title: 'Before an outside change was merged',
+    side: 'Outside version',
+  },
+  {
+    checkpoint: {
+      kind: 'external-change-kept-live',
+      docName: 'notes',
+      size: 12,
+      metadata: { side: 'theirs', reason: 'check-failed' },
+    },
+    title: 'Not merged',
+    side: 'Outside version',
+  },
+  {
+    checkpoint: {
+      kind: 'external-change-kept-live',
+      docName: 'notes',
+      size: 12,
+      metadata: { side: 'ours', reason: 'too-large' },
+    },
+    title: 'Not merged',
+    side: 'Version in OpenKnowledge',
+  },
+];
 const AUTO_CONSOLIDATION: ParsedCheckpoint = {
   kind: 'auto-consolidation',
   docName: 'notes',
@@ -263,14 +305,29 @@ describe('TimelineContent — recovered-content checkpoints', () => {
     expect(covered).toEqual(registrySurfaced);
   });
 
-  test('every surfaced rescue kind renders under the same Recovered content label', async () => {
-    for (const checkpoint of SURFACED_KINDS) {
+  test('every surfaced rescue kind other than a merge version renders under the same Recovered content label', async () => {
+    const mergeVersionKinds = new Set(MERGE_VERSION_ROWS.map((row) => row.checkpoint.kind));
+    for (const checkpoint of SURFACED_KINDS.filter((c) => !mergeVersionKinds.has(c.kind))) {
       mockHistory([recoveredCheckpointEntry('c'.repeat(40), checkpoint)]);
       renderTimeline();
       await waitFor(() => {
         expect(screen.getByText('Recovered content')).toBeTruthy();
       });
       expect(screen.queryByText(new RegExp(checkpoint.kind))).toBeNull();
+      cleanup();
+    }
+  });
+
+  test('a merge version row says what happened and which version it holds, and keeps its restore control', async () => {
+    for (const { checkpoint, title, side } of MERGE_VERSION_ROWS) {
+      mockHistory([recoveredCheckpointEntry('c'.repeat(40), checkpoint)]);
+      renderTimeline();
+      await waitFor(() => {
+        expect(screen.getByText(title)).toBeTruthy();
+      });
+      expect(screen.getByText(side)).toBeTruthy();
+      expect(screen.queryByText('Recovered content')).toBeNull();
+      expect(screen.getAllByTestId('timeline-entry-restore')).toHaveLength(1);
       cleanup();
     }
   });

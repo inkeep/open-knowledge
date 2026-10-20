@@ -131,6 +131,7 @@ import {
   stripDocExtension,
 } from './doc-extensions.ts';
 import { runDocLineageGuard } from './doc-lineage-guard.ts';
+import { DocNoticeLedger } from './doc-notices.ts';
 import {
   DocumentDurabilityState,
   type StaleExternalWriteConflict,
@@ -261,7 +262,7 @@ import {
 } from './persistence-staleness-watchdog.ts';
 import { loadPrincipal } from './principal.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';
-import { blocksKeptTwice, type ReconcileOutcome, reconcile } from './reconciliation.ts';
+import { type ReconcileOutcome, reconcile } from './reconciliation.ts';
 import { reconcileRecoveredFileTarget } from './recovered-file-target.ts';
 import { runRemovalRedirectGuard } from './removal-redirect-guard.ts';
 import { loadRemovedDocsJournal, saveRemovedDocsJournal } from './removed-docs-journal.ts';
@@ -1238,6 +1239,20 @@ export function createServer(options: ServerOptions): ServerInstance {
   const ready = new Promise<void>((res, rej) => {
     resolveReady = res;
     rejectReady = rej;
+  });
+  let readyForNotices = false;
+  void ready.then(
+    () => {
+      readyForNotices = true;
+    },
+    () => {},
+  );
+  const docNotices = new DocNoticeLedger({
+    projectDir,
+    contentDir,
+    getShadow: () => shadowRef?.current,
+    isReady: () => readyForNotices,
+    signal: () => cc1Broadcaster?.signal('sync-status'),
   });
   const offlineRemovalsReconciled = Promise.withResolvers<void>();
 
@@ -2534,6 +2549,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
     const apiExtension = createApiExtension({
       mergeHistoryWriter: options.mergeHistoryWriter,
+      docNotices,
       declaredGitHubHosts,
       resolveSyncCredentialConfig,
       hocuspocus,
@@ -2882,6 +2898,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     contentRoot: contentRoot ?? '',
     getBranch: getStorageBranch,
     writeCheckpoint: options.mergeHistoryWriter,
+    notices: docNotices,
   });
 
   const CHECKPOINT_KIND_BY_MINT_SITE = {
@@ -3231,7 +3248,7 @@ export function createServer(options: ServerOptions): ServerInstance {
                 });
                 break;
               }
-              mergeHistory.bothKept(docName, { ours, theirs }, blocksKeptTwice(result.kept));
+              mergeHistory.bothKept(docName, { ours, theirs }, result.kept);
               setReconciledBase(docName, theirs);
               incrementReconcile();
               reportReconcileBothKept(docName, result.kept, 'watcher');
@@ -5041,7 +5058,7 @@ export function createServer(options: ServerOptions): ServerInstance {
                         mergeHistory.bothKept(
                           docName,
                           { ours: parked.markdown, theirs: currentDisk },
-                          blocksKeptTwice(outcome.kept),
+                          outcome.kept,
                         );
                         reportReconcileBothKept(docName, outcome.kept, 'branch-switch');
                         restoredCount++;

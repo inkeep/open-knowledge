@@ -948,6 +948,15 @@ msgstr "{scopeLabel} में इनकी एक कॉपी बची रह
 msgid "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
 msgstr "“{name}” की एक कॉपी {scopeLabel} में जान-बूझकर रखी गई है। इसे मिटाने से पहले मूल से मिलाकर देखें: इसमें उन फ़ाइलों की इकलौती कॉपी हो सकती है जिन्हें असफल मूव पहले ही हटा चुका है।"
 
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side."
+msgstr "{fileName} में एक हटाया गया हिस्सा वापस लाया गया, क्योंकि दूसरी ओर उसी पाठ को बदला गया था।"
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions are in the timeline."
+msgstr "{fileName} में एक हटाया गया हिस्सा वापस लाया गया, क्योंकि दूसरी ओर उसी पाठ को बदला गया था। पिछले संस्करण समयरेखा में हैं।"
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions were saved to the document's history."
+msgstr "{fileName} में एक हटाया गया हिस्सा वापस लाया गया, क्योंकि दूसरी ओर उसी पाठ को बदला गया था। पिछले संस्करण दस्तावेज़ के इतिहास में सहेजे गए हैं।"
+
 msgid "A DIFFERENT skill named like this one lives at {0} — that folder is not this skill. Rename or delete one of the two to resolve."
 msgstr "इस जैसे नाम वाली एक अलग स्किल {0} पर रहती है — वह फ़ोल्डर यह स्किल नहीं है। सुलझाने के लिए दोनों में से एक का नाम बदलें या हटाएँ।"
 
@@ -1447,6 +1456,12 @@ msgstr "इस एजेंट के साथ पहले से ही ए�
 msgid "Always included"
 msgstr "हमेशा शामिल"
 
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
+msgstr "{fileName} में बाहर से किया गया बदलाव मर्ज नहीं किया जा सका, इसलिए यह संस्करण बना रहा। बाहरी संस्करण समयरेखा में है।"
+
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
+msgstr "{fileName} में बाहर से किया गया बदलाव मर्ज नहीं किया जा सका, इसलिए यह संस्करण बना रहा। बाहरी संस्करण दस्तावेज़ के इतिहास में सहेजा गया है।"
+
 msgid "An unexpected error occurred."
 msgstr "एक अप्रत्याशित त्रुटि हुई।"
 
@@ -1782,6 +1797,9 @@ msgstr "जब कोई इस टेम्पलेट से दस्ता�
 msgid "Before"
 msgstr "पहले"
 
+msgid "Before an outside change was merged"
+msgstr "बाहरी बदलाव मर्ज होने से पहले"
+
 msgid "Before syncing, set your identity for git commits:"
 msgstr "सिंक करने से पहले, git कमिट के लिए अपनी पहचान सेट करें:"
 
@@ -1845,6 +1863,9 @@ msgstr "दोनों एजेंट अंत में {keep} की हर
 
 msgid "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
 msgstr "दोनों संस्करण एक जैसे हैं। वर्तमान स्वीकारें चुनने पर OpenKnowledge की सुरक्षा चालू रहती है, इसलिए पुराने संस्करण का एक और सेव फिर से अस्वीकार कर दिया जाएगा। आने वाला स्वीकारें चुनने पर वह सुरक्षा बंद हो जाती है।"
+
+msgid "Both versions were kept in {fileName}. It changed outside OpenKnowledge in the same place as here, so the outside version is directly under this one."
+msgstr "{fileName} में दोनों संस्करण रखे गए। यह फ़ाइल OpenKnowledge के बाहर उसी जगह बदली गई जहाँ यहाँ बदलाव हुआ था, इसलिए बाहरी संस्करण ठीक इसके नीचे है।"
 
 msgid "Branch"
 msgstr "ब्रांच"
@@ -3982,6 +4003,12 @@ msgstr "संपादन तुरंत लागू होते हैं�
 msgid "Edits at the source land here — no copy-paste drift."
 msgstr "स्रोत पर किए गए संपादन यहाँ आते हैं — कॉपी-पेस्ट का कोई बिखराव नहीं।"
 
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits are in the timeline."
+msgstr "पिछली बार यह ब्रांच खुली होने पर {fileName} में रखे गए संपादन मर्ज नहीं किए जा सके, इसलिए फ़ाइल का संस्करण बना रहा। वे संपादन समयरेखा में हैं।"
+
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits were saved to the document's history."
+msgstr "पिछली बार यह ब्रांच खुली होने पर {fileName} में रखे गए संपादन मर्ज नहीं किए जा सके, इसलिए फ़ाइल का संस्करण बना रहा। वे संपादन दस्तावेज़ के इतिहास में सहेजे गए हैं।"
+
 msgid "Element fields"
 msgstr "तत्व फ़ील्ड"
 
@@ -4589,6 +4616,9 @@ msgstr "फ़ाइल {identity}। संदर्भ पर जाएँ।"
 
 msgid "File already exists"
 msgstr "फ़ाइल पहले से मौजूद है"
+
+msgid "File change notice"
+msgstr "फ़ाइल बदलाव की सूचना"
 
 msgid "File drop zone"
 msgstr "फ़ाइल छोड़ने का क्षेत्र"
@@ -6965,6 +6995,9 @@ msgstr "इंस्टॉल नहीं है · OpenKnowledge फ़ाइ�
 msgid "Not installed in this project yet."
 msgstr "इस प्रोजेक्ट में अभी इंस्टॉल नहीं है।"
 
+msgid "Not merged"
+msgstr "मर्ज नहीं हुआ"
+
 #. Declines the first-visit skill offer; the row on the page keeps it available
 msgid "Not now"
 msgstr "अभी नहीं"
@@ -7343,6 +7376,9 @@ msgstr "इस लिंक को नए टैब में खोलें �
 msgid "Open this settings dialog."
 msgstr "यह सेटिंग संवाद खोलें।"
 
+msgid "Open timeline"
+msgstr "समयरेखा खोलें"
+
 msgid "Open visual-editor find with replace controls expanded."
 msgstr "दृश्य-संपादक की खोज फैले हुए बदलें-नियंत्रणों के साथ खोलें।"
 
@@ -7649,6 +7685,9 @@ msgstr "किसी भी ब्लॉक के बाहर"
 
 msgid "Outside this repository's OpenKnowledge worktrees folder"
 msgstr "इस रिपॉज़िटरी के OpenKnowledge वर्कट्री फ़ोल्डर के बाहर"
+
+msgid "Outside version"
+msgstr "बाहरी संस्करण"
 
 msgid "Outside what Open Knowledge commits."
 msgstr "Open Knowledge जो कमिट करता है उसके दायरे से बाहर।"
@@ -11662,6 +11701,9 @@ msgstr "{keyName} के मान"
 msgctxt "settings search keyword"
 msgid "version"
 msgstr "संस्करण"
+
+msgid "Version in OpenKnowledge"
+msgstr "OpenKnowledge में संस्करण"
 
 msgid "via {viaTags}"
 msgstr "{viaTags} के ज़रिए"

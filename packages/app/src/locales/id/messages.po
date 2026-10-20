@@ -948,6 +948,15 @@ msgstr "Sebuah salinan mungkin masih ada di {scopeLabel} untuk: {names}. Jangan 
 msgid "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
 msgstr "Sebuah salinan “{name}” sengaja disimpan di {scopeLabel}. Jangan hapus salinan itu sebelum dibandingkan dengan aslinya: salinan itu mungkin menyimpan satu-satunya salinan berkas yang sudah dihapus oleh pemindahan yang gagal."
 
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side."
+msgstr "Penghapusan di {fileName} dibatalkan karena teks yang sama diubah di sisi lain."
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions are in the timeline."
+msgstr "Penghapusan di {fileName} dibatalkan karena teks yang sama diubah di sisi lain. Versi sebelumnya ada di lini masa."
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions were saved to the document's history."
+msgstr "Penghapusan di {fileName} dibatalkan karena teks yang sama diubah di sisi lain. Versi sebelumnya disimpan di riwayat dokumen."
+
 msgid "A DIFFERENT skill named like this one lives at {0} — that folder is not this skill. Rename or delete one of the two to resolve."
 msgstr "Keterampilan BERBEDA dengan nama mirip ini ada di {0} — folder itu bukan keterampilan ini. Ganti nama atau hapus salah satu dari keduanya untuk menyelesaikannya."
 
@@ -1447,6 +1456,12 @@ msgstr "Obrolan dengan agen ini sudah mulai dibuka — coba lagi sebentar lagi."
 msgid "Always included"
 msgstr "Selalu disertakan"
 
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
+msgstr "Perubahan dari luar pada {fileName} tidak bisa digabungkan, jadi versi ini tetap dipakai. Versi dari luar ada di lini masa."
+
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
+msgstr "Perubahan dari luar pada {fileName} tidak bisa digabungkan, jadi versi ini tetap dipakai. Versi dari luar disimpan di riwayat dokumen."
+
 msgid "An unexpected error occurred."
 msgstr "Terjadi galat yang tidak terduga."
 
@@ -1782,6 +1797,9 @@ msgstr "Menjadi isi dokumen ketika seseorang membuat dokumen dari templat ini. K
 msgid "Before"
 msgstr "Sebelum"
 
+msgid "Before an outside change was merged"
+msgstr "Sebelum perubahan dari luar digabungkan"
+
 msgid "Before syncing, set your identity for git commits:"
 msgstr "Sebelum menyinkronkan, setel identitas Anda untuk commit git:"
 
@@ -1845,6 +1863,9 @@ msgstr "Kedua agen akhirnya membaca semua yang ada di {keep}."
 
 msgid "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
 msgstr "Kedua versi identik. Memilih Terima yang sekarang membuat perlindungan OpenKnowledge tetap aktif, sehingga penyimpanan versi lama berikutnya akan ditolak lagi. Memilih Terima yang masuk menonaktifkan perlindungan tersebut."
+
+msgid "Both versions were kept in {fileName}. It changed outside OpenKnowledge in the same place as here, so the outside version is directly under this one."
+msgstr "Kedua versi disimpan di {fileName}. File ini diubah di luar OpenKnowledge di tempat yang sama dengan di sini, jadi versi dari luar ada tepat di bawah versi ini."
 
 msgid "Branch"
 msgstr "Cabang"
@@ -3982,6 +4003,12 @@ msgstr "Suntingan langsung diterapkan. Tema menentukan mode terang atau gelap."
 msgid "Edits at the source land here — no copy-paste drift."
 msgstr "Suntingan di sumbernya sampai ke sini — tanpa penyimpangan salin-tempel."
 
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits are in the timeline."
+msgstr "Suntingan pada {fileName} yang disimpan sejak terakhir kali cabang ini dibuka tidak bisa digabungkan, jadi versi file tetap dipakai. Suntingan tersebut ada di lini masa."
+
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits were saved to the document's history."
+msgstr "Suntingan pada {fileName} yang disimpan sejak terakhir kali cabang ini dibuka tidak bisa digabungkan, jadi versi file tetap dipakai. Suntingan tersebut disimpan di riwayat dokumen."
+
 msgid "Element fields"
 msgstr "Bidang elemen"
 
@@ -4589,6 +4616,9 @@ msgstr "File {identity}. Buka referensi."
 
 msgid "File already exists"
 msgstr "Berkas sudah ada"
+
+msgid "File change notice"
+msgstr "Pemberitahuan perubahan file"
 
 msgid "File drop zone"
 msgstr "Area jatuhkan berkas"
@@ -6965,6 +6995,9 @@ msgstr "Belum terpasang · File OpenKnowledge ada"
 msgid "Not installed in this project yet."
 msgstr "Belum terpasang di proyek ini."
 
+msgid "Not merged"
+msgstr "Tidak digabungkan"
+
 #. Declines the first-visit skill offer; the row on the page keeps it available
 msgid "Not now"
 msgstr "Nanti saja"
@@ -7343,6 +7376,9 @@ msgstr "Membuka tautan ini di tab baru dan menciutkan graf."
 msgid "Open this settings dialog."
 msgstr "Membuka dialog pengaturan ini."
 
+msgid "Open timeline"
+msgstr "Buka lini masa"
+
 msgid "Open visual-editor find with replace controls expanded."
 msgstr "Membuka pencarian penyunting visual dengan kendali penggantian terbentang."
 
@@ -7649,6 +7685,9 @@ msgstr "Di luar blok mana pun"
 
 msgid "Outside this repository's OpenKnowledge worktrees folder"
 msgstr "Di luar folder worktree OpenKnowledge repositori ini"
+
+msgid "Outside version"
+msgstr "Versi dari luar"
 
 msgid "Outside what Open Knowledge commits."
 msgstr "Di luar cakupan commit Open Knowledge."
@@ -11662,6 +11701,9 @@ msgstr "Nilai untuk {keyName}"
 msgctxt "settings search keyword"
 msgid "version"
 msgstr "versi"
+
+msgid "Version in OpenKnowledge"
+msgstr "Versi di OpenKnowledge"
 
 msgid "via {viaTags}"
 msgstr "via {viaTags}"

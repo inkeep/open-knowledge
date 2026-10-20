@@ -633,7 +633,7 @@ export async function reconcileDiskBeforeAgentWrite(
       }
       if (outcome.kind !== 'both-kept') return reconciledResult(outcome.kind);
       const keptBlocks = countKeptBlocks(outcome.kept);
-      history.bothKept(docName, { ours, theirs: diskContent }, keptBlocks.duplicated);
+      history.bothKept(docName, { ours, theirs: diskContent }, outcome.kept);
       reportReconcileBothKept(docName, outcome.kept, 'agent-write');
       return reconciledResult('both-kept', keptBlocks);
     }

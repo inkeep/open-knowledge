@@ -147,10 +147,20 @@ type EntryDescriptor =
   | { kind: 'reconcile' }
   | { kind: 'upstream' }
   | { kind: 'recovered' }
+  | { kind: 'merge-version'; side: 'ours' | 'theirs' }
   | { kind: 'edit' };
 
 function classifyEntry(entry: TimelineEntry): EntryDescriptor {
-  if (entry.type === 'checkpoint') return { kind: 'recovered' };
+  if (entry.type === 'checkpoint') {
+    const checkpoint = entry.checkpoint;
+    if (
+      checkpoint?.kind === 'external-change-both-kept' ||
+      checkpoint?.kind === 'external-change-kept-live'
+    ) {
+      return { kind: 'merge-version', side: checkpoint.metadata.side };
+    }
+    return { kind: 'recovered' };
+  }
   if (entry.type === 'upstream') return { kind: 'upstream' };
   const msg = entry.message;
   const rollback = /^rollback: .+ to ([0-9a-f]{7,40})$/.exec(msg);
@@ -167,7 +177,13 @@ function docLeaf(path: string): string {
 }
 
 function displayAuthor(entry: TimelineEntry): string {
-  if (entry.type === 'checkpoint') return t`Recovered content`;
+  if (entry.type === 'checkpoint') {
+    if (entry.checkpoint?.kind === 'external-change-both-kept') {
+      return t`Before an outside change was merged`;
+    }
+    if (entry.checkpoint?.kind === 'external-change-kept-live') return t`Not merged`;
+    return t`Recovered content`;
+  }
   if (entry.type === 'upstream') return t`Upstream sync`;
   if (entry.contributors.length === 1) return entry.contributors[0].name;
   if (entry.contributors.length > 1) return entry.contributors.map((c) => c.name).join(', ');
@@ -347,6 +363,14 @@ function EntryDetail({
   }
 
   if (descriptor.kind === 'recovered') return null;
+
+  if (descriptor.kind === 'merge-version') {
+    return (
+      <p className="truncate text-xs text-muted-foreground">
+        {descriptor.side === 'ours' ? t`Version in OpenKnowledge` : t`Outside version`}
+      </p>
+    );
+  }
 
   if (allDocs.length > 0) {
     return (

@@ -57,6 +57,7 @@ import { parseEditorTabId, tabIdForNavigationTarget } from '@/editor/editor-tabs
 import { previewOpenDisposition } from '@/editor/preview-open-disposition';
 import { StaleTabReloadPrompt } from '@/editor/StaleTabReloadPrompt';
 import { ConflictsProvider } from '@/hooks/use-conflicts';
+import { DocNoticesProvider } from '@/hooks/use-doc-notices';
 import { useFolderConfig } from '@/hooks/use-folder-config';
 import { useInstalledClis } from '@/hooks/use-installed-clis';
 import { useReconcileSkillTabs } from '@/hooks/use-reconcile-skill-tabs';
@@ -582,11 +583,13 @@ export function App() {
       <DocumentProvider>
         <ConfigProviderHost>
           <ConflictsProvider>
-            <PreviewTabsSettingsBridge>
-              <SingleFileModeProvider>
-                <AppBody />
-              </SingleFileModeProvider>
-            </PreviewTabsSettingsBridge>
+            <DocNoticesProvider>
+              <PreviewTabsSettingsBridge>
+                <SingleFileModeProvider>
+                  <AppBody />
+                </SingleFileModeProvider>
+              </PreviewTabsSettingsBridge>
+            </DocNoticesProvider>
           </ConflictsProvider>
         </ConfigProviderHost>
       </DocumentProvider>

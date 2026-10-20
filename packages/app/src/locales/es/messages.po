@@ -952,6 +952,15 @@ msgstr "Puede quedar una copia en {scopeLabel} de: {names}. No elimines nada de 
 msgid "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
 msgstr "Se conservó a propósito una copia de «{name}» en {scopeLabel}. No la elimines antes de compararla con el original: puede contener la única copia de los archivos que el movimiento fallido ya eliminó."
 
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side."
+msgstr "Se deshizo una eliminación en {fileName} porque el mismo texto se cambió en el otro lado."
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions are in the timeline."
+msgstr "Se deshizo una eliminación en {fileName} porque el mismo texto se cambió en el otro lado. Las versiones anteriores están en la cronología."
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions were saved to the document's history."
+msgstr "Se deshizo una eliminación en {fileName} porque el mismo texto se cambió en el otro lado. Las versiones anteriores se guardaron en el historial del documento."
+
 msgid "A DIFFERENT skill named like this one lives at {0} — that folder is not this skill. Rename or delete one of the two to resolve."
 msgstr "En {0} vive una habilidad DISTINTA con un nombre parecido a esta; esa carpeta no es esta habilidad. Cambia el nombre o elimina una de las dos para resolverlo."
 
@@ -1451,6 +1460,12 @@ msgstr "Ya se está iniciando un chat con este agente; inténtalo de nuevo en un
 msgid "Always included"
 msgstr "Siempre incluido"
 
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
+msgstr "Un cambio externo en {fileName} no se pudo combinar, así que se mantuvo esta versión. La versión externa está en la cronología."
+
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
+msgstr "Un cambio externo en {fileName} no se pudo combinar, así que se mantuvo esta versión. La versión externa se guardó en el historial del documento."
+
 msgid "An unexpected error occurred."
 msgstr "Se produjo un error inesperado."
 
@@ -1786,6 +1801,9 @@ msgstr "Se convierte en el contenido del documento cuando alguien crea uno a par
 msgid "Before"
 msgstr "Antes"
 
+msgid "Before an outside change was merged"
+msgstr "Antes de combinar un cambio externo"
+
 msgid "Before syncing, set your identity for git commits:"
 msgstr "Antes de sincronizar, define tu identidad para los commits de git:"
 
@@ -1849,6 +1867,9 @@ msgstr "Ambos agentes acaban leyendo todo lo que hay en {keep}."
 
 msgid "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
 msgstr "Las dos versiones son idénticas. Elegir Aceptar actual mantiene activa la protección de OpenKnowledge, así que otro guardado de la versión anterior se rechazará de nuevo. Elegir Aceptar entrante desactiva esa protección."
+
+msgid "Both versions were kept in {fileName}. It changed outside OpenKnowledge in the same place as here, so the outside version is directly under this one."
+msgstr "Se conservaron las dos versiones en {fileName}. El archivo cambió fuera de OpenKnowledge en el mismo lugar que aquí, así que la versión externa está justo debajo de esta."
 
 msgid "Branch"
 msgstr "Rama"
@@ -3986,6 +4007,12 @@ msgstr "Los cambios se aplican al instante. El tema determina si es claro u oscu
 msgid "Edits at the source land here — no copy-paste drift."
 msgstr "Las ediciones hechas en el origen llegan aquí: sin desviaciones por copiar y pegar."
 
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits are in the timeline."
+msgstr "Las ediciones de {fileName} guardadas desde la última vez que esta rama estuvo abierta no se pudieron combinar, así que se mantuvo la versión del archivo. Esas ediciones están en la cronología."
+
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits were saved to the document's history."
+msgstr "Las ediciones de {fileName} guardadas desde la última vez que esta rama estuvo abierta no se pudieron combinar, así que se mantuvo la versión del archivo. Esas ediciones se guardaron en el historial del documento."
+
 msgid "Element fields"
 msgstr "Campos del elemento"
 
@@ -4593,6 +4620,9 @@ msgstr "Archivo {identity}. Ir a la referencia."
 
 msgid "File already exists"
 msgstr "El archivo ya existe"
+
+msgid "File change notice"
+msgstr "Aviso de cambio en el archivo"
 
 msgid "File drop zone"
 msgstr "Zona para soltar archivos"
@@ -6969,6 +6999,9 @@ msgstr "No instalado · Archivos de OpenKnowledge presentes"
 msgid "Not installed in this project yet."
 msgstr "Aún no está instalada en este proyecto."
 
+msgid "Not merged"
+msgstr "Sin combinar"
+
 #. Declines the first-visit skill offer; the row on the page keeps it available
 msgid "Not now"
 msgstr "Ahora no"
@@ -7347,6 +7380,9 @@ msgstr "Abre este enlace en una pestaña nueva y contrae el grafo."
 msgid "Open this settings dialog."
 msgstr "Abre este diálogo de ajustes."
 
+msgid "Open timeline"
+msgstr "Abrir la cronología"
+
 msgid "Open visual-editor find with replace controls expanded."
 msgstr "Abre la búsqueda del editor visual con los controles de reemplazo desplegados."
 
@@ -7653,6 +7689,9 @@ msgstr "Fuera de cualquier bloque"
 
 msgid "Outside this repository's OpenKnowledge worktrees folder"
 msgstr "Fuera de la carpeta de árboles de trabajo de OpenKnowledge de este repositorio"
+
+msgid "Outside version"
+msgstr "Versión externa"
 
 msgid "Outside what Open Knowledge commits."
 msgstr "Fuera de lo que confirma Open Knowledge."
@@ -11666,6 +11705,9 @@ msgstr "Valores de {keyName}"
 msgctxt "settings search keyword"
 msgid "version"
 msgstr "versión"
+
+msgid "Version in OpenKnowledge"
+msgstr "Versión en OpenKnowledge"
 
 msgid "via {viaTags}"
 msgstr "vía {viaTags}"

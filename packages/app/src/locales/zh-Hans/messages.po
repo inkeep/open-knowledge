@@ -952,6 +952,15 @@ msgstr "{scopeLabel}中可能残留以下技能的副本：{names}。请先与�
 msgid "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
 msgstr "已在{scopeLabel}中有意保留了“{name}”的一份副本。请先与原件比对再删除：它可能保存着失败的移动已经删掉的文件的唯一副本。"
 
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side."
+msgstr "{fileName} 中的一处删除已被撤销，因为另一方修改了同一段文字。"
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions are in the timeline."
+msgstr "{fileName} 中的一处删除已被撤销，因为另一方修改了同一段文字。之前的版本在时间线中。"
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions were saved to the document's history."
+msgstr "{fileName} 中的一处删除已被撤销，因为另一方修改了同一段文字。之前的版本已保存到文档的历史记录中。"
+
 msgid "A DIFFERENT skill named like this one lives at {0} — that folder is not this skill. Rename or delete one of the two to resolve."
 msgstr "{0} 处有一个名字相近但完全不同的技能——那个文件夹不是这个技能。请重命名或删除其中之一以解决冲突。"
 
@@ -1451,6 +1460,12 @@ msgstr "已经在与该智能体开启对话了，请稍后再试。"
 msgid "Always included"
 msgstr "始终包含"
 
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
+msgstr "{fileName} 的外部更改无法合并，因此保留了当前版本。外部版本在时间线中。"
+
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
+msgstr "{fileName} 的外部更改无法合并，因此保留了当前版本。外部版本已保存到文档的历史记录中。"
+
 msgid "An unexpected error occurred."
 msgstr "发生了意外错误。"
 
@@ -1786,6 +1801,9 @@ msgstr "当有人用这个模板创建文档时，这会成为该文档的内容
 msgid "Before"
 msgstr "之前"
 
+msgid "Before an outside change was merged"
+msgstr "合并外部更改之前"
+
 msgid "Before syncing, set your identity for git commits:"
 msgstr "同步之前，请设置你用于 git 提交的身份："
 
@@ -1849,6 +1867,9 @@ msgstr "两个智能体最终都会读取 {keep} 中的全部内容。"
 
 msgid "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
 msgstr "两个版本完全相同。选择“采用当前”会让 OpenKnowledge 的保护保持开启，因此再次保存较旧的版本仍会被拒绝。选择“采用传入”会关闭该保护。"
+
+msgid "Both versions were kept in {fileName}. It changed outside OpenKnowledge in the same place as here, so the outside version is directly under this one."
+msgstr "{fileName} 的两个版本都已保留。它在 OpenKnowledge 之外被修改的位置与这里相同，因此外部版本紧接在此版本下方。"
 
 msgid "Branch"
 msgstr "分支"
@@ -3986,6 +4007,12 @@ msgstr "编辑会实时生效。浅色或深色由主题决定。"
 msgid "Edits at the source land here — no copy-paste drift."
 msgstr "在来源处的编辑会同步到这里——不会因复制粘贴而产生偏差。"
 
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits are in the timeline."
+msgstr "{fileName} 中上次打开此分支时保留的编辑无法合并，因此保留了文件中的版本。这些编辑在时间线中。"
+
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits were saved to the document's history."
+msgstr "{fileName} 中上次打开此分支时保留的编辑无法合并，因此保留了文件中的版本。这些编辑已保存到文档的历史记录中。"
+
 msgid "Element fields"
 msgstr "元素字段"
 
@@ -4593,6 +4620,9 @@ msgstr "文件 {identity}。转到引用位置。"
 
 msgid "File already exists"
 msgstr "文件已存在"
+
+msgid "File change notice"
+msgstr "文件更改通知"
 
 msgid "File drop zone"
 msgstr "文件拖放区"
@@ -6969,6 +6999,9 @@ msgstr "未安装 · 存在 OpenKnowledge 文件"
 msgid "Not installed in this project yet."
 msgstr "尚未安装到此项目。"
 
+msgid "Not merged"
+msgstr "未合并"
+
 #. Declines the first-visit skill offer; the row on the page keeps it available
 msgid "Not now"
 msgstr "暂时不用"
@@ -7347,6 +7380,9 @@ msgstr "在新标签页中打开这个链接并折叠关系图。"
 msgid "Open this settings dialog."
 msgstr "打开这个设置对话框。"
 
+msgid "Open timeline"
+msgstr "打开时间线"
+
 msgid "Open visual-editor find with replace controls expanded."
 msgstr "打开可视化编辑器的查找，并展开替换控件。"
 
@@ -7653,6 +7689,9 @@ msgstr "不在任何块内"
 
 msgid "Outside this repository's OpenKnowledge worktrees folder"
 msgstr "位于此仓库的 OpenKnowledge 工作树文件夹外"
+
+msgid "Outside version"
+msgstr "外部版本"
 
 msgid "Outside what Open Knowledge commits."
 msgstr "不在 Open Knowledge 的提交范围内。"
@@ -11666,6 +11705,9 @@ msgstr "{keyName} 的值"
 msgctxt "settings search keyword"
 msgid "version"
 msgstr "版本"
+
+msgid "Version in OpenKnowledge"
+msgstr "OpenKnowledge 中的版本"
 
 msgid "via {viaTags}"
 msgstr "通过 {viaTags}"

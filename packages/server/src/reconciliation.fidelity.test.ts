@@ -2,8 +2,8 @@ import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { getMetrics } from './metrics';
 import {
-  blocksKeptTwice,
   checkMergeOutput,
+  countKeptBlocks,
   MAX_CONSTRUCT_CHECK_BYTES,
   MAX_LCS_CELLS,
   reconcile,
@@ -448,7 +448,7 @@ describe('a block both sides changed keeps both versions, ours first', () => {
     });
     if (outcome.kind !== 'both-kept') return;
     expect(outcome.kept.map((pair) => pair.landed)).toEqual(['both', 'theirs']);
-    expect(blocksKeptTwice(outcome.kept)).toBe(1);
+    expect(countKeptBlocks(outcome.kept).duplicated).toBe(1);
   });
 
   test("the check accepts both versions and refuses an output that drops or alters theirs' version", () => {

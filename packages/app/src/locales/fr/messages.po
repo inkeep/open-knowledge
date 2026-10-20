@@ -952,6 +952,15 @@ msgstr "Une copie peut subsister dans {scopeLabel} pour : {names}. Ne supprimez 
 msgid "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
 msgstr "Une copie de « {name} » a été conservée dans {scopeLabel} de façon délibérée. Ne la supprimez pas avant de l'avoir comparée à l'original : elle peut contenir la seule copie des fichiers que le déplacement échoué a déjà supprimés."
 
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side."
+msgstr "Une suppression dans {fileName} a été annulée, car le même texte a été modifié de l'autre côté."
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions are in the timeline."
+msgstr "Une suppression dans {fileName} a été annulée, car le même texte a été modifié de l'autre côté. Les versions précédentes se trouvent dans la chronologie."
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions were saved to the document's history."
+msgstr "Une suppression dans {fileName} a été annulée, car le même texte a été modifié de l'autre côté. Les versions précédentes ont été enregistrées dans l'historique du document."
+
 msgid "A DIFFERENT skill named like this one lives at {0} — that folder is not this skill. Rename or delete one of the two to resolve."
 msgstr "Une compétence DIFFÉRENTE portant un nom semblable se trouve dans {0} — ce dossier n'est pas cette compétence. Renommez ou supprimez l'une des deux pour résoudre le problème."
 
@@ -1451,6 +1460,12 @@ msgstr "Un chat avec cet agent est déjà en cours de démarrage — réessayez 
 msgid "Always included"
 msgstr "Toujours inclus"
 
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
+msgstr "Une modification externe de {fileName} n'a pas pu être fusionnée, donc cette version a été conservée. La version externe se trouve dans la chronologie."
+
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
+msgstr "Une modification externe de {fileName} n'a pas pu être fusionnée, donc cette version a été conservée. La version externe a été enregistrée dans l'historique du document."
+
 msgid "An unexpected error occurred."
 msgstr "Une erreur inattendue s'est produite."
 
@@ -1786,6 +1801,9 @@ msgstr "Devient le contenu du document lorsque quelqu'un en crée un à partir d
 msgid "Before"
 msgstr "Avant"
 
+msgid "Before an outside change was merged"
+msgstr "Avant la fusion d'une modification externe"
+
 msgid "Before syncing, set your identity for git commits:"
 msgstr "Avant de synchroniser, définissez votre identité pour les commits git :"
 
@@ -1849,6 +1867,9 @@ msgstr "Les deux agents liront tout ce qui se trouve dans {keep}."
 
 msgid "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
 msgstr "Les deux versions sont identiques. Choisir Accepter l’actuel laisse la protection d’OpenKnowledge activée : un nouvel enregistrement de la version antérieure sera de nouveau refusé. Choisir Accepter l’entrant désactive cette protection."
+
+msgid "Both versions were kept in {fileName}. It changed outside OpenKnowledge in the same place as here, so the outside version is directly under this one."
+msgstr "Les deux versions ont été conservées dans {fileName}. Le fichier a été modifié en dehors d'OpenKnowledge au même endroit qu'ici, donc la version externe se trouve juste en dessous de celle-ci."
 
 msgid "Branch"
 msgstr "Branche"
@@ -3986,6 +4007,12 @@ msgstr "Les modifications s’appliquent immédiatement. Le thème détermine le
 msgid "Edits at the source land here — no copy-paste drift."
 msgstr "Les modifications faites à la source arrivent ici — aucune dérive due au copier-coller."
 
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits are in the timeline."
+msgstr "Les modifications de {fileName} conservées depuis la dernière ouverture de cette branche n'ont pas pu être fusionnées, donc la version du fichier a été conservée. Ces modifications se trouvent dans la chronologie."
+
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits were saved to the document's history."
+msgstr "Les modifications de {fileName} conservées depuis la dernière ouverture de cette branche n'ont pas pu être fusionnées, donc la version du fichier a été conservée. Ces modifications ont été enregistrées dans l'historique du document."
+
 msgid "Element fields"
 msgstr "Champs d'élément"
 
@@ -4593,6 +4620,9 @@ msgstr "Fichier {identity}. Accéder à la référence."
 
 msgid "File already exists"
 msgstr "Le fichier existe déjà"
+
+msgid "File change notice"
+msgstr "Avis de modification du fichier"
 
 msgid "File drop zone"
 msgstr "Zone de dépôt de fichiers"
@@ -6969,6 +6999,9 @@ msgstr "Non installé · Fichiers OpenKnowledge présents"
 msgid "Not installed in this project yet."
 msgstr "Pas encore installée dans ce projet."
 
+msgid "Not merged"
+msgstr "Non fusionné"
+
 #. Declines the first-visit skill offer; the row on the page keeps it available
 msgid "Not now"
 msgstr "Pas maintenant"
@@ -7347,6 +7380,9 @@ msgstr "Ouvre ce lien dans un nouvel onglet et réduit le graphe."
 msgid "Open this settings dialog."
 msgstr "Ouvre cette boîte de dialogue des paramètres."
 
+msgid "Open timeline"
+msgstr "Ouvrir la chronologie"
+
 msgid "Open visual-editor find with replace controls expanded."
 msgstr "Ouvre la recherche de l'éditeur visuel avec les contrôles de remplacement dépliés."
 
@@ -7653,6 +7689,9 @@ msgstr "En dehors de tout bloc"
 
 msgid "Outside this repository's OpenKnowledge worktrees folder"
 msgstr "Hors du dossier des arbres de travail OpenKnowledge de ce dépôt"
+
+msgid "Outside version"
+msgstr "Version externe"
 
 msgid "Outside what Open Knowledge commits."
 msgstr "En dehors de ce que valide Open Knowledge."
@@ -11666,6 +11705,9 @@ msgstr "Valeurs de {keyName}"
 msgctxt "settings search keyword"
 msgid "version"
 msgstr "version"
+
+msgid "Version in OpenKnowledge"
+msgstr "Version dans OpenKnowledge"
 
 msgid "via {viaTags}"
 msgstr "via {viaTags}"

@@ -952,6 +952,15 @@ msgstr "Kopia może pozostać w {scopeLabel} dla: {names}. Nie usuwaj tam niczeg
 msgid "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
 msgstr "Kopia \"{name}\" została celowo zachowana w {scopeLabel}. Nie usuwaj jej przed porównaniem z oryginałem: może zawierać jedyną kopię plików, które nieudane przeniesienie już usunęło."
 
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side."
+msgstr "Usunięcie w {fileName} zostało cofnięte, ponieważ ten sam tekst został zmieniony po drugiej stronie."
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions are in the timeline."
+msgstr "Usunięcie w {fileName} zostało cofnięte, ponieważ ten sam tekst został zmieniony po drugiej stronie. Wcześniejsze wersje są na osi czasu."
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions were saved to the document's history."
+msgstr "Usunięcie w {fileName} zostało cofnięte, ponieważ ten sam tekst został zmieniony po drugiej stronie. Wcześniejsze wersje zapisano w historii dokumentu."
+
 msgid "A DIFFERENT skill named like this one lives at {0} — that folder is not this skill. Rename or delete one of the two to resolve."
 msgstr "W {0} znajduje się INNA umiejętność o takiej samej nazwie — ten folder nie jest tą umiejętnością. Zmień nazwę jednej z nich lub usuń ją, aby rozwiązać problem."
 
@@ -1451,6 +1460,12 @@ msgstr "Rozpoczynasz już czat z tym agentem — spróbuj ponownie za chwilę."
 msgid "Always included"
 msgstr "Zawsze dołączane"
 
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
+msgstr "Zewnętrznej zmiany w {fileName} nie udało się scalić, więc ta wersja została zachowana. Wersja zewnętrzna jest na osi czasu."
+
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
+msgstr "Zewnętrznej zmiany w {fileName} nie udało się scalić, więc ta wersja została zachowana. Wersję zewnętrzną zapisano w historii dokumentu."
+
 msgid "An unexpected error occurred."
 msgstr "Wystąpił nieoczekiwany błąd."
 
@@ -1786,6 +1801,9 @@ msgstr "Staje się zawartością dokumentu, gdy ktoś utworzy dokument z tego sz
 msgid "Before"
 msgstr "Przed"
 
+msgid "Before an outside change was merged"
+msgstr "Przed scaleniem zmiany zewnętrznej"
+
 msgid "Before syncing, set your identity for git commits:"
 msgstr "Przed synchronizacją ustaw swoją tożsamość dla commitów git:"
 
@@ -1849,6 +1867,9 @@ msgstr "Oba agenty ostatecznie czytają wszystko w {keep}."
 
 msgid "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
 msgstr "Obie wersje są identyczne. Wybranie „Akceptuj bieżącą” pozostawia ochronę OpenKnowledge włączoną, więc kolejne zapisanie starszej wersji zostanie ponownie odrzucone. Wybranie „Akceptuj przychodzącą” wyłącza tę ochronę."
+
+msgid "Both versions were kept in {fileName}. It changed outside OpenKnowledge in the same place as here, so the outside version is directly under this one."
+msgstr "Zachowano obie wersje w {fileName}. Plik zmienił się poza OpenKnowledge w tym samym miejscu co tutaj, więc wersja zewnętrzna znajduje się tuż pod tą."
 
 msgid "Branch"
 msgstr "Gałąź"
@@ -3986,6 +4007,12 @@ msgstr "Zmiany są widoczne na żywo. Jasny lub ciemny wariant pochodzi z motywu
 msgid "Edits at the source land here — no copy-paste drift."
 msgstr "Edycje w źródle trafiają tutaj — bez rozjazdów kopiuj-wklej."
 
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits are in the timeline."
+msgstr "Edycji w {fileName} zachowanych od ostatniego otwarcia tej gałęzi nie udało się scalić, więc została wersja z pliku. Te edycje są na osi czasu."
+
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits were saved to the document's history."
+msgstr "Edycji w {fileName} zachowanych od ostatniego otwarcia tej gałęzi nie udało się scalić, więc została wersja z pliku. Te edycje zapisano w historii dokumentu."
+
 msgid "Element fields"
 msgstr "Pola elementu"
 
@@ -4593,6 +4620,9 @@ msgstr "Plik {identity}. Przejdź do odwołania."
 
 msgid "File already exists"
 msgstr "Plik już istnieje"
+
+msgid "File change notice"
+msgstr "Powiadomienie o zmianie pliku"
 
 msgid "File drop zone"
 msgstr "Strefa upuszczania plików"
@@ -6969,6 +6999,9 @@ msgstr "Nie zainstalowano · pliki OpenKnowledge obecne"
 msgid "Not installed in this project yet."
 msgstr "Jeszcze nie zainstalowano w tym projekcie."
 
+msgid "Not merged"
+msgstr "Nie scalono"
+
 #. Declines the first-visit skill offer; the row on the page keeps it available
 msgid "Not now"
 msgstr "Nie teraz"
@@ -7347,6 +7380,9 @@ msgstr "Otwórz ten link w nowej karcie i zwij graf."
 msgid "Open this settings dialog."
 msgstr "Otwórz to okno ustawień."
 
+msgid "Open timeline"
+msgstr "Otwórz oś czasu"
+
 msgid "Open visual-editor find with replace controls expanded."
 msgstr "Otwórz wyszukiwanie w edytorze wizualnym z rozwiniętymi opcjami zastępowania."
 
@@ -7653,6 +7689,9 @@ msgstr "Poza jakimkolwiek blokiem"
 
 msgid "Outside this repository's OpenKnowledge worktrees folder"
 msgstr "Poza folderem worktrees projektów OpenKnowledge tego repozytorium"
+
+msgid "Outside version"
+msgstr "Wersja zewnętrzna"
 
 msgid "Outside what Open Knowledge commits."
 msgstr "Poza zakresem, który Open Knowledge zapisuje w commitach."
@@ -11666,6 +11705,9 @@ msgstr "Wartości dla {keyName}"
 msgctxt "settings search keyword"
 msgid "version"
 msgstr "wersja"
+
+msgid "Version in OpenKnowledge"
+msgstr "Wersja w OpenKnowledge"
 
 msgid "via {viaTags}"
 msgstr "przez {viaTags}"

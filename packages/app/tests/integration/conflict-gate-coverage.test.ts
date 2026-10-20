@@ -101,6 +101,8 @@ const EXEMPT_HANDLERS = new Set([
   'handleRescueList',
   'handleSyncStatus',
   'handleSyncConflicts',
+  'handleDocNotices',
+  'handleDismissDocNotice',
   'handleSyncConflictContent',
   'handleSyncTrigger',
   'handleSyncResolveConflict',

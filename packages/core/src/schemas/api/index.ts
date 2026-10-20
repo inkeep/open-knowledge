@@ -3,6 +3,7 @@ export * from './agent-integrations.ts';
 export * from './agent-write.ts';
 export * from './client-logs.ts';
 export * from './comments.ts';
+export * from './doc-notices.ts';
 export * from './document-read.ts';
 export * from './embed-detect.ts';
 export * from './git-worktree-status.ts';

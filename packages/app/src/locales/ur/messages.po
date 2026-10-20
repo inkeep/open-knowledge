@@ -952,6 +952,15 @@ msgstr "{scopeLabel} میں اِن کی ایک کاپی باقی رہ سکتی �
 msgid "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
 msgstr "“{name}” کی ایک کاپی {scopeLabel} میں جان بوجھ کر رکھی گئی ہے۔ اسے حذف کرنے سے پہلے اصل سے موازنہ کریں: اس میں اُن فائلوں کی واحد کاپی ہو سکتی ہے جو ناکام منتقلی پہلے ہی حذف کر چکی ہے۔"
 
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side."
+msgstr "{fileName} میں ایک حذف واپس لے لیا گیا کیونکہ دوسری طرف وہی متن بدلا گیا تھا۔"
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions are in the timeline."
+msgstr "{fileName} میں ایک حذف واپس لے لیا گیا کیونکہ دوسری طرف وہی متن بدلا گیا تھا۔ پچھلے ورژن ٹائم لائن میں ہیں۔"
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions were saved to the document's history."
+msgstr "{fileName} میں ایک حذف واپس لے لیا گیا کیونکہ دوسری طرف وہی متن بدلا گیا تھا۔ پچھلے ورژن دستاویز کی تاریخ میں محفوظ کر دیے گئے ہیں۔"
+
 msgid "A DIFFERENT skill named like this one lives at {0} — that folder is not this skill. Rename or delete one of the two to resolve."
 msgstr "اس جیسے نام کی ایک مختلف مہارت {0} پر موجود ہے — وہ فولڈر یہ مہارت نہیں ہے۔ حل کے لیے دونوں میں سے کسی ایک کا نام بدلیں یا اسے حذف کریں۔"
 
@@ -1451,6 +1460,12 @@ msgstr "اس ایجنٹ کے ساتھ پہلے ہی چیٹ شروع ہو رہی 
 msgid "Always included"
 msgstr "ہمیشہ شامل"
 
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
+msgstr "{fileName} میں باہر سے کی گئی تبدیلی مرج نہیں ہو سکی، اس لیے یہی ورژن رہا۔ باہر والا ورژن ٹائم لائن میں ہے۔"
+
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
+msgstr "{fileName} میں باہر سے کی گئی تبدیلی مرج نہیں ہو سکی، اس لیے یہی ورژن رہا۔ باہر والا ورژن دستاویز کی تاریخ میں محفوظ کر دیا گیا ہے۔"
+
 msgid "An unexpected error occurred."
 msgstr "ایک غیر متوقع خرابی پیش آئی۔"
 
@@ -1786,6 +1801,9 @@ msgstr "جب کوئی اس ٹیمپلیٹ سے دستاویز بناتا ہے ت
 msgid "Before"
 msgstr "پہلے"
 
+msgid "Before an outside change was merged"
+msgstr "باہر کی تبدیلی مرج ہونے سے پہلے"
+
 msgid "Before syncing, set your identity for git commits:"
 msgstr "مطابقت پذیری سے پہلے، git کمٹس کے لیے اپنی شناخت مقرر کریں:"
 
@@ -1849,6 +1867,9 @@ msgstr "دونوں ایجنٹس بالآخر {keep} کی ہر چیز پڑھیں 
 
 msgid "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
 msgstr "دونوں ورژن یکساں ہیں۔ موجودہ قبول کریں منتخب کرنے سے OpenKnowledge کا تحفظ فعال رہتا ہے، اس لیے پرانے ورژن کا ایک اور سیو دوبارہ مسترد کر دیا جائے گا۔ آنے والا قبول کریں منتخب کرنے سے وہ تحفظ بند ہو جاتا ہے۔"
+
+msgid "Both versions were kept in {fileName}. It changed outside OpenKnowledge in the same place as here, so the outside version is directly under this one."
+msgstr "{fileName} میں دونوں ورژن رکھے گئے۔ فائل OpenKnowledge کے باہر اسی جگہ بدلی جہاں یہاں بھی تبدیلی ہوئی تھی، اس لیے باہر والا ورژن عین اس کے نیچے ہے۔"
 
 msgid "Branch"
 msgstr "برانچ"
@@ -3986,6 +4007,12 @@ msgstr "ترامیم فوراً لاگو ہوتی ہیں۔ روشن یا تار�
 msgid "Edits at the source land here — no copy-paste drift."
 msgstr "ماخذ پر ہونے والی ترامیم یہاں پہنچتی ہیں — نقل و چسپاں کا کوئی فرق نہیں۔"
 
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits are in the timeline."
+msgstr "پچھلی بار یہ برانچ کھلی ہونے کے وقت سے {fileName} میں رکھی گئی ترامیم مرج نہیں ہو سکیں، اس لیے فائل کا ورژن رہا۔ وہ ترامیم ٹائم لائن میں ہیں۔"
+
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits were saved to the document's history."
+msgstr "پچھلی بار یہ برانچ کھلی ہونے کے وقت سے {fileName} میں رکھی گئی ترامیم مرج نہیں ہو سکیں، اس لیے فائل کا ورژن رہا۔ وہ ترامیم دستاویز کی تاریخ میں محفوظ کر دی گئی ہیں۔"
+
 msgid "Element fields"
 msgstr "عنصر کے فیلڈز"
 
@@ -4593,6 +4620,9 @@ msgstr "فائل {identity}۔ حوالہ پر جائیں۔"
 
 msgid "File already exists"
 msgstr "فائل پہلے سے موجود ہے"
+
+msgid "File change notice"
+msgstr "فائل میں تبدیلی کی اطلاع"
 
 msgid "File drop zone"
 msgstr "فائل ڈراپ زون"
@@ -6969,6 +6999,9 @@ msgstr "نصب نہیں · OpenKnowledge فائلیں موجود ہیں"
 msgid "Not installed in this project yet."
 msgstr "اس پروجیکٹ میں ابھی نصب نہیں ہے۔"
 
+msgid "Not merged"
+msgstr "مرج نہیں ہوا"
+
 #. Declines the first-visit skill offer; the row on the page keeps it available
 msgid "Not now"
 msgstr "ابھی نہیں"
@@ -7347,6 +7380,9 @@ msgstr "یہ لنک نئے ٹیب میں کھولیں اور گراف سکیڑ �
 msgid "Open this settings dialog."
 msgstr "یہ ترتیبات کا ڈائیلاگ کھولیں۔"
 
+msgid "Open timeline"
+msgstr "ٹائم لائن کھولیں"
+
 msgid "Open visual-editor find with replace controls expanded."
 msgstr "بصری ایڈیٹر کی تلاش تبدیلی کے کنٹرولز کھلے ہوئے کھولیں۔"
 
@@ -7653,6 +7689,9 @@ msgstr "کسی بھی بلاک سے باہر"
 
 msgid "Outside this repository's OpenKnowledge worktrees folder"
 msgstr "اس ریپوزٹری کے OpenKnowledge ورک ٹریز فولڈر کے باہر"
+
+msgid "Outside version"
+msgstr "باہر والا ورژن"
 
 msgid "Outside what Open Knowledge commits."
 msgstr "اس دائرے سے باہر جسے Open Knowledge کمٹ کرتا ہے۔"
@@ -11666,6 +11705,9 @@ msgstr "{keyName} کی اقدار"
 msgctxt "settings search keyword"
 msgid "version"
 msgstr "ورژن"
+
+msgid "Version in OpenKnowledge"
+msgstr "OpenKnowledge میں ورژن"
 
 msgid "via {viaTags}"
 msgstr "{viaTags} کے ذریعے"

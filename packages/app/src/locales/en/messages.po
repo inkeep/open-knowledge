@@ -952,6 +952,15 @@ msgstr "A copy may remain in {scopeLabel} for: {names}. Don't delete anything th
 msgid "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
 msgstr "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
 
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side."
+msgstr "A deletion in {fileName} was undone because the same text was changed on the other side."
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions are in the timeline."
+msgstr "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions are in the timeline."
+
+msgid "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions were saved to the document's history."
+msgstr "A deletion in {fileName} was undone because the same text was changed on the other side. The earlier versions were saved to the document's history."
+
 msgid "A DIFFERENT skill named like this one lives at {0} — that folder is not this skill. Rename or delete one of the two to resolve."
 msgstr "A DIFFERENT skill named like this one lives at {0} — that folder is not this skill. Rename or delete one of the two to resolve."
 
@@ -1451,6 +1460,12 @@ msgstr "Already starting a chat with this agent — try again in a moment."
 msgid "Always included"
 msgstr "Always included"
 
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
+msgstr "An outside change to {fileName} could not be merged, so this version stayed. The outside version is in the timeline."
+
+msgid "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
+msgstr "An outside change to {fileName} could not be merged, so this version stayed. The outside version was saved to the document's history."
+
 msgid "An unexpected error occurred."
 msgstr "An unexpected error occurred."
 
@@ -1786,6 +1801,9 @@ msgstr "Becomes the document's content when someone creates a doc from this temp
 msgid "Before"
 msgstr "Before"
 
+msgid "Before an outside change was merged"
+msgstr "Before an outside change was merged"
+
 msgid "Before syncing, set your identity for git commits:"
 msgstr "Before syncing, set your identity for git commits:"
 
@@ -1849,6 +1867,9 @@ msgstr "Both agents end up reading everything in {keep}."
 
 msgid "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
 msgstr "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
+
+msgid "Both versions were kept in {fileName}. It changed outside OpenKnowledge in the same place as here, so the outside version is directly under this one."
+msgstr "Both versions were kept in {fileName}. It changed outside OpenKnowledge in the same place as here, so the outside version is directly under this one."
 
 msgid "Branch"
 msgstr "Branch"
@@ -3986,6 +4007,12 @@ msgstr "Edits apply live. Light or dark comes from the theme."
 msgid "Edits at the source land here — no copy-paste drift."
 msgstr "Edits at the source land here — no copy-paste drift."
 
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits are in the timeline."
+msgstr "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits are in the timeline."
+
+msgid "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits were saved to the document's history."
+msgstr "Edits to {fileName} kept from the last time this branch was open could not be merged, so the file's version stayed. Those edits were saved to the document's history."
+
 msgid "Element fields"
 msgstr "Element fields"
 
@@ -4593,6 +4620,9 @@ msgstr "File {identity}. Go to reference."
 
 msgid "File already exists"
 msgstr "File already exists"
+
+msgid "File change notice"
+msgstr "File change notice"
 
 msgid "File drop zone"
 msgstr "File drop zone"
@@ -6969,6 +6999,9 @@ msgstr "Not installed · OpenKnowledge files present"
 msgid "Not installed in this project yet."
 msgstr "Not installed in this project yet."
 
+msgid "Not merged"
+msgstr "Not merged"
+
 #. Declines the first-visit skill offer; the row on the page keeps it available
 msgid "Not now"
 msgstr "Not now"
@@ -7347,6 +7380,9 @@ msgstr "Open this link in a new tab and collapse the graph."
 msgid "Open this settings dialog."
 msgstr "Open this settings dialog."
 
+msgid "Open timeline"
+msgstr "Open timeline"
+
 msgid "Open visual-editor find with replace controls expanded."
 msgstr "Open visual-editor find with replace controls expanded."
 
@@ -7653,6 +7689,9 @@ msgstr "Outside any block"
 
 msgid "Outside this repository's OpenKnowledge worktrees folder"
 msgstr "Outside this repository's OpenKnowledge worktrees folder"
+
+msgid "Outside version"
+msgstr "Outside version"
 
 msgid "Outside what Open Knowledge commits."
 msgstr "Outside what Open Knowledge commits."
@@ -11666,6 +11705,9 @@ msgstr "Values for {keyName}"
 msgctxt "settings search keyword"
 msgid "version"
 msgstr "version"
+
+msgid "Version in OpenKnowledge"
+msgstr "Version in OpenKnowledge"
 
 msgid "via {viaTags}"
 msgstr "via {viaTags}"

@@ -223,6 +223,7 @@ import {
   SUPPORTED_DOC_EXTENSIONS,
   stripDocExtension,
 } from './doc-extensions.ts';
+import type { DocNoticeLedger } from './doc-notices.ts';
 import {
   assertNeverDeferredStoreWait,
   type DocumentDurabilityState,
@@ -269,6 +270,7 @@ import { type ApiRouteTable, createApiRequestPipeline } from './http/api-pipelin
 import { createAssetRoutes } from './http/asset-routes.ts';
 import { createCommentRoutes } from './http/comment-routes.ts';
 import { createConfigSystemRoutes } from './http/config-system-routes.ts';
+import { createDocNoticeRoutes } from './http/doc-notice-routes.ts';
 import { createDocumentRoutes } from './http/document-routes.ts';
 import {
   type ErrorExtensions,
@@ -1341,6 +1343,7 @@ interface ApiExtensionBaseOptions {
   resolveEmbed?: (basename: string, sourcePath: string) => string | null;
   getBridgeLossReporter?: () => BridgeDeriveLossReporter | undefined;
   mergeHistoryWriter?: MergeHistoryWriter;
+  docNotices?: DocNoticeLedger;
   getPrincipal?: () => Principal | null;
   homeDirOverride?: string;
   resetSettingsForTest?: () => void;
@@ -2012,6 +2015,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     contentRoot: contentRoot ?? '',
     getBranch: () => getCurrentBranch?.() ?? null,
     writeCheckpoint: options.mergeHistoryWriter,
+    notices: options.docNotices,
   });
 
   /**
@@ -5299,6 +5303,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     getPrincipal,
     signalChannel,
   });
+  const docNoticeRoutes = createDocNoticeRoutes({
+    docNotices: options.docNotices ?? null,
+    getBranch: () => getCurrentBranch?.() ?? 'main',
+    checkLocalOpSecurity,
+  });
   const syncRoutes = createSyncRoutes({
     projectDir,
     contentDir,
@@ -5576,6 +5585,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     workspaceToolsRoutes,
     commentRoutes,
     syncRoutes,
+    docNoticeRoutes,
     shareRoutes,
     gitRoutes,
     localOpRoutes,

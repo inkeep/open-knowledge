@@ -31,6 +31,7 @@ import { createPortal } from 'react-dom';
 import { useGroupRef, usePanelRef } from 'react-resizable-panels';
 import { toast } from 'sonner';
 import { AssetPreview } from '@/components/AssetPreview';
+import { DocChangeNotice } from '@/components/DocChangeNotice';
 import { DocPanel, type PanelTab } from '@/components/DocPanel';
 import { DocPanelToggle } from '@/components/DocPanelToggle';
 import {
@@ -2551,6 +2552,7 @@ function EditorAreaInner({
             <SkillEditBanner name={externalSkillEdit.name} />
           </Suspense>
         ) : null}
+        <DocChangeNotice docName={activeDocName} timelineAvailable={!noteWindow} />
         <div className="relative min-h-0 flex-1">
           {}
           <div className="relative h-full">
