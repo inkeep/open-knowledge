@@ -497,9 +497,9 @@ export {
   ProjectGitInitError,
 } from './project-git.ts';
 export {
-  type BlockConflict,
   CONFLICT_MARKER_RE,
   containsConflictMarkers,
+  type KeptBlockPair,
   type ReconcileInput,
   type ReconcileOutcome,
   reconcile,

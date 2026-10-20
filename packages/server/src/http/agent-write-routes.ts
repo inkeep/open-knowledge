@@ -80,6 +80,7 @@ import {
 import { recordFrontmatterEditSurface } from '../frontmatter-telemetry.ts';
 import type { LinkAdvisoryPolicy, PrepareWriteLinkAdvisory } from '../link-advisory-policy.ts';
 import { getLogger } from '../logger.ts';
+import type { MergeHistoryRecorder } from '../merge-history.ts';
 import { validateMermaidFences } from '../mermaid-validator.ts';
 import { incrementAgentPatchFindMismatches, incrementAgentWriteCalls } from '../metrics.ts';
 import { precomputeParse } from '../parse-pool.ts';
@@ -167,6 +168,7 @@ export interface AgentWriteRouteDeps {
     resolveEmbed?: (basename: string, sourcePath: string) => string | null;
   };
   getBridgeLossReporter: (() => BridgeDeriveLossReporter | undefined) | undefined;
+  mergeHistory: MergeHistoryRecorder;
   agentPresenceBroadcaster: AgentPresenceBroadcaster | undefined;
   recordContentDivergenceGate: (
     handler: 'agent-write-md' | 'agent-write-batch' | 'agent-patch' | 'rollback',
@@ -242,6 +244,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
     hocuspocus,
     options,
     getBridgeLossReporter,
+    mergeHistory,
     agentPresenceBroadcaster,
     recordContentDivergenceGate,
     buildAgentActor,
@@ -369,7 +372,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
             colorSeed,
             clientName,
           });
-          const writeMdReconcile = reconcileDiskBeforeAgentWrite(
+          const writeMdReconcile = await reconcileDiskBeforeAgentWrite(
             durabilityState,
             hocuspocus,
             resolvedDocName,
@@ -377,6 +380,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
             options.resolveEmbed,
             getBridgeLossReporter?.(),
             conflicts,
+            mergeHistory,
           );
           const writeMdEmbedResolver = options.resolveEmbed
             ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
@@ -593,7 +597,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
             colorSeed,
             clientName,
           });
-          const fmReconcile = reconcileDiskBeforeAgentWrite(
+          const fmReconcile = await reconcileDiskBeforeAgentWrite(
             durabilityState,
             hocuspocus,
             resolvedDocName,
@@ -601,6 +605,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
             options.resolveEmbed,
             getBridgeLossReporter?.(),
             conflicts,
+            mergeHistory,
           );
           const fmPatchPrecomputed = await prepareFrontmatterPatchParse(session.dc.document, patch);
           const timestamp = new Date().toISOString();
@@ -839,7 +844,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
             colorSeed,
             clientName,
           });
-          const patchReconcile = reconcileDiskBeforeAgentWrite(
+          const patchReconcile = await reconcileDiskBeforeAgentWrite(
             durabilityState,
             hocuspocus,
             docName,
@@ -847,6 +852,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
             options.resolveEmbed,
             getBridgeLossReporter?.(),
             conflicts,
+            mergeHistory,
           );
           const patchEmbedResolver = options.resolveEmbed
             ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }

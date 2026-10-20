@@ -75,7 +75,7 @@ You can't edit a page with conflicts until they're resolved; the same applies to
 
 ### Conflicts that don't come from Git
 
-A conflict doesn't need a remote. When a file changes on disk while OpenKnowledge has it open, OpenKnowledge merges the two versions itself, and raises a conflict if it can't merge them cleanly.
+A conflict doesn't need a remote, though most changes on disk never raise one. When a file changes on disk while OpenKnowledge has it open, OpenKnowledge merges the two versions itself. Where both sides changed the same paragraph, both versions are kept, the OpenKnowledge version first and the outside version directly under it, and both earlier versions are saved to the [timeline](/docs/features/timeline-and-recovery). Where one side deleted a paragraph the other changed, the changed version stays. Where the two can't be merged safely, the OpenKnowledge version stays and the outside version is saved to the timeline. It raises a conflict when the file on disk holds Git conflict markers, when it can't save the outside version to the timeline, or when an agent write has no acknowledged version to merge against.
 
 Another app can also save an exact older copy over an edit OpenKnowledge already acknowledged. In the diff view, **Current** is the protected OpenKnowledge version and **Incoming** is the rejected external save. Choose which to keep. An intentional exact revert can trigger the same confirmation. Both versions stay recoverable after a restart, and keeping current protects against repeated saves from the stale editor. That protection expires after 30 minutes, so update or close the other app rather than relying on that protection.
 

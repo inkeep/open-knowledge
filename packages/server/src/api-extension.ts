@@ -36,7 +36,6 @@ import {
   createCodeFenceTracker,
   createWikiAssetResolver,
   DEFAULT_LINTER_CONFIG,
-  type DiskEditReconciledWarning,
   type DocumentListEntry,
   estimateSkillCost,
   type HeadingEntry,
@@ -234,7 +233,7 @@ import {
   type StoreFailure,
 } from './document-durability-state.ts';
 import {
-  type ReconcileBeforeWriteResult,
+  buildReconcileWarning,
   reconcileDiskBeforeAgentWrite,
   reviveFrozenResidentDoc,
 } from './external-change.ts';
@@ -354,6 +353,7 @@ import {
   type WikiRenameContext,
   wikiLinkRenameDestination,
 } from './managed-rename-rewrite.ts';
+import { createMergeHistoryRecorder, type MergeHistoryWriter } from './merge-history.ts';
 import {
   incrementAgentWriteCalls,
   incrementSummariesProvided,
@@ -1340,6 +1340,7 @@ interface ApiExtensionBaseOptions {
   getConfigDiagnostics?: () => ConfigDiagnosticsReport;
   resolveEmbed?: (basename: string, sourcePath: string) => string | null;
   getBridgeLossReporter?: () => BridgeDeriveLossReporter | undefined;
+  mergeHistoryWriter?: MergeHistoryWriter;
   getPrincipal?: () => Principal | null;
   homeDirOverride?: string;
   resetSettingsForTest?: () => void;
@@ -2006,22 +2007,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     errorResponse(res, 409, type, title, { handler, detail, extensions });
   }
 
-  function buildReconcileWarning(
-    reconcile: ReconcileBeforeWriteResult,
-  ): DiskEditReconciledWarning | undefined {
-    if (!reconcile.reconciled) return undefined;
-    return {
-      kind: 'disk-edit-reconciled',
-      intendedBytes: reconcile.baseBytes,
-      actualBytes: reconcile.diskBytes,
-      byteDelta: reconcile.diskBytes - reconcile.baseBytes,
-      ...(reconcile.mergeOutcome ? { mergeOutcome: reconcile.mergeOutcome } : {}),
-      hint:
-        reconcile.mergeOutcome === 'merged'
-          ? 'An out-of-band edit was three-way merged into this document before your edit was applied on top; the merge may have interleaved content blocks. Re-read it (e.g. `exec("cat <path>")`) and review the combined result carefully before continuing.'
-          : 'An out-of-band edit was reconciled into this document before your edit was applied on top; the document now reflects that edit plus yours. Re-read it (e.g. `exec("cat <path>")`) to see the combined result before continuing.',
-    };
-  }
+  const mergeHistory = createMergeHistoryRecorder({
+    getShadow: () => shadowRef?.current,
+    contentRoot: contentRoot ?? '',
+    getBranch: () => getCurrentBranch?.() ?? null,
+    writeCheckpoint: options.mergeHistoryWriter,
+  });
 
   /**
    * Content-scope exclusion for a docName, mirroring the file-watcher's markdown admission
@@ -2817,7 +2808,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
           span.setAttribute('rename.rewrite_candidates', pendingRewrites.length);
           assertRewriteTargetsNotConflicted(pendingRewrites.map((entry) => entry.docName));
 
-          reconcileDiskBeforeAgentWrite(
+          await reconcileDiskBeforeAgentWrite(
             durabilityState,
             hocuspocus,
             sourceDocName,
@@ -2825,6 +2816,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
             undefined,
             getBridgeLossReporter?.(),
             conflicts,
+            mergeHistory,
           );
           if (recentlyRemovedDocs && !isSystemDoc(sourceDocName) && !isConfigDoc(sourceDocName)) {
             recentlyRemovedDocs.setDeleted(sourceDocName);
@@ -3069,7 +3061,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
               throw error;
             }
             if (!existsSync(candidatePath)) continue;
-            reconcileDiskBeforeAgentWrite(
+            await reconcileDiskBeforeAgentWrite(
               durabilityState,
               hocuspocus,
               docName,
@@ -3077,6 +3069,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
               undefined,
               getBridgeLossReporter?.(),
               conflicts,
+              mergeHistory,
             );
             const content = readCurrentDocumentContent(docName);
             if (typeof content !== 'string') continue;
@@ -3105,7 +3098,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
               }
             }
 
-            reconcileDiskBeforeAgentWrite(
+            await reconcileDiskBeforeAgentWrite(
               durabilityState,
               hocuspocus,
               docName,
@@ -3113,6 +3106,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
               undefined,
               getBridgeLossReporter?.(),
               conflicts,
+              mergeHistory,
             );
             const content = readCurrentDocumentContent(docName);
             if (typeof content === 'string') {
@@ -3648,7 +3642,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
           clientName,
         });
 
-        const agentWriteReconcile = reconcileDiskBeforeAgentWrite(
+        const agentWriteReconcile = await reconcileDiskBeforeAgentWrite(
           durabilityState,
           hocuspocus,
           docName,
@@ -3656,6 +3650,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
           options.resolveEmbed,
           getBridgeLossReporter?.(),
           conflicts,
+          mergeHistory,
         );
 
         const timestamp = new Date().toISOString();
@@ -3937,7 +3932,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
                   clientName,
                 });
 
-                const reconcile = reconcileDiskBeforeAgentWrite(
+                const reconcile = await reconcileDiskBeforeAgentWrite(
                   durabilityState,
                   hocuspocus,
                   resolvedDocName,
@@ -3945,6 +3940,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
                   options.resolveEmbed,
                   getBridgeLossReporter?.(),
                   conflicts,
+                  mergeHistory,
                 );
 
                 const entryEmbedResolver = options.resolveEmbed
@@ -5502,6 +5498,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension & {
     hocuspocus,
     options,
     getBridgeLossReporter,
+    mergeHistory,
     agentPresenceBroadcaster,
     recordContentDivergenceGate,
     buildAgentActor,

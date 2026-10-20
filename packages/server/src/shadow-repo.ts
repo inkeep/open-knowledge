@@ -853,6 +853,22 @@ export type InMemoryCheckpointParams = (
       branch?: string;
       metadata: { diskBytes: number; discardedBytes: number };
     }
+  | {
+      kind: 'external-change-both-kept';
+      docName: string;
+      contents: string;
+      label: string;
+      branch?: string;
+      metadata: Extract<ParsedCheckpoint, { kind: 'external-change-both-kept' }>['metadata'];
+    }
+  | {
+      kind: 'external-change-kept-live';
+      docName: string;
+      contents: string;
+      label: string;
+      branch?: string;
+      metadata: Extract<ParsedCheckpoint, { kind: 'external-change-kept-live' }>['metadata'];
+    }
 ) & {
   date?: string;
 };
@@ -983,6 +999,22 @@ async function saveInMemoryCheckpointInner(
     case 'managed-artifact-reconcile':
       parsed = {
         kind: 'managed-artifact-reconcile',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
+    case 'external-change-both-kept':
+      parsed = {
+        kind: 'external-change-both-kept',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
+    case 'external-change-kept-live':
+      parsed = {
+        kind: 'external-change-kept-live',
         docName: params.docName,
         size,
         metadata: params.metadata,
@@ -1129,6 +1161,8 @@ export interface CheckpointRetentionPolicy {
   maxPersistenceDuplicationReset: number;
   maxPersistenceDivergenceRealign: number;
   maxManagedArtifactReconcile: number;
+  maxExternalChangeBothKeptPerDocument: number;
+  maxExternalChangeKeptLivePerDocument: number;
   maxAutoConsolidation: number;
   ttlMs: number;
 }
@@ -1147,6 +1181,8 @@ export const DEFAULT_CHECKPOINT_RETENTION: CheckpointRetentionPolicy = {
   maxPersistenceDuplicationReset: 50,
   maxPersistenceDivergenceRealign: 50,
   maxManagedArtifactReconcile: 50,
+  maxExternalChangeBothKeptPerDocument: 50,
+  maxExternalChangeKeptLivePerDocument: 50,
   maxAutoConsolidation: 2,
   ttlMs: 30 * 24 * 60 * 60 * 1000,
 };
@@ -1166,6 +1202,8 @@ export interface CheckpointGcResult {
   deletedPersistenceDuplicationReset: number;
   deletedPersistenceDivergenceRealign: number;
   deletedManagedArtifactReconcile: number;
+  deletedExternalChangeBothKept: number;
+  deletedExternalChangeKeptLive: number;
   deletedAutoConsolidation: number;
   retained: number;
 }
@@ -1176,6 +1214,7 @@ interface GcBucketPolicy {
   limit: (policy: CheckpointRetentionPolicy) => number;
   counter: GcDeletionCounter;
   applyTtl: boolean;
+  scope: 'branch' | 'document';
 }
 
 export const GC_BUCKET_POLICY = {
@@ -1183,71 +1222,97 @@ export const GC_BUCKET_POLICY = {
     limit: (p) => p.maxBridgeMergeLoss,
     counter: 'deletedBridgeMergeLoss',
     applyTtl: true,
+    scope: 'branch',
   },
   'producer-guard-loss': {
     limit: (p) => p.maxProducerGuardLoss,
     counter: 'deletedProducerGuardLoss',
     applyTtl: true,
+    scope: 'branch',
   },
   'observer-a-duplication': {
     limit: (p) => p.maxObserverADuplication,
     counter: 'deletedObserverADuplication',
     applyTtl: true,
+    scope: 'branch',
   },
   'external-change-rescue': {
     limit: (p) => p.maxExternalChangeRescue,
     counter: 'deletedExternalChangeRescue',
     applyTtl: true,
+    scope: 'branch',
   },
   'external-change-rescue-disk-update': {
     limit: (p) => p.maxExternalChangeRescueDiskUpdate,
     counter: 'deletedExternalChangeRescueDiskUpdate',
     applyTtl: true,
+    scope: 'branch',
   },
   'defer-exhaustion-loss': {
     limit: (p) => p.maxDeferExhaustionLoss,
     counter: 'deletedDeferExhaustionLoss',
     applyTtl: true,
+    scope: 'branch',
   },
   'observer-a-apply-loss': {
     limit: (p) => p.maxObserverAApplyLoss,
     counter: 'deletedObserverAApplyLoss',
     applyTtl: true,
+    scope: 'branch',
   },
   'bridge-derive-loss': {
     limit: (p) => p.maxBridgeDeriveLoss,
     counter: 'deletedBridgeDeriveLoss',
     applyTtl: true,
+    scope: 'branch',
   },
   'bridge-backstop-trip': {
     limit: (p) => p.maxBridgeBackstopTrip,
     counter: 'deletedBridgeBackstopTrip',
     applyTtl: true,
+    scope: 'branch',
   },
   'persistence-reconcile-loss': {
     limit: (p) => p.maxPersistenceReconcileLoss,
     counter: 'deletedPersistenceReconcileLoss',
     applyTtl: true,
+    scope: 'branch',
   },
   'persistence-duplication-reset': {
     limit: (p) => p.maxPersistenceDuplicationReset,
     counter: 'deletedPersistenceDuplicationReset',
     applyTtl: true,
+    scope: 'branch',
   },
   'persistence-divergence-realign': {
     limit: (p) => p.maxPersistenceDivergenceRealign,
     counter: 'deletedPersistenceDivergenceRealign',
     applyTtl: true,
+    scope: 'branch',
   },
   'managed-artifact-reconcile': {
     limit: (p) => p.maxManagedArtifactReconcile,
     counter: 'deletedManagedArtifactReconcile',
     applyTtl: true,
+    scope: 'branch',
+  },
+  'external-change-both-kept': {
+    limit: (p) => p.maxExternalChangeBothKeptPerDocument,
+    counter: 'deletedExternalChangeBothKept',
+    applyTtl: false,
+    scope: 'document',
+  },
+  'external-change-kept-live': {
+    limit: (p) => p.maxExternalChangeKeptLivePerDocument,
+    counter: 'deletedExternalChangeKeptLive',
+    applyTtl: false,
+    scope: 'document',
   },
   'auto-consolidation': {
     limit: (p) => p.maxAutoConsolidation,
     counter: 'deletedAutoConsolidation',
     applyTtl: false,
+    scope: 'branch',
   },
 } as const satisfies Record<CheckpointKind, GcBucketPolicy>;
 
@@ -1279,6 +1344,8 @@ async function gcCheckpointRefsInner(
     deletedPersistenceDuplicationReset: 0,
     deletedPersistenceDivergenceRealign: 0,
     deletedManagedArtifactReconcile: 0,
+    deletedExternalChangeBothKept: 0,
+    deletedExternalChangeKeptLive: 0,
     deletedAutoConsolidation: 0,
     retained: 0,
   };
@@ -1331,6 +1398,7 @@ async function gcCheckpointRefsInner(
     sha: string;
     timestamp: number;
     kind: CheckpointKind | null;
+    docName: string | null;
   }
   const entries: Entry[] = [];
   for (const record of logRaw.split('\x1e')) {
@@ -1341,7 +1409,12 @@ async function gcCheckpointRefsInner(
     const parsed = parseCheckpoint(body);
     const kind = parsed?.kind ?? null;
     const ts = Date.parse(timestamp);
-    entries.push({ sha, timestamp: Number.isFinite(ts) ? ts : 0, kind });
+    entries.push({
+      sha,
+      timestamp: Number.isFinite(ts) ? ts : 0,
+      kind,
+      docName: parsed?.docName ?? null,
+    });
   }
 
   const byBucket = Object.fromEntries(
@@ -1387,14 +1460,22 @@ async function gcCheckpointRefsInner(
       }
     }
   };
+  const groupsOf = (list: Entry[], scope: GcBucketPolicy['scope']): Entry[][] => {
+    if (scope === 'branch') return [list];
+    const byDocument = new Map<string, Entry[]>();
+    for (const entry of list) {
+      const key = entry.docName ?? '';
+      const group = byDocument.get(key);
+      if (group) group.push(entry);
+      else byDocument.set(key, [entry]);
+    }
+    return [...byDocument.values()];
+  };
   for (const bucket of CHECKPOINT_KINDS) {
     const bucketPolicy = GC_BUCKET_POLICY[bucket];
-    planDeletions(
-      byBucket[bucket],
-      bucketPolicy.limit(policy),
-      bucketPolicy.counter,
-      bucketPolicy.applyTtl,
-    );
+    for (const group of groupsOf(byBucket[bucket], bucketPolicy.scope)) {
+      planDeletions(group, bucketPolicy.limit(policy), bucketPolicy.counter, bucketPolicy.applyTtl);
+    }
   }
 
   for (const ref of deleteRefs) {
@@ -1568,8 +1649,8 @@ export async function readParkedState(
     const msg = (await sg.raw('log', '-1', '--format=%s', refSha)).trim();
     if (!msg.startsWith('park:')) return null;
 
-    const markdown = (await sg.raw('show', `${refSha}:${docName}`)).trim();
-    const diskSnapshot = (await sg.raw('show', `${refSha}:.park-base/${docName}`)).trim();
+    const markdown = await sg.raw('show', `${refSha}:${docName}`);
+    const diskSnapshot = await sg.raw('show', `${refSha}:.park-base/${docName}`);
     return { markdown, diskSnapshot };
   } catch (e) {
     log.error({ docName, ref, err: e }, `Failed to read parked state for ${docName} from ${ref}`);

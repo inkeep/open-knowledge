@@ -8,6 +8,7 @@ import { atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import {
   CHECKPOINT_KIND_REGISTRY,
   CHECKPOINT_KINDS,
+  CHECKPOINT_SAMPLE_BY_KIND,
   type CheckpointKind,
   formatCheckpointBodyLine,
   parseCheckpoint,
@@ -719,8 +720,18 @@ describe('parkBranch', () => {
 
     const state = await readParkedState(shadow, 'feature', SERVICE_WRITER.id, 'guide');
     expect(state).not.toBeNull();
-    expect(state?.markdown).toBe('# Guide v2');
-    expect(state?.diskSnapshot).toBe('# Guide v1');
+    expect(state?.markdown).toBe('# Guide v2\n');
+    expect(state?.diskSnapshot).toBe('# Guide v1\n');
+  });
+
+  test('readParkedState returns the parked markdown byte for byte', async () => {
+    const parked = '\n  # Guide v2\r\n\nbody  \n\n';
+    await parkBranch(shadow, 'feature', SERVICE_WRITER.id, [
+      { docName: 'guide', markdown: parked, diskSnapshot: '# Guide v1\n' },
+    ]);
+
+    const state = await readParkedState(shadow, 'feature', SERVICE_WRITER.id, 'guide');
+    expect(state?.markdown).toBe(parked);
   });
 
   test('readParkedState returns null when no park exists', async () => {
@@ -1670,6 +1681,26 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
           metadata: { diskBytes: 41, discardedBytes: 66 },
         });
         return;
+      case 'external-change-both-kept':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'n.md',
+          contents: `n${tag}\n`,
+          label: 'l',
+          date,
+          metadata: { side: 'theirs', keptBlocks: 1 },
+        });
+        return;
+      case 'external-change-kept-live':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'o.md',
+          contents: `o${tag}\n`,
+          label: 'l',
+          date,
+          metadata: { side: 'theirs', reason: 'check-failed' },
+        });
+        return;
       case 'auto-consolidation':
         await writeAutoConsolidationCheckpoint(shadow, tag === '' ? 1 : Number(tag));
         return;
@@ -1705,6 +1736,41 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
 
     expect(result.scanned).toBe(CHECKPOINT_KINDS.length);
     expect(result.retained).toBe(CHECKPOINT_KINDS.length);
+  });
+
+  test('a document-scoped history kind keeps its cap per document and never expires', async () => {
+    const { gcCheckpointRefs } = await import('./shadow-repo.ts');
+    const seed = (docName: string, rank: number): Promise<string> =>
+      saveInMemoryCheckpoint(shadow, 'content/docs', {
+        kind: 'external-change-both-kept',
+        docName,
+        contents: `${docName} ${rank}\n`,
+        label: 'l',
+        date: seedDate(rank),
+        metadata: { side: 'theirs', keptBlocks: 1 },
+      });
+    const quiet = [await seed('quiet.md', 1), await seed('quiet.md', 2)];
+    const busy: string[] = [];
+    for (let rank = 3; rank <= 8; rank++) busy.push(await seed('busy.md', rank));
+
+    const result = await gcCheckpointRefs(shadow, 'main', {
+      ...DEFAULT_CHECKPOINT_RETENTION,
+      maxExternalChangeBothKeptPerDocument: 3,
+      ttlMs: 1,
+    });
+
+    expect(result.deletedExternalChangeBothKept).toBe(3);
+    const remaining = (
+      await shadowGit(shadow).raw(
+        'for-each-ref',
+        '--format=%(objectname)',
+        'refs/checkpoints/main/',
+      )
+    )
+      .trim()
+      .split('\n')
+      .sort();
+    expect(remaining).toEqual([...quiet, ...busy.slice(3)].sort());
   });
 
   test('every registered kind is actually REAPED at its own limit, not merely bucketed', async () => {
@@ -1788,13 +1854,18 @@ describe('checkpoint chain anchoring', () => {
       .split(/\s+/)
       .slice(1);
 
-  test('a kind anchors the chain exactly when its retention bucket is count-only', async () => {
+  test('a kind that anchors the chain is count-only, and a single-document kind never anchors', async () => {
     const { GC_BUCKET_POLICY } = await import('./shadow-repo.ts');
     for (const kind of CHECKPOINT_KINDS) {
       const { chainAnchor, gcBucket } = CHECKPOINT_KIND_REGISTRY[kind];
-      expect(`${kind}:chainAnchor=${chainAnchor}`).toBe(
-        `${kind}:chainAnchor=${!GC_BUCKET_POLICY[gcBucket].applyTtl}`,
-      );
+      if (chainAnchor) {
+        expect(`${kind}:applyTtl=${GC_BUCKET_POLICY[gcBucket].applyTtl}`).toBe(
+          `${kind}:applyTtl=false`,
+        );
+      }
+      if (CHECKPOINT_SAMPLE_BY_KIND[kind].docName !== null) {
+        expect(`${kind}:chainAnchor=${chainAnchor}`).toBe(`${kind}:chainAnchor=false`);
+      }
     }
   });
 

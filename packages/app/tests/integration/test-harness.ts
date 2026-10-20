@@ -110,6 +110,7 @@ export interface CreateTestServerOptions {
   seedSkillHostRoot?: boolean;
   watcherBackend?: ServerOptions['watcherBackend'];
   watcherClock?: ServerOptions['watcherClock'];
+  mergeHistoryWriter?: ServerOptions['mergeHistoryWriter'];
 }
 
 export async function createTestServer(options: CreateTestServerOptions = {}): Promise<TestServer> {
@@ -188,6 +189,7 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
       agentSessionOptions: options.agentSessionOptions,
       watcherBackend: options.watcherBackend,
       watcherClock: options.watcherClock,
+      mergeHistoryWriter: options.mergeHistoryWriter,
       ...(ephemeral ? { ephemeral: true, singleDocRelPath: options.singleDocRelPath } : {}),
       skipStateManifestCheck: true,
     });

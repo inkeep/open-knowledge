@@ -132,6 +132,18 @@ const SURFACED_KINDS: ParsedCheckpoint[] = [
     size: 12,
     metadata: { diskBytes: 41, discardedBytes: 66 },
   },
+  {
+    kind: 'external-change-both-kept',
+    docName: 'notes',
+    size: 12,
+    metadata: { side: 'theirs', keptBlocks: 1 },
+  },
+  {
+    kind: 'external-change-kept-live',
+    docName: 'notes',
+    size: 12,
+    metadata: { side: 'theirs', reason: 'check-failed' },
+  },
 ];
 const AUTO_CONSOLIDATION: ParsedCheckpoint = {
   kind: 'auto-consolidation',

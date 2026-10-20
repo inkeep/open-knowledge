@@ -175,37 +175,44 @@ describe('reconcile', () => {
     }
   });
 
-  test('conflicts: both sides change the same block', () => {
+  test('both-kept: both sides change the same block, ours first then theirs', () => {
     const base = '# Title\n\nShared paragraph.\n\nAnother paragraph.\n';
     const ours = '# Title\n\nOur version of shared.\n\nAnother paragraph.\n';
     const theirs = '# Title\n\nTheir version of shared.\n\nAnother paragraph.\n';
 
     const result = reconcile({ docName, base, ours, theirs });
-    expect(result.kind).toBe('conflicts');
-    if (result.kind === 'conflicts') {
-      expect(result.conflicts).toHaveLength(1);
-      expect(result.conflicts[0].base).toBe('Shared paragraph.');
-      expect(result.conflicts[0].ours).toBe('Our version of shared.');
-      expect(result.conflicts[0].theirs).toBe('Their version of shared.');
-      const blocks = splitMarkdownBlocks(result.newContent);
-      expect(blocks).toContain('Our version of shared.');
+    expect(result.kind).toBe('both-kept');
+    if (result.kind === 'both-kept') {
+      expect(result.kept).toHaveLength(1);
+      expect(result.kept[0].base).toBe('Shared paragraph.');
+      expect(result.kept[0].ours).toBe('Our version of shared.');
+      expect(result.kept[0].theirs).toBe('Their version of shared.');
+      expect(splitMarkdownBlocks(result.newContent)).toEqual([
+        '# Title',
+        'Our version of shared.',
+        'Their version of shared.',
+        'Another paragraph.',
+      ]);
     }
   });
 
-  test('conflicts: mixed — some blocks conflict, others merge cleanly', () => {
+  test('both-kept: mixed — one block kept twice, the others merge cleanly', () => {
     const base = '# Title\n\nBlock A.\n\nBlock B.\n\nBlock C.\n';
     const ours = '# Title\n\nBlock A edited by us.\n\nBlock B.\n\nBlock C edited by us.\n';
     const theirs = '# Title\n\nBlock A.\n\nBlock B edited by them.\n\nBlock C edited by them.\n';
 
     const result = reconcile({ docName, base, ours, theirs });
-    expect(result.kind).toBe('conflicts');
-    if (result.kind === 'conflicts') {
-      expect(result.conflicts).toHaveLength(1);
-      expect(result.conflicts[0].base).toBe('Block C.');
-
-      const blocks = splitMarkdownBlocks(result.newContent);
-      expect(blocks).toContain('Block A edited by us.');
-      expect(blocks).toContain('Block B edited by them.');
+    expect(result.kind).toBe('both-kept');
+    if (result.kind === 'both-kept') {
+      expect(result.kept).toHaveLength(1);
+      expect(result.kept[0].base).toBe('Block C.');
+      expect(splitMarkdownBlocks(result.newContent)).toEqual([
+        '# Title',
+        'Block A edited by us.',
+        'Block B edited by them.',
+        'Block C edited by us.',
+        'Block C edited by them.',
+      ]);
     }
   });
 
@@ -417,7 +424,7 @@ describe('reconcile', () => {
       }
     });
 
-    test('conflicts: an outcome that also skipped dedup past the LCS cap reports dedupSkipped', () => {
+    test('both-kept: an outcome that also skipped dedup past the LCS cap reports dedupSkipped', () => {
       const perSide = Math.ceil(Math.sqrt(MAX_LCS_CELLS)) + 10;
       const shared = Array.from({ length: 10 }, (_, i) => `shared ${i}.`);
       const base = 'Anchor.\n';
@@ -435,11 +442,15 @@ describe('reconcile', () => {
       const theirs = `${theirBlocks.join('\n\n')}\n`;
 
       const result = reconcile({ docName, base, ours, theirs });
-      expect(result.kind).toBe('conflicts');
-      if (result.kind === 'conflicts') {
-        expect(result.conflicts).toHaveLength(1);
-        expect(result.conflicts[0].ours).toBe('Anchor edited by us.');
-        expect(result.conflicts[0].theirs).toBe('Anchor edited by them.');
+      expect(result.kind).toBe('both-kept');
+      if (result.kind === 'both-kept') {
+        expect(result.kept).toHaveLength(1);
+        expect(result.kept[0].ours).toBe('Anchor edited by us.');
+        expect(result.kept[0].theirs).toBe('Anchor edited by them.');
+        expect(splitMarkdownBlocks(result.newContent).slice(0, 2)).toEqual([
+          'Anchor edited by us.',
+          'Anchor edited by them.',
+        ]);
         expect(result.dedupSkipped).toBe(true);
       }
     });

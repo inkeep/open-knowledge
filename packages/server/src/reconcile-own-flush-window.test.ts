@@ -12,6 +12,7 @@ import {
   type ReconcileBeforeWriteResult,
   reconcileDiskBeforeAgentWrite,
 } from './external-change.ts';
+import { NO_SHADOW_MERGE_HISTORY } from './merge-history.test-helper.ts';
 import { createPersistenceExtension } from './persistence.ts';
 
 const BROWSER_ORIGIN = {
@@ -99,6 +100,7 @@ async function drivePhantomDivergence(
   };
 
   let windowFired = false;
+  let windowGuard: Promise<ReconcileBeforeWriteResult> | undefined;
   const persistence = createPersistenceExtension({
     contentDir: tmpDir,
     projectDir: tmpDir,
@@ -113,7 +115,7 @@ async function drivePhantomDivergence(
       if (options.diskContentInWindow !== undefined) {
         writeFileSync(docPath, options.diskContentInWindow, 'utf-8');
       }
-      probe.windowResult = reconcileDiskBeforeAgentWrite(
+      windowGuard = reconcileDiskBeforeAgentWrite(
         durabilityState,
         fakeHocuspocusWith(docName, document),
         docName,
@@ -121,6 +123,7 @@ async function drivePhantomDivergence(
         undefined,
         undefined,
         RECONCILE_TEST_CONFLICTS,
+        NO_SHADOW_MERGE_HISTORY,
       );
       probe.conflictAfterGuard = isDocInConflict(document as never);
     },
@@ -129,6 +132,7 @@ async function drivePhantomDivergence(
   await loadDocument(persistence, document, docName);
   document.transact(() => replaceDocParagraphs(document, FLUSHED_PARAGRAPHS), BROWSER_ORIGIN);
   await storeDocument(persistence, document, docName);
+  probe.windowResult = await windowGuard;
 
   expect(windowFired).toBe(true);
   expect(probe.baseSeenInWindow).toBe(BASE_CONTENT);
@@ -180,7 +184,7 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
 
     expect(durabilityState.getReconciledBase(docName)).toBe(FLUSHED_CONTENT);
 
-    const laterGuard = reconcileDiskBeforeAgentWrite(
+    const laterGuard = await reconcileDiskBeforeAgentWrite(
       durabilityState,
       fakeHocuspocusWith(docName, document),
       docName,
@@ -188,6 +192,7 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
       undefined,
       undefined,
       RECONCILE_TEST_CONFLICTS,
+      NO_SHADOW_MERGE_HISTORY,
     );
     expect(laterGuard.reconciled).toBe(false);
 
@@ -302,7 +307,7 @@ describe('reconcileDiskBeforeAgentWrite — overlapping own flushes are not fore
     let pendingAtWindow = 0;
     let headAtWindow: string | undefined;
     let diskMatchedPendingAtWindow = false;
-    let result: ReconcileBeforeWriteResult | undefined;
+    let pendingResult: Promise<ReconcileBeforeWriteResult> | undefined;
     let conflictAfterGuard: boolean | undefined;
 
     const persistence = createPersistenceExtension({
@@ -325,11 +330,15 @@ describe('reconcileDiskBeforeAgentWrite — overlapping own flushes are not fore
           docName,
           normalizeBridge(diskAtWindow),
         );
-        result = reconcileDiskBeforeAgentWrite(
+        pendingResult = reconcileDiskBeforeAgentWrite(
           durabilityState,
           fakeHocuspocusWith(docName, document),
           docName,
           tmpDir,
+          undefined,
+          undefined,
+          RECONCILE_TEST_CONFLICTS,
+          NO_SHADOW_MERGE_HISTORY,
         );
         conflictAfterGuard = isDocInConflict(document as never);
       },
@@ -339,6 +348,7 @@ describe('reconcileDiskBeforeAgentWrite — overlapping own flushes are not fore
     document.transact(() => replaceDocParagraphs(document, FLUSHED_PARAGRAPHS), BROWSER_ORIGIN);
     await storeDocument(persistence, document, docName);
     await laterFlush;
+    const result = await pendingResult;
 
     expect(windowFired).toBe(true);
     expect(pendingAtWindow).toBeGreaterThanOrEqual(2);

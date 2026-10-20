@@ -82,11 +82,27 @@ export type ParsedCheckpoint =
       metadata: { diskBytes: number; discardedBytes: number };
     }
   | {
+      kind: 'external-change-both-kept';
+      docName: string | null;
+      size: number | null;
+      metadata: { side: 'ours' | 'theirs'; keptBlocks: number };
+    }
+  | {
+      kind: 'external-change-kept-live';
+      docName: string | null;
+      size: number | null;
+      metadata: { side: 'ours' | 'theirs'; reason: 'check-failed' | 'too-large' };
+    }
+  | {
       kind: 'auto-consolidation';
       docName: string | null;
       size: number | null;
       metadata: { foldedRefs: number; trigger: string };
     };
+
+function isMergeSide(value: unknown): value is 'ours' | 'theirs' {
+  return value === 'ours' || value === 'theirs';
+}
 
 export function parseCheckpoint(body: string): ParsedCheckpoint | null {
   if (!body) return null;
@@ -269,6 +285,34 @@ export function parseCheckpoint(body: string): ParsedCheckpoint | null {
       }
       return null;
     }
+    if (kind === 'external-change-both-kept') {
+      const m = metadata as { side?: unknown; keptBlocks?: unknown };
+      if (
+        isMergeSide(m.side) &&
+        typeof m.keptBlocks === 'number' &&
+        Number.isFinite(m.keptBlocks)
+      ) {
+        return {
+          kind: 'external-change-both-kept',
+          docName,
+          size,
+          metadata: { side: m.side, keptBlocks: m.keptBlocks },
+        };
+      }
+      return null;
+    }
+    if (kind === 'external-change-kept-live') {
+      const m = metadata as { side?: unknown; reason?: unknown };
+      if (isMergeSide(m.side) && (m.reason === 'check-failed' || m.reason === 'too-large')) {
+        return {
+          kind: 'external-change-kept-live',
+          docName,
+          size,
+          metadata: { side: m.side, reason: m.reason },
+        };
+      }
+      return null;
+    }
     if (kind === 'auto-consolidation') {
       const m = metadata as { foldedRefs?: unknown; trigger?: unknown };
       if (
@@ -401,6 +445,18 @@ export const CHECKPOINT_KIND_REGISTRY = {
     bundleExposure: 'metadata',
     chainAnchor: false,
   },
+  'external-change-both-kept': {
+    visibility: 'surfaced',
+    gcBucket: 'external-change-both-kept',
+    bundleExposure: 'metadata',
+    chainAnchor: false,
+  },
+  'external-change-kept-live': {
+    visibility: 'surfaced',
+    gcBucket: 'external-change-kept-live',
+    bundleExposure: 'metadata',
+    chainAnchor: false,
+  },
   'auto-consolidation': {
     visibility: 'hidden',
     gcBucket: 'auto-consolidation',
@@ -489,6 +545,18 @@ export const CHECKPOINT_SAMPLE_BY_KIND = {
     docName: '.ok/templates/daily',
     size: 12,
     metadata: { diskBytes: 41, discardedBytes: 66 },
+  },
+  'external-change-both-kept': {
+    kind: 'external-change-both-kept',
+    docName: 'notes',
+    size: 12,
+    metadata: { side: 'theirs', keptBlocks: 1 },
+  },
+  'external-change-kept-live': {
+    kind: 'external-change-kept-live',
+    docName: 'notes',
+    size: 12,
+    metadata: { side: 'theirs', reason: 'check-failed' },
   },
   'auto-consolidation': {
     kind: 'auto-consolidation',

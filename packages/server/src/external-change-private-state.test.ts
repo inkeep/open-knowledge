@@ -15,6 +15,7 @@ import type * as Y from 'yjs';
 import { RECONCILE_TEST_CONFLICTS } from './conflict-authority.test-helper.ts';
 import { DocumentDurabilityState } from './document-durability-state.ts';
 import { reconcileDiskBeforeAgentWrite } from './external-change.ts';
+import { NO_SHADOW_MERGE_HISTORY } from './merge-history.test-helper.ts';
 
 describe('reconcile before an agent write', () => {
   let contentDir = '';
@@ -46,7 +47,7 @@ describe('reconcile before an agent write', () => {
       unlinkSync(join(contentDir, 'note.md'));
       symlinkSync('.ok/local/secret.md', join(contentDir, 'note.md'));
 
-      const result = reconcileDiskBeforeAgentWrite(
+      const result = await reconcileDiskBeforeAgentWrite(
         durabilityState,
         hp,
         'note',
@@ -54,6 +55,7 @@ describe('reconcile before an agent write', () => {
         undefined,
         undefined,
         RECONCILE_TEST_CONFLICTS,
+        NO_SHADOW_MERGE_HISTORY,
       );
 
       expect(result.reconciled).toBe(false);

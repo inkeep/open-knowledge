@@ -169,8 +169,8 @@ describe('FR1 + FR2: conflict-gate swap-in / swap-out (server-observable contrac
   }, 30_000);
 });
 
-describe('FR11: the reconciliation conflict path raises an entry and fires the FR9 gate', () => {
-  test('reconcile case "conflicts" raises a reconcile entry + mutating handler returns 409', async () => {
+describe('FR11 under D34: a same-block reconcile keeps both versions and raises no entry', () => {
+  test('a same-block reconcile raises no entry and the next mutating write lands', async () => {
     const cleanups: Array<() => Promise<void> | void> = [];
     try {
       const docName = `fr11-${crypto.randomUUID()}`;
@@ -203,19 +203,21 @@ describe('FR11: the reconciliation conflict path raises an entry and fires the F
       const theirsContent = '# Heading\n\nTheir version of first paragraph.\n\nSecond paragraph.\n';
       writeFileSync(join(server.contentDir, `${docName}.md`), theirsContent, 'utf-8');
 
-      await pollUntil(
-        async () => (await listConflicts(server.port)).some((c) => c.file === `${docName}.md`),
-        10_000,
+      const live = () =>
+        server.instance.hocuspocus.documents.get(docName)?.getText('source').toString() ?? '';
+      await pollUntil(() => live().includes('Their version'), 10_000);
+      expect(live()).toBe(
+        '# Heading\n\nOur version of first paragraph.\n\nTheir version of first paragraph.\n\nSecond paragraph.\n',
       );
-      const entry = (await listConflicts(server.port)).find((c) => c.file === `${docName}.md`);
-      expect(entry?.conflict).toBe('reconcile');
-      expect(entry?.reason).toBe('merged-with-markers');
-      expect(entry?.docName).toBe(docName);
+      expect(await listConflicts(server.port)).toEqual([]);
 
-      const res = await agentWrite(server.port, docName, '# Replacement\n');
-      expect(res.status).toBe(409);
-      const body = (await res.json()) as Record<string, unknown>;
-      expect(body.type).toBe('urn:ok:error:doc-in-conflict');
+      const res = await fetch(`http://127.0.0.1:${server.port}/api/agent-write-md`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ docName, markdown: 'Agent line.\n', position: 'append' }),
+      });
+      expect(res.status).toBe(200);
+      expect(live()).toContain('Agent line.');
     } finally {
       while (cleanups.length > 0) await cleanups.pop()?.();
     }

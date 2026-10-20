@@ -8,6 +8,7 @@ import {
 } from './cc1-broadcast.ts';
 import { getLogger } from './logger.ts';
 import { mdManager } from './md-manager.ts';
+import { incrementReconcileConstructCheckSkipped } from './metrics.ts';
 
 export interface ReconcileInput {
   docName: string;
@@ -16,11 +17,34 @@ export interface ReconcileInput {
   theirs: string;
 }
 
-export interface BlockConflict {
+export interface KeptBlockPair {
   blockIndex: number;
   base: string;
   ours: string;
   theirs: string;
+  landed: 'both' | 'ours' | 'theirs';
+}
+
+export interface KeptBlockCounts {
+  readonly duplicated: number;
+  readonly restoredDeletedHere: number;
+  readonly restoredDeletedOutside: number;
+}
+
+export function countKeptBlocks(kept: readonly KeptBlockPair[]): KeptBlockCounts {
+  let duplicated = 0;
+  let restoredDeletedHere = 0;
+  let restoredDeletedOutside = 0;
+  for (const pair of kept) {
+    if (pair.landed === 'both') duplicated++;
+    else if (pair.landed === 'theirs') restoredDeletedHere++;
+    else restoredDeletedOutside++;
+  }
+  return { duplicated, restoredDeletedHere, restoredDeletedOutside };
+}
+
+export function blocksKeptTwice(kept: readonly KeptBlockPair[]): number {
+  return countKeptBlocks(kept).duplicated;
 }
 
 export type ReconcileRefusalReason = 'conflict-markers' | 'no-base' | 'too-large' | 'check-failed';
@@ -37,7 +61,7 @@ type MergeCheckFailure =
 export type ReconcileOutcome =
   | { kind: 'clean'; newContent: string }
   | { kind: 'merged'; newContent: string; mergedBlocks: number; dedupSkipped?: true }
-  | { kind: 'conflicts'; newContent: string; conflicts: BlockConflict[]; dedupSkipped?: true }
+  | { kind: 'both-kept'; newContent: string; kept: KeptBlockPair[]; dedupSkipped?: true }
   | { kind: 'refused'; reason: Exclude<ReconcileRefusalReason, 'check-failed'> }
   | { kind: 'refused'; reason: 'check-failed'; failure: MergeCheckFailure }
   | { kind: 'noop' };
@@ -214,25 +238,22 @@ export function reconcile(input: ReconcileInput): ReconcileOutcome {
 
   const merge = mergeBlocks(baseDoc, ourDoc, theirDoc, mergeOutputLineEnding(base, ours, theirs));
 
-  const failure = checkMergeOutput({
+  const verdict = verifyMergeOutput({
     base,
     ours,
     theirs,
     newContent: merge.newContent,
-    conflicts: merge.conflicts,
     dedupSkipped: merge.dedupSkipped,
   });
-  if (failure) return { kind: 'refused', reason: 'check-failed', failure };
+  if (verdict.failure) return { kind: 'refused', reason: 'check-failed', failure: verdict.failure };
+  if (verdict.constructCheck !== 'ran') {
+    reportConstructCheckSkipped(input.docName, verdict.constructCheck);
+  }
 
-  if (merge.conflicts.length > 0) {
+  if (merge.kept.length > 0) {
     return merge.dedupSkipped
-      ? {
-          kind: 'conflicts',
-          newContent: merge.newContent,
-          conflicts: merge.conflicts,
-          dedupSkipped: true,
-        }
-      : { kind: 'conflicts', newContent: merge.newContent, conflicts: merge.conflicts };
+      ? { kind: 'both-kept', newContent: merge.newContent, kept: merge.kept, dedupSkipped: true }
+      : { kind: 'both-kept', newContent: merge.newContent, kept: merge.kept };
   }
 
   return merge.dedupSkipped
@@ -253,7 +274,7 @@ interface EmittedBlock {
 interface BlockMerge {
   readonly newContent: string;
   readonly mergedBlocks: number;
-  readonly conflicts: BlockConflict[];
+  readonly kept: KeptBlockPair[];
   readonly dedupSkipped: boolean;
 }
 
@@ -297,7 +318,7 @@ function mergeBlocks(
   const theirEdits = computeEditOps(base.keys, theirs.keys);
 
   const emitted: EmittedBlock[] = [];
-  const conflicts: BlockConflict[] = [];
+  const kept: KeptBlockPair[] = [];
   let dedupSkipped = false;
 
   for (let i = 0; i < base.blocks.length; i++) {
@@ -329,15 +350,26 @@ function mergeBlocks(
     } else {
       const ourKey = ourText === null ? null : blockIdentity(ourText);
       const theirKey = theirText === null ? null : blockIdentity(theirText);
+      if (ourText !== null) anchored(ourText);
       if (ourKey !== theirKey) {
-        conflicts.push({
+        let landed: KeptBlockPair['landed'] = 'ours';
+        if (theirText !== null) {
+          if (ourText === null) {
+            landed = 'theirs';
+            anchored(theirText);
+          } else {
+            landed = 'both';
+            emitted.push({ text: theirText, separator: sideSeparator(theirs, theirOp) ?? null });
+          }
+        }
+        kept.push({
           blockIndex: i,
           base: base.blocks[i].text,
           ours: ourText ?? '',
           theirs: theirText ?? '',
+          landed,
         });
       }
-      if (ourText !== null) anchored(ourText);
     }
   }
 
@@ -375,7 +407,7 @@ function mergeBlocks(
   return {
     newContent: outputLineEnding ? spellLineEndings(assembled, outputLineEnding) : assembled,
     mergedBlocks: emitted.length,
-    conflicts,
+    kept,
     dedupSkipped,
   };
 }
@@ -518,8 +550,14 @@ interface MergeCheckInput {
   readonly ours: string;
   readonly theirs: string;
   readonly newContent: string;
-  readonly conflicts: readonly BlockConflict[];
   readonly dedupSkipped: boolean;
+}
+
+type ConstructCheckRun = 'ran' | 'skipped-oversized' | 'skipped-unparsed-source';
+
+interface MergeVerdict {
+  readonly failure: MergeCheckFailure | null;
+  readonly constructCheck: ConstructCheckRun;
 }
 
 type CheckedDocument = 'base' | MergeSide | 'output';
@@ -542,7 +580,6 @@ interface Occurrence {
   readonly sources: readonly BlockSource[];
   readonly side: MergeSide;
   readonly sideBlockIndex: number;
-  required: boolean;
   consumed: boolean;
 }
 
@@ -622,7 +659,6 @@ function collectOccurrences(
             ],
       side: 'ours',
       sideBlockIndex: oi,
-      required: true,
       consumed: false,
     });
   }
@@ -634,27 +670,21 @@ function collectOccurrences(
       sources: [{ document: 'theirs', index: ti }],
       side: 'theirs',
       sideBlockIndex: ti,
-      required: true,
       consumed: false,
     });
   }
   return occurrences;
 }
 
-function releaseConflictingTheirs(
-  occurrences: ReadonlyMap<string, readonly Occurrence[]>,
-  conflicts: readonly BlockConflict[],
-): void {
-  for (const conflict of conflicts) {
-    if (conflict.theirs === '') continue;
-    const occurrence = occurrences
-      .get(blockIdentity(conflict.theirs))
-      ?.find((candidate) => candidate.required && candidate.side === 'theirs');
-    if (occurrence) occurrence.required = false;
-  }
+export function checkMergeOutput(input: MergeCheckInput): MergeCheckFailure | null {
+  return verifyMergeOutput(input).failure;
 }
 
-export function checkMergeOutput(input: MergeCheckInput): MergeCheckFailure | null {
+function failed(failure: MergeCheckFailure): MergeVerdict {
+  return { failure, constructCheck: 'ran' };
+}
+
+function verifyMergeOutput(input: MergeCheckInput): MergeVerdict {
   const outputLineEnding = mergeOutputLineEnding(input.base, input.ours, input.theirs);
   const expectBytes = (raw: string): string =>
     outputLineEnding ? spellLineEndings(raw, outputLineEnding) : raw;
@@ -681,7 +711,7 @@ export function checkMergeOutput(input: MergeCheckInput): MergeCheckFailure | nu
       continue;
     }
     if (output.blocks[k].text !== expectBytes(base.blocks[bi].text)) {
-      return { check: 'untouched-verbatim', baseBlockIndex: bi };
+      return failed({ check: 'untouched-verbatim', baseBlockIndex: bi });
     }
     sources[k] = [
       { document: 'base', index: bi },
@@ -691,7 +721,7 @@ export function checkMergeOutput(input: MergeCheckInput): MergeCheckFailure | nu
     nextUntouched++;
   }
   if (nextUntouched < untouched.length) {
-    return { check: 'untouched-verbatim', baseBlockIndex: untouched[nextUntouched] };
+    return failed({ check: 'untouched-verbatim', baseBlockIndex: untouched[nextUntouched] });
   }
 
   const occurrences = collectOccurrences(
@@ -702,7 +732,6 @@ export function checkMergeOutput(input: MergeCheckInput): MergeCheckFailure | nu
     !input.dedupSkipped,
     expectBytes,
   );
-  releaseConflictingTheirs(occurrences, input.conflicts);
 
   const unclaimed: number[] = [];
   for (const k of rest) {
@@ -714,28 +743,30 @@ export function checkMergeOutput(input: MergeCheckInput): MergeCheckFailure | nu
       continue;
     }
     const bytes = output.blocks[k].text;
-    const exact =
-      candidates.find((c) => c.required && c.expected.includes(bytes)) ??
-      candidates.find((c) => c.expected.includes(bytes));
+    const exact = candidates.find((c) => c.expected.includes(bytes));
     if (!exact) {
-      return {
+      return failed({
         check: 'side-bytes',
         side: candidates[0].side,
         sideBlockIndex: candidates[0].sideBlockIndex,
-      };
+      });
     }
     exact.consumed = true;
     sources[k] = exact.sources;
   }
 
   for (const bucket of occurrences.values()) {
-    const missing = bucket.find((occurrence) => occurrence.required && !occurrence.consumed);
+    const missing = bucket.find((occurrence) => !occurrence.consumed);
     if (missing) {
-      return { check: 'side-bytes', side: missing.side, sideBlockIndex: missing.sideBlockIndex };
+      return failed({
+        check: 'side-bytes',
+        side: missing.side,
+        sideBlockIndex: missing.sideBlockIndex,
+      });
     }
   }
   if (unclaimed.length > 0) {
-    return { check: 'single-occurrence', outputBlockIndex: unclaimed[0] };
+    return failed({ check: 'single-occurrence', outputBlockIndex: unclaimed[0] });
   }
 
   return checkConstructs(
@@ -816,24 +847,32 @@ function coveringTypes(
   return types.join(' ');
 }
 
+function reportConstructCheckSkipped(
+  docName: string,
+  reason: Exclude<ConstructCheckRun, 'ran'>,
+): void {
+  incrementReconcileConstructCheckSkipped();
+  getLogger('reconcile').info(
+    { docName, reason, limitBytes: MAX_CONSTRUCT_CHECK_BYTES },
+    `[reconcile] ${docName} construct check skipped (${reason}); the byte checks still ran`,
+  );
+}
+
 function checkConstructs(
   texts: Readonly<Record<CheckedDocument, string>>,
   sources: readonly (readonly BlockSource[])[],
-): MergeCheckFailure | null {
+): MergeVerdict {
   const largestBytes = Math.max(...Object.values(texts).map((text) => Buffer.byteLength(text)));
   if (largestBytes > MAX_CONSTRUCT_CHECK_BYTES) {
-    getLogger('reconcile').debug(
-      { largestBytes, limitBytes: MAX_CONSTRUCT_CHECK_BYTES },
-      '[reconcile] construct check skipped: a document is over the size bound',
-    );
-    return null;
+    return { failure: null, constructCheck: 'skipped-oversized' };
   }
   const base = parseDocument(texts.base);
   const ours = parseDocument(texts.ours);
   const theirs = parseDocument(texts.theirs);
-  if (!base || !ours || !theirs) return null;
+  if (!base || !ours || !theirs)
+    return { failure: null, constructCheck: 'skipped-unparsed-source' };
   const output = parseDocument(texts.output);
-  if (!output) return { check: 'parse' };
+  if (!output) return failed({ check: 'parse' });
   const parsed: Readonly<Record<CheckedDocument, ParsedDocument>> = { base, ours, theirs, output };
 
   const constructAt = (source: BlockSource): string | null => {
@@ -847,7 +886,7 @@ function checkConstructs(
     const stable =
       merged !== null &&
       sources[k].some((source) => source.index !== -1 && constructAt(source) === merged);
-    if (!stable) return { check: 'construct', outputBlockIndex: k };
+    if (!stable) return failed({ check: 'construct', outputBlockIndex: k });
   }
-  return null;
+  return { failure: null, constructCheck: 'ran' };
 }

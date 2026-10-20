@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hocuspocus } from '@hocuspocus/server';
@@ -7,15 +7,19 @@ import {
   BridgeMergeContentLossError,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
-import type * as Y from 'yjs';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import * as Y from 'yjs';
 import { DocumentDurabilityState } from './document-durability-state.ts';
 import {
   applyExternalChange,
+  buildReconcileWarning,
   createExternalChangeHandler,
+  reconcileDiskBeforeAgentWrite,
+  reportReconcileBothKept,
   reportReconcileCheckFailed,
 } from './external-change.ts';
 import { getLogger } from './logger.ts';
+import type { MergeHistoryRecorder } from './merge-history.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
 import { reconcile } from './reconciliation.ts';
 
@@ -480,5 +484,161 @@ describe('reportReconcileCheckFailed', () => {
       warnSpy.mockRestore();
       resetMetrics();
     }
+  });
+});
+
+describe('reconcileDiskBeforeAgentWrite keeps the live side only once the outside version is in history', () => {
+  const docName = 'kept-live-doc';
+  const base = 'A\n\nB\n\nC\n';
+  const ours = 'A\n\nX\n\nB edited\n\nC\n';
+  const theirs = 'A\n\nX\n\nB\n\nC\n';
+  let contentDir: string;
+  let document: Y.Doc;
+  let durabilityState: DocumentDurabilityState;
+  const conflicts = {
+    raise: vi.fn(),
+    dissolveReconcile: vi.fn(),
+    fileOf: (name: string) => `${name}.md`,
+  };
+
+  const recorder = (keptLive: MergeHistoryRecorder['keptLive']): MergeHistoryRecorder => ({
+    bothKept: vi.fn(),
+    keptLive: vi.fn(keptLive),
+  });
+
+  const guard = (history: MergeHistoryRecorder) =>
+    reconcileDiskBeforeAgentWrite(
+      durabilityState,
+      { documents: new Map([[docName, document]]) } as unknown as Hocuspocus,
+      docName,
+      contentDir,
+      undefined,
+      undefined,
+      conflicts,
+      history,
+    );
+
+  beforeEach(() => {
+    contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-kept-live-')));
+    document = new Y.Doc();
+    document.getText('source').insert(0, ours);
+    durabilityState = new DocumentDurabilityState();
+    durabilityState.setReconciledBase(docName, base);
+    writeFileSync(join(contentDir, `${docName}.md`), theirs, 'utf-8');
+    conflicts.raise.mockClear();
+  });
+
+  afterEach(() => {
+    document.destroy();
+    rmSync(contentDir, { recursive: true, force: true });
+  });
+
+  test('a confirmed history write moves the base to the outside bytes and reports kept-live', async () => {
+    const history = recorder(() => Promise.resolve(true));
+    const result = await guard(history);
+
+    expect(result).toMatchObject({ reconciled: true, mergeOutcome: 'kept-live' });
+    expect(history.keptLive).toHaveBeenCalledWith(
+      docName,
+      { side: 'theirs', bytes: theirs },
+      'check-failed',
+    );
+    expect(durabilityState.getReconciledBase(docName)).toBe(theirs);
+    expect(conflicts.raise).not.toHaveBeenCalled();
+  });
+
+  test('a history write that was not saved raises the reconcile conflict with all three stages and keeps the base', async () => {
+    const result = await guard(recorder(() => Promise.resolve(false)));
+
+    expect(result.reconciled).toBe(false);
+    expect(conflicts.raise).toHaveBeenCalledWith({
+      kind: 'reconcile',
+      file: `${docName}.md`,
+      reason: 'refused-too-large',
+      stages: { base, ours, theirs },
+    });
+    expect(durabilityState.getReconciledBase(docName)).toBe(base);
+  });
+});
+
+describe('buildReconcileWarning', () => {
+  const reconciled = { reconciled: true, baseBytes: 10, diskBytes: 14 } as const;
+
+  test('asks for a re-read only on the both-kept and kept-live outcomes', () => {
+    expect(
+      buildReconcileWarning({ ...reconciled, mergeOutcome: 'merged' })?.nextStep,
+    ).toBeUndefined();
+    expect(
+      buildReconcileWarning({ ...reconciled, mergeOutcome: 'clean' })?.nextStep,
+    ).toBeUndefined();
+    expect(
+      buildReconcileWarning({
+        ...reconciled,
+        mergeOutcome: 'both-kept',
+        keptBlocks: { duplicated: 1, restoredDeletedHere: 0, restoredDeletedOutside: 0 },
+      })?.nextStep,
+    ).toBe('re-read');
+    expect(buildReconcileWarning({ ...reconciled, mergeOutcome: 'kept-live' })?.nextStep).toBe(
+      're-read',
+    );
+    expect(
+      buildReconcileWarning({ reconciled: false, baseBytes: 0, diskBytes: 0 }),
+    ).toBeUndefined();
+  });
+
+  const bothKept = (
+    duplicated: number,
+    restoredDeletedHere: number,
+    restoredDeletedOutside: number,
+  ) =>
+    buildReconcileWarning({
+      ...reconciled,
+      mergeOutcome: 'both-kept',
+      keptBlocks: { duplicated, restoredDeletedHere, restoredDeletedOutside },
+    });
+
+  test('duplicates only: names the duplicate and asks to remove it', () => {
+    const warning = bothKept(2, 0, 0);
+    expect(warning).toMatchObject({
+      duplicatedBlocks: 2,
+      restoredDeletedHere: 0,
+      restoredDeletedOutside: 0,
+    });
+    expect(warning?.hint).toBe(
+      'An out-of-band edit changed 2 blocks also edited here, so both versions were kept: the version here first, the out-of-band version directly under it. Your write landed; do not retry it. Re-read the document (e.g. `exec("cat <path>")`) and, if your task calls for it, remove the duplicate with an ordinary edit.',
+    );
+  });
+
+  test('a deletion here undone: names this side as the one whose deletion was undone', () => {
+    const warning = bothKept(0, 1, 0);
+    expect(warning).toMatchObject({ duplicatedBlocks: 0, restoredDeletedHere: 1 });
+    expect(warning?.hint).toBe(
+      'The deletion here of 1 block was undone because the out-of-band edit changed it: the out-of-band version was restored. Your write landed; do not retry it. Re-read the document (e.g. `exec("cat <path>")`) and, if your task calls for it, delete the restored block again with an ordinary edit.',
+    );
+  });
+
+  test('an out-of-band deletion undone beside duplicates: both sentences, no invitation to delete', () => {
+    const warning = bothKept(1, 0, 1);
+    expect(warning).toMatchObject({ duplicatedBlocks: 1, restoredDeletedOutside: 1 });
+    expect(warning?.hint).toBe(
+      'An out-of-band edit changed 1 block also edited here, so both versions were kept: the version here first, the out-of-band version directly under it. The out-of-band deletion of 1 block edited here was undone: the version here was kept. Your write landed; do not retry it. Re-read the document (e.g. `exec("cat <path>")`) and, if your task calls for it, remove the duplicate with an ordinary edit.',
+    );
+  });
+});
+
+describe('reportReconcileBothKept', () => {
+  test('counts the merge once and only the blocks that landed twice', () => {
+    resetMetrics();
+    reportReconcileBothKept(
+      'counted-doc',
+      [
+        { blockIndex: 0, base: 'A', ours: 'A ours', theirs: 'A theirs', landed: 'both' },
+        { blockIndex: 1, base: 'B', ours: '', theirs: 'B theirs', landed: 'theirs' },
+      ],
+      'watcher',
+    );
+    expect(getMetrics().reconcileBothKept).toBe(1);
+    expect(getMetrics().reconcileBothKeptBlocks).toBe(1);
+    resetMetrics();
   });
 });

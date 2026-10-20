@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { Hocuspocus } from '@hocuspocus/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
+import { RECONCILE_TEST_CONFLICTS } from './conflict-authority.test-helper.ts';
 import { ConflictAuthority } from './conflict-authority.ts';
 import { DISPLACED_VERSION_TTL_MS, DocumentDurabilityState } from './document-durability-state.ts';
 import {
@@ -12,6 +13,7 @@ import {
   serializeYDocSource,
 } from './external-change.ts';
 import { getLogger } from './logger.ts';
+import { NO_SHADOW_MERGE_HISTORY } from './merge-history.test-helper.ts';
 import { getMetrics } from './metrics.ts';
 import { createPersistenceExtension } from './persistence.ts';
 import { MAX_LCS_CELLS } from './reconciliation.ts';
@@ -94,11 +96,15 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     const before = getMetrics();
     writeFileSync(join(tmpDir, `${docName}.md`), STALE_CONTENT, 'utf-8');
 
-    const result = reconcileDiskBeforeAgentWrite(
+    const result = await reconcileDiskBeforeAgentWrite(
       durabilityState,
       fakeHocuspocusWith(docName, document),
       docName,
       tmpDir,
+      undefined,
+      undefined,
+      RECONCILE_TEST_CONFLICTS,
+      NO_SHADOW_MERGE_HISTORY,
     );
 
     expect(result.reconciled).toBe(false);
@@ -189,11 +195,15 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     await settleWrite();
     writeFileSync(join(tmpDir, `${docName}.md`), 'alpha\n\nbeta gamma\n\ndelta\n', 'utf-8');
 
-    const result = reconcileDiskBeforeAgentWrite(
+    const result = await reconcileDiskBeforeAgentWrite(
       durabilityState,
       fakeHocuspocusWith(docName, document),
       docName,
       tmpDir,
+      undefined,
+      undefined,
+      RECONCILE_TEST_CONFLICTS,
+      NO_SHADOW_MERGE_HISTORY,
     );
 
     expect(result.reconciled).toBe(true);
@@ -205,11 +215,15 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     await settleWrite(false);
     writeFileSync(join(tmpDir, `${docName}.md`), STALE_CONTENT, 'utf-8');
 
-    const result = reconcileDiskBeforeAgentWrite(
+    const result = await reconcileDiskBeforeAgentWrite(
       durabilityState,
       fakeHocuspocusWith(docName, document),
       docName,
       tmpDir,
+      undefined,
+      undefined,
+      RECONCILE_TEST_CONFLICTS,
+      NO_SHADOW_MERGE_HISTORY,
     );
 
     expect(result.reconciled).toBe(true);
@@ -252,11 +266,15 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     expect(refuseStaleExternalWrite(durabilityState, document, docName, STALE_CONTENT)).toBe(true);
     writeFileSync(join(tmpDir, `${docName}.md`), ACKNOWLEDGED_CONTENT, 'utf-8');
 
-    reconcileDiskBeforeAgentWrite(
+    await reconcileDiskBeforeAgentWrite(
       durabilityState,
       fakeHocuspocusWith(docName, document),
       docName,
       tmpDir,
+      undefined,
+      undefined,
+      RECONCILE_TEST_CONFLICTS,
+      NO_SHADOW_MERGE_HISTORY,
     );
 
     expect(document.getMap('lifecycle').get('status')).toBeUndefined();
@@ -380,20 +398,28 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     durabilityState.recordDisplacedVersion(docName, crlfStale);
     replaceDocParagraphs(document, ['alpha', 'beta gamma']);
     writeFileSync(join(tmpDir, `${docName}.md`), crlfStale, 'utf-8');
-    reconcileDiskBeforeAgentWrite(
+    await reconcileDiskBeforeAgentWrite(
       durabilityState,
       fakeHocuspocusWith(docName, document),
       docName,
       tmpDir,
+      undefined,
+      undefined,
+      RECONCILE_TEST_CONFLICTS,
+      NO_SHADOW_MERGE_HISTORY,
     );
     expect(durabilityState.getStaleExternalWrite(docName)).toBeDefined();
     expect(document.getText('source').toString()).toBe(ACKNOWLEDGED_CONTENT);
     writeFileSync(join(tmpDir, `${docName}.md`), ACKNOWLEDGED_CONTENT, 'utf-8');
-    reconcileDiskBeforeAgentWrite(
+    await reconcileDiskBeforeAgentWrite(
       durabilityState,
       fakeHocuspocusWith(docName, document),
       docName,
       tmpDir,
+      undefined,
+      undefined,
+      RECONCILE_TEST_CONFLICTS,
+      NO_SHADOW_MERGE_HISTORY,
     );
     expect(durabilityState.getStaleExternalWrite(docName)).toBeUndefined();
   });
@@ -410,11 +436,15 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
       const beforeReplacement = getMetrics();
       replaceDocParagraphs(document, ['alpha', 'beta gamma', 'next retained edit']);
       writeFileSync(join(tmpDir, `${docName}.md`), diskContent, 'utf-8');
-      reconcileDiskBeforeAgentWrite(
+      await reconcileDiskBeforeAgentWrite(
         durabilityState,
         fakeHocuspocusWith(docName, document),
         docName,
         tmpDir,
+        undefined,
+        undefined,
+        RECONCILE_TEST_CONFLICTS,
+        NO_SHADOW_MERGE_HISTORY,
       );
       expect(durabilityState.getStaleExternalWrite(docName)).toBeDefined();
       expect(refuseStaleExternalWrite(durabilityState, undefined, docName, diskContent)).toBe(true);
@@ -498,7 +528,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
       },
     });
 
-    const result = reconcileDiskBeforeAgentWrite(
+    const result = await reconcileDiskBeforeAgentWrite(
       durabilityState,
       fakeHocuspocusWith(docName, document),
       docName,
@@ -506,6 +536,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
       undefined,
       undefined,
       authority,
+      NO_SHADOW_MERGE_HISTORY,
     );
 
     expect(result.reconciled).toBe(false);
@@ -531,11 +562,15 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
 
     const warnSpy = vi.spyOn(getLogger('reconcile'), 'warn');
     try {
-      const result = reconcileDiskBeforeAgentWrite(
+      const result = await reconcileDiskBeforeAgentWrite(
         durabilityState,
         fakeHocuspocusWith(docName, document),
         docName,
         tmpDir,
+        undefined,
+        undefined,
+        RECONCILE_TEST_CONFLICTS,
+        NO_SHADOW_MERGE_HISTORY,
       );
 
       expect(result.reconciled).toBe(true);

@@ -24,6 +24,13 @@ export interface ReconciliationMetrics {
   conflictCount: number;
   reconcileInsertDedupSkipped: number;
   reconcileCheckFailed: number;
+  reconcileConstructCheckSkipped: number;
+  reconcileBothKept: number;
+  reconcileBothKeptBlocks: number;
+  reconcileKeptLive: number;
+  mergeHistoryCheckpointCreated: number;
+  mergeHistoryCheckpointFailures: number;
+  mergeHistoryUnavailable: number;
   staleExternalWriteRefused: number;
   concurrentOverwriteRefused: number;
   batchCount: number;
@@ -145,6 +152,13 @@ const counters: ReconciliationMetrics = {
   conflictCount: 0,
   reconcileInsertDedupSkipped: 0,
   reconcileCheckFailed: 0,
+  reconcileConstructCheckSkipped: 0,
+  reconcileBothKept: 0,
+  reconcileBothKeptBlocks: 0,
+  reconcileKeptLive: 0,
+  mergeHistoryCheckpointCreated: 0,
+  mergeHistoryCheckpointFailures: 0,
+  mergeHistoryUnavailable: 0,
   staleExternalWriteRefused: 0,
   concurrentOverwriteRefused: 0,
   batchCount: 0,
@@ -263,6 +277,31 @@ export function incrementReconcileInsertDedupSkipped(): void {
 
 export function incrementReconcileCheckFailed(): void {
   counters.reconcileCheckFailed++;
+}
+
+export function incrementReconcileConstructCheckSkipped(): void {
+  counters.reconcileConstructCheckSkipped++;
+}
+
+export function incrementReconcileBothKept(keptBlocks: number): void {
+  counters.reconcileBothKept++;
+  counters.reconcileBothKeptBlocks += keptBlocks;
+}
+
+export function incrementReconcileKeptLive(): void {
+  counters.reconcileKeptLive++;
+}
+
+export function incrementMergeHistoryCheckpointCreated(): void {
+  counters.mergeHistoryCheckpointCreated++;
+}
+
+export function incrementMergeHistoryCheckpointFailures(): void {
+  counters.mergeHistoryCheckpointFailures++;
+}
+
+export function incrementMergeHistoryUnavailable(): void {
+  counters.mergeHistoryUnavailable++;
 }
 
 export function incrementStaleExternalWriteRefused(): void {
@@ -698,6 +737,13 @@ export function resetMetrics(): void {
   counters.conflictCount = 0;
   counters.reconcileInsertDedupSkipped = 0;
   counters.reconcileCheckFailed = 0;
+  counters.reconcileConstructCheckSkipped = 0;
+  counters.reconcileBothKept = 0;
+  counters.reconcileBothKeptBlocks = 0;
+  counters.reconcileKeptLive = 0;
+  counters.mergeHistoryCheckpointCreated = 0;
+  counters.mergeHistoryCheckpointFailures = 0;
+  counters.mergeHistoryUnavailable = 0;
   counters.staleExternalWriteRefused = 0;
   counters.concurrentOverwriteRefused = 0;
   counters.batchCount = 0;

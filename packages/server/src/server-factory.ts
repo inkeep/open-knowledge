@@ -152,7 +152,9 @@ import {
   type FrozenResidentRevival,
   redactedErrorSummary,
   refuseStaleExternalWrite,
+  reportReconcileBothKept,
   reportReconcileCheckFailed,
+  reportReconcileKeptLive,
   reviveFrozenResidentDoc,
   serializeYDocSource,
   wireReasonForRefusal,
@@ -231,6 +233,7 @@ import { startManagedArtifactWatcher } from './managed-artifact-watcher.ts';
 import { recoverPendingManagedRename } from './managed-rename-journal.ts';
 import type { NativeTomlMcpEditor } from './mcp-config-reconciler.ts';
 import { mdManager, schema } from './md-manager.ts';
+import { createMergeHistoryRecorder, type MergeHistoryWriter } from './merge-history.ts';
 import {
   incrementBatch,
   incrementBranchSwitch,
@@ -258,7 +261,7 @@ import {
 } from './persistence-staleness-watchdog.ts';
 import { loadPrincipal } from './principal.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';
-import { type ReconcileOutcome, reconcile } from './reconciliation.ts';
+import { blocksKeptTwice, type ReconcileOutcome, reconcile } from './reconciliation.ts';
 import { reconcileRecoveredFileTarget } from './recovered-file-target.ts';
 import { runRemovalRedirectGuard } from './removal-redirect-guard.ts';
 import { loadRemovedDocsJournal, saveRemovedDocsJournal } from './removed-docs-journal.ts';
@@ -380,6 +383,7 @@ export interface ServerOptions {
   ephemeral?: boolean;
   watcherBackend?: NativeWatcherBackend;
   watcherClock?: WatcherClock;
+  mergeHistoryWriter?: MergeHistoryWriter;
   generatedIndexTestHooks?: {
     beforePlan?: (context: { fullSweep: boolean; signal: AbortSignal }) => Promise<void> | void;
     beforeDecision?: (context: {
@@ -2529,6 +2533,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     hocuspocus.configuration.extensions.push(systemDocBroadcastGuard);
 
     const apiExtension = createApiExtension({
+      mergeHistoryWriter: options.mergeHistoryWriter,
       declaredGitHubHosts,
       resolveSyncCredentialConfig,
       hocuspocus,
@@ -2872,6 +2877,13 @@ export function createServer(options: ServerOptions): ServerInstance {
     }
   }
 
+  const mergeHistory = createMergeHistoryRecorder({
+    getShadow: () => shadowRef.current,
+    contentRoot: contentRoot ?? '',
+    getBranch: getStorageBranch,
+    writeCheckpoint: options.mergeHistoryWriter,
+  });
+
   const CHECKPOINT_KIND_BY_MINT_SITE = {
     delete: 'external-change-rescue',
     rename: 'external-change-rescue',
@@ -2961,7 +2973,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     ours: string,
     theirs: string,
   ): void => {
-    if (outcome.kind !== 'merged' && outcome.kind !== 'conflicts') return;
+    if (outcome.kind !== 'merged' && outcome.kind !== 'both-kept') return;
     if (!outcome.dedupSkipped) return;
     incrementReconcileInsertDedupSkipped();
     log.warn(
@@ -3128,7 +3140,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           const oursLen = ours.length;
           const theirsLen = theirs.length;
           const newLen =
-            result.kind === 'clean' || result.kind === 'merged' || result.kind === 'conflicts'
+            result.kind === 'clean' || result.kind === 'merged' || result.kind === 'both-kept'
               ? result.newContent.length
               : undefined;
           const delta = newLen === undefined ? undefined : newLen - Math.max(oursLen, theirsLen);
@@ -3201,30 +3213,30 @@ export function createServer(options: ServerOptions): ServerInstance {
               }
               break;
 
-            case 'conflicts': {
-              let applied = false;
+            case 'both-kept': {
               try {
                 applyToDoc(docName, result.newContent);
-                setReconciledBase(docName, result.newContent);
-                incrementReconcile();
-                incrementConflict();
-                applied = true;
               } catch (e) {
                 log.error(
                   { err: e, docName },
-                  `[reconcile] failed to apply conflict content to Y.Doc for ${docName}`,
+                  `[reconcile] failed to apply both-kept content to Y.Doc for ${docName}; raising the conflict`,
                 );
                 setReconciledBase(docName, theirs);
+                incrementConflict();
+                conflicts.raise({
+                  kind: 'reconcile',
+                  file: conflicts.fileOf(docName),
+                  reason: 'merged-with-markers',
+                  stages: { base, ours, theirs },
+                });
+                break;
               }
-              conflicts.raise({
-                kind: 'reconcile',
-                file: conflicts.fileOf(docName),
-                reason: 'merged-with-markers',
-                stages: { base, ours, theirs },
-              });
-              if (applied) {
-                await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
-              }
+              mergeHistory.bothKept(docName, { ours, theirs }, blocksKeptTwice(result.kept));
+              setReconciledBase(docName, theirs);
+              incrementReconcile();
+              reportReconcileBothKept(docName, result.kept, 'watcher');
+              conflicts.dissolveReconcile(docName);
+              await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
               break;
             }
 
@@ -3234,6 +3246,21 @@ export function createServer(options: ServerOptions): ServerInstance {
                 break;
               }
               reportReconcileCheckFailed(docName, result, 'watcher');
+              if (result.reason === 'check-failed' || result.reason === 'too-large') {
+                if (
+                  await mergeHistory.keptLive(
+                    docName,
+                    { side: 'theirs', bytes: theirs },
+                    result.reason,
+                  )
+                ) {
+                  setReconciledBase(docName, theirs);
+                  reportReconcileKeptLive(docName, result.reason, 'watcher');
+                  conflicts.dissolveReconcile(docName);
+                  await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
+                  break;
+                }
+              }
               incrementConflict();
               conflicts.raise({
                 kind: 'reconcile',
@@ -4984,19 +5011,21 @@ export function createServer(options: ServerOptions): ServerInstance {
                       docName,
                     );
                     if (!parked) continue;
-                    if (parked.markdown === parked.diskSnapshot) continue;
+                    const parkedMarkdown = parked.markdown.trim();
+                    const parkedBase = parked.diskSnapshot.trim();
+                    if (parkedMarkdown === parkedBase) continue;
 
                     const currentDisk = getReconciledBase(docName);
                     if (!currentDisk) continue;
 
                     const outcome = reconcile({
                       docName,
-                      base: parked.diskSnapshot,
-                      ours: parked.markdown,
+                      base: parkedBase,
+                      ours: parkedMarkdown,
                       theirs: currentDisk,
                     });
 
-                    reportInsertDedupSkipped(docName, outcome, parked.markdown, currentDisk);
+                    reportInsertDedupSkipped(docName, outcome, parkedMarkdown, currentDisk);
                     reportReconcileCheckFailed(docName, outcome, 'branch-switch');
 
                     switch (outcome.kind) {
@@ -5006,21 +5035,16 @@ export function createServer(options: ServerOptions): ServerInstance {
                         setReconciledBase(docName, outcome.newContent);
                         restoredCount++;
                         break;
-                      case 'conflicts': {
+                      case 'both-kept': {
                         applyToDoc(docName, outcome.newContent);
                         setReconciledBase(docName, outcome.newContent);
-                        incrementConflict();
+                        mergeHistory.bothKept(
+                          docName,
+                          { ours: parked.markdown, theirs: currentDisk },
+                          blocksKeptTwice(outcome.kept),
+                        );
+                        reportReconcileBothKept(docName, outcome.kept, 'branch-switch');
                         restoredCount++;
-                        conflicts.raise({
-                          kind: 'reconcile',
-                          file: conflicts.fileOf(docName),
-                          reason: 'merged-with-markers',
-                          stages: {
-                            base: parked.diskSnapshot,
-                            ours: parked.markdown,
-                            theirs: currentDisk,
-                          },
-                        });
                         break;
                       }
                       case 'noop':
@@ -5028,10 +5052,26 @@ export function createServer(options: ServerOptions): ServerInstance {
                       case 'refused': {
                         const refusal = outcome.reason;
                         switch (refusal) {
+                          case 'too-large':
+                          case 'check-failed': {
+                            if (
+                              await mergeHistory.keptLive(
+                                docName,
+                                { side: 'ours', bytes: parked.markdown },
+                                refusal,
+                              )
+                            ) {
+                              reportReconcileKeptLive(docName, refusal, 'branch-switch');
+                              break;
+                            }
+                            log.warn(
+                              { docName, reason: refusal, branch: newBranch },
+                              `[branch-switch] parked WIP not restored for ${docName} (reconcile refused: ${refusal}); it stays parked`,
+                            );
+                            break;
+                          }
                           case 'conflict-markers':
                           case 'no-base':
-                          case 'too-large':
-                          case 'check-failed':
                             log.warn(
                               { docName, reason: refusal, branch: newBranch },
                               `[branch-switch] parked WIP not restored for ${docName} (reconcile refused: ${refusal})`,

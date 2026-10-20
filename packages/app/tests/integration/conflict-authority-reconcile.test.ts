@@ -13,6 +13,7 @@ import {
 
 const BASE_CONTENT = '# Doc\n\nalpha\n\nbeta\n';
 const DISK_CONTENT = '# Doc\n\nalpha-disk\n\nbeta\n';
+const BOTH_KEPT_CONTENT = '# Doc\n\nalpha-editor\n\nalpha-disk\n\nbeta\n';
 const MARKER_CONTENT =
   '# Doc\n\n<<<<<<< ours\nalpha-ours\n=======\nalpha-theirs\n>>>>>>> theirs\n\nbeta\n';
 
@@ -107,9 +108,10 @@ async function seedDoc(server: TestServer, docName: string): Promise<void> {
   );
 }
 
-async function driveReconcileConflict(
+async function driveDiskWriteOverEditorEdit(
   server: TestServer,
   docName: string,
+  diskContent: string,
 ): Promise<Awaited<ReturnType<typeof createTestClient>>> {
   const client = await createTestClient(server.port, docName);
   cleanups.push(() => client.cleanup());
@@ -122,8 +124,29 @@ async function driveReconcileConflict(
     client.ytext.insert(at, 'alpha-editor');
   });
   await pollUntil(() => client.ytext.toString().includes('alpha-editor'), 5_000);
-  writeFileSync(join(server.contentDir, `${docName}.md`), DISK_CONTENT, 'utf-8');
+  writeFileSync(join(server.contentDir, `${docName}.md`), diskContent, 'utf-8');
   return client;
+}
+
+async function assertBothKeptWithoutEntry(
+  server: TestServer,
+  docName: string,
+  client: Awaited<ReturnType<typeof createTestClient>>,
+): Promise<void> {
+  const file = `${docName}.md`;
+  await pollUntil(
+    () => client.ytext.toString() === BOTH_KEPT_CONTENT,
+    30_000,
+    100,
+    `both versions of the colliding block in ${file}`,
+  );
+  expect((await listConflicts(server.port)).some((c) => c.file === file)).toBe(false);
+  await pollUntil(
+    async () => (await writeProbe(server.port, docName, '# after\n')) === 200,
+    CONCURRENT_REPLACE_WINDOW_MS * 2,
+    100,
+    `a write to ${file} to land once its overlap window clears`,
+  );
 }
 
 async function assertReconcileConflictIsResolvable(
@@ -175,16 +198,16 @@ async function assertReconcileConflictIsResolvable(
 }
 
 describe('PRD-7947: a reconcile-born conflict is tracked, inspectable and resolvable', () => {
-  test('shape 1 — a three-way reconcile that conflicts registers a reconcile entry', async () => {
+  test('shape 1 — a three-way reconcile where both sides changed one block keeps both and registers no entry', async () => {
     const server = await createTestServer({
       debounce: STORE_DEBOUNCE_MS,
       maxDebounce: STORE_MAX_DEBOUNCE_MS,
     });
     cleanups.push(() => server.cleanup());
-    const docName = `reconcile-conflicts-${crypto.randomUUID()}`;
+    const docName = `reconcile-both-kept-${crypto.randomUUID()}`;
     await seedDoc(server, docName);
-    await driveReconcileConflict(server, docName);
-    await assertReconcileConflictIsResolvable(server, docName, 'merged-with-markers');
+    const client = await driveDiskWriteOverEditorEdit(server, docName, DISK_CONTENT);
+    await assertBothKeptWithoutEntry(server, docName, client);
   }, 120_000);
 
   test('shape 2 — conflict markers landing on disk register a disk-markers entry', async () => {
@@ -205,7 +228,7 @@ describe('PRD-7947: a reconcile-born conflict is tracked, inspectable and resolv
     await assertReconcileConflictIsResolvable(server, docName, 'disk-markers');
   }, 120_000);
 
-  test('shape 3 — the same reconcile conflict is tracked with sync wired to a remote', async () => {
+  test('shape 3 — the same reconcile keeps both and registers no entry with sync wired to a remote', async () => {
     const docName = `reconcile-sync-${crypto.randomUUID()}`;
     const server = await createSyncWiredTestServer({
       originSeed: { [`${docName}.md`]: BASE_CONTENT },
@@ -225,8 +248,8 @@ describe('PRD-7947: a reconcile-born conflict is tracked, inspectable and resolv
       `${docName} to be indexed`,
     );
 
-    await driveReconcileConflict(server, docName);
-    await assertReconcileConflictIsResolvable(server, docName, 'merged-with-markers');
+    const client = await driveDiskWriteOverEditorEdit(server, docName, DISK_CONTENT);
+    await assertBothKeptWithoutEntry(server, docName, client);
   }, 180_000);
 });
 
@@ -239,7 +262,7 @@ describe('PRD-7947: the editor-side edit survives into the conflict stages', () 
     cleanups.push(() => server.cleanup());
     const docName = `reconcile-stages-${crypto.randomUUID()}`;
     await seedDoc(server, docName);
-    await driveReconcileConflict(server, docName);
+    await driveDiskWriteOverEditorEdit(server, docName, MARKER_CONTENT);
 
     const file = `${docName}.md`;
     await pollUntil(
@@ -251,7 +274,7 @@ describe('PRD-7947: the editor-side edit survives into the conflict stages', () 
 
     const content = await conflictContent(server.port, file);
     expect(content.status).toBe(200);
-    expect(String(content.body.theirs ?? '')).toContain('alpha-disk');
+    expect(String(content.body.theirs ?? '')).toContain('alpha-theirs');
     expect(String(content.body.ours ?? '')).toContain('alpha-editor');
     expect(content.body.resolutionOptions).toEqual(
       expect.arrayContaining(['mine', 'content', 'delete']),
@@ -267,7 +290,7 @@ describe('PRD-7947: the editor-side edit survives into the conflict stages', () 
     const docName = `reconcile-live-ours-${crypto.randomUUID()}`;
     const file = `${docName}.md`;
     await seedDoc(server, docName);
-    const client = await driveReconcileConflict(server, docName);
+    const client = await driveDiskWriteOverEditorEdit(server, docName, MARKER_CONTENT);
 
     await pollUntil(
       async () => (await listConflicts(server.port)).some((c) => c.file === file),
@@ -322,7 +345,7 @@ describe('PRD-7947: resolving a reconcile conflict with `delete` keeps the file 
       client.ytext.insert(at, 'alpha-editor');
     });
     await pollUntil(() => client.ytext.toString().includes('alpha-editor'), 5_000);
-    writeFileSync(absPath, DISK_CONTENT, 'utf-8');
+    writeFileSync(absPath, MARKER_CONTENT, 'utf-8');
 
     await pollUntil(
       async () => (await listConflicts(server.port)).some((c) => c.file === file),

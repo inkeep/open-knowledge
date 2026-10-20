@@ -124,8 +124,8 @@ describe('case "conflict" disk event -> conflict ledger', () => {
   }, 60_000);
 });
 
-describe('case "conflicts" reconcile branch -> conflict ledger', () => {
-  test('case "conflicts" raises a reconcile entry with reason "merged-with-markers"', async () => {
+describe('same-block reconcile -> both versions kept, nothing in the conflict ledger', () => {
+  test('a same-block reconcile keeps both versions in the editor and raises no ledger entry', async () => {
     const docName = `reconcile-conflicts-${crypto.randomUUID()}`;
     const baseContent = '# Heading\n\nFirst paragraph.\n\nSecond paragraph.\n';
     const server = await createTestServer({ debounce: 60_000, maxDebounce: 60_000 });
@@ -160,12 +160,11 @@ describe('case "conflicts" reconcile branch -> conflict ledger', () => {
     const theirsContent = '# Heading\n\nTheir version of first paragraph.\n\nSecond paragraph.\n';
     writeFileSync(filePath, theirsContent, 'utf-8');
 
-    await pollUntil(() => server.instance.conflicts.has(docName), 30_000);
+    const bothKept =
+      '# Heading\n\nOur version of first paragraph.\n\nTheir version of first paragraph.\n\nSecond paragraph.\n';
+    await pollUntil(() => client.ytext.toString() === bothKept, 30_000);
 
-    expect(server.instance.conflicts.findByDocName(docName)).toMatchObject({
-      kind: 'reconcile',
-      reason: 'merged-with-markers',
-    });
+    expect(server.instance.conflicts.has(docName)).toBe(false);
   }, 60_000);
 });
 

@@ -6,6 +6,8 @@ import {
   BrokenLinkSchema,
   type BrokenLinkSuppression,
   BrokenLinkSuppressionSchema,
+  type DiskEditReconciledWarning,
+  isReconcileMergeOutcome,
   isWriteWarningKind,
   type LinkCheckDeferredWarning,
   type LintViolationWarning,
@@ -139,12 +141,55 @@ function formatIntegrityLine(d: WriteWarning): string {
   }
 }
 
+function formatBothKeptBrief(d: DiskEditReconciledWarning): string {
+  const restoredHere = d.restoredDeletedHere ?? 0;
+  const restoredOutside = d.restoredDeletedOutside ?? 0;
+  const duplicated = d.duplicatedBlocks ?? (restoredHere + restoredOutside > 0 ? 0 : 1);
+  const parts = [
+    ...(duplicated > 0
+      ? ['an out-of-band edit to the same block was kept beside the version here']
+      : []),
+    ...(restoredHere > 0
+      ? ['a deletion here was undone and the out-of-band version restored']
+      : []),
+    ...(restoredOutside > 0
+      ? ['an out-of-band deletion was undone and the version here kept']
+      : []),
+  ];
+  const summary = parts.join('; ');
+  const tidy = [
+    ...(duplicated > 0 ? ['remove the duplicate'] : []),
+    ...(restoredHere > 0 ? ['delete the restored block again'] : []),
+  ];
+  const next =
+    tidy.length > 0 ? `Re-read and ${tidy.join(' or ')} if needed.` : 'Re-read before continuing.';
+  return `⚠ ${summary.charAt(0).toUpperCase()}${summary.slice(1)}; the write landed. ${next}`;
+}
+
+function formatReconciledBrief(d: DiskEditReconciledWarning): string {
+  const outcome = isReconcileMergeOutcome(d.mergeOutcome) ? d.mergeOutcome : undefined;
+  switch (outcome) {
+    case 'both-kept':
+      return formatBothKeptBrief(d);
+    case 'kept-live':
+      return '⚠ An out-of-band edit could not be merged and was saved to history; the write landed. Re-read before continuing.';
+    case 'clean':
+    case 'merged':
+    case undefined:
+      return '⚠ Out-of-band disk edit reconciled before this write — re-read for the combined result.';
+    default: {
+      const unhandled: never = outcome;
+      return `⚠ Out-of-band disk edit reconciled before this write (${String(unhandled)}) — re-read for the combined result.`;
+    }
+  }
+}
+
 function formatIntegrityBrief(d: WriteWarning): string {
   switch (d.kind) {
     case 'content-divergence':
       return `⚠ Content divergence: ${d.actualBytes} actual vs ${d.intendedBytes} intended (byteDelta=${d.byteDelta}).`;
     case 'disk-edit-reconciled':
-      return '⚠ Out-of-band disk edit reconciled before this write — re-read for the combined result.';
+      return formatReconciledBrief(d);
     default:
       return assertNeverWriteWarning(d);
   }

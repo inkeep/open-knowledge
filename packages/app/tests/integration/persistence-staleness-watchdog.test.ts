@@ -74,11 +74,10 @@ describe('persistence staleness watchdog (integration)', () => {
     expect(getMetrics().persistenceStalenessForcedStores).toBe(forcedBefore);
   });
 
-  test('stands down instead of clobbering an external native edit', async () => {
+  test('never writes over an external native edit that lands under unflushed edits', async () => {
     server = await createTestServer({ stalenessGraceMs: 250, stalenessSweepIntervalMs: 100 });
     const docName = `staleness-external-${randomUUID()}`;
     const filePath = join(server.contentDir, `${docName}.md`);
-    const forcedBefore = getMetrics().persistenceStalenessForcedStores;
 
     const first = await writeMd(server.port, docName, '# version one\n');
     expect(first.status).toBe(200);
@@ -104,15 +103,14 @@ describe('persistence staleness watchdog (integration)', () => {
         `http://127.0.0.1:${server.port}/api/document?docName=${encodeURIComponent(docName)}`,
       );
       expect(state.ok).toBe(true);
-      const watcherReconciled = (await state.text()).includes('external native edit');
-      const entry = server.instance.conflicts.findByDocName(docName);
-      const watcherSurfacedConflict =
-        entry?.kind === 'reconcile' && entry.reason === 'merged-with-markers';
-      expect(watcherReconciled || watcherSurfacedConflict).toBe(true);
+      expect((await state.text()).includes('external native edit')).toBe(true);
     }
 
-    await wait(500);
-    expect(readFileSync(filePath, 'utf-8')).toBe('# external native edit\n');
-    expect(getMetrics().persistenceStalenessForcedStores).toBe(forcedBefore);
+    const deadline = Date.now() + 1_500;
+    while (Date.now() < deadline) {
+      expect(readFileSync(filePath, 'utf-8')).toContain('# external native edit\n');
+      await wait(50);
+    }
+    expect(server.instance.conflicts.findByDocName(docName)).toBeUndefined();
   });
 });

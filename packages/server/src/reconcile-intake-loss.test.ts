@@ -17,6 +17,7 @@ import { RECONCILE_TEST_CONFLICTS } from './conflict-authority.test-helper.ts';
 import { DocumentDurabilityState } from './document-durability-state.ts';
 import { reconcileDiskBeforeAgentWrite } from './external-change.ts';
 import { mdManager } from './md-manager.ts';
+import { NO_SHADOW_MERGE_HISTORY } from './merge-history.test-helper.ts';
 
 const schema = getSchema(sharedExtensions);
 
@@ -79,7 +80,7 @@ describe('reconcileDiskBeforeAgentWrite paired-intake instrumentation', () => {
         trips.push({ docName: name, obs, writerId, site });
       };
 
-      const result = reconcileDiskBeforeAgentWrite(
+      const result = await reconcileDiskBeforeAgentWrite(
         durabilityState,
         hp,
         docName,
@@ -87,6 +88,7 @@ describe('reconcileDiskBeforeAgentWrite paired-intake instrumentation', () => {
         undefined,
         reporter,
         RECONCILE_TEST_CONFLICTS,
+        NO_SHADOW_MERGE_HISTORY,
       );
 
       expect(result.reconciled).toBe(true);
@@ -124,7 +126,7 @@ describe('reconcileDiskBeforeAgentWrite paired-intake instrumentation', () => {
       writeFileSync(join(contentDir, `${docName}.md`), DISK_EDIT);
 
       const trips: Trip[] = [];
-      const result = reconcileDiskBeforeAgentWrite(
+      const result = await reconcileDiskBeforeAgentWrite(
         durabilityState,
         hp,
         docName,
@@ -132,6 +134,7 @@ describe('reconcileDiskBeforeAgentWrite paired-intake instrumentation', () => {
         undefined,
         (name, obs, writerId, site) => trips.push({ docName: name, obs, writerId, site }),
         RECONCILE_TEST_CONFLICTS,
+        NO_SHADOW_MERGE_HISTORY,
       );
 
       expect(result.reconciled).toBe(true);

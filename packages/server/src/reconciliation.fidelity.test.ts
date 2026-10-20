@@ -1,6 +1,8 @@
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
+import { getMetrics } from './metrics';
 import {
+  blocksKeptTwice,
   checkMergeOutput,
   MAX_CONSTRUCT_CHECK_BYTES,
   MAX_LCS_CELLS,
@@ -8,7 +10,7 @@ import {
 } from './reconciliation';
 
 const docName = 'fidelity-doc';
-const cleanMerge = { conflicts: [], dedupSkipped: false } as const;
+const cleanMerge = { dedupSkipped: false } as const;
 const parser = new MarkdownManager({ extensions: sharedExtensions });
 const rootTypes = (md: string): string[] => parser.parseToMdast(md).children.map((c) => c.type);
 
@@ -293,7 +295,7 @@ describe('classification under the raw-byte definition of changed', () => {
     });
   });
 
-  test('a whitespace-only outside change inside a paragraph ours edited is a conflict', () => {
+  test('a whitespace-only outside change inside a paragraph ours edited keeps both versions', () => {
     const outcome = reconcile({
       docName,
       base: 'A\n\nPara text here.\n\nC\n',
@@ -301,14 +303,15 @@ describe('classification under the raw-byte definition of changed', () => {
       theirs: 'A\n\nPara  text here.\n\nC theirs\n',
     });
     expect(outcome).toEqual({
-      kind: 'conflicts',
-      newContent: 'A\n\nPara text EDITED.\n\nC theirs\n',
-      conflicts: [
+      kind: 'both-kept',
+      newContent: 'A\n\nPara text EDITED.\n\nPara  text here.\n\nC theirs\n',
+      kept: [
         {
           blockIndex: 1,
           base: 'Para text here.',
           ours: 'Para text EDITED.',
           theirs: 'Para  text here.',
+          landed: 'both',
         },
       ],
     });
@@ -339,6 +342,133 @@ describe('classification under the raw-byte definition of changed', () => {
       theirs: blocks('theirs'),
     });
     expect(outcome).toEqual({ kind: 'refused', reason: 'too-large' });
+  });
+});
+
+describe('a block both sides changed keeps both versions, ours first', () => {
+  test('a mid-document paragraph lands ours then theirs, each byte-exact, with no markers', () => {
+    expect(
+      reconcile({
+        docName,
+        base: '# Title\n\nShared.\n\nTail.\n',
+        ours: '# Title\n\nShared, ours.\n\nTail.\n',
+        theirs: '# Title\n\nShared, theirs.\n\nTail.\n',
+      }),
+    ).toEqual({
+      kind: 'both-kept',
+      newContent: '# Title\n\nShared, ours.\n\nShared, theirs.\n\nTail.\n',
+      kept: [
+        {
+          blockIndex: 1,
+          base: 'Shared.',
+          ours: 'Shared, ours.',
+          theirs: 'Shared, theirs.',
+          landed: 'both',
+        },
+      ],
+    });
+  });
+
+  test("the gap between the two versions is theirs' own separator before its version", () => {
+    const outcome = reconcile({
+      docName,
+      base: 'A\n\nB\n\nC\n',
+      ours: 'A\n\nB ours\n\nC\n',
+      theirs: 'A\n\n\nB theirs\n\nC\n',
+    });
+    expect(outcome).toMatchObject({
+      kind: 'both-kept',
+      newContent: 'A\n\n\nB ours\n\n\nB theirs\n\nC\n',
+    });
+  });
+
+  test('a first-block collision separates the two versions with the document blank line', () => {
+    expect(
+      reconcile({ docName, base: 'A\n\nB\n', ours: 'A ours\n\nB\n', theirs: 'A theirs\n\nB\n' }),
+    ).toMatchObject({ kind: 'both-kept', newContent: 'A ours\n\nA theirs\n\nB\n' });
+    expect(
+      reconcile({ docName, base: 'A\n', ours: 'A ours\n', theirs: 'A theirs\n' }),
+    ).toMatchObject({ kind: 'both-kept', newContent: 'A ours\n\nA theirs\n' });
+  });
+
+  test('CRLF documents keep CRLF in both versions and between them', () => {
+    expect(
+      reconcile({
+        docName,
+        base: '# T\r\n\r\nP.\r\n\r\nQ.\r\n',
+        ours: '# T\r\n\r\nP ours.\r\n\r\nQ.\r\n',
+        theirs: '# T\r\n\r\nP theirs.\r\n\r\nQ.\r\n',
+      }),
+    ).toMatchObject({
+      kind: 'both-kept',
+      newContent: '# T\r\n\r\nP ours.\r\n\r\nP theirs.\r\n\r\nQ.\r\n',
+    });
+  });
+
+  test('a block ours deleted and theirs changed restores the outside version in place, landed as theirs only', () => {
+    expect(
+      reconcile({
+        docName,
+        base: 'A\n\nB\n\nC\n',
+        ours: 'A\n\nC\n',
+        theirs: 'A\n\nB theirs\n\nC\n',
+      }),
+    ).toEqual({
+      kind: 'both-kept',
+      newContent: 'A\n\nB theirs\n\nC\n',
+      kept: [{ blockIndex: 1, base: 'B', ours: '', theirs: 'B theirs', landed: 'theirs' }],
+    });
+  });
+
+  test('a block ours changed and theirs deleted keeps the version here, landed as ours only', () => {
+    expect(
+      reconcile({
+        docName,
+        base: 'A\n\nB\n\nC\n',
+        ours: 'A\n\nB ours\n\nC\n',
+        theirs: 'A\n\nC\n',
+      }),
+    ).toEqual({
+      kind: 'both-kept',
+      newContent: 'A\n\nB ours\n\nC\n',
+      kept: [{ blockIndex: 1, base: 'B', ours: 'B ours', theirs: '', landed: 'ours' }],
+    });
+  });
+
+  test('only blocks that landed as both versions count as kept twice', () => {
+    const outcome = reconcile({
+      docName,
+      base: 'A\n\nB\n\nC\n\nD\n',
+      ours: 'A ours\n\nC\n\nD ours\n',
+      theirs: 'A theirs\n\nB theirs\n\nC\n\nD\n',
+    });
+    expect(outcome).toMatchObject({
+      kind: 'both-kept',
+      newContent: 'A ours\n\nA theirs\n\nB theirs\n\nC\n\nD ours\n',
+    });
+    if (outcome.kind !== 'both-kept') return;
+    expect(outcome.kept.map((pair) => pair.landed)).toEqual(['both', 'theirs']);
+    expect(blocksKeptTwice(outcome.kept)).toBe(1);
+  });
+
+  test("the check accepts both versions and refuses an output that drops or alters theirs' version", () => {
+    const sides = {
+      ...cleanMerge,
+      base: 'A\n\nB\n\nC\n',
+      ours: 'A\n\nB ours\n\nC\n',
+      theirs: 'A\n\nB theirs\n\nC\n',
+    };
+    expect(checkMergeOutput({ ...sides, newContent: 'A\n\nB ours\n\nB theirs\n\nC\n' })).toBeNull();
+    expect(checkMergeOutput({ ...sides, newContent: 'A\n\nB ours\n\nC\n' })).toEqual({
+      check: 'side-bytes',
+      side: 'theirs',
+      sideBlockIndex: 1,
+    });
+    expect(checkMergeOutput({ ...sides, newContent: 'A\n\nB ours\n\nB  theirs\n\nC\n' })).toEqual({
+      check: 'side-bytes',
+      side: 'theirs',
+      sideBlockIndex: 1,
+    });
   });
 });
 
@@ -462,6 +592,34 @@ describe('documents the strict parse rejects', () => {
         newContent: 'A\n\n</Foo>\n\nB theirs\n\n<Foo>\n',
       }),
     ).toEqual({ check: 'parse' });
+  });
+});
+
+describe('a skipped construct check is counted once per merge', () => {
+  test('a source the strict parse rejects counts one skip; an ordinary merge counts none', () => {
+    const before = getMetrics().reconcileConstructCheckSkipped;
+    reconcile({ docName, base: 'A\n\nB\n', ours: 'A ours\n\nB\n', theirs: 'A\n\nB theirs\n' });
+    expect(getMetrics().reconcileConstructCheckSkipped).toBe(before);
+    reconcile({
+      docName,
+      base: '# T\n\nA.\n\n<Foo>broken</Bar>\n\nB.\n',
+      ours: '# T\n\nA ours.\n\n<Foo>broken</Bar>\n\nB.\n',
+      theirs: '# T\n\nA.\n\n<Foo>broken</Bar>\n\nB theirs.\n',
+    });
+    expect(getMetrics().reconcileConstructCheckSkipped).toBe(before + 1);
+  });
+
+  test('an oversized merge counts one skip', () => {
+    const padding = 'Filler words. '.repeat(Math.ceil((MAX_CONSTRUCT_CHECK_BYTES + 1024) / 14));
+    const before = getMetrics().reconcileConstructCheckSkipped;
+    const outcome = reconcile({
+      docName,
+      base: `${padding}\n\nA\n\nB\n`,
+      ours: `${padding}\n\nA ours\n\nB\n`,
+      theirs: `${padding}\n\nA\n\nB theirs\n`,
+    });
+    expect(outcome.kind).toBe('merged');
+    expect(getMetrics().reconcileConstructCheckSkipped).toBe(before + 1);
   });
 });
 

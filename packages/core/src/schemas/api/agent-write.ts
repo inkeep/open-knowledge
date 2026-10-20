@@ -107,6 +107,13 @@ export const OrphanHintSchema = z
   .loose() satisfies StandardSchemaV1;
 export type OrphanHint = z.infer<typeof OrphanHintSchema>;
 
+export const RECONCILE_MERGE_OUTCOMES = ['clean', 'merged', 'both-kept', 'kept-live'] as const;
+export type ReconcileMergeOutcome = (typeof RECONCILE_MERGE_OUTCOMES)[number];
+
+export function isReconcileMergeOutcome(value: unknown): value is ReconcileMergeOutcome {
+  return (RECONCILE_MERGE_OUTCOMES as readonly unknown[]).includes(value);
+}
+
 export const DiskEditReconciledWarningSchema = z
   .object({
     kind: z.literal('disk-edit-reconciled'),
@@ -114,6 +121,10 @@ export const DiskEditReconciledWarningSchema = z
     actualBytes: z.number().int().nonnegative(),
     byteDelta: z.number().int(),
     mergeOutcome: z.string().optional(),
+    duplicatedBlocks: z.number().int().nonnegative().optional(),
+    restoredDeletedHere: z.number().int().nonnegative().optional(),
+    restoredDeletedOutside: z.number().int().nonnegative().optional(),
+    nextStep: z.string().optional(),
     hint: z.string().optional(),
   })
   .loose() satisfies StandardSchemaV1;

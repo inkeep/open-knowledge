@@ -20,6 +20,7 @@ import { RECONCILE_TEST_CONFLICTS } from './conflict-authority.test-helper.ts';
 import { DocumentDurabilityState } from './document-durability-state.ts';
 import { reconcileDiskBeforeAgentWrite } from './external-change.ts';
 import { mdManager } from './md-manager.ts';
+import { NO_SHADOW_MERGE_HISTORY } from './merge-history.test-helper.ts';
 import { createWiredPreDrainRig, WIRED_PENDING_LINE } from './pre-drain-wired.test-helper.ts';
 
 const schema = getSchema(sharedExtensions);
@@ -176,7 +177,7 @@ describe('paired-intake detection follows the registry at every wired site', () 
     try {
       const on = lossCollector();
       await seed('watcher-detect');
-      reconcileDiskBeforeAgentWrite(
+      await reconcileDiskBeforeAgentWrite(
         durabilityState,
         hp,
         'watcher-detect',
@@ -184,13 +185,15 @@ describe('paired-intake detection follows the registry at every wired site', () 
         undefined,
         on.reporter,
         RECONCILE_TEST_CONFLICTS,
+        NO_SHADOW_MERGE_HISTORY,
       );
       expect(on.trips.length).toBeGreaterThan(0);
 
       const off = lossCollector();
       await seed('watcher-suppress');
+      let suppressed: Promise<unknown> | undefined;
       withMode('file-watcher', 'suppress', () => {
-        reconcileDiskBeforeAgentWrite(
+        suppressed = reconcileDiskBeforeAgentWrite(
           durabilityState,
           hp,
           'watcher-suppress',
@@ -198,8 +201,10 @@ describe('paired-intake detection follows the registry at every wired site', () 
           undefined,
           off.reporter,
           RECONCILE_TEST_CONFLICTS,
+          NO_SHADOW_MERGE_HISTORY,
         );
       });
+      await suppressed;
       expect(off.trips).toEqual([]);
     } finally {
       rmSync(contentDir, { recursive: true, force: true });

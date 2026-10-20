@@ -7126,7 +7126,7 @@ describe('createServer() — disk-event reconcile insert-group dedup reporting',
     rig?.cleanup();
   });
 
-  test('a conflicting reconcile that also skipped insert dedup past the LCS cap still counts the skip', async () => {
+  test('a both-kept reconcile that also skipped insert dedup past the LCS cap still counts the skip', async () => {
     rig = await setupReconcileRig('ok-reconcile-conflict-dedup-');
     const docName = 'conflict-dedup-target';
     const perSide = Math.ceil(Math.sqrt(MAX_LCS_CELLS)) + 10;
@@ -7161,18 +7161,22 @@ describe('createServer() — disk-event reconcile insert-group dedup reporting',
 
       server.durabilityState.setReconciledBase(docName, base);
       const conflictsBefore = getMetrics().conflictCount;
+      const bothKeptBefore = getMetrics().reconcileBothKept;
       const dedupSkippedBefore = getMetrics().reconcileInsertDedupSkipped;
 
       writeFileSync(docPath, theirs, 'utf-8');
 
-      await vi.waitFor(() => expect(getMetrics().conflictCount).toBe(conflictsBefore + 1), {
+      await vi.waitFor(() => expect(getMetrics().reconcileBothKept).toBe(bothKeptBefore + 1), {
         timeout: 20_000,
         interval: 50,
       });
       const merged = serverDoc.getText('source').toString();
+      expect(merged.startsWith('Anchor edited by us.\n\nAnchor edited by them.\n\n')).toBe(true);
       expect(merged).toContain('Ours 0.');
       expect(merged).toContain(`Theirs ${perSide - 1}.`);
       expect(getMetrics().reconcileInsertDedupSkipped).toBe(dedupSkippedBefore + 1);
+      expect(getMetrics().conflictCount).toBe(conflictsBefore);
+      expect(server.conflicts.findByDocName(docName)).toBeUndefined();
 
       conn.disconnect();
     } finally {

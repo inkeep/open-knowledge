@@ -121,6 +121,76 @@ describe('formatAdvisoryBriefs', () => {
     const briefs = formatAdvisoryBriefs([mermaidWarning(), mermaidWarning({ fenceIndex: 2 })]);
     expect(briefs[0]).toContain('2 mermaid fences');
   });
+
+  test('a both-kept or kept-live reconcile says the write landed and names its outcome', () => {
+    const counts = (duplicated: number, here: number, outside: number) => ({
+      ...RECONCILED,
+      mergeOutcome: 'both-kept',
+      nextStep: 're-read',
+      duplicatedBlocks: duplicated,
+      restoredDeletedHere: here,
+      restoredDeletedOutside: outside,
+    });
+    const [
+      duplicatesOnly,
+      restoredHereOnly,
+      restoredOutsideAndDuplicates,
+      restoredHereAndDuplicates,
+      restoredOutsideOnly,
+      keptLive,
+    ] = formatAdvisoryBriefs([
+      counts(2, 0, 0),
+      counts(0, 1, 0),
+      counts(1, 0, 1),
+      counts(1, 1, 0),
+      counts(0, 0, 1),
+      { ...RECONCILED, mergeOutcome: 'kept-live', nextStep: 're-read' },
+    ]);
+    expect(duplicatesOnly).toBe(
+      '⚠ An out-of-band edit to the same block was kept beside the version here; the write landed. Re-read and remove the duplicate if needed.',
+    );
+    expect(restoredHereOnly).toBe(
+      '⚠ A deletion here was undone and the out-of-band version restored; the write landed. Re-read and delete the restored block again if needed.',
+    );
+    expect(restoredOutsideAndDuplicates).toBe(
+      '⚠ An out-of-band edit to the same block was kept beside the version here; an out-of-band deletion was undone and the version here kept; the write landed. Re-read and remove the duplicate if needed.',
+    );
+    expect(restoredHereAndDuplicates).toBe(
+      '⚠ An out-of-band edit to the same block was kept beside the version here; a deletion here was undone and the out-of-band version restored; the write landed. Re-read and remove the duplicate or delete the restored block again if needed.',
+    );
+    expect(restoredOutsideOnly).toBe(
+      '⚠ An out-of-band deletion was undone and the version here kept; the write landed. Re-read before continuing.',
+    );
+    expect(keptLive).toContain('saved to history');
+    expect(keptLive).toContain('the write landed');
+  });
+});
+
+describe('a merge outcome this tool copy does not know', () => {
+  test('still parses and reaches the summary line through the generic reconcile brief', () => {
+    const future = { ...RECONCILED, mergeOutcome: 'future-outcome', nextStep: 'future-step' };
+    const parsed = parseAdvisoryWarnings([future]);
+
+    expect(parsed).toEqual([future]);
+    expect(formatAdvisoryBriefs(parsed ?? [])).toEqual([
+      '⚠ Out-of-band disk edit reconciled before this write — re-read for the combined result.',
+    ]);
+    expect(formatAdvisoryLines(parsed ?? [])).toEqual([
+      '⚠ An out-of-band edit was reconciled into this document before your edit landed on top — re-read for the combined result.',
+    ]);
+  });
+});
+
+describe('the reconcile next step', () => {
+  test('parses on a reconcile warning and survives into structured content', () => {
+    const parsed = parseAdvisoryWarnings([
+      { ...RECONCILED, mergeOutcome: 'both-kept', nextStep: 're-read', hint: 'Re-read.' },
+    ]);
+    expect(parsed).toEqual([
+      { ...RECONCILED, mergeOutcome: 'both-kept', nextStep: 're-read', hint: 'Re-read.' },
+    ]);
+    expect(formatAdvisoryLines(parsed ?? [])).toEqual(['⚠ Re-read.']);
+  });
 });
 
 describe('render-family bounds phrasing', () => {
