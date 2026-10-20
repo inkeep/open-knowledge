@@ -4407,6 +4407,7 @@ describe('ThreadView auth-required dead ends', () => {
     const seen = { text: null as string | null };
     stopStaging = subscribeStagedThreadDraft(threadId, (text) => {
       seen.text = text;
+      return true;
     });
     return seen;
   }

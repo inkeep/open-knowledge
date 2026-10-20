@@ -15,58 +15,56 @@ export interface ThreadDraftSnapshot {
 
 const pending = new Map<string, string>();
 
-const listeners = new Map<string, (text: string) => void>();
+const listeners = new Map<string, (text: string) => boolean>();
 
 const pendingContent = new Map<string, ThreadDraftContent>();
 
-const contentListeners = new Map<string, (content: ThreadDraftContent) => void>();
+const contentListeners = new Map<string, (content: ThreadDraftContent) => boolean>();
 
 const readers = new Map<string, () => ThreadDraftSnapshot>();
 
 export function stageThreadDraft(threadId: string, text: string): void {
   if (text.trim() === '') return;
-  const listener = listeners.get(threadId);
-  if (listener !== undefined) {
-    listener(text);
-    return;
-  }
   pending.set(threadId, text);
+  flushStagedThreadDraft(threadId);
+}
+
+export function flushStagedThreadDraft(threadId: string): void {
+  const text = pending.get(threadId);
+  const listener = listeners.get(threadId);
+  if (text === undefined || listener === undefined) return;
+  if (listener(text) === true) pending.delete(threadId);
 }
 
 export function subscribeStagedThreadDraft(
   threadId: string,
-  onDraft: (text: string) => void,
+  onDraft: (text: string) => boolean,
 ): () => void {
   listeners.set(threadId, onDraft);
-  const held = pending.get(threadId);
-  if (held !== undefined) {
-    pending.delete(threadId);
-    onDraft(held);
-  }
+  flushStagedThreadDraft(threadId);
   return () => {
     if (listeners.get(threadId) === onDraft) listeners.delete(threadId);
   };
 }
 
 export function stageThreadDraftContent(threadId: string, content: ThreadDraftContent): void {
-  const listener = contentListeners.get(threadId);
-  if (listener !== undefined) {
-    listener(content);
-    return;
-  }
   pendingContent.set(threadId, content);
+  flushStagedThreadDraftContent(threadId);
+}
+
+export function flushStagedThreadDraftContent(threadId: string): void {
+  const content = pendingContent.get(threadId);
+  const listener = contentListeners.get(threadId);
+  if (content === undefined || listener === undefined) return;
+  if (listener(content) === true) pendingContent.delete(threadId);
 }
 
 export function subscribeStagedThreadDraftContent(
   threadId: string,
-  onContent: (content: ThreadDraftContent) => void,
+  onContent: (content: ThreadDraftContent) => boolean,
 ): () => void {
   contentListeners.set(threadId, onContent);
-  const held = pendingContent.get(threadId);
-  if (held !== undefined) {
-    pendingContent.delete(threadId);
-    onContent(held);
-  }
+  flushStagedThreadDraftContent(threadId);
   return () => {
     if (contentListeners.get(threadId) === onContent) contentListeners.delete(threadId);
   };

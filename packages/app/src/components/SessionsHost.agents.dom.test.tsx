@@ -1651,7 +1651,10 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
 
     const staged: string[] = [];
     const queued: Array<{ threadId: string; threadIds: readonly string[] | undefined }> = [];
-    const stopStaging = subscribeStagedThreadDraft('b', (text) => staged.push(text));
+    const stopStaging = subscribeStagedThreadDraft('b', (text) => {
+      staged.push(text);
+      return true;
+    });
     const stopQueued = subscribeSendInThread((threadId, threadIds) =>
       queued.push({ threadId, threadIds }),
     );
@@ -2866,7 +2869,10 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       await screen.findByTestId('thread-view');
 
       const staged: string[] = [];
-      const stopStaging = subscribeStagedThreadDraft('t1', (text) => staged.push(text));
+      const stopStaging = subscribeStagedThreadDraft('t1', (text) => {
+        staged.push(text);
+        return true;
+      });
       await act(async () => {
         requestActiveTerminalInput('fix this lint error', { submit });
       });
@@ -2885,7 +2891,10 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       expect(onVisibleChange).not.toHaveBeenCalled();
 
       const staged: string[] = [];
-      const stopStaging = subscribeStagedThreadDraft('t1', (text) => staged.push(text));
+      const stopStaging = subscribeStagedThreadDraft('t1', (text) => {
+        staged.push(text);
+        return true;
+      });
       await act(async () => {
         requestActiveTerminalInput('fix this lint error', { submit: false });
       });
@@ -2902,7 +2911,10 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       await screen.findByTestId('thread-view');
 
       const staged: string[] = [];
-      const stopStaging = subscribeStagedThreadDraft('t1', (text) => staged.push(text));
+      const stopStaging = subscribeStagedThreadDraft('t1', (text) => {
+        staged.push(text);
+        return true;
+      });
       await act(async () => {
         requestActiveTerminalInput('a fresh question', { newTab: true, submit: false });
       });
@@ -2922,7 +2934,10 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       await screen.findByTestId('thread-view');
 
       const staged: string[] = [];
-      const stopStaging = subscribeStagedThreadDraft('t1', (text) => staged.push(text));
+      const stopStaging = subscribeStagedThreadDraft('t1', (text) => {
+        staged.push(text);
+        return true;
+      });
       await act(async () => {
         requestActiveTerminalInput('fix this lint error', { newTab: true, submit: true });
       });

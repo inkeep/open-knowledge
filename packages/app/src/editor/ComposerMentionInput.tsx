@@ -51,9 +51,9 @@ export interface ComposerMentionInputHandle {
   blur: () => void;
   clear: () => void;
   setText: (text: string) => void;
-  appendText: (text: string) => void;
+  appendText: (text: string) => boolean;
   getDoc: () => JSONContent | null;
-  setDoc: (doc: JSONContent) => void;
+  setDoc: (doc: JSONContent) => boolean;
   getContent: () => {
     instruction: string;
     mentions: string[];
@@ -77,6 +77,7 @@ export function ComposerMentionInput({
   onEmptyChange,
   onContentChange,
   onMentionsChange,
+  onReady,
   onSubmit,
   onEscape,
   className,
@@ -94,6 +95,7 @@ export function ComposerMentionInput({
   onEmptyChange: (isEmpty: boolean) => void;
   onContentChange?: (doc: JSONContent) => void;
   onMentionsChange?: (mentions: string[]) => void;
+  onReady?: () => void;
   onSubmit: () => void;
   onEscape?: () => void;
   className?: string;
@@ -124,12 +126,14 @@ export function ComposerMentionInput({
   const onMentionsChangeRef = useRef(onMentionsChange);
   const onSubmitRef = useRef(onSubmit);
   const onEscapeRef = useRef(onEscape);
+  const onReadyRef = useRef(onReady);
   useEffect(() => {
     onEmptyChangeRef.current = onEmptyChange;
     onContentChangeRef.current = onContentChange;
     onMentionsChangeRef.current = onMentionsChange;
     onSubmitRef.current = onSubmit;
     onEscapeRef.current = onEscape;
+    onReadyRef.current = onReady;
   });
 
   const editor = useEditor({
@@ -253,23 +257,26 @@ export function ComposerMentionInput({
         notifyContentMutation();
       },
       appendText: (text: string) => {
-        if (!editor || text === '') return;
-        if (isComposerEmpty(editor)) {
-          editor.commands.setContent(textToParagraphs(text));
-        } else {
-          editor.commands.insertContentAt(editor.state.doc.content.size, [
-            { type: 'paragraph', content: [] },
-            ...textToParagraphs(text),
-          ]);
-        }
-        notifyContentMutation();
+        if (text === '') return true;
+        if (!editor || editor.isDestroyed) return false;
+        const inserted = isComposerEmpty(editor)
+          ? editor.commands.setContent(textToParagraphs(text))
+          : editor.commands.insertContentAt(editor.state.doc.content.size, [
+              { type: 'paragraph', content: [] },
+              ...textToParagraphs(text),
+            ]);
+        if (inserted) notifyContentMutation();
+        return inserted;
       },
       getDoc: () => (editor ? editor.getJSON() : null),
       setDoc: (doc: JSONContent) => {
-        if (!editor) return;
-        editor.commands.setContent(doc);
-        reconcileCommandNodes(editor);
-        notifyContentMutation();
+        if (!editor || editor.isDestroyed) return false;
+        const applied = editor.commands.setContent(doc);
+        if (applied) {
+          reconcileCommandNodes(editor);
+          notifyContentMutation();
+        }
+        return applied;
       },
       getContent: () =>
         editor
@@ -285,6 +292,11 @@ export function ComposerMentionInput({
         editor.chain().focus().insertContent('/').run();
       },
     };
+  }, [editor]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    onReadyRef.current?.();
   }, [editor]);
 
   const dropPolicy = attachmentDrop;

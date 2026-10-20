@@ -85,7 +85,7 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
         if (localRef.current) localRef.current.value = text;
         onEmptyChange(text.trim() === '');
       },
-      appendText: () => {},
+      appendText: () => true,
       openMentionPicker: () => {},
       openSlashCommandPicker: () => {},
     }));

@@ -169,6 +169,8 @@ import {
   useAgentThreadModel,
 } from '@/lib/acp/thread-client';
 import {
+  flushStagedThreadDraft,
+  flushStagedThreadDraftContent,
   registerThreadDraftReader,
   subscribeStagedThreadDraft,
   subscribeStagedThreadDraftContent,
@@ -599,14 +601,15 @@ export function ThreadView({
 
   useEffect(() => {
     const stopStaging = subscribeStagedThreadDraft(info.threadId, (text) => {
-      composerRef.current?.appendText(text);
+      return composerRef.current?.appendText(text) ?? false;
     });
     const stopStagingContent = subscribeStagedThreadDraftContent(info.threadId, (content) => {
-      composerRef.current?.setDoc(content.doc);
-      if (content.attachments.length > 0) {
+      const accepted = composerRef.current?.setDoc(content.doc) ?? false;
+      if (accepted && content.attachments.length > 0) {
         attachmentsRef.current = [...attachmentsRef.current, ...content.attachments];
         setPendingAttachments(attachmentsRef.current);
       }
+      return accepted;
     });
     return () => {
       stopStagingContent();
@@ -1544,6 +1547,10 @@ export function ThreadView({
                 hasStartedWork={threadHasUserMessage({ items })}
                 onNewChat={startFreshThread}
                 composerRef={composerRef}
+                onComposerReady={() => {
+                  flushStagedThreadDraft(info.threadId);
+                  flushStagedThreadDraftContent(info.threadId);
+                }}
                 mentionRecency={mentionRecency}
                 onSubmit={submit}
                 canPrompt={canPrompt}
@@ -4396,6 +4403,7 @@ function ThreadComposer({
   hasStartedWork,
   onNewChat,
   composerRef,
+  onComposerReady,
   mentionRecency,
   onSubmit,
   canPrompt,
@@ -4424,6 +4432,7 @@ function ThreadComposer({
   hasStartedWork: boolean;
   onNewChat: () => void;
   composerRef: RefObject<ComposerMentionInputHandle | null>;
+  onComposerReady: () => void;
   mentionRecency: MentionRecency;
   onSubmit: () => void;
   canPrompt: boolean;
@@ -4555,6 +4564,7 @@ function ThreadComposer({
           <div className="relative">
             <ComposerMentionInput
               ref={composerRef}
+              onReady={onComposerReady}
               ariaLabel={t`Message ${agentName}`}
               ariaDescribedBy={placeholderRotating ? composerHintId : undefined}
               onEmptyChange={setIsEmpty}

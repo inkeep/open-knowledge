@@ -272,6 +272,7 @@ describe('ThreadView queued-comment chip', () => {
     let staged: string | null = null;
     const stopStaging = subscribeStagedThreadDraft('new', (text) => {
       staged = text;
+      return true;
     });
 
     const field = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;

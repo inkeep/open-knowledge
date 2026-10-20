@@ -85,9 +85,11 @@ export function MockComposerMentionInput({
     },
     appendText: (text: string) => {
       const el = localRef.current;
-      if (!el || text === '') return;
+      if (text === '') return true;
+      if (!el) return false;
       el.value = el.value.trim() === '' ? text : `${el.value.replace(/\s+$/, '')}\n\n${text}`;
       notify();
+      return true;
     },
     getDoc: () => ({
       type: 'doc',
@@ -100,8 +102,11 @@ export function MockComposerMentionInput({
         ),
     }),
     setDoc: (doc) => {
-      if (localRef.current) localRef.current.value = docPlainText(doc);
+      const el = localRef.current;
+      if (!el) return false;
+      el.value = docPlainText(doc);
       notify();
+      return true;
     },
     getContent: () => ({
       instruction: localRef.current?.value ?? '',
