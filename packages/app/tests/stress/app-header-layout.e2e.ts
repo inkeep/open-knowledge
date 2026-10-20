@@ -832,7 +832,16 @@ test('a presence avatar joining the trailing group leaves the project switcher a
   await api.seedDocs([{ name, markdown: `# ${name}\n\nbody\n` }]);
   await page.setViewportSize({ width: 1280, height: 800 });
   await openDesktopHeader(page, workerServer, name, {});
-  const before = await measureHeaderTracks(page);
+  const presenceBar = page.locator(
+    'header[data-app-header] [data-app-header-trailing] [data-slot="presence-bar"]',
+  );
+  let before = await measureHeaderTracks(page);
+  await expect
+    .poll(async () => {
+      before = await measureHeaderTracks(page);
+      return before.trailingContentLeft === before.shareLeft;
+    })
+    .toBe(true);
 
   await api.writeAsAgent(name, `# ${name}\n\nan agent was here\n`, {
     agentId: `app-header-centre-probe-${Date.now()}`,
@@ -840,7 +849,10 @@ test('a presence avatar joining the trailing group leaves the project switcher a
     clientName: 'claude-code',
   });
   await expect(
-    page.locator('header[data-app-header] [data-app-header-trailing] [data-slot="presence-bar"]'),
+    presenceBar.getByRole('button', {
+      name: 'Open activity panel for Centre Probe',
+      exact: true,
+    }),
   ).toBeVisible({ timeout: 30_000 });
   await expect
     .poll(async () => (await measureHeaderTracks(page)).trailingContentLeft, { timeout: 30_000 })
