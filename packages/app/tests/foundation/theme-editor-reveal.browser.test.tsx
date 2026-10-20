@@ -1,7 +1,7 @@
 import { bindConfigDoc } from '@inkeep/open-knowledge-core/config/bind-config-doc';
 import type { SavedThemeListEntry } from '@inkeep/open-knowledge-core/schemas/api';
 import { deriveSavedThemeName } from '@inkeep/open-knowledge-core/theme/theme-plugins';
-import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, prettyDOM, screen, waitFor, within } from '@testing-library/react';
 import {
   afterAll,
   afterEach,
@@ -123,8 +123,25 @@ function settingsContent(): HTMLElement {
   return screen.getByRole('region', { name: 'Settings content' });
 }
 
-function findPencil(name: string): Promise<HTMLElement> {
-  return screen.findByRole('button', { name: `Edit ${name}` }, { timeout: OPEN_TIMEOUT_MS });
+async function findPencil(name: string): Promise<HTMLElement> {
+  await act(async () => {
+    await Promise.all([
+      import('@/components/settings/SettingsDialogBody'),
+      import('@/components/settings/ThemePluginSection'),
+    ]);
+  });
+  const content = settingsContent();
+  return screen.findByRole(
+    'button',
+    { name: `Edit ${name}` },
+    {
+      timeout: OPEN_TIMEOUT_MS,
+      onTimeout: (error) => {
+        error.message += `\n\nSettings content after loading modules:\n${prettyDOM(content)}`;
+        return error;
+      },
+    },
+  );
 }
 
 function nextFrame(): Promise<number> {
