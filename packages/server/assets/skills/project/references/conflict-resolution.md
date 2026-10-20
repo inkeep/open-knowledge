@@ -28,7 +28,7 @@ A write that first detects a stale file during its final disk flush returns `urn
 | `working-tree` | a pull-only overlay collision, pinned to the origin blob it collided with | writes the chosen bytes to disk; nothing is committed |
 | `reconcile` | OK's own three-way merge of the editor against disk, including stale external saves. No git object holds the stages, so OK snapshots them at detection | writes the chosen bytes to disk and into the loaded document; no git command runs |
 
-A `reconcile` conflict carries a `reason`: `merged-with-markers` (the three-way merge produced markers), `refused-conflict-markers` (the disk bytes already carried markers), `refused-too-large` (the document is past the merge size cap), `disk-markers` (markers landed on disk under an open doc), or `stale-external-write` (an older displaced version returned on disk). The compatibility `conflictKind` field is `stale-external-write` for that last reason and `git` otherwise.
+A `reconcile` conflict carries a `reason`: `merged-with-markers` (the three-way merge produced markers), `refused-conflict-markers` (the disk bytes already carried markers), `refused-too-large` (the document is past the merge size cap or, rarely, the merged output failed OpenKnowledge's fidelity check; the server log names the failed check), `disk-markers` (markers landed on disk under an open doc), or `stale-external-write` (an older displaced version returned on disk). The compatibility `conflictKind` field is `stale-external-write` for that last reason and `git` otherwise.
 
 ## What the user chooses
 

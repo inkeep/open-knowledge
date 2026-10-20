@@ -152,6 +152,7 @@ import {
   type FrozenResidentRevival,
   redactedErrorSummary,
   refuseStaleExternalWrite,
+  reportReconcileCheckFailed,
   reviveFrozenResidentDoc,
   serializeYDocSource,
   wireReasonForRefusal,
@@ -3232,6 +3233,7 @@ export function createServer(options: ServerOptions): ServerInstance {
                 await applyDiskAuthoritativeIngest(docName, theirs, false);
                 break;
               }
+              reportReconcileCheckFailed(docName, result, 'watcher');
               incrementConflict();
               conflicts.raise({
                 kind: 'reconcile',
@@ -4995,6 +4997,7 @@ export function createServer(options: ServerOptions): ServerInstance {
                     });
 
                     reportInsertDedupSkipped(docName, outcome, parked.markdown, currentDisk);
+                    reportReconcileCheckFailed(docName, outcome, 'branch-switch');
 
                     switch (outcome.kind) {
                       case 'merged':
@@ -5022,18 +5025,20 @@ export function createServer(options: ServerOptions): ServerInstance {
                       }
                       case 'noop':
                         break;
-                      case 'refused':
-                        switch (outcome.reason) {
+                      case 'refused': {
+                        const refusal = outcome.reason;
+                        switch (refusal) {
                           case 'conflict-markers':
                           case 'no-base':
                           case 'too-large':
+                          case 'check-failed':
                             log.warn(
-                              { docName, reason: outcome.reason, branch: newBranch },
-                              `[branch-switch] parked WIP not restored for ${docName} (reconcile refused: ${outcome.reason})`,
+                              { docName, reason: refusal, branch: newBranch },
+                              `[branch-switch] parked WIP not restored for ${docName} (reconcile refused: ${refusal})`,
                             );
                             break;
                           default: {
-                            const unhandled: never = outcome.reason;
+                            const unhandled: never = refusal;
                             log.warn(
                               { docName, reason: String(unhandled), branch: newBranch },
                               `[branch-switch] parked WIP not restored for ${docName} (reconcile refused: ${String(unhandled)})`,
@@ -5042,6 +5047,7 @@ export function createServer(options: ServerOptions): ServerInstance {
                           }
                         }
                         break;
+                      }
                     }
                   } catch (e) {
                     log.error(

@@ -10,8 +10,14 @@ import {
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
 import { DocumentDurabilityState } from './document-durability-state.ts';
-import { applyExternalChange, createExternalChangeHandler } from './external-change.ts';
+import {
+  applyExternalChange,
+  createExternalChangeHandler,
+  reportReconcileCheckFailed,
+} from './external-change.ts';
 import { getLogger } from './logger.ts';
+import { getMetrics, resetMetrics } from './metrics.ts';
+import { reconcile } from './reconciliation.ts';
 
 type Conn = Awaited<ReturnType<Hocuspocus['openDirectConnection']>>;
 
@@ -438,6 +444,41 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
       await conn.disconnect();
     } finally {
       console.error = originalError;
+    }
+  });
+});
+
+describe('reportReconcileCheckFailed', () => {
+  test('counts and logs a check-failed refusal with its failure detail, and ignores every other outcome', () => {
+    resetMetrics();
+    const warnSpy = vi.spyOn(getLogger('reconcile'), 'warn');
+    try {
+      const refused = reconcile({
+        docName: 'check-failed-doc',
+        base: 'A\n\nB\n\nC\n',
+        ours: 'A\n\nX\n\nB edited\n\nC\n',
+        theirs: 'A\n\nX\n\nB\n\nC\n',
+      });
+      const merged = reconcile({
+        docName: 'merged-doc',
+        base: 'A\n\nB\n',
+        ours: 'A ours\n\nB\n',
+        theirs: 'A\n\nB theirs\n',
+      });
+
+      reportReconcileCheckFailed('merged-doc', merged, 'watcher');
+      reportReconcileCheckFailed('check-failed-doc', refused, 'branch-switch');
+
+      expect(getMetrics().reconcileCheckFailed).toBe(1);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0]?.[0]).toEqual({
+        docName: 'check-failed-doc',
+        site: 'branch-switch',
+        failure: { check: 'single-occurrence', outputBlockIndex: 2 },
+      });
+    } finally {
+      warnSpy.mockRestore();
+      resetMetrics();
     }
   });
 });

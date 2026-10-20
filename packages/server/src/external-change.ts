@@ -37,11 +37,12 @@ import { canonicalContentPathIsRefused } from './fs-safety.ts';
 import { getLogger } from './logger.ts';
 import {
   incrementExternalChangeHandlerErrors,
+  incrementReconcileCheckFailed,
   incrementReconcileInFlightFallthroughs,
   incrementReconcileInsertDedupSkipped,
   incrementReconcileOwnFlushSkips,
 } from './metrics.ts';
-import { type ReconcileRefusalReason, reconcile } from './reconciliation.ts';
+import { type ReconcileOutcome, type ReconcileRefusalReason, reconcile } from './reconciliation.ts';
 import { FILE_SYSTEM_WRITER } from './shadow-repo.ts';
 
 export { FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
@@ -241,6 +242,21 @@ function clearStaleExternalWriteConflict(
   lifecycleMap.delete('detectedAt');
 }
 
+type ReconcileCheckSite = 'watcher' | 'agent-write' | 'branch-switch';
+
+export function reportReconcileCheckFailed(
+  docName: string,
+  outcome: ReconcileOutcome,
+  site: ReconcileCheckSite,
+): void {
+  if (outcome.kind !== 'refused' || outcome.reason !== 'check-failed') return;
+  incrementReconcileCheckFailed();
+  getLogger('reconcile').warn(
+    { docName, site, failure: outcome.failure },
+    `[reconcile] ${site} ${docName} merge output failed the fidelity check (${outcome.failure.check})`,
+  );
+}
+
 export function wireReasonForRefusal(reason: ReconcileRefusalReason): ReconcileReason {
   switch (reason) {
     case 'conflict-markers':
@@ -248,6 +264,7 @@ export function wireReasonForRefusal(reason: ReconcileRefusalReason): ReconcileR
     case 'no-base':
       return 'refused-no-base';
     case 'too-large':
+    case 'check-failed':
       return 'refused-too-large';
     default: {
       const unhandled: never = reason;
@@ -438,6 +455,7 @@ export function reconcileDiskBeforeAgentWrite(
 
     case 'conflicts':
     case 'refused': {
+      reportReconcileCheckFailed(docName, outcome, 'agent-write');
       conflicts.raise({
         kind: 'reconcile',
         file: conflicts.fileOf(docName),
