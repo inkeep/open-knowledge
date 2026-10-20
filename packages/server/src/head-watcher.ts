@@ -4,7 +4,8 @@ import {
 } from '@inkeep/open-knowledge-core/git-repository';
 import { getLogger } from './logger.ts';
 import { classifyParcelNotification } from './parcel-recovery.ts';
-import { subscribeParcel } from './parcel-subscription.ts';
+import { type NativeWatcherBackend, subscribeParcel } from './parcel-subscription.ts';
+import { type WatcherClock, type WatcherTimer, watcherClock } from './watcher-clock.ts';
 
 const log = getLogger('head-watcher');
 
@@ -73,16 +74,21 @@ async function tryStartParcelHeadWatcher(
   dispatch: (rawPath: string) => boolean,
   recover: () => void,
   platform: NodeJS.Platform,
+  nativeBackend?: NativeWatcherBackend,
 ): Promise<(() => Promise<void>) | null> {
-  let parcel: typeof import('@parcel/watcher');
-  try {
-    parcel = await import('@parcel/watcher');
-  } catch (err) {
-    log.debug(
-      { err: err instanceof Error ? err.message : String(err) },
-      '[head-watcher] @parcel/watcher unavailable; falling back to chokidar',
-    );
-    return null;
+  let parcel: NativeWatcherBackend;
+  if (nativeBackend) {
+    parcel = nativeBackend;
+  } else {
+    try {
+      parcel = await import('@parcel/watcher');
+    } catch (err) {
+      log.debug(
+        { err: err instanceof Error ? err.message : String(err) },
+        '[head-watcher] @parcel/watcher unavailable; falling back to chokidar',
+      );
+      return null;
+    }
   }
   try {
     const subscription = await subscribeParcel(
@@ -143,6 +149,8 @@ export async function startHeadWatcher(
   opts: {
     forceBackend?: 'parcel' | 'chokidar';
     platform?: NodeJS.Platform;
+    nativeBackend?: NativeWatcherBackend;
+    clock?: WatcherClock;
     subscribeForTest?: (
       gitDir: string,
       dispatch: HeadEventDispatch,
@@ -155,10 +163,11 @@ export async function startHeadWatcher(
   }
   const repository = inspected.repository;
   const gitDir = repository.gitDir;
+  const clock = opts.clock ?? watcherClock();
 
   let inBatch = false;
-  let quietTimer: ReturnType<typeof setTimeout> | null = null;
-  let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  let quietTimer: WatcherTimer | null = null;
+  let timeoutTimer: WatcherTimer | null = null;
   let oldHead: string | null = null;
   let lastKnownBranch: string | null = null;
   let batchEndInFlight: Promise<void> | null = null;
@@ -174,11 +183,11 @@ export async function startHeadWatcher(
     if (!inBatch) return;
 
     if (quietTimer) {
-      clearTimeout(quietTimer);
+      clock.clearTimeout(quietTimer);
       quietTimer = null;
     }
     if (timeoutTimer) {
-      clearTimeout(timeoutTimer);
+      clock.clearTimeout(timeoutTimer);
       timeoutTimer = null;
     }
 
@@ -226,8 +235,8 @@ export async function startHeadWatcher(
   }
 
   function resetQuietWindow(): void {
-    if (quietTimer) clearTimeout(quietTimer);
-    quietTimer = setTimeout(() => {
+    if (quietTimer) clock.clearTimeout(quietTimer);
+    quietTimer = clock.setTimeout(() => {
       quietTimer = null;
       void emitBatchEnd(false);
     }, QUIET_WINDOW_MS);
@@ -251,7 +260,7 @@ export async function startHeadWatcher(
       await beginPromise;
       beginInFlight = null;
 
-      timeoutTimer = setTimeout(() => {
+      timeoutTimer = clock.setTimeout(() => {
         timeoutTimer = null;
         void emitBatchEnd(true);
       }, BATCH_TIMEOUT_MS);
@@ -295,6 +304,7 @@ export async function startHeadWatcher(
       dispatch,
       recover,
       opts.platform ?? process.platform,
+      opts.nativeBackend,
     );
     if (resolvedUnsub) backend = 'parcel';
   }
@@ -321,8 +331,8 @@ export async function startHeadWatcher(
       } finally {
         await headWork;
         if (inBatch) await emitBatchEnd(false);
-        if (quietTimer) clearTimeout(quietTimer);
-        if (timeoutTimer) clearTimeout(timeoutTimer);
+        if (quietTimer) clock.clearTimeout(quietTimer);
+        if (timeoutTimer) clock.clearTimeout(timeoutTimer);
       }
     },
     getLastKnownBranch: () => lastKnownBranch,

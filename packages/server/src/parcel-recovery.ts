@@ -1,6 +1,6 @@
 import type { Event } from '@parcel/watcher';
 
-const RESCAN_NOTICES = new Set([
+export const RESCAN_NOTICES: ReadonlySet<string> = new Set([
   'Events were dropped by the FSEvents client. File system must be re-scanned.',
   'Too many events. File system must be re-scanned.',
   'Events were dropped by the kernel. File system must be re-scanned.',

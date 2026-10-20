@@ -154,6 +154,8 @@ export interface BootServerOptions
     | 'ephemeral'
     | 'configHomedirOverride'
     | 'acpRegistryFetchImpl'
+    | 'watcherBackend'
+    | 'watcherClock'
   > {
   config: Config;
   skipAutoInit?: boolean;
@@ -413,6 +415,8 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     singleDocRelPath: opts.singleDocRelPath,
     ephemeral: opts.ephemeral,
     configHomedirOverride: opts.configHomedirOverride,
+    watcherBackend: opts.watcherBackend,
+    watcherClock: opts.watcherClock,
   });
 
   const {

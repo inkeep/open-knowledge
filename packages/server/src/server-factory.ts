@@ -162,7 +162,9 @@ import {
   type DiskEvent,
   getMarkdownRemovalCurrentness,
   hasAdmittedMarkdownFile,
+  type NativeWatcherBackend,
   pathToDocName,
+  type RecheckResult,
   reconcileFileIndexAfterFilterRebuild,
   registerRemoval,
   registerWrite,
@@ -328,6 +330,7 @@ import { createSyncHandshakeSpanExtension } from './sync-handshake-span-extensio
 import { initTelemetry, shutdownTelemetry, withSpan } from './telemetry.ts';
 import { trustSystemCertificates } from './trust-system-ca.ts';
 import { cleanupOrphanUploadTempfiles } from './upload-streaming.ts';
+import type { WatcherClock } from './watcher-clock.ts';
 
 export interface ServerOptions {
   acpRegistryFetchImpl?: typeof fetch;
@@ -374,6 +377,8 @@ export interface ServerOptions {
   embedderLoader?: (input: LoadOpenAiEmbedderInput) => Promise<Embedder | null>;
   singleDocRelPath?: string;
   ephemeral?: boolean;
+  watcherBackend?: NativeWatcherBackend;
+  watcherClock?: WatcherClock;
   generatedIndexTestHooks?: {
     beforePlan?: (context: { fullSweep: boolean; signal: AbortSignal }) => Promise<void> | void;
     beforeDecision?: (context: {
@@ -423,6 +428,7 @@ export interface ServerInstance {
   readonly resolveTrackedFile: (relativePath: string) => string | undefined;
   readonly acpRegistry: AcpRegistry;
   readonly acpPermissions: AcpPermissionStore;
+  readonly recheckDisk: () => Promise<RecheckResult>;
 }
 
 export function observeShutdownDocumentRetirements(
@@ -4642,6 +4648,8 @@ export function createServer(options: ServerOptions): ServerInstance {
           startWatcher(canonicalContentDir, onDiskEvent, contentFilter, {
             onRawBatch,
             onRecoveryComplete: () => derivedDocumentIndex.recordInventoryReconciled(),
+            nativeBackend: options.watcherBackend,
+            clock: options.watcherClock,
           }),
         );
         void resyncRecordedSkillCopies(projectDir, contentDir)
@@ -5119,6 +5127,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             }
           }
         },
+        { nativeBackend: options.watcherBackend, clock: options.watcherClock },
       );
     } catch (err) {
       log.error({ err }, '[server] HEAD watcher failed to start');
@@ -5281,5 +5290,13 @@ export function createServer(options: ServerOptions): ServerInstance {
     resolveTrackedFile,
     acpRegistry,
     acpPermissions,
+    recheckDisk: () => {
+      if (!watcher) {
+        return Promise.reject(
+          new Error('the file watcher is not running, so there is nothing to re-check'),
+        );
+      }
+      return watcher.recheck();
+    },
   };
 }

@@ -1,7 +1,9 @@
 import type { AsyncSubscription, Options, SubscribeCallback } from '@parcel/watcher';
 
+export type NativeWatcherBackend = Pick<typeof import('@parcel/watcher'), 'subscribe'>;
+
 export async function subscribeParcel(
-  parcel: Pick<typeof import('@parcel/watcher'), 'subscribe'>,
+  parcel: NativeWatcherBackend,
   dir: string,
   onEvents: SubscribeCallback,
   options?: Options,

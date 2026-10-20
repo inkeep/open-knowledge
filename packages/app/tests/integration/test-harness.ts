@@ -108,6 +108,8 @@ export interface CreateTestServerOptions {
   pushIntervalSeconds?: number;
   agentSessionOptions?: ServerOptions['agentSessionOptions'];
   seedSkillHostRoot?: boolean;
+  watcherBackend?: ServerOptions['watcherBackend'];
+  watcherClock?: ServerOptions['watcherClock'];
 }
 
 export async function createTestServer(options: CreateTestServerOptions = {}): Promise<TestServer> {
@@ -184,6 +186,8 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
       pullIntervalSeconds: options.pullIntervalSeconds,
       pushIntervalSeconds: options.pushIntervalSeconds,
       agentSessionOptions: options.agentSessionOptions,
+      watcherBackend: options.watcherBackend,
+      watcherClock: options.watcherClock,
       ...(ephemeral ? { ephemeral: true, singleDocRelPath: options.singleDocRelPath } : {}),
       skipStateManifestCheck: true,
     });
